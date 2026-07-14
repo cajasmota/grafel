@@ -23,6 +23,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/cajasmota/grafel/internal/cli/wiztui"
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/client"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/install"
@@ -351,6 +352,17 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		if sseCh, sseErr := subscribeSSE(ctx, dashPort, group); sseErr == nil {
+			// SPLIT mode: the Rebuild RPC returns at ENQUEUE time (fire-and-
+			// forget), so it CANNOT signal real completion. Keep forwarding SSE
+			// per-module events while polling the status plane for a level-
+			// triggered done signal, with engine-liveness + a timeout backstop.
+			if daemon.SplitModeEnabled() {
+				o := runSplitIndex(ctx, cancel, c, group, token, sseCh, evCh)
+				outCh <- toIndexOutcome(o, summary)
+				return
+			}
+			// MONOLITH mode: the Rebuild RPC is synchronous, so its return IS
+			// completion and its reply carries the stats. Unchanged.
 			rpcCh := triggerRebuild(c, group, token)
 			o := forwardBrokerToChannel(ctx, sseCh, rpcCh, evCh)
 			cancel()
