@@ -91,6 +91,17 @@ type splitPoll struct {
 	RequestPending bool
 	// EngineAlive mirrors the engine-liveness heartbeat freshness (backstop).
 	EngineAlive bool
+	// AllAdvanced is true IFF every group repo is already graph-queryable — its
+	// status shows !Indexing and a graph_fb_mtime advanced past the pre-enqueue
+	// baseline. This is the ~6-min "graph queryable" completion signal: the engine
+	// has written every repo's graph.fb (and, via the engine-side pre-linksFn
+	// flush, stamped fresh status) but is still running the in-process linksFn tail
+	// in the BACKGROUND. It lets the wizard complete SUCCESS early without waiting
+	// for the full rebuild ack. It only ever goes true on a genuine mtime advance
+	// (the flush writes fresh status under the repolock before the ack), so a stale
+	// read keeps it false — no false-success. When any repo fails/empties it never
+	// becomes true, so completion falls through to the ack backstop (RequestPending).
+	AllAdvanced bool
 }
 
 // splitResult is the classified outcome, produced once the rebuild is done.
@@ -143,8 +154,13 @@ func awaitSplitCompletion(probe splitProbe, clk splitClock, cfg splitPollConfig)
 	for {
 		p, err := probe.Poll()
 		if err == nil {
-			if !p.RequestPending {
-				// The engine finished our rebuild — classify the per-repo result.
+			if p.AllAdvanced || !p.RequestPending {
+				// Complete when EITHER every repo is already graph-queryable
+				// (AllAdvanced — the ~6-min early success, engine still running the
+				// background linksFn tail) OR the engine drained+acked our rebuild
+				// request (!RequestPending — the failure/backstop path). Classify is
+				// unchanged: on the ack path it still lists any non-advanced repo as
+				// Failed; on the AllAdvanced path every repo advanced so it is clean.
 				return probe.Classify()
 			}
 			if p.EngineAlive {
@@ -310,15 +326,35 @@ func newStatusPlaneProbeWith(paths []string, root string, rs statusReader, lr li
 	return p
 }
 
-// Poll reads the completion signal (our request still queued?) and engine
-// liveness in one shot.
+// repoAdvanced reports whether a repo's status file shows it is graph-queryable:
+// the file exists, it is not mid-index, and its graph_fb_mtime advanced past the
+// pre-enqueue baseline (i.e. graph.fb was (re)written by THIS rebuild). Shared by
+// Poll (the AllAdvanced early-completion predicate) and Classify (per-repo result)
+// so both use one definition of "this repo produced a fresh graph".
+func repoAdvanced(f *statusfile.File, baseline int64) bool {
+	return f != nil && !f.Indexing && f.GraphFBMtime > baseline
+}
+
+// Poll reads the completion signal (our request still queued?), engine liveness,
+// and the early "graph queryable" signal (AllAdvanced) in one shot. AllAdvanced
+// is true only when EVERY group repo already reports a fresh graph past its
+// baseline — the engine has written all graph.fb + flushed fresh status under the
+// repolock (before the ack) while the background linksFn tail still runs.
 func (p *statusPlaneProbe) Poll() (splitPoll, error) {
 	pend, err := p.pending()
 	if err != nil {
 		return splitPoll{}, err
 	}
 	_, alive := p.readLiveness(p.root)
-	return splitPoll{RequestPending: pend, EngineAlive: alive}, nil
+	allAdvanced := len(p.repoPaths) > 0
+	for _, rp := range p.repoPaths {
+		f, ok := p.readStatus(rp)
+		if !ok || !repoAdvanced(f, p.baseline[rp]) {
+			allAdvanced = false
+			break
+		}
+	}
+	return splitPoll{RequestPending: pend, EngineAlive: alive, AllAdvanced: allAdvanced}, nil
 }
 
 // Classify inspects each group repo AFTER the rebuild finished. A repo counts as
@@ -330,7 +366,7 @@ func (p *statusPlaneProbe) Classify() (splitResult, error) {
 	var res splitResult
 	for _, rp := range p.repoPaths {
 		f, ok := p.readStatus(rp)
-		if ok && f != nil && !f.Indexing && f.GraphFBMtime > p.baseline[rp] {
+		if ok && repoAdvanced(f, p.baseline[rp]) {
 			res.Entities += f.Entities
 			res.Rels += f.Relationships
 			continue

@@ -468,6 +468,121 @@ func TestSplit_FreshStatusFlushedBeforeAck_ClassifiesOK(t *testing.T) {
 	}
 }
 
+// HYBRID-1. SPLIT: every repo becomes graph-queryable (graph_fb_mtime advanced,
+// !Indexing) while our rebuild request is STILL pending → completion fires EARLY
+// (success) via the AllAdvanced predicate, without waiting for the ack. Modeled
+// by a pendingReader that NEVER acks: the only way this can succeed is the early
+// AllAdvanced path. Fails today (waits for the ack → hits the timeout → error).
+func TestSplit_AllReposAdvance_CompletesEarlyBeforeAck(t *testing.T) {
+	const repoA, repoB = "/repo/backend", "/repo/frontend"
+	store := newFakeStatusStore() // both absent at construction → baseline 0
+	neverAck := func() (bool, error) { return true, nil }
+	probe := newStatusPlaneProbeWith([]string{repoA, repoB}, "/root", store.read, aliveLiveness, neverAck)
+
+	// Both repos produce a fresh graph (mtime advanced past baseline 0) while the
+	// request is still pending — the ~6-min "graph queryable" moment.
+	store.set(repoA, &statusfile.File{Indexing: false, GraphFBMtime: 100, Entities: 5, Relationships: 6})
+	store.set(repoB, &statusfile.File{Indexing: false, GraphFBMtime: 200, Entities: 7, Relationships: 8})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Generous timeout: if completion needed the (never-coming) ack this would
+	// spin to the timeout and error. Early success proves the AllAdvanced path.
+	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	if o.err != nil {
+		t.Fatalf("all repos graph-queryable but no early completion (waited for the ack): %v", o.err)
+	}
+	if o.entities != 12 || o.rels != 14 {
+		t.Fatalf("stats = (%d,%d); want (12,14) summed across the advanced repos", o.entities, o.rels)
+	}
+}
+
+// HYBRID-2. SPLIT: repo A advances but repo B NEVER produces a graph. AllAdvanced
+// can never be true, so the early path never fires; completion must fall through
+// to the ack backstop and surface a PROMPT error naming B — not an early false
+// success, not a hang.
+func TestSplit_OneRepoNeverAdvances_AckBackstopPromptError(t *testing.T) {
+	const repoA, repoB = "/repo/backend", "/repo/frontend"
+	store := newFakeStatusStore() // baseline 0 for both
+	var pmu sync.Mutex
+	pollCount := 0
+	inner := pendingUntil(5)
+	counting := func() (bool, error) {
+		pmu.Lock()
+		pollCount++
+		pmu.Unlock()
+		return inner()
+	}
+	probe := newStatusPlaneProbeWith([]string{repoA, repoB}, "/root", store.read, aliveLiveness, counting)
+
+	// Only A ever advances; B stays absent → AllAdvanced never becomes true.
+	store.set(repoA, &statusfile.File{Indexing: false, GraphFBMtime: 500, Entities: 10, Relationships: 20})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	if o.err == nil {
+		t.Fatal("repo B never advanced but completion reported success (AllAdvanced early false-success or hang)")
+	}
+	if !strings.Contains(o.err.Error(), "frontend") {
+		t.Fatalf("err = %v; want it to name the non-advanced repo (frontend) via the ack backstop", o.err)
+	}
+	// It must have WAITED for the ack (pendingUntil(5)) rather than short-circuit.
+	pmu.Lock()
+	got := pollCount
+	pmu.Unlock()
+	if got < 4 {
+		t.Fatalf("completed after %d polls; want >=4 (must wait for the ack backstop, not early-complete)", got)
+	}
+}
+
+// HYBRID-3. FALSE-FAILURE guard: while a repo's status is STALE (graph_fb_mtime
+// == baseline) the AllAdvanced predicate stays false — no early completion on a
+// stale read. Only once graph_fb_mtime genuinely advances does the early path
+// fire. Modeled with a never-acking pendingReader so the ONLY route to success is
+// a real mtime advance, and a status reader that stays stale for the first polls.
+func TestSplit_StaleStatus_NoEarlyComplete_AdvanceCompletes(t *testing.T) {
+	const repo = "/repo/monorepo"
+	var mu sync.Mutex
+	calls := 0
+	// Call 1 is the baseline capture in the constructor (mtime 1000). Reads while
+	// still stale return 1000 (== baseline). After several polls the graph is
+	// rewritten (mtime 2000) → genuinely advanced.
+	read := func(string) (*statusfile.File, bool) {
+		mu.Lock()
+		calls++
+		c := calls
+		mu.Unlock()
+		if c <= 4 {
+			return &statusfile.File{Indexing: false, GraphFBMtime: 1000}, true // stale
+		}
+		return &statusfile.File{Indexing: false, GraphFBMtime: 2000, Entities: 11, Relationships: 22}, true
+	}
+	neverAck := func() (bool, error) { return true, nil } // only AllAdvanced can complete
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", read, aliveLiveness, neverAck)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	if o.err != nil {
+		t.Fatalf("should complete once mtime advances past baseline, got: %v", o.err)
+	}
+	if o.entities != 11 || o.rels != 22 {
+		t.Fatalf("stats = (%d,%d); want (11,22) from the advanced status", o.entities, o.rels)
+	}
+	// It must NOT have early-completed on a stale read: at least the stale polls
+	// happened before the advance at call 5.
+	mu.Lock()
+	total := calls
+	mu.Unlock()
+	if total < 5 {
+		t.Fatalf("only %d status reads; want >=5 (early-completed on a stale read == false-failure race)", total)
+	}
+}
+
 // 5. MONOLITH: unchanged — completion is the RPC return, carrying the RPC's own
 // stats, and in-window SSE events still forward. Exercises the monolith path
 // (forwardBrokerToChannel), which the fix must leave byte-identical.

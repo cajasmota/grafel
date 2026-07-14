@@ -1575,6 +1575,23 @@ func daemonRebuildFuncCore(
 		return rebuilt, "", fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 
+	// #5729 wizard "graph queryable" early completion: flush each successful
+	// repo's fresh status (graph_fb_mtime + Indexing=false) NOW — after every repo
+	// indexed and BEFORE the in-process linksFn tail (~10-12 min) and the ack — so
+	// a wizard keying completion on "every repo advanced" (AllAdvanced) sees fresh
+	// status at ~6 min instead of waiting the whole rebuild. This flush happens
+	// under the repolock claim's completed writes, so a stale/spoofed mtime cannot
+	// trip AllAdvanced. Also invalidate the resident cache for the rebuilt repos
+	// now so an MCP query issued right after the wizard prints "Done" sees the
+	// freshly written graph.fb (deterministic queryability). linksFn still runs
+	// below (it writes the MCP-tool sidecars and cross-repo links — must NOT be
+	// skipped); the post-linksFn flush + invalidate remain, re-capturing any
+	// graph.fb linksFn rewrites in multi-repo groups.
+	flushRebuiltStatus(rebuilt)
+	for _, repoPath := range rebuilt {
+		invalidateAfterIndex(repoPath)
+	}
+
 	// #5334 — surface the GROUP-level cross-repo link pass as its own granular
 	// phase. This runs after every member repo is indexed (their per-repo rows
 	// are already terminal), so without a group-level event the wizard's overall
