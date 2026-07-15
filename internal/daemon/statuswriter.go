@@ -12,6 +12,7 @@ import (
 	"github.com/cajasmota/grafel/internal/indexstate"
 	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/repolock"
 	"github.com/cajasmota/grafel/internal/statusfile"
 	"github.com/cajasmota/grafel/internal/version"
 )
@@ -107,6 +108,16 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 		f.Indexing = st.State == indexstate.StateIndexing || st.State == indexstate.StateDirty
 		break
 	}
+	// The FOREGROUND rebuild/subprocess path (cmd/grafel daemonRebuildFuncCore)
+	// deliberately bypasses the scheduler and never enters s.inflight, so the
+	// scheduler-derived f.Indexing above stays false throughout that path even
+	// though a real index is running. repolock.ClaimForeground is held for the
+	// exact lifetime of that index (keyed on the SAME repoPath the rebuild
+	// derives from the group config — see internal/repolock's package doc), so
+	// OR-ing in HasForegroundClaim closes the gap without touching the
+	// scheduler/watcher path's (already-correct) StateIndexing/StateDirty
+	// signal above.
+	f.Indexing = f.Indexing || repolock.DefaultRegistry.HasForegroundClaim(repoPath)
 	// Process-wide queue depth (#5493 concurrency gate) — the closest
 	// available proxy for "how much work is ahead of this repo" without
 	// threading per-repo queue position through the scheduler snapshot.

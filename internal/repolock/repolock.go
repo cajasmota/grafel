@@ -115,6 +115,34 @@ func (r *Registry) ClaimForeground(key string) (release func()) {
 	}
 }
 
+// HasForegroundClaim reports whether a foreground claim is currently intended
+// or held for key — i.e. whether ClaimForeground has been called for key and
+// its release has not yet run. This is a pure in-memory read (no blocking, no
+// I/O), safe to call from any goroutine, including a status-plane writer that
+// must never block behind an in-flight index.
+//
+// The FOREGROUND rebuild/subprocess path (cmd/grafel daemonRebuildFuncCore)
+// bypasses the scheduler entirely, so indexstate never observes it as
+// StateIndexing. HasForegroundClaim is the seam that lets the status-plane
+// writer (internal/daemon/statuswriter.go) detect that case and still report
+// Indexing=true, without threading scheduler-shaped state through a path that
+// deliberately does not use the scheduler.
+func (r *Registry) HasForegroundClaim(key string) bool {
+	key = filepath.Clean(key)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ks := r.st[key]
+	return ks != nil && ks.fgWant > 0
+}
+
+// HasForegroundClaim is the package-level convenience form of
+// Registry.HasForegroundClaim against DefaultRegistry, mirroring the
+// package's existing DefaultRegistry.<Method> call-site style (e.g.
+// repolock.DefaultRegistry.ClaimForeground in cmd/grafel/daemon.go).
+func HasForegroundClaim(key string) bool {
+	return DefaultRegistry.HasForegroundClaim(key)
+}
+
 // TryClaimBackground attempts to acquire the key for a background scheduler
 // index. It FAILS (ok=false) without blocking when either an index is already
 // running for the key OR a foreground claim is intended/held for it (yield to

@@ -1413,6 +1413,17 @@ func daemonRebuildFuncCore(
 			// the child subprocess lifetime.
 			releaseClaim := repolock.DefaultRegistry.ClaimForeground(rw.r.Path)
 			defer releaseClaim()
+			// Flush the status-plane sidecar immediately on claim acquisition so a
+			// reader (statusline widget, wizard live-progress) observes
+			// Indexing=true at index START instead of waiting up to a heartbeat
+			// interval (defaultStatusHeartbeatInterval, 5s) for the async
+			// statusWriter to notice the foreground claim via
+			// repolock.HasForegroundClaim. releaseClaim (deferred above) always
+			// runs, and flushRebuiltStatus/the error-path flush below always runs
+			// AFTER this closure returns (see indexOneInner), so the terminal
+			// flush reads the claim as already released and correctly reports
+			// Indexing=false.
+			daemon.FlushRepoStatusFile(rw.r.Path)
 
 			if sched.SubprocessIndexEnabled() {
 				// #5729 follow-up: route the per-repo index through the SAME

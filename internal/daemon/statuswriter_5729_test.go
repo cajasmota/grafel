@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/indexstate"
+	"github.com/cajasmota/grafel/internal/repolock"
 	"github.com/cajasmota/grafel/internal/statusfile"
 )
 
@@ -49,6 +50,52 @@ func TestWriteRepoStatusFile_WritesReadableSchema(t *testing.T) {
 	}
 	if !got.Indexing {
 		t.Error("Indexing should be true — scheduler reports this repo as StateIndexing")
+	}
+}
+
+// TestWriteRepoStatusFile_ForegroundClaimSetsIndexing is the RED test for the
+// foreground-indexing status-plane gap: the FOREGROUND rebuild/subprocess
+// path (cmd/grafel daemonRebuildFuncCore) bypasses the scheduler entirely via
+// repolock.ClaimForeground, so indexstate.RepoStates() never reports it as
+// StateIndexing/StateDirty for that repo. writeRepoStatusFile must still
+// report Indexing=true while that foreground claim is held, by OR-ing in
+// repolock.DefaultRegistry.HasForegroundClaim(repoPath) — even though the
+// scheduler-derived signal alone says StateCurrent (not indexing).
+func TestWriteRepoStatusFile_ForegroundClaimSetsIndexing(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv("GRAFEL_DAEMON_ROOT", t.TempDir())
+
+	repo := t.TempDir()
+
+	// Scheduler reports this repo as CURRENT (not indexing) — only the
+	// foreground claim signals an in-flight index.
+	indexstate.SetRepoStates([]indexstate.RepoState{
+		{Path: repo, State: indexstate.StateCurrent, HeadRef: "main"},
+	})
+	t.Cleanup(func() { indexstate.SetRepoStates(nil) })
+
+	release := repolock.DefaultRegistry.ClaimForeground(repo)
+	t.Cleanup(release)
+
+	writeRepoStatusFile(repo, nil)
+
+	got, err := statusfile.Read(repo)
+	if err != nil {
+		t.Fatalf("statusfile.Read: %v", err)
+	}
+	if !got.Indexing {
+		t.Error("Indexing should be true — a foreground claim is held for this repo path")
+	}
+
+	release()
+
+	writeRepoStatusFile(repo, nil)
+	got, err = statusfile.Read(repo)
+	if err != nil {
+		t.Fatalf("statusfile.Read: %v", err)
+	}
+	if got.Indexing {
+		t.Error("Indexing should be false once the foreground claim releases and the scheduler reports StateCurrent")
 	}
 }
 

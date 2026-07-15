@@ -82,6 +82,67 @@ func TestReleaseIsIdempotent(t *testing.T) {
 	relBg()
 }
 
+// HasForegroundClaim must report false before a claim is acquired, true while
+// it is held (including the brief pre-hold "intended" window guarded by
+// fgWant), and false again after release. This is the read-only seam the
+// status-plane writer uses to detect a foreground rebuild that the scheduler
+// itself cannot see (#5729 follow-up: foreground-indexing status-plane gap).
+func TestHasForegroundClaim(t *testing.T) {
+	r := New()
+
+	if r.HasForegroundClaim("/repo/a") {
+		t.Fatal("must be false before any claim is acquired")
+	}
+
+	rel := r.ClaimForeground("/repo/a")
+	if !r.HasForegroundClaim("/repo/a") {
+		t.Fatal("must be true while a foreground claim is held")
+	}
+	// An unrelated key is unaffected.
+	if r.HasForegroundClaim("/repo/b") {
+		t.Fatal("must be false for an unrelated key")
+	}
+
+	rel()
+	if r.HasForegroundClaim("/repo/a") {
+		t.Fatal("must be false after the claim releases")
+	}
+}
+
+// HasForegroundClaim is a pure in-memory read safe to call concurrently with
+// ClaimForeground/TryClaimBackground under -race.
+func TestHasForegroundClaimConcurrentRace(t *testing.T) {
+	r := New()
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			rel := r.ClaimForeground("/repo/a")
+			time.Sleep(time.Millisecond)
+			rel()
+		}
+		close(stop)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				r.HasForegroundClaim("/repo/a")
+			}
+		}
+	}()
+
+	wg.Wait()
+}
+
 // Concurrent foreground claims for the same repo are serialised (never both
 // hold at once), exercised under -race.
 func TestForegroundClaimsSerialise(t *testing.T) {
