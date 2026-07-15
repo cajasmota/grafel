@@ -24,11 +24,72 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
 )
+
+// memoMu guards the process-local compute-once guard below. All access to the
+// shared maps goes through it.
+var (
+	memoMu      sync.Mutex
+	memoHashes  = map[string]string{}                  // memoKey -> input hash of the last full compute
+	memoResults = map[string]*graph.AlgorithmResults{} // memoKey -> that full compute's result (read-only after store)
+)
+
+// memoKeyFor returns the process-local guard key for a group. It keys on the
+// resolved overlay path (which embeds GRAFEL_HOME) so distinct daemons / test
+// homes never collide, falling back to the bare group name if the path cannot
+// be resolved.
+func memoKeyFor(group string) string {
+	if p, err := OverlayPath(group); err == nil && p != "" {
+		return p
+	}
+	return "group:" + group
+}
+
+// loadMemoizedGroupResult returns the last full-computed result for group IFF it
+// was computed against the SAME group-version (inputHash). The returned pointer
+// is shared and MUST be treated read-only by callers (same contract as the disk
+// overlay reconstitution — consumers only read it).
+func loadMemoizedGroupResult(group, inputHash string) (*graph.AlgorithmResults, bool) {
+	memoMu.Lock()
+	defer memoMu.Unlock()
+	k := memoKeyFor(group)
+	if memoHashes[k] == inputHash {
+		if res, ok := memoResults[k]; ok && res != nil {
+			return res, true
+		}
+	}
+	return nil, false
+}
+
+// storeMemoizedGroupResult records that group's inputHash version has been fully
+// computed this process, keeping the result so a later reload for the SAME
+// version can reuse it even if the disk overlay never persisted. Recorded BEFORE
+// the caller attempts to write the overlay, so a persist failure cannot reopen
+// the recompute→persist-fail→recompute spin.
+func storeMemoizedGroupResult(group, inputHash string, res *graph.AlgorithmResults) {
+	if res == nil {
+		return
+	}
+	memoMu.Lock()
+	defer memoMu.Unlock()
+	k := memoKeyFor(group)
+	memoHashes[k] = inputHash
+	memoResults[k] = res
+}
+
+// resetGroupAlgoMemo clears the process-local guard. Test-only seam so cases can
+// assert first-compute behaviour deterministically.
+func resetGroupAlgoMemo() {
+	memoMu.Lock()
+	defer memoMu.Unlock()
+	memoHashes = map[string]string{}
+	memoResults = map[string]*graph.AlgorithmResults{}
+}
 
 // GroupAlgoResult wraps the single group-scope algorithm pass.
 //
@@ -247,8 +308,35 @@ func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
 		}
 	}
 
+	// Process-local compute-once guard. The disk overlay skip above is the fast
+	// path, but it only fires when the overlay could be PERSISTED. If the overlay
+	// is absent because a prior WriteOverlayFromResult FAILED (read-only
+	// ~/.grafel/groups, disk-full, EPERM) — the "sidecars=0" symptom — the disk
+	// skip can never engage, and without this guard every trigger re-ran the full
+	// ~O(V·E) betweenness over the whole group union, pinning the daemon (the
+	// group-scope analog of the per-repo #50 compute→evict spin). This guard makes
+	// the heavy pass run at most once per group-version in a process regardless of
+	// whether the overlay reached disk; a real re-index bumps the input hash and
+	// falls through to exactly one recompute (correctness preserved).
+	if res, ok := loadMemoizedGroupResult(group, inputHash); ok {
+		return &GroupAlgoResult{
+			Group:        group,
+			Results:      res,
+			EntityRepo:   entityRepo,
+			SourceMtimes: srcMtimes,
+			NumEntities:  len(entities),
+			NumRels:      len(rels),
+			NumRepos:     numRepos,
+			InputHash:    inputHash,
+			Skipped:      true,
+		}, nil
+	}
+
 	// Full deterministic recompute (input changed, or no usable prior overlay).
 	res := graph.RunAlgorithms(entities, rels)
+	// Record BEFORE returning (and thus before the caller's overlay write), so a
+	// persist failure cannot cause a re-run for this same version.
+	storeMemoizedGroupResult(group, inputHash, res)
 	return &GroupAlgoResult{
 		Group:        group,
 		Results:      res,

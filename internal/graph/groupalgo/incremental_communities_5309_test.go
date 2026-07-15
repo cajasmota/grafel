@@ -16,6 +16,7 @@ import (
 // incremental path.
 func setupIncrGroup(t *testing.T) (group, pathA, pathB, serviceID string) {
 	t.Helper()
+	resetGroupAlgoMemo()
 	testsupport.IsolateHome(t)
 	root := t.TempDir()
 	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
