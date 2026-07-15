@@ -1,0 +1,8 @@
+# Astro build + dependencies
+node_modules/
+dist/
+.astro/
+
+# Environment
+.env
+.env.production

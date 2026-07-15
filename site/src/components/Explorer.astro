@@ -1,0 +1,36 @@
+<section>
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">The difference, one question at a time</p>
+      <h2 class="section-title">See how an agent works the problem — then flip it.</h2>
+      <p class="section-sub">Pick a real question an AI agent gets asked. Watch it grind through <em>the grep way</em>, then toggle to <em>the grafel way</em> — the answer as a graph: complete, connected, and correct — where grep could only guess.</p>
+    </div>
+
+    <div class="explorer reveal" id="explorer" data-mode="grep">
+      <div class="rail" id="rail" role="tablist" aria-label="Use cases"></div>
+      <div class="stage-wrap">
+        <div class="panel-head">
+          <div class="question">
+            <span class="q-cat" id="q-cat"></span>
+            <div class="q-text" id="q-text"></div>
+          </div>
+          <div class="toggle" role="group" aria-label="Approach">
+            <span class="glider" id="glider"></span>
+            <button class="b-grep" id="btn-grep" aria-pressed="true">the grep way</button>
+            <button class="b-grafel" id="btn-grafel" aria-pressed="false">the grafel way</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="stage">
+            <div class="console" id="console"></div>
+            <div class="quality-card" id="quality"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import '../scripts/explorer.js';
+</script>

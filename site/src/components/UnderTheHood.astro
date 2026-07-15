@@ -1,0 +1,17 @@
+<section>
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Under the hood</p>
+      <h2 class="section-title">Built locally, powered by real algorithms.</h2>
+      <p class="section-sub">From AST to graph math — every phase runs on your machine and lands in one compact artifact (<code>graph.fb</code>), never a cloud.</p>
+    </div>
+    <div class="grid-2">
+      <div class="card reveal"><div class="k">39 languages</div><h3>AST extraction</h3><p>Language-aware parsers turn source across <b>39 languages</b> into typed syntax trees — functions, types, endpoints, fields — the base entities and edges every later pass is built on.</p><p class="example">e.g. a Python module → its classes, functions and imports, typed and located, not just lines of text.</p></div>
+      <div class="card reveal"><div class="k">per-stack analyzers</div><h3>Framework &amp; ORM engine</h3><p>Dedicated analyzers recognize each <b>framework, ORM and tool</b> separately — Spring, Django, FastAPI, Rails, React, Play, Quartz and more — then staged passes resolve references and imports and trace <b>data-lineage, process &amp; event flow, coupling and shared databases</b>: the semantic edges generic parsing can't see.</p><p class="example">e.g. a FastAPI route → its handler → the ORM model → the <b>orders</b> table, linked into one traversable path.</p></div>
+      <div class="card reveal"><div class="k">ranked retrieval</div><h3>BM25</h3><p>Term-frequency × inverse-document-frequency with length normalization — how <b>find</b> ranks the right symbol to the top, where naive grep returns everything and orders nothing.</p><p class="example">e.g. agent asks "find the auth middleware" → <b>AuthMiddleware</b> ranked #1, above 200 raw string matches of "auth".</p></div>
+      <div class="card reveal"><div class="k">the database</div><h3>Graph traversal</h3><p>Callers, reachability and end-to-end paths resolve in a hop across typed edges — the single query that replaces reading <b>N files</b> to trace a chain by hand.</p><p class="example">e.g. "who calls <b>PaymentService.charge</b>?" → 3 callers across 2 repos in one hop, no file reads.</p></div>
+      <div class="card reveal"><div class="k">GDS</div><h3>Graph Data Science</h3><p><b>PageRank</b> surfaces load-bearing code, <b>community detection</b> recovers module boundaries, <b>betweenness</b> finds articulation points, and <b>taint-flow &amp; def-use</b> passes follow data through the system.</p><p class="example">e.g. "what's load-bearing here?" → PageRank surfaces <b>DbPool</b> + <b>AuthMiddleware</b>; community detection recovers the 6 modules.</p></div>
+      <div class="card reveal"><div class="k">architecture</div><h3>serve / engine</h3><p>An always-on server exposes the graph over MCP while a background engine re-indexes <b>incrementally on each commit</b> — memory-tiered, with a live status plane, and it never phones home.</p><p class="example">e.g. the agent queries over MCP while the engine re-indexes your last commit — the answer is always current, no manual reindex.</p></div>
+    </div>
+  </div>
+</section>

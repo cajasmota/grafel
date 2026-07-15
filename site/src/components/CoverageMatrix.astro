@@ -1,0 +1,26 @@
+<section>
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Coverage matrix</p>
+      <h2 class="section-title">39 languages. 263 frameworks. 186 ORMs.</h2>
+      <p class="section-sub">Tree-sitter extractors plus framework-aware passes recover the edges that matter — routes, models, jobs, ORM queries, topics — tracked in a <a href="https://github.com/cajasmota/grafel/blob/main/docs/coverage/summary.md">generated coverage matrix</a>, not a marketing claim.</p>
+    </div>
+    <div class="reveal" style="margin-bottom:30px">
+      <div class="chips" id="langchips"></div>
+    </div>
+    <div class="cov-split reveal">
+      <div class="cov-col">
+        <div class="cov-h">Top languages by framework support</div>
+        <div class="bars" id="fwbars"></div>
+      </div>
+      <div class="cov-col">
+        <div class="cov-h">Cross-cutting infrastructure · 125 records</div>
+        <div class="infra" id="infra"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import '../scripts/coverage.js';
+</script>

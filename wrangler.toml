@@ -1,6 +1,10 @@
 # Cloudflare Pages config for the grafel landing site (site/).
-# Direct upload:  wrangler pages deploy site --project-name grafel
+# The site is an Astro static build: `cd site && npm run build` emits to site/dist.
+# Direct upload:  cd site && npm run build && wrangler pages deploy dist --project-name grafel
 # Or from repo root (uses pages_build_output_dir below):  wrangler pages deploy
+#
+# Git-connected builds (Pages dashboard) use: framework preset "Astro",
+# root directory "site", build command "npm run build", output directory "dist".
 name = "grafel"
-pages_build_output_dir = "site"
+pages_build_output_dir = "site/dist"
 compatibility_date = "2026-07-16"

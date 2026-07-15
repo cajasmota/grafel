@@ -1,0 +1,63 @@
+<section class="alt" id="start">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Get started</p>
+      <h2 class="section-title">Install, then point it at your repo.</h2>
+      <p class="section-sub">A local binary — no account, no cloud call. Install it, then run the wizard from any repo (or a folder of repos) and ask the question you couldn't grep.</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-head"><span class="step-n">1</span><h3>Install the binary</h3></div>
+        <div class="install" id="install-widget">
+      <div class="install-tabs" role="tablist" aria-label="Install method">
+        <button class="install-tab" type="button" role="tab" aria-selected="true" data-tab="mac">macOS</button>
+        <button class="install-tab" type="button" role="tab" aria-selected="false" data-tab="linux">Linux</button>
+        <button class="install-tab" type="button" role="tab" aria-selected="false" data-tab="win">Windows</button>
+        <button class="install-tab" type="button" role="tab" aria-selected="false" data-tab="src">Build from source</button>
+      </div>
+      <div class="install-panels">
+        <div class="install-panel" role="tabpanel" data-panel="mac">
+          <div class="cmdline"><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/cajasmota/grafel/main/install.sh | bash</div>
+          <p class="install-note">Downloads the latest release binary into <code>~/.grafel/bin</code>.</p>
+        </div>
+        <div class="install-panel" role="tabpanel" data-panel="linux" hidden>
+          <div class="cmdline"><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/cajasmota/grafel/main/install.sh | bash</div>
+          <p class="install-note">Downloads the latest release binary into <code>~/.grafel/bin</code>.</p>
+        </div>
+        <div class="install-panel" role="tabpanel" data-panel="win" hidden>
+          <p class="install-note">Recommended — PowerShell:</p>
+          <div class="cmdline"><span class="p">PS&gt;</span> irm https://raw.githubusercontent.com/cajasmota/grafel/main/install.ps1 | iex</div>
+          <p class="install-note">Or from CMD:</p>
+          <div class="cmdline"><span class="p">&gt;</span> curl -fL https://raw.githubusercontent.com/cajasmota/grafel/main/install.bat -o "%TEMP%\grafel-install.bat" &amp;&amp; "%TEMP%\grafel-install.bat"</div>
+          <p class="install-note">Installs into <code>%USERPROFILE%\.grafel\bin</code>, no admin rights required.</p>
+        </div>
+        <div class="install-panel" role="tabpanel" data-panel="src" hidden>
+          <pre class="cmdblock">git clone https://github.com/cajasmota/grafel.git
+cd grafel
+make build           # builds dashboard (npm) + Go binary
+./grafel --version</pre>
+          <p class="install-note">Prereqs: Go 1.26+ (CGO enabled), a C/C++ compiler, Node.js 20+ &amp; npm (dashboard build), git.</p>
+          <p class="install-note">Optional system-wide install: <code>go install -ldflags="-X main.commit=$(git rev-parse --short HEAD)" ./cmd/grafel</code></p>
+        </div>
+          </div>
+        </div>
+      </div>
+      <div class="step reveal">
+        <div class="step-head"><span class="step-n">2</span><h3>Point it at your repo</h3></div>
+        <p class="step-desc">Run <code>grafel wizard</code> from your project root to index a single repo — or from a folder that holds several repos to map them as one connected group. The wizard detects what's there, builds the graph, starts the file watcher, and wires up the MCP server for your agent. Everything runs on your machine and stays there.</p>
+        <div class="cta-card">
+          <div class="cmdline"><span class="p">$</span> grafel wizard <span class="c"># from your project root, or a folder of repos</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot">
+      <span>Local-first</span><span class="sep"></span>
+      <span>MIT licensed</span><span class="sep"></span>
+      <a href="https://github.com/cajasmota/grafel">github.com/cajasmota/grafel</a>
+    </div>
+  </div>
+</section>
+
+<script>
+  import '../scripts/ui.js';
+</script>

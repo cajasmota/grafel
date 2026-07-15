@@ -1,0 +1,21 @@
+<section class="alt">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">How the AI talks to it</p>
+      <h2 class="section-title">A companion to grep, not a replacement.</h2>
+      <p class="section-sub">grep matches text across files. grafel maps the structure between them — the questions grep can't answer: where <code>X</code> is defined, who calls <code>Y</code>, how a request flows end to end, what a rename really breaks.</p>
+    </div>
+    <div class="grid-2">
+      <div class="card reveal"><div class="k">Text vs. structure</div><h3>grep finds text. grafel finds structure.</h3><p>grep matches characters across files; grafel resolves what those characters <em>are</em> — a call, a query, a route — and how they connect.</p></div>
+      <div class="card reveal"><div class="k">Enumeration vs. navigation</div><h3>Raw sweep → grep. Navigation → grafel.</h3><p>Every <code>TODO</code> or every <code>if err != nil</code> is a grep job. "Who calls <code>X</code>?" is a graph traversal.</p></div>
+      <div class="card reveal"><div class="k">Setup cost</div><h3>Zero setup vs. an indexed graph</h3><p>grep runs anywhere with nothing to install; grafel trades that for a typed index spanning every repo in the group.</p></div>
+      <div class="card reveal"><div class="k">Granularity</div><h3>Line-level vs. entity-level</h3><p>grep returns matching lines; grafel returns the function, the caller, and the typed edge between them.</p></div>
+      <div class="card reveal"><div class="k">Scope</div><h3>One file vs. infra ↔ code</h3><p>grep stops at a repo boundary; grafel follows a field across the wire into Terraform, Kafka, and the DB.</p></div>
+      <div class="card reveal"><div class="k">Ranking</div><h3>Unranked vs. BM25-ranked and linked</h3><p>grep hands back everything it matched; grafel ranks the right symbol to the top and connects it to its neighbors.</p></div>
+      <div class="card reveal"><div class="k">Cross-repo payloads</div><h3>Can't follow the wire vs. tracks the shape</h3><p>An HTTP field crossing repos is invisible to text search; grafel tracks its shape end to end, DTO to DTO.</p></div>
+      <div class="card reveal"><div class="k">Round-trip</div><h3>Read the files vs. one MCP call</h3><p>grep answers by making the agent open every file; grafel answers directly over the Model Context Protocol.</p></div>
+      <div class="card reveal"><div class="k">Paired in practice</div><h3>Narrow, then verify</h3><p>grafel narrows a 500-file repo to the 8 handlers that matter; grep then verifies the exact string inside them.</p></div>
+      <div class="card reveal"><div class="k">Rule of thumb</div><h3>Structural question → grafel. Text sweep → grep.</h3><p>If the question is "where/who/how does it connect," reach for grafel. If it's "every instance of this string," reach for grep.</p></div>
+    </div>
+  </div>
+</section>
