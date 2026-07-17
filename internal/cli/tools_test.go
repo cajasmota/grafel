@@ -2,13 +2,15 @@ package cli
 
 import (
 	"bytes"
-	"path/filepath"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/tooladapter"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // TestApplyToggle_Pure exercises the pure enable/disable set logic without any
@@ -93,9 +95,16 @@ func TestResolveToolSelection_NoTTYNoPrompt(t *testing.T) {
 // End-to-end through the registry: enable cursor on a group, assert the config
 // persisted the new Tools and the output reports the artifacts.
 func TestToolsToggle_EnablePersists(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("GRAFEL_HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	// runToolsToggle (enable path) reaches install.ApplyToolDelta ->
+	// mcpreg.Register, which resolves the Cursor MCP settings path off the
+	// real $HOME. IsolateHome redirects HOME (and USERPROFILE etc.) into a
+	// per-test TempDir and fails closed if the redirect didn't take, so this
+	// test can never write to the developer's real ~/.cursor/mcp.json.
+	//
+	// IsolateHome sandboxes HOME/GRAFEL_HOME/XDG_CONFIG_HOME into ONE tempdir
+	// and returns its root; reuse that root as the group's home so registry,
+	// config, and editor state all live under the same sandbox.
+	home := testsupport.IsolateHome(t)
 	makeTestRegistryGroup(t, home, "acme", "core")
 
 	// Seed an explicit selection so EnabledTools is literal (claude only).
@@ -113,12 +122,31 @@ func TestToolsToggle_EnablePersists(t *testing.T) {
 	if !strings.Contains(buf.String(), "enabled") {
 		t.Fatalf("output should report enable: %s", buf.String())
 	}
+
+	// Positive assertion: the Cursor MCP config was written UNDER the
+	// isolated temp home, not the developer's real home, and it registered
+	// the grafel server.
+	cursorPath, err := mcpreg.SettingsPath(mcpreg.Cursor)
+	if err != nil {
+		t.Fatalf("mcpreg.SettingsPath(Cursor): %v", err)
+	}
+	testsupport.AssertUnderHome(t, cursorPath)
+	b, err := os.ReadFile(cursorPath)
+	if err != nil {
+		t.Fatalf("read cursor mcp config at %s: %v", cursorPath, err)
+	}
+	if !strings.Contains(string(b), mcpreg.ServerName) {
+		t.Fatalf("cursor mcp config %s missing %q entry: %s", cursorPath, mcpreg.ServerName, b)
+	}
+	if !strings.HasPrefix(cursorPath, home) {
+		t.Fatalf("cursor mcp config path %s not under isolated home %s", cursorPath, home)
+	}
 }
 
 func TestToolsToggle_DisablePersists(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("GRAFEL_HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	// Disabling windsurf reaches install.ApplyToolDelta -> mcpreg.Unregister,
+	// which resolves the Windsurf/Codeium settings path off $HOME.
+	home := testsupport.IsolateHome(t)
 	makeTestRegistryGroup(t, home, "acme", "core")
 	seedTools(t, "acme", []string{"claude", "windsurf"})
 
@@ -133,9 +161,9 @@ func TestToolsToggle_DisablePersists(t *testing.T) {
 }
 
 func TestToolsToggle_UnknownIDErrors(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("GRAFEL_HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	// No real toggle happens here (validation fails first), but isolate
+	// anyway — belt-and-braces against future changes reordering validation.
+	home := testsupport.IsolateHome(t)
 	makeTestRegistryGroup(t, home, "acme", "core")
 
 	var buf bytes.Buffer
@@ -145,9 +173,9 @@ func TestToolsToggle_UnknownIDErrors(t *testing.T) {
 }
 
 func TestToolsList_RunsAndShowsState(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("GRAFEL_HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	// Read-only (no ApplyToolDelta reached), but isolate for consistency and
+	// as a guard against future changes to runToolsList touching $HOME.
+	home := testsupport.IsolateHome(t)
 	makeTestRegistryGroup(t, home, "acme", "core")
 	seedTools(t, "acme", []string{"claude"})
 
