@@ -661,43 +661,47 @@ public class OrderEventPublisher {
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (builder-chain putEvents)")
 }
 
-// TestEventType_JavaProducer_SetterFormFunctionScope covers the v1/setter
-// form `.setDetailType("X")`, built on a SEPARATE statement from the
-// `.publish(...)` call site — mirroring the Go/JS-TS function-scope-recall
-// widening (root-cause C) for Java.
-func TestEventType_JavaProducer_SetterFormFunctionScope(t *testing.T) {
+// TestEventType_JavaProducer_BuilderChainDetailTypeSecondEntry exercises a
+// second co-located builder-chain shape with a distinct synthetic event name
+// (multi-entry putEvents), confirming the detailType inside the putEvents
+// argument binds regardless of surrounding builder verbosity.
+func TestEventType_JavaProducer_BuilderChainDetailTypeSecondEntry(t *testing.T) {
 	src := `package producer;
 
-import com.amazonaws.services.eventbridge.AmazonEventBridge;
-import com.amazonaws.services.eventbridge.model.PutEventsRequest;
-import com.amazonaws.services.eventbridge.model.PutEventsRequestEntry;
+import software.amazon.awssdk.services.eventbridge.EventBridgeClient;
+import software.amazon.awssdk.services.eventbridge.model.PutEventsRequest;
+import software.amazon.awssdk.services.eventbridge.model.PutEventsRequestEntry;
 
-public class OrderShippedPublisher {
-    private final AmazonEventBridge client;
+public class ShipmentPublisher {
+    private final EventBridgeClient eventBridgeClient;
 
     public void publishOrderShipped(String orderId) {
-        PutEventsRequestEntry entry = new PutEventsRequestEntry();
-        entry.setDetailType("OrderShipped");
-        entry.setDetail("{\"orderId\":\"" + orderId + "\"}");
-        client.publish(new PutEventsRequest().withEntries(entry));
+        eventBridgeClient.putEvents(
+            PutEventsRequest.builder()
+                .entries(
+                    PutEventsRequestEntry.builder()
+                        .source("orders.service")
+                        .detailType("OrderShipped")
+                        .detail("{\"orderId\":\"" + orderId + "\"}")
+                        .build())
+                .build());
     }
 }
 `
-	ents, rels := runEventTypeDetect(t, "java", "OrderShippedPublisher.java", src)
+	ents, rels := runEventTypeDetect(t, "java", "ShipmentPublisher.java", src)
 
 	id := eventTypeID("OrderShipped")
-	requireEventTypeEntity(t, ents, id, "Java producer (setDetailType, function-scope)")
+	requireEventTypeEntity(t, ents, id, "Java producer (builder-chain second entry)")
 
 	fromID := "SCOPE.Function:publishOrderShipped"
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
-	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (setDetailType, function-scope)")
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (builder-chain second entry)")
 }
 
 // TestEventType_JavaProducer_Precision_NoPublishSink verifies that a
-// `.detailType("X")` builder call with NO `.putEvents(`/`.publish(` sink
-// anywhere in the enclosing method never mints an edge — the heuristic must
-// stay gated on a real publish sink, not just the presence of the
-// detailType/setDetailType binding.
+// `.detailType("X")` builder call with NO `.putEvents(` sink co-located in
+// the same call argument never mints an edge — the heuristic must stay gated
+// on a real EventBridge putEvents sink, not just the detailType binding.
 func TestEventType_JavaProducer_Precision_NoPublishSink(t *testing.T) {
 	src := `package producer;
 
@@ -710,7 +714,87 @@ public class NotAPublisher {
 }
 `
 	ents, _ := runEventTypeDetect(t, "java", "NotAPublisher.java", src)
-	requireNoEventTypeEntities(t, ents, "Java detailType with no publish sink in scope")
+	requireNoEventTypeEntities(t, ents, "Java detailType with no putEvents sink co-located")
+}
+
+// TestEventType_JavaProducer_Precision_UnrelatedPublish reproduces review
+// finding #1: a generic `.publish()` (Reactor/RxJava operator, custom bus)
+// merely co-existing in method scope with an unrelated `.detailType("X")`
+// must NOT associate them. The v1 detector keys ONLY on EventBridge
+// `putEvents` with a co-located detailType, so this mints nothing.
+func TestEventType_JavaProducer_Precision_UnrelatedPublish(t *testing.T) {
+	src := `package producer;
+
+public class AuditHandler {
+    public void handle() {
+        String label = builder.detailType("OrderPlaced").build();
+        flux.publish();
+    }
+}
+`
+	ents, _ := runEventTypeDetect(t, "java", "AuditHandler.java", src)
+	requireNoEventTypeEntities(t, ents, "unrelated reactor .publish() + stray detailType")
+}
+
+// TestEventType_JavaProducer_Precision_SinkInComment reproduces review
+// finding #2 (comment span): a `putEvents(` inside a `//` line comment or a
+// `/* */` block comment is not a real sink and must be stripped before
+// matching.
+func TestEventType_JavaProducer_Precision_SinkInComment(t *testing.T) {
+	src := `package producer;
+
+public class Commented {
+    public void handle() {
+        // eventBridgeClient.putEvents(PutEventsRequest.builder().entries(PutEventsRequestEntry.builder().detailType("OrderPlaced").build()).build());
+        /* eventBridgeClient.putEvents(builder().detailType("OrderShipped").build()); */
+        doNothing();
+    }
+}
+`
+	ents, _ := runEventTypeDetect(t, "java", "Commented.java", src)
+	requireNoEventTypeEntities(t, ents, "putEvents inside comment span")
+}
+
+// TestEventType_JavaProducer_Precision_SinkInStringLiteral reproduces review
+// finding #2 (string span): a `putEvents(` inside a string literal (e.g. a
+// log line) is not a real sink and must be stripped before matching.
+func TestEventType_JavaProducer_Precision_SinkInStringLiteral(t *testing.T) {
+	src := `package producer;
+
+public class Logged {
+    public void handle() {
+        logger.info("calling client.putEvents(request) with detailType OrderPlaced");
+    }
+}
+`
+	ents, _ := runEventTypeDetect(t, "java", "Logged.java", src)
+	requireNoEventTypeEntities(t, ents, "putEvents inside string literal")
+}
+
+// TestEventType_JavaProducer_Precision_ClassScopeNoCaller reproduces review
+// finding #3: a co-located putEvents+detailType in a static field
+// initializer (NOT inside any indexed method) has an empty enclosing-method
+// name, so fromID would be the bare `"SCOPE.Function:"` prefix — emission
+// must be rejected when the enclosing method name is empty.
+func TestEventType_JavaProducer_Precision_ClassScopeNoCaller(t *testing.T) {
+	src := `package producer;
+
+import software.amazon.awssdk.services.eventbridge.model.PutEventsRequest;
+import software.amazon.awssdk.services.eventbridge.model.PutEventsRequestEntry;
+
+public class StaticInit {
+    private static final Object RESULT = eventBridgeClient.putEvents(
+        PutEventsRequest.builder()
+            .entries(PutEventsRequestEntry.builder().detailType("OrderPlaced").build())
+            .build());
+}
+`
+	_, rels := runEventTypeDetect(t, "java", "StaticInit.java", src)
+	for _, r := range rels {
+		if r.FromID == "SCOPE.Function:" {
+			t.Errorf("class-scope sink: expected NO edge with empty caller prefix, got %+v", r)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
