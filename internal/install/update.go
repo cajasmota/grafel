@@ -78,6 +78,17 @@ type UpdateOptions struct {
 	// RestartDaemon is the injectable daemon restart function.
 	RestartDaemon DaemonRestartFunc
 
+	// ProbeDaemonVersion is the injectable post-restart version probe (#5850).
+	// Threaded through to the re-install so `grafel update` verifies the
+	// running daemon reports the TARGET release version. When nil, the
+	// production RPC-socket probe is used.
+	ProbeDaemonVersion DaemonVersionProbeFunc
+
+	// EscalateDaemonRestart is the injectable hard-restart used when the
+	// running daemon is still stale after the normal restart (#5850). When
+	// nil, the production service.Restart-based escalation is used.
+	EscalateDaemonRestart DaemonRestartFunc
+
 	// HTTPClient is the HTTP client to use for downloading. When nil the
 	// production client (defaultUpdateHTTPClient) is used.
 	HTTPClient *http.Client
@@ -238,6 +249,17 @@ func RunUpdate(opts UpdateOptions) (*UpdateResult, error) {
 		DryRun:            opts.DryRun,
 		SkipDaemonRestart: opts.SkipDaemonRestart,
 		RestartDaemon:     opts.RestartDaemon,
+		// #5850: the daemon we just restarted runs the DOWNLOADED release, not
+		// the in-process (old) binary that RunUpdate itself is executing as.
+		// The release build bakes version.Version = ${GITHUB_REF_NAME}, i.e.
+		// the (v-prefixed) release tag, so the restarted daemon reports exactly
+		// `tag`. We must therefore verify against `tag` — NOT let RunCopy
+		// default InstalledVersion to this running process's version.Version
+		// (the OLD binary), which would guarantee a spurious mismatch and roll
+		// every real-version update back to the old binary.
+		InstalledVersion:      tag,
+		ProbeDaemonVersion:    opts.ProbeDaemonVersion,
+		EscalateDaemonRestart: opts.EscalateDaemonRestart,
 	}
 
 	installResult, err := RunCopy(installOpts)

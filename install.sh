@@ -131,9 +131,37 @@ update_path_fish() {
   } >> "$rc_file"
 }
 
+# normalize_version strips a single leading 'v' so a v-prefixed version
+# ("v0.1.9") compares equal to a bare one ("0.1.9"). This matters because
+# `grafel status` prints the daemon version VERBATIM, WITH the leading 'v'
+# (version.Version is baked as ${GITHUB_REF_NAME}, e.g. "v0.1.9"), whereas the
+# installer's wanted version is the bare tag ($version_no_v). Without this the
+# compare was always "v0.1.9" = "0.1.9" → false, so every correct update
+# escalated needlessly and warned "still old version" forever (#5850).
+normalize_version() {
+  printf '%s' "${1#v}"
+}
+
+# parse_status_version extracts the daemon version token from `grafel status`
+# output supplied on stdin (the "  version:" line). Echoes the raw token (with
+# whatever prefix the daemon printed) or nothing if not present.
+parse_status_version() {
+  awk '/^  version:/ {print $2; exit}'
+}
+
+# status_version_matches reports (exit 0) whether the `grafel status` output in
+# $1 names a running daemon version equivalent to the wanted version $2,
+# tolerating the leading-'v' difference between the daemon's v-prefixed print
+# and the installer's bare wanted version. Extracted as its own helper so it is
+# unit-testable without a live daemon (see installsh_restart_verify_test.go).
+status_version_matches() {
+  _seen=$(printf '%s\n' "$1" | parse_status_version)
+  [ -n "$_seen" ] && [ "$(normalize_version "$_seen")" = "$(normalize_version "$2")" ]
+}
+
 # wait_for_daemon_version polls the JUST-INSTALLED binary's `grafel status`
-# output until the RUNNING daemon reports $1 (the just-installed version,
-# without the leading 'v') or ~10s elapse. `grafel status` dials the daemon's
+# output until the RUNNING daemon reports a version equivalent to $1 (the
+# just-installed version) or ~10s elapse. `grafel status` dials the daemon's
 # RPC socket directly — the same reliable, non-HTTP channel `grafel install`'s
 # Go-side version probe uses (internal/install/copy.go's
 # defaultDaemonVersionProbe) — rather than any dashboard HTTP route. The
@@ -141,15 +169,18 @@ update_path_fish() {
 # falls through to the SPA catch-all and returns an HTML document instead of a
 # version string (#5596), so an HTTP-based check here would risk the exact
 # HTML-shadowing hazard this fix is guarding against. Echoes the LAST version
-# observed (possibly empty/stale) on stdout; returns non-zero if it never
-# matched $1 within budget.
+# observed (possibly empty/stale, normalized) on stdout; returns non-zero if it
+# never matched $1 within budget.
 wait_for_daemon_version() {
   want=$1
   seen=""
+  status=""
   i=0
   while [ "$i" -lt 20 ]; do
-    seen=$("$BIN_DIR/grafel" status 2>/dev/null | awk '/^  version:/ {print $2; exit}')
-    if [ -n "$seen" ] && [ "$seen" = "$want" ]; then
+    status=$("$BIN_DIR/grafel" status 2>/dev/null || true)
+    seen=$(printf '%s\n' "$status" | parse_status_version)
+    seen=$(normalize_version "$seen")
+    if [ -n "$seen" ] && status_version_matches "$status" "$want"; then
       echo "$seen"
       return 0
     fi
@@ -346,4 +377,9 @@ main() {
   info "(restart your shell or 'source' your rc file so PATH picks up $BIN_DIR)"
 }
 
-main "$@"
+# Only auto-run when executed directly. Sourcing with GRAFEL_INSTALL_SH_LIB=1
+# (e.g. from installsh_restart_verify_test.go) exposes the helper functions for
+# unit testing WITHOUT running the full installer.
+if [ "${GRAFEL_INSTALL_SH_LIB:-0}" != "1" ]; then
+  main "$@"
+fi

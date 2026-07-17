@@ -182,6 +182,87 @@ func TestRunUpdate_RollbackOnInstallFailure(t *testing.T) {
 	}
 }
 
+// TestRunUpdate_VerifiesAgainstTargetTag_NotRunningVersion is the regression
+// guard for the CRITICAL #5850 update inversion: RunUpdate replaces the binary
+// IN-PROCESS (no re-exec), so this process keeps reporting the OLD binary's
+// version.Version. The daemon it restarts, however, runs the DOWNLOADED release
+// and reports the TARGET tag. If RunUpdate lets RunCopy default
+// InstalledVersion to the running (old) version.Version, the post-restart
+// version check mismatches on EVERY real update → escalate → still mismatch →
+// error → rollback to the old binary. This test drives the update path with a
+// stubbed daemon that reports the TARGET tag and asserts success WITHOUT
+// setting InstalledVersion explicitly — proving update.go threads the tag.
+//
+// Without the fix (InstalledVersion defaulting to version.Version, e.g.
+// "0.0.0-dev" in the test binary), the probe returns the tag, the versions
+// mismatch, escalation runs, the re-probe still returns the tag, and RunUpdate
+// returns an error — so this test fails red until update.go sets
+// InstalledVersion: tag.
+func TestRunUpdate_VerifiesAgainstTargetTag_NotRunningVersion(t *testing.T) {
+	env := newTestEnv(t)
+
+	// A "new" binary distinct from the current one so the update proceeds past
+	// the identical-SHA fast-path.
+	newContent := []byte("#!/bin/sh\necho new-release-binary")
+	newBinPath := filepath.Join(t.TempDir(), "new-grafel")
+	if err := os.WriteFile(newBinPath, newContent, 0o755); err != nil {
+		t.Fatalf("write new binary: %v", err)
+	}
+
+	const tag = "v9.9.9-tagtest" // deliberately != this test binary's version.Version
+
+	escalateCalled := false
+	opts := install.UpdateOptions{
+		BinPath:           env.fakeBin,
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		SkipDaemonRestart: false, // exercise the real step-4 version check
+		Tag:               tag,
+		DownloadBinary: func(_ *http.Client, _, _, _, destPath string) error {
+			return copyTestFile(newBinPath, destPath)
+		},
+		// The restarted daemon runs the downloaded release and reports the tag.
+		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
+			return tag, nil
+		},
+		ProbeDaemonVersion: func() (string, error) {
+			return tag, nil
+		},
+		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
+			escalateCalled = true
+			return tag, nil
+		},
+		// NOTE: InstalledVersion intentionally NOT set — the fix must make
+		// update.go default it to the target tag.
+	}
+
+	result, err := install.RunUpdate(opts)
+	if err != nil {
+		t.Fatalf("RunUpdate must succeed when the daemon reports the target tag (#5850 update inversion): %v", err)
+	}
+	if escalateCalled {
+		t.Error("escalation must NOT run when the restarted daemon already reports the target tag")
+	}
+	if result.InstallResult == nil {
+		t.Fatal("InstallResult is nil after a successful update")
+	}
+	if result.InstallResult.DaemonVersion != tag {
+		t.Errorf("recorded daemon version = %q, want the target tag %q",
+			result.InstallResult.DaemonVersion, tag)
+	}
+
+	// The binary must be the new one (i.e. no rollback happened).
+	got, err := os.ReadFile(env.fakeBin)
+	if err != nil {
+		t.Fatalf("read binary after update: %v", err)
+	}
+	if string(got) != string(newContent) {
+		t.Error("binary was rolled back to the old version — the update was spuriously inverted")
+	}
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func copyTestFile(src, dst string) error {

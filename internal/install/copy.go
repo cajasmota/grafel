@@ -229,10 +229,23 @@ func verifyDaemonVersion(installed string, probe DaemonVersionProbeFunc) (string
 		return "", fmt.Errorf("could not verify running daemon version (installed %q): %w", installed, err)
 	}
 	running = strings.TrimSpace(running)
-	if installed != "" && running != installed {
+	// Defensive normalization: compare with any single leading 'v' stripped so
+	// a v-prefixed release tag ("v0.1.9") and a bare version ("0.1.9") — or the
+	// reverse — are treated as the same release. In practice the release build
+	// bakes version.Version = ${GITHUB_REF_NAME} (v-prefixed) and update.go
+	// threads the v-prefixed tag through, so they already match exactly; this
+	// just guards against either side drifting on the 'v'. We still RETURN the
+	// running string verbatim so the recorded/printed version is unmodified.
+	if installed != "" && !versionsEquivalent(running, installed) {
 		return "", fmt.Errorf("daemon is running stale version %q, installed version is %q", running, installed)
 	}
 	return running, nil
+}
+
+// versionsEquivalent reports whether two version strings name the same release,
+// tolerating a single leading 'v' on either side.
+func versionsEquivalent(a, b string) bool {
+	return strings.TrimPrefix(a, "v") == strings.TrimPrefix(b, "v")
 }
 
 // CopyOptions is the input to RunCopy. All fields have sensible defaults;

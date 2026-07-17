@@ -23,6 +23,7 @@ package install
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -30,9 +31,9 @@ import (
 	"testing"
 )
 
-// installShSource locates and reads install.sh relative to this test file's
-// package directory (internal/install/../../install.sh at the repo root).
-func installShSource(t *testing.T) string {
+// installShPath resolves the absolute path to install.sh at the repo root,
+// relative to this test file's location (internal/install/../../install.sh).
+func installShPath(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -40,8 +41,13 @@ func installShSource(t *testing.T) string {
 	}
 	// internal/install/installsh_restart_verify_test.go -> repo root is two
 	// directories up.
-	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
-	path := filepath.Join(repoRoot, "install.sh")
+	return filepath.Join(filepath.Dir(thisFile), "..", "..", "install.sh")
+}
+
+// installShSource locates and reads install.sh at the repo root.
+func installShSource(t *testing.T) string {
+	t.Helper()
+	path := installShPath(t)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read install.sh at %s: %v", path, err)
@@ -165,6 +171,65 @@ func TestInstallSh_RestartDaemon_StaysBestEffort(t *testing.T) {
 	if regexp.MustCompile(`(^|[^_a-zA-Z])err\s`).MatchString(fn) {
 		t.Error("restart_daemon must remain best-effort and never call the fatal err() helper")
 	}
+}
+
+// TestInstallSh_StatusVersionMatches_ToleratesVPrefix is the RUNTIME
+// regression guard for the HIGH #5850 shell bug: `grafel status` prints the
+// daemon version VERBATIM, WITH the leading 'v' (e.g. "  version: v0.1.8"),
+// while the installer's wanted version is the bare tag ("0.1.8"). A naive
+// string compare ("v0.1.8" = "0.1.8") is ALWAYS false, so every correct
+// curl-update escalated needlessly and warned "still old version" forever.
+// The string-contains structural tests can't catch this — this one actually
+// runs the extracted parse+compare helper against a realistic status line.
+func TestInstallSh_StatusVersionMatches_ToleratesVPrefix(t *testing.T) {
+	// A realistic multi-line `grafel status` block (see internal/cli/status.go:
+	// the daemon version is printed on a "  version:" line, v-prefixed).
+	const status = "Daemon: running  pid=42  uptime=3s  rss=50MB  in_flight=0\n" +
+		"  version: v0.1.8\n" +
+		"  socket:  /home/u/.grafel/daemon.sock\n"
+
+	// Positive: a v-prefixed running version must match the bare wanted version.
+	if code, out := runStatusVersionMatches(t, status, "0.1.8"); code != 0 {
+		t.Errorf("status_version_matches must MATCH a v-prefixed running version (v0.1.8) against bare wanted (0.1.8); got exit %d, output %q", code, out)
+	}
+
+	// Symmetry: a bare running version must also match a v-prefixed wanted.
+	const bareStatus = "  version: 0.1.8\n"
+	if code, out := runStatusVersionMatches(t, bareStatus, "v0.1.8"); code != 0 {
+		t.Errorf("status_version_matches must MATCH a bare running version against v-prefixed wanted; got exit %d, output %q", code, out)
+	}
+
+	// Negative: a genuinely different version must NOT match (the check still
+	// catches a real stale daemon, so escalation isn't suppressed wrongly).
+	if code, out := runStatusVersionMatches(t, status, "0.2.0"); code == 0 {
+		t.Errorf("status_version_matches must NOT match a genuinely stale version (running v0.1.8 vs wanted 0.2.0); got exit 0, output %q", out)
+	}
+
+	// Negative: no version line at all must NOT match.
+	if code, _ := runStatusVersionMatches(t, "Daemon: not running\n", "0.1.8"); code == 0 {
+		t.Error("status_version_matches must NOT match when the status has no version line")
+	}
+}
+
+// runStatusVersionMatches sources install.sh as a library and invokes
+// status_version_matches with the given status text and wanted version,
+// passing them via argv to avoid any quoting/newline hazards.
+func runStatusVersionMatches(t *testing.T, status, want string) (exitCode int, output string) {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not available; skipping install.sh runtime test")
+	}
+	script := `set -eu; GRAFEL_INSTALL_SH_LIB=1 . "$1"; status_version_matches "$2" "$3"`
+	cmd := exec.Command(bash, "-c", script, "bash", installShPath(t), status, want)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			return ee.ExitCode(), string(out)
+		}
+		t.Fatalf("running status_version_matches failed to launch: %v (output: %s)", err, out)
+	}
+	return 0, string(out)
 }
 
 // TestInstallSh_ShellcheckClean is a lightweight guard that requires no shell
