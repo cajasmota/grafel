@@ -131,12 +131,57 @@ update_path_fish() {
   } >> "$rc_file"
 }
 
+# wait_for_daemon_version polls the JUST-INSTALLED binary's `grafel status`
+# output until the RUNNING daemon reports $1 (the just-installed version,
+# without the leading 'v') or ~10s elapse. `grafel status` dials the daemon's
+# RPC socket directly — the same reliable, non-HTTP channel `grafel install`'s
+# Go-side version probe uses (internal/install/copy.go's
+# defaultDaemonVersionProbe) — rather than any dashboard HTTP route. The
+# dashboard has no dedicated /healthz-style version endpoint: an unmatched GET
+# falls through to the SPA catch-all and returns an HTML document instead of a
+# version string (#5596), so an HTTP-based check here would risk the exact
+# HTML-shadowing hazard this fix is guarding against. Echoes the LAST version
+# observed (possibly empty/stale) on stdout; returns non-zero if it never
+# matched $1 within budget.
+wait_for_daemon_version() {
+  want=$1
+  seen=""
+  i=0
+  while [ "$i" -lt 20 ]; do
+    seen=$("$BIN_DIR/grafel" status 2>/dev/null | awk '/^  version:/ {print $2; exit}')
+    if [ -n "$seen" ] && [ "$seen" = "$want" ]; then
+      echo "$seen"
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 0.5
+  done
+  echo "$seen"
+  return 1
+}
+
 # restart_daemon restarts an already-registered grafel daemon so it runs the
-# freshly-installed binary. It is best-effort: a missing tool or a failed
-# restart prints a hint and returns non-zero, but never aborts the installer.
-# Echoes "restarted" on stdout when a registered daemon was restarted.
+# freshly-installed binary, then VERIFIES the running daemon actually reports
+# the newly-installed version before declaring success (#5850: a stale
+# daemon that stayed bound to the socket through a kickstart/restart was
+# previously reported as a successful restart just because the OS-level
+# restart command exited 0). If the first restart leaves a stale daemon
+# running, it escalates to a HARD restart — macOS: `launchctl bootout`
+# (forces the old process to fully exit; a bootout of an already-unloaded
+# label is a harmless no-op) followed by bootstrap/kickstart; Linux:
+# `systemctl --user stop` then `start` (a plain "restart" can race a unit
+# that never actually reloaded the new binary) — and re-checks.
+#
+# It is best-effort: a missing tool, a failed restart, or a daemon that is
+# STILL stale after escalation prints a warning/hint and returns non-zero,
+# but never aborts the installer (no call to the fatal err() helper).
+# Echoes "restarted" on stdout only when the running daemon was CONFIRMED to
+# report the just-installed version; echoes "stale" when a daemon is running
+# but never reached that version, so the caller can print an accurate final
+# message.
 restart_daemon() {
   os=$1
+  want_version=$2
   hint="re-run 'grafel install' or restart the daemon to finish the update"
 
   case "$os" in
@@ -144,17 +189,16 @@ restart_daemon() {
       command -v launchctl >/dev/null 2>&1 || return 1
       uid=$(id -u)
       target="gui/${uid}/com.grafel.daemon"
+      plist="$HOME/Library/LaunchAgents/com.grafel.daemon.plist"
       # Detect a registered launchd agent (print, falling back to list).
-      if launchctl print "$target" >/dev/null 2>&1 ||
-         launchctl list 2>/dev/null | grep -q "com.grafel.daemon"; then
-        if launchctl kickstart -k "$target" >/dev/null 2>&1; then
-          echo "restarted"
-          return 0
-        fi
+      if ! launchctl print "$target" >/dev/null 2>&1 &&
+         ! launchctl list 2>/dev/null | grep -q "com.grafel.daemon"; then
+        return 1
+      fi
+      if ! launchctl kickstart -k "$target" >/dev/null 2>&1; then
         info "warning: failed to restart the grafel daemon; $hint" >&2
         return 1
       fi
-      return 1
       ;;
     linux)
       command -v systemctl >/dev/null 2>&1 || return 1
@@ -162,17 +206,46 @@ restart_daemon() {
       unit=$(systemctl --user list-unit-files 2>/dev/null \
         | awk '/grafel/ {print $1; exit}')
       [ -n "$unit" ] || return 1
-      if systemctl --user restart "$unit" >/dev/null 2>&1; then
-        echo "restarted"
-        return 0
+      if ! systemctl --user restart "$unit" >/dev/null 2>&1; then
+        info "warning: failed to restart the grafel daemon; $hint" >&2
+        return 1
       fi
-      info "warning: failed to restart the grafel daemon; $hint" >&2
-      return 1
       ;;
     *)
       return 1
       ;;
   esac
+
+  # The OS-level restart command exited 0 — that only proves SOME daemon is
+  # now bound to the socket, not that it is the one we just installed.
+  # Verify, and escalate to a hard restart if it's still stale.
+  running=$(wait_for_daemon_version "$want_version") || {
+    info "note: daemon restarted but still reports version '${running:-unknown}' (want '$want_version'); forcing a hard restart" >&2
+    case "$os" in
+      macos)
+        # bootout forces the currently-loaded (possibly stale) daemon to
+        # fully exit before we reload it, unlike kickstart alone.
+        launchctl bootout "$target" >/dev/null 2>&1 || true
+        if [ -f "$plist" ]; then
+          launchctl bootstrap "gui/${uid}" "$plist" >/dev/null 2>&1 ||
+            launchctl kickstart -k "$target" >/dev/null 2>&1 || true
+        else
+          launchctl kickstart -k "$target" >/dev/null 2>&1 || true
+        fi
+        ;;
+      linux)
+        systemctl --user stop "$unit" >/dev/null 2>&1 || true
+        systemctl --user start "$unit" >/dev/null 2>&1 || true
+        ;;
+    esac
+    running=$(wait_for_daemon_version "$want_version") || {
+      info "warning: daemon still running version '${running:-unknown}' after a hard restart (want '$want_version'); $hint" >&2
+      echo "stale"
+      return 1
+    }
+  }
+  echo "restarted"
+  return 0
 }
 
 configure_path() {
@@ -252,15 +325,24 @@ main() {
   fi
 
   # If a daemon is already registered, restart it so it picks up the new
-  # binary. Best-effort: restart_daemon never aborts the installer.
-  daemon_restarted=$(restart_daemon "$os" || true)
+  # binary, and CONFIRM the running daemon actually reports the
+  # just-installed version before calling it done (#5850) — a daemon that
+  # merely answers the socket is not proof it is the new binary. Best-effort:
+  # restart_daemon never aborts the installer.
+  daemon_restarted=$(restart_daemon "$os" "$version_no_v" || true)
 
   info ""
-  if [ "$daemon_restarted" = "restarted" ]; then
-    info "grafel updated and daemon restarted."
-  else
-    info "grafel installed. Run \"grafel wizard\" to set up your first group."
-  fi
+  case "$daemon_restarted" in
+    restarted)
+      info "grafel updated and daemon restarted (confirmed running $version_no_v)."
+      ;;
+    stale)
+      info "grafel installed, but the daemon still running the old version — run 'grafel install' to finish."
+      ;;
+    *)
+      info "grafel installed. Run \"grafel wizard\" to set up your first group."
+      ;;
+  esac
   info "(restart your shell or 'source' your rc file so PATH picks up $BIN_DIR)"
 }
 

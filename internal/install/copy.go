@@ -35,6 +35,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/service"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/skilllink"
+	"github.com/cajasmota/grafel/internal/version"
 )
 
 // defaultInstallHealthTimeout is the wait budget for step-4 daemon readiness.
@@ -163,6 +164,77 @@ func defaultDaemonRestart(binPath string, port int, timeout time.Duration) (stri
 // the daemon could not be restarted or did not become healthy in time.
 type DaemonRestartFunc func(binPath string, healthzPort int, timeout time.Duration) (version string, err error)
 
+// DaemonVersionProbeFunc queries the CURRENTLY RUNNING daemon's version via a
+// reliable source (the RPC socket, not the HTML-shadowable dashboard route)
+// so step 4 can detect a daemon that stayed bound to the socket through a
+// restart that fast-pathed to a no-op (#5850). Injectable so tests never dial
+// a real socket.
+type DaemonVersionProbeFunc func() (version string, err error)
+
+// defaultDaemonVersionProbe is the production version-probe: dial the RPC
+// socket directly (the same liveness/version channel `grafel status` uses,
+// NOT the dashboard /healthz route, which can be shadowed by the SPA
+// catch-all and return an HTML document instead of a version — see
+// looksLikeVersion). The result is guarded by looksLikeVersion so an
+// implausible response is reported as an error ("version unknown") rather
+// than silently treated as a match.
+func defaultDaemonVersionProbe() (string, error) {
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return "", fmt.Errorf("resolve daemon layout: %w", err)
+	}
+	v, err := defaultSocketPing(layout.SocketPath)
+	if err != nil {
+		return "", err
+	}
+	if !looksLikeVersion(v) {
+		return "", fmt.Errorf("daemon reported an implausible version %q", v)
+	}
+	return strings.TrimSpace(v), nil
+}
+
+// defaultDaemonEscalateRestart is the production HARD-restart used when the
+// normal (idempotent) RestartDaemon path leaves a stale daemon bound to the
+// socket. Unlike service.Install — which fast-paths to a no-op when the
+// service already appears loaded and connectable — service.Restart always
+// forces unload→load (on macOS: launchctl bootout, then bootstrap/kickstart)
+// so the OLD process fully exits before a fresh one is started.
+func defaultDaemonEscalateRestart(binPath string, port int, timeout time.Duration) (string, error) {
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return "", fmt.Errorf("resolve daemon layout: %w", err)
+	}
+	svcOpts := service.Options{
+		BinPath:    binPath,
+		SocketPath: layout.SocketPath,
+		LogDir:     layout.LogDir,
+	}
+	if _, err := service.Restart(svcOpts); err != nil {
+		return "", fmt.Errorf("service restart (escalation): %w", err)
+	}
+	return waitForDaemonReady(layout.SocketPath, port, installHealthTimeout(timeout), defaultSocketPing, defaultHealthzGet)
+}
+
+// verifyDaemonVersion probes the running daemon and compares it against
+// installed. It returns the confirmed version on a match, or an error naming
+// both versions (or "unknown" when the probe failed / returned an implausible
+// value) on mismatch. An empty installed value skips the comparison (treated
+// as "nothing to verify against").
+func verifyDaemonVersion(installed string, probe DaemonVersionProbeFunc) (string, error) {
+	running, err := probe()
+	if err == nil && !looksLikeVersion(running) {
+		err = fmt.Errorf("implausible version %q", running)
+	}
+	if err != nil {
+		return "", fmt.Errorf("could not verify running daemon version (installed %q): %w", installed, err)
+	}
+	running = strings.TrimSpace(running)
+	if installed != "" && running != installed {
+		return "", fmt.Errorf("daemon is running stale version %q, installed version is %q", running, installed)
+	}
+	return running, nil
+}
+
 // CopyOptions is the input to RunCopy. All fields have sensible defaults;
 // callers only need to set overrides.
 type CopyOptions struct {
@@ -207,6 +279,26 @@ type CopyOptions struct {
 	// production implementation (service.Install + waitForHealthz) is used.
 	// Inject a stub in tests to avoid calling launchctl/systemctl.
 	RestartDaemon DaemonRestartFunc
+
+	// ProbeDaemonVersion is the injectable post-restart version probe used to
+	// detect a stale daemon left bound to the socket (#5850). When nil, the
+	// production implementation dials the RPC socket directly. Inject a stub
+	// in tests to avoid a real socket dial.
+	ProbeDaemonVersion DaemonVersionProbeFunc
+
+	// EscalateDaemonRestart is the injectable HARD-restart function used when
+	// ProbeDaemonVersion disagrees with InstalledVersion after the normal
+	// restart. When nil, the production implementation forces the OS service
+	// through unload→load (service.Restart) rather than the idempotent
+	// service.Install used by RestartDaemon. Inject a stub in tests to avoid
+	// calling launchctl/systemctl.
+	EscalateDaemonRestart DaemonRestartFunc
+
+	// InstalledVersion is the version the running daemon is expected to
+	// report after step 4. Defaults to version.Version (the build this
+	// install/update process itself was compiled from). Tests can override it
+	// to simulate a specific target version.
+	InstalledVersion string
 
 	// NoHooks skips automatic git hook installation (step 7).
 	// Equivalent to passing --no-hooks on the CLI.
@@ -432,10 +524,40 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 		if restartFn == nil {
 			restartFn = defaultDaemonRestart
 		}
-		daemonVersion, err := restartFn(opts.BinPath, opts.DaemonPort, opts.HealthzTimeout)
-		if err != nil {
+		probeFn := opts.ProbeDaemonVersion
+		if probeFn == nil {
+			probeFn = defaultDaemonVersionProbe
+		}
+		escalateFn := opts.EscalateDaemonRestart
+		if escalateFn == nil {
+			escalateFn = defaultDaemonEscalateRestart
+		}
+
+		if _, err := restartFn(opts.BinPath, opts.DaemonPort, opts.HealthzTimeout); err != nil {
 			rollback(4)
 			return nil, fmt.Errorf("step 4 – daemon restart: %w", err)
+		}
+
+		// #5850: a restart succeeding (the RPC socket answers) does NOT prove
+		// the daemon answering is the newly-installed binary — service.Install
+		// is idempotent and fast-paths to a no-op if a daemon (any daemon) is
+		// already bound to the socket. Verify the running version explicitly;
+		// on mismatch (or an unverifiable/HTML-shadowed response), escalate to
+		// a hard restart that forces the OLD process to fully exit, then
+		// re-verify before declaring step 4 successful.
+		daemonVersion, verr := verifyDaemonVersion(opts.InstalledVersion, probeFn)
+		if verr != nil {
+			fmt.Fprintf(os.Stderr,
+				"grafel install: step 4 warning – %v; forcing a hard daemon restart\n", verr)
+			if _, eerr := escalateFn(opts.BinPath, opts.DaemonPort, opts.HealthzTimeout); eerr != nil {
+				rollback(4)
+				return nil, fmt.Errorf("step 4 – daemon restart: escalation failed: %w", eerr)
+			}
+			daemonVersion, verr = verifyDaemonVersion(opts.InstalledVersion, probeFn)
+			if verr != nil {
+				rollback(4)
+				return nil, fmt.Errorf("step 4 – daemon restart: %w", verr)
+			}
 		}
 		state.DaemonVersion = daemonVersion
 		result.DaemonVersion = daemonVersion
@@ -528,6 +650,9 @@ func (o *CopyOptions) applyDefaults() error {
 	}
 	if o.DaemonPort == 0 {
 		o.DaemonPort = 47274
+	}
+	if o.InstalledVersion == "" {
+		o.InstalledVersion = version.Version
 	}
 	return nil
 }

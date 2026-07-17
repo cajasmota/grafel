@@ -93,6 +93,10 @@ func TestLooksLikeVersion(t *testing.T) {
 		{strings.Repeat("a", 65), false}, // too long
 		{"{\"version\":\"1.0\"}", true},  // short JSON is tolerated (no angle brackets / newline)
 		{"<svg>", false},                 // angle brackets
+		// #5850: exact SPA-fallback body a shadowed version-probe channel could
+		// return; must be rejected so a stale-daemon check never treats this as
+		// a version match.
+		{"<!doctype html><html><head><title>grafel</title></head><body></body></html>", false},
 	}
 	for _, c := range cases {
 		if got := looksLikeVersion(c.in); got != c.want {

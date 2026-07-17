@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -479,6 +480,11 @@ func TestRunCopy_NoOnDiskSkills_EmbeddedFallbackInstalls(t *testing.T) {
 			restartCalled = true
 			return "test-daemon-v0", nil
 		},
+		// Step 4 now re-verifies the running daemon's version against the
+		// installed version (#5850); stub both so this test keeps exercising
+		// only the skills-fallback behavior it was written for.
+		ProbeDaemonVersion: func() (string, error) { return "test-daemon-v0", nil },
+		InstalledVersion:   "test-daemon-v0",
 	}
 
 	result, err := install.RunCopy(opts)
@@ -521,6 +527,215 @@ func TestRunCopy_NoOnDiskSkills_EmbeddedFallbackInstalls(t *testing.T) {
 		if _, serr := os.Stat(filepath.Join(skillsDest, name, "SKILL.md")); serr != nil {
 			t.Errorf("embedded skill %s/SKILL.md missing after install: %v", name, serr)
 		}
+	}
+}
+
+// ── step 4: post-restart version verification (#5850) ──────────────────────
+//
+// `grafel install`/`update` previously restarted the daemon and gated success
+// only on the RPC socket answering Ping — never on whether the daemon that
+// answered was actually the NEWLY-installed version. A stale daemon that
+// stayed bound to the socket (e.g. because service.Install fast-pathed to a
+// no-op since it was already "connectable") was reported as a successful
+// restart. These tests exercise the fix: after RestartDaemon, RunCopy probes
+// the running daemon's version and compares it to InstalledVersion; on
+// mismatch it escalates to a hard restart (EscalateDaemonRestart) and
+// re-verifies before declaring success.
+
+// TestRunCopy_DaemonVersionMatch_NoEscalation verifies that when the
+// post-restart probe already reports the installed version, step 4 succeeds
+// without ever calling the escalation path.
+func TestRunCopy_DaemonVersionMatch_NoEscalation(t *testing.T) {
+	env := newTestEnv(t)
+
+	escalateCalled := false
+	opts := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: false,
+		InstalledVersion:  "1.2.3",
+		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
+			return "1.2.3", nil
+		},
+		ProbeDaemonVersion: func() (string, error) {
+			return "1.2.3", nil
+		},
+		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
+			escalateCalled = true
+			return "1.2.3", nil
+		},
+	}
+
+	result, err := install.RunCopy(opts)
+	if err != nil {
+		t.Fatalf("RunCopy: %v", err)
+	}
+	if result.DaemonVersion != "1.2.3" {
+		t.Errorf("DaemonVersion = %q, want %q", result.DaemonVersion, "1.2.3")
+	}
+	if escalateCalled {
+		t.Error("escalation must NOT run when the post-restart probe already matches the installed version")
+	}
+}
+
+// TestRunCopy_DaemonVersionMismatch_EscalatesThenSucceeds is the core repro
+// for #5850: the post-restart probe first reports a STALE version (the old
+// daemon stayed bound to the socket through an idempotent restart). RunCopy
+// must escalate to a hard restart and, once the re-probe reports the
+// installed version, succeed.
+func TestRunCopy_DaemonVersionMismatch_EscalatesThenSucceeds(t *testing.T) {
+	env := newTestEnv(t)
+
+	probeCalls := 0
+	escalateCalled := false
+	opts := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: false,
+		InstalledVersion:  "2.0.0",
+		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
+			// The (idempotent) restart succeeds but the daemon answering is
+			// still the stale one — RestartDaemon has no way to know that on
+			// its own, which is exactly the #5850 gap.
+			return "0.9.0", nil
+		},
+		ProbeDaemonVersion: func() (string, error) {
+			probeCalls++
+			if probeCalls == 1 {
+				return "0.9.0", nil // stale daemon still on the socket
+			}
+			return "2.0.0", nil // post-escalation: fresh daemon
+		},
+		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
+			escalateCalled = true
+			return "2.0.0", nil
+		},
+	}
+
+	result, err := install.RunCopy(opts)
+	if err != nil {
+		t.Fatalf("RunCopy: %v", err)
+	}
+	if !escalateCalled {
+		t.Error("expected escalation to run when the initial probe reports a stale version")
+	}
+	if probeCalls < 2 {
+		t.Errorf("expected the probe to be called again after escalation, got %d calls", probeCalls)
+	}
+	if result.DaemonVersion != "2.0.0" {
+		t.Errorf("DaemonVersion = %q, want %q", result.DaemonVersion, "2.0.0")
+	}
+}
+
+// TestRunCopy_DaemonStillStaleAfterEscalation_ReturnsError verifies that when
+// the daemon is STILL reporting a stale version even after the hard-restart
+// escalation, RunCopy fails with a clear error naming both the running and
+// the installed version (rather than reporting a misleading success).
+func TestRunCopy_DaemonStillStaleAfterEscalation_ReturnsError(t *testing.T) {
+	env := newTestEnv(t)
+
+	escalateCalled := false
+	opts := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: false,
+		InstalledVersion:  "3.5.0",
+		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
+			return "3.4.0", nil
+		},
+		ProbeDaemonVersion: func() (string, error) {
+			// Always reports the stale version, even after escalation.
+			return "3.4.0", nil
+		},
+		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
+			escalateCalled = true
+			return "3.4.0", nil
+		},
+	}
+
+	_, err := install.RunCopy(opts)
+	if err == nil {
+		t.Fatal("expected RunCopy to fail when the daemon is still stale after escalation")
+	}
+	if !escalateCalled {
+		t.Error("expected escalation to have been attempted before failing")
+	}
+	if !strings.Contains(err.Error(), "3.4.0") {
+		t.Errorf("expected error to name the running (stale) version 3.4.0, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "3.5.0") {
+		t.Errorf("expected error to name the installed version 3.5.0, got: %v", err)
+	}
+
+	// The install must be rolled back and recorded as partial, exactly like
+	// any other step-4 failure.
+	state := readState(t, env.statePath)
+	if state == nil {
+		t.Fatal("install.json was not written after rollback")
+	}
+	if !state.PartialInstall {
+		t.Error("install.json: partial_install should be true after a still-stale-after-escalation failure")
+	}
+}
+
+// TestRunCopy_DaemonVersionProbeHTML_TreatedAsUnknown_TriggersEscalation
+// guards against the dashboard SPA-shadowing bug (#5596): if the reliable
+// version-probe channel ever returns an HTML body (e.g. because someone wires
+// ProbeDaemonVersion to the dashboard route by mistake, or the RPC channel
+// degrades), looksLikeVersion must reject it as "unknown" — never treated as
+// a match — which drives the same escalation path as a real mismatch.
+func TestRunCopy_DaemonVersionProbeHTML_TreatedAsUnknown_TriggersEscalation(t *testing.T) {
+	env := newTestEnv(t)
+
+	// looksLikeVersion (internal_test.go / readiness_test.go) already asserts
+	// directly that this exact HTML body is rejected; here we assert the
+	// resulting BEHAVIOR — RunCopy must treat it as "unknown" and escalate.
+	const htmlBody = "<!doctype html><html><head><title>grafel</title></head><body></body></html>"
+
+	probeCalls := 0
+	escalateCalled := false
+	opts := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: false,
+		InstalledVersion:  "4.1.0",
+		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
+			return "4.1.0", nil
+		},
+		ProbeDaemonVersion: func() (string, error) {
+			probeCalls++
+			if probeCalls == 1 {
+				return htmlBody, nil // SPA-fallback garbage, must count as "unknown"
+			}
+			return "4.1.0", nil
+		},
+		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
+			escalateCalled = true
+			return "4.1.0", nil
+		},
+	}
+
+	result, err := install.RunCopy(opts)
+	if err != nil {
+		t.Fatalf("RunCopy: %v", err)
+	}
+	if !escalateCalled {
+		t.Error("expected an HTML/garbage version probe to be treated as unknown and trigger escalation")
+	}
+	if result.DaemonVersion != "4.1.0" {
+		t.Errorf("DaemonVersion = %q, want %q", result.DaemonVersion, "4.1.0")
 	}
 }
 
