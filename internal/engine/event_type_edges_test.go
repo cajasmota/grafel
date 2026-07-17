@@ -481,6 +481,123 @@ func Publish(ctx context.Context, client *eventbridge.Client) error {
 	}
 }
 
+// TestEventType_GoProducer_EventBridgeDetailType_ClosureParamShadowsConst is
+// the residual guard for re-review MUST-FIX #1: the identifier at the publish
+// site is a parameter of a CLOSURE (func literal) that lexically encloses the
+// call, whose runtime value is unknown — but a same-named package-level const
+// exists. The shadow guard must see the closure param, not just the top-level
+// func decl. No node/edge.
+func TestEventType_GoProducer_EventBridgeDetailType_ClosureParamShadowsConst(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+const orderType = "OrderPlaced"
+
+func Outer(ctx context.Context, c *eventbridge.Client) {
+	h := func(orderType string) {
+		_, _ = c.PutEvents(ctx, &eventbridge.PutEventsInput{
+			Entries: []types.PutEventsRequestEntry{
+				{DetailType: aws.String(orderType)},
+			},
+		})
+	}
+	h("ShouldNotResolve")
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_closure.go", src)
+	requireNoEventTypeEntities(t, ents, "closure param shadows package const — must not resolve to const literal")
+	for _, r := range rels {
+		if r.FromID == "SCOPE.Function:Outer" || r.FromID == "SCOPE.Function:h" {
+			t.Errorf("expected no PUBLISHES_TO edge from closure/outer; got edge to %q", r.ToID)
+		}
+	}
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_ConstTemplateNotMinted is the
+// residual guard for re-review MUST-FIX #2: a const bound to a `%`-format
+// template resolved via the identifier path must be rejected by the same
+// value-usability gate the literal path applies. No garbage node.
+func TestEventType_GoProducer_EventBridgeDetailType_ConstTemplateNotMinted(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+const tmpl = "order.%s.placed"
+
+func Pub(ctx context.Context, c *eventbridge.Client) error {
+	_, err := c.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: aws.String(tmpl)},
+		},
+	})
+	return err
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer_const_tmpl.go", src)
+	requireNoEventTypeEntities(t, ents, "const %-template resolved via ident path must not mint")
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_GroupedConst covers re-review
+// MUST-FIX #3: a grouped `const ( X = "..." )` block member (bare `X = "..."`,
+// no per-line `const` keyword) must resolve at the publish site.
+func TestEventType_GoProducer_EventBridgeDetailType_GroupedConst(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+const (
+	someOther       = "OrderPlaced"
+	orderDetailType = "OrderShipped"
+)
+
+func PublishOrderShipped(ctx context.Context, client *eventbridge.Client, orderID string) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: aws.String(orderDetailType)},
+		},
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_grouped_const.go", src)
+
+	id := eventTypeID("OrderShipped")
+	requireEventTypeEntity(t, ents, id, "Go EventBridge grouped-const DetailType producer")
+
+	fromID := "SCOPE.Function:PublishOrderShipped"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge grouped-const DetailType producer")
+
+	var edgeDetection string
+	for _, r := range rels {
+		if r.FromID == fromID && r.ToID == toID {
+			edgeDetection = r.Properties["detection"]
+		}
+	}
+	if edgeDetection != "eventbridge-detailtype-const" {
+		t.Errorf("expected detection=eventbridge-detailtype-const, got %q", edgeDetection)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Producer — JS/TS
 // ---------------------------------------------------------------------------

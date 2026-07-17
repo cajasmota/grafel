@@ -142,17 +142,21 @@ var goPublishSiteRe = regexp.MustCompile(
 	`\.(?:Publish(?:WithContext)?|PublishMessage|SendMessage(?:Batch)?(?:WithContext)?|PutRecords?(?:WithContext)?|PutEvents(?:WithContext)?|Produce|Send)\s*\(`,
 )
 
-// goConstStringBindingRe matches `const X = "..."` (with or without an
-// explicit type name, e.g. `const orderDetailType string = "OrderShipped"`),
-// including grouped `const ( X = "..." )` blocks (the `(?m)^\s*` prefix
-// matches the indented member lines). Group 1 = identifier, group 2 = literal
-// value.
+// goConstStringBindingRe matches a single `const X = "..."` declaration (with
+// or without an explicit type name, e.g. `const orderDetailType string =
+// "OrderShipped"`) — the NON-grouped form, which carries the literal `const`
+// keyword on the declaration line. Grouped `const ( X = "..." )` block members
+// are bare `X = "..."` (no per-line `const`) and are handled separately by
+// goGroupedBlockBindings (re-review MUST-FIX #3). Group 1 = identifier,
+// group 2 = literal value.
 var goConstStringBindingRe = regexp.MustCompile(
 	`(?m)^\s*const\s+(\w+)\s*(?:\w+\s+)?=\s*"([^"\n\r]+)"`,
 )
 
-// goVarStringBindingRe matches `var X = "..."` declarations (with or without
-// an explicit type name). Group 1 = identifier, group 2 = literal value.
+// goVarStringBindingRe matches a single `var X = "..."` declaration (with or
+// without an explicit type name). Grouped `var ( X = "..." )` members are
+// handled by goGroupedBlockBindings (re-review MUST-FIX #3). Group 1 =
+// identifier, group 2 = literal value.
 // NOTE: this regex is not scope-aware — an in-function `var x = "..."` also
 // matches — but the publish-site shadow guard (goIdentifierShadowedInFunc)
 // rejects any identifier that is a param/local of the enclosing function, so
@@ -161,12 +165,51 @@ var goVarStringBindingRe = regexp.MustCompile(
 	`(?m)^\s*var\s+(\w+)\s*(?:\w+\s+)?=\s*"([^"\n\r]+)"`,
 )
 
+// goGroupedBlockOpenRe matches the opener of a grouped `const (` or `var (`
+// declaration block. Group 1 = the keyword (const/var).
+var goGroupedBlockOpenRe = regexp.MustCompile(`(?m)^\s*(const|var)\s*\(\s*$`)
+
+// goGroupedMemberBindingRe matches a bare `X = "..."` member line inside a
+// grouped const/var block (with or without an explicit type name, e.g.
+// `orderDetailType string = "OrderShipped"`). Group 1 = identifier, group 2 =
+// literal value.
+var goGroupedMemberBindingRe = regexp.MustCompile(
+	`(?m)^\s*(\w+)\s*(?:\w+\s+)?=\s*"([^"\n\r]+)"`,
+)
+
+// goGroupedBlockBindings extracts `X = "..."` string members from grouped
+// `const ( ... )` / `var ( ... )` blocks (re-review MUST-FIX #3 — grouped
+// const is very common in real Go). It walks from each block opener to its
+// closing `)` and matches bare member lines that the single-declaration
+// goConstStringBindingRe/goVarStringBindingRe (which require the leading
+// keyword) cannot see. Emits (name, value) pairs via add.
+func goGroupedBlockBindings(src string, add func(name, value string)) {
+	for _, loc := range goGroupedBlockOpenRe.FindAllStringIndex(src, -1) {
+		// Block body runs from just after the `(` line to the next line that is
+		// a closing `)` at the start (ignoring leading whitespace).
+		rest := src[loc[1]:]
+		end := len(rest)
+		if idx := regexp.MustCompile(`(?m)^\s*\)`).FindStringIndex(rest); idx != nil {
+			end = idx[0]
+		}
+		body := rest[:end]
+		for _, m := range goGroupedMemberBindingRe.FindAllStringSubmatch(body, -1) {
+			add(m[1], m[2])
+		}
+	}
+}
+
 // buildGoStringBindingTable scans src for `const X = "..."` and `var X =
 // "..."` string bindings (GAP-015 RC4: same-file identifier resolution for
 // `DetailType: aws.String(orderDetailType)`-shaped producer call-sites) and
 // returns a name->literal table. Only UNAMBIGUOUS bindings are kept — an
 // identifier bound to two different literal values anywhere in the file is
 // dropped entirely rather than guessed at.
+//
+// Both single-line (`const X = "..."`, `var X = "..."`) and GROUPED block
+// members (`const ( X = "..." )`, `var ( X = "..." )`, via
+// goGroupedBlockBindings) are matched — re-review MUST-FIX #3, since grouped
+// const is very common in real Go and was the dominant RC4 real-world miss.
 //
 // SAFETY (review MUST-FIX #1): this table intentionally does NOT include
 // function-local `:=`/`=` bindings. Those are scope-local and a file-global
@@ -175,10 +218,15 @@ var goVarStringBindingRe = regexp.MustCompile(
 // PARAMETER at a publish site in another function. Resolution is therefore
 // restricted to package-level-style const/var declarations, AND every
 // publish-site resolution is additionally gated by goIdentifierShadowedInFunc
-// (which rejects the identifier if it is a param or `:=`/`var` local of the
-// ENCLOSING function). Together these guarantee a resolved identifier really
-// is the package-level binding — not a shadowing local/param — so the
-// previous "never a false positive" reasoning now actually holds.
+// (which rejects the identifier if it is a param — including a CLOSURE param
+// — or a `:=`/`var` local of the ENCLOSING lexical function/func-literal).
+// Together these guarantee a resolved identifier really is the package-level
+// binding — not a shadowing local/param — so the previous "never a false
+// positive" reasoning now actually holds. NOTE: a grouped-block member that
+// happens to sit inside a function body (rare) is not distinguished from a
+// package-level one here, but the shadow guard still rejects it if it is a
+// param/local at the publish site; the residual risk is only a same-named
+// unrelated in-function grouped const, which is vanishingly rare.
 //
 // v1 narrowing (deliberately out of scope, follow-up candidates):
 //   - SAME-FILE ONLY. A const/var defined in another file of the same
@@ -189,8 +237,6 @@ var goVarStringBindingRe = regexp.MustCompile(
 //   - Function-local `:=`/`=` bindings are NOT resolved at all (even for a
 //     publish site in the SAME function), a deliberate precision-over-recall
 //     tradeoff for the file-global-table design — see SAFETY above.
-//   - Grouped `var ( x = "..." )` block members are missed (only single-line
-//     `var x = "..."` is matched); grouped `const (...)` members ARE matched.
 //   - Entries built via a map literal, a helper return value, or appended
 //     into a slice in a loop are not covered — only the IDENTIFIER form.
 func buildGoStringBindingTable(src string) map[string]string {
@@ -214,6 +260,7 @@ func buildGoStringBindingTable(src string) map[string]string {
 			add(m[1], m[2])
 		}
 	}
+	goGroupedBlockBindings(src, add)
 	return bindings
 }
 
@@ -233,12 +280,22 @@ func goVarDeclReFor(ident string) *regexp.Regexp {
 	return regexp.MustCompile(`\bvar\s+` + regexp.QuoteMeta(ident) + `\b`)
 }
 
+// goAnyFuncParamOpenRe matches the parameter-list `(` of ANY Go function
+// header in funcScope — both a top-level `func name(` / `func (recv) name(`
+// declaration AND an anonymous func-literal / closure `func(` (re-review
+// MUST-FIX #1: closure params were previously invisible). FindAllStringIndex
+// end-1 is the `(` index the param list starts at.
+var goAnyFuncParamOpenRe = regexp.MustCompile(`\bfunc\s*(?:\(\s*\w+\s+\*?\w+\s*\)\s*)?(?:\w+\s*)?\(`)
+
 // goIdentifierShadowedInFunc reports whether ident is a parameter of, or a
-// `:=`/`var` local declared in, the enclosing function whose text-from-decl-
-// to-publish-site is funcScope (review MUST-FIX #1). When true the identifier
-// is NOT a package-level binding at this call site, so it must not resolve
-// against the file-global table. Conservative: a false "shadowed" only costs
-// recall (skip an edge), never a wrong edge.
+// `:=`/`var` local declared in, ANY function or func-literal that lexically
+// encloses the publish site, where funcScope is the text from the enclosing
+// top-level func decl up to the site (review MUST-FIX #1; closure params
+// added in re-review). When true the identifier is NOT a package-level
+// binding at this call site, so it must not resolve against the file-global
+// table. Conservative: a false "shadowed" only costs recall (skip an edge),
+// never a wrong edge — so scanning EVERY func(...) param list in funcScope
+// (not just lexically-enclosing ones) is a safe over-approximation.
 func goIdentifierShadowedInFunc(funcScope, ident string) bool {
 	if goShortVarDeclReFor(ident).MatchString(funcScope) {
 		return true
@@ -246,13 +303,13 @@ func goIdentifierShadowedInFunc(funcScope, ident string) bool {
 	if goVarDeclReFor(ident).MatchString(funcScope) {
 		return true
 	}
-	// Parameter of the nearest enclosing function declaration in funcScope.
-	decls := goFunctionDeclRe.FindAllStringIndex(funcScope, -1)
-	if len(decls) > 0 {
-		last := decls[len(decls)-1]
-		paramOpen := last[1] - 1 // goFunctionDeclRe ends at the param-list '('.
+	// Parameter of ANY function/closure header in funcScope — including
+	// func-literal params, which a single top-level-decl probe would miss.
+	identRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(ident) + `\b`)
+	for _, loc := range goAnyFuncParamOpenRe.FindAllStringIndex(funcScope, -1) {
+		paramOpen := loc[1] - 1 // regex ends at the param-list '('.
 		params := extractBalancedParensEngine(funcScope, paramOpen)
-		if regexp.MustCompile(`\b` + regexp.QuoteMeta(ident) + `\b`).MatchString(params) {
+		if identRe.MatchString(params) {
 			return true
 		}
 	}
@@ -265,8 +322,11 @@ func goIdentifierShadowedInFunc(funcScope, ident string) bool {
 // is a bare identifier resolvable via resolveIdent. resolveIdent encapsulates
 // the file-global binding lookup PLUS the enclosing-function shadow guard, so
 // a param/local shadowing the identifier yields no resolution. A formatter/
-// transformer wrapper (review MUST-FIX #2) is rejected before resolution.
-// viaConst reports which path matched, so callers can tag the emitted edge.
+// transformer wrapper is rejected before resolution, and the RESOLVED const
+// value itself is gated through isEventTypeValueUsable so a const bound to a
+// `%`-format template (e.g. `const tmpl = "order.%s.placed"`) does not leak
+// via the identifier path either (review MUST-FIX #2 + re-review). viaConst
+// reports which path matched, so callers can tag the emitted edge.
 func resolveAllowlistedEventType(
 	text string,
 	resolveIdent func(name string) (string, bool),
@@ -279,7 +339,7 @@ func resolveAllowlistedEventType(
 		if isEventTypeWrapperFormatter(wrapper) {
 			return "", "", false, false
 		}
-		if v, found := resolveIdent(ident); found {
+		if v, found := resolveIdent(ident); found && isEventTypeValueUsable(v) {
 			return m[1], v, true, true
 		}
 	}
