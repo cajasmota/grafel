@@ -438,6 +438,185 @@ func applyEventTypeProducerGo(
 }
 
 // ---------------------------------------------------------------------------
+// Producer — Go — event-store write (GAP-015 RC1)
+// ---------------------------------------------------------------------------
+//
+// The dominant Go event-producer family does NOT publish to a broker at all.
+// Instead it builds a domain event via a constructor whose event-type is a
+// POSITIONAL string-literal argument (not a `key: "value"` field), stashes it
+// in a struct, and persists that struct via an event-store write — a
+// semantic method like WriteEvent/PublishEvent/SaveEvent/AppendEvent whose
+// backing is commonly a DynamoDB table with Streams fan-out. Neither the
+// existing goPublishSiteRe (no broker call here) nor the allowlisted
+// key/literal extraction (the event name isn't in `key: "value"` form) sees
+// this shape, so today no producer edge exists for it.
+
+// goEventStoreWriteSiteRe matches a call to a SEMANTIC event-store write
+// function — the verb+Event shape (WriteEvent/PublishEvent/SaveEvent/
+// StoreEvent/AppendEvent and any `...Event(s)...` variant sharing one of
+// those verb prefixes, e.g. WriteEventBatch, WriteEvents,
+// PublishEventToStore). Matched on the METHOD/FUNCTION NAME only (\b-anchored,
+// so it fires for both a bare package-level call `WriteEvent(...)` and a
+// method call `store.WriteEvent(...)` — the leading `.` is not required, it
+// just naturally satisfies the \b boundary when present).
+//
+// `Event` is matched as a TOKEN, not a substring prefix. Go's regexp is RE2
+// (no lookahead), so the token boundary is expressed by the RE2-compatible
+// suffix group `(?:s|[A-Z0-9_]\w*)?` that must be immediately followed by
+// `\s*\(`: what follows `Event` is either nothing (call `(`), a pluralizing
+// `s` (`WriteEvents(`), or an uppercase/digit/underscore word start
+// (`WriteEventBatch(`) — but NEVER a lowercase-letter continuation. This is
+// what stops `*Eventually(` (Event + "ually" — a database consistency-mode
+// helper, review surface 1) from matching: `SaveEventually`/`StoreEventually`/
+// `WriteEventually`/`PublishEventually`/`AppendEventually`/
+// `StoreEventuallyConsistent` all have a LOWERCASE `u` after `Event`, so the
+// suffix group cannot bridge to the trailing `(` and the match fails.
+//
+// Verb set (review): `Record`/`Emit` were DROPPED — they overwhelmingly
+// denote analytics/telemetry emission (`analytics.RecordEvent(...)`,
+// `tracer.EmitEvent(...)`), NOT a domain event-store write contract.
+// Precision-first: event-store writes are overwhelmingly
+// Write/Publish/Save/Store/Append, so dropping the two telemetry-collision
+// verbs removes a confirmed end-to-end false-positive class at negligible
+// recall cost.
+//
+// Deliberately NOT matched: raw DynamoDB `PutItem`/`PutItemWithContext`. That
+// primitive is used for every DynamoDB write in a codebase (order tables,
+// user tables, config tables, ...) with zero relationship to event
+// publishing — gating on it would treat nearly any DynamoDB write beside an
+// event constructor as a producer edge, a massive false-positive source.
+// Only the SEMANTIC verb+Event call name is trusted as a sink.
+//
+// v1 residual (name-only matching, documented): `WriteEventLog(` (audit-log
+// writer) and a mock `SaveEventCalled(` still match — they are
+// indistinguishable by NAME from a legit `WriteEventBatch(` without dataflow.
+// Accepted as low-frequency residual; see the RC1 report.
+var goEventStoreWriteSiteRe = regexp.MustCompile(
+	`\b(?:Write|Publish|Save|Store|Append)\w*Event(?:s|[A-Z0-9_]\w*)?\s*\(`,
+)
+
+// goEventStoreConstructorCallRe matches an event-constructor call — the
+// New/Make/Build+Event shape (`NewOrderEvent(`, `MakeBillingEvent(`,
+// `BuildOrderEvent(`, `NewOrderPlacedEvent(`) — on the CONSTRUCTOR FUNCTION
+// NAME only, mirroring the sink regex's syntax-only matching (no
+// corpus-specific package/function name). Uses the same RE2 `Event`-token
+// boundary as the sink regex so `NewEventually(`-style helpers are not
+// mistaken for event constructors.
+var goEventStoreConstructorCallRe = regexp.MustCompile(
+	`\b(?:New|Make|Build)\w*Event(?:s|[A-Z0-9_]\w*)?\s*\(`,
+)
+
+// goQuotedStringRe matches a double-quoted string literal in a constructor
+// call's argument-list text. Go string literals in source are conventionally
+// double-quoted (backtick raw strings for a positional event-name argument
+// are not modeled in v1, matching the scope of this detector).
+var goQuotedStringRe = regexp.MustCompile(`"([^"\n\r]+)"`)
+
+// goIDLikeValueRe matches a value that looks like an identifier/UUID token
+// rather than an event-type contract name: an all-lowercase-alnum run,
+// optionally kebab/snake-segmented (`order-123`, `a1b2`,
+// `550e8400-e29b-41d4-a716-446655440000`). Combined with a digit-presence
+// check in isGoEventTypeNameShape, this rejects the event-sourcing idiom
+// where the event TYPE is in the constructor NAME and the first literal is an
+// aggregate/ID (review surface 6b). Dot-separated names (`order.placed`) are
+// deliberately NOT matched here (dot is not a segment separator in this
+// regex), so a legit lowercase dotted event name is NOT rejected.
+var goIDLikeValueRe = regexp.MustCompile(`^[a-z0-9]+(?:[-_][a-z0-9]+)*$`)
+
+// isGoEventTypeNameShape reports whether value is plausibly an event-type
+// contract token rather than an aggregate/ID. It rejects a value that is
+// ID-shaped (goIDLikeValueRe) AND carries a digit — the lowercase-kebab/
+// snake-with-digits and UUID-ish shapes. A PascalCase/dotted name
+// (`OrderPlaced`, `order.placed`) has an uppercase letter or a dot and so is
+// NOT matched by goIDLikeValueRe, and is kept. Precision-first: a rare
+// all-lowercase-with-digit legit event name (e.g. `orderv2placed`) is a
+// documented residual recall loss, not a false positive.
+func isGoEventTypeNameShape(value string) bool {
+	if goIDLikeValueRe.MatchString(value) && strings.ContainsAny(value, "0123456789") {
+		return false
+	}
+	return true
+}
+
+// nearestGoEventConstructorLiteral scans scope (function-scope text ending
+// right before the write-sink call) for event-constructor calls and returns
+// the event-name string literal of the LEXICALLY NEAREST one — i.e. the last
+// constructor match in scope, closest to the sink.
+//
+// Ambiguity handling (precision over recall):
+//   - Multiple constructors before one sink: only the nearest is considered;
+//     attributing EVERY constructor literal in scope to the one sink would
+//     risk a wrong edge for an earlier, unrelated construction.
+//   - MULTIPLE string literals inside the nearest constructor's args (review
+//     surface 6a/6c): the first-literal heuristic cannot tell an event-name
+//     argument from a source/topic/region argument or a nested-wrapper
+//     literal (`NewOrderEvent(ctx, "orders-svc", "OrderSettled")`,
+//     `NewOrderEvent(id, aws.String("region-us"), "OrderPlaced")`), so the
+//     whole binding is DROPPED. Only a SINGLE, unambiguous string literal is
+//     trusted.
+//   - The single literal is additionally gated through isEventTypeValueUsable
+//     (formatter/`%`-template — review MUST-FIX #2 parity) and
+//     isGoEventTypeNameShape (ID/UUID shape — review surface 6b).
+func nearestGoEventConstructorLiteral(scope string) (value string, ok bool) {
+	matches := goEventStoreConstructorCallRe.FindAllStringIndex(scope, -1)
+	if len(matches) == 0 {
+		return "", false
+	}
+	nearest := matches[len(matches)-1]
+	openParen := nearest[1] - 1 // regex ends in `\(`, so len-1 is the '(' index.
+	arg := extractBalancedParensEngine(scope, openParen)
+	lits := goQuotedStringRe.FindAllStringSubmatch(arg, -1)
+	// Precision: only a SINGLE unambiguous string literal is trusted. Zero
+	// literals (event name is a var/const — not resolved in v1) or more than
+	// one literal (ambiguous positional arg) both drop.
+	if len(lits) != 1 {
+		return "", false
+	}
+	v := lits[0][1]
+	if !isEventTypeValueUsable(v) || !isGoEventTypeNameShape(v) {
+		return "", false
+	}
+	return v, true
+}
+
+// applyEventTypeProducerGoEventStore scans Go source for event-store write
+// call-sites (goEventStoreWriteSiteRe) and, for each one, looks BACKWARD
+// within the enclosing function's body for the nearest preceding
+// event-constructor call carrying a positional string-literal event name
+// (goEventStoreConstructorCallRe + nearestGoEventConstructorLiteral). Both
+// the write sink AND the constructor literal must be present in the SAME
+// enclosing-function scope — mirrors applyEventTypeProducerGo's
+// enclosing-function-scope mechanism (enclosingGoFuncBodyStart). Emits
+// nothing when either is absent, or the recovered literal fails the
+// usability guard (formatter/`%`-template).
+//
+// v1 limitation: the constructor call must textually PRECEDE the write sink
+// within the function (the realistic "build then persist" order) — a
+// constructor call built inline as an argument to the sink call itself, or
+// one that lexically follows the sink, is not matched. See RC1 report for
+// the full v1-limitations list.
+func applyEventTypeProducerGoEventStore(
+	src string,
+	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+) {
+	for _, m := range goEventStoreWriteSiteRe.FindAllStringIndex(src, -1) {
+		bodyStart := enclosingGoFuncBodyStart(src, m[0])
+		funcScope := src[bodyStart:m[0]]
+		value, ok := nearestGoEventConstructorLiteral(funcScope)
+		if !ok {
+			continue
+		}
+		caller := findEnclosingGoFunctionName(src, m[0])
+		emitEdge(
+			fmt.Sprintf("SCOPE.Function:%s", caller),
+			value,
+			"PUBLISHES_TO",
+			map[string]string{"lang": "go", "detection": "event-store-constructor-arg"},
+		)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Producer — JS/TS
 // ---------------------------------------------------------------------------
 

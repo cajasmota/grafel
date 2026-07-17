@@ -150,6 +150,7 @@ func applyEventTypeEdges(args DetectorPassArgs) DetectorPassResult {
 	switch lang {
 	case "go":
 		applyEventTypeProducerGo(src, emitEdge)
+		applyEventTypeProducerGoEventStore(src, emitEdge)
 	case "javascript", "typescript":
 		applyEventTypeProducerJSTS(src, emitEdge)
 	case "java":

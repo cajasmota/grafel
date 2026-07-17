@@ -1244,6 +1244,269 @@ func TestEventType_FanOutCap(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Producer — Go — event-store write (GAP-015 RC1)
+// ---------------------------------------------------------------------------
+
+// TestEventType_GoProducer_EventStoreConstructorArg covers the dominant
+// event-store-write producer shape: a domain event is built via a
+// `New*Event*(...)` constructor whose event-type is a POSITIONAL string
+// literal (not a `key: "value"` field), then persisted via a semantic
+// event-store write call (`store.WriteEvent(...)`), NOT a broker publish.
+func TestEventType_GoProducer_EventStoreConstructorArg(t *testing.T) {
+	src := `package producer
+
+import "context"
+
+func RecordOrderSettled(ctx context.Context, store *EventStore, id string, payload []byte) error {
+	evt := NewOrderEvent(id, "OrderSettled", payload)
+	return store.WriteEvent(ctx, evt)
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_store.go", src)
+
+	id := eventTypeID("OrderSettled")
+	requireEventTypeEntity(t, ents, id, "Go event-store constructor-arg producer")
+
+	fromID := "SCOPE.Function:RecordOrderSettled"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go event-store constructor-arg producer")
+
+	var edgeDetection string
+	for _, r := range rels {
+		if r.FromID == fromID && r.ToID == toID {
+			edgeDetection = r.Properties["detection"]
+		}
+	}
+	if edgeDetection != "event-store-constructor-arg" {
+		t.Errorf("expected detection=event-store-constructor-arg, got %q", edgeDetection)
+	}
+}
+
+// TestEventType_GoProducer_EventStoreConstructorArg_PublishEvent covers a
+// second constructor/sink verb pair: `Make*Event*(...)` + `PublishEvent(...)`.
+func TestEventType_GoProducer_EventStoreConstructorArg_PublishEvent(t *testing.T) {
+	src := `package producer
+
+import "context"
+
+func RecordOrderPlaced(ctx context.Context, p []byte) error {
+	evt := MakeBillingEvent(ctx, "OrderPlaced", p)
+	return PublishEvent(evt)
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_store2.go", src)
+
+	id := eventTypeID("OrderPlaced")
+	requireEventTypeEntity(t, ents, id, "Go event-store constructor-arg producer (PublishEvent)")
+
+	fromID := "SCOPE.Function:RecordOrderPlaced"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go event-store constructor-arg producer (PublishEvent)")
+}
+
+// TestEventType_GoProducer_EventStoreConstructorArg_NoSink_NoEdge is the
+// CRITICAL negative guard: a constructor literal with NO event-store write
+// sink anywhere in the enclosing function must mint NOTHING.
+func TestEventType_GoProducer_EventStoreConstructorArg_NoSink_NoEdge(t *testing.T) {
+	src := `package producer
+
+func BuildOrderEvent(id string) *OrderEvent {
+	evt := NewOrderEvent(id, "OrderPlaced")
+	return evt
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer_store3.go", src)
+	requireNoEventTypeEntities(t, ents, "Go event-store constructor literal with no write sink")
+}
+
+// TestEventType_GoProducer_EventStoreConstructorArg_RawPutItem_NoEdge is the
+// CRITICAL negative guard: raw DynamoDB PutItem is NOT a semantic event-store
+// write sink — it is far too generic (any DynamoDB write matches it) — so a
+// constructor literal in scope with only a raw PutItem call must mint
+// NOTHING.
+func TestEventType_GoProducer_EventStoreConstructorArg_RawPutItem_NoEdge(t *testing.T) {
+	src := `package producer
+
+import "context"
+
+func RecordOrderPlaced(ctx context.Context, dynamo *DynamoClient, id string) error {
+	evt := NewOrderEvent(id, "OrderPlaced")
+	input := toPutItemInput(evt)
+	_, err := dynamo.PutItem(ctx, input)
+	return err
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer_store4.go", src)
+	requireNoEventTypeEntities(t, ents, "Go event-store constructor literal with only raw PutItem sink")
+}
+
+// TestEventType_GoProducer_EventStoreConstructorArg_Formatter_NoEdge is the
+// precision guard for a `%`-format-verb/template literal in the constructor
+// argument — never a stable wire contract, so no garbage node is minted even
+// though a real write sink is present.
+func TestEventType_GoProducer_EventStoreConstructorArg_Formatter_NoEdge(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+	"fmt"
+)
+
+func RecordOrder(ctx context.Context, store *EventStore, id string) error {
+	evt := NewOrderEvent(id, fmt.Sprintf("order-%s-placed", id))
+	return store.WriteEvent(ctx, evt)
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer_store5.go", src)
+	requireNoEventTypeEntities(t, ents, "Go event-store constructor with formatter-templated literal")
+}
+
+// TestEventType_GoProducer_EventStoreConstructorArg_MultiLiteralDrop is the
+// CRITICAL precision guard (review surface 6a/6c): when the constructor's
+// argument list carries MORE THAN ONE string literal, the FIRST-literal
+// heuristic cannot tell the event-name argument from a source/topic/region
+// argument or a nested-wrapper literal, so the whole binding is DROPPED
+// (ambiguous → no guess). Covers `NewOrderEvent(ctx, "orders-svc",
+// "OrderSettled", ...)` (source arg first) and the nested-wrapper
+// `NewOrderEvent(id, aws.String("region-us"), "OrderPlaced")` shape.
+func TestEventType_GoProducer_EventStoreConstructorArg_MultiLiteralDrop(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "source-arg-before-event-name",
+			src: `package producer
+
+import "context"
+
+func RecordOrderSettled(ctx context.Context, store *EventStore, id string, payload []byte) error {
+	evt := NewOrderEvent(ctx, "orders-svc", "OrderSettled", payload)
+	return store.WriteEvent(ctx, evt)
+}
+`,
+		},
+		{
+			name: "nested-wrapper-literal",
+			src: `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+)
+
+func RecordOrderPlaced(ctx context.Context, store *EventStore, id string) error {
+	evt := NewOrderEvent(id, aws.String("region-us"), "OrderPlaced")
+	return store.WriteEvent(ctx, evt)
+}
+`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ents, _ := runEventTypeDetect(t, "go", "producer_multi.go", tc.src)
+			requireNoEventTypeEntities(t, ents, "Go event-store constructor with >1 string literal (ambiguous drop)")
+		})
+	}
+}
+
+// TestEventType_GoProducer_EventStoreConstructorArg_IDLiteralDrop is the
+// precision guard for the event-sourcing idiom where the event TYPE lives in
+// the constructor NAME and the first (only) string literal is an
+// aggregate/ID (`NewOrderPlacedEvent("order-123", 42)`). An ID-shaped value
+// (lowercase-kebab/snake-with-digits, UUID-ish) is rejected rather than
+// minted as a poison node.
+func TestEventType_GoProducer_EventStoreConstructorArg_IDLiteralDrop(t *testing.T) {
+	src := `package producer
+
+import "context"
+
+func RecordOrderPlaced(ctx context.Context, store *EventStore) error {
+	evt := NewOrderPlacedEvent("order-123", 42)
+	return store.WriteEvent(ctx, evt)
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer_idlit.go", src)
+	requireNoEventTypeEntities(t, ents, "Go event-store constructor with ID-shaped literal (rejected)")
+}
+
+// TestEventType_GoProducer_EventStore_EventuallyNotSink is the CRITICAL sink
+// precision guard (review surface 1): `*Eventually(` calls (SaveEventually,
+// StoreEventually, WriteEventually, ...) share the `Event` substring but are
+// database consistency-mode helpers, NOT semantic event-store writes. The
+// sink regex must treat `Event` as a token, not a prefix of `Eventually`, so
+// none of these fire even with a valid constructor literal in scope.
+func TestEventType_GoProducer_EventStore_EventuallyNotSink(t *testing.T) {
+	verbs := []string{
+		"SaveEventually", "StoreEventually", "WriteEventually",
+		"PublishEventually", "AppendEventually", "StoreEventuallyConsistent",
+	}
+	for _, verb := range verbs {
+		t.Run(verb, func(t *testing.T) {
+			src := `package producer
+
+import "context"
+
+func RecordOrder(ctx context.Context, db *DB, orderID string) error {
+	evt := NewOrderEvent(orderID, "OrderPlaced")
+	return db.` + verb + `(ctx, evt)
+}
+`
+			ents, _ := runEventTypeDetect(t, "go", "producer_eventually.go", src)
+			requireNoEventTypeEntities(t, ents, "Go *Eventually call must not be an event-store sink ("+verb+")")
+		})
+	}
+}
+
+// TestEventType_GoProducer_EventStore_RecordEmitTelemetryDropped documents the
+// verb-set decision: `RecordEvent`/`EmitEvent` are dropped from the sink verb
+// set because they overwhelmingly denote ANALYTICS/telemetry emission, not a
+// domain event-store write contract. Even with a valid constructor literal in
+// scope, these must not mint a producer edge.
+func TestEventType_GoProducer_EventStore_RecordEmitTelemetryDropped(t *testing.T) {
+	for _, verb := range []string{"RecordEvent", "EmitEvent"} {
+		t.Run(verb, func(t *testing.T) {
+			src := `package producer
+
+func RecordOrder(analytics *Analytics, orderID string) error {
+	evt := NewOrderEvent(orderID, "OrderPlaced")
+	return analytics.` + verb + `(evt)
+}
+`
+			ents, _ := runEventTypeDetect(t, "go", "producer_telemetry.go", src)
+			requireNoEventTypeEntities(t, ents, "Go telemetry "+verb+" must not be an event-store sink")
+		})
+	}
+}
+
+// TestEventType_GoProducer_EventStore_EventSuffixVariantsStillMatch guards
+// against over-tightening the sink regex: the legitimate `WriteEvents(` /
+// `WriteEventBatch(` variants must STILL match after the `Eventually`
+// exclusion.
+func TestEventType_GoProducer_EventStore_EventSuffixVariantsStillMatch(t *testing.T) {
+	for _, verb := range []string{"WriteEvents", "WriteEventBatch", "PublishEvents"} {
+		t.Run(verb, func(t *testing.T) {
+			src := `package producer
+
+import "context"
+
+func RecordOrder(ctx context.Context, store *EventStore, orderID string) error {
+	evt := NewOrderEvent(orderID, "OrderSettled")
+	return store.` + verb + `(ctx, evt)
+}
+`
+			ents, rels := runEventTypeDetect(t, "go", "producer_variant.go", src)
+			id := eventTypeID("OrderSettled")
+			requireEventTypeEntity(t, ents, id, "Go event-store "+verb+" variant sink")
+			fromID := "SCOPE.Function:RecordOrder"
+			toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+			requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go event-store "+verb+" variant sink")
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // No-op guards
 // ---------------------------------------------------------------------------
 
