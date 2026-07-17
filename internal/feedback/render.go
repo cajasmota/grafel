@@ -122,6 +122,19 @@ func Render(w io.Writer, r *Report) error {
 			fmt.Fprintf(w, "_None — all kinds with >= 10 entities have orphan rate <= 30%%._\n")
 		}
 		fmt.Fprintf(w, "\n")
+
+		// Expected/terminal orphans: container-terminal Components and
+		// field-leaf terminals are not defects — routed here instead of the
+		// defect table above so the raw signal is not silently dropped.
+		if len(r.OrphanTerminalByKind) > 0 {
+			fmt.Fprintf(w, "**Expected/terminal orphans** (container-terminal by design, not defects):\n\n")
+			fmt.Fprintf(w, "| Kind | Total | Terminal orphan | Terminal orphan %% |\n|---|---|---|---|\n")
+			for _, kind := range sortedKindStatsKeys(r.OrphanTerminalByKind) {
+				tks := r.OrphanTerminalByKind[kind]
+				fmt.Fprintf(w, "| %s | %d | %d | %.1f%% |\n", kind, tks.Total, tks.OrphanCount, tks.OrphanPct)
+			}
+			fmt.Fprintf(w, "\n")
+		}
 	}
 
 	// Section 3 — Resolution Disposition

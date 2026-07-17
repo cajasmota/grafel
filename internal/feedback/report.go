@@ -81,7 +81,13 @@ type Report struct {
 	}
 
 	// Section 2 — Orphan Rate
-	OrphanByKind map[string]KindStats // kind → orphan stats (kinds with N < 10 suppressed)
+	OrphanByKind map[string]KindStats // kind → DEFECT orphan stats (kinds with N < 10 suppressed)
+	// OrphanTerminalByKind holds the same shape for orphans classified as
+	// expected/terminal by construction (container Components, field leaves
+	// anchored by an inbound CONTAINS edge) — see classifyOrphan. These are
+	// NOT defects and are reported separately so the raw signal survives
+	// instead of being silently dropped.
+	OrphanTerminalByKind map[string]KindStats
 
 	// Section 3 — Resolution Disposition
 	Resolution      ResolutionVector
@@ -114,12 +120,13 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 	}
 
 	r := &Report{
-		GeneratedAt:        time.Now().UTC(),
-		GroupName:          opts.GroupName,
-		Version:            opts.Version,
-		EntitiesByLanguage: make(map[string]int),
-		OrphanByKind:       make(map[string]KindStats),
-		FrameworkHits:      make(map[string]int),
+		GeneratedAt:          time.Now().UTC(),
+		GroupName:            opts.GroupName,
+		Version:              opts.Version,
+		EntitiesByLanguage:   make(map[string]int),
+		OrphanByKind:         make(map[string]KindStats),
+		OrphanTerminalByKind: make(map[string]KindStats),
+		FrameworkHits:        make(map[string]int),
 	}
 
 	// Merge all docs into aggregate structures.
@@ -136,9 +143,21 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 	}
 	entityEdges := make(map[string]*edgeSummary)
 
-	// Index of entity ID → kind for the orphan lookup pass.
+	// Index of entity ID → kind/subtype for the orphan lookup pass.
 	entityKind := make(map[string]string)
 	entityLang := make(map[string]string)
+	entitySubtype := make(map[string]string)
+
+	// classCandidate records a class-like entity (Subtype != "field") that is
+	// eligible for the field-extraction metric, along with its raw
+	// Properties["field_count"] (empty if the extractor never set it — true
+	// for the dominant Go/Java/Python producers, which emit fields as child
+	// entities instead; see fieldChildCount below).
+	type classCandidate struct {
+		id            string
+		fieldCountRaw string
+	}
+	var classCandidates []classCandidate
 
 	// Resolution disposition counters.
 	var (
@@ -152,9 +171,11 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 
 	annotated := 0
 	totalAnnotated := 0
-	classCount := 0
-	classZeroFields := 0
 
+	// Pass 1: entities. Populates all per-entity indices used by pass 2
+	// (relationships) below. Kept as a separate pass — rather than
+	// interleaved per-doc like before — so cross-doc relationships can
+	// reliably look up entity kind/subtype regardless of doc order.
 	for _, doc := range docs {
 		if doc == nil {
 			continue
@@ -180,6 +201,7 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 
 			entityKind[e.ID] = kind
 			entityLang[e.ID] = lang
+			entitySubtype[e.ID] = e.Subtype
 
 			// Initialise edge summary so even no-edge entities appear.
 			if _, ok := entityEdges[e.ID]; !ok {
@@ -210,13 +232,17 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			// entities found" against production data. Match case-insensitively on
 			// the namespace-stripped tail (see kindTail, mirroring
 			// internal/graph/coverage.go) and include schema.
-			if isClassLikeKind(kind) {
-				classCount++
-				// Fields are typically emitted as child entities; we use
-				// Properties["field_count"] when available.
-				if e.Properties["field_count"] == "0" || e.Properties["field_count"] == "" {
-					classZeroFields++
-				}
+			//
+			// A Subtype == "field" entity is itself a field LEAF, not a
+			// class/model container — classLikeKindTails includes "schema"
+			// which also matches these leaves (SCOPE.Schema/field), so they
+			// must be excluded here or every field would double as a "class"
+			// and guarantee a 100% zero-fields rate.
+			if isClassLikeKind(kind) && e.Subtype != "field" {
+				classCandidates = append(classCandidates, classCandidate{
+					id:            e.ID,
+					fieldCountRaw: e.Properties["field_count"],
+				})
 			}
 		}
 
@@ -229,16 +255,39 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			}
 		}
 		r.FrameworkFilesDetected += len(frameworkFilesSeen)
+	}
 
-		// Process relationships.
+	// Pass 2: relationships. fieldChildCount and hasInboundStructural are
+	// built here (over ALL docs) before any orphan/field-extraction
+	// classification happens, so it doesn't matter which doc emitted the
+	// child entity vs. the structural edge pointing at it.
+	fieldChildCount := make(map[string]int)       // parent entity ID → count of field children
+	hasInboundStructural := make(map[string]bool) // entity ID → has an inbound CONTAINS/DECLARES edge
+
+	for _, doc := range docs {
+		if doc == nil {
+			continue
+		}
 		for i := range doc.Relationships {
 			rel := &doc.Relationships[i]
 
-			// Semantic edge tracking for orphan detection.
-			if !isStructuralEdge(rel.Kind) {
-				if es, ok := entityEdges[rel.FromID]; ok {
-					es.semanticOut++
+			if isStructuralEdge(rel.Kind) {
+				// Fields are extracted as CHILD entities (Kind tail "schema",
+				// Subtype "field") linked to their parent by a structural
+				// CONTAINS/DECLARES edge (internal/extractor/structural_ref.go
+				// BuildSchemaFieldStructuralRef) — never via a
+				// Properties["field_count"] on the parent. Count the real
+				// children so the field-extraction metric reflects the graph
+				// instead of reading a property the dominant extractors never
+				// write.
+				hasInboundStructural[rel.ToID] = true
+				if entitySubtype[rel.ToID] == "field" {
+					fieldChildCount[rel.FromID]++
 				}
+			} else if es, ok := entityEdges[rel.FromID]; ok {
+				// Semantic edge tracking for orphan detection. CONTAINS/
+				// DECLARES edges do NOT reduce orphan count (handled above).
+				es.semanticOut++
 			}
 
 			// Resolution disposition, derived STRUCTURALLY from the edge ToID shape
@@ -264,12 +313,54 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		}
 	}
 
-	// Compute orphan counts per kind.
-	for id, es := range entityEdges {
-		if es.semanticOut == 0 {
-			kind := entityKind[id]
-			kindOrphans[kind]++
+	// Finalise the field-extraction metric: honor Properties["field_count"]
+	// when the (niche) extractor set it, otherwise fall back to the real
+	// field-child count, which is the source of truth for the dominant
+	// Go/Java/Python producers.
+	classCount := len(classCandidates)
+	classZeroFields := 0
+	for _, c := range classCandidates {
+		if c.fieldCountRaw != "" {
+			if c.fieldCountRaw == "0" {
+				classZeroFields++
+			}
+			continue
 		}
+		if fieldChildCount[c.id] == 0 {
+			classZeroFields++
+		}
+	}
+
+	// Compute orphan counts per kind, split into DEFECT vs expected/terminal.
+	kindTerminalOrphans := make(map[string]int)
+	for id, es := range entityEdges {
+		if es.semanticOut != 0 {
+			continue
+		}
+		kind := entityKind[id]
+		subtype := entitySubtype[id]
+
+		// Fix 2: a field LEAF's semantic anchor is its inbound CONTAINS edge
+		// from the parent, not an outbound edge — it never sources
+		// REFERENCES/CALLS/etc. by construction. Not a defect.
+		if subtype == "field" && hasInboundStructural[id] {
+			continue
+		}
+
+		// Fix 3: pure-container SCOPE.Component terminals (one per source file,
+		// module/import stubs, pattern-detector terminals — see
+		// terminalComponentSubtypes) never source an outbound semantic edge, so
+		// being orphan is expected, not an extractor/resolver bug. Route these
+		// to a separate bucket instead of the defect count. Note the exemption
+		// deliberately EXCLUDES class/struct/interface/view/service subtypes:
+		// those DO source EXTENDS/DEPENDS_ON in real graphs, so a zero-edge one
+		// is a genuine defect and stays in kindOrphans below.
+		if isComponentKind(kind) && terminalComponentSubtypes[subtype] {
+			kindTerminalOrphans[kind]++
+			continue
+		}
+
+		kindOrphans[kind]++
 	}
 
 	// Build OrphanByKind (suppress kinds with N < 10).
@@ -286,6 +377,15 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			Total:       total,
 			OrphanCount: orphans,
 			OrphanPct:   pct,
+		}
+
+		if terminal := kindTerminalOrphans[kind]; terminal > 0 {
+			tpct := 100.0 * float64(terminal) / float64(total)
+			r.OrphanTerminalByKind[kind] = KindStats{
+				Total:       total,
+				OrphanCount: terminal,
+				OrphanPct:   tpct,
+			}
 		}
 	}
 
@@ -403,6 +503,57 @@ var classLikeKindTails = map[string]bool{
 // kind, matched case-insensitively on the namespace-stripped tail.
 func isClassLikeKind(kind string) bool {
 	return classLikeKindTails[kindTail(kind)]
+}
+
+// isComponentKind reports whether kind is the generic AST container/target
+// kind (SCOPE.Component — internal/types/kinds.go), matched
+// case-insensitively on the namespace-stripped tail.
+func isComponentKind(kind string) bool {
+	return kindTail(kind) == "component"
+}
+
+// terminalComponentSubtypes lists SCOPE.Component subtypes that are genuine
+// pure containers / terminal nodes: a single per-source-file node ("file"),
+// module containers, import stubs, and the pattern-detector terminal nodes
+// (column_schema/middleware/…). No pass ever emits an outbound
+// REFERENCES/CALLS/DEPENDS_ON/EXTENDS edge FROM one of these, so a zero-edge
+// "orphan" verdict reflects intended graph shape rather than an extractor or
+// resolver defect — they are reported in the separate expected/terminal
+// bucket instead of the defect orphan count.
+//
+// This list is feedback-local policy: it is deliberately NOT the audit
+// taxonomy. internal/quality/audit/heuristics.go takes the OPPOSITE stance on
+// construct kinds — it buckets class/struct/interface as CauseRealConstructBug
+// (genuine defects) — so we do not mirror it and must not claim to. We also do
+// not import it (that would pull the internal/quality/audit → internal/daemon
+// dependency chain into this lean package for a taxonomy that does not map
+// onto "terminal vs defect").
+//
+// Crucially, class/struct/interface/view/service subtypes are EXCLUDED here.
+// Those Components DO source outbound semantic edges in real graphs — Python
+// classes emit EXTENDS (internal/extractors/python/crossfile.go
+// extractBaseClasses; classes are SCOPE.Component/class per
+// python/references.go), and framework class/view/service/controller/
+// repository Components source DEPENDS_ON (internal/docgen/tier0.go). A
+// class-subtype Component only reaches the zero-outbound-edge state when those
+// edges FAILED to resolve — i.e. exactly the extractor/resolver regression the
+// orphan-rate sanity gate exists to catch. Exempting them would silently
+// reclassify a real defect as "expected/terminal", so they MUST stay in the
+// defect OrphanByKind bucket.
+var terminalComponentSubtypes = map[string]bool{
+	// Pure containers / stubs: one per source file, module containers, import
+	// placeholders. These never source an outbound semantic edge.
+	"file":   true,
+	"module": true,
+	"import": true,
+	// Pattern-detector terminal subtypes.
+	"column_schema":     true,
+	"middleware":        true,
+	"type_alias":        true,
+	"database_index":    true,
+	"orm":               true,
+	"cross_cutting":     true,
+	"schema_validation": true,
 }
 
 // bucketCount maps a raw count to a privacy-preserving range bucket.

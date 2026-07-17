@@ -71,14 +71,18 @@ func TestGenerate_GoldenFB(t *testing.T) {
 	if r.FieldExtractionRate.ClassTotal == 0 {
 		t.Errorf("D2: field-extraction found no class/model entities in a graph with Model + SCOPE.Schema kinds")
 	}
+	// Field LEAVES (Subtype == "field") are themselves class/model/schema-tail
+	// kinds (SCOPE.Schema) but are not class/model CONTAINERS — they must be
+	// excluded from the class-like count (Fix 1), or every field doubles as a
+	// "class" and the zero-fields rate is guaranteed to read 100%.
 	wantClassLike := 0
 	for i := range doc.Entities {
-		if isClassLikeKind(doc.Entities[i].Kind) {
+		if isClassLikeKind(doc.Entities[i].Kind) && doc.Entities[i].Subtype != "field" {
 			wantClassLike++
 		}
 	}
 	if r.FieldExtractionRate.ClassTotal != wantClassLike {
-		t.Errorf("D2: ClassTotal=%d, want %d (class/model/schema-like kinds)",
+		t.Errorf("D2: ClassTotal=%d, want %d (class/model/schema-like kinds, excluding field leaves)",
 			r.FieldExtractionRate.ClassTotal, wantClassLike)
 	}
 

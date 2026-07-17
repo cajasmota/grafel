@@ -147,6 +147,38 @@ func TestRunSanityChecks_FrameworkFilesNoHits(t *testing.T) {
 	}
 }
 
+// TestRunSanityChecks_ContainerTerminalKindNoFalseFailure is the sanity-check
+// parity guard for Fix 4: the orphan-rate-not-100pct check must be evaluated
+// against the POST-classification DEFECT orphan set (r.OrphanByKind), not the
+// raw pre-classification orphan count. A SCOPE.Component kind that is 100%
+// container-terminal (every instance routed to OrphanTerminalByKind by report.go's
+// Fix 3 classification) reports 0% in OrphanByKind and must NOT trip
+// orphan-rate-not-100pct.
+func TestRunSanityChecks_ContainerTerminalKindNoFalseFailure(t *testing.T) {
+	r := &Report{
+		TotalEntities:      200,
+		EntitiesByLanguage: map[string]int{"go": 200},
+		// Every SCOPE.Component instance was classified as container-terminal
+		// (Fix 3), so the DEFECT orphan count/pct is zero even though all 20
+		// instances are orphan by the raw semanticOut==0 test.
+		OrphanByKind: map[string]KindStats{
+			"SCOPE.Component": {Total: 20, OrphanCount: 0, OrphanPct: 0.0},
+		},
+		OrphanTerminalByKind: map[string]KindStats{
+			"SCOPE.Component": {Total: 20, OrphanCount: 20, OrphanPct: 100.0},
+		},
+		ResolutionTotal: 0,
+		FrameworkHits:   map[string]int{},
+	}
+
+	results, _ := runSanityChecks(r)
+	for _, res := range results {
+		if res.Name == "orphan-rate-not-100pct[SCOPE.Component]" && !res.Passed {
+			t.Errorf("orphan-rate-not-100pct[SCOPE.Component] should PASS for a 100%%-container-terminal kind (defect pct is 0%%), note: %s", res.Note)
+		}
+	}
+}
+
 func TestRunSanityChecks_ConfidenceFormula(t *testing.T) {
 	// 1 passing check out of 1 total = 100%
 	r := &Report{

@@ -41,6 +41,14 @@ func makeDoc(entities []graph.Entity, rels []graph.Relationship) *graph.Document
 	}
 }
 
+// withSubtype returns a copy of e with Subtype set — used to build the
+// field-leaf / container-terminal fixtures for the orphan/field-extraction
+// classification tests.
+func withSubtype(e graph.Entity, subtype string) graph.Entity {
+	e.Subtype = subtype
+	return e
+}
+
 // repeat produces n copies of e with unique IDs.
 func repeat(e graph.Entity, n int) []graph.Entity {
 	out := make([]graph.Entity, n)
@@ -322,6 +330,126 @@ func TestRender_FullReport(t *testing.T) {
 	// Framework hits.
 	if !strings.Contains(out, "gin") {
 		t.Error("expected framework 'gin' in output")
+	}
+}
+
+// TestGenerate_FieldChildrenAndContainerTerminalsClassifiedCorrectly is the
+// regression guard for the feedback-collector "orphan rate" / "zero fields"
+// measurement bug (issue #5823 grounding, Fixes 1-3): the dominant Go/Java/
+// Python producers emit fields as CHILD entities (Kind tail "schema",
+// Subtype "field") linked to their parent by a structural CONTAINS edge —
+// they never write Properties["field_count"] — and pure-container SCOPE.Component
+// terminals (one per source file, module/import stubs, pattern-detector nodes)
+// never source outbound semantic edges. Those were miscounted as defects
+// (100% zero-fields, 100% orphan) before the fix.
+//
+// It ALSO guards the opposite direction: a class-subtype SCOPE.Component with
+// zero outbound edges is NOT exempt — classes DO source EXTENDS/DEPENDS_ON in
+// real graphs (python/crossfile.go, docgen/tier0.go), so a zero-edge class is
+// a genuine resolver/extractor defect and must stay in the DEFECT OrphanByKind
+// bucket where the sanity gate can catch it.
+func TestGenerate_FieldChildrenAndContainerTerminalsClassifiedCorrectly(t *testing.T) {
+	widget := makeEntity("widget", "Widget", "SCOPE.Class", "go", "widget.go", 10)
+	field1 := withSubtype(makeEntity("widget.name", "Widget.name", "SCOPE.Schema", "go", "widget.go", 11), "field")
+	field2 := withSubtype(makeEntity("widget.price", "Widget.price", "SCOPE.Schema", "go", "widget.go", 12), "field")
+	fileComp := withSubtype(makeEntity("file1", "widget.go", "SCOPE.Component", "go", "widget.go", 1), "file")
+	// A class-subtype Component with zero outbound edges — the masking-regression
+	// canary. It must land in the DEFECT bucket, never the terminal bucket.
+	classComp := withSubtype(makeEntity("class1", "OrderPlaced", "SCOPE.Component", "python", "order.py", 1), "class")
+
+	entities := []graph.Entity{widget, field1, field2, fileComp, classComp}
+	// Pad past the 50-entity / 10-per-kind reporting floors with orphan
+	// SCOPE.Function entities that carry no structural or semantic edges —
+	// they must NOT be affected by the field/container classification.
+	entities = append(entities, repeat(makeEntity("fn", "DoWork", "SCOPE.Function", "go", "a.go", 1), 50)...)
+
+	rels := []graph.Relationship{
+		{ID: "r1", FromID: "widget", ToID: "widget.name", Kind: "CONTAINS"},
+		{ID: "r2", FromID: "widget", ToID: "widget.price", Kind: "CONTAINS"},
+	}
+	// Pad SCOPE.Class, SCOPE.Component (file subtype), and SCOPE.Schema past
+	// the N>=10 suppression floor with additional non-orphan instances so the
+	// kinds under test appear in OrphanByKind/OrphanTerminalByKind.
+	for i := 0; i < 10; i++ {
+		w := makeEntity(fmt.Sprintf("w%d", i), "OtherWidget", "SCOPE.Class", "go", "w.go", 1)
+		f := withSubtype(makeEntity(fmt.Sprintf("w%df", i), "OtherWidget.x", "SCOPE.Schema", "go", "w.go", 2), "field")
+		fc := withSubtype(makeEntity(fmt.Sprintf("fc%d", i), "w.go", "SCOPE.Component", "go", "w.go", 1), "file")
+		entities = append(entities, w, f, fc)
+		rels = append(rels, graph.Relationship{
+			ID: fmt.Sprintf("cr%d", i), FromID: w.ID, ToID: f.ID, Kind: "CONTAINS",
+		})
+	}
+
+	doc := makeDoc(entities, rels)
+	r, err := Generate(context.Background(), []*graph.Document{doc}, Opts{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	// --- Fix 1: field-extraction rate reflects real field CHILDREN, not the
+	// (never-set) Properties["field_count"] property. 11 classes, all with
+	// >=1 field child → 0% zero-fields, not 100%.
+	if r.FieldExtractionRate.ClassTotal != 11 {
+		t.Errorf("ClassTotal = %d, want 11 (field-leaf terminals excluded from the class count)", r.FieldExtractionRate.ClassTotal)
+	}
+	if r.FieldExtractionRate.ZeroFieldsPct != 0.0 {
+		t.Errorf("ZeroFieldsPct = %.1f%%, want 0.0%% (every class has >=1 real field child)", r.FieldExtractionRate.ZeroFieldsPct)
+	}
+
+	// --- Fix 2: field-leaf terminals (Subtype=="field") anchored by an
+	// inbound CONTAINS edge are not orphans, even though they have zero
+	// outbound edges.
+	if ks, ok := r.OrphanByKind["SCOPE.Schema"]; ok && ks.OrphanCount != 0 {
+		t.Errorf("SCOPE.Schema defect orphans = %d, want 0 (field leaves anchored by inbound CONTAINS)", ks.OrphanCount)
+	}
+
+	// --- Fix 3: only PURE-container SCOPE.Component subtypes (file/module/
+	// import + pattern terminals) route to the expected/terminal bucket.
+	// file1 + 10 padding file-subtype Components = 11 terminal orphans.
+	tks, ok := r.OrphanTerminalByKind["SCOPE.Component"]
+	if !ok {
+		t.Fatal("expected OrphanTerminalByKind[SCOPE.Component] to be populated")
+	}
+	if tks.OrphanCount != 11 {
+		t.Errorf("SCOPE.Component terminal orphans = %d, want 11 (file-subtype only)", tks.OrphanCount)
+	}
+
+	// --- Masking guard: the class-subtype Component with zero outbound edges
+	// MUST be a DEFECT orphan (classes source EXTENDS/DEPENDS_ON in real
+	// graphs; a zero-edge class is a resolver/extractor regression). It must
+	// NOT be swallowed by the terminal bucket.
+	cks, ok := r.OrphanByKind["SCOPE.Component"]
+	if !ok {
+		t.Fatal("expected OrphanByKind[SCOPE.Component] to be populated")
+	}
+	if cks.OrphanCount != 1 {
+		t.Errorf("SCOPE.Component defect orphans = %d, want 1 (the zero-edge class-subtype Component)", cks.OrphanCount)
+	}
+}
+
+func TestRender_ExpectedTerminalOrphansSection(t *testing.T) {
+	r := &Report{
+		TotalEntities: 100,
+		GeneratedAt:   mustParseTime("2026-05-27T00:00:00Z"),
+		GroupName:     "test-group",
+		OrphanByKind:  map[string]KindStats{"SCOPE.Component": {Total: 20, OrphanCount: 0, OrphanPct: 0.0}},
+		OrphanTerminalByKind: map[string]KindStats{
+			"SCOPE.Component": {Total: 20, OrphanCount: 20, OrphanPct: 100.0},
+		},
+		FrameworkHits: map[string]int{},
+		SanityResults: []SanityResult{{Name: "minimum-entity-count", Passed: true}},
+		Confidence:    100,
+	}
+	var sb strings.Builder
+	if err := Render(&sb, r); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	out := sb.String()
+	if !strings.Contains(out, "Expected/terminal orphans") {
+		t.Error("expected 'Expected/terminal orphans' section when OrphanTerminalByKind is populated")
+	}
+	if !strings.Contains(out, "SCOPE.Component") {
+		t.Error("expected SCOPE.Component row in the terminal-orphans table")
 	}
 }
 
