@@ -624,6 +624,96 @@ export async function publishOrderPlaced(client: KinesisClient, orderId: string)
 }
 
 // ---------------------------------------------------------------------------
+// Producer — Java (GAP-015 RC5)
+// ---------------------------------------------------------------------------
+
+// TestEventType_JavaProducer_BuilderChainPutEvents covers the dominant
+// EventBridge shape: the AWS SDK v2 builder chain nests
+// `.detailType("X")` INSIDE the `.putEvents(...)` call's own argument list
+// (PutEventsRequest.builder().entries(PutEventsRequestEntry.builder()...)).
+func TestEventType_JavaProducer_BuilderChainPutEvents(t *testing.T) {
+	src := `package producer;
+
+import software.amazon.awssdk.services.eventbridge.EventBridgeClient;
+import software.amazon.awssdk.services.eventbridge.model.PutEventsRequest;
+import software.amazon.awssdk.services.eventbridge.model.PutEventsRequestEntry;
+
+public class OrderEventPublisher {
+    private final EventBridgeClient eventBridgeClient;
+
+    public void publishOrderPlaced(String orderId) {
+        eventBridgeClient.putEvents(PutEventsRequest.builder()
+            .entries(PutEventsRequestEntry.builder()
+                .detailType("OrderPlaced")
+                .detail("{\"orderId\":\"" + orderId + "\"}")
+                .build())
+            .build());
+    }
+}
+`
+	ents, rels := runEventTypeDetect(t, "java", "OrderEventPublisher.java", src)
+
+	id := eventTypeID("OrderPlaced")
+	requireEventTypeEntity(t, ents, id, "Java producer (builder-chain putEvents)")
+
+	fromID := "SCOPE.Function:publishOrderPlaced"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (builder-chain putEvents)")
+}
+
+// TestEventType_JavaProducer_SetterFormFunctionScope covers the v1/setter
+// form `.setDetailType("X")`, built on a SEPARATE statement from the
+// `.publish(...)` call site — mirroring the Go/JS-TS function-scope-recall
+// widening (root-cause C) for Java.
+func TestEventType_JavaProducer_SetterFormFunctionScope(t *testing.T) {
+	src := `package producer;
+
+import com.amazonaws.services.eventbridge.AmazonEventBridge;
+import com.amazonaws.services.eventbridge.model.PutEventsRequest;
+import com.amazonaws.services.eventbridge.model.PutEventsRequestEntry;
+
+public class OrderShippedPublisher {
+    private final AmazonEventBridge client;
+
+    public void publishOrderShipped(String orderId) {
+        PutEventsRequestEntry entry = new PutEventsRequestEntry();
+        entry.setDetailType("OrderShipped");
+        entry.setDetail("{\"orderId\":\"" + orderId + "\"}");
+        client.publish(new PutEventsRequest().withEntries(entry));
+    }
+}
+`
+	ents, rels := runEventTypeDetect(t, "java", "OrderShippedPublisher.java", src)
+
+	id := eventTypeID("OrderShipped")
+	requireEventTypeEntity(t, ents, id, "Java producer (setDetailType, function-scope)")
+
+	fromID := "SCOPE.Function:publishOrderShipped"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (setDetailType, function-scope)")
+}
+
+// TestEventType_JavaProducer_Precision_NoPublishSink verifies that a
+// `.detailType("X")` builder call with NO `.putEvents(`/`.publish(` sink
+// anywhere in the enclosing method never mints an edge — the heuristic must
+// stay gated on a real publish sink, not just the presence of the
+// detailType/setDetailType binding.
+func TestEventType_JavaProducer_Precision_NoPublishSink(t *testing.T) {
+	src := `package producer;
+
+import software.amazon.awssdk.services.eventbridge.model.PutEventsRequestEntry;
+
+public class NotAPublisher {
+    public String describe() {
+        return PutEventsRequestEntry.builder().detailType("X").build().toString();
+    }
+}
+`
+	ents, _ := runEventTypeDetect(t, "java", "NotAPublisher.java", src)
+	requireNoEventTypeEntities(t, ents, "Java detailType with no publish sink in scope")
+}
+
+// ---------------------------------------------------------------------------
 // Consumer — Terraform aws_lambda_event_source_mapping FilterCriteria
 // ---------------------------------------------------------------------------
 

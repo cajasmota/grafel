@@ -152,6 +152,8 @@ func applyEventTypeEdges(args DetectorPassArgs) DetectorPassResult {
 		applyEventTypeProducerGo(src, emitEdge)
 	case "javascript", "typescript":
 		applyEventTypeProducerJSTS(src, emitEdge)
+	case "java":
+		applyEventTypeProducerJava(src, emitEdge)
 	}
 
 	// Consumer side — IaC event-source-mapping FilterCriteria (GAP-003 fold-in).

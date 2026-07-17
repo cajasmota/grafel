@@ -498,6 +498,116 @@ func applyEventTypeProducerJSTS(
 }
 
 // ---------------------------------------------------------------------------
+// Producer — Java (GAP-015 RC5)
+// ---------------------------------------------------------------------------
+
+// javaPublishSiteRe matches common Java publish call-sites keyed on the SDK
+// method idiom (NOT on any corpus class/variable name): AWS SDK EventBridge
+// `.putEvents(` and SNS/generic `.publish(`.
+//
+// v1: only the EventBridge `.putEvents` and SNS/generic `.publish` sinks are
+// modeled. Other publish idioms — Kinesis `.putRecord(s)`, SQS
+// `.sendMessage`, Kafka `.send`, SNS `.publishBatch`, reactive
+// `Mono<PublishResponse>` variants — are deliberately deferred (see the v1
+// limitations section in the PR/report).
+var javaPublishSiteRe = regexp.MustCompile(`\.(?:putEvents|publish)\s*\(`)
+
+// javaDetailTypeRe matches the event-name binding keyed on the AWS SDK
+// idiom: the v2 fluent-builder `.detailType("X")` or the v1/setter form
+// `.setDetailType("X")`. Java string literals are always double-quoted, so
+// (unlike the Go/JS-TS allowlist regex) this doesn't need to handle
+// single/backtick quoting.
+//
+// v1: STRING-LITERAL argument only. A variable-bound or constant-bound
+// detail type (`.detailType(EVENT_NAME)`, `.detailType(evt.type())`) is a
+// follow-up — resolving it needs a symbol table, out of scope for v1.
+var javaDetailTypeRe = regexp.MustCompile(`\.(?:detailType|setDetailType)\s*\(\s*"([^"\n\r]+)"\s*\)`)
+
+// findJavaDetailType scans arg (a call's argument text, or a bounded
+// enclosing-method window) for the first `.detailType(...)`/
+// `.setDetailType(...)` string-literal binding. Returns ("", false) when
+// none is found.
+func findJavaDetailType(arg string) (value string, ok bool) {
+	m := javaDetailTypeRe.FindStringSubmatch(arg)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// enclosingJavaMethodBodyStart returns the offset of the nearest preceding
+// Java method header (from methods, as built by indexJavaEnclosingMethods)
+// before pos — the "start of the enclosing method body" boundary used to
+// widen the producer-recall search (mirrors enclosingGoFuncBodyStart /
+// enclosingNodeFuncBodyStart). Returns 0 when pos precedes every method
+// header (no enclosing method found — the widened window degrades to "from
+// the top of the file", same fail-open behavior the Go/JS-TS lookback
+// windows have at file start).
+func enclosingJavaMethodBodyStart(methods []jsFuncSpan, pos int) int {
+	start := 0
+	for _, sp := range methods {
+		if sp.offset > pos {
+			break
+		}
+		start = sp.offset
+	}
+	return start
+}
+
+// applyEventTypeProducerJava mirrors applyEventTypeProducerGo /
+// applyEventTypeProducerJSTS for Java: detect a publish sink
+// (`.putEvents(`/`.publish(`) and bind the event name via the AWS SDK
+// `.detailType(...)`/`.setDetailType(...)` builder/setter forms.
+//
+// Precision boundary #1 (co-location, the dominant real-world shape): the
+// EventBridge builder chain nests `.detailType("X")` INSIDE the
+// `.putEvents(...)` call's own argument list —
+// `client.putEvents(PutEventsRequest.builder().entries(PutEventsRequestEntry.
+// builder().detailType("OrderPlaced").build()).build())` — so the
+// balanced-paren argument extraction finds it directly.
+//
+// Precision boundary #2 (enclosing-method-scope recall, mirroring the
+// Go/JS-TS root-cause-C fix): the v1/setter form frequently builds the entry
+// in a SEPARATE statement — `entry.setDetailType("X"); ...;
+// client.publish(new PutEventsRequest().withEntries(entry))` — so when the
+// call's own argument list has no match, widen to the rest of the enclosing
+// method's body (from the nearest preceding method header up to the call
+// site). This still requires a real publish sink in the SAME method, so a
+// bare `.detailType("X")` with no `.putEvents(`/`.publish(` call anywhere in
+// scope never mints an edge.
+func applyEventTypeProducerJava(
+	src string,
+	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+) {
+	methods := indexJavaEnclosingMethods(src)
+	for _, m := range javaPublishSiteRe.FindAllStringIndex(src, -1) {
+		openParen := m[1] - 1 // regex ends in `\(`, so m[1]-1 is the '(' index.
+		arg := extractBalancedParensEngine(src, openParen)
+		value, ok := findJavaDetailType(arg)
+		detection := "publish-site-literal"
+		if !ok {
+			// v1: recall widens only to the enclosing method's body (same
+			// method as the sink). Cross-method / cross-file detail-type
+			// binding (entry built in a helper, published elsewhere) is a
+			// deferred follow-up — it would need call-graph resolution.
+			bodyStart := enclosingJavaMethodBodyStart(methods, m[0])
+			value, ok = findJavaDetailType(src[bodyStart:m[0]])
+			detection = "function-scope-struct-field"
+		}
+		if !ok {
+			continue
+		}
+		caller := enclosingJavaMethodAt(methods, m[0])
+		emitEdge(
+			fmt.Sprintf("SCOPE.Function:%s", caller),
+			value,
+			"PUBLISHES_TO",
+			map[string]string{"lang": "java", "key": "detailType", "detection": detection},
+		)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Consumer — event-source-mapping FilterCriteria (GAP-003 fold-in)
 // ---------------------------------------------------------------------------
 
