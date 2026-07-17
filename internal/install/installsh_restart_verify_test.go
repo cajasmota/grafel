@@ -123,10 +123,10 @@ func TestInstallSh_RestartDaemon_VerifiesRunningVersion(t *testing.T) {
 // TestInstallSh_RestartDaemon_HasHardRestartEscalation verifies the fallback
 // path: when the post-restart version check fails, restart_daemon must force
 // a HARD restart rather than silently leaving the stale daemon running.
-// - macOS: launchctl bootout (forces the OLD process to fully exit) before
-//   reloading (bootstrap or kickstart).
-// - Linux: systemctl --user stop, then start (a plain "restart" can race a
-//   unit that isn't actually reloading the new binary).
+//   - macOS: launchctl bootout (forces the OLD process to fully exit) before
+//     reloading (bootstrap or kickstart).
+//   - Linux: systemctl --user stop, then start (a plain "restart" can race a
+//     unit that isn't actually reloading the new binary).
 func TestInstallSh_RestartDaemon_HasHardRestartEscalation(t *testing.T) {
 	src := installShSource(t)
 	fn := extractFunc(t, src, "restart_daemon")
