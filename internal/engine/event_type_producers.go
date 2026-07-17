@@ -528,12 +528,44 @@ var javaDetailTypeRe = regexp.MustCompile(`\.(?:detailType|setDetailType)\s*\(\s
 // findJavaDetailType scans arg (the balanced-paren argument text of a
 // putEvents call) for the first `.detailType(...)`/`.setDetailType(...)`
 // string-literal binding. Returns ("", false) when none is found.
+//
+// LOW-1 (v1): a single putEvents carrying two entries with distinct
+// detailType("A")/detailType("B") captures ONLY the first — findJavaDetailType
+// returns the first regex match. Multi-detailType fan-out per putEvents is a
+// follow-up.
 func findJavaDetailType(arg string) (value string, ok bool) {
 	m := javaDetailTypeRe.FindStringSubmatch(arg)
 	if m == nil {
 		return "", false
 	}
 	return m[1], true
+}
+
+// balancedParenArgBounds returns the [openParen+1, close) byte range of the
+// first balanced `(`…`)` starting at openParen (which must point at the `(`).
+// Returns ok=false when the parens never balance before EOF.
+//
+// Unlike extractBalancedParensEngine, this takes the depth count over a
+// caller-supplied (comment/string-MASKED) copy so that an unbalanced `(`
+// inside a string literal in the putEvents argument — e.g. a `:(` emoticon or
+// a URL in the free-text EventBridge `detail` JSON — does not desync the depth
+// counter and swallow the whole file (MEDIUM-1). The caller slices the value
+// from the ORIGINAL source using the returned offsets (offsets are identical
+// because the mask preserves length).
+func balancedParenArgBounds(masked string, openParen int) (start, end int, ok bool) {
+	depth := 0
+	for i := openParen; i < len(masked); i++ {
+		switch masked[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return openParen + 1, i, true
+			}
+		}
+	}
+	return 0, 0, false
 }
 
 // maskJavaCommentsAndStrings returns a copy of src with every `//` line
@@ -645,11 +677,16 @@ func applyEventTypeProducerJava(
 	masked := maskJavaCommentsAndStrings(src)
 	for _, m := range javaPutEventsSiteRe.FindAllStringIndex(masked, -1) {
 		openParen := m[1] - 1 // regex ends in `\(`, so m[1]-1 is the '(' index.
-		// Extract the argument from the ORIGINAL source (offsets are
-		// mask-preserved) so the detailType string literal — masked in the
-		// copy — is visible here.
-		arg := extractBalancedParensEngine(src, openParen)
-		value, ok := findJavaDetailType(arg)
+		// Balance the parens over the MASKED copy so an unbalanced `(` inside
+		// a string literal in the argument (e.g. a `:(` emoticon in the
+		// EventBridge `detail` JSON) can't swallow the file (MEDIUM-1); then
+		// slice the detailType value from the ORIGINAL source at the same
+		// offsets (mask preserves length) so the masked-out literal is visible.
+		start, end, ok := balancedParenArgBounds(masked, openParen)
+		if !ok {
+			continue
+		}
+		value, ok := findJavaDetailType(src[start:end])
 		if !ok {
 			continue
 		}
@@ -659,6 +696,12 @@ func applyEventTypeProducerJava(
 			// fromID would be the bare `SCOPE.Function:` prefix, which
 			// emitEdge's fromID=="" guard does not catch. Reject (review
 			// finding #3).
+			//
+			// LOW-2 (v1): a static-field-initializer putEvents placed AFTER a
+			// method attributes to that nearest-preceding method (shared
+			// enclosingJavaMethodAt limitation) rather than being rejected;
+			// only a putEvents with NO preceding method in the file is caught
+			// here. Precise class-vs-method scoping is a follow-up.
 			continue
 		}
 		emitEdge(

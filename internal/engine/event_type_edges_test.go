@@ -698,6 +698,41 @@ public class ShipmentPublisher {
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (builder-chain second entry)")
 }
 
+// TestEventType_JavaProducer_UnbalancedParenInDetailString reproduces
+// review MEDIUM-1: the EventBridge `detail` payload is arbitrary JSON /
+// free-text, so an unbalanced `(` inside a string literal in the putEvents
+// argument (here a `:(` emoticon) must NOT desync paren-depth counting and
+// swallow the argument — the detailType must still bind.
+func TestEventType_JavaProducer_UnbalancedParenInDetailString(t *testing.T) {
+	src := `package producer;
+
+import software.amazon.awssdk.services.eventbridge.EventBridgeClient;
+import software.amazon.awssdk.services.eventbridge.model.PutEventsRequest;
+import software.amazon.awssdk.services.eventbridge.model.PutEventsRequestEntry;
+
+public class CancelPublisher {
+    private final EventBridgeClient eventBridgeClient;
+
+    public void publishOrderCancelled(String orderId) {
+        eventBridgeClient.putEvents(PutEventsRequest.builder()
+            .entries(PutEventsRequestEntry.builder()
+                .detailType("OrderCancelled")
+                .detail("{\"msg\":\"Sorry to see you go :(\"}")
+                .build())
+            .build());
+    }
+}
+`
+	ents, rels := runEventTypeDetect(t, "java", "CancelPublisher.java", src)
+
+	id := eventTypeID("OrderCancelled")
+	requireEventTypeEntity(t, ents, id, "Java producer (unbalanced paren in detail string)")
+
+	fromID := "SCOPE.Function:publishOrderCancelled"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (unbalanced paren in detail string)")
+}
+
 // TestEventType_JavaProducer_Precision_NoPublishSink verifies that a
 // `.detailType("X")` builder call with NO `.putEvents(` sink co-located in
 // the same call argument never mints an edge — the heuristic must stay gated
