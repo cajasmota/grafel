@@ -4661,6 +4661,11 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
 	embStats := resolve.ReferencesEmbeddedWithAllowlist(merged, idx, allow)
 	standStats := resolve.ReferencesWithAllowlist(pass2Rels, idx, allow)
+	// RC-A safety net: drop any PUBLISHES_TO edge whose producer-side FromID
+	// failed to resolve to a real entity above, rather than letting a
+	// dangling/stub source reach the final document (#5751-adjacent event-
+	// identity precision fix).
+	pass2Rels = resolve.DropUnresolvedPublishesTo(pass2Rels)
 	totalStats := resolve.Stats{
 		Rewritten:     embStats.Rewritten + standStats.Rewritten,
 		Ambiguous:     embStats.Ambiguous + standStats.Ambiguous,

@@ -149,12 +149,12 @@ func applyEventTypeEdges(args DetectorPassArgs) DetectorPassResult {
 	// Producer side — Go + JS/TS only for MVP.
 	switch lang {
 	case "go":
-		applyEventTypeProducerGo(src, emitEdge)
-		applyEventTypeProducerGoEventStore(src, emitEdge)
+		applyEventTypeProducerGo(path, src, emitEdge)
+		applyEventTypeProducerGoEventStore(path, src, emitEdge)
 	case "javascript", "typescript":
-		applyEventTypeProducerJSTS(src, emitEdge)
+		applyEventTypeProducerJSTS(lang, path, src, emitEdge)
 	case "java":
-		applyEventTypeProducerJava(src, emitEdge)
+		applyEventTypeProducerJava(path, src, emitEdge)
 	}
 
 	// Consumer side — IaC event-source-mapping FilterCriteria (GAP-003 fold-in).

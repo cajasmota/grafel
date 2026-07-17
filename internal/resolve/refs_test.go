@@ -2393,3 +2393,97 @@ func TestIssue2060_TestmapShortForm_AmbiguousNameNotResolved(t *testing.T) {
 	}
 	_ = stats
 }
+
+// RC-A precision fix (event-driven producer-edge modeling): PUBLISHES_TO's
+// FromID (the producer call-site's enclosing function) must be emitted as a
+// location-qualified structural-ref (extractor.BuildOperationStructuralRef)
+// rather than a bare unqualified caller name — so two same-named enclosing
+// functions in DIFFERENT files each resolve to their OWN per-file operation
+// entity, not to each other or to an ambiguous/dangling stub.
+func TestReferences_PublishesToStructuralRef_PerFileNotCrossBound(t *testing.T) {
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "SCOPE.Operation", "Publish", "orders/producer.go"),
+		entAt("bbbbbbbbbbbbbbbb", "SCOPE.Operation", "Publish", "shipping/producer.go"),
+	}
+	rels := []types.RelationshipRecord{
+		{
+			FromID: "scope:operation:method:go:orders/producer.go:Publish",
+			ToID:   "event:type:OrderPlaced",
+			Kind:   "PUBLISHES_TO",
+		},
+		{
+			FromID: "scope:operation:method:go:shipping/producer.go:Publish",
+			ToID:   "event:type:OrderShipped",
+			Kind:   "PUBLISHES_TO",
+		},
+	}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].FromID != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("orders/producer.go Publish: FromID=%s, want aaaaaaaaaaaaaaaa (per-file resolution)", rels[0].FromID)
+	}
+	if rels[1].FromID != "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("shipping/producer.go Publish: FromID=%s, want bbbbbbbbbbbbbbbb (per-file resolution)", rels[1].FromID)
+	}
+	if rels[0].FromID == rels[1].FromID {
+		t.Fatalf("both same-named producers resolved to the SAME entity — cross-file binding bug: %s", rels[0].FromID)
+	}
+	if stats.FromRewritten != 2 {
+		t.Fatalf("expected FromRewritten=2, got %+v", stats)
+	}
+}
+
+// RC-A precision fix, safety-net half: DropUnresolvedPublishesTo must strip
+// any PUBLISHES_TO edge whose FromID failed to resolve to a real 16-char hex
+// entity ID (e.g. the enclosing function genuinely doesn't exist anywhere in
+// the graph), rather than letting a dangling/stub source ship in the final
+// document. A legitimate, resolvable PUBLISHES_TO edge must survive the pass
+// untouched, and non-PUBLISHES_TO relationships must never be touched.
+func TestDropUnresolvedPublishesTo(t *testing.T) {
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "SCOPE.Operation", "Publish", "orders/producer.go"),
+	}
+	rels := []types.RelationshipRecord{
+		{
+			// Resolves — must survive.
+			FromID: "scope:operation:method:go:orders/producer.go:Publish",
+			ToID:   "event:type:OrderPlaced",
+			Kind:   "PUBLISHES_TO",
+		},
+		{
+			// Enclosing function "Ghost" is not indexed anywhere — genuinely
+			// unresolvable. Must be dropped, not kept with a dangling source.
+			FromID: "scope:operation:method:go:orders/nowhere.go:Ghost",
+			ToID:   "event:type:OrderCancelled",
+			Kind:   "PUBLISHES_TO",
+		},
+		{
+			// Unrelated relationship kind — must be left alone even though its
+			// ToID never resolves either.
+			FromID: "0000000000000000",
+			ToID:   "scope:operation:method:go:orders/nowhere.go:Ghost",
+			Kind:   "CALLS",
+		},
+	}
+	idx := BuildIndex(entities)
+	References(rels, idx)
+
+	filtered := DropUnresolvedPublishesTo(rels)
+
+	var publishesToCount int
+	for _, r := range filtered {
+		if r.Kind != "PUBLISHES_TO" {
+			continue
+		}
+		publishesToCount++
+		if !isHexID(r.FromID) {
+			t.Fatalf("unresolved PUBLISHES_TO source survived drop pass: %+v", r)
+		}
+	}
+	if publishesToCount != 1 {
+		t.Fatalf("expected exactly 1 surviving PUBLISHES_TO edge, got %d (filtered=%+v)", publishesToCount, filtered)
+	}
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 total relationships to survive (1 PUBLISHES_TO + 1 CALLS), got %d: %+v", len(filtered), filtered)
+	}
+}

@@ -6,7 +6,67 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/extractor"
 )
+
+// ---------------------------------------------------------------------------
+// Shared: producer-source structural-ref (RC-A precision fix)
+// ---------------------------------------------------------------------------
+
+// eventTypeProducerSentinelCallers are the enclosing-function-not-found
+// fallback values findEnclosingGoFunctionName / findEnclosingNodeFunctionName
+// return when no real function/method could be located (see those helpers in
+// serverless_edges.go). Neither is a real symbol name, so a structural-ref
+// built from it can never resolve via byLocation — treat it the same as an
+// empty caller and drop the edge outright (RC-A fix part 2, drop-on-unresolved
+// safety net) rather than emit a doomed stub.
+var eventTypeProducerSentinelCallers = map[string]bool{
+	"package": true, // Go: no enclosing func decl found in the lookback window
+	"module":  true, // JS/TS: no enclosing func/arrow found in the lookback window
+}
+
+// producerSourceRef builds the location-qualified structural-ref FromID for a
+// PUBLISHES_TO producer edge (RC-A precision fix). Every producer detector in
+// this file previously stamped the FromID as a bare-leaf-name symbolic stub —
+// `fmt.Sprintf("SCOPE.Function:%s", caller)` — which fails resolution for
+// three independent reasons (see the RC-A root-cause writeup at the top of
+// this file's package doc / the task description):
+//
+//  1. The stub claims kind "SCOPE.Function", but the tree-sitter extractors
+//     emit real Go/JS/Java functions and methods as SCOPE.Operation, so the
+//     precise kind+name resolver tier never hits.
+//  2. The stub carries no source-file context (it's a standalone
+//     Relationship, and the SCOPE.EventType ToID node is minted with
+//     SourceFile: "" too), so the resolver's same-file/same-package locality
+//     tie-break (rewriteOneWithCaller) never engages.
+//  3. A repeated leaf name across files/packages (e.g. two different
+//     "Handler" functions) collides in the bare-name index, so even when the
+//     kind is fixed the lookup is ambiguous.
+//
+// This helper instead emits the canonical Format-A structural-ref
+// `scope:operation:method:<lang>:<file>:<name>` — the SAME convention
+// internal/extractor.BuildOperationStructuralRef centralizes for class→method
+// CONTAINS edges and the Go/JS/TS bare-call CALLS path (Refs #44) — which the
+// central resolver (internal/resolve.Index.lookupStructural) binds
+// deterministically via byLocation[file][name] (same-file, the dominant case)
+// with a same-package fallback for Go (byPackageOperation).
+//
+// Returns "" — signalling the caller should not emit an edge at all — when
+// path or caller is empty, or caller is a known non-resolving sentinel
+// ("package"/"module"). This is the belt half of the RC-A fix: a caller name
+// that could never structurally resolve is dropped at the source rather than
+// handed to the resolver as a doomed stub. The suspenders half (dropping a
+// stub that DOES look like a real name but still fails to resolve against the
+// graph) is enforced downstream by resolve.DropUnresolvedPublishesTo, which
+// runs after the central resolver and removes any surviving PUBLISHES_TO edge
+// whose FromID never became a real (16-char hex) entity id.
+func producerSourceRef(lang, path, caller string) string {
+	if path == "" || caller == "" || eventTypeProducerSentinelCallers[caller] {
+		return ""
+	}
+	return extractor.BuildOperationStructuralRef(lang, path, caller)
+}
 
 // ---------------------------------------------------------------------------
 // Shared: allowlisted event-type key extraction
@@ -78,12 +138,40 @@ func isEventTypeWrapperFormatter(wrapper string) bool {
 	return eventTypeFormatterFuncs[base]
 }
 
+// eventTypeReservedValues denylists values that pattern-match the allowlisted
+// {eventName: "X"} shape (findAllowlistedEventType's own precision gate) but
+// are NEVER a domain event-type contract (defect RC-B-1). "eventName" is a
+// legitimate domain-event-envelope key (order-service `EventName:
+// "OrderPlaced"`), but it is ALSO the literal field name DynamoDB Streams
+// stamps on every stream record to carry the record's CRUD operation type —
+// `event.Records[i].EventName` is always exactly one of INSERT / MODIFY /
+// REMOVE. A DynamoDB-Streams Lambda handler that also happens to
+// republish/forward events elsewhere in the SAME function scope (the
+// realistic real-world shape — this pass's function-scope recall widening
+// doesn't require co-location with the actual publish call) previously mined
+// a bogus `event:type:INSERT` node from the record's plumbing field. These
+// three values are DynamoDB Streams' fixed vocabulary, never a domain event
+// name, so they are rejected case-insensitively regardless of which
+// allowlisted key produced them.
+var eventTypeReservedValues = map[string]bool{
+	"INSERT": true,
+	"MODIFY": true,
+	"REMOVE": true,
+}
+
 // isEventTypeValueUsable rejects a captured value that cannot be a stable wire
 // contract: one carrying a `%` format verb (a `fmt.Sprintf` template such as
 // `order.%s.placed`), which never verbatim-joins a consumer (review
-// MUST-FIX #2).
+// MUST-FIX #2), or one matching the DynamoDB-Streams record-operation-type
+// denylist (defect RC-B-1, eventTypeReservedValues).
 func isEventTypeValueUsable(value string) bool {
-	return !strings.Contains(value, "%")
+	if strings.Contains(value, "%") {
+		return false
+	}
+	if eventTypeReservedValues[strings.ToUpper(value)] {
+		return false
+	}
+	return true
 }
 
 // eventTypeAllowlistKeyIdentRe mirrors eventTypeAllowlistKeyRe but matches a
@@ -392,7 +480,7 @@ func enclosingGoFuncBodyStart(src string, offset int) int {
 // path (GAP-005) and is newly reachable for EventBridge via the RC2 PutEvents
 // sink; tightening it to per-payload co-location is a follow-up.
 func applyEventTypeProducerGo(
-	src string,
+	path, src string,
 	emitEdge func(fromID, verbatim, kind string, props map[string]string),
 ) {
 	bindings := buildGoStringBindingTable(src)
@@ -429,7 +517,7 @@ func applyEventTypeProducerGo(
 		}
 		caller := findEnclosingGoFunctionName(src, m[0])
 		emitEdge(
-			fmt.Sprintf("SCOPE.Function:%s", caller),
+			producerSourceRef("go", path, caller),
 			value,
 			"PUBLISHES_TO",
 			map[string]string{"lang": "go", "key": key, "detection": detection},
@@ -596,7 +684,7 @@ func nearestGoEventConstructorLiteral(scope string) (value string, ok bool) {
 // one that lexically follows the sink, is not matched. See RC1 report for
 // the full v1-limitations list.
 func applyEventTypeProducerGoEventStore(
-	src string,
+	path, src string,
 	emitEdge func(fromID, verbatim, kind string, props map[string]string),
 ) {
 	for _, m := range goEventStoreWriteSiteRe.FindAllStringIndex(src, -1) {
@@ -608,7 +696,7 @@ func applyEventTypeProducerGoEventStore(
 		}
 		caller := findEnclosingGoFunctionName(src, m[0])
 		emitEdge(
-			fmt.Sprintf("SCOPE.Function:%s", caller),
+			producerSourceRef("go", path, caller),
 			value,
 			"PUBLISHES_TO",
 			map[string]string{"lang": "go", "detection": "event-store-constructor-arg"},
@@ -650,7 +738,7 @@ func enclosingNodeFuncBodyStart(src string, offset int) int {
 // including the function-scope recall widening (GAP-005 root-cause C) for
 // the `const evt = {eventType:"X"}; ...; client.send(evt)` shape.
 func applyEventTypeProducerJSTS(
-	src string,
+	lang, path, src string,
 	emitEdge func(fromID, verbatim, kind string, props map[string]string),
 ) {
 	for _, m := range jstsPublishSiteRe.FindAllStringIndex(src, -1) {
@@ -668,7 +756,7 @@ func applyEventTypeProducerJSTS(
 		}
 		caller := findEnclosingNodeFunctionName(src, m[0])
 		emitEdge(
-			fmt.Sprintf("SCOPE.Function:%s", caller),
+			producerSourceRef(lang, path, caller),
 			value,
 			"PUBLISHES_TO",
 			map[string]string{"lang": "javascript", "key": key, "detection": detection},
@@ -849,7 +937,7 @@ func maskJavaCommentsAndStrings(src string) string {
 //     is deferred (would need call-graph / dataflow resolution).
 //   - STRING-LITERAL detailType only (variable/constant-bound deferred).
 func applyEventTypeProducerJava(
-	src string,
+	path, src string,
 	emitEdge func(fromID, verbatim, kind string, props map[string]string),
 ) {
 	methods := indexJavaEnclosingMethods(src)
@@ -884,7 +972,7 @@ func applyEventTypeProducerJava(
 			continue
 		}
 		emitEdge(
-			fmt.Sprintf("SCOPE.Function:%s", caller),
+			producerSourceRef("java", path, caller),
 			value,
 			"PUBLISHES_TO",
 			map[string]string{"lang": "java", "key": "detailType", "detection": "publish-site-literal"},

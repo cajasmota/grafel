@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -81,7 +82,7 @@ func PublishOrderPlaced(ctx context.Context, client *kinesis.Client, orderID str
 	id := eventTypeID("OrderPlaced")
 	requireEventTypeEntity(t, ents, id, "Go producer")
 
-	fromID := "SCOPE.Function:PublishOrderPlaced"
+	fromID := extractor.BuildOperationStructuralRef("go", "producer.go", "PublishOrderPlaced")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go producer")
 }
@@ -131,7 +132,7 @@ func PublishOrderPlaced(ctx context.Context, client *kinesis.Client, orderID str
 	id := eventTypeID("OrderPlaced")
 	requireEventTypeEntity(t, ents, id, "Go producer (function-scope struct field)")
 
-	fromID := "SCOPE.Function:PublishOrderPlaced"
+	fromID := extractor.BuildOperationStructuralRef("go", "producer.go", "PublishOrderPlaced")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go producer (function-scope struct field)")
 }
@@ -195,7 +196,7 @@ func PublishOrderPlaced(ctx context.Context, client *eventbridge.Client, orderID
 	id := eventTypeID("OrderPlaced")
 	requireEventTypeEntity(t, ents, id, "Go EventBridge PutEvents producer")
 
-	fromID := "SCOPE.Function:PublishOrderPlaced"
+	fromID := extractor.BuildOperationStructuralRef("go", "producer.go", "PublishOrderPlaced")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge PutEvents producer")
 }
@@ -230,7 +231,7 @@ func PublishOrderShipped(ctx context.Context, client *eventbridge.EventBridge, o
 	id := eventTypeID("OrderShipped")
 	requireEventTypeEntity(t, ents, id, "Go EventBridge PutEventsWithContext producer")
 
-	fromID := "SCOPE.Function:PublishOrderShipped"
+	fromID := extractor.BuildOperationStructuralRef("go", "producer_v1.go", "PublishOrderShipped")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge PutEventsWithContext producer")
 }
@@ -265,7 +266,7 @@ func PublishOrderSettled(ctx context.Context, client *eventbridge.Client) error 
 	id := eventTypeID("OrderSettled")
 	requireEventTypeEntity(t, ents, id, "Go EventBridge aws.String wrapper producer")
 
-	fromID := "SCOPE.Function:PublishOrderSettled"
+	fromID := extractor.BuildOperationStructuralRef("go", "producer_wrapper.go", "PublishOrderSettled")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge aws.String wrapper producer")
 }
@@ -305,7 +306,7 @@ func PublishOrderShipped(ctx context.Context, client *eventbridge.Client, orderI
 	id := eventTypeID("OrderShipped")
 	requireEventTypeEntity(t, ents, id, "Go EventBridge const-bound DetailType producer")
 
-	fromID := "SCOPE.Function:PublishOrderShipped"
+	fromID := extractor.BuildOperationStructuralRef("go", "producer_const.go", "PublishOrderShipped")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge const-bound DetailType producer")
 
@@ -408,8 +409,9 @@ func B(ctx context.Context, detail string, client *eventbridge.Client) error {
 `
 	ents, rels := runEventTypeDetect(t, "go", "producer_crossfn.go", src)
 	requireNoEventTypeEntities(t, ents, "cross-function local must not resolve at param site")
+	bFromID := extractor.BuildOperationStructuralRef("go", "producer_crossfn.go", "B")
 	for _, r := range rels {
-		if r.FromID == "SCOPE.Function:B" {
+		if r.FromID == bFromID {
 			t.Errorf("expected no PUBLISHES_TO edge from B; got edge to %q", r.ToID)
 		}
 	}
@@ -513,8 +515,10 @@ func Outer(ctx context.Context, c *eventbridge.Client) {
 `
 	ents, rels := runEventTypeDetect(t, "go", "producer_closure.go", src)
 	requireNoEventTypeEntities(t, ents, "closure param shadows package const — must not resolve to const literal")
+	outerFromID := extractor.BuildOperationStructuralRef("go", "producer_closure.go", "Outer")
+	hFromID := extractor.BuildOperationStructuralRef("go", "producer_closure.go", "h")
 	for _, r := range rels {
-		if r.FromID == "SCOPE.Function:Outer" || r.FromID == "SCOPE.Function:h" {
+		if r.FromID == outerFromID || r.FromID == hFromID {
 			t.Errorf("expected no PUBLISHES_TO edge from closure/outer; got edge to %q", r.ToID)
 		}
 	}
@@ -583,7 +587,7 @@ func PublishOrderShipped(ctx context.Context, client *eventbridge.Client, orderI
 	id := eventTypeID("OrderShipped")
 	requireEventTypeEntity(t, ents, id, "Go EventBridge grouped-const DetailType producer")
 
-	fromID := "SCOPE.Function:PublishOrderShipped"
+	fromID := extractor.BuildOperationStructuralRef("go", "producer_grouped_const.go", "PublishOrderShipped")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge grouped-const DetailType producer")
 
@@ -618,7 +622,7 @@ export async function publishOrderPlaced(client: KinesisClient, orderId: string)
 	id := eventTypeID("OrderPlaced")
 	requireEventTypeEntity(t, ents, id, "JS/TS producer")
 
-	fromID := "SCOPE.Function:publishOrderPlaced"
+	fromID := extractor.BuildOperationStructuralRef("typescript", "producer.ts", "publishOrderPlaced")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "JS/TS producer")
 }
@@ -656,7 +660,7 @@ public class OrderEventPublisher {
 	id := eventTypeID("OrderPlaced")
 	requireEventTypeEntity(t, ents, id, "Java producer (builder-chain putEvents)")
 
-	fromID := "SCOPE.Function:publishOrderPlaced"
+	fromID := extractor.BuildOperationStructuralRef("java", "OrderEventPublisher.java", "publishOrderPlaced")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (builder-chain putEvents)")
 }
@@ -693,7 +697,7 @@ public class ShipmentPublisher {
 	id := eventTypeID("OrderShipped")
 	requireEventTypeEntity(t, ents, id, "Java producer (builder-chain second entry)")
 
-	fromID := "SCOPE.Function:publishOrderShipped"
+	fromID := extractor.BuildOperationStructuralRef("java", "ShipmentPublisher.java", "publishOrderShipped")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (builder-chain second entry)")
 }
@@ -728,7 +732,7 @@ public class CancelPublisher {
 	id := eventTypeID("OrderCancelled")
 	requireEventTypeEntity(t, ents, id, "Java producer (unbalanced paren in detail string)")
 
-	fromID := "SCOPE.Function:publishOrderCancelled"
+	fromID := extractor.BuildOperationStructuralRef("java", "CancelPublisher.java", "publishOrderCancelled")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Java producer (unbalanced paren in detail string)")
 }
@@ -809,8 +813,8 @@ public class Logged {
 // TestEventType_JavaProducer_Precision_ClassScopeNoCaller reproduces review
 // finding #3: a co-located putEvents+detailType in a static field
 // initializer (NOT inside any indexed method) has an empty enclosing-method
-// name, so fromID would be the bare `"SCOPE.Function:"` prefix — emission
-// must be rejected when the enclosing method name is empty.
+// name, so fromID would be an empty structural-ref — emission must be
+// rejected when the enclosing method name is empty.
 func TestEventType_JavaProducer_Precision_ClassScopeNoCaller(t *testing.T) {
 	src := `package producer;
 
@@ -826,8 +830,8 @@ public class StaticInit {
 `
 	_, rels := runEventTypeDetect(t, "java", "StaticInit.java", src)
 	for _, r := range rels {
-		if r.FromID == "SCOPE.Function:" {
-			t.Errorf("class-scope sink: expected NO edge with empty caller prefix, got %+v", r)
+		if r.Kind == "PUBLISHES_TO" && r.FromID == "" {
+			t.Errorf("class-scope sink: expected NO edge with empty caller, got %+v", r)
 		}
 	}
 }
@@ -1267,7 +1271,7 @@ func RecordOrderSettled(ctx context.Context, store *EventStore, id string, paylo
 	id := eventTypeID("OrderSettled")
 	requireEventTypeEntity(t, ents, id, "Go event-store constructor-arg producer")
 
-	fromID := "SCOPE.Function:RecordOrderSettled"
+	fromID := extractor.BuildOperationStructuralRef("go", "producer_store.go", "RecordOrderSettled")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go event-store constructor-arg producer")
 
@@ -1299,7 +1303,7 @@ func RecordOrderPlaced(ctx context.Context, p []byte) error {
 	id := eventTypeID("OrderPlaced")
 	requireEventTypeEntity(t, ents, id, "Go event-store constructor-arg producer (PublishEvent)")
 
-	fromID := "SCOPE.Function:RecordOrderPlaced"
+	fromID := extractor.BuildOperationStructuralRef("go", "producer_store2.go", "RecordOrderPlaced")
 	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go event-store constructor-arg producer (PublishEvent)")
 }
@@ -1499,11 +1503,104 @@ func RecordOrder(ctx context.Context, store *EventStore, orderID string) error {
 			ents, rels := runEventTypeDetect(t, "go", "producer_variant.go", src)
 			id := eventTypeID("OrderSettled")
 			requireEventTypeEntity(t, ents, id, "Go event-store "+verb+" variant sink")
-			fromID := "SCOPE.Function:RecordOrder"
+			fromID := extractor.BuildOperationStructuralRef("go", "producer_variant.go", "RecordOrder")
 			toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
 			requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go event-store "+verb+" variant sink")
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Producer — Go — RC-B-1: DynamoDB-Streams reserved-value denylist
+// ---------------------------------------------------------------------------
+
+// TestEventType_GoProducer_DynamoDBStreamsReservedValue_NotMinted is the
+// red->green regression for defect RC-B-1: DynamoDB Streams stamps a fixed
+// `EventName` field (one of INSERT/MODIFY/REMOVE) on every stream record,
+// and "eventName" is a legitimate allowlisted event-envelope key. A stream
+// handler that inspects `rec.EventName` in the SAME function scope as a
+// real publish call (the function-scope-recall widening covered by
+// TestEventType_GoProducer_FunctionScopeStructField) previously minted a
+// bogus event:type:INSERT/MODIFY/REMOVE node purely from that plumbing
+// field. None of the three reserved values may ever mint a node, checked
+// case-insensitively; verified per-value with t.Run subtests.
+func TestEventType_GoProducer_DynamoDBStreamsReservedValue_NotMinted(t *testing.T) {
+	for _, reserved := range []string{"INSERT", "MODIFY", "REMOVE", "insert", "Modify"} {
+		t.Run(reserved, func(t *testing.T) {
+			src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+)
+
+type StreamRecord struct {
+	EventName string
+}
+
+func HandleStreamRecord(ctx context.Context, client *kinesis.Client, orderID string) error {
+	rec := StreamRecord{
+		EventName: "` + reserved + `",
+	}
+	_ = rec
+	_, err := client.PutRecord(ctx, &kinesis.PutRecordInput{
+		StreamName:   aws.String("orders-stream"),
+		PartitionKey: aws.String(orderID),
+	})
+	return err
+}
+`
+			ents, _ := runEventTypeDetect(t, "go", "stream_handler.go", src)
+			for _, want := range []string{"INSERT", "MODIFY", "REMOVE"} {
+				id := eventTypeID(want)
+				if eventTypeEntityByID(ents, id) != nil {
+					t.Errorf("EventName:%q must never mint %s; got %v", reserved, id, entNames(ents))
+				}
+			}
+		})
+	}
+}
+
+// TestEventType_GoProducer_EventNameSyntheticDomainName_StillMinted is the
+// companion positive guard: the RC-B-1 denylist must be scoped to the exact
+// DynamoDB-Streams reserved vocabulary — a legitimate synthetic domain event
+// name carried in the SAME "eventName" key shape must still mint normally.
+func TestEventType_GoProducer_EventNameSyntheticDomainName_StillMinted(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+)
+
+type OrderEvent struct {
+	EventName string
+}
+
+func PublishOrderPlaced(ctx context.Context, client *kinesis.Client, orderID string) error {
+	evt := OrderEvent{
+		EventName: "OrderPlaced",
+	}
+	_ = evt
+	_, err := client.PutRecord(ctx, &kinesis.PutRecordInput{
+		StreamName:   aws.String("orders-stream"),
+		PartitionKey: aws.String(orderID),
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_eventname.go", src)
+
+	id := eventTypeID("OrderPlaced")
+	requireEventTypeEntity(t, ents, id, "Go producer (legitimate eventName)")
+
+	fromID := extractor.BuildOperationStructuralRef("go", "producer_eventname.go", "PublishOrderPlaced")
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go producer (legitimate eventName)")
 }
 
 // ---------------------------------------------------------------------------
