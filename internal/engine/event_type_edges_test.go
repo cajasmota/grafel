@@ -345,6 +345,142 @@ func BuildOrderPlacedEntry() types.PutEventsRequestEntry {
 	requireNoEventTypeEntities(t, ents, "DetailType literal with no publish sink in function")
 }
 
+// TestEventType_GoProducer_EventBridgeDetailType_ParamShadowsPackageConst is
+// the correctness guard for review MUST-FIX #1: the identifier at the publish
+// site is the enclosing function's PARAMETER (`detail string`), whose runtime
+// value is unknown — but a same-named PACKAGE-LEVEL const with a different
+// literal exists elsewhere in the file. The file-global binding table must
+// NOT resolve the param to that unrelated const literal. No node/edge.
+func TestEventType_GoProducer_EventBridgeDetailType_ParamShadowsPackageConst(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+const detail = "OrderPlaced"
+
+func Publish(ctx context.Context, detail string, client *eventbridge.Client) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: aws.String(detail)},
+		},
+	})
+	return err
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer_shadow.go", src)
+	requireNoEventTypeEntities(t, ents, "param shadows package const — must not resolve to const literal")
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_CrossFunctionLocalNotResolved
+// is the reviewer's exact reproducer for MUST-FIX #1: a `:=` local in one
+// function must never bind an identically-named identifier at a publish site
+// in a DIFFERENT function (there, `detail` is a parameter). No wrong edge.
+func TestEventType_GoProducer_EventBridgeDetailType_CrossFunctionLocalNotResolved(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+func A() {
+	detail := "OrderPlaced"
+	_ = detail
+}
+
+func B(ctx context.Context, detail string, client *eventbridge.Client) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: aws.String(detail)},
+		},
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_crossfn.go", src)
+	requireNoEventTypeEntities(t, ents, "cross-function local must not resolve at param site")
+	for _, r := range rels {
+		if r.FromID == "SCOPE.Function:B" {
+			t.Errorf("expected no PUBLISHES_TO edge from B; got edge to %q", r.ToID)
+		}
+	}
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_FormatterNotMinted is the
+// guard for review MUST-FIX #2: a single-arg wrapper that is a FORMATTER or
+// TEMPLATE call must not mint a garbage / never-joining node. Both cases have
+// a real PutEvents sink, so the ONLY reason to reject is the wrapper's nature.
+func TestEventType_GoProducer_EventBridgeDetailType_FormatterNotMinted(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{
+			// fmt.Sprintf as the DIRECT DetailType wrapper, with a format verb —
+			// the outermost single-wrapper exposure. Runtime value carries a `%s`.
+			name: "sprintf-verb",
+			src: `package producer
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+func Publish(ctx context.Context, region string, client *eventbridge.Client) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: fmt.Sprintf("order.%s.placed", region)},
+		},
+	})
+	return err
+}
+`,
+		},
+		{
+			// strings.ToUpper as the DIRECT DetailType wrapper — runtime value
+			// ("ORDERPLACED") never verbatim-joins the literal "orderplaced".
+			name: "strings-toupper",
+			src: `package producer
+
+import (
+	"context"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+func Publish(ctx context.Context, client *eventbridge.Client) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: strings.ToUpper("orderplaced")},
+		},
+	})
+	return err
+}
+`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ents, _ := runEventTypeDetect(t, "go", "producer_fmt.go", c.src)
+			requireNoEventTypeEntities(t, ents, "formatter/template wrapper ("+c.name+")")
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Producer — JS/TS
 // ---------------------------------------------------------------------------

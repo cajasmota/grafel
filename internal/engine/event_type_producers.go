@@ -42,10 +42,49 @@ import (
 // match, by design. Cross-file/imported consts are out of scope for v1 (see
 // buildGoStringBindingTable).
 //
-// Group 1 = the matched key text, group 2 = the string value.
+// Group 1 = the matched key text, group 2 = the OPTIONAL wrapper-call name
+// (empty when the value is a bare literal), group 3 = the string value.
 var eventTypeAllowlistKeyRe = regexp.MustCompile(
-	`["']?\b((?i:eventType|detailType|detail-type|eventName))\b["']?\s*:\s*(?:\w[\w.]*\(\s*)?["'` + "`" + `]([^"'` + "`" + `\n\r]+)["'` + "`" + `]`,
+	`["']?\b((?i:eventType|detailType|detail-type|eventName))\b["']?\s*:\s*(?:(\w[\w.]*)\(\s*)?["'` + "`" + `]([^"'` + "`" + `\n\r]+)["'` + "`" + `]`,
 )
+
+// eventTypeFormatterFuncs is the set of wrapper-call base names (the segment
+// after the last `.`) that TRANSFORM their string argument at runtime, so the
+// captured literal is NOT the wire value that would verbatim-join a consumer
+// (review MUST-FIX #2). Covers the fmt Sprint-family and the common
+// strings-package case-/whitespace-mutators. A DetailType wrapped in one of
+// these is skipped rather than minted as a garbage/never-joining node. Not
+// exhaustive by design — the `%`-format-verb guard in isEventTypeValueUsable
+// catches the dominant fmt.Sprintf template case independently of this set.
+var eventTypeFormatterFuncs = map[string]bool{
+	"Sprintf": true, "Sprint": true, "Sprintln": true, "Errorf": true,
+	"ToUpper": true, "ToLower": true, "Title": true, "ToTitle": true,
+	"TrimSpace": true, "Trim": true, "TrimPrefix": true, "TrimSuffix": true,
+	"ReplaceAll": true, "Replace": true, "Join": true, "Repeat": true,
+	"Format": true, "Fields": true, "Split": true,
+}
+
+// isEventTypeWrapperFormatter reports whether a captured wrapper-call name is
+// a runtime string transformer (see eventTypeFormatterFuncs). The base name
+// is the last dotted segment (`strings.ToUpper` -> `ToUpper`).
+func isEventTypeWrapperFormatter(wrapper string) bool {
+	if wrapper == "" {
+		return false
+	}
+	base := wrapper
+	if i := strings.LastIndex(wrapper, "."); i >= 0 {
+		base = wrapper[i+1:]
+	}
+	return eventTypeFormatterFuncs[base]
+}
+
+// isEventTypeValueUsable rejects a captured value that cannot be a stable wire
+// contract: one carrying a `%` format verb (a `fmt.Sprintf` template such as
+// `order.%s.placed`), which never verbatim-joins a consumer (review
+// MUST-FIX #2).
+func isEventTypeValueUsable(value string) bool {
+	return !strings.Contains(value, "%")
+}
 
 // eventTypeAllowlistKeyIdentRe mirrors eventTypeAllowlistKeyRe but matches a
 // BARE IDENTIFIER value instead of a string literal — the shape `DetailType:
@@ -60,20 +99,26 @@ var eventTypeAllowlistKeyRe = regexp.MustCompile(
 // narrowing — a bare `DetailType: orderDetailType` with no wrapper is out of
 // scope). The identifier itself is resolved via buildGoStringBindingTable,
 // which is SAME-FILE ONLY (v1 narrowing — no cross-file/import resolution).
-// Group 1 = the matched key text, group 2 = the identifier name.
+// Group 1 = the matched key text, group 2 = the wrapper-call name, group 3 =
+// the identifier name.
 var eventTypeAllowlistKeyIdentRe = regexp.MustCompile(
-	`["']?\b((?i:eventType|detailType|detail-type|eventName))\b["']?\s*:\s*\w[\w.]*\(\s*([A-Za-z_]\w*)\s*\)`,
+	`["']?\b((?i:eventType|detailType|detail-type|eventName))\b["']?\s*:\s*(\w[\w.]*)\(\s*([A-Za-z_]\w*)\s*\)`,
 )
 
 // findAllowlistedEventType scans arg (the text of a call's argument list, or
 // any bounded literal window) for the first allowlisted key/string-literal
-// pair. Returns ("", "", false) when none is found.
+// pair whose value is a usable wire contract — a formatter/template wrapper
+// (review MUST-FIX #2) is skipped and scanning continues to the next match.
+// Returns ("", "", false) when none is found.
 func findAllowlistedEventType(arg string) (key, value string, ok bool) {
-	m := eventTypeAllowlistKeyRe.FindStringSubmatch(arg)
-	if m == nil {
-		return "", "", false
+	for _, m := range eventTypeAllowlistKeyRe.FindAllStringSubmatch(arg, -1) {
+		wrapper, val := m[2], m[3]
+		if !isEventTypeValueUsable(val) || isEventTypeWrapperFormatter(wrapper) {
+			continue
+		}
+		return m[1], val, true
 	}
-	return m[1], m[2], true
+	return "", "", false
 }
 
 // ---------------------------------------------------------------------------
@@ -98,50 +143,56 @@ var goPublishSiteRe = regexp.MustCompile(
 )
 
 // goConstStringBindingRe matches `const X = "..."` (with or without an
-// explicit type name, e.g. `const orderDetailType string = "OrderShipped"`)
-// package-level or in-function const declarations. Group 1 = identifier,
-// group 2 = literal value.
+// explicit type name, e.g. `const orderDetailType string = "OrderShipped"`),
+// including grouped `const ( X = "..." )` blocks (the `(?m)^\s*` prefix
+// matches the indented member lines). Group 1 = identifier, group 2 = literal
+// value.
 var goConstStringBindingRe = regexp.MustCompile(
 	`(?m)^\s*const\s+(\w+)\s*(?:\w+\s+)?=\s*"([^"\n\r]+)"`,
 )
 
-// goShortVarStringBindingRe matches `X := "..."` short variable
-// declarations. Group 1 = identifier, group 2 = literal value.
-var goShortVarStringBindingRe = regexp.MustCompile(
-	`(\w+)\s*:=\s*"([^"\n\r]+)"`,
+// goVarStringBindingRe matches `var X = "..."` declarations (with or without
+// an explicit type name). Group 1 = identifier, group 2 = literal value.
+// NOTE: this regex is not scope-aware — an in-function `var x = "..."` also
+// matches — but the publish-site shadow guard (goIdentifierShadowedInFunc)
+// rejects any identifier that is a param/local of the enclosing function, so
+// only genuinely PACKAGE-level bindings survive to resolve a publish site.
+var goVarStringBindingRe = regexp.MustCompile(
+	`(?m)^\s*var\s+(\w+)\s*(?:\w+\s+)?=\s*"([^"\n\r]+)"`,
 )
 
-// goAssignStringBindingRe matches `X = "..."` plain assignments (anchored to
-// line-start-ish via \s* so it doesn't fire mid-expression). Group 1 =
-// identifier, group 2 = literal value.
-var goAssignStringBindingRe = regexp.MustCompile(
-	`(?m)^\s*(\w+)\s*=\s*"([^"\n\r]+)"`,
-)
-
-// buildGoStringBindingTable scans src for `const X = "..."`, `X := "..."`,
-// and `X = "..."` string bindings (GAP-015 RC4: same-file identifier
-// resolution for `DetailType: aws.String(orderDetailType)`-shaped producer
-// call-sites) and returns a name->literal table. Only UNAMBIGUOUS bindings
-// are kept — an identifier bound to two different literal values anywhere
-// in the file is dropped entirely rather than guessed at.
+// buildGoStringBindingTable scans src for `const X = "..."` and `var X =
+// "..."` string bindings (GAP-015 RC4: same-file identifier resolution for
+// `DetailType: aws.String(orderDetailType)`-shaped producer call-sites) and
+// returns a name->literal table. Only UNAMBIGUOUS bindings are kept — an
+// identifier bound to two different literal values anywhere in the file is
+// dropped entirely rather than guessed at.
+//
+// SAFETY (review MUST-FIX #1): this table intentionally does NOT include
+// function-local `:=`/`=` bindings. Those are scope-local and a file-global
+// table cannot tell which function a binding belongs to, so including them
+// let a `detail := "X"` in one function wrongly resolve a same-named
+// PARAMETER at a publish site in another function. Resolution is therefore
+// restricted to package-level-style const/var declarations, AND every
+// publish-site resolution is additionally gated by goIdentifierShadowedInFunc
+// (which rejects the identifier if it is a param or `:=`/`var` local of the
+// ENCLOSING function). Together these guarantee a resolved identifier really
+// is the package-level binding — not a shadowing local/param — so the
+// previous "never a false positive" reasoning now actually holds.
 //
 // v1 narrowing (deliberately out of scope, follow-up candidates):
 //   - SAME-FILE ONLY. A const/var defined in another file of the same
 //     package (very common in real Go — constants often live in a shared
 //     `const.go`) is NOT resolved. This is likely the dominant real-world
 //     miss for this RC.
-//   - NO cross-package/imported identifiers (e.g. `events.OrderPlacedType`)
-//     — only bare same-package identifiers are considered.
-//   - NOT scope-aware: the table is built for the whole file, not per
-//     function/block, so two different functions each declaring a
-//     same-named local (`x := "A"` in one, `x := "B"` in another) collide
-//     and the binding is dropped as ambiguous — a conservative
-//     under-match, never a false positive, but real disambiguable-by-scope
-//     cases are missed.
-//   - Entries built via a map literal, a helper function return value, or
-//     appended into a slice in a loop (rather than a struct literal with a
-//     literal/identifier field) are not covered — this table only resolves
-//     the IDENTIFIER, not arbitrary construction shapes.
+//   - NO cross-package/imported identifiers (e.g. `events.OrderPlacedType`).
+//   - Function-local `:=`/`=` bindings are NOT resolved at all (even for a
+//     publish site in the SAME function), a deliberate precision-over-recall
+//     tradeoff for the file-global-table design — see SAFETY above.
+//   - Grouped `var ( x = "..." )` block members are missed (only single-line
+//     `var x = "..."` is matched); grouped `const (...)` members ARE matched.
+//   - Entries built via a map literal, a helper return value, or appended
+//     into a slice in a loop are not covered — only the IDENTIFIER form.
 func buildGoStringBindingTable(src string) map[string]string {
 	bindings := map[string]string{}
 	ambiguous := map[string]bool{}
@@ -158,7 +209,7 @@ func buildGoStringBindingTable(src string) map[string]string {
 		}
 		bindings[name] = value
 	}
-	for _, re := range []*regexp.Regexp{goConstStringBindingRe, goShortVarStringBindingRe, goAssignStringBindingRe} {
+	for _, re := range []*regexp.Regexp{goConstStringBindingRe, goVarStringBindingRe} {
 		for _, m := range re.FindAllStringSubmatch(src, -1) {
 			add(m[1], m[2])
 		}
@@ -166,17 +217,69 @@ func buildGoStringBindingTable(src string) map[string]string {
 	return bindings
 }
 
+// goShortVarDeclReFor builds a matcher for a `:=` short-var declaration of a
+// specific identifier — `x :=`, `x, y :=`, or `y, x :=` (a comma list of
+// simple identifiers ending in `:=`). Anchored on \b and restricted to a
+// comma/ident run so an expression like `if x > 0 { ... }` cannot false-match.
+func goShortVarDeclReFor(ident string) *regexp.Regexp {
+	q := regexp.QuoteMeta(ident)
+	return regexp.MustCompile(`\b` + q + `\b\s*(?:,\s*\w+\s*)*:=` +
+		`|(?:\b\w+\s*,\s*)+` + q + `\b\s*(?:,\s*\w+\s*)*:=`)
+}
+
+// goVarDeclReFor matches a `var ident` local declaration of a specific
+// identifier.
+func goVarDeclReFor(ident string) *regexp.Regexp {
+	return regexp.MustCompile(`\bvar\s+` + regexp.QuoteMeta(ident) + `\b`)
+}
+
+// goIdentifierShadowedInFunc reports whether ident is a parameter of, or a
+// `:=`/`var` local declared in, the enclosing function whose text-from-decl-
+// to-publish-site is funcScope (review MUST-FIX #1). When true the identifier
+// is NOT a package-level binding at this call site, so it must not resolve
+// against the file-global table. Conservative: a false "shadowed" only costs
+// recall (skip an edge), never a wrong edge.
+func goIdentifierShadowedInFunc(funcScope, ident string) bool {
+	if goShortVarDeclReFor(ident).MatchString(funcScope) {
+		return true
+	}
+	if goVarDeclReFor(ident).MatchString(funcScope) {
+		return true
+	}
+	// Parameter of the nearest enclosing function declaration in funcScope.
+	decls := goFunctionDeclRe.FindAllStringIndex(funcScope, -1)
+	if len(decls) > 0 {
+		last := decls[len(decls)-1]
+		paramOpen := last[1] - 1 // goFunctionDeclRe ends at the param-list '('.
+		params := extractBalancedParensEngine(funcScope, paramOpen)
+		if regexp.MustCompile(`\b` + regexp.QuoteMeta(ident) + `\b`).MatchString(params) {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveAllowlistedEventType tries the direct string-literal match first
 // (findAllowlistedEventType); when that fails, it falls back to the
 // identifier form (GAP-015 RC4) — a single wrapper-call whose sole argument
-// is a bare identifier resolvable via bindings. viaConst reports which path
-// matched, so callers can tag the emitted edge accordingly.
-func resolveAllowlistedEventType(text string, bindings map[string]string) (key, value string, viaConst, ok bool) {
+// is a bare identifier resolvable via resolveIdent. resolveIdent encapsulates
+// the file-global binding lookup PLUS the enclosing-function shadow guard, so
+// a param/local shadowing the identifier yields no resolution. A formatter/
+// transformer wrapper (review MUST-FIX #2) is rejected before resolution.
+// viaConst reports which path matched, so callers can tag the emitted edge.
+func resolveAllowlistedEventType(
+	text string,
+	resolveIdent func(name string) (string, bool),
+) (key, value string, viaConst, ok bool) {
 	if key, value, ok = findAllowlistedEventType(text); ok {
 		return key, value, false, true
 	}
 	if m := eventTypeAllowlistKeyIdentRe.FindStringSubmatch(text); m != nil {
-		if v, found := bindings[m[2]]; found {
+		wrapper, ident := m[2], m[3]
+		if isEventTypeWrapperFormatter(wrapper) {
+			return "", "", false, false
+		}
+		if v, found := resolveIdent(ident); found {
 			return m[1], v, true, true
 		}
 	}
@@ -218,22 +321,44 @@ func enclosingGoFuncBodyStart(src string, offset int) int {
 // function's body (from the nearest preceding `func` decl up to the call
 // site). This still requires a real publish sink in the SAME function, so it
 // cannot mint from an arbitrary unrelated struct elsewhere in the file.
+//
+// KNOWN LIMITATION (review FOLLOW-UP #4): the function-scope widening is
+// co-location-agnostic WITHIN a function — it cannot tell whether the
+// DetailType/eventType it finds earlier in the function actually belongs to
+// the payload handed to THIS publish call. A function that builds an
+// unrelated `{DetailType: "OrderPlaced"}` struct and then, separately, calls
+// PutEvents on a DIFFERENT payload will still attribute OrderPlaced to that
+// PutEvents. This is inherent to the pre-existing function-scope-struct-field
+// path (GAP-005) and is newly reachable for EventBridge via the RC2 PutEvents
+// sink; tightening it to per-payload co-location is a follow-up.
 func applyEventTypeProducerGo(
 	src string,
 	emitEdge func(fromID, verbatim, kind string, props map[string]string),
 ) {
 	bindings := buildGoStringBindingTable(src)
 	for _, m := range goPublishSiteRe.FindAllStringIndex(src, -1) {
+		// Enclosing-function text from its decl up to the publish site — used
+		// both for the shadow guard (review MUST-FIX #1) and the function-scope
+		// recall widening below.
+		bodyStart := enclosingGoFuncBodyStart(src, m[0])
+		funcScope := src[bodyStart:m[0]]
+		resolveIdent := func(name string) (string, bool) {
+			if goIdentifierShadowedInFunc(funcScope, name) {
+				return "", false
+			}
+			v, found := bindings[name]
+			return v, found
+		}
+
 		openParen := m[1] - 1 // regex ends in `\(`, so m[1]-1 is the '(' index.
 		arg := extractBalancedParensEngine(src, openParen)
-		key, value, viaConst, ok := resolveAllowlistedEventType(arg, bindings)
+		key, value, viaConst, ok := resolveAllowlistedEventType(arg, resolveIdent)
 		detection := "publish-site-literal"
 		if viaConst {
 			detection = "eventbridge-detailtype-const"
 		}
 		if !ok {
-			bodyStart := enclosingGoFuncBodyStart(src, m[0])
-			key, value, viaConst, ok = resolveAllowlistedEventType(src[bodyStart:m[0]], bindings)
+			key, value, viaConst, ok = resolveAllowlistedEventType(funcScope, resolveIdent)
 			detection = "function-scope-struct-field"
 			if viaConst {
 				detection = "eventbridge-detailtype-const"
