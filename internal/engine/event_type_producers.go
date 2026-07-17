@@ -29,9 +29,40 @@ import (
 // carry a `type` string that is NOT an event contract. The four remaining
 // keys have no such collision.
 //
+// Between the `:` and the opening quote, ONE optional wrapper call is
+// tolerated (`\w[\w.]*\(\s*`) — the EventBridge Go SDK shape `DetailType:
+// aws.String("OrderPlaced")` wraps the literal in a single SDK helper call
+// (GAP-015 RC3). The wrapper pattern is a GENERIC dotted-call shape
+// (`\w[\w.]*\(`) matched on syntax alone — it is NOT anchored to the
+// `aws.String` identifier specifically, so it also matches other
+// single-argument string-wrapper helpers (`ptr.String(...)`,
+// `types.String(...)`, etc.) without any corpus-specific package/function
+// name. v1: deliberately not made greedy/recursive — no nested calls — to
+// keep the precision boundary tight; a second wrapper layer simply doesn't
+// match, by design. Cross-file/imported consts are out of scope for v1 (see
+// buildGoStringBindingTable).
+//
 // Group 1 = the matched key text, group 2 = the string value.
 var eventTypeAllowlistKeyRe = regexp.MustCompile(
-	`["']?\b((?i:eventType|detailType|detail-type|eventName))\b["']?\s*:\s*["'` + "`" + `]([^"'` + "`" + `\n\r]+)["'` + "`" + `]`,
+	`["']?\b((?i:eventType|detailType|detail-type|eventName))\b["']?\s*:\s*(?:\w[\w.]*\(\s*)?["'` + "`" + `]([^"'` + "`" + `\n\r]+)["'` + "`" + `]`,
+)
+
+// eventTypeAllowlistKeyIdentRe mirrors eventTypeAllowlistKeyRe but matches a
+// BARE IDENTIFIER value instead of a string literal — the shape `DetailType:
+// aws.String(orderDetailType)` (GAP-015 RC4), where the wrapper call's sole
+// argument is a same-file const/var identifier rather than a literal. Like
+// eventTypeAllowlistKeyRe, the wrapper is matched generically on syntax
+// (`\w[\w.]*\(`), not on a specific package/function name. The wrapper call
+// is REQUIRED here (unlike the literal form) because a bare identifier
+// directly bound to the key with no call at all is almost never an
+// event-type contract in practice, and requiring the wrapper keeps this
+// narrowly scoped to the single-argument string-wrapper-helper idiom (v1
+// narrowing — a bare `DetailType: orderDetailType` with no wrapper is out of
+// scope). The identifier itself is resolved via buildGoStringBindingTable,
+// which is SAME-FILE ONLY (v1 narrowing — no cross-file/import resolution).
+// Group 1 = the matched key text, group 2 = the identifier name.
+var eventTypeAllowlistKeyIdentRe = regexp.MustCompile(
+	`["']?\b((?i:eventType|detailType|detail-type|eventName))\b["']?\s*:\s*\w[\w.]*\(\s*([A-Za-z_]\w*)\s*\)`,
 )
 
 // findAllowlistedEventType scans arg (the text of a call's argument list, or
@@ -50,13 +81,107 @@ func findAllowlistedEventType(arg string) (key, value string, ok bool) {
 // ---------------------------------------------------------------------------
 
 // goPublishSiteRe matches common Go publish-call method names across
-// AWS SDK (SNS/SQS/Kinesis), Sarama/Kafka (SendMessage), confluent-kafka-go
-// (Produce), and generic wrapper conventions (Publish/Send). This is a
-// GENERIC gate (unlike the AWS-only effect_sinks_aws_go.go sniffers) because
-// GAP-005 targets any channel, not just AWS.
+// AWS SDK (SNS/SQS/Kinesis/EventBridge), Sarama/Kafka (SendMessage),
+// confluent-kafka-go (Produce), and generic wrapper conventions
+// (Publish/Send). This is a GENERIC gate (unlike the AWS-only
+// effect_sinks_aws_go.go sniffers) because GAP-005 targets any channel, not
+// just AWS. PutEvents(WithContext)? (GAP-015 RC2) covers the EventBridge Go
+// SDK v2 (`client.PutEvents(...)`) and v1 (`client.PutEventsWithContext(...)`)
+// publish call — matched on the SDK METHOD NAME only, not on the receiver's
+// package/type, so it fires for any `*.PutEvents(...)` call regardless of
+// which package the client comes from. v1 narrowing: PutEvents/
+// PutEventsWithContext are the only EventBridge sink names covered; other
+// less-common EventBridge send paths (e.g. a hand-rolled HTTP client calling
+// the API directly) are out of scope.
 var goPublishSiteRe = regexp.MustCompile(
-	`\.(?:Publish(?:WithContext)?|PublishMessage|SendMessage(?:Batch)?(?:WithContext)?|PutRecords?(?:WithContext)?|Produce|Send)\s*\(`,
+	`\.(?:Publish(?:WithContext)?|PublishMessage|SendMessage(?:Batch)?(?:WithContext)?|PutRecords?(?:WithContext)?|PutEvents(?:WithContext)?|Produce|Send)\s*\(`,
 )
+
+// goConstStringBindingRe matches `const X = "..."` (with or without an
+// explicit type name, e.g. `const orderDetailType string = "OrderShipped"`)
+// package-level or in-function const declarations. Group 1 = identifier,
+// group 2 = literal value.
+var goConstStringBindingRe = regexp.MustCompile(
+	`(?m)^\s*const\s+(\w+)\s*(?:\w+\s+)?=\s*"([^"\n\r]+)"`,
+)
+
+// goShortVarStringBindingRe matches `X := "..."` short variable
+// declarations. Group 1 = identifier, group 2 = literal value.
+var goShortVarStringBindingRe = regexp.MustCompile(
+	`(\w+)\s*:=\s*"([^"\n\r]+)"`,
+)
+
+// goAssignStringBindingRe matches `X = "..."` plain assignments (anchored to
+// line-start-ish via \s* so it doesn't fire mid-expression). Group 1 =
+// identifier, group 2 = literal value.
+var goAssignStringBindingRe = regexp.MustCompile(
+	`(?m)^\s*(\w+)\s*=\s*"([^"\n\r]+)"`,
+)
+
+// buildGoStringBindingTable scans src for `const X = "..."`, `X := "..."`,
+// and `X = "..."` string bindings (GAP-015 RC4: same-file identifier
+// resolution for `DetailType: aws.String(orderDetailType)`-shaped producer
+// call-sites) and returns a name->literal table. Only UNAMBIGUOUS bindings
+// are kept — an identifier bound to two different literal values anywhere
+// in the file is dropped entirely rather than guessed at.
+//
+// v1 narrowing (deliberately out of scope, follow-up candidates):
+//   - SAME-FILE ONLY. A const/var defined in another file of the same
+//     package (very common in real Go — constants often live in a shared
+//     `const.go`) is NOT resolved. This is likely the dominant real-world
+//     miss for this RC.
+//   - NO cross-package/imported identifiers (e.g. `events.OrderPlacedType`)
+//     — only bare same-package identifiers are considered.
+//   - NOT scope-aware: the table is built for the whole file, not per
+//     function/block, so two different functions each declaring a
+//     same-named local (`x := "A"` in one, `x := "B"` in another) collide
+//     and the binding is dropped as ambiguous — a conservative
+//     under-match, never a false positive, but real disambiguable-by-scope
+//     cases are missed.
+//   - Entries built via a map literal, a helper function return value, or
+//     appended into a slice in a loop (rather than a struct literal with a
+//     literal/identifier field) are not covered — this table only resolves
+//     the IDENTIFIER, not arbitrary construction shapes.
+func buildGoStringBindingTable(src string) map[string]string {
+	bindings := map[string]string{}
+	ambiguous := map[string]bool{}
+	add := func(name, value string) {
+		if ambiguous[name] {
+			return
+		}
+		if existing, seen := bindings[name]; seen {
+			if existing != value {
+				delete(bindings, name)
+				ambiguous[name] = true
+			}
+			return
+		}
+		bindings[name] = value
+	}
+	for _, re := range []*regexp.Regexp{goConstStringBindingRe, goShortVarStringBindingRe, goAssignStringBindingRe} {
+		for _, m := range re.FindAllStringSubmatch(src, -1) {
+			add(m[1], m[2])
+		}
+	}
+	return bindings
+}
+
+// resolveAllowlistedEventType tries the direct string-literal match first
+// (findAllowlistedEventType); when that fails, it falls back to the
+// identifier form (GAP-015 RC4) — a single wrapper-call whose sole argument
+// is a bare identifier resolvable via bindings. viaConst reports which path
+// matched, so callers can tag the emitted edge accordingly.
+func resolveAllowlistedEventType(text string, bindings map[string]string) (key, value string, viaConst, ok bool) {
+	if key, value, ok = findAllowlistedEventType(text); ok {
+		return key, value, false, true
+	}
+	if m := eventTypeAllowlistKeyIdentRe.FindStringSubmatch(text); m != nil {
+		if v, found := bindings[m[2]]; found {
+			return m[1], v, true, true
+		}
+	}
+	return "", "", false, false
+}
 
 // enclosingGoFuncBodyStart returns the byte offset of the nearest preceding
 // Go function/method declaration before offset, bounded by the same 4000-byte
@@ -97,15 +222,22 @@ func applyEventTypeProducerGo(
 	src string,
 	emitEdge func(fromID, verbatim, kind string, props map[string]string),
 ) {
+	bindings := buildGoStringBindingTable(src)
 	for _, m := range goPublishSiteRe.FindAllStringIndex(src, -1) {
 		openParen := m[1] - 1 // regex ends in `\(`, so m[1]-1 is the '(' index.
 		arg := extractBalancedParensEngine(src, openParen)
-		key, value, ok := findAllowlistedEventType(arg)
+		key, value, viaConst, ok := resolveAllowlistedEventType(arg, bindings)
 		detection := "publish-site-literal"
+		if viaConst {
+			detection = "eventbridge-detailtype-const"
+		}
 		if !ok {
 			bodyStart := enclosingGoFuncBodyStart(src, m[0])
-			key, value, ok = findAllowlistedEventType(src[bodyStart:m[0]])
+			key, value, viaConst, ok = resolveAllowlistedEventType(src[bodyStart:m[0]], bindings)
 			detection = "function-scope-struct-field"
+			if viaConst {
+				detection = "eventbridge-detailtype-const"
+			}
 		}
 		if !ok {
 			continue
