@@ -11,6 +11,8 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/http/pprof"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -416,6 +418,75 @@ func (s *Server) Addr() string {
 	return s.listener.Addr().String()
 }
 
+// EnvDebugPprof gates mounting net/http/pprof on this dashboard's HTTP mux
+// (#5822 sub-ask 2 — dogfooding request to expose Go profiling so a heap
+// blowup can be captured live instead of only via the selfdefense hotloop
+// dump). OFF by default: pprof exposes heap/goroutine memory contents, which
+// must never be reachable without an explicit operator opt-in.
+//
+// Set to a truthy value ("1", "true", "yes", "on" — case-insensitive) to
+// enable. See pprofEnabled for the additional loopback-bind safety net.
+const EnvDebugPprof = "GRAFEL_DEBUG_PPROF"
+
+// pprofEnabled reports whether net/http/pprof should be mounted on this
+// server's mux. Both conditions must hold:
+//  1. EnvDebugPprof is truthy — the default-OFF gate.
+//  2. bind resolves to a loopback address — even an explicit opt-in must
+//     never expose profiling on a (possibly misconfigured) non-loopback
+//     dashboard.json bind, since pprof output can leak memory contents.
+func pprofEnabled(bind string) bool {
+	if !envTruthy(os.Getenv(EnvDebugPprof)) {
+		return false
+	}
+	return isLoopbackBind(bind)
+}
+
+// isLoopbackBind reports whether bind (a dashboard.json "bind" value) refers
+// to loopback only. It FAILS CLOSED: an empty/whitespace-only bind returns
+// false, because the listener treats Bind=="" as net.Listen("tcp", ":port")
+// — a bind to ALL interfaces, not loopback (server.go Listen /
+// net.JoinHostPort). A safety net guarding a heap/goroutine-exposing endpoint
+// must be correct on its own, not merely rescued by the upstream
+// DefaultConfig/LoadConfig default of "127.0.0.1". The bare hostname
+// "localhost" is trusted as loopback (resolving it at check time would be
+// flakier — standard practice); anything else must parse as a loopback IP.
+func isLoopbackBind(bind string) bool {
+	bind = strings.TrimSpace(bind)
+	if bind == "" {
+		return false // fail closed — "" binds all interfaces
+	}
+	if strings.EqualFold(bind, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(bind)
+	return ip != nil && ip.IsLoopback()
+}
+
+// envTruthy parses the common truthy spellings used for boolean env-var
+// gates across this codebase ("1", "true", "yes", "on" — case-insensitive,
+// whitespace-trimmed).
+func envTruthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// mountPprof registers the standard net/http/pprof handlers on mux. Mirrors
+// what net/http/pprof's init() does to http.DefaultServeMux — reproduced here
+// by hand because this server builds its own ServeMux rather than using the
+// default one. The literal "/debug/pprof/" prefix is more specific than the
+// SPA catch-all "/", so Go's ServeMux longest-match rule routes here first
+// regardless of registration order.
+func mountPprof(mux *http.ServeMux) {
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+}
+
 // routes builds the http.ServeMux for this server. Kept package-private so
 // tests can hit handlers via httptest.NewServer(s.routes()) without going
 // through Listen.
@@ -428,6 +499,12 @@ func (s *Server) routes() http.Handler {
 	sub, err := fs.Sub(staticFS, "dist")
 	if err == nil {
 		mux.Handle("/", spaHandler(sub))
+	}
+
+	// net/http/pprof (#5822 sub-ask 2): OFF by default, loopback-only even
+	// when enabled. See EnvDebugPprof / pprofEnabled.
+	if pprofEnabled(s.cfg.Bind) {
+		mountPprof(mux)
 	}
 
 	// --- DASH-1 (legacy) endpoints ---

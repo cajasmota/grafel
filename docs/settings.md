@@ -137,3 +137,29 @@ safe). Fields that require a daemon restart are listed in `restart_required`:
 
 The Settings surface at `/settings` in the dashboard provides a GUI for all
 fields above and displays a "restart required" banner when applicable.
+
+### Go profiling (`GRAFEL_DEBUG_PPROF`) — #5822
+
+| Env var | Default | Effect |
+|---------|---------|--------|
+| `GRAFEL_DEBUG_PPROF` | unset (off) | Mounts the standard `net/http/pprof` handlers (`/debug/pprof/{heap,goroutine,profile,cmdline,symbol,trace,...}`) on the dashboard's HTTP mux. Set to `1`/`true`/`yes`/`on` to enable. |
+
+OFF by default: profiling exposes heap/goroutine memory contents, so it must
+be explicitly opted into. Even when enabled, the mount is further restricted
+to a loopback dashboard bind (`127.0.0.1`/`::1`/`localhost`, the default) —
+a non-loopback `dashboard.json` `bind` never exposes it, regardless of the
+env var. Takes effect on the next daemon start; capture a heap profile with:
+
+```sh
+GRAFEL_DEBUG_PPROF=1 grafel start
+curl -o heap.pprof http://127.0.0.1:47274/debug/pprof/heap
+go tool pprof heap.pprof
+```
+
+Independently of the live endpoint, the Layer-2 CPU watchdog (issue #857)
+already writes a goroutine stack dump to a temp file
+(`grafel-hotloop-*.pprof.txt`) whenever it self-terminates a hot-looping
+daemon; it now ALSO writes a paired heap profile
+(`grafel-hotloop-*.heap.pprof`, same directory) at that moment, so a hot-loop
+trip captures the heap without needing `GRAFEL_DEBUG_PPROF` to have been set
+in advance.

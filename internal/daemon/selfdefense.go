@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/pprof"
 	"strings"
 	"sync/atomic"
@@ -221,7 +222,13 @@ func cpuWatchdog(inflight *int64, logger *slog.Logger) {
 			if hotTicks >= sustainedTicks {
 				// Dump a goroutine profile to stderr before exiting so the operator
 				// can inspect what was spinning. This is Layer 2 of the diagnostic.
-				dumpGoroutineProfile(logger)
+				goroutineDumpPath := dumpGoroutineProfile(logger)
+				// #5822 sub-ask 2: also capture a heap profile alongside the
+				// goroutine dump — a hot-loop trip is exactly the moment a heap
+				// blowup (the dogfooding report's 20GB case) needs to be diagnosed,
+				// and the process is about to exit so the live /debug/pprof
+				// endpoint (even when enabled) would no longer be reachable.
+				dumpHeapProfile(logger, goroutineDumpPath)
 				logger.Error("selfdefense: self-detecting hot-loop, exiting", "cpu_pct", pct)
 				os.Exit(0)
 			}
@@ -247,23 +254,80 @@ func selfCPUPercent() float64 {
 // dumpGoroutineProfile writes a goroutine stack dump (for diagnosing the hot
 // function) to a temporary file and logs the path. Also logs a brief in-memory
 // summary to logger. This is the Layer 2 pprof integration mentioned in #857.
-func dumpGoroutineProfile(logger *slog.Logger) {
+//
+// Returns the path the dump was written to, or "" if it could only log inline
+// (e.g. os.CreateTemp failed). The path is used by dumpHeapProfile to derive a
+// sibling filename for the paired heap profile (#5822 sub-ask 2).
+func dumpGoroutineProfile(logger *slog.Logger) string {
 	var buf bytes.Buffer
 	p := pprof.Lookup("goroutine")
 	if p == nil {
-		return
+		return ""
 	}
 	if err := p.WriteTo(&buf, 1); err != nil {
 		logger.Error("selfdefense: goroutine dump failed", "err", err)
-		return
+		return ""
 	}
 
 	f, err := os.CreateTemp("", "grafel-hotloop-*.pprof.txt")
 	if err != nil {
 		logger.Info("selfdefense: goroutine dump (inline)", "dump", buf.String())
-		return
+		return ""
 	}
 	_, _ = f.Write(buf.Bytes())
 	_ = f.Close()
 	logger.Info("selfdefense: goroutine dump written", "path", f.Name())
+	return f.Name()
+}
+
+// dumpHeapProfile writes a heap profile to a file sibling to the goroutine
+// dump written by dumpGoroutineProfile, so a watchdog hot-loop trip captures
+// the heap without needing the live /debug/pprof/heap endpoint (which, even
+// when enabled via GRAFEL_DEBUG_PPROF, is about to become unreachable — the
+// process calls os.Exit(0) right after this). #5822 sub-ask 2.
+//
+// runtime.GC() runs first so the profile reflects live (reachable) heap
+// objects rather than garbage still pending collection — the standard
+// operator workflow for a heap-blowup investigation.
+func dumpHeapProfile(logger *slog.Logger, goroutineDumpPath string) {
+	p := pprof.Lookup("heap")
+	if p == nil {
+		return
+	}
+	runtime.GC()
+
+	heapPath := siblingHeapPath(goroutineDumpPath)
+	f, err := os.Create(heapPath)
+	if err != nil {
+		// The sibling path may be unusable if dumpGoroutineProfile itself
+		// failed to create its file in the same directory; fall back to an
+		// independent temp file rather than losing the heap capture.
+		f, err = os.CreateTemp("", "grafel-hotloop-*.heap.pprof")
+		if err != nil {
+			logger.Error("selfdefense: heap profile: create file failed", "err", err)
+			return
+		}
+	}
+	defer f.Close()
+	if err := p.WriteTo(f, 0); err != nil {
+		logger.Error("selfdefense: heap dump failed", "err", err)
+		return
+	}
+	logger.Info("selfdefense: heap profile written", "path", f.Name())
+}
+
+// siblingHeapPath derives the heap-profile filename that sits next to the
+// goroutine dump written by dumpGoroutineProfile (same directory, correlated
+// name), so an operator can find both halves of one hot-loop trip together.
+// Falls back to a fresh temp path when goroutineDumpPath is empty (the
+// goroutine dump failed to write its own file).
+func siblingHeapPath(goroutineDumpPath string) string {
+	if goroutineDumpPath == "" {
+		return filepath.Join(os.TempDir(), fmt.Sprintf("grafel-hotloop-%d.heap.pprof", time.Now().UnixNano()))
+	}
+	const suffix = ".pprof.txt"
+	if strings.HasSuffix(goroutineDumpPath, suffix) {
+		return strings.TrimSuffix(goroutineDumpPath, suffix) + ".heap.pprof"
+	}
+	return goroutineDumpPath + ".heap.pprof"
 }
