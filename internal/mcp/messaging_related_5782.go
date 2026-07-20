@@ -626,7 +626,7 @@ func computeRepoImpact(r *LoadedRepo, target string, hops int) []impactAffected 
 	for d := 0; d < hops; d++ {
 		next := []string{}
 		for _, n := range frontier {
-			for _, e := range adj.in[n] {
+			for _, e := range adj.Incoming(n) {
 				if _, seen := visited[e.target]; seen {
 					continue
 				}

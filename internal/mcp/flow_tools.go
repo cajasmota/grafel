@@ -275,7 +275,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		for d := 0; d < depth; d++ {
 			next := []string{}
 			for _, n := range frontier {
-				for _, e := range adj.in[n] {
+				for _, e := range adj.Incoming(n) {
 					// #4242: accept every semantic predecessor edge, not just the
 					// inboundRefKinds allow-list. The out/callees side already
 					// surfaces all kinds; mirroring it here is what makes the
@@ -427,7 +427,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		//   - Extractor emits N duplicate CALLS edges → each weight=1 → sum=N
 		//   - Extractor emits 1 CALLS edge with Properties["count"]="N" → weight=N → sum=N
 		callFrequency := make(map[string]float64)
-		for _, e := range adj.in[target] {
+		for _, e := range adj.Incoming(target) {
 			if e.kind == "CALLS" {
 				callFrequency[e.target] += e.weight
 			}
@@ -640,7 +640,7 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		for d := 0; d < depth; d++ {
 			next := []string{}
 			for _, n := range frontier {
-				for _, e := range adj.out[n] {
+				for _, e := range adj.Outgoing(n) {
 					if _, seen := visited[e.target]; seen {
 						continue
 					}
@@ -1253,7 +1253,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 	for d := 0; d < hops; d++ {
 		next := []string{}
 		for _, n := range frontier {
-			for _, e := range adj.in[n] {
+			for _, e := range adj.Incoming(n) {
 				if _, seen := visited[e.target]; seen {
 					continue
 				}

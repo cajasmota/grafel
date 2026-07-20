@@ -2325,7 +2325,7 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 		out := []edge{}
 		if r, ok := lg.Repos[repo]; ok && r.Doc != nil {
 			a := r.getAdjacency()
-			for _, e := range a.out[local] {
+			for _, e := range a.Outgoing(local) {
 				out = append(out, edge{
 					target: prefixedID(repo, e.target),
 					kind:   e.kind,

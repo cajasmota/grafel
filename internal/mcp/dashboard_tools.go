@@ -1144,7 +1144,7 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 		out := []edge{}
 		if r != nil && r.Doc != nil {
 			a := r.getAdjacency()
-			for _, e := range a.out[local] {
+			for _, e := range a.Outgoing(local) {
 				out = append(out, edge{
 					target: prefixedID(slug, e.target),
 					kind:   e.kind,
@@ -1153,7 +1153,7 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 				})
 			}
 			// Reverse traversal for interface-style edges (#1690).
-			for _, e := range a.in[local] {
+			for _, e := range a.Incoming(local) {
 				if !reverseTraversalEdgeKinds[e.kind] {
 					continue
 				}

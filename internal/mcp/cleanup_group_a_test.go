@@ -171,12 +171,12 @@ func TestSyntheticEdgesHaveNegativeRelIdx(t *testing.T) {
 	a := buildAdjacency(doc, "repo1")
 
 	// Real edges (from buildAdjacency) should have relIdx >= 0.
-	for _, e := range a.out["x"] {
+	for _, e := range a.Outgoing("x") {
 		if e.relIdx < 0 {
 			t.Errorf("real out-edge x->y has relIdx=%d; want >= 0", e.relIdx)
 		}
 	}
-	for _, e := range a.in["y"] {
+	for _, e := range a.Incoming("y") {
 		if e.relIdx < 0 {
 			t.Errorf("real in-edge y<-x has relIdx=%d; want >= 0", e.relIdx)
 		}

@@ -103,7 +103,7 @@ func mroOutboundEdges(lr *LoadedRepo, local string) []mroEdge {
 	// If the graph already carries a real INHERITS edge from this stub, the
 	// indexer materialised it — do not double-project.
 	if adj := lr.getAdjacency(); adj != nil {
-		for _, ed := range adj.out[local] {
+		for _, ed := range adj.Outgoing(local) {
 			if ed.kind == inheritsEdgeKind {
 				return nil
 			}

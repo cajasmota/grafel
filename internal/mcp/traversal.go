@@ -9,10 +9,127 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
-// adjacency is a per-repo precomputed neighbor map.
+// adjacency is a per-repo precomputed neighbor index (#5852: CSR layout).
+//
+// Historically this was two map[string][]edge (out/in), ~290 MB resident at
+// corpus scale (~3.70M edge structs across ~753k distinct keys — 225,143 out
+// keys / 528,424 in keys — each edge{target string; kind string; weight
+// float64; relIdx int} costing 48 bytes plus map/slice overhead). That's
+// replaced here with a compressed-sparse-row (CSR) layout over a dense int32
+// node index: one shared map[string]int32 (nodes) instead of two
+// map[string][]edge, plus four parallel primitive-typed arrays per direction
+// (offsets/targets/kindCode/weight/relIdx) instead of 3.70M individually
+// heap-allocated-via-append edge structs. kind strings are dictionary-encoded
+// (small cardinality — extractors emit a few dozen relationship kinds) and
+// weight is stored as float32 (edgeWeight is a heuristic score; the values
+// observed in practice — small integers or simple decimals from
+// Properties["count"]/["weight"] — round-trip exactly through float32; see
+// TestCSR5852_WeightFallbackSemantics).
+//
+// The external contract is unchanged: Outgoing(id)/Incoming(id) still return
+// []edge in the original per-node relationship-append order, so none of the
+// ~20 reader call-sites change. The []edge slice is materialized on demand
+// from the CSR row inside the accessor.
 type adjacency struct {
-	out map[string][]edge
-	in  map[string][]edge
+	nodes nodeIndex
+	kinds kindDict
+	out   csrDir
+	in    csrDir
+}
+
+// nodeIndex assigns a dense int32 code to every string id encountered while
+// building adjacency (either side of a relationship). Codes are local to one
+// build (one adjacency instance) and index into `ids`. When ids coincide with
+// interned graph.Entity.ID / Relationship.FromID/ToID strings (the common
+// case post-#5847 interning), no new string backing is allocated here — only
+// the code slice/map.
+type nodeIndex struct {
+	ids  []string
+	code map[string]int32
+}
+
+func (n *nodeIndex) intern(id string) int32 {
+	if n.code == nil {
+		n.code = make(map[string]int32)
+	}
+	if c, ok := n.code[id]; ok {
+		return c
+	}
+	c := int32(len(n.ids))
+	n.ids = append(n.ids, id)
+	n.code[id] = c
+	return c
+}
+
+func (n *nodeIndex) lookup(id string) (int32, bool) {
+	c, ok := n.code[id]
+	return c, ok
+}
+
+// kindDict dictionary-encodes relationship-kind strings (CALLS, IMPORTS,
+// REFERENCES, ...) to a small integer code. Cardinality is a few dozen kinds
+// across all extractors, well within uint16 (and uint8) range; uint16 is used
+// for headroom without meaningfully changing the memory profile (2 bytes vs.
+// 1 is negligible against the string-per-edge cost it replaces).
+type kindDict struct {
+	names []string
+	code  map[string]uint16
+}
+
+func (k *kindDict) intern(name string) uint16 {
+	if k.code == nil {
+		k.code = make(map[string]uint16)
+	}
+	if c, ok := k.code[name]; ok {
+		return c
+	}
+	c := uint16(len(k.names))
+	k.names = append(k.names, name)
+	k.code[name] = c
+	return c
+}
+
+func (k *kindDict) name(c uint16) string {
+	if int(c) >= len(k.names) {
+		return ""
+	}
+	return k.names[c]
+}
+
+// csrDir is one direction (out or in) of the CSR adjacency: row i's edges are
+// the half-open slice [offsets[i], offsets[i+1]) into targets/kindCode/
+// weight/relIdx. len(offsets) == number of distinct nodes + 1.
+type csrDir struct {
+	offsets  []int32
+	targets  []int32 // node-index code of the edge's other endpoint
+	kindCode []uint16
+	weight   []float32
+	relIdx   []int32
+}
+
+// edges materializes the []edge row for node id, preserving the original
+// relationship-append order (rows are filled in doc.Relationships order
+// during build). Returns nil when id is unknown or has no edges in this
+// direction, matching the old map[string][]edge lookup-miss semantics.
+func (c *csrDir) edges(id string, nodes *nodeIndex, kinds *kindDict) []edge {
+	code, ok := nodes.lookup(id)
+	if !ok || int(code) >= len(c.offsets)-1 {
+		return nil
+	}
+	start, end := c.offsets[code], c.offsets[code+1]
+	if start == end {
+		return nil
+	}
+	out := make([]edge, end-start)
+	for i := start; i < end; i++ {
+		out[i-start] = edge{
+			target: nodes.ids[c.targets[i]],
+			kind:   kinds.name(c.kindCode[i]),
+			weight: float64(c.weight[i]),
+			relIdx: int(c.relIdx[i]),
+		}
+	}
+	return out
 }
 
 // edge is a typed neighbor reference; weight is for shortest-path scoring.
@@ -31,24 +148,25 @@ type edge struct {
 
 // Outgoing returns the out-edges from id (empty when id has none). Safe on a
 // nil receiver to simplify handler call sites that may run before reload. The
-// returned slice is owned by the adjacency index — callers must not mutate it.
-// (#2285)
+// returned slice is freshly materialized from the CSR row on each call —
+// callers must not mutate it, and hot-path callers should call this once per
+// node and reuse the result rather than re-invoking per-edge. (#2285, #5852)
 func (a *adjacency) Outgoing(id string) []edge {
 	if a == nil {
 		return nil
 	}
-	return a.out[id]
+	return a.out.edges(id, &a.nodes, &a.kinds)
 }
 
-// Incoming mirrors Outgoing for in-edges. (#2285)
+// Incoming mirrors Outgoing for in-edges. (#2285, #5852)
 func (a *adjacency) Incoming(id string) []edge {
 	if a == nil {
 		return nil
 	}
-	return a.in[id]
+	return a.in.edges(id, &a.nodes, &a.kinds)
 }
 
-// buildAdjacency constructs in/out neighbor lists for one repo.
+// buildAdjacency constructs the in/out CSR neighbor index for one repo.
 //
 // Built ONCE per reload, lazily on first use via repo.getAdjacency()
 // (#3367, formerly eager #1656). Handlers must NOT call this per-query — they
@@ -60,18 +178,82 @@ func (a *adjacency) Incoming(id string) []edge {
 // into a single CALLS edge with a numeric "count" property (e.g. "30" for a
 // file that calls a function 30 times) will have their frequency honoured by
 // any consumer that sums edge.weight instead of counting raw edges (#2591).
+//
+// Two-pass CSR build (#5852): pass 1 interns every FromID/ToID/Kind and
+// records per-relationship codes + degree counts; a prefix sum over degree
+// counts yields row offsets; pass 2 scatters each relationship into its row
+// using a per-row write cursor initialised from the offsets. Because pass 2
+// walks doc.Relationships in the same order as the old
+// `a.out[r.FromID] = append(...)` loop, and the write cursor only advances,
+// each row's edges land in the exact original append order.
 func buildAdjacency(doc *graph.Document, repo string) *adjacency {
-	a := &adjacency{
-		out: make(map[string][]edge, len(doc.Entities)),
-		in:  make(map[string][]edge, len(doc.Entities)),
-	}
+	n := len(doc.Relationships)
+	a := &adjacency{}
+	a.nodes.code = make(map[string]int32, len(doc.Entities))
+	a.kinds.code = make(map[string]uint16, 32)
+
+	fromCodes := make([]int32, n)
+	toCodes := make([]int32, n)
+	kindCodes := make([]uint16, n)
+	weights := make([]float32, n)
+
 	for i := range doc.Relationships {
 		r := &doc.Relationships[i]
-		w := edgeWeight(r)
-		a.out[r.FromID] = append(a.out[r.FromID], edge{target: r.ToID, kind: r.Kind, weight: w, relIdx: i})
-		a.in[r.ToID] = append(a.in[r.ToID], edge{target: r.FromID, kind: r.Kind, weight: w, relIdx: i})
+		fromCodes[i] = a.nodes.intern(r.FromID)
+		toCodes[i] = a.nodes.intern(r.ToID)
+		kindCodes[i] = a.kinds.intern(r.Kind)
+		weights[i] = float32(edgeWeight(r))
 	}
+
+	numNodes := len(a.nodes.ids)
+	outDeg := make([]int32, numNodes)
+	inDeg := make([]int32, numNodes)
+	for i := 0; i < n; i++ {
+		outDeg[fromCodes[i]]++
+		inDeg[toCodes[i]]++
+	}
+
+	a.out = newCSRDir(numNodes, n, outDeg)
+	a.in = newCSRDir(numNodes, n, inDeg)
+	outCursor := append([]int32(nil), a.out.offsets[:numNodes]...)
+	inCursor := append([]int32(nil), a.in.offsets[:numNodes]...)
+
+	for i := 0; i < n; i++ {
+		fc, tc, kc, w := fromCodes[i], toCodes[i], kindCodes[i], weights[i]
+
+		op := outCursor[fc]
+		outCursor[fc]++
+		a.out.targets[op] = tc
+		a.out.kindCode[op] = kc
+		a.out.weight[op] = w
+		a.out.relIdx[op] = int32(i)
+
+		ip := inCursor[tc]
+		inCursor[tc]++
+		a.in.targets[ip] = fc
+		a.in.kindCode[ip] = kc
+		a.in.weight[ip] = w
+		a.in.relIdx[ip] = int32(i)
+	}
+
 	return a
+}
+
+// newCSRDir allocates a csrDir's row backing given per-node degree counts and
+// the total edge count for this direction (= len(doc.Relationships), since
+// every relationship contributes exactly one row entry per direction).
+func newCSRDir(numNodes, numEdges int, deg []int32) csrDir {
+	offsets := make([]int32, numNodes+1)
+	for i := 0; i < numNodes; i++ {
+		offsets[i+1] = offsets[i] + deg[i]
+	}
+	return csrDir{
+		offsets:  offsets,
+		targets:  make([]int32, numEdges),
+		kindCode: make([]uint16, numEdges),
+		weight:   make([]float32, numEdges),
+		relIdx:   make([]int32, numEdges),
+	}
 }
 
 // edgeWeight returns the numeric weight for a relationship edge. It reads
@@ -271,12 +453,12 @@ func bfsBoundedRanked(adj *adjacency, start string, depth int, contextFilter map
 				continue
 			}
 			if dir == bfsBoth || dir == bfsOut {
-				for _, e := range adj.out[n] {
+				for _, e := range adj.Outgoing(n) {
 					consider(&cands, candSeen, e, d)
 				}
 			}
 			if dir == bfsBoth || dir == bfsIn {
-				for _, e := range adj.in[n] {
+				for _, e := range adj.Incoming(n) {
 					consider(&cands, candSeen, e, d)
 				}
 			}

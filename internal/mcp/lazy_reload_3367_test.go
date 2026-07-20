@@ -139,7 +139,7 @@ func TestLazyIndexes_ResetRebuildsAgainstFreshDoc(t *testing.T) {
 	lr := &LoadedRepo{Repo: "r", Doc: doc1, LabelIndex: BuildLabelIndex(doc1)}
 	lr.resetIndexes()
 	_ = lr.getAdjacency() // build against doc1
-	if len(lr.getAdjacency().out["a"]) != 1 {
+	if len(lr.getAdjacency().Outgoing("a")) != 1 {
 		t.Fatalf("expected one out-edge from a in doc1")
 	}
 
@@ -150,7 +150,7 @@ func TestLazyIndexes_ResetRebuildsAgainstFreshDoc(t *testing.T) {
 	lr.LabelIndex = BuildLabelIndex(doc2)
 	lr.resetIndexes()
 
-	gotOut := lr.getAdjacency().out["a"]
+	gotOut := lr.getAdjacency().Outgoing("a")
 	if len(gotOut) != 2 {
 		t.Errorf("after reload+reset, a has %d out-edges; want 2 (stale index served)", len(gotOut))
 	}

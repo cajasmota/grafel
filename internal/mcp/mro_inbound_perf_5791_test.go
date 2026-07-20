@@ -193,7 +193,7 @@ func referenceMROInbound(lr *LoadedRepo) map[string][]string {
 		// INHERITS edge is not double-projected.
 		if adj := lr.getAdjacency(); adj != nil {
 			skip := false
-			for _, ed := range adj.out[e.ID] {
+			for _, ed := range adj.Outgoing(e.ID) {
 				if ed.kind == inheritsEdgeKind {
 					skip = true
 					break

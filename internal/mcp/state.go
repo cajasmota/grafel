@@ -515,7 +515,12 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 	defer lr.idxMu.Unlock()
 	lr.adjOnce.Do(func() {
 		if lr.Doc == nil {
-			lr.adjacency = &adjacency{out: map[string][]edge{}, in: map[string][]edge{}}
+			// Zero-value adjacency works out of the box: nodes.code/kinds.code
+			// are nil maps (lookups miss cleanly, returning ok=false) and
+			// out/in are zero-value csrDir (nil slices), so Outgoing/Incoming
+			// return nil for every id, matching the pre-#5852 empty-map
+			// behaviour (#5852).
+			lr.adjacency = &adjacency{}
 			return
 		}
 		lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
