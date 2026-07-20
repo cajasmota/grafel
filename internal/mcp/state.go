@@ -352,6 +352,20 @@ type LoadedRepo struct {
 	suffixIndex        map[string][]string
 	suffixIndexPartial bool
 
+	// hotIdx is the W1 (ADR-0027) memoized handle-keyed hot index (id/label/
+	// qname entity lookups + the relationship view seam) built lazily on the
+	// FIRST view-getter use for a given captured MapHandle and reused across
+	// borrows of that handle. It is guarded by its own leaf mutex hotIdxMu (never
+	// nested under idxMu / mroMu / baseChainMu) because the build takes no other
+	// index lock. The memo is keyed by the captured handle's identity: a reload
+	// publishes a successor handle, so the next borrow's captured handle no longer
+	// matches lr.hotIdx.Handle() and the index rebuilds. resetIndexes also clears
+	// it under s.mu on every Doc replacement, covering the degenerate no-mmap
+	// (nil-handle) reload where the handle identity is unchanged. Nil until the
+	// first view-getter use. See LoadedRepo.hotIndexFor and hotindex.go.
+	hotIdxMu sync.Mutex
+	hotIdx   *hotIndex
+
 	semMtime time.Time
 	mtime    time.Time
 	// contentHash is the FNV-1a hash of the graph.fb bytes last parsed into
@@ -421,6 +435,16 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.baseChainCache = nil
 	lr.baseChainHash = 0
 	lr.baseChainMu.Unlock()
+
+	// W1 (ADR-0027): drop the memoized hot index so the next view-getter use
+	// rebuilds against the fresh Doc. Handle-identity keying already rebuilds when
+	// reload publishes a successor handle, but a no-mmap reload (nil handle both
+	// before and after) leaves the identity unchanged, so the explicit clear here
+	// — under s.mu, on every Doc replacement — is the load-bearing invalidation
+	// for that case. Its own leaf mutex, taken independently (never nested).
+	lr.hotIdxMu.Lock()
+	lr.hotIdx = nil
+	lr.hotIdxMu.Unlock()
 
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
@@ -555,6 +579,34 @@ func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
 		lr.byID = m
 	})
 	return lr.byID
+}
+
+// hotIndexFor returns the memoized W1 (ADR-0027) hot index for this repo built
+// off the captured handle h, building it via build(h) exactly once per distinct
+// captured handle and reusing it across borrows of that same handle.
+//
+// Memoization + invalidation contract:
+//   - Reuse iff a memoized index exists AND it is keyed off the SAME captured
+//     handle h (lr.hotIdx.Handle() == h). This is the read-through-captured-
+//     handle invariant (F1/F2): the returned index's handle always equals the
+//     caller's captured handle, never a live lr.handle re-deref.
+//   - A reload publishes a successor handle, so a subsequent borrow captures a
+//     different h and this rebuilds. resetIndexes additionally nils lr.hotIdx
+//     under s.mu on every Doc replacement, so even a nil-handle (no-mmap) reload
+//     invalidates. The index is therefore never read across a reload.
+//
+// build is invoked ONLY on a memo miss (the first getter use for a handle, or
+// after invalidation), so the hot index costs nothing until a consumer reads it.
+// Guarded by hotIdxMu, a leaf lock: build must not acquire any other LoadedRepo
+// index lock (docEntityViewSource/docRelationshipViewSource read only lr.Doc).
+func (lr *LoadedRepo) hotIndexFor(h *MapHandle, build func(*MapHandle) *hotIndex) *hotIndex {
+	lr.hotIdxMu.Lock()
+	defer lr.hotIdxMu.Unlock()
+	if lr.hotIdx != nil && lr.hotIdx.Handle() == h {
+		return lr.hotIdx
+	}
+	lr.hotIdx = build(h)
+	return lr.hotIdx
 }
 
 // getBM25 returns the per-repo BM25 index, building it on first search-tool
