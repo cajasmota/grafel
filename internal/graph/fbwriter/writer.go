@@ -75,18 +75,26 @@ func Marshal(doc *graph.Document) ([]byte, error) {
 // Strings and the properties vector are built first (FlatBuffers requires
 // child offsets be created before opening the parent table).
 func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
+	// idOff/qnOff/nameOff are genuinely unique per entity (or unique enough,
+	// in the case of QualifiedName/Name, that a shared-string hash lookup
+	// buys nothing) so they stay on plain CreateString. kind/module/
+	// source_file repeat heavily across a real corpus (every entity in a
+	// package shares the same source_file; every function-kind entity shares
+	// "function"; every entity in a module shares its module path) so they
+	// go through CreateSharedString to intern the duplicate content instead
+	// of re-copying it per entity.
 	idOff := b.CreateString(e.ID)
 	qnOff := b.CreateString(e.QualifiedName)
-	kindOff := b.CreateString(e.Kind)
-	subOff := b.CreateString(e.Subtype)
+	kindOff := b.CreateSharedString(e.Kind)
+	subOff := b.CreateSharedString(e.Subtype)
 	moduleOff := flatbuffers.UOffsetT(0)
 	if mod, ok := e.Properties["module"]; ok {
-		moduleOff = b.CreateString(mod)
+		moduleOff = b.CreateSharedString(mod)
 	} else {
-		moduleOff = b.CreateString("")
+		moduleOff = b.CreateSharedString("")
 	}
 	nameOff := b.CreateString(e.Name)
-	srcOff := b.CreateString(e.SourceFile)
+	srcOff := b.CreateSharedString(e.SourceFile)
 
 	// Issue #2370 — Language is persisted via the dedicated top-level
 	// `language` FlatBuffers slot (see EntityAddLanguage below). The
@@ -100,7 +108,10 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	var langOff flatbuffers.UOffsetT
 	hasLang := e.Language != ""
 	if hasLang {
-		langOff = b.CreateString(e.Language)
+		// Language is one of a handful of values ("go", "python", ...)
+		// repeated across every entity in the corpus — a prime interning
+		// candidate.
+		langOff = b.CreateSharedString(e.Language)
 	}
 
 	// PH8 (#2100): embedding_ref — only create string offset when non-empty
@@ -174,9 +185,16 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 }
 
 func buildRelationship(b *flatbuffers.Builder, r *graph.Relationship) flatbuffers.UOffsetT {
-	fromOff := b.CreateString(r.FromID)
-	toOff := b.CreateString(r.ToID)
-	kindOff := b.CreateString(r.Kind)
+	// from_id/to_id are relationship ENDPOINTS — the same entity ID string is
+	// referenced once per incident edge, so on a real corpus (avg node
+	// degree ~8.7x) these are the single highest-leverage interning target:
+	// every edge touching a given entity reuses that entity's already-stored
+	// id string instead of re-copying it. kind is drawn from a small fixed
+	// vocabulary ("calls", "references", ...) repeated across nearly every
+	// relationship, so it is shared too.
+	fromOff := b.CreateSharedString(r.FromID)
+	toOff := b.CreateSharedString(r.ToID)
+	kindOff := b.CreateSharedString(r.Kind)
 	propsVec := buildPropertyVector(b, r.Properties)
 	fb.RelationshipStart(b)
 	fb.RelationshipAddFromId(b, fromOff)
@@ -226,7 +244,11 @@ func buildPropertyVector(b *flatbuffers.Builder, props map[string]string) flatbu
 	sort.Strings(keys)
 	entryOffsets := make([]flatbuffers.UOffsetT, 0, len(keys))
 	for _, k := range keys {
-		kOff := b.CreateString(k)
+		// Property KEYS ("visibility", "module", "resolved", ...) are drawn
+		// from a small fixed vocabulary and repeat across nearly every
+		// entity/relationship — interned. Values are much more likely to be
+		// genuinely unique per record, so they stay on CreateString.
+		kOff := b.CreateSharedString(k)
 		vOff := b.CreateString(props[k])
 		fb.PropertyEntryStart(b)
 		fb.PropertyEntryAddKey(b, kOff)
