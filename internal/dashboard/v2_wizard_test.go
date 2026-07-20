@@ -11,11 +11,22 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/proto"
+	"github.com/cajasmota/grafel/internal/install/mcpreg"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // newWizardTestServer builds a Server with an isolated GRAFEL_HOME, the
 // in-memory fakeStore (so CreateGroup/AddRepo don't touch ~/.grafel), and
 // an injected rebuildRunner so the index job completes without a live daemon.
+//
+// It deliberately does NOT redirect HOME itself — several callers (e.g. the
+// v2_fs_test.go home-listing tests, TestV2DetectMCPTools) call
+// testsupport.IsolateHome(t) themselves BEFORE invoking this helper to lay
+// down a specific home fixture, and a second, independent IsolateHome call
+// here would re-point HOME at a *different* TempDir and silently break them.
+// Tests that reach a code path capable of WRITING an MCP host config (e.g.
+// TestV2CreateGroupFromScan_CreatesAndIndexes, via registerWizardMCP) must
+// call testsupport.IsolateHome(t) themselves before calling this helper.
 func newWizardTestServer(t *testing.T, runner rebuildRunner) (*httptest.Server, *Server) {
 	t.Helper()
 	t.Setenv("GRAFEL_HOME", t.TempDir())
@@ -212,7 +223,17 @@ func TestV2ScanInspect_PrefersChildGitReposOverMonorepo(t *testing.T) {
 // TestV2CreateGroupFromScan_CreatesAndIndexes verifies the full wizard create
 // path: it creates the group, registers the repo, and enqueues an index job
 // that the runner drives to done.
+//
+// The handler under test (handleV2CreateGroupFromScan) synchronously calls
+// registerWizardMCP, which — with req.MCPTools == nil, as posted below —
+// registers the grafel MCP entry into EVERY detected MCP-capable tool. This
+// test used to only isolate GRAFEL_HOME, so that write resolved the
+// developer's REAL $HOME and clobbered live ~/.cursor/mcp.json / etc. on
+// every `go test` run. testsupport.IsolateHome(t) redirects HOME (belt and
+// braces alongside the systemic mcpreg fail-closed guard, see
+// internal/install/mcpreg/test_isolation_guard.go).
 func TestV2CreateGroupFromScan_CreatesAndIndexes(t *testing.T) {
+	testsupport.IsolateHome(t)
 	done := make(chan struct{}, 1)
 	runner := func(args proto.RebuildArgs) (proto.RebuildReply, error) {
 		if args.Group != "wiz" {
@@ -223,6 +244,15 @@ func TestV2CreateGroupFromScan_CreatesAndIndexes(t *testing.T) {
 	}
 	ts, _ := newWizardTestServer(t, runner)
 	repoDir := t.TempDir()
+
+	// Make Cursor "detected" so registerWizardMCP(nil) actually exercises an
+	// MCP write during this test — proving it lands under the isolated home,
+	// not the developer's real ~/.cursor/mcp.json (the exact leak this test
+	// used to cause; see internal/install/mcpreg/test_isolation_guard.go).
+	cursorDir := filepath.Join(os.Getenv("HOME"), ".cursor")
+	if err := os.MkdirAll(cursorDir, 0o755); err != nil {
+		t.Fatalf("mkdir isolated .cursor dir: %v", err)
+	}
 
 	body := `{"name":"wiz","repos":[{"path":` + jsonQuote(repoDir) + `,"slug":"core"}]}`
 	resp, err := http.Post(ts.URL+"/api/v2/groups/from-scan", "application/json", strings.NewReader(body))
@@ -242,6 +272,15 @@ func TestV2CreateGroupFromScan_CreatesAndIndexes(t *testing.T) {
 	}
 	if !env.OK || env.Data.JobID == "" || env.Data.Group != "wiz" {
 		t.Fatalf("bad ack: %+v", env)
+	}
+
+	// The from-scan handler synchronously registers the grafel MCP entry
+	// (registerWizardMCP) before returning the ack above. Assert it landed
+	// under the isolated HOME, never under the developer's real one.
+	cursorMCPPath := filepath.Join(cursorDir, "mcp.json")
+	testsupport.AssertUnderHome(t, cursorMCPPath)
+	if !mcpreg.HasGrafelEntry(cursorMCPPath) {
+		t.Fatalf("expected grafel MCP entry registered at isolated %q", cursorMCPPath)
 	}
 
 	select {

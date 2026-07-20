@@ -435,6 +435,7 @@ func backupOnce(path string) error {
 // RestorePath. The merge is surgical: only mcpServers.grafel is added or
 // updated; every other key and sibling server is preserved.
 func RegisterPath(path, binPath string) (string, error) {
+	guardResolvedConfigPath(path, "MCP host config")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
 	}
@@ -481,6 +482,7 @@ func Unregister(tool Tool) error {
 // `{"mcpServers":{}}`. Returns nil if the file or entry doesn't exist
 // (idempotent). It NEVER overwrites foreign servers or resets the file to `{}`.
 func UnregisterPath(path string) error {
+	guardResolvedConfigPath(path, "MCP host config")
 	if isTOML(path) {
 		return unregisterTOML(path)
 	}
@@ -519,6 +521,7 @@ func UnregisterPath(path string) error {
 //
 // The sidecar backup is removed after a successful restore.
 func RestorePath(path string) error {
+	guardResolvedConfigPath(path, "MCP host config")
 	sidecar := sidecarBackupPath(path)
 	b, err := os.ReadFile(sidecar)
 	if err != nil {
