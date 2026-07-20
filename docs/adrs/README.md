@@ -31,6 +31,8 @@ decision itself, and the consequences we accepted.
 | [0023](0023-migrate-to-official-tree-sitter-binding-per-language-modules.md) | Proposed | Migrate to official tree-sitter binding + per-language grammar modules (B2 assessment) |
 | [0024](0024-decouple-mcp-serving-from-engine.md) | Accepted | Decouple MCP serving from the engine (serve/engine process split) |
 | [0025](0025-channelbinding-config-code-topic-messaging.md) | Proposed | ChannelBinding — connect config↔code↔topic for messaging (reference impl: Quarkus/SmallRye/Kafka) |
+| [0026](0026-fbwriter-sharding-2gib-cliff.md) | Deferred | fbwriter sharding — remove the 2 GiB serialization cliff |
+| [0027](0027-mmap-zerocopy-resident-graph.md) | Proposed | mmap + zero-copy resident graph (memory north-star) |
 
 Numbers are append-only.
 
