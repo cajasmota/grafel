@@ -269,6 +269,9 @@ func inheritedGrafelIgnores(root string) []*IgnoreFile {
 	if err != nil {
 		return nil
 	}
+	if resolved, err := filepath.EvalSymlinks(rootAbs); err == nil {
+		rootAbs = resolved
+	}
 	top = filepath.Clean(top)
 	rootAbs = filepath.Clean(rootAbs)
 	if samePath(top, rootAbs) {
