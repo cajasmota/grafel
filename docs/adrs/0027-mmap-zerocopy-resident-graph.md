@@ -81,6 +81,16 @@ code comment concedes the SIGBUS risk and explicitly suggests "swap to an
 epoch-based reclaim." It is used only for warming/eviction, never as a query
 surface. It is a cautionary prototype, not a foundation.
 
+**Invariant (serve read surface).** The serve read path (`internal/mcp`) MUST
+NOT vend, borrow, or otherwise source a `*fbreader.Reader` from the
+`internal/daemon/mcp` LRU. That LRU's `removeLocked` closes without draining
+refs; it is safe *today only because `internal/mcp` does not import it*. Serve's
+mmap handles come exclusively from `reloadLocked`'s own `fbreader.Open`, wrapped
+in the F1 `MapHandle` protocol. Stating this as an invariant prevents a future
+refactor from re-entering the unsafe close-without-drain path through serve's
+query surface. If the two ever need to share a cache, the shared cache must
+adopt the F1 drain protocol first.
+
 ### The bytes are already aliasable
 
 The generated FlatBuffers accessors already return **aliases** into the mapped
@@ -212,29 +222,39 @@ zero on a retired handle) perform the munmap.
 type MapHandle struct {
     reader  *fbreader.Reader
     refs    atomic.Int32   // # of in-flight borrows
-    retired atomic.Bool    // reload published a successor; unmap when refs hits 0
+    retired atomic.Bool    // reload published a successor; unmap once refs drains to 0
+    closed  sync.Once      // EXACTLY-ONCE munmap guard — load-bearing (see below)
 }
 
-func (h *MapHandle) borrow() bool {           // returns false if already retired+drained
-    for {
-        n := h.refs.Load()
-        if n < 0 { return false }             // sentinel: fully closed
-        if h.refs.CompareAndSwap(n, n+1) { return true }
-    }
-}
+// borrow runs UNDER s.mu (from Group()), so it cannot race reload's
+// publish+retire. It needs no "refuse retired" check: reload repoints
+// lr.handle to the successor BEFORE retiring the predecessor, so a fresh
+// borrow — which only ever targets the currently-published lr.handle (the
+// read-through-captured-handle invariant below) — can never reach, and thus
+// never re-increment, a retired handle. There is deliberately NO negative
+// sentinel: it would be dead code standing in for this structural invariant.
+func (h *MapHandle) borrow() { h.refs.Add(1) }
 
+// release runs LOCK-FREE after the handler returns.
 func (h *MapHandle) release() {
     if h.refs.Add(-1) == 0 && h.retired.Load() {
-        h.closeOnce()                          // last releaser of a retired handle unmaps
+        h.closeOnce()   // may race reload's close below — dedup'd by closeOnce
     }
 }
+
+// closeOnce MUST be genuinely idempotent (sync.Once, or a CAS-on-closed-flag).
+// A plain non-atomic `if !closed { closed=true; unmap() }` has a double-munmap
+// window. This is not a nicety — exactly-once rests ENTIRELY here, not on
+// unique observation (see Correctness).
+func (h *MapHandle) closeOnce() { h.closed.Do(func() { _ = h.reader.Close() }) }
 
 // reload path, under s.mu:
 old := lr.handle
-lr.handle = newHandle                          // publish successor FIRST
-old.retired.Store(true)
-if old.refs.Load() == 0 { old.closeOnce() }    // no in-flight borrows → unmap now
-// else: the last in-flight release() will unmap.
+lr.handle = newHandle          // 1. publish successor FIRST (fresh borrows now hit it)
+old.retired.Store(true)        // 2. THEN retire predecessor
+if old.refs.Load() == 0 {      // 3. no in-flight borrows → unmap now...
+    old.closeOnce()
+}                              //    ...else the last in-flight release() unmaps it.
 ```
 
 **How it wraps the existing `State.Group()` borrow.** Today `Group()` copies
@@ -251,12 +271,52 @@ handle is published (it borrows the fresh handle). The ordering
 "publish successor → mark old retired → conditionally close" under the same
 mutex is what closes the race.
 
-**Correctness argument.** A retired handle is unmapped by exactly one
-goroutine: whichever observes `refs==0 && retired` last. `borrow()` refuses a
-handle already at the closed sentinel. No borrow can begin on a handle after
-it is retired *and* observed at zero, because a fresh borrow only ever targets
-`lr.handle`, which reload already repointed to the successor before retiring
-the old one. Thus no `unsafe.String` alias can outlive its mapping.
+**The read-through-captured-handle invariant (load-bearing).** The whole proof
+holds ONLY IF a handler reads through *the exact handle it borrowed*. `Group()`
+must return an **immutable per-call snapshot**: the borrowed `MapHandle`(s) and
+the derived indexes are captured under `s.mu` and every subsequent read binds to
+*those captured references*. A handler must NEVER re-dereference `lr.handle` /
+`lr.Reader` / `lr.Doc` live at read time. Reload mutates the shared
+`*LoadedRepo` **in place** (it repoints `lr.handle`), so a live re-deref can
+hand a reader the successor handle that this call never `borrow()`-incremented —
+whose pages a concurrent reload is free to unmap → SIGSEGV. Concretely: the
+handle captured under `s.mu` is the read cursor for the entire call; F2's hot
+resident index (id→handle, the int32 CSR adjacency, the label lookup) must be
+keyed off that **same captured handle**, not off a live `lr.*` field. This is a
+blocking F1/F2 acceptance criterion, proven by a race test that reloads in a
+tight loop while borrowers read, asserting no fault and no handle leak.
+
+**Correctness argument.** Two claims: (i) a retired handle is *always*
+eventually unmapped (no leak), and (ii) it is unmapped *exactly once* (no
+double-munmap).
+
+*No leak.* Reload and the last releaser cross-check two atomics in opposite
+order: reload does `retired.Store(true)` **then** `refs.Load()`; a releaser does
+`refs.Add(-1)` **then** `retired.Load()`. Under Go's sequentially-consistent
+atomics, whichever of the two performs its *second* operation last observes the
+other's *first*, so at least one of them sees `refs==0 && retired` and calls
+`closeOnce`. The only interleavings are: (a) reload reads `refs>=1` → reload
+defers; the decrementing releaser then reads `retired==true` → releaser closes.
+(b) A releaser reads `retired==false` (before reload's store) → releaser defers;
+reload then reads `refs==0` → reload closes. There is **no interleaving where
+neither closes**.
+
+*Exactly once — and NOT by unique observation.* The reviewer-flagged subtlety:
+**both** reload and the last releaser CAN observe `refs==0 && retired`
+simultaneously — a releaser does `refs.Add(-1)→0` and reads `retired==true`
+(already set) and closes, while reload independently evaluates
+`old.refs.Load()==0→true` and closes. So exactly-once does **not** rest on a
+single goroutine winning the observation. It rests **entirely** on `closeOnce`
+being a genuine idempotent guard (`sync.Once` or a CAS-on-closed-flag). A plain
+non-atomic `if !closed` flag has a real double-munmap window here. This is a
+hard, load-bearing invariant, enforced as an F1 acceptance criterion.
+
+*No re-borrow of a retired handle.* A fresh `borrow()` only ever targets
+`lr.handle`, which reload repointed to the successor (step 1) **before** it
+retired the predecessor (step 2). So once a handle is retired it can never gain
+a new borrow — there is no negative-`refs` sentinel because there is nothing to
+guard against; the structural ordering is the guarantee. Thus no
+`unsafe.String` alias can be created against, or outlive, an unmapped mapping.
 
 ### Option B — epoch / generation reclaim
 
@@ -318,6 +378,15 @@ and retires H → handler keeps reading H's aliases → handler releases H → l
 releaser unmaps H" is safe by construction. The lock-free read window is
 preserved (handlers still read without holding `s.mu`); only the *unmap* is
 deferred out of `reloadLocked` into the borrow-release protocol.
+
+**All munmap sites must route through retire+conditional-close — not just
+reload.** The same munmap-while-borrowed hazard applies to the two other
+close sites: repo **eviction** (the drop-loop that closes readers for repos no
+longer in the registry, `state.go:972`) and server **`Close()`**
+(`state.go:1107`). Both currently do a bare `lr.Reader.Close()`. Under F1 they
+must instead `retired.Store(true)` + conditional `closeOnce()` on the handle, so
+an in-flight borrow drains before the mapping is unmapped. F1's scope explicitly
+includes converting these two sites, not only the reload swap.
 
 ---
 
@@ -414,6 +483,7 @@ it, and the mmap impl targets the `[]propKV` shape. F2 must not hard-code the
 | **Windows file-lock** — an open/retired mapping blocks `graph.fb` replacement → `ERROR_SHARING_VIOLATION` on the engine rename. | Engine writes via atomic rename to a fresh inode; last-releaser reclaim (Option A, not epoch) unmaps the predecessor promptly. F1 adds a Windows CI reload-under-borrow smoke test. |
 | **GC-untracked memory** — resident set no longer visible to Go heap profiles; a leak (handle never released) is invisible to `pprof` heap. | `MapHandle` refcounts and the deferred-unmap set are exported as metrics (open mappings, retired-not-drained count, max borrow age). Alert on retired-not-drained > N or borrow age > tool-call timeout. |
 | **Reload-during-borrow correctness** | Covered by F1 (above) + a race-detector stress test: N concurrent borrowers + a tight reload loop under `-race`, asserting zero faults and zero handle leaks. |
+| **Unsafe reader re-entering serve** — a future refactor sources serve's read `Reader` from the `internal/daemon/mcp` LRU, whose `removeLocked` closes without draining. | Stated invariant: serve (`internal/mcp`) never vends/borrows a `Reader` from that LRU; its handles come only from `reloadLocked`'s `fbreader.Open` under the F1 protocol. Enforced today by the non-import; if ever shared, the cache must adopt the F1 drain protocol first. |
 | **Migration drift** — a partially-migrated package mixes field reads and method calls, silently reintroducing a copy dependency at cutover. | Each migration PR is behavior-neutral and leaves its package 100% on the interface; a CI lint (vet-style) forbids new direct `.Entities[i].Field` struct-field reads in migrated packages. Cutover cannot land until every consumer is migrated (grep-gate = 0 direct field reads). |
 | **`[]propKV` refactor ordering** | `EntityView.Properties()` contract defined storage-agnostic; mmap impl targets `[]propKV`; coordinate merge order so neither refactor hard-codes the other's shape. |
 

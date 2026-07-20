@@ -18,17 +18,31 @@ Rough scale: **3 foundation + ~16 migration + 3–4 cutover ≈ 22–23 PRs.**
 ### F1 — deferred-unmap lifetime (`MapHandle` refcount-drain)
 - **Depends on:** nothing. **This is the gate for all zero-copy work.**
 - **Scope:** `internal/mcp/state.go` (+ a new `internal/mcp/maphandle.go`).
-  Introduce `MapHandle{ reader, refs atomic.Int32, retired atomic.Bool }` with
-  `borrow()`/`release()`/`closeOnce()`. Route the existing `lr.Reader` through
-  a `MapHandle`. Rework `reloadLocked` (`state.go:784`) so the reader swap at
-  `state.go:910`/`945` becomes **publish-successor → retire-old →
-  conditional-close** instead of an in-place `Close()`. Extend the `State.Group()`
-  borrow (`state.go:1029-1037`) so a call latches the repo `MapHandle`s under
-  `s.mu` and the handler `release()`s on return. Same treatment for eviction
-  (`state.go:972`) and `Close()` (`state.go:1107`).
-- **Acceptance:** build/vet/test green; **new race-detector stress test**
-  (N borrowers + tight reload loop under `-race`, zero faults, zero handle
-  leaks); **Windows CI reload-under-borrow smoke test** asserting no
+  Introduce `MapHandle{ reader, refs atomic.Int32, retired atomic.Bool, closed
+  sync.Once }` with `borrow()`/`release()`/`closeOnce()`; `closeOnce` MUST be a
+  genuine idempotent guard (`sync.Once` / CAS-on-flag). Route the existing
+  `lr.Reader` through a `MapHandle`. Rework `reloadLocked` (`state.go:784`) so
+  the reader swap at `state.go:910`/`945` becomes **publish-successor →
+  retire-old → conditional-close** instead of an in-place `Close()`. **Convert
+  the two other munmap sites the same way — not just reload:** repo eviction
+  (`state.go:972`) and server `Close()` (`state.go:1107`) must route through
+  `retired.Store(true)` + conditional `closeOnce()`, never a bare
+  `lr.Reader.Close()` (same munmap-while-borrowed hazard). Extend the
+  `State.Group()` borrow (`state.go:1029-1037`) so a call latches the repo
+  `MapHandle`s under `s.mu`, returns them as an **immutable per-call snapshot**,
+  and the handler `release()`s on return. Serve's mmap handles come ONLY from
+  `reloadLocked`'s own `fbreader.Open` — this PR must NOT wire serve to the
+  unsafe `internal/daemon/mcp` LRU (`graph_cache.go`, closes without draining).
+- **Acceptance:** build/vet/test green; **BLOCKING — `closeOnce` is genuinely
+  idempotent** (`sync.Once`/CAS): exactly-once munmap rests entirely here, since
+  both reload and the last releaser can reach the close (a double-munmap unit
+  test must pass — force the two-observer interleaving and assert one unmap);
+  **BLOCKING — read-through-captured-handle**: `Group()` returns an immutable
+  per-call snapshot and reads bind to the borrowed handle, never a live re-deref
+  of `lr.handle`/`lr.Reader`/`lr.Doc` (a race test reloads in a tight loop while
+  borrowers read, asserting no fault and no handle leak); **new race-detector
+  stress test** (N borrowers + tight reload loop under `-race`, zero faults,
+  zero handle leaks); **Windows CI reload-under-borrow smoke test** asserting no
   `ERROR_SHARING_VIOLATION` on the engine rename; metrics exported
   (open mappings / retired-not-drained / max borrow age). **No query yet reads
   through the mmap** — this PR only makes the unmap safe to defer. Behavior-neutral.
@@ -46,14 +60,19 @@ Rough scale: **3 foundation + ~16 migration + 3–4 cutover ≈ 22–23 PRs.**
   `[]propKV`).
 - **Acceptance:** build/vet/test green; interfaces satisfied by concrete types;
   hot-index builders have a handle-fed code path (still fed by `Document` for
-  now). Behavior-neutral. **No consumer migrated yet.**
+  now) and are **keyed off the per-call captured handle**, not a live `lr.*`
+  field (the read-through-captured-handle invariant), proven by a race test.
+  Behavior-neutral. **No consumer migrated yet.**
 
 ### F3 — mmap-backed view impl behind a flag
 - **Depends on:** F1 + F2.
 - **Scope:** `internal/graph` (or `internal/mcp`) — `mmapEntityView` /
   `mmapRelationshipView` backed by `fbgraph.Entity`/`Relationship` accessors,
   cold string fields via `unsafe.String` over `ByteVector`
-  (`fbgraph/Entity.go:48,88...`). Add `GRAFEL_SERVE_FROM_MMAP` flag (env +
+  (`fbgraph/Entity.go:48,88...`). **Impl note:** `unsafe.String(&bv[0],
+  len(bv))` PANICS on an empty ByteVector (`&bv[0]` indexes a zero-length
+  slice) — the view impl needs a `len(bv)==0 → ""` guard; it WILL hit real data
+  (empty Signature/Subtype are common). Add `GRAFEL_SERVE_FROM_MMAP` flag (env +
   fleet config) selecting mmap-backed vs materialized views **per repo load**.
   Land **both harnesses**: extend membaseline (RSS + heap inuse, incl.
   repo+3-worktrees) and add the new query-latency harness (find/expand/
