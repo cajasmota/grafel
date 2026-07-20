@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // writeMinimalState writes a valid install.json into dir and returns its path,
@@ -128,6 +130,7 @@ func TestEvaluateDaemonStop_DecisionTable(t *testing.T) {
 // the stop hook is NEVER called and a WARN is emitted — without any real
 // launchctl/systemctl invocation.
 func TestRunUninstall_GuardSkipsForeignDaemon(t *testing.T) {
+	testsupport.IsolateHome(t)
 	dir := t.TempDir()
 	statePath := writeMinimalState(t, dir)
 
@@ -165,6 +168,7 @@ func TestRunUninstall_GuardSkipsForeignDaemon(t *testing.T) {
 // TestRunUninstall_GuardStopsOwnDaemon asserts the normal path: a matching root
 // still stops the daemon.
 func TestRunUninstall_GuardStopsOwnDaemon(t *testing.T) {
+	testsupport.IsolateHome(t)
 	dir := t.TempDir()
 	statePath := writeMinimalState(t, dir)
 
