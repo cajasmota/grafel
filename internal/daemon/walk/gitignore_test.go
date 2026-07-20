@@ -2,6 +2,7 @@ package walk
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -274,6 +275,69 @@ func TestWalkRepo_GrafelIgnore(t *testing.T) {
 	}
 	if !fileSet["src/main.go"] {
 		t.Errorf("expected src/main.go in files")
+	}
+}
+
+func TestWalkRepo_InheritsParentGrafelIgnoreForMonorepoChild(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+
+	mkfile(t, root, ".grafelignore", "**/wwwroot/libs/\nsrc/generated/\n")
+	mkfile(t, root, "src/Assessment.HttpApi.Host/wwwroot/libs/datatables.net/js/dataTables.min.js", "generated")
+	mkfile(t, root, "src/generated/out.go", "generated")
+	mkfile(t, root, "src/Assessment.HttpApi.Host/Program.cs", "class Program {}")
+
+	files, skipped, err := WalkRepo(filepath.Join(root, "src"), nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+
+	fileSet := make(map[string]bool)
+	for _, f := range files {
+		fileSet[f] = true
+	}
+	if fileSet["Assessment.HttpApi.Host/wwwroot/libs/datatables.net/js/dataTables.min.js"] {
+		t.Fatalf("parent .grafelignore did not skip wwwroot libs; files=%v skipped=%v", files, skipped)
+	}
+	if fileSet["generated/out.go"] {
+		t.Fatalf("parent .grafelignore did not rewrite src/generated for child root; files=%v skipped=%v", files, skipped)
+	}
+	if !fileSet["Assessment.HttpApi.Host/Program.cs"] {
+		t.Fatalf("source file missing after inherited ignore filtering; files=%v skipped=%v", files, skipped)
+	}
+}
+
+func TestWalkRepo_InheritsNestedGrafelIgnoreRelativeToItsDirectory(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+
+	mkfile(t, root, ".grafelignore", "apps/**/dist/\n")
+	mkfile(t, root, "apps/.grafelignore", "admin/generated/\n")
+	mkfile(t, root, "apps/admin/dist/bundle.js", "generated")
+	mkfile(t, root, "apps/admin/generated/client.ts", "generated")
+	mkfile(t, root, "apps/admin/src/main.ts", "source")
+
+	files, skipped, err := WalkRepo(filepath.Join(root, "apps", "admin"), nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+	fileSet := make(map[string]bool)
+	for _, f := range files {
+		fileSet[f] = true
+	}
+	if fileSet["dist/bundle.js"] || fileSet["generated/client.ts"] {
+		t.Fatalf("nested inherited ignores were not applied; files=%v skipped=%v", files, skipped)
+	}
+	if !fileSet["src/main.ts"] {
+		t.Fatalf("source file missing; files=%v skipped=%v", files, skipped)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
 

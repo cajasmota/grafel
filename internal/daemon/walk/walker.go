@@ -15,12 +15,14 @@ package walk
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -96,7 +98,13 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 	// igStack tracks .gitignore/.grafelignore files as we descend.
 	var igStack IgnoreStack
 
-	// Load the root-level .gitignore and .grafelignore.
+	// Load inherited .grafelignore files from git ancestors first, then the
+	// root-level .gitignore and .grafelignore. This matters when a monorepo is
+	// registered as package roots (for example <repo>/src): the top-level
+	// .grafelignore should still govern those child roots.
+	for _, parent := range inheritedGrafelIgnores(root) {
+		igStack.Push(parent)
+	}
 	rootGit, _ := ParseIgnoreFile("", filepath.Join(root, ".gitignore"), ".gitignore")
 	rootArchi, _ := ParseIgnoreFile("", filepath.Join(root, ".grafelignore"), ".grafelignore")
 	igStack.Push(rootGit)
@@ -246,6 +254,110 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 	})
 
 	return files, skipped, err
+}
+
+func inheritedGrafelIgnores(root string) []*IgnoreFile {
+	meta := gitmeta.Capture(root)
+	if meta.TopLevel == "" {
+		return nil
+	}
+	top, err := filepath.Abs(meta.TopLevel)
+	if err != nil {
+		return nil
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return nil
+	}
+	top = filepath.Clean(top)
+	rootAbs = filepath.Clean(rootAbs)
+	if samePath(top, rootAbs) {
+		return nil
+	}
+	relRoot, err := filepath.Rel(top, rootAbs)
+	if err != nil || relRoot == "." || strings.HasPrefix(relRoot, "..") {
+		return nil
+	}
+	var out []*IgnoreFile
+	dir := top
+	for !samePath(dir, rootAbs) {
+		relFromDir, err := filepath.Rel(dir, rootAbs)
+		if err != nil || relFromDir == "." || strings.HasPrefix(relFromDir, "..") {
+			return nil
+		}
+		ig := parseInheritedGrafelIgnore(dir, filepath.ToSlash(relFromDir))
+		if ig != nil && len(ig.patterns) > 0 {
+			out = append(out, ig)
+		}
+		first, _, _ := strings.Cut(filepath.ToSlash(relFromDir), "/")
+		dir = filepath.Join(dir, filepath.FromSlash(first))
+	}
+	return out
+}
+
+func parseInheritedGrafelIgnore(dir, relRoot string) *IgnoreFile {
+	path := filepath.Join(dir, ".grafelignore")
+	b, err := os.ReadFile(path)
+	if err != nil || len(b) == 0 {
+		return nil
+	}
+	rewritten := rewriteInheritedIgnore(b, relRoot)
+	ig, err := parseIgnoreReader("", ".grafelignore", bytes.NewReader(rewritten))
+	if err != nil {
+		return nil
+	}
+	return ig
+}
+
+func rewriteInheritedIgnore(b []byte, relRoot string) []byte {
+	var out strings.Builder
+	sc := bufio.NewScanner(bytes.NewReader(b))
+	for sc.Scan() {
+		line := sc.Text()
+		out.WriteString(rewriteInheritedIgnoreLine(line, relRoot))
+		out.WriteByte('\n')
+	}
+	return []byte(out.String())
+}
+
+func rewriteInheritedIgnoreLine(line, relRoot string) string {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return line
+	}
+	prefix := ""
+	body := line
+	if strings.HasPrefix(body, "!") {
+		prefix = "!"
+		body = strings.TrimPrefix(body, "!")
+	}
+	leadingSlash := strings.HasPrefix(body, "/")
+	body = strings.TrimPrefix(body, "/")
+	trailingSlash := strings.HasSuffix(body, "/")
+	body = strings.TrimSuffix(body, "/")
+
+	if body == relRoot {
+		body = "**"
+	} else if strings.HasPrefix(body, relRoot+"/") {
+		body = strings.TrimPrefix(body, relRoot+"/")
+		leadingSlash = false
+	}
+	if trailingSlash && !strings.HasSuffix(body, "/") {
+		body += "/"
+	}
+	if leadingSlash {
+		body = "/" + body
+	}
+	return prefix + body
+}
+
+func samePath(a, b string) bool {
+	a = filepath.Clean(a)
+	b = filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // hardcodedSkip reports whether a directory basename is on the extended
