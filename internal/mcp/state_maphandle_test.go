@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -84,6 +85,70 @@ func TestCloseUnmapsImmediatelyWhenIdle(t *testing.T) {
 	}
 }
 
+// Regression (deterministic, borrow-path): the stale-refcount TOCTOU in
+// release(), forced through the REAL borrowGroup / publishHandle / release path
+// (not just the bare MapHandle). A first borrow is released to refs==0 while the
+// handle is STILL PUBLISHED; parked in the releaseGap seam, a second borrowGroup
+// legally re-borrows the same live handle (refs 0→1) and a reload then retires
+// it (sees refs==1 → defers). When the parked releaser resumes, a naive
+// `Add(-1)==0 && retired.Load()` release munmaps on its stale n==0 while refs==1
+// → use-after-unmap. This FAILS on the buggy release() and PASSES on the
+// re-check-after-retired fix — deterministically, at default -cpu, -count=1.
+func TestBorrowGroupReleaseDoesNotUnmapOnRefcountRebound(t *testing.T) {
+	s := NewState(&Registry{Groups: map[string]RegistryGroup{
+		"g": {Repos: map[string]RegistryRepo{}},
+	}})
+	lr := &LoadedRepo{Repo: "r"}
+	s.groups["g"] = &LoadedGroup{Name: "g", Repos: map[string]*LoadedRepo{"r": lr}}
+
+	cc := &refCheckCloser{}
+	gapEntered := make(chan struct{})
+	gapProceed := make(chan struct{})
+	var armed atomic.Bool
+	armed.Store(true)
+	H := &MapHandle{closer: cc, releaseGap: func() {
+		if armed.CompareAndSwap(true, false) {
+			close(gapEntered)
+			<-gapProceed
+		}
+	}}
+	cc.h = H
+	s.mu.Lock()
+	lr.publishHandle(H)
+	s.mu.Unlock()
+
+	b1 := s.borrowGroup("g") // borrows H (refs=1)
+	done := make(chan struct{})
+	go func() { defer close(done); b1.Release() }() // H.release(): Add(-1)→0, parks in gap
+
+	<-gapEntered
+	// H is still lr.handle (published): a second borrow legally rebounds refs
+	// 0→1, then a reload publishes a successor and retires H (defers, refs==1).
+	b2 := s.borrowGroup("g")
+	s.mu.Lock()
+	lr.publishHandle(&MapHandle{closer: &countingCloser{}})
+	s.mu.Unlock()
+	if got := cc.n.Load(); got != 0 {
+		t.Fatalf("reload munmapped H while borrowed: count=%d, want 0", got)
+	}
+	close(gapProceed)
+	<-done
+
+	if bad := cc.badWhileRefs.Load(); bad != 0 {
+		t.Fatalf("release munmapped H while refs>0 (rebound TOCTOU): %d faults", bad)
+	}
+	if got := cc.n.Load(); got != 0 {
+		t.Fatalf("H unmapped while still borrowed by b2: count=%d, want 0", got)
+	}
+	b2.Release() // drains H → unmap exactly once
+	if got := cc.n.Load(); got != 1 {
+		t.Fatalf("H final munmap count = %d, want 1", got)
+	}
+	if bad := cc.badWhileRefs.Load(); bad != 0 {
+		t.Fatalf("munmap observed refs>0 %d times, want 0", bad)
+	}
+}
+
 // Criterion 3: read-through-captured-handle. A borrow taken before a reload
 // binds to the handle it captured and stays valid (not munmapped) across the
 // reload, until the borrower releases. Stress: N borrowers reading through
@@ -101,7 +166,14 @@ func TestBorrowGroupSurvivesReload(t *testing.T) {
 	var closers []*refCheckCloser
 	newHandle := func() *MapHandle {
 		c := &refCheckCloser{}
-		h := &MapHandle{closer: c}
+		// releaseGap = runtime.Gosched yields inside release() in the exact window
+		// between the refcount decrement and the close decision, widening the
+		// stale-refcount rebound window for broad -race / -cpu-sweep coverage.
+		// This is the stochastic stress catcher (many handles, N borrowers, tight
+		// reload loop); the DETERMINISTIC, default-scheduling guarantee for the
+		// rebound TOCTOU lives in TestMapHandleReleaseRefcountReboundDoesNotUnmap
+		// and TestBorrowGroupReleaseDoesNotUnmapOnRefcountRebound.
+		h := &MapHandle{closer: c, releaseGap: runtime.Gosched}
 		c.h = h
 		closersMu.Lock()
 		closers = append(closers, c)
@@ -183,6 +255,38 @@ func TestBorrowGroupSurvivesReload(t *testing.T) {
 		if bad := c.badWhileRefs.Load(); bad != 0 {
 			t.Fatalf("handle %d: munmap observed refs>0 %d times, want 0", i, bad)
 		}
+	}
+}
+
+// Guard (F2-facing): publishHandle must repoint lr.handle to the SUCCESSOR
+// before it retires the predecessor. This ordering is what guarantees a fresh
+// borrow can never target a retired handle. It is currently REDUNDANT in F1
+// (s.mu serializes borrow-vs-publish), but becomes load-bearing in F2 when
+// release()/reads move off s.mu — so guard it now. We observe the ordering at
+// the exact instant the predecessor is unmapped: lr.handle must already be the
+// successor.
+func TestPublishHandlePublishesSuccessorBeforeRetiringPredecessor(t *testing.T) {
+	lr := &LoadedRepo{Repo: "r"}
+	var successor *MapHandle
+	closedPredecessor := false
+	old := &MapHandle{closer: closerFunc(func() error {
+		closedPredecessor = true
+		if lr.handle != successor {
+			t.Errorf("predecessor unmapped before successor published: lr.handle=%p, want successor %p",
+				lr.handle, successor)
+		}
+		return nil
+	})}
+	lr.handle = old
+	successor = &MapHandle{closer: closerFunc(func() error { return nil })}
+
+	lr.publishHandle(successor) // publishes successor, then retires+closes old (idle → immediate)
+
+	if !closedPredecessor {
+		t.Fatal("publishHandle did not retire/close the predecessor")
+	}
+	if lr.handle != successor {
+		t.Fatalf("after publishHandle lr.handle=%p, want successor %p", lr.handle, successor)
 	}
 }
 

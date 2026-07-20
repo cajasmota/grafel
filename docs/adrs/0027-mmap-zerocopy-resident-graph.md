@@ -236,8 +236,21 @@ type MapHandle struct {
 func (h *MapHandle) borrow() { h.refs.Add(1) }
 
 // release runs LOCK-FREE after the handler returns.
+//
+// The refs.Load()==0 RE-CHECK after observing retired is load-bearing, NOT
+// redundant: refs.Add(-1)==0 is a CACHED read. While this handle is still
+// PUBLISHED (not yet retired), a concurrent goroutine can legally borrow it,
+// rebounding refs 0→1 AFTER our decrement but BEFORE we read retired. A naive
+// `Add(-1)==0 && retired.Load()` would then munmap on the stale n==0 while
+// refs==1 → use-after-unmap. Re-reading refs AFTER retired is safe because
+// retired is only observable once the handle is unpublished, from which point
+// refs is monotonically non-increasing (no new borrow can target it), so a
+// Load()==0 there is authoritative. See "No munmap while borrowed" below.
 func (h *MapHandle) release() {
-    if h.refs.Add(-1) == 0 && h.retired.Load() {
+    if h.refs.Add(-1) != 0 {
+        return
+    }
+    if h.retired.Load() && h.refs.Load() == 0 {
         h.closeOnce()   // may race reload's close below — dedup'd by closeOnce
     }
 }
@@ -290,16 +303,21 @@ tight loop while borrowers read, asserting no fault and no handle leak.
 eventually unmapped (no leak), and (ii) it is unmapped *exactly once* (no
 double-munmap).
 
-*No leak.* Reload and the last releaser cross-check two atomics in opposite
+*No leak.* Reload and the *last* releaser cross-check two atomics in opposite
 order: reload does `retired.Store(true)` **then** `refs.Load()`; a releaser does
-`refs.Add(-1)` **then** `retired.Load()`. Under Go's sequentially-consistent
-atomics, whichever of the two performs its *second* operation last observes the
-other's *first*, so at least one of them sees `refs==0 && retired` and calls
-`closeOnce`. The only interleavings are: (a) reload reads `refs>=1` → reload
-defers; the decrementing releaser then reads `retired==true` → releaser closes.
-(b) A releaser reads `retired==false` (before reload's store) → releaser defers;
-reload then reads `refs==0` → reload closes. There is **no interleaving where
-neither closes**.
+`refs.Add(-1)` **then** `retired.Load()` **then** re-reads `refs.Load()`. Under
+Go's sequentially-consistent atomics, whichever of the two performs its *second*
+operation last observes the other's *first*, so at least one of them sees a
+retired handle with a globally-drained refcount and calls `closeOnce`. The
+interleavings are: (a) reload reads `refs>=1` → reload defers; the releaser that
+finally drains the handle reads `retired==true` and re-confirms `refs==0` →
+releaser closes. (b) A releaser reads `retired==false` (before reload's store) →
+releaser defers; reload then reads `refs==0` → reload closes. (c) A releaser
+reads `retired==true` but its re-check sees `refs>0` (a borrow rebounded — see
+below) → it defers; the *later* releaser that drains that rebounded borrow, or a
+reload that reads `refs==0`, closes. There is **no interleaving where neither
+closes** — the handle that is retired and truly at `refs==0` is always seen so
+by whichever party acts last.
 
 *Exactly once — and NOT by unique observation.* The reviewer-flagged subtlety:
 **both** reload and the last releaser CAN observe `refs==0 && retired`
@@ -317,6 +335,28 @@ retired the predecessor (step 2). So once a handle is retired it can never gain
 a new borrow — there is no negative-`refs` sentinel because there is nothing to
 guard against; the structural ordering is the guarantee. Thus no
 `unsafe.String` alias can be created against, or outlive, an unmapped mapping.
+
+*No munmap while borrowed — the refcount-rebound TOCTOU (adversarial-review
+fix).* The subtlety the "no re-borrow" invariant does **not** cover: a borrow
+taken while the handle is *still published* (before it is retired) is perfectly
+legal, and can rebound `refs` `0→1` in the window **after** a concurrent
+releaser's `refs.Add(-1)→0` but **before** that releaser reads `retired`.
+Concretely: releaser R decrements to 0 on the still-live handle (retired still
+false); borrower B then legally borrows it (`refs 0→1`); reload retires it and,
+seeing `refs==1`, defers; R now reads `retired==true`. A naive release that
+closed on R's *cached* `n==0` would munmap while B still holds the mapping →
+use-after-unmap. The fix is the `refs.Load()==0` **re-check after** `retired` in
+`release()` (above): once `retired` is observed, the handle is already
+unpublished, so `refs` is monotonically non-increasing from there and the
+re-read is authoritative — R sees `refs==1`, defers, and B's later `release()`
+performs the single munmap. `retire()` is unaffected: it always runs after the
+successor is published, so its `refs.Load()` cannot be undercut by a new borrow.
+This is a blocking F1 acceptance criterion, proven deterministically (no `-cpu`
+sweep needed) by `TestMapHandleReleaseRefcountReboundDoesNotUnmap` and
+`TestBorrowGroupReleaseDoesNotUnmapOnRefcountRebound`, which park a releaser in a
+test-only seam between the decrement and the close decision, inject the
+rebounding borrow + retire, and assert the mapping is never unmapped while
+`refs>0`.
 
 ### Option B — epoch / generation reclaim
 

@@ -56,6 +56,15 @@ type MapHandle struct {
 	refs    atomic.Int64
 	retired atomic.Bool
 	closed  sync.Once
+
+	// releaseGap, when non-nil, is invoked inside release() in the window
+	// BETWEEN the refcount decrement and the close decision. It is a test-only
+	// scheduling seam used to force the stale-refcount rebound interleaving
+	// deterministically (see TestMapHandleReleaseRefcountReboundDoesNotUnmap);
+	// nil in production, so release() pays only a nil check. Set once at
+	// construction, before the handle is published/borrowed — never mutated
+	// concurrently, so it needs no atomic.
+	releaseGap func()
 }
 
 // newMapHandle wraps a freshly-opened reader for the production path. Called
@@ -90,8 +99,32 @@ func (h *MapHandle) borrow() *MapHandle {
 // release drops one borrow. If it drains the last borrow of a retired handle,
 // it performs the munmap. Runs LOCK-FREE after the handler returns. The close
 // here may race reload's close in retire() — closeOnce dedups them.
+//
+// Stale-refcount TOCTOU (the bug the adversarial review caught): a naive
+//
+//	if h.refs.Add(-1) == 0 && h.retired.Load() { h.closeOnce() }
+//
+// acts on a CACHED n==0. While this handle is still PUBLISHED (not yet retired),
+// a concurrent goroutine may legally borrow it, rebounding refs 0→1 AFTER our
+// decrement but BEFORE we read retired. If reload then retires (sees refs==1 →
+// defers) and we re-read retired==true, the naive form munmaps on the stale
+// n==0 while refs==1 → use-after-unmap. The "no re-borrow of a retired handle"
+// invariant does NOT cover this: the rebounding borrow hit the handle while it
+// was still LIVE, which is legal.
+//
+// Fix: re-check refs AFTER observing retired. Once retired is visible the handle
+// is already unpublished (retire runs strictly after publishHandle repoints
+// lr.handle to the successor), so no new borrow can target it and refs is
+// monotonically non-increasing from there — a Load()==0 after retired==true is
+// authoritative.
 func (h *MapHandle) release() {
-	if h.refs.Add(-1) == 0 && h.retired.Load() {
+	if h.refs.Add(-1) != 0 {
+		return
+	}
+	if h.releaseGap != nil {
+		h.releaseGap()
+	}
+	if h.retired.Load() && h.refs.Load() == 0 {
 		h.closeOnce()
 	}
 }
