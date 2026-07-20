@@ -57,7 +57,8 @@ const memLimitFloorMB int64 = 2048
 //  1. If the standard GOMEMLIMIT env var is already set, the Go runtime has
 //     already honored it — we do nothing and log that we deferred to it.
 //  2. GRAFEL_DAEMON_MEMLIMIT_MB (MB; "off"/"0"/negative disables).
-//  3. Default: memLimitFraction of total system RAM, clamped to
+//  3. daemon_go_memory_limit_mb from settings.json.
+//  4. Default: memLimitFraction of total system RAM, clamped to
 //     [memLimitFloorMB, memLimitCeilingMB]. If total RAM is unknown (0), we
 //     fall back to the floor.
 //
@@ -101,8 +102,11 @@ func resolveMemLimitMB() (int64, string) {
 			}
 			return mb, memLimitEnv
 		}
-		// Unparseable override: fall through to the RAM-fraction default
-		// rather than guessing.
+		// Unparseable override: fall through to settings/default rather than
+		// guessing.
+	}
+	if mb := ConfiguredGoMemoryLimitMB(); mb > 0 {
+		return mb, "settings.json:daemon_go_memory_limit_mb"
 	}
 
 	totalMB := process.TotalMemoryMB()
@@ -134,7 +138,8 @@ func ResolveMemLimitMB() (int64, string) {
 // MemLimitSummary returns the effective Go soft memory limit the daemon
 // would apply, honoring the same precedence as applyMemoryLimit:
 //
-//	explicit GOMEMLIMIT > GRAFEL_DAEMON_MEMLIMIT_MB > fraction-of-RAM default.
+//	explicit GOMEMLIMIT > GRAFEL_DAEMON_MEMLIMIT_MB > settings.json >
+//	fraction-of-RAM default.
 //
 // It returns the limit in MB (<=0 means disabled / unbounded) and a short
 // source tag. When an explicit GOMEMLIMIT is set, mb is reported as 0 with

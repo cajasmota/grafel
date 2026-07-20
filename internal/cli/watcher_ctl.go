@@ -44,7 +44,7 @@ Use 'grafel dashboard' to open the dashboard in your browser.`,
 		},
 	}
 	cmd.Flags().Int64Var(&maxRSSBudget, "max-rss-budget", 0,
-		"max predicted RSS (MB) for concurrent index jobs (0 = use daemon default of 500)")
+		"max predicted RSS (MB) for concurrent index jobs; persists to settings.json (0 = configured/auto)")
 	cmd.Flags().BoolVar(&noAutoCleanup, "no-auto-cleanup", false,
 		"disable the background docgen cleanup sweeper (default: enabled)")
 	return cmd
@@ -226,6 +226,11 @@ func runDaemonStartOpts(out io.Writer, maxRSSBudgetMB int64, noAutoCleanup bool)
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		return err
+	}
+	if maxRSSBudgetMB > 0 {
+		if err := daemon.PersistConfiguredRSSBudgetMB(maxRSSBudgetMB); err != nil {
+			return fmt.Errorf("persist --max-rss-budget: %w", err)
+		}
 	}
 	// Already running? net.Dial succeeds → check for binary mismatch (#855).
 	if c, err := client.DialPath(layout.SocketPath); err == nil {

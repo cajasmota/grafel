@@ -96,12 +96,56 @@ func TestHandlePutSettings_rssOutOfRange(t *testing.T) {
 	srv, cleanup := setupSettingsServer(t)
 	defer cleanup()
 
-	patch := map[string]any{"daemon_rss_budget_mb": 9999}
+	patch := map[string]any{"daemon_rss_budget_mb": 40000}
 	body, _ := json.Marshal(patch)
 	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.handlePutSettings(w, req)
 
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandlePutSettings_goMemoryLimit(t *testing.T) {
+	srv, cleanup := setupSettingsServer(t)
+	defer cleanup()
+
+	patch := map[string]any{"daemon_go_memory_limit_mb": 8192}
+	body, _ := json.Marshal(patch)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.handlePutSettings(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+	var reply settingsReply
+	if err := json.NewDecoder(w.Body).Decode(&reply); err != nil {
+		t.Fatal(err)
+	}
+	if reply.Settings.DaemonGoMemoryLimitMB == nil || *reply.Settings.DaemonGoMemoryLimitMB != 8192 {
+		t.Fatalf("want daemon_go_memory_limit_mb=8192, got %v", reply.Settings.DaemonGoMemoryLimitMB)
+	}
+	found := false
+	for _, key := range reply.RestartRequired {
+		if key == "daemon_go_memory_limit_mb" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected daemon_go_memory_limit_mb in restart_required, got %v", reply.RestartRequired)
+	}
+}
+
+func TestHandlePutSettings_goMemoryLimitOutOfRange(t *testing.T) {
+	srv, cleanup := setupSettingsServer(t)
+	defer cleanup()
+
+	body, _ := json.Marshal(map[string]any{"daemon_go_memory_limit_mb": 99})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.handlePutSettings(w, req)
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422, got %d; body: %s", w.Code, w.Body.String())
 	}

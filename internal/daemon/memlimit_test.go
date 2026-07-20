@@ -1,6 +1,8 @@
 package daemon
 
 import (
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -36,6 +38,7 @@ func TestResolveMemLimitMB_Disabled(t *testing.T) {
 // big-RAM hosts (#5237); the floor protects tiny hosts.
 func TestResolveMemLimitMB_DefaultClamped(t *testing.T) {
 	t.Setenv(memLimitEnv, "") // ensure no override
+	t.Setenv("GRAFEL_HOME", t.TempDir())
 	mb, src := resolveMemLimitMB()
 	if mb < memLimitFloorMB {
 		t.Errorf("default limit %d below floor %d (src=%s)", mb, memLimitFloorMB, src)
@@ -56,6 +59,25 @@ func TestResolveMemLimitMB_DefaultClamped(t *testing.T) {
 			t.Errorf("default limit: want %d (%.0f%% of %dMB, clamped to [%d,%d]) got %d",
 				want, memLimitFraction*100, total, memLimitFloorMB, memLimitCeilingMB, mb)
 		}
+	}
+}
+
+func TestResolveMemLimitMB_SettingsOverride(t *testing.T) {
+	t.Setenv(memLimitEnv, "")
+	t.Setenv("GOMEMLIMIT", "")
+	home := t.TempDir()
+	t.Setenv("GRAFEL_HOME", home)
+	if err := os.WriteFile(filepath.Join(home, "settings.json"), []byte(`{"daemon_go_memory_limit_mb":8192}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mb, src := resolveMemLimitMB()
+	if mb != 8192 || src != "settings.json:daemon_go_memory_limit_mb" {
+		t.Fatalf("settings override: got mb=%d src=%q", mb, src)
+	}
+
+	t.Setenv(memLimitEnv, "4096")
+	if mb, src := resolveMemLimitMB(); mb != 4096 || src != memLimitEnv {
+		t.Fatalf("env must win over settings: got mb=%d src=%q", mb, src)
 	}
 }
 

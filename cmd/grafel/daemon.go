@@ -143,6 +143,9 @@ const defaultDashboardPort = 47274
 // it (delta-based accounting).  See internal/daemon/sched for the admission
 // logic.
 func defaultRSSBudgetMB() int64 {
+	if configured := daemon.ConfiguredRSSBudgetMB(); configured > 0 {
+		return configured
+	}
 	sysMB := systemTotalMemoryMB()
 	if sysMB <= 0 {
 		return 500 // safe fallback when sysinfo is unavailable

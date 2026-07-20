@@ -32,7 +32,8 @@ fall back to the defaults below.
 | `update_channel` | string | `"stable"` | `"stable"` \| `"dev"` | `"dev"` includes release candidates |
 | `refresh_schedule` | string | `""` | cron expression or `""` | Empty = manual-only refresh; e.g. `"0 3 * * *"` for 03:00 daily |
 | `telemetry_enabled` | bool | `false` | `true` \| `false` | Opt-in anonymous usage metrics |
-| `daemon_rss_budget_mb` | int | `512` | 100–2000 | Maximum RSS the daemon may use before it sheds loaded graphs. **Requires daemon restart.** |
+| `daemon_rss_budget_mb` | int | `512` | 100–32768 | Admission budget, in MB, for predicted concurrent index-job RSS. **Requires daemon restart.** |
+| `daemon_go_memory_limit_mb` | int | automatic | 100–32768 | Optional Go runtime soft memory limit. When omitted, Grafel uses the upstream fraction-of-RAM formula and clamps it to 2048–2560 MB. **Requires daemon restart.** |
 | `watcher_debounce_secs` | int | `2` | 1–60 | How long to wait after a file change before triggering a re-index |
 | `indexer_parallelism` | int | `4` | 1–32 | Number of parallel goroutines used during indexing. **Requires daemon restart.** |
 | `log_level` | string | `"info"` | `"debug"` \| `"info"` \| `"warn"` \| `"error"` | Daemon log verbosity |
@@ -99,11 +100,34 @@ still read once at process start and cannot change in a running daemon —
   (`kill -HUP <daemon-pid>`): the daemon re-reads `cpu.json` and calls
   `runtime.GOMAXPROCS` immediately. Clearing the cap restores the host default.
 
-The remaining knobs in this doc (`daemon_rss_budget_mb`, `indexer_parallelism`,
+The remaining knobs in this doc (`daemon_rss_budget_mb`, `daemon_go_memory_limit_mb`, `indexer_parallelism`,
 `GRAFEL_REBUILD_CONCURRENCY`, the `GRAFEL_MAX_*` budgets) are still
 **read at daemon start** and require `grafel restart` to apply.
 
 ## API endpoints
+
+### Memory precedence
+
+Grafel uses two independent memory controls. `daemon_rss_budget_mb` limits the
+predicted incremental RSS admitted for concurrently running index jobs; it is
+not a process RSS cap. `daemon_go_memory_limit_mb` sets Go's soft runtime memory
+limit, which increases GC pressure near the configured value but may be
+exceeded transiently.
+
+The Go soft-limit precedence is `GOMEMLIMIT` >
+`GRAFEL_DAEMON_MEMLIMIT_MB` > `daemon_go_memory_limit_mb` > the built-in
+fraction-of-RAM default. Omitting the JSON key therefore preserves upstream
+behavior exactly.
+
+For example, a workstation can opt into an 8 GB admission budget and an 8 GB
+Go soft limit while leaving all other settings unchanged:
+
+```json
+{
+  "daemon_rss_budget_mb": 8192,
+  "daemon_go_memory_limit_mb": 8192
+}
+```
 
 | Method | Path | Description |
 |--------|------|-------------|
