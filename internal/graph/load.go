@@ -129,6 +129,62 @@ func PersistedStatsFromDir(dir string) (PersistedStats, bool) {
 	return ps, true
 }
 
+// stringInterner canonicalizes repeated string VALUES seen during a single
+// loadFBDocument call so that N occurrences of an equal string share ONE Go
+// backing array in the resulting *Document, instead of each occurrence
+// paying for its own independently-allocated copy.
+//
+// This is the RESIDENT-memory counterpart to fbwriter's CreateSharedString
+// (Tier-1a, #5846): that optimization dedupes strings ON DISK, but the
+// loader still calls string(fbBytes) once per field per record, which always
+// allocates a fresh backing array regardless of on-disk sharing — so Tier-1a
+// alone shrinks graph.fb but not the loaded Document's heap footprint. The
+// interner closes that gap for the loader's own materialization.
+//
+// Only apply this to HIGH-DUPLICATION fields (entity id/kind/subtype/module/
+// source_file/language and property keys; relationship from_id/to_id/kind).
+// Do NOT intern genuinely-unique/high-cardinality fields (name,
+// qualified_name, signature, property VALUES) — interning those would only
+// grow the interner map with no dedup benefit.
+//
+// Concurrency: loadFBDocument builds every entity and relationship
+// SEQUENTIALLY in a single goroutine (the for-loops below run in program
+// order, no goroutines are spawned), so a plain, unsynchronized map is safe
+// here. If this loop is ever parallelized, this type must be guarded (mutex
+// or sharded) or replaced with a sync.Map to avoid a data race.
+//
+// Critically, ONE interner instance is shared across BOTH entity and
+// relationship construction within a single load (see loadFBDocument below),
+// so a relationship's from_id/to_id canonicalizes to the SAME backing array
+// as the referenced entity's id — the biggest win, since on the real corpus
+// each entity id is referenced by relationship endpoints ~8.7x on average
+// (mean node degree).
+type stringInterner struct {
+	m map[string]string
+}
+
+func newStringInterner() *stringInterner {
+	return &stringInterner{m: make(map[string]string)}
+}
+
+// intern returns the canonical copy of the string represented by b, sharing
+// backing storage with any prior call that saw byte-identical content. The
+// initial lookup uses the b-as-map-key form (m[string(b)]) directly as the
+// index expression so the Go compiler's built-in optimization avoids
+// allocating a string on the (common, high-duplication) hit path; only a
+// miss pays for one allocation to create the canonical copy.
+func (si *stringInterner) intern(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	if v, ok := si.m[string(b)]; ok {
+		return v
+	}
+	s := string(b)
+	si.m[s] = s
+	return s
+}
+
 // loadFBDocument decodes a graph.fb file into a *Document. It opens the
 // file with fbreader (mmap + single bulk read), then converts the lazy
 // FlatBuffers view into an in-memory *Document by iterating the entity
@@ -158,13 +214,18 @@ func loadFBDocument(path string) (*Document, error) {
 	nEnts := r.EntityCount()
 	nRels := r.RelationshipCount()
 
+	// Shared across both entity and relationship construction below (see
+	// stringInterner doc comment) so relationship endpoints canonicalize to
+	// the same backing array as the entity ids they reference.
+	si := newStringInterner()
+
 	entities := make([]Entity, 0, nEnts)
 	for i := 0; i < nEnts; i++ {
 		fbEnt := r.EntityAt(i)
 		if fbEnt == nil {
 			continue
 		}
-		entities = append(entities, fbEntityToGraphEntity(fbEnt))
+		entities = append(entities, fbEntityToGraphEntity(fbEnt, si))
 	}
 
 	rels := make([]Relationship, 0, nRels)
@@ -173,7 +234,7 @@ func loadFBDocument(path string) (*Document, error) {
 		if fbRel == nil {
 			continue
 		}
-		rels = append(rels, fbRelToGraphRel(fbRel))
+		rels = append(rels, fbRelToGraphRel(fbRel, si))
 	}
 
 	// Restore the aggregate Pass-4 community list + corpus stats (#1620).
@@ -252,28 +313,34 @@ func loadJSONDocument(path string) (*Document, error) {
 // the canonical graph.Entity struct. All string fields are copied out
 // of the mmap'd bytes so the returned struct is safe to use after the
 // Reader is closed.
-func fbEntityToGraphEntity(e *fb.Entity) Entity {
+//
+// High-duplication fields (Id/Kind/Subtype/Module/SourceFile/Language and
+// property keys) are canonicalized through si so repeated values across
+// entities (and, for Id, across relationship endpoints referencing it) share
+// one backing array. Name/QualifiedName/Signature/property VALUES are
+// genuinely high-cardinality and are intentionally NOT interned.
+func fbEntityToGraphEntity(e *fb.Entity, si *stringInterner) Entity {
 	props := make(map[string]string, e.PropertiesLength())
 	var pe fb.PropertyEntry
 	for i := 0; i < e.PropertiesLength(); i++ {
 		if e.Properties(&pe, i) {
-			props[string(pe.Key())] = string(pe.Value())
+			props[si.intern(pe.Key())] = string(pe.Value())
 		}
 	}
 	ent := Entity{
-		ID:            string(e.Id()),
+		ID:            si.intern(e.Id()),
 		Name:          string(e.Name()),
 		QualifiedName: string(e.QualifiedName()),
-		Kind:          string(e.Kind()),
-		Subtype:       string(e.Subtype()),
-		SourceFile:    string(e.SourceFile()),
+		Kind:          si.intern(e.Kind()),
+		Subtype:       si.intern(e.Subtype()),
+		SourceFile:    si.intern(e.SourceFile()),
 		StartLine:     int(e.SourceLine()),
 		Properties:    props,
 	}
 	// The Module field is stored as a top-level FB scalar by the writer
 	// (see fbwriter.buildEntity). Restore it into Properties["module"]
 	// so callers that read props["module"] continue to work.
-	if mod := string(e.Module()); mod != "" {
+	if mod := si.intern(e.Module()); mod != "" {
 		if props == nil {
 			props = map[string]string{}
 		}
@@ -282,7 +349,7 @@ func fbEntityToGraphEntity(e *fb.Entity) Entity {
 	}
 	// Issue #2370 — Language is read directly from the dedicated FB slot.
 	// The PR #2365 property-tunnel restore (props["language"]) is retired.
-	if lang := string(e.Language()); lang != "" {
+	if lang := si.intern(e.Language()); lang != "" {
 		ent.Language = lang
 	}
 	// Issue #4881 — restore the entity Signature from its dedicated FB slot.
@@ -335,18 +402,23 @@ func fbCommunityToResult(c *fb.Community) CommunityResult {
 
 // fbRelToGraphRel converts one lazy FlatBuffers Relationship view into
 // the canonical graph.Relationship struct.
-func fbRelToGraphRel(r *fb.Relationship) Relationship {
+//
+// FromID/ToID/Kind and property keys are canonicalized through si — the SAME
+// interner instance used for entity ids (see loadFBDocument) — so an
+// endpoint string shares backing storage with the entity.ID it references
+// rather than allocating its own copy.
+func fbRelToGraphRel(r *fb.Relationship, si *stringInterner) Relationship {
 	props := make(map[string]string, r.PropertiesLength())
 	var pe fb.PropertyEntry
 	for i := 0; i < r.PropertiesLength(); i++ {
 		if r.Properties(&pe, i) {
-			props[string(pe.Key())] = string(pe.Value())
+			props[si.intern(pe.Key())] = string(pe.Value())
 		}
 	}
 	rel := Relationship{
-		FromID:     string(r.FromId()),
-		ToID:       string(r.ToId()),
-		Kind:       string(r.Kind()),
+		FromID:     si.intern(r.FromId()),
+		ToID:       si.intern(r.ToId()),
+		Kind:       si.intern(r.Kind()),
 		Properties: props,
 	}
 	// Restore the ID from Properties if the writer stored it.
