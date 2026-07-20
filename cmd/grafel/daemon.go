@@ -218,6 +218,25 @@ const defaultPerRepoRebuildTimeout = 30 * time.Minute
 // GRAFEL_REBUILD_REPO_TIMEOUT. A value of "0" (or any non-positive
 // duration) disables the bound and returns 0.
 func resolvePerRepoRebuildTimeout() time.Duration {
+	return resolvePerRepoRebuildTimeoutWithOverride("")
+}
+
+// resolvePerRepoRebuildTimeoutWithOverride is resolvePerRepoRebuildTimeout,
+// additionally honoring a per-invocation override (proto.RebuildArgs.RepoTimeout,
+// #5822 sub-ask 3) — e.g. `grafel rebuild --timeout <dur>` — which takes
+// PRIORITY over GRAFEL_REBUILD_REPO_TIMEOUT so a single genuinely-large-repo
+// rebuild can raise (or disable, via "0") the watchdog without touching daemon
+// env/config. An empty or unparseable override falls through to the
+// env/default resolution unchanged.
+func resolvePerRepoRebuildTimeoutWithOverride(override string) time.Duration {
+	if override != "" {
+		if d, err := time.ParseDuration(override); err == nil {
+			if d <= 0 {
+				return 0
+			}
+			return d
+		}
+	}
 	if v := os.Getenv("GRAFEL_REBUILD_REPO_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			if d <= 0 {
@@ -1367,7 +1386,7 @@ func daemonRebuildFuncCore(
 		conc = 1
 	}
 
-	perRepoTimeout := resolvePerRepoRebuildTimeout()
+	perRepoTimeout := resolvePerRepoRebuildTimeoutWithOverride(args.RepoTimeout)
 
 	// #5328: classify on the interactive-vs-automatic axis, NOT slug-vs-group.
 	// A human-awaited request (dashboard wizard index, explicit CLI
@@ -1573,6 +1592,33 @@ func daemonRebuildFuncCore(
 		if res.err != nil {
 			fmt.Fprintf(os.Stderr, " [FAILED: %v]\n", res.err)
 			errs = append(errs, fmt.Sprintf("index %s: %v", res.slug, res.err))
+			// #5822 sub-ask 3 / review follow-up: persist a "last rebuild
+			// FAILED" marker so a genuine failure (watchdog SIGKILL, subprocess
+			// crash, panic, hard rebuild error) is never silent — previously
+			// discarded entirely, leaving `grafel status` showing the stale
+			// previous index with no trace beyond daemon.err.
+			//
+			// An INTENTIONAL cancellation is NOT a failure and must not record
+			// the marker: the "group deleted mid-rebuild" short-circuit above
+			// wraps groupCtx.Err() (context.Canceled) into its error, and
+			// markers key purely by absolute repoPath, so a path shared across
+			// two groups would otherwise surface a bogus FAILED line under the
+			// OTHER, still-alive group after this one is deleted. This also
+			// protects future work that cancels-and-supersedes in-flight
+			// rebuilds by design (a clean stop, not a failure).
+			//
+			// context.DeadlineExceeded is deliberately NOT treated as a
+			// cancellation here: the per-repo watchdog timeout above returns a
+			// plain (unwrapped) "timed out" error, not one satisfying
+			// errors.Is(_, context.DeadlineExceeded) or context.Canceled, so it
+			// always falls through and records — a real hang must stay visible.
+			if errors.Is(res.err, context.Canceled) {
+				continue
+			}
+			// gitmeta.Capture reports the ref/sha this rebuild WAS targeting
+			// (best-effort; empty on a non-git directory).
+			gi := gitmeta.Capture(res.path)
+			daemon.RecordRebuildFailure(res.path, res.err.Error(), gi.Ref, gi.SHA)
 			continue
 		}
 		fmt.Fprintln(os.Stderr, "")
@@ -1598,9 +1644,13 @@ func daemonRebuildFuncCore(
 	// closes the status-write-vs-ack race (#5729 blocker #5): a wizard keying
 	// completion on the rebuild-request ack then sees a FRESH GraphFBMtime on its
 	// first classify poll instead of a stale one for up to a heartbeat interval.
-	// Best-effort per repo; never affects the rebuild result.
+	// Best-effort per repo; never affects the rebuild result. Also clears any
+	// stale "last rebuild FAILED" marker (#5822 sub-ask 3) — a repo in paths
+	// just completed a SUCCESSFUL rebuild, so a prior watchdog/hard-failure
+	// marker must not linger and keep reporting FAILED.
 	flushRebuiltStatus := func(paths []string) {
 		for _, repoPath := range paths {
+			daemon.ClearRebuildFailure(repoPath)
 			daemon.FlushRepoStatusFile(repoPath)
 		}
 	}

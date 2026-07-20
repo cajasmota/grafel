@@ -12,6 +12,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/statusfile"
 )
 
 // StatusSummary aggregates per-repo and per-group statistics for the status
@@ -53,6 +54,16 @@ type RepoStatus struct {
 	// PH1c (#2087): cold refs — other refs that have a graph on disk but
 	// are not the currently active (hot) ref. Nil when none exist.
 	ColdRefs []string
+
+	// RebuildFailure is the "last rebuild FAILED" marker read from the
+	// status-plane sidecar (internal/statusfile), if any (#5822 sub-ask 3).
+	// Non-nil means the most recent rebuild attempt for this repo hard-failed
+	// (e.g. the per-repo watchdog SIGKILL) — surfaced by PrintStatusSummary so
+	// this is never silent. It does NOT mean the graph above is stale/wrong;
+	// LastIndexed/Entities/etc. above may still reflect an OLDER successful
+	// run, and this marker sits alongside it as an additional warning. Cleared
+	// (nil again) once a subsequent rebuild of this repo succeeds.
+	RebuildFailure *statusfile.RebuildFailure
 }
 
 // ComputeStatusSummary loads the per-repo graph-stats.json files and enrichment
@@ -73,6 +84,16 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 			Slug:           r.Slug,
 			Path:           r.Path,
 			LastIndexedAge: "(never)",
+		}
+
+		// #5822 sub-ask 3: read the status-plane sidecar for a "last rebuild
+		// FAILED" marker (e.g. the per-repo watchdog SIGKILL). This is a plain
+		// file read — no daemon dial required — so it works even when the
+		// daemon is down, same as the rest of this registry-based summary.
+		// Absent/unreadable is the normal "no known failure" case, never an
+		// error worth surfacing here.
+		if sf, sfErr := statusfile.Read(r.Path); sfErr == nil && sf != nil {
+			rs.RebuildFailure = sf.LastRebuildFailure
 		}
 
 		stateDir := daemon.StateDirForRepo(r.Path)
@@ -262,6 +283,23 @@ func formatColdRefs(refs []string) string {
 	return fmt.Sprintf(" [+ %s%s cold]", names, suffix)
 }
 
+// formatRebuildFailureRef builds the " (ref … / sha …)" suffix for a
+// last-rebuild-FAILED line, describing what the failed rebuild was targeting.
+// Returns "" when neither is known (e.g. a non-git repo).
+func formatRebuildFailureRef(rf *statusfile.RebuildFailure) string {
+	if rf.Ref == "" && rf.Commit == "" {
+		return ""
+	}
+	switch {
+	case rf.Ref != "" && rf.Commit != "":
+		return fmt.Sprintf(" (ref %s / sha %s)", rf.Ref, rf.Commit)
+	case rf.Ref != "":
+		return fmt.Sprintf(" (ref %s)", rf.Ref)
+	default:
+		return fmt.Sprintf(" (sha %s)", rf.Commit)
+	}
+}
+
 // PrintStatusSummary writes the per-group and per-repo statistics to w.
 // The format includes per-repo statistics aligned in columns, followed by aggregated totals.
 func PrintStatusSummary(w io.Writer, s *StatusSummary) {
@@ -299,6 +337,14 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 			rs.LastIndexedAge,
 			gitSuffix,
 			coldSuffix)
+		// #5822 sub-ask 3: a watchdog SIGKILL (or any other hard rebuild
+		// failure) must never be silent. This line surfaces ADDITIONALLY to
+		// the (possibly still-good, older) graph state printed above — it is
+		// a warning, not a replacement for it.
+		if rf := rs.RebuildFailure; rf != nil {
+			fmt.Fprintf(w, "  %-*s  ⚠ last rebuild FAILED: %s%s — see daemon.err; raise GRAFEL_REBUILD_REPO_TIMEOUT (or `grafel rebuild --timeout <dur>`) or rebuild again\n",
+				maxSlugLen, "", rf.Reason, formatRebuildFailureRef(rf))
+		}
 	}
 
 	// Print aggregated totals.

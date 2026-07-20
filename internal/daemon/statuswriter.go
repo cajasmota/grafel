@@ -160,6 +160,13 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 	// (review #5734 non-blocking #3).
 	f.IndexedCommit = indexedCommitShortNoGit(repoPath)
 
+	// #5822 sub-ask 3: carry forward the "last rebuild FAILED" marker (if any)
+	// from the in-memory registry — this File struct is rebuilt from scratch
+	// on every call, so without this the marker would vanish again at the very
+	// next heartbeat tick. Cleared only by ClearRebuildFailure (a subsequent
+	// successful rebuild), never by this write alone.
+	f.LastRebuildFailure = currentRebuildFailure(repoPath)
+
 	if err := statusfile.Write(repoPath, f); err != nil && logger != nil {
 		logger.Warn("statusfile: write failed", "repo", repoPath, "err", err)
 	}

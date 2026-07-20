@@ -12,6 +12,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/statusfile"
 )
 
 // DoctorRepoHealth summarizes the health of a single repo within a group.
@@ -29,6 +30,13 @@ type DoctorRepoHealth struct {
 	// relationship. Computed once (O(E)) during computeRepoHealth and summed
 	// by computeQualityMetrics so the graph is loaded at most once per repo.
 	orphanEntities int
+
+	// RebuildFailure is the "last rebuild FAILED" marker read from the
+	// status-plane sidecar (internal/statusfile), if any (#5822 sub-ask 3) —
+	// e.g. the per-repo watchdog SIGKILL. Non-nil is surfaced as a doctor
+	// issue AND a per-repo warning line, additively alongside (never
+	// replacing) the STALE/OK/MISSING status above.
+	RebuildFailure *statusfile.RebuildFailure
 }
 
 // loadGraphFromDir is an indirection over graph.LoadGraphFromDir so tests can
@@ -118,6 +126,17 @@ func ComputeDoctorHealth(groups []registry.GroupRef, deep bool) []*DoctorGroupHe
 				health.IssuesFound = append(health.IssuesFound,
 					fmt.Sprintf("repo %s hasn't been indexed in >24h (last: %s)", rh.Slug, rh.LastIndexedAge))
 			}
+
+			// #5822 sub-ask 3: a watchdog SIGKILL (or any other hard rebuild
+			// failure) must never be silent — surface it as a doctor issue
+			// additively, regardless of the STALE/OK status above (the
+			// last-good graph may still be perfectly fine; this just says the
+			// MOST RECENT rebuild attempt didn't finish).
+			if rf := rh.RebuildFailure; rf != nil {
+				health.Healthy = false
+				health.IssuesFound = append(health.IssuesFound,
+					fmt.Sprintf("repo %s last rebuild FAILED: %s%s", rh.Slug, rf.Reason, formatRebuildFailureRef(rf)))
+			}
 		}
 
 		// Sort repos by slug for consistent output
@@ -158,6 +177,14 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 	if _, err := os.Stat(r.Path); err != nil {
 		rh.Status = "MISSING"
 		return rh
+	}
+
+	// #5822 sub-ask 3: read the status-plane sidecar for a "last rebuild
+	// FAILED" marker (e.g. the per-repo watchdog SIGKILL). Plain file read —
+	// no daemon dial required. Absent/unreadable is the normal "no known
+	// failure" case, never an error worth surfacing here.
+	if sf, sfErr := statusfile.Read(r.Path); sfErr == nil && sf != nil {
+		rh.RebuildFailure = sf.LastRebuildFailure
 	}
 
 	stateDir := daemon.StateDirForRepo(r.Path)
@@ -315,6 +342,11 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 			fmt.Fprintf(w, "    %-*s  %-5s  indexed %s  %6s entities  %5s rels  %d cross-repo\n",
 				maxSlugLen, r.Slug, statusStr, r.LastIndexedAge,
 				fmtInt(r.Entities), fmtInt(r.Relationships), r.CrossRepoEdges)
+			// #5822 sub-ask 3: never silent — additive to the status line above.
+			if rf := r.RebuildFailure; rf != nil {
+				fmt.Fprintf(w, "    %-*s  ⚠ last rebuild FAILED: %s%s — see daemon.err; raise GRAFEL_REBUILD_REPO_TIMEOUT (or `grafel rebuild --timeout <dur>`) or rebuild again\n",
+					maxSlugLen, "", rf.Reason, formatRebuildFailureRef(rf))
+			}
 		}
 
 		// Quality section

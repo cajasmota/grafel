@@ -242,6 +242,14 @@ type RebuildArgs struct {
 	// no-op there. Defaults to false to preserve the fire-and-forget fast path
 	// for callers (watchers, background triggers) that do not await completion.
 	WaitForCompletion bool `json:"wait_for_completion,omitempty"`
+	// RepoTimeout overrides the per-repo rebuild watchdog
+	// (defaultPerRepoRebuildTimeout / GRAFEL_REBUILD_REPO_TIMEOUT) for THIS
+	// invocation only — a Go duration string (e.g. "45m"), or "0" to disable
+	// the bound entirely. Empty (the default) falls back to the env-configured
+	// or built-in default. Lets a caller with a genuinely large monorepo raise
+	// the timeout for a single `grafel rebuild --timeout <dur>` without editing
+	// the daemon's env and reloading it (#5822 sub-ask 3).
+	RepoTimeout string `json:"repo_timeout,omitempty"`
 }
 
 // RebuildReply lists the repos that were rebuilt and any warning that

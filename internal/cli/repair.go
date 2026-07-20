@@ -34,6 +34,7 @@ func newRebuildCmd() *cobra.Command {
 	var incremental bool
 	var full bool
 	var refFlag string
+	var timeoutFlag string
 
 	cmd := &cobra.Command{
 		Use:   "rebuild [group] [slug]",
@@ -48,7 +49,13 @@ Flags:
   --json-progress   NDJSON output: one broker event per line (for scripting)
   --incremental     only re-process files changed since the last index (faster)
   --full            force a full rebuild, ignoring any cached file-hash manifest
-  --ref <ref>       operate on a specific git ref; @all is refused (destructive)`,
+  --ref <ref>       operate on a specific git ref; @all is refused (destructive)
+  --timeout <dur>   override the per-repo rebuild watchdog for THIS invocation
+                    (default 30m via GRAFEL_REBUILD_REPO_TIMEOUT; "0" disables
+                    it). Without this a repo taking longer than the watchdog
+                    is SIGKILLed and surfaced as a failed rebuild (#5822) —
+                    raise this for a genuinely large monorepo instead of
+                    editing the daemon's env.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// @all is refused for destructive commands.
 			resolvedRef, _, err := resolveRef(refFlag, false /* @all NOT ok */)
@@ -57,7 +64,7 @@ Flags:
 			}
 			// --full overrides --incremental.
 			inc := incremental && !full
-			return runRebuildClient(cmd, args, false, quiet, jsonProgress, plain, resolvedRef, inc)
+			return runRebuildClient(cmd, args, false, quiet, jsonProgress, plain, resolvedRef, inc, timeoutFlag)
 		},
 	}
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "suppress progress output; print only the final summary")
@@ -66,6 +73,8 @@ Flags:
 	cmd.Flags().BoolVar(&incremental, "incremental", false, "only re-process files changed since the last index")
 	cmd.Flags().BoolVar(&full, "full", false, "force full rebuild, ignoring cached file-hash manifest")
 	cmd.Flags().StringVar(&refFlag, "ref", "", refFlagUsage)
+	cmd.Flags().StringVar(&timeoutFlag, "timeout", "",
+		`override the per-repo rebuild watchdog for this invocation (Go duration, e.g. "45m"; "0" disables it; default: GRAFEL_REBUILD_REPO_TIMEOUT or 30m)`)
 	return cmd
 }
 
@@ -74,6 +83,7 @@ func newResetCmd() *cobra.Command {
 	var jsonProgress bool
 	var plain bool
 	var refFlag string
+	var timeoutFlag string
 
 	cmd := &cobra.Command{
 		Use:   "reset [group] [slug]",
@@ -83,13 +93,15 @@ func newResetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runRebuildClient(cmd, args, true, quiet, jsonProgress, plain, resolvedRef, false)
+			return runRebuildClient(cmd, args, true, quiet, jsonProgress, plain, resolvedRef, false, timeoutFlag)
 		},
 	}
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "suppress progress output; print only the final summary")
 	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit one NDJSON broker event per line (for scripting)")
 	cmd.Flags().BoolVar(&plain, "plain", false, "disable ANSI color and carriage-return overwrites (CI-safe)")
 	cmd.Flags().StringVar(&refFlag, "ref", "", refFlagUsage)
+	cmd.Flags().StringVar(&timeoutFlag, "timeout", "",
+		`override the per-repo rebuild watchdog for this invocation (Go duration, e.g. "45m"; "0" disables it; default: GRAFEL_REBUILD_REPO_TIMEOUT or 30m)`)
 	return cmd
 }
 
@@ -151,7 +163,7 @@ func fmtDuration(d time.Duration) string {
 // operate on that specific ref). @all is pre-rejected by the caller since
 // rebuild/reset are destructive. Wiring ref into the daemon RPC is tracked
 // separately (#2220); for now it is validated and stored but not forwarded.
-func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, jsonProgress bool, plain bool, ref string, incremental bool) error {
+func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, jsonProgress bool, plain bool, ref string, incremental bool, repoTimeout string) error {
 	if len(args) == 0 {
 		return errors.New("supply [group] (and optional [slug])")
 	}
@@ -183,7 +195,7 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 	// --quiet: skip progress, run synchronously with no token.
 	if quiet {
 		// #5328: an explicit `grafel rebuild`/repair is human-awaited → foreground.
-		reply, err := c.Rebuild(proto.RebuildArgs{Group: group, Slug: slug, Wipe: wipe, Incremental: inc, Interactive: true})
+		reply, err := c.Rebuild(proto.RebuildArgs{Group: group, Slug: slug, Wipe: wipe, Incremental: inc, Interactive: true, RepoTimeout: repoTimeout})
 		if err != nil {
 			return err
 		}
@@ -215,6 +227,7 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 			Incremental:   inc,
 			// #5328: explicit user-triggered repair → foreground (priority + cap).
 			Interactive: true,
+			RepoTimeout: repoTimeout,
 		})
 		outcomeCh <- rebuildOutcome{
 			repos:    reply.Repos,
