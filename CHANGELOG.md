@@ -8,6 +8,14 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
+### Added
+
+- **wizard: honor the selected indexing action (#5834)** — thanks @marcus555
+- **detect: recognize .NET repository roots (#5840)** — thanks @marcus555
+- **csharp: resolve file-scoped namespace imports (#5835)** — thanks @marcus555
+- **csharp: synthesize ABP conventional endpoints (#5836)** — thanks @marcus555
+- **daemon: configure memory limits via settings (#5838)** — thanks @marcus555
+
 ---
 
 ## [0.1.8.2] — 2026-07-17

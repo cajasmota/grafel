@@ -248,6 +248,16 @@ For code contributions, see [CONTRIBUTING.md](CONTRIBUTING.md). If you're an AI 
 
 ---
 
+## Acknowledgments
+
+Thanks to grafel's contributors:
+
+- [@marcus555](https://github.com/marcus555)
+- [@auxmedrano](https://github.com/auxmedrano)
+- [@walter-ajanel](https://github.com/walter-ajanel)
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
