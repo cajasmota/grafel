@@ -66,6 +66,20 @@ func TestStack(t *testing.T) {
 			t.Fatalf("got %q", got)
 		}
 	})
+	t.Run("dotnet solution", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, "Assessment.slnx"), "")
+		if got := Stack(dir); got != "dotnet" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("dotnet project", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, "Assessment.HttpApi.Host.csproj"), "")
+		if got := Stack(dir); got != "dotnet" {
+			t.Fatalf("got %q", got)
+		}
+	})
 }
 
 func TestDetectMonorepoPNPM(t *testing.T) {

@@ -366,6 +366,17 @@ func TestV2GetGroup_RealFidelityViaServer(t *testing.T) {
 	}
 }
 
+func TestSettingsRepoStackFallsBackToDotnetDetector(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Platform.slnx"), []byte(""), 0o644); err != nil {
+		t.Fatalf("write slnx: %v", err)
+	}
+	repo := registry.Repo{Slug: "platform", Path: dir, Stack: registry.StackList{"unknown"}}
+	if got := settingsRepoStack(repo); got != "dotnet" {
+		t.Fatalf("settingsRepoStack = %q, want dotnet", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // DELETE /api/v2/groups/{group} — per-repo state cleanup (#1635)
 // ---------------------------------------------------------------------------

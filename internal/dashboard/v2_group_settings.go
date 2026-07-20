@@ -44,6 +44,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -191,7 +192,7 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 		sr := v2SettingsRepo{
 			Slug:  r.Slug,
 			Path:  r.Path,
-			Stack: r.Stack.Primary(),
+			Stack: settingsRepoStack(r),
 			Files: files,
 		}
 		sr.Entities = entities
@@ -243,6 +244,17 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 		sg.Health = healthWarning
 	}
 	return sg, nil
+}
+
+func settingsRepoStack(r registry.Repo) string {
+	stack := r.Stack.Primary()
+	if stack != "" && stack != "unknown" {
+		return stack
+	}
+	if detected := detect.Stack(r.Path); detected != "" && detected != "unknown" {
+		return detected
+	}
+	return stack
 }
 
 // repoStats reads graph-stats.json for a repo's state dir and returns

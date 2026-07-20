@@ -39,6 +39,9 @@ func Stack(repo string) string {
 	if exists(repo, "pom.xml") || exists(repo, "build.gradle") || exists(repo, "build.gradle.kts") {
 		return "jvm"
 	}
+	if hasFileWithExt(repo, ".csproj") || hasFileWithExt(repo, ".sln") || hasFileWithExt(repo, ".slnx") {
+		return "dotnet"
+	}
 	if exists(repo, "Gemfile") {
 		return "ruby"
 	}
@@ -496,6 +499,22 @@ func hasSourceFiles(dir string, maxDepth int) bool {
 func exists(dir, name string) bool {
 	_, err := os.Stat(filepath.Join(dir, name))
 	return err == nil
+}
+
+func hasFileWithExt(dir, ext string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.EqualFold(filepath.Ext(e.Name()), ext) {
+			return true
+		}
+	}
+	return false
 }
 
 func isDir(p string) bool {
