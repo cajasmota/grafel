@@ -449,8 +449,8 @@ func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo
 // walks forward CALLS edges from entry, bounded by maxDepth and
 // branching, and returns each terminal chain.
 //
-// callsAdj must be non-nil; it is cached on LoadedRepo at reload time (#1656).
-func followCallsBFS(entry string, maxDepth, branch int, callsAdj map[string][]string) [][]string {
+// callsAdj may be nil; Get on a nil *callsAdjacency returns nil (#1656, #5850).
+func followCallsBFS(entry string, maxDepth, branch int, callsAdj *callsAdjacency) [][]string {
 	out := make(map[string][]string)
 	type fr struct {
 		chain []string
@@ -462,7 +462,7 @@ func followCallsBFS(entry string, maxDepth, branch int, callsAdj map[string][]st
 		f := work[len(work)-1]
 		work = work[:len(work)-1]
 		cur := f.chain[len(f.chain)-1]
-		ns := adj[cur]
+		ns := adj.Get(cur)
 		if len(ns) == 0 || len(f.chain) > maxDepth {
 			term := f.chain[len(f.chain)-1]
 			if prev, ok := out[term]; !ok || len(prev) < len(f.chain) {

@@ -305,34 +305,113 @@ func buildStepAdjacency(doc *graph.Document) map[string][]stepEdge {
 	return adj
 }
 
+// callsAdjacency is the CALLS-only forward adjacency consumed by
+// traces.followCallsBFS and stub_detector_tool.go's effect-closure walk
+// (Tier-2b index mop-up, #5850). Historically this was a map[string][]string
+// — one independently heap-allocated []string per FromID key, each carrying
+// its own slice header + backing array on top of the map's own bucket
+// overhead. Mirrors the #5852 CSR treatment applied to the main adjacency
+// index: a single shared nodeIndex (map[string]int32, reused across FromID
+// and ToID) plus two parallel int32 arrays (offsets/targets) replace the
+// per-key slice allocations. Only nodes that participate in a CALLS edge are
+// interned here — this is a narrower, CALLS-only index, not a reuse of the
+// full adjacency's nodeIndex (built independently, lazily, on first use of
+// getCallsAdj()).
+type callsAdjacency struct {
+	nodes   nodeIndex
+	offsets []int32
+	targets []int32 // node-index code of the callee
+}
+
+// Get returns the sorted list of callee ids for id (nil when id is unknown or
+// has no outgoing CALLS edges), preserving the pre-CSR sorted-by-target-id
+// contract that followCallsBFS and computeEndpointEffects rely on. Safe on a
+// nil receiver.
+func (c *callsAdjacency) Get(id string) []string {
+	if c == nil {
+		return nil
+	}
+	code, ok := c.nodes.lookup(id)
+	if !ok || int(code) >= len(c.offsets)-1 {
+		return nil
+	}
+	start, end := c.offsets[code], c.offsets[code+1]
+	if start == end {
+		return nil
+	}
+	out := make([]string, end-start)
+	for i := start; i < end; i++ {
+		out[i-start] = c.nodes.ids[c.targets[i]]
+	}
+	return out
+}
+
 // buildCallsAdjacency precomputes the forward CALLS adjacency consumed by
 // traces.followCallsBFS. Built ONCE per reload, lazily on first use via
-// repo.getCallsAdj() (#3367, formerly eager #1656). Targets within each entry are pre-sorted so
-// callers don't need to sort.Strings on the hot path.
-func buildCallsAdjacency(doc *graph.Document) map[string][]string {
-	adj := make(map[string][]string)
+// repo.getCallsAdj() (#3367, formerly eager #1656). Targets within each row
+// are pre-sorted (by callee id, matching the pre-CSR sort.Strings behavior)
+// so callers don't need to sort on the hot path.
+//
+// Two-pass CSR build (mirrors buildAdjacency/#5852): pass 1 interns every
+// CALLS-edge FromID/ToID and records per-edge codes + per-node out-degree; a
+// prefix sum over degree counts yields row offsets; pass 2 scatters each
+// edge's callee code into its row via a per-row write cursor. Each row is
+// then sorted by callee id to match the old build's sort.Strings(adj[k]).
+func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
+	c := &callsAdjacency{}
+	c.nodes.code = make(map[string]int32)
+
+	fromCodes := make([]int32, 0, len(doc.Relationships))
+	toCodes := make([]int32, 0, len(doc.Relationships))
 	for i := range doc.Relationships {
 		r := &doc.Relationships[i]
 		if r.Kind != "CALLS" {
 			continue
 		}
-		adj[r.FromID] = append(adj[r.FromID], r.ToID)
+		fromCodes = append(fromCodes, c.nodes.intern(r.FromID))
+		toCodes = append(toCodes, c.nodes.intern(r.ToID))
 	}
-	for k := range adj {
-		// Sort once at build time so query-time can copy directly.
-		sortStrings(adj[k])
+
+	numNodes := len(c.nodes.ids)
+	numEdges := len(fromCodes)
+	deg := make([]int32, numNodes)
+	for _, fc := range fromCodes {
+		deg[fc]++
 	}
-	return adj
+	offsets := make([]int32, numNodes+1)
+	for i := 0; i < numNodes; i++ {
+		offsets[i+1] = offsets[i] + deg[i]
+	}
+	targets := make([]int32, numEdges)
+	cursor := append([]int32(nil), offsets[:numNodes]...)
+	for i := 0; i < numEdges; i++ {
+		fc := fromCodes[i]
+		p := cursor[fc]
+		cursor[fc]++
+		targets[p] = toCodes[i]
+	}
+
+	// Sort each row by callee id string, matching the pre-CSR
+	// sort.Strings(adj[k]) build-time sort.
+	for i := 0; i < numNodes; i++ {
+		start, end := offsets[i], offsets[i+1]
+		sortInt32ByStringID(targets[start:end], c.nodes.ids)
+	}
+
+	c.offsets = offsets
+	c.targets = targets
+	return c
 }
 
-// sortStrings is a tiny insertion sort wrapper to avoid pulling "sort" into
-// the hot path here (keeps the file self-contained). Lists are small (most
-// entries are <= 16 callees).
-func sortStrings(s []string) {
+// sortInt32ByStringID is an insertion sort of node-index codes by the string
+// value they resolve to via ids, mirroring sortStrings below but operating on
+// the CSR int32 codes directly (avoids materializing []string just to sort).
+// Rows are small (most entries are <= 16 callees).
+func sortInt32ByStringID(s []int32, ids []string) {
 	for i := 1; i < len(s); i++ {
 		v := s[i]
 		j := i - 1
-		for j >= 0 && s[j] > v {
+		for j >= 0 && ids[s[j]] > ids[v] {
 			s[j+1] = s[j]
 			j--
 		}

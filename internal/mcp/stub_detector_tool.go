@@ -347,7 +347,7 @@ func computeEndpointEffects(
 	repoSlug string,
 	def *graph.Entity,
 	hres *stubHandlerResolution,
-	callsAdj map[string][]string,
+	callsAdj *callsAdjacency,
 	byID map[string]*graph.Entity,
 	sidecar map[string]effectsSidecarEntry,
 	groupHasEffectData bool,
@@ -383,7 +383,7 @@ func computeEndpointEffects(
 		// Depth is bounded by the node cap + visited guard; the dashboard uses a
 		// depth counter too, but a node cap alone bounds the walk and keeps this
 		// simpler. Stop expanding once the node budget is hit.
-		for _, to := range callsAdj[cur] {
+		for _, to := range callsAdj.Get(cur) {
 			if visited[to] {
 				continue
 			}

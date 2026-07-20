@@ -310,7 +310,7 @@ type LoadedRepo struct {
 	bm25Once     sync.Once                // #3377: BM25 built lazily on first search
 	suffixOnce   sync.Once                // #5682: source-file suffix index built lazily
 	adjacency    *adjacency               // in/out neighbor lists (#1656)
-	callsAdj     map[string][]string      // CALLS-only forward adjacency (#1656)
+	callsAdj     *callsAdjacency          // CALLS-only forward adjacency, CSR layout (#1656, #5850)
 	stepAdj      map[string][]stepEdge    // STEP_IN_PROCESS forward adjacency (#2417)
 	byID         map[string]*graph.Entity // entity ID -> entity (#1656)
 	topKPageRank []string                 // entity IDs sorted descending by PageRank (#2304)
@@ -586,12 +586,15 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 }
 
 // getCallsAdj returns the CALLS-only forward adjacency, building it on first use.
-func (lr *LoadedRepo) getCallsAdj() map[string][]string {
+func (lr *LoadedRepo) getCallsAdj() *callsAdjacency {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.callsOnce.Do(func() {
 		if lr.Doc == nil {
-			lr.callsAdj = map[string][]string{}
+			// Zero-value callsAdjacency works out of the box (nodes.code is a
+			// nil map, so Get's lookup misses cleanly and returns nil),
+			// matching the pre-#5850 empty-map behaviour.
+			lr.callsAdj = &callsAdjacency{}
 			return
 		}
 		lr.callsAdj = buildCallsAdjacency(lr.Doc)

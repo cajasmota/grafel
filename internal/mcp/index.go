@@ -19,6 +19,44 @@ type LabelIndex struct {
 	ByQName map[string]*graph.Entity
 }
 
+// keyInterner canonicalizes repeated map-key strings built during a single
+// BuildLabelIndex call (Tier-2b index mop-up, mirrors the loader-side
+// stringInterner pattern in internal/graph/load.go, #5847/Tier-1b) so that N
+// entities sharing an equal lowercased Name/QualifiedName (extremely common —
+// "Get", "String", "Equals", "New", accessor/overload names repeat across
+// hundreds of classes on the real corpus) share ONE backing array for that
+// key string instead of each ByLabel/ByQName insertion paying for its own
+// independently-allocated strings.ToLower() copy.
+//
+// strings.ToLower already returns the ORIGINAL string (no allocation, shared
+// with e.Name/e.QualifiedName) when the input has no uppercase runes, so the
+// interner only ever pays for a map probe on that fast path; it earns its
+// keep exactly on the case-folding path, where ToLower must allocate a fresh
+// copy that would otherwise duplicate across every entity with the same
+// label. One interner instance is shared across BOTH ByLabel and ByQName
+// keys (mirroring Tier-1b's single from_id/to_id/id interner) so a label and
+// a qualified name that happen to lowercase to the same text also share
+// storage.
+//
+// Built and discarded within a single BuildLabelIndex call; not retained on
+// LabelIndex, so it adds no resident cost of its own beyond its own build.
+type keyInterner struct {
+	m map[string]string
+}
+
+// intern returns the canonical copy of s, sharing backing storage with any
+// prior call that saw an equal string.
+func (ki *keyInterner) intern(s string) string {
+	if v, ok := ki.m[s]; ok {
+		return v
+	}
+	if ki.m == nil {
+		ki.m = make(map[string]string)
+	}
+	ki.m[s] = s
+	return s
+}
+
 // BuildLabelIndex constructs a fresh LabelIndex from a graph document.
 func BuildLabelIndex(doc *graph.Document) *LabelIndex {
 	idx := &LabelIndex{
@@ -26,13 +64,14 @@ func BuildLabelIndex(doc *graph.Document) *LabelIndex {
 		ByLabel: make(map[string][]*graph.Entity, len(doc.Entities)),
 		ByQName: make(map[string]*graph.Entity, len(doc.Entities)),
 	}
+	var ki keyInterner
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
 		idx.ByID[e.ID] = e
-		lbl := strings.ToLower(e.Name)
+		lbl := ki.intern(strings.ToLower(e.Name))
 		idx.ByLabel[lbl] = append(idx.ByLabel[lbl], e)
 		if e.QualifiedName != "" {
-			idx.ByQName[strings.ToLower(e.QualifiedName)] = e
+			idx.ByQName[ki.intern(strings.ToLower(e.QualifiedName))] = e
 		}
 	}
 	return idx

@@ -155,8 +155,8 @@ func TestLazyIndexes_ResetRebuildsAgainstFreshDoc(t *testing.T) {
 		t.Errorf("after reload+reset, a has %d out-edges; want 2 (stale index served)", len(gotOut))
 	}
 	// CallsAdj must also reflect the fresh doc.
-	if len(lr.getCallsAdj()["a"]) != 2 {
-		t.Errorf("after reload+reset, callsAdj[a] = %v; want 2 callees", lr.getCallsAdj()["a"])
+	if len(lr.getCallsAdj().Get("a")) != 2 {
+		t.Errorf("after reload+reset, callsAdj.Get(a) = %v; want 2 callees", lr.getCallsAdj().Get("a"))
 	}
 }
 
