@@ -314,6 +314,15 @@ type LoadedRepo struct {
 	stepAdj      map[string][]stepEdge    // STEP_IN_PROCESS forward adjacency (#2417)
 	byID         map[string]*graph.Entity // entity ID -> entity (#1656)
 	topKPageRank []string                 // entity IDs sorted descending by PageRank (#2304)
+	// bm25LastUse is the wall-clock time of the most recent getBM25() borrow (a
+	// search-tool use). idxMu-guarded — written under idxMu in getBM25 and read
+	// under idxMu in evictBM25IfIdle. The idle sweep (SweepIdleBM25) drops the
+	// heavy BM25 index once now-bm25LastUse exceeds the configured idle window so
+	// a session that has stopped searching does not keep ~313 MB (corpus) pinned;
+	// the next search rebuilds it transparently via getBM25. Zero value means the
+	// index has never been borrowed through getBM25 (e.g. a test that set BM25
+	// directly), in which case it is NOT eligible for idle eviction.
+	bm25LastUse time.Time
 	// mroInbound maps a DEFINING member's local id -> the inherited-stub ids
 	// that resolve to it via the MRO walk (#3834). It is the reverse of
 	// mroOutboundEdges, used by neighbors(in) so a base method surfaces the
@@ -563,7 +572,54 @@ func (lr *LoadedRepo) getBM25() *BM25Index {
 		}
 		lr.BM25 = BuildBM25(lr.Doc)
 	})
+	// Record the borrow time so the idle sweep can distinguish an actively-used
+	// index from one whose last search is older than the eviction window. Stamped
+	// under idxMu (same lock evictBM25IfIdle reads it under) so the sweep never
+	// observes a torn timestamp. The caller reads through the returned pointer for
+	// the duration of its Search; a concurrent eviction only nils lr.BM25, which —
+	// under Go's GC — merely drops one reference and can never free the index out
+	// from under this borrow (contrast F1's munmap, which needs a refcount drain).
+	lr.bm25LastUse = time.Now()
 	return lr.BM25
+}
+
+// evictBM25IfIdle drops the repo's BM25 index (and re-arms bm25Once so the next
+// getBM25 rebuilds it) iff it is currently built AND its last search borrow is
+// older than idle relative to now. Returns true when it evicted.
+//
+// Concurrency: runs under idxMu, exactly like getBM25 and resetIndexes, so it is
+// mutually excluded from a concurrent build and from the reload-time reset — the
+// three are the only writers of lr.BM25 / lr.bm25Once. Re-arming the sync.Once by
+// assignment is safe here for the same reason resetIndexes does it: no other
+// goroutine can be inside bm25Once.Do (it holds idxMu for the whole Do). Nilling
+// lr.BM25 does NOT free memory an in-flight search still reads — that search holds
+// its own live *BM25Index from getBM25, so Go's GC keeps the object alive until
+// the search returns; only after the last reference drops is the ~313 MB (corpus)
+// reclaimable. This is why a plain lock suffices and no F1-style refcount drain is
+// needed: BM25 is a pure heap object, not a manually-unmapped mmap region.
+//
+// Reload interaction: resetIndexes already nils lr.BM25 under idxMu on a graph
+// change, so a stale index for the new graph is dropped there; an eviction that
+// races a reload finds lr.BM25 already nil and no-ops (no double-free), and a
+// reload that races an eviction likewise just re-nils an already-nil field.
+func (lr *LoadedRepo) evictBM25IfIdle(idle time.Duration, now time.Time) bool {
+	if idle <= 0 {
+		return false
+	}
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	if lr.BM25 == nil {
+		return false
+	}
+	// A never-borrowed index (bm25LastUse zero) is not idle-eligible: it was
+	// populated outside the search path (e.g. a test that set BM25 directly) and
+	// has no meaningful last-use to age out.
+	if lr.bm25LastUse.IsZero() || now.Sub(lr.bm25LastUse) < idle {
+		return false
+	}
+	lr.BM25 = nil
+	lr.bm25Once = sync.Once{}
+	return true
 }
 
 // getAdjacency returns the in/out neighbor index, building it on first use.
@@ -1222,6 +1278,35 @@ func (s *State) refreshGroupAlgoOverlayLocked(grp *LoadedGroup) {
 		}
 	}
 	applyGroupAlgoOverlay(grp)
+}
+
+// SweepIdleBM25 drops the BM25 index of every loaded repo whose last search
+// borrow is older than idle, returning how many were evicted. It is the idle
+// sweep the MCP server fires from its per-call reload hook (reloadBeforeCall):
+// a session that has stopped issuing searches releases the heavy BM25 index
+// (~313 MB warmed on the corpus) instead of pinning it for the life of the
+// process; the next search rebuilds it transparently and single-flighted via
+// getBM25. A non-positive idle disables the sweep (returns 0 without locking).
+//
+// Locking: takes s.mu once and calls evictBM25IfIdle (which takes idxMu) per
+// repo — the same s.mu -> idxMu order reload uses (reloadLocked -> resetIndexes),
+// so it cannot invert against any read-path getter (which only ever takes idxMu).
+func (s *State) SweepIdleBM25(idle time.Duration) int {
+	if idle <= 0 {
+		return 0
+	}
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	evicted := 0
+	for _, g := range s.groups {
+		for _, lr := range g.Repos {
+			if lr != nil && lr.evictBM25IfIdle(idle, now) {
+				evicted++
+			}
+		}
+	}
+	return evicted
 }
 
 // SnapshotGroups returns a stable list of loaded group pointers.

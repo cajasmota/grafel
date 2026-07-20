@@ -33,6 +33,32 @@ import (
 // (every call re-checks mtime); negative/garbage values fall back to default.
 const defaultReloadDebounceMS = 2000
 
+// defaultBM25IdleEvictionMS is the default idle window (milliseconds) after
+// which a repo's lazily-built BM25 index is dropped by the per-call idle sweep
+// (State.SweepIdleBM25, fired from reloadBeforeCall). BM25 is the single largest
+// lazy resident consumer (~313 MB warmed on the corpus); a session that has
+// stopped searching should not keep it pinned for the life of the process. The
+// next search rebuilds it transparently (getBM25 re-arms bm25Once on eviction).
+//
+// 5 minutes is deliberately generous: it survives a normal think/act/search loop
+// (an agent that searches, reads, edits, then searches again inside 5 min never
+// pays a rebuild) yet reclaims the arena for a session that has moved on. Env
+// override GRAFEL_MCP_BM25_IDLE_MS; 0 disables idle eviction; negative/garbage
+// falls back to the default.
+const defaultBM25IdleEvictionMS = 5 * 60 * 1000
+
+// resolveBM25IdleEviction returns the configured BM25 idle-eviction window,
+// reading GRAFEL_MCP_BM25_IDLE_MS once at server construction. A value of 0
+// (eviction disabled) is honoured and returned as a zero Duration.
+func resolveBM25IdleEviction() time.Duration {
+	if v := os.Getenv("GRAFEL_MCP_BM25_IDLE_MS"); v != "" {
+		if ms, err := strconv.Atoi(v); err == nil && ms >= 0 {
+			return time.Duration(ms) * time.Millisecond
+		}
+	}
+	return defaultBM25IdleEvictionMS * time.Millisecond
+}
+
 // resolveReloadDebounce returns the configured debounce window, reading the
 // env overrides once at server construction. A value of 0 (debounce disabled)
 // is honoured and returned as a zero Duration.
@@ -264,6 +290,13 @@ type Server struct {
 	reloadDebounceMu sync.Mutex
 	reloadLastAt     atomic.Int64 // Unix nano; 0 = never run
 	reloadDebounce   time.Duration
+
+	// bm25IdleEviction is the idle window after which reloadBeforeCall drops a
+	// repo's lazily-built BM25 index (State.SweepIdleBM25). Resolved once at
+	// construction from GRAFEL_MCP_BM25_IDLE_MS (see resolveBM25IdleEviction). A
+	// zero value disables idle eviction. No extra goroutine is spawned — the sweep
+	// piggybacks on the existing per-call reload hook.
+	bm25IdleEviction time.Duration
 }
 
 // SetActivityBroker wires the MCP activity broker into the server so that
@@ -350,7 +383,7 @@ func NewServer(cfg Config) (*Server, error) {
 		mcpsrv.WithToolCapabilities(true),
 		mcpsrv.WithInstructions(mcpInstructions))
 
-	s := &Server{State: st, Tel: tel, SessMet: sessMet, MCP: srv, cfg: cfg, reloadDebounce: resolveReloadDebounce()}
+	s := &Server{State: st, Tel: tel, SessMet: sessMet, MCP: srv, cfg: cfg, reloadDebounce: resolveReloadDebounce(), bm25IdleEviction: resolveBM25IdleEviction()}
 	s.registerTools()
 	return s, nil
 }
@@ -435,6 +468,14 @@ func (s *Server) reloadBeforeCall() {
 	n, surfaceChanged, _ := s.State.ReloadAndSurfaceChanged()
 	s.reloadLastAt.Store(time.Now().UnixNano())
 	s.Tel.MarkReload(n)
+
+	// Idle BM25 sweep — piggybacks on this existing per-call hook (no extra
+	// goroutine): drop the heavy BM25 index (~313 MB warmed on the corpus) for any
+	// repo that has not been searched within bm25IdleEviction, so a session that
+	// stopped searching stops pinning it. The next search rebuilds it via getBM25.
+	// Gated by the same debounce as the reload above, so it runs at most once per
+	// window rather than on every call. A zero window disables it.
+	s.State.SweepIdleBM25(s.bm25IdleEviction)
 	if surfaceChanged && s.MCP != nil {
 		// Best-effort: failures are silently ignored. The notification carries
 		// no payload — clients respond by re-issuing tools/list.
