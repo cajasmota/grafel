@@ -267,11 +267,18 @@ func (l CrossRepoLink) EdgeConfidence() string {
 // transient field-decode wrapper. Reader is nil when graph.fb is not
 // present (JSON-only fallback or old index format).
 type LoadedRepo struct {
-	Repo       string
-	Path       string
-	GraphFile  string
-	Doc        *graph.Document
-	Reader     *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
+	Repo      string
+	Path      string
+	GraphFile string
+	Doc       *graph.Document
+	Reader    *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
+	// handle is the F1 (ADR-0027) deferred-unmap wrapper that OWNS the lifetime
+	// of Reader's mapping. Reader is the (still-dark) read accessor; handle is
+	// what reload/evict/Close route the munmap through so an in-flight borrow can
+	// drain first. Invariant: handle == nil iff Reader == nil, and when both are
+	// non-nil handle.reader == Reader. Mutated only under State.mu via
+	// publishHandle / retireHandle. Nil when graph.fb is unavailable.
+	handle     *MapHandle
 	LabelIndex *LabelIndex
 	BM25       *BM25Index
 	Semantic   *embed.Store // per-repo vector index (nil when no embeddings.bin)
@@ -423,6 +430,56 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.topKPageRank = nil
 	lr.suffixIndex = nil
 	lr.suffixIndexPartial = false
+}
+
+// publishHandle installs nh as the repo's live mmap handle under the F1
+// (ADR-0027) deferred-unmap protocol and retires the predecessor. The ordering
+// is load-bearing: the successor is published (lr.handle / lr.Reader repointed)
+// BEFORE the old handle is retired, so a fresh borrow — which only ever targets
+// the currently-published lr.handle — can never re-borrow the retired
+// predecessor (§Correctness "no re-borrow of a retired handle"). retire() then
+// unmaps the predecessor immediately iff it has already drained (refs==0);
+// otherwise the last in-flight release() unmaps it. NEVER an in-place Close().
+//
+// nh may be nil (JSON-only fallback / no graph.fb). Caller MUST hold State.mu.
+func (lr *LoadedRepo) publishHandle(nh *MapHandle) {
+	old := lr.handle
+	if nh != nil {
+		nh.repo = lr.Repo
+		lr.Reader = nh.reader
+	} else {
+		lr.Reader = nil
+	}
+	lr.handle = nh
+	if old != nil {
+		old.retire()
+	}
+}
+
+// setReader wraps a freshly-opened reader (or nil) in a MapHandle and publishes
+// it via publishHandle. This is the reload swap: it replaces the old bare
+// lr.Reader.Close() so a reload never munmaps a mapping an in-flight borrow
+// still aliases. Caller MUST hold State.mu.
+func (lr *LoadedRepo) setReader(newRdr *fbreader.Reader) {
+	var nh *MapHandle
+	if newRdr != nil {
+		nh = newMapHandle(newRdr)
+	}
+	lr.publishHandle(nh)
+}
+
+// retireHandle retires the repo's current mmap handle (repo eviction and server
+// Close), routing the munmap through the F1 drain instead of a bare
+// lr.Reader.Close() — same munmap-while-borrowed hazard as reload. The mapping
+// is unmapped now iff it has drained, else by the last release(). Caller MUST
+// hold State.mu.
+func (lr *LoadedRepo) retireHandle() {
+	old := lr.handle
+	lr.handle = nil
+	lr.Reader = nil
+	if old != nil {
+		old.retire()
+	}
 }
 
 // getSuffixIndex returns the source-file suffix index (basename -> repo-relative
@@ -904,12 +961,6 @@ func (s *State) reloadLocked() (int, bool, error) {
 					}
 					lr.reindexRequired = false
 					lr.reindexReason = ""
-					// S8 (#2159): close the previous reader before replacing it so
-					// we don't leak mmap fds across reloads.
-					if lr.Reader != nil {
-						_ = lr.Reader.Close()
-						lr.Reader = nil
-					}
 					lr.Doc = doc
 					lr.mtime = fileMtime
 					lr.contentHash = newHash // 0 on hash failure → next reload re-parses
@@ -941,10 +992,20 @@ func (s *State) reloadLocked() (int, bool, error) {
 					// S8 (#2159): open the mmap reader alongside the Document.
 					// Best-effort: failures leave Reader nil; callers fall back to
 					// doc.Entities / doc.Relationships.
+					//
+					// F1 (ADR-0027): publish the successor through the deferred-unmap
+					// protocol instead of a bare Close() of the old reader. setReader
+					// repoints lr.handle/lr.Reader to the new mapping FIRST, then
+					// retires the predecessor — which unmaps it now iff it has already
+					// drained, else the last in-flight release() unmaps it. Reload
+					// never waits on borrows and never munmaps in place. Passing nil on
+					// Open failure retires the stale predecessor and leaves Reader nil.
 					fbPath := filepath.Join(stateDir, "graph.fb")
+					var newRdr *fbreader.Reader
 					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
-						lr.Reader = rdr
+						newRdr = rdr
 					}
+					lr.setReader(newRdr)
 					reloaded++
 				}
 			}
@@ -965,12 +1026,13 @@ func (s *State) reloadLocked() (int, bool, error) {
 			}
 		}
 		// Drop repos no longer in the registry.
-		// S8 (#2159): close the mmap reader when evicting a repo entry.
+		// S8 (#2159) + F1 (ADR-0027): route the mmap munmap through the deferred-
+		// unmap protocol (retireHandle) rather than a bare Reader.Close(), so an
+		// in-flight borrow of an evicted repo's mapping drains before the unmap.
 		for rName, lr := range grp.Repos {
 			if !seen[rName] {
-				if lr != nil && lr.Reader != nil {
-					_ = lr.Reader.Close()
-					lr.Reader = nil
+				if lr != nil {
+					lr.retireHandle()
 				}
 				delete(grp.Repos, rName)
 			}
@@ -1034,6 +1096,82 @@ func (s *State) Group(name string) *LoadedGroup {
 		s.refreshGroupAlgoOverlayLocked(grp)
 	}
 	return grp
+}
+
+// groupBorrow is the immutable per-call snapshot returned by borrowGroup — the
+// F1 (ADR-0027) read-through-captured-handle seam. It captures the group pointer
+// AND a borrow on every repo's current MapHandle in one critical section under
+// State.mu. A caller reads through the captured handles for the whole call and
+// MUST NEVER live-re-dereference lr.handle / lr.Reader / lr.Doc at read time:
+// reload mutates *LoadedRepo in place (repointing lr.handle to a successor this
+// call never borrow()-incremented), so a live re-deref could hand a reader a
+// mapping a concurrent reload is free to unmap → SIGSEGV. The captured handle is
+// the read cursor for the entire call; Release() drops every borrow on return.
+//
+// In F1 the read path is DARK — no handler calls this yet (the borrow protocol
+// is inert). It establishes the seam and lifetime guarantee that F2's hot index
+// and F3's mmap read path bind to.
+type groupBorrow struct {
+	Group   *LoadedGroup
+	handles []*MapHandle
+}
+
+// Handle returns the borrowed MapHandle captured for repo slug, or nil when the
+// repo had no mmap mapping at borrow time. The returned handle is the immutable
+// read cursor for this call — it stays valid (not munmapped) until Release,
+// even across a concurrent reload that retires it.
+func (b *groupBorrow) Handle(repo string) *MapHandle {
+	if b == nil {
+		return nil
+	}
+	for _, h := range b.handles {
+		if h != nil && h.repo == repo {
+			return h
+		}
+	}
+	return nil
+}
+
+// Release drops every borrow captured by this snapshot. The last releaser of a
+// retired handle performs its munmap. Idempotent: safe to call once per borrow.
+func (b *groupBorrow) Release() {
+	if b == nil {
+		return
+	}
+	for _, h := range b.handles {
+		if h != nil {
+			h.release()
+		}
+	}
+	b.handles = nil
+}
+
+// borrowGroup returns an immutable per-call snapshot of a group with a borrow
+// held on each repo's current MapHandle. The group lookup, overlay refresh, and
+// every borrow happen in ONE critical section under s.mu, so the borrow cannot
+// race reload's publish+retire (which also runs under s.mu): a call either
+// borrows before retire (refs>=1 → reload defers the unmap to this call's
+// Release) or borrows the already-published successor. The caller MUST defer
+// snapshot.Release(). Returns nil when the group is unknown.
+//
+// F1: inert — no production caller yet. Wired here so the seam and its race
+// safety are proven (TestBorrowGroupSurvivesReload) before F3 lights the read
+// path.
+func (s *State) borrowGroup(name string) *groupBorrow {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	grp := s.groups[name]
+	if grp == nil {
+		return nil
+	}
+	s.refreshGroupAlgoOverlayLocked(grp)
+	b := &groupBorrow{Group: grp}
+	for _, lr := range grp.Repos {
+		if lr != nil && lr.handle != nil {
+			b.handles = append(b.handles, lr.handle.borrow())
+		}
+	}
+	return b
 }
 
 // refreshGroupAlgoOverlayLocked re-applies the group-algo overlay to an
@@ -1103,9 +1241,12 @@ func (s *State) Close() {
 	defer s.mu.Unlock()
 	for _, g := range s.groups {
 		for _, lr := range g.Repos {
-			if lr != nil && lr.Reader != nil {
-				_ = lr.Reader.Close()
-				lr.Reader = nil
+			if lr != nil {
+				// F1 (ADR-0027): retire (not bare Close) so any in-flight borrow
+				// drains before the mapping is unmapped — same munmap-while-borrowed
+				// hazard as reload/eviction. When nothing is borrowed (the common
+				// shutdown case) retire unmaps immediately, matching prior behavior.
+				lr.retireHandle()
 			}
 		}
 	}
