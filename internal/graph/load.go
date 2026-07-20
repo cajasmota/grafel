@@ -29,6 +29,82 @@ import (
 // package shared with fbwriter — so drift becomes a compile-time error.
 const minSupportedFBFormatVersion = fbversion.Version
 
+// FormatVersionError is returned (wrapped, via %w) by loadFBDocument when an
+// on-disk graph.fb was stamped with a FormatVersion older than this binary
+// requires. It exists as a typed error — rather than forcing callers to
+// string-match the human-readable message below — so a caller like
+// internal/mcp's reload loop can detect "this specific repo's on-disk graph
+// is version-incompatible" via errors.As and record durable state (e.g. a
+// statusfile ReindexRequired flag), instead of only stashing the opaque error
+// string and silently continuing (the "silent-green lie" this type exists to
+// let callers fix).
+type FormatVersionError struct {
+	// Found is the FormatVersion actually stamped on the rejected graph.fb.
+	Found int
+	// Required is the minimum FormatVersion this binary accepts
+	// (fbversion.Version at build time).
+	Required int
+}
+
+// Error implements the error interface. The wording is part of the loader's
+// user-facing contract (internal/graph/fbwriter/writer_test.go asserts on
+// substrings of it verbatim) and must keep pointing the user at `grafel
+// index <repo>`.
+func (e *FormatVersionError) Error() string {
+	return fmt.Sprintf(
+		"graph.fb format version %d is older than required version %d — please reindex (run: grafel index <repo>)",
+		e.Found, e.Required,
+	)
+}
+
+// ReindexRequiredReason performs a cheap, header-only check of dir's
+// graph.fb (no entity/relationship materialization — just an mmap open plus
+// one scalar read) and reports whether it was written by an older grafel
+// build than this binary supports.
+//
+// required is false — the overwhelmingly common case — when graph.fb is
+// absent, unreadable, or already at/above minSupportedFBFormatVersion; a
+// caller must not treat that as an error, only as "nothing to report".
+// required is true only when the on-disk FormatVersion is strictly below
+// what this binary accepts, in which case reason names both versions and
+// points at the fix, mirroring FormatVersionError's wording so a human sees
+// one consistent message whether they hit it via a failed MCP reload or via
+// the persisted status-plane sidecar.
+//
+// This is deliberately independent of any single load attempt: it is safe
+// to call on every status-plane heartbeat (see internal/daemon's
+// writeRepoStatusFile) so the persisted ReindexRequired flag is always
+// freshly recomputed from the ACTUAL bytes on disk, never a one-shot flag
+// that could go stale or get clobbered by a later write from a different
+// writer.
+func ReindexRequiredReason(dir string) (required bool, reason string) {
+	fbPath := filepath.Join(dir, "graph.fb")
+	r, err := fbreader.Open(fbPath)
+	if err != nil {
+		return false, ""
+	}
+	defer r.Close()
+	v := r.Version()
+	if v >= minSupportedFBFormatVersion {
+		return false, ""
+	}
+	return true, FormatVersionReason(v, minSupportedFBFormatVersion)
+}
+
+// FormatVersionReason renders the shared human-readable "reindex required"
+// explanation naming both the found and required graph.fb format versions.
+// Exported so every caller that detects a *FormatVersionError (the header-only
+// ReindexRequiredReason check above, and internal/mcp's reload loop reacting
+// to a failed LoadGraphFromDir) renders the IDENTICAL wording — one consistent
+// message regardless of which code path first observed the incompatibility.
+func FormatVersionReason(found, required int) string {
+	fvErr := &FormatVersionError{Found: found, Required: required}
+	return fmt.Sprintf(
+		"graph format v%d incompatible with v%d — reindex required (%s)",
+		found, required, fvErr.Error(),
+	)
+}
+
 // LoadGraphFromDir loads a graph.Document from dir, where dir is the
 // .grafel state directory for a repo (the directory that contains
 // graph.fb / graph.json).
@@ -202,10 +278,8 @@ func loadFBDocument(path string) (*Document, error) {
 	// rerun `grafel index <repo>` to regenerate graph.fb against the
 	// current schema.
 	if v := r.Version(); v < minSupportedFBFormatVersion {
-		return nil, fmt.Errorf(
-			"graph.loadFBDocument: graph.fb format version %d is older than required version %d — please reindex (run: grafel index <repo>)",
-			v, minSupportedFBFormatVersion,
-		)
+		return nil, fmt.Errorf("graph.loadFBDocument: %w",
+			&FormatVersionError{Found: v, Required: minSupportedFBFormatVersion})
 	}
 
 	meta := r.LoadGraphMeta()

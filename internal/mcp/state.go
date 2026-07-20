@@ -18,6 +18,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -347,6 +348,18 @@ type LoadedRepo struct {
 	// first successful load.
 	contentHash uint64
 	loadErr     string // populated when last reload failed; doc may be stale
+
+	// reindexRequired / reindexReason record whether the LAST reload attempt
+	// for this repo failed specifically because its on-disk graph.fb format
+	// version is older than this binary supports (#reindex-required PR1:
+	// detection + observability only — nothing reads these fields to trigger
+	// a reindex or a user prompt yet). The authoritative, always-fresh,
+	// race-free ReindexRequired/ReindexReason surfaced to the statusline and
+	// `grafel status --json` is recomputed independently by the engine's
+	// status writer directly from graph.fb bytes (see readDocumentFromDir's
+	// call site above for why serve-side state is not the source of truth).
+	reindexRequired bool
+	reindexReason   string
 
 	// algoStampedMt is the lr.mtime value at which applyGroupAlgoOverlay last
 	// stamped the group overlay (CommunityID/PageRank/Centrality/god/articulation)
@@ -858,8 +871,34 @@ func (s *State) reloadLocked() (int, bool, error) {
 					doc, err := readDocumentFromDir(stateDir)
 					if err != nil {
 						lr.loadErr = err.Error()
+						// #reindex-required PR1: detect (not act on) a graph.fb
+						// format-version incompatibility. errors.As lets us tell
+						// "this repo's on-disk graph.fb was written by an older
+						// grafel build than this process supports" apart from any
+						// other load failure (corrupt file, permission error,
+						// etc.), without string-matching err.Error(). Recorded
+						// here for observability on the in-memory LoadedRepo; the
+						// DURABLE, authoritative ReindexRequired/ReindexReason
+						// truth served to the statusline and `grafel status
+						// --json` is (re)computed independently, per on-disk
+						// graph.fb bytes, by the engine's status writer
+						// (internal/daemon/statuswriter.go, writeRepoStatusFile ->
+						// graph.ReindexRequiredReason) on every heartbeat — NOT
+						// written from here — because in ADR-0024 split mode this
+						// mcp/state.go reload loop runs in the separate `serve`
+						// process, whose write here could be silently clobbered by
+						// the engine process's own periodic heartbeat write to the
+						// same statusfile.File. This slice is detection + state
+						// ONLY: no reindex is triggered.
+						var fvErr *graph.FormatVersionError
+						if errors.As(err, &fvErr) {
+							lr.reindexRequired = true
+							lr.reindexReason = graph.FormatVersionReason(fvErr.Found, fvErr.Required)
+						}
 						continue
 					}
+					lr.reindexRequired = false
+					lr.reindexReason = ""
 					// S8 (#2159): close the previous reader before replacing it so
 					// we don't leak mmap fds across reloads.
 					if lr.Reader != nil {

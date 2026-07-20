@@ -90,6 +90,27 @@ type File struct {
 	// last completed index succeeded.
 	LastErr string `json:"last_err,omitempty"`
 
+	// ReindexRequired is true when the on-disk graph.fb this repo is CURRENTLY
+	// SERVING was written by an older grafel build than this engine's
+	// fbversion.Version supports (see graph.ReindexRequiredReason). Unlike
+	// LastErr (a snapshot of the most recent completed index ATTEMPT, which
+	// can go stale — the field isn't proactively cleared by the passage of
+	// time), this is recomputed fresh from the actual graph.fb bytes on EVERY
+	// status-plane write, so it is always the authoritative, up-to-the-second
+	// answer to "is the graph this repo is serving right now trustworthy?".
+	//
+	// #(reindex-required PR1): detection + state ONLY. Nothing in this slice
+	// auto-reindexes or prompts the user — a reader (statusline, `grafel
+	// status --json`) must render this as an explicit, non-green state
+	// instead of silently reporting "current"/idle, so the incompatibility is
+	// never hidden. Populating the prompt/auto-reindex flow is a later PR.
+	ReindexRequired bool `json:"reindex_required,omitempty"`
+	// ReindexReason is a human-readable explanation set whenever
+	// ReindexRequired is true — names both the found and required graph.fb
+	// format versions and points at the fix (`grafel index <repo>`). Empty
+	// when ReindexRequired is false.
+	ReindexReason string `json:"reindex_reason,omitempty"`
+
 	// LastRebuildFailure records the most recent FAILED `grafel rebuild` for
 	// this repo — e.g. the per-repo watchdog SIGKILL (#5143's
 	// defaultPerRepoRebuildTimeout) or any other hard rebuild failure — so a

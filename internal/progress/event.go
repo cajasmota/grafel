@@ -123,6 +123,14 @@ type Event struct {
 	// Error is non-empty only when Phase == PhaseError.
 	Error string `json:"error,omitempty"`
 
+	// Reason carries a human-readable explanation for why this event was
+	// emitted, beyond what Phase/Error already convey — e.g. distinguishing
+	// "reindex triggered because the on-disk graph.fb format is older than
+	// this build supports" from an ordinary scheduled/watcher-triggered
+	// reindex. Additive; empty when no producer has anything extra to say.
+	// (#reindex-required PR1: field only — no producer sets it yet.)
+	Reason string `json:"reason,omitempty"`
+
 	// TS is the Unix timestamp in milliseconds when the event was created.
 	TS int64 `json:"ts"`
 

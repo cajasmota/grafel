@@ -144,6 +144,69 @@ func TestRunStatusJSON_ReadsFileNotSocket(t *testing.T) {
 	}
 }
 
+// TestRunStatusJSON_ReindexRequiredRoundTrips is the RED test for the
+// "reindex-required after graph-format change" epic, PR1: `grafel status
+// --json` must surface reindex_required/reindex_reason verbatim from the
+// on-disk statusfile.File — the same additive-JSON pass-through as every
+// other statusfile field, so this repo's incompatible-format state is never
+// hidden from a poll-safe reader (the "silent-green lie" this epic exists to
+// fix). statusJSONResult embeds *statusfile.File, so no derived/overridden
+// "status" logic is needed here: the raw fields simply appear in the output.
+func TestRunStatusJSON_ReindexRequiredRoundTrips(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("GRAFEL_HOME", tmpHome)
+
+	repoRoot := t.TempDir()
+	configDir := filepath.Join(tmpHome, ".config", "grafel")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(configDir, "g.fleet.json")
+	cfg := &registry.GroupConfig{
+		Name:  "g",
+		Repos: []registry.Repo{{Slug: "r", Path: repoRoot}},
+	}
+	b, _ := json.Marshal(cfg)
+	if err := os.WriteFile(cfgPath, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg := &registry.Registry{
+		Version: 1,
+		Groups:  []registry.GroupRef{{Name: "g", ConfigPath: cfgPath}},
+	}
+	if err := registry.Save(reg); err != nil {
+		t.Fatal(err)
+	}
+
+	want := &statusfile.File{
+		EnginePID:       12345,
+		HeartbeatAt:     time.Now().UTC(),
+		Version:         "test-version",
+		RepoPath:        repoRoot,
+		ReindexRequired: true,
+		ReindexReason:   "graph format v2 incompatible with v4 — reindex required",
+	}
+	if err := statusfile.Write(repoRoot, want); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := runStatusJSON(&buf, repoRoot); err != nil {
+		t.Fatalf("runStatusJSON: %v", err)
+	}
+
+	var got statusfile.File
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("output not valid JSON: %v\n%s", err, buf.String())
+	}
+	if !got.ReindexRequired {
+		t.Error("ReindexRequired should round-trip as true")
+	}
+	if got.ReindexReason != want.ReindexReason {
+		t.Errorf("ReindexReason = %q, want %q", got.ReindexReason, want.ReindexReason)
+	}
+}
+
 // TestRunStatusJSON_UnknownFallback confirms a repo with no status file yet
 // (engine never touched it, or is down) returns a well-formed "unknown"
 // result rather than an error/hang.

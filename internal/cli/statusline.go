@@ -24,8 +24,8 @@ whichever example segment fits your setup into your own statusline script
 or config.
 
 --snippet prints ONLY the icon-based bash segment (state precedence: engine
-down > error > indexing > idle > not indexed), suitable for piping straight
-into a file.`,
+down > indexing > reindex required > error > idle > not indexed), suitable
+for piping straight into a file.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if snippetOnly {
 				_, err := cmd.OutOrStdout().Write([]byte(statuslineIconSnippet()))
@@ -70,15 +70,37 @@ fi
 `
 
 // statuslineIconSnippet is example 3b: the canonical icon-state segment.
-// State precedence: engine down (heartbeat >15s stale) > last_err set >
-// indexing > idle (graph_fb_mtime>0, "X ago") > not indexed (graph_fb_mtime
-// == 0). Prints nothing if this isn't a grafel-indexed repo (no status
-// file). Self-contained: no external color/helper dependency, works when
-// piped or run non-interactively.
+//
+// State precedence: engine down (heartbeat >15s stale) > indexing >
+// reindex_required > last_err set > idle (graph_fb_mtime>0, "X ago") >
+// not indexed (graph_fb_mtime == 0).
+//
+// reindex_required sits between indexing and last_err (#reindex-required
+// PR1) — this is the fix for the "silent-green lie": before this field
+// existed, a repo whose on-disk graph.fb was an incompatible old format
+// version rendered as a plain green "✓ 3m ago" (graph_fb_mtime was still
+// stamped from the last successful index at the OLD format), even though
+// grafel can no longer actually read that graph. Placement rationale:
+//   - BELOW indexing: an index currently in flight (possibly the user's own
+//     remediation, e.g. they just ran `grafel index`) is more temporally
+//     relevant right now than a static flag that is about to self-clear the
+//     moment that very index completes.
+//   - ABOVE last_err: reindex_required is recomputed FRESH from the actual
+//     graph.fb bytes on every ~5s heartbeat (internal/daemon/statuswriter.go,
+//     writeRepoStatusFile -> graph.ReindexRequiredReason), so it is always
+//     the current, authoritative truth about whether THIS repo's graph is
+//     servable. last_err is a snapshot of the most recently COMPLETED index
+//     attempt — potentially stale (e.g. a transient failure hours ago that a
+//     later successful index superseded, if last_err is ever not cleared on
+//     success) — so a live, freshly-recomputed signal outranks a snapshot.
+//
+// Prints nothing if this isn't a grafel-indexed repo (no status file).
+// Self-contained: no external color/helper dependency, works when piped or
+// run non-interactively.
 func statuslineIconSnippet() string {
 	return `#!/usr/bin/env bash
 # grafel statusline segment — icon states
-# Precedence: engine down > error > indexing > idle (age) > not indexed.
+# Precedence: engine down > indexing > reindex required > error > idle (age) > not indexed.
 # Prints nothing if this isn't a grafel-indexed repo.
 c_red=$'\033[31m'; c_yellow=$'\033[33m'; c_green=$'\033[32m'; c_dim=$'\033[2m'; c_reset=$'\033[0m'
 
@@ -90,6 +112,7 @@ g_sfile="${GRAFEL_HOME:-$HOME/.grafel}/status/$g_hash.json"
 
 g_json=$(cat "$g_sfile")
 indexing=$(printf '%s' "$g_json" | jq -r '.indexing // false')
+reindex_required=$(printf '%s' "$g_json" | jq -r '.reindex_required // false')
 err=$(printf '%s' "$g_json" | jq -r '.last_err // empty')
 hb=$(printf '%s' "$g_json" | jq -r '.heartbeat_at // empty')
 mtime_ns=$(printf '%s' "$g_json" | jq -r '.graph_fb_mtime // 0')
@@ -106,10 +129,12 @@ fi
 
 if [ "$down" = "1" ]; then
   echo "${c_red}⚠ down${c_reset}"
-elif [ -n "$err" ]; then
-  echo "${c_red}✗ error${c_reset}"
 elif [ "$indexing" = "true" ]; then
   echo "${c_yellow}⟳ indexing${c_reset}"
+elif [ "$reindex_required" = "true" ]; then
+  echo "${c_yellow}⟲ reindex required${c_reset}"
+elif [ -n "$err" ]; then
+  echo "${c_red}✗ error${c_reset}"
 elif [ "$mtime_ns" != "0" ] && [ -n "$mtime_ns" ]; then
   mtime=$((mtime_ns / 1000000000))
   age=$((now - mtime))
@@ -202,6 +227,20 @@ Key fields:
   indexing         bool     true while an index is running right now
   queue_len        int      jobs queued behind this repo (omitempty)
   last_err         string   most recent index error, if any (omitempty)
+  reindex_required bool     true when the on-disk graph.fb this repo is
+                            SERVING was written by an older grafel build
+                            than this engine's format version supports
+                            (omitempty). Recomputed fresh from the actual
+                            graph.fb bytes on every heartbeat — this is
+                            what a repo looks like when it needs a
+                            ` + "`grafel index <repo>`" + ` re-run before grafel can
+                            trust what it's serving. Detection-only in
+                            this release: nothing auto-reindexes or
+                            prompts you yet.
+  reindex_reason   string   human-readable explanation set whenever
+                            reindex_required is true, naming both the
+                            found and required graph.fb format versions
+                            (omitempty)
 
 2. Two ways to read it
 -----------------------
