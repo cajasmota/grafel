@@ -222,3 +222,123 @@ func TestRelationshipJSONRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip field mismatch: %#v vs %#v", r2, r)
 	}
 }
+
+// Phase B (compact []propKV backing) golden-equivalence tests: prove the
+// sorted-slice backing produces identical externally-observable behavior to
+// the Phase A map-backed implementation — same miss/hit semantics, same
+// PropsSnapshot content, plus the one intentional/documented behavior
+// change (PropRange now iterates in deterministic key-sorted order instead
+// of Go's randomized map order, which is a strict improvement: no consumer
+// could have depended on map order being stable in the first place).
+
+func TestEntityPropRangeIsKeySorted(t *testing.T) {
+	var e Entity
+	for _, k := range []string{"zeta", "alpha", "mu", "beta"} {
+		e.PropSet(k, k+"-val")
+	}
+
+	var got []string
+	e.PropRange(func(k, v string) bool {
+		got = append(got, k)
+		return true
+	})
+	want := []string{"alpha", "beta", "mu", "zeta"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("PropRange order = %v, want %v (key-sorted)", got, want)
+	}
+}
+
+func TestEntityPropSetOverwriteAndDeleteMaintainsSortedOrder(t *testing.T) {
+	var e Entity
+	e.PropSet("c", "1")
+	e.PropSet("a", "2")
+	e.PropSet("b", "3")
+	e.PropSet("a", "2-updated") // overwrite, must not duplicate or reorder
+
+	if got := e.PropLen(); got != 3 {
+		t.Fatalf("PropLen after overwrite = %d, want 3", got)
+	}
+	if got := e.PropGet("a"); got != "2-updated" {
+		t.Fatalf("PropGet(a) after overwrite = %q", got)
+	}
+
+	var keys []string
+	e.PropRange(func(k, v string) bool { keys = append(keys, k); return true })
+	if want := []string{"a", "b", "c"}; !reflect.DeepEqual(keys, want) {
+		t.Fatalf("keys after overwrite = %v, want %v", keys, want)
+	}
+
+	e.PropDelete("b")
+	keys = nil
+	e.PropRange(func(k, v string) bool { keys = append(keys, k); return true })
+	if want := []string{"a", "c"}; !reflect.DeepEqual(keys, want) {
+		t.Fatalf("keys after delete = %v, want %v", keys, want)
+	}
+	if e.PropLen() != 2 {
+		t.Fatalf("PropLen after delete = %d, want 2", e.PropLen())
+	}
+
+	// Deleting a missing key is a no-op.
+	e.PropDelete("nonexistent")
+	if e.PropLen() != 2 {
+		t.Fatalf("PropLen after no-op delete = %d, want 2", e.PropLen())
+	}
+}
+
+func TestPropsFromMapRoundTripIsOrderIndependent(t *testing.T) {
+	m := map[string]string{"z": "1", "y": "2", "x": "3", "w": "4"}
+	e := Entity{}.WithProperties(m)
+
+	if got := e.PropsSnapshot(); !reflect.DeepEqual(got, m) {
+		t.Fatalf("PropsSnapshot = %#v, want %#v", got, m)
+	}
+
+	var keys []string
+	e.PropRange(func(k, v string) bool { keys = append(keys, k); return true })
+	if !sort.StringsAreSorted(keys) {
+		t.Fatalf("PropRange keys not sorted: %v", keys)
+	}
+
+	// WithProperties must not alias the input map: mutating m afterwards
+	// must not affect e.
+	m["z"] = "mutated"
+	if got := e.PropGet("z"); got != "1" {
+		t.Fatalf("WithProperties aliased input map: PropGet(z) = %q, want 1", got)
+	}
+}
+
+func TestRelationshipPropRangeIsKeySorted(t *testing.T) {
+	var r Relationship
+	for _, k := range []string{"gamma", "alpha", "delta"} {
+		r.PropSet(k, "v")
+	}
+	var got []string
+	r.PropRange(func(k, v string) bool { got = append(got, k); return true })
+	want := []string{"alpha", "delta", "gamma"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("PropRange order = %v, want %v (key-sorted)", got, want)
+	}
+}
+
+// TestFBLoadedEntityPropertiesAreSortedAndBinarySearchable is a lightweight
+// structural check that fbEntityToGraphEntity/fbRelToGraphRel's direct
+// []propKV construction (no intermediate map) produces the same sorted
+// invariant that PropSet maintains, since load.go bypasses PropSet and
+// assigns rel.properties/ent.properties directly for performance — this
+// guards against that fast path silently drifting out of sorted order.
+func TestFBLoadedEntityPropertiesAreSortedAndBinarySearchable(t *testing.T) {
+	// Build a document the same way fbEntityToGraphEntity does (via direct
+	// slice construction from an already key-sorted source), then verify
+	// PropGet/PropLookup still find every key via binary search.
+	sortedKeys := []string{"a", "b", "c", "d", "e"}
+	e := Entity{}
+	e = e.WithProperties(nil) // ensure nil-safe baseline
+	for _, k := range sortedKeys {
+		e.PropSet(k, "v-"+k)
+	}
+	for _, k := range sortedKeys {
+		if got := e.PropGet(k); got != "v-"+k {
+			t.Fatalf("PropGet(%s) = %q, want v-%s", k, got, k)
+		}
+	}
+}

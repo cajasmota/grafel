@@ -394,11 +394,20 @@ func loadJSONDocument(path string) (*Document, error) {
 // one backing array. Name/QualifiedName/Signature/property VALUES are
 // genuinely high-cardinality and are intentionally NOT interned.
 func fbEntityToGraphEntity(e *fb.Entity, si *stringInterner) Entity {
-	props := make(map[string]string, e.PropertiesLength())
-	var pe fb.PropertyEntry
-	for i := 0; i < e.PropertiesLength(); i++ {
-		if e.Properties(&pe, i) {
-			props[si.intern(pe.Key())] = string(pe.Value())
+	// #5850 Phase B: build the sorted []propKV slice directly from the FB
+	// PropertyEntry vector instead of routing through an intermediate map.
+	// fbwriter.buildPropertyVector writes entries in ascending key order
+	// (sort.Strings(keys) before emission), so the FB vector is already
+	// sorted — no re-sort needed here, just a straight copy.
+	n := e.PropertiesLength()
+	var props []propKV
+	if n > 0 {
+		props = make([]propKV, 0, n)
+		var pe fb.PropertyEntry
+		for i := 0; i < n; i++ {
+			if e.Properties(&pe, i) {
+				props = append(props, propKV{K: si.intern(pe.Key()), V: string(pe.Value())})
+			}
 		}
 	}
 	ent := Entity{
@@ -409,16 +418,15 @@ func fbEntityToGraphEntity(e *fb.Entity, si *stringInterner) Entity {
 		Subtype:       si.intern(e.Subtype()),
 		SourceFile:    si.intern(e.SourceFile()),
 		StartLine:     int(e.SourceLine()),
-	}.WithProperties(props)
+	}
+	ent.properties = props
 	// The Module field is stored as a top-level FB scalar by the writer
 	// (see fbwriter.buildEntity). Restore it into Properties["module"]
-	// so callers that read props["module"] continue to work.
+	// so callers that read props["module"] continue to work. PropSet keeps
+	// the slice sorted (binary-search insert), so this stays correct
+	// regardless of where "module" falls alphabetically among the FB props.
 	if mod := si.intern(e.Module()); mod != "" {
-		if props == nil {
-			props = map[string]string{}
-		}
-		props["module"] = mod
-		ent.PropsReplace(props)
+		ent.PropSet("module", mod)
 	}
 	// Issue #2370 — Language is read directly from the dedicated FB slot.
 	// The PR #2365 property-tunnel restore (props["language"]) is retired.
@@ -481,20 +489,27 @@ func fbCommunityToResult(c *fb.Community) CommunityResult {
 // endpoint string shares backing storage with the entity.ID it references
 // rather than allocating its own copy.
 func fbRelToGraphRel(r *fb.Relationship, si *stringInterner) Relationship {
-	props := make(map[string]string, r.PropertiesLength())
-	var pe fb.PropertyEntry
-	for i := 0; i < r.PropertiesLength(); i++ {
-		if r.Properties(&pe, i) {
-			props[si.intern(pe.Key())] = string(pe.Value())
+	// #5850 Phase B: same direct-to-[]propKV construction as
+	// fbEntityToGraphEntity above — the FB vector is already key-sorted.
+	n := r.PropertiesLength()
+	var props []propKV
+	if n > 0 {
+		props = make([]propKV, 0, n)
+		var pe fb.PropertyEntry
+		for i := 0; i < n; i++ {
+			if r.Properties(&pe, i) {
+				props = append(props, propKV{K: si.intern(pe.Key()), V: string(pe.Value())})
+			}
 		}
 	}
 	rel := Relationship{
 		FromID: si.intern(r.FromId()),
 		ToID:   si.intern(r.ToId()),
 		Kind:   si.intern(r.Kind()),
-	}.WithProperties(props)
+	}
+	rel.properties = props
 	// Restore the ID from Properties if the writer stored it.
-	if id, ok := props["id"]; ok {
+	if id, ok := rel.PropLookup("id"); ok {
 		rel.ID = id
 	}
 	return rel

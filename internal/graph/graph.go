@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -77,7 +78,16 @@ type Entity struct {
 	// PropLookup, PropSet, PropDelete, PropRange, PropLen, PropsSnapshot,
 	// WithProperties, PropsReplace) rather than the field directly. The wire
 	// JSON key stays "properties" via MarshalJSON/UnmarshalJSON below.
-	properties map[string]string
+	//
+	// Backing representation (Phase B, #5850): a sorted-by-key []propKV
+	// slice rather than a map[string]string. A Go map has ~48-80 bytes of
+	// bucket/hmap overhead per entry regardless of key/value size; at
+	// corpus scale (millions of small property sets, often 1-3 entries)
+	// this overhead dominates the actual content. A sorted slice has none
+	// of that — just N*(len(K)+len(V)+16) for the propKV headers — and
+	// still supports O(log n) point lookups via binary search. nil when
+	// empty (same zero-value-safe semantics as the old nil map).
+	properties []propKV
 
 	// PH8 (#2100): content-hash pointer into the shared embedding cache.
 	// When non-empty, readers load the vector from Cache instead of
@@ -108,8 +118,9 @@ type Relationship struct {
 	ToID   string `json:"to_id"`
 	Kind   string `json:"kind"`
 	// properties is intentionally unexported — see Entity.properties above
-	// for the full rationale. Access only via the Prop* accessors.
-	properties map[string]string
+	// for the full rationale (including the Phase B []propKV backing).
+	// Access only via the Prop* accessors.
+	properties []propKV
 	// Confidence overlay (Phase 1C, #2769). Value in [0.0, 1.0]; zero reads
 	// as 1.0. See internal/types/confidence.go.
 	Confidence float64 `json:"confidence,omitempty"`
@@ -160,7 +171,7 @@ func (e Entity) MarshalJSON() ([]byte, error) {
 		Signature:          e.Signature,
 		Tags:               e.Tags,
 		Metadata:           e.Metadata,
-		Properties:         e.properties,
+		Properties:         e.PropsSnapshot(),
 		EmbeddingRef:       e.EmbeddingRef,
 		CommunityID:        e.CommunityID,
 		Centrality:         e.Centrality,
@@ -190,7 +201,7 @@ func (e *Entity) UnmarshalJSON(data []byte) error {
 	e.Signature = aux.Signature
 	e.Tags = aux.Tags
 	e.Metadata = aux.Metadata
-	e.properties = aux.Properties
+	e.PropsReplace(aux.Properties)
 	e.EmbeddingRef = aux.EmbeddingRef
 	e.CommunityID = aux.CommunityID
 	e.Centrality = aux.Centrality
@@ -220,7 +231,7 @@ func (r Relationship) MarshalJSON() ([]byte, error) {
 		FromID:     r.FromID,
 		ToID:       r.ToID,
 		Kind:       r.Kind,
-		Properties: r.properties,
+		Properties: r.PropsSnapshot(),
 		Confidence: r.Confidence,
 	})
 }
@@ -235,7 +246,7 @@ func (r *Relationship) UnmarshalJSON(data []byte) error {
 	r.FromID = aux.FromID
 	r.ToID = aux.ToID
 	r.Kind = aux.Kind
-	r.properties = aux.Properties
+	r.PropsReplace(aux.Properties)
 	r.Confidence = aux.Confidence
 	return nil
 }
@@ -278,6 +289,78 @@ func RelationshipID(fromID, toID, kind string) string {
 // backing representation change independently.
 // ---------------------------------------------------------------------------
 
+// propKV is one key/value pair in a sorted-by-key property slice. See the
+// property-accessor doc comment above Entity.properties for the rationale
+// (Phase B, #5850): this replaces a map[string]string backing to eliminate
+// Go hmap/bucket overhead, which dominates resident memory at corpus scale
+// for the common case of small (1-3 entry) property sets.
+type propKV struct {
+	K string
+	V string
+}
+
+// propFind returns the insertion/match index of key in props (sorted by K)
+// via binary search, and whether it was found. O(log n).
+func propFind(props []propKV, key string) (int, bool) {
+	i := sort.Search(len(props), func(i int) bool { return props[i].K >= key })
+	if i < len(props) && props[i].K == key {
+		return i, true
+	}
+	return i, false
+}
+
+// propsFromMap builds a sorted []propKV from a map[string]string, or nil if
+// m is empty. Used by WithProperties/PropsReplace, which keep accepting a
+// plain map at their call boundary so existing call sites are unaffected.
+func propsFromMap(m map[string]string) []propKV {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]propKV, 0, len(m))
+	for k, v := range m {
+		out = append(out, propKV{K: k, V: v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].K < out[j].K })
+	return out
+}
+
+// propsToMap converts a sorted []propKV back into an independent
+// map[string]string, or nil if empty.
+func propsToMap(props []propKV) map[string]string {
+	if len(props) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(props))
+	for _, kv := range props {
+		out[kv.K] = kv.V
+	}
+	return out
+}
+
+// propSet inserts or updates key=val in props (sorted by K), returning the
+// (possibly reallocated) slice.
+func propSet(props []propKV, key, val string) []propKV {
+	i, ok := propFind(props, key)
+	if ok {
+		props[i].V = val
+		return props
+	}
+	props = append(props, propKV{})
+	copy(props[i+1:], props[i:])
+	props[i] = propKV{K: key, V: val}
+	return props
+}
+
+// propDelete removes key from props (sorted by K), if present, returning
+// the (possibly shortened) slice.
+func propDelete(props []propKV, key string) []propKV {
+	i, ok := propFind(props, key)
+	if !ok {
+		return props
+	}
+	return append(props[:i], props[i+1:]...)
+}
+
 // EntityPtr returns a pointer to a copy of e. Used by call sites that build
 // an Entity value (e.g. via a chained WithProperties call) but need a
 // *Entity, since taking the address of a method-call result is not legal Go.
@@ -288,34 +371,36 @@ func RelationshipPtr(r Relationship) *Relationship { return &r }
 
 // PropGet returns the value for key, or "" if key is absent.
 func (e Entity) PropGet(key string) string {
-	v, _ := e.properties[key]
-	return v
+	if i, ok := propFind(e.properties, key); ok {
+		return e.properties[i].V
+	}
+	return ""
 }
 
 // PropLookup returns the value for key and whether it was present.
 func (e Entity) PropLookup(key string) (string, bool) {
-	v, ok := e.properties[key]
-	return v, ok
+	if i, ok := propFind(e.properties, key); ok {
+		return e.properties[i].V, true
+	}
+	return "", false
 }
 
 // PropSet sets key to val, lazily initializing the backing storage.
 func (e *Entity) PropSet(key, val string) {
-	if e.properties == nil {
-		e.properties = make(map[string]string, 4)
-	}
-	e.properties[key] = val
+	e.properties = propSet(e.properties, key, val)
 }
 
 // PropDelete removes key, if present. No-op if absent or unset.
 func (e *Entity) PropDelete(key string) {
-	delete(e.properties, key)
+	e.properties = propDelete(e.properties, key)
 }
 
-// PropRange calls f for every key/value pair. Iteration stops early if f
-// returns false. Safe to call on a zero-value Entity (no-op).
+// PropRange calls f for every key/value pair in key-sorted order. Iteration
+// stops early if f returns false. Safe to call on a zero-value Entity
+// (no-op).
 func (e Entity) PropRange(f func(k, v string) bool) {
-	for k, v := range e.properties {
-		if !f(k, v) {
+	for _, kv := range e.properties {
+		if !f(kv.K, kv.V) {
 			return
 		}
 	}
@@ -330,60 +415,55 @@ func (e Entity) PropLen() int {
 // nil if there are none. Callers must not assume the returned map aliases
 // internal storage.
 func (e Entity) PropsSnapshot() map[string]string {
-	if len(e.properties) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(e.properties))
-	for k, v := range e.properties {
-		out[k] = v
-	}
-	return out
+	return propsToMap(e.properties)
 }
 
-// WithProperties returns a copy of e with its properties replaced by props
-// (aliased, not copied — matching the old field-assignment semantics).
+// WithProperties returns a copy of e with its properties replaced by props,
+// converted into the sorted []propKV backing (a fresh copy — the input map
+// is not aliased, unlike the old field-assignment semantics).
 func (e Entity) WithProperties(props map[string]string) Entity {
-	e.properties = props
+	e.properties = propsFromMap(props)
 	return e
 }
 
-// PropsReplace replaces e's entire property set with props (aliased, not
-// copied), mutating e in place. Equivalent to the old `e.Properties = props`
-// field assignment.
+// PropsReplace replaces e's entire property set with props, mutating e in
+// place. See WithProperties.
 func (e *Entity) PropsReplace(props map[string]string) {
-	e.properties = props
+	e.properties = propsFromMap(props)
 }
 
 // PropGet returns the value for key, or "" if key is absent.
 func (r Relationship) PropGet(key string) string {
-	v, _ := r.properties[key]
-	return v
+	if i, ok := propFind(r.properties, key); ok {
+		return r.properties[i].V
+	}
+	return ""
 }
 
 // PropLookup returns the value for key and whether it was present.
 func (r Relationship) PropLookup(key string) (string, bool) {
-	v, ok := r.properties[key]
-	return v, ok
+	if i, ok := propFind(r.properties, key); ok {
+		return r.properties[i].V, true
+	}
+	return "", false
 }
 
 // PropSet sets key to val, lazily initializing the backing storage.
 func (r *Relationship) PropSet(key, val string) {
-	if r.properties == nil {
-		r.properties = make(map[string]string, 4)
-	}
-	r.properties[key] = val
+	r.properties = propSet(r.properties, key, val)
 }
 
 // PropDelete removes key, if present. No-op if absent or unset.
 func (r *Relationship) PropDelete(key string) {
-	delete(r.properties, key)
+	r.properties = propDelete(r.properties, key)
 }
 
-// PropRange calls f for every key/value pair. Iteration stops early if f
-// returns false. Safe to call on a zero-value Relationship (no-op).
+// PropRange calls f for every key/value pair in key-sorted order. Iteration
+// stops early if f returns false. Safe to call on a zero-value Relationship
+// (no-op).
 func (r Relationship) PropRange(f func(k, v string) bool) {
-	for k, v := range r.properties {
-		if !f(k, v) {
+	for _, kv := range r.properties {
+		if !f(kv.K, kv.V) {
 			return
 		}
 	}
@@ -398,28 +478,21 @@ func (r Relationship) PropLen() int {
 // nil if there are none. Callers must not assume the returned map aliases
 // internal storage.
 func (r Relationship) PropsSnapshot() map[string]string {
-	if len(r.properties) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(r.properties))
-	for k, v := range r.properties {
-		out[k] = v
-	}
-	return out
+	return propsToMap(r.properties)
 }
 
-// WithProperties returns a copy of r with its properties replaced by props
-// (aliased, not copied — matching the old field-assignment semantics).
+// WithProperties returns a copy of r with its properties replaced by props,
+// converted into the sorted []propKV backing (a fresh copy — the input map
+// is not aliased, unlike the old field-assignment semantics).
 func (r Relationship) WithProperties(props map[string]string) Relationship {
-	r.properties = props
+	r.properties = propsFromMap(props)
 	return r
 }
 
-// PropsReplace replaces r's entire property set with props (aliased, not
-// copied), mutating r in place. Equivalent to the old `r.Properties = props`
-// field assignment.
+// PropsReplace replaces r's entire property set with props, mutating r in
+// place. See WithProperties.
 func (r *Relationship) PropsReplace(props map[string]string) {
-	r.properties = props
+	r.properties = propsFromMap(props)
 }
 
 // GraphStatsSidecar is the corpus-level summary written to
