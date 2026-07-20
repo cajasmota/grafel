@@ -167,7 +167,7 @@ func TestIngest_PDFEndToEnd(t *testing.T) {
 			if e.Language != "pdf" {
 				t.Errorf("section Language = %q, want pdf", e.Language)
 			}
-			if e.Properties["page"] != "" {
+			if e.PropGet("page") != "" {
 				secWithPage++
 			}
 		}

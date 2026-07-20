@@ -49,12 +49,12 @@ func makeDocWithMixedCalls() *graph.Document {
 			// No entities for "ghost1" / "ghost2" — those are unresolved targets.
 		},
 		Relationships: []graph.Relationship{
-			{ID: "r1", FromID: "caller", ToID: "callee1", Kind: "CALLS", Properties: map[string]string{"line": "5"}},
-			{ID: "r2", FromID: "caller", ToID: "callee2", Kind: "CALLS", Properties: map[string]string{"line": "6"}},
-			{ID: "r3", FromID: "caller", ToID: "callee3", Kind: "CALLS", Properties: map[string]string{"line": "7"}},
+			graph.Relationship{ID: "r1", FromID: "caller", ToID: "callee1", Kind: "CALLS"}.WithProperties(map[string]string{"line": "5"}),
+			graph.Relationship{ID: "r2", FromID: "caller", ToID: "callee2", Kind: "CALLS"}.WithProperties(map[string]string{"line": "6"}),
+			graph.Relationship{ID: "r3", FromID: "caller", ToID: "callee3", Kind: "CALLS"}.WithProperties(map[string]string{"line": "7"}),
 			// ghost1 / ghost2 have no entity → target_path will be empty → unresolved
-			{ID: "r4", FromID: "caller", ToID: "ghost1", Kind: "CALLS", Properties: map[string]string{"line": "8"}},
-			{ID: "r5", FromID: "caller", ToID: "ghost2", Kind: "CALLS", Properties: map[string]string{"line": "9"}},
+			graph.Relationship{ID: "r4", FromID: "caller", ToID: "ghost1", Kind: "CALLS"}.WithProperties(map[string]string{"line": "8"}),
+			graph.Relationship{ID: "r5", FromID: "caller", ToID: "ghost2", Kind: "CALLS"}.WithProperties(map[string]string{"line": "9"}),
 		},
 	}
 }

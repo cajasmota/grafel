@@ -374,21 +374,21 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if e.Kind == "http_endpoint_call" ||
-				e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+				e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
 				continue
 			}
-			path := e.Properties["path"]
+			path := e.PropGet("path")
 			if path == "" {
 				path = e.Name
 			}
 			if !isHTTPEndpointPath(path) {
 				continue
 			}
-			verb := strings.ToUpper(e.Properties["verb"])
+			verb := strings.ToUpper(e.PropGet("verb"))
 			if verb == "" {
 				verb = "ANY"
 			}
-			if verb == "ANY" && e.Properties["urlconf_nested_include"] == "true" {
+			if verb == "ANY" && e.PropGet("urlconf_nested_include") == "true" {
 				continue
 			}
 
@@ -431,22 +431,22 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 				controllerID = controllerKeyFromFile(e.SourceFile)
 			}
 			if controllerID == "" {
-				controllerID = e.Properties["controller"]
+				controllerID = e.PropGet("controller")
 			}
 			if controllerID == "" {
 				controllerID = inferControllerName(e.Name)
 			}
 
-			authPolicy := readAuthPolicyFromEntity(e.Properties)
+			authPolicy := readAuthPolicyFromEntity(e.PropsSnapshot())
 			eps = append(eps, rawEP{
 				ID:             dashPrefixedID(repo.Slug, e.ID),
 				Path:           path,
 				Verb:           verb,
 				Handler:        e.Name,
-				Framework:      e.Properties["framework"],
-				IsWebhook:      e.Properties["is_webhook"] == "true",
-				WebhookProv:    e.Properties["webhook_provider"],
-				Auth:           e.Properties["auth"] == "true" || e.Properties["auth_scheme"] != "" || authPolicy.Required,
+				Framework:      e.PropGet("framework"),
+				IsWebhook:      e.PropGet("is_webhook") == "true",
+				WebhookProv:    e.PropGet("webhook_provider"),
+				Auth:           e.PropGet("auth") == "true" || e.PropGet("auth_scheme") != "" || authPolicy.Required,
 				Repo:           repo.Slug,
 				SourceFile:     e.SourceFile,
 				StartLine:      e.StartLine,
@@ -869,10 +869,10 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if e.Kind == "http_endpoint_call" ||
-				e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+				e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
 				continue
 			}
-			path := e.Properties["path"]
+			path := e.PropGet("path")
 			if path == "" {
 				path = e.Name
 			}
@@ -883,25 +883,25 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				pathStr = path
 			}
 
-			verb := strings.ToUpper(e.Properties["verb"])
+			verb := strings.ToUpper(e.PropGet("verb"))
 			if verb == "" {
 				verb = "ANY"
 			}
 
-			if e.Properties["is_webhook"] == "true" {
+			if e.PropGet("is_webhook") == "true" {
 				isWebhook = true
-				webhookProv = e.Properties["webhook_provider"]
+				webhookProv = e.PropGet("webhook_provider")
 			}
 
 			hasDocs, docsSummary, docsPath, _ := extractEndpointDocsEnriched(id, pathHash, docgenState)
 
 			// Collect response keys / status codes.
 			var respKeys []string
-			if rk := e.Properties["response_keys"]; rk != "" {
+			if rk := e.PropGet("response_keys"); rk != "" {
 				respKeys = strings.Split(rk, ",")
 			}
 			var statusCodes []int
-			if sc := e.Properties["status_codes"]; sc != "" {
+			if sc := e.PropGet("status_codes"); sc != "" {
 				for _, s := range strings.Split(sc, ",") {
 					s = strings.TrimSpace(s)
 					var n int
@@ -937,7 +937,7 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 			// detail shows the real viewset method + its source location, not the
 			// routers.py:0 synthetic. Fall back to the definition when unresolved.
 			handlerName := e.Name
-			handlerQN := e.Properties["qualified_name"]
+			handlerQN := e.PropGet("qualified_name")
 			handlerFile := e.SourceFile
 			handlerLine := e.StartLine
 			handlerLang := e.Language
@@ -966,11 +966,11 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				Verb:             verb,
 				Handler:          handlerName,
 				QualifiedName:    handlerQN,
-				Framework:        e.Properties["framework"],
-				IsWebhook:        e.Properties["is_webhook"] == "true",
-				WebhookProv:      e.Properties["webhook_provider"],
-				Auth:             e.Properties["auth"] == "true" || e.Properties["auth_scheme"] != "",
-				AuthScheme:       e.Properties["auth_scheme"],
+				Framework:        e.PropGet("framework"),
+				IsWebhook:        e.PropGet("is_webhook") == "true",
+				WebhookProv:      e.PropGet("webhook_provider"),
+				Auth:             e.PropGet("auth") == "true" || e.PropGet("auth_scheme") != "",
+				AuthScheme:       e.PropGet("auth_scheme"),
 				Repo:             repo.Slug,
 				SourceFile:       handlerFile,
 				StartLine:        handlerLine,
@@ -988,22 +988,22 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				DefEntityID:      dashPrefixedID(repo.Slug, e.ID),
 				HandlerLocalIDs:  handlerIDs,
 				// Issue #1909 — request body type from entity properties.
-				RequestBodyType:      e.Properties["request_body_type"],
-				RequestBodyParamName: e.Properties["request_body_param_name"],
+				RequestBodyType:      e.PropGet("request_body_type"),
+				RequestBodyParamName: e.PropGet("request_body_param_name"),
 				// Issue #1936 Phase 1 — full parameter list (Java extractor).
-				ParametersJSON: e.Properties["parameters"],
+				ParametersJSON: e.PropGet("parameters"),
 				// Refs #1935 Phase 1 — handler return type for the
 				// Response ShapeTree subtree.
-				ResponseType: e.Properties["response_type"],
+				ResponseType: e.PropGet("response_type"),
 				// #4488 — void/no-content + array-payload markers so the
 				// Response row labels "204 No Content" instead of a
 				// misleading "(none)" and flags array element shapes.
-				ResponseVoid:    e.Properties["response_void"] == "true",
-				ResponseIsArray: e.Properties["response_is_array"] == "true",
+				ResponseVoid:    e.PropGet("response_void") == "true",
+				ResponseIsArray: e.PropGet("response_is_array") == "true",
 				// Issue #1938 Phase 1 — per-status @APIResponse annotations.
-				APIResponsesJSON: e.Properties["api_responses"],
+				APIResponsesJSON: e.PropGet("api_responses"),
 				// #1942 Phase 1 — auth_policy decoded from the endpoint entity.
-				AuthPolicy: readAuthPolicyFromEntity(e.Properties),
+				AuthPolicy: readAuthPolicyFromEntity(e.PropsSnapshot()),
 			})
 		}
 	}
@@ -1879,7 +1879,7 @@ func resolveInboundFetches(grp *DashGroup, ids []string) []v2PathEntity {
 							SourceFile:    caller.SourceFile,
 							StartLine:     caller.StartLine,
 							Edge:          "CALLED_BY",
-							Protocol:      caller.Properties["protocol"],
+							Protocol:      caller.PropGet("protocol"),
 						})
 						goto nextID
 					}
@@ -1930,7 +1930,7 @@ func resolveInboundFetches(grp *DashGroup, ids []string) []v2PathEntity {
 								SourceFile:    caller.SourceFile,
 								StartLine:     caller.StartLine,
 								Edge:          "CALLED_BY",
-								Protocol:      caller.Properties["protocol"],
+								Protocol:      caller.PropGet("protocol"),
 							})
 							callerFound = true
 							goto nextID
@@ -1958,7 +1958,7 @@ func resolveInboundFetches(grp *DashGroup, ids []string) []v2PathEntity {
 					SourceFile:    entity.SourceFile,
 					StartLine:     entity.StartLine,
 					Edge:          "CALLED_BY",
-					Protocol:      entity.Properties["protocol"],
+					Protocol:      entity.PropGet("protocol"),
 				})
 			}
 		} else {
@@ -1980,7 +1980,7 @@ func resolveInboundFetches(grp *DashGroup, ids []string) []v2PathEntity {
 				SourceFile:    entity.SourceFile,
 				StartLine:     entity.StartLine,
 				Edge:          "CALLED_BY",
-				Protocol:      entity.Properties["protocol"],
+				Protocol:      entity.PropGet("protocol"),
 			})
 		}
 	nextID:
@@ -2013,7 +2013,7 @@ func resolveEntitySlice(grp *DashGroup, ids []string, edge string) []v2PathEntit
 			SourceFile:    entity.SourceFile,
 			StartLine:     entity.StartLine,
 			Edge:          edge,
-			Protocol:      entity.Properties["protocol"],
+			Protocol:      entity.PropGet("protocol"),
 		})
 	}
 	return out

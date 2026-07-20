@@ -114,14 +114,12 @@ func TestInspect_IncludesLinePrecision_OutboundCalls(t *testing.T) {
 			{ID: "callee2", Name: "TargetB", Kind: "SCOPE.Operation", SourceFile: "c.go", StartLine: 20},
 		},
 		Relationships: []graph.Relationship{
-			{
+			graph.Relationship{
 				ID: "r1", FromID: "caller1", ToID: "callee1", Kind: "CALLS",
-				Properties: map[string]string{"line": "5"},
-			},
-			{
+			}.WithProperties(map[string]string{"line": "5"}),
+			graph.Relationship{
 				ID: "r2", FromID: "caller1", ToID: "callee2", Kind: "CALLS",
-				Properties: map[string]string{"line": "12"},
-			},
+			}.WithProperties(map[string]string{"line": "12"}),
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -166,14 +164,12 @@ func TestInspect_IncludesLinePrecision_InboundCallers(t *testing.T) {
 			{ID: "b", Name: "CallerB", Kind: "SCOPE.Operation", SourceFile: "b.go", StartLine: 1},
 		},
 		Relationships: []graph.Relationship{
-			{
+			graph.Relationship{
 				ID: "r1", FromID: "a", ToID: "x", Kind: "CALLS",
-				Properties: map[string]string{"line": "7"},
-			},
-			{
+			}.WithProperties(map[string]string{"line": "7"}),
+			graph.Relationship{
 				ID: "r2", FromID: "b", ToID: "x", Kind: "CALLS",
-				Properties: map[string]string{"line": "22"},
-			},
+			}.WithProperties(map[string]string{"line": "22"}),
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -225,11 +221,9 @@ func TestInspect_ContextSnippet_Reasonable(t *testing.T) {
 			{ID: "caller1", Name: "CallerFn", Kind: "SCOPE.Operation", SourceFile: "caller.go", StartLine: 1},
 		},
 		Relationships: []graph.Relationship{
-			{
+			graph.Relationship{
 				ID: "r1", FromID: "caller1", ToID: "target1", Kind: "CALLS",
-				// line 2 is `\tclient.post("/api/v1/foo")`
-				Properties: map[string]string{"line": "2"},
-			},
+			}.WithProperties(map[string]string{"line": "2"}),
 		},
 	}
 	srv := newTestServer(t, doc)

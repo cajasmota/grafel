@@ -17,8 +17,7 @@ func TestClassifyNoise(t *testing.T) {
 			e: graph.Entity{
 				Kind: "SCOPE.Component", Name: "src/features/auth/login/Login.tablet.tsx",
 				SourceFile: "src/features/auth/login/Login.tablet.tsx", StartLine: 0,
-				Properties: map[string]string{"subtype": "file"},
-			},
+			}.WithProperties(map[string]string{"subtype": "file"}),
 			want: noiseContainer,
 		},
 		{
@@ -34,8 +33,7 @@ func TestClassifyNoise(t *testing.T) {
 			e: graph.Entity{
 				Kind: "SCOPE.Operation", Name: "LoginViewSet.retrieve",
 				SourceFile: "core/views/auth_viewset.py", StartLine: 0, QualifiedName: "",
-				Properties: map[string]string{"pattern_type": "drf_viewset_implicit_method"},
-			},
+			}.WithProperties(map[string]string{"pattern_type": "drf_viewset_implicit_method"}),
 			want: noiseShadow,
 		},
 		{
@@ -43,8 +41,7 @@ func TestClassifyNoise(t *testing.T) {
 			e: graph.Entity{
 				Kind: "SCOPE.Operation", Name: "Base.method", StartLine: 12,
 				QualifiedName: "pkg.Base.method",
-				Properties:    map[string]string{"provenance": "INFERRED_FROM_CLASS_HIERARCHY"},
-			},
+			}.WithProperties(map[string]string{"provenance": "INFERRED_FROM_CLASS_HIERARCHY"}),
 			want: noiseShadow,
 		},
 		{
@@ -95,11 +92,11 @@ func TestClassifyNoise(t *testing.T) {
 			e: graph.Entity{
 				Kind: "SCOPE.ChannelBinding", Name: "orders-out", Subtype: "outgoing",
 				SourceFile: "src/main/resources/application.properties", StartLine: 1, EndLine: 1,
-				Properties: map[string]string{
-					"channel": "orders-out", "direction": "outgoing",
-					"connector": "smallrye-kafka", "topic": "orders.placed",
-				},
+			}.WithProperties(map[string]string{
+				"channel": "orders-out", "direction": "outgoing",
+				"connector": "smallrye-kafka", "topic": "orders.placed",
 			},
+			),
 			want: noiseNone,
 		},
 		// #1712: Schema field members are noise.
@@ -136,11 +133,11 @@ func TestClassifyNoise(t *testing.T) {
 				Kind: "SCOPE.Component", Subtype: "const_destructure",
 				Name:       "counts",
 				SourceFile: "src/features/ContractProposals.jsx", StartLine: 48,
-				Properties: map[string]string{
-					"kind": "SCOPE.Component", "subtype": "const_destructure",
-					"local_scope": "true",
-				},
+			}.WithProperties(map[string]string{
+				"kind": "SCOPE.Component", "subtype": "const_destructure",
+				"local_scope": "true",
 			},
+			),
 			want: noiseLocalScope,
 		},
 		{
@@ -149,11 +146,11 @@ func TestClassifyNoise(t *testing.T) {
 				Kind: "SCOPE.Component", Subtype: "const_destructure",
 				Name:       "a",
 				SourceFile: "src/features/Cmp.jsx", StartLine: 10,
-				Properties: map[string]string{
-					"kind": "SCOPE.Component", "subtype": "const_destructure",
-					"local_scope": "true",
-				},
+			}.WithProperties(map[string]string{
+				"kind": "SCOPE.Component", "subtype": "const_destructure",
+				"local_scope": "true",
 			},
+			),
 			want: noiseLocalScope,
 		},
 		{
@@ -179,7 +176,7 @@ func TestClassifyNoise(t *testing.T) {
 func TestRankTierOrdersRealAboveNoise(t *testing.T) {
 	real := &graph.Entity{Kind: "SCOPE.Operation", Name: "login", QualifiedName: "a.login", StartLine: 4}
 	shadow := &graph.Entity{Kind: "SCOPE.Operation", Name: "LoginViewSet.list", StartLine: 0}
-	container := &graph.Entity{Kind: "SCOPE.Component", Name: "x.tsx", SourceFile: "x.tsx", StartLine: 0, Properties: map[string]string{"subtype": "file"}}
+	container := graph.EntityPtr(graph.Entity{Kind: "SCOPE.Component", Name: "x.tsx", SourceFile: "x.tsx", StartLine: 0}.WithProperties(map[string]string{"subtype": "file"}))
 
 	if rankTier(real) >= rankTier(shadow) {
 		t.Fatalf("real (%d) should rank above shadow (%d)", rankTier(real), rankTier(shadow))

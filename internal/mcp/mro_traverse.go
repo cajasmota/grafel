@@ -170,15 +170,14 @@ func externalContractEntity(res memberResolution) *graph.Entity {
 			props["doc_url"] = m.DocURL
 		}
 	}
-	return &graph.Entity{
+	return graph.EntityPtr(graph.Entity{
 		ID:            id,
 		Name:          res.DefiningClass + "." + res.Member,
 		QualifiedName: res.DefiningClass + "." + res.Member,
 		Kind:          "SCOPE.External",
 		Subtype:       "method",
 		Language:      "",
-		Properties:    props,
-	}
+	}.WithProperties(props))
 }
 
 // buildMROInbound computes the reverse-INHERITS map for repo lr: for every

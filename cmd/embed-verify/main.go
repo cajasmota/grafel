@@ -165,10 +165,9 @@ func buildSyntheticDoc(repoRoot string) (*graph.Document, error) {
 						StartLine:  i + 1,
 						EndLine:    findFuncEnd(lines, i),
 						Language:   "go",
-						Properties: map[string]string{},
-					}
+					}.WithProperties(map[string]string{})
 					if len(doclines) > 0 {
-						ent.Properties["docstring"] = joinNonEmpty(doclines, " ")
+						ent.PropSet("docstring", joinNonEmpty(doclines, " "))
 					}
 					doc.Entities = append(doc.Entities, ent)
 				}

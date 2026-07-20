@@ -53,16 +53,16 @@ func TestAudit2678Go_GinEchoAttribution(t *testing.T) {
 				"still attributed to the router-registration file (#2678 regression)",
 				tc.endpointName, e.SourceFile, tc.wantFile)
 		}
-		if got := e.Properties["framework"]; got != tc.framework {
+		if got := e.PropGet("framework"); got != tc.framework {
 			t.Errorf("%s: framework=%q want %q", tc.endpointName, got, tc.framework)
 		}
-		if got := e.Properties["attribution"]; got != "handler_resolved" {
+		if got := e.PropGet("attribution"); got != "handler_resolved" {
 			t.Errorf("%s: attribution=%q want %q — re-attribution pass did not run",
 				tc.endpointName, got, "handler_resolved")
 		}
 		// registration_source_file property must preserve the original router file
 		// so the mount-point is still discoverable.
-		if got := e.Properties["registration_source_file"]; got == "" {
+		if got := e.PropGet("registration_source_file"); got == "" {
 			t.Errorf("%s: registration_source_file is empty — original registration site lost",
 				tc.endpointName)
 		}

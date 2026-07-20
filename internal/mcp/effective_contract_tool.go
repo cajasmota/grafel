@@ -76,7 +76,7 @@ type effectiveContractResult struct {
 // a verb route, or just "ViewSet" for the ANY catch-all). Empty when the route
 // carries no ViewSet attribution.
 func viewSetNameForRoute(e *graph.Entity) string {
-	dvm := e.Properties["drf_view_method"]
+	dvm := e.PropGet("drf_view_method")
 	if dvm == "" {
 		return ""
 	}
@@ -209,7 +209,7 @@ func computeEffectiveContract(lg *LoadedGroup, target string) effectiveContractR
 			if !exists {
 				g = &effectiveContractGroup{
 					Class:     vs,
-					Framework: e.Properties["framework"],
+					Framework: e.PropGet("framework"),
 					Repo:      r.Repo,
 				}
 				groups[key] = g
@@ -367,7 +367,7 @@ func findViewSetClassEntity(r *LoadedRepo, wantVS string) *graph.Entity {
 // from its framework property when set, defaulting to "django" for a
 // pack-recognised DRF base. Empty when neither is known.
 func classFramework(cls *graph.Entity) string {
-	if fw := cls.Properties["framework"]; fw != "" {
+	if fw := cls.PropGet("framework"); fw != "" {
 		return fw
 	}
 	return "django"
@@ -383,7 +383,7 @@ func classFramework(cls *graph.Entity) string {
 func synthesizeClassEffectiveContracts(r *LoadedRepo, cls *graph.Entity) []effectiveContract {
 	reg := baseknowledge.Default()
 	owning := leafAfterDot(cls.Name)
-	serializer := cls.Properties["serializer_class"]
+	serializer := cls.PropGet("serializer_class")
 
 	// BFS the EXTENDS graph so a ViewSet that subclasses an in-repo base which
 	// itself extends ModelViewSet still resolves the inherited verbs.

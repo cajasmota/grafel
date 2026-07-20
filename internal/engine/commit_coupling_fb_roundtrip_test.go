@@ -27,23 +27,21 @@ func TestCommitCoupling_FlatBufferRoundTrip(t *testing.T) {
 	aID := graph.EntityID("fixture", engine.KindFile, "a.go", "a.go")
 	bID := graph.EntityID("fixture", engine.KindFile, "b.go", "b.go")
 	doc.Entities = []graph.Entity{
-		{ID: aID, Name: "a.go", Kind: engine.KindFile, SourceFile: "a.go",
-			Properties: map[string]string{"synthetic": "true", "source": "commit-coupling"}},
-		{ID: bID, Name: "b.go", Kind: engine.KindFile, SourceFile: "b.go",
-			Properties: map[string]string{"synthetic": "true", "source": "commit-coupling"}},
+		graph.Entity{ID: aID, Name: "a.go", Kind: engine.KindFile, SourceFile: "a.go"}.WithProperties(map[string]string{"synthetic": "true", "source": "commit-coupling"}),
+		graph.Entity{ID: bID, Name: "b.go", Kind: engine.KindFile, SourceFile: "b.go"}.WithProperties(map[string]string{"synthetic": "true", "source": "commit-coupling"}),
 	}
 	relID := graph.RelationshipID(aID, bID, engine.KindCommitCoupled)
 	doc.Relationships = []graph.Relationship{
-		{
+		graph.Relationship{
 			ID:     relID,
 			FromID: aID,
 			ToID:   bID,
 			Kind:   engine.KindCommitCoupled,
-			Properties: map[string]string{
-				"support":    "7",
-				"confidence": "0.7000",
-			},
+		}.WithProperties(map[string]string{
+			"support":    "7",
+			"confidence": "0.7000",
 		},
+		),
 	}
 	doc.Stats.Entities = len(doc.Entities)
 	doc.Stats.Relationships = len(doc.Relationships)
@@ -69,11 +67,11 @@ func TestCommitCoupling_FlatBufferRoundTrip(t *testing.T) {
 	if r.Kind != engine.KindCommitCoupled {
 		t.Errorf("kind round-trip: got %q, want %q", r.Kind, engine.KindCommitCoupled)
 	}
-	if r.Properties["support"] != "7" {
-		t.Errorf("support property lost: got %q", r.Properties["support"])
+	if r.PropGet("support") != "7" {
+		t.Errorf("support property lost: got %q", r.PropGet("support"))
 	}
-	if r.Properties["confidence"] != "0.7000" {
-		t.Errorf("confidence property lost: got %q", r.Properties["confidence"])
+	if r.PropGet("confidence") != "0.7000" {
+		t.Errorf("confidence property lost: got %q", r.PropGet("confidence"))
 	}
 	// Entity kind round-trip.
 	foundFile := false

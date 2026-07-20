@@ -25,8 +25,7 @@ func makeEntity(id, name, kind, lang, srcFile string, startLine int) graph.Entit
 		Language:   lang,
 		SourceFile: srcFile,
 		StartLine:  startLine,
-		Properties: map[string]string{},
-	}
+	}.WithProperties(map[string]string{})
 }
 
 // makeDoc builds a minimal graph.Document from a slice of entities.

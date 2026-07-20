@@ -81,7 +81,7 @@ func TestIndex_PlainRepoSingleModule(t *testing.T) {
 		if e.SourceFile == "" {
 			continue // synthetic/external nodes use module=_external
 		}
-		entMods[e.Properties["module"]]++
+		entMods[e.PropGet("module")]++
 	}
 	if len(entMods) != 1 {
 		t.Fatalf("plain repo entity modules: want 1 distinct label, got %d: %v", len(entMods), entMods)
@@ -125,7 +125,7 @@ func TestIndex_MonorepoKeepsModules(t *testing.T) {
 		if e.SourceFile == "" {
 			continue
 		}
-		entMods[e.Properties["module"]] = true
+		entMods[e.PropGet("module")] = true
 	}
 	if !entMods["packages/alpha"] || !entMods["packages/beta"] {
 		t.Fatalf("monorepo entity modules lost packages: %v", entMods)

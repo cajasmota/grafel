@@ -80,10 +80,10 @@ func (s *Server) handleCoverageEffectiveness(_ context.Context, req mcpapi.CallT
 		}
 		for i := range lr.Doc.Entities {
 			e := &lr.Doc.Entities[i]
-			if e.Properties == nil {
+			if e.PropLen() == 0 {
 				continue
 			}
-			if _, ok := e.Properties[coverage.PropTestReachable]; !ok {
+			if _, ok := e.PropLookup(coverage.PropTestReachable); !ok {
 				continue
 			}
 			stampedSeen = true
@@ -93,7 +93,7 @@ func (s *Server) handleCoverageEffectiveness(_ context.Context, req mcpapi.CallT
 				ID:         e.ID,
 				Kind:       e.Kind,
 				SourceFile: e.SourceFile,
-				Properties: e.Properties,
+				Properties: e.PropsSnapshot(),
 			})
 			meta[e.ID] = effEntity{
 				id: e.ID, name: e.Name, sourceFile: e.SourceFile,

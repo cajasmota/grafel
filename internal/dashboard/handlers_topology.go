@@ -315,7 +315,7 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 		// synthetic runtime entities store the semantic prefix in the Name field.
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			bucket := classifyTopologyBucket(e.Kind, e.Name, e.Properties)
+			bucket := classifyTopologyBucket(e.Kind, e.Name, e.PropsSnapshot())
 
 			switch bucket {
 			case "topic":
@@ -323,10 +323,10 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 				// repos. Accumulate producers, consumers, and appearance provenance
 				// into topicByName; we emit the merged entries after the loop.
 				producers, consumers, transformsTo := brokerEdges(r, e.ID)
-				rawBroker := e.Properties["broker"]
-				framework := e.Properties["framework"]
+				rawBroker := e.PropGet("broker")
+				framework := e.PropGet("framework")
 				canonical := brokerCanonical(rawBroker, framework)
-				svc := owningService(e.Properties, r.Slug)
+				svc := owningService(e.PropsSnapshot(), r.Slug)
 
 				dedupKey := canonical + "|" + e.Name
 				acc, exists := topicByName[dedupKey]
@@ -396,15 +396,15 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 
 			case "queue":
 				producers, consumers, _ := brokerEdges(r, e.ID)
-				broker := e.Properties["broker"]
+				broker := e.PropGet("broker")
 				if broker == "" {
 					// Fall back to inferring from the entity Name prefix.
 					broker = inferBrokerFromName(e.Name)
 				}
 				// Async task queues carry framework info instead of a broker name.
-				framework := e.Properties["framework"]
+				framework := e.PropGet("framework")
 				canonical := brokerCanonical(broker, framework)
-				svc := owningService(e.Properties, r.Slug)
+				svc := owningService(e.PropsSnapshot(), r.Slug)
 				entry := map[string]any{
 					"id":               dashPrefixedID(r.Slug, e.ID),
 					"repo":             r.Slug,
@@ -425,8 +425,8 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 				stripped := dashStripScopePrefix(e.Kind)
 				if stripped == kindScheduledJob {
 					entry["scheduled"] = true
-					if e.Properties["schedule"] != "" {
-						entry["schedule"] = e.Properties["schedule"]
+					if e.PropGet("schedule") != "" {
+						entry["schedule"] = e.PropGet("schedule")
 					}
 				}
 
@@ -466,7 +466,7 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 
 			case "channel":
 				emitters, subscribers := channelEdges(r, e.ID)
-				channelType := e.Properties["channel_type"]
+				channelType := e.PropGet("channel_type")
 				if channelType == "" {
 					channelType = inferChannelType(e.Kind)
 					if channelType == "websocket" && strings.HasPrefix(e.Name, "channel:redis-pubsub:") {
@@ -489,7 +489,7 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 
 			case "function":
 				invokers, handlers := serverlessEdges(r, e.ID)
-				provider := e.Properties["provider"]
+				provider := e.PropGet("provider")
 				if provider == "" {
 					provider = inferProviderFromID(e.ID)
 				}
@@ -510,8 +510,8 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 					"id":          dashPrefixedID(r.Slug, e.ID),
 					"repo":        r.Slug,
 					"label":       e.Name,
-					"schema_type": e.Properties["schema_type"],
-					"return_type": e.Properties["return_type"],
+					"schema_type": e.PropGet("schema_type"),
+					"return_type": e.PropGet("return_type"),
 					"publishers":  publishers,
 					"subscribers": subscribers,
 				}
@@ -780,7 +780,7 @@ func collectChannelBindingOrphans(grp *DashGroup) []map[string]any {
 					ID:         e.ID,
 					Name:       e.Name,
 					Kind:       e.Kind,
-					Properties: e.Properties,
+					Properties: e.PropsSnapshot(),
 				})
 			}
 		}

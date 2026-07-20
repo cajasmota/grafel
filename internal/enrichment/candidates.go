@@ -828,7 +828,7 @@ func (em *describeEntityEmitter) EmitFor(e *graph.Entity, doc *graph.Document) [
 		return nil
 	}
 	// Skip if already described.
-	if v, ok := e.Properties["description"]; ok && v != "" {
+	if v, ok := e.PropLookup("description"); ok && v != "" {
 		return nil
 	}
 	// Positive selection: emit only when the entity passes research-validated criteria.
@@ -896,7 +896,7 @@ func (em *classifyDomainEmitter) EmitFor(e *graph.Entity, doc *graph.Document) [
 	if e.Kind == "SCOPE.Operation" && selfDescriptiveOperationRE.MatchString(e.Name) {
 		return nil
 	}
-	if v, ok := e.Properties["domain"]; ok && v != "" {
+	if v, ok := e.PropLookup("domain"); ok && v != "" {
 		return nil
 	}
 	var sigs []string
@@ -967,7 +967,7 @@ func (em *describeRoleEmitter) EmitFor(e *graph.Entity, doc *graph.Document) []C
 	if e.Kind == "SCOPE.Operation" && selfDescriptiveOperationRE.MatchString(e.Name) {
 		return nil
 	}
-	if v, ok := e.Properties["architectural_role"]; ok && v != "" {
+	if v, ok := e.PropLookup("architectural_role"); ok && v != "" {
 		return nil
 	}
 	if !e.IsGodNode && !e.IsArticulationPt {
@@ -1686,10 +1686,10 @@ func ApplyResolutions(doc *graph.Document, resolutions []Resolution) int {
 		if !ok {
 			continue
 		}
-		if e.Properties == nil {
-			e.Properties = map[string]string{}
+		if e.PropLen() == 0 {
+			e.PropsReplace(map[string]string{})
 		}
-		e.Properties[r.Kind] = r.Value
+		e.PropSet(r.Kind, r.Value)
 		applied++
 	}
 	return applied

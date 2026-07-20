@@ -13,11 +13,10 @@ const sdRepo = "acme/shop"
 // resolves via moduleNodeID (graph.EntityID(repo,"Module",name,"")).
 func sdModule(name string) graph.Entity {
 	return graph.Entity{
-		ID:         graph.EntityID(sdRepo, "Module", name, ""),
-		Name:       name,
-		Kind:       "Module",
-		Properties: map[string]string{"module": name, "synthetic": "true", "repo": sdRepo},
-	}
+		ID:   graph.EntityID(sdRepo, "Module", name, ""),
+		Name: name,
+		Kind: "Module",
+	}.WithProperties(map[string]string{"module": name, "synthetic": "true", "repo": sdRepo})
 }
 
 // sdAccess builds a SCOPE.DataAccess entity attributed to module `mod` that
@@ -28,8 +27,7 @@ func sdAccess(id, mod, table string) graph.Entity {
 		Name:       "SELECT " + table,
 		Kind:       "SCOPE.DataAccess",
 		SourceFile: mod + "/repo.go",
-		Properties: map[string]string{"module": mod, "repo": sdRepo, "table": table},
-	}
+	}.WithProperties(map[string]string{"module": mod, "repo": sdRepo, "table": table})
 }
 
 func sdModuleID(name string) string {
@@ -86,24 +84,24 @@ func TestApplySharedDataCoupling_SharedAndPrivate(t *testing.T) {
 	// `orders` is shared by exactly 2 modules.
 	for _, id := range []string{"da-order-orders", "da-bill-orders"} {
 		e := byID[id]
-		if e.Properties["shared"] != "true" {
-			t.Errorf("%s: shared = %q, want \"true\"", id, e.Properties["shared"])
+		if e.PropGet("shared") != "true" {
+			t.Errorf("%s: shared = %q, want \"true\"", id, e.PropGet("shared"))
 		}
-		if e.Properties["accessor_count"] != "2" {
-			t.Errorf("%s: accessor_count = %q, want \"2\"", id, e.Properties["accessor_count"])
+		if e.PropGet("accessor_count") != "2" {
+			t.Errorf("%s: accessor_count = %q, want \"2\"", id, e.PropGet("accessor_count"))
 		}
-		if got := e.Properties["accessor_modules"]; got != "BillingSvc,OrderSvc" {
+		if got := e.PropGet("accessor_modules"); got != "BillingSvc,OrderSvc" {
 			t.Errorf("%s: accessor_modules = %q, want \"BillingSvc,OrderSvc\"", id, got)
 		}
 	}
 
 	// `audit` is private to one module.
 	audit := byID["da-order-audit"]
-	if audit.Properties["shared"] != "false" {
-		t.Errorf("audit: shared = %q, want \"false\"", audit.Properties["shared"])
+	if audit.PropGet("shared") != "false" {
+		t.Errorf("audit: shared = %q, want \"false\"", audit.PropGet("shared"))
 	}
-	if audit.Properties["accessor_count"] != "1" {
-		t.Errorf("audit: accessor_count = %q, want \"1\"", audit.Properties["accessor_count"])
+	if audit.PropGet("accessor_count") != "1" {
+		t.Errorf("audit: accessor_count = %q, want \"1\"", audit.PropGet("accessor_count"))
 	}
 
 	// Exactly one SHARES_DATA edge, between OrderSvc and BillingSvc.
@@ -125,17 +123,17 @@ func TestApplySharedDataCoupling_SharedAndPrivate(t *testing.T) {
 	if edge.FromID != wantA || edge.ToID != wantB {
 		t.Errorf("SHARES_DATA endpoints = (%s,%s), want (%s,%s)", edge.FromID, edge.ToID, wantA, wantB)
 	}
-	if edge.Properties["shared_tables"] != "orders" {
-		t.Errorf("shared_tables = %q, want \"orders\"", edge.Properties["shared_tables"])
+	if edge.PropGet("shared_tables") != "orders" {
+		t.Errorf("shared_tables = %q, want \"orders\"", edge.PropGet("shared_tables"))
 	}
-	if edge.Properties["shared_count"] != "1" {
-		t.Errorf("shared_count = %q, want \"1\"", edge.Properties["shared_count"])
+	if edge.PropGet("shared_count") != "1" {
+		t.Errorf("shared_count = %q, want \"1\"", edge.PropGet("shared_count"))
 	}
-	if edge.Properties["coupling"] != "shared_data" {
-		t.Errorf("coupling = %q, want \"shared_data\"", edge.Properties["coupling"])
+	if edge.PropGet("coupling") != "shared_data" {
+		t.Errorf("coupling = %q, want \"shared_data\"", edge.PropGet("coupling"))
 	}
-	if edge.Properties["provenance"] != "SHARED_DB_COUPLING" {
-		t.Errorf("provenance = %q, want \"SHARED_DB_COUPLING\"", edge.Properties["provenance"])
+	if edge.PropGet("provenance") != "SHARED_DB_COUPLING" {
+		t.Errorf("provenance = %q, want \"SHARED_DB_COUPLING\"", edge.PropGet("provenance"))
 	}
 
 	// Idempotent: a second run must not add a second SHARES_DATA edge.
@@ -183,8 +181,8 @@ func TestApplySharedDataCoupling_SingleAccessorNoEdge(t *testing.T) {
 		}
 	}
 	for _, e := range doc.Entities {
-		if e.Kind == "SCOPE.DataAccess" && e.Properties["shared"] != "false" {
-			t.Errorf("%s: shared = %q, want \"false\"", e.ID, e.Properties["shared"])
+		if e.Kind == "SCOPE.DataAccess" && e.PropGet("shared") != "false" {
+			t.Errorf("%s: shared = %q, want \"false\"", e.ID, e.PropGet("shared"))
 		}
 	}
 }
@@ -199,8 +197,7 @@ func TestApplySharedDataCoupling_ExternalNotCounted(t *testing.T) {
 			sdModule("OrderSvc"),
 			sdAccess("da1", "OrderSvc", "orders"),
 			// second accessor is unattributed (no module → _external).
-			{ID: "da2", Kind: "SCOPE.DataAccess", Name: "SELECT orders",
-				Properties: map[string]string{"repo": sdRepo, "table": "orders"}},
+			graph.Entity{ID: "da2", Kind: "SCOPE.DataAccess", Name: "SELECT orders"}.WithProperties(map[string]string{"repo": sdRepo, "table": "orders"}),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "r1", FromID: "fn1", ToID: "da1", Kind: "ACCESSES_TABLE"},
@@ -228,10 +225,8 @@ func TestApplySharedDataCoupling_JoinsCollection(t *testing.T) {
 			sdAccess("da-report", "ReportSvc", "products"),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "j1", FromID: "agg-cart", ToID: "da-cart", Kind: "JOINS_COLLECTION",
-				Properties: map[string]string{"from": "products"}},
-			{ID: "j2", FromID: "agg-report", ToID: "da-report", Kind: "JOINS_COLLECTION",
-				Properties: map[string]string{"from": "products"}},
+			graph.Relationship{ID: "j1", FromID: "agg-cart", ToID: "da-cart", Kind: "JOINS_COLLECTION"}.WithProperties(map[string]string{"from": "products"}),
+			graph.Relationship{ID: "j2", FromID: "agg-report", ToID: "da-report", Kind: "JOINS_COLLECTION"}.WithProperties(map[string]string{"from": "products"}),
 		},
 	}
 	stats := ApplySharedDataCoupling(doc)
@@ -245,8 +240,8 @@ func TestApplySharedDataCoupling_JoinsCollection(t *testing.T) {
 	for _, r := range doc.Relationships {
 		if r.Kind == "SHARES_DATA" {
 			found = true
-			if !strings.Contains(r.Properties["shared_tables"], "products") {
-				t.Errorf("shared_tables = %q, want it to contain \"products\"", r.Properties["shared_tables"])
+			if !strings.Contains(r.PropGet("shared_tables"), "products") {
+				t.Errorf("shared_tables = %q, want it to contain \"products\"", r.PropGet("shared_tables"))
 			}
 		}
 	}

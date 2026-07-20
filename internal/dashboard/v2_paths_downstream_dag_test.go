@@ -35,7 +35,7 @@ func makeDownstreamDAGFixture() *DashGroup {
 	epEnt := func(id, name, file, verb, path string) graph.Entity {
 		return graph.Entity{ID: id, Name: name, Kind: "http_endpoint_definition",
 			SourceFile: file, StartLine: 1,
-			Properties: map[string]string{"verb": verb, "path": path}}
+		}.WithProperties(map[string]string{"verb": verb, "path": path})
 	}
 	rel := func(from, to, kind string) graph.Relationship {
 		return graph.Relationship{FromID: from, ToID: to, Kind: kind}
@@ -47,12 +47,12 @@ func makeDownstreamDAGFixture() *DashGroup {
 		e := ent(id, name, kind, file)
 		e.Signature = sig
 		e.Subtype = subtype
-		e.Properties = map[string]string{}
+		e.PropsReplace(map[string]string{})
 		if doc != "" {
-			e.Properties["docstring"] = doc
+			e.PropSet("docstring", doc)
 		}
 		if effects != "" {
-			e.Properties["effects"] = effects
+			e.PropSet("effects", effects)
 		}
 		return e
 	}
@@ -392,7 +392,7 @@ func TestDownstreamDAG_VerbDisambiguation(t *testing.T) {
 	doc := grp.Repos["api"].Doc
 	doc.Entities = append(doc.Entities,
 		graph.Entity{ID: "epPost", Name: "POST /inspections", Kind: "http_endpoint_definition",
-			SourceFile: "routers.ts", StartLine: 2, Properties: map[string]string{"verb": "POST", "path": "/inspections"}},
+			SourceFile: "routers.ts", StartLine: 2}.WithProperties(map[string]string{"verb": "POST", "path": "/inspections"}),
 		graph.Entity{ID: "handlerPost", Name: "InspectionController.create", Kind: "Operation",
 			SourceFile: "inspection.controller.ts", StartLine: 10},
 	)
@@ -504,8 +504,7 @@ func makeExternalDAGFixture() *DashGroup {
 		graph.Relationship{FromID: "service", ToID: "ext:typeorm", Kind: "CALLS"},
 		// unstamped external CALLS carrying the package on the edge — external,
 		// name recovered from the id leaf, package from source_module.
-		graph.Relationship{FromID: "service", ToID: "createConnection", Kind: "CALLS",
-			Properties: map[string]string{"source_module": "typeorm"}},
+		graph.Relationship{FromID: "service", ToID: "createConnection", Kind: "CALLS"}.WithProperties(map[string]string{"source_module": "typeorm"}),
 		// unstamped CALLS whose name matches an in-repo definition — false
 		// external: must stay non-external (resolution gap).
 		graph.Relationship{FromID: "service", ToID: "persistThing", Kind: "CALLS"},

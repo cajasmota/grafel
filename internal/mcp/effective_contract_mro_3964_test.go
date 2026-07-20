@@ -74,8 +74,7 @@ func unroutedViewSetDoc() *graph.Document {
 			{ID: "ext:viewsets", Name: "viewsets", Kind: "ExternalSymbol", Language: "python"},
 		},
 		Relationships: []graph.Relationship{
-			{FromID: "widgetvs", ToID: "ext:viewsets", Kind: "EXTENDS",
-				Properties: map[string]string{"base_name": "viewsets.ModelViewSet"}},
+			graph.Relationship{FromID: "widgetvs", ToID: "ext:viewsets", Kind: "EXTENDS"}.WithProperties(map[string]string{"base_name": "viewsets.ModelViewSet"}),
 		},
 	}
 }
@@ -144,7 +143,7 @@ func routedViewSetThroughFBDoc() *graph.Document {
 		if errs != "" {
 			p["effective_error_statuses"] = errs
 		}
-		return graph.Entity{ID: id, Name: id, Kind: "http_endpoint_definition", Language: "python", Properties: p}
+		return graph.Entity{ID: id, Name: id, Kind: "http_endpoint_definition", Language: "python"}.WithProperties(p)
 	}
 	return &graph.Document{
 		Repo: "backend",
@@ -174,18 +173,19 @@ func unstampedRouteDoc() *graph.Document {
 	return &graph.Document{
 		Repo: "backend",
 		Entities: []graph.Entity{
-			{ID: "r1", Name: "r1", Kind: "http_endpoint_definition", Language: "python",
-				Properties: map[string]string{
+			graph.Entity{ID: "r1", Name: "r1", Kind: "http_endpoint_definition", Language: "python"}. // No effective_* — but the inherited provenance + defining
+				// mixin ARE present (what resolveInheritedEndpoint needs).
+
+				WithProperties(map[string]string{
 					"pattern_type":    "drf_router_expanded",
 					"framework":       "django",
 					"verb":            "POST",
 					"path":            "/api/v1/things",
 					"drf_view_method": "ThingViewSet.create",
-					// No effective_* — but the inherited provenance + defining
-					// mixin ARE present (what resolveInheritedEndpoint needs).
+
 					"provenance":     "inherited",
 					"defining_class": "rest_framework.mixins.CreateModelMixin",
-				}},
+				}),
 		},
 	}
 }

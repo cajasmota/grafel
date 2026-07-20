@@ -24,8 +24,7 @@ func entityRecordToGraph(r types.EntityRecord) graph.Entity {
 		Subtype:       r.Subtype,
 		SourceFile:    r.SourceFile,
 		Language:      r.Language,
-		Properties:    r.Properties,
-	}
+	}.WithProperties(r.Properties)
 }
 
 // declaredDepEntity builds a graph.Entity mirroring what the _cross_manifest
@@ -49,16 +48,16 @@ func declaredDepEntity(file, name, versionRange, section, pm string) graph.Entit
 		Kind:       "SCOPE.Component",
 		Subtype:    "external_dependency",
 		SourceFile: file,
-		Properties: map[string]string{
-			"external_dependency": "true",
-			"package_manager":     pm,
-			"version":             versionRange,
-			"is_dev":              isDev,
-			"dependency_kind":     depKind,
-			"dep_section":         section,
-			"declared":            "true",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"external_dependency": "true",
+		"package_manager":     pm,
+		"version":             versionRange,
+		"is_dev":              isDev,
+		"dependency_kind":     depKind,
+		"dep_section":         section,
+		"declared":            "true",
+	},
+	)
 }
 
 // lockedDepEntity mirrors a lockfile-derived (dependency_kind=locked) record
@@ -70,13 +69,13 @@ func lockedDepEntity(lockfile, name, version, pm string) graph.Entity {
 		Kind:       "SCOPE.Component",
 		Subtype:    "external_dependency",
 		SourceFile: lockfile,
-		Properties: map[string]string{
-			"external_dependency": "true",
-			"package_manager":     pm,
-			"version":             version,
-			"dependency_kind":     "locked",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"external_dependency": "true",
+		"package_manager":     pm,
+		"version":             version,
+		"dependency_kind":     "locked",
+	},
+	)
 }
 
 // extNode mirrors an import-derived ext:<pkg> External node from Synthesize.
@@ -90,11 +89,10 @@ func extNode(root string) graph.Entity {
 
 func importsEdge(fromFile, sourceModule string) graph.Relationship {
 	return graph.Relationship{
-		FromID:     fromFile,
-		ToID:       ExtIDPrefix + npmPackageRoot(sourceModule),
-		Kind:       string(types.RelationshipKindImports),
-		Properties: map[string]string{"source_module": sourceModule},
-	}
+		FromID: fromFile,
+		ToID:   ExtIDPrefix + npmPackageRoot(sourceModule),
+		Kind:   string(types.RelationshipKindImports),
+	}.WithProperties(map[string]string{"source_module": sourceModule})
 }
 
 func findXrefEntity(doc *graph.Document, name, subtype string) *graph.Entity {
@@ -149,39 +147,39 @@ func TestCrossReference_UsedUnusedAndVersions(t *testing.T) {
 	if express == nil || express.SourceFile != pkgFile {
 		t.Fatal("declared express record not found")
 	}
-	if express.Properties["imported"] != "true" {
-		t.Errorf("express imported=%q want true", express.Properties["imported"])
+	if express.PropGet("imported") != "true" {
+		t.Errorf("express imported=%q want true", express.PropGet("imported"))
 	}
-	if _, dead := express.Properties["dead_dependency_candidate"]; dead {
+	if _, dead := express.PropLookup("dead_dependency_candidate"); dead {
 		t.Errorf("express should not be a dead-dep candidate")
 	}
-	if express.Properties["version"] != "4.18.2" {
-		t.Errorf("express version=%q want lockfile-resolved 4.18.2", express.Properties["version"])
+	if express.PropGet("version") != "4.18.2" {
+		t.Errorf("express version=%q want lockfile-resolved 4.18.2", express.PropGet("version"))
 	}
-	if express.Properties["version_range"] != "^4.18.0" {
-		t.Errorf("express version_range=%q want ^4.18.0", express.Properties["version_range"])
+	if express.PropGet("version_range") != "^4.18.0" {
+		t.Errorf("express version_range=%q want ^4.18.0", express.PropGet("version_range"))
 	}
-	if express.Properties["dep_section"] != "prod" {
-		t.Errorf("express dep_section=%q want prod", express.Properties["dep_section"])
+	if express.PropGet("dep_section") != "prod" {
+		t.Errorf("express dep_section=%q want prod", express.PropGet("dep_section"))
 	}
 
 	leftPad := findXrefEntity(doc, "left-pad", "external_dependency")
-	if leftPad.Properties["imported"] != "false" {
-		t.Errorf("left-pad imported=%q want false", leftPad.Properties["imported"])
+	if leftPad.PropGet("imported") != "false" {
+		t.Errorf("left-pad imported=%q want false", leftPad.PropGet("imported"))
 	}
-	if leftPad.Properties["dead_dependency_candidate"] != "true" {
+	if leftPad.PropGet("dead_dependency_candidate") != "true" {
 		t.Errorf("left-pad should be flagged dead_dependency_candidate=true")
 	}
-	if leftPad.Properties["version"] != "1.3.0" {
-		t.Errorf("left-pad version=%q want resolved 1.3.0", leftPad.Properties["version"])
+	if leftPad.PropGet("version") != "1.3.0" {
+		t.Errorf("left-pad version=%q want resolved 1.3.0", leftPad.PropGet("version"))
 	}
 
 	jest := findXrefEntity(doc, "jest", "external_dependency")
-	if jest.Properties["imported"] != "true" {
-		t.Errorf("jest imported=%q want true", jest.Properties["imported"])
+	if jest.PropGet("imported") != "true" {
+		t.Errorf("jest imported=%q want true", jest.PropGet("imported"))
 	}
-	if jest.Properties["dep_section"] != "dev" {
-		t.Errorf("jest dep_section=%q want dev", jest.Properties["dep_section"])
+	if jest.PropGet("dep_section") != "dev" {
+		t.Errorf("jest dep_section=%q want dev", jest.PropGet("dep_section"))
 	}
 
 	// ext: External nodes enriched with version + section.
@@ -189,11 +187,11 @@ func TestCrossReference_UsedUnusedAndVersions(t *testing.T) {
 	if expressExt == nil || expressExt.Kind != KindExternal {
 		t.Fatal("ext:express node missing")
 	}
-	if expressExt.Properties["version"] != "4.18.2" {
-		t.Errorf("ext:express version=%q want 4.18.2", expressExt.Properties["version"])
+	if expressExt.PropGet("version") != "4.18.2" {
+		t.Errorf("ext:express version=%q want 4.18.2", expressExt.PropGet("version"))
 	}
-	if expressExt.Properties["declared"] != "true" {
-		t.Errorf("ext:express declared=%q want true", expressExt.Properties["declared"])
+	if expressExt.PropGet("declared") != "true" {
+		t.Errorf("ext:express declared=%q want true", expressExt.PropGet("declared"))
 	}
 }
 
@@ -217,14 +215,14 @@ func TestCrossReference_NoLockfileFallback(t *testing.T) {
 	}
 
 	axios := findXrefEntity(doc, "axios", "external_dependency")
-	if axios.Properties["version"] != "^1.6.0" {
-		t.Errorf("axios version=%q want range fallback ^1.6.0", axios.Properties["version"])
+	if axios.PropGet("version") != "^1.6.0" {
+		t.Errorf("axios version=%q want range fallback ^1.6.0", axios.PropGet("version"))
 	}
-	if axios.Properties["version_range"] != "^1.6.0" {
-		t.Errorf("axios version_range=%q want ^1.6.0", axios.Properties["version_range"])
+	if axios.PropGet("version_range") != "^1.6.0" {
+		t.Errorf("axios version_range=%q want ^1.6.0", axios.PropGet("version_range"))
 	}
-	if axios.Properties["imported"] != "true" {
-		t.Errorf("axios imported=%q want true", axios.Properties["imported"])
+	if axios.PropGet("imported") != "true" {
+		t.Errorf("axios imported=%q want true", axios.PropGet("imported"))
 	}
 }
 
@@ -241,8 +239,8 @@ func TestCrossReference_SubpathImportCountsAsUsed(t *testing.T) {
 	}
 	CrossReferenceManifests(doc)
 	lodash := findXrefEntity(doc, "lodash", "external_dependency")
-	if lodash.Properties["imported"] != "true" {
-		t.Errorf("lodash (subpath import lodash/fp) imported=%q want true", lodash.Properties["imported"])
+	if lodash.PropGet("imported") != "true" {
+		t.Errorf("lodash (subpath import lodash/fp) imported=%q want true", lodash.PropGet("imported"))
 	}
 }
 
@@ -286,8 +284,8 @@ func TestCrossReference_EndToEnd(t *testing.T) {
 			doc.Entities = append(doc.Entities, entityRecordToGraph(r))
 			for _, rel := range r.Relationships {
 				doc.Relationships = append(doc.Relationships, graph.Relationship{
-					FromID: rel.FromID, ToID: rel.ToID, Kind: rel.Kind, Properties: rel.Properties,
-				})
+					FromID: rel.FromID, ToID: rel.ToID, Kind: rel.Kind,
+				}.WithProperties(rel.Properties))
 			}
 		}
 	}
@@ -307,21 +305,21 @@ func TestCrossReference_EndToEnd(t *testing.T) {
 	}
 
 	express := findXrefEntity(doc, "express", "external_dependency")
-	if express.Properties["imported"] != "true" || express.Properties["version"] != "4.18.2" {
+	if express.PropGet("imported") != "true" || express.PropGet("version") != "4.18.2" {
 		t.Errorf("express: imported=%q version=%q want true/4.18.2",
-			express.Properties["imported"], express.Properties["version"])
+			express.PropGet("imported"), express.PropGet("version"))
 	}
 	leftPad := findXrefEntity(doc, "left-pad", "external_dependency")
-	if leftPad.Properties["dead_dependency_candidate"] != "true" || leftPad.Properties["version"] != "1.3.0" {
+	if leftPad.PropGet("dead_dependency_candidate") != "true" || leftPad.PropGet("version") != "1.3.0" {
 		t.Errorf("left-pad: dead=%q version=%q want true/1.3.0",
-			leftPad.Properties["dead_dependency_candidate"], leftPad.Properties["version"])
+			leftPad.PropGet("dead_dependency_candidate"), leftPad.PropGet("version"))
 	}
 	jest := findXrefEntity(doc, "jest", "external_dependency")
-	if jest.Properties["dead_dependency_candidate"] != "true" || jest.Properties["version"] != "29.7.0" {
+	if jest.PropGet("dead_dependency_candidate") != "true" || jest.PropGet("version") != "29.7.0" {
 		t.Errorf("jest: dead=%q version=%q want true/29.7.0",
-			jest.Properties["dead_dependency_candidate"], jest.Properties["version"])
+			jest.PropGet("dead_dependency_candidate"), jest.PropGet("version"))
 	}
-	if jest.Properties["dep_section"] != "dev" {
-		t.Errorf("jest dep_section=%q want dev", jest.Properties["dep_section"])
+	if jest.PropGet("dep_section") != "dev" {
+		t.Errorf("jest dep_section=%q want dev", jest.PropGet("dep_section"))
 	}
 }

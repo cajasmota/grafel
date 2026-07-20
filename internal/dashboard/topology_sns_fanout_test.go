@@ -18,22 +18,15 @@ func TestCollectTopology_SNSMultiIaCFanOut(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "polyglot-platform",
 		Entities: []graph.Entity{
-			{ID: "topic-oe", Name: "sns:order-events", Kind: "SCOPE.MessageTopic",
-				Properties: map[string]string{"broker": "sns", "pattern_type": "iac_sns_fanout"}},
-			{ID: "q-analytics", Name: "sqs:order-events-analytics", Kind: "SCOPE.Queue",
-				Properties: map[string]string{"broker": "sqs", "pattern_type": "iac_sns_fanout", "iac_tool": "cdk"}},
-			{ID: "q-audit", Name: "sqs:order-events-audit", Kind: "SCOPE.Queue",
-				Properties: map[string]string{"broker": "sqs", "pattern_type": "iac_sns_fanout", "iac_tool": "terraform"}},
-			{ID: "q-fraud", Name: "sqs:order-events-fraud", Kind: "SCOPE.Queue",
-				Properties: map[string]string{"broker": "sqs", "pattern_type": "iac_sns_fanout", "iac_tool": "cloudformation"}},
+			graph.Entity{ID: "topic-oe", Name: "sns:order-events", Kind: "SCOPE.MessageTopic"}.WithProperties(map[string]string{"broker": "sns", "pattern_type": "iac_sns_fanout"}),
+			graph.Entity{ID: "q-analytics", Name: "sqs:order-events-analytics", Kind: "SCOPE.Queue"}.WithProperties(map[string]string{"broker": "sqs", "pattern_type": "iac_sns_fanout", "iac_tool": "cdk"}),
+			graph.Entity{ID: "q-audit", Name: "sqs:order-events-audit", Kind: "SCOPE.Queue"}.WithProperties(map[string]string{"broker": "sqs", "pattern_type": "iac_sns_fanout", "iac_tool": "terraform"}),
+			graph.Entity{ID: "q-fraud", Name: "sqs:order-events-fraud", Kind: "SCOPE.Queue"}.WithProperties(map[string]string{"broker": "sqs", "pattern_type": "iac_sns_fanout", "iac_tool": "cloudformation"}),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "s1", FromID: "q-analytics", ToID: "topic-oe", Kind: "SUBSCRIBES_TO",
-				Properties: map[string]string{"iac_tool": "cdk"}},
-			{ID: "s2", FromID: "q-audit", ToID: "topic-oe", Kind: "SUBSCRIBES_TO",
-				Properties: map[string]string{"iac_tool": "terraform"}},
-			{ID: "s3", FromID: "q-fraud", ToID: "topic-oe", Kind: "SUBSCRIBES_TO",
-				Properties: map[string]string{"iac_tool": "cloudformation"}},
+			graph.Relationship{ID: "s1", FromID: "q-analytics", ToID: "topic-oe", Kind: "SUBSCRIBES_TO"}.WithProperties(map[string]string{"iac_tool": "cdk"}),
+			graph.Relationship{ID: "s2", FromID: "q-audit", ToID: "topic-oe", Kind: "SUBSCRIBES_TO"}.WithProperties(map[string]string{"iac_tool": "terraform"}),
+			graph.Relationship{ID: "s3", FromID: "q-fraud", ToID: "topic-oe", Kind: "SUBSCRIBES_TO"}.WithProperties(map[string]string{"iac_tool": "cloudformation"}),
 		},
 	}
 	grp := &DashGroup{

@@ -97,7 +97,7 @@ func CrossReferenceManifests(doc *graph.Document) ManifestXrefStats {
 		if rel.Kind != string(types.RelationshipKindImports) {
 			continue
 		}
-		spec := rel.Properties["source_module"]
+		spec := rel.PropGet("source_module")
 		if root := npmPackageRoot(spec); root != "" {
 			imported[root] = true
 		}
@@ -115,13 +115,13 @@ func CrossReferenceManifests(doc *graph.Document) ManifestXrefStats {
 		if e.Subtype != "external_dependency" {
 			continue
 		}
-		if e.Properties["dependency_kind"] != "locked" {
+		if e.PropGet("dependency_kind") != "locked" {
 			continue
 		}
-		if !jsPackageManagers[e.Properties["package_manager"]] {
+		if !jsPackageManagers[e.PropGet("package_manager")] {
 			continue
 		}
-		ver := e.Properties["version"]
+		ver := e.PropGet("version")
 		if ver == "" {
 			continue
 		}
@@ -151,19 +151,19 @@ func CrossReferenceManifests(doc *graph.Document) ManifestXrefStats {
 		if e.Subtype != "external_dependency" {
 			continue
 		}
-		if e.Properties == nil || e.Properties["declared"] != "true" {
+		if e.PropLen() == 0 || e.PropGet("declared") != "true" {
 			continue
 		}
-		if !jsPackageManagers[e.Properties["package_manager"]] {
+		if !jsPackageManagers[e.PropGet("package_manager")] {
 			continue
 		}
 
 		name := e.Name
-		manifestRange := e.Properties["version"]
+		manifestRange := e.PropGet("version")
 
 		// version_range always records the manifest declaration verbatim.
-		if _, ok := e.Properties["version_range"]; !ok {
-			e.Properties["version_range"] = manifestRange
+		if _, ok := e.PropLookup("version_range"); !ok {
+			e.PropSet("version_range", manifestRange)
 		}
 
 		// Resolve the exact version from the sibling lockfile: prefer the
@@ -173,18 +173,18 @@ func CrossReferenceManifests(doc *graph.Document) ManifestXrefStats {
 		if resolved == "" {
 			resolved = resolvedByName[name]
 		}
-		if resolved != "" && resolved != e.Properties["version"] {
-			e.Properties["version"] = resolved
+		if resolved != "" && resolved != e.PropGet("version") {
+			e.PropSet("version", resolved)
 			stats.VersionsResolved++
 		}
 
 		// Used vs unused against the import graph.
 		isImported := imported[npmPackageRoot(name)]
 		if isImported {
-			e.Properties["imported"] = "true"
+			e.PropSet("imported", "true")
 		} else {
-			e.Properties["imported"] = "false"
-			e.Properties["dead_dependency_candidate"] = "true"
+			e.PropSet("imported", "false")
+			e.PropSet("dead_dependency_candidate", "true")
 			stats.DeadCandidates++
 		}
 		stats.DeclaredReconciled++
@@ -193,8 +193,8 @@ func CrossReferenceManifests(doc *graph.Document) ManifestXrefStats {
 		// + section so a version surfaces on the navigable External node.
 		// Peer/optional deps and unimported deps have no such node — skip.
 		if ext := extByRoot[npmPackageRoot(name)]; ext != nil {
-			finalVer := e.Properties["version"]
-			if enrichExternalVersion(ext, finalVer, e.Properties["dep_section"]) {
+			finalVer := e.PropGet("version")
+			if enrichExternalVersion(ext, finalVer, e.PropGet("dep_section")) {
 				stats.ExternalNodesEnriched++
 			}
 		}
@@ -206,20 +206,20 @@ func CrossReferenceManifests(doc *graph.Document) ManifestXrefStats {
 // enrichExternalVersion stamps version / dep_section / declared on an
 // import-derived External node. Returns true if anything changed. Idempotent.
 func enrichExternalVersion(ext *graph.Entity, version, section string) bool {
-	if ext.Properties == nil {
-		ext.Properties = make(map[string]string, 3)
+	if ext.PropLen() == 0 {
+		ext.PropsReplace(make(map[string]string, 3))
 	}
 	changed := false
-	if version != "" && ext.Properties["version"] != version {
-		ext.Properties["version"] = version
+	if version != "" && ext.PropGet("version") != version {
+		ext.PropSet("version", version)
 		changed = true
 	}
-	if section != "" && ext.Properties["dep_section"] != section {
-		ext.Properties["dep_section"] = section
+	if section != "" && ext.PropGet("dep_section") != section {
+		ext.PropSet("dep_section", section)
 		changed = true
 	}
-	if ext.Properties["declared"] != "true" {
-		ext.Properties["declared"] = "true"
+	if ext.PropGet("declared") != "true" {
+		ext.PropSet("declared", "true")
 		changed = true
 	}
 	return changed

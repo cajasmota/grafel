@@ -300,7 +300,7 @@ func entityStructuralDiff(a, b graph.Entity, opts Options) string {
 	if d := stringSliceDiff("tags", a.Tags, b.Tags); d != "" {
 		diffs = append(diffs, d)
 	}
-	if d := stringMapDiff("properties", filterMap(a.Properties, opts.IgnoreEntityProps), filterMap(b.Properties, opts.IgnoreEntityProps)); d != "" {
+	if d := stringMapDiff("properties", filterMap(a.PropsSnapshot(), opts.IgnoreEntityProps), filterMap(b.PropsSnapshot(), opts.IgnoreEntityProps)); d != "" {
 		diffs = append(diffs, d)
 	}
 
@@ -340,7 +340,7 @@ func compareRelationships(a, b *graph.Document, r *Report, opts Options) {
 			r.RelsOnlyInA = append(r.RelsOnlyInA, k)
 			continue
 		}
-		if d := stringMapDiff("properties", filterMap(ra.Properties, opts.IgnoreRelProps), filterMap(rb.Properties, opts.IgnoreRelProps)); d != "" {
+		if d := stringMapDiff("properties", filterMap(ra.PropsSnapshot(), opts.IgnoreRelProps), filterMap(rb.PropsSnapshot(), opts.IgnoreRelProps)); d != "" {
 			r.RelPropDiffs = append(r.RelPropDiffs, FieldDiff{Key: k, Detail: d})
 		}
 	}

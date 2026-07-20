@@ -84,9 +84,9 @@ func BuildSyntheticDocument(spec FixtureSpec) *graph.Document {
 			Subtype:    "file",
 			SourceFile: path,
 			Language:   langs[f%len(langs)],
-			Properties: map[string]string{"path": path, "loc": fmt.Sprintf("%d", 100+rng.Intn(900))},
-			Metadata:   map[string]interface{}{"synthetic": true, "file_index": f},
-		})
+
+			Metadata: map[string]interface{}{"synthetic": true, "file_index": f},
+		}.WithProperties(map[string]string{"path": path, "loc": fmt.Sprintf("%d", 100+rng.Intn(900))}))
 	}
 
 	// Code entities, each anchored to a file.
@@ -108,16 +108,17 @@ func BuildSyntheticDocument(spec FixtureSpec) *graph.Document {
 			EndLine:       1 + rng.Intn(2000),
 			Language:      langs[f%len(langs)],
 			Signature:     fmt.Sprintf("func %s(ctx context.Context, id int) error", name),
-			Properties: map[string]string{
-				"visibility":     "public",
-				"receiver":       fmt.Sprintf("T%03d", i%256),
-				"callsite_count": fmt.Sprintf("%d", 1+rng.Intn(5)),
-			},
+
 			Metadata: map[string]interface{}{
 				"complexity": rng.Intn(30),
 				"synthetic":  true,
 			},
-		})
+		}.WithProperties(map[string]string{
+			"visibility":     "public",
+			"receiver":       fmt.Sprintf("T%03d", i%256),
+			"callsite_count": fmt.Sprintf("%d", 1+rng.Intn(5)),
+		},
+		))
 	}
 
 	// External package name pool for IMPORTS targets.
@@ -138,10 +139,10 @@ func BuildSyntheticDocument(spec FixtureSpec) *graph.Document {
 			FromID: from,
 			ToID:   to,
 			Kind:   "CALLS",
-			Properties: map[string]string{
-				"callsite_count": fmt.Sprintf("%d", 1+rng.Intn(4)),
-			},
-		})
+		}.WithProperties(map[string]string{
+			"callsite_count": fmt.Sprintf("%d", 1+rng.Intn(4)),
+		},
+		))
 	}
 
 	// IMPORTS edges from file components to bare external names (Synthesize fuel).
@@ -153,11 +154,11 @@ func BuildSyntheticDocument(spec FixtureSpec) *graph.Document {
 				FromID: fileIDs[f],
 				ToID:   pkg, // bare, unresolved → Synthesize makes ext:<pkg>
 				Kind:   "IMPORTS",
-				Properties: map[string]string{
-					"source_module": pkg,
-					"imported_name": fmt.Sprintf("Sym%d", k),
-				},
-			})
+			}.WithProperties(map[string]string{
+				"source_module": pkg,
+				"imported_name": fmt.Sprintf("Sym%d", k),
+			},
+			))
 		}
 	}
 

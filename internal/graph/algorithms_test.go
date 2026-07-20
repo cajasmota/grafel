@@ -25,7 +25,7 @@ func rel(from, to string) Relationship {
 
 func relW(from, to string, calls int) Relationship {
 	r := rel(from, to)
-	r.Properties = map[string]string{"callsite_count": itoa(calls)}
+	r.PropsReplace(map[string]string{"callsite_count": itoa(calls)})
 	return r
 }
 

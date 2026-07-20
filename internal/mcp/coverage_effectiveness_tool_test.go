@@ -25,55 +25,55 @@ func buildEffectivenessDoc() *graph.Document {
 	return &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "fn_ineffective", Name: "ValidateTax", Kind: "SCOPE.Function",
 				SourceFile: "tax/validate.go", StartLine: 8,
-				Properties: map[string]string{
-					coverage.PropTestReachable:     "true",
-					coverage.PropReachDepth:        "1",
-					coverage.PropReachingTestCount: "2",
-					coverage.PropReachingTests:     "test_tax,test_tax2",
-					coverage.PropCoveragePct:       "0.0",
-					coverage.PropCoveredLines:      "0",
-					coverage.PropTotalLines:        "14",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable:     "true",
+				coverage.PropReachDepth:        "1",
+				coverage.PropReachingTestCount: "2",
+				coverage.PropReachingTests:     "test_tax,test_tax2",
+				coverage.PropCoveragePct:       "0.0",
+				coverage.PropCoveredLines:      "0",
+				coverage.PropTotalLines:        "14",
 			},
-			{
+			),
+			graph.Entity{
 				ID: "fn_weak", Name: "ApplyDiscount", Kind: "SCOPE.Function",
 				SourceFile: "pricing/discount.go", StartLine: 20,
-				Properties: map[string]string{
-					coverage.PropTestReachable:     "true",
-					coverage.PropReachDepth:        "2",
-					coverage.PropReachingTestCount: "1",
-					coverage.PropCoveragePct:       "20.0",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable:     "true",
+				coverage.PropReachDepth:        "2",
+				coverage.PropReachingTestCount: "1",
+				coverage.PropCoveragePct:       "20.0",
 			},
-			{
+			),
+			graph.Entity{
 				ID: "fn_covered", Name: "ProcessOrder", Kind: "SCOPE.Function",
 				SourceFile: "orders/process.go", StartLine: 10,
-				Properties: map[string]string{
-					coverage.PropTestReachable:     "true",
-					coverage.PropReachDepth:        "1",
-					coverage.PropReachingTestCount: "3",
-					coverage.PropCoveragePct:       "92.0",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable:     "true",
+				coverage.PropReachDepth:        "1",
+				coverage.PropReachingTestCount: "3",
+				coverage.PropCoveragePct:       "92.0",
 			},
-			{
+			),
+			graph.Entity{
 				ID: "fn_no_cov", Name: "ReconcileLedger", Kind: "SCOPE.Function",
 				SourceFile: "ledger/reconcile.go", StartLine: 40,
-				Properties: map[string]string{
-					coverage.PropTestReachable:     "true",
-					coverage.PropReachDepth:        "1",
-					coverage.PropReachingTestCount: "1",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable:     "true",
+				coverage.PropReachDepth:        "1",
+				coverage.PropReachingTestCount: "1",
 			},
-			{
+			),
+			graph.Entity{
 				ID: "ep_orphan", Name: "POST /inspections", Kind: "SCOPE.Endpoint",
 				SourceFile: "inspections/routes.go", StartLine: 12,
-				Properties: map[string]string{
-					coverage.PropTestReachable: "false",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable: "false",
 			},
+			),
 			{
 				ID: "schema_x", Name: "Order", Kind: "SCOPE.Schema",
 				SourceFile: "orders/model.go", StartLine: 1,
@@ -157,10 +157,8 @@ func TestCoverageEffectiveness_HonestDegradation(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{ID: "fn_a", Name: "Alpha", Kind: "SCOPE.Function", SourceFile: "a.go", StartLine: 1,
-				Properties: map[string]string{coverage.PropTestReachable: "true", coverage.PropReachDepth: "1", coverage.PropReachingTestCount: "1"}},
-			{ID: "fn_b", Name: "Beta", Kind: "SCOPE.Function", SourceFile: "b.go", StartLine: 1,
-				Properties: map[string]string{coverage.PropTestReachable: "false"}},
+			graph.Entity{ID: "fn_a", Name: "Alpha", Kind: "SCOPE.Function", SourceFile: "a.go", StartLine: 1}.WithProperties(map[string]string{coverage.PropTestReachable: "true", coverage.PropReachDepth: "1", coverage.PropReachingTestCount: "1"}),
+			graph.Entity{ID: "fn_b", Name: "Beta", Kind: "SCOPE.Function", SourceFile: "b.go", StartLine: 1}.WithProperties(map[string]string{coverage.PropTestReachable: "false"}),
 		},
 	}
 	srv := newTestServer(t, doc)

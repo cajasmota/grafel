@@ -33,41 +33,40 @@ func buildNavSurfaceDoc() *graph.Document {
 		{ID: "pushA", Name: "pushA", Kind: "function", SourceFile: "screens/a.tsx", StartLine: 10},
 		{ID: "pushB", Name: "pushB", Kind: "function", SourceFile: "screens/b.tsx", StartLine: 20},
 		{ID: "pushC", Name: "pushC", Kind: "function", SourceFile: "screens/c.tsx", StartLine: 30},
-		{
+		graph.Entity{
 			ID: "ep1", Name: "GET /api/users", Kind: "http_endpoint_definition",
 			SourceFile: "api/users.go", StartLine: 5,
-			Properties: map[string]string{"path": "/api/users", "verb": "GET"},
-		},
+		}.WithProperties(map[string]string{"path": "/api/users", "verb": "GET"}),
 	}
 	doc.Relationships = []graph.Relationship{
-		{
+		graph.Relationship{
 			ID: "n1", FromID: "pushA", ToID: "route:/users/[id]", Kind: "NAVIGATES_TO",
-			Properties: map[string]string{
-				"route":       "/users/[id]",
-				"params":      "id, mode",
-				"params_keys": `["id","mode"]`,
-				"line":        "12",
-				"via":         "navigation_call",
-			},
+		}.WithProperties(map[string]string{
+			"route":       "/users/[id]",
+			"params":      "id, mode",
+			"params_keys": `["id","mode"]`,
+			"line":        "12",
+			"via":         "navigation_call",
 		},
-		{
+		),
+		graph.Relationship{
 			ID: "n2", FromID: "pushB", ToID: "route:/users/[id]", Kind: "NAVIGATES_TO",
-			Properties: map[string]string{
-				"route":       "/users/[id]",
-				"params":      "id",
-				"params_keys": `["id"]`,
-				"line":        "22",
-				"via":         "navigation_call",
-			},
+		}.WithProperties(map[string]string{
+			"route":       "/users/[id]",
+			"params":      "id",
+			"params_keys": `["id"]`,
+			"line":        "22",
+			"via":         "navigation_call",
 		},
-		{
+		),
+		graph.Relationship{
 			ID: "n3", FromID: "pushC", ToID: "route:/dashboard", Kind: "NAVIGATES_TO",
-			Properties: map[string]string{
-				"route": "/dashboard",
-				"line":  "32",
-				"via":   "navigation_call",
-			},
+		}.WithProperties(map[string]string{
+			"route": "/dashboard",
+			"line":  "32",
+			"via":   "navigation_call",
 		},
+		),
 	}
 	return doc
 }

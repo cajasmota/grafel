@@ -35,13 +35,13 @@ func TestAudit2853_JSBackendMiddleware(t *testing.T) {
 		if ep == nil {
 			t.Fatalf("missing endpoint %s %s", verb, path)
 		}
-		if ep.Properties["middleware_count"] == "" || ep.Properties["middleware_count"] == "0" {
-			t.Errorf("%s %s: middleware_count=%q, want >0", verb, path, ep.Properties["middleware_count"])
+		if ep.PropGet("middleware_count") == "" || ep.PropGet("middleware_count") == "0" {
+			t.Errorf("%s %s: middleware_count=%q, want >0", verb, path, ep.PropGet("middleware_count"))
 		}
-		if ep.Properties["middleware_chain"] == "" {
+		if ep.PropGet("middleware_chain") == "" {
 			t.Errorf("%s %s: middleware_chain not stamped", verb, path)
 		}
-		names := ep.Properties["middleware_names"]
+		names := ep.PropGet("middleware_names")
 		for _, w := range wantNames {
 			if !strings.Contains(names, w) {
 				t.Errorf("%s %s: middleware_names=%q, want to contain %q", verb, path, names, w)
@@ -55,7 +55,7 @@ func TestAudit2853_JSBackendMiddleware(t *testing.T) {
 		if ep == nil {
 			t.Fatalf("missing endpoint %s %s", verb, path)
 		}
-		if c := ep.Properties["middleware_count"]; c != "" && c != "0" {
+		if c := ep.PropGet("middleware_count"); c != "" && c != "0" {
 			t.Errorf("%s %s: middleware_count=%q, want empty", verb, path, c)
 		}
 	}

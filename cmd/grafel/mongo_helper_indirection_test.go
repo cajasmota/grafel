@@ -52,7 +52,7 @@ func TestMongoLookupHelperIndirection_MinimalShape(t *testing.T) {
 		// node's hex id). This test asserts the collection-anchored edges
 		// (Class:Inspection -> Class:<from>); the node-anchored twins are
 		// covered by TestMongoAggLookupNode_FromIDEqualsNodeID_4244.
-		if r.Properties != nil && r.Properties["anchor"] == "stage_node" {
+		if r.PropLen() > 0 && r.PropGet("anchor") == "stage_node" {
 			continue
 		}
 		joins = append(joins, edge{from: r.FromID, to: r.ToID})
@@ -115,7 +115,7 @@ func TestMongoLookupHelperIndirection_RealAcmeSource(t *testing.T) {
 		// id), not Class:Inspection. This test asserts the COLLECTION-anchored
 		// edges (the helper-indirection resolution), so skip the node-anchored
 		// twins (Properties["anchor"]=="stage_node").
-		if r.Properties != nil && r.Properties["anchor"] == "stage_node" {
+		if r.PropLen() > 0 && r.PropGet("anchor") == "stage_node" {
 			continue
 		}
 		if r.FromID != wantFrom {

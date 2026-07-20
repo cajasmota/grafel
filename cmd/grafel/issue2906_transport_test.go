@@ -21,18 +21,18 @@ func TestRPCTransportBinding_FullPipeline(t *testing.T) {
 	gqlTransports := map[string]bool{}
 	var trpcCount, gqlCount int
 	for _, e := range doc.Entities {
-		if e.Kind != "http_endpoint_definition" || e.Properties == nil {
+		if e.Kind != "http_endpoint_definition" || e.PropLen() == 0 {
 			continue
 		}
-		switch e.Properties["framework"] {
+		switch e.PropGet("framework") {
 		case "trpc":
 			trpcCount++
-			if tr := e.Properties["transport"]; tr != "" {
+			if tr := e.PropGet("transport"); tr != "" {
 				trpcTransports[tr] = true
 			}
 		case "graphql":
 			gqlCount++
-			if tr := e.Properties["transport"]; tr != "" {
+			if tr := e.PropGet("transport"); tr != "" {
 				gqlTransports[tr] = true
 			}
 		}

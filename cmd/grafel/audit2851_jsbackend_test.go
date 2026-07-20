@@ -103,16 +103,16 @@ func TestAudit2851_JSBackendRouting(t *testing.T) {
 func pickEndpointFromFramework(endpoints []*graph.Entity, framework, verb, pathSuffix string) *graph.Entity {
 	verb = strings.ToUpper(verb)
 	for _, e := range endpoints {
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
-		if e.Properties["framework"] != framework {
+		if e.PropGet("framework") != framework {
 			continue
 		}
-		if strings.ToUpper(e.Properties["verb"]) != verb {
+		if strings.ToUpper(e.PropGet("verb")) != verb {
 			continue
 		}
-		p := e.Properties["path"]
+		p := e.PropGet("path")
 		if p == pathSuffix || strings.HasSuffix(p, pathSuffix) {
 			return e
 		}

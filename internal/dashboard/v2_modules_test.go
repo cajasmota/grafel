@@ -38,22 +38,22 @@ func buildModuleCycleFixture() *DashGroup {
 			ID:   "mod-" + name,
 			Kind: "Module",
 			Name: name,
-			Properties: map[string]string{
-				"module": name,
-				"repo":   "testrepo",
-			},
-		}
+		}.WithProperties(map[string]string{
+			"module": name,
+			"repo":   "testrepo",
+		},
+		)
 	}
 	mkEnt := func(id, mod string) graph.Entity {
 		return graph.Entity{
 			ID:   id,
 			Kind: "function",
 			Name: id,
-			Properties: map[string]string{
-				"module": mod,
-				"repo":   "testrepo",
-			},
-		}
+		}.WithProperties(map[string]string{
+			"module": mod,
+			"repo":   "testrepo",
+		},
+		)
 	}
 
 	entities := []graph.Entity{

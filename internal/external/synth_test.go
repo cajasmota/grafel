@@ -286,15 +286,15 @@ func TestSynthesize_GoStdlibInterfaceDispatch(t *testing.T) {
 					{ID: "fn-1", SourceFile: "handlers/http.go", Language: "go"},
 				},
 				Relationships: []graph.Relationship{
-					{
+					graph.Relationship{
 						ID:     "rel-1",
 						FromID: "fn-1",
 						ToID:   tc.toID,
 						Kind:   "CALLS",
-						Properties: map[string]string{
-							"receiver_type": tc.recvType,
-						},
+					}.WithProperties(map[string]string{
+						"receiver_type": tc.recvType,
 					},
+					),
 				},
 			}
 			Synthesize(doc)
@@ -323,10 +323,9 @@ func TestSynthesize_GoStdlibInterfaceDispatch_NoFalsePositive(t *testing.T) {
 			{ID: "r1", FromID: "fn-1", ToID: "Lock", Kind: "CALLS"},
 			// (b) receiver_type points at a user-defined type. Not on the
 			// catalogue → no rewrite.
-			{
+			graph.Relationship{
 				ID: "r2", FromID: "fn-1", ToID: "Acquire", Kind: "CALLS",
-				Properties: map[string]string{"receiver_type": "myapp.SemSlot"},
-			},
+			}.WithProperties(map[string]string{"receiver_type": "myapp.SemSlot"}),
 		},
 	}
 	Synthesize(doc)
@@ -400,17 +399,13 @@ func TestSynthesize_JSExternalPackages_Fixture(t *testing.T) {
 			{ID: "aaaaaaaaaaaaaaaa", Name: "src/user.dto.ts", Language: "typescript", SourceFile: "src/user.dto.ts"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "class-validator", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "class-validator"}},
-			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "typeorm", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "typeorm"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "class-validator", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "class-validator"}),
+			graph.Relationship{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "typeorm", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "typeorm"}),
 			// Scoped package NOT on the static allowlist — exercises the
 			// #4695 catch-all via import_path (collapses to "@scope/pkg").
-			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "@acme.widgets", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "@acme/widgets/sub"}},
+			graph.Relationship{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "@acme.widgets", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "@acme/widgets/sub"}),
 			// Subpath import collapses to the package root.
-			{ID: "rel-4", FromID: "aaaaaaaaaaaaaaaa", ToID: "class-transformer.plainToClass", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "class-transformer/plain"}},
+			graph.Relationship{ID: "rel-4", FromID: "aaaaaaaaaaaaaaaa", ToID: "class-transformer.plainToClass", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "class-transformer/plain"}),
 		},
 	}
 	Synthesize(doc)
@@ -437,8 +432,7 @@ func TestSynthesize_JSRelativeImportNotExternal(t *testing.T) {
 			{ID: "aaaaaaaaaaaaaaaa", Name: "src/a.ts", Language: "typescript", SourceFile: "src/a.ts"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "src.b", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "./b"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "src.b", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "./b"}),
 		},
 	}
 	Synthesize(doc)
@@ -462,14 +456,11 @@ func TestSynthesize_PyExternalPackages_Fixture(t *testing.T) {
 		},
 		Relationships: []graph.Relationship{
 			// from rest_framework import serializers
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "rest_framework.serializers", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "python", "source_module": "rest_framework", "imported_name": "serializers"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "rest_framework.serializers", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "python", "source_module": "rest_framework", "imported_name": "serializers"}),
 			// from celery import shared_task
-			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "celery.shared_task", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "python", "source_module": "celery", "imported_name": "shared_task"}},
+			graph.Relationship{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "celery.shared_task", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "python", "source_module": "celery", "imported_name": "shared_task"}),
 			// import pydantic
-			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "pydantic", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "python", "source_module": "pydantic", "imported_name": "pydantic"}},
+			graph.Relationship{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "pydantic", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "python", "source_module": "pydantic", "imported_name": "pydantic"}),
 		},
 	}
 	Synthesize(doc)
@@ -504,8 +495,7 @@ func TestSynthesize_PyInternalUnresolvedStillBug(t *testing.T) {
 			{ID: "bbbbbbbbbbbbbbbb", Name: "shop/models.py", Language: "python", SourceFile: "shop/models.py"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "shop.missing.Thing", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "python", "source_module": "shop.missing", "imported_name": "Thing"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "shop.missing.Thing", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "python", "source_module": "shop.missing", "imported_name": "Thing"}),
 		},
 	}
 	Synthesize(doc)
@@ -531,8 +521,7 @@ func TestSynthesize_PyRelativeImportNotExternal(t *testing.T) {
 			{ID: "aaaaaaaaaaaaaaaa", Name: "shop/views.py", Language: "python", SourceFile: "shop/views.py"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: ".sibling.helper", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "python", "source_module": ".sibling", "imported_name": "helper"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: ".sibling.helper", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "python", "source_module": ".sibling", "imported_name": "helper"}),
 		},
 	}
 	Synthesize(doc)
@@ -562,13 +551,10 @@ func TestSynthesize_JavaExternalPackages_Fixture(t *testing.T) {
 				Language: "java", SourceFile: "src/main/java/com/acme/order/OrderService.java"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "org.springframework.stereotype.Service", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "java", "import_path": "org.springframework.stereotype.Service"}},
-			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "com.fasterxml.jackson.databind.ObjectMapper", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "java", "import_path": "com.fasterxml.jackson.databind.ObjectMapper"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "org.springframework.stereotype.Service", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "java", "import_path": "org.springframework.stereotype.Service"}),
+			graph.Relationship{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "com.fasterxml.jackson.databind.ObjectMapper", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "java", "import_path": "com.fasterxml.jackson.databind.ObjectMapper"}),
 			// Wildcard import — trailing ".*" stripped.
-			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "org.junit.jupiter.api.*", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "java", "import_path": "org.junit.jupiter.api.*"}},
+			graph.Relationship{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "org.junit.jupiter.api.*", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "java", "import_path": "org.junit.jupiter.api.*"}),
 		},
 	}
 	Synthesize(doc)
@@ -602,8 +588,7 @@ func TestSynthesize_JavaInternalUnresolvedStillBug(t *testing.T) {
 				Language: "java", SourceFile: "src/main/java/com/acme/order/OrderService.java"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "com.acme.missing.Thing", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "java", "import_path": "com.acme.missing.Thing"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "com.acme.missing.Thing", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "java", "import_path": "com.acme.missing.Thing"}),
 		},
 	}
 	Synthesize(doc)
@@ -626,12 +611,9 @@ func TestSynthesize_RubyExternalPackages_Fixture(t *testing.T) {
 			{ID: "aaaaaaaaaaaaaaaa", Name: "Charge", Language: "ruby", SourceFile: "lib/billing/charge.rb"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "rails/all", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "ruby", "import_path": "rails/all"}},
-			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "rspec", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "ruby", "import_path": "rspec"}},
-			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "sidekiq", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "ruby", "import_path": "sidekiq"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "rails/all", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "ruby", "import_path": "rails/all"}),
+			graph.Relationship{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "rspec", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "ruby", "import_path": "rspec"}),
+			graph.Relationship{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "sidekiq", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "ruby", "import_path": "sidekiq"}),
 		},
 	}
 	Synthesize(doc)
@@ -661,11 +643,9 @@ func TestSynthesize_RubyInternalAndRelativeStillBug(t *testing.T) {
 		},
 		Relationships: []graph.Relationship{
 			// require_relative — intra-project.
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "../helpers/money", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "ruby", "import_path": "../helpers/money", "require_kind": "require_relative"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "../helpers/money", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "ruby", "import_path": "../helpers/money", "require_kind": "require_relative"}),
 			// bare require whose root ("billing") is an indexed internal lib.
-			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "billing/missing", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "ruby", "import_path": "billing/missing"}},
+			graph.Relationship{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "billing/missing", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "ruby", "import_path": "billing/missing"}),
 		},
 	}
 	Synthesize(doc)
@@ -688,12 +668,9 @@ func TestSynthesize_GoExternalPackages_Fixture(t *testing.T) {
 			{ID: "aaaaaaaaaaaaaaaa", Name: "handler", Language: "go", SourceFile: "internal/api/handler.go"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "github.com/stretchr/testify/assert", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "go"}},
-			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "golang.org/x/sync/errgroup", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "go"}},
-			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "net/http", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "go"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "github.com/stretchr/testify/assert", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "go"}),
+			graph.Relationship{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "golang.org/x/sync/errgroup", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "go"}),
+			graph.Relationship{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "net/http", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "go"}),
 		},
 	}
 	Synthesize(doc)
@@ -727,8 +704,7 @@ func TestSynthesize_GoOwnModuleUnresolvedStillBug(t *testing.T) {
 				SourceFile: "github.com/acme/svc/internal/api/handler.go"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "github.com/acme/svc/internal/store", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "go"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "github.com/acme/svc/internal/store", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "go"}),
 		},
 	}
 	Synthesize(doc)
@@ -750,12 +726,9 @@ func TestSynthesize_RustExternalPackages_Fixture(t *testing.T) {
 			{ID: "aaaaaaaaaaaaaaaa", Name: "handler", Language: "rust", SourceFile: "src/api/handler.rs"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "serde::Deserialize", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "rust", "import_path": "serde::Deserialize"}},
-			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "tokio::net::TcpListener", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "rust", "import_path": "tokio::net::TcpListener"}},
-			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "anyhow::Result", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "rust", "import_path": "anyhow::Result"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "serde::Deserialize", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "rust", "import_path": "serde::Deserialize"}),
+			graph.Relationship{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "tokio::net::TcpListener", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "rust", "import_path": "tokio::net::TcpListener"}),
+			graph.Relationship{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "anyhow::Result", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "rust", "import_path": "anyhow::Result"}),
 		},
 	}
 	Synthesize(doc)
@@ -786,12 +759,9 @@ func TestSynthesize_RustKeywordStillBug(t *testing.T) {
 			{ID: "aaaaaaaaaaaaaaaa", Name: "handler", Language: "rust", SourceFile: "src/api/handler.rs"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "crate::store::Store", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "rust", "import_path": "crate::store::Store"}},
-			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "super::config::Config", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "rust", "import_path": "super::config::Config"}},
-			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "self::inner::Thing", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "rust", "import_path": "self::inner::Thing"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "crate::store::Store", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "rust", "import_path": "crate::store::Store"}),
+			graph.Relationship{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "super::config::Config", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "rust", "import_path": "super::config::Config"}),
+			graph.Relationship{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "self::inner::Thing", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "rust", "import_path": "self::inner::Thing"}),
 		},
 	}
 	Synthesize(doc)
@@ -815,18 +785,14 @@ func TestSynthesize_CsharpExternalPackages_Fixture(t *testing.T) {
 				Language: "csharp", SourceFile: "src/Contoso.Orders/OrderController.cs"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "System.Collections.Generic", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "csharp", "import_path": "System.Collections.Generic"}},
-			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "Microsoft.AspNetCore.Mvc", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "csharp", "import_path": "Microsoft.AspNetCore.Mvc"}},
-			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "Newtonsoft.Json", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "csharp", "import_path": "Newtonsoft.Json"}},
-			{ID: "rel-4", FromID: "aaaaaaaaaaaaaaaa", ToID: "Volo.Abp.Application.Dtos", Kind: "IMPORTS",
-				Properties: map[string]string{
-					"language":      "csharp",
-					"source_module": "Volo.Abp.Application",
-					"imported_name": "Dtos",
-				}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "System.Collections.Generic", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "csharp", "import_path": "System.Collections.Generic"}),
+			graph.Relationship{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "Microsoft.AspNetCore.Mvc", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "csharp", "import_path": "Microsoft.AspNetCore.Mvc"}),
+			graph.Relationship{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "Newtonsoft.Json", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "csharp", "import_path": "Newtonsoft.Json"}),
+			graph.Relationship{ID: "rel-4", FromID: "aaaaaaaaaaaaaaaa", ToID: "Volo.Abp.Application.Dtos", Kind: "IMPORTS"}.WithProperties(map[string]string{
+				"language":      "csharp",
+				"source_module": "Volo.Abp.Application",
+				"imported_name": "Dtos",
+			}),
 		},
 	}
 	Synthesize(doc)
@@ -858,8 +824,7 @@ func TestSynthesize_CsharpInternalUnresolvedStillBug(t *testing.T) {
 				Language: "csharp", SourceFile: "src/Contoso.Orders/OrderController.cs"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "Contoso.Missing.Service", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "csharp", "import_path": "Contoso.Missing.Service"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "Contoso.Missing.Service", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "csharp", "import_path": "Contoso.Missing.Service"}),
 		},
 	}
 	Synthesize(doc)
@@ -883,8 +848,7 @@ func TestSynthesize_CsharpAmbiguousUnderFlagged(t *testing.T) {
 				Language: "csharp", SourceFile: "src/Contoso/X.cs"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "SomeVendor.Widgets", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "csharp", "import_path": "SomeVendor.Widgets"}},
+			graph.Relationship{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "SomeVendor.Widgets", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "csharp", "import_path": "SomeVendor.Widgets"}),
 		},
 	}
 	Synthesize(doc)
@@ -5369,10 +5333,9 @@ func TestPoiBareNames_ClassifiedWithPoiImport(t *testing.T) {
 						Language: "java", SourceFile: "Foo.java",
 					}},
 					Relationships: []graph.Relationship{
-						{ID: "imp-1", FromID: "file-ent", ToID: imp, Kind: "IMPORTS",
-							Properties: map[string]string{
-								"source_module": imp, "imported_name": name,
-							}},
+						graph.Relationship{ID: "imp-1", FromID: "file-ent", ToID: imp, Kind: "IMPORTS"}.WithProperties(map[string]string{
+							"source_module": imp, "imported_name": name,
+						}),
 						{ID: "rel-1", FromID: "caller", ToID: name, Kind: "CALLS"},
 					},
 				}
@@ -5459,8 +5422,7 @@ func TestPdfBoxBareNames_ClassifiedWithPdfBoxImport(t *testing.T) {
 					Language: "java", SourceFile: "Report.java",
 				}},
 				Relationships: []graph.Relationship{
-					{ID: "imp-1", FromID: "file-ent", ToID: imp, Kind: "IMPORTS",
-						Properties: map[string]string{"source_module": imp, "imported_name": name}},
+					graph.Relationship{ID: "imp-1", FromID: "file-ent", ToID: imp, Kind: "IMPORTS"}.WithProperties(map[string]string{"source_module": imp, "imported_name": name}),
 					{ID: "rel-1", FromID: "caller", ToID: name, Kind: "CALLS"},
 				},
 			}
@@ -5501,18 +5463,18 @@ func TestUpsertImportSet_SyntheticFQN_EnablesImportLeafFolding(t *testing.T) {
 			SourceFile: "InventoryController.java",
 		}},
 		Relationships: []graph.Relationship{
-			{
+			graph.Relationship{
 				ID:     "imp-1",
 				FromID: "file-ent",
 				// After resolveImportToIDs, ToID is rewritten to ext:org.apache:XSSFWorkbook.
 				// But source_module and imported_name Properties are still present.
 				ToID: "ext:org.apache:XSSFWorkbook",
 				Kind: "IMPORTS",
-				Properties: map[string]string{
-					"source_module": "org.apache.poi.xssf.usermodel",
-					"imported_name": "XSSFWorkbook",
-				},
+			}.WithProperties(map[string]string{
+				"source_module": "org.apache.poi.xssf.usermodel",
+				"imported_name": "XSSFWorkbook",
 			},
+			),
 			{
 				ID:     "rel-1",
 				FromID: "caller",
@@ -6157,40 +6119,25 @@ func TestSynthesize_NoPlaceholderForPythonStdlib(t *testing.T) {
 
 	// 10 edges to stdlib bare names — should NOT create entities.
 	stdlibRels := []graph.Relationship{
-		{ID: "s1", FromID: callerID, ToID: "int", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "s2", FromID: callerID, ToID: "int", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "s3", FromID: callerID, ToID: "int", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "s4", FromID: callerID, ToID: "str", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "s5", FromID: callerID, ToID: "str", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "s6", FromID: callerID, ToID: "str", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "s7", FromID: callerID, ToID: "list", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "s8", FromID: callerID, ToID: "list", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "s9", FromID: callerID, ToID: "range", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "s10", FromID: callerID, ToID: "len", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
+		graph.Relationship{ID: "s1", FromID: callerID, ToID: "int", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "s2", FromID: callerID, ToID: "int", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "s3", FromID: callerID, ToID: "int", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "s4", FromID: callerID, ToID: "str", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "s5", FromID: callerID, ToID: "str", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "s6", FromID: callerID, ToID: "str", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "s7", FromID: callerID, ToID: "list", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "s8", FromID: callerID, ToID: "list", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "s9", FromID: callerID, ToID: "range", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "s10", FromID: callerID, ToID: "len", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
 	}
 
 	// 5 edges to real external packages — SHOULD create entities.
 	extRels := []graph.Relationship{
-		{ID: "e1", FromID: callerID, ToID: "numpy.array", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "e2", FromID: callerID, ToID: "numpy.array", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "e3", FromID: callerID, ToID: "numpy.array", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "e4", FromID: callerID, ToID: "requests.get", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
-		{ID: "e5", FromID: callerID, ToID: "requests.get", Kind: "CALLS",
-			Properties: map[string]string{"language": "python"}},
+		graph.Relationship{ID: "e1", FromID: callerID, ToID: "numpy.array", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "e2", FromID: callerID, ToID: "numpy.array", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "e3", FromID: callerID, ToID: "numpy.array", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "e4", FromID: callerID, ToID: "requests.get", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
+		graph.Relationship{ID: "e5", FromID: callerID, ToID: "requests.get", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
 	}
 
 	allRels := make([]graph.Relationship, 0, len(inGraphRels)+len(stdlibRels)+len(extRels))
@@ -6255,7 +6202,7 @@ func TestSynthesize_NoPlaceholderForPythonStdlib(t *testing.T) {
 		if r.ToID != "" {
 			t.Errorf("stdlib edge %s: ToID=%q, want empty", r.ID, r.ToID)
 		}
-		if dt := r.Properties["dynamic_target"]; dt == "" {
+		if dt := r.PropGet("dynamic_target"); dt == "" {
 			t.Errorf("stdlib edge %s: dynamic_target property missing", r.ID)
 		}
 	}
@@ -6303,34 +6250,22 @@ func TestSynthesize_NoPlaceholderForGoStdlib(t *testing.T) {
 
 	// 8 edges to Go universe-block builtins — should NOT create entities.
 	stdlibRels := []graph.Relationship{
-		{ID: "sg1", FromID: callerID, ToID: "make", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "sg2", FromID: callerID, ToID: "make", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "sg3", FromID: callerID, ToID: "len", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "sg4", FromID: callerID, ToID: "len", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "sg5", FromID: callerID, ToID: "append", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "sg6", FromID: callerID, ToID: "append", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "sg7", FromID: callerID, ToID: "panic", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "sg8", FromID: callerID, ToID: "panic", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
+		graph.Relationship{ID: "sg1", FromID: callerID, ToID: "make", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "sg2", FromID: callerID, ToID: "make", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "sg3", FromID: callerID, ToID: "len", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "sg4", FromID: callerID, ToID: "len", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "sg5", FromID: callerID, ToID: "append", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "sg6", FromID: callerID, ToID: "append", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "sg7", FromID: callerID, ToID: "panic", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "sg8", FromID: callerID, ToID: "panic", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
 	}
 
 	// 4 edges to real stdlib packages — SHOULD create entities.
 	extRels := []graph.Relationship{
-		{ID: "eg1", FromID: callerID, ToID: "fmt.Println", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "eg2", FromID: callerID, ToID: "fmt.Println", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "eg3", FromID: callerID, ToID: "os.Exit", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
-		{ID: "eg4", FromID: callerID, ToID: "os.Exit", Kind: "CALLS",
-			Properties: map[string]string{"language": "go"}},
+		graph.Relationship{ID: "eg1", FromID: callerID, ToID: "fmt.Println", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "eg2", FromID: callerID, ToID: "fmt.Println", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "eg3", FromID: callerID, ToID: "os.Exit", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
+		graph.Relationship{ID: "eg4", FromID: callerID, ToID: "os.Exit", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
 	}
 
 	allRels := make([]graph.Relationship, 0, len(inGraphRels)+len(stdlibRels)+len(extRels))
@@ -6394,7 +6329,7 @@ func TestSynthesize_NoPlaceholderForGoStdlib(t *testing.T) {
 		if r.ToID != "" {
 			t.Errorf("Go stdlib edge %s: ToID=%q, want empty", r.ID, r.ToID)
 		}
-		if dt := r.Properties["dynamic_target"]; dt == "" {
+		if dt := r.PropGet("dynamic_target"); dt == "" {
 			t.Errorf("Go stdlib edge %s: dynamic_target property missing", r.ID)
 		}
 	}
@@ -6432,42 +6367,28 @@ func TestSynthesize_NoPlaceholderForJSStdlib(t *testing.T) {
 
 	// 6 edges to JS globals — should NOT create entities.
 	jsStdlibRels := []graph.Relationship{
-		{ID: "js1", FromID: callerID, ToID: "console", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
-		{ID: "js2", FromID: callerID, ToID: "console", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
-		{ID: "js3", FromID: callerID, ToID: "JSON", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
-		{ID: "js4", FromID: callerID, ToID: "JSON", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
-		{ID: "js5", FromID: callerID, ToID: "Math", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
-		{ID: "js6", FromID: callerID, ToID: "Math", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
+		graph.Relationship{ID: "js1", FromID: callerID, ToID: "console", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
+		graph.Relationship{ID: "js2", FromID: callerID, ToID: "console", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
+		graph.Relationship{ID: "js3", FromID: callerID, ToID: "JSON", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
+		graph.Relationship{ID: "js4", FromID: callerID, ToID: "JSON", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
+		graph.Relationship{ID: "js5", FromID: callerID, ToID: "Math", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
+		graph.Relationship{ID: "js6", FromID: callerID, ToID: "Math", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
 	}
 
 	// 4 edges to real npm packages — SHOULD create entities.
 	extRels := []graph.Relationship{
-		{ID: "ej1", FromID: callerID, ToID: "lodash.get", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
-		{ID: "ej2", FromID: callerID, ToID: "lodash.get", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
-		{ID: "ej3", FromID: callerID, ToID: "react.useState", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
-		{ID: "ej4", FromID: callerID, ToID: "react.useState", Kind: "CALLS",
-			Properties: map[string]string{"language": "javascript"}},
+		graph.Relationship{ID: "ej1", FromID: callerID, ToID: "lodash.get", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
+		graph.Relationship{ID: "ej2", FromID: callerID, ToID: "lodash.get", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
+		graph.Relationship{ID: "ej3", FromID: callerID, ToID: "react.useState", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
+		graph.Relationship{ID: "ej4", FromID: callerID, ToID: "react.useState", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
 	}
 
 	// 4 TypeScript edges to globals — should NOT create entities.
 	tsStdlibRels := []graph.Relationship{
-		{ID: "ts1", FromID: callerID, ToID: "fetch", Kind: "CALLS",
-			Properties: map[string]string{"language": "typescript"}},
-		{ID: "ts2", FromID: callerID, ToID: "fetch", Kind: "CALLS",
-			Properties: map[string]string{"language": "typescript"}},
-		{ID: "ts3", FromID: callerID, ToID: "process", Kind: "CALLS",
-			Properties: map[string]string{"language": "typescript"}},
-		{ID: "ts4", FromID: callerID, ToID: "process", Kind: "CALLS",
-			Properties: map[string]string{"language": "typescript"}},
+		graph.Relationship{ID: "ts1", FromID: callerID, ToID: "fetch", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
+		graph.Relationship{ID: "ts2", FromID: callerID, ToID: "fetch", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
+		graph.Relationship{ID: "ts3", FromID: callerID, ToID: "process", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
+		graph.Relationship{ID: "ts4", FromID: callerID, ToID: "process", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
 	}
 
 	allRels := make([]graph.Relationship, 0,
@@ -6533,7 +6454,7 @@ func TestSynthesize_NoPlaceholderForJSStdlib(t *testing.T) {
 		if r.ToID != "" {
 			t.Errorf("JS stdlib edge %s: ToID=%q, want empty", r.ID, r.ToID)
 		}
-		if dt := r.Properties["dynamic_target"]; dt == "" {
+		if dt := r.PropGet("dynamic_target"); dt == "" {
 			t.Errorf("JS stdlib edge %s: dynamic_target property missing", r.ID)
 		}
 	}
@@ -6546,7 +6467,7 @@ func TestSynthesize_NoPlaceholderForJSStdlib(t *testing.T) {
 		if r.ToID != "" {
 			t.Errorf("TS stdlib edge %s: ToID=%q, want empty", r.ID, r.ToID)
 		}
-		if dt := r.Properties["dynamic_target"]; dt == "" {
+		if dt := r.PropGet("dynamic_target"); dt == "" {
 			t.Errorf("TS stdlib edge %s: dynamic_target property missing", r.ID)
 		}
 	}
@@ -6572,30 +6493,20 @@ func TestSynthesize_NoPlaceholderForRubyStdlib(t *testing.T) {
 
 	// 6 edges to Ruby kernel/DSL builtins — should NOT create entities.
 	stdlibRels := []graph.Relationship{
-		{ID: "rb1", FromID: callerID, ToID: "puts", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
-		{ID: "rb2", FromID: callerID, ToID: "puts", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
-		{ID: "rb3", FromID: callerID, ToID: "raise", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
-		{ID: "rb4", FromID: callerID, ToID: "raise", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
-		{ID: "rb5", FromID: callerID, ToID: "attr_accessor", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
-		{ID: "rb6", FromID: callerID, ToID: "attr_accessor", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
+		graph.Relationship{ID: "rb1", FromID: callerID, ToID: "puts", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
+		graph.Relationship{ID: "rb2", FromID: callerID, ToID: "puts", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
+		graph.Relationship{ID: "rb3", FromID: callerID, ToID: "raise", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
+		graph.Relationship{ID: "rb4", FromID: callerID, ToID: "raise", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
+		graph.Relationship{ID: "rb5", FromID: callerID, ToID: "attr_accessor", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
+		graph.Relationship{ID: "rb6", FromID: callerID, ToID: "attr_accessor", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
 	}
 
 	// 4 edges to real gems — SHOULD create entities.
 	extRels := []graph.Relationship{
-		{ID: "er1", FromID: callerID, ToID: "rails.render", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
-		{ID: "er2", FromID: callerID, ToID: "rails.render", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
-		{ID: "er3", FromID: callerID, ToID: "redis.get", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
-		{ID: "er4", FromID: callerID, ToID: "redis.get", Kind: "CALLS",
-			Properties: map[string]string{"language": "ruby"}},
+		graph.Relationship{ID: "er1", FromID: callerID, ToID: "rails.render", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
+		graph.Relationship{ID: "er2", FromID: callerID, ToID: "rails.render", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
+		graph.Relationship{ID: "er3", FromID: callerID, ToID: "redis.get", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
+		graph.Relationship{ID: "er4", FromID: callerID, ToID: "redis.get", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
 	}
 
 	allRels := make([]graph.Relationship, 0, len(inGraphRels)+len(stdlibRels)+len(extRels))
@@ -6659,7 +6570,7 @@ func TestSynthesize_NoPlaceholderForRubyStdlib(t *testing.T) {
 		if r.ToID != "" {
 			t.Errorf("Ruby stdlib edge %s: ToID=%q, want empty", r.ID, r.ToID)
 		}
-		if dt := r.Properties["dynamic_target"]; dt == "" {
+		if dt := r.PropGet("dynamic_target"); dt == "" {
 			t.Errorf("Ruby stdlib edge %s: dynamic_target property missing", r.ID)
 		}
 	}
@@ -6694,8 +6605,7 @@ func dataAccessEnt(id, file, orm, op, table string) graph.Entity {
 		QualifiedName: "scope:dataaccess:" + file + "#" + orm + ":" + op + ":" + table,
 		SourceFile:    file,
 		Language:      "go",
-		Properties:    map[string]string{"operation": op, "table": table},
-	}
+	}.WithProperties(map[string]string{"operation": op, "table": table})
 }
 
 func datastoreTableEnt(id, name string) graph.Entity {

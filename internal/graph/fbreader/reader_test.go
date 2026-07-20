@@ -90,15 +90,15 @@ func TestAgentPatternKindRoundTrip(t *testing.T) {
 		Repo:        "patterns-test",
 		GeneratedAt: time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC),
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID:   patternID,
 				Kind: string(types.EntityKindAgentPattern),
 				Name: "chi-handler-pattern",
-				Properties: map[string]string{
-					"category":   "code",
-					"confidence": "0.75",
-				},
+			}.WithProperties(map[string]string{
+				"category":   "code",
+				"confidence": "0.75",
 			},
+			),
 			{
 				ID:   entityID,
 				Kind: string(types.EntityKindFunction),

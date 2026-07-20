@@ -122,8 +122,8 @@ func ResolveExceptionTypes(doc *graph.Document) ExceptionResolveStats {
 		e := &doc.Entities[i]
 		if e.Kind == string(types.EntityKindExceptionType) {
 			tn := ""
-			if e.Properties != nil {
-				tn = e.Properties["exception_type"]
+			if e.PropLen() > 0 {
+				tn = e.PropGet("exception_type")
 			}
 			if tn == "" {
 				tn = stripExceptionPrefix(e.Name)

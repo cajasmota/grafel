@@ -388,7 +388,7 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 				neighbours = append(neighbours, *n)
 				neighbourKinds = append(neighbourKinds, rel.Kind)
 				neighbourDirections = append(neighbourDirections, dir)
-				neighbourProperties = append(neighbourProperties, rel.Properties)
+				neighbourProperties = append(neighbourProperties, rel.PropsSnapshot())
 			}
 		}
 	}
@@ -580,9 +580,8 @@ func classMethodHopExpand(
 		// Preserve any existing per-edge Properties stamped by the
 		// extractor (#2018 carries cross_repo / import_alias / etc.).
 		props := map[string]string{"via_method_hop": "true"}
-		for k, v := range rel.Properties {
-			props[k] = v
-		}
+		rel.
+			PropRange(func(k, v string) bool { props[k] = v; return true })
 		*neighbourProperties = append(*neighbourProperties, props)
 		added++
 	}
@@ -709,12 +708,11 @@ func renderSection(section string, seed *graph.Entity, neighbours []graph.Entity
 			b.WriteString(fmt.Sprintf("- **PageRank:** %.6f\n", *seed.PageRank))
 		}
 		// Properties
-		if len(seed.Properties) > 0 {
+		if seed.PropLen() > 0 {
 			b.WriteString("\n**Properties:**\n\n")
 			b.WriteString("```\n")
-			for k, v := range seed.Properties {
-				b.WriteString(fmt.Sprintf("%s = %s\n", k, v))
-			}
+			seed.
+				PropRange(func(k, v string) bool { b.WriteString(fmt.Sprintf("%s = %s\n", k, v)); return true })
 			b.WriteString("```\n")
 		}
 	}

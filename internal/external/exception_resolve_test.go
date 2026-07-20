@@ -13,8 +13,7 @@ func excType(id, typeName string) graph.Entity {
 		Name:       "exception:" + typeName,
 		Kind:       string(types.EntityKindExceptionType),
 		SourceFile: "<exception>",
-		Properties: map[string]string{"exception_type": typeName},
-	}
+	}.WithProperties(map[string]string{"exception_type": typeName})
 }
 
 func realClass(id, name string) graph.Entity {

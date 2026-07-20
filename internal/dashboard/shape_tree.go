@@ -238,10 +238,10 @@ func extendsBaseEntities(g *DashGroup, repo *DashRepo, class *graph.Entity) []*g
 // relTargetName returns the bare base/target name an EXTENDS edge carries in
 // its Properties (the heritage extractors store it under "to"), or "".
 func relTargetName(rel graph.Relationship) string {
-	if rel.Properties == nil {
+	if rel.PropLen() == 0 {
 		return ""
 	}
-	if to := rel.Properties["to"]; to != "" {
+	if to := rel.PropGet("to"); to != "" {
 		return to
 	}
 	return ""
@@ -311,10 +311,10 @@ func buildShapeRow(grp *DashGroup, field *graph.Entity) v2ShapeRow {
 // by the dashboard as small constraint chips next to the field type — e.g.
 // ["IsString","MaxLength:120","IsOptional"] for a class-validator DTO field.
 func fieldValidations(field *graph.Entity) []string {
-	if field == nil || field.Properties == nil {
+	if field == nil || field.PropLen() == 0 {
 		return nil
 	}
-	raw := strings.TrimSpace(field.Properties["validations"])
+	raw := strings.TrimSpace(field.PropGet("validations"))
 	if raw == "" {
 		return nil
 	}
@@ -507,8 +507,8 @@ func inferNullable(annotations []string, typ string, field *graph.Entity) bool {
 		}
 	}
 	// Extractor-stamped explicit nullability, if any.
-	if field != nil && field.Properties != nil {
-		switch strings.TrimSpace(strings.ToLower(field.Properties["nullable"])) {
+	if field != nil && field.PropLen() > 0 {
+		switch strings.TrimSpace(strings.ToLower(field.PropGet("nullable"))) {
 		case "true":
 			return true
 		case "false":

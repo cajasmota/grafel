@@ -25,22 +25,22 @@ func TestInspect_RendersDiscriminatorsSection(t *testing.T) {
 			},
 		},
 		Relationships: []graph.Relationship{
-			{
+			graph.Relationship{
 				ID: "d1", FromID: "fn1", ToID: "var:checklistType",
 				Kind: "DISCRIMINATES_ON",
-				Properties: map[string]string{
-					"line":    "17",
-					"literal": "2",
-				},
+			}.WithProperties(map[string]string{
+				"line":    "17",
+				"literal": "2",
 			},
-			{
+			),
+			graph.Relationship{
 				ID: "d2", FromID: "fn1", ToID: "var:type",
 				Kind: "DISCRIMINATES_ON",
-				Properties: map[string]string{
-					"line":    "23",
-					"literal": "periodic",
-				},
+			}.WithProperties(map[string]string{
+				"line":    "23",
+				"literal": "periodic",
 			},
+			),
 		},
 	}
 	srv := newTestServer(t, doc)

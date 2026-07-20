@@ -12,11 +12,11 @@ func makeModEntity(id, name, mod, repo string) Entity {
 		ID:   id,
 		Name: name,
 		Kind: "Function",
-		Properties: map[string]string{
-			"module": mod,
-			"repo":   repo,
-		},
-	}
+	}.WithProperties(map[string]string{
+		"module": mod,
+		"repo":   repo,
+	},
+	)
 }
 
 // makeModContainer builds a synthetic Module container entity (post-#1383 shape).
@@ -25,12 +25,12 @@ func makeModContainer(id, name, repo string) Entity {
 		ID:   id,
 		Name: name,
 		Kind: kindModule,
-		Properties: map[string]string{
-			"module":    name,
-			"repo":      repo,
-			"synthetic": "true",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"module":    name,
+		"repo":      repo,
+		"synthetic": "true",
+	},
+	)
 }
 
 // TestRunModuleAlgorithms_EmptyInputs ensures the API never returns nil.
@@ -92,7 +92,7 @@ func TestAggregation_PrebakedModuleNodes(t *testing.T) {
 		makeModEntity("e2", "B", "mod_b", "r"),
 	}
 	rels := []Relationship{
-		{ID: "rd", FromID: "M_A", ToID: "M_B", Kind: relDependsOn, Properties: map[string]string{"weight": "7"}},
+		Relationship{ID: "rd", FromID: "M_A", ToID: "M_B", Kind: relDependsOn}.WithProperties(map[string]string{"weight": "7"}),
 		// CONTAINS edges should be ignored.
 		{ID: "rc1", FromID: "M_A", ToID: "e1", Kind: relContains},
 		{ID: "rc2", FromID: "M_B", ToID: "e2", Kind: relContains},

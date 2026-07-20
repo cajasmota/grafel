@@ -42,12 +42,12 @@ func makeNestDIDoc() *graph.Document {
 		},
 		Relationships: []graph.Relationship{
 			// provider INJECTED_INTO consumer (FromID=provider, ToID=consumer)
-			{ID: "d1", FromID: "svc", ToID: "ctrl", Kind: "INJECTED_INTO", Properties: map[string]string{"line": "12"}},
+			graph.Relationship{ID: "d1", FromID: "svc", ToID: "ctrl", Kind: "INJECTED_INTO"}.WithProperties(map[string]string{"line": "12"}),
 			// module BINDS token, token BINDS impl
-			{ID: "d2", FromID: "mod", ToID: "tok", Kind: "BINDS", Properties: map[string]string{"line": "8"}},
-			{ID: "d3", FromID: "tok", ToID: "impl", Kind: "BINDS", Properties: map[string]string{"line": "9"}},
+			graph.Relationship{ID: "d2", FromID: "mod", ToID: "tok", Kind: "BINDS"}.WithProperties(map[string]string{"line": "8"}),
+			graph.Relationship{ID: "d3", FromID: "tok", ToID: "impl", Kind: "BINDS"}.WithProperties(map[string]string{"line": "9"}),
 			// a plain CALLS so we can assert DI surfaces alongside it
-			{ID: "c1", FromID: "ctrl", ToID: "svc", Kind: "CALLS", Properties: map[string]string{"line": "20"}},
+			graph.Relationship{ID: "c1", FromID: "ctrl", ToID: "svc", Kind: "CALLS"}.WithProperties(map[string]string{"line": "20"}),
 		},
 	}
 }

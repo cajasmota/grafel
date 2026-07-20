@@ -150,8 +150,7 @@ func Ingest(repoRoot, repoTag string, docRelPaths []string, codeEntities []graph
 			StartLine:     1,
 			EndLine:       max1(doc.LineCount),
 			Language:      language,
-			Properties:    docProps,
-		}
+		}.WithProperties(docProps)
 		res.Entities = append(res.Entities, docEnt)
 		res.Documents++
 
@@ -173,8 +172,7 @@ func Ingest(repoRoot, repoTag string, docRelPaths []string, codeEntities []graph
 				StartLine:     s.StartLine,
 				EndLine:       s.EndLine,
 				Language:      language,
-				Properties:    sectionProps(s),
-			})
+			}.WithProperties(sectionProps(s)))
 			res.Sections++
 
 			// CONTAINS: parent (another section, or the document for top-level).
@@ -217,12 +215,11 @@ func Ingest(repoRoot, repoTag string, docRelPaths []string, codeEntities []graph
 
 func mkRel(from, to, kind string, props map[string]string) graph.Relationship {
 	return graph.Relationship{
-		ID:         graph.RelationshipID(from, to, kind),
-		FromID:     from,
-		ToID:       to,
-		Kind:       kind,
-		Properties: props,
-	}
+		ID:     graph.RelationshipID(from, to, kind),
+		FromID: from,
+		ToID:   to,
+		Kind:   kind,
+	}.WithProperties(props)
 }
 
 // readBoundedFile reads at most limit bytes from path.

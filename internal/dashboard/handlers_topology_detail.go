@@ -142,7 +142,7 @@ func buildTopicDetail(grp *DashGroup, groupName, topicID string) (topicDetailRes
 		}
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			bucket := classifyTopologyBucket(e.Kind, e.Name, e.Properties)
+			bucket := classifyTopologyBucket(e.Kind, e.Name, e.PropsSnapshot())
 			if bucket == "" {
 				continue
 			}
@@ -162,20 +162,20 @@ func buildTopicDetail(grp *DashGroup, groupName, topicID string) (topicDetailRes
 	}
 
 	// --- Infer broker, protocol, framework ---
-	broker := topicEnt.Properties["broker"]
+	broker := topicEnt.PropGet("broker")
 	if broker == "" {
 		broker = inferBrokerFromName(topicEnt.Name)
 	}
-	framework := topicEnt.Properties["framework"]
-	protocol := inferProtocol(topicEnt.Kind, topicEnt.Name, topicEnt.Properties, broker)
+	framework := topicEnt.PropGet("framework")
+	protocol := inferProtocol(topicEnt.Kind, topicEnt.Name, topicEnt.PropsSnapshot(), broker)
 
 	// --- Schedule fields ---
 	stripped := dashStripScopePrefix(topicEnt.Kind)
 	scheduled := stripped == kindScheduledJob
-	schedule := topicEnt.Properties["schedule"]
+	schedule := topicEnt.PropGet("schedule")
 
 	// --- Message schema ---
-	messageSchema := topicEnt.Properties["schema"]
+	messageSchema := topicEnt.PropGet("schema")
 
 	// --- Resolve producers and consumers ---
 	// Scan ALL repos: cross-repo extractors may store relationships in any repo's
@@ -505,7 +505,7 @@ func entityToRecord(repo string, e *graph.Entity) topicEntityRecord {
 		StartLine:      e.StartLine,
 		Repo:           repo,
 		FlowProcessIDs: []string{},
-		Framework:      e.Properties["framework"],
+		Framework:      e.PropGet("framework"),
 	}
 }
 
@@ -540,7 +540,7 @@ func collectInngestSteps(grp *DashGroup, funcRepo, funcLocalID string) []inngest
 	stepByID := map[string]*graph.Entity{}
 	for i := range r.Doc.Entities {
 		e := &r.Doc.Entities[i]
-		if dashStripScopePrefix(e.Kind) == "Operation" && e.Properties["framework"] == "inngest" {
+		if dashStripScopePrefix(e.Kind) == "Operation" && e.PropGet("framework") == "inngest" {
 			stepByID[e.ID] = e
 		}
 	}
@@ -559,12 +559,12 @@ func collectInngestSteps(grp *DashGroup, funcRepo, funcLocalID string) []inngest
 		}
 		seen[e.ID] = true
 		out = append(out, inngestStepRecord{
-			StepID:       e.Properties["step_id"],
-			StepKind:     e.Properties["step_kind"],
+			StepID:       e.PropGet("step_id"),
+			StepKind:     e.PropGet("step_kind"),
 			SourceFile:   e.SourceFile,
 			StartLine:    e.StartLine,
-			WaitEvent:    e.Properties["wait_event"],
-			InvokeTarget: e.Properties["invoke_target"],
+			WaitEvent:    e.PropGet("wait_event"),
+			InvokeTarget: e.PropGet("invoke_target"),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].StartLine < out[j].StartLine })
@@ -672,7 +672,7 @@ func findRelatedTopics(grp *DashGroup, ownerRepo, localEntityID string, producer
 			if e.ID == localEntityID && r.Slug == ownerRepo {
 				continue // skip self
 			}
-			bucket := classifyTopologyBucket(e.Kind, e.Name, e.Properties)
+			bucket := classifyTopologyBucket(e.Kind, e.Name, e.PropsSnapshot())
 			if bucket == "" {
 				continue
 			}

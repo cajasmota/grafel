@@ -87,21 +87,21 @@ func TestV2PathsList_EmptyGroup(t *testing.T) {
 // a single http_endpoint entity into one backend with one controller and one route.
 func TestV2PathsList_SingleEndpoint(t *testing.T) {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "e1",
 			Name:       "OrderViewSet.list",
 			Kind:       "http_endpoint",
 			SourceFile: "app/orders/views.py",
 			StartLine:  10,
-			Properties: map[string]string{
-				"path":           "/api/v1/orders",
-				"verb":           "GET",
-				"framework":      "django-rest",
-				"owning_backend": "api-backend",
-				"auth":           "true",
-				"auth_scheme":    "Bearer",
-			},
+		}.WithProperties(map[string]string{
+			"path":           "/api/v1/orders",
+			"verb":           "GET",
+			"framework":      "django-rest",
+			"owning_backend": "api-backend",
+			"auth":           "true",
+			"auth_scheme":    "Bearer",
 		},
+		),
 	}
 	grp := makePathsTestGroup(entities, nil)
 	ts := newPathsTestServer(t, grp)
@@ -167,16 +167,16 @@ func TestV2PathsList_SingleEndpoint(t *testing.T) {
 // TestV2PathsList_GrpcBackend verifies gRPC endpoints get service_type "gRPC".
 func TestV2PathsList_GrpcBackend(t *testing.T) {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:   "g1",
 			Name: "OrderService.GetOrder",
 			Kind: "http_endpoint",
-			Properties: map[string]string{
-				"path":           "/order.OrderService/GetOrder",
-				"verb":           "GRPC",
-				"owning_backend": "gateway-grpc",
-			},
+		}.WithProperties(map[string]string{
+			"path":           "/order.OrderService/GetOrder",
+			"verb":           "GRPC",
+			"owning_backend": "gateway-grpc",
 		},
+		),
 	}
 	grp := makePathsTestGroup(entities, nil)
 	ts := newPathsTestServer(t, grp)
@@ -245,21 +245,21 @@ func TestV2PathDetail_Found(t *testing.T) {
 	path := "/api/v1/orders/{id}"
 	hash := hashStr(path)
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "e2",
 			Name:       "OrderViewSet.retrieve",
 			Kind:       "http_endpoint",
 			SourceFile: "app/orders/views.py",
 			StartLine:  42,
-			Properties: map[string]string{
-				"path":           path,
-				"verb":           "GET",
-				"framework":      "django-rest",
-				"owning_backend": "api-backend",
-				"auth":           "true",
-				"auth_scheme":    "Bearer",
-			},
+		}.WithProperties(map[string]string{
+			"path":           path,
+			"verb":           "GET",
+			"framework":      "django-rest",
+			"owning_backend": "api-backend",
+			"auth":           "true",
+			"auth_scheme":    "Bearer",
 		},
+		),
 	}
 	grp := makePathsTestGroup(entities, nil)
 	ts := newPathsTestServer(t, grp)
@@ -444,12 +444,9 @@ func TestServiceTypeFromVerbs(t *testing.T) {
 // — the real multi-module grouping behaviour (#1551).
 func TestV2PathsList_GroupsByFile(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "a", Name: "list", Kind: "http_endpoint", SourceFile: "src/orders.controller.ts",
-			Properties: map[string]string{"path": "/orders", "verb": "GET", "owning_backend": "src"}},
-		{ID: "b", Name: "create", Kind: "http_endpoint", SourceFile: "src/orders.controller.ts",
-			Properties: map[string]string{"path": "/orders/new", "verb": "POST", "owning_backend": "src"}},
-		{ID: "c", Name: "checkout", Kind: "http_endpoint", SourceFile: "src/saga.controller.ts",
-			Properties: map[string]string{"path": "/checkout", "verb": "POST", "owning_backend": "src"}},
+		graph.Entity{ID: "a", Name: "list", Kind: "http_endpoint", SourceFile: "src/orders.controller.ts"}.WithProperties(map[string]string{"path": "/orders", "verb": "GET", "owning_backend": "src"}),
+		graph.Entity{ID: "b", Name: "create", Kind: "http_endpoint", SourceFile: "src/orders.controller.ts"}.WithProperties(map[string]string{"path": "/orders/new", "verb": "POST", "owning_backend": "src"}),
+		graph.Entity{ID: "c", Name: "checkout", Kind: "http_endpoint", SourceFile: "src/saga.controller.ts"}.WithProperties(map[string]string{"path": "/checkout", "verb": "POST", "owning_backend": "src"}),
 	}
 	grp := makePathsTestGroup(entities, nil)
 	ts := newPathsTestServer(t, grp)
@@ -502,15 +499,15 @@ func TestV2PathsList_GroupsByFile(t *testing.T) {
 // inspections endpoint showing under modules/dob-sync).
 func TestV2PathsList_RouteSourceFilePerEndpoint(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "a", Name: "getCounts", Kind: "http_endpoint",
+		graph.Entity{ID: "a", Name: "getCounts", Kind: "http_endpoint",
 			SourceFile: "src/modules/inspections/api/inspection.controller.ts",
-			Properties: map[string]string{"path": "/v1/inspections/get_counts", "verb": "GET", "owning_backend": "src"}},
-		{ID: "b", Name: "sync", Kind: "http_endpoint",
+		}.WithProperties(map[string]string{"path": "/v1/inspections/get_counts", "verb": "GET", "owning_backend": "src"}),
+		graph.Entity{ID: "b", Name: "sync", Kind: "http_endpoint",
 			SourceFile: "src/modules/dob-sync/api/dob-sync.controller.ts",
-			Properties: map[string]string{"path": "/v1/dob-sync/run", "verb": "POST", "owning_backend": "src"}},
-		{ID: "c", Name: "templates", Kind: "http_endpoint",
+		}.WithProperties(map[string]string{"path": "/v1/dob-sync/run", "verb": "POST", "owning_backend": "src"}),
+		graph.Entity{ID: "c", Name: "templates", Kind: "http_endpoint",
 			SourceFile: "src/modules/me-email-templates/api/me-email-templates.controller.ts",
-			Properties: map[string]string{"path": "/v1/me-email-templates", "verb": "GET", "owning_backend": "src"}},
+		}.WithProperties(map[string]string{"path": "/v1/me-email-templates", "verb": "GET", "owning_backend": "src"}),
 	}
 	grp := makePathsTestGroup(entities, nil)
 	ts := newPathsTestServer(t, grp)
@@ -589,15 +586,15 @@ func moduleSegmentFromFile(file string) string {
 // "v1 untouched" acceptance criterion.
 func TestV2PathsList_V1Untouched(t *testing.T) {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:   "e3",
 			Name: "MyHandler",
 			Kind: "http_endpoint",
-			Properties: map[string]string{
-				"path": "/api/v1/health",
-				"verb": "GET",
-			},
+		}.WithProperties(map[string]string{
+			"path": "/api/v1/health",
+			"verb": "GET",
 		},
+		),
 	}
 	grp := makePathsTestGroup(entities, nil)
 	ts := newPathsTestServer(t, grp)
@@ -631,20 +628,20 @@ func TestV2PathDetail_Issue1936_JavaParametersSurfaced(t *testing.T) {
 		`{"name":"body","in":"body","type":"ConfirmRequest","required":true,"annotations":["@Valid"]}` +
 		`]`
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "e-java-1",
 			Name:       "TransfersResource.confirm",
 			Kind:       "http_endpoint",
 			SourceFile: "src/main/java/TransfersResource.java",
 			StartLine:  17,
 			Language:   "java",
-			Properties: map[string]string{
-				"path":       path,
-				"verb":       "PUT",
-				"framework":  "jaxrs",
-				"parameters": paramsJSON,
-			},
+		}.WithProperties(map[string]string{
+			"path":       path,
+			"verb":       "PUT",
+			"framework":  "jaxrs",
+			"parameters": paramsJSON,
 		},
+		),
 	}
 	grp := makePathsTestGroup(entities, nil)
 	ts := newPathsTestServer(t, grp)
@@ -706,24 +703,24 @@ func TestV2PathDetail_Issue4606_QueryBodyDTOExpandable(t *testing.T) {
 		`{"name":"limit","in":"query","type":"number","required":false,"annotations":["@Query"]}` +
 		`]`
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID: "e-ep-1", Name: "InspectionsController.counts", Kind: "http_endpoint",
 			SourceFile: "src/inspections.controller.ts", StartLine: 10, Language: "typescript",
-			Properties: map[string]string{
-				"path": path, "verb": "POST", "framework": "nestjs", "parameters": paramsJSON,
-			},
+		}.WithProperties(map[string]string{
+			"path": path, "verb": "POST", "framework": "nestjs", "parameters": paramsJSON,
 		},
+		),
 		// Query DTO + one field child.
-		{ID: "e-qdto", Name: "InspectionCountsQuery", Kind: "SCOPE.Schema",
+		graph.Entity{ID: "e-qdto", Name: "InspectionCountsQuery", Kind: "SCOPE.Schema",
 			SourceFile: "src/dto/counts.query.ts", Language: "typescript",
-			Properties: map[string]string{"library": "class-validator"}},
+		}.WithProperties(map[string]string{"library": "class-validator"}),
 		{ID: "e-qdto-f", Name: "InspectionCountsQuery.buildingId", Kind: "SCOPE.Schema",
 			Subtype: "field", SourceFile: "src/dto/counts.query.ts", Language: "typescript",
 			Signature: "@IsUUID string buildingId"},
 		// Body DTO + one field child.
-		{ID: "e-bdto", Name: "CreateNoteBody", Kind: "SCOPE.Schema",
+		graph.Entity{ID: "e-bdto", Name: "CreateNoteBody", Kind: "SCOPE.Schema",
 			SourceFile: "src/dto/note.dto.ts", Language: "typescript",
-			Properties: map[string]string{"library": "class-validator"}},
+		}.WithProperties(map[string]string{"library": "class-validator"}),
 		{ID: "e-bdto-f", Name: "CreateNoteBody.title", Kind: "SCOPE.Schema",
 			Subtype: "field", SourceFile: "src/dto/note.dto.ts", Language: "typescript",
 			Signature: "@IsString string title"},

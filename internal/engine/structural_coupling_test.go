@@ -13,8 +13,7 @@ func mod(id, name string) graph.Entity {
 		Name:       name,
 		Kind:       "Module",
 		SourceFile: "",
-		Properties: map[string]string{"module": name, "synthetic": "true"},
-	}
+	}.WithProperties(map[string]string{"module": name, "synthetic": "true"})
 }
 
 // dep builds a Module→Module DEPENDS_ON edge for the fixture graph.
@@ -80,16 +79,16 @@ func TestApplyStructuralCoupling_FanOutFixture(t *testing.T) {
 	}
 	for _, tc := range cases {
 		e := byID[tc.id]
-		if e.Properties["coupling_computed"] != "true" {
-			t.Errorf("%s: coupling_computed = %q, want \"true\"", tc.id, e.Properties["coupling_computed"])
+		if e.PropGet("coupling_computed") != "true" {
+			t.Errorf("%s: coupling_computed = %q, want \"true\"", tc.id, e.PropGet("coupling_computed"))
 		}
-		if got := e.Properties["ca"]; got != tc.wantCa {
+		if got := e.PropGet("ca"); got != tc.wantCa {
 			t.Errorf("%s: ca = %q, want %q", tc.id, got, tc.wantCa)
 		}
-		if got := e.Properties["ce"]; got != tc.wantCe {
+		if got := e.PropGet("ce"); got != tc.wantCe {
 			t.Errorf("%s: ce = %q, want %q", tc.id, got, tc.wantCe)
 		}
-		if got := e.Properties["instability"]; got != tc.wantInstability {
+		if got := e.PropGet("instability"); got != tc.wantInstability {
 			t.Errorf("%s: instability = %q, want %q", tc.id, got, tc.wantInstability)
 		}
 	}
@@ -121,13 +120,13 @@ func TestApplyStructuralCoupling_BriefMinimalFixture(t *testing.T) {
 		byID[e.ID] = e
 	}
 
-	a := byID["A"].Properties
+	a := byID["A"].PropsSnapshot()
 	if a["ce"] != "2" || a["ca"] != "0" || a["instability"] != "1.00" {
 		t.Errorf("A: got ca=%s ce=%s instability=%s; want ca=0 ce=2 instability=1.00",
 			a["ca"], a["ce"], a["instability"])
 	}
 
-	b := byID["B"].Properties
+	b := byID["B"].PropsSnapshot()
 	if b["ca"] != "1" || b["ce"] != "0" || b["instability"] != "0.00" {
 		t.Errorf("B: got ca=%s ce=%s instability=%s; want ca=1 ce=0 instability=0.00",
 			b["ca"], b["ce"], b["instability"])
@@ -144,7 +143,7 @@ func TestApplyStructuralCoupling_IsolatedModuleConvention(t *testing.T) {
 
 	ApplyStructuralCoupling(doc)
 
-	p := doc.Entities[0].Properties
+	p := doc.Entities[0].PropsSnapshot()
 	if p["ca"] != "0" || p["ce"] != "0" || p["instability"] != "0.00" {
 		t.Errorf("isolated module: got ca=%s ce=%s instability=%s; want ca=0 ce=0 instability=0.00",
 			p["ca"], p["ce"], p["instability"])
@@ -170,7 +169,7 @@ func TestApplyStructuralCoupling_SkipsWithoutModules(t *testing.T) {
 	if !stats.Skipped {
 		t.Errorf("expected Skipped=true with no Module entities, got %+v", stats)
 	}
-	if _, ok := doc.Entities[0].Properties["coupling_computed"]; ok {
+	if _, ok := doc.Entities[0].PropLookup("coupling_computed"); ok {
 		t.Errorf("non-module entity must not be annotated")
 	}
 }

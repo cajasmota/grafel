@@ -125,7 +125,7 @@ func collectOrphanPublishers(grp *DashGroup) []OrphanPublisherRow {
 
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			bucket := classifyTopologyBucket(e.Kind, e.Name, e.Properties)
+			bucket := classifyTopologyBucket(e.Kind, e.Name, e.PropsSnapshot())
 
 			// Only inspect buckets that use broker/channel semantics.
 			switch bucket {
@@ -151,11 +151,11 @@ func collectOrphanPublishers(grp *DashGroup) []OrphanPublisherRow {
 				continue
 			}
 
-			broker := e.Properties["broker"]
+			broker := e.PropGet("broker")
 			if broker == "" {
 				broker = inferBrokerFromName(e.Name)
 			}
-			framework := e.Properties["framework"]
+			framework := e.PropGet("framework")
 
 			row := OrphanPublisherRow{
 				ID:        dashPrefixedID(r.Slug, e.ID),
@@ -241,7 +241,7 @@ func collectOrphanSubscribers(grp *DashGroup) []OrphanSubscriberRow {
 
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			bucket := classifyTopologyBucket(e.Kind, e.Name, e.Properties)
+			bucket := classifyTopologyBucket(e.Kind, e.Name, e.PropsSnapshot())
 
 			// Only inspect buckets that use broker/channel semantics.
 			switch bucket {
@@ -269,18 +269,18 @@ func collectOrphanSubscribers(grp *DashGroup) []OrphanSubscriberRow {
 				continue
 			}
 
-			broker := e.Properties["broker"]
+			broker := e.PropGet("broker")
 			if broker == "" {
 				broker = inferBrokerFromName(e.Name)
 			}
-			framework := e.Properties["framework"]
+			framework := e.PropGet("framework")
 
 			// Reason classification: if the entity properties hint that the
 			// publisher lives in an external library, surface that explicitly;
 			// otherwise default to no_publisher_found.
 			reason := reasonNoPublisherFound
-			if e.Properties["publisher_source"] == "external" ||
-				e.Properties["producer_source"] == "external" {
+			if e.PropGet("publisher_source") == "external" ||
+				e.PropGet("producer_source") == "external" {
 				reason = reasonPublisherOnlyInExternal
 			}
 

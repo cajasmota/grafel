@@ -339,12 +339,9 @@ func TestComputeCoverage_ByFile(t *testing.T) {
 func TestComputeCoverage_ByModule(t *testing.T) {
 	t.Parallel()
 	entities := []Entity{
-		{ID: "p1", Name: "A", Kind: "Function", SourceFile: "a.go",
-			Properties: map[string]string{"module": "auth"}},
-		{ID: "p2", Name: "B", Kind: "Function", SourceFile: "b.go",
-			Properties: map[string]string{"module": "auth"}},
-		{ID: "p3", Name: "C", Kind: "Function", SourceFile: "c.go",
-			Properties: map[string]string{"module": "payments"}},
+		Entity{ID: "p1", Name: "A", Kind: "Function", SourceFile: "a.go"}.WithProperties(map[string]string{"module": "auth"}),
+		Entity{ID: "p2", Name: "B", Kind: "Function", SourceFile: "b.go"}.WithProperties(map[string]string{"module": "auth"}),
+		Entity{ID: "p3", Name: "C", Kind: "Function", SourceFile: "c.go"}.WithProperties(map[string]string{"module": "payments"}),
 		{ID: "t1", Name: "TestA", Kind: "Function", SourceFile: "a_test.go"},
 	}
 	rels := []Relationship{
@@ -540,9 +537,9 @@ func TestComputeCoverage_TotalTestsCountsOnlyCallables(t *testing.T) {
 		// Test file — a SCOPE.Component (file node, must NOT count).
 		{ID: "t3", Name: "tests/test_orders.py", Kind: "SCOPE.Component", SourceFile: "tests/test_orders.py"},
 		// Test file — a SCOPE.Pattern wrapper emitted by testmap (must NOT count).
-		{ID: "t4", Name: "test_create_order -> create_order", Kind: "SCOPE.Pattern",
+		Entity{ID: "t4", Name: "test_create_order -> create_order", Kind: "SCOPE.Pattern",
 			SourceFile: "tests/test_orders.py",
-			Properties: map[string]string{"pattern_kind": "test_coverage"}},
+		}.WithProperties(map[string]string{"pattern_kind": "test_coverage"}),
 		// Production entity — SCOPE.Operation as emitted by Go/Python/JS extractors.
 		{ID: "p1", Name: "create_order", Kind: "SCOPE.Operation", SourceFile: "orders/service.py"},
 	}
@@ -691,9 +688,9 @@ func TestComputeCoverage_4534_DenominatorReadLayerShape(t *testing.T) {
 		// persisted-Property fallback fires). It lives in a test file and TESTS
 		// the service. Must be classified as a TEST entity (so it does not pad
 		// the production denominator) and credit the service.
-		{ID: "suite", Name: "pytest_suite:order", Kind: "SCOPE.Pattern",
+		Entity{ID: "suite", Name: "pytest_suite:order", Kind: "SCOPE.Pattern",
 			SourceFile: "src/orders/__tests__/order_service.spec.ts",
-			Properties: map[string]string{"pattern_type": "test_suite"}},
+		}.WithProperties(map[string]string{"pattern_type": "test_suite"}),
 	}
 	rels := []Relationship{
 		{ID: "t1", FromID: "suite", ToID: "svc", Kind: "TESTS"},

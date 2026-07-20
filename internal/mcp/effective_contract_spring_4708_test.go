@@ -60,19 +60,19 @@ func buildSpringContractServer(t *testing.T) *Server {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "ep:post:/users/{id}", Name: "http:POST:/users/{id}",
 				Kind: "http_endpoint_definition", Language: "java",
 				SourceFile: srcRel,
-				Properties: map[string]string{
-					"framework":         "spring-boot",
-					"verb":              "POST",
-					"path":              "/users/{id}",
-					"request_body_type": "CreateUserDto",
-					"path_params":       "id",
-					"auth_expression":   "hasRole('ADMIN')",
-				},
+			}.WithProperties(map[string]string{
+				"framework":         "spring-boot",
+				"verb":              "POST",
+				"path":              "/users/{id}",
+				"request_body_type": "CreateUserDto",
+				"path_params":       "id",
+				"auth_expression":   "hasRole('ADMIN')",
 			},
+			),
 			{
 				ID: "op:UserController.create", Name: "create",
 				QualifiedName: "UserController.create",
@@ -81,12 +81,9 @@ func buildSpringContractServer(t *testing.T) *Server {
 				StartLine: 6, EndLine: 14,
 			},
 			{ID: "dto:CreateUserDto", Name: "CreateUserDto", Kind: "SCOPE.Component", Subtype: "class", Language: "java", SourceFile: "src/main/java/com/app/dto/CreateUserDto.java"},
-			{ID: "f:email", Name: "CreateUserDto.email", Kind: "SCOPE.Schema", Subtype: "field", Language: "java",
-				Properties: map[string]string{"field_name": "email", "field_type": "String", "parent_class": "CreateUserDto", "required": "true"}},
-			{ID: "f:name", Name: "CreateUserDto.name", Kind: "SCOPE.Schema", Subtype: "field", Language: "java",
-				Properties: map[string]string{"field_name": "name", "field_type": "String", "parent_class": "CreateUserDto"}},
-			{ID: "f:age", Name: "CreateUserDto.age", Kind: "SCOPE.Schema", Subtype: "field", Language: "java",
-				Properties: map[string]string{"field_name": "age", "field_type": "Integer", "parent_class": "CreateUserDto", "optional": "true"}},
+			graph.Entity{ID: "f:email", Name: "CreateUserDto.email", Kind: "SCOPE.Schema", Subtype: "field", Language: "java"}.WithProperties(map[string]string{"field_name": "email", "field_type": "String", "parent_class": "CreateUserDto", "required": "true"}),
+			graph.Entity{ID: "f:name", Name: "CreateUserDto.name", Kind: "SCOPE.Schema", Subtype: "field", Language: "java"}.WithProperties(map[string]string{"field_name": "name", "field_type": "String", "parent_class": "CreateUserDto"}),
+			graph.Entity{ID: "f:age", Name: "CreateUserDto.age", Kind: "SCOPE.Schema", Subtype: "field", Language: "java"}.WithProperties(map[string]string{"field_name": "age", "field_type": "Integer", "parent_class": "CreateUserDto", "optional": "true"}),
 		},
 		Relationships: []graph.Relationship{
 			{FromID: "op:UserController.create", ToID: "ep:post:/users/{id}", Kind: "IMPLEMENTS"},

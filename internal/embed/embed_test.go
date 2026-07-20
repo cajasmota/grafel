@@ -87,7 +87,7 @@ func TestConfig_DisableEnvOverrides(t *testing.T) {
 }
 
 func TestEmbedTextAndHashStability(t *testing.T) {
-	e := &graph.Entity{Name: "Login", QualifiedName: "auth.Login", Properties: map[string]string{"docstring": "Verify bearer token and create session"}}
+	e := graph.EntityPtr(graph.Entity{Name: "Login", QualifiedName: "auth.Login"}.WithProperties(map[string]string{"docstring": "Verify bearer token and create session"}))
 	a := EmbedText(e, "func Login(token string) (*Session, error) { ... }")
 	b := EmbedText(e, "func Login(token string) (*Session, error) { ... }")
 	if a != b {

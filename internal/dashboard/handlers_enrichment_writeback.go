@@ -194,10 +194,10 @@ func (s *Server) handleEnrichmentWriteback(w http.ResponseWriter, r *http.Reques
 	enrichedAt := now.Format(time.RFC3339)
 
 	// ─── Target 1: update in-memory graph property ────────────────────────
-	if found.entity.Properties == nil {
-		found.entity.Properties = make(map[string]string)
+	if found.entity.PropLen() == 0 {
+		found.entity.PropsReplace(make(map[string]string))
 	}
-	found.entity.Properties["description"] = req.Description
+	found.entity.PropSet("description", req.Description)
 
 	// Persist the updated graph to disk — both graph.fb (canonical binary,
 	// preferred by LoadGraphFromDir / MCP) and graph.json (backward-compatible

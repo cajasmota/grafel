@@ -45,14 +45,13 @@ func TestTopicDetail_TwoProducersOneConsumer(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID:         "topic:orders",
 				Name:       "orders",
 				Kind:       "MessageTopic",
 				SourceFile: "kafka/topics.go",
 				StartLine:  10,
-				Properties: map[string]string{"broker": "kafka", "schema": "OrderCreated{id,amount}"},
-			},
+			}.WithProperties(map[string]string{"broker": "kafka", "schema": "OrderCreated{id,amount}"}),
 			{
 				ID:         "fn:api",
 				Name:       "ApiHandler",
@@ -177,17 +176,17 @@ func TestTopicDetail_CeleryScheduledJob(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "worker",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID:         "celery_beat:nightly",
 				Name:       "nightly_cleanup",
 				Kind:       "SCOPE.ScheduledJob",
 				SourceFile: "worker/beat.py",
 				StartLine:  5,
-				Properties: map[string]string{
-					"framework": "celery_beat",
-					"schedule":  "*/5 * * * *",
-				},
+			}.WithProperties(map[string]string{
+				"framework": "celery_beat",
+				"schedule":  "*/5 * * * *",
 			},
+			),
 		},
 	}
 	grp := &DashGroup{
@@ -312,12 +311,11 @@ func TestTopicDetail_LifecycleStates(t *testing.T) {
 			doc := &graph.Document{
 				Repo: "svc",
 				Entities: []graph.Entity{
-					{
-						ID:         "topic:t",
-						Name:       "test-topic",
-						Kind:       "MessageTopic",
-						Properties: map[string]string{"broker": "kafka"},
-					},
+					graph.Entity{
+						ID:   "topic:t",
+						Name: "test-topic",
+						Kind: "MessageTopic",
+					}.WithProperties(map[string]string{"broker": "kafka"}),
 				},
 				Relationships: tc.relationships,
 			}
@@ -356,13 +354,12 @@ func TestTopicDetail_CrossRepo(t *testing.T) {
 	docA := &graph.Document{
 		Repo: "svc-a",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID:         "topic:payments",
 				Name:       "payments",
 				Kind:       "MessageTopic",
 				SourceFile: "events/topics.go",
-				Properties: map[string]string{"broker": "kafka"},
-			},
+			}.WithProperties(map[string]string{"broker": "kafka"}),
 			{
 				ID:         "fn:publisher",
 				Name:       "PaymentPublisher",
@@ -429,12 +426,11 @@ func TestTopicDetail_ArrayFieldsNeverNull(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
-				ID:         "topic:empty",
-				Name:       "empty-topic",
-				Kind:       "MessageTopic",
-				Properties: map[string]string{"broker": "kafka"},
-			},
+			graph.Entity{
+				ID:   "topic:empty",
+				Name: "empty-topic",
+				Kind: "MessageTopic",
+			}.WithProperties(map[string]string{"broker": "kafka"}),
 		},
 	}
 	grp := &DashGroup{
@@ -604,12 +600,11 @@ func TestTopicDetail_NoFrontmatter(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
-				ID:         "topic:no-doc",
-				Name:       "no-doc-topic",
-				Kind:       "MessageTopic",
-				Properties: map[string]string{"broker": "kafka"},
-			},
+			graph.Entity{
+				ID:   "topic:no-doc",
+				Name: "no-doc-topic",
+				Kind: "MessageTopic",
+			}.WithProperties(map[string]string{"broker": "kafka"}),
 		},
 	}
 	grp := &DashGroup{

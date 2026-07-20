@@ -277,9 +277,9 @@ func buildPosturePayload(r *LoadedRepo, e *graph.Entity) posturePayload {
 		SourceFile: e.SourceFile,
 		StartLine:  e.StartLine,
 	}
-	if e.Properties != nil {
-		p.Method = e.Properties["verb"]
-		p.Path = e.Properties["path"]
+	if e.PropLen() > 0 {
+		p.Method = e.PropGet("verb")
+		p.Path = e.PropGet("path")
 	}
 
 	// --- error_flow: resolve THROWS / CATCHES edge targets to type names. ---
@@ -294,9 +294,9 @@ func buildPosturePayload(r *LoadedRepo, e *graph.Entity) posturePayload {
 	}
 
 	// --- property-derived facets. ---
-	p.RateLimit = collectProps(e.Properties, postureRateLimitKeys)
-	p.Deprecation = collectProps(e.Properties, postureDeprecationKeys)
-	p.Auth = collectProps(e.Properties, postureAuthKeys)
+	p.RateLimit = collectProps(e.PropsSnapshot(), postureRateLimitKeys)
+	p.Deprecation = collectProps(e.PropsSnapshot(), postureDeprecationKeys)
+	p.Auth = collectProps(e.PropsSnapshot(), postureAuthKeys)
 
 	p.HasPosture = p.ErrorFlow != nil ||
 		len(p.FeatureGate) > 0 ||

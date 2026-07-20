@@ -53,32 +53,32 @@ func inheritedEndpointDoc() *graph.Document {
 			// fallback for an inherited verb with no body in this file). If
 			// get_source returned THIS span it would emit the subclass file-top
 			// (imports), not the mixin body — that is the bug under test.
-			{
+			graph.Entity{
 				ID:         "ep_list",
 				Name:       "GET /api/v1/user-profile/",
 				Kind:       "http_endpoint",
 				SourceFile: "user_viewset.py", StartLine: 1, EndLine: 1,
 				Language: "python",
-				Properties: map[string]string{
-					"verb":            "GET",
-					"path":            "/api/v1/user-profile/",
-					"framework":       "django",
-					"pattern_type":    "drf_router_expanded",
-					"provenance":      "inherited",
-					"defining_class":  "rest_framework.mixins.ListModelMixin",
-					"drf_view_method": "UserProfileViewSet.list",
-				},
+			}.WithProperties(map[string]string{
+				"verb":            "GET",
+				"path":            "/api/v1/user-profile/",
+				"framework":       "django",
+				"pattern_type":    "drf_router_expanded",
+				"provenance":      "inherited",
+				"defining_class":  "rest_framework.mixins.ListModelMixin",
+				"drf_view_method": "UserProfileViewSet.list",
 			},
+			),
 			{ID: "ext_modelviewset", Name: "ModelViewSet", Kind: "SCOPE.External", Language: "python"},
 		},
 		Relationships: []graph.Relationship{
-			{
+			graph.Relationship{
 				ID: "e1", FromID: "vs", ToID: "ext_modelviewset", Kind: "EXTENDS",
-				Properties: map[string]string{
-					"language":  "python",
-					"base_name": "rest_framework.viewsets.ModelViewSet",
-				},
+			}.WithProperties(map[string]string{
+				"language":  "python",
+				"base_name": "rest_framework.viewsets.ModelViewSet",
 			},
+			),
 		},
 	}
 }
@@ -184,21 +184,20 @@ func inRepoInheritedEndpointDoc() *graph.Document {
 			{ID: "vs", Name: "ReportViewSet", QualifiedName: "ReportViewSet",
 				Kind: "SCOPE.Component", Subtype: "class", SourceFile: "views.py",
 				StartLine: 1, EndLine: 2, Language: "python"},
-			{ID: "ep_list", Name: "GET /reports/", Kind: "http_endpoint",
+			graph.Entity{ID: "ep_list", Name: "GET /reports/", Kind: "http_endpoint",
 				SourceFile: "views.py", StartLine: 1, EndLine: 1, Language: "python",
-				Properties: map[string]string{
-					"verb":            "GET",
-					"path":            "/reports/",
-					"framework":       "django",
-					"pattern_type":    "drf_router_expanded",
-					"provenance":      "inherited",
-					"defining_class":  "BaseListViewSet",
-					"drf_view_method": "ReportViewSet.list",
-				}},
+			}.WithProperties(map[string]string{
+				"verb":            "GET",
+				"path":            "/reports/",
+				"framework":       "django",
+				"pattern_type":    "drf_router_expanded",
+				"provenance":      "inherited",
+				"defining_class":  "BaseListViewSet",
+				"drf_view_method": "ReportViewSet.list",
+			}),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "e1", FromID: "vs", ToID: "base", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "BaseListViewSet"}},
+			graph.Relationship{ID: "e1", FromID: "vs", ToID: "base", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "BaseListViewSet"}),
 		},
 	}
 }
@@ -253,17 +252,17 @@ func explicitEndpointDoc(t *testing.T, dir string) *graph.Document {
 				Kind: "SCOPE.Component", Subtype: "class", SourceFile: "audit.py",
 				StartLine: 1, EndLine: 3, Language: "python"},
 			// Explicit endpoint: real body at lines 2-3, provenance=explicit.
-			{ID: "ep_list", Name: "GET /audit/", Kind: "http_endpoint",
+			graph.Entity{ID: "ep_list", Name: "GET /audit/", Kind: "http_endpoint",
 				SourceFile: "audit.py", StartLine: 2, EndLine: 3, Language: "python",
-				Properties: map[string]string{
-					"verb":            "GET",
-					"path":            "/audit/",
-					"framework":       "django",
-					"pattern_type":    "drf_router_expanded",
-					"provenance":      "explicit",
-					"defining_class":  "AuditViewSet",
-					"drf_view_method": "AuditViewSet.list",
-				}},
+			}.WithProperties(map[string]string{
+				"verb":            "GET",
+				"path":            "/audit/",
+				"framework":       "django",
+				"pattern_type":    "drf_router_expanded",
+				"provenance":      "explicit",
+				"defining_class":  "AuditViewSet",
+				"drf_view_method": "AuditViewSet.list",
+			}),
 		},
 	}
 }

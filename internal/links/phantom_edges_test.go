@@ -55,16 +55,16 @@ func TestPromoteToPhantomEdges_BasicHTTP(t *testing.T) {
 	if rel.ToID != "handler1" {
 		t.Errorf("ToID = %q, want handler1", rel.ToID)
 	}
-	if rel.Properties["cross_repo"] != "true" {
-		t.Errorf("cross_repo = %q, want true", rel.Properties["cross_repo"])
+	if rel.PropGet("cross_repo") != "true" {
+		t.Errorf("cross_repo = %q, want true", rel.PropGet("cross_repo"))
 	}
-	if rel.Properties["target_repo"] != "fixture-a" {
-		t.Errorf("target_repo = %q, want fixture-a", rel.Properties["target_repo"])
+	if rel.PropGet("target_repo") != "fixture-a" {
+		t.Errorf("target_repo = %q, want fixture-a", rel.PropGet("target_repo"))
 	}
-	if rel.Properties["link_method"] != MethodHTTP {
-		t.Errorf("link_method = %q, want %s", rel.Properties["link_method"], MethodHTTP)
+	if rel.PropGet("link_method") != MethodHTTP {
+		t.Errorf("link_method = %q, want %s", rel.PropGet("link_method"), MethodHTTP)
 	}
-	if rel.Properties["via"] == "" {
+	if rel.PropGet("via") == "" {
 		t.Errorf("via property is empty")
 	}
 }
@@ -89,7 +89,7 @@ func TestPromoteToPhantomEdges_KafkaAndWS(t *testing.T) {
 	}
 	methods := make(map[string]bool)
 	for _, r := range docSrc.Relationships {
-		methods[r.Properties["link_method"]] = true
+		methods[r.PropGet("link_method")] = true
 	}
 	if !methods["kafka_topic"] {
 		t.Errorf("expected kafka_topic phantom edge, got %v", methods)

@@ -15,12 +15,12 @@ func depEntity(name, pm string) graph.Entity {
 		Kind:       "SCOPE.Component",
 		Subtype:    "external_dependency",
 		SourceFile: "package.json",
-		Properties: map[string]string{
-			"package_manager":     pm,
-			"external_dependency": "true",
-			"dependency_kind":     "runtime",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"package_manager":     pm,
+		"external_dependency": "true",
+		"dependency_kind":     "runtime",
+	},
+	)
 }
 
 // importEdge mimics the cross/imports DEPENDS_ON(kind=import) edge.
@@ -30,10 +30,10 @@ func importEdge(fromFile, pkg string) graph.Relationship {
 		FromID: fromFile,
 		ToID:   "scope:component:import:external:" + pkg,
 		Kind:   "DEPENDS_ON",
-		Properties: map[string]string{
-			"kind": "import",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"kind": "import",
+	},
+	)
 }
 
 // dependsOnEdge mimics the manifest DEPENDS_ON(kind=external_dependency) edge
@@ -45,11 +45,11 @@ func dependsOnEdge(pm, name string) graph.Relationship {
 		FromID: "scope:component:project:package.json",
 		ToID:   ref,
 		Kind:   "DEPENDS_ON",
-		Properties: map[string]string{
-			"kind":            "external_dependency",
-			"package_manager": pm,
-		},
-	}
+	}.WithProperties(map[string]string{
+		"kind":            "external_dependency",
+		"package_manager": pm,
+	},
+	)
 }
 
 // TestApplyDependencyHygiene_UsedUnusedPhantom is the core value-asserting
@@ -103,7 +103,7 @@ func TestApplyDependencyHygiene_UsedUnusedPhantom(t *testing.T) {
 	got := map[string]string{}
 	for _, e := range doc.Entities {
 		if e.Subtype == "external_dependency" {
-			got[e.Name] = e.Properties[usageStatusProp]
+			got[e.Name] = e.PropGet(usageStatusProp)
 		}
 	}
 	if got["express"] != "used" {
@@ -123,9 +123,9 @@ func TestApplyDependencyHygiene_UsedUnusedPhantom(t *testing.T) {
 	// --- edge props mirror the entity status -----------------------------
 	edgeStatus := map[string]string{}
 	for _, r := range doc.Relationships {
-		if r.Kind == "DEPENDS_ON" && r.Properties["kind"] == "external_dependency" {
+		if r.Kind == "DEPENDS_ON" && r.PropGet("kind") == "external_dependency" {
 			name := depNameFromExternalRef(r.ToID)
-			edgeStatus[name] = r.Properties[usageStatusProp]
+			edgeStatus[name] = r.PropGet(usageStatusProp)
 		}
 	}
 	if edgeStatus["express"] != "used" {
@@ -152,7 +152,7 @@ func TestApplyDependencyHygiene_GoModulePrefix(t *testing.T) {
 
 	ApplyDependencyHygiene(doc)
 
-	if got := doc.Entities[0].Properties[usageStatusProp]; got != "used" {
+	if got := doc.Entities[0].PropGet(usageStatusProp); got != "used" {
 		t.Errorf("gin usage_status=%q want \"used\" (prefix match)", got)
 	}
 }

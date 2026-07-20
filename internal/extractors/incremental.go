@@ -745,10 +745,10 @@ func stampModuleOnEntities(ents []graph.Entity, doc *graph.Document, absRepo str
 		single, multiple := "", false
 		for k := range doc.Entities {
 			e := &doc.Entities[k]
-			if e.Kind == module.KindModule || e.SourceFile == "" || e.Properties == nil {
+			if e.Kind == module.KindModule || e.SourceFile == "" || e.PropLen() == 0 {
 				continue
 			}
-			m, ok := e.Properties["module"]
+			m, ok := e.PropLookup("module")
 			if !ok || m == "" || m == "_external" {
 				continue
 			}
@@ -773,8 +773,8 @@ func stampModuleOnEntities(ents []graph.Entity, doc *graph.Document, absRepo str
 
 	for i := range ents {
 		e := &ents[i]
-		if e.Properties != nil {
-			if v, ok := e.Properties["module"]; ok && v != "" {
+		if e.PropLen() > 0 {
+			if v, ok := e.PropLookup("module"); ok && v != "" {
 				continue // extractor-supplied label preserved
 			}
 		}
@@ -787,10 +787,10 @@ func stampModuleOnEntities(ents []graph.Entity, doc *graph.Document, absRepo str
 		default:
 			label = module.Derive(e.SourceFile, markers)
 		}
-		if e.Properties == nil {
-			e.Properties = map[string]string{}
+		if e.PropLen() == 0 {
+			e.PropsReplace(map[string]string{})
 		}
-		e.Properties["module"] = label
+		e.PropSet("module", label)
 	}
 }
 
@@ -850,11 +850,11 @@ func affectedModuleSet(doc *graph.Document, removedModuleKeys map[module.ModuleK
 func entityModuleKey(e *graph.Entity, docRepo string) module.ModuleKey {
 	mod := "_external"
 	repo := docRepo
-	if e.Properties != nil {
-		if v, ok := e.Properties["module"]; ok && v != "" {
+	if e.PropLen() > 0 {
+		if v, ok := e.PropLookup("module"); ok && v != "" {
 			mod = v
 		}
-		if v, ok := e.Properties["repo"]; ok && v != "" {
+		if v, ok := e.PropLookup("repo"); ok && v != "" {
 			repo = v
 		}
 	}
@@ -926,9 +926,9 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 		Language:      r.Language,
 		Signature:     r.Signature,
 		Tags:          r.Tags,
-		Properties:    r.Properties,
-		Confidence:    r.Confidence, // Phase 1C (#2769) — propagates extractor stamp.
-	}
+
+		Confidence: r.Confidence, // Phase 1C (#2769) — propagates extractor stamp.
+	}.WithProperties(r.Properties)
 }
 
 // relRecordToGraphRel converts an embedded types.RelationshipRecord to a
@@ -936,13 +936,13 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 func relRecordToGraphRel(r types.RelationshipRecord) graph.Relationship {
 	id := graph.RelationshipID(r.FromID, r.ToID, r.Kind)
 	return graph.Relationship{
-		ID:         id,
-		FromID:     r.FromID,
-		ToID:       r.ToID,
-		Kind:       r.Kind,
-		Properties: r.Properties,
+		ID:     id,
+		FromID: r.FromID,
+		ToID:   r.ToID,
+		Kind:   r.Kind,
+
 		Confidence: r.Confidence, // Phase 1C (#2769).
-	}
+	}.WithProperties(r.Properties)
 }
 
 // sortGraphDocumentForEmission sorts entities and relationships in the same
@@ -1002,15 +1002,14 @@ func entityPropertiesHash(e graph.Entity) string {
 	h.Write([]byte(e.Subtype))
 	h.Write([]byte{0})
 	// Sort property keys for stable hashing.
-	keys := make([]string, 0, len(e.Properties))
-	for k := range e.Properties {
-		keys = append(keys, k)
-	}
+	keys := make([]string, 0, e.PropLen())
+	e.
+		PropRange(func(k, v string) bool { keys = append(keys, k); return true })
 	sort.Strings(keys)
 	for _, k := range keys {
 		h.Write([]byte(k))
 		h.Write([]byte("="))
-		h.Write([]byte(e.Properties[k]))
+		h.Write([]byte(e.PropGet(k)))
 		h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]

@@ -104,10 +104,10 @@ func ApplyDependencyHygiene(doc *graph.Document) DependencyHygieneStats {
 		if e.Kind != "SCOPE.Component" || e.Subtype != "external_dependency" {
 			continue
 		}
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
-		pm := e.Properties["package_manager"]
+		pm := e.PropGet("package_manager")
 		if pm == "" {
 			continue
 		}
@@ -115,7 +115,7 @@ func ApplyDependencyHygiene(doc *graph.Document) DependencyHygieneStats {
 		if !ok {
 			continue
 		}
-		e.Properties[usageStatusProp] = string(status)
+		e.PropSet(usageStatusProp, string(status))
 		stats.EntitiesAnnotated++
 	}
 
@@ -128,10 +128,10 @@ func ApplyDependencyHygiene(doc *graph.Document) DependencyHygieneStats {
 		if r.Kind != "DEPENDS_ON" {
 			continue
 		}
-		if r.Properties == nil || r.Properties["kind"] != "external_dependency" {
+		if r.PropLen() == 0 || r.PropGet("kind") != "external_dependency" {
 			continue
 		}
-		pm := r.Properties["package_manager"]
+		pm := r.PropGet("package_manager")
 		name := depNameFromExternalRef(r.ToID)
 		if pm == "" || name == "" {
 			continue
@@ -140,7 +140,7 @@ func ApplyDependencyHygiene(doc *graph.Document) DependencyHygieneStats {
 		if !ok {
 			continue
 		}
-		r.Properties[usageStatusProp] = string(status)
+		r.PropSet(usageStatusProp, string(status))
 		stats.EdgesAnnotated++
 	}
 

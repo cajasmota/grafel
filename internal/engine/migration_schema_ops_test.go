@@ -21,7 +21,7 @@ func tableNodeFor(t *testing.T, doc *graph.Document, repo, norm string) string {
 			if doc.Entities[i].Kind != string(types.EntityKindTable) {
 				t.Fatalf("node %s has kind %q, want SCOPE.Table", want, doc.Entities[i].Kind)
 			}
-			if got := doc.Entities[i].Properties["table"]; got != norm {
+			if got := doc.Entities[i].PropGet("table"); got != norm {
 				t.Fatalf("SCOPE.Table.table=%q, want %q", got, norm)
 			}
 			return want
@@ -43,14 +43,14 @@ func assertModifies(t *testing.T, doc *graph.Document, fromID, repo, norm, op, c
 		if r.FromID != fromID || r.ToID != tableID {
 			continue
 		}
-		if r.Properties["op"] != op {
+		if r.PropGet("op") != op {
 			continue // same from/to, different op — keep looking
 		}
-		if r.Properties["table"] != norm {
-			t.Fatalf("MODIFIES_TABLE table=%q, want %q", r.Properties["table"], norm)
+		if r.PropGet("table") != norm {
+			t.Fatalf("MODIFIES_TABLE table=%q, want %q", r.PropGet("table"), norm)
 		}
-		if col != "" && r.Properties["column"] != col {
-			t.Fatalf("MODIFIES_TABLE op=%s column=%q, want %q", op, r.Properties["column"], col)
+		if col != "" && r.PropGet("column") != col {
+			t.Fatalf("MODIFIES_TABLE op=%s column=%q, want %q", op, r.PropGet("column"), col)
 		}
 		return
 	}
@@ -62,16 +62,16 @@ func assertModifies(t *testing.T, doc *graph.Document, fromID, repo, norm, op, c
 func TestAlembicCreateTableAndAddColumn(t *testing.T) {
 	createTbl := graph.Entity{
 		ID: "a1", Name: "orders", Kind: string(types.EntityKindSchema),
-		Properties: map[string]string{
-			"framework": "alembic", "pattern_type": "table", "table_name": "orders",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "alembic", "pattern_type": "table", "table_name": "orders",
+	},
+	)
 	addCol := graph.Entity{
 		ID: "a2", Name: "orders.total", Kind: string(types.EntityKindSchema),
-		Properties: map[string]string{
-			"framework": "alembic", "pattern_type": "column", "parent_table": "orders",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "alembic", "pattern_type": "column", "parent_table": "orders",
+	},
+	)
 	doc := docOf("svc", createTbl, addCol)
 
 	st := ApplyMigrationSchemaOps(doc)
@@ -100,12 +100,12 @@ func TestAlembicCreateTableAndAddColumn(t *testing.T) {
 func TestDjangoCreateModelAndAddField(t *testing.T) {
 	mig := graph.Entity{
 		ID: "d1", Name: "0001_initial", Kind: "Migration", Subtype: "django",
-		Properties: map[string]string{
-			"operations": `[{"type":"CreateModel","model":"order"},` +
-				`{"type":"AddField","model":"order","field":"total"},` +
-				`{"type":"RemoveField","model":"order","field":"legacy"}]`,
-		},
-	}
+	}.WithProperties(map[string]string{
+		"operations": `[{"type":"CreateModel","model":"order"},` +
+			`{"type":"AddField","model":"order","field":"total"},` +
+			`{"type":"RemoveField","model":"order","field":"legacy"}]`,
+	},
+	)
 	doc := docOf("svc", mig)
 	st := ApplyMigrationSchemaOps(doc)
 	if st.Skipped {
@@ -122,11 +122,11 @@ func TestRailsAddColumn(t *testing.T) {
 	op := graph.Entity{
 		ID: "r1", Name: "add_column:orders.total", Kind: string(types.EntityKindEvolution),
 		Subtype: "add_column",
-		Properties: map[string]string{
-			"framework": "activerecord", "ddl_operation": "add_column",
-			"table_name": "orders", "column_name": "total",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "activerecord", "ddl_operation": "add_column",
+		"table_name": "orders", "column_name": "total",
+	},
+	)
 	doc := docOf("svc", op)
 	st := ApplyMigrationSchemaOps(doc)
 	if st.Skipped {
@@ -141,10 +141,10 @@ func TestKnexCreateTable(t *testing.T) {
 	op := graph.Entity{
 		ID: "k1", Name: "create_table:users", Kind: string(types.EntityKindEvolution),
 		Subtype: "create_table",
-		Properties: map[string]string{
-			"framework": "knex", "migration_op": "createTable", "table": "users",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "knex", "migration_op": "createTable", "table": "users",
+	},
+	)
 	doc := docOf("svc", op)
 	st := ApplyMigrationSchemaOps(doc)
 	if st.Skipped {
@@ -157,11 +157,11 @@ func TestTypeORMAddColumn(t *testing.T) {
 	op := graph.Entity{
 		ID: "t1", Name: "add_column:users", Kind: string(types.EntityKindEvolution),
 		Subtype: "add_column",
-		Properties: map[string]string{
-			"framework": "typeorm", "migration_op": "addColumn",
-			"table": "users", "column": "email",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "typeorm", "migration_op": "addColumn",
+		"table": "users", "column": "email",
+	},
+	)
 	doc := docOf("svc", op)
 	ApplyMigrationSchemaOps(doc)
 	assertModifies(t, doc, "t1", "svc", "users", "add_column", "email")
@@ -174,24 +174,24 @@ func TestKyselyMigrationSchemaOps(t *testing.T) {
 	create := graph.Entity{
 		ID: "ky1", Name: "create_table:account", Kind: string(types.EntityKindEvolution),
 		Subtype: "create_table",
-		Properties: map[string]string{
-			"framework": "kysely", "migration_op": "createTable", "table": "account",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "kysely", "migration_op": "createTable", "table": "account",
+	},
+	)
 	alter := graph.Entity{
 		ID: "ky2", Name: "alter_table:account", Kind: string(types.EntityKindEvolution),
 		Subtype: "alter_table",
-		Properties: map[string]string{
-			"framework": "kysely", "migration_op": "alterTable", "table": "account",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "kysely", "migration_op": "alterTable", "table": "account",
+	},
+	)
 	drop := graph.Entity{
 		ID: "ky3", Name: "drop_table:entry", Kind: string(types.EntityKindEvolution),
 		Subtype: "drop_table",
-		Properties: map[string]string{
-			"framework": "kysely", "migration_op": "dropTable", "table": "entry",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "kysely", "migration_op": "dropTable", "table": "entry",
+	},
+	)
 	doc := docOf("svc", create, alter, drop)
 	st := ApplyMigrationSchemaOps(doc)
 	if st.Skipped {
@@ -209,18 +209,18 @@ func TestAllographerAlterDropMigration(t *testing.T) {
 	add := graph.Entity{
 		ID: "a1", Name: "add_column:users.bio", Kind: string(types.EntityKindEvolution),
 		Subtype: "add_column",
-		Properties: map[string]string{
-			"framework": "allographer", "migration_op": "add_column",
-			"table": "users", "column": "bio",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "allographer", "migration_op": "add_column",
+		"table": "users", "column": "bio",
+	},
+	)
 	drop := graph.Entity{
 		ID: "a2", Name: "drop_table:posts", Kind: string(types.EntityKindEvolution),
 		Subtype: "drop_table",
-		Properties: map[string]string{
-			"framework": "allographer", "migration_op": "drop_table", "table": "posts",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "allographer", "migration_op": "drop_table", "table": "posts",
+	},
+	)
 	doc := docOf("svc", add, drop)
 	st := ApplyMigrationSchemaOps(doc)
 	if st.Skipped {
@@ -237,17 +237,17 @@ func TestNormCreateDropMigration(t *testing.T) {
 	create := graph.Entity{
 		ID: "n1", Name: "create_table:User", Kind: string(types.EntityKindEvolution),
 		Subtype: "create_table",
-		Properties: map[string]string{
-			"framework": "norm", "migration_op": "create_table", "table": "User",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "norm", "migration_op": "create_table", "table": "User",
+	},
+	)
 	alter := graph.Entity{
 		ID: "n2", Name: "alter_table:user", Kind: string(types.EntityKindEvolution),
 		Subtype: "alter_table",
-		Properties: map[string]string{
-			"framework": "norm", "migration_op": "alter_table", "table": "user",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "norm", "migration_op": "alter_table", "table": "user",
+	},
+	)
 	doc := docOf("svc", create, alter)
 	st := ApplyMigrationSchemaOps(doc)
 	if st.Skipped {
@@ -263,10 +263,10 @@ func TestFlywaySQLCreateTable(t *testing.T) {
 	tbl := graph.Entity{
 		ID: "f1", Name: "accounts", Kind: string(types.EntityKindDatastore),
 		Subtype: "table",
-		Properties: map[string]string{
-			"migration_file": "V1__init.sql", "migration_order": "1",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"migration_file": "V1__init.sql", "migration_order": "1",
+	},
+	)
 	doc := docOf("svc", tbl)
 	ApplyMigrationSchemaOps(doc)
 	assertModifies(t, doc, "f1", "svc", "accounts", "create_table", "")
@@ -279,16 +279,15 @@ func TestConvergenceMigrationAndQuerySameTableNode(t *testing.T) {
 	mig := graph.Entity{
 		ID: "m1", Name: "add_column:orders.total", Kind: string(types.EntityKindEvolution),
 		Subtype: "add_column",
-		Properties: map[string]string{
-			"framework": "activerecord", "ddl_operation": "add_column",
-			"table_name": "orders", "column_name": "total",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "activerecord", "ddl_operation": "add_column",
+		"table_name": "orders", "column_name": "total",
+	},
+	)
 	// ... and a query SELECT on the SAME table (a SCOPE.DataAccess node).
 	query := graph.Entity{
 		ID: "q1", Name: "SELECT orders", Kind: "SCOPE.DataAccess",
-		Properties: map[string]string{"table": "orders", "operation": "SELECT"},
-	}
+	}.WithProperties(map[string]string{"table": "orders", "operation": "SELECT"})
 	doc := docOf("svc", mig, query)
 	st := ApplyMigrationSchemaOps(doc)
 	if st.Skipped {
@@ -322,11 +321,11 @@ func TestDynamicTableSkipped(t *testing.T) {
 	op := graph.Entity{
 		ID: "n1", Name: "add_column", Kind: string(types.EntityKindEvolution),
 		Subtype: "add_column",
-		Properties: map[string]string{
-			"framework": "activerecord", "ddl_operation": "add_column",
-			"table_name": "UNKNOWN", "column_name": "x",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "activerecord", "ddl_operation": "add_column",
+		"table_name": "UNKNOWN", "column_name": "x",
+	},
+	)
 	doc := docOf("svc", op)
 	st := ApplyMigrationSchemaOps(doc)
 	if !st.Skipped {
@@ -344,14 +343,13 @@ func TestNonMigrationCreateTableLookalikeIgnored(t *testing.T) {
 	// CREATE TABLE) must NOT be treated as a migration op.
 	tbl := graph.Entity{
 		ID: "x1", Name: "users", Kind: string(types.EntityKindDatastore),
-		Subtype:    "table",
-		Properties: map[string]string{}, // no migration_file
-	}
+		Subtype: "table",
+		// no migration_file
+	}.WithProperties(map[string]string{})
 	// And a SCOPE.Schema column NOT from alembic.
 	col := graph.Entity{
 		ID: "x2", Name: "users.id", Kind: string(types.EntityKindSchema),
-		Properties: map[string]string{"framework": "sqlalchemy", "pattern_type": "column"},
-	}
+	}.WithProperties(map[string]string{"framework": "sqlalchemy", "pattern_type": "column"})
 	doc := docOf("svc", tbl, col)
 	st := ApplyMigrationSchemaOps(doc)
 	if !st.Skipped {
@@ -365,10 +363,10 @@ func TestIdempotentReRun(t *testing.T) {
 	op := graph.Entity{
 		ID: "i1", Name: "create_table:users", Kind: string(types.EntityKindEvolution),
 		Subtype: "create_table",
-		Properties: map[string]string{
-			"framework": "knex", "migration_op": "createTable", "table": "users",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"framework": "knex", "migration_op": "createTable", "table": "users",
+	},
+	)
 	doc := docOf("svc", op)
 	ApplyMigrationSchemaOps(doc)
 	ents1, rels1 := len(doc.Entities), len(doc.Relationships)

@@ -85,10 +85,10 @@ func computeCoverageFreshness(lg *LoadedGroup) coverageFreshness {
 		}
 		for i := range lr.Doc.Entities {
 			e := &lr.Doc.Entities[i]
-			if len(e.Properties) == 0 {
+			if e.PropLen() == 0 {
 				continue
 			}
-			src := e.Properties[coverage.PropCoverageSource]
+			src := e.PropGet(coverage.PropCoverageSource)
 			if src == "" {
 				continue
 			}
@@ -99,7 +99,7 @@ func computeCoverageFreshness(lg *LoadedGroup) coverageFreshness {
 			}
 			// RFC3339 timestamps sort lexicographically, so a string compare
 			// picks the most recent measurement without parsing.
-			if at := e.Properties[coverage.PropCoverageMeasAt]; at > f.measuredAt {
+			if at := e.PropGet(coverage.PropCoverageMeasAt); at > f.measuredAt {
 				f.measuredAt = at
 			}
 		}

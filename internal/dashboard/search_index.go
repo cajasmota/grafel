@@ -126,7 +126,7 @@ func buildSearchIndex(g *DashGroup) *SearchIndex {
 				strings.EqualFold(bareKind, httpEndpointKind) ||
 				e.Kind == "Endpoint" || e.Kind == "Route" {
 
-				path := e.Properties["path"]
+				path := e.PropGet("path")
 				if path == "" {
 					path = e.Name
 				}
@@ -135,7 +135,7 @@ func buildSearchIndex(g *DashGroup) *SearchIndex {
 					repoSlug:  r.Slug,
 					pathLow:   strings.ToLower(path),
 					path:      path,
-					verb:      e.Properties["verb"],
+					verb:      e.PropGet("verb"),
 					prefixID:  dashPrefixedID(r.Slug, e.ID),
 				})
 			}

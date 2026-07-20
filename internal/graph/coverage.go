@@ -525,7 +525,7 @@ func isTestEntity(e *Entity) bool {
 	// Subtype/Kind checks are kept as compatible fallbacks (#4534). All three
 	// are read-layer-persisted, but pattern_type is the signal extractors set
 	// most consistently.
-	if e.Properties != nil && e.Properties["pattern_type"] == "test_suite" {
+	if e.PropLen() > 0 && e.PropGet("pattern_type") == "test_suite" {
 		return true
 	}
 	return e.Subtype == "test_suite" || e.Kind == "test_suite"
@@ -1193,8 +1193,8 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 		}
 		e := entByID[id]
 		mod := ""
-		if e.Properties != nil {
-			mod = e.Properties["module"]
+		if e.PropLen() > 0 {
+			mod = e.PropGet("module")
 		}
 		// State + severity: a contract-covered-only entity is shape-asserted
 		// offline, so it is NOT dangerously untested — downgrade a "high"
@@ -1308,8 +1308,8 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 			continue
 		}
 		mod := ""
-		if e.Properties != nil {
-			mod = e.Properties["module"]
+		if e.PropLen() > 0 {
+			mod = e.PropGet("module")
 		}
 		if mod == "" {
 			continue // skip entities without a module tag

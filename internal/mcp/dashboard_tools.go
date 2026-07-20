@@ -460,7 +460,7 @@ func (s *Server) handleFlowDeadEnds(_ context.Context, req mcpapi.CallToolReques
 				continue
 			}
 			// Check if terminal_id exists and has outbound CALLS.
-			termID := e.Properties["terminal_id"]
+			termID := e.PropGet("terminal_id")
 			if termID == "" {
 				continue
 			}
@@ -471,7 +471,7 @@ func (s *Server) handleFlowDeadEnds(_ context.Context, req mcpapi.CallToolReques
 					termName = termEnt.Name
 				}
 				// Only flag if terminal is not explicitly marked as an end node.
-				if termEnt == nil || termEnt.Properties["is_terminal"] != "true" {
+				if termEnt == nil || termEnt.PropGet("is_terminal") != "true" {
 					out = append(out, item{
 						ProcessID:   prefixedID(r.Repo, e.ID),
 						ProcessName: e.Name,
@@ -514,11 +514,11 @@ func (s *Server) handleFlowTruncated(_ context.Context, req mcpapi.CallToolReque
 			if e.Kind != processEntityKind {
 				continue
 			}
-			truncated := e.Properties["truncated"]
-			reason := e.Properties["truncated_reason"]
+			truncated := e.PropGet("truncated")
+			reason := e.PropGet("truncated_reason")
 			if truncated == "true" || reason != "" {
 				sc := 0
-				if scStr := e.Properties["step_count"]; scStr != "" {
+				if scStr := e.PropGet("step_count"); scStr != "" {
 					for _, b := range scStr {
 						if b >= '0' && b <= '9' {
 							sc = sc*10 + int(b-'0')
@@ -611,7 +611,7 @@ func (s *Server) handleFlowDetail(_ context.Context, req mcpapi.CallToolRequest)
 			"process_id":   prefixedID(r.Repo, procEnt.ID),
 			"process_name": procEnt.Name,
 			"repo":         r.Repo,
-			"cross_stack":  procEnt.Properties["cross_stack"] == "true",
+			"cross_stack":  procEnt.PropGet("cross_stack") == "true",
 			"steps":        steps,
 			"side_effects": sideEffects,
 			"found":        true,
@@ -707,15 +707,15 @@ func (s *Server) handlePatternsListGraph(_ context.Context, req mcpapi.CallToolR
 			if e.Kind != "SCOPE.Pattern" && e.Kind != "Pattern" {
 				continue
 			}
-			status := e.Properties["status"]
+			status := e.PropGet("status")
 			if statusFilter != "" && !strings.EqualFold(status, statusFilter) {
 				continue
 			}
-			if needsAttention && e.Properties["needs_attention"] != "true" {
+			if needsAttention && e.PropGet("needs_attention") != "true" {
 				continue
 			}
 			conf := 0.0
-			if cs := e.Properties["confidence"]; cs != "" {
+			if cs := e.PropGet("confidence"); cs != "" {
 				for _, ch := range cs {
 					if (ch >= '0' && ch <= '9') || ch == '.' {
 						conf = parseSimpleFloat(cs)
@@ -810,7 +810,7 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 			"name":        e.Name,
 			"repo":        r.Repo,
 			"source_file": e.SourceFile,
-			"properties":  e.Properties,
+			"properties":  e.PropsSnapshot(),
 			"tags":        e.Tags,
 			"exemplars":   exemplars,
 			"found":       true,

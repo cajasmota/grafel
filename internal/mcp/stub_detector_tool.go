@@ -161,11 +161,11 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 			if !isDefinitionKind(e.Kind) {
 				continue
 			}
-			if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
+			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
 				continue
 			}
-			method := strings.ToUpper(strings.TrimSpace(e.Properties["verb"]))
-			rawPath := e.Properties["path"]
+			method := strings.ToUpper(strings.TrimSpace(e.PropGet("verb")))
+			rawPath := e.PropGet("path")
 			key := newEndpointJoinKey(method, rawPath)
 			if filter != nil && (filter.method != key.method || filter.path != key.path) {
 				continue
@@ -417,8 +417,8 @@ func effectsForLocalEntity(
 	if entry, ok := sidecar[pid]; ok {
 		return entry.Effects, true
 	}
-	if e := byID[local]; e != nil && e.Properties != nil {
-		if raw := strings.TrimSpace(e.Properties["effects"]); raw != "" {
+	if e := byID[local]; e != nil && e.PropLen() > 0 {
+		if raw := strings.TrimSpace(e.PropGet("effects")); raw != "" {
 			return splitNonEmpty(raw), true
 		}
 	}
@@ -443,10 +443,10 @@ func buildEndpointEffectsIndex(lg *LoadedGroup, sidecar map[string]effectsSideca
 			if !isDefinitionKind(e.Kind) {
 				continue
 			}
-			if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
+			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
 				continue
 			}
-			key := newEndpointJoinKey(e.Properties["verb"], e.Properties["path"])
+			key := newEndpointJoinKey(e.PropGet("verb"), e.PropGet("path"))
 			eff := computeEndpointEffects(r.Repo, e, hres, callsAdj, byID, sidecar, groupHasEffectData)
 			if existing, ok := idx[key]; ok {
 				idx[key] = mergeStubEffects(existing, eff)
@@ -503,7 +503,7 @@ func groupHasEffectProps(lg *LoadedGroup) bool {
 			continue
 		}
 		for i := range r.Doc.Entities {
-			p := r.Doc.Entities[i].Properties
+			p := r.Doc.Entities[i].PropsSnapshot()
 			if p != nil && strings.TrimSpace(p["effects"]) != "" {
 				return true
 			}

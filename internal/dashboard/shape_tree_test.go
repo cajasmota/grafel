@@ -529,13 +529,14 @@ func TestShape_FieldValidationsChips(t *testing.T) {
 			[]string{"IsInt", "Min:0"}},
 	}
 	for _, c := range cases {
-		field := &graph.Entity{
-			Name:       "CreateUserDto." + c.name,
-			Kind:       "SCOPE.Schema",
-			Subtype:    "field",
-			Signature:  c.name + ": string",
-			Properties: c.props,
-		}
+		field :=
+
+			graph.EntityPtr(graph.Entity{
+				Name:      "CreateUserDto." + c.name,
+				Kind:      "SCOPE.Schema",
+				Subtype:   "field",
+				Signature: c.name + ": string",
+			}.WithProperties(c.props))
 		row := buildShapeRow(grp, field)
 		if !reflect.DeepEqual(row.Validations, c.want) {
 			t.Errorf("field %q: Validations=%v want %v", c.name, row.Validations, c.want)
@@ -590,10 +591,8 @@ func nestMappedTypeFixture() *DashGroup {
 		// EXTENDS edges resolved to the base entity ID (the extractor emits a
 		// bare-name ToID that the resolver binds; here we model the resolved
 		// shape and also exercise the Properties["to"] name fallback).
-		{FromID: "cls_update", ToID: "cls_create", Kind: "EXTENDS",
-			Properties: map[string]string{"to": "CreateThingBody"}},
-		{FromID: "cls_admin", ToID: "cls_create", Kind: "EXTENDS",
-			Properties: map[string]string{"to": "CreateThingBody"}},
+		graph.Relationship{FromID: "cls_update", ToID: "cls_create", Kind: "EXTENDS"}.WithProperties(map[string]string{"to": "CreateThingBody"}),
+		graph.Relationship{FromID: "cls_admin", ToID: "cls_create", Kind: "EXTENDS"}.WithProperties(map[string]string{"to": "CreateThingBody"}),
 		{FromID: "cls_admin", ToID: "fld_admin_role", Kind: "CONTAINS"},
 	}
 	return makePathsTestGroup(entities, rels)
@@ -713,8 +712,7 @@ func nestInterfaceResponseFixture() *DashGroup {
 	rels := []graph.Relationship{
 		{FromID: "iface_base", ToID: "fld_base_id", Kind: "CONTAINS"},
 		{FromID: "iface_resp", ToID: "fld_resp_line1", Kind: "CONTAINS"},
-		{FromID: "iface_resp", ToID: "iface_base", Kind: "EXTENDS",
-			Properties: map[string]string{"to": "BaseResponse"}},
+		graph.Relationship{FromID: "iface_resp", ToID: "iface_base", Kind: "EXTENDS"}.WithProperties(map[string]string{"to": "BaseResponse"}),
 		{FromID: "alias_pet", ToID: "fld_pet_name", Kind: "CONTAINS"},
 	}
 	return makePathsTestGroup(entities, rels)

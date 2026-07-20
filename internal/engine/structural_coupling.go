@@ -119,13 +119,13 @@ func ApplyStructuralCoupling(doc *graph.Document) CouplingStats {
 			// Round to 2 decimals for stable, comparable output.
 			instability = math.Round(float64(ceVal)/float64(total)*100) / 100
 		}
-		if e.Properties == nil {
-			e.Properties = make(map[string]string)
+		if e.PropLen() == 0 {
+			e.PropsReplace(make(map[string]string))
 		}
-		e.Properties["ca"] = fmt.Sprintf("%d", caVal)
-		e.Properties["ce"] = fmt.Sprintf("%d", ceVal)
-		e.Properties["instability"] = fmt.Sprintf("%.2f", instability)
-		e.Properties["coupling_computed"] = "true"
+		e.PropSet("ca", fmt.Sprintf("%d", caVal))
+		e.PropSet("ce", fmt.Sprintf("%d", ceVal))
+		e.PropSet("instability", fmt.Sprintf("%.2f", instability))
+		e.PropSet("coupling_computed", "true")
 		annotated++
 	}
 

@@ -32,26 +32,25 @@ func makeOrphanGroup(entities []graph.Entity, rels []graph.Relationship) *DashGr
 func TestCollectOrphanCallers_NoHandlerFound(t *testing.T) {
 	// A FETCHES edge whose ToID doesn't map to any http_endpoint in the group.
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "caller_fn",
 			Name:       "fetchUsers",
 			Kind:       "Function",
 			SourceFile: "src/api/users.ts",
 			StartLine:  42,
-			Properties: map[string]string{},
-		},
+		}.WithProperties(map[string]string{}),
 	}
 	rels := []graph.Relationship{
-		{
+		graph.Relationship{
 			ID:     "r1",
 			FromID: "caller_fn",
 			ToID:   "http:GET:/api/users",
 			Kind:   "FETCHES",
-			Properties: map[string]string{
-				"verb": "GET",
-				"path": "/api/users",
-			},
+		}.WithProperties(map[string]string{
+			"verb": "GET",
+			"path": "/api/users",
 		},
+		),
 	}
 
 	grp := makeOrphanGroup(entities, rels)
@@ -88,37 +87,36 @@ func TestCollectOrphanCallers_DynamicBaseURL(t *testing.T) {
 	// A consumer-side http_endpoint with runtime_dynamic=true is orphaned
 	// because the baseURL could not be statically resolved.
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "caller_fn2",
 			Name:       "postOrder",
 			Kind:       "Function",
 			SourceFile: "src/api/orders.ts",
 			StartLine:  10,
-			Properties: map[string]string{},
-		},
-		{
+		}.WithProperties(map[string]string{}),
+		graph.Entity{
 			ID:   "http:POST:/orders",
 			Name: "http:POST:/orders",
 			Kind: "http_endpoint",
-			Properties: map[string]string{
-				"pattern_type":    "http_endpoint_client_synthesis",
-				"runtime_dynamic": "true",
-				"verb":            "POST",
-				"path":            "/orders",
-			},
+		}.WithProperties(map[string]string{
+			"pattern_type":    "http_endpoint_client_synthesis",
+			"runtime_dynamic": "true",
+			"verb":            "POST",
+			"path":            "/orders",
 		},
+		),
 	}
 	rels := []graph.Relationship{
-		{
+		graph.Relationship{
 			ID:     "r2",
 			FromID: "caller_fn2",
 			ToID:   "http:POST:/orders",
 			Kind:   "FETCHES",
-			Properties: map[string]string{
-				"verb": "POST",
-				"path": "/orders",
-			},
+		}.WithProperties(map[string]string{
+			"verb": "POST",
+			"path": "/orders",
 		},
+		),
 	}
 
 	grp := makeOrphanGroup(entities, rels)
@@ -138,26 +136,25 @@ func TestCollectOrphanCallers_DynamicBaseURL(t *testing.T) {
 func TestCollectOrphanCallers_TemplateLiteral(t *testing.T) {
 	// A FETCHES edge whose path contains a template-literal placeholder.
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "caller_fn3",
 			Name:       "getUser",
 			Kind:       "Function",
 			SourceFile: "src/api/user.ts",
 			StartLine:  7,
-			Properties: map[string]string{},
-		},
+		}.WithProperties(map[string]string{}),
 	}
 	rels := []graph.Relationship{
-		{
+		graph.Relationship{
 			ID:     "r3",
 			FromID: "caller_fn3",
 			ToID:   "http:GET:/api/users/${userId}",
 			Kind:   "FETCHES",
-			Properties: map[string]string{
-				"verb": "GET",
-				"path": "/api/users/${userId}",
-			},
+		}.WithProperties(map[string]string{
+			"verb": "GET",
+			"path": "/api/users/${userId}",
 		},
+		),
 	}
 
 	grp := makeOrphanGroup(entities, rels)
@@ -177,36 +174,38 @@ func TestCollectOrphanCallers_TemplateLiteral(t *testing.T) {
 func TestCollectOrphanCallers_ResolvedEdgeNotOrphan(t *testing.T) {
 	// A FETCHES edge whose ToID resolves to a producer-side http_endpoint — NOT orphan.
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "caller_fn4",
 			Name:       "fetchHealth",
 			Kind:       "Function",
 			SourceFile: "src/api/health.ts",
 			StartLine:  3,
-			Properties: map[string]string{},
-		},
-		{
+		}.WithProperties(map[string]string{}),
+		graph.Entity{
 			ID:   "http:GET:/health",
 			Name: "http:GET:/health",
 			Kind: "http_endpoint",
-			Properties: map[string]string{
-				"pattern_type": "http_endpoint_synthesis", // producer side
-				"verb":         "GET",
-				"path":         "/health",
-			},
+
+			// producer side
+
+		}.WithProperties(map[string]string{
+			"pattern_type": "http_endpoint_synthesis",
+			"verb":         "GET",
+			"path":         "/health",
 		},
+		),
 	}
 	rels := []graph.Relationship{
-		{
+		graph.Relationship{
 			ID:     "r4",
 			FromID: "caller_fn4",
 			ToID:   "http:GET:/health",
 			Kind:   "FETCHES",
-			Properties: map[string]string{
-				"verb": "GET",
-				"path": "/health",
-			},
+		}.WithProperties(map[string]string{
+			"verb": "GET",
+			"path": "/health",
 		},
+		),
 	}
 
 	grp := makeOrphanGroup(entities, rels)
@@ -220,20 +219,17 @@ func TestCollectOrphanCallers_ResolvedEdgeNotOrphan(t *testing.T) {
 func TestCollectOrphanCallers_Deduplication(t *testing.T) {
 	// Two FETCHES edges with the same (caller_id, url_pattern) must produce only one row.
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "caller_dup",
 			Name:       "callTwice",
 			Kind:       "Function",
 			SourceFile: "src/dup.ts",
 			StartLine:  5,
-			Properties: map[string]string{},
-		},
+		}.WithProperties(map[string]string{}),
 	}
 	rels := []graph.Relationship{
-		{ID: "rdup1", FromID: "caller_dup", ToID: "http:GET:/dup", Kind: "FETCHES",
-			Properties: map[string]string{"verb": "GET", "path": "/dup"}},
-		{ID: "rdup2", FromID: "caller_dup", ToID: "http:GET:/dup", Kind: "FETCHES",
-			Properties: map[string]string{"verb": "GET", "path": "/dup"}},
+		graph.Relationship{ID: "rdup1", FromID: "caller_dup", ToID: "http:GET:/dup", Kind: "FETCHES"}.WithProperties(map[string]string{"verb": "GET", "path": "/dup"}),
+		graph.Relationship{ID: "rdup2", FromID: "caller_dup", ToID: "http:GET:/dup", Kind: "FETCHES"}.WithProperties(map[string]string{"verb": "GET", "path": "/dup"}),
 	}
 
 	grp := makeOrphanGroup(entities, rels)
@@ -325,26 +321,25 @@ func newOrphanTestServer(t *testing.T, grp *DashGroup) *httptest.Server {
 
 func TestHandleOrphanCallers_HTTPSmoke(t *testing.T) {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "caller_smoke",
 			Name:       "callAPI",
 			Kind:       "Function",
 			SourceFile: "src/api/smoke.ts",
 			StartLine:  99,
-			Properties: map[string]string{},
-		},
+		}.WithProperties(map[string]string{}),
 	}
 	rels := []graph.Relationship{
-		{
+		graph.Relationship{
 			ID:     "rsmoke",
 			FromID: "caller_smoke",
 			ToID:   "http:DELETE:/smoke",
 			Kind:   "FETCHES",
-			Properties: map[string]string{
-				"verb": "DELETE",
-				"path": "/smoke",
-			},
+		}.WithProperties(map[string]string{
+			"verb": "DELETE",
+			"path": "/smoke",
 		},
+		),
 	}
 	grp := makeOrphanGroup(entities, rels)
 	grp.Name = "mygrp"

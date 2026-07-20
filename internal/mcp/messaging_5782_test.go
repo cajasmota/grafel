@@ -57,17 +57,16 @@ func newMessagingTestServer(t *testing.T) *Server {
 		[]graph.Entity{
 			{ID: "op:placeOrder", Name: "OrderService.placeOrder", Kind: "SCOPE.Operation", SourceFile: "order_service.go", StartLine: 12, QualifiedName: "OrderService.placeOrder"},
 			{ID: "topic:orders", Name: topicName, Kind: "SCOPE.MessageTopic", SourceFile: ""},
-			{
+			graph.Entity{
 				ID: bindingHashID, Name: "orders-out", Kind: "SCOPE.ChannelBinding", SourceFile: "application.properties", StartLine: 1,
 				QualifiedName: "producer::application.properties#outgoing:orders-out",
-				Properties:    map[string]string{"channel": "orders-out", "direction": "outgoing", "connector": "smallrye-kafka", "topic": "orders.placed"},
-			},
+			}.WithProperties(map[string]string{"channel": "orders-out", "direction": "outgoing", "connector": "smallrye-kafka", "topic": "orders.placed"}),
 		},
 		[]graph.Relationship{
 			{ID: "pub:1", FromID: "op:placeOrder", ToID: "topic:orders", Kind: "PUBLISHES_TO"},
 			// BINDS_* edges: dangling synthetic FromID (NOT bindingHashID), resolved ToID.
-			{ID: "bindch:1", FromID: bindingSyntheticID, ToID: "op:placeOrder", Kind: "BINDS_CHANNEL", Properties: map[string]string{"channel": "orders-out", "direction": "outgoing"}},
-			{ID: "bindtop:1", FromID: bindingSyntheticID, ToID: "topic:orders", Kind: "BINDS_TOPIC", Properties: map[string]string{"topic": "orders.placed"}},
+			graph.Relationship{ID: "bindch:1", FromID: bindingSyntheticID, ToID: "op:placeOrder", Kind: "BINDS_CHANNEL"}.WithProperties(map[string]string{"channel": "orders-out", "direction": "outgoing"}),
+			graph.Relationship{ID: "bindtop:1", FromID: bindingSyntheticID, ToID: "topic:orders", Kind: "BINDS_TOPIC"}.WithProperties(map[string]string{"topic": "orders.placed"}),
 		},
 	)
 	producerDoc.Repo = "producer"
@@ -79,7 +78,7 @@ func newMessagingTestServer(t *testing.T) *Server {
 		},
 		[]graph.Relationship{
 			{ID: "sub:1", FromID: "op:onOrder", ToID: "topic:orders", Kind: "SUBSCRIBES_TO"},
-			{ID: "del:1", FromID: "topic:orders", ToID: "op:onOrder", Kind: "DELIVERS_TO", Properties: map[string]string{"trigger": "async", "broker": "kafka"}},
+			graph.Relationship{ID: "del:1", FromID: "topic:orders", ToID: "op:onOrder", Kind: "DELIVERS_TO"}.WithProperties(map[string]string{"trigger": "async", "broker": "kafka"}),
 		},
 	)
 	consumerDoc.Repo = "consumer"
@@ -495,20 +494,18 @@ func TestChannelBinding_ProfileVariantNoCrossBind(t *testing.T) {
 			[]graph.Entity{
 				{ID: "topic:A", Name: "kafka:completion.a", Kind: "SCOPE.MessageTopic"},
 				{ID: "topic:B", Name: "kafka:completion.b", Kind: "SCOPE.MessageTopic"},
-				{
+				graph.Entity{
 					ID: "cb:hashA", Name: "completion-out", Kind: "SCOPE.ChannelBinding", SourceFile: srcA, Subtype: "outgoing",
 					QualifiedName: "svc::" + fileA + "#" + dirCh,
-					Properties:    map[string]string{"channel": "completion-out", "direction": "outgoing", "topic": "completion.a"},
-				},
-				{
+				}.WithProperties(map[string]string{"channel": "completion-out", "direction": "outgoing", "topic": "completion.a"}),
+				graph.Entity{
 					ID: "cb:hashB", Name: "completion-out", Kind: "SCOPE.ChannelBinding", SourceFile: srcB, Subtype: "outgoing",
 					QualifiedName: "svc::" + fileB + "#" + dirCh,
-					Properties:    map[string]string{"channel": "completion-out", "direction": "outgoing", "topic": "completion.b"},
-				},
+				}.WithProperties(map[string]string{"channel": "completion-out", "direction": "outgoing", "topic": "completion.b"}),
 			},
 			[]graph.Relationship{
-				{ID: "btA", FromID: synthA, ToID: "topic:A", Kind: "BINDS_TOPIC", Properties: map[string]string{"topic": "completion.a"}},
-				{ID: "btB", FromID: synthB, ToID: "topic:B", Kind: "BINDS_TOPIC", Properties: map[string]string{"topic": "completion.b"}},
+				graph.Relationship{ID: "btA", FromID: synthA, ToID: "topic:A", Kind: "BINDS_TOPIC"}.WithProperties(map[string]string{"topic": "completion.a"}),
+				graph.Relationship{ID: "btB", FromID: synthB, ToID: "topic:B", Kind: "BINDS_TOPIC"}.WithProperties(map[string]string{"topic": "completion.b"}),
 			},
 		)
 		doc.Repo = "svc"
@@ -551,11 +548,10 @@ func TestInspect_ChannelBinding_LegacyIDMode_NoDoubleRow(t *testing.T) {
 		[]graph.Entity{
 			{ID: "topic:X", Name: "kafka:x", Kind: "SCOPE.MessageTopic"},
 			{ID: "op:X", Name: "Svc.onX", Kind: "SCOPE.Operation", SourceFile: "svc.go"},
-			{
+			graph.Entity{
 				ID: "cb:legacy", Name: "x-out", Kind: "SCOPE.ChannelBinding", SourceFile: "application.properties", Subtype: "outgoing",
 				QualifiedName: "svc::application.properties#outgoing:x-out",
-				Properties:    map[string]string{"channel": "x-out", "direction": "outgoing"},
-			},
+			}.WithProperties(map[string]string{"channel": "x-out", "direction": "outgoing"}),
 		},
 		[]graph.Relationship{
 			// FromID == the binding's own entity id (legacy/naive storage mode).

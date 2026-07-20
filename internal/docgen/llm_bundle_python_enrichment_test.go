@@ -109,20 +109,20 @@ func TestNeighbourBrief_1862_ActionDecoratorMetadata(t *testing.T) {
 				Language:   "python",
 				StartLine:  10, EndLine: 80,
 			},
-			{
+			graph.Entity{
 				ID: methodID, Name: "ContractViewSet.approve",
 				Kind: "SCOPE.Operation", Subtype: "method",
 				SourceFile: "core/views/contract_viewset.py",
 				Language:   "python",
 				StartLine:  40, EndLine: 55,
-				Properties: map[string]string{
-					"drf_action":   "true",
-					"http_method":  "post",
-					"http_methods": "post,put",
-					"url_path":     "approve",
-					"is_detail":    "true",
-				},
+			}.WithProperties(map[string]string{
+				"drf_action":   "true",
+				"http_method":  "post",
+				"http_methods": "post,put",
+				"url_path":     "approve",
+				"is_detail":    "true",
 			},
+			),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "r1", FromID: seedID, ToID: methodID, Kind: "CONTAINS"},
@@ -187,38 +187,38 @@ func TestNeighbourBrief_1877_SchemaTypeHint(t *testing.T) {
 				SourceFile: "core/models/contract.py", Language: "python",
 				StartLine: 10, EndLine: 90,
 			},
-			{
+			graph.Entity{
 				ID: fkFieldID, Name: "Contract.client",
 				Kind: "SCOPE.Schema", Subtype: "field",
 				SourceFile: "core/models/contract.py", Language: "python",
 				StartLine: 12, EndLine: 12,
-				Properties: map[string]string{
-					"field_type":      "ForeignKey",
-					"kwarg.to":        "Client",
-					"kwarg.on_delete": "CASCADE",
-				},
+			}.WithProperties(map[string]string{
+				"field_type":      "ForeignKey",
+				"kwarg.to":        "Client",
+				"kwarg.on_delete": "CASCADE",
 			},
-			{
+			),
+			graph.Entity{
 				ID: charFieldID, Name: "Contract.status",
 				Kind: "SCOPE.Schema", Subtype: "field",
 				SourceFile: "core/models/contract.py", Language: "python",
 				StartLine: 13, EndLine: 13,
-				Properties: map[string]string{
-					"field_type":       "CharField",
-					"kwarg.max_length": "10",
-					"kwarg.choices":    "STATUS_CHOICES",
-				},
+			}.WithProperties(map[string]string{
+				"field_type":       "CharField",
+				"kwarg.max_length": "10",
+				"kwarg.choices":    "STATUS_CHOICES",
 			},
-			{
+			),
+			graph.Entity{
 				ID: boolFieldID, Name: "Contract.is_active",
 				Kind: "SCOPE.Schema", Subtype: "field",
 				SourceFile: "core/models/contract.py", Language: "python",
 				StartLine: 14, EndLine: 14,
-				Properties: map[string]string{
-					"field_type":    "BooleanField",
-					"kwarg.default": "False",
-				},
+			}.WithProperties(map[string]string{
+				"field_type":    "BooleanField",
+				"kwarg.default": "False",
 			},
+			),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "r1", FromID: classID, ToID: fkFieldID, Kind: "CONTAINS"},

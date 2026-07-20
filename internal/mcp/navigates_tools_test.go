@@ -32,27 +32,22 @@ func buildNavDoc() *graph.Document {
 		{ID: "entityC", Name: "ComponentC", Kind: "function", SourceFile: "c.tsx", StartLine: 30},
 	}
 	doc.Relationships = []graph.Relationship{
-		{
+		graph.Relationship{
 			ID: "r1", FromID: "entityA", ToID: "route:/foo", Kind: "NAVIGATES_TO",
-			Properties: map[string]string{"route": "/foo", "params": "id", "line": "12", "via": "navigation_call"},
-		},
-		{
+		}.WithProperties(map[string]string{"route": "/foo", "params": "id", "line": "12", "via": "navigation_call"}),
+		graph.Relationship{
 			ID: "r2", FromID: "entityA", ToID: "route:/bar", Kind: "NAVIGATES_TO",
-			Properties: map[string]string{"route": "/bar", "line": "15", "via": "navigation_call"},
-		},
-		{
+		}.WithProperties(map[string]string{"route": "/bar", "line": "15", "via": "navigation_call"}),
+		graph.Relationship{
 			ID: "r3", FromID: "entityB", ToID: "route:/foo", Kind: "NAVIGATES_TO",
-			Properties: map[string]string{"route": "/foo", "line": "22", "via": "navigation_call"},
-		},
-		{
+		}.WithProperties(map[string]string{"route": "/foo", "line": "22", "via": "navigation_call"}),
+		graph.Relationship{
 			ID: "r4", FromID: "entityB", ToID: "route:/baz", Kind: "NAVIGATES_TO",
-			Properties: map[string]string{"route": "/baz", "params": "token", "line": "24", "via": "navigation_call"},
-		},
+		}.WithProperties(map[string]string{"route": "/baz", "params": "token", "line": "24", "via": "navigation_call"}),
 		// entityC navigates to entityA (for flow test: C → A → /foo).
-		{
+		graph.Relationship{
 			ID: "r5", FromID: "entityC", ToID: "entityA", Kind: "NAVIGATES_TO",
-			Properties: map[string]string{"route": "entityA", "line": "32", "via": "navigation_call"},
-		},
+		}.WithProperties(map[string]string{"route": "entityA", "line": "32", "via": "navigation_call"}),
 	}
 	return doc
 }

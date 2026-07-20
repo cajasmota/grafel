@@ -28,23 +28,23 @@ func buildPostureDoc() *graph.Document {
 	return &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "ep_handler", Name: "OrderViewSet.create", Kind: "http_endpoint_definition",
 				SourceFile: "orders/views.py", StartLine: 42,
-				Properties: map[string]string{
-					"verb":             "POST",
-					"path":             "/api/v1/orders",
-					"rate_limited":     "true",
-					"rate_limit":       "100/min",
-					"rate_limit_scope": "user",
-					"deprecated":       "true",
-					"deprecated_since": "v2",
-					"api_version":      "v1",
-					"auth_required":    "true",
-					"auth_method":      "grpc_interceptor",
-					"auth_middleware":  "AuthInterceptor",
-				},
+			}.WithProperties(map[string]string{
+				"verb":             "POST",
+				"path":             "/api/v1/orders",
+				"rate_limited":     "true",
+				"rate_limit":       "100/min",
+				"rate_limit_scope": "user",
+				"deprecated":       "true",
+				"deprecated_since": "v2",
+				"api_version":      "v1",
+				"auth_required":    "true",
+				"auth_method":      "grpc_interceptor",
+				"auth_middleware":  "AuthInterceptor",
 			},
+			),
 			{
 				ID: "exc_validation", Name: "exception:ValidationError", Kind: "SCOPE.ExceptionType",
 				SourceFile: "<exception-type>",
@@ -57,11 +57,10 @@ func buildPostureDoc() *graph.Document {
 				ID: "feature:new-checkout", Name: "feature:new-checkout", Kind: "SCOPE.FeatureFlag",
 				SourceFile: "<feature-flag>",
 			},
-			{
+			graph.Entity{
 				ID: "ep_plain", Name: "HealthView.get", Kind: "http_endpoint_definition",
 				SourceFile: "core/health.py", StartLine: 5,
-				Properties: map[string]string{"verb": "GET", "path": "/healthz"},
-			},
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/healthz"}),
 		},
 		Relationships: []graph.Relationship{
 			{FromID: "ep_handler", ToID: "exc_validation", Kind: "THROWS"},

@@ -240,7 +240,7 @@ func TestHarvest_AllFrameworkPropsReachResolver(t *testing.T) {
 // get_permissions key.
 func TestHarvest_SourceFallbackPopulatesSignal(t *testing.T) {
 	for _, k := range authPostureSourceProps {
-		e := graph.Entity{Properties: map[string]string{"verb": "GET", "path": "/x", k: "BODY"}}
+		e := graph.Entity{}.WithProperties(map[string]string{"verb": "GET", "path": "/x", k: "BODY"})
 		sig := buildAuthSignal(&e)
 		if sig.Source != "BODY" {
 			t.Errorf("source prop %q did not populate Signal.Source (got %q)", k, sig.Source)

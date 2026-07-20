@@ -412,8 +412,8 @@ func auditRepo(repoPath string) (*RepoReport, error) {
 // missing, fall back to the source entity's language so a CALLS edge whose
 // resolver dropped the property still counts toward a real bucket.
 func relLanguage(r *graph.Relationship, entByID map[string]*graph.Entity) string {
-	if r.Properties != nil {
-		if v := r.Properties["language"]; v != "" {
+	if r.PropLen() > 0 {
+		if v := r.PropGet("language"); v != "" {
 			return normalizeLang(v)
 		}
 	}

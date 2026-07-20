@@ -63,32 +63,35 @@ func TestPathPosture_SurfacesFacets(t *testing.T) {
 		Entities: []graph.Entity{
 			// The DRF router-expanded POST route — carries the stamped per-verb
 			// effective contract AND posture props.
-			{
+			graph.Entity{
 				ID:   "ep:roles:post",
 				Name: "RoleViewSet.create",
 				Kind: "http_endpoint_definition",
-				Properties: map[string]string{
-					"path":                     path,
-					"verb":                     "POST",
-					"pattern_type":             "drf_router_expanded",
-					"drf_view_method":          "RoleViewSet.create",
-					"effective_kind":           "inherited",
-					"effective_source_class":   "CreateModelMixin",
-					"effective_status":         "201",
-					"effective_error_statuses": "400",
-					"serializer_class":         "RoleSerializer",
-					"middleware_names":         "IsAuthenticated",
-					"auth_required":            "true",
-					// posture props
-					"rate_limited": "true",
-					"rate_limit":   "100/min",
-					"deprecated":   "true",
-					"api_version":  "v1",
-					"auth_method":  "session",
-				},
+
+				// posture props
+
 				SourceFile: "roles/views.py",
 				StartLine:  12,
+			}.WithProperties(map[string]string{
+				"path":                     path,
+				"verb":                     "POST",
+				"pattern_type":             "drf_router_expanded",
+				"drf_view_method":          "RoleViewSet.create",
+				"effective_kind":           "inherited",
+				"effective_source_class":   "CreateModelMixin",
+				"effective_status":         "201",
+				"effective_error_statuses": "400",
+				"serializer_class":         "RoleSerializer",
+				"middleware_names":         "IsAuthenticated",
+				"auth_required":            "true",
+
+				"rate_limited": "true",
+				"rate_limit":   "100/min",
+				"deprecated":   "true",
+				"api_version":  "v1",
+				"auth_method":  "session",
 			},
+			),
 			// The exception type the route throws (THROWS target).
 			{
 				ID:   "exc:ValidationError",
@@ -191,14 +194,14 @@ func TestPathPosture_HonestEmpty(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
-				ID:         "ep:health",
-				Name:       "healthCheck",
-				Kind:       "http_endpoint",
-				Properties: map[string]string{"path": path, "verb": "GET"},
+			graph.Entity{
+				ID:   "ep:health",
+				Name: "healthCheck",
+				Kind: "http_endpoint",
+
 				SourceFile: "main.go",
 				StartLine:  3,
-			},
+			}.WithProperties(map[string]string{"path": path, "verb": "GET"}),
 		},
 	}
 	srv := injectPostureGroup(t, "g2", doc)
@@ -227,18 +230,19 @@ func TestPathPosture_NestJSNotApplicable(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID:   "ep:users:get",
 				Name: "UsersController.findAll",
 				Kind: "http_endpoint",
-				Properties: map[string]string{
-					"path":      path,
-					"verb":      "GET",
-					"framework": "nestjs",
-				},
+
 				SourceFile: "src/users/users.controller.ts",
 				StartLine:  10,
+			}.WithProperties(map[string]string{
+				"path":      path,
+				"verb":      "GET",
+				"framework": "nestjs",
 			},
+			),
 		},
 	}
 	srv := injectPostureGroup(t, "g-nest", doc)

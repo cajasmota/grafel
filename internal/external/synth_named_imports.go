@@ -150,7 +150,7 @@ func buildNamedImportIndex(
 	}
 	for k := range doc.Relationships {
 		r := &doc.Relationships[k]
-		if r.Kind != string(types.RelationshipKindImports) || r.Properties == nil {
+		if r.Kind != string(types.RelationshipKindImports) || r.PropLen() == 0 {
 			continue
 		}
 		// The caller file is the source file that owns the IMPORTS edge. The
@@ -166,19 +166,19 @@ func buildNamedImportIndex(
 			continue
 		}
 
-		local := strings.TrimSpace(r.Properties["local_name"])
-		imported := strings.TrimSpace(r.Properties["imported_name"])
-		wildcard := r.Properties["wildcard"] == "1"
+		local := strings.TrimSpace(r.PropGet("local_name"))
+		imported := strings.TrimSpace(r.PropGet("imported_name"))
+		wildcard := r.PropGet("wildcard") == "1"
 
 		lang := entityLang[r.FromID]
 		if lang == "" {
-			lang = r.Properties["language"]
+			lang = r.PropGet("language")
 		}
 
 		// Derive the canonical external package root for this import. When the
 		// import is project-internal/relative (no external root), there is no
 		// per-symbol external node to synthesise — skip.
-		pkg, ok := importEdgePackageRoot(r.ToID, lang, r.Properties, internal)
+		pkg, ok := importEdgePackageRoot(r.ToID, lang, r.PropsSnapshot(), internal)
 		if !ok || pkg == "" {
 			continue
 		}

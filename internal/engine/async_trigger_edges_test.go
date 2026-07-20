@@ -28,10 +28,8 @@ func buildAsyncTriggerDoc(repo string) *graph.Document {
 		{ID: "topic:orders", Name: "sqs:orders", Kind: "SCOPE.Queue", Language: "java", SourceFile: ""},
 	}
 	doc.Relationships = []graph.Relationship{
-		{ID: "pub:1", FromID: "op:publish", ToID: "topic:orders", Kind: "PUBLISHES_TO",
-			Properties: map[string]string{"broker": "sqs"}},
-		{ID: "sub:1", FromID: "op:onOrder", ToID: "topic:orders", Kind: "SUBSCRIBES_TO",
-			Properties: map[string]string{"broker": "sqs", "messaging_layer": "spring_sqs"}},
+		graph.Relationship{ID: "pub:1", FromID: "op:publish", ToID: "topic:orders", Kind: "PUBLISHES_TO"}.WithProperties(map[string]string{"broker": "sqs"}),
+		graph.Relationship{ID: "sub:1", FromID: "op:onOrder", ToID: "topic:orders", Kind: "SUBSCRIBES_TO"}.WithProperties(map[string]string{"broker": "sqs", "messaging_layer": "spring_sqs"}),
 	}
 	return doc
 }

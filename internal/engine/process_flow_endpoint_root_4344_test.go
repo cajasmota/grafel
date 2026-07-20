@@ -32,9 +32,9 @@ func endpointRootDoc(repo string) *graph.Document {
 	return &graph.Document{
 		Repo: repo,
 		Entities: []graph.Entity{
-			{ID: "ep:latest", Name: "GET /buildings/{id}/latest", Kind: "http_endpoint_definition",
+			graph.Entity{ID: "ep:latest", Name: "GET /buildings/{id}/latest", Kind: "http_endpoint_definition",
 				Language: "python", SourceFile: "urls.py",
-				Properties: map[string]string{"http_method": "GET", "route": "/buildings/{id}/latest"}},
+			}.WithProperties(map[string]string{"http_method": "GET", "route": "/buildings/{id}/latest"}),
 			{ID: "fn:latest", Name: "BuildingViewSet.latest", Kind: "SCOPE.Operation",
 				Language: "python", SourceFile: "views.py"},
 			{ID: "fn:service", Name: "BuildingService.get_latest", Kind: "SCOPE.Operation",
@@ -61,7 +61,7 @@ func TestProcessFlow_4344_RootsAtEndpoint(t *testing.T) {
 	if p == nil {
 		t.Fatalf("no Process rooted at the endpoint ep:latest; processes: %v", allProcessProps(doc))
 	}
-	chain := strings.Split(p.Properties["chain"], ",")
+	chain := strings.Split(p.PropGet("chain"), ",")
 	want := []string{"ep:latest", "fn:latest", "fn:service", "fn:repo"}
 	if len(chain) != len(want) {
 		t.Fatalf("chain length = %d, want %d; chain=%v", len(chain), len(want), chain)
@@ -79,11 +79,11 @@ func TestProcessFlow_4344_RootsAtEndpoint(t *testing.T) {
 	if !strings.Contains(p.Name, "GET /buildings/{id}/latest") {
 		t.Errorf("Process label %q is not the route; expected the route as the entry label", p.Name)
 	}
-	if p.Properties["entry_name"] != "GET /buildings/{id}/latest" {
-		t.Errorf("entry_name = %q, want the route", p.Properties["entry_name"])
+	if p.PropGet("entry_name") != "GET /buildings/{id}/latest" {
+		t.Errorf("entry_name = %q, want the route", p.PropGet("entry_name"))
 	}
-	if p.Properties["entry_kind"] != "http" {
-		t.Errorf("entry_kind = %q, want http", p.Properties["entry_kind"])
+	if p.PropGet("entry_kind") != "http" {
+		t.Errorf("entry_kind = %q, want http", p.PropGet("entry_kind"))
 	}
 	// No double-counting: the handler appears exactly once.
 	handlerCount := 0
@@ -130,7 +130,7 @@ func TestProcessFlow_4344_ShortEndpointFlowNotDropped(t *testing.T) {
 	if p == nil {
 		t.Fatalf("short endpoint flow not rooted at endpoint; processes: %v", allProcessProps(doc))
 	}
-	chain := strings.Split(p.Properties["chain"], ",")
+	chain := strings.Split(p.PropGet("chain"), ",")
 	want := []string{"ep:ping", "fn:ping", "fn:status"}
 	if strings.Join(chain, ",") != strings.Join(want, ",") {
 		t.Fatalf("short chain = %v, want %v", chain, want)
@@ -159,7 +159,7 @@ func TestProcessFlow_4344_TwoStepEndpointFlowSurvives(t *testing.T) {
 	if p == nil {
 		t.Fatalf("2-step flow not rooted at endpoint; processes: %v", allProcessProps(doc))
 	}
-	if got := p.Properties["chain"]; got != "ep:health,fn:health" {
+	if got := p.PropGet("chain"); got != "ep:health,fn:health" {
 		t.Fatalf("chain = %q, want ep:health,fn:health", got)
 	}
 }
@@ -174,11 +174,11 @@ func TestProcessFlow_4344_BrokerFlowsUnchanged(t *testing.T) {
 	if kp == nil {
 		t.Fatalf("kafka consumer flow regressed; processes: %v", allProcessProps(kdoc))
 	}
-	if kp.Properties["chain"] == "" || strings.HasPrefix(kp.Properties["entry_name"], "GET ") {
-		t.Errorf("kafka flow unexpectedly rooted at an endpoint: %v", kp.Properties)
+	if kp.PropGet("chain") == "" || strings.HasPrefix(kp.PropGet("entry_name"), "GET ") {
+		t.Errorf("kafka flow unexpectedly rooted at an endpoint: %v", kp.PropsSnapshot())
 	}
 	// The kafka chain must still root at the handler op:onFeedback.
-	if got := strings.Split(kp.Properties["chain"], ",")[0]; got != "op:onFeedback" {
+	if got := strings.Split(kp.PropGet("chain"), ",")[0]; got != "op:onFeedback" {
 		t.Errorf("kafka flow root = %q, want op:onFeedback", got)
 	}
 
@@ -202,7 +202,7 @@ func TestProcessFlow_4344_BrokerFlowsUnchanged(t *testing.T) {
 	if sp == nil {
 		t.Fatalf("scheduled flow regressed; processes: %v", allProcessProps(sdoc))
 	}
-	if got := strings.Split(sp.Properties["chain"], ",")[0]; got != "op:cleanup" {
+	if got := strings.Split(sp.PropGet("chain"), ",")[0]; got != "op:cleanup" {
 		t.Errorf("scheduled flow root = %q, want op:cleanup", got)
 	}
 }

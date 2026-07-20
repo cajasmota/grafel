@@ -132,10 +132,10 @@ func (a *lineCovAccumulator) accumulate(doc *graph.Document) {
 	}
 	for ei := range doc.Entities {
 		ent := &doc.Entities[ei]
-		if len(ent.Properties) == 0 {
+		if ent.PropLen() == 0 {
 			continue
 		}
-		src := ent.Properties[coverage.PropCoverageSource]
+		src := ent.PropGet(coverage.PropCoverageSource)
 		if src == "" {
 			continue
 		}
@@ -145,11 +145,11 @@ func (a *lineCovAccumulator) accumulate(doc *graph.Document) {
 		}
 		// RFC3339 timestamps sort lexicographically, so a string compare picks
 		// the most recent measurement without parsing.
-		if at := ent.Properties[coverage.PropCoverageMeasAt]; at > a.measuredAt {
+		if at := ent.PropGet(coverage.PropCoverageMeasAt); at > a.measuredAt {
 			a.measuredAt = at
 		}
-		covered, cErr := strconv.Atoi(ent.Properties[coverage.PropCoveredLines])
-		total, tErr := strconv.Atoi(ent.Properties[coverage.PropTotalLines])
+		covered, cErr := strconv.Atoi(ent.PropGet(coverage.PropCoveredLines))
+		total, tErr := strconv.Atoi(ent.PropGet(coverage.PropTotalLines))
 		if cErr != nil || tErr != nil || total <= 0 {
 			continue
 		}

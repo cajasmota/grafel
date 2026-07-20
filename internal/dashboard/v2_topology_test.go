@@ -43,22 +43,22 @@ func newV2TopologyTestServer(t *testing.T, grp *DashGroup) *httptest.Server {
 // one orphan-publisher) and one serverless function.
 func minTopologyGroup() *DashGroup {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:   "topic-orders",
 			Name: "orders.created",
 			Kind: "MessageTopic",
-			Properties: map[string]string{
-				"broker": "kafka",
-			},
+		}.WithProperties(map[string]string{
+			"broker": "kafka",
 		},
-		{
+		),
+		graph.Entity{
 			ID:   "topic-dead",
 			Name: "dead.letter",
 			Kind: "MessageTopic",
-			Properties: map[string]string{
-				"broker": "kafka",
-			},
+		}.WithProperties(map[string]string{
+			"broker": "kafka",
 		},
+		),
 		{
 			ID:   "fn-producer",
 			Name: "OrderService.createOrder",

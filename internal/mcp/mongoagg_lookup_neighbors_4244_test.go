@@ -37,12 +37,11 @@ func TestMongoAggLookupNode_NeighborsSurfaceJoin_4244(t *testing.T) {
 		},
 		Relationships: []graph.Relationship{
 			// Node-anchored twin: FromID == the $lookup node's graph id.
-			{
-				FromID:     nodeID,
-				ToID:       "Class:M_contract",
-				Kind:       "JOINS_COLLECTION",
-				Properties: map[string]string{"anchor": "stage_node"},
-			},
+			graph.Relationship{
+				FromID: nodeID,
+				ToID:   "Class:M_contract",
+				Kind:   "JOINS_COLLECTION",
+			}.WithProperties(map[string]string{"anchor": "stage_node"}),
 		},
 	}
 

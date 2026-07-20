@@ -86,9 +86,9 @@ func upsertImportSet(set map[string]bool, rel *graph.Relationship) map[string]bo
 			}
 		}
 	}
-	if rel.Properties != nil {
-		mod := rel.Properties["source_module"]
-		imp := rel.Properties["imported_name"]
+	if rel.PropLen() > 0 {
+		mod := rel.PropGet("source_module")
+		imp := rel.PropGet("imported_name")
 		if mod != "" {
 			set[mod] = true
 		}
@@ -315,8 +315,8 @@ func Synthesize(doc *graph.Document) Stats {
 		// in classifyExternal (receiver_type stdlib dispatch) miss every
 		// edge whose source isn't a 1:1-resolvable entity.
 		lang := entityLang[rel.FromID]
-		if lang == "" && rel.Properties != nil {
-			lang = rel.Properties["language"]
+		if lang == "" && rel.PropLen() > 0 {
+			lang = rel.PropGet("language")
 		}
 
 		// Issue #1085 — stdlib-builtin guard. If the unresolved stub is an
@@ -336,10 +336,10 @@ func Synthesize(doc *graph.Document) Stats {
 		// stdlib-builtin set and flow through to the existing
 		// classifyExternal path unchanged.
 		if resolve.IsStdlibBuiltinTarget(rel.ToID, lang) {
-			if rel.Properties == nil {
-				rel.Properties = make(map[string]string)
+			if rel.PropLen() == 0 {
+				rel.PropsReplace(make(map[string]string))
 			}
-			rel.Properties["dynamic_target"] = rel.ToID
+			rel.PropSet("dynamic_target", rel.ToID)
 			rel.ToID = ""
 			dynamicTargets++
 			continue
@@ -362,7 +362,7 @@ func Synthesize(doc *graph.Document) Stats {
 			}
 		}
 
-		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, lang, entityFile[rel.FromID], fileImports[entityFile[rel.FromID]], rel.Properties, internalRoots{
+		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, lang, entityFile[rel.FromID], fileImports[entityFile[rel.FromID]], rel.PropsSnapshot(), internalRoots{
 			python: internalPyRoots,
 			java:   internalJavaRoots,
 			ruby:   internalRubyRoots,
@@ -622,12 +622,12 @@ func SynthesizeDBEntities(doc *graph.Document) Stats {
 			FromID: e.fromID,
 			ToID:   e.toID,
 			Kind:   string(types.RelationshipKindImports),
-			Properties: map[string]string{
-				"generated": "true",
-				"table":     e.table,
-				"db_synth":  "531-532",
-			},
-		})
+		}.WithProperties(map[string]string{
+			"generated": "true",
+			"table":     e.table,
+			"db_synth":  "531-532",
+		},
+		))
 		knownEdges[edgeKey] = true
 		edgesAdded++
 	}
@@ -884,8 +884,8 @@ func SynthesizeDataLineageEdges(doc *graph.Document) DataLineageStats {
 		_, table, ok := parseDataAccessQN(e.QualifiedName)
 		if !ok {
 			// Fall back to the `table` property when the QN is not the stub form.
-			if e.Properties != nil {
-				table = e.Properties["table"]
+			if e.PropLen() > 0 {
+				table = e.PropGet("table")
 			}
 		}
 		canon := canonicalTableName(table)
@@ -905,8 +905,8 @@ func SynthesizeDataLineageEdges(doc *graph.Document) DataLineageStats {
 		}
 
 		op := parseDataAccessOp(e.QualifiedName)
-		if op == "" && e.Properties != nil {
-			op = e.Properties["operation"]
+		if op == "" && e.PropLen() > 0 {
+			op = e.PropGet("operation")
 		}
 		kind := lineageVerb(op)
 
@@ -936,12 +936,12 @@ func SynthesizeDataLineageEdges(doc *graph.Document) DataLineageStats {
 			FromID: e.fromID,
 			ToID:   e.toID,
 			Kind:   e.kind,
-			Properties: map[string]string{
-				"table":      e.table,
-				"provenance": "DATA_LINEAGE_5687",
-				"generated":  "true",
-			},
-		})
+		}.WithProperties(map[string]string{
+			"table":      e.table,
+			"provenance": "DATA_LINEAGE_5687",
+			"generated":  "true",
+		},
+		))
 		stats.EdgesAdded++
 		if e.kind == string(types.RelationshipKindReadsFrom) {
 			stats.ReadsFrom++

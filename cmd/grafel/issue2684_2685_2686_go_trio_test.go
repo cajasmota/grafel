@@ -106,7 +106,7 @@ func TestGoTrio_EndpointSynthesis(t *testing.T) {
 				}
 
 				// Framework property must reflect the right synthesizer.
-				if got := e.Properties["framework"]; got != tc.framework {
+				if got := e.PropGet("framework"); got != tc.framework {
 					t.Errorf("%s %s: framework=%q want %q",
 						tc.name, id, got, tc.framework)
 				}
@@ -116,7 +116,7 @@ func TestGoTrio_EndpointSynthesis(t *testing.T) {
 				// rebind actually moved the entity (handler in a different
 				// file from the registration site), which is the case for
 				// every fixture endpoint here by construction.
-				if got := e.Properties["registration_source_file"]; got == "" {
+				if got := e.PropGet("registration_source_file"); got == "" {
 					t.Errorf("%s %s: registration_source_file is empty — "+
 						"resolver rebind did not stash the original registration site",
 						tc.name, id)
@@ -124,7 +124,7 @@ func TestGoTrio_EndpointSynthesis(t *testing.T) {
 					t.Errorf("%s %s: registration_source_file=%q does not end with router.go",
 						tc.name, id, got)
 				}
-				if got := e.Properties["registration_start_line"]; got == "" || got == "0" {
+				if got := e.PropGet("registration_start_line"); got == "" || got == "0" {
 					t.Errorf("%s %s: registration_start_line=%q, want a positive line number",
 						tc.name, id, got)
 				}

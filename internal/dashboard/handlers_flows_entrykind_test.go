@@ -40,14 +40,14 @@ func procWithEntry(id, name, entryID, entryName, sourceFile string, stepCount in
 		Name:       name,
 		Kind:       processEntityKind,
 		SourceFile: sourceFile,
-		Properties: map[string]string{
-			"entry_id":    entryID,
-			"entry_name":  entryName,
-			"terminal_id": id + "_terminal",
-			"step_count":  itoa(stepCount),
-			"cross_stack": "false",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"entry_id":    entryID,
+		"entry_name":  entryName,
+		"terminal_id": id + "_terminal",
+		"step_count":  itoa(stepCount),
+		"cross_stack": "false",
+	},
+	)
 }
 
 // entryEntity creates a simple entry-point entity with the given kind.
@@ -57,8 +57,7 @@ func entryEntity(id, name, kind string) graph.Entity {
 		Name:       name,
 		Kind:       kind,
 		SourceFile: "src/" + id + ".py",
-		Properties: map[string]string{},
-	}
+	}.WithProperties(map[string]string{})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

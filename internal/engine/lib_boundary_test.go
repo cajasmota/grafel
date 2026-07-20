@@ -21,41 +21,41 @@ func TestApplyLibBoundary_FirstVsThirdParty(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
 			// External library C — the manifest external_dependency carrier.
-			{
+			graph.Entity{
 				ID:      libC,
 				Name:    "github.com/external/c",
 				Kind:    "SCOPE.Component",
 				Subtype: "external_dependency",
-				Properties: map[string]string{
-					"package_manager":     "gomod",
-					"external_dependency": "true",
-				},
+			}.WithProperties(map[string]string{
+				"package_manager":     "gomod",
+				"external_dependency": "true",
 			},
+			),
 		},
 		Relationships: []graph.Relationship{
 			// A → B: local/internal import → first_party.
-			{
+			graph.Relationship{
 				ID:     "a->b",
 				FromID: fileA,
 				ToID:   pkgB,
 				Kind:   "DEPENDS_ON",
-				Properties: map[string]string{
-					"kind":                "import",
-					"is_local":            "true",
-					"external_dependency": "false",
-				},
+			}.WithProperties(map[string]string{
+				"kind":                "import",
+				"is_local":            "true",
+				"external_dependency": "false",
 			},
+			),
 			// A → C: manifest external dependency edge → third_party.
-			{
+			graph.Relationship{
 				ID:     "a->c",
 				FromID: "scope:component:project:go.mod",
 				ToID:   libC,
 				Kind:   "DEPENDS_ON",
-				Properties: map[string]string{
-					"kind":            "external_dependency",
-					"package_manager": "gomod",
-				},
+			}.WithProperties(map[string]string{
+				"kind":            "external_dependency",
+				"package_manager": "gomod",
 			},
+			),
 		},
 	}
 
@@ -63,19 +63,19 @@ func TestApplyLibBoundary_FirstVsThirdParty(t *testing.T) {
 
 	// Edge A→B must be first_party.
 	abEdge := findRel(t, doc, "a->b")
-	if got := abEdge.Properties[boundaryProp]; got != boundaryFirstParty {
+	if got := abEdge.PropGet(boundaryProp); got != boundaryFirstParty {
 		t.Errorf("A->B (internal import) boundary=%q, want %q", got, boundaryFirstParty)
 	}
 
 	// Edge A→C must be third_party.
 	acEdge := findRel(t, doc, "a->c")
-	if got := acEdge.Properties[boundaryProp]; got != boundaryThirdParty {
+	if got := acEdge.PropGet(boundaryProp); got != boundaryThirdParty {
 		t.Errorf("A->C (external dep) boundary=%q, want %q", got, boundaryThirdParty)
 	}
 
 	// The external_dependency entity C must also be stamped third_party.
 	cEnt := findEnt(t, doc, libC)
-	if got := cEnt.Properties[boundaryProp]; got != boundaryThirdParty {
+	if got := cEnt.PropGet(boundaryProp); got != boundaryThirdParty {
 		t.Errorf("entity C boundary=%q, want %q", got, boundaryThirdParty)
 	}
 
@@ -105,16 +105,16 @@ func TestApplyLibBoundary_CodeToCodeAndAmbiguous(t *testing.T) {
 			// Code-to-code: both endpoints owned, neither external → first_party.
 			{ID: "code", FromID: "ent:order", ToID: "ent:store", Kind: "DEPENDS_ON"},
 			// External import → third_party.
-			{
+			graph.Relationship{
 				ID:     "ext-import",
 				FromID: "scope:component:file:src/a.go",
 				ToID:   "scope:component:import:external:lodash",
 				Kind:   "DEPENDS_ON",
-				Properties: map[string]string{
-					"kind":     "import",
-					"is_local": "false",
-				},
+			}.WithProperties(map[string]string{
+				"kind":     "import",
+				"is_local": "false",
 			},
+			),
 			// Ambiguous: no kind/locality, target not in this document.
 			{ID: "ambig", FromID: "ent:order", ToID: "unresolved:target", Kind: "DEPENDS_ON"},
 		},
@@ -122,15 +122,15 @@ func TestApplyLibBoundary_CodeToCodeAndAmbiguous(t *testing.T) {
 
 	stats := ApplyLibBoundary(doc)
 
-	if got := findRel(t, doc, "code").Properties[boundaryProp]; got != boundaryFirstParty {
+	if got := findRel(t, doc, "code").PropGet(boundaryProp); got != boundaryFirstParty {
 		t.Errorf("code-to-code boundary=%q, want %q", got, boundaryFirstParty)
 	}
-	if got := findRel(t, doc, "ext-import").Properties[boundaryProp]; got != boundaryThirdParty {
+	if got := findRel(t, doc, "ext-import").PropGet(boundaryProp); got != boundaryThirdParty {
 		t.Errorf("external import boundary=%q, want %q", got, boundaryThirdParty)
 	}
 	// The ambiguous edge must NOT be annotated.
-	if ambig := findRel(t, doc, "ambig"); ambig.Properties != nil {
-		if _, ok := ambig.Properties[boundaryProp]; ok {
+	if ambig := findRel(t, doc, "ambig"); ambig.PropLen() > 0 {
+		if _, ok := ambig.PropLookup(boundaryProp); ok {
 			t.Errorf("ambiguous edge was annotated, want unannotated (honest-partial)")
 		}
 	}

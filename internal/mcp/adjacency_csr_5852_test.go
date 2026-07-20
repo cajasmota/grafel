@@ -39,11 +39,11 @@ func adjacencyGoldenDoc() *graph.Document {
 			{FromID: "a", ToID: "c", Kind: "REFERENCES"},
 			{FromID: "a", ToID: "b", Kind: "IMPORTS"}, // duplicate target, different kind
 			// Weighted edges via Properties["count"] and Properties["weight"].
-			{FromID: "a", ToID: "d", Kind: "CALLS", Properties: map[string]string{"count": "7"}},
-			{FromID: "b", ToID: "d", Kind: "CALLS", Properties: map[string]string{"weight": "2.5"}},
+			graph.Relationship{FromID: "a", ToID: "d", Kind: "CALLS"}.WithProperties(map[string]string{"count": "7"}),
+			graph.Relationship{FromID: "b", ToID: "d", Kind: "CALLS"}.WithProperties(map[string]string{"weight": "2.5"}),
 			// Zero/invalid weight properties fall back to 1.0.
-			{FromID: "c", ToID: "d", Kind: "CALLS", Properties: map[string]string{"count": "0"}},
-			{FromID: "c", ToID: "e", Kind: "CALLS", Properties: map[string]string{"count": "not-a-number"}},
+			graph.Relationship{FromID: "c", ToID: "d", Kind: "CALLS"}.WithProperties(map[string]string{"count": "0"}),
+			graph.Relationship{FromID: "c", ToID: "e", Kind: "CALLS"}.WithProperties(map[string]string{"count": "not-a-number"}),
 			// A hub with many in-edges to exercise a larger CSR row.
 			{FromID: "a", ToID: "hub", Kind: "CALLS"},
 			{FromID: "b", ToID: "hub", Kind: "CALLS"},

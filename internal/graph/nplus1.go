@@ -219,13 +219,13 @@ func ormSuggestion(orm, lang string) string {
 // site: it has Properties["orm"] set, and its name contains a known query
 // method (or the orm property is set without a safe-method suffix).
 func isORMQueryEntity(e Entity) bool {
-	if e.Properties == nil {
+	if e.PropLen() == 0 {
 		return false
 	}
-	if e.Properties["nplus1_safe"] == "true" {
+	if e.PropGet("nplus1_safe") == "true" {
 		return false
 	}
-	orm := e.Properties["orm"]
+	orm := e.PropGet("orm")
 	if orm == "" {
 		return false
 	}
@@ -303,10 +303,10 @@ func DetectNPlusOne(doc *Document) *NPlusOneReport {
 	// query entities — the ORM extractor (#723) already tagged them.
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
-		if e.Properties["loop_context"] != "true" {
+		if e.PropGet("loop_context") != "true" {
 			continue
 		}
 		if !ormQueryEntityIDs[e.ID] {
@@ -450,8 +450,8 @@ func buildFinding(caller *Entity, query *Entity, loopEntityID, loopSubtype strin
 
 	orm := ""
 	lang := ""
-	if query != nil && query.Properties != nil {
-		orm = query.Properties["orm"]
+	if query != nil && query.PropLen() > 0 {
+		orm = query.PropGet("orm")
 		lang = query.Language
 	}
 	if lang == "" && caller != nil {
@@ -523,10 +523,10 @@ func AnnotateDocument(doc *Document, report *NPlusOneReport) int {
 		if !flagged[pair{r.FromID, r.ToID}] {
 			continue
 		}
-		if r.Properties == nil {
-			r.Properties = make(map[string]string, 2)
+		if r.PropLen() == 0 {
+			r.PropsReplace(make(map[string]string, 2))
 		}
-		r.Properties["anti_pattern"] = "n_plus_1"
+		r.PropSet("anti_pattern", "n_plus_1")
 		count++
 	}
 
@@ -540,10 +540,10 @@ func AnnotateDocument(doc *Document, report *NPlusOneReport) int {
 		if !queryIDs[e.ID] {
 			continue
 		}
-		if e.Properties == nil {
-			e.Properties = make(map[string]string, 2)
+		if e.PropLen() == 0 {
+			e.PropsReplace(make(map[string]string, 2))
 		}
-		e.Properties["anti_pattern"] = "n_plus_1"
+		e.PropSet("anti_pattern", "n_plus_1")
 	}
 
 	return count

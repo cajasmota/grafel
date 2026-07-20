@@ -108,18 +108,18 @@ func (s *Server) handleV2FlowsList(w http.ResponseWriter, r *http.Request) {
 			if e.Kind != processEntityKind {
 				continue
 			}
-			cs := e.Properties["cross_stack"] == "true"
+			cs := e.PropGet("cross_stack") == "true"
 			if crossOnly && !cs {
 				continue
 			}
-			sc, _ := strconv.Atoi(e.Properties["step_count"])
+			sc, _ := strconv.Atoi(e.PropGet("step_count"))
 			// #1639 — exclude trivial short flows from the default list;
 			// cross-repo flows are exempt (meaningful even when short).
 			if sc < minSteps && !cs {
 				continue
 			}
 			pid := dashPrefixedID(repo.Slug, e.ID)
-			entID := e.Properties["entry_id"]
+			entID := e.PropGet("entry_id")
 			ek := inferEntryKind(grp, entID)
 			fm, summary := extractFlowDocs(group, e.ID, docgenState)
 			items = append(items, v2FlowsProcessItem{
@@ -127,14 +127,14 @@ func (s *Server) handleV2FlowsList(w http.ResponseWriter, r *http.Request) {
 				Repo:         repo.Slug,
 				Label:        e.Name,
 				EntryID:      entID,
-				EntryName:    e.Properties["entry_name"],
+				EntryName:    e.PropGet("entry_name"),
 				EntryKind:    ek,
 				EntryModule:  entryModuleFromPath(e.SourceFile),
-				TerminalID:   e.Properties["terminal_id"],
+				TerminalID:   e.PropGet("terminal_id"),
 				StepCount:    sc,
 				CrossStack:   cs,
 				IsCrossRepo:  cs,
-				ChainLabels:  splitChainLabels(e.Properties["chain_labels"]),
+				ChainLabels:  splitChainLabels(e.PropGet("chain_labels")),
 				SourceFile:   e.SourceFile,
 				PriorityHint: priorityHint(ek),
 				DocgenStatus: docgenStatus(fm, summary),
@@ -236,20 +236,20 @@ func (s *Server) handleV2FlowDeadEnds(w http.ResponseWriter, r *http.Request) {
 			if e.Kind != processEntityKind {
 				continue
 			}
-			reason := e.Properties["dead_end_reason"]
+			reason := e.PropGet("dead_end_reason")
 			if reason == "" {
 				continue
 			}
-			sc, _ := strconv.Atoi(e.Properties["step_count"])
+			sc, _ := strconv.Atoi(e.PropGet("step_count"))
 			items = append(items, deadEndItem{
 				ProcessID:       dashPrefixedID(repo.Slug, e.ID),
 				ProcessName:     e.Name,
 				Repo:            repo.Slug,
 				Reason:          reason,
 				StepCount:       sc,
-				DeadEndStepID:   e.Properties["dead_end_step_id"],
-				DeadEndStepName: e.Properties["dead_end_step_name"],
-				CrossStack:      e.Properties["cross_stack"] == "true",
+				DeadEndStepID:   e.PropGet("dead_end_step_id"),
+				DeadEndStepName: e.PropGet("dead_end_step_name"),
+				CrossStack:      e.PropGet("cross_stack") == "true",
 			})
 		}
 	}

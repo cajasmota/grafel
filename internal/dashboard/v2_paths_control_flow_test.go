@@ -47,8 +47,7 @@ func makeControlFlowFixture(t *testing.T) *DashGroup {
 	epEnt := graph.Entity{
 		ID: "ep", Name: "GET /inspections", Kind: "http_endpoint_definition",
 		SourceFile: "routers.ts", StartLine: 1,
-		Properties: map[string]string{"verb": "GET", "path": "/inspections"},
-	}
+	}.WithProperties(map[string]string{"verb": "GET", "path": "/inspections"})
 	// Handler spans lines 1..11 of the file written above.
 	handler := ent("handler", "InspectionController.list", "Operation", 1, 11)
 
@@ -281,8 +280,7 @@ async fetch(query) {
 	epEnt := graph.Entity{
 		ID: "ep", Name: "GET /orders", Kind: "http_endpoint_definition",
 		SourceFile: "routers.ts", StartLine: 1,
-		Properties: map[string]string{"verb": "GET", "path": "/orders"},
-	}
+	}.WithProperties(map[string]string{"verb": "GET", "path": "/orders"})
 	// Handler spans lines 1..4; callee `fetch` starts at line 6 (after the
 	// handler's 4 lines + 1 blank).
 	handler := ent("handler", "OrderController.list", "Operation", 1, 4)
@@ -431,8 +429,7 @@ create(body) {
 	epEnt := graph.Entity{
 		ID: "ep", Name: "POST /addresses", Kind: "http_endpoint_definition",
 		SourceFile: "routers.ts", StartLine: 1,
-		Properties: map[string]string{"verb": "POST", "path": "/addresses"},
-	}
+	}.WithProperties(map[string]string{"verb": "POST", "path": "/addresses"})
 	handler := ent("handler", "AddressController.create", "Operation", 1, 3)
 	callee := ent("callee", "AddressService.create", "Operation", 5, 12)
 

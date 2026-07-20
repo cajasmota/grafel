@@ -220,9 +220,9 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 
 			// Annotation coverage.
 			totalAnnotated++
-			if e.Properties["framework"] != "" {
+			if e.PropGet("framework") != "" {
 				annotated++
-				r.FrameworkHits[e.Properties["framework"]]++
+				r.FrameworkHits[e.PropGet("framework")]++
 			}
 
 			// Field extraction for Class/Model kinds. Real FB-loaded entities carry
@@ -241,7 +241,7 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			if isClassLikeKind(kind) && e.Subtype != "field" {
 				classCandidates = append(classCandidates, classCandidate{
 					id:            e.ID,
-					fieldCountRaw: e.Properties["field_count"],
+					fieldCountRaw: e.PropGet("field_count"),
 				})
 			}
 		}
@@ -250,7 +250,7 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		frameworkFilesSeen := make(map[string]bool)
 		for i := range doc.Entities {
 			e := &doc.Entities[i]
-			if src := e.SourceFile; src != "" && e.Properties["framework"] != "" {
+			if src := e.SourceFile; src != "" && e.PropGet("framework") != "" {
 				frameworkFilesSeen[src] = true
 			}
 		}

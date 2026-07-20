@@ -24,51 +24,51 @@ func buildReachabilityDoc() *graph.Document {
 	return &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "fn_reached", Name: "ProcessOrder", Kind: "SCOPE.Function",
 				SourceFile: "orders/process.go", StartLine: 10,
-				Properties: map[string]string{
-					coverage.PropTestReachable:     "true",
-					coverage.PropReachDepth:        "2",
-					coverage.PropReachingTestCount: "2",
-					coverage.PropReachingTests:     "test_a,test_b",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable:     "true",
+				coverage.PropReachDepth:        "2",
+				coverage.PropReachingTestCount: "2",
+				coverage.PropReachingTests:     "test_a,test_b",
 			},
-			{
+			),
+			graph.Entity{
 				ID: "ep_reached", Name: "GET /orders", Kind: "SCOPE.Endpoint",
 				SourceFile: "orders/routes.go", StartLine: 5,
-				Properties: map[string]string{
-					coverage.PropTestReachable:     "true",
-					coverage.PropReachDepth:        "1",
-					coverage.PropReachingTestCount: "1",
-					coverage.PropReachingTests:     "test_e2e",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable:     "true",
+				coverage.PropReachDepth:        "1",
+				coverage.PropReachingTestCount: "1",
+				coverage.PropReachingTests:     "test_e2e",
 			},
-			{
+			),
+			graph.Entity{
 				ID: "ep_orphan", Name: "POST /inspections", Kind: "SCOPE.Endpoint",
 				SourceFile: "inspections/routes.go", StartLine: 12,
-				Properties: map[string]string{
-					coverage.PropTestReachable: "false",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable: "false",
 			},
-			{
+			),
+			graph.Entity{
 				ID: "fn_orphan", Name: "ReconcileLedger", Kind: "SCOPE.Function",
 				SourceFile: "ledger/reconcile.go", StartLine: 40,
-				Properties: map[string]string{
-					coverage.PropTestReachable: "false",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable: "false",
 			},
-			{
+			),
+			graph.Entity{
 				ID: "fn_no_lines", Name: "ValidateTax", Kind: "SCOPE.Function",
 				SourceFile: "tax/validate.go", StartLine: 8,
-				Properties: map[string]string{
-					coverage.PropTestReachable:     "true",
-					coverage.PropReachDepth:        "1",
-					coverage.PropReachingTestCount: "1",
-					coverage.PropReachingTests:     "test_tax",
-					coverage.PropCoveragePct:       "0",
-				},
+			}.WithProperties(map[string]string{
+				coverage.PropTestReachable:     "true",
+				coverage.PropReachDepth:        "1",
+				coverage.PropReachingTestCount: "1",
+				coverage.PropReachingTests:     "test_tax",
+				coverage.PropCoveragePct:       "0",
 			},
+			),
 			{
 				ID: "schema_x", Name: "Order", Kind: "SCOPE.Schema",
 				SourceFile: "orders/model.go", StartLine: 1,

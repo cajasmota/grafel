@@ -30,13 +30,13 @@ func buildSyntheticDoc(nEnt int) *graph.Document {
 			Language:      langs[i%len(langs)],
 			StartLine:     i,
 			EndLine:       i + 20,
-			Properties: map[string]string{
-				"docstring": fmt.Sprintf("Handles the order request for a customer by validating "+
-					"the payload, persisting the order entity %d, and emitting a downstream "+
-					"kafka event so the fulfilment pipeline can pick it up asynchronously.", i),
-				"discriminators": fmt.Sprintf("checklistType=%d,orderKind=premium%d", i%5, i%3),
-			},
-		}
+		}.WithProperties(map[string]string{
+			"docstring": fmt.Sprintf("Handles the order request for a customer by validating "+
+				"the payload, persisting the order entity %d, and emitting a downstream "+
+				"kafka event so the fulfilment pipeline can pick it up asynchronously.", i),
+			"discriminators": fmt.Sprintf("checklistType=%d,orderKind=premium%d", i%5, i%3),
+		},
+		)
 	}
 	nRel := nEnt * 15 / 4 // ~3.75x
 	doc.Relationships = make([]graph.Relationship, nRel)

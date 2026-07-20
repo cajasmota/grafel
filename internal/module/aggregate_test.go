@@ -22,8 +22,7 @@ func makeEntity(id, kind, name, sourceFile, mod, repo string) graph.Entity {
 		Kind:       kind,
 		Name:       name,
 		SourceFile: sourceFile,
-		Properties: props,
-	}
+	}.WithProperties(props)
 }
 
 // makeRel builds a minimal graph.Relationship for test fixtures.
@@ -70,10 +69,10 @@ func findRelWeight(doc *graph.Document, repo, fromMod, toMod string) int {
 	for k := range doc.Relationships {
 		r := &doc.Relationships[k]
 		if r.Kind == module.KindDependsOn && r.FromID == fmid && r.ToID == tmid {
-			if r.Properties == nil {
+			if r.PropLen() == 0 {
 				return 0
 			}
-			if w, err := strconv.Atoi(r.Properties["weight"]); err == nil {
+			if w, err := strconv.Atoi(r.PropGet("weight")); err == nil {
 				return w
 			}
 			return 0

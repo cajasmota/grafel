@@ -135,32 +135,32 @@ func deriveDRFActionCodenames(lg *LoadedGroup, viewset string) (*graph.Entity, s
 	if viewset != "" {
 		name = viewset + ".DerivedActionCodenames"
 	}
-	return &graph.Entity{
+	return graph.EntityPtr(graph.Entity{
 		ID:   "derived::drf_action_codenames::" + name,
 		Name: name,
 		Kind: string(types.EntityKindEnum),
-		Properties: map[string]string{
-			"enum_name":    name,
-			"members_json": string(mj),
-			"derived":      "drf_action_codenames",
-		},
-	}, ""
+	}.WithProperties(map[string]string{
+		"enum_name":    name,
+		"members_json": string(mj),
+		"derived":      "drf_action_codenames",
+	},
+	)), ""
 }
 
 // isDRFAction reports whether an entity is a DRF @action-decorated method.
 func isDRFAction(e *graph.Entity) bool {
-	if e == nil || e.Properties == nil {
+	if e == nil || e.PropLen() == 0 {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(e.Properties["drf_action"]), "true")
+	return strings.EqualFold(strings.TrimSpace(e.PropGet("drf_action")), "true")
 }
 
 // drfActionCodename returns the implicit codename of a DRF action: the explicit
 // url_path when present, else the lowercased bare method name (the part after the
 // final '.'), which is DRF's default url_path.
 func drfActionCodename(e *graph.Entity) string {
-	if e.Properties != nil {
-		if up := strings.TrimSpace(e.Properties["url_path"]); up != "" {
+	if e.PropLen() > 0 {
+		if up := strings.TrimSpace(e.PropGet("url_path")); up != "" {
 			return strings.ToLower(up)
 		}
 	}

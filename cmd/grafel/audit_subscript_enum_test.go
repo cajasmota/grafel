@@ -33,13 +33,13 @@ func TestAudit2709_SubscriptEnumeration(t *testing.T) {
 			e.Kind != "http_endpoint_definition" {
 			continue
 		}
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
 		endpoints = append(endpoints, ep{
-			Verb:       strings.ToUpper(e.Properties["verb"]),
-			Path:       e.Properties["path"],
-			PolySubscr: e.Properties["polymorphic_subscript"],
+			Verb:       strings.ToUpper(e.PropGet("verb")),
+			Path:       e.PropGet("path"),
+			PolySubscr: e.PropGet("polymorphic_subscript"),
 		})
 	}
 	if len(endpoints) == 0 {

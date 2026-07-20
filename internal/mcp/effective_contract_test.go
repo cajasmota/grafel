@@ -20,7 +20,7 @@ func routeEntity(props map[string]string) *graph.Entity {
 	for k, v := range props {
 		p[k] = v
 	}
-	return &graph.Entity{ID: "http:x", Kind: "http_endpoint", Properties: p}
+	return graph.EntityPtr(graph.Entity{ID: "http:x", Kind: "http_endpoint"}.WithProperties(p))
 }
 
 // TestProjectEffectiveContract_InheritedCreate verifies the #278 case: the
@@ -163,7 +163,7 @@ func TestProjectEffectiveContract_HonestPartial(t *testing.T) {
 // TestProjectEffectiveContract_NonRouteRejected verifies a non-router-expanded
 // entity is rejected (the projection is route-specific).
 func TestProjectEffectiveContract_NonRouteRejected(t *testing.T) {
-	e := &graph.Entity{ID: "x", Kind: "http_endpoint", Properties: map[string]string{"verb": "GET"}}
+	e := graph.EntityPtr(graph.Entity{ID: "x", Kind: "http_endpoint"}.WithProperties(map[string]string{"verb": "GET"}))
 	if _, ok := projectEffectiveContract(e); ok {
 		t.Error("expected projection to reject a non-router-expanded entity")
 	}

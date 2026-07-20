@@ -66,7 +66,7 @@ func TestMongoAggLookupNode_FromIDEqualsNodeID_4244(t *testing.T) {
 		if e.Subtype != "$lookup" && e.Subtype != "$graphLookup" {
 			continue
 		}
-		if e.Properties == nil || e.Properties["from"] == "" {
+		if e.PropLen() == 0 || e.PropGet("from") == "" {
 			continue // a $lookup with a dynamic `from` emits no join — skip.
 		}
 		lookupStages++
@@ -81,9 +81,9 @@ func TestMongoAggLookupNode_FromIDEqualsNodeID_4244(t *testing.T) {
 		// Collect every expected join target for THIS stage: the top-level
 		// `from` plus any recorded nested correlated froms.
 		wantTargets := map[string]bool{
-			"Class:" + engine.CapitalisedSingular(e.Properties["from"]): true,
+			"Class:" + engine.CapitalisedSingular(e.PropGet("from")): true,
 		}
-		if extra := e.Properties["join_targets"]; extra != "" {
+		if extra := e.PropGet("join_targets"); extra != "" {
 			for _, t := range splitCSV(extra) {
 				wantTargets["Class:"+engine.CapitalisedSingular(t)] = true
 			}

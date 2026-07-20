@@ -102,8 +102,8 @@ func classifyFlowDeadEnds(grp *DashGroup) []DeadEndItem {
 				continue
 			}
 
-			sc, _ := strconv.Atoi(e.Properties["step_count"])
-			cs := e.Properties["cross_stack"] == "true"
+			sc, _ := strconv.Atoi(e.PropGet("step_count"))
+			cs := e.PropGet("cross_stack") == "true"
 			pid := dashPrefixedID(r.Slug, e.ID)
 
 			// Single-step (or zero-step) flows are always classified separately.
@@ -111,7 +111,7 @@ func classifyFlowDeadEnds(grp *DashGroup) []DeadEndItem {
 				results = append(results, DeadEndItem{
 					ProcessID:  pid,
 					Label:      e.Name,
-					EntryName:  e.Properties["entry_name"],
+					EntryName:  e.PropGet("entry_name"),
 					StepCount:  sc,
 					Repo:       r.Slug,
 					Reason:     "single_step",
@@ -131,7 +131,7 @@ func classifyFlowDeadEnds(grp *DashGroup) []DeadEndItem {
 			results = append(results, DeadEndItem{
 				ProcessID:  pid,
 				Label:      e.Name,
-				EntryName:  e.Properties["entry_name"],
+				EntryName:  e.PropGet("entry_name"),
 				StepCount:  sc,
 				Repo:       r.Slug,
 				Reason:     "no_useful_sink",
@@ -254,8 +254,8 @@ func classifyFlowTruncated(grp *DashGroup) []TruncatedFlowItem {
 			k := flowStepKey{r.Slug, e.ID}
 			knownLocalIDs[k] = true
 			knownBareIDs[e.ID] = true
-			if e.Properties != nil {
-				entityProps[k] = e.Properties
+			if e.PropLen() > 0 {
+				entityProps[k] = e.PropsSnapshot()
 			}
 		}
 	}
@@ -281,8 +281,8 @@ func classifyFlowTruncated(grp *DashGroup) []TruncatedFlowItem {
 				continue
 			}
 
-			sc, _ := strconv.Atoi(e.Properties["step_count"])
-			cs := e.Properties["cross_stack"] == "true"
+			sc, _ := strconv.Atoi(e.PropGet("step_count"))
+			cs := e.PropGet("cross_stack") == "true"
 			pid := dashPrefixedID(r.Slug, e.ID)
 
 			// Collect ordered step keys.
@@ -305,7 +305,7 @@ func classifyFlowTruncated(grp *DashGroup) []TruncatedFlowItem {
 			results = append(results, TruncatedFlowItem{
 				ProcessID:        pid,
 				Label:            e.Name,
-				EntryName:        e.Properties["entry_name"],
+				EntryName:        e.PropGet("entry_name"),
 				StepCount:        sc,
 				Repo:             r.Slug,
 				Reason:           check.reason,
@@ -347,8 +347,8 @@ func collectStepKeysOrdered(
 				continue
 			}
 			idx := -1
-			if rel.Properties != nil {
-				if raw, ok := rel.Properties["step_index"]; ok {
+			if rel.PropLen() > 0 {
+				if raw, ok := rel.PropLookup("step_index"); ok {
 					idx, _ = strconv.Atoi(raw)
 				}
 			}

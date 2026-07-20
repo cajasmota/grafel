@@ -398,7 +398,7 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 				continue
 			}
 			// Exclude client-synthesis call-side entries.
-			if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+			if e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
 				continue
 			}
 
@@ -409,10 +409,10 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 				drfAuthByFile, drfDefaultProtected, drfDefaultEvidence,
 			)
 
-			method := e.Properties["verb"]
-			path := e.Properties["path"]
+			method := e.PropGet("verb")
+			path := e.PropGet("path")
 			sensitiveOp, sensitiveMatch := isSensitiveOperation(e.Name, path)
-			idorRisk := hasIDORRisk(path, e.Properties)
+			idorRisk := hasIDORRisk(path, e.PropsSnapshot())
 
 			var severity string
 			switch {
@@ -621,17 +621,17 @@ func isAuthPolicyEntity(e *graph.Entity) bool {
 	}
 	// Entities created by decorator_extractor for auth decorators have
 	// decorator_name set to a known auth annotation.
-	if dn := e.Properties["decorator_name"]; dn != "" {
+	if dn := e.PropGet("decorator_name"); dn != "" {
 		if authAnnotationNames[strings.ToLower(dn)] {
 			return true
 		}
 	}
 	// annotation_name property set by auth_endpoint_linker
-	if an := e.Properties["annotation_name"]; an != "" {
+	if an := e.PropGet("annotation_name"); an != "" {
 		return true
 	}
 	// middleware_name property set by auth_endpoint_linker
-	if mn := e.Properties["middleware_name"]; mn != "" {
+	if mn := e.PropGet("middleware_name"); mn != "" {
 		return true
 	}
 	return false
@@ -640,13 +640,13 @@ func isAuthPolicyEntity(e *graph.Entity) bool {
 // authEntityEvidence returns a human-readable evidence string for an auth
 // policy entity (e.g. "@login_required", "verifyToken").
 func authEntityEvidence(e *graph.Entity) string {
-	if an := e.Properties["annotation_name"]; an != "" {
+	if an := e.PropGet("annotation_name"); an != "" {
 		return an
 	}
-	if mn := e.Properties["middleware_name"]; mn != "" {
+	if mn := e.PropGet("middleware_name"); mn != "" {
 		return mn
 	}
-	if dn := e.Properties["decorator_name"]; dn != "" {
+	if dn := e.PropGet("decorator_name"); dn != "" {
 		return "@" + dn
 	}
 	return e.Name
@@ -704,11 +704,11 @@ func determineAuthCoverage(
 	// auth_required=="false" is a DECISIVE public verdict (explicit @Public /
 	// AllowAny / permitAll): genuinely unauthenticated by design, so it does NOT
 	// count as covered and falls through (no raw signal will rescue it).
-	if e.Properties["auth_required"] == "true" {
-		if g := e.Properties["auth_guard"]; g != "" {
+	if e.PropGet("auth_required") == "true" {
+		if g := e.PropGet("auth_guard"); g != "" {
 			return true, "auth_guard=" + g
 		}
-		if m := e.Properties["auth_method"]; m != "" && m != "unknown" {
+		if m := e.PropGet("auth_method"); m != "" && m != "unknown" {
 			return true, "auth_method=" + m
 		}
 		return true, "auth_required=true"
@@ -716,7 +716,7 @@ func determineAuthCoverage(
 
 	// Signal 1: entity property directly on the endpoint.
 	for _, k := range authPropertyKeys {
-		if v := e.Properties[k]; v != "" {
+		if v := e.PropGet(k); v != "" {
 			vl := strings.ToLower(v)
 			if k == "annotation_name" || k == "auth_decorator" || k == "auth_middleware" || k == "auth_guard" {
 				if authPropertyValues[vl] || k != "annotation_name" {
@@ -872,11 +872,11 @@ func buildDRFClassAuthByFile(doc *graph.Document) map[string][]drfClassAuth {
 	out := make(map[string][]drfClassAuth)
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
-		_, hasAttr := e.Properties["has_permission_classes"]
-		_, hasGet := e.Properties["has_get_permissions"]
+		_, hasAttr := e.PropLookup("has_permission_classes")
+		_, hasGet := e.PropLookup("has_get_permissions")
 		if !hasAttr && !hasGet {
 			continue
 		}
@@ -884,9 +884,9 @@ func buildDRFClassAuthByFile(doc *graph.Document) map[string][]drfClassAuth {
 			startLine:         e.StartLine,
 			endLine:           e.EndLine,
 			hasPermAttr:       hasAttr,
-			permClasses:       e.Properties["permission_classes"],
+			permClasses:       e.PropGet("permission_classes"),
 			hasGetPermissions: hasGet,
-			getPermClasses:    e.Properties["get_permissions_classes"],
+			getPermClasses:    e.PropGet("get_permissions_classes"),
 		})
 	}
 	return out
@@ -900,13 +900,13 @@ func buildDRFClassAuthByFile(doc *graph.Document) map[string][]drfClassAuth {
 func repoDRFDefaultPolicy(doc *graph.Document) (protected bool, evidence string) {
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
-		if e.Properties["drf_default_permission_present"] != "true" {
+		if e.PropGet("drf_default_permission_present") != "true" {
 			continue
 		}
-		if prot, name := isProtectivePermissionList(e.Properties["drf_default_permission_classes"]); prot {
+		if prot, name := isProtectivePermissionList(e.PropGet("drf_default_permission_classes")); prot {
 			return true, "DRF default permission: " + name
 		}
 		// Present but AllowAny/empty default → explicitly open. A later

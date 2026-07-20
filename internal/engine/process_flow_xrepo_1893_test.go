@@ -63,14 +63,14 @@ func makeXRepoFixture() (fe, be *graph.Document) {
 			{ID: "fe_r1", FromID: "fe_entry", ToID: "fe_loadData", Kind: "CALLS"},
 			// Phantom cross-repo CALLS edge pointing at the backend
 			// handler. This is what links.PromoteToPhantomEdges injects.
-			{
+			graph.Relationship{
 				ID: "fe_phantom", FromID: "fe_loadData", ToID: "be_handler", Kind: "CALLS",
-				Properties: map[string]string{
-					"cross_repo":  "true",
-					"target_repo": "be",
-					"link_method": "http",
-				},
+			}.WithProperties(map[string]string{
+				"cross_repo":  "true",
+				"target_repo": "be",
+				"link_method": "http",
 			},
+			),
 		},
 	}
 	be = &graph.Document{
@@ -95,7 +95,7 @@ func findProcessByEntry(doc *graph.Document, entryID string) *graph.Entity {
 		if e.Kind != EntityKindProcess {
 			continue
 		}
-		if e.Properties["entry_id"] == entryID {
+		if e.PropGet("entry_id") == entryID {
 			return e
 		}
 	}
@@ -117,7 +117,7 @@ func TestProcessFlow_1893_CrossRepoExtension_Extends(t *testing.T) {
 		t.Fatalf("no Process found with entry_id=fe_entry; got: %+v", fe.Entities)
 	}
 
-	chain := strings.Split(p.Properties["chain"], ",")
+	chain := strings.Split(p.PropGet("chain"), ",")
 	// Pre-#1893: chain would be [fe_entry, fe_loadData, be_handler] (3 steps,
 	// terminating at the phantom target with no continuation).
 	// Post-#1893: chain extends through be_service / be_repo.
@@ -136,8 +136,8 @@ func TestProcessFlow_1893_CrossRepoExtension_Extends(t *testing.T) {
 		t.Errorf("chain didn't continue past be_handler into backend CALLS chain: %v", chain)
 	}
 
-	if p.Properties["cross_stack"] != "true" {
-		t.Errorf("Process should be cross_stack=true, got %q", p.Properties["cross_stack"])
+	if p.PropGet("cross_stack") != "true" {
+		t.Errorf("Process should be cross_stack=true, got %q", p.PropGet("cross_stack"))
 	}
 }
 
@@ -152,7 +152,7 @@ func TestProcessFlow_1893_NoCompanions_StillTerminates(t *testing.T) {
 	if p == nil {
 		t.Fatalf("no Process found with entry_id=fe_entry")
 	}
-	chain := strings.Split(p.Properties["chain"], ",")
+	chain := strings.Split(p.PropGet("chain"), ",")
 	// Without companions the chain must NOT continue into the backend.
 	for _, id := range chain {
 		if id == "be_service" || id == "be_repo" {
@@ -163,9 +163,9 @@ func TestProcessFlow_1893_NoCompanions_StillTerminates(t *testing.T) {
 		t.Errorf("expected chain to terminate at be_handler (phantom target); got terminal=%q chain=%v",
 			chain[len(chain)-1], chain)
 	}
-	if p.Properties["cross_stack"] != "true" {
+	if p.PropGet("cross_stack") != "true" {
 		t.Errorf("Process should still be cross_stack=true via phantom edge; got %q",
-			p.Properties["cross_stack"])
+			p.PropGet("cross_stack"))
 	}
 }
 
@@ -179,9 +179,9 @@ func TestProcessFlow_1893_BridgeStepIndex(t *testing.T) {
 	if p == nil {
 		t.Fatalf("no Process found")
 	}
-	raw, ok := p.Properties["cross_stack_bridge_at_step"]
+	raw, ok := p.PropLookup("cross_stack_bridge_at_step")
 	if !ok {
-		t.Fatalf("Process missing cross_stack_bridge_at_step property; props=%v", p.Properties)
+		t.Fatalf("Process missing cross_stack_bridge_at_step property; props=%v", p.PropsSnapshot())
 	}
 	idx, err := strconv.Atoi(raw)
 	if err != nil {

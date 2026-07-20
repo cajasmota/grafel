@@ -120,7 +120,7 @@ func TestDjangoFixture_FrameworkEntities(t *testing.T) {
 	// (the engine stamps that on every YAML-driven entity).
 	frameworkHits := 0
 	for _, e := range doc.Entities {
-		if e.Properties["framework"] == "python" || e.Properties["framework"] == "django" {
+		if e.PropGet("framework") == "python" || e.PropGet("framework") == "django" {
 			frameworkHits++
 		}
 	}
@@ -129,7 +129,7 @@ func TestDjangoFixture_FrameworkEntities(t *testing.T) {
 		// (the language root). Fall back to checking any framework-tagged
 		// entity exists at all, which proves the engine ran.
 		for _, e := range doc.Entities {
-			if e.Properties["framework"] != "" {
+			if e.PropGet("framework") != "" {
 				frameworkHits++
 			}
 		}
@@ -145,7 +145,7 @@ func TestSpringFixture_FrameworkEntities(t *testing.T) {
 	doc := runIndexerOn(t, "testdata/spring_app", "spring_app", nil)
 	hits := 0
 	for _, e := range doc.Entities {
-		if e.Properties["framework"] != "" && e.Language == "java" {
+		if e.PropGet("framework") != "" && e.Language == "java" {
 			hits++
 		}
 	}
@@ -855,7 +855,7 @@ func TestModuleCoverage_AllEntitiesTagged(t *testing.T) {
 			modules := map[string]int{}
 			missing := 0
 			for _, e := range doc.Entities {
-				m := e.Properties["module"]
+				m := e.PropGet("module")
 				if m == "" {
 					missing++
 				} else {

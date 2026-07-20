@@ -188,11 +188,11 @@ func (s *Server) handleExportOpenAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			// Exclude call-site synthetics.
 			if e.Kind == "http_endpoint_call" ||
-				e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+				e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
 				continue
 			}
 
-			path := e.Properties["path"]
+			path := e.PropGet("path")
 			if path == "" {
 				path = e.Name
 			}
@@ -200,33 +200,33 @@ func (s *Server) handleExportOpenAPI(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			method := strings.ToUpper(e.Properties["method"])
+			method := strings.ToUpper(e.PropGet("method"))
 			if method == "" {
-				method = strings.ToUpper(e.Properties["verb"])
+				method = strings.ToUpper(e.PropGet("verb"))
 			}
 			if method == "" {
 				method = "ANY"
 			}
 			// Skip DRF urlconf_nested_include ANY placeholders.
-			if method == "ANY" && e.Properties["urlconf_nested_include"] == "true" {
+			if method == "ANY" && e.PropGet("urlconf_nested_include") == "true" {
 				continue
 			}
 
-			owningBackend := e.Properties["owning_backend"]
+			owningBackend := e.PropGet("owning_backend")
 			if owningBackend == "" {
 				owningBackend = inferOwningBackend(e.Name, repo.Slug)
 			}
 
 			// AI enrichment description — stored in Properties["summary"] or
 			// Properties["description"] (both used depending on extractor).
-			description := e.Properties["summary"]
+			description := e.PropGet("summary")
 			if description == "" {
-				description = e.Properties["description"]
+				description = e.PropGet("description")
 			}
 
 			// Response keys
 			var respKeys []string
-			if rk := e.Properties["response_keys"]; rk != "" {
+			if rk := e.PropGet("response_keys"); rk != "" {
 				for _, k := range strings.Split(rk, ",") {
 					k = strings.TrimSpace(k)
 					if k != "" {
@@ -237,7 +237,7 @@ func (s *Server) handleExportOpenAPI(w http.ResponseWriter, r *http.Request) {
 
 			// Status codes
 			var statusCodes []int
-			if sc := e.Properties["status_codes"]; sc != "" {
+			if sc := e.PropGet("status_codes"); sc != "" {
 				for _, s := range strings.Split(sc, ",") {
 					if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
 						statusCodes = append(statusCodes, n)
@@ -249,7 +249,7 @@ func (s *Server) handleExportOpenAPI(w http.ResponseWriter, r *http.Request) {
 				method:        method,
 				path:          path,
 				handlerName:   e.Name,
-				framework:     e.Properties["framework"],
+				framework:     e.PropGet("framework"),
 				owningBackend: owningBackend,
 				description:   description,
 				responseKeys:  respKeys,

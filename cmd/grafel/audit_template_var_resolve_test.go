@@ -33,13 +33,13 @@ func TestAudit2704_TemplateVarResolve(t *testing.T) {
 		if e.Kind != "http_endpoint_call" && e.Kind != "http_endpoint" && e.Kind != "http_endpoint_definition" {
 			continue
 		}
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
 		endpoints = append(endpoints, &struct {
 			Verb string
 			Path string
-		}{Verb: e.Properties["verb"], Path: e.Properties["path"]})
+		}{Verb: e.PropGet("verb"), Path: e.PropGet("path")})
 	}
 	if len(endpoints) == 0 {
 		t.Fatalf("audit_template_var_resolve: no http_endpoint(_call) entities emitted")

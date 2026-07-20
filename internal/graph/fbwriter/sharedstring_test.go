@@ -32,10 +32,8 @@ func buildDupRelGraph(n int) *graph.Document {
 	doc := &graph.Document{
 		Repo: "dedup-fixture",
 		Entities: []graph.Entity{
-			{ID: "ent00000000000a01", Name: "A", Kind: "function", SourceFile: "shared/file.go", Language: "go",
-				Properties: map[string]string{"module": "pkg/shared"}},
-			{ID: "ent00000000000b02", Name: "B", Kind: "function", SourceFile: "shared/file.go", Language: "go",
-				Properties: map[string]string{"module": "pkg/shared"}},
+			graph.Entity{ID: "ent00000000000a01", Name: "A", Kind: "function", SourceFile: "shared/file.go", Language: "go"}.WithProperties(map[string]string{"module": "pkg/shared"}),
+			graph.Entity{ID: "ent00000000000b02", Name: "B", Kind: "function", SourceFile: "shared/file.go", Language: "go"}.WithProperties(map[string]string{"module": "pkg/shared"}),
 		},
 	}
 	for i := 0; i < n; i++ {
@@ -121,12 +119,9 @@ func TestSharedStringDedup_RoundtripCorrectness(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "dedup-correctness",
 		Entities: []graph.Entity{
-			{ID: "ent0000000000000a", Name: "Alpha", Kind: "function", SourceFile: "pkg/shared/file.go", Language: "go",
-				Properties: map[string]string{"module": "pkg/shared", "visibility": "public"}},
-			{ID: "ent0000000000000b", Name: "Beta", Kind: "function", SourceFile: "pkg/shared/file.go", Language: "go",
-				Properties: map[string]string{"module": "pkg/shared", "visibility": "private"}},
-			{ID: "ent0000000000000c", Name: "Gamma", Kind: "type", SourceFile: "pkg/other/file2.go", Language: "python",
-				Properties: map[string]string{"module": "pkg/other", "visibility": "public"}},
+			graph.Entity{ID: "ent0000000000000a", Name: "Alpha", Kind: "function", SourceFile: "pkg/shared/file.go", Language: "go"}.WithProperties(map[string]string{"module": "pkg/shared", "visibility": "public"}),
+			graph.Entity{ID: "ent0000000000000b", Name: "Beta", Kind: "function", SourceFile: "pkg/shared/file.go", Language: "go"}.WithProperties(map[string]string{"module": "pkg/shared", "visibility": "private"}),
+			graph.Entity{ID: "ent0000000000000c", Name: "Gamma", Kind: "type", SourceFile: "pkg/other/file2.go", Language: "python"}.WithProperties(map[string]string{"module": "pkg/other", "visibility": "public"}),
 		},
 		Relationships: []graph.Relationship{
 			{FromID: "ent0000000000000a", ToID: "ent0000000000000b", Kind: "calls"},
@@ -165,11 +160,11 @@ func TestSharedStringDedup_RoundtripCorrectness(t *testing.T) {
 	if a.Language != "go" || b.Language != "go" || c.Language != "python" {
 		t.Errorf("language mismatch: a=%q b=%q c=%q", a.Language, b.Language, c.Language)
 	}
-	if a.Properties["module"] != "pkg/shared" || c.Properties["module"] != "pkg/other" {
-		t.Errorf("module mismatch: a=%q c=%q", a.Properties["module"], c.Properties["module"])
+	if a.PropGet("module") != "pkg/shared" || c.PropGet("module") != "pkg/other" {
+		t.Errorf("module mismatch: a=%q c=%q", a.PropGet("module"), c.PropGet("module"))
 	}
-	if a.Properties["visibility"] != "public" || b.Properties["visibility"] != "private" {
-		t.Errorf("visibility mismatch: a=%q b=%q", a.Properties["visibility"], b.Properties["visibility"])
+	if a.PropGet("visibility") != "public" || b.PropGet("visibility") != "private" {
+		t.Errorf("visibility mismatch: a=%q b=%q", a.PropGet("visibility"), b.PropGet("visibility"))
 	}
 
 	if len(got.Relationships) != 3 {

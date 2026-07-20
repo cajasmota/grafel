@@ -16,8 +16,7 @@ func makeEntity(id, name, kind, subtype, sourceFile, lang string, startLine int,
 		SourceFile: sourceFile,
 		Language:   lang,
 		StartLine:  startLine,
-		Properties: props,
-	}
+	}.WithProperties(props)
 }
 
 func makeRel(id, fromID, toID, kind string) Relationship {
@@ -286,11 +285,11 @@ func TestAnnotateDocument(t *testing.T) {
 	// Check that the CALLS relationship got anti_pattern="n_plus_1".
 	for _, r := range doc.Relationships {
 		if r.ID == "r2" {
-			if r.Properties == nil || r.Properties["anti_pattern"] != "n_plus_1" {
+			if r.PropLen() == 0 || r.PropGet("anti_pattern") != "n_plus_1" {
 				// Only check if findings reference this pair.
 				for _, f := range report.Findings {
 					if f.QueryEntityID == "q1" {
-						t.Errorf("CALLS rel r2 should have anti_pattern=n_plus_1, properties: %v", r.Properties)
+						t.Errorf("CALLS rel r2 should have anti_pattern=n_plus_1, properties: %v", r.PropsSnapshot())
 					}
 				}
 			}

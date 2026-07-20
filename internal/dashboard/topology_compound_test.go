@@ -19,16 +19,14 @@ func compoundFixture() *DashGroup {
 		Entities: []graph.Entity{
 			{ID: "ep1", Name: "GET /orders", Kind: "SCOPE.HTTPEndpoint", SourceFile: "api/handlers/orders.go"},
 			{ID: "svc1", Name: "OrderService", Kind: "SCOPE.Service", SourceFile: "api/services/order.go"},
-			{ID: "db1", Name: "orders", Kind: "SCOPE.Datastore", SourceFile: "api/db/schema.go",
-				Properties: map[string]string{"resource_category": "datastore"}},
+			graph.Entity{ID: "db1", Name: "orders", Kind: "SCOPE.Datastore", SourceFile: "api/db/schema.go"}.WithProperties(map[string]string{"resource_category": "datastore"}),
 			{ID: "q1", Name: "order.created", Kind: "SCOPE.MessageTopic", SourceFile: "api/events/topics.go"},
 			{ID: "guard1", Name: "AuthGuard", Kind: "SCOPE.AuthGuard", SourceFile: "api/auth/guard.go"},
 			// An IaC resource for the infra lens.
-			{ID: "ddb", Name: "orders-table", Kind: "SCOPE.InfraResource", SourceFile: "infra/main.tf",
-				Properties: map[string]string{
-					"provider": "aws", "resource_category": "datastore",
-					"module": "data", "service": "orders",
-				}},
+			graph.Entity{ID: "ddb", Name: "orders-table", Kind: "SCOPE.InfraResource", SourceFile: "infra/main.tf"}.WithProperties(map[string]string{
+				"provider": "aws", "resource_category": "datastore",
+				"module": "data", "service": "orders",
+			}),
 		},
 		Relationships: []graph.Relationship{
 			{FromID: "ep1", ToID: "svc1", Kind: "CALLS"},

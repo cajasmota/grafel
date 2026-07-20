@@ -108,16 +108,14 @@ func TestUX1650_EndpointsFilterAndTerse(t *testing.T) {
 			Name:       "GET /api/v1/widget/" + strconvI(i),
 			Kind:       "http_endpoint_definition",
 			SourceFile: "routes.go", StartLine: i + 1,
-			Properties: map[string]string{"verb": "GET", "path": "/api/v1/widget/" + strconvI(i)},
-		})
+		}.WithProperties(map[string]string{"verb": "GET", "path": "/api/v1/widget/" + strconvI(i)}))
 	}
 	ents = append(ents, graph.Entity{
 		ID:         "ep_proposal",
 		Name:       "GET /api/v1/proposals/get_counts",
 		Kind:       "http_endpoint_definition",
 		SourceFile: "proposal_view.py", StartLine: 100,
-		Properties: map[string]string{"verb": "GET", "path": "/api/v1/proposals/get_counts"},
-	})
+	}.WithProperties(map[string]string{"verb": "GET", "path": "/api/v1/proposals/get_counts"}))
 	doc := &graph.Document{Entities: ents}
 	srv := newTestServer(t, doc)
 

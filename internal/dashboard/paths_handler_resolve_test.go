@@ -20,14 +20,13 @@ import (
 func drfRoleFixture() ([]graph.Entity, []graph.Relationship) {
 	entities := []graph.Entity{
 		// Synthetic endpoint definition produced by the DRF router expansion.
-		{
+		graph.Entity{
 			ID:         "ep_get_roles_pk",
 			Name:       "http:GET:/api/v1/roles/{pk}",
 			Kind:       "http_endpoint_definition",
 			SourceFile: "core/routers.py",
 			StartLine:  0,
-			Properties: map[string]string{"path": "/api/v1/roles/{pk}", "verb": "GET", "framework": "drf"},
-		},
+		}.WithProperties(map[string]string{"path": "/api/v1/roles/{pk}", "verb": "GET", "framework": "drf"}),
 		// Real handler — a viewset method.
 		{
 			ID:            "op_retrieve",
@@ -152,12 +151,12 @@ func TestV2PathDetail_PopulatesSectionsViaIMPLEMENTS(t *testing.T) {
 func TestV2PathsList_GroupsByViewSet_NotRouterFile(t *testing.T) {
 	entities := []graph.Entity{
 		// Two router-expanded definitions — both at routers.py:0.
-		{ID: "ep_roles_get", Name: "http:GET:/api/v1/roles", Kind: "http_endpoint_definition",
+		graph.Entity{ID: "ep_roles_get", Name: "http:GET:/api/v1/roles", Kind: "http_endpoint_definition",
 			SourceFile: "core/routers.py", StartLine: 0,
-			Properties: map[string]string{"path": "/api/v1/roles", "verb": "GET"}},
-		{ID: "ep_buildings_get", Name: "http:GET:/api/v1/buildings", Kind: "http_endpoint_definition",
+		}.WithProperties(map[string]string{"path": "/api/v1/roles", "verb": "GET"}),
+		graph.Entity{ID: "ep_buildings_get", Name: "http:GET:/api/v1/buildings", Kind: "http_endpoint_definition",
 			SourceFile: "core/routers.py", StartLine: 0,
-			Properties: map[string]string{"path": "/api/v1/buildings", "verb": "GET"}},
+		}.WithProperties(map[string]string{"path": "/api/v1/buildings", "verb": "GET"}),
 		// Two viewset handlers in different files.
 		{ID: "op_role_list", Name: "RoleViewSet.list", Kind: "SCOPE.Operation",
 			SourceFile: "core/views/role_viewset.py", StartLine: 10},
@@ -223,14 +222,13 @@ func groupLabels(gs []v2ControllerGroup) []string {
 func makeCrossRepoPathsGroup() *DashGroup {
 	// Backend repo: definition + handler.
 	backendEntities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "ep_login",
 			Name:       "http:POST:/auth/login",
 			Kind:       "http_endpoint_definition",
 			SourceFile: "api/auth/routes.py",
 			StartLine:  0,
-			Properties: map[string]string{"path": "/auth/login", "verb": "POST", "framework": "drf"},
-		},
+		}.WithProperties(map[string]string{"path": "/auth/login", "verb": "POST", "framework": "drf"}),
 		{
 			ID:            "op_login",
 			Name:          "AuthViewSet.login",
@@ -252,14 +250,13 @@ func makeCrossRepoPathsGroup() *DashGroup {
 
 	// Client repo: an http_endpoint_call entity that calls /auth/login.
 	clientEntities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "call_login",
 			Name:       "http:POST:/auth/login",
 			Kind:       "http_endpoint_call",
 			SourceFile: "src/api/auth.ts",
 			StartLine:  22,
-			Properties: map[string]string{"path": "/auth/login", "verb": "POST"},
-		},
+		}.WithProperties(map[string]string{"path": "/auth/login", "verb": "POST"}),
 		{
 			ID:         "fn_do_login",
 			Name:       "doLogin",

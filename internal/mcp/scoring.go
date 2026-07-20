@@ -146,8 +146,8 @@ func buildDocTerms(e *graph.Entity) docTerms {
 		add(strings.Join(dirs, " "), weightPathDirs, false)
 	}
 	// docstring (if any)
-	if e.Properties != nil {
-		if ds, ok := e.Properties["docstring"]; ok && ds != "" {
+	if e.PropLen() > 0 {
+		if ds, ok := e.PropLookup("docstring"); ok && ds != "" {
 			if len(ds) > docstringLimitChars {
 				ds = ds[:docstringLimitChars]
 			}
@@ -161,7 +161,7 @@ func buildDocTerms(e *graph.Entity) docTerms {
 		// higher. Tokenize via addIdentifier so camelCase / snake_case
 		// vars still split into sub-tokens; literals go through tokenize
 		// directly (numbers/strings need digit-boundary splitting).
-		if pairs, ok := e.Properties["discriminators"]; ok && pairs != "" {
+		if pairs, ok := e.PropLookup("discriminators"); ok && pairs != "" {
 			for _, pair := range strings.Split(pairs, ",") {
 				eq := strings.IndexByte(pair, '=')
 				if eq <= 0 || eq >= len(pair)-1 {
@@ -203,9 +203,9 @@ func buildDocTerms(e *graph.Entity) docTerms {
 	// itself is a matchable term.
 	if e.Kind == string(types.EntityKindChannelBinding) {
 		add("channel binding", weightDocstring, false)
-		add(e.Properties["direction"], weightDocstring, false)
-		add(e.Properties["topic"], weightDocstring, false)
-		add(e.Properties["connector"], weightDocstring, false)
+		add(e.PropGet("direction"), weightDocstring, false)
+		add(e.PropGet("topic"), weightDocstring, false)
+		add(e.PropGet("connector"), weightDocstring, false)
 	}
 	return d
 }

@@ -373,22 +373,15 @@ func applyOneRepair(r graph.Relationship, rep *Repair) (graph.Relationship, bool
 	if rep.Resolution == RepairAbandon {
 		return r, true
 	}
-	if r.Properties == nil {
-		r.Properties = make(map[string]string, 4)
+	if r.PropLen() == 0 {
+		r.PropsReplace(make(map[string]string, 4))
 	}
-	// Source-attribution (ADR-0015 #4/8, issue #547) — every applied edge
-	// carries three auditable properties:
-	//   resolved_by       = "agent-repair" (distinguished from "static")
-	//   resolved_by_agent = <repair.Source> e.g. "generate-docs/pass-1a"
-	//   repair_reasoning  = verbatim one-sentence reasoning from repair.json
-	// Downstream consumers can filter on resolved_by to find all
-	// agent-touched edges and read resolved_by_agent to trace the originating
-	// skill or pass.
-	r.Properties["resolved_by"] = "agent-repair"
+
+	r.PropSet("resolved_by", "agent-repair")
 	if rep.Source != "" {
-		r.Properties["resolved_by_agent"] = rep.Source
+		r.PropSet("resolved_by_agent", rep.Source)
 	}
-	r.Properties["repair_reasoning"] = rep.Reasoning
+	r.PropSet("repair_reasoning", rep.Reasoning)
 
 	switch rep.Resolution {
 	case RepairBindToEntity:
@@ -402,14 +395,12 @@ func applyOneRepair(r graph.Relationship, rep *Repair) (graph.Relationship, bool
 		// acceptable, the agent told us it's external).
 	case RepairReclassifyAsResolved:
 		r.ToID = rep.NewTarget
-		// Mark resolved-by-agent so the static resolver's
-		// re-resolution pass skips this edge.
-		r.Properties["repair_kind"] = "reclassify_as_resolved"
+
+		r.PropSet("repair_kind", "reclassify_as_resolved")
 	case RepairReclassifyAsDynamic:
-		// ToID stays — but tag the edge so the resolver's dynamic
-		// classifier treats it as dynamic on the next pass.
-		r.Properties["repair_kind"] = "reclassify_as_dynamic"
-		r.Properties["dynamic_reason"] = rep.DynamicReason
+
+		r.PropSet("repair_kind", "reclassify_as_dynamic")
+		r.PropSet("dynamic_reason", rep.DynamicReason)
 	}
 	return r, false
 }

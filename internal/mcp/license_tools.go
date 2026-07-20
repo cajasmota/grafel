@@ -175,8 +175,8 @@ func collectExternalPackages(r *LoadedRepo) []map[string]string {
 		if e.Subtype != "external_dependency" {
 			continue
 		}
-		pm := e.Properties["package_manager"]
-		ver := e.Properties["version"]
+		pm := e.PropGet("package_manager")
+		ver := e.PropGet("version")
 		if pm == "" {
 			continue
 		}

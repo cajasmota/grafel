@@ -771,7 +771,7 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 				SourceFile: e.SourceFile,
 				StartLine:  e.StartLine,
 				EndLine:    e.EndLine,
-				Properties: e.Properties,
+				Properties: e.PropsSnapshot(),
 			})
 		}
 		for _, r := range doc.Relationships {

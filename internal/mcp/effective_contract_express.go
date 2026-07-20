@@ -146,8 +146,8 @@ func expressFrameworkLabel(e *graph.Entity) string {
 func composeExpressContract(r *LoadedRepo, ep *graph.Entity, handler *graph.Entity) effectiveContract {
 	c := effectiveContract{
 		Framework: expressFrameworkLabel(ep),
-		Verb:      strings.ToUpper(ep.Properties["verb"]),
-		Path:      ep.Properties["path"],
+		Verb:      strings.ToUpper(ep.PropGet("verb")),
+		Path:      ep.PropGet("path"),
 		Kind:      "explicit",
 	}
 	if handler != nil {
@@ -205,7 +205,7 @@ func composeExpressRequestFields(r *LoadedRepo, ep *graph.Entity, handler *graph
 	}
 
 	// (2) Fastify route schema.body → request_body_type DTO fields.
-	if dtoType := ep.Properties["request_body_type"]; dtoType != "" {
+	if dtoType := ep.PropGet("request_body_type"); dtoType != "" {
 		for _, mf := range dtoFieldsByProperty(r, dtoType) {
 			mf.In = "body"
 			mf.DTO = dtoType

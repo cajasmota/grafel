@@ -141,12 +141,12 @@ func DeriveTestsWalkUp(doc *Document) WalkUpStats {
 					FromID: testID,
 					ToID:   callerID,
 					Kind:   "TESTS",
-					Properties: map[string]string{
-						"derived":    "helper:" + helperID,
-						"confidence": "0.7",
-						"source":     "tests-walkup",
-					},
-				})
+				}.WithProperties(map[string]string{
+					"derived":    "helper:" + helperID,
+					"confidence": "0.7",
+					"source":     "tests-walkup",
+				},
+				))
 				stats.DerivedEdges++
 			}
 		}

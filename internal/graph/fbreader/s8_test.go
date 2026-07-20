@@ -30,11 +30,11 @@ func buildLargeDoc(nEnts, nRels int) *graph.Document {
 			Name:       "Entity" + strconv.Itoa(i),
 			Kind:       "function",
 			SourceFile: "pkg/file" + strconv.Itoa(i%50) + ".go",
-			Properties: map[string]string{
-				"module":   "pkg" + strconv.Itoa(i%10),
-				"language": "go",
-			},
-		})
+		}.WithProperties(map[string]string{
+			"module":   "pkg" + strconv.Itoa(i%10),
+			"language": "go",
+		},
+		))
 	}
 	for i := 0; i < nRels; i++ {
 		from := "e" + strconv.Itoa(i%nEnts)

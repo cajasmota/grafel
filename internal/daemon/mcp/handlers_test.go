@@ -24,19 +24,17 @@ func writeRichGraph(t *testing.T, path string) {
 			{FromID: "demo::a", ToID: "demo::b", Kind: "CALLS"},
 			{FromID: "demo::c", ToID: "demo::b", Kind: "CALLS"},
 			// residual: bug_extractor disposition
-			{
-				FromID:     "demo::a",
-				ToID:       "demo::missing",
-				Kind:       "CALLS",
-				Properties: map[string]string{"disposition": "bug_extractor"},
-			},
+			graph.Relationship{
+				FromID: "demo::a",
+				ToID:   "demo::missing",
+				Kind:   "CALLS",
+			}.WithProperties(map[string]string{"disposition": "bug_extractor"}),
 			// non-residual
-			{
-				FromID:     "demo::c",
-				ToID:       "demo::a",
-				Kind:       "REFERENCES",
-				Properties: map[string]string{"disposition": "resolved"},
-			},
+			graph.Relationship{
+				FromID: "demo::c",
+				ToID:   "demo::a",
+				Kind:   "REFERENCES",
+			}.WithProperties(map[string]string{"disposition": "resolved"}),
 		},
 	}
 	if err := fbwriter.WriteAtomic(path, doc); err != nil {

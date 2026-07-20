@@ -136,15 +136,14 @@ func moduleManifestHarness(t *testing.T) (groupName, moduleEntityID string) {
 				Language:   "javascript",
 				Signature:  "export function useUsers()",
 			},
-			{
+			graph.Entity{
 				ID:         constID,
 				Name:       "MAX_PAGE_SIZE",
 				Kind:       "SCOPE.Schema",
 				Subtype:    "constant",
 				SourceFile: "src/main/java/com/example/api/constants.java",
 				StartLine:  2,
-				Properties: map[string]string{"value_literal": "100"},
-			},
+			}.WithProperties(map[string]string{"value_literal": "100"}),
 			{
 				ID:         importedModID,
 				Name:       "com.example.core",
@@ -152,14 +151,13 @@ func moduleManifestHarness(t *testing.T) (groupName, moduleEntityID string) {
 				SourceFile: "src/main/java/com/example/core",
 				Language:   "java",
 			},
-			{
+			graph.Entity{
 				ID:         endpointID,
 				Name:       "GET /users",
 				Kind:       "SCOPE.http_endpoint_definition",
 				SourceFile: "src/main/java/com/example/api/UserController.java",
 				StartLine:  15,
-				Properties: map[string]string{"http_method": "GET", "path": "/users"},
-			},
+			}.WithProperties(map[string]string{"http_method": "GET", "path": "/users"}),
 		},
 		Relationships: []graph.Relationship{
 			{

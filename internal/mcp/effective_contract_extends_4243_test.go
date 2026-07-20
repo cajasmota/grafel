@@ -36,7 +36,7 @@ func drfViewKindViewSetDoc() *graph.Document {
 		for k, v := range props {
 			p[k] = v
 		}
-		return graph.Entity{ID: id, Name: id, Kind: "http_endpoint", Language: "python", Properties: p}
+		return graph.Entity{ID: id, Name: id, Kind: "http_endpoint", Language: "python"}.WithProperties(p)
 	}
 	return &graph.Document{
 		Repo: "acme-core",
@@ -73,8 +73,7 @@ func drfViewKindViewSetDoc() *graph.Document {
 			// The ViewSet EXTENDS edge — base_name is the dotted "viewsets.ModelViewSet"
 			// the hierarchy extractor records (its leaf, ModelViewSet, is what the
 			// baseknowledge pack matches), while ToID points at the ext: placeholder.
-			{FromID: "vs1", ToID: "ext:viewsets", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "viewsets.ModelViewSet"}},
+			graph.Relationship{FromID: "vs1", ToID: "ext:viewsets", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "viewsets.ModelViewSet"}),
 		},
 	}
 }

@@ -32,30 +32,27 @@ import (
 func buildEndpointDoc() *graph.Document {
 	return &graph.Document{
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "ep_legacy", Name: "POST /api/v1/orders", Kind: "http_endpoint",
 				SourceFile: "routes/orders.go", StartLine: 10,
-				Properties: map[string]string{"verb": "POST", "path": "/api/v1/orders"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "POST", "path": "/api/v1/orders"}),
+			graph.Entity{
 				ID: "ep_def", Name: "GET /api/v2/users", Kind: "http_endpoint_definition",
 				SourceFile: "routes/users.go", StartLine: 20,
-				Properties: map[string]string{"verb": "GET", "path": "/api/v2/users"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/api/v2/users"}),
+			graph.Entity{
 				ID: "ep_call", Name: "fetchUsers", Kind: "http_endpoint_call",
 				SourceFile: "services/user_service.go", StartLine: 55,
-				Properties: map[string]string{"verb": "GET", "path": "/api/v2/users"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/api/v2/users"}),
+			graph.Entity{
 				ID: "ep_client_synth", Name: "POST /api/v1/orders (client)", Kind: "http_endpoint",
 				SourceFile: "client/orders.go", StartLine: 5,
-				Properties: map[string]string{
-					"verb":         "POST",
-					"path":         "/api/v1/orders",
-					"pattern_type": "http_endpoint_client_synthesis",
-				},
+			}.WithProperties(map[string]string{
+				"verb":         "POST",
+				"path":         "/api/v1/orders",
+				"pattern_type": "http_endpoint_client_synthesis",
 			},
+			),
 			{
 				ID: "fn_other", Name: "doSomething", Kind: "Function",
 				SourceFile: "lib/util.go", StartLine: 1,
@@ -701,14 +698,10 @@ func TestEndpointStats_MigratedTrueWhenNoLegacy(t *testing.T) {
 func buildConfidenceStatsDoc() *graph.Document {
 	return &graph.Document{
 		Entities: []graph.Entity{
-			{ID: "d_nest", Kind: "http_endpoint_definition", Name: "GET /users",
-				Properties: map[string]string{"verb": "GET", "path": "/users", "framework": "nestjs"}},
-			{ID: "d_nest2", Kind: "http_endpoint_definition", Name: "POST /users",
-				Properties: map[string]string{"verb": "POST", "path": "/users", "framework": "nestjs"}},
-			{ID: "d_spring", Kind: "http_endpoint_definition", Name: "GET /orders",
-				Properties: map[string]string{"verb": "GET", "path": "/orders", "framework": "spring_mvc"}},
-			{ID: "c_nest", Kind: "http_endpoint_call", Name: "fetchUsers",
-				Properties: map[string]string{"verb": "GET", "path": "/users", "framework": "nestjs"}},
+			graph.Entity{ID: "d_nest", Kind: "http_endpoint_definition", Name: "GET /users"}.WithProperties(map[string]string{"verb": "GET", "path": "/users", "framework": "nestjs"}),
+			graph.Entity{ID: "d_nest2", Kind: "http_endpoint_definition", Name: "POST /users"}.WithProperties(map[string]string{"verb": "POST", "path": "/users", "framework": "nestjs"}),
+			graph.Entity{ID: "d_spring", Kind: "http_endpoint_definition", Name: "GET /orders"}.WithProperties(map[string]string{"verb": "GET", "path": "/orders", "framework": "spring_mvc"}),
+			graph.Entity{ID: "c_nest", Kind: "http_endpoint_call", Name: "fetchUsers"}.WithProperties(map[string]string{"verb": "GET", "path": "/users", "framework": "nestjs"}),
 		},
 	}
 }
@@ -793,13 +786,11 @@ func TestEndpointStats_ASTExtractionMethodPromotesConfidence(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
 			// fetch call, AST-extracted (static URL via tree-sitter) → exact.
-			{ID: "c1", Kind: "http_endpoint_call", Name: "GET /a",
-				Properties: map[string]string{"verb": "GET", "path": "/a",
-					"framework": "fetch", "extraction_method": "ast"}},
+			graph.Entity{ID: "c1", Kind: "http_endpoint_call", Name: "GET /a"}.WithProperties(map[string]string{"verb": "GET", "path": "/a",
+				"framework": "fetch", "extraction_method": "ast"}),
 			// express route, regex-extracted (no stamp) → heuristic.
-			{ID: "d1", Kind: "http_endpoint_definition", Name: "GET /b",
-				Properties: map[string]string{"verb": "GET", "path": "/b",
-					"framework": "express"}},
+			graph.Entity{ID: "d1", Kind: "http_endpoint_definition", Name: "GET /b"}.WithProperties(map[string]string{"verb": "GET", "path": "/b",
+				"framework": "express"}),
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -840,12 +831,10 @@ func TestEndpointStats_ASTStampUpgradesMixedFramework(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
 			// regex-extracted fetch (template literal) — seen FIRST.
-			{ID: "c1", Kind: "http_endpoint_call", Name: "GET /a",
-				Properties: map[string]string{"verb": "GET", "path": "/a", "framework": "fetch"}},
+			graph.Entity{ID: "c1", Kind: "http_endpoint_call", Name: "GET /a"}.WithProperties(map[string]string{"verb": "GET", "path": "/a", "framework": "fetch"}),
 			// AST-extracted fetch (static URL) — seen SECOND.
-			{ID: "c2", Kind: "http_endpoint_call", Name: "GET /b",
-				Properties: map[string]string{"verb": "GET", "path": "/b",
-					"framework": "fetch", "extraction_method": "ast"}},
+			graph.Entity{ID: "c2", Kind: "http_endpoint_call", Name: "GET /b"}.WithProperties(map[string]string{"verb": "GET", "path": "/b",
+				"framework": "fetch", "extraction_method": "ast"}),
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -869,10 +858,8 @@ func TestEndpointStats_ASTStampUpgradesMixedFramework(t *testing.T) {
 func TestEndpointStats_ExtractionExactWhenAllAST(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
-			{ID: "d1", Kind: "http_endpoint_definition", Name: "GET /a",
-				Properties: map[string]string{"verb": "GET", "path": "/a", "framework": "django"}},
-			{ID: "d2", Kind: "http_endpoint_definition", Name: "GET /b",
-				Properties: map[string]string{"verb": "GET", "path": "/b", "framework": "spring_webflux"}},
+			graph.Entity{ID: "d1", Kind: "http_endpoint_definition", Name: "GET /a"}.WithProperties(map[string]string{"verb": "GET", "path": "/a", "framework": "django"}),
+			graph.Entity{ID: "d2", Kind: "http_endpoint_definition", Name: "GET /b"}.WithProperties(map[string]string{"verb": "GET", "path": "/b", "framework": "spring_webflux"}),
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -892,8 +879,7 @@ func TestEndpointStats_ExtractionExactWhenAllAST(t *testing.T) {
 func TestEndpointStats_UnknownFrameworkBucket(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
-			{ID: "d1", Kind: "http_endpoint_definition", Name: "GET /a",
-				Properties: map[string]string{"verb": "GET", "path": "/a"}}, // no framework
+			graph.Entity{ID: "d1", Kind: "http_endpoint_definition", Name: "GET /a"}.WithProperties(map[string]string{"verb": "GET", "path": "/a"}), // no framework
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -1101,11 +1087,11 @@ func buildLargeEndpointDoc(n int) *graph.Document {
 			Kind:       "http_endpoint_definition",
 			SourceFile: fmt.Sprintf("routes/r%03d.go", i),
 			StartLine:  i + 1,
-			Properties: map[string]string{
-				"verb": "GET",
-				"path": fmt.Sprintf("/api/v1/resource/%03d", i),
-			},
-		}
+		}.WithProperties(map[string]string{
+			"verb": "GET",
+			"path": fmt.Sprintf("/api/v1/resource/%03d", i),
+		},
+		)
 	}
 	return &graph.Document{Entities: entities}
 }
@@ -1215,25 +1201,25 @@ func TestEndpointCalls_FormatTerse(t *testing.T) {
 func TestEndpointDefinitions_TriplePathDedupe(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				// Redundant name: exactly "GET /api/v2/users" = verb + path.
 				ID: "ep1", Name: "GET /api/v2/users", Kind: "http_endpoint_definition",
 				SourceFile: "routes/users.go", StartLine: 10,
-				Properties: map[string]string{
-					"verb":         "GET",
-					"path":         "/api/v2/users",
-					"handler_func": "UsersView.list",
-				},
+			}.WithProperties(map[string]string{
+				"verb":         "GET",
+				"path":         "/api/v2/users",
+				"handler_func": "UsersView.list",
 			},
-			{
+			),
+			graph.Entity{
 				// Meaningful name: carries info beyond the path.
 				ID: "ep2", Name: "UserCreateView", Kind: "http_endpoint_definition",
 				SourceFile: "routes/users.go", StartLine: 20,
-				Properties: map[string]string{
-					"verb": "POST",
-					"path": "/api/v2/users",
-				},
+			}.WithProperties(map[string]string{
+				"verb": "POST",
+				"path": "/api/v2/users",
 			},
+			),
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -1287,17 +1273,14 @@ func TestEndpointDefinitions_PathContainsFilterBeforeLimit(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		entities = append(entities, graph.Entity{
 			ID: fmt.Sprintf("ep_other_%d", i), Kind: "http_endpoint_definition",
-			Properties: map[string]string{"verb": "GET", "path": fmt.Sprintf("/api/v1/orders/%d", i)},
-		})
+		}.WithProperties(map[string]string{"verb": "GET", "path": fmt.Sprintf("/api/v1/orders/%d", i)}))
 	}
 	entities = append(entities, graph.Entity{
 		ID: "ep_prop_1", Kind: "http_endpoint_definition",
-		Properties: map[string]string{"verb": "GET", "path": "/api/v1/proposals/list"},
-	})
+	}.WithProperties(map[string]string{"verb": "GET", "path": "/api/v1/proposals/list"}))
 	entities = append(entities, graph.Entity{
 		ID: "ep_prop_2", Kind: "http_endpoint_definition",
-		Properties: map[string]string{"verb": "POST", "path": "/api/v1/proposals/create"},
-	})
+	}.WithProperties(map[string]string{"verb": "POST", "path": "/api/v1/proposals/create"}))
 	srv := newTestServer(t, &graph.Document{Entities: entities})
 
 	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
@@ -1323,10 +1306,10 @@ func TestEndpointDefinitions_PathContainsFilterBeforeLimit(t *testing.T) {
 // applied before limit.
 func TestEndpointDefinitions_MethodFilterBeforeLimit(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "ep1", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "GET", "path": "/a"}},
-		{ID: "ep2", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "POST", "path": "/b"}},
-		{ID: "ep3", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "GET", "path": "/c"}},
-		{ID: "ep4", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "DELETE", "path": "/d"}},
+		graph.Entity{ID: "ep1", Kind: "http_endpoint_definition"}.WithProperties(map[string]string{"verb": "GET", "path": "/a"}),
+		graph.Entity{ID: "ep2", Kind: "http_endpoint_definition"}.WithProperties(map[string]string{"verb": "POST", "path": "/b"}),
+		graph.Entity{ID: "ep3", Kind: "http_endpoint_definition"}.WithProperties(map[string]string{"verb": "GET", "path": "/c"}),
+		graph.Entity{ID: "ep4", Kind: "http_endpoint_definition"}.WithProperties(map[string]string{"verb": "DELETE", "path": "/d"}),
 	}
 	srv := newTestServer(t, &graph.Document{Entities: entities})
 

@@ -250,7 +250,7 @@ func (s *Server) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 			}
 			for i := range doc.Entities {
 				ent := &doc.Entities[i]
-				visit(ent.ID, ent.Name, ent.Kind, ent.Subtype, ent.SourceFile, ent.StartLine, ent.Properties)
+				visit(ent.ID, ent.Name, ent.Kind, ent.Subtype, ent.SourceFile, ent.StartLine, ent.PropsSnapshot())
 			}
 		}
 

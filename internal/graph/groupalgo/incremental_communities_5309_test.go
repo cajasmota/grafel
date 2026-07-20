@@ -103,10 +103,10 @@ func TestCommunityInputHash_StableAndContentSensitive(t *testing.T) {
 	ents2 := append([]graph.Entity{}, ents...)
 	ents2[0].Name = "Renamed"
 	ents2[0].Signature = "func Renamed()"
-	if ents2[0].Properties == nil {
-		ents2[0].Properties = map[string]string{}
+	if ents2[0].PropLen() == 0 {
+		ents2[0].PropsReplace(map[string]string{})
 	}
-	ents2[0].Properties["description"] = "docs change"
+	ents2[0].PropSet("description", "docs change")
 	if got := graph.CommunityInputHash(ents2, rels); got != h1 {
 		t.Errorf("hash changed on a non-community-graph edit (should not): %s != %s", got, h1)
 	}
@@ -143,10 +143,10 @@ func TestIncremental_SkipsWhenUnaffected(t *testing.T) {
 	// identical. Re-running must SKIP.
 	repoA, _, _ := fixtureGraphs()
 	for i := range repoA.Entities {
-		if repoA.Entities[i].Properties == nil {
-			repoA.Entities[i].Properties = map[string]string{}
+		if repoA.Entities[i].PropLen() == 0 {
+			repoA.Entities[i].PropsReplace(map[string]string{})
 		}
-		repoA.Entities[i].Properties["description"] = "edited docs"
+		repoA.Entities[i].PropSet("description", "edited docs")
 	}
 	writeFixtureRepo(t, "svc", pathA, repoA)
 

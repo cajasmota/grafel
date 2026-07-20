@@ -30,15 +30,15 @@ func buildElisionDoc() *graph.Document {
 	comm := 7
 	return &graph.Document{
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "fn_a", Name: "doWork", Kind: "SCOPE.Function",
 				QualifiedName: "pkg.doWork",
 				SourceFile:    "src/work.go", StartLine: 10, EndLine: 40,
-				Language:    "go",
-				Properties:  map[string]string{"exported": "true"},
+				Language: "go",
+
 				PageRank:    &pr,
 				CommunityID: &comm,
-			},
+			}.WithProperties(map[string]string{"exported": "true"}),
 			{
 				ID: "fn_b", Name: "callWork", Kind: "SCOPE.Function",
 				QualifiedName: "pkg.callWork",
@@ -52,17 +52,17 @@ func buildElisionDoc() *graph.Document {
 				Language: "go",
 			},
 			// Process entity for traces get test.
-			{
+			graph.Entity{
 				ID: "proc1", Name: "callWork → doWork", Kind: "SCOPE.Process",
 				SourceFile: "src/caller.go", StartLine: 5,
-				Properties: map[string]string{
-					"entry_id":    "fn_b",
-					"entry_name":  "callWork",
-					"terminal_id": "fn_a",
-					"step_count":  "2",
-					"cross_stack": "false",
-				},
+			}.WithProperties(map[string]string{
+				"entry_id":    "fn_b",
+				"entry_name":  "callWork",
+				"terminal_id": "fn_a",
+				"step_count":  "2",
+				"cross_stack": "false",
 			},
+			),
 			// Topic for topology test.
 			{
 				ID: "topic1", Name: "order-created", Kind: "SCOPE.Topic",
@@ -82,10 +82,8 @@ func buildElisionDoc() *graph.Document {
 			{FromID: "fn_b", ToID: "fn_a", Kind: "CALLS"},
 			{FromID: "fn_a", ToID: "fn_c", Kind: "CALLS"},
 			// Process steps.
-			{FromID: "proc1", ToID: "fn_b", Kind: "STEP_IN_PROCESS",
-				Properties: map[string]string{"step_index": "0"}},
-			{FromID: "proc1", ToID: "fn_a", Kind: "STEP_IN_PROCESS",
-				Properties: map[string]string{"step_index": "1"}},
+			graph.Relationship{FromID: "proc1", ToID: "fn_b", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "0"}),
+			graph.Relationship{FromID: "proc1", ToID: "fn_a", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "1"}),
 			// Topic edges.
 			{FromID: "pub1", ToID: "topic1", Kind: "PUBLISHES_TO"},
 			{FromID: "sub1", ToID: "topic1", Kind: "SUBSCRIBES_TO"},

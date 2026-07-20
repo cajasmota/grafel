@@ -28,36 +28,34 @@ func processFixtureDoc(repo string) *graph.Document {
 			{ID: "f3", Name: "submitOrder", Kind: "SCOPE.Function", SourceFile: "src/api.ts", StartLine: 5, EndLine: 25, Language: "ts"},
 			{ID: "ep", Name: "http:POST:/api/orders", Kind: "http_endpoint", SourceFile: "src/api.ts", StartLine: 30, EndLine: 60, Language: "ts"},
 			// Process entity 1: ordinary 3-step chain.
-			{ID: "p1", Name: "handleSubmit → validateForm", Kind: "SCOPE.Process", SourceFile: "src/form.ts", StartLine: 10, EndLine: 30, Language: "ts",
-				Properties: map[string]string{
-					"entry_id": "f1", "entry_name": "handleSubmit",
-					"terminal_id": "f2", "step_count": "3",
-					"cross_stack":  "false",
-					"chain":        "f1,f3,f2",
-					"chain_labels": "handleSubmit → submitOrder → validateForm",
-				}},
+			graph.Entity{ID: "p1", Name: "handleSubmit → validateForm", Kind: "SCOPE.Process", SourceFile: "src/form.ts", StartLine: 10, EndLine: 30, Language: "ts"}.WithProperties(map[string]string{
+				"entry_id": "f1", "entry_name": "handleSubmit",
+				"terminal_id": "f2", "step_count": "3",
+				"cross_stack":  "false",
+				"chain":        "f1,f3,f2",
+				"chain_labels": "handleSubmit → submitOrder → validateForm",
+			}),
 			// Process entity 2: cross-stack (traverses http_endpoint).
-			{ID: "p2", Name: "handleSubmit → http:POST:/api/orders", Kind: "SCOPE.Process", SourceFile: "src/form.ts", StartLine: 10, EndLine: 30, Language: "ts",
-				Properties: map[string]string{
-					"entry_id": "f1", "entry_name": "handleSubmit",
-					"terminal_id": "ep", "step_count": "3",
-					"cross_stack":  "true",
-					"chain":        "f1,f3,ep",
-					"chain_labels": "handleSubmit → submitOrder → http:POST:/api/orders",
-				}},
+			graph.Entity{ID: "p2", Name: "handleSubmit → http:POST:/api/orders", Kind: "SCOPE.Process", SourceFile: "src/form.ts", StartLine: 10, EndLine: 30, Language: "ts"}.WithProperties(map[string]string{
+				"entry_id": "f1", "entry_name": "handleSubmit",
+				"terminal_id": "ep", "step_count": "3",
+				"cross_stack":  "true",
+				"chain":        "f1,f3,ep",
+				"chain_labels": "handleSubmit → submitOrder → http:POST:/api/orders",
+			}),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "c1", FromID: "f1", ToID: "f3", Kind: "CALLS"},
 			{ID: "c2", FromID: "f3", ToID: "f2", Kind: "CALLS"},
 			{ID: "c3", FromID: "f3", ToID: "ep", Kind: "CALLS"},
 			// STEP_IN_PROCESS for p1.
-			{ID: "s1", FromID: "p1", ToID: "f1", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "0"}},
-			{ID: "s2", FromID: "p1", ToID: "f3", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "1"}},
-			{ID: "s3", FromID: "p1", ToID: "f2", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "2"}},
+			graph.Relationship{ID: "s1", FromID: "p1", ToID: "f1", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "0"}),
+			graph.Relationship{ID: "s2", FromID: "p1", ToID: "f3", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "1"}),
+			graph.Relationship{ID: "s3", FromID: "p1", ToID: "f2", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "2"}),
 			// STEP_IN_PROCESS for p2.
-			{ID: "s4", FromID: "p2", ToID: "f1", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "0"}},
-			{ID: "s5", FromID: "p2", ToID: "f3", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "1"}},
-			{ID: "s6", FromID: "p2", ToID: "ep", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "2"}},
+			graph.Relationship{ID: "s4", FromID: "p2", ToID: "f1", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "0"}),
+			graph.Relationship{ID: "s5", FromID: "p2", ToID: "f3", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "1"}),
+			graph.Relationship{ID: "s6", FromID: "p2", ToID: "ep", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "2"}),
 			// ENTRY_POINT_OF for both.
 			{ID: "e1", FromID: "f1", ToID: "p1", Kind: "ENTRY_POINT_OF"},
 			{ID: "e2", FromID: "f1", ToID: "p2", Kind: "ENTRY_POINT_OF"},
@@ -187,14 +185,14 @@ func build20ProcessDoc() *graph.Document {
 			ID:   fmt.Sprintf("proc%02d", i),
 			Name: fmt.Sprintf("Process%02d", i),
 			Kind: "SCOPE.Process",
-			Properties: map[string]string{
-				"step_count":  "10",
-				"cross_stack": "false",
-				"entry_id":    fmt.Sprintf("e%02d", i),
-				"entry_name":  fmt.Sprintf("Entry%02d", i),
-				"terminal_id": fmt.Sprintf("t%02d", i),
-			},
-		}
+		}.WithProperties(map[string]string{
+			"step_count":  "10",
+			"cross_stack": "false",
+			"entry_id":    fmt.Sprintf("e%02d", i),
+			"entry_name":  fmt.Sprintf("Entry%02d", i),
+			"terminal_id": fmt.Sprintf("t%02d", i),
+		},
+		)
 	}
 	return &graph.Document{Entities: entities}
 }
@@ -274,24 +272,24 @@ func buildCrossRepoFlowFixture() (frontend, backend *graph.Document) {
 			{ID: "fe_entry", Name: "loadDashboard", Kind: "SCOPE.Function", SourceFile: "dashboard.ts", StartLine: 10},
 			{ID: "fe_caller", Name: "fetchSummary", Kind: "SCOPE.Function", SourceFile: "dashboard.ts", StartLine: 20},
 			// Process spanning frontend + backend via bridge at step 2.
-			{ID: "proc_xr", Name: "loadDashboard → getSummary", Kind: "SCOPE.Process",
+			graph.Entity{ID: "proc_xr", Name: "loadDashboard → getSummary", Kind: "SCOPE.Process",
 				SourceFile: "dashboard.ts", StartLine: 10,
-				Properties: map[string]string{
-					"entry_id":    "fe_entry",
-					"entry_name":  "loadDashboard",
-					"terminal_id": "be_handler",
-					"step_count":  "3",
-					"cross_stack": "true",
-					"chain":       "fe_entry,fe_caller,be_handler",
-				}},
+			}.WithProperties(map[string]string{
+				"entry_id":    "fe_entry",
+				"entry_name":  "loadDashboard",
+				"terminal_id": "be_handler",
+				"step_count":  "3",
+				"cross_stack": "true",
+				"chain":       "fe_entry,fe_caller,be_handler",
+			}),
 		},
 		Relationships: []graph.Relationship{
 			// STEP_IN_PROCESS edges for proc_xr: steps 0+1 are frontend, step 2
 			// is a bridge into the backend repo.
-			{ID: "s0", FromID: "proc_xr", ToID: "fe_entry", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "0"}},
-			{ID: "s1", FromID: "proc_xr", ToID: "fe_caller", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "1"}},
+			graph.Relationship{ID: "s0", FromID: "proc_xr", ToID: "fe_entry", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "0"}),
+			graph.Relationship{ID: "s1", FromID: "proc_xr", ToID: "fe_caller", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "1"}),
 			// Bridge step: ToID lives in the backend doc, not in this doc.
-			{ID: "s2", FromID: "proc_xr", ToID: "be_handler", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "2"}},
+			graph.Relationship{ID: "s2", FromID: "proc_xr", ToID: "be_handler", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "2"}),
 		},
 	}
 	backend = &graph.Document{

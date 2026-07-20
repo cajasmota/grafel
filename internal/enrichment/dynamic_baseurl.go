@@ -85,7 +85,7 @@ func CollectDynamicBaseURLCandidates(doc *graph.Document) []Candidate {
 		if e.Kind != "http_endpoint" {
 			continue
 		}
-		props := e.Properties
+		props := e.PropsSnapshot()
 		if props == nil {
 			continue
 		}

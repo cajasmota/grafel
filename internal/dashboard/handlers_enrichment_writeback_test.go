@@ -40,14 +40,13 @@ func newWritebackServer(t *testing.T) (*Server, *graph.Entity, string) {
 	doc := &graph.Document{
 		Version: graph.SchemaVersion,
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID:         entityID,
 				Name:       "OrderCheckout",
 				Kind:       "http_endpoint",
 				Language:   "python",
 				SourceFile: "api/views.py",
-				Properties: map[string]string{},
-			},
+			}.WithProperties(map[string]string{}),
 		},
 	}
 
@@ -195,8 +194,8 @@ func TestWriteback_success(t *testing.T) {
 	}
 
 	// ── 2. In-memory entity property set ─────────────────────────────────
-	if entity.Properties["description"] != desc {
-		t.Errorf("entity.Properties[description]: want %q, got %q", desc, entity.Properties["description"])
+	if entity.PropGet("description") != desc {
+		t.Errorf("entity.Properties[description]: want %q, got %q", desc, entity.PropGet("description"))
 	}
 
 	// ── 3. graph.json updated on disk ─────────────────────────────────────
@@ -213,8 +212,8 @@ func TestWriteback_success(t *testing.T) {
 	for _, e := range savedDoc.Entities {
 		if e.ID == "aabbccddeeff0011" {
 			found = true
-			if e.Properties["description"] != desc {
-				t.Errorf("persisted description: want %q, got %q", desc, e.Properties["description"])
+			if e.PropGet("description") != desc {
+				t.Errorf("persisted description: want %q, got %q", desc, e.PropGet("description"))
 			}
 		}
 	}

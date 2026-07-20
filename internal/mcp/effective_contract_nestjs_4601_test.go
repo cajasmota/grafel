@@ -66,28 +66,27 @@ func buildNestContractServer(t *testing.T) *Server {
 		Repo: "v3",
 		Entities: []graph.Entity{
 			// The endpoint definition.
-			{
+			graph.Entity{
 				ID: "ep:post:/users", Name: "http:POST:/users",
 				Kind: "http_endpoint_definition", Language: "typescript",
 				SourceFile: srcRel,
-				Properties: map[string]string{
-					"framework":         "nestjs",
-					"verb":              "POST",
-					"path":              "/users",
-					"request_body_type": "CreateXDto",
-					"require_page":      "client_admin",
-					"auth_required":     "true",
-				},
+			}.WithProperties(map[string]string{
+				"framework":         "nestjs",
+				"verb":              "POST",
+				"path":              "/users",
+				"request_body_type": "CreateXDto",
+				"require_page":      "client_admin",
+				"auth_required":     "true",
 			},
+			),
 			// The handler method (controller leaf = UsersController).
-			{
+			graph.Entity{
 				ID: "op:UsersController.create", Name: "create",
 				QualifiedName: "UsersController.create",
 				Kind:          "SCOPE.Operation", Subtype: "method",
 				Language: "typescript", SourceFile: srcRel,
 				StartLine: 6, EndLine: 15,
-				Properties: map[string]string{"require_page": "client_admin"},
-			},
+			}.WithProperties(map[string]string{"require_page": "client_admin"}),
 			// The DTO class + its class-validator fields (SCOPE.Schema/field).
 			{ID: "dto:CreateXDto", Name: "CreateXDto", Kind: "SCOPE.Component", Subtype: "class", Language: "typescript", SourceFile: "src/users/dto/create-x.dto.ts"},
 			{ID: "f:email", Name: "CreateXDto.email", Kind: "SCOPE.Schema", Subtype: "field", Signature: "email: string", Language: "typescript"},
@@ -98,8 +97,7 @@ func buildNestContractServer(t *testing.T) *Server {
 			// handler IMPLEMENTS endpoint (the resolution-pass bridge).
 			{FromID: "op:UsersController.create", ToID: "ep:post:/users", Kind: "IMPLEMENTS"},
 			// handler VALIDATES dto:CreateXDto (the @Body() DTO extraction edge).
-			{FromID: "op:UsersController.create", ToID: "dto:CreateXDto", Kind: "VALIDATES",
-				Properties: map[string]string{"via": "dto_extraction", "method": "@Body()", "dto": "CreateXDto"}},
+			graph.Relationship{FromID: "op:UsersController.create", ToID: "dto:CreateXDto", Kind: "VALIDATES"}.WithProperties(map[string]string{"via": "dto_extraction", "method": "@Body()", "dto": "CreateXDto"}),
 		},
 	}
 

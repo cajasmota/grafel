@@ -55,16 +55,18 @@ func TestBuildEffectsPayload_PureWhenAbsent(t *testing.T) {
 // (live link run) still works when no sidecar entry exists but properties
 // are stamped.
 func TestBuildEffectsPayload_PropertiesFallback(t *testing.T) {
-	e := &graph.Entity{
-		ID:   "abc",
-		Name: "svc",
-		Kind: "SCOPE.Function",
-		Properties: map[string]string{
+	e :=
+
+		graph.EntityPtr(graph.Entity{
+			ID:   "abc",
+			Name: "svc",
+			Kind: "SCOPE.Function",
+		}.WithProperties(map[string]string{
 			links.EffectPropertyKeyList:       "http_out",
 			links.EffectPropertyKeyConfidence: "http_out=0.95",
 			links.EffectPropertyKeySource:     "transitive",
 		},
-	}
+		))
 	out := buildEffectsPayload("acme-core", e, map[string]effectsSidecarEntry{})
 	if got := out["effect_source"]; got != "transitive" {
 		t.Fatalf("effect_source=%v; want transitive", got)

@@ -122,7 +122,7 @@ func ApplySharedDataCoupling(doc *graph.Document) SharedDataStats {
 			continue
 		}
 		repo := entityRepo(doc, e)
-		name := e.Properties["module"]
+		name := e.PropGet("module")
 		if name == "" {
 			name = e.Name
 		}
@@ -149,7 +149,7 @@ func ApplySharedDataCoupling(doc *graph.Document) SharedDataStats {
 		mk := moduleKeyLite{repo: repo, name: moduleNameOf(e)}
 		entityModule[e.ID] = mk
 		if e.Kind == sharedKindDataAccess {
-			tbl := normTable(e.Properties["table"])
+			tbl := normTable(e.PropGet("table"))
 			if tbl != "" {
 				dataAccessByTable[tableKey{repo: repo, table: tbl}] = append(
 					dataAccessByTable[tableKey{repo: repo, table: tbl}], i)
@@ -254,16 +254,16 @@ func ApplySharedDataCoupling(doc *graph.Document) SharedDataStats {
 		// Annotate every DataAccess entity for this table.
 		for _, i := range dataAccessByTable[tk] {
 			e := &doc.Entities[i]
-			if e.Properties == nil {
-				e.Properties = make(map[string]string)
+			if e.PropLen() == 0 {
+				e.PropsReplace(make(map[string]string))
 			}
 			if shared {
-				e.Properties["shared"] = "true"
+				e.PropSet("shared", "true")
 			} else {
-				e.Properties["shared"] = "false"
+				e.PropSet("shared", "false")
 			}
-			e.Properties["accessor_count"] = fmt.Sprintf("%d", count)
-			e.Properties["accessor_modules"] = csv
+			e.PropSet("accessor_count", fmt.Sprintf("%d", count))
+			e.PropSet("accessor_modules", csv)
 			stats.DataAccessAnnotated++
 		}
 
@@ -327,13 +327,13 @@ func ApplySharedDataCoupling(doc *graph.Document) SharedDataStats {
 			FromID: p.a,
 			ToID:   p.b,
 			Kind:   sharedRelSharesData,
-			Properties: map[string]string{
-				"coupling":      sharedCouplingKindTag,
-				"shared_tables": strings.Join(names, ","),
-				"shared_count":  fmt.Sprintf("%d", len(names)),
-				"provenance":    sharedProvenance,
-			},
-		}
+		}.WithProperties(map[string]string{
+			"coupling":      sharedCouplingKindTag,
+			"shared_tables": strings.Join(names, ","),
+			"shared_count":  fmt.Sprintf("%d", len(names)),
+			"provenance":    sharedProvenance,
+		},
+		)
 		doc.Relationships = append(doc.Relationships, rel)
 		stats.CouplingEdges++
 	}
@@ -357,8 +357,8 @@ type tableKey struct {
 // entityRepo returns the per-entity repo tag, falling back to the document repo
 // (mirrors module.Aggregate's resolution for multi-repo group documents).
 func entityRepo(doc *graph.Document, e *graph.Entity) string {
-	if e.Properties != nil {
-		if v, ok := e.Properties["repo"]; ok && v != "" {
+	if e.PropLen() > 0 {
+		if v, ok := e.PropLookup("repo"); ok && v != "" {
 			return v
 		}
 	}
@@ -368,8 +368,8 @@ func entityRepo(doc *graph.Document, e *graph.Entity) string {
 // moduleNameOf returns the entity's module label, or "_external" when absent
 // (mirrors module.Aggregate).
 func moduleNameOf(e *graph.Entity) string {
-	if e.Properties != nil {
-		if v, ok := e.Properties["module"]; ok && v != "" {
+	if e.PropLen() > 0 {
+		if v, ok := e.PropLookup("module"); ok && v != "" {
 			return v
 		}
 	}
@@ -409,10 +409,10 @@ func tableKeyForEdge(
 	if tk, ok := daTableOf[r.FromID]; ok {
 		return tk, true
 	}
-	if r.Properties != nil {
-		tbl := normTable(r.Properties["table"])
+	if r.PropLen() > 0 {
+		tbl := normTable(r.PropGet("table"))
 		if tbl == "" {
-			tbl = normTable(r.Properties["from"]) // JOINS_COLLECTION `from`
+			tbl = normTable(r.PropGet("from")) // JOINS_COLLECTION `from`
 		}
 		if tbl != "" {
 			repo := doc.Repo

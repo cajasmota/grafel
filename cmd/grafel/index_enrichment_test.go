@@ -121,7 +121,7 @@ func TestEnrichmentResolutions_MergeBack(t *testing.T) {
 	var got *string
 	for i := range doc2.Entities {
 		if doc2.Entities[i].ID == subject {
-			if v, ok := doc2.Entities[i].Properties["description"]; ok {
+			if v, ok := doc2.Entities[i].PropLookup("description"); ok {
 				got = &v
 			}
 			break

@@ -32,8 +32,7 @@ func buildManyEndpointDoc(n int) *graph.Document {
 				Kind:       "http_endpoint_definition",
 				SourceFile: fmt.Sprintf("routes/users_%d.py", i),
 				StartLine:  10 + i,
-				Properties: map[string]string{"verb": "DELETE", "path": fmt.Sprintf("/users/{user_id}/%d", i)},
-			})
+			}.WithProperties(map[string]string{"verb": "DELETE", "path": fmt.Sprintf("/users/{user_id}/%d", i)}))
 		} else {
 			ents = append(ents, graph.Entity{
 				ID:         fmt.Sprintf("ep_get_%d", i),
@@ -41,8 +40,7 @@ func buildManyEndpointDoc(n int) *graph.Document {
 				Kind:       "http_endpoint_definition",
 				SourceFile: fmt.Sprintf("routes/things_%d.py", i),
 				StartLine:  20 + i,
-				Properties: map[string]string{"verb": "GET", "path": fmt.Sprintf("/things/%d", i)},
-			})
+			}.WithProperties(map[string]string{"verb": "GET", "path": fmt.Sprintf("/things/%d", i)}))
 		}
 	}
 	return &graph.Document{Entities: ents}

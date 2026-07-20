@@ -88,7 +88,7 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	kindOff := b.CreateSharedString(e.Kind)
 	subOff := b.CreateSharedString(e.Subtype)
 	moduleOff := flatbuffers.UOffsetT(0)
-	if mod, ok := e.Properties["module"]; ok {
+	if mod, ok := e.PropLookup("module"); ok {
 		moduleOff = b.CreateSharedString(mod)
 	} else {
 		moduleOff = b.CreateSharedString("")
@@ -100,7 +100,7 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	// `language` FlatBuffers slot (see EntityAddLanguage below). The
 	// PR #2365 property-tunnel workaround (writing into Properties["language"])
 	// is retired. We still build the property vector from e.Properties as-is.
-	propsVec := buildPropertyVector(b, e.Properties)
+	propsVec := buildPropertyVector(b, e.PropsSnapshot())
 
 	// PH8 (#2100) embedding_ref offset is created up-front below; the
 	// language offset is similarly created here so it sits with the rest
@@ -195,7 +195,7 @@ func buildRelationship(b *flatbuffers.Builder, r *graph.Relationship) flatbuffer
 	fromOff := b.CreateSharedString(r.FromID)
 	toOff := b.CreateSharedString(r.ToID)
 	kindOff := b.CreateSharedString(r.Kind)
-	propsVec := buildPropertyVector(b, r.Properties)
+	propsVec := buildPropertyVector(b, r.PropsSnapshot())
 	fb.RelationshipStart(b)
 	fb.RelationshipAddFromId(b, fromOff)
 	fb.RelationshipAddToId(b, toOff)

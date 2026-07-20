@@ -18,11 +18,10 @@ func endpointEntity(id, verb, path string, props map[string]string) graph.Entity
 		p[k] = v
 	}
 	return graph.Entity{
-		ID:         id,
-		Name:       verb + " " + path,
-		Kind:       "http_endpoint_definition",
-		Properties: p,
-	}
+		ID:   id,
+		Name: verb + " " + path,
+		Kind: "http_endpoint_definition",
+	}.WithProperties(p)
 }
 
 // twoGroupEndpointServer builds a Server with an oracle and a v3 group, each

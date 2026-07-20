@@ -35,10 +35,10 @@ func TestAudit2708_ArrowFnTemplateInlining(t *testing.T) {
 		if e.Kind != "http_endpoint_call" && e.Kind != "http_endpoint" && e.Kind != "http_endpoint_definition" {
 			continue
 		}
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
-		endpoints = append(endpoints, ep{Verb: e.Properties["verb"], Path: e.Properties["path"]})
+		endpoints = append(endpoints, ep{Verb: e.PropGet("verb"), Path: e.PropGet("path")})
 	}
 	if len(endpoints) == 0 {
 		t.Fatalf("audit_arrowfn_template: no http_endpoint(_call) entities emitted")

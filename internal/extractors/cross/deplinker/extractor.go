@@ -98,7 +98,7 @@ func analyzeEntities(entities []graph.Entity, rels []graph.Relationship) Report 
 		if e.Kind != "SCOPE.Component" || e.Subtype != "external_dependency" {
 			continue
 		}
-		pm := e.Properties["package_manager"]
+		pm := e.PropGet("package_manager")
 		if pm == "" {
 			continue
 		}
@@ -109,8 +109,8 @@ func analyzeEntities(entities []graph.Entity, rels []graph.Relationship) Report 
 		declaredMap[key] = &declared{
 			pkg:        e.Name,
 			pm:         pm,
-			version:    e.Properties["version"],
-			kind:       e.Properties["dependency_kind"],
+			version:    e.PropGet("version"),
+			kind:       e.PropGet("dependency_kind"),
 			sourceFile: e.SourceFile,
 		}
 	}
@@ -124,7 +124,7 @@ func analyzeEntities(entities []graph.Entity, rels []graph.Relationship) Report 
 		if r.Kind != "DEPENDS_ON" {
 			continue
 		}
-		if r.Properties["kind"] != "import" {
+		if r.PropGet("kind") != "import" {
 			continue
 		}
 		// ToID is either:
@@ -187,7 +187,7 @@ func analyzeEntities(entities []graph.Entity, rels []graph.Relationship) Report 
 
 	for i := range rels {
 		r := &rels[i]
-		if r.Kind != "DEPENDS_ON" || r.Properties["kind"] != "import" {
+		if r.Kind != "DEPENDS_ON" || r.PropGet("kind") != "import" {
 			continue
 		}
 		after, ok := strings.CutPrefix(r.ToID, "scope:component:import:external:")

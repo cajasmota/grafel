@@ -131,7 +131,7 @@ func ApplyAsyncTriggerEdges(doc *graph.Document) AsyncTriggerStats {
 		}
 		seenPair[key] = true
 		topicsWithSub[r.ToID] = true
-		pairs = append(pairs, pair{topicID: r.ToID, handlerID: r.FromID, props: r.Properties})
+		pairs = append(pairs, pair{topicID: r.ToID, handlerID: r.FromID, props: r.PropsSnapshot()})
 	}
 	stats.Topics = len(topicsWithSub)
 
@@ -163,12 +163,11 @@ func ApplyAsyncTriggerEdges(doc *graph.Document) AsyncTriggerStats {
 		}
 
 		doc.Relationships = append(doc.Relationships, graph.Relationship{
-			ID:         graph.RelationshipID(p.topicID, p.handlerID, deliversKind),
-			FromID:     p.topicID,
-			ToID:       p.handlerID,
-			Kind:       deliversKind,
-			Properties: props,
-		})
+			ID:     graph.RelationshipID(p.topicID, p.handlerID, deliversKind),
+			FromID: p.topicID,
+			ToID:   p.handlerID,
+			Kind:   deliversKind,
+		}.WithProperties(props))
 		stats.DeliversEdges++
 	}
 

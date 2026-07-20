@@ -17,13 +17,13 @@ import (
 func TestBM25_DiscriminatorBoost_VarNameSurfacesEntity(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "with_disc", Name: "processData",
 				Kind: "SCOPE.Operation", SourceFile: "a.ts",
-				Properties: map[string]string{
-					"discriminators": "checklistType=2",
-				},
+			}.WithProperties(map[string]string{
+				"discriminators": "checklistType=2",
 			},
+			),
 			{
 				ID: "no_disc", Name: "processData2",
 				Kind: "SCOPE.Operation", SourceFile: "b.ts",
@@ -59,13 +59,13 @@ func TestBM25_DiscriminatorBoost_VarNameSurfacesEntity(t *testing.T) {
 func TestBM25_DiscriminatorBoost_LiteralStringSurfacesEntity(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "with_disc", Name: "handler",
 				Kind: "SCOPE.Operation", SourceFile: "a.ts",
-				Properties: map[string]string{
-					"discriminators": "status=periodic",
-				},
+			}.WithProperties(map[string]string{
+				"discriminators": "status=periodic",
 			},
+			),
 			{
 				ID: "no_disc", Name: "otherHandler",
 				Kind: "SCOPE.Operation", SourceFile: "b.ts",

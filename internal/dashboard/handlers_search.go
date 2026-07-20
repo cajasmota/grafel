@@ -165,7 +165,7 @@ func searchPathsLinear(grp *DashGroup, qLow string, limit int) []map[string]any 
 			if !isHTTPEndpointEntity(bareKind, e.Kind) {
 				continue
 			}
-			path := e.Properties["path"]
+			path := e.PropGet("path")
 			if path == "" {
 				path = e.Name
 			}
@@ -173,7 +173,7 @@ func searchPathsLinear(grp *DashGroup, qLow string, limit int) []map[string]any 
 				out = append(out, map[string]any{
 					"id":   dashPrefixedID(r.Slug, e.ID),
 					"path": path,
-					"verb": e.Properties["verb"],
+					"verb": e.PropGet("verb"),
 					"repo": r.Slug,
 				})
 			}

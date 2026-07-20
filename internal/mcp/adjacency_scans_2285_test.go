@@ -83,17 +83,17 @@ func TestPerf2285_AgentResolvedEdgesUsesAdjacency(t *testing.T) {
 		},
 		Relationships: []graph.Relationship{
 			// agent-repair out-edge from src — must be included
-			{FromID: "src", ToID: "auto", Kind: "CALLS", Properties: map[string]string{
+			graph.Relationship{FromID: "src", ToID: "auto", Kind: "CALLS"}.WithProperties(map[string]string{
 				"resolved_by":       "agent-repair",
 				"resolved_by_agent": "claude-3-5",
 				"repair_reasoning":  "matched on qualified name",
-			}},
+			}),
 			// non-agent out-edge from src — must be excluded
 			{FromID: "src", ToID: "manual", Kind: "CALLS"},
 			// agent-repair edge NOT from src — must be excluded (direction)
-			{FromID: "other", ToID: "src", Kind: "CALLS", Properties: map[string]string{
+			graph.Relationship{FromID: "other", ToID: "src", Kind: "CALLS"}.WithProperties(map[string]string{
 				"resolved_by": "agent-repair",
-			}},
+			}),
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -215,8 +215,7 @@ func benchDoc(nRels int) *graph.Document {
 	// One agent-repair edge from src
 	rels = append(rels, graph.Relationship{
 		FromID: "src", ToID: "agent_target", Kind: "CALLS",
-		Properties: map[string]string{"resolved_by": "agent-repair"},
-	})
+	}.WithProperties(map[string]string{"resolved_by": "agent-repair"}))
 	// nRels filler edges between distinct unrelated entities so the linear
 	// scan must walk them all.
 	for i := 0; i < nRels; i++ {

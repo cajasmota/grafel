@@ -67,8 +67,7 @@ func assembleDoc4480(recs []types.EntityRecord) *graph.Document {
 				Subtype:       r.Subtype,
 				SourceFile:    r.SourceFile,
 				Language:      r.Language,
-				Properties:    r.Properties,
-			})
+			}.WithProperties(r.Properties))
 		}
 		for j := range r.Relationships {
 			rel := &r.Relationships[j]
@@ -82,12 +81,11 @@ func assembleDoc4480(recs []types.EntityRecord) *graph.Document {
 			}
 			seenR[id] = true
 			doc.Relationships = append(doc.Relationships, graph.Relationship{
-				ID:         id,
-				FromID:     from,
-				ToID:       rel.ToID,
-				Kind:       rel.Kind,
-				Properties: rel.Properties,
-			})
+				ID:     id,
+				FromID: from,
+				ToID:   rel.ToID,
+				Kind:   rel.Kind,
+			}.WithProperties(rel.Properties))
 		}
 	}
 	return doc

@@ -54,11 +54,9 @@ func goEmbeddingDoc() *graph.Document {
 		},
 		Relationships: []graph.Relationship{
 			// Go embedding -> EXTENDS(kind=embedded_struct) with base_name.
-			{ID: "e1", FromID: "svc", ToID: "base", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "go", "kind": "embedded_struct", "base_name": "BaseService"}},
+			graph.Relationship{ID: "e1", FromID: "svc", ToID: "base", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "go", "kind": "embedded_struct", "base_name": "BaseService"}),
 			// The base method calls validate — the real promoted-through edge.
-			{ID: "e2", FromID: "base_process", ToID: "base_helper", Kind: "CALLS",
-				Properties: map[string]string{"language": "go"}},
+			graph.Relationship{ID: "e2", FromID: "base_process", ToID: "base_helper", Kind: "CALLS"}.WithProperties(map[string]string{"language": "go"}),
 		},
 	}
 }
@@ -131,11 +129,9 @@ func javaInterfaceDefaultDoc() *graph.Document {
 		},
 		Relationships: []graph.Relationship{
 			// class Impl implements Iface -> IMPLEMENTS, carrying base_name.
-			{ID: "e1", FromID: "impl", ToID: "iface", Kind: "IMPLEMENTS",
-				Properties: map[string]string{"language": "java", "base_name": "Iface"}},
+			graph.Relationship{ID: "e1", FromID: "impl", ToID: "iface", Kind: "IMPLEMENTS"}.WithProperties(map[string]string{"language": "java", "base_name": "Iface"}),
 			// The default method calls log — the real edge to follow through.
-			{ID: "e2", FromID: "iface_foo", ToID: "iface_log", Kind: "CALLS",
-				Properties: map[string]string{"language": "java"}},
+			graph.Relationship{ID: "e2", FromID: "iface_foo", ToID: "iface_log", Kind: "CALLS"}.WithProperties(map[string]string{"language": "java"}),
 		},
 	}
 }
@@ -198,8 +194,7 @@ func TestExtendsBaseName_CrossFileResolution(t *testing.T) {
 		},
 		Relationships: []graph.Relationship{
 			// base_name is the dotted FQN — must drive cross-file resolution.
-			{ID: "e1", FromID: "child", ToID: "base", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "app.data.Repository"}},
+			graph.Relationship{ID: "e1", FromID: "child", ToID: "base", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "app.data.Repository"}),
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -232,8 +227,7 @@ func TestJavaInterfaceDefault_ExternalAbstract_HonestUnresolved(t *testing.T) {
 			{ID: "ext", Name: "Runnable", Kind: "SCOPE.External", Language: "java"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "e1", FromID: "impl", ToID: "ext", Kind: "IMPLEMENTS",
-				Properties: map[string]string{"language": "java", "base_name": "java.lang.Runnable"}},
+			graph.Relationship{ID: "e1", FromID: "impl", ToID: "ext", Kind: "IMPLEMENTS"}.WithProperties(map[string]string{"language": "java", "base_name": "java.lang.Runnable"}),
 		},
 	}
 	srv := newTestServer(t, doc)

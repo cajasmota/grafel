@@ -274,7 +274,7 @@ func buildTestLinkageTerms(r *LoadedRepo) map[string][]string {
 		if target.Name != "" {
 			set = appendUniqueStr(set, target.Name)
 		}
-		if p := target.Properties; p != nil {
+		if p := target.PropsSnapshot(); p != nil {
 			if path := strings.TrimSpace(p["path"]); path != "" {
 				set = appendUniqueStr(set, path)
 			}

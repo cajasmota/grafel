@@ -14,18 +14,20 @@ import (
 )
 
 func TestBuildLombokSynthStub_DataGetter(t *testing.T) {
-	e := &graph.Entity{
-		Name:      "ListRequest.getPageSize",
-		Kind:      "SCOPE.Operation",
-		Subtype:   "method",
-		Signature: "Integer getPageSize()",
-		Properties: map[string]string{
+	e :=
+
+		graph.EntityPtr(graph.Entity{
+			Name:      "ListRequest.getPageSize",
+			Kind:      "SCOPE.Operation",
+			Subtype:   "method",
+			Signature: "Integer getPageSize()",
+		}.WithProperties(map[string]string{
 			"synthesized_from": "lombok_data",
 			"pattern_type":     "lombok_accessor",
 			"accessor_kind":    "getter",
 			"field":            "pageSize",
 		},
-	}
+		))
 	stub := buildLombokSynthStub(e)
 	if stub == "" {
 		t.Fatalf("expected non-empty stub for lombok @Data getter")
@@ -42,18 +44,20 @@ func TestBuildLombokSynthStub_DataGetter(t *testing.T) {
 }
 
 func TestBuildLombokSynthStub_DataSetter(t *testing.T) {
-	e := &graph.Entity{
-		Name:      "ListRequest.setPageSize",
-		Kind:      "SCOPE.Operation",
-		Subtype:   "method",
-		Signature: "void setPageSize(Integer pageSize)",
-		Properties: map[string]string{
+	e :=
+
+		graph.EntityPtr(graph.Entity{
+			Name:      "ListRequest.setPageSize",
+			Kind:      "SCOPE.Operation",
+			Subtype:   "method",
+			Signature: "void setPageSize(Integer pageSize)",
+		}.WithProperties(map[string]string{
 			"synthesized_from": "lombok_data",
 			"pattern_type":     "lombok_accessor",
 			"accessor_kind":    "setter",
 			"field":            "pageSize",
 		},
-	}
+		))
 	stub := buildLombokSynthStub(e)
 	if !strings.Contains(stub, "this.pageSize = pageSize") {
 		t.Errorf("setter stub missing assignment, got:\n%s", stub)
@@ -64,18 +68,20 @@ func TestBuildLombokSynthStub_DataSetter(t *testing.T) {
 }
 
 func TestBuildLombokSynthStub_GetterAnnotation(t *testing.T) {
-	e := &graph.Entity{
-		Name:      "Product.getName",
-		Kind:      "SCOPE.Operation",
-		Subtype:   "method",
-		Signature: "String getName()",
-		Properties: map[string]string{
+	e :=
+
+		graph.EntityPtr(graph.Entity{
+			Name:      "Product.getName",
+			Kind:      "SCOPE.Operation",
+			Subtype:   "method",
+			Signature: "String getName()",
+		}.WithProperties(map[string]string{
 			"synthesized_from": "lombok_getter",
 			"pattern_type":     "lombok_accessor",
 			"accessor_kind":    "getter",
 			"field":            "name",
 		},
-	}
+		))
 	stub := buildLombokSynthStub(e)
 	if !strings.Contains(stub, "@Getter") {
 		t.Errorf("expected @Getter label, got:\n%s", stub)
@@ -83,14 +89,16 @@ func TestBuildLombokSynthStub_GetterAnnotation(t *testing.T) {
 }
 
 func TestBuildLombokSynthStub_NoLombokProperty(t *testing.T) {
-	e := &graph.Entity{
-		Name:    "RealClass.realMethod",
-		Kind:    "SCOPE.Operation",
-		Subtype: "method",
-		Properties: map[string]string{
+	e :=
+
+		graph.EntityPtr(graph.Entity{
+			Name:    "RealClass.realMethod",
+			Kind:    "SCOPE.Operation",
+			Subtype: "method",
+		}.WithProperties(map[string]string{
 			"some_other_prop": "x",
 		},
-	}
+		))
 	if stub := buildLombokSynthStub(e); stub != "" {
 		t.Errorf("expected empty stub for non-lombok entity, got: %q", stub)
 	}
@@ -104,15 +112,17 @@ func TestBuildLombokSynthStub_NilEntity(t *testing.T) {
 
 func TestBuildLombokSynthStub_NonAccessorMethod(t *testing.T) {
 	// equals/hashCode/toString: no accessor_kind, signature present.
-	e := &graph.Entity{
-		Name:      "User.toString",
-		Kind:      "SCOPE.Operation",
-		Signature: "String toString()",
-		Properties: map[string]string{
+	e :=
+
+		graph.EntityPtr(graph.Entity{
+			Name:      "User.toString",
+			Kind:      "SCOPE.Operation",
+			Signature: "String toString()",
+		}.WithProperties(map[string]string{
 			"synthesized_from": "lombok_data",
 			"pattern_type":     "lombok_accessor",
 		},
-	}
+		))
 	stub := buildLombokSynthStub(e)
 	if !strings.Contains(stub, "toString") {
 		t.Errorf("non-accessor stub missing method name, got:\n%s", stub)

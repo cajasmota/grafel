@@ -26,7 +26,7 @@ import (
 func routerExpandedRoutes(doc *graph.Document) []graph.Entity {
 	var out []graph.Entity
 	for _, e := range doc.Entities {
-		if e.Properties["pattern_type"] == "drf_router_expanded" {
+		if e.PropGet("pattern_type") == "drf_router_expanded" {
 			out = append(out, e)
 		}
 	}
@@ -46,7 +46,7 @@ func TestPipeline_RoutedViewSet_StampsEffectiveContract(t *testing.T) {
 
 	var create *graph.Entity
 	for i := range routes {
-		if routes[i].Properties["drf_view_method"] == "ThingViewSet.create" {
+		if routes[i].PropGet("drf_view_method") == "ThingViewSet.create" {
 			create = &routes[i]
 			break
 		}
@@ -54,7 +54,7 @@ func TestPipeline_RoutedViewSet_StampsEffectiveContract(t *testing.T) {
 	if create == nil {
 		t.Fatalf("no router-expanded route for ThingViewSet.create; routes=%v", routes)
 	}
-	p := create.Properties
+	p := create.PropsSnapshot()
 	if p["effective_kind"] != "inherited" {
 		t.Errorf("create effective_kind=%q; want inherited", p["effective_kind"])
 	}
@@ -99,7 +99,7 @@ func TestPipeline_UnroutedViewSet_NoRoutesButExtendsEdge(t *testing.T) {
 		if r.Kind != "EXTENDS" || r.FromID != cls.ID {
 			continue
 		}
-		base := r.Properties["base_name"]
+		base := r.PropGet("base_name")
 		if strings.Contains(base, "ModelViewSet") {
 			found = true
 			break

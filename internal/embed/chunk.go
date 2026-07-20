@@ -43,11 +43,11 @@ func EmbedText(e *graph.Entity, snippet string) string {
 		b.WriteString("\n")
 		b.WriteString(e.Signature)
 	}
-	if e.Properties != nil {
-		if ds := strings.TrimSpace(e.Properties["docstring"]); ds != "" {
+	if e.PropLen() > 0 {
+		if ds := strings.TrimSpace(e.PropGet("docstring")); ds != "" {
 			b.WriteString("\n")
 			b.WriteString(ds)
-		} else if d := strings.TrimSpace(e.Properties["description"]); d != "" {
+		} else if d := strings.TrimSpace(e.PropGet("description")); d != "" {
 			b.WriteString("\n")
 			b.WriteString(d)
 		}

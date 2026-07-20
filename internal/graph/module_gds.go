@@ -249,11 +249,11 @@ func collectModules(entities []Entity) (ids []string, names map[string]string, e
 		names[mid] = e.Name
 		repo := ""
 		modName := e.Name
-		if e.Properties != nil {
-			if r, ok := e.Properties["repo"]; ok {
+		if e.PropLen() > 0 {
+			if r, ok := e.PropLookup("repo"); ok {
 				repo = r
 			}
-			if m, ok := e.Properties["module"]; ok && m != "" {
+			if m, ok := e.PropLookup("module"); ok && m != "" {
 				modName = m
 			}
 		}
@@ -272,9 +272,9 @@ func collectModules(entities []Entity) (ids []string, names map[string]string, e
 		}
 		modName := ""
 		repo := ""
-		if e.Properties != nil {
-			modName = e.Properties["module"]
-			repo = e.Properties["repo"]
+		if e.PropLen() > 0 {
+			modName = e.PropGet("module")
+			repo = e.PropGet("repo")
 		}
 		if modName == "" {
 			// Untagged entity — skip from aggregation. Including it would
@@ -359,8 +359,8 @@ func aggregateModuleEdges(_ []Entity, rels []Relationship, entityToModule map[st
 		// Pre-aggregated module→module edge?
 		if r.Kind == relDependsOn && moduleSet[r.FromID] && moduleSet[r.ToID] {
 			w := 1
-			if r.Properties != nil {
-				if v, ok := r.Properties["weight"]; ok {
+			if r.PropLen() > 0 {
+				if v, ok := r.PropLookup("weight"); ok {
 					if n := atoiSafe(v); n > 0 {
 						w = n
 					}

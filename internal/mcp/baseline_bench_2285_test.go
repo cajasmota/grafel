@@ -18,7 +18,7 @@ func agentResolvedEdges_baseline(doc *graph.Document, repo string, entityID stri
 		if r.FromID != entityID {
 			continue
 		}
-		if r.Properties["resolved_by"] != "agent-repair" {
+		if r.PropGet("resolved_by") != "agent-repair" {
 			continue
 		}
 		toID := r.ToID
@@ -30,10 +30,10 @@ func agentResolvedEdges_baseline(doc *graph.Document, repo string, entityID stri
 			"target":      toID,
 			"resolved_by": "agent-repair",
 		}
-		if v := r.Properties["resolved_by_agent"]; v != "" {
+		if v := r.PropGet("resolved_by_agent"); v != "" {
 			entry["resolved_by_agent"] = v
 		}
-		if v := r.Properties["repair_reasoning"]; v != "" {
+		if v := r.PropGet("repair_reasoning"); v != "" {
 			entry["repair_reasoning"] = v
 		}
 		out = append(out, entry)

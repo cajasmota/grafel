@@ -55,17 +55,17 @@ func buildExpressContractServer(t *testing.T) *Server {
 	doc := &graph.Document{
 		Repo: "web",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "ep:post:/users", Name: "http:POST:/users",
 				Kind: "http_endpoint_definition", Language: "javascript",
 				SourceFile: srcRel,
-				Properties: map[string]string{
-					"framework":       "express",
-					"verb":            "POST",
-					"path":            "/users",
-					"auth_middleware": "requireAuth",
-				},
+			}.WithProperties(map[string]string{
+				"framework":       "express",
+				"verb":            "POST",
+				"path":            "/users",
+				"auth_middleware": "requireAuth",
 			},
+			),
 			{
 				ID: "op:createUser", Name: "createUser",
 				QualifiedName: "createUser",
@@ -74,17 +74,13 @@ func buildExpressContractServer(t *testing.T) *Server {
 				StartLine: 2, EndLine: 11,
 			},
 			{ID: "dto:createUserSchema", Name: "createUserSchema", Kind: "SCOPE.Component", Subtype: "schema", Language: "javascript", SourceFile: "src/schemas/user.js"},
-			{ID: "f:email", Name: "createUserSchema.email", Kind: "SCOPE.Schema", Subtype: "field", Language: "javascript",
-				Properties: map[string]string{"field_name": "email", "field_type": "string", "parent_class": "createUserSchema"}},
-			{ID: "f:name", Name: "createUserSchema.name", Kind: "SCOPE.Schema", Subtype: "field", Language: "javascript",
-				Properties: map[string]string{"field_name": "name", "field_type": "string", "parent_class": "createUserSchema"}},
-			{ID: "f:age", Name: "createUserSchema.age?", Kind: "SCOPE.Schema", Subtype: "field", Language: "javascript",
-				Properties: map[string]string{"field_name": "age", "field_type": "number", "parent_class": "createUserSchema", "optional": "true"}},
+			graph.Entity{ID: "f:email", Name: "createUserSchema.email", Kind: "SCOPE.Schema", Subtype: "field", Language: "javascript"}.WithProperties(map[string]string{"field_name": "email", "field_type": "string", "parent_class": "createUserSchema"}),
+			graph.Entity{ID: "f:name", Name: "createUserSchema.name", Kind: "SCOPE.Schema", Subtype: "field", Language: "javascript"}.WithProperties(map[string]string{"field_name": "name", "field_type": "string", "parent_class": "createUserSchema"}),
+			graph.Entity{ID: "f:age", Name: "createUserSchema.age?", Kind: "SCOPE.Schema", Subtype: "field", Language: "javascript"}.WithProperties(map[string]string{"field_name": "age", "field_type": "number", "parent_class": "createUserSchema", "optional": "true"}),
 		},
 		Relationships: []graph.Relationship{
 			{FromID: "op:createUser", ToID: "ep:post:/users", Kind: "IMPLEMENTS"},
-			{FromID: "op:createUser", ToID: "dto:createUserSchema", Kind: "VALIDATES",
-				Properties: map[string]string{"via": "dto_extraction", "method": "req.body", "dto": "createUserSchema"}},
+			graph.Relationship{FromID: "op:createUser", ToID: "dto:createUserSchema", Kind: "VALIDATES"}.WithProperties(map[string]string{"via": "dto_extraction", "method": "req.body", "dto": "createUserSchema"}),
 		},
 	}
 

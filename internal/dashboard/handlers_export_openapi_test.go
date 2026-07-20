@@ -120,53 +120,53 @@ func newOpenAPITestServer(t *testing.T, groupName string, entities []graph.Entit
 // real http_endpoint_definition extractions.
 func sampleEndpointEntities() []graph.Entity {
 	return []graph.Entity{
-		{
+		graph.Entity{
 			ID:   "ep1",
 			Name: "GET /api/users",
 			Kind: "http_endpoint_definition",
-			Properties: map[string]string{
-				"method":         "GET",
-				"path":           "/api/users",
-				"framework":      "gin",
-				"owning_backend": "user-service",
-				"status_codes":   "200,404",
-				"response_keys":  "id,name,email",
-			},
+		}.WithProperties(map[string]string{
+			"method":         "GET",
+			"path":           "/api/users",
+			"framework":      "gin",
+			"owning_backend": "user-service",
+			"status_codes":   "200,404",
+			"response_keys":  "id,name,email",
 		},
-		{
+		),
+		graph.Entity{
 			ID:   "ep2",
 			Name: "POST /api/users",
 			Kind: "http_endpoint_definition",
-			Properties: map[string]string{
-				"method":         "POST",
-				"path":           "/api/users",
-				"framework":      "gin",
-				"owning_backend": "user-service",
-				"status_codes":   "201,400",
-			},
+		}.WithProperties(map[string]string{
+			"method":         "POST",
+			"path":           "/api/users",
+			"framework":      "gin",
+			"owning_backend": "user-service",
+			"status_codes":   "201,400",
 		},
-		{
+		),
+		graph.Entity{
 			ID:   "ep3",
 			Name: "GET /api/users/{id}",
 			Kind: "http_endpoint_definition",
-			Properties: map[string]string{
-				"method":         "GET",
-				"path":           "/api/users/{id}",
-				"framework":      "gin",
-				"owning_backend": "user-service",
-				"status_codes":   "200,404",
-			},
+		}.WithProperties(map[string]string{
+			"method":         "GET",
+			"path":           "/api/users/{id}",
+			"framework":      "gin",
+			"owning_backend": "user-service",
+			"status_codes":   "200,404",
 		},
-		{
+		),
+		graph.Entity{
 			// Should be excluded — call-site synthetic.
 			ID:   "call1",
 			Name: "fetch /api/users",
 			Kind: "http_endpoint_call",
-			Properties: map[string]string{
-				"path":   "/api/users",
-				"method": "GET",
-			},
+		}.WithProperties(map[string]string{
+			"path":   "/api/users",
+			"method": "GET",
 		},
+		),
 	}
 }
 
@@ -362,17 +362,17 @@ func TestHandleExportOpenAPI_emptyGroup(t *testing.T) {
 
 func TestHandleExportOpenAPI_responseKeys(t *testing.T) {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:   "ep1",
 			Name: "GET /items",
 			Kind: "http_endpoint_definition",
-			Properties: map[string]string{
-				"method":        "GET",
-				"path":          "/items",
-				"status_codes":  "200",
-				"response_keys": "id,name,price",
-			},
+		}.WithProperties(map[string]string{
+			"method":        "GET",
+			"path":          "/items",
+			"status_codes":  "200",
+			"response_keys": "id,name,price",
 		},
+		),
 	}
 	srv := newOpenAPITestServer(t, "shop", entities)
 	req := httptest.NewRequest(http.MethodGet, "/api/export/shop/openapi?format=json", nil)
@@ -411,15 +411,17 @@ func TestHandleExportOpenAPI_responseKeys(t *testing.T) {
 
 func TestHandleExportOpenAPI_anyVerbExpanded(t *testing.T) {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:   "ep1",
 			Name: "ANY /catch-all",
 			Kind: "http_endpoint_definition",
-			Properties: map[string]string{
-				"path": "/catch-all",
-				// method deliberately empty → resolves to "ANY"
-			},
+
+			// method deliberately empty → resolves to "ANY"
+
+		}.WithProperties(map[string]string{
+			"path": "/catch-all",
 		},
+		),
 	}
 	srv := newOpenAPITestServer(t, "any-test", entities)
 	req := httptest.NewRequest(http.MethodGet, "/api/export/any-test/openapi?format=json", nil)

@@ -48,11 +48,11 @@ func endpointDef(id, verb, path string) graph.Entity {
 		ID:   id,
 		Name: verb + " " + path,
 		Kind: string(types.EntityKindHTTPEndpointDefinition),
-		Properties: map[string]string{
-			"verb": verb,
-			"path": path,
-		},
-	}
+	}.WithProperties(map[string]string{
+		"verb": verb,
+		"path": path,
+	},
+	)
 }
 
 // handlerFn builds a handler entity (an Operation/function) carrying an
@@ -64,11 +64,10 @@ func handlerFn(id, name, effects string) graph.Entity {
 		props["effects"] = effects
 	}
 	return graph.Entity{
-		ID:         id,
-		Name:       name,
-		Kind:       string(types.EntityKindOperation),
-		Properties: props,
-	}
+		ID:   id,
+		Name: name,
+		Kind: string(types.EntityKindOperation),
+	}.WithProperties(props)
 }
 
 // implementsEdge links a handler to the endpoint definition it implements.

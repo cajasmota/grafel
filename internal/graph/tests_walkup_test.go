@@ -58,14 +58,14 @@ func TestDeriveTestsWalkUp_BasicScenario(t *testing.T) {
 	for _, rel := range doc.Relationships {
 		if rel.FromID == "test1" && rel.ToID == "viewset1" && rel.Kind == "TESTS" {
 			found = true
-			if rel.Properties["source"] != "tests-walkup" {
-				t.Errorf("derived edge source want tests-walkup, got %q", rel.Properties["source"])
+			if rel.PropGet("source") != "tests-walkup" {
+				t.Errorf("derived edge source want tests-walkup, got %q", rel.PropGet("source"))
 			}
-			if rel.Properties["confidence"] != "0.7" {
-				t.Errorf("derived edge confidence want 0.7, got %q", rel.Properties["confidence"])
+			if rel.PropGet("confidence") != "0.7" {
+				t.Errorf("derived edge confidence want 0.7, got %q", rel.PropGet("confidence"))
 			}
-			if !containsSubstring(rel.Properties["derived"], "helper:") {
-				t.Errorf("derived edge property want 'helper:<id>', got %q", rel.Properties["derived"])
+			if !containsSubstring(rel.PropGet("derived"), "helper:") {
+				t.Errorf("derived edge property want 'helper:<id>', got %q", rel.PropGet("derived"))
 			}
 		}
 	}

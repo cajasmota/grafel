@@ -102,20 +102,15 @@ func buildCorpusDoc() *graph.Document {
 		},
 		Relationships: []graph.Relationship{
 			// Bug 1 — bug-resolver: "save" is ambiguous (two candidates in graph).
-			{ID: "r-save", FromID: "aaaaaaaaaaaaaaaa", ToID: "save", Kind: "CALLS",
-				Properties: map[string]string{"language": "python"}},
+			graph.Relationship{ID: "r-save", FromID: "aaaaaaaaaaaaaaaa", ToID: "save", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
 			// Bug 2 — bug-extractor: "get_all" not in graph; from ProposalViewSet.
-			{ID: "r-getall", FromID: "aaaaaaaaaaaaaaaa", ToID: "get_all", Kind: "CALLS",
-				Properties: map[string]string{"language": "python"}},
+			graph.Relationship{ID: "r-getall", FromID: "aaaaaaaaaaaaaaaa", ToID: "get_all", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
 			// Bug 3 — bug-extractor: "submitProposal" not in graph; from fetchProposal.
-			{ID: "r-handle", FromID: "cccccccccccccccc", ToID: "submitProposal", Kind: "CALLS",
-				Properties: map[string]string{"language": "javascript"}},
+			graph.Relationship{ID: "r-handle", FromID: "cccccccccccccccc", ToID: "submitProposal", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
 			// Bug 4 — bug-extractor: barrel re-export — "ProposalCard" not in graph.
-			{ID: "r-barrel", FromID: "dddddddddddddddd", ToID: "ProposalCard", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "javascript"}},
+			graph.Relationship{ID: "r-barrel", FromID: "dddddddddddddddd", ToID: "ProposalCard", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "javascript"}),
 			// Bug 5 — bug-extractor: "api_client" not in graph; to be abandoned.
-			{ID: "r-api", FromID: "cccccccccccccccc", ToID: "api_client", Kind: "CALLS",
-				Properties: map[string]string{"language": "javascript"}},
+			graph.Relationship{ID: "r-api", FromID: "cccccccccccccccc", ToID: "api_client", Kind: "CALLS"}.WithProperties(map[string]string{"language": "javascript"}),
 		},
 	}
 }
@@ -346,15 +341,15 @@ func TestRepairCorpus_SourceAttributionOnApplied(t *testing.T) {
 	// Count edges tagged agent-repair; abandon drops the edge entirely.
 	tagged := 0
 	for _, r := range docCopy.Relationships {
-		if r.Properties["resolved_by"] == "agent-repair" {
+		if r.PropGet("resolved_by") == "agent-repair" {
 			tagged++
-			if r.Properties["repair_reasoning"] == "" {
+			if r.PropGet("repair_reasoning") == "" {
 				t.Errorf("repair_reasoning missing on %s→%s", r.FromID, r.ToID)
 			}
 			// resolved_by_agent should point to the test-corpus/reference source.
-			if r.Properties["resolved_by_agent"] != "test-corpus/reference" {
+			if r.PropGet("resolved_by_agent") != "test-corpus/reference" {
 				t.Errorf("resolved_by_agent=%q want test-corpus/reference on %s→%s",
-					r.Properties["resolved_by_agent"], r.FromID, r.ToID)
+					r.PropGet("resolved_by_agent"), r.FromID, r.ToID)
 			}
 		}
 	}

@@ -263,10 +263,10 @@ func isHTTPEndpointDefinition(e *graph.Entity) bool {
 
 // endpointVerbPath extracts the verb and path from an endpoint entity's props.
 func endpointVerbPath(e *graph.Entity) (verb, path string) {
-	if e.Properties == nil {
+	if e.PropLen() == 0 {
 		return "", ""
 	}
-	return e.Properties["verb"], e.Properties["path"]
+	return e.PropGet("verb"), e.PropGet("path")
 }
 
 // buildAuthSignal harvests the framework-neutral Signal from an endpoint entity:
@@ -274,26 +274,26 @@ func endpointVerbPath(e *graph.Entity) (verb, path string) {
 // source body when stamped.
 func buildAuthSignal(e *graph.Entity) authposture.Signal {
 	sig := authposture.Signal{Props: map[string]string{}}
-	if e.Properties != nil {
+	if e.PropLen() > 0 {
 		for _, k := range authPostureSignalProps {
-			if v, ok := e.Properties[k]; ok {
+			if v, ok := e.PropLookup(k); ok {
 				sig.Props[k] = v
 			}
 		}
-		sig.Framework = e.Properties["framework"]
+		sig.Framework = e.PropGet("framework")
 		// Source fallback: try the framework-neutral source-body props in priority
 		// order so a resolver's source-scan path works in the LIVE diff, not only
 		// the Django get_permissions case (#4742-#4747).
 		for _, k := range authPostureSourceProps {
-			if v := strings.TrimSpace(e.Properties[k]); v != "" {
+			if v := strings.TrimSpace(e.PropGet(k)); v != "" {
 				sig.Source = v
 				break
 			}
 		}
-		if a := strings.TrimSpace(e.Properties["effective_action"]); a != "" {
+		if a := strings.TrimSpace(e.PropGet("effective_action")); a != "" {
 			sig.Action = a
 		} else {
-			sig.Action = strings.TrimSpace(e.Properties["action"])
+			sig.Action = strings.TrimSpace(e.PropGet("action"))
 		}
 	}
 	return sig

@@ -92,18 +92,18 @@ func TestCollectTopology_RedisPubSub(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				// Entity ID is a hash (as stored by the engine); Name carries the semantic prefix.
 				ID:         "abcd1234",
 				Name:       "channel:redis-pubsub:notifications",
 				Kind:       "SCOPE.Queue",
 				SourceFile: "",
 				Language:   "python",
-				Properties: map[string]string{
-					"broker":       "redis",
-					"channel_type": "pubsub",
-				},
+			}.WithProperties(map[string]string{
+				"broker":       "redis",
+				"channel_type": "pubsub",
 			},
+			),
 			{
 				ID:         "fn:publisher",
 				Name:       "publisher",
@@ -164,13 +164,12 @@ func TestCollectTopology_RedisStreams(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				// ID is a hash; Name carries the semantic prefix.
-				ID:         "efgh5678",
-				Name:       "stream:redis:events",
-				Kind:       "SCOPE.Queue",
-				Properties: map[string]string{"broker": "redis", "channel_type": "stream"},
-			},
+				ID:   "efgh5678",
+				Name: "stream:redis:events",
+				Kind: "SCOPE.Queue",
+			}.WithProperties(map[string]string{"broker": "redis", "channel_type": "stream"}),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "r1", FromID: "fn:producer", ToID: "efgh5678", Kind: "PUBLISHES_TO"},
@@ -206,12 +205,11 @@ func TestCollectTopology_AsyncTasks(t *testing.T) {
 		Entities: []graph.Entity{
 			// Dramatiq task (from #941 extractor — stored as SCOPE.Queue entity
 			// with task: prefix in entity Name).
-			{
-				ID:         "ijkl9012",
-				Name:       "task:dramatiq:send_email",
-				Kind:       "SCOPE.Queue",
-				Properties: map[string]string{"framework": "dramatiq", "broker": ""},
-			},
+			graph.Entity{
+				ID:   "ijkl9012",
+				Name: "task:dramatiq:send_email",
+				Kind: "SCOPE.Queue",
+			}.WithProperties(map[string]string{"framework": "dramatiq", "broker": ""}),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "r1", FromID: "fn:caller", ToID: "ijkl9012", Kind: "PUBLISHES_TO"},
@@ -248,30 +246,30 @@ func TestCollectTopology_CeleryTaskAndScheduledJob(t *testing.T) {
 		Entities: []graph.Entity{
 			// Task entity emitted by Celery extractor (kind has no SCOPE. prefix in
 			// this fixture, matching what real custom extractors may emit).
-			{
+			graph.Entity{
 				ID:         "task:send_invoice",
 				Name:       "send_invoice",
 				Kind:       "Task",
 				SourceFile: "worker/tasks.py",
 				Language:   "python",
-				Properties: map[string]string{
-					"framework":    "celery",
-					"pattern_type": "task",
-				},
+			}.WithProperties(map[string]string{
+				"framework":    "celery",
+				"pattern_type": "task",
 			},
+			),
 			// ScheduledJob entity emitted by the scheduled-job pass (SCOPE. prefix).
-			{
+			graph.Entity{
 				ID:         "celery_beat:nightly_report",
 				Name:       "nightly_report",
 				Kind:       "SCOPE.ScheduledJob",
 				SourceFile: "worker/beat.py",
 				Language:   "python",
-				Properties: map[string]string{
-					"framework":    "celery_beat",
-					"schedule":     "0 0 * * *",
-					"pattern_type": "scheduled_job_synthesis",
-				},
+			}.WithProperties(map[string]string{
+				"framework":    "celery_beat",
+				"schedule":     "0 0 * * *",
+				"pattern_type": "scheduled_job_synthesis",
 			},
+			),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "r1", FromID: "fn:api_handler", ToID: "task:send_invoice", Kind: "PUBLISHES_TO"},
@@ -342,13 +340,12 @@ func TestCollectTopology_Serverless(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				// Name carries the semantic aws-lambda: prefix.
-				ID:         "mnop3456",
-				Name:       "aws-lambda:OrderProcessor",
-				Kind:       "SCOPE.ServerlessFunction",
-				Properties: map[string]string{"provider": "aws-lambda", "function_name": "OrderProcessor"},
-			},
+				ID:   "mnop3456",
+				Name: "aws-lambda:OrderProcessor",
+				Kind: "SCOPE.ServerlessFunction",
+			}.WithProperties(map[string]string{"provider": "aws-lambda", "function_name": "OrderProcessor"}),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "r1", FromID: "fn:api_handler", ToID: "mnop3456", Kind: "CALLS"},
@@ -386,12 +383,11 @@ func TestCollectTopology_KafkaRegression(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
-				ID:         "UserCreatedTopic",
-				Name:       "UserCreatedTopic",
-				Kind:       "MessageTopic",
-				Properties: map[string]string{"broker": "kafka"},
-			},
+			graph.Entity{
+				ID:   "UserCreatedTopic",
+				Name: "UserCreatedTopic",
+				Kind: "MessageTopic",
+			}.WithProperties(map[string]string{"broker": "kafka"}),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "r1", FromID: "svc_producer", ToID: "UserCreatedTopic", Kind: "PUBLISHES_TO"},
@@ -489,11 +485,10 @@ func TestCollectTopologyResponse_BrokerGroups_TwoBrokers(t *testing.T) {
 		ents := make([]graph.Entity, n)
 		for i := 0; i < n; i++ {
 			ents[i] = graph.Entity{
-				ID:         graph.EntityID(repo, "MessageTopic", string(rune('A'+i)), ""),
-				Name:       string(rune('A' + i)),
-				Kind:       "MessageTopic",
-				Properties: map[string]string{"broker": broker},
-			}
+				ID:   graph.EntityID(repo, "MessageTopic", string(rune('A'+i)), ""),
+				Name: string(rune('A' + i)),
+				Kind: "MessageTopic",
+			}.WithProperties(map[string]string{"broker": broker})
 		}
 		return ents
 	}
@@ -583,8 +578,7 @@ func TestCollectTopologyResponse_BrokerGroups_CrossRepo(t *testing.T) {
 			"svc-a": {Slug: "svc-a", Doc: &graph.Document{
 				Repo: "svc-a",
 				Entities: []graph.Entity{
-					{ID: topicID, Name: "OrderPlaced", Kind: "MessageTopic",
-						Properties: map[string]string{"broker": "rabbitmq"}},
+					graph.Entity{ID: topicID, Name: "OrderPlaced", Kind: "MessageTopic"}.WithProperties(map[string]string{"broker": "rabbitmq"}),
 				},
 				Relationships: []graph.Relationship{
 					{ID: "p1", FromID: "svc-a::producer", ToID: topicID, Kind: "PUBLISHES_TO"},
@@ -623,14 +617,14 @@ func TestCollectTopologyResponse_BrokerGroups_CeleryFramework(t *testing.T) {
 			"worker": {Slug: "worker", Doc: &graph.Document{
 				Repo: "worker",
 				Entities: []graph.Entity{
-					{
+					graph.Entity{
 						ID:   "task:celery:send_invoice",
 						Name: "send_invoice",
 						Kind: "Task",
-						Properties: map[string]string{
-							"framework": "celery",
-						},
+					}.WithProperties(map[string]string{
+						"framework": "celery",
 					},
+					),
 				},
 			}},
 		},
@@ -704,16 +698,16 @@ func TestCollectTopology_KafkaTopicDedup(t *testing.T) {
 			Doc: &graph.Document{
 				Repo: slug,
 				Entities: []graph.Entity{
-					{
+					graph.Entity{
 						ID:   entityID,
 						Name: "kafka:payments.settled",
 						Kind: "SCOPE.MessageTopic",
-						Properties: map[string]string{
-							"broker":       "kafka",
-							"topic_name":   "payments.settled",
-							"pattern_type": "kafka_synthesis",
-						},
+					}.WithProperties(map[string]string{
+						"broker":       "kafka",
+						"topic_name":   "payments.settled",
+						"pattern_type": "kafka_synthesis",
 					},
+					),
 				},
 				Relationships: rels,
 			},

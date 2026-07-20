@@ -37,12 +37,11 @@ func makeTopologyOrphanGroup(entities []graph.Entity, rels []graph.Relationship)
 // consumer exists → 1 orphan row.
 func TestOrphanPublishers_ProducerOnly(t *testing.T) {
 	entities := []graph.Entity{
-		{
-			ID:         "topic-x",
-			Name:       "topic-X",
-			Kind:       "MessageTopic",
-			Properties: map[string]string{"broker": "rabbitmq"},
-		},
+		graph.Entity{
+			ID:   "topic-x",
+			Name: "topic-X",
+			Kind: "MessageTopic",
+		}.WithProperties(map[string]string{"broker": "rabbitmq"}),
 		{
 			ID:   "producer-svc",
 			Name: "OrderPublisher",
@@ -89,12 +88,11 @@ func TestOrphanPublishers_ProducerOnly(t *testing.T) {
 // TestOrphanPublishers_ProducerAndConsumer — both sides present → 0 orphans.
 func TestOrphanPublishers_ProducerAndConsumer(t *testing.T) {
 	entities := []graph.Entity{
-		{
-			ID:         "topic-a",
-			Name:       "queue-A",
-			Kind:       "Queue",
-			Properties: map[string]string{"broker": "sqs"},
-		},
+		graph.Entity{
+			ID:   "topic-a",
+			Name: "queue-A",
+			Kind: "Queue",
+		}.WithProperties(map[string]string{"broker": "sqs"}),
 		{
 			ID:   "pub-svc",
 			Name: "Sender",
@@ -123,12 +121,11 @@ func TestOrphanPublishers_ProducerAndConsumer(t *testing.T) {
 // producer → NOT an orphan publisher (different endpoint).
 func TestOrphanPublishers_ConsumerOnly(t *testing.T) {
 	entities := []graph.Entity{
-		{
-			ID:         "topic-b",
-			Name:       "broker-1",
-			Kind:       "MessageTopic",
-			Properties: map[string]string{"broker": "kafka"},
-		},
+		graph.Entity{
+			ID:   "topic-b",
+			Name: "broker-1",
+			Kind: "MessageTopic",
+		}.WithProperties(map[string]string{"broker": "kafka"}),
 		{
 			ID:   "consumer-svc",
 			Name: "Listener",
@@ -170,14 +167,14 @@ func TestOrphanPublishers_ZeroProducersZeroConsumers(t *testing.T) {
 // subscriber is an orphan publisher too.
 func TestOrphanPublishers_ChannelOrphan(t *testing.T) {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:   "chan-1",
 			Name: "updates",
 			Kind: "ChannelEvent",
-			Properties: map[string]string{
-				"channel_type": "websocket",
-			},
+		}.WithProperties(map[string]string{
+			"channel_type": "websocket",
 		},
+		),
 		{
 			ID:   "emitter-svc",
 			Name: "Notifier",
@@ -262,12 +259,11 @@ func newOrphanPublisherTestServer(t *testing.T, grp *DashGroup) *httptest.Server
 
 func TestHandleOrphanPublishers_HTTPSmoke(t *testing.T) {
 	entities := []graph.Entity{
-		{
-			ID:         "topic-smoke",
-			Name:       "topic-X",
-			Kind:       "MessageTopic",
-			Properties: map[string]string{"broker": "rabbitmq"},
-		},
+		graph.Entity{
+			ID:   "topic-smoke",
+			Name: "topic-X",
+			Kind: "MessageTopic",
+		}.WithProperties(map[string]string{"broker": "rabbitmq"}),
 		{
 			ID:   "prod-smoke",
 			Name: "SmokePublisher",
@@ -327,12 +323,11 @@ func TestHandleOrphanPublishers_HTTPSmoke(t *testing.T) {
 func TestHandleOrphanPublishers_EmptyResult_ArrayNotNull(t *testing.T) {
 	// A group with no PUBLISHES_TO edges must return [] (not null).
 	entities := []graph.Entity{
-		{
-			ID:         "topic-covered",
-			Name:       "covered",
-			Kind:       "MessageTopic",
-			Properties: map[string]string{"broker": "kafka"},
-		},
+		graph.Entity{
+			ID:   "topic-covered",
+			Name: "covered",
+			Kind: "MessageTopic",
+		}.WithProperties(map[string]string{"broker": "kafka"}),
 		{
 			ID:   "pub",
 			Name: "Publisher",
@@ -400,12 +395,11 @@ func TestHandleOrphanPublishers_UnknownGroup(t *testing.T) {
 // producer exists → 1 orphan subscriber row.
 func TestOrphanSubscribers_ConsumerOnly(t *testing.T) {
 	entities := []graph.Entity{
-		{
-			ID:         "topic-x",
-			Name:       "topic-X",
-			Kind:       "MessageTopic",
-			Properties: map[string]string{"broker": "rabbitmq"},
-		},
+		graph.Entity{
+			ID:   "topic-x",
+			Name: "topic-X",
+			Kind: "MessageTopic",
+		}.WithProperties(map[string]string{"broker": "rabbitmq"}),
 		{
 			ID:   "consumer-svc",
 			Name: "OrderListener",
@@ -455,12 +449,11 @@ func TestOrphanSubscribers_ConsumerOnly(t *testing.T) {
 // subscribers.
 func TestOrphanSubscribers_ProducerAndConsumer(t *testing.T) {
 	entities := []graph.Entity{
-		{
-			ID:         "topic-a",
-			Name:       "queue-A",
-			Kind:       "Queue",
-			Properties: map[string]string{"broker": "sqs"},
-		},
+		graph.Entity{
+			ID:   "topic-a",
+			Name: "queue-A",
+			Kind: "Queue",
+		}.WithProperties(map[string]string{"broker": "sqs"}),
 		{
 			ID:   "pub-svc",
 			Name: "Sender",
@@ -489,12 +482,11 @@ func TestOrphanSubscribers_ProducerAndConsumer(t *testing.T) {
 // consumer → NOT an orphan subscriber (different endpoint).
 func TestOrphanSubscribers_ProducerOnly(t *testing.T) {
 	entities := []graph.Entity{
-		{
-			ID:         "topic-b",
-			Name:       "orders.created",
-			Kind:       "MessageTopic",
-			Properties: map[string]string{"broker": "kafka"},
-		},
+		graph.Entity{
+			ID:   "topic-b",
+			Name: "orders.created",
+			Kind: "MessageTopic",
+		}.WithProperties(map[string]string{"broker": "kafka"}),
 		{
 			ID:   "producer-svc",
 			Name: "OrderPublisher",
@@ -532,14 +524,14 @@ func TestOrphanSubscribers_ZeroProducersZeroConsumers(t *testing.T) {
 // no emitter is an orphan subscriber.
 func TestOrphanSubscribers_ChannelOrphan(t *testing.T) {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:   "chan-1",
 			Name: "updates",
 			Kind: "ChannelEvent",
-			Properties: map[string]string{
-				"channel_type": "websocket",
-			},
+		}.WithProperties(map[string]string{
+			"channel_type": "websocket",
 		},
+		),
 		{
 			ID:   "listener-svc",
 			Name: "FrontendListener",
@@ -567,15 +559,15 @@ func TestOrphanSubscribers_ChannelOrphan(t *testing.T) {
 // the row reason must be 'publisher_only_in_external_lib'.
 func TestOrphanSubscribers_ExternalPublisherReason(t *testing.T) {
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:   "ext-topic",
 			Name: "vendor.events",
 			Kind: "MessageTopic",
-			Properties: map[string]string{
-				"broker":           "kafka",
-				"publisher_source": "external",
-			},
+		}.WithProperties(map[string]string{
+			"broker":           "kafka",
+			"publisher_source": "external",
 		},
+		),
 		{
 			ID:   "inner-consumer",
 			Name: "VendorEventConsumer",
@@ -636,8 +628,8 @@ func TestOrphanSubscribers_NonTopologyEntitiesIgnored(t *testing.T) {
 // repo → label.
 func TestOrphanSubscribers_StableSort(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "topic-z", Name: "zzz-queue", Kind: "Queue", Properties: map[string]string{"broker": "sqs"}},
-		{ID: "topic-a", Name: "aaa-queue", Kind: "Queue", Properties: map[string]string{"broker": "sqs"}},
+		graph.Entity{ID: "topic-z", Name: "zzz-queue", Kind: "Queue"}.WithProperties(map[string]string{"broker": "sqs"}),
+		graph.Entity{ID: "topic-a", Name: "aaa-queue", Kind: "Queue"}.WithProperties(map[string]string{"broker": "sqs"}),
 		{ID: "cons-1", Name: "ConsumerA", Kind: "Function"},
 		{ID: "cons-2", Name: "ConsumerB", Kind: "Function"},
 	}
@@ -663,12 +655,11 @@ func TestOrphanSubscribers_StableSort(t *testing.T) {
 
 func TestHandleOrphanSubscribers_HTTPSmoke(t *testing.T) {
 	entities := []graph.Entity{
-		{
-			ID:         "topic-smoke",
-			Name:       "topic-X",
-			Kind:       "MessageTopic",
-			Properties: map[string]string{"broker": "rabbitmq"},
-		},
+		graph.Entity{
+			ID:   "topic-smoke",
+			Name: "topic-X",
+			Kind: "MessageTopic",
+		}.WithProperties(map[string]string{"broker": "rabbitmq"}),
 		{
 			ID:   "cons-smoke",
 			Name: "SmokeConsumer",
@@ -731,12 +722,11 @@ func TestHandleOrphanSubscribers_HTTPSmoke(t *testing.T) {
 func TestHandleOrphanSubscribers_EmptyResult_ArrayNotNull(t *testing.T) {
 	// A group where the topic has both producer and consumer must return [].
 	entities := []graph.Entity{
-		{
-			ID:         "topic-covered",
-			Name:       "covered",
-			Kind:       "MessageTopic",
-			Properties: map[string]string{"broker": "kafka"},
-		},
+		graph.Entity{
+			ID:   "topic-covered",
+			Name: "covered",
+			Kind: "MessageTopic",
+		}.WithProperties(map[string]string{"broker": "kafka"}),
 		{
 			ID:   "pub",
 			Name: "Publisher",

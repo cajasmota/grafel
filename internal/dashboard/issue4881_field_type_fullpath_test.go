@@ -98,8 +98,7 @@ func dashGroupFromRecords(recs []types.EntityRecord) *DashGroup {
 			EndLine:       r.EndLine,
 			Language:      r.Language,
 			Signature:     r.Signature,
-			Properties:    r.Properties,
-		})
+		}.WithProperties(r.Properties))
 		if r.Kind == "SCOPE.Schema" && r.Subtype == "field" {
 			ref := extreg.BuildSchemaFieldStructuralRef(r.Language, r.SourceFile, r.Name)
 			refToID[ref] = r.ID

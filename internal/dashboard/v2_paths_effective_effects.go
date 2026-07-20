@@ -194,8 +194,8 @@ func effectsForLocal(idx *repoEntityIndex, local string, effects map[string][]st
 	if effs := effects[pid]; len(effs) > 0 {
 		return effs
 	}
-	if e := idx.byID[local]; e != nil && e.Properties != nil {
-		if raw := strings.TrimSpace(e.Properties[effectPropertyKeyList]); raw != "" {
+	if e := idx.byID[local]; e != nil && e.PropLen() > 0 {
+		if raw := strings.TrimSpace(e.PropGet(effectPropertyKeyList)); raw != "" {
 			return splitNonEmptyComma(raw)
 		}
 	}

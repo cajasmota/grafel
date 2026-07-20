@@ -409,8 +409,7 @@ func fbEntityToGraphEntity(e *fb.Entity, si *stringInterner) Entity {
 		Subtype:       si.intern(e.Subtype()),
 		SourceFile:    si.intern(e.SourceFile()),
 		StartLine:     int(e.SourceLine()),
-		Properties:    props,
-	}
+	}.WithProperties(props)
 	// The Module field is stored as a top-level FB scalar by the writer
 	// (see fbwriter.buildEntity). Restore it into Properties["module"]
 	// so callers that read props["module"] continue to work.
@@ -419,7 +418,7 @@ func fbEntityToGraphEntity(e *fb.Entity, si *stringInterner) Entity {
 			props = map[string]string{}
 		}
 		props["module"] = mod
-		ent.Properties = props
+		ent.PropsReplace(props)
 	}
 	// Issue #2370 — Language is read directly from the dedicated FB slot.
 	// The PR #2365 property-tunnel restore (props["language"]) is retired.
@@ -490,11 +489,10 @@ func fbRelToGraphRel(r *fb.Relationship, si *stringInterner) Relationship {
 		}
 	}
 	rel := Relationship{
-		FromID:     si.intern(r.FromId()),
-		ToID:       si.intern(r.ToId()),
-		Kind:       si.intern(r.Kind()),
-		Properties: props,
-	}
+		FromID: si.intern(r.FromId()),
+		ToID:   si.intern(r.ToId()),
+		Kind:   si.intern(r.Kind()),
+	}.WithProperties(props)
 	// Restore the ID from Properties if the writer stored it.
 	if id, ok := props["id"]; ok {
 		rel.ID = id

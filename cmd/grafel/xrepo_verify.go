@@ -275,11 +275,11 @@ func analyzeCoverage(graphsDir string, linkedSources map[string]bool) (map[strin
 			if !isHTTPEndpointKind(e.Kind) {
 				continue
 			}
-			fw := e.Properties["framework"]
+			fw := e.PropGet("framework")
 			if fw == "" {
 				fw = "(unknown)"
 			}
-			pt := e.Properties["pattern_type"]
+			pt := e.PropGet("pattern_type")
 			c := cov[fw]
 			switch pt {
 			case "http_endpoint_client_synthesis":
@@ -289,7 +289,7 @@ func analyzeCoverage(graphsDir string, linkedSources map[string]bool) (map[strin
 				// else fall back to the synthetic's own stamped ID — matching
 				// http_pass.go srcID resolution.
 				callerID := ""
-				if ref := e.Properties["source_caller"]; ref != "" {
+				if ref := e.PropGet("source_caller"); ref != "" {
 					if i := strings.IndexByte(ref, ':'); i > 0 {
 						kind, name := ref[:i], ref[i+1:]
 						callerID = entIDByKey[entKey{kind, name, e.SourceFile}]
@@ -403,17 +403,17 @@ func diagnoseOrphans(graphsDir string, linkedSources map[string]bool) {
 			if !isHTTPEndpointKind(e.Kind) {
 				continue
 			}
-			pt := e.Properties["pattern_type"]
-			verb := e.Properties["verb"]
-			path := e.Properties["path"]
-			urlPrefix := e.Properties["url_prefix"]
-			framework := e.Properties["framework"]
+			pt := e.PropGet("pattern_type")
+			verb := e.PropGet("verb")
+			path := e.PropGet("path")
+			urlPrefix := e.PropGet("url_prefix")
+			framework := e.PropGet("framework")
 
 			if pt == "http_endpoint_client_synthesis" {
 				// Consumer side — check if orphan.
 				callerID := ""
 				callerName := ""
-				if ref := e.Properties["source_caller"]; ref != "" {
+				if ref := e.PropGet("source_caller"); ref != "" {
 					if i := strings.IndexByte(ref, ':'); i > 0 {
 						kind, name := ref[:i], ref[i+1:]
 						callerID = entIDByKey[entKey{kind, name, e.SourceFile}]
@@ -584,15 +584,15 @@ func diagnoseOrphans(graphsDir string, linkedSources map[string]bool) {
 			if !isHTTPEndpointKind(e.Kind) {
 				continue
 			}
-			pt := e.Properties["pattern_type"]
+			pt := e.PropGet("pattern_type")
 			if pt != "http_endpoint_client_synthesis" {
 				continue
 			}
-			verb := e.Properties["verb"]
-			path := e.Properties["path"]
-			framework := e.Properties["framework"]
-			urlPrefix := e.Properties["url_prefix"]
-			sourceCaller := e.Properties["source_caller"]
+			verb := e.PropGet("verb")
+			path := e.PropGet("path")
+			framework := e.PropGet("framework")
+			urlPrefix := e.PropGet("url_prefix")
+			sourceCaller := e.PropGet("source_caller")
 			callerID := ""
 			if ref := sourceCaller; ref != "" {
 				if i := strings.IndexByte(ref, ':'); i > 0 {

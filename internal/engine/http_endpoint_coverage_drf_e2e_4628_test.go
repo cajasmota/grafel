@@ -114,8 +114,7 @@ func runFullCoveragePipeline(merged []types.EntityRecord) (*graph.CoverageReport
 			SourceFile: e.SourceFile,
 			StartLine:  e.StartLine,
 			Language:   e.Language,
-			Properties: e.Properties,
-		})
+		}.WithProperties(e.Properties))
 		for _, r := range e.Relationships {
 			// The read layer flattens embedded relationships with FromID = the
 			// parent entity's ID when the edge itself didn't carry one (an
@@ -125,11 +124,10 @@ func runFullCoveragePipeline(merged []types.EntityRecord) (*graph.CoverageReport
 				from = e.ID
 			}
 			doc.Relationships = append(doc.Relationships, graph.Relationship{
-				FromID:     from,
-				ToID:       r.ToID,
-				Kind:       r.Kind,
-				Properties: r.Properties,
-			})
+				FromID: from,
+				ToID:   r.ToID,
+				Kind:   r.Kind,
+			}.WithProperties(r.Properties))
 		}
 	}
 	return graph.ComputeCoverage(doc), resolved

@@ -119,7 +119,7 @@ func newCFGInliner(grp *DashGroup, repo *DashRepo, maxDepth int) *cfgInliner {
 		if callee == nil || isExternalEntity(callee) {
 			// External / unresolved → record its short name so the call site
 			// renders as an External leaf, but never descend into it.
-			nm := cfgShortCalleeName(recoverExternalName(r.ToID, dagOutEdge{kind: "CALLS", props: r.Properties}))
+			nm := cfgShortCalleeName(recoverExternalName(r.ToID, dagOutEdge{kind: "CALLS", props: r.PropsSnapshot()}))
 			if nm != "" {
 				in.extCallsOut[r.FromID] = append(in.extCallsOut[r.FromID], nm)
 			}

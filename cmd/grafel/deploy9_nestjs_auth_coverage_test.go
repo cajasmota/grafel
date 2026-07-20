@@ -65,10 +65,10 @@ var deploy9PublicRoutes = []struct{ verb, path string }{
 
 func deploy9FindEndpoint(eps []*graph.Entity, verb, path string) *graph.Entity {
 	for _, e := range eps {
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
-		if e.Properties["verb"] == verb && e.Properties["path"] == path {
+		if e.PropGet("verb") == verb && e.PropGet("path") == path {
 			return e
 		}
 	}
@@ -122,20 +122,20 @@ func TestDeploy9_NestJSMetadataAuth_FullPipelineAndMCP(t *testing.T) {
 				t.Errorf("guarded endpoint %s %s not emitted", r.verb, r.path)
 				continue
 			}
-			if ep.Properties["auth_required"] != "true" {
+			if ep.PropGet("auth_required") != "true" {
 				t.Errorf("%s %s: auth_required=%q, want true (fail-before: empty)",
-					r.verb, r.path, ep.Properties["auth_required"])
+					r.verb, r.path, ep.PropGet("auth_required"))
 			}
 			// MCP signal-1 key must be present so auth_coverage's cheap property
 			// check fires.
-			if ep.Properties["auth_guard"] == "" {
+			if ep.PropGet("auth_guard") == "" {
 				t.Errorf("%s %s: no auth_guard signal-1 key stamped", r.verb, r.path)
 			}
 			if r.page != "" {
-				if got := ep.Properties["auth_page"]; got != r.page {
+				if got := ep.PropGet("auth_page"); got != r.page {
 					t.Errorf("%s %s: auth_page=%q, want %q", r.verb, r.path, got, r.page)
 				}
-				if got := ep.Properties["auth_permissions"]; got != r.page {
+				if got := ep.PropGet("auth_permissions"); got != r.page {
 					t.Errorf("%s %s: auth_permissions=%q, want %q", r.verb, r.path, got, r.page)
 				}
 			}
@@ -146,13 +146,13 @@ func TestDeploy9_NestJSMetadataAuth_FullPipelineAndMCP(t *testing.T) {
 				t.Errorf("public endpoint %s %s not emitted", r.verb, r.path)
 				continue
 			}
-			if ep.Properties["auth_required"] == "true" {
+			if ep.PropGet("auth_required") == "true" {
 				t.Errorf("%s %s: auth_required=true, want false/unset (@Public must not be flagged protected)",
 					r.verb, r.path)
 			}
-			if ep.Properties["auth_guard"] != "" {
+			if ep.PropGet("auth_guard") != "" {
 				t.Errorf("%s %s: auth_guard=%q stamped on a @Public route",
-					r.verb, r.path, ep.Properties["auth_guard"])
+					r.verb, r.path, ep.PropGet("auth_guard"))
 			}
 		}
 	})

@@ -261,7 +261,7 @@ func newEndpointResolution(repos []*LoadedRepo, lg *LoadedGroup, orphanOnly bool
 		}
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			if isDefinitionKind(e.Kind) && e.Properties["pattern_type"] != patternTypeHTTPEndpointClientSynthesis {
+			if isDefinitionKind(e.Kind) && e.PropGet("pattern_type") != patternTypeHTTPEndpointClientSynthesis {
 				defIDs[prefixedID(r.Repo, e.ID)] = true
 				defIDs[e.ID] = true
 			}
@@ -517,8 +517,8 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 				continue
 			}
 			route := ""
-			if rel.Properties != nil {
-				route = rel.Properties["route"]
+			if rel.PropLen() > 0 {
+				route = rel.PropGet("route")
 			}
 			if pathContains != "" && !strings.Contains(strings.ToLower(route), pathContains) {
 				continue
@@ -530,8 +530,8 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 			}
 			a.callSites++
 			// Merge param keys: prefer params_keys JSON, fall back to legacy params CSV.
-			if rel.Properties != nil {
-				if pk := rel.Properties["params_keys"]; pk != "" {
+			if rel.PropLen() > 0 {
+				if pk := rel.PropGet("params_keys"); pk != "" {
 					var arr []string
 					if err := json.Unmarshal([]byte(pk), &arr); err == nil {
 						for _, k := range arr {
@@ -540,7 +540,7 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 							}
 						}
 					}
-				} else if pcsv := rel.Properties["params"]; pcsv != "" {
+				} else if pcsv := rel.PropGet("params"); pcsv != "" {
 					for _, p := range strings.Split(pcsv, ",") {
 						p = strings.TrimSpace(p)
 						if p != "" {
@@ -555,8 +555,8 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 				if e := byID[rel.FromID]; e != nil {
 					a.sampleFile = e.SourceFile
 				}
-				if rel.Properties != nil {
-					if ls, ok := rel.Properties["line"]; ok {
+				if rel.PropLen() > 0 {
+					if ls, ok := rel.PropLookup("line"); ok {
 						if n, err := strconv.Atoi(ls); err == nil {
 							a.sampleLine = n
 						}
@@ -731,11 +731,11 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 			if !isDefinitionKind(e.Kind) {
 				continue
 			}
-			if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
+			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
 				continue
 			}
-			p := e.Properties["path"]
-			m := e.Properties["verb"]
+			p := e.PropGet("path")
+			m := e.PropGet("verb")
 			if pathContains != "" && !strings.Contains(strings.ToLower(p), pathContains) {
 				continue
 			}
@@ -770,7 +770,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 					it.Name = e.Name
 				}
 				// Strip path/verb from Properties — already on top-level fields.
-				it.Properties = dedupeEndpointProperties(e.Properties)
+				it.Properties = dedupeEndpointProperties(e.PropsSnapshot())
 			}
 			out = append(out, it)
 		}
@@ -1033,8 +1033,8 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 			key := prefixedID(r.Repo, rel.FromID)
 			if _, exists := callerToTarget[key]; !exists {
 				fe := fetchesEdge{toID: rel.ToID}
-				if rel.Properties != nil {
-					fe.path = rel.Properties["path"]
+				if rel.PropLen() > 0 {
+					fe.path = rel.PropGet("path")
 				}
 				callerToTarget[key] = fe
 			}
@@ -1050,12 +1050,12 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 			e := &r.Doc.Entities[i]
 			// Accept explicit call kind OR client-synthesis http_endpoint.
 			isCall := isCallKind(e.Kind) ||
-				(isDefinitionKind(e.Kind) && e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis)
+				(isDefinitionKind(e.Kind) && e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis)
 			if !isCall {
 				continue
 			}
-			p := e.Properties["path"]
-			m := e.Properties["verb"]
+			p := e.PropGet("path")
+			m := e.PropGet("verb")
 			if pathContains != "" && !strings.Contains(strings.ToLower(p), pathContains) {
 				continue
 			}
@@ -1113,7 +1113,7 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 				if !isRedundantName(e.Name, m, p) {
 					it.Name = e.Name
 				}
-				it.Properties = dedupeEndpointProperties(e.Properties)
+				it.Properties = dedupeEndpointProperties(e.PropsSnapshot())
 			}
 			out = append(out, it)
 		}
@@ -1354,8 +1354,8 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			fw := e.Properties["framework"]
-			xm := e.Properties["extraction_method"] // #5527 per-entity AST provenance
+			fw := e.PropGet("framework")
+			xm := e.PropGet("extraction_method") // #5527 per-entity AST provenance
 			switch classifyEndpointKind(e.Kind) {
 			case endpointKindDefinition:
 				rs.Definitions++
@@ -1366,7 +1366,7 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 			case endpointKindLegacy:
 				// Pre-Sub-A entity; count separately.
 				rs.LegacyKind++
-				if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
+				if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
 					rs.Calls++ // treat client-synthesis as a call
 					bumpFramework(fw, xm, false)
 				} else {

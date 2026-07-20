@@ -51,7 +51,7 @@ func TestAxumE2E_PricingService(t *testing.T) {
 	// Verify framework=axum property on the definition entity.
 	for _, e := range doc.Entities {
 		if e.Kind == "http_endpoint_definition" && e.Name == wantDef {
-			fw := e.Properties["framework"]
+			fw := e.PropGet("framework")
 			t.Logf("  %s: framework=%s", e.Name, fw)
 			if fw != "axum" {
 				t.Errorf("expected framework=axum, got %q", fw)

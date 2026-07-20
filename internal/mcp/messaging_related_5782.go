@@ -473,15 +473,15 @@ func bindingSourceFile(b *graph.Entity) string {
 // Returns "" when neither yields a usable pair (matcher then declines to match).
 func bindingDirChannelSuffix(b *graph.Entity) string {
 	dir := ""
-	if b.Properties != nil {
-		dir = b.Properties["direction"]
+	if b.PropLen() > 0 {
+		dir = b.PropGet("direction")
 	}
 	if dir == "" {
 		dir = b.Subtype // discover.go stamps Subtype = direction.
 	}
 	ch := ""
-	if b.Properties != nil {
-		ch = b.Properties["channel"]
+	if b.PropLen() > 0 {
+		ch = b.PropGet("channel")
 	}
 	if ch == "" {
 		ch = b.Name

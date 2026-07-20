@@ -43,8 +43,7 @@ func TestEmitFor_DescribeEntity_NoDescription(t *testing.T) {
 	// Already-described qualifying entity → no candidate.
 	doc2 := mkDoc(graph.Entity{
 		ID: "e2", Name: "http:POST:/api/orders", Kind: "http_endpoint",
-		Properties: map[string]string{"description": "already set"},
-	})
+	}.WithProperties(map[string]string{"description": "already set"}))
 	if got := CollectCandidates(doc2, []CandidateEmitter{&describeEntityEmitter{}}, nil); len(got) != 0 {
 		t.Fatalf("expected 0 candidates for described entity, got %d", len(got))
 	}
@@ -158,8 +157,8 @@ func TestWriteCandidates_AndApplyResolutions(t *testing.T) {
 	if got := ApplyResolutions(doc2, resolutions); got != 1 {
 		t.Fatalf("ApplyResolutions = %d, want 1", got)
 	}
-	if doc2.Entities[0].Properties["description"] != "An auth service." {
-		t.Fatalf("description not applied: %v", doc2.Entities[0].Properties)
+	if doc2.Entities[0].PropGet("description") != "An auth service." {
+		t.Fatalf("description not applied: %v", doc2.Entities[0].PropsSnapshot())
 	}
 }
 
@@ -384,10 +383,10 @@ func TestEmitFor_OperationWithDescription(t *testing.T) {
 		ID:   "op3",
 		Name: "process",
 		Kind: "SCOPE.Operation",
-		Properties: map[string]string{
-			"description": "Processes the incoming payload through the validation pipeline.",
-		},
-	})
+	}.WithProperties(map[string]string{
+		"description": "Processes the incoming payload through the validation pipeline.",
+	},
+	))
 	got := CollectCandidates(doc, []CandidateEmitter{&describeEntityEmitter{}}, nil)
 	if len(got) != 0 {
 		t.Fatalf("Operation with description: expected 0 candidates, got %d", len(got))

@@ -45,9 +45,9 @@ func TestDiscriminatorPipeline_EmitsEdgesEndToEnd(t *testing.T) {
 		hits = append(hits, edgeView{
 			fromID:  r.FromID,
 			toID:    r.ToID,
-			literal: r.Properties["literal"],
-			line:    r.Properties["line"],
-			lang:    r.Properties["language"],
+			literal: r.PropGet("literal"),
+			line:    r.PropGet("line"),
+			lang:    r.PropGet("language"),
 		})
 	}
 

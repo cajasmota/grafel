@@ -127,10 +127,10 @@ func TestCompare_DetectsRelationshipDrift(t *testing.T) {
 
 func TestCompare_DetectsRelationshipPropertyDrift(t *testing.T) {
 	a := &graph.Document{Relationships: []graph.Relationship{
-		{FromID: "x", ToID: "y", Kind: "CALLS", Properties: map[string]string{"callsite_count": "1"}},
+		graph.Relationship{FromID: "x", ToID: "y", Kind: "CALLS"}.WithProperties(map[string]string{"callsite_count": "1"}),
 	}}
 	b := &graph.Document{Relationships: []graph.Relationship{
-		{FromID: "x", ToID: "y", Kind: "CALLS", Properties: map[string]string{"callsite_count": "2"}},
+		graph.Relationship{FromID: "x", ToID: "y", Kind: "CALLS"}.WithProperties(map[string]string{"callsite_count": "2"}),
 	}}
 	rep := Compare(a, b)
 	if rep.Equivalent || len(rep.RelPropDiffs) != 1 {
@@ -197,8 +197,8 @@ func TestCompareWithOptions_TolerancesNarrowlyApply(t *testing.T) {
 	// Ignored entity property: `module` drift tolerated, `kind` still strict.
 	ea := ent("SCOPE.Operation", "Alpha", "a.go")
 	eb := ea
-	ea.Properties = map[string]string{"module": "core"}
-	eb.Properties = map[string]string{"module": "api"}
+	ea.PropsReplace(map[string]string{"module": "core"})
+	eb.PropsReplace(map[string]string{"module": "api"})
 	da := &graph.Document{Entities: []graph.Entity{ea}}
 	db := &graph.Document{Entities: []graph.Entity{eb}}
 	popts := Options{IgnoreEntityProps: map[string]bool{"module": true}}

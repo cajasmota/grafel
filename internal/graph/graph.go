@@ -70,7 +70,14 @@ type Entity struct {
 	Signature     string                 `json:"signature,omitempty"`
 	Tags          []string               `json:"tags,omitempty"`
 	Metadata      map[string]interface{} `json:"metadata,omitempty"`
-	Properties    map[string]string      `json:"properties,omitempty"`
+
+	// properties is intentionally unexported (#5851-class resident-memory
+	// slice-vs-map refactor): all access — from every package, including
+	// this one — MUST go through the Prop* accessors below (PropGet,
+	// PropLookup, PropSet, PropDelete, PropRange, PropLen, PropsSnapshot,
+	// WithProperties, PropsReplace) rather than the field directly. The wire
+	// JSON key stays "properties" via MarshalJSON/UnmarshalJSON below.
+	properties map[string]string
 
 	// PH8 (#2100): content-hash pointer into the shared embedding cache.
 	// When non-empty, readers load the vector from Cache instead of
@@ -96,14 +103,141 @@ type Entity struct {
 
 // Relationship is a directed edge between entities.
 type Relationship struct {
+	ID     string `json:"id"`
+	FromID string `json:"from_id"`
+	ToID   string `json:"to_id"`
+	Kind   string `json:"kind"`
+	// properties is intentionally unexported — see Entity.properties above
+	// for the full rationale. Access only via the Prop* accessors.
+	properties map[string]string
+	// Confidence overlay (Phase 1C, #2769). Value in [0.0, 1.0]; zero reads
+	// as 1.0. See internal/types/confidence.go.
+	Confidence float64 `json:"confidence,omitempty"`
+}
+
+// entityJSON is the wire shape for Entity, mirroring its field set exactly
+// but with the properties map exported so encoding/json can see it. Used by
+// Entity's MarshalJSON/UnmarshalJSON to keep the "properties" JSON key byte
+// -identical to the pre-refactor map-backed field while the Go field itself
+// stays unexported.
+type entityJSON struct {
+	ID                 string                 `json:"id"`
+	Name               string                 `json:"name"`
+	QualifiedName      string                 `json:"qualified_name,omitempty"`
+	Kind               string                 `json:"kind"`
+	Subtype            string                 `json:"subtype,omitempty"`
+	SourceFile         string                 `json:"source_file"`
+	StartLine          int                    `json:"start_line"`
+	EndLine            int                    `json:"end_line"`
+	Language           string                 `json:"language"`
+	Signature          string                 `json:"signature,omitempty"`
+	Tags               []string               `json:"tags,omitempty"`
+	Metadata           map[string]interface{} `json:"metadata,omitempty"`
+	Properties         map[string]string      `json:"properties,omitempty"`
+	EmbeddingRef       string                 `json:"embedding_ref,omitempty"`
+	CommunityID        *int                   `json:"community_id,omitempty"`
+	Centrality         *float64               `json:"centrality,omitempty"`
+	PageRank           *float64               `json:"pagerank,omitempty"`
+	IsGodNode          bool                   `json:"is_god_node,omitempty"`
+	IsSurpriseEndpoint bool                   `json:"is_surprise_endpoint,omitempty"`
+	IsArticulationPt   bool                   `json:"is_articulation_point,omitempty"`
+	Confidence         float64                `json:"confidence,omitempty"`
+}
+
+// MarshalJSON emits the same wire shape as the original map-backed
+// Properties field (key "properties", omitted when empty).
+func (e Entity) MarshalJSON() ([]byte, error) {
+	return json.Marshal(entityJSON{
+		ID:                 e.ID,
+		Name:               e.Name,
+		QualifiedName:      e.QualifiedName,
+		Kind:               e.Kind,
+		Subtype:            e.Subtype,
+		SourceFile:         e.SourceFile,
+		StartLine:          e.StartLine,
+		EndLine:            e.EndLine,
+		Language:           e.Language,
+		Signature:          e.Signature,
+		Tags:               e.Tags,
+		Metadata:           e.Metadata,
+		Properties:         e.properties,
+		EmbeddingRef:       e.EmbeddingRef,
+		CommunityID:        e.CommunityID,
+		Centrality:         e.Centrality,
+		PageRank:           e.PageRank,
+		IsGodNode:          e.IsGodNode,
+		IsSurpriseEndpoint: e.IsSurpriseEndpoint,
+		IsArticulationPt:   e.IsArticulationPt,
+		Confidence:         e.Confidence,
+	})
+}
+
+// UnmarshalJSON decodes the wire shape written by MarshalJSON.
+func (e *Entity) UnmarshalJSON(data []byte) error {
+	var aux entityJSON
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	e.ID = aux.ID
+	e.Name = aux.Name
+	e.QualifiedName = aux.QualifiedName
+	e.Kind = aux.Kind
+	e.Subtype = aux.Subtype
+	e.SourceFile = aux.SourceFile
+	e.StartLine = aux.StartLine
+	e.EndLine = aux.EndLine
+	e.Language = aux.Language
+	e.Signature = aux.Signature
+	e.Tags = aux.Tags
+	e.Metadata = aux.Metadata
+	e.properties = aux.Properties
+	e.EmbeddingRef = aux.EmbeddingRef
+	e.CommunityID = aux.CommunityID
+	e.Centrality = aux.Centrality
+	e.PageRank = aux.PageRank
+	e.IsGodNode = aux.IsGodNode
+	e.IsSurpriseEndpoint = aux.IsSurpriseEndpoint
+	e.IsArticulationPt = aux.IsArticulationPt
+	e.Confidence = aux.Confidence
+	return nil
+}
+
+// relationshipJSON is the wire shape for Relationship. See entityJSON.
+type relationshipJSON struct {
 	ID         string            `json:"id"`
 	FromID     string            `json:"from_id"`
 	ToID       string            `json:"to_id"`
 	Kind       string            `json:"kind"`
 	Properties map[string]string `json:"properties,omitempty"`
-	// Confidence overlay (Phase 1C, #2769). Value in [0.0, 1.0]; zero reads
-	// as 1.0. See internal/types/confidence.go.
-	Confidence float64 `json:"confidence,omitempty"`
+	Confidence float64           `json:"confidence,omitempty"`
+}
+
+// MarshalJSON emits the same wire shape as the original map-backed
+// Properties field (key "properties", omitted when empty).
+func (r Relationship) MarshalJSON() ([]byte, error) {
+	return json.Marshal(relationshipJSON{
+		ID:         r.ID,
+		FromID:     r.FromID,
+		ToID:       r.ToID,
+		Kind:       r.Kind,
+		Properties: r.properties,
+		Confidence: r.Confidence,
+	})
+}
+
+// UnmarshalJSON decodes the wire shape written by MarshalJSON.
+func (r *Relationship) UnmarshalJSON(data []byte) error {
+	var aux relationshipJSON
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.ID = aux.ID
+	r.FromID = aux.FromID
+	r.ToID = aux.ToID
+	r.Kind = aux.Kind
+	r.properties = aux.Properties
+	r.Confidence = aux.Confidence
+	return nil
 }
 
 // EntityID computes a stable 16-char hex id from a repo tag and an entity's
@@ -129,6 +263,163 @@ func RelationshipID(fromID, toID, kind string) string {
 	h.Write([]byte{0})
 	h.Write([]byte(kind))
 	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// ---------------------------------------------------------------------------
+// Entity/Relationship property accessors.
+//
+// Properties used to be a plain `map[string]string` field. It is now backed
+// internally by a compact structure and only reachable through these
+// accessors, so callers outside this package can no longer read/write the
+// field directly — every access goes through PropGet / PropLookup / PropSet
+// / PropDelete / PropRange / PropLen / PropsSnapshot / WithProperties /
+// PropsReplace. This keeps the public behaviour (miss -> "", nil-safe
+// range/len, JSON wire shape) identical to the old map while letting the
+// backing representation change independently.
+// ---------------------------------------------------------------------------
+
+// EntityPtr returns a pointer to a copy of e. Used by call sites that build
+// an Entity value (e.g. via a chained WithProperties call) but need a
+// *Entity, since taking the address of a method-call result is not legal Go.
+func EntityPtr(e Entity) *Entity { return &e }
+
+// RelationshipPtr returns a pointer to a copy of r. See EntityPtr.
+func RelationshipPtr(r Relationship) *Relationship { return &r }
+
+// PropGet returns the value for key, or "" if key is absent.
+func (e Entity) PropGet(key string) string {
+	v, _ := e.properties[key]
+	return v
+}
+
+// PropLookup returns the value for key and whether it was present.
+func (e Entity) PropLookup(key string) (string, bool) {
+	v, ok := e.properties[key]
+	return v, ok
+}
+
+// PropSet sets key to val, lazily initializing the backing storage.
+func (e *Entity) PropSet(key, val string) {
+	if e.properties == nil {
+		e.properties = make(map[string]string, 4)
+	}
+	e.properties[key] = val
+}
+
+// PropDelete removes key, if present. No-op if absent or unset.
+func (e *Entity) PropDelete(key string) {
+	delete(e.properties, key)
+}
+
+// PropRange calls f for every key/value pair. Iteration stops early if f
+// returns false. Safe to call on a zero-value Entity (no-op).
+func (e Entity) PropRange(f func(k, v string) bool) {
+	for k, v := range e.properties {
+		if !f(k, v) {
+			return
+		}
+	}
+}
+
+// PropLen returns the number of properties.
+func (e Entity) PropLen() int {
+	return len(e.properties)
+}
+
+// PropsSnapshot returns an independent copy of the properties as a map, or
+// nil if there are none. Callers must not assume the returned map aliases
+// internal storage.
+func (e Entity) PropsSnapshot() map[string]string {
+	if len(e.properties) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(e.properties))
+	for k, v := range e.properties {
+		out[k] = v
+	}
+	return out
+}
+
+// WithProperties returns a copy of e with its properties replaced by props
+// (aliased, not copied — matching the old field-assignment semantics).
+func (e Entity) WithProperties(props map[string]string) Entity {
+	e.properties = props
+	return e
+}
+
+// PropsReplace replaces e's entire property set with props (aliased, not
+// copied), mutating e in place. Equivalent to the old `e.Properties = props`
+// field assignment.
+func (e *Entity) PropsReplace(props map[string]string) {
+	e.properties = props
+}
+
+// PropGet returns the value for key, or "" if key is absent.
+func (r Relationship) PropGet(key string) string {
+	v, _ := r.properties[key]
+	return v
+}
+
+// PropLookup returns the value for key and whether it was present.
+func (r Relationship) PropLookup(key string) (string, bool) {
+	v, ok := r.properties[key]
+	return v, ok
+}
+
+// PropSet sets key to val, lazily initializing the backing storage.
+func (r *Relationship) PropSet(key, val string) {
+	if r.properties == nil {
+		r.properties = make(map[string]string, 4)
+	}
+	r.properties[key] = val
+}
+
+// PropDelete removes key, if present. No-op if absent or unset.
+func (r *Relationship) PropDelete(key string) {
+	delete(r.properties, key)
+}
+
+// PropRange calls f for every key/value pair. Iteration stops early if f
+// returns false. Safe to call on a zero-value Relationship (no-op).
+func (r Relationship) PropRange(f func(k, v string) bool) {
+	for k, v := range r.properties {
+		if !f(k, v) {
+			return
+		}
+	}
+}
+
+// PropLen returns the number of properties.
+func (r Relationship) PropLen() int {
+	return len(r.properties)
+}
+
+// PropsSnapshot returns an independent copy of the properties as a map, or
+// nil if there are none. Callers must not assume the returned map aliases
+// internal storage.
+func (r Relationship) PropsSnapshot() map[string]string {
+	if len(r.properties) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(r.properties))
+	for k, v := range r.properties {
+		out[k] = v
+	}
+	return out
+}
+
+// WithProperties returns a copy of r with its properties replaced by props
+// (aliased, not copied — matching the old field-assignment semantics).
+func (r Relationship) WithProperties(props map[string]string) Relationship {
+	r.properties = props
+	return r
+}
+
+// PropsReplace replaces r's entire property set with props (aliased, not
+// copied), mutating r in place. Equivalent to the old `r.Properties = props`
+// field assignment.
+func (r *Relationship) PropsReplace(props map[string]string) {
+	r.properties = props
 }
 
 // GraphStatsSidecar is the corpus-level summary written to

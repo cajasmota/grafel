@@ -58,24 +58,23 @@ func overriddenMethodDoc(t *testing.T, dir string) *graph.Document {
 				StartLine: 1, EndLine: 4, Language: "python"},
 			// The OVERRIDE method node: real body at lines 2-4, but carrying the
 			// implicit-method marker (the leak under test).
-			{ID: "op_create", Name: "ClientViewSet.create", QualifiedName: "ClientViewSet.create",
+			graph.Entity{ID: "op_create", Name: "ClientViewSet.create", QualifiedName: "ClientViewSet.create",
 				Kind: "SCOPE.Operation", Subtype: "method", SourceFile: "clients.py",
 				StartLine: 2, EndLine: 4, Language: "python",
 				Signature: "def create(self, request, *args, **kwargs)",
-				Properties: map[string]string{
-					"pattern_type":      "drf_viewset_implicit_method",
-					"viewset_class":     "ClientViewSet",
-					"inherited_from":    "rest_framework",
-					"drf_method_origin": "create",
-				}},
+			}.WithProperties(map[string]string{
+				"pattern_type":      "drf_viewset_implicit_method",
+				"viewset_class":     "ClientViewSet",
+				"inherited_from":    "rest_framework",
+				"drf_method_origin": "create",
+			}),
 			{ID: "ext_modelviewset", Name: "ModelViewSet", Kind: "SCOPE.External", Language: "python"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "e1", FromID: "vs", ToID: "ext_modelviewset", Kind: "EXTENDS",
-				Properties: map[string]string{
-					"language":  "python",
-					"base_name": "rest_framework.viewsets.ModelViewSet",
-				}},
+			graph.Relationship{ID: "e1", FromID: "vs", ToID: "ext_modelviewset", Kind: "EXTENDS"}.WithProperties(map[string]string{
+				"language":  "python",
+				"base_name": "rest_framework.viewsets.ModelViewSet",
+			}),
 		},
 	}
 }
@@ -140,24 +139,23 @@ func trulyInheritedMethodDoc() *graph.Document {
 				Kind: "SCOPE.Component", Subtype: "class", SourceFile: "products.py",
 				StartLine: 1, EndLine: 2, Language: "python"},
 			// Bodyless synthetic: NO StartLine/EndLine span — truly inherited.
-			{ID: "op_create", Name: "ProductViewSet.create", QualifiedName: "ProductViewSet.create",
+			graph.Entity{ID: "op_create", Name: "ProductViewSet.create", QualifiedName: "ProductViewSet.create",
 				Kind: "SCOPE.Operation", Subtype: "method", SourceFile: "products.py",
 				Language:  "python",
 				Signature: "def create(self, request, *args, **kwargs)",
-				Properties: map[string]string{
-					"pattern_type":      "drf_viewset_implicit_method",
-					"viewset_class":     "ProductViewSet",
-					"inherited_from":    "rest_framework",
-					"drf_method_origin": "create",
-				}},
+			}.WithProperties(map[string]string{
+				"pattern_type":      "drf_viewset_implicit_method",
+				"viewset_class":     "ProductViewSet",
+				"inherited_from":    "rest_framework",
+				"drf_method_origin": "create",
+			}),
 			{ID: "ext_modelviewset", Name: "ModelViewSet", Kind: "SCOPE.External", Language: "python"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "e1", FromID: "vs", ToID: "ext_modelviewset", Kind: "EXTENDS",
-				Properties: map[string]string{
-					"language":  "python",
-					"base_name": "rest_framework.viewsets.ModelViewSet",
-				}},
+			graph.Relationship{ID: "e1", FromID: "vs", ToID: "ext_modelviewset", Kind: "EXTENDS"}.WithProperties(map[string]string{
+				"language":  "python",
+				"base_name": "rest_framework.viewsets.ModelViewSet",
+			}),
 		},
 	}
 }

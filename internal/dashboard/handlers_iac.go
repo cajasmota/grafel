@@ -852,7 +852,7 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 			}
 			for i := range doc.Entities {
 				ent := &doc.Entities[i]
-				visit(ent.ID, ent.Name, ent.Kind, ent.Subtype, ent.SourceFile, ent.Language, ent.StartLine, ent.Properties)
+				visit(ent.ID, ent.Name, ent.Kind, ent.Subtype, ent.SourceFile, ent.Language, ent.StartLine, ent.PropsSnapshot())
 			}
 		}
 
@@ -873,7 +873,7 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 			}
 			for i := range doc.Relationships {
 				rl := &doc.Relationships[i]
-				visit(rl.FromID, rl.ToID, rl.Kind, rl.Properties)
+				visit(rl.FromID, rl.ToID, rl.Kind, rl.PropsSnapshot())
 			}
 		}
 

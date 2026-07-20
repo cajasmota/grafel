@@ -58,10 +58,10 @@ func TestOverlayNeedsRecompute_UnchangedContent_Skips(t *testing.T) {
 	// must veto the recompute.
 	repoA, _, _ := fixtureGraphs()
 	for i := range repoA.Entities {
-		if repoA.Entities[i].Properties == nil {
-			repoA.Entities[i].Properties = map[string]string{}
+		if repoA.Entities[i].PropLen() == 0 {
+			repoA.Entities[i].PropsReplace(map[string]string{})
 		}
-		repoA.Entities[i].Properties["description"] = "edited docs"
+		repoA.Entities[i].PropSet("description", "edited docs")
 	}
 	writeFixtureRepo(t, "svc", pathA, repoA)
 
@@ -160,7 +160,7 @@ func TestOverlayNeedsRecompute_LegacyOverlayNoHash_Recomputes(t *testing.T) {
 
 	// Bump a graph.fb mtime (any content edit) so the mtime gate trips.
 	repoA, _, _ := fixtureGraphs()
-	repoA.Entities[0].Properties = map[string]string{"x": "y"}
+	repoA.Entities[0].PropsReplace(map[string]string{"x": "y"})
 	writeFixtureRepo(t, "svc", filepath.Join(pathA), repoA)
 
 	if !OverlayNeedsRecompute(group) {

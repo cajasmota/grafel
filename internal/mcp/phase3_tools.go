@@ -546,7 +546,7 @@ func (s *Server) handleDataFlows(_ context.Context, req mcpapi.CallToolRequest) 
 					"sink":       sink,
 					"source":     "graph-edge",
 				}
-				if v := rel.Properties["field"]; v != "" {
+				if v := rel.PropGet("field"); v != "" {
 					rec["field"] = v
 				}
 				out = append(out, rec)

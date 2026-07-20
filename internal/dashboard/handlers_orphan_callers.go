@@ -118,14 +118,14 @@ func collectOrphanCallers(grp *DashGroup) []OrphanCallerRow {
 			// For legacy http_endpoint, fall back to pattern_type check.
 			isProducer := e.Kind == "http_endpoint_definition" ||
 				(e.Kind != "http_endpoint_call" &&
-					e.Properties["pattern_type"] != "http_endpoint_client_synthesis")
+					e.PropGet("pattern_type") != "http_endpoint_client_synthesis")
 
 			endpointByID[bare] = endpointEntry{repo: repo.Slug, isProducer: isProducer}
 			endpointByID[prefixed] = endpointEntry{repo: repo.Slug, isProducer: isProducer}
 
-			if e.Properties != nil {
-				entityProps[bare] = e.Properties
-				entityProps[prefixed] = e.Properties
+			if e.PropLen() > 0 {
+				entityProps[bare] = e.PropsSnapshot()
+				entityProps[prefixed] = e.PropsSnapshot()
 			}
 		}
 	}
@@ -189,11 +189,11 @@ func collectOrphanCallers(grp *DashGroup) []OrphanCallerRow {
 			// the target entity's properties if the relationship is bare.
 			urlPattern := ""
 			method := "GET"
-			if rel.Properties != nil {
-				if v := rel.Properties["path"]; v != "" {
+			if rel.PropLen() > 0 {
+				if v := rel.PropGet("path"); v != "" {
 					urlPattern = v
 				}
-				if v := rel.Properties["verb"]; v != "" {
+				if v := rel.PropGet("verb"); v != "" {
 					method = strings.ToUpper(v)
 				}
 			}

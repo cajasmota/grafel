@@ -290,17 +290,17 @@ func resolveDAGRoot(grp *DashGroup, pathHash, wantVerb string) *dagRoot {
 				continue
 			}
 			if e.Kind == "http_endpoint_call" ||
-				e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+				e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
 				continue
 			}
-			path := e.Properties["path"]
+			path := e.PropGet("path")
 			if path == "" {
 				path = e.Name
 			}
 			if hashStr(path) != pathHash {
 				continue
 			}
-			verb := strings.ToUpper(e.Properties["verb"])
+			verb := strings.ToUpper(e.PropGet("verb"))
 			if verb == "" {
 				verb = "ANY"
 			}
@@ -416,18 +416,18 @@ func newDAGBuilder(repo *DashRepo, mode string, maxDepth int, includeSemantic bo
 			if r.FromID == r.ToID {
 				continue
 			}
-			b.out[r.FromID] = append(b.out[r.FromID], dagOutEdge{to: r.ToID, kind: "CALLS", props: r.Properties})
+			b.out[r.FromID] = append(b.out[r.FromID], dagOutEdge{to: r.ToID, kind: "CALLS", props: r.PropsSnapshot()})
 		case r.Kind == "IMPLEMENTS" && defKinds[r.ToID]:
 			// reverse: definition --(handler continuation)--> handler.
 			if r.FromID == r.ToID {
 				continue
 			}
-			b.out[r.ToID] = append(b.out[r.ToID], dagOutEdge{to: r.FromID, kind: handlerContEdgeKind, props: r.Properties})
+			b.out[r.ToID] = append(b.out[r.ToID], dagOutEdge{to: r.FromID, kind: handlerContEdgeKind, props: r.PropsSnapshot()})
 		case includeSemantic && isDAGSemanticKind(r.Kind):
 			if r.FromID == r.ToID {
 				continue
 			}
-			b.out[r.FromID] = append(b.out[r.FromID], dagOutEdge{to: r.ToID, kind: strings.ToUpper(r.Kind), props: r.Properties})
+			b.out[r.FromID] = append(b.out[r.FromID], dagOutEdge{to: r.ToID, kind: strings.ToUpper(r.Kind), props: r.PropsSnapshot()})
 		}
 	}
 	// Deterministic adjacency ordering: by (kind, target). Stable so the BFS
@@ -603,8 +603,8 @@ func (b *dagBuilder) enrichNode(n *v2DAGNode, e *graph.Entity) {
 	// Mirrors buildEffectsPayload's source precedence in the effects MCP tool.
 	if effs := b.effects[b.pid(e.ID)]; len(effs) > 0 {
 		n.Effects = effs
-	} else if e.Properties != nil {
-		if raw := strings.TrimSpace(e.Properties[effectPropertyKeyList]); raw != "" {
+	} else if e.PropLen() > 0 {
+		if raw := strings.TrimSpace(e.PropGet(effectPropertyKeyList)); raw != "" {
 			n.Effects = splitNonEmptyComma(raw)
 		}
 	}
@@ -615,12 +615,12 @@ func (b *dagBuilder) enrichNode(n *v2DAGNode, e *graph.Entity) {
 // entity carries no description. Collapses internal whitespace so a multi-line
 // docstring renders as a single card subtitle.
 func dagDocSummary(e *graph.Entity) string {
-	if e.Properties == nil {
+	if e.PropLen() == 0 {
 		return ""
 	}
 	var raw string
 	for _, k := range dagDocPropertyKeys {
-		if v := strings.TrimSpace(e.Properties[k]); v != "" {
+		if v := strings.TrimSpace(e.PropGet(k)); v != "" {
 			raw = v
 			break
 		}
@@ -969,8 +969,8 @@ func externalPackageOf(e *graph.Entity) string {
 	if e == nil {
 		return ""
 	}
-	if e.Properties != nil {
-		if m := strings.TrimSpace(e.Properties["source_module"]); m != "" {
+	if e.PropLen() > 0 {
+		if m := strings.TrimSpace(e.PropGet("source_module")); m != "" {
 			return packageRoot(m)
 		}
 	}

@@ -226,8 +226,8 @@ type importRootEntry struct {
 func unresolvedImportDisposition(rel *graph.Relationship) string {
 	toID := rel.ToID
 	srcMod := ""
-	if rel.Properties != nil {
-		srcMod = rel.Properties["source_module"]
+	if rel.PropLen() > 0 {
+		srcMod = rel.PropGet("source_module")
 	}
 
 	// Proto/gRPC generated code: proto package paths, protobuf imports,
@@ -282,8 +282,8 @@ func matchesProto(s string) bool {
 // For a bare name like "myFunc" → "myFunc".
 func importRoot(rel *graph.Relationship) string {
 	ref := rel.ToID
-	if rel.Properties != nil {
-		if sm := rel.Properties["source_module"]; sm != "" {
+	if rel.PropLen() > 0 {
+		if sm := rel.PropGet("source_module"); sm != "" {
 			ref = sm
 		}
 	}
@@ -348,8 +348,8 @@ func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdo
 			if ent := byID[rel.FromID]; ent != nil {
 				lang = strings.ToLower(ent.Language)
 			}
-			if lang == "" && rel.Properties != nil {
-				lang = strings.ToLower(rel.Properties["language"])
+			if lang == "" && rel.PropLen() > 0 {
+				lang = strings.ToLower(rel.PropGet("language"))
 			}
 			if lang == "" {
 				lang = "unknown"

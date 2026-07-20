@@ -17,13 +17,14 @@ import (
 )
 
 func entity(kind, subtype, name string, props map[string]string) *graph.Entity {
-	return &graph.Entity{
-		ID:         name, // deterministic for test purposes
-		Kind:       kind,
-		Subtype:    subtype,
-		Name:       name,
-		Properties: props,
-	}
+	return graph. // deterministic for test purposes
+
+			EntityPtr(graph.Entity{
+			ID:      name,
+			Kind:    kind,
+			Subtype: subtype,
+			Name:    name,
+		}.WithProperties(props))
 }
 
 // TestIsInherentlyLeafField_MetaInnerClassFields verifies that SCOPE.Schema/field
@@ -148,12 +149,13 @@ func TestIsInherentlyLeafField_WrongKindNotExcluded(t *testing.T) {
 	}
 
 	// A function with field_type property — should not be excluded
-	e2 := &graph.Entity{
-		ID:         "fn1",
-		Kind:       "function",
-		Name:       "get_field",
-		Properties: map[string]string{"field_type": "CharField"},
-	}
+	e2 :=
+
+		graph.EntityPtr(graph.Entity{
+			ID:   "fn1",
+			Kind: "function",
+			Name: "get_field",
+		}.WithProperties(map[string]string{"field_type": "CharField"}))
 	if isInherentlyLeafField(e2) {
 		t.Errorf("function entity with field_type should not be excluded")
 	}

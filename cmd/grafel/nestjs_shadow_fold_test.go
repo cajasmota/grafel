@@ -49,7 +49,7 @@ func TestClassShadowFold_ServiceKind_Kotlin(t *testing.T) {
 
 	// No INFERRED_FROM_CLASS_HIERARCHY shadow must survive for any entity.
 	for _, e := range doc.Entities {
-		if e.Properties["provenance"] == "INFERRED_FROM_CLASS_HIERARCHY" {
+		if e.PropGet("provenance") == "INFERRED_FROM_CLASS_HIERARCHY" {
 			t.Errorf("surviving INFERRED_FROM_CLASS_HIERARCHY shadow: %s (%s/%s)",
 				e.Name, e.Kind, e.Subtype)
 		}
@@ -98,7 +98,7 @@ func TestClassShadowFold_ServiceKind_NestJS(t *testing.T) {
 	}
 
 	for _, e := range doc.Entities {
-		if e.Properties["provenance"] == "INFERRED_FROM_CLASS_HIERARCHY" {
+		if e.PropGet("provenance") == "INFERRED_FROM_CLASS_HIERARCHY" {
 			t.Errorf("surviving INFERRED_FROM_CLASS_HIERARCHY shadow: %s (%s/%s)",
 				e.Name, e.Kind, e.Subtype)
 		}

@@ -37,14 +37,12 @@ func TestSynthesize_Rust_PerSymbolNode_4783(t *testing.T) {
 			langMethodEntity("bbbbbbbbbbbbbbb0", file, "rust"),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa0", ToID: "tokio::sync::Mutex", Kind: "IMPORTS",
-				Properties: map[string]string{
-					"language": "rust", "import_path": "tokio::sync::Mutex",
-					"source_module": "tokio::sync::Mutex",
-					"local_name":    "Mutex", "imported_name": "Mutex",
-				}},
-			{ID: "call-1", FromID: "bbbbbbbbbbbbbbb0", ToID: "Mutex", Kind: "CALLS",
-				Properties: map[string]string{"language": "rust"}},
+			graph.Relationship{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa0", ToID: "tokio::sync::Mutex", Kind: "IMPORTS"}.WithProperties(map[string]string{
+				"language": "rust", "import_path": "tokio::sync::Mutex",
+				"source_module": "tokio::sync::Mutex",
+				"local_name":    "Mutex", "imported_name": "Mutex",
+			}),
+			graph.Relationship{ID: "call-1", FromID: "bbbbbbbbbbbbbbb0", ToID: "Mutex", Kind: "CALLS"}.WithProperties(map[string]string{"language": "rust"}),
 		},
 	}
 	Synthesize(doc)
@@ -72,13 +70,11 @@ func TestSynthesize_Rust_AliasConverge_4783(t *testing.T) {
 			langMethodEntity("bbbbbbbbbbbbbbb1", file, "rust"),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa1", ToID: "tokio::sync::Mutex", Kind: "IMPORTS",
-				Properties: map[string]string{
-					"language": "rust", "import_path": "tokio::sync::Mutex",
-					"local_name": "M", "imported_name": "Mutex",
-				}},
-			{ID: "call-1", FromID: "bbbbbbbbbbbbbbb1", ToID: "M", Kind: "CALLS",
-				Properties: map[string]string{"language": "rust"}},
+			graph.Relationship{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa1", ToID: "tokio::sync::Mutex", Kind: "IMPORTS"}.WithProperties(map[string]string{
+				"language": "rust", "import_path": "tokio::sync::Mutex",
+				"local_name": "M", "imported_name": "Mutex",
+			}),
+			graph.Relationship{ID: "call-1", FromID: "bbbbbbbbbbbbbbb1", ToID: "M", Kind: "CALLS"}.WithProperties(map[string]string{"language": "rust"}),
 		},
 	}
 	Synthesize(doc)
@@ -98,13 +94,11 @@ func TestSynthesize_Ruby_PerSymbolNode_4783(t *testing.T) {
 			langMethodEntity("bbbbbbbbbbbbbbb2", file, "ruby"),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa2", ToID: "active_record", Kind: "IMPORTS",
-				Properties: map[string]string{
-					"language": "ruby", "require_kind": "require",
-					"local_name": "ActiveRecord", "imported_name": "ActiveRecord",
-				}},
-			{ID: "call-1", FromID: "bbbbbbbbbbbbbbb2", ToID: "ActiveRecord", Kind: "CALLS",
-				Properties: map[string]string{"language": "ruby"}},
+			graph.Relationship{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa2", ToID: "active_record", Kind: "IMPORTS"}.WithProperties(map[string]string{
+				"language": "ruby", "require_kind": "require",
+				"local_name": "ActiveRecord", "imported_name": "ActiveRecord",
+			}),
+			graph.Relationship{ID: "call-1", FromID: "bbbbbbbbbbbbbbb2", ToID: "ActiveRecord", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
 		},
 	}
 	Synthesize(doc)
@@ -130,10 +124,8 @@ func TestSynthesize_Ruby_RequireRelative_NoExtNode_4783(t *testing.T) {
 			langMethodEntity("bbbbbbbbbbbbbbb3", file, "ruby"),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa3", ToID: "./helper", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "ruby", "require_kind": "require_relative"}},
-			{ID: "call-1", FromID: "bbbbbbbbbbbbbbb3", ToID: "Helper", Kind: "CALLS",
-				Properties: map[string]string{"language": "ruby"}},
+			graph.Relationship{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa3", ToID: "./helper", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "ruby", "require_kind": "require_relative"}),
+			graph.Relationship{ID: "call-1", FromID: "bbbbbbbbbbbbbbb3", ToID: "Helper", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
 		},
 	}
 	Synthesize(doc)
@@ -154,14 +146,10 @@ func TestSynthesize_Rust_CrossCrateNoCollision_4783(t *testing.T) {
 			langMethodEntity("bbbbbbbbbbbbbbb5", fileB, "rust"),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "impA", FromID: "aaaaaaaaaaaaaaa4", ToID: "serde::Error", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "rust", "import_path": "serde::Error", "local_name": "Error", "imported_name": "Error"}},
-			{ID: "callA", FromID: "bbbbbbbbbbbbbbb4", ToID: "Error", Kind: "CALLS",
-				Properties: map[string]string{"language": "rust"}},
-			{ID: "impB", FromID: "aaaaaaaaaaaaaaa5", ToID: "tokio::Error", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "rust", "import_path": "tokio::Error", "local_name": "Error", "imported_name": "Error"}},
-			{ID: "callB", FromID: "bbbbbbbbbbbbbbb5", ToID: "Error", Kind: "CALLS",
-				Properties: map[string]string{"language": "rust"}},
+			graph.Relationship{ID: "impA", FromID: "aaaaaaaaaaaaaaa4", ToID: "serde::Error", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "rust", "import_path": "serde::Error", "local_name": "Error", "imported_name": "Error"}),
+			graph.Relationship{ID: "callA", FromID: "bbbbbbbbbbbbbbb4", ToID: "Error", Kind: "CALLS"}.WithProperties(map[string]string{"language": "rust"}),
+			graph.Relationship{ID: "impB", FromID: "aaaaaaaaaaaaaaa5", ToID: "tokio::Error", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "rust", "import_path": "tokio::Error", "local_name": "Error", "imported_name": "Error"}),
+			graph.Relationship{ID: "callB", FromID: "bbbbbbbbbbbbbbb5", ToID: "Error", Kind: "CALLS"}.WithProperties(map[string]string{"language": "rust"}),
 		},
 	}
 	Synthesize(doc)

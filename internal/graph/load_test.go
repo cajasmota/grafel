@@ -19,24 +19,22 @@ func makeTestDoc() *graph.Document {
 		GeneratedAt: time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC),
 		Repo:        "test-repo",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID:            "aabbccdd00000001",
 				Name:          "MyHandler",
 				QualifiedName: "pkg.MyHandler",
 				Kind:          "FUNCTION",
 				SourceFile:    "handler.go",
 				StartLine:     10,
-				Properties:    map[string]string{"language": "go"},
-			},
-			{
+			}.WithProperties(map[string]string{"language": "go"}),
+			graph.Entity{
 				ID:            "aabbccdd00000002",
 				Name:          "OtherFunc",
 				QualifiedName: "pkg.OtherFunc",
 				Kind:          "FUNCTION",
 				SourceFile:    "other.go",
 				StartLine:     5,
-				Properties:    map[string]string{"language": "go"},
-			},
+			}.WithProperties(map[string]string{"language": "go"}),
 		},
 		Relationships: []graph.Relationship{
 			{
@@ -153,8 +151,8 @@ func TestLoadGraphFromDir_EntityProperties(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	doc := makeTestDoc()
-	// Add a property that should survive FB serialization.
-	doc.Entities[0].Properties["framework"] = "gin"
+
+	doc.Entities[0].PropSet("framework", "gin")
 
 	if err := fbwriter.WriteAtomic(filepath.Join(dir, "graph.fb"), doc); err != nil {
 		t.Fatalf("write graph.fb: %v", err)
@@ -175,8 +173,8 @@ func TestLoadGraphFromDir_EntityProperties(t *testing.T) {
 	if handlerEnt == nil {
 		t.Fatal("MyHandler entity not found after FB round-trip")
 	}
-	if handlerEnt.Properties["framework"] != "gin" {
+	if handlerEnt.PropGet("framework") != "gin" {
 		t.Errorf("Properties[framework]: got %q want %q",
-			handlerEnt.Properties["framework"], "gin")
+			handlerEnt.PropGet("framework"), "gin")
 	}
 }

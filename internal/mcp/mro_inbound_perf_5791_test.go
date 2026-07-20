@@ -67,8 +67,7 @@ func inheritanceHierarchyDoc(subclassCount, memberCount int) *graph.Document {
 		})
 		doc.Relationships = append(doc.Relationships, graph.Relationship{
 			ID: "ext_" + clsID, FromID: clsID, ToID: "base", Kind: "EXTENDS",
-			Properties: map[string]string{"language": "python", "base_name": "BaseService"},
-		})
+		}.WithProperties(map[string]string{"language": "python", "base_name": "BaseService"}))
 		for i := 0; i < memberCount; i++ {
 			// Bodyless inherited stub: no source span, so resolveMember walks
 			// EXTENDS to the base body.
@@ -293,8 +292,7 @@ func diamondDoc() *graph.Document {
 			Signature: "def " + method + "(self)"}
 	}
 	ext := func(from, to, base string) graph.Relationship {
-		return graph.Relationship{ID: "ext_" + from + "_" + to, FromID: from, ToID: to, Kind: "EXTENDS",
-			Properties: map[string]string{"language": "python", "base_name": base}}
+		return graph.Relationship{ID: "ext_" + from + "_" + to, FromID: from, ToID: to, Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": base})
 	}
 	return &graph.Document{
 		Entities: []graph.Entity{
@@ -337,10 +335,8 @@ func cycleDoc() *graph.Document {
 				SourceFile: "b.py", StartLine: 0, EndLine: 0, Language: "python", Signature: "def foo(self)"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "ext_a_b", FromID: "a", ToID: "b", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "B"}},
-			{ID: "ext_b_a", FromID: "b", ToID: "a", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "A"}},
+			graph.Relationship{ID: "ext_a_b", FromID: "a", ToID: "b", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "B"}),
+			graph.Relationship{ID: "ext_b_a", FromID: "b", ToID: "a", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "A"}),
 		},
 	}
 }
@@ -368,10 +364,8 @@ func multiBaseDoc() *graph.Document {
 				SourceFile: "x.py", StartLine: 0, EndLine: 0, Language: "python", Signature: "def bar(self)"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "ext_x_super", FromID: "x", ToID: "super", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "Super"}},
-			{ID: "impl_x_iface", FromID: "x", ToID: "iface", Kind: "IMPLEMENTS",
-				Properties: map[string]string{"language": "python", "base_name": "Iface"}},
+			graph.Relationship{ID: "ext_x_super", FromID: "x", ToID: "super", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "Super"}),
+			graph.Relationship{ID: "impl_x_iface", FromID: "x", ToID: "iface", Kind: "IMPLEMENTS"}.WithProperties(map[string]string{"language": "python", "base_name": "Iface"}),
 		},
 	}
 }

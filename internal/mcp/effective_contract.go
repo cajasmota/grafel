@@ -136,7 +136,7 @@ type contractResponseBranch struct {
 // (the entities stampDRFEffectiveContract writes onto). T6 filters a ViewSet's
 // backing routes through this.
 func isRouterExpandedRoute(e *graph.Entity) bool {
-	return e != nil && e.Properties["pattern_type"] == "drf_router_expanded"
+	return e != nil && e.PropGet("pattern_type") == "drf_router_expanded"
 }
 
 // projectEffectiveContract lifts the flat `effective_*` (and posture)
@@ -152,7 +152,7 @@ func projectEffectiveContract(e *graph.Entity) (effectiveContract, bool) {
 	if !isRouterExpandedRoute(e) {
 		return effectiveContract{}, false
 	}
-	p := e.Properties
+	p := e.PropsSnapshot()
 	c := effectiveContract{
 		Verb:        p["verb"],
 		Path:        p["path"],

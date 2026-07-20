@@ -36,9 +36,9 @@ func callContextsServer(t *testing.T, sourceFile string, start, end int, callerN
 			{ID: "t_mailer", Name: "deliver", Kind: "SCOPE.Operation", SourceFile: sourceFile, StartLine: 1},
 		},
 		Relationships: []graph.Relationship{
-			{FromID: "op_sync", ToID: "t_audit", Kind: "CALLS", Properties: map[string]string{"line": itoa(callLines[0])}},
-			{FromID: "op_sync", ToID: "t_notify", Kind: "CALLS", Properties: map[string]string{"line": itoa(callLines[1])}},
-			{FromID: "op_sync", ToID: "t_mailer", Kind: "CALLS", Properties: map[string]string{"line": itoa(callLines[2])}},
+			graph.Relationship{FromID: "op_sync", ToID: "t_audit", Kind: "CALLS"}.WithProperties(map[string]string{"line": itoa(callLines[0])}),
+			graph.Relationship{FromID: "op_sync", ToID: "t_notify", Kind: "CALLS"}.WithProperties(map[string]string{"line": itoa(callLines[1])}),
+			graph.Relationship{FromID: "op_sync", ToID: "t_mailer", Kind: "CALLS"}.WithProperties(map[string]string{"line": itoa(callLines[2])}),
 		},
 	}
 	srv := newTestServer(t, doc)

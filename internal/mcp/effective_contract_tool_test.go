@@ -37,7 +37,7 @@ func roleViewSetDoc() *graph.Document {
 		for k, v := range props {
 			p[k] = v
 		}
-		return graph.Entity{ID: id, Name: id, Kind: "http_endpoint", Language: "python", Properties: p}
+		return graph.Entity{ID: id, Name: id, Kind: "http_endpoint", Language: "python"}.WithProperties(p)
 	}
 	return &graph.Document{
 		Repo: "backend",

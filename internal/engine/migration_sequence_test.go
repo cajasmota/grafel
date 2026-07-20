@@ -21,7 +21,7 @@ func TestApplyMigrationSequence_DjangoSequenceAndName(t *testing.T) {
 	if stats.EntitiesAnnotated != 1 || stats.FilesMatched != 1 {
 		t.Fatalf("expected 1 annotated/1 file, got %+v", stats)
 	}
-	p := doc.Entities[0].Properties
+	p := doc.Entities[0].PropsSnapshot()
 	if p["sequence_number"] != "2" {
 		t.Fatalf("expected sequence_number=2, got %q", p["sequence_number"])
 	}
@@ -43,7 +43,7 @@ func TestApplyMigrationSequence_FlywaySequence(t *testing.T) {
 	if stats.EntitiesAnnotated != 1 {
 		t.Fatalf("expected 1 annotated, got %+v", stats)
 	}
-	p := doc.Entities[0].Properties
+	p := doc.Entities[0].PropsSnapshot()
 	if p["sequence_number"] != "3" {
 		t.Fatalf("expected sequence_number=3, got %q", p["sequence_number"])
 	}
@@ -64,7 +64,7 @@ func TestApplyMigrationSequence_RailsAndGolangMigrate(t *testing.T) {
 	}}
 	ApplyMigrationSequence(doc, nil)
 
-	rails := doc.Entities[0].Properties
+	rails := doc.Entities[0].PropsSnapshot()
 	if rails["sequence_number"] != "20231101120000" || rails["migration_pattern"] != "rails" {
 		t.Fatalf("rails: got seq=%q pattern=%q", rails["sequence_number"], rails["migration_pattern"])
 	}
@@ -72,7 +72,7 @@ func TestApplyMigrationSequence_RailsAndGolangMigrate(t *testing.T) {
 		t.Fatalf("rails: expected 'create users', got %q", rails["migration_name"])
 	}
 
-	gm := doc.Entities[1].Properties
+	gm := doc.Entities[1].PropsSnapshot()
 	if gm["sequence_number"] != "5" || gm["migration_pattern"] != "golang_migrate" {
 		t.Fatalf("golang-migrate: got seq=%q pattern=%q", gm["sequence_number"], gm["migration_pattern"])
 	}
@@ -118,9 +118,9 @@ func TestApplyMigrationSequence_AlembicPrecedesEdge(t *testing.T) {
 	}
 
 	// Revision props were stamped from the file body.
-	if doc.Entities[1].Properties["down_revision"] != "aaaaaaaaaaaa" {
+	if doc.Entities[1].PropGet("down_revision") != "aaaaaaaaaaaa" {
 		t.Fatalf("expected child down_revision=aaaaaaaaaaaa, got %q",
-			doc.Entities[1].Properties["down_revision"])
+			doc.Entities[1].PropGet("down_revision"))
 	}
 
 	// Idempotency: a second run adds no new edge.
@@ -141,7 +141,7 @@ func TestApplyMigrationSequence_NoMigrationsSkips(t *testing.T) {
 	if stats.EntitiesAnnotated != 0 || stats.PrecedesEdges != 0 {
 		t.Fatalf("expected no annotation, got %+v", stats)
 	}
-	if _, ok := doc.Entities[0].Properties["sequence_number"]; ok {
+	if _, ok := doc.Entities[0].PropLookup("sequence_number"); ok {
 		t.Fatal("non-migration entity should not be stamped")
 	}
 }

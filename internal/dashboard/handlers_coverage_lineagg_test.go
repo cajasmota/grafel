@@ -23,14 +23,14 @@ func ent(id, file, source, covered, total, measuredAt string) graph.Entity {
 	if measuredAt != "" {
 		props[coverage.PropCoverageMeasAt] = measuredAt
 	}
-	return graph.Entity{ID: id, SourceFile: file, Properties: props}
+	return graph.Entity{ID: id, SourceFile: file}.WithProperties(props)
 }
 
 func TestLineCovAccumulator_NoStampReturnsNil(t *testing.T) {
 	var a lineCovAccumulator
 	a.accumulate(&graph.Document{Entities: []graph.Entity{
 		{ID: "e1", SourceFile: "a.ts"}, // no coverage props
-		{ID: "e2", SourceFile: "b.ts", Properties: map[string]string{"other": "x"}},
+		graph.Entity{ID: "e2", SourceFile: "b.ts"}.WithProperties(map[string]string{"other": "x"}),
 	}})
 	if got := a.summarize(); got != nil {
 		t.Fatalf("expected nil summary when nothing stamped, got %+v", got)

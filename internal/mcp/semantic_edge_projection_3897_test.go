@@ -51,15 +51,15 @@ func makeSemanticEdgeDoc() *graph.Document {
 			{ID: "provider", Name: "OrderProvider", Kind: "SCOPE.Component", SourceFile: "provider.ts", StartLine: 1},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "r1", FromID: "handler", ToID: "paymentSvc", Kind: "DEPENDS_ON_SERVICE", Properties: map[string]string{"line": "5"}},
-			{ID: "r2", FromID: "handler", ToID: "appError", Kind: "THROWS", Properties: map[string]string{"line": "12"}},
-			{ID: "r3", FromID: "handler", ToID: "dbError", Kind: "CATCHES", Properties: map[string]string{"line": "18"}},
-			{ID: "r4", FromID: "handler", ToID: "sink", Kind: "DATA_FLOWS_TO", Properties: map[string]string{"line": "22"}},
-			{ID: "r5", FromID: "model", ToID: "orders", Kind: "JOINS_COLLECTION", Properties: map[string]string{"line": "3"}},
-			{ID: "r6", FromID: "model", ToID: "userNode", Kind: "GRAPH_RELATES", Properties: map[string]string{"line": "7"}},
-			{ID: "r7", FromID: "provider", ToID: "handler", Kind: "INJECTED_INTO", Properties: map[string]string{"line": "2"}},
+			graph.Relationship{ID: "r1", FromID: "handler", ToID: "paymentSvc", Kind: "DEPENDS_ON_SERVICE"}.WithProperties(map[string]string{"line": "5"}),
+			graph.Relationship{ID: "r2", FromID: "handler", ToID: "appError", Kind: "THROWS"}.WithProperties(map[string]string{"line": "12"}),
+			graph.Relationship{ID: "r3", FromID: "handler", ToID: "dbError", Kind: "CATCHES"}.WithProperties(map[string]string{"line": "18"}),
+			graph.Relationship{ID: "r4", FromID: "handler", ToID: "sink", Kind: "DATA_FLOWS_TO"}.WithProperties(map[string]string{"line": "22"}),
+			graph.Relationship{ID: "r5", FromID: "model", ToID: "orders", Kind: "JOINS_COLLECTION"}.WithProperties(map[string]string{"line": "3"}),
+			graph.Relationship{ID: "r6", FromID: "model", ToID: "userNode", Kind: "GRAPH_RELATES"}.WithProperties(map[string]string{"line": "7"}),
+			graph.Relationship{ID: "r7", FromID: "provider", ToID: "handler", Kind: "INJECTED_INTO"}.WithProperties(map[string]string{"line": "2"}),
 			// structural CALLS — must be EXCLUDED from semantic_edges.
-			{ID: "c1", FromID: "handler", ToID: "paymentSvc", Kind: "CALLS", Properties: map[string]string{"line": "5"}},
+			graph.Relationship{ID: "c1", FromID: "handler", ToID: "paymentSvc", Kind: "CALLS"}.WithProperties(map[string]string{"line": "5"}),
 		},
 	}
 }

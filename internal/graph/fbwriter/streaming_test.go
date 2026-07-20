@@ -26,12 +26,12 @@ func makeSyntheticEntity(i int) graph.Entity {
 		Kind:          "function",
 		SourceFile:    fmt.Sprintf("pkg/synthetic/file_%d.go", i%50),
 		StartLine:     (i % 200) + 1,
-		Properties: map[string]string{
-			"module":     fmt.Sprintf("pkg/synthetic/batch_%d", i/100),
-			"visibility": "public",
-			"language":   "go",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"module":     fmt.Sprintf("pkg/synthetic/batch_%d", i/100),
+		"visibility": "public",
+		"language":   "go",
+	},
+	)
 }
 
 func makeSyntheticRelationship(i, n int) graph.Relationship {
@@ -56,27 +56,25 @@ func TestStreamingWriter_RoundtripEquivalence(t *testing.T) {
 	pr := 0.042
 	cen := 1.1
 	entities := []graph.Entity{
-		{
+		graph.Entity{
 			ID: "ent0000000000000a", Name: "Alpha", Kind: "function",
 			SourceFile: "a.go", StartLine: 10,
-			Properties:  map[string]string{"module": "pkg/a", "visibility": "public"},
+
 			CommunityID: &cid, PageRank: &pr, Centrality: &cen,
 			IsGodNode: true,
-		},
+		}.WithProperties(map[string]string{"module": "pkg/a", "visibility": "public"}),
 		{
 			ID: "ent0000000000000b", Name: "Beta", Kind: "type",
 			SourceFile: "b.go", StartLine: 20,
 		},
-		{
+		graph.Entity{
 			ID: "ent0000000000000c", Name: "Gamma", Kind: "function",
 			SourceFile: "c.go", StartLine: 30,
-			Properties: map[string]string{"module": "pkg/c"},
-		},
+		}.WithProperties(map[string]string{"module": "pkg/c"}),
 	}
 	rels := []graph.Relationship{
 		{ID: "rel000000000000aa", FromID: "ent0000000000000a", ToID: "ent0000000000000b", Kind: "calls"},
-		{ID: "rel000000000000ab", FromID: "ent0000000000000a", ToID: "ent0000000000000c", Kind: "references",
-			Properties: map[string]string{"resolved": "true"}},
+		graph.Relationship{ID: "rel000000000000ab", FromID: "ent0000000000000a", ToID: "ent0000000000000c", Kind: "references"}.WithProperties(map[string]string{"resolved": "true"}),
 	}
 	communities := []graph.CommunityResult{
 		{ID: 3, Size: 5, Modularity: 0.55, AutoName: "core", TopEntities: []string{"Alpha"}},

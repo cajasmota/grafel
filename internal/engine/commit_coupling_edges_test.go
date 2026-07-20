@@ -291,10 +291,10 @@ func TestApplyCommitCoupling_EndToEnd(t *testing.T) {
 			continue
 		}
 		edgeCount++
-		if r.Properties["support"] != "5" {
-			t.Errorf("edge %s support=%q, want 5", r.ID, r.Properties["support"])
+		if r.PropGet("support") != "5" {
+			t.Errorf("edge %s support=%q, want 5", r.ID, r.PropGet("support"))
 		}
-		conf := r.Properties["confidence"]
+		conf := r.PropGet("confidence")
 		if !strings.HasPrefix(conf, "0.71") {
 			t.Errorf("edge %s confidence=%q, want ~0.7143", r.ID, conf)
 		}
@@ -476,10 +476,10 @@ func TestApplyCommitCoupling_FileEntitiesHaveModuleProperty(t *testing.T) {
 		if e.Kind != KindFile {
 			continue
 		}
-		m := e.Properties["module"]
+		m := e.PropGet("module")
 		if m == "" {
 			t.Errorf("synthetic File entity %q (path=%q) has empty Properties[\"module\"]",
-				e.ID, e.Properties["path"])
+				e.ID, e.PropGet("path"))
 		}
 	}
 }

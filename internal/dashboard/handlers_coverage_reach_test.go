@@ -12,7 +12,7 @@ func ep(id, name string, reachable string) graph.Entity {
 	if reachable != "" {
 		props[coverage.PropTestReachable] = reachable
 	}
-	return graph.Entity{ID: id, Name: name, Kind: "SCOPE.Endpoint", Properties: props}
+	return graph.Entity{ID: id, Name: name, Kind: "SCOPE.Endpoint"}.WithProperties(props)
 }
 
 func TestReachAccumulator_TestedUntestedRollup(t *testing.T) {
@@ -21,8 +21,7 @@ func TestReachAccumulator_TestedUntestedRollup(t *testing.T) {
 		ep("e2", "POST /b", "false"),
 		ep("e3", "GET /c", "false"),
 		// A non-endpoint with the prop must be ignored.
-		{ID: "f1", Name: "helper", Kind: "SCOPE.Function",
-			Properties: map[string]string{coverage.PropTestReachable: "false"}},
+		graph.Entity{ID: "f1", Name: "helper", Kind: "SCOPE.Function"}.WithProperties(map[string]string{coverage.PropTestReachable: "false"}),
 	}}
 
 	var a reachAccumulator

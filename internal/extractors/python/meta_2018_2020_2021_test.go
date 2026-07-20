@@ -197,12 +197,11 @@ __all__ = ("User",)
 				continue
 			}
 			rels = append(rels, graph.Relationship{
-				ID:         graph.RelationshipID(r.FromID, r.ToID, r.Kind),
-				FromID:     r.FromID,
-				ToID:       r.ToID,
-				Kind:       r.Kind,
-				Properties: r.Properties,
-			})
+				ID:     graph.RelationshipID(r.FromID, r.ToID, r.Kind),
+				FromID: r.FromID,
+				ToID:   r.ToID,
+				Kind:   r.Kind,
+			}.WithProperties(r.Properties))
 		}
 	}
 	if len(rels) == 0 {
@@ -214,7 +213,7 @@ __all__ = ("User",)
 	// graph.fb persistence (in the Bundle C extractor passes themselves).
 	var preReExport bool
 	for _, r := range rels {
-		if r.Properties["re_export"] == "true" {
+		if r.PropGet("re_export") == "true" {
 			preReExport = true
 			break
 		}
@@ -249,7 +248,7 @@ __all__ = ("User",)
 		if r.Kind != "IMPORTS" {
 			continue
 		}
-		if r.Properties["re_export"] == "true" {
+		if r.PropGet("re_export") == "true" {
 			postReExport = true
 			break
 		}
@@ -267,10 +266,10 @@ __all__ = ("User",)
 		if r.Kind != "IMPORTS" {
 			continue
 		}
-		if r.Properties["package_init"] == "true" {
+		if r.PropGet("package_init") == "true" {
 			sawPackageInit = true
 		}
-		if r.Properties["public"] == "true" {
+		if r.PropGet("public") == "true" {
 			sawPublic = true
 		}
 	}
@@ -308,12 +307,11 @@ def helper():
 				continue
 			}
 			rels = append(rels, graph.Relationship{
-				ID:         graph.RelationshipID(r.FromID, r.ToID, r.Kind),
-				FromID:     r.FromID,
-				ToID:       r.ToID,
-				Kind:       r.Kind,
-				Properties: r.Properties,
-			})
+				ID:     graph.RelationshipID(r.FromID, r.ToID, r.Kind),
+				FromID: r.FromID,
+				ToID:   r.ToID,
+				Kind:   r.Kind,
+			}.WithProperties(r.Properties))
 		}
 	}
 	if len(rels) < 2 {
@@ -341,10 +339,10 @@ def helper():
 			continue
 		}
 		// dead_import marker stamped on the `os` edge.
-		if r.Properties["dead_import"] == "true" {
+		if r.PropGet("dead_import") == "true" {
 			sawDead = true
 		}
-		if r.Properties["live"] == "false" {
+		if r.PropGet("live") == "false" {
 			sawLiveFalse = true
 		}
 	}

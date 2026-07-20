@@ -31,13 +31,13 @@ func TestAudit2852_JSBackendAuth(t *testing.T) {
 		if ep == nil {
 			t.Fatalf("missing endpoint %s %s", verb, path)
 		}
-		if ep.Properties["auth_required"] != "true" {
-			t.Errorf("%s %s: auth_required=%q, want true", verb, path, ep.Properties["auth_required"])
+		if ep.PropGet("auth_required") != "true" {
+			t.Errorf("%s %s: auth_required=%q, want true", verb, path, ep.PropGet("auth_required"))
 		}
-		if wantMethod != "" && ep.Properties["auth_method"] != wantMethod {
-			t.Errorf("%s %s: auth_method=%q, want %q", verb, path, ep.Properties["auth_method"], wantMethod)
+		if wantMethod != "" && ep.PropGet("auth_method") != wantMethod {
+			t.Errorf("%s %s: auth_method=%q, want %q", verb, path, ep.PropGet("auth_method"), wantMethod)
 		}
-		if ep.Properties["auth_middleware"] == "" && ep.Properties["auth_guard"] == "" {
+		if ep.PropGet("auth_middleware") == "" && ep.PropGet("auth_guard") == "" {
 			t.Errorf("%s %s: no MCP signal-1 key (auth_middleware/auth_guard) stamped", verb, path)
 		}
 		return ep
@@ -48,7 +48,7 @@ func TestAudit2852_JSBackendAuth(t *testing.T) {
 		if ep == nil {
 			t.Fatalf("missing endpoint %s %s", verb, path)
 		}
-		if ep.Properties["auth_required"] == "true" {
+		if ep.PropGet("auth_required") == "true" {
 			t.Errorf("%s %s: auth_required=true, want public/unknown", verb, path)
 		}
 	}
@@ -63,8 +63,8 @@ func TestAudit2852_JSBackendAuth(t *testing.T) {
 	t.Run("NestJS", func(t *testing.T) {
 		requireAuthed(t, "GET", "/orders", "guard")
 		create := requireAuthed(t, "POST", "/orders", "guard")
-		if create.Properties["auth_roles"] != "admin" {
-			t.Errorf("POST /orders: auth_roles=%q, want admin", create.Properties["auth_roles"])
+		if create.PropGet("auth_roles") != "admin" {
+			t.Errorf("POST /orders: auth_roles=%q, want admin", create.PropGet("auth_roles"))
 		}
 	})
 
@@ -75,8 +75,8 @@ func TestAudit2852_JSBackendAuth(t *testing.T) {
 		if ep == nil {
 			t.Fatal("missing endpoint POST /login")
 		}
-		if ep.Properties["auth_required"] != "false" {
-			t.Errorf("POST /login: auth_required=%q, want false", ep.Properties["auth_required"])
+		if ep.PropGet("auth_required") != "false" {
+			t.Errorf("POST /login: auth_required=%q, want false", ep.PropGet("auth_required"))
 		}
 	})
 

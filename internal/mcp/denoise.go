@@ -123,13 +123,13 @@ func classifyNoise(e *graph.Entity) noiseKind {
 	// file-level IMPORTS/REFERENCES edges.
 	subtype := e.Subtype
 	if subtype == "" {
-		subtype = e.Properties["subtype"]
+		subtype = e.PropGet("subtype")
 	}
 	if bareKind == "component" && (subtype == "file" || subtype == "module") {
 		return noiseContainer
 	}
 	if bareKind == "component" && e.StartLine == 0 {
-		if e.Properties["subtype"] == "file" || e.Properties["subtype"] == "module" {
+		if e.PropGet("subtype") == "file" || e.PropGet("subtype") == "module" {
 			return noiseContainer
 		}
 		// Fallback: label literally equals the source file path.
@@ -139,7 +139,7 @@ func classifyNoise(e *graph.Entity) noiseKind {
 	}
 
 	// Inferred class-hierarchy / implicit-method shadows.
-	if prov := e.Properties["provenance"]; prov == "INFERRED_FROM_CLASS_HIERARCHY" {
+	if prov := e.PropGet("provenance"); prov == "INFERRED_FROM_CLASS_HIERARCHY" {
 		return noiseShadow
 	}
 	if e.StartLine == 0 && e.QualifiedName == "" {
@@ -164,7 +164,7 @@ func classifyNoise(e *graph.Entity) noiseKind {
 	// Non-addressable function-body locals (#1748): emitted at extraction
 	// time for resolver use but not independently inspectable. The extractor
 	// stamps Properties["local_scope"]="true" on these entities.
-	if e.Properties["local_scope"] == "true" {
+	if e.PropGet("local_scope") == "true" {
 		return noiseLocalScope
 	}
 

@@ -43,14 +43,12 @@ func TestSynthesize_NamedImport_PerSymbolNode(t *testing.T) {
 			tsMethodEntity("bbbbbbbbbbbbbbb0", file),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa0", ToID: "@nestjs/common", Kind: "IMPORTS",
-				Properties: map[string]string{
-					"language": "typescript", "import_path": "@nestjs/common",
-					"local_name": "NotFoundException", "imported_name": "NotFoundException",
-				}},
+			graph.Relationship{ID: "imp-1", FromID: "aaaaaaaaaaaaaaa0", ToID: "@nestjs/common", Kind: "IMPORTS"}.WithProperties(map[string]string{
+				"language": "typescript", "import_path": "@nestjs/common",
+				"local_name": "NotFoundException", "imported_name": "NotFoundException",
+			}),
 			// constructor CALLS edge (bare-name stub from `new NotFoundException()`).
-			{ID: "call-1", FromID: "bbbbbbbbbbbbbbb0", ToID: "NotFoundException", Kind: "CALLS",
-				Properties: map[string]string{"language": "typescript"}},
+			graph.Relationship{ID: "call-1", FromID: "bbbbbbbbbbbbbbb0", ToID: "NotFoundException", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
 		},
 	}
 	Synthesize(doc)
@@ -90,14 +88,10 @@ func TestSynthesize_NamedImport_DedupSameSymbol(t *testing.T) {
 			tsMethodEntity("bbbbbbbbbbbbbbb2", fileB),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "impA", FromID: "aaaaaaaaaaaaaaa1", ToID: "@nestjs/common", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}},
-			{ID: "callA", FromID: "bbbbbbbbbbbbbbb1", ToID: "NotFoundException", Kind: "CALLS",
-				Properties: map[string]string{"language": "typescript"}},
-			{ID: "impB", FromID: "aaaaaaaaaaaaaaa2", ToID: "@nestjs/common", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}},
-			{ID: "callB", FromID: "bbbbbbbbbbbbbbb2", ToID: "NotFoundException", Kind: "CALLS",
-				Properties: map[string]string{"language": "typescript"}},
+			graph.Relationship{ID: "impA", FromID: "aaaaaaaaaaaaaaa1", ToID: "@nestjs/common", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}),
+			graph.Relationship{ID: "callA", FromID: "bbbbbbbbbbbbbbb1", ToID: "NotFoundException", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
+			graph.Relationship{ID: "impB", FromID: "aaaaaaaaaaaaaaa2", ToID: "@nestjs/common", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}),
+			graph.Relationship{ID: "callB", FromID: "bbbbbbbbbbbbbbb2", ToID: "NotFoundException", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
 		},
 	}
 	Synthesize(doc)
@@ -129,14 +123,10 @@ func TestSynthesize_NamedImport_CrossPackageNoCollision(t *testing.T) {
 			tsMethodEntity("bbbbbbbbbbbbbbb4", fileB),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "impA", FromID: "aaaaaaaaaaaaaaa3", ToID: "@nestjs/common", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}},
-			{ID: "callA", FromID: "bbbbbbbbbbbbbbb3", ToID: "NotFoundException", Kind: "CALLS",
-				Properties: map[string]string{"language": "typescript"}},
-			{ID: "impB", FromID: "aaaaaaaaaaaaaaa4", ToID: "other-pkg", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "other-pkg", "local_name": "NotFoundException", "imported_name": "NotFoundException"}},
-			{ID: "callB", FromID: "bbbbbbbbbbbbbbb4", ToID: "NotFoundException", Kind: "CALLS",
-				Properties: map[string]string{"language": "typescript"}},
+			graph.Relationship{ID: "impA", FromID: "aaaaaaaaaaaaaaa3", ToID: "@nestjs/common", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}),
+			graph.Relationship{ID: "callA", FromID: "bbbbbbbbbbbbbbb3", ToID: "NotFoundException", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
+			graph.Relationship{ID: "impB", FromID: "aaaaaaaaaaaaaaa4", ToID: "other-pkg", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "other-pkg", "local_name": "NotFoundException", "imported_name": "NotFoundException"}),
+			graph.Relationship{ID: "callB", FromID: "bbbbbbbbbbbbbbb4", ToID: "NotFoundException", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
 		},
 	}
 	Synthesize(doc)
@@ -164,10 +154,8 @@ func TestSynthesize_NamedImport_AliasConverges(t *testing.T) {
 			tsMethodEntity("bbbbbbbbbbbbbbb5", file),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "imp", FromID: "aaaaaaaaaaaaaaa5", ToID: "@nestjs/common", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NFE", "imported_name": "NotFoundException"}},
-			{ID: "call", FromID: "bbbbbbbbbbbbbbb5", ToID: "NFE", Kind: "CALLS",
-				Properties: map[string]string{"language": "typescript"}},
+			graph.Relationship{ID: "imp", FromID: "aaaaaaaaaaaaaaa5", ToID: "@nestjs/common", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NFE", "imported_name": "NotFoundException"}),
+			graph.Relationship{ID: "call", FromID: "bbbbbbbbbbbbbbb5", ToID: "NFE", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
 		},
 	}
 	Synthesize(doc)
@@ -187,10 +175,8 @@ func TestSynthesize_NamespaceImport_MemberAccess(t *testing.T) {
 			tsMethodEntity("bbbbbbbbbbbbbbb6", file),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "imp", FromID: "aaaaaaaaaaaaaaa6", ToID: "@nestjs/common", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "nest", "imported_name": "*", "wildcard": "1"}},
-			{ID: "call", FromID: "bbbbbbbbbbbbbbb6", ToID: "nest.NotFoundException", Kind: "CALLS",
-				Properties: map[string]string{"language": "typescript"}},
+			graph.Relationship{ID: "imp", FromID: "aaaaaaaaaaaaaaa6", ToID: "@nestjs/common", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "nest", "imported_name": "*", "wildcard": "1"}),
+			graph.Relationship{ID: "call", FromID: "bbbbbbbbbbbbbbb6", ToID: "nest.NotFoundException", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
 		},
 	}
 	Synthesize(doc)
@@ -211,10 +197,8 @@ func TestSynthesize_NamedImport_RelativeNotPerSymbol(t *testing.T) {
 			tsMethodEntity("bbbbbbbbbbbbbbb7", file),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "imp", FromID: "aaaaaaaaaaaaaaa7", ToID: "./local-exc", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "./local-exc", "local_name": "LocalExc", "imported_name": "LocalExc"}},
-			{ID: "call", FromID: "bbbbbbbbbbbbbbb7", ToID: "LocalExc", Kind: "CALLS",
-				Properties: map[string]string{"language": "typescript"}},
+			graph.Relationship{ID: "imp", FromID: "aaaaaaaaaaaaaaa7", ToID: "./local-exc", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "./local-exc", "local_name": "LocalExc", "imported_name": "LocalExc"}),
+			graph.Relationship{ID: "call", FromID: "bbbbbbbbbbbbbbb7", ToID: "LocalExc", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
 		},
 	}
 	Synthesize(doc)
@@ -235,19 +219,16 @@ func TestSynthesize_NamedImport_ThrowsDedup(t *testing.T) {
 			tsFileEntity("aaaaaaaaaaaaaaa9", file),
 			tsMethodEntity("bbbbbbbbbbbbbbb9", file),
 			// synthetic SCOPE.ExceptionType convergence node (#4480 input).
-			{ID: "exc-node", Name: "exception:NotFoundException",
+			graph.Entity{ID: "exc-node", Name: "exception:NotFoundException",
 				Kind: "SCOPE.ExceptionType", SourceFile: "NotFoundException",
-				Properties: map[string]string{"exception_type": "NotFoundException"}},
+			}.WithProperties(map[string]string{"exception_type": "NotFoundException"}),
 		},
 		Relationships: []graph.Relationship{
-			{ID: "imp", FromID: "aaaaaaaaaaaaaaa9", ToID: "@nestjs/common", Kind: "IMPORTS",
-				Properties: map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}},
+			graph.Relationship{ID: "imp", FromID: "aaaaaaaaaaaaaaa9", ToID: "@nestjs/common", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}),
 			// constructor CALLS (`new NotFoundException()`).
-			{ID: "call", FromID: "bbbbbbbbbbbbbbb9", ToID: "NotFoundException", Kind: "CALLS",
-				Properties: map[string]string{"language": "typescript"}},
+			graph.Relationship{ID: "call", FromID: "bbbbbbbbbbbbbbb9", ToID: "NotFoundException", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
 			// THROWS edge to the synthetic convergence node.
-			{ID: "throw", FromID: "bbbbbbbbbbbbbbb9", ToID: "exc-node", Kind: "THROWS",
-				Properties: map[string]string{"language": "typescript"}},
+			graph.Relationship{ID: "throw", FromID: "bbbbbbbbbbbbbbb9", ToID: "exc-node", Kind: "THROWS"}.WithProperties(map[string]string{"language": "typescript"}),
 		},
 	}
 	Synthesize(doc)
@@ -286,10 +267,8 @@ func TestSynthesize_NamedImport_Idempotent(t *testing.T) {
 				tsMethodEntity("bbbbbbbbbbbbbbb8", file),
 			},
 			Relationships: []graph.Relationship{
-				{ID: "imp", FromID: "aaaaaaaaaaaaaaa8", ToID: "@nestjs/common", Kind: "IMPORTS",
-					Properties: map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}},
-				{ID: "call", FromID: "bbbbbbbbbbbbbbb8", ToID: "NotFoundException", Kind: "CALLS",
-					Properties: map[string]string{"language": "typescript"}},
+				graph.Relationship{ID: "imp", FromID: "aaaaaaaaaaaaaaa8", ToID: "@nestjs/common", Kind: "IMPORTS"}.WithProperties(map[string]string{"language": "typescript", "import_path": "@nestjs/common", "local_name": "NotFoundException", "imported_name": "NotFoundException"}),
+				graph.Relationship{ID: "call", FromID: "bbbbbbbbbbbbbbb8", ToID: "NotFoundException", Kind: "CALLS"}.WithProperties(map[string]string{"language": "typescript"}),
 			},
 		}
 	}

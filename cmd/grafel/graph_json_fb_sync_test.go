@@ -91,8 +91,7 @@ func TestGraphJsonFbSync_WriteBothSites(t *testing.T) {
 		t.Skip("fixture produced no entities; skip sync test")
 	}
 
-	// Simulate a mutation (e.g. enrichment writeback sets a description).
-	doc.Entities[0].Properties["description"] = "synthetic description for #1702 test"
+	doc.Entities[0].PropSet("description", "synthetic description for #1702 test")
 	mutatedID := doc.Entities[0].ID
 
 	// Write both files (the fixed dual-write path).
@@ -122,8 +121,8 @@ func TestGraphJsonFbSync_WriteBothSites(t *testing.T) {
 	if fbEnt == nil {
 		t.Fatalf("mutated entity %q not found in graph.fb after dual-write", mutatedID)
 	}
-	if fbEnt.Properties["description"] != "synthetic description for #1702 test" {
-		t.Errorf("graph.fb description mismatch: got %q", fbEnt.Properties["description"])
+	if fbEnt.PropGet("description") != "synthetic description for #1702 test" {
+		t.Errorf("graph.fb description mismatch: got %q", fbEnt.PropGet("description"))
 	}
 
 	// Read graph.json directly.
@@ -145,8 +144,8 @@ func TestGraphJsonFbSync_WriteBothSites(t *testing.T) {
 	if jsonEnt == nil {
 		t.Fatalf("mutated entity %q not found in graph.json after dual-write", mutatedID)
 	}
-	if jsonEnt.Properties["description"] != "synthetic description for #1702 test" {
-		t.Errorf("graph.json description mismatch: got %q", jsonEnt.Properties["description"])
+	if jsonEnt.PropGet("description") != "synthetic description for #1702 test" {
+		t.Errorf("graph.json description mismatch: got %q", jsonEnt.PropGet("description"))
 	}
 }
 

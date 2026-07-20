@@ -29,14 +29,13 @@ import (
 func thinControllerFixture() ([]graph.Entity, []graph.Relationship) {
 	entities := []graph.Entity{
 		// Synthetic endpoint definition (router-expanded).
-		{
+		graph.Entity{
 			ID:         "ep_post_widgets",
 			Name:       "http:POST:/api/v1/widgets",
 			Kind:       "http_endpoint_definition",
 			SourceFile: "core/routers.py",
 			StartLine:  0,
-			Properties: map[string]string{"path": "/api/v1/widgets", "verb": "POST", "framework": "drf"},
-		},
+		}.WithProperties(map[string]string{"path": "/api/v1/widgets", "verb": "POST", "framework": "drf"}),
 		// Thin controller handler — NO direct side-effect edge.
 		{
 			ID:         "op_ctrl_create",

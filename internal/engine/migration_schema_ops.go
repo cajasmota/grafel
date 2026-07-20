@@ -114,12 +114,12 @@ func ApplyMigrationSchemaOps(doc *graph.Document) MigrationSchemaOpsStats {
 			Subtype:    "table",
 			SourceFile: "",
 			Language:   "",
-			Properties: map[string]string{
-				"table":      normName,
-				"repo":       repo,
-				"provenance": "SYNTHESIZED_TABLE_CONVERGENCE",
-			},
-		})
+		}.WithProperties(map[string]string{
+			"table":      normName,
+			"repo":       repo,
+			"provenance": "SYNTHESIZED_TABLE_CONVERGENCE",
+		},
+		))
 		stats.TablesConverged++
 		return id
 	}
@@ -137,12 +137,11 @@ func ApplyMigrationSchemaOps(doc *graph.Document) MigrationSchemaOpsStats {
 		}
 		existingEdge[id] = struct{}{}
 		newEdges = append(newEdges, graph.Relationship{
-			ID:         id,
-			FromID:     fromID,
-			ToID:       toID,
-			Kind:       kind,
-			Properties: props,
-		})
+			ID:     id,
+			FromID: fromID,
+			ToID:   toID,
+			Kind:   kind,
+		}.WithProperties(props))
 		return true
 	}
 
@@ -188,7 +187,7 @@ func ApplyMigrationSchemaOps(doc *graph.Document) MigrationSchemaOpsStats {
 		if e.Kind != sharedKindDataAccess {
 			continue
 		}
-		norm := normTable(e.Properties["table"])
+		norm := normTable(e.PropGet("table"))
 		if norm == "" {
 			continue
 		}
@@ -230,7 +229,7 @@ func recognizeMigrationSchemaOps(e *graph.Entity) []migrationSchemaOp {
 	if e == nil {
 		return nil
 	}
-	p := e.Properties
+	p := e.PropsSnapshot()
 
 	switch e.Kind {
 	// --- Django: one Migration entity, operations in a JSON array -----------

@@ -91,7 +91,7 @@ func isServerEndpointDefinition(e *graph.Entity) bool {
 	if e == nil || isRouterExpandedRoute(e) {
 		return false
 	}
-	if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
+	if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
 		return false
 	}
 	return isHTTPEndpointDefinition(e)
@@ -103,7 +103,7 @@ func endpointFramework(e *graph.Entity) string {
 	if e == nil {
 		return ""
 	}
-	if fw := strings.ToLower(strings.TrimSpace(e.Properties["framework"])); fw != "" {
+	if fw := strings.ToLower(strings.TrimSpace(e.PropGet("framework"))); fw != "" {
 		return fw
 	}
 	return strings.ToLower(strings.TrimSpace(e.Language))

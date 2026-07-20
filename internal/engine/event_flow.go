@@ -332,8 +332,7 @@ func RunEventFlow(doc *graph.Document, cfg EventFlowConfig) eventFlowStats {
 			StartLine:  seedEnt.StartLine,
 			EndLine:    seedEnt.EndLine,
 			Language:   seedEnt.Language,
-			Properties: props,
-		})
+		}.WithProperties(props))
 		stats.EventFlows++
 
 		// SEED_OF_EVENT_FLOW: channel → EventFlow.
@@ -352,10 +351,10 @@ func RunEventFlow(doc *graph.Document, cfg EventFlowConfig) eventFlowStats {
 				FromID: flowID,
 				ToID:   stepID,
 				Kind:   RelationshipKindStepInEventFlow,
-				Properties: map[string]string{
-					"step_index": strconv.Itoa(i),
-				},
-			}
+			}.WithProperties(map[string]string{
+				"step_index": strconv.Itoa(i),
+			},
+			)
 			doc.Relationships = append(doc.Relationships, rel)
 			stats.StepEdges++
 		}

@@ -93,12 +93,12 @@ func entityLabel(e *graph.Entity) string {
 	if e.Kind != "SCOPE.Process" {
 		return e.Name
 	}
-	if e.Properties != nil {
+	if e.PropLen() > 0 {
 		// Prefer the pre-stored entry_name which is the entry function's name.
-		if en := e.Properties["entry_name"]; en != "" {
+		if en := e.PropGet("entry_name"); en != "" {
 			// If we also have chain_labels, derive the terminal name for a richer
 			// "entry → terminal" label that matches what the pass would have built.
-			if cl := e.Properties["chain_labels"]; cl != "" {
+			if cl := e.PropGet("chain_labels"); cl != "" {
 				// chain_labels is "A → B → … → Z"; extract the last segment.
 				parts := strings.Split(cl, " → ")
 				if len(parts) >= 2 {
@@ -108,7 +108,7 @@ func entityLabel(e *graph.Entity) string {
 			return en + " flow"
 		}
 		// Fallback: last path component of entry_id (strips the scope prefix).
-		if eid := e.Properties["entry_id"]; eid != "" {
+		if eid := e.PropGet("entry_id"); eid != "" {
 			if idx := strings.LastIndexAny(eid, ":./"); idx >= 0 && idx < len(eid)-1 {
 				return eid[idx+1:] + " flow"
 			}

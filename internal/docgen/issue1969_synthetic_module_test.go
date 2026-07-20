@@ -84,18 +84,19 @@ func issue1969SyntheticHarness(t *testing.T) (groupName, synthModuleID string) {
 		Repo:           repoPath,
 		IndexerVersion: "test",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID:         synthModID,
 				Name:       "myapp.services",
 				Kind:       "Module",
 				SourceFile: "", // synthetic: no source file
-				Properties: map[string]string{
-					"synthetic": "true",
-					"module":    "myapp.services",
-					"repo":      "repo",
-				},
+
+			}.WithProperties(map[string]string{
+				"synthetic": "true",
+				"module":    "myapp.services",
+				"repo":      "repo",
 			},
-			{
+			),
+			graph.Entity{
 				ID:         funcID,
 				Name:       "do_work",
 				Kind:       "SCOPE.Operation",
@@ -103,9 +104,8 @@ func issue1969SyntheticHarness(t *testing.T) (groupName, synthModuleID string) {
 				SourceFile: "myapp/services/tasks.py",
 				StartLine:  10,
 				Language:   "python",
-				Properties: map[string]string{"module": "myapp.services"},
-			},
-			{
+			}.WithProperties(map[string]string{"module": "myapp.services"}),
+			graph.Entity{
 				ID:         classID,
 				Name:       "TaskQueue",
 				Kind:       "SCOPE.Component",
@@ -113,8 +113,7 @@ func issue1969SyntheticHarness(t *testing.T) (groupName, synthModuleID string) {
 				SourceFile: "myapp/services/queue.py",
 				StartLine:  5,
 				Language:   "python",
-				Properties: map[string]string{"module": "myapp.services"},
-			},
+			}.WithProperties(map[string]string{"module": "myapp.services"}),
 		},
 		Relationships: []graph.Relationship{
 			{

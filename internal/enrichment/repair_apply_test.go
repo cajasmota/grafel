@@ -57,11 +57,11 @@ func TestApplyRepairs_BindToEntity_Success(t *testing.T) {
 	if r.ToID != "bbbbbbbbbbbbbbbb" {
 		t.Fatalf("ToID = %q, want hex target", r.ToID)
 	}
-	if r.Properties["resolved_by"] != "agent-repair" {
-		t.Fatalf("resolved_by = %q, want agent-repair", r.Properties["resolved_by"])
+	if r.PropGet("resolved_by") != "agent-repair" {
+		t.Fatalf("resolved_by = %q, want agent-repair", r.PropGet("resolved_by"))
 	}
-	if !strings.Contains(r.Properties["repair_reasoning"], "imported from b.py") {
-		t.Fatalf("repair_reasoning = %q", r.Properties["repair_reasoning"])
+	if !strings.Contains(r.PropGet("repair_reasoning"), "imported from b.py") {
+		t.Fatalf("repair_reasoning = %q", r.PropGet("repair_reasoning"))
 	}
 }
 
@@ -150,7 +150,7 @@ func TestApplyRepairs_R6_ResolvedByTag(t *testing.T) {
 		TargetEntityID: "bbbbbbbbbbbbbbbb",
 		Reasoning:      "ok",
 	}}, ApplyRepairsOptions{})
-	if doc.Relationships[0].Properties["resolved_by"] != "agent-repair" {
+	if doc.Relationships[0].PropGet("resolved_by") != "agent-repair" {
 		t.Fatalf("R6 violated")
 	}
 }
@@ -166,11 +166,11 @@ func TestApplyRepairs_ResolvedByAgent_Propagated(t *testing.T) {
 		Reasoning:      "imported from b.py",
 		Source:         "generate-docs/pass-1a",
 	}}, ApplyRepairsOptions{})
-	if doc.Relationships[0].Properties["resolved_by"] != "agent-repair" {
-		t.Fatalf("resolved_by = %q", doc.Relationships[0].Properties["resolved_by"])
+	if doc.Relationships[0].PropGet("resolved_by") != "agent-repair" {
+		t.Fatalf("resolved_by = %q", doc.Relationships[0].PropGet("resolved_by"))
 	}
-	if doc.Relationships[0].Properties["resolved_by_agent"] != "generate-docs/pass-1a" {
-		t.Fatalf("resolved_by_agent = %q", doc.Relationships[0].Properties["resolved_by_agent"])
+	if doc.Relationships[0].PropGet("resolved_by_agent") != "generate-docs/pass-1a" {
+		t.Fatalf("resolved_by_agent = %q", doc.Relationships[0].PropGet("resolved_by_agent"))
 	}
 }
 
@@ -185,7 +185,7 @@ func TestApplyRepairs_ResolvedByAgent_OmittedWhenEmpty(t *testing.T) {
 		Reasoning:      "imported from b.py",
 		Source:         "", // explicitly empty
 	}}, ApplyRepairsOptions{})
-	if _, found := doc.Relationships[0].Properties["resolved_by_agent"]; found {
+	if _, found := doc.Relationships[0].PropLookup("resolved_by_agent"); found {
 		t.Fatalf("resolved_by_agent should be absent for empty Source")
 	}
 }
@@ -202,8 +202,8 @@ func TestApplyRepairs_R7_ReasoningPersistedAndRejectedIfEmpty(t *testing.T) {
 			TargetEntityID: "bbbbbbbbbbbbbbbb",
 			Reasoning:      "verbatim reasoning text",
 		}}, ApplyRepairsOptions{})
-		if doc.Relationships[0].Properties["repair_reasoning"] != "verbatim reasoning text" {
-			t.Fatalf("reasoning lost: %q", doc.Relationships[0].Properties["repair_reasoning"])
+		if doc.Relationships[0].PropGet("repair_reasoning") != "verbatim reasoning text" {
+			t.Fatalf("reasoning lost: %q", doc.Relationships[0].PropGet("repair_reasoning"))
 		}
 	})
 	t.Run("rejected_if_empty", func(t *testing.T) {
@@ -316,7 +316,7 @@ func TestApplyRepairs_ReclassifyAsDynamic(t *testing.T) {
 	if doc.Relationships[0].ToID != originalToID {
 		t.Fatalf("dynamic reclassify changed ToID")
 	}
-	if doc.Relationships[0].Properties["dynamic_reason"] != "env-var-route" {
+	if doc.Relationships[0].PropGet("dynamic_reason") != "env-var-route" {
 		t.Fatalf("dynamic_reason lost")
 	}
 }

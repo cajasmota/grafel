@@ -81,16 +81,16 @@ var contractApplicableFrameworks = map[string]bool{
 // attribution), which router-expanded routes carry even when they leave the
 // generic `framework` prop unset.
 func isContractApplicableEndpoint(e *graph.Entity) bool {
-	if e == nil || e.Properties == nil {
+	if e == nil || e.PropLen() == 0 {
 		return false
 	}
-	if contractApplicableFrameworks[strings.ToLower(e.Properties["framework"])] {
+	if contractApplicableFrameworks[strings.ToLower(e.PropGet("framework"))] {
 		return true
 	}
-	if strings.Contains(strings.ToLower(e.Properties["pattern_type"]), "drf") {
+	if strings.Contains(strings.ToLower(e.PropGet("pattern_type")), "drf") {
 		return true
 	}
-	if e.Properties["drf_view_method"] != "" {
+	if e.PropGet("drf_view_method") != "" {
 		return true
 	}
 	return false
@@ -153,10 +153,10 @@ func (s *Server) handleV2PathPosture(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if e.Kind == "http_endpoint_call" ||
-				e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+				e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
 				continue
 			}
-			path := e.Properties["path"]
+			path := e.PropGet("path")
 			if path == "" {
 				path = e.Name
 			}
@@ -209,7 +209,7 @@ func (s *Server) handleV2PathPosture(w http.ResponseWriter, r *http.Request) {
 			// Also consider the endpoint's own drf_view_method attribution (the
 			// router-expanded route records "ViewSet.method" directly), so a path
 			// whose handler did not re-resolve still yields a contract target.
-			if dvm := e.Properties["drf_view_method"]; dvm != "" {
+			if dvm := e.PropGet("drf_view_method"); dvm != "" {
 				if cls := classFromDotted(dvm); cls != "" {
 					key := strings.ToLower(cls)
 					if !seenTarget[key] {
@@ -292,8 +292,8 @@ func owningClassOfHandler(h *graph.Entity) string {
 	if cls := classFromDotted(h.Name); cls != "" {
 		return cls
 	}
-	if h.Properties != nil {
-		if cls := classFromDotted(h.Properties["drf_view_method"]); cls != "" {
+	if h.PropLen() > 0 {
+		if cls := classFromDotted(h.PropGet("drf_view_method")); cls != "" {
 			return cls
 		}
 	}

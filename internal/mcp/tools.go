@@ -1425,7 +1425,7 @@ func agentResolvedEdgesForEntity(lr *LoadedRepo, entityID string, scopeIsOne boo
 			continue
 		}
 		r := &rels[e.relIdx]
-		if r.Properties["resolved_by"] != "agent-repair" {
+		if r.PropGet("resolved_by") != "agent-repair" {
 			continue
 		}
 		toID := r.ToID
@@ -1437,10 +1437,10 @@ func agentResolvedEdgesForEntity(lr *LoadedRepo, entityID string, scopeIsOne boo
 			"target":      toID,
 			"resolved_by": "agent-repair",
 		}
-		if v := r.Properties["resolved_by_agent"]; v != "" {
+		if v := r.PropGet("resolved_by_agent"); v != "" {
 			entry["resolved_by_agent"] = v
 		}
-		if v := r.Properties["repair_reasoning"]; v != "" {
+		if v := r.PropGet("repair_reasoning"); v != "" {
 			entry["repair_reasoning"] = v
 		}
 		out = append(out, entry)
@@ -1532,12 +1532,12 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 		// Line number from relationship properties.
 		lineNum := 0
 		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].Properties["line"]; v != "" {
+			if v := rels[ed.relIdx].PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					lineNum = n
 				}
 			}
-			if v := rels[ed.relIdx].Properties["via"]; v != "" {
+			if v := rels[ed.relIdx].PropGet("via"); v != "" {
 				entry["via"] = v
 			}
 		}
@@ -1658,7 +1658,7 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 
 		lineNum := 0
 		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].Properties["line"]; v != "" {
+			if v := rels[ed.relIdx].PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					lineNum = n
 				}
@@ -1713,12 +1713,12 @@ func inspectDiscriminators(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []m
 		}
 		r := &rels[ed.relIdx]
 		line := 0
-		if v := r.Properties["line"]; v != "" {
+		if v := r.PropGet("line"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
 				line = n
 			}
 		}
-		literal := r.Properties["literal"]
+		literal := r.PropGet("literal")
 		other := ed.target
 		if !scopeIsOne {
 			// Synthetic "var:<name>" stubs are not prefixed (they are not
@@ -1888,7 +1888,7 @@ func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, acce
 			"line":      0,
 		}
 		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].Properties["line"]; v != "" {
+			if v := rels[ed.relIdx].PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					entry["line"] = n
 				}
@@ -2121,8 +2121,8 @@ func serializeEntity(repo string, e *graph.Entity, scopeIsOne bool, verbose ...b
 		// god-node/articulation flags are added here so a verbose inspect is a
 		// superset of include= (#5396).
 		addAlgoFields(out, e)
-		if len(e.Properties) > 0 {
-			out["properties"] = e.Properties
+		if e.PropLen() > 0 {
+			out["properties"] = e.PropsSnapshot()
 		}
 	}
 	return out

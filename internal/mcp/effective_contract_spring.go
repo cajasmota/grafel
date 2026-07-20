@@ -110,7 +110,7 @@ func isSpringEndpoint(e *graph.Entity) bool {
 		return true
 	}
 	if fw == "java" || fw == "kotlin" {
-		p := e.Properties
+		p := e.PropsSnapshot()
 		if p["request_body_type"] != "" || p["path_params"] != "" ||
 			p["parameters"] != "" || p["api_responses"] != "" ||
 			strings.Contains(strings.ToLower(p["route_decorator"]), "mapping") {
@@ -124,8 +124,8 @@ func isSpringEndpoint(e *graph.Entity) bool {
 func composeSpringContract(r *LoadedRepo, ep *graph.Entity, handler *graph.Entity) effectiveContract {
 	c := effectiveContract{
 		Framework: "spring",
-		Verb:      strings.ToUpper(ep.Properties["verb"]),
-		Path:      ep.Properties["path"],
+		Verb:      strings.ToUpper(ep.PropGet("verb")),
+		Path:      ep.PropGet("path"),
 		Kind:      "explicit",
 	}
 	if handler != nil {

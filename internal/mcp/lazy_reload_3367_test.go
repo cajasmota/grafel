@@ -32,8 +32,8 @@ func lazyTestDoc() *graph.Document {
 		},
 		Relationships: []graph.Relationship{
 			{FromID: "a", ToID: "b", Kind: "CALLS"},
-			{FromID: "p", ToID: "a", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "0"}},
-			{FromID: "p", ToID: "b", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "1"}},
+			graph.Relationship{FromID: "p", ToID: "a", Kind: stepInProcessEdge}.WithProperties(map[string]string{"step_index": "0"}),
+			graph.Relationship{FromID: "p", ToID: "b", Kind: stepInProcessEdge}.WithProperties(map[string]string{"step_index": "1"}),
 		},
 	}
 }

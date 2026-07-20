@@ -99,7 +99,7 @@ func TestGetSource_NestedModuleRelativePath_5682(t *testing.T) {
 	}
 
 	doc := &graph.Document{
-		Entities: []graph.Entity{{
+		Entities: []graph.Entity{graph.Entity{
 			ID:            "ent_charge",
 			Name:          "Charge",
 			QualifiedName: "example.com/billing/pkg.Charge",
@@ -107,8 +107,7 @@ func TestGetSource_NestedModuleRelativePath_5682(t *testing.T) {
 			// Module-relative — NOT relative to the repo root.
 			SourceFile: "pkg/handler.go",
 			StartLine:  3, EndLine: 6, Language: "go",
-			Properties: map[string]string{"module": "pkg"},
-		}},
+		}.WithProperties(map[string]string{"module": "pkg"})},
 	}
 	srv := newTestServerWithRepoPath(t, "billing-mono", root, doc)
 

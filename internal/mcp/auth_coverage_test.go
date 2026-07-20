@@ -31,82 +31,76 @@ func buildAuthCoverageDoc() *graph.Document {
 	return &graph.Document{
 		Entities: []graph.Entity{
 			// Protected: shares source file with auth_policy entity.
-			{
+			graph.Entity{
 				ID: "ep_login_required", Name: "get_dashboard",
 				Kind:       "http_endpoint_definition",
 				SourceFile: "views/dashboard.py", StartLine: 10,
-				Properties: map[string]string{"verb": "GET", "path": "/dashboard"},
-			},
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/dashboard"}),
 			// Protected: TAGGED_AS edge to auth_policy.
-			{
+			graph.Entity{
 				ID: "ep_tagged_auth", Name: "list_orders",
 				Kind:       "http_endpoint_definition",
 				SourceFile: "routes/orders.py", StartLine: 20,
-				Properties: map[string]string{"verb": "GET", "path": "/orders"},
-			},
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/orders"}),
 			// Protected: auth_decorator property on entity itself.
-			{
+			graph.Entity{
 				ID: "ep_prop_auth", Name: "create_post",
 				Kind:       "http_endpoint_definition",
 				SourceFile: "routes/posts.py", StartLine: 30,
-				Properties: map[string]string{
-					"verb":           "POST",
-					"path":           "/posts",
-					"auth_decorator": "jwt_required",
-				},
+			}.WithProperties(map[string]string{
+				"verb":           "POST",
+				"path":           "/posts",
+				"auth_decorator": "jwt_required",
 			},
+			),
 			// Unprotected: no auth signal → severity warn.
-			{
+			graph.Entity{
 				ID: "ep_public", Name: "list_articles",
 				Kind:       "http_endpoint_definition",
 				SourceFile: "routes/public.py", StartLine: 5,
-				Properties: map[string]string{"verb": "GET", "path": "/articles"},
-			},
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/articles"}),
 			// Unprotected: sensitive (delete) + IDOR ({user_id}) → severity error.
-			{
+			graph.Entity{
 				ID: "ep_delete_no_auth", Name: "delete_user",
 				Kind:       "http_endpoint_definition",
 				SourceFile: "routes/users.py", StartLine: 42,
-				Properties: map[string]string{"verb": "DELETE", "path": "/users/{user_id}"},
-			},
+			}.WithProperties(map[string]string{"verb": "DELETE", "path": "/users/{user_id}"}),
 			// Unprotected: sensitive (payment/checkout) → severity error.
-			{
+			graph.Entity{
 				ID: "ep_payment_no_auth", Name: "checkout",
 				Kind:       "http_endpoint_definition",
 				SourceFile: "routes/billing.py", StartLine: 15,
-				Properties: map[string]string{"verb": "POST", "path": "/checkout"},
-			},
+			}.WithProperties(map[string]string{"verb": "POST", "path": "/checkout"}),
 			// Call-site — must NOT appear in auth coverage results.
-			{
+			graph.Entity{
 				ID: "ep_call_site", Name: "fetchOrders",
 				Kind:       "http_endpoint_call",
 				SourceFile: "services/order_service.py", StartLine: 8,
-				Properties: map[string]string{"verb": "GET", "path": "/orders"},
-			},
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/orders"}),
 			// Auth policy entity: shares file with ep_login_required.
-			{
+			graph.Entity{
 				ID: "auth_login_required", Name: "login_required@views/dashboard.py:9",
 				Kind:       "SCOPE.Config",
 				Subtype:    "auth_policy",
 				SourceFile: "views/dashboard.py", StartLine: 9,
-				Properties: map[string]string{
-					"kind":            "auth_policy",
-					"annotation_name": "@login_required",
-					"middleware_name": "login_required",
-				},
+			}.WithProperties(map[string]string{
+				"kind":            "auth_policy",
+				"annotation_name": "@login_required",
+				"middleware_name": "login_required",
 			},
+			),
 			// Auth policy entity: linked to ep_tagged_auth via TAGGED_AS.
-			{
+			graph.Entity{
 				ID: "auth_policy_tagged", Name: "auth_policy_nestjs_JwtAuthGuard",
 				Kind:       "SCOPE.Config",
 				Subtype:    "auth_policy",
 				SourceFile: "routes/orders.py", StartLine: 18,
-				Properties: map[string]string{
-					"kind":            "auth_policy",
-					"annotation_name": "@UseGuards",
-					"middleware_name": "JwtAuthGuard",
-				},
+			}.WithProperties(map[string]string{
+				"kind":            "auth_policy",
+				"annotation_name": "@UseGuards",
+				"middleware_name": "JwtAuthGuard",
 			},
+			),
 		},
 		Relationships: []graph.Relationship{
 			// TAGGED_AS: ep_tagged_auth → auth_policy_tagged (but ep_tagged_auth and
@@ -353,37 +347,31 @@ func TestAuthCoverage_DefaultDeny(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
 			// 4 protected (via file-level auth_policy), 1 unprotected → 80% → default-deny.
-			{
+			graph.Entity{
 				ID: "e1", Kind: "http_endpoint_definition",
 				SourceFile: "views/a.py", Name: "view_a",
-				Properties: map[string]string{"verb": "GET", "path": "/a"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/a"}),
+			graph.Entity{
 				ID: "e2", Kind: "http_endpoint_definition",
 				SourceFile: "views/a.py", Name: "view_b",
-				Properties: map[string]string{"verb": "GET", "path": "/b"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/b"}),
+			graph.Entity{
 				ID: "e3", Kind: "http_endpoint_definition",
 				SourceFile: "views/a.py", Name: "view_c",
-				Properties: map[string]string{"verb": "GET", "path": "/c"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/c"}),
+			graph.Entity{
 				ID: "e4", Kind: "http_endpoint_definition",
 				SourceFile: "views/a.py", Name: "view_d",
-				Properties: map[string]string{"verb": "GET", "path": "/d"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/d"}),
+			graph.Entity{
 				ID: "e5", Kind: "http_endpoint_definition",
 				SourceFile: "views/public.py", Name: "public_view",
-				Properties: map[string]string{"verb": "GET", "path": "/public"},
-			},
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/public"}),
 			// auth_policy in views/a.py covers e1-e4.
-			{
+			graph.Entity{
 				ID: "auth1", Kind: "SCOPE.Config", Subtype: "auth_policy",
 				SourceFile: "views/a.py", Name: "login_required@views/a.py:1",
-				Properties: map[string]string{"middleware_name": "login_required"},
-			},
+			}.WithProperties(map[string]string{"middleware_name": "login_required"}),
 		},
 	}
 	s := newTestServer(t, doc)
@@ -404,16 +392,14 @@ func TestAuthCoverage_TaggedAS(t *testing.T) {
 	// Endpoint in a DIFFERENT file than the auth_policy entity, but linked via TAGGED_AS.
 	doc := &graph.Document{
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "ep1", Kind: "http_endpoint_definition",
 				SourceFile: "routes/api.py", Name: "protected_endpoint",
-				Properties: map[string]string{"verb": "GET", "path": "/protected"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/protected"}),
+			graph.Entity{
 				ID: "auth1", Kind: "SCOPE.Config", Subtype: "auth_policy",
 				SourceFile: "middleware/auth.py", Name: "JwtAuthGuard",
-				Properties: map[string]string{"middleware_name": "JwtAuthGuard"},
-			},
+			}.WithProperties(map[string]string{"middleware_name": "JwtAuthGuard"}),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "rel1", FromID: "ep1", ToID: "auth1", Kind: "TAGGED_AS"},
@@ -488,16 +474,15 @@ func drfViewClass(id, name, file string, start, end int, props map[string]string
 	return graph.Entity{
 		ID: id, Name: name, Kind: "View", Subtype: "class",
 		SourceFile: file, StartLine: start, EndLine: end,
-		Language: "python", Properties: props,
-	}
+		Language: "python",
+	}.WithProperties(props)
 }
 
 func drfEndpoint(id, name, file, verb, path string, line int) graph.Entity {
 	return graph.Entity{
 		ID: id, Name: name, Kind: "http_endpoint_definition",
 		SourceFile: file, StartLine: line, Language: "python",
-		Properties: map[string]string{"verb": verb, "path": path},
-	}
+	}.WithProperties(map[string]string{"verb": verb, "path": path})
 }
 
 func TestAuthCoverage_DRFClassPermissionClasses_Protected(t *testing.T) {
@@ -613,15 +598,15 @@ func TestAuthCoverage_DRFMixedFile_RangeAttribution(t *testing.T) {
 func TestAuthCoverage_DRFGlobalDefault_Protected(t *testing.T) {
 	t.Parallel()
 	doc := &graph.Document{Entities: []graph.Entity{
-		{
+		graph.Entity{
 			ID: "settings", Name: "settings", Kind: "SCOPE.Config", Subtype: "config_module",
 			SourceFile: "proj/settings.py", Language: "python",
-			Properties: map[string]string{
-				"config_type":                    "django_settings",
-				"drf_default_permission_present": "true",
-				"drf_default_permission_classes": "IsAuthenticated",
-			},
+		}.WithProperties(map[string]string{
+			"config_type":                    "django_settings",
+			"drf_default_permission_present": "true",
+			"drf_default_permission_classes": "IsAuthenticated",
 		},
+		),
 		// No View entity / no permission props → relies purely on the global default.
 		drfEndpoint("ep", "list", "views/plain.py", "GET", "/plain", 10),
 	}}
@@ -636,15 +621,15 @@ func TestAuthCoverage_DRFGlobalDefault_Protected(t *testing.T) {
 func TestAuthCoverage_DRFGlobalDefault_AllowAnyOpen(t *testing.T) {
 	t.Parallel()
 	doc := &graph.Document{Entities: []graph.Entity{
-		{
+		graph.Entity{
 			ID: "settings", Name: "settings", Kind: "SCOPE.Config", Subtype: "config_module",
 			SourceFile: "proj/settings.py", Language: "python",
-			Properties: map[string]string{
-				"config_type":                    "django_settings",
-				"drf_default_permission_present": "true",
-				"drf_default_permission_classes": "AllowAny",
-			},
+		}.WithProperties(map[string]string{
+			"config_type":                    "django_settings",
+			"drf_default_permission_present": "true",
+			"drf_default_permission_classes": "AllowAny",
 		},
+		),
 		drfEndpoint("ep", "list", "views/plain.py", "GET", "/plain", 10),
 	}}
 	s := newTestServer(t, doc)

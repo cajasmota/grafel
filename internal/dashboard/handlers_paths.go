@@ -137,10 +137,10 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 			}
 			// Exclude call-site entities (new kind) and legacy consumer-side synthetics.
 			if e.Kind == "http_endpoint_call" ||
-				e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+				e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
 				continue
 			}
-			path := e.Properties["path"]
+			path := e.PropGet("path")
 			if path == "" {
 				path = e.Name
 			}
@@ -151,18 +151,18 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 			if !isHTTPEndpointPath(path) {
 				continue
 			}
-			verb := strings.ToUpper(e.Properties["verb"])
+			verb := strings.ToUpper(e.PropGet("verb"))
 			if verb == "" {
 				verb = "ANY"
 			}
 			// DRF dedup: skip urlconf_nested_include ANY entries when a
 			// drf_router_expanded entry exists for the same path.
-			if verb == "ANY" && e.Properties["urlconf_nested_include"] == "true" {
+			if verb == "ANY" && e.PropGet("urlconf_nested_include") == "true" {
 				continue
 			}
-			framework := e.Properties["framework"]
-			isWebhook := e.Properties["is_webhook"] == "true"
-			owningBackend := e.Properties["owning_backend"]
+			framework := e.PropGet("framework")
+			isWebhook := e.PropGet("is_webhook") == "true"
+			owningBackend := e.PropGet("owning_backend")
 			if owningBackend == "" {
 				// Fallback heuristic: use the handler name prefix or repo slug
 				// to infer a backend name when the property is absent (#1217
@@ -422,10 +422,10 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 			}
 			// Exclude call-site entities — they are not real endpoints.
 			if e.Kind == "http_endpoint_call" ||
-				e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+				e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
 				continue
 			}
-			path := e.Properties["path"]
+			path := e.PropGet("path")
 			if path == "" {
 				path = e.Name
 			}
@@ -436,20 +436,20 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 				pathStr = path
 			}
 
-			verb := strings.ToUpper(e.Properties["verb"])
+			verb := strings.ToUpper(e.PropGet("verb"))
 			if verb == "" {
 				verb = "ANY"
 			}
 
 			// Collect response keys.
 			var respKeys []string
-			if rk := e.Properties["response_keys"]; rk != "" {
+			if rk := e.PropGet("response_keys"); rk != "" {
 				respKeys = strings.Split(rk, ",")
 			}
 
 			// Collect status codes.
 			var statusCodes []int
-			if sc := e.Properties["status_codes"]; sc != "" {
+			if sc := e.PropGet("status_codes"); sc != "" {
 				for _, s := range strings.Split(sc, ",") {
 					if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
 						statusCodes = append(statusCodes, n)
@@ -474,9 +474,9 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Track webhook status
-			if e.Properties["is_webhook"] == "true" {
+			if e.PropGet("is_webhook") == "true" {
 				isWebhook = true
-				webhookProvider = e.Properties["webhook_provider"]
+				webhookProvider = e.PropGet("webhook_provider")
 			}
 
 			// Enrich with docgen data (frontmatter preferred, first-line fallback).
@@ -487,8 +487,8 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 				Verb:            verb,
 				Path:            path,
 				Handler:         e.Name,
-				Framework:       e.Properties["framework"],
-				IsWebhook:       e.Properties["is_webhook"] == "true",
+				Framework:       e.PropGet("framework"),
+				IsWebhook:       e.PropGet("is_webhook") == "true",
 				ResponseKeys:    respKeys,
 				StatusCodes:     statusCodes,
 				InboundFetches:  inbound,

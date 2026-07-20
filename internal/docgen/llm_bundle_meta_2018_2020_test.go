@@ -141,33 +141,33 @@ func metaBundleHarness(t *testing.T) (groupName, moduleID string) {
 			// internal/extractors/python/imports.go +
 			// prune_import_placeholders.go), each carrying Bundle C
 			// annotations.
-			{
+			graph.Relationship{
 				ID:     graph.RelationshipID(fileID, importedReExportID, "IMPORTS"),
 				FromID: fileID,
 				ToID:   importedReExportID,
 				Kind:   "IMPORTS",
-				Properties: map[string]string{
-					"local_name":    "User",
-					"source_module": "client_fixture_x.models",
-					"imported_name": "User",
-					"re_export":     "true",
-					"package_init":  "true",
-					"public":        "true",
-				},
+			}.WithProperties(map[string]string{
+				"local_name":    "User",
+				"source_module": "client_fixture_x.models",
+				"imported_name": "User",
+				"re_export":     "true",
+				"package_init":  "true",
+				"public":        "true",
 			},
-			{
+			),
+			graph.Relationship{
 				ID:     graph.RelationshipID(fileID, importedDeadID, "IMPORTS"),
 				FromID: fileID,
 				ToID:   importedDeadID,
 				Kind:   "IMPORTS",
-				Properties: map[string]string{
-					"local_name":    "Stale",
-					"source_module": "client_fixture_x.unused",
-					"imported_name": "Stale",
-					"dead_import":   "true",
-					"live":          "false",
-				},
+			}.WithProperties(map[string]string{
+				"local_name":    "Stale",
+				"source_module": "client_fixture_x.unused",
+				"imported_name": "Stale",
+				"dead_import":   "true",
+				"live":          "false",
 			},
+			),
 		},
 	}
 	docJSON, err := json.Marshal(doc)

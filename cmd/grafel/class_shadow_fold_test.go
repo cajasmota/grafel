@@ -20,7 +20,7 @@ func TestClassShadowFold_NoLine0Shadows(t *testing.T) {
 	byName := map[string][]graph.Entity{}
 	for _, e := range doc.Entities {
 		byName[e.Name] = append(byName[e.Name], e)
-		if e.Properties["provenance"] == "INFERRED_FROM_CLASS_HIERARCHY" {
+		if e.PropGet("provenance") == "INFERRED_FROM_CLASS_HIERARCHY" {
 			inferred++
 		}
 		if classLikeComponentSubtypes[e.Subtype] && e.StartLine == 0 {
@@ -59,7 +59,7 @@ func TestClassShadowFold_NoLine0Shadows(t *testing.T) {
 		if e.QualifiedName == "" {
 			t.Errorf("%s: surviving node has empty qualified_name", name)
 		}
-		if e.Properties["provenance"] == "INFERRED_FROM_CLASS_HIERARCHY" {
+		if e.PropGet("provenance") == "INFERRED_FROM_CLASS_HIERARCHY" {
 			t.Errorf("%s: surviving node still carries the inference provenance", name)
 		}
 	}

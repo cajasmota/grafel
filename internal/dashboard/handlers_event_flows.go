@@ -106,26 +106,26 @@ func (s *Server) handleEventFlowsList(w http.ResponseWriter, r *http.Request) {
 			if e.Kind != eventFlowEntityKind {
 				continue
 			}
-			sc, _ := strconv.Atoi(e.Properties["step_count"])
+			sc, _ := strconv.Atoi(e.PropGet("step_count"))
 			if sc < minSteps {
 				continue
 			}
-			seedID := e.Properties["entry_id"]
+			seedID := e.PropGet("entry_id")
 			if seedFilter != "" && seedID != seedFilter &&
 				dashPrefixedID(repo.Slug, seedID) != seedFilter {
 				continue
 			}
-			cc, _ := strconv.Atoi(e.Properties["channel_count"])
+			cc, _ := strconv.Atoi(e.PropGet("channel_count"))
 			items = append(items, EventFlowListItem{
 				EventFlowID:  dashPrefixedID(repo.Slug, e.ID),
 				Repo:         repo.Slug,
 				Label:        e.Name,
 				SeedID:       seedID,
-				SeedName:     e.Properties["entry_name"],
-				TerminalID:   e.Properties["terminal_id"],
+				SeedName:     e.PropGet("entry_name"),
+				TerminalID:   e.PropGet("terminal_id"),
 				StepCount:    sc,
 				ChannelCount: cc,
-				ChainLabels:  splitChainLabels(e.Properties["chain_labels"]),
+				ChainLabels:  splitChainLabels(e.PropGet("chain_labels")),
 				SourceFile:   e.SourceFile,
 				EntryKind:    "channel",
 			})
@@ -221,7 +221,7 @@ func (s *Server) handleEventFlowDetail(w http.ResponseWriter, r *http.Request) {
 			if rel.FromID != flowEnt.ID && dashPrefixedID(repo.Slug, rel.FromID) != flowID {
 				continue
 			}
-			idx, _ := strconv.Atoi(rel.Properties["step_index"])
+			idx, _ := strconv.Atoi(rel.PropGet("step_index"))
 			stepIDLocal := rel.ToID
 			if hit, ok := groupEntityIndex[stepIDLocal]; ok {
 				rawSteps = append(rawSteps, rawEFStep{
@@ -252,20 +252,20 @@ func (s *Server) handleEventFlowDetail(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	sc, _ := strconv.Atoi(flowEnt.Properties["step_count"])
-	cc, _ := strconv.Atoi(flowEnt.Properties["channel_count"])
+	sc, _ := strconv.Atoi(flowEnt.PropGet("step_count"))
+	cc, _ := strconv.Atoi(flowEnt.PropGet("channel_count"))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"event_flow_id": dashPrefixedID(flowRepoSlug, flowEnt.ID),
 		"repo":          flowRepoSlug,
 		"label":         flowEnt.Name,
-		"seed_id":       flowEnt.Properties["entry_id"],
-		"seed_name":     flowEnt.Properties["entry_name"],
-		"terminal_id":   flowEnt.Properties["terminal_id"],
+		"seed_id":       flowEnt.PropGet("entry_id"),
+		"seed_name":     flowEnt.PropGet("entry_name"),
+		"terminal_id":   flowEnt.PropGet("terminal_id"),
 		"step_count":    sc,
 		"channel_count": cc,
-		"chain_labels":  splitChainLabels(flowEnt.Properties["chain_labels"]),
-		"branches_dag":  flowEnt.Properties["branches_dag"],
+		"chain_labels":  splitChainLabels(flowEnt.PropGet("chain_labels")),
+		"branches_dag":  flowEnt.PropGet("branches_dag"),
 		"steps":         steps,
 		"entry_kind":    "channel",
 	})

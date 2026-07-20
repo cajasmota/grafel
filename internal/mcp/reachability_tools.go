@@ -82,10 +82,10 @@ func (s *Server) handleTestReachability(ctx context.Context, req mcpapi.CallTool
 		}
 		for i := range lr.Doc.Entities {
 			e := &lr.Doc.Entities[i]
-			if e.Properties == nil {
+			if e.PropLen() == 0 {
 				continue
 			}
-			val, ok := e.Properties[coverage.PropTestReachable]
+			val, ok := e.PropLookup(coverage.PropTestReachable)
 			if !ok {
 				continue // not a reachability-considered production entity
 			}
@@ -261,12 +261,12 @@ func projectReachRow(e *graph.Entity, reachableStr string) reachRow {
 		startLine:   e.StartLine,
 		isEndpoint:  isEndpointKind(e.Kind),
 		reachable:   reachable,
-		crossSignal: coverage.CrossSignal(e.Properties),
+		crossSignal: coverage.CrossSignal(e.PropsSnapshot()),
 	}
 	if reachable {
-		row.depth, _ = strconv.Atoi(e.Properties[coverage.PropReachDepth])
-		row.reachCount, _ = strconv.Atoi(e.Properties[coverage.PropReachingTestCount])
-		row.reaching = e.Properties[coverage.PropReachingTests]
+		row.depth, _ = strconv.Atoi(e.PropGet(coverage.PropReachDepth))
+		row.reachCount, _ = strconv.Atoi(e.PropGet(coverage.PropReachingTestCount))
+		row.reaching = e.PropGet(coverage.PropReachingTests)
 	}
 	return row
 }
@@ -284,10 +284,10 @@ func endpointRollup(lg *LoadedGroup, repoFilter []string) (total, reachable int)
 		}
 		for i := range lr.Doc.Entities {
 			e := &lr.Doc.Entities[i]
-			if e.Properties == nil || !isEndpointKind(e.Kind) {
+			if e.PropLen() == 0 || !isEndpointKind(e.Kind) {
 				continue
 			}
-			val, ok := e.Properties[coverage.PropTestReachable]
+			val, ok := e.PropLookup(coverage.PropTestReachable)
 			if !ok {
 				continue
 			}
@@ -315,8 +315,8 @@ func isEndpointKind(kind string) bool {
 // moduleOf returns an entity's module bucket: the stamped Properties["module"]
 // when present, else the containing directory of its source file.
 func moduleOf(e *graph.Entity) string {
-	if e.Properties != nil {
-		if m := e.Properties["module"]; m != "" {
+	if e.PropLen() > 0 {
+		if m := e.PropGet("module"); m != "" {
 			return m
 		}
 	}

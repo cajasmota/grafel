@@ -358,10 +358,10 @@ func TestSearchEntities_TopicKindAlias(t *testing.T) {
 
 func TestHandleFlowDeadEnds(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "p1", Name: "CheckoutFlow", Kind: "SCOPE.Process", Properties: map[string]string{
+		graph.Entity{ID: "p1", Name: "CheckoutFlow", Kind: "SCOPE.Process"}.WithProperties(map[string]string{
 			"terminal_id": "fn2",
 			"step_count":  "2",
-		}},
+		}),
 		{ID: "fn1", Name: "addToCart", Kind: "Function"},
 		{ID: "fn2", Name: "processPayment", Kind: "Function"},
 	}
@@ -383,14 +383,14 @@ func TestHandleFlowDeadEnds(t *testing.T) {
 
 func TestHandleFlowTruncated(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "p1", Name: "PaymentFlow", Kind: "SCOPE.Process", Properties: map[string]string{
+		graph.Entity{ID: "p1", Name: "PaymentFlow", Kind: "SCOPE.Process"}.WithProperties(map[string]string{
 			"truncated":        "true",
 			"truncated_reason": "max_depth exceeded",
 			"step_count":       "3",
-		}},
-		{ID: "p2", Name: "NormalFlow", Kind: "SCOPE.Process", Properties: map[string]string{
+		}),
+		graph.Entity{ID: "p2", Name: "NormalFlow", Kind: "SCOPE.Process"}.WithProperties(map[string]string{
 			"step_count": "5",
-		}},
+		}),
 	}
 	srv := newTestServer(t, minDoc(entities, nil))
 	out := callDashboardTool(t, srv.handleFlowTruncated, map[string]any{"group": "test"})
@@ -411,18 +411,18 @@ func TestHandleFlowTruncated(t *testing.T) {
 
 func TestHandleFlowDetail(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "p1", Name: "LoginFlow", Kind: "SCOPE.Process", Properties: map[string]string{
+		graph.Entity{ID: "p1", Name: "LoginFlow", Kind: "SCOPE.Process"}.WithProperties(map[string]string{
 			"entry_id":    "fn1",
 			"terminal_id": "fn2",
 			"cross_stack": "true",
-		}},
+		}),
 		{ID: "fn1", Name: "validateCredentials", Kind: "Function"},
 		{ID: "fn2", Name: "issueToken", Kind: "Function"},
 		{ID: "fx1", Name: "emitAuditLog", Kind: "Function"},
 	}
 	rels := []graph.Relationship{
-		{ID: "r1", FromID: "p1", ToID: "fn1", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "0"}},
-		{ID: "r2", FromID: "p1", ToID: "fn2", Kind: "STEP_IN_PROCESS", Properties: map[string]string{"step_index": "1"}},
+		graph.Relationship{ID: "r1", FromID: "p1", ToID: "fn1", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "0"}),
+		graph.Relationship{ID: "r2", FromID: "p1", ToID: "fn2", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "1"}),
 		{ID: "r3", FromID: "fx1", ToID: "fn2", Kind: "SIDE_EFFECT_OF"},
 	}
 	srv := newTestServer(t, minDoc(entities, rels))
@@ -699,8 +699,7 @@ func TestHandleFlows_UnknownAction(t *testing.T) {
 
 func TestHandleGraphPatterns_List(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "p1", Name: "RepositoryPattern", Kind: "SCOPE.Pattern",
-			Properties: map[string]string{"status": "active", "confidence": "0.9"}},
+		graph.Entity{ID: "p1", Name: "RepositoryPattern", Kind: "SCOPE.Pattern"}.WithProperties(map[string]string{"status": "active", "confidence": "0.9"}),
 	}
 	srv := newTestServer(t, minDoc(entities, nil))
 	out := callDashboardTool(t, srv.handleGraphPatterns, map[string]any{

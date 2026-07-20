@@ -36,18 +36,18 @@ func drfViewSetDoc() *graph.Document {
 				SourceFile: "views.py", StartLine: 10, EndLine: 20, Language: "python",
 			},
 			// Bodyless DRF synthetic for the inherited retrieve verb.
-			{
+			graph.Entity{
 				ID: "op_retrieve", Name: "RoleViewSet.retrieve", QualifiedName: "RoleViewSet.retrieve",
 				Kind: "SCOPE.Operation", Subtype: "method", Language: "python",
 				SourceFile: "views.py", StartLine: 0, EndLine: 0,
 				Signature: "def retrieve(self, request, *args, **kwargs)",
-				Properties: map[string]string{
-					"pattern_type":      "drf_viewset_implicit_method",
-					"viewset_class":     "RoleViewSet",
-					"inherited_from":    "rest_framework",
-					"drf_method_origin": "retrieve",
-				},
+			}.WithProperties(map[string]string{
+				"pattern_type":      "drf_viewset_implicit_method",
+				"viewset_class":     "RoleViewSet",
+				"inherited_from":    "rest_framework",
+				"drf_method_origin": "retrieve",
 			},
+			),
 			// External base stub (SCOPE.External "ext:" placeholder).
 			{
 				ID: "ext_modelviewset", Name: "ModelViewSet", Kind: "SCOPE.External",
@@ -55,13 +55,13 @@ func drfViewSetDoc() *graph.Document {
 			},
 		},
 		Relationships: []graph.Relationship{
-			{
+			graph.Relationship{
 				ID: "e1", FromID: "vs", ToID: "ext_modelviewset", Kind: "EXTENDS",
-				Properties: map[string]string{
-					"language":  "python",
-					"base_name": "rest_framework.viewsets.ModelViewSet",
-				},
+			}.WithProperties(map[string]string{
+				"language":  "python",
+				"base_name": "rest_framework.viewsets.ModelViewSet",
 			},
+			),
 		},
 	}
 }
@@ -180,8 +180,7 @@ func inRepoBaseDoc() *graph.Document {
 				Signature: "def handle(self, request)"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "e1", FromID: "child", ToID: "base", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "BaseService"}},
+			graph.Relationship{ID: "e1", FromID: "child", ToID: "base", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "BaseService"}),
 		},
 	}
 }
@@ -195,20 +194,19 @@ func TestInspect_UnresolvableInheritedMember_HonestUnresolved(t *testing.T) {
 			{ID: "cls", Name: "MysteryView", QualifiedName: "MysteryView",
 				Kind: "SCOPE.Component", Subtype: "class", SourceFile: "m.py",
 				StartLine: 1, EndLine: 2, Language: "python"},
-			{ID: "op", Name: "MysteryView.frobnicate", QualifiedName: "MysteryView.frobnicate",
+			graph.Entity{ID: "op", Name: "MysteryView.frobnicate", QualifiedName: "MysteryView.frobnicate",
 				Kind: "SCOPE.Operation", Subtype: "method", SourceFile: "m.py",
 				StartLine: 0, EndLine: 0, Language: "python",
 				Signature: "def frobnicate(self)",
-				Properties: map[string]string{
-					"pattern_type":      "drf_viewset_implicit_method",
-					"viewset_class":     "MysteryView",
-					"drf_method_origin": "frobnicate",
-				}},
+			}.WithProperties(map[string]string{
+				"pattern_type":      "drf_viewset_implicit_method",
+				"viewset_class":     "MysteryView",
+				"drf_method_origin": "frobnicate",
+			}),
 			{ID: "ext", Name: "WeirdBase", Kind: "SCOPE.External", Language: "python"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "e1", FromID: "cls", ToID: "ext", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "some.unknown.WeirdBase"}},
+			graph.Relationship{ID: "e1", FromID: "cls", ToID: "ext", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "some.unknown.WeirdBase"}),
 		},
 	}
 	srv := newTestServer(t, doc)

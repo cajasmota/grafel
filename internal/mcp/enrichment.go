@@ -55,11 +55,11 @@ func applyResolutions(repoPath string, lr *LoadedRepo) {
 		if !ok {
 			continue
 		}
-		if e.Properties == nil {
-			e.Properties = map[string]string{}
+		if e.PropLen() == 0 {
+			e.PropsReplace(map[string]string{})
 		}
 		if r.Kind != "" {
-			e.Properties[r.Kind] = r.Value
+			e.PropSet(r.Kind, r.Value)
 		}
 	}
 }

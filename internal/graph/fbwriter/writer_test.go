@@ -21,13 +21,13 @@ func TestRoundtripSmallGraph(t *testing.T) {
 		GeneratedAt: time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC),
 		Repo:        "fixture-mini",
 		Entities: []graph.Entity{
-			{ID: "ent0000000000000a", Name: "foo", Kind: "function", SourceFile: "a.go", StartLine: 10, Properties: map[string]string{"module": "pkg/a"}},
-			{ID: "ent0000000000000b", Name: "bar", Kind: "function", SourceFile: "b.go", StartLine: 20, Properties: map[string]string{"module": "pkg/b", "visibility": "public"}},
+			graph.Entity{ID: "ent0000000000000a", Name: "foo", Kind: "function", SourceFile: "a.go", StartLine: 10}.WithProperties(map[string]string{"module": "pkg/a"}),
+			graph.Entity{ID: "ent0000000000000b", Name: "bar", Kind: "function", SourceFile: "b.go", StartLine: 20}.WithProperties(map[string]string{"module": "pkg/b", "visibility": "public"}),
 			{ID: "ent0000000000000c", Name: "Baz", Kind: "type", SourceFile: "c.go", StartLine: 30},
 		},
 		Relationships: []graph.Relationship{
 			{ID: "rel000000000000aa", FromID: "ent0000000000000a", ToID: "ent0000000000000b", Kind: "calls"},
-			{ID: "rel000000000000ab", FromID: "ent0000000000000a", ToID: "ent0000000000000c", Kind: "references", Properties: map[string]string{"resolved": "true"}},
+			graph.Relationship{ID: "rel000000000000ab", FromID: "ent0000000000000a", ToID: "ent0000000000000c", Kind: "references"}.WithProperties(map[string]string{"resolved": "true"}),
 			{ID: "rel000000000000bc", FromID: "ent0000000000000b", ToID: "ent0000000000000c", Kind: "calls"},
 		},
 	}
@@ -288,9 +288,9 @@ func TestRoundtripLanguage(t *testing.T) {
 				SourceFile: "views.py", Language: "python"},
 			// Entity with Language already mirrored in Properties (extractor
 			// overrides must be preserved, not doubled).
-			{ID: "ent0000000000000b", Name: "handler", Kind: "function",
+			graph.Entity{ID: "ent0000000000000b", Name: "handler", Kind: "function",
 				SourceFile: "main.go", Language: "go",
-				Properties: map[string]string{"language": "go", "module": "cmd/main"}},
+			}.WithProperties(map[string]string{"language": "go", "module": "cmd/main"}),
 			// Entity with no Language and no recognized extension (synthetic).
 			// Must round-trip with Language="" (no spurious tag injected).
 			{ID: "ent0000000000000c", Name: "ext:requests", Kind: "external",
@@ -325,9 +325,9 @@ func TestRoundtripLanguage(t *testing.T) {
 	// #2370: Properties["language"] is no longer tunneled by the FB writer.
 	// Entity a was written with Properties unset for "language", so on read
 	// back the props map must not contain a synthesized "language" key.
-	if _, present := ea.Properties["language"]; present {
+	if _, present := ea.PropLookup("language"); present {
 		t.Errorf("entity a Properties[language]: unexpectedly present after #2370 retired the property-tunnel; props=%v",
-			ea.Properties)
+			ea.PropsSnapshot())
 	}
 
 	// entity b: Language="go" already in Properties — must not be duplicated
@@ -339,14 +339,14 @@ func TestRoundtripLanguage(t *testing.T) {
 	if eb.Language != "go" {
 		t.Errorf("entity b Language: got %q want %q", eb.Language, "go")
 	}
-	if eb.Properties["language"] != "go" {
+	if eb.PropGet("language") != "go" {
 		t.Errorf("entity b Properties[language]: got %q want %q",
-			eb.Properties["language"], "go")
+			eb.PropGet("language"), "go")
 	}
 	// Other properties must be preserved.
-	if eb.Properties["module"] != "cmd/main" {
+	if eb.PropGet("module") != "cmd/main" {
 		t.Errorf("entity b Properties[module]: got %q want %q",
-			eb.Properties["module"], "cmd/main")
+			eb.PropGet("module"), "cmd/main")
 	}
 
 	// entity c: no Language, no source file — must read back with Language="".

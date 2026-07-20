@@ -70,7 +70,7 @@ func fakeDashGroup() *DashGroup {
 	doc := &graph.Document{
 		Repo: "svc",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID:          "e1",
 				Name:        "UserService",
 				Kind:        "SCOPE.Component",
@@ -81,8 +81,7 @@ func fakeDashGroup() *DashGroup {
 				PageRank:    &pr1,
 				IsGodNode:   true,
 				CommunityID: &cid1,
-				Properties:  map[string]string{"framework": "gin"},
-			},
+			}.WithProperties(map[string]string{"framework": "gin"}),
 			{
 				ID:          "e2",
 				Name:        "AuthHandler",
@@ -94,7 +93,7 @@ func fakeDashGroup() *DashGroup {
 				PageRank:    &pr2,
 				CommunityID: &cid2,
 			},
-			{
+			graph.Entity{
 				ID:         "e3",
 				Name:       "POST /api/auth/login",
 				Kind:       "Endpoint",
@@ -102,13 +101,13 @@ func fakeDashGroup() *DashGroup {
 				StartLine:  5,
 				EndLine:    5,
 				Language:   "go",
-				Properties: map[string]string{
-					"verb":      "POST",
-					"path":      "/api/auth/login",
-					"framework": "gin",
-				},
+			}.WithProperties(map[string]string{
+				"verb":      "POST",
+				"path":      "/api/auth/login",
+				"framework": "gin",
 			},
-			{
+			),
+			graph.Entity{
 				ID:         "e4",
 				Name:       "GET /api/users",
 				Kind:       "Endpoint",
@@ -116,13 +115,13 @@ func fakeDashGroup() *DashGroup {
 				StartLine:  10,
 				EndLine:    10,
 				Language:   "go",
-				Properties: map[string]string{
-					"verb":      "GET",
-					"path":      "/api/users",
-					"framework": "gin",
-				},
+			}.WithProperties(map[string]string{
+				"verb":      "GET",
+				"path":      "/api/users",
+				"framework": "gin",
 			},
-			{
+			),
+			graph.Entity{
 				ID:         "e5",
 				Name:       "UserCreatedTopic",
 				Kind:       "MessageTopic",
@@ -130,9 +129,8 @@ func fakeDashGroup() *DashGroup {
 				StartLine:  1,
 				EndLine:    10,
 				Language:   "go",
-				Properties: map[string]string{"broker": "kafka"},
-			},
-			{
+			}.WithProperties(map[string]string{"broker": "kafka"}),
+			graph.Entity{
 				ID:         "e6",
 				Name:       "MainProcess",
 				Kind:       "SCOPE.Process",
@@ -140,33 +138,31 @@ func fakeDashGroup() *DashGroup {
 				StartLine:  1,
 				EndLine:    100,
 				Language:   "go",
-				Properties: map[string]string{
-					"cross_stack":  "false",
-					"step_count":   "2",
-					"entry_id":     "e1",
-					"entry_name":   "UserService",
-					"terminal_id":  "e2",
-					"chain_labels": "UserService,AuthHandler",
-				},
+			}.WithProperties(map[string]string{
+				"cross_stack":  "false",
+				"step_count":   "2",
+				"entry_id":     "e1",
+				"entry_name":   "UserService",
+				"terminal_id":  "e2",
+				"chain_labels": "UserService,AuthHandler",
 			},
+			),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "r1", FromID: "e1", ToID: "e2", Kind: "CALLS"},
 			{ID: "r2", FromID: "e1", ToID: "e5", Kind: "PUBLISHES_TO"},
-			{
-				ID:         "r3",
-				FromID:     "e2",
-				ToID:       "e6",
-				Kind:       "STEP_IN_PROCESS",
-				Properties: map[string]string{"step_index": "0"},
-			},
-			{
-				ID:         "r4",
-				FromID:     "e1",
-				ToID:       "e6",
-				Kind:       "STEP_IN_PROCESS",
-				Properties: map[string]string{"step_index": "1"},
-			},
+			graph.Relationship{
+				ID:     "r3",
+				FromID: "e2",
+				ToID:   "e6",
+				Kind:   "STEP_IN_PROCESS",
+			}.WithProperties(map[string]string{"step_index": "0"}),
+			graph.Relationship{
+				ID:     "r4",
+				FromID: "e1",
+				ToID:   "e6",
+				Kind:   "STEP_IN_PROCESS",
+			}.WithProperties(map[string]string{"step_index": "1"}),
 		},
 		Communities: []graph.CommunityResult{
 			{ID: 0, Size: 3, AutoName: "user-auth", TopEntities: []string{"e1", "e2"}},
@@ -581,32 +577,28 @@ func TestPathsList_OwningBackends_MultiBackend(t *testing.T) {
 	coreDoc := &graph.Document{
 		Repo: "core-api",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "ce1", Name: "GET /api/users", Kind: "http_endpoint_definition",
 				SourceFile: "routes.go", Language: "go",
-				Properties: map[string]string{"verb": "GET", "path": "/api/users", "owning_backend": "core"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/api/users", "owning_backend": "core"}),
+			graph.Entity{
 				ID: "ce2", Name: "POST /api/users", Kind: "http_endpoint_definition",
 				SourceFile: "routes.go", Language: "go",
-				Properties: map[string]string{"verb": "POST", "path": "/api/users/create", "owning_backend": "core"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "POST", "path": "/api/users/create", "owning_backend": "core"}),
+			graph.Entity{
 				ID: "ce3", Name: "GET /api/products", Kind: "http_endpoint_definition",
 				SourceFile: "routes.go", Language: "go",
-				Properties: map[string]string{"verb": "GET", "path": "/api/products", "owning_backend": "core"},
-			},
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/api/products", "owning_backend": "core"}),
 		},
 	}
 	// admin-api: 1 http_endpoint_definition endpoint owned by "admin"
 	adminDoc := &graph.Document{
 		Repo: "admin-api",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "ae1", Name: "GET /admin/users", Kind: "http_endpoint_definition",
 				SourceFile: "admin_routes.go", Language: "go",
-				Properties: map[string]string{"verb": "GET", "path": "/admin/users", "owning_backend": "admin"},
-			},
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/admin/users", "owning_backend": "admin"}),
 		},
 	}
 
@@ -682,16 +674,14 @@ func TestPathsList_OwningBackends_SingleBackend(t *testing.T) {
 	doc := &graph.Document{
 		Repo: "my-api",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "ep1", Name: "GET /health", Kind: "http_endpoint_definition",
 				SourceFile: "routes.go", Language: "go",
-				Properties: map[string]string{"verb": "GET", "path": "/health", "owning_backend": "my-api"},
-			},
-			{
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/health", "owning_backend": "my-api"}),
+			graph.Entity{
 				ID: "ep2", Name: "GET /api/items", Kind: "http_endpoint_definition",
 				SourceFile: "routes.go", Language: "go",
-				Properties: map[string]string{"verb": "GET", "path": "/api/items", "owning_backend": "my-api"},
-			},
+			}.WithProperties(map[string]string{"verb": "GET", "path": "/api/items", "owning_backend": "my-api"}),
 		},
 	}
 
@@ -795,38 +785,38 @@ func TestPathsList_XMLNoiseFiltered(t *testing.T) {
 	// Inject XML-noise Route and http_endpoint entities that should be
 	// filtered out from the Paths list.
 	xmlEntities := []graph.Entity{
-		{
+		graph.Entity{
 			ID:         "xml1",
 			Name:       "./w:tblBorders",
 			Kind:       "Route",
 			SourceFile: "docx_utils.py",
 			Language:   "python",
-			Properties: map[string]string{
-				"pattern_type": "ast_driven",
-				"framework":    "python",
-			},
+		}.WithProperties(map[string]string{
+			"pattern_type": "ast_driven",
+			"framework":    "python",
 		},
-		{
+		),
+		graph.Entity{
 			ID:         "xml2",
 			Name:       "./w:tcBorders",
 			Kind:       "Route",
 			SourceFile: "docx_utils.py",
 			Language:   "python",
-			Properties: map[string]string{
-				"pattern_type": "ast_driven",
-				"framework":    "python",
-			},
+		}.WithProperties(map[string]string{
+			"pattern_type": "ast_driven",
+			"framework":    "python",
 		},
-		{
+		),
+		graph.Entity{
 			ID:   "xml3",
 			Name: "http:ANY:/./w:tblBorders",
 			Kind: "http_endpoint",
-			Properties: map[string]string{
-				"path":         "/./w:tblBorders",
-				"verb":         "ANY",
-				"pattern_type": "http_endpoint_synthesis",
-			},
+		}.WithProperties(map[string]string{
+			"path":         "/./w:tblBorders",
+			"verb":         "ANY",
+			"pattern_type": "http_endpoint_synthesis",
 		},
+		),
 	}
 	doc := grp.Repos["svc"].Doc
 	for _, e := range xmlEntities {

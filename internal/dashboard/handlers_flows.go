@@ -198,15 +198,15 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 			if e.Kind != processEntityKind {
 				continue
 			}
-			cs := e.Properties["cross_stack"] == "true"
+			cs := e.PropGet("cross_stack") == "true"
 			if crossOnly && !cs {
 				continue
 			}
 			pid := dashPrefixedID(r.Slug, e.ID)
-			if entryFilter != "" && e.Properties["entry_id"] != entryFilter && pid != entryFilter {
+			if entryFilter != "" && e.PropGet("entry_id") != entryFilter && pid != entryFilter {
 				continue
 			}
-			sc, _ := strconv.Atoi(e.Properties["step_count"])
+			sc, _ := strconv.Atoi(e.PropGet("step_count"))
 			// #1639 — exclude trivial short flows from the default list.
 			// Cross-repo flows are exempt: a short chain that genuinely spans
 			// repos is meaningful even at 2-3 steps (the cross-repo bridge is
@@ -214,18 +214,18 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 			if sc < minSteps && !cs {
 				continue
 			}
-			entID := e.Properties["entry_id"]
+			entID := e.PropGet("entry_id")
 			ek := inferEntryKind(grp, entID)
 			item := ProcessItem{
 				ProcessID:        pid,
 				Repo:             r.Slug,
 				Label:            e.Name,
 				EntryID:          entID,
-				EntryName:        e.Properties["entry_name"],
-				TerminalID:       e.Properties["terminal_id"],
+				EntryName:        e.PropGet("entry_name"),
+				TerminalID:       e.PropGet("terminal_id"),
 				StepCount:        sc,
 				CrossStack:       cs,
-				ChainLabels:      splitChainLabels(e.Properties["chain_labels"]),
+				ChainLabels:      splitChainLabels(e.PropGet("chain_labels")),
 				SourceFile:       e.SourceFile,
 				EntryKind:        ek,
 				EntryModule:      entryModuleFromPath(e.SourceFile),
@@ -450,7 +450,7 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 					Name       string
 					Properties map[string]string
 					SourceFile string
-				}{e.ID, e.Name, e.Properties, e.SourceFile}
+				}{e.ID, e.Name, e.PropsSnapshot(), e.SourceFile}
 				break
 			}
 		}
@@ -491,7 +491,7 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 			// bridge steps (entity lives in a companion repo) are enriched
 			// with the correct repo slug and metadata (#1905).
 			stepIDLocal := rel.ToID
-			idx, _ := strconv.Atoi(rel.Properties["step_index"])
+			idx, _ := strconv.Atoi(rel.PropGet("step_index"))
 			if hit, ok := groupEntityIndex[stepIDLocal]; ok {
 				rawSteps = append(rawSteps, rawStep{
 					EntityID:   dashPrefixedID(hit.repo, hit.entity.ID),

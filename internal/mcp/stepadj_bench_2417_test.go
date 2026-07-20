@@ -46,8 +46,7 @@ func buildStepBenchDoc(nProcs, nSteps, nNoise int) (*graph.Document, string) {
 			})
 			rels = append(rels, graph.Relationship{
 				FromID: pid, ToID: sid, Kind: stepInProcessEdge,
-				Properties: map[string]string{"step_index": strconv.Itoa(s)},
-			})
+			}.WithProperties(map[string]string{"step_index": strconv.Itoa(s)}))
 		}
 	}
 
@@ -59,8 +58,7 @@ func buildStepBenchDoc(nProcs, nSteps, nNoise int) (*graph.Document, string) {
 		})
 		rels = append(rels, graph.Relationship{
 			FromID: targetProcID, ToID: sid, Kind: stepInProcessEdge,
-			Properties: map[string]string{"step_index": strconv.Itoa(s)},
-		})
+		}.WithProperties(map[string]string{"step_index": strconv.Itoa(s)}))
 	}
 
 	// Noise edges of other kinds to inflate R.
@@ -94,8 +92,8 @@ func buildProcessSteps_baseline(doc *graph.Document, procID string) []struct {
 			continue
 		}
 		idxStr := ""
-		if rel.Properties != nil {
-			idxStr = rel.Properties["step_index"]
+		if rel.PropLen() > 0 {
+			idxStr = rel.PropGet("step_index")
 		}
 		n, _ := strconv.Atoi(idxStr)
 		ordered = append(ordered, indexed{n, rel.ToID})

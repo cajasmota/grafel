@@ -47,26 +47,24 @@ func buildLocateDoc() *graph.Document {
 				Language: "go",
 			},
 			// Process entity for traces get test.
-			{
+			graph.Entity{
 				ID: "proc_locate", Name: "BetaFunc → AlphaFunc", Kind: "SCOPE.Process",
 				SourceFile: "src/beta.go", StartLine: 5,
-				Properties: map[string]string{
-					"entry_id":    "fn_beta",
-					"entry_name":  "BetaFunc",
-					"terminal_id": "fn_alpha",
-					"step_count":  "2",
-					"cross_stack": "false",
-				},
+			}.WithProperties(map[string]string{
+				"entry_id":    "fn_beta",
+				"entry_name":  "BetaFunc",
+				"terminal_id": "fn_alpha",
+				"step_count":  "2",
+				"cross_stack": "false",
 			},
+			),
 		},
 		Relationships: []graph.Relationship{
 			{FromID: "fn_beta", ToID: "fn_alpha", Kind: "CALLS"},
 			{FromID: "fn_alpha", ToID: "fn_gamma", Kind: "CALLS"},
 			// Process steps.
-			{FromID: "proc_locate", ToID: "fn_beta", Kind: "STEP_IN_PROCESS",
-				Properties: map[string]string{"step_index": "0"}},
-			{FromID: "proc_locate", ToID: "fn_alpha", Kind: "STEP_IN_PROCESS",
-				Properties: map[string]string{"step_index": "1"}},
+			graph.Relationship{FromID: "proc_locate", ToID: "fn_beta", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "0"}),
+			graph.Relationship{FromID: "proc_locate", ToID: "fn_alpha", Kind: "STEP_IN_PROCESS"}.WithProperties(map[string]string{"step_index": "1"}),
 		},
 	}
 }

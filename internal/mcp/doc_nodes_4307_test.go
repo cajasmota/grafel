@@ -115,7 +115,7 @@ func buildDocGraph(t *testing.T) (doc *graph.Document, placeOrderID, sectionID, 
 			documentID = e.ID
 		case string(types.EntityKindSection):
 			// The "Order placement" section is the one that MENTIONS placeOrder.
-			if strings.Contains(e.Properties["heading"], "Order placement") {
+			if strings.Contains(e.PropGet("heading"), "Order placement") {
 				sectionID = e.ID
 			}
 		}

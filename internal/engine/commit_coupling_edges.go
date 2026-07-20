@@ -278,8 +278,7 @@ func ApplyCommitCoupling(doc *graph.Document, repoPath string, cfg CommitCouplin
 			Name:       f,
 			Kind:       KindFile,
 			SourceFile: f,
-			Properties: props,
-		})
+		}.WithProperties(props))
 		stats.FileEntities++
 	}
 
@@ -312,11 +311,11 @@ func ApplyCommitCoupling(doc *graph.Document, repoPath string, cfg CommitCouplin
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   KindCommitCoupled,
-			Properties: map[string]string{
-				"support":    strconv.Itoa(pair.support),
-				"confidence": strconv.FormatFloat(conf, 'f', 4, 64),
-			},
-		})
+		}.WithProperties(map[string]string{
+			"support":    strconv.Itoa(pair.support),
+			"confidence": strconv.FormatFloat(conf, 'f', 4, 64),
+		},
+		))
 		stats.CoupledEdges++
 	}
 

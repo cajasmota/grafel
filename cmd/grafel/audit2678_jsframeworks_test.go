@@ -143,13 +143,13 @@ func collectHTTPEndpointDefs(doc *graph.Document) []*graph.Entity {
 func findEndpointBySuffix(endpoints []*graph.Entity, verb, pathSuffix string) *graph.Entity {
 	verb = strings.ToUpper(verb)
 	for _, e := range endpoints {
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
-		if strings.ToUpper(e.Properties["verb"]) != verb {
+		if strings.ToUpper(e.PropGet("verb")) != verb {
 			continue
 		}
-		p := e.Properties["path"]
+		p := e.PropGet("path")
 		if p == pathSuffix || strings.HasSuffix(p, pathSuffix) {
 			return e
 		}
@@ -173,8 +173,8 @@ func assertHandlerFile(t *testing.T, e *graph.Entity, suffix string) {
 }
 
 func propOrEmpty(e *graph.Entity, k string) string {
-	if e.Properties == nil {
+	if e.PropLen() == 0 {
 		return ""
 	}
-	return e.Properties[k]
+	return e.PropGet(k)
 }

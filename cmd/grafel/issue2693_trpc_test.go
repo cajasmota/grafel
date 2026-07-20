@@ -32,7 +32,7 @@ func TestTRPC_ProcedureSynthesis(t *testing.T) {
 		if e.Kind != "http_endpoint_definition" {
 			continue
 		}
-		if e.Properties == nil || e.Properties["framework"] != "trpc" {
+		if e.PropLen() == 0 || e.PropGet("framework") != "trpc" {
 			continue
 		}
 		defs[e.Name] = i
@@ -69,19 +69,19 @@ func TestTRPC_ProcedureSynthesis(t *testing.T) {
 		e := doc.Entities[idx]
 
 		// Assertion 2: verb mapping.
-		if got := e.Properties["verb"]; got != want.verb {
+		if got := e.PropGet("verb"); got != want.verb {
 			t.Errorf("%s: verb=%q want %q", id, got, want.verb)
 		}
 
 		// Assertion 3 (a): canonical path is the dotted form, NOT a URL.
 		// Specifically: no leading slash, segments joined by `.`.
-		if got := e.Properties["path"]; got != want.path {
+		if got := e.PropGet("path"); got != want.path {
 			t.Errorf("%s: path=%q want %q (dotted form, no leading slash)",
 				id, got, want.path)
 		}
-		if strings.HasPrefix(e.Properties["path"], "/") {
+		if strings.HasPrefix(e.PropGet("path"), "/") {
 			t.Errorf("%s: path %q must not be canonicalised to a URL (no leading slash)",
-				id, e.Properties["path"])
+				id, e.PropGet("path"))
 		}
 
 		// Assertion 3 (b): source_file is the fixture's server.ts.

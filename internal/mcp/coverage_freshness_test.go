@@ -17,9 +17,9 @@ import (
 func fixtureGroup(indexedAt time.Time, source, measuredAt string) *LoadedGroup {
 	ent := graph.Entity{ID: "e1", Name: "Svc"}
 	if source != "" {
-		ent.Properties = map[string]string{coverage.PropCoverageSource: source}
+		ent.PropsReplace(map[string]string{coverage.PropCoverageSource: source})
 		if measuredAt != "" {
-			ent.Properties[coverage.PropCoverageMeasAt] = measuredAt
+			ent.PropSet(coverage.PropCoverageMeasAt, measuredAt)
 		}
 	}
 	return &LoadedGroup{

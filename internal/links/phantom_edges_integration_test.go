@@ -94,7 +94,7 @@ func TestPhantomEdges_CrossRepoBFSChain(t *testing.T) {
 	var phantomRel *graph.Relationship
 	for i := range docB.Relationships {
 		r := &docB.Relationships[i]
-		if r.Properties != nil && r.Properties["cross_repo"] == "true" {
+		if r.PropLen() > 0 && r.PropGet("cross_repo") == "true" {
 			phantomRel = r
 			break
 		}
@@ -108,8 +108,8 @@ func TestPhantomEdges_CrossRepoBFSChain(t *testing.T) {
 	if phantomRel.ToID != "handler1" {
 		t.Errorf("phantom edge ToID = %q, want handler1", phantomRel.ToID)
 	}
-	if phantomRel.Properties["target_repo"] != "fixture-a" {
-		t.Errorf("target_repo = %q, want fixture-a", phantomRel.Properties["target_repo"])
+	if phantomRel.PropGet("target_repo") != "fixture-a" {
+		t.Errorf("target_repo = %q, want fixture-a", phantomRel.PropGet("target_repo"))
 	}
 
 	// ---- Step 2: run process flow on fixture-b ----
@@ -129,10 +129,10 @@ func TestPhantomEdges_CrossRepoBFSChain(t *testing.T) {
 		}
 		p := proc{
 			name:       e.Name,
-			crossStack: e.Properties["cross_stack"] == "true",
+			crossStack: e.PropGet("cross_stack") == "true",
 		}
-		p.crossStackReason = e.Properties["cross_stack_reason"]
-		p.terminalIsPhantom = e.Properties["terminal_is_phantom"] == "true"
+		p.crossStackReason = e.PropGet("cross_stack_reason")
+		p.terminalIsPhantom = e.PropGet("terminal_is_phantom") == "true"
 		procs = append(procs, p)
 	}
 	if len(procs) == 0 {

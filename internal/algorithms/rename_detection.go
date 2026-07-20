@@ -258,12 +258,11 @@ func DetectRenames(prevDoc, newDoc *graph.Document) RenameStats {
 				"old_id":     deletedID,
 			}
 			rel := graph.Relationship{
-				ID:         graph.RelationshipID(edge.fromID, edge.toID, RelKindRenamedFrom),
-				FromID:     edge.fromID,
-				ToID:       edge.toID,
-				Kind:       RelKindRenamedFrom,
-				Properties: props,
-			}
+				ID:     graph.RelationshipID(edge.fromID, edge.toID, RelKindRenamedFrom),
+				FromID: edge.fromID,
+				ToID:   edge.toID,
+				Kind:   RelKindRenamedFrom,
+			}.WithProperties(props)
 			newDoc.Relationships = append(newDoc.Relationships, rel)
 			existingRenames[edge.fromID+"\x00"+edge.toID] = struct{}{}
 

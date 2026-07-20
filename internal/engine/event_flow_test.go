@@ -118,13 +118,13 @@ func TestEventFlow_LinearPubSub(t *testing.T) {
 	if ef == nil {
 		t.Fatalf("no EventFlow entity emitted")
 	}
-	chain := strings.Split(ef.Properties["chain"], ",")
+	chain := strings.Split(ef.PropGet("chain"), ",")
 	// Minimum-shape chain is exactly [topic.A, svc.subscriber].
 	if len(chain) < 2 || chain[0] != "topic.A" || chain[1] != "svc.subscriber" {
 		t.Errorf("unexpected chain %v", chain)
 	}
-	if ef.Properties["entry_kind"] != "channel" {
-		t.Errorf("entry_kind = %q, want channel", ef.Properties["entry_kind"])
+	if ef.PropGet("entry_kind") != "channel" {
+		t.Errorf("entry_kind = %q, want channel", ef.PropGet("entry_kind"))
 	}
 }
 
@@ -158,15 +158,15 @@ func TestEventFlow_MultiHopChain(t *testing.T) {
 		if e.Kind != EntityKindEventFlow {
 			continue
 		}
-		if e.Properties["entry_id"] != "topic.A" {
+		if e.PropGet("entry_id") != "topic.A" {
 			continue
 		}
 		if best == nil {
 			best = e
 			continue
 		}
-		bsc, _ := strconv.Atoi(best.Properties["step_count"])
-		csc, _ := strconv.Atoi(e.Properties["step_count"])
+		bsc, _ := strconv.Atoi(best.PropGet("step_count"))
+		csc, _ := strconv.Atoi(e.PropGet("step_count"))
 		if csc > bsc {
 			best = e
 		}
@@ -174,7 +174,7 @@ func TestEventFlow_MultiHopChain(t *testing.T) {
 	if best == nil {
 		t.Fatal("no EventFlow seeded by topic.A")
 	}
-	chain := strings.Split(best.Properties["chain"], ",")
+	chain := strings.Split(best.PropGet("chain"), ",")
 	// Expect topic.A as seed and topic.B somewhere downstream.
 	if chain[0] != "topic.A" {
 		t.Errorf("seed = %s, want topic.A", chain[0])
@@ -196,7 +196,7 @@ func TestEventFlow_MultiHopChain(t *testing.T) {
 		t.Errorf("multi-hop chain missing svc.subB: %v", chain)
 	}
 
-	channelCount, _ := strconv.Atoi(best.Properties["channel_count"])
+	channelCount, _ := strconv.Atoi(best.PropGet("channel_count"))
 	if channelCount < 2 {
 		t.Errorf("channel_count = %d, want ≥2 for multi-hop chain", channelCount)
 	}
@@ -224,7 +224,7 @@ func TestEventFlow_CycleStopsAtRevisit(t *testing.T) {
 		if e.Kind != EntityKindEventFlow {
 			continue
 		}
-		chain := strings.Split(e.Properties["chain"], ",")
+		chain := strings.Split(e.PropGet("chain"), ",")
 		seen := 0
 		for _, id := range chain {
 			if id == "topic.A" {
@@ -265,10 +265,10 @@ func TestEventFlow_DepthCap(t *testing.T) {
 		if e.Kind != EntityKindEventFlow {
 			continue
 		}
-		if e.Properties["entry_id"] != "topic.0" {
+		if e.PropGet("entry_id") != "topic.0" {
 			continue
 		}
-		cc, _ := strconv.Atoi(e.Properties["channel_count"])
+		cc, _ := strconv.Atoi(e.PropGet("channel_count"))
 		if cc > maxChannels {
 			maxChannels = cc
 		}
@@ -348,7 +348,7 @@ func TestEventFlow_Deterministic(t *testing.T) {
 		var out []string
 		for _, e := range d.Entities {
 			if e.Kind == EntityKindEventFlow {
-				out = append(out, e.Properties["chain"])
+				out = append(out, e.PropGet("chain"))
 			}
 		}
 		return out

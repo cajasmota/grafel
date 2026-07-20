@@ -71,8 +71,8 @@ func TestIssue2692_OtherTrio_EndpointAttribution_ASPNet(t *testing.T) {
 			if e.StartLine != tc.wantLine {
 				t.Errorf("aspnet %s: start_line=%d, want %d (method def line)", tc.id, e.StartLine, tc.wantLine)
 			}
-			if e.Properties["framework"] != "aspnet_core" {
-				t.Errorf("aspnet %s: framework=%q, want aspnet_core", tc.id, e.Properties["framework"])
+			if e.PropGet("framework") != "aspnet_core" {
+				t.Errorf("aspnet %s: framework=%q, want aspnet_core", tc.id, e.PropGet("framework"))
 			}
 		}
 		if !found {
@@ -130,7 +130,7 @@ func TestIssue2692_OtherTrio_EndpointAttribution_Phoenix(t *testing.T) {
 			if e.StartLine != tc.wantLine {
 				t.Errorf("phoenix %s: start_line=%d, want %d (`def %s` line in controller)", tc.id, e.StartLine, tc.wantLine, tc.id)
 			}
-			fw := e.Properties["framework"]
+			fw := e.PropGet("framework")
 			if fw != "phoenix" && fw != "phoenix_resources" {
 				t.Errorf("phoenix %s: framework=%q, want phoenix/phoenix_resources", tc.id, fw)
 			}
@@ -178,8 +178,8 @@ func TestIssue2692_OtherTrio_EndpointAttribution_Rocket(t *testing.T) {
 			if e.StartLine != tc.wantLine {
 				t.Errorf("rocket %s: start_line=%d, want %d (`fn` line)", tc.id, e.StartLine, tc.wantLine)
 			}
-			if e.Properties["framework"] != "rocket" {
-				t.Errorf("rocket %s: framework=%q, want rocket", tc.id, e.Properties["framework"])
+			if e.PropGet("framework") != "rocket" {
+				t.Errorf("rocket %s: framework=%q, want rocket", tc.id, e.PropGet("framework"))
 			}
 		}
 		if !found {

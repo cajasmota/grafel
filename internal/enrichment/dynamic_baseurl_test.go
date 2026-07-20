@@ -29,8 +29,7 @@ func makeHTTPEndpointEntity(id, path, patternType string, extraProps map[string]
 		Kind:       "http_endpoint",
 		SourceFile: "src/api.ts",
 		Language:   "typescript",
-		Properties: props,
-	}
+	}.WithProperties(props)
 }
 
 // ---------------------------------------------------------------------------
@@ -138,14 +137,14 @@ func TestCollectDynamicBaseURLCandidates_ProducerSideSkipped(t *testing.T) {
 					"dynamic_baseurl": "true",
 				}),
 			// Non-http_endpoint entity — must be skipped.
-			{
+			graph.Entity{
 				ID:   "id-func-1",
 				Kind: "function",
 				Name: "fetchUsers",
-				Properties: map[string]string{
-					"runtime_dynamic": "true",
-				},
+			}.WithProperties(map[string]string{
+				"runtime_dynamic": "true",
 			},
+			),
 		},
 	}
 

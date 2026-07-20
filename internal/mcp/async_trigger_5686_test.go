@@ -27,8 +27,7 @@ func buildAsyncTriggerGraph(withDelivers bool) *graph.Document {
 	if withDelivers {
 		rels = append(rels, graph.Relationship{
 			ID: "del:1", FromID: "topic:orders", ToID: "op:onOrder", Kind: "DELIVERS_TO",
-			Properties: map[string]string{"trigger": "async", "broker": "sqs"},
-		})
+		}.WithProperties(map[string]string{"trigger": "async", "broker": "sqs"}))
 	}
 	return minDoc(
 		[]graph.Entity{

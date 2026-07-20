@@ -45,11 +45,9 @@ func rubyMixinDoc() *graph.Document {
 		},
 		Relationships: []graph.Relationship{
 			// include Greet -> IMPLEMENTS(kind=ruby_mixin) with base_name.
-			{ID: "e1", FromID: "cls", ToID: "mod", Kind: "IMPLEMENTS",
-				Properties: map[string]string{"language": "ruby", "kind": "ruby_mixin", "mixin_op": "include", "base_name": "Greet"}},
+			graph.Relationship{ID: "e1", FromID: "cls", ToID: "mod", Kind: "IMPLEMENTS"}.WithProperties(map[string]string{"language": "ruby", "kind": "ruby_mixin", "mixin_op": "include", "base_name": "Greet"}),
 			// The module method calls format — the real edge to follow through.
-			{ID: "e2", FromID: "mod_hello", ToID: "mod_fmt", Kind: "CALLS",
-				Properties: map[string]string{"language": "ruby"}},
+			graph.Relationship{ID: "e2", FromID: "mod_hello", ToID: "mod_fmt", Kind: "CALLS"}.WithProperties(map[string]string{"language": "ruby"}),
 		},
 	}
 }
@@ -117,10 +115,8 @@ func phpTraitDoc() *graph.Document {
 		},
 		Relationships: []graph.Relationship{
 			// use Audit -> IMPLEMENTS(kind=php_trait) with base_name.
-			{ID: "e1", FromID: "cls", ToID: "trait", Kind: "IMPLEMENTS",
-				Properties: map[string]string{"language": "php", "kind": "php_trait", "base_name": "Audit"}},
-			{ID: "e2", FromID: "trait_log", ToID: "trait_persist", Kind: "CALLS",
-				Properties: map[string]string{"language": "php"}},
+			graph.Relationship{ID: "e1", FromID: "cls", ToID: "trait", Kind: "IMPLEMENTS"}.WithProperties(map[string]string{"language": "php", "kind": "php_trait", "base_name": "Audit"}),
+			graph.Relationship{ID: "e2", FromID: "trait_log", ToID: "trait_persist", Kind: "CALLS"}.WithProperties(map[string]string{"language": "php"}),
 		},
 	}
 }
@@ -175,8 +171,7 @@ func TestRubyInclude_ExternalModule_HonestUnresolved(t *testing.T) {
 			{ID: "ext", Name: "Comparable", Kind: "SCOPE.External", Language: "ruby"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "e1", FromID: "cls", ToID: "ext", Kind: "IMPLEMENTS",
-				Properties: map[string]string{"language": "ruby", "kind": "ruby_mixin", "mixin_op": "include", "base_name": "Comparable"}},
+			graph.Relationship{ID: "e1", FromID: "cls", ToID: "ext", Kind: "IMPLEMENTS"}.WithProperties(map[string]string{"language": "ruby", "kind": "ruby_mixin", "mixin_op": "include", "base_name": "Comparable"}),
 		},
 	}
 	srv := newTestServer(t, doc)
@@ -227,8 +222,8 @@ func TestPHPTrait_MethodNotInTrait_Unresolved(t *testing.T) {
 // prepend edge resolves cross-file the same as include.
 func TestRubyPrepend_ResolvesToModuleBody(t *testing.T) {
 	doc := rubyMixinDoc()
-	// Flip the edge to prepend.
-	doc.Relationships[0].Properties["mixin_op"] = "prepend"
+
+	doc.Relationships[0].PropSet("mixin_op", "prepend")
 	srv := newTestServer(t, doc)
 	out := callInspect(t, srv, "cls_hello")
 	inh, ok := out["inheritance"].(map[string]any)

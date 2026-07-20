@@ -37,12 +37,13 @@ func TestBindingMatchesEdge_RealGraphStorage(t *testing.T) {
 	const synthetic = "scope:channelbinding:spring_properties:src/main/resources/application.properties:outgoing:feedback-out"
 
 	// Case 1: rich Properties present (channel + direction).
-	viaProps := &graph.Entity{
-		ID: "hash-abc", Name: "feedback-out", Kind: string(types.EntityKindChannelBinding),
-		SourceFile:    "src/main/resources/application.properties",
-		QualifiedName: "feedback-ingest-service::src/main/resources/application.properties#outgoing:feedback-out",
-		Properties:    map[string]string{"channel": "feedback-out", "direction": "outgoing"},
-	}
+	viaProps :=
+
+		graph.EntityPtr(graph.Entity{
+			ID: "hash-abc", Name: "feedback-out", Kind: string(types.EntityKindChannelBinding),
+			SourceFile:    "src/main/resources/application.properties",
+			QualifiedName: "feedback-ingest-service::src/main/resources/application.properties#outgoing:feedback-out",
+		}.WithProperties(map[string]string{"channel": "feedback-out", "direction": "outgoing"}))
 	if !bindingMatchesEdge(viaProps, synthetic) {
 		t.Error("must match via Properties channel+direction on a hash-keyed entity")
 	}

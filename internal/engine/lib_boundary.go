@@ -105,16 +105,16 @@ func ApplyLibBoundary(doc *graph.Document) LibBoundaryStats {
 		boundary := classifyBoundary(r, externalDepIDs, ownedIDs)
 		switch boundary {
 		case boundaryFirstParty:
-			if r.Properties == nil {
-				r.Properties = make(map[string]string)
+			if r.PropLen() == 0 {
+				r.PropsReplace(make(map[string]string))
 			}
-			r.Properties[boundaryProp] = boundaryFirstParty
+			r.PropSet(boundaryProp, boundaryFirstParty)
 			stats.FirstParty++
 		case boundaryThirdParty:
-			if r.Properties == nil {
-				r.Properties = make(map[string]string)
+			if r.PropLen() == 0 {
+				r.PropsReplace(make(map[string]string))
 			}
-			r.Properties[boundaryProp] = boundaryThirdParty
+			r.PropSet(boundaryProp, boundaryThirdParty)
 			stats.ThirdParty++
 		default:
 			// Ambiguous — leave unannotated (honest-partial).
@@ -130,10 +130,10 @@ func ApplyLibBoundary(doc *graph.Document) LibBoundaryStats {
 		if e.Kind != "SCOPE.Component" || e.Subtype != "external_dependency" {
 			continue
 		}
-		if e.Properties == nil {
-			e.Properties = make(map[string]string)
+		if e.PropLen() == 0 {
+			e.PropsReplace(make(map[string]string))
 		}
-		e.Properties[boundaryProp] = boundaryThirdParty
+		e.PropSet(boundaryProp, boundaryThirdParty)
 		stats.EntitiesAnnotated++
 	}
 
@@ -144,7 +144,7 @@ func ApplyLibBoundary(doc *graph.Document) LibBoundaryStats {
 // ambiguous sentinel) for a single DEPENDS_ON edge, reading only properties the
 // extractors already attached plus the resolved-endpoint sets.
 func classifyBoundary(r *graph.Relationship, externalDepIDs, ownedIDs map[string]bool) string {
-	props := r.Properties
+	props := r.PropsSnapshot()
 
 	// 1. Manifest dependency edge — DEPENDS_ON{kind=external_dependency}. A
 	//    declared third-party library by construction.

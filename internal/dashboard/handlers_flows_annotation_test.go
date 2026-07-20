@@ -578,15 +578,15 @@ func TestFlowDetail_BridgeStepMetadata_1905(t *testing.T) {
 		Kind:       processEntityKind,
 		SourceFile: "dashboard.ts",
 		StartLine:  10,
-		Properties: map[string]string{
-			"entry_id":    "fe_entry",
-			"entry_name":  "loadDashboard",
-			"terminal_id": "be_handler",
-			"step_count":  "3",
-			"cross_stack": "true",
-			"chain":       "fe_entry,fe_caller,be_handler",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"entry_id":    "fe_entry",
+		"entry_name":  "loadDashboard",
+		"terminal_id": "be_handler",
+		"step_count":  "3",
+		"cross_stack": "true",
+		"chain":       "fe_entry,fe_caller,be_handler",
+	},
+	)
 	feEntry := graph.Entity{ID: "fe_entry", Name: "loadDashboard", Kind: "SCOPE.Function", SourceFile: "dashboard.ts", StartLine: 10}
 	feCaller := graph.Entity{ID: "fe_caller", Name: "fetchSummary", Kind: "SCOPE.Function", SourceFile: "dashboard.ts", StartLine: 20}
 
@@ -595,10 +595,10 @@ func TestFlowDetail_BridgeStepMetadata_1905(t *testing.T) {
 		Entities: []graph.Entity{proc, feEntry, feCaller},
 		Relationships: []graph.Relationship{
 			// STEP_IN_PROCESS for the cross-repo chain.
-			{ID: "s0", FromID: "proc-xr", ToID: "fe_entry", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "0"}},
-			{ID: "s1", FromID: "proc-xr", ToID: "fe_caller", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "1"}},
+			graph.Relationship{ID: "s0", FromID: "proc-xr", ToID: "fe_entry", Kind: stepInProcessEdge}.WithProperties(map[string]string{"step_index": "0"}),
+			graph.Relationship{ID: "s1", FromID: "proc-xr", ToID: "fe_caller", Kind: stepInProcessEdge}.WithProperties(map[string]string{"step_index": "1"}),
 			// Bridge step: ToID lives in the backend doc.
-			{ID: "s2", FromID: "proc-xr", ToID: "be_handler", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "2"}},
+			graph.Relationship{ID: "s2", FromID: "proc-xr", ToID: "be_handler", Kind: stepInProcessEdge}.WithProperties(map[string]string{"step_index": "2"}),
 		},
 	}
 	beHandler := graph.Entity{

@@ -326,8 +326,8 @@ func canonicalSetName(s string) string {
 // enumDisplayName returns the enum's logical name: the enum_name property when
 // present (the bare type name), else the entity Name.
 func enumDisplayName(e *graph.Entity) string {
-	if e.Properties != nil {
-		if n := strings.TrimSpace(e.Properties["enum_name"]); n != "" {
+	if e.PropLen() > 0 {
+		if n := strings.TrimSpace(e.PropGet("enum_name")); n != "" {
 			return n
 		}
 	}
@@ -340,18 +340,18 @@ func isValueSet(e *graph.Entity) bool {
 	if e == nil || e.Kind != string(types.EntityKindEnum) {
 		return false
 	}
-	if e.Properties == nil {
+	if e.PropLen() == 0 {
 		return false
 	}
-	return strings.TrimSpace(e.Properties["members_json"]) != ""
+	return strings.TrimSpace(e.PropGet("members_json")) != ""
 }
 
 // parseMembersJSON decodes the structured members_json property into the
 // literalparity.Member slice.
 func parseMembersJSON(e *graph.Entity) ([]literalparity.Member, error) {
 	raw := ""
-	if e.Properties != nil {
-		raw = e.Properties["members_json"]
+	if e.PropLen() > 0 {
+		raw = e.PropGet("members_json")
 	}
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil

@@ -23,17 +23,15 @@ func cfnToDoc(ents []types.EntityRecord, rels []types.RelationshipRecord) *graph
 			Kind:       string(e.Kind),
 			SourceFile: e.SourceFile,
 			Language:   e.Language,
-			Properties: e.Properties,
-		})
+		}.WithProperties(e.Properties))
 	}
 	for _, r := range rels {
 		doc.Relationships = append(doc.Relationships, graph.Relationship{
-			ID:         graph.RelationshipID(r.FromID, r.ToID, r.Kind),
-			FromID:     r.FromID,
-			ToID:       r.ToID,
-			Kind:       r.Kind,
-			Properties: r.Properties,
-		})
+			ID:     graph.RelationshipID(r.FromID, r.ToID, r.Kind),
+			FromID: r.FromID,
+			ToID:   r.ToID,
+			Kind:   r.Kind,
+		}.WithProperties(r.Properties))
 	}
 	return doc
 }

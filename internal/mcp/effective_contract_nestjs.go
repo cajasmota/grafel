@@ -113,7 +113,7 @@ func isNestJSEndpoint(e *graph.Entity) bool {
 	// A TS endpoint carrying any Nest-characteristic prop is NestJS even when the
 	// framework hint was not stamped (graphs frequently omit it).
 	if fw == "typescript" || fw == "javascript" || fw == "ts" || fw == "js" {
-		p := e.Properties
+		p := e.PropsSnapshot()
 		if p["require_page"] != "" || p["require_action"] != "" || p["auth_guard"] != "" ||
 			p["request_body_type"] != "" || p["operation_id"] != "" {
 			return true
@@ -154,11 +154,11 @@ func nestControllerLeaf(ep *graph.Entity, handler *graph.Entity) string {
 			return leafAfterDot(owning)
 		}
 	}
-	if c := ep.Properties["controller"]; c != "" {
+	if c := ep.PropGet("controller"); c != "" {
 		return leafAfterDot(c)
 	}
 	// source_handler is "<HandlerKind>:<Controller.method>" or "<Controller.method>".
-	if sh := ep.Properties["source_handler"]; sh != "" {
+	if sh := ep.PropGet("source_handler"); sh != "" {
 		if i := strings.LastIndex(sh, ":"); i >= 0 {
 			sh = sh[i+1:]
 		}
@@ -174,8 +174,8 @@ func nestControllerLeaf(ep *graph.Entity, handler *graph.Entity) string {
 func composeNestContract(r *LoadedRepo, ep *graph.Entity, handler *graph.Entity) effectiveContract {
 	c := effectiveContract{
 		Framework: "nestjs",
-		Verb:      strings.ToUpper(ep.Properties["verb"]),
-		Path:      ep.Properties["path"],
+		Verb:      strings.ToUpper(ep.PropGet("verb")),
+		Path:      ep.PropGet("path"),
 		Kind:      "explicit",
 	}
 	if handler != nil {
@@ -248,7 +248,7 @@ func composeNestRequestFields(r *LoadedRepo, ep *graph.Entity, handler *graph.En
 	// Fallback: the endpoint's request_body_type prop names the @Body DTO even
 	// when the handler entity was unresolved — surface its fields if findable.
 	if len(fields) == 0 {
-		if dtoType := ep.Properties["request_body_type"]; dtoType != "" {
+		if dtoType := ep.PropGet("request_body_type"); dtoType != "" {
 			for _, mf := range nestDTOFields(r, dtoType) {
 				mf.In = "body"
 				mf.DTO = dtoType
@@ -413,15 +413,16 @@ func applyNestAuthPosture(r *LoadedRepo, ep *graph.Entity, handler *graph.Entity
 // the authposture Signal.
 func mergedAuthProps(ep *graph.Entity, handler *graph.Entity) map[string]string {
 	out := map[string]string{}
-	for k, v := range ep.Properties {
-		out[k] = v
-	}
+	ep.
+		PropRange(func(k, v string) bool { out[k] = v; return true })
 	if handler != nil {
-		for k, v := range handler.Properties {
-			if v != "" {
-				out[k] = v
-			}
-		}
+		handler.
+			PropRange(func(k, v string) bool {
+				if v != "" {
+					out[k] = v
+				}
+				return true
+			})
 	}
 	return out
 }
@@ -456,7 +457,7 @@ func relPropsFor(r *LoadedRepo, relIdx int) map[string]string {
 	if r.Doc == nil || relIdx < 0 || relIdx >= len(r.Doc.Relationships) {
 		return nil
 	}
-	return r.Doc.Relationships[relIdx].Properties
+	return r.Doc.Relationships[relIdx].PropsSnapshot()
 }
 
 // appendIntUnique appends v to s only when absent.

@@ -90,7 +90,7 @@ func issue1978Harness(t *testing.T) (groupName, classEntityID string) {
 				Language:   "python",
 				Signature:  "class Building",
 			},
-			{
+			graph.Entity{
 				ID:         charFieldID,
 				Name:       "Building.name",
 				Kind:       "SCOPE.Schema",
@@ -98,12 +98,12 @@ func issue1978Harness(t *testing.T) (groupName, classEntityID string) {
 				SourceFile: "models/building.py",
 				StartLine:  5,
 				Language:   "python",
-				Properties: map[string]string{
-					"field_type":       "CharField",
-					"kwarg.max_length": "200",
-				},
+			}.WithProperties(map[string]string{
+				"field_type":       "CharField",
+				"kwarg.max_length": "200",
 			},
-			{
+			),
+			graph.Entity{
 				ID:         fkFieldID,
 				Name:       "Building.client",
 				Kind:       "SCOPE.Schema",
@@ -111,12 +111,12 @@ func issue1978Harness(t *testing.T) (groupName, classEntityID string) {
 				SourceFile: "models/building.py",
 				StartLine:  6,
 				Language:   "python",
-				Properties: map[string]string{
-					"field_type":      "ForeignKey",
-					"kwarg.to":        "Client",
-					"kwarg.on_delete": "CASCADE",
-				},
+			}.WithProperties(map[string]string{
+				"field_type":      "ForeignKey",
+				"kwarg.to":        "Client",
+				"kwarg.on_delete": "CASCADE",
 			},
+			),
 			{
 				ID:         plainFieldID,
 				Name:       "Building.active",

@@ -28,7 +28,7 @@ func makeJoinsCollectionUnresolvedDoc() *graph.Document {
 		},
 		Relationships: []graph.Relationship{
 			// far side "Class:Inspection" has no Entity record (unresolved).
-			{ID: "j1", FromID: "da", ToID: "Class:Inspection", Kind: "JOINS_COLLECTION", Properties: map[string]string{"line": "9"}},
+			graph.Relationship{ID: "j1", FromID: "da", ToID: "Class:Inspection", Kind: "JOINS_COLLECTION"}.WithProperties(map[string]string{"line": "9"}),
 		},
 	}
 }

@@ -30,11 +30,10 @@ func eventFlowEntity(id, label, seedID, terminalID string, chain []string, chain
 		"branches_dag":   `{"entity_id":"` + chain[0] + `"}`,
 	}
 	return graph.Entity{
-		ID:         id,
-		Name:       label,
-		Kind:       eventFlowEntityKind,
-		Properties: props,
-	}
+		ID:   id,
+		Name: label,
+		Kind: eventFlowEntityKind,
+	}.WithProperties(props)
 }
 
 func joinComma(xs []string) string {
@@ -65,10 +64,10 @@ func efStepRel(flowID, stepID string, idx int) graph.Relationship {
 		FromID: flowID,
 		ToID:   stepID,
 		Kind:   stepInEventFlowEdge,
-		Properties: map[string]string{
-			"step_index": itoa(idx),
-		},
-	}
+	}.WithProperties(map[string]string{
+		"step_index": itoa(idx),
+	},
+	)
 }
 
 // newEventFlowTestServer wires a small dashboard server pre-loaded with

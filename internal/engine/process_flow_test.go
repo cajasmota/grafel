@@ -84,7 +84,7 @@ func TestProcessFlow_DepthCap(t *testing.T) {
 	var procChain string
 	for _, e := range doc.Entities {
 		if e.Kind == EntityKindProcess {
-			procChain = e.Properties["chain"]
+			procChain = e.PropGet("chain")
 			break
 		}
 	}
@@ -167,12 +167,12 @@ func TestProcessFlow_CrossStack(t *testing.T) {
 	doc.Entities = []graph.Entity{
 		{ID: "entry", Name: "handleSubmit", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
 		{ID: "svc", Name: "callService", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
-		{
+		graph.Entity{
 			ID: "ep", Name: "http:POST:/api/orders", Kind: "http_endpoint", Language: "ts", SourceFile: "api.ts",
-			Properties: map[string]string{
-				"pattern_type": "http_endpoint_client_synthesis",
-			},
+		}.WithProperties(map[string]string{
+			"pattern_type": "http_endpoint_client_synthesis",
 		},
+		),
 	}
 	doc.Relationships = []graph.Relationship{
 		{ID: "1", FromID: "entry", ToID: "svc", Kind: "CALLS"},
@@ -182,7 +182,7 @@ func TestProcessFlow_CrossStack(t *testing.T) {
 	var got string
 	for _, e := range doc.Entities {
 		if e.Kind == EntityKindProcess {
-			got = e.Properties["cross_stack"]
+			got = e.PropGet("cross_stack")
 			break
 		}
 	}
@@ -200,10 +200,9 @@ func TestProcessFlow_CrossStackViaFetches(t *testing.T) {
 	doc.Entities = []graph.Entity{
 		{ID: "entry", Name: "handleSubmit", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
 		{ID: "svc", Name: "callService", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
-		{
+		graph.Entity{
 			ID: "ep", Name: "http:POST:/api/orders", Kind: "http_endpoint", Language: "ts", SourceFile: "x.ts",
-			Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis"},
-		},
+		}.WithProperties(map[string]string{"pattern_type": "http_endpoint_client_synthesis"}),
 	}
 	doc.Relationships = []graph.Relationship{
 		{ID: "1", FromID: "entry", ToID: "svc", Kind: "CALLS"},
@@ -213,8 +212,8 @@ func TestProcessFlow_CrossStackViaFetches(t *testing.T) {
 	var got, reason string
 	for _, e := range doc.Entities {
 		if e.Kind == EntityKindProcess {
-			got = e.Properties["cross_stack"]
-			reason = e.Properties["cross_stack_reason"]
+			got = e.PropGet("cross_stack")
+			reason = e.PropGet("cross_stack_reason")
 			break
 		}
 	}
@@ -236,11 +235,9 @@ func TestProcessFlow_InternalHandlerNotCrossStack(t *testing.T) {
 		{ID: "h", Name: "handleOrders", Kind: "SCOPE.Function", Language: "py", SourceFile: "api.py"},
 		{ID: "svc", Name: "callService", Kind: "SCOPE.Function", Language: "py", SourceFile: "api.py"},
 		{ID: "db", Name: "writeRecord", Kind: "SCOPE.Function", Language: "py", SourceFile: "db.py"},
-		{
+		graph.Entity{
 			ID: "ep", Name: "http:POST:/api/orders", Kind: "http_endpoint", Language: "py", SourceFile: "api.py",
-			// Producer-side synthetic — NOT a cross-repo bridge.
-			Properties: map[string]string{"pattern_type": "http_endpoint_synthesis"},
-		},
+		}.WithProperties(map[string]string{"pattern_type": "http_endpoint_synthesis"}),
 	}
 	doc.Relationships = []graph.Relationship{
 		{ID: "1", FromID: "h", ToID: "svc", Kind: "CALLS"},
@@ -251,8 +248,8 @@ func TestProcessFlow_InternalHandlerNotCrossStack(t *testing.T) {
 	var crossStack, externalLib string
 	for _, e := range doc.Entities {
 		if e.Kind == EntityKindProcess {
-			crossStack = e.Properties["cross_stack"]
-			externalLib = e.Properties["crosses_external_lib"]
+			crossStack = e.PropGet("cross_stack")
+			externalLib = e.PropGet("crosses_external_lib")
 			break
 		}
 	}
@@ -281,8 +278,8 @@ func TestProcessFlow_ExternalLibTerminalNotCrossStack(t *testing.T) {
 	var crossStack, externalLib string
 	for _, e := range doc.Entities {
 		if e.Kind == EntityKindProcess {
-			crossStack = e.Properties["cross_stack"]
-			externalLib = e.Properties["crosses_external_lib"]
+			crossStack = e.PropGet("cross_stack")
+			externalLib = e.PropGet("crosses_external_lib")
 			break
 		}
 	}
@@ -322,13 +319,13 @@ func TestProcessFlow_LowConfidenceCallsSkipped(t *testing.T) {
 	doc.Relationships = []graph.Relationship{
 		{ID: "1", FromID: "entry", ToID: "a", Kind: "CALLS"},
 		{ID: "2", FromID: "a", ToID: "b", Kind: "CALLS"},
-		{ID: "3", FromID: "b", ToID: "c", Kind: "CALLS", Properties: map[string]string{"confidence": "0.3"}},
+		graph.Relationship{ID: "3", FromID: "b", ToID: "c", Kind: "CALLS"}.WithProperties(map[string]string{"confidence": "0.3"}),
 	}
 	RunProcessFlow(doc, DefaultProcessFlowConfig())
 	var chain string
 	for _, e := range doc.Entities {
 		if e.Kind == EntityKindProcess {
-			chain = e.Properties["chain"]
+			chain = e.PropGet("chain")
 			break
 		}
 	}
@@ -371,26 +368,26 @@ func TestProcessFlow_PhantomEdgeCrossStack(t *testing.T) {
 	}
 	doc.Relationships = []graph.Relationship{
 		{ID: "1", FromID: "entry", ToID: "caller", Kind: "CALLS"},
-		{
+		graph.Relationship{
 			ID:     "2",
 			FromID: "caller",
 			ToID:   "fixture-a-handler-xyz",
 			Kind:   "CALLS",
-			Properties: map[string]string{
-				"cross_repo":  "true",
-				"target_repo": "fixture-a",
-				"link_method": "http",
-				"via":         "phantom_edge_pass_#769 group=test",
-			},
+		}.WithProperties(map[string]string{
+			"cross_repo":  "true",
+			"target_repo": "fixture-a",
+			"link_method": "http",
+			"via":         "phantom_edge_pass_#769 group=test",
 		},
+		),
 	}
 	RunProcessFlow(doc, DefaultProcessFlowConfig())
 
 	var crossStack, reason string
 	for _, e := range doc.Entities {
 		if e.Kind == EntityKindProcess {
-			crossStack = e.Properties["cross_stack"]
-			reason = e.Properties["cross_stack_reason"]
+			crossStack = e.PropGet("cross_stack")
+			reason = e.PropGet("cross_stack_reason")
 			break
 		}
 	}
@@ -413,18 +410,18 @@ func TestProcessFlow_PhantomEdgeMinStepsRelaxed(t *testing.T) {
 		{ID: "caller", Name: "doFetch", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
 	}
 	doc.Relationships = []graph.Relationship{
-		{
+		graph.Relationship{
 			ID:     "p1",
 			FromID: "caller",
 			ToID:   "remote-handler",
 			Kind:   "CALLS",
-			Properties: map[string]string{
-				"cross_repo":  "true",
-				"target_repo": "a",
-				"link_method": "http",
-				"via":         "phantom_edge_pass_#769 group=g",
-			},
+		}.WithProperties(map[string]string{
+			"cross_repo":  "true",
+			"target_repo": "a",
+			"link_method": "http",
+			"via":         "phantom_edge_pass_#769 group=g",
 		},
+		),
 	}
 	cfg := DefaultProcessFlowConfig()
 	cfg.MinSteps = 3
@@ -434,8 +431,8 @@ func TestProcessFlow_PhantomEdgeMinStepsRelaxed(t *testing.T) {
 	for _, e := range doc.Entities {
 		if e.Kind == EntityKindProcess {
 			found = true
-			if e.Properties["cross_stack"] != "true" {
-				t.Errorf("cross_stack = %q, want true", e.Properties["cross_stack"])
+			if e.PropGet("cross_stack") != "true" {
+				t.Errorf("cross_stack = %q, want true", e.PropGet("cross_stack"))
 			}
 		}
 	}
@@ -466,10 +463,8 @@ func TestProcessFlow_HTTPContinuesIntoBackendHandler(t *testing.T) {
 	doc := &graph.Document{Repo: "r"}
 	doc.Entities = []graph.Entity{
 		{ID: "caller", Name: "submitOrder", Kind: "SCOPE.Function", Language: "go", SourceFile: "client.go"},
-		{ID: "call", Name: "http:POST:/api/orders", Kind: "http_endpoint_call", Language: "go", SourceFile: "client.go",
-			Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis"}},
-		{ID: "def", Name: "http:POST:/api/orders", Kind: "http_endpoint_definition", Language: "go", SourceFile: "handler.go",
-			Properties: map[string]string{"pattern_type": "http_endpoint_synthesis"}},
+		graph.Entity{ID: "call", Name: "http:POST:/api/orders", Kind: "http_endpoint_call", Language: "go", SourceFile: "client.go"}.WithProperties(map[string]string{"pattern_type": "http_endpoint_client_synthesis"}),
+		graph.Entity{ID: "def", Name: "http:POST:/api/orders", Kind: "http_endpoint_definition", Language: "go", SourceFile: "handler.go"}.WithProperties(map[string]string{"pattern_type": "http_endpoint_synthesis"}),
 		{ID: "handler", Name: "CreateOrder", Kind: "SCOPE.Function", Language: "go", SourceFile: "handler.go"},
 		{ID: "repo", Name: "saveOrder", Kind: "SCOPE.Function", Language: "go", SourceFile: "repo.go"},
 	}
@@ -485,14 +480,14 @@ func TestProcessFlow_HTTPContinuesIntoBackendHandler(t *testing.T) {
 	if p == nil {
 		t.Fatal("expected a Process entity, got none")
 	}
-	chain := p.Properties["chain"]
+	chain := p.PropGet("chain")
 	// The chain must reach the backend handler and onward into repo work.
 	for _, want := range []string{"call", "def", "handler", "repo"} {
 		if !strings.Contains(chain, want) {
 			t.Errorf("chain %q missing step %q (did the flow continue into the backend handler?)", chain, want)
 		}
 	}
-	if cs := p.Properties["cross_stack"]; cs != "false" {
+	if cs := p.PropGet("cross_stack"); cs != "false" {
 		t.Errorf("same-repo HTTP resolution: cross_stack = %q, want false", cs)
 	}
 }
@@ -505,22 +500,20 @@ func TestProcessFlow_CrossRepoOnlyWhenPhantom(t *testing.T) {
 	doc.Entities = []graph.Entity{
 		{ID: "entry", Name: "loadDashboard", Kind: "SCOPE.Function", Language: "ts", SourceFile: "app.ts"},
 		{ID: "svc", Name: "fetchUsers", Kind: "SCOPE.Function", Language: "ts", SourceFile: "app.ts"},
-		{ID: "call", Name: "http:GET:/api/users", Kind: "http_endpoint_call", Language: "ts", SourceFile: "app.ts",
-			Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis"}},
+		graph.Entity{ID: "call", Name: "http:GET:/api/users", Kind: "http_endpoint_call", Language: "ts", SourceFile: "app.ts"}.WithProperties(map[string]string{"pattern_type": "http_endpoint_client_synthesis"}),
 	}
 	doc.Relationships = []graph.Relationship{
 		{ID: "1", FromID: "entry", ToID: "svc", Kind: "CALLS"},
 		{ID: "2", FromID: "svc", ToID: "call", Kind: "FETCHES"},
 		// Phantom cross-repo edge: the backend lives in another repo.
-		{ID: "3", FromID: "call", ToID: "backend::handler", Kind: "CALLS",
-			Properties: map[string]string{"cross_repo": "true", "target_repo": "backend"}},
+		graph.Relationship{ID: "3", FromID: "call", ToID: "backend::handler", Kind: "CALLS"}.WithProperties(map[string]string{"cross_repo": "true", "target_repo": "backend"}),
 	}
 	RunProcessFlow(doc, DefaultProcessFlowConfig())
 	p := findProcess(doc)
 	if p == nil {
 		t.Fatal("expected a Process entity, got none")
 	}
-	if cs := p.Properties["cross_stack"]; cs != "true" {
+	if cs := p.PropGet("cross_stack"); cs != "true" {
 		t.Errorf("phantom cross-repo chain: cross_stack = %q, want true", cs)
 	}
 }

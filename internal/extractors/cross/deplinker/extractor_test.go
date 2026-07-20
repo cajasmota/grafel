@@ -13,18 +13,16 @@ func makeEntity(name, kind, subtype, sourceFile string, props map[string]string)
 		Kind:       kind,
 		Subtype:    subtype,
 		SourceFile: sourceFile,
-		Properties: props,
-	}
+	}.WithProperties(props)
 }
 
 func makeRel(fromID, toID, kind string, props map[string]string) graph.Relationship {
 	return graph.Relationship{
-		ID:         fromID + "->" + toID,
-		FromID:     fromID,
-		ToID:       toID,
-		Kind:       kind,
-		Properties: props,
-	}
+		ID:     fromID + "->" + toID,
+		FromID: fromID,
+		ToID:   toID,
+		Kind:   kind,
+	}.WithProperties(props)
 }
 
 // ---------------------------------------------------------------------------

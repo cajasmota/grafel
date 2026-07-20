@@ -101,11 +101,11 @@ func (s *Server) handleTracesList(_ context.Context, req mcpapi.CallToolRequest)
 			if e.Kind != processEntityKind {
 				continue
 			}
-			cs := e.Properties["cross_stack"] == "true"
+			cs := e.PropGet("cross_stack") == "true"
 			if crossOnly && !cs {
 				continue
 			}
-			sc, _ := strconv.Atoi(e.Properties["step_count"])
+			sc, _ := strconv.Atoi(e.PropGet("step_count"))
 			// #1639 — exclude trivial short flows from the default list;
 			// cross-repo flows are exempt (meaningful even when short).
 			if sc < minSteps && !cs {
@@ -115,12 +115,12 @@ func (s *Server) handleTracesList(_ context.Context, req mcpapi.CallToolRequest)
 				ProcessID:   prefixedID(r.Repo, e.ID),
 				Repo:        r.Repo,
 				Label:       e.Name,
-				EntryID:     e.Properties["entry_id"],
-				EntryName:   e.Properties["entry_name"],
-				TerminalID:  e.Properties["terminal_id"],
+				EntryID:     e.PropGet("entry_id"),
+				EntryName:   e.PropGet("entry_name"),
+				TerminalID:  e.PropGet("terminal_id"),
 				StepCount:   sc,
 				CrossStack:  cs,
-				ChainLabels: splitChainLabels(e.Properties["chain_labels"]),
+				ChainLabels: splitChainLabels(e.PropGet("chain_labels")),
 				SourceFile:  e.SourceFile,
 			})
 		}
@@ -207,10 +207,10 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 				"process_id":  prefixedID(r.Repo, e.ID),
 				"repo":        r.Repo,
 				"label":       e.Name,
-				"entry_id":    e.Properties["entry_id"],
-				"entry_name":  e.Properties["entry_name"],
-				"terminal_id": e.Properties["terminal_id"],
-				"cross_stack": e.Properties["cross_stack"] == "true",
+				"entry_id":    e.PropGet("entry_id"),
+				"entry_name":  e.PropGet("entry_name"),
+				"terminal_id": e.PropGet("terminal_id"),
+				"cross_stack": e.PropGet("cross_stack") == "true",
 				"steps":       steps,
 				"found":       true,
 			}), nil
@@ -397,7 +397,7 @@ func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo
 	}
 	if len(ordered) == 0 {
 		// Fallback to the chain property if the edges weren't emitted.
-		ids := strings.Split(proc.Properties["chain"], ",")
+		ids := strings.Split(proc.PropGet("chain"), ",")
 		for i, id := range ids {
 			if id != "" {
 				ordered = append(ordered, indexed{i, id})

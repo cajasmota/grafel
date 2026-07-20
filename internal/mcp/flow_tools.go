@@ -858,7 +858,7 @@ func entityHasTestCoverage(e *graph.Entity, hasInboundTests bool) bool {
 	if hasInboundTests {
 		return true
 	}
-	cov := e.Properties["test_coverage"]
+	cov := e.PropGet("test_coverage")
 	return cov != "" && cov != "0" && cov != "none"
 }
 
@@ -1950,9 +1950,9 @@ func isStdlibEntity(e *graph.Entity) bool {
 			return true
 		}
 	}
-	if e.Properties["is_external"] == "true" ||
-		e.Properties["is_stdlib"] == "true" ||
-		e.Properties["external"] == "true" {
+	if e.PropGet("is_external") == "true" ||
+		e.PropGet("is_stdlib") == "true" ||
+		e.PropGet("external") == "true" {
 		return true
 	}
 	return false
@@ -2149,10 +2149,10 @@ func buildImportedNameSet(repos []*LoadedRepo) map[string]bool {
 			if rel.Kind != "IMPORTS" {
 				continue
 			}
-			if n := rel.Properties["imported_name"]; n != "" {
+			if n := rel.PropGet("imported_name"); n != "" {
 				set[n] = true
 			}
-			if n := rel.Properties["local_name"]; n != "" {
+			if n := rel.PropGet("local_name"); n != "" {
 				set[n] = true
 			}
 		}
@@ -2508,10 +2508,10 @@ func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGro
 				continue
 			}
 			match := rel.ToID == wantToID
-			if !match && rel.Properties != nil {
-				if rel.Properties["route"] == routeLit {
+			if !match && rel.PropLen() > 0 {
+				if rel.PropGet("route") == routeLit {
 					match = true
-				} else if strings.EqualFold(rel.Properties["route"], routeLit) {
+				} else if strings.EqualFold(rel.PropGet("route"), routeLit) {
 					match = true
 				}
 			}
@@ -2521,16 +2521,16 @@ func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGro
 			line := 0
 			route := routeLit
 			paramsKeys := ""
-			if rel.Properties != nil {
-				if ls := rel.Properties["line"]; ls != "" {
+			if rel.PropLen() > 0 {
+				if ls := rel.PropGet("line"); ls != "" {
 					if n, perr := strconv.Atoi(ls); perr == nil {
 						line = n
 					}
 				}
-				if rt := rel.Properties["route"]; rt != "" {
+				if rt := rel.PropGet("route"); rt != "" {
 					route = rt
 				}
-				paramsKeys = rel.Properties["params_keys"]
+				paramsKeys = rel.PropGet("params_keys")
 			}
 			rc := routeCaller{
 				EntityID:   prefixedID(r.Repo, rel.FromID),

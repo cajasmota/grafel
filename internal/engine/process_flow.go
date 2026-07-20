@@ -367,7 +367,7 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 			// Properties. This makes the Process label less cryptic.
 			phantomEdge := phantomEdgeForStep(chain[len(chain)-2], chain[len(chain)-1], doc)
 			if phantomEdge != nil {
-				if tgt := phantomEdge.Properties["target_repo"]; tgt != "" {
+				if tgt := phantomEdge.PropGet("target_repo"); tgt != "" {
 					terminalName = tgt + ":<cross-repo>"
 				}
 			}
@@ -454,8 +454,7 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 			StartLine:  entry.StartLine,
 			EndLine:    entry.EndLine,
 			Language:   entry.Language,
-			Properties: props,
-		})
+		}.WithProperties(props))
 		stats.Processes++
 		if crossStack {
 			stats.CrossStack++
@@ -477,10 +476,10 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 				FromID: processID,
 				ToID:   stepID,
 				Kind:   string(RelationshipKindStepInProcess),
-				Properties: map[string]string{
-					"step_index": strconv.Itoa(i),
-				},
-			}
+			}.WithProperties(map[string]string{
+				"step_index": strconv.Itoa(i),
+			},
+			)
 			doc.Relationships = append(doc.Relationships, rel)
 			stats.StepEdges++
 		}
@@ -683,19 +682,19 @@ func isPhantomCallsEdge(r *graph.Relationship) bool {
 	if r.Kind != string(RelationshipKindCalls) {
 		return false
 	}
-	if r.Properties == nil {
+	if r.PropLen() == 0 {
 		return false
 	}
-	return r.Properties["cross_repo"] == "true"
+	return r.PropGet("cross_repo") == "true"
 }
 
 // confidenceOK returns true when the relationship has either no
 // confidence property or a parseable confidence ≥ 0.5.
 func confidenceOK(r *graph.Relationship) bool {
-	if r.Properties == nil {
+	if r.PropLen() == 0 {
 		return true
 	}
-	v, ok := r.Properties["confidence"]
+	v, ok := r.PropLookup("confidence")
 	if !ok {
 		return true
 	}
@@ -779,17 +778,17 @@ func buildConsumerEndpointFileSet(doc *graph.Document) map[string]bool {
 		if strings.ToLower(e.Kind) != "http_endpoint" {
 			continue
 		}
-		if e.Properties == nil {
+		if e.PropLen() == 0 {
 			continue
 		}
-		if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+		if e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
 			out[e.SourceFile] = true
 			continue
 		}
 		// Fallback recognition for older synthetics that lost their
 		// pattern_type stamp: any http_endpoint stamped with a
 		// source_caller property is consumer-side by construction.
-		if _, hasCaller := e.Properties["source_caller"]; hasCaller {
+		if _, hasCaller := e.PropLookup("source_caller"); hasCaller {
 			out[e.SourceFile] = true
 		}
 	}
@@ -899,7 +898,7 @@ func phantomEdgeForStep(fromID, toID string, doc *graph.Document) *graph.Relatio
 		if r.Kind != string(RelationshipKindCalls) {
 			continue
 		}
-		if r.Properties != nil && r.Properties["cross_repo"] == "true" {
+		if r.PropLen() > 0 && r.PropGet("cross_repo") == "true" {
 			return r
 		}
 	}
@@ -958,14 +957,14 @@ func isConsumerHTTPEndpoint(e *graph.Entity) bool {
 	if strings.ToLower(e.Kind) != "http_endpoint" {
 		return false
 	}
-	if e.Properties == nil {
+	if e.PropLen() == 0 {
 		return false
 	}
-	if pt, ok := e.Properties["pattern_type"]; ok {
+	if pt, ok := e.PropLookup("pattern_type"); ok {
 		return pt == "http_endpoint_client_synthesis"
 	}
 	// Fallback: the consumer side stamps `source_caller` on every entity.
-	_, hasCaller := e.Properties["source_caller"]
+	_, hasCaller := e.PropLookup("source_caller")
 	return hasCaller
 }
 

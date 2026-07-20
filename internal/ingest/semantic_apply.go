@@ -203,13 +203,13 @@ func ApplySemanticResult(bundle SemanticBundle, result SemanticRunResult, codeEn
 			StartLine:     si.prompt.StartLine,
 			EndLine:       si.prompt.EndLine,
 			Language:      "markdown",
-			Properties: map[string]string{
-				"class":      string(sr.Class),
-				"summary":    summary,
-				"section_id": sr.SectionID,
-				"heading":    si.prompt.Heading,
-			},
-		})
+		}.WithProperties(map[string]string{
+			"class":      string(sr.Class),
+			"summary":    summary,
+			"section_id": sr.SectionID,
+			"heading":    si.prompt.Heading,
+		},
+		))
 		out.Stats.DecisionsCreated++
 		out.Stats.SectionsClassified++
 
@@ -267,12 +267,11 @@ func ApplySemanticResult(bundle SemanticBundle, result SemanticRunResult, codeEn
 // semRel mirrors ingest.mkRel for the semantic edges.
 func semRel(from, to, kind string, props map[string]string) graph.Relationship {
 	return graph.Relationship{
-		ID:         graph.RelationshipID(from, to, kind),
-		FromID:     from,
-		ToID:       to,
-		Kind:       kind,
-		Properties: props,
-	}
+		ID:     graph.RelationshipID(from, to, kind),
+		FromID: from,
+		ToID:   to,
+		Kind:   kind,
+	}.WithProperties(props)
 }
 
 // ReadResult reads and unmarshals a SemanticRunResult from disk.

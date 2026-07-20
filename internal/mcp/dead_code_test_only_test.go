@@ -76,8 +76,7 @@ func buildTestOnlyDoc() *graph.Document {
 
 		// ReadSecretValue: ONLY a test caller, but imported cross-repo → SPARE
 		{FromID: "apiTest", ToID: "exportedAPI", Kind: "CALLS"},
-		{FromID: "extConsumer", ToID: "exportedAPI", Kind: "IMPORTS",
-			Properties: map[string]string{"imported_name": "ReadSecretValue"}},
+		graph.Relationship{FromID: "extConsumer", ToID: "exportedAPI", Kind: "IMPORTS"}.WithProperties(map[string]string{"imported_name": "ReadSecretValue"}),
 	}
 	return minDoc(ents, rels)
 }

@@ -104,24 +104,24 @@ func TestEnrich_EndToEnd(t *testing.T) {
 	}
 
 	// LCOV signal: 3 of 4 instrumented lines covered → 75.0%.
-	if got := svc.Properties[PropCoveragePct]; got != "75.0" {
+	if got := svc.PropGet(PropCoveragePct); got != "75.0" {
 		t.Errorf("%s = %q after reload, want %q", PropCoveragePct, got, "75.0")
 	}
-	if got := svc.Properties[PropCoverageSource]; got != SourceLCOV {
+	if got := svc.PropGet(PropCoverageSource); got != SourceLCOV {
 		t.Errorf("%s = %q, want %q", PropCoverageSource, got, SourceLCOV)
 	}
-	if got := svc.Properties[PropCoveredLines]; got != "3" {
+	if got := svc.PropGet(PropCoveredLines); got != "3" {
 		t.Errorf("%s = %q, want %q", PropCoveredLines, got, "3")
 	}
-	if got := svc.Properties[PropTotalLines]; got != "4" {
+	if got := svc.PropGet(PropTotalLines); got != "4" {
 		t.Errorf("%s = %q, want %q", PropTotalLines, got, "4")
 	}
 
 	// Reachability signal: the function is TESTS-reached at depth 1.
-	if got := svc.Properties[PropTestReachable]; got != "true" {
+	if got := svc.PropGet(PropTestReachable); got != "true" {
 		t.Errorf("%s = %q, want %q", PropTestReachable, got, "true")
 	}
-	if got := svc.Properties[PropReachDepth]; got != "1" {
+	if got := svc.PropGet(PropReachDepth); got != "1" {
 		t.Errorf("%s = %q, want %q", PropReachDepth, got, "1")
 	}
 }
@@ -149,10 +149,10 @@ func TestEnrich_NoReport_NoOpLCOV(t *testing.T) {
 		t.Error("reachability should still run without a report")
 	}
 	svc := doc.Entities[0]
-	if _, ok := svc.Properties[PropCoveragePct]; ok {
-		t.Errorf("coverage_pct must not be stamped without a report; got %v", svc.Properties)
+	if _, ok := svc.PropLookup(PropCoveragePct); ok {
+		t.Errorf("coverage_pct must not be stamped without a report; got %v", svc.PropsSnapshot())
 	}
-	if got := svc.Properties[PropTestReachable]; got != "true" {
+	if got := svc.PropGet(PropTestReachable); got != "true" {
 		t.Errorf("%s = %q, want true", PropTestReachable, got)
 	}
 }
@@ -179,7 +179,7 @@ func TestEnrich_ConfiguredGlob(t *testing.T) {
 	if st.LCOVAttributed == 0 {
 		t.Fatalf("configured glob did not resolve a report (report=%q)", st.ReportPath)
 	}
-	if got := doc.Entities[0].Properties[PropCoveragePct]; got != "75.0" {
+	if got := doc.Entities[0].PropGet(PropCoveragePct); got != "75.0" {
 		t.Errorf("%s = %q, want 75.0", PropCoveragePct, got)
 	}
 }

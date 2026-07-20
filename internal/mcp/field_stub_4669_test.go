@@ -63,8 +63,7 @@ func TestStubDetector_PartialStubFields_getExtras(t *testing.T) {
 		ID: "h1", Name: "ClientViewSet.get_extras",
 		Kind: "SCOPE.Operation", SourceFile: "client_viewset.py",
 		StartLine: 2, EndLine: 9,
-		Properties: map[string]string{"effects": "db_read"},
-	}
+	}.WithProperties(map[string]string{"effects": "db_read"})
 	v3 := &graph.Document{Repo: "r",
 		Entities:      []graph.Entity{endpointDef("d1", "GET", "/clients/get_extras"), handler},
 		Relationships: []graph.Relationship{implementsEdge("h1", "d1")},
@@ -122,8 +121,7 @@ func TestStubDetector_PartialStubFields_checklistsPartId(t *testing.T) {
 		ID: "h1", Name: "ChecklistViewSet.list",
 		Kind: "SCOPE.Operation", SourceFile: "checklist.py",
 		StartLine: 2, EndLine: 5,
-		Properties: map[string]string{"effects": "db_read"},
-	}
+	}.WithProperties(map[string]string{"effects": "db_read"})
 	v3 := &graph.Document{Repo: "r",
 		Entities:      []graph.Entity{endpointDef("d1", "GET", "/checklists"), handler},
 		Relationships: []graph.Relationship{implementsEdge("h1", "d1")},
@@ -155,8 +153,7 @@ func TestStubDetector_PartialStubFields_unsupportedLanguage(t *testing.T) {
 	handler := graph.Entity{
 		ID: "h1", Name: "h", Kind: "SCOPE.Operation",
 		SourceFile: "handler.kt", StartLine: 1, EndLine: 3,
-		Properties: map[string]string{"effects": "db_read"},
-	}
+	}.WithProperties(map[string]string{"effects": "db_read"})
 	v3 := &graph.Document{Repo: "r",
 		Entities:      []graph.Entity{endpointDef("d1", "GET", "/x"), handler},
 		Relationships: []graph.Relationship{implementsEdge("h1", "d1")},

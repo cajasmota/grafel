@@ -29,7 +29,7 @@ func processWithEntryKind(doc *graph.Document, kind string) *graph.Entity {
 		if e.Kind != string(EntityKindProcess) {
 			continue
 		}
-		if e.Properties["entry_kind"] == kind {
+		if e.PropGet("entry_kind") == kind {
 			return e
 		}
 	}
@@ -54,8 +54,7 @@ func buildKafkaConsumerDoc(repo string) *graph.Document {
 	}
 	doc.Relationships = []graph.Relationship{
 		// Broker signal: onFeedback subscribes to the Kafka topic.
-		{ID: "sub:1", FromID: "op:onFeedback", ToID: "topic:feedback", Kind: "SUBSCRIBES_TO",
-			Properties: map[string]string{"messaging_layer": "smallrye_reactive"}},
+		graph.Relationship{ID: "sub:1", FromID: "op:onFeedback", ToID: "topic:feedback", Kind: "SUBSCRIBES_TO"}.WithProperties(map[string]string{"messaging_layer": "smallrye_reactive"}),
 		// Business logic CALLS chain.
 		{ID: "c:1", FromID: "op:onFeedback", ToID: "op:classify", Kind: "CALLS"},
 		{ID: "c:2", FromID: "op:classify", ToID: "op:save", Kind: "CALLS"},
@@ -99,7 +98,7 @@ func TestBrokerEntry_KafkaIncoming_ChainContainsBusinessLogic(t *testing.T) {
 	if p == nil {
 		t.Fatalf("no kafka_consumer process emitted")
 	}
-	chainLabels := p.Properties["chain_labels"]
+	chainLabels := p.PropGet("chain_labels")
 	if !strings.Contains(chainLabels, "TriageTools.classify") {
 		t.Errorf("chain_labels %q does not contain classify step", chainLabels)
 	}
@@ -121,8 +120,7 @@ func TestBrokerEntry_SpringKafkaListener_EmitsProcess(t *testing.T) {
 		{ID: "topic:orders", Name: "kafka:orders", Kind: "SCOPE.MessageTopic", Language: "java", SourceFile: ""},
 	}
 	doc.Relationships = []graph.Relationship{
-		{ID: "sub:1", FromID: "op:onOrder", ToID: "topic:orders", Kind: "SUBSCRIBES_TO",
-			Properties: map[string]string{"messaging_layer": "spring_kafka"}},
+		graph.Relationship{ID: "sub:1", FromID: "op:onOrder", ToID: "topic:orders", Kind: "SUBSCRIBES_TO"}.WithProperties(map[string]string{"messaging_layer": "spring_kafka"}),
 		{ID: "c:1", FromID: "op:onOrder", ToID: "op:process", Kind: "CALLS"},
 		{ID: "c:2", FromID: "op:process", ToID: "op:audit", Kind: "CALLS"},
 	}
@@ -152,8 +150,7 @@ func TestBrokerEntry_Scheduled_EmitsProcess(t *testing.T) {
 	}
 	doc.Relationships = []graph.Relationship{
 		// ScheduledJob TRIGGERS the handler.
-		{ID: "tr:1", FromID: "job:cleanup", ToID: "op:cleanup", Kind: "TRIGGERS",
-			Properties: map[string]string{"framework": "quarkus_scheduled"}},
+		graph.Relationship{ID: "tr:1", FromID: "job:cleanup", ToID: "op:cleanup", Kind: "TRIGGERS"}.WithProperties(map[string]string{"framework": "quarkus_scheduled"}),
 		// Business logic CALLS chain.
 		{ID: "c:1", FromID: "op:cleanup", ToID: "op:deleteExpired", Kind: "CALLS"},
 		{ID: "c:2", FromID: "op:deleteExpired", ToID: "op:notify", Kind: "CALLS"},
@@ -184,8 +181,7 @@ func TestBrokerEntry_WebSocket_EmitsProcess(t *testing.T) {
 	}
 	doc.Relationships = []graph.Relationship{
 		// WebSocket subscription signal.
-		{ID: "wssub:1", FromID: "cls:TraceEndpoint.onMessage", ToID: "ws:/ws/trace", Kind: "WS_SUBSCRIBES_TO",
-			Properties: map[string]string{"framework": "jakarta_websocket"}},
+		graph.Relationship{ID: "wssub:1", FromID: "cls:TraceEndpoint.onMessage", ToID: "ws:/ws/trace", Kind: "WS_SUBSCRIBES_TO"}.WithProperties(map[string]string{"framework": "jakarta_websocket"}),
 		// Business logic.
 		{ID: "c:1", FromID: "cls:TraceEndpoint.onMessage", ToID: "op:processTrace", Kind: "CALLS"},
 		{ID: "c:2", FromID: "op:processTrace", ToID: "op:store", Kind: "CALLS"},
@@ -292,7 +288,7 @@ func TestBrokerEntry_MultipleKafkaServices_EachGetProcess(t *testing.T) {
 	kafkaCount := 0
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if e.Kind == string(EntityKindProcess) && e.Properties["entry_kind"] == "kafka_consumer" {
+		if e.Kind == string(EntityKindProcess) && e.PropGet("entry_kind") == "kafka_consumer" {
 			kafkaCount++
 		}
 	}
@@ -338,8 +334,7 @@ func TestBrokerEntry_HTTPHandlerNotRegressed(t *testing.T) {
 		{ID: "fn:handle", Name: "handleOrders", Kind: "SCOPE.Function", Language: "java", SourceFile: "api.java"},
 		{ID: "fn:svc", Name: "OrderService.create", Kind: "SCOPE.Function", Language: "java", SourceFile: "svc.java"},
 		{ID: "fn:repo", Name: "OrderRepo.save", Kind: "SCOPE.Function", Language: "java", SourceFile: "repo.java"},
-		{ID: "ep:orders", Name: "http:POST:/orders", Kind: "http_endpoint", Language: "java", SourceFile: "api.java",
-			Properties: map[string]string{"pattern_type": "http_endpoint_synthesis"}},
+		graph.Entity{ID: "ep:orders", Name: "http:POST:/orders", Kind: "http_endpoint", Language: "java", SourceFile: "api.java"}.WithProperties(map[string]string{"pattern_type": "http_endpoint_synthesis"}),
 	}
 	doc.Relationships = []graph.Relationship{
 		{ID: "impl:1", FromID: "fn:handle", ToID: "ep:orders", Kind: "IMPLEMENTS"},
@@ -406,8 +401,7 @@ func TestBrokerEntry_NodeKafkaConsumer_EmitsProcess(t *testing.T) {
 		{ID: "topic:events", Name: "kafka:events", Kind: "SCOPE.MessageTopic", Language: "javascript", SourceFile: ""},
 	}
 	doc.Relationships = []graph.Relationship{
-		{ID: "sub:1", FromID: "fn:processMessage", ToID: "topic:events", Kind: "SUBSCRIBES_TO",
-			Properties: map[string]string{"messaging_layer": "kafkajs"}},
+		graph.Relationship{ID: "sub:1", FromID: "fn:processMessage", ToID: "topic:events", Kind: "SUBSCRIBES_TO"}.WithProperties(map[string]string{"messaging_layer": "kafkajs"}),
 		{ID: "c:1", FromID: "fn:processMessage", ToID: "fn:validateMsg", Kind: "CALLS"},
 		{ID: "c:2", FromID: "fn:validateMsg", ToID: "fn:storeMsg", Kind: "CALLS"},
 	}
@@ -431,7 +425,7 @@ func allProcessProps(doc *graph.Document) []map[string]string {
 	var out []map[string]string
 	for _, e := range doc.Entities {
 		if e.Kind == string(EntityKindProcess) {
-			out = append(out, e.Properties)
+			out = append(out, e.PropsSnapshot())
 		}
 	}
 	return out

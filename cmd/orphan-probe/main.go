@@ -75,8 +75,8 @@ func isInherentlyLeafField(e *graph.Entity) bool {
 	// (set by stampDjangoFieldProperties). Relational fields (FK/O2O/M2M) also
 	// carry field_type but they DO get REFERENCES edges and are therefore already
 	// in the connected set — this guard fires only for the scalar remainder.
-	if e.Properties != nil {
-		if _, ok := e.Properties["field_type"]; ok {
+	if e.PropLen() > 0 {
+		if _, ok := e.PropLookup("field_type"); ok {
 			return true
 		}
 	}
@@ -565,17 +565,17 @@ func printTextReport(report ProbeReport) {
 // isLombokSynthesized checks if an entity is a generated/synthesized entity
 // that should be excluded from orphan classification.
 func isLombokSynthesized(e *graph.Entity) bool {
-	if e.Properties == nil {
+	if e.PropLen() == 0 {
 		return false
 	}
 	// Check synthesized_from property for Lombok synthesis markers.
-	if synthesizedFrom, ok := e.Properties["synthesized_from"]; ok {
+	if synthesizedFrom, ok := e.PropLookup("synthesized_from"); ok {
 		if strings.HasPrefix(synthesizedFrom, "lombok_") {
 			return true
 		}
 	}
 	// Check generated property.
-	if generated, ok := e.Properties["generated"]; ok && generated == "true" {
+	if generated, ok := e.PropLookup("generated"); ok && generated == "true" {
 		return true
 	}
 	return false

@@ -126,11 +126,11 @@ func Enrich(doc *graph.Document, repoRoot string, cfg Config) Stats {
 		if len(props) == 0 {
 			continue
 		}
-		if doc.Entities[i].Properties == nil {
-			doc.Entities[i].Properties = map[string]string{}
+		if doc.Entities[i].PropLen() == 0 {
+			doc.Entities[i].PropsReplace(map[string]string{})
 		}
 		for k, v := range props {
-			doc.Entities[i].Properties[k] = v
+			doc.Entities[i].PropSet(k, v)
 		}
 	}
 

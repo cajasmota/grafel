@@ -46,8 +46,8 @@ func TestIssue2677_DRFEndpointAttribution(t *testing.T) {
 			continue
 		}
 		got = append(got, endpoint{
-			path:       e.Properties["path"],
-			verb:       e.Properties["verb"],
+			path:       e.PropGet("path"),
+			verb:       e.PropGet("verb"),
 			sourceFile: e.SourceFile,
 			startLine:  e.StartLine,
 		})

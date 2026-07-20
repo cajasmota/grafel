@@ -14,10 +14,10 @@ func cbEntity(id, channel, direction, topic string) graph.Entity {
 	return graph.Entity{
 		ID: id, Name: channel, Kind: string(types.EntityKindChannelBinding),
 		Subtype: direction,
-		Properties: map[string]string{
-			"channel": channel, "direction": direction, "topic": topic,
-		},
-	}
+	}.WithProperties(map[string]string{
+		"channel": channel, "direction": direction, "topic": topic,
+	},
+	)
 }
 
 // TestCollectChannelBindingOrphans surfaces orphan-outgoing and dangling-topic
@@ -26,16 +26,14 @@ func TestCollectChannelBindingOrphans(t *testing.T) {
 	ents := []graph.Entity{
 		// Healthy: op + topic present.
 		cbEntity("cb-ok", "orders-out", "outgoing", "orders.placed"),
-		{ID: "op-ok", Name: "publish", Kind: string(types.EntityKindOperation),
-			Properties: map[string]string{"channel": "orders-out", "direction": "outgoing"}},
+		graph.Entity{ID: "op-ok", Name: "publish", Kind: string(types.EntityKindOperation)}.WithProperties(map[string]string{"channel": "orders-out", "direction": "outgoing"}),
 		{ID: "topic-ok", Name: "kafka:orders.placed", Kind: string(types.EntityKindMessageTopic)},
 		// Orphan outgoing: topic exists, no @Outgoing op.
 		cbEntity("cb-orphan", "ghost-out", "outgoing", "ghost.topic"),
 		{ID: "topic-ghost", Name: "kafka:ghost.topic", Kind: string(types.EntityKindMessageTopic)},
 		// Dangling: op exists, topic MessageTopic missing.
 		cbEntity("cb-dangling", "typo-in", "incoming", "mis.spelled"),
-		{ID: "op-typo", Name: "consume", Kind: string(types.EntityKindOperation),
-			Properties: map[string]string{"channel": "typo-in", "direction": "incoming"}},
+		graph.Entity{ID: "op-typo", Name: "consume", Kind: string(types.EntityKindOperation)}.WithProperties(map[string]string{"channel": "typo-in", "direction": "incoming"}),
 	}
 	grp := &DashGroup{
 		Name: "g",

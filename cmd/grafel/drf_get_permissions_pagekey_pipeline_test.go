@@ -67,9 +67,9 @@ func TestDRFGetPermissionsPageKey_PipelineStampsAuthPermissions(t *testing.T) {
 			continue
 		}
 		got = append(got, endpoint{
-			path:       e.Properties["path"],
-			verb:       e.Properties["verb"],
-			authPerms:  e.Properties["auth_permissions"],
+			path:       e.PropGet("path"),
+			verb:       e.PropGet("verb"),
+			authPerms:  e.PropGet("auth_permissions"),
 			sourceFile: e.SourceFile,
 		})
 	}
@@ -143,7 +143,7 @@ func TestDRFGetPermissionsPageKey_PipelineStampsAuthPermissions(t *testing.T) {
 			if e.SourceFile == "" || filepathSuffix(e.SourceFile) != "views.py" {
 				continue
 			}
-			return e.Properties["auth_permissions"], true
+			return e.PropGet("auth_permissions"), true
 		}
 		return "", false
 	}

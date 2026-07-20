@@ -132,9 +132,9 @@ func CollectRepairEdgeCandidates(doc *graph.Document, opts RepairEdgeCandidateOp
 		if isHexID(stub) || strings.HasPrefix(stub, "ext:") {
 			continue
 		}
-		lang := r.Properties["language"]
+		lang := r.PropGet("language")
 		if lang == "" {
-			lang = r.Properties["lang"]
+			lang = r.PropGet("lang")
 		}
 
 		d := classifyEndpointDisposition(*opts.Resolver, stub, lang, opts.Allow)
@@ -284,7 +284,7 @@ func buildRepairEdgeContext(
 
 	// Metadata block — file-scoped imports, receiver-type hint if any,
 	// surrounding scope kind, language.
-	receiverType := r.Properties["receiver_type"]
+	receiverType := r.PropGet("receiver_type")
 	imports := fc.imports(from.SourceFile)
 	meta := map[string]any{
 		"receiver_type":     nullableString(receiverType),

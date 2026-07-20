@@ -86,8 +86,8 @@ func TestDetectRenames_SimpleRename(t *testing.T) {
 	if edge.ToID != oldID {
 		t.Errorf("RENAMED_FROM.ToID = %s, want %s", edge.ToID, oldID)
 	}
-	if edge.Properties["old_name"] != oldName {
-		t.Errorf("old_name = %q, want %q", edge.Properties["old_name"], oldName)
+	if edge.PropGet("old_name") != oldName {
+		t.Errorf("old_name = %q, want %q", edge.PropGet("old_name"), oldName)
 	}
 }
 
@@ -163,8 +163,8 @@ func TestDetectRenames_MoveDetection(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("no RENAMED_FROM edge on moved entity (ID=%s)", newID)
 	}
-	if edge.Properties["method"] != "moved" {
-		t.Errorf("method = %q, want %q", edge.Properties["method"], "moved")
+	if edge.PropGet("method") != "moved" {
+		t.Errorf("method = %q, want %q", edge.PropGet("method"), "moved")
 	}
 }
 
@@ -242,8 +242,8 @@ func TestDetectRenames_SplitDetection(t *testing.T) {
 		if edge == nil {
 			continue // may not have matched due to similarity threshold
 		}
-		if edge.Properties["method"] != "split" {
-			t.Errorf("entity %s: method = %q, want %q", newID, edge.Properties["method"], "split")
+		if edge.PropGet("method") != "split" {
+			t.Errorf("entity %s: method = %q, want %q", newID, edge.PropGet("method"), "split")
 		}
 	}
 	_ = stats

@@ -58,11 +58,9 @@ func inRepoBaseCallDoc() *graph.Document {
 				Signature: "def handle(self, request)"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "e1", FromID: "child", ToID: "base", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "BaseService"}},
+			graph.Relationship{ID: "e1", FromID: "child", ToID: "base", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "BaseService"}),
 			// The BASE method calls process — the real implementation edge.
-			{ID: "e2", FromID: "base_handle", ToID: "process", Kind: "CALLS",
-				Properties: map[string]string{"language": "python"}},
+			graph.Relationship{ID: "e2", FromID: "base_handle", ToID: "process", Kind: "CALLS"}.WithProperties(map[string]string{"language": "python"}),
 		},
 	}
 }
@@ -270,20 +268,19 @@ func TestNeighbors_UnresolvableInheritedStub_NoFabrication(t *testing.T) {
 			{ID: "cls", Name: "MysteryView", QualifiedName: "MysteryView",
 				Kind: "SCOPE.Component", Subtype: "class", SourceFile: "m.py",
 				StartLine: 1, EndLine: 2, Language: "python"},
-			{ID: "op", Name: "MysteryView.frobnicate", QualifiedName: "MysteryView.frobnicate",
+			graph.Entity{ID: "op", Name: "MysteryView.frobnicate", QualifiedName: "MysteryView.frobnicate",
 				Kind: "SCOPE.Operation", Subtype: "method", SourceFile: "m.py",
 				StartLine: 0, EndLine: 0, Language: "python",
 				Signature: "def frobnicate(self)",
-				Properties: map[string]string{
-					"pattern_type":      "drf_viewset_implicit_method",
-					"viewset_class":     "MysteryView",
-					"drf_method_origin": "frobnicate",
-				}},
+			}.WithProperties(map[string]string{
+				"pattern_type":      "drf_viewset_implicit_method",
+				"viewset_class":     "MysteryView",
+				"drf_method_origin": "frobnicate",
+			}),
 			{ID: "ext", Name: "WeirdBase", Kind: "SCOPE.External", Language: "python"},
 		},
 		Relationships: []graph.Relationship{
-			{ID: "e1", FromID: "cls", ToID: "ext", Kind: "EXTENDS",
-				Properties: map[string]string{"language": "python", "base_name": "some.unknown.WeirdBase"}},
+			graph.Relationship{ID: "e1", FromID: "cls", ToID: "ext", Kind: "EXTENDS"}.WithProperties(map[string]string{"language": "python", "base_name": "some.unknown.WeirdBase"}),
 		},
 	}
 	srv := newTestServer(t, doc)

@@ -80,7 +80,7 @@ func TestEndpointOwningClass(t *testing.T) {
 		{map[string]string{}, ""},
 	}
 	for _, c := range cases {
-		e := &graph.Entity{Properties: c.props}
+		e := graph.EntityPtr(graph.Entity{}.WithProperties(c.props))
 		if got := endpointOwningClass(e); got != c.want {
 			t.Errorf("endpointOwningClass(%v) = %q, want %q", c.props, got, c.want)
 		}
@@ -101,12 +101,11 @@ func schemaField(name, parent, fieldName, fieldType string, required bool) graph
 		props["optional"] = "true"
 	}
 	return graph.Entity{
-		ID:         name,
-		Name:       name,
-		Kind:       "SCOPE.Schema",
-		Subtype:    "field",
-		Properties: props,
-	}
+		ID:      name,
+		Name:    name,
+		Kind:    "SCOPE.Schema",
+		Subtype: "field",
+	}.WithProperties(props)
 }
 
 // TestResponseShapeDiff_Handler_EmptyJoin: the handler runs cleanly and reports a

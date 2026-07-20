@@ -993,7 +993,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 						Kind:       pe.Kind,
 						Subtype:    pe.Subtype,
 						SourceFile: pe.SourceFile,
-						Properties: pe.Properties,
+						Properties: pe.PropsSnapshot(),
 					})
 				}
 				i.incrementalCarryForwardEntities = cf
@@ -1589,10 +1589,10 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	for k := range doc.Entities {
 		e := &doc.Entities[k]
 		if e.SourceFile == "" {
-			if e.Properties == nil {
-				e.Properties = map[string]string{"module": "_external"}
-			} else if _, ok := e.Properties["module"]; !ok {
-				e.Properties["module"] = "_external"
+			if e.PropLen() == 0 {
+				e.PropsReplace(map[string]string{"module": "_external"})
+			} else if _, ok := e.PropLookup("module"); !ok {
+				e.PropSet("module", "_external")
 			}
 		}
 	}
@@ -1641,10 +1641,10 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			// language dynamic-pattern catalog instead of falling through
 			// to cross-language only.
 			lang := ""
-			if r.Properties != nil {
-				if v, ok := r.Properties["language"]; ok {
+			if r.PropLen() > 0 {
+				if v, ok := r.PropLookup("language"); ok {
 					lang = v
-				} else if v, ok := r.Properties["lang"]; ok {
+				} else if v, ok := r.PropLookup("lang"); ok {
 					lang = v
 				}
 			}
@@ -2348,9 +2348,9 @@ func dumpBugExtractorSamples(w *os.File, doc *graph.Document, ridx resolve.Index
 			continue
 		}
 		// Run the same classifier the resolver uses post-synthesis.
-		lang := r.Properties["language"]
+		lang := r.PropGet("language")
 		if lang == "" {
-			lang = r.Properties["lang"]
+			lang = r.PropGet("lang")
 		}
 		// We need the language-tagged classifier; replicate via a small
 		// wrapper — pass the stub as both resolved + original since
@@ -2433,9 +2433,9 @@ func dumpBugResolverSamples(w *os.File, doc *graph.Document, ridx resolve.Index,
 		if isHex16(stub) || strings.HasPrefix(stub, "ext:") {
 			continue
 		}
-		lang := r.Properties["language"]
+		lang := r.PropGet("language")
 		if lang == "" {
-			lang = r.Properties["lang"]
+			lang = r.PropGet("lang")
 		}
 		d := classifyForDiag(ridx, stub, lang, allow)
 		if d != resolve.DispositionBugResolver {
@@ -4820,9 +4820,9 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 				Signature:     r.Signature,
 				Tags:          r.Tags,
 				Metadata:      r.Metadata,
-				Properties:    r.Properties,
-				Confidence:    r.Confidence, // Phase 1C (#2769).
-			})
+
+				Confidence: r.Confidence, // Phase 1C (#2769).
+			}.WithProperties(r.Properties))
 			entityPos[id] = len(entities) - 1
 		} else if pos, ok := entityPos[id]; ok {
 			// Issue #4406 — the production dedup-by-ID path. When two
@@ -4873,12 +4873,12 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 				}
 			}
 			if len(r.Properties) > 0 {
-				if surv.Properties == nil {
-					surv.Properties = make(map[string]string, len(r.Properties))
+				if surv.PropLen() == 0 {
+					surv.PropsReplace(make(map[string]string, len(r.Properties)))
 				}
 				for pk, pv := range r.Properties {
-					if _, exists := surv.Properties[pk]; !exists {
-						surv.Properties[pk] = pv
+					if _, exists := surv.PropLookup(pk); !exists {
+						surv.PropSet(pk, pv)
 					}
 				}
 			}
@@ -4907,13 +4907,13 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			}
 			seenRel[relID] = true
 			relationships = append(relationships, graph.Relationship{
-				ID:         relID,
-				FromID:     fromID,
-				ToID:       toID,
-				Kind:       rel.Kind,
-				Properties: rel.Properties,
+				ID:     relID,
+				FromID: fromID,
+				ToID:   toID,
+				Kind:   rel.Kind,
+
 				Confidence: rel.Confidence, // Phase 1C (#2769).
-			})
+			}.WithProperties(rel.Properties))
 		}
 	}
 
@@ -4931,13 +4931,13 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		}
 		seenRel[relID] = true
 		relationships = append(relationships, graph.Relationship{
-			ID:         relID,
-			FromID:     fromID,
-			ToID:       toID,
-			Kind:       rel.Kind,
-			Properties: rel.Properties,
+			ID:     relID,
+			FromID: fromID,
+			ToID:   toID,
+			Kind:   rel.Kind,
+
 			Confidence: rel.Confidence, // Phase 1C (#2769).
-		})
+		}.WithProperties(rel.Properties))
 	}
 
 	// SCOPE.Pattern → file CONTAINS fixup (see buildPatternContainsRels
@@ -4954,12 +4954,11 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		}
 		seenRel[relID] = true
 		relationships = append(relationships, graph.Relationship{
-			ID:         relID,
-			FromID:     rel.FromID,
-			ToID:       rel.ToID,
-			Kind:       rel.Kind,
-			Properties: rel.Properties,
-		})
+			ID:     relID,
+			FromID: rel.FromID,
+			ToID:   rel.ToID,
+			Kind:   rel.Kind,
+		}.WithProperties(rel.Properties))
 	}
 
 	// #4244 — node-anchored $lookup JOINS_COLLECTION twins (see
@@ -4974,12 +4973,11 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		}
 		seenRel[relID] = true
 		relationships = append(relationships, graph.Relationship{
-			ID:         relID,
-			FromID:     rel.FromID,
-			ToID:       rel.ToID,
-			Kind:       rel.Kind,
-			Properties: rel.Properties,
-		})
+			ID:     relID,
+			FromID: rel.FromID,
+			ToID:   rel.ToID,
+			Kind:   rel.Kind,
+		}.WithProperties(rel.Properties))
 	}
 
 	return &graph.Document{

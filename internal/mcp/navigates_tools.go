@@ -210,9 +210,9 @@ func collectNavigatesEdges(
 
 			route := ""
 			params := ""
-			if rel.Properties != nil {
-				route = rel.Properties["route"]
-				params = rel.Properties["params"]
+			if rel.PropLen() > 0 {
+				route = rel.PropGet("route")
+				params = rel.PropGet("params")
 			}
 
 			// Apply route filter (contains, case-insensitive).
@@ -235,8 +235,8 @@ func collectNavigatesEdges(
 			}
 
 			line := 0
-			if rel.Properties != nil {
-				if ls, ok := rel.Properties["line"]; ok {
+			if rel.PropLen() > 0 {
+				if ls, ok := rel.PropLookup("line"); ok {
 					line, _ = strconv.Atoi(ls)
 				}
 			}
@@ -298,10 +298,10 @@ func collectNavigatesFlow(
 				continue
 			}
 			route, params, line := "", "", 0
-			if rel.Properties != nil {
-				route = rel.Properties["route"]
-				params = rel.Properties["params"]
-				if ls, ok := rel.Properties["line"]; ok {
+			if rel.PropLen() > 0 {
+				route = rel.PropGet("route")
+				params = rel.PropGet("params")
+				if ls, ok := rel.PropLookup("line"); ok {
 					line, _ = strconv.Atoi(ls)
 				}
 			}

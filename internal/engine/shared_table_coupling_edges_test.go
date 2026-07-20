@@ -14,8 +14,7 @@ func stAccess(id, repo, table, op string) graph.Entity {
 		Name:       op + " " + table,
 		Kind:       "SCOPE.DataAccess",
 		SourceFile: repo + "/repo.go",
-		Properties: map[string]string{"repo": repo, "table": table, "operation": op},
-	}
+	}.WithProperties(map[string]string{"repo": repo, "table": table, "operation": op})
 }
 
 // countSharesTableWith returns the SHARES_TABLE_WITH edges in doc.
@@ -53,20 +52,20 @@ func TestSharedTableCoupling_HappyPath(t *testing.T) {
 	if e.FromID != fromID || e.ToID != toID {
 		t.Errorf("endpoints = %s -> %s, want %s -> %s", e.FromID, e.ToID, fromID, toID)
 	}
-	if e.Properties["table"] != "orders" {
-		t.Errorf("table = %q, want normalised %q", e.Properties["table"], "orders")
+	if e.PropGet("table") != "orders" {
+		t.Errorf("table = %q, want normalised %q", e.PropGet("table"), "orders")
 	}
-	if e.Properties["writer"] != "both" {
-		t.Errorf("writer = %q, want both", e.Properties["writer"])
+	if e.PropGet("writer") != "both" {
+		t.Errorf("writer = %q, want both", e.PropGet("writer"))
 	}
-	if e.Properties["access_from"] != "write" || e.Properties["access_to"] != "write" {
-		t.Errorf("access kinds = %q/%q, want write/write", e.Properties["access_from"], e.Properties["access_to"])
+	if e.PropGet("access_from") != "write" || e.PropGet("access_to") != "write" {
+		t.Errorf("access kinds = %q/%q, want write/write", e.PropGet("access_from"), e.PropGet("access_to"))
 	}
-	if e.Properties["confidence"] != "high" {
-		t.Errorf("confidence = %q, want high", e.Properties["confidence"])
+	if e.PropGet("confidence") != "high" {
+		t.Errorf("confidence = %q, want high", e.PropGet("confidence"))
 	}
-	if e.Properties["provenance"] != "SHARED_TABLE_COUPLING" {
-		t.Errorf("provenance = %q", e.Properties["provenance"])
+	if e.PropGet("provenance") != "SHARED_TABLE_COUPLING" {
+		t.Errorf("provenance = %q", e.PropGet("provenance"))
 	}
 	// The service nodes must have been minted.
 	if stats.ServicesMinted != 2 {
@@ -94,11 +93,11 @@ func TestSharedTableCoupling_ReadWriteMix(t *testing.T) {
 	}
 	e := edges[0]
 	// from=a-svc(read), to=b-svc(write) since "service:acme/a-svc" < "service:acme/b-svc".
-	if e.Properties["writer"] != "to" {
-		t.Errorf("writer = %q, want to", e.Properties["writer"])
+	if e.PropGet("writer") != "to" {
+		t.Errorf("writer = %q, want to", e.PropGet("writer"))
 	}
-	if e.Properties["access_from"] != "read" || e.Properties["access_to"] != "write" {
-		t.Errorf("access kinds = %q/%q, want read/write", e.Properties["access_from"], e.Properties["access_to"])
+	if e.PropGet("access_from") != "read" || e.PropGet("access_to") != "write" {
+		t.Errorf("access kinds = %q/%q, want read/write", e.PropGet("access_from"), e.PropGet("access_to"))
 	}
 }
 
@@ -109,12 +108,12 @@ func TestSharedTableCoupling_NoOp_SameServiceTwoModules(t *testing.T) {
 		Entities: []graph.Entity{
 			func() graph.Entity {
 				e := stAccess("da-1", "acme/mono", "orders", "INSERT")
-				e.Properties["module"] = "checkout"
+				e.PropSet("module", "checkout")
 				return e
 			}(),
 			func() graph.Entity {
 				e := stAccess("da-2", "acme/mono", "orders", "UPDATE")
-				e.Properties["module"] = "fulfilment"
+				e.PropSet("module", "fulfilment")
 				return e
 			}(),
 		},
@@ -195,14 +194,12 @@ func TestSharedTableCoupling_Idempotent(t *testing.T) {
 func TestSharedTableCoupling_AccessesTableEdge(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
-			{ID: "fn-a", Kind: "Function", Properties: map[string]string{"repo": "acme/a-svc"}},
-			{ID: "fn-b", Kind: "Function", Properties: map[string]string{"repo": "acme/b-svc"}},
+			graph.Entity{ID: "fn-a", Kind: "Function"}.WithProperties(map[string]string{"repo": "acme/a-svc"}),
+			graph.Entity{ID: "fn-b", Kind: "Function"}.WithProperties(map[string]string{"repo": "acme/b-svc"}),
 		},
 		Relationships: []graph.Relationship{
-			{FromID: "fn-a", ToID: "da-x", Kind: "ACCESSES_TABLE",
-				Properties: map[string]string{"table": "orders", "operation": "INSERT"}},
-			{FromID: "fn-b", ToID: "da-y", Kind: "ACCESSES_TABLE",
-				Properties: map[string]string{"table": "orders", "operation": "SELECT"}},
+			graph.Relationship{FromID: "fn-a", ToID: "da-x", Kind: "ACCESSES_TABLE"}.WithProperties(map[string]string{"table": "orders", "operation": "INSERT"}),
+			graph.Relationship{FromID: "fn-b", ToID: "da-y", Kind: "ACCESSES_TABLE"}.WithProperties(map[string]string{"table": "orders", "operation": "SELECT"}),
 		},
 	}
 	ApplySharedTableCouplingEdges(doc)

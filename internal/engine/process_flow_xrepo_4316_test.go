@@ -39,14 +39,13 @@ func b1Docs() (fe, be *graph.Document) {
 		Repo: "fe",
 		Entities: []graph.Entity{
 			{ID: "fe_entry", Name: "Details", Kind: "SCOPE.Function", Language: "ts", SourceFile: "Details.tsx"},
-			{ID: "aaa_synth", Name: "http:GET:/group-building-settings", Kind: "http_endpoint",
+			graph.Entity{ID: "aaa_synth", Name: "http:GET:/group-building-settings", Kind: "http_endpoint",
 				Language: "ts", SourceFile: "Details.tsx",
-				Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis"}},
+			}.WithProperties(map[string]string{"pattern_type": "http_endpoint_client_synthesis"}),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "fe_f1", FromID: "fe_entry", ToID: "aaa_synth", Kind: "FETCHES"},
-			{ID: "fe_ph", FromID: "fe_entry", ToID: "zzz_handler", Kind: "CALLS",
-				Properties: map[string]string{"cross_repo": "true", "target_repo": "be", "link_method": "http"}},
+			graph.Relationship{ID: "fe_ph", FromID: "fe_entry", ToID: "zzz_handler", Kind: "CALLS"}.WithProperties(map[string]string{"cross_repo": "true", "target_repo": "be", "link_method": "http"}),
 		},
 	}
 	be = &graph.Document{
@@ -72,7 +71,7 @@ func processChain(doc *graph.Document, entryID string) []string {
 	if p == nil {
 		return nil
 	}
-	return strings.Split(p.Properties["chain"], ",")
+	return strings.Split(p.PropGet("chain"), ",")
 }
 
 // B1: a flow reaching an http-call node WITH a resolved cross-repo link
@@ -104,8 +103,8 @@ func TestProcessFlow_4316_B1_ContinuesPastHTTPCall(t *testing.T) {
 		t.Fatalf("B1: chain reached handler but did not continue into service: %v", chain)
 	}
 	p := findProcessByEntry(fe, "fe_entry")
-	if p.Properties["cross_stack"] != "true" {
-		t.Errorf("expected cross_stack=true, got %q", p.Properties["cross_stack"])
+	if p.PropGet("cross_stack") != "true" {
+		t.Errorf("expected cross_stack=true, got %q", p.PropGet("cross_stack"))
 	}
 }
 
@@ -139,8 +138,7 @@ func TestProcessFlow_4316_Guard_UnresolvedHTTPCallStaysTerminal(t *testing.T) {
 		Entities: []graph.Entity{
 			{ID: "fe_a", Name: "loadThing", Kind: "SCOPE.Function", Language: "ts", SourceFile: "a.tsx"},
 			{ID: "fe_b", Name: "callApi", Kind: "SCOPE.Function", Language: "ts", SourceFile: "a.tsx"},
-			{ID: "fe_synth", Name: "http:GET:/orphan", Kind: "http_endpoint", Language: "ts", SourceFile: "a.tsx",
-				Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis"}},
+			graph.Entity{ID: "fe_synth", Name: "http:GET:/orphan", Kind: "http_endpoint", Language: "ts", SourceFile: "a.tsx"}.WithProperties(map[string]string{"pattern_type": "http_endpoint_client_synthesis"}),
 		},
 		Relationships: []graph.Relationship{
 			{ID: "fe_r1", FromID: "fe_a", ToID: "fe_b", Kind: "CALLS"},

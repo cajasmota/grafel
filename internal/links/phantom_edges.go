@@ -152,13 +152,13 @@ func PromoteToPhantomEdges(
 			FromID: c.sourceID,
 			ToID:   c.targetID,
 			Kind:   "CALLS",
-			Properties: map[string]string{
-				"cross_repo":  "true",
-				"target_repo": c.targetRepo,
-				"link_method": c.link.Method,
-				"via":         fmt.Sprintf("phantom_edge_pass_#769 group=%s", group),
-			},
-		}
+		}.WithProperties(map[string]string{
+			"cross_repo":  "true",
+			"target_repo": c.targetRepo,
+			"link_method": c.link.Method,
+			"via":         fmt.Sprintf("phantom_edge_pass_#769 group=%s", group),
+		},
+		)
 		doc.Relationships = append(doc.Relationships, rel)
 		added++
 		docsUpdated[c.sourceRepo] = true

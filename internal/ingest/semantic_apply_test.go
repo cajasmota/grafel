@@ -55,8 +55,8 @@ func TestApplySemanticResult_ValidCreatesNodesAndEdges(t *testing.T) {
 	if dec.Kind != string(types.EntityKindDesignDecision) {
 		t.Errorf("decision kind = %q, want %q", dec.Kind, types.EntityKindDesignDecision)
 	}
-	if dec.Properties["section_id"] != placing.SectionID {
-		t.Errorf("decision not anchored to section: %q", dec.Properties["section_id"])
+	if dec.PropGet("section_id") != placing.SectionID {
+		t.Errorf("decision not anchored to section: %q", dec.PropGet("section_id"))
 	}
 
 	// Edges: 1 anchor (Section→Decision CONTAINS) + 2 rationale (Decision→target).

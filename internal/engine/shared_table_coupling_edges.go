@@ -136,12 +136,12 @@ func ApplySharedTableCouplingEdges(doc *graph.Document) SharedTableStats {
 		if e.Kind != sharedKindDataAccess {
 			continue
 		}
-		tbl := normTable(e.Properties["table"])
+		tbl := normTable(e.PropGet("table"))
 		if tbl == "" {
 			continue
 		}
 		repo := entityRepo(doc, e)
-		write := sharedTableWriteOps[strings.ToLower(strings.TrimSpace(e.Properties["operation"]))]
+		write := sharedTableWriteOps[strings.ToLower(strings.TrimSpace(e.PropGet("operation")))]
 		daTable[e.ID] = tbl
 		daWrite[e.ID] = write
 		daRepo[e.ID] = repo
@@ -169,9 +169,9 @@ func ApplySharedTableCouplingEdges(doc *graph.Document) SharedTableStats {
 		if t, ok := daTable[r.ToID]; ok {
 			tbl = t
 			write = daWrite[r.ToID]
-		} else if r.Properties != nil {
-			tbl = normTable(r.Properties["table"])
-			write = sharedTableWriteOps[strings.ToLower(strings.TrimSpace(r.Properties["operation"]))]
+		} else if r.PropLen() > 0 {
+			tbl = normTable(r.PropGet("table"))
+			write = sharedTableWriteOps[strings.ToLower(strings.TrimSpace(r.PropGet("operation")))]
 		}
 		if tbl == "" {
 			continue
@@ -212,11 +212,11 @@ func ApplySharedTableCouplingEdges(doc *graph.Document) SharedTableStats {
 				Name:          repo,
 				QualifiedName: id,
 				Kind:          sharedTableServiceKind,
-				Properties: map[string]string{
-					"repo":      repo,
-					"synthesis": "shared_table_coupling",
-				},
-			})
+			}.WithProperties(map[string]string{
+				"repo":      repo,
+				"synthesis": "shared_table_coupling",
+			},
+			))
 			stats.ServicesMinted++
 		}
 		return id
@@ -297,15 +297,15 @@ func ApplySharedTableCouplingEdges(doc *graph.Document) SharedTableStats {
 					FromID: fromID,
 					ToID:   toID,
 					Kind:   sharedTableRelSharesTableWith,
-					Properties: map[string]string{
-						"table":       tbl,
-						"access_from": accessKinds(fromRW),
-						"access_to":   accessKinds(toRW),
-						"writer":      writer,
-						"confidence":  "high",
-						"provenance":  sharedTableProvenance,
-					},
-				})
+				}.WithProperties(map[string]string{
+					"table":       tbl,
+					"access_from": accessKinds(fromRW),
+					"access_to":   accessKinds(toRW),
+					"writer":      writer,
+					"confidence":  "high",
+					"provenance":  sharedTableProvenance,
+				},
+				))
 				stats.CouplingEdges++
 				tableEmitted = true
 			}

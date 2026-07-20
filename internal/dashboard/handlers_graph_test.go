@@ -121,15 +121,17 @@ func TestEntityLabel_NonEmpty(t *testing.T) {
 }
 
 func TestEntityLabel_ProcessWithName(t *testing.T) {
-	e := &graph.Entity{
-		ID:   "proc:abc123",
-		Name: "handleOrder → writeDB",
-		Kind: "SCOPE.Process",
-		Properties: map[string]string{
+	e :=
+
+		graph.EntityPtr(graph.Entity{
+			ID:   "proc:abc123",
+			Name: "handleOrder → writeDB",
+			Kind: "SCOPE.Process",
+		}.WithProperties(map[string]string{
 			"entry_name":   "handleOrder",
 			"chain_labels": "handleOrder → callService → writeDB",
 		},
-	}
+		))
 	// When Name is set, entityLabel returns it unchanged — no Properties lookup.
 	if got := entityLabel(e); got != "handleOrder → writeDB" {
 		t.Errorf("entityLabel = %q, want 'handleOrder → writeDB'", got)
@@ -137,16 +139,20 @@ func TestEntityLabel_ProcessWithName(t *testing.T) {
 }
 
 func TestEntityLabel_ProcessEmptyName_FallsBackToEntryName(t *testing.T) {
-	e := &graph.Entity{
-		ID:   "proc:deadbeef01234567",
-		Name: "", // empty — simulates older graph data
-		Kind: "SCOPE.Process",
-		Properties: map[string]string{
+	e :=
+
+		// empty — simulates older graph data
+
+		graph.EntityPtr(graph.Entity{
+			ID:   "proc:deadbeef01234567",
+			Name: "",
+			Kind: "SCOPE.Process",
+		}.WithProperties(map[string]string{
 			"entry_name":   "processPayment",
 			"entry_id":     "testrepo::SCOPE.Function:processPayment",
 			"chain_labels": "processPayment → chargeCard → emitEvent → notify",
 		},
-	}
+		))
 	got := entityLabel(e)
 	// Should derive "processPayment → notify" from entry_name + last chain segment.
 	if got != "processPayment → notify" {
@@ -155,14 +161,16 @@ func TestEntityLabel_ProcessEmptyName_FallsBackToEntryName(t *testing.T) {
 }
 
 func TestEntityLabel_ProcessEmptyNameNoChainLabels_FallsBackToEntryNameFlow(t *testing.T) {
-	e := &graph.Entity{
-		ID:   "proc:deadbeef01234567",
-		Name: "",
-		Kind: "SCOPE.Process",
-		Properties: map[string]string{
+	e :=
+
+		graph.EntityPtr(graph.Entity{
+			ID:   "proc:deadbeef01234567",
+			Name: "",
+			Kind: "SCOPE.Process",
+		}.WithProperties(map[string]string{
 			"entry_name": "syncInventory",
 		},
-	}
+		))
 	got := entityLabel(e)
 	if got != "syncInventory flow" {
 		t.Errorf("entityLabel = %q, want 'syncInventory flow'", got)
@@ -170,14 +178,16 @@ func TestEntityLabel_ProcessEmptyNameNoChainLabels_FallsBackToEntryNameFlow(t *t
 }
 
 func TestEntityLabel_ProcessEmptyNameNoEntryName_FallsBackToEntryID(t *testing.T) {
-	e := &graph.Entity{
-		ID:   "proc:deadbeef01234567",
-		Name: "",
-		Kind: "SCOPE.Process",
-		Properties: map[string]string{
+	e :=
+
+		graph.EntityPtr(graph.Entity{
+			ID:   "proc:deadbeef01234567",
+			Name: "",
+			Kind: "SCOPE.Process",
+		}.WithProperties(map[string]string{
 			"entry_id": "testrepo::SCOPE.Function:auditLog",
 		},
-	}
+		))
 	got := entityLabel(e)
 	if got != "auditLog flow" {
 		t.Errorf("entityLabel = %q, want 'auditLog flow'", got)
@@ -217,11 +227,11 @@ func TestHandlerGraph_ProcessNodeLabel_NonEmptyName(t *testing.T) {
 		ID:   "proc:0123456789abcdef",
 		Name: "handleSubmit → writeDB",
 		Kind: "SCOPE.Process",
-		Properties: map[string]string{
-			"entry_name":   "handleSubmit",
-			"chain_labels": "handleSubmit → callRepo → writeDB",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"entry_name":   "handleSubmit",
+		"chain_labels": "handleSubmit → callRepo → writeDB",
+	},
+	)
 	grp := makeGraphTestGroup([]graph.Entity{procEnt}, nil)
 	ts := newGraphTestServer(t, grp)
 
@@ -244,11 +254,11 @@ func TestHandlerGraph_ProcessNodeLabel_EmptyName(t *testing.T) {
 		ID:   "proc:deadbeef12345678",
 		Name: "", // empty — the bug scenario
 		Kind: "SCOPE.Process",
-		Properties: map[string]string{
-			"entry_name":   "processOrder",
-			"chain_labels": "processOrder → validateCart → chargeCard → notify",
-		},
-	}
+	}.WithProperties(map[string]string{
+		"entry_name":   "processOrder",
+		"chain_labels": "processOrder → validateCart → chargeCard → notify",
+	},
+	)
 	grp := makeGraphTestGroup([]graph.Entity{procEnt}, nil)
 	ts := newGraphTestServer(t, grp)
 

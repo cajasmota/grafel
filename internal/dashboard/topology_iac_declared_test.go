@@ -22,13 +22,10 @@ func TestCollectTopology_IaCDeclaredQueuesSurface(t *testing.T) {
 		Repo: "acme-backend-v3",
 		Entities: []graph.Entity{
 			// As emitted by applyIaCTopologyChannels for aws_sqs_queue.dlq + .main.
-			{ID: "iac-dlq", Name: "sqs:dlq", Kind: "SCOPE.Queue",
-				Properties: map[string]string{"broker": "sqs", "iac_declared": "true", "pattern_type": "iac_declared", "iac_tool": "terraform"}},
-			{ID: "iac-main", Name: "sqs:main", Kind: "SCOPE.Queue",
-				Properties: map[string]string{"broker": "sqs", "iac_declared": "true", "pattern_type": "iac_declared", "iac_tool": "terraform"}},
+			graph.Entity{ID: "iac-dlq", Name: "sqs:dlq", Kind: "SCOPE.Queue"}.WithProperties(map[string]string{"broker": "sqs", "iac_declared": "true", "pattern_type": "iac_declared", "iac_tool": "terraform"}),
+			graph.Entity{ID: "iac-main", Name: "sqs:main", Kind: "SCOPE.Queue"}.WithProperties(map[string]string{"broker": "sqs", "iac_declared": "true", "pattern_type": "iac_declared", "iac_tool": "terraform"}),
 			// An aws_sns_topic declaration → MessageTopic.
-			{ID: "iac-topic", Name: "sns:order-events", Kind: "SCOPE.MessageTopic",
-				Properties: map[string]string{"broker": "sns", "iac_declared": "true", "pattern_type": "iac_declared"}},
+			graph.Entity{ID: "iac-topic", Name: "sns:order-events", Kind: "SCOPE.MessageTopic"}.WithProperties(map[string]string{"broker": "sns", "iac_declared": "true", "pattern_type": "iac_declared"}),
 		},
 	}
 	grp := &DashGroup{

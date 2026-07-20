@@ -52,20 +52,20 @@ func buildFastAPIContractServer(t *testing.T) *Server {
 	doc := &graph.Document{
 		Repo: "api",
 		Entities: []graph.Entity{
-			{
+			graph.Entity{
 				ID: "ep:post:/items", Name: "http:POST:/items",
 				Kind: "http_endpoint_definition", Language: "python",
 				SourceFile: srcRel,
-				Properties: map[string]string{
-					"framework":         "fastapi",
-					"verb":              "POST",
-					"path":              "/items",
-					"request_body_type": "CreateItem",
-					"response_model":    "ItemOut",
-					"status_code":       "201",
-					"auth_required":     "true",
-				},
+			}.WithProperties(map[string]string{
+				"framework":         "fastapi",
+				"verb":              "POST",
+				"path":              "/items",
+				"request_body_type": "CreateItem",
+				"response_model":    "ItemOut",
+				"status_code":       "201",
+				"auth_required":     "true",
 			},
+			),
 			{
 				ID: "op:create_item", Name: "create_item",
 				QualifiedName: "create_item",
@@ -74,12 +74,9 @@ func buildFastAPIContractServer(t *testing.T) *Server {
 				StartLine: 3, EndLine: 9,
 			},
 			{ID: "dto:CreateItem", Name: "CreateItem", Kind: "SCOPE.Component", Subtype: "class", Language: "python", SourceFile: "app/schemas.py"},
-			{ID: "f:sku", Name: "CreateItem.sku", Kind: "SCOPE.Schema", Subtype: "field", Language: "python",
-				Properties: map[string]string{"field_name": "sku", "field_type": "string", "parent_class": "CreateItem"}},
-			{ID: "f:name", Name: "CreateItem.name", Kind: "SCOPE.Schema", Subtype: "field", Language: "python",
-				Properties: map[string]string{"field_name": "name", "field_type": "string", "parent_class": "CreateItem"}},
-			{ID: "f:qty", Name: "CreateItem.qty", Kind: "SCOPE.Schema", Subtype: "field", Language: "python",
-				Properties: map[string]string{"field_name": "qty", "field_type": "integer", "parent_class": "CreateItem", "optional": "true"}},
+			graph.Entity{ID: "f:sku", Name: "CreateItem.sku", Kind: "SCOPE.Schema", Subtype: "field", Language: "python"}.WithProperties(map[string]string{"field_name": "sku", "field_type": "string", "parent_class": "CreateItem"}),
+			graph.Entity{ID: "f:name", Name: "CreateItem.name", Kind: "SCOPE.Schema", Subtype: "field", Language: "python"}.WithProperties(map[string]string{"field_name": "name", "field_type": "string", "parent_class": "CreateItem"}),
+			graph.Entity{ID: "f:qty", Name: "CreateItem.qty", Kind: "SCOPE.Schema", Subtype: "field", Language: "python"}.WithProperties(map[string]string{"field_name": "qty", "field_type": "integer", "parent_class": "CreateItem", "optional": "true"}),
 		},
 		Relationships: []graph.Relationship{
 			{FromID: "op:create_item", ToID: "ep:post:/items", Kind: "IMPLEMENTS"},

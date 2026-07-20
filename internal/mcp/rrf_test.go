@@ -66,18 +66,21 @@ func TestFuseRRF_SemanticHitWithoutKeywordOverlap(t *testing.T) {
 	// BM25 returns 0 hits (no overlap with name/path/docstring after stop-words).
 	// Semantic returns it via the docstring-token overlap captured in the
 	// embed text. RRF fusion should put the auth entity first.
-	authEntity := &graph.Entity{
-		ID: "auth-1", Name: "verifyBearer", Kind: "function",
-		SourceFile: "internal/identity/sessions.go",
-		Properties: map[string]string{
+	authEntity :=
+
+		graph.EntityPtr(graph.Entity{
+			ID: "auth-1", Name: "verifyBearer", Kind: "function",
+			SourceFile: "internal/identity/sessions.go",
+		}.WithProperties(map[string]string{
 			"docstring": "Verify a bearer token and create an authentication session for the caller.",
 		},
-	}
-	mathEntity := &graph.Entity{
-		ID: "math-1", Name: "sumInts", Kind: "function",
-		SourceFile: "internal/math/sum.go",
-		Properties: map[string]string{"docstring": "Compute the sum of two integers."},
-	}
+		))
+	mathEntity :=
+
+		graph.EntityPtr(graph.Entity{
+			ID: "math-1", Name: "sumInts", Kind: "function",
+			SourceFile: "internal/math/sum.go",
+		}.WithProperties(map[string]string{"docstring": "Compute the sum of two integers."}))
 	doc := &graph.Document{Entities: []graph.Entity{*authEntity, *mathEntity}}
 
 	// Build BM25 over the doc.

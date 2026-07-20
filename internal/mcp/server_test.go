@@ -902,25 +902,21 @@ func fixtureDocWithUnresolved(repo string) *graph.Document {
 			{ID: "r3", FromID: hexE2, ToID: "MyHelper", Kind: "CALLS"},
 			// Unresolved IMPORTS: external Python package (dotted, no slash) →
 			// disposition "external_unknown".
-			{
+			graph.Relationship{
 				ID: "r2", FromID: hexE1, ToID: "opentelemetry.trace", Kind: "IMPORTS",
-				Properties: map[string]string{"source_module": "opentelemetry.trace"},
-			},
+			}.WithProperties(map[string]string{"source_module": "opentelemetry.trace"}),
 			// Unresolved IMPORTS: another external Python package.
-			{
+			graph.Relationship{
 				ID: "r6", FromID: hexE1, ToID: "opentelemetry.sdk", Kind: "IMPORTS",
-				Properties: map[string]string{"source_module": "opentelemetry.sdk"},
-			},
+			}.WithProperties(map[string]string{"source_module": "opentelemetry.sdk"}),
 			// Unresolved IMPORTS: Go module path (cross-repo) → "cross_repo".
-			{
+			graph.Relationship{
 				ID: "r4", FromID: hexE3, ToID: "github.com/myorg/shared/pkg", Kind: "IMPORTS",
-				Properties: map[string]string{"source_module": "github.com/myorg/shared/pkg"},
-			},
+			}.WithProperties(map[string]string{"source_module": "github.com/myorg/shared/pkg"}),
 			// Unresolved IMPORTS: proto import → "proto_generated".
-			{
+			graph.Relationship{
 				ID: "r5", FromID: hexE1, ToID: "myservice_pb2", Kind: "IMPORTS",
-				Properties: map[string]string{"source_module": "myservice_pb2"},
-			},
+			}.WithProperties(map[string]string{"source_module": "myservice_pb2"}),
 			// Unresolved IMPORTS: bare name (same-package unqualified).
 			// Added so the same_package_unqualified disposition bucket is
 			// exercised via an IMPORTS edge (not the CALLS edge r3 which is now
@@ -928,10 +924,9 @@ func fixtureDocWithUnresolved(repo string) *graph.Document {
 			{ID: "r7", FromID: hexE2, ToID: "BareSymbol", Kind: "IMPORTS"},
 			// Resolved IMPORTS: hex ToID (post-resolver state, e.g. after
 			// ResolveGoInTreeImports). Must NOT appear in fidelity_import_bug.
-			{
+			graph.Relationship{
 				ID: "r8", FromID: hexE3, ToID: hexE1, Kind: "IMPORTS",
-				Properties: map[string]string{"go_pkg_dir": "internal/svc"},
-			},
+			}.WithProperties(map[string]string{"go_pkg_dir": "internal/svc"}),
 		},
 	}
 }
@@ -1134,28 +1129,24 @@ func TestFidelityReflectsPostResolverState(t *testing.T) {
 		},
 		Relationships: []graph.Relationship{
 			// --- IMPORTS: unresolved (raw Go module paths, pre-resolver state) ---
-			{
+			graph.Relationship{
 				ID: "i1", FromID: hexA, ToID: "github.com/owner/repo/internal/pkg", Kind: "IMPORTS",
-				Properties: map[string]string{"go_pkg_dir": "internal/pkg"},
-			},
-			{
+			}.WithProperties(map[string]string{"go_pkg_dir": "internal/pkg"}),
+			graph.Relationship{
 				ID: "i2", FromID: hexB, ToID: "github.com/owner/repo/cmd/server", Kind: "IMPORTS",
-				Properties: map[string]string{"go_pkg_dir": "cmd/server"},
-			},
+			}.WithProperties(map[string]string{"go_pkg_dir": "cmd/server"}),
 			// Standard unresolved IMPORTS (no go_pkg_dir — other resolver pass).
 			{ID: "i3", FromID: hexC, ToID: "opentelemetry.trace", Kind: "IMPORTS"},
 			{ID: "i4", FromID: hexC, ToID: "requests.Session", Kind: "IMPORTS"},
 			// --- IMPORTS: resolved (hex ToID, post-ResolveGoInTreeImports state) ---
 			// These simulate edges that ResolveGoInTreeImports already rewrote;
 			// they must NOT appear in fidelity_import_bug.
-			{
+			graph.Relationship{
 				ID: "i5", FromID: hexA, ToID: hexB, Kind: "IMPORTS",
-				Properties: map[string]string{"go_pkg_dir": "internal/types"},
-			},
-			{
+			}.WithProperties(map[string]string{"go_pkg_dir": "internal/types"}),
+			graph.Relationship{
 				ID: "i6", FromID: hexB, ToID: hexC, Kind: "IMPORTS",
-				Properties: map[string]string{"go_pkg_dir": "internal/graph"},
-			},
+			}.WithProperties(map[string]string{"go_pkg_dir": "internal/graph"}),
 			// --- CALLS: unresolved (must NOT be counted in fidelity scope) ---
 			{ID: "c1", FromID: hexA, ToID: "bareFunc", Kind: "CALLS"},
 			{ID: "c2", FromID: hexB, ToID: "AnotherBare", Kind: "CALLS"},
@@ -1459,12 +1450,13 @@ func TestInspect_AgentResolvedEdges(t *testing.T) {
 	}
 	// Build a document where one edge carries agent-repair properties.
 	doc := fixtureDoc("rA")
-	// Mark the CALLS edge from a1→a2 as agent-repaired.
-	doc.Relationships[0].Properties = map[string]string{
-		"resolved_by":       "agent-repair",
-		"resolved_by_agent": "generate-docs/pass-1a",
-		"repair_reasoning":  "inferred from import statement",
-	}
+
+	doc.Relationships[0].
+		PropsReplace(map[string]string{
+			"resolved_by":       "agent-repair",
+			"resolved_by_agent": "generate-docs/pass-1a",
+			"repair_reasoning":  "inferred from import statement",
+		})
 	writeGraph(t, repo, doc)
 
 	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"rA": repo}})

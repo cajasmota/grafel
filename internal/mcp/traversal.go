@@ -262,10 +262,10 @@ func newCSRDir(numNodes, numEdges int, deg []int32) csrDir {
 // falling back to 1.0. Values <= 0 are treated as 1.0.
 func edgeWeight(r *graph.Relationship) float64 {
 	for _, key := range []string{"count", "weight"} {
-		if r.Properties == nil {
+		if r.PropLen() == 0 {
 			break
 		}
-		if v, ok := r.Properties[key]; ok && v != "" {
+		if v, ok := r.PropLookup(key); ok && v != "" {
 			if n, err := strconv.ParseFloat(v, 64); err == nil && n > 0 {
 				return n
 			}
@@ -296,8 +296,8 @@ func buildStepAdjacency(doc *graph.Document) map[string][]stepEdge {
 			continue
 		}
 		idxStr := ""
-		if r.Properties != nil {
-			idxStr = r.Properties["step_index"]
+		if r.PropLen() > 0 {
+			idxStr = r.PropGet("step_index")
 		}
 		n, _ := strconv.Atoi(idxStr)
 		adj[r.FromID] = append(adj[r.FromID], stepEdge{toID: r.ToID, idx: n})

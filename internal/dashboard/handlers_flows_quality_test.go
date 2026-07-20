@@ -41,14 +41,14 @@ func processEntity(id, name string, stepCount int, crossStack bool) graph.Entity
 		ID:   id,
 		Name: name,
 		Kind: processEntityKind,
-		Properties: map[string]string{
-			"entry_name":  name + "_entry",
-			"entry_id":    id + "_entry",
-			"terminal_id": id + "_terminal",
-			"step_count":  itoa(stepCount),
-			"cross_stack": cs,
-		},
-	}
+	}.WithProperties(map[string]string{
+		"entry_name":  name + "_entry",
+		"entry_id":    id + "_entry",
+		"terminal_id": id + "_terminal",
+		"step_count":  itoa(stepCount),
+		"cross_stack": cs,
+	},
+	)
 }
 
 // stepEntity builds a plain function entity that acts as a flow step.
@@ -59,8 +59,7 @@ func stepEntity(id, name, kind string) graph.Entity {
 		Kind:       kind,
 		SourceFile: "src/" + id + ".go",
 		StartLine:  1,
-		Properties: map[string]string{},
-	}
+	}.WithProperties(map[string]string{})
 }
 
 // stepRel builds a STEP_IN_PROCESS relationship from processID to stepID.
@@ -70,10 +69,10 @@ func stepRel(processID, stepID string, idx int) graph.Relationship {
 		FromID: processID,
 		ToID:   stepID,
 		Kind:   stepInProcessEdge,
-		Properties: map[string]string{
-			"step_index": itoa(idx),
-		},
-	}
+	}.WithProperties(map[string]string{
+		"step_index": itoa(idx),
+	},
+	)
 }
 
 // outRel builds an outgoing relationship from a step entity.
@@ -487,11 +486,11 @@ func dynamicStepEntity(id, name string, dynamicTarget string) graph.Entity {
 		Kind:       "Function",
 		SourceFile: "src/" + id + ".go",
 		StartLine:  1,
-		Properties: map[string]string{
-			"dynamic":        "true",
-			"dynamic_target": dynamicTarget,
-		},
-	}
+	}.WithProperties(map[string]string{
+		"dynamic":        "true",
+		"dynamic_target": dynamicTarget,
+	},
+	)
 }
 
 // crossStackStepEntity builds a step entity with cross_stack="true" and an
@@ -503,11 +502,11 @@ func crossStackStepEntity(id, name, terminalID string) graph.Entity {
 		Kind:       "Function",
 		SourceFile: "src/" + id + ".go",
 		StartLine:  1,
-		Properties: map[string]string{
-			"cross_stack": "true",
-			"terminal_id": terminalID,
-		},
-	}
+	}.WithProperties(map[string]string{
+		"cross_stack": "true",
+		"terminal_id": terminalID,
+	},
+	)
 }
 
 // TestTruncated_UnresolvedCallee — a flow whose intermediate step has a CALLS
@@ -800,7 +799,7 @@ func TestHandleFlowsList_ShortFlowFilter(t *testing.T) {
 	long := procWithEntry("p-long", "longFlow", e.ID, e.Name, "a.go", 6)
 	short := procWithEntry("p-short", "shortFlow", e.ID, e.Name, "b.go", 2)
 	crossShort := procWithEntry("p-cross", "crossFlow", e.ID, e.Name, "c.go", 2)
-	crossShort.Properties["cross_stack"] = "true"
+	crossShort.PropSet("cross_stack", "true")
 
 	grp := makeGroupWithEntries(
 		[]graph.Entity{long, short, crossShort},

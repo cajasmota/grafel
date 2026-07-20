@@ -171,17 +171,17 @@ func hasAuthProperty(e *graph.Entity) (bool, string) {
 	// AllowAny / permitAll) — genuinely unauthenticated, so it deliberately does
 	// NOT count as covered here and falls through to the raw-signal checks (which
 	// will also find nothing) so the route is reported uncovered-by-design.
-	if e.Properties["auth_required"] == "true" {
-		if g := e.Properties["auth_guard"]; g != "" {
+	if e.PropGet("auth_required") == "true" {
+		if g := e.PropGet("auth_guard"); g != "" {
 			return true, "auth_guard=" + g
 		}
-		if m := e.Properties["auth_method"]; m != "" && m != "unknown" {
+		if m := e.PropGet("auth_method"); m != "" && m != "unknown" {
 			return true, "auth_method=" + m
 		}
 		return true, "auth_required=true"
 	}
 	for _, k := range []string{"auth_decorator", "auth_middleware", "auth_guard", "auth_annotation"} {
-		if v := e.Properties[k]; v != "" && v != "false" {
+		if v := e.PropGet(k); v != "" && v != "false" {
 			return true, k + "=" + v
 		}
 	}
@@ -192,7 +192,7 @@ func buildAuthPoliciesByFileHTTP(doc *graph.Document) map[string][]string {
 	m := make(map[string][]string)
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if e.Properties["subtype"] == "auth_policy" || e.Subtype == "auth_policy" {
+		if e.PropGet("subtype") == "auth_policy" || e.Subtype == "auth_policy" {
 			m[e.SourceFile] = append(m[e.SourceFile], e.ID)
 		}
 	}
@@ -227,7 +227,7 @@ func buildTaggedAuthIDsHTTP(doc *graph.Document) map[string]bool {
 			for j := range doc.Entities {
 				if doc.Entities[j].ID == r.ToID {
 					if doc.Entities[j].Subtype == "auth_policy" ||
-						doc.Entities[j].Properties["subtype"] == "auth_policy" {
+						doc.Entities[j].PropGet("subtype") == "auth_policy" {
 						tagged[r.FromID] = true
 					}
 					break
@@ -432,7 +432,7 @@ func (s *Server) handleSecurityAuthCoverage(w http.ResponseWriter, r *http.Reque
 			}
 			for i := range doc.Entities {
 				ent := &doc.Entities[i]
-				visit(ent.ID, ent.Name, ent.Kind, ent.Subtype, ent.SourceFile, ent.StartLine, ent.Properties)
+				visit(ent.ID, ent.Name, ent.Kind, ent.Subtype, ent.SourceFile, ent.StartLine, ent.PropsSnapshot())
 			}
 		}
 
@@ -447,15 +447,16 @@ func (s *Server) handleSecurityAuthCoverage(w http.ResponseWriter, r *http.Reque
 			result.TotalEndpoints++
 
 			// Build a lightweight graph.Entity for determineEndpointAuth.
-			e := &graph.Entity{
-				ID:         id,
-				Name:       name,
-				Kind:       kind,
-				Subtype:    subtype,
-				SourceFile: sourceFile,
-				StartLine:  startLine,
-				Properties: props,
-			}
+			e :=
+
+				graph.EntityPtr(graph.Entity{
+					ID:         id,
+					Name:       name,
+					Kind:       kind,
+					Subtype:    subtype,
+					SourceFile: sourceFile,
+					StartLine:  startLine,
+				}.WithProperties(props))
 
 			hasAuth, evidence := determineEndpointAuth(e, byFile, taggedIDs)
 			// #4595 — authoritative "public by design" signal so the dashboard can
@@ -611,7 +612,7 @@ func (s *Server) handleSecuritySecrets(w http.ResponseWriter, r *http.Request) {
 			}
 			for i := range doc.Entities {
 				ent := &doc.Entities[i]
-				visit(ent.ID, ent.Name, ent.Kind, ent.Subtype, ent.SourceFile, ent.Language, ent.StartLine, ent.Properties)
+				visit(ent.ID, ent.Name, ent.Kind, ent.Subtype, ent.SourceFile, ent.Language, ent.StartLine, ent.PropsSnapshot())
 			}
 		}
 

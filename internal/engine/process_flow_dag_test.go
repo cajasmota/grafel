@@ -275,16 +275,16 @@ func TestProcessFlow_EmitsDAGPropertiesOnBranchedFlow(t *testing.T) {
 	if p == nil {
 		t.Fatal("no Process emitted")
 	}
-	if p.Properties["is_dag"] != "true" {
-		t.Errorf("is_dag = %q, want true", p.Properties["is_dag"])
+	if p.PropGet("is_dag") != "true" {
+		t.Errorf("is_dag = %q, want true", p.PropGet("is_dag"))
 	}
-	if got := p.Properties["branch_count"]; got != "1" {
+	if got := p.PropGet("branch_count"); got != "1" {
 		t.Errorf("branch_count = %q, want 1", got)
 	}
-	if got := p.Properties["dag_node_count"]; got != "4" {
+	if got := p.PropGet("dag_node_count"); got != "4" {
 		t.Errorf("dag_node_count = %q, want 4", got)
 	}
-	if dagJSON := p.Properties["branches_dag"]; dagJSON == "" {
+	if dagJSON := p.PropGet("branches_dag"); dagJSON == "" {
 		t.Errorf("branches_dag property is empty")
 	} else if !strings.Contains(dagJSON, `"entity_id":"c"`) {
 		t.Errorf("branches_dag missing branch child: %s", dagJSON)
@@ -299,10 +299,10 @@ func TestProcessFlow_LinearFlowMarkedNotDAG(t *testing.T) {
 	if p == nil {
 		t.Fatal("no Process emitted")
 	}
-	if p.Properties["is_dag"] != "false" {
-		t.Errorf("linear chain is_dag = %q, want false", p.Properties["is_dag"])
+	if p.PropGet("is_dag") != "false" {
+		t.Errorf("linear chain is_dag = %q, want false", p.PropGet("is_dag"))
 	}
-	if p.Properties["branch_count"] != "0" {
-		t.Errorf("linear chain branch_count = %q, want 0", p.Properties["branch_count"])
+	if p.PropGet("branch_count") != "0" {
+		t.Errorf("linear chain branch_count = %q, want 0", p.PropGet("branch_count"))
 	}
 }

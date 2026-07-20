@@ -285,7 +285,7 @@ func collectCompoundTopology(grp *DashGroup, groupBy string) compoundTopologyRes
 				continue
 			}
 			id := dashPrefixedID(r.Slug, e.ID)
-			tier := nodeTier(stripped, e.Properties)
+			tier := nodeTier(stripped, e.PropsSnapshot())
 			zonePath := zonePathFor(groupBy, r.Slug, stripped, e, ensureZone)
 
 			renderedIDs[id] = struct{}{}
@@ -450,7 +450,7 @@ func infraZonePath(
 	e *graph.Entity,
 	ensureZone func(id, label, parentID, kind string),
 ) []string {
-	props := e.Properties
+	props := e.PropsSnapshot()
 
 	// Determine whether this is an IaC resource (vs. code participating in the
 	// infra lens). IaC resources carry a provider/tool/resource_category.

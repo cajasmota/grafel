@@ -141,12 +141,12 @@ func ApplyMigrationSequence(doc *graph.Document, reader MigrationSourceReader) M
 			continue
 		}
 		e := &doc.Entities[idx]
-		if e.Properties == nil {
-			e.Properties = make(map[string]string)
+		if e.PropLen() == 0 {
+			e.PropsReplace(make(map[string]string))
 		}
-		e.Properties["sequence_number"] = fmt.Sprintf("%v", a.SequenceNumber)
-		e.Properties["migration_name"] = a.MigrationName
-		e.Properties["migration_pattern"] = string(a.PatternMatched)
+		e.PropSet("sequence_number", fmt.Sprintf("%v", a.SequenceNumber))
+		e.PropSet("migration_name", a.MigrationName)
+		e.PropSet("migration_pattern", string(a.PatternMatched))
 		annotated++
 		matchedFiles[e.SourceFile] = true
 
@@ -200,12 +200,12 @@ func emitAlembicPrecedes(doc *graph.Document, alembic []pendingAlembic, reader M
 		}
 		// Record the parsed revision id on the entity too — it is the canonical
 		// Alembic identity (filename hash can be truncated/aliased).
-		if e.Properties == nil {
-			e.Properties = make(map[string]string)
+		if e.PropLen() == 0 {
+			e.PropsReplace(make(map[string]string))
 		}
-		e.Properties["revision"] = rev
+		e.PropSet("revision", rev)
 		if down != "" {
-			e.Properties["down_revision"] = down
+			e.PropSet("down_revision", down)
 		}
 		revToEntity[rev] = e.ID
 		infos = append(infos, revInfo{entityID: e.ID, downRevision: down})
@@ -243,11 +243,11 @@ func emitAlembicPrecedes(doc *graph.Document, alembic []pendingAlembic, reader M
 			FromID: parentID,
 			ToID:   info.entityID,
 			Kind:   migrationPrecedesKind,
-			Properties: map[string]string{
-				"ordering": "alembic_down_revision",
-				"pattern":  string(enrichers.MigrationPatternAlembic),
-			},
-		})
+		}.WithProperties(map[string]string{
+			"ordering": "alembic_down_revision",
+			"pattern":  string(enrichers.MigrationPatternAlembic),
+		},
+		))
 		added++
 	}
 	return added

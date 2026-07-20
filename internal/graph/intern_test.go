@@ -52,8 +52,7 @@ func buildInternFixture(nRels, nEnts int) *graph.Document {
 			Subtype:       "method",
 			SourceFile:    "shared/pkg/file.go",
 			Language:      "go",
-			Properties:    map[string]string{"module": "pkg/shared"},
-		})
+		}.WithProperties(map[string]string{"module": "pkg/shared"}))
 	}
 	// Two "anchor" entities that every relationship in this fixture points at.
 	doc.Entities = append(doc.Entities,
@@ -133,11 +132,13 @@ func TestLoaderIntern_RoundtripCorrectness(t *testing.T) {
 		if gotEnt.Language != want.Language {
 			t.Errorf("entity %q Language: got %q want %q", want.ID, gotEnt.Language, want.Language)
 		}
-		for k, v := range want.Properties {
-			if gotEnt.Properties[k] != v {
-				t.Errorf("entity %q Properties[%q]: got %q want %q", want.ID, k, gotEnt.Properties[k], v)
-			}
-		}
+		want.
+			PropRange(func(k, v string) bool {
+				if gotEnt.PropGet(k) != v {
+					t.Errorf("entity %q Properties[%q]: got %q want %q", want.ID, k, gotEnt.PropGet(k), v)
+				}
+				return true
+			})
 	}
 
 	for i, want := range doc.Relationships {

@@ -180,12 +180,12 @@ func aggregateModules(doc *graph.Document, entityModule map[string]ModuleKey, in
 			ID:   mid,
 			Name: mk.name,
 			Kind: KindModule,
-			Properties: map[string]string{
-				"module":    mk.name,
-				"repo":      mk.repo,
-				"synthetic": "true",
-			},
-		})
+		}.WithProperties(map[string]string{
+			"module":    mk.name,
+			"repo":      mk.repo,
+			"synthetic": "true",
+		},
+		))
 		newModuleCount++
 	}
 
@@ -285,10 +285,10 @@ func aggregateModules(doc *graph.Document, entityModule map[string]ModuleKey, in
 			FromID: fromMID,
 			ToID:   toMID,
 			Kind:   KindDependsOn,
-			Properties: map[string]string{
-				"weight": fmt.Sprintf("%d", edgeWeight[p]),
-			},
-		})
+		}.WithProperties(map[string]string{
+			"weight": fmt.Sprintf("%d", edgeWeight[p]),
+		},
+		))
 		dependsOnCount++
 	}
 
@@ -410,11 +410,11 @@ func AggregateIncremental(doc *graph.Document, affected map[ModuleKey]struct{}) 
 func moduleKeyForEntity(e *graph.Entity, docRepo string) ModuleKey {
 	mod := "_external"
 	repo := docRepo
-	if e.Properties != nil {
-		if v, ok := e.Properties["module"]; ok && v != "" {
+	if e.PropLen() > 0 {
+		if v, ok := e.PropLookup("module"); ok && v != "" {
 			mod = v
 		}
-		if v, ok := e.Properties["repo"]; ok && v != "" {
+		if v, ok := e.PropLookup("repo"); ok && v != "" {
 			repo = v
 		}
 	}

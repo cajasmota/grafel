@@ -117,8 +117,7 @@ func moduleSupplementsHarness(
 			Name:       cs.name,
 			Kind:       "SCOPE.Config",
 			SourceFile: cs.name,
-			Properties: cs.props,
-		})
+		}.WithProperties(cs.props))
 		rels = append(rels, graph.Relationship{
 			ID:     graph.RelationshipID(moduleID, cfgID, "DEPENDS_ON_CONFIG"),
 			FromID: moduleID,

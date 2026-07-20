@@ -187,7 +187,7 @@ func BuildGraph(entities []Entity, rels []Relationship) (*simple.WeightedDirecte
 		if from == to {
 			continue // gonum rejects self-loops on simple graphs
 		}
-		w := edgeWeight(r.Properties)
+		w := edgeWeight(r.PropsSnapshot())
 		// If the edge already exists, accumulate weight (multiple call sites).
 		if existing := g.WeightedEdge(from, to); existing != nil {
 			w += existing.Weight()
@@ -256,7 +256,7 @@ func CommunityInputHash(entities []Entity, rels []Relationship) string {
 		if r.FromID == r.ToID {
 			continue // self-loops rejected by the simple graph
 		}
-		weights[edgeKey{r.FromID, r.ToID}] += edgeWeight(r.Properties)
+		weights[edgeKey{r.FromID, r.ToID}] += edgeWeight(r.PropsSnapshot())
 	}
 	edges := make([]string, 0, len(weights))
 	for k, w := range weights {

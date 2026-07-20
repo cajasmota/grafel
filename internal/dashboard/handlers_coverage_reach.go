@@ -91,10 +91,10 @@ func (a *reachAccumulator) accumulate(doc *graph.Document, repo string) {
 	}
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if e.Properties == nil || !isEndpointReachKind(e.Kind) {
+		if e.PropLen() == 0 || !isEndpointReachKind(e.Kind) {
 			continue
 		}
-		val, ok := e.Properties[coverage.PropTestReachable]
+		val, ok := e.PropLookup(coverage.PropTestReachable)
 		if !ok {
 			// Endpoint exists but was never visited by the reachability pass
 			// for this index — do not count it (avoids implying "untested").

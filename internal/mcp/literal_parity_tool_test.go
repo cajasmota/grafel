@@ -19,11 +19,11 @@ func enumEntity(id, name, membersJSON string) graph.Entity {
 		Name:          name,
 		QualifiedName: "scope:enum:fixture.py:" + name,
 		Kind:          string(types.EntityKindEnum),
-		Properties: map[string]string{
-			"enum_name":    name,
-			"members_json": membersJSON,
-		},
-	}
+	}.WithProperties(map[string]string{
+		"enum_name":    name,
+		"members_json": membersJSON,
+	},
+	)
 }
 
 // twoGroupServer builds a Server with two loaded groups, each holding one repo
@@ -222,12 +222,11 @@ func drfActionMethod(id, name, urlPath string) graph.Entity {
 		props["url_path"] = urlPath
 	}
 	return graph.Entity{
-		ID:         id,
-		Name:       name,
-		Kind:       "SCOPE.Operation",
-		Subtype:    "method",
-		Properties: props,
-	}
+		ID:      id,
+		Name:    name,
+		Kind:    "SCOPE.Operation",
+		Subtype: "method",
+	}.WithProperties(props)
 }
 
 // twoGroupServerDoc is like twoGroupServer but takes whole Documents so a side
