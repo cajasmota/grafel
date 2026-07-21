@@ -148,11 +148,10 @@ func countEdgesForFidelity(r *LoadedRepo) (total, bugs int) {
 	if r == nil || r.Doc == nil {
 		return 0, 0
 	}
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		// Scope: IMPORTS only — matches audit.AuditPath and health-history.bug_rate.
 		if rel.Kind != "IMPORTS" {
-			continue
+			return true
 		}
 		total++
 		// A relationship is "buggy" (unresolved) when its ToID still looks like
@@ -164,7 +163,8 @@ func countEdgesForFidelity(r *LoadedRepo) (total, bugs int) {
 		if resolve.IsBugEdgeToID(rel.ToID) {
 			bugs++
 		}
-	}
+		return true
+	})
 	return total, bugs
 }
 
@@ -329,14 +329,13 @@ func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdo
 			continue
 		}
 		byID := r.getByID()
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			// Scope: IMPORTS only — matches countEdgesForFidelity and audit.AuditPath.
 			if rel.Kind != "IMPORTS" {
-				continue
+				return true
 			}
 			if !resolve.IsBugEdgeToID(rel.ToID) {
-				continue
+				return true
 			}
 
 			disp := unresolvedImportDisposition(rel)
@@ -368,7 +367,8 @@ func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdo
 			}
 			rs.count++
 			rs.dispCounts[disp]++
-		}
+			return true
+		})
 	}
 
 	// Build sorted top-N list.

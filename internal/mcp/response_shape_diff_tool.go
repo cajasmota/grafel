@@ -217,23 +217,23 @@ func collectContractTargets(lg *LoadedGroup) []contractTarget {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isHTTPEndpointDefinition(e) && !isRouterExpandedRoute(e) {
-				continue
+				return true
 			}
 			owner := endpointOwningClass(e)
 			if owner == "" {
-				continue
+				return true
 			}
 			verb, path := endpointVerbPath(e)
 			key := strings.ToLower(owner)
 			if seen[key] {
-				continue
+				return true
 			}
 			seen[key] = true
 			out = append(out, contractTarget{target: owner, verb: verb, path: path})
-		}
+			return true
+		})
 	}
 	return out
 }

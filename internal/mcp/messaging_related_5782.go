@@ -103,11 +103,16 @@ func resolveTopicSeed(lg *LoadedGroup, entityID string) *topicSeed {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		var found *topicSeed
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if isMessageTopicEntity(e) && (e.Name == probe || e.QualifiedName == probe || e.Name == entityID) {
-				return &topicSeed{repo: r, id: e.ID, name: e.Name}
+				found = &topicSeed{repo: r, id: e.ID, name: e.Name}
+				return false
 			}
+			return true
+		})
+		if found != nil {
+			return found
 		}
 	}
 	return nil
@@ -170,10 +175,9 @@ func collectTopicNeighbors(lg *LoadedGroup, topicName, seedRepo string) (produce
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isMessageTopicEntity(e) || e.Name != topicName {
-				continue
+				return true
 			}
 			adj := r.getAdjacency()
 			for _, in := range adj.Incoming(e.ID) {
@@ -189,7 +193,8 @@ func collectTopicNeighbors(lg *LoadedGroup, topicName, seedRepo string) (produce
 					add(&handlers, seenHand, r, out.target, "DELIVERS_TO")
 				}
 			}
-		}
+			return true
+		})
 	}
 
 	// (b) Cross-repo topic joins. Matched to THIS topic by the link identifier
@@ -379,11 +384,16 @@ func resolveChannelBindingSeed(lg *LoadedGroup, entityID string) *channelBinding
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		var found *channelBindingSeed
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if isChannelBindingEntity(e) && (e.Name == probe || e.QualifiedName == probe || e.Name == entityID) {
-				return &channelBindingSeed{repo: r, id: e.ID, name: e.Name}
+				found = &channelBindingSeed{repo: r, id: e.ID, name: e.Name}
+				return false
 			}
+			return true
+		})
+		if found != nil {
+			return found
 		}
 	}
 	return nil
@@ -512,8 +522,7 @@ func collectChannelBindingTargets(r *LoadedRepo, binding *graph.Entity) (channel
 	}
 	byID := r.getByID()
 	seenCh, seenTop := map[string]bool{}, map[string]bool{}
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		var list *[]topicNeighbor
 		var seen map[string]bool
 		var edgeKind string
@@ -523,14 +532,14 @@ func collectChannelBindingTargets(r *LoadedRepo, binding *graph.Entity) (channel
 		case string(types.RelationshipKindBindsTopic):
 			list, seen, edgeKind = &topics, seenTop, "BINDS_TOPIC"
 		default:
-			continue
+			return true
 		}
 		if !bindingMatchesEdge(binding, rel.FromID) {
-			continue
+			return true
 		}
 		e := byID[rel.ToID]
 		if e == nil || seen[e.ID] {
-			continue
+			return true
 		}
 		seen[e.ID] = true
 		*list = append(*list, topicNeighbor{
@@ -542,7 +551,8 @@ func collectChannelBindingTargets(r *LoadedRepo, binding *graph.Entity) (channel
 			Line:     e.StartLine,
 			EdgeKind: edgeKind,
 		})
-	}
+		return true
+	})
 	sortTopicNeighbors(channels)
 	sortTopicNeighbors(topics)
 	return channels, topics
@@ -603,8 +613,7 @@ func computeRepoImpact(r *LoadedRepo, target string, hops int) []impactAffected 
 	moduleCallerMap := map[string]int{}
 	totalDegreeMap := map[string]int{}
 	inboundTestsMap := map[string]int{}
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		totalDegreeMap[rel.ToID]++
 		if rel.Kind == "TESTS" {
 			inboundTestsMap[rel.ToID]++
@@ -618,7 +627,8 @@ func computeRepoImpact(r *LoadedRepo, target string, hops int) []impactAffected 
 		} else {
 			namedCallerMap[rel.ToID]++
 		}
-	}
+		return true
+	})
 
 	adj := r.getAdjacency()
 	visited := map[string]int{target: 0}
@@ -671,10 +681,9 @@ func computeRepoImpact(r *LoadedRepo, target string, hops int) []impactAffected 
 func oneEntityImpact(r *LoadedRepo, e *graph.Entity, hop int) impactAffected {
 	byID := r.getByID()
 	named, module, total, tests := 0, 0, 0, 0
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		if rel.ToID != e.ID {
-			continue
+			return true
 		}
 		total++
 		if rel.Kind == "TESTS" {
@@ -685,7 +694,8 @@ func oneEntityImpact(r *LoadedRepo, e *graph.Entity, hop int) impactAffected {
 		} else {
 			named++
 		}
-	}
+		return true
+	})
 	hasTests := tests > 0
 	isSpec := isTestSpecEntity(e)
 	return impactAffected{
@@ -713,10 +723,9 @@ func (s *Server) impactRadiusForTopic(lg *LoadedGroup, seed *topicSeed, hops int
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isMessageTopicEntity(e) || e.Name != seed.name {
-				continue
+				return true
 			}
 			for _, a := range computeRepoImpact(r, e.ID, hops) {
 				if a.Kind == stripScopePrefix(string(types.EntityKindMessageTopic)) {
@@ -729,7 +738,8 @@ func (s *Server) impactRadiusForTopic(lg *LoadedGroup, seed *topicSeed, hops int
 				seen[a.EntityID] = true
 				results = append(results, a)
 			}
-		}
+			return true
+		})
 	}
 
 	// Fold cross-repo topic joins whose publisher/subscriber has no local topic

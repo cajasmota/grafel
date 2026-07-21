@@ -392,14 +392,13 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 		repoErrors := 0
 		repoWarns := 0
 
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isDefinitionKind(e.Kind) {
-				continue
+				return true
 			}
 			// Exclude client-synthesis call-side entries.
 			if e.PropGet("pattern_type") == "http_endpoint_client_synthesis" {
-				continue
+				return true
 			}
 
 			repoTotal++
@@ -436,7 +435,7 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 			}
 
 			if onlyMissing && hasAuth {
-				continue
+				return true
 			}
 
 			endpoints = append(endpoints, EndpointRecord{
@@ -454,7 +453,8 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 				IDORRisk:       idorRisk,
 				SensitiveTerms: sensitiveMatch,
 			})
-		}
+			return true
+		})
 
 		if repoTotal == 0 {
 			continue

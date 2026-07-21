@@ -284,10 +284,9 @@ func matchEnumByNames(lg *LoadedGroup, candidates []string) *graph.Entity {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isValueSet(e) {
-				continue
+				return true
 			}
 			en := canonicalSetName(enumDisplayName(e))
 			for rank, nc := range normCands {
@@ -295,7 +294,8 @@ func matchEnumByNames(lg *LoadedGroup, candidates []string) *graph.Entity {
 					hits = append(hits, hit{ent: e, rank: rank})
 				}
 			}
-		}
+			return true
+		})
 	}
 	if len(hits) == 0 {
 		return nil

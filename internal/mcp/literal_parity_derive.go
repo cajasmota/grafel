@@ -76,27 +76,26 @@ func deriveDRFActionCodenames(lg *LoadedGroup, viewset string) (*graph.Entity, s
 		ownerVS := map[string]string{}
 		if wantVS != "" {
 			byID := r.getByID()
-			for i := range r.Doc.Relationships {
-				rel := &r.Doc.Relationships[i]
+			r.forEachRelationship(func(rel *graph.Relationship) bool {
 				if rel.Kind != "CONTAINS" {
-					continue
+					return true
 				}
 				parent, ok := byID[bareID(rel.FromID)]
 				if !ok {
 					parent, ok = byID[rel.FromID]
 				}
 				if !ok || !isViewSetLike(parent) {
-					continue
+					return true
 				}
 				ownerVS[bareID(rel.ToID)] = canonicalSetName(bareEntityName(parent))
 				ownerVS[rel.ToID] = canonicalSetName(bareEntityName(parent))
-			}
+				return true
+			})
 		}
 
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isDRFAction(e) {
-				continue
+				return true
 			}
 			if wantVS != "" {
 				vs, ok := ownerVS[e.ID]
@@ -104,16 +103,17 @@ func deriveDRFActionCodenames(lg *LoadedGroup, viewset string) (*graph.Entity, s
 					vs = ownerVS[bareID(e.ID)]
 				}
 				if vs != wantVS {
-					continue
+					return true
 				}
 			}
 			code := drfActionCodename(e)
 			if code == "" || seen[code] {
-				continue
+				return true
 			}
 			seen[code] = true
 			members = append(members, literalparity.Member{Key: code, Value: code, Line: e.StartLine})
-		}
+			return true
+		})
 	}
 
 	if len(members) == 0 {

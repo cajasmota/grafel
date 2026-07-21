@@ -192,28 +192,28 @@ func (s *Server) endpointPostureScan(req mcpapi.CallToolRequest, repos []*Loaded
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			// Skip the synthetic convergence nodes themselves — they are the
 			// targets of the edges, never the subject of a posture query.
 			if strings.EqualFold(e.Kind, kindExceptionType) || strings.EqualFold(e.Kind, kindFeatureFlag) {
-				continue
+				return true
 			}
 			p := buildPosturePayload(r, e)
 			if !p.HasPosture {
-				continue
+				return true
 			}
 			if facet != "" && !postureHasFacet(p, facet) {
-				continue
+				return true
 			}
 			if pathContains != "" && !strings.Contains(strings.ToLower(p.Path), pathContains) {
-				continue
+				return true
 			}
 			if method != "" && !strings.EqualFold(p.Method, method) {
-				continue
+				return true
 			}
 			out = append(out, p)
-		}
+			return true
+		})
 	}
 
 	sort.Slice(out, func(i, j int) bool {

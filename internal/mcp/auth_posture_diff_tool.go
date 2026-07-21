@@ -225,14 +225,13 @@ func collectAuthEndpoints(lg *LoadedGroup) map[endpointJoinKey]authEndpoint {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isHTTPEndpointDefinition(e) {
-				continue
+				return true
 			}
 			verb, path := endpointVerbPath(e)
 			if path == "" {
-				continue
+				return true
 			}
 			key := newEndpointJoinKey(verb, path)
 			ae := authEndpoint{
@@ -243,10 +242,11 @@ func collectAuthEndpoints(lg *LoadedGroup) map[endpointJoinKey]authEndpoint {
 				ae.display = e.Name
 			}
 			if existing, ok := out[key]; ok && signalRichness(existing.signal) >= signalRichness(ae.signal) {
-				continue
+				return true
 			}
 			out[key] = ae
-		}
+			return true
+		})
 	}
 	return out
 }

@@ -220,27 +220,27 @@ func computeDeadCodeLive(lg *LoadedGroup, repoFilter map[string]bool, kindFilter
 			continue
 		}
 		adj := map[string][]string{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if !reachabilityEdgeKindsMCP[rel.Kind] {
-				continue
+				return true
 			}
 			adj[rel.FromID] = append(adj[rel.FromID], rel.ToID)
-		}
+			return true
+		})
 		seeds := map[string]bool{}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if frameworkEntryKindsMCP[e.Kind] || isFrameworkOrHandler(e) {
 				seeds[e.ID] = true
 			}
-		}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+			return true
+		})
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			switch rel.Kind {
 			case "HANDLES", "HANDLES_SIGNAL", "NAVIGATES_TO", "ROUTES_TO", "REGISTERS":
 				seeds[rel.ToID] = true
 			}
-		}
+			return true
+		})
 		reached := bfsLive(adj, seeds)
 		totalEntities += len(r.Doc.Entities)
 		reachable += len(reached)
@@ -248,19 +248,18 @@ func computeDeadCodeLive(lg *LoadedGroup, repoFilter map[string]bool, kindFilter
 		if len(repoFilter) > 0 && !repoFilter[r.Repo] {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if reached[e.ID] {
-				continue
+				return true
 			}
 			if isStdlibEntity(e) {
-				continue
+				return true
 			}
 			if !isLiveCodeKind(e.Kind) {
-				continue
+				return true
 			}
 			if !matchesBareKind(e.Kind, kindFilter) {
-				continue
+				return true
 			}
 			out = append(out, deadCodeItem{
 				EntityID:   prefixedID(r.Repo, e.ID),
@@ -269,7 +268,8 @@ func computeDeadCodeLive(lg *LoadedGroup, repoFilter map[string]bool, kindFilter
 				Repo:       r.Repo,
 				SourceFile: e.SourceFile,
 			})
-		}
+			return true
+		})
 	}
 	return
 }
@@ -299,13 +299,13 @@ func computeDeadCodeFromEntry(lg *LoadedGroup, fromID string, repoFilter map[str
 			continue
 		}
 		adj := map[string][]string{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if !reachabilityEdgeKindsMCP[rel.Kind] {
-				continue
+				return true
 			}
 			adj[rel.FromID] = append(adj[rel.FromID], rel.ToID)
-		}
+			return true
+		})
 		seeds := map[string]bool{local: true}
 		reached := bfsLive(adj, seeds)
 		totalEntities += len(r.Doc.Entities)
@@ -314,19 +314,18 @@ func computeDeadCodeFromEntry(lg *LoadedGroup, fromID string, repoFilter map[str
 		if len(repoFilter) > 0 && !repoFilter[r.Repo] {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if reached[e.ID] {
-				continue
+				return true
 			}
 			if isStdlibEntity(e) {
-				continue
+				return true
 			}
 			if !isLiveCodeKind(e.Kind) {
-				continue
+				return true
 			}
 			if !matchesBareKind(e.Kind, kindFilter) {
-				continue
+				return true
 			}
 			out = append(out, deadCodeItem{
 				EntityID:   prefixedID(r.Repo, e.ID),
@@ -335,7 +334,8 @@ func computeDeadCodeFromEntry(lg *LoadedGroup, fromID string, repoFilter map[str
 				Repo:       r.Repo,
 				SourceFile: e.SourceFile,
 			})
-		}
+			return true
+		})
 	}
 	return
 }

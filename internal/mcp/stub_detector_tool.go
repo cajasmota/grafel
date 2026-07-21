@@ -156,19 +156,18 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 		callsAdj := r.getCallsAdj()
 		byID := r.getByID()
 
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isDefinitionKind(e.Kind) {
-				continue
+				return true
 			}
 			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
-				continue
+				return true
 			}
 			method := strings.ToUpper(strings.TrimSpace(e.PropGet("verb")))
 			rawPath := e.PropGet("path")
 			key := newEndpointJoinKey(method, rawPath)
 			if filter != nil && (filter.method != key.method || filter.path != key.path) {
-				continue
+				return true
 			}
 
 			label := endpointLabel(method, rawPath)
@@ -176,7 +175,7 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 			oracleEntry, ok := oracleIdx[key]
 			if !ok {
 				unlinked = append(unlinked, label)
-				continue
+				return true
 			}
 
 			v3Eff := computeEndpointEffects(r.Repo, e, hres, callsAdj, byID, v3Effs, v3HasEffectData)
@@ -204,7 +203,8 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 			res.PartialStubSupported = supported
 
 			results = append(results, res)
-		}
+			return true
+		})
 	}
 
 	// Deterministic order: likely_stub first (highest confidence), then by
@@ -305,10 +305,9 @@ func buildStubHandlerResolution(r *LoadedRepo) *stubHandlerResolution {
 		e := byID[id]
 		return e != nil && !isDefinitionKind(e.Kind)
 	}
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		if !stubHandlerResolveEdgeKinds[rel.Kind] {
-			continue
+			return true
 		}
 		switch {
 		case isDef(rel.ToID) && isHandler(rel.FromID): // handler --IMPLEMENTS--> def
@@ -316,7 +315,8 @@ func buildStubHandlerResolution(r *LoadedRepo) *stubHandlerResolution {
 		case isDef(rel.FromID) && isHandler(rel.ToID): // def --ROUTES_TO--> handler
 			res.handlerOf[rel.FromID] = appendUniqueStr(res.handlerOf[rel.FromID], rel.ToID)
 		}
-	}
+		return true
+	})
 	return res
 }
 
@@ -438,13 +438,12 @@ func buildEndpointEffectsIndex(lg *LoadedGroup, sidecar map[string]effectsSideca
 		hres := buildStubHandlerResolution(r)
 		callsAdj := r.getCallsAdj()
 		byID := r.getByID()
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isDefinitionKind(e.Kind) {
-				continue
+				return true
 			}
 			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
-				continue
+				return true
 			}
 			key := newEndpointJoinKey(e.PropGet("verb"), e.PropGet("path"))
 			eff := computeEndpointEffects(r.Repo, e, hres, callsAdj, byID, sidecar, groupHasEffectData)
@@ -453,7 +452,8 @@ func buildEndpointEffectsIndex(lg *LoadedGroup, sidecar map[string]effectsSideca
 			} else {
 				idx[key] = eff
 			}
-		}
+			return true
+		})
 	}
 	return idx
 }
@@ -502,11 +502,17 @@ func groupHasEffectProps(lg *LoadedGroup) bool {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			p := r.Doc.Entities[i].PropsSnapshot()
+		found := false
+		r.forEachEntity(func(e *graph.Entity) bool {
+			p := e.PropsSnapshot()
 			if p != nil && strings.TrimSpace(p["effects"]) != "" {
-				return true
+				found = true
+				return false
 			}
+			return true
+		})
+		if found {
+			return true
 		}
 	}
 	return false

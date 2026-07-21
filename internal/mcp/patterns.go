@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/cajasmota/grafel/internal/agentpatterns"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 	"math"
@@ -727,11 +728,12 @@ func repoLanguages(r *LoadedRepo) []string {
 		return nil
 	}
 	set := map[string]bool{}
-	for i := range r.Doc.Entities {
-		if lang := r.Doc.Entities[i].Language; lang != "" {
+	r.forEachEntity(func(e *graph.Entity) bool {
+		if lang := e.Language; lang != "" {
 			set[lang] = true
 		}
-	}
+		return true
+	})
 	return sortedKeys(set)
 }
 

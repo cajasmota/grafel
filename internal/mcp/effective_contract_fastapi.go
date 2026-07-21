@@ -62,18 +62,17 @@ func (f fastAPIContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf strin
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isServerEndpointDefinition(e) {
-				continue
+				return true
 			}
 			if !isFastAPIEndpoint(e) {
-				continue
+				return true
 			}
 			handler := frameworkHandlerEntity(r, e)
 			grp := fastapiGroupLeaf(e, handler)
 			if grp == "" || strings.ToLower(grp) != wantLeaf {
-				continue
+				return true
 			}
 			c := composeFastAPIContract(r, e, handler)
 			key := groupKey{repo: r.Repo, group: grp}
@@ -84,7 +83,8 @@ func (f fastAPIContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf strin
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
-		}
+			return true
+		})
 	}
 	if len(groups) == 0 {
 		return nil, false

@@ -103,8 +103,7 @@ func (s *Server) handleTopologyChannels(_ context.Context, req mcpapi.CallToolRe
 			}
 			set[handlerID] = true
 		}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			switch rel.Kind {
 			case "PUBLISHES_TO":
 				pubCount[rel.ToID]++
@@ -113,11 +112,11 @@ func (s *Server) handleTopologyChannels(_ context.Context, req mcpapi.CallToolRe
 			case "DELIVERS_TO":
 				addConsumer(rel.FromID, rel.ToID) // topic=FromID, handler=ToID
 			}
-		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+			return true
+		})
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isTopic(e) {
-				continue
+				return true
 			}
 			out = append(out, channel{
 				TopicID:        prefixedID(r.Repo, e.ID),
@@ -127,7 +126,8 @@ func (s *Server) handleTopologyChannels(_ context.Context, req mcpapi.CallToolRe
 				ConsumerCount:  len(consumers[e.ID]),
 				SourceFile:     e.SourceFile,
 			})
-		}
+			return true
+		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].TopicName != out[j].TopicName {
@@ -233,16 +233,15 @@ func (s *Server) handleTopologyOrphanPublishers(_ context.Context, req mcpapi.Ca
 		}
 		// Build subscriber set: topics that appear on the ToID of a SUBSCRIBES_TO edge.
 		subscribers := map[string]bool{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind == "SUBSCRIBES_TO" {
 				subscribers[rel.ToID] = true
 			}
-		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+			return true
+		})
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isTopic(e) {
-				continue
+				return true
 			}
 			// Publisher: appears as ToID in a PUBLISHES_TO edge but never as ToID in SUBSCRIBES_TO.
 			if !subscribers[e.ID] && hasRelationshipTo(r.Doc, e.ID, "PUBLISHES_TO") {
@@ -253,7 +252,8 @@ func (s *Server) handleTopologyOrphanPublishers(_ context.Context, req mcpapi.Ca
 					SourceFile: e.SourceFile,
 				})
 			}
-		}
+			return true
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].TopicName < out[j].TopicName })
 	return jsonResult(map[string]any{"orphan_publishers": out, "count": len(out)}), nil
@@ -281,16 +281,15 @@ func (s *Server) handleTopologyOrphanSubscribers(_ context.Context, req mcpapi.C
 			continue
 		}
 		publishers := map[string]bool{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind == "PUBLISHES_TO" {
 				publishers[rel.ToID] = true
 			}
-		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+			return true
+		})
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isTopic(e) {
-				continue
+				return true
 			}
 			if !publishers[e.ID] && hasRelationshipTo(r.Doc, e.ID, "SUBSCRIBES_TO") {
 				out = append(out, item{
@@ -300,7 +299,8 @@ func (s *Server) handleTopologyOrphanSubscribers(_ context.Context, req mcpapi.C
 					SourceFile: e.SourceFile,
 				})
 			}
-		}
+			return true
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].TopicName < out[j].TopicName })
 	return jsonResult(map[string]any{"orphan_subscribers": out, "count": len(out)}), nil
@@ -368,8 +368,7 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 		// Use the canonical entity ID for relationship matching.
 		canonID := topicEnt.ID
 		var publishers, subscribers []participant
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			switch rel.Kind {
 			case "PUBLISHES_TO":
 				if rel.ToID == canonID {
@@ -402,7 +401,8 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 					}
 				}
 			}
-		}
+			return true
+		})
 		resp := map[string]any{
 			"topic_id":    prefixedID(r.Repo, topicEnt.ID),
 			"topic_name":  topicEnt.Name,
@@ -448,21 +448,20 @@ func (s *Server) handleFlowDeadEnds(_ context.Context, req mcpapi.CallToolReques
 		byID := r.getByID()
 		// Build outbound CALLS set.
 		hasOutCalls := map[string]bool{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind == "CALLS" {
 				hasOutCalls[rel.FromID] = true
 			}
-		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+			return true
+		})
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Kind != processEntityKind {
-				continue
+				return true
 			}
 			// Check if terminal_id exists and has outbound CALLS.
 			termID := e.PropGet("terminal_id")
 			if termID == "" {
-				continue
+				return true
 			}
 			if !hasOutCalls[termID] {
 				termEnt := byID[termID]
@@ -481,7 +480,8 @@ func (s *Server) handleFlowDeadEnds(_ context.Context, req mcpapi.CallToolReques
 					})
 				}
 			}
-		}
+			return true
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ProcessName < out[j].ProcessName })
 	return jsonResult(map[string]any{"dead_ends": out, "count": len(out)}), nil
@@ -509,10 +509,9 @@ func (s *Server) handleFlowTruncated(_ context.Context, req mcpapi.CallToolReque
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Kind != processEntityKind {
-				continue
+				return true
 			}
 			truncated := e.PropGet("truncated")
 			reason := e.PropGet("truncated_reason")
@@ -533,7 +532,8 @@ func (s *Server) handleFlowTruncated(_ context.Context, req mcpapi.CallToolReque
 					Reason:      reason,
 				})
 			}
-		}
+			return true
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ProcessName < out[j].ProcessName })
 	return jsonResult(map[string]any{"truncated_flows": out, "count": len(out)}), nil
@@ -568,12 +568,13 @@ func (s *Server) handleFlowDetail(_ context.Context, req mcpapi.CallToolRequest)
 		}
 		byID := r.getByID()
 		var procEnt *graph.Entity
-		for i := range r.Doc.Entities {
-			if r.Doc.Entities[i].Kind == processEntityKind && r.Doc.Entities[i].ID == target {
-				procEnt = &r.Doc.Entities[i]
-				break
+		r.forEachEntity(func(e *graph.Entity) bool {
+			if e.Kind == processEntityKind && e.ID == target {
+				procEnt = e
+				return false
 			}
-		}
+			return true
+		})
 		if procEnt == nil {
 			continue
 		}
@@ -593,8 +594,7 @@ func (s *Server) handleFlowDetail(_ context.Context, req mcpapi.CallToolRequest)
 			StepID     string `json:"step_id"`
 		}
 		var sideEffects []sideEffect
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind == "SIDE_EFFECT_OF" && stepSet[rel.ToID] {
 				fx := byID[rel.FromID]
 				if fx != nil {
@@ -606,7 +606,8 @@ func (s *Server) handleFlowDetail(_ context.Context, req mcpapi.CallToolRequest)
 					})
 				}
 			}
-		}
+			return true
+		})
 		return jsonResult(map[string]any{
 			"process_id":   prefixedID(r.Repo, procEnt.ID),
 			"process_name": procEnt.Name,
@@ -702,17 +703,16 @@ func (s *Server) handlePatternsListGraph(_ context.Context, req mcpapi.CallToolR
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Kind != "SCOPE.Pattern" && e.Kind != "Pattern" {
-				continue
+				return true
 			}
 			status := e.PropGet("status")
 			if statusFilter != "" && !strings.EqualFold(status, statusFilter) {
-				continue
+				return true
 			}
 			if needsAttention && e.PropGet("needs_attention") != "true" {
-				continue
+				return true
 			}
 			conf := 0.0
 			if cs := e.PropGet("confidence"); cs != "" {
@@ -724,7 +724,7 @@ func (s *Server) handlePatternsListGraph(_ context.Context, req mcpapi.CallToolR
 				}
 			}
 			if conf < confidenceMin {
-				continue
+				return true
 			}
 			out = append(out, item{
 				PatternID:  prefixedID(r.Repo, e.ID),
@@ -734,7 +734,8 @@ func (s *Server) handlePatternsListGraph(_ context.Context, req mcpapi.CallToolR
 				Confidence: conf,
 				SourceFile: e.SourceFile,
 			})
-		}
+			return true
+		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Confidence != out[j].Confidence {
@@ -793,8 +794,7 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 			Kind       string `json:"kind"`
 		}
 		var exemplars []exemplar
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if (rel.Kind == "EXEMPLIFIES" || rel.Kind == "INSTANCE_OF") && rel.ToID == target {
 				if ex := byID[rel.FromID]; ex != nil {
 					exemplars = append(exemplars, exemplar{
@@ -804,7 +804,8 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 					})
 				}
 			}
-		}
+			return true
+		})
 		return jsonResult(map[string]any{
 			"pattern_id":  prefixedID(r.Repo, e.ID),
 			"name":        e.Name,
@@ -873,22 +874,21 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			// matchesKindFilter expands alias kinds (e.g. "http_endpoint" →
 			// [http_endpoint, http_endpoint_definition, http_endpoint_call]).
 			if !matchesKindFilter(e, kindFilter) {
-				continue
+				return true
 			}
 			// De-noise (#1712): Schema field members (SCOPE.Schema/field entities)
 			// are suppressed from default results — ~25 fields per serializer
 			// class clutter ranked output. Pass include_noise:true to recover them.
 			if !includeNoise && classifyNoise(e) == noiseSchemaField {
-				continue
+				return true
 			}
 			// #2769 Phase 1C: drop entities below the caller's confidence floor.
 			if !entityPassesConfidence(e, minConfidence) {
-				continue
+				return true
 			}
 			nameL := strings.ToLower(e.Name)
 			qnL := strings.ToLower(e.QualifiedName)
@@ -896,7 +896,7 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 			// Without a kind_filter, keep name-only matching. With a kind_filter,
 			// fold in every in-scope kind member (nameHit just drives ranking).
 			if !nameHit && !enumerateKind {
-				continue
+				return true
 			}
 			out = append(out, item{
 				EntityID:      prefixedID(r.Repo, e.ID),
@@ -908,7 +908,8 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 				StartLine:     e.StartLine,
 				nameHit:       nameHit,
 			})
-		}
+			return true
+		})
 	}
 	// Sort: name-substring hits first (kind enumeration only), then exact-name
 	// matches, then alphabetical. When kind_filter is empty every row is a

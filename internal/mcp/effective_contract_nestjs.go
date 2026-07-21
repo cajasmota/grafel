@@ -55,18 +55,17 @@ func (n nestJSContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf string
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isServerEndpointDefinition(e) {
-				continue
+				return true
 			}
 			if !isNestJSEndpoint(e) {
-				continue
+				return true
 			}
 			handler := nestHandlerEntity(r, e)
 			controller := nestControllerLeaf(e, handler)
 			if controller == "" || strings.ToLower(controller) != wantLeaf {
-				continue
+				return true
 			}
 			c := composeNestContract(r, e, handler)
 			key := groupKey{repo: r.Repo, class: controller}
@@ -81,7 +80,8 @@ func (n nestJSContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf string
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
-		}
+			return true
+		})
 	}
 	if len(groups) == 0 {
 		return nil, false
@@ -277,13 +277,12 @@ func nestDTOFields(r *LoadedRepo, dtoType string) []contractField {
 	}
 	prefix := dtoType + "."
 	var out []contractField
-	for i := range r.Doc.Entities {
-		e := &r.Doc.Entities[i]
+	r.forEachEntity(func(e *graph.Entity) bool {
 		if !strings.EqualFold(e.Kind, "SCOPE.Schema") || e.Subtype != "field" {
-			continue
+			return true
 		}
 		if !strings.HasPrefix(e.Name, prefix) {
-			continue
+			return true
 		}
 		name := strings.TrimPrefix(e.Name, prefix)
 		required := true
@@ -296,7 +295,8 @@ func nestDTOFields(r *LoadedRepo, dtoType string) []contractField {
 			Type:     fieldTypeFromSignature(e.Signature),
 			Required: required,
 		})
-	}
+		return true
+	})
 	return out
 }
 

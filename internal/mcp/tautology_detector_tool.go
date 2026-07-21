@@ -102,19 +102,18 @@ func (s *Server) handleContractTestEffectiveness(_ context.Context, req mcpapi.C
 			continue
 		}
 		linkage := buildTestLinkageTerms(r)
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isTautologyCandidate(e) {
-				continue
+				return true
 			}
 			pid := prefixedID(r.Repo, e.ID)
 			if entityFilter != "" && entityFilter != pid && entityFilter != e.Name && entityFilter != e.QualifiedName {
-				continue
+				return true
 			}
 
 			src, lang := readTautologySource(r, e)
 			if src == "" {
-				continue
+				return true
 			}
 
 			res := tautology.Analyze(tautology.Input{
@@ -126,7 +125,7 @@ func (s *Server) handleContractTestEffectiveness(_ context.Context, req mcpapi.C
 			if !res.Supported {
 				// Unsupported language — skip silently (honest-partial); these add
 				// no signal and would just be noise.
-				continue
+				return true
 			}
 			tautology.SortFindings(res.Findings)
 			analysed++
@@ -134,7 +133,7 @@ func (s *Server) handleContractTestEffectiveness(_ context.Context, req mcpapi.C
 				ineffective++
 			}
 			if onlyIneffective && res.Verdict != tautology.VerdictIneffective && !res.NoGoldenLinkage {
-				continue
+				return true
 			}
 
 			out = append(out, specRec{
@@ -144,7 +143,8 @@ func (s *Server) handleContractTestEffectiveness(_ context.Context, req mcpapi.C
 				language: lang,
 				res:      res,
 			})
-		}
+			return true
+		})
 	}
 
 	sort.SliceStable(out, func(i, j int) bool {
@@ -261,14 +261,13 @@ func specLabel(e *graph.Entity) string {
 func buildTestLinkageTerms(r *LoadedRepo) map[string][]string {
 	byID := r.getByID()
 	terms := map[string][]string{}
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		if rel.Kind != "TESTS" {
-			continue
+			return true
 		}
 		target := byID[rel.ToID]
 		if target == nil {
-			continue
+			return true
 		}
 		set := terms[rel.FromID]
 		if target.Name != "" {
@@ -280,6 +279,7 @@ func buildTestLinkageTerms(r *LoadedRepo) map[string][]string {
 			}
 		}
 		terms[rel.FromID] = set
-	}
+		return true
+	})
 	return terms
 }

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/coverage"
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // coverageFreshness is the freshness verdict for a group's ingested
@@ -83,14 +84,13 @@ func computeCoverageFreshness(lg *LoadedGroup) coverageFreshness {
 		if g := lr.Doc.GeneratedAt; g.After(f.indexedAt) {
 			f.indexedAt = g
 		}
-		for i := range lr.Doc.Entities {
-			e := &lr.Doc.Entities[i]
+		lr.forEachEntity(func(e *graph.Entity) bool {
 			if e.PropLen() == 0 {
-				continue
+				return true
 			}
 			src := e.PropGet(coverage.PropCoverageSource)
 			if src == "" {
-				continue
+				return true
 			}
 			f.ingested = true
 			f.entities++
@@ -102,7 +102,8 @@ func computeCoverageFreshness(lg *LoadedGroup) coverageFreshness {
 			if at := e.PropGet(coverage.PropCoverageMeasAt); at > f.measuredAt {
 				f.measuredAt = at
 			}
-		}
+			return true
+		})
 	}
 
 	// Verdict only when both sides of the comparison exist.

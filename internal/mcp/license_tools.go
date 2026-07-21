@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/licenses"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
@@ -170,22 +171,22 @@ func collectExternalPackages(r *LoadedRepo) []map[string]string {
 		return nil
 	}
 	var out []map[string]string
-	for i := range r.Doc.Entities {
-		e := &r.Doc.Entities[i]
+	r.forEachEntity(func(e *graph.Entity) bool {
 		if e.Subtype != "external_dependency" {
-			continue
+			return true
 		}
 		pm := e.PropGet("package_manager")
 		ver := e.PropGet("version")
 		if pm == "" {
-			continue
+			return true
 		}
 		out = append(out, map[string]string{
 			"name":            e.Name,
 			"package_manager": pm,
 			"version":         ver,
 		})
-	}
+		return true
+	})
 	return out
 }
 

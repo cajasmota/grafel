@@ -184,18 +184,17 @@ func computeEffectiveContract(lg *LoadedGroup, target string) effectiveContractR
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isRouterExpandedRoute(e) {
-				continue
+				return true
 			}
 			vs := viewSetNameForRoute(e)
 			if vs == "" || strings.ToLower(vs) != wantVS {
-				continue
+				return true
 			}
 			c, ok := projectEffectiveContract(e)
 			if !ok {
-				continue
+				return true
 			}
 			// #3964 follow-up: when the route carries no stamped per-verb
 			// contract (effective_kind/effective_status absent because the
@@ -216,7 +215,8 @@ func computeEffectiveContract(lg *LoadedGroup, target string) effectiveContractR
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
-		}
+			return true
+		})
 	}
 
 	// CLASS FALLBACK (deploy-9 item-4): when NO router-expanded route entities
@@ -348,17 +348,22 @@ func findViewSetClassEntity(r *LoadedRepo, wantVS string) *graph.Entity {
 		return nil
 	}
 	var fallback *graph.Entity
-	for i := range r.Doc.Entities {
-		e := &r.Doc.Entities[i]
+	var found *graph.Entity
+	r.forEachEntity(func(e *graph.Entity) bool {
 		if strings.ToLower(leafAfterDot(e.Name)) != wantVS {
-			continue
+			return true
 		}
 		if isClassEntity(e) {
-			return e
+			found = e
+			return false
 		}
 		if fallback == nil && len(extendsBases(r, e)) > 0 {
 			fallback = e
 		}
+		return true
+	})
+	if found != nil {
+		return found
 	}
 	return fallback
 }

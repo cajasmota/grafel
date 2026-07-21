@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // docStateCache memoizes ComputeDocState results to keep grafel_whoami off
@@ -240,26 +242,26 @@ func computeDocStateUncached(groupName string, lg *LoadedGroup) DocStateResult {
 
 		// Walk source files for this repo.
 		seen := map[string]bool{}
-		for i := range repo.Doc.Entities {
-			e := &repo.Doc.Entities[i]
+		repo.forEachEntity(func(e *graph.Entity) bool {
 			abs := e.SourceFile
 			if !filepath.IsAbs(abs) && repo.Path != "" {
 				abs = filepath.Join(repo.Path, e.SourceFile)
 			}
 			if seen[abs] {
-				continue
+				return true
 			}
 			seen[abs] = true
 
 			info, err := os.Stat(abs)
 			if err != nil {
-				continue
+				return true
 			}
 			if info.ModTime().After(repoDocgen) {
 				perRepoStale[repoName]++
 				totalStale++
 			}
-		}
+			return true
+		})
 	}
 
 	result := DocStateResult{

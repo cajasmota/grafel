@@ -58,18 +58,17 @@ func (s springContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf string
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isServerEndpointDefinition(e) {
-				continue
+				return true
 			}
 			if !isSpringEndpoint(e) {
-				continue
+				return true
 			}
 			handler := frameworkHandlerEntity(r, e)
 			controller := frameworkControllerLeaf(e, handler)
 			if controller == "" || strings.ToLower(controller) != wantLeaf {
-				continue
+				return true
 			}
 			c := composeSpringContract(r, e, handler)
 			key := groupKey{repo: r.Repo, class: controller}
@@ -80,7 +79,8 @@ func (s springContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf string
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
-		}
+			return true
+		})
 	}
 	if len(groups) == 0 {
 		return nil, false

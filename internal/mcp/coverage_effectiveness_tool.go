@@ -32,6 +32,7 @@ import (
 	"sort"
 
 	"github.com/cajasmota/grafel/internal/coverage"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
@@ -78,13 +79,12 @@ func (s *Server) handleCoverageEffectiveness(_ context.Context, req mcpapi.CallT
 		if len(repoFilter) > 0 && !repoMatchesSlice(lr.Repo, repoFilter) {
 			continue
 		}
-		for i := range lr.Doc.Entities {
-			e := &lr.Doc.Entities[i]
+		lr.forEachEntity(func(e *graph.Entity) bool {
 			if e.PropLen() == 0 {
-				continue
+				return true
 			}
 			if _, ok := e.PropLookup(coverage.PropTestReachable); !ok {
-				continue
+				return true
 			}
 			stampedSeen = true
 			// The pure report reads only ID, SourceFile and Properties; build a
@@ -99,7 +99,8 @@ func (s *Server) handleCoverageEffectiveness(_ context.Context, req mcpapi.CallT
 				id: e.ID, name: e.Name, sourceFile: e.SourceFile,
 				startLine: e.StartLine, isEndpoint: isEndpointKind(e.Kind),
 			}
-		}
+			return true
+		})
 	}
 
 	if !stampedSeen {

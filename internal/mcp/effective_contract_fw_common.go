@@ -106,10 +106,9 @@ func dtoFieldsByProperty(r *LoadedRepo, dtoType string) []contractField {
 	}
 	prefix := dtoType + "."
 	var out []contractField
-	for i := range r.Doc.Entities {
-		e := &r.Doc.Entities[i]
+	r.forEachEntity(func(e *graph.Entity) bool {
 		if !strings.EqualFold(e.Kind, "SCOPE.Schema") || e.Subtype != "field" {
-			continue
+			return true
 		}
 		owner := strings.TrimSpace(e.PropGet("parent_class"))
 		if owner == "" {
@@ -124,13 +123,13 @@ func dtoFieldsByProperty(r *LoadedRepo, dtoType string) []contractField {
 				name = strings.TrimSuffix(strings.TrimPrefix(e.Name, prefix), "?")
 			}
 		default:
-			continue
+			return true
 		}
 		if name == "" {
 			name = strings.TrimSuffix(strings.TrimPrefix(e.Name, prefix), "?")
 		}
 		if name == "" {
-			continue
+			return true
 		}
 		typ := strings.TrimSpace(e.PropGet("field_type"))
 		if typ == "" {
@@ -142,7 +141,8 @@ func dtoFieldsByProperty(r *LoadedRepo, dtoType string) []contractField {
 			Required: fieldRequiredFromProps(e),
 			Source:   "dto_field",
 		})
-	}
+		return true
+	})
 	return out
 }
 
