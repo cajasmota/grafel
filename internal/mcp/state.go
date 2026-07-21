@@ -711,9 +711,14 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 		}
 		// ADR-0027 Cutover PR1: source the build from the resident mmap Reader
 		// when present (byte-identical to the Document build — same rows, same
-		// order). Falls back to the Document only when no graph.fb is mapped
-		// (JSON-only load / Open failure). Not flag-gated.
-		if lr.Reader != nil {
+		// order), ELSE the Document. Gated behind GRAFEL_SERVE_FROM_MMAP (default
+		// OFF): this getter runs on the HANDLER path (idxMu only), and a
+		// concurrent reload retire()s+munmaps the old Reader WITHOUT idxMu (F1's
+		// borrow protocol is inert → refs==0 → immediate munmap), so an
+		// unconditional Reader iteration here is a read-after-unmap SIGBUS (latent
+		// PR1 #5865). OFF → the GC-safe Document build; ON is DARK until the borrow
+		// protocol is wired into the read path. Nil-Reader always uses the Document.
+		if lr.Reader != nil && serveFromMMap() {
 			lr.adjacency = buildAdjacencyFromReader(lr.Reader, lr.Repo)
 		} else {
 			lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
@@ -734,8 +739,10 @@ func (lr *LoadedRepo) getCallsAdj() *callsAdjacency {
 			lr.callsAdj = &callsAdjacency{}
 			return
 		}
-		// ADR-0027 Cutover PR1: prefer the resident mmap Reader (see getAdjacency).
-		if lr.Reader != nil {
+		// ADR-0027 Cutover PR1: prefer the resident mmap Reader when ON, else the
+		// Document. Flag-gated (default OFF) for the same handler-path munmap
+		// SIGBUS reason as getAdjacency.
+		if lr.Reader != nil && serveFromMMap() {
 			lr.callsAdj = buildCallsAdjacencyFromReader(lr.Reader)
 		} else {
 			lr.callsAdj = buildCallsAdjacency(lr.Doc)
@@ -753,8 +760,10 @@ func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
 			lr.stepAdj = map[string][]stepEdge{}
 			return
 		}
-		// ADR-0027 Cutover PR1: prefer the resident mmap Reader (see getAdjacency).
-		if lr.Reader != nil {
+		// ADR-0027 Cutover PR1: prefer the resident mmap Reader when ON, else the
+		// Document. Flag-gated (default OFF) for the same handler-path munmap
+		// SIGBUS reason as getAdjacency.
+		if lr.Reader != nil && serveFromMMap() {
 			lr.stepAdj = buildStepAdjacencyFromReader(lr.Reader)
 		} else {
 			lr.stepAdj = buildStepAdjacency(lr.Doc)
@@ -1175,10 +1184,12 @@ func (s *State) reloadLocked() (int, bool, error) {
 					//
 					// ADR-0027 Cutover PR1: count TESTS-kind edges off the freshly
 					// opened mmap Reader (Kind() read directly) rather than the
-					// materialized Document. Byte-neutral (Reader == Document's rows);
-					// falls back to doc.Relationships only when no graph.fb is mapped.
+					// materialized Document. Byte-neutral (Reader == Document's rows).
+					// Gated behind GRAFEL_SERVE_FROM_MMAP (default OFF) so the whole
+					// cutover shares ONE switch and no mmap read happens off the flag;
+					// falls back to doc.Relationships when OFF or no graph.fb is mapped.
 					testsCount := 0
-					if newRdr != nil {
+					if newRdr != nil && serveFromMMap() {
 						newRdr.IterateRelationships(func(rel *fb.Relationship) bool {
 							if string(rel.Kind()) == "TESTS" {
 								testsCount++
