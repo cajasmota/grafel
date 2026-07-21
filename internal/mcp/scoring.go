@@ -91,16 +91,72 @@ type BM25Index struct {
 	avgLen    float64
 	totalDocs int
 
-	// postings is an inverted index: term -> sorted list of {doc, tf} entries
-	// for the documents that contain that term (#3923 postings, #5871 tf
-	// fold-in). Search consults it to visit ONLY the documents that contain at
-	// least one query term instead of scanning all totalDocs documents, and
-	// reads the weighted tf directly from each posting. For the common case
-	// where a query term occurs in a small fraction of the corpus this keeps
-	// Search at O(Σ df(term)) — sublinear in corpus size. The document
-	// frequency df(term) is exactly len(postings[term]); it is no longer stored
-	// separately.
-	postings map[string][]posting
+	// terms interns each unique term string to a dense uint32 ID (#5871 L2 term
+	// interning). Pre-L2, postings was keyed by the raw term string — U≈283,586
+	// unique terms on the corpus, each retaining its own string header (16
+	// bytes) plus Go map-of-string overhead, ~7-9 MB resident. Interning stores
+	// each term string exactly ONCE (here, as a map key) and everything
+	// downstream (postings) references it by a 4-byte ID instead of copying the
+	// string. IDs are assigned densely (0..len(terms)-1) in first-seen order
+	// during the build, so they double as the index into postings.
+	terms map[string]uint32
+	// postings is an inverted index: term ID -> sorted list of {doc, tf}
+	// entries for the documents that contain that term (#3923 postings, #5871
+	// L1 tf fold-in, #5871 L2 term interning). Indexed by dense term ID
+	// (postings[id] == the postings list for the term whose ID is id) rather
+	// than keyed by the term string — a slice indexed by a dense 0..U-1 ID is
+	// denser than a map keyed by string OR by uint32, since it needs no hash
+	// buckets at all. Search consults it to visit ONLY the documents that
+	// contain at least one query term instead of scanning all totalDocs
+	// documents, and reads the weighted tf directly from each posting. For the
+	// common case where a query term occurs in a small fraction of the corpus
+	// this keeps Search at O(Σ df(term)) — sublinear in corpus size. The
+	// document frequency df(term) is exactly len(postings[id]); it is no
+	// longer stored separately.
+	postings [][]posting
+}
+
+// intern assigns (or looks up) the dense uint32 ID for a term string, growing
+// idx.postings to match. Both build paths (BuildBM25 and BuildBM25FromReader)
+// call this in the SAME per-document, per-term iteration order (doc-term maps
+// are visited via `for term, tf := range d.tf`, which is non-deterministic per
+// call — but only the ASSIGNMENT of new IDs during a single build matters for
+// that build's own internal consistency; cross-build DeepEqual parity holds
+// because both paths tokenize the SAME entities in the SAME doc order and fold
+// each doc's terms into postings identically, so the resulting term->ID
+// assignment is a function of (doc order, per-doc term set) alone — the two
+// builds see byte-identical inputs, hence byte-identical interning).
+func (idx *BM25Index) intern(term string) uint32 {
+	if id, ok := idx.terms[term]; ok {
+		return id
+	}
+	id := uint32(len(idx.terms))
+	idx.terms[term] = id
+	idx.postings = append(idx.postings, nil)
+	return id
+}
+
+// foldDocTerms interns doc i's terms and appends its postings, in a
+// deterministic order shared by BOTH build paths. d.tf is a Go map, so
+// `range d.tf` visits keys in randomized order per call; if two terms are
+// first seen (across the whole build) in the same document, the order they
+// are interned in determines which gets the lower ID. Sorting each
+// document's term keys before interning fixes that order to a pure function
+// of (doc order, per-doc term set) — which is identical between BuildBM25 and
+// BuildBM25FromReader (same entities, same vector order, same tokenizer) — so
+// the two paths intern every term under the SAME ID and produce byte-equal
+// `terms` dicts and `postings` slices (extends the #5871 PR3b parity
+// contract to the interned structure).
+func (idx *BM25Index) foldDocTerms(doc int32, d docTerms) {
+	keys := make([]string, 0, len(d.tf))
+	for term := range d.tf {
+		keys = append(keys, term)
+	}
+	sort.Strings(keys)
+	for _, term := range keys {
+		id := idx.intern(term)
+		idx.postings[id] = append(idx.postings[id], posting{doc: doc, tf: float32(d.tf[term])})
+	}
 }
 
 // BuildBM25 builds a BM25 index for a single graph document. This is the
@@ -114,7 +170,7 @@ func BuildBM25(doc *graph.Document) *BM25Index {
 	idx := &BM25Index{
 		entities: make([]int32, len(doc.Entities)),
 		docLen:   make([]float32, len(doc.Entities)),
-		postings: make(map[string][]posting),
+		terms:    make(map[string]uint32),
 	}
 	totalLen := 0.0
 	for i := range doc.Entities {
@@ -126,14 +182,13 @@ func BuildBM25(doc *graph.Document) *BM25Index {
 		d := buildDocTerms(e)
 		idx.docLen[i] = float32(d.length)
 		totalLen += d.length
-		// d.tf is a map, so its keys are already unique per document. We append
-		// this doc's (index, weighted tf) to each term's postings list; because
-		// i increases monotonically the postings lists stay sorted by doc index
-		// by construction (Search relies on this for the ascending tie-break and
-		// df(term) == len(postings[term])).
-		for term, tf := range d.tf {
-			idx.postings[term] = append(idx.postings[term], posting{doc: int32(i), tf: float32(tf)})
-		}
+		// foldDocTerms interns each of this doc's terms (assigning a dense ID on
+		// first sight, in sorted order for cross-build determinism, #5871 L2)
+		// and appends (doc, tf) to that ID's postings list; because i increases
+		// monotonically the postings lists stay sorted by doc index by
+		// construction (Search relies on this for the ascending tie-break and
+		// df(term) == len(postings[id])).
+		idx.foldDocTerms(int32(i), d)
 	}
 	idx.totalDocs = len(idx.entities)
 	if idx.totalDocs > 0 {
@@ -186,7 +241,7 @@ func BuildBM25FromReader(r *fbreader.Reader) *BM25Index {
 	idx := &BM25Index{
 		entities: make([]int32, n),
 		docLen:   make([]float32, n),
-		postings: make(map[string][]posting),
+		terms:    make(map[string]uint32),
 	}
 	totalLen := 0.0
 	for i := 0; i < n; i++ {
@@ -199,9 +254,8 @@ func BuildBM25FromReader(r *fbreader.Reader) *BM25Index {
 		d := buildDocTerms(&e)
 		idx.docLen[i] = float32(d.length)
 		totalLen += d.length
-		for term, tf := range d.tf {
-			idx.postings[term] = append(idx.postings[term], posting{doc: int32(i), tf: float32(tf)})
-		}
+		// Deterministic interning order (#5871 L2), see foldDocTerms.
+		idx.foldDocTerms(int32(i), d)
 	}
 	idx.totalDocs = n
 	if n > 0 {
@@ -499,8 +553,15 @@ func (b *BM25Index) Search(query string, limit int) []Hit {
 	// scoreByDoc maps a doc index to its running BM25 score.
 	scoreByDoc := make(map[int32]float64)
 	for _, t := range terms {
-		plist := b.postings[t]
-		// df(term) == len(postings[term]) after the #5871 fold-in — the separate
+		// #5871 L2: postings is indexed by dense term ID, not the raw term
+		// string. A missing entry in b.terms means the term never appeared in
+		// the corpus — identical to the old empty-postings-list skip.
+		id, ok := b.terms[t]
+		if !ok {
+			continue
+		}
+		plist := b.postings[id]
+		// df(term) == len(postings[id]) after the #5871 fold-in — the separate
 		// df map is gone. An empty postings list means the term is absent, which
 		// also makes idf undefined, so skip (identical to the old df==0 guard).
 		df := len(plist)

@@ -68,24 +68,26 @@ func TestBM25ReaderBuildParity_PR3b(t *testing.T) {
 	if !reflect.DeepEqual(idxRdr.entities, idxDoc.entities) {
 		t.Fatalf("entities (vector-index) slices differ between reader-build and doc-build")
 	}
-	// postings maps: same terms, each with the same {doc, tf} list in the same
-	// order (both are appended in ascending doc order). This is the tokens +
-	// weighted-tf byte-parity assertion.
-	if len(idxRdr.postings) != len(idxDoc.postings) {
-		t.Fatalf("postings term count: reader=%d doc=%d", len(idxRdr.postings), len(idxDoc.postings))
+	// terms dict + postings slice: same term->ID assignment and, for each ID,
+	// the same {doc, tf} list in the same order (both are appended in
+	// ascending doc order). This is the tokens + weighted-tf byte-parity
+	// assertion, extended to the interned structure (#5871 L2): the deterministic
+	// sorted-key interning order in foldDocTerms means both builds assign the
+	// SAME term->ID mapping given the same entities in the same vector order,
+	// so terms and postings must be byte-equal, not just equal-as-sets.
+	if !reflect.DeepEqual(idxRdr.terms, idxDoc.terms) {
+		t.Fatalf("terms dict (term->ID) differs between reader-build and doc-build")
 	}
 	if !reflect.DeepEqual(idxRdr.postings, idxDoc.postings) {
 		// Narrow down the first divergent term for a useful failure message.
-		for term, dlist := range idxDoc.postings {
-			rlist, ok := idxRdr.postings[term]
-			if !ok {
-				t.Fatalf("term %q present in doc-build, absent in reader-build", term)
-			}
+		for term, id := range idxDoc.terms {
+			dlist := idxDoc.postings[id]
+			rlist := idxRdr.postings[id]
 			if !reflect.DeepEqual(rlist, dlist) {
-				t.Fatalf("term %q postings differ: reader=%v doc=%v", term, rlist, dlist)
+				t.Fatalf("term %q (id=%d) postings differ: reader=%v doc=%v", term, id, rlist, dlist)
 			}
 		}
-		t.Fatalf("postings maps differ (reader-build has terms doc-build lacks)")
+		t.Fatalf("postings slices differ (length or term-ID assignment mismatch)")
 	}
 
 	// --- Search parity: same ranked entity IDs + scores ---

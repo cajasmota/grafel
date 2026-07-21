@@ -262,10 +262,13 @@ func TestBM25L1StructuralShape(t *testing.T) {
 		}
 	}
 
-	// Cross-check against the frozen oracle: df(term) == len(postings[term]) and
-	// each posting's tf matches the old per-doc tf for that (term, doc).
+	// Cross-check against the frozen oracle: df(term) == len(postings[id]) and
+	// each posting's tf matches the old per-doc tf for that (term, doc). #5871
+	// L2: postings is now indexed by the interned term ID, so we resolve each
+	// term's ID via idx.terms before looking up its postings list.
 	old := oldBuildBM25(doc)
-	for term, plist := range idx.postings {
+	for term, id := range idx.terms {
+		plist := idx.postings[id]
 		if len(plist) != old.df[term] {
 			t.Fatalf("term %q: len(postings)=%d != old df=%d", term, len(plist), old.df[term])
 		}

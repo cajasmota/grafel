@@ -26,8 +26,11 @@ func (b *BM25Index) bruteSearch(query string, limit int) []Hit {
 	}
 	// After the #5871 L1 compaction the per-doc tf lives inline in the postings
 	// list, so reconstruct a per-(term,doc) tf lookup for the brute-force scan.
+	// #5871 L2: postings is indexed by interned term ID, so resolve via
+	// b.terms first.
 	tfByTermDoc := make(map[string]map[int32]float32)
-	for term, plist := range b.postings {
+	for term, id := range b.terms {
+		plist := b.postings[id]
 		m := make(map[int32]float32, len(plist))
 		for _, p := range plist {
 			m[p.doc] = p.tf
@@ -39,8 +42,11 @@ func (b *BM25Index) bruteSearch(query string, limit int) []Hit {
 		di := int32(i)
 		score := 0.0
 		for _, t := range terms {
-			plist := b.postings[t]
-			df := len(plist)
+			id, ok := b.terms[t]
+			df := 0
+			if ok {
+				df = len(b.postings[id])
+			}
 			if df == 0 {
 				continue
 			}
@@ -132,7 +138,11 @@ func TestBM25PostingsSelective(t *testing.T) {
 	// A common token appears in (nearly) every doc; a rare numeric token in a
 	// small subset. The rare term's postings list must be a small fraction of
 	// the corpus — that is what bounds Search to the matching subset.
-	rare := idx.postings["1234"]
+	rareID, ok := idx.terms["1234"]
+	if !ok {
+		t.Fatalf("expected rare token '1234' to be interned")
+	}
+	rare := idx.postings[rareID]
 	if len(rare) == 0 {
 		t.Fatalf("expected rare token '1234' to have postings")
 	}
