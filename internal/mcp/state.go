@@ -1012,6 +1012,21 @@ type State struct {
 	// that a cwd inside a linked worktree returns the worktree-specific entry.
 	worktreeLookup WorktreeLookup
 
+	// evicted is the per-group whole-graph LRU-eviction cold-gate (memory epic
+	// #5850, issue #5872 PR1). A group name present here has been reclaimed by
+	// EvictGroup and swapped OUT of s.groups; the gate keeps reloadAllLocked from
+	// eagerly resurrecting it before it is explicitly accessed again.
+	//
+	//   - value nil  → full evict (keepReader=false): the mmap was munmapped and
+	//     the whole heavy group dropped; revive reloads from disk.
+	//   - value !nil → keepReader evict: a lightweight COLD SHELL whose repos kept
+	//     their mmap Readers resident (LabelIndex/derived-index heap dropped);
+	//     revive re-materializes the heap from those Readers with no re-Open.
+	//
+	// Mutated only under s.mu. Nil until the first EvictGroup call. No policy
+	// lives here in PR1 — this is the eviction PRIMITIVE's bookkeeping only.
+	evicted map[string]*LoadedGroup
+
 	// CrossLinkCache is the ref-keyed in-memory cache for cross-repo link
 	// candidates (issue #2224). Keyed by (repoA, refA, repoB, refB); the
 	// secondary index allows O(affected-entries) invalidation on ref-switch.
@@ -1176,10 +1191,28 @@ func (s *State) ReloadAndSurfaceChanged() (int, bool, error) {
 func (s *State) reloadLocked() (int, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.reloadAllLocked()
+}
+
+// reloadAllLocked is the reload body; the caller MUST already hold s.mu. Split
+// out of reloadLocked (memory epic #5850 PR1) so the eviction revive path can
+// reload from disk while already holding s.mu (Group -> reviveEvictedLocked)
+// without re-taking the lock.
+func (s *State) reloadAllLocked() (int, bool, error) {
 	prevSig := s.registrySignature
 	registryChanged := s.refreshRegistryFromDisk()
 	reloaded := 0
 	for gName, gEntry := range s.registry.Groups {
+		// Cold-gate (memory epic #5850, issue #5872 PR1): a group EvictGroup put
+		// in s.evicted is intentionally NOT resident. Skip it so reload does not
+		// eagerly resurrect every registered group before it is touched — an
+		// evicted group stays evicted until an explicit State.Group access revives
+		// it (reviveEvictedLocked). Without this gate the loop below would recreate
+		// the LoadedGroup and reload every repo from disk on the very next reload,
+		// defeating the eviction.
+		if _, gated := s.evicted[gName]; gated {
+			continue
+		}
 		grp, ok := s.groups[gName]
 		if !ok {
 			grp = &LoadedGroup{
@@ -1478,10 +1511,171 @@ func (s *State) Group(name string) *LoadedGroup {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	grp := s.groups[name]
+	if grp == nil {
+		// Cold-gate revive (memory epic #5850, issue #5872 PR1): a group EvictGroup
+		// reclaimed is absent from s.groups and pinned in s.evicted. An explicit
+		// access is exactly the "touch" that ends the eviction — bring it back on
+		// demand (re-materialize from the retained Reader, or reload from disk).
+		if cold, gated := s.evicted[name]; gated {
+			grp = s.reviveEvictedLocked(name, cold)
+		}
+	}
 	if grp != nil {
 		s.refreshGroupAlgoOverlayLocked(grp)
 	}
 	return grp
+}
+
+// EvictGroup reclaims the resident graph of group name — the per-group whole-graph
+// LRU-eviction PRIMITIVE (memory epic #5850, issue #5872 PR1). It is the clean
+// RSS-reclamation lever for an idle group in an agent fleet. Returns true when a
+// resident group was evicted, false when name was not resident.
+//
+// PR1 is the primitive + cold-gate ONLY — no policy, LRU bookkeeping, watermark,
+// or knobs, and no production caller (tests only). Those are PR2/PR3.
+//
+// Safety (the load-bearing part). The serve read path is lock-free: a handler that
+// already called State.Group holds its own *LoadedGroup / *LoadedRepo pointers and
+// dereferences their fields WITHOUT any lock. So eviction MUST NOT nil live fields
+// on a struct such a reader might still hold — instead it SWAPS the whole group out
+// of s.groups (delete below): new lookups miss immediately, existing holders finish
+// against the still-valid old struct, and the heavy heap is reclaimed by GC once
+// they drop it. The mmap is always released through the F1 retireHandle drain, never
+// a raw munmap, so an in-flight borrow drains first.
+//
+//   - keepReader=false → full evict: each repo's Reader is retired (munmapped via the
+//     safe drain) and the whole old group is discarded. A later access reloads the
+//     group from disk.
+//   - keepReader=true → keep the mmap mapped: a lightweight COLD SHELL takes over each
+//     repo's Reader/handle (transferred, NOT retired — the file stays mapped) while
+//     the heavy old group (LabelIndex + adjacency/BM25/byIDIdx/overlay/… heap) is
+//     dropped to GC. A later access re-materializes the heap from the already-mapped
+//     Readers with no fbreader.Open and no disk re-read.
+func (s *State) EvictGroup(name string, keepReader bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	grp := s.groups[name]
+	if grp == nil {
+		return false
+	}
+	// Swap the whole group out FIRST: new State.Group / borrowGroup lookups miss
+	// from here on, while any lock-free reader mid-handler keeps its own pointers.
+	delete(s.groups, name)
+	if s.evicted == nil {
+		s.evicted = map[string]*LoadedGroup{}
+	}
+
+	if !keepReader {
+		// Full evict: munmap every repo's mapping through the F1 drain (defers if a
+		// borrow is live) and drop the heavy group entirely. Revive reloads from disk.
+		for _, lr := range grp.Repos {
+			if lr != nil {
+				lr.retireHandle()
+			}
+		}
+		s.evicted[name] = nil
+		return true
+	}
+
+	// keepReader: transfer each repo's live mapping to a fresh cold shell that
+	// carries ONLY the fields a re-materialization needs; the heavy old group is
+	// left untouched (safe for in-flight readers) and becomes garbage. The mmap is
+	// NOT retired — it stays mapped, owned henceforth by the shell.
+	shell := &LoadedGroup{
+		Name:      grp.Name,
+		Repos:     make(map[string]*LoadedRepo, len(grp.Repos)),
+		Links:     grp.Links,
+		LinksFile: grp.LinksFile,
+		linksMt:   grp.linksMt,
+		MemoryDir: grp.MemoryDir,
+		// Overlay re-application is FORCED on revive (algoApplied=false) so the
+		// freshly rebuilt LabelIndex re-acquires its group-algo values / side-table.
+		algoFile: grp.algoFile,
+	}
+	for rName, lr := range grp.Repos {
+		if lr == nil {
+			continue
+		}
+		shell.Repos[rName] = coldShellRepo(lr)
+	}
+	s.evicted[name] = shell
+	return true
+}
+
+// coldShellRepo builds the keepReader cold-shell twin of lr: a fresh *LoadedRepo
+// that takes over lr's mmap Reader/handle and header/meta but carries NONE of the
+// dropped heap (LabelIndex nil, every lazy derived index zero). The mapping is
+// transferred (not retired), so a revive re-materializes the heap from it with no
+// fbreader.Open. The old lr is left fully intact for any lock-free reader still
+// holding it and is otherwise unreferenced (GC reclaims its heap); it has no
+// finalizer, so it never munmaps — only the shell (or a later full evict/Close)
+// ever retires the shared handle, and no borrow is outstanding on the dark read
+// path, so the transfer cannot double-free.
+func coldShellRepo(lr *LoadedRepo) *LoadedRepo {
+	return &LoadedRepo{
+		Repo:           lr.Repo,
+		Path:           lr.Path,
+		GraphFile:      lr.GraphFile,
+		Doc:            lr.Doc,
+		Reader:         lr.Reader,
+		handle:         lr.handle,
+		Semantic:       lr.Semantic,
+		semMtime:       lr.semMtime,
+		TestsEdgeCount: lr.TestsEdgeCount,
+		mtime:          lr.mtime,
+		contentHash:    lr.contentHash,
+		// algoStampedMt is PRESERVED (not zeroed): the graph did not reparse during
+		// eviction, so the per-repo overlay-staleness check must stay "not stale".
+		// The single load-bearing trigger that forces revive to re-apply the overlay
+		// (rebuilding the LabelIndex side-table dropped with the heap) is the shell
+		// group's algoApplied=false, set in EvictGroup — not a spurious stale mtime.
+		algoStampedMt: lr.algoStampedMt,
+	}
+}
+
+// reviveEvictedLocked ends the eviction of name and returns the now-resident group.
+// Caller MUST hold s.mu. cold is the s.evicted[name] value (nil for a full evict, a
+// cold shell for a keepReader evict).
+func (s *State) reviveEvictedLocked(name string, cold *LoadedGroup) *LoadedGroup {
+	delete(s.evicted, name)
+	if cold != nil {
+		// keepReader: re-materialize each repo's dropped heap from its retained,
+		// still-mapped Reader — no fbreader.Open, no disk re-read — then reinstall.
+		for _, lr := range cold.Repos {
+			if lr != nil {
+				lr.rematerializeFromReaderLocked()
+			}
+		}
+		s.groups[name] = cold
+		return cold
+	}
+	// Full evict: the group is gone from both maps and the gate is now clear, so
+	// reloadAllLocked recreates it and loads it from disk. Other still-gated groups
+	// stay skipped; already-resident groups mtime/hash-skip, so this is targeted.
+	_, _, _ = s.reloadAllLocked()
+	return s.groups[name]
+}
+
+// rematerializeFromReaderLocked rebuilds the heap indexes dropped by a keepReader
+// eviction from this repo's retained mmap Reader, mirroring reloadLocked's
+// LabelIndex wiring. Caller MUST hold s.mu. No fbreader.Open and no disk read: the
+// Reader is the same mapping the eviction kept resident. The lazy derived indexes
+// (adjacency/BM25/byID/…) are left for their getters to rebuild on first use
+// (resetIndexes re-arms the Once guards). The group-algo overlay side-table is
+// re-applied by the caller's refreshGroupAlgoOverlayLocked (forced via the shell's
+// algoApplied=false).
+func (lr *LoadedRepo) rematerializeFromReaderLocked() {
+	lr.readerMu.Lock()
+	if lr.Reader != nil {
+		li := BuildLabelIndexFromReader(lr.Reader, lr.Doc)
+		li.readerMu = &lr.readerMu
+		li.handle = lr.handle
+		lr.LabelIndex = li
+	} else {
+		lr.LabelIndex = BuildLabelIndex(lr.Doc)
+	}
+	lr.readerMu.Unlock()
+	lr.resetIndexes()
 }
 
 // groupBorrow is the immutable per-call snapshot returned by borrowGroup — the
@@ -1661,6 +1855,21 @@ func (s *State) Close() {
 				// drains before the mapping is unmapped — same munmap-while-borrowed
 				// hazard as reload/eviction. When nothing is borrowed (the common
 				// shutdown case) retire unmaps immediately, matching prior behavior.
+				lr.retireHandle()
+			}
+		}
+	}
+	// Drain kept-reader cold shells too (memory epic #5850, issue #5872 PR1). A
+	// keepReader EvictGroup leaves a group's mmap RESIDENT on a shell in s.evicted
+	// (not in s.groups), so the loop above would miss it and leak the mapping on
+	// shutdown. Retire each shell's handle through the same F1 drain. Full-evict
+	// entries are nil (already munmapped at eviction) and skipped.
+	for _, g := range s.evicted {
+		if g == nil {
+			continue
+		}
+		for _, lr := range g.Repos {
+			if lr != nil {
 				lr.retireHandle()
 			}
 		}
