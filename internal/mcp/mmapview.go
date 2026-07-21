@@ -83,7 +83,14 @@ func (v mmapEntityView) SourceFile() string    { return zeroCopyString(v.e.Sourc
 func (v mmapEntityView) Language() string      { return zeroCopyString(v.e.Language()) }
 func (v mmapEntityView) Signature() string     { return zeroCopyString(v.e.Signature()) }
 
-// Property returns the value for key and whether present, zero-copy.
+// PropGet returns the value for key, or "" if absent — zero-copy. Mirrors
+// graph.Entity.PropGet.
+func (v mmapEntityView) PropGet(key string) string {
+	val, _ := v.PropLookup(key)
+	return val
+}
+
+// PropLookup returns the value for key and whether present, zero-copy.
 //
 // Parity with the materialized view (fbEntityToGraphEntity + PropLookup): the
 // writer stores `module` as a top-level FB scalar AND — via PropsSnapshot — in
@@ -91,7 +98,7 @@ func (v mmapEntityView) Signature() string     { return zeroCopyString(v.e.Signa
 // (scalar wins when present). We mirror that: for "module" the non-empty scalar
 // takes precedence; otherwise fall through to the property vector. All other
 // keys are a straight vector lookup.
-func (v mmapEntityView) Property(key string) (string, bool) {
+func (v mmapEntityView) PropLookup(key string) (string, bool) {
 	if key == "module" {
 		if mod := v.e.Module(); len(mod) > 0 {
 			return zeroCopyString(mod), true
@@ -102,10 +109,37 @@ func (v mmapEntityView) Property(key string) (string, bool) {
 	})
 }
 
-// Properties returns a snapshot map of all properties, zero-copy in the values.
-// Parity: propsToMap returns nil for an empty set; the module scalar is folded
-// in (overriding, matching PropSet) when non-empty.
-func (v mmapEntityView) Properties() map[string]string {
+// PropLen returns the number of properties. Parity: the writer always emits the
+// module scalar INTO the property vector too (buildEntity: PropsSnapshot()
+// includes "module"), so PropertiesLength already counts it — matching heap,
+// where fbEntityToGraphEntity's PropSet("module") updates the existing vector
+// entry in place rather than adding one.
+func (v mmapEntityView) PropLen() int { return v.e.PropertiesLength() }
+
+// PropRange calls f for every key/value pair in key-sorted order, zero-copy,
+// stopping early if f returns false. The FB property vector is written key-sorted
+// (fbwriter.buildPropertyVector), and the module fold updates its entry in place,
+// so iterating the vector reproduces heap PropRange's order and values exactly.
+// The yielded strings alias the mmap and are valid only for the borrow (same
+// contract as the cold accessors) — they must not be retained past release().
+func (v mmapEntityView) PropRange(f func(k, v string) bool) {
+	n := v.e.PropertiesLength()
+	var pe fb.PropertyEntry
+	for i := 0; i < n; i++ {
+		if v.e.Properties(&pe, i) {
+			if !f(zeroCopyString(pe.Key()), zeroCopyString(pe.Value())) {
+				return
+			}
+		}
+	}
+}
+
+// PropsSnapshot returns an independent snapshot map of all properties, HEAP-COPYING
+// keys and values so the result is safe to retain past the borrow (matching heap
+// PropsSnapshot's owned-string contract) — unlike the zero-copy scalar accessors.
+// Parity: returns nil for an empty set (propsToMap does), and folds the module
+// scalar in (overriding, matching PropSet) when non-empty.
+func (v mmapEntityView) PropsSnapshot() map[string]string {
 	n := v.e.PropertiesLength()
 	mod := v.e.Module()
 	if n == 0 && len(mod) == 0 {
@@ -115,11 +149,12 @@ func (v mmapEntityView) Properties() map[string]string {
 	var pe fb.PropertyEntry
 	for i := 0; i < n; i++ {
 		if v.e.Properties(&pe, i) {
-			out[zeroCopyString(pe.Key())] = zeroCopyString(pe.Value())
+			// string(...) copies out of the mmap — safe past release().
+			out[string(pe.Key())] = string(pe.Value())
 		}
 	}
 	if len(mod) > 0 {
-		out["module"] = zeroCopyString(mod)
+		out["module"] = string(mod)
 	}
 	return out
 }
@@ -136,18 +171,61 @@ func (v mmapRelationshipView) Kind() string   { return zeroCopyString(v.r.Kind()
 // property (the writer stores it there), restored to rel.ID on load. "" when
 // absent.
 func (v mmapRelationshipView) ID() string {
-	if id, ok := v.Property("id"); ok {
+	if id, ok := v.PropLookup("id"); ok {
 		return id
 	}
 	return ""
 }
 
-// Property returns the value for key and whether present, zero-copy — a straight
+// PropGet returns the value for key, or "" if absent — zero-copy. Mirrors
+// graph.Relationship.PropGet.
+func (v mmapRelationshipView) PropGet(key string) string {
+	val, _ := v.PropLookup(key)
+	return val
+}
+
+// PropLookup returns the value for key and whether present, zero-copy — a straight
 // property-vector lookup, matching Relationship.PropLookup.
-func (v mmapRelationshipView) Property(key string) (string, bool) {
+func (v mmapRelationshipView) PropLookup(key string) (string, bool) {
 	return lookupPropertyEntry(key, v.r.PropertiesLength(), func(pe *fb.PropertyEntry, i int) bool {
 		return v.r.Properties(pe, i)
 	})
+}
+
+// PropLen returns the number of properties (incl. the tunneled "id"), matching
+// heap Relationship.PropLen (fbRelToGraphRel leaves "id" in the property set).
+func (v mmapRelationshipView) PropLen() int { return v.r.PropertiesLength() }
+
+// PropRange calls f for every key/value pair in key-sorted order, zero-copy,
+// stopping early if f returns false. Same lifetime contract as the entity view's.
+func (v mmapRelationshipView) PropRange(f func(k, v string) bool) {
+	n := v.r.PropertiesLength()
+	var pe fb.PropertyEntry
+	for i := 0; i < n; i++ {
+		if v.r.Properties(&pe, i) {
+			if !f(zeroCopyString(pe.Key()), zeroCopyString(pe.Value())) {
+				return
+			}
+		}
+	}
+}
+
+// PropsSnapshot returns an independent snapshot map, HEAP-COPYING keys and values
+// so the result survives past the borrow (matching heap PropsSnapshot). Returns
+// nil for an empty set. No module fold — relationships have no module scalar.
+func (v mmapRelationshipView) PropsSnapshot() map[string]string {
+	n := v.r.PropertiesLength()
+	if n == 0 {
+		return nil
+	}
+	out := make(map[string]string, n)
+	var pe fb.PropertyEntry
+	for i := 0; i < n; i++ {
+		if v.r.Properties(&pe, i) {
+			out[string(pe.Key())] = string(pe.Value())
+		}
+	}
+	return out
 }
 
 // lookupPropertyEntry scans an FB PropertyEntry vector for key, returning its

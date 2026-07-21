@@ -65,17 +65,57 @@ func TestMaterializedEntityViewReturnsUnderlyingFields(t *testing.T) {
 func TestMaterializedEntityViewProperties(t *testing.T) {
 	v := graph.EntityViewOf(newEntity())
 
-	got, ok := v.Property("module")
+	// W2 (ADR-0027): the view's read-only property surface is now name+signature
+	// identical to *graph.Entity's — PropGet/PropLookup/PropLen/PropRange/
+	// PropsSnapshot — so a property-reading consumer migrates by type change alone.
+	got, ok := v.PropLookup("module")
 	if !ok || got != "pkg" {
-		t.Errorf("Property(module) = (%q, %v), want (\"pkg\", true)", got, ok)
+		t.Errorf("PropLookup(module) = (%q, %v), want (\"pkg\", true)", got, ok)
 	}
-	if _, ok := v.Property("absent"); ok {
-		t.Error("Property(absent) reported present")
+	if _, ok := v.PropLookup("absent"); ok {
+		t.Error("PropLookup(absent) reported present")
 	}
-	if snap := v.Properties(); snap["module"] != "pkg" {
-		t.Errorf("Properties()[module] = %q, want %q", snap["module"], "pkg")
+	if got := v.PropGet("module"); got != "pkg" {
+		t.Errorf("PropGet(module) = %q, want %q", got, "pkg")
+	}
+	if got := v.PropGet("absent"); got != "" {
+		t.Errorf("PropGet(absent) = %q, want \"\"", got)
+	}
+	if n := v.PropLen(); n != 1 {
+		t.Errorf("PropLen() = %d, want 1", n)
+	}
+	seen := map[string]string{}
+	v.PropRange(func(k, val string) bool { seen[k] = val; return true })
+	if seen["module"] != "pkg" || len(seen) != 1 {
+		t.Errorf("PropRange collected %v, want map[module:pkg]", seen)
+	}
+	if snap := v.PropsSnapshot(); snap["module"] != "pkg" {
+		t.Errorf("PropsSnapshot()[module] = %q, want %q", snap["module"], "pkg")
 	}
 }
+
+// propReadSurface is EXACTLY graph.Entity's / Relationship's read-only property
+// method set (W2, ADR-0027). The assertions below prove two things at compile
+// time: (1) *graph.Entity and *graph.Relationship satisfy this surface for free
+// (the concrete methods already exist), and (2) EntityView / RelationshipView are
+// SUPERSETS of it (assignable to propReadSurface). Together that is the guarantee
+// the M-series relies on: a consumer's PropGet/PropLookup/PropLen/PropRange/
+// PropsSnapshot calls compile UNCHANGED whether it holds a *graph.Entity or an
+// EntityView — migration is a pure type change on the property read path.
+type propReadSurface interface {
+	PropGet(key string) string
+	PropLookup(key string) (string, bool)
+	PropLen() int
+	PropRange(f func(k, v string) bool)
+	PropsSnapshot() map[string]string
+}
+
+var (
+	_ propReadSurface = (*graph.Entity)(nil)
+	_ propReadSurface = (*graph.Relationship)(nil)
+	_ propReadSurface = graph.EntityView(nil)
+	_ propReadSurface = graph.RelationshipView(nil)
+)
 
 func TestEntityViewOfNilIsNil(t *testing.T) {
 	if v := graph.EntityViewOf(nil); v != nil {
@@ -105,8 +145,17 @@ func TestMaterializedRelationshipView(t *testing.T) {
 	if got := v.Kind(); got != r.Kind {
 		t.Errorf("Kind() = %q, want %q", got, r.Kind)
 	}
-	if got, ok := v.Property("call_site"); !ok || got != "42" {
-		t.Errorf("Property(call_site) = (%q, %v), want (\"42\", true)", got, ok)
+	if got, ok := v.PropLookup("call_site"); !ok || got != "42" {
+		t.Errorf("PropLookup(call_site) = (%q, %v), want (\"42\", true)", got, ok)
+	}
+	if got := v.PropGet("call_site"); got != "42" {
+		t.Errorf("PropGet(call_site) = %q, want %q", got, "42")
+	}
+	if n := v.PropLen(); n != 1 {
+		t.Errorf("PropLen() = %d, want 1", n)
+	}
+	if snap := v.PropsSnapshot(); snap["call_site"] != "42" {
+		t.Errorf("PropsSnapshot()[call_site] = %q, want %q", snap["call_site"], "42")
 	}
 }
 

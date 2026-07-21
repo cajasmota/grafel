@@ -32,23 +32,46 @@ type EntityView interface {
 	SourceFile() string
 	Language() string
 	Signature() string
-	// Property returns the value for key and whether it was present. Storage-
-	// agnostic by contract (ADR-0027 §Interaction): compatible with both the
-	// map-backed and the in-flight []propKV backing, and later with values
-	// aliased straight out of the mmap.
-	Property(key string) (string, bool)
-	// Properties returns a snapshot copy of all properties. Kept storage-agnostic
-	// for the same reason as Property.
-	Properties() map[string]string
+
+	// The read-only property surface below is NAME- AND SIGNATURE-IDENTICAL to
+	// graph.Entity's own methods. That identity is the whole point of W2
+	// (ADR-0027): *graph.Entity satisfies these for free, so migrating a
+	// property-reading consumer to EntityView is a pure TYPE change — its
+	// PropGet/PropLookup/PropLen/PropRange/PropsSnapshot calls compile unchanged.
+	// The WRITE methods (PropSet/PropDelete) are deliberately EXCLUDED: writes are
+	// cut-set and stay on the concrete type. Storage-agnostic by contract
+	// (ADR-0027 §Interaction): compatible with the map-backed and []propKV
+	// backings and with values aliased straight out of the mmap.
+	//
+	// PropGet returns the value for key, or "" if absent.
+	PropGet(key string) string
+	// PropLookup returns the value for key and whether it was present.
+	PropLookup(key string) (string, bool)
+	// PropLen returns the number of properties.
+	PropLen() int
+	// PropRange calls f for every key/value pair in key-sorted order, stopping
+	// early if f returns false.
+	PropRange(f func(k, v string) bool)
+	// PropsSnapshot returns an independent copy of all properties as a map, or nil
+	// if there are none. The returned map (and its strings) are safe to retain
+	// past any borrow — an mmap-backed impl heap-copies the values.
+	PropsSnapshot() map[string]string
 }
 
-// RelationshipView is the read-only view of a graph relationship.
+// RelationshipView is the read-only view of a graph relationship. Its property
+// read surface is identical to graph.Relationship's, for the same reason as
+// EntityView's (see there).
 type RelationshipView interface {
 	ID() string
 	FromID() string
 	ToID() string
 	Kind() string
-	Property(key string) (string, bool)
+
+	PropGet(key string) string
+	PropLookup(key string) (string, bool)
+	PropLen() int
+	PropRange(f func(k, v string) bool)
+	PropsSnapshot() map[string]string
 }
 
 // materializedEntityView adapts a concrete *Entity (materialized on the heap) to
@@ -75,13 +98,14 @@ func (v materializedEntityView) SourceFile() string    { return v.e.SourceFile }
 func (v materializedEntityView) Language() string      { return v.e.Language }
 func (v materializedEntityView) Signature() string     { return v.e.Signature }
 
-func (v materializedEntityView) Property(key string) (string, bool) {
-	return v.e.PropLookup(key)
-}
-
-func (v materializedEntityView) Properties() map[string]string {
-	return v.e.PropsSnapshot()
-}
+// Property read surface: trivial pass-throughs to the wrapped *Entity's own
+// methods (identical names + signatures — the wrapper exists only for the
+// Name/Kind field-vs-method collision, not for these).
+func (v materializedEntityView) PropGet(key string) string            { return v.e.PropGet(key) }
+func (v materializedEntityView) PropLookup(key string) (string, bool) { return v.e.PropLookup(key) }
+func (v materializedEntityView) PropLen() int                         { return v.e.PropLen() }
+func (v materializedEntityView) PropRange(f func(k, v string) bool)   { v.e.PropRange(f) }
+func (v materializedEntityView) PropsSnapshot() map[string]string     { return v.e.PropsSnapshot() }
 
 // materializedRelationshipView adapts a concrete *Relationship to
 // RelationshipView. See materializedEntityView for the wrapper rationale.
@@ -101,9 +125,13 @@ func (v materializedRelationshipView) FromID() string { return v.r.FromID }
 func (v materializedRelationshipView) ToID() string   { return v.r.ToID }
 func (v materializedRelationshipView) Kind() string   { return v.r.Kind }
 
-func (v materializedRelationshipView) Property(key string) (string, bool) {
+func (v materializedRelationshipView) PropGet(key string) string { return v.r.PropGet(key) }
+func (v materializedRelationshipView) PropLookup(key string) (string, bool) {
 	return v.r.PropLookup(key)
 }
+func (v materializedRelationshipView) PropLen() int                       { return v.r.PropLen() }
+func (v materializedRelationshipView) PropRange(f func(k, v string) bool) { v.r.PropRange(f) }
+func (v materializedRelationshipView) PropsSnapshot() map[string]string   { return v.r.PropsSnapshot() }
 
 // Compile-time assertions that the materialized wrappers satisfy the interfaces.
 var (

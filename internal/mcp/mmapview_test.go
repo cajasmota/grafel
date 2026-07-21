@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -189,21 +190,66 @@ func assertEntityViewEqual(t *testing.T, id string, want, got graph.EntityView) 
 	if want.Signature() != got.Signature() {
 		t.Errorf("%s Signature: heap %q mmap %q", id, want.Signature(), got.Signature())
 	}
-	// Property parity across the union of keys plus a known-absent key.
-	wp, gp := want.Properties(), got.Properties()
-	if len(wp) != len(gp) {
-		t.Errorf("%s Properties len: heap %v mmap %v", id, wp, gp)
+	// W2 (ADR-0027): full read-only property surface parity — the mmap view's
+	// PropGet/PropLookup/PropLen/PropRange/PropsSnapshot must be byte-identical to
+	// the heap *graph.Entity's, incl. the module scalar/property fold.
+	assertPropReadParity(t, id, want, got, []string{"module", "visibility", "id", "__absent__"})
+}
+
+// propReader is the read-only property surface shared by graph.EntityView and
+// graph.RelationshipView (W2). Its method set is identical to graph.Entity's /
+// Relationship's, which is the whole point: parity is asserted method-for-method.
+type propReader interface {
+	PropGet(key string) string
+	PropLookup(key string) (string, bool)
+	PropLen() int
+	PropRange(f func(k, v string) bool)
+	PropsSnapshot() map[string]string
+}
+
+// assertPropReadParity asserts every read-only property method returns a
+// byte-identical result between the heap view (want) and the mmap view (got):
+// PropLen, PropsSnapshot (deep-equal incl. nil-when-empty), PropRange (same
+// key/value pairs in the same order), and PropGet/PropLookup over probeKeys.
+func assertPropReadParity(t *testing.T, tag string, want, got propReader, probeKeys []string) {
+	t.Helper()
+	if want.PropLen() != got.PropLen() {
+		t.Errorf("%s PropLen: heap %d mmap %d", tag, want.PropLen(), got.PropLen())
 	}
-	for k, wv := range wp {
-		if gv := gp[k]; gv != wv {
-			t.Errorf("%s Properties[%q]: heap %q mmap %q", id, k, wv, gv)
+	ws, gs := want.PropsSnapshot(), got.PropsSnapshot()
+	if (ws == nil) != (gs == nil) {
+		t.Errorf("%s PropsSnapshot nilness: heap nil=%v mmap nil=%v", tag, ws == nil, gs == nil)
+	}
+	if len(ws) != len(gs) {
+		t.Errorf("%s PropsSnapshot len: heap %v mmap %v", tag, ws, gs)
+	}
+	for k, wv := range ws {
+		if gv := gs[k]; gv != wv {
+			t.Errorf("%s PropsSnapshot[%q]: heap %q mmap %q", tag, k, wv, gv)
 		}
 	}
-	for _, k := range []string{"module", "visibility", "id", "__absent__"} {
-		wv, wok := want.Property(k)
-		gv, gok := got.Property(k)
+	// PropRange must visit the same pairs in the same (sorted-key) order.
+	type kv struct{ K, V string }
+	var wr, gr []kv
+	want.PropRange(func(k, v string) bool { wr = append(wr, kv{k, v}); return true })
+	got.PropRange(func(k, v string) bool { gr = append(gr, kv{k, v}); return true })
+	if len(wr) != len(gr) {
+		t.Errorf("%s PropRange len: heap %v mmap %v", tag, wr, gr)
+	} else {
+		for i := range wr {
+			if wr[i] != gr[i] {
+				t.Errorf("%s PropRange[%d]: heap %v mmap %v", tag, i, wr[i], gr[i])
+			}
+		}
+	}
+	for _, k := range probeKeys {
+		if want.PropGet(k) != got.PropGet(k) {
+			t.Errorf("%s PropGet(%q): heap %q mmap %q", tag, k, want.PropGet(k), got.PropGet(k))
+		}
+		wv, wok := want.PropLookup(k)
+		gv, gok := got.PropLookup(k)
 		if wok != gok || wv != gv {
-			t.Errorf("%s Property(%q): heap (%q,%v) mmap (%q,%v)", id, k, wv, wok, gv, gok)
+			t.Errorf("%s PropLookup(%q): heap (%q,%v) mmap (%q,%v)", tag, k, wv, wok, gv, gok)
 		}
 	}
 }
@@ -222,13 +268,9 @@ func assertRelViewEqual(t *testing.T, i int, want, got graph.RelationshipView) {
 	if want.Kind() != got.Kind() {
 		t.Errorf("rel[%d] Kind: heap %q mmap %q", i, want.Kind(), got.Kind())
 	}
-	for _, k := range []string{"id", "line", "__absent__"} {
-		wv, wok := want.Property(k)
-		gv, gok := got.Property(k)
-		if wok != gok || wv != gv {
-			t.Errorf("rel[%d] Property(%q): heap (%q,%v) mmap (%q,%v)", i, k, wv, wok, gv, gok)
-		}
-	}
+	// W2: full read-only property surface parity, incl. the id-tunneled "id"
+	// property (which also backs ID()).
+	assertPropReadParity(t, "rel["+strconv.Itoa(i)+"]", want, got, []string{"id", "line", "__absent__"})
 }
 
 func idsOfViews(vs []graph.EntityView) []string {
@@ -368,9 +410,19 @@ func TestMMapHotIndexReadsAreLifetimeSafeUnderReload(t *testing.T) {
 					v.SourceFile() != "pkg/foo.go" {
 					readFault.Add(1)
 				}
-				if mod, _ := v.Property("module"); mod != "pkg" {
+				if mod, _ := v.PropLookup("module"); mod != "pkg" {
 					readFault.Add(1)
 				}
+				if v.PropGet("module") != "pkg" || v.PropLen() != 2 {
+					readFault.Add(1)
+				}
+				// PropRange reads zero-copy value strings through the borrow.
+				v.PropRange(func(k, val string) bool {
+					if k == "module" && val != "pkg" {
+						readFault.Add(1)
+					}
+					return true
+				})
 				b.Release()
 			}
 		}()
