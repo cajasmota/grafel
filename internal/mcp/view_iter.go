@@ -55,15 +55,15 @@ func (lr *LoadedRepo) forEachEntity(yield func(*graph.Entity) bool) {
 
 	// Flag-ON: strictly-innermost readerMu held across the WHOLE scan (Option-B
 	// tradeoff, intentional — see doc comment above and ADR-0027).
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	rdr := lr.Reader
 	h := lr.handle
 	if rdr == nil || (h != nil && h.readRetired) {
-		lr.readerMu.Unlock()
+		lr.rmu().Unlock()
 		lr.forEachDocEntity(yield)
 		return
 	}
-	defer lr.readerMu.Unlock()
+	defer lr.rmu().Unlock()
 
 	var overlay map[int32]entityOverlay
 	if lr.LabelIndex != nil {
@@ -140,15 +140,15 @@ func (lr *LoadedRepo) forEachEntityOfKinds(pred func(kind string) bool, yield fu
 
 	// Flag-ON: strictly-innermost readerMu held across the WHOLE scan (Option-B
 	// tradeoff, identical to forEachEntity).
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	rdr := lr.Reader
 	h := lr.handle
 	if rdr == nil || (h != nil && h.readRetired) {
-		lr.readerMu.Unlock()
+		lr.rmu().Unlock()
 		lr.forEachDocEntityOfIdxs(idxs, yield)
 		return
 	}
-	defer lr.readerMu.Unlock()
+	defer lr.rmu().Unlock()
 
 	var overlay map[int32]entityOverlay
 	if lr.LabelIndex != nil {
@@ -237,15 +237,15 @@ func (lr *LoadedRepo) forEachRelationship(yield func(*graph.Relationship) bool) 
 		return
 	}
 
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	rdr := lr.Reader
 	h := lr.handle
 	if rdr == nil || (h != nil && h.readRetired) {
-		lr.readerMu.Unlock()
+		lr.rmu().Unlock()
 		lr.forEachDocRelationship(yield)
 		return
 	}
-	defer lr.readerMu.Unlock()
+	defer lr.rmu().Unlock()
 
 	n := rdr.RelationshipCount()
 	for i := 0; i < n; i++ {

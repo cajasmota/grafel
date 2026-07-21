@@ -282,6 +282,83 @@ func TestEvictGroup_ConcurrentReadNoFault(t *testing.T) {
 	}
 }
 
+// TestEvictGroup_ConcurrentReadNoFault_FlagOn is the GRAFEL_SERVE_FROM_MMAP=ON
+// twin of TestEvictGroup_ConcurrentReadNoFault (issue #5872, epic #5850). Flag-ON
+// the read choke points DEREFERENCE the mmap under readerMu (not the GC-safe Doc),
+// so the keepReader eviction handoff must keep every *LoadedRepo generation that
+// shares one *MapHandle serialized on ONE readerMu. Before the fix, coldShellRepo
+// gave the shell its OWN independent readerMu while sharing the old lr's handle:
+// a later retire of that shared mapping munmapped under the shell's readerMu while
+// an in-flight OLD-generation reader still dereferenced it under the old lr's
+// readerMu → data race on MapHandle.readRetired + SIGSEGV on the munmapped region.
+//
+// The flag is forced ON explicitly so the guarantee is proven regardless of the
+// package default. Run with -race -count=10 to exercise the handoff window.
+//
+// MUTATION ORACLE: revert coldShellRepo to a per-shell independent readerMu (drop
+// the sharedReaderMu handoff) → this test data-races / SIGSEGVs under -race.
+func TestEvictGroup_ConcurrentReadNoFault_FlagOn(t *testing.T) {
+	forceServeFromMMap(t, true)
+	doc := lazyTestDoc()
+	st, lr, _ := seedRepoOnDisk(t, doc)
+	// Force a reparse so the flag-ON path opens a real mmap Reader and wires a
+	// reader-sourced LabelIndex (at()/getBM25/getAdjacency then deref the mapping
+	// under readerMu, exercising the reads-vs-retire serialization).
+	st.mu.Lock()
+	lr.mtime = time.Time{}
+	lr.contentHash = 0
+	_, _, _ = st.reloadAllLocked()
+	st.mu.Unlock()
+
+	var faults atomic.Int64
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Readers: capture the group, then read derived state lock-free (exactly the
+	// production seam). Flag-ON these getters materialize entities out of the mmap
+	// via the readerMu-guarded LabelIndex.at, so a mishandled retire faults here.
+	for i := 0; i < 6; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				grp := st.Group("test")
+				if grp == nil {
+					continue // transiently mid-evict; revive on the next spin
+				}
+				r := grp.Repos["r"]
+				if r == nil {
+					faults.Add(1)
+					continue
+				}
+				_ = r.getByID()
+				_ = r.getBM25().Search("A", 5)
+				_ = r.getAdjacency()
+			}
+		}()
+	}
+
+	// Evictor: alternate full and keepReader evictions, reviving via Group. The
+	// keepReader path is the one that hands the shared *MapHandle to a cold shell.
+	go func() {
+		defer close(stop)
+		for i := 0; i < 400; i++ {
+			st.EvictGroup("test", i%2 == 0)
+			st.Group("test") // revive
+		}
+	}()
+
+	wg.Wait()
+	if f := faults.Load(); f != 0 {
+		t.Fatalf("concurrent flag-on evict/read produced %d faults", f)
+	}
+}
+
 // Guard: EvictGroup on an unknown group is a no-op returning false, and does not
 // create a phantom cold-gate entry.
 func TestEvictGroup_UnknownGroupNoop(t *testing.T) {

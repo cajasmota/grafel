@@ -291,12 +291,28 @@ type LoadedRepo struct {
 	// bare readerMu at at()) and reload already holds s.mu (reload:
 	// s.mu->...->readerMu), a deref and the munmap of that same mapping can never
 	// interleave and no lock inversion is possible. Its zero value is usable, so a
-	// LoadedRepo needs no explicit init. The wired *LabelIndex holds &readerMu so a
+	// LoadedRepo needs no explicit init. The wired *LabelIndex holds rmu() so a
 	// lookup on a pre-reload-captured index locks the SAME mutex.
-	readerMu   sync.Mutex
-	LabelIndex *LabelIndex
-	BM25       *BM25Index
-	Semantic   *embed.Store // per-repo vector index (nil when no embeddings.bin)
+	//
+	// NEVER lock readerMu directly — go through rmu() (below). A keepReader
+	// eviction (issue #5872) builds a cold-shell twin that shares this repo's
+	// *MapHandle but is a DISTINCT *LoadedRepo; both generations MUST serialize
+	// reads-vs-munmap of the shared mapping on ONE mutex, or a retire under the
+	// shell's mutex races an in-flight read under the origin's mutex → data race
+	// on MapHandle.readRetired + SIGSEGV on the munmapped region. rmu() delivers
+	// that single mutex; sharedReaderMu threads it across generations.
+	readerMu sync.Mutex
+	// sharedReaderMu, when non-nil, overrides readerMu as this repo's effective
+	// reads-vs-retire mutex. It is set ONLY by coldShellRepo, to the ORIGIN
+	// generation's rmu(), so every cold-shell/revived *LoadedRepo derived from one
+	// original — all sharing that original's *MapHandle — locks the SAME mutex as
+	// the original and any in-flight reader still holding it (issue #5872, epic
+	// #5850). Nil on every freshly-loaded repo (rmu() then returns &readerMu), so
+	// the zero value stays usable and non-shell construction is unchanged.
+	sharedReaderMu *sync.Mutex
+	LabelIndex     *LabelIndex
+	BM25           *BM25Index
+	Semantic       *embed.Store // per-repo vector index (nil when no embeddings.bin)
 	// TestsEdgeCount is a cheap O(R) count of TESTS-kind relationships, computed
 	// eagerly at reload so grafel_whoami returns it in O(1) (#3325). Kept
 	// eager because it is O(R) with no allocation — far cheaper than the derived
@@ -490,6 +506,21 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.suffixIndexPartial = false
 }
 
+// rmu returns this repo's effective reads-vs-retire mutex: the shared override
+// (a cold-shell twin's link to its origin generation's mutex) when set, else this
+// repo's own readerMu. Every LoadedRepo-receiver mmap-read choke point, every
+// publishHandle/retireHandle munmap, and every LabelIndex readerMu wiring MUST go
+// through this — never lr.readerMu directly — so all generations sharing one
+// *MapHandle serialize on ONE mutex (issue #5872). Cheap: a nil check + address-of
+// on the fast (non-shell) path; never mutated after coldShellRepo, so it needs no
+// lock of its own.
+func (lr *LoadedRepo) rmu() *sync.Mutex {
+	if lr.sharedReaderMu != nil {
+		return lr.sharedReaderMu
+	}
+	return &lr.readerMu
+}
+
 // publishHandle installs nh as the repo's live mmap handle under the F1
 // (ADR-0027) deferred-unmap protocol and retires the predecessor. The ordering
 // is load-bearing: the successor is published (lr.handle / lr.Reader repointed)
@@ -509,7 +540,7 @@ func (lr *LoadedRepo) publishHandle(nh *MapHandle) {
 	// Doc instead of dereferencing the freed region. readerMu is innermost: the
 	// only thing done while holding it is field assignment + old.retire()'s munmap
 	// syscall — no other grafel lock is acquired.
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	old := lr.handle
 	if nh != nil {
 		nh.repo = lr.Repo
@@ -522,7 +553,7 @@ func (lr *LoadedRepo) publishHandle(nh *MapHandle) {
 		old.readRetired = true
 		old.retire()
 	}
-	lr.readerMu.Unlock()
+	lr.rmu().Unlock()
 }
 
 // retireHandle retires the repo's current mmap handle (repo eviction and server
@@ -534,7 +565,7 @@ func (lr *LoadedRepo) retireHandle() {
 	// Same readerMu discipline as publishHandle: flag readRetired then munmap, all
 	// under the strictly-innermost readerMu, so a concurrent flag-on read choke
 	// point cannot deref this mapping while (or after) it is unmapped.
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	old := lr.handle
 	lr.handle = nil
 	lr.Reader = nil
@@ -542,7 +573,7 @@ func (lr *LoadedRepo) retireHandle() {
 		old.readRetired = true
 		old.retire()
 	}
-	lr.readerMu.Unlock()
+	lr.rmu().Unlock()
 }
 
 // getSuffixIndex returns the source-file suffix index (basename -> repo-relative
@@ -756,7 +787,7 @@ func (lr *LoadedRepo) getBM25() *BM25Index {
 		// reload's munmap are serialized by the strictly-innermost readerMu, so
 		// the mapping cannot be freed mid-scan. Lock order: idxMu (held) ->
 		// readerMu; the Doc build takes no mmap so readerMu is dropped first.
-		lr.readerMu.Lock()
+		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
@@ -771,9 +802,9 @@ func (lr *LoadedRepo) getBM25() *BM25Index {
 			li := lr.LabelIndex
 			idx.resolve = func(vi int32) *graph.Entity { return li.at(vi) }
 			lr.BM25 = idx
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		} else {
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 			lr.BM25 = BuildBM25(lr.Doc)
 		}
 	})
@@ -857,14 +888,14 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 		// readRetired is checked for uniformity with at() (lr.handle here is always
 		// the current, non-retired generation). Lock order: idxMu (held) -> readerMu;
 		// the Doc build takes no mmap so readerMu is dropped before it.
-		lr.readerMu.Lock()
+		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
 			lr.adjacency = buildAdjacencyFromReader(rdr, lr.Repo)
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		} else {
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 			lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
 		}
 	})
@@ -887,14 +918,14 @@ func (lr *LoadedRepo) getCallsAdj() *callsAdjacency {
 		// Document. Flag-gated (default OFF) for the same handler-path munmap
 		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
 		// read + reload munmap are serialized by the strictly-innermost readerMu.
-		lr.readerMu.Lock()
+		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
 			lr.callsAdj = buildCallsAdjacencyFromReader(rdr)
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		} else {
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 			lr.callsAdj = buildCallsAdjacency(lr.Doc)
 		}
 	})
@@ -914,14 +945,14 @@ func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
 		// Document. Flag-gated (default OFF) for the same handler-path munmap
 		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
 		// read + reload munmap are serialized by the strictly-innermost readerMu.
-		lr.readerMu.Lock()
+		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
 			lr.stepAdj = buildStepAdjacencyFromReader(rdr)
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		} else {
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 			lr.stepAdj = buildStepAdjacency(lr.Doc)
 		}
 	})
@@ -1377,7 +1408,7 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 					if newRdr != nil {
 						newHandle = newMapHandle(newRdr)
 						li := BuildLabelIndexFromReader(newRdr, doc)
-						li.readerMu = &lr.readerMu
+						li.readerMu = lr.rmu()
 						li.handle = newHandle
 						// ADR-0027 SIGBUS-safety (memory epic #5850, Path P PR1 /
 						// view_iter.go): publish lr.LabelIndex under the SAME
@@ -1388,13 +1419,13 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 						// torn/concurrent write to this field. Field assignment
 						// only; no other lock is acquired while held (matches the
 						// readerMu contract documented on LoadedRepo.readerMu).
-						lr.readerMu.Lock()
+						lr.rmu().Lock()
 						lr.LabelIndex = li
-						lr.readerMu.Unlock()
+						lr.rmu().Unlock()
 					} else {
-						lr.readerMu.Lock()
+						lr.rmu().Lock()
 						lr.LabelIndex = BuildLabelIndex(doc)
-						lr.readerMu.Unlock()
+						lr.rmu().Unlock()
 					}
 					// BM25 is NO LONGER built eagerly here (#3377). It tokenizes every
 					// entity (name, path, docstring, discriminators) and dominated
@@ -1648,12 +1679,20 @@ func (s *State) evictGroupLocked(name string, keepReader bool) bool {
 // path, so the transfer cannot double-free.
 func coldShellRepo(lr *LoadedRepo) *LoadedRepo {
 	return &LoadedRepo{
-		Repo:           lr.Repo,
-		Path:           lr.Path,
-		GraphFile:      lr.GraphFile,
-		Doc:            lr.Doc,
-		Reader:         lr.Reader,
-		handle:         lr.handle,
+		Repo:      lr.Repo,
+		Path:      lr.Path,
+		GraphFile: lr.GraphFile,
+		Doc:       lr.Doc,
+		Reader:    lr.Reader,
+		handle:    lr.handle,
+		// sharedReaderMu is the load-bearing fix for issue #5872: the shell shares
+		// lr's *MapHandle (above), so it MUST serialize reads-vs-munmap of that one
+		// mapping on the SAME mutex as lr and any in-flight reader still holding lr.
+		// Point at lr's EFFECTIVE mutex (rmu(), not a fresh zero-value) so a later
+		// retireHandle on the shell and an old-generation at()/forEach read lock the
+		// identical *sync.Mutex. Threading rmu() (rather than &lr.readerMu) also keeps
+		// a shell-of-a-shell collapsed onto the one origin mutex.
+		sharedReaderMu: lr.rmu(),
 		Semantic:       lr.Semantic,
 		semMtime:       lr.semMtime,
 		TestsEdgeCount: lr.TestsEdgeCount,
@@ -1700,16 +1739,16 @@ func (s *State) reviveEvictedLocked(name string, cold *LoadedGroup) *LoadedGroup
 // re-applied by the caller's refreshGroupAlgoOverlayLocked (forced via the shell's
 // algoApplied=false).
 func (lr *LoadedRepo) rematerializeFromReaderLocked() {
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	if lr.Reader != nil {
 		li := BuildLabelIndexFromReader(lr.Reader, lr.Doc)
-		li.readerMu = &lr.readerMu
+		li.readerMu = lr.rmu()
 		li.handle = lr.handle
 		lr.LabelIndex = li
 	} else {
 		lr.LabelIndex = BuildLabelIndex(lr.Doc)
 	}
-	lr.readerMu.Unlock()
+	lr.rmu().Unlock()
 	lr.resetIndexes()
 }
 
@@ -2275,10 +2314,10 @@ func buildTopKPageRankFromReader(r *fbreader.Reader, k int) []string {
 // resident or the mapping was retired (mirrors at()/forEachEntity). readerMu
 // guards the mmap dereference (SIGBUS-safety, memory epic #5850).
 func (lr *LoadedRepo) buildTopKPageRankFromSideTable(k int) []string {
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	rdr := lr.Reader
 	if rdr == nil || (lr.handle != nil && lr.handle.readRetired) {
-		lr.readerMu.Unlock()
+		lr.rmu().Unlock()
 		return buildTopKPageRank(lr.Doc, k) // Reader gone → Doc fallback
 	}
 	var overlay map[int32]entityOverlay
@@ -2300,7 +2339,7 @@ func (lr *LoadedRepo) buildTopKPageRankFromSideTable(k int) []string {
 		i++
 		return true
 	})
-	lr.readerMu.Unlock()
+	lr.rmu().Unlock()
 
 	sort.Slice(all, func(a, b int) bool {
 		return all[a].pr > all[b].pr
@@ -2486,7 +2525,7 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 		// touch LabelIndex, so the table persists for this generation's life and is
 		// reassigned on the next re-stamp.
 		if serveFromMMap() {
-			lr.readerMu.Lock()
+			lr.rmu().Lock()
 			var table map[int32]entityOverlay
 			if rdr := lr.Reader; rdr != nil && !(lr.handle != nil && lr.handle.readRetired) {
 				table = buildOverlayTableFromReader(rdr, ov)
@@ -2496,7 +2535,7 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			if lr.LabelIndex != nil {
 				lr.LabelIndex.overlay = table
 			}
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		}
 		// Re-arm lazy derived indexes (TopKPageRank etc.) so they rebuild
 		// against the freshly-stamped group values rather than stale per-repo
