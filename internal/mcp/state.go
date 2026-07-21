@@ -1206,9 +1206,22 @@ func (s *State) reloadLocked() (int, bool, error) {
 						li := BuildLabelIndexFromReader(newRdr, doc)
 						li.readerMu = &lr.readerMu
 						li.handle = newHandle
+						// ADR-0027 SIGBUS-safety (memory epic #5850, Path P PR1 /
+						// view_iter.go): publish lr.LabelIndex under the SAME
+						// readerMu that guards lr.Reader/lr.handle (publishHandle
+						// below) so forEachEntity's flag-on scan — which holds
+						// readerMu across the whole scan and reads lr.LabelIndex.
+						// overlay for the group-algo merge — never observes a
+						// torn/concurrent write to this field. Field assignment
+						// only; no other lock is acquired while held (matches the
+						// readerMu contract documented on LoadedRepo.readerMu).
+						lr.readerMu.Lock()
 						lr.LabelIndex = li
+						lr.readerMu.Unlock()
 					} else {
+						lr.readerMu.Lock()
 						lr.LabelIndex = BuildLabelIndex(doc)
+						lr.readerMu.Unlock()
 					}
 					// BM25 is NO LONGER built eagerly here (#3377). It tokenizes every
 					// entity (name, path, docstring, discriminators) and dominated
@@ -1859,9 +1872,16 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 		// resetIndexes does NOT touch LabelIndex, so the table persists for the
 		// life of this generation and is reassigned on the next re-stamp. Only on
 		// the flag-on path; flag-off leaves lr.LabelIndex.overlay nil.
+		// ADR-0027 SIGBUS-safety (memory epic #5850, Path P PR1 / view_iter.go):
+		// same readerMu-guarded field-assignment discipline as the LabelIndex
+		// publish above — forEachEntity's flag-on scan reads lr.LabelIndex.
+		// overlay under readerMu across the whole scan, so this re-stamp must
+		// not race it.
+		lr.readerMu.Lock()
 		if buildSideTable && lr.LabelIndex != nil {
 			lr.LabelIndex.overlay = table
 		}
+		lr.readerMu.Unlock()
 		// Re-arm lazy derived indexes (TopKPageRank etc.) so they rebuild
 		// against the freshly-stamped group values rather than stale per-repo
 		// ones (mirrors the resetIndexes() call after a reparse).
