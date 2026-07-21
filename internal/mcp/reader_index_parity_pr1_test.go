@@ -123,6 +123,15 @@ func TestStepAdjacencyReaderParity_PR1(t *testing.T) {
 	}
 }
 
+// TestTopKPageRankReaderParity_PR1 proves buildTopKPageRankFromReader is
+// byte-identical to buildTopKPageRank for whatever PageRank values are baked
+// directly into this fixture's graph.fb — it does NOT prove production
+// parity, because getTopKPageRank no longer calls the Reader-sourced builder
+// (see buildTopKPageRankFromReader's doc comment and the post-PR1 regression
+// fix in getTopKPageRank / state.go). In production the FB Pagerank() scalar
+// is a permanent sentinel; real PageRank only ever reaches lr.Doc via the
+// group-algo overlay. TestGetTopKPageRank_OverlayOrder_NotReaderSentinel
+// (topk_pagerank_overlay_test.go) covers that overlay-aware production path.
 func TestTopKPageRankReaderParity_PR1(t *testing.T) {
 	t.Parallel()
 	doc, r := loadParityIndexFixture(t)

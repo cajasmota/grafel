@@ -750,14 +750,21 @@ func (lr *LoadedRepo) getTopKPageRank() []string {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.pagerankOnce.Do(func() {
-		// ADR-0027 Cutover PR1: prefer the resident mmap Reader; PageRank is
-		// read from the FB Pagerank() scalar (interface-absent field). Falls
-		// back to the Document only when no graph.fb is mapped.
-		if lr.Reader != nil {
-			lr.topKPageRank = buildTopKPageRankFromReader(lr.Reader, 64)
-		} else {
-			lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
-		}
+		// ALWAYS source from lr.Doc, never the Reader/mmap. Per-repo Pass-4 (the
+		// per-repo PageRank/CommunityID/Centrality/god/articulation compute) was
+		// removed when the group-scope algo pass (A1-A3, #5349) replaced it, so
+		// graph.fb's Pagerank() scalar is now a PERMANENT sentinel (0) for every
+		// entity — it is never populated by the indexer. The one authoritative
+		// source of real PageRank is applyGroupAlgoOverlay, which stamps the
+		// <group>-algo.json overlay onto lr.Doc.Entities[i].PageRank IN PLACE
+		// (state.go) — it never touches the mmap'd graph.fb bytes the Reader
+		// serves. Reading PageRank off the Reader (buildTopKPageRankFromReader)
+		// therefore always sees the sentinel and collapses top-K to id order,
+		// which silently corrupts pickFallback's entity choice (regression
+		// introduced by ADR-0027 Cutover PR1, #5865 — fixed here). See
+		// buildTopKPageRankFromReader's doc comment for why that function is
+		// kept but no longer called from here.
+		lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
 	})
 	return lr.topKPageRank
 }
@@ -1530,13 +1537,29 @@ func buildTopKPageRank(doc *graph.Document, k int) []string {
 }
 
 // buildTopKPageRankFromReader is the mmap-sourced twin of buildTopKPageRank,
-// reading Id/Pagerank directly off the fbreader.Reader. PageRank is an
-// interface-absent field (no EntityView accessor), so it MUST come from the
-// FB Pagerank() scalar. loadFBDocument sets Entity.PageRank to nil when
-// Pagerank()==0, so the Document build's pr==0 for those rows exactly matches
-// reading Pagerank()==0 here — and identical (id, pr) pairs in identical
-// vector order make sort.Slice produce a byte-identical top-K. Byte-identical
-// to buildTopKPageRank (proven by TestTopKPageRankReaderParity_PR1).
+// reading Id/Pagerank directly off the fbreader.Reader.
+//
+// BLOCKED — NOT CALLED (post-PR1 regression fix, see getTopKPageRank): the FB
+// Pagerank() scalar this reads is a permanent sentinel (0) for every entity.
+// Per-repo Pass-4 (the code that used to compute + persist real per-entity
+// PageRank into graph.fb) was removed when the group-scope algo pass (A1-A3,
+// #5349) replaced it. The only place real PageRank now lives is the
+// <group>-algo.json overlay, which applyGroupAlgoOverlay stamps onto
+// lr.Doc.Entities[i].PageRank in memory — it is never written back into
+// graph.fb, so the Reader can never see it. Calling this from
+// getTopKPageRank silently collapsed top-K to id order and corrupted
+// pickFallback's entity choice; that regression is why getTopKPageRank now
+// always sources from lr.Doc via buildTopKPageRank instead.
+//
+// This function is kept — with TestTopKPageRankReaderParity_PR1 still
+// exercising it — because it correctly proves byte-identical top-K
+// extraction logic between the Reader path and the Document path for
+// whatever PageRank values are actually baked into a given graph.fb (the
+// parity test writes real values directly into its fixture, bypassing the
+// production sentinel). A follow-up PR can re-enable calling this once a
+// side-table lets the overlay's real PageRank reach the Reader seam (the
+// overlay's per-entity map keyed by ID, applied at Reader-borrow time rather
+// than only onto lr.Doc), at which point this comment should be replaced.
 // ADR-0027 Cutover PR1.
 func buildTopKPageRankFromReader(r *fbreader.Reader, k int) []string {
 	if r == nil || r.EntityCount() == 0 {
