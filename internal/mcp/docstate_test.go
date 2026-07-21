@@ -712,6 +712,67 @@ func TestLoadedRepo_testsEdgeCachePopulated(t *testing.T) {
 	}
 }
 
+// TestLoadedRepo_testsEdgeCacheFromReader_PR1 is the FB-backed twin of
+// TestLoadedRepo_testsEdgeCachePopulated. ADR-0027 Cutover PR1 re-sourced the
+// reload-loop TESTS-edge count off the freshly opened mmap Reader
+// (Reader.IterateRelationships reading Kind()), falling back to the Document
+// only when no graph.fb is mapped. The existing test writes graph.JSON only, so
+// its reload takes the newRdr==nil Document fallback and leaves the production
+// Reader-count branch uncovered. This test writes a real graph.fb (via
+// writeGraphFB) so reloadLocked opens a non-nil Reader and the production
+// Reader-count branch runs, then asserts against the REAL production cache
+// (lr.TestsEdgeCount) — not an inline reimplementation. Mutating the production
+// branch ("TESTS"->"TESTX" in state.go) must fail THIS test.
+func TestLoadedRepo_testsEdgeCacheFromReader_PR1(t *testing.T) {
+	tmp := t.TempDir()
+	setTestHome(t, tmp)
+	t.Setenv("GRAFEL_WHOAMI_NUDGE", "")
+
+	repoDir := filepath.Join(tmp, "repo-fb-cache")
+	doc := &graph.Document{
+		Repo: "repo-fb-cache",
+		Entities: []graph.Entity{
+			{ID: "e1", Name: "Prod1", Kind: "function", SourceFile: "a.go", StartLine: 1, EndLine: 5},
+			{ID: "e2", Name: "Prod2", Kind: "function", SourceFile: "a.go", StartLine: 6, EndLine: 10},
+			{ID: "t1", Name: "TestProd1", Kind: "function", SourceFile: "a_test.go", StartLine: 1, EndLine: 5},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "r1", FromID: "e1", ToID: "e2", Kind: "CALLS"},
+			{ID: "r2", FromID: "t1", ToID: "e1", Kind: "TESTS"},
+			{ID: "r3", FromID: "t1", ToID: "e2", Kind: "TESTS"},
+		},
+	}
+	// graph.fb (NOT graph.json) so the reload opens a non-nil Reader and the
+	// production Reader-count branch actually executes.
+	writeGraphFB(t, repoDir, doc)
+
+	regPath := makeRegistry(t, tmp, map[string]map[string]string{
+		"g": {"repo-fb-cache": repoDir},
+	})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	lg := srv.State.Group("g")
+	if lg == nil {
+		t.Fatal("group 'g' not found after NewServer")
+	}
+	lr := lg.Repos["repo-fb-cache"]
+	if lr == nil {
+		t.Fatal("repo-fb-cache not loaded")
+	}
+	// Guard: the repo MUST have taken the FB path, else this test would be
+	// silently exercising the Document fallback (same trap as the JSON test).
+	if lr.Reader == nil {
+		t.Fatal("lr.Reader is nil — repo did not load graph.fb, Reader-count branch not exercised")
+	}
+	// The production cache, populated by the Reader-count branch in reloadLocked.
+	if lr.TestsEdgeCount != 2 {
+		t.Errorf("LoadedRepo.TestsEdgeCount (Reader-sourced): got %d want 2", lr.TestsEdgeCount)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Fix #2 — whoami must honor explicit group= for index-state fields
 // ---------------------------------------------------------------------------

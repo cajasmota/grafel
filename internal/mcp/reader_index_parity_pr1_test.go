@@ -52,6 +52,11 @@ func parityIndexDoc() *graph.Document {
 		mkRel("id::a", "id::b", "CALLS", map[string]string{"count": "3"}),
 		mkRel("id::a", "id::c", "CALLS", nil),
 		mkRel("id::b", "id::c", "CALLS", map[string]string{"weight": "2.5"}),
+		// BOTH count and weight, DIFFERENT values — pins edgeWeightFB's
+		// count-before-weight precedence (weight must resolve to 7, not 9). A
+		// precedence swap in edgeWeightFB makes the Reader-sourced edge weight
+		// diverge here and fails TestAdjacencyReaderParity_PR1.
+		mkRel("id::b", "id::d", "CALLS", map[string]string{"count": "7", "weight": "9"}),
 		mkRel("id::a", "id::d", "REFERENCES", map[string]string{"count": "0"}), // count<=0 -> weight 1.0
 		mkRel("id::proc", "id::a", "STEP_IN_PROCESS", map[string]string{"step_index": "1"}),
 		mkRel("id::proc", "id::b", "STEP_IN_PROCESS", map[string]string{"step_index": "0"}),
