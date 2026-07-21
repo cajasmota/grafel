@@ -244,7 +244,7 @@ func TestContentHashSkip_ChangedContentReparses(t *testing.T) {
 		t.Errorf("changed content: expected exactly 1 reparse, got %d", *parses)
 	}
 	// The fresh Doc must contain the new entity.
-	if _, ok := lr.LabelIndex.ByID["z"]; !ok {
+	if !lr.LabelIndex.HasID("z") {
 		t.Error("reparse did not pick up the new entity 'z'")
 	}
 }

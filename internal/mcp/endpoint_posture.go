@@ -131,7 +131,7 @@ func (s *Server) handleEndpointPosture(_ context.Context, req mcpapi.CallToolReq
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
-			if e, ok := r.LabelIndex.ByID[local]; ok {
+			if e := r.LabelIndex.ByID(local); e != nil {
 				return jsonResult(buildPosturePayload(r, e)), nil
 			}
 		}

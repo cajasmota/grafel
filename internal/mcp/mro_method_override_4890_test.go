@@ -118,7 +118,7 @@ func TestResolveMember_OverriddenMethod_IsExplicit(t *testing.T) {
 	srv.State.groups["test"].Repos["repo1"].Path = dir
 	lr := srv.State.groups["test"].Repos["repo1"]
 
-	e := lr.LabelIndex.ByID["op_create"]
+	e := lr.LabelIndex.ByID("op_create")
 	if e == nil {
 		t.Fatal("op_create entity not found")
 	}
@@ -167,7 +167,7 @@ func TestResolveMember_TrulyInheritedMethod_StaysInherited(t *testing.T) {
 	srv := newTestServer(t, trulyInheritedMethodDoc())
 	lr := srv.State.groups["test"].Repos["repo1"]
 
-	e := lr.LabelIndex.ByID["op_create"]
+	e := lr.LabelIndex.ByID("op_create")
 	if e == nil {
 		t.Fatal("op_create entity not found")
 	}

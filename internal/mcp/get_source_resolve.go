@@ -82,7 +82,7 @@ func resolveSourceEntity(lg *LoadedGroup, nodeID string) sourceResolution {
 	// same-named entity.
 	if rp != "" {
 		if r, ok := lg.Repos[rp]; ok && r.Doc != nil && r.LabelIndex != nil {
-			if e := r.LabelIndex.ByID[local]; e != nil {
+			if e := r.LabelIndex.ByID(local); e != nil {
 				return sourceResolution{entity: e, repo: r}
 			}
 			for _, key := range keys {
@@ -138,9 +138,15 @@ func ambiguousFrom(hits []*graph.Entity, r *LoadedRepo) sourceResolution {
 	return sourceResolution{ambiguous: cands}
 }
 
+// appendUniqueCandidate appends c unless an equivalent candidate is already
+// present. Equivalence is keyed by (repo, entity ID), NOT by *graph.Entity
+// pointer identity: ADR-0027 Cutover PR2 made LabelIndex.LookupAll materialize
+// a fresh copy per hit, so the same entity resolved via two candidate keys now
+// yields two DISTINCT pointers. Dedup by ID keeps a single logical match from
+// being mis-reported as ambiguous (PR2 retained-pointer audit fix).
 func appendUniqueCandidate(cands []sourceCandidate, c sourceCandidate) []sourceCandidate {
 	for _, x := range cands {
-		if x.ent == c.ent {
+		if x.repo == c.repo && x.ent.ID == c.ent.ID {
 			return cands
 		}
 	}

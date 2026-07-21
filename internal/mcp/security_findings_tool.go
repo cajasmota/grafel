@@ -160,7 +160,7 @@ func resolveEntityByPrefixed(lg *LoadedGroup, key string) *graph.Entity {
 	if r.LabelIndex == nil {
 		return nil
 	}
-	if e, ok := r.LabelIndex.ByID[local]; ok {
+	if e := r.LabelIndex.ByID(local); e != nil {
 		return e
 	}
 	return nil

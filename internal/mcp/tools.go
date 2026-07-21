@@ -904,7 +904,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 					expandTruncated = true
 					break
 				}
-				if e, ok := sc.repo.LabelIndex.ByID[nid]; ok {
+				if e := sc.repo.LabelIndex.ByID(nid); e != nil {
 					add(sc.repo.Repo, e, sc.hit.Score/float64(d+1))
 				}
 			}
@@ -918,7 +918,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 					expandTruncated = true
 					break
 				}
-				from := sc.repo.LabelIndex.ByID[nid]
+				from := sc.repo.LabelIndex.ByID(nid)
 				if from == nil {
 					continue
 				}
@@ -933,7 +933,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 					if !seen[prefixedID(sc.repo.Repo, e.target)] {
 						continue
 					}
-					to := sc.repo.LabelIndex.ByID[e.target]
+					to := sc.repo.LabelIndex.ByID(e.target)
 					if to == nil {
 						continue
 					}
@@ -1276,7 +1276,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
-			if e, ok := r.LabelIndex.ByID[local]; ok {
+			if e := r.LabelIndex.ByID(local); e != nil {
 				scopeIsOne := len(repos) == 1
 				out := serializeEntity(r.Repo, e, scopeIsOne, verbose)
 				if includeAlgo {
@@ -2180,7 +2180,7 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 	var startRepo *LoadedRepo
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
-			start = r.LabelIndex.ByID[local]
+			start = r.LabelIndex.ByID(local)
 			startRepo = r
 		}
 	}
@@ -2216,7 +2216,7 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 		if nid == start.ID {
 			continue
 		}
-		e := startRepo.LabelIndex.ByID[nid]
+		e := startRepo.LabelIndex.ByID(nid)
 		if e == nil {
 			continue
 		}
@@ -2409,7 +2409,7 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 func normalizePrefixed(lg *LoadedGroup, s string) string {
 	if r, l := splitPrefixed(s); r != "" {
 		if rr, ok := lg.Repos[r]; ok && rr.Doc != nil {
-			if _, ok := rr.LabelIndex.ByID[l]; ok {
+			if rr.LabelIndex.HasID(l) {
 				return s
 			}
 		}

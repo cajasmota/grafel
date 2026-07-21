@@ -559,23 +559,30 @@ func (lr *LoadedRepo) getMROInbound() map[string][]string {
 }
 
 // getByID returns the entity-ID → *Entity map, building it on first use.
-// Reuses LabelIndex.ByID when present (the LabelIndex is built eagerly at
-// reload and carries an identical map), avoiding a second O(N) pass.
+//
+// ADR-0027 Cutover PR2: the map's values are now INDEPENDENT heap copies of the
+// Document rows rather than pointers ALIASING lr.Doc.Entities' backing array —
+// so getByID no longer pins live pointers into Doc, the prerequisite for the
+// PR7 flip that drops Doc.Entities. It no longer reuses LabelIndex.ByID, which
+// is now an int32 index map, not a *graph.Entity map. Values are copied from
+// the LIVE Doc (not the mmap Reader) so post-load in-place overlay stamps stay
+// visible — behavior-neutral; see the LabelIndex type doc for the rationale.
+// Built once per reload and cached, so the map's values are INTERNALLY STABLE
+// for the life of the reload: getByID consumers (which index the map by id and
+// never compare value pointers) are insulated from the per-lookup pointer
+// instability of LabelIndex.ByID/Lookup.
 func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.byIDOnce.Do(func() {
-		if lr.LabelIndex != nil && lr.LabelIndex.ByID != nil {
-			lr.byID = lr.LabelIndex.ByID
-			return
-		}
 		if lr.Doc == nil {
 			lr.byID = map[string]*graph.Entity{}
 			return
 		}
 		m := make(map[string]*graph.Entity, len(lr.Doc.Entities))
 		for i := range lr.Doc.Entities {
-			m[lr.Doc.Entities[i].ID] = &lr.Doc.Entities[i]
+			ent := lr.Doc.Entities[i] // heap copy — a fresh pointer, not an alias into Doc
+			m[ent.ID] = &ent
 		}
 		lr.byID = m
 	})
@@ -1109,7 +1116,24 @@ func (s *State) reloadLocked() (int, bool, error) {
 					lr.mtime = fileMtime
 					lr.contentHash = newHash // 0 on hash failure → next reload re-parses
 					lr.loadErr = ""
-					lr.LabelIndex = BuildLabelIndex(doc)
+					// ADR-0027 Cutover PR2: open the mmap Reader BEFORE building the
+					// LabelIndex so the index sources entity indices (int32 positions)
+					// and MATERIALIZES each lookup from the resident mmap — byte-
+					// identical to the Document rows (PR1) — instead of pinning
+					// *graph.Entity pointers into Doc.Entities (the PR7 flip removes
+					// Doc.Entities entirely). Best-effort: Open failure leaves newRdr
+					// nil and the index falls back to the Document (JSON-only path).
+					// The SAME reader is published via setReader below (F1 protocol).
+					fbPath := filepath.Join(stateDir, "graph.fb")
+					var newRdr *fbreader.Reader
+					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
+						newRdr = rdr
+					}
+					if newRdr != nil {
+						lr.LabelIndex = BuildLabelIndexFromReader(newRdr, doc)
+					} else {
+						lr.LabelIndex = BuildLabelIndex(doc)
+					}
 					// BM25 is NO LONGER built eagerly here (#3377). It tokenizes every
 					// entity (name, path, docstring, discriminators) and dominated
 					// reload cost (~85%); it is now built lazily on first search-tool
@@ -1123,22 +1147,15 @@ func (s *State) reloadLocked() (int, bool, error) {
 					// is built on first use by its getter and cached until the next
 					// reload re-arms the Once here (#3367, #3377).
 					lr.resetIndexes()
-					// S8 (#2159): open the mmap reader alongside the Document.
-					// Best-effort: failures leave Reader nil; callers fall back to
-					// doc.Entities / doc.Relationships.
-					//
-					// F1 (ADR-0027): publish the successor through the deferred-unmap
-					// protocol instead of a bare Close() of the old reader. setReader
-					// repoints lr.handle/lr.Reader to the new mapping FIRST, then
-					// retires the predecessor — which unmaps it now iff it has already
-					// drained, else the last in-flight release() unmaps it. Reload
-					// never waits on borrows and never munmaps in place. Passing nil on
-					// Open failure retires the stale predecessor and leaves Reader nil.
-					fbPath := filepath.Join(stateDir, "graph.fb")
-					var newRdr *fbreader.Reader
-					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
-						newRdr = rdr
-					}
+					// S8 (#2159) + F1 (ADR-0027): publish the successor (newRdr, opened
+					// above alongside the LabelIndex) through the deferred-unmap protocol
+					// instead of a bare Close() of the old reader. setReader repoints
+					// lr.handle/lr.Reader to the new mapping FIRST, then retires the
+					// predecessor — which unmaps it now iff it has already drained, else
+					// the last in-flight release() unmaps it. Reload never waits on
+					// borrows and never munmaps in place. Passing nil on Open failure
+					// retires the stale predecessor and leaves Reader nil; callers then
+					// fall back to doc.Entities / doc.Relationships.
 					// TESTS-edge count cached once per reload so grafel_whoami can
 					// return it in O(1) without rescanning all relationships. This is a
 					// cheap O(R) count with no allocation, so it stays eager (#3325).

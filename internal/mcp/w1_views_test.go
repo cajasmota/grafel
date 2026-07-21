@@ -3,7 +3,6 @@ package mcp
 import (
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -70,7 +69,7 @@ func TestW1EntityViewGetterParity(t *testing.T) {
 			continue
 		}
 		got, ok := b.entityViewByQName("r", e.QualifiedName)
-		want := lr.LabelIndex.ByQName[strings.ToLower(e.QualifiedName)]
+		want := lr.LabelIndex.ByQName(e.QualifiedName)
 		if !ok || want == nil || got.ID() != want.ID {
 			t.Errorf("entityViewByQName(%q) = %v/%v, want %v", e.QualifiedName, got, ok, want)
 		}
@@ -78,14 +77,15 @@ func TestW1EntityViewGetterParity(t *testing.T) {
 
 	// byLabel parity against LabelIndex.ByLabel, including ambiguous labels and
 	// order (both are built in Doc order).
-	for lbl, wantEs := range lr.LabelIndex.ByLabel {
+	for lbl, wantIdxs := range lr.LabelIndex.byLabel {
 		gotVs := b.entityViewsByLabel("r", lbl)
-		if len(gotVs) != len(wantEs) {
-			t.Fatalf("entityViewsByLabel(%q) len = %d, want %d", lbl, len(gotVs), len(wantEs))
+		if len(gotVs) != len(wantIdxs) {
+			t.Fatalf("entityViewsByLabel(%q) len = %d, want %d", lbl, len(gotVs), len(wantIdxs))
 		}
-		for i := range wantEs {
-			if gotVs[i].ID() != wantEs[i].ID {
-				t.Errorf("entityViewsByLabel(%q)[%d] = %q, want %q", lbl, i, gotVs[i].ID(), wantEs[i].ID)
+		for i := range wantIdxs {
+			wantID := lr.LabelIndex.at(wantIdxs[i]).ID
+			if gotVs[i].ID() != wantID {
+				t.Errorf("entityViewsByLabel(%q)[%d] = %q, want %q", lbl, i, gotVs[i].ID(), wantID)
 			}
 		}
 	}

@@ -98,7 +98,7 @@ func (s *Server) handleControlFlow(_ context.Context, req mcpapi.CallToolRequest
 func resolveFunctionEntity(lg *LoadedGroup, repos []*LoadedRepo, key string) (*LoadedRepo, *graph.Entity, map[string]any, bool) {
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
-			if ent, ok := r.LabelIndex.ByID[local]; ok {
+			if ent := r.LabelIndex.ByID(local); ent != nil {
 				return r, ent, nil, true
 			}
 		}

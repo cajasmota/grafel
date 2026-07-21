@@ -135,7 +135,7 @@ func (s *Server) handleEffects(_ context.Context, req mcpapi.CallToolRequest) (*
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
-			if e, ok := r.LabelIndex.ByID[local]; ok {
+			if e := r.LabelIndex.ByID(local); e != nil {
 				out := buildEffectsPayload(r.Repo, e, sidecar)
 				attachBranchesFacet(out, r, e, wantBranches)
 				attachEffectContextsFacet(out, r, e, wantEffectCtx)

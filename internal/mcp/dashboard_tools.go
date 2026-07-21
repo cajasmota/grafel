@@ -1077,7 +1077,7 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 	canonicalize := func(s string) string {
 		if rPref, lid := splitPrefixed(s); rPref != "" {
 			if slug, r := lookupRepo(aliases, rPref); r != nil {
-				if _, ok := r.LabelIndex.ByID[lid]; ok {
+				if r.LabelIndex.HasID(lid) {
 					return prefixedID(slug, lid)
 				}
 				// id may be a label/qname within this repo
@@ -1218,7 +1218,7 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 		}
 		st := step{EntityID: pid, Repo: slug}
 		if r != nil && r.Doc != nil {
-			if e := r.LabelIndex.ByID[local]; e != nil {
+			if e := r.LabelIndex.ByID(local); e != nil {
 				st.Name = e.Name
 				st.Kind = e.Kind
 			}

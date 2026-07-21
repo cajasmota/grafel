@@ -46,15 +46,32 @@ func readResolutions(repoPath string) []EnrichmentResolution {
 
 // applyResolutions merges resolutions into entity Properties (non-destructive,
 // resolution-side wins). Used by tools that need post-enrichment views.
+//
+// ADR-0027 Cutover PR2: this MUTATES entities in place, so it must resolve the
+// id against the authoritative Doc.Entities slice (a stable, addressable
+// pointer), NOT via LabelIndex.ByID — which now materializes a throwaway heap
+// copy per lookup, so a PropSet through it would be lost. Building a one-shot
+// id→index over Doc keeps the write-through semantics intact and independent of
+// the (now pointer-unstable) index. (This helper currently has no callers; the
+// retarget keeps it correct for when one is wired.)
 func applyResolutions(repoPath string, lr *LoadedRepo) {
 	if lr == nil || lr.Doc == nil {
 		return
 	}
-	for _, r := range readResolutions(repoPath) {
-		e, ok := lr.LabelIndex.ByID[r.NodeID]
+	res := readResolutions(repoPath)
+	if len(res) == 0 {
+		return
+	}
+	pos := make(map[string]int, len(lr.Doc.Entities))
+	for i := range lr.Doc.Entities {
+		pos[lr.Doc.Entities[i].ID] = i
+	}
+	for _, r := range res {
+		i, ok := pos[r.NodeID]
 		if !ok {
 			continue
 		}
+		e := &lr.Doc.Entities[i]
 		if e.PropLen() == 0 {
 			e.PropsReplace(map[string]string{})
 		}

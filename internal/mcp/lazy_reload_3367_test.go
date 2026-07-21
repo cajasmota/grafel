@@ -102,12 +102,18 @@ func TestLazyIndexes_MatchEagerBuild(t *testing.T) {
 		t.Errorf("getStepAdj = %v; want %v", got, want)
 	}
 
-	// ByID.
+	// ByID. ADR-0027 Cutover PR2: getByID values are now INDEPENDENT heap copies
+	// of the Document rows (byte-equal), NOT pointers aliasing the Doc backing
+	// array — the pointer-decoupling that lets PR7 drop Doc.Entities.
 	byID := lr.getByID()
 	for i := range doc.Entities {
 		id := doc.Entities[i].ID
-		if byID[id] != &doc.Entities[i] {
-			t.Errorf("getByID[%q] does not point at the Document entity", id)
+		e := byID[id]
+		if e == nil || !reflect.DeepEqual(*e, doc.Entities[i]) {
+			t.Errorf("getByID[%q] not a byte-equal copy of the Document entity", id)
+		}
+		if e == &doc.Entities[i] {
+			t.Errorf("getByID[%q] aliases the Document backing array; want an independent copy (PR2)", id)
 		}
 	}
 

@@ -40,23 +40,25 @@ func TestLabelIndexInterning_ByLabelByteCorrect(t *testing.T) {
 	doc := labelIndexInterningDoc()
 	idx := BuildLabelIndex(doc)
 
-	getEntries := idx.ByLabel["get"]
+	// ADR-0027 Cutover PR2: byLabel now holds []int32 entity indices; materialize
+	// via at() to read the entity's ID.
+	getEntries := idx.byLabel["get"]
 	if len(getEntries) != 3 {
-		t.Fatalf("ByLabel[get] has %d entries; want 3 (e1,e2,e3)", len(getEntries))
+		t.Fatalf("byLabel[get] has %d entries; want 3 (e1,e2,e3)", len(getEntries))
 	}
 	gotIDs := map[string]bool{}
-	for _, e := range getEntries {
-		gotIDs[e.ID] = true
+	for _, i := range getEntries {
+		gotIDs[idx.at(i).ID] = true
 	}
 	for _, want := range []string{"e1", "e2", "e3"} {
 		if !gotIDs[want] {
-			t.Errorf("ByLabel[get] missing entity %q; got %v", want, gotIDs)
+			t.Errorf("byLabel[get] missing entity %q; got %v", want, gotIDs)
 		}
 	}
 
-	mixed := idx.ByLabel["mixedcase"]
-	if len(mixed) != 1 || mixed[0].ID != "e4" {
-		t.Errorf("ByLabel[mixedcase] = %v; want [e4]", mixed)
+	mixed := idx.byLabel["mixedcase"]
+	if len(mixed) != 1 || idx.at(mixed[0]).ID != "e4" {
+		t.Errorf("byLabel[mixedcase] = %v; want [e4]", mixed)
 	}
 }
 
@@ -64,23 +66,23 @@ func TestLabelIndexInterning_ByQNameByteCorrect(t *testing.T) {
 	doc := labelIndexInterningDoc()
 	idx := BuildLabelIndex(doc)
 
-	if e, ok := idx.ByQName["pkg.a.get"]; !ok || e.ID != "e1" {
-		t.Errorf("ByQName[pkg.a.get] = %+v (ok=%v); want e1", e, ok)
+	if i, ok := idx.byQName["pkg.a.get"]; !ok || idx.at(i).ID != "e1" {
+		t.Errorf("byQName[pkg.a.get] = %v (ok=%v); want e1", i, ok)
 	}
-	if e, ok := idx.ByQName["pkg.d.mixedcase"]; !ok || e.ID != "e4" {
-		t.Errorf("ByQName[pkg.d.mixedcase] = %+v (ok=%v); want e4", e, ok)
+	if i, ok := idx.byQName["pkg.d.mixedcase"]; !ok || idx.at(i).ID != "e4" {
+		t.Errorf("byQName[pkg.d.mixedcase] = %v (ok=%v); want e4", i, ok)
 	}
 	// Label/qname collision after lowering: "widget" is both e5's Name and
 	// e6's QualifiedName (uppercased on the entity, lowered as the key). Both
 	// entities intern the SAME "widget" key string (that's the point of the
 	// shared interner), but ByQName is a single-value map so the later
 	// entity (e6) wins the last-write.
-	if e, ok := idx.ByQName["widget"]; !ok || e.ID != "e6" {
-		t.Errorf("ByQName[widget] = %+v (ok=%v); want e6 (last write wins)", e, ok)
+	if i, ok := idx.byQName["widget"]; !ok || idx.at(i).ID != "e6" {
+		t.Errorf("byQName[widget] = %v (ok=%v); want e6 (last write wins)", i, ok)
 	}
-	entries := idx.ByLabel["widget"]
-	if len(entries) != 1 || entries[0].ID != "e5" {
-		t.Errorf("ByLabel[widget] = %v; want [e5]", entries)
+	entries := idx.byLabel["widget"]
+	if len(entries) != 1 || idx.at(entries[0]).ID != "e5" {
+		t.Errorf("byLabel[widget] = %v; want [e5]", entries)
 	}
 }
 
@@ -127,18 +129,20 @@ func TestLabelIndexInterning_KeysByteIdenticalToLowered(t *testing.T) {
 	doc := labelIndexInterningDoc()
 	idx := BuildLabelIndex(doc)
 
-	for lbl, entries := range idx.ByLabel {
-		for _, e := range entries {
+	for lbl, entries := range idx.byLabel {
+		for _, i := range entries {
+			e := idx.at(i)
 			want := strings.ToLower(e.Name)
 			if lbl != want {
-				t.Errorf("ByLabel key %q does not match strings.ToLower(%q) = %q", lbl, e.Name, want)
+				t.Errorf("byLabel key %q does not match strings.ToLower(%q) = %q", lbl, e.Name, want)
 			}
 		}
 	}
-	for qn, e := range idx.ByQName {
+	for qn, i := range idx.byQName {
+		e := idx.at(i)
 		want := strings.ToLower(e.QualifiedName)
 		if qn != want {
-			t.Errorf("ByQName key %q does not match strings.ToLower(%q) = %q", qn, e.QualifiedName, want)
+			t.Errorf("byQName key %q does not match strings.ToLower(%q) = %q", qn, e.QualifiedName, want)
 		}
 	}
 }

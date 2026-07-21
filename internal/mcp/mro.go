@@ -443,7 +443,7 @@ func extendsBases(lr *LoadedRepo, c *graph.Entity) []baseRef {
 		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
 			name = rels[ed.relIdx].PropGet("base_name")
 		}
-		target := lr.LabelIndex.ByID[ed.target]
+		target := lr.LabelIndex.ByID(ed.target)
 		if name == "" {
 			if target != nil && target.QualifiedName != "" {
 				name = target.QualifiedName
@@ -591,7 +591,7 @@ func classDeclaredMember(lr *LoadedRepo, cls *graph.Entity, member string) *grap
 		// in another file, or a Java class implementing an interface whose
 		// default method body lives in the interface's own file, must still
 		// resolve to that out-of-file body (#3839).
-		if e := lr.LabelIndex.ByQName[strings.ToLower(qn)]; e != nil &&
+		if e := lr.LabelIndex.ByQName(qn); e != nil &&
 			isMemberEntity(e) && hasRealBody(e) {
 			return e
 		}

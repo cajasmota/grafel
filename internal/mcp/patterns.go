@@ -541,18 +541,18 @@ func deriveScopeFromExemplars(exemplars []string, lg *LoadedGroup) agentpatterns
 				if r.Doc == nil {
 					continue
 				}
-				if e := r.LabelIndex.ByID[local]; e != nil {
+				if e := r.LabelIndex.ByID(local); e != nil {
 					infos = append(infos, eInfo{repo: r.Repo, srcFile: e.SourceFile, language: e.Language})
 					break
 				}
-				if e := r.LabelIndex.ByID[eid]; e != nil {
+				if e := r.LabelIndex.ByID(eid); e != nil {
 					infos = append(infos, eInfo{repo: r.Repo, srcFile: e.SourceFile, language: e.Language})
 					break
 				}
 			}
 		} else {
 			if r, ok := lg.Repos[rName]; ok && r.Doc != nil {
-				if e := r.LabelIndex.ByID[local]; e != nil {
+				if e := r.LabelIndex.ByID(local); e != nil {
 					infos = append(infos, eInfo{repo: rName, srcFile: e.SourceFile, language: e.Language})
 				}
 			}

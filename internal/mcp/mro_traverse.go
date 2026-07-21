@@ -96,7 +96,7 @@ func mroOutboundEdges(lr *LoadedRepo, local string) []mroEdge {
 	if lr == nil || lr.Doc == nil {
 		return nil
 	}
-	e := lr.LabelIndex.ByID[local]
+	e := lr.LabelIndex.ByID(local)
 	if e == nil {
 		return nil
 	}
@@ -232,7 +232,7 @@ func defUseMRORetarget(lg *LoadedGroup, entityFilter string) (definingID, defini
 		if r == nil || r.Doc == nil {
 			return "", ""
 		}
-		e := r.LabelIndex.ByID[id]
+		e := r.LabelIndex.ByID(id)
 		if e == nil {
 			return "", ""
 		}
