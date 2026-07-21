@@ -39,6 +39,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -190,10 +191,11 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 		}
 		totalEntities += entities
 
+		repoStack := settingsRepoStack(r)
 		sr := v2SettingsRepo{
 			Slug:  r.Slug,
 			Path:  r.Path,
-			Stack: settingsRepoStack(r),
+			Stack: repoStack,
 			Files: files,
 		}
 		sr.Entities = entities
@@ -204,20 +206,8 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 		// Phase 0 git metadata (#2088) + M4 sparse badge (#2181). Read cheaply
 		// from graph.fb header — no entity decode required.
 		sr.IndexedRef, sr.IndexedSHA, sr.IsWorktree, sr.CoverageStatus = repoGitMeta(stateDir)
-		// Monorepo: if the repo has Modules, surface them as a stub MonorepoInfo.
-		if len(r.Modules) > 0 {
-			pkgs := make([]v2MonorepoPkg, 0, len(r.Modules))
-			for _, mod := range r.Modules {
-				pkgs = append(pkgs, v2MonorepoPkg{
-					Path:    mod,
-					Stack:   r.Stack.Primary(),
-					Indexed: true,
-				})
-			}
-			sr.Monorepo = &v2MonorepoInfo{
-				Detector: "modules",
-				Packages: pkgs,
-			}
+		if mono := settingsMonorepoInfo(r, repoStack); mono != nil {
+			sr.Monorepo = mono
 		}
 		sg.Repos = append(sg.Repos, sr)
 	}
@@ -258,8 +248,54 @@ func settingsRepoStack(r registry.Repo) string {
 	return stack
 }
 
+func settingsMonorepoInfo(r registry.Repo, repoStack string) *v2MonorepoInfo {
+	selected := make(map[string]struct{}, len(r.Modules))
+	for _, mod := range r.Modules {
+		mod = filepath.ToSlash(strings.TrimSpace(mod))
+		if mod != "" {
+			selected[mod] = struct{}{}
+		}
+	}
+
+	candidates := make(map[string]struct{}, len(selected))
+	detector := "modules"
+	if mono, err := detect.DetectMonorepo(r.Path); err == nil && mono.Kind != detect.KindNone {
+		detector = string(mono.Kind)
+		for _, mod := range mono.Packages {
+			mod = filepath.ToSlash(strings.TrimSpace(mod))
+			if mod != "" {
+				candidates[mod] = struct{}{}
+			}
+		}
+	}
+	for mod := range selected {
+		candidates[mod] = struct{}{}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	paths := make([]string, 0, len(candidates))
+	for mod := range candidates {
+		paths = append(paths, mod)
+	}
+	sort.Strings(paths)
+
+	pkgs := make([]v2MonorepoPkg, 0, len(paths))
+	for _, mod := range paths {
+		stack := detect.Stack(filepath.Join(r.Path, filepath.FromSlash(mod)))
+		if stack == "" || stack == "unknown" {
+			stack = repoStack
+		}
+		_, indexed := selected[mod]
+		pkgs = append(pkgs, v2MonorepoPkg{Path: mod, Stack: stack, Indexed: indexed})
+	}
+	return &v2MonorepoInfo{Detector: detector, Packages: pkgs}
+}
+
 // repoStats reads graph-stats.json for a repo's state dir and returns
-// (files, entities, lastIndexed). Zero values on any read error.
+// (files, entities, lastIndexed). When the sidecar is absent or unusable, it
+// falls back to the persisted graph metadata so indexed repos remain visible.
 // repoGitMeta reads the Phase-0 git metadata and M4 coverage status from
 // graph.fb cheaply via fbreader (no entity/relationship decode). Returns zero
 // values for non-git repos or graphs written before these fields were added.
@@ -282,11 +318,22 @@ func repoStats(stateDir string) (files, entities int, lastIndexed time.Time) {
 	}
 	b, err := os.ReadFile(filepath.Join(stateDir, "graph-stats.json"))
 	if err != nil {
+		if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+			return 0, ps.Entities, ps.ComputedAt
+		}
 		return
 	}
 	var s statsShape
 	if json.Unmarshal(b, &s) != nil {
+		if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+			return 0, ps.Entities, ps.ComputedAt
+		}
 		return
+	}
+	if s.TotalEntities == 0 && s.ComputedAt.IsZero() {
+		if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+			return 0, ps.Entities, ps.ComputedAt
+		}
 	}
 	return s.TotalFiles, s.TotalEntities, s.ComputedAt
 }

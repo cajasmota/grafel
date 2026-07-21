@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/quality"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -366,6 +368,34 @@ func TestV2GetGroup_RealFidelityViaServer(t *testing.T) {
 	}
 }
 
+func TestRepoStatsFallsBackToGraphFBWhenSidecarMissing(t *testing.T) {
+	stateDir := t.TempDir()
+	indexedAt := time.Now().Add(-3 * time.Minute).UTC().Truncate(time.Second)
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: indexedAt,
+		Stats:       graph.Stats{Entities: 2, Relationships: 1, Files: 7},
+		Entities: []graph.Entity{
+			{ID: "a", Name: "A", Kind: "function", SourceFile: "a.go", Language: "go"},
+			{ID: "b", Name: "B", Kind: "function", SourceFile: "b.go", Language: "go"},
+		},
+	}
+	if err := fbwriter.WriteAtomic(filepath.Join(stateDir, "graph.fb"), doc); err != nil {
+		t.Fatalf("write graph.fb: %v", err)
+	}
+
+	files, entities, gotIndexedAt := repoStats(stateDir)
+	if files != 0 {
+		t.Errorf("files = %d, want 0 without graph-stats sidecar", files)
+	}
+	if entities != 2 {
+		t.Errorf("entities = %d, want 2 from graph.fb", entities)
+	}
+	if !gotIndexedAt.Equal(indexedAt) {
+		t.Errorf("indexedAt = %v, want %v", gotIndexedAt, indexedAt)
+	}
+}
+
 func TestSettingsRepoStackFallsBackToDotnetDetector(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "Platform.slnx"), []byte(""), 0o644); err != nil {
@@ -374,6 +404,37 @@ func TestSettingsRepoStackFallsBackToDotnetDetector(t *testing.T) {
 	repo := registry.Repo{Slug: "platform", Path: dir, Stack: registry.StackList{"unknown"}}
 	if got := settingsRepoStack(repo); got != "dotnet" {
 		t.Fatalf("settingsRepoStack = %q, want dotnet", got)
+	}
+}
+
+func TestSettingsMonorepoInfoKeepsUnselectedDetectedPackages(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pnpm-workspace.yaml"), []byte("packages:\n  - 'apps/*'\n"), 0o644); err != nil {
+		t.Fatalf("write workspace: %v", err)
+	}
+	for _, p := range []string{"apps/admin/package.json", "apps/platform/package.json"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, p)), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", p, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, p), []byte(`{"name":"x"}`), 0o644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+
+	repo := registry.Repo{Slug: "assessment", Path: dir, Stack: registry.StackList{"node"}, Modules: []string{"apps/admin"}}
+	mono := settingsMonorepoInfo(repo, "node")
+	if mono == nil {
+		t.Fatal("settingsMonorepoInfo returned nil")
+	}
+	got := map[string]bool{}
+	for _, p := range mono.Packages {
+		got[p.Path] = p.Indexed
+	}
+	if !got["apps/admin"] {
+		t.Fatalf("apps/admin indexed = false, want true; packages=%+v", mono.Packages)
+	}
+	if indexed, ok := got["apps/platform"]; !ok || indexed {
+		t.Fatalf("apps/platform state = (%v, %v), want (false, true); packages=%+v", indexed, ok, mono.Packages)
 	}
 }
 
