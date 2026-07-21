@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"sort"
 	"strings"
 	"sync"
 
@@ -87,6 +88,20 @@ type LabelIndex struct {
 	byID    map[string]int32
 	byLabel map[string][]int32
 	byQName map[string]int32
+
+	// byKind maps an entity's RAW Kind string -> its vector indices, in the SAME
+	// index space as byID (the IterateEntities / range counter both build paths
+	// share). Each list is index-sorted (appended in vector order). Keys are the
+	// RAW kind (NOT lowered/scope-stripped) because the hot Kind-predicate
+	// scanners classify raw kinds themselves (isDefinitionKind / classifyEndpoint-
+	// Kind lower+strip internally; isTopic lowers; the process/pattern scanners
+	// compare exact raw kinds). memory epic #5850 / mmap-flip #5870: it lets a
+	// Kind-filtered scanner (forEachEntityOfKinds) materialize ONLY the entities
+	// whose Kind matches its predicate — dozens of kinds vs 427k entities —
+	// instead of forEach-materializing the whole set per query. Populated by the
+	// SAME add() both build paths funnel through, so the Doc-built and Reader-
+	// built maps are DeepEqual, exactly like byID/byLabel/byQName.
+	byKind map[string][]int32
 }
 
 // entityOverlay holds the 5 group-algo fields that live in the
@@ -154,20 +169,26 @@ func newLabelIndex(n int) (*LabelIndex, *keyInterner) {
 		byID:    make(map[string]int32, n),
 		byLabel: make(map[string][]int32, n),
 		byQName: make(map[string]int32, n),
+		byKind:  make(map[string][]int32),
 	}, &keyInterner{}
 }
 
-// add records the i-th entity's (id, name, qname) into the index maps. Keying
-// mirrors the pre-PR2 pointer build exactly: byID by raw id, byLabel by
+// add records the i-th entity's (id, name, qname, kind) into the index maps.
+// Keying mirrors the pre-PR2 pointer build exactly: byID by raw id, byLabel by
 // lowercased name (appended → ambiguity list in vector order), byQName by
-// lowercased qname (last-write-wins, skipped when empty).
-func (l *LabelIndex) add(ki *keyInterner, i int32, id, name, qname string) {
+// lowercased qname (last-write-wins, skipped when empty). byKind appends the
+// index under the RAW kind (interned — kinds repeat heavily across entities, so
+// one backing string per distinct kind), preserving vector order so each list
+// stays index-sorted.
+func (l *LabelIndex) add(ki *keyInterner, i int32, id, name, qname, kind string) {
 	l.byID[id] = i
 	lbl := ki.intern(strings.ToLower(name))
 	l.byLabel[lbl] = append(l.byLabel[lbl], i)
 	if qname != "" {
 		l.byQName[ki.intern(strings.ToLower(qname))] = i
 	}
+	k := ki.intern(kind)
+	l.byKind[k] = append(l.byKind[k], i)
 }
 
 // BuildLabelIndex constructs a fresh Document-sourced LabelIndex. Lookups
@@ -179,7 +200,7 @@ func BuildLabelIndex(doc *graph.Document) *LabelIndex {
 	idx.doc = doc
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		idx.add(ki, int32(i), e.ID, e.Name, e.QualifiedName)
+		idx.add(ki, int32(i), e.ID, e.Name, e.QualifiedName, e.Kind)
 	}
 	return idx
 }
@@ -200,7 +221,7 @@ func BuildLabelIndexFromReader(r *fbreader.Reader, doc *graph.Document) *LabelIn
 	idx.reader = r
 	var i int32
 	r.IterateEntities(func(e *fb.Entity) bool {
-		idx.add(ki, i, string(e.Id()), string(e.Name()), string(e.QualifiedName()))
+		idx.add(ki, i, string(e.Id()), string(e.Name()), string(e.QualifiedName()), string(e.Kind()))
 		i++
 		return true
 	})
@@ -391,4 +412,31 @@ func (l *LabelIndex) LookupAll(s string) []*graph.Entity {
 		return out
 	}
 	return nil
+}
+
+// indicesForKinds returns the union of vector indices for every byKind KEY that
+// satisfies pred, in ASCENDING INDEX ORDER — i.e. the SAME order the entities
+// occupy in the entity vector, so a scanner that iterates the result visits them
+// in exactly the order a forEachEntity full-scan + Kind filter would (memory epic
+// #5850 / mmap-flip #5870, order-preservation is load-bearing for the ordered
+// scanners).
+//
+// It iterates byKind's KEYS (dozens of kinds, not 427k entities) and applies pred
+// to each raw kind string; only the matching kinds' index lists are gathered. An
+// entity has exactly ONE kind, so the gathered lists are disjoint — no dedup is
+// needed. Each per-kind list is already index-sorted, but map iteration order over
+// the keys is nondeterministic, so the merged union is sorted ascending before
+// return; dropping that sort is what the order-mutation test detects.
+func (l *LabelIndex) indicesForKinds(pred func(kind string) bool) []int32 {
+	if l == nil || l.byKind == nil || pred == nil {
+		return nil
+	}
+	var out []int32
+	for k, idxs := range l.byKind {
+		if pred(k) {
+			out = append(out, idxs...)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }

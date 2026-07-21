@@ -114,10 +114,8 @@ func (s *Server) handleTopologyChannels(_ context.Context, req mcpapi.CallToolRe
 			}
 			return true
 		})
-		r.forEachEntity(func(e *graph.Entity) bool {
-			if !isTopic(e) {
-				return true
-			}
+		// #5870: scan only topic-kind entities (selective materialization flag-ON).
+		r.forEachEntityOfKinds(isTopicKind, func(e *graph.Entity) bool {
 			out = append(out, channel{
 				TopicID:        prefixedID(r.Repo, e.ID),
 				TopicName:      e.Name,
@@ -239,10 +237,10 @@ func (s *Server) handleTopologyOrphanPublishers(_ context.Context, req mcpapi.Ca
 			}
 			return true
 		})
-		r.forEachEntity(func(e *graph.Entity) bool {
-			if !isTopic(e) {
-				return true
-			}
+		// #5870: topic-kind gate hoisted into the visitation predicate (selective
+		// materialization flag-ON); the residual edge-based publisher filter is
+		// unchanged.
+		r.forEachEntityOfKinds(isTopicKind, func(e *graph.Entity) bool {
 			// Publisher: appears as ToID in a PUBLISHES_TO edge but never as ToID in SUBSCRIBES_TO.
 			if !subscribers[e.ID] && hasRelationshipTo(r.Doc, e.ID, "PUBLISHES_TO") {
 				out = append(out, item{
@@ -287,10 +285,10 @@ func (s *Server) handleTopologyOrphanSubscribers(_ context.Context, req mcpapi.C
 			}
 			return true
 		})
-		r.forEachEntity(func(e *graph.Entity) bool {
-			if !isTopic(e) {
-				return true
-			}
+		// #5870: topic-kind gate hoisted into the visitation predicate (selective
+		// materialization flag-ON); the residual edge-based subscriber filter is
+		// unchanged.
+		r.forEachEntityOfKinds(isTopicKind, func(e *graph.Entity) bool {
 			if !publishers[e.ID] && hasRelationshipTo(r.Doc, e.ID, "SUBSCRIBES_TO") {
 				out = append(out, item{
 					TopicID:    prefixedID(r.Repo, e.ID),
@@ -455,10 +453,9 @@ func (s *Server) handleFlowDeadEnds(_ context.Context, req mcpapi.CallToolReques
 			}
 			return true
 		})
-		r.forEachEntity(func(e *graph.Entity) bool {
-			if e.Kind != processEntityKind {
-				return true
-			}
+		// #5870: process-kind gate hoisted into the visitation predicate (selective
+		// materialization flag-ON); the residual terminal_id checks are unchanged.
+		r.forEachEntityOfKinds(func(k string) bool { return k == processEntityKind }, func(e *graph.Entity) bool {
 			// Check if terminal_id exists and has outbound CALLS.
 			termID := e.PropGet("terminal_id")
 			if termID == "" {
@@ -510,10 +507,10 @@ func (s *Server) handleFlowTruncated(_ context.Context, req mcpapi.CallToolReque
 		if r.Doc == nil {
 			continue
 		}
-		r.forEachEntity(func(e *graph.Entity) bool {
-			if e.Kind != processEntityKind {
-				return true
-			}
+		// #5870: process-kind gate hoisted into the visitation predicate (selective
+		// materialization flag-ON); the residual truncated-property checks are
+		// unchanged.
+		r.forEachEntityOfKinds(func(k string) bool { return k == processEntityKind }, func(e *graph.Entity) bool {
 			truncated := e.PropGet("truncated")
 			reason := e.PropGet("truncated_reason")
 			if truncated == "true" || reason != "" {
@@ -569,8 +566,10 @@ func (s *Server) handleFlowDetail(_ context.Context, req mcpapi.CallToolRequest)
 		}
 		byID := r.getByID()
 		var procEnt *graph.Entity
-		r.forEachEntity(func(e *graph.Entity) bool {
-			if e.Kind == processEntityKind && e.ID == target {
+		// #5870: process-kind gate hoisted into the visitation predicate (scan only
+		// process-kind entities); the residual exact-ID match is unchanged.
+		r.forEachEntityOfKinds(func(k string) bool { return k == processEntityKind }, func(e *graph.Entity) bool {
+			if e.ID == target {
 				procEnt = e
 				return false
 			}
@@ -704,10 +703,10 @@ func (s *Server) handlePatternsListGraph(_ context.Context, req mcpapi.CallToolR
 		if r.Doc == nil {
 			continue
 		}
-		r.forEachEntity(func(e *graph.Entity) bool {
-			if e.Kind != "SCOPE.Pattern" && e.Kind != "Pattern" {
-				return true
-			}
+		// #5870: pattern-kind gate hoisted into the visitation predicate (selective
+		// materialization flag-ON); the residual status/needs_attention/confidence
+		// filters are unchanged.
+		r.forEachEntityOfKinds(func(k string) bool { return k == "SCOPE.Pattern" || k == "Pattern" }, func(e *graph.Entity) bool {
 			status := e.PropGet("status")
 			if statusFilter != "" && !strings.EqualFold(status, statusFilter) {
 				return true
@@ -1253,8 +1252,13 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 // scans. dead_code.go (frameworkEntryKindsMCP) and denoise.go
 // (isStructuralLineless) already treat SCOPE.MessageTopic / messagetopic as
 // topic-like; this restores consistency with them.
-func isTopic(e *graph.Entity) bool {
-	k := strings.ToLower(e.Kind)
+func isTopic(e *graph.Entity) bool { return isTopicKind(e.Kind) }
+
+// isTopicKind is the Kind-string form of isTopic, so the topology scanners can
+// pass it to forEachEntityOfKinds (#5870). isTopic is a PURE Kind predicate — it
+// reads only e.Kind — so this split is behavior-neutral.
+func isTopicKind(kind string) bool {
+	k := strings.ToLower(kind)
 	return k == "topic" || k == "scope.topic" || k == "queue" || k == "scope.queue" ||
 		k == "messagetopic" || k == "scope.messagetopic" ||
 		strings.HasSuffix(k, ".topic") || strings.HasSuffix(k, ".queue") ||

@@ -259,8 +259,12 @@ func newEndpointResolution(repos []*LoadedRepo, lg *LoadedGroup, orphanOnly bool
 		if r.Doc == nil {
 			continue
 		}
-		r.forEachEntity(func(e *graph.Entity) bool {
-			if isDefinitionKind(e.Kind) && e.PropGet("pattern_type") != patternTypeHTTPEndpointClientSynthesis {
+		// #5870: scan only definition-kind entities (selective materialization
+		// flag-ON) instead of forEach-filtering the whole entity set. The kind gate
+		// (isDefinitionKind) is hoisted into the visitation predicate; the residual
+		// pattern_type property filter stays in the body, so output is unchanged.
+		r.forEachEntityOfKinds(isDefinitionKind, func(e *graph.Entity) bool {
+			if e.PropGet("pattern_type") != patternTypeHTTPEndpointClientSynthesis {
 				defIDs[prefixedID(r.Repo, e.ID)] = true
 				defIDs[e.ID] = true
 			}
@@ -726,10 +730,10 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		if r.Doc == nil {
 			continue
 		}
-		r.forEachEntity(func(e *graph.Entity) bool {
-			if !isDefinitionKind(e.Kind) {
-				return true
-			}
+		// #5870: definition-kind gate hoisted into the visitation predicate — scan
+		// only definition-kind entities (selective materialization flag-ON). The
+		// residual property/path/method/orphan/effect filters below are unchanged.
+		r.forEachEntityOfKinds(isDefinitionKind, func(e *graph.Entity) bool {
 			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
 				return true
 			}
@@ -1046,7 +1050,12 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		if r.Doc == nil {
 			continue
 		}
-		r.forEachEntity(func(e *graph.Entity) bool {
+		// #5870: a call-site is either an explicit call kind OR a definition kind
+		// (client-synthesis http_endpoint). Hoist that pure-Kind union into the
+		// visitation predicate so only call/definition-kind entities are
+		// materialized flag-ON; the residual pattern_type/path/method refinement
+		// stays in the body unchanged.
+		r.forEachEntityOfKinds(func(k string) bool { return isCallKind(k) || isDefinitionKind(k) }, func(e *graph.Entity) bool {
 			// Accept explicit call kind OR client-synthesis http_endpoint.
 			isCall := isCallKind(e.Kind) ||
 				(isDefinitionKind(e.Kind) && e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis)
@@ -1352,7 +1361,12 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		}
 		rs := repoStats{Repo: r.Repo}
 
-		r.forEachEntity(func(e *graph.Entity) bool {
+		// #5870: only HTTP-endpoint kinds contribute to the per-repo stats — a
+		// non-endpoint entity falls through the switch untouched. Hoist that pure
+		// kind selection (classifyEndpointKind != none) into the visitation
+		// predicate so only endpoint-kind entities are materialized flag-ON; the
+		// framework/extraction_method reads and the category switch are unchanged.
+		r.forEachEntityOfKinds(isHTTPEndpointKind, func(e *graph.Entity) bool {
 			fw := e.PropGet("framework")
 			xm := e.PropGet("extraction_method") // #5527 per-entity AST provenance
 			switch classifyEndpointKind(e.Kind) {

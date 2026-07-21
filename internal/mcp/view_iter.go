@@ -78,6 +78,112 @@ func (lr *LoadedRepo) forEachEntity(yield func(*graph.Entity) bool) {
 	}
 }
 
+// forEachEntityOfKinds is the by-Kind analogue of forEachEntity (memory epic
+// #5850 / mmap-flip #5870): it calls yield only for the entities whose Kind
+// satisfies pred, in vector-index order. yield returning false stops iteration
+// early. It is the seam the hot Kind-predicate scanners (endpoint / flow /
+// dashboard tools) route through instead of forEachEntity + an in-loop Kind
+// filter, so — flag-ON — they materialize ONLY the predicate-matching entities
+// (dozens-of-kinds → matching subset) rather than the whole 427k-entity set.
+//
+// ORDER is byte-identical to forEachEntity + `if !pred(e.Kind) { skip }`: the
+// visited indices come from LabelIndex.indicesForKinds, which returns the union
+// of the matching kinds' index lists sorted ASCENDING — the same order the entity
+// vector (and therefore forEachEntity) uses.
+//
+// Sourcing mirrors forEachEntity exactly:
+//   - No by-Kind index available (LabelIndex or byKind nil — directly-constructed
+//     test indexes / JSON-only fallback): degrade to forEachEntity + an in-loop
+//     pred filter. Output-identical; simply NOT selectively-materializing.
+//   - Flag-OFF (default): yield &lr.Doc.Entities[idx] for each matching index —
+//     the same pointer semantics as forEachEntity's flag-off path.
+//   - Flag-ON: lr.readerMu held across the WHOLE scan (Option-B), retired/nil
+//     Reader falls back to the Doc, else materialize each matching index via the
+//     SAME graph.MaterializeEntity + overlay merge forEachEntity uses.
+func (lr *LoadedRepo) forEachEntityOfKinds(pred func(kind string) bool, yield func(*graph.Entity) bool) {
+	if lr == nil || pred == nil {
+		return
+	}
+	li := lr.LabelIndex
+	if li == nil || li.byKind == nil {
+		// No by-Kind index — preserve output via a filtered full scan (no
+		// selective materialization on this fallback).
+		lr.forEachEntity(func(e *graph.Entity) bool {
+			if !pred(e.Kind) {
+				return true
+			}
+			return yield(e)
+		})
+		return
+	}
+	idxs := li.indicesForKinds(pred)
+	if len(idxs) == 0 {
+		return
+	}
+
+	if !serveFromMMap() {
+		// Flag-OFF: Doc-sourced, same &Doc.Entities[idx] pointer semantics as
+		// forEachEntity's flag-off branch.
+		if lr.Doc == nil {
+			return
+		}
+		for _, idx := range idxs {
+			if int(idx) >= len(lr.Doc.Entities) {
+				continue
+			}
+			if !yield(&lr.Doc.Entities[idx]) {
+				return
+			}
+		}
+		return
+	}
+
+	// Flag-ON: strictly-innermost readerMu held across the WHOLE scan (Option-B
+	// tradeoff, identical to forEachEntity).
+	lr.readerMu.Lock()
+	rdr := lr.Reader
+	h := lr.handle
+	if rdr == nil || (h != nil && h.readRetired) {
+		lr.readerMu.Unlock()
+		lr.forEachDocEntityOfIdxs(idxs, yield)
+		return
+	}
+	defer lr.readerMu.Unlock()
+
+	var overlay map[int32]entityOverlay
+	if lr.LabelIndex != nil {
+		overlay = lr.LabelIndex.overlay
+	}
+	n := rdr.EntityCount()
+	for _, idx := range idxs {
+		if int(idx) >= n {
+			continue
+		}
+		e := materializeEntityOverlay(rdr, overlay, idx)
+		if !yield(e) {
+			return
+		}
+	}
+}
+
+// forEachDocEntityOfIdxs yields &lr.Doc.Entities[idx] for each index in idxs (in
+// the given order), the Doc-sourced path shared by forEachEntityOfKinds's flag-ON
+// retired/nil-Reader fallback. Callers must NOT hold readerMu (this touches only
+// the Doc).
+func (lr *LoadedRepo) forEachDocEntityOfIdxs(idxs []int32, yield func(*graph.Entity) bool) {
+	if lr.Doc == nil {
+		return
+	}
+	for _, idx := range idxs {
+		if int(idx) >= len(lr.Doc.Entities) {
+			continue
+		}
+		if !yield(&lr.Doc.Entities[idx]) {
+			return
+		}
+	}
+}
+
 // forEachDocEntity is the Doc-sourced path shared by forEachEntity's flag-off
 // branch and its flag-on retired/nil-Reader fallback.
 func (lr *LoadedRepo) forEachDocEntity(yield func(*graph.Entity) bool) {
@@ -98,6 +204,14 @@ func (lr *LoadedRepo) forEachDocEntity(yield func(*graph.Entity) bool) {
 // Callers MUST hold the owning LoadedRepo's readerMu — the mmap dereference
 // happens here.
 func materializeEntityOverlay(r *fbreader.Reader, overlay map[int32]entityOverlay, idx int32) *graph.Entity {
+	// Test-only observability seam (memory epic #5850 Path P): count each mmap
+	// entity materialization so the selective-materialization tests can assert a
+	// forEachEntityOfKinds scan materializes ONLY its matching-Kind subset, not the
+	// whole set. Nil in production — one predictable nil-check, shared with
+	// LabelIndex.materializeFromReader.
+	if atMaterializeHook != nil {
+		atMaterializeHook()
+	}
 	e := graph.MaterializeEntity(r, int(idx))
 	if ov, ok := overlay[idx]; ok {
 		e.CommunityID = ov.CommunityID
