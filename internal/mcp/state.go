@@ -24,6 +24,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -1052,6 +1053,13 @@ type State struct {
 	// case Warming() reports "not warming / unknown" gracefully. Read-only — it
 	// never affects scheduling.
 	warmingFn func() daemon.WarmingSnapshot
+
+	// memSampler is the resident-memory sampler used by the memory-watermark
+	// eviction trigger (SweepToMemoryBudget, memory epic #5850, issue #5872 PR3).
+	// Nil in production → heapAllocSample (runtime.ReadMemStats().HeapAlloc, the
+	// metric group eviction actually reclaims — see the PR3 grounding doc). Tests
+	// inject a deterministic closure. Read under s.mu inside SweepToMemoryBudget.
+	memSampler func() uint64
 }
 
 // SetWarmingSnapshot wires a read-only scheduler warming accessor into the
@@ -1933,6 +1941,119 @@ func (s *State) SweepIdleGroups(idle time.Duration, keepReader bool) int {
 		}
 	}
 	return evicted
+}
+
+// heapAllocSample is the production resident-memory sampler: the current Go heap
+// allocation (runtime.ReadMemStats().HeapAlloc). No syscall (a brief STW only), and
+// it reports precisely the arena that whole-group eviction reclaims to GC — the
+// derived-index heap (LabelIndex/adjacency/BM25/overlay), which is what
+// evictGroupLocked drops. Under the default keepReader=true the mmap stays mapped,
+// so the mapped-file portion of RSS is NOT this lever's to release; HeapAlloc is
+// therefore both cheaper AND the metric the watermark trigger actually moves. See
+// .grafel/research/eviction-pr3-grounding.md §3 for the full metric justification.
+//
+// Caveat handled by SweepToMemoryBudget: HeapAlloc is LAGGY — freed heap is reflected
+// only after a GC, and a keepReader evict transiently RAISES it (fresh cold shell). So
+// the watermark trigger samples this ONCE per sweep and sheds a single group, never
+// re-sampling mid-loop (which would misread the lag as "still over budget" and evict
+// every non-pinned group at once).
+func heapAllocSample() uint64 {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapAlloc
+}
+
+// sampleResidentMem returns the current resident-memory sample, using the injected
+// s.memSampler when present (tests) and heapAllocSample otherwise (production).
+// Caller holds s.mu.
+func (s *State) sampleResidentMem() uint64 {
+	if s.memSampler != nil {
+		return s.memSampler()
+	}
+	return heapAllocSample()
+}
+
+// SweepToMemoryBudget is the MEMORY-PRESSURE eviction trigger (memory epic #5850,
+// issue #5872 PR3): when resident memory exceeds budgetBytes it evicts the SINGLE
+// oldest-lastAccess non-pinned group (LRU victim) and returns how many it evicted
+// (0 or 1). It bounds total fleet RSS regardless of the idle window (PR2's trigger)
+// and stacks with it: SweepIdleGroups reclaims groups a session has paused on; this
+// sheds the LRU tail under real memory pressure even when nothing has been idle long
+// enough.
+//
+// budgetBytes == 0 DISABLES the trigger (returns 0 before locking or sampling), so
+// it is 100% behaviour-neutral when the knob is unset — no sample, no lock, no evict.
+//
+// ONE VICTIM PER SWEEP — and why we do NOT re-sample mid-loop. HeapAlloc (the sample)
+// does not drop the instant a group is evicted: the freed heap is only reflected
+// after a GC, and under the default keepReader=true the evict itself ALLOCATES a fresh
+// cold shell, transiently RAISING HeapAlloc. A loop that re-sampled after each evict
+// would therefore never see the sample fall under budget within one sweep and would
+// evict EVERY non-pinned group on the first breach — a thundering-herd revive storm,
+// the opposite of graduated shedding. Instead we take a single ENTRY sample, shed the
+// one oldest non-pinned group, and return. Successive reloadBeforeCall sweeps — each
+// grounded in a fresh entry sample once GC has reflected the prior frees — shed more
+// if still over budget, converging across windows. reloadBeforeCall fires frequently,
+// so convergence is prompt; and forcing a runtime.GC() here (to make an in-sweep
+// re-sample honest) is deliberately avoided as STW-expensive on the hot-ish path.
+//
+// PIN (same load-bearing safety rule as PR2). The active group — the MAX-lastAccess
+// group the fleet is servicing RIGHT NOW — is NEVER the victim, even under memory
+// pressure: it is the newest by definition, so the oldest-non-pin victim is never it.
+// A flag-on in-flight read on an evicted group would otherwise observe an empty graph.
+// When only the pinned group remains, the sweep evicts nothing (returns 0) — the
+// active working set is never sacrificed no matter how far over budget we are.
+//
+// Locking: takes s.mu once and evicts via evictGroupLocked (the EvictGroup body) —
+// same s.mu → readerMu order the primitive, reload, and the idle sweep use, so no
+// in-flight borrow is unmapped. keepReader is threaded straight to evictGroupLocked.
+func (s *State) SweepToMemoryBudget(budgetBytes uint64, keepReader bool) int {
+	if budgetBytes == 0 {
+		return 0 // disabled — behaviour-neutral, no sample/lock/evict.
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Single ENTRY sample — the only sample this sweep takes. Nothing to do if we are
+	// already under budget (see the doc comment for why we never re-sample mid-loop).
+	if s.sampleResidentMem() <= budgetBytes {
+		return 0
+	}
+
+	// Identify the PIN: the active (max-lastAccess) group, excluded as a victim so the
+	// group the fleet is currently servicing is never evicted — even under memory
+	// pressure (the same hard rule as SweepIdleGroups).
+	pin := ""
+	var pinAt time.Time
+	for name, g := range s.groups {
+		if g == nil {
+			continue
+		}
+		if pin == "" || g.lastAccess.After(pinAt) {
+			pin, pinAt = name, g.lastAccess
+		}
+	}
+
+	// Pick the LRU victim: the oldest-lastAccess group that is NOT the pin. Name is
+	// the deterministic tie-break so equal timestamps evict in a stable order.
+	victim := ""
+	var victimAt time.Time
+	for name, g := range s.groups {
+		if g == nil || name == pin {
+			continue
+		}
+		if victim == "" || g.lastAccess.Before(victimAt) ||
+			(g.lastAccess.Equal(victimAt) && name < victim) {
+			victim, victimAt = name, g.lastAccess
+		}
+	}
+	if victim == "" {
+		return 0 // only the pinned group remains — never sacrifice the active set.
+	}
+	if s.evictGroupLocked(victim, keepReader) {
+		return 1
+	}
+	return 0
 }
 
 // SnapshotGroups returns a stable list of loaded group pointers.

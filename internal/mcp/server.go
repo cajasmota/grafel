@@ -103,6 +103,28 @@ func resolveGroupKeepReader() bool {
 	}
 }
 
+// resolveGroupRSSBudget returns the configured whole-group MEMORY-WATERMARK budget
+// in BYTES, reading GRAFEL_MCP_GROUP_RSS_BUDGET_MB once at server construction (memory
+// epic #5850, issue #5872 PR3). When resident memory exceeds this budget,
+// reloadBeforeCall evicts LRU groups (State.SweepToMemoryBudget) until back under it.
+//
+// The daemon RSS budget (daemon.ConfiguredRSSBudgetMB) is admission control for the
+// INDEXER scheduler and does not flow into the serve/MCP process (see the PR3
+// grounding doc §1), so this is a dedicated serve-side knob. OPT-IN: default 0
+// (disabled → SweepToMemoryBudget no-ops, behaviour 100% unchanged). A negative or
+// malformed value also disables it. The env value is MB; the returned budget is bytes.
+func resolveGroupRSSBudget() uint64 {
+	v := os.Getenv("GRAFEL_MCP_GROUP_RSS_BUDGET_MB")
+	if v == "" {
+		return 0 // default OFF — opt-in only.
+	}
+	mb, err := strconv.Atoi(v)
+	if err != nil || mb <= 0 {
+		return 0 // disabled / malformed.
+	}
+	return uint64(mb) * 1024 * 1024
+}
+
 // resolveReloadDebounce returns the configured debounce window, reading the
 // env overrides once at server construction. A value of 0 (debounce disabled)
 // is honoured and returned as a zero Duration.
@@ -355,6 +377,16 @@ type Server struct {
 	// mmap Reader mapped (default ON; re-materialize the heap on revive without a
 	// disk re-read) or fully munmaps it. Resolved once from GRAFEL_MCP_GROUP_KEEP_READER.
 	groupKeepReader bool
+
+	// groupRSSBudget is the whole-group MEMORY-WATERMARK budget in BYTES (memory epic
+	// #5850, issue #5872 PR3). When resident memory exceeds it, reloadBeforeCall's slow
+	// path evicts LRU groups (State.SweepToMemoryBudget) — oldest lastAccess first,
+	// pinning the active group — until back under budget, bounding total fleet RSS
+	// regardless of the idle window. Resolved once at construction from
+	// GRAFEL_MCP_GROUP_RSS_BUDGET_MB (see resolveGroupRSSBudget). A zero value disables
+	// it (default OFF — opt-in), making the trigger behaviour-neutral. Stacks with
+	// groupIdleEviction; shares the same debounced slow path (no extra goroutine).
+	groupRSSBudget uint64
 }
 
 // SetActivityBroker wires the MCP activity broker into the server so that
@@ -441,7 +473,7 @@ func NewServer(cfg Config) (*Server, error) {
 		mcpsrv.WithToolCapabilities(true),
 		mcpsrv.WithInstructions(mcpInstructions))
 
-	s := &Server{State: st, Tel: tel, SessMet: sessMet, MCP: srv, cfg: cfg, reloadDebounce: resolveReloadDebounce(), bm25IdleEviction: resolveBM25IdleEviction(), groupIdleEviction: resolveGroupIdleEviction(), groupKeepReader: resolveGroupKeepReader()}
+	s := &Server{State: st, Tel: tel, SessMet: sessMet, MCP: srv, cfg: cfg, reloadDebounce: resolveReloadDebounce(), bm25IdleEviction: resolveBM25IdleEviction(), groupIdleEviction: resolveGroupIdleEviction(), groupKeepReader: resolveGroupKeepReader(), groupRSSBudget: resolveGroupRSSBudget()}
 	s.registerTools()
 	return s, nil
 }
@@ -542,6 +574,15 @@ func (s *Server) reloadBeforeCall() {
 	// same debounce, so it runs at most once per window. Stacks with the BM25 sweep
 	// above: a group idle long enough loses BM25 first, then the whole graph.
 	s.State.SweepIdleGroups(s.groupIdleEviction, s.groupKeepReader)
+
+	// Memory-watermark WHOLE-GROUP sweep (issue #5872 PR3) — same debounced slow-path
+	// piggyback: when resident memory exceeds groupRSSBudget, evict LRU groups (oldest
+	// lastAccess first, pinning the active group) until back under budget, bounding
+	// total fleet RSS regardless of the idle window above. Opt-in (default 0 → no-op,
+	// byte-identical behaviour). Fires after the idle sweep so an already-idle group is
+	// reclaimed by the cheaper time trigger first, and only genuine pressure on the
+	// still-resident LRU tail drives this one. Reuses groupKeepReader for symmetry.
+	s.State.SweepToMemoryBudget(s.groupRSSBudget, s.groupKeepReader)
 	if surfaceChanged && s.MCP != nil {
 		// Best-effort: failures are silently ignored. The notification carries
 		// no payload — clients respond by re-issuing tools/list.
