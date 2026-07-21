@@ -78,7 +78,7 @@ func (e *FormatVersionError) Error() string {
 // that could go stale or get clobbered by a later write from a different
 // writer.
 func ReindexRequiredReason(dir string) (required bool, reason string) {
-	fbPath := filepath.Join(dir, "graph.fb")
+	fbPath := CurrentGraphPath(dir)
 	r, err := fbreader.Open(fbPath)
 	if err != nil {
 		return false, ""
@@ -117,7 +117,7 @@ func FormatVersionReason(found, required int) string {
 //  3. If only graph.json exists, fall back to JSON.
 //  4. If neither exists, return a non-nil error.
 func LoadGraphFromDir(dir string) (*Document, error) {
-	fbPath := filepath.Join(dir, "graph.fb")
+	fbPath := CurrentGraphPath(dir)
 	jsonPath := filepath.Join(dir, "graph.json")
 
 	fbInfo, fbErr := os.Stat(fbPath)
@@ -165,7 +165,7 @@ func LoadGraphFromDir(dir string) (*Document, error) {
 // (absent) memory win. Callers that need a full Document (every CLI/full-Doc
 // consumer) must keep using LoadGraphFromDir.
 func LoadGraphHeaderOnlyFromDir(dir string) (*Document, error) {
-	fbPath := filepath.Join(dir, "graph.fb")
+	fbPath := CurrentGraphPath(dir)
 	if _, err := os.Stat(fbPath); err == nil {
 		return loadFBDocumentHeaderOnly(fbPath)
 	}
@@ -208,7 +208,7 @@ type PersistedStats struct {
 // Returns ok=false when graph.fb is absent or cannot be opened (in which case
 // callers should treat the repo as genuinely never-indexed via graph.fb).
 func PersistedStatsFromDir(dir string) (PersistedStats, bool) {
-	fbPath := filepath.Join(dir, "graph.fb")
+	fbPath := CurrentGraphPath(dir)
 	r, err := fbreader.Open(fbPath)
 	if err != nil {
 		return PersistedStats{}, false

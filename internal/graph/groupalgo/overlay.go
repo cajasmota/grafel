@@ -288,7 +288,7 @@ func CurrentSourceMtimes(group string) (map[string]int64, error) {
 	out := map[string]int64{}
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
-		fbPath := filepath.Join(stateDir, "graph.fb")
+		fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 		if fi, statErr := os.Stat(fbPath); statErr == nil {
 			out[r.Slug] = fi.ModTime().UnixNano()
 		}

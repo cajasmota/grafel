@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 )
 
@@ -256,7 +257,11 @@ func (c *Cache) GetForRepoRef(repoPath, ref string) (*fbreader.Reader, func(), e
 	if strings.Contains(filepath.ToSlash(stateDir), "/refs/_unknown") {
 		return nil, func() {}, ErrUnknownRef
 	}
-	fbPath := filepath.Join(stateDir, "graph.fb")
+	// #5891: resolve the active generation via the `current` pointer (flat
+	// graph.fb fallback for un-migrated repos). The cache key remains the
+	// absolute resolved path, so hit/miss semantics are unchanged; a gen swap
+	// yields a new key → cache miss → fresh mmap of the new generation.
+	fbPath := graph.CurrentGraphPath(stateDir)
 	r, release, err := c.Get(fbPath)
 	if err == nil {
 		c.fireAccessHook(repoPath, ref)
@@ -269,8 +274,37 @@ func (c *Cache) GetForRepoRef(repoPath, ref string) (*fbreader.Reader, func(), e
 // know the ref should prefer this over Invalidate(path).
 func (c *Cache) InvalidateForRepoRef(repoPath, ref string) bool {
 	stateDir := daemon.StateDirForRepoRef(repoPath, ref)
-	fbPath := filepath.Join(stateDir, "graph.fb")
-	return c.Invalidate(fbPath)
+	// #5891: under the gen layout the resident handle may be keyed by any
+	// graph.<gen>.fb (or the legacy flat graph.fb), and after a reindex flips
+	// the pointer to a NEW gen the OLD gen's entry is keyed by a path we can no
+	// longer reconstruct from the current pointer. Evict every handle whose
+	// parent dir is this state dir so the stale generation's mmap is reclaimed
+	// promptly (the low-RSS invariant) rather than lingering until LRU.
+	return c.InvalidateDir(stateDir) > 0
+}
+
+// InvalidateDir evicts every cached reader whose file lives directly in dir
+// (i.e. filepath.Dir(path) == dir), returning the count removed. It is the
+// gen-layout-safe invalidation entry point (#5891): a reindex writes a new
+// graph.<gen>.fb and flips the pointer, so the previously-resident handle is
+// keyed by a now-superseded gen path; evicting by directory drops it without
+// needing to know the exact old gen number. Safe to call on a closed cache
+// (returns 0).
+func (c *Cache) InvalidateDir(dir string) int {
+	if c.closed.Load() {
+		return 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for p, elem := range c.entries {
+		if filepath.Dir(p) == dir {
+			c.removeLocked(elem)
+			c.stats.Invalidates++
+			n++
+		}
+	}
+	return n
 }
 
 // Invalidate forces removal of the cached handle for path. Called by

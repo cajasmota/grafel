@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/install/watchers"
@@ -263,7 +264,7 @@ func settingsRepoStack(r registry.Repo) string {
 // graph.fb cheaply via fbreader (no entity/relationship decode). Returns zero
 // values for non-git repos or graphs written before these fields were added.
 func repoGitMeta(stateDir string) (ref, sha string, isWorktree bool, coverageStatus string) {
-	fbPath := filepath.Join(stateDir, "graph.fb")
+	fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 	r, err := fbreader.Open(fbPath)
 	if err != nil {
 		return "", "", false, ""

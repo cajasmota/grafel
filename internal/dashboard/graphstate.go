@@ -217,7 +217,7 @@ func (g *DashGroup) diskUnchanged() bool {
 // statGraphMtime returns the modification time of the graph.fb in stateDir,
 // falling back to graph.json, or the zero time when neither exists.
 func statGraphMtime(stateDir string) time.Time {
-	if info, e := os.Stat(filepath.Join(stateDir, "graph.fb")); e == nil {
+	if info, e := os.Stat(graph.CurrentGraphPath(stateDir)); e == nil { // #5891
 		return info.ModTime()
 	}
 	if info, e := os.Stat(filepath.Join(stateDir, "graph.json")); e == nil {
@@ -641,7 +641,7 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 			// so handlers that only need to iterate entities/relationships can
 			// avoid materialising the full heap slice. Best-effort: failures
 			// leave Reader nil and callers fall back to doc.Entities.
-			fbPath := filepath.Join(stateDir, "graph.fb")
+			fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 			if rdr, rerr := fbreader.Open(fbPath); rerr == nil {
 				dr.Reader = rdr
 			}

@@ -634,7 +634,7 @@ func (s *Server) handleGroupRefs(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			fbPath := filepath.Join(refsDir, refSafe, "graph.fb")
+			fbPath := graph.CurrentGraphPath(filepath.Join(refsDir, refSafe)) // #5891
 			fi, ferr := os.Stat(fbPath)
 			if ferr != nil {
 				// No graph.fb — try graph.json.

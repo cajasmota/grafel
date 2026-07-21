@@ -52,6 +52,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // OrphanRootConfig wires the orphan top-level store-root sweep. All hooks are
@@ -432,7 +434,9 @@ func newestArtifactMTime(root string) (time.Time, bool) {
 			return nil
 		}
 		name := d.Name()
-		if name != "graph.fb" && name != "graph.json" {
+		// #5891: recognise generation files (graph.<gen>.fb) as graph artifacts
+		// so an orphan-root's newest-mtime attribution sees the gen layout.
+		if name != "graph.json" && !graph.IsGraphFileName(name) {
 			return nil
 		}
 		fi, ferr := d.Info()

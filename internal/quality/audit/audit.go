@@ -204,7 +204,9 @@ func HasGraph(dir string) bool {
 // Renamed from hasGraphJSON for ADR-0016 flip-day (#808).
 func hasGraphJSON(dir string) bool {
 	stateDir := daemon.StateDirForRepo(dir)
-	if _, err := os.Stat(filepath.Join(stateDir, "graph.fb")); err == nil {
+	// #5891: resolve the active generation (flat graph.fb fallback) so a
+	// gen-layout repo is still detected as "has a graph".
+	if _, err := os.Stat(graph.CurrentGraphPath(stateDir)); err == nil {
 		return true
 	}
 	if _, err := os.Stat(filepath.Join(stateDir, "graph.json")); err == nil {

@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 const cacheFileName = "algo_results.fb"
@@ -158,7 +160,7 @@ func cacheKey(stateDir string) string { return stateDir }
 // staleness.
 func readFromDisk(stateDir string) (*Results, bool) {
 	cachePath := filepath.Join(stateDir, cacheFileName)
-	graphPath := filepath.Join(stateDir, "graph.fb")
+	graphPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 
 	cacheInfo, err := os.Stat(cachePath)
 	if err != nil {
@@ -193,7 +195,7 @@ func readFromDisk(stateDir string) (*Results, bool) {
 // writeToDisk atomically writes the results to <stateDir>/algo_results.fb.
 // Uses a temp-file + rename for crash-safety.
 func writeToDisk(stateDir string, r *Results) error {
-	graphPath := filepath.Join(stateDir, "graph.fb")
+	graphPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 	graphInfo, err := os.Stat(graphPath)
 	if err != nil {
 		return fmt.Errorf("stat graph.fb: %w", err)

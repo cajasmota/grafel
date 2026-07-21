@@ -29,6 +29,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/tier"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -235,7 +236,7 @@ func repoBaseForSlug(storeRoot string, repo registry.Repo) string {
 // without requiring a live daemon. It reads the graph.fb mtime and maps it
 // to HOT/WARM/COLD/EXPIRED using the default TTL windows.
 func inferTierFromDisk(stateDir string) (tierStr string, lastSeen time.Time) {
-	fbPath := filepath.Join(stateDir, "graph.fb")
+	fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 	jsonPath := filepath.Join(stateDir, "graph.json")
 
 	var mtime time.Time

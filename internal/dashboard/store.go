@@ -97,11 +97,11 @@ func aggregateGroupStats(groupName string, repos []registry.Repo) (entityCount i
 					}
 				default:
 					// No header timestamp — fall back to graph.fb mtime.
-					if info, e2 := os.Stat(filepath.Join(stateDir, "graph.fb")); e2 == nil && info.ModTime().After(latest) {
+					if info, e2 := os.Stat(graph.CurrentGraphPath(stateDir)); e2 == nil && info.ModTime().After(latest) {
 						latest = info.ModTime()
 					}
 				}
-			} else if info, e2 := os.Stat(filepath.Join(stateDir, "graph.fb")); e2 == nil {
+			} else if info, e2 := os.Stat(graph.CurrentGraphPath(stateDir)); e2 == nil {
 				// graph.fb unreadable but present — fall back to its mtime.
 				if info.ModTime().After(latest) {
 					latest = info.ModTime()

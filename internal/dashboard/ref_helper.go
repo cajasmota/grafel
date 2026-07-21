@@ -20,6 +20,7 @@ import (
 	"sort"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -134,7 +135,7 @@ func allRefsForRepo(repoPath string) []string {
 		if ref == "" {
 			continue
 		}
-		if _, ferr := os.Stat(filepath.Join(refsDir, e.Name(), "graph.fb")); ferr != nil {
+		if _, ferr := os.Stat(graph.CurrentGraphPath(filepath.Join(refsDir, e.Name()))); ferr != nil { // #5891
 			if _, ferr2 := os.Stat(filepath.Join(refsDir, e.Name(), "graph.json")); ferr2 != nil {
 				continue
 			}

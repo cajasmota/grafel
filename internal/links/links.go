@@ -683,7 +683,7 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 				return nil
 			}
 			base := filepath.Base(p)
-			if base == "graph.json" || base == "graph.fb" {
+			if base == "graph.json" || graph.IsGraphFileName(base) { // #5891 gen files
 				dirSet[filepath.Dir(p)] = true
 			}
 			return nil

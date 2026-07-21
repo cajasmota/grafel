@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -146,8 +147,8 @@ func (s *Server) handleV2GroupRefs(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Check for a graph.fb in this ref slot.
-			fbPath := filepath.Join(refsDir, refSafe, "graph.fb")
+			// Check for a graph.fb in this ref slot. #5891: resolve active gen.
+			fbPath := graph.CurrentGraphPath(filepath.Join(refsDir, refSafe))
 			var indexedAt *time.Time
 			var entityCount int
 			if fi, ferr := os.Stat(fbPath); ferr == nil {

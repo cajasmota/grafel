@@ -1392,10 +1392,23 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 					// Doc.Entities entirely). Best-effort: Open failure leaves newRdr
 					// nil and the index falls back to the Document (JSON-only path).
 					// The SAME reader is published via setReader below (F1 protocol).
-					fbPath := filepath.Join(stateDir, "graph.fb")
+					// #5891: open the SAME resolved graph file that was
+					// discovered above (lr.GraphFile, via CurrentGraphPath in
+					// FindGraphFileAnyRef), NOT a re-derived flat graph.fb —
+					// under the gen layout the flat path may not exist, and
+					// re-deriving it would open a stale/absent file. Guard on the
+					// .fb extension exactly as the old hardcoded graph.fb path did
+					// implicitly: lr.GraphFile may be a graph.json (json-only
+					// repo), and handing JSON bytes to fbreader.Open crashes with
+					// an out-of-range slice — the mmap-reader is only meaningful
+					// for the FlatBuffers format (gen graph.<gen>.fb or flat
+					// graph.fb), so a json-only repo correctly leaves newRdr nil.
+					fbPath := lr.GraphFile
 					var newRdr *fbreader.Reader
-					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
-						newRdr = rdr
+					if filepath.Ext(fbPath) == ".fb" {
+						if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
+							newRdr = rdr
+						}
 					}
 					// ADR-0027 SIGBUS-safety (memory epic #5850): build the successor
 					// MapHandle up front so the reader-sourced LabelIndex is FULLY wired

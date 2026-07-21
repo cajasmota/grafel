@@ -59,6 +59,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/gitmeta"
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // RefForgetter is the narrow slice of tier.Manager the dead-ref sweeper needs:
@@ -365,8 +366,10 @@ func (s *DeadRefSweeper) reapRef(repo, ref, refDir string, res *DeadRefResult, c
 // retention cap (oldest evicted first).
 func refGraphMtime(refDir string) time.Time {
 	var newest time.Time
-	for _, name := range []string{"graph.fb", "graph.json"} {
-		fi, err := os.Stat(filepath.Join(refDir, name))
+	// #5891: resolve the active generation (flat graph.fb fallback) so a
+	// gen-layout ref reports its real freshness, not mtime-zero.
+	for _, p := range []string{graph.CurrentGraphPath(refDir), filepath.Join(refDir, "graph.json")} {
+		fi, err := os.Stat(p)
 		if err != nil {
 			continue
 		}
@@ -381,8 +384,11 @@ func refGraphMtime(refDir string) time.Time {
 // whose mtime is at/after cutoff — i.e. it was indexed inside the grace window.
 // A missing graph file is treated as NOT recent (eligible for reaping).
 func recentlyIndexed(refDir string, cutoff time.Time) bool {
-	for _, name := range []string{"graph.fb", "graph.json"} {
-		fi, err := os.Stat(filepath.Join(refDir, name))
+	// #5891: resolve the active generation so a freshly-indexed gen-layout ref
+	// is correctly protected by the grace window (a fixed graph.fb no longer
+	// exists after migration).
+	for _, p := range []string{graph.CurrentGraphPath(refDir), filepath.Join(refDir, "graph.json")} {
+		fi, err := os.Stat(p)
 		if err != nil {
 			continue
 		}

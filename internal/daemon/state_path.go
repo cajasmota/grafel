@@ -59,6 +59,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cajasmota/grafel/internal/gitmeta"
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // canonicalCache caches (inputPath → canonicalPath) resolutions so that
@@ -452,16 +453,23 @@ func GraphPathForRepo(repoPath string) string {
 	return filepath.Join(StateDirForRepo(repoPath), "graph.json")
 }
 
-// GraphFBPathForRepo returns the path to graph.fb (FlatBuffers binary format)
-// inside the per-repo state directory.
+// GraphFBPathForRepo returns the path to the active FlatBuffers graph inside
+// the per-repo state directory. #5891: this resolves the `current` generation
+// pointer (graph.<gen>.fb), falling back to the legacy flat graph.fb for repos
+// that have not been reindexed since the gen-layout migration.
 func GraphFBPathForRepo(repoPath string) string {
-	return filepath.Join(StateDirForRepo(repoPath), "graph.fb")
+	return graph.CurrentGraphPath(StateDirForRepo(repoPath))
 }
 
 // findGraphFileInDir checks dir for graph.fb / graph.json and returns the
 // path + modtime of the newest one. Returns ("", 0) if neither exists.
 func findGraphFileInDir(dir string) (path string, modtime int64) {
-	fbPath := filepath.Join(dir, "graph.fb")
+	// #5891: resolve the active generation via the `current` pointer (falling
+	// back to the legacy flat graph.fb for un-migrated repos). This is the
+	// linchpin: because writers stop bumping a fixed graph.fb, FindGraphFile /
+	// FindGraphFileAnyRef — and therefore statuswriter's GraphFBMtime — MUST
+	// stat the resolved gen file so a completed rebuild's mtime keeps advancing.
+	fbPath := graph.CurrentGraphPath(dir)
 	jsonPath := filepath.Join(dir, "graph.json")
 
 	fbInfo, fbErr := os.Stat(fbPath)

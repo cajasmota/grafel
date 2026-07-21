@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -137,7 +136,14 @@ func collectActiveEmbeddingHashes() (map[string]bool, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if !strings.HasSuffix(path, "graph.fb") {
+		// #5891: recognise generation files (graph.<gen>.fb), and process each
+		// state dir exactly once — only when this path is the ACTIVE generation
+		// resolved by the pointer (or the legacy flat graph.fb) — so a dir with
+		// current+previous gens isn't walked twice.
+		if !graph.IsGraphFileName(filepath.Base(path)) {
+			return nil
+		}
+		if path != graph.CurrentGraphPath(filepath.Dir(path)) {
 			return nil
 		}
 		doc, loadErr := graph.LoadGraphFromDir(filepath.Dir(path))

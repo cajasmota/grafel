@@ -199,7 +199,7 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 					continue // skip the hot ref
 				}
 				// Only include slots that actually have a graph.
-				fbPath := filepath.Join(refsDir, refSafe, "graph.fb")
+				fbPath := graph.CurrentGraphPath(filepath.Join(refsDir, refSafe)) // #5891
 				if _, statErr := os.Stat(fbPath); statErr == nil {
 					rs.ColdRefs = append(rs.ColdRefs, daemon.RefSafeDecode(refSafe))
 				}

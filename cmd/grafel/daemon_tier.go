@@ -56,6 +56,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/tier"
 	"github.com/cajasmota/grafel/internal/daemon/watch"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -149,9 +150,9 @@ func registerKnownGroupsCold(logger *slog.Logger) {
 				if ref == "_unknown" {
 					continue // sentinel — skip per ErrUnknownRef semantics
 				}
-				fbPath := filepath.Join(refsDir, ref, "graph.fb")
+				fbPath := graph.CurrentGraphPath(filepath.Join(refsDir, ref)) // #5891
 				if _, statErr := os.Stat(fbPath); statErr != nil {
-					continue // no graph.fb yet
+					continue // no graph yet (gen or legacy flat)
 				}
 				isPinned := tier.IsDefaultBranch(repoPath, ref)
 				kind := tier.SlotKindBranchFeature
@@ -360,10 +361,11 @@ func groupsForRepoPath(repoPath string) []string {
 // mmap'd graph.fb on disk is the source of truth, so dropping them is safe and
 // they rebuild lazily on the next dashboard request for the group.
 func tierEvictCallback(key tier.SlotKey) {
-	// Invalidate the mmap'd fbreader in the MCP graph cache.
+	// Invalidate the mmap'd fbreader in the MCP graph cache. #5891: evict by
+	// state dir so whichever graph.<gen>.fb (or legacy flat graph.fb) is
+	// resident for this slot is dropped, regardless of generation number.
 	stateDir := daemon.StateDirForRepoRef(key.RepoPath, key.Ref)
-	fbPath := filepath.Join(stateDir, "graph.fb")
-	daemonMCPCache.Invalidate(fbPath)
+	daemonMCPCache.InvalidateDir(stateDir)
 
 	// #5238: drop the dashboard GraphCache's materialised state for this repo's
 	// group(s) so its derived heap is reclaimed promptly on idle rather than
@@ -393,7 +395,7 @@ func tierEvictCallback(key tier.SlotKey) {
 // is safe even when the subscription is already active.
 func tierReloadCallback(key tier.SlotKey) error {
 	stateDir := daemon.StateDirForRepoRef(key.RepoPath, key.Ref)
-	fbPath := filepath.Join(stateDir, "graph.fb")
+	fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active generation
 	// Prime the cache by opening and immediately releasing the reader.
 	_, release, err := daemonMCPCache.Get(fbPath)
 	if err != nil {

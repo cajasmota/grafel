@@ -119,7 +119,11 @@ func AssembleGroupGraph(group string) (entities []graph.Entity, rels []graph.Rel
 		// Record the graph.fb mtime when present. A repo that was never indexed
 		// has neither graph.fb nor graph.json — skip it (not an error): the
 		// union of the remaining repos is still valid.
-		fbPath := filepath.Join(stateDir, "graph.fb")
+		// #5891: resolve the active generation so the recorded mtime is the
+		// gen file's — otherwise the overlay staleness check below (which reads
+		// the same resolved mtime via CurrentSourceMtimes) would see a frozen
+		// legacy graph.fb mtime and treat a fresh overlay as permanently stale.
+		fbPath := graph.CurrentGraphPath(stateDir)
 		jsonPath := filepath.Join(stateDir, "graph.json")
 		fbExists := false
 		if fi, statErr := os.Stat(fbPath); statErr == nil {
