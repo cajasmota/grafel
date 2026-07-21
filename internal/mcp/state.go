@@ -597,23 +597,36 @@ func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
 			lr.byID = map[string]*graph.Entity{}
 			return
 		}
-		m := make(map[string]*graph.Entity, len(lr.Doc.Entities))
 		// ADR-0027: only when GRAFEL_SERVE_FROM_MMAP is ON does getByID source each
 		// row from the Reader + overlay side-table via LabelIndex.at (byte-equal to
 		// the overlaid Doc row), removing the Doc VALUE dependence. On the flag-off
 		// default path this stays the PR2 live-Doc heap copy — GC-safe, with NO
 		// handler-path mmap read. mmapSourced also short-circuits to the Doc copy
 		// whenever at() cannot serve an index (nil LabelIndex/Reader, JSON load).
-		mmapSourced := serveFromMMap() && lr.LabelIndex != nil
-		for i := range lr.Doc.Entities {
+		mmapSourced := serveFromMMap() && lr.LabelIndex != nil && lr.LabelIndex.reader != nil
+		// PR6 (memory epic #5850 Path P): the loop BOUND is Reader-sourced on the
+		// mmap path — l.reader.EntityCount(), not len(lr.Doc.Entities) — so a PR7
+		// Doc-emptying (doc.Entities dropping to length 0 while the reader still
+		// holds every row) does not silently collapse getByID to an empty map.
+		// EntityCount() is a cached int set once at Reader construction, so it is
+		// safe to read here without readerMu (no mmap dereference). The flag-off
+		// path is unchanged: count stays len(lr.Doc.Entities).
+		count := len(lr.Doc.Entities)
+		if mmapSourced {
+			count = lr.LabelIndex.reader.EntityCount()
+		}
+		m := make(map[string]*graph.Entity, count)
+		for i := 0; i < count; i++ {
 			if mmapSourced {
 				if ent := lr.LabelIndex.at(int32(i)); ent != nil {
 					m[ent.ID] = ent
 					continue
 				}
 			}
-			ent := lr.Doc.Entities[i] // heap copy — a fresh pointer, not an alias into Doc
-			m[ent.ID] = &ent
+			if i < len(lr.Doc.Entities) {
+				ent := lr.Doc.Entities[i] // heap copy — a fresh pointer, not an alias into Doc
+				m[ent.ID] = &ent
+			}
 		}
 		lr.byID = m
 	})

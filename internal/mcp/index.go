@@ -229,8 +229,14 @@ func BuildLabelIndexFromReader(r *fbreader.Reader, doc *graph.Document) *LabelIn
 // production until a borrow is held across the read (else a concurrent reload's
 // munmap is a read-after-unmap). That wiring + flipping the flag is a later step.
 // The nil-Reader case (JSON-only / no graph.fb) always uses the Doc copy.
+//
+// Bound source (memory epic #5850 Path P PR6): the OFF/Doc-fallback paths
+// bound idx against len(l.doc.Entities); the ON/resident-reader path bounds
+// idx against l.reader.EntityCount() instead, so a PR7 Doc-emptying (which
+// drops doc.Entities to length 0 while the reader still holds every row)
+// cannot turn every valid index into a false "not found".
 func (l *LabelIndex) at(idx int32) *graph.Entity {
-	if l == nil || l.doc == nil || idx < 0 || int(idx) >= len(l.doc.Entities) {
+	if l == nil || l.doc == nil || idx < 0 {
 		return nil
 	}
 	if l.reader != nil && serveFromMMap() {
@@ -245,14 +251,33 @@ func (l *LabelIndex) at(idx int32) *graph.Entity {
 			l.readerMu.Lock()
 			if l.handle != nil && l.handle.readRetired {
 				l.readerMu.Unlock()
-				e := l.doc.Entities[idx] // Doc fallback — mapping is gone
+				// Doc fallback — mapping is gone, so the Doc row count is the only
+				// valid bound left (memory epic #5850 Path P PR6).
+				if int(idx) >= len(l.doc.Entities) {
+					return nil
+				}
+				e := l.doc.Entities[idx]
 				return &e
+			}
+			// PR6: the bound is the RESIDENT READER's row count, not
+			// len(l.doc.Entities) — a PR7 Doc-emptying leaves doc.Entities at 0
+			// while the reader still holds every row, so a Doc-sourced bound would
+			// wrongly report every index out of range.
+			if int(idx) >= l.reader.EntityCount() {
+				l.readerMu.Unlock()
+				return nil
 			}
 			e := l.materializeFromReader(idx)
 			l.readerMu.Unlock()
 			return e
 		}
+		if int(idx) >= l.reader.EntityCount() {
+			return nil
+		}
 		return l.materializeFromReader(idx)
+	}
+	if int(idx) >= len(l.doc.Entities) {
+		return nil
 	}
 	e := l.doc.Entities[idx] // heap copy — a fresh pointer, not an alias into Doc
 	return &e
