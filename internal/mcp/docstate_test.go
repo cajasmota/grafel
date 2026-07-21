@@ -753,6 +753,9 @@ func TestLoadedRepo_testsEdgeCacheFromReader_PR1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
+	// Windows: release the mmap'd graph.fb Reader before t.TempDir() cleanup
+	// runs (unlink-while-mapped fails with "Access is denied" on Windows).
+	t.Cleanup(srv.Close)
 
 	lg := srv.State.Group("g")
 	if lg == nil {

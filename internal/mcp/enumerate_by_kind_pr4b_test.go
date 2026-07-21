@@ -81,6 +81,11 @@ func wireLoadedRepoReader(t *testing.T, lr *LoadedRepo, doc *graph.Document) {
 	}
 	h := newMapHandle(rdr)
 	lr.publishHandle(h)
+	// Windows: a memory-mapped file cannot be unlinked while the mapping is
+	// live (ERROR_USER_MAPPED_FILE). t.Cleanup registered here runs (LIFO)
+	// BEFORE the t.TempDir() RemoveAll registered above, so the mmap is
+	// released before the temp dir is removed.
+	t.Cleanup(lr.retireHandle)
 }
 
 func TestEnumerateByKind_FoldCapStopsAtRepoBoundary_FlagOff(t *testing.T) {

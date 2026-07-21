@@ -219,7 +219,19 @@ func TestSweepToMemoryBudget_ConcurrentQueryDuringSweep(t *testing.T) {
 	now := time.Now()
 	setLastAccess(st, "B", now.Add(-20*time.Minute))
 	setLastAccess(st, "C", now.Add(-30*time.Minute))
-	// A is queried continuously below (always the freshly-stamped max-lastAccess pin).
+	// Establish A as the active (max-lastAccess) group BEFORE the sweep loop starts.
+	// Without this synchronous touch, A's lastAccess is the zero value until the
+	// query goroutine below happens to run for the first time — a race against the
+	// sweep goroutine, which can start sweeping (and evict A as the oldest-lastAccess
+	// group) before that first touch lands. This is a test-harness synchronization
+	// gap, not a product bug: reproduced deterministically on macOS with
+	// GOMAXPROCS=1 (the sweep goroutine's first iteration ran before the query
+	// goroutine's), confirming the flake is scheduler-timing-dependent rather than a
+	// real pin/eviction defect. A is queried continuously below (always the
+	// freshly-stamped max-lastAccess pin, now that it has a non-zero baseline).
+	if grp := st.Group("A"); grp == nil {
+		t.Fatal("group A not resident after seeding")
+	}
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
