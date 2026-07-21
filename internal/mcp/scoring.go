@@ -319,8 +319,11 @@ const rrfK = 60.0
 
 // FuseRRF combines a BM25 ranking and a semantic ranking into a single ranked
 // list via Reciprocal Rank Fusion. Rankings are passed already sorted best
-// first. Entities are matched by pointer identity (both rankers index the same
-// repo Doc). The returned hits carry the fused score and a Source tag.
+// first. Entities are matched by ID (not pointer identity): the two rankers
+// may hand back distinct *graph.Entity allocations for the same logical
+// entity (e.g. once mmap-backed hits are materialized independently per
+// ranker, ADR-0027), so keying on Entity.ID is what keeps them fusing into a
+// single result. The returned hits carry the fused score and a Source tag.
 func FuseRRF(bm25, semantic []Hit) []Hit {
 	type agg struct {
 		entity *graph.Entity
@@ -328,14 +331,14 @@ func FuseRRF(bm25, semantic []Hit) []Hit {
 		inBM25 bool
 		inSem  bool
 	}
-	order := []*graph.Entity{}
-	byEntity := map[*graph.Entity]*agg{}
+	order := []string{}
+	byEntity := map[string]*agg{}
 	get := func(e *graph.Entity) *agg {
-		a, ok := byEntity[e]
+		a, ok := byEntity[e.ID]
 		if !ok {
 			a = &agg{entity: e}
-			byEntity[e] = a
-			order = append(order, e)
+			byEntity[e.ID] = a
+			order = append(order, e.ID)
 		}
 		return a
 	}
@@ -350,8 +353,8 @@ func FuseRRF(bm25, semantic []Hit) []Hit {
 		a.inSem = true
 	}
 	out := make([]Hit, 0, len(order))
-	for _, e := range order {
-		a := byEntity[e]
+	for _, id := range order {
+		a := byEntity[id]
 		src := "bm25"
 		switch {
 		case a.inBM25 && a.inSem:
