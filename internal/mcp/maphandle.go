@@ -57,6 +57,17 @@ type MapHandle struct {
 	retired atomic.Bool
 	closed  sync.Once
 
+	// readRetired is the ADR-0027 read-side SIGBUS-safety flag (memory epic
+	// #5850, "Option B"), DISTINCT from the F1 refcount-drain `retired` atomic
+	// above. It is set true — ALWAYS under the owning LoadedRepo.readerMu — in
+	// publishHandle/retireHandle immediately BEFORE this handle's mapping is
+	// munmapped. The GRAFEL_SERVE_FROM_MMAP flag-on read choke points check it
+	// under that SAME readerMu: a stale captured *LabelIndex whose mapping was
+	// retired out from under it reads readRetired==true and falls back to the
+	// GC-safe Doc path instead of dereferencing the freed region. Plain bool
+	// (not atomic): every read and write is serialized by readerMu.
+	readRetired bool
+
 	// releaseGap, when non-nil, is invoked inside release() in the window
 	// BETWEEN the refcount decrement and the close decision. It is a test-only
 	// scheduling seam used to force the stale-refcount rebound interleaving

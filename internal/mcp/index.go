@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/cajasmota/grafel/internal/graph"
 	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
@@ -69,6 +70,19 @@ type LabelIndex struct {
 	// every overlay re-stamp. nil on the flag-off path and until an overlay is
 	// applied.
 	overlay map[int32]entityOverlay
+
+	// readerMu points at the owning LoadedRepo.readerMu — the strictly-innermost
+	// ADR-0027 SIGBUS-safety mutex (memory epic #5850, "Option B"). Wired by
+	// reloadLocked; nil for the Doc-only build and directly-constructed indexes
+	// (tests), where at() takes the legacy unlocked reader/Doc path. When non-nil,
+	// at() dereferences the mmap ONLY under this mutex and ONLY after checking
+	// handle.readRetired, so a lookup on a *LabelIndex captured before a reload —
+	// whose mapping the reload retired+munmapped — falls back to the Doc instead of
+	// dereferencing the freed region.
+	readerMu *sync.Mutex
+	// handle is this index generation's MapHandle (its reader == reader above).
+	// at() checks handle.readRetired under readerMu. Set together with readerMu.
+	handle *MapHandle
 
 	byID    map[string]int32
 	byLabel map[string][]int32
@@ -220,17 +234,43 @@ func (l *LabelIndex) at(idx int32) *graph.Entity {
 		return nil
 	}
 	if l.reader != nil && serveFromMMap() {
-		e := graph.MaterializeEntity(l.reader, int(idx))
-		if ov, ok := l.overlay[idx]; ok {
-			e.CommunityID = ov.CommunityID
-			e.PageRank = ov.PageRank
-			e.Centrality = ov.Centrality
-			e.IsGodNode = ov.IsGodNode
-			e.IsArticulationPt = ov.IsArticulationPt
+		// ADR-0027 SIGBUS-safety (memory epic #5850): when wired (production), take
+		// the strictly-innermost readerMu around the mmap dereference. If this
+		// generation's mapping was retired+munmapped by a concurrent reload (a stale
+		// captured *LabelIndex), readRetired is set true under this same readerMu, so
+		// fall back to the GC-safe Doc copy instead of dereferencing the freed
+		// region. Unwired indexes (readerMu==nil: tests / direct construction) keep
+		// the legacy unlocked reader path — no reload retires them.
+		if l.readerMu != nil {
+			l.readerMu.Lock()
+			if l.handle != nil && l.handle.readRetired {
+				l.readerMu.Unlock()
+				e := l.doc.Entities[idx] // Doc fallback — mapping is gone
+				return &e
+			}
+			e := l.materializeFromReader(idx)
+			l.readerMu.Unlock()
+			return e
 		}
-		return &e
+		return l.materializeFromReader(idx)
 	}
 	e := l.doc.Entities[idx] // heap copy — a fresh pointer, not an alias into Doc
+	return &e
+}
+
+// materializeFromReader decodes the base entity from the mmap Reader and merges
+// the group-algo overlay side-table. Callers on the wired path MUST hold
+// readerMu (the mmap dereference happens here); MaterializeEntity copies every
+// string out to the heap, so the returned entity is safe to use past release.
+func (l *LabelIndex) materializeFromReader(idx int32) *graph.Entity {
+	e := graph.MaterializeEntity(l.reader, int(idx))
+	if ov, ok := l.overlay[idx]; ok {
+		e.CommunityID = ov.CommunityID
+		e.PageRank = ov.PageRank
+		e.Centrality = ov.Centrality
+		e.IsGodNode = ov.IsGodNode
+		e.IsArticulationPt = ov.IsArticulationPt
+	}
 	return &e
 }
 

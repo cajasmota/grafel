@@ -279,7 +279,20 @@ type LoadedRepo struct {
 	// drain first. Invariant: handle == nil iff Reader == nil, and when both are
 	// non-nil handle.reader == Reader. Mutated only under State.mu via
 	// publishHandle / retireHandle. Nil when graph.fb is unavailable.
-	handle     *MapHandle
+	handle *MapHandle
+	// readerMu is the ADR-0027 read-side SIGBUS-safety mutex (memory epic #5850,
+	// "Option B") that gates the GRAFEL_SERVE_FROM_MMAP flag-on read path. It is
+	// STRICTLY INNERMOST: nothing else is acquired while it is held. The 4 flag-on
+	// read choke points (LabelIndex.at + the three build*AdjacencyFromReader
+	// getters) hold it around their mmap dereference; publishHandle/retireHandle
+	// hold it around the predecessor's munmap (setting handle.readRetired true
+	// first). Because it sits below idxMu in the order (read: idxMu->readerMu, or
+	// bare readerMu at at()) and reload already holds s.mu (reload:
+	// s.mu->...->readerMu), a deref and the munmap of that same mapping can never
+	// interleave and no lock inversion is possible. Its zero value is usable, so a
+	// LoadedRepo needs no explicit init. The wired *LabelIndex holds &readerMu so a
+	// lookup on a pre-reload-captured index locks the SAME mutex.
+	readerMu   sync.Mutex
 	LabelIndex *LabelIndex
 	BM25       *BM25Index
 	Semantic   *embed.Store // per-repo vector index (nil when no embeddings.bin)
@@ -477,6 +490,15 @@ func (lr *LoadedRepo) resetIndexes() {
 //
 // nh may be nil (JSON-only fallback / no graph.fb). Caller MUST hold State.mu.
 func (lr *LoadedRepo) publishHandle(nh *MapHandle) {
+	// ADR-0027 SIGBUS-safety (memory epic #5850): the whole swap runs under the
+	// strictly-innermost readerMu so a flag-on read choke point sees a consistent
+	// (lr.Reader/lr.handle) pair and never derefs a mapping being munmapped here.
+	// The predecessor is flagged readRetired BEFORE its munmap so a stale captured
+	// *LabelIndex checking readRetired (under this same readerMu) falls back to the
+	// Doc instead of dereferencing the freed region. readerMu is innermost: the
+	// only thing done while holding it is field assignment + old.retire()'s munmap
+	// syscall — no other grafel lock is acquired.
+	lr.readerMu.Lock()
 	old := lr.handle
 	if nh != nil {
 		nh.repo = lr.Repo
@@ -486,20 +508,10 @@ func (lr *LoadedRepo) publishHandle(nh *MapHandle) {
 	}
 	lr.handle = nh
 	if old != nil {
+		old.readRetired = true
 		old.retire()
 	}
-}
-
-// setReader wraps a freshly-opened reader (or nil) in a MapHandle and publishes
-// it via publishHandle. This is the reload swap: it replaces the old bare
-// lr.Reader.Close() so a reload never munmaps a mapping an in-flight borrow
-// still aliases. Caller MUST hold State.mu.
-func (lr *LoadedRepo) setReader(newRdr *fbreader.Reader) {
-	var nh *MapHandle
-	if newRdr != nil {
-		nh = newMapHandle(newRdr)
-	}
-	lr.publishHandle(nh)
+	lr.readerMu.Unlock()
 }
 
 // retireHandle retires the repo's current mmap handle (repo eviction and server
@@ -508,12 +520,18 @@ func (lr *LoadedRepo) setReader(newRdr *fbreader.Reader) {
 // is unmapped now iff it has drained, else by the last release(). Caller MUST
 // hold State.mu.
 func (lr *LoadedRepo) retireHandle() {
+	// Same readerMu discipline as publishHandle: flag readRetired then munmap, all
+	// under the strictly-innermost readerMu, so a concurrent flag-on read choke
+	// point cannot deref this mapping while (or after) it is unmapped.
+	lr.readerMu.Lock()
 	old := lr.handle
 	lr.handle = nil
 	lr.Reader = nil
 	if old != nil {
+		old.readRetired = true
 		old.retire()
 	}
+	lr.readerMu.Unlock()
 }
 
 // getSuffixIndex returns the source-file suffix index (basename -> repo-relative
@@ -716,11 +734,23 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 		// concurrent reload retire()s+munmaps the old Reader WITHOUT idxMu (F1's
 		// borrow protocol is inert → refs==0 → immediate munmap), so an
 		// unconditional Reader iteration here is a read-after-unmap SIGBUS (latent
-		// PR1 #5865). OFF → the GC-safe Document build; ON is DARK until the borrow
-		// protocol is wired into the read path. Nil-Reader always uses the Document.
-		if lr.Reader != nil && serveFromMMap() {
-			lr.adjacency = buildAdjacencyFromReader(lr.Reader, lr.Repo)
+		// PR1 #5865). OFF → the GC-safe Document build. Nil-Reader always uses the
+		// Document.
+		//
+		// ADR-0027 SIGBUS-safety (memory epic #5850): read lr.Reader/lr.handle and
+		// run the mmap build UNDER the strictly-innermost readerMu, so a concurrent
+		// reload's munmap (also under readerMu) cannot free the mapping mid-scan.
+		// readRetired is checked for uniformity with at() (lr.handle here is always
+		// the current, non-retired generation). Lock order: idxMu (held) -> readerMu;
+		// the Doc build takes no mmap so readerMu is dropped before it.
+		lr.readerMu.Lock()
+		rdr := lr.Reader
+		h := lr.handle
+		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
+			lr.adjacency = buildAdjacencyFromReader(rdr, lr.Repo)
+			lr.readerMu.Unlock()
 		} else {
+			lr.readerMu.Unlock()
 			lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
 		}
 	})
@@ -741,10 +771,16 @@ func (lr *LoadedRepo) getCallsAdj() *callsAdjacency {
 		}
 		// ADR-0027 Cutover PR1: prefer the resident mmap Reader when ON, else the
 		// Document. Flag-gated (default OFF) for the same handler-path munmap
-		// SIGBUS reason as getAdjacency.
-		if lr.Reader != nil && serveFromMMap() {
-			lr.callsAdj = buildCallsAdjacencyFromReader(lr.Reader)
+		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
+		// read + reload munmap are serialized by the strictly-innermost readerMu.
+		lr.readerMu.Lock()
+		rdr := lr.Reader
+		h := lr.handle
+		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
+			lr.callsAdj = buildCallsAdjacencyFromReader(rdr)
+			lr.readerMu.Unlock()
 		} else {
+			lr.readerMu.Unlock()
 			lr.callsAdj = buildCallsAdjacency(lr.Doc)
 		}
 	})
@@ -762,10 +798,16 @@ func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
 		}
 		// ADR-0027 Cutover PR1: prefer the resident mmap Reader when ON, else the
 		// Document. Flag-gated (default OFF) for the same handler-path munmap
-		// SIGBUS reason as getAdjacency.
-		if lr.Reader != nil && serveFromMMap() {
-			lr.stepAdj = buildStepAdjacencyFromReader(lr.Reader)
+		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
+		// read + reload munmap are serialized by the strictly-innermost readerMu.
+		lr.readerMu.Lock()
+		rdr := lr.Reader
+		h := lr.handle
+		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
+			lr.stepAdj = buildStepAdjacencyFromReader(rdr)
+			lr.readerMu.Unlock()
 		} else {
+			lr.readerMu.Unlock()
 			lr.stepAdj = buildStepAdjacency(lr.Doc)
 		}
 	})
@@ -1151,8 +1193,20 @@ func (s *State) reloadLocked() (int, bool, error) {
 					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
 						newRdr = rdr
 					}
+					// ADR-0027 SIGBUS-safety (memory epic #5850): build the successor
+					// MapHandle up front so the reader-sourced LabelIndex is FULLY wired
+					// (readerMu + this generation's retirement handle) BEFORE it is
+					// published to lr.LabelIndex — a handler live-reading lr.LabelIndex
+					// never sees a half-wired index, and at()'s mmap deref is serialized
+					// (its stale-capture fallback armed) against this handle's later
+					// munmap. publishHandle below installs this SAME handle.
+					var newHandle *MapHandle
 					if newRdr != nil {
-						lr.LabelIndex = BuildLabelIndexFromReader(newRdr, doc)
+						newHandle = newMapHandle(newRdr)
+						li := BuildLabelIndexFromReader(newRdr, doc)
+						li.readerMu = &lr.readerMu
+						li.handle = newHandle
+						lr.LabelIndex = li
 					} else {
 						lr.LabelIndex = BuildLabelIndex(doc)
 					}
@@ -1204,7 +1258,7 @@ func (s *State) reloadLocked() (int, bool, error) {
 						}
 					}
 					lr.TestsEdgeCount = testsCount
-					lr.setReader(newRdr)
+					lr.publishHandle(newHandle)
 					reloaded++
 				}
 			}
