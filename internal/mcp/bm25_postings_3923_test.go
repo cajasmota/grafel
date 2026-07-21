@@ -24,24 +24,36 @@ func (b *BM25Index) bruteSearch(query string, limit int) []Hit {
 		di    int
 		score float64
 	}
+	// After the #5871 L1 compaction the per-doc tf lives inline in the postings
+	// list, so reconstruct a per-(term,doc) tf lookup for the brute-force scan.
+	tfByTermDoc := make(map[string]map[int32]float32)
+	for term, plist := range b.postings {
+		m := make(map[int32]float32, len(plist))
+		for _, p := range plist {
+			m[p.doc] = p.tf
+		}
+		tfByTermDoc[term] = m
+	}
 	res := []sd{}
-	for i, d := range b.docs {
+	for i := 0; i < b.totalDocs; i++ {
+		di := int32(i)
 		score := 0.0
 		for _, t := range terms {
-			tf, ok := d.tf[t]
-			if !ok {
+			plist := b.postings[t]
+			df := len(plist)
+			if df == 0 {
 				continue
 			}
-			df := b.df[t]
-			if df == 0 {
+			tf, ok := tfByTermDoc[t][di]
+			if !ok {
 				continue
 			}
 			idf := math.Log(1.0 + (float64(b.totalDocs)-float64(df)+0.5)/(float64(df)+0.5))
 			lenNorm := 1.0
 			if b.avgLen > 0 {
-				lenNorm = 1 - bm25B + bm25B*(d.length/b.avgLen)
+				lenNorm = 1 - bm25B + bm25B*(float64(b.docLen[di])/b.avgLen)
 			}
-			score += idf * (tf * (bm25K1 + 1)) / (tf + bm25K1*lenNorm)
+			score += idf * (float64(tf) * (bm25K1 + 1)) / (float64(tf) + bm25K1*lenNorm)
 		}
 		if score > 0 {
 			res = append(res, sd{i, score})
@@ -125,8 +137,8 @@ func TestBM25PostingsSelective(t *testing.T) {
 	// Postings indices must be strictly ascending (built in doc order) so the
 	// ascending tie-break holds without re-sorting.
 	for i := 1; i < len(rare); i++ {
-		if rare[i] <= rare[i-1] {
-			t.Fatalf("postings not strictly ascending at %d: %d <= %d", i, rare[i], rare[i-1])
+		if rare[i].doc <= rare[i-1].doc {
+			t.Fatalf("postings not strictly ascending at %d: %d <= %d", i, rare[i].doc, rare[i-1].doc)
 		}
 	}
 }

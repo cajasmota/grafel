@@ -43,54 +43,68 @@ var stopWords = map[string]bool{
 }
 
 // docTerms holds the bag-of-words for one entity, with multi-source weighting
-// already applied to the term frequencies.
+// already applied to the term frequencies. It is a TRANSIENT structure built by
+// buildDocTerms and folded into the postings index during BuildBM25 — it is
+// never retained in the resident BM25Index (#5871 L1 compaction).
 type docTerms struct {
 	tf     map[string]float64 // term -> weighted frequency
 	length float64            // sum of weighted frequencies (acts as |d|)
 }
 
+// posting is one entry in an inverted-index postings list: the document index
+// plus the weighted term frequency of that term in that document, folded inline
+// (#5871 L1 compaction). Storing tf here — 8 bytes/posting — eliminates the
+// 427k per-entity `tf map[string]float64` that dominated the resident index
+// (~245 MB of Go-map overhead on the corpus). Search reads tf directly from the
+// posting with no second lookup.
+type posting struct {
+	doc int32
+	tf  float32
+}
+
 // BM25Index is a per-repo BM25 index over entities, with multi-source weights.
 type BM25Index struct {
-	docs      []docTerms
 	entities  []*graph.Entity
-	df        map[string]int
+	docLen    []float32 // per-doc |d| (sum of weighted frequencies), by doc index
 	avgLen    float64
 	totalDocs int
 
-	// postings is an inverted index: term -> sorted list of doc indices that
-	// contain that term (#3923). Search consults it to visit ONLY the documents
-	// that contain at least one query term instead of scanning all totalDocs
-	// documents. For the common case where a query term occurs in a small
-	// fraction of the corpus this turns Search from O(totalDocs · |terms|) into
-	// O(Σ df(term)) — sublinear in corpus size. Built for free during
-	// BuildBM25 (the df pass already visits every term of every document).
-	postings map[string][]int32
+	// postings is an inverted index: term -> sorted list of {doc, tf} entries
+	// for the documents that contain that term (#3923 postings, #5871 tf
+	// fold-in). Search consults it to visit ONLY the documents that contain at
+	// least one query term instead of scanning all totalDocs documents, and
+	// reads the weighted tf directly from each posting. For the common case
+	// where a query term occurs in a small fraction of the corpus this keeps
+	// Search at O(Σ df(term)) — sublinear in corpus size. The document
+	// frequency df(term) is exactly len(postings[term]); it is no longer stored
+	// separately.
+	postings map[string][]posting
 }
 
 // BuildBM25 builds a BM25 index for a single graph document.
 func BuildBM25(doc *graph.Document) *BM25Index {
 	idx := &BM25Index{
-		docs:     make([]docTerms, len(doc.Entities)),
 		entities: make([]*graph.Entity, len(doc.Entities)),
-		df:       make(map[string]int),
-		postings: make(map[string][]int32),
+		docLen:   make([]float32, len(doc.Entities)),
+		postings: make(map[string][]posting),
 	}
 	totalLen := 0.0
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
 		idx.entities[i] = e
+		// buildDocTerms produces a TRANSIENT weighted bag (a per-doc map); we
+		// fold it into the postings index and let it be GC'd — only the postings
+		// list (with tf inline) and the scalar docLen survive as resident state.
 		d := buildDocTerms(e)
-		idx.docs[i] = d
+		idx.docLen[i] = float32(d.length)
 		totalLen += d.length
-		// d.tf is a map, so its keys are already unique per document — the
-		// document frequency can be incremented directly without a second
-		// `seen` map (#3923: that per-doc map was pure allocation overhead).
-		// We also append this doc index to each term's postings list; because
-		// i increases monotonically the postings lists stay sorted by
-		// construction.
-		for term := range d.tf {
-			idx.df[term]++
-			idx.postings[term] = append(idx.postings[term], int32(i))
+		// d.tf is a map, so its keys are already unique per document. We append
+		// this doc's (index, weighted tf) to each term's postings list; because
+		// i increases monotonically the postings lists stay sorted by doc index
+		// by construction (Search relies on this for the ascending tie-break and
+		// df(term) == len(postings[term])).
+		for term, tf := range d.tf {
+			idx.postings[term] = append(idx.postings[term], posting{doc: int32(i), tf: float32(tf)})
 		}
 	}
 	idx.totalDocs = len(idx.entities)
@@ -390,22 +404,23 @@ func (b *BM25Index) Search(query string, limit int) []Hit {
 	scoreByDoc := make(map[int32]float64)
 	for _, t := range terms {
 		plist := b.postings[t]
-		if len(plist) == 0 {
-			continue
-		}
-		df := b.df[t]
+		// df(term) == len(postings[term]) after the #5871 fold-in — the separate
+		// df map is gone. An empty postings list means the term is absent, which
+		// also makes idf undefined, so skip (identical to the old df==0 guard).
+		df := len(plist)
 		if df == 0 {
 			continue
 		}
 		idf := math.Log(1.0 + (float64(b.totalDocs)-float64(df)+0.5)/(float64(df)+0.5))
-		for _, di := range plist {
-			d := b.docs[di]
-			tf := d.tf[t]
+		for _, p := range plist {
+			// tf is read DIRECTLY from the posting (no second per-doc map probe);
+			// the per-doc length comes from docLen[p.doc].
+			tf := float64(p.tf)
 			lenNorm := 1.0
 			if b.avgLen > 0 {
-				lenNorm = 1 - bm25B + bm25B*(d.length/b.avgLen)
+				lenNorm = 1 - bm25B + bm25B*(float64(b.docLen[p.doc])/b.avgLen)
 			}
-			scoreByDoc[di] += idf * (tf * (bm25K1 + 1)) / (tf + bm25K1*lenNorm)
+			scoreByDoc[p.doc] += idf * (tf * (bm25K1 + 1)) / (tf + bm25K1*lenNorm)
 		}
 	}
 	type scoredDoc struct {
