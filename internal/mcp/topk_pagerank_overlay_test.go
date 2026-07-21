@@ -30,11 +30,13 @@ package mcp
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
+	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 )
 
 // overlayAwareTopKDoc returns a Document whose entities all carry a nil
@@ -181,4 +183,85 @@ func TestGetTopKPageRank_OverlayOrder_ReaderSourcedWouldBeWrong(t *testing.T) {
 		t.Fatalf("Reader-sourced top-1 unexpectedly matched the overlay winner (id::charlie); " +
 			"this fixture is supposed to prove the Reader CANNOT see the overlay (sentinel-only fb)")
 	}
+}
+
+// TestGetTopKPageRank_FlagOnOffParity_SideTableNotSentinel is the load-bearing
+// PR5 parity + sentinel-trap guard. It runs the SAME overlaid fixture under
+// GRAFEL_SERVE_FROM_MMAP off and on and asserts getTopKPageRank returns the
+// IDENTICAL top-K list + order.
+//
+// The overlay assigns PageRank in an order that DIFFERS from graph.fb vector
+// order (Charlie, the LAST entity, gets the highest PageRank), so:
+//   - Doc-sourced (flag-off) and side-table-sourced (flag-on) both yield the
+//     overlay order (Charlie, Alpha, Bravo) and MUST match.
+//   - The sentinel trap: if the flag-on build read the Reader's Pagerank()
+//     scalar (permanent 0) instead of the side-table, every entity ties at 0
+//     and top-K collapses to vector order (Alpha, Bravo, Charlie) — DIFFERENT
+//     from the flag-off order, so this test FAILS. (Verified by mutation:
+//     swapping overlay[i].PageRank for e.Pagerank() in
+//     buildTopKPageRankFromSideTable makes the flag-on order (Alpha,Bravo,
+//     Charlie) diverge from flag-off (Charlie,Alpha,Bravo).)
+func TestGetTopKPageRank_FlagOnOffParity_SideTableNotSentinel(t *testing.T) {
+	run := func(t *testing.T, mmap bool) []string {
+		forceServeFromMMap(t, mmap)
+		st, overlayPath, cur, ids := setupSideTableParity(t)
+		// ids = {svc:Alpha, svc:Bravo, svc:Charlie} in graph.fb vector order.
+		// Assign PageRank so the ranked order (Charlie > Alpha > Bravo) is the
+		// REVERSE-ish of vector order, so a sentinel-collapse is detectable.
+		ov := &groupalgo.Overlay{
+			Group:        "acme",
+			SourceMtimes: cur,
+			Results: map[string]groupalgo.EntityOverlay{
+				ids[2]: {CommunityID: 1, PageRank: 0.9}, // Charlie (last in vector)
+				ids[0]: {CommunityID: 2, PageRank: 0.5}, // Alpha  (first in vector)
+				ids[1]: {CommunityID: 3, PageRank: 0.1}, // Bravo
+			},
+			Communities: []graph.CommunityResult{
+				{ID: 1, Size: 1}, {ID: 2, Size: 1}, {ID: 3, Size: 1},
+			},
+		}
+		if err := groupalgo.WriteOverlayTo(overlayPath, ov); err != nil {
+			t.Fatalf("write overlay: %v", err)
+		}
+		if _, err := st.Reload(); err != nil {
+			t.Fatalf("reload: %v", err)
+		}
+		lr := st.Group("acme").Repos["svc"]
+		if lr == nil {
+			t.Fatalf("svc repo not loaded")
+		}
+		if mmap && lr.Reader == nil {
+			t.Fatalf("flag-on run requires a resident Reader")
+		}
+		return lr.getTopKPageRank()
+	}
+
+	var off, on []string
+	t.Run("flag-off", func(t *testing.T) { off = run(t, false) })
+	t.Run("flag-on", func(t *testing.T) { on = run(t, true) })
+
+	wantPrefix := []string{"svc:Charlie", "svc:Alpha", "svc:Bravo"}
+	for i, id := range wantPrefix {
+		if i >= len(off) || off[i] != id {
+			t.Fatalf("flag-OFF top-K[%d] = %v, want %q (overlay order)\nfull=%v", i, safeIdx(off, i), id, off)
+		}
+	}
+	// The parity assertion: flag-on order must equal flag-off order over the
+	// distinct-PageRank prefix. A sentinel-sourced flag-on build fails HERE.
+	for i := range wantPrefix {
+		if i >= len(on) || on[i] != off[i] {
+			t.Fatalf("flag-ON/OFF top-K divergence at [%d]: on=%v off=%v\non=%v\noff=%v",
+				i, safeIdx(on, i), off[i], on, off)
+		}
+	}
+	if !reflect.DeepEqual(on[:len(wantPrefix)], off[:len(wantPrefix)]) {
+		t.Fatalf("flag-on/off top-K prefix mismatch:\n on=%v\noff=%v", on, off)
+	}
+}
+
+func safeIdx(s []string, i int) string {
+	if i < 0 || i >= len(s) {
+		return "<none>"
+	}
+	return s[i]
 }

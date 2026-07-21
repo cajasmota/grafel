@@ -223,6 +223,86 @@ func TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc(t *testing.T) {
 	}
 }
 
+// TestOverlaySideTable_BuiltFromReaderNotDoc is the flip-readiness guard for
+// applyGroupAlgoOverlay (PR5). Post-PR7 lr.Doc.Entities is EMPTY, so a side-table
+// build that iterates lr.Doc would come out empty. This test simulates the flip:
+// after a normal flag-ON reload (side-table populated), it EMPTIES
+// lr.Doc.Entities, forces a re-stamp, and asserts the side-table is STILL fully
+// populated — which is only possible if the build sourced its entity iteration
+// from the mmap Reader, not lr.Doc.
+//
+// Mutation proof: reverting buildOverlayTableFromReader back to iterating
+// lr.Doc.Entities makes the post-empty re-stamp produce an EMPTY table → the
+// "still populated" assertions FAIL.
+func TestOverlaySideTable_BuiltFromReaderNotDoc(t *testing.T) {
+	forceServeFromMMap(t, true)
+	st, overlayPath, cur, ids := setupSideTableParity(t)
+
+	alpha, bravo := ids[0], ids[1] // charlie (ids[2]) deliberately un-overlaid
+	ov := &groupalgo.Overlay{
+		Group:        "acme",
+		SourceMtimes: cur,
+		Results: map[string]groupalgo.EntityOverlay{
+			alpha: {CommunityID: 39, PageRank: 0.0065, Centrality: 10415.99, IsGodNode: true},
+			bravo: {CommunityID: 80, PageRank: 0.0012, Centrality: 6706.5, IsArticulationPoint: true},
+		},
+		Communities: []graph.CommunityResult{
+			{ID: 39, Size: 1, AutoName: "alpha-cluster"},
+			{ID: 80, Size: 1, AutoName: "bravo-cluster"},
+		},
+	}
+	if err := groupalgo.WriteOverlayTo(overlayPath, ov); err != nil {
+		t.Fatalf("write overlay: %v", err)
+	}
+	if _, err := st.Reload(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+
+	grp := st.Group("acme")
+	lr := grp.Repos["svc"]
+	if lr == nil || lr.Reader == nil || lr.LabelIndex == nil {
+		t.Fatalf("svc repo not loaded with a resident Reader + LabelIndex")
+	}
+
+	// Snapshot the side-table built the normal way (Doc still populated).
+	before := lr.LabelIndex.overlay
+	if len(before) != 2 {
+		t.Fatalf("expected 2 overlaid entities in side-table, got %d: %#v", len(before), before)
+	}
+
+	// Simulate the PR7 flip: empty lr.Doc.Entities. A Doc-sourced side-table
+	// build would now produce an empty table.
+	lr.Doc.Entities = nil
+	// Force a re-stamp (grp.algoApplied=false → overlayChanged=true).
+	grp.algoApplied = false
+	applyGroupAlgoOverlay(grp)
+
+	after := lr.LabelIndex.overlay
+	if len(after) != len(before) {
+		t.Fatalf("side-table not rebuilt from Reader after Doc emptied: got %d entries, want %d\nafter=%#v",
+			len(after), len(before), after)
+	}
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("Reader-sourced side-table differs from the pre-flip table:\n before=%#v\n after=%#v", before, after)
+	}
+	// Spot-check the values survived (sourced from the overlay, keyed by index).
+	var alphaPR, bravoPR float64
+	for _, eo := range after {
+		if eo.PageRank == nil {
+			t.Fatalf("side-table row has nil PageRank after Reader rebuild: %#v", eo)
+		}
+		switch *eo.PageRank {
+		case 0.0065:
+			alphaPR = *eo.PageRank
+		case 0.0012:
+			bravoPR = *eo.PageRank
+		}
+	}
+	if alphaPR != 0.0065 || bravoPR != 0.0012 {
+		t.Fatalf("Reader-sourced side-table lost overlay PageRank values: alpha=%v bravo=%v", alphaPR, bravoPR)
+	}
+}
+
 // TestOverlaySideTable_FlagOffBuildsNoSideTableAndReadsDoc is the safety guard
 // for the DEFAULT (GRAFEL_SERVE_FROM_MMAP OFF) path: applyGroupAlgoOverlay must
 // NOT build the side-table (no resident cost pre-flip) and the read path must

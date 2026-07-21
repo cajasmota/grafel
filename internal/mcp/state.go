@@ -821,21 +821,28 @@ func (lr *LoadedRepo) getTopKPageRank() []string {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.pagerankOnce.Do(func() {
-		// ALWAYS source from lr.Doc, never the Reader/mmap. Per-repo Pass-4 (the
-		// per-repo PageRank/CommunityID/Centrality/god/articulation compute) was
-		// removed when the group-scope algo pass (A1-A3, #5349) replaced it, so
-		// graph.fb's Pagerank() scalar is now a PERMANENT sentinel (0) for every
-		// entity — it is never populated by the indexer. The one authoritative
-		// source of real PageRank is applyGroupAlgoOverlay, which stamps the
-		// <group>-algo.json overlay onto lr.Doc.Entities[i].PageRank IN PLACE
-		// (state.go) — it never touches the mmap'd graph.fb bytes the Reader
-		// serves. Reading PageRank off the Reader (buildTopKPageRankFromReader)
-		// therefore always sees the sentinel and collapses top-K to id order,
-		// which silently corrupts pickFallback's entity choice (regression
-		// introduced by ADR-0027 Cutover PR1, #5865 — fixed here). See
-		// buildTopKPageRankFromReader's doc comment for why that function is
-		// kept but no longer called from here.
-		lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
+		// Real PageRank is NEVER in graph.fb: per-repo Pass-4 (the per-repo
+		// PageRank/CommunityID/Centrality/god/articulation compute) was removed
+		// when the group-scope algo pass (A1-A3, #5349) replaced it, so graph.fb's
+		// Pagerank() scalar is a PERMANENT sentinel (0) for every entity. The one
+		// authoritative source of real PageRank is applyGroupAlgoOverlay, from the
+		// <group>-algo.json overlay.
+		//
+		//   - Flag-OFF (default): the overlay is stamped IN PLACE onto
+		//     lr.Doc.Entities[i].PageRank, so source from lr.Doc. This is
+		//     byte-identical to the pre-PR5 behavior.
+		//   - Flag-ON (flip-ready): lr.Doc is (post-PR7) empty; the real PageRank
+		//     lives in the overlay SIDE-TABLE. buildTopKPageRankFromSideTable reads
+		//     the entity ids from the Reader (vector order) and PageRank from the
+		//     side-table (overlay[i].PageRank) — it MUST NOT read the Reader's
+		//     Pagerank() scalar (the permanent sentinel), which would collapse
+		//     top-K to id order and corrupt pickFallback (the reverted PR1 #5866
+		//     bug — see buildTopKPageRankFromReader's BLOCKED doc comment).
+		if serveFromMMap() {
+			lr.topKPageRank = lr.buildTopKPageRankFromSideTable(64)
+		} else {
+			lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
+		}
 	})
 	return lr.topKPageRank
 }
@@ -1695,6 +1702,60 @@ func buildTopKPageRankFromReader(r *fbreader.Reader, k int) []string {
 	return out
 }
 
+// buildTopKPageRankFromSideTable is the flip-ready (GRAFEL_SERVE_FROM_MMAP ON)
+// top-K builder. It sources entity IDS from the resident mmap Reader in vector
+// order and PageRank VALUES from the group-algo overlay SIDE-TABLE
+// (lr.LabelIndex.overlay[i].PageRank) — NOT the Reader's Pagerank() scalar,
+// which is the permanent sentinel (0) and would collapse top-K to id order
+// (the reverted PR1 #5866 bug). An entity with no overlay entry ranks at 0,
+// exactly as an un-stamped lr.Doc row (nil PageRank) does under
+// buildTopKPageRank, so this is byte-identical to the flag-off Doc-sourced
+// top-K for the same overlay data.
+//
+// Falls back to the Doc-sourced buildTopKPageRank when no mmap Reader is
+// resident or the mapping was retired (mirrors at()/forEachEntity). readerMu
+// guards the mmap dereference (SIGBUS-safety, memory epic #5850).
+func (lr *LoadedRepo) buildTopKPageRankFromSideTable(k int) []string {
+	lr.readerMu.Lock()
+	rdr := lr.Reader
+	if rdr == nil || (lr.handle != nil && lr.handle.readRetired) {
+		lr.readerMu.Unlock()
+		return buildTopKPageRank(lr.Doc, k) // Reader gone → Doc fallback
+	}
+	var overlay map[int32]entityOverlay
+	if lr.LabelIndex != nil {
+		overlay = lr.LabelIndex.overlay
+	}
+	type ranked struct {
+		id string
+		pr float64
+	}
+	all := make([]ranked, 0, rdr.EntityCount())
+	var i int32
+	rdr.IterateEntities(func(e *fb.Entity) bool {
+		pr := 0.0
+		if ov, ok := overlay[i]; ok && ov.PageRank != nil {
+			pr = *ov.PageRank
+		}
+		all = append(all, ranked{id: string(e.Id()), pr: pr})
+		i++
+		return true
+	})
+	lr.readerMu.Unlock()
+
+	sort.Slice(all, func(a, b int) bool {
+		return all[a].pr > all[b].pr
+	})
+	if k > len(all) {
+		k = len(all)
+	}
+	out := make([]string, k)
+	for j := 0; j < k; j++ {
+		out[j] = all[j].id
+	}
+	return out
+}
+
 // repoIndexedRef returns the git ref that was active when lr was last indexed.
 // Falls back to "_unknown" for graphs produced before PH1a (#2088).
 func repoIndexedRef(lr *LoadedRepo) string {
@@ -1825,20 +1886,11 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			continue
 		}
 		ents := lr.Doc.Entities
-		// ADR-0027 overlay SIDE-TABLE (built ONLY when GRAFEL_SERVE_FROM_MMAP is
-		// ON): a fresh entity-INDEX-keyed table of the 5 overlay fields alongside
-		// the (transitional) in-place Doc stamp, so the Reader-materialized read
-		// path (LabelIndex.at/getByID) can merge them without depending on lr.Doc
-		// for VALUES. Keyed by vector index i (== the LabelIndex/Reader position),
-		// resolved here because this loop already visits every entity by index and
-		// matches it to the overlay by ID. On the flag-off default path the table
-		// is left nil — the read path reads the overlaid Doc — so no resident cost
-		// is paid pre-flip.
-		buildSideTable := serveFromMMap()
-		var table map[int32]entityOverlay
-		if buildSideTable {
-			table = make(map[int32]entityOverlay)
-		}
+		// In-place Doc stamp: the flag-OFF read path (LabelIndex.at / forEachEntity
+		// / buildTopKPageRank) reads these values directly, and the flag-ON path
+		// still reads them PRE-FLIP while lr.Doc.Entities is populated. Kept
+		// byte-identical to the original; a no-op once PR7 empties lr.Doc.Entities
+		// (the side-table below then carries the values on the flag-ON path).
 		for i := range ents {
 			eo, has := ov.Results[ents[i].ID]
 			if !has {
@@ -1852,36 +1904,41 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			ents[i].Centrality = &cen
 			ents[i].IsGodNode = eo.IsGodNode
 			ents[i].IsArticulationPt = eo.IsArticulationPoint
-			if buildSideTable {
-				// Independent heap copies (distinct pointers from the Doc stamp
-				// above) so the side-table remains valid after the PR7 Doc drop.
-				tcid := eo.CommunityID
-				tpr := eo.PageRank
-				tcen := eo.Centrality
-				table[int32(i)] = entityOverlay{
-					CommunityID:      &tcid,
-					PageRank:         &tpr,
-					Centrality:       &tcen,
-					IsGodNode:        eo.IsGodNode,
-					IsArticulationPt: eo.IsArticulationPoint,
-				}
+		}
+		// ADR-0027 overlay SIDE-TABLE (built ONLY when GRAFEL_SERVE_FROM_MMAP is
+		// ON): a fresh entity-INDEX-keyed table of the 5 overlay fields so the
+		// Reader-materialized read path (LabelIndex.at/getByID/forEachEntity) can
+		// merge them WITHOUT depending on lr.Doc for VALUES. Sourced by iterating
+		// the resident mmap Reader (not lr.Doc) so it is populated even after PR7
+		// empties lr.Doc.Entities — flip-readiness is the whole point of this PR.
+		// Keyed by vector index i (== the LabelIndex/Reader position, the same
+		// order BuildLabelIndexFromReader assigns). Falls back to the Doc ONLY when
+		// no Reader is resident (JSON-only / no graph.fb), where the read path also
+		// reads the Doc, so the side-table is never consulted there anyway. On the
+		// flag-off default path the table is left nil — no resident cost pre-flip.
+		//
+		// ADR-0027 SIGBUS-safety (memory epic #5850, Path P): readerMu guards BOTH
+		// the mmap iteration (buildOverlayTableFromReader dereferences the mapping)
+		// AND the publish onto the current LabelIndex generation, mirroring
+		// forEachEntity/at() — which read lr.LabelIndex.overlay under readerMu, so
+		// this re-stamp must not race them. handle.readRetired is checked so a
+		// retired mapping falls back to the Doc instead of dereferencing freed
+		// memory. Publish happens BEFORE resetIndexes below; resetIndexes does NOT
+		// touch LabelIndex, so the table persists for this generation's life and is
+		// reassigned on the next re-stamp.
+		if serveFromMMap() {
+			lr.readerMu.Lock()
+			var table map[int32]entityOverlay
+			if rdr := lr.Reader; rdr != nil && !(lr.handle != nil && lr.handle.readRetired) {
+				table = buildOverlayTableFromReader(rdr, ov)
+			} else {
+				table = buildOverlayTableFromDoc(lr.Doc, ov)
 			}
+			if lr.LabelIndex != nil {
+				lr.LabelIndex.overlay = table
+			}
+			lr.readerMu.Unlock()
 		}
-		// Publish the side-table onto the current LabelIndex generation BEFORE
-		// re-arming the lazy indexes below, so the next getByID build merges it.
-		// resetIndexes does NOT touch LabelIndex, so the table persists for the
-		// life of this generation and is reassigned on the next re-stamp. Only on
-		// the flag-on path; flag-off leaves lr.LabelIndex.overlay nil.
-		// ADR-0027 SIGBUS-safety (memory epic #5850, Path P PR1 / view_iter.go):
-		// same readerMu-guarded field-assignment discipline as the LabelIndex
-		// publish above — forEachEntity's flag-on scan reads lr.LabelIndex.
-		// overlay under readerMu across the whole scan, so this re-stamp must
-		// not race it.
-		lr.readerMu.Lock()
-		if buildSideTable && lr.LabelIndex != nil {
-			lr.LabelIndex.overlay = table
-		}
-		lr.readerMu.Unlock()
 		// Re-arm lazy derived indexes (TopKPageRank etc.) so they rebuild
 		// against the freshly-stamped group values rather than stale per-repo
 		// ones (mirrors the resetIndexes() call after a reparse).
@@ -1891,6 +1948,64 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 
 	grp.algoMt = fi.ModTime()
 	grp.algoApplied = true
+}
+
+// newEntityOverlay heap-copies a groupalgo.EntityOverlay into an entityOverlay
+// side-table row. The three pointer fields are INDEPENDENT copies (distinct from
+// the in-place Doc stamp's pointers) so the side-table remains a valid value
+// source after PR7 drops lr.Doc.Entities.
+func newEntityOverlay(eo groupalgo.EntityOverlay) entityOverlay {
+	cid := eo.CommunityID
+	pr := eo.PageRank
+	cen := eo.Centrality
+	return entityOverlay{
+		CommunityID:      &cid,
+		PageRank:         &pr,
+		Centrality:       &cen,
+		IsGodNode:        eo.IsGodNode,
+		IsArticulationPt: eo.IsArticulationPoint,
+	}
+}
+
+// buildOverlayTableFromReader builds the entity-INDEX-keyed overlay side-table
+// by iterating the resident mmap Reader (NOT lr.Doc), matching each entity to
+// the overlay by ID. The int32 key is the vector index i in Reader iteration
+// order — identical to the order BuildLabelIndexFromReader assigns and the order
+// at()/materializeFromReader/forEachEntity look the table up by. Only entities
+// WITH an overlay entry are inserted; a miss leaves the fb sentinel on the read
+// path. Callers MUST hold the owning LoadedRepo's readerMu (the mmap is
+// dereferenced here via IterateEntities).
+func buildOverlayTableFromReader(r *fbreader.Reader, ov *groupalgo.Overlay) map[int32]entityOverlay {
+	table := make(map[int32]entityOverlay)
+	if r == nil || ov == nil {
+		return table
+	}
+	var i int32
+	r.IterateEntities(func(e *fb.Entity) bool {
+		if eo, has := ov.Results[string(e.Id())]; has {
+			table[i] = newEntityOverlay(eo)
+		}
+		i++
+		return true
+	})
+	return table
+}
+
+// buildOverlayTableFromDoc is the Doc-sourced twin used ONLY when no mmap Reader
+// is resident (JSON-only / no graph.fb) on the flag-on path. Keyed by the same
+// vector index i as the Reader path. The read path reads the Doc directly when
+// the Reader is absent, so this table is a belt-and-braces parity fallback.
+func buildOverlayTableFromDoc(doc *graph.Document, ov *groupalgo.Overlay) map[int32]entityOverlay {
+	table := make(map[int32]entityOverlay)
+	if doc == nil || ov == nil {
+		return table
+	}
+	for i := range doc.Entities {
+		if eo, has := ov.Results[doc.Entities[i].ID]; has {
+			table[int32(i)] = newEntityOverlay(eo)
+		}
+	}
+	return table
 }
 
 // defaultLinksFile is the conventional path for cross-repo links.
