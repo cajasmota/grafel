@@ -217,3 +217,75 @@ func docEntityByID(doc *graph.Document, id string) *graph.Entity {
 	}
 	return nil
 }
+
+// TestLabelIndexSurfacesOverlayStampedFields_PR2 is the load-bearing invariant
+// test for "values come from the overlaid Doc, NEVER the Reader".
+//
+// The other PR2 value-parity tests compare two DOC-sourced indexes over a
+// fixture that stamps NO overlay-only fields, so they would pass even if at()
+// were (wrongly) flipped to read the mmap Reader for values. This test closes
+// that blind spot — the EXACT regression class that bit PR1.
+//
+// It stamps overlay-ONLY fields (CommunityID / Centrality / IsGodNode) onto
+// Doc.Entities the way applyGroupAlgoOverlay does — those values live in the
+// <group>-algo.json overlay, NOT in graph.fb, so the resident Reader carries
+// only sentinels/zero for them — then asserts LabelIndex.ByID / Lookup / getByID
+// SURFACE the stamped values. Mutation check (verified once, then reverted):
+// flipping LabelIndex.at() to materialize from the Reader
+// (graph.MaterializeEntity(l.reader, idx)) makes this test FAIL — ByID(id::a)
+// surfaces the graph.fb sentinel CommunityID, not the stamped 80 — proving the
+// Doc value-source is load-bearing.
+func TestLabelIndexSurfacesOverlayStampedFields_PR2(t *testing.T) {
+	t.Parallel()
+	doc, r := loadParityIndexFixture(t)
+	lr := &LoadedRepo{Repo: "repo", Doc: doc, Reader: r, LabelIndex: BuildLabelIndexFromReader(r, doc)}
+
+	const wantCID = 80
+	const wantCen = 0.4242
+	stamp := func(id string, cid int, cen float64, god bool) {
+		e := docEntityByID(doc, id)
+		if e == nil {
+			t.Fatalf("fixture missing entity %q", id)
+		}
+		c, ce := cid, cen
+		e.CommunityID = &c
+		e.Centrality = &ce
+		e.IsGodNode = god
+	}
+	stamp("id::a", wantCID, wantCen, true)
+	stamp("id::b", 7, 0.99, false)
+	// Mirror the overlay's post-stamp index re-arm so getByID rebuilds off the
+	// stamped Doc (LabelIndex reads Doc live, so it needs no rebuild).
+	lr.resetIndexes()
+
+	// LabelIndex.ByID surfaces the stamped overlay-only fields.
+	a := lr.LabelIndex.ByID("id::a")
+	if a == nil {
+		t.Fatal("LabelIndex.ByID(id::a) = nil")
+	}
+	if a.CommunityID == nil || *a.CommunityID != wantCID {
+		t.Fatalf("LabelIndex.ByID(id::a).CommunityID = %+v; want %d — overlay stamp not surfaced; "+
+			"values MUST come from the overlaid Doc, not the Reader", a.CommunityID, wantCID)
+	}
+	if a.Centrality == nil || *a.Centrality != wantCen {
+		t.Errorf("LabelIndex.ByID(id::a).Centrality = %+v; want %v (overlay stamp)", a.Centrality, wantCen)
+	}
+	if !a.IsGodNode {
+		t.Error("LabelIndex.ByID(id::a).IsGodNode = false; want true (overlay stamp)")
+	}
+
+	// Lookup (by label) routes through the same at() materialization path.
+	if l := lr.LabelIndex.Lookup("A"); l == nil || l.CommunityID == nil || *l.CommunityID != wantCID {
+		t.Errorf("Lookup(A).CommunityID = %+v; want %d (overlay stamp)", l, wantCID)
+	}
+
+	// getByID surfaces the stamps too (map of copies built off the stamped Doc).
+	if g := lr.getByID()["id::a"]; g == nil || g.CommunityID == nil || *g.CommunityID != wantCID {
+		t.Errorf("getByID[id::a].CommunityID = %+v; want %d (overlay stamp)", g, wantCID)
+	}
+
+	// Sanity: the second stamped entity carries its own distinct value.
+	if b := lr.LabelIndex.ByID("id::b"); b == nil || b.CommunityID == nil || *b.CommunityID != 7 {
+		t.Errorf("LabelIndex.ByID(id::b).CommunityID = %+v; want 7", b)
+	}
+}
