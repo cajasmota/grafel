@@ -581,6 +581,14 @@ func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
 		}
 		m := make(map[string]*graph.Entity, len(lr.Doc.Entities))
 		for i := range lr.Doc.Entities {
+			// ADR-0027: source each row from the Reader + overlay side-table via
+			// LabelIndex.at (byte-equal to the overlaid Doc row) so getByID no
+			// longer depends on lr.Doc for VALUES. Falls back to a live-Doc heap
+			// copy when no LabelIndex/Reader backs this repo (JSON-only load).
+			if ent := lr.LabelIndex.at(int32(i)); ent != nil {
+				m[ent.ID] = ent
+				continue
+			}
 			ent := lr.Doc.Entities[i] // heap copy — a fresh pointer, not an alias into Doc
 			m[ent.ID] = &ent
 		}
@@ -1734,6 +1742,13 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			continue
 		}
 		ents := lr.Doc.Entities
+		// ADR-0027 overlay SIDE-TABLE: build a fresh entity-INDEX-keyed table of
+		// the 5 overlay fields alongside the (transitional) in-place Doc stamp, so
+		// the Reader-materialized read path (LabelIndex.at/getByID) can merge them
+		// without depending on lr.Doc for VALUES. Keyed by vector index i (== the
+		// LabelIndex/Reader position), resolved here because this loop already
+		// visits every entity by index and matches it to the overlay by ID.
+		table := make(map[int32]entityOverlay)
 		for i := range ents {
 			eo, has := ov.Results[ents[i].ID]
 			if !has {
@@ -1747,6 +1762,25 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			ents[i].Centrality = &cen
 			ents[i].IsGodNode = eo.IsGodNode
 			ents[i].IsArticulationPt = eo.IsArticulationPoint
+			// Independent heap copies (distinct pointers from the Doc stamp above)
+			// so the side-table remains valid after the PR7 Doc drop.
+			tcid := eo.CommunityID
+			tpr := eo.PageRank
+			tcen := eo.Centrality
+			table[int32(i)] = entityOverlay{
+				CommunityID:      &tcid,
+				PageRank:         &tpr,
+				Centrality:       &tcen,
+				IsGodNode:        eo.IsGodNode,
+				IsArticulationPt: eo.IsArticulationPoint,
+			}
+		}
+		// Publish the side-table onto the current LabelIndex generation BEFORE
+		// re-arming the lazy indexes below, so the next getByID build merges it.
+		// resetIndexes does NOT touch LabelIndex, so the table persists for the
+		// life of this generation and is reassigned on the next re-stamp.
+		if lr.LabelIndex != nil {
+			lr.LabelIndex.overlay = table
 		}
 		// Re-arm lazy derived indexes (TopKPageRank etc.) so they rebuild
 		// against the freshly-stamped group values rather than stale per-repo
