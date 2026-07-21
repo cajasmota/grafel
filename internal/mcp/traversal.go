@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
+	"github.com/cajasmota/grafel/internal/graph/fbreader"
 )
 
 // adjacency is a per-repo precomputed neighbor index (#5852: CSR layout).
@@ -205,6 +207,46 @@ func buildAdjacency(doc *graph.Document, repo string) *adjacency {
 		weights[i] = float32(edgeWeight(r))
 	}
 
+	a.assembleCSR(n, fromCodes, toCodes, kindCodes, weights)
+	return a
+}
+
+// buildAdjacencyFromReader is the mmap-sourced twin of buildAdjacency: it
+// reads FromId/ToId/Kind (and the count/weight properties feeding edgeWeight)
+// directly off the resident fbreader.Reader instead of a materialized
+// graph.Document, then runs the IDENTICAL CSR assembly (assembleCSR). Because
+// the Reader holds the same rows in the same vector order as
+// loadFBDocument produces for Document.Relationships, the resulting adjacency
+// is byte-identical to buildAdjacency's (proven by TestAdjacencyReaderParity_PR1).
+// ADR-0027 Cutover PR1: behavior-neutral re-sourcing of this primitive-only build.
+func buildAdjacencyFromReader(r *fbreader.Reader, repo string) *adjacency {
+	a := &adjacency{}
+	a.nodes.code = make(map[string]int32, r.EntityCount())
+	a.kinds.code = make(map[string]uint16, 32)
+
+	n := r.RelationshipCount()
+	fromCodes := make([]int32, 0, n)
+	toCodes := make([]int32, 0, n)
+	kindCodes := make([]uint16, 0, n)
+	weights := make([]float32, 0, n)
+	r.IterateRelationships(func(rel *fb.Relationship) bool {
+		fromCodes = append(fromCodes, a.nodes.intern(string(rel.FromId())))
+		toCodes = append(toCodes, a.nodes.intern(string(rel.ToId())))
+		kindCodes = append(kindCodes, a.kinds.intern(string(rel.Kind())))
+		weights = append(weights, float32(edgeWeightFB(rel)))
+		return true
+	})
+
+	a.assembleCSR(len(fromCodes), fromCodes, toCodes, kindCodes, weights)
+	return a
+}
+
+// assembleCSR builds the out/in CSR rows from the per-relationship code +
+// weight arrays. Shared by buildAdjacency (Document-sourced) and
+// buildAdjacencyFromReader (Reader-sourced) so the CSR layout can never
+// diverge between the two paths — parity reduces to the collection loop
+// (#5852 two-pass scatter; see buildAdjacency doc).
+func (a *adjacency) assembleCSR(n int, fromCodes, toCodes []int32, kindCodes []uint16, weights []float32) {
 	numNodes := len(a.nodes.ids)
 	outDeg := make([]int32, numNodes)
 	inDeg := make([]int32, numNodes)
@@ -235,8 +277,39 @@ func buildAdjacency(doc *graph.Document, repo string) *adjacency {
 		a.in.weight[ip] = w
 		a.in.relIdx[ip] = int32(i)
 	}
+}
 
-	return a
+// fbRelProp returns the value of relationship property key (and whether it
+// was present), reading directly off the mmap'd PropertyEntry vector. The
+// vector is written key-sorted by fbwriter and has unique keys, so a linear
+// scan returning the first key match is equivalent to graph.Relationship's
+// binary-search PropLookup. The returned string is copied out of the mmap.
+func fbRelProp(rel *fb.Relationship, key string) (string, bool) {
+	n := rel.PropertiesLength()
+	var pe fb.PropertyEntry
+	for i := 0; i < n; i++ {
+		if rel.Properties(&pe, i) && string(pe.Key()) == key {
+			return string(pe.Value()), true
+		}
+	}
+	return "", false
+}
+
+// edgeWeightFB is the fb.Relationship twin of edgeWeight: same "count" then
+// "weight" precedence, same <=0 / unparseable fallback to 1.0, reading the
+// properties off the mmap instead of a materialized graph.Relationship.
+func edgeWeightFB(rel *fb.Relationship) float64 {
+	if rel.PropertiesLength() == 0 {
+		return 1.0
+	}
+	for _, key := range []string{"count", "weight"} {
+		if v, ok := fbRelProp(rel, key); ok && v != "" {
+			if n, err := strconv.ParseFloat(v, 64); err == nil && n > 0 {
+				return n
+			}
+		}
+	}
+	return 1.0
 }
 
 // newCSRDir allocates a csrDir's row backing given per-node degree counts and
@@ -302,6 +375,29 @@ func buildStepAdjacency(doc *graph.Document) map[string][]stepEdge {
 		n, _ := strconv.Atoi(idxStr)
 		adj[r.FromID] = append(adj[r.FromID], stepEdge{toID: r.ToID, idx: n})
 	}
+	return adj
+}
+
+// buildStepAdjacencyFromReader is the mmap-sourced twin of buildStepAdjacency,
+// reading Kind/FromId/ToId and the step_index property directly off the
+// fbreader.Reader. Byte-identical to the Document-sourced build (same edge
+// order per FromID key; proven by TestStepAdjacencyReaderParity_PR1).
+// ADR-0027 Cutover PR1.
+func buildStepAdjacencyFromReader(r *fbreader.Reader) map[string][]stepEdge {
+	adj := make(map[string][]stepEdge)
+	r.IterateRelationships(func(rel *fb.Relationship) bool {
+		if string(rel.Kind()) != stepInProcessEdge {
+			return true
+		}
+		idxStr := ""
+		if v, ok := fbRelProp(rel, "step_index"); ok {
+			idxStr = v
+		}
+		n, _ := strconv.Atoi(idxStr)
+		from := string(rel.FromId())
+		adj[from] = append(adj[from], stepEdge{toID: string(rel.ToId()), idx: n})
+		return true
+	})
 	return adj
 }
 
@@ -372,6 +468,39 @@ func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 		toCodes = append(toCodes, c.nodes.intern(r.ToID))
 	}
 
+	c.assembleCSR(fromCodes, toCodes)
+	return c
+}
+
+// buildCallsAdjacencyFromReader is the mmap-sourced twin of
+// buildCallsAdjacency, reading Kind/FromId/ToId directly off the
+// fbreader.Reader and running the IDENTICAL CSR assembly + per-row sort
+// (assembleCSR). Byte-identical to the Document-sourced build (proven by
+// TestCallsAdjacencyReaderParity_PR1). ADR-0027 Cutover PR1.
+func buildCallsAdjacencyFromReader(r *fbreader.Reader) *callsAdjacency {
+	c := &callsAdjacency{}
+	c.nodes.code = make(map[string]int32)
+
+	fromCodes := make([]int32, 0, r.RelationshipCount())
+	toCodes := make([]int32, 0, r.RelationshipCount())
+	r.IterateRelationships(func(rel *fb.Relationship) bool {
+		if string(rel.Kind()) != "CALLS" {
+			return true
+		}
+		fromCodes = append(fromCodes, c.nodes.intern(string(rel.FromId())))
+		toCodes = append(toCodes, c.nodes.intern(string(rel.ToId())))
+		return true
+	})
+
+	c.assembleCSR(fromCodes, toCodes)
+	return c
+}
+
+// assembleCSR builds the CALLS forward CSR rows from the per-edge from/to code
+// arrays and sorts each row by callee id. Shared by buildCallsAdjacency
+// (Document-sourced) and buildCallsAdjacencyFromReader (Reader-sourced) so the
+// two paths cannot diverge — parity reduces to the collection loop.
+func (c *callsAdjacency) assembleCSR(fromCodes, toCodes []int32) {
 	numNodes := len(c.nodes.ids)
 	numEdges := len(fromCodes)
 	deg := make([]int32, numNodes)
@@ -400,7 +529,6 @@ func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 
 	c.offsets = offsets
 	c.targets = targets
-	return c
 }
 
 // sortInt32ByStringID is an insertion sort of node-index codes by the string

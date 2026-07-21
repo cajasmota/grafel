@@ -514,3 +514,45 @@ func fbRelToGraphRel(r *fb.Relationship, si *stringInterner) Relationship {
 	}
 	return rel
 }
+
+// MaterializeEntity decodes the i-th entity of the mmap'd Reader into a
+// single heap-safe graph.Entity, on demand. It is a thin exported wrapper
+// over the same fbEntityToGraphEntity conversion loadFBDocument uses per
+// row, so a MaterializeEntity(r, i) result is byte-identical to the
+// Document's Entities[i] for the same graph.fb.
+//
+// Every string field is COPIED out of the mmap region (see
+// fbEntityToGraphEntity), so the returned Entity is safe to retain after
+// the Reader is closed — no borrow of the underlying mapping is held.
+//
+// A fresh interner is used per call: interning only deduplicates repeated
+// substrings WITHIN one materialized row, and the copied-out strings are
+// independent of any Document-wide interner. Returns the zero Entity when
+// r is nil or i is out of range.
+func MaterializeEntity(r *fbreader.Reader, i int) Entity {
+	if r == nil {
+		return Entity{}
+	}
+	fbEnt := r.EntityAt(i)
+	if fbEnt == nil {
+		return Entity{}
+	}
+	return fbEntityToGraphEntity(fbEnt, newStringInterner())
+}
+
+// MaterializeRelationship decodes the i-th relationship of the mmap'd
+// Reader into a single heap-safe graph.Relationship, on demand. Thin
+// exported wrapper over fbRelToGraphRel — byte-identical to the Document's
+// Relationships[i] for the same graph.fb. All strings are copied out of
+// the mmap region, so the result outlives the Reader. Returns the zero
+// Relationship when r is nil or i is out of range.
+func MaterializeRelationship(r *fbreader.Reader, i int) Relationship {
+	if r == nil {
+		return Relationship{}
+	}
+	fbRel := r.RelationshipAt(i)
+	if fbRel == nil {
+		return Relationship{}
+	}
+	return fbRelToGraphRel(fbRel, newStringInterner())
+}

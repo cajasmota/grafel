@@ -31,6 +31,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/embed"
 	"github.com/cajasmota/grafel/internal/graph"
+	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 )
@@ -688,7 +689,15 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 			lr.adjacency = &adjacency{}
 			return
 		}
-		lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
+		// ADR-0027 Cutover PR1: source the build from the resident mmap Reader
+		// when present (byte-identical to the Document build — same rows, same
+		// order). Falls back to the Document only when no graph.fb is mapped
+		// (JSON-only load / Open failure). Not flag-gated.
+		if lr.Reader != nil {
+			lr.adjacency = buildAdjacencyFromReader(lr.Reader, lr.Repo)
+		} else {
+			lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
+		}
 	})
 	return lr.adjacency
 }
@@ -705,7 +714,12 @@ func (lr *LoadedRepo) getCallsAdj() *callsAdjacency {
 			lr.callsAdj = &callsAdjacency{}
 			return
 		}
-		lr.callsAdj = buildCallsAdjacency(lr.Doc)
+		// ADR-0027 Cutover PR1: prefer the resident mmap Reader (see getAdjacency).
+		if lr.Reader != nil {
+			lr.callsAdj = buildCallsAdjacencyFromReader(lr.Reader)
+		} else {
+			lr.callsAdj = buildCallsAdjacency(lr.Doc)
+		}
 	})
 	return lr.callsAdj
 }
@@ -719,7 +733,12 @@ func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
 			lr.stepAdj = map[string][]stepEdge{}
 			return
 		}
-		lr.stepAdj = buildStepAdjacency(lr.Doc)
+		// ADR-0027 Cutover PR1: prefer the resident mmap Reader (see getAdjacency).
+		if lr.Reader != nil {
+			lr.stepAdj = buildStepAdjacencyFromReader(lr.Reader)
+		} else {
+			lr.stepAdj = buildStepAdjacency(lr.Doc)
+		}
 	})
 	return lr.stepAdj
 }
@@ -731,7 +750,14 @@ func (lr *LoadedRepo) getTopKPageRank() []string {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.pagerankOnce.Do(func() {
-		lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
+		// ADR-0027 Cutover PR1: prefer the resident mmap Reader; PageRank is
+		// read from the FB Pagerank() scalar (interface-absent field). Falls
+		// back to the Document only when no graph.fb is mapped.
+		if lr.Reader != nil {
+			lr.topKPageRank = buildTopKPageRankFromReader(lr.Reader, 64)
+		} else {
+			lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
+		}
 	})
 	return lr.topKPageRank
 }
@@ -1090,16 +1116,6 @@ func (s *State) reloadLocked() (int, bool, error) {
 					// is built on first use by its getter and cached until the next
 					// reload re-arms the Once here (#3367, #3377).
 					lr.resetIndexes()
-					// TESTS-edge count cached once per reload so grafel_whoami can
-					// return it in O(1) without rescanning all relationships. This is a
-					// cheap O(R) count with no allocation, so it stays eager (#3325).
-					testsCount := 0
-					for i := range doc.Relationships {
-						if doc.Relationships[i].Kind == "TESTS" {
-							testsCount++
-						}
-					}
-					lr.TestsEdgeCount = testsCount
 					// S8 (#2159): open the mmap reader alongside the Document.
 					// Best-effort: failures leave Reader nil; callers fall back to
 					// doc.Entities / doc.Relationships.
@@ -1116,6 +1132,30 @@ func (s *State) reloadLocked() (int, bool, error) {
 					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
 						newRdr = rdr
 					}
+					// TESTS-edge count cached once per reload so grafel_whoami can
+					// return it in O(1) without rescanning all relationships. This is a
+					// cheap O(R) count with no allocation, so it stays eager (#3325).
+					//
+					// ADR-0027 Cutover PR1: count TESTS-kind edges off the freshly
+					// opened mmap Reader (Kind() read directly) rather than the
+					// materialized Document. Byte-neutral (Reader == Document's rows);
+					// falls back to doc.Relationships only when no graph.fb is mapped.
+					testsCount := 0
+					if newRdr != nil {
+						newRdr.IterateRelationships(func(rel *fb.Relationship) bool {
+							if string(rel.Kind()) == "TESTS" {
+								testsCount++
+							}
+							return true
+						})
+					} else {
+						for i := range doc.Relationships {
+							if doc.Relationships[i].Kind == "TESTS" {
+								testsCount++
+							}
+						}
+					}
+					lr.TestsEdgeCount = testsCount
 					lr.setReader(newRdr)
 					reloaded++
 				}
@@ -1476,6 +1516,41 @@ func buildTopKPageRank(doc *graph.Document, k int) []string {
 		}
 		all = append(all, ranked{id: e.ID, pr: pr})
 	}
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].pr > all[j].pr
+	})
+	if k > len(all) {
+		k = len(all)
+	}
+	out := make([]string, k)
+	for i := 0; i < k; i++ {
+		out[i] = all[i].id
+	}
+	return out
+}
+
+// buildTopKPageRankFromReader is the mmap-sourced twin of buildTopKPageRank,
+// reading Id/Pagerank directly off the fbreader.Reader. PageRank is an
+// interface-absent field (no EntityView accessor), so it MUST come from the
+// FB Pagerank() scalar. loadFBDocument sets Entity.PageRank to nil when
+// Pagerank()==0, so the Document build's pr==0 for those rows exactly matches
+// reading Pagerank()==0 here — and identical (id, pr) pairs in identical
+// vector order make sort.Slice produce a byte-identical top-K. Byte-identical
+// to buildTopKPageRank (proven by TestTopKPageRankReaderParity_PR1).
+// ADR-0027 Cutover PR1.
+func buildTopKPageRankFromReader(r *fbreader.Reader, k int) []string {
+	if r == nil || r.EntityCount() == 0 {
+		return nil
+	}
+	type ranked struct {
+		id string
+		pr float64
+	}
+	all := make([]ranked, 0, r.EntityCount())
+	r.IterateEntities(func(e *fb.Entity) bool {
+		all = append(all, ranked{id: string(e.Id()), pr: e.Pagerank()})
+		return true
+	})
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].pr > all[j].pr
 	})
