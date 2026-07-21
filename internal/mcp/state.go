@@ -580,14 +580,19 @@ func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
 			return
 		}
 		m := make(map[string]*graph.Entity, len(lr.Doc.Entities))
+		// ADR-0027: only when GRAFEL_SERVE_FROM_MMAP is ON does getByID source each
+		// row from the Reader + overlay side-table via LabelIndex.at (byte-equal to
+		// the overlaid Doc row), removing the Doc VALUE dependence. On the flag-off
+		// default path this stays the PR2 live-Doc heap copy — GC-safe, with NO
+		// handler-path mmap read. mmapSourced also short-circuits to the Doc copy
+		// whenever at() cannot serve an index (nil LabelIndex/Reader, JSON load).
+		mmapSourced := serveFromMMap() && lr.LabelIndex != nil
 		for i := range lr.Doc.Entities {
-			// ADR-0027: source each row from the Reader + overlay side-table via
-			// LabelIndex.at (byte-equal to the overlaid Doc row) so getByID no
-			// longer depends on lr.Doc for VALUES. Falls back to a live-Doc heap
-			// copy when no LabelIndex/Reader backs this repo (JSON-only load).
-			if ent := lr.LabelIndex.at(int32(i)); ent != nil {
-				m[ent.ID] = ent
-				continue
+			if mmapSourced {
+				if ent := lr.LabelIndex.at(int32(i)); ent != nil {
+					m[ent.ID] = ent
+					continue
+				}
 			}
 			ent := lr.Doc.Entities[i] // heap copy — a fresh pointer, not an alias into Doc
 			m[ent.ID] = &ent
@@ -1742,13 +1747,20 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			continue
 		}
 		ents := lr.Doc.Entities
-		// ADR-0027 overlay SIDE-TABLE: build a fresh entity-INDEX-keyed table of
-		// the 5 overlay fields alongside the (transitional) in-place Doc stamp, so
-		// the Reader-materialized read path (LabelIndex.at/getByID) can merge them
-		// without depending on lr.Doc for VALUES. Keyed by vector index i (== the
-		// LabelIndex/Reader position), resolved here because this loop already
-		// visits every entity by index and matches it to the overlay by ID.
-		table := make(map[int32]entityOverlay)
+		// ADR-0027 overlay SIDE-TABLE (built ONLY when GRAFEL_SERVE_FROM_MMAP is
+		// ON): a fresh entity-INDEX-keyed table of the 5 overlay fields alongside
+		// the (transitional) in-place Doc stamp, so the Reader-materialized read
+		// path (LabelIndex.at/getByID) can merge them without depending on lr.Doc
+		// for VALUES. Keyed by vector index i (== the LabelIndex/Reader position),
+		// resolved here because this loop already visits every entity by index and
+		// matches it to the overlay by ID. On the flag-off default path the table
+		// is left nil — the read path reads the overlaid Doc — so no resident cost
+		// is paid pre-flip.
+		buildSideTable := serveFromMMap()
+		var table map[int32]entityOverlay
+		if buildSideTable {
+			table = make(map[int32]entityOverlay)
+		}
 		for i := range ents {
 			eo, has := ov.Results[ents[i].ID]
 			if !has {
@@ -1762,24 +1774,27 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			ents[i].Centrality = &cen
 			ents[i].IsGodNode = eo.IsGodNode
 			ents[i].IsArticulationPt = eo.IsArticulationPoint
-			// Independent heap copies (distinct pointers from the Doc stamp above)
-			// so the side-table remains valid after the PR7 Doc drop.
-			tcid := eo.CommunityID
-			tpr := eo.PageRank
-			tcen := eo.Centrality
-			table[int32(i)] = entityOverlay{
-				CommunityID:      &tcid,
-				PageRank:         &tpr,
-				Centrality:       &tcen,
-				IsGodNode:        eo.IsGodNode,
-				IsArticulationPt: eo.IsArticulationPoint,
+			if buildSideTable {
+				// Independent heap copies (distinct pointers from the Doc stamp
+				// above) so the side-table remains valid after the PR7 Doc drop.
+				tcid := eo.CommunityID
+				tpr := eo.PageRank
+				tcen := eo.Centrality
+				table[int32(i)] = entityOverlay{
+					CommunityID:      &tcid,
+					PageRank:         &tpr,
+					Centrality:       &tcen,
+					IsGodNode:        eo.IsGodNode,
+					IsArticulationPt: eo.IsArticulationPoint,
+				}
 			}
 		}
 		// Publish the side-table onto the current LabelIndex generation BEFORE
 		// re-arming the lazy indexes below, so the next getByID build merges it.
 		// resetIndexes does NOT touch LabelIndex, so the table persists for the
-		// life of this generation and is reassigned on the next re-stamp.
-		if lr.LabelIndex != nil {
+		// life of this generation and is reassigned on the next re-stamp. Only on
+		// the flag-on path; flag-off leaves lr.LabelIndex.overlay nil.
+		if buildSideTable && lr.LabelIndex != nil {
 			lr.LabelIndex.overlay = table
 		}
 		// Re-arm lazy derived indexes (TopKPageRank etc.) so they rebuild

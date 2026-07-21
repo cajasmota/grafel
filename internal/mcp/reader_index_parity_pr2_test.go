@@ -219,31 +219,33 @@ func docEntityByID(doc *graph.Document, id string) *graph.Entity {
 }
 
 // TestLabelIndexSurfacesOverlayStampedFields_PR2 is the load-bearing invariant
-// test for "the 5 group-algo overlay fields surface on the index path".
+// test for "values come from the overlaid Doc, NEVER the Reader" on the DEFAULT
+// (GRAFEL_SERVE_FROM_MMAP OFF) serve path — which is what production runs and
+// what the ADR-0027 overlay side-table leaves byte-identical until PR7 turns the
+// flag on. (The flag-ON Reader+side-table flip path is covered separately by
+// TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc.)
 //
-// ADR-0027 overlay side-table (PR7 precondition): LabelIndex.at() now
-// MATERIALIZES the base entity from the mmap Reader (graph.MaterializeEntity)
-// and merges the 5 overlay-only fields (CommunityID / PageRank / Centrality /
-// IsGodNode / IsArticulationPt) from the resident side-table — those values live
-// in the <group>-algo.json overlay, NOT in graph.fb, so the Reader carries only
-// sentinels/zero for them. applyGroupAlgoOverlay stamps BOTH the (transitional)
-// in-place Doc AND the side-table; this test mirrors that by stamping the Doc
-// and populating lr.LabelIndex.overlay by entity index, then asserts
-// LabelIndex.ByID / Lookup / getByID SURFACE the overlay values.
+// The other PR2 value-parity tests compare two DOC-sourced indexes over a
+// fixture that stamps NO overlay-only fields, so they would pass even if at()
+// were (wrongly) flipped to read the mmap Reader for values. This test closes
+// that blind spot — the EXACT regression class that bit PR1.
 //
-// Mutation check (verified once, then reverted): dropping the side-table merge
-// in LabelIndex.at() makes this test FAIL — ByID(id::a) surfaces the graph.fb
-// sentinel CommunityID, not the overlay's 80 — proving the side-table
-// value-source is load-bearing now that the base comes from the Reader.
+// It stamps overlay-ONLY fields (CommunityID / Centrality / IsGodNode) onto
+// Doc.Entities the way applyGroupAlgoOverlay does — those values live in the
+// <group>-algo.json overlay, NOT in graph.fb, so the resident Reader carries
+// only sentinels/zero for them — then asserts LabelIndex.ByID / Lookup / getByID
+// SURFACE the stamped values. Mutation check (verified once, then reverted):
+// flipping the DEFAULT LabelIndex.at() path to materialize from the Reader
+// (graph.MaterializeEntity(l.reader, idx)) makes this test FAIL — ByID(id::a)
+// surfaces the graph.fb sentinel CommunityID, not the stamped 80 — proving the
+// Doc value-source is load-bearing for the flag-off path.
 func TestLabelIndexSurfacesOverlayStampedFields_PR2(t *testing.T) {
 	t.Parallel()
 	doc, r := loadParityIndexFixture(t)
-	li := BuildLabelIndexFromReader(r, doc)
-	lr := &LoadedRepo{Repo: "repo", Doc: doc, Reader: r, LabelIndex: li}
+	lr := &LoadedRepo{Repo: "repo", Doc: doc, Reader: r, LabelIndex: BuildLabelIndexFromReader(r, doc)}
 
 	const wantCID = 80
 	const wantCen = 0.4242
-	overlay := map[int32]entityOverlay{}
 	stamp := func(id string, cid int, cen float64, god bool) {
 		e := docEntityByID(doc, id)
 		if e == nil {
@@ -253,20 +255,11 @@ func TestLabelIndexSurfacesOverlayStampedFields_PR2(t *testing.T) {
 		e.CommunityID = &c
 		e.Centrality = &ce
 		e.IsGodNode = god
-		// Mirror applyGroupAlgoOverlay's side-table population (distinct pointers,
-		// keyed by the entity's vector index).
-		idx, ok := li.byID[id]
-		if !ok {
-			t.Fatalf("fixture id %q missing from LabelIndex", id)
-		}
-		tc, tce := cid, cen
-		overlay[idx] = entityOverlay{CommunityID: &tc, Centrality: &tce, IsGodNode: god}
 	}
 	stamp("id::a", wantCID, wantCen, true)
 	stamp("id::b", 7, 0.99, false)
-	li.overlay = overlay
 	// Mirror the overlay's post-stamp index re-arm so getByID rebuilds off the
-	// Reader + side-table.
+	// stamped Doc (LabelIndex reads Doc live, so it needs no rebuild).
 	lr.resetIndexes()
 
 	// LabelIndex.ByID surfaces the stamped overlay-only fields.

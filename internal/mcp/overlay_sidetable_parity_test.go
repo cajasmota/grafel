@@ -59,6 +59,18 @@ func richFixtureDoc(slug string, names ...string) *graph.Document {
 // setupSideTableParity writes a single on-disk graph.fb repo with rich entities,
 // registers the group, and returns the State + resolved overlay path + source
 // mtimes + the three entity ids.
+// forceServeFromMMap overrides the package-cached GRAFEL_SERVE_FROM_MMAP flag for
+// the duration of a test and restores it. serveFromMMapEnabled is captured once
+// at package load, so t.Setenv is too late — the cached var must be set directly.
+// Safe under -race: callers are NOT t.Parallel(), so they run to completion
+// (restoring the flag) before any parallel test that reads the flag is resumed.
+func forceServeFromMMap(t *testing.T, v bool) {
+	t.Helper()
+	prev := serveFromMMapEnabled
+	serveFromMMapEnabled = v
+	t.Cleanup(func() { serveFromMMapEnabled = prev })
+}
+
 func setupSideTableParity(t *testing.T) (st *State, overlayPath string, cur map[string]int64, ids [3]string) {
 	t.Helper()
 	testsupport.IsolateHome(t)
@@ -115,6 +127,7 @@ func setupSideTableParity(t *testing.T) (st *State, overlayPath string, cur map[
 // equals the overlaid Doc row for EVERY entity, via BOTH LabelIndex.at and
 // getByID.
 func TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc(t *testing.T) {
+	forceServeFromMMap(t, true) // exercise the flip path (default is OFF)
 	st, overlayPath, cur, ids := setupSideTableParity(t)
 
 	alpha, bravo := ids[0], ids[1] // charlie (ids[2]) deliberately un-overlaid
@@ -207,5 +220,56 @@ func TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc(t *testing.T) {
 	if c := byIDMap[ids[2]]; c == nil || c.CommunityID != nil || c.PageRank != nil ||
 		c.Centrality != nil || c.IsGodNode || c.IsArticulationPt {
 		t.Fatalf("charlie (un-overlaid) leaked overlay values: %#v", c)
+	}
+}
+
+// TestOverlaySideTable_FlagOffBuildsNoSideTableAndReadsDoc is the safety guard
+// for the DEFAULT (GRAFEL_SERVE_FROM_MMAP OFF) path: applyGroupAlgoOverlay must
+// NOT build the side-table (no resident cost pre-flip) and the read path must
+// source the overlay values from the in-place-stamped Doc — never the mmap
+// Reader — so there is no handler-path mmap read to race a reload's munmap.
+func TestOverlaySideTable_FlagOffBuildsNoSideTableAndReadsDoc(t *testing.T) {
+	forceServeFromMMap(t, false) // the production default
+	st, overlayPath, cur, ids := setupSideTableParity(t)
+
+	alpha := ids[0]
+	ov := &groupalgo.Overlay{
+		Group:        "acme",
+		SourceMtimes: cur,
+		Results: map[string]groupalgo.EntityOverlay{
+			alpha: {CommunityID: 39, PageRank: 0.0065, Centrality: 10415.99, IsGodNode: true},
+		},
+		Communities: []graph.CommunityResult{{ID: 39, Size: 1, AutoName: "alpha-cluster"}},
+	}
+	if err := groupalgo.WriteOverlayTo(overlayPath, ov); err != nil {
+		t.Fatalf("write overlay: %v", err)
+	}
+	if _, err := st.Reload(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+
+	grp := st.Group("acme")
+	lr := grp.Repos["svc"]
+	if lr == nil || lr.Doc == nil || lr.LabelIndex == nil {
+		t.Fatalf("svc repo not loaded")
+	}
+
+	// No side-table built on the flag-off path → no resident memory paid.
+	if lr.LabelIndex.overlay != nil {
+		t.Fatalf("flag-off built a side-table (len=%d); it must stay nil pre-flip", len(lr.LabelIndex.overlay))
+	}
+
+	// Values still surface — sourced from the in-place-stamped Doc, not the Reader.
+	if a := lr.LabelIndex.ByID(alpha); a == nil || a.CommunityID == nil || *a.CommunityID != 39 ||
+		a.PageRank == nil || *a.PageRank != 0.0065 || !a.IsGodNode {
+		t.Fatalf("flag-off ByID did not surface the overlaid Doc values: %#v", a)
+	}
+	// The Doc-sourced result must byte-equal the overlaid Doc row.
+	for i := range lr.Doc.Entities {
+		want := lr.Doc.Entities[i]
+		got := lr.LabelIndex.ByID(want.ID)
+		if !reflect.DeepEqual(got, &want) {
+			t.Fatalf("flag-off ByID(%s) != overlaid Doc row:\n got=%#v\nwant=%#v", want.ID, got, &want)
+		}
 	}
 }
