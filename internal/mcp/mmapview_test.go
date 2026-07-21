@@ -288,13 +288,11 @@ func idsOfViews(vs []graph.EntityView) []string {
 }
 
 // TestDefaultServeFromMMapForOS pins the platform default (ADR-0027 mmap cutover,
-// epic #5850): ON everywhere except Windows, where a mapped graph.fb blocks the
-// reindex rewrite (ERROR_USER_MAPPED_FILE on os.Rename).
+// epic #5850): ON on every platform, including Windows, now that the
+// generation-file layout removed the mapped-graph.fb rename hazard
+// (ERROR_USER_MAPPED_FILE on os.Rename).
 func TestDefaultServeFromMMapForOS(t *testing.T) {
-	if defaultServeFromMMapForOS("windows") {
-		t.Errorf("defaultServeFromMMapForOS(windows) = true, want false (opt-in on Windows)")
-	}
-	for _, goos := range []string{"linux", "darwin"} {
+	for _, goos := range []string{"linux", "darwin", "windows"} {
 		if !defaultServeFromMMapForOS(goos) {
 			t.Errorf("defaultServeFromMMapForOS(%q) = false, want true (default ON)", goos)
 		}

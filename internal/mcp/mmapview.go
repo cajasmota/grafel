@@ -33,15 +33,13 @@ import (
 // GRAFEL_SERVE_FROM_MMAP makes the hot-index build read through the mmap
 // (mmapEntityViewSource) instead of the heap Document (docEntityViewSource).
 //
-// Default is PLATFORM-CONDITIONAL (ADR-0027 mmap cutover, epic #5850):
-//   - macOS / Linux: default ON (validated). unset/""/malformed → mmap read path.
-//   - Windows: default OFF (opt-in). A memory-mapped graph.fb blocks the
-//     reindex-while-serving rewrite — os.Rename over a mapped file fails with
-//     ERROR_USER_MAPPED_FILE — so serving from a resident mmap Reader by default
-//     is unsafe there until a Windows-safe reindex strategy lands (tracked
-//     separately). The read path itself works on Windows; only the
-//     resident-reader-vs-reindex file-locking interaction is the blocker, so a
-//     Windows user can still explicitly opt IN via GRAFEL_SERVE_FROM_MMAP=1.
+// Default is ON on all three platforms (ADR-0027 mmap cutover, epic #5850):
+// macOS, Linux, and Windows all default to the mmap read path — unset/""/
+// malformed → mmap read path everywhere. The Windows opt-out that used to
+// apply here is no longer needed: the generation-file layout (PR-A) removed
+// the rename-over-a-mapped-file hazard (os.Rename over a mapped graph.fb used
+// to fail with ERROR_USER_MAPPED_FILE), so the reindex-while-serving rewrite
+// is now safe on Windows too.
 //
 // An explicit token overrides the platform default on EVERY OS: 0/false/no/off
 // force OFF, 1/true/yes/on force ON. Read ONCE at package load (below), never
@@ -49,17 +47,18 @@ import (
 var serveFromMMapEnabled = parseServeFromMMapFlag(os.Getenv("GRAFEL_SERVE_FROM_MMAP"))
 
 // defaultServeFromMMapForOS returns the platform default when the env flag is
-// unset/""/malformed: ON everywhere except Windows, where the mmap'd graph.fb
-// blocks the reindex rewrite (ERROR_USER_MAPPED_FILE on os.Rename). Testable so
-// the per-OS default is unit-verifiable without depending on runtime.GOOS.
-func defaultServeFromMMapForOS(goos string) bool { return goos != "windows" }
+// unset/""/malformed: ON on every platform, including Windows, now that the
+// generation-file layout removed the mmap'd-graph.fb rename hazard
+// (ERROR_USER_MAPPED_FILE on os.Rename). Testable so the per-OS default is
+// unit-verifiable without depending on runtime.GOOS.
+func defaultServeFromMMapForOS(goos string) bool { return true }
 
 // parseServeFromMMapFlag interprets the env value. Pure and total so the flag
 // wiring is unit-testable without mutating process env. An explicit off token —
 // 0/false/no/off (case-insensitive, trimmed) — forces OFF and an explicit truthy
 // token — 1/true/yes/on — forces ON, on every platform (opt-out / opt-in work
 // everywhere). unset/""/malformed falls back to the platform default
-// (defaultServeFromMMapForOS): ON on macOS/Linux, OFF on Windows.
+// (defaultServeFromMMapForOS): ON on macOS/Linux/Windows.
 func parseServeFromMMapFlag(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "0", "false", "no", "off":
