@@ -674,7 +674,36 @@ func (lr *LoadedRepo) getBM25() *BM25Index {
 		if lr.Doc == nil {
 			return
 		}
-		lr.BM25 = BuildBM25(lr.Doc)
+		// ADR-0027 Cutover / issue #5871 L4 (memory epic #5850, Path P PR3b):
+		// build the BM25 index from the resident mmap Reader when ON, else the
+		// Document. This is the FLIP PREREQUISITE — post-flip lr.Doc is emptied,
+		// so BuildBM25(lr.Doc) would build an EMPTY index; the Reader still holds
+		// every row. Flag-gated (default OFF) for the same handler-path munmap
+		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
+		// read (BuildBM25FromReader materializes every row) + a concurrent
+		// reload's munmap are serialized by the strictly-innermost readerMu, so
+		// the mapping cannot be freed mid-scan. Lock order: idxMu (held) ->
+		// readerMu; the Doc build takes no mmap so readerMu is dropped first.
+		lr.readerMu.Lock()
+		rdr := lr.Reader
+		h := lr.handle
+		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
+			idx := BuildBM25FromReader(rdr)
+			// Search resolves each ranked vector index -> *graph.Entity at return
+			// time via the readerMu-guarded, materialize-on-demand LabelIndex.at
+			// (mmap Reader base + group-algo overlay side-table) — NOT a retained
+			// pointer slice. Capture the current LabelIndex generation so the
+			// resolver stays byte-consistent with the graph.fb this index was
+			// built from; at() takes readerMu itself and falls back to the Doc if
+			// the mapping is retired, so it is safe to call lock-free from Search.
+			li := lr.LabelIndex
+			idx.resolve = func(vi int32) *graph.Entity { return li.at(vi) }
+			lr.BM25 = idx
+			lr.readerMu.Unlock()
+		} else {
+			lr.readerMu.Unlock()
+			lr.BM25 = BuildBM25(lr.Doc)
+		}
 	})
 	// Record the borrow time so the idle sweep can distinguish an actively-used
 	// index from one whose last search is older than the eviction window. Stamped

@@ -71,7 +71,9 @@ func (b *BM25Index) bruteSearch(query string, limit int) []Hit {
 	}
 	out := make([]Hit, len(res))
 	for i, r := range res {
-		out[i] = Hit{Entity: b.entities[r.di], Score: r.score}
+		// #5871 L4: entities holds vector indices, resolved to *graph.Entity
+		// via b.resolve (set by BuildBM25 to a live-Document heap-copy closure).
+		out[i] = Hit{Entity: b.resolve(b.entities[r.di]), Score: r.score}
 	}
 	return out
 }
@@ -103,7 +105,10 @@ func TestBM25SearchMatchesBruteForce(t *testing.T) {
 				t.Fatalf("q=%q lim=%d length mismatch: got=%d want=%d", q, lim, len(got), len(want))
 			}
 			for i := range got {
-				if got[i].Entity != want[i].Entity {
+				// #5871 L4: entities are resolved to FRESH heap copies on demand
+				// (b.resolve), so identity is by ID, not pointer — every resolve
+				// call returns a distinct *graph.Entity for the same logical row.
+				if got[i].Entity.ID != want[i].Entity.ID {
 					t.Fatalf("q=%q lim=%d pos=%d entity mismatch: got=%s want=%s",
 						q, lim, i, got[i].Entity.ID, want[i].Entity.ID)
 				}

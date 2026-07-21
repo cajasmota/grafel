@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -64,7 +65,28 @@ type posting struct {
 
 // BM25Index is a per-repo BM25 index over entities, with multi-source weights.
 type BM25Index struct {
-	entities  []*graph.Entity
+	// entities maps a doc index (postings/docLen position) to the entity's
+	// VECTOR INDEX — the int32 position of that entity in the graph.fb / Document
+	// vector order (memory epic #5850, Path P PR3b / issue #5871 L4). It is the
+	// identity permutation today (doc index i == vector index i, since every
+	// entity is indexed with no skips), but is stored explicitly so Search never
+	// assumes identity and so the index retains NO `*graph.Entity`. Retaining
+	// 427k live entity pointers here would re-pin ~the whole Document (~608 MB on
+	// the corpus) and defeat the ADR-0027 mmap flip; the vector index is 4 bytes
+	// and resolves to an entity on demand at Search-return time via resolve.
+	entities []int32
+	// resolve turns a doc's vector index into a freshly materialized
+	// *graph.Entity at Search-return time (never a retained pointer). It is set by
+	// the builder/getter, NOT stored per-doc, so it costs one closure regardless
+	// of corpus size:
+	//   - flag-OFF / nil / retired Reader: BuildBM25 wires a closure over the live
+	//     Document that heap-copies doc.Entities[i] (GC-safe, no mmap read).
+	//   - flag-ON (resident, non-retired Reader): getBM25 wires it to the repo's
+	//     readerMu-guarded LabelIndex.at, which materializes the base entity from
+	//     the mmap Reader + merges the group-algo overlay side-table on demand.
+	// A nil resolve yields no entities (defensive; every production/build path
+	// sets it).
+	resolve   func(vectorIdx int32) *graph.Entity
 	docLen    []float32 // per-doc |d| (sum of weighted frequencies), by doc index
 	avgLen    float64
 	totalDocs int
@@ -81,17 +103,23 @@ type BM25Index struct {
 	postings map[string][]posting
 }
 
-// BuildBM25 builds a BM25 index for a single graph document.
+// BuildBM25 builds a BM25 index for a single graph document. This is the
+// flag-OFF / nil-Reader / retired-Reader path (getBM25); it is also the parity
+// baseline the Reader-sourced BuildBM25FromReader must match byte-for-byte
+// (same postings / docLen / tokens). It stores only the per-doc vector index
+// (idx.entities[i] == i) and wires resolve to a live-Document heap-copy closure,
+// so it retains NO `*graph.Entity` of its own — the Document it closes over is
+// lr.Doc, already retained on the flag-OFF path (issue #5871 L4).
 func BuildBM25(doc *graph.Document) *BM25Index {
 	idx := &BM25Index{
-		entities: make([]*graph.Entity, len(doc.Entities)),
+		entities: make([]int32, len(doc.Entities)),
 		docLen:   make([]float32, len(doc.Entities)),
 		postings: make(map[string][]posting),
 	}
 	totalLen := 0.0
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		idx.entities[i] = e
+		idx.entities[i] = int32(i) // doc index == vector index (identity, no skips)
 		// buildDocTerms produces a TRANSIENT weighted bag (a per-doc map); we
 		// fold it into the postings index and let it be GC'd — only the postings
 		// list (with tf inline) and the scalar docLen survive as resident state.
@@ -110,6 +138,74 @@ func BuildBM25(doc *graph.Document) *BM25Index {
 	idx.totalDocs = len(idx.entities)
 	if idx.totalDocs > 0 {
 		idx.avgLen = totalLen / float64(idx.totalDocs)
+	}
+	// Resolve a vector index to a fresh heap copy of the live Document row. The
+	// closure captures doc (== lr.Doc, retained anyway on the flag-OFF path), NOT
+	// a slice of entity pointers — so the index adds no per-entity retention. The
+	// returned pointer is a fresh heap copy (like getByID/LabelIndex.at), so
+	// callers keying on Entity.ID are behavior-neutral vs the old aliased pointer.
+	idx.resolve = func(vi int32) *graph.Entity {
+		if vi < 0 || int(vi) >= len(doc.Entities) {
+			return nil
+		}
+		e := doc.Entities[vi] // heap copy — a fresh pointer, not an alias into Doc
+		return &e
+	}
+	return idx
+}
+
+// BuildBM25FromReader builds a BM25 index by iterating the resident mmap Reader
+// instead of a materialized graph.Document (memory epic #5850, Path P PR3b /
+// issue #5871 L4). This is the FLIP PREREQUISITE: post-flip lr.Doc is emptied,
+// so BuildBM25(lr.Doc) would build an EMPTY index; the Reader still holds every
+// row, so we tokenize from it.
+//
+// Byte-parity with BuildBM25(doc): the Reader holds the same rows in the same
+// vector order the Document loader produces, and graph.MaterializeEntity decodes
+// each row byte-identically to the Document's entity. Feeding the materialized
+// entity through the SAME buildDocTerms yields the SAME weighted bag, so the
+// postings (doc, tf), docLen, avgLen and totalDocs are byte-equal to the
+// Document-sourced build over the same graph.fb (TestBM25ReaderBuildParity_PR3b).
+//
+// No-retention contract: each entity is materialized ONLY to tokenize it and is
+// discarded at the end of the loop iteration — it is a local value, never stored
+// in the index. The index keeps only the int32 vector index per doc, so building
+// from the Reader does NOT re-pin the ~608 MB of entities the flip is dropping.
+// resolve is NOT set here (this function does not know the repo's
+// readerMu/LabelIndex); getBM25 wires resolve to the readerMu-guarded
+// LabelIndex.at after this returns.
+//
+// Callers on the wired handler path MUST hold the owning repo's readerMu around
+// this call (the mmap is dereferenced per row), exactly like
+// buildAdjacencyFromReader in getAdjacency.
+func BuildBM25FromReader(r *fbreader.Reader) *BM25Index {
+	n := 0
+	if r != nil {
+		n = r.EntityCount()
+	}
+	idx := &BM25Index{
+		entities: make([]int32, n),
+		docLen:   make([]float32, n),
+		postings: make(map[string][]posting),
+	}
+	totalLen := 0.0
+	for i := 0; i < n; i++ {
+		// Materialize the entity TRANSIENTLY: buildDocTerms reads Name /
+		// SourceFile / PropLookup(docstring, discriminators) / Kind to tokenize.
+		// e is a local value that goes out of scope (and becomes GC-eligible) at
+		// the end of this iteration — it is never retained by the index.
+		e := graph.MaterializeEntity(r, i)
+		idx.entities[i] = int32(i) // doc index == reader vector index (identity)
+		d := buildDocTerms(&e)
+		idx.docLen[i] = float32(d.length)
+		totalLen += d.length
+		for term, tf := range d.tf {
+			idx.postings[term] = append(idx.postings[term], posting{doc: int32(i), tf: float32(tf)})
+		}
+	}
+	idx.totalDocs = n
+	if n > 0 {
+		idx.avgLen = totalLen / float64(n)
 	}
 	return idx
 }
@@ -444,12 +540,27 @@ func (b *BM25Index) Search(query string, limit int) []Hit {
 		}
 		return scored[i].di < scored[j].di
 	})
-	hits := make([]Hit, len(scored))
-	for i, sd := range scored {
-		hits[i] = Hit{Entity: b.entities[sd.di], Score: sd.score}
-	}
-	if limit > 0 && len(hits) > limit {
-		hits = hits[:limit]
+	// Resolve each ranked doc index -> vector index -> *graph.Entity at RETURN
+	// time via b.resolve (issue #5871 L4). The index retains no entity pointers;
+	// resolve materializes on demand — a fresh Document heap copy on the flag-OFF
+	// path, or the readerMu-guarded LabelIndex.at (mmap Reader + overlay
+	// side-table) on the flag-ON path. A nil resolve (defensive) or an
+	// unresolvable index (e.g. a retired mapping falling back to an emptied Doc)
+	// is skipped, so hits may be shorter than scored — apply limit AFTER
+	// resolution so the returned slice honors the requested cap.
+	hits := make([]Hit, 0, len(scored))
+	for _, sd := range scored {
+		if b.resolve == nil {
+			break
+		}
+		ent := b.resolve(b.entities[sd.di])
+		if ent == nil {
+			continue
+		}
+		hits = append(hits, Hit{Entity: ent, Score: sd.score})
+		if limit > 0 && len(hits) >= limit {
+			break
+		}
 	}
 	return hits
 }
