@@ -106,12 +106,12 @@ func TestForEachEntity_FlagOnParityWithOverlay(t *testing.T) {
 		t.Fatalf("svc repo not fully wired for mmap")
 	}
 
-	// Ground truth: overlaid Doc rows, by ID.
-	wantByID := map[string]*graph.Entity{}
-	for i := range lr.Doc.Entities {
-		e := lr.Doc.Entities[i]
-		wantByID[e.ID] = &e
-	}
+	// Ground truth: overlaid Doc rows, by ID. Under the PR7 flip lr.Doc is
+	// header-only (empty), so rebuild the overlaid rows from a full load + the
+	// known overlay — byte-identical to the pre-flip in-place-stamped
+	// lr.Doc.Entities the Reader+side-table forEachEntity scan must match.
+	wantByID := overlaidGroundTruthByID(t, filepath.Dir(lr.GraphFile), ov)
+	wantCount := int(lr.Reader.EntityCount())
 
 	var gotByID = map[string]*graph.Entity{}
 	count := 0
@@ -121,8 +121,8 @@ func TestForEachEntity_FlagOnParityWithOverlay(t *testing.T) {
 		return true
 	})
 
-	if count != len(lr.Doc.Entities) {
-		t.Fatalf("forEachEntity flag-on yielded %d entities, want %d", count, len(lr.Doc.Entities))
+	if count != wantCount {
+		t.Fatalf("forEachEntity flag-on yielded %d entities, want %d", count, wantCount)
 	}
 	for id, want := range wantByID {
 		got := gotByID[id]
@@ -433,7 +433,9 @@ func TestForEachEntity_RealReloadOverlayRestampRace(t *testing.T) {
 	if graphFile == "" {
 		t.Fatalf("lr.GraphFile empty — cannot drive a real reparse")
 	}
-	wantEnts := len(lr.Doc.Entities)
+	// Under the PR7 flip lr.Doc is header-only (empty), so the expected scan
+	// length is the resident Reader's row count, not len(lr.Doc.Entities).
+	wantEnts := int(lr.Reader.EntityCount())
 
 	stop := make(chan struct{})
 	var faults atomic.Int64

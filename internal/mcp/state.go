@@ -1673,6 +1673,17 @@ func (s *State) Close() {
 // readDocumentFromDir is a package var (not a plain func) so tests can wrap it
 // with a parse counter to assert the #3377 content-hash skip avoids reparsing.
 var readDocumentFromDir = func(stateDir string) (*graph.Document, error) {
+	// ADR-0027 mmap-cutover PR7 (memory epic #5850): when serving from mmap is
+	// enabled (opt-in, GRAFEL_SERVE_FROM_MMAP; DEFAULT OFF), load a HEADER-ONLY
+	// Document — meta/Stats/counts populated, Entities/Relationships left empty
+	// — because reloadLocked opens a resident fbreader.Reader right after this
+	// call and every read path (forEachEntity/at/getByIDOne/BM25/adjacency/
+	// overlay) serves from that Reader. The Doc stays non-nil (the "loaded"
+	// sentinel), so the ~608 MB entity/relationship materialization is dropped
+	// from the Go heap. DEFAULT OFF ⇒ full materialization, 100% unchanged.
+	if serveFromMMap() {
+		return graph.LoadGraphHeaderOnlyFromDir(stateDir)
+	}
 	return graph.LoadGraphFromDir(stateDir)
 }
 

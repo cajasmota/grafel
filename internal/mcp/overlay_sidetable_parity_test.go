@@ -119,6 +119,38 @@ func setupSideTableParity(t *testing.T) (st *State, overlayPath string, cur map[
 	return st, overlayPath, cur, [3]string{"svc:Alpha", "svc:Bravo", "svc:Charlie"}
 }
 
+// overlaidGroundTruthByID reconstructs the flag-OFF "overlaid Doc" ground truth
+// for a repo whose in-memory Doc is HEADER-ONLY under the PR7 flip (empty
+// Entities, so it can no longer be the ground-truth source). It FULL-loads the
+// repo's graph.fb (base fields via the same fbEntityToGraphEntity path the
+// pre-flip flag-ON reload used) and stamps the 5 group-algo overlay fields from
+// ov byte-identically to applyGroupAlgoOverlay's in-place Doc stamp — so the
+// returned rows are exactly what lr.Doc.Entities held before the flip. This is
+// the value source the Reader+side-table read path must byte-match.
+func overlaidGroundTruthByID(t *testing.T, stateDir string, ov *groupalgo.Overlay) map[string]*graph.Entity {
+	t.Helper()
+	full, err := graph.LoadGraphFromDir(stateDir)
+	if err != nil {
+		t.Fatalf("full load for ground truth: %v", err)
+	}
+	out := make(map[string]*graph.Entity, len(full.Entities))
+	for i := range full.Entities {
+		e := full.Entities[i]
+		if eo, has := ov.Results[e.ID]; has {
+			cid := eo.CommunityID
+			pr := eo.PageRank
+			cen := eo.Centrality
+			e.CommunityID = &cid
+			e.PageRank = &pr
+			e.Centrality = &cen
+			e.IsGodNode = eo.IsGodNode
+			e.IsArticulationPt = eo.IsArticulationPoint
+		}
+		out[e.ID] = &e
+	}
+	return out
+}
+
 // TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc is the mandatory
 // overlay-aware parity guard. It applies an overlay setting DISTINCT
 // CommunityID/PageRank/Centrality/god/articulation on two of three entities
@@ -163,12 +195,11 @@ func TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc(t *testing.T) {
 		t.Fatalf("svc repo has nil LabelIndex")
 	}
 
-	// Ground truth: the overlaid live Doc rows (what today's queries return).
-	docByID := map[string]*graph.Entity{}
-	for i := range lr.Doc.Entities {
-		e := lr.Doc.Entities[i]
-		docByID[e.ID] = &e
-	}
+	// Ground truth: the overlaid Doc rows (what the flag-OFF path returns). Under
+	// the PR7 flip lr.Doc is header-only (empty), so rebuild the overlaid rows
+	// from a full load + the known overlay — byte-identical to the pre-flip
+	// in-place-stamped lr.Doc.Entities the Reader+side-table path must match.
+	docByID := overlaidGroundTruthByID(t, filepath.Dir(lr.GraphFile), ov)
 
 	byIDMap := lr.getByID()
 

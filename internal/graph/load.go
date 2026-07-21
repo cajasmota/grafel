@@ -151,6 +151,28 @@ func LoadGraphFromDir(dir string) (*Document, error) {
 	}
 }
 
+// LoadGraphHeaderOnlyFromDir loads a HEADER-ONLY graph.Document from dir: all
+// meta/Stats/community/algo fields are populated but the Entities and
+// Relationships slices are left EMPTY (non-nil). It is the serve-side mmap-
+// cutover load path (ADR-0027 PR7, memory epic #5850, opt-in via
+// GRAFEL_SERVE_FROM_MMAP) — serve pairs the returned Doc with a resident
+// fbreader.Reader and serves every row from the mmap, so the ~608 MB of
+// entity/relationship rows is never materialized on the Go heap.
+//
+// Header-only is only meaningful for graph.fb (the mmap-backed format). When
+// only graph.json is present there is no mmap Reader to serve from, so this
+// falls back to the full LoadGraphFromDir (JSON) load — correctness over the
+// (absent) memory win. Callers that need a full Document (every CLI/full-Doc
+// consumer) must keep using LoadGraphFromDir.
+func LoadGraphHeaderOnlyFromDir(dir string) (*Document, error) {
+	fbPath := filepath.Join(dir, "graph.fb")
+	if _, err := os.Stat(fbPath); err == nil {
+		return loadFBDocumentHeaderOnly(fbPath)
+	}
+	// No graph.fb — no mmap to serve from; full load (graph.json or error).
+	return LoadGraphFromDir(dir)
+}
+
 // PersistedStats is a cheap, on-disk view of a repo's index size and
 // freshness, read from the graph.fb header WITHOUT materializing the
 // entity/relationship vectors. Used by the dashboard group overview and
@@ -266,7 +288,42 @@ func (si *stringInterner) intern(b []byte) string {
 // FlatBuffers view into an in-memory *Document by iterating the entity
 // and relationship vectors. This is O(N) but allocates far fewer
 // intermediate objects than JSON unmarshal.
+//
+// This is the SHARED full-materialize loader used by every full-Doc consumer
+// (CLI docgen/dashboard/links/status, xrepo-verify, group-algo, etc.). It is
+// NOT gated on any serve env flag and always returns a fully-populated
+// Document. The header-only serve variant lives in loadFBDocumentHeaderOnly.
 func loadFBDocument(path string) (*Document, error) {
+	return loadFBDoc(path, false)
+}
+
+// loadFBDocumentHeaderOnly decodes a graph.fb file into a *Document that
+// carries all header/meta/Stats/community/algo information but leaves the
+// Entities and Relationships slices EMPTY (non-nil, len 0).
+//
+// ADR-0027 mmap-cutover PR7 (memory epic #5850): this is the serve-side,
+// opt-in (GRAFEL_SERVE_FROM_MMAP) load path. serve opens its OWN resident
+// fbreader.Reader alongside this Doc and routes every read through the Reader
+// (forEachEntity/at/getByIDOne/BM25/adjacency/overlay), so the ~608 MB of
+// materialized entity/relationship rows is never allocated on the Go heap.
+// The Doc stays NON-NIL (the "loaded" sentinel every lazy getter checks) with
+// populated Stats counts so reporting reads the true entity/relationship
+// totals. It is NEVER called by the shared full-Doc CLI path.
+func loadFBDocumentHeaderOnly(path string) (*Document, error) {
+	return loadFBDoc(path, true)
+}
+
+// loadFBDoc is the shared core behind loadFBDocument (headerOnly=false, the
+// full-materialize path used by every CLI/full-Doc consumer) and
+// loadFBDocumentHeaderOnly (headerOnly=true, the serve mmap-cutover path).
+//
+// When headerOnly is true the two O(N) materialize loops that build the
+// Entities and Relationships slices are SKIPPED — the slices stay empty
+// (non-nil) — but meta, communities, AlgorithmStats and the Stats counts are
+// populated identically. Everything else is byte-identical to the full path,
+// so a full load and a header-only load of the same graph.fb agree on every
+// field except the (intentionally empty) Entities/Relationships slices.
+func loadFBDoc(path string, headerOnly bool) (*Document, error) {
 	r, err := fbreader.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("graph.loadFBDocument: open %s: %w", path, err)
@@ -293,22 +350,36 @@ func loadFBDocument(path string) (*Document, error) {
 	// the same backing array as the entity ids they reference.
 	si := newStringInterner()
 
-	entities := make([]Entity, 0, nEnts)
-	for i := 0; i < nEnts; i++ {
-		fbEnt := r.EntityAt(i)
-		if fbEnt == nil {
-			continue
-		}
-		entities = append(entities, fbEntityToGraphEntity(fbEnt, si))
+	// Header-only: leave Entities/Relationships EMPTY (non-nil) and allocate no
+	// per-record backing array. serve serves these rows from its resident mmap
+	// Reader; the ~608 MB heap materialization is exactly what we are dropping.
+	entCap := nEnts
+	relCap := nRels
+	if headerOnly {
+		entCap = 0
+		relCap = 0
 	}
 
-	rels := make([]Relationship, 0, nRels)
-	for i := 0; i < nRels; i++ {
-		fbRel := r.RelationshipAt(i)
-		if fbRel == nil {
-			continue
+	entities := make([]Entity, 0, entCap)
+	if !headerOnly {
+		for i := 0; i < nEnts; i++ {
+			fbEnt := r.EntityAt(i)
+			if fbEnt == nil {
+				continue
+			}
+			entities = append(entities, fbEntityToGraphEntity(fbEnt, si))
 		}
-		rels = append(rels, fbRelToGraphRel(fbRel, si))
+	}
+
+	rels := make([]Relationship, 0, relCap)
+	if !headerOnly {
+		for i := 0; i < nRels; i++ {
+			fbRel := r.RelationshipAt(i)
+			if fbRel == nil {
+				continue
+			}
+			rels = append(rels, fbRelToGraphRel(fbRel, si))
+		}
 	}
 
 	// Restore the aggregate Pass-4 community list + corpus stats (#1620).
@@ -327,6 +398,18 @@ func loadFBDocument(path string) (*Document, error) {
 		}
 	}
 
+	// Stats reports the record counts. On the full path use len(entities)/
+	// len(rels) (byte-identical to before; may differ from nEnts/nRels if a
+	// vector slot decoded to nil and was skipped). Header-only skips the loops,
+	// so source the counts straight off the Reader header — reporting
+	// (len(lr.Doc.Entities) is 0 header-only) reads Stats for the true totals.
+	statsEnts := len(entities)
+	statsRels := len(rels)
+	if headerOnly {
+		statsEnts = nEnts
+		statsRels = nRels
+	}
+
 	doc := &Document{
 		// Preserve SchemaVersion (JSON schema = 1) rather than the FB
 		// binary format version (2) so callers that check Version == 1
@@ -338,8 +421,8 @@ func loadFBDocument(path string) (*Document, error) {
 		Relationships: rels,
 		Communities:   communities,
 		Stats: Stats{
-			Entities:      len(entities),
-			Relationships: len(rels),
+			Entities:      statsEnts,
+			Relationships: statsRels,
 		},
 		// Phase 0 git metadata (#2088). Defaults to "" / false for graphs
 		// written before these fields were added.
