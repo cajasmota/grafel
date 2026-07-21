@@ -43,7 +43,7 @@ func TestFindEntityLinesByName_PythonMethod(t *testing.T) {
 		Kind:    "SCOPE.Operation",
 		Subtype: "method",
 	}
-	start, end, ok := findEntityLinesByName(path, e)
+	start, end, ok := findEntityLinesByName(path, graph.EntityViewOf(e))
 	if !ok {
 		t.Fatalf("expected fallback to find the method")
 	}
@@ -74,7 +74,7 @@ func TestFindEntityLinesByName_PythonClass(t *testing.T) {
 		Kind:    "SCOPE.Component",
 		Subtype: "class",
 	}
-	start, end, ok := findEntityLinesByName(path, e)
+	start, end, ok := findEntityLinesByName(path, graph.EntityViewOf(e))
 	if !ok {
 		t.Fatalf("expected fallback to find the class")
 	}
@@ -106,7 +106,7 @@ func TestFindEntityLinesByName_JSXFunctionComponent(t *testing.T) {
 		Kind:    "SCOPE.Operation",
 		Subtype: "react_component",
 	}
-	start, end, ok := findEntityLinesByName(path, e)
+	start, end, ok := findEntityLinesByName(path, graph.EntityViewOf(e))
 	if !ok {
 		t.Fatalf("expected fallback to find the component")
 	}
@@ -120,7 +120,7 @@ func TestFindEntityLinesByName_JSXFunctionComponent(t *testing.T) {
 
 func TestFindEntityLinesByName_MissingFile(t *testing.T) {
 	e := &graph.Entity{Name: "Whatever", Kind: "SCOPE.Operation"}
-	_, _, ok := findEntityLinesByName(filepath.Join(t.TempDir(), "does-not-exist.py"), e)
+	_, _, ok := findEntityLinesByName(filepath.Join(t.TempDir(), "does-not-exist.py"), graph.EntityViewOf(e))
 	if ok {
 		t.Fatalf("expected ok=false for missing file")
 	}
@@ -128,7 +128,7 @@ func TestFindEntityLinesByName_MissingFile(t *testing.T) {
 
 func TestFindEntityLinesByName_EmptyName(t *testing.T) {
 	path := writeTempSource(t, "blank.py", "# nothing\n")
-	_, _, ok := findEntityLinesByName(path, &graph.Entity{Name: "", Kind: "SCOPE.Operation"})
+	_, _, ok := findEntityLinesByName(path, graph.EntityViewOf(&graph.Entity{Name: "", Kind: "SCOPE.Operation"}))
 	if ok {
 		t.Fatalf("expected ok=false for empty name")
 	}

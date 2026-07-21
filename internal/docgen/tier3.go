@@ -309,7 +309,7 @@ func enumerateRepoSeeds(doc *graph.Document, _ string, cap int) (seeds []string,
 	var candidates []rankedEntity
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if !isPageWorthy(e) {
+		if !isPageWorthy(graph.EntityViewOf(e)) {
 			continue
 		}
 		pr := 0.0
@@ -343,8 +343,8 @@ func enumerateRepoSeeds(doc *graph.Document, _ string, cap int) (seeds []string,
 
 // isPageWorthy returns true if the entity kind matches any entry in PageWorthyKinds.
 // The check is case-insensitive substring matching.
-func isPageWorthy(e *graph.Entity) bool {
-	k := strings.ToLower(e.Kind)
+func isPageWorthy(e graph.EntityView) bool {
+	k := strings.ToLower(e.Kind())
 	for _, pw := range PageWorthyKinds {
 		if strings.Contains(k, pw) {
 			return true
@@ -358,7 +358,7 @@ func extractPageWorthyIDs(doc *graph.Document) map[string]bool {
 	ids := make(map[string]bool)
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if isPageWorthy(e) {
+		if isPageWorthy(graph.EntityViewOf(e)) {
 			ids[e.ID] = true
 		}
 	}
@@ -380,7 +380,7 @@ func EnumerateRepoSeedsForTest(doc *graph.Document, group string) ([]string, int
 // IsPageWorthyForTest exposes isPageWorthy for unit tests.
 func IsPageWorthyForTest(kind string) bool {
 	e := &graph.Entity{Kind: kind}
-	return isPageWorthy(e)
+	return isPageWorthy(graph.EntityViewOf(e))
 }
 
 // DeduplicatePagesForTest exposes deduplicatePages for unit tests.

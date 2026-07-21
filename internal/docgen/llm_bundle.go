@@ -898,7 +898,7 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 			effectiveStart := entity.StartLine
 			effectiveEnd := entity.EndLine
 			if startSentinel || endSentinel {
-				if recStart, recEnd, ok := findEntityLinesByName(absPath, entity); ok {
+				if recStart, recEnd, ok := findEntityLinesByName(absPath, graph.EntityViewOf(entity)); ok {
 					if startSentinel {
 						effectiveStart = recStart
 					}
@@ -1026,7 +1026,7 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		// metadata so the LLM can document the accessor with the same
 		// shape every Lombok-aware reader expects.
 		if gc.SourceWindow == "" {
-			if stub := buildLombokSynthStub(entity); stub != "" {
+			if stub := buildLombokSynthStub(graph.EntityViewOf(entity)); stub != "" {
 				gc.SourceWindow = stub
 				gc.SourceWindowFallback = true
 			}
@@ -1951,8 +1951,8 @@ func BundleHashValid(bundle *LLMPromptBundle, result *LLMRunResult) error {
 //   - JS / TS function / arrow / class declarations
 //   - Otherwise the FIRST line containing the bare name surrounded by
 //     non-identifier chars is used (with end_line = start + 20 fallback).
-func findEntityLinesByName(path string, e *graph.Entity) (start, end int, ok bool) {
-	if e == nil || e.Name == "" {
+func findEntityLinesByName(path string, e graph.EntityView) (start, end int, ok bool) {
+	if e == nil || e.Name() == "" {
 		return 0, 0, false
 	}
 	f, err := os.Open(path) //nolint:gosec // path is constructed inside repo root
@@ -1964,7 +1964,7 @@ func findEntityLinesByName(path string, e *graph.Entity) (start, end int, ok boo
 	// Strip any dotted class prefix the extractor encoded on methods
 	// ("ClassName.methodName" → "methodName"). For Python and JS/TS the
 	// declaration in source is the bare leaf identifier.
-	leafName := e.Name
+	leafName := e.Name()
 	if idx := strings.LastIndex(leafName, "."); idx >= 0 {
 		leafName = leafName[idx+1:]
 	}
@@ -1972,7 +1972,7 @@ func findEntityLinesByName(path string, e *graph.Entity) (start, end int, ok boo
 		return 0, 0, false
 	}
 
-	patterns := entityDeclPatterns(leafName, e.Kind, e.Subtype)
+	patterns := entityDeclPatterns(leafName, e.Kind(), e.Subtype())
 	scanner := bufio.NewScanner(f)
 	// Allow long lines (default 64 KiB is too small for minified bundles).
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

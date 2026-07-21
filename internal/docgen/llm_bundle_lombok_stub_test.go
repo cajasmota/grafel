@@ -28,7 +28,7 @@ func TestBuildLombokSynthStub_DataGetter(t *testing.T) {
 			"field":            "pageSize",
 		},
 		))
-	stub := buildLombokSynthStub(e)
+	stub := buildLombokSynthStub(graph.EntityViewOf(e))
 	if stub == "" {
 		t.Fatalf("expected non-empty stub for lombok @Data getter")
 	}
@@ -58,7 +58,7 @@ func TestBuildLombokSynthStub_DataSetter(t *testing.T) {
 			"field":            "pageSize",
 		},
 		))
-	stub := buildLombokSynthStub(e)
+	stub := buildLombokSynthStub(graph.EntityViewOf(e))
 	if !strings.Contains(stub, "this.pageSize = pageSize") {
 		t.Errorf("setter stub missing assignment, got:\n%s", stub)
 	}
@@ -82,7 +82,7 @@ func TestBuildLombokSynthStub_GetterAnnotation(t *testing.T) {
 			"field":            "name",
 		},
 		))
-	stub := buildLombokSynthStub(e)
+	stub := buildLombokSynthStub(graph.EntityViewOf(e))
 	if !strings.Contains(stub, "@Getter") {
 		t.Errorf("expected @Getter label, got:\n%s", stub)
 	}
@@ -99,7 +99,7 @@ func TestBuildLombokSynthStub_NoLombokProperty(t *testing.T) {
 			"some_other_prop": "x",
 		},
 		))
-	if stub := buildLombokSynthStub(e); stub != "" {
+	if stub := buildLombokSynthStub(graph.EntityViewOf(e)); stub != "" {
 		t.Errorf("expected empty stub for non-lombok entity, got: %q", stub)
 	}
 }
@@ -123,7 +123,7 @@ func TestBuildLombokSynthStub_NonAccessorMethod(t *testing.T) {
 			"pattern_type":     "lombok_accessor",
 		},
 		))
-	stub := buildLombokSynthStub(e)
+	stub := buildLombokSynthStub(graph.EntityViewOf(e))
 	if !strings.Contains(stub, "toString") {
 		t.Errorf("non-accessor stub missing method name, got:\n%s", stub)
 	}
