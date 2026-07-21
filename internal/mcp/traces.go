@@ -265,8 +265,8 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 		}
 		// #1656: O(1) lookup via cached ByID instead of an O(N) scan over
 		// every entity in the repo to find the entry point.
-		byID := r.getByID()
-		entryEnt := byID[target]
+		resolve := memoRepoResolver(r)
+		entryEnt := resolve(target)
 		if entryEnt == nil {
 			continue
 		}
@@ -284,7 +284,7 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 					"step_index": i,
 					"node_id":    prefID,
 				}
-				if e, ok := byID[id]; ok {
+				if e := resolve(id); e != nil {
 					step["name"] = e.Name
 					step["file"] = e.SourceFile
 					if e.StartLine > 0 {
@@ -336,22 +336,26 @@ type crossRepoLookup func(id string) (repoSlug string, e *graph.Entity)
 // handles bridge steps whose entities live elsewhere in the group.
 func buildGroupCrossRepoLookup(lg *LoadedGroup, seedRepo string) crossRepoLookup {
 	// Pre-collect companion repos in sorted order for determinism.
+	// Path P (#5850): hold the repo, NOT its whole entity map. This resolver is
+	// long-lived (returned to the caller); storing getByID() per companion would
+	// retain every companion repo's entire entity set on the flag-ON path. Each
+	// lookup materializes exactly one entity via getByIDOne instead.
 	type companion struct {
 		slug string
-		byID map[string]*graph.Entity
+		repo *LoadedRepo
 	}
 	var companions []companion
 	for slug, r := range lg.Repos {
 		if slug == seedRepo || r == nil || r.Doc == nil {
 			continue
 		}
-		companions = append(companions, companion{slug, r.getByID()})
+		companions = append(companions, companion{slug, r})
 	}
 	sort.Slice(companions, func(i, j int) bool { return companions[i].slug < companions[j].slug })
 
 	return func(id string) (string, *graph.Entity) {
 		for _, c := range companions {
-			if e, ok := c.byID[id]; ok {
+			if e, ok := c.repo.getByIDOne(id); ok {
 				return c.slug, e
 			}
 		}
@@ -388,7 +392,6 @@ func buildProcessSteps(r *LoadedRepo, proc *graph.Entity, verbose ...bool) []map
 func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo crossRepoLookup, verbose ...bool) []map[string]any {
 	wantVerbose := len(verbose) > 0 && verbose[0]
 	repo := r.Repo
-	byID := r.getByID()
 	type indexed struct {
 		idx int
 		id  string
@@ -416,7 +419,7 @@ func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo
 		// companion's slug for the prefixed id field, not the seed repo slug.
 		stepRepo := repo
 		var ent *graph.Entity
-		if e, ok := byID[o.id]; ok {
+		if e, ok := r.getByIDOne(o.id); ok {
 			ent = e
 		} else if crossRepo != nil {
 			// Not found in the seed repo — look across companion repos.

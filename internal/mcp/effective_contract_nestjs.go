@@ -128,12 +128,11 @@ func isNestJSEndpoint(e *graph.Entity) bool {
 // unresolved (honest-partial: the resolver degrades to endpoint props).
 func nestHandlerEntity(r *LoadedRepo, ep *graph.Entity) *graph.Entity {
 	adj := r.getAdjacency()
-	byID := r.getByID()
 	for _, ed := range adj.Incoming(ep.ID) {
 		if !strings.EqualFold(ed.kind, "IMPLEMENTS") {
 			continue
 		}
-		if h := byID[ed.target]; h != nil {
+		if h, _ := r.getByIDOne(ed.target); h != nil {
 			return h
 		}
 	}

@@ -356,9 +356,10 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 		if lookup == "" {
 			lookup = topicID
 		}
-		byID := r.getByID()
-		topicEnt, ok := byID[lookup]
-		if !ok {
+		// Path P (#5850): materialize only the topic + its matched participants.
+		resolve := memoRepoResolver(r)
+		topicEnt := resolve(lookup)
+		if topicEnt == nil {
 			// Fall back: resolve by entity name or qualified name.
 			topicEnt = r.LabelIndex.Lookup(lookup)
 			if topicEnt == nil {
@@ -372,7 +373,7 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 			switch rel.Kind {
 			case "PUBLISHES_TO":
 				if rel.ToID == canonID {
-					if src, ok2 := byID[rel.FromID]; ok2 {
+					if src := resolve(rel.FromID); src != nil {
 						p := participant{
 							EntityID:   prefixedID(r.Repo, src.ID),
 							EntityName: src.Name,
@@ -387,7 +388,7 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 				}
 			case "SUBSCRIBES_TO":
 				if rel.ToID == canonID {
-					if src, ok2 := byID[rel.FromID]; ok2 {
+					if src := resolve(rel.FromID); src != nil {
 						p := participant{
 							EntityID:   prefixedID(r.Repo, src.ID),
 							EntityName: src.Name,
@@ -782,9 +783,10 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 		if target == "" {
 			target = patternID
 		}
-		byID := r.getByID()
-		e, ok := byID[target]
-		if !ok || (e.Kind != "SCOPE.Pattern" && e.Kind != "Pattern") {
+		// Path P (#5850): materialize only the pattern + its matched exemplars.
+		resolve := memoRepoResolver(r)
+		e := resolve(target)
+		if e == nil || (e.Kind != "SCOPE.Pattern" && e.Kind != "Pattern") {
 			continue
 		}
 		// Collect exemplar entities.
@@ -796,7 +798,7 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 		var exemplars []exemplar
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if (rel.Kind == "EXEMPLIFIES" || rel.Kind == "INSTANCE_OF") && rel.ToID == target {
-				if ex := byID[rel.FromID]; ex != nil {
+				if ex := resolve(rel.FromID); ex != nil {
 					exemplars = append(exemplars, exemplar{
 						EntityID:   prefixedID(r.Repo, ex.ID),
 						EntityName: ex.Name,

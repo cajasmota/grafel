@@ -249,9 +249,8 @@ func findEnumByID(lg *LoadedGroup, id string) *graph.Entity {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		byID := r.getByID()
 		for _, cand := range []string{id, bare} {
-			if e, ok := byID[cand]; ok && isValueSet(e) {
+			if e, ok := r.getByIDOne(cand); ok && isValueSet(e) {
 				return e
 			}
 		}

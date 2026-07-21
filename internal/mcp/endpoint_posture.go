@@ -312,7 +312,6 @@ func buildPosturePayload(r *LoadedRepo, e *graph.Entity) posturePayload {
 // sorted for stable output.
 func resolveErrorFlow(r *LoadedRepo, localID string) errorFlow {
 	adj := r.getAdjacency()
-	byID := r.getByID()
 	throws := map[string]bool{}
 	catches := map[string]bool{}
 	for _, ed := range adj.Outgoing(localID) {
@@ -325,7 +324,8 @@ func resolveErrorFlow(r *LoadedRepo, localID string) errorFlow {
 		default:
 			continue
 		}
-		name := exceptionTypeName(byID[ed.target], ed.target)
+		tgtEnt, _ := r.getByIDOne(ed.target)
+		name := exceptionTypeName(tgtEnt, ed.target)
 		if name != "" {
 			bucket[name] = true
 		}
@@ -349,13 +349,13 @@ func exceptionTypeName(e *graph.Entity, rawTarget string) string {
 // synthetic id/name prefix). De-duplicated and sorted.
 func resolveFeatureGates(r *LoadedRepo, localID string) []string {
 	adj := r.getAdjacency()
-	byID := r.getByID()
 	keys := map[string]bool{}
 	for _, ed := range adj.Outgoing(localID) {
 		if !strings.EqualFold(ed.kind, edgeGatedBy) {
 			continue
 		}
-		key := featureFlagKey(byID[ed.target], ed.target)
+		tgtEnt, _ := r.getByIDOne(ed.target)
+		key := featureFlagKey(tgtEnt, ed.target)
 		if key != "" {
 			keys[key] = true
 		}

@@ -67,8 +67,7 @@ func EndpointPostureForEntity(group string, docs map[string]*graph.Document, slu
 	if !ok || r.Doc == nil {
 		return PosturePayload{}, false
 	}
-	byID := r.getByID()
-	e, ok := byID[entityID]
+	e, ok := r.getByIDOne(entityID)
 	if !ok || e == nil {
 		return PosturePayload{}, false
 	}

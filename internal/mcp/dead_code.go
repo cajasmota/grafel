@@ -293,7 +293,7 @@ func computeDeadCodeFromEntry(lg *LoadedGroup, fromID string, repoFilter map[str
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		if _, ok := r.getByID()[local]; !ok {
+		if _, ok := r.getByIDOne(local); !ok {
 			// Entry not in this repo; skip without contributing.
 			totalEntities += len(r.Doc.Entities)
 			continue

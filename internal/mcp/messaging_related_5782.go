@@ -90,7 +90,7 @@ func resolveTopicSeed(lg *LoadedGroup, entityID string) *topicSeed {
 		if repoHint != "" && r.Repo != repoHint {
 			continue
 		}
-		if e := r.getByID()[probe]; isMessageTopicEntity(e) {
+		if e, _ := r.getByIDOne(probe); isMessageTopicEntity(e) {
 			return &topicSeed{repo: r, id: e.ID, name: e.Name}
 		}
 	}
@@ -149,7 +149,7 @@ func collectTopicNeighbors(lg *LoadedGroup, topicName, seedRepo string) (produce
 		if r == nil || r.Doc == nil {
 			return
 		}
-		e := r.getByID()[localID]
+		e, _ := r.getByIDOne(localID)
 		if e == nil {
 			return
 		}
@@ -376,7 +376,7 @@ func resolveChannelBindingSeed(lg *LoadedGroup, entityID string) *channelBinding
 		if repoHint != "" && r.Repo != repoHint {
 			continue
 		}
-		if e := r.getByID()[probe]; isChannelBindingEntity(e) {
+		if e, _ := r.getByIDOne(probe); isChannelBindingEntity(e) {
 			return &channelBindingSeed{repo: r, id: e.ID, name: e.Name}
 		}
 	}
@@ -565,7 +565,8 @@ func collectChannelBindingTargets(r *LoadedRepo, binding *graph.Entity) (channel
 // it binds — so no lg.Links join is needed.
 func channelBindingNeighborsStructured(seed *channelBindingSeed) map[string]any {
 	r := seed.repo
-	channels, topics := collectChannelBindingTargets(r, r.getByID()[seed.id])
+	seedEnt, _ := r.getByIDOne(seed.id)
+	channels, topics := collectChannelBindingTargets(r, seedEnt)
 
 	return map[string]any{
 		"entity_id": prefixedID(r.Repo, seed.id),
@@ -755,7 +756,7 @@ func (s *Server) impactRadiusForTopic(lg *LoadedGroup, seed *topicSeed, hops int
 			if r == nil || r.Doc == nil {
 				continue
 			}
-			e := r.getByID()[id]
+			e, _ := r.getByIDOne(id)
 			if e == nil {
 				continue
 			}

@@ -248,8 +248,10 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		if target == "" {
 			target = entityID
 		}
-		byID := r.getByID()
-		if _, ok := byID[target]; !ok {
+		// Path P (#5850): on-demand memoizing resolver — find_callers materializes
+		// only its inbound BFS closure, not the whole repo's entity set.
+		resolve := memoRepoResolver(r)
+		if resolve(target) == nil {
 			continue
 		}
 
@@ -323,7 +325,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 			// It is a legitimate caller of the base member, so it must survive
 			// the shadow/container noise filter exactly like a file-ref edge.
 			isInheritsEdge := dk == inheritsEdgeKind
-			e := byID[id]
+			e := resolve(id)
 			if e == nil {
 				// #2015: previously a nil byID lookup silently dropped the
 				// caller. In production this hides legitimate file-level
@@ -465,7 +467,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 			return callers[i].Name < callers[j].Name
 		})
 
-		root := byID[target]
+		root := resolve(target)
 		rootName := target
 		if root != nil {
 			rootName = root.Name
@@ -614,8 +616,10 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		if target == "" {
 			target = entityID
 		}
-		byID := r.getByID()
-		if _, ok := byID[target]; !ok {
+		// Path P (#5850): on-demand memoizing resolver — find_callees materializes
+		// only its outbound BFS closure, not the whole repo's entity set.
+		resolve := memoRepoResolver(r)
+		if resolve(target) == nil {
 			continue
 		}
 
@@ -676,7 +680,7 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 			if id == target {
 				continue
 			}
-			e := byID[id]
+			e := resolve(id)
 			if e == nil {
 				e = mroExternal[id]
 			}
@@ -740,7 +744,7 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 			return callees[i].Name < callees[j].Name
 		})
 
-		root := byID[target]
+		root := resolve(target)
 		rootName := target
 		if root != nil {
 			rootName = root.Name
@@ -925,7 +929,7 @@ func resolveImpactTarget(repos []*LoadedRepo, target string) impactResolution {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		if _, ok := r.getByID()[target]; ok {
+		if _, ok := r.getByIDOne(target); ok {
 			return impactResolution{repo: r, localID: target}
 		}
 	}
@@ -1192,7 +1196,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 	// joins (lg.Links, method="topic") so cross-repo publishers + subscribers
 	// appear with correct per-repo attribution. The non-topic (code entity) path
 	// below is entirely unchanged.
-	if e := resolution.repo.getByID()[resolution.localID]; isMessageTopicEntity(e) {
+	if e, _ := resolution.repo.getByIDOne(resolution.localID); isMessageTopicEntity(e) {
 		return s.impactRadiusForTopic(lg, &topicSeed{repo: resolution.repo, id: resolution.localID, name: e.Name}, hops), nil
 	}
 
@@ -1530,10 +1534,28 @@ func subgraphModulePrefix(path string) string {
 //
 // A target is a hub when its precomputed IsGodNode flag is set or its total
 // degree exceeds subgraphHubDegree.
-func newSubgraphRanker(adj *adjacency, byID map[string]*graph.Entity, root *graph.Entity) *bfsRanker {
+// memoRepoResolver returns an entity-by-id resolver backed by getByIDOne,
+// memoizing each result (including nil) so a BOUNDED subgraph walk materializes
+// each visited entity at most ONCE on the flag-ON mmap path — instead of
+// getByID materializing the whole repo's entity set for a maxNodes-bounded walk
+// (memory epic #5850 Path P). Not safe for concurrent use; each call site builds
+// its own.
+func memoRepoResolver(r *LoadedRepo) func(string) *graph.Entity {
+	cache := make(map[string]*graph.Entity)
+	return func(id string) *graph.Entity {
+		if e, ok := cache[id]; ok {
+			return e
+		}
+		e, _ := r.getByIDOne(id)
+		cache[id] = e
+		return e
+	}
+}
+
+func newSubgraphRanker(adj *adjacency, resolve func(string) *graph.Entity, root *graph.Entity) *bfsRanker {
 	degree := func(id string) int { return len(adj.Outgoing(id)) + len(adj.Incoming(id)) }
 	isHub := func(id string) bool {
-		if e := byID[id]; e != nil && e.IsGodNode {
+		if e := resolve(id); e != nil && e.IsGodNode {
 			return true
 		}
 		return degree(id) >= subgraphHubDegree
@@ -1551,7 +1573,7 @@ func newSubgraphRanker(adj *adjacency, byID map[string]*graph.Entity, root *grap
 			if ha != hb {
 				return !ha // non-hub first
 			}
-			ea, eb := byID[a.target], byID[b.target]
+			ea, eb := resolve(a.target), resolve(b.target)
 			fa, fb := ea != nil && ea.SourceFile == rootFile, eb != nil && eb.SourceFile == rootFile
 			if fa != fb {
 				return fa // same file first
@@ -1573,14 +1595,14 @@ func newSubgraphRanker(adj *adjacency, byID map[string]*graph.Entity, root *grap
 // subgraphHubNote renders the hub-boundary annotation shared by the raw and
 // markdown subgraph paths (#5691): human names + degree for each hub the walk
 // stopped at, and the id->display map for structured output.
-func subgraphHubNote(hubIDs []string, byID map[string]*graph.Entity, adj *adjacency) []string {
+func subgraphHubNote(hubIDs []string, resolve func(string) *graph.Entity, adj *adjacency) []string {
 	if len(hubIDs) == 0 {
 		return nil
 	}
 	names := make([]string, 0, len(hubIDs))
 	for _, id := range hubIDs {
 		name := id
-		if e := byID[id]; e != nil && e.Name != "" {
+		if e := resolve(id); e != nil && e.Name != "" {
 			name = e.Name
 		}
 		deg := len(adj.Outgoing(id)) + len(adj.Incoming(id))
@@ -1650,16 +1672,19 @@ func (s *Server) subgraphRaw(entityID string, req mcpapi.CallToolRequest) (*mcpa
 		if target == "" {
 			target = entityID
 		}
-		byID := r.getByID()
-		if _, ok := byID[target]; !ok {
+		// Path P (#5850): resolve entities on demand via a memoizing resolver so a
+		// maxNodes-bounded walk materializes only the visited entities, not the
+		// whole repo (which the flag-ON whole-map getByID would).
+		resolve := memoRepoResolver(r)
+		root := resolve(target)
+		if root == nil {
 			continue
 		}
 		adj := r.getAdjacency()
-		byID2 := r.getByID()
 		// Locality-first, hub-aware bounded expansion (#5691): rank the frontier
 		// by locality so local structure survives truncation, and stop at
 		// high-degree hubs instead of inheriting their fan-out.
-		ranker := newSubgraphRanker(adj, byID2, byID[target])
+		ranker := newSubgraphRanker(adj, resolve, root)
 		visited, nodesTruncated, hubIDs := bfsBoundedRanked(adj, target, depth, nil, maxNodes, ranker, bfsBoth)
 		type nodeOut struct {
 			EntityID   string `json:"entity_id"`
@@ -1677,7 +1702,7 @@ func (s *Server) subgraphRaw(entityID string, req mcpapi.CallToolRequest) (*mcpa
 		var nodes []nodeOut
 		nodeSet := map[string]bool{}
 		for id, d := range visited {
-			if e := byID2[id]; e != nil {
+			if e := resolve(id); e != nil {
 				nodes = append(nodes, nodeOut{
 					EntityID:   prefixedID(r.Repo, e.ID),
 					Name:       e.Name,
@@ -1741,7 +1766,7 @@ func (s *Server) subgraphRaw(entityID string, req mcpapi.CallToolRequest) (*mcpa
 		}
 		// Hub boundaries: the walk stopped at these high-degree hubs rather than
 		// inheriting their fan-out. Surface them so the caller can narrow (#5691).
-		hubNames := subgraphHubNote(hubIDs, byID2, adj)
+		hubNames := subgraphHubNote(hubIDs, resolve, adj)
 		truncated := nodesTruncated || len(hubNames) > 0
 		out["truncated"] = truncated
 		var notes []string
@@ -1805,9 +1830,11 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 		if target == "" {
 			target = entityID
 		}
-		byID := r.getByID()
-		root, ok := byID[target]
-		if !ok {
+		// Path P (#5850): memoizing on-demand resolver — materialize only the
+		// bounded walk's visited entities, not the whole repo.
+		resolve := memoRepoResolver(r)
+		root := resolve(target)
+		if root == nil {
 			continue
 		}
 
@@ -1815,7 +1842,7 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 		// Locality-first, hub-aware, BOUNDED walk in each direction (#5691).
 		// bfsBoundedRanked includes the start node at depth 0; the caller lists
 		// exclude it below.
-		ranker := newSubgraphRanker(adj, byID, root)
+		ranker := newSubgraphRanker(adj, resolve, root)
 		inVisited, _, inHubs := bfsBoundedRanked(adj, target, depth, nil, maxNodes, ranker, bfsIn)
 		outVisited, _, outHubs := bfsBoundedRanked(adj, target, depth, nil, maxNodes, ranker, bfsOut)
 
@@ -1831,7 +1858,7 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 			if id == target {
 				continue // bfsBoundedRanked includes the start node at depth 0
 			}
-			if e := byID[id]; e != nil {
+			if e := resolve(id); e != nil {
 				callers = append(callers, neighbor{name: e.Name, kind: stripScopePrefix(e.Kind), file: e.SourceFile, hop: d})
 			}
 		}
@@ -1847,7 +1874,7 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 			if id == target {
 				continue // bfsBoundedRanked includes the start node at depth 0
 			}
-			if e := byID[id]; e != nil {
+			if e := resolve(id); e != nil {
 				callees = append(callees, neighbor{name: e.Name, kind: stripScopePrefix(e.Kind), file: e.SourceFile, hop: d})
 			}
 		}
@@ -1919,7 +1946,7 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 				hubIDs = append(hubIDs, id)
 			}
 		}
-		if names := subgraphHubNote(hubIDs, byID, adj); len(names) > 0 {
+		if names := subgraphHubNote(hubIDs, resolve, adj); len(names) > 0 {
 			b.WriteString(fmt.Sprintf(
 				"## Hub boundaries\n\n_Expanded into hub(s) [%s] and stopped there to avoid inheriting "+
 					"their fan-out. Pass an entity_kind or module filter to narrow._\n\n",
@@ -2459,7 +2486,7 @@ func entityExistsAnywhere(lg *LoadedGroup, id string) bool {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		if _, ok := r.getByID()[probe]; ok {
+		if _, ok := r.getByIDOne(probe); ok {
 			return true
 		}
 		found := false

@@ -680,9 +680,8 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 			if qHave && len(qVec) == r.Semantic.Dims {
 				semIDs := r.Semantic.Search(qVec, 10)
 				semHits := make([]Hit, 0, len(semIDs))
-				byID := r.getByID()
 				for _, s := range semIDs {
-					if e, ok := byID[s.ID]; ok {
+					if e, ok := r.getByIDOne(s.ID); ok {
 						semHits = append(semHits, Hit{Entity: e, Score: s.Score, Source: "semantic"})
 					}
 				}
@@ -1028,7 +1027,7 @@ func pickFallback(repos []*LoadedRepo) *fallbackPick {
 		// Fast path: use pre-sorted cache (built lazily on first ranking use).
 		if topK := r.getTopKPageRank(); len(topK) > 0 {
 			topID := topK[0]
-			e := r.getByID()[topID]
+			e, _ := r.getByIDOne(topID)
 			if e == nil {
 				continue
 			}
@@ -1506,7 +1505,6 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 	}
 	out := []map[string]any{}
 	rels := lr.Doc.Relationships
-	byID := lr.getByID()
 	for _, ed := range lr.getAdjacency().Outgoing(e.ID) {
 		if !strings.EqualFold(ed.kind, "CALLS") {
 			continue
@@ -1520,7 +1518,7 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 			"target_path": "",
 		}
 		// Resolve target path from entity index.
-		if tgt := byID[ed.target]; tgt != nil {
+		if tgt, _ := lr.getByIDOne(ed.target); tgt != nil {
 			entry["target_path"] = tgt.SourceFile
 			entry["target"] = tgt.Name
 			if !scopeIsOne {
@@ -1626,7 +1624,6 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 
 	out := []map[string]any{}
 	rels := lr.Doc.Relationships
-	byID := lr.getByID()
 	for _, ed := range lr.getAdjacency().Incoming(e.ID) {
 		// #5686: besides direct CALLS callers, surface the async trigger of an
 		// event-driven handler. A DELIVERS_TO edge (topic → handler) is the
@@ -1640,7 +1637,7 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 			continue
 		}
 		callerID := ed.target // Incoming: ed.target is the FromID (the caller)
-		callerEntity := byID[callerID]
+		callerEntity, _ := lr.getByIDOne(callerID)
 
 		sourceID := callerID
 		sourcePath := ""

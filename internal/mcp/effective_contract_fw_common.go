@@ -50,12 +50,11 @@ import (
 // nestHandlerEntity but is framework-neutral.
 func frameworkHandlerEntity(r *LoadedRepo, ep *graph.Entity) *graph.Entity {
 	adj := r.getAdjacency()
-	byID := r.getByID()
 	for _, ed := range adj.Incoming(ep.ID) {
 		if !strings.EqualFold(ed.kind, "IMPLEMENTS") {
 			continue
 		}
-		if h := byID[ed.target]; h != nil {
+		if h, _ := r.getByIDOne(ed.target); h != nil {
 			return h
 		}
 	}

@@ -283,11 +283,20 @@ func (l *LabelIndex) at(idx int32) *graph.Entity {
 	return &e
 }
 
+// atMaterializeHook, when non-nil, is invoked once per Reader entity
+// materialization. Test-only observability for single-materialization perf
+// assertions (memory epic #5850 Path P: getByIDOne must materialize exactly one
+// entity, not the whole set). Nil in production — one predictable nil-check.
+var atMaterializeHook func()
+
 // materializeFromReader decodes the base entity from the mmap Reader and merges
 // the group-algo overlay side-table. Callers on the wired path MUST hold
 // readerMu (the mmap dereference happens here); MaterializeEntity copies every
 // string out to the heap, so the returned entity is safe to use past release.
 func (l *LabelIndex) materializeFromReader(idx int32) *graph.Entity {
+	if atMaterializeHook != nil {
+		atMaterializeHook()
+	}
 	e := graph.MaterializeEntity(l.reader, int(idx))
 	if ov, ok := l.overlay[idx]; ok {
 		e.CommunityID = ov.CommunityID

@@ -326,8 +326,17 @@ type LoadedRepo struct {
 	adjacency    *adjacency               // in/out neighbor lists (#1656)
 	callsAdj     *callsAdjacency          // CALLS-only forward adjacency, CSR layout (#1656, #5850)
 	stepAdj      map[string][]stepEdge    // STEP_IN_PROCESS forward adjacency (#2417)
-	byID         map[string]*graph.Entity // entity ID -> entity (#1656)
-	topKPageRank []string                 // entity IDs sorted descending by PageRank (#2304)
+	byID         map[string]*graph.Entity // entity ID -> entity, flag-OFF resident cache (#1656)
+	// byIDIdx is the FLAG-ON resident getByID cache (memory epic #5850 Path P): it
+	// maps entity ID -> vector INDEX and holds NO *graph.Entity, so it cannot
+	// re-pin the ~608 MB entity set that the mmap flip moves out of the Go heap.
+	// getByID resolves each index to an entity ON DEMAND via the readerMu-guarded
+	// LabelIndex.at (Reader base + overlay side-table). Built once per reload under
+	// byIDOnce, cleared by resetIndexes. Nil on the flag-OFF default path (which
+	// keeps byID above — Doc is retained flag-OFF anyway, so pointer retention
+	// there is free). Mirrors the BM25 int32-index no-retention build (PR3b L4).
+	byIDIdx      map[string]int32
+	topKPageRank []string // entity IDs sorted descending by PageRank (#2304)
 	// bm25LastUse is the wall-clock time of the most recent getBM25() borrow (a
 	// search-tool use). idxMu-guarded — written under idxMu in getBM25 and read
 	// under idxMu in evictBM25IfIdle. The idle sweep (SweepIdleBM25) drops the
@@ -474,6 +483,7 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.callsAdj = nil
 	lr.stepAdj = nil
 	lr.byID = nil
+	lr.byIDIdx = nil
 	lr.topKPageRank = nil
 	lr.suffixIndex = nil
 	lr.suffixIndexPartial = false
@@ -576,61 +586,122 @@ func (lr *LoadedRepo) getMROInbound() map[string][]string {
 	return lr.mroInbound
 }
 
-// getByID returns the entity-ID → *Entity map, building it on first use.
+// getByID returns the entity-ID → *Entity map, building the cache on first use.
 //
-// ADR-0027 Cutover PR2: the map's values are now INDEPENDENT heap copies of the
-// Document rows rather than pointers ALIASING lr.Doc.Entities' backing array —
-// so getByID no longer pins live pointers into Doc, the prerequisite for the
-// PR7 flip that drops Doc.Entities. It no longer reuses LabelIndex.ByID, which
-// is now an int32 index map, not a *graph.Entity map. Values are copied from
-// the LIVE Doc (not the mmap Reader) so post-load in-place overlay stamps stay
-// visible — behavior-neutral; see the LabelIndex type doc for the rationale.
-// Built once per reload and cached, so the map's values are INTERNALLY STABLE
-// for the life of the reload: getByID consumers (which index the map by id and
-// never compare value pointers) are insulated from the per-lookup pointer
-// instability of LabelIndex.ByID/Lookup.
+// Memory epic #5850 Path P — de-retain byID. The resident cache is gated by
+// GRAFEL_SERVE_FROM_MMAP so the flag-ON path pins NO entity pointers (the flip
+// prerequisite; post-flip lr.Doc is emptied and a retained entity map here would
+// re-pin the whole ~608 MB entity set in the Go heap, defeating the flip):
+//
+//   - Flag-ON (Reader resident): the resident cache is lr.byIDIdx — ID → vector
+//     INDEX (map[string]int32), learned once from the LabelIndex's own int32 map.
+//     getByID resolves each index to an entity ON DEMAND via the readerMu-guarded
+//     LabelIndex.at (Reader base + overlay side-table, byte-equal to the overlaid
+//     Doc row) and returns a TRANSIENT map[string]*graph.Entity that the caller
+//     drops after use — nothing entity-shaped stays resident. The bound is the
+//     Reader's row count (EntityCount), so a PR7 Doc-emptying does not collapse
+//     the result. Mirrors the BM25 int32-index no-retention build (PR3b L4).
+//   - Flag-OFF (default): the resident cache is lr.byID — INDEPENDENT heap copies
+//     of the live Doc rows (ADR-0027 PR2), so post-load in-place overlay stamps
+//     stay visible, GC-safe, with NO handler-path mmap read. Doc is retained
+//     flag-OFF anyway, so this pointer retention is free. Built once and cached,
+//     so the values are INTERNALLY STABLE for the life of the reload.
+//
+// The mmap path short-circuits to the flag-OFF Doc build whenever at() cannot
+// serve an index (nil LabelIndex/Reader, JSON load). getByID consumers index the
+// returned map by id and never compare value pointers across calls, so they are
+// insulated from the per-lookup pointer instability of LabelIndex.at.
 func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
+	lr.buildByIDCacheLocked()
+
+	if lr.byIDIdx != nil {
+		// Flag-ON: resolve every cached index to an entity ON DEMAND via the
+		// readerMu-guarded LabelIndex.at (Reader base + overlay side-table). The
+		// returned map is transient — the caller drops it, so no entity stays
+		// resident. A retired mapping falls back to the Doc inside at() (nil when
+		// Doc is emptied), never a read-after-munmap.
+		//
+		// This whole-map build materializes the ENTIRE entity set per call, so it
+		// is reserved for genuine iterate-many callers (lookup tables built across
+		// forEachEntity/forEachRelationship). Single/few-id callers MUST use
+		// getByIDOne, which materializes exactly one entity.
+		out := make(map[string]*graph.Entity, len(lr.byIDIdx))
+		for id, i := range lr.byIDIdx {
+			if ent := lr.LabelIndex.at(i); ent != nil {
+				out[id] = ent
+			}
+		}
+		return out
+	}
+	return lr.byID
+}
+
+// getByIDOne resolves a SINGLE entity by id, materializing exactly one entity on
+// the flag-ON path (never the whole entity set) — the accessor for the single/
+// few-lookup callers (memory epic #5850 Path P). It returns (entity, true) when
+// present, (nil, false) when the id is unknown OR the mmap mapping was retired
+// out from under a lookup (at() returns nil). Byte-identical to today's
+// getByID()[id] / `_, ok := getByID()[id]` on the flag-OFF path.
+//
+// Flag-ON it looks up the resident int32 index cache (lr.byIDIdx, built/reused
+// under the same byIDOnce/idxMu as getByID) and resolves the ONE index via the
+// readerMu-guarded LabelIndex.at. Flag-OFF it indexes the memoized Doc-backed
+// map (lr.byID). Sharing byIDOnce means getByID and getByIDOne never build the
+// cache twice for a repo.
+func (lr *LoadedRepo) getByIDOne(id string) (*graph.Entity, bool) {
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	lr.buildByIDCacheLocked()
+
+	if lr.byIDIdx != nil {
+		idx, ok := lr.byIDIdx[id]
+		if !ok {
+			return nil, false
+		}
+		ent := lr.LabelIndex.at(idx)
+		if ent == nil {
+			return nil, false // retired mapping / out-of-range — graceful miss
+		}
+		return ent, true
+	}
+	e, ok := lr.byID[id]
+	return e, ok
+}
+
+// buildByIDCacheLocked populates the reload-scoped getByID cache exactly once
+// (guarded by byIDOnce). Caller MUST hold idxMu. Flag-ON it builds lr.byIDIdx
+// (ID → vector index, NO entities retained); flag-OFF it builds the Doc-backed
+// lr.byID map. Shared by getByID and getByIDOne.
+func (lr *LoadedRepo) buildByIDCacheLocked() {
 	lr.byIDOnce.Do(func() {
+		mmapSourced := serveFromMMap() && lr.LabelIndex != nil && lr.LabelIndex.reader != nil
+		if mmapSourced {
+			// Learn ID → vector index once, retaining ONLY the int32 map. The
+			// LabelIndex already holds the exact ID → index mapping (built from the
+			// Reader in vector order); copy it into an independent resident cache so
+			// getByID's lifetime is decoupled from LabelIndex churn. No *graph.Entity
+			// is materialized or retained here.
+			idxMap := make(map[string]int32, len(lr.LabelIndex.byID))
+			for id, i := range lr.LabelIndex.byID {
+				idxMap[id] = i
+			}
+			lr.byIDIdx = idxMap
+			return
+		}
+		// Flag-OFF: memoize the Doc-backed *graph.Entity map (unchanged, PR2).
 		if lr.Doc == nil {
 			lr.byID = map[string]*graph.Entity{}
 			return
 		}
-		// ADR-0027: only when GRAFEL_SERVE_FROM_MMAP is ON does getByID source each
-		// row from the Reader + overlay side-table via LabelIndex.at (byte-equal to
-		// the overlaid Doc row), removing the Doc VALUE dependence. On the flag-off
-		// default path this stays the PR2 live-Doc heap copy — GC-safe, with NO
-		// handler-path mmap read. mmapSourced also short-circuits to the Doc copy
-		// whenever at() cannot serve an index (nil LabelIndex/Reader, JSON load).
-		mmapSourced := serveFromMMap() && lr.LabelIndex != nil && lr.LabelIndex.reader != nil
-		// PR6 (memory epic #5850 Path P): the loop BOUND is Reader-sourced on the
-		// mmap path — l.reader.EntityCount(), not len(lr.Doc.Entities) — so a PR7
-		// Doc-emptying (doc.Entities dropping to length 0 while the reader still
-		// holds every row) does not silently collapse getByID to an empty map.
-		// EntityCount() is a cached int set once at Reader construction, so it is
-		// safe to read here without readerMu (no mmap dereference). The flag-off
-		// path is unchanged: count stays len(lr.Doc.Entities).
-		count := len(lr.Doc.Entities)
-		if mmapSourced {
-			count = lr.LabelIndex.reader.EntityCount()
-		}
-		m := make(map[string]*graph.Entity, count)
-		for i := 0; i < count; i++ {
-			if mmapSourced {
-				if ent := lr.LabelIndex.at(int32(i)); ent != nil {
-					m[ent.ID] = ent
-					continue
-				}
-			}
-			if i < len(lr.Doc.Entities) {
-				ent := lr.Doc.Entities[i] // heap copy — a fresh pointer, not an alias into Doc
-				m[ent.ID] = &ent
-			}
+		m := make(map[string]*graph.Entity, len(lr.Doc.Entities))
+		for i := range lr.Doc.Entities {
+			ent := lr.Doc.Entities[i] // heap copy — a fresh pointer, not an alias into Doc
+			m[ent.ID] = &ent
 		}
 		lr.byID = m
 	})
-	return lr.byID
 }
 
 // hotIndexFor returns the memoized W1 (ADR-0027) hot index for this repo built
