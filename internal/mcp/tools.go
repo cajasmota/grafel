@@ -1043,8 +1043,7 @@ func pickFallback(repos []*LoadedRepo) *fallbackPick {
 			continue
 		}
 		// Slow path fallback (no cache — e.g. unit tests without buildTopKPageRank).
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			pr := 0.0
 			if e.PageRank != nil {
 				pr = *e.PageRank
@@ -1053,7 +1052,8 @@ func pickFallback(repos []*LoadedRepo) *fallbackPick {
 				bestPR = pr
 				best = &fallbackPick{repo: r, entity: e}
 			}
-		}
+			return true
+		})
 	}
 	return best
 }
@@ -1126,24 +1126,29 @@ func enumerateByKind(all []scored, repos []*LoadedRepo, kindFilter string, inclu
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
+		capReached := false
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if len(out) >= foldCap {
-				return out
+				capReached = true
+				return false
 			}
-			e := &r.Doc.Entities[i]
 			if !matchesKindFilter(e, kindFilter) {
-				continue
+				return true
 			}
 			if seen[r] != nil && seen[r][e.ID] {
-				continue
+				return true
 			}
 			if !includeNoise && isNoise(e) {
-				continue
+				return true
 			}
 			if !entityPassesConfidence(e, minConfidence) {
-				continue
+				return true
 			}
 			out = append(out, scored{repo: r, hit: Hit{Entity: e, Score: 0.0001, Source: "kind_filter"}})
+			return true
+		})
+		if capReached {
+			return out
 		}
 	}
 	return out
@@ -2433,12 +2438,18 @@ func normalizePrefixed(lg *LoadedGroup, s string) string {
 			if r.Doc == nil {
 				continue
 			}
-			for i := range r.Doc.Entities {
-				for _, me := range mroOutboundEdges(r, r.Doc.Entities[i].ID) {
+			found := false
+			r.forEachEntity(func(e *graph.Entity) bool {
+				for _, me := range mroOutboundEdges(r, e.ID) {
 					if me.External && me.Target == s {
-						return prefixedID(r.Repo, s)
+						found = true
+						return false
 					}
 				}
+				return true
+			})
+			if found {
+				return prefixedID(r.Repo, s)
 			}
 		}
 	}
@@ -2521,10 +2532,10 @@ func groupCommunities(lg *LoadedGroup, repoFilter []string, minSize, topLimit in
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			cid := r.Doc.Entities[i].CommunityID
+		r.forEachEntity(func(e *graph.Entity) bool {
+			cid := e.CommunityID
 			if cid == nil {
-				continue
+				return true
 			}
 			m := reposByCommunity[*cid]
 			if m == nil {
@@ -2532,7 +2543,8 @@ func groupCommunities(lg *LoadedGroup, repoFilter []string, minSize, topLimit in
 				reposByCommunity[*cid] = m
 			}
 			m[r.Repo] = struct{}{}
-		}
+			return true
+		})
 	}
 
 	// repo_filter membership: a community surfaces if any of its repos is named.
@@ -3264,13 +3276,14 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 				continue
 			}
 			seen := map[int]struct{}{}
-			for i := range r.Doc.Entities {
-				cid := r.Doc.Entities[i].CommunityID
+			r.forEachEntity(func(e *graph.Entity) bool {
+				cid := e.CommunityID
 				if cid == nil || *cid < 0 {
-					continue
+					return true
 				}
 				seen[*cid] = struct{}{}
-			}
+				return true
+			})
 			overlayCommByRepo[n] = len(seen)
 		}
 	}

@@ -167,16 +167,16 @@ func suffixMatch(lg *LoadedGroup, keys []string) []sourceCandidate {
 			if r.Doc == nil {
 				continue
 			}
-			for i := range r.Doc.Entities {
-				e := &r.Doc.Entities[i]
+			r.forEachEntity(func(e *graph.Entity) bool {
 				qn := strings.ToLower(e.QualifiedName)
 				if qn == "" {
-					continue
+					return true
 				}
 				if qn == needle || strings.HasSuffix(qn, "."+needle) {
 					out = appendUniqueCandidate(out, sourceCandidate{ent: e, repo: r})
 				}
-			}
+				return true
+			})
 		}
 	}
 	return out
@@ -230,11 +230,11 @@ func didYouMean(lg *LoadedGroup, keys []string) string {
 			if r.Doc == nil {
 				continue
 			}
-			for i := range r.Doc.Entities {
-				e := &r.Doc.Entities[i]
+			r.forEachEntity(func(e *graph.Entity) bool {
 				consider(key, e.QualifiedName)
 				consider(leaf, e.Name)
-			}
+				return true
+			})
 		}
 	}
 	if best == nil {

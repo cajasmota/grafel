@@ -96,20 +96,19 @@ func (s *Server) handleTracesList(_ context.Context, req mcpapi.CallToolRequest)
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Kind != processEntityKind {
-				continue
+				return true
 			}
 			cs := e.PropGet("cross_stack") == "true"
 			if crossOnly && !cs {
-				continue
+				return true
 			}
 			sc, _ := strconv.Atoi(e.PropGet("step_count"))
 			// #1639 — exclude trivial short flows from the default list;
 			// cross-repo flows are exempt (meaningful even when short).
 			if sc < minSteps && !cs {
-				continue
+				return true
 			}
 			items = append(items, listItem{
 				ProcessID:   prefixedID(r.Repo, e.ID),
@@ -123,7 +122,8 @@ func (s *Server) handleTracesList(_ context.Context, req mcpapi.CallToolRequest)
 				ChainLabels: splitChainLabels(e.PropGet("chain_labels")),
 				SourceFile:  e.SourceFile,
 			})
-		}
+			return true
+		})
 	}
 
 	// Sort: cross-stack first, then by step_count desc, then by label.
@@ -192,10 +192,10 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 		if target == "" {
 			target = pid
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		var result *mcpapi.CallToolResult
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Kind != processEntityKind || e.ID != target {
-				continue
+				return true
 			}
 			// #1905 — bridge steps in cross-repo flows live in companion repos.
 			// Build a cross-repo lookup so bridge step entities are enriched with
@@ -203,7 +203,7 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 			// emitted as bare {id, node_id, step_index} stubs.
 			xrLookup := buildGroupCrossRepoLookup(lg, r.Repo)
 			steps := buildProcessStepsWithCrossRepo(r, e, xrLookup, verbose)
-			return jsonResult(map[string]any{
+			result = jsonResult(map[string]any{
 				"process_id":  prefixedID(r.Repo, e.ID),
 				"repo":        r.Repo,
 				"label":       e.Name,
@@ -213,7 +213,11 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 				"cross_stack": e.PropGet("cross_stack") == "true",
 				"steps":       steps,
 				"found":       true,
-			}), nil
+			})
+			return false
+		})
+		if result != nil {
+			return result, nil
 		}
 	}
 	return jsonResult(map[string]any{"found": false, "process_id": pid}), nil

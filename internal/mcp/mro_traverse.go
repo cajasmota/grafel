@@ -191,10 +191,9 @@ func buildMROInbound(lr *LoadedRepo) map[string][]string {
 	if lr == nil || lr.Doc == nil {
 		return out
 	}
-	for i := range lr.Doc.Entities {
-		e := &lr.Doc.Entities[i]
+	lr.forEachEntity(func(e *graph.Entity) bool {
 		if !isMemberEntity(e) {
-			continue
+			return true
 		}
 		for _, me := range mroOutboundEdges(lr, e.ID) {
 			if me.External {
@@ -202,7 +201,8 @@ func buildMROInbound(lr *LoadedRepo) map[string][]string {
 			}
 			out[me.Target] = append(out[me.Target], e.ID)
 		}
-	}
+		return true
+	})
 	return out
 }
 

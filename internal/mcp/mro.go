@@ -601,20 +601,22 @@ func classDeclaredMember(lr *LoadedRepo, cls *graph.Entity, member string) *grap
 	// stays file-scoped because it matches on a bare leaf+prefix (no globally
 	// unique key), so a cross-file scan could pull an unrelated same-named
 	// method; the ByQName path above already covers the cross-file case.
-	for i := range lr.Doc.Entities {
-		e := &lr.Doc.Entities[i]
+	var found *graph.Entity
+	lr.forEachEntity(func(e *graph.Entity) bool {
 		if e.SourceFile != cls.SourceFile || !isMemberEntity(e) || !hasRealBody(e) {
-			continue
+			return true
 		}
 		qn := e.QualifiedName
 		if qn == "" {
 			qn = e.Name
 		}
 		if leafAfterDot(qn) == member && prefixBeforeDot(qn) == clsLeaf {
-			return e
+			found = e
+			return false
 		}
-	}
-	return nil
+		return true
+	})
+	return found
 }
 
 // isMemberEntity reports whether e is a method/operation that can be a member
