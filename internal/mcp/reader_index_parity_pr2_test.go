@@ -185,7 +185,16 @@ func TestLabelIndexMaterializesFreshPointers_PR2(t *testing.T) {
 // id->*Entity map (values fixed for the reload) sourced from the Reader, so its
 // consumers are insulated from the per-lookup pointer instability above.
 func TestGetByIDMaterializesStableMap_PR2(t *testing.T) {
-	t.Parallel()
+	// NOT t.Parallel: forceServeFromMMap mutates the package-global flag, which is
+	// only -race-safe when the test runs to completion before any parallel test
+	// reads the flag (see forceServeFromMMap's doc).
+	// OFF-path pin (ADR-0027 mmap default-on flip): getByID pointer STABILITY across
+	// calls is an OFF-path property. Flag-ON (Reader present) getByID resolves each
+	// id through LabelIndex.at, which MATERIALIZES a fresh heap copy per call by
+	// design — so two calls return DISTINCT pointers (the intended instability the
+	// PR2 audit gates PR7 on, see TestLabelIndexMaterializesFreshPointers_PR2). The
+	// stable-map contract only holds on the memoized Doc-backed path.
+	forceServeFromMMap(t, false)
 	doc, r := loadParityIndexFixture(t)
 	lr := &LoadedRepo{Repo: "repo", Doc: doc, Reader: r, LabelIndex: BuildLabelIndexFromReader(r, doc)}
 
@@ -240,7 +249,17 @@ func docEntityByID(doc *graph.Document, id string) *graph.Entity {
 // surfaces the graph.fb sentinel CommunityID, not the stamped 80 — proving the
 // Doc value-source is load-bearing for the flag-off path.
 func TestLabelIndexSurfacesOverlayStampedFields_PR2(t *testing.T) {
-	t.Parallel()
+	// NOT t.Parallel: forceServeFromMMap mutates the package-global flag (see below).
+	//
+	// OFF-path pin (ADR-0027 mmap default-on flip): as this test's own doc states,
+	// it is the invariant test for "values come from the overlaid Doc, NEVER the
+	// Reader" on the DEFAULT (GRAFEL_SERVE_FROM_MMAP OFF) serve path. The fixture
+	// stamps overlay-only fields onto lr.Doc.Entities directly and never populates
+	// the flag-ON side-table (lr.LabelIndex.overlay), so under flag-ON LabelIndex.at
+	// materializes from the Reader + empty side-table and correctly surfaces the
+	// graph.fb sentinel (nil CommunityID). The flag-ON Reader+side-table surfacing
+	// path is covered separately by TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc.
+	forceServeFromMMap(t, false)
 	doc, r := loadParityIndexFixture(t)
 	lr := &LoadedRepo{Repo: "repo", Doc: doc, Reader: r, LabelIndex: BuildLabelIndexFromReader(r, doc)}
 

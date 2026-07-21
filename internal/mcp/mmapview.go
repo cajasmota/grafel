@@ -22,6 +22,7 @@ package mcp
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"unsafe"
 
@@ -29,21 +30,44 @@ import (
 	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
 )
 
-// GRAFEL_SERVE_FROM_MMAP, when truthy, makes the hot-index build read through the
-// mmap (mmapEntityViewSource) instead of the heap Document (docEntityViewSource).
-// Default OFF: default serve behaviour is byte-identical to the pre-F3 heap path.
-// Read ONCE at package load (below), never per-query, per ADR-0027 §F3.
+// GRAFEL_SERVE_FROM_MMAP makes the hot-index build read through the mmap
+// (mmapEntityViewSource) instead of the heap Document (docEntityViewSource).
+//
+// Default is PLATFORM-CONDITIONAL (ADR-0027 mmap cutover, epic #5850):
+//   - macOS / Linux: default ON (validated). unset/""/malformed → mmap read path.
+//   - Windows: default OFF (opt-in). A memory-mapped graph.fb blocks the
+//     reindex-while-serving rewrite — os.Rename over a mapped file fails with
+//     ERROR_USER_MAPPED_FILE — so serving from a resident mmap Reader by default
+//     is unsafe there until a Windows-safe reindex strategy lands (tracked
+//     separately). The read path itself works on Windows; only the
+//     resident-reader-vs-reindex file-locking interaction is the blocker, so a
+//     Windows user can still explicitly opt IN via GRAFEL_SERVE_FROM_MMAP=1.
+//
+// An explicit token overrides the platform default on EVERY OS: 0/false/no/off
+// force OFF, 1/true/yes/on force ON. Read ONCE at package load (below), never
+// per-query, per ADR-0027 §F3.
 var serveFromMMapEnabled = parseServeFromMMapFlag(os.Getenv("GRAFEL_SERVE_FROM_MMAP"))
 
+// defaultServeFromMMapForOS returns the platform default when the env flag is
+// unset/""/malformed: ON everywhere except Windows, where the mmap'd graph.fb
+// blocks the reindex rewrite (ERROR_USER_MAPPED_FILE on os.Rename). Testable so
+// the per-OS default is unit-verifiable without depending on runtime.GOOS.
+func defaultServeFromMMapForOS(goos string) bool { return goos != "windows" }
+
 // parseServeFromMMapFlag interprets the env value. Pure and total so the flag
-// wiring is unit-testable without mutating process env. Truthy: 1/true/yes/on
-// (case-insensitive, trimmed); everything else — including "" — is OFF.
+// wiring is unit-testable without mutating process env. An explicit off token —
+// 0/false/no/off (case-insensitive, trimmed) — forces OFF and an explicit truthy
+// token — 1/true/yes/on — forces ON, on every platform (opt-out / opt-in work
+// everywhere). unset/""/malformed falls back to the platform default
+// (defaultServeFromMMapForOS): ON on macOS/Linux, OFF on Windows.
 func parseServeFromMMapFlag(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "0", "false", "no", "off":
+		return false
 	case "1", "true", "yes", "on":
 		return true
 	default:
-		return false
+		return defaultServeFromMMapForOS(runtime.GOOS)
 	}
 }
 

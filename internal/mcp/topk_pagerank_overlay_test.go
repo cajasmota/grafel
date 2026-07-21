@@ -131,6 +131,17 @@ func buildOverlayAwareLoadedRepo(t *testing.T) *LoadedRepo {
 // insertion/id order (alpha, bravo, charlie, delta, echo) instead of the
 // overlay order (charlie, alpha, delta, bravo, ...).
 func TestGetTopKPageRank_OverlayOrder_NotReaderSentinel(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): this is the PR1 Doc-SOURCING
+	// regression guard — its own doc states the asserted overlay order "is only
+	// possible when the Doc, not the Reader, is the source of truth." The fixture
+	// (buildOverlayAwareLoadedRepo) stamps PageRank onto lr.Doc.Entities only and
+	// builds NO LabelIndex / overlay side-table, so under flag-ON getTopKPageRank
+	// routes to buildTopKPageRankFromSideTable and reads an empty side-table →
+	// sentinel (id) order. The flag-ON side-table path is a DIFFERENT code path,
+	// correct and separately covered by
+	// TestGetTopKPageRank_FlagOnOffParity_SideTableNotSentinel (which builds the
+	// side-table via st.Reload → applyGroupAlgoOverlay and passes flag-on).
+	forceServeFromMMap(t, false)
 	lr := buildOverlayAwareLoadedRepo(t)
 
 	got := lr.getTopKPageRank()

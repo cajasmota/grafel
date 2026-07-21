@@ -126,6 +126,13 @@ func entityByID(grp *LoadedGroup, id string) *graph.Entity {
 // TestApplyOverlay_GroupValuesAppliedAtLoad: with a fresh overlay present, a
 // cross-repo entity reads the GROUP community_id + pagerank after Reload.
 func TestApplyOverlay_GroupValuesAppliedAtLoad(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): this test verifies the
+	// applyGroupAlgoOverlay Doc-STAMP mechanism by reading lr.Doc.Entities through
+	// entityByID. Under GRAFEL_SERVE_FROM_MMAP=on the Doc is header-only-empty by
+	// design (overlay values live in the Reader + overlay side-table, surfaced via
+	// LabelIndex.at), so entityByID sees nothing. The flag-ON side-table equivalent
+	// is covered by overlay_sidetable_parity_test.go — this test owns the Doc path.
+	forceServeFromMMap(t, false)
 	st, overlayPath, cur, serviceID, leafID := setupApplyGroup(t)
 
 	ov := &groupalgo.Overlay{
@@ -176,6 +183,10 @@ func TestApplyOverlay_GroupValuesAppliedAtLoad(t *testing.T) {
 // TestApplyOverlay_AbsentIsNoop: with no overlay, entities keep their graph.fb
 // values (here: nil/unset). No panic, no group values.
 func TestApplyOverlay_AbsentIsNoop(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): asserts entities keep their
+	// graph.fb (nil) values via entityByID → lr.Doc.Entities. Flag-ON the Doc is
+	// header-only-empty by design, so this Doc-stamp assertion is OFF-path only.
+	forceServeFromMMap(t, false)
 	st, overlayPath, _, serviceID, _ := setupApplyGroup(t)
 	// Ensure no overlay exists.
 	_ = os.Remove(overlayPath)
@@ -205,6 +216,10 @@ func TestApplyOverlay_AbsentIsNoop(t *testing.T) {
 // TestApplyOverlay_StaleNotApplied: an overlay whose recorded source mtime no
 // longer matches the current graph.fb mtime is treated as stale → not applied.
 func TestApplyOverlay_StaleNotApplied(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): the stale-overlay-not-applied
+	// staleness gate is flag-independent, but the assertion reads lr.Doc.Entities
+	// via entityByID, which is header-only-empty under flag-ON by design.
+	forceServeFromMMap(t, false)
 	st, overlayPath, cur, serviceID, _ := setupApplyGroup(t)
 
 	// Record DELIBERATELY-WRONG source mtimes so the overlay is stale vs the
@@ -241,6 +256,10 @@ func TestApplyOverlay_StaleNotApplied(t *testing.T) {
 // overlay (different values, fresh mtimes) and reloading picks up v2 without a
 // graph.fb change.
 func TestApplyOverlay_MidSessionSwap(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): the mid-session overlay swap +
+	// re-apply logic is flag-independent, but the v1/v2 assertions read the stamped
+	// values from lr.Doc.Entities via entityByID — header-only-empty under flag-ON.
+	forceServeFromMMap(t, false)
 	st, overlayPath, cur, serviceID, _ := setupApplyGroup(t)
 
 	write := func(pr float64) {

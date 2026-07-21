@@ -3068,6 +3068,12 @@ func writeGraphFB(t *testing.T, repoDir string, doc *graph.Document) string {
 // State.Reload() must load repos that have only graph.fb (no graph.json).
 // Previously the stat-guard pointed at graph.json → ENOENT → repo silently dropped.
 func TestReloadFBOnlyRepo(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): this test counts materialized
+	// entities via len(lr.Doc.Entities)==4. Under GRAFEL_SERVE_FROM_MMAP=on the
+	// fb-backed repos load a HEADER-ONLY Document by design (entities served from
+	// the resident Reader, not the heap Doc), so len(Doc.Entities)==0 for the fb
+	// repos. The flag-ON entity-count path is exercised via the Reader elsewhere.
+	forceServeFromMMap(t, false)
 	dir := t.TempDir()
 
 	// Three repos: one with graph.json only, one with graph.fb only, one with both.

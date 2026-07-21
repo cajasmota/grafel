@@ -123,6 +123,12 @@ func setupThreeRepoApplyGroup(t *testing.T) (st *State, overlayPath string, cur 
 // Without the per-repo re-stamp fix, the mobile entity reverts to community_id:-1
 // and inspect/stats/clusters drop it. With the fix it keeps overlay community 80.
 func TestApplyOverlay_ReStampsReparsedMobileRepo(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): the re-stamp-on-reparse logic is
+	// flag-independent, but this test asserts the stamped community by reading
+	// lr.Doc.Entities via entityByID and re-writing the mobile repo's graph.fb to
+	// force a reparse. Under flag-ON the Doc is header-only-empty by design (overlay
+	// values surface through the Reader + side-table), so the Doc read is empty.
+	forceServeFromMMap(t, false)
 	st, overlayPath, cur, beID, feID, mobID, mobStateDir, mobDoc := setupThreeRepoApplyGroup(t)
 
 	// Overlay assigns the mobile module to a real cross-repo community (80),

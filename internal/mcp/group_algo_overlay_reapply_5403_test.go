@@ -26,6 +26,12 @@ import (
 // cached group reflects the NEW overlay without a Reload. It also asserts the
 // cheap path (unchanged mtime → no re-apply) and absence-tolerance.
 func TestGroupReapplyOverlayOnMtimeAdvance(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): the mtime-advance re-apply
+	// trigger (State.Group re-stamps when the overlay file mtime moves) is
+	// flag-independent, but every community/pagerank assertion reads lr.Doc.Entities
+	// via entityByID — header-only-empty under flag-ON by design, values then live
+	// in the Reader + overlay side-table (covered by overlay_sidetable_parity_test).
+	forceServeFromMMap(t, false)
 	st, overlayPath, cur, beID, feID, mobID, _, _ := setupThreeRepoApplyGroup(t)
 
 	// --- v1 overlay: mobile → community 80.

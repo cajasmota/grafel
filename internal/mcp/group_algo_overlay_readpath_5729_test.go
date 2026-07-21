@@ -71,6 +71,12 @@ func chtimes5729(t *testing.T, path string, mt time.Time) {
 // re-stamp that repo back to its overlay community, because applyGroupAlgoOverlay
 // is memoized PER REPO, not just by the overlay file's mtime.
 func TestGroupReadPath_ReStampsStaleRepoWithoutOverlayFileChange(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): the read-path per-repo
+	// re-stamp trigger is flag-independent, but this test drives it by MUTATING
+	// mobLR.Doc.Entities[i].CommunityID and reading the result via entityByID.
+	// Under flag-ON the Doc is header-only-empty by design (values flow through the
+	// Reader + overlay side-table), so both the mutation and the read are no-ops.
+	forceServeFromMMap(t, false)
 	st, overlayPath, cur, beID, feID, mobID, _, _ := setupThreeRepoApplyGroup(t)
 
 	ov := buildOverlayFor5729(cur, beID, feID, mobID)
@@ -132,6 +138,10 @@ func TestGroupReadPath_ReStampsStaleRepoWithoutOverlayFileChange(t *testing.T) {
 // must fall through to applyGroupAlgoOverlay ONLY when some repo is actually
 // stale, not on every call.
 func TestGroupReadPath_SteadyStateDoesNotReApplyWhenNothingStale(t *testing.T) {
+	// OFF-path pin (ADR-0027 mmap default-on flip): the steady-state no-op guard
+	// (grp.algoMt must not advance) is flag-independent, but the final community
+	// assertion reads lr.Doc.Entities via entityByID — header-only-empty flag-ON.
+	forceServeFromMMap(t, false)
 	st, overlayPath, cur, beID, feID, mobID, _, _ := setupThreeRepoApplyGroup(t)
 
 	ov := buildOverlayFor5729(cur, beID, feID, mobID)

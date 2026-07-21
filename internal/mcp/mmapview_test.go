@@ -287,17 +287,43 @@ func idsOfViews(vs []graph.EntityView) []string {
 	return out
 }
 
+// TestDefaultServeFromMMapForOS pins the platform default (ADR-0027 mmap cutover,
+// epic #5850): ON everywhere except Windows, where a mapped graph.fb blocks the
+// reindex rewrite (ERROR_USER_MAPPED_FILE on os.Rename).
+func TestDefaultServeFromMMapForOS(t *testing.T) {
+	if defaultServeFromMMapForOS("windows") {
+		t.Errorf("defaultServeFromMMapForOS(windows) = true, want false (opt-in on Windows)")
+	}
+	for _, goos := range []string{"linux", "darwin"} {
+		if !defaultServeFromMMapForOS(goos) {
+			t.Errorf("defaultServeFromMMapForOS(%q) = false, want true (default ON)", goos)
+		}
+	}
+}
+
 // TestParseServeFromMMapFlag pins the flag parser (the flag is read once at load
-// from this pure function). Default OFF; only explicit truthy values enable.
+// from this pure function). Explicit tokens force ON/OFF on every platform;
+// unset/""/malformed fall back to the platform default (defaultServeFromMMapForOS).
 func TestParseServeFromMMapFlag(t *testing.T) {
+	// Explicit truthy tokens force ON regardless of platform (Windows opt-in).
 	for _, on := range []string{"1", "true", "TRUE", "yes", "on", " On "} {
 		if !parseServeFromMMapFlag(on) {
 			t.Errorf("parseServeFromMMapFlag(%q) = false, want true", on)
 		}
 	}
-	for _, off := range []string{"", "0", "false", "no", "off", "nope"} {
+	// Explicit off tokens force OFF regardless of platform (opt-out everywhere).
+	for _, off := range []string{"0", "false", "FALSE", "no", "off", " Off "} {
 		if parseServeFromMMapFlag(off) {
 			t.Errorf("parseServeFromMMapFlag(%q) = true, want false", off)
+		}
+	}
+	// unset/""/malformed follow the current platform's default, so this assertion
+	// stays correct on whatever OS CI runs it (ON on darwin/linux, OFF on Windows).
+	want := defaultServeFromMMapForOS(runtime.GOOS)
+	for _, def := range []string{"", "   ", "nope", "maybe"} {
+		if got := parseServeFromMMapFlag(def); got != want {
+			t.Errorf("parseServeFromMMapFlag(%q) = %v, want %v (platform default for %s)",
+				def, got, want, runtime.GOOS)
 		}
 	}
 }
