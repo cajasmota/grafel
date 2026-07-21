@@ -942,8 +942,7 @@ func resolveImpactTarget(repos []*LoadedRepo, target string) impactResolution {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Name == target || e.QualifiedName == target {
 				hits = append(hits, hit{repo: r, id: e.ID})
 				byName = append(byName, impactCandidate{
@@ -954,7 +953,8 @@ func resolveImpactTarget(repos []*LoadedRepo, target string) impactResolution {
 					SourceFile: e.SourceFile,
 				})
 			}
-		}
+			return true
+		})
 	}
 	switch {
 	case len(hits) == 1:
@@ -1034,15 +1034,14 @@ func fuzzyMatchEntities(repos []*LoadedRepo, probe string) fuzzyMatchResult {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if isNoise(e) {
-				continue
+				return true
 			}
 			nameL := strings.ToLower(e.Name)
 			qnL := strings.ToLower(e.QualifiedName)
 			if !strings.Contains(nameL, ql) && !strings.Contains(qnL, ql) {
-				continue
+				return true
 			}
 			cand := impactCandidate{
 				EntityID:   prefixedID(r.Repo, e.ID),
@@ -1054,11 +1053,12 @@ func fuzzyMatchEntities(repos []*LoadedRepo, probe string) fuzzyMatchResult {
 			if nameL == ql || qnL == ql {
 				exact = append(exact, fuzzyHit{repo: r, id: e.ID})
 				exactC = append(exactC, cand)
-				continue
+				return true
 			}
 			sub = append(sub, fuzzyHit{repo: r, id: e.ID})
 			subC = append(subC, cand)
-		}
+			return true
+		})
 	}
 	// A unique exact-(case-insensitive) name/qualified-name match wins outright,
 	// even if substrings also matched — this mirrors grafel_find floating the
@@ -1225,8 +1225,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 	// with ≥1 inbound TESTS edge has genuine test linkage and must not be
 	// labelled "no test coverage" regardless of its test_coverage property.
 	inboundTestsMap := map[string]int{}
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		totalDegreeMap[rel.ToID]++
 		if rel.Kind == "TESTS" {
 			inboundTestsMap[rel.ToID]++
@@ -1241,7 +1240,8 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 			// Source not in byID — treat as named to avoid under-counting.
 			namedCallerMap[rel.ToID]++
 		}
-	}
+		return true
+	})
 
 	// Impact radius = entities that transitively depend on `target`.
 	// We walk the INBOUND graph from target: callers of callers. The walk is
@@ -2144,10 +2144,9 @@ func buildImportedNameSet(repos []*LoadedRepo) map[string]bool {
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != "IMPORTS" {
-				continue
+				return true
 			}
 			if n := rel.PropGet("imported_name"); n != "" {
 				set[n] = true
@@ -2155,7 +2154,8 @@ func buildImportedNameSet(repos []*LoadedRepo) map[string]bool {
 			if n := rel.PropGet("local_name"); n != "" {
 				set[n] = true
 			}
-		}
+			return true
+		})
 	}
 	return set
 }
@@ -2273,15 +2273,15 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 		// pass.
 		projectEntities := map[string]bool{}
 		testEntity := map[string]bool{}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isStdlibEntity(e) {
 				projectEntities[e.ID] = true
 			}
 			if isTestFileMCP(e.SourceFile) {
 				testEntity[e.ID] = true
 			}
-		}
+			return true
+		})
 
 		// Count inbound *reference* edges (the usage signal) per entity. An
 		// operation with any inbound CALLS/REFERENCES/TESTS/ROUTES_TO/etc. is
@@ -2298,13 +2298,12 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 		// production-dead-but-test-covered: the `test_only_referenced` class.
 		inRef := map[string]int{}
 		inRefProd := map[string]int{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if !projectEntities[rel.FromID] || !projectEntities[rel.ToID] {
-				continue
+				return true
 			}
 			if rel.Kind == "CONTAINS" {
-				continue
+				return true
 			}
 			if inboundRefKinds[rel.Kind] {
 				inRef[rel.ToID]++
@@ -2315,19 +2314,19 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 					inRefProd[rel.ToID]++
 				}
 			}
-		}
+			return true
+		})
 
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if isStdlibEntity(e) {
-				continue
+				return true
 			}
 			if !matchesKindFilter(e, kindFilter) {
-				continue
+				return true
 			}
 			// #2769 Phase 1C: drop entities below the caller's confidence floor.
 			if !entityPassesConfidence(e, minConfidence) {
-				continue
+				return true
 			}
 
 			// Dead-code analysis applies ONLY to callable operations
@@ -2337,11 +2336,11 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 			// destroys precision on real per-repo graphs (where cross-repo
 			// usage lives in the group links file, not in per-repo edges).
 			if !isOperationKind(e) {
-				continue
+				return true
 			}
 			// Exclude non-code "operation" entities (Dockerfile CMD, SQL DDL).
 			if nonCodeLanguages[strings.ToLower(e.Language)] {
-				continue
+				return true
 			}
 			// The TARGET being a test entity is never dead production code — a
 			// test helper called only by other tests is wired-as-intended. We
@@ -2349,7 +2348,7 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 			// test_only_referenced class require the target to live in
 			// production code.
 			if testEntity[e.ID] || strings.Contains(strings.ToLower(e.SourceFile), "test") {
-				continue
+				return true
 			}
 			// Route handlers, framework lifecycle hooks, event listeners, and
 			// constructors are reachable without an explicit call edge. These
@@ -2357,11 +2356,11 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 			// reflectively / by the framework / as an entry point is not dead
 			// even with zero in-graph production callers.
 			if isFrameworkOrHandler(e) {
-				continue
+				return true
 			}
 			// Imported by another repo → live public API surface.
 			if isExternallyConsumed(e, imported) {
-				continue
+				return true
 			}
 
 			leaf := e.Name
@@ -2403,7 +2402,7 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 				// rather than in per-repo edges) is NOT flagged, keeping false
 				// positives near zero.
 				if !deadMarkerRe.MatchString(leaf) {
-					continue
+					return true
 				}
 				out = append(out, item{
 					EntityID:   prefixedID(r.Repo, e.ID),
@@ -2416,7 +2415,8 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 					Confidence: 0.85,
 				})
 			}
-		}
+			return true
+		})
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -2462,10 +2462,16 @@ func entityExistsAnywhere(lg *LoadedGroup, id string) bool {
 		if _, ok := r.getByID()[probe]; ok {
 			return true
 		}
-		for i := range r.Doc.Entities {
-			if r.Doc.Entities[i].Name == probe {
-				return true
+		found := false
+		r.forEachEntity(func(e *graph.Entity) bool {
+			if e.Name == probe {
+				found = true
+				return false
 			}
+			return true
+		})
+		if found {
+			return true
 		}
 	}
 	return false
@@ -2502,10 +2508,9 @@ func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGro
 			continue
 		}
 		byID := r.getByID()
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != "NAVIGATES_TO" {
-				continue
+				return true
 			}
 			match := rel.ToID == wantToID
 			if !match && rel.PropLen() > 0 {
@@ -2516,7 +2521,7 @@ func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGro
 				}
 			}
 			if !match {
-				continue
+				return true
 			}
 			line := 0
 			route := routeLit
@@ -2545,7 +2550,8 @@ func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGro
 				rc.SourceFile = e.SourceFile
 			}
 			callers = append(callers, rc)
-		}
+			return true
+		})
 	}
 	if len(callers) == 0 {
 		return nil

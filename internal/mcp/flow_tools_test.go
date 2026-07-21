@@ -2109,3 +2109,45 @@ func TestFindCallers_ProductionDroppedWarnsExplicitly(t *testing.T) {
 		t.Errorf("note should warn that production callers were dropped: %q", note)
 	}
 }
+
+// TestEntityExistsAnywhere_PR4Parity is the load-bearing guard for the PR4
+// mmap-cutover migration of entityExistsAnywhere's `range r.Doc.Entities` scan
+// to lr.forEachEntity (view_iter.go). The scan matches an entity by EXACT-CASE
+// Name (e.Name == probe) — a semantic the case-insensitive LabelIndex byLabel
+// map does NOT preserve, which is precisely why this site converted to
+// forEachEntity rather than an indexed LookupAll. This test pins:
+//   - a Name hit returns true (exercises the found-flag early-exit that
+//     replaced the in-loop `return true`),
+//   - a miss returns false (full scan, found stays false),
+//   - a case-folded probe does NOT match (exact-case semantics preserved —
+//     the exact risk an indexed lookup would have silently introduced).
+func TestEntityExistsAnywhere_PR4Parity(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{Repo: "r"}
+	doc.Entities = []graph.Entity{
+		{ID: "id-1", Name: "OrderService", Kind: "class"},
+		{ID: "id-2", Name: "PaymentService", Kind: "class"},
+	}
+	lg := &LoadedGroup{
+		Name:  "g",
+		Repos: map[string]*LoadedRepo{"r": {Repo: "r", Doc: doc}},
+	}
+
+	// Name hit (exercises the found-flag early exit).
+	if !entityExistsAnywhere(lg, "OrderService") {
+		t.Error("expected exact-Name match OrderService to exist")
+	}
+	// ID hit (getByID path, untouched by the migration but kept as a control).
+	if !entityExistsAnywhere(lg, "id-2") {
+		t.Error("expected id-2 to exist via getByID")
+	}
+	// Miss → full scan, found stays false.
+	if entityExistsAnywhere(lg, "NoSuchSymbol") {
+		t.Error("did not expect NoSuchSymbol to exist")
+	}
+	// Case-folded probe MUST NOT match: the scan is exact-case, and the
+	// migration must not have leaked case-insensitivity.
+	if entityExistsAnywhere(lg, "orderservice") {
+		t.Error("case-folded probe must not match exact-case Name (semantics drift)")
+	}
+}

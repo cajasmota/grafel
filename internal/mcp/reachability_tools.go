@@ -80,14 +80,13 @@ func (s *Server) handleTestReachability(ctx context.Context, req mcpapi.CallTool
 		if len(repoFilter) > 0 && !repoMatchesSlice(lr.Repo, repoFilter) {
 			continue
 		}
-		for i := range lr.Doc.Entities {
-			e := &lr.Doc.Entities[i]
+		lr.forEachEntity(func(e *graph.Entity) bool {
 			if e.PropLen() == 0 {
-				continue
+				return true
 			}
 			val, ok := e.PropLookup(coverage.PropTestReachable)
 			if !ok {
-				continue // not a reachability-considered production entity
+				return true // not a reachability-considered production entity
 			}
 			stampedSeen = true
 
@@ -107,16 +106,17 @@ func (s *Server) handleTestReachability(ctx context.Context, req mcpapi.CallTool
 
 			// row-level filters.
 			if entityID != "" && row.id != entityID {
-				continue
+				return true
 			}
 			if endpointsOnly && !row.isEndpoint {
-				continue
+				return true
 			}
 			if untestedOnly && row.reachable {
-				continue
+				return true
 			}
 			rows = append(rows, row)
-		}
+			return true
+		})
 	}
 
 	// ── honesty gate: nothing stamped → tell the agent to reindex ─────────────
@@ -282,20 +282,20 @@ func endpointRollup(lg *LoadedGroup, repoFilter []string) (total, reachable int)
 		if len(repoFilter) > 0 && !repoMatchesSlice(lr.Repo, repoFilter) {
 			continue
 		}
-		for i := range lr.Doc.Entities {
-			e := &lr.Doc.Entities[i]
+		lr.forEachEntity(func(e *graph.Entity) bool {
 			if e.PropLen() == 0 || !isEndpointKind(e.Kind) {
-				continue
+				return true
 			}
 			val, ok := e.PropLookup(coverage.PropTestReachable)
 			if !ok {
-				continue
+				return true
 			}
 			total++
 			if r, _ := strconv.ParseBool(val); r {
 				reachable++
 			}
-		}
+			return true
+		})
 	}
 	return total, reachable
 }

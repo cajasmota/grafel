@@ -259,13 +259,13 @@ func newEndpointResolution(repos []*LoadedRepo, lg *LoadedGroup, orphanOnly bool
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if isDefinitionKind(e.Kind) && e.PropGet("pattern_type") != patternTypeHTTPEndpointClientSynthesis {
 				defIDs[prefixedID(r.Repo, e.ID)] = true
 				defIDs[e.ID] = true
 			}
-		}
+			return true
+		})
 	}
 
 	linkedSrc := make(map[string]bool, len(lg.Links))
@@ -511,17 +511,16 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 		}
 		// Build a quick local-id → entity map for sample-file/line resolution.
 		byID := r.getByID()
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != "NAVIGATES_TO" {
-				continue
+				return true
 			}
 			route := ""
 			if rel.PropLen() > 0 {
 				route = rel.PropGet("route")
 			}
 			if pathContains != "" && !strings.Contains(strings.ToLower(route), pathContains) {
-				continue
+				return true
 			}
 			a, ok := byTo[rel.ToID]
 			if !ok {
@@ -564,7 +563,8 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 				}
 				a.sampleSeen = true
 			}
-		}
+			return true
+		})
 	}
 
 	out := make([]navigationRouteItem, 0, len(byTo))
@@ -726,24 +726,23 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isDefinitionKind(e.Kind) {
-				continue
+				return true
 			}
 			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
-				continue
+				return true
 			}
 			p := e.PropGet("path")
 			m := e.PropGet("verb")
 			if pathContains != "" && !strings.Contains(strings.ToLower(p), pathContains) {
-				continue
+				return true
 			}
 			if method != "" && !strings.EqualFold(m, method) {
-				continue
+				return true
 			}
 			if orphanOnly && !isOrphanDefinition(r, e.ID, res) {
-				continue
+				return true
 			}
 			// #2811 — endpoint effect closure from the sidecar.
 			var effs []string
@@ -751,7 +750,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 				effs = entry.Effects
 			}
 			if effectFilter != "" && !containsFold(effs, effectFilter) {
-				continue
+				return true
 			}
 			it := endpointDefItem{
 				EntityID:   prefixedID(r.Repo, e.ID),
@@ -773,7 +772,8 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 				it.Properties = dedupeEndpointProperties(e.PropsSnapshot())
 			}
 			out = append(out, it)
-		}
+			return true
+		})
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -1025,10 +1025,9 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != kindFETCHES {
-				continue
+				return true
 			}
 			key := prefixedID(r.Repo, rel.FromID)
 			if _, exists := callerToTarget[key]; !exists {
@@ -1038,7 +1037,8 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 				}
 				callerToTarget[key] = fe
 			}
-		}
+			return true
+		})
 	}
 
 	var out []endpointCallItem
@@ -1046,21 +1046,20 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			// Accept explicit call kind OR client-synthesis http_endpoint.
 			isCall := isCallKind(e.Kind) ||
 				(isDefinitionKind(e.Kind) && e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis)
 			if !isCall {
-				continue
+				return true
 			}
 			p := e.PropGet("path")
 			m := e.PropGet("verb")
 			if pathContains != "" && !strings.Contains(strings.ToLower(p), pathContains) {
-				continue
+				return true
 			}
 			if method != "" && !strings.EqualFold(m, method) {
-				continue
+				return true
 			}
 
 			eid := prefixedID(r.Repo, e.ID)
@@ -1094,7 +1093,7 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 			}
 
 			if orphanOnly && orphanHint == "" {
-				continue
+				return true
 			}
 
 			it := endpointCallItem{
@@ -1116,7 +1115,8 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 				it.Properties = dedupeEndpointProperties(e.PropsSnapshot())
 			}
 			out = append(out, it)
-		}
+			return true
+		})
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -1352,8 +1352,7 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		}
 		rs := repoStats{Repo: r.Repo}
 
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			fw := e.PropGet("framework")
 			xm := e.PropGet("extraction_method") // #5527 per-entity AST provenance
 			switch classifyEndpointKind(e.Kind) {
@@ -1374,7 +1373,8 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 					bumpFramework(fw, xm, true)
 				}
 			}
-		}
+			return true
+		})
 
 		// Count orphan call-sites and cross-repo-resolved call-sites.
 		//
@@ -1396,20 +1396,19 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		// their callerID in linkedSources, so we also check whether a link
 		// source in the same repo covers the entity via the FETCHES ToID.
 		seenCallers := map[string]bool{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != kindFETCHES {
-				continue
+				return true
 			}
 			// Deduplicate: tally each FromID only once per repo (#2571).
 			if seenCallers[rel.FromID] {
-				continue
+				return true
 			}
 			seenCallers[rel.FromID] = true
 
 			resolvedIntra := res.definitionIDs[rel.ToID] || res.definitionIDs[prefixedID(r.Repo, rel.ToID)]
 			if resolvedIntra {
-				continue
+				return true
 			}
 			srcPrefixed := prefixedID(r.Repo, rel.FromID)
 			// #2573: check both the FETCHES FromID (the call synthetic) AND
@@ -1421,10 +1420,11 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 			tgtPrefixed := prefixedID(r.Repo, rel.ToID)
 			if res.linkedSources[srcPrefixed] || res.linkedSources[tgtPrefixed] {
 				rs.CrossRepoResolved++
-				continue
+				return true
 			}
 			rs.OrphanCalls++
-		}
+			return true
+		})
 
 		totalDefs += rs.Definitions
 		totalCalls += rs.Calls

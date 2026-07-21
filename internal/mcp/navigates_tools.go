@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/graph"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -115,12 +116,12 @@ func (s *Server) handleNavigates(_ context.Context, req mcpapi.CallToolRequest) 
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			pid := prefixedID(r.Repo, e.ID)
 			entityByPrefixed[pid] = navigatesEntityMeta{name: e.Name, sourceFile: e.SourceFile, repo: r.Repo}
 			entityByPrefixed[e.ID] = navigatesEntityMeta{name: e.Name, sourceFile: e.SourceFile, repo: r.Repo}
-		}
+			return true
+		})
 	}
 
 	var edges []navigatesEdgeItem
@@ -186,10 +187,9 @@ func collectNavigatesEdges(
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if !strings.EqualFold(rel.Kind, kindNAVIGATES_TO) {
-				continue
+				return true
 			}
 
 			// Apply entity_id filter (direction-aware).
@@ -198,12 +198,12 @@ func collectNavigatesEdges(
 				case "outgoing":
 					// entity_id is the FROM entity; match by local or prefixed ID.
 					if rel.FromID != entityID && prefixedID(r.Repo, rel.FromID) != entityID {
-						continue
+						return true
 					}
 				case "incoming":
 					// entity_id is the TO route / destination entity.
 					if rel.ToID != entityID {
-						continue
+						return true
 					}
 				}
 			}
@@ -217,7 +217,7 @@ func collectNavigatesEdges(
 
 			// Apply route filter (contains, case-insensitive).
 			if routeFilter != "" && !strings.Contains(strings.ToLower(route), strings.ToLower(routeFilter)) {
-				continue
+				return true
 			}
 
 			// Apply with_param filter: params is comma-separated key names.
@@ -230,7 +230,7 @@ func collectNavigatesEdges(
 					}
 				}
 				if !found {
-					continue
+					return true
 				}
 			}
 
@@ -257,7 +257,8 @@ func collectNavigatesEdges(
 				Line:       line,
 				SourceFile: meta.sourceFile,
 			})
-		}
+			return true
+		})
 	}
 	return out
 }
@@ -292,10 +293,9 @@ func collectNavigatesFlow(
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if !strings.EqualFold(rel.Kind, kindNAVIGATES_TO) {
-				continue
+				return true
 			}
 			route, params, line := "", "", 0
 			if rel.PropLen() > 0 {
@@ -317,7 +317,8 @@ func collectNavigatesFlow(
 			// Also key by bare ID so that ToID lookups (which may be bare)
 			// can find subsequent hops.
 			navAdj[rel.FromID] = append(navAdj[rel.FromID], ne)
-		}
+			return true
+		})
 	}
 
 	// Determine BFS start set.
