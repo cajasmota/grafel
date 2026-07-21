@@ -46,7 +46,12 @@ func parityDoc() *graph.Document {
 		Subtype: "struct", SourceFile: "pkg/foo.go", Language: "go",
 		Signature: "type Foo struct{}", StartLine: 10,
 	}
-	e0.PropsReplace(map[string]string{"module": "pkg", "visibility": "public"})
+	// "empty" is a present KEY with an empty ("") VALUE — a zero-length (present)
+	// ByteVector on the value path, exercising the zeroCopyString len==0 guard for
+	// values (distinct from the empty-scalar Signature/Subtype cases on e1). Its
+	// mmap-vs-heap PropGet/PropLookup/PropRange parity is asserted in
+	// assertEntityViewEqual's probe list.
+	e0.PropsReplace(map[string]string{"module": "pkg", "visibility": "public", "empty": ""})
 
 	// Empty Signature AND empty Subtype — the zero-length (present) ByteVector
 	// path. No module property either.
@@ -193,7 +198,7 @@ func assertEntityViewEqual(t *testing.T, id string, want, got graph.EntityView) 
 	// W2 (ADR-0027): full read-only property surface parity — the mmap view's
 	// PropGet/PropLookup/PropLen/PropRange/PropsSnapshot must be byte-identical to
 	// the heap *graph.Entity's, incl. the module scalar/property fold.
-	assertPropReadParity(t, id, want, got, []string{"module", "visibility", "id", "__absent__"})
+	assertPropReadParity(t, id, want, got, []string{"module", "visibility", "empty", "id", "__absent__"})
 }
 
 // propReader is the read-only property surface shared by graph.EntityView and
@@ -413,7 +418,7 @@ func TestMMapHotIndexReadsAreLifetimeSafeUnderReload(t *testing.T) {
 				if mod, _ := v.PropLookup("module"); mod != "pkg" {
 					readFault.Add(1)
 				}
-				if v.PropGet("module") != "pkg" || v.PropLen() != 2 {
+				if v.PropGet("module") != "pkg" || v.PropLen() != 3 {
 					readFault.Add(1)
 				}
 				// PropRange reads zero-copy value strings through the borrow.
@@ -438,5 +443,84 @@ func TestMMapHotIndexReadsAreLifetimeSafeUnderReload(t *testing.T) {
 
 	if f := readFault.Load(); f != 0 {
 		t.Fatalf("read faults (wrong result or use-after-unmap): %d", f)
+	}
+}
+
+// TestMMapPropsSnapshotSurvivesRelease is the load-bearing lifetime test for the
+// mmap*View.PropsSnapshot HEAP-COPY contract: the returned map (unlike the
+// zero-copy scalar/PropGet/PropRange accessors) must remain byte-correct AFTER
+// the borrow is released AND the underlying mmap is retired+munmapped. It retains
+// an entity AND a relationship snapshot under a real borrow, Release()s the
+// borrow, retireHandle()s the mapping (with refs drained, retire munmaps it NOW —
+// see MapHandle.retire), forces a GC, THEN reads the retained maps. If
+// PropsSnapshot aliased the mmap (zeroCopyString instead of string(...)) this is
+// a use-after-unmap: SIGBUS/SIGSEGV or garbage under -race. Heap-copied, it
+// survives. Adversarial — meant to run under -race -count=50.
+func TestMMapPropsSnapshotSurvivesRelease(t *testing.T) {
+	path := writeParityGraph(t)
+
+	s := NewState(&Registry{Groups: map[string]RegistryGroup{
+		"g": {Repos: map[string]RegistryRepo{}},
+	}})
+	lr := &LoadedRepo{Repo: "r"}
+	s.groups["g"] = &LoadedGroup{Name: "g", Repos: map[string]*LoadedRepo{"r": lr}}
+
+	rdr, err := fbreader.Open(path)
+	if err != nil {
+		t.Fatalf("fbreader.Open: %v", err)
+	}
+	s.mu.Lock()
+	lr.publishHandle(newMapHandle(rdr))
+	s.mu.Unlock()
+
+	// Capture the snapshots strictly UNDER the borrow (the only window in which
+	// the mmap is guaranteed mapped).
+	b := s.borrowGroup("g")
+	if b == nil {
+		t.Fatal("borrowGroup returned nil")
+	}
+	h := b.Handle("r")
+	if h == nil {
+		t.Fatal("Handle(r) returned nil")
+	}
+	hi := b.buildHotIndex("r", mmapEntityViewSource{handle: h})
+	ev, ok := hi.entityByID("r::pkg.Foo")
+	if !ok {
+		t.Fatal("entityByID(r::pkg.Foo) miss")
+	}
+	rv := mmapRelationshipView{r: h.Reader().RelationshipAt(0)}
+
+	entSnap := ev.PropsSnapshot()
+	relSnap := rv.PropsSnapshot()
+
+	// Drop the borrow, then retire the handle: refs is drained, so retire munmaps
+	// the mapping immediately. Any lingering alias into it is now use-after-unmap.
+	b.Release()
+	s.mu.Lock()
+	lr.retireHandle()
+	s.mu.Unlock()
+
+	// Churn the heap so a stale alias is unlikely to still find intact bytes.
+	runtime.GC()
+
+	// The retained snapshots must still be byte-correct AFTER the munmap. Reading
+	// an aliased key/value here would fault; heap-copied strings are safe.
+	wantEnt := map[string]string{"module": "pkg", "visibility": "public", "empty": ""}
+	if len(entSnap) != len(wantEnt) {
+		t.Fatalf("entity snapshot = %v, want %v", entSnap, wantEnt)
+	}
+	for k, want := range wantEnt {
+		if got, ok := entSnap[k]; !ok || got != want {
+			t.Errorf("entity snapshot[%q] = (%q,%v) after munmap, want (%q,true) (use-after-unmap?)", k, got, ok, want)
+		}
+	}
+	wantRel := map[string]string{"id": "edge-0001", "line": "12"}
+	if len(relSnap) != len(wantRel) {
+		t.Fatalf("rel snapshot = %v, want %v", relSnap, wantRel)
+	}
+	for k, want := range wantRel {
+		if got, ok := relSnap[k]; !ok || got != want {
+			t.Errorf("rel snapshot[%q] = (%q,%v) after munmap, want (%q,true) (use-after-unmap?)", k, got, ok, want)
+		}
 	}
 }
