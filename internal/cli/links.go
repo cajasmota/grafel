@@ -224,7 +224,7 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
 		jsonSrc := daemon.GraphPathForRepo(r.Path)
-		fbSrc := filepath.Join(stateDir, "graph.fb")
+		fbSrc := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 
 		hasFB := func() bool { _, e := os.Stat(fbSrc); return e == nil }()
 		hasJSON := func() bool { _, e := os.Stat(jsonSrc); return e == nil }()
@@ -319,7 +319,7 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 	graphPaths := make(map[string]string, len(cfg.Repos)) // slug → graph.json path for WriteAtomic
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
-		fbPath := filepath.Join(stateDir, "graph.fb")
+		fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 		jsonPath := daemon.GraphPathForRepo(r.Path)
 		// Check that at least one graph file exists before attempting load.
 		hasFB := func() bool { _, e := os.Stat(fbPath); return e == nil }()
@@ -417,8 +417,9 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 		// must be updated together so that LoadGraphFromDir and any tool that
 		// reads graph.json directly see the same entity set (fixes #1702).
 		stateDir := filepath.Dir(graphPaths[slug])
-		fbPath := filepath.Join(stateDir, "graph.fb")
-		if fbErr := fbwriter.WriteAtomic(fbPath, doc); fbErr != nil {
+		// #5891: gen write + pointer flip (no rename-over a mapped graph.fb).
+		fbPath, fbErr := fbwriter.WriteGraphGen(stateDir, doc)
+		if fbErr != nil {
 			return added, fmt.Errorf("phantom-edge pass: write graph.fb %s: %w", slug, fbErr)
 		}
 		p := graphPaths[slug]

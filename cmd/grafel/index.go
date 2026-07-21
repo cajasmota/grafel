@@ -572,9 +572,12 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 
 		// ADR-0016 flip-day (#808): always emit graph.fb first.
 		// graph.json is emitted alongside unless --skip-json was passed.
-		fbPath := filepath.Join(filepath.Dir(outPath), "graph.fb")
-		if err := fbwriter.WriteAtomic(fbPath, doc); err != nil {
-			fmt.Fprintf(os.Stderr, "grafel: graph.fb write failed: %v\n", err)
+		// #5891 gen layout: write a NEW graph.<gen>.fb + flip the `current`
+		// pointer instead of overwriting a fixed graph.fb. fbPath is the gen
+		// file actually written (used below for the identical-mtime stamp).
+		fbPath, fbErr := fbwriter.WriteGraphGen(filepath.Dir(outPath), doc)
+		if fbErr != nil {
+			fmt.Fprintf(os.Stderr, "grafel: graph.fb write failed: %v\n", fbErr)
 			// Non-fatal — we still try to write graph.json so the system
 			// remains functional. If both fail, the error from graph.json
 			// propagates below.

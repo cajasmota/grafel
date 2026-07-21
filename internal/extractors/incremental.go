@@ -662,8 +662,12 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	sortGraphDocumentForEmission(doc)
 
-	fbPath := filepath.Join(stateDir, "graph.fb")
-	if writeErr := fbwriter.WriteAtomic(fbPath, doc); writeErr != nil {
+	// #5891 gen layout: write graph.<gen>.fb + flip the `current` pointer
+	// instead of overwriting graph.fb. This never renames over a possibly-
+	// mapped graph.fb (Windows ERROR_USER_MAPPED_FILE). fbPath is the gen
+	// file written, passed to the directory-keyed sidecar writer below.
+	fbPath, writeErr := fbwriter.WriteGraphGen(stateDir, doc)
+	if writeErr != nil {
 		return fallback(t0, "write-graph-fb: "+writeErr.Error())
 	}
 

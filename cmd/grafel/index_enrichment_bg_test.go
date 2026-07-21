@@ -46,7 +46,7 @@ func TestIndex_GraphWrittenBeforeEnrichment(t *testing.T) {
 		t.Fatalf("Index: %v", err)
 	}
 
-	fbPath := filepath.Join(tmp, "graph.fb")
+	fbPath := graph.CurrentGraphPath(tmp) // #5891: resolve active gen (graph.<gen>.fb)
 	if _, err := os.Stat(fbPath); err != nil {
 		t.Fatalf("graph.fb not written: %v", err)
 	}

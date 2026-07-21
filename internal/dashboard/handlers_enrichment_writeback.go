@@ -205,15 +205,20 @@ func (s *Server) handleEnrichmentWriteback(w http.ResponseWriter, r *http.Reques
 	// format leaves the other stale, causing ghost entity IDs for direct
 	// graph.json readers (fixes #1702).
 	stateDir := daemon.StateDirForRepo(found.repoPath)
-	fbPath := filepath.Join(stateDir, "graph.fb")
 	graphPath := daemon.GraphPathForRepo(found.repoPath)
 
-	if err := fbwriter.WriteAtomic(fbPath, found.doc); err != nil {
+	// #5891: write a NEW graph.<gen>.fb + flip the `current` pointer rather
+	// than overwriting graph.fb — this writeback path is executed by the serve
+	// process while the same graph.fb may be mmap'd, exactly the Windows
+	// ERROR_USER_MAPPED_FILE hazard the gen layout removes. fbPath is the gen
+	// file written (used for the identical-mtime stamp below).
+	fbPath, ferr := fbwriter.WriteGraphGen(stateDir, found.doc)
+	if ferr != nil {
 		s.auditor.Err("enrichment_writeback", group, map[string]any{
 			"subject_id": subjectID,
 			"kind":       req.Kind,
-		}, "write graph.fb: "+err.Error())
-		writeErr(w, http.StatusInternalServerError, "persist graph.fb: "+err.Error())
+		}, "write graph.fb: "+ferr.Error())
+		writeErr(w, http.StatusInternalServerError, "persist graph.fb: "+ferr.Error())
 		return
 	}
 	if err := graph.WriteAtomic(graphPath, found.doc, false); err != nil {
