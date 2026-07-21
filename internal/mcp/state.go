@@ -981,6 +981,18 @@ type LoadedGroup struct {
 	algoFile    string
 	algoMt      time.Time
 	algoApplied bool
+
+	// lastAccess is the wall-clock time of the most recent State.Group(name)
+	// routing decision for this group — the per-call choke point every tool call
+	// passes through to resolve its target group. s.mu-guarded (written in
+	// State.Group, read in SweepIdleGroups, both under s.mu). It is the idle-group
+	// LRU signal AND the PIN signal (memory epic #5850, issue #5872 PR2): the idle
+	// sweep evicts a whole group whose now-lastAccess exceeds the configured window
+	// but NEVER the currently-active group (the max-lastAccess group — the working
+	// set the fleet is servicing). Zero value means the group has been loaded but
+	// never routed to through State.Group (e.g. eager startup warm never queried):
+	// mirroring bm25LastUse, such a group is NOT idle-eligible until first access.
+	lastAccess time.Time
 }
 
 // WorktreeLookup is the narrow interface ResolveCWD uses to query the PH3
@@ -1521,6 +1533,13 @@ func (s *State) Group(name string) *LoadedGroup {
 		}
 	}
 	if grp != nil {
+		// Stamp the LRU/PIN signal on every routing decision (issue #5872 PR2).
+		// This is the per-call choke point, so the group with the newest lastAccess
+		// is definitionally the active working set — SweepIdleGroups pins it. It is
+		// also why a group queried within the idle window is never idle-evicted, and
+		// why a revive (below) immediately re-arms the signal for the freshly
+		// re-materialized group.
+		grp.lastAccess = time.Now()
 		s.refreshGroupAlgoOverlayLocked(grp)
 	}
 	return grp
@@ -1554,6 +1573,14 @@ func (s *State) Group(name string) *LoadedGroup {
 func (s *State) EvictGroup(name string, keepReader bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.evictGroupLocked(name, keepReader)
+}
+
+// evictGroupLocked is EvictGroup's body with the lock already held. Extracted
+// (issue #5872 PR2) so the idle-group sweep (SweepIdleGroups) can evict several
+// idle groups inside ONE s.mu critical section without re-entrant locking.
+// Caller MUST hold s.mu.
+func (s *State) evictGroupLocked(name string, keepReader bool) bool {
 	grp := s.groups[name]
 	if grp == nil {
 		return false
@@ -1825,6 +1852,84 @@ func (s *State) SweepIdleBM25(idle time.Duration) int {
 			if lr != nil && lr.evictBM25IfIdle(idle, now) {
 				evicted++
 			}
+		}
+	}
+	return evicted
+}
+
+// SweepIdleGroups evicts the whole resident graph of every group whose last
+// State.Group routing is older than idle, EXCEPT the currently-active group,
+// returning how many groups were evicted. It is the production wiring of the
+// EvictGroup primitive (memory epic #5850, issue #5872 PR2) — the lever that
+// makes idle-group RSS reclamation actually happen in an agent fleet — fired from
+// the MCP server's per-call reload hook (reloadBeforeCall) alongside
+// SweepIdleBM25. A non-positive idle disables the sweep (returns 0 without
+// locking), so it is behaviour-neutral when the knob is unset.
+//
+// PIN (the load-bearing safety requirement). The group being serviced RIGHT NOW
+// must NEVER be evicted — a flag-on in-flight read on an evicted group would
+// otherwise observe an empty graph. The pin is the MAX-lastAccess group: State.Group
+// stamps lastAccess on every routing decision, so the newest-stamped group is the
+// active working set the fleet is currently querying, and it is always skipped
+// regardless of its absolute age. Reinforcing the pin:
+//   - The idle window itself: any group touched within idle (now-lastAccess <= idle)
+//     is skipped, so a group queried concurrently mid-sweep is safe.
+//   - Never-routed groups (lastAccess zero — loaded but never queried through
+//     State.Group) are NOT idle-eligible, mirroring bm25LastUse's zero semantics.
+//   - The revive-on-access backstop in State.Group: even a group this sweep does
+//     evict is transparently re-materialized on its very next State.Group, so a
+//     pin miss degrades to an extra evict+revive, never an empty read.
+//
+// Composition with SweepIdleBM25: BM25 evicts at the short window (~5 min); the
+// whole group evicts at the longer group window — they stack. A group idle long
+// enough first loses its BM25 (heap already dropped, bm25Once re-armed) and then,
+// still idle, loses the whole graph — evicting a group whose BM25 was already
+// evicted is a plain no-op interaction (EvictGroup drops whatever heap remains).
+//
+// Locking: takes s.mu once and evicts via evictGroupLocked (the EvictGroup body),
+// which routes every munmap through the F1 retireHandle drain — same s.mu ->
+// readerMu order the primitive and reload use, so no in-flight borrow is unmapped.
+// keepReader is threaded straight to evictGroupLocked (keep the mmap mapped and
+// re-materialize on revive vs. full munmap + disk re-read).
+func (s *State) SweepIdleGroups(idle time.Duration, keepReader bool) int {
+	if idle <= 0 {
+		return 0
+	}
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Identify the PIN: the active (max-lastAccess) group. Skipped unconditionally
+	// below so the group the fleet is currently servicing is never the victim.
+	pin := ""
+	var pinAt time.Time
+	for name, g := range s.groups {
+		if g == nil {
+			continue
+		}
+		if pin == "" || g.lastAccess.After(pinAt) {
+			pin, pinAt = name, g.lastAccess
+		}
+	}
+
+	// Collect eligible names first — evictGroupLocked mutates s.groups, so we must
+	// not delete while ranging it.
+	var idleNames []string
+	for name, g := range s.groups {
+		if g == nil || name == pin {
+			continue
+		}
+		// Never-routed (zero lastAccess) → not idle-eligible (mirrors bm25LastUse).
+		if g.lastAccess.IsZero() || now.Sub(g.lastAccess) <= idle {
+			continue
+		}
+		idleNames = append(idleNames, name)
+	}
+
+	evicted := 0
+	for _, name := range idleNames {
+		if s.evictGroupLocked(name, keepReader) {
+			evicted++
 		}
 	}
 	return evicted
