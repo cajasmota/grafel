@@ -211,10 +211,27 @@ func runLinksForGroup(cmd *cobra.Command, group string) error {
 
 // stageGraphsDir creates a scratch directory containing one sub-dir per
 // repo. Each sub-dir has symlinks pointing at the repo's on-disk graph
-// files (graph.fb and/or graph.json). This keeps the layout that
-// loadAllGraphs expects without duplicating bytes. ADR-0016 flip-day
-// (#808): graph.fb is symlinked when present so LoadGraphFromDir
-// can prefer the binary format in downstream passes.
+// files (graph.fb and/or graph.json, or — for a SEGMENTED repo — the whole
+// graph.<gen>/ segment dir plus a `current` pointer). This keeps the layout
+// that loadAllGraphs/LoadGraphFromDir expects without duplicating bytes.
+// ADR-0016 flip-day (#808): graph.fb is symlinked when present so
+// LoadGraphFromDir can prefer the binary format in downstream passes.
+//
+// #5904(e) PR-c (#5915 P2 gap): staging used to resolve only the flat
+// graph.fb path via graph.CurrentGraphPath, so a repo whose active generation
+// is a multi-segment gen dir (graph.<gen>/seg-*.fb + manifest.json — no flat
+// .fb ever exists for it) had hasFB==false and was silently DROPPED from
+// staging, and therefore from every cross-repo link pass. This now resolves
+// each repo via graph.CurrentGraphDescriptor and stages per its Kind:
+//
+//   - GraphSingleFile: symlink desc.Path as dstDir/graph.fb — BYTE-FOR-BYTE
+//     the pre-existing behavior (the common path).
+//   - GraphSegmentSet: symlink the whole generation into dstDir/graph.<gen>/
+//     (every segment file + manifest.json) and write a `current` pointer in
+//     dstDir naming that gen dir, so LoadGraphFromDir(dstDir) resolves it as
+//     a segment-set exactly as it would at the repo's real state dir.
+//   - GraphAbsent: nothing to stage for the fb side (graph.json, if any, is
+//     still staged below).
 func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 	tmp, err := os.MkdirTemp("", "grafel-links-")
 	if err != nil {
@@ -224,13 +241,17 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
 		jsonSrc := daemon.GraphPathForRepo(r.Path)
-		fbSrc := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
-
-		hasFB := func() bool { _, e := os.Stat(fbSrc); return e == nil }()
 		hasJSON := func() bool { _, e := os.Stat(jsonSrc); return e == nil }()
-		if !hasFB && !hasJSON {
+
+		desc, derr := graph.CurrentGraphDescriptor(stateDir)
+		if derr != nil {
+			cleanup()
+			return "", func() {}, fmt.Errorf("stage graphs: resolve %s: %w", r.Slug, derr)
+		}
+		if desc.Kind == graph.GraphAbsent && !hasJSON {
 			continue
 		}
+
 		dstDir := filepath.Join(tmp, r.Slug)
 		if err := os.MkdirAll(dstDir, 0o755); err != nil {
 			cleanup()
@@ -242,11 +263,40 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 				return "", func() {}, err
 			}
 		}
-		if hasFB {
-			if err := linkOrCopyFile(fbSrc, filepath.Join(dstDir, "graph.fb")); err != nil {
+
+		switch desc.Kind {
+		case graph.GraphSingleFile:
+			if err := linkOrCopyFile(desc.Path, filepath.Join(dstDir, "graph.fb")); err != nil {
 				cleanup()
 				return "", func() {}, err
 			}
+		case graph.GraphSegmentSet:
+			genDirName := filepath.Base(desc.GenDir)
+			dstGenDir := filepath.Join(dstDir, genDirName)
+			if err := os.MkdirAll(dstGenDir, 0o755); err != nil {
+				cleanup()
+				return "", func() {}, err
+			}
+			for _, seg := range desc.Segments {
+				if err := linkOrCopyFile(seg, filepath.Join(dstGenDir, filepath.Base(seg))); err != nil {
+					cleanup()
+					return "", func() {}, err
+				}
+			}
+			manifestSrc := filepath.Join(desc.GenDir, graph.ManifestFileName)
+			if err := linkOrCopyFile(manifestSrc, filepath.Join(dstGenDir, graph.ManifestFileName)); err != nil {
+				cleanup()
+				return "", func() {}, err
+			}
+			// Point the staged repo's `current` pointer at the staged gen dir
+			// so LoadGraphFromDir(dstDir) resolves the same segment-set shape
+			// CurrentGraphDescriptor resolved at the real state dir.
+			if err := graph.WriteCurrentPointerRaw(dstDir, genDirName); err != nil {
+				cleanup()
+				return "", func() {}, err
+			}
+		case graph.GraphAbsent:
+			// Nothing further to stage; graph.json (if any) is already linked.
 		}
 	}
 	return tmp, cleanup, nil
@@ -319,12 +369,19 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 	graphPaths := make(map[string]string, len(cfg.Repos)) // slug → graph.json path for WriteAtomic
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
-		fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 		jsonPath := daemon.GraphPathForRepo(r.Path)
-		// Check that at least one graph file exists before attempting load.
-		hasFB := func() bool { _, e := os.Stat(fbPath); return e == nil }()
+		// Check that a graph exists before attempting load. #5904(e) PR-c: use
+		// the segment-aware descriptor rather than a flat graph.fb stat, so a
+		// SEGMENTED repo (graph.<gen>/ dir + manifest.json, no flat .fb) is not
+		// skipped here — the load below (loadGraphDocument → LoadGraphFromDir)
+		// is already segment-aware; only this existence gate needed to catch
+		// up (#5915 P2 gap).
+		desc, derr := graph.CurrentGraphDescriptor(stateDir)
+		if derr != nil {
+			return 0, fmt.Errorf("phantom-edge pass: resolve graph for %s: %w", r.Slug, derr)
+		}
 		hasJSON := func() bool { _, e := os.Stat(jsonPath); return e == nil }()
-		if !hasFB && !hasJSON {
+		if desc.Kind == graph.GraphAbsent && !hasJSON {
 			continue // repo not indexed yet
 		}
 		doc, err := loadGraphDocument(stateDir)
