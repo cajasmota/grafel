@@ -96,15 +96,19 @@ func aggregateGroupStats(groupName string, repos []registry.Repo) (entityCount i
 						latest = ps.ComputedAt
 					}
 				default:
-					// No header timestamp — fall back to graph.fb mtime.
-					if info, e2 := os.Stat(graph.CurrentGraphPath(stateDir)); e2 == nil && info.ModTime().After(latest) {
-						latest = info.ModTime()
+					// No header timestamp — fall back to the active graph's
+					// mtime. #5915 J2 slice-2: CurrentGraphMtime is segment-set
+					// aware (manifest.json mtime), unlike
+					// os.Stat(CurrentGraphPath(stateDir)) which only ever resolves
+					// a flat .fb path.
+					if mt, ok := graph.CurrentGraphMtime(stateDir); ok && mt.After(latest) {
+						latest = mt
 					}
 				}
-			} else if info, e2 := os.Stat(graph.CurrentGraphPath(stateDir)); e2 == nil {
-				// graph.fb unreadable but present — fall back to its mtime.
-				if info.ModTime().After(latest) {
-					latest = info.ModTime()
+			} else if mt, ok := graph.CurrentGraphMtime(stateDir); ok {
+				// graph unreadable but present — fall back to its mtime.
+				if mt.After(latest) {
+					latest = mt
 				}
 			}
 			continue

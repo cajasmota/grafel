@@ -86,3 +86,64 @@ func TestAggregateGroupStats_TrulyNeverIndexed(t *testing.T) {
 		t.Errorf("lastIndexed = %v, want zero", lastIndexed)
 	}
 }
+
+// TestAggregateGroupStats_SegmentSetUnreadableHeader is the RED test for
+// #5915 J2 slice-2: a SEGMENT-SET repo (graph.<gen>/ dir + manifest.json,
+// no flat graph.fb) whose segment file cannot be opened as a FlatBuffers
+// graph (graph.PersistedStatsFromDir returns ok=false, mirroring a corrupt
+// single .fb file) must still fall back to the manifest.json mtime via
+// graph.CurrentGraphMtime as last-indexed -- not the zero time from the old
+// os.Stat(graph.CurrentGraphPath(stateDir)) gate, which only ever resolves a
+// flat .fb path and is therefore always absent for a segment-set repo.
+func TestAggregateGroupStats_SegmentSetUnreadableHeader(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmpDir)
+	registryStatsMu.Lock()
+	delete(registryStatsCache, "seggrp")
+	registryStatsMu.Unlock()
+
+	repoPath := filepath.Join(tmpDir, "segrepo")
+	os.MkdirAll(repoPath, 0o755)
+	stateDir := daemon.StateDirForRepo(repoPath)
+	os.MkdirAll(stateDir, 0o755)
+
+	mtime := time.Now().Add(-9 * time.Minute).UTC().Truncate(time.Second)
+	genDir := filepath.Join(stateDir, graph.GenDirName(7))
+	segName := graph.SegmentFileName(0)
+	// The manifest names a segment file that is never written -- opening it
+	// fails cleanly (no such file), so PersistedStatsFromDir returns ok=false
+	// even though the manifest + current pointer are otherwise valid.
+	if err := os.MkdirAll(genDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := &graph.Manifest{FormatVersion: graph.ManifestFormatVersion, Segments: []graph.SegmentMeta{{
+		File: segName, Kind: graph.SegmentEntities, EntityCount: 1,
+		MinKey: "aa1", MaxKey: "aa1",
+	}}}
+	if err := graph.WriteManifest(genDir, m); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	manifestPath := filepath.Join(genDir, graph.ManifestFileName)
+	if err := os.Chtimes(manifestPath, mtime, mtime); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.WriteCurrentPointerRaw(stateDir, graph.GenDirName(7)); err != nil {
+		t.Fatalf("write current: %v", err)
+	}
+	if _, ok := graph.PersistedStatsFromDir(stateDir); ok {
+		t.Fatal("precondition: PersistedStatsFromDir must fail to open the corrupt segment")
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "graph-stats.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no sidecar, stat err = %v", err)
+	}
+
+	repos := []registry.Repo{{Slug: "segrepo", Path: repoPath}}
+	_, lastIndexed := aggregateGroupStats("seggrp", repos)
+
+	if lastIndexed.IsZero() {
+		t.Fatal("lastIndexed is zero, want the segment-set manifest.json mtime")
+	}
+	if !lastIndexed.Equal(mtime) {
+		t.Errorf("lastIndexed = %v, want %v", lastIndexed, mtime)
+	}
+}
