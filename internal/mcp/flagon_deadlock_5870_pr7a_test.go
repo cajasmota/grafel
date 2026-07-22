@@ -64,6 +64,20 @@ func contractMroTopoDoc() *graph.Document {
 	expHandler.SourceFile = "src/items.js"
 	expDto := mkEnt("expdto", "itemSchema", "SCOPE.Component")
 
+	faEp := graph.Entity{ID: "faep", Name: "GET /things", Kind: "http_endpoint_definition", SourceFile: "app/api.py", Language: "python", StartLine: 30, EndLine: 32}
+	faEp.PropSet("framework", "fastapi")
+	faEp.PropSet("verb", "GET")
+	faEp.PropSet("path", "/things")
+	faHandler := mkEnt("fahandler", "get_thing", "SCOPE.Operation")
+	faHandler.SourceFile = "app/api.py"
+
+	spEp := graph.Entity{ID: "spep", Name: "GET /accounts", Kind: "http_endpoint_definition", SourceFile: "src/AccountController.java", Language: "java", StartLine: 40, EndLine: 42}
+	spEp.PropSet("framework", "spring")
+	spEp.PropSet("verb", "GET")
+	spEp.PropSet("path", "/accounts")
+	spHandler := mkEnt("sphandler", "AccountController.list", "SCOPE.Operation")
+	spHandler.SourceFile = "src/AccountController.java"
+
 	// DRF ViewSet class + member (MRO).
 	vs := graph.Entity{ID: "vs", Name: "UserViewSet", QualifiedName: "UserViewSet", Kind: "SCOPE.Component", Subtype: "class", SourceFile: "api/views.py", Language: "python", StartLine: 1, EndLine: 30}
 	member := graph.Entity{ID: "vsmember", Name: "UserViewSet.list", QualifiedName: "UserViewSet.list", Kind: "SCOPE.Operation", Subtype: "method", SourceFile: "api/views.py", Language: "python", StartLine: 5, EndLine: 9}
@@ -75,7 +89,7 @@ func contractMroTopoDoc() *graph.Document {
 	pubSvc := mkEnt("pubsvc", "OrderService", "SCOPE.Operation")
 	subSvc := mkEnt("subsvc", "ShipService", "SCOPE.Operation")
 
-	ents := []graph.Entity{nestEp, nestHandler, nestDto, expEp, expHandler, expDto, vs, member, topicPub, topicSub, pubSvc, subSvc}
+	ents := []graph.Entity{nestEp, nestHandler, nestDto, expEp, expHandler, expDto, faEp, faHandler, spEp, spHandler, vs, member, topicPub, topicSub, pubSvc, subSvc}
 
 	mkRel := func(from, to, kind string, props map[string]string) graph.Relationship {
 		r := graph.Relationship{FromID: from, ToID: to, Kind: kind}
@@ -89,6 +103,8 @@ func contractMroTopoDoc() *graph.Document {
 		mkRel("nesthandler", "nestdto", "VALIDATES", map[string]string{"dto": "CreateUserDto", "method": "body"}),
 		mkRel("exphandler", "expep", "IMPLEMENTS", nil),
 		mkRel("exphandler", "expdto", "VALIDATES", map[string]string{"dto": "itemSchema", "method": "query"}),
+		mkRel("fahandler", "faep", "IMPLEMENTS", nil),
+		mkRel("sphandler", "spep", "IMPLEMENTS", nil),
 		mkRel("vs", "ModelViewSet", "EXTENDS", map[string]string{"base_name": "rest_framework.viewsets.ModelViewSet"}),
 		mkRel("vs", "vsmember", "CONTAINS", nil),
 		mkRel("pubsvc", "t_orders", "PUBLISHES_TO", nil),
@@ -155,6 +171,41 @@ func TestEffectiveContractExpress_flagON_noDeadlock_PR7a(t *testing.T) {
 	})
 	if gotOK != wantOK || !reflect.DeepEqual(gotGroups, wantGroups) {
 		t.Fatalf("Express contract flag-ON(emptied Doc) != flag-OFF\n got=%#v\nwant=%#v", gotGroups, wantGroups)
+	}
+}
+
+// TestEffectiveContractFastAPISpring_flagON_noDeadlock_PR7a covers the sibling
+// frameworks (fastapi + spring), whose forEach scans have the SAME pre-existing
+// frameworkHandlerEntity→getByIDOne in-scan hazard, fixed for family consistency.
+func TestEffectiveContractFastAPISpring_flagON_noDeadlock_PR7a(t *testing.T) {
+	doc, r := loadContractMroTopoFixture(t)
+
+	cases := []struct {
+		name    string
+		resolve func(lg *LoadedGroup) ([]effectiveContractGroup, bool)
+	}{
+		{"fastapi", func(lg *LoadedGroup) ([]effectiveContractGroup, bool) {
+			return fastAPIContractResolver{}.Resolve(lg, "get_thing", "get_thing")
+		}},
+		{"spring", func(lg *LoadedGroup) ([]effectiveContractGroup, bool) {
+			return springContractResolver{}.Resolve(lg, "AccountController", "accountcontroller")
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withServeFromMMap(t, false)
+			wantG, wantOK := tc.resolve(lgWith(docFullRepo(doc)))
+
+			withServeFromMMap(t, true)
+			var gotG []effectiveContractGroup
+			var gotOK bool
+			noHang(t, 5*time.Second, tc.name+"ContractResolver.Resolve", func() {
+				gotG, gotOK = tc.resolve(lgWith(readerEmptiedRepo(t, doc, r)))
+			})
+			if gotOK != wantOK || !reflect.DeepEqual(gotG, wantG) {
+				t.Fatalf("%s contract flag-ON(emptied Doc) != flag-OFF\n got=%#v\nwant=%#v", tc.name, gotG, wantG)
+			}
+		})
 	}
 }
 
