@@ -174,21 +174,54 @@ func TestResponseShapePython_MemoizationIdentical(t *testing.T) {
 // regexp.MustCompile + full rescan this ratio blew up; with memoization it is
 // ~linear.
 //
-// De-flaking rationale (#5607): the original compared N=100 vs N=400 (a 4x
-// corpus) against a 9x bound. That gap is too narrow — for a linear extractor
-// the expected ratio is ~4x and the headroom to the 9x bound is only ~2.25x,
-// so ordinary CI jitter (cold caches, GC pauses, co-scheduled load) routinely
-// pushed it past 9x (9.28x observed on ubuntu-latest) with no real regression.
+// De-flaking rationale (#5607, revised #5751-followup): the original compared
+// N=100 vs N=400 (a 4x corpus) against a 9x bound. That gap is too narrow —
+// for a linear extractor the expected ratio is ~4x and the headroom to the 9x
+// bound is only ~2.25x, so ordinary CI jitter (cold caches, GC pauses,
+// co-scheduled load) routinely pushed it past 9x (9.28x observed on
+// ubuntu-latest) with no real regression.
 //
-// We instead use a 10x corpus gap (N=100 vs N=1000) and take the MEDIAN of a
-// few timing runs to damp outliers. The math is what makes this robust:
+// We use a 10x corpus gap (N=100 vs N=1000). The math is what makes the
+// signal meaningful regardless of how we aggregate samples:
 //
 //   - Linear  (O(n)):   1000/100  = 10x   time  → expected ratio ≈ 10
 //   - Quadratic (O(n²)): 1000²/100² = 100x time  → expected ratio ≈ 100
 //
-// A 25x bound sits ~2.5x above the linear expectation (generous slack for
-// fixed overhead and noise) yet ~4x below the quadratic signal, so a genuine
-// O(n²) reintroduction still fails loudly (~100x) while CI jitter never does.
+// Aggregation was originally the MEDIAN of a few timing runs. That still
+// flaked on a slow/contended Windows CI runner (#5751 follow-up, run #4:
+// N=1000 median inflated to 130ms, ratio=32.28 > the then-25x bound) even
+// though the epic's own change set wasn't in that delta — i.e. it was a pure
+// runner-noise false positive. The problem with the median is that
+// contention/GC/scheduler noise on a wall-clock timer only ever ADDS time to
+// a sample; it never subtracts. A handful of contended runs can drag the
+// median itself upward with no ceiling, so "median of 5" doesn't actually
+// bound the noise contribution.
+//
+// We now take the MINIMUM of the per-N samples instead. The minimum is the
+// least-contended observation in the batch, so it is the best available
+// estimate of true algorithmic cost: any noise event can only push a sample
+// *away* from the true cost (upward), never below it, so the smallest sample
+// is the one noise corrupted least. The ratio of minimums is therefore far
+// more stable across noisy runners than the ratio of medians, without giving
+// up any ability to catch a real quadratic regression — an O(n²) code path
+// is *always* ~100x slower at N=1000 vs N=100, on every single run including
+// the least-contended one, so its minimum ratio is just as damning as its
+// median ratio.
+//
+// samples is bumped 5→8 to give the minimum more draws (more chances to
+// catch a clean, uncontended run) while staying fast (~8 corpus passes at
+// N=100 + N=1000 is well under a second on any CI tier).
+//
+// Threshold: with min-based timing the ratio should sit close to the true
+// ~10x linear expectation (the #5751 Windows failure's true cost was ~10x;
+// only the median-of-noisy-samples aggregation pushed it to 32x). A 30x bound
+// gives 3x headroom over the 10x linear expectation — generous slack for
+// fixed overhead, GC, and residual runner contention that even the min can't
+// fully filter out — while staying ~3.3x below the quadratic signal (100x),
+// which is still a wide, unambiguous separation: a genuine O(n²)
+// reintroduction produces a ratio an order of magnitude past this bound, so
+// it fails loudly and unambiguously while realistic Windows-runner jitter on
+// a linear implementation does not.
 func TestResponseShapePython_NearLinearScaling(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping timing-sensitive scaling test in -short mode")
@@ -196,15 +229,15 @@ func TestResponseShapePython_NearLinearScaling(t *testing.T) {
 	const (
 		smallN  = 100
 		largeN  = 1000 // 10x the corpus → linear≈10x time, quadratic≈100x
-		samples = 5    // median of N runs damps CI outliers
-		bound   = 25.0 // ~2.5x over linear (10x), ~4x under quadratic (100x)
+		samples = 8    // min of N runs damps CI outliers without masking true cost
+		bound   = 30.0 // ~3x over linear (10x), ~3.3x under quadratic (100x)
 	)
-	timeSmall := medianCorpus(t, smallN, samples)
-	timeLarge := medianCorpus(t, largeN, samples)
+	timeSmall := minCorpus(t, smallN, samples)
+	timeLarge := minCorpus(t, largeN, samples)
 
 	// +1µs floor on the denominator guards against a 0ns small measurement.
 	ratio := float64(timeLarge) / float64(timeSmall+time.Microsecond)
-	t.Logf("scaling: N=%d median %v, N=%d median %v, ratio=%.2f (linear≈10.0, quadratic≈100.0)",
+	t.Logf("scaling: N=%d min %v, N=%d min %v, ratio=%.2f (linear≈10.0, quadratic≈100.0)",
 		smallN, timeSmall, largeN, timeLarge, ratio)
 	if ratio > bound {
 		t.Fatalf("super-linear scaling detected: %dx corpus took %.2fx time (want <%.0fx); "+
@@ -212,17 +245,25 @@ func TestResponseShapePython_NearLinearScaling(t *testing.T) {
 	}
 }
 
-// medianCorpus times the corpus pass `samples` times for the given corpus size
-// and returns the median, which is far more stable than a single timing under
-// CI noise (a single GC pause or co-scheduled spike can multiply one run).
-func medianCorpus(t *testing.T, nClasses, samples int) time.Duration {
+// minCorpus times the corpus pass `samples` times for the given corpus size
+// and returns the minimum observed duration. Wall-clock noise (GC pauses,
+// scheduler contention, co-scheduled CI load) only ever adds time to a
+// sample, never subtracts it, so the minimum of a batch is the sample least
+// corrupted by noise and the best available estimate of true algorithmic
+// cost. This makes the ratio of minimums far more stable across noisy
+// runners (notably slow/contended Windows CI) than the ratio of medians,
+// while still reliably surfacing a genuine O(n²) regression: a quadratic
+// code path is slower by construction on every run, including the cleanest
+// one, so its minimum ratio is just as damning as its median ratio.
+func minCorpus(t *testing.T, nClasses, samples int) time.Duration {
 	t.Helper()
-	runs := make([]time.Duration, samples)
-	for i := range runs {
-		runs[i] = timeCorpus(t, nClasses)
+	best := timeCorpus(t, nClasses)
+	for i := 1; i < samples; i++ {
+		if d := timeCorpus(t, nClasses); d < best {
+			best = d
+		}
 	}
-	sort.Slice(runs, func(a, b int) bool { return runs[a] < runs[b] })
-	return runs[len(runs)/2]
+	return best
 }
 
 func timeCorpus(t *testing.T, nClasses int) time.Duration {

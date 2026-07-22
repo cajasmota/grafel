@@ -14,7 +14,6 @@ package resolve
 
 import (
 	"fmt"
-	"sort"
 	"testing"
 	"time"
 
@@ -300,17 +299,34 @@ func TestMergeModuleBatch_SingleBatch(t *testing.T) {
 // (12.25x observed on a loaded macOS runner). It was the third perf-ratio
 // scaling test to flake this way after #5607 and #5628.
 //
-// We apply the #5607 pattern: a wide 10x corpus gap and the MEDIAN of several
-// timing runs per size. The wide gap is what makes the bound robust — it places
-// a large window between the expected complexity and the next-worse one:
+// We apply the #5607 pattern: a wide 10x corpus gap. The wide gap is what
+// makes the bound robust — it places a large window between the expected
+// complexity and the next-worse one:
 //
 //   - O(N log N): 1000/100 × log(1000)/log(100) ≈ 10 × 1.5 = 15x
 //   - O(N²):      1000²/100²                     = 100x
 //
+// Aggregation across samples was originally the MEDIAN of several timing
+// runs per size, but that still flaked on noisy CI runners (see
+// internal/engine/response_shape_python_perf_test.go's #5751 Windows
+// follow-up: a median-of-5 got dragged up by runner contention with no
+// algorithmic change). Wall-clock noise (GC pauses, scheduler contention,
+// co-scheduled load) only ever ADDS time to a sample, never subtracts it, so
+// a handful of contended runs can drag the median upward with no ceiling —
+// the median doesn't actually bound the noise contribution. We now take the
+// MINIMUM of the per-size samples instead: it is the least-contended
+// observation, the best available estimate of true algorithmic cost, and a
+// genuine O(N²) code path is still ~100x slower at N=1000 vs N=100 on every
+// run including the cleanest one, so switching to min loses none of the
+// regression-detection power. samples is bumped 5→8 to give the minimum more
+// draws at a clean run while staying fast.
+//
 // A 40x bound sits ~2.7x above the n-log-n expectation (generous slack for
 // fixed overhead and CI noise) yet ~2.5x below the quadratic signal, so a
 // genuine O(N²) reintroduction still fails loudly (~100x) while CI jitter
-// never does.
+// never does. With min-based timing this margin is if anything more
+// comfortable than before, since min filters out upward noise directly
+// rather than relying on the bound alone to absorb it.
 func TestBuildIndexFromModules_SubQuadratic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping scaling test in short mode")
@@ -320,32 +336,35 @@ func TestBuildIndexFromModules_SubQuadratic(t *testing.T) {
 		entPerMod = 50
 		smallN    = 100
 		largeN    = 1000 // 10x corpus → n-log-n ≈ 15x time, quadratic ≈ 100x
-		samples   = 5    // median of N runs damps CI outliers
+		samples   = 8    // min of N runs damps CI outliers without masking true cost
 		bound     = 40.0 // ~2.7x over n-log-n (15x), ~2.5x under quadratic (100x)
 	)
 
-	// median times BuildIndexFromModules `samples` times at the given module
-	// count and returns the median, which is far more stable than a single
-	// timing under CI noise (one GC pause or co-scheduled spike can multiply a
-	// lone run).
-	median := func(numMods int) int64 {
+	// min times BuildIndexFromModules `samples` times at the given module
+	// count and returns the minimum, which is far more stable than the
+	// median under CI noise: a GC pause or co-scheduled spike can only ever
+	// inflate a sample, so the smallest sample is the one least corrupted by
+	// noise and the best estimate of true algorithmic cost.
+	minRun := func(numMods int) int64 {
 		modules, _ := syntheticModules(numMods, entPerMod)
-		runs := make([]int64, samples)
-		for i := range runs {
+		best := int64(-1)
+		for i := 0; i < samples; i++ {
 			t0 := nanoTime()
 			_ = BuildIndexFromModules(modules, 0)
-			runs[i] = nanoTime() - t0
+			d := nanoTime() - t0
+			if best < 0 || d < best {
+				best = d
+			}
 		}
-		sort.Slice(runs, func(a, b int) bool { return runs[a] < runs[b] })
-		return runs[len(runs)/2]
+		return best
 	}
 
-	tSmall := median(smallN)
-	tLarge := median(largeN)
+	tSmall := minRun(smallN)
+	tLarge := minRun(largeN)
 
 	// +1µs floor on the denominator guards against a 0ns small measurement.
 	ratio := float64(tLarge) / float64(tSmall+1000)
-	t.Logf("%d-mod median: %dns  %d-mod median: %dns  ratio: %.2fx (n-log-n≈15.0, quadratic≈100.0)",
+	t.Logf("%d-mod min: %dns  %d-mod min: %dns  ratio: %.2fx (n-log-n≈15.0, quadratic≈100.0)",
 		smallN, tSmall, largeN, tLarge, ratio)
 
 	if ratio > bound {
