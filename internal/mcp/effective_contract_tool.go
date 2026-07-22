@@ -184,6 +184,14 @@ func computeEffectiveContract(lg *LoadedGroup, target string) effectiveContractR
 		if r.Doc == nil {
 			continue
 		}
+		// #5870 PR7a: collect matching routes under the pure filters INSIDE the
+		// scan, then run the rmu-locking MRO backfill AFTER the forEach releases
+		// readerMu. backfillEffectiveContractFromMRO→resolveMember re-locks the
+		// repo readerMu (extendsBases→relationshipAt) AND runs a nested
+		// forEachEntity (classDeclaredMember), both of which self-deadlock in-scan
+		// on the flag-ON default path. Vector-index order preserved → identical
+		// grouping/output.
+		var routes []*graph.Entity
 		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isRouterExpandedRoute(e) {
 				return true
@@ -192,9 +200,14 @@ func computeEffectiveContract(lg *LoadedGroup, target string) effectiveContractR
 			if vs == "" || strings.ToLower(vs) != wantVS {
 				return true
 			}
+			routes = append(routes, e)
+			return true
+		})
+		for _, e := range routes {
+			vs := viewSetNameForRoute(e)
 			c, ok := projectEffectiveContract(e)
 			if !ok {
-				return true
+				continue
 			}
 			// #3964 follow-up: when the route carries no stamped per-verb
 			// contract (effective_kind/effective_status absent because the
@@ -215,8 +228,7 @@ func computeEffectiveContract(lg *LoadedGroup, target string) effectiveContractR
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
-			return true
-		})
+		}
 	}
 
 	// CLASS FALLBACK (deploy-9 item-4): when NO router-expanded route entities
@@ -347,8 +359,14 @@ func findViewSetClassEntity(r *LoadedRepo, wantVS string) *graph.Entity {
 	if r.Doc == nil {
 		return nil
 	}
-	var fallback *graph.Entity
 	var found *graph.Entity
+	// #5870 PR7a: collect name-matching candidates INSIDE the scan; run the
+	// rmu-locking extendsBases (→relationshipAt) AFTER the forEach releases
+	// readerMu (in-scan it self-deadlocks on the flag-ON default path). The
+	// isClassEntity short-circuit is pure so it stays in-scan (byte-identical
+	// first-match-wins). The fallback is the FIRST name-matching non-class entity
+	// with an EXTENDS/IMPLEMENTS edge — same as the original.
+	var candidates []*graph.Entity
 	r.forEachEntity(func(e *graph.Entity) bool {
 		if strings.ToLower(leafAfterDot(e.Name)) != wantVS {
 			return true
@@ -357,15 +375,18 @@ func findViewSetClassEntity(r *LoadedRepo, wantVS string) *graph.Entity {
 			found = e
 			return false
 		}
-		if fallback == nil && len(extendsBases(r, e)) > 0 {
-			fallback = e
-		}
+		candidates = append(candidates, e)
 		return true
 	})
 	if found != nil {
 		return found
 	}
-	return fallback
+	for _, e := range candidates {
+		if len(extendsBases(r, e)) > 0 {
+			return e
+		}
+	}
+	return nil
 }
 
 // classFramework reports the route framework leaf for a ViewSet class entity,

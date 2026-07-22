@@ -55,6 +55,14 @@ func (n nestJSContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf string
 		if r.Doc == nil {
 			continue
 		}
+		// #5870 PR7a: collect endpoints under the (pure, rmu-free) filters INSIDE
+		// the forEach scan, then do the rmu-locking resolution/compose AFTER the
+		// scan returns. On the flag-ON default path forEachEntity holds the repo's
+		// readerMu across the WHOLE scan (Option-B, ADR-0027); nestHandlerEntity
+		// (getByIDOne→LabelIndex.at) and composeNestContract (relationshipAt) both
+		// re-lock that same mutex, so calling them in-scan self-deadlocks. Order is
+		// preserved (vector-index order → same grouping), so output is identical.
+		var eps []*graph.Entity
 		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isServerEndpointDefinition(e) {
 				return true
@@ -62,10 +70,14 @@ func (n nestJSContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf string
 			if !isNestJSEndpoint(e) {
 				return true
 			}
+			eps = append(eps, e)
+			return true
+		})
+		for _, e := range eps {
 			handler := nestHandlerEntity(r, e)
 			controller := nestControllerLeaf(e, handler)
 			if controller == "" || strings.ToLower(controller) != wantLeaf {
-				return true
+				continue
 			}
 			c := composeNestContract(r, e, handler)
 			key := groupKey{repo: r.Repo, class: controller}
@@ -80,8 +92,7 @@ func (n nestJSContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf string
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
-			return true
-		})
+		}
 	}
 	if len(groups) == 0 {
 		return nil, false

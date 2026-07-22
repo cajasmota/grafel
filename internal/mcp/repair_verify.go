@@ -119,19 +119,26 @@ func VerifyRepairSubmit(
 }
 
 // buildVerifyContext extracts the from_entity_id and the CONTAINS-parent
-// map from the loaded graph document. Used by handleSubmitRepair to
-// populate VerifyRepairSubmit's context arguments.
-func buildVerifyContext(doc *graph.Document) (map[string]*graph.Entity, map[string]map[string]bool) {
-	if doc == nil {
+// map from the loaded graph. Used by handleSubmitRepair to populate
+// VerifyRepairSubmit's context arguments.
+//
+// #5870 PR7a: sources the whole entity/relationship set via the Reader-served
+// materialize seam (transient snapshot) instead of the raw lr.Doc slices, so it
+// survives a future slice-drop. byID points into the snapshot slice (stable for
+// the caller's lifetime). Not called inside a forEach scan, so the per-call rmu
+// acquisitions inside materializeAll* are sequential and safe.
+func buildVerifyContext(lr *LoadedRepo) (map[string]*graph.Entity, map[string]map[string]bool) {
+	if lr == nil || lr.Doc == nil {
 		return nil, nil
 	}
-	byID := make(map[string]*graph.Entity, len(doc.Entities))
-	for i := range doc.Entities {
-		byID[doc.Entities[i].ID] = &doc.Entities[i]
+	ents := materializeAllEntities(lr)
+	byID := make(map[string]*graph.Entity, len(ents))
+	for i := range ents {
+		byID[ents[i].ID] = &ents[i]
 	}
 	// Build transitive CONTAINS-parent map for R4.
 	directParents := make(map[string]map[string]bool)
-	for _, r := range doc.Relationships {
+	for _, r := range materializeAllRelationships(lr) {
 		if r.Kind != "CONTAINS" {
 			continue
 		}

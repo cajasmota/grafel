@@ -167,7 +167,7 @@ func TestBuildVerifyContext_BasicGraph(t *testing.T) {
 			{FromID: "bbbbbbbbbbbbbbbb", ToID: "aaaaaaaaaaaaaaaa", Kind: "CONTAINS"},
 		},
 	}
-	ents, parents := buildVerifyContext(doc)
+	ents, parents := buildVerifyContext(&LoadedRepo{Doc: doc})
 	if len(ents) != 2 {
 		t.Fatalf("ents len=%d want 2", len(ents))
 	}

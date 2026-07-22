@@ -60,6 +60,10 @@ func (x expressContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf strin
 		if r.Doc == nil {
 			continue
 		}
+		// #5870 PR7a: collect-then-process — the rmu-locking resolution/compose runs
+		// AFTER the forEach scan releases readerMu (see the nestjs handler for the
+		// full rationale). Vector-index order preserved → identical grouping.
+		var eps []*graph.Entity
 		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isServerEndpointDefinition(e) {
 				return true
@@ -67,10 +71,14 @@ func (x expressContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf strin
 			if !isExpressEndpoint(e) {
 				return true
 			}
+			eps = append(eps, e)
+			return true
+		})
+		for _, e := range eps {
 			handler := frameworkHandlerEntity(r, e)
 			grp := fastapiGroupLeaf(e, handler) // same flat-function grouping
 			if grp == "" || strings.ToLower(grp) != wantLeaf {
-				return true
+				continue
 			}
 			c := composeExpressContract(r, e, handler)
 			key := groupKey{repo: r.Repo, group: grp}
@@ -81,8 +89,7 @@ func (x expressContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf strin
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
-			return true
-		})
+		}
 	}
 	if len(groups) == 0 {
 		return nil, false

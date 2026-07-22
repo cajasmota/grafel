@@ -2433,16 +2433,27 @@ func normalizePrefixed(lg *LoadedGroup, s string) string {
 			if r.Doc == nil {
 				continue
 			}
-			found := false
+			// #5870 PR7a: collect entity IDs INSIDE the scan, resolve MRO edges
+			// AFTER it releases readerMu. mroOutboundEdges→resolveMember runs a
+			// nested forEachEntity + extendsBases→relationshipAt, both of which
+			// re-lock the repo readerMu and self-deadlock in-scan flag-ON.
+			var ids []string
 			r.forEachEntity(func(e *graph.Entity) bool {
-				for _, me := range mroOutboundEdges(r, e.ID) {
-					if me.External && me.Target == s {
-						found = true
-						return false
-					}
-				}
+				ids = append(ids, e.ID)
 				return true
 			})
+			found := false
+			for _, id := range ids {
+				for _, me := range mroOutboundEdges(r, id) {
+					if me.External && me.Target == s {
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
 			if found {
 				return prefixedID(r.Repo, s)
 			}
@@ -3798,7 +3809,7 @@ func (s *Server) handleSubmitRepairFromBundle(ctx context.Context, req mcpapi.Ca
 
 	// ── Trust-model R1-R7 ────────────────────────────────────────────────
 	// Build verify context from the loaded graph document.
-	docEnts, containsParents := buildVerifyContext(target.Doc)
+	docEnts, containsParents := buildVerifyContext(target)
 	edgeIDSet := candidateEdgeIDSet(candidates)
 	fromEntityID := fromEntityIDForEdge(candidates, edgeID)
 

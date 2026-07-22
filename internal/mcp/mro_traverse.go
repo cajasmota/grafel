@@ -191,18 +191,27 @@ func buildMROInbound(lr *LoadedRepo) map[string][]string {
 	if lr == nil || lr.Doc == nil {
 		return out
 	}
+	// #5870 PR7a: collect member entities INSIDE the scan, then resolve their MRO
+	// edges AFTER the forEach releases readerMu. mroOutboundEdges→resolveMember
+	// runs a NESTED forEachEntity (classDeclaredMember) and — post-PR7a —
+	// extendsBases→relationshipAt, both of which re-lock the repo readerMu and
+	// self-deadlock in-scan on the flag-ON default path. Vector-index order
+	// preserved → identical out map.
+	var members []*graph.Entity
 	lr.forEachEntity(func(e *graph.Entity) bool {
-		if !isMemberEntity(e) {
-			return true
+		if isMemberEntity(e) {
+			members = append(members, e)
 		}
+		return true
+	})
+	for _, e := range members {
 		for _, me := range mroOutboundEdges(lr, e.ID) {
 			if me.External {
 				continue
 			}
 			out[me.Target] = append(out[me.Target], e.ID)
 		}
-		return true
-	})
+	}
 	return out
 }
 

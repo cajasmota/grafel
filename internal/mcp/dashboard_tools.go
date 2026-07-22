@@ -229,11 +229,18 @@ func (s *Server) handleTopologyOrphanPublishers(_ context.Context, req mcpapi.Ca
 		if r.Doc == nil {
 			continue
 		}
-		// Build subscriber set: topics that appear on the ToID of a SUBSCRIBES_TO edge.
-		subscribers := map[string]bool{}
+		// #5870 PR7a: snapshot BOTH edge-target sets in ONE pre-scan relationship
+		// pass, so the topic scan below reads local maps — never r.Doc raw (which
+		// empties after the flip) nor an rmu-locking helper INSIDE the
+		// forEachEntityOfKinds scan (would self-deadlock flag-ON).
+		subscribers := map[string]bool{} // topics that are a SUBSCRIBES_TO target
+		publishedTo := map[string]bool{} // topics that are a PUBLISHES_TO target
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
-			if rel.Kind == "SUBSCRIBES_TO" {
+			switch rel.Kind {
+			case "SUBSCRIBES_TO":
 				subscribers[rel.ToID] = true
+			case "PUBLISHES_TO":
+				publishedTo[rel.ToID] = true
 			}
 			return true
 		})
@@ -242,7 +249,7 @@ func (s *Server) handleTopologyOrphanPublishers(_ context.Context, req mcpapi.Ca
 		// unchanged.
 		r.forEachEntityOfKinds(isTopicKind, func(e *graph.Entity) bool {
 			// Publisher: appears as ToID in a PUBLISHES_TO edge but never as ToID in SUBSCRIBES_TO.
-			if !subscribers[e.ID] && hasRelationshipTo(r.Doc, e.ID, "PUBLISHES_TO") {
+			if !subscribers[e.ID] && publishedTo[e.ID] {
 				out = append(out, item{
 					TopicID:    prefixedID(r.Repo, e.ID),
 					TopicName:  e.Name,
@@ -278,10 +285,16 @@ func (s *Server) handleTopologyOrphanSubscribers(_ context.Context, req mcpapi.C
 		if r.Doc == nil {
 			continue
 		}
-		publishers := map[string]bool{}
+		// #5870 PR7a: snapshot BOTH edge-target sets in one pre-scan pass (see the
+		// orphan-publishers handler for the rationale).
+		publishers := map[string]bool{}   // topics that are a PUBLISHES_TO target
+		subscribedTo := map[string]bool{} // topics that are a SUBSCRIBES_TO target
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
-			if rel.Kind == "PUBLISHES_TO" {
+			switch rel.Kind {
+			case "PUBLISHES_TO":
 				publishers[rel.ToID] = true
+			case "SUBSCRIBES_TO":
+				subscribedTo[rel.ToID] = true
 			}
 			return true
 		})
@@ -289,7 +302,7 @@ func (s *Server) handleTopologyOrphanSubscribers(_ context.Context, req mcpapi.C
 		// materialization flag-ON); the residual edge-based subscriber filter is
 		// unchanged.
 		r.forEachEntityOfKinds(isTopicKind, func(e *graph.Entity) bool {
-			if !publishers[e.ID] && hasRelationshipTo(r.Doc, e.ID, "SUBSCRIBES_TO") {
+			if !publishers[e.ID] && subscribedTo[e.ID] {
 				out = append(out, item{
 					TopicID:    prefixedID(r.Repo, e.ID),
 					TopicName:  e.Name,
@@ -1269,16 +1282,6 @@ func isTopicKind(kind string) bool {
 func hasRelationshipFrom(doc *graph.Document, fromID, edgeKind string) bool {
 	for i := range doc.Relationships {
 		if doc.Relationships[i].FromID == fromID && doc.Relationships[i].Kind == edgeKind {
-			return true
-		}
-	}
-	return false
-}
-
-// hasRelationshipTo returns true if doc has any edge of edgeKind to toID.
-func hasRelationshipTo(doc *graph.Document, toID, edgeKind string) bool {
-	for i := range doc.Relationships {
-		if doc.Relationships[i].ToID == toID && doc.Relationships[i].Kind == edgeKind {
 			return true
 		}
 	}
