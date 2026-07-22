@@ -192,32 +192,41 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 		if target == "" {
 			target = pid
 		}
-		var result *mcpapi.CallToolResult
+		// #5928 collect-then-process: buildGroupCrossRepoLookup/
+		// buildProcessStepsWithCrossRepo call r.getStepAdj()/r.getByIDOne, which
+		// re-lock the same readerMu the flag-ON forEachEntity scan holds across its
+		// whole pass — calling them INSIDE the closure self-deadlocks on the
+		// live-Reader path. Capture the matched Process entity in-scan (rmu held) and
+		// stop the scan; build its steps AFTER the scan returns (rmu released).
+		// forEachEntity yields a heap-safe entity copy flag-ON (and a stable
+		// &Doc.Entities[i] flag-OFF), so using it past the scan is safe. Only the
+		// unique id-matched entity is retained, so the result is byte-identical.
+		var proc *graph.Entity
 		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Kind != processEntityKind || e.ID != target {
 				return true
 			}
+			proc = e
+			return false
+		})
+		if proc != nil {
 			// #1905 — bridge steps in cross-repo flows live in companion repos.
 			// Build a cross-repo lookup so bridge step entities are enriched with
 			// name/file/line/repo from the correct companion repo instead of being
 			// emitted as bare {id, node_id, step_index} stubs.
 			xrLookup := buildGroupCrossRepoLookup(lg, r.Repo)
-			steps := buildProcessStepsWithCrossRepo(r, e, xrLookup, verbose)
-			result = jsonResult(map[string]any{
-				"process_id":  prefixedID(r.Repo, e.ID),
+			steps := buildProcessStepsWithCrossRepo(r, proc, xrLookup, verbose)
+			return jsonResult(map[string]any{
+				"process_id":  prefixedID(r.Repo, proc.ID),
 				"repo":        r.Repo,
-				"label":       e.Name,
-				"entry_id":    e.PropGet("entry_id"),
-				"entry_name":  e.PropGet("entry_name"),
-				"terminal_id": e.PropGet("terminal_id"),
-				"cross_stack": e.PropGet("cross_stack") == "true",
+				"label":       proc.Name,
+				"entry_id":    proc.PropGet("entry_id"),
+				"entry_name":  proc.PropGet("entry_name"),
+				"terminal_id": proc.PropGet("terminal_id"),
+				"cross_stack": proc.PropGet("cross_stack") == "true",
 				"steps":       steps,
 				"found":       true,
-			})
-			return false
-		})
-		if result != nil {
-			return result, nil
+			}), nil
 		}
 	}
 	return jsonResult(map[string]any{"found": false, "process_id": pid}), nil

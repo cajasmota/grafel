@@ -187,3 +187,27 @@ func TestEndpointPostureScan_flagON_noDeadlock_5928(t *testing.T) {
 		t.Fatalf("endpoint posture scan flag-ON(emptied Doc) != flag-OFF\n got=%s\nwant=%s", got, want)
 	}
 }
+
+// Site 4: handleTracesGet — buildProcessStepsWithCrossRepo→getStepAdj/getByIDOne
+// inside a forEachEntity scan.
+func TestTracesGet_flagON_noDeadlock_5928(t *testing.T) {
+	doc, r := loadDeadlock5928Fixture(t)
+	args := map[string]any{"group": "g", "process_id": "proc1"}
+
+	withServeFromMMap(t, false)
+	sOff := topologyServer(t, docFullRepo(doc))
+	want := callWithArgs(t, sOff, sOff.handleTracesGet, args)
+	if want == "" {
+		t.Fatal("fixture must produce a non-empty traces-get result flag-OFF")
+	}
+
+	withServeFromMMap(t, true)
+	sOn := topologyServer(t, readerEmptiedRepo(t, doc, r))
+	var got string
+	noHang(t, 5*time.Second, "handleTracesGet", func() {
+		got = callWithArgs(t, sOn, sOn.handleTracesGet, args)
+	})
+	if got != want {
+		t.Fatalf("traces get flag-ON(emptied Doc) != flag-OFF\n got=%s\nwant=%s", got, want)
+	}
+}
