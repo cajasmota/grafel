@@ -1423,12 +1423,13 @@ func agentResolvedEdgesForEntity(lr *LoadedRepo, entityID string, scopeIsOne boo
 	// underlying Relationship to read Properties (kind/target alone would not
 	// suffice for the agent-repair filter).
 	out := []map[string]any(nil)
-	rels := lr.Doc.Relationships
+	// #5870 PR7a: relationshipAt (Reader flag-ON / Doc flag-OFF) replaces the
+	// raw lr.Doc.Relationships random-access by relIdx.
 	for _, e := range lr.getAdjacency().Outgoing(entityID) {
-		if e.relIdx < 0 || e.relIdx >= len(rels) {
+		r := lr.relationshipAt(e.relIdx)
+		if r == nil {
 			continue
 		}
-		r := &rels[e.relIdx]
 		if r.PropGet("resolved_by") != "agent-repair" {
 			continue
 		}
@@ -1504,7 +1505,6 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 		return []map[string]any{}
 	}
 	out := []map[string]any{}
-	rels := lr.Doc.Relationships
 	for _, ed := range lr.getAdjacency().Outgoing(e.ID) {
 		if !strings.EqualFold(ed.kind, "CALLS") {
 			continue
@@ -1532,15 +1532,15 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 		if unresolved && !includeUnresolved {
 			continue
 		}
-		// Line number from relationship properties.
+		// Line number from relationship properties. #5870 PR7a: relationshipAt.
 		lineNum := 0
-		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].PropGet("line"); v != "" {
+		if rel := lr.relationshipAt(ed.relIdx); rel != nil {
+			if v := rel.PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					lineNum = n
 				}
 			}
-			if v := rels[ed.relIdx].PropGet("via"); v != "" {
+			if v := rel.PropGet("via"); v != "" {
 				entry["via"] = v
 			}
 		}
@@ -1623,7 +1623,6 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 	lineCache := map[string][]string{}
 
 	out := []map[string]any{}
-	rels := lr.Doc.Relationships
 	for _, ed := range lr.getAdjacency().Incoming(e.ID) {
 		// #5686: besides direct CALLS callers, surface the async trigger of an
 		// event-driven handler. A DELIVERS_TO edge (topic → handler) is the
@@ -1659,8 +1658,8 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 		}
 
 		lineNum := 0
-		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].PropGet("line"); v != "" {
+		if rel := lr.relationshipAt(ed.relIdx); rel != nil {
+			if v := rel.PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					lineNum = n
 				}
@@ -1708,12 +1707,12 @@ func inspectDiscriminators(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []m
 		return nil
 	}
 	out := []map[string]any{}
-	rels := lr.Doc.Relationships
 	emit := func(ed edge, otherIsTarget bool) {
-		if ed.relIdx < 0 || ed.relIdx >= len(rels) {
+		// #5870 PR7a: relationshipAt replaces the raw lr.Doc.Relationships lookup.
+		r := lr.relationshipAt(ed.relIdx)
+		if r == nil {
 			return
 		}
-		r := &rels[ed.relIdx]
 		line := 0
 		if v := r.PropGet("line"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
@@ -1875,7 +1874,6 @@ func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, acce
 		return nil
 	}
 	out := []map[string]any{}
-	rels := lr.Doc.Relationships
 	emit := func(ed edge, direction string) {
 		other := ed.target
 		if !scopeIsOne {
@@ -1889,8 +1887,8 @@ func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, acce
 			"other":     other,
 			"line":      0,
 		}
-		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].PropGet("line"); v != "" {
+		if rel := lr.relationshipAt(ed.relIdx); rel != nil {
+			if v := rel.PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					entry["line"] = n
 				}

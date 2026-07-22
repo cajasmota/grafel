@@ -450,13 +450,15 @@ func nestHandlerSource(r *LoadedRepo, handler *graph.Entity) string {
 	return src
 }
 
-// relPropsFor returns the Properties map of the relationship at relIdx in r's
-// Doc, or nil when relIdx is synthetic (-1) or out of range.
+// relPropsFor returns the Properties map of the relationship at relIdx, or nil
+// when relIdx is synthetic (-1) or out of range. #5870 PR7a: sources via
+// relationshipAt (Reader flag-ON / Doc flag-OFF) rather than raw r.Doc.
 func relPropsFor(r *LoadedRepo, relIdx int) map[string]string {
-	if r.Doc == nil || relIdx < 0 || relIdx >= len(r.Doc.Relationships) {
+	rel := r.relationshipAt(relIdx)
+	if rel == nil {
 		return nil
 	}
-	return r.Doc.Relationships[relIdx].PropsSnapshot()
+	return rel.PropsSnapshot()
 }
 
 // appendIntUnique appends v to s only when absent.

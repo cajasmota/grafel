@@ -89,9 +89,10 @@ func loadPR7aFixture(t *testing.T) (*graph.Document, *fbreader.Reader) {
 	return doc, r
 }
 
-// docFullRepo builds a flag-OFF-style repo holding only the Doc.
+// docFullRepo builds a flag-OFF-style repo holding the full Doc plus its
+// Doc-sourced LabelIndex (production flag-OFF repos always have one).
 func docFullRepo(doc *graph.Document) *LoadedRepo {
-	return &LoadedRepo{Repo: "corpus", Path: "corpus", Doc: doc}
+	return &LoadedRepo{Repo: "corpus", Path: "corpus", Doc: doc, LabelIndex: BuildLabelIndex(doc)}
 }
 
 // readerEmptiedRepo builds a flag-ON-style repo: a live Reader + LabelIndex, but

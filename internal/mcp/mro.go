@@ -433,15 +433,15 @@ type baseRef struct {
 // and falls back to the ToID leaf / target entity name.
 func extendsBases(lr *LoadedRepo, c *graph.Entity) []baseRef {
 	adj := lr.getAdjacency()
-	rels := lr.Doc.Relationships
 	var out []baseRef
 	for _, ed := range adj.Outgoing(c.ID) {
 		if ed.kind != "EXTENDS" && ed.kind != "IMPLEMENTS" {
 			continue
 		}
 		name := ""
-		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			name = rels[ed.relIdx].PropGet("base_name")
+		// #5870 PR7a: relationshipAt replaces the raw lr.Doc.Relationships lookup.
+		if rel := lr.relationshipAt(ed.relIdx); rel != nil {
+			name = rel.PropGet("base_name")
 		}
 		target := lr.LabelIndex.ByID(ed.target)
 		if name == "" {
