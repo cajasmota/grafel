@@ -415,8 +415,12 @@ func checkRepo(w io.Writer, r registry.Repo) {
 		fmt.Fprintf(w, "  %s repo %s (%s)\n", statusOK, r.Slug, r.Stack.String())
 	}
 	jsonPath := daemon.GraphPathForRepo(r.Path)
-	fbPath := daemon.GraphFBPathForRepo(r.Path)
-	hasFB := func() bool { _, e := os.Stat(fbPath); return e == nil }()
+	// #5915 J2 P2: GraphFBExistsForRepo is segment-set aware.
+	// os.Stat(daemon.GraphFBPathForRepo(r.Path)) — the pattern this replaces —
+	// only ever resolves a flat .fb path, which is absent for a segment-set
+	// repo (graph.<gen>/ dir + manifest.json, no flat .fb), so a fully-indexed
+	// segmented repo would wrongly report "no graph found".
+	hasFB := daemon.GraphFBExistsForRepo(r.Path)
 	hasJSON := func() bool { _, e := os.Stat(jsonPath); return e == nil }()
 	switch {
 	case hasFB && hasJSON:
