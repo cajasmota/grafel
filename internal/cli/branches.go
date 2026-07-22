@@ -233,19 +233,23 @@ func repoBaseForSlug(storeRoot string, repo registry.Repo) string {
 }
 
 // inferTierFromDisk makes a best-effort tier determination from file mtimes
-// without requiring a live daemon. It reads the graph.fb mtime and maps it
-// to HOT/WARM/COLD/EXPIRED using the default TTL windows.
+// without requiring a live daemon. It reads the active graph's mtime and maps
+// it to HOT/WARM/COLD/EXPIRED using the default TTL windows.
+//
+// #5915 J2 slice-3: graph.CurrentGraphMtime is segment-set aware — the prior
+// os.Stat over [graph.CurrentGraphPath(stateDir), graph.json] only ever named
+// a flat .fb path, which is ABSENT for a segment-set ref (graph.<gen>/ dir +
+// manifest.json, no flat .fb). That silently inferred mtime-zero (tier "cold"
+// with a zero lastSeen) for a freshly-indexed segment-set ref.
 func inferTierFromDisk(stateDir string) (tierStr string, lastSeen time.Time) {
-	fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 	jsonPath := filepath.Join(stateDir, "graph.json")
 
 	var mtime time.Time
-	for _, p := range []string{fbPath, jsonPath} {
-		if fi, err := os.Stat(p); err == nil {
-			if fi.ModTime().After(mtime) {
-				mtime = fi.ModTime()
-			}
-		}
+	if mt, ok := graph.CurrentGraphMtime(stateDir); ok {
+		mtime = mt
+	}
+	if fi, err := os.Stat(jsonPath); err == nil && fi.ModTime().After(mtime) {
+		mtime = fi.ModTime()
 	}
 
 	if mtime.IsZero() {
