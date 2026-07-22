@@ -41,7 +41,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
-	"github.com/cajasmota/grafel/internal/graph/fbwriter"
+	"github.com/cajasmota/grafel/internal/graph/descriptions"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -193,49 +193,43 @@ func (s *Server) handleEnrichmentWriteback(w http.ResponseWriter, r *http.Reques
 	now := time.Now().UTC()
 	enrichedAt := now.Format(time.RFC3339)
 
-	// ─── Target 1: update in-memory graph property ────────────────────────
+	// ─── Target 1: description SIDE-TABLE upsert (no graph rewrite) ────────
+	// #5904 PR-a: the description is written to the per-repo
+	// <stateDir>/descriptions.json side-table and merged back onto entities at
+	// READ time (an additive PropSet of "description" — see descriptions.Read /
+	// applyDescriptionOverlay). The graph file / generation is NEVER touched.
+	//
+	// The previous implementation rewrote the WHOLE graph (fbwriter.WriteGraphGen
+	// + graph.WriteAtomic on graph.json). For a #5901 segment-set that resident
+	// Document is a COLLAPSED union of every segment, so re-serialising it as one
+	// flat graph.<gen>.fb re-materialised the entire graph in memory (the #5915 P1
+	// OOM) and discarded the segmented layout. The side-table removes that hazard:
+	// a segment-set stays a segment-set.
+	//
+	// The in-memory PropSet below keeps the CURRENTLY-resident group visibly
+	// enriched (so a read racing the Invalidate still sees it); durability comes
+	// from the sidecar, which the next load / serving-path re-check merges back.
 	if found.entity.PropLen() == 0 {
 		found.entity.PropsReplace(make(map[string]string))
 	}
 	found.entity.PropSet("description", req.Description)
 
-	// Persist the updated graph to disk — both graph.fb (canonical binary,
-	// preferred by LoadGraphFromDir / MCP) and graph.json (backward-compatible
-	// JSON, read by debug tools and external integrations). Writing only one
-	// format leaves the other stale, causing ghost entity IDs for direct
-	// graph.json readers (fixes #1702).
 	stateDir := daemon.StateDirForRepo(found.repoPath)
+	// graphPath is informational only (echoed in the response); it is NOT written.
 	graphPath := daemon.GraphPathForRepo(found.repoPath)
 
-	// #5891: write a NEW graph.<gen>.fb + flip the `current` pointer rather
-	// than overwriting graph.fb — this writeback path is executed by the serve
-	// process while the same graph.fb may be mmap'd, exactly the Windows
-	// ERROR_USER_MAPPED_FILE hazard the gen layout removes. fbPath is the gen
-	// file written (used for the identical-mtime stamp below).
-	fbPath, ferr := fbwriter.WriteGraphGen(stateDir, found.doc)
-	if ferr != nil {
+	if err := descriptions.Upsert(stateDir, subjectID, req.Description); err != nil {
 		s.auditor.Err("enrichment_writeback", group, map[string]any{
 			"subject_id": subjectID,
 			"kind":       req.Kind,
-		}, "write graph.fb: "+ferr.Error())
-		writeErr(w, http.StatusInternalServerError, "persist graph.fb: "+ferr.Error())
+		}, "write descriptions side-table: "+err.Error())
+		writeErr(w, http.StatusInternalServerError, "persist description side-table: "+err.Error())
 		return
 	}
-	if err := graph.WriteAtomic(graphPath, found.doc, false); err != nil {
-		s.auditor.Err("enrichment_writeback", group, map[string]any{
-			"subject_id": subjectID,
-			"kind":       req.Kind,
-		}, "write graph.json: "+err.Error())
-		writeErr(w, http.StatusInternalServerError, "persist graph.json: "+err.Error())
-		return
-	}
-	// Stamp identical mtime on both files so the on-disk pair is never
-	// mistaken for a partial write (#1626 pattern).
-	writeNow := time.Now()
-	_ = os.Chtimes(fbPath, writeNow, writeNow)
-	_ = os.Chtimes(graphPath, writeNow, writeNow)
 
-	// Invalidate the cache so the next GET re-reads the updated graph.
+	// Invalidate the cache so the next GET re-loads the group and re-merges the
+	// side-table (applyDescriptionOverlay / the loadGroup merge) onto fresh
+	// entities — the durable read path for the write we just made.
 	s.graphs.Invalidate(group)
 
 	// ─── Target 2: write YAML-frontmatter Markdown doc ────────────────────

@@ -18,6 +18,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/descriptions"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,7 +199,20 @@ func TestWriteback_success(t *testing.T) {
 		t.Errorf("entity.Properties[description]: want %q, got %q", desc, entity.PropGet("description"))
 	}
 
-	// ── 3. graph.json updated on disk ─────────────────────────────────────
+	// ── 3. description lands in the side-table, graph NOT rewritten ────────
+	// #5904 PR-a: the description is persisted to <stateDir>/descriptions.json,
+	// and the graph file is NEVER rewritten (no collapse / OOM for a segment-set).
+	stateDir := daemon.StateDirForRepo(repoDir)
+	sc, ok := descriptions.Read(stateDir)
+	if !ok {
+		t.Fatalf("descriptions side-table not found / not fresh at %s", descriptions.Path(stateDir))
+	}
+	if got := sc.Results["aabbccddeeff0011"]; got != desc {
+		t.Errorf("side-table description: want %q, got %q", desc, got)
+	}
+
+	// The on-disk graph.json must be UNCHANGED — the write-back must not bake the
+	// description into the graph (that is the whole-graph rewrite this PR removes).
 	graphPath := daemon.GraphPathForRepo(repoDir)
 	raw, err := os.ReadFile(graphPath)
 	if err != nil {
@@ -208,17 +222,10 @@ func TestWriteback_success(t *testing.T) {
 	if err := json.Unmarshal(raw, &savedDoc); err != nil {
 		t.Fatalf("unmarshal graph.json: %v", err)
 	}
-	found := false
 	for _, e := range savedDoc.Entities {
-		if e.ID == "aabbccddeeff0011" {
-			found = true
-			if e.PropGet("description") != desc {
-				t.Errorf("persisted description: want %q, got %q", desc, e.PropGet("description"))
-			}
+		if e.ID == "aabbccddeeff0011" && e.PropGet("description") != "" {
+			t.Errorf("graph.json must NOT be rewritten with the description; got %q", e.PropGet("description"))
 		}
-	}
-	if !found {
-		t.Error("entity not found in persisted graph.json")
 	}
 
 	// ── 4. Markdown doc file created ─────────────────────────────────────
