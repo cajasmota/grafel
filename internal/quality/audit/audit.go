@@ -204,9 +204,14 @@ func HasGraph(dir string) bool {
 // Renamed from hasGraphJSON for ADR-0016 flip-day (#808).
 func hasGraphJSON(dir string) bool {
 	stateDir := daemon.StateDirForRepo(dir)
-	// #5891: resolve the active generation (flat graph.fb fallback) so a
-	// gen-layout repo is still detected as "has a graph".
-	if _, err := os.Stat(graph.CurrentGraphPath(stateDir)); err == nil {
+	// #5915 J2 P2: resolve via the segment-aware descriptor instead of
+	// os.Stat(CurrentGraphPath(...)). CurrentGraphPath only ever names a flat
+	// .fb file, which is ABSENT for a segment-set repo (graph.<gen>/ dir +
+	// manifest.json, no flat .fb) — that os.Stat would wrongly report the
+	// repo as having no graph. CurrentGraphDescriptor recognises both shapes;
+	// GraphSingleFile (including the legacy flat fallback) is byte-identical
+	// to the pre-fix behavior.
+	if desc, err := graph.CurrentGraphDescriptor(stateDir); err == nil && desc.Kind != graph.GraphAbsent {
 		return true
 	}
 	if _, err := os.Stat(filepath.Join(stateDir, "graph.json")); err == nil {
