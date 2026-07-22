@@ -457,8 +457,26 @@ func GraphPathForRepo(repoPath string) string {
 // the per-repo state directory. #5891: this resolves the `current` generation
 // pointer (graph.<gen>.fb), falling back to the legacy flat graph.fb for repos
 // that have not been reindexed since the gen-layout migration.
+//
+// NOTE: this ALWAYS resolves to a single .fb path (or the absent flat
+// fallback) — it is absent for a segment-set repo (graph.<gen>/ dir +
+// manifest.json, no flat .fb). Callers that only need an EXISTENCE check
+// ("does this repo have an FB graph at all?") should use GraphFBExistsForRepo
+// instead, which is segment-set aware; this path-returning form remains for
+// callers that genuinely need the literal single-file path.
 func GraphFBPathForRepo(repoPath string) string {
 	return graph.CurrentGraphPath(StateDirForRepo(repoPath))
+}
+
+// GraphFBExistsForRepo reports whether repoPath's current-ref state dir has
+// ANY active FlatBuffers graph — single-file or segment-set — recognised via
+// graph.CurrentGraphDescriptor. #5915 J2 P2: unlike
+// os.Stat(GraphFBPathForRepo(repoPath)), which only ever resolves a flat .fb
+// path and is therefore absent for a segment-set repo (graph.<gen>/ dir +
+// manifest.json, no flat .fb), this correctly reports true for both shapes.
+func GraphFBExistsForRepo(repoPath string) bool {
+	desc, err := graph.CurrentGraphDescriptor(StateDirForRepo(repoPath))
+	return err == nil && desc.Kind != graph.GraphAbsent
 }
 
 // findGraphFileInDir checks dir for graph.fb / graph.json and returns the
