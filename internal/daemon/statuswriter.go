@@ -132,6 +132,17 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 		// loop would be exposed to under ADR-0024 split mode). Detection only:
 		// this never triggers a reindex.
 		f.ReindexRequired, f.ReindexReason = graph.ReindexRequiredReason(stateDir)
+
+		// #5907 FIX 2 — action arm for the detection above. Detection alone
+		// leaves a stale-format repo idle forever until a manual `grafel index`;
+		// this auto-migrates it by enqueuing a reindex through the SAME
+		// requests→drain→scheduler plumbing Service.Index uses (the daemon-side
+		// analogue of the CLI's FormatVersionError→full-reindex fallback). The
+		// guard fires AT MOST ONCE per stale generation and self-clears once the
+		// graph is current again, so a normal current-format repo never enqueues
+		// and a stale one never storms — see stale_reindex.go.
+		fp := staleFingerprint(f.GraphFBMtime, f.ReindexReason)
+		defaultStaleReindexGuard.maybeEnqueue(repoPath, f.ReindexRequired, fp, logger)
 	}
 
 	// Split the single "indexing" signal into indexing (extraction, graph not
