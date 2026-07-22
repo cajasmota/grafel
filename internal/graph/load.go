@@ -78,8 +78,18 @@ func (e *FormatVersionError) Error() string {
 // that could go stale or get clobbered by a later write from a different
 // writer.
 func ReindexRequiredReason(dir string) (required bool, reason string) {
-	fbPath := CurrentGraphPath(dir)
-	r, err := fbreader.Open(fbPath)
+	// #5915 J1 FIX-2: route through the segment-aware descriptor. The old code
+	// opened CurrentGraphPath(dir)+fbreader.Open, so a segment-set's absent flat
+	// .fb path returned (false,"") — segment-blind: after a future fbversion bump
+	// a below-min segment-set would NOT be detected stale, so it would NOT be
+	// auto-reindexed and would serve empty (defeating #5907 for exactly the large
+	// repos that segment). ReaderForDir opens fbreader.Open(desc.Path) for a
+	// single-file/legacy graph (byte-identical — same version read, absent →
+	// (false,"")) and a *MultiReader for a segment-set, whose Version() is segment
+	// 0's version. The same v < minSupportedFBFormatVersion comparison +
+	// FormatVersionReason then applies uniformly. (fbversion is still 4, so a
+	// current v4 segment-set correctly returns false — a no-op today.)
+	r, err := ReaderForDir(dir)
 	if err != nil {
 		return false, ""
 	}
