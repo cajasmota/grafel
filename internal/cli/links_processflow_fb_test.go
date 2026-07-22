@@ -1,21 +1,19 @@
-// links_processflow_fb_test.go — regression lock for the flow-invisibility
-// bug (Refs #1893, #1702).
+// links_processflow_fb_test.go — the #5904 PR-b side-table write-back contract
+// (supersedes the #1893/#1702 fb-write lock).
 //
-// THE BUG (pre-fix): runPhantomEdgePass re-runs RunProcessFlowWithCompanions
-// + RunEventFlow after promoting cross-repo phantom CALLS edges, but post
-// ADR-0016 (flip-day #808) the daemon serves the canonical graph.fb while
-// the pass historically wrote only graph.json. So recomputed Process/Event
-// flow entities never reached the daemon or dashboard — live proof was
-// graph.json holding 30+32 SCOPE.Process entities while `grafel status`
-// reported "0 flows".
+// runPhantomEdgePass re-runs RunProcessFlowWithCompanions + RunEventFlow after
+// promoting cross-repo phantom CALLS edges. Under #5904 PR-b the SINK is no
+// longer a whole-graph rewrite (fbwriter.WriteGraphGen + graph.WriteAtomic) —
+// which for a #5901 segment-set collapsed the whole graph in memory (the #5915
+// P1 OOM). Instead the cross-repo-aware flow DELTA is written to the per-repo
+// <stateDir>/flows.json side-table and REPLACE-merged at read time.
 //
-// THE LOCK: build a two-repo fixture group with a cross-repo HTTP call
-// (client repo "fe" → server route in "be"), write each repo's fixture as
-// graph.fb, run the phantom-edge pass, then DELETE the affected repo's
-// graph.json and load graph.fb (LoadGraphFromDir can now only read fb).
-// Assert SCOPE.Process flow entities are present (count > 0). If the write
-// path ever regresses to graph.json-only, the fb load returns zero Process
-// entities and this test fails.
+// THE CONTRACT (this file): a two-repo fixture group with a cross-repo HTTP call
+// (client "fe" → route in "be"), run the phantom-edge pass, then assert:
+//   - the flow side-table holds the re-synthesised SCOPE.Process flows + the
+//     phantom cross_repo CALLS edge (the DELTA is durable);
+//   - graph.fb / graph.json are NOT rewritten (byte-identical mtime — the
+//     no-graph-rewrite guard mirroring PR-a's TestWriteback_success).
 package cli
 
 import (
@@ -23,11 +21,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/engine"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
+	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -63,11 +63,10 @@ func countProcessEntities(doc *graph.Document) int {
 	return n
 }
 
-// TestPhantomEdgePass_WritesFlowsToFB locks the fb-write of recomputed
-// cross-repo process flows (the primary fix). It exercises the real
-// runPhantomEdgePass write path and asserts the flows land in graph.fb,
-// not just graph.json.
-func TestPhantomEdgePass_WritesFlowsToFB(t *testing.T) {
+// TestPhantomEdgePass_WritesFlowsToSideTable asserts the #5904 PR-b contract:
+// the re-synthesised cross-repo process flows are written to the flow SIDE-TABLE
+// (flows.json), and graph.fb / graph.json are NOT rewritten.
+func TestPhantomEdgePass_WritesFlowsToSideTable(t *testing.T) {
 	// Isolate all daemon/state paths into a tempdir.
 	daemonRoot := t.TempDir()
 	t.Setenv(daemon.EnvRoot, daemonRoot)
@@ -145,6 +144,14 @@ func TestPhantomEdgePass_WritesFlowsToFB(t *testing.T) {
 		t.Fatalf("write links file: %v", err)
 	}
 
+	// Capture graph.fb / graph.json mtimes BEFORE the pass so we can prove the
+	// pass does NOT rewrite the graph (the #5915 P1 no-collapse guarantee).
+	feState := daemon.StateDirForRepo(fePath)
+	fbPath := filepath.Join(feState, "graph.fb")
+	jsonPath := filepath.Join(feState, "graph.json")
+	fbBefore := mustModTime(t, fbPath)
+	jsonBefore := mustModTime(t, jsonPath)
+
 	// Run the production phantom-edge pass.
 	added, err := runPhantomEdgePass("fixtgrp", cfg, linksPath)
 	if err != nil {
@@ -154,28 +161,50 @@ func TestPhantomEdgePass_WritesFlowsToFB(t *testing.T) {
 		t.Fatalf("expected ≥1 phantom edge promoted, got 0")
 	}
 
-	// PRIMARY ASSERTION: the recomputed process flows must be in graph.fb.
-	// Force a pure-fb read by deleting graph.json for the affected repo, then
-	// load via LoadGraphFromDir (which now can only read graph.fb).
-	feState := daemon.StateDirForRepo(fePath)
-	fbPath := filepath.Join(feState, "graph.fb")
-	jsonPath := filepath.Join(feState, "graph.json")
-	if _, statErr := os.Stat(fbPath); statErr != nil {
-		t.Fatalf("graph.fb missing for fe after pass: %v", statErr)
+	// NO-GRAPH-REWRITE GUARD: graph.fb + graph.json must be byte-for-byte
+	// untouched (same mtime). If the write-back ever regresses to rewriting the
+	// graph, these mtimes advance and the segment-set collapse hazard returns.
+	if got := mustModTime(t, fbPath); !got.Equal(fbBefore) {
+		t.Errorf("graph.fb was rewritten by the phantom pass (mtime %v -> %v) — must use the flow side-table", fbBefore, got)
 	}
-	if err := os.Remove(jsonPath); err != nil {
-		t.Fatalf("remove graph.json to force fb read: %v", err)
+	if got := mustModTime(t, jsonPath); !got.Equal(jsonBefore) {
+		t.Errorf("graph.json was rewritten by the phantom pass (mtime %v -> %v) — must use the flow side-table", jsonBefore, got)
 	}
 
-	loaded, err := graph.LoadGraphFromDir(feState)
-	if err != nil {
-		t.Fatalf("load graph.fb after pass: %v", err)
+	// PRIMARY ASSERTION: the recomputed cross-repo process flows land in the flow
+	// side-table (flows.json), fresh + non-stale.
+	sc, ok := flows.Read(feState)
+	if !ok {
+		t.Fatalf("flow side-table not written / not fresh for affected repo fe")
 	}
-	got := countProcessEntities(loaded)
+	got := 0
+	for i := range sc.Entities {
+		if sc.Entities[i].Kind == engine.EntityKindProcess {
+			got++
+		}
+	}
 	if got == 0 {
-		t.Fatalf("REGRESSION: graph.fb has 0 SCOPE.Process flow entities after phantom-edge pass — "+
-			"flows were written to graph.json only and never reach the daemon (ADR-0016). "+
-			"entities=%d relationships=%d", len(loaded.Entities), len(loaded.Relationships))
+		t.Fatalf("flow side-table has 0 SCOPE.Process flow entities after phantom-edge pass "+
+			"(entities=%d relationships=%d)", len(sc.Entities), len(sc.Relationships))
 	}
-	t.Logf("graph.fb has %d SCOPE.Process flow entities after phantom-edge pass (added=%d)", got, added)
+	// The phantom cross_repo CALLS edge must be part of the delta.
+	var phantom int
+	for i := range sc.Relationships {
+		if sc.Relationships[i].Kind == "CALLS" && sc.Relationships[i].PropGet("cross_repo") == "true" {
+			phantom++
+		}
+	}
+	if phantom == 0 {
+		t.Errorf("flow side-table missing the phantom cross_repo CALLS edge: %+v", sc.Relationships)
+	}
+	t.Logf("flow side-table: %d SCOPE.Process flows, %d phantom CALLS (added=%d)", got, phantom, added)
+}
+
+func mustModTime(t *testing.T, path string) time.Time {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	return fi.ModTime()
 }

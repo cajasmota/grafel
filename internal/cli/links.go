@@ -16,7 +16,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/engine"
 	"github.com/cajasmota/grafel/internal/graph"
-	"github.com/cajasmota/grafel/internal/graph/fbwriter"
+	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -451,11 +451,8 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 		// a full re-index.
 		_ = engine.ApplyAsyncTriggerEdges(doc)
 
-		// Update stats.
-		doc.Stats.Entities = len(doc.Entities)
-		doc.Stats.Relationships = len(doc.Relationships)
-
-		// Sort entities + relationships for determinism (mirrors index.go).
+		// Sort entities + relationships for determinism (mirrors index.go) so the
+		// side-table delta is stable run-to-run.
 		sort.SliceStable(doc.Entities, func(a, b int) bool {
 			return doc.Entities[a].ID < doc.Entities[b].ID
 		})
@@ -470,29 +467,77 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 			return ra.Kind < rb.Kind
 		})
 
-		// Write atomically — both graph.fb (canonical binary) and graph.json
-		// must be updated together so that LoadGraphFromDir and any tool that
-		// reads graph.json directly see the same entity set (fixes #1702).
+		// #5904 PR-b: repoint the SINK from a whole-graph rewrite onto the per-repo
+		// flow SIDE-TABLE. The re-synthesised cross-repo-aware flow entities + their
+		// step/entry/seed edges + the phantom cross_repo CALLS edges are the DELTA
+		// over the index-baked graph; write ONLY that delta to <stateDir>/flows.json
+		// via flows.Upsert. graph.fb / graph.json are NOT rewritten.
+		//
+		// This removes the #5915 P1 hazard: for a #5901 segment-set the resident
+		// Document is a COLLAPSED union of every segment, so re-serialising it as one
+		// flat graph.<gen>.fb re-materialised the whole graph in memory (OOM) and
+		// discarded the segmented layout. The side-table leaves the graph untouched;
+		// the read overlay (flows.MergeInto / MCP applyFlowOverlay) REPLACE-merges the
+		// baked intra-repo flows with this delta at read time.
 		stateDir := filepath.Dir(graphPaths[slug])
-		// #5891: gen write + pointer flip (no rename-over a mapped graph.fb).
-		fbPath, fbErr := fbwriter.WriteGraphGen(stateDir, doc)
-		if fbErr != nil {
-			return added, fmt.Errorf("phantom-edge pass: write graph.fb %s: %w", slug, fbErr)
+		flowEnts, flowRels := extractFlowDelta(doc)
+		if err := flows.Upsert(stateDir, flowEnts, flowRels); err != nil {
+			return added, fmt.Errorf("phantom-edge pass: write flow side-table %s: %w", slug, err)
 		}
-		p := graphPaths[slug]
-		if werr := graph.WriteAtomic(p, doc, false); werr != nil {
-			return added, fmt.Errorf("phantom-edge pass: write graph.json %s: %w", slug, werr)
-		}
-		// Stamp identical mtime so the two encodings of the same data are
-		// never mistaken for a partial write (#1626 pattern).
-		now := time.Now()
-		_ = os.Chtimes(fbPath, now, now)
-		_ = os.Chtimes(p, now, now)
 		fmt.Fprintf(os.Stderr,
-			"grafel: phantom-edge pass group=%s repo=%s phantom_edges=%d\n",
-			group, slug, added)
+			"grafel: phantom-edge pass group=%s repo=%s phantom_edges=%d flow_entities=%d (side-table)\n",
+			group, slug, added, len(flowEnts))
+	}
+
+	// Repos that were loaded but are NOT (or no longer) affected by cross-repo
+	// links must not keep a stale flows.json from a previous run — otherwise the
+	// read overlay would resurrect old cross-repo flows for a repo whose links
+	// were removed (without a reindex to invalidate the source_key). The phantom
+	// pass is the sole writer of the flow side-table, so it owns this cleanup.
+	for slug := range docs {
+		if affectedRepos[slug] {
+			continue
+		}
+		stateDir := filepath.Dir(graphPaths[slug])
+		if err := os.Remove(flows.Path(stateDir)); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "grafel: phantom-edge pass: clear stale flow side-table %s: %v\n", slug, err)
+		}
 	}
 	return added, nil
+}
+
+// extractFlowDelta returns the FLOW side-table delta from a re-synthesised
+// document (#5904 PR-b): every SCOPE.Process / SCOPE.EventFlow entity, their
+// STEP_IN_* / ENTRY_POINT_OF / SEED_OF_EVENT_FLOW structural edges, and the
+// phantom cross_repo CALLS edges. This is exactly the set the read overlay
+// SUBSTITUTES for the index-baked flows (flows.Apply strips the baked flows +
+// their structural edges, then appends this delta) plus the phantom CALLS edges
+// (which are never baked). Ordinary entities/edges are excluded — they already
+// live in graph.fb and are not rewritten.
+func extractFlowDelta(doc *graph.Document) ([]graph.Entity, []graph.Relationship) {
+	var ents []graph.Entity
+	for i := range doc.Entities {
+		if doc.Entities[i].Kind == string(engine.EntityKindProcess) ||
+			doc.Entities[i].Kind == engine.EntityKindEventFlow {
+			ents = append(ents, doc.Entities[i])
+		}
+	}
+	var rels []graph.Relationship
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		switch r.Kind {
+		case string(engine.RelationshipKindStepInProcess),
+			string(engine.RelationshipKindEntryPointOf),
+			engine.RelationshipKindStepInEventFlow,
+			engine.RelationshipKindSeedOfEventFlow:
+			rels = append(rels, *r)
+		case "CALLS":
+			if r.PropGet("cross_repo") == "true" {
+				rels = append(rels, *r)
+			}
+		}
+	}
+	return ents, rels
 }
 
 // stripProcessEntities returns new entity and relationship slices with all
