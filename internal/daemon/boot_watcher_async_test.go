@@ -35,17 +35,22 @@ func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
 		t.Fatalf("ensure: %v", err)
 	}
 
-	// ReposToWatch blocks for 5s, simulating a stalled filesystem walk
-	// during watcher subscription. released is closed when it returns so
-	// the test can confirm the goroutine actually ran (and is off the
-	// critical path).
-	const stall = 5 * time.Second
+	// ReposToWatch blocks INDEFINITELY (until the test closes release),
+	// simulating a stalled filesystem walk during watcher subscription. Using an
+	// unblock-on-demand channel instead of a fixed time.Sleep removes the old
+	// 4s-serve-vs-5s-stall wall-clock race that flaked under `-race`: because the
+	// stall never clears on its own, the ONLY way the daemon can answer an RPC
+	// within the (now generous) deadline below is if watcher subscription is off
+	// the boot critical path. A synchronous regression would block here forever
+	// and never serve — caught deterministically, with no timing tuning. released
+	// is closed when the goroutine returns so the test can confirm it ran.
+	release := make(chan struct{})
 	released := make(chan struct{})
 	cfg := daemon.Config{
 		Layout: layout,
 		ReposToWatch: func() []string {
 			defer close(released)
-			time.Sleep(stall)
+			<-release // block until the test releases us (simulated stall)
 			return nil
 		},
 		GroupsForRepo:      func(_ string) []string { return nil },
@@ -59,7 +64,7 @@ func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- daemon.Run(ctx, cfg) }()
 
-	// The daemon must SERVE RPC promptly — far sooner than the 5s stall.
+	// The daemon must SERVE RPC while the watcher subscription is still blocked.
 	// We assert a real Ping round-trip completes, not merely that the socket
 	// file exists: the socket is created early (transport.Listen) but the
 	// accept loop, dashboard goroutine, and "ready" log all sit AFTER the
@@ -67,12 +72,12 @@ func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
 	// the daemon binds the fd but never answers — exactly the live symptom
 	// (0% CPU, :47274 never serving).
 	//
-	// Budget bumped from 2s → 4s (#1797 / #937 investigation): under
-	// `go test -race` on shared CI runners the race detector adds ~2× overhead
-	// to goroutine scheduling; 2s was routinely too tight and caused
-	// sync.Cond-Wait to outlast the whole test-suite timeout (10 min).
-	// The boot path itself is sub-100ms on any tier of hardware so 4s is
-	// still a tight regression guard while being robust to CI noise.
+	// Because the stall is now an indefinite block (not a 5s sleep), the serve
+	// deadline no longer races a fixed stall duration and can be generous: it
+	// only needs to exceed worst-case boot time on a contended `-race` runner.
+	// The boot path itself is sub-100ms on any tier of hardware, so 10s is a
+	// robust regression guard — a synchronous stall would miss it by an infinity,
+	// not by a slim margin.
 	//
 	// pingOnce dials and Pings with a hard per-attempt timeout. net/rpc's
 	// Call blocks until the server's accept loop reads the request, so a
@@ -95,7 +100,7 @@ func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
 		}
 	}
 
-	servedDeadline := time.Now().Add(4 * time.Second)
+	servedDeadline := time.Now().Add(10 * time.Second)
 	served := false
 	for time.Now().Before(servedDeadline) {
 		if pingOnce(200 * time.Millisecond) {
@@ -105,17 +110,19 @@ func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if !served {
-		t.Fatalf("daemon did not answer an RPC within 4s while the watcher "+
-			"subscription was stalled for %s — watcher setup is blocking the "+
-			"boot critical path (#1456 regression)", stall)
+		t.Fatal("daemon did not answer an RPC within 10s while the watcher " +
+			"subscription was blocked — watcher setup is blocking the boot " +
+			"critical path (#1456 regression)")
 	}
 
-	// Sanity: the stalled subscription really was running concurrently and
-	// eventually returns (it is not silently skipped).
+	// The daemon served while ReposToWatch was still blocked, proving the
+	// subscription is off the critical path. Now release the simulated stall and
+	// confirm the goroutine really ran (it is not silently skipped) and unwinds.
+	close(release)
 	select {
 	case <-released:
-	case <-time.After(stall + 2*time.Second):
-		t.Fatalf("ReposToWatch never released — watcher goroutine not started")
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReposToWatch never released — watcher goroutine not started")
 	}
 
 	cancel()

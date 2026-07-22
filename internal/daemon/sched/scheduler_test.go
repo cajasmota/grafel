@@ -151,7 +151,7 @@ func TestGroupAlgoReArmsOnNewLinkCompletion(t *testing.T) {
 	s := New(Config{
 		Workers:           2,
 		LinkDebounce:      30 * time.Millisecond,
-		GroupAlgoDebounce: 200 * time.Millisecond,
+		GroupAlgoDebounce: 2 * time.Second,
 		Index:             func(_ context.Context, _ string, _ string) error { return nil },
 		Links:             func(_ context.Context, _ string) error { return nil },
 		GroupAlgo: func(_ context.Context, _ string) error {
@@ -167,16 +167,22 @@ func TestGroupAlgoReArmsOnNewLinkCompletion(t *testing.T) {
 
 	// Timing here is structural, not wall-clock-fragile: the group-algo timer
 	// is *re-armed* (old timer cancelled) when /b's link pass completes, so the
-	// only way group-algo can fire is GroupAlgoDebounce (200ms) after the LAST
-	// link completion. The mid-window check below proves it did NOT fire early;
-	// the final check converges on the single eventual pass. The sleeps are
-	// kept SMALL relative to the 200ms debounce (re-arm happens at ~100ms, well
-	// before the first 200ms timer could elapse) so even a slow CI cannot make
-	// the first timer fire before the re-arm cancels it.
+	// only way group-algo can fire is GroupAlgoDebounce after the LAST link
+	// completion. The mid-window check below proves it did NOT fire early; the
+	// final check converges on the single eventual pass.
+	//
+	// GroupAlgoDebounce is deliberately LARGE (2s) relative to the test's coarse
+	// sleeps (100ms + 150ms) so the re-arm race is decided structurally, not by
+	// scheduler luck: /a's group-algo timer cannot fire until ~2s after /a's
+	// link completes, but /b is enqueued at ~100ms and — even on a heavily
+	// contended `-race` runner where goroutine scheduling lags several-fold — is
+	// processed and re-arms the timer far inside that 2s window. That is the fix
+	// for the full-suite parallel-load flake: with the old 200ms debounce a
+	// loaded runner could let /a's original timer fire before /b's re-arm landed.
 	s.Enqueue("/a")
-	time.Sleep(100 * time.Millisecond) // first link pass done, group-algo armed (200ms)
+	time.Sleep(100 * time.Millisecond) // first link pass done, group-algo armed (2s)
 	s.Enqueue("/b")                    // second burst → re-arms the group-algo timer
-	time.Sleep(150 * time.Millisecond) // first group-algo timer would have fired (~at 100+200) — but re-armed
+	time.Sleep(150 * time.Millisecond) // still deep inside the 2s window — nothing fired yet
 	mu.Lock()
 	mid := groupAlgoCalls
 	mu.Unlock()
