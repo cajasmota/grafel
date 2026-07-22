@@ -1536,6 +1536,17 @@ export interface ProgressRow {
   enhancing?: boolean;
   /** Relationship count from the status plane (SSE only carries entities). */
   relationships?: number;
+  /**
+   * True when this repo's on-disk graph.fb was written by an older grafel
+   * build than the engine now requires (#5907). The engine has already
+   * loop-guard-enqueued a reindex by the time this is observed true — never
+   * a "please click something" prompt, only a visibility signal so a
+   * post-upgrade reindex reads as "reindexing after upgrade" instead of a
+   * silent stall.
+   */
+  reindexRequired?: boolean;
+  /** Human-readable reason paired with reindexRequired, or undefined. */
+  reindexReason?: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1560,6 +1571,17 @@ export interface IndexStatusRepo {
   relationships: number;
   /** Graph flatbuffer mtime in ns; 0 when never indexed by this engine. */
   graph_fb_mtime: number;
+  /**
+   * True when the on-disk graph.fb was written by an older grafel build
+   * (#5907). Optional here (rather than required) only so existing test
+   * fixtures that predate this field keep type-checking; the backend always
+   * sends it.
+   */
+  reindex_required?: boolean;
+  /** Human-readable reason paired with reindex_required, or "". */
+  reindex_reason?: string;
+  /** Derived single-word summary (backend: deriveIndexStatus). */
+  status?: "idle" | "indexing" | "enhancing" | "reindex-required" | "reindexing-after-upgrade";
 }
 
 /** Payload for GET /api/v2/groups/{group}/index-status. */
@@ -1610,6 +1632,8 @@ export interface ProgressGroup {
   children: ProgressRow[];
   /** True when any child/row is still enhancing in the background. */
   enhancing?: boolean;
+  /** True when any child/row needs a reindex after a format upgrade (#5907). */
+  reindexRequired?: boolean;
 }
 
 /** POST /api/v2/maintenance/cleanup result. */

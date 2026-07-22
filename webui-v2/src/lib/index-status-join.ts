@@ -42,6 +42,8 @@ export function joinIndexStatus(
       relationships: s.relationships,
       // Never regress a higher live SSE entity count with a lagging status count.
       entitiesSoFar: Math.max(row.entitiesSoFar, s.entities),
+      reindexRequired: s.reindex_required,
+      reindexReason: s.reindex_reason,
     };
   });
   return changed ? next : rows;
@@ -50,6 +52,16 @@ export function joinIndexStatus(
 /** True when at least one repo is still enhancing in the background. */
 export function groupEnhancing(status: IndexStatusReply | undefined): boolean {
   return !!status && status.repos.some((r) => r.enhancing);
+}
+
+/**
+ * True when at least one repo needs a reindex after a format upgrade (#5907)
+ * — the engine has already loop-guard-enqueued the reindex; this only drives
+ * the "reindexing after upgrade" / "reindex required" badge so the state is
+ * never silent from the web dashboard.
+ */
+export function groupReindexRequired(status: IndexStatusReply | undefined): boolean {
+  return !!status && status.repos.some((r) => r.reindex_required);
 }
 
 /**

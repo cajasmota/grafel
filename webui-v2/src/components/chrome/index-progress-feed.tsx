@@ -11,10 +11,13 @@
    Each row shows its phase, a files-done/total bar, entity count, and the file
    currently being processed. A row that is `enhancing` (graph queryable,
    background enrichment still running) shows an "enhancing" badge — it is
-   success, never "Failed".
+   success, never "Failed". A row whose on-disk graph.fb needs a reindex after
+   a format upgrade (`reindexRequired`, #5907) shows a "reindexing after
+   upgrade" / "reindex required" badge instead of looking idle — the engine
+   has already loop-guard-enqueued the reindex by the time this is observed.
    ============================================================ */
 
-import { CheckCircle2, AlertTriangle, Loader2, Sparkles } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Loader2, Sparkles, RefreshCw } from "lucide-react";
 
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -47,6 +50,16 @@ function PhaseIcon({ phase }: { phase: ProgressPhase }) {
   if (phase === "done") return <CheckCircle2 size={13} className="text-success" />;
   if (phase === "error") return <AlertTriangle size={13} className="text-danger" />;
   return <Loader2 size={13} className="animate-spin text-accent-strong" />;
+}
+
+/**
+ * "Reindex required" / "reindexing after upgrade" badge label (#5907). While
+ * the auto-enqueued reindex is actively indexing this repo, name it as such —
+ * otherwise it's still queued behind the loop-guarded enqueue, which is the
+ * silent-stall window this badge exists to surface.
+ */
+function reindexBadgeLabel(indexing: boolean): string {
+  return indexing ? "reindexing after upgrade" : "reindex required";
 }
 
 /** One progress row body (used both flat and as a nested monorepo child). */
@@ -82,6 +95,11 @@ function ProgressRowItem({ row, nested }: { row: ProgressRow; nested?: boolean }
           {row.enhancing && (
             <Badge tone="accent" className="shrink-0" data-testid="row-enhancing-badge">
               <Sparkles size={10} className="mr-0.5" /> enhancing
+            </Badge>
+          )}
+          {row.reindexRequired && (
+            <Badge tone="warning" className="shrink-0" data-testid="row-reindex-required-badge">
+              <RefreshCw size={10} className="mr-0.5" /> {reindexBadgeLabel(!!row.indexing)}
             </Badge>
           )}
         </div>
@@ -135,6 +153,11 @@ function MonorepoGroupItem({ group }: { group: ProgressGroup }) {
           {group.enhancing && (
             <Badge tone="accent" className="shrink-0">
               <Sparkles size={10} className="mr-0.5" /> enhancing
+            </Badge>
+          )}
+          {group.reindexRequired && (
+            <Badge tone="warning" className="shrink-0" data-testid="group-reindex-required-badge">
+              <RefreshCw size={10} className="mr-0.5" /> reindex required
             </Badge>
           )}
         </div>

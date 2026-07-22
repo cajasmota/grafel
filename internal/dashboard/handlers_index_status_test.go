@@ -76,6 +76,23 @@ func writeIndexStatusFixture(t *testing.T, repoPath string, indexing, enhancing 
 	}
 }
 
+// writeIndexStatusReindexFixture writes a per-repo statusfile.File with
+// ReindexRequired/ReindexReason set (#5907 FIX1/FIX2's fields), optionally
+// while an auto-enqueued reindex is actively running (indexing=true).
+func writeIndexStatusReindexFixture(t *testing.T, repoPath string, indexing bool, reason string) {
+	t.Helper()
+	f := &statusfile.File{
+		RepoPath:        repoPath,
+		HeartbeatAt:     time.Now().UTC(),
+		Indexing:        indexing,
+		ReindexRequired: true,
+		ReindexReason:   reason,
+	}
+	if err := statusfile.Write(repoPath, f); err != nil {
+		t.Fatalf("write reindex status fixture for %s: %v", repoPath, err)
+	}
+}
+
 // writeEngineLivenessFixture writes the engine-global liveness sidecar with
 // the given CPU%/RSS, using the SAME (daemon.DefaultLayout + EngineLivenessStatusKey)
 // derivation the production writer/reader use, so the handler under test
@@ -112,12 +129,15 @@ type indexStatusReplyWire struct {
 		RSSMB  int64   `json:"rss_mb"`
 	} `json:"engine"`
 	Repos []struct {
-		RepoSlug      string `json:"repo_slug"`
-		Indexing      bool   `json:"indexing"`
-		Enhancing     bool   `json:"enhancing"`
-		Entities      int64  `json:"entities"`
-		Relationships int64  `json:"relationships"`
-		GraphFBMtime  int64  `json:"graph_fb_mtime"`
+		RepoSlug        string `json:"repo_slug"`
+		Indexing        bool   `json:"indexing"`
+		Enhancing       bool   `json:"enhancing"`
+		Entities        int64  `json:"entities"`
+		Relationships   int64  `json:"relationships"`
+		GraphFBMtime    int64  `json:"graph_fb_mtime"`
+		ReindexRequired bool   `json:"reindex_required"`
+		ReindexReason   string `json:"reindex_reason"`
+		Status          string `json:"status"`
 	} `json:"repos"`
 }
 
@@ -212,6 +232,67 @@ func TestIndexStatusEndpoint_MissingStatusFileYieldsZeroRow(t *testing.T) {
 	}
 	if r.Indexing || r.Enhancing || r.Entities != 0 || r.Relationships != 0 || r.GraphFBMtime != 0 {
 		t.Errorf("untouched repo should be zero/false row, got %+v", r)
+	}
+	if r.ReindexRequired {
+		t.Errorf("untouched repo should have reindex_required=false, got true")
+	}
+	if r.Status != "idle" {
+		t.Errorf("untouched repo status = %q, want %q", r.Status, "idle")
+	}
+}
+
+// TestIndexStatusEndpoint_ReindexRequired_Surfaced is the FIX3 (#5907) RED
+// test: before this change, ReindexRequired/ReindexReason were dropped when
+// building indexStatusRepo, so a repo whose graph.fb needed a reindex after a
+// format upgrade read as an idle row to the web dashboard — a silent stall.
+// This proves the fields are surfaced verbatim, plus the derived `status`:
+// "reindexing-after-upgrade" once the auto-enqueued reindex is actively
+// running, "reindex-required" while it's still queued.
+func TestIndexStatusEndpoint_ReindexRequired_Surfaced(t *testing.T) {
+	paths := seedIndexStatusRegistry(t, "demo", "queued", "running")
+	writeIndexStatusReindexFixture(t, paths["queued"], false, "graph format v2 incompatible with v3 — reindex required")
+	writeIndexStatusReindexFixture(t, paths["running"], true, "graph format v2 incompatible with v3 — reindex required")
+
+	url, done := newIndexStatusServer(t)
+	defer done()
+
+	resp, err := http.Get(url + "/api/v2/groups/demo/index-status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var env indexStatusEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	byBlug := map[string]int{}
+	for i, r := range env.Data.Repos {
+		byBlug[r.RepoSlug] = i
+	}
+
+	queued := env.Data.Repos[byBlug["queued"]]
+	if !queued.ReindexRequired {
+		t.Error("queued repo: expected reindex_required=true")
+	}
+	if queued.ReindexReason == "" {
+		t.Error("queued repo: expected a non-empty reindex_reason")
+	}
+	if queued.Status != "reindex-required" {
+		t.Errorf("queued repo status = %q, want %q", queued.Status, "reindex-required")
+	}
+
+	running := env.Data.Repos[byBlug["running"]]
+	if !running.ReindexRequired {
+		t.Error("running repo: expected reindex_required=true")
+	}
+	if !running.Indexing {
+		t.Error("running repo: expected indexing=true")
+	}
+	if running.Status != "reindexing-after-upgrade" {
+		t.Errorf("running repo status = %q, want %q", running.Status, "reindexing-after-upgrade")
 	}
 }
 
