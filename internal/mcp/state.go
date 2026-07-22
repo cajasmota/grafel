@@ -32,6 +32,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/embed"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
@@ -444,6 +445,19 @@ type LoadedRepo struct {
 	// since the last stamp, regardless of the overlay-file memo. The zero value
 	// means "never stamped", so a freshly-loaded repo is always (re-)stamped.
 	algoStampedMt time.Time
+
+	// descStampedMt / descFileMt / descApplied memoize the DESCRIPTION side-table
+	// apply (#5904 PR-a), mirroring algoStampedMt for the per-repo
+	// <stateDir>/descriptions.json sidecar. descStampedMt is the lr.mtime value at
+	// which applyDescriptionOverlay last PropSet the sidecar's descriptions onto
+	// this repo's entities; descFileMt is the sidecar file's mtime at that stamp.
+	// A re-stamp is needed when EITHER the repo reparsed (lr.mtime advanced past
+	// descStampedMt — a fresh graph.fb dropped any previously-stamped description)
+	// OR the sidecar file changed (a write-back advanced its mtime). The zero
+	// values ("never stamped") always force a (re-)stamp on first load / revive.
+	descStampedMt time.Time
+	descFileMt    time.Time
+	descApplied   bool
 }
 
 // resetIndexes re-arms every lazy-index sync.Once and clears the cached
@@ -1557,6 +1571,10 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 		// NO behavior change until an overlay exists. Memoized by mtime so a
 		// mid-session atomic swap reloads only the overlay, not the graphs.
 		applyGroupAlgoOverlay(grp)
+		// Description side-table (#5904 PR-a): ADDITIVELY stamp any
+		// <stateDir>/descriptions.json onto the group's entities. Absence-tolerant
+		// and per-repo memoized, exactly like the group-algo overlay above.
+		applyDescriptionOverlay(grp)
 	}
 	// Recompute the tool-surface signature. If it differs from the previous
 	// value the caller will emit notifications/tools/list_changed (#1772).
@@ -1606,6 +1624,12 @@ func (s *State) Group(name string) *LoadedGroup {
 		// re-materialized group.
 		grp.lastAccess = time.Now()
 		s.refreshGroupAlgoOverlayLocked(grp)
+		// Re-check the per-repo description side-table mtimes on the serving path so
+		// a write-back that advanced <stateDir>/descriptions.json mid-session takes
+		// effect without a full Reload (mirrors refreshGroupAlgoOverlayLocked). The
+		// per-repo memo inside applyDescriptionOverlay keeps the steady state a
+		// cheap stat-and-skip.
+		applyDescriptionOverlay(grp)
 	}
 	return grp
 }
@@ -2627,6 +2651,128 @@ func buildOverlayTableFromDoc(doc *graph.Document, ov *groupalgo.Overlay) map[in
 	for i := range doc.Entities {
 		if eo, has := ov.Results[doc.Entities[i].ID]; has {
 			table[int32(i)] = newEntityOverlay(eo)
+		}
+	}
+	return table
+}
+
+// applyDescriptionOverlay stamps the per-repo DESCRIPTION side-table (#5904
+// PR-a) onto a loaded group's entities. For each repo it reads
+// <stateDir>/descriptions.json (absence/corrupt/stale-tolerant) and, for every
+// entity WITH a sidecar entry, ADDITIVELY PropSet-s "description":
+//
+//   - onto lr.Doc.Entities — the flag-OFF read path (LabelIndex.at /
+//     forEachEntity) and the MCP serve surfaces that read PropGet("description")
+//     directly.
+//   - into an entity-INDEX-keyed LabelIndex.descOverlay table for the flag-ON
+//     mmap read path (materializeFromReader / materializeEntityOverlay).
+//
+// ADDITIVE guarantee: a missing sidecar entry leaves whatever description the
+// entity already carried (extractor-native / baked-in from a prior write-back)
+// UNTOUCHED — a miss never clears. Absence/staleness of the whole sidecar is a
+// no-op for the same reason.
+//
+// Memoized PER REPO (mirrors applyGroupAlgoOverlay's #5400/#5401 per-repo memo):
+// a repo is re-stamped when EITHER it reparsed since the last stamp (lr.mtime
+// advanced past lr.descStampedMt — a fresh graph.fb dropped the prior PropSet)
+// OR its sidecar file mtime changed (a write-back landed). The steady state
+// (nothing changed) is a cheap per-repo os.Stat and skip. Caller holds s.mu, the
+// same lock applyGroupAlgoOverlay mutates Doc/LabelIndex under.
+func applyDescriptionOverlay(grp *LoadedGroup) {
+	if grp == nil {
+		return
+	}
+	for _, lr := range grp.Repos {
+		if lr == nil || lr.Doc == nil || lr.Path == "" {
+			continue
+		}
+		stateDir := daemon.StateDirForRepo(lr.Path)
+		var fileMt time.Time
+		if fi, err := os.Stat(descriptions.Path(stateDir)); err == nil {
+			fileMt = fi.ModTime()
+		}
+		// Skip when neither the sidecar file nor this repo's graph changed since
+		// the last stamp. The zero descStampedMt (never stamped) always falls
+		// through to (re-)stamp.
+		if lr.descApplied && lr.mtime.Equal(lr.descStampedMt) && fileMt.Equal(lr.descFileMt) {
+			continue
+		}
+
+		sc, ok := descriptions.Read(stateDir)
+
+		// In-place Doc stamp (flag-OFF read path + PropGet consumers). ADDITIVE:
+		// only entities WITH a sidecar entry are touched; everything else keeps
+		// its existing description.
+		if ok {
+			ents := lr.Doc.Entities
+			for i := range ents {
+				if d, has := sc.Results[ents[i].ID]; has {
+					ents[i].PropSet("description", d)
+				}
+			}
+		}
+
+		// Flag-ON mmap side-table: rebuild the index-keyed description table under
+		// readerMu, mirroring applyGroupAlgoOverlay's overlay-table publish. A
+		// retired/nil Reader falls back to the Doc (where the read path also reads
+		// the Doc, so the table is never consulted there anyway). When the sidecar
+		// is absent/stale (ok==false) the table is cleared to nil so a previously
+		// stamped description does not linger on the mmap path after it went stale.
+		if serveFromMMap() {
+			lr.rmu().Lock()
+			var table map[int32]string
+			if ok {
+				if rdr := lr.Reader; rdr != nil && !(lr.handle != nil && lr.handle.readRetired) {
+					table = buildDescTableFromReader(rdr, sc)
+				} else {
+					table = buildDescTableFromDoc(lr.Doc, sc)
+				}
+			}
+			if lr.LabelIndex != nil {
+				lr.LabelIndex.descOverlay = table
+			}
+			lr.rmu().Unlock()
+		}
+
+		lr.descStampedMt = lr.mtime
+		lr.descFileMt = fileMt
+		lr.descApplied = true
+	}
+}
+
+// buildDescTableFromReader builds the entity-INDEX-keyed description side-table
+// by iterating the resident mmap Reader (NOT lr.Doc), matching each entity to
+// the sidecar by ID. The int32 key is the vector index i in Reader iteration
+// order — identical to the order BuildLabelIndexFromReader assigns and the order
+// materializeFromReader looks the table up by. Callers MUST hold the owning
+// LoadedRepo's readerMu (the mmap is dereferenced here via IterateEntities).
+func buildDescTableFromReader(r *fbreader.Reader, sc *descriptions.Sidecar) map[int32]string {
+	table := make(map[int32]string)
+	if r == nil || sc == nil {
+		return table
+	}
+	var i int32
+	r.IterateEntities(func(e *fb.Entity) bool {
+		if d, has := sc.Results[string(e.Id())]; has {
+			table[i] = d
+		}
+		i++
+		return true
+	})
+	return table
+}
+
+// buildDescTableFromDoc is the Doc-sourced twin used ONLY when no mmap Reader is
+// resident (JSON-only / no graph.fb) on the flag-on path. Keyed by the same
+// vector index i as the Reader path.
+func buildDescTableFromDoc(doc *graph.Document, sc *descriptions.Sidecar) map[int32]string {
+	table := make(map[int32]string)
+	if doc == nil || sc == nil {
+		return table
+	}
+	for i := range doc.Entities {
+		if d, has := sc.Results[doc.Entities[i].ID]; has {
+			table[int32(i)] = d
 		}
 	}
 	return table

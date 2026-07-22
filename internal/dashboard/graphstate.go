@@ -25,6 +25,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/types"
@@ -637,6 +638,19 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 				})
 			}
 			dr.Doc = doc
+			// Description side-table (#5904 PR-a): ADDITIVELY stamp any
+			// <stateDir>/descriptions.json onto this repo's entities so the
+			// PropGet("description") readers (openapi/DAG export) surface agent
+			// write-back descriptions again now that write-back no longer rewrites
+			// the graph. Absence/corrupt/stale-tolerant: a miss leaves the entity's
+			// own (extractor-native) description intact.
+			if sc, ok := descriptions.Read(stateDir); ok {
+				for i := range doc.Entities {
+					if d, has := sc.Results[doc.Entities[i].ID]; has {
+						doc.Entities[i].PropSet("description", d)
+					}
+				}
+			}
 			// S8 (#2159): open a zero-copy mmap reader alongside the Document
 			// so handlers that only need to iterate entities/relationships can
 			// avoid materialising the full heap slice. Best-effort: failures

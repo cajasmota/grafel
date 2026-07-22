@@ -72,6 +72,20 @@ type LabelIndex struct {
 	// applied.
 	overlay map[int32]entityOverlay
 
+	// descOverlay is the DESCRIPTION side-table (#5904 PR-a): entity INDEX (int32
+	// vector position) -> the agent-written "description" property that lives in
+	// <stateDir>/descriptions.json rather than in graph.fb (the enrichment
+	// write-back no longer rewrites the graph — the #5915 P1 collapse hazard).
+	// materializeFromReader ADDITIVELY PropSet-s it onto the Reader-materialized
+	// base so a lookup on the mmap path surfaces the description exactly as the
+	// overlaid Doc row does. A miss leaves whatever description graph.fb carried
+	// (extractor-native / baked-in) intact — never cleared. Populated by
+	// applyDescriptionOverlay from the SAME descriptions.json it PropSet-s onto
+	// lr.Doc, keyed by resolving each entity ID to its vector index. Built ONLY
+	// when GRAFEL_SERVE_FROM_MMAP is ON (the flag-off Doc path never consults it);
+	// nil otherwise and until a description sidecar is applied.
+	descOverlay map[int32]string
+
 	// readerMu points at the owning LoadedRepo.readerMu — the strictly-innermost
 	// ADR-0027 SIGBUS-safety mutex (memory epic #5850, "Option B"). Wired by
 	// reloadLocked; nil for the Doc-only build and directly-constructed indexes
@@ -325,6 +339,12 @@ func (l *LabelIndex) materializeFromReader(idx int32) *graph.Entity {
 		e.Centrality = ov.Centrality
 		e.IsGodNode = ov.IsGodNode
 		e.IsArticulationPt = ov.IsArticulationPt
+	}
+	// Description side-table (#5904 PR-a): ADDITIVE merge — a present entry sets
+	// (or overrides) the "description" property; a miss leaves the base entity's
+	// own description (extractor-native / baked-in) untouched.
+	if d, ok := l.descOverlay[idx]; ok {
+		e.PropSet("description", d)
 	}
 	return &e
 }

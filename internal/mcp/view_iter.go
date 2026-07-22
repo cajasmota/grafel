@@ -66,12 +66,14 @@ func (lr *LoadedRepo) forEachEntity(yield func(*graph.Entity) bool) {
 	defer lr.rmu().Unlock()
 
 	var overlay map[int32]entityOverlay
+	var descOverlay map[int32]string
 	if lr.LabelIndex != nil {
 		overlay = lr.LabelIndex.overlay
+		descOverlay = lr.LabelIndex.descOverlay
 	}
 	n := rdr.EntityCount()
 	for i := 0; i < n; i++ {
-		e := materializeEntityOverlay(rdr, overlay, int32(i))
+		e := materializeEntityOverlay(rdr, overlay, descOverlay, int32(i))
 		if !yield(e) {
 			return
 		}
@@ -151,15 +153,17 @@ func (lr *LoadedRepo) forEachEntityOfKinds(pred func(kind string) bool, yield fu
 	defer lr.rmu().Unlock()
 
 	var overlay map[int32]entityOverlay
+	var descOverlay map[int32]string
 	if lr.LabelIndex != nil {
 		overlay = lr.LabelIndex.overlay
+		descOverlay = lr.LabelIndex.descOverlay
 	}
 	n := rdr.EntityCount()
 	for _, idx := range idxs {
 		if int(idx) >= n {
 			continue
 		}
-		e := materializeEntityOverlay(rdr, overlay, idx)
+		e := materializeEntityOverlay(rdr, overlay, descOverlay, idx)
 		if !yield(e) {
 			return
 		}
@@ -203,7 +207,7 @@ func (lr *LoadedRepo) forEachDocEntity(yield func(*graph.Entity) bool) {
 // is byte-identical to a LabelIndex.at()-based lookup for the same index.
 // Callers MUST hold the owning LoadedRepo's readerMu — the mmap dereference
 // happens here.
-func materializeEntityOverlay(r *fbreader.Reader, overlay map[int32]entityOverlay, idx int32) *graph.Entity {
+func materializeEntityOverlay(r *fbreader.Reader, overlay map[int32]entityOverlay, descOverlay map[int32]string, idx int32) *graph.Entity {
 	// Test-only observability seam (memory epic #5850 Path P): count each mmap
 	// entity materialization so the selective-materialization tests can assert a
 	// forEachEntityOfKinds scan materializes ONLY its matching-Kind subset, not the
@@ -219,6 +223,11 @@ func materializeEntityOverlay(r *fbreader.Reader, overlay map[int32]entityOverla
 		e.Centrality = ov.Centrality
 		e.IsGodNode = ov.IsGodNode
 		e.IsArticulationPt = ov.IsArticulationPt
+	}
+	// Description side-table (#5904 PR-a): ADDITIVE merge, mirroring
+	// LabelIndex.materializeFromReader — a miss leaves the base description intact.
+	if d, ok := descOverlay[idx]; ok {
+		e.PropSet("description", d)
 	}
 	return &e
 }
