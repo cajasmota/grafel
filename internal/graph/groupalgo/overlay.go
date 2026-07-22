@@ -288,9 +288,13 @@ func CurrentSourceMtimes(group string) (map[string]int64, error) {
 	out := map[string]int64{}
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
-		fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
-		if fi, statErr := os.Stat(fbPath); statErr == nil {
-			out[r.Slug] = fi.ModTime().UnixNano()
+		// #5915 J2 P2: graphSourceMtime resolves the segment-set case too — a
+		// plain os.Stat(graph.CurrentGraphPath(stateDir)) would find nothing
+		// for a segment-set repo (graph.<gen>/ dir + manifest.json, no flat
+		// .fb), silently dropping it from the map and permanently flagging
+		// its overlay as stale.
+		if mt, ok := graphSourceMtime(stateDir); ok {
+			out[r.Slug] = mt
 		}
 	}
 	return out, nil

@@ -177,18 +177,20 @@ func AssembleGroupGraph(group string) (entities []graph.Entity, rels []graph.Rel
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
 
-		// Record the graph.fb mtime when present. A repo that was never indexed
-		// has neither graph.fb nor graph.json — skip it (not an error): the
+		// Record the graph mtime when present. A repo that was never indexed
+		// has neither a graph nor graph.json — skip it (not an error): the
 		// union of the remaining repos is still valid.
 		// #5891: resolve the active generation so the recorded mtime is the
 		// gen file's — otherwise the overlay staleness check below (which reads
 		// the same resolved mtime via CurrentSourceMtimes) would see a frozen
 		// legacy graph.fb mtime and treat a fresh overlay as permanently stale.
-		fbPath := graph.CurrentGraphPath(stateDir)
+		// #5915 J2 P2: graphSourceMtime is segment-set aware — a segment-set
+		// repo (graph.<gen>/ dir + manifest.json, no flat .fb) would otherwise
+		// stat the absent flat path and be wrongly treated as never-indexed.
 		jsonPath := filepath.Join(stateDir, "graph.json")
 		fbExists := false
-		if fi, statErr := os.Stat(fbPath); statErr == nil {
-			srcMtimes[r.Slug] = fi.ModTime().UnixNano()
+		if mt, ok := graphSourceMtime(stateDir); ok {
+			srcMtimes[r.Slug] = mt
 			fbExists = true
 		}
 		if !fbExists {
@@ -347,4 +349,39 @@ func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
 		NumRepos:     numRepos,
 		InputHash:    inputHash,
 	}, nil
+}
+
+// graphSourceMtime resolves a repo's freshness mtime for its current-ref
+// stateDir, segment-set aware (#5915 J2 P2). os.Stat(graph.CurrentGraphPath(
+// stateDir)) — the pattern this replaces — only ever names a flat .fb path,
+// which is ABSENT for a segment-set repo (graph.<gen>/ dir + manifest.json,
+// no flat .fb), so that stat would report the repo as never-indexed and
+// silently drop it from the union / freeze its overlay-staleness signal.
+//
+// Resolution:
+//   - GraphSingleFile (including the legacy flat fallback): the resolved
+//     .fb file's own mtime — byte-identical to the pre-fix behavior.
+//   - GraphSegmentSet: the manifest.json mtime, the atomic flip point for a
+//     segment-set rebuild (mirrors #5915 J1's cmd/grafel/daemon_tier.go
+//     tierReloadCallback, which uses the same signal for cold-wake staleness).
+//   - GraphAbsent, or a resolved path whose stat fails: ok=false.
+func graphSourceMtime(stateDir string) (mtimeNanos int64, ok bool) {
+	desc, err := graph.CurrentGraphDescriptor(stateDir)
+	if err != nil {
+		return 0, false
+	}
+	var path string
+	switch desc.Kind {
+	case graph.GraphSingleFile:
+		path = desc.Path
+	case graph.GraphSegmentSet:
+		path = filepath.Join(desc.GenDir, graph.ManifestFileName)
+	default:
+		return 0, false
+	}
+	fi, statErr := os.Stat(path)
+	if statErr != nil {
+		return 0, false
+	}
+	return fi.ModTime().UnixNano(), true
 }
