@@ -150,9 +150,15 @@ func registerKnownGroupsCold(logger *slog.Logger) {
 				if ref == "_unknown" {
 					continue // sentinel — skip per ErrUnknownRef semantics
 				}
-				fbPath := graph.CurrentGraphPath(filepath.Join(refsDir, ref)) // #5891
-				if _, statErr := os.Stat(fbPath); statErr != nil {
-					continue // no graph yet (gen or legacy flat)
+				// #5915 J1 FIX-3: segment-aware existence probe. os.Stat of the
+				// flat CurrentGraphPath is absent for a segment-set (the pointer
+				// names a graph.<gen>/ dir), so the old check would skip — never
+				// cold-register, hence never warm — a segmented repo at boot.
+				// Route existence through the descriptor: GraphAbsent (or a corrupt
+				// manifest) → skip; single-file/legacy/segment-set → register.
+				refStateDir := filepath.Join(refsDir, ref)
+				if desc, dErr := graph.CurrentGraphDescriptor(refStateDir); dErr != nil || desc.Kind == graph.GraphAbsent {
+					continue // no graph yet (gen file, gen dir, or legacy flat)
 				}
 				isPinned := tier.IsDefaultBranch(repoPath, ref)
 				kind := tier.SlotKindBranchFeature
@@ -395,9 +401,14 @@ func tierEvictCallback(key tier.SlotKey) {
 // is safe even when the subscription is already active.
 func tierReloadCallback(key tier.SlotKey) error {
 	stateDir := daemon.StateDirForRepoRef(key.RepoPath, key.Ref)
-	fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active generation
-	// Prime the cache by opening and immediately releasing the reader.
-	_, release, err := daemonMCPCache.Get(fbPath)
+	// #5915 J1 FIX-3: prime the cache via the segment-aware ref entry point.
+	// The old code called Get(CurrentGraphPath(stateDir)); for a segment-set
+	// (graph.<gen>/ dir + manifest) the flat .fb path is absent → Get's stat
+	// errors → the cold-wake reload fails → a cold-evicted segmented repo could
+	// never be re-warmed (monolith serving break). GetForRepoRef resolves the
+	// descriptor and keys a segment-set on its gen dir (opening a MultiReader),
+	// while single-file/legacy keys on the resolved .fb path exactly as before.
+	_, release, err := daemonMCPCache.GetForRepoRef(key.RepoPath, key.Ref)
 	if err != nil {
 		return err
 	}
@@ -408,8 +419,15 @@ func tierReloadCallback(key tier.SlotKey) error {
 		daemonWatcherMgr.Resume(key.RepoPath, key.Ref)
 	}
 
-	// Stale-detection: if the repo has file changes newer than graph.fb,
-	// enqueue a reactive reindex so the next query gets a fresh graph.
+	// Stale-detection freshness reference: the resolved gen file, or — for a
+	// segment-set — the manifest.json (a real file whose mtime advances on each
+	// rebuild). The flat CurrentGraphPath would be absent for a segment-set, so
+	// isRepoDirtyAfter would read "graph missing → never dirty" and silently skip
+	// the reactive reindex.
+	fbPath := graph.CurrentGraphPath(stateDir)
+	if desc, dErr := graph.CurrentGraphDescriptor(stateDir); dErr == nil && desc.Kind == graph.GraphSegmentSet {
+		fbPath = filepath.Join(desc.GenDir, graph.ManifestFileName)
+	}
 	if isRepoDirtyAfter(key.RepoPath, fbPath) {
 		if daemonSchedulerEnqueue != nil {
 			daemonSchedulerEnqueue(key.RepoPath)
