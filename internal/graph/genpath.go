@@ -47,9 +47,26 @@ const flatGraphName = "graph.fb"
 // genFileRe matches a generation graph file: graph.<digits>.fb.
 var genFileRe = regexp.MustCompile(`^graph\.(\d+)\.fb$`)
 
+// genDirRe matches a MULTI-SEGMENT generation directory: graph.<digits> (no
+// .fb suffix). Under the #5890/#5901 segmented layout a graph too large for one
+// segment is written as graph.<gen>/seg-NNNN.fb + manifest.json, and the
+// `current` pointer may name that DIR (or its manifest) — so `current` is no
+// longer guaranteed to name a *.fb file. This regex is the segment-set
+// counterpart to genFileRe, with the same path-traversal hardening (a pointer
+// value that is not exactly graph.<digits> can never resolve to a gen dir).
+var genDirRe = regexp.MustCompile(`^graph\.(\d+)$`)
+
 // GenFileName renders the on-disk filename for a given generation.
 func GenFileName(gen uint64) string {
 	return fmt.Sprintf("graph.%d.fb", gen)
+}
+
+// GenDirName renders the on-disk MULTI-SEGMENT generation directory name for a
+// given generation: graph.<gen> (no .fb suffix). The future streaming writer
+// (#5902) creates this dir and fills it with seg-NNNN.fb + manifest.json; the
+// dark read substrate only needs the name to recognise + resolve it.
+func GenDirName(gen uint64) string {
+	return fmt.Sprintf("graph.%d", gen)
 }
 
 // IsGraphFileName reports whether base (a bare filename, not a path) is a
@@ -121,6 +138,143 @@ func CurrentGraphPath(dir string) string {
 	return filepath.Join(dir, flatGraphName)
 }
 
+// GraphKind classifies what the `current` pointer (or the legacy flat file)
+// resolves to for a state dir.
+type GraphKind int
+
+const (
+	// GraphAbsent — no graph on disk (never-indexed repo): neither a resolvable
+	// gen file/dir nor the legacy flat graph.fb exists.
+	GraphAbsent GraphKind = iota
+	// GraphSingleFile — the single-segment fast path: graph.<gen>.fb (or the
+	// legacy flat graph.fb). Byte-identical to the pre-#5901 world; the
+	// overwhelming common case.
+	GraphSingleFile
+	// GraphSegmentSet — the multi-segment layout: a graph.<gen>/ dir holding
+	// seg-NNNN.fb files + manifest.json.
+	GraphSegmentSet
+)
+
+// GraphDescriptor is the resolved shape of a state dir's active graph. It is
+// the segment-aware superset of CurrentGraphPath: where CurrentGraphPath only
+// ever hands back a single .fb path (and is preserved unchanged for the ~11
+// #5891 single-file/legacy callers), CurrentGraphDescriptor additionally
+// recognises the segment-set layout so a reader can route to it.
+type GraphDescriptor struct {
+	Kind GraphKind
+	// Dir is the state dir this descriptor was resolved for.
+	Dir string
+	// Path is the single .fb file for GraphSingleFile (and, for GraphAbsent,
+	// the flat graph.fb path that does not exist — mirroring CurrentGraphPath's
+	// "return the flat path even when absent" contract). Empty for a segment-set.
+	Path string
+	// GenDir is the absolute graph.<gen>/ directory for GraphSegmentSet; empty
+	// otherwise.
+	GenDir string
+	// Manifest is the parsed, validated manifest for GraphSegmentSet; nil
+	// otherwise.
+	Manifest *Manifest
+	// Segments are the absolute seg-NNNN.fb paths (in manifest order) for
+	// GraphSegmentSet; nil otherwise. Handed straight to OpenSegmentsWithRanges.
+	Segments []string
+}
+
+// CurrentGraphDescriptor resolves dir's active graph into a GraphDescriptor,
+// classifying it as single-file, segment-set, or absent. Resolution order
+// mirrors CurrentGraphPath, extended for the segment-set layout:
+//
+//  1. `current` names graph.<gen>.fb (an existing file) → GraphSingleFile.
+//  2. `current` names graph.<gen> (a dir) or graph.<gen>/manifest.json → read
+//     + validate that dir's manifest → GraphSegmentSet. A malformed/hostile
+//     manifest returns a non-nil error (the reader MUST NOT proceed).
+//  3. Otherwise fall back to the legacy flat graph.fb: GraphSingleFile when it
+//     exists on disk, else GraphAbsent (Path still set to the flat path, for
+//     parity with CurrentGraphPath's absent semantics).
+//
+// A missing pointer, a pointer to a missing gen file, or a hostile pointer all
+// fall through to step 3 (never an error) — only a pointer that DOES resolve to
+// a gen dir whose manifest is corrupt surfaces an error, so a genuinely broken
+// segment-set is loud rather than silently mis-read as "absent".
+func CurrentGraphDescriptor(dir string) (GraphDescriptor, error) {
+	if dir == "" {
+		return GraphDescriptor{Kind: GraphAbsent}, nil
+	}
+	flat := filepath.Join(dir, flatGraphName)
+	raw, ok := readPointerRaw(dir)
+	if ok {
+		// (1) Single-file gen pointer.
+		if _, isGen := parseGen(raw); isGen {
+			p := filepath.Join(dir, raw)
+			if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+				return GraphDescriptor{Kind: GraphSingleFile, Dir: dir, Path: p}, nil
+			}
+			// Pointer names a missing gen file — fall through to flat fallback.
+		} else if genDirName, isSeg := parseSegPointer(raw); isSeg {
+			// (2) Segment-set pointer (gen dir or its manifest).
+			genDir := filepath.Join(dir, genDirName)
+			if fi, err := os.Stat(genDir); err == nil && fi.IsDir() {
+				m, mErr := ReadManifest(genDir)
+				if mErr != nil {
+					return GraphDescriptor{}, fmt.Errorf("graph: resolve segment-set %s: %w", genDir, mErr)
+				}
+				segs := make([]string, 0, len(m.Segments))
+				for _, s := range m.Segments {
+					segs = append(segs, filepath.Join(genDir, s.File))
+				}
+				return GraphDescriptor{
+					Kind:     GraphSegmentSet,
+					Dir:      dir,
+					GenDir:   genDir,
+					Manifest: m,
+					Segments: segs,
+				}, nil
+			}
+			// Pointer names a missing gen dir — fall through to flat fallback.
+		}
+	}
+	// (3) Legacy flat fallback.
+	if fi, err := os.Stat(flat); err == nil && !fi.IsDir() {
+		return GraphDescriptor{Kind: GraphSingleFile, Dir: dir, Path: flat}, nil
+	}
+	return GraphDescriptor{Kind: GraphAbsent, Dir: dir, Path: flat}, nil
+}
+
+// readPointerRaw returns the trimmed content of <dir>/current with NO shape
+// validation beyond non-emptiness and a coarse path-safety guard (no separator,
+// except the single "/manifest.json" suffix a segment-set pointer may carry;
+// no ".."). CurrentGraphDescriptor then classifies the value via parseGen /
+// parseSegPointer. This is the segment-aware sibling of readPointer (which only
+// accepts the graph.<gen>.fb single-file shape); the two share the same trust
+// boundary — a hostile pointer resolves to nothing and falls back to flat.
+func readPointerRaw(dir string) (raw string, ok bool) {
+	data, err := os.ReadFile(filepath.Join(dir, currentPointerName))
+	if err != nil {
+		return "", false
+	}
+	raw = strings.TrimSpace(string(data))
+	if raw == "" || strings.Contains(raw, "..") {
+		return "", false
+	}
+	return raw, true
+}
+
+// parseSegPointer recognises a segment-set `current` pointer value and returns
+// the bare gen-dir name (graph.<gen>). It accepts either the dir itself
+// ("graph.<gen>") or the dir-qualified manifest ("graph.<gen>/manifest.json")
+// per decision 2. Anything else (a single-file gen name, junk, a deeper path)
+// yields ok=false. The returned name is always a bare "graph.<digits>" with no
+// separator, so joining it under dir can never escape dir.
+func parseSegPointer(raw string) (genDirName string, ok bool) {
+	name := raw
+	if suffix := "/" + ManifestFileName; strings.HasSuffix(raw, suffix) {
+		name = strings.TrimSuffix(raw, suffix)
+	}
+	if !genDirRe.MatchString(name) {
+		return "", false
+	}
+	return name, true
+}
+
 // NextGen returns the next generation integer to write in dir: one greater
 // than the maximum generation observed among the `current` pointer and every
 // graph.<gen>.fb already present. Returns 1 for a dir that has never held a
@@ -183,6 +337,35 @@ func WriteCurrentPointer(dir, genName string) error {
 	}
 	os.Remove(tmp)
 	return fmt.Errorf("graph.WriteCurrentPointer: rename: %w", err)
+}
+
+// WriteCurrentPointerRaw atomically points <dir>/current at name, where name
+// may be EITHER a single-file gen ("graph.<gen>.fb") OR a segment-set gen dir
+// ("graph.<gen>") or its manifest ("graph.<gen>/manifest.json"). It is the
+// segment-aware superset of WriteCurrentPointer (which only accepts the
+// single-file shape); the two share the same atomic tmp+rename + bounded retry.
+// This is a format primitive for the FUTURE streaming writer (#5902) and the
+// test fixtures — no existing producer calls it.
+func WriteCurrentPointerRaw(dir, name string) error {
+	_, single := parseGen(name)
+	_, seg := parseSegPointer(name)
+	if !single && !seg {
+		return fmt.Errorf("graph.WriteCurrentPointerRaw: invalid pointer target %q", name)
+	}
+	tmp := filepath.Join(dir, currentPointerName+".tmp")
+	if err := os.WriteFile(tmp, []byte(name+"\n"), 0o644); err != nil {
+		return fmt.Errorf("graph.WriteCurrentPointerRaw: write tmp: %w", err)
+	}
+	dst := filepath.Join(dir, currentPointerName)
+	var err error
+	for i := 0; i < pointerFlipRetries; i++ {
+		if err = os.Rename(tmp, dst); err == nil {
+			return nil
+		}
+		time.Sleep(pointerFlipRetryDelay)
+	}
+	os.Remove(tmp)
+	return fmt.Errorf("graph.WriteCurrentPointerRaw: rename: %w", err)
 }
 
 // GCStaleGens best-effort unlinks generation files older than the

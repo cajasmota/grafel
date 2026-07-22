@@ -73,6 +73,14 @@ const (
 // manifest can never make a reader open a file outside the gen dir.
 var segFileRe = regexp.MustCompile(`^seg-\d+\.fb$`)
 
+// SegmentFileName renders the zero-padded on-disk name for the i-th segment
+// (seg-0000.fb, seg-0001.fb, ...). Decision 2's zero-padding keeps a plain
+// lexicographic dir listing in segment order. Used by the future streaming
+// writer (#5902) and the dark-slice test fixtures.
+func SegmentFileName(i int) string {
+	return fmt.Sprintf("seg-%04d.fb", i)
+}
+
 // SegmentMeta describes one segment file within a gen dir's manifest.
 type SegmentMeta struct {
 	// File is the BARE filename (seg-NNNN.fb) of the segment, relative to the
