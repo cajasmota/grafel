@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
@@ -102,5 +103,80 @@ func TestKnownRefsForGroup_GenOnlyRefIncluded(t *testing.T) {
 	}
 	if ref != "main" || isAll {
 		t.Fatalf("resolveRefParam(?ref=main) = (%q, isAll=%v), want (main, false)", ref, isAll)
+	}
+}
+
+// TestKnownRefsForGroup_SegmentSetRefIncluded is the RED test for #5915 J2
+// slice-2: a ref indexed as a SEGMENT-SET (graph.<gen>/ dir + manifest.json,
+// no flat graph.fb, no graph.json) must be reported present by
+// knownRefsForGroup. The pre-fix os.Stat(graph.CurrentGraphPath(refDir))
+// gate only ever resolves a flat .fb path, so it dropped the ref (400 on
+// ?ref=<branch>).
+func TestKnownRefsForGroup_SegmentSetRefIncluded(t *testing.T) {
+	const group, slug = "seggroup", "segrepo"
+	repoPath := registerRefFixture(t, group, slug)
+
+	segRefDir := daemon.StateDirForRepoRef(repoPath, "wip-seg")
+	if err := os.MkdirAll(segRefDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeDashboardSegmentSetFixture(t, segRefDir, 3, time.Time{})
+	if _, err := os.Stat(filepath.Join(segRefDir, "graph.fb")); err == nil {
+		t.Fatal("precondition: a flat graph.fb exists -- segment-set layout must not create it")
+	}
+	if _, err := os.Stat(filepath.Join(segRefDir, "graph.json")); err == nil {
+		t.Fatal("precondition: a graph.json exists -- must not mask the segment-set-only case")
+	}
+
+	known := knownRefsForGroup(group)
+	has := func(want string) bool {
+		for _, k := range known {
+			if k == want {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("wip-seg") {
+		t.Fatalf("segment-set ref 'wip-seg' dropped from knownRefsForGroup=%v (would 400 on ?ref=wip-seg)", known)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/groups/"+group+"/stats?ref=wip-seg", nil)
+	rec := httptest.NewRecorder()
+	ref, isAll, ok := resolveRefParam(rec, req, group)
+	if !ok {
+		t.Fatalf("resolveRefParam(?ref=wip-seg) rejected with %d (segment-set ref treated as invalid)", rec.Code)
+	}
+	if ref != "wip-seg" || isAll {
+		t.Fatalf("resolveRefParam(?ref=wip-seg) = (%q, isAll=%v), want (wip-seg, false)", ref, isAll)
+	}
+}
+
+// TestAllRefsForRepo_SegmentSetRefIncluded guards the allRefsForRepo sibling
+// (used by the group-refs aggregation path) against the same #5915 J2
+// slice-2 gap: a segment-set-only ref must be included.
+func TestAllRefsForRepo_SegmentSetRefIncluded(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GRAFEL_HOME", home)
+	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(home, "store"))
+
+	repoPath := filepath.Join(home, "myrepo")
+	_ = os.MkdirAll(repoPath, 0o755)
+
+	segRefDir := daemon.StateDirForRepoRef(repoPath, "wip-seg")
+	if err := os.MkdirAll(segRefDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeDashboardSegmentSetFixture(t, segRefDir, 3, time.Time{})
+
+	refs := allRefsForRepo(repoPath)
+	found := false
+	for _, r := range refs {
+		if r == "wip-seg" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("segment-set ref 'wip-seg' dropped from allRefsForRepo=%v", refs)
 	}
 }
