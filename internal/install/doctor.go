@@ -12,6 +12,7 @@
 //   - Conventions per-file SHA manifests (Warning)
 //   - .gitignore contains /.grafel/ in tracked repos (Warning)
 //   - Stale staging directories older than 7 days (Info)
+//   - Repos whose on-disk graph needs a reindex after a format upgrade (Info)
 //
 // JSON schema is pinned at schema_version=1.  Bump SchemaVersion when
 // the shape of DoctorReport changes in a backward-incompatible way.
@@ -35,6 +36,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/service"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/rulesfiles"
 	"github.com/cajasmota/grafel/internal/install/skilllink"
@@ -247,6 +249,15 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 	// ── Check 8: Stale staging dirs ─────────────────────────────────────────
 	if staleCheck := checkStaleStagingDirs(opts.StatePath); staleCheck != nil {
 		report.Checks = append(report.Checks, *staleCheck)
+	}
+
+	// ── Check 9: Reindex required after a format upgrade (issue #5907 FIX4) ──
+	// Report-only: the engine's FIX2 (internal/daemon/stale_reindex.go) already
+	// auto-enqueues a loop-guarded reindex for a repo in this state, so doctor
+	// need not (and must not) trigger anything here — it only makes the
+	// otherwise-silent post-upgrade reindex visible in `grafel doctor`.
+	if reindexCheck := checkReindexRequired(opts); reindexCheck != nil {
+		report.Checks = append(report.Checks, *reindexCheck)
 	}
 
 	// Determine overall OK: all Critical checks must pass.
@@ -814,6 +825,69 @@ func checkStaleStagingDirs(statePath string) *CheckResult {
 		Drift:    drift,
 	}
 	return &cr
+}
+
+// checkReindexRequired scans every registered repo (across every grafel
+// group) for an on-disk graph.fb written by an older grafel build than this
+// binary supports (graph.ReindexRequiredReason, issue #5907 FIX1/FIX2).
+//
+// This is REPORT-ONLY. By the time a repo is observed in this state the
+// engine's stale-format auto-reindex arm (internal/daemon/stale_reindex.go's
+// loop-guarded maybeEnqueue) has already enqueued a reindex on its own — this
+// check exists purely so that in-flight reindex is VISIBLE in `grafel doctor`
+// instead of the repo silently looking idle/current for the several minutes
+// the reindex takes. Doctor must never enqueue anything itself here: the
+// engine already owns that decision, and a second enqueuer would risk racing
+// or duplicating the loop-guard's own bookkeeping.
+//
+// Severity is Info, mirroring checkStaleStagingDirs: this is advisory
+// visibility, not a broken install — the engine is already fixing it.
+//
+// Returns nil when no groups are registered or no repo currently needs a
+// reindex (avoids adding a check with no content).
+func checkReindexRequired(opts DoctorOptions) *CheckResult {
+	groupsFn := opts.groupsFn
+	if groupsFn == nil {
+		groupsFn = registry.Groups
+	}
+	loadGroupFn := opts.loadGroupFn
+	if loadGroupFn == nil {
+		loadGroupFn = registry.LoadGroupConfig
+	}
+
+	groups, err := groupsFn()
+	if err != nil || len(groups) == 0 {
+		return nil
+	}
+
+	var drift []string
+	for _, g := range groups {
+		cfg, lerr := loadGroupFn(g.ConfigPath)
+		if lerr != nil || cfg == nil {
+			continue
+		}
+		for _, repo := range cfg.Repos {
+			stateDir := daemon.StateDirForRepo(repo.Path)
+			if stateDir == "" {
+				continue
+			}
+			if required, reason := graph.ReindexRequiredReason(stateDir); required {
+				drift = append(drift, fmt.Sprintf("%s: %s", repo.Path, reason))
+			}
+		}
+	}
+
+	if len(drift) == 0 {
+		return nil
+	}
+
+	summary := fmt.Sprintf("%d repo(s) need reindex after a format upgrade", len(drift))
+	return &CheckResult{
+		Surface:  "reindex-required",
+		OK:       false,
+		Severity: SeverityInfo,
+		Drift:    append([]string{summary}, drift...),
+	}
 }
 
 // ── Engine liveness + version skew (ADR-0024 PR5, epic #5729) ─────────────────
