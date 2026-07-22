@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
@@ -564,5 +565,84 @@ func TestRefEndpoints_CORSNotRegressed(t *testing.T) {
 				t.Errorf("CORS regression: OPTIONS %s returned 405", ep)
 			}
 		})
+	}
+}
+
+// TestHandleGroupRefs_SegmentSetRefIncluded is the RED test for #5915 J2
+// slice-2: a ref indexed as a SEGMENT-SET (graph.<gen>/ dir + manifest.json,
+// no flat graph.fb, no graph.json) must be aggregated into the GET
+// /api/groups/:g/refs response. The pre-fix
+// os.Stat(graph.CurrentGraphPath(refDir)) + graph.json fallback gate only
+// ever resolves a flat .fb path, so the segment-set-only ref was silently
+// skipped.
+func TestHandleGroupRefs_SegmentSetRefIncluded(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GRAFEL_HOME", home)
+	storeRoot := filepath.Join(home, "store")
+	t.Setenv("GRAFEL_DAEMON_ROOT", storeRoot)
+
+	groupName := "seggroup"
+	repoSlug := "segrepo"
+	repoPath := filepath.Join(home, "segrepo-src")
+	_ = os.MkdirAll(repoPath, 0o755)
+
+	cfg := &registry.GroupConfig{Name: groupName, Repos: []registry.Repo{{Slug: repoSlug, Path: repoPath}}}
+	cfgDir := filepath.Join(home, "groups")
+	_ = os.MkdirAll(cfgDir, 0o755)
+	cfgPath := filepath.Join(cfgDir, groupName+".fleet.json")
+	raw, _ := json.Marshal(cfg)
+	_ = os.WriteFile(cfgPath, raw, 0o644)
+
+	regRaw, _ := json.Marshal(map[string]any{
+		"version": 1,
+		"groups":  []map[string]any{{"name": groupName, "config_path": cfgPath}},
+	})
+	_ = os.WriteFile(filepath.Join(home, "registry.json"), regRaw, 0o644)
+
+	segRefDir := daemon.StateDirForRepoRef(repoPath, "wip-seg")
+	if err := os.MkdirAll(segRefDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mtime := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Second)
+	writeDashboardSegmentSetFixture(t, segRefDir, 6, mtime)
+
+	st := newFakeStore()
+	srv, err := NewServer(DefaultConfig(), st)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	quiesceGraphCache(t, srv)
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/api/groups/" + groupName + "/refs")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Refs []struct {
+			Name          string  `json:"name"`
+			LastIndexedAt *string `json:"last_indexed_at"`
+		} `json:"refs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var found bool
+	for _, r := range body.Refs {
+		if r.Name == "wip-seg" {
+			found = true
+			if r.LastIndexedAt == nil {
+				t.Error("segment-set ref 'wip-seg' has nil last_indexed_at, want the manifest.json mtime")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("segment-set ref 'wip-seg' missing from refs=%v", body.Refs)
 	}
 }

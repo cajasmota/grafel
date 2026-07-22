@@ -634,17 +634,23 @@ func (s *Server) handleGroupRefs(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			fbPath := graph.CurrentGraphPath(filepath.Join(refsDir, refSafe)) // #5891
-			fi, ferr := os.Stat(fbPath)
-			if ferr != nil {
-				// No graph.fb — try graph.json.
+			// #5891, #5915 J2 slice-2: CurrentGraphMtime resolves the active
+			// graph's mtime segment-set aware (manifest.json), unlike
+			// os.Stat(graph.CurrentGraphPath(...)) which only ever resolved a
+			// flat .fb path and reported a segment-set ref as absent.
+			refDir := filepath.Join(refsDir, refSafe)
+			var mtime time.Time
+			if mt, ok := graph.CurrentGraphMtime(refDir); ok {
+				mtime = mt
+			} else {
+				// No active fb graph — try graph.json.
 				jsonPath := filepath.Join(refsDir, refSafe, "graph.json")
-				fi, ferr = os.Stat(jsonPath)
+				fi, ferr := os.Stat(jsonPath)
 				if ferr != nil {
 					continue
 				}
+				mtime = fi.ModTime()
 			}
-			mtime := fi.ModTime()
 
 			// Entity count from sidecar.
 			var entityCount int
