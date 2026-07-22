@@ -160,21 +160,27 @@ func cacheKey(stateDir string) string { return stateDir }
 // staleness.
 func readFromDisk(stateDir string) (*Results, bool) {
 	cachePath := filepath.Join(stateDir, cacheFileName)
-	graphPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
+	// #5915 J2 slice-3: graph.CurrentGraphMtime is segment-set aware — the
+	// prior os.Stat(graph.CurrentGraphPath(stateDir)) only ever named a flat
+	// .fb path, which is ABSENT for a segment-set stateDir (graph.<gen>/ dir +
+	// manifest.json, no flat .fb). That made the disk cache permanently
+	// unvalidatable for a segment-set repo: readFromDisk always missed
+	// (forcing recompute every call) and writeToDisk always errored (the
+	// cache was never persisted).
+	graphMtime, ok := graph.CurrentGraphMtime(stateDir)
+	if !ok {
+		return nil, false // no active graph found; nothing to validate against
+	}
 
 	cacheInfo, err := os.Stat(cachePath)
 	if err != nil {
 		return nil, false // cache file does not exist
 	}
-	graphInfo, err := os.Stat(graphPath)
-	if err != nil {
-		return nil, false // graph.fb not found; nothing to validate against
-	}
 
-	// Staleness check: graph.fb must not be newer than the cache.
+	// Staleness check: the active graph must not be newer than the cache.
 	// Use a 1-second tolerance to absorb filesystem timestamp granularity.
-	if graphInfo.ModTime().After(cacheInfo.ModTime().Add(time.Second)) {
-		return nil, false // graph.fb was updated after we cached
+	if graphMtime.After(cacheInfo.ModTime().Add(time.Second)) {
+		return nil, false // graph was updated after we cached
 	}
 
 	data, err := os.ReadFile(cachePath)
@@ -185,8 +191,8 @@ func readFromDisk(stateDir string) (*Results, bool) {
 	if err := json.Unmarshal(data, &env); err != nil {
 		return nil, false
 	}
-	// Validate the embedded mtime matches the current graph.fb mtime.
-	if env.GraphMtime != graphInfo.ModTime().UnixNano() {
+	// Validate the embedded mtime matches the current graph's mtime.
+	if env.GraphMtime != graphMtime.UnixNano() {
 		return nil, false
 	}
 	return &env.Results, true
@@ -195,14 +201,14 @@ func readFromDisk(stateDir string) (*Results, bool) {
 // writeToDisk atomically writes the results to <stateDir>/algo_results.fb.
 // Uses a temp-file + rename for crash-safety.
 func writeToDisk(stateDir string, r *Results) error {
-	graphPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
-	graphInfo, err := os.Stat(graphPath)
-	if err != nil {
-		return fmt.Errorf("stat graph.fb: %w", err)
+	// #5915 J2 slice-3: segment-set aware (see readFromDisk).
+	graphMtime, ok := graph.CurrentGraphMtime(stateDir)
+	if !ok {
+		return fmt.Errorf("stat graph: no active graph found in %s", stateDir)
 	}
 
 	env := envelope{
-		GraphMtime: graphInfo.ModTime().UnixNano(),
+		GraphMtime: graphMtime.UnixNano(),
 		Results:    *r,
 	}
 	data, err := json.Marshal(&env)
