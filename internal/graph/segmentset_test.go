@@ -83,6 +83,98 @@ func threeSegDocs() []*graph.Document {
 	}
 }
 
+// TestGCStaleGens_RemovesStaleGenDir: GC rm -rf's a stale multi-segment gen dir
+// while keeping the current + immediately-previous generations (test req v).
+func TestGCStaleGens_RemovesStaleGenDir(t *testing.T) {
+	dir := t.TempDir()
+	// Three segmented generations: 1 (stale), 2 (previous), 3 (current).
+	for gen := uint64(1); gen <= 3; gen++ {
+		writeSegmentSet(t, dir, gen, threeSegDocs())
+	}
+	removed := graph.GCStaleGens(dir, 3)
+
+	// gen 1 dir must be gone (rm -rf, including its segments + manifest).
+	if _, err := os.Stat(filepath.Join(dir, graph.GenDirName(1))); !os.IsNotExist(err) {
+		t.Fatalf("stale gen dir graph.1 not removed (err=%v)", err)
+	}
+	foundGen1 := false
+	for _, r := range removed {
+		if r == graph.GenDirName(1) {
+			foundGen1 = true
+		}
+	}
+	if !foundGen1 {
+		t.Errorf("GCStaleGens removed=%v, want it to include %q", removed, graph.GenDirName(1))
+	}
+	// current (3) and previous (2) dirs must survive intact.
+	for _, keep := range []uint64{2, 3} {
+		p := filepath.Join(dir, graph.GenDirName(keep), graph.SegmentFileName(0))
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("gen %d segment removed but should be kept: %v", keep, err)
+		}
+	}
+}
+
+// TestGCStaleGens_MixedFileAndDirKeepWindow: a history mixing single-file gens
+// and segmented gen dirs still keeps exactly the two newest generations.
+func TestGCStaleGens_MixedFileAndDirKeepWindow(t *testing.T) {
+	dir := t.TempDir()
+	// gen 1: single-file. gen 2: single-file. gen 3: segmented dir.
+	for gen := uint64(1); gen <= 2; gen++ {
+		if err := os.WriteFile(filepath.Join(dir, graph.GenFileName(gen)), []byte("filegen00"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSegmentSet(t, dir, 3, threeSegDocs())
+
+	graph.GCStaleGens(dir, 3)
+
+	// gen 1 (file) stale → removed; gen 2 (file) + gen 3 (dir) kept.
+	if _, err := os.Stat(filepath.Join(dir, graph.GenFileName(1))); !os.IsNotExist(err) {
+		t.Errorf("stale single-file gen 1 not removed")
+	}
+	if _, err := os.Stat(filepath.Join(dir, graph.GenFileName(2))); err != nil {
+		t.Errorf("previous single-file gen 2 removed but should be kept: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, graph.GenDirName(3))); err != nil {
+		t.Errorf("current segmented gen 3 removed but should be kept: %v", err)
+	}
+}
+
+// TestGCStaleGens_FailSoftOnHeldSegment: GC never fails even when a stale gen
+// dir's segment is still open (mapped). We open a reader over gen 1's segments,
+// then GC — on Unix the RemoveAll succeeds (unlinked-but-open is fine), on
+// Windows it fails soft. Either way GC returns without panicking and the
+// current/previous gens survive; the held reader stays valid until Close.
+func TestGCStaleGens_FailSoftOnHeldSegment(t *testing.T) {
+	dir := t.TempDir()
+	for gen := uint64(1); gen <= 3; gen++ {
+		writeSegmentSet(t, dir, gen, threeSegDocs())
+	}
+	// Hold gen 1 open across the GC.
+	v, err := graph.OpenSegmentReader(filepath.Join(dir, graph.GenDirName(1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The held reader must remain readable regardless of the GC outcome.
+	defer func() {
+		if v.EntityCount() != 6 {
+			t.Errorf("held reader unreadable after GC: EntityCount=%d", v.EntityCount())
+		}
+		_ = v.Close()
+	}()
+
+	// Must not panic / propagate.
+	graph.GCStaleGens(dir, 3)
+
+	// current + previous survive irrespective of the held handle.
+	for _, keep := range []uint64{2, 3} {
+		if _, err := os.Stat(filepath.Join(dir, graph.GenDirName(keep))); err != nil {
+			t.Errorf("gen %d removed but should be kept: %v", keep, err)
+		}
+	}
+}
+
 // TestReaderForDir_SegmentSet: ReaderForDir opens a segment-set and the unified
 // view sees entities/relationships across ALL segments (EntityCount, lookups,
 // iteration), including cross-segment relationship endpoints.

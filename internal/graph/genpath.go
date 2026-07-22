@@ -378,7 +378,15 @@ func WriteCurrentPointerRaw(dir, name string) error {
 // This is STRICTLY best-effort and MUST NOT affect the caller's success: a
 // still-mapped gen on Windows fails to delete with a sharing violation, which
 // is silently ignored and swept on a later write. A GC error never propagates.
-// Returns the list of gen files actually removed (for tests/observability).
+// Returns the list of gen entries actually removed (for tests/observability).
+//
+// #5901: a generation may be EITHER a single-file graph.<gen>.fb OR a
+// multi-segment gen DIR graph.<gen>/ (holding seg-NNNN.fb + manifest.json). GC
+// sweeps both: a stale gen file is unlinked; a stale gen dir is removed
+// recursively (os.RemoveAll — every segment plus the manifest). The keep-window
+// (current + immediately-previous) is computed over the UNION of gen files and
+// gen dirs, so a mixed-history dir (some gens single-file, some segmented)
+// still retains exactly the two newest generations regardless of shape.
 func GCStaleGens(dir string, currentGen uint64) []string {
 	if currentGen <= 1 {
 		return nil // nothing older than the immediately-previous gen exists
@@ -390,20 +398,47 @@ func GCStaleGens(dir string, currentGen uint64) []string {
 	}
 	var removed []string
 	for _, e := range ents {
+		name := e.Name()
 		if e.IsDir() {
+			// Multi-segment gen dir: graph.<gen>/ → rm -rf when stale.
+			v, ok := parseGenDir(name)
+			if !ok || v >= keepFrom {
+				continue
+			}
+			if err := os.RemoveAll(filepath.Join(dir, name)); err == nil {
+				removed = append(removed, name)
+			}
+			// On failure (e.g. Windows sharing violation on a still-mapped
+			// segment) swallow and retry on the next write. Never fail.
 			continue
 		}
-		v, ok := parseGen(e.Name())
+		// Single-file gen: graph.<gen>.fb → unlink when stale.
+		v, ok := parseGen(name)
 		if !ok || v >= keepFrom {
 			continue
 		}
-		if err := os.Remove(filepath.Join(dir, e.Name())); err == nil {
-			removed = append(removed, e.Name())
+		if err := os.Remove(filepath.Join(dir, name)); err == nil {
+			removed = append(removed, name)
 		}
 		// On failure (e.g. Windows ERROR_SHARING_VIOLATION on a still-mapped
 		// gen) swallow the error and try again on the next write. Never fail.
 	}
 	return removed
+}
+
+// parseGenDir returns the generation integer encoded in a bare gen-DIR name
+// (graph.<gen>, no .fb suffix) and whether it matched. It is the segment-set
+// counterpart to parseGen.
+func parseGenDir(name string) (uint64, bool) {
+	m := genDirRe.FindStringSubmatch(name)
+	if m == nil {
+		return 0, false
+	}
+	v, err := strconv.ParseUint(m[1], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 // WriteGenGraph writes buf as a NEW generation file in dir, flips the `current`
