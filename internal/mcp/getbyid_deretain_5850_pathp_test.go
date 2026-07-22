@@ -194,8 +194,14 @@ func TestGetByIDFlagOnEmptiedDoc_PathP(t *testing.T) {
 // TestGetByIDReloadRace_PathP runs getByID concurrently with a reload that
 // retires+munmaps the mapping the resident LabelIndex points at. Under -race it
 // must finish with no SIGBUS/SIGSEGV: getByID resolves via the readerMu-guarded
-// at(), so a lookup whose mapping was retired falls back to the Doc (correct
-// data) instead of dereferencing the freed region.
+// at(), so a lookup whose mapping was retired takes a safe non-mmap path instead
+// of dereferencing the freed region. Post-#5870 PR7bc that safe path is a
+// graceful MISS (at() returns nil for a retired generation, no Doc fallback), so
+// a retired-generation entity may be ABSENT — never wrong, never a freed-region
+// deref. In production reload also reassigns lr.LabelIndex to the fresh
+// generation; this test pins the field to the retired index on purpose to
+// exercise at()'s retired branch, so absence here is the expected steady state
+// after the retire lands.
 func TestGetByIDReloadRace_PathP(t *testing.T) {
 	forceServeFromMMap(t, true)
 
@@ -229,8 +235,10 @@ func TestGetByIDReloadRace_PathP(t *testing.T) {
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 
-	// Readers: hammer getByID; every returned entity must be correct (mmap OR the
-	// Doc fallback after retire — both carry identical content).
+	// Readers: hammer getByID. e5 is either PRESENT and correct (pre-retire mmap
+	// read) or ABSENT (post-retire graceful miss — at() returns nil for the retired
+	// generation). The invariant is "never wrong data, never a freed-region deref";
+	// a present entry that is nil or mismatched is a fault, absence is not.
 	for g := 0; g < 8; g++ {
 		wg.Add(1)
 		go func() {
@@ -238,7 +246,7 @@ func TestGetByIDReloadRace_PathP(t *testing.T) {
 			<-start
 			for j := 0; j < 600; j++ {
 				m := lr.getByID()
-				if e, ok := m["e5"]; !ok || e == nil || e.ID != "e5" || e.QualifiedName != "r.e5" {
+				if e, ok := m["e5"]; ok && (e == nil || e.ID != "e5" || e.QualifiedName != "r.e5") {
 					faults.Add(1)
 				}
 			}

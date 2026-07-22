@@ -291,13 +291,22 @@ func (l *LabelIndex) at(idx int32) *graph.Entity {
 			l.readerMu.Lock()
 			if l.handle != nil && l.handle.readRetired {
 				l.readerMu.Unlock()
-				// Doc fallback — mapping is gone, so the Doc row count is the only
-				// valid bound left (memory epic #5850 Path P PR6).
-				if int(idx) >= len(l.doc.Entities) {
-					return nil
-				}
-				e := l.doc.Entities[idx]
-				return &e
+				// Retired generation → return nil, do NOT fall back to
+				// l.doc.Entities. This branch fires only for a STALE captured
+				// *LabelIndex (e.g. the lock-free BM25 resolver closure) whose
+				// generation was retired+munmapped by a concurrent reload. Two
+				// reasons the Doc row is no longer a valid source here:
+				//   1. Post-deretain-flip (#5870 PR7bc), reloadLocked skeletonizes
+				//      lr.Doc for reader-present repos — doc.Entities is length 0,
+				//      so indexing it would be an out-of-range panic (and even the
+				//      len-guarded fallback would report every index "not found").
+				//   2. A retired generation's index is stale against the reindexed
+				//      successor generation anyway — a Doc-sourced row from the
+				//      superseded graph is not a meaningful answer.
+				// Callers that resolve indices lock-free (BM25 Search via
+				// idx.resolve → at()) already tolerate a nil entity by skipping
+				// that result row (see scoring.go Search: `if ent == nil { continue }`).
+				return nil
 			}
 			// PR6: the bound is the RESIDENT READER's row count, not
 			// len(l.doc.Entities) — a PR7 Doc-emptying leaves doc.Entities at 0
