@@ -172,7 +172,25 @@ func TestRebuildSemaphoreCapRespected(t *testing.T) {
 	}
 	group := setupTestGroup(t, "sem-cap-group", []string{"x1", "x2", "x3", "x4"})
 
-	var peakConc, current int64
+	// wantConc mirrors both the requested pool size (2) and the daemon-wide
+	// index gate cap (default 2), so exactly two workers can be in-flight at
+	// once. We prove peak concurrency ≥2 with a DETERMINISTIC 2-party
+	// rendezvous instead of a fixed time.Sleep window: the first two workers to
+	// reach the barrier block until BOTH have arrived, so they are provably
+	// inside indexFn simultaneously — no reliance on the scheduler happening to
+	// overlap two goroutines during a sleep (the source of the Windows-`-race`
+	// flake where peak was observed as 1). The peak is sampled while both are
+	// parked at the barrier, so the ≥2 observation is guaranteed by
+	// construction. The barrier has a generous timeout guard so a hypothetical
+	// single-slot regression fails via the peak assertion rather than hanging.
+	const wantConc = 2
+	var (
+		peakConc, current int64
+		barrierMu         sync.Mutex
+		arrived           int
+		proceed           = make(chan struct{})
+	)
+	barrierTimeout := time.After(30 * time.Second)
 	mockIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
 		cur := atomic.AddInt64(&current, 1)
 		defer atomic.AddInt64(&current, -1)
@@ -182,7 +200,20 @@ func TestRebuildSemaphoreCapRespected(t *testing.T) {
 				break
 			}
 		}
-		time.Sleep(30 * time.Millisecond)
+		// Rendezvous: the first two workers park here until both have arrived,
+		// guaranteeing they overlap. Later workers (3rd, 4th) see proceed already
+		// closed and pass straight through — the gate keeps them from ever raising
+		// peak above wantConc.
+		barrierMu.Lock()
+		arrived++
+		if arrived == wantConc {
+			close(proceed)
+		}
+		barrierMu.Unlock()
+		select {
+		case <-proceed:
+		case <-barrierTimeout:
+		}
 		return nil
 	}
 
@@ -277,13 +308,17 @@ func TestDaemonRebuild_InvalidatesCacheExplicitly(t *testing.T) {
 // partial results.
 func TestRebuildPerRepoTimeoutSurfacesStalledRepo(t *testing.T) {
 	group := setupTestGroup(t, "stall-group", []string{"fast1", "stuck", "fast2"})
-	// Short per-repo timeout so the test is fast, but not so short that a
-	// "fast" mock repo can miss the window under load: a hardcoded 100ms
-	// raced real goroutine scheduling on a loaded/CI runner and could flake
-	// even though the mock fast1/fast2 index calls do essentially no work.
-	// 1.5s is still far below any real per-repo stall a human would tolerate,
-	// while giving the fast mocks generous headroom.
-	t.Setenv("GRAFEL_REBUILD_REPO_TIMEOUT", "1500ms")
+	// Per-repo timeout: the assertion is intrinsically wall-clock (the "stuck"
+	// repo must actually breach the watchdog), so this is one of the few places
+	// we tune a real constant rather than synchronize. It must satisfy two
+	// bounds simultaneously: long enough that the "fast" mock repos — whose only
+	// cost is per-repo bookkeeping (status-file flush, foreground claim, gate
+	// acquire), which balloons on a contended `-race` Windows runner — never
+	// falsely trip it; short enough that the whole test still finishes well
+	// under the 10s ceiling asserted below. A hardcoded 100ms flaked; 1.5s was
+	// still marginal under `-race`; 3s gives the fast mocks ~200× their real
+	// cost of headroom while keeping the stuck-repo wait to ~3s.
+	t.Setenv("GRAFEL_REBUILD_REPO_TIMEOUT", "3s")
 
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) }) // unblock the stuck goroutine at test end
@@ -304,7 +339,7 @@ func TestRebuildPerRepoTimeoutSurfacesStalledRepo(t *testing.T) {
 	elapsed := time.Since(start)
 
 	// Must return promptly (well under any multi-minute wedge), bounded by the
-	// single 100ms per-repo timeout plus the two fast repos.
+	// single per-repo timeout (3s) plus the two fast repos.
 	if elapsed > 10*time.Second {
 		t.Fatalf("rebuild took %s — per-repo timeout did not unblock the group", elapsed)
 	}

@@ -56,8 +56,16 @@ func repoPathForSlug(t *testing.T, group, slug string) string {
 // includes the FAILED line.
 func TestRebuildWatchdogFailure_PersistedAndSurfacedInStatus(t *testing.T) {
 	group := setupTestGroup(t, "watchdog-visibility-group", []string{"fast", "stuck"})
-	t.Setenv("GRAFEL_REBUILD_REPO_TIMEOUT", "300ms")
 
+	// Both repos share ONE rebuild call, hence ONE watchdog value: "stuck" must
+	// breach it while "fast" must not. That breach is intrinsically wall-clock,
+	// so this is a tuned constant (injected via RepoTimeout, which overrides the
+	// env). "stuck" blocks forever (released only at cleanup), so ANY finite
+	// value trips it; "fast" returns instantly and only pays per-repo bookkeeping
+	// (status flush + claim + gate), which can balloon on a `-race` Windows
+	// runner — the 300ms this test used flaked exactly there. 2s gives "fast"
+	// ample headroom while keeping the deliberate stuck-repo wait to ~2s.
+	const watchdog = "2s"
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
 
@@ -72,7 +80,7 @@ func TestRebuildWatchdogFailure_PersistedAndSurfacedInStatus(t *testing.T) {
 	// concurrency=2 so "fast" and "stuck" run in parallel: with concurrency=1
 	// "fast" would starve behind "stuck" on the single worker slot and get
 	// spuriously marked STALLED too, even though its indexFn returns instantly.
-	_, _, err := daemonRebuildFuncCore(2, proto.RebuildArgs{Group: group}, mockIndexFn, noopLinksFn)
+	_, _, err := daemonRebuildFuncCore(2, proto.RebuildArgs{Group: group, RepoTimeout: watchdog}, mockIndexFn, noopLinksFn)
 	if err == nil || !strings.Contains(err.Error(), "stuck") || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("expected a timeout error naming the stuck repo, got: %v", err)
 	}
@@ -135,7 +143,6 @@ func TestRebuildWatchdogFailure_PersistedAndSurfacedInStatus(t *testing.T) {
 // must clear the marker set by an earlier failed attempt.
 func TestRebuildSuccess_ClearsPriorFailureMarker(t *testing.T) {
 	group := setupTestGroup(t, "watchdog-clear-group", []string{"flaky"})
-	t.Setenv("GRAFEL_REBUILD_REPO_TIMEOUT", "300ms")
 
 	release := make(chan struct{})
 	failFn := func(repoPath, _, slug string, _ []string, _, _ bool, _ ...IndexOption) error {
@@ -143,7 +150,11 @@ func TestRebuildSuccess_ClearsPriorFailureMarker(t *testing.T) {
 		return nil
 	}
 
-	_, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}, failFn, noopLinksFn)
+	// First rebuild MUST time out. failFn blocks forever (until close(release)
+	// below), so the watchdog is the only completion path — it fires regardless
+	// of value, with no scheduler-timing race. A short-ish 1s keeps the test
+	// fast; the determinism comes from the infinite block, not the constant.
+	_, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group, RepoTimeout: "1s"}, failFn, noopLinksFn)
 	if err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("expected a timeout error on the first (failing) rebuild, got: %v", err)
 	}
@@ -155,11 +166,16 @@ func TestRebuildSuccess_ClearsPriorFailureMarker(t *testing.T) {
 		t.Fatalf("expected a persisted failure marker after the first rebuild, got err=%v marker=%v", sfErr, sf)
 	}
 
-	// Second rebuild: succeeds immediately.
+	// Second rebuild: succeeds immediately. Disable the watchdog entirely
+	// (RepoTimeout "0") for this "must succeed" path so a slow `-race` runner's
+	// per-repo bookkeeping overhead can never spuriously trip the timeout and
+	// turn a genuine success into a false STALLED failure (the observed Windows
+	// flake: an instant okFn "timed out after 300ms"). With the watchdog off,
+	// success is fully deterministic — no wall-clock dependence remains.
 	okFn := func(repoPath, _, slug string, _ []string, _, _ bool, _ ...IndexOption) error {
 		return nil
 	}
-	rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}, okFn, noopLinksFn)
+	rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group, RepoTimeout: "0"}, okFn, noopLinksFn)
 	if err != nil {
 		t.Fatalf("second (successful) rebuild failed: %v", err)
 	}
