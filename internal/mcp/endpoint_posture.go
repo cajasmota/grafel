@@ -192,28 +192,41 @@ func (s *Server) endpointPostureScan(req mcpapi.CallToolRequest, repos []*Loaded
 		if r.Doc == nil {
 			continue
 		}
+		// #5928 collect-then-process: buildPosturePayload→resolveErrorFlow/
+		// resolveFeatureGates call r.getAdjacency()/r.getByIDOne, which re-lock the
+		// same readerMu the flag-ON forEachEntity scan holds across its whole pass —
+		// calling them INSIDE the closure self-deadlocks on the live-Reader path.
+		// Collect the candidate entities in-scan (rmu held); build each posture AFTER
+		// the scan returns (rmu released). forEachEntity materializes heap-safe entity
+		// copies flag-ON (and yields stable &Doc.Entities[i] flag-OFF), so retaining
+		// the pointers past the scan is safe. Visitation order is preserved, so the
+		// pre-sort `out` order (and therefore the final result) is byte-identical.
+		var candidates []*graph.Entity
 		r.forEachEntity(func(e *graph.Entity) bool {
 			// Skip the synthetic convergence nodes themselves — they are the
 			// targets of the edges, never the subject of a posture query.
 			if strings.EqualFold(e.Kind, kindExceptionType) || strings.EqualFold(e.Kind, kindFeatureFlag) {
 				return true
 			}
-			p := buildPosturePayload(r, e)
-			if !p.HasPosture {
-				return true
-			}
-			if facet != "" && !postureHasFacet(p, facet) {
-				return true
-			}
-			if pathContains != "" && !strings.Contains(strings.ToLower(p.Path), pathContains) {
-				return true
-			}
-			if method != "" && !strings.EqualFold(p.Method, method) {
-				return true
-			}
-			out = append(out, p)
+			candidates = append(candidates, e)
 			return true
 		})
+		for _, e := range candidates {
+			p := buildPosturePayload(r, e)
+			if !p.HasPosture {
+				continue
+			}
+			if facet != "" && !postureHasFacet(p, facet) {
+				continue
+			}
+			if pathContains != "" && !strings.Contains(strings.ToLower(p.Path), pathContains) {
+				continue
+			}
+			if method != "" && !strings.EqualFold(p.Method, method) {
+				continue
+			}
+			out = append(out, p)
+		}
 	}
 
 	sort.Slice(out, func(i, j int) bool {

@@ -163,3 +163,27 @@ func TestPatternsGetGraph_flagON_noDeadlock_5928(t *testing.T) {
 		t.Fatalf("patterns get graph flag-ON(emptied Doc) != flag-OFF\n got=%s\nwant=%s", got, want)
 	}
 }
+
+// Site 3: endpointPostureScan — buildPosturePayload→getAdjacency/getByIDOne
+// inside a forEachEntity scan.
+func TestEndpointPostureScan_flagON_noDeadlock_5928(t *testing.T) {
+	doc, r := loadDeadlock5928Fixture(t)
+	args := map[string]any{"group": "g"} // no entity_id → repo-wide scan
+
+	withServeFromMMap(t, false)
+	sOff := topologyServer(t, docFullRepo(doc))
+	want := callWithArgs(t, sOff, sOff.handleEndpointPosture, args)
+	if want == "" {
+		t.Fatal("fixture must produce a non-empty endpoint-posture result flag-OFF")
+	}
+
+	withServeFromMMap(t, true)
+	sOn := topologyServer(t, readerEmptiedRepo(t, doc, r))
+	var got string
+	noHang(t, 5*time.Second, "handleEndpointPosture(scan)", func() {
+		got = callWithArgs(t, sOn, sOn.handleEndpointPosture, args)
+	})
+	if got != want {
+		t.Fatalf("endpoint posture scan flag-ON(emptied Doc) != flag-OFF\n got=%s\nwant=%s", got, want)
+	}
+}
