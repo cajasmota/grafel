@@ -27,6 +27,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/graph/fbversion"
 )
 
 // DefaultCapacity is the default maximum number of simultaneously
@@ -379,14 +380,73 @@ func (c *Cache) releaser(ent *Entry) func() {
 
 // openReader stats the path, opens the FlatBuffers reader, and returns
 // both alongside the file's mtime in unix nanoseconds.
+//
+// #5907 — this zero-copy serve path is version-GATED, mirroring the rejection
+// in internal/graph/load.go's loadFBDoc. Two crash-prevention guards live here,
+// both of which the ungated fbreader.Open call previously lacked:
+//
+//  1. A recovered open (openReaderRecover): fbreader.Open recovers-then-
+//     RE-PANICS on a malformed/incompatible flatbuffer vtable (see
+//     fbreader/reader.go). A breaking on-disk cut — the #5890 segmented format
+//     read by a binary that predates it, or a genuinely corrupt buffer — would
+//     otherwise re-panic straight out of this cache and crash the daemon. We
+//     recover it into a plain error so the cache degrades to a miss.
+//
+//  2. A format-version gate: if the on-disk FormatVersion is below what this
+//     binary supports, we Close the reader and return the SAME typed
+//     *graph.FormatVersionError loadFBDoc returns — so callers can errors.As it
+//     and degrade to "serve empty + reindex-required" (mirroring the detection
+//     in internal/mcp/state.go), and so we NEVER cache or serve a stale-format
+//     reader (Get discards the handle on any openReader error before inserting
+//     it into the LRU). This is the reader-side half of the same migration the
+//     status-plane's ReindexRequiredReason flag reports.
 func openReader(path string) (*fbreader.Reader, int64, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, 0, fmt.Errorf("graph cache: stat %s: %w", path, err)
 	}
-	r, err := fbreader.Open(path)
+	r, err := openAndGate(path)
 	if err != nil {
 		return nil, 0, err
 	}
 	return r, info.ModTime().UnixNano(), nil
+}
+
+// openAndGate opens path and enforces the format-version gate, returning a
+// usable reader only for an on-disk format this binary can serve. It is the
+// crash-prevention seam for the zero-copy MCP cache (#5907):
+//
+//   - A single recover covers BOTH fbreader.Open (which recovers-then-
+//     re-panics on a malformed/incompatible flatbuffer vtable) AND the
+//     r.Version() scalar read that follows — so neither a corrupt buffer nor a
+//     breaking on-disk cut (the #5890 segmented format read by an older binary)
+//     can re-panic out of the cache and crash the daemon. A recovered panic
+//     becomes a plain error and the reader (if any) is Closed to free its mmap.
+//   - The format-version gate mirrors internal/graph/load.go's loadFBDoc: an
+//     on-disk FormatVersion below fbversion.Version yields the SAME typed
+//     *graph.FormatVersionError, Closed before return so we neither cache nor
+//     leak a stale-format handle. Callers can errors.As it and degrade to
+//     "serve empty + reindex-required" (mirroring internal/mcp/state.go's
+//     detection), while the engine's status writer independently flags the
+//     repo and auto-enqueues its migration reindex.
+func openAndGate(path string) (r *fbreader.Reader, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			if r != nil {
+				_ = r.Close()
+				r = nil
+			}
+			err = fmt.Errorf("graph cache: recovered panic opening %s: %v", path, rec)
+		}
+	}()
+	r, err = fbreader.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	if v := r.Version(); v < fbversion.Version {
+		_ = r.Close()
+		return nil, fmt.Errorf("graph cache: %w",
+			&graph.FormatVersionError{Found: v, Required: fbversion.Version})
+	}
+	return r, nil
 }
