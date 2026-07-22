@@ -135,5 +135,12 @@ func runSelfUpdate(out io.Writer, opts install.UpdateOptions) error {
 			fmt.Fprintf(out, "  daemon:   %s\n", result.InstallResult.DaemonVersion)
 		}
 	}
+	// #5907 FIX4: surface the auto-reindex-on-upgrade the engine has already
+	// (loop-guarded) enqueued, so it reads as "reindexing after upgrade"
+	// rather than a silent multi-minute stall right after `grafel update`
+	// returns. Report-only — nothing here triggers or duplicates the reindex.
+	if result.ReposNeedingReindex > 0 {
+		fmt.Fprintf(out, "  reindex:  %d repo(s) reindexing after upgrade\n", result.ReposNeedingReindex)
+	}
 	return nil
 }

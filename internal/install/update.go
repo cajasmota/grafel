@@ -27,6 +27,10 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/registry"
 )
 
 const (
@@ -116,6 +120,18 @@ type UpdateResult struct {
 
 	// Skipped is true when the binary was already at the target version.
 	Skipped bool
+
+	// ReposNeedingReindex is the number of registered repos whose on-disk
+	// graph.fb was written by an older grafel build than THIS (just-updated)
+	// binary's fbversion.Version supports (issue #5907 FIX4). This is
+	// REPORT-ONLY — the engine's own auto-reindex arm
+	// (internal/daemon/stale_reindex.go's loop-guarded maybeEnqueue) already
+	// owns enqueueing the fix once the newly restarted daemon's next
+	// heartbeat observes the mismatch; RunUpdate never enqueues anything
+	// itself. It exists purely so `grafel update` can print "N repos
+	// reindexing after upgrade" instead of the reindex silently starting in
+	// the background right after the command returns.
+	ReposNeedingReindex int
 }
 
 func (o *UpdateOptions) applyDefaults() error {
@@ -269,12 +285,54 @@ func RunUpdate(opts UpdateOptions) (*UpdateResult, error) {
 	}
 	result.InstallResult = installResult
 
+	// ── surface reindex-after-upgrade (issue #5907 FIX4) ───────────────────────
+	// After the daemon restart + version probe above (RunCopy), the running
+	// daemon is now the just-updated binary. Report-only: never enqueue here —
+	// the engine's own loop-guarded auto-reindex arm already does that on its
+	// next heartbeat once it observes the format mismatch.
+	if !opts.DryRun {
+		result.ReposNeedingReindex = countReposNeedingReindex()
+	}
+
 	// ── remove stash on success ───────────────────────────────────────────────
 	if !opts.DryRun {
 		_ = os.Remove(stashPath)
 	}
 
 	return result, nil
+}
+
+// countReposNeedingReindex scans every registered repo (across every grafel
+// group) and counts how many currently need a reindex after a format
+// upgrade — i.e. graph.ReindexRequiredReason(daemon.StateDirForRepo(path))
+// reports required=true (issue #5907 FIX4). Mirrors
+// internal/install/doctor.go's checkReindexRequired, but returns a bare
+// count since `grafel update`'s summary line only needs "N repos", not a
+// per-repo drift list. A registry read failure or an empty registry (fresh
+// machine, or update running before any group is registered) is silently 0 —
+// never an error, since this is advisory-only.
+func countReposNeedingReindex() int {
+	groups, err := registry.Groups()
+	if err != nil || len(groups) == 0 {
+		return 0
+	}
+	n := 0
+	for _, g := range groups {
+		cfg, lerr := registry.LoadGroupConfig(g.ConfigPath)
+		if lerr != nil || cfg == nil {
+			continue
+		}
+		for _, repo := range cfg.Repos {
+			stateDir := daemon.StateDirForRepo(repo.Path)
+			if stateDir == "" {
+				continue
+			}
+			if required, _ := graph.ReindexRequiredReason(stateDir); required {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // ── GitHub release helpers ────────────────────────────────────────────────────
