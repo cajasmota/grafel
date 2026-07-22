@@ -41,15 +41,78 @@ import (
 // results, same iteration order) — see TestMultiReaderSingleSegmentParity.
 type MultiReader struct {
 	segs []*Reader
+	// ranges, when non-nil, is parallel to segs and carries each segment's
+	// entity-ID key range from the gen-dir manifest. LookupEntityByID uses it
+	// to SKIP segments that cannot contain the looked-up key, avoiding the O(S)
+	// fan-out (decision 4 of #5901). nil ⇒ no routing info ⇒ every segment is
+	// searched (the OpenSegments legacy behaviour, unchanged).
+	ranges []KeyRange
 }
+
+// KeyRange is the entity-ID key coverage of one segment, as recorded in the
+// gen-dir manifest (SegmentMeta MinKey/MaxKey + a HasEntities flag derived
+// from EntityCount>0). LookupEntityByID consults it to skip segments that
+// provably cannot hold a key.
+//
+// Semantics:
+//   - HasEntities==false ⇒ the segment carries NO entities (a pure-relationship
+//     segment) ⇒ every entity lookup skips it.
+//   - HasEntities==true with Min=="" and Max=="" ⇒ range unknown ⇒ never skip
+//     (safe fallback: search it).
+//   - Otherwise the (lexicographic, inclusive) [Min,Max] window gates the key.
+type KeyRange struct {
+	HasEntities bool
+	Min         string
+	Max         string
+}
+
+// contains reports whether id could live in a segment with this key range.
+func (kr KeyRange) contains(id string) bool {
+	if !kr.HasEntities {
+		return false
+	}
+	if kr.Min == "" && kr.Max == "" {
+		return true // unknown bounds — cannot safely skip
+	}
+	if kr.Min != "" && id < kr.Min {
+		return false
+	}
+	if kr.Max != "" && id > kr.Max {
+		return false
+	}
+	return true
+}
+
+// SegmentSearchHook, when non-nil, is invoked with the segment index each time
+// LookupEntityByID actually performs a binary search on that segment (i.e. NOT
+// skipped by key routing). It is a test/observability seam — nil in production,
+// where it adds a single nil-check on the lookup path — set by the routing
+// tests to assert out-of-range segments are pruned. Not safe for concurrent
+// mutation; set it only from single-threaded test setup.
+var SegmentSearchHook func(seg int)
 
 // OpenSegments memory-maps every path in paths (in the given order) and
 // returns a MultiReader over all of them. paths must be non-empty. If any
 // segment fails to open, every already-opened segment is closed before
 // the error is returned (no leaked mappings on a partial failure).
+//
+// This constructor attaches NO key ranges, so LookupEntityByID fans out across
+// every segment (O(S)). Use OpenSegmentsWithRanges to enable manifest-driven
+// segment skipping.
 func OpenSegments(paths []string) (*MultiReader, error) {
+	return OpenSegmentsWithRanges(paths, nil)
+}
+
+// OpenSegmentsWithRanges is OpenSegments plus per-segment key ranges (from the
+// gen-dir manifest) used to prune LookupEntityByID. When ranges is non-nil it
+// MUST have the same length as paths (one range per segment, same order);
+// a length mismatch is an error. A nil ranges disables routing (== OpenSegments).
+func OpenSegmentsWithRanges(paths []string, ranges []KeyRange) (*MultiReader, error) {
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("fbreader: OpenSegments requires at least one path")
+	}
+	if ranges != nil && len(ranges) != len(paths) {
+		return nil, fmt.Errorf("fbreader: OpenSegmentsWithRanges: %d ranges for %d paths", len(ranges), len(paths))
 	}
 	segs := make([]*Reader, 0, len(paths))
 	for _, p := range paths {
@@ -62,7 +125,7 @@ func OpenSegments(paths []string) (*MultiReader, error) {
 		}
 		segs = append(segs, r)
 	}
-	return &MultiReader{segs: segs}, nil
+	return &MultiReader{segs: segs, ranges: ranges}, nil
 }
 
 // Close releases every segment's underlying mmap. It closes all segments
@@ -127,7 +190,16 @@ func (m *MultiReader) LookupEntityByID(id string) *fb.Entity {
 	if m == nil {
 		return nil
 	}
-	for _, s := range m.segs {
+	for i, s := range m.segs {
+		// Decision 4: when manifest key ranges are attached, skip any segment
+		// whose [Min,Max] window cannot contain id (or that holds no entities).
+		// This turns the O(S) fan-out into "search only plausible segments".
+		if m.ranges != nil && !m.ranges[i].contains(id) {
+			continue
+		}
+		if SegmentSearchHook != nil {
+			SegmentSearchHook(i)
+		}
 		if e := s.LookupEntityByID(id); e != nil {
 			return e
 		}
