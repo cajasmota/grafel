@@ -1463,10 +1463,29 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 					// segment-set is READABLE (via the Doc), never mis-mmapped as a
 					// single file. filepath.Ext of a gen dir is "" so the guard
 					// below already excludes it; the single-file path is unchanged.
+					// #5912 (h): open the resident mmap read substrate for BOTH graph
+					// layouts through ONE seam — graph.ReaderForDir resolves the
+					// descriptor under stateDir and returns a single-file *Reader
+					// (byte-identical to today's fbreader.Open — the single-file serve
+					// path is preserved) or an N-segment *MultiReader for a segment-set
+					// gen dir. This is the HARD FLIP: before this a no-.fb-ext gen dir
+					// left newRdr nil and the repo was Doc-collapsed (materialized the
+					// whole segment-set onto the heap — the read-RSS regression). The
+					// MultiReader resolves its EntityAt/RelationshipAt/LookupEntityByID
+					// over a global concatenated index → (segment, local) internally, so
+					// every downstream FromReader builder (LabelIndex/BM25/adjacency)
+					// sources rows straight from the segment mmaps.
+					//
+					// A json-only repo (lr.GraphFile is graph.json) has NO FlatBuffers
+					// graph: guard on the .json extension so we never hand JSON bytes to
+					// fbreader.Open (an out-of-range slice crash) — newRdr stays nil and
+					// the repo is served from the materialized Document, exactly as the
+					// old `.fb`-only guard did. (ReaderForDir on a graph-absent dir would
+					// also fail-soft to nil, but the explicit guard keeps intent local.)
 					fbPath := lr.GraphFile
-					var newRdr *fbreader.Reader
-					if filepath.Ext(fbPath) == ".fb" {
-						if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
+					var newRdr fbreader.GraphView
+					if filepath.Ext(fbPath) != ".json" {
+						if rdr, rErr := graph.ReaderForDir(stateDir); rErr == nil {
 							newRdr = rdr
 						}
 					}
