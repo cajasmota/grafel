@@ -30,6 +30,47 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// quiesceGraphCache makes a dashboard fixture whose graph state lives under
+// t.TempDir safe to auto-teardown on Windows. It defends the two ways a live
+// dashboard graph load leaves a file busy under the temp dir when Go's
+// automatic t.TempDir RemoveAll runs:
+//
+//  1. Deferred Pass-4 sweep. A cache load of a non-empty graph
+//     (GraphCache.loadGroupForRef → applyAlgorithmsOnLoad) schedules
+//     schedulePendingAlgo, which runs Pass-4 on a BACKGROUND goroutine and then
+//     writes graph-algo.json (via os.CreateTemp + rename) into the repo's state
+//     dir AFTER the triggering request already returned (Fix A#1, #50). When
+//     that state dir is a t.TempDir, the write races RemoveAll. On Windows a
+//     file created/opened concurrently with a directory removal makes RemoveAll
+//     fail with "unlinkat <...>\refs\_unknown: The directory is not empty"
+//     (v0.1.9 3-OS acceptance, windows-latest only). On Unix the race is benign
+//     (unlink-while-open is legal), which is why it only ever reddens Windows.
+//     Setting backgroundAlgoGate parks every scheduled sweep at the gate BEFORE
+//     it touches the filesystem, so no graph-algo.json (nor its temp handle) is
+//     ever created under the temp dir. The parked goroutine holds no OS handle
+//     and is reclaimed at process exit; the prior gate is restored on cleanup.
+//
+//  2. Held mmap reader. loadGroupForRef opens a zero-copy fbreader.Reader over
+//     graph.<gen>.fb and keeps it resident in the cache (#2159); with the
+//     mmap-default-on serve path a live mapping cannot be unlinked on Windows.
+//     InvalidateAll is the production eviction primitive (closes every reader
+//     via closeDashGroupReaders); running it before RemoveAll drops the mapping
+//     (#5893-class).
+//
+// Call this in a fixture, passing the server, BEFORE any request can trigger a
+// load (i.e. before the fixture hands the caller a live URL).
+func quiesceGraphCache(t *testing.T, srv *Server) {
+	t.Helper()
+	prev := backgroundAlgoGate
+	backgroundAlgoGate = make(chan struct{}) // never closed → sweeps park pre-write
+	t.Cleanup(func() {
+		backgroundAlgoGate = prev
+		if srv != nil && srv.graphs != nil {
+			srv.graphs.InvalidateAll()
+		}
+	})
+}
+
 // fakeStore is an in-memory RegistryStore. It removes the dependency on
 // ~/.grafel for tests so they stay hermetic and parallel-safe.
 type fakeStore struct {

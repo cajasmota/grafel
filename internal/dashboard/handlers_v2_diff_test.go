@@ -70,6 +70,12 @@ func setupDiffTest(t *testing.T, groupName, repoSlug string, docA, docB *graph.D
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
+	// The diff endpoint loads both refs via GetGroupForRef, each of which
+	// schedules a background Pass-4 sweep that writes graph-algo.json into the
+	// per-ref temp state dir; park it (and release cache mmap readers) before the
+	// t.TempDir RemoveAll teardown so it can't leave a state dir busy on Windows.
+	// See quiesceGraphCache.
+	quiesceGraphCache(t, srv)
 	ts := httptest.NewServer(srv.routes())
 	t.Cleanup(ts.Close)
 	return ts.URL

@@ -112,6 +112,11 @@ func buildRefEndpointFixture(t *testing.T) (ts *httptest.Server, groupName, repo
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
+	// Park the deferred Pass-4 sweep and release cache mmap readers before the
+	// t.TempDir RemoveAll teardown so a background graph-algo.json write can't
+	// leave refs/_unknown busy on Windows (v0.1.9 3-OS acceptance). See
+	// quiesceGraphCache.
+	quiesceGraphCache(t, srv)
 	ts = httptest.NewServer(srv.routes())
 	t.Cleanup(ts.Close)
 	return ts, groupName, repoSlug
