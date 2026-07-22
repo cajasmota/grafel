@@ -282,6 +282,50 @@ func parseSegPointer(raw string) (genDirName string, ok bool) {
 	return name, true
 }
 
+// CurrentGraphMtime resolves dir's active graph — segment-set aware — and
+// returns its freshness mtime. #5915 J2 slice-3: every existence/freshness
+// gate that used to os.Stat(CurrentGraphPath(dir)) directly only ever sees a
+// flat .fb path, which is ABSENT for a segment-set repo (graph.<gen>/ dir +
+// manifest.json, no flat .fb) — that stat silently reports "never indexed" /
+// mtime-zero for a repo that is in fact freshly indexed. This is the shared,
+// exported resolution those call sites route through instead of duplicating
+// the descriptor-branch inline:
+//
+//   - GraphSingleFile (including the legacy flat fallback): the resolved .fb
+//     file's own mtime — byte-identical to the pre-fix os.Stat behavior.
+//   - GraphSegmentSet: the gen dir's manifest.json mtime, the atomic
+//     commit point of a segment-set rebuild (verified newer than every
+//     segment file it names) — mirrors internal/graph/groupalgo's
+//     graphSourceMtime and cmd/grafel/daemon_tier.go's tierReloadCallback,
+//     which use the same signal for cold-wake / overlay staleness.
+//   - GraphAbsent, or a resolved path whose stat fails: ok=false.
+//
+// Lives here (not in internal/graph/groupalgo, which already has an
+// unexported graphSourceMtime) because groupalgo imports internal/daemon,
+// so internal/daemon call sites (deadref.go, algo/cache.go) cannot import
+// groupalgo without a cycle; internal/graph has no such constraint and is
+// already imported by every one of these sites.
+func CurrentGraphMtime(dir string) (mtime time.Time, ok bool) {
+	desc, err := CurrentGraphDescriptor(dir)
+	if err != nil {
+		return time.Time{}, false
+	}
+	var path string
+	switch desc.Kind {
+	case GraphSingleFile:
+		path = desc.Path
+	case GraphSegmentSet:
+		path = filepath.Join(desc.GenDir, ManifestFileName)
+	default:
+		return time.Time{}, false
+	}
+	fi, statErr := os.Stat(path)
+	if statErr != nil {
+		return time.Time{}, false
+	}
+	return fi.ModTime(), true
+}
+
 // NextGen returns the next generation integer to write in dir: one greater
 // than the maximum generation observed among the `current` pointer and every
 // graph.<gen>.fb already present. Returns 1 for a dir that has never held a

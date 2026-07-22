@@ -361,40 +361,48 @@ func (s *DeadRefSweeper) reapRef(repo, ref, refDir string, res *DeadRefResult, c
 	return true
 }
 
-// refGraphMtime returns the newest graph.fb / graph.json mtime under refDir, or
-// the zero time when neither exists. Used to order grace-protected refs for the
-// retention cap (oldest evicted first).
+// refGraphMtime returns the newest graph mtime under refDir — the active
+// FlatBuffers graph (single-file or segment-set) or graph.json, whichever is
+// newest — or the zero time when neither exists. Used to order
+// grace-protected refs for the retention cap (oldest evicted first).
+//
+// #5915 J2 slice-3: os.Stat(graph.CurrentGraphPath(refDir)) — the pattern
+// this replaced — only ever names a flat .fb path, which is ABSENT for a
+// segment-set ref (graph.<gen>/ dir + manifest.json, no flat .fb). That would
+// silently report mtime-zero for a freshly-indexed segment-set ref. Routing
+// through graph.CurrentGraphMtime (segment-set aware) fixes it while leaving
+// the single-file/legacy resolution byte-identical.
 func refGraphMtime(refDir string) time.Time {
 	var newest time.Time
-	// #5891: resolve the active generation (flat graph.fb fallback) so a
-	// gen-layout ref reports its real freshness, not mtime-zero.
-	for _, p := range []string{graph.CurrentGraphPath(refDir), filepath.Join(refDir, "graph.json")} {
-		fi, err := os.Stat(p)
-		if err != nil {
-			continue
-		}
-		if fi.ModTime().After(newest) {
-			newest = fi.ModTime()
-		}
+	if mt, ok := graph.CurrentGraphMtime(refDir); ok && mt.After(newest) {
+		newest = mt
+	}
+	if fi, err := os.Stat(filepath.Join(refDir, "graph.json")); err == nil && fi.ModTime().After(newest) {
+		newest = fi.ModTime()
 	}
 	return newest
 }
 
-// recentlyIndexed reports whether the ref dir holds a graph.fb (or graph.json)
-// whose mtime is at/after cutoff — i.e. it was indexed inside the grace window.
-// A missing graph file is treated as NOT recent (eligible for reaping).
+// recentlyIndexed reports whether the ref dir holds an active graph (the
+// resolved FlatBuffers graph — single-file or segment-set — or graph.json)
+// whose mtime is at/after cutoff — i.e. it was indexed inside the grace
+// window. A missing graph file is treated as NOT recent (eligible for
+// reaping).
+//
+// #5915 J2 slice-3 (DATA LOSS fix): this used to resolve ONLY
+// graph.CurrentGraphPath(refDir), a flat-.fb-only path that is absent for a
+// segment-set ref — so a freshly-indexed segment-set ref would read as NOT
+// recently indexed and fall outside the grace window, making the dead-ref
+// reaper prematurely delete a valid cold ref. graph.CurrentGraphMtime
+// resolves the segment-set's manifest.json mtime instead, grace-protecting it
+// exactly like a single-file ref; the single-file/legacy resolution is
+// byte-identical to before.
 func recentlyIndexed(refDir string, cutoff time.Time) bool {
-	// #5891: resolve the active generation so a freshly-indexed gen-layout ref
-	// is correctly protected by the grace window (a fixed graph.fb no longer
-	// exists after migration).
-	for _, p := range []string{graph.CurrentGraphPath(refDir), filepath.Join(refDir, "graph.json")} {
-		fi, err := os.Stat(p)
-		if err != nil {
-			continue
-		}
-		if !fi.ModTime().Before(cutoff) {
-			return true
-		}
+	if mt, ok := graph.CurrentGraphMtime(refDir); ok && !mt.Before(cutoff) {
+		return true
+	}
+	if fi, err := os.Stat(filepath.Join(refDir, "graph.json")); err == nil && !fi.ModTime().Before(cutoff) {
+		return true
 	}
 	return false
 }

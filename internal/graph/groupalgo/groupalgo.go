@@ -358,30 +358,15 @@ func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
 // no flat .fb), so that stat would report the repo as never-indexed and
 // silently drop it from the union / freeze its overlay-staleness signal.
 //
-// Resolution:
-//   - GraphSingleFile (including the legacy flat fallback): the resolved
-//     .fb file's own mtime — byte-identical to the pre-fix behavior.
-//   - GraphSegmentSet: the manifest.json mtime, the atomic flip point for a
-//     segment-set rebuild (mirrors #5915 J1's cmd/grafel/daemon_tier.go
-//     tierReloadCallback, which uses the same signal for cold-wake staleness).
-//   - GraphAbsent, or a resolved path whose stat fails: ok=false.
+// Delegates to graph.CurrentGraphMtime (#5915 J2 slice-3), the shared
+// descriptor-mtime resolution promoted to internal/graph so every other
+// flat-.fb-only mtime gate (internal/daemon/deadref.go, internal/daemon/algo,
+// internal/cli/branches.go) can reuse it instead of duplicating this
+// descriptor branch.
 func graphSourceMtime(stateDir string) (mtimeNanos int64, ok bool) {
-	desc, err := graph.CurrentGraphDescriptor(stateDir)
-	if err != nil {
+	mt, ok := graph.CurrentGraphMtime(stateDir)
+	if !ok {
 		return 0, false
 	}
-	var path string
-	switch desc.Kind {
-	case graph.GraphSingleFile:
-		path = desc.Path
-	case graph.GraphSegmentSet:
-		path = filepath.Join(desc.GenDir, graph.ManifestFileName)
-	default:
-		return 0, false
-	}
-	fi, statErr := os.Stat(path)
-	if statErr != nil {
-		return 0, false
-	}
-	return fi.ModTime().UnixNano(), true
+	return mt.UnixNano(), true
 }
