@@ -40,6 +40,13 @@ import (
 // currentPointerName is the tiny pointer file naming the active generation.
 const currentPointerName = "current"
 
+// CurrentPointerName is the exported basename of the `current` generation
+// pointer file. Callers that scan a directory tree for state dirs (e.g. the
+// cross-repo link-pass discovery walk in internal/links) use it as the cheapest
+// marker of a state dir whose active graph is a segment-set (which has no flat
+// graph.fb to match on), then confirm via CurrentGraphDescriptor.
+const CurrentPointerName = currentPointerName
+
 // flatGraphName is the legacy fixed graph filename used before the gen layout
 // and still used as the resolver's fallback for un-migrated repos.
 const flatGraphName = "graph.fb"

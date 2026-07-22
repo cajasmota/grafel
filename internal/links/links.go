@@ -685,6 +685,26 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 			base := filepath.Base(p)
 			if base == "graph.json" || graph.IsGraphFileName(base) { // #5891 gen files
 				dirSet[filepath.Dir(p)] = true
+				return nil
+			}
+			// #5904(e) PR-c (#5915 P2 gap): a SEGMENTED repo's active generation
+			// is a graph.<gen>/ dir (seg-NNNN.fb + manifest.json) named by a
+			// `current` pointer — it has NO flat graph.fb, so the checks above
+			// never match it and the repo was silently dropped from every
+			// cross-repo pass. The `current` pointer file is the cheapest
+			// state-dir marker (it is the same signal every reader routes
+			// through via CurrentGraphDescriptor); confirm it resolves to a real
+			// segment-set before registering, so a stray/legacy `current` with no
+			// valid gen dir (Kind==GraphAbsent) or a single-file gen (already
+			// discovered above via its graph.<gen>.fb) does NOT double-register.
+			// We add only the POINTER's dir (the state dir), never descend into
+			// graph.<gen>/ — its seg-NNNN.fb / manifest.json never match the
+			// graph-file check, so the gen dir cannot register a phantom repo.
+			if base == graph.CurrentPointerName {
+				dir := filepath.Dir(p)
+				if desc, derr := graph.CurrentGraphDescriptor(dir); derr == nil && desc.Kind == graph.GraphSegmentSet {
+					dirSet[dir] = true
+				}
 			}
 			return nil
 		})
