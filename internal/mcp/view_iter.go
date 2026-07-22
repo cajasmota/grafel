@@ -274,7 +274,7 @@ func (lr *LoadedRepo) forEachDocEntity(yield func(*graph.Entity) bool) bool {
 // is byte-identical to a LabelIndex.at()-based lookup for the same index.
 // Callers MUST hold the owning LoadedRepo's readerMu — the mmap dereference
 // happens here.
-func materializeEntityOverlay(r *fbreader.Reader, overlay map[int32]entityOverlay, descOverlay map[int32]string, idx int32) *graph.Entity {
+func materializeEntityOverlay(r fbreader.GraphView, overlay map[int32]entityOverlay, descOverlay map[int32]string, idx int32) *graph.Entity {
 	// Test-only observability seam (memory epic #5850 Path P): count each mmap
 	// entity materialization so the selective-materialization tests can assert a
 	// forEachEntityOfKinds scan materializes ONLY its matching-Kind subset, not the

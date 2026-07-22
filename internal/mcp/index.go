@@ -53,7 +53,12 @@ type LabelIndex struct {
 	// on the same s.mu-serialized read path that today reads lr.Doc; a reload
 	// rebuilds the whole LabelIndex (fresh reader), so at() never dereferences a
 	// reader across its own generation.
-	reader *fbreader.Reader
+	//
+	// #5912 (h): typed fbreader.GraphView, not the concrete *Reader, so a
+	// segment-set repo backs this index with a *MultiReader (N segment mmaps,
+	// global-index at()/EntityAt resolution) transparently — every at()/count
+	// call below is a GraphView method already implemented identically on both.
+	reader fbreader.GraphView
 
 	// overlay is the ADR-0027 overlay SIDE-TABLE: entity INDEX (int32 vector
 	// position) -> the 5 group-algo values that are NOT authoritative in graph.fb
@@ -229,7 +234,7 @@ func BuildLabelIndex(doc *graph.Document) *LabelIndex {
 // doc is retained as the value-materialization source (at() copies from it) so
 // lookups stay behavior-neutral against in-place overlay stamps — see the
 // LabelIndex type doc for why values are NOT read back from the Reader in PR2.
-func BuildLabelIndexFromReader(r *fbreader.Reader, doc *graph.Document) *LabelIndex {
+func BuildLabelIndexFromReader(r fbreader.GraphView, doc *graph.Document) *LabelIndex {
 	idx, ki := newLabelIndex(r.EntityCount())
 	idx.doc = doc
 	idx.reader = r

@@ -275,7 +275,7 @@ type LoadedRepo struct {
 	Path      string
 	GraphFile string
 	Doc       *graph.Document
-	Reader    *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
+	Reader    fbreader.GraphView // mmap zero-copy reader (S8, #2159); nil when unavailable. #5912 (h): a *Reader for single-file, a *MultiReader for a segment-set (N segment mmaps behind one GraphView).
 	// handle is the F1 (ADR-0027) deferred-unmap wrapper that OWNS the lifetime
 	// of Reader's mapping. Reader is the (still-dark) read accessor; handle is
 	// what reload/evict/Close route the munmap through so an in-flight borrow can
@@ -2366,7 +2366,7 @@ func buildTopKPageRank(doc *graph.Document, k int) []string {
 // overlay's per-entity map keyed by ID, applied at Reader-borrow time rather
 // than only onto lr.Doc), at which point this comment should be replaced.
 // ADR-0027 Cutover PR1.
-func buildTopKPageRankFromReader(r *fbreader.Reader, k int) []string {
+func buildTopKPageRankFromReader(r fbreader.GraphView, k int) []string {
 	if r == nil || r.EntityCount() == 0 {
 		return nil
 	}
@@ -2665,7 +2665,7 @@ func newEntityOverlay(eo groupalgo.EntityOverlay) entityOverlay {
 // WITH an overlay entry are inserted; a miss leaves the fb sentinel on the read
 // path. Callers MUST hold the owning LoadedRepo's readerMu (the mmap is
 // dereferenced here via IterateEntities).
-func buildOverlayTableFromReader(r *fbreader.Reader, ov *groupalgo.Overlay) map[int32]entityOverlay {
+func buildOverlayTableFromReader(r fbreader.GraphView, ov *groupalgo.Overlay) map[int32]entityOverlay {
 	table := make(map[int32]entityOverlay)
 	if r == nil || ov == nil {
 		return table
@@ -2867,7 +2867,7 @@ func (lr *LoadedRepo) flowOverlaySnapshot() *flows.Sidecar {
 // order — identical to the order BuildLabelIndexFromReader assigns and the order
 // materializeFromReader looks the table up by. Callers MUST hold the owning
 // LoadedRepo's readerMu (the mmap is dereferenced here via IterateEntities).
-func buildDescTableFromReader(r *fbreader.Reader, sc *descriptions.Sidecar) map[int32]string {
+func buildDescTableFromReader(r fbreader.GraphView, sc *descriptions.Sidecar) map[int32]string {
 	table := make(map[int32]string)
 	if r == nil || sc == nil {
 		return table

@@ -26,9 +26,17 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 )
 
-// readerCloser is the narrow close surface MapHandle drives. *fbreader.Reader
-// satisfies it; tests substitute a fake that counts munmaps so the exactly-once
+// readerCloser is the narrow close surface MapHandle drives. Both
+// *fbreader.Reader (one mmap) and *fbreader.MultiReader (N segment mmaps)
+// satisfy it; tests substitute a fake that counts munmaps so the exactly-once
 // and no-leak invariants can be asserted without a real mapping.
+//
+// #5912 (h): a MultiReader owns N segment mmaps but is ONE readerCloser — its
+// Close munmaps ALL N (multireader.go). The whole MultiReader is therefore
+// retired/drained as ONE atomic unit: one handle, N mappings, one refcount,
+// one closeOnce → one Close() call → all N segments munmapped together. The
+// refcount-drain and readRetired discipline below are UNCHANGED by segment
+// count — they gate a single *MapHandle, not per-segment.
 type readerCloser interface {
 	Close() error
 }
@@ -50,8 +58,12 @@ type MapHandle struct {
 	// repo is the registry slug of the repo this mapping belongs to, set by
 	// LoadedRepo.publishHandle so a groupBorrow snapshot can look a borrow up by
 	// repo. Immutable after publish.
-	repo    string
-	reader  *fbreader.Reader
+	repo string
+	// reader is the resident read view this handle owns the lifetime of. #5912
+	// (h): typed fbreader.GraphView so it is a *Reader (single mmap) or a
+	// *MultiReader (N segment mmaps) transparently — Close() releases whichever
+	// set of mappings it owns, and this handle drains them as one unit.
+	reader  fbreader.GraphView
 	closer  readerCloser
 	refs    atomic.Int64
 	retired atomic.Bool
@@ -79,14 +91,16 @@ type MapHandle struct {
 }
 
 // newMapHandle wraps a freshly-opened reader for the production path. Called
-// only with a non-nil reader (reloadLocked guards on fbreader.Open success).
-func newMapHandle(r *fbreader.Reader) *MapHandle {
+// only with a non-nil reader (reloadLocked guards on ReaderForDir success). The
+// reader is a *Reader for a single-file graph or a *MultiReader for a
+// segment-set; either way this handle owns and drains its mapping(s).
+func newMapHandle(r fbreader.GraphView) *MapHandle {
 	return &MapHandle{reader: r, closer: r}
 }
 
-// Reader returns the wrapped reader (the future F3 read cursor). Nil-safe so a
-// caller can chain h.Reader() on a repo with no mmap.
-func (h *MapHandle) Reader() *fbreader.Reader {
+// Reader returns the wrapped read view (the future F3 read cursor). Nil-safe so
+// a caller can chain h.Reader() on a repo with no mmap.
+func (h *MapHandle) Reader() fbreader.GraphView {
 	if h == nil {
 		return nil
 	}

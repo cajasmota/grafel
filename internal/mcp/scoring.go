@@ -233,7 +233,7 @@ func BuildBM25(doc *graph.Document) *BM25Index {
 // Callers on the wired handler path MUST hold the owning repo's readerMu around
 // this call (the mmap is dereferenced per row), exactly like
 // buildAdjacencyFromReader in getAdjacency.
-func BuildBM25FromReader(r *fbreader.Reader) *BM25Index {
+func BuildBM25FromReader(r fbreader.GraphView) *BM25Index {
 	n := 0
 	if r != nil {
 		n = r.EntityCount()

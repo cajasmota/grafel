@@ -56,7 +56,7 @@ func sigbusFixtureDoc(n int) *graph.Document {
 
 // wireReaderLabelIndex builds a fully-wired reader-sourced LabelIndex for lr's
 // readerMu + the given handle, exactly as reloadLocked does in production.
-func wireReaderLabelIndex(lr *LoadedRepo, rdr *fbreader.Reader, h *MapHandle, doc *graph.Document) *LabelIndex {
+func wireReaderLabelIndex(lr *LoadedRepo, rdr fbreader.GraphView, h *MapHandle, doc *graph.Document) *LabelIndex {
 	li := BuildLabelIndexFromReader(rdr, doc)
 	li.readerMu = &lr.readerMu
 	li.handle = h

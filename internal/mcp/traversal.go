@@ -219,7 +219,7 @@ func buildAdjacency(doc *graph.Document, repo string) *adjacency {
 // loadFBDocument produces for Document.Relationships, the resulting adjacency
 // is byte-identical to buildAdjacency's (proven by TestAdjacencyReaderParity_PR1).
 // ADR-0027 Cutover PR1: behavior-neutral re-sourcing of this primitive-only build.
-func buildAdjacencyFromReader(r *fbreader.Reader, repo string) *adjacency {
+func buildAdjacencyFromReader(r fbreader.GraphView, repo string) *adjacency {
 	a := &adjacency{}
 	a.nodes.code = make(map[string]int32, r.EntityCount())
 	a.kinds.code = make(map[string]uint16, 32)
@@ -391,7 +391,7 @@ func buildStepAdjacencyFromRels(rels []graph.Relationship) map[string][]stepEdge
 // fbreader.Reader. Byte-identical to the Document-sourced build (same edge
 // order per FromID key; proven by TestStepAdjacencyReaderParity_PR1).
 // ADR-0027 Cutover PR1.
-func buildStepAdjacencyFromReader(r *fbreader.Reader) map[string][]stepEdge {
+func buildStepAdjacencyFromReader(r fbreader.GraphView) map[string][]stepEdge {
 	adj := make(map[string][]stepEdge)
 	r.IterateRelationships(func(rel *fb.Relationship) bool {
 		if string(rel.Kind()) != stepInProcessEdge {
@@ -527,7 +527,7 @@ func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 // fbreader.Reader and running the IDENTICAL CSR assembly + per-row sort
 // (assembleCSR). Byte-identical to the Document-sourced build (proven by
 // TestCallsAdjacencyReaderParity_PR1). ADR-0027 Cutover PR1.
-func buildCallsAdjacencyFromReader(r *fbreader.Reader) *callsAdjacency {
+func buildCallsAdjacencyFromReader(r fbreader.GraphView) *callsAdjacency {
 	c := &callsAdjacency{}
 	c.nodes.code = make(map[string]int32)
 

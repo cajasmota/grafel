@@ -689,7 +689,7 @@ func fbRelToGraphRel(r *fb.Relationship, si *stringInterner) Relationship {
 // substrings WITHIN one materialized row, and the copied-out strings are
 // independent of any Document-wide interner. Returns the zero Entity when
 // r is nil or i is out of range.
-func MaterializeEntity(r *fbreader.Reader, i int) Entity {
+func MaterializeEntity(r fbreader.GraphView, i int) Entity {
 	if r == nil {
 		return Entity{}
 	}
@@ -706,7 +706,7 @@ func MaterializeEntity(r *fbreader.Reader, i int) Entity {
 // Relationships[i] for the same graph.fb. All strings are copied out of
 // the mmap region, so the result outlives the Reader. Returns the zero
 // Relationship when r is nil or i is out of range.
-func MaterializeRelationship(r *fbreader.Reader, i int) Relationship {
+func MaterializeRelationship(r fbreader.GraphView, i int) Relationship {
 	if r == nil {
 		return Relationship{}
 	}
