@@ -469,6 +469,25 @@ func findGraphFileInDir(dir string) (path string, modtime int64) {
 	// linchpin: because writers stop bumping a fixed graph.fb, FindGraphFile /
 	// FindGraphFileAnyRef — and therefore statuswriter's GraphFBMtime — MUST
 	// stat the resolved gen file so a completed rebuild's mtime keeps advancing.
+	//
+	// #5901 segment-set: when the active graph is the multi-segment gen-dir
+	// layout, the resolved artifact is a directory (graph.<gen>/), not a .fb
+	// file. Return the gen dir as the graph "path" (its parent is the state dir,
+	// so lr.GraphFile → filepath.Dir → the correct state dir for the Doc load)
+	// and use the manifest.json mtime as the freshness signal (a real file whose
+	// mtime advances on each rebuild). Downstream readers route on this via the
+	// descriptor; the mmap zero-copy cutover correctly declines a dir (see
+	// internal/mcp/state.go's .fb-ext guard) and serves the segment-set Document.
+	if desc, dErr := graph.CurrentGraphDescriptor(dir); dErr == nil && desc.Kind == graph.GraphSegmentSet {
+		if fi, err := os.Stat(filepath.Join(desc.GenDir, graph.ManifestFileName)); err == nil {
+			segMtime := fi.ModTime().UnixNano()
+			jsonPath := filepath.Join(dir, "graph.json")
+			if jInfo, jErr := os.Stat(jsonPath); jErr == nil && jInfo.ModTime().UnixNano() > segMtime {
+				return jsonPath, jInfo.ModTime().UnixNano()
+			}
+			return desc.GenDir, segMtime
+		}
+	}
 	fbPath := graph.CurrentGraphPath(dir)
 	jsonPath := filepath.Join(dir, "graph.json")
 

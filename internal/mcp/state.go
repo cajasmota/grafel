@@ -1403,6 +1403,19 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 					// an out-of-range slice — the mmap-reader is only meaningful
 					// for the FlatBuffers format (gen graph.<gen>.fb or flat
 					// graph.fb), so a json-only repo correctly leaves newRdr nil.
+					//
+					// #5901 segment-set: when the active graph is the
+					// multi-segment gen-dir layout, lr.GraphFile does NOT carry a
+					// .fb extension (it is a graph.<gen>/ dir or a graph.json
+					// fallback), so newRdr stays nil and this repo is served from
+					// the Document that readDocumentFromDir → LoadGraphFromDir
+					// already materialized segment-aware. The zero-copy mmap
+					// cutover (a resident *MultiReader + LabelIndex/BM25/adjacency
+					// sourcing rows straight from segment mmaps) is a later serve
+					// slice of #5890 — this dark read substrate only guarantees the
+					// segment-set is READABLE (via the Doc), never mis-mmapped as a
+					// single file. filepath.Ext of a gen dir is "" so the guard
+					// below already excludes it; the single-file path is unchanged.
 					fbPath := lr.GraphFile
 					var newRdr *fbreader.Reader
 					if filepath.Ext(fbPath) == ".fb" {

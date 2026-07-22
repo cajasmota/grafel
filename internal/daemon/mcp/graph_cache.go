@@ -59,10 +59,16 @@ var ErrUnknownRef = errors.New("graph cache: refusing to load refs/_unknown sent
 // the explicit Invalidate hook from the scheduler is the primary path,
 // mtime check is the belt-and-braces fallback.
 type Entry struct {
-	Path   string
-	Reader *fbreader.Reader
+	Path string
+	// Reader is the mmap-backed read surface. #5901: this is now the
+	// fbreader.GraphView interface rather than a concrete *fbreader.Reader, so a
+	// resident handle may back EITHER a single-file graph.<gen>.fb (a *Reader,
+	// the unchanged common path) OR a multi-segment graph.<gen>/ dir (a
+	// *MultiReader over N segment mmaps). Every consumer uses only the shared
+	// read surface, so the change is transparent to handlers.
+	Reader fbreader.GraphView
 
-	mtime int64 // unix nano of the underlying graph.fb at open time
+	mtime int64 // unix nano of the underlying graph.fb (or gen dir) at open time
 	refs  int32 // outstanding Borrow callers; eviction waits for zero
 }
 
@@ -143,7 +149,7 @@ func NewCache(capacity int) *Cache {
 // can reclaim the handle.
 //
 // Stale entries (mtime drift) are transparently reopened.
-func (c *Cache) Get(path string) (*fbreader.Reader, func(), error) {
+func (c *Cache) Get(path string) (fbreader.GraphView, func(), error) {
 	if c.closed.Load() {
 		return nil, func() {}, ErrCacheClosed
 	}
@@ -250,7 +256,7 @@ open:
 //
 // Returns (nil, noop, ErrCacheClosed) when the cache has been closed.
 // Returns (nil, noop, ErrUnknownRef) when ref resolves to refs/_unknown/.
-func (c *Cache) GetForRepoRef(repoPath, ref string) (*fbreader.Reader, func(), error) {
+func (c *Cache) GetForRepoRef(repoPath, ref string) (fbreader.GraphView, func(), error) {
 	stateDir := daemon.StateDirForRepoRef(repoPath, ref)
 	// Refuse to eagerly load the _unknown sentinel into heap (#2141 root-cause D).
 	// The sentinel dir is created for repos indexed before PH1b; its graph.fb is
@@ -262,7 +268,16 @@ func (c *Cache) GetForRepoRef(repoPath, ref string) (*fbreader.Reader, func(), e
 	// graph.fb fallback for un-migrated repos). The cache key remains the
 	// absolute resolved path, so hit/miss semantics are unchanged; a gen swap
 	// yields a new key → cache miss → fresh mmap of the new generation.
+	//
+	// #5901: a segment-set generation resolves to a gen DIR (graph.<gen>/), not
+	// a .fb file. Use the descriptor to key on the gen dir in that case so the
+	// cache opens a MultiReader over its segments; single-file/legacy keep
+	// keying on the resolved .fb path exactly as before. A malformed segment-set
+	// manifest surfaces as an open error (OpenErrors++), not a crash.
 	fbPath := graph.CurrentGraphPath(stateDir)
+	if desc, dErr := graph.CurrentGraphDescriptor(stateDir); dErr == nil && desc.Kind == graph.GraphSegmentSet {
+		fbPath = desc.GenDir
+	}
 	r, release, err := c.Get(fbPath)
 	if err == nil {
 		c.fireAccessHook(repoPath, ref)
@@ -400,16 +415,57 @@ func (c *Cache) releaser(ent *Entry) func() {
 //     reader (Get discards the handle on any openReader error before inserting
 //     it into the LRU). This is the reader-side half of the same migration the
 //     status-plane's ReindexRequiredReason flag reports.
-func openReader(path string) (*fbreader.Reader, int64, error) {
+func openReader(path string) (fbreader.GraphView, int64, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, 0, fmt.Errorf("graph cache: stat %s: %w", path, err)
+	}
+	// #5901: a resolved path may name a MULTI-SEGMENT gen dir (graph.<gen>/)
+	// rather than a single graph.<gen>.fb file. GetForRepoRef keys segment-sets
+	// on the gen dir, so detect the directory case and open a MultiReader over
+	// its manifest'd segments (with key routing). The single-file branch below
+	// is unchanged. mtime tracks the dir's mtime — the gen dir, like a gen file,
+	// is immutable once written (a reindex allocates a NEW gen), so this is a
+	// sound staleness signal.
+	if info.IsDir() {
+		v, err := openSegmentSetAndGate(path)
+		if err != nil {
+			return nil, 0, err
+		}
+		return v, info.ModTime().UnixNano(), nil
 	}
 	r, err := openAndGate(path)
 	if err != nil {
 		return nil, 0, err
 	}
 	return r, info.ModTime().UnixNano(), nil
+}
+
+// openSegmentSetAndGate opens a multi-segment gen dir as a unified MultiReader
+// and enforces the SAME crash-recover + fbversion gate as openAndGate. It is
+// the segment-set half of the #5907 cache seam: a corrupt manifest or a
+// stale-format segment degrades to a plain error (a cache miss), never a daemon
+// crash, and never a cached stale-format handle.
+func openSegmentSetAndGate(genDir string) (v fbreader.GraphView, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			if v != nil {
+				_ = v.Close()
+				v = nil
+			}
+			err = fmt.Errorf("graph cache: recovered panic opening segment-set %s: %v", genDir, rec)
+		}
+	}()
+	v, err = graph.OpenSegmentReader(genDir)
+	if err != nil {
+		return nil, err
+	}
+	if ver := v.Version(); ver < fbversion.Version {
+		_ = v.Close()
+		return nil, fmt.Errorf("graph cache: %w",
+			&graph.FormatVersionError{Found: ver, Required: fbversion.Version})
+	}
+	return v, nil
 }
 
 // openAndGate opens path and enforces the format-version gate, returning a
