@@ -818,19 +818,28 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 			EntityName string `json:"entity_name"`
 			Kind       string `json:"kind"`
 		}
-		var exemplars []exemplar
+		// #5928 collect-then-process: resolve()→getByIDOne re-locks the same
+		// readerMu the flag-ON forEachRelationship scan holds across its whole
+		// pass, so resolving INSIDE the closure self-deadlocks on the live-Reader
+		// path. Collect exemplar FromIDs in-scan (rmu held); resolve them AFTER the
+		// scan returns (rmu released). Append order is preserved byte-for-byte.
+		var exemplarFromIDs []string
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if (rel.Kind == "EXEMPLIFIES" || rel.Kind == "INSTANCE_OF") && rel.ToID == target {
-				if ex := resolve(rel.FromID); ex != nil {
-					exemplars = append(exemplars, exemplar{
-						EntityID:   prefixedID(r.Repo, ex.ID),
-						EntityName: ex.Name,
-						Kind:       ex.Kind,
-					})
-				}
+				exemplarFromIDs = append(exemplarFromIDs, rel.FromID)
 			}
 			return true
 		})
+		var exemplars []exemplar
+		for _, fromID := range exemplarFromIDs {
+			if ex := resolve(fromID); ex != nil {
+				exemplars = append(exemplars, exemplar{
+					EntityID:   prefixedID(r.Repo, ex.ID),
+					EntityName: ex.Name,
+					Kind:       ex.Kind,
+				})
+			}
+		}
 		return jsonResult(map[string]any{
 			"pattern_id":  prefixedID(r.Repo, e.ID),
 			"name":        e.Name,
