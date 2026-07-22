@@ -379,42 +379,53 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 		}
 		// Use the canonical entity ID for relationship matching.
 		canonID := topicEnt.ID
-		var publishers, subscribers []participant
+		// #5928 collect-then-process: resolve()→getByIDOne re-locks the same
+		// readerMu the flag-ON forEachRelationship scan holds across its whole
+		// pass, so calling it INSIDE the closure self-deadlocks on the live-Reader
+		// path. Collect the matching FromIDs in-scan (rmu held); resolve them AFTER
+		// the scan returns (rmu released). Append order is preserved, so the
+		// resulting publisher/subscriber order is byte-identical to the old path.
+		var pubFromIDs, subFromIDs []string
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			switch rel.Kind {
 			case "PUBLISHES_TO":
 				if rel.ToID == canonID {
-					if src := resolve(rel.FromID); src != nil {
-						p := participant{
-							EntityID:   prefixedID(r.Repo, src.ID),
-							EntityName: src.Name,
-							Kind:       src.Kind,
-						}
-						if verbose {
-							p.Repo = r.Repo
-							p.SourceFile = src.SourceFile
-						}
-						publishers = append(publishers, p)
-					}
+					pubFromIDs = append(pubFromIDs, rel.FromID)
 				}
 			case "SUBSCRIBES_TO":
 				if rel.ToID == canonID {
-					if src := resolve(rel.FromID); src != nil {
-						p := participant{
-							EntityID:   prefixedID(r.Repo, src.ID),
-							EntityName: src.Name,
-							Kind:       src.Kind,
-						}
-						if verbose {
-							p.Repo = r.Repo
-							p.SourceFile = src.SourceFile
-						}
-						subscribers = append(subscribers, p)
-					}
+					subFromIDs = append(subFromIDs, rel.FromID)
 				}
 			}
 			return true
 		})
+		mkParticipant := func(fromID string) (participant, bool) {
+			src := resolve(fromID)
+			if src == nil {
+				return participant{}, false
+			}
+			p := participant{
+				EntityID:   prefixedID(r.Repo, src.ID),
+				EntityName: src.Name,
+				Kind:       src.Kind,
+			}
+			if verbose {
+				p.Repo = r.Repo
+				p.SourceFile = src.SourceFile
+			}
+			return p, true
+		}
+		var publishers, subscribers []participant
+		for _, fromID := range pubFromIDs {
+			if p, ok := mkParticipant(fromID); ok {
+				publishers = append(publishers, p)
+			}
+		}
+		for _, fromID := range subFromIDs {
+			if p, ok := mkParticipant(fromID); ok {
+				subscribers = append(subscribers, p)
+			}
+		}
 		resp := map[string]any{
 			"topic_id":    prefixedID(r.Repo, topicEnt.ID),
 			"topic_name":  topicEnt.Name,
