@@ -10,6 +10,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/export"
+	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -182,6 +183,14 @@ func loadGroupGraphForExport(cmd *cobra.Command, group, ref string) (*graph.Docu
 			fmt.Fprintf(w, "warning: skipping repo %s (graph not found: %v)\n", repo.Slug, err)
 			continue
 		}
+		// Flow side-table (#5904 PR-b): REPLACE-merge the per-repo
+		// <stateDir>/flows.json so an offline export (GraphML/Cypher/SVG/HTML) — a
+		// primary debugging surface — carries the CROSS-REPO-AWARE flows the
+		// phantom pass produced, not the index-baked intra-repo flows. The phantom
+		// writeback no longer bakes them into graph.fb/graph.json; MergeInto
+		// suppresses the baked flows and substitutes the sidecar's (absence/stale →
+		// baked intra flows survive, never doubled).
+		flows.MergeInto(stateDir, doc)
 		merged.Entities = append(merged.Entities, doc.Entities...)
 		merged.Relationships = append(merged.Relationships, doc.Relationships...)
 		loadedRepos++

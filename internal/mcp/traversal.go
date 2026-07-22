@@ -362,9 +362,17 @@ type stepEdge struct {
 // Doc.Relationships that the function previously paid on every
 // process-flow query.
 func buildStepAdjacency(doc *graph.Document) map[string][]stepEdge {
+	return buildStepAdjacencyFromRels(doc.Relationships)
+}
+
+// buildStepAdjacencyFromRels builds the STEP_IN_PROCESS forward adjacency from a
+// bare relationship slice. Shared by buildStepAdjacency (Doc-sourced) and the
+// #5904 PR-b flow-overlay REPLACE path (getStepAdj), which rebuilds the
+// adjacency purely from the flow sidecar's cross-repo-aware step edges.
+func buildStepAdjacencyFromRels(rels []graph.Relationship) map[string][]stepEdge {
 	adj := make(map[string][]stepEdge)
-	for i := range doc.Relationships {
-		r := &doc.Relationships[i]
+	for i := range rels {
+		r := &rels[i]
 		if r.Kind != stepInProcessEdge {
 			continue
 		}
@@ -417,6 +425,37 @@ type callsAdjacency struct {
 	nodes   nodeIndex
 	offsets []int32
 	targets []int32 // node-index code of the callee
+	// extra holds ADD-only CALLS edges layered on top of the CSR core — the
+	// #5904 PR-b flow-overlay phantom cross_repo CALLS edges, which are no longer
+	// baked into graph.fb. Keyed by FromID → sorted callee ids. Get merges them
+	// with the CSR row. Never overlaps the CSR set (phantom edges are new), so no
+	// callee is doubled.
+	extra map[string][]string
+}
+
+// setExtraFromRels populates the ADD-only phantom CALLS layer from a flow
+// sidecar's relationship slice (#5904 PR-b). Only CALLS edges are taken; each
+// FromID row is sorted for followCallsBFS determinism.
+func (c *callsAdjacency) setExtraFromRels(rels []graph.Relationship) {
+	if c == nil {
+		return
+	}
+	extra := make(map[string][]string)
+	for i := range rels {
+		r := &rels[i]
+		if r.Kind != "CALLS" {
+			continue
+		}
+		extra[r.FromID] = append(extra[r.FromID], r.ToID)
+	}
+	for k := range extra {
+		sort.Strings(extra[k])
+	}
+	if len(extra) == 0 {
+		c.extra = nil
+		return
+	}
+	c.extra = extra
 }
 
 // Get returns the sorted list of callee ids for id (nil when id is unknown or
@@ -427,17 +466,28 @@ func (c *callsAdjacency) Get(id string) []string {
 	if c == nil {
 		return nil
 	}
-	code, ok := c.nodes.lookup(id)
-	if !ok || int(code) >= len(c.offsets)-1 {
-		return nil
+	var out []string
+	if code, ok := c.nodes.lookup(id); ok && int(code) < len(c.offsets)-1 {
+		start, end := c.offsets[code], c.offsets[code+1]
+		if start != end {
+			out = make([]string, end-start)
+			for i := start; i < end; i++ {
+				out[i-start] = c.nodes.ids[c.targets[i]]
+			}
+		}
 	}
-	start, end := c.offsets[code], c.offsets[code+1]
-	if start == end {
-		return nil
-	}
-	out := make([]string, end-start)
-	for i := start; i < end; i++ {
-		out[i-start] = c.nodes.ids[c.targets[i]]
+	// #5904 PR-b: merge the ADD-only phantom CALLS layer (never overlaps the CSR
+	// core). Re-sort when both sources contribute so followCallsBFS's branching
+	// cap stays deterministic.
+	if c.extra != nil {
+		if ex := c.extra[id]; len(ex) > 0 {
+			if out == nil {
+				out = append([]string(nil), ex...)
+			} else {
+				out = append(out, ex...)
+				sort.Strings(out)
+			}
+		}
 	}
 	return out
 }

@@ -35,6 +35,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 )
 
@@ -458,6 +459,20 @@ type LoadedRepo struct {
 	descStampedMt time.Time
 	descFileMt    time.Time
 	descApplied   bool
+
+	// flowOverlay / flowStampedMt / flowFileMt / flowApplied memoize the FLOW
+	// side-table apply (#5904 PR-b), mirroring descApplied for the per-repo
+	// <stateDir>/flows.json sidecar. flowOverlay is the fresh cross-repo-aware
+	// flow DELTA (nil when the sidecar is absent/corrupt/stale). When non-nil the
+	// read path applies REPLACE semantics: the forEach* iterators SUPPRESS the
+	// baked SCOPE.Process/SCOPE.EventFlow entities and INJECT the sidecar's, and
+	// getStepAdj/getCallsAdj rebuild against the sidecar's step/phantom edges.
+	// Re-stamped when EITHER the repo reparsed (lr.mtime advanced) OR the sidecar
+	// file mtime changed. Zero values ("never stamped") always force a (re-)stamp.
+	flowOverlay   *flows.Sidecar
+	flowStampedMt time.Time
+	flowFileMt    time.Time
+	flowApplied   bool
 }
 
 // resetIndexes re-arms every lazy-index sync.Once and clears the cached
@@ -935,12 +950,21 @@ func (lr *LoadedRepo) getCallsAdj() *callsAdjacency {
 		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
+		fo := lr.flowOverlay
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
 			lr.callsAdj = buildCallsAdjacencyFromReader(rdr)
 			lr.rmu().Unlock()
 		} else {
 			lr.rmu().Unlock()
 			lr.callsAdj = buildCallsAdjacency(lr.Doc)
+		}
+		// Flow side-table (#5904 PR-b): ADD the sidecar's phantom cross_repo CALLS
+		// edges (which are NOT baked into graph.fb once the write-back stopped
+		// rewriting the graph) so a query-time CALLS walk (traces follow) still sees
+		// the cross-repo terminal steps it saw pre-PR. Additive is safe: phantom
+		// edges are never in the baked set, so no CALLS edge is doubled.
+		if fo != nil {
+			lr.callsAdj.setExtraFromRels(fo.Relationships)
 		}
 	})
 	return lr.callsAdj
@@ -962,12 +986,21 @@ func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
 		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
+		fo := lr.flowOverlay
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
 			lr.stepAdj = buildStepAdjacencyFromReader(rdr)
 			lr.rmu().Unlock()
 		} else {
 			lr.rmu().Unlock()
 			lr.stepAdj = buildStepAdjacency(lr.Doc)
+		}
+		// Flow side-table (#5904 PR-b): REPLACE. When a fresh cross-repo flow
+		// overlay is present, the baked STEP_IN_PROCESS adjacency is DISCARDED and
+		// rebuilt purely from the sidecar's step edges — the baked flow entities are
+		// suppressed by forEach*, so their step rows are never queried, and the
+		// cross-repo flows' steps come solely from the sidecar (no doubling).
+		if fo != nil {
+			lr.stepAdj = buildStepAdjacencyFromRels(fo.Relationships)
 		}
 	})
 	return lr.stepAdj
@@ -1575,6 +1608,11 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 		// <stateDir>/descriptions.json onto the group's entities. Absence-tolerant
 		// and per-repo memoized, exactly like the group-algo overlay above.
 		applyDescriptionOverlay(grp)
+		// Flow side-table (#5904 PR-b): REPLACE-stamp any <stateDir>/flows.json —
+		// suppress the baked SCOPE.Process/SCOPE.EventFlow entities + STEP edges and
+		// substitute the cross-repo-aware sidecar's. Absence/stale → no-op (baked
+		// intra flows served). Per-repo memoized like applyDescriptionOverlay.
+		applyFlowOverlay(grp)
 	}
 	// Recompute the tool-surface signature. If it differs from the previous
 	// value the caller will emit notifications/tools/list_changed (#1772).
@@ -1630,6 +1668,10 @@ func (s *State) Group(name string) *LoadedGroup {
 		// per-repo memo inside applyDescriptionOverlay keeps the steady state a
 		// cheap stat-and-skip.
 		applyDescriptionOverlay(grp)
+		// Re-check the per-repo flow side-table on the serving path so a phantom
+		// write-back that advanced <stateDir>/flows.json mid-session takes effect
+		// (REPLACE) without a full Reload. Per-repo memoized → cheap stat-and-skip.
+		applyFlowOverlay(grp)
 	}
 	return grp
 }
@@ -2738,6 +2780,85 @@ func applyDescriptionOverlay(grp *LoadedGroup) {
 		lr.descFileMt = fileMt
 		lr.descApplied = true
 	}
+}
+
+// applyFlowOverlay stamps the per-repo FLOW side-table (#5904 PR-b) onto a
+// loaded group's repos with REPLACE semantics. For each repo it reads
+// <stateDir>/flows.json (absence/corrupt/stale-tolerant) and publishes the
+// cross-repo-aware flow DELTA into lr.flowOverlay. When set, the read path:
+//
+//   - forEach* iterators SUPPRESS the baked SCOPE.Process/SCOPE.EventFlow
+//     entities (from Doc OR Reader) and INJECT the sidecar's cross-repo-aware
+//     ones (flowFilteredYield + injectFlowEntities in view_iter.go).
+//   - getStepAdj REPLACES the STEP_IN_PROCESS adjacency with the sidecar's step
+//     edges; getCallsAdj ADDS the sidecar's phantom cross_repo CALLS edges.
+//
+// This is REPLACE, not additive: graph.fb still carries the index-baked
+// intra-repo flows, so an additive merge would DOUBLE every flow. On
+// absence/stale (ok==false) the overlay is cleared to nil and the baked
+// intra-repo flows are served unchanged (correct degraded state).
+//
+// Memoized PER REPO exactly like applyDescriptionOverlay: re-stamp when the repo
+// reparsed (lr.mtime advanced) OR the sidecar file mtime changed. Publishing the
+// overlay pointer under readerMu (the flag-ON forEach scans read it under the
+// same lock) + re-arming stepOnce/callsOnce under idxMu (so the adjacencies
+// rebuild against the REPLACE set) mirrors resetIndexes' invalidation. Caller
+// holds s.mu.
+func applyFlowOverlay(grp *LoadedGroup) {
+	if grp == nil {
+		return
+	}
+	for _, lr := range grp.Repos {
+		if lr == nil || lr.Doc == nil || lr.Path == "" {
+			continue
+		}
+		stateDir := daemon.StateDirForRepo(lr.Path)
+		var fileMt time.Time
+		if fi, err := os.Stat(flows.Path(stateDir)); err == nil {
+			fileMt = fi.ModTime()
+		}
+		if lr.flowApplied && lr.mtime.Equal(lr.flowStampedMt) && fileMt.Equal(lr.flowFileMt) {
+			continue
+		}
+
+		var next *flows.Sidecar
+		if sc, ok := flows.Read(stateDir); ok {
+			next = sc
+		}
+
+		// Publish under readerMu (read by the flag-ON forEach scans + the adjacency
+		// builders under the same lock).
+		lr.rmu().Lock()
+		lr.flowOverlay = next
+		lr.rmu().Unlock()
+
+		// Re-arm the step/calls adjacencies so the next getStepAdj/getCallsAdj
+		// rebuild against the REPLACE set (mirrors resetIndexes, under idxMu).
+		lr.idxMu.Lock()
+		lr.stepOnce = sync.Once{}
+		lr.stepAdj = nil
+		lr.callsOnce = sync.Once{}
+		lr.callsAdj = nil
+		lr.idxMu.Unlock()
+
+		lr.flowStampedMt = lr.mtime
+		lr.flowFileMt = fileMt
+		lr.flowApplied = true
+	}
+}
+
+// flowOverlaySnapshot returns the repo's current flow overlay pointer, read
+// under readerMu so it is race-safe against a concurrent applyFlowOverlay
+// publish. The sidecar it points at is immutable after publish, so callers may
+// use the returned pointer lock-free.
+func (lr *LoadedRepo) flowOverlaySnapshot() *flows.Sidecar {
+	if lr == nil {
+		return nil
+	}
+	lr.rmu().Lock()
+	fo := lr.flowOverlay
+	lr.rmu().Unlock()
+	return fo
 }
 
 // buildDescTableFromReader builds the entity-INDEX-keyed description side-table

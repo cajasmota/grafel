@@ -27,6 +27,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -651,6 +652,16 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 					}
 				}
 			}
+			// Flow side-table (#5904 PR-b): REPLACE-merge the per-repo
+			// <stateDir>/flows.json onto this repo's Document so the flow handlers
+			// (handlers_flows / handlers_event_flows / v2_flows), which loop
+			// r.Doc.Entities/Relationships by Kind, see the cross-repo-aware flows
+			// the phantom pass produced instead of the index-baked intra-repo ones.
+			// MergeInto SUPPRESSES the baked SCOPE.Process/SCOPE.EventFlow entities +
+			// their STEP/ENTRY/SEED edges and substitutes the sidecar's (never
+			// additive → never doubled). Absence/corrupt/stale → no-op, leaving the
+			// baked intra-repo flows (correct degraded state).
+			flows.MergeInto(stateDir, doc)
 			// S8 (#2159): open a zero-copy mmap reader alongside the Document
 			// so handlers that only need to iterate entities/relationships can
 			// avoid materialising the full heap slice. Best-effort: failures
