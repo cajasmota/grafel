@@ -282,16 +282,30 @@ func parseSegPointer(raw string) (genDirName string, ok bool) {
 // sequence monotonic even if the pointer was manually deleted while gen files
 // remain, so a stale reader never resolves a freshly-written gen to an older
 // file.
+// #5902: the segmented writer emits a generation as a graph.<gen>/ DIR (not a
+// graph.<gen>.fb file), and points `current` at that dir. NextGen therefore
+// scans the UNION of gen files and gen dirs — and reads the pointer via the
+// segment-aware readPointerRaw so a segment-set `current` value is counted too
+// — keeping the sequence monotonic across a mixed single-file/segment-set
+// history. Trusting only the file-shaped pointer/entries (as before) would let
+// a fresh segmented write collide with the immediately-previous gen dir.
 func NextGen(dir string) uint64 {
 	var maxGen uint64
-	if name, ok := readPointer(dir); ok {
-		if v, _ := parseGen(name); v > maxGen {
+	if raw, ok := readPointerRaw(dir); ok {
+		if v, single := parseGen(raw); single && v > maxGen {
 			maxGen = v
+		} else if name, seg := parseSegPointer(raw); seg {
+			if v, ok := parseGenDir(name); ok && v > maxGen {
+				maxGen = v
+			}
 		}
 	}
 	if ents, err := os.ReadDir(dir); err == nil {
 		for _, e := range ents {
 			if e.IsDir() {
+				if v, ok := parseGenDir(e.Name()); ok && v > maxGen {
+					maxGen = v
+				}
 				continue
 			}
 			if v, ok := parseGen(e.Name()); ok && v > maxGen {
