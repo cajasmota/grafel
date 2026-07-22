@@ -375,17 +375,17 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 		// Build a file -> []auth_policy_entity index for this repo.
 		// auth_policy entities are emitted by the patterns/auth_endpoint_linker
 		// as SCOPE.Config entities with subtype "auth_policy".
-		authPoliciesByFile := buildAuthPoliciesByFile(r.Doc)
+		authPoliciesByFile := buildAuthPoliciesByFile(r)
 
 		// Build set of entity IDs reachable via TAGGED_AS edges to auth_policy.
-		taggedAuthIDs := buildTaggedAuthIDs(r.Doc)
+		taggedAuthIDs := buildTaggedAuthIDs(r)
 
 		// Issue #2816 — DRF class-level authorisation index: per source file,
 		// the line-range posture of every ViewSet/APIView carrying
 		// permission_classes / get_permissions, plus the repo-wide DRF default
 		// permission policy harvested from the settings REST_FRAMEWORK dict.
-		drfAuthByFile := buildDRFClassAuthByFile(r.Doc)
-		drfDefaultProtected, drfDefaultEvidence := repoDRFDefaultPolicy(r.Doc)
+		drfAuthByFile := buildDRFClassAuthByFile(r)
+		drfDefaultProtected, drfDefaultEvidence := repoDRFDefaultPolicy(r)
 
 		repoTotal := 0
 		repoCovered := 0
@@ -600,16 +600,19 @@ func capAuthByBudget(recs []EndpointRecord, maxBytes int, verbose bool) []Endpoi
 
 // buildAuthPoliciesByFile builds a map from source file path → set of auth
 // evidence strings for auth_policy entities found in that file.
-func buildAuthPoliciesByFile(doc *graph.Document) map[string][]string {
+// #5870 PR7a: iterates via forEachEntityBase (Reader flag-ON / Doc flag-OFF)
+// instead of raw doc.Entities, so it survives a future slice-drop. forEachEntityBase
+// (not the public forEachEntity) keeps it byte-identical to the raw-slice read.
+func buildAuthPoliciesByFile(lr *LoadedRepo) map[string][]string {
 	result := make(map[string][]string)
-	for i := range doc.Entities {
-		e := &doc.Entities[i]
+	lr.forEachEntityBase(func(e *graph.Entity) bool {
 		if !isAuthPolicyEntity(e) {
-			continue
+			return true
 		}
 		evidence := authEntityEvidence(e)
 		result[e.SourceFile] = append(result[e.SourceFile], evidence)
-	}
+		return true
+	})
 	return result
 }
 
@@ -654,23 +657,24 @@ func authEntityEvidence(e *graph.Entity) string {
 
 // buildTaggedAuthIDs returns the set of entity IDs that have a TAGGED_AS
 // relationship pointing to an auth_policy entity.
-func buildTaggedAuthIDs(doc *graph.Document) map[string]bool {
+// #5870 PR7a: forEachEntityBase/forEachRelationship instead of raw doc slices.
+func buildTaggedAuthIDs(lr *LoadedRepo) map[string]bool {
 	// Collect auth-policy entity IDs first.
 	authIDs := map[string]bool{}
-	for i := range doc.Entities {
-		e := &doc.Entities[i]
+	lr.forEachEntityBase(func(e *graph.Entity) bool {
 		if isAuthPolicyEntity(e) {
 			authIDs[e.ID] = true
 		}
-	}
+		return true
+	})
 
 	tagged := map[string]bool{}
-	for i := range doc.Relationships {
-		rel := &doc.Relationships[i]
+	lr.forEachRelationship(func(rel *graph.Relationship) bool {
 		if rel.Kind == "TAGGED_AS" && authIDs[rel.ToID] {
 			tagged[rel.FromID] = true
 		}
-	}
+		return true
+	})
 	return tagged
 }
 
@@ -868,17 +872,17 @@ func rangeSize(c drfClassAuth) int {
 // DRF class-level authorisation property, grouped by source file. These
 // properties are stamped by the python extractor's applyDRFPermissionProperties
 // pass (issue #2816).
-func buildDRFClassAuthByFile(doc *graph.Document) map[string][]drfClassAuth {
+// #5870 PR7a: forEachEntityBase instead of raw doc.Entities.
+func buildDRFClassAuthByFile(lr *LoadedRepo) map[string][]drfClassAuth {
 	out := make(map[string][]drfClassAuth)
-	for i := range doc.Entities {
-		e := &doc.Entities[i]
+	lr.forEachEntityBase(func(e *graph.Entity) bool {
 		if e.PropLen() == 0 {
-			continue
+			return true
 		}
 		_, hasAttr := e.PropLookup("has_permission_classes")
 		_, hasGet := e.PropLookup("has_get_permissions")
 		if !hasAttr && !hasGet {
-			continue
+			return true
 		}
 		out[e.SourceFile] = append(out[e.SourceFile], drfClassAuth{
 			startLine:         e.StartLine,
@@ -888,7 +892,8 @@ func buildDRFClassAuthByFile(doc *graph.Document) map[string][]drfClassAuth {
 			hasGetPermissions: hasGet,
 			getPermClasses:    e.PropGet("get_permissions_classes"),
 		})
-	}
+		return true
+	})
 	return out
 }
 
@@ -897,23 +902,28 @@ func buildDRFClassAuthByFile(doc *graph.Document) map[string][]drfClassAuth {
 // python config_module extractor, issue #2816) and reports whether the global
 // default protects endpoints. When the key is absent DRF's built-in default is
 // AllowAny → not protected.
-func repoDRFDefaultPolicy(doc *graph.Document) (protected bool, evidence string) {
-	for i := range doc.Entities {
-		e := &doc.Entities[i]
+// #5870 PR7a: forEachEntityBase instead of raw doc.Entities. Iteration stops
+// early (yield false) on the first protective default, preserving the original
+// first-match-wins semantics byte-identically.
+func repoDRFDefaultPolicy(lr *LoadedRepo) (protected bool, evidence string) {
+	lr.forEachEntityBase(func(e *graph.Entity) bool {
 		if e.PropLen() == 0 {
-			continue
+			return true
 		}
 		if e.PropGet("drf_default_permission_present") != "true" {
-			continue
+			return true
 		}
 		if prot, name := isProtectivePermissionList(e.PropGet("drf_default_permission_classes")); prot {
-			return true, "DRF default permission: " + name
+			protected = true
+			evidence = "DRF default permission: " + name
+			return false // stop at the first protective default
 		}
 		// Present but AllowAny/empty default → explicitly open. A later
 		// settings module won't override an explicit open default, so keep
 		// scanning only for a protective one.
-	}
-	return false, ""
+		return true
+	})
+	return protected, evidence
 }
 
 // isSensitiveOperation reports whether an endpoint name or path suggests a

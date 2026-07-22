@@ -43,6 +43,13 @@ func pr7aFixtureDoc() *graph.Document {
 	ents[3].PropSet("module", "modA")
 	ents[4].PropSet("module", "modB")
 	auth := graph.Entity{ID: "authp", Name: "RequireAuth", Kind: "SCOPE.Config", Subtype: "auth_policy", SourceFile: "a/api.go", Language: "go", StartLine: 28, EndLine: 28}
+	// DRF class-auth + repo default-policy props (exercises buildDRFClassAuthByFile
+	// + repoDRFDefaultPolicy). Kind SCOPE.Config is not a coverage/module/test
+	// kind, so these props do not perturb the other tools' fixtures.
+	auth.PropSet("has_permission_classes", "true")
+	auth.PropSet("permission_classes", "IsAuthenticated")
+	auth.PropSet("drf_default_permission_present", "true")
+	auth.PropSet("drf_default_permission_classes", "IsAuthenticated")
 	ents = append(ents, auth)
 
 	mkRel := func(from, to, kind string, props map[string]string) graph.Relationship {
