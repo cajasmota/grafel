@@ -216,11 +216,16 @@ func (g *DashGroup) diskUnchanged() bool {
 	return true
 }
 
-// statGraphMtime returns the modification time of the graph.fb in stateDir,
-// falling back to graph.json, or the zero time when neither exists.
+// statGraphMtime returns the modification time of the active graph in
+// stateDir (single-file .fb or segment-set manifest.json, via
+// graph.CurrentGraphMtime), falling back to graph.json, or the zero time
+// when neither exists. #5915 J2 slice-2: the old
+// os.Stat(graph.CurrentGraphPath(stateDir)) gate only ever resolved a flat
+// .fb path, so a segment-set repo (graph.<gen>/ dir + manifest.json, no flat
+// .fb) fell straight through to the zero time here.
 func statGraphMtime(stateDir string) time.Time {
-	if info, e := os.Stat(graph.CurrentGraphPath(stateDir)); e == nil { // #5891
-		return info.ModTime()
+	if mt, ok := graph.CurrentGraphMtime(stateDir); ok { // #5891, #5915 J2 slice-2
+		return mt
 	}
 	if info, e := os.Stat(filepath.Join(stateDir, "graph.json")); e == nil {
 		return info.ModTime()
