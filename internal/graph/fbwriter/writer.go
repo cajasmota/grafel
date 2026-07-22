@@ -73,6 +73,23 @@ func WriteAtomic(outPath string, doc *graph.Document) error {
 // to the directory-keyed sidecar writer (graph.WriteSidecar keys on
 // filepath.Dir), so graph-stats.json still lands beside the graph.
 func WriteGraphGen(stateDir string, doc *graph.Document) (genPath string, err error) {
+	// #5902 flag-gated producer. When GRAFEL_STREAM_SEGMENTS is ON, route
+	// through the bounded SegmentedWriter (a single flat file when the graph
+	// fits under the threshold, a graph.<gen>/ segment set otherwise). OFF by
+	// default: fall through to today's single flat-file path, zero behaviour
+	// change. Gating here wires every producer call site (full-index,
+	// incremental, links, enrichment write-back) through one switch.
+	if StreamSegmentsEnabled() {
+		return WriteGraphGenSegmented(stateDir, doc)
+	}
+	return writeGraphGenFlat(stateDir, doc)
+}
+
+// writeGraphGenFlat is the single-flat-file producer core: marshal the whole
+// doc into one buffer (fail-softing an oversized-graph panic into an error) and
+// write it as a new graph.<gen>.fb generation. It is the flag-OFF path and the
+// SegmentedWriter's single-file fast path, so both share byte-identical output.
+func writeGraphGenFlat(stateDir string, doc *graph.Document) (genPath string, err error) {
 	buf, err := Marshal(doc)
 	if err != nil {
 		return "", fmt.Errorf("fbwriter: marshal: %w", err)
