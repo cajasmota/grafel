@@ -178,3 +178,50 @@ func TestLoadGraphFromDir_EntityProperties(t *testing.T) {
 			handlerEnt.PropGet("framework"), "gin")
 	}
 }
+
+// TestLoadGraphFromDir_EmbeddingRefRoundTrip verifies that an entity's
+// EmbeddingRef (PH8 / #2100) is preserved through the FB round-trip.
+//
+// Regression test: fbEntityToGraphEntity (the shared FB->Document entity
+// conversion used by both the single-file and segment-set load paths) never
+// copied e.EmbeddingRef() into the resulting graph.Entity, even though
+// fbwriter correctly persists it. Every FB-backed load (single-file or
+// segment-set) silently came back with EmbeddingRef == "" regardless of what
+// was written, which defeated internal/cli/cleanup.go's
+// collectActiveEmbeddingHashes: an entity's embedding could never be
+// reported "active", so the embedding-cache TTL sweep in `grafel cleanup`
+// determined unreferenced-ness by age alone. Discovered while building the
+// #5915 J2 slice-3 segment-set fixture for that walk. Purely additive fix:
+// EmbeddingRef was always the zero value before, so this can only ever
+// populate a previously-empty field.
+func TestLoadGraphFromDir_EmbeddingRefRoundTrip(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	doc := makeTestDoc()
+
+	doc.Entities[0].EmbeddingRef = "sha256:embedding-round-trip-hash"
+
+	if err := fbwriter.WriteAtomic(filepath.Join(dir, "graph.fb"), doc); err != nil {
+		t.Fatalf("write graph.fb: %v", err)
+	}
+
+	got, err := graph.LoadGraphFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadGraphFromDir: %v", err)
+	}
+
+	var handlerEnt *graph.Entity
+	for i := range got.Entities {
+		if got.Entities[i].Name == "MyHandler" {
+			handlerEnt = &got.Entities[i]
+			break
+		}
+	}
+	if handlerEnt == nil {
+		t.Fatal("MyHandler entity not found after FB round-trip")
+	}
+	if handlerEnt.EmbeddingRef != "sha256:embedding-round-trip-hash" {
+		t.Errorf("EmbeddingRef: got %q want %q",
+			handlerEnt.EmbeddingRef, "sha256:embedding-round-trip-hash")
+	}
+}

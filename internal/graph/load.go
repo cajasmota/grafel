@@ -565,6 +565,21 @@ func fbEntityToGraphEntity(e *fb.Entity, si *stringInterner) Entity {
 		StartLine:     int(e.SourceLine()),
 	}
 	ent.properties = props
+	// #5915 J2 slice-3 (discovered while testing cleanup.go's embedding-GC
+	// walk): restore the PH8 (#2100) embedding_ref field from its dedicated
+	// FB slot. This was never restored here — every entity loaded via the
+	// FB path (loadFBDocument AND the segment-set loader, which shares this
+	// same conversion) came back with EmbeddingRef == "" regardless of what
+	// fbwriter actually wrote, silently defeating
+	// internal/cli/cleanup.go's collectActiveEmbeddingHashes for every
+	// FB-backed graph (single-file or segment-set) — the embedding TTL sweep
+	// could never see an entity's embedding as "active", so unreferenced-ness
+	// was determined by TTL age alone. Purely additive: EmbeddingRef was
+	// always the zero value before, so this can only ever populate a
+	// previously-empty field, never change an already-non-empty one.
+	if er := string(e.EmbeddingRef()); er != "" {
+		ent.EmbeddingRef = er
+	}
 	// The Module field is stored as a top-level FB scalar by the writer
 	// (see fbwriter.buildEntity). Restore it into Properties["module"]
 	// so callers that read props["module"] continue to work. PropSet keeps

@@ -120,6 +120,18 @@ func runCleanup(w io.Writer, dryRun bool, ttlDays int) error {
 // plus (legacy) <repo>/.grafel/graph.fb for repos indexed before PH1a.
 // We walk the daemon store directory; .grafel sidecar graphs are not
 // swept (they are repo-local, managed by the repo owner).
+//
+// #5915 J2 slice-3: a segment-set ref (graph.<gen>/ dir + seg-NNNN.fb +
+// manifest.json, no flat .fb) has NO file matching graph.IsGraphFileName —
+// seg-NNNN.fb matches neither the legacy flat name nor the graph.<gen>.fb
+// pattern — so the walk skipped every segment-set ref's state dir entirely.
+// Its entities' embedding refs were never added to `active`, so the sweep
+// below (embed cache TTL GC) could reap embedding cache entries still
+// referenced by a live segment-set graph. The walk now ALSO recognises
+// manifest.json as a segment-set's canonical marker file and, when it is the
+// active generation's manifest, loads the ref's STATE dir (the manifest's
+// gen dir's parent) exactly once — mirroring the single-file branch's
+// dedup-to-the-active-generation guard.
 func collectActiveEmbeddingHashes() (map[string]bool, error) {
 	h, err := registry.HomeDir()
 	if err != nil {
@@ -136,17 +148,42 @@ func collectActiveEmbeddingHashes() (map[string]bool, error) {
 		if d.IsDir() {
 			return nil
 		}
-		// #5891: recognise generation files (graph.<gen>.fb), and process each
-		// state dir exactly once — only when this path is the ACTIVE generation
-		// resolved by the pointer (or the legacy flat graph.fb) — so a dir with
-		// current+previous gens isn't walked twice.
-		if !graph.IsGraphFileName(filepath.Base(path)) {
+
+		var stateDir string
+		switch {
+		case filepath.Base(path) == graph.ManifestFileName:
+			// Candidate segment-set marker: path = <stateDir>/graph.<gen>/manifest.json.
+			genDir := filepath.Dir(path)
+			candidate := filepath.Dir(genDir)
+			desc, dErr := graph.CurrentGraphDescriptor(candidate)
+			if dErr != nil || desc.Kind != graph.GraphSegmentSet {
+				return nil
+			}
+			// Only the ACTIVE generation's manifest counts, so a stale
+			// previous-gen manifest (kept around by GCStaleGens' retention
+			// window) isn't double-processed.
+			if filepath.Join(desc.GenDir, graph.ManifestFileName) != path {
+				return nil
+			}
+			stateDir = candidate
+
+		case graph.IsGraphFileName(filepath.Base(path)):
+			// #5891: recognise generation files (graph.<gen>.fb), and process
+			// each state dir exactly once — only when this path is the ACTIVE
+			// generation resolved by the pointer (or the legacy flat
+			// graph.fb) — so a dir with current+previous gens isn't walked
+			// twice.
+			candidate := filepath.Dir(path)
+			if path != graph.CurrentGraphPath(candidate) {
+				return nil
+			}
+			stateDir = candidate
+
+		default:
 			return nil
 		}
-		if path != graph.CurrentGraphPath(filepath.Dir(path)) {
-			return nil
-		}
-		doc, loadErr := graph.LoadGraphFromDir(filepath.Dir(path))
+
+		doc, loadErr := graph.LoadGraphFromDir(stateDir)
 		if loadErr != nil {
 			return nil // corrupt/missing — skip
 		}
