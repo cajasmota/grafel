@@ -117,6 +117,17 @@ func FormatVersionReason(found, required int) string {
 //  3. If only graph.json exists, fall back to JSON.
 //  4. If neither exists, return a non-nil error.
 func LoadGraphFromDir(dir string) (*Document, error) {
+	// #5901 segment-set: when the active graph is the multi-segment gen-dir
+	// layout, materialize the Document from all segments (via the same shared
+	// core the single-file path uses). A corrupt segment-set manifest surfaces
+	// the descriptor error. Everything below is the UNCHANGED single-file /
+	// legacy / json resolution — the common path is byte-identical.
+	if desc, derr := CurrentGraphDescriptor(dir); derr != nil {
+		return nil, derr
+	} else if desc.Kind == GraphSegmentSet {
+		return loadSegmentSetDocument(desc, false)
+	}
+
 	fbPath := CurrentGraphPath(dir)
 	jsonPath := filepath.Join(dir, "graph.json")
 
@@ -165,12 +176,35 @@ func LoadGraphFromDir(dir string) (*Document, error) {
 // (absent) memory win. Callers that need a full Document (every CLI/full-Doc
 // consumer) must keep using LoadGraphFromDir.
 func LoadGraphHeaderOnlyFromDir(dir string) (*Document, error) {
+	// #5901 segment-set: header-only load across all segments (counts/meta from
+	// the manifest+first-segment header; Entities/Relationships left empty).
+	if desc, derr := CurrentGraphDescriptor(dir); derr != nil {
+		return nil, derr
+	} else if desc.Kind == GraphSegmentSet {
+		return loadSegmentSetDocument(desc, true)
+	}
 	fbPath := CurrentGraphPath(dir)
 	if _, err := os.Stat(fbPath); err == nil {
 		return loadFBDocumentHeaderOnly(fbPath)
 	}
 	// No graph.fb — no mmap to serve from; full load (graph.json or error).
 	return LoadGraphFromDir(dir)
+}
+
+// loadSegmentSetDocument materializes a *Document from a resolved segment-set
+// descriptor. It opens a MultiReader over every segment (with manifest key
+// routing) and runs the SAME materialize core as the single-file path, so a
+// segment-set Document is byte-identical to the single-file Document that would
+// result from the same entities/relationships written as one file — modulo the
+// (per-segment) header fields the MultiReader sources from segment 0.
+func loadSegmentSetDocument(desc GraphDescriptor, headerOnly bool) (*Document, error) {
+	paths, ranges := segmentOpenArgs(desc.Manifest, desc.GenDir)
+	v, err := fbreader.OpenSegmentsWithRanges(paths, ranges)
+	if err != nil {
+		return nil, fmt.Errorf("graph.loadSegmentSetDocument: open %s: %w", desc.GenDir, err)
+	}
+	defer v.Close()
+	return materializeGraphView(v, headerOnly)
 }
 
 // PersistedStats is a cheap, on-disk view of a repo's index size and
@@ -329,7 +363,16 @@ func loadFBDoc(path string, headerOnly bool) (*Document, error) {
 		return nil, fmt.Errorf("graph.loadFBDocument: open %s: %w", path, err)
 	}
 	defer r.Close()
+	return materializeGraphView(r, headerOnly)
+}
 
+// materializeGraphView is the shared materialize core behind BOTH the
+// single-file path (loadFBDoc, over an *fbreader.Reader) and the segment-set
+// path (loadSegmentSetDocument, over an *fbreader.MultiReader). It operates on
+// the fbreader.GraphView contract so the two backings run byte-identical
+// materialize logic — the ONLY thing that differs is how many mmaps sit under
+// the view. It does NOT Close v (the caller owns the view's lifetime).
+func materializeGraphView(r fbreader.GraphView, headerOnly bool) (*Document, error) {
 	// #2370 — refuse to read old-format graph.fb files. grafel is
 	// pre-1.0; there is no on-disk compat path. The user is expected to
 	// rerun `grafel index <repo>` to regenerate graph.fb against the
