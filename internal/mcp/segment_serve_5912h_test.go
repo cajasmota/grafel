@@ -367,8 +367,12 @@ func TestSegmentSet_ReloadRetireDrainNoRace_5912h(t *testing.T) {
 				li := lr.LabelIndex
 				s.mu.Unlock()
 				// e00000123 lives past the first segment boundary → exercises
-				// cross-segment materialization under the concurrent munmap.
-				if e := li.ByID("ent-00000123"); e == nil || e.ID != "ent-00000123" {
+				// cross-segment materialization under the concurrent munmap. The
+				// snapshotted li may be retired between snapshot and ByID; post-#5870
+				// PR7bc at() returns nil for a retired generation (graceful miss, no
+				// Doc fallback), so a nil result is acceptable — only WRONG data (a
+				// non-nil mismatch) or a freed-region deref is a fault.
+				if e := li.ByID("ent-00000123"); e != nil && e.ID != "ent-00000123" {
 					faults.Add(1)
 				}
 				_ = lr.getAdjacency()

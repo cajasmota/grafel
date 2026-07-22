@@ -449,7 +449,10 @@ func TestGetByIDOneParity_FlagOnVsFlagOff_PathP(t *testing.T) {
 // TestGetByIDOneReloadRace_PathP runs getByIDOne concurrently with a reload that
 // retires+munmaps the mapping the resident LabelIndex points at. Under -race it
 // must finish with no SIGBUS: getByIDOne resolves the single index via the
-// readerMu-guarded at(), so a retired lookup falls back to the Doc.
+// readerMu-guarded at(). Post-#5870 PR7bc at() returns nil for a retired
+// generation (no Doc fallback), so getByIDOne reports (nil,false) — a graceful
+// miss — once the retire lands; the invariant is "no freed-region deref, never
+// WRONG data", so a present result must be correct and a miss is acceptable.
 func TestGetByIDOneReloadRace_PathP(t *testing.T) {
 	forceServeFromMMap(t, true)
 
@@ -486,7 +489,7 @@ func TestGetByIDOneReloadRace_PathP(t *testing.T) {
 			<-start
 			for j := 0; j < 600; j++ {
 				e, ok := lr.getByIDOne("e5")
-				if !ok || e == nil || e.ID != "e5" || e.QualifiedName != "r.e5" {
+				if ok && (e == nil || e.ID != "e5" || e.QualifiedName != "r.e5") {
 					faults.Add(1)
 				}
 			}

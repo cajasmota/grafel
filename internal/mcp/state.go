@@ -1292,6 +1292,28 @@ func (s *State) reloadLocked() (int, bool, error) {
 	return s.reloadAllLocked()
 }
 
+// skeletonizeDocRows drops the row-bulk slices of a Document to nil while keeping
+// the Document itself non-nil and every header field intact. This is the #5870
+// PR7bc deretain flip: for a reader-present, flag-ON repo the row bulk (Entities
+// / Relationships / Communities / SurpriseEdges) is redundant — the resident mmap
+// Reader holds every row and the LabelIndex + BM25/adjacency/getByID + overlay
+// side-tables all source from it — so retaining the heap copy doubles the graph's
+// resident footprint. The header fields (Version, GeneratedAt, Repo,
+// IndexerVersion, IsWorktree, CoverageStatus, IndexedRef, IndexedSHA, Stats,
+// AlgorithmStats) are NOT touched: repoIndexedRef, the semantic-sidecar guard,
+// the algo-stamp staleness check, and grafel_whoami keep reading them off the
+// non-nil skeleton. Callers MUST hold s.mu (reload) and must have already run
+// every eager doc-row build (BuildLabelIndexFromReader, reader-sourced counts).
+func skeletonizeDocRows(doc *graph.Document) {
+	if doc == nil {
+		return
+	}
+	doc.Entities = nil
+	doc.Relationships = nil
+	doc.Communities = nil
+	doc.SurpriseEdges = nil
+}
+
 // reloadAllLocked is the reload body; the caller MUST already hold s.mu. Split
 // out of reloadLocked (memory epic #5850 PR1) so the eviction revive path can
 // reload from disk while already holding s.mu (Group -> reviveEvictedLocked)
@@ -1568,6 +1590,30 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 					}
 					lr.TestsEdgeCount = testsCount
 					lr.publishHandle(newHandle)
+					// #5870 PR7bc — the deretain flip DROP. For a reader-present repo
+					// with the flag ON, every row is now served from the resident mmap
+					// Reader (LabelIndex.*FromReader builders + at()/forEach materialize
+					// from the Reader; BM25/adjacency/getByID source int32 indices, not
+					// Doc pointers; the group-algo + description overlays build their
+					// side-tables from the Reader — see applyGroupAlgoOverlay /
+					// applyDescriptionOverlay below). Nothing on this path reads the Doc
+					// row bulk anymore, so drop it: serve holds the graph ONCE (mmap),
+					// not twice. This is the read-RSS win.
+					//
+					// Placement: strictly AFTER BuildLabelIndexFromReader (above) and
+					// AFTER the reader-sourced testsCount — the only eager consumers of
+					// doc rows in this loop iteration; the lazy BM25/adjacency getters
+					// build FromReader. The post-loop overlays run later and, on the ON
+					// path, iterate the Reader (their in-place Doc stamp becomes a no-op
+					// over the emptied slices). GATED on serveFromMMap() as well as
+					// newRdr!=nil: with the flag forced OFF a reader may still be
+					// resident, but at()/getBM25/view-materialize serve from the Doc,
+					// so emptying it there would break serving. The nil-reader
+					// (JSON-only / graph-absent) branch NEVER skeletonizes — its Doc is
+					// the only source.
+					if newRdr != nil && serveFromMMap() {
+						skeletonizeDocRows(lr.Doc)
+					}
 					reloaded++
 				}
 			}
