@@ -87,7 +87,7 @@ func (s *Server) handleLicenseAudit(_ context.Context, req mcpapi.CallToolReques
 			continue
 		}
 
-		result, err := licenses.ScanRepoLicenses(r.Path, packageList, len(r.Doc.Entities))
+		result, err := licenses.ScanRepoLicenses(r.Path, packageList, r.entityCount()) // #5870 PR7a
 		if err != nil {
 			continue
 		}

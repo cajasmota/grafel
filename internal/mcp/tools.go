@@ -420,8 +420,8 @@ func groupIndexCounts(lg *LoadedGroup) (entities, relationships, testsEdges int)
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		entities += len(r.Doc.Entities)
-		relationships += len(r.Doc.Relationships)
+		entities += r.entityCount()   // #5870 PR7a
+		relationships += r.relCount() // #5870 PR7a
 		testsEdges += r.TestsEdgeCount
 	}
 	return
@@ -3296,8 +3296,8 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 			unavailable = append(unavailable, name+": "+r.loadErr)
 			continue
 		}
-		totalE += len(r.Doc.Entities)
-		totalR += len(r.Doc.Relationships)
+		totalE += r.entityCount() // #5870 PR7a
+		totalR += r.relCount()    // #5870 PR7a
 		rImport, rBug := countEdgesForFidelity(r)
 		totalImport += rImport
 		totalBug += rBug
@@ -3307,8 +3307,8 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 		}
 		repoStats = append(repoStats, map[string]any{
 			"repo":          name,
-			"entities":      len(r.Doc.Entities),
-			"relationships": len(r.Doc.Relationships),
+			"entities":      r.entityCount(),
+			"relationships": r.relCount(),
 			"communities":   commCount,
 		})
 		loadedRepos = append(loadedRepos, r)

@@ -657,8 +657,8 @@ func (s *Server) handleDiagnostics(_ context.Context, req mcpapi.CallToolRequest
 			GraphFile: lr.GraphFile,
 		}
 		if lr.Doc != nil {
-			rh.Entities = len(lr.Doc.Entities)
-			rh.Relationships = len(lr.Doc.Relationships)
+			rh.Entities = lr.entityCount()   // #5870 PR7a
+			rh.Relationships = lr.relCount() // #5870 PR7a
 		}
 		repos = append(repos, rh)
 	}

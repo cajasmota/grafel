@@ -242,7 +242,7 @@ func computeDeadCodeLive(lg *LoadedGroup, repoFilter map[string]bool, kindFilter
 			return true
 		})
 		reached := bfsLive(adj, seeds)
-		totalEntities += len(r.Doc.Entities)
+		totalEntities += r.entityCount() // #5870 PR7a: Reader-sourced count
 		reachable += len(reached)
 		entryPoints += len(seeds)
 		if len(repoFilter) > 0 && !repoFilter[r.Repo] {
@@ -295,7 +295,7 @@ func computeDeadCodeFromEntry(lg *LoadedGroup, fromID string, repoFilter map[str
 		}
 		if _, ok := r.getByIDOne(local); !ok {
 			// Entry not in this repo; skip without contributing.
-			totalEntities += len(r.Doc.Entities)
+			totalEntities += r.entityCount() // #5870 PR7a: Reader-sourced count
 			continue
 		}
 		adj := map[string][]string{}
@@ -308,7 +308,7 @@ func computeDeadCodeFromEntry(lg *LoadedGroup, fromID string, repoFilter map[str
 		})
 		seeds := map[string]bool{local: true}
 		reached := bfsLive(adj, seeds)
-		totalEntities += len(r.Doc.Entities)
+		totalEntities += r.entityCount() // #5870 PR7a: Reader-sourced count
 		reachable += len(reached)
 		entryPoints += len(seeds)
 		if len(repoFilter) > 0 && !repoFilter[r.Repo] {
