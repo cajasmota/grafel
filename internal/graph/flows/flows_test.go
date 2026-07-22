@@ -141,6 +141,77 @@ func TestApply_ReplaceSemantics(t *testing.T) {
 	}
 }
 
+// TestApply_ReplaceSemantics_EventFlow guards the SCOPE.EventFlow half of the
+// REPLACE machinery: a baked SCOPE.EventFlow + its SEED_OF_EVENT_FLOW /
+// STEP_IN_EVENT_FLOW edges must be SUPPRESSED (no dangling baked edge) and
+// SUBSTITUTED by the sidecar's cross-repo event flow. FAILS if either event-flow
+// edge kind is dropped from the strip set (the baked SEED/STEP edge would then
+// survive as a dangling edge pointing at the removed baked entity).
+func TestApply_ReplaceSemantics_EventFlow(t *testing.T) {
+	doc := &graph.Document{Repo: "r", Entities: []graph.Entity{
+		{ID: "chan1", Kind: "message_channel", Name: "orders.topic"},
+		{ID: "consumer1", Kind: "function", Name: "onOrder"},
+		ent("baked-ef", "SCOPE.EventFlow", "orders.topic -> onOrder",
+			map[string]string{"channel_count": "1", "cross_stack": "false"}),
+	}, Relationships: []graph.Relationship{
+		rel("seed-b", "chan1", "baked-ef", "SEED_OF_EVENT_FLOW", map[string]string{}),
+		rel("efs-b", "baked-ef", "consumer1", "STEP_IN_EVENT_FLOW", map[string]string{"step_index": "0"}),
+	}}
+	sc := &flows.Sidecar{
+		Entities: []graph.Entity{
+			ent("xrepo-ef", "SCOPE.EventFlow", "orders.topic -> onOrder -> remoteSink",
+				map[string]string{"channel_count": "2", "cross_stack": "true"}),
+		},
+		Relationships: []graph.Relationship{
+			rel("seed-x", "chan1", "xrepo-ef", "SEED_OF_EVENT_FLOW", map[string]string{}),
+			rel("efs-x0", "xrepo-ef", "consumer1", "STEP_IN_EVENT_FLOW", map[string]string{"step_index": "0"}),
+			rel("efs-x1", "xrepo-ef", "remote::sink", "STEP_IN_EVENT_FLOW", map[string]string{"step_index": "1"}),
+		},
+	}
+
+	flows.Apply(doc, sc)
+
+	// Exactly ONE SCOPE.EventFlow, the cross-repo one.
+	var efs []string
+	for _, e := range doc.Entities {
+		if e.Kind == "SCOPE.EventFlow" {
+			efs = append(efs, e.ID)
+		}
+	}
+	if len(efs) != 1 || efs[0] != "xrepo-ef" {
+		t.Fatalf("event-flow REPLACE violated: want [xrepo-ef], got %v", efs)
+	}
+	// No baked SEED/STEP edges survive (they would dangle at removed baked-ef).
+	for _, r := range doc.Relationships {
+		if r.FromID == "baked-ef" || r.ToID == "baked-ef" {
+			t.Errorf("dangling baked event-flow edge survived Apply: %s %s->%s", r.Kind, r.FromID, r.ToID)
+		}
+	}
+	// Substituted edges present: 1 seed + 2 steps for xrepo-ef.
+	var seed, step int
+	for _, r := range doc.Relationships {
+		if r.Kind == "SEED_OF_EVENT_FLOW" && r.ToID == "xrepo-ef" {
+			seed++
+		}
+		if r.Kind == "STEP_IN_EVENT_FLOW" && r.FromID == "xrepo-ef" {
+			step++
+		}
+	}
+	if seed != 1 || step != 2 {
+		t.Errorf("event-flow substitution wrong: seed=%d step=%d, want 1/2", seed, step)
+	}
+	// The ordinary channel/consumer entities survive.
+	var plain int
+	for _, e := range doc.Entities {
+		if e.Kind == "message_channel" || e.Kind == "function" {
+			plain++
+		}
+	}
+	if plain != 2 {
+		t.Errorf("ordinary entities must survive Apply, got %d", plain)
+	}
+}
+
 // TestMergeInto_FreshReplaces: a fresh sidecar drives REPLACE via MergeInto.
 func TestMergeInto_FreshReplaces(t *testing.T) {
 	dir := t.TempDir()

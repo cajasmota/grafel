@@ -124,6 +124,83 @@ func TestDashFlowOverlay_ReplaceNotDoubled(t *testing.T) {
 	}
 }
 
+// TestDashFlowOverlay_EventFlowReplace: the dashboard load seam REPLACE-merges
+// SCOPE.EventFlow entities too — a baked event flow (+ its SEED/STEP edges) is
+// suppressed and substituted by the sidecar's cross-repo event flow, so the
+// event-flow handler (which loops Doc.Entities by Kind==SCOPE.EventFlow) sees the
+// merged set, not doubled or dangling.
+func TestDashFlowOverlay_EventFlowReplace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GRAFEL_HOME", home)
+	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(home, "store"))
+	group := "efgrp"
+	repoPath := filepath.Join(home, "myrepo")
+	_ = os.MkdirAll(repoPath, 0o755)
+	cfg := &registry.GroupConfig{Name: group, Repos: []registry.Repo{{Slug: "svc", Path: repoPath}}}
+	cfgDir := filepath.Join(home, "groups")
+	_ = os.MkdirAll(cfgDir, 0o755)
+	cfgPath := filepath.Join(cfgDir, group+".fleet.json")
+	raw, _ := json.Marshal(cfg)
+	_ = os.WriteFile(cfgPath, raw, 0o644)
+	regRaw, _ := json.Marshal(map[string]any{"version": 1, "groups": []map[string]any{{"name": group, "config_path": cfgPath}}})
+	_ = os.WriteFile(filepath.Join(home, "registry.json"), regRaw, 0o644)
+
+	stateDir := daemon.StateDirForRepo(repoPath)
+	_ = os.MkdirAll(stateDir, 0o755)
+	doc := &graph.Document{
+		Version: 1, Repo: "svc",
+		Entities: []graph.Entity{
+			{ID: "chan1", Name: "orders.topic", Kind: "message_channel"},
+			{ID: "consumer1", Name: "onOrder", Kind: "Function"},
+			graph.Entity{ID: "baked-ef", Name: "BakedEventFlow", Kind: "SCOPE.EventFlow"}.
+				WithProperties(map[string]string{"cross_stack": "false"}),
+		},
+		Relationships: []graph.Relationship{
+			graph.Relationship{ID: "seed-b", FromID: "chan1", ToID: "baked-ef", Kind: "SEED_OF_EVENT_FLOW"}.WithProperties(map[string]string{}),
+			graph.Relationship{ID: "efs-b", FromID: "baked-ef", ToID: "consumer1", Kind: "STEP_IN_EVENT_FLOW"}.WithProperties(map[string]string{"step_index": "0"}),
+		},
+	}
+	data, _ := json.Marshal(doc)
+	if err := os.WriteFile(filepath.Join(stateDir, "graph.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sidecar: a cross-repo SCOPE.EventFlow replacing the baked one.
+	ents := []graph.Entity{
+		graph.Entity{ID: "xrepo-ef", Name: "CrossRepoEventFlow", Kind: "SCOPE.EventFlow"}.
+			WithProperties(map[string]string{"cross_stack": "true"}),
+	}
+	rels := []graph.Relationship{
+		graph.Relationship{ID: "seed-x", FromID: "chan1", ToID: "xrepo-ef", Kind: "SEED_OF_EVENT_FLOW"}.WithProperties(map[string]string{}),
+		graph.Relationship{ID: "efs-x", FromID: "xrepo-ef", ToID: "consumer1", Kind: "STEP_IN_EVENT_FLOW"}.WithProperties(map[string]string{"step_index": "0"}),
+	}
+	if err := flows.Upsert(stateDir, ents, rels); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	c := NewGraphCache(60 * time.Second)
+	grp, err := c.loadGroupForRef(group, "")
+	if err != nil {
+		t.Fatalf("loadGroupForRef: %v", err)
+	}
+	d := grp.Repos["svc"].Doc
+	var efs []string
+	for i := range d.Entities {
+		if d.Entities[i].Kind == "SCOPE.EventFlow" {
+			efs = append(efs, d.Entities[i].ID)
+		}
+	}
+	if len(efs) != 1 || efs[0] != "xrepo-ef" {
+		t.Fatalf("event-flow REPLACE violated on dashboard seam: want [xrepo-ef], got %v", efs)
+	}
+	for i := range d.Relationships {
+		r := &d.Relationships[i]
+		if r.FromID == "baked-ef" || r.ToID == "baked-ef" {
+			t.Errorf("dangling baked event-flow edge survived on dashboard seam: %s %s->%s", r.Kind, r.FromID, r.ToID)
+		}
+	}
+}
+
 // TestDashFlowOverlay_NoSidecarParity: no sidecar → baked intra flow shown as-is.
 func TestDashFlowOverlay_NoSidecarParity(t *testing.T) {
 	group, _ := buildFlowDashFixture(t)

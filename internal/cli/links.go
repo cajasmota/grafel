@@ -359,9 +359,14 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 	if err != nil {
 		return 0, fmt.Errorf("phantom-edge pass: load links: %w", err)
 	}
-	if len(allLinks) == 0 {
-		return 0, nil // nothing to promote
-	}
+	// NOTE (#5904 PR-b): do NOT early-return on len(allLinks)==0. When the LAST
+	// cross-repo link is removed the links file goes empty, and this pass — the
+	// sole writer of the flow side-table — must still run so the clear-stale loop
+	// below wipes every loaded repo's now-obsolete flows.json. An early return
+	// here would leave a repo's cross-repo flows serving fresh forever (its
+	// source_key still matches until the repo is next reindexed). With no links
+	// there is simply nothing to promote (added stays 0) and affectedRepos is
+	// empty, so every loaded repo falls into the cleanup path.
 
 	// Load each repo's graph.Document. Prefer graph.fb when available
 	// (ADR-0016 flip-day #808); fall back to graph.json via LoadGraphFromDir.

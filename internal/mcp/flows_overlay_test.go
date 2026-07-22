@@ -261,6 +261,51 @@ func TestFlowOverlay_MmapPath_Replace(t *testing.T) {
 	}
 }
 
+// TestFlowOverlay_StepAdjReplace_Mmap proves getStepAdj is REPLACE (not ADD) on
+// the flag-ON mmap path: when the sidecar is applied, the baked SCOPE.Process's
+// STEP_IN_PROCESS adjacency must be GONE and only the sidecar's step edges
+// present. An ADD-instead-of-REPLACE regression leaves the baked "baked-proc"
+// key in the adjacency and this test fails.
+func TestFlowOverlay_StepAdjReplace_Mmap(t *testing.T) {
+	forceServeFromMMap(t, true)
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "r1")
+	stateDir := daemon.StateDirForRepo(repo)
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := fbwriter.WriteAtomic(filepath.Join(stateDir, "graph.fb"), bakedFlowDoc("r1")); err != nil {
+		t.Fatalf("write graph.fb: %v", err)
+	}
+	reg := Registry{Groups: map[string]RegistryGroup{"g": {Repos: map[string]RegistryRepo{"r1": {Path: repo}}}}}
+	regPath := filepath.Join(dir, "registry.json")
+	d, _ := json.MarshalIndent(reg, "", "  ")
+	_ = os.WriteFile(regPath, d, 0o644)
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ents, rels := crossRepoFlowDelta()
+	if err := flows.Upsert(stateDir, ents, rels); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	lr := srv.State.Group("g").Repos["r1"]
+	if lr == nil {
+		t.Fatal("repo r1 not loaded")
+	}
+	if lr.Reader == nil {
+		t.Fatal("precondition: flag-ON mmap requires a resident Reader")
+	}
+	adj := lr.getStepAdj()
+	if _, present := adj["baked-proc"]; present {
+		t.Errorf("REPLACE violated: baked-proc step adjacency survived (ADD instead of REPLACE): %#v", adj)
+	}
+	if steps := adj["xrepo-proc"]; len(steps) != 3 {
+		t.Errorf("want 3 sidecar step edges for xrepo-proc, got %d: %#v", len(steps), adj["xrepo-proc"])
+	}
+}
+
 // TestFlowOverlay_RaceConcurrentRebuild exercises concurrent tool reads against
 // a sidecar that is re-published mid-flight (fresh mtime forces re-apply on the
 // Group() serving path). Run with -race.

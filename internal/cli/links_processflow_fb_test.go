@@ -208,3 +208,70 @@ func mustModTime(t *testing.T, path string) time.Time {
 	}
 	return fi.ModTime()
 }
+
+// TestPhantomEdgePass_EmptyLinksClearsStaleSidecar is the #5904 PR-b total-link-
+// removal guard. A repo "fe" carries a valid cross-repo flows.json (source_key
+// still matches its un-reindexed graph). The last cross-repo link is then removed
+// — the links file is now EMPTY. The pass MUST still clear fe's obsolete sidecar;
+// otherwise flows.Read serves the stale cross-repo flows forever (until fe is
+// next reindexed). Regression: an early return on empty links skips the cleanup
+// and this test fails (the sidecar survives).
+func TestPhantomEdgePass_EmptyLinksClearsStaleSidecar(t *testing.T) {
+	daemonRoot := t.TempDir()
+	t.Setenv(daemon.EnvRoot, daemonRoot)
+
+	fePath := filepath.Join(t.TempDir(), "fe")
+	if err := os.MkdirAll(fePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fe := &graph.Document{
+		Repo: "fe",
+		Entities: []graph.Entity{
+			{ID: "fe_entry", Name: "loadDashboard", Kind: "SCOPE.Function", Language: "ts", SourceFile: "dashboard.ts"},
+			{ID: "fe_loadData", Name: "fetchSummary", Kind: "SCOPE.Function", Language: "ts", SourceFile: "dashboard.ts"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "fe_r1", FromID: "fe_entry", ToID: "fe_loadData", Kind: "CALLS"},
+		},
+	}
+	writeFixtureFB(t, fePath, fe)
+	feState := daemon.StateDirForRepo(fePath)
+
+	// Pre-seed a valid cross-repo flow sidecar for fe (as a prior link run would).
+	seedEnts := []graph.Entity{
+		graph.Entity{ID: "fe_xrepo_proc", Name: "CrossRepoFlow", Kind: engine.EntityKindProcess}.
+			WithProperties(map[string]string{"cross_stack": "true", "step_count": "2"}),
+	}
+	seedRels := []graph.Relationship{
+		graph.Relationship{ID: "fe_xs0", FromID: "fe_xrepo_proc", ToID: "fe_loadData", Kind: engine.RelationshipKindStepInProcess}.WithProperties(map[string]string{"step_index": "0"}),
+		graph.Relationship{ID: "fe_ph", FromID: "fe_loadData", ToID: "be::x", Kind: "CALLS"}.WithProperties(map[string]string{"cross_repo": "true"}),
+	}
+	if err := flows.Upsert(feState, seedEnts, seedRels); err != nil {
+		t.Fatalf("seed sidecar: %v", err)
+	}
+	if _, ok := flows.Read(feState); !ok {
+		t.Fatal("precondition: seeded sidecar must read fresh")
+	}
+
+	cfg := &registry.GroupConfig{Name: "fixtgrp", Repos: []registry.Repo{{Slug: "fe", Path: fePath}}}
+
+	// EMPTY links file — the last cross-repo link was removed.
+	linksDoc := links.Document{Version: 1, Links: []links.Link{}}
+	linksPath := filepath.Join(t.TempDir(), "fixtgrp-links.json")
+	b, _ := json.Marshal(linksDoc)
+	if err := os.WriteFile(linksPath, b, 0o644); err != nil {
+		t.Fatalf("write links file: %v", err)
+	}
+
+	if _, err := runPhantomEdgePass("fixtgrp", cfg, linksPath); err != nil {
+		t.Fatalf("runPhantomEdgePass: %v", err)
+	}
+
+	// The obsolete sidecar must be gone → flows.Read falls back to baked intra.
+	if sc, ok := flows.Read(feState); ok {
+		t.Fatalf("stale flows.json NOT cleared after total link removal: %+v", sc)
+	}
+	if _, statErr := os.Stat(flows.Path(feState)); !os.IsNotExist(statErr) {
+		t.Fatalf("flows.json still present after total link removal (stat err=%v)", statErr)
+	}
+}
