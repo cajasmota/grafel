@@ -199,8 +199,14 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 					continue // skip the hot ref
 				}
 				// Only include slots that actually have a graph.
-				fbPath := graph.CurrentGraphPath(filepath.Join(refsDir, refSafe)) // #5891
-				if _, statErr := os.Stat(fbPath); statErr == nil {
+				// #5915 J2 P2: resolve via the segment-aware descriptor.
+				// os.Stat(graph.CurrentGraphPath(...)) — the pattern this
+				// replaces — only ever resolves a flat .fb path, which is
+				// absent for a segment-set ref (graph.<gen>/ dir +
+				// manifest.json, no flat .fb), so a fully-indexed segmented
+				// cold ref would be silently omitted from ColdRefs.
+				refStateDir := filepath.Join(refsDir, refSafe)
+				if desc, dErr := graph.CurrentGraphDescriptor(refStateDir); dErr == nil && desc.Kind != graph.GraphAbsent {
 					rs.ColdRefs = append(rs.ColdRefs, daemon.RefSafeDecode(refSafe))
 				}
 			}
