@@ -44,16 +44,35 @@ func TestResolveDaemonGOMAXPROCSWith(t *testing.T) {
 	}
 }
 
-// writeCPUJSON writes cpu.json into dir and bumps its mtime forward so the
-// caps.Store's (mtime,size) cache key changes deterministically.
+// writeCPUJSON writes cpu.json into dir and advances its mtime so the
+// caps.Store's (mtime,size) cache key changes on every successive call.
+//
+// This must be deterministic across platforms. cpu.json payloads that differ
+// only in a single digit ({"daemon_gomaxprocs": 2} vs 5) have IDENTICAL byte
+// size, so mtime is the ONLY discriminator in the store's (mtime,size) key. A
+// naive `time.Now().Add(2s)` applied to every write is not enough: on Windows
+// the wall clock is coarse (~15ms) and two rapid writes can observe the same
+// time.Now(), so the constant offset cancels out, both writes land on the same
+// mtime, and the store serves the STALE cached parse (the #5137 windows flake).
+//
+// Anchoring the new mtime to the PREVIOUS file's mtime + 2s (falling back to now
+// for the first write) makes each successive write strictly newer regardless of
+// clock resolution, so the cache key always changes.
 func writeCPUJSON(t *testing.T, dir, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, caps.FileName)
+	next := time.Now()
+	if fi, err := os.Stat(path); err == nil {
+		if bumped := fi.ModTime().Add(2 * time.Second); bumped.After(next) {
+			next = bumped
+		}
+	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write cpu.json: %v", err)
 	}
-	future := time.Now().Add(2 * time.Second)
-	_ = os.Chtimes(path, future, future)
+	if err := os.Chtimes(path, next, next); err != nil {
+		t.Fatalf("chtimes cpu.json: %v", err)
+	}
 	return path
 }
 
