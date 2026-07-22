@@ -147,12 +147,16 @@ func (s *Server) handleV2GroupRefs(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Check for a graph.fb in this ref slot. #5891: resolve active gen.
-			fbPath := graph.CurrentGraphPath(filepath.Join(refsDir, refSafe))
+			// Check for an active graph in this ref slot. #5891: resolve active
+			// gen. #5915 J2 slice-2: graph.CurrentGraphMtime is segment-set aware
+			// (manifest.json mtime), unlike os.Stat(graph.CurrentGraphPath(...))
+			// which only ever resolved a flat .fb path and reported a segment-set
+			// slot (graph.<gen>/ dir + manifest.json, no flat .fb) as absent.
+			refDir := filepath.Join(refsDir, refSafe)
 			var indexedAt *time.Time
 			var entityCount int
-			if fi, ferr := os.Stat(fbPath); ferr == nil {
-				t := fi.ModTime()
+			if mt, ok := graph.CurrentGraphMtime(refDir); ok {
+				t := mt
 				indexedAt = &t
 				// Try to read entity count from graph-stats.json sidecar.
 				statsPath := filepath.Join(refsDir, refSafe, "graph-stats.json")
@@ -165,7 +169,7 @@ func (s *Server) handleV2GroupRefs(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			} else {
-				// No graph.fb — slot may exist but graph was never written.
+				// No active graph — slot may exist but graph was never written.
 				continue
 			}
 

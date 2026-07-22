@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -241,5 +243,97 @@ func TestHandleV2GroupRefs_EmptyRefsWhenNeverIndexed(t *testing.T) {
 	}
 	if len(body.Data.Repos[0].Refs) != 0 {
 		t.Errorf("want empty refs for never-indexed repo, got %d entries", len(body.Data.Repos[0].Refs))
+	}
+}
+
+// TestHandleV2GroupRefs_SegmentSetRef is the RED test for #5915 J2 slice-2: a
+// ref indexed as a SEGMENT-SET (graph.<gen>/ dir + manifest.json, no flat
+// graph.fb) must appear in the GET /api/v2/groups/:group/refs response with
+// a non-nil indexed_at. The pre-fix os.Stat(graph.CurrentGraphPath(refDir))
+// gate only ever resolves a flat .fb path, so the slot was silently dropped
+// ("graph was never written").
+func TestHandleV2GroupRefs_SegmentSetRef(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GRAFEL_HOME", home)
+	storeRoot := filepath.Join(home, "store")
+	t.Setenv("GRAFEL_DAEMON_ROOT", storeRoot)
+
+	groupName := "seggroup"
+	repoPath := filepath.Join(home, "segrepo")
+	_ = os.MkdirAll(repoPath, 0o755)
+
+	cfg := &registry.GroupConfig{Name: groupName, Repos: []registry.Repo{{Slug: "svc", Path: repoPath}}}
+	cfgDir := filepath.Join(home, "groups")
+	os.MkdirAll(cfgDir, 0o755)
+	cfgPath := filepath.Join(cfgDir, groupName+".fleet.json")
+	raw, _ := json.Marshal(cfg)
+	os.WriteFile(cfgPath, raw, 0o644)
+
+	regRaw, _ := json.Marshal(map[string]any{
+		"version": 1,
+		"groups":  []map[string]any{{"name": groupName, "config_path": cfgPath}},
+	})
+	os.WriteFile(filepath.Join(home, "registry.json"), regRaw, 0o644)
+
+	// Build a segment-set ref dir directly under the store: refs/<refSafe>/.
+	sentinel := daemon.StateDirForRepoRef(repoPath, "")
+	refsDir := filepath.Dir(sentinel)
+	segRefDir := filepath.Join(refsDir, "wip-seg")
+	if err := os.MkdirAll(segRefDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mtime := time.Now().Add(-2 * time.Hour).UTC().Truncate(time.Second)
+	writeDashboardSegmentSetFixture(t, segRefDir, 4, mtime)
+
+	st := newFakeStore()
+	srv, err := NewServer(DefaultConfig(), st)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	quiesceGraphCache(t, srv)
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/api/v2/groups/" + groupName + "/refs")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Repos []struct {
+				Slug string `json:"slug"`
+				Refs []struct {
+					Ref       string  `json:"ref"`
+					IndexedAt *string `json:"indexed_at"`
+				} `json:"refs"`
+			} `json:"repos"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.OK {
+		t.Fatal("want ok=true")
+	}
+	if len(body.Data.Repos) != 1 {
+		t.Fatalf("want 1 repo, got %d", len(body.Data.Repos))
+	}
+	var found bool
+	for _, ref := range body.Data.Repos[0].Refs {
+		if ref.Ref == "wip-seg" {
+			found = true
+			if ref.IndexedAt == nil {
+				t.Error("segment-set ref 'wip-seg' has nil indexed_at, want the manifest.json mtime")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("segment-set ref 'wip-seg' missing from refs=%v (dropped as 'graph never written')", body.Data.Repos[0].Refs)
 	}
 }
