@@ -242,8 +242,17 @@ type PersistedStats struct {
 // Returns ok=false when graph.fb is absent or cannot be opened (in which case
 // callers should treat the repo as genuinely never-indexed via graph.fb).
 func PersistedStatsFromDir(dir string) (PersistedStats, bool) {
-	fbPath := CurrentGraphPath(dir)
-	r, err := fbreader.Open(fbPath)
+	// #5915 J1 FIX-1: route through the segment-aware descriptor rather than the
+	// flat CurrentGraphPath. ReaderForDir opens fbreader.Open(desc.Path) for a
+	// single-file/legacy graph (byte-identical to the old path — desc.Path ==
+	// CurrentGraphPath(dir) there, and an absent flat path returns the same open
+	// error → ok=false) and a *MultiReader over the gen dir for a segment-set,
+	// whose EntityCount/RelationshipCount already sum across every segment. The
+	// old code opened only the (absent) flat .fb for a segment-set → ok=false →
+	// the "0 entities / never indexed" cascade (statuswriter's status plane, the
+	// incremental.go:331 force-reindex loop, dashboard store, status_stats,
+	// daemon.go:747, index_commit).
+	r, err := ReaderForDir(dir)
 	if err != nil {
 		return PersistedStats{}, false
 	}
