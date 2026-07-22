@@ -74,7 +74,10 @@ func (s *Server) handleTestCoverage(ctx context.Context, req mcpapi.CallToolRequ
 			continue
 		}
 
-		report := graph.ComputeCoverage(rd.Doc)
+		// #5870 PR7a: feed a transient Document built from the Reader-served
+		// materialize seam instead of the raw rd.Doc (ComputeCoverage reads only
+		// Entities/Relationships). Byte-identical; survives a future slice-drop.
+		report := graph.ComputeCoverage(materializedDoc(rd))
 		totalProd += report.TotalProduction
 		coveredProd += report.CoveredProduction
 		totalTests += report.TotalTests
@@ -209,7 +212,8 @@ func (s *Server) handleTestCoverageEntity(lg *LoadedGroup, entityID string) (*mc
 			continue
 		}
 
-		result, found := graph.ComputeEntityCoverage(rd.Doc, entityID)
+		// #5870 PR7a: transient Document from the Reader-served materialize seam.
+		result, found := graph.ComputeEntityCoverage(materializedDoc(rd), entityID)
 		if !found {
 			continue
 		}

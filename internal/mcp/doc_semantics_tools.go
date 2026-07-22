@@ -98,9 +98,10 @@ func (s *Server) handleApplyDocSemantics(ctx context.Context, req mcpapi.CallToo
 		}
 
 		// Current code entities for target-existence validation.
+		// #5870 PR7a: Reader-served materialize seam instead of raw r.Doc.Entities.
 		var codeEntities []graph.Entity
 		if r.Doc != nil {
-			codeEntities = r.Doc.Entities
+			codeEntities = materializeAllEntities(r)
 		}
 
 		var sidecar docSemanticsSidecar

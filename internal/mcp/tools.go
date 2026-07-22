@@ -2667,7 +2667,9 @@ func (s *Server) handleOrient(ctx context.Context, req mcpapi.CallToolRequest) (
 		if r.Doc == nil {
 			continue
 		}
-		res := graph.AnalyzeOrientation(r.Doc.Entities, r.Doc.Relationships, opts)
+		// #5870 PR7a: Reader-served materialize seam (transient copy) instead of
+		// the raw lr.Doc.* slices — heavy/rare pass, transient copy acceptable.
+		res := graph.AnalyzeOrientation(materializeAllEntities(r), materializeAllRelationships(r), opts)
 		analyzed = append(analyzed, &res)
 		names = append(names, r.Repo)
 		for _, n := range []int{len(res.KeyEntities), len(res.CrossCutEdges), len(res.Questions)} {

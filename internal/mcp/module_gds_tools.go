@@ -40,7 +40,9 @@ func computeModuleAnalysis(repos []*LoadedRepo) []moduleAnalysisResult {
 		if r.Doc == nil {
 			continue
 		}
-		res := graph.RunModuleAlgorithms(r.Doc.Entities, r.Doc.Relationships)
+		// #5870 PR7a: Reader-served materialize seam (transient copy) instead of
+		// the raw lr.Doc.* slices — heavy/rare pass, transient copy acceptable.
+		res := graph.RunModuleAlgorithms(materializeAllEntities(r), materializeAllRelationships(r))
 		out = append(out, moduleAnalysisResult{Repo: r.Repo, Res: res})
 	}
 	return out

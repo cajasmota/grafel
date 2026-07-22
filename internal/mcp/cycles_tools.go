@@ -55,10 +55,16 @@ func (s *Server) handleQualityCycles(_ context.Context, req mcpapi.CallToolReque
 			continue
 		}
 
-		// Build PageRank map from entity attributes (Pass 4 output).
-		pr := buildPageRankMap(r.Doc)
+		// #5870 PR7a: source the whole entity/relationship set via the
+		// Reader-served materialize seam (transient copy) rather than the raw
+		// lr.Doc.* slices, so this heavy/rare pass survives a future slice-drop.
+		ents := materializeAllEntities(r)
+		rels := materializeAllRelationships(r)
 
-		cycles := graph.FindImportCycles(r.Doc.Entities, r.Doc.Relationships, pr)
+		// Build PageRank map from entity attributes (Pass 4 output).
+		pr := buildPageRankMap(ents)
+
+		cycles := graph.FindImportCycles(ents, rels, pr)
 		if len(cycles) == 0 {
 			continue
 		}
@@ -202,12 +208,14 @@ func buildServiceCycles(lg *LoadedGroup, repoFilter []string) []graph.ServiceCyc
 	return graph.FindServiceCycles(links)
 }
 
-// buildPageRankMap extracts per-entity PageRank scores from a loaded Document.
+// buildPageRankMap extracts per-entity PageRank scores from an entity slice.
 // Entities without a PageRank attribute (pre-Pass-4 graphs) return an empty map.
-func buildPageRankMap(doc *graph.Document) map[string]float64 {
-	pr := make(map[string]float64, len(doc.Entities))
-	for i := range doc.Entities {
-		e := &doc.Entities[i]
+// #5870 PR7a: takes []graph.Entity (fed the Reader-served materialize slice)
+// rather than *graph.Document, so it no longer reads the raw lr.Doc.Entities.
+func buildPageRankMap(entities []graph.Entity) map[string]float64 {
+	pr := make(map[string]float64, len(entities))
+	for i := range entities {
+		e := &entities[i]
 		if e.PageRank != nil {
 			pr[e.ID] = *e.PageRank
 		}

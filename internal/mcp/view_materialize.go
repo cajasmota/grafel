@@ -65,6 +65,19 @@ func materializeAllRelationships(lr *LoadedRepo) []graph.Relationship {
 	return out
 }
 
+// materializedDoc builds a TRANSIENT *graph.Document whose Entities and
+// Relationships are the Reader-served materialize copies of lr's full set. It is
+// the adapter for the analytical graph.* functions that take a *graph.Document
+// but read ONLY doc.Entities/doc.Relationships (ComputeCoverage /
+// ComputeEntityCoverage). Byte-identical to passing lr.Doc pre-flip; the future
+// slice-drop is invisible because the slices come from the Reader flag-ON.
+func materializedDoc(lr *LoadedRepo) *graph.Document {
+	return &graph.Document{
+		Entities:      materializeAllEntities(lr),
+		Relationships: materializeAllRelationships(lr),
+	}
+}
+
 // relationshipAt returns a *graph.Relationship for vector index idx, or nil when
 // idx is synthetic (<0) or out of range. It is the random-access companion to
 // forEachRelationship for the adjacency-relIdx property lookups.
