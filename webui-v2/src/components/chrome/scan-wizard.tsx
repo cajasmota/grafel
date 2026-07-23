@@ -54,7 +54,12 @@ import {
 } from "@/hooks/use-wizard";
 import { useIndexProgress } from "@/hooks/use-index-progress";
 import { useIndexStatus } from "@/hooks/use-index-status";
-import { aggregateProgress, nestRows, overallPhaseLabel } from "@/lib/index-progress-fold";
+import {
+  aggregateProgress,
+  nestRows,
+  overallPhaseLabel,
+  streamTerminal,
+} from "@/lib/index-progress-fold";
 import {
   engineStats,
   groupEnhancing,
@@ -388,7 +393,11 @@ export function ScanWizard(props: ScanWizardProps) {
   // #5327 broker fix), so we also treat "every repo row done/error" as terminal.
   // Either source flipping is enough to reach "Done".
   const jobTerminal = jobStatus === "done" || jobStatus === "failed";
-  const feedTerminal = indexProgress.terminal;
+  const feedTerminal = streamTerminal(
+    indexProgress.rows,
+    expectedRepos,
+    indexProgress.groupPhase,
+  );
   const feedFailed = indexProgress.rows.some((r) => r.phase === "error");
   const terminal = jobTerminal || feedTerminal;
   // Effective display status drives the icon, label and bar. The job poller is

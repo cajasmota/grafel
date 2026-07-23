@@ -13,6 +13,7 @@ import {
   seedRows,
   sortRows,
   statusRank,
+  streamTerminal,
 } from "./index-progress-fold";
 import type { ProgressEvent, ProgressRow, RepoNesting } from "@/data/types";
 
@@ -190,6 +191,30 @@ describe("rowsTerminal — expected-repo-count gate (#5326 multi-repo regression
       ev({ repo_slug: "shared", phase: "done", ts: 5 }),
     ]);
     expect(rowsTerminal(rows, 2)).toBe(true);
+  });
+});
+
+describe("streamTerminal — group-scoped terminal fallback", () => {
+  it("treats group done as terminal even when a repo row is stuck mid-phase", () => {
+    expect(
+      streamTerminal(
+        [row({ repoSlug: "backend", phase: "extracting_ast", ts: 1 })],
+        2,
+        "done",
+      ),
+    ).toBe(true);
+  });
+
+  it("falls back to per-repo terminal when no group terminal is available", () => {
+    expect(
+      streamTerminal(
+        [
+          row({ repoSlug: "backend", phase: "done", ts: 1 }),
+          row({ repoSlug: "frontend", phase: "done", ts: 2 }),
+        ],
+        2,
+      ),
+    ).toBe(true);
   });
 });
 

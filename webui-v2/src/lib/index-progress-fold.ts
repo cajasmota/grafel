@@ -205,6 +205,20 @@ export function rowsTerminal(rows: ProgressRow[], expectedRepos?: number): boole
   return rows.every((r) => r.phase === "done" || r.phase === "error");
 }
 
+/**
+ * Terminal state for the whole progress stream. The daemon's group-scoped
+ * terminal event is authoritative even when a per-repo terminal event was
+ * dropped and left one row frozen in an intermediate phase.
+ */
+export function streamTerminal(
+  rows: ProgressRow[],
+  expectedRepos?: number,
+  groupPhaseValue?: ProgressRow["phase"],
+): boolean {
+  if (groupPhaseValue === "done" || groupPhaseValue === "error") return true;
+  return rowsTerminal(rows, expectedRepos);
+}
+
 /* ------------------------------------------------------------------
    Aggregate progress + phase label (#5332).
 
