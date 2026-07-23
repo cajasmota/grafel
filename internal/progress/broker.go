@@ -74,6 +74,27 @@ func (b *Broker) LastTerminal(group string) (Event, bool) {
 	return e, ok
 }
 
+// ClearTerminal removes any retained terminal (done/error) event for group.
+//
+// Invalidation is RUN-SCOPED: the caller (daemon.Service.Rebuild) calls this
+// at the very start of every new rebuild for group — the single choke point
+// every rebuild trigger passes through, in both split and monolith mode —
+// so a terminal retained here can only ever be either (a) nothing, because no
+// run has completed since the last clear, or (b) the group's own most
+// recently completed run, never a PRIOR run's stale corpse (#5937). This is
+// deliberately NOT a wall-clock/TTL-based expiry: a subscriber's connect time
+// has no principled relationship to "is this terminal from the run I am
+// watching" — any retained terminal is, by construction, always published
+// before a given subscriber's subscribedAt, so gating replay on that
+// comparison would make the legitimate late-reconnect-after-completion case
+// (the whole point of retaining it, #5326) permanently unreachable. Safe to
+// call even when no terminal is retained for group.
+func (b *Broker) ClearTerminal(group string) {
+	b.mu.Lock()
+	delete(b.terminal, group)
+	b.mu.Unlock()
+}
+
 // wildcardGroup is the internal key used to register subscribers that want
 // events from every group. It must not be a valid group slug (group slugs are
 // non-empty URL path segments).

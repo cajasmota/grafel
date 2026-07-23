@@ -120,15 +120,35 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, group string) 
 	// In both cases we then emit `close`, so the UI always reaches a terminal
 	// render rather than silently freezing.
 	//
-	// #5937 — freshness gate. Broker.terminal is never cleared, and the
-	// serve-start sidecar tailer republishes an entire pre-existing sidecar
-	// (including a PRIOR run's terminal line) into the broker before any wizard
-	// connects. Without a staleness check, (1) above replays that previous run's
-	// corpse and immediately closes the stream, so the wizard never sees any
-	// live event for the run it is actually watching. Only treat the retained
-	// terminal as replayable when it is NOT older than this subscription — a
-	// terminal that fires during the subscription is still guaranteed via the
-	// live path below and the heartbeat re-assert.
+	// #5937 — this replay is only safe because retained-terminal invalidation
+	// is now RUN-SCOPED, not subscriber-scoped. Broker.terminal used to be
+	// cleared NEVER, and the serve-start sidecar tailer republished an entire
+	// pre-existing sidecar (including a PRIOR run's terminal line) into the
+	// broker before any wizard connected — so (1) above would replay that
+	// previous run's corpse and immediately close the stream, and the wizard
+	// would never see a live event for the run it was actually watching.
+	//
+	// A wall-clock check here (`te.TS < subscribedAt`) cannot fix that: by
+	// construction, ANY already-retained terminal was published before this
+	// subscription's subscribedAt, INCLUDING the legitimate case branch (1)
+	// exists for — a client that connects/reconnects after the CURRENT run's
+	// rebuild already finished. Gating on that comparison does not narrow the
+	// bug, it deletes the guarantee outright (verified: publish a terminal at
+	// real `now`, subscribe immediately — the old gate withheld it forever,
+	// heartbeats only, since re-checking the same comparison on every tick
+	// never turns true).
+	//
+	// The actual fix is upstream: daemon.Service.Rebuild calls
+	// Broker.ClearTerminal(group) at the START of every new run (the single
+	// choke point every rebuild trigger passes through, in both split and
+	// monolith mode — see that method's comment). That means whatever this
+	// handler finds retained here can only be EITHER this group's own most
+	// recent completed run (replay it — this is the #5326 guarantee) OR
+	// nothing at all (a run is in flight or has never completed since the
+	// last clear) — never a stale cross-run corpse. So once retained, replay
+	// it unconditionally; a terminal that fires while this handler is already
+	// attached is still delivered via the live path below and the heartbeat
+	// re-assert.
 	var terminalSent bool
 	emitTerminalIfReady := func() (done bool) {
 		if group == sseWildcardGroup || terminalSent {
@@ -136,12 +156,6 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, group string) 
 		}
 		te, ok := s.progressBroker.LastTerminal(group)
 		if !ok {
-			return false
-		}
-		if te.TS < subscribedAt {
-			// Stale terminal from a run that already ended before this
-			// subscription started (or before serve even started). Do not
-			// replay, and do not close — stay attached for live events.
 			return false
 		}
 		if data, err := json.Marshal(te); err == nil {

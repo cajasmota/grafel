@@ -63,7 +63,12 @@ type Config struct {
 	// NDJSON sidecars and republishes each event into THIS broker. nil disables
 	// the tailer (monolith carries everything in-process; tests without a
 	// dashboard leave it unset). ADR-0024 / epic #5729.
-	ProgressBroker progress.Publisher
+	//
+	// Also wired into Service (SetProgressBroker, below) so Rebuild can call
+	// ClearTerminal at the start of every new run (#5937) — the concrete
+	// *progress.Broker type (rather than the narrower progress.Publisher
+	// interface used pre-#5937) is required for that method.
+	ProgressBroker *progress.Broker
 
 	// Phase B optional wiring. When all four are non-nil the daemon
 	// starts the fsnotify watcher + scheduler and registers every
@@ -619,6 +624,10 @@ func run(ctx context.Context, cfg Config, plane daemonPlaneMode) error {
 	logger.Info("startup: service-init begin")
 	stopReq := make(chan struct{})
 	svc := newService(cfg.Index, cfg.Rebuild, cfg.QualityAudit, cfg.Layout.SocketPath, stopReq, logger, cfg.MaxConcurrentGroups)
+	// #5937 — wire the broker so Rebuild can invalidate a group's retained
+	// terminal at the start of every new run. Safe when nil (test wiring with
+	// no dashboard): Rebuild's ClearTerminal call is itself nil-guarded.
+	svc.SetProgressBroker(cfg.ProgressBroker)
 	svc.mcpListTools = cfg.MCPListTools
 	svc.mcpCallTool = cfg.MCPCallTool
 	if cfg.DashboardPort > 0 {

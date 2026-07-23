@@ -434,17 +434,17 @@ func TestSSE_TerminalReplayedOnConnect(t *testing.T) {
 	ts := newTestServerWithBroker(t, broker)
 	defer ts.Close()
 
-	// Rebuild already completed before the client connects. The TS is stamped
-	// comfortably in the future relative to "now" so it is guaranteed to be >=
-	// whatever subscribedAt the handler captures a moment later — this is the
-	// #5937 freshness gate's boundary: a terminal that is NOT older than the
-	// subscription must still be replayed+closed (see
-	// TestSSE_StaleTerminalNotReplayed for the opposite, now-corrected case).
+	// Rebuild already completed before the client connects — TS is real "now",
+	// exactly the scenario the #5326 guarantee exists for (and the case the
+	// #5937 fix must not break: see this file's package doc / handlers_progress.go
+	// for why invalidation is run-scoped via Broker.ClearTerminal, called from
+	// daemon.Service.Rebuild at the start of every new run, rather than gated
+	// on a wall-clock comparison here).
 	broker.Publish(progress.Event{
 		GroupSlug:     "late-group",
 		Phase:         progress.PhaseDone,
 		EntitiesSoFar: 123,
-		TS:            time.Now().Add(1 * time.Hour).UnixMilli(),
+		TS:            time.Now().UnixMilli(),
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -467,27 +467,35 @@ func TestSSE_TerminalReplayedOnConnect(t *testing.T) {
 	}
 }
 
-// TestSSE_StaleTerminalNotReplayed verifies the #5937 fix: when the broker's
-// retained terminal for a group predates the subscription (e.g. it belongs to
-// a previous run whose sidecar was replayed by the serve-start tailer), the
-// handler must NOT replay it and must NOT close the stream — the wizard has to
-// stay attached to actually see the NEW run's live events.
-func TestSSE_StaleTerminalNotReplayed(t *testing.T) {
+// TestSSE_ClearedTerminalNotReplayed verifies the #5937 fix's ACTUAL mechanism:
+// a terminal retained from a PREVIOUS run must not be replayed to a subscriber
+// watching a NEW run. Under the corrected, run-scoped design this is expressed
+// as "invalidate on run start (ClearTerminal — what daemon.Service.Rebuild
+// calls at the top of every Rebuild), then subscribe" — no timestamp trickery,
+// because the handler no longer compares against subscribedAt at all (see
+// handlers_progress.go's emitTerminalIfReady comment for why a wall-clock
+// comparison there cannot distinguish "stale corpse" from "legitimate late
+// reconnect" and would break the #5326 guarantee outright).
+func TestSSE_ClearedTerminalNotReplayed(t *testing.T) {
 	broker := progress.NewBroker()
 	ts := newTestServerWithBroker(t, broker)
 	defer ts.Close()
 
-	// A stale terminal from a run that finished well before this subscription.
+	// A previous run's terminal, retained by the broker...
 	broker.Publish(progress.Event{
-		GroupSlug:     "stale-group",
+		GroupSlug:     "cleared-group",
 		Phase:         progress.PhaseDone,
 		EntitiesSoFar: 42,
-		TS:            time.Now().Add(-1 * time.Hour).UnixMilli(),
+		TS:            time.Now().UnixMilli(),
 	})
+	// ...then a NEW run starts. This is what daemon.Service.Rebuild does at the
+	// top of every Rebuild call (see internal/daemon/rebuild_terminal_invalidation_test.go
+	// for the RPC-level assertion that Rebuild actually calls this).
+	broker.ClearTerminal("cleared-group")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/index-progress/stale-group", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/index-progress/cleared-group", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
@@ -498,55 +506,70 @@ func TestSSE_StaleTerminalNotReplayed(t *testing.T) {
 	// Consume the connected event.
 	readSSELines(t, reader, 1, 2*time.Second)
 
-	// Nothing else should arrive for a bounded window: no replayed terminal, no
-	// close. (A heartbeat is fine/expected but must not carry "done" or "close".)
-	extra := readSSERaw(t, reader, 1, 1500*time.Millisecond)
-	joined := strings.Join(extra, "\n")
-	if strings.Contains(joined, progress.PhaseDone) {
-		t.Errorf("stale terminal was replayed even though its TS predates subscribedAt: %s", joined)
-	}
-	if strings.Contains(joined, "event: close") {
-		t.Errorf("stream was closed on a stale terminal: %s", joined)
-	}
+	// Publish a LIVE event on the same group (the new run's own progress)
+	// shortly after subscribing.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		broker.Publish(progress.Event{
+			GroupSlug: "cleared-group",
+			Phase:     "extracting_ast",
+			Module:    "mod-x",
+			TS:        time.Now().UnixMilli(),
+		})
+	}()
 
-	// Now publish a LIVE event on the same group to prove the stream is still
-	// attached and functioning (this is the whole point of the fix).
-	broker.Publish(progress.Event{
-		GroupSlug: "stale-group",
-		Phase:     "extracting_ast",
-		Module:    "mod-x",
-		TS:        time.Now().UnixMilli(),
-	})
-	live := readSSEUntil(t, reader, 3*time.Second, func(lines []string) bool {
+	// Read continuously (a SINGLE call, avoiding the leaked-goroutine race a
+	// timed-out readSSERaw followed by another read call on the same
+	// bufio.Reader would create) until the live event appears. This both
+	// proves the stream stayed open long enough to deliver it (the whole
+	// point of the fix — the wizard keeps receiving events for the run it is
+	// watching) AND, by inspecting everything collected up to that point,
+	// proves no replayed terminal / close preceded it.
+	lines := readSSEUntil(t, reader, 5*time.Second, func(lines []string) bool {
 		return strings.Contains(strings.Join(lines, "\n"), "extracting_ast")
 	})
-	if !strings.Contains(strings.Join(live, "\n"), "extracting_ast") {
-		t.Fatalf("live event never delivered after stale-terminal was correctly withheld: %v", live)
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "extracting_ast") {
+		t.Fatalf("live event for the new run never delivered after the stale terminal was correctly withheld: %v", lines)
+	}
+	// NOTE: matching on the literal `"phase":"done"` JSON field rather than the
+	// bare progress.PhaseDone ("done") constant — the latter is ALSO a
+	// substring of the unrelated "files_done" field present on the live
+	// extracting_ast event itself, which would make this a false positive.
+	if strings.Contains(joined, `"phase":"done"`) {
+		t.Errorf("cleared (previous-run) terminal was replayed to the new run's subscriber before its live event: %s", joined)
+	}
+	if strings.Contains(joined, "event: close") {
+		t.Errorf("stream was closed (on a cleared previous-run terminal) before the new run's live event: %s", joined)
 	}
 }
 
-// TestSSE_FreshTerminalStillReplayedOnConnect is the companion #5326-regression
-// guard: a terminal whose TS is AT/AFTER subscribedAt (i.e. genuinely belongs
-// to the run the client is watching, or arrived in the tiny race window right
-// at connect) must still be replayed and the stream must still close.
-func TestSSE_FreshTerminalStillReplayedOnConnect(t *testing.T) {
+// TestSSE_TerminalAtRealNow_ReplayedAndClosed is the realistic-boundary
+// regression guard the #5937 review asked for: a terminal published at real
+// wall-clock `now`, immediately followed by a subscribe (the actual timing
+// every genuine late-reconnect-after-completion case has — there is no
+// artificial "comfortably fresh" timestamp here), must still be replayed and
+// the stream must still close. This is the #5326 guarantee at the timing that
+// actually occurs in production, proving the corrected design (replay-
+// whatever's-retained, invalidated only by ClearTerminal at run start) holds
+// it — where the old subscribedAt-comparison gate provably did not (any
+// retained terminal necessarily predates the subsequent subscribedAt stamp,
+// so that gate withheld replay unconditionally).
+func TestSSE_TerminalAtRealNow_ReplayedAndClosed(t *testing.T) {
 	broker := progress.NewBroker()
 	ts := newTestServerWithBroker(t, broker)
 	defer ts.Close()
 
-	// Publish the terminal event slightly in the future relative to "now" so it
-	// is guaranteed to be >= whatever subscribedAt the handler stamps a moment
-	// later — simulating a terminal that fired during/at the subscription.
 	broker.Publish(progress.Event{
-		GroupSlug:     "fresh-group",
+		GroupSlug:     "realtime-group",
 		Phase:         progress.PhaseDone,
-		EntitiesSoFar: 99,
-		TS:            time.Now().Add(1 * time.Hour).UnixMilli(),
+		EntitiesSoFar: 7,
+		TS:            time.Now().UnixMilli(),
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/index-progress/fresh-group", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/index-progress/realtime-group", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
@@ -557,10 +580,10 @@ func TestSSE_FreshTerminalStillReplayedOnConnect(t *testing.T) {
 	lines := readSSERaw(t, reader, 6, 3*time.Second)
 	joined := strings.Join(lines, "\n")
 	if !strings.Contains(joined, progress.PhaseDone) {
-		t.Errorf("expected fresh terminal replayed on connect, got:\n%s", joined)
+		t.Errorf("expected terminal replayed on connect at the realistic now/immediate-subscribe boundary, got:\n%s", joined)
 	}
 	if !strings.Contains(joined, "event: close") {
-		t.Errorf("expected close event after fresh terminal replay, got:\n%s", joined)
+		t.Errorf("expected close event after terminal replay, got:\n%s", joined)
 	}
 }
 

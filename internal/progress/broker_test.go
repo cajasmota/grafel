@@ -351,3 +351,35 @@ func TestBroker_TerminalDeliveredDespiteFullBuffer(t *testing.T) {
 		t.Fatalf("terminal event lost despite retention: ok=%v got=%+v", ok, got)
 	}
 }
+
+// TestBroker_ClearTerminal verifies the #5937 run-scoped invalidation
+// primitive: ClearTerminal removes a group's retained terminal so a later
+// LastTerminal lookup finds nothing, without disturbing other groups'
+// retained terminals or requiring a subscriber. Also asserts it is a safe
+// no-op when nothing is retained for the group.
+func TestBroker_ClearTerminal(t *testing.T) {
+	b := NewBroker()
+
+	// Safe no-op: nothing retained yet.
+	b.ClearTerminal("g")
+	if _, ok := b.LastTerminal("g"); ok {
+		t.Fatal("expected no terminal event after clearing an empty group")
+	}
+
+	b.Publish(makeEvent("g", "r", PhaseDone))
+	b.Publish(makeEvent("other", "r", PhaseDone))
+
+	if _, ok := b.LastTerminal("g"); !ok {
+		t.Fatal("setup: expected retained terminal for g before clearing")
+	}
+
+	b.ClearTerminal("g")
+
+	if _, ok := b.LastTerminal("g"); ok {
+		t.Error("terminal for g still retained after ClearTerminal")
+	}
+	// Other groups must be unaffected.
+	if _, ok := b.LastTerminal("other"); !ok {
+		t.Error("ClearTerminal(\"g\") incorrectly cleared a different group's retained terminal")
+	}
+}

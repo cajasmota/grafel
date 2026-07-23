@@ -23,6 +23,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/perf"
 	"github.com/cajasmota/grafel/internal/process"
+	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/statusfile"
 	"github.com/cajasmota/grafel/internal/version"
@@ -202,6 +203,14 @@ type Service struct {
 	progressMu sync.RWMutex
 	progress   map[string]*rebuildSession
 
+	// progressBroker is the serve-plane indexer progress bus (the SAME
+	// *progress.Broker the dashboard SSE subscribes to; see
+	// daemon.Config.ProgressBroker / SetProgressBroker). Rebuild uses it to
+	// invalidate a group's retained terminal event the instant a NEW rebuild
+	// is triggered (#5937) — see the ClearTerminal call in Rebuild. nil in
+	// test wiring that does not construct a dashboard/broker.
+	progressBroker *progress.Broker
+
 	// Phase D — MCP RPC surface (ADR-0017 #832).
 	// Both fields are injected from cmd/grafel to avoid the import
 	// cycle that would arise from importing internal/mcp here.
@@ -265,6 +274,16 @@ func newService(idx IndexFunc, rb RebuildFunc, qa QualityAuditFunc, socketPath s
 		logger:              logger,
 		maxConcurrentGroups: maxConcurrentGroups,
 	}
+}
+
+// SetProgressBroker wires the shared indexer progress broker into the
+// service so Rebuild can invalidate a group's retained terminal event at the
+// start of a new run (#5937). Mirrors dashboard.Server.SetProgressBroker.
+// Optional: leaving it unset (nil, the default) simply means Rebuild skips
+// the ClearTerminal call — used by tests that exercise the RPC surface
+// without a dashboard/broker.
+func (s *Service) SetProgressBroker(b *progress.Broker) {
+	s.progressBroker = b
 }
 
 // beginDrain marks the service as draining so newly-arriving MCP RPCs are
@@ -547,6 +566,25 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	}
 	if args == nil || args.Group == "" {
 		return errors.New("group is required")
+	}
+
+	// #5937 — run-scoped terminal invalidation. Service.Rebuild is the SINGLE
+	// choke point every rebuild trigger passes through in THIS process
+	// (whichever mode): in split mode it enqueues the KindRebuild request
+	// below and returns, in monolith/engine mode it calls s.rebuild(*args)
+	// directly further down — either way this is the earliest point at which
+	// serve becomes aware a NEW run for args.Group is starting. Clear the
+	// broker's retained terminal for this group HERE, before any new-run
+	// event can be published, so a client that connects/reconnects to the SSE
+	// stream mid-run never sees a PRIOR run's terminal replayed at it
+	// (handlers_progress.go's emitTerminalIfReady has no way to distinguish
+	// "stale corpse from an old run" from "legitimate late reconnect" by
+	// timestamp alone — see that file's comment). Once THIS run's own
+	// terminal is published (live, in monolith; or via the sidecar tailer, in
+	// split), it repopulates the map with a value that is unambiguously
+	// current until the NEXT Rebuild call clears it again.
+	if s.progressBroker != nil {
+		s.progressBroker.ClearTerminal(args.Group)
 	}
 
 	// ADR-0024 PR6 prerequisite (epic #5729): in split mode this RPC is
