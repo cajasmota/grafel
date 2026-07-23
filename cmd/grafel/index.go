@@ -4772,11 +4772,13 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	// "undeclared_used" edge for call crossings that lack a BUILD dep.
 	// Runs after all entity-ID rewrites and fold passes so IDs are stable.
 	{
-		mergedSlice := make([]types.EntityRecord, 0, len(merged))
-		for k := range merged {
-			mergedSlice = append(mergedSlice, merged[k])
-		}
-		bazelOverlay := resolve.RunBazelOverlay(mergedSlice, pass2Rels)
+		// #5955 — RunBazelOverlay is strictly read-only over its entity input
+		// (see internal/resolve/bazel_overlay.go: "The function never mutates the
+		// input slices"). It only builds string→string index maps and emits new
+		// RelationshipRecords, so we can hand it `merged` directly and skip the
+		// former full by-value copy of every EntityRecord (a second live copy of
+		// the whole entity set at the subprocess RSS peak).
+		bazelOverlay := resolve.RunBazelOverlay(merged, pass2Rels)
 		if len(bazelOverlay.AnnotatedRels) > 0 {
 			pass2Rels = append(pass2Rels, bazelOverlay.AnnotatedRels...)
 			fmt.Fprintf(os.Stderr,
@@ -4930,6 +4932,19 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 				Confidence: rel.Confidence, // Phase 1C (#2769).
 			}.WithProperties(rel.Properties))
 		}
+
+		// #5955 — drain the record now that it is fully converted. This is the
+		// LAST reader of merged: nothing below the assembly loop touches merged
+		// (the tail only reads pass2Rels/patternContainsRels/mongoAggStageJoinRels
+		// and the already-built entities/relationships slices). Zeroing the slot
+		// drops merged's reference to this record's embedded Relationships backing
+		// array (never copied into the Document — rels are re-materialised as
+		// graph.Relationship above), letting the GC reclaim it incrementally
+		// instead of holding every record's rel slice alive until buildDocument
+		// returns. The Properties/Tags/Metadata maps survive via the emitted
+		// graph.Entity (first-seen) or were already copied onto the survivor
+		// (dedup branch), so nil-ing the slot cannot lose output state.
+		merged[k] = types.EntityRecord{}
 	}
 
 	// Pass 2.5 standalone relationships: synthesise FromID/ToID from the
