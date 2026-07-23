@@ -278,14 +278,17 @@ func (r *Reaper) sweepWatchers() int {
 	if r.cfg.WatchRegistry == nil {
 		return 0
 	}
-	liveDaemonPID := r.cfg.LiveDaemonPID
-	if liveDaemonPID == nil {
-		liveDaemonPID = os.Getpid
-	}
+	// #5933: an unset LiveDaemonPID must fail CLOSED, not default to
+	// os.Getpid(). In split mode (ADR-0024) this sweep runs in the ENGINE
+	// process, which is never the daemon/serve process that stamps watcher
+	// entries — defaulting to os.Getpid() here made every live watcher look
+	// orphaned and killed it every cycle. Leaving LiveDaemonPID nil disables
+	// the orphan-kill branch entirely (watchreg.Sweep treats live==0 as "no
+	// ownership check"); dead-PID reaping is unaffected.
 	res, err := r.cfg.WatchRegistry.Sweep(watchreg.SweepDeps{
 		Alive:         pidAliveProbe,
 		Kill:          sigtermPID,
-		LiveDaemonPID: liveDaemonPID,
+		LiveDaemonPID: r.cfg.LiveDaemonPID,
 	})
 	if err != nil {
 		r.logger.Warn("reaper: watcher PID registry sweep failed (non-fatal)", "err", err)

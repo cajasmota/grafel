@@ -380,9 +380,16 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 				// matched (cleaned-absolute) against this set so unrelated
 				// processes are never touched.
 				ManagedRepo: makeManagedRepoPredicate(trackedRepos),
-				DeadRefs:    deadRefSweeper,
-				OrphanRoots: orphanRootSweeper,
-				Logger:      logger,
+				// #5933: this reaper runs inside the ENGINE process, not the
+				// daemon/serve process that stamps watcher entries'
+				// OwnerDaemonPID (internal/cli/watch.go's liveDaemonPID), so
+				// os.Getpid() here is never the right comparison. Resolve the
+				// daemon/serve pidfile instead so orphan detection compares
+				// against the right process.
+				LiveDaemonPID: func() int { return ReadPIDFile(cfg.Layout.PIDPath) },
+				DeadRefs:      deadRefSweeper,
+				OrphanRoots:   orphanRootSweeper,
+				Logger:        logger,
 			})
 			reaperStop := make(chan struct{})
 			reaper.Start(reaperStop)
