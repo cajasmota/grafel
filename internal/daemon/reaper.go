@@ -100,8 +100,15 @@ type ReaperConfig struct {
 	// touching real processes.
 	KillWatchProc func(pid int) error
 
-	// LiveDaemonPID returns the PID of the currently-live daemon, used to detect
-	// orphaned watchers. nil → os.Getpid (the running daemon owns the sweep).
+	// LiveDaemonPID returns the PID of the currently-live daemon/serve process,
+	// used to detect orphaned watchers (their OwnerDaemonPID is stamped from
+	// that same pidfile — see internal/cli/watch.go's liveDaemonPID). nil →
+	// the orphan-kill branch is skipped entirely (fail-closed): the reaper
+	// that owns this sweep does not necessarily run in the daemon/serve
+	// process (in split mode, ADR-0024, it runs in the ENGINE process), so
+	// os.Getpid() here is never a safe stand-in — comparing against it would
+	// misclassify every live watcher as orphaned and kill it (#5933). Dead-PID
+	// reaping is unaffected by this field either way.
 	LiveDaemonPID func() int
 
 	// DeadRefs, when non-nil, is the dead-ref / dead-worktree store sweep
@@ -285,10 +292,24 @@ func (r *Reaper) sweepWatchers() int {
 	// orphaned and killed it every cycle. Leaving LiveDaemonPID nil disables
 	// the orphan-kill branch entirely (watchreg.Sweep treats live==0 as "no
 	// ownership check"); dead-PID reaping is unaffected.
+	//
+	// Resolve (and pin) it once up front so a single sweep is internally
+	// consistent, and so a resolved-but-empty pidfile (live == 0 — the
+	// daemon/serve process is still starting, or its pidfile was just removed
+	// by shutdown) is visible to an operator instead of silently degrading
+	// the sweep with no signal (#5933).
+	liveDaemonPID := r.cfg.LiveDaemonPID
+	if liveDaemonPID != nil {
+		live := liveDaemonPID()
+		if live == 0 {
+			r.logger.Debug("reaper: LiveDaemonPID resolved to 0 this sweep — orphan-kill branch skipped (daemon/serve pidfile absent: startup race or shutdown truncation?)")
+		}
+		liveDaemonPID = func() int { return live }
+	}
 	res, err := r.cfg.WatchRegistry.Sweep(watchreg.SweepDeps{
 		Alive:         pidAliveProbe,
 		Kill:          sigtermPID,
-		LiveDaemonPID: r.cfg.LiveDaemonPID,
+		LiveDaemonPID: liveDaemonPID,
 	})
 	if err != nil {
 		r.logger.Warn("reaper: watcher PID registry sweep failed (non-fatal)", "err", err)
