@@ -28,6 +28,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/flows"
+	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -679,6 +680,22 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 		grp.Repos[r.Slug] = dr
 	}
 
+	// Group-scope algorithms are computed by the daemon after indexing and
+	// persisted as an overlay. A dashboard cold wake should restore that
+	// authoritative cross-repo result instead of scheduling redundant
+	// per-repo Pass-4 sweeps.
+	//
+	// The overlay currently represents HEAD. Explicit refs retain the
+	// algorithm attributes carried by their own graph and never consume the
+	// HEAD overlay accidentally.
+	if ref == "" {
+		if sourceMtimes, mtimesErr := groupalgo.CurrentSourceMtimes(groupName); mtimesErr == nil {
+			if path, pathErr := groupalgo.OverlayPath(groupName); pathErr == nil {
+				restoreGroupAlgorithmOverlay(grp, path, sourceMtimes)
+			}
+		}
+	}
+
 	// Load cross-repo links file.  The file can be either a bare array of
 	// CrossRepoLink objects or the wrapper format {"version":N,"links":[...]}.
 	// Both forms are accepted; the wrapper form is written by the link pass.
@@ -695,6 +712,86 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 	grp.Search = buildSearchIndex(grp)
 
 	return grp, nil
+}
+
+func restoreGroupAlgorithmOverlay(grp *DashGroup, path string, sourceMtimes map[string]int64) bool {
+	ov, ok := groupalgo.ReadOverlay(path, sourceMtimes)
+	if !ok {
+		return false
+	}
+	applyGroupAlgorithmOverlay(grp, ov)
+	grp.pendingAlgo = nil
+	return true
+}
+
+// applyGroupAlgorithmOverlay projects the persisted group-scope result back
+// into each dashboard repo while preserving group-global community IDs.
+func applyGroupAlgorithmOverlay(grp *DashGroup, ov *groupalgo.Overlay) {
+	if grp == nil || ov == nil {
+		return
+	}
+
+	communityByID := make(map[int]graph.CommunityResult, len(ov.Communities))
+	for _, community := range ov.Communities {
+		communityByID[community.ID] = community
+	}
+
+	for _, repo := range grp.Repos {
+		if repo == nil || repo.Doc == nil {
+			continue
+		}
+		repo.Doc.Communities = nil
+		members := map[int][]*graph.Entity{}
+		for i := range repo.Doc.Entities {
+			entity := &repo.Doc.Entities[i]
+			result, ok := ov.Results[entity.ID]
+			if !ok {
+				continue
+			}
+			cid, pageRank, centrality := result.CommunityID, result.PageRank, result.Centrality
+			entity.CommunityID = &cid
+			entity.PageRank = &pageRank
+			entity.Centrality = &centrality
+			entity.IsGodNode = result.IsGodNode
+			entity.IsArticulationPt = result.IsArticulationPoint
+			if cid >= 0 {
+				members[cid] = append(members[cid], entity)
+			}
+		}
+
+		communityIDs := make([]int, 0, len(members))
+		for cid := range members {
+			communityIDs = append(communityIDs, cid)
+		}
+		sort.Ints(communityIDs)
+		for _, cid := range communityIDs {
+			entities := members[cid]
+			sort.SliceStable(entities, func(i, j int) bool {
+				return entityPageRank(entities[i]) > entityPageRank(entities[j])
+			})
+			summary := communityByID[cid]
+			summary.ID = cid
+			summary.Size = len(entities)
+			topCount := 3
+			if len(entities) < topCount {
+				topCount = len(entities)
+			}
+			summary.TopEntities = make([]string, topCount)
+			for i := 0; i < topCount; i++ {
+				summary.TopEntities[i] = entities[i].ID
+			}
+			repo.Doc.Communities = append(repo.Doc.Communities, summary)
+		}
+		stats := ov.Stats
+		repo.Doc.AlgorithmStats = &stats
+	}
+}
+
+func entityPageRank(entity *graph.Entity) float64 {
+	if entity == nil || entity.PageRank == nil {
+		return 0
+	}
+	return *entity.PageRank
 }
 
 // normalizeLinkEndpoints rewrites the "<repo-slug>::<entity-id>" endpoints of
