@@ -125,6 +125,41 @@ func isGroupTerminal(e progress.Event) bool {
 		(e.Phase == progress.PhaseDone || e.Phase == progress.PhaseError)
 }
 
+// seedIfAlreadyTerminal peeks at st's sidecar from the start and, if it
+// already contains a group-scoped terminal (isGroupTerminal), advances st's
+// offset past that content and marks st.terminal — WITHOUT publishing any of
+// the events read. Returns true when it seeded (the caller should skip
+// further processing of this group for the current tick); false when the
+// sidecar is not yet terminal, in which case st is left untouched so the
+// caller falls through to the normal read-and-publish path (a run that was
+// already in progress when this tailer first saw the group is still live and
+// its current state should be surfaced immediately).
+//
+// Only called on first sight of a group (st freshly constructed, offset 0);
+// see #5937.
+func (t *sidecarTailer) seedIfAlreadyTerminal(st *groupTailState) bool {
+	events, newOffset, err := st.reader.ReadFrom(0)
+	if err != nil {
+		if t.logger != nil {
+			t.logger.Warn("progress tailer: read failed", "group", st.reader.Path(), "err", err)
+		}
+		return false
+	}
+	terminal := false
+	for _, e := range events {
+		if isGroupTerminal(e) {
+			terminal = true
+			break
+		}
+	}
+	if !terminal {
+		return false
+	}
+	st.offset = newOffset
+	st.terminal = true
+	return true
+}
+
 // shrank reports whether the on-disk sidecar is now smaller than the offset we
 // consumed to — the signal that a NEW run truncated it (NewSidecarWriter /
 // Reset) or it was compacted. Used to decide whether to RESUME a group we
@@ -152,6 +187,20 @@ func (t *sidecarTailer) tick() {
 			}
 			st = &groupTailState{reader: r}
 			t.states[slug] = st
+
+			// #5937 — first-sight terminal seeding. This is the FIRST time this
+			// tailer instance has looked at slug (e.g. serve just started). If
+			// the sidecar's tail is already a group-scoped terminal, those
+			// events belong to a run that ended before serve (and this tailer)
+			// existed — republishing them would poison the broker's retained
+			// terminal (internal/progress.Broker.terminal) and close every SSE
+			// subscriber before any live event for the CURRENT run arrives
+			// (#5937). Seed the cursor/terminal flag WITHOUT publishing; normal
+			// live tailing (including the offset-reset/shrink-resume path
+			// below) still applies to everything that happens afterward.
+			if t.seedIfAlreadyTerminal(st) {
+				continue
+			}
 		}
 
 		// Once a group reached its group-scoped terminal we stop republishing —

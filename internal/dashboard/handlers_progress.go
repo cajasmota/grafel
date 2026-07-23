@@ -119,6 +119,16 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, group string) 
 	//      it if we have not already (covers the in-flight drop-on-full case).
 	// In both cases we then emit `close`, so the UI always reaches a terminal
 	// render rather than silently freezing.
+	//
+	// #5937 — freshness gate. Broker.terminal is never cleared, and the
+	// serve-start sidecar tailer republishes an entire pre-existing sidecar
+	// (including a PRIOR run's terminal line) into the broker before any wizard
+	// connects. Without a staleness check, (1) above replays that previous run's
+	// corpse and immediately closes the stream, so the wizard never sees any
+	// live event for the run it is actually watching. Only treat the retained
+	// terminal as replayable when it is NOT older than this subscription — a
+	// terminal that fires during the subscription is still guaranteed via the
+	// live path below and the heartbeat re-assert.
 	var terminalSent bool
 	emitTerminalIfReady := func() (done bool) {
 		if group == sseWildcardGroup || terminalSent {
@@ -126,6 +136,12 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, group string) 
 		}
 		te, ok := s.progressBroker.LastTerminal(group)
 		if !ok {
+			return false
+		}
+		if te.TS < subscribedAt {
+			// Stale terminal from a run that already ended before this
+			// subscription started (or before serve even started). Do not
+			// replay, and do not close — stay attached for live events.
 			return false
 		}
 		if data, err := json.Marshal(te); err == nil {

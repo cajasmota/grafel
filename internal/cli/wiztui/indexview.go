@@ -465,7 +465,7 @@ func (v indexView) view() string {
 	}
 	b.WriteString("\n\n")
 
-	if len(rows) == 0 && !v.done() {
+	if len(rows) == 0 && !v.done() && !v.queryable {
 		b.WriteString(rowCountStyle.Render("waiting for the indexer to report" + g.Ellipsis))
 		return b.String()
 	}

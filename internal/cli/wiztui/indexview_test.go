@@ -107,6 +107,35 @@ func TestIndexView_QueryableBanner_ShownWhenQueryableNotTerminal(t *testing.T) {
 	}
 }
 
+// TestIndexView_QueryableNeverShowsWaitingPlaceholder is the #5937 cosmetic
+// backstop: a zero-row screen (e.g. the group-scoped SSE event routed to
+// groupPhase created no per-repo/per-module row — the failure mode this issue
+// is about) must never render "waiting for the indexer to report…" once the
+// graph is queryable, even though !v.done() is still true (queryable sets
+// neither v.terminal nor v.failed). Reaching 100%/queryable with zero rows and
+// the placeholder is exactly the "reads as hung" bug from #5937.
+func TestIndexView_QueryableNeverShowsWaitingPlaceholder(t *testing.T) {
+	v := newIndexView("grp", 1)
+	v.width = 100
+	// Only a group-scoped event folds in — no per-repo/per-module row is ever
+	// created (mirrors the monorepo failure chain in #5937).
+	v.foldEvent(progress.Event{RepoSlug: "grp", GroupSlug: "grp", Phase: progress.PhaseDone, TS: 1})
+	v.queryable = true
+	v.summaryEntities = 4200
+
+	if len(v.rows) != 0 {
+		t.Fatalf("test setup invalid: expected zero rows, got %d", len(v.rows))
+	}
+	if v.done() {
+		t.Fatalf("test setup invalid: expected !v.done() while only queryable, got done()==true")
+	}
+
+	out := v.view()
+	if strings.Contains(out, "waiting for the indexer to report") {
+		t.Errorf("placeholder rendered on a zero-row queryable screen:\n%s", out)
+	}
+}
+
 // TestIndexView_HeaderFreezesElapsedAtQueryableMoment: once the graph becomes
 // queryable (interim outcome landed), the main header elapsed FREEZES at the
 // queryable moment (startedAt..queryableAt) instead of continuing to grow with
