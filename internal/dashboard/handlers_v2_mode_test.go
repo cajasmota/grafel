@@ -28,6 +28,9 @@ func newModeTestServer(t *testing.T) (serverURL, daemonRoot string) {
 	if err := os.MkdirAll(daemonRoot, 0o700); err != nil {
 		t.Fatalf("mkdir daemonRoot: %v", err)
 	}
+	// Isolate daemon discovery as well as filesystem state. Without this, a
+	// mode-switch test can connect to and stop the developer's live daemon.
+	t.Setenv("GRAFEL_DAEMON_ROOT", daemonRoot)
 
 	st := newFakeStore()
 	srv, err := NewServer(DefaultConfig(), st)
