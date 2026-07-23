@@ -46,12 +46,10 @@ func TestGuard_AllowsWriteUnderIsolatedHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Sanity: the resolved config path is NOT under the real home.
-	if realUserHomeAtInit != "" {
-		abs, _ := filepath.Abs(cfgPath)
-		if strings.HasPrefix(filepath.Clean(abs)+string(filepath.Separator), realUserHomeAtInit+string(filepath.Separator)) {
-			t.Fatalf("isolated config path %q unexpectedly under real home %q", abs, realUserHomeAtInit)
-		}
+	// On Windows t.TempDir is normally nested under %USERPROFILE%. The guard
+	// must still recognize the OS temp tree as an isolated destination.
+	if !pathWithin(cfgPath, dir) {
+		t.Fatalf("isolated config path %q is not under temp root %q", cfgPath, dir)
 	}
 
 	if err := SaveGroupConfig(cfgPath, &GroupConfig{Name: "isolated"}); err != nil {
@@ -62,6 +60,20 @@ func TestGuard_AllowsWriteUnderIsolatedHome(t *testing.T) {
 		t.Fatalf("roundtrip under isolated home failed: got=%+v err=%v", got, err)
 	}
 	_ = dir
+}
+
+func TestIsUnsafeTestWritePath_AllowsTempNestedUnderRealHome(t *testing.T) {
+	realHome := filepath.Join(t.TempDir(), "user")
+	tempRoot := filepath.Join(realHome, "AppData", "Local", "Temp")
+	isolated := filepath.Join(tempRoot, "TestGuard", "cfg", "grafel", "group.fleet.json")
+	live := filepath.Join(realHome, ".config", "grafel", "group.fleet.json")
+
+	if isUnsafeTestWritePath(isolated, realHome, tempRoot) {
+		t.Fatalf("isolated temp path %q was classified as a live-home write", isolated)
+	}
+	if !isUnsafeTestWritePath(live, realHome, tempRoot) {
+		t.Fatalf("live config path %q was not rejected", live)
+	}
 }
 
 // TestGuard_RegistrySaveAlsoGuarded proves saveTo (registry.json writer, used

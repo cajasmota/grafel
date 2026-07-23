@@ -63,20 +63,41 @@ func guardResolvedConfigPath(resolved, what string) {
 	if realUserHomeAtInit == "" || resolved == "" {
 		return
 	}
-	abs := resolved
-	if a, err := filepath.Abs(resolved); err == nil {
-		abs = a
-	}
-	abs = filepath.Clean(abs)
-	home := realUserHomeAtInit
-	if abs == home || strings.HasPrefix(abs+string(filepath.Separator), home+string(filepath.Separator)) {
+	if isUnsafeTestWritePath(resolved, realUserHomeAtInit, os.TempDir()) {
 		panic(fmt.Sprintf(
 			"registry: TEST SANDBOX ESCAPE — about to WRITE %s to %q, which is inside the "+
 				"REAL user home %q. This test would clobber the developer's live "+
 				"~/.config/grafel/<group>.fleet.json / ~/.grafel/registry.json (see #5443). "+
 				"Call testsupport.IsolateHome(t) at the top of the test before writing any "+
 				"config/registry/fleet file.",
-			what, abs, home,
+			what, resolved, realUserHomeAtInit,
 		))
 	}
+}
+
+// isUnsafeTestWritePath reports whether path targets the real user home while
+// exempting the operating system's temp tree. On Windows, t.TempDir lives
+// below %USERPROFILE%\AppData\Local\Temp, so a raw "under real home" prefix
+// check falsely rejects correctly isolated tests.
+func isUnsafeTestWritePath(path, realHome, tempRoot string) bool {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	abs = filepath.Clean(abs)
+	if tempRoot != "" && pathWithin(abs, tempRoot) {
+		return false
+	}
+	return pathWithin(abs, realHome)
+}
+
+func pathWithin(path, root string) bool {
+	if path == "" || root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
