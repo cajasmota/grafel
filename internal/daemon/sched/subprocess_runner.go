@@ -351,7 +351,10 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 	cmd := exec.CommandContext(ctx, binary, args...)
 	// Daemon's state dirs are inherited via the env (GRAFEL_DAEMON_ROOT,
 	// GRAFEL_HOME). Start from the daemon's full environment so the child
-	// resolves the same state dirs and caps.
+	// resolves the same state dirs and caps. This is also how #5956
+	// GRAFEL_MEMTRACE_DIR (+ GRAFEL_MEMTRACE_INTERVAL) reaches the
+	// index-internal child: no dedicated flag is needed because the child
+	// already inherits the parent's complete environment here.
 	cmd.Env = os.Environ()
 	// Resolve the child-process GOMAXPROCS. resolveChildGOMAXPROCS dispatches on
 	// interactive-vs-background:

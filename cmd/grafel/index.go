@@ -38,6 +38,7 @@ import (
 	idiff "github.com/cajasmota/grafel/internal/indexer/diff"
 	"github.com/cajasmota/grafel/internal/ingest"
 	"github.com/cajasmota/grafel/internal/install/detect"
+	"github.com/cajasmota/grafel/internal/memtrace"
 	"github.com/cajasmota/grafel/internal/module"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/resolve"
@@ -70,6 +71,20 @@ const (
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
 	PassTestsWalkUp   = "tests-walkup"   // Pass 3.5: derive TESTS edges via helper walk-up
 )
+
+// memtraceLogOnce guards memtraceLogf so a chatty failure mode (e.g. a
+// GRAFEL_MEMTRACE_DIR that goes unwritable partway through a long index)
+// logs at most once, matching the best-effort contract in internal/memtrace.
+var memtraceLogOnce sync.Once
+
+// memtraceLogf is the best-effort logger passed to memtrace.Start: a single
+// stderr line, at most once per process, never a fatal error. memtrace is
+// purely diagnostic and must never affect the index result.
+func memtraceLogf(format string, args ...any) {
+	memtraceLogOnce.Do(func() {
+		fmt.Fprintf(os.Stderr, "grafel: "+format+"\n", args...)
+	})
+}
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
@@ -859,6 +874,15 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	}
 	trk := progress.NewTracker(pub, i.groupSlug, repoSlug)
 	trk.SetRunToken(i.runToken)
+
+	// #5956 memtrace M1/M2: opt-in phase-tagged memstats sampler + heap
+	// profiles, gated entirely behind GRAFEL_MEMTRACE_DIR. Start returns nil
+	// (no goroutine, no file) when the env var is unset, so this is zero
+	// overhead by default. The phase comes from trk.CurrentPhase — the SAME
+	// state the UI already reports — so the trace cannot drift from progress
+	// events. Best-effort: no error from memtrace can reach the index result.
+	memSampler := memtrace.Start("child", trk.CurrentPhase, memtraceLogf)
+	defer memSampler.Stop()
 
 	// M4 sparse-checkout (#2181): probe the repo BEFORE the walk so the
 	// walker can filter out files that are not present locally. The result is

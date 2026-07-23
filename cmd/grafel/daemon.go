@@ -42,6 +42,7 @@ import (
 	"github.com/cajasmota/grafel/internal/indexstate"
 	"github.com/cajasmota/grafel/internal/jobs"
 	"github.com/cajasmota/grafel/internal/mcp"
+	"github.com/cajasmota/grafel/internal/memtrace"
 	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/quality"
@@ -664,6 +665,25 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 	// ADR-0016 flip-day (#808): log the active graph format mode so users
 	// can confirm the daemon is running in the expected configuration.
 	logger.Info("graph format: fb-default (json-fallback enabled) — graph.fb written on every index; --skip-json opt-in drops graph.json")
+
+	// #5956 memtrace M3: whole-machine rollup. This process self-samples
+	// into the SAME GRAFEL_MEMTRACE_DIR the index-internal child writes into
+	// (inherited automatically — RunSubprocessIndex builds the child's env
+	// from os.Environ(), so setting this var before starting the daemon is
+	// enough for both the engine/serve process AND every child it forks to
+	// trace). No phase concept applies to the long-running engine/serve
+	// plane, so phaseFn is nil (every sample's phase is ""). Inert by
+	// default: Start returns nil (no goroutine, no file) when
+	// GRAFEL_MEMTRACE_DIR is unset. Runs for the lifetime of the process —
+	// no Stop() call needed, matching other fire-and-forget daemon-startup
+	// singletons (e.g. installCapReloadHandler above).
+	memtraceRole := "serve"
+	if runMode == daemonRunModeEngine {
+		memtraceRole = "engine"
+	}
+	memtrace.Start(memtraceRole, nil, func(format string, args ...any) {
+		logger.Warn(fmt.Sprintf("memtrace: "+format, args...))
+	})
 
 	// Resolve dashboard port: env var > default. A future
 	// ~/.config/grafel/daemon.toml can add more overrides.

@@ -165,6 +165,39 @@ func TestTracker_EmptyRunTokenUnaffected(t *testing.T) {
 	}
 }
 
+// TestTracker_CurrentPhase verifies CurrentPhase reflects the last phase
+// stamped by PhaseStart/Phase (#5956 memtrace) — the memtrace sampler reads
+// this instead of keeping a second, driftable copy of phase state.
+func TestTracker_CurrentPhase(t *testing.T) {
+	col := &progress.SliceCollector{}
+	trk := progress.NewTracker(col, "g", "r")
+
+	if got := trk.CurrentPhase(); got != "" {
+		t.Errorf("CurrentPhase() before any phase = %q, want empty", got)
+	}
+
+	trk.PhaseStart(progress.PhaseScan, 0, 0)
+	if got := trk.CurrentPhase(); got != progress.PhaseScan {
+		t.Errorf("CurrentPhase() after PhaseStart(scan) = %q, want %q", got, progress.PhaseScan)
+	}
+
+	// Tick does not change the phase-boundary state.
+	trk.Tick(progress.PhaseScan, 5, 0, "a.go", 0)
+	if got := trk.CurrentPhase(); got != progress.PhaseScan {
+		t.Errorf("CurrentPhase() after Tick = %q, want unchanged %q", got, progress.PhaseScan)
+	}
+
+	trk.PhaseStart(progress.PhaseExtractAST, 0, 0)
+	if got := trk.CurrentPhase(); got != progress.PhaseExtractAST {
+		t.Errorf("CurrentPhase() after PhaseStart(extract) = %q, want %q", got, progress.PhaseExtractAST)
+	}
+
+	trk.Phase(progress.PhaseWriteGraph, "graph.fb", 100)
+	if got := trk.CurrentPhase(); got != progress.PhaseWriteGraph {
+		t.Errorf("CurrentPhase() after Phase(writing_graph) = %q, want %q", got, progress.PhaseWriteGraph)
+	}
+}
+
 // TestTracker_Fail verifies that Fail emits a PhaseError event with the
 // error message.
 func TestTracker_Fail(t *testing.T) {

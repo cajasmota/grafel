@@ -18,6 +18,7 @@ package progress
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -251,7 +252,7 @@ type Tracker struct {
 	runToken         string
 	filesTotal       int
 	phaseStartedAtMS int64
-	currentPhase     string
+	currentPhase     atomic.Value // string; read cross-goroutine by CurrentPhase (#5956)
 
 	// moduleResolver maps a repo-relative file path to a package-root module
 	// label. When set (monorepo indexing), Tick stamps Event.Module so the UI
@@ -269,6 +270,22 @@ type Tracker struct {
 // reindexes — which leaves RunToken empty on every event, exactly as today.
 func (t *Tracker) SetRunToken(tok string) {
 	t.runToken = tok
+}
+
+// CurrentPhase returns the phase most recently stamped by PhaseStart or Phase
+// (empty string before either has been called). Exported so out-of-band
+// observers — e.g. the memtrace sampler (#5956) — can tag their own samples
+// with the SAME phase the tracker reports to the UI, without introducing a
+// second, driftable copy of the phase state. currentPhase is stored in an
+// atomic.Value specifically so CurrentPhase is safe to call from a sampler
+// goroutine concurrently with PhaseStart/Phase running on the indexer's own
+// goroutine (verified under -race); the reader may observe a one-tick-stale
+// phase, which is within the tolerance already implicit in a polling sampler.
+func (t *Tracker) CurrentPhase() string {
+	if v, ok := t.currentPhase.Load().(string); ok {
+		return v
+	}
+	return ""
 }
 
 // SetModuleResolver installs a function that maps a repo-relative file path to
@@ -314,7 +331,7 @@ func (t *Tracker) SetFilesTotal(n int) {
 
 // PhaseStart emits a phase-entry event and records the start timestamp.
 func (t *Tracker) PhaseStart(phase string, filesDone int, entitiesSoFar int) {
-	t.currentPhase = phase
+	t.currentPhase.Store(phase)
 	t.phaseStartedAtMS = nowMS()
 	t.pub.Publish(Event{
 		GroupSlug:        t.groupSlug,
@@ -381,7 +398,7 @@ func (t *Tracker) TickModule(phase, module string, moduleDone, moduleTotal int, 
 // tail (communities, centrality, links, flows, write) in the CLI and wizard.
 // The pass runs after all files are processed, so FilesDone == FilesTotal.
 func (t *Tracker) Phase(phase, passName string, entitiesSoFar int) {
-	t.currentPhase = phase
+	t.currentPhase.Store(phase)
 	t.phaseStartedAtMS = nowMS()
 	t.pub.Publish(Event{
 		GroupSlug:        t.groupSlug,
