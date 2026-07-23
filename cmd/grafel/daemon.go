@@ -1261,9 +1261,13 @@ func rebuildWorkerPool(conc int, work []repoWork, workFn func(idx int, rw repoWo
 // rebuildSubprocessParams carries the per-repo inputs the subprocess rebuild
 // path forwards to the `grafel index-internal` child.
 type rebuildSubprocessParams struct {
-	RepoPath            string
-	RepoSlug            string
-	GroupSlug           string
+	RepoPath  string
+	RepoSlug  string
+	GroupSlug string
+	// RunToken is the rebuild's per-run identity (RebuildArgs.ProgressToken,
+	// #5937), forwarded to the child so every republished progress.Event
+	// carries Event.RunToken. Empty for rebuilds with no token.
+	RunToken            string
 	ProgressPub         progress.Publisher
 	Interactive         bool
 	IncrementalStateDir string
@@ -1283,6 +1287,7 @@ var runRebuildSubprocess = func(ctx context.Context, p rebuildSubprocessParams) 
 		ProgressPub:         p.ProgressPub,
 		GroupSlug:           p.GroupSlug,
 		RepoSlug:            p.RepoSlug,
+		RunToken:            p.RunToken,
 		Interactive:         p.Interactive,
 		IncrementalStateDir: p.IncrementalStateDir,
 	}, slog.Default())
@@ -1479,6 +1484,7 @@ func daemonRebuildFuncCore(
 					RepoPath:            rw.r.Path,
 					RepoSlug:            rw.r.Slug,
 					GroupSlug:           args.Group,
+					RunToken:            args.ProgressToken,
 					ProgressPub:         progressPub,
 					Interactive:         foreground,
 					IncrementalStateDir: incrementalStateDir,
@@ -1494,7 +1500,8 @@ func daemonRebuildFuncCore(
 			// WebUI Index step renders live rows + file counters (#1531).
 			opts = append(opts,
 				WithPublisher(progressPub),
-				WithProgressSlugs(args.Group, rw.r.Slug))
+				WithProgressSlugs(args.Group, rw.r.Slug),
+				WithRunToken(args.ProgressToken))
 			// #5328: run at the foreground (higher) CPU cap only for human-awaited
 			// rebuilds; an automatic watcher/git-hook-triggered rebuild stays at
 			// the throttled background cap. This appears AFTER indexFn's prepended
@@ -1693,6 +1700,7 @@ func daemonRebuildFuncCore(
 	// The phantom-edge pass re-runs process-flow inside linksFn, so the same
 	// phase also covers the group-level flow recompute.
 	linkTrk := progress.NewTracker(progressPub, args.Group, args.Group)
+	linkTrk.SetRunToken(args.ProgressToken)
 	linkTrk.Phase(progress.PhaseDetectLinks, "cross-repo links", 0)
 
 	// Cross-repo link passes run after every member is indexed. Skip them

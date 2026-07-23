@@ -155,6 +155,16 @@ type SubprocessIndexOptions struct {
 	GroupSlug string
 	RepoSlug  string
 
+	// RunToken, when non-empty, is the per-run identity (RebuildArgs.
+	// ProgressToken) forwarded to the child as --run-token so every
+	// progress.Event it republishes over stdout carries Event.RunToken
+	// (#5937). Threaded through unconditionally alongside GroupSlug/RepoSlug
+	// so a subscriber can distinguish THIS run's terminal from a prior run's
+	// retained corpse. Empty for runs with no token (e.g. background/watcher
+	// reindexes, which never populate SubprocessIndexOptions at all) — the
+	// child then stamps no RunToken, exactly as before this field existed.
+	RunToken string
+
 	// Interactive marks a human-awaited foreground rebuild: the child runs its
 	// extract sub-subprocesses at the foreground GRAFEL_REBUILD_GOMAXPROCS cap
 	// (--interactive) AND the parent sets the child process GOMAXPROCS to the

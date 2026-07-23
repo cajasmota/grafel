@@ -121,6 +121,50 @@ func TestTracker_Done(t *testing.T) {
 	}
 }
 
+// TestTracker_RunToken verifies that a Tracker constructed with SetRunToken
+// stamps RunToken on every event it emits (#5937), and that a Tracker with no
+// run token leaves RunToken empty on every event — a background/watcher
+// reindex (no ProgressToken) must behave exactly as before this change.
+func TestTracker_RunToken(t *testing.T) {
+	col := &progress.SliceCollector{}
+	trk := progress.NewTracker(col, "g", "r")
+	trk.SetRunToken("run-tok-42")
+	trk.SetFilesTotal(10)
+
+	trk.PhaseStart(progress.PhaseScan, 0, 0)
+	trk.Tick(progress.PhaseExtractAST, 1, 100, "a.go", 0)
+	trk.TickModule(progress.PhaseExtractAST, "mod", 1, 2, 50, "b.go", 0)
+	trk.Phase(progress.PhaseDetectLinks, "cross-repo links", 0)
+	trk.AlgorithmEvent("PageRank", 5)
+	trk.Done(10, 20)
+	trk.Fail("boom")
+
+	if len(col.Events) != 7 {
+		t.Fatalf("expected 7 events, got %d", len(col.Events))
+	}
+	for i, e := range col.Events {
+		if e.RunToken != "run-tok-42" {
+			t.Errorf("event[%d] (phase=%s) RunToken = %q, want %q", i, e.Phase, e.RunToken, "run-tok-42")
+		}
+	}
+}
+
+// TestTracker_EmptyRunTokenUnaffected verifies a Tracker with no SetRunToken
+// call (the default, e.g. a background/watcher reindex) emits events with an
+// empty RunToken — additive-only, no behaviour change for untokened runs.
+func TestTracker_EmptyRunTokenUnaffected(t *testing.T) {
+	col := &progress.SliceCollector{}
+	trk := progress.NewTracker(col, "g", "r")
+	trk.Done(1, 1)
+
+	if len(col.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(col.Events))
+	}
+	if got := col.Events[0].RunToken; got != "" {
+		t.Errorf("RunToken = %q, want empty for a Tracker with no run token set", got)
+	}
+}
+
 // TestTracker_Fail verifies that Fail emits a PhaseError event with the
 // error message.
 func TestTracker_Fail(t *testing.T) {

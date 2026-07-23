@@ -40,6 +40,7 @@ func projectFields(e Event) Event {
 		GroupSlug:     e.GroupSlug,
 		RepoSlug:      e.RepoSlug,
 		Module:        e.Module,
+		RunToken:      e.RunToken,
 		Phase:         e.Phase,
 		FilesDone:     e.FilesDone,
 		FilesTotal:    e.FilesTotal,
@@ -847,7 +848,7 @@ func TestResetClearsPendingState(t *testing.T) {
 // TestLineFromEventRoundTrip exercises the marshal/unmarshal helpers directly.
 func TestLineFromEventRoundTrip(t *testing.T) {
 	e := Event{
-		GroupSlug: "g", RepoSlug: "r", Module: "m",
+		GroupSlug: "g", RepoSlug: "r", Module: "m", RunToken: "run-tok-1",
 		Phase: PhaseExtractAST, FilesDone: 7, FilesTotal: 9,
 		EntitiesSoFar: 11, CurrentFile: "x.go", TS: 123,
 	}
@@ -871,5 +872,57 @@ func TestLineFromEventRoundTrip(t *testing.T) {
 	// Verify the on-the-wire JSON keys match the documented schema.
 	if !strings.Contains(string(b), `"files_done"`) || !strings.Contains(string(b), `"entities"`) {
 		t.Fatalf("unexpected JSON schema: %s", b)
+	}
+	if !strings.Contains(string(b), `"run_token":"run-tok-1"`) {
+		t.Fatalf("RunToken missing from wire JSON: %s", b)
+	}
+	// Empty RunToken is omitted (omitempty) — no field bloat for the common
+	// no-token background/watcher-reindex case.
+	noTokLine := lineFromEvent(Event{GroupSlug: "g", Phase: PhaseScan})
+	noTokB, err := json.Marshal(noTokLine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(noTokB), "run_token") {
+		t.Fatalf("empty RunToken should be omitted from wire JSON: %s", noTokB)
+	}
+}
+
+// TestSidecarWriterRunTokenRoundTrip verifies RunToken survives a real
+// write-then-read across the SidecarWriter/SidecarReader process boundary
+// (#5937): a subscriber reading the group's NDJSON file must see the same
+// per-run token the producer's Tracker stamped.
+func TestSidecarWriterRunTokenRoundTrip(t *testing.T) {
+	setHome(t)
+	group := "run-token-group"
+	w, err := NewSidecarWriter(group, WithFlushInterval(5*time.Millisecond))
+	if err != nil {
+		t.Fatalf("NewSidecarWriter: %v", err)
+	}
+	defer w.Close()
+
+	w.Publish(Event{GroupSlug: group, RepoSlug: "r1", Phase: PhaseExtractAST, RunToken: "tok-abc"})
+	w.Publish(Event{GroupSlug: group, RepoSlug: "r1", Phase: PhaseDone, RunToken: "tok-abc"})
+
+	// The terminal (PhaseDone) event takes the guaranteed pending-terminal
+	// path and flushes promptly (see SidecarWriter.Publish), but the flush
+	// goroutine still runs asynchronously — poll with a deadline rather than
+	// reading once immediately, mirroring TestTerminalFlushesPromptly.
+	deadline := time.Now().Add(2 * time.Second)
+	var evs []Event
+	for time.Now().Before(deadline) {
+		evs = drainReader(t, group)
+		if len(evs) >= 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(evs) == 0 {
+		t.Fatal("no events read back from sidecar")
+	}
+	for _, e := range evs {
+		if e.RunToken != "tok-abc" {
+			t.Errorf("event %+v: RunToken = %q, want %q", e, e.RunToken, "tok-abc")
+		}
 	}
 }

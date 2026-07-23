@@ -67,6 +67,13 @@ type SidecarLine struct {
 	RepoSlug  string `json:"repo_slug"`
 	Module    string `json:"module,omitempty"`
 
+	// RunToken carries Event.RunToken (#5937) — the per-run identity from
+	// RebuildArgs.ProgressToken — across the process boundary so a split-mode
+	// dashboard reader can distinguish THIS run's terminal from a prior run's
+	// retained corpse. Empty for runs with no per-run token (background/
+	// watcher reindexes), preserving today's behaviour byte-for-byte.
+	RunToken string `json:"run_token,omitempty"`
+
 	Phase      string `json:"phase"`
 	FilesDone  int    `json:"files_done"`
 	FilesTotal int    `json:"files_total"`
@@ -89,6 +96,7 @@ func lineFromEvent(e Event) SidecarLine {
 		GroupSlug:   e.GroupSlug,
 		RepoSlug:    e.RepoSlug,
 		Module:      e.Module,
+		RunToken:    e.RunToken,
 		Phase:       e.Phase,
 		FilesDone:   e.FilesDone,
 		FilesTotal:  e.FilesTotal,
@@ -107,6 +115,7 @@ func (l SidecarLine) toEvent() Event {
 		GroupSlug:     l.GroupSlug,
 		RepoSlug:      l.RepoSlug,
 		Module:        l.Module,
+		RunToken:      l.RunToken,
 		Phase:         l.Phase,
 		FilesDone:     l.FilesDone,
 		FilesTotal:    l.FilesTotal,

@@ -331,6 +331,14 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 			if opts.GroupSlug != "" {
 				args = append(args, "--group-slug="+opts.GroupSlug)
 			}
+			// #5937: forward the per-run identity so every republished
+			// progress.Event carries RunToken. Only meaningful alongside
+			// --emit-progress (no publisher, no point tagging events nobody
+			// reads); empty RunToken (no ProgressToken on this run) adds
+			// nothing, matching --group-slug's own emptiness guard.
+			if opts.RunToken != "" {
+				args = append(args, "--run-token="+opts.RunToken)
+			}
 		}
 		if opts.IncrementalStateDir != "" {
 			args = append(args, "--incremental="+opts.IncrementalStateDir)

@@ -166,6 +166,7 @@ type Indexer struct {
 	publisher progress.Publisher
 	groupSlug string // forwarded to every Event.GroupSlug
 	repoSlug  string // forwarded to every Event.RepoSlug; defaults to repoTag
+	runToken  string // forwarded to every Event.RunToken (#5937); "" = no per-run token
 
 	// Statistics — populated as passes run, surfaced in the final summary.
 	stats indexerStats
@@ -313,6 +314,16 @@ func WithProgressSlugs(groupSlug, repoSlug string) IndexOption {
 		i.groupSlug = groupSlug
 		i.repoSlug = repoSlug
 	}
+}
+
+// WithRunToken sets the per-run identity (RebuildArgs.ProgressToken, when the
+// caller has one) forwarded to Event.RunToken on every progress event this
+// indexer's Tracker emits (#5937). Call alongside WithPublisher/
+// WithProgressSlugs; the default "" leaves RunToken empty on every event,
+// matching pre-#5937 behaviour for runs with no token (e.g. background/
+// watcher reindexes).
+func WithRunToken(tok string) IndexOption {
+	return func(i *Indexer) { i.runToken = tok }
 }
 
 // WithIncremental enables diff-aware re-indexing (issue #1339). The indexer
@@ -847,6 +858,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		repoSlug = i.repoTag
 	}
 	trk := progress.NewTracker(pub, i.groupSlug, repoSlug)
+	trk.SetRunToken(i.runToken)
 
 	// M4 sparse-checkout (#2181): probe the repo BEFORE the walk so the
 	// walker can filter out files that are not present locally. The result is

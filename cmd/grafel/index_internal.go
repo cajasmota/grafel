@@ -39,6 +39,7 @@ func runIndexInternal(argv []string) int {
 		ingestDocs   = fs.Bool("ingest-docs", false, "opt-in: deterministically ingest in-repo *.md and *.pdf files as Document/Section nodes + exact-mention links (no LLM, no network)")
 		emitProgress = fs.Bool("emit-progress", false, "stream per-module progress.Event JSON lines on stdout for the parent to republish (rebuild / wizard first-index)")
 		groupSlug    = fs.String("group-slug", "", "group slug stamped on progress events when --emit-progress is set")
+		runToken     = fs.String("run-token", "", "per-run identity (RebuildArgs.ProgressToken) stamped on progress events when --emit-progress is set (#5937)")
 		interactive  = fs.Bool("interactive", false, "run at the foreground GRAFEL_REBUILD_GOMAXPROCS extract cap (human-awaited rebuild) instead of the background cap")
 		incremental  = fs.String("incremental", "", "state dir enabling diff-aware re-indexing (matches WithIncremental); empty = full index")
 	)
@@ -80,7 +81,8 @@ func runIndexInternal(argv []string) int {
 	if *emitProgress {
 		opts = append(opts,
 			WithPublisher(sched.NewStdoutProgressPublisher(os.Stdout)),
-			WithProgressSlugs(*groupSlug, *repoTag))
+			WithProgressSlugs(*groupSlug, *repoTag),
+			WithRunToken(*runToken))
 	}
 	// Foreground rebuild: run the extract sub-subprocesses at the higher
 	// GRAFEL_REBUILD_GOMAXPROCS cap. Background reactive reindexes leave this off

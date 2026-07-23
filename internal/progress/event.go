@@ -102,6 +102,13 @@ type Event struct {
 	GroupSlug string `json:"group_slug"`
 	RepoSlug  string `json:"repo_slug"`
 
+	// RunToken carries the per-run identity from RebuildArgs.ProgressToken; it
+	// lets a subscriber distinguish THIS run's terminal from a prior run's
+	// retained corpse (#5937). Empty when the caller supplied no token — e.g.
+	// a background/watcher reindex, which has no ProgressToken and no
+	// dashboard subscriber to disambiguate for.
+	RunToken string `json:"run_token,omitempty"`
+
 	// Phase is the current pipeline stage (one of the Phase* constants).
 	Phase string `json:"phase"`
 
@@ -241,6 +248,7 @@ type Tracker struct {
 	pub              Publisher
 	groupSlug        string
 	repoSlug         string
+	runToken         string
 	filesTotal       int
 	phaseStartedAtMS int64
 	currentPhase     string
@@ -250,6 +258,17 @@ type Tracker struct {
 	// can render per-module rows. Decoupled via a func so the progress package
 	// stays free of an internal/module dependency.
 	moduleResolver func(currentFile string) string
+}
+
+// SetRunToken installs the per-run identity (RebuildArgs.ProgressToken, when
+// the caller has one) that every subsequently-emitted Event stamps into
+// RunToken (#5937). Follows the same post-construction setter pattern as
+// SetModuleResolver rather than a NewTracker parameter, so existing
+// NewTracker(pub, groupSlug, repoSlug) call sites are unaffected. Pass "" (the
+// default) for runs with no per-run token — e.g. background/watcher
+// reindexes — which leaves RunToken empty on every event, exactly as today.
+func (t *Tracker) SetRunToken(tok string) {
+	t.runToken = tok
 }
 
 // SetModuleResolver installs a function that maps a repo-relative file path to
@@ -300,6 +319,7 @@ func (t *Tracker) PhaseStart(phase string, filesDone int, entitiesSoFar int) {
 	t.pub.Publish(Event{
 		GroupSlug:        t.groupSlug,
 		RepoSlug:         t.repoSlug,
+		RunToken:         t.runToken,
 		Phase:            phase,
 		FilesDone:        filesDone,
 		FilesTotal:       t.filesTotal,
@@ -315,6 +335,7 @@ func (t *Tracker) Tick(phase string, filesDone int, bytesSeen int64, currentFile
 	t.pub.Publish(Event{
 		GroupSlug:        t.groupSlug,
 		RepoSlug:         t.repoSlug,
+		RunToken:         t.runToken,
 		Phase:            phase,
 		FilesDone:        filesDone,
 		FilesTotal:       t.filesTotal,
@@ -340,6 +361,7 @@ func (t *Tracker) TickModule(phase, module string, moduleDone, moduleTotal int, 
 	t.pub.Publish(Event{
 		GroupSlug:        t.groupSlug,
 		RepoSlug:         t.repoSlug,
+		RunToken:         t.runToken,
 		Phase:            phase,
 		FilesDone:        moduleDone,
 		FilesTotal:       moduleTotal,
@@ -364,6 +386,7 @@ func (t *Tracker) Phase(phase, passName string, entitiesSoFar int) {
 	t.pub.Publish(Event{
 		GroupSlug:        t.groupSlug,
 		RepoSlug:         t.repoSlug,
+		RunToken:         t.runToken,
 		Phase:            phase,
 		FilesTotal:       t.filesTotal,
 		FilesDone:        t.filesTotal,
@@ -379,6 +402,7 @@ func (t *Tracker) AlgorithmEvent(name string, entitiesSoFar int) {
 	t.pub.Publish(Event{
 		GroupSlug:        t.groupSlug,
 		RepoSlug:         t.repoSlug,
+		RunToken:         t.runToken,
 		Phase:            PhaseAlgorithms,
 		FilesTotal:       t.filesTotal,
 		FilesDone:        t.filesTotal, // algorithms run after all files are processed
@@ -394,6 +418,7 @@ func (t *Tracker) Done(filesDone, entitiesSoFar int) {
 	t.pub.Publish(Event{
 		GroupSlug:        t.groupSlug,
 		RepoSlug:         t.repoSlug,
+		RunToken:         t.runToken,
 		Phase:            PhaseDone,
 		FilesDone:        filesDone,
 		FilesTotal:       t.filesTotal,
@@ -408,6 +433,7 @@ func (t *Tracker) Fail(errMsg string) {
 	t.pub.Publish(Event{
 		GroupSlug:        t.groupSlug,
 		RepoSlug:         t.repoSlug,
+		RunToken:         t.runToken,
 		Phase:            PhaseError,
 		FilesTotal:       t.filesTotal,
 		FilesDone:        0,
