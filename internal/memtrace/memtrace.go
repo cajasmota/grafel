@@ -172,8 +172,28 @@ func (s *Sampler) Stop() {
 	})
 }
 
+// sampleFn is the seam loop() invokes on every tick. It is a package-level
+// var (rather than a direct s.sampleOnce() call) purely so a test can
+// substitute a panicking implementation to exercise the recover() below
+// without needing OS-level fault injection. Production code never
+// reassigns it — do not use this for anything but the panic-containment
+// test.
+var sampleFn = func(s *Sampler) { s.sampleOnce() }
+
 func (s *Sampler) loop() {
 	defer close(s.doneCh)
+	// Defense-in-depth: the package contract is "must NEVER affect the
+	// index." No path in sampleOnce is known to panic today (CurrentPhase is
+	// an atomic load, process.RSSBytes returns an error rather than
+	// panicking, pprof errors are ignored) — but a panic anywhere on this
+	// goroutine must never crash the host process. Recover, log at most
+	// once, and let the goroutine exit; a persistently panicking sampler
+	// disables itself rather than spinning or retrying.
+	defer func() {
+		if r := recover(); r != nil {
+			logOnce(s.logf, "memtrace: sampler goroutine panicked, disabling (role=%s): %v", s.role, r)
+		}
+	}()
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 	for {
@@ -181,7 +201,7 @@ func (s *Sampler) loop() {
 		case <-s.stopCh:
 			return
 		case <-ticker.C:
-			s.sampleOnce()
+			sampleFn(s)
 		}
 	}
 }

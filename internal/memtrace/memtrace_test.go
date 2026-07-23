@@ -189,3 +189,51 @@ func TestMemtraceSampler_PhaseFollowsTracker(t *testing.T) {
 		}
 	}
 }
+
+// TestMemtraceSampler_PanicInSampleRecovered is the panic-containment test:
+// it substitutes sampleFn with a panicking implementation and asserts (a)
+// the process/test does not crash, (b) the sampler goroutine terminates
+// (doneCh closes) rather than spinning or crashing the process, and (c) the
+// best-effort logger is invoked at most once — mirroring the "must NEVER
+// affect the index" contract for a caller that would otherwise be sitting
+// on the other side of this goroutine doing real indexing work.
+func TestMemtraceSampler_PanicInSampleRecovered(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(DirEnv, dir)
+	t.Setenv(IntervalEnv, "5ms")
+
+	orig := sampleFn
+	sampleFn = func(s *Sampler) { panic("injected test panic: simulated sampler fault") }
+	defer func() { sampleFn = orig }()
+
+	var logCount int32
+	logf := func(format string, args ...any) {
+		atomic.AddInt32(&logCount, 1)
+	}
+
+	s := Start("child", nil, logf)
+	if s == nil {
+		t.Fatal("Start() = nil, want a live sampler")
+	}
+
+	// (b) the goroutine must terminate — recover() + return, not a crash and
+	// not an infinite re-panic/retry spin.
+	select {
+	case <-s.doneCh:
+		// recovered and exited cleanly
+	case <-time.After(2 * time.Second):
+		t.Fatal("sampler goroutine did not terminate after a panic in sampleFn — recover() missing or broken")
+	}
+
+	// Stop must be safe to call even though the goroutine already exited on
+	// its own (closed stopCh/doneCh should not block or panic).
+	s.Stop()
+
+	// (a) reaching this line at all — in the same test process, un-recovered
+	// from any runtime crash — is itself the proof the panic never escaped
+	// the goroutine. (c) exactly one best-effort log line, per the
+	// log-at-most-once contract.
+	if got := atomic.LoadInt32(&logCount); got != 1 {
+		t.Errorf("logf called %d times, want exactly 1 (log-once on panic recovery)", got)
+	}
+}
