@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -51,8 +52,20 @@ type sseEvent struct {
 // the given group and feeds parsed events onto the returned channel. It
 // returns an error if the initial HTTP connection fails (e.g. dashboard not
 // running). The caller must cancel ctx when done — that closes the channel.
-func subscribeSSE(ctx context.Context, dashPort int, group string) (<-chan sseEvent, error) {
+//
+// token is the caller's RebuildArgs.ProgressToken (see progressToken()), if
+// any. When non-empty it is sent as the `token` query param so the daemon's
+// SSE handler can distinguish OUR run's retained/live terminal event from a
+// prior run's stale corpse (#5937) — a subscriber that supplies a token never
+// gets a mismatched-token terminal replayed on connect, and a mismatched-token
+// terminal arriving live never closes its stream. Pass "" for callers with no
+// per-run token (e.g. background/legacy callers); the handler then falls back
+// to today's tokenless behaviour (replay+close whatever is retained, #5326).
+func subscribeSSE(ctx context.Context, dashPort int, group, token string) (<-chan sseEvent, error) {
 	url := fmt.Sprintf("http://127.0.0.1:%d/api/index-progress/%s", dashPort, group)
+	if token != "" {
+		url += "?token=" + neturl.QueryEscape(token)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err

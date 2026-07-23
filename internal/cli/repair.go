@@ -248,7 +248,7 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		sseCh, sseErr := subscribeSSE(ctx, dashPort, group)
+		sseCh, sseErr := subscribeSSE(ctx, dashPort, group, token)
 		if sseErr == nil {
 			outcome := runBrokerProgress(ctx, w, group, sseCh, outcomeCh, plain, jsonProgress)
 			cancel()
@@ -486,7 +486,7 @@ func indexGroupWithProgress(w, errW io.Writer, group string) error {
 	if dashPort > 0 {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		if sseCh, sseErr := subscribeSSE(ctx, dashPort, group); sseErr == nil {
+		if sseCh, sseErr := subscribeSSE(ctx, dashPort, group, token); sseErr == nil {
 			outcome := runBrokerProgress(ctx, w, group, sseCh, outcomeCh, false, false)
 			cancel()
 			if outcome.err != nil {

@@ -83,6 +83,44 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, group string) 
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 
+	// subscriberToken is the caller's RebuildArgs.ProgressToken (see
+	// internal/cli's progressToken()/subscribeSSE), passed as the `token` query
+	// param — the same param name subscribeSSE writes and the one field name
+	// callers already know the token by (ProgressToken / "progress_token" on the
+	// job/onboard/maintenance JSON handlers). Empty for tokenless callers (e.g. a
+	// dashboard late-reconnect with no run in flight), which preserves today's
+	// behaviour exactly (#5326).
+	//
+	// #5937 chunk 2 — RUN-IDENTITY matching. Chunk 1 stamped every progress.Event
+	// (including the retained terminal) with RunToken. This handler now uses
+	// that to close BOTH failure modes a prior review found in the
+	// subscribe-then-clear (ClearTerminal) design:
+	//
+	//   F1 (deterministic): the wizard subscribes to SSE BEFORE it triggers its
+	//   own rebuild (see wizard_tui_run.go / wizard_split_progress.go). So by the
+	//   time this handler's connect-time emitTerminalIfReady() call below runs,
+	//   daemon.Service.Rebuild — and therefore its ClearTerminal(group) call —
+	//   has NOT fired yet. A previous run's retained terminal is still sitting in
+	//   the broker and gets replayed+closed immediately, before the new run has
+	//   even started. ClearTerminal cannot fix this: it is called too late,
+	//   inside Rebuild, which the wizard invokes only AFTER subscribing.
+	//
+	//   F2 (race): even once ClearTerminal has fired, a PREVIOUS run's terminal
+	//   can still be delivered to this subscriber via the live fan-out path
+	//   (case e := <-ch below) if it was already in that subscriber's channel
+	//   buffer, or arrives from a late/retried Publish shortly after connect
+	//   (observed up to ~120ms after a new subscriber attaches via the serve-
+	//   start sidecar tailer). The old code treated ANY terminal-phase event on
+	//   the live path as THIS subscriber's terminal and closed the stream —
+	//   re-poisoning a brand-new subscription with a dead run's outcome.
+	//
+	// Token matching closes both: replay-on-connect only fires when the
+	// retained terminal's RunToken matches (or the subscriber is tokenless), and
+	// the live-forward path below applies the identical check so a foreign-run
+	// terminal is silently dropped instead of closing the stream. See
+	// emitTerminalIfReady and the live-path check in the event loop below.
+	subscriberToken := r.URL.Query().Get("token")
+
 	// Subscribe to the broker. For the wildcard endpoint we subscribe to
 	// every group key by using an empty string; the broker treats that as its
 	// own group bucket, which is fine for heartbeat-only — but to receive
@@ -158,6 +196,14 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, group string) 
 		if !ok {
 			return false
 		}
+		// Token mismatch: the retained terminal belongs to a DIFFERENT run than
+		// the one this subscriber is watching (#5937 F1). Do not replay it and do
+		// not close — stay attached so the subscriber's own run's live events can
+		// still arrive. A tokenless subscriber (subscriberToken == "") always
+		// matches, preserving the #5326 late-reconnect guarantee unchanged.
+		if subscriberToken != "" && te.RunToken != subscriberToken {
+			return false
+		}
 		if data, err := json.Marshal(te); err == nil {
 			writeSSEEvent(w, "progress", string(data))
 			writeSSEEvent(w, "close", "{}")
@@ -190,6 +236,17 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, group string) 
 				writeSSEEvent(w, "close", "{}")
 				flusher.Flush()
 				return
+			}
+			// #5937 F2 — a terminal event arriving on the LIVE path (not just the
+			// connect-time replay above) can belong to a DIFFERENT run than the one
+			// this subscriber asked for: e.g. a prior run's Publish landing a few
+			// ms after this subscriber attached. Drop it silently — do not forward
+			// it as progress and do not close the stream — so this subscriber stays
+			// attached to receive its OWN run's live events. A tokenless subscriber
+			// always matches (preserves pre-#5937 behaviour for callers that don't
+			// disambiguate by run).
+			if isTerminalEventPhase(e.Phase) && subscriberToken != "" && e.RunToken != subscriberToken {
+				continue
 			}
 			data, err := json.Marshal(e)
 			if err != nil {

@@ -378,7 +378,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 		defer cancel()
 		var sseCh <-chan sseEvent
 		if dashPort > 0 {
-			if ch, sseErr := subscribeSSE(ctx, dashPort, group); sseErr == nil {
+			if ch, sseErr := subscribeSSE(ctx, dashPort, group, token); sseErr == nil {
 				sseCh = ch
 			}
 		}
@@ -417,7 +417,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 	if dashPort > 0 {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		if sseCh, sseErr := subscribeSSE(ctx, dashPort, group); sseErr == nil {
+		if sseCh, sseErr := subscribeSSE(ctx, dashPort, group, token); sseErr == nil {
 			rpcCh := triggerRebuild(c, group, token)
 			o := forwardBrokerToChannel(ctx, sseCh, rpcCh, evCh)
 			cancel()

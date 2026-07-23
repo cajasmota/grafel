@@ -587,6 +587,210 @@ func TestSSE_TerminalAtRealNow_ReplayedAndClosed(t *testing.T) {
 	}
 }
 
+// TestSSE_TokenMismatch_TerminalNotReplayedOnConnect is the #5937 chunk 2 F1
+// regression test: a subscriber that supplies its OWN run token (T2) must NOT
+// have a DIFFERENT run's retained terminal (T1) replayed to it on connect —
+// and, crucially, the stream must stay open so T2's own live events can still
+// arrive afterwards. This is exactly the wizard's subscribe-then-trigger
+// ordering: it attaches before its rebuild starts, so whatever the broker has
+// retained at that instant is necessarily a PRIOR run's terminal, never its
+// own.
+func TestSSE_TokenMismatch_TerminalNotReplayedOnConnect(t *testing.T) {
+	broker := progress.NewBroker()
+	ts := newTestServerWithBroker(t, broker)
+	defer ts.Close()
+
+	// A previous run (token T1) already completed and its terminal is retained.
+	broker.Publish(progress.Event{
+		GroupSlug:     "tok-group",
+		Phase:         progress.PhaseDone,
+		RunToken:      "T1",
+		EntitiesSoFar: 99,
+		TS:            time.Now().UnixMilli(),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/index-progress/tok-group?token=T2", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	reader := bufio.NewReader(resp.Body)
+	// Consume the connected event. If the stale T1 terminal were (incorrectly)
+	// replayed+closed, it would show up as the very next data line instead of
+	// the live T2 event below — the assertions after prove it didn't.
+	readSSELines(t, reader, 1, 2*time.Second)
+
+	// T2's own run now produces a live (non-terminal) event.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		broker.Publish(progress.Event{
+			GroupSlug: "tok-group",
+			Phase:     "extracting_ast",
+			RunToken:  "T2",
+			Module:    "mod-y",
+			TS:        time.Now().UnixMilli(),
+		})
+	}()
+
+	lines := readSSEUntil(t, reader, 5*time.Second, func(lines []string) bool {
+		return strings.Contains(strings.Join(lines, "\n"), "extracting_ast")
+	})
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "extracting_ast") {
+		t.Fatalf("T2's own live event never delivered after the mismatched T1 terminal was correctly withheld: %v", lines)
+	}
+	if strings.Contains(joined, `"phase":"done"`) {
+		t.Errorf("mismatched-token (T1) terminal was replayed to the T2 subscriber before its own live event: %s", joined)
+	}
+	if strings.Contains(joined, "event: close") {
+		t.Errorf("stream was closed on a mismatched-token (T1) terminal before T2's live event arrived: %s", joined)
+	}
+}
+
+// TestSSE_TokenMismatch_LiveTerminalDoesNotClose is the #5937 chunk 2 F2
+// regression test — the subtle race: a DIFFERENT run's terminal (T1) arrives
+// on the LIVE path (not the connect-time replay) AFTER this subscriber (T2)
+// has already attached with no retained terminal present at connect time. The
+// handler must not treat T1's terminal as this subscriber's own: it must not
+// close the stream, and T2's subsequent live event must still be delivered.
+func TestSSE_TokenMismatch_LiveTerminalDoesNotClose(t *testing.T) {
+	broker := progress.NewBroker()
+	ts := newTestServerWithBroker(t, broker)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/index-progress/race-group?token=T2", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	reader := bufio.NewReader(resp.Body)
+	// Consume the connected event — no terminal is retained yet, so nothing else
+	// should arrive from the replay-on-connect path.
+	readSSELines(t, reader, 1, 2*time.Second)
+
+	// A PRIOR run's (T1) terminal arrives LIVE, shortly after this subscriber
+	// attached — the exact race the tailer can produce (~up to 120ms after
+	// subscribe).
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		broker.Publish(progress.Event{
+			GroupSlug:     "race-group",
+			Phase:         progress.PhaseDone,
+			RunToken:      "T1",
+			EntitiesSoFar: 5,
+			TS:            time.Now().UnixMilli(),
+		})
+		// Immediately after, T2's OWN live (non-terminal) event fires — this must
+		// still reach the subscriber, proving the stream was not closed by T1's
+		// terminal above.
+		time.Sleep(30 * time.Millisecond)
+		broker.Publish(progress.Event{
+			GroupSlug: "race-group",
+			Phase:     "extracting_ast",
+			RunToken:  "T2",
+			Module:    "mod-z",
+			TS:        time.Now().UnixMilli(),
+		})
+	}()
+
+	lines := readSSEUntil(t, reader, 5*time.Second, func(lines []string) bool {
+		return strings.Contains(strings.Join(lines, "\n"), "extracting_ast")
+	})
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "extracting_ast") {
+		t.Fatalf("T2's live event never arrived — the live-path mismatched-token (T1) terminal incorrectly closed the stream: %v", lines)
+	}
+	if strings.Contains(joined, `"phase":"done"`) {
+		t.Errorf("mismatched-token (T1) live terminal was forwarded to the T2 subscriber: %s", joined)
+	}
+	if strings.Contains(joined, "event: close") {
+		t.Errorf("stream was closed by a mismatched-token (T1) live terminal event: %s", joined)
+	}
+}
+
+// TestSSE_TokenMatch_TerminalReplayedAndClosed verifies requirement (iii): a
+// subscriber whose supplied token matches the retained terminal's RunToken
+// gets it replayed and the stream closed, exactly like the tokenless #5326
+// case — token matching must not regress the positive case.
+func TestSSE_TokenMatch_TerminalReplayedAndClosed(t *testing.T) {
+	broker := progress.NewBroker()
+	ts := newTestServerWithBroker(t, broker)
+	defer ts.Close()
+
+	broker.Publish(progress.Event{
+		GroupSlug:     "match-group",
+		Phase:         progress.PhaseDone,
+		RunToken:      "T3",
+		EntitiesSoFar: 17,
+		TS:            time.Now().UnixMilli(),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/index-progress/match-group?token=T3", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	reader := bufio.NewReader(resp.Body)
+	lines := readSSERaw(t, reader, 6, 3*time.Second)
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, progress.PhaseDone) {
+		t.Errorf("expected matching-token terminal replayed on connect, got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "event: close") {
+		t.Errorf("expected close event after matching-token terminal replay, got:\n%s", joined)
+	}
+}
+
+// TestSSE_Tokenless_TerminalStillReplayedAndClosed verifies requirement (iv):
+// a subscriber that supplies NO token (subscriberToken == "") still gets
+// whatever terminal is retained replayed+closed — the #5326 late-reconnect
+// guarantee is unaffected by the #5937 chunk 2 token-matching change.
+func TestSSE_Tokenless_TerminalStillReplayedAndClosed(t *testing.T) {
+	broker := progress.NewBroker()
+	ts := newTestServerWithBroker(t, broker)
+	defer ts.Close()
+
+	broker.Publish(progress.Event{
+		GroupSlug:     "tokenless-group",
+		Phase:         progress.PhaseDone,
+		RunToken:      "T4",
+		EntitiesSoFar: 3,
+		TS:            time.Now().UnixMilli(),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// No ?token= query param at all.
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/index-progress/tokenless-group", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	reader := bufio.NewReader(resp.Body)
+	lines := readSSERaw(t, reader, 6, 3*time.Second)
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, progress.PhaseDone) {
+		t.Errorf("expected tokenless subscriber to still get the retained terminal replayed (#5326), got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "event: close") {
+		t.Errorf("expected close event after tokenless terminal replay, got:\n%s", joined)
+	}
+}
+
 // TestSSE_TerminalReassertedOnHeartbeat verifies that when the live terminal
 // event is dropped (slow subscriber buffer full at the moment it fires), the
 // handler re-asserts the retained terminal state on the next heartbeat so the
