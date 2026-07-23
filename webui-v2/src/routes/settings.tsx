@@ -385,7 +385,7 @@ function RepoMoreMenu({
         <div
           role="menu"
           className={cn(
-            "absolute right-0 top-8 z-20 min-w-[180px] rounded-lg border border-border bg-surface shadow-[var(--shadow-3)]",
+            "absolute right-0 top-8 z-50 min-w-[180px] rounded-lg border border-border bg-surface shadow-[var(--shadow-3)]",
             "py-1",
           )}
         >
@@ -501,7 +501,7 @@ function RepoRow({
   const indexedPkgs = repo.monorepo?.packages?.filter((p) => p.indexed).length ?? 0;
 
   return (
-    <div className="border border-border-soft rounded-lg overflow-hidden">
+    <div className="relative border border-border-soft rounded-lg overflow-visible">
       <div className="flex items-center gap-2 px-3 py-2.5 bg-surface">
         {/* expand chevron or bullet */}
         <button
