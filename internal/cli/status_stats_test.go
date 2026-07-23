@@ -292,6 +292,44 @@ func TestComputeStatusSummary_ColdIndexNoSidecar(t *testing.T) {
 	}
 }
 
+// TestComputeStatusSummary_ProcessFlows guards against regressing the
+// process-flow counter predicate: it must count both the bare "process" kind
+// and the real "SCOPE.Process" kind emitted by engine.RunProcessFlow (Pass 7).
+func TestComputeStatusSummary_ProcessFlows(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmpDir)
+
+	repoPath := filepath.Join(tmpDir, "flowrepo")
+	os.MkdirAll(repoPath, 0o755)
+	stateDir := daemon.StateDirForRepo(repoPath)
+	os.MkdirAll(stateDir, 0o755)
+
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Now().UTC().Truncate(time.Second),
+		Repo:        repoPath,
+		Stats:       graph.Stats{Entities: 3, Relationships: 0, Files: 1},
+		Entities: []graph.Entity{
+			{ID: "p1", Name: "P1", Kind: "SCOPE.Process", SourceFile: "a.go", Language: "go"},
+			{ID: "p2", Name: "P2", Kind: "process", SourceFile: "a.go", Language: "go"},
+			{ID: "f3", Name: "F3", Kind: "function", SourceFile: "a.go", Language: "go"},
+		},
+	}
+	if err := fbwriter.WriteAtomic(filepath.Join(stateDir, "graph.fb"), doc); err != nil {
+		t.Fatalf("write graph.fb: %v", err)
+	}
+
+	repos := []registry.Repo{{Slug: "flowrepo", Path: repoPath}}
+	summary := ComputeStatusSummary("grp", repos)
+
+	if _, ok := summary.RepoStats["flowrepo"]; !ok {
+		t.Fatal("flowrepo not found in RepoStats")
+	}
+	if summary.ProcessFlows != 2 {
+		t.Errorf("ProcessFlows = %d, want 2 (one SCOPE.Process + one process)", summary.ProcessFlows)
+	}
+}
+
 // TestComputeStatusSummary_TrulyNeverIndexed asserts the negative case still
 // reports 0/never when there is no graph.fb at all.
 func TestComputeStatusSummary_TrulyNeverIndexed(t *testing.T) {

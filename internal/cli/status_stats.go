@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
@@ -165,7 +166,7 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 						s.HTTPEndpoints++
 					}
 					// Check for process flows: SCOPE.Process or process kind.
-					if e.Kind == "process" || (len(e.Kind) > 14 && e.Kind[:6] == "SCOPE." && e.Kind[6:] == "Process") {
+					if e.Kind == "process" || strings.HasPrefix(e.Kind, "SCOPE.Process") {
 						s.ProcessFlows++
 					}
 				}
