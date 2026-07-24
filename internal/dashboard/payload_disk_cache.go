@@ -26,9 +26,13 @@ const (
 	diskPayloadLengths  = 4 + 4 + 8
 	diskPayloadHeader   = len(diskPayloadMagic) + diskPayloadLengths + sha256.Size
 	// diskPayloadMaxRecord is the largest record the framing can legally
-	// describe. Get rejects any file above it on its size alone, before a
-	// single byte is read, so a stray oversized file in the cache directory
-	// cannot be paged into the daemon's heap.
+	// describe, and Get rejects anything above it on its size alone. It is
+	// belt-and-braces rather than the real bound: because it is defined as
+	// exactly the largest framable record, any file big enough to trip it must
+	// also declare lengths that the per-field caps or the size cross-check
+	// reject, and neither of those allocates either. What actually keeps a
+	// stray oversized file out of the daemon's heap is that the tail is sized
+	// from the *validated* declared lengths, never from the file size.
 	diskPayloadMaxRecord         = int64(diskPayloadHeader) + 2*diskPayloadMaxField + diskPayloadMaxBody
 	diskPayloadVersionsPerGroup  = 8
 	diskPayloadVariantsPerSource = 64
@@ -179,8 +183,17 @@ func (c *diskPayloadCache) Set(key, sourceVersion string, entry *payloadEntry) e
 	if !ok {
 		return nil
 	}
-	if _, err := os.Stat(path); err == nil {
-		return nil // immutable artifact already exists
+	// The immutability shortcut must test "a reader can use what is already
+	// there", not merely "a file exists". The artifact path is a hash of the
+	// key alone, so it does not change when the record format does: a bare
+	// existence check would let a record this build can no longer read — one
+	// written by an older format, or a corrupt one — block its own replacement
+	// forever, and prune only runs after a successful rename, so nothing would
+	// ever reclaim it. Verifying instead makes an unreadable record overwritable
+	// and the cache self-healing. Reaching this at all means the in-memory
+	// lookup missed, so the extra read is off the common path.
+	if _, usable := c.Get(key, sourceVersion); usable {
+		return nil // immutable artifact already exists and is readable
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("dashboard payload cache mkdir: %w", err)
@@ -193,6 +206,19 @@ func (c *diskPayloadCache) Set(key, sourceVersion string, entry *payloadEntry) e
 	sum := diskPayloadChecksum(lengths, []byte(key), []byte(entry.etag), entry.body)
 
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".payload-*.tmp")
+	if err != nil {
+		// MkdirAll above and this CreateTemp are deliberately outside pruneMu,
+		// so a concurrent prune can drop the target directory in between. The
+		// byte-budget sweep no longer removes directories, but the version
+		// count cap still does — pruneOldCacheEntries RemoveAll's whole
+		// source-version directories, which does not even require them to be
+		// empty. Recreate and retry once rather than lose the write; SetAsync
+		// discards the error, so a lost write here would be silent.
+		if mkErr := os.MkdirAll(filepath.Dir(path), 0o755); mkErr != nil {
+			return fmt.Errorf("dashboard payload cache mkdir: %w", mkErr)
+		}
+		tmp, err = os.CreateTemp(filepath.Dir(path), ".payload-*.tmp")
+	}
 	if err != nil {
 		return fmt.Errorf("dashboard payload cache temp: %w", err)
 	}
@@ -307,11 +333,20 @@ func pruneCacheBytes(groupDir string, budget int64, preserve string) {
 			if infoErr != nil {
 				continue
 			}
+			// A .tmp file belongs to a Set still in flight. It is deliberately
+			// excluded from the total as well as from the candidates: counting
+			// bytes that cannot be evicted would let a burst of concurrent
+			// writes push the total over budget with nothing attributable to
+			// reclaim, and the loop would then evict every record in the group
+			// and still exit over budget. The overshoot this concedes is
+			// bounded by diskPayloadAsyncWrites in-flight writes and is
+			// reclaimed by the next sweep, once those temps become records.
+			if !strings.HasSuffix(entry.Name(), ".gpc") {
+				continue
+			}
 			total += info.Size()
 			path := filepath.Join(sourceDir, entry.Name())
-			// A .tmp file belongs to a Set still in flight: it counts towards
-			// the footprint but must never be evicted from under its writer.
-			if path == preserve || !strings.HasSuffix(entry.Name(), ".gpc") {
+			if path == preserve {
 				continue
 			}
 			candidates = append(candidates, cachePathInfo{path: path, modTime: info.ModTime().UnixNano(), size: info.Size()})
@@ -329,15 +364,13 @@ func pruneCacheBytes(groupDir string, budget int64, preserve string) {
 			total -= candidate.size
 		}
 	}
-	// Source-version directories emptied by the eviction would otherwise keep
-	// occupying a slot in the diskPayloadVersionsPerGroup count cap. os.Remove
-	// on a directory fails unless it is already empty, so this cannot discard a
-	// directory another write is populating.
-	for _, dir := range sourceDirs {
-		if dir.IsDir() {
-			_ = os.Remove(filepath.Join(groupDir, dir.Name()))
-		}
-	}
+	// Directories this sweep empties are deliberately left in place. Removing
+	// them would race a concurrent Set that has completed its MkdirAll and not
+	// yet created its temp file — os.Remove failing on a non-empty directory is
+	// not the protection it looks like, because in that window the directory
+	// *is* empty. The only thing an empty directory costs is a slot in the
+	// diskPayloadVersionsPerGroup count cap, which already evicts oldest-first
+	// and will reclaim it. An inode is a cheaper price than a lost write.
 }
 
 func (c *diskPayloadCache) path(key, sourceVersion string) (string, bool) {

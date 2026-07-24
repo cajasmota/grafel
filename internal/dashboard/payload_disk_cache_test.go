@@ -267,48 +267,164 @@ func TestV2GraphRestoresDiskPayloadBeforeLoadingGraph(t *testing.T) {
 
 // --- hardening follow-ups (#5941) --------------------------------------------
 
-// TestDiskPayloadCacheRejectsOversizedRecordWithoutReadingIt covers the read
-// path bound: a file larger than any legal record must be rejected on its size
-// alone, before the body is allocated.
-func TestDiskPayloadCacheRejectsOversizedRecordWithoutReadingIt(t *testing.T) {
-	cache := newDiskPayloadCache(t.TempDir())
-	const (
-		key     = "assessment::default"
-		version = "graph-v1"
-	)
-	path, ok := cache.path(key, version)
-	if !ok {
-		t.Fatal("expected cache path")
-	}
+// writeDiskPayloadRecord frames a record exactly as Set does, but with a
+// caller-chosen magic, so tests can build well-formed records that differ from
+// the current format in one specific way.
+func writeDiskPayloadRecord(t *testing.T, path, magic, key, etag string, body []byte, checksum []byte) {
+	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f, err := os.Create(path)
-	if err != nil {
+	record := make([]byte, 0, diskPayloadHeader+len(key)+len(etag)+len(body))
+	record = append(record, magic...)
+	record = binary.LittleEndian.AppendUint32(record, uint32(len(key)))
+	record = binary.LittleEndian.AppendUint32(record, uint32(len(etag)))
+	record = binary.LittleEndian.AppendUint64(record, uint64(len(body)))
+	record = append(record, checksum...)
+	record = append(record, key...)
+	record = append(record, etag...)
+	record = append(record, body...)
+	if err := os.WriteFile(path, record, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.Write([]byte(diskPayloadMagic)); err != nil {
-		t.Fatal(err)
-	}
-	// Sparse: costs no disk, but any implementation that reads before it
-	// validates the length pays for every byte in RAM.
-	if err := f.Truncate(int64(diskPayloadMaxBody) + 4<<20); err != nil {
-		t.Skipf("sparse file unsupported: %v", err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
+}
 
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-	if _, hit := cache.Get(key, version); hit {
-		t.Fatal("oversized cache record must be a miss")
-	}
-	runtime.ReadMemStats(&after)
-	if grew := after.TotalAlloc - before.TotalAlloc; grew > 1<<20 {
-		t.Fatalf("Get allocated %d bytes for an oversized record; it must reject on size before reading the body", grew)
-	}
+// frameChecksum digests a record the way Get will, so a fixture can be made
+// checksum-valid and differ from a real record only in its magic.
+func frameChecksum(key, etag string, body []byte) []byte {
+	lengths := make([]byte, 0, diskPayloadLengths)
+	lengths = binary.LittleEndian.AppendUint32(lengths, uint32(len(key)))
+	lengths = binary.LittleEndian.AppendUint32(lengths, uint32(len(etag)))
+	lengths = binary.LittleEndian.AppendUint64(lengths, uint64(len(body)))
+	return diskPayloadChecksum(lengths, []byte(key), []byte(etag), body)
+}
+
+// TestDiskPayloadCacheRejectsRecordWhoseSizeContradictsItsHeader covers the
+// bound that actually protects the heap: the record tail is sized from the
+// validated declared lengths and cross-checked against the file size, so a file
+// can never be read merely because it is on disk.
+//
+// The diskPayloadMaxRecord ceiling is deliberately NOT what this asserts. That
+// ceiling is defined as the largest framable record, so it is unreachable as a
+// distinct rejection — every file large enough to trip it also declares lengths
+// that the checks below reject, without allocating either.
+func TestDiskPayloadCacheRejectsRecordWhoseSizeContradictsItsHeader(t *testing.T) {
+	const (
+		key     = "assessment::default"
+		version = "graph-v1"
+		etag    = `"etag-1"`
+	)
+	body := []byte(`{"ok":true}`)
+
+	t.Run("trailing bytes beyond the declared frame", func(t *testing.T) {
+		cache := newDiskPayloadCache(t.TempDir())
+		path, ok := cache.path(key, version)
+		if !ok {
+			t.Fatal("expected cache path")
+		}
+		writeDiskPayloadRecord(t, path, diskPayloadMagic, key, etag, body, frameChecksum(key, etag, body))
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Every declared length is individually legal and the digest over the
+		// declared frame still verifies; only the file size disagrees.
+		if _, err := f.Write(bytes.Repeat([]byte("\x00"), 4096)); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, hit := cache.Get(key, version); hit {
+			t.Fatal("a record whose file size contradicts its declared lengths must be a miss")
+		}
+	})
+
+	t.Run("declared body length above the cap", func(t *testing.T) {
+		cache := newDiskPayloadCache(t.TempDir())
+		path, ok := cache.path(key, version)
+		if !ok {
+			t.Fatal("expected cache path")
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		bodyLen := uint64(diskPayloadMaxBody) + 1
+		header := make([]byte, 0, diskPayloadHeader)
+		header = append(header, diskPayloadMagic...)
+		header = binary.LittleEndian.AppendUint32(header, uint32(len(key)))
+		header = binary.LittleEndian.AppendUint32(header, uint32(len(etag)))
+		header = binary.LittleEndian.AppendUint64(header, bodyLen)
+		header = append(header, make([]byte, sha256.Size)...)
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write(header); err != nil {
+			t.Fatal(err)
+		}
+		// Sized sparsely so the file size agrees exactly with the declared
+		// lengths, and so it stays under diskPayloadMaxRecord. The per-field
+		// body cap is therefore the only check that can reject this record —
+		// without it, Get would allocate the full declared gigabyte.
+		wantLen := int64(diskPayloadHeader) + int64(len(key)) + int64(len(etag)) + int64(bodyLen)
+		if wantLen > diskPayloadMaxRecord {
+			t.Fatal("fixture must stay under the record ceiling to isolate the body cap")
+		}
+		if err := f.Truncate(wantLen); err != nil {
+			t.Skipf("sparse file unsupported: %v", err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		// The miss alone cannot see this guard: without it the record is still
+		// rejected, but only after the declared gigabyte has been allocated and
+		// read. The allocation is the observable property, so assert on it.
+		// TotalAlloc is process-cumulative, so the threshold is deliberately
+		// wide — background goroutines contribute kilobytes here, against a
+		// signal of 1 GiB.
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		if _, hit := cache.Get(key, version); hit {
+			t.Fatal("a declared body length above the cap must be a miss")
+		}
+		runtime.ReadMemStats(&after)
+		if grew := after.TotalAlloc - before.TotalAlloc; grew > 64<<20 {
+			t.Fatalf("Get allocated %d bytes; the tail must be rejected on its declared length, not materialised", grew)
+		}
+	})
+
+	// Documents the diskPayloadMaxRecord early-out. Unlike the subtests above
+	// this one is knowingly not a mutation-killer: deleting the ceiling still
+	// leaves the size-vs-wantLen cross-check to reject the file, and no valid
+	// set of declared lengths can exceed the ceiling in the first place. It is
+	// here to pin the behaviour, not to claim the guard is load-bearing.
+	t.Run("file larger than any framable record", func(t *testing.T) {
+		cache := newDiskPayloadCache(t.TempDir())
+		path, ok := cache.path(key, version)
+		if !ok {
+			t.Fatal("expected cache path")
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write([]byte(diskPayloadMagic)); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Truncate(diskPayloadMaxRecord + 1); err != nil {
+			t.Skipf("sparse file unsupported: %v", err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, hit := cache.Get(key, version); hit {
+			t.Fatal("a file larger than any framable record must be a miss")
+		}
+	})
 }
 
 // TestDiskPayloadCacheEnforcesGroupByteBudget covers the total-footprint bound
@@ -483,5 +599,130 @@ func TestDiskPayloadCacheDetectsEtagCorruption(t *testing.T) {
 
 	if got, hit := cache.Get(key, version); hit {
 		t.Fatalf("a corrupted etag must fail verification, got etag %q", got.etag)
+	}
+}
+
+// TestDiskPayloadCacheReplacesUnreadableRecord covers reclaimability, which is
+// a different property from the clean miss asserted above: the artifact path is
+// a hash of the key alone and does not change with the record format, so a
+// record this build cannot read must not be able to block its own replacement.
+// Without this, every record written before the format bump would wedge its key
+// permanently — Get misses on the magic, Set used to bail on mere existence,
+// and prune only runs after a successful rename.
+func TestDiskPayloadCacheReplacesUnreadableRecord(t *testing.T) {
+	const (
+		key     = "assessment::default"
+		version = "graph-v1"
+		etag    = `"etag-1"`
+	)
+	body := []byte(`{"ok":true}`)
+
+	cases := map[string]func(t *testing.T, path string){
+		"superseded format": func(t *testing.T, path string) {
+			sum := sha256.Sum256(body) // the body-only digest of GFPAY01
+			writeDiskPayloadRecord(t, path, "GFPAY01\n", key, etag, body, sum[:])
+		},
+		"corrupt checksum": func(t *testing.T, path string) {
+			bad := frameChecksum(key, etag, body)
+			bad[0] ^= 0xff
+			writeDiskPayloadRecord(t, path, diskPayloadMagic, key, etag, body, bad)
+		},
+	}
+	for name, seed := range cases {
+		t.Run(name, func(t *testing.T) {
+			cache := newDiskPayloadCache(t.TempDir())
+			path, ok := cache.path(key, version)
+			if !ok {
+				t.Fatal("expected cache path")
+			}
+			seed(t, path)
+			if _, hit := cache.Get(key, version); hit {
+				t.Fatal("unreadable record must be a miss")
+			}
+
+			fresh := []byte(`{"ok":true,"generation":2}`)
+			if err := cache.Set(key, version, &payloadEntry{body: fresh, etag: `"etag-2"`, sourceVersion: version}); err != nil {
+				t.Fatal(err)
+			}
+			entry, hit := cache.Get(key, version)
+			if !hit {
+				t.Fatal("an unreadable record blocked its own replacement; the key is wedged forever")
+			}
+			if string(entry.body) != string(fresh) || entry.etag != `"etag-2"` {
+				t.Fatalf("stale record survived: body %q etag %q", entry.body, entry.etag)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data[:len(diskPayloadMagic)]) != diskPayloadMagic {
+				t.Fatalf("on-disk magic = %q, want the current format", data[:len(diskPayloadMagic)])
+			}
+		})
+	}
+}
+
+// TestDiskPayloadCacheRejectsForeignMagic isolates the magic comparison. The
+// fixture is well-formed in every other respect — its digest is the current
+// frame checksum, its lengths and size agree, its key matches — so the magic
+// check is the only thing that can reject it.
+func TestDiskPayloadCacheRejectsForeignMagic(t *testing.T) {
+	cache := newDiskPayloadCache(t.TempDir())
+	const (
+		key     = "assessment::default"
+		version = "graph-v1"
+		etag    = `"etag-1"`
+	)
+	body := []byte(`{"ok":true}`)
+	path, ok := cache.path(key, version)
+	if !ok {
+		t.Fatal("expected cache path")
+	}
+	if len("GFPAY01\n") != len(diskPayloadMagic) {
+		t.Fatal("fixture assumes a fixed-width magic")
+	}
+	writeDiskPayloadRecord(t, path, "GFPAY01\n", key, etag, body, frameChecksum(key, etag, body))
+
+	if _, hit := cache.Get(key, version); hit {
+		t.Fatal("a record carrying a foreign magic must be rejected by the magic check alone")
+	}
+}
+
+// TestDiskPayloadCacheByteSweepLeavesDirectories pins the decision that the
+// byte-budget sweep evicts files but never removes the directories it empties.
+// Removing them would race a concurrent Set sitting between its MkdirAll and
+// its CreateTemp; an empty directory only costs a slot in the version count
+// cap, which reclaims it oldest-first.
+func TestDiskPayloadCacheByteSweepLeavesDirectories(t *testing.T) {
+	cache := newDiskPayloadCache(t.TempDir())
+	cache.bytesBudget = 1
+	body := bytes.Repeat([]byte("x"), 512)
+	for i := 0; i < 3; i++ {
+		version := fmt.Sprintf("graph-v%d", i)
+		key := fmt.Sprintf("assessment::k%d", i)
+		if err := cache.Set(key, version, &payloadEntry{body: body, etag: `"etag"`, sourceVersion: version}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	groupDir := filepath.Join(cache.root, shortPayloadHash("assessment"))
+	dirs, err := os.ReadDir(groupDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dirs) != 3 {
+		t.Fatalf("source-version directories = %d, want 3 left in place after the sweep", len(dirs))
+	}
+	// The budget still held: only the newest record survives.
+	var files int
+	for _, dir := range dirs {
+		entries, dirErr := os.ReadDir(filepath.Join(groupDir, dir.Name()))
+		if dirErr != nil {
+			t.Fatal(dirErr)
+		}
+		files += len(entries)
+	}
+	if files != 1 {
+		t.Fatalf("records surviving the byte budget = %d, want 1", files)
 	}
 }
