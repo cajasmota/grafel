@@ -238,15 +238,19 @@ group-by). A clean v2 endpoint keeps the two UIs independent. Like v1, it shares
 the server-side payload cache + strong ETag/304 + mux-level gzip (cache keys are
 namespaced with a `v2:` prefix). Pre-serialised payloads are also persisted as
 immutable, checksummed artifacts under
-`~/.grafel/cache/dashboard/v1/<group-hash>/<source-hash>/`. The source hash
+`<grafel-home>/cache/dashboard/v1/<group-hash>/<source-hash>/`, where
+`<grafel-home>` is resolved by `registry.HomeDir()` — `$GRAFEL_HOME` when set,
+otherwise `~/.grafel`. The source hash
 covers the group config, each repo's active graph generation (single-file or
 segment-set), description and flow sidecars, the group algorithm overlay and
 the cross-repo links file. A matching artifact can therefore be served after a
 daemon restart without first materialising the graph; any watched source
 change naturally selects a new source hash. Corrupt or unknown cache files are
 treated as misses and rebuilt asynchronously after the live response is
-generated. Retention is bounded to eight source versions per group and 64
-parameter variants per source version. Entity detail for the inspector still
+generated. Retention is bounded to eight source versions per group, 64
+parameter variants per source version, and a 512 MiB total footprint per group
+(oldest-first eviction) — the byte budget is the bound that holds regardless of
+how many distinct parameter variants a client drives. Entity detail for the inspector still
 uses the v1 `GET /api/graph/{group}/entity/{id}` (unchanged, raw JSON).
 
 ---
