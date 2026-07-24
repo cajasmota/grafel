@@ -269,7 +269,6 @@ func MergeModuleBatch(si *SymbolIndex, offset, batchSize int) (Index, int) {
 		byLocation:         make(LocationIndex, total/2+1),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex, total/2+1),
-		byLocationKindReal: make(LocationKindIndex, total/2+1),
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
@@ -520,7 +519,6 @@ func accumulatorIndex(totalEntities int) Index {
 		byLocation:         make(LocationIndex, cap2),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex, cap2),
-		byLocationKindReal: make(LocationKindIndex, cap2),
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
@@ -544,7 +542,6 @@ func emptyIndex() Index {
 		byLocation:         make(LocationIndex),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex),
-		byLocationKindReal: make(LocationKindIndex),
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
@@ -631,32 +628,27 @@ func insertModuleEntry(
 	// Location indexes.
 	sf := me.sourceFile
 	if sf != "" {
-		// byLocationKind (both kinds).
+		// byLocationKind — .base carries all kinds (including SCOPE.*),
+		// .real only the original kind. Mirror of BuildIndex's merged
+		// writer (#5954). Stored back by value since locKindEntry lives
+		// inline in the inner map. .base and .real are blanked
+		// independently (the #525 invariant).
 		fileKindBucket := idx.byLocationKind[sf]
 		if fileKindBucket == nil {
-			fileKindBucket = make(map[string]kindIDs)
+			fileKindBucket = make(map[string]locKindEntry)
 			idx.byLocationKind[sf] = fileKindBucket
 		}
-		nameKindBucketLoc := fileKindBucket[me.name]
+		locKindEnt := fileKindBucket[me.name]
 		for _, kind := range kinds {
 			if kind == "" {
 				continue
 			}
-			nameKindBucketLoc.set(kind, me.id)
+			locKindEnt.base.set(kind, me.id)
 		}
-		fileKindBucket[me.name] = nameKindBucketLoc
-
-		// byLocationKindReal — original kind only.
 		if me.kind != "" {
-			realFileBucket := idx.byLocationKindReal[sf]
-			if realFileBucket == nil {
-				realFileBucket = make(map[string]kindIDs)
-				idx.byLocationKindReal[sf] = realFileBucket
-			}
-			realNameBucket := realFileBucket[me.name]
-			realNameBucket.set(me.kind, me.id)
-			realFileBucket[me.name] = realNameBucket
+			locKindEnt.real.set(me.kind, me.id)
 		}
+		fileKindBucket[me.name] = locKindEnt
 
 		// byLocation (kind-agnostic, unique within file).
 		if idx.ambigLocation[sf] == nil || !idx.ambigLocation[sf][me.name] {

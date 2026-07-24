@@ -407,24 +407,19 @@ type Index struct {
 	// ambigLocation[file_path][name] = true when (file, name) collides.
 	ambigLocation map[string]map[string]bool
 
-	// byLocationKind[file_path][name][kind] = entity_id. Kind-aware
-	// (file, name) lookup. PORT-2-FIX-2 emissions can produce two entities
-	// at the same (file, name) with different kinds (e.g. SCOPE.Component
-	// class + SCOPE.Operation method); kind-aware lookup picks the correct
-	// one when the relationship's kind hint maps to a single family.
-	// A blank string sentinel marks (file, name, kind) collisions.
+	// byLocationKind[file_path][name] carries BOTH kind-aware location
+	// buckets in one entry (#5954 outer-map compaction increment 2):
+	// .base is the all-kinds bucket (including SCOPE.* dual-indexing) and
+	// .real is the original-kind-only bucket. See locKindEntry for the
+	// semantics of each field.
+	//
+	// Kind-aware (file, name) lookup exists because PORT-2-FIX-2 emissions
+	// can produce two entities at the same (file, name) with different
+	// kinds (e.g. SCOPE.Component class + SCOPE.Operation method);
+	// kind-aware lookup picks the correct one when the relationship's kind
+	// hint maps to a single family. A blank string sentinel marks
+	// (file, name, kind) collisions.
 	byLocationKind LocationKindIndex
-
-	// byLocationKindReal mirrors byLocationKind but indexes ONLY under
-	// the entity's original kind (no SCOPE.* dual-indexing). Used by
-	// lookupLocationKind's tier-1 pass so structural-ref EXTENDS /
-	// IMPLEMENTS edges that target a same-file collision between a
-	// real Component and a SCOPE.Component placeholder bind to the
-	// real entity (#525). Without this, the dual-indexing in
-	// byLocationKind blanks the "Component" key when a SCOPE.Component
-	// of the same (file, name) is registered, forcing the resolver
-	// into ambig-bare-hint-fail.
-	byLocationKindReal LocationKindIndex
 
 	// byQualifiedName[qualified_name] = entity_id. Direct lookup for
 	// stubs whose ToID is an entity QualifiedName verbatim (e.g. markdown
@@ -528,20 +523,60 @@ type Index struct {
 // that are unique within their file. Returned by BuildLocationIndex.
 type LocationIndex map[string]map[string]string
 
-// LocationKindIndex maps file_path -> name -> kind -> entity_id. Used by the
-// kind-aware structural-ref / location resolver path to disambiguate
-// same-file (file, name) collisions when the relationship supplies a kind
-// hint. A blank string value is the ambiguous-within-kind sentinel.
+// LocationKindIndex maps file_path -> name -> {base, real} kind->entity_id
+// buckets. Used by the kind-aware structural-ref / location resolver path to
+// disambiguate same-file (file, name) collisions when the relationship
+// supplies a kind hint. A blank string value is the ambiguous-within-kind
+// sentinel.
 //
 // The innermost kind->id level is a compact kindIDs rather than a
 // map[string]string: these buckets almost always hold a SINGLE (kind, id)
 // entry, and paying full Go-map overhead (~300B heap) per 1-entry map made
 // the four kind->id inner maps 32% of the index-internal peak heap (#5954).
 // kindIDs stores the first entry inline (zero heap in the common case).
-type LocationKindIndex map[string]map[string]kindIDs
+//
+// The name->… level carries a locKindEntry rather than a bare kindIDs because
+// the base and real tables were formerly two parallel LocationKindIndex maps
+// over the identical (file, name) key set — see locKindEntry (#5954).
+type LocationKindIndex map[string]map[string]locKindEntry
 
 // kindID is one (kind, entity_id) pair inside a kindIDs.
 type kindID struct{ kind, id string }
+
+// locKindEntry merges the two formerly-parallel location-keyed tables
+// (byLocationKind + byLocationKindReal) into a single inner-map value
+// (#5954 outer-map compaction increment 2). Both tables were written over the
+// IDENTICAL (sourceFile, e.Name) key set in the same loop iteration — the real
+// write is nested inside the same `sourceFile != ""` guard as the base write
+// and only narrows it further with `e.Kind != ""` — so storing them as two
+// fields of one value removes ~427k duplicate name-key headers plus one whole
+// inner bucket array per file.
+//
+// The two fields are INDEPENDENT state, never derivable from one another:
+//   - base: indexed under every kind form (original AND SCOPE-trimmed), i.e.
+//     the dual-indexed bucket. A (file, name, kind) collision DESTRUCTIVELY
+//     blanks the entry to the "" sentinel via kindIDs.set, so a real entity's
+//     id can become unrecoverable from base alone.
+//   - real: indexed ONLY under the entity's original kind (no SCOPE.*
+//     dual-indexing), so lookupLocationKind's tier-1 pass can prefer a real
+//     entity over a same-named SCOPE.* placeholder in the same file (#525).
+//     It is NOT a filtered view of base — it survives collisions base has
+//     already blanked.
+//
+// Blanking is therefore applied to each field separately, exactly as the two
+// separate maps did. Deriving real from base (e.g. "store base and filter
+// SCOPE.* at read time") is UNSAFE and would silently corrupt resolution.
+//
+// Presence semantics: because real is written only on a subset of the
+// iterations that write base — at both levels, outer file key and inner name
+// key — the merged key set is exactly the old byLocationKind key set, and no
+// (file, name) that previously existed only in byLocationKindReal exists. A
+// former `byLocationKindReal[file] == nil` outer miss now surfaces as an entry
+// whose .real bucket is empty (len() == 0), which every read site already
+// treats identically to the nil-bucket case.
+type locKindEntry struct {
+	base, real kindIDs
+}
 
 // nameKindEntry merges the two formerly-parallel name-keyed tables
 // (nameKinds + nameKindsReal) into a single map value (#5954). Both tables
@@ -568,7 +603,7 @@ type nameKindEntry struct {
 
 // kindIDs is a heap-frugal replacement for map[string]string (kind -> id) in
 // the resolver Index's four dominant inner buckets (nameKinds .base/.real,
-// byLocationKind, byLocationKindReal). The first entry lives inline (k0/v0);
+// byLocationKind .base/.real). The first entry lives inline (k0/v0);
 // additional kinds spill to rest. Since these buckets carry ~1 entry each, the
 // inline path never touches the heap — that is the entire point of the type.
 //
@@ -836,7 +871,6 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		byLocation:         make(LocationIndex),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex),
-		byLocationKindReal: make(LocationKindIndex),
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
@@ -1041,36 +1075,31 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			// Kind-aware (file, name, kind) bucket — collision-safe under
 			// PORT-2-FIX-2 emissions. Indexed under both raw and SCOPE-
 			// trimmed kinds to mirror byKind.
-			fileKindBucket := idx.byLocationKind[sourceFile]
-			if fileKindBucket == nil {
-				fileKindBucket = make(map[string]kindIDs)
-				idx.byLocationKind[sourceFile] = fileKindBucket
-			}
-			nameKindBucketLoc := fileKindBucket[e.Name]
-			for _, kind := range kinds {
-				if kind == "" {
-					continue
-				}
-				nameKindBucketLoc.set(kind, e.ID) // ambiguous within (file, name, kind) => blank
-			}
-			fileKindBucket[e.Name] = nameKindBucketLoc
-
-			// byLocationKindReal — single-pass under the entity's
-			// original kind only. Powers the real-tier preference in
+			//
+			// .real is a single pass under the entity's original kind
+			// only. Powers the real-tier preference in
 			// lookupLocationKind so structural-ref EXTENDS targets
 			// like scope:component:class:py:models.py:TimestampedModel
 			// resolve to a real Component even when a SCOPE.Component
 			// placeholder shares the same (file, name) (#525).
-			if e.Kind != "" {
-				realFileBucket := idx.byLocationKindReal[sourceFile]
-				if realFileBucket == nil {
-					realFileBucket = make(map[string]kindIDs)
-					idx.byLocationKindReal[sourceFile] = realFileBucket
-				}
-				realNameBucket := realFileBucket[e.Name]
-				realNameBucket.set(e.Kind, e.ID)
-				realFileBucket[e.Name] = realNameBucket
+			// .base and .real are blanked INDEPENDENTLY — a collision
+			// in one never touches the other (#5954 merge invariant).
+			fileKindBucket := idx.byLocationKind[sourceFile]
+			if fileKindBucket == nil {
+				fileKindBucket = make(map[string]locKindEntry)
+				idx.byLocationKind[sourceFile] = fileKindBucket
 			}
+			locKindEnt := fileKindBucket[e.Name]
+			for _, kind := range kinds {
+				if kind == "" {
+					continue
+				}
+				locKindEnt.base.set(kind, e.ID) // ambiguous within (file, name, kind) => blank
+			}
+			if e.Kind != "" {
+				locKindEnt.real.set(e.Kind, e.ID)
+			}
+			fileKindBucket[e.Name] = locKindEnt
 
 			if idx.ambigLocation[sourceFile] == nil || !idx.ambigLocation[sourceFile][e.Name] {
 				bucket := idx.byLocation[sourceFile]
@@ -2193,7 +2222,7 @@ func (idx Index) lookupUniqueRealComponentByName(name string) (string, bool) {
 			return id, true
 		}
 	}
-	// Python class fallback: scan byLocationKindReal for any file that
+	// Python class fallback: scan byLocationKind .base for any file that
 	// owns a SCOPE.Component entity with this exact name. SCOPE.Component
 	// is the Python extractor's class-entity kind (#525). When exactly
 	// one file owns a SCOPE.Component for this name, bind to it; ambiguous
@@ -2201,7 +2230,7 @@ func (idx Index) lookupUniqueRealComponentByName(name string) (string, bool) {
 	scopeKind := scopeKindPrefix + "Component"
 	var match string
 	for _, fileBucket := range idx.byLocationKind {
-		nameBucket := fileBucket[name]
+		nameBucket := fileBucket[name].base
 		id, _ := nameBucket.get(scopeKind)
 		if id == "" {
 			continue
@@ -2229,12 +2258,13 @@ func (idx Index) lookupUniqueSchemaFieldByName(fieldName string) (string, bool) 
 	if fieldName == "" {
 		return "", false
 	}
-	// Scan byLocationKind for SCOPE.Schema/field entities whose leaf name
-	// matches. The dotted entity name is "ClassName.fieldName"; we compare
-	// the suffix after the last dot.
+	// Scan byLocationKind .base for SCOPE.Schema/field entities whose leaf
+	// name matches. The dotted entity name is "ClassName.fieldName"; we
+	// compare the suffix after the last dot.
 	var match string
 	for _, fileBucket := range idx.byLocationKind {
-		for entityName, kindBucket := range fileBucket {
+		for entityName, locEnt := range fileBucket {
+			kindBucket := locEnt.base
 			// Check if this entity's leaf matches fieldName.
 			leaf := entityName
 			if dot := strings.LastIndexByte(entityName, '.'); dot >= 0 {
@@ -2287,9 +2317,9 @@ func structuralKindFamilies(scopeKind string) []string {
 // supplied kind families. Returns (id, true) only when exactly one family
 // resolves to a non-blank entity ID for this (file, name).
 //
-// Tiered preference (#525): consults byLocationKindReal first, scanning
+// Tiered preference (#525): consults the .real bucket first, scanning
 // only the non-SCOPE.* members of the family. When that yields a unique
-// real entity, return it without consulting the dual-indexed bucket —
+// real entity, return it without consulting the dual-indexed .base bucket —
 // this is what makes `class Article(TimestampedModel):` bind to the
 // imported real Component even when a SCOPE.Component placeholder for
 // the same name lives in the same file. The fallback tier preserves
@@ -2298,18 +2328,24 @@ func (idx Index) lookupLocationKind(filePath, name string, families []string) (s
 	if len(families) == 0 {
 		return "", false
 	}
-	if realFileBucket := idx.byLocationKindReal[filePath]; realFileBucket != nil {
-		if realNameBucket := realFileBucket[name]; realNameBucket.len() > 0 {
-			if id, ok := uniqueMatchInFamily(realNameBucket, families, false); ok {
-				return id, true
-			}
-		}
-	}
 	fileBucket := idx.byLocationKind[filePath]
 	if fileBucket == nil {
 		return "", false
 	}
-	nameBucket := fileBucket[name]
+	// One map probe now serves both tiers. Hoisting the nil check above
+	// tier 1 is safe because keys(real) ⊆ keys(base) at BOTH levels: a
+	// filePath absent from byLocationKind was necessarily absent from the
+	// pre-merge byLocationKindReal too, so the old tier-1 pass could only
+	// have missed. Likewise a (file, name) the pre-merge byLocationKindReal
+	// never recorded yields an entry whose .real bucket is empty, which the
+	// len() == 0 guard treats exactly as the old absent-bucket miss (#5954).
+	locEnt := fileBucket[name]
+	if locEnt.real.len() > 0 {
+		if id, ok := uniqueMatchInFamily(locEnt.real, families, false); ok {
+			return id, true
+		}
+	}
+	nameBucket := locEnt.base
 	if nameBucket.len() == 0 {
 		return "", false
 	}
@@ -2810,8 +2846,8 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 		// ExternalKnown via the python/ts allowlists. Mirrors the tier-1
 		// preference in lookupByKindHint (#525).
 		if len(families) > 0 {
-			if fileBucket := idx.byLocationKindReal[callerFile]; fileBucket != nil {
-				nameBucket := fileBucket[name]
+			if fileBucket := idx.byLocationKind[callerFile]; fileBucket != nil {
+				nameBucket := fileBucket[name].real
 				var match string
 				ambig := false
 				for _, k := range families {
@@ -2884,7 +2920,7 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 	// collisions remain ambig.
 	if callerFile != "" && strings.ToUpper(relKind) == "CALLS" {
 		if fileBucket := idx.byLocationKind[callerFile]; fileBucket != nil {
-			nameBucket := fileBucket[name]
+			nameBucket := fileBucket[name].base
 			if id, _ := nameBucket.get(scopeKindPrefix + "Operation"); id != "" {
 				return id, true
 			}
