@@ -79,8 +79,12 @@ func SupportedLanguages() []string {
 
 // ParseResult holds the output of a single Parse call.
 type ParseResult struct {
-	// TSTree is the binding-agnostic parse tree, always populated. Extractors
-	// consume it via the ts façade (ADR 0023, #5418).
+	// TSTree is the binding-agnostic parse tree. Extractors consume it via the
+	// ts façade (ADR 0023, #5418). It is populated on success, but is nil
+	// when Parse returns ErrHighSyntaxErrorRate (#5963) — the tree is closed
+	// internally before the error is returned, since no caller uses it on
+	// that path and leaving it live with no owner leaked C heap for the life
+	// of the process.
 	TSTree ts.Tree
 	// Language is the normalised language name used for the parse.
 	Language string
@@ -120,6 +124,8 @@ func NewParserFactory(tracer trace.Tracer) *ParserFactory {
 // Behaviour:
 //   - Returns ErrUnsupportedLanguage if language is not in the registry.
 //   - Returns ErrHighSyntaxErrorRate if error_ratio > 10% (file too malformed).
+//     The returned ParseResult still carries Language/ErrorRatio/NodeCount,
+//     but TSTree is nil — the tree is closed before returning (#5963).
 //   - An empty source slice returns a zero-node result with no error.
 //   - The OTel span "treesitter.parse" is always emitted with attributes:
 //     language, file_size_bytes, error_ratio, node_count.
@@ -215,16 +221,34 @@ func (f *ParserFactory) parseOfficial(span trace.Span, source []byte, language s
 	errorRatio := ratio(total, errNodes)
 	setParseSpan(span, language, len(source), errorRatio, total)
 
-	result := &ParseResult{
+	if errorRatio > maxErrorRatio {
+		// #5963 — same leak class as #5954/#5962: every caller bails on
+		// err != nil without ever taking ownership of (or closing) the tree,
+		// so a tree returned alongside ErrHighSyntaxErrorRate would leak for
+		// the life of the process (no finalizer on go-tree-sitter@v0.24.0,
+		// ~19.7 bytes of C heap per source byte). Files that trip this ratio
+		// skew toward the largest minified/generated/malformed inputs, so the
+		// leak was biased toward the biggest trees. Close it here — the
+		// single chokepoint every real parse funnels through — instead of
+		// patching every call site: no caller inspects the tree on this
+		// error path (verified by audit), so there is nothing to preserve.
+		// TSTree is left nil (not just closed) so a caller that forgets to
+		// check the error still gets a nil-deref instead of a use-after-free
+		// on a dangling Close()'d handle.
+		tree.Close()
+		return &ParseResult{
+			Language:   language,
+			ErrorRatio: errorRatio,
+			NodeCount:  total,
+		}, fmt.Errorf("%w: language=%s error_ratio=%.4f", ErrHighSyntaxErrorRate, language, errorRatio)
+	}
+
+	return &ParseResult{
 		TSTree:     tree,
 		Language:   language,
 		ErrorRatio: errorRatio,
 		NodeCount:  total,
-	}
-	if errorRatio > maxErrorRatio {
-		return result, fmt.Errorf("%w: language=%s error_ratio=%.4f", ErrHighSyntaxErrorRate, language, errorRatio)
-	}
-	return result, nil
+	}, nil
 }
 
 func ratio(total, errNodes int) float64 {
