@@ -385,6 +385,10 @@ func extractDjangoComposedRoutes(ctx context.Context, path string, content []byt
 	if err != nil || pr == nil || pr.TSTree == nil {
 		return out, false
 	}
+	// #5954 — CGo-allocated tree with no finalizer; leaks for the life of the
+	// process unless explicitly closed. `out` holds only plain records and
+	// strings, never a ts.Node, so closing on return is safe.
+	defer pr.TSTree.Close()
 
 	root := pr.TSTree.RootNode()
 

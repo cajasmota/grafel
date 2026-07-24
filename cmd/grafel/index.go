@@ -43,7 +43,6 @@ import (
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/treesitter"
-	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
 	"github.com/cajasmota/grafel/internal/version"
 )
@@ -100,12 +99,20 @@ type fileTask struct {
 
 // classifiedFile is a file that survived classification — extractors will
 // be run against it in Pass 1 and Pass 3.
+//
+// Deliberately carries NO tree-sitter parse tree (#5954). Trees are
+// CGo-allocated (~19.7 bytes of C heap per source byte, ~89 B/node) and
+// go-tree-sitter@v0.24.0 installs no finalizer, so a tree retained here is a
+// tree held for the life of the process — retaining one per classified file
+// cost ~1.4-1.6 GB of peak RSS on a 24k-file corpus. Pass 1 closes each tree
+// the moment its extractor returns (see runPass1ExtractWithProgress); Pass 3
+// cross-language extractors read only Path/Content/Language and never touch
+// a tree. Do not re-add a tree field here.
 type classifiedFile struct {
 	relPath  string
 	absPath  string
 	language string
 	content  []byte
-	tree     ts.Tree
 }
 
 // Indexer owns the pass-by-pass orchestration. Constructing a fresh Indexer
@@ -3167,7 +3174,6 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				}
 				if pr, perr := i.parser.Parse(ctx, content, parseLang); perr == nil && pr != nil {
 					file.TSTree = pr.TSTree
-					cf.tree = pr.TSTree
 					// A4 canary (#5414): fold this parse's ERROR-node ratio
 					// into the per-language accumulator. Key by the classifier
 					// language (not the tsx parse override) so .tsx/.jsx roll
@@ -3178,6 +3184,12 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				}
 
 				if !runExtract {
+					// #5954 — nothing will consume this tree; release the
+					// CGo allocation now (see the close below for why).
+					if file.TSTree != nil {
+						file.TSTree.Close()
+						file.TSTree = nil
+					}
 					mu.Lock()
 					classified = append(classified, cf)
 					mu.Unlock()
@@ -3187,6 +3199,33 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				}
 
 				ents, extractErr := extractors.Extract(ctx, file)
+
+				// #5954 — release the parse tree the moment its only consumer
+				// (the Pass-1 language extractor above) has returned. Mirrors
+				// internal/daemon/extract/subproc.go:446-453 ("this is what
+				// keeps batch RSS bounded", ADR 0023 / #5418).
+				//
+				// WHY THIS MATTERS: tree-sitter trees are CGo-allocated —
+				// invisible to the Go heap profiler and to GOMEMLIMIT — and
+				// cost ~19.7 bytes of C heap per source byte (~89 B/node).
+				// go-tree-sitter@v0.24.0 installs NO finalizer, so an
+				// un-Close()d tree leaks for the life of the process. Holding
+				// one tree per classified file (the old behaviour: stash it on
+				// classifiedFile, close it only after Pass 3) pinned ~1.4-1.6
+				// GB of C heap on a 24k-file corpus, and macOS libmalloc never
+				// returns that high-water to the OS. Keeping the live set at
+				// one tree per worker keeps it under ~50 MB.
+				//
+				// INVARIANT: extractors return plain []types.EntityRecord and
+				// must not retain a ts.Node past Extract — a Node holds a
+				// pointer INTO the tree, so retaining one past Close is a
+				// use-after-free. Close() is NOT idempotent (it calls
+				// ts_tree_delete unconditionally), hence the nil-out.
+				if file.TSTree != nil {
+					file.TSTree.Close()
+					file.TSTree = nil
+				}
+
 				relCount := 0
 				for k := range ents {
 					relCount += len(ents[k].Relationships)
@@ -3402,9 +3441,9 @@ func (i *Indexer) runPass3CrossLang(ctx context.Context, absRepo string, classif
 					Language: cf.language,
 					RepoRoot: absRepo,
 				}
-				if cf.tree != nil {
-					input.TSTree = cf.tree
-				}
+				// No TSTree is stamped here (#5954): every registered cross
+				// extractor reads only Path/Content/Language, and Pass 1 has
+				// already closed the tree. See classifiedFile.
 				for _, e := range exts {
 					ents, err := e.Extractor.Extract(ctx, input)
 					if err != nil {
@@ -5187,21 +5226,20 @@ func runJavaAnnotationRoutes(classified []classifiedFile) []types.EntityRecord {
 	return engine.ApplyJavaAnnotationRoutesWithContext(javaPaths, reader, authCtx)
 }
 
-// releaseClassifiedASTs explicitly drops the tree-sitter parse trees + source
-// bytes attached to each classifiedFile entry. Called after the last
-// extractor pass (Pass 3 cross-language) finishes. The tree-sitter Tree.Close
-// path releases the C-side tree allocation that runtime.GC cannot reclaim
-// because the goroutine handle is reference-counted via CGo, not via the Go
-// allocator. Setting .content to nil drops the per-file source-byte buffer
-// the resolver no longer needs. Issue #633.
+// releaseClassifiedASTs drops the source bytes attached to each
+// classifiedFile entry. Called after the last extractor pass (Pass 3
+// cross-language) finishes; setting .content to nil drops the per-file
+// source-byte buffer the resolver no longer needs. Issue #633.
+//
+// It no longer closes parse trees: since #5954 classifiedFile carries none.
+// Pass 1 closes each tree as soon as its extractor returns, which is what
+// keeps the CGo high-water bounded — closing here was far too late (the peak
+// had already been paid) and macOS libmalloc never returns the pages anyway.
+// Re-adding a close here would also risk a double free: ts.Tree.Close() maps
+// straight onto ts_tree_delete and is not idempotent.
 func releaseClassifiedASTs(classified []classifiedFile) {
 	for k := range classified {
-		cf := &classified[k]
-		if cf.tree != nil {
-			cf.tree.Close()
-			cf.tree = nil
-		}
-		cf.content = nil
+		classified[k].content = nil
 	}
 }
 

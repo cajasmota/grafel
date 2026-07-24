@@ -152,6 +152,12 @@ func extractSpringComposedRoutes(ctx context.Context, path string, content []byt
 	if err != nil || pr == nil || pr.TSTree == nil {
 		return out, false
 	}
+	// #5954 — tree-sitter trees are CGo-allocated (~19.7 B of C heap per
+	// source byte) and go-tree-sitter@v0.24.0 installs no finalizer, so an
+	// un-Close()d tree leaks for the life of the process. `out` holds only
+	// plain records/strings, never a ts.Node, so closing on return is safe.
+	// Same pattern as http_endpoint_client_ast.go.
+	defer pr.TSTree.Close()
 
 	root := pr.TSTree.RootNode()
 	walkSpringClasses(root, content, path, &out)

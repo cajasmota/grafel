@@ -69,6 +69,10 @@ func extractKotlinSpringEndpoints(ctx context.Context, path string, content []by
 	if err != nil || pr == nil || pr.TSTree == nil {
 		return nil, nil
 	}
+	// #5954 — CGo-allocated tree with no finalizer; leaks for the life of the
+	// process unless explicitly closed. The returned entities/relationships
+	// are plain records, never a ts.Node, so closing on return is safe.
+	defer pr.TSTree.Close()
 
 	var entities []types.EntityRecord
 	var rels []types.RelationshipRecord
