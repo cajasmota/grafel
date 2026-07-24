@@ -7,8 +7,9 @@ import (
 
 // TestWithMadvDontNeed pins the child-env GODEBUG merge (#5954): madvdontneed=1
 // is appended to any inherited GODEBUG rather than clobbering it, and exactly
-// one GODEBUG entry survives (the Go runtime reads the FIRST match, so a
-// duplicate key would be a silent no-op).
+// one GODEBUG entry survives. See withMadvDontNeed for why the single-entry
+// property is a tidiness invariant rather than a correctness one (os/exec
+// dedupEnv already keeps the last occurrence).
 func TestWithMadvDontNeed(t *testing.T) {
 	cases := []struct {
 		name string

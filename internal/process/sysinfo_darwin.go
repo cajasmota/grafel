@@ -24,10 +24,13 @@ func TotalMemoryMB() int64 {
 
 // AvailableMemoryMB returns the memory available for a new allocation without
 // paging, in megabytes. macOS exposes no single MemAvailable counter, so we sum
-// the page classes the kernel can hand out immediately — free, inactive,
-// speculative and purgeable — from vm_stat, mirroring what Activity Monitor
-// treats as reclaimable. Returns 0 when it cannot be determined; callers must
-// treat 0 as "unknown" and fall back rather than guessing (#5954).
+// the page classes the kernel can hand out immediately — free, inactive and
+// speculative — from vm_stat.
+//
+// "Pages purgeable" is deliberately NOT summed: in vm_stat it is a SUBSET of
+// the active/inactive counts, not a disjoint class, so adding it double-counts
+// (~56MB on the reference host). Returns 0 when it cannot be determined;
+// callers must treat 0 as "unknown" and fall back rather than guessing (#5954).
 func AvailableMemoryMB() int64 {
 	out, err := exec.Command("vm_stat").Output()
 	if err != nil {
@@ -53,7 +56,7 @@ func AvailableMemoryMB() int64 {
 			continue
 		}
 		switch strings.TrimSpace(key) {
-		case "Pages free", "Pages inactive", "Pages speculative", "Pages purgeable":
+		case "Pages free", "Pages inactive", "Pages speculative":
 		default:
 			continue
 		}

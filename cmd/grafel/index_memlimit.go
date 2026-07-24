@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -22,44 +23,79 @@ const indexMemLimitEnv = "GRAFEL_INDEX_MEMLIMIT"
 // memLimitUnset is the sentinel for "do not call debug.SetMemoryLimit at all".
 const memLimitUnset int64 = 0
 
-// indexMemLimitFloorBytes is the smallest soft limit the ADAPTIVE policy will
-// ever return. This floor is the anti-thrash guarantee and it is not
-// negotiable on small-RAM hosts.
+// indexMemLimitSafeFloorBytes is the smallest soft limit we will ever apply.
+// It is ~1.15x the measured ~2.7GB live-heap ceiling of a full corpus index,
+// so the runtime always has room to actually REACH the target.
 //
-// GOMEMLIMIT is a SOFT limit: when it sits BELOW the workload's live heap the
-// runtime cannot honor it and instead GCs continuously — a death spiral.
+// This floor is the anti-thrash guarantee. GOMEMLIMIT is SOFT: set BELOW the
+// live heap, the runtime cannot honor it and instead runs repeated full-heap
+// mark cycles. Three things make that regime unbounded rather than merely
+// slow, and none of them are obvious:
+//
+//  1. Go's 50% GC CPU limiter does NOT bound the damage. It throttles
+//     mutator ASSISTS, but the mark cycles themselves are cache/TLB/
+//     page-fault bound and are not accounted to GC CPU.
+//  2. madvdontneed=1 (which we set on this child, see withMadvDontNeed)
+//     COMPOUNDS it: freed pages are returned to the OS and then immediately
+//     re-faulted on the next cycle.
+//  3. The tree-sitter CGo arenas are invisible to GOMEMLIMIT, so the runtime
+//     keeps GC'ing toward a target that non-Go memory guarantees it can
+//     never reach.
+//
 // Measured on the real corpus (#5954): GOMEMLIMIT=1200MiB against a ~2.7GB
-// live heap made `index-internal` >4x slower (>16 min vs 235 s, never
-// completed). By contrast 2500MiB cut peak RSS 4026MB -> 3203MB for +2 s
-// (+1.7%). So a low-RAM machine must degrade to "generous limit" rather than
-// to "strangled process": we never hand the indexer a limit under 2GiB.
-const indexMemLimitFloorBytes int64 = 2 << 30 // 2 GiB
+// live heap made `index-internal` >4x slower (>16 min vs 235 s) and never
+// completed. So the trade is ASYMMETRIC — a too-low limit costs unbounded,
+// non-terminating time; no limit at all costs a bounded +823MB. Never take
+// the former to avoid the latter.
+const indexMemLimitSafeFloorBytes int64 = 3 << 30 // 3 GiB
 
-// indexMemLimitFraction is the share of AVAILABLE (not total) host RAM used as
-// the soft limit when no override is set. On the measurement machine (~6GB
-// available) 0.5 resolves to 3GiB — just above the measured 2500MiB sweet spot
-// and comfortably above the ~2.7GB live heap, so the runtime trims the
-// reclaimable arena without ever GC-thrashing.
-const indexMemLimitFraction = 2 // divisor, i.e. 1/2 — integer math avoids float overflow on huge hosts
+// indexMemLimitMinAvailableBytes is the amount of available RAM below which we
+// do not attempt to bound the indexer AT ALL. Under 4GiB available there is no
+// limit that is simultaneously above the safe floor and actually useful, so the
+// honest answer is "unset": degrade to today's unbounded behavior rather than
+// strangle the process. This is the small-host escape valve that the previous
+// max(2GiB, available/2) policy got wrong — it kept returning a limit no matter
+// how little RAM there was.
+const indexMemLimitMinAvailableBytes uint64 = 4 << 30 // 4 GiB
 
-// resolveIndexMemLimit implements the adaptive policy:
+// resolveIndexMemLimit implements the adaptive policy (#5954):
 //
-//	max(2GiB, 0.5 * availableRAM)
+//	unset                            if available == 0 or available < 4GiB
+//	max(3GiB, availableRAM * 3/4)    otherwise
 //
 // availableBytes == 0 means "available RAM could not be determined"; we return
 // memLimitUnset rather than guessing, leaving the Go runtime default in place.
+//
+// Why 3/4 rather than 1/2: on the measurement host (4560MB available) 3/4
+// yields 3420MB — safely ABOVE the ~2.7GB live heap while still ~600MB below
+// the 4026MB unlimited baseline, so it trims the reclaimable arena without
+// entering the thrash regime. 1/2 yielded 2280MB there, i.e. BELOW the live
+// heap: the harmful case was the DEFAULT outcome on that machine, not an edge
+// case. On a 4GB-available host the policy degrades to today's behavior; on a
+// 32GB host it is non-binding, which is correct — the limit exists to trim the
+// reclaimable arena, not to act as a quota.
+//
+// Integer math throughout: a float multiply here would be a needless source of
+// rounding surprise in a value that gates a thrash cliff.
 func resolveIndexMemLimit(availableBytes uint64) int64 {
-	if availableBytes == 0 {
+	if availableBytes == 0 || availableBytes < indexMemLimitMinAvailableBytes {
 		return memLimitUnset
 	}
-	half := availableBytes / indexMemLimitFraction
-	if half > uint64(math.MaxInt64) {
+	// Overflow care: prefer the exact form, fall back to divide-first on
+	// absurdly large inputs so the multiply cannot wrap.
+	var target uint64
+	if availableBytes <= math.MaxUint64/3 {
+		target = availableBytes * 3 / 4
+	} else {
+		target = availableBytes / 4 * 3
+	}
+	if target > uint64(math.MaxInt64) {
 		return math.MaxInt64
 	}
-	if limit := int64(half); limit > indexMemLimitFloorBytes {
+	if limit := int64(target); limit > indexMemLimitSafeFloorBytes {
 		return limit
 	}
-	return indexMemLimitFloorBytes
+	return indexMemLimitSafeFloorBytes
 }
 
 // parseIndexMemLimitEnv parses the GRAFEL_INDEX_MEMLIMIT escape hatch.
@@ -131,7 +167,7 @@ func indexMemLimitDecision(rawEnv string, availableBytes uint64) (limit int64, s
 		return resolveIndexMemLimit(availableBytes),
 			"adaptive (ignored malformed " + indexMemLimitEnv + "=" + strings.TrimSpace(rawEnv) + ")"
 	}
-	return resolveIndexMemLimit(availableBytes), "adaptive (max(2GiB, 0.5*available))"
+	return resolveIndexMemLimit(availableBytes), "adaptive (max(3GiB, 0.75*available); unset under 4GiB available)"
 }
 
 // applyIndexMemoryLimit sets the Go soft memory limit for THIS process (the
@@ -139,7 +175,8 @@ func indexMemLimitDecision(rawEnv string, availableBytes uint64) (limit int64, s
 // a support case can see it immediately (#5954).
 //
 // Measured on the real corpus: 4026MB -> 3203MB peak RSS for +2 s (+1.7%).
-// See indexMemLimitFloorBytes for why the adaptive policy never goes low.
+// See indexMemLimitSafeFloorBytes for why the adaptive policy would rather
+// apply NO limit than apply a low one.
 func applyIndexMemoryLimit() {
 	availMB := process.AvailableMemoryMB()
 	var availBytes uint64
@@ -155,4 +192,48 @@ func applyIndexMemoryLimit() {
 	debug.SetMemoryLimit(limit)
 	fmt.Fprintf(os.Stderr, "index-internal: applied Go soft memory limit (#5954) limit_mb=%d available_mb=%d source=%s\n",
 		limit/(1024*1024), availMB, source)
+}
+
+// gcThrashCPUThreshold is the cumulative GC CPU fraction above which a run is
+// reported as suspicious. A healthy corpus index sits in the low single digits.
+const gcThrashCPUThreshold = 0.30
+
+// gcThrashWarning returns an operator-facing warning when a run finished with
+// an implausible share of CPU spent in GC while a soft memory limit was in
+// force — the fingerprint of the thrash regime described on
+// indexMemLimitSafeFloorBytes. It returns "" when there is nothing to say.
+//
+// This is DIAGNOSIS ONLY and deliberately so: there is no runtime valve that
+// re-tunes the limit mid-run. With the corrected policy (never a limit below
+// the safe floor, and no limit at all under 4GiB available) there is nothing
+// for a valve to rescue, and one would add a goroutine, thresholds, hysteresis
+// and nondeterminism to the hot path for no measured benefit.
+//
+// When no limit was applied (limit == math.MaxInt64, the runtime default) we
+// stay quiet: high GC CPU then has nothing to do with our tuning and pointing
+// at GRAFEL_INDEX_MEMLIMIT would send a support case down the wrong path.
+func gcThrashWarning(limit int64, gcFraction float64) string {
+	if limit <= 0 || limit == math.MaxInt64 {
+		return ""
+	}
+	if gcFraction < gcThrashCPUThreshold {
+		return ""
+	}
+	return fmt.Sprintf(
+		"index-internal: WARNING gc_cpu_fraction=%.2f exceeded %.2f with go_soft_memory_limit_mb=%d (#5954). "+
+			"The limit may be below this repo's live heap, which makes the runtime GC continuously. "+
+			"Set GRAFEL_INDEX_MEMLIMIT to a larger value, or to 'off' to disable the limit entirely.",
+		gcFraction, gcThrashCPUThreshold, limit/(1024*1024))
+}
+
+// reportGCThrash samples GC CPU once, after indexing has finished, and logs a
+// warning if the run looks like it fought the soft memory limit. One
+// ReadMemStats at process end is cheap (a single stop-the-world on a process
+// that is about to exit) and adds no goroutine.
+func reportGCThrash() {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	if w := gcThrashWarning(debug.SetMemoryLimit(-1), ms.GCCPUFraction); w != "" {
+		fmt.Fprintln(os.Stderr, w)
+	}
 }

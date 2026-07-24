@@ -26,12 +26,11 @@ import (
 //   - stdout  = JSON progress lines (one per pipeline phase)
 //   - SIGTERM = clean cancellation; exit non-zero
 func runIndexInternal(argv []string) int {
-	// Bound this process's peak footprint before any indexing work starts
-	// (#5954). Measured on the real corpus: 4026MB -> 3203MB peak RSS for
-	// +1.7% wall time. Applied here rather than via a GOMEMLIMIT env var so it
-	// holds no matter how the child was launched. Never fatal.
-	applyIndexMemoryLimit()
-
+	// NOTE: the Go soft memory limit for this process is applied by the
+	// `index-internal` intercept in main.go, NOT here (#5954).
+	// debug.SetMemoryLimit is a PROCESS-WIDE side effect, and this function is
+	// also called in-process by cmd/grafel's own tests — setting it here would
+	// silently pin a soft limit for the remainder of the package's test binary.
 	fs := flag.NewFlagSet("index-internal", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
@@ -113,6 +112,11 @@ func runIndexInternal(argv []string) int {
 
 	outPath := *out
 	err := Index(*repo, outPath, *repoTag, skipList, false, false, opts...)
+	// #5954: one post-run GC CPU sample. Diagnosis only — it never re-tunes the
+	// limit. Silent unless a soft limit was actually applied AND the run spent
+	// an implausible share of CPU in GC. Runs on the failure path too: a run
+	// that fought the limit may well have failed because of it.
+	reportGCThrash()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "index-internal: %v\n", err)
 		fmt.Printf("{\"event\":\"index_error\",\"repo\":%q,\"error\":%q}\n", *repo, err.Error())
