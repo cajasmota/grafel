@@ -427,7 +427,7 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 		}
 		entities[ownerIdx].Relationships = append(entities[ownerIdx].Relationships,
 			types.RelationshipRecord{ToID: ref, Kind: "CONTAINS",
-				Properties: map[string]string{"child": child}})
+				Properties: types.Props{{K: "child", V: child}}})
 	}
 
 	// ownerForStep returns the index that should CONTAIN the next step: the
@@ -563,13 +563,13 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				if refStep != "" {
 					step.Properties["cond_step"] = refStep
 				}
-				condProps := map[string]string{
-					"line":      strconv.Itoa(st.startLine),
-					"flow":      "conditional",
-					"cond_code": code,
-					"cond_op":   op,
-					"cond_kind": "COND",
-					"to_step":   stepName,
+				condProps := types.Props{
+					{K: "cond_code", V: code},
+					{K: "cond_kind", V: "COND"},
+					{K: "cond_op", V: op},
+					{K: "flow", V: "conditional"},
+					{K: "line", V: strconv.Itoa(st.startLine)},
+					{K: "to_step", V: stepName},
 				}
 				// Wire FROM the named prior step (its RC is tested) to this step.
 				if refStep != "" {
@@ -587,7 +587,7 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 					// the predicate to the immediately-preceding step's edge.
 					prev := stepNames[len(stepNames)-1]
 					if fromIdx, ok := stepRefByName[prev]; ok {
-						condProps["cond_scope"] = "all_prior"
+						condProps.Set("cond_scope", "all_prior")
 						ref := extractor.BuildOperationStructuralRef("jcl", filePath, stepName)
 						entities[fromIdx].Relationships = append(entities[fromIdx].Relationships,
 							types.RelationshipRecord{
@@ -628,11 +628,11 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				step.Relationships = append(step.Relationships, types.RelationshipRecord{
 					ToID: prog,
 					Kind: "CALLS",
-					Properties: map[string]string{
-						"line":           strconv.Itoa(st.startLine),
-						"via":            "EXEC PGM",
-						"external":       "true",
-						"cross_language": "cobol",
+					Properties: types.Props{
+						{K: "cross_language", V: "cobol"},
+						{K: "external", V: "true"},
+						{K: "line", V: strconv.Itoa(st.startLine)},
+						{K: "via", V: "EXEC PGM"},
 					},
 				})
 				// A z/OS "shell" utility (the TSO terminal monitor IKJEFTxx,
@@ -673,9 +673,9 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 						step.Relationships = append(step.Relationships, types.RelationshipRecord{
 							ToID: ds.dsn,
 							Kind: kind,
-							Properties: map[string]string{
-								"dataset": ds.dsn,
-								"via":     "IDCAMS",
+							Properties: types.Props{
+								{K: "dataset", V: ds.dsn},
+								{K: "via", V: "IDCAMS"},
 							},
 						})
 					}
@@ -687,9 +687,9 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				step.Relationships = append(step.Relationships, types.RelationshipRecord{
 					ToID: proc,
 					Kind: "CALLS",
-					Properties: map[string]string{
-						"line": strconv.Itoa(st.startLine),
-						"via":  "EXEC PROC",
+					Properties: types.Props{
+						{K: "line", V: strconv.Itoa(st.startLine)},
+						{K: "via", V: "EXEC PROC"},
 					},
 				})
 			} else if positional := firstPositionalProc(operands); positional != "" {
@@ -699,9 +699,9 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				step.Relationships = append(step.Relationships, types.RelationshipRecord{
 					ToID: positional,
 					Kind: "CALLS",
-					Properties: map[string]string{
-						"line": strconv.Itoa(st.startLine),
-						"via":  "EXEC PROC",
+					Properties: types.Props{
+						{K: "line", V: strconv.Itoa(st.startLine)},
+						{K: "via", V: "EXEC PROC"},
 					},
 				})
 			}
@@ -794,20 +794,20 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				if disp == "NEW" || disp == "MOD" || gran.props["gdg_write"] == "true" {
 					kind = string(types.RelationshipKindWritesTo)
 				}
-				edgeProps := map[string]string{"dataset": dsn, "disp": disp}
+				edgeProps := types.Props{{K: "dataset", V: dsn}, {K: "disp", V: disp}}
 				if currentDDName != "" {
-					edgeProps["ddname"] = currentDDName
+					edgeProps.Set("ddname", currentDDName)
 				}
 				if ddConcatSeq > 0 {
-					edgeProps["concatenated"] = "true"
+					edgeProps.Set("concatenated", "true")
 				}
 				if g := gran.props["gdg_generation"]; g != "" {
-					edgeProps["gdg_generation"] = g
-					edgeProps["gdg_base"] = gran.props["gdg_base"]
+					edgeProps.Set("gdg_generation", g)
+					edgeProps.Set("gdg_base", gran.props["gdg_base"])
 				}
 				if m := gran.props["pds_member"]; m != "" {
-					edgeProps["pds_member"] = m
-					edgeProps["pds_library"] = gran.props["pds_library"]
+					edgeProps.Set("pds_member", m)
+					edgeProps.Set("pds_library", gran.props["pds_library"])
 				}
 				entities[currentStepIdx].Relationships = append(entities[currentStepIdx].Relationships,
 					types.RelationshipRecord{ToID: dsn, Kind: kind, Properties: edgeProps})
@@ -835,10 +835,10 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 						types.RelationshipRecord{
 							ToID: member,
 							Kind: string(types.RelationshipKindImports),
-							Properties: map[string]string{
-								"line":        strconv.Itoa(st.startLine),
-								"import_kind": "include",
-								"member":      member,
+							Properties: types.Props{
+								{K: "import_kind", V: "include"},
+								{K: "line", V: strconv.Itoa(st.startLine)},
+								{K: "member", V: member},
 							},
 						})
 				}
@@ -1044,19 +1044,20 @@ type controlScan struct {
 // callsProps builds the CALLS edge properties for a recovered control-card
 // invocation, carrying the via verb, the DB2 plan/subsystem when present, and
 // the host shell-utility program.
-func callsProps(line int, c controlCall, host string) map[string]string {
-	p := map[string]string{
-		"line":           strconv.Itoa(line),
-		"via":            c.via,
-		"external":       "true",
-		"cross_language": "cobol",
-		"host_program":   host,
+func callsProps(line int, c controlCall, host string) types.Props {
+	// Key-sorted literal (types.Props invariant).
+	p := types.Props{
+		{K: "cross_language", V: "cobol"},
+		{K: "external", V: "true"},
+		{K: "host_program", V: host},
+		{K: "line", V: strconv.Itoa(line)},
+		{K: "via", V: c.via},
 	}
 	if c.plan != "" {
-		p["db2_plan"] = c.plan
+		p.Set("db2_plan", c.plan)
 	}
 	if c.system != "" {
-		p["db2_system"] = c.system
+		p.Set("db2_system", c.system)
 	}
 	return p
 }

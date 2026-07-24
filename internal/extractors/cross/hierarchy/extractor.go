@@ -268,7 +268,7 @@ func (r *result) addEntity(e types.EntityRecord) {
 	r.entities = append(r.entities, e)
 }
 
-func (r *result) addRel(from, to, kind string, props map[string]string) {
+func (r *result) addRel(from, to, kind string, props types.Props) {
 	// #560: embed the edge on the most recently emitted entity (the child
 	// class or the implementing interface) instead of a synthetic
 	// "relationship"-kind container entity. The downstream pipeline walks
@@ -295,7 +295,7 @@ func (r *result) addRel(from, to, kind string, props map[string]string) {
 		Kind:       "relationship",
 		Subtype:    strings.ToLower(kind),
 		SourceFile: from,
-		Language:   props["language"],
+		Language:   props.Get("language"),
 		Relationships: []types.RelationshipRecord{
 			{
 				FromID:     from,
@@ -366,9 +366,9 @@ func extractJTCSharp(source, filePath, language string, res *result) {
 					},
 					QualityScore: 0.9,
 				})
-				res.addRel(clsID, parentID, "EXTENDS", map[string]string{
-					"language":  language,
-					"base_name": parentName,
+				res.addRel(clsID, parentID, "EXTENDS", types.Props{
+					{K: "base_name", V: parentName},
+					{K: "language", V: language},
 				})
 				res.extendsFound++
 			}
@@ -393,9 +393,9 @@ func extractJTCSharp(source, filePath, language string, res *result) {
 					},
 					QualityScore: 0.9,
 				})
-				res.addRel(clsID, ifID, "IMPLEMENTS", map[string]string{
-					"language":  language,
-					"base_name": ifaceName,
+				res.addRel(clsID, ifID, "IMPLEMENTS", types.Props{
+					{K: "base_name", V: ifaceName},
+					{K: "language", V: language},
 				})
 				res.implementsFound++
 			}
@@ -445,9 +445,9 @@ func extractJTCInterface(source, filePath, language string, res *result) {
 				continue
 			}
 			parentID := ifaceRef(parentName, language)
-			res.addRel(ifaceID, parentID, "EXTENDS", map[string]string{
-				"language":  language,
-				"base_name": parentName,
+			res.addRel(ifaceID, parentID, "EXTENDS", types.Props{
+				{K: "base_name", V: parentName},
+				{K: "language", V: language},
 			})
 			res.extendsFound++
 		}
@@ -521,9 +521,9 @@ func extractPython(source, filePath string, res *result) {
 					},
 					QualityScore: 0.9,
 				})
-				res.addRel(clsID, ifID, "IMPLEMENTS", map[string]string{
-					"language":  "python",
-					"base_name": clean,
+				res.addRel(clsID, ifID, "IMPLEMENTS", types.Props{
+					{K: "base_name", V: clean},
+					{K: "language", V: "python"},
 				})
 				res.implementsFound++
 			} else {
@@ -540,9 +540,9 @@ func extractPython(source, filePath string, res *result) {
 				// rewrite still-unresolved endpoints to "ext:<name>"
 				// placeholders with Kind="SCOPE.External".
 				parentID := classRef(filePath, clean, "python")
-				res.addRel(clsID, parentID, "EXTENDS", map[string]string{
-					"language":  "python",
-					"base_name": clean,
+				res.addRel(clsID, parentID, "EXTENDS", types.Props{
+					{K: "base_name", V: clean},
+					{K: "language", V: "python"},
 				})
 				res.extendsFound++
 			}
@@ -580,9 +580,9 @@ func extractRuby(source, filePath string, res *result) {
 			},
 			QualityScore: 0.9,
 		})
-		res.addRel(clsID, parentID, "EXTENDS", map[string]string{
-			"language":  "ruby",
-			"base_name": parentName,
+		res.addRel(clsID, parentID, "EXTENDS", types.Props{
+			{K: "base_name", V: parentName},
+			{K: "language", V: "ruby"},
 		})
 		res.extendsFound++
 	}
@@ -663,11 +663,11 @@ func extractRubyMixins(source, filePath string, res *result) {
 					},
 					QualityScore: 0.9,
 				})
-				res.addRel(clsID, modID, "IMPLEMENTS", map[string]string{
-					"language":  "ruby",
-					"kind":      "ruby_mixin",
-					"mixin_op":  tk.kind,
-					"base_name": modLeaf,
+				res.addRel(clsID, modID, "IMPLEMENTS", types.Props{
+					{K: "base_name", V: modLeaf},
+					{K: "kind", V: "ruby_mixin"},
+					{K: "language", V: "ruby"},
+					{K: "mixin_op", V: tk.kind},
 				})
 				res.implementsFound++
 			}
@@ -779,10 +779,10 @@ func extractPHPTraits(source, filePath string, res *result) {
 					},
 					QualityScore: 0.9,
 				})
-				res.addRel(clsID, traitID, "IMPLEMENTS", map[string]string{
-					"language":  "php",
-					"kind":      "php_trait",
-					"base_name": traitLeaf,
+				res.addRel(clsID, traitID, "IMPLEMENTS", types.Props{
+					{K: "base_name", V: traitLeaf},
+					{K: "kind", V: "php_trait"},
+					{K: "language", V: "php"},
 				})
 				res.implementsFound++
 			}
@@ -842,7 +842,7 @@ func extractGo(source, filePath string, res *result) {
 				QualityScore: 0.9,
 			})
 			res.addRel(clsID, parentID, "EXTENDS",
-				map[string]string{"language": "go", "kind": "embedded_struct", "base_name": emb})
+				types.Props{{K: "base_name", V: emb}, {K: "kind", V: "embedded_struct"}, {K: "language", V: "go"}})
 			res.extendsFound++
 		}
 	}
@@ -879,7 +879,7 @@ func extractRust(source, filePath string, res *result) {
 			QualityScore: 0.9,
 		})
 		res.addRel(structID, traitID, "IMPLEMENTS",
-			map[string]string{"language": "rust", "kind": "trait_impl", "base_name": traitName})
+			types.Props{{K: "base_name", V: traitName}, {K: "kind", V: "trait_impl"}, {K: "language", V: "rust"}})
 		res.implementsFound++
 	}
 }
@@ -937,7 +937,7 @@ func extractElixir(source, filePath string, res *result) {
 			QualityScore: 0.9,
 		})
 		res.addRel(modID, behID, "IMPLEMENTS",
-			map[string]string{"language": "elixir", "kind": "behaviour", "base_name": behaviourName})
+			types.Props{{K: "base_name", V: behaviourName}, {K: "kind", V: "behaviour"}, {K: "language", V: "elixir"}})
 		res.implementsFound++
 	}
 }

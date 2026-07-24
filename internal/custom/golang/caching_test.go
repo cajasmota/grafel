@@ -68,15 +68,15 @@ func evict(cache *ristretto.Cache)        { cache.Del("user:1") }
 	if c == nil {
 		t.Fatalf("expected cache.Set CACHES region user:1")
 	}
-	if c.Properties["mode"] != "write" {
-		t.Errorf("Set mode = %q, want write", c.Properties["mode"])
+	if c.Properties.Get("mode") != "write" {
+		t.Errorf("Set mode = %q, want write", c.Properties.Get("mode"))
 	}
 	i := goEdge(ents, "INVALIDATES", ref)
 	if i == nil {
 		t.Fatalf("expected cache.Del INVALIDATES region user:1 (converging on same node)")
 	}
-	if i.Properties["mode"] != "evict" {
-		t.Errorf("Del mode = %q, want evict", i.Properties["mode"])
+	if i.Properties.Get("mode") != "evict" {
+		t.Errorf("Del mode = %q, want evict", i.Properties.Get("mode"))
 	}
 }
 
@@ -90,8 +90,8 @@ func read(cache *ristretto.Cache) { cache.Get("profile") }
 	if e == nil {
 		t.Fatalf("expected cache.Get CACHES region profile")
 	}
-	if e.Properties["mode"] != "read" {
-		t.Errorf("Get mode = %q, want read", e.Properties["mode"])
+	if e.Properties.Get("mode") != "read" {
+		t.Errorf("Get mode = %q, want read", e.Properties.Get("mode"))
 	}
 }
 

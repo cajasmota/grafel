@@ -85,7 +85,7 @@ func assembleDoc4480(recs []types.EntityRecord) *graph.Document {
 				FromID: from,
 				ToID:   rel.ToID,
 				Kind:   rel.Kind,
-			}.WithProperties(rel.Properties))
+			}.WithProperties(rel.Properties.Snapshot()))
 		}
 	}
 	return doc

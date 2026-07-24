@@ -639,10 +639,10 @@ func useImportRecord(fqn, srcPath string) types.EntityRecord {
 		leaf = fqn[idx+1:]
 		mod = strings.ReplaceAll(fqn[:idx], "\\", ".")
 	}
-	props := map[string]string{
-		"local_name":    leaf,
-		"source_module": mod,
-		"imported_name": leaf,
+	props := types.Props{
+		{K: "imported_name", V: leaf},
+		{K: "local_name", V: leaf},
+		{K: "source_module", V: mod},
 	}
 
 	return types.EntityRecord{
@@ -819,12 +819,12 @@ func extractCallRelationships(body ts.Node, src []byte, callerName, parentClass 
 		r := types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(int(call.StartPoint().Row) + 1)},
 			},
 		}
 		if recvType != "" {
-			r.Properties["receiver_type"] = recvType
+			r.Properties.Set("receiver_type", recvType)
 		}
 		rels = append(rels, r)
 	}

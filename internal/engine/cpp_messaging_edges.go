@@ -107,13 +107,13 @@ func applyCppMessagingEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		base := map[string]string{
-			"broker":       broker,
-			"pattern_type": "cpp_messaging_synthesis",
+		base := types.Props{
+			{K: "broker", V: broker},
+			{K: "pattern_type", V: "cpp_messaging_synthesis"},
 		}
 		for k, v := range props {
 			if v != "" {
-				base[k] = v
+				base.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{

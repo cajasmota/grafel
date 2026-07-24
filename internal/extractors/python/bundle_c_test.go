@@ -254,13 +254,13 @@ class Foo(APIView):
 		if r.Kind != "IMPORTS" || r.Properties == nil {
 			continue
 		}
-		local := r.Properties["local_name"]
+		local := r.Properties.Get("local_name")
 		want, tracked := check[local]
 		if !tracked {
 			continue
 		}
 		seen[local] = true
-		got := r.Properties["dead_import"]
+		got := r.Properties.Get("dead_import")
 		if got != want {
 			t.Errorf("import %q dead_import = %q, want %q", local, got, want)
 		}
@@ -309,24 +309,24 @@ __all__ = ("celery_app", "User")
 			if r.Kind != "IMPORTS" || r.Properties == nil {
 				continue
 			}
-			if r.Properties["local_name"] != w.local {
+			if r.Properties.Get("local_name") != w.local {
 				continue
 			}
 			hit = true
-			if r.Properties["re_export"] != w.reExport {
-				t.Errorf("%s re_export = %q, want %q", w.local, r.Properties["re_export"], w.reExport)
+			if r.Properties.Get("re_export") != w.reExport {
+				t.Errorf("%s re_export = %q, want %q", w.local, r.Properties.Get("re_export"), w.reExport)
 			}
-			if r.Properties["package_init"] != w.packageInit {
-				t.Errorf("%s package_init = %q, want %q", w.local, r.Properties["package_init"], w.packageInit)
+			if r.Properties.Get("package_init") != w.packageInit {
+				t.Errorf("%s package_init = %q, want %q", w.local, r.Properties.Get("package_init"), w.packageInit)
 			}
-			if r.Properties["public"] != w.public {
-				t.Errorf("%s public = %q, want %q", w.local, r.Properties["public"], w.public)
+			if r.Properties.Get("public") != w.public {
+				t.Errorf("%s public = %q, want %q", w.local, r.Properties.Get("public"), w.public)
 			}
-			if w.alias != "" && r.Properties["alias"] != w.alias {
-				t.Errorf("%s alias = %q, want %q", w.local, r.Properties["alias"], w.alias)
+			if w.alias != "" && r.Properties.Get("alias") != w.alias {
+				t.Errorf("%s alias = %q, want %q", w.local, r.Properties.Get("alias"), w.alias)
 			}
-			if w.alias == "" && r.Properties["alias"] != "" {
-				t.Errorf("%s alias = %q, want empty", w.local, r.Properties["alias"])
+			if w.alias == "" && r.Properties.Get("alias") != "" {
+				t.Errorf("%s alias = %q, want empty", w.local, r.Properties.Get("alias"))
 			}
 		}
 		if !hit {
@@ -356,10 +356,10 @@ __all__ = ("celery_app",)
 		if r.Kind != "IMPORTS" || r.Properties == nil {
 			continue
 		}
-		if r.Properties["local_name"] != "celery_app" {
+		if r.Properties.Get("local_name") != "celery_app" {
 			continue
 		}
-		if r.Properties["dead_import"] == "true" {
+		if r.Properties.Get("dead_import") == "true" {
 			t.Error("celery_app should NOT be flagged dead (re-exported in __all__)")
 		}
 	}

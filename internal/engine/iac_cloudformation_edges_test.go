@@ -31,7 +31,7 @@ func cfnToDoc(ents []types.EntityRecord, rels []types.RelationshipRecord) *graph
 			FromID: r.FromID,
 			ToID:   r.ToID,
 			Kind:   r.Kind,
-		}.WithProperties(r.Properties))
+		}.WithProperties(r.Properties.Snapshot()))
 	}
 	return doc
 }
@@ -415,7 +415,7 @@ Resources:
 		if r.Kind == "IMPORTS" &&
 			strings.HasSuffix(r.FromID, "#ChildStack") &&
 			strings.Contains(r.ToID, "child.yaml") &&
-			r.Properties["nested_stack"] == "true" {
+			r.Properties.Get("nested_stack") == "true" {
 			foundContainment = true
 		}
 	}

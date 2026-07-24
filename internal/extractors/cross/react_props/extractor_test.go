@@ -199,7 +199,7 @@ export function DevicesTab() {
 	seen := map[string]bool{}
 	for _, r := range dev.rels {
 		if r.Kind == RelRenders {
-			seen[r.Properties["child_name"]] = true
+			seen[r.Properties.Get("child_name")] = true
 		}
 	}
 	if !seen["InspectorDeviceCard"] || !seen["SomeOther"] {
@@ -230,8 +230,8 @@ export function Page() {
 	for _, r := range page.rels {
 		if r.Kind == RelRenders {
 			n++
-			if r.Properties["child_name"] != "CustomWidget" {
-				t.Errorf("unexpected child %q — HTML tag leak", r.Properties["child_name"])
+			if r.Properties.Get("child_name") != "CustomWidget" {
+				t.Errorf("unexpected child %q — HTML tag leak", r.Properties.Get("child_name"))
 			}
 		}
 	}
@@ -259,7 +259,7 @@ export function DevicesTab() {
 	hooks := map[string]bool{}
 	for _, r := range dev.rels {
 		if r.Kind == RelUsesHook {
-			hooks[r.Properties["hook_name"]] = true
+			hooks[r.Properties.Get("hook_name")] = true
 		}
 	}
 	for _, want := range []string{"useState", "useEffect", "useInspectorDevicesTab"} {

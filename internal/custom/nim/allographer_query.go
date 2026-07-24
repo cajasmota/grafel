@@ -321,18 +321,18 @@ func (e *nimAllographerQueryExtractor) Extract(
 		})
 		var rels []types.RelationshipRecord
 		for _, k := range keys {
-			props := map[string]string{
-				"operation": k.op,
-				"table":     table,
+			props := types.Props{
+				{K: "operation", V: k.op},
+				{K: "table", V: table},
 			}
 			if k.txn {
-				props["transaction"] = "true"
+				props.Set("transaction", "true")
 			}
 			if k.join {
-				props["join"] = "true"
+				props.Set("join", "true")
 			}
 			if k.raw {
-				props["raw"] = "true"
+				props.Set("raw", "true")
 			}
 			rels = append(rels, types.RelationshipRecord{
 				ToID:       table,

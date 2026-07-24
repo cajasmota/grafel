@@ -19,7 +19,7 @@ func runMongoAggJava(t *testing.T, src string) ([]types.EntityRecord, []types.Re
 			// #4244 — drop the node-anchored JOINS_COLLECTION twin so the
 			// count/identity assertions below see the collection-anchored
 			// edge set they were written against.
-			if r.Properties["anchor"] == "stage_node" {
+			if r.Properties.Get("anchor") == "stage_node" {
 				return
 			}
 			rels = append(rels, r)
@@ -71,10 +71,10 @@ public class BookService {
 	if j.ToID != "Class:Author" {
 		t.Errorf("join ToID = %q, want Class:Author", j.ToID)
 	}
-	if j.Properties["stage"] != "lookup" {
-		t.Errorf("join stage = %q, want lookup", j.Properties["stage"])
+	if j.Properties.Get("stage") != "lookup" {
+		t.Errorf("join stage = %q, want lookup", j.Properties.Get("stage"))
 	}
-	if j.Properties["local_field"] != "authorId" || j.Properties["foreign_field"] != "_id" || j.Properties["as"] != "authors" {
+	if j.Properties.Get("local_field") != "authorId" || j.Properties.Get("foreign_field") != "_id" || j.Properties.Get("as") != "authors" {
 		t.Errorf("join props = %+v", j.Properties)
 	}
 
@@ -138,7 +138,7 @@ public class BookService {
 	if j == nil || j.FromID != "Class:Book" {
 		t.Fatalf("expected JOINS_COLLECTION(Class:Book -> Class:Author); rels=%+v", rels)
 	}
-	if j.Properties["local_field"] != "authorId" || j.Properties["foreign_field"] != "_id" {
+	if j.Properties.Get("local_field") != "authorId" || j.Properties.Get("foreign_field") != "_id" {
 		t.Errorf("static-lookup props = %+v", j.Properties)
 	}
 }
@@ -169,7 +169,7 @@ public interface BookRepository extends MongoRepository<Book, String> {
 	if j.FromID != "Class:Book" {
 		t.Errorf("join FromID = %q, want Class:Book (from MongoRepository<Book,...>)", j.FromID)
 	}
-	if j.Properties["local_field"] != "authorId" || j.Properties["foreign_field"] != "_id" || j.Properties["as"] != "authors" {
+	if j.Properties.Get("local_field") != "authorId" || j.Properties.Get("foreign_field") != "_id" || j.Properties.Get("as") != "authors" {
 		t.Errorf("annotation $lookup props = %+v", j.Properties)
 	}
 	// One stage entity for the $lookup only ($match does not produce an edge,

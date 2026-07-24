@@ -173,14 +173,14 @@ func (e *GraphQLCodeFirstTypeGraphExtractor) Extract(ctx context.Context, file e
 		if idx, ok := nodes[name]; ok {
 			return idx
 		}
-		props := map[string]string{
-			"graphql_type":   name,
-			"framework":      framework,
-			"code_first":     "true",
-			"structural_ref": extractor.BuildOperationStructuralRef("graphql", file.Path, name),
-			"provenance":     "INFERRED_FROM_CODEFIRST_GRAPHQL_OBJECTTYPE",
+		props := types.Props{
+			{K: "code_first", V: "true"},
+			{K: "framework", V: framework},
+			{K: "graphql_type", V: name},
+			{K: "provenance", V: "INFERRED_FROM_CODEFIRST_GRAPHQL_OBJECTTYPE"},
+			{K: "structural_ref", V: extractor.BuildOperationStructuralRef("graphql", file.Path, name)},
 		}
-		out = append(out, entity(name, "SCOPE.Schema", "type", file.Path, line, props))
+		out = append(out, entity(name, "SCOPE.Schema", "type", file.Path, line, props.Snapshot()))
 		nodes[name] = len(out) - 1
 		return nodes[name]
 	}
@@ -197,18 +197,18 @@ func (e *GraphQLCodeFirstTypeGraphExtractor) Extract(ctx context.Context, file e
 		seen[key] = true
 		ownerRef := extractor.BuildOperationStructuralRef("graphql", file.Path, owner)
 		targetRef := extractor.BuildOperationStructuralRef("graphql", file.Path, target)
-		props := map[string]string{
-			"field_name":    fieldName,
-			"list":          gqlcfPyBool(tc.list),
-			"nullable":      gqlcfPyBool(tc.nullable),
-			"cardinality":   gqlcfPyCardLabel(tc),
-			"self_ref":      gqlcfPyBool(target == owner),
-			"graphql_field": owner + "." + fieldName,
-			"framework":     framework,
-			"provenance":    "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD",
+		props := types.Props{
+			{K: "cardinality", V: gqlcfPyCardLabel(tc)},
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: framework},
+			{K: "graphql_field", V: owner + "." + fieldName},
+			{K: "list", V: gqlcfPyBool(tc.list)},
+			{K: "nullable", V: gqlcfPyBool(tc.nullable)},
+			{K: "provenance", V: "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD"},
+			{K: "self_ref", V: gqlcfPyBool(target == owner)},
 		}
 		if tc.list {
-			props["item_nullable"] = gqlcfPyBool(tc.itemNullable)
+			props.Set("item_nullable", gqlcfPyBool(tc.itemNullable))
 		}
 		idx := nodes[owner]
 		out[idx].Relationships = append(out[idx].Relationships,

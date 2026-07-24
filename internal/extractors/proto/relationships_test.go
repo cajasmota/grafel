@@ -75,8 +75,8 @@ message Foo { string id = 1; }
 	if imports[0].ToID != "common.proto" {
 		t.Errorf("IMPORTS ToID = %q, want common.proto", imports[0].ToID)
 	}
-	if imports[0].Properties["public"] != "true" {
-		t.Errorf("IMPORTS Properties[public] = %q, want true", imports[0].Properties["public"])
+	if imports[0].Properties.Get("public") != "true" {
+		t.Errorf("IMPORTS Properties[public] = %q, want true", imports[0].Properties.Get("public"))
 	}
 }
 

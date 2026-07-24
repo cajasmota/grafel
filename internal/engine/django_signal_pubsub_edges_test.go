@@ -57,7 +57,7 @@ def charge(invoice):
 		if r.ToID != "Function:send_notifications" {
 			t.Errorf("dispatch edge ToID = %q, want Function:send_notifications", r.ToID)
 		}
-		if r.Properties["pattern_type"] != "celery_dispatch_synthesis" {
+		if r.Properties.Get("pattern_type") != "celery_dispatch_synthesis" {
 			t.Errorf("missing celery_dispatch_synthesis tag: %v", r.Properties)
 		}
 	}

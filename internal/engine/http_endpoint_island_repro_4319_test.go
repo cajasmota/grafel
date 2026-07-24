@@ -172,7 +172,7 @@ func TestIslandRepro4319_SynthesisTimeBridgeEmitted(t *testing.T) {
 	var found *types.RelationshipRecord
 	for i := range rels {
 		if rels[i].Kind == implementsEdgeKind &&
-			rels[i].Properties["pattern_type"] == "http_endpoint_synthesis_time_bridge" &&
+			rels[i].Properties.Get("pattern_type") == "http_endpoint_synthesis_time_bridge" &&
 			rels[i].FromID == want {
 			found = &rels[i]
 		}

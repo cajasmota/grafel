@@ -488,14 +488,14 @@ func extractCallRelationships(body, callerName string, knownTypes map[string]boo
 		rel := types.RelationshipRecord{
 			ToID: toID,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(lineNum),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(lineNum)},
 			},
 		}
 		if recvRoot != "" {
-			rel.Properties["receiver_root"] = recvRoot
+			rel.Properties.Set("receiver_root", recvRoot)
 			if knownTypes[recvRoot] {
-				rel.Properties["receiver_type"] = recvRoot
+				rel.Properties.Set("receiver_type", recvRoot)
 			}
 		}
 		rels = append(rels, rel)

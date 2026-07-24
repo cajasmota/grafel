@@ -52,19 +52,19 @@ func handle() {
 	if !ok {
 		t.Fatalf("expected INSTRUMENTS(handle -> span:web.request), got %#v", edges)
 	}
-	if e.Properties["library"] != "ddtrace" {
-		t.Errorf("library = %q, want ddtrace", e.Properties["library"])
+	if e.Properties.Get("library") != "ddtrace" {
+		t.Errorf("library = %q, want ddtrace", e.Properties.Get("library"))
 	}
-	if e.Properties["api"] != "tracer.StartSpan" {
-		t.Errorf("api = %q, want tracer.StartSpan", e.Properties["api"])
+	if e.Properties.Get("api") != "tracer.StartSpan" {
+		t.Errorf("api = %q, want tracer.StartSpan", e.Properties.Get("api"))
 	}
-	if e.Properties["span_name"] != "web.request" {
-		t.Errorf("span_name = %q, want web.request", e.Properties["span_name"])
+	if e.Properties.Get("span_name") != "web.request" {
+		t.Errorf("span_name = %q, want web.request", e.Properties.Get("span_name"))
 	}
-	if e.Properties["traced"] != "true" {
-		t.Errorf("traced = %q, want true", e.Properties["traced"])
+	if e.Properties.Get("traced") != "true" {
+		t.Errorf("traced = %q, want true", e.Properties.Get("traced"))
 	}
-	if e.Properties["dynamic"] == "true" {
+	if e.Properties.Get("dynamic") == "true" {
 		t.Errorf("static span must not be dynamic")
 	}
 }
@@ -86,11 +86,11 @@ func handle(ctx context.Context) {
 	if !ok {
 		t.Fatalf("expected INSTRUMENTS(handle -> span:db.query), got %#v", edges)
 	}
-	if e.Properties["api"] != "tracer.StartSpanFromContext" {
-		t.Errorf("api = %q, want tracer.StartSpanFromContext", e.Properties["api"])
+	if e.Properties.Get("api") != "tracer.StartSpanFromContext" {
+		t.Errorf("api = %q, want tracer.StartSpanFromContext", e.Properties.Get("api"))
 	}
-	if e.Properties["span_name"] != "db.query" {
-		t.Errorf("span_name = %q, want db.query", e.Properties["span_name"])
+	if e.Properties.Get("span_name") != "db.query" {
+		t.Errorf("span_name = %q, want db.query", e.Properties.Get("span_name"))
 	}
 }
 
@@ -111,14 +111,14 @@ func checkout(ctx context.Context) {
 	if !ok {
 		t.Fatalf("expected INSTRUMENTS(checkout -> span:checkout.op), got %#v", edges)
 	}
-	if e.Properties["library"] != "sentry" {
-		t.Errorf("library = %q, want sentry", e.Properties["library"])
+	if e.Properties.Get("library") != "sentry" {
+		t.Errorf("library = %q, want sentry", e.Properties.Get("library"))
 	}
-	if e.Properties["api"] != "sentry.StartSpan" {
-		t.Errorf("api = %q, want sentry.StartSpan", e.Properties["api"])
+	if e.Properties.Get("api") != "sentry.StartSpan" {
+		t.Errorf("api = %q, want sentry.StartSpan", e.Properties.Get("api"))
 	}
-	if e.Properties["span_name"] != "checkout.op" {
-		t.Errorf("span_name = %q, want checkout.op", e.Properties["span_name"])
+	if e.Properties.Get("span_name") != "checkout.op" {
+		t.Errorf("span_name = %q, want checkout.op", e.Properties.Get("span_name"))
 	}
 }
 
@@ -139,14 +139,14 @@ func serve() {
 	if !ok {
 		t.Fatalf("expected INSTRUMENTS(serve -> metric:reqs), got %#v", edges)
 	}
-	if e.Properties["library"] != "prometheus" {
-		t.Errorf("library = %q, want prometheus", e.Properties["library"])
+	if e.Properties.Get("library") != "prometheus" {
+		t.Errorf("library = %q, want prometheus", e.Properties.Get("library"))
 	}
-	if e.Properties["api"] != "metric.Inc" {
-		t.Errorf("api = %q, want metric.Inc", e.Properties["api"])
+	if e.Properties.Get("api") != "metric.Inc" {
+		t.Errorf("api = %q, want metric.Inc", e.Properties.Get("api"))
 	}
-	if e.Properties["metric_name"] != "reqs" {
-		t.Errorf("metric_name = %q, want reqs", e.Properties["metric_name"])
+	if e.Properties.Get("metric_name") != "reqs" {
+		t.Errorf("metric_name = %q, want reqs", e.Properties.Get("metric_name"))
 	}
 }
 
@@ -169,11 +169,11 @@ func record(d float64) {
 	if !ok {
 		t.Fatalf("expected INSTRUMENTS(record -> metric:latency_seconds), got %#v", edges)
 	}
-	if e.Properties["api"] != "metric.Observe" {
-		t.Errorf("api = %q, want metric.Observe", e.Properties["api"])
+	if e.Properties.Get("api") != "metric.Observe" {
+		t.Errorf("api = %q, want metric.Observe", e.Properties.Get("api"))
 	}
-	if e.Properties["metric_name"] != "latency_seconds" {
-		t.Errorf("metric_name = %q, want latency_seconds", e.Properties["metric_name"])
+	if e.Properties.Get("metric_name") != "latency_seconds" {
+		t.Errorf("metric_name = %q, want latency_seconds", e.Properties.Get("metric_name"))
 	}
 }
 
@@ -195,11 +195,11 @@ func handle(op string) {
 	if !ok {
 		t.Fatalf("expected dynamic INSTRUMENTS(handle -> span:handle), got %#v", edges)
 	}
-	if e.Properties["dynamic"] != "true" {
-		t.Errorf("dynamic = %q, want true", e.Properties["dynamic"])
+	if e.Properties.Get("dynamic") != "true" {
+		t.Errorf("dynamic = %q, want true", e.Properties.Get("dynamic"))
 	}
-	if e.Properties["span_name"] != "" {
-		t.Errorf("dynamic span must NOT carry a fabricated span_name, got %q", e.Properties["span_name"])
+	if e.Properties.Get("span_name") != "" {
+		t.Errorf("dynamic span must NOT carry a fabricated span_name, got %q", e.Properties.Get("span_name"))
 	}
 	if _, ok := findObsEdge(edges, "span:op"); ok {
 		t.Errorf("must not fabricate span:op from a variable arg")

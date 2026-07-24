@@ -1431,13 +1431,13 @@ func extractCallRelationships(body ts.Node, src []byte, callerName, recvVarName,
 						FromID:     callerName,
 						ToID:       mvTarget,
 						Kind:       "CALLS",
-						Properties: map[string]string{"via_value": "true", "line": mvLine},
+						Properties: types.Props{{K: "line", V: mvLine}, {K: "via_value", V: "true"}},
 					}
 					if mvRecvMatch && recvType != "" {
-						mvRec.Properties["receiver_type"] = recvType
+						mvRec.Properties.Set("receiver_type", recvType)
 					} else if mvOperand != "" {
 						if ty := lookup(mvOperand); ty != "" {
-							mvRec.Properties["receiver_type"] = ty
+							mvRec.Properties.Set("receiver_type", ty)
 						}
 					}
 					rels = append(rels, mvRec)
@@ -1466,10 +1466,10 @@ func extractCallRelationships(body ts.Node, src []byte, callerName, recvVarName,
 				}
 				switch {
 				case isSelfReceiver && recvType != "":
-					rec.Properties = map[string]string{"receiver_type": recvType, "line": callLine}
+					rec.Properties = types.Props{{K: "line", V: callLine}, {K: "receiver_type", V: recvType}}
 				case operand != "":
 					if ty := lookup(operand); ty != "" {
-						rec.Properties = map[string]string{"receiver_type": ty, "line": callLine}
+						rec.Properties = types.Props{{K: "line", V: callLine}, {K: "receiver_type", V: ty}}
 					} else if dir := inTreeQualifiers[operand]; dir != "" {
 						// Issue #4332 — cross-package selector call. `operand` is an
 						// in-tree imported package qualifier (not a local var or
@@ -1478,16 +1478,16 @@ func extractCallRelationships(body ts.Node, src []byte, callerName, recvVarName,
 						// and the bare callee leaf so the resolver binds the edge
 						// to that package's byPackageOperation entry instead of
 						// falling back to an ambiguity-prone global bare-name match.
-						rec.Properties = map[string]string{
-							"go_call_pkg_dir": dir,
-							"call_leaf":       target,
-							"line":            callLine,
+						rec.Properties = types.Props{
+							{K: "call_leaf", V: target},
+							{K: "go_call_pkg_dir", V: dir},
+							{K: "line", V: callLine},
 						}
 					} else {
-						rec.Properties = map[string]string{"line": callLine}
+						rec.Properties = types.Props{{K: "line", V: callLine}}
 					}
 				default:
-					rec.Properties = map[string]string{"line": callLine}
+					rec.Properties = types.Props{{K: "line", V: callLine}}
 				}
 				// Issue #614 — interface-field dispatch detection. When the
 				// call is `<recvVarName>.<Field>.<method>(...)` (a 2-level
@@ -1506,9 +1506,9 @@ func extractCallRelationships(body ts.Node, src []byte, callerName, recvVarName,
 					if fieldName, isFieldDispatch := selectorFieldOnReceiver(n, src, recvVarName); isFieldDispatch {
 						if fieldType := structFields[recvType][fieldName]; fieldType != "" {
 							if rec.Properties == nil {
-								rec.Properties = map[string]string{}
+								rec.Properties = types.Props{}
 							}
-							rec.Properties["interface_dispatch_type"] = fieldType
+							rec.Properties.Set("interface_dispatch_type", fieldType)
 						}
 					}
 				}
@@ -1554,7 +1554,7 @@ func extractCallRelationships(body ts.Node, src []byte, callerName, recvVarName,
 				//     ambiguity sentinel (e.g., the function is defined in two
 				//     platform-conditional files), the stub routes to Dynamic —
 				//     a v1 limitation; cross-file resolution is best-effort.
-				hasIfaceDispatch := rec.Properties["interface_dispatch_type"] != ""
+				hasIfaceDispatch := rec.Properties.Get("interface_dispatch_type") != ""
 				if operand == "" && !isSelfReceiver && filePath != "" && !hasIfaceDispatch {
 					rec.ToID = extractor.BuildOperationStructuralRef("go", filePath, target)
 					// Stamp intra_file=true when the callee is confirmed to be
@@ -1564,9 +1564,9 @@ func extractCallRelationships(body ts.Node, src []byte, callerName, recvVarName,
 					// (resolves via byPackageOperation, best-effort).
 					if _, isIntraFile := intraFileFuncs[target]; isIntraFile {
 						if rec.Properties == nil {
-							rec.Properties = map[string]string{}
+							rec.Properties = types.Props{}
 						}
-						rec.Properties["intra_file"] = "true"
+						rec.Properties.Set("intra_file", "true")
 					}
 				}
 				rels = append(rels, rec)
@@ -2431,18 +2431,18 @@ func extractImportEntities(root ts.Node, src []byte, filePath, moduleRoot string
 		}
 		if moduleRoot != "" && strings.HasPrefix(importPath, moduleRoot+"/") {
 			pkgDir := importPath[len(moduleRoot)+1:]
-			rel.Properties = map[string]string{
-				"go_module_root": moduleRoot,
-				"go_pkg_dir":     pkgDir,
+			rel.Properties = types.Props{
+				{K: "go_module_root", V: moduleRoot},
+				{K: "go_pkg_dir", V: pkgDir},
 			}
 		} else if pkgDir, ok := goReplacePkgDir(importPath, replaces); ok {
 			// #4705c: a local-path `replace` directive redirects this import
 			// to an in-repo directory. Stamp go_pkg_dir so the resolver's
 			// ResolveGoInTreeImports pass binds it to the local file entity
 			// BEFORE it falls through to external_package.
-			rel.Properties = map[string]string{
-				"go_module_root": moduleRoot,
-				"go_pkg_dir":     pkgDir,
+			rel.Properties = types.Props{
+				{K: "go_module_root", V: moduleRoot},
+				{K: "go_pkg_dir", V: pkgDir},
 			}
 		}
 

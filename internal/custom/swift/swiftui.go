@@ -186,12 +186,12 @@ func (e *swiftUIExtractor) Extract(ctx context.Context, file extractor.FileInput
 				FromID: fromID,
 				ToID:   "view:" + dest,
 				Kind:   "NAVIGATES_TO",
-				Properties: map[string]string{
-					"framework":   "swiftui",
-					"destination": dest,
-					"from_view":   fromName,
-					"line":        itoa(lineOf(src, m[0])),
-					"via":         "navigation_link",
+				Properties: types.Props{
+					{K: "destination", V: dest},
+					{K: "framework", V: "swiftui"},
+					{K: "from_view", V: fromName},
+					{K: "line", V: itoa(lineOf(src, m[0]))},
+					{K: "via", V: "navigation_link"},
 				},
 			})
 		}
@@ -210,13 +210,13 @@ func (e *swiftUIExtractor) Extract(ctx context.Context, file extractor.FileInput
 				// resolved elsewhere via .navigationDestination(for:) and cannot
 				// be followed in-file.
 				Confidence: 0.6,
-				Properties: map[string]string{
-					"framework": "swiftui",
-					"value":     val,
-					"from_view": fromName,
-					"line":      itoa(lineOf(src, m[0])),
-					"via":       "navigation_link_value",
-					"partial":   "destination_resolved_via_navigationDestination",
+				Properties: types.Props{
+					{K: "framework", V: "swiftui"},
+					{K: "from_view", V: fromName},
+					{K: "line", V: itoa(lineOf(src, m[0]))},
+					{K: "partial", V: "destination_resolved_via_navigationDestination"},
+					{K: "value", V: val},
+					{K: "via", V: "navigation_link_value"},
 				},
 			})
 		}
@@ -234,12 +234,12 @@ func (e *swiftUIExtractor) Extract(ctx context.Context, file extractor.FileInput
 				FromID: fromID,
 				ToID:   "view:" + dest,
 				Kind:   "NAVIGATES_TO",
-				Properties: map[string]string{
-					"framework":   "swiftui",
-					"destination": dest,
-					"from_view":   fromName,
-					"line":        itoa(lineOf(src, m[0])),
-					"via":         "modal_" + kind,
+				Properties: types.Props{
+					{K: "destination", V: dest},
+					{K: "framework", V: "swiftui"},
+					{K: "from_view", V: fromName},
+					{K: "line", V: itoa(lineOf(src, m[0]))},
+					{K: "via", V: "modal_" + kind},
 				},
 			})
 		}
@@ -302,14 +302,14 @@ func (e *swiftUIExtractor) Extract(ctx context.Context, file extractor.FileInput
 				FromID: fromID,
 				ToID:   "type:" + vmType,
 				Kind:   "USES",
-				Properties: map[string]string{
-					"framework":        "swiftui",
-					"observable_type":  vmType,
-					"property":         varName,
-					"property_wrapper": wrapper,
-					"from_view":        fromName,
-					"line":             itoa(lineOf(src, m[0])),
-					"via":              "observable_object",
+				Properties: types.Props{
+					{K: "framework", V: "swiftui"},
+					{K: "from_view", V: fromName},
+					{K: "line", V: itoa(lineOf(src, m[0]))},
+					{K: "observable_type", V: vmType},
+					{K: "property", V: varName},
+					{K: "property_wrapper", V: wrapper},
+					{K: "via", V: "observable_object"},
 				},
 			})
 		}

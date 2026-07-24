@@ -305,13 +305,13 @@ func ApplyTestsMultiHopViaHTTP(
 					FromID: "SCOPE.Operation:" + testFunc,
 					ToID:   toID,
 					Kind:   "TESTS",
-					Properties: map[string]string{
-						"via":           "http_router",
-						"http_path":     rawPath,
-						"test_file":     p,
-						"test_function": testFunc,
-						"pattern_type":  "tests_multi_hop_http_router",
-						"confidence":    "high",
+					Properties: types.Props{
+						{K: "confidence", V: "high"},
+						{K: "http_path", V: rawPath},
+						{K: "pattern_type", V: "tests_multi_hop_http_router"},
+						{K: "test_file", V: p},
+						{K: "test_function", V: testFunc},
+						{K: "via", V: "http_router"},
 					},
 				})
 			}
@@ -394,9 +394,9 @@ func SynthesiseRoutesToFromEndpoints(entityRecords []types.EntityRecord) []types
 			FromID: fromID,
 			ToID:   handler,
 			Kind:   string(types.RelationshipKindRoutesTo),
-			Properties: map[string]string{
-				"pattern_type": "synthesised_from_endpoint",
-				"framework":    "django",
+			Properties: types.Props{
+				{K: "framework", V: "django"},
+				{K: "pattern_type", V: "synthesised_from_endpoint"},
 			},
 		})
 	}

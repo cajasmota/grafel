@@ -47,12 +47,12 @@ export const handleLogout = () => {
 	found := false
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "softLogout" {
-			if r.Properties != nil && r.Properties["via"] == "zustand_store" {
+			if r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 				found = true
 				break
 			}
 			t.Logf("CALLS handleLogout→softLogout found but via=%q (want zustand_store); props=%v",
-				r.Properties["via"], r.Properties)
+				r.Properties.Get("via"), r.Properties)
 		}
 	}
 	if !found {
@@ -102,7 +102,7 @@ export async function processItem(id) {
 		found := false
 		for _, r := range e.Relationships {
 			if r.Kind == "CALLS" && r.ToID == action &&
-				r.Properties != nil && r.Properties["via"] == "zustand_store" {
+				r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 				found = true
 				break
 			}
@@ -151,12 +151,12 @@ export function useCreateUser() {
 	found := false
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "mutate" {
-			if r.Properties != nil && r.Properties["via"] == "react_query" {
+			if r.Properties != nil && r.Properties.Get("via") == "react_query" {
 				found = true
 				break
 			}
 			t.Logf("CALLS useCreateUser→mutate found but via=%q (want react_query); props=%v",
-				r.Properties["via"], r.Properties)
+				r.Properties.Get("via"), r.Properties)
 		}
 	}
 	if !found {
@@ -195,7 +195,7 @@ function caller() {
 
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "foo" &&
-			r.Properties != nil && r.Properties["via"] == "destructured_binding" {
+			r.Properties != nil && r.Properties.Get("via") == "destructured_binding" {
 			t.Errorf("unexpected destructured_binding CALLS caller→foo; 'foo' is a plain value from an unrecognised RHS")
 		}
 	}

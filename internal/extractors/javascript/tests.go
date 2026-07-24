@@ -441,17 +441,17 @@ func (x *extractor) emitTestsEdgesForTestFile() {
 				continue
 			}
 			seen[rel.ToID] = true
-			props := map[string]string{
-				"confidence":     "high",
-				"test_framework": framework,
-				"provenance":     "DIRECT_CALL_IN_TEST_BODY",
+			props := types.Props{
+				{K: "confidence", V: "high"},
+				{K: "provenance", V: "DIRECT_CALL_IN_TEST_BODY"},
+				{K: "test_framework", V: framework},
 			}
 			// Preserve receiver_package when the original CALLS edge
 			// carried it — downstream consumers want the same routing
 			// metadata on the derived TESTS edge.
 			if rel.Properties != nil {
-				if pkg, ok := rel.Properties[PropReceiverPackage]; ok && pkg != "" {
-					props[PropReceiverPackage] = pkg
+				if pkg, ok := rel.Properties.Lookup(PropReceiverPackage); ok && pkg != "" {
+					props.Set(PropReceiverPackage, pkg)
 				}
 			}
 			add = append(add, types.RelationshipRecord{

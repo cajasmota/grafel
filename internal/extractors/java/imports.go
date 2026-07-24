@@ -193,7 +193,7 @@ func resolveImportToIDs(entities []types.EntityRecord) {
 			if strings.HasPrefix(r.ToID, "ext:") {
 				continue // already external-tagged
 			}
-			mod := r.Properties["source_module"]
+			mod := r.Properties.Get("source_module")
 			if mod == "" {
 				continue
 			}
@@ -207,8 +207,8 @@ func resolveImportToIDs(entities []types.EntityRecord) {
 			if prefix == "" {
 				continue
 			}
-			imported := r.Properties["imported_name"]
-			wildcard := r.Properties["wildcard"] == "1"
+			imported := r.Properties.Get("imported_name")
+			wildcard := r.Properties.Get("wildcard") == "1"
 			lower := strings.ToLower(prefix)
 			switch {
 			case wildcard:

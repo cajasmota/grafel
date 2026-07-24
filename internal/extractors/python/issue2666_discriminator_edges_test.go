@@ -50,16 +50,16 @@ def process_payment(status):
 		if r.Properties == nil {
 			t.Fatalf("edge has nil Properties; want line+literal")
 		}
-		if r.Properties["literal"] != "paid" {
-			t.Errorf("Properties[literal]=%q, want %q", r.Properties["literal"], "paid")
+		if r.Properties.Get("literal") != "paid" {
+			t.Errorf("Properties[literal]=%q, want %q", r.Properties.Get("literal"), "paid")
 		}
-		if r.Properties["line"] == "" {
+		if r.Properties.Get("line") == "" {
 			t.Errorf("Properties[line] is empty")
 		}
 		// Comparison is on line 3 of the snippet (line 1 blank, line 2 def,
 		// line 3 `if status == 'paid':`).
-		if r.Properties["line"] != "3" {
-			t.Errorf("Properties[line]=%q, want %q", r.Properties["line"], "3")
+		if r.Properties.Get("line") != "3" {
+			t.Errorf("Properties[line]=%q, want %q", r.Properties.Get("line"), "3")
 		}
 	}
 	if !found {
@@ -88,10 +88,10 @@ def handle_response(code):
 	for _, r := range e.Relationships {
 		if r.Kind == "DISCRIMINATES_ON" && r.ToID == "var:code" {
 			found = true
-			if r.Properties["literal"] != "404" {
-				t.Errorf("Properties[literal]=%q, want %q", r.Properties["literal"], "404")
+			if r.Properties.Get("literal") != "404" {
+				t.Errorf("Properties[literal]=%q, want %q", r.Properties.Get("literal"), "404")
 			}
-			if r.Properties["line"] == "" {
+			if r.Properties.Get("line") == "" {
 				t.Errorf("Properties[line] is empty")
 			}
 		}

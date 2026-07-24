@@ -453,9 +453,9 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 					FromID: fmt.Sprintf("%s:%s", rr.sourceType, sourceName),
 					ToID:   fmt.Sprintf("%s:%s", rr.targetType, targetName),
 					Kind:   rr.relationship,
-					Properties: map[string]string{
-						"framework":    rr.framework,
-						"pattern_type": "yaml_driven",
+					Properties: types.Props{
+						{K: "framework", V: rr.framework},
+						{K: "pattern_type", V: "yaml_driven"},
 					},
 				}
 				relationships = append(relationships, rel)

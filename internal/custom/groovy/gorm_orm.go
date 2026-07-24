@@ -208,9 +208,9 @@ func (e *gormORMExtractor) Extract(
 			rels = append(rels, types.RelationshipRecord{
 				ToID: a.target,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"fk_field": a.name,
-					"to_model": a.target,
+				Properties: types.Props{
+					{K: "fk_field", V: a.name},
+					{K: "to_model", V: a.target},
 				},
 			})
 		}
@@ -219,10 +219,10 @@ func (e *gormORMExtractor) Extract(
 				rels = append(rels, types.RelationshipRecord{
 					ToID: tableName,
 					Kind: "QUERIES",
-					Properties: map[string]string{
-						"operation": op,
-						"table":     tableName,
-						"model":     m.name,
+					Properties: types.Props{
+						{K: "model", V: m.name},
+						{K: "operation", V: op},
+						{K: "table", V: tableName},
 					},
 				})
 			}

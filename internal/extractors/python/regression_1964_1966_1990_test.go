@@ -315,7 +315,7 @@ admin.site.register(HotelModel, HotelAdmin)
 			if r.Kind != string(types.RelationshipKindReferences) {
 				continue
 			}
-			if r.Properties == nil || r.Properties["pattern_type"] != "admin_register" {
+			if r.Properties == nil || r.Properties.Get("pattern_type") != "admin_register" {
 				continue
 			}
 			refs = append(refs, r)
@@ -374,7 +374,7 @@ admin.site.register(E)
 		for _, r := range ent.Relationships {
 			if r.Kind == string(types.RelationshipKindReferences) &&
 				r.Properties != nil &&
-				r.Properties["pattern_type"] == "admin_register" {
+				r.Properties.Get("pattern_type") == "admin_register" {
 				refs = append(refs, r)
 			}
 		}

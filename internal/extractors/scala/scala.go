@@ -524,12 +524,12 @@ func extractCallRelationships(
 		rel := types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(int(call.StartPoint().Row) + 1)},
 			},
 		}
 		if recv != "" {
-			rel.Properties["receiver_type"] = recv
+			rel.Properties.Set("receiver_type", recv)
 		}
 		rels = append(rels, rel)
 	}
@@ -833,7 +833,7 @@ func buildImports(node ts.Node, file extractor.FileInput) []types.EntityRecord {
 
 	type importEdge struct {
 		toID  string
-		props map[string]string
+		props types.Props
 	}
 
 	var edges []importEdge
@@ -842,9 +842,9 @@ func buildImports(node ts.Node, file extractor.FileInput) []types.EntityRecord {
 		// `import scala.collection.mutable._`. ToID drops the wildcard.
 		edges = append(edges, importEdge{
 			toID: base,
-			props: map[string]string{
-				"source_module": base,
-				"wildcard":      "1",
+			props: types.Props{
+				{K: "source_module", V: base},
+				{K: "wildcard", V: "1"},
 			},
 		})
 	case len(selectors) > 0:
@@ -852,19 +852,19 @@ func buildImports(node ts.Node, file extractor.FileInput) []types.EntityRecord {
 			if sel == "_" {
 				edges = append(edges, importEdge{
 					toID: base,
-					props: map[string]string{
-						"source_module": base,
-						"wildcard":      "1",
+					props: types.Props{
+						{K: "source_module", V: base},
+						{K: "wildcard", V: "1"},
 					},
 				})
 				continue
 			}
 			edges = append(edges, importEdge{
 				toID: base + "." + sel,
-				props: map[string]string{
-					"local_name":    sel,
-					"source_module": base,
-					"imported_name": sel,
+				props: types.Props{
+					{K: "imported_name", V: sel},
+					{K: "local_name", V: sel},
+					{K: "source_module", V: base},
 				},
 			})
 		}
@@ -878,10 +878,10 @@ func buildImports(node ts.Node, file extractor.FileInput) []types.EntityRecord {
 		}
 		edges = append(edges, importEdge{
 			toID: base,
-			props: map[string]string{
-				"local_name":    leaf,
-				"source_module": mod,
-				"imported_name": leaf,
+			props: types.Props{
+				{K: "imported_name", V: leaf},
+				{K: "local_name", V: leaf},
+				{K: "source_module", V: mod},
 			},
 		})
 	}

@@ -567,7 +567,7 @@ func TestRacket_LanguageTagged(t *testing.T) {
 	ents := runLisp(t, "racket", racketSrc, "geometry.rkt")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "racket" {
+			if r.Properties == nil || r.Properties.Get("language") != "racket" {
 				t.Errorf("rel %s→%s missing language=racket (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

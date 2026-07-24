@@ -429,12 +429,12 @@ func inspectForStmt(
 		rels = append(rels, types.RelationshipRecord{
 			ToID: entry.callLeaf,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"import_alias":    entry.importAlias,
-				"call_leaf":       entry.callLeaf,
-				"data_dispatch":   "1",
-				"dispatch_source": constName,
-				"line":            forLine,
+			Properties: types.Props{
+				{K: "call_leaf", V: entry.callLeaf},
+				{K: "data_dispatch", V: "1"},
+				{K: "dispatch_source", V: constName},
+				{K: "import_alias", V: entry.importAlias},
+				{K: "line", V: forLine},
 			},
 		})
 	}

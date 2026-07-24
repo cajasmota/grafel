@@ -112,11 +112,11 @@ foo() { :; }
 	if r.ToID != "./lib.sh" {
 		t.Errorf("expected ToID=./lib.sh, got %q", r.ToID)
 	}
-	if r.Properties["import_kind"] != "source" {
-		t.Errorf("expected import_kind=source, got %q", r.Properties["import_kind"])
+	if r.Properties.Get("import_kind") != "source" {
+		t.Errorf("expected import_kind=source, got %q", r.Properties.Get("import_kind"))
 	}
-	if r.Properties["language"] != "shell" {
-		t.Errorf("expected language=shell, got %q", r.Properties["language"])
+	if r.Properties.Get("language") != "shell" {
+		t.Errorf("expected language=shell, got %q", r.Properties.Get("language"))
 	}
 }
 
@@ -302,7 +302,7 @@ main() { helper; }
 	}
 	for _, e := range entities {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "shell" {
+			if r.Properties == nil || r.Properties.Get("language") != "shell" {
 				t.Errorf("relationship %s→%s missing language=shell tag, props=%+v",
 					r.Kind, r.ToID, r.Properties)
 			}

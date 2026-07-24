@@ -34,7 +34,7 @@ func rscEdge(e *types.EntityRecord, kind, toLeaf string) *types.RelationshipReco
 	}
 	for i := range e.Relationships {
 		r := &e.Relationships[i]
-		if r.Kind == kind && r.Properties["rsc_data_fetch"] == "true" {
+		if r.Kind == kind && r.Properties.Get("rsc_data_fetch") == "true" {
 			if toLeaf == "" || r.ToID == toLeaf {
 				return r
 			}
@@ -63,8 +63,8 @@ export default async function Page({ params }: { params: { id: string } }) {
 	if e == nil {
 		t.Fatalf("expected CALLS edge component→getUser tagged rsc_data_fetch, rels=%v", sc.Relationships)
 	}
-	if e.Properties["rendering"] != "server" {
-		t.Errorf("CALLS edge rendering = %q, want server", e.Properties["rendering"])
+	if e.Properties.Get("rendering") != "server" {
+		t.Errorf("CALLS edge rendering = %q, want server", e.Properties.Get("rendering"))
 	}
 }
 
@@ -98,7 +98,7 @@ func TestNextjs5488RSCAwaitFetch(t *testing.T) {
 	if e == nil {
 		t.Fatalf("expected READS_FROM edge for await fetch, rels=%v", relsOf(sc))
 	}
-	if got := e.Properties["url"]; got != "https://api.example.com/users" {
+	if got := e.Properties.Get("url"); got != "https://api.example.com/users" {
 		t.Errorf("fetch url = %q, want the literal URL", got)
 	}
 	// The data_fetch site entity must exist and be tagged.
@@ -137,7 +137,7 @@ export default function Page() {
 	}
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
-			if r.Properties["rsc_data_fetch"] == "true" {
+			if r.Properties.Get("rsc_data_fetch") == "true" {
 				t.Errorf("client component must not emit rsc_data_fetch edges, got %+v on %s", r, ents[i].Name)
 			}
 		}

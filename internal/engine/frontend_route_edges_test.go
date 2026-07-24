@@ -72,7 +72,7 @@ func assertFERoute(t *testing.T, ents []types.EntityRecord, rels []types.Relatio
 	if edge == nil {
 		t.Fatalf("expected ROUTES_TO %s -> %s, got rels: %+v", routeID, component, rels)
 	}
-	if got := edge.Properties["synthesis"]; got != "frontend_routing" {
+	if got := edge.Properties.Get("synthesis"); got != "frontend_routing" {
 		t.Errorf("edge %s->%s synthesis=%q, want frontend_routing", routeID, component, got)
 	}
 }

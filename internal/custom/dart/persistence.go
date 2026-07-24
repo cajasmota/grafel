@@ -296,9 +296,9 @@ func extractDrift(src, path string, cg codegenInfo) []types.EntityRecord {
 			db.Relationships = append(db.Relationships, types.RelationshipRecord{
 				ToID: t,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"to_model": t,
-					"ref_kind": "drift_table",
+				Properties: types.Props{
+					{K: "ref_kind", V: "drift_table"},
+					{K: "to_model", V: t},
 				},
 			})
 		}

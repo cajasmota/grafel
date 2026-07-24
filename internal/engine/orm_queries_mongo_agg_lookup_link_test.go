@@ -86,7 +86,7 @@ class InspectionService:
 	// proves we abandoned the resolver-dependent emission.
 	for i := range rels {
 		r := &rels[i]
-		if r.Properties != nil && r.Properties["anchor"] == "stage_node" {
+		if r.Properties != nil && r.Properties.Get("anchor") == "stage_node" {
 			t.Fatalf("extract pass emitted a node-anchored twin (FromID=%q) — it must be emitted post-stamp, not here", r.FromID)
 		}
 	}
@@ -146,8 +146,8 @@ func TestMongoAggStageNodeJoinRel_FromIDIsTheNodeID(t *testing.T) {
 	if rel.Kind != string(types.RelationshipKindJoinsCollection) {
 		t.Fatalf("Kind = %q, want JOINS_COLLECTION", rel.Kind)
 	}
-	if rel.Properties["anchor"] != "stage_node" {
-		t.Fatalf("anchor prop = %q, want stage_node", rel.Properties["anchor"])
+	if rel.Properties.Get("anchor") != "stage_node" {
+		t.Fatalf("anchor prop = %q, want stage_node", rel.Properties.Get("anchor"))
 	}
 }
 

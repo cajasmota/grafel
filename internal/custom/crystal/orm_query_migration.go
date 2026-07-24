@@ -88,11 +88,11 @@ func crystalQueryRels(model, table string, ops map[string]bool, framework string
 		rels = append(rels, types.RelationshipRecord{
 			ToID: table,
 			Kind: "QUERIES",
-			Properties: map[string]string{
-				"operation": op,
-				"table":     table,
-				"model":     model,
-				"framework": framework,
+			Properties: types.Props{
+				{K: "framework", V: framework},
+				{K: "model", V: model},
+				{K: "operation", V: op},
+				{K: "table", V: table},
 			},
 		})
 	}

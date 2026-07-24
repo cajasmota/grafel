@@ -361,10 +361,10 @@ data class LineItemDto(
 		}
 		for _, r := range e.Relationships {
 			if r.Kind == "VALIDATES" && r.ToID == "AddressDto" {
-				if r.Properties["via"] != "valid_annotation" {
-					t.Errorf("expected via=valid_annotation, got %q", r.Properties["via"])
+				if r.Properties.Get("via") != "valid_annotation" {
+					t.Errorf("expected via=valid_annotation, got %q", r.Properties.Get("via"))
 				}
-				if r.Properties["field"] == "" {
+				if r.Properties.Get("field") == "" {
 					t.Error("expected non-empty field on VALIDATES edge")
 				}
 			}

@@ -298,12 +298,12 @@ func (e *neo4jActiveGraphExtractor) Extract(ctx context.Context, file extractor.
 				types.RelationshipRecord{
 					ToID: "Class:" + targetLabel,
 					Kind: string(types.RelationshipKindGraphRelates),
-					Properties: map[string]string{
-						"framework":  "activegraph",
-						"rel_type":   relType,
-						"direction":  direction,
-						"field_name": assocName,
-						"provenance": "INFERRED_FROM_NEO4J_ACTIVEGRAPH_RELATIONSHIP",
+					Properties: types.Props{
+						{K: "direction", V: direction},
+						{K: "field_name", V: assocName},
+						{K: "framework", V: "activegraph"},
+						{K: "provenance", V: "INFERRED_FROM_NEO4J_ACTIVEGRAPH_RELATIONSHIP"},
+						{K: "rel_type", V: relType},
 					},
 				})
 		}

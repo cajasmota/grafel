@@ -107,18 +107,18 @@ func extractDjangoGlobalWiring(source, filePath string, line int) *types.EntityR
 			return
 		}
 		seen[key] = true
-		props := map[string]string{
-			"framework":   "django",
-			"language":    "python",
-			"di_role":     role,
-			"di_scope":    "global",
-			"global":      "true",
-			"dotted_path": dottedPath,
-			"class_name":  djangoDottedLeaf(dottedPath),
-			"provenance":  "INFERRED_FROM_DJANGO_SETTINGS",
+		props := types.Props{
+			{K: "class_name", V: djangoDottedLeaf(dottedPath)},
+			{K: "di_role", V: role},
+			{K: "di_scope", V: "global"},
+			{K: "dotted_path", V: dottedPath},
+			{K: "framework", V: "django"},
+			{K: "global", V: "true"},
+			{K: "language", V: "python"},
+			{K: "provenance", V: "INFERRED_FROM_DJANGO_SETTINGS"},
 		}
 		if order >= 0 {
-			props["order"] = strconv.Itoa(order)
+			props.Set("order", strconv.Itoa(order))
 		}
 		rels = append(rels, types.RelationshipRecord{
 			FromID:     "", // defaults to the owning django_settings entity ID

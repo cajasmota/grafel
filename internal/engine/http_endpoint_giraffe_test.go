@@ -200,9 +200,9 @@ let webApp =
 	found := false
 	for _, r := range res.Relationships {
 		if r.Kind == implementsEdgeKind &&
-			r.Properties["pattern_type"] == "http_endpoint_synthesis_time_bridge" &&
-			r.Properties["path"] == "/users" &&
-			r.Properties["verb"] == "GET" {
+			r.Properties.Get("pattern_type") == "http_endpoint_synthesis_time_bridge" &&
+			r.Properties.Get("path") == "/users" &&
+			r.Properties.Get("verb") == "GET" {
 			found = true
 		}
 	}
@@ -227,8 +227,8 @@ let apiRouter = router {
 	found := false
 	for _, r := range res.Relationships {
 		if r.Kind == implementsEdgeKind &&
-			r.Properties["pattern_type"] == "http_endpoint_synthesis_time_bridge" &&
-			r.Properties["path"] == "/users" {
+			r.Properties.Get("pattern_type") == "http_endpoint_synthesis_time_bridge" &&
+			r.Properties.Get("path") == "/users" {
 			found = true
 		}
 	}
@@ -281,8 +281,8 @@ func TestGiraffe_E2ERouteTestLinkage(t *testing.T) {
 		}
 		for _, r := range resolved[i].Relationships {
 			if r.Kind == string(types.RelationshipKindTests) &&
-				r.Properties["match_source"] == "e2e_supertest_route" &&
-				r.Properties["route"] == "/users" {
+				r.Properties.Get("match_source") == "e2e_supertest_route" &&
+				r.Properties.Get("route") == "/users" {
 				found = true
 			}
 		}

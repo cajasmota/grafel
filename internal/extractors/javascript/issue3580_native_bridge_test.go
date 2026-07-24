@@ -38,7 +38,7 @@ func nativeBridgeEntity(ents []types.EntityRecord, name, subtype string) *types.
 func hasDependsOnNative(fe *types.EntityRecord, name, subtype string) bool {
 	for _, r := range fe.Relationships {
 		if r.Kind == "DEPENDS_ON" && r.ToID == "native_module:"+name &&
-			r.Properties["subtype"] == subtype && r.Properties["native_bridge"] == "1" {
+			r.Properties.Get("subtype") == subtype && r.Properties.Get("native_bridge") == "1" {
 			return true
 		}
 	}

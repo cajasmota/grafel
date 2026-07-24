@@ -51,11 +51,11 @@ const MyComponent = () => {
 	}
 	for _, r := range e.Relationships {
 		if r.Kind == "NAVIGATES_TO" && r.ToID == "route:/foo" {
-			if r.Properties == nil || r.Properties["route"] != "/foo" {
+			if r.Properties == nil || r.Properties.Get("route") != "/foo" {
 				t.Errorf("expected Properties[route]='/foo', got %v", r.Properties)
 			}
-			if r.Properties["via"] != "navigation_call" {
-				t.Errorf("expected Properties[via]='navigation_call', got %v", r.Properties["via"])
+			if r.Properties.Get("via") != "navigation_call" {
+				t.Errorf("expected Properties[via]='navigation_call', got %v", r.Properties.Get("via"))
 			}
 			return
 		}
@@ -106,7 +106,7 @@ const UserNavigator = () => {
 			if r.Properties == nil {
 				t.Fatal("NAVIGATES_TO edge has no Properties")
 			}
-			gotParams := r.Properties["params"]
+			gotParams := r.Properties.Get("params")
 			if gotParams == "" {
 				t.Errorf("expected params to be set, got empty")
 			}

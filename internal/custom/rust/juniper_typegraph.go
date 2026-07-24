@@ -297,22 +297,22 @@ func (e *rustJuniperTypeGraphExtractor) Extract(ctx context.Context, file extrac
 		seen[key] = true
 		ownerRef := extractor.BuildOperationStructuralRef("graphql", file.Path, owner)
 		targetRef, crossFile := targetRefFor(target)
-		props := map[string]string{
-			"field_name":    fieldName,
-			"list":          rustGqlBool(tc.list),
-			"nullable":      rustGqlBool(tc.nullable),
-			"cardinality":   rustGqlCardLabel(tc),
-			"self_ref":      rustGqlBool(target == owner),
-			"graphql_field": owner + "." + fieldName,
-			"framework":     "juniper",
-			"provenance":    "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD",
+		props := types.Props{
+			{K: "cardinality", V: rustGqlCardLabel(tc)},
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: "juniper"},
+			{K: "graphql_field", V: owner + "." + fieldName},
+			{K: "list", V: rustGqlBool(tc.list)},
+			{K: "nullable", V: rustGqlBool(tc.nullable)},
+			{K: "provenance", V: "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD"},
+			{K: "self_ref", V: rustGqlBool(target == owner)},
 		}
 		if tc.list {
-			props["item_nullable"] = rustGqlBool(tc.itemNullable)
+			props.Set("item_nullable", rustGqlBool(tc.itemNullable))
 		}
 		if crossFile {
-			props["cross_file"] = "true"
-			props["provenance"] = "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD_CROSSFILE"
+			props.Set("cross_file", "true")
+			props.Set("provenance", "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD_CROSSFILE")
 		}
 		idx := nodes[owner]
 		out[idx].Relationships = append(out[idx].Relationships,
@@ -400,10 +400,10 @@ func (e *rustJuniperTypeGraphExtractor) Extract(ctx context.Context, file extrac
 		// cross-file or not-yet-emitted owner).
 		objRef, objCross := targetRefFor(objGql)
 		ifaceRef := extractor.BuildOperationStructuralRef("graphql", file.Path, ifaceGql)
-		props := map[string]string{
-			"relation":   "implements",
-			"framework":  "juniper",
-			"provenance": "INFERRED_FROM_CODEFIRST_GRAPHQL_INTERFACE",
+		props := types.Props{
+			{K: "framework", V: "juniper"},
+			{K: "provenance", V: "INFERRED_FROM_CODEFIRST_GRAPHQL_INTERFACE"},
+			{K: "relation", V: "implements"},
 		}
 		var fromIdx int
 		if idx, ok := nodes[objGql]; ok {
@@ -413,7 +413,7 @@ func (e *rustJuniperTypeGraphExtractor) Extract(ctx context.Context, file extrac
 			// node so it is still carried, with the object as a by-name FromID.
 			fromIdx = nodes[ifaceGql]
 			if objCross {
-				props["cross_file"] = "true"
+				props.Set("cross_file", "true")
 			}
 		}
 		out[fromIdx].Relationships = append(out[fromIdx].Relationships,

@@ -79,7 +79,7 @@ func hasCallWithProp(ents []types.EntityRecord, fromName, toID, propKey, propVal
 		}
 		for _, r := range ents[i].Relationships {
 			if r.Kind == "CALLS" && r.ToID == toID {
-				if r.Properties != nil && r.Properties[propKey] == propVal {
+				if r.Properties != nil && r.Properties.Get(propKey) == propVal {
 					return true
 				}
 			}
@@ -97,7 +97,7 @@ func callHasNoFrameworkProp(ents []types.EntityRecord, fromName, toID string) bo
 		}
 		for _, r := range ents[i].Relationships {
 			if r.Kind == "CALLS" && r.ToID == toID {
-				if r.Properties != nil && r.Properties["receiver_package"] != "" {
+				if r.Properties != nil && r.Properties.Get("receiver_package") != "" {
 					return false // found framework prop — NOT no-prop
 				}
 			}
@@ -112,7 +112,7 @@ func hasAnyCallWithProp(ents []types.EntityRecord, toID, propKey, propVal string
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
 			if r.Kind == "CALLS" && r.ToID == toID {
-				if r.Properties != nil && r.Properties[propKey] == propVal {
+				if r.Properties != nil && r.Properties.Get(propKey) == propVal {
 					return true
 				}
 			}
@@ -127,7 +127,7 @@ func hasAnyCallWithoutProp(ents []types.EntityRecord, toID string) bool {
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
 			if r.Kind == "CALLS" && r.ToID == toID {
-				if r.Properties == nil || r.Properties["receiver_package"] == "" {
+				if r.Properties == nil || r.Properties.Get("receiver_package") == "" {
 					return true
 				}
 			}
@@ -425,9 +425,9 @@ exports.build = build;
 	// No express import → no receiver_package stamps.
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
-			if r.Kind == "CALLS" && r.Properties != nil && r.Properties["receiver_package"] != "" {
+			if r.Kind == "CALLS" && r.Properties != nil && r.Properties.Get("receiver_package") != "" {
 				t.Errorf("#514 regression: Gulp script got unexpected receiver_package=%q on CALLS to %q",
-					r.Properties["receiver_package"], r.ToID)
+					r.Properties.Get("receiver_package"), r.ToID)
 			}
 		}
 	}

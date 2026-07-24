@@ -108,10 +108,10 @@ func applyDeadImports(
 			if r.Kind != "IMPORTS" || r.Properties == nil {
 				continue
 			}
-			if r.Properties["wildcard"] == "1" {
+			if r.Properties.Get("wildcard") == "1" {
 				continue
 			}
-			local := r.Properties["local_name"]
+			local := r.Properties.Get("local_name")
 			if local == "" {
 				continue
 			}
@@ -150,15 +150,15 @@ func applyDeadImports(
 			if r.Kind != "IMPORTS" || r.Properties == nil {
 				continue
 			}
-			if r.Properties["wildcard"] == "1" {
+			if r.Properties.Get("wildcard") == "1" {
 				continue
 			}
 			// Side-effect module imports (`import x` / `import x.y`)
 			// where local_name == source_module top segment: skip.
 			// We treat these as live regardless — registration imports
 			// are common (e.g. `import myapp.signals` to wire receivers).
-			local := r.Properties["local_name"]
-			source := r.Properties["source_module"]
+			local := r.Properties.Get("local_name")
+			source := r.Properties.Get("source_module")
 			if local == "" {
 				continue
 			}
@@ -174,14 +174,14 @@ func applyDeadImports(
 			// the body never references the symbol (coordinated with
 			// applyReExports which sets re_export="true" on __init__.py
 			// IMPORTS edges).
-			if r.Properties["re_export"] == "true" {
+			if r.Properties.Get("re_export") == "true" {
 				continue
 			}
 			if referenced[local] {
 				continue
 			}
-			r.Properties["live"] = "false"
-			r.Properties["dead_import"] = "true"
+			r.Properties.Set("live", "false")
+			r.Properties.Set("dead_import", "true")
 		}
 	}
 }

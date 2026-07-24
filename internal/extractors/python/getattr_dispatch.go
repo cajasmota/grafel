@@ -84,15 +84,15 @@ func extractGetattrDispatchCalls(
 				key := seenKeyDD{target: target, alias: ""}
 				if !seen[key] {
 					seen[key] = true
-					props := map[string]string{
-						"line":         strconv.Itoa(int(n.StartPoint().Row) + 1),
-						"resolved_via": extractor.ResolvedViaLiteralBinding,
-						"pattern_type": "getattr_dispatch",
+					props := types.Props{
+						{K: "line", V: strconv.Itoa(int(n.StartPoint().Row) + 1)},
+						{K: "pattern_type", V: "getattr_dispatch"},
+						{K: "resolved_via", V: extractor.ResolvedViaLiteralBinding},
 					}
 					if dynVar != "" {
-						props["dynamic_target"] = dynVar
+						props.Set("dynamic_target", dynVar)
 					} else {
-						props["dynamic_target"] = "getattr-literal"
+						props.Set("dynamic_target", "getattr-literal")
 					}
 					rels = append(rels, types.RelationshipRecord{
 						ToID:       target,

@@ -121,9 +121,9 @@ func (e *nimAllographerORMExtractor) Extract(
 		var rels []types.RelationshipRecord
 		for _, c := range tbl.columns {
 			if c.fkTable != "" && c.fkTable != tbl.name {
-				props := map[string]string{"fk_field": c.name, "to_table": c.fkTable}
+				props := types.Props{{K: "fk_field", V: c.name}, {K: "to_table", V: c.fkTable}}
 				if c.fkColumn != "" {
-					props["references"] = c.fkColumn
+					props.Set("references", c.fkColumn)
 				}
 				rels = append(rels, types.RelationshipRecord{
 					ToID: c.fkTable, Kind: "REFERENCES", Properties: props,

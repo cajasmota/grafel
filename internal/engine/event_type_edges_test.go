@@ -317,7 +317,7 @@ func PublishOrderShipped(ctx context.Context, client *eventbridge.Client, orderI
 	var edgeDetection string
 	for _, r := range rels {
 		if r.FromID == fromID && r.ToID == fmt.Sprintf("%s:%s", eventTypeKind, id) {
-			edgeDetection = r.Properties["detection"]
+			edgeDetection = r.Properties.Get("detection")
 		}
 	}
 	if edgeDetection != "eventbridge-detailtype-const" {
@@ -594,7 +594,7 @@ func PublishOrderShipped(ctx context.Context, client *eventbridge.Client, orderI
 	var edgeDetection string
 	for _, r := range rels {
 		if r.FromID == fromID && r.ToID == toID {
-			edgeDetection = r.Properties["detection"]
+			edgeDetection = r.Properties.Get("detection")
 		}
 	}
 	if edgeDetection != "eventbridge-detailtype-const" {
@@ -1278,7 +1278,7 @@ func RecordOrderSettled(ctx context.Context, store *EventStore, id string, paylo
 	var edgeDetection string
 	for _, r := range rels {
 		if r.FromID == fromID && r.ToID == toID {
-			edgeDetection = r.Properties["detection"]
+			edgeDetection = r.Properties.Get("detection")
 		}
 	}
 	if edgeDetection != "event-store-constructor-arg" {

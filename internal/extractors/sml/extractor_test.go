@@ -345,7 +345,7 @@ fun size Leaf = 0
 	ents := runSML(t, src, "tagged.sml")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "sml" {
+			if r.Properties == nil || r.Properties.Get("language") != "sml" {
 				t.Errorf("rel %s→%s missing language=sml (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

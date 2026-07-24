@@ -75,7 +75,7 @@ func TestIssue4367_ActiveRecord_FieldMembership_AndRelationTargets(t *testing.T)
 		for _, r := range e.Relationships {
 			switch r.Kind {
 			case string(types.RelationshipKindContains):
-				if r.Properties["member"] == "field" {
+				if r.Properties.Get("member") == "field" {
 					contains++
 				}
 			case string(types.RelationshipKindReferences):

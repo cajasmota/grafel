@@ -83,8 +83,8 @@ public class UserService {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == "IMPORTS" && r.Properties != nil &&
-				r.Properties["source_module"] == "java.util" &&
-				r.Properties["local_name"] == "List" {
+				r.Properties.Get("source_module") == "java.util" &&
+				r.Properties.Get("local_name") == "List" {
 				found = true
 			}
 		}
@@ -130,7 +130,7 @@ public class DataService {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == "IMPORTS" && r.Properties != nil {
-				mod := r.Properties["source_module"]
+				mod := r.Properties.Get("source_module")
 				if _, ok := want[mod]; ok {
 					want[mod] = true
 				}
@@ -223,7 +223,7 @@ public class Svc {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == "IMPORTS" && r.Properties != nil {
-				switch r.Properties["local_name"] {
+				switch r.Properties.Get("local_name") {
 				case "List":
 					foundList = true
 				case "ArrayList":
@@ -268,7 +268,7 @@ public class Demo {}
 	found := false
 	for _, r := range fileEnt.Relationships {
 		if r.Kind == "IMPORTS" && r.Properties != nil &&
-			r.Properties["local_name"] == "List" {
+			r.Properties.Get("local_name") == "List" {
 			found = true
 		}
 	}
@@ -302,7 +302,7 @@ public class Demo {}
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == "IMPORTS" && r.Properties != nil &&
-				r.Properties["wildcard"] == "1" {
+				r.Properties.Get("wildcard") == "1" {
 				found = true
 			}
 		}

@@ -447,7 +447,7 @@ func TestDisposition_Dynamic(t *testing.T) {
 		FromID:     "0000000000000000",
 		ToID:       "getattr(self, name)",
 		Kind:       "CALLS",
-		Properties: map[string]string{"language": "python"},
+		Properties: types.Props{{K: "language", V: "python"}},
 	}}
 	idx := BuildIndex(nil)
 	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
@@ -467,7 +467,7 @@ func TestDisposition_SourceFilePathFromIDIsDynamic(t *testing.T) {
 		FromID:     "src/main/java/com/foo/App.java",
 		ToID:       "ext:org.springframework",
 		Kind:       "IMPORTS",
-		Properties: map[string]string{"language": "java"},
+		Properties: types.Props{{K: "language", V: "java"}},
 	}}
 	idx := BuildIndex(nil)
 	stats := ReferencesWithAllowlist(rels, idx, nil)
@@ -1308,7 +1308,7 @@ func TestReferencesEmbedded_GoSamePackageMethodDispatch(t *testing.T) {
 					FromID:     "cccccccccccccccc",
 					ToID:       "handle",
 					Kind:       "CALLS",
-					Properties: map[string]string{"language": "go", "receiver_type": "Mux"},
+					Properties: types.Props{{K: "language", V: "go"}, {K: "receiver_type", V: "Mux"}},
 				},
 			},
 		},
@@ -1344,7 +1344,7 @@ func TestReferencesEmbedded_GoSamePackageMethodDispatch_NoFalseBind(t *testing.T
 					FromID:     "cccccccccccccccc",
 					ToID:       "handle",
 					Kind:       "CALLS",
-					Properties: map[string]string{"language": "go", "receiver_type": "Mux"},
+					Properties: types.Props{{K: "language", V: "go"}, {K: "receiver_type", V: "Mux"}},
 				},
 			},
 		},
@@ -1383,7 +1383,7 @@ func TestReferencesEmbedded_GoSamePackageComponentDispatch(t *testing.T) {
 					FromID:     "cccccccccccccccc",
 					ToID:       "Server",
 					Kind:       "DEPENDS_ON",
-					Properties: map[string]string{"language": "go"},
+					Properties: types.Props{{K: "language", V: "go"}},
 				},
 			},
 		},
@@ -1429,7 +1429,7 @@ func TestReferencesEmbedded_GoSamePackageComponentDispatch_NoFalseBind(t *testin
 					FromID:     "cccccccccccccccc",
 					ToID:       "Server",
 					Kind:       "DEPENDS_ON",
-					Properties: map[string]string{"language": "go"},
+					Properties: types.Props{{K: "language", V: "go"}},
 				},
 			},
 		},
@@ -1462,7 +1462,7 @@ func TestReferencesEmbedded_GoSamePackageComponentDispatch_AmbiguousInPkg(t *tes
 					FromID:     "cccccccccccccccc",
 					ToID:       "Server",
 					Kind:       "DEPENDS_ON",
-					Properties: map[string]string{"language": "go"},
+					Properties: types.Props{{K: "language", V: "go"}},
 				},
 			},
 		},
@@ -1489,7 +1489,7 @@ func TestDisposition_TestmapUnknownProdFile_IsDynamic(t *testing.T) {
 		FromID:     "0000000000000000",
 		ToID:       "scope:operation:?#requests.adapters.HTTPAdapter",
 		Kind:       "TESTS",
-		Properties: map[string]string{"language": "python"},
+		Properties: types.Props{{K: "language", V: "python"}},
 	}}
 	idx := BuildIndex(nil)
 	stats := ReferencesWithAllowlist(rels, idx, nil)
@@ -1520,7 +1520,7 @@ func TestReferences_TestmapUnknownProdFile_QnameRewrite(t *testing.T) {
 		FromID:     "0000000000000000",
 		ToID:       "scope:operation:?#extract_cookies_to_jar",
 		Kind:       "TESTS",
-		Properties: map[string]string{"language": "python"},
+		Properties: types.Props{{K: "language", V: "python"}},
 	}}
 	idx := BuildIndex(entities)
 	stats := References(rels, idx)
@@ -1546,7 +1546,7 @@ func TestReferences_TestmapUnknownProdFile_ByNameRewrite(t *testing.T) {
 		FromID:     "0000000000000000",
 		ToID:       "scope:operation:?#create_order",
 		Kind:       "TESTS",
-		Properties: map[string]string{"language": "python"},
+		Properties: types.Props{{K: "language", V: "python"}},
 	}}
 	idx := BuildIndex(entities)
 	stats := References(rels, idx)
@@ -1580,7 +1580,7 @@ func TestReferences_TestmapUnknownProdFile_NameKindsFunctionRewrite(t *testing.T
 		FromID:     "0000000000000000",
 		ToID:       "scope:operation:?#process_payment",
 		Kind:       "TESTS",
-		Properties: map[string]string{"language": "python"},
+		Properties: types.Props{{K: "language", V: "python"}},
 	}}
 	idx := BuildIndex(entities)
 	stats := References(rels, idx)
@@ -1614,7 +1614,7 @@ func TestDisposition_PythonRelativeImport_IsDynamic(t *testing.T) {
 		FromID:     "0000000000000000",
 		ToID:       ".compat.urlparse",
 		Kind:       "IMPORTS",
-		Properties: map[string]string{"language": "python"},
+		Properties: types.Props{{K: "language", V: "python"}},
 	}}
 	idx := BuildIndex(entities)
 	stats := ReferencesWithAllowlist(rels, idx, nil)
@@ -1767,7 +1767,7 @@ func TestDisposition_DataAccessSQLResolvedWhenEntityPresent(t *testing.T) {
 		FromID:     "fedcba9876543210",
 		ToID:       stub,
 		Kind:       "ACCESSES_TABLE",
-		Properties: map[string]string{"language": "python"},
+		Properties: types.Props{{K: "language", V: "python"}},
 	}}
 	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
 	// Both endpoints (FromID hex + rewritten ToID hex) count as Resolved.
@@ -2084,7 +2084,7 @@ func TestReferencesEmbedded_InterfaceFieldDispatch_Issue614(t *testing.T) {
 				{
 					ToID:       "List",
 					Kind:       "CALLS",
-					Properties: map[string]string{"interface_dispatch_type": "store.Store"},
+					Properties: types.Props{{K: "interface_dispatch_type", V: "store.Store"}},
 				},
 			},
 		},
@@ -2123,7 +2123,7 @@ func TestReferencesEmbedded_InterfaceFieldDispatchMultiImpl_Issue614(t *testing.
 			Relationships: []types.RelationshipRecord{{
 				ToID:       "List",
 				Kind:       "CALLS",
-				Properties: map[string]string{"interface_dispatch_type": "store.Store"},
+				Properties: types.Props{{K: "interface_dispatch_type", V: "store.Store"}},
 			}},
 		},
 	}
@@ -2159,7 +2159,7 @@ func TestReferencesEmbedded_InterfaceFieldDispatchMissingMethod_Issue614(t *test
 			Relationships: []types.RelationshipRecord{{
 				ToID:       "List",
 				Kind:       "CALLS",
-				Properties: map[string]string{"interface_dispatch_type": "Store"},
+				Properties: types.Props{{K: "interface_dispatch_type", V: "Store"}},
 			}},
 		},
 	}
@@ -2331,7 +2331,7 @@ func TestIssue2060_TestmapShortForm_GlobalByNameFallback(t *testing.T) {
 		FromID:     "0000000000000000",
 		ToID:       "scope:operation:tests/user.py#create_order",
 		Kind:       "TESTS",
-		Properties: map[string]string{"language": "python"},
+		Properties: types.Props{{K: "language", V: "python"}},
 	}}
 	idx := BuildIndex(entities)
 	stats := References(rels, idx)
@@ -2360,7 +2360,7 @@ func TestIssue2060_TestmapShortForm_FilePreferredOverGlobal(t *testing.T) {
 		FromID:     "0000000000000000",
 		ToID:       "scope:operation:pkg/widget.go#Helper",
 		Kind:       "TESTS",
-		Properties: map[string]string{"language": "go"},
+		Properties: types.Props{{K: "language", V: "go"}},
 	}}
 	idx := BuildIndex(entities)
 	stats := References(rels, idx)
@@ -2383,7 +2383,7 @@ func TestIssue2060_TestmapShortForm_AmbiguousNameNotResolved(t *testing.T) {
 		FromID:     "0000000000000000",
 		ToID:       "scope:operation:tests/c_test.go#save",
 		Kind:       "TESTS",
-		Properties: map[string]string{"language": "go"},
+		Properties: types.Props{{K: "language", V: "go"}},
 	}}
 	idx := BuildIndex(entities)
 	stats := References(rels, idx)

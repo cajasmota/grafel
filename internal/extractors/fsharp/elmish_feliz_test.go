@@ -40,7 +40,7 @@ func fsHasDispatch(ents []types.EntityRecord, name, helper string) bool {
 			continue
 		}
 		for _, r := range ents[i].Relationships {
-			if r.Kind == "USES" && r.Properties["dispatch"] == helper {
+			if r.Kind == "USES" && r.Properties.Get("dispatch") == helper {
 				return true
 			}
 		}

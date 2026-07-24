@@ -57,8 +57,8 @@ module "vpc" {
 	for _, rel := range imports {
 		if rel.ToID == "terraform-aws-modules/vpc/aws" && rel.FromID == "main.tf" {
 			found = true
-			if rel.Properties["import_kind"] != "module" {
-				t.Errorf("expected import_kind=module, got %q", rel.Properties["import_kind"])
+			if rel.Properties.Get("import_kind") != "module" {
+				t.Errorf("expected import_kind=module, got %q", rel.Properties.Get("import_kind"))
 			}
 		}
 	}
@@ -76,7 +76,7 @@ func TestImports_ModuleWithoutSource(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	for _, rel := range collectRels(records, "IMPORTS") {
-		if rel.Properties["import_kind"] == "module" {
+		if rel.Properties.Get("import_kind") == "module" {
 			t.Errorf("unexpected module IMPORTS edge: %+v", rel)
 		}
 	}
@@ -97,7 +97,7 @@ func TestImports_Provider(t *testing.T) {
 	imports := collectRels(records, "IMPORTS")
 	found := false
 	for _, rel := range imports {
-		if rel.ToID == "aws" && rel.FromID == "main.tf" && rel.Properties["import_kind"] == "provider" {
+		if rel.ToID == "aws" && rel.FromID == "main.tf" && rel.Properties.Get("import_kind") == "provider" {
 			found = true
 		}
 	}
@@ -343,7 +343,7 @@ func TestCorpus_TerraformAwsVpc_RelationshipCounts(t *testing.T) {
 func crossModuleUSES(records []types.EntityRecord) []types.RelationshipRecord {
 	var out []types.RelationshipRecord
 	for _, rel := range collectRels(records, "USES") {
-		if rel.Properties["dataflow"] == "cross_module" {
+		if rel.Properties.Get("dataflow") == "cross_module" {
 			out = append(out, rel)
 		}
 	}
@@ -383,10 +383,10 @@ resource "aws_ecs_service" "worker" {
 	if rel.ToID != wantTo {
 		t.Errorf("ToID = %q, want %q", rel.ToID, wantTo)
 	}
-	if got := rel.Properties["module_output"]; got != "queue_url" {
+	if got := rel.Properties.Get("module_output"); got != "queue_url" {
 		t.Errorf("module_output = %q, want queue_url", got)
 	}
-	if got := rel.Properties["semantic"]; got != "consumes" {
+	if got := rel.Properties.Get("semantic"); got != "consumes" {
 		t.Errorf("semantic = %q, want consumes", got)
 	}
 }
@@ -437,7 +437,7 @@ resource "aws_ecs_task_definition" "task" {
 			if len(uses) != 1 {
 				t.Fatalf("expected 1 cross-module USES edge, got %d: %+v", len(uses), uses)
 			}
-			if got := uses[0].Properties["semantic"]; got != tc.want {
+			if got := uses[0].Properties.Get("semantic"); got != tc.want {
 				t.Errorf("semantic = %q, want %q", got, tc.want)
 			}
 		})

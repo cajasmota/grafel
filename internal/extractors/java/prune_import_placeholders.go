@@ -102,7 +102,7 @@ func buildImportRel(node ts.Node, file extractor.FileInput) (types.RelationshipR
 		return types.RelationshipRecord{}, false
 	}
 
-	props := map[string]string{}
+	props := types.Props{}
 	toID := raw
 
 	switch {
@@ -111,8 +111,8 @@ func buildImportRel(node ts.Node, file extractor.FileInput) (types.RelationshipR
 		// stripped. ToID drops the wildcard so synth / resolver don't
 		// treat "*" as a leaf identifier.
 		mod := strings.TrimSuffix(raw, ".*")
-		props["source_module"] = mod
-		props["wildcard"] = "1"
+		props.Set("source_module", mod)
+		props.Set("wildcard", "1")
 		toID = mod
 	default:
 		// Non-wildcard. local_name = leaf (last dotted segment),
@@ -123,9 +123,9 @@ func buildImportRel(node ts.Node, file extractor.FileInput) (types.RelationshipR
 			leaf = raw[dot+1:]
 			mod = raw[:dot]
 		}
-		props["local_name"] = leaf
-		props["source_module"] = mod
-		props["imported_name"] = leaf
+		props.Set("local_name", leaf)
+		props.Set("source_module", mod)
+		props.Set("imported_name", leaf)
 	}
 
 	return types.RelationshipRecord{

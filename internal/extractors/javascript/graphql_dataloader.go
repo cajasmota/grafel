@@ -157,9 +157,9 @@ func (t *dataLoaderTracker) processAssignment(x *extractor, nameNode, valueNode 
 		rels = append(rels, types.RelationshipRecord{
 			ToID: batchFn,
 			Kind: string(types.RelationshipKindBatches),
-			Properties: map[string]string{
-				"via":  PropViaGraphQLDataLoader,
-				"line": strconv.Itoa(int(valueNode.StartPoint().Row) + 1),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(int(valueNode.StartPoint().Row) + 1)},
+				{K: "via", V: PropViaGraphQLDataLoader},
 			},
 		})
 	}
@@ -324,10 +324,10 @@ func (t *dataLoaderTracker) dataLoaderLoadEdges(x *extractor, callNode ts.Node) 
 	return []types.RelationshipRecord{{
 		ToID: loaderName,
 		Kind: string(types.RelationshipKindUses),
-		Properties: map[string]string{
-			"via":    PropViaGraphQLDataLoader,
-			"loader": loaderName,
-			"line":   strconv.Itoa(int(callNode.StartPoint().Row) + 1),
+		Properties: types.Props{
+			{K: "line", V: strconv.Itoa(int(callNode.StartPoint().Row) + 1)},
+			{K: "loader", V: loaderName},
+			{K: "via", V: PropViaGraphQLDataLoader},
 		},
 	}}
 }

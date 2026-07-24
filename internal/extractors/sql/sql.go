@@ -238,8 +238,8 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID: name,
 				ToID:   extractor.BuildSchemaColumnStructuralRef(filePath, name, shortName),
 				Kind:   "CONTAINS",
-				Properties: map[string]string{
-					"contained_kind": "column",
+				Properties: types.Props{
+					{K: "contained_kind", V: "column"},
 				},
 			})
 		}
@@ -275,10 +275,10 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 					FromID: extractor.BuildSchemaColumnStructuralRef(filePath, name, shortName),
 					ToID:   fk.ToTable,
 					Kind:   "REFERENCES",
-					Properties: map[string]string{
-						"reference_kind": "foreign_key",
-						"to_column":      fk.ToColumn,
-						"from_table":     name,
+					Properties: types.Props{
+						{K: "from_table", V: name},
+						{K: "reference_kind", V: "foreign_key"},
+						{K: "to_column", V: fk.ToColumn},
 					},
 				})
 			}
@@ -318,10 +318,10 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID: extractor.BuildSchemaColumnStructuralRef(filePath, fromTable, fc),
 				ToID:   toTable,
 				Kind:   "REFERENCES",
-				Properties: map[string]string{
-					"reference_kind": "foreign_key",
-					"to_column":      tc,
-					"from_table":     fromTable,
+				Properties: types.Props{
+					{K: "from_table", V: fromTable},
+					{K: "reference_kind", V: "foreign_key"},
+					{K: "to_column", V: tc},
 				},
 			}
 
@@ -399,7 +399,7 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID:     name,
 				ToID:       t,
 				Kind:       "READS_FROM",
-				Properties: map[string]string{"dml": "select"},
+				Properties: types.Props{{K: "dml", V: "select"}},
 			})
 		}
 		for _, t := range writes {
@@ -410,7 +410,7 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID:     name,
 				ToID:       t,
 				Kind:       "WRITES_TO",
-				Properties: map[string]string{"dml": "write"},
+				Properties: types.Props{{K: "dml", V: "write"}},
 			})
 		}
 
@@ -454,8 +454,8 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 					FromID: indexName,
 					ToID:   tableName,
 					Kind:   "INDEXES",
-					Properties: map[string]string{
-						"reference_kind": "index_on",
+					Properties: types.Props{
+						{K: "reference_kind", V: "index_on"},
 					},
 				},
 			},
@@ -494,7 +494,7 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID:     name,
 				ToID:       t,
 				Kind:       "READS_FROM",
-				Properties: map[string]string{"dml": "select"},
+				Properties: types.Props{{K: "dml", V: "select"}},
 			})
 		}
 		for _, t := range writes {
@@ -505,7 +505,7 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID:     name,
 				ToID:       t,
 				Kind:       "WRITES_TO",
-				Properties: map[string]string{"dml": "write"},
+				Properties: types.Props{{K: "dml", V: "write"}},
 			})
 		}
 
@@ -565,7 +565,7 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID:     name,
 				ToID:       t,
 				Kind:       "READS_FROM",
-				Properties: map[string]string{"dml": "select"},
+				Properties: types.Props{{K: "dml", V: "select"}},
 			})
 		}
 		for _, t := range writes {
@@ -576,7 +576,7 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID:     name,
 				ToID:       t,
 				Kind:       "WRITES_TO",
-				Properties: map[string]string{"dml": "write"},
+				Properties: types.Props{{K: "dml", V: "write"}},
 			})
 		}
 
@@ -619,13 +619,13 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID:     triggerName,
 				ToID:       funcName,
 				Kind:       "FIRES",
-				Properties: map[string]string{"trigger_target": "function"},
+				Properties: types.Props{{K: "trigger_target", V: "function"}},
 			},
 			{
 				FromID:     triggerName,
 				ToID:       tableName,
 				Kind:       "DEFINED_ON",
-				Properties: map[string]string{"trigger_table": tableName},
+				Properties: types.Props{{K: "trigger_table", V: tableName}},
 			},
 		}
 

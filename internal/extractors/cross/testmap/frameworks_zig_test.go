@@ -93,9 +93,9 @@ test "only assertions" {
 			if rel.Kind != "TESTS" {
 				continue
 			}
-			if containsAny(rel.Properties["tested"],
+			if containsAny(rel.Properties.Get("tested"),
 				"expect", "expectEqual", "testing", "std", "expect_equal") {
-				t.Errorf("DSL identifier surfaced as production subject: %s", rel.Properties["tested"])
+				t.Errorf("DSL identifier surfaced as production subject: %s", rel.Properties.Get("tested"))
 			}
 		}
 	}

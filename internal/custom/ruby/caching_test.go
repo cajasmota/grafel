@@ -50,8 +50,8 @@ end
 	if r == nil {
 		t.Fatalf("expected Rails.cache.fetch(\"home\") to CACHES key home (read-through)")
 	}
-	if r.Properties["mode"] != "read_through" {
-		t.Errorf("mode = %q, want read_through", r.Properties["mode"])
+	if r.Properties.Get("mode") != "read_through" {
+		t.Errorf("mode = %q, want read_through", r.Properties.Get("mode"))
 	}
 }
 
@@ -68,8 +68,8 @@ end
 	if r == nil {
 		t.Fatalf("expected Rails.cache.delete(\"home\") to INVALIDATE key home")
 	}
-	if r.Properties["mode"] != "evict" {
-		t.Errorf("mode = %q, want evict", r.Properties["mode"])
+	if r.Properties.Get("mode") != "evict" {
+		t.Errorf("mode = %q, want evict", r.Properties.Get("mode"))
 	}
 }
 
@@ -77,7 +77,7 @@ func TestRubyCaching_DeleteMatched_Prefix(t *testing.T) {
 	src := `Rails.cache.delete_matched("home/*")`
 	ents := runRubyCaching(t, src)
 	r := findRubyCacheRel(ents, "INVALIDATES", "cache:rails:home/*")
-	if r == nil || r.Properties["mode"] != "evict_matched" {
+	if r == nil || r.Properties.Get("mode") != "evict_matched" {
 		t.Fatalf("expected evict_matched on home/*, got %+v", r)
 	}
 }
@@ -89,7 +89,7 @@ func TestRubyCaching_Interpolated_Dynamic(t *testing.T) {
 	if r == nil {
 		t.Fatalf("expected interpolated key to CACHES prefix user/*")
 	}
-	if r.Properties["dynamic"] != "true" {
+	if r.Properties.Get("dynamic") != "true" {
 		t.Errorf("interpolated key should be dynamic")
 	}
 }
@@ -98,7 +98,7 @@ func TestRubyCaching_Write(t *testing.T) {
 	src := `Rails.cache.write("config", v)`
 	ents := runRubyCaching(t, src)
 	r := findRubyCacheRel(ents, "CACHES", "cache:rails:config")
-	if r == nil || r.Properties["mode"] != "write" {
+	if r == nil || r.Properties.Get("mode") != "write" {
 		t.Fatalf("expected write mode on config, got %+v", r)
 	}
 }

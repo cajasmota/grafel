@@ -127,13 +127,13 @@ func enrichActorTopology(src string, entities []types.EntityRecord) {
 				continue
 			}
 			if rel.Properties == nil {
-				rel.Properties = map[string]string{}
+				rel.Properties = types.Props{}
 			}
-			rel.Properties["pony_msg_send"] = "true"
-			rel.Properties["pony_msg_behaviour"] = rel.ToID
-			rel.Properties["pony_msg_receiver"] = recv
+			rel.Properties.Set("pony_msg_send", "true")
+			rel.Properties.Set("pony_msg_behaviour", rel.ToID)
+			rel.Properties.Set("pony_msg_receiver", recv)
 			if owner := behaviourOwner[rel.ToID]; owner != "" {
-				rel.Properties["pony_msg_actor"] = owner
+				rel.Properties.Set("pony_msg_actor", owner)
 			}
 			addTag(e, "pony_msg_out:"+rel.ToID)
 		}

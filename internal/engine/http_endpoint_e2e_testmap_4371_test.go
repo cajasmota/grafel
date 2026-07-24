@@ -122,7 +122,7 @@ func edgeTargets(ents []types.EntityRecord) map[string]bool {
 		}
 		for _, r := range e.Relationships {
 			if r.Kind == string(types.RelationshipKindTests) &&
-				r.Properties["match_source"] == "e2e_supertest_route" {
+				r.Properties.Get("match_source") == "e2e_supertest_route" {
 				out[r.ToID] = true
 			}
 		}

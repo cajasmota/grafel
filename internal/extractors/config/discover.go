@@ -310,9 +310,9 @@ func Discover(ctx context.Context, repoRoot string, files []string) ([]types.Ent
 			FromID: "module:" + dir,
 			ToID:   ent.ID,
 			Kind:   string(types.RelationshipKindDependsOnConfig),
-			Properties: map[string]string{
-				"config_subtype": spec.subtype,
-				"config_format":  string(spec.format),
+			Properties: types.Props{
+				{K: "config_format", V: string(spec.format)},
+				{K: "config_subtype", V: spec.subtype},
 			},
 		})
 		// CONFIGURES — directional inverse, lets docgen pull configs into
@@ -321,8 +321,8 @@ func Discover(ctx context.Context, repoRoot string, files []string) ([]types.Ent
 			FromID: ent.ID,
 			ToID:   "module:" + dir,
 			Kind:   string(types.RelationshipKindConfigures),
-			Properties: map[string]string{
-				"config_subtype": spec.subtype,
+			Properties: types.Props{
+				{K: "config_subtype", V: spec.subtype},
 			},
 		})
 	}
@@ -540,9 +540,9 @@ func discoverChannelBindings(repoRoot, relPath string, spec configSpec, content 
 			FromID: id,
 			ToID:   g.channel,
 			Kind:   string(types.RelationshipKindBindsChannel),
-			Properties: map[string]string{
-				"channel":   g.channel,
-				"direction": g.direction,
+			Properties: types.Props{
+				{K: "channel", V: g.channel},
+				{K: "direction", V: g.direction},
 			},
 		})
 		// BINDS_TOPIC : ChannelBinding → SCOPE.MessageTopic. Unresolved
@@ -551,8 +551,8 @@ func discoverChannelBindings(repoRoot, relPath string, spec configSpec, content 
 			FromID: id,
 			ToID:   "kafka:" + topic,
 			Kind:   string(types.RelationshipKindBindsTopic),
-			Properties: map[string]string{
-				"topic": topic,
+			Properties: types.Props{
+				{K: "topic", V: topic},
 			},
 		})
 	}

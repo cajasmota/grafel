@@ -230,9 +230,9 @@ func stampPythonDiscriminators(body ts.Node, src []byte, out *[]types.EntityReco
 		e.Relationships = append(e.Relationships, types.RelationshipRecord{
 			ToID: "var:" + h.varName,
 			Kind: string(types.RelationshipKindDiscriminatesOn),
-			Properties: map[string]string{
-				"line":    strconv.Itoa(h.line),
-				"literal": h.literal,
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(h.line)},
+				{K: "literal", V: h.literal},
 			},
 		})
 	}

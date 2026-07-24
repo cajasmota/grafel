@@ -288,13 +288,13 @@ func collectFrom(node ts.Node, file extractor.FileInput, currentStage *string, d
 	}
 
 	// IMPORTS edge: file → base image (external dependency).
-	importProps := map[string]string{
-		"import_kind":   "from",
-		"source_module": imageName,
-		"imported_name": imageName,
+	importProps := types.Props{
+		{K: "import_kind", V: "from"},
+		{K: "imported_name", V: imageName},
+		{K: "source_module", V: imageName},
 	}
 	if alias != "" {
-		importProps["local_name"] = alias
+		importProps.Set("local_name", alias)
 	}
 	d.relationships = append(d.relationships, types.RelationshipRecord{
 		FromID:     file.Path,
@@ -343,8 +343,8 @@ func collectCopy(node ts.Node, file extractor.FileInput, currentStage string, d 
 			FromID: file.Path,
 			ToID:   extractor.BuildOperationStructuralRef("dockerfile", file.Path, target),
 			Kind:   "USES",
-			Properties: map[string]string{
-				"from_stage": stageRef,
+			Properties: types.Props{
+				{K: "from_stage", V: stageRef},
 			},
 		})
 		_ = currentStage // stage context retained for future enrichment

@@ -194,8 +194,8 @@ let package = Package(
 	if rel == nil {
 		t.Fatalf("expected DEPENDS_ON edge App→Core; relationships=%+v", app.Relationships)
 	}
-	if rel.Properties["dep_kind"] != "target" {
-		t.Errorf("dep_kind=%q want target", rel.Properties["dep_kind"])
+	if rel.Properties.Get("dep_kind") != "target" {
+		t.Errorf("dep_kind=%q want target", rel.Properties.Get("dep_kind"))
 	}
 }
 
@@ -231,11 +231,11 @@ let package = Package(
 	if rel == nil {
 		t.Fatalf("expected DEPENDS_ON edge App→Vapor; relationships=%+v", app.Relationships)
 	}
-	if rel.Properties["dep_kind"] != "product" {
-		t.Errorf("dep_kind=%q want product", rel.Properties["dep_kind"])
+	if rel.Properties.Get("dep_kind") != "product" {
+		t.Errorf("dep_kind=%q want product", rel.Properties.Get("dep_kind"))
 	}
-	if rel.Properties["package"] != "vapor" {
-		t.Errorf("package=%q want vapor", rel.Properties["package"])
+	if rel.Properties.Get("package") != "vapor" {
+		t.Errorf("package=%q want vapor", rel.Properties.Get("package"))
 	}
 
 	// A SCOPE.External entity for the product must also be emitted.
@@ -268,9 +268,9 @@ let package = Package(
 	ents := runPackage(t, src)
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties["language"] != "swift_package" {
+			if r.Properties.Get("language") != "swift_package" {
 				t.Errorf("entity %q rel kind=%q toID=%q: Properties[language]=%q want swift_package",
-					e.Name, r.Kind, r.ToID, r.Properties["language"])
+					e.Name, r.Kind, r.ToID, r.Properties.Get("language"))
 			}
 		}
 	}

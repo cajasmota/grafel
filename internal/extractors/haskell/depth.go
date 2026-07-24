@@ -176,9 +176,9 @@ func buildPersistentModel(entity string, fields []string, filePath string, line 
 				FromID: fromRef,
 				ToID:   table,
 				Kind:   "MAPS_TO",
-				Properties: map[string]string{
-					"orm_model":  entity,
-					"table_name": table,
+				Properties: types.Props{
+					{K: "orm_model", V: entity},
+					{K: "table_name", V: table},
 				},
 			},
 		},
@@ -254,9 +254,9 @@ func extractHspecSuite(src, filePath string) []types.EntityRecord {
 		rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
 			ToID: stemSubject,
 			Kind: string(types.RelationshipKindTests),
-			Properties: map[string]string{
-				"framework":    "hspec",
-				"match_source": "spec_stem_affinity",
+			Properties: types.Props{
+				{K: "framework", V: "hspec"},
+				{K: "match_source", V: "spec_stem_affinity"},
 			},
 		})
 	}

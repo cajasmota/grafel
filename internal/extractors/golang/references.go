@@ -317,7 +317,7 @@ func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.En
 			Kind: "REFERENCES",
 		}
 		if viaReceiverType != "" {
-			rec.Properties = map[string]string{"via_receiver_type": viaReceiverType}
+			rec.Properties = types.Props{{K: "via_receiver_type", V: viaReceiverType}}
 		}
 		(*entities)[idx].Relationships = append((*entities)[idx].Relationships, rec)
 	}

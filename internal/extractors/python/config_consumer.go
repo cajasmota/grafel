@@ -86,9 +86,9 @@ func emitConfigConsumerEdges(root ts.Node, file extractor.FileInput, entities *[
 		if r.Kind != "IMPORTS" {
 			continue
 		}
-		src := r.Properties["source_module"]
-		imp := r.Properties["imported_name"]
-		local := r.Properties["local_name"]
+		src := r.Properties.Get("source_module")
+		imp := r.Properties.Get("imported_name")
+		local := r.Properties.Get("local_name")
 
 		// `from django.conf import settings [as X]`
 		if src == "django.conf" && imp == "settings" {
@@ -301,11 +301,11 @@ func attachConfigEdge(file extractor.FileInput, entities *[]types.EntityRecord, 
 		}
 	}
 	toID := buildConfigTargetID(configName)
-	props := map[string]string{
-		"config_name": configName,
+	props := types.Props{
+		{K: "config_name", V: configName},
 	}
 	if len(keys) > 0 {
-		props["keys"] = strings.Join(keys, ",")
+		props.Set("keys", strings.Join(keys, ","))
 	}
 	(*entities)[hostIdx].Relationships = append((*entities)[hostIdx].Relationships,
 		types.RelationshipRecord{

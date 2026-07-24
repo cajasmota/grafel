@@ -47,11 +47,11 @@ func TestIssue4403_TemplatesContextProcessors(t *testing.T) {
 			t.Errorf("expected global context_processor USES edge for %s", dotted)
 			continue
 		}
-		if r.Properties["framework"] != "django" {
-			t.Errorf("%s: expected framework=django, got %q", dotted, r.Properties["framework"])
+		if r.Properties.Get("framework") != "django" {
+			t.Errorf("%s: expected framework=django, got %q", dotted, r.Properties.Get("framework"))
 		}
-		if r.Properties["dotted_path"] != dotted {
-			t.Errorf("%s: dotted_path mismatch %q", dotted, r.Properties["dotted_path"])
+		if r.Properties.Get("dotted_path") != dotted {
+			t.Errorf("%s: dotted_path mismatch %q", dotted, r.Properties.Get("dotted_path"))
 		}
 	}
 }
@@ -73,7 +73,7 @@ func TestIssue4403_InstalledAppsAppConfig(t *testing.T) {
 	// no dot so it is skipped entirely.
 	for _, e := range settingsEnts {
 		for _, r := range e.Relationships {
-			if r.Properties["di_role"] == "app_config" && r.ToID == "rest_framework" {
+			if r.Properties.Get("di_role") == "app_config" && r.ToID == "rest_framework" {
 				t.Errorf("bare package label rest_framework should not be wired, got edge %+v", r)
 			}
 		}

@@ -42,7 +42,7 @@ func findGTG(ents []types.EntityRecord, fromID, toID, field string) *types.Relat
 		for j := range ents[i].Relationships {
 			r := &ents[i].Relationships[j]
 			if r.Kind == string(types.RelationshipKindGraphRelates) &&
-				r.FromID == fromID && r.ToID == toID && r.Properties["field_name"] == field {
+				r.FromID == fromID && r.ToID == toID && r.Properties.Get("field_name") == field {
 				return r
 			}
 		}
@@ -109,12 +109,12 @@ struct Account { id: ID }
 	if e == nil {
 		t.Fatal("missing User.orders -> Order GRAPH_RELATES edge")
 	}
-	if e.Properties["cardinality"] != "to_many" || e.Properties["list"] != "true" {
+	if e.Properties.Get("cardinality") != "to_many" || e.Properties.Get("list") != "true" {
 		t.Errorf("User.orders want list=true cardinality=to_many, got list=%q card=%q",
-			e.Properties["list"], e.Properties["cardinality"])
+			e.Properties.Get("list"), e.Properties.Get("cardinality"))
 	}
-	if e.Properties["nullable"] != "false" {
-		t.Errorf("User.orders want nullable=false, got %q", e.Properties["nullable"])
+	if e.Properties.Get("nullable") != "false" {
+		t.Errorf("User.orders want nullable=false, got %q", e.Properties.Get("nullable"))
 	}
 
 	// account: Option<Account> -> nullable to_one edge.
@@ -122,12 +122,12 @@ struct Account { id: ID }
 	if a == nil {
 		t.Fatal("missing User.account -> Account GRAPH_RELATES edge")
 	}
-	if a.Properties["cardinality"] != "to_one" || a.Properties["list"] != "false" {
+	if a.Properties.Get("cardinality") != "to_one" || a.Properties.Get("list") != "false" {
 		t.Errorf("User.account want to_one/list=false, got card=%q list=%q",
-			a.Properties["cardinality"], a.Properties["list"])
+			a.Properties.Get("cardinality"), a.Properties.Get("list"))
 	}
-	if a.Properties["nullable"] != "true" {
-		t.Errorf("User.account want nullable=true, got %q", a.Properties["nullable"])
+	if a.Properties.Get("nullable") != "true" {
+		t.Errorf("User.account want nullable=true, got %q", a.Properties.Get("nullable"))
 	}
 
 	// manager: Option<User> -> self_ref.
@@ -135,15 +135,15 @@ struct Account { id: ID }
 	if m == nil {
 		t.Fatal("missing User.manager -> User self-reference edge")
 	}
-	if m.Properties["self_ref"] != "true" {
-		t.Errorf("User.manager want self_ref=true, got %q", m.Properties["self_ref"])
+	if m.Properties.Get("self_ref") != "true" {
+		t.Errorf("User.manager want self_ref=true, got %q", m.Properties.Get("self_ref"))
 	}
 
 	// Scalar fields id/name make NO edge.
 	for _, f := range []string{"id", "name"} {
 		for i := range ents {
 			for _, r := range ents[i].Relationships {
-				if r.Properties["field_name"] == f {
+				if r.Properties.Get("field_name") == f {
 					t.Errorf("scalar field %q must not produce an edge", f)
 				}
 			}
@@ -188,8 +188,8 @@ impl Query {
 	if u == nil {
 		t.Fatal("missing Query.user -> User resolver edge (Result<T> unwrap)")
 	}
-	if u.Properties["cardinality"] != "to_one" {
-		t.Errorf("Query.user want to_one, got %q", u.Properties["cardinality"])
+	if u.Properties.Get("cardinality") != "to_one" {
+		t.Errorf("Query.user want to_one, got %q", u.Properties.Get("cardinality"))
 	}
 
 	// orders(...) -> Vec<Order> to_many edge.
@@ -197,14 +197,14 @@ impl Query {
 	if o == nil {
 		t.Fatal("missing Query.orders -> Order resolver edge")
 	}
-	if o.Properties["cardinality"] != "to_many" {
-		t.Errorf("Query.orders want to_many, got %q", o.Properties["cardinality"])
+	if o.Properties.Get("cardinality") != "to_many" {
+		t.Errorf("Query.orders want to_many, got %q", o.Properties.Get("cardinality"))
 	}
 
 	// count(...) -> i32 scalar return makes NO edge.
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
-			if r.Properties["field_name"] == "count" {
+			if r.Properties.Get("field_name") == "count" {
 				t.Error("scalar resolver return i32 must not produce an edge")
 			}
 		}

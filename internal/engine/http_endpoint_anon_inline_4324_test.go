@@ -104,7 +104,7 @@ func assertInlineEndpointBridged(t *testing.T, ents []types.EntityRecord, rels [
 	bridged := false
 	for _, r := range rels {
 		if r.Kind == implementsEdgeKind && r.ToID == ep.ID && r.FromID == h.ID &&
-			r.Properties["handler_kind"] == "inline" {
+			r.Properties.Get("handler_kind") == "inline" {
 			bridged = true
 		}
 	}

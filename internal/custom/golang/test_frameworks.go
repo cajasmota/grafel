@@ -257,10 +257,10 @@ func attachTestsEdges(ent *types.EntityRecord, framework string, subjects []stri
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "Class:" + subj,
 			Kind: string(types.RelationshipKindTests),
-			Properties: map[string]string{
-				"framework":    framework,
-				"match_source": "go_test_name_affinity",
-				"target_type":  subj,
+			Properties: types.Props{
+				{K: "framework", V: framework},
+				{K: "match_source", V: "go_test_name_affinity"},
+				{K: "target_type", V: subj},
 			},
 			Confidence: 0.9,
 		})

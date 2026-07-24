@@ -31,11 +31,11 @@ async function handleOrder(req) {
 	if r == nil {
 		t.Fatal("INSTRUMENTS edge handleOrder → span:handleOrder not found")
 	}
-	if r.Properties["span_name"] != "handleOrder" {
-		t.Errorf("span_name=%q, want handleOrder", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "handleOrder" {
+		t.Errorf("span_name=%q, want handleOrder", r.Properties.Get("span_name"))
 	}
-	if r.Properties["api"] != "startActiveSpan" {
-		t.Errorf("api=%q, want startActiveSpan", r.Properties["api"])
+	if r.Properties.Get("api") != "startActiveSpan" {
+		t.Errorf("api=%q, want startActiveSpan", r.Properties.Get("api"))
 	}
 }
 
@@ -103,8 +103,8 @@ export function register() {
 		}
 		t.Fatal("INSTRUMENTS edge register → span:my-app not found")
 	}
-	if r.Properties["api"] != "registerOTel" {
-		t.Errorf("api=%q, want registerOTel", r.Properties["api"])
+	if r.Properties.Get("api") != "registerOTel" {
+		t.Errorf("api=%q, want registerOTel", r.Properties.Get("api"))
 	}
 }
 
@@ -131,11 +131,11 @@ function doWork(span) {
 		}
 		t.Fatal("INSTRUMENTS edge doWork → span:doWork not found")
 	}
-	if r.Properties["dynamic"] != "true" {
-		t.Errorf("dynamic=%q, want true", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "true" {
+		t.Errorf("dynamic=%q, want true", r.Properties.Get("dynamic"))
 	}
-	if r.Properties["api"] != "context.with" {
-		t.Errorf("api=%q, want context.with", r.Properties["api"])
+	if r.Properties.Get("api") != "context.with" {
+		t.Errorf("api=%q, want context.with", r.Properties.Get("api"))
 	}
 }
 

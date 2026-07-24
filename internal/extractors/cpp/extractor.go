@@ -1293,10 +1293,10 @@ func extractInclude(n ts.Node, src []byte, path, lang string) (types.EntityRecor
 		leaf = includePath[slash+1:]
 		mod = includePath[:slash]
 	}
-	props := map[string]string{
-		"local_name":    leaf,
-		"source_module": mod,
-		"imported_name": leaf,
+	props := types.Props{
+		{K: "imported_name", V: leaf},
+		{K: "local_name", V: leaf},
+		{K: "source_module", V: mod},
 	}
 	start, _ := nodeLines(n)
 	return types.EntityRecord{
@@ -1345,10 +1345,10 @@ func extractUsing(n ts.Node, src []byte, path, lang string) (types.EntityRecord,
 		leaf = dotted[dot+1:]
 		mod = dotted[:dot]
 	}
-	props := map[string]string{
-		"local_name":    leaf,
-		"source_module": mod,
-		"imported_name": leaf,
+	props := types.Props{
+		{K: "imported_name", V: leaf},
+		{K: "local_name", V: leaf},
+		{K: "source_module", V: mod},
 	}
 	start, _ := nodeLines(n)
 	return types.EntityRecord{

@@ -27,7 +27,7 @@ func findImportEdge(ents []types.EntityRecord, sourceModule string) *types.Relat
 			if r.Kind != "IMPORTS" {
 				continue
 			}
-			if r.Properties != nil && r.Properties["source_module"] == sourceModule {
+			if r.Properties != nil && r.Properties.Get("source_module") == sourceModule {
 				return r
 			}
 		}
@@ -375,10 +375,10 @@ func TestRelativeImport_AliasedImport(t *testing.T) {
 	if r.Properties == nil {
 		t.Fatalf("IMPORTS edge has nil Properties")
 	}
-	if got := r.Properties["local_name"]; got != "OS" {
+	if got := r.Properties.Get("local_name"); got != "OS" {
 		t.Errorf("local_name = %q, want %q", got, "OS")
 	}
-	if got := r.Properties["imported_name"]; got != "OrderSerializer" {
+	if got := r.Properties.Get("imported_name"); got != "OrderSerializer" {
 		t.Errorf("imported_name = %q, want %q", got, "OrderSerializer")
 	}
 	if strings.HasPrefix(r.ToID, "ext:") {

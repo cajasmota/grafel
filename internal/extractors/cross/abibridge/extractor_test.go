@@ -129,8 +129,8 @@ func TestAsmToC_ExternDeclImplementedByGloblProcedure(t *testing.T) {
 	if _, ok := implTargets["fast_memcpy"]; !ok {
 		t.Errorf("marker should carry an IMPLEMENTS edge to fast_memcpy; got %+v", marker.Relationships)
 	}
-	if implTargets["crypt_block"].Properties["abi_bridge"] != "asm_implements_c_decl" {
-		t.Errorf("IMPLEMENTS abi_bridge prop = %q", implTargets["crypt_block"].Properties["abi_bridge"])
+	if implTargets["crypt_block"].Properties.Get("abi_bridge") != "asm_implements_c_decl" {
+		t.Errorf("IMPLEMENTS abi_bridge prop = %q", implTargets["crypt_block"].Properties.Get("abi_bridge"))
 	}
 
 	// The asm side exported crypt_block as a procedure.
@@ -230,8 +230,8 @@ func TestInlineAsm_CallTargetLinked(t *testing.T) {
 	for _, rel := range marker.Relationships {
 		if rel.Kind == "CALLS" && rel.ToID == "rdtsc_helper" {
 			hit = true
-			if rel.Properties["abi_bridge"] != "c_inline_asm_call" {
-				t.Errorf("inline-asm CALLS abi_bridge prop = %q", rel.Properties["abi_bridge"])
+			if rel.Properties.Get("abi_bridge") != "c_inline_asm_call" {
+				t.Errorf("inline-asm CALLS abi_bridge prop = %q", rel.Properties.Get("abi_bridge"))
 			}
 		}
 	}

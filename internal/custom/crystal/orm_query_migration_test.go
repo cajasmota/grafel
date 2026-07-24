@@ -31,10 +31,10 @@ func modelQueryOps(t *testing.T, ents []types.EntityRecord, model, table, framew
 			if r.ToID != table {
 				t.Errorf("%s QUERIES edge ToID=%q want %q", model, r.ToID, table)
 			}
-			if r.Properties["framework"] != framework {
-				t.Errorf("%s QUERIES edge framework=%q want %q", model, r.Properties["framework"], framework)
+			if r.Properties.Get("framework") != framework {
+				t.Errorf("%s QUERIES edge framework=%q want %q", model, r.Properties.Get("framework"), framework)
 			}
-			ops[r.Properties["operation"]] = true
+			ops[r.Properties.Get("operation")] = true
 		}
 	}
 	return ops

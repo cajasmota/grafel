@@ -192,7 +192,7 @@ example.com {
 		}
 	}
 	for _, r := range rels {
-		if r.Kind == depTopoRoutesTo && r.Properties["flow"] == "caddy_reverse_proxy" {
+		if r.Kind == depTopoRoutesTo && r.Properties.Get("flow") == "caddy_reverse_proxy" {
 			t.Fatalf("dynamic reverse_proxy target must not emit a ROUTES_TO edge, got %+v", r)
 		}
 	}
@@ -261,7 +261,7 @@ config:
 		}
 	}
 	for _, r := range rels {
-		if r.Properties["synthesis"] == "deployment_topology" {
+		if r.Properties.Get("synthesis") == "deployment_topology" {
 			t.Fatalf("unrelated YAML must not emit deployment_topology edges, got %+v", r)
 		}
 	}

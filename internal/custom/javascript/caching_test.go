@@ -51,8 +51,8 @@ export class UsersController {
 	if r == nil {
 		t.Fatalf("expected @CacheKey('users') to CACHES key users (read-through)")
 	}
-	if r.Properties["mode"] != "read_through" {
-		t.Errorf("mode = %q, want read_through", r.Properties["mode"])
+	if r.Properties.Get("mode") != "read_through" {
+		t.Errorf("mode = %q, want read_through", r.Properties.Get("mode"))
 	}
 }
 
@@ -67,8 +67,8 @@ async function getUser(id) {
 	if r == nil {
 		t.Fatalf("expected cache.wrap('user:1', fn) to CACHES key user:1")
 	}
-	if r.Properties["mode"] != "read_through" {
-		t.Errorf("mode = %q, want read_through", r.Properties["mode"])
+	if r.Properties.Get("mode") != "read_through" {
+		t.Errorf("mode = %q, want read_through", r.Properties.Get("mode"))
 	}
 }
 
@@ -83,8 +83,8 @@ async function evict() {
 	if r == nil {
 		t.Fatalf("expected cacheManager.del('user:1') to INVALIDATE key user:1")
 	}
-	if r.Properties["mode"] != "evict" {
-		t.Errorf("mode = %q, want evict", r.Properties["mode"])
+	if r.Properties.Get("mode") != "evict" {
+		t.Errorf("mode = %q, want evict", r.Properties.Get("mode"))
 	}
 }
 
@@ -92,7 +92,7 @@ func TestJSCaching_CacheManagerSet_Write(t *testing.T) {
 	src := `await cache.set('config', value);`
 	ents := runJSCaching(t, "svc.ts", src)
 	r := findJSCacheRel(ents, "CACHES", "cache:cache_manager:config")
-	if r == nil || r.Properties["mode"] != "write" {
+	if r == nil || r.Properties.Get("mode") != "write" {
 		t.Fatalf("expected write mode on config, got %+v", r)
 	}
 }
@@ -104,7 +104,7 @@ func TestJSCaching_TemplateLiteral_Dynamic(t *testing.T) {
 	if r == nil {
 		t.Fatalf("expected template-literal key to CACHES prefix user:*")
 	}
-	if r.Properties["dynamic"] != "true" {
+	if r.Properties.Get("dynamic") != "true" {
 		t.Errorf("template-literal key should be dynamic")
 	}
 }

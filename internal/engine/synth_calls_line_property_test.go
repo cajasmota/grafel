@@ -50,7 +50,7 @@ def handle_signup(request):
 		if r.Kind != "CALLS" {
 			continue
 		}
-		lineStr, ok := r.Properties["line"]
+		lineStr, ok := r.Properties.Lookup("line")
 		if !ok {
 			t.Errorf("CALLS edge %q→%q missing Properties[\"line\"]", r.FromID, r.ToID)
 			continue
@@ -91,7 +91,7 @@ lambda_client.invoke(FunctionName='my-function', Payload='{}')
 			continue
 		}
 		foundCalls = true
-		lineStr, ok := r.Properties["line"]
+		lineStr, ok := r.Properties.Lookup("line")
 		if !ok {
 			t.Errorf("CALLS edge %q→%q missing Properties[\"line\"]", r.FromID, r.ToID)
 			continue

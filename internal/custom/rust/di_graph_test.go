@@ -81,7 +81,7 @@ fn main() {
 	if !ok {
 		t.Fatal("expected INJECTED_INTO edge AppState -> handler")
 	}
-	if rel.Properties["scope"] != "singleton" || rel.Properties["mechanism"] != "state" {
+	if rel.Properties.Get("scope") != "singleton" || rel.Properties.Get("mechanism") != "state" {
 		t.Errorf("injection edge props = %v", rel.Properties)
 	}
 }

@@ -111,21 +111,21 @@ func csShortType(t string) string {
 }
 
 func csMapsToEdge(srcType, destType, framework, profile string, memberMaps int, reverse bool) types.RelationshipRecord {
-	props := map[string]string{
-		"framework":   framework,
-		"language":    "csharp",
-		"source_type": srcType,
-		"dest_type":   destType,
-		"provenance":  "INFERRED_FROM_OBJECT_MAPPING",
+	props := types.Props{
+		{K: "dest_type", V: destType},
+		{K: "framework", V: framework},
+		{K: "language", V: "csharp"},
+		{K: "provenance", V: "INFERRED_FROM_OBJECT_MAPPING"},
+		{K: "source_type", V: srcType},
 	}
 	if memberMaps > 0 {
-		props["member_map_count"] = fmt.Sprintf("%d", memberMaps)
+		props.Set("member_map_count", fmt.Sprintf("%d", memberMaps))
 	}
 	if reverse {
-		props["reverse"] = "true"
+		props.Set("reverse", "true")
 	}
 	if profile != "" {
-		props["profile"] = profile
+		props.Set("profile", profile)
 	}
 	return types.RelationshipRecord{
 		FromID:     "Class:" + csShortType(srcType),

@@ -62,17 +62,17 @@ public class Startup {
 	if edge == nil {
 		t.Fatalf("expected IRepo BINDS Repo")
 	}
-	if edge.Properties["lifetime"] != "Scoped" {
-		t.Errorf("lifetime = %q, want Scoped", edge.Properties["lifetime"])
+	if edge.Properties.Get("lifetime") != "Scoped" {
+		t.Errorf("lifetime = %q, want Scoped", edge.Properties.Get("lifetime"))
 	}
-	if edge.Properties["interface"] != "IRepo" || edge.Properties["implementation"] != "Repo" {
+	if edge.Properties.Get("interface") != "IRepo" || edge.Properties.Get("implementation") != "Repo" {
 		t.Errorf("binding props = %v, want IRepo->Repo", edge.Properties)
 	}
 	// Singleton + Transient lifetimes recorded distinctly.
-	if e := findRel(recs, "BINDS", "di:IClock->SystemClock", "impl:SystemClock"); e == nil || e.Properties["lifetime"] != "Singleton" {
+	if e := findRel(recs, "BINDS", "di:IClock->SystemClock", "impl:SystemClock"); e == nil || e.Properties.Get("lifetime") != "Singleton" {
 		t.Errorf("expected IClock BINDS SystemClock lifetime=Singleton; got %v", e)
 	}
-	if e := findRel(recs, "BINDS", "di:IMailer->SmtpMailer", "impl:SmtpMailer"); e == nil || e.Properties["lifetime"] != "Transient" {
+	if e := findRel(recs, "BINDS", "di:IMailer->SmtpMailer", "impl:SmtpMailer"); e == nil || e.Properties.Get("lifetime") != "Transient" {
 		t.Errorf("expected IMailer BINDS SmtpMailer lifetime=Transient; got %v", e)
 	}
 }
@@ -86,11 +86,11 @@ services.AddSingleton<MetricsCollector>();
 	if edge == nil {
 		t.Fatalf("expected MetricsCollector self-BINDS")
 	}
-	if edge.Properties["binding_kind"] != "self" {
-		t.Errorf("binding_kind = %q, want self", edge.Properties["binding_kind"])
+	if edge.Properties.Get("binding_kind") != "self" {
+		t.Errorf("binding_kind = %q, want self", edge.Properties.Get("binding_kind"))
 	}
-	if edge.Properties["lifetime"] != "Singleton" {
-		t.Errorf("lifetime = %q, want Singleton", edge.Properties["lifetime"])
+	if edge.Properties.Get("lifetime") != "Singleton" {
+		t.Errorf("lifetime = %q, want Singleton", edge.Properties.Get("lifetime"))
 	}
 }
 
@@ -103,8 +103,8 @@ services.AddScoped(typeof(IRepository), typeof(SqlRepository));
 	if edge == nil {
 		t.Fatalf("expected IRepository BINDS SqlRepository (typeof form)")
 	}
-	if edge.Properties["lifetime"] != "Scoped" {
-		t.Errorf("lifetime = %q, want Scoped", edge.Properties["lifetime"])
+	if edge.Properties.Get("lifetime") != "Scoped" {
+		t.Errorf("lifetime = %q, want Scoped", edge.Properties.Get("lifetime"))
 	}
 }
 
@@ -123,8 +123,8 @@ public class OrderController : ControllerBase {
 	if edge == nil {
 		t.Fatalf("expected IOrderService INJECTED_INTO OrderController")
 	}
-	if edge.Properties["via"] != "dotnet_constructor" {
-		t.Errorf("via = %q, want dotnet_constructor", edge.Properties["via"])
+	if edge.Properties.Get("via") != "dotnet_constructor" {
+		t.Errorf("via = %q, want dotnet_constructor", edge.Properties.Get("via"))
 	}
 	// Negative: ILogger<> infrastructure generic must NOT inject.
 	if findRel(recs, "INJECTED_INTO", "ILogger", "consumer:OrderController") != nil {

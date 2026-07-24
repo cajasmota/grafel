@@ -57,8 +57,8 @@ let v: String = con.get("session:abc")?;`)
 	if rel == nil {
 		t.Fatalf("expected READS_FROM edge to %q", ref)
 	}
-	if rel.Properties["keyspace"] != "session:abc" {
-		t.Errorf("keyspace prop = %q, want session:abc", rel.Properties["keyspace"])
+	if rel.Properties.Get("keyspace") != "session:abc" {
+		t.Errorf("keyspace prop = %q, want session:abc", rel.Properties.Get("keyspace"))
 	}
 }
 
@@ -86,8 +86,8 @@ con.publish("events", payload)?;`)
 	if rel == nil {
 		t.Fatalf("expected PUBLISHES_TO edge to channel %q", ref)
 	}
-	if rel.Properties["channel"] != "events" {
-		t.Errorf("channel prop = %q, want events", rel.Properties["channel"])
+	if rel.Properties.Get("channel") != "events" {
+		t.Errorf("channel prop = %q, want events", rel.Properties.Get("channel"))
 	}
 }
 
@@ -99,8 +99,8 @@ con.xadd("orders", "*", &items)?;`)
 	if rel == nil {
 		t.Fatalf("expected WRITES_TO edge to stream %q", ref)
 	}
-	if rel.Properties["stream"] != "orders" {
-		t.Errorf("stream prop = %q, want orders", rel.Properties["stream"])
+	if rel.Properties.Get("stream") != "orders" {
+		t.Errorf("stream prop = %q, want orders", rel.Properties.Get("stream"))
 	}
 }
 
@@ -112,8 +112,8 @@ let v: String = cmd("GET").arg("session:abc").query(&mut con)?;`)
 	if rel == nil {
 		t.Fatalf("expected READS_FROM edge to %q via cmd builder", ref)
 	}
-	if rel.Properties["op"] != "GET" {
-		t.Errorf("op prop = %q, want GET", rel.Properties["op"])
+	if rel.Properties.Get("op") != "GET" {
+		t.Errorf("op prop = %q, want GET", rel.Properties.Get("op"))
 	}
 }
 

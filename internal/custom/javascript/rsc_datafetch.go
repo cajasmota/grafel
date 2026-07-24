@@ -80,12 +80,12 @@ func rscDataFetchEdges(owner *types.EntityRecord, src, filePath, language string
 			FromID: owner.Name,
 			ToID:   site.ID,
 			Kind:   string(types.RelationshipKindReadsFrom),
-			Properties: map[string]string{
-				"framework":      "nextjs",
-				"rsc_data_fetch": "true",
-				"fetch_kind":     "web_fetch",
-				"url":            url,
-				"provenance":     "INFERRED_FROM_RSC_FETCH",
+			Properties: types.Props{
+				{K: "fetch_kind", V: "web_fetch"},
+				{K: "framework", V: "nextjs"},
+				{K: "provenance", V: "INFERRED_FROM_RSC_FETCH"},
+				{K: "rsc_data_fetch", V: "true"},
+				{K: "url", V: url},
 			},
 		})
 	}
@@ -112,12 +112,12 @@ func rscDataFetchEdges(owner *types.EntityRecord, src, filePath, language string
 			FromID: owner.Name,
 			ToID:   leaf,
 			Kind:   string(types.RelationshipKindCalls),
-			Properties: map[string]string{
-				"framework":      "nextjs",
-				"rsc_data_fetch": "true",
-				"callee":         callee,
-				"rendering":      "server",
-				"provenance":     "INFERRED_FROM_RSC_DATA_FETCH",
+			Properties: types.Props{
+				{K: "callee", V: callee},
+				{K: "framework", V: "nextjs"},
+				{K: "provenance", V: "INFERRED_FROM_RSC_DATA_FETCH"},
+				{K: "rendering", V: "server"},
+				{K: "rsc_data_fetch", V: "true"},
 			},
 		})
 	}

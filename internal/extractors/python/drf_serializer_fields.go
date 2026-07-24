@@ -213,9 +213,9 @@ func emitDRFSerializerFieldRefs(
 			// (1) *RelatedField with queryset= kwarg.
 			if _, isRel := drfRelatedFieldTypes[leafType]; isRel {
 				if target := extractRelatedFieldTarget(rhs, file.Content); target != "" {
-					appendRefEdge(&(*out)[idx], file.Path, target, map[string]string{
-						"drf_field_type": leafType,
-						"binding":        "queryset",
+					appendRefEdge(&(*out)[idx], file.Path, target, types.Props{
+						{K: "binding", V: "queryset"},
+						{K: "drf_field_type", V: leafType},
 					})
 					continue
 				}
@@ -226,8 +226,8 @@ func emitDRFSerializerFieldRefs(
 			// `serializers.Serializer` and `serializers.ModelSerializer`
 			// (those have funcText with a dot).
 			if strings.HasSuffix(leafType, "Serializer") && funcNode.Type() == "identifier" && isCapitalisedIdent(funcText) {
-				appendRefEdge(&(*out)[idx], file.Path, leafType, map[string]string{
-					"drf_nested_serializer": "true",
+				appendRefEdge(&(*out)[idx], file.Path, leafType, types.Props{
+					{K: "drf_nested_serializer", V: "true"},
 				})
 				continue
 			}
@@ -235,10 +235,10 @@ func emitDRFSerializerFieldRefs(
 			// (3) source="<path>" kwarg — bind to Meta.model when available.
 			if metaModel != "" {
 				if src := lookupStringKwarg(rhs, file.Content, "source"); src != "" {
-					appendRefEdge(&(*out)[idx], file.Path, metaModel, map[string]string{
-						"drf_field_type": leafType,
-						"binding":        "source",
-						"source_path":    src,
+					appendRefEdge(&(*out)[idx], file.Path, metaModel, types.Props{
+						{K: "binding", V: "source"},
+						{K: "drf_field_type", V: leafType},
+						{K: "source_path", V: src},
 					})
 					continue
 				}
@@ -250,9 +250,9 @@ func emitDRFSerializerFieldRefs(
 					// Skip when this is a Django model field declaration —
 					// detected by absence of Meta.model on the parent. Already
 					// guarded by metaModel != "" check above.
-					appendRefEdge(&(*out)[idx], file.Path, metaModel, map[string]string{
-						"drf_field_type": leafType,
-						"binding":        "meta_model_implicit",
+					appendRefEdge(&(*out)[idx], file.Path, metaModel, types.Props{
+						{K: "binding", V: "meta_model_implicit"},
+						{K: "drf_field_type", V: leafType},
 					})
 					continue
 				}
@@ -279,18 +279,18 @@ func emitDRFSerializerFieldRefs(
 			// to the leaf type instead so the resolver can bind it.
 			if metaModel == "" {
 				if _, isScalar := drfScalarSerializerFieldTypes[leafType]; isScalar {
-					appendUsesEdge(&(*out)[idx], file.Path, parentClass, map[string]string{
-						"drf_field_type": leafType,
-						"binding":        "plain_serializer_parent",
+					appendUsesEdge(&(*out)[idx], file.Path, parentClass, types.Props{
+						{K: "binding", V: "plain_serializer_parent"},
+						{K: "drf_field_type", V: leafType},
 					})
 					continue
 				}
 				// Unknown capitalised leaf type that isn't a known DRF scalar — could
 				// be a project-local custom field class. Emit USES_SCHEMA → leafType.
 				if isCapitalisedIdent(leafType) && !strings.HasSuffix(leafType, "Serializer") {
-					appendUsesSchemaEdge(&(*out)[idx], file.Path, leafType, map[string]string{
-						"drf_field_type": leafType,
-						"binding":        "custom_field_type",
+					appendUsesSchemaEdge(&(*out)[idx], file.Path, leafType, types.Props{
+						{K: "binding", V: "custom_field_type"},
+						{K: "drf_field_type", V: leafType},
 					})
 					continue
 				}
@@ -302,7 +302,7 @@ func emitDRFSerializerFieldRefs(
 // appendUsesEdge appends a USES edge from the field entity to the target
 // class (e.g. the parent serializer). Used for plain serializers.Serializer
 // fields that have no Meta.model binding target (#2081 Cat-C).
-func appendUsesEdge(field *types.EntityRecord, filePath, targetClass string, props map[string]string) {
+func appendUsesEdge(field *types.EntityRecord, filePath, targetClass string, props types.Props) {
 	if field == nil || targetClass == "" {
 		return
 	}
@@ -324,7 +324,7 @@ func appendUsesEdge(field *types.EntityRecord, filePath, targetClass string, pro
 // custom field type class. Used when a plain serializers.Serializer field uses
 // a project-local custom field class (e.g. MoneyField, PhoneField) that may
 // itself be a graph entity (#2081 Cat-C).
-func appendUsesSchemaEdge(field *types.EntityRecord, filePath, targetClass string, props map[string]string) {
+func appendUsesSchemaEdge(field *types.EntityRecord, filePath, targetClass string, props types.Props) {
 	if field == nil || targetClass == "" {
 		return
 	}
@@ -468,7 +468,7 @@ func lookupStringKwarg(callNode ts.Node, src []byte, name string) string {
 // appendRefEdge appends a REFERENCES edge from the field entity to the
 // target class, deduplicated on ToID. Properties carry the binding kind
 // so graph audits can isolate the provenance without re-parsing source.
-func appendRefEdge(field *types.EntityRecord, filePath, targetClass string, props map[string]string) {
+func appendRefEdge(field *types.EntityRecord, filePath, targetClass string, props types.Props) {
 	if field == nil || targetClass == "" {
 		return
 	}

@@ -88,16 +88,16 @@ func collectValidatorPipelineEdges(body string, bodyStartLine int) []types.Relat
 	validusCE := ceHeadPresent(scrubbed, "validate", "validator")
 	if len(validusCombos) > 0 || validusCE {
 		line := firstSignalLine(scrubbed, bodyStartLine, fsValidusCombinatorRE, "validate", "validator")
-		props := map[string]string{
-			"library": fsValidusLib,
-			"via":     "validator_pipeline",
-			"line":    strconv.Itoa(line),
+		props := types.Props{
+			{K: "library", V: fsValidusLib},
+			{K: "line", V: strconv.Itoa(line)},
+			{K: "via", V: "validator_pipeline"},
 		}
 		if len(validusCombos) > 0 {
-			props["combinators"] = strings.Join(validusCombos, ",")
+			props.Set("combinators", strings.Join(validusCombos, ","))
 		}
 		if validusCE {
-			props["computation_expression"] = "true"
+			props.Set("computation_expression", "true")
 		}
 		out = append(out, types.RelationshipRecord{
 			ToID:       "validator:" + fsValidusLib,
@@ -122,16 +122,16 @@ func collectValidatorPipelineEdges(body string, bodyStartLine int) []types.Relat
 	}
 	if ftCE || hasValidationCombo {
 		line := firstSignalLine(scrubbed, bodyStartLine, fsFsToolkitCombinatorRE, "validation")
-		props := map[string]string{
-			"library": fsFsToolkitLib,
-			"via":     "validator_pipeline",
-			"line":    strconv.Itoa(line),
+		props := types.Props{
+			{K: "library", V: fsFsToolkitLib},
+			{K: "line", V: strconv.Itoa(line)},
+			{K: "via", V: "validator_pipeline"},
 		}
 		if len(ftCombos) > 0 {
-			props["combinators"] = strings.Join(ftCombos, ",")
+			props.Set("combinators", strings.Join(ftCombos, ","))
 		}
 		if ftCE {
-			props["computation_expression"] = "true"
+			props.Set("computation_expression", "true")
 		}
 		out = append(out, types.RelationshipRecord{
 			ToID:       "validator:" + fsFsToolkitLib,
@@ -251,11 +251,11 @@ func collectTypeValidatorEdges(
 			out = append(out, types.RelationshipRecord{
 				ToID: nested,
 				Kind: string(types.RelationshipKindValidates),
-				Properties: map[string]string{
-					"library": fsDataAnnotationLib,
-					"via":     "nested_model",
-					"field":   f.name,
-					"line":    strconv.Itoa(startLine + f.lineOffset),
+				Properties: types.Props{
+					{K: "field", V: f.name},
+					{K: "library", V: fsDataAnnotationLib},
+					{K: "line", V: strconv.Itoa(startLine + f.lineOffset)},
+					{K: "via", V: "nested_model"},
 				},
 			})
 		}
@@ -265,13 +265,13 @@ func collectTypeValidatorEdges(
 			out = append(out, types.RelationshipRecord{
 				ToID: "validator:" + fsDataAnnotationLib,
 				Kind: string(types.RelationshipKindValidates),
-				Properties: map[string]string{
-					"library":        fsDataAnnotationLib,
-					"via":            "custom_validation",
-					"field":          f.name,
-					"validator_type": vt,
-					"method":         method,
-					"line":           strconv.Itoa(startLine + f.lineOffset),
+				Properties: types.Props{
+					{K: "field", V: f.name},
+					{K: "library", V: fsDataAnnotationLib},
+					{K: "line", V: strconv.Itoa(startLine + f.lineOffset)},
+					{K: "method", V: method},
+					{K: "validator_type", V: vt},
+					{K: "via", V: "custom_validation"},
 				},
 			})
 		}
@@ -282,10 +282,10 @@ func collectTypeValidatorEdges(
 		out = append(out, types.RelationshipRecord{
 			ToID: "validator:" + fsDataAnnotationLib,
 			Kind: string(types.RelationshipKindValidates),
-			Properties: map[string]string{
-				"library": fsDataAnnotationLib,
-				"via":     "ivalidatableobject",
-				"line":    strconv.Itoa(startLine),
+			Properties: types.Props{
+				{K: "library", V: fsDataAnnotationLib},
+				{K: "line", V: strconv.Itoa(startLine)},
+				{K: "via", V: "ivalidatableobject"},
 			},
 		})
 	}

@@ -452,15 +452,15 @@ func extractCallRelationships(body ts.Node, src []byte, callerName string, ctx *
 		seen[target] = true
 		// Line is 1-based: tree-sitter StartPoint().Row is 0-based.
 		callLine := strconv.Itoa(int(call.StartPoint().Row) + 1)
-		props := map[string]string{"line": callLine}
+		props := types.Props{{K: "line", V: callLine}}
 		// #4375 — stamp the cross-package qualifier when statically resolvable.
 		if ctx != nil {
 			if q := ctx.resolveKotlinQualifiedCall(call, src, localNames, recvTypes); q != nil &&
 				q.leaf == target && len(q.pkgCandidates) > 0 {
-				props["kotlin_call_pkg"] = strings.Join(q.pkgCandidates, ";")
-				props["call_leaf"] = q.leaf
+				props.Set("kotlin_call_pkg", strings.Join(q.pkgCandidates, ";"))
+				props.Set("call_leaf", q.leaf)
 				if q.typ != "" {
-					props["kotlin_call_type"] = q.typ
+					props.Set("kotlin_call_type", q.typ)
 				}
 			}
 		}
@@ -719,17 +719,17 @@ func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bo
 	if raw == "" {
 		return types.EntityRecord{}, false
 	}
-	props := map[string]string{
-		"source_module": raw,
+	props := types.Props{
+		{K: "source_module", V: raw},
 	}
 	if wildcard {
-		props["wildcard"] = "1"
+		props.Set("wildcard", "1")
 	} else if dot := strings.LastIndexByte(raw, '.'); dot >= 0 {
 		// Imported leaf name (used by the IMPORTS-rewrite pass to build
 		// the `ext:<root>:<leaf>` ToID for known-external packages).
-		props["imported_name"] = raw[dot+1:]
+		props.Set("imported_name", raw[dot+1:])
 	} else {
-		props["imported_name"] = raw
+		props.Set("imported_name", raw)
 	}
 	return types.EntityRecord{
 		Name:       raw,

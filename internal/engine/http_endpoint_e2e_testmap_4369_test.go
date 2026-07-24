@@ -122,7 +122,7 @@ func TestIssue4369_PythonE2ERouteTestsLinkToEndpoints(t *testing.T) {
 			if r.Kind != string(types.RelationshipKindTests) {
 				continue
 			}
-			if r.Properties["match_source"] != "e2e_supertest_route" {
+			if r.Properties.Get("match_source") != "e2e_supertest_route" {
 				continue
 			}
 			// ToID is "<defKind>:<defName>"; defName is the SyntheticID
@@ -131,7 +131,7 @@ func TestIssue4369_PythonE2ERouteTestsLinkToEndpoints(t *testing.T) {
 				wantTarget = true
 			}
 			// Framework attributed from the suite, not hard-coded jest.
-			if fw := r.Properties["framework"]; fw == "jest" {
+			if fw := r.Properties.Get("framework"); fw == "jest" {
 				t.Errorf("Python suite TESTS edge mislabeled framework=%q", fw)
 			}
 		}
@@ -152,7 +152,7 @@ func countSuiteEndpointTestsEdges(ents []types.EntityRecord) int {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == string(types.RelationshipKindTests) &&
-				r.Properties["match_source"] == "e2e_supertest_route" {
+				r.Properties.Get("match_source") == "e2e_supertest_route" {
 				n++
 			}
 		}

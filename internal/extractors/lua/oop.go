@@ -139,10 +139,10 @@ func addExtends(file extractor.FileInput, rec *types.EntityRecord, child, parent
 		FromID: extractor.BuildComponentStructuralRef("lua", file.Path, child),
 		ToID:   toID,
 		Kind:   "EXTENDS",
-		Properties: map[string]string{
-			"base_name":   parent,
-			"inheritance": "metatable",
-			"child_name":  child,
+		Properties: types.Props{
+			{K: "base_name", V: parent},
+			{K: "child_name", V: child},
+			{K: "inheritance", V: "metatable"},
 		},
 	})
 }

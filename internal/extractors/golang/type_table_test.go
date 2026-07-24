@@ -170,7 +170,7 @@ func handle(entry EntityRecord) string {
 			if r.Kind != "REFERENCES" {
 				continue
 			}
-			if r.Properties != nil && r.Properties["via_receiver_type"] == "EntityRecord" {
+			if r.Properties != nil && r.Properties.Get("via_receiver_type") == "EntityRecord" {
 				found = true
 				break
 			}
@@ -234,7 +234,7 @@ func handle() {
 			if r.Kind != "REFERENCES" {
 				continue
 			}
-			if r.Properties != nil && r.Properties["via_receiver_type"] == "A" {
+			if r.Properties != nil && r.Properties.Get("via_receiver_type") == "A" {
 				t.Fatalf("ambiguous binding produced A-typed edge (should have been dropped): %s",
 					goRelsSummary(ents))
 			}

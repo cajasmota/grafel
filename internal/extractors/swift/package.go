@@ -189,9 +189,9 @@ func extractTargets(src, filePath string) []types.EntityRecord {
 				FromID: filePath + "::" + d.name,
 				ToID:   productName,
 				Kind:   "DEPENDS_ON",
-				Properties: map[string]string{
-					"dep_kind": "product",
-					"package":  packageName,
+				Properties: types.Props{
+					{K: "dep_kind", V: "product"},
+					{K: "package", V: packageName},
 				},
 			})
 
@@ -242,8 +242,8 @@ func extractTargets(src, filePath string) []types.EntityRecord {
 				FromID: filePath + "::" + d.name,
 				ToID:   depName,
 				Kind:   "DEPENDS_ON",
-				Properties: map[string]string{
-					"dep_kind": depKind,
+				Properties: types.Props{
+					{K: "dep_kind", V: depKind},
 				},
 			})
 		}

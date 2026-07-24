@@ -120,13 +120,13 @@ func applyPubSubEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		base := map[string]string{
-			"broker":       "pubsub",
-			"pattern_type": "pubsub_synthesis",
+		base := types.Props{
+			{K: "broker", V: "pubsub"},
+			{K: "pattern_type", V: "pubsub_synthesis"},
 		}
 		for k, v := range props {
 			if v != "" {
-				base[k] = v
+				base.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{

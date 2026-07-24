@@ -638,9 +638,9 @@ func buildSentinel(file extractor.FileInput, l modelLink) types.EntityRecord {
 				FromID: fromRef,
 				ToID:   l.tableName,
 				Kind:   RelMapsTo,
-				Properties: map[string]string{
-					"orm_model":  l.modelName,
-					"table_name": l.tableName,
+				Properties: types.Props{
+					{K: "orm_model", V: l.modelName},
+					{K: "table_name", V: l.tableName},
 				},
 			},
 		},

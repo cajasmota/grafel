@@ -156,13 +156,13 @@ func applyAzureMessagingEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		base := map[string]string{
-			"broker":       "azure",
-			"pattern_type": "azure_messaging_synthesis",
+		base := types.Props{
+			{K: "broker", V: "azure"},
+			{K: "pattern_type", V: "azure_messaging_synthesis"},
 		}
 		for k, v := range props {
 			if v != "" {
-				base[k] = v
+				base.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{

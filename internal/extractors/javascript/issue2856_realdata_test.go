@@ -18,8 +18,8 @@ func TestIssue2856_RealData_AngularNavLifecycle(t *testing.T) {
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
 			if r.Kind == string(types.RelationshipKindNavigatesTo) {
-				routes[r.Properties["route"]] = true
-				vias[r.Properties["via"]] = true
+				routes[r.Properties.Get("route")] = true
+				vias[r.Properties.Get("via")] = true
 			}
 		}
 	}

@@ -34,16 +34,16 @@ func assertImportContract(t *testing.T, r *types.RelationshipRecord, fromPath, m
 	if r.ToID != module {
 		t.Errorf("ToID: want %q, got %q", module, r.ToID)
 	}
-	if got := r.Properties["local_name"]; got != wantLocal {
+	if got := r.Properties.Get("local_name"); got != wantLocal {
 		t.Errorf("Properties[local_name]: want %q, got %q", wantLocal, got)
 	}
-	if got := r.Properties["source_module"]; got != module {
+	if got := r.Properties.Get("source_module"); got != module {
 		t.Errorf("Properties[source_module]: want %q, got %q", module, got)
 	}
-	if got, ok := r.Properties["imported_name"]; !ok || got != "" {
+	if got, ok := r.Properties.Lookup("imported_name"); !ok || got != "" {
 		t.Errorf("Properties[imported_name]: want \"\" present, got %q (present=%v)", got, ok)
 	}
-	if got := r.Properties["language"]; got != wantLang {
+	if got := r.Properties.Get("language"); got != wantLang {
 		t.Errorf("Properties[language]: want %q, got %q", wantLang, got)
 	}
 }

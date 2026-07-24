@@ -393,7 +393,7 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 		if programIdx >= 0 {
 			entities[programIdx].Relationships = append(entities[programIdx].Relationships,
 				types.RelationshipRecord{ToID: ent.QualifiedName, Kind: "CONTAINS",
-					Properties: map[string]string{"file": fs.logical}})
+					Properties: types.Props{{K: "file", V: fs.logical}}})
 		}
 	}
 
@@ -441,16 +441,16 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					kind = "WRITES_TO"
 				}
 				if ioIdx >= 0 {
-					props := map[string]string{
-						"line":  strconv.Itoa(blk.startLine),
-						"queue": q.name,
-						"via":   "EXEC-CICS-" + q.verb,
+					props := types.Props{
+						{K: "line", V: strconv.Itoa(blk.startLine)},
+						{K: "queue", V: q.name},
+						{K: "via", V: "EXEC-CICS-" + q.verb},
 					}
 					if q.dynamic {
-						props["dynamic_ref"] = "true"
+						props.Set("dynamic_ref", "true")
 					}
 					if q.sysid != "" {
-						props["sysid"] = q.sysid
+						props.Set("sysid", q.sysid)
 					}
 					entities[ioIdx].Relationships = append(entities[ioIdx].Relationships,
 						types.RelationshipRecord{
@@ -475,13 +475,13 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					kind = "REFERENCES"
 				}
 				if ioIdx >= 0 {
-					props := map[string]string{
-						"line": strconv.Itoa(blk.startLine),
-						"map":  mp.name,
-						"via":  "EXEC-CICS-" + mp.verb,
+					props := types.Props{
+						{K: "line", V: strconv.Itoa(blk.startLine)},
+						{K: "map", V: mp.name},
+						{K: "via", V: "EXEC-CICS-" + mp.verb},
 					}
 					if mp.dynamic {
-						props["dynamic_ref"] = "true"
+						props.Set("dynamic_ref", "true")
 					}
 					entities[ioIdx].Relationships = append(entities[ioIdx].Relationships,
 						types.RelationshipRecord{
@@ -704,19 +704,19 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					continue
 				}
 				levelNum, _ := strconv.Atoi(level)
-				props := map[string]string{"level": level}
+				props := types.Props{{K: "level", V: level}}
 				// REDEFINES / OCCURS structured-field metadata (#2838).
 				if rm := dataRedefinesRe.FindStringSubmatch(ln.upper); rm != nil {
-					props["redefines"] = rm[1]
+					props.Set("redefines", rm[1])
 				}
 				if om := dataOccursRe.FindStringSubmatch(ln.upper); om != nil {
-					props["occurs"] = om[1]
+					props.Set("occurs", om[1])
 				}
 				if pm := dataPicRe.FindStringSubmatch(ln.upper); pm != nil {
-					props["pic"] = pm[1]
+					props.Set("pic", pm[1])
 				} else if levelNum != 88 && levelNum != 66 {
 					// No PICTURE clause on an ordinary item ⇒ group item.
-					props["group"] = "true"
+					props.Set("group", "true")
 				}
 				// Trace a VALUE '<lit>' clause for IMS DL/I data-name SSA /
 				// function-code resolution (#5054). Preserve the literal's
@@ -735,12 +735,12 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 				thisIdx := len(entities)
 				if len(dataStack) > 0 {
 					parent := dataStack[len(dataStack)-1]
-					props["parent"] = entities[parent.idx].Name
+					props.Set("parent", entities[parent.idx].Name)
 					// CONTAINS edge: parent group → this field.
 					toID := extractor.BuildSchemaFieldStructuralRef("cobol", filePath, fieldName)
 					entities[parent.idx].Relationships = append(entities[parent.idx].Relationships,
 						types.RelationshipRecord{ToID: toID, Kind: "CONTAINS",
-							Properties: map[string]string{"child": fieldName}})
+							Properties: types.Props{{K: "child", V: fieldName}}})
 				}
 				entities = append(entities, types.EntityRecord{
 					Name:       fieldName,
@@ -751,7 +751,7 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					StartLine:  ln.num,
 					EndLine:    ln.num,
 					Signature:  strings.TrimSpace(ln.code),
-					Properties: props,
+					Properties: props.Snapshot(),
 				})
 				if levelNum != 88 && levelNum != 66 {
 					dataStack = append(dataStack, dataScope{level: levelNum, idx: thisIdx})
@@ -827,9 +827,9 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 				rel := types.RelationshipRecord{
 					ToID: target,
 					Kind: "CALLS",
-					Properties: map[string]string{
-						"line": strconv.Itoa(ln.num),
-						"via":  "PERFORM",
+					Properties: types.Props{
+						{K: "line", V: strconv.Itoa(ln.num)},
+						{K: "via", V: "PERFORM"},
 					},
 				}
 				attachCall(entities, currentParagraphIdx, programIdx, rel)
@@ -847,10 +847,10 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 				rel := types.RelationshipRecord{
 					ToID: rangeEnd,
 					Kind: "CALLS",
-					Properties: map[string]string{
-						"line":        strconv.Itoa(ln.num),
-						"via":         "PERFORM-THRU",
-						"range_start": tm[1],
+					Properties: types.Props{
+						{K: "line", V: strconv.Itoa(ln.num)},
+						{K: "range_start", V: tm[1]},
+						{K: "via", V: "PERFORM-THRU"},
 					},
 				}
 				attachCall(entities, currentParagraphIdx, programIdx, rel)
@@ -868,9 +868,9 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					rel := types.RelationshipRecord{
 						ToID: target,
 						Kind: "CALLS",
-						Properties: map[string]string{
-							"line": strconv.Itoa(ln.num),
-							"via":  "GO-TO",
+						Properties: types.Props{
+							{K: "line", V: strconv.Itoa(ln.num)},
+							{K: "via", V: "GO-TO"},
 						},
 					}
 					attachCall(entities, currentParagraphIdx, programIdx, rel)
@@ -884,10 +884,10 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 				rel := types.RelationshipRecord{
 					ToID: cm[1],
 					Kind: "CALLS",
-					Properties: map[string]string{
-						"line":     strconv.Itoa(ln.num),
-						"via":      "CALL",
-						"external": "true",
+					Properties: types.Props{
+						{K: "external", V: "true"},
+						{K: "line", V: strconv.Itoa(ln.num)},
+						{K: "via", V: "CALL"},
 					},
 				}
 				attachCall(entities, currentParagraphIdx, programIdx, rel)
@@ -914,11 +914,11 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					if strings.EqualFold(ident, "USING") {
 						continue
 					}
-					props := map[string]string{
-						"line":        strconv.Itoa(ln.num),
-						"via":         "CALL",
-						"external":    "true",
-						"dynamic_ref": "true",
+					props := types.Props{
+						{K: "dynamic_ref", V: "true"},
+						{K: "external", V: "true"},
+						{K: "line", V: strconv.Itoa(ln.num)},
+						{K: "via", V: "CALL"},
 					}
 					toID := ident
 					// Recover the real program-id by tracing a preceding
@@ -929,9 +929,9 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 						toID = lit
 						// Keep the COBOL-specific resolved_via label for back-compat
 						// while recording the cross-language mechanism (#5158).
-						props["resolved_via"] = "move-literal"
-						props["resolved_mechanism"] = extractor.ResolvedViaLiteralBinding
-						props["dynamic_target"] = ident
+						props.Set("resolved_via", "move-literal")
+						props.Set("resolved_mechanism", extractor.ResolvedViaLiteralBinding)
+						props.Set("dynamic_target", ident)
 					}
 					rel := types.RelationshipRecord{
 						ToID:       toID,
@@ -958,9 +958,9 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 							types.RelationshipRecord{
 								ToID: entities[fi].QualifiedName,
 								Kind: kind,
-								Properties: map[string]string{
-									"line": strconv.Itoa(ln.num),
-									"file": logical,
+								Properties: types.Props{
+									{K: "file", V: logical},
+									{K: "line", V: strconv.Itoa(ln.num)},
 								},
 							})
 					}
@@ -1004,10 +1004,10 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 							FromID: sqlFunctionRef(filePath, fnRefName()),
 							ToID:   scEnt.QualifiedName,
 							Kind:   kind,
-							Properties: map[string]string{
-								"line": strconv.Itoa(ln.num),
-								"map":  sc.name,
-								"via":  sc.via,
+							Properties: types.Props{
+								{K: "line", V: strconv.Itoa(ln.num)},
+								{K: "map", V: sc.name},
+								{K: "via", V: sc.via},
 							},
 						})
 				}

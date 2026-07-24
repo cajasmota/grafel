@@ -133,19 +133,11 @@ func applyGoRouteComposition(args DetectorPassArgs) DetectorPassResult {
 		}
 		newRel := r
 		newRel.ToID = "Controller:" + qualified
-		if newRel.Properties == nil {
-			newRel.Properties = map[string]string{}
-		} else {
-			// Clone to avoid mutating the original map shared with other
-			// relationship slices.
-			cloned := make(map[string]string, len(newRel.Properties)+1)
-			for k, v := range newRel.Properties {
-				cloned[k] = v
-			}
-			newRel.Properties = cloned
-		}
-		newRel.Properties["pattern_type"] = "ast_driven"
-		newRel.Properties["go_route_binding"] = "method_receiver_resolved"
+		// Clone to avoid mutating the property set shared with other
+		// relationship slices.
+		newRel.Properties = newRel.Properties.Clone()
+		newRel.Properties.Set("pattern_type", "ast_driven")
+		newRel.Properties.Set("go_route_binding", "method_receiver_resolved")
 		rawRels[i] = newRel
 	}
 

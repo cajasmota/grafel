@@ -904,9 +904,9 @@ func (x *extractor) emitReduxSlice(name string, valueNode ts.Node) {
 		rels = append(rels, types.RelationshipRecord{
 			ToID: name + "::" + rk,
 			Kind: string(types.RelationshipKindContains),
-			Properties: map[string]string{
-				"via":  propViaReduxSlice,
-				"role": "reducer",
+			Properties: types.Props{
+				{K: "role", V: "reducer"},
+				{K: "via", V: propViaReduxSlice},
 			},
 		})
 	}
@@ -995,9 +995,9 @@ func (x *extractor) emitRTKQueryApi(name string, valueNode ts.Node, injected boo
 		rels = append(rels, types.RelationshipRecord{
 			ToID: name + "::" + ep.name,
 			Kind: string(types.RelationshipKindContains),
-			Properties: map[string]string{
-				"via":  propViaRTKQuery,
-				"role": "endpoint",
+			Properties: types.Props{
+				{K: "role", V: "endpoint"},
+				{K: "via", V: propViaRTKQuery},
 			},
 		})
 	}
@@ -1216,11 +1216,11 @@ func (x *extractor) angularTanstackQuery(body ts.Node, className string) ([]type
 		rels = append(rels, types.RelationshipRecord{
 			ToID: e.ID,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component": className,
-				"subtype":   "tanstack_query",
-				"via":       propViaTanstackQuery,
-				"framework": "angular",
+			Properties: types.Props{
+				{K: "component", V: className},
+				{K: "framework", V: "angular"},
+				{K: "subtype", V: "tanstack_query"},
+				{K: "via", V: propViaTanstackQuery},
 			},
 		})
 	}
@@ -1445,10 +1445,10 @@ func (x *extractor) tanstackFetcherEdges(call ts.Node, subtype string) []types.R
 		return []types.RelationshipRecord{{
 			ToID: stub,
 			Kind: string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"via":      propViaTanstackQuery,
-				"relation": "fetches",
-				"channel":  "http",
+			Properties: types.Props{
+				{K: "channel", V: "http"},
+				{K: "relation", V: "fetches"},
+				{K: "via", V: propViaTanstackQuery},
 			},
 		}}
 	}
@@ -1457,9 +1457,9 @@ func (x *extractor) tanstackFetcherEdges(call ts.Node, subtype string) []types.R
 		return []types.RelationshipRecord{{
 			ToID: ref,
 			Kind: string(types.RelationshipKindCalls),
-			Properties: map[string]string{
-				"via":      propViaTanstackQuery,
-				"relation": "fetcher_ref",
+			Properties: types.Props{
+				{K: "relation", V: "fetcher_ref"},
+				{K: "via", V: propViaTanstackQuery},
 			},
 		}}
 	}
@@ -1670,11 +1670,11 @@ func (x *extractor) attachTanstackContains(owner, toName, subtype string) {
 		e.Relationships = append(e.Relationships, types.RelationshipRecord{
 			ToID: toName,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component": owner,
-				"subtype":   subtype,
-				"via":       propViaTanstackQuery,
-				"framework": "react",
+			Properties: types.Props{
+				{K: "component", V: owner},
+				{K: "framework", V: "react"},
+				{K: "subtype", V: subtype},
+				{K: "via", V: propViaTanstackQuery},
 			},
 		})
 		return

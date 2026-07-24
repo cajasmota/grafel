@@ -80,7 +80,7 @@ func globalUsesEdges(ents []types.EntityRecord) []types.RelationshipRecord {
 	var out []types.RelationshipRecord
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Kind == string(types.RelationshipKindUses) && r.Properties["global"] == "true" {
+			if r.Kind == string(types.RelationshipKindUses) && r.Properties.Get("global") == "true" {
 				out = append(out, r)
 			}
 		}
@@ -98,9 +98,9 @@ func hasGlobalUses(ents []types.EntityRecord, dotted, role string) (types.Relati
 			}
 			// Match on dotted_path (stable across the late-binding rewrite that
 			// mutates ToID into a hex id), falling back to ToID for clarity.
-			if (r.Properties["dotted_path"] == dotted || r.ToID == dotted) &&
-				r.Properties["global"] == "true" &&
-				(role == "" || r.Properties["di_role"] == role) {
+			if (r.Properties.Get("dotted_path") == dotted || r.ToID == dotted) &&
+				r.Properties.Get("global") == "true" &&
+				(role == "" || r.Properties.Get("di_role") == role) {
 				return r, true
 			}
 		}
@@ -180,11 +180,11 @@ func TestIssue4379_RealAcmeSettings_GlobalWiring(t *testing.T) {
 			t.Errorf("expected global middleware USES edge for %s", cm.dotted)
 			continue
 		}
-		if r.Properties["order"] == "" {
+		if r.Properties.Get("order") == "" {
 			t.Errorf("%s: expected an order index on MIDDLEWARE edge", cm.dotted)
 		}
-		if r.Properties["class_name"] != cm.class {
-			t.Errorf("%s: expected class_name=%s, got %q", cm.dotted, cm.class, r.Properties["class_name"])
+		if r.Properties.Get("class_name") != cm.class {
+			t.Errorf("%s: expected class_name=%s, got %q", cm.dotted, cm.class, r.Properties.Get("class_name"))
 		}
 		// Post-pass: the edge in `all` must now point at the real class entity's
 		// hex ID, and that ID must belong to an entity named like the class.
@@ -236,7 +236,7 @@ func TestIssue4379_RealAcmeSettings_GlobalWiring(t *testing.T) {
 	// middleware (first in the real list) must precede the security middleware.
 	ordOf := func(dotted string) string {
 		r, _ := hasGlobalUses(settingsEnts, dotted, "middleware")
-		return r.Properties["order"]
+		return r.Properties.Get("order")
 	}
 	if ordOf("core.middleware.performance_debug.PerformanceDebugMiddleware") >=
 		ordOf("django.middleware.security.SecurityMiddleware") {
@@ -250,7 +250,7 @@ func globalEdgeToID(ents []types.EntityRecord, dotted string) string {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == string(types.RelationshipKindUses) &&
-				r.Properties["global"] == "true" && r.Properties["dotted_path"] == dotted {
+				r.Properties.Get("global") == "true" && r.Properties.Get("dotted_path") == dotted {
 				return r.ToID
 			}
 		}

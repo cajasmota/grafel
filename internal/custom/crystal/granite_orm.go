@@ -263,15 +263,15 @@ func (e *graniteORMExtractor) Extract(
 			if a.fkField != "" {
 				fkField = a.fkField
 			}
-			relProps := map[string]string{
-				"fk_field": fkField,
-				"to_model": target,
+			relProps := types.Props{
+				{K: "fk_field", V: fkField},
+				{K: "to_model", V: target},
 			}
 			if a.primaryKy != "" {
-				relProps["primary_key"] = a.primaryKy
+				relProps.Set("primary_key", a.primaryKy)
 			}
 			if a.poly {
-				relProps["polymorphic"] = "true"
+				relProps.Set("polymorphic", "true")
 			}
 			rels = append(rels, types.RelationshipRecord{
 				ToID:       target,
@@ -285,10 +285,10 @@ func (e *graniteORMExtractor) Extract(
 				rels = append(rels, types.RelationshipRecord{
 					ToID: tableName,
 					Kind: "QUERIES",
-					Properties: map[string]string{
-						"operation": op,
-						"table":     tableName,
-						"model":     m.name,
+					Properties: types.Props{
+						{K: "model", V: m.name},
+						{K: "operation", V: op},
+						{K: "table", V: tableName},
 					},
 				})
 			}

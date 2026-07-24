@@ -180,7 +180,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 			rels = append(rels, types.RelationshipRecord{
 				ToID: refSlug,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
+				Properties: types.PropsFromMap(map[string]string{
 					"reference_text": lit,
 					"resolution":     "bare_slug",
 					// Issue #44 / GraphQL-fix — the final-pass disposition
@@ -190,7 +190,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 					// Tagging the language here lets classifyDispositionLang's
 					// markdown gate fire and route these to Dynamic.
 					"language": langName,
-				},
+				}),
 			})
 		}
 
@@ -486,7 +486,7 @@ func buildImportEntities(filePath string, links []linkRef) []types.EntityRecord 
 					FromID: filePath,
 					ToID:   resolved,
 					Kind:   "IMPORTS",
-					Properties: map[string]string{
+					Properties: types.PropsFromMap(map[string]string{
 						"source_module": resolved,
 						"imported_name": path.Base(resolved),
 						"import_kind":   "link",
@@ -495,7 +495,7 @@ func buildImportEntities(filePath string, links []linkRef) []types.EntityRecord 
 						// markdown gate routes these doc-link IMPORTS to
 						// Dynamic instead of BugExtractor.
 						"language": langName,
-					},
+					}),
 				},
 			},
 		})

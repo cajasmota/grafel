@@ -35,7 +35,7 @@ func injectedIntoFramework(ents []types.EntityRecord, consumer string) string {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == string(types.RelationshipKindInjectedInto) && r.ToID == consumer {
-				return r.Properties["framework"]
+				return r.Properties.Get("framework")
 			}
 		}
 	}

@@ -260,8 +260,8 @@ func dropTrailingSynthesisTimeBridge(rels []types.RelationshipRecord, canonicalP
 	if n := len(rels); n > 0 {
 		last := rels[n-1]
 		if last.Kind == implementsEdgeKind &&
-			last.Properties["pattern_type"] == "http_endpoint_synthesis_time_bridge" &&
-			last.Properties["path"] == canonicalPath {
+			last.Properties.Get("pattern_type") == "http_endpoint_synthesis_time_bridge" &&
+			last.Properties.Get("path") == canonicalPath {
 			return rels[:n-1]
 		}
 	}
@@ -592,11 +592,11 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 						FromID: bridgeRef,
 						ToID:   kind + ":" + id,
 						Kind:   implementsEdgeKind,
-						Properties: map[string]string{
-							"pattern_type": "http_endpoint_synthesis_time_bridge",
-							"framework":    framework,
-							"verb":         strings.ToUpper(method),
-							"path":         canonicalPath,
+						Properties: types.Props{
+							{K: "framework", V: framework},
+							{K: "path", V: canonicalPath},
+							{K: "pattern_type", V: "http_endpoint_synthesis_time_bridge"},
+							{K: "verb", V: strings.ToUpper(method)},
 						},
 					})
 				} else if refKind == inlineHandlerRefKind {
@@ -643,12 +643,12 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 						FromID: extractor.BuildOperationStructuralRef(lang, path, handlerName),
 						ToID:   kind + ":" + id,
 						Kind:   implementsEdgeKind,
-						Properties: map[string]string{
-							"pattern_type": "http_endpoint_synthesis_time_bridge",
-							"handler_kind": "inline",
-							"framework":    framework,
-							"verb":         strings.ToUpper(method),
-							"path":         canonicalPath,
+						Properties: types.Props{
+							{K: "framework", V: framework},
+							{K: "handler_kind", V: "inline"},
+							{K: "path", V: canonicalPath},
+							{K: "pattern_type", V: "http_endpoint_synthesis_time_bridge"},
+							{K: "verb", V: strings.ToUpper(method)},
 						},
 					})
 				}
@@ -803,10 +803,10 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 					FromID: fmt.Sprintf("%s:%s", refKind, refName),
 					ToID:   id,
 					Kind:   fetchesEdgeKind,
-					Properties: map[string]string{
-						"verb":      strings.ToUpper(method),
-						"path":      canonicalPath,
-						"framework": framework,
+					Properties: types.Props{
+						{K: "framework", V: framework},
+						{K: "path", V: canonicalPath},
+						{K: "verb", V: strings.ToUpper(method)},
 					},
 				})
 			}

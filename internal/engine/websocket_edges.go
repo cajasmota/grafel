@@ -127,14 +127,14 @@ func applyWebSocketSynthesis(args DetectorPassArgs) DetectorPassResult {
 		return id
 	}
 
-	emitEdge := func(kind, fromID, toID string, props map[string]string) {
+	emitEdge := func(kind, fromID, toID string, props types.Props) {
 		if fromID == "" || toID == "" {
 			return
 		}
 		if props == nil {
-			props = map[string]string{}
+			props = types.Props{}
 		}
-		props["pattern_type"] = "ws_synthesis"
+		props.Set("pattern_type", "ws_synthesis")
 		relationships = append(relationships, types.RelationshipRecord{
 			FromID:     fromID,
 			ToID:       toID,
@@ -195,7 +195,7 @@ var jakartaSessionSendRe = regexp.MustCompile(
 func synthJavaServerEndpoint(
 	src, path, lang string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "@ServerEndpoint") {
 		return
@@ -216,13 +216,13 @@ func synthJavaServerEndpoint(
 			}
 			methodName := mm[1]
 			paramSig := mm[2]
-			props := map[string]string{
-				"framework": framework,
-				"channel":   channel,
-				"handler":   className + "." + methodName,
+			props := types.Props{
+				{K: "channel", V: channel},
+				{K: "framework", V: framework},
+				{K: "handler", V: className + "." + methodName},
 			}
 			if schema := firstNonPrimitiveType(paramSig); schema != "" {
-				props["schema"] = schema
+				props.Set("schema", schema)
 			}
 			emitEdge(
 				string(types.RelationshipKindWSSubscribesTo),
@@ -238,10 +238,10 @@ func synthJavaServerEndpoint(
 				string(types.RelationshipKindWSEmits),
 				"Class:"+className,
 				channelID,
-				map[string]string{
-					"framework": framework,
-					"channel":   channel,
-					"scope":     "broadcast",
+				types.Props{
+					{K: "channel", V: channel},
+					{K: "framework", V: framework},
+					{K: "scope", V: "broadcast"},
 				},
 			)
 		}
@@ -294,7 +294,7 @@ var springMessageMappingRe = regexp.MustCompile(
 func synthSpringMessageMapping(
 	src, path, lang string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "@MessageMapping") {
 		return
@@ -311,7 +311,7 @@ func synthSpringMessageMapping(
 			string(types.RelationshipKindWSSubscribesTo),
 			"Class:"+method,
 			id,
-			map[string]string{"framework": framework, "channel": channel},
+			types.Props{{K: "channel", V: channel}, {K: "framework", V: framework}},
 		)
 	}
 }
@@ -327,7 +327,7 @@ var ktorWebSocketRe = regexp.MustCompile(
 func synthKtorWebSocket(
 	src, path string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "webSocket(") {
 		return
@@ -342,7 +342,7 @@ func synthKtorWebSocket(
 			string(types.RelationshipKindWSSubscribesTo),
 			"Function:ktor_ws_"+sanitiseID(channel),
 			id,
-			map[string]string{"framework": "ktor", "channel": channel},
+			types.Props{{K: "channel", V: channel}, {K: "framework", V: "ktor"}},
 		)
 	}
 }
@@ -368,7 +368,7 @@ var fastapiWebSocketRe = regexp.MustCompile(
 func synthFastAPIWebSocket(
 	src, path string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, ".websocket(") {
 		return
@@ -381,13 +381,13 @@ func synthFastAPIWebSocket(
 		handler := m[2]
 		paramSig := m[3]
 		id := emitChannel(channel, "fastapi")
-		props := map[string]string{
-			"framework": "fastapi",
-			"channel":   channel,
-			"handler":   handler,
+		props := types.Props{
+			{K: "channel", V: channel},
+			{K: "framework", V: "fastapi"},
+			{K: "handler", V: handler},
 		}
 		if schema := firstNonPrimitivePyType(paramSig); schema != "" {
-			props["schema"] = schema
+			props.Set("schema", schema)
 		}
 		emitEdge(
 			string(types.RelationshipKindWSSubscribesTo),
@@ -437,7 +437,7 @@ var pyWebsocketsServeRe = regexp.MustCompile(
 func synthPyWebsocketsServe(
 	src, path string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "websockets.serve") {
 		return
@@ -455,7 +455,7 @@ func synthPyWebsocketsServe(
 			string(types.RelationshipKindWSSubscribesTo),
 			"Function:"+handler,
 			id,
-			map[string]string{"framework": "websockets", "channel": channel, "handler": handler},
+			types.Props{{K: "channel", V: channel}, {K: "framework", V: "websockets"}, {K: "handler", V: handler}},
 		)
 	}
 }
@@ -487,7 +487,7 @@ var socketIOEmitRe = regexp.MustCompile(
 func synthSocketIOServer(
 	src, path string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !socketIOServerCreateRe.MatchString(src) && !strings.Contains(src, "socket.on(") && !strings.Contains(src, "io.emit(") {
 		return
@@ -508,7 +508,7 @@ func synthSocketIOServer(
 			string(types.RelationshipKindWSSubscribesTo),
 			"Function:socketio_on_"+sanitiseID(event),
 			id,
-			map[string]string{"framework": "socket.io", "channel": channel, "event_name": event},
+			types.Props{{K: "channel", V: channel}, {K: "event_name", V: event}, {K: "framework", V: "socket.io"}},
 		)
 	}
 
@@ -536,14 +536,14 @@ func synthSocketIOServer(
 				room = rm[1]
 			}
 		}
-		props := map[string]string{
-			"framework":  "socket.io",
-			"channel":    channel,
-			"event_name": event,
-			"scope":      scope,
+		props := types.Props{
+			{K: "channel", V: channel},
+			{K: "event_name", V: event},
+			{K: "framework", V: "socket.io"},
+			{K: "scope", V: scope},
 		}
 		if room != "" {
-			props["room"] = room
+			props.Set("room", room)
 		}
 		emitEdge(
 			string(types.RelationshipKindWSEmits),
@@ -578,7 +578,7 @@ var bareWSSendRe = regexp.MustCompile(
 func synthBareWSServer(
 	src, path string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !bareWSServerCreateRe.MatchString(src) {
 		return
@@ -600,7 +600,7 @@ func synthBareWSServer(
 			string(types.RelationshipKindWSSubscribesTo),
 			"Function:ws_on_"+event,
 			id,
-			map[string]string{"framework": "ws", "channel": channel, "event_name": event},
+			types.Props{{K: "channel", V: channel}, {K: "event_name", V: event}, {K: "framework", V: "ws"}},
 		)
 	}
 	for range bareWSSendRe.FindAllStringSubmatch(src, -1) {
@@ -608,7 +608,7 @@ func synthBareWSServer(
 			string(types.RelationshipKindWSEmits),
 			"Function:ws_send",
 			id,
-			map[string]string{"framework": "ws", "channel": channel, "scope": "user"},
+			types.Props{{K: "channel", V: channel}, {K: "framework", V: "ws"}, {K: "scope", V: "user"}},
 		)
 	}
 }
@@ -652,7 +652,7 @@ var wsURLAnywhereRe = regexp.MustCompile(
 func synthBrowserWSClient(
 	src, path string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "new WebSocket") {
 		return
@@ -710,9 +710,9 @@ func synthBrowserWSClient(
 			string(types.RelationshipKindWSConnects),
 			fromID,
 			id,
-			map[string]string{
-				"framework": "browser_websocket",
-				"channel":   channelPath,
+			types.Props{
+				{K: "channel", V: channelPath},
+				{K: "framework", V: "browser_websocket"},
 			},
 		)
 		resolved[channelPath] = true
@@ -771,10 +771,10 @@ func synthBrowserWSClient(
 			string(types.RelationshipKindWSConnects),
 			fromID,
 			id,
-			map[string]string{
-				"framework":    "browser_websocket",
-				"channel":      channelPath,
-				"resolved_via": "url_literal_scan",
+			types.Props{
+				{K: "channel", V: channelPath},
+				{K: "framework", V: "browser_websocket"},
+				{K: "resolved_via", V: "url_literal_scan"},
 			},
 		)
 	}
@@ -823,7 +823,7 @@ var socketIOClientTransportsRe = regexp.MustCompile(
 func synthSocketIOClient(
 	src, path string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "io(") && !strings.Contains(src, "io.connect(") {
 		return
@@ -850,12 +850,12 @@ func synthSocketIOClient(
 		if caller == "" {
 			fromID = "Function:" + sanitiseID(path)
 		}
-		props := map[string]string{
-			"framework": "socket.io-client",
-			"channel":   channelPath,
+		props := types.Props{
+			{K: "channel", V: channelPath},
+			{K: "framework", V: "socket.io-client"},
 		}
 		if fallback != "" {
-			props["fallback"] = fallback
+			props.Set("fallback", fallback)
 		}
 		emitEdge(
 			string(types.RelationshipKindWSConnects),
@@ -881,7 +881,7 @@ var goGorillaUpgradeRe = regexp.MustCompile(
 func synthGorillaWebSocket(
 	src, path string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "websocket.Upgrader") && !strings.Contains(src, ".Upgrade(") {
 		return
@@ -897,7 +897,7 @@ func synthGorillaWebSocket(
 			string(types.RelationshipKindWSSubscribesTo),
 			"Function:"+handler,
 			id,
-			map[string]string{"framework": "gorilla_websocket", "channel": channel, "handler": handler},
+			types.Props{{K: "channel", V: channel}, {K: "framework", V: "gorilla_websocket"}, {K: "handler", V: handler}},
 		)
 	}
 }
@@ -919,7 +919,7 @@ var aspNetMethodSignatureRe = regexp.MustCompile(
 func synthAspNetWebSocket(
 	src, path string,
 	emitChannel func(channel, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !aspNetAcceptRe.MatchString(src) {
 		return
@@ -935,7 +935,7 @@ func synthAspNetWebSocket(
 			string(types.RelationshipKindWSSubscribesTo),
 			"Class:"+handler,
 			id,
-			map[string]string{"framework": "aspnet_websocket", "channel": channel, "handler": handler},
+			types.Props{{K: "channel", V: channel}, {K: "framework", V: "aspnet_websocket"}, {K: "handler", V: handler}},
 		)
 	}
 }

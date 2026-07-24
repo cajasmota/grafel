@@ -110,7 +110,7 @@ func (e *FlaskReqRespExtractor) Extract(ctx context.Context, file extractor.File
 				ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
 					ToID:       "Class:" + dtoName,
 					Kind:       string(types.RelationshipKindReturns),
-					Properties: map[string]string{"framework": "flask", "match_source": "return_type_annotation", "schema_type": dtoName},
+					Properties: types.Props{{K: "framework", V: "flask"}, {K: "match_source", V: "return_type_annotation"}, {K: "schema_type", V: dtoName}},
 				})
 				out = append(out, ep)
 			}
@@ -150,7 +150,7 @@ func (e *FlaskReqRespExtractor) Extract(ctx context.Context, file extractor.File
 			ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
 				ToID:       "Class:" + canonical,
 				Kind:       string(types.RelationshipKindAcceptsInput),
-				Properties: map[string]string{"framework": "flask", "match_source": "marshmallow_schema_load", "schema_var": schemaVar, "schema_type": canonical},
+				Properties: types.Props{{K: "framework", V: "flask"}, {K: "match_source", V: "marshmallow_schema_load"}, {K: "schema_type", V: canonical}, {K: "schema_var", V: schemaVar}},
 			})
 			out = append(out, ep)
 		}

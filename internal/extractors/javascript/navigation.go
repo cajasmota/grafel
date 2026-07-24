@@ -326,13 +326,13 @@ func extractParamKeys(x *extractor, obj ts.Node) (params []string, varRef string
 //     removed after resolution
 func emitNavigationEdge(route string, params []string, varRef string, call ts.Node) types.RelationshipRecord {
 	toID := "route:" + route
-	props := map[string]string{
-		"route": route,
-		"line":  strconv.Itoa(int(call.StartPoint().Row) + 1),
-		"via":   "navigation_call",
+	props := types.Props{
+		{K: "line", V: strconv.Itoa(int(call.StartPoint().Row) + 1)},
+		{K: "route", V: route},
+		{K: "via", V: "navigation_call"},
 	}
 	if len(params) > 0 {
-		props["params"] = strings.Join(params, ", ")
+		props.Set("params", strings.Join(params, ", "))
 	}
 	// #2665: emit params_keys whenever a params object was observed (params != nil),
 	// even when empty — distinguishes "no params arg" from "params: <dynamic>".
@@ -353,12 +353,12 @@ func emitNavigationEdge(route string, params []string, varRef string, call ts.No
 		}
 		sort.Strings(uniq)
 		if b, err := json.Marshal(uniq); err == nil {
-			props["params_keys"] = string(b)
+			props.Set("params_keys", string(b))
 		}
 		// #2672: if this was a variable reference, store it temporarily for
 		// later resolution.
 		if varRef != "" {
-			props["_var_ref"] = varRef
+			props.Set("_var_ref", varRef)
 		}
 	}
 	return types.RelationshipRecord{
@@ -666,16 +666,16 @@ func (x *extractor) updateNavigatesEdgeParamKeys(varName string, keys []string) 
 				continue
 			}
 			// Check if this edge was marked with the variable reference.
-			if tmpVar, hasVar := rel.Properties["_var_ref"]; hasVar && tmpVar == varName {
+			if tmpVar, hasVar := rel.Properties.Lookup("_var_ref"); hasVar && tmpVar == varName {
 				// Match! Update with resolved keys (if any were found).
 				if len(keys) > 0 {
 					sort.Strings(keys)
 					if b, err := json.Marshal(keys); err == nil {
-						rel.Properties["params_keys"] = string(b)
+						rel.Properties.Set("params_keys", string(b))
 					}
 				}
 				// Remove the temporary marker.
-				delete(rel.Properties, "_var_ref")
+				rel.Properties.Delete("_var_ref")
 			}
 		}
 	}
@@ -947,11 +947,11 @@ func (x *extractor) extractJSXNavigationRelationships(body ts.Node) []types.Rela
 			continue
 		}
 		seen[key] = true
-		props := map[string]string{
-			"route": route,
-			"line":  strconv.Itoa(line),
-			"via":   "jsx_nav",
-			"tag":   tag,
+		props := types.Props{
+			{K: "line", V: strconv.Itoa(line)},
+			{K: "route", V: route},
+			{K: "tag", V: tag},
+			{K: "via", V: "jsx_nav"},
 		}
 		rels = append(rels, types.RelationshipRecord{
 			ToID:       "route:" + route,

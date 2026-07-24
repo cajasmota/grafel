@@ -1825,11 +1825,11 @@ func TestKustomize_Patches(t *testing.T) {
 	for _, p := range patches {
 		if p.ToID == "kustomize_target:Deployment/web" {
 			targetedWeb++
-			if p.Properties["target_kind"] != "Deployment" {
-				t.Errorf("PATCHES target_kind=%q, want Deployment", p.Properties["target_kind"])
+			if p.Properties.Get("target_kind") != "Deployment" {
+				t.Errorf("PATCHES target_kind=%q, want Deployment", p.Properties.Get("target_kind"))
 			}
-			if p.Properties["target_name"] != "web" {
-				t.Errorf("PATCHES target_name=%q, want web", p.Properties["target_name"])
+			if p.Properties.Get("target_name") != "web" {
+				t.Errorf("PATCHES target_name=%q, want web", p.Properties.Get("target_name"))
 			}
 		}
 	}
@@ -2066,14 +2066,14 @@ func TestHelm_Chart_SubchartImports(t *testing.T) {
 	for _, r := range imports {
 		if r.ToID == "helm_subchart:postgresql" {
 			found = true
-			if r.Properties["version"] != "12.1.0" {
-				t.Errorf("postgresql dep version=%q, want 12.1.0", r.Properties["version"])
+			if r.Properties.Get("version") != "12.1.0" {
+				t.Errorf("postgresql dep version=%q, want 12.1.0", r.Properties.Get("version"))
 			}
-			if r.Properties["repository"] != "https://charts.bitnami.com/bitnami" {
-				t.Errorf("postgresql dep repository=%q", r.Properties["repository"])
+			if r.Properties.Get("repository") != "https://charts.bitnami.com/bitnami" {
+				t.Errorf("postgresql dep repository=%q", r.Properties.Get("repository"))
 			}
-			if r.Properties["alias"] != "db" {
-				t.Errorf("postgresql dep alias=%q, want db", r.Properties["alias"])
+			if r.Properties.Get("alias") != "db" {
+				t.Errorf("postgresql dep alias=%q, want db", r.Properties.Get("alias"))
 			}
 		}
 	}
@@ -2439,11 +2439,11 @@ func TestHelm_ParentValues_SubchartOverrides(t *testing.T) {
 	for _, r := range overrides {
 		if r.ToID == "helm_subchart_values:postgresql:auth.username" {
 			checked = true
-			if r.Properties["subchart"] != "postgresql" {
-				t.Errorf("override subchart prop=%q, want postgresql", r.Properties["subchart"])
+			if r.Properties.Get("subchart") != "postgresql" {
+				t.Errorf("override subchart prop=%q, want postgresql", r.Properties.Get("subchart"))
 			}
-			if r.Properties["values_path"] != "auth.username" {
-				t.Errorf("override values_path=%q, want auth.username", r.Properties["values_path"])
+			if r.Properties.Get("values_path") != "auth.username" {
+				t.Errorf("override values_path=%q, want auth.username", r.Properties.Get("values_path"))
 			}
 		}
 	}
@@ -2505,8 +2505,8 @@ func TestHelm_Helpers_DefineIncludeArgFlow(t *testing.T) {
 	if fullnameEdge == nil {
 		t.Fatalf("missing INCLUDES myapp.fullname -> myapp.name; got %+v", includes)
 	}
-	if fullnameEdge.Properties["arg_flow"] != "root_context" {
-		t.Errorf("fullname include arg_flow=%q, want root_context", fullnameEdge.Properties["arg_flow"])
+	if fullnameEdge.Properties.Get("arg_flow") != "root_context" {
+		t.Errorf("fullname include arg_flow=%q, want root_context", fullnameEdge.Properties.Get("arg_flow"))
 	}
 
 	// myapp.serviceaccount → myapp.labels, dict arg.
@@ -2519,8 +2519,8 @@ func TestHelm_Helpers_DefineIncludeArgFlow(t *testing.T) {
 	if saEdge == nil {
 		t.Fatalf("missing INCLUDES myapp.serviceaccount -> myapp.labels; got %+v", includes)
 	}
-	if saEdge.Properties["arg_flow"] != "dict" {
-		t.Errorf("serviceaccount include arg_flow=%q, want dict (arg=%q)", saEdge.Properties["arg_flow"], saEdge.Properties["include_arg"])
+	if saEdge.Properties.Get("arg_flow") != "dict" {
+		t.Errorf("serviceaccount include arg_flow=%q, want dict (arg=%q)", saEdge.Properties.Get("arg_flow"), saEdge.Properties.Get("include_arg"))
 	}
 }
 

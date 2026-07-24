@@ -70,7 +70,7 @@ func bareCallSummary(ents []types.EntityRecord) string {
 			if r.Kind == "CALLS" {
 				b.WriteString(e.Name)
 				b.WriteString(" -[CALLS")
-				if r.Properties["intra_file"] == "true" {
+				if r.Properties.Get("intra_file") == "true" {
 					b.WriteString(",intra_file")
 				}
 				b.WriteString("]-> ")
@@ -126,7 +126,7 @@ func B() {}
 	}
 
 	// intra_file=true must be stamped because B is in the same file.
-	if hit.Properties["intra_file"] != "true" {
+	if hit.Properties.Get("intra_file") != "true" {
 		t.Errorf("expected intra_file=true on same-file CALLS edge, got Properties=%v", hit.Properties)
 	}
 }
@@ -172,7 +172,7 @@ func A() {
 	}
 
 	// intra_file must NOT be set for a cross-file call (B is not in this file).
-	if hit.Properties["intra_file"] == "true" {
+	if hit.Properties.Get("intra_file") == "true" {
 		t.Errorf("cross-file CALLS edge should NOT carry intra_file=true; got Properties=%v",
 			hit.Properties)
 	}
@@ -222,7 +222,7 @@ func (s *Server) handleGetNodeSource() {
 	}
 
 	// intra_file=true because readSourceWindow is declared in the same file.
-	if hit.Properties["intra_file"] != "true" {
+	if hit.Properties.Get("intra_file") != "true" {
 		t.Errorf("expected intra_file=true on same-file CALLS edge, got Properties=%v",
 			hit.Properties)
 	}
@@ -259,14 +259,14 @@ func driver(x *Foo) {
 	if barEdge == nil {
 		t.Fatalf("expected CALLS edge from driver → Bar; all edges: %s", bareCallSummary(ents))
 	}
-	if barEdge.Properties["intra_file"] == "true" {
+	if barEdge.Properties.Get("intra_file") == "true" {
 		t.Errorf("selector-form x.Bar() should NOT carry intra_file=true, got Properties=%v",
 			barEdge.Properties)
 	}
 
 	// fmt.Println() — external selector call; no intra_file.
 	printEdge := findCallsEdgeTo(caller, "Println")
-	if printEdge != nil && printEdge.Properties["intra_file"] == "true" {
+	if printEdge != nil && printEdge.Properties.Get("intra_file") == "true" {
 		t.Errorf("external selector fmt.Println() should NOT carry intra_file=true, got Properties=%v",
 			printEdge.Properties)
 	}
@@ -330,7 +330,7 @@ func Step3() {}
 				want, bareCallSummary(ents))
 			continue
 		}
-		if hit.Properties["intra_file"] != "true" {
+		if hit.Properties.Get("intra_file") != "true" {
 			t.Errorf("expected intra_file=true on Orchestrate → %s edge, got Properties=%v",
 				want, hit.Properties)
 		}

@@ -37,7 +37,7 @@ func TestExtractor_CallEdge_HasLineProperty(t *testing.T) {
 	var callsRel *relRecord
 	for _, r := range callerEnt.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "helper" {
-			callsRel = &relRecord{r.Kind, r.ToID, r.Properties}
+			callsRel = &relRecord{r.Kind, r.ToID, r.Properties.Snapshot()}
 			break
 		}
 	}
@@ -78,7 +78,7 @@ func TestExtractor_CallEdge_CorrectLineNumber(t *testing.T) {
 
 	for _, r := range fooEnt.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "bar" {
-			lineStr, ok := r.Properties["line"]
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Fatal("CALLS edge missing Properties[\"line\"]")
 			}
@@ -114,7 +114,7 @@ func TestExtractor_DispatchMapCallEdge_HasLineProperty(t *testing.T) {
 
 	for _, r := range betaEnt.Relationships {
 		if r.Kind == "CALLS" {
-			lineStr, ok := r.Properties["line"]
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Errorf("CALLS edge to %q missing Properties[\"line\"]", r.ToID)
 				continue

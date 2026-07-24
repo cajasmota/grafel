@@ -101,13 +101,13 @@ func (x *extractor) angularNavigationRels(body ts.Node, className string) []type
 		rels = append(rels, types.RelationshipRecord{
 			ToID: "route:" + route,
 			Kind: string(types.RelationshipKindNavigatesTo),
-			Properties: map[string]string{
-				"route":     route,
-				"via":       "angular_router",
-				"method":    method,
-				"caller":    className,
-				"framework": "angular",
-				"line":      strconv.Itoa(int(call.StartPoint().Row) + 1),
+			Properties: types.Props{
+				{K: "caller", V: className},
+				{K: "framework", V: "angular"},
+				{K: "line", V: strconv.Itoa(int(call.StartPoint().Row) + 1)},
+				{K: "method", V: method},
+				{K: "route", V: route},
+				{K: "via", V: "angular_router"},
 			},
 		})
 	}
@@ -200,12 +200,12 @@ func (x *extractor) angularRouterLinkRels(template, className string, anchor ts.
 		rels = append(rels, types.RelationshipRecord{
 			ToID: "route:" + route,
 			Kind: string(types.RelationshipKindNavigatesTo),
-			Properties: map[string]string{
-				"route":     route,
-				"via":       "router_link",
-				"caller":    className,
-				"framework": "angular",
-				"line":      strconv.Itoa(line),
+			Properties: types.Props{
+				{K: "caller", V: className},
+				{K: "framework", V: "angular"},
+				{K: "line", V: strconv.Itoa(line)},
+				{K: "route", V: route},
+				{K: "via", V: "router_link"},
 			},
 		})
 	}
@@ -272,11 +272,11 @@ func (x *extractor) angularRouteTableRels(body ts.Node, className string) []type
 		rels = append(rels, types.RelationshipRecord{
 			ToID: "route:" + display,
 			Kind: string(types.RelationshipKindNavigatesTo),
-			Properties: map[string]string{
-				"route":     display,
-				"via":       "route_table",
-				"caller":    className,
-				"framework": "angular",
+			Properties: types.Props{
+				{K: "caller", V: className},
+				{K: "framework", V: "angular"},
+				{K: "route", V: display},
+				{K: "via", V: "route_table"},
 			},
 		})
 	}
@@ -334,11 +334,11 @@ func (x *extractor) angularStateSetterEmission(body ts.Node, className string) [
 			Relationships: []types.RelationshipRecord{{
 				ToID: "state:" + stateName,
 				Kind: string(types.RelationshipKindWritesTo),
-				Properties: map[string]string{
-					"setter":    name,
-					"state":     stateName,
-					"component": className,
-					"framework": "angular",
+				Properties: types.Props{
+					{K: "component", V: className},
+					{K: "framework", V: "angular"},
+					{K: "setter", V: name},
+					{K: "state", V: stateName},
 				},
 			}},
 		}

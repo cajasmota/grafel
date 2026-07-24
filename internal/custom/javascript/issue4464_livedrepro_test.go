@@ -126,11 +126,11 @@ func TestIssue4464_QueryDTO_HandlerAcceptsInputEdge(t *testing.T) {
 	if paramEdge == nil {
 		t.Fatal("param ACCEPTS_INPUT edge not found")
 	}
-	if paramEdge.Properties["match_source"] != "param_decorator" {
-		t.Errorf("expected match_source=param_decorator, got %q", paramEdge.Properties["match_source"])
+	if paramEdge.Properties.Get("match_source") != "param_decorator" {
+		t.Errorf("expected match_source=param_decorator, got %q", paramEdge.Properties.Get("match_source"))
 	}
-	if paramEdge.Properties["param_in"] != "query" {
-		t.Errorf("expected param_in=query, got %q", paramEdge.Properties["param_in"])
+	if paramEdge.Properties.Get("param_in") != "query" {
+		t.Errorf("expected param_in=query, got %q", paramEdge.Properties.Get("param_in"))
 	}
 
 	// In-pipeline merge + resolve: the Class:<dto> stub must rewrite to the real
@@ -170,9 +170,9 @@ func TestIssue4464_BodyDTOStillEdged(t *testing.T) {
 		for _, r := range e.Relationships {
 			if r.Kind == "ACCEPTS_INPUT" && r.ToID == "Class:PermitCreateBodyDto" {
 				count++
-				if r.Properties["match_source"] != "body_param_annotation" {
+				if r.Properties.Get("match_source") != "body_param_annotation" {
 					t.Errorf("@Body edge should keep match_source=body_param_annotation, got %q",
-						r.Properties["match_source"])
+						r.Properties.Get("match_source"))
 				}
 			}
 		}

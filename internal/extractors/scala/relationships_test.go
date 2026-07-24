@@ -164,7 +164,7 @@ func TestScala_CallsReceiverFieldDottedTarget(t *testing.T) {
 		if r.Kind != "CALLS" {
 			continue
 		}
-		got[r.ToID] = r.Properties["receiver_type"]
+		got[r.ToID] = r.Properties.Get("receiver_type")
 	}
 	for to, recv := range want {
 		v, ok := got[to]
@@ -248,8 +248,8 @@ class A {}
 			if r.Kind != "IMPORTS" {
 				continue
 			}
-			got[r.ToID] = r.Properties
-			if r.Properties["wildcard"] == "1" && r.ToID == "scala.collection.mutable" {
+			got[r.ToID] = r.Properties.Snapshot()
+			if r.Properties.Get("wildcard") == "1" && r.ToID == "scala.collection.mutable" {
 				wildcardSeen = true
 			}
 		}

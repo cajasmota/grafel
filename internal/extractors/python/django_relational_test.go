@@ -147,7 +147,7 @@ class Category(models.Model):
 	// self_ref property should be true.
 	var foundSelf bool
 	for _, r := range parentField.Relationships {
-		if r.Kind == "REFERENCES" && r.Properties["self_ref"] == "true" {
+		if r.Kind == "REFERENCES" && r.Properties.Get("self_ref") == "true" {
 			foundSelf = true
 			break
 		}
@@ -211,7 +211,7 @@ class GroupBuildingSettings(models.Model):
 	var fkStringProp string
 	for _, r := range buildingField.Relationships {
 		if r.Kind == "REFERENCES" && strings.Contains(r.ToID, ":Building") {
-			fkStringProp = r.Properties["django_fk_string"]
+			fkStringProp = r.Properties.Get("django_fk_string")
 			break
 		}
 	}
@@ -242,7 +242,7 @@ class GroupBuildingSettings(models.Model):
 	var buildingFKStr string
 	for _, r := range buildingField.Relationships {
 		if r.Kind == "REFERENCES" && strings.Contains(r.ToID, ":Building") {
-			buildingFKStr = r.Properties["django_fk_string"]
+			buildingFKStr = r.Properties.Get("django_fk_string")
 			break
 		}
 	}
@@ -258,7 +258,7 @@ class GroupBuildingSettings(models.Model):
 	var ownerFKStr string
 	for _, r := range ownerField.Relationships {
 		if r.Kind == "REFERENCES" && strings.Contains(r.ToID, ":User") {
-			ownerFKStr = r.Properties["django_fk_string"]
+			ownerFKStr = r.Properties.Get("django_fk_string")
 			break
 		}
 	}
@@ -286,9 +286,9 @@ class TreeNode(models.Model):
 	// Self-ref: django_fk_string should be "self" and self_ref="true".
 	var foundSelf bool
 	for _, r := range parentField.Relationships {
-		if r.Kind == "REFERENCES" && r.Properties["self_ref"] == "true" {
+		if r.Kind == "REFERENCES" && r.Properties.Get("self_ref") == "true" {
 			foundSelf = true
-			if got := r.Properties["django_fk_string"]; got != "self" {
+			if got := r.Properties.Get("django_fk_string"); got != "self" {
 				t.Errorf("self-ref edge django_fk_string = %q, want self", got)
 			}
 			break
@@ -321,7 +321,7 @@ class Room(models.Model):
 	// Identifier form: django_fk_string should NOT be set.
 	for _, r := range roomField.Relationships {
 		if r.Kind == "REFERENCES" && strings.Contains(r.ToID, ":Building") {
-			if got := r.Properties["django_fk_string"]; got != "" {
+			if got := r.Properties.Get("django_fk_string"); got != "" {
 				t.Errorf("identifier-form FK incorrectly set django_fk_string = %q, want empty", got)
 			}
 			break
@@ -406,7 +406,7 @@ class Book(models.Model):
 	// Property metadata should mark this as a manager attachment.
 	var foundManager bool
 	for _, r := range book.Relationships {
-		if r.Kind == "REFERENCES" && r.Properties["django_attachment"] == "manager" && r.Properties["manager_attr"] == "objects" {
+		if r.Kind == "REFERENCES" && r.Properties.Get("django_attachment") == "manager" && r.Properties.Get("manager_attr") == "objects" {
 			foundManager = true
 			break
 		}

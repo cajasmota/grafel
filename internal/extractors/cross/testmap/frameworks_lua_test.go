@@ -57,8 +57,8 @@ end)
 			t.Errorf("assertion helper escaped stopword filter: %q", tf)
 		}
 		for _, rel := range r.Relationships {
-			if rel.Properties["tested"] == "assert.are.equal" || rel.Properties["tested"] == "assert.is_true" {
-				t.Errorf("assertion helper escaped into TESTS edge: %q", rel.Properties["tested"])
+			if rel.Properties.Get("tested") == "assert.are.equal" || rel.Properties.Get("tested") == "assert.is_true" {
+				t.Errorf("assertion helper escaped into TESTS edge: %q", rel.Properties.Get("tested"))
 			}
 		}
 	}

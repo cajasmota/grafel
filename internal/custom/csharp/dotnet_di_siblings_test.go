@@ -29,11 +29,11 @@ func assertSiblingDIFires(t *testing.T, framework, src string) {
 	if bind == nil {
 		t.Fatalf("%s: expected IGreeter BINDS Greeter from M.E.DI registration", framework)
 	}
-	if bind.Properties["lifetime"] != "Scoped" {
-		t.Errorf("%s: lifetime = %q, want Scoped", framework, bind.Properties["lifetime"])
+	if bind.Properties.Get("lifetime") != "Scoped" {
+		t.Errorf("%s: lifetime = %q, want Scoped", framework, bind.Properties.Get("lifetime"))
 	}
-	if bind.Properties["framework"] != "dotnet_di" {
-		t.Errorf("%s: framework prop = %q, want dotnet_di (container-driven, framework-agnostic)", framework, bind.Properties["framework"])
+	if bind.Properties.Get("framework") != "dotnet_di" {
+		t.Errorf("%s: framework prop = %q, want dotnet_di (container-driven, framework-agnostic)", framework, bind.Properties.Get("framework"))
 	}
 
 	// INJECTED_INTO: IGreeter -> the consumer endpoint/module class.
@@ -41,8 +41,8 @@ func assertSiblingDIFires(t *testing.T, framework, src string) {
 	if inj == nil {
 		t.Fatalf("%s: expected IGreeter INJECTED_INTO %s", framework, consumerOf(framework))
 	}
-	if inj.Properties["via"] != "dotnet_constructor" {
-		t.Errorf("%s: via = %q, want dotnet_constructor", framework, inj.Properties["via"])
+	if inj.Properties.Get("via") != "dotnet_constructor" {
+		t.Errorf("%s: via = %q, want dotnet_constructor", framework, inj.Properties.Get("via"))
 	}
 }
 

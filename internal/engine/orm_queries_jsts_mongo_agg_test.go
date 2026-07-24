@@ -20,7 +20,7 @@ func runMongoAgg(t *testing.T, src string) ([]types.EntityRecord, []types.Relati
 			// #4244 — drop the node-anchored JOINS_COLLECTION twin so the
 			// count/identity assertions below see the collection-anchored
 			// edge set they were written against.
-			if r.Properties["anchor"] == "stage_node" {
+			if r.Properties.Get("anchor") == "stage_node" {
 				return
 			}
 			rels = append(rels, r)
@@ -141,12 +141,12 @@ async function report() {
 	if join.FromID != "Class:Order" {
 		t.Errorf("join FromID = %q, want Class:Order", join.FromID)
 	}
-	if join.Properties["stage"] != "lookup" {
-		t.Errorf("join stage = %q, want lookup", join.Properties["stage"])
+	if join.Properties.Get("stage") != "lookup" {
+		t.Errorf("join stage = %q, want lookup", join.Properties.Get("stage"))
 	}
-	if join.Properties["local_field"] != "customerId" ||
-		join.Properties["foreign_field"] != "_id" ||
-		join.Properties["as"] != "customer" {
+	if join.Properties.Get("local_field") != "customerId" ||
+		join.Properties.Get("foreign_field") != "_id" ||
+		join.Properties.Get("as") != "customer" {
 		t.Errorf("join field props wrong: %+v", join.Properties)
 	}
 }
@@ -219,8 +219,8 @@ async function run(db) {
 	if join.FromID != "Class:Order" {
 		t.Errorf("join FromID = %q, want Class:Order", join.FromID)
 	}
-	if join.Properties["as"] != "items" {
-		t.Errorf("join as = %q, want items", join.Properties["as"])
+	if join.Properties.Get("as") != "items" {
+		t.Errorf("join as = %q, want items", join.Properties.Get("as"))
 	}
 }
 
@@ -255,11 +255,11 @@ function tree() {
 	if join == nil {
 		t.Fatalf("no JOINS_COLLECTION edge to Class:Employee; rels=%+v", rels)
 	}
-	if join.Properties["stage"] != "graphLookup" {
-		t.Errorf("join stage = %q, want graphLookup", join.Properties["stage"])
+	if join.Properties.Get("stage") != "graphLookup" {
+		t.Errorf("join stage = %q, want graphLookup", join.Properties.Get("stage"))
 	}
-	if join.Properties["as"] != "hierarchy" {
-		t.Errorf("join as = %q, want hierarchy", join.Properties["as"])
+	if join.Properties.Get("as") != "hierarchy" {
+		t.Errorf("join as = %q, want hierarchy", join.Properties.Get("as"))
 	}
 }
 
@@ -333,9 +333,9 @@ async function report() {
 	if join.FromID != "Class:Customer" {
 		t.Errorf("join FromID = %q, want Class:Customer", join.FromID)
 	}
-	if join.Properties["local_field"] != "orderId" ||
-		join.Properties["foreign_field"] != "_id" ||
-		join.Properties["as"] != "order" {
+	if join.Properties.Get("local_field") != "orderId" ||
+		join.Properties.Get("foreign_field") != "_id" ||
+		join.Properties.Get("as") != "order" {
 		t.Errorf("join field props wrong: %+v", join.Properties)
 	}
 }
@@ -440,7 +440,7 @@ class ReportRepo {
 	if join == nil {
 		t.Fatalf("no JOINS_COLLECTION edge to Class:User from builder; rels=%+v", rels)
 	}
-	if join.Properties["local_field"] != "uid" || join.Properties["as"] != "user" {
+	if join.Properties.Get("local_field") != "uid" || join.Properties.Get("as") != "user" {
 		t.Errorf("builder join field props wrong: %+v", join.Properties)
 	}
 }
@@ -477,11 +477,11 @@ async function membersByOrg(repo) {
 	if join == nil {
 		t.Fatalf("no JOINS_COLLECTION edge to Class:Org; rels=%+v", rels)
 	}
-	if join.Properties["stage"] != "graphLookup" {
-		t.Errorf("join stage = %q, want graphLookup", join.Properties["stage"])
+	if join.Properties.Get("stage") != "graphLookup" {
+		t.Errorf("join stage = %q, want graphLookup", join.Properties.Get("stage"))
 	}
-	if join.Properties["as"] != "orgTree" {
-		t.Errorf("join as = %q, want orgTree", join.Properties["as"])
+	if join.Properties.Get("as") != "orgTree" {
+		t.Errorf("join as = %q, want orgTree", join.Properties.Get("as"))
 	}
 }
 
@@ -614,8 +614,8 @@ async function joined() {
 		if j.FromID != "Class:Inspection" {
 			t.Errorf("join to %s from = %q, want Class:Inspection", to, j.FromID)
 		}
-		if j.Properties["stage"] != "lookup" {
-			t.Errorf("join to %s stage = %q, want lookup", to, j.Properties["stage"])
+		if j.Properties.Get("stage") != "lookup" {
+			t.Errorf("join to %s stage = %q, want lookup", to, j.Properties.Get("stage"))
 		}
 	}
 	if len(rels) != 2 {
@@ -623,10 +623,10 @@ async function joined() {
 	}
 	// `as` alias captured for the correlated form (no local/foreign fields).
 	jg := findJoinTo(rels, "Inspection_group")
-	if jg.Properties["as"] != "inspections_group" {
-		t.Errorf("inspection_groups join as = %q, want inspections_group", jg.Properties["as"])
+	if jg.Properties.Get("as") != "inspections_group" {
+		t.Errorf("inspection_groups join as = %q, want inspections_group", jg.Properties.Get("as"))
 	}
-	if jg.Properties["local_field"] != "" || jg.Properties["foreign_field"] != "" {
+	if jg.Properties.Get("local_field") != "" || jg.Properties.Get("foreign_field") != "" {
 		t.Errorf("correlated join must not carry local/foreign fields: %+v", jg.Properties)
 	}
 }
@@ -652,8 +652,8 @@ async function withRefs() {
 	if ja.FromID != "Class:Book" {
 		t.Errorf("author join from = %q, want Class:Book", ja.FromID)
 	}
-	if ja.Properties["as"] != "author" {
-		t.Errorf("author join as = %q, want author", ja.Properties["as"])
+	if ja.Properties.Get("as") != "author" {
+		t.Errorf("author join as = %q, want author", ja.Properties.Get("as"))
 	}
 	jp := findJoinTo(rels, "Publisher")
 	if jp == nil || jp.FromID != "Class:Book" {

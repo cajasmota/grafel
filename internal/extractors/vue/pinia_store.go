@@ -261,10 +261,10 @@ func extractPiniaStores(scriptSrc string, scriptOffset int, fullSrc, filePath, c
 			store.Relationships = append(store.Relationships, types.RelationshipRecord{
 				ToID: name,
 				Kind: "CONTAINS",
-				Properties: map[string]string{
-					"store":   id,
-					"section": section,
-					"subtype": subtype,
+				Properties: types.Props{
+					{K: "section", V: section},
+					{K: "store", V: id},
+					{K: "subtype", V: subtype},
 				},
 			})
 		}
@@ -311,10 +311,10 @@ func extractPiniaStores(scriptSrc string, scriptOffset int, fullSrc, filePath, c
 		compRels = append(compRels, types.RelationshipRecord{
 			ToID: storeRef,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component": componentName,
-				"framework": "vue",
-				"subtype":   "pinia_store",
+			Properties: types.Props{
+				{K: "component", V: componentName},
+				{K: "framework", V: "vue"},
+				{K: "subtype", V: "pinia_store"},
 			},
 		})
 	}

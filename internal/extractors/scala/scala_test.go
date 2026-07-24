@@ -558,7 +558,7 @@ class TickService(val counter: Counter) {
 		if e.Kind == "SCOPE.Operation" && e.Name == "tick" {
 			for _, r := range e.Relationships {
 				if r.Kind == "CALLS" {
-					calls[r.ToID] = r.Properties["receiver_type"]
+					calls[r.ToID] = r.Properties.Get("receiver_type")
 				}
 			}
 		}

@@ -241,10 +241,10 @@ func (e *gomobileExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "branch:" + expr,
 			Kind: string(types.RelationshipKindBranchesOn),
-			Properties: map[string]string{
-				"line":     strconv.Itoa(line),
-				"operator": operator,
-				"kind":     kind,
+			Properties: types.Props{
+				{K: "kind", V: kind},
+				{K: "line", V: strconv.Itoa(line)},
+				{K: "operator", V: operator},
 			},
 		})
 		add(ent)

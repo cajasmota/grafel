@@ -46,11 +46,11 @@ func TestResolvePythonModuleImport_ResolveImports(t *testing.T) {
 					Kind:   "IMPORTS",
 					ToID:   "users.views",
 					FromID: "file-urls-id",
-					Properties: map[string]string{
-						"source_module": "users",
-						"imported_name": "views",
-						"local_name":    "views",
-						"language":      "python",
+					Properties: types.Props{
+						{K: "imported_name", V: "views"},
+						{K: "language", V: "python"},
+						{K: "local_name", V: "views"},
+						{K: "source_module", V: "users"},
 					},
 				},
 			},
@@ -109,11 +109,11 @@ func TestResolvePythonModuleImport_InitReExportsModuleBinding(t *testing.T) {
 					Kind:   "IMPORTS",
 					ToID:   "acme_core.celery.app",
 					FromID: "init-id",
-					Properties: map[string]string{
-						"source_module": "acme_core.celery",
-						"imported_name": "app",
-						"local_name":    "app",
-						"language":      "python",
+					Properties: types.Props{
+						{K: "imported_name", V: "app"},
+						{K: "language", V: "python"},
+						{K: "local_name", V: "app"},
+						{K: "source_module", V: "acme_core.celery"},
 					},
 				},
 			},
@@ -158,12 +158,12 @@ func TestResolvePythonModuleImport_OnlyPython(t *testing.T) {
 					Kind:   "IMPORTS",
 					ToID:   "users.views",
 					FromID: "file-caller-id",
-					Properties: map[string]string{
+					Properties: types.PropsFromMap(map[string]string{
 						"source_module": "users",
 						"imported_name": "views",
 						"local_name":    "views",
 						// no "language" property → should not trigger Python path
-					},
+					}),
 				},
 			},
 		},

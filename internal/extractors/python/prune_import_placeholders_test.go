@@ -49,7 +49,7 @@ func findImportOnAny(ents []types.EntityRecord, sourceModule string) *types.Rela
 		for j := range ents[i].Relationships {
 			r := &ents[i].Relationships[j]
 			if r.Kind == "IMPORTS" && r.Properties != nil &&
-				r.Properties["source_module"] == sourceModule {
+				r.Properties.Get("source_module") == sourceModule {
 				return r
 			}
 		}
@@ -217,7 +217,7 @@ import requests
 		if r.Kind != "IMPORTS" || r.Properties == nil {
 			continue
 		}
-		mod := r.Properties["source_module"]
+		mod := r.Properties.Get("source_module")
 		if _, ok := wantSrcModules[mod]; ok {
 			wantSrcModules[mod] = true
 		}
@@ -258,8 +258,8 @@ class ArticleSerializer:
 			}
 			// Relative import: source_module starts with "." or
 			// imported_name is "Profile" from ".models"
-			if r.Properties["imported_name"] == "Profile" ||
-				r.Properties["source_module"] == ".models" {
+			if r.Properties.Get("imported_name") == "Profile" ||
+				r.Properties.Get("source_module") == ".models" {
 				found = true
 			}
 		}
@@ -289,7 +289,7 @@ func TestWildcardImportNoPlaceholder(t *testing.T) {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == "IMPORTS" && r.Properties != nil &&
-				r.Properties["wildcard"] == "1" {
+				r.Properties.Get("wildcard") == "1" {
 				found = true
 			}
 		}

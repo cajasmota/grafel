@@ -338,7 +338,7 @@ view model =
 	ents := runElm(t, src, "Tagged.elm")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "elm" {
+			if r.Properties == nil || r.Properties.Get("language") != "elm" {
 				t.Errorf("rel %s→%s missing language=elm (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

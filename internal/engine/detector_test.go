@@ -447,11 +447,11 @@ func TestDetect_RelationshipProperties(t *testing.T) {
 	for _, rel := range result.Relationships {
 		if rel.Kind == "ROUTES_TO" {
 			sawRoutesTo = true
-			if rel.Properties["framework"] != "go" {
-				t.Errorf("relationship framework property = %q, want go", rel.Properties["framework"])
+			if rel.Properties.Get("framework") != "go" {
+				t.Errorf("relationship framework property = %q, want go", rel.Properties.Get("framework"))
 			}
-			if rel.Properties["pattern_type"] != "yaml_driven" {
-				t.Errorf("relationship pattern_type = %q, want yaml_driven", rel.Properties["pattern_type"])
+			if rel.Properties.Get("pattern_type") != "yaml_driven" {
+				t.Errorf("relationship pattern_type = %q, want yaml_driven", rel.Properties.Get("pattern_type"))
 			}
 		}
 		if rel.FromID == "" || rel.ToID == "" {

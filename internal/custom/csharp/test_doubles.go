@@ -194,12 +194,12 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "type:" + target,
 			Kind: string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"library":   library,
-				"target":    target,
-				"role":      "mock_binding",
-				"framework": "test_doubles",
-				"line":      itoa(line),
+			Properties: types.Props{
+				{K: "framework", V: "test_doubles"},
+				{K: "library", V: library},
+				{K: "line", V: itoa(line)},
+				{K: "role", V: "mock_binding"},
+				{K: "target", V: target},
 			},
 		})
 		before := len(entities)
@@ -243,12 +243,12 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "service:" + name,
 			Kind: string(types.RelationshipKindDependsOnService),
-			Properties: map[string]string{
-				"image":          image,
-				"container_type": ctype,
-				"role":           "container_topology",
-				"framework":      "test_doubles",
-				"line":           itoa(line),
+			Properties: types.Props{
+				{K: "container_type", V: ctype},
+				{K: "framework", V: "test_doubles"},
+				{K: "image", V: image},
+				{K: "line", V: itoa(line)},
+				{K: "role", V: "container_topology"},
 			},
 		})
 		add(ent)
@@ -302,12 +302,12 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "type:" + target,
 			Kind: string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"library":   library,
-				"target":    target,
-				"role":      "test_data_builder",
-				"framework": "test_doubles",
-				"line":      itoa(line),
+			Properties: types.Props{
+				{K: "framework", V: "test_doubles"},
+				{K: "library", V: library},
+				{K: "line", V: itoa(line)},
+				{K: "role", V: "test_data_builder"},
+				{K: "target", V: target},
 			},
 		})
 		add(ent)
@@ -376,13 +376,13 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 				types.RelationshipRecord{
 					ToID: "impl:" + impl,
 					Kind: string(types.RelationshipKindResolvesTo),
-					Properties: map[string]string{
-						"interface":      target,
-						"implementation": impl,
-						"role":           "mock_di_resolution",
-						"framework":      "test_doubles",
-						"resolution":     "by_name",
-						"line":           itoa(line),
+					Properties: types.Props{
+						{K: "framework", V: "test_doubles"},
+						{K: "implementation", V: impl},
+						{K: "interface", V: target},
+						{K: "line", V: itoa(line)},
+						{K: "resolution", V: "by_name"},
+						{K: "role", V: "mock_di_resolution"},
 					},
 				})
 			setProps(&entities[idx], "resolved_impl", impl)

@@ -752,7 +752,7 @@ def get_thing(id):
 
 	// No synthesis edges should be emitted (phase 1 contract).
 	for _, r := range res.Relationships {
-		if r.Properties != nil && r.Properties["pattern_type"] == "http_endpoint_synthesis" {
+		if r.Properties != nil && r.Properties.Get("pattern_type") == "http_endpoint_synthesis" {
 			t.Errorf("phase 1 must not emit edges; saw %s -> %s (%s)", r.FromID, r.ToID, r.Kind)
 		}
 	}

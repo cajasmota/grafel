@@ -89,9 +89,9 @@ func emitDjangoAdminEdges(root ts.Node, file extractor.FileInput, entities *[]ty
 			types.RelationshipRecord{
 				ToID: toID,
 				Kind: string(types.RelationshipKindReferences),
-				Properties: map[string]string{
-					"framework":    "django",
-					"pattern_type": "admin_register",
+				Properties: types.Props{
+					{K: "framework", V: "django"},
+					{K: "pattern_type", V: "admin_register"},
 				},
 			})
 	}

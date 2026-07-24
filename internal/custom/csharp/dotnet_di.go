@@ -130,13 +130,13 @@ func (e *dotnetDIExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "impl:" + impl,
 			Kind: string(types.RelationshipKindBinds),
-			Properties: map[string]string{
-				"interface":      iface,
-				"implementation": impl,
-				"lifetime":       lifetime,
-				"binding_kind":   kind,
-				"framework":      "dotnet_di",
-				"line":           itoa(line),
+			Properties: types.Props{
+				{K: "binding_kind", V: kind},
+				{K: "framework", V: "dotnet_di"},
+				{K: "implementation", V: impl},
+				{K: "interface", V: iface},
+				{K: "lifetime", V: lifetime},
+				{K: "line", V: itoa(line)},
 			},
 		})
 		add(ent)
@@ -189,12 +189,12 @@ func (e *dotnetDIExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID: "consumer:" + c.name,
 				Kind: string(types.RelationshipKindInjectedInto),
-				Properties: map[string]string{
-					"provider":  provider,
-					"consumer":  c.name,
-					"via":       "dotnet_constructor",
-					"framework": "dotnet_di",
-					"line":      itoa(c.line),
+				Properties: types.Props{
+					{K: "consumer", V: c.name},
+					{K: "framework", V: "dotnet_di"},
+					{K: "line", V: itoa(c.line)},
+					{K: "provider", V: provider},
+					{K: "via", V: "dotnet_constructor"},
 				},
 			})
 			add(ent)

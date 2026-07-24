@@ -541,17 +541,17 @@ func addTemplateVarsAndEdges(ent *types.EntityRecord, tpl, params string, conf f
 		// #5103: record the nested-field path(s) referenced through this var so
 		// queries can see `{{user.name}}` resolves field `name` on param `user`.
 		paths := nestedPaths[v]
-		edgeProps := map[string]string{
-			"framework":     "langchain4j",
-			"binding":       "prompt_template_variable",
-			"template_var":  v,
-			"resolved_from": "method_param",
+		edgeProps := types.Props{
+			{K: "binding", V: "prompt_template_variable"},
+			{K: "framework", V: "langchain4j"},
+			{K: "resolved_from", V: "method_param"},
+			{K: "template_var", V: v},
 		}
 		if len(paths) > 0 {
 			pj := strings.Join(paths, ",")
 			setProps(ent, "template_var_path."+v, pj)
-			edgeProps["nested_field"] = "true"
-			edgeProps["field_path"] = pj
+			edgeProps.Set("nested_field", "true")
+			edgeProps.Set("field_path", pj)
 			allNested = append(allNested, paths...)
 		}
 		if boundParam != "" {
@@ -616,12 +616,12 @@ func addWireEdge(svc *types.EntityRecord, inlineEnts *[]types.EntityRecord,
 	svc.Relationships = append(svc.Relationships, types.RelationshipRecord{
 		ToID: target,
 		Kind: "USES",
-		Properties: map[string]string{
-			"framework": "langchain4j",
-			"wire_role": role,
-			"method":    method,
-			"service":   svcName,
-			"arg_kind":  argKind,
+		Properties: types.Props{
+			{K: "arg_kind", V: argKind},
+			{K: "framework", V: "langchain4j"},
+			{K: "method", V: method},
+			{K: "service", V: svcName},
+			{K: "wire_role", V: role},
 		},
 		Confidence: conf,
 	})

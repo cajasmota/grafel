@@ -154,9 +154,9 @@ func (e *nimDebbyORMExtractor) Extract(
 			if target == "" {
 				continue
 			}
-			props := map[string]string{"fk_field": f.name, "to_model": target}
+			props := types.Props{{K: "fk_field", V: f.name}, {K: "to_model", V: target}}
 			if f.fkTarget != "" {
-				props["fk_pragma"] = "true"
+				props.Set("fk_pragma", "true")
 			}
 			rels = append(rels, types.RelationshipRecord{
 				ToID: target, Kind: "REFERENCES", Properties: props,
@@ -170,10 +170,10 @@ func (e *nimDebbyORMExtractor) Extract(
 			rels = append(rels, types.RelationshipRecord{
 				ToID: m.name,
 				Kind: "QUERIES",
-				Properties: map[string]string{
-					"operation": op,
-					"table":     m.name,
-					"model":     m.name,
+				Properties: types.Props{
+					{K: "model", V: m.name},
+					{K: "operation", V: op},
+					{K: "table", V: m.name},
 				},
 			})
 		}

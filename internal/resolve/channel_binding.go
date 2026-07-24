@@ -118,10 +118,10 @@ func ResolveChannelBindings(entities []types.EntityRecord, rels []types.Relation
 			channel := r.ToID
 			direction := ""
 			if r.Properties != nil {
-				if c := r.Properties["channel"]; c != "" {
+				if c := r.Properties.Get("channel"); c != "" {
 					channel = c
 				}
-				direction = r.Properties["direction"]
+				direction = r.Properties.Get("direction")
 			}
 			if id := opIdx[opChannelKey(channel, direction)]; id != "" {
 				r.ToID = id

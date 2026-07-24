@@ -54,7 +54,7 @@ func findImportOnAny742(ents []types.EntityRecord, spec string) *types.Relations
 			if r.Kind != "IMPORTS" {
 				continue
 			}
-			if r.Properties != nil && r.Properties["import_path"] == spec {
+			if r.Properties != nil && r.Properties.Get("import_path") == spec {
 				return r
 			}
 			if r.ToID == spec {
@@ -270,7 +270,7 @@ import axios from "axios";
 		}
 		ip := ""
 		if r.Properties != nil {
-			ip = r.Properties["import_path"]
+			ip = r.Properties.Get("import_path")
 		}
 		if ip == "" {
 			ip = r.ToID
@@ -307,8 +307,8 @@ import * as path from "path";
 			if r.Kind != "IMPORTS" || r.Properties == nil {
 				continue
 			}
-			if r.Properties["local_name"] == localName {
-				return r.Properties
+			if r.Properties.Get("local_name") == localName {
+				return r.Properties.Snapshot()
 			}
 		}
 		return nil

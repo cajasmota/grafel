@@ -46,7 +46,7 @@ public class OrderServiceTests
 	// mock node + USES edge for IOrderRepository
 	if e := relOf(recs, "USES", "type:IOrderRepository"); e == nil {
 		t.Error("expected Mock<IOrderRepository> -> USES type:IOrderRepository")
-	} else if e.Properties["library"] != "moq" || e.Properties["role"] != "mock_binding" {
+	} else if e.Properties.Get("library") != "moq" || e.Properties.Get("role") != "mock_binding" {
 		t.Errorf("expected moq mock_binding props, got %v", e.Properties)
 	}
 	// dotted type leaf-normalised
@@ -77,7 +77,7 @@ public class PaymentTests
 	recs := extractFull(t, "custom_csharp_test_doubles", fi("PaymentTests.cs", "csharp", src))
 	if e := relOf(recs, "USES", "type:IPaymentGateway"); e == nil {
 		t.Error("expected Substitute.For<IPaymentGateway> -> USES type:IPaymentGateway")
-	} else if e.Properties["library"] != "nsubstitute" {
+	} else if e.Properties.Get("library") != "nsubstitute" {
 		t.Errorf("expected nsubstitute library, got %v", e.Properties)
 	}
 }
@@ -103,13 +103,13 @@ public class DbFixture
 	// Typed container -> DEPENDS_ON_SERVICE service:PostgreSqlContainer
 	if e := relOf(recs, "DEPENDS_ON_SERVICE", "service:PostgreSqlContainer"); e == nil {
 		t.Error("expected new PostgreSqlContainer() -> DEPENDS_ON_SERVICE service:PostgreSqlContainer")
-	} else if e.Properties["container_type"] != "PostgreSqlContainer" {
+	} else if e.Properties.Get("container_type") != "PostgreSqlContainer" {
 		t.Errorf("expected container_type prop, got %v", e.Properties)
 	}
 	// Image binding -> DEPENDS_ON_SERVICE service:redis:7
 	if e := relOf(recs, "DEPENDS_ON_SERVICE", "service:redis:7"); e == nil {
 		t.Error("expected .WithImage(\"redis:7\") -> DEPENDS_ON_SERVICE service:redis:7")
-	} else if e.Properties["image"] != "redis:7" {
+	} else if e.Properties.Get("image") != "redis:7" {
 		t.Errorf("expected image=redis:7, got %v", e.Properties)
 	}
 	// ContainerBuilder itself must NOT emit a service node.
@@ -179,7 +179,7 @@ public class CustomerFactoryTests
 
 	if e := relOf(recs, "USES", "type:Customer"); e == nil {
 		t.Error("expected new Faker<Customer>() -> USES type:Customer")
-	} else if e.Properties["role"] != "test_data_builder" || e.Properties["library"] != "bogus" {
+	} else if e.Properties.Get("role") != "test_data_builder" || e.Properties.Get("library") != "bogus" {
 		t.Errorf("expected bogus test_data_builder props, got %v", e.Properties)
 	}
 	var fields string
@@ -213,7 +213,7 @@ public class OrderBuilderTests
 
 	if e := relOf(recs, "USES", "type:Order"); e == nil {
 		t.Error("expected fixture.Create<Order>() -> USES type:Order")
-	} else if e.Properties["library"] != "autofixture" || e.Properties["role"] != "test_data_builder" {
+	} else if e.Properties.Get("library") != "autofixture" || e.Properties.Get("role") != "test_data_builder" {
 		t.Errorf("expected autofixture test_data_builder props, got %v", e.Properties)
 	}
 	if relOf(recs, "USES", "type:Customer") == nil {
@@ -278,8 +278,8 @@ public class SetupTests
 	// RESOLVES_TO the by-name impl node the dotnet_di extractor binds.
 	if e := relOf(recs, "RESOLVES_TO", "impl:OrderRepository"); e == nil {
 		t.Error("expected repoMock.Object registration -> RESOLVES_TO impl:OrderRepository")
-	} else if e.Properties["interface"] != "IOrderRepository" ||
-		e.Properties["role"] != "mock_di_resolution" {
+	} else if e.Properties.Get("interface") != "IOrderRepository" ||
+		e.Properties.Get("role") != "mock_di_resolution" {
 		t.Errorf("expected mock_di_resolution props, got %v", e.Properties)
 	}
 	// resolved_impl prop stamped on the mock node.

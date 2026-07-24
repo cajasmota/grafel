@@ -127,8 +127,8 @@ func TestElmJSON_DependsOnEdges(t *testing.T) {
 		for _, rel := range r.Relationships {
 			if rel.Kind == "DEPENDS_ON" {
 				dependsOn++
-				if rel.Properties["package_manager"] != "elm" {
-					t.Errorf("DEPENDS_ON package_manager=%q want elm", rel.Properties["package_manager"])
+				if rel.Properties.Get("package_manager") != "elm" {
+					t.Errorf("DEPENDS_ON package_manager=%q want elm", rel.Properties.Get("package_manager"))
 				}
 			}
 		}

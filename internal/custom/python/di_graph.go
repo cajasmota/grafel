@@ -151,11 +151,11 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 					FromID: provider,
 					ToID:   fn.name,
 					Kind:   string(types.RelationshipKindInjectedInto),
-					Properties: map[string]string{
-						"framework": "fastapi",
-						"provider":  provider,
-						"consumer":  fn.name,
-						"via":       "fastapi_depends",
+					Properties: types.Props{
+						{K: "consumer", V: fn.name},
+						{K: "framework", V: "fastapi"},
+						{K: "provider", V: provider},
+						{K: "via", V: "fastapi_depends"},
 					},
 				})
 		}
@@ -191,12 +191,12 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 					FromID: token,
 					ToID:   impl,
 					Kind:   string(types.RelationshipKindBinds),
-					Properties: map[string]string{
-						"framework":     "dependency-injector",
-						"provider_kind": kind,
-						"container":     c.name,
-						"token":         token,
-						"via":           "dependency_injector_provider",
+					Properties: types.Props{
+						{K: "container", V: c.name},
+						{K: "framework", V: "dependency-injector"},
+						{K: "provider_kind", V: kind},
+						{K: "token", V: token},
+						{K: "via", V: "dependency_injector_provider"},
 					},
 				})
 		}
@@ -227,11 +227,11 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 					FromID: token,
 					ToID:   fn.name,
 					Kind:   string(types.RelationshipKindInjectedInto),
-					Properties: map[string]string{
-						"framework": "dependency-injector",
-						"provider":  token,
-						"consumer":  fn.name,
-						"via":       "dependency_injector_inject",
+					Properties: types.Props{
+						{K: "consumer", V: fn.name},
+						{K: "framework", V: "dependency-injector"},
+						{K: "provider", V: token},
+						{K: "via", V: "dependency_injector_inject"},
 					},
 				})
 		}
@@ -270,10 +270,10 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 					FromID: key,
 					ToID:   provider,
 					Kind:   string(types.RelationshipKindBinds),
-					Properties: map[string]string{
-						"framework": "litestar",
-						"token":     key,
-						"via":       "litestar_provide",
+					Properties: types.Props{
+						{K: "framework", V: "litestar"},
+						{K: "token", V: key},
+						{K: "via", V: "litestar_provide"},
 					},
 				})
 		}
@@ -309,12 +309,12 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 						FromID: provider,
 						ToID:   fn.name,
 						Kind:   string(types.RelationshipKindInjectedInto),
-						Properties: map[string]string{
-							"framework": "litestar",
-							"provider":  provider,
-							"consumer":  fn.name,
-							"token":     name,
-							"via":       "litestar_provide",
+						Properties: types.Props{
+							{K: "consumer", V: fn.name},
+							{K: "framework", V: "litestar"},
+							{K: "provider", V: provider},
+							{K: "token", V: name},
+							{K: "via", V: "litestar_provide"},
 						},
 					})
 			}
@@ -349,10 +349,10 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 				FromID: impl,
 				ToID:   impl,
 				Kind:   string(types.RelationshipKindBinds),
-				Properties: map[string]string{
-					"framework": "sanic",
-					"token":     impl,
-					"via":       "sanic_ext_dependency",
+				Properties: types.Props{
+					{K: "framework", V: "sanic"},
+					{K: "token", V: impl},
+					{K: "via", V: "sanic_ext_dependency"},
 				},
 			})
 	}

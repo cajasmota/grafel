@@ -179,7 +179,7 @@ class A {}
 			if r.Kind != "IMPORTS" {
 				continue
 			}
-			got[r.ToID] = r.Properties
+			got[r.ToID] = r.Properties.Snapshot()
 		}
 	}
 	for to, wantProps := range want {

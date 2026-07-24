@@ -149,9 +149,11 @@ func (e *goDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 				}, types.RelationshipRecord{
 					FromID: r.provider, ToID: produced,
 					Kind: string(types.RelationshipKindBinds),
-					Properties: map[string]string{
-						"framework": r.framework, "registration": r.kind,
-						"provider": r.provider, "via": r.framework + "_provider",
+					Properties: types.Props{
+						{K: "framework", V: r.framework},
+						{K: "provider", V: r.provider},
+						{K: "registration", V: r.kind},
+						{K: "via", V: r.framework + "_provider"},
 					},
 				})
 			}
@@ -173,9 +175,11 @@ func (e *goDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 				}, types.RelationshipRecord{
 					FromID: dep, ToID: produced,
 					Kind: string(types.RelationshipKindInjectedInto),
-					Properties: map[string]string{
-						"framework": r.framework, "consumer": produced,
-						"provider": dep, "via": r.framework + "_constructor",
+					Properties: types.Props{
+						{K: "consumer", V: produced},
+						{K: "framework", V: r.framework},
+						{K: "provider", V: dep},
+						{K: "via", V: r.framework + "_constructor"},
 					},
 				})
 			}

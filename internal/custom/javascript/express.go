@@ -164,8 +164,10 @@ func (e *expressExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 					ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 						ToID: "Class:" + dto,
 						Kind: string(types.RelationshipKindAcceptsInput),
-						Properties: map[string]string{
-							"framework": "express", "match_source": "request_generic", "dto_type": dto,
+						Properties: types.Props{
+							{K: "dto_type", V: dto},
+							{K: "framework", V: "express"},
+							{K: "match_source", V: "request_generic"},
 						},
 					})
 				}
@@ -173,8 +175,10 @@ func (e *expressExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 					ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 						ToID: "Class:" + resBody,
 						Kind: string(types.RelationshipKindReturns),
-						Properties: map[string]string{
-							"framework": "express", "match_source": "request_generic_resbody", "dto_type": resBody,
+						Properties: types.Props{
+							{K: "dto_type", V: resBody},
+							{K: "framework", V: "express"},
+							{K: "match_source", V: "request_generic_resbody"},
 						},
 					})
 				}
@@ -184,8 +188,10 @@ func (e *expressExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 					ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 						ToID: "Class:" + dto,
 						Kind: string(types.RelationshipKindReturns),
-						Properties: map[string]string{
-							"framework": "express", "match_source": "response_generic", "dto_type": dto,
+						Properties: types.Props{
+							{K: "dto_type", V: dto},
+							{K: "framework", V: "express"},
+							{K: "match_source", V: "response_generic"},
 						},
 					})
 				}

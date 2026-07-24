@@ -225,10 +225,10 @@ func makeImportEntity(filePath, importPath string, line int) types.EntityRecord 
 				FromID: filePath,
 				ToID:   importPath,
 				Kind:   "IMPORTS",
-				Properties: map[string]string{
-					"source_module": importPath,
-					"imported_name": importPath,
-					"import_kind":   "source",
+				Properties: types.Props{
+					{K: "import_kind", V: "source"},
+					{K: "imported_name", V: importPath},
+					{K: "source_module", V: importPath},
 				},
 			},
 		},
@@ -270,8 +270,8 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 		out = append(out, types.RelationshipRecord{
 			ToID: head,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(lineNum),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(lineNum)},
 			},
 		})
 	}

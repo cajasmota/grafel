@@ -59,11 +59,11 @@ do_work() { echo hi; }
 	if rel == nil {
 		t.Fatalf("expected resolved CALLS dispatch→do_work; got %#v", ents)
 	}
-	if rel.Properties["resolved_via"] != extractor.ResolvedViaLiteralBinding {
-		t.Errorf("resolved_via = %q; want %q", rel.Properties["resolved_via"], extractor.ResolvedViaLiteralBinding)
+	if rel.Properties.Get("resolved_via") != extractor.ResolvedViaLiteralBinding {
+		t.Errorf("resolved_via = %q; want %q", rel.Properties.Get("resolved_via"), extractor.ResolvedViaLiteralBinding)
 	}
-	if rel.Properties["dynamic_target"] != "cmd" {
-		t.Errorf("dynamic_target = %q; want cmd", rel.Properties["dynamic_target"])
+	if rel.Properties.Get("dynamic_target") != "cmd" {
+		t.Errorf("dynamic_target = %q; want cmd", rel.Properties.Get("dynamic_target"))
 	}
 }
 
@@ -76,7 +76,7 @@ run_it() { echo run; }
 `
 	ents := extractShell5158(t, src)
 	if rel := findCall(ents, "dispatch", "run_it"); rel == nil ||
-		rel.Properties["dynamic_target"] != "handler" {
+		rel.Properties.Get("dynamic_target") != "handler" {
 		t.Fatalf("expected resolved CALLS dispatch→run_it via handler; got %#v", ents)
 	}
 }
@@ -142,7 +142,7 @@ do_work() { echo a; }
 	if rel == nil {
 		t.Fatal("expected direct CALLS dispatch→do_work")
 	}
-	if _, ok := rel.Properties["resolved_via"]; ok {
+	if _, ok := rel.Properties.Lookup("resolved_via"); ok {
 		t.Errorf("direct call must NOT carry resolved_via; got %v", rel.Properties)
 	}
 }

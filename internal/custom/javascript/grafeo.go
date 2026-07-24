@@ -292,15 +292,15 @@ func (e *grafeoExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 			// Only when the target GraphQL type resolves to a same-document @node
 			// type — cross-file / non-node targets are honest-partial.
 			if targetLabel != "" {
-				edgeProps := map[string]string{
-					"framework":  "grafeo-ogm",
-					"rel_type":   relType,
-					"direction":  direction,
-					"field_name": fieldName,
-					"provenance": "INFERRED_FROM_NEO4J_GRAFEO_RELATIONSHIP",
+				edgeProps := types.Props{
+					{K: "direction", V: direction},
+					{K: "field_name", V: fieldName},
+					{K: "framework", V: "grafeo-ogm"},
+					{K: "provenance", V: "INFERRED_FROM_NEO4J_GRAFEO_RELATIONSHIP"},
+					{K: "rel_type", V: relType},
 				}
 				if relProps != "" {
-					edgeProps["relationship_properties"] = relProps
+					edgeProps.Set("relationship_properties", relProps)
 				}
 				out[owner.idx].Relationships = append(out[owner.idx].Relationships,
 					types.RelationshipRecord{

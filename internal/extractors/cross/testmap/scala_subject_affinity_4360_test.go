@@ -127,7 +127,7 @@ class RandomThings extends AnyFunSuite {
 			if rel.Kind != "TESTS" {
 				continue
 			}
-			if c := rel.Properties["confidence"]; c == "high" || c == "medium" {
+			if c := rel.Properties.Get("confidence"); c == "high" || c == "medium" {
 				t.Errorf("no high/medium subject edge expected for an unresolvable spec; got %s -> %s [%s]",
 					r.Name, rel.ToID, c)
 			}

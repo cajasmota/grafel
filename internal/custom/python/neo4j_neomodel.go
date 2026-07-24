@@ -246,12 +246,12 @@ func (e *NeomodelExtractor) Extract(ctx context.Context, file extractor.FileInpu
 				types.RelationshipRecord{
 					ToID: "Class:" + targetLabel,
 					Kind: string(types.RelationshipKindGraphRelates),
-					Properties: map[string]string{
-						"framework":  "neomodel",
-						"rel_type":   relType,
-						"direction":  direction,
-						"field_name": fieldName,
-						"provenance": "INFERRED_FROM_NEO4J_NEOMODEL_RELATIONSHIP",
+					Properties: types.Props{
+						{K: "direction", V: direction},
+						{K: "field_name", V: fieldName},
+						{K: "framework", V: "neomodel"},
+						{K: "provenance", V: "INFERRED_FROM_NEO4J_NEOMODEL_RELATIONSHIP"},
+						{K: "rel_type", V: relType},
 					},
 				})
 		}

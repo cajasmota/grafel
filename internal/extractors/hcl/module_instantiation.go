@@ -106,10 +106,10 @@ func resolveModuleInstantiation(rec *types.EntityRecord, source, filePath, lang,
 		// IaCResource.Module.
 		ToID: DefinitionDirMarkerPrefix + defDir,
 		Kind: "INSTANTIATES",
-		Properties: map[string]string{
-			"definition_dir": defDir,
-			"module_source":  source,
-			"language":       lang,
+		Properties: types.Props{
+			{K: "definition_dir", V: defDir},
+			{K: "language", V: lang},
+			{K: "module_source", V: source},
 		},
 	}}
 }

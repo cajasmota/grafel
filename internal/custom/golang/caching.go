@@ -144,11 +144,14 @@ func (e *goCachingExtractor) Extract(ctx context.Context, file extractor.FileInp
 		if dynamic {
 			setProps(&ent, "dynamic", "true")
 		}
-		edgeProps := map[string]string{
-			"framework": framework, "region": region, "mode": mode, "language": "go",
+		edgeProps := types.Props{
+			{K: "framework", V: framework},
+			{K: "language", V: "go"},
+			{K: "mode", V: mode},
+			{K: "region", V: region},
 		}
 		if dynamic {
-			edgeProps["dynamic"] = "true"
+			edgeProps.Set("dynamic", "true")
 		}
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: ref, Kind: relType, Properties: edgeProps,

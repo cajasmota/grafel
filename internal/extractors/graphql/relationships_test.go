@@ -175,11 +175,11 @@ func TestRelationships_Imports_ExtendType(t *testing.T) {
 	if rels[0].FromID != "reviews.graphql" {
 		t.Errorf("IMPORTS FromID = %q, want reviews.graphql", rels[0].FromID)
 	}
-	if rels[0].Properties["import_kind"] != "extend" {
-		t.Errorf("import_kind = %q, want extend", rels[0].Properties["import_kind"])
+	if rels[0].Properties.Get("import_kind") != "extend" {
+		t.Errorf("import_kind = %q, want extend", rels[0].Properties.Get("import_kind"))
 	}
-	if rels[0].Properties["language"] != "graphql" {
-		t.Errorf("language = %q, want graphql", rels[0].Properties["language"])
+	if rels[0].Properties.Get("language") != "graphql" {
+		t.Errorf("language = %q, want graphql", rels[0].Properties.Get("language"))
 	}
 }
 
@@ -221,7 +221,7 @@ func TestRelationships_Imports_FragmentSpread(t *testing.T) {
 	}
 	found := false
 	for _, r := range rels {
-		if r.ToID == "UserFields" && r.Properties["import_kind"] == "fragment_spread" {
+		if r.ToID == "UserFields" && r.Properties.Get("import_kind") == "fragment_spread" {
 			found = true
 		}
 	}
@@ -248,7 +248,7 @@ extend type User { b: Int }
 	rels := gqlRelsByKind(entities, "IMPORTS")
 	count := 0
 	for _, r := range rels {
-		if r.ToID == "User" && r.Properties["import_kind"] == "extend" {
+		if r.ToID == "User" && r.Properties.Get("import_kind") == "extend" {
 			count++
 		}
 	}
@@ -302,9 +302,9 @@ type User {
 	entities := extractGQL(t, "x.graphql", src)
 	for _, e := range entities {
 		for _, r := range e.Relationships {
-			if r.Properties["language"] != "graphql" {
+			if r.Properties.Get("language") != "graphql" {
 				t.Errorf("relationship %s→%s missing language=graphql, got %q",
-					r.FromID, r.ToID, r.Properties["language"])
+					r.FromID, r.ToID, r.Properties.Get("language"))
 			}
 		}
 	}

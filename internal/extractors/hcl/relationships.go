@@ -153,7 +153,7 @@ func emitFileLevelRelationships(root ts.Node, src []byte, path, lang string) *ty
 						FromID: path,
 						ToID:   source,
 						Kind:   "IMPORTS",
-						Properties: map[string]string{
+						Properties: types.PropsFromMap(map[string]string{
 							"import_kind":   "module",
 							"source_module": source,
 							"imported_name": source,
@@ -163,7 +163,7 @@ func emitFileLevelRelationships(root ts.Node, src []byte, path, lang string) *ty
 							// `../../` even on the non-embedded
 							// classification path and in diagnostic dumps.
 							"language": lang,
-						},
+						}),
 					})
 				}
 			}
@@ -173,13 +173,13 @@ func emitFileLevelRelationships(root ts.Node, src []byte, path, lang string) *ty
 					FromID: path,
 					ToID:   labels[0],
 					Kind:   "IMPORTS",
-					Properties: map[string]string{
+					Properties: types.PropsFromMap(map[string]string{
 						"import_kind":   "provider",
 						"source_module": labels[0],
 						"imported_name": labels[0],
 						// Issue #44 — see module branch above.
 						"language": lang,
-					},
+					}),
 				})
 			}
 		}
@@ -241,8 +241,8 @@ func extractCalls(body ts.Node, src []byte, path, lang, fromRef, selfRef string)
 							FromID: extractor.BuildOperationStructuralRef(lang, path, fromRef),
 							ToID:   extractor.BuildOperationStructuralRef(lang, path, ref),
 							Kind:   "CALLS",
-							Properties: map[string]string{
-								"line": strconv.Itoa(int(n.StartPoint().Row) + 1),
+							Properties: types.Props{
+								{K: "line", V: strconv.Itoa(int(n.StartPoint().Row) + 1)},
 							},
 						})
 					}

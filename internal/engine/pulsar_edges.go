@@ -176,9 +176,9 @@ func applyPulsarEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fmt.Sprintf("%s:%s", callerKind, callerName),
 			ToID:   fmt.Sprintf("%s:%s", pulsarTopicEntityKind, topicID),
 			Kind:   edgeKind,
-			Properties: map[string]string{
-				"broker":       "pulsar",
-				"pattern_type": "pulsar_synthesis",
+			Properties: types.Props{
+				{K: "broker", V: "pulsar"},
+				{K: "pattern_type", V: "pulsar_synthesis"},
 			},
 		})
 	}

@@ -201,9 +201,9 @@ func EmitExceptionEdges(entities *[]types.EntityRecord, lang string, edges []Exc
 		edgeKey := ed.FromName + "\x00" + dir + "\x00" + typeName
 		if !seenEdge[edgeKey] {
 			seenEdge[edgeKey] = true
-			props := map[string]string{"exception_type": typeName}
+			props := types.Props{{K: "exception_type", V: typeName}}
 			if ed.Pattern != "" {
-				props["pattern"] = ed.Pattern
+				props.Set("pattern", ed.Pattern)
 			}
 			(*entities)[hostIdx].Relationships = append((*entities)[hostIdx].Relationships,
 				types.RelationshipRecord{

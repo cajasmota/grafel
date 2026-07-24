@@ -119,7 +119,7 @@ func TestOpenAPI_SpecContainsOperationsAndSchemas(t *testing.T) {
 		if r.Kind != "CONTAINS" {
 			continue
 		}
-		switch r.Properties["contained_kind"] {
+		switch r.Properties.Get("contained_kind") {
 		case "operation":
 			containsOps++
 		case "schema":
@@ -148,7 +148,7 @@ func TestOpenAPI_OperationTaggedAs(t *testing.T) {
 	gotTags := map[string]bool{}
 	for _, r := range op.Relationships {
 		if r.Kind == "TAGGED_AS" {
-			gotTags[r.Properties["tag"]] = true
+			gotTags[r.Properties.Get("tag")] = true
 		}
 	}
 	if !gotTags["pets"] {
@@ -165,7 +165,7 @@ func TestOpenAPI_OperationTaggedAs(t *testing.T) {
 	}
 	hasPetsTag := false
 	for _, r := range getOp.Relationships {
-		if r.Kind == "TAGGED_AS" && r.Properties["tag"] == "pets" {
+		if r.Kind == "TAGGED_AS" && r.Properties.Get("tag") == "pets" {
 			hasPetsTag = true
 		}
 	}

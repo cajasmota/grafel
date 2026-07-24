@@ -111,9 +111,9 @@ func Discover(ctx context.Context, repoRoot string, files []string) ([]types.Ent
 				FromID: fileEnt.ID,
 				ToID:   inc.Path,
 				Kind:   "IMPORTS",
-				Properties: map[string]string{
-					"include_namespace": inc.Namespace,
-					"taskfile_path":     inc.Path,
+				Properties: types.Props{
+					{K: "include_namespace", V: inc.Namespace},
+					{K: "taskfile_path", V: inc.Path},
 				},
 			})
 		}
@@ -155,9 +155,9 @@ func Discover(ctx context.Context, repoRoot string, files []string) ([]types.Ent
 				FromID: fromID,
 				ToID:   toID,
 				Kind:   RelationshipKindTaskDependsOn,
-				Properties: map[string]string{
-					"dep_task":    dep,
-					"source_task": t.name,
+				Properties: types.Props{
+					{K: "dep_task", V: dep},
+					{K: "source_task", V: t.name},
 				},
 			})
 		}

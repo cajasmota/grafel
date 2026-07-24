@@ -37,7 +37,7 @@ func edgesByKind(recs []types.EntityRecord, kind string) map[string]bool {
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
 			if rel.Kind == kind {
-				if tn := rel.Properties["exception_type"]; tn != "" &&
+				if tn := rel.Properties.Get("exception_type"); tn != "" &&
 					rel.ToID == extractor.ExceptionTypeTargetID(tn) {
 					out[tn] = true
 				}

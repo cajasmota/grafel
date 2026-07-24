@@ -32,8 +32,8 @@ class UserServiceTest {
 			continue
 		}
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "UserService" {
-				conf = rel.Properties["confidence"]
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "UserService" {
+				conf = rel.Properties.Get("confidence")
 			}
 		}
 	}
@@ -138,8 +138,8 @@ class UserControllerIT {
 	}
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && noise[rel.Properties["tested"]] {
-				t.Errorf("HTTP-test-client noise leaked as TESTS edge: %q", rel.Properties["tested"])
+			if rel.Kind == "TESTS" && noise[rel.Properties.Get("tested")] {
+				t.Errorf("HTTP-test-client noise leaked as TESTS edge: %q", rel.Properties.Get("tested"))
 			}
 		}
 	}
@@ -165,8 +165,8 @@ class UserApiIT {
 	noise := map[string]bool{"statusCode": true, "extract": true}
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && noise[rel.Properties["tested"]] {
-				t.Errorf("REST-assured DSL noise leaked: %q", rel.Properties["tested"])
+			if rel.Kind == "TESTS" && noise[rel.Properties.Get("tested")] {
+				t.Errorf("REST-assured DSL noise leaked: %q", rel.Properties.Get("tested"))
 			}
 		}
 	}

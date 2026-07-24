@@ -280,12 +280,12 @@ func (e *inngestExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 				FromID: "Function:" + funcName,
 				ToID:   stepEnt.ID,
 				Kind:   string(types.RelationshipKindContains),
-				Properties: map[string]string{
-					"framework":  "inngest",
-					"member":     "step",
-					"step_kind":  stepKind,
-					"step_id":    stepID,
-					"provenance": "INFERRED_FROM_INNGEST_STEP_MEMBERSHIP",
+				Properties: types.Props{
+					{K: "framework", V: "inngest"},
+					{K: "member", V: "step"},
+					{K: "provenance", V: "INFERRED_FROM_INNGEST_STEP_MEMBERSHIP"},
+					{K: "step_id", V: stepID},
+					{K: "step_kind", V: stepKind},
 				},
 			})
 			addEntity(stepEnt)

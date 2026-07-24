@@ -81,14 +81,14 @@ require("side.effect")
 			if r.FromID != "test.lua" {
 				t.Errorf("IMPORTS %s: FromID=%q want test.lua", r.ToID, r.FromID)
 			}
-			if r.Properties["local_name"] != w.local {
-				t.Errorf("IMPORTS %s: local_name=%q want %q", r.ToID, r.Properties["local_name"], w.local)
+			if r.Properties.Get("local_name") != w.local {
+				t.Errorf("IMPORTS %s: local_name=%q want %q", r.ToID, r.Properties.Get("local_name"), w.local)
 			}
-			if r.Properties["source_module"] != w.mod {
-				t.Errorf("IMPORTS %s: source_module=%q want %q", r.ToID, r.Properties["source_module"], w.mod)
+			if r.Properties.Get("source_module") != w.mod {
+				t.Errorf("IMPORTS %s: source_module=%q want %q", r.ToID, r.Properties.Get("source_module"), w.mod)
 			}
-			if r.Properties["import_kind"] != w.kind {
-				t.Errorf("IMPORTS %s: import_kind=%q want %q", r.ToID, r.Properties["import_kind"], w.kind)
+			if r.Properties.Get("import_kind") != w.kind {
+				t.Errorf("IMPORTS %s: import_kind=%q want %q", r.ToID, r.Properties.Get("import_kind"), w.kind)
 			}
 		}
 	}
@@ -276,7 +276,7 @@ end
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			any++
-			if r.Properties["language"] != "lua" {
+			if r.Properties.Get("language") != "lua" {
 				t.Errorf("entity %q rel %s→%s missing language tag (props=%+v)",
 					e.Name, r.Kind, r.ToID, r.Properties)
 			}

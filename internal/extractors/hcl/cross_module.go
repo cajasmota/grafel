@@ -87,12 +87,12 @@ func extractCrossModuleRefs(body ts.Node, src []byte, path, lang, selfRef string
 							FromID: extractor.BuildOperationStructuralRef(lang, path, selfRef),
 							ToID:   extractor.BuildOperationStructuralRef(lang, path, moduleRef),
 							Kind:   "USES",
-							Properties: map[string]string{
-								"dataflow":      "cross_module",
-								"module_output": output,
-								"input_arg":     argName,
-								"semantic":      sem,
-								"line":          strconv.Itoa(int(n.StartPoint().Row) + 1),
+							Properties: types.Props{
+								{K: "dataflow", V: "cross_module"},
+								{K: "input_arg", V: argName},
+								{K: "line", V: strconv.Itoa(int(n.StartPoint().Row) + 1)},
+								{K: "module_output", V: output},
+								{K: "semantic", V: sem},
 							},
 						})
 					}

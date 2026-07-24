@@ -1175,11 +1175,11 @@ func extractCallRelationships(
 					rels = append(rels, types.RelationshipRecord{
 						ToID: extTarget,
 						Kind: "CALLS",
-						Properties: map[string]string{
-							"language":     "python",
-							"pattern_type": "subprocess_exec",
-							"external_bin": bin,
-							"line":         callLine,
+						Properties: types.Props{
+							{K: "external_bin", V: bin},
+							{K: "language", V: "python"},
+							{K: "line", V: callLine},
+							{K: "pattern_type", V: "subprocess_exec"},
 						},
 					})
 				}
@@ -1235,18 +1235,18 @@ func extractCallRelationships(
 			// look up (source_module, leaf) against the file's import
 			// bucket. The ambiguous hint is dropped because the
 			// import_alias now disambiguates the call site precisely.
-			r.Properties = map[string]string{
-				"import_alias": importAlias,
-				"call_leaf":    target,
-				"line":         callLine,
+			r.Properties = types.Props{
+				{K: "call_leaf", V: target},
+				{K: "import_alias", V: importAlias},
+				{K: "line", V: callLine},
 			}
 		case ambiguous:
-			r.Properties = map[string]string{
-				"disposition_hint": "ambiguous",
-				"line":             callLine,
+			r.Properties = types.Props{
+				{K: "disposition_hint", V: "ambiguous"},
+				{K: "line", V: callLine},
 			}
 		default:
-			r.Properties = map[string]string{"line": callLine}
+			r.Properties = types.Props{{K: "line", V: callLine}}
 		}
 		rels = append(rels, r)
 	}
@@ -1738,10 +1738,10 @@ func extractImports(root ts.Node, file extractor.FileInput) []types.EntityRecord
 					localName = path
 				}
 			}
-			props := map[string]string{
-				"local_name":    localName,
-				"source_module": path,
-				"imported_name": path,
+			props := types.Props{
+				{K: "imported_name", V: path},
+				{K: "local_name", V: localName},
+				{K: "source_module", V: path},
 			}
 			out = append(out, importRecord(path, file, props))
 		}
@@ -1773,9 +1773,9 @@ func extractImports(root ts.Node, file extractor.FileInput) []types.EntityRecord
 				continue
 			}
 			if name == "*" {
-				out = append(out, importRecord(modPath, file, map[string]string{
-					"source_module": modPath,
-					"wildcard":      "1",
+				out = append(out, importRecord(modPath, file, types.Props{
+					{K: "source_module", V: modPath},
+					{K: "wildcard", V: "1"},
 				}))
 				emittedAny = true
 				continue
@@ -1784,17 +1784,17 @@ func extractImports(root ts.Node, file extractor.FileInput) []types.EntityRecord
 			if localName == "" {
 				localName = name
 			}
-			props := map[string]string{
-				"local_name":    localName,
-				"source_module": modPath,
-				"imported_name": name,
+			props := types.Props{
+				{K: "imported_name", V: name},
+				{K: "local_name", V: localName},
+				{K: "source_module", V: modPath},
 			}
 			out = append(out, importRecord(modPath+"."+name, file, props))
 			emittedAny = true
 		}
 		if !emittedAny {
-			out = append(out, importRecord(modPath, file, map[string]string{
-				"source_module": modPath,
+			out = append(out, importRecord(modPath, file, types.Props{
+				{K: "source_module", V: modPath},
 			}))
 		}
 	}
@@ -1855,7 +1855,7 @@ func dottedNamePath(node ts.Node, src []byte) string {
 // path with one embedded IMPORTS relationship. Properties on the IMPORTS
 // edge carry the import-binding metadata the cross-file resolver consumes
 // (issue #93): local_name, source_module, imported_name, and wildcard.
-func importRecord(modulePath string, file extractor.FileInput, props map[string]string) types.EntityRecord {
+func importRecord(modulePath string, file extractor.FileInput, props types.Props) types.EntityRecord {
 	return types.EntityRecord{
 		Name:       modulePath,
 		Kind:       "SCOPE.Component",

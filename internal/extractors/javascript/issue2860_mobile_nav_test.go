@@ -74,7 +74,7 @@ func propContains(t *testing.T, fe *types.EntityRecord, key, want string) {
 // with Properties[via]=via.
 func hasNavVia(fe *types.EntityRecord, route, via string) bool {
 	for _, r := range fe.Relationships {
-		if r.Kind == "NAVIGATES_TO" && r.ToID == "route:"+route && r.Properties["via"] == via {
+		if r.Kind == "NAVIGATES_TO" && r.ToID == "route:"+route && r.Properties.Get("via") == via {
 			return true
 		}
 	}
@@ -84,10 +84,10 @@ func hasNavVia(fe *types.EntityRecord, route, via string) bool {
 // hasNativeImportEdge asserts an IMPORTS edge carries native_module=1.
 func hasNativeImportEdge(fe *types.EntityRecord, module string) bool {
 	for _, r := range fe.Relationships {
-		if r.Kind != "IMPORTS" || r.Properties["native_module"] != "1" {
+		if r.Kind != "IMPORTS" || r.Properties.Get("native_module") != "1" {
 			continue
 		}
-		if r.ToID == module || r.Properties["source_module"] == module {
+		if r.ToID == module || r.Properties.Get("source_module") == module {
 			return true
 		}
 	}

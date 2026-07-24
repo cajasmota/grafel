@@ -150,18 +150,18 @@ func goTracingSpanEdges(body ts.Node, enclosingName, fromID string, src []byte) 
 	}
 	out := make([]types.RelationshipRecord, 0, len(hits))
 	for _, h := range hits {
-		props := map[string]string{
-			"library": "opentelemetry",
-			"api":     "tracer.Start",
-			"line":    strconv.Itoa(h.line),
-			"traced":  "true",
+		props := types.Props{
+			{K: "api", V: "tracer.Start"},
+			{K: "library", V: "opentelemetry"},
+			{K: "line", V: strconv.Itoa(h.line)},
+			{K: "traced", V: "true"},
 		}
 		var toID string
 		if h.dynamic {
-			props["dynamic"] = "true"
+			props.Set("dynamic", "true")
 			toID = "span:" + enclosingName
 		} else {
-			props["span_name"] = h.spanName
+			props.Set("span_name", h.spanName)
 			toID = "span:" + h.spanName
 		}
 		out = append(out, types.RelationshipRecord{

@@ -206,10 +206,10 @@ func applyGRPCEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fmt.Sprintf("SCOPE.Operation:%s", handlerQualified),
 			ToID:   fmt.Sprintf("%s:%s", grpcMethodKind, methodID),
 			Kind:   grpcImplementsEdgeKind,
-			Properties: map[string]string{
-				"framework":    framework,
-				"pattern_type": "grpc_synthesis",
-				"streaming":    streaming,
+			Properties: types.Props{
+				{K: "framework", V: framework},
+				{K: "pattern_type", V: "grpc_synthesis"},
+				{K: "streaming", V: streaming},
 			},
 		})
 	}
@@ -226,10 +226,10 @@ func applyGRPCEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fromID,
 			ToID:   fmt.Sprintf("%s:%s", grpcMethodKind, methodID),
 			Kind:   grpcHandlesEdgeKind,
-			Properties: map[string]string{
-				"framework":    framework,
-				"pattern_type": "grpc_synthesis",
-				"streaming":    streaming,
+			Properties: types.Props{
+				{K: "framework", V: framework},
+				{K: "pattern_type", V: "grpc_synthesis"},
+				{K: "streaming", V: streaming},
 			},
 		})
 	}

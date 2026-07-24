@@ -155,11 +155,11 @@ func validatesEdge(library, method, line string) types.RelationshipRecord {
 	return types.RelationshipRecord{
 		ToID: "validator:" + library,
 		Kind: string(types.RelationshipKindValidates),
-		Properties: map[string]string{
-			"library": library,
-			"method":  method,
-			"line":    line,
-			"via":     "request_validation",
+		Properties: types.Props{
+			{K: "library", V: library},
+			{K: "line", V: line},
+			{K: "method", V: method},
+			{K: "via", V: "request_validation"},
 		},
 	}
 }
@@ -204,12 +204,12 @@ func (x *extractor) extractDTOParamEdges(params ts.Node) []types.RelationshipRec
 		rels = append(rels, types.RelationshipRecord{
 			ToID: "dto:" + typeName,
 			Kind: string(types.RelationshipKindValidates),
-			Properties: map[string]string{
-				"library": "nestjs-dto",
-				"method":  "@" + dec + "()",
-				"dto":     typeName,
-				"line":    strconv.Itoa(int(p.StartPoint().Row) + 1),
-				"via":     "dto_extraction",
+			Properties: types.Props{
+				{K: "dto", V: typeName},
+				{K: "library", V: "nestjs-dto"},
+				{K: "line", V: strconv.Itoa(int(p.StartPoint().Row) + 1)},
+				{K: "method", V: "@" + dec + "()"},
+				{K: "via", V: "dto_extraction"},
 			},
 		})
 	}
@@ -465,12 +465,12 @@ func (x *extractor) extractSchemaDTOEdge(call ts.Node) (types.RelationshipRecord
 	return types.RelationshipRecord{
 		ToID: "dto:" + recvLeaf,
 		Kind: string(types.RelationshipKindValidates),
-		Properties: map[string]string{
-			"library": lib,
-			"method":  propText,
-			"dto":     recvLeaf,
-			"line":    line,
-			"via":     "dto_extraction",
+		Properties: types.Props{
+			{K: "dto", V: recvLeaf},
+			{K: "library", V: lib},
+			{K: "line", V: line},
+			{K: "method", V: propText},
+			{K: "via", V: "dto_extraction"},
 		},
 	}, true
 }

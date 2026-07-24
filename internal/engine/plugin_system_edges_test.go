@@ -44,9 +44,9 @@ func runPluginPass(lang, path, src string) ([]types.EntityRecord, []pluginEdge) 
 		edges = append(edges, pluginEdge{
 			From:   r.FromID,
 			To:     r.ToID,
-			Plugin: r.Properties["plugin"],
-			System: r.Properties["system"],
-			Group:  r.Properties["group"],
+			Plugin: r.Properties.Get("plugin"),
+			System: r.Properties.Get("system"),
+			Group:  r.Properties.Get("group"),
 		})
 	}
 	return plugins, edges

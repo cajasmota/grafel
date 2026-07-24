@@ -63,7 +63,7 @@ func TestIssue4705_ReplaceImportResolvesInternal(t *testing.T) {
 		for j := range merged[k].Relationships {
 			r := merged[k].Relationships[j]
 			if r.Kind == "IMPORTS" && r.ToID == "example.com/x" {
-				if r.Properties["go_pkg_dir"] == "internal/x" {
+				if r.Properties.Get("go_pkg_dir") == "internal/x" {
 					stamped = true
 				}
 			}

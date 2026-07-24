@@ -173,9 +173,9 @@ func Discover(ctx context.Context, repoRoot string, files []string) ([]types.Ent
 				FromID: fromID,
 				ToID:   toID,
 				Kind:   RelationshipKindMageDependsOn,
-				Properties: map[string]string{
-					"dep_target":    dep,
-					"source_target": t.name,
+				Properties: types.Props{
+					{K: "dep_target", V: dep},
+					{K: "source_target", V: t.name},
 				},
 			})
 		}

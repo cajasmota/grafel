@@ -76,8 +76,8 @@ async def author(self, info):
 	// 2. BATCHES edge user_loader → batch_users.
 	if e := findEdge(ents, string(types.RelationshipKindBatches), "batch_users"); e == nil {
 		t.Fatal("expected BATCHES edge user_loader → batch_users")
-	} else if e.Properties["via"] != "graphql_dataloader" {
-		t.Fatalf("BATCHES via = %q; want graphql_dataloader", e.Properties["via"])
+	} else if e.Properties.Get("via") != "graphql_dataloader" {
+		t.Fatalf("BATCHES via = %q; want graphql_dataloader", e.Properties.Get("via"))
 	}
 
 	// 3. USES edge author resolver → user_loader.
@@ -85,8 +85,8 @@ async def author(self, info):
 	if usesEdge == nil {
 		t.Fatal("expected USES edge resolver → user_loader")
 	}
-	if usesEdge.Properties["via"] != "graphql_dataloader" {
-		t.Fatalf("USES via = %q; want graphql_dataloader", usesEdge.Properties["via"])
+	if usesEdge.Properties.Get("via") != "graphql_dataloader" {
+		t.Fatalf("USES via = %q; want graphql_dataloader", usesEdge.Properties.Get("via"))
 	}
 	// The carrier must be the enclosing resolver 'author'.
 	var carrierOK bool

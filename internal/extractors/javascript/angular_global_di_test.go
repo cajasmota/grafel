@@ -58,7 +58,7 @@ func usesEdgeProp(ents []types.EntityRecord, owner, target, key string) (string,
 			if owner != "" && r.FromID != owner {
 				continue
 			}
-			return r.Properties[key], true
+			return r.Properties.Get(key), true
 		}
 	}
 	return "", false
@@ -235,7 +235,7 @@ export class AppComponent {
 	ents := extractTS4378(t, "src/app/app.component.ts", src)
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Kind == string(types.RelationshipKindUses) && r.Properties["global"] == "true" {
+			if r.Kind == string(types.RelationshipKindUses) && r.Properties.Get("global") == "true" {
 				t.Errorf("plain component should not produce a global USES edge, got %+v", r)
 			}
 		}

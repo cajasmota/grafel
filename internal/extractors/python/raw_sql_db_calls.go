@@ -112,7 +112,7 @@ func emitRawSQLDBCallEdges(src string, filePath string, entities *[]types.Entity
 				appendEdgeToFunc(entities, filePath, caller, types.RelationshipRecord{
 					ToID:       procName,
 					Kind:       "CALLS",
-					Properties: map[string]string{"raw_sql": "true", "call_type": "procedure", "line": strconv.Itoa(lineNum)},
+					Properties: types.Props{{K: "call_type", V: "procedure"}, {K: "line", V: strconv.Itoa(lineNum)}, {K: "raw_sql", V: "true"}},
 				})
 			}
 			continue
@@ -132,7 +132,7 @@ func emitRawSQLDBCallEdges(src string, filePath string, entities *[]types.Entity
 					appendEdgeToFunc(entities, filePath, caller, types.RelationshipRecord{
 						ToID:       viewName,
 						Kind:       "READS_FROM",
-						Properties: map[string]string{"raw_sql": "true", "dml": "select"},
+						Properties: types.Props{{K: "dml", V: "select"}, {K: "raw_sql", V: "true"}},
 					})
 				}
 			}

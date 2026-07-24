@@ -103,8 +103,8 @@ fun HomeScreen(navController: NavController) {
 		}
 		for _, r := range e.Relationships {
 			if r.Kind == "NAVIGATES_TO" && r.ToID == "route:Screen.Detail.route" {
-				if r.Properties["unresolved"] != "true" {
-					t.Errorf("expected unresolved=true on route-const edge, got %q", r.Properties["unresolved"])
+				if r.Properties.Get("unresolved") != "true" {
+					t.Errorf("expected unresolved=true on route-const edge, got %q", r.Properties.Get("unresolved"))
 				}
 			}
 		}

@@ -206,12 +206,12 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 				Language:     "astro",
 				StartLine:    1,
 				EndLine:      1,
-				Signature:    isl.Properties["island_directive"] + " " + isl.ToID,
+				Signature:    isl.Properties.Get("island_directive") + " " + isl.ToID,
 				QualityScore: 0.85,
 				Properties: map[string]string{
 					"framework":        "astro",
 					"hydration":        "client",
-					"island_directive": isl.Properties["island_directive"],
+					"island_directive": isl.Properties.Get("island_directive"),
 					"island_component": isl.ToID,
 				},
 			}
@@ -328,9 +328,9 @@ func extractImports(fm string, fmStartLine int, filePath string) []types.Relatio
 			FromID: filePath,
 			ToID:   modulePath,
 			Kind:   "IMPORTS",
-			Properties: map[string]string{
-				"source_module": modulePath,
-				"line":          fmt.Sprintf("%d", fmStartLine+strings.Count(fm[:m[0]], "\n")),
+			Properties: types.Props{
+				{K: "line", V: fmt.Sprintf("%d", fmStartLine+strings.Count(fm[:m[0]], "\n"))},
+				{K: "source_module", V: modulePath},
 			},
 		})
 	}
@@ -503,10 +503,10 @@ func extractTemplateRelationships(body, filePath, componentName string) (renders
 				FromID: filePath,
 				ToID:   name,
 				Kind:   "RENDERS",
-				Properties: map[string]string{
-					"from_component": componentName,
-					"to_component":   name,
-					"line":           fmt.Sprintf("%d", lineIdx+1),
+				Properties: types.Props{
+					{K: "from_component", V: componentName},
+					{K: "line", V: fmt.Sprintf("%d", lineIdx+1)},
+					{K: "to_component", V: name},
 				},
 			})
 		}
@@ -527,11 +527,11 @@ func extractTemplateRelationships(body, filePath, componentName string) (renders
 					FromID: filePath,
 					ToID:   name,
 					Kind:   "IMPLEMENTS",
-					Properties: map[string]string{
-						"island_directive": directive,
-						"host_component":   componentName,
-						"framework_island": name,
-						"line":             fmt.Sprintf("%d", lineIdx+1),
+					Properties: types.Props{
+						{K: "framework_island", V: name},
+						{K: "host_component", V: componentName},
+						{K: "island_directive", V: directive},
+						{K: "line", V: fmt.Sprintf("%d", lineIdx+1)},
 					},
 				})
 			}

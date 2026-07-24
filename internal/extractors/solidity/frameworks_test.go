@@ -55,7 +55,7 @@ func TestSolidity_OpenZeppelin_ExtendsEdgeTagged(t *testing.T) {
 	}
 	tagged := map[string]bool{}
 	for _, r := range c.Relationships {
-		if r.Kind == "EXTENDS" && r.Properties != nil && r.Properties["framework"] == "openzeppelin" {
+		if r.Kind == "EXTENDS" && r.Properties != nil && r.Properties.Get("framework") == "openzeppelin" {
 			tagged[r.ToID] = true
 		}
 	}

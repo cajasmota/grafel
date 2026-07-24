@@ -70,8 +70,8 @@ def fib(n):
 	if e == nil {
 		t.Fatalf("expected fib CACHES region fn:fib")
 	}
-	if e.Properties["mode"] != "in_process" {
-		t.Errorf("mode = %q, want in_process", e.Properties["mode"])
+	if e.Properties.Get("mode") != "in_process" {
+		t.Errorf("mode = %q, want in_process", e.Properties.Get("mode"))
 	}
 }
 
@@ -88,10 +88,10 @@ def list_users():
 	if e == nil {
 		t.Fatalf("expected list_users CACHES region view/users (read-through)")
 	}
-	if e.Properties["mode"] != "read_through" {
-		t.Errorf("mode = %q, want read_through", e.Properties["mode"])
+	if e.Properties.Get("mode") != "read_through" {
+		t.Errorf("mode = %q, want read_through", e.Properties.Get("mode"))
 	}
-	if e.Properties["dynamic"] == "true" {
+	if e.Properties.Get("dynamic") == "true" {
 		t.Errorf("static key_prefix should not be dynamic")
 	}
 }
@@ -108,7 +108,7 @@ def home():
 	if e == nil {
 		t.Fatalf("expected honest-partial dynamic CACHES edge")
 	}
-	if e.Properties["dynamic"] != "true" {
+	if e.Properties.Get("dynamic") != "true" {
 		t.Errorf("missing key_prefix should be dynamic")
 	}
 }
@@ -177,15 +177,15 @@ def evict_users():
 	if cE == nil {
 		t.Fatalf("expected cache.set CACHES region users")
 	}
-	if cE.Properties["mode"] != "write" {
-		t.Errorf("set mode = %q, want write", cE.Properties["mode"])
+	if cE.Properties.Get("mode") != "write" {
+		t.Errorf("set mode = %q, want write", cE.Properties.Get("mode"))
 	}
 	iE := findInvalidatesEdge(ents, ref)
 	if iE == nil {
 		t.Fatalf("expected cache.delete INVALIDATES region users (converging on the same node)")
 	}
-	if iE.Properties["mode"] != "evict" {
-		t.Errorf("delete mode = %q, want evict", iE.Properties["mode"])
+	if iE.Properties.Get("mode") != "evict" {
+		t.Errorf("delete mode = %q, want evict", iE.Properties.Get("mode"))
 	}
 }
 
@@ -200,8 +200,8 @@ def read():
 	if e == nil {
 		t.Fatalf("expected cache.get CACHES region profile")
 	}
-	if e.Properties["mode"] != "read_through" {
-		t.Errorf("get mode = %q, want read_through", e.Properties["mode"])
+	if e.Properties.Get("mode") != "read_through" {
+		t.Errorf("get mode = %q, want read_through", e.Properties.Get("mode"))
 	}
 }
 
@@ -228,7 +228,7 @@ def my_view(request):
 	if e == nil {
 		t.Fatalf("expected @cache_page CACHES the per-URL page region")
 	}
-	if e.Properties["dynamic"] != "true" {
+	if e.Properties.Get("dynamic") != "true" {
 		t.Errorf("@cache_page region should be dynamic (per-URL)")
 	}
 }

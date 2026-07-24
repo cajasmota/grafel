@@ -322,8 +322,10 @@ func (e *validationSchemaExtractor) bindRoutes(src string, file extreg.FileInput
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID: "Schema:" + s.name,
 				Kind: string(types.RelationshipKindAcceptsInput),
-				Properties: map[string]string{
-					"match_source": s.source, "schema_type": s.name, "via": "validation_schema",
+				Properties: types.Props{
+					{K: "match_source", V: s.source},
+					{K: "schema_type", V: s.name},
+					{K: "via", V: "validation_schema"},
 				},
 			})
 		}
@@ -336,8 +338,10 @@ func (e *validationSchemaExtractor) bindRoutes(src string, file extreg.FileInput
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID: "Schema:" + s.name,
 				Kind: string(types.RelationshipKindReturns),
-				Properties: map[string]string{
-					"match_source": s.source, "schema_type": s.name, "via": "validation_schema",
+				Properties: types.Props{
+					{K: "match_source", V: s.source},
+					{K: "schema_type", V: s.name},
+					{K: "via", V: "validation_schema"},
 				},
 			})
 		}
@@ -601,12 +605,12 @@ func nestedSchemaEdge(parentSchema, childID, fieldName, fieldPath string) types.
 		FromID: "Schema:" + parentSchema,
 		ToID:   childID,
 		Kind:   string(types.RelationshipKindContains),
-		Properties: map[string]string{
-			"framework":  "zod",
-			"member":     "nested_schema",
-			"field_name": fieldName,
-			"field_path": fieldPath,
-			"provenance": "INFERRED_FROM_ZOD_NESTED_OBJECT",
+		Properties: types.Props{
+			{K: "field_name", V: fieldName},
+			{K: "field_path", V: fieldPath},
+			{K: "framework", V: "zod"},
+			{K: "member", V: "nested_schema"},
+			{K: "provenance", V: "INFERRED_FROM_ZOD_NESTED_OBJECT"},
 		},
 	}
 }

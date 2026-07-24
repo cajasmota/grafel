@@ -55,10 +55,10 @@ func buildImportRel(fromPath, module string) types.RelationshipRecord {
 		FromID: fromPath,
 		ToID:   module,
 		Kind:   "IMPORTS",
-		Properties: map[string]string{
-			"local_name":    importBasename(module),
-			"source_module": module,
-			"imported_name": "",
+		Properties: types.Props{
+			{K: "imported_name", V: ""},
+			{K: "local_name", V: importBasename(module)},
+			{K: "source_module", V: module},
 		},
 	}
 }

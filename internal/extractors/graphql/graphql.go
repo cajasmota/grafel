@@ -353,10 +353,10 @@ func extractGraphQL(src, filePath string) []types.EntityRecord {
 				FromID: filePath,
 				ToID:   name,
 				Kind:   "IMPORTS",
-				Properties: map[string]string{
-					"source_module": name,
-					"imported_name": name,
-					"import_kind":   "extend",
+				Properties: types.Props{
+					{K: "import_kind", V: "extend"},
+					{K: "imported_name", V: name},
+					{K: "source_module", V: name},
 				},
 			},
 		}
@@ -370,23 +370,23 @@ func extractGraphQL(src, filePath string) []types.EntityRecord {
 		fed := scanFederation(headerLine, src, bodyStart, bodyEnd)
 		if fed.isEntity || len(fed.externalFields) > 0 ||
 			len(fed.requiresFields) > 0 || len(fed.providesFields) > 0 {
-			props := map[string]string{
-				"federation":   "apollo",
-				"import_kind":  "federation_extend",
-				"owning_type":  name,
-				"subgraph_ref": filePath,
+			props := types.Props{
+				{K: "federation", V: "apollo"},
+				{K: "import_kind", V: "federation_extend"},
+				{K: "owning_type", V: name},
+				{K: "subgraph_ref", V: filePath},
 			}
 			if fed.keyFields != "" {
-				props["key_fields"] = fed.keyFields
+				props.Set("key_fields", fed.keyFields)
 			}
 			if len(fed.externalFields) > 0 {
-				props["external_fields"] = strings.Join(fed.externalFields, ",")
+				props.Set("external_fields", strings.Join(fed.externalFields, ","))
 			}
 			if len(fed.requiresFields) > 0 {
-				props["requires_fields"] = strings.Join(fed.requiresFields, ",")
+				props.Set("requires_fields", strings.Join(fed.requiresFields, ","))
 			}
 			if len(fed.providesFields) > 0 {
-				props["provides_fields"] = strings.Join(fed.providesFields, ",")
+				props.Set("provides_fields", strings.Join(fed.providesFields, ","))
 			}
 			rels = append(rels, types.RelationshipRecord{
 				FromID:     filePath,
@@ -586,10 +586,10 @@ func fragmentSpreadImports(body, filePath string) []types.RelationshipRecord {
 			FromID: filePath,
 			ToID:   name,
 			Kind:   "IMPORTS",
-			Properties: map[string]string{
-				"source_module": name,
-				"imported_name": name,
-				"import_kind":   "fragment_spread",
+			Properties: types.Props{
+				{K: "import_kind", V: "fragment_spread"},
+				{K: "imported_name", V: name},
+				{K: "source_module", V: name},
 			},
 		})
 	}

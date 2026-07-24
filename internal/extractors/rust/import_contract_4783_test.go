@@ -42,7 +42,7 @@ fn main() {}
 	if r == nil {
 		t.Fatalf("no IMPORTS edge for tokio::sync::Mutex; got %+v", rels)
 	}
-	if r.Properties["imported_name"] != "Mutex" || r.Properties["local_name"] != "Mutex" {
+	if r.Properties.Get("imported_name") != "Mutex" || r.Properties.Get("local_name") != "Mutex" {
 		t.Fatalf("props=%v, want imported_name=local_name=Mutex", r.Properties)
 	}
 }
@@ -55,11 +55,11 @@ fn main() {}
 `
 	rels := importRels(runRust(t, src))
 	ser := findImport(rels, "serde::Serialize")
-	if ser == nil || ser.Properties["imported_name"] != "Serialize" || ser.Properties["local_name"] != "Serialize" {
+	if ser == nil || ser.Properties.Get("imported_name") != "Serialize" || ser.Properties.Get("local_name") != "Serialize" {
 		t.Fatalf("Serialize edge wrong: %+v", ser)
 	}
 	de := findImport(rels, "serde::Deserialize")
-	if de == nil || de.Properties["imported_name"] != "Deserialize" || de.Properties["local_name"] != "De" {
+	if de == nil || de.Properties.Get("imported_name") != "Deserialize" || de.Properties.Get("local_name") != "De" {
 		t.Fatalf("aliased Deserialize edge wrong: %+v", de)
 	}
 }
@@ -74,7 +74,7 @@ fn main() {}
 	if r == nil {
 		t.Fatalf("no IMPORTS edge for std::collections glob; got %+v", rels)
 	}
-	if r.Properties["wildcard"] != "1" || r.Properties["local_name"] != "collections" {
+	if r.Properties.Get("wildcard") != "1" || r.Properties.Get("local_name") != "collections" {
 		t.Fatalf("glob props=%v, want wildcard=1 local_name=collections", r.Properties)
 	}
 }

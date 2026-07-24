@@ -246,13 +246,13 @@ func applyCeleryAnnotations(file extractor.FileInput, entities *[]types.EntityRe
 			types.RelationshipRecord{
 				ToID: toID,
 				Kind: "CALLS",
-				Properties: map[string]string{
-					"language":     "python",
-					"framework":    "celery",
-					"pattern_type": "celery_dispatch",
-					"dispatch":     "async",
-					"method":       src[idx[4]:idx[5]],
-					"line":         callLine,
+				Properties: types.Props{
+					{K: "dispatch", V: "async"},
+					{K: "framework", V: "celery"},
+					{K: "language", V: "python"},
+					{K: "line", V: callLine},
+					{K: "method", V: src[idx[4]:idx[5]]},
+					{K: "pattern_type", V: "celery_dispatch"},
 				},
 			})
 	}

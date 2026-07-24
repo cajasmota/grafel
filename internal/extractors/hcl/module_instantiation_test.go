@@ -70,7 +70,7 @@ module "dispatch_queue" {
 	if want := hcl.DefinitionDirMarkerPrefix + "modules/worker-service"; edge.ToID != want {
 		t.Errorf("INSTANTIATES ToID = %q, want %q", edge.ToID, want)
 	}
-	if got := edge.Properties["definition_dir"]; got != "modules/worker-service" {
+	if got := edge.Properties.Get("definition_dir"); got != "modules/worker-service" {
 		t.Errorf("edge definition_dir prop = %q, want modules/worker-service", got)
 	}
 

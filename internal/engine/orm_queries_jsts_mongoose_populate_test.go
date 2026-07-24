@@ -23,7 +23,7 @@ func findPopulateJoin(rels []types.RelationshipRecord, fromClass, toClass string
 	for i := range rels {
 		r := &rels[i]
 		if r.Kind == string(types.RelationshipKindJoinsCollection) &&
-			r.Properties["pattern_type"] == "mongoose_populate" &&
+			r.Properties.Get("pattern_type") == "mongoose_populate" &&
 			r.FromID == "Class:"+fromClass && r.ToID == "Class:"+toClass {
 			return r
 		}
@@ -55,14 +55,14 @@ async function withAuthor(id) {
 	if j == nil {
 		t.Fatalf("expected JOINS_COLLECTION Class:Book -> Class:Author, got %+v", rels)
 	}
-	if j.Properties["via"] != "populate" {
-		t.Errorf("via = %q, want populate", j.Properties["via"])
+	if j.Properties.Get("via") != "populate" {
+		t.Errorf("via = %q, want populate", j.Properties.Get("via"))
 	}
-	if j.Properties["ref"] != "Author" {
-		t.Errorf("ref = %q, want Author", j.Properties["ref"])
+	if j.Properties.Get("ref") != "Author" {
+		t.Errorf("ref = %q, want Author", j.Properties.Get("ref"))
 	}
-	if j.Properties["ref_field"] != "author" {
-		t.Errorf("ref_field = %q, want author", j.Properties["ref_field"])
+	if j.Properties.Get("ref_field") != "author" {
+		t.Errorf("ref_field = %q, want author", j.Properties.Get("ref_field"))
 	}
 }
 
@@ -115,8 +115,8 @@ async function detail(model) {
 	if j == nil {
 		t.Fatalf("expected JOINS_COLLECTION Class:Book -> Class:Author from @Prop ref, got %+v", rels)
 	}
-	if j.Properties["ref_field"] != "author" {
-		t.Errorf("ref_field = %q, want author", j.Properties["ref_field"])
+	if j.Properties.Get("ref_field") != "author" {
+		t.Errorf("ref_field = %q, want author", j.Properties.Get("ref_field"))
 	}
 }
 
@@ -154,7 +154,7 @@ function full() {
 	// Exactly two populate joins.
 	count := 0
 	for _, r := range rels {
-		if r.Properties["pattern_type"] == "mongoose_populate" {
+		if r.Properties.Get("pattern_type") == "mongoose_populate" {
 			count++
 		}
 	}

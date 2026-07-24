@@ -93,11 +93,11 @@ func (x *extractor) extractHookCalls(body ts.Node, callerName string) []types.Re
 		rels = append(rels, types.RelationshipRecord{
 			ToID: hook,
 			Kind: string(types.RelationshipKindUsesHook),
-			Properties: map[string]string{
-				"consumer":  callerName,
-				"hook":      hook,
-				"builtin":   builtin,
-				"framework": "react",
+			Properties: types.Props{
+				{K: "builtin", V: builtin},
+				{K: "consumer", V: callerName},
+				{K: "framework", V: "react"},
+				{K: "hook", V: hook},
 			},
 		})
 	}

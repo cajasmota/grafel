@@ -82,10 +82,10 @@ func emitRubyTestScopeOwner(root ts.Node, file extractor.FileInput, out *[]types
 		rels = append(rels, types.RelationshipRecord{
 			ToID: "Class:" + subj,
 			Kind: string(types.RelationshipKindTests),
-			Properties: map[string]string{
-				"framework":    "rspec",
-				"match_source": "spec_subject_affinity",
-				"target_type":  subj,
+			Properties: types.Props{
+				{K: "framework", V: "rspec"},
+				{K: "match_source", V: "spec_subject_affinity"},
+				{K: "target_type", V: subj},
 			},
 			Confidence: 0.9,
 		})
@@ -234,10 +234,10 @@ func emitRubyMinitestSuite(root ts.Node, file extractor.FileInput, out *[]types.
 			rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
 				ToID: "Class:" + subj,
 				Kind: string(types.RelationshipKindTests),
-				Properties: map[string]string{
-					"framework":    "minitest",
-					"match_source": "spec_subject_affinity",
-					"target_type":  subj,
+				Properties: types.Props{
+					{K: "framework", V: "minitest"},
+					{K: "match_source", V: "spec_subject_affinity"},
+					{K: "target_type", V: subj},
 				},
 				Confidence: 0.9,
 			})
@@ -487,7 +487,7 @@ func extractTestScopeCallRelationships(body ts.Node, src []byte, describedClass 
 		rels = append(rels, types.RelationshipRecord{
 			ToID:       target,
 			Kind:       "CALLS",
-			Properties: map[string]string{"line": line},
+			Properties: types.Props{{K: "line", V: line}},
 		})
 	}
 	return rels

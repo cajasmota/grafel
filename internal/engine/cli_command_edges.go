@@ -102,10 +102,10 @@ func applyCLICommandEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: cliCommandKind + ":" + cmdID,
 			ToID:   "Function:" + handler,
 			Kind:   handlesCommandEdgeKind,
-			Properties: map[string]string{
-				"command":      name,
-				"framework":    framework,
-				"pattern_type": "cli_command_synthesis",
+			Properties: types.Props{
+				{K: "command", V: name},
+				{K: "framework", V: framework},
+				{K: "pattern_type", V: "cli_command_synthesis"},
 			},
 		})
 	}

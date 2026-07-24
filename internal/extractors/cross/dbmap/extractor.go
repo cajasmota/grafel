@@ -155,11 +155,11 @@ func buildEntity(filePath, language string, a access) types.EntityRecord {
 		FromID: fromRef,
 		ToID:   entityID,
 		Kind:   RelAccessesTable,
-		Properties: map[string]string{
-			"function_qname": a.functionQName,
-			"orm":            a.orm,
-			"operation":      a.operation,
-			"table":          a.table,
+		Properties: types.Props{
+			{K: "function_qname", V: a.functionQName},
+			{K: "operation", V: a.operation},
+			{K: "orm", V: a.orm},
+			{K: "table", V: a.table},
 		},
 	})
 

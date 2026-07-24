@@ -43,8 +43,8 @@ func runFlagPass(lang, path, src string) ([]types.EntityRecord, []gateEdge) {
 		edges = append(edges, gateEdge{
 			From: r.FromID,
 			To:   r.ToID,
-			Flag: r.Properties["flag"],
-			SDK:  r.Properties["sdk"],
+			Flag: r.Properties.Get("flag"),
+			SDK:  r.Properties.Get("sdk"),
 		})
 	}
 	return flags, edges

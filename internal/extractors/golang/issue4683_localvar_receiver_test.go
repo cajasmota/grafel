@@ -75,7 +75,7 @@ func TestGetCounts(t *T) {
 	if hit == nil {
 		t.Fatalf("expected CALLS edge to GetCounts on TestGetCounts")
 	}
-	if hit.Properties == nil || hit.Properties["receiver_type"] != "ProposalService" {
+	if hit.Properties == nil || hit.Properties.Get("receiver_type") != "ProposalService" {
 		t.Errorf("expected receiver_type=ProposalService, got %+v", hit.Properties)
 	}
 }
@@ -100,7 +100,7 @@ func TestServe(t *T) {
 	if hit == nil {
 		t.Fatalf("expected CALLS edge to Serve on TestServe")
 	}
-	if hit.Properties == nil || hit.Properties["receiver_type"] != "Handler" {
+	if hit.Properties == nil || hit.Properties.Get("receiver_type") != "Handler" {
 		t.Errorf("expected receiver_type=Handler, got %+v", hit.Properties)
 	}
 }
@@ -129,9 +129,9 @@ func TestCounter(t *T) {
 	if hit == nil {
 		t.Fatalf("expected CALLS edge to GetCounts on TestCounter")
 	}
-	if hit.Properties != nil && hit.Properties["receiver_type"] != "" {
+	if hit.Properties != nil && hit.Properties.Get("receiver_type") != "" {
 		t.Errorf("interface-factory local must stay bare; got receiver_type=%q",
-			hit.Properties["receiver_type"])
+			hit.Properties.Get("receiver_type"))
 	}
 }
 
@@ -159,8 +159,8 @@ func TestFind(t *T) {
 		// that's an acceptable honest exclusion.
 		return
 	}
-	if hit.Properties != nil && hit.Properties["receiver_type"] != "" {
+	if hit.Properties != nil && hit.Properties.Get("receiver_type") != "" {
 		t.Errorf("multi-return constructor local must stay bare; got receiver_type=%q",
-			hit.Properties["receiver_type"])
+			hit.Properties.Get("receiver_type"))
 	}
 }

@@ -127,19 +127,19 @@ func buildCopyImportEdge(usingFile string, cr copyResolution, line int) types.Re
 	if cr.resolved {
 		toID = cr.path
 	}
-	props := map[string]string{
-		"line":     strconv.Itoa(line),
-		"copybook": cr.book,
-		"resolved": strconv.FormatBool(cr.resolved),
+	props := types.Props{
+		{K: "copybook", V: cr.book},
+		{K: "line", V: strconv.Itoa(line)},
+		{K: "resolved", V: strconv.FormatBool(cr.resolved)},
 	}
 	if cr.resolved {
-		props["copybook_path"] = cr.path
+		props.Set("copybook_path", cr.path)
 	}
 	if cr.replacing != "" {
-		props["replacing"] = cr.replacing
+		props.Set("replacing", cr.replacing)
 		// Record the REPLACING pairs in a structured form for drift analysis.
 		if pairs := parseReplacingPairs(cr.replacing); pairs != "" {
-			props["replacing_pairs"] = pairs
+			props.Set("replacing_pairs", pairs)
 		}
 	}
 	return types.RelationshipRecord{
@@ -294,11 +294,11 @@ func extractSQLEntities(filePath, fnQName string, blk execBlock) []types.EntityR
 			FromID: fnRef,
 			ToID:   ref,
 			Kind:   relAccessesTab,
-			Properties: map[string]string{
-				"function_qname": fnQName,
-				"orm":            ormEmbeddedSQL,
-				"operation":      op,
-				"table":          table,
+			Properties: types.Props{
+				{K: "function_qname", V: fnQName},
+				{K: "operation", V: op},
+				{K: "orm", V: ormEmbeddedSQL},
+				{K: "table", V: table},
 			},
 		})
 		out = append(out, rec)
@@ -366,7 +366,7 @@ func extractSQLEntities(filePath, fnQName string, blk execBlock) []types.EntityR
 				FromID:     fnRef,
 				ToID:       cursorRef(filePath, cursor),
 				Kind:       "REFERENCES",
-				Properties: map[string]string{"cursor": cursor, "operation": verb},
+				Properties: types.Props{{K: "cursor", V: cursor}, {K: "operation", V: verb}},
 			}},
 			QualityScore: 0.75,
 		})
@@ -967,13 +967,13 @@ func buildDLISegmentEntity(filePath, fnQName, fnRef, op, segment string, line in
 		FromID: fnRef,
 		ToID:   ref,
 		Kind:   relAccessesTab,
-		Properties: map[string]string{
-			"function_qname": fnQName,
-			"orm":            ormIMSDLI,
-			"operation":      op,
-			"segment":        segment,
-			"via":            via,
-			"line":           strconv.Itoa(line),
+		Properties: types.Props{
+			{K: "function_qname", V: fnQName},
+			{K: "line", V: strconv.Itoa(line)},
+			{K: "operation", V: op},
+			{K: "orm", V: ormIMSDLI},
+			{K: "segment", V: segment},
+			{K: "via", V: via},
 		},
 	})
 	return rec
@@ -1020,15 +1020,15 @@ var dliFuncCodeReserved = map[string]bool{
 // cicsCallEdge builds the CALLS relationship for a CICS program/transaction
 // transfer. external=true (cross-program); via=EXEC-CICS-<VERB>.
 func cicsCallEdge(c cicsCmd, line int) types.RelationshipRecord {
-	props := map[string]string{
-		"line":     strconv.Itoa(line),
-		"via":      "EXEC-CICS-" + c.verb,
-		"external": "true",
+	props := types.Props{
+		{K: "external", V: "true"},
+		{K: "line", V: strconv.Itoa(line)},
+		{K: "via", V: "EXEC-CICS-" + c.verb},
 	}
 	if c.transid {
-		props["transid"] = c.target
+		props.Set("transid", c.target)
 	} else {
-		props["program"] = c.target
+		props.Set("program", c.target)
 	}
 	return types.RelationshipRecord{
 		ToID:       c.target,

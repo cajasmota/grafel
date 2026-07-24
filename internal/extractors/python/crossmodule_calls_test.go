@@ -81,15 +81,15 @@ class PlaceOrderSaga:
 			t.Errorf("CALLS to %q missing Properties — expected import_alias hint", c.ToID)
 			continue
 		}
-		if got := c.Properties["import_alias"]; got != "steps" {
+		if got := c.Properties.Get("import_alias"); got != "steps" {
 			t.Errorf("CALLS to %q: import_alias = %q, want %q", c.ToID, got, "steps")
 		}
-		if got := c.Properties["call_leaf"]; got != c.ToID {
+		if got := c.Properties.Get("call_leaf"); got != c.ToID {
 			t.Errorf("CALLS to %q: call_leaf = %q, want %q", c.ToID, got, c.ToID)
 		}
 		// The disposition_hint should NOT be set when import_alias is — the
 		// alias hint disambiguates the call precisely.
-		if _, has := c.Properties["disposition_hint"]; has {
+		if _, has := c.Properties.Lookup("disposition_hint"); has {
 			t.Errorf("CALLS to %q: disposition_hint set together with import_alias", c.ToID)
 		}
 	}
@@ -112,11 +112,11 @@ def checkout():
 	if c.ToID != "charge_card" {
 		t.Errorf("CALLS ToID = %q, want %q", c.ToID, "charge_card")
 	}
-	if c.Properties["import_alias"] != "billing" {
-		t.Errorf("import_alias = %q, want %q", c.Properties["import_alias"], "billing")
+	if c.Properties.Get("import_alias") != "billing" {
+		t.Errorf("import_alias = %q, want %q", c.Properties.Get("import_alias"), "billing")
 	}
-	if c.Properties["call_leaf"] != "charge_card" {
-		t.Errorf("call_leaf = %q, want %q", c.Properties["call_leaf"], "charge_card")
+	if c.Properties.Get("call_leaf") != "charge_card" {
+		t.Errorf("call_leaf = %q, want %q", c.Properties.Get("call_leaf"), "charge_card")
 	}
 }
 
@@ -141,7 +141,7 @@ def checkout():
 	}
 	// Direct bare-name call — no import_alias property should be stamped.
 	if c.Properties != nil {
-		if alias := c.Properties["import_alias"]; alias != "" {
+		if alias := c.Properties.Get("import_alias"); alias != "" {
 			t.Errorf("bare-name call must not carry import_alias (got %q)", alias)
 		}
 	}
@@ -185,11 +185,11 @@ func TestCrossModuleCall_NoImportNoAlias(t *testing.T) {
 		t.Errorf("CALLS ToID = %q, want %q", c.ToID, "pop")
 	}
 	if c.Properties != nil {
-		if alias := c.Properties["import_alias"]; alias != "" {
+		if alias := c.Properties.Get("import_alias"); alias != "" {
 			t.Errorf("non-import receiver must not carry import_alias (got %q)", alias)
 		}
-		if c.Properties["disposition_hint"] != "ambiguous" {
-			t.Errorf("non-import receiver: disposition_hint = %q, want %q", c.Properties["disposition_hint"], "ambiguous")
+		if c.Properties.Get("disposition_hint") != "ambiguous" {
+			t.Errorf("non-import receiver: disposition_hint = %q, want %q", c.Properties.Get("disposition_hint"), "ambiguous")
 		}
 	} else {
 		t.Errorf("expected disposition_hint=ambiguous Property, got nil Properties")
@@ -232,8 +232,8 @@ from ..shared import util
 		if imp.Properties == nil {
 			continue
 		}
-		local := imp.Properties["local_name"]
-		mod := imp.Properties["source_module"]
+		local := imp.Properties.Get("local_name")
+		mod := imp.Properties.Get("source_module")
 		if local == "" {
 			continue
 		}

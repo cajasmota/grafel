@@ -105,7 +105,7 @@ end
 		}
 		if en.Name == "User" && en.Subtype == "model" {
 			for _, r := range en.Relationships {
-				if r.Kind == "REFERENCES" && r.ToID == "Account" && r.Properties["fk_field"] == "account" {
+				if r.Kind == "REFERENCES" && r.ToID == "Account" && r.Properties.Get("fk_field") == "account" {
 					fkFound = true
 				}
 			}

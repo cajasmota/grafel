@@ -352,22 +352,22 @@ func goObservabilityEdges(body ts.Node, enclosingName, fromID string, metricReg 
 	out := make([]types.RelationshipRecord, 0, len(hits))
 	seen := make(map[string]bool)
 	for _, h := range hits {
-		props := map[string]string{
-			"library": h.library,
-			"api":     h.api,
-			"line":    strconv.Itoa(h.line),
-			"traced":  "true",
+		props := types.Props{
+			{K: "api", V: h.api},
+			{K: "library", V: h.library},
+			{K: "line", V: strconv.Itoa(h.line)},
+			{K: "traced", V: "true"},
 		}
 		prefix := h.kind + ":"
 		var toID string
 		if h.dynamic || h.name == "" {
-			props["dynamic"] = "true"
+			props.Set("dynamic", "true")
 			toID = prefix + enclosingName
 		} else {
 			if h.kind == "metric" {
-				props["metric_name"] = h.name
+				props.Set("metric_name", h.name)
 			} else {
-				props["span_name"] = h.name
+				props.Set("span_name", h.name)
 			}
 			toID = prefix + h.name
 		}

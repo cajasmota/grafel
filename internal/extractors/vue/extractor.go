@@ -568,9 +568,9 @@ func extractScriptCalls(scriptSrc, componentName string) []types.RelationshipRec
 		out = append(out, types.RelationshipRecord{
 			ToID: callee,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"caller":    componentName,
-				"framework": "vue",
+			Properties: types.Props{
+				{K: "caller", V: componentName},
+				{K: "framework", V: "vue"},
 			},
 		})
 	}
@@ -654,9 +654,9 @@ func extractTemplateRenders(templateSrc, componentName string) []types.Relations
 		out = append(out, types.RelationshipRecord{
 			ToID: tag,
 			Kind: "RENDERS",
-			Properties: map[string]string{
-				"renderer":  componentName,
-				"framework": "vue",
+			Properties: types.Props{
+				{K: "framework", V: "vue"},
+				{K: "renderer", V: componentName},
 			},
 		})
 	}
@@ -711,11 +711,11 @@ func extractContext(scriptSrc string, scriptOffset int, fullSrc, filePath, compo
 			rels = append(rels, types.RelationshipRecord{
 				ToID: name,
 				Kind: "USES",
-				Properties: map[string]string{
-					"component":    componentName,
-					"context_key":  key,
-					"context_role": role,
-					"framework":    "vue",
+				Properties: types.Props{
+					{K: "component", V: componentName},
+					{K: "context_key", V: key},
+					{K: "context_role", V: role},
+					{K: "framework", V: "vue"},
 				},
 			})
 		}
@@ -791,10 +791,10 @@ func extractComposables(scriptSrc string, scriptOffset int, fullSrc, filePath, c
 		rels = append(rels, types.RelationshipRecord{
 			ToID: hook,
 			Kind: "USES_HOOK",
-			Properties: map[string]string{
-				"consumer":  componentName,
-				"hook":      hook,
-				"framework": "vue",
+			Properties: types.Props{
+				{K: "consumer", V: componentName},
+				{K: "framework", V: "vue"},
+				{K: "hook", V: hook},
 			},
 		})
 	}
@@ -835,10 +835,10 @@ func extractDataFlow(scriptSrc string, scriptOffset int, fullSrc, filePath, comp
 		rels = append(rels, types.RelationshipRecord{
 			ToID: name,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component": componentName,
-				"framework": "vue",
-				"subtype":   subtype,
+			Properties: types.Props{
+				{K: "component", V: componentName},
+				{K: "framework", V: "vue"},
+				{K: "subtype", V: subtype},
 			},
 		})
 	}
@@ -976,10 +976,10 @@ func extractBranchConditions(templateSrc string, templateOffset int, fullSrc, fi
 		rels = append(rels, types.RelationshipRecord{
 			ToID: safe,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component":   componentName,
-				"branch_kind": kind,
-				"framework":   "vue",
+			Properties: types.Props{
+				{K: "branch_kind", V: kind},
+				{K: "component", V: componentName},
+				{K: "framework", V: "vue"},
 			},
 		})
 	}
@@ -1063,10 +1063,10 @@ func extractDirectives(templateSrc string, templateOffset int, fullSrc, filePath
 		rels = append(rels, types.RelationshipRecord{
 			ToID: safe,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component": componentName,
-				"directive": directive,
-				"framework": "vue",
+			Properties: types.Props{
+				{K: "component", V: componentName},
+				{K: "directive", V: directive},
+				{K: "framework", V: "vue"},
 			},
 		})
 	}
@@ -1123,11 +1123,11 @@ func extractSlots(templateSrc string, templateOffset int, fullSrc, filePath, com
 		rels = append(rels, types.RelationshipRecord{
 			ToID: safe,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component": componentName,
-				"slot_name": name,
-				"slot_role": role,
-				"framework": "vue",
+			Properties: types.Props{
+				{K: "component", V: componentName},
+				{K: "framework", V: "vue"},
+				{K: "slot_name", V: name},
+				{K: "slot_role", V: role},
 			},
 		})
 	}
@@ -1179,12 +1179,12 @@ func extractScriptNavigation(scriptSrc string, scriptOffset int, fullSrc, compon
 		rels = append(rels, types.RelationshipRecord{
 			ToID: "route:" + route,
 			Kind: "NAVIGATES_TO",
-			Properties: map[string]string{
-				"route":     route,
-				"via":       via,
-				"caller":    componentName,
-				"framework": "vue",
-				"line":      fmt.Sprintf("%d", lineOf(fullSrc, scriptOffset+off)),
+			Properties: types.Props{
+				{K: "caller", V: componentName},
+				{K: "framework", V: "vue"},
+				{K: "line", V: fmt.Sprintf("%d", lineOf(fullSrc, scriptOffset+off))},
+				{K: "route", V: route},
+				{K: "via", V: via},
 			},
 		})
 	}
@@ -1241,12 +1241,12 @@ func extractRouterLinks(templateSrc string, templateOffset int, fullSrc, compone
 		rels = append(rels, types.RelationshipRecord{
 			ToID: "route:" + route,
 			Kind: "NAVIGATES_TO",
-			Properties: map[string]string{
-				"route":     route,
-				"via":       "router_link",
-				"caller":    componentName,
-				"framework": "vue",
-				"line":      fmt.Sprintf("%d", lineOf(fullSrc, templateOffset+m[0])),
+			Properties: types.Props{
+				{K: "caller", V: componentName},
+				{K: "framework", V: "vue"},
+				{K: "line", V: fmt.Sprintf("%d", lineOf(fullSrc, templateOffset+m[0]))},
+				{K: "route", V: route},
+				{K: "via", V: "router_link"},
 			},
 		})
 	}
@@ -1302,11 +1302,11 @@ func extractStateSetters(scriptSrc string, scriptOffset int, fullSrc, filePath, 
 			Relationships: []types.RelationshipRecord{{
 				ToID: "state:" + stateName,
 				Kind: "WRITES_TO",
-				Properties: map[string]string{
-					"setter":    name,
-					"state":     stateName,
-					"component": componentName,
-					"framework": "vue",
+				Properties: types.Props{
+					{K: "component", V: componentName},
+					{K: "framework", V: "vue"},
+					{K: "setter", V: name},
+					{K: "state", V: stateName},
 				},
 			}},
 		}
@@ -1370,8 +1370,8 @@ func buildVueImportEntities(filePath, scriptSrc string, scriptOffset int, fullSr
 					FromID: filePath,
 					ToID:   modulePath,
 					Kind:   "IMPORTS",
-					Properties: map[string]string{
-						"source_module": modulePath,
+					Properties: types.Props{
+						{K: "source_module", V: modulePath},
 					},
 				},
 			},

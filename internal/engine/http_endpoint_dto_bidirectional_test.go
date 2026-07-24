@@ -68,8 +68,8 @@ func TestResolveHTTPEndpointHandlers_DTOHandlerBidirectional_RequestBody(t *test
 	if rel.ToID != "ep-post-orders" {
 		t.Errorf("want ToID=ep-post-orders, got %q", rel.ToID)
 	}
-	if rel.Properties["reference_kind"] != "request_body" {
-		t.Errorf("want reference_kind=request_body, got %q", rel.Properties["reference_kind"])
+	if rel.Properties.Get("reference_kind") != "request_body" {
+		t.Errorf("want reference_kind=request_body, got %q", rel.Properties.Get("reference_kind"))
 	}
 }
 
@@ -105,9 +105,9 @@ func TestResolveHTTPEndpointHandlers_DTOHandlerBidirectional_ResponseBody(t *tes
 	if dto == nil || len(dto.Relationships) != 1 {
 		t.Fatalf("DTO missing REFERENCES edge")
 	}
-	if dto.Relationships[0].Properties["reference_kind"] != "response_body" {
+	if dto.Relationships[0].Properties.Get("reference_kind") != "response_body" {
 		t.Errorf("want reference_kind=response_body, got %q",
-			dto.Relationships[0].Properties["reference_kind"])
+			dto.Relationships[0].Properties.Get("reference_kind"))
 	}
 }
 

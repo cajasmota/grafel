@@ -30,7 +30,7 @@ func relWithProp(rec *types.EntityRecord, kind, toID, key, val string) bool {
 		return false
 	}
 	for _, r := range rec.Relationships {
-		if r.Kind == kind && r.ToID == toID && r.Properties[key] == val {
+		if r.Kind == kind && r.ToID == toID && r.Properties.Get(key) == val {
 			return true
 		}
 	}

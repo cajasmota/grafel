@@ -176,13 +176,13 @@ func (x *extractor) angularRouteGuardEdges(obj ts.Node, route, owner string) []t
 			FromID: owner,
 			ToID:   target,
 			Kind:   string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"framework": "angular",
-				"di_role":   role,
-				"route":     route,
-				"route_key": key,
-				"owner":     owner,
-				"via":       "angular_route_config",
+			Properties: types.Props{
+				{K: "di_role", V: role},
+				{K: "framework", V: "angular"},
+				{K: "owner", V: owner},
+				{K: "route", V: route},
+				{K: "route_key", V: key},
+				{K: "via", V: "angular_route_config"},
 			},
 		})
 	}

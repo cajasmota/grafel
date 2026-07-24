@@ -63,7 +63,7 @@ func hasEdgeAny(recs []types.EntityRecord, test, prod string) bool {
 			continue
 		}
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == prod {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == prod {
 				return true
 			}
 		}
@@ -669,7 +669,7 @@ def test_addition(a, b, expected):
 	ref := rec.Properties["ref"]
 	testsEdge := false
 	for _, rel := range rec.Relationships {
-		if rel.Kind == "TESTS" && rel.FromID == ref && rel.Properties["tested"] == "add_numbers" {
+		if rel.Kind == "TESTS" && rel.FromID == ref && rel.Properties.Get("tested") == "add_numbers" {
 			testsEdge = true
 		}
 	}
@@ -905,7 +905,7 @@ end`
 	for _, r := range recs {
 		if r.Properties["tested_function"] == "User" && r.Properties["confidence"] == "medium" {
 			for _, rel := range r.Relationships {
-				if rel.Kind == "TESTS" && rel.Properties["tested"] == "User" {
+				if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "User" {
 					found = true
 				}
 			}
@@ -916,7 +916,7 @@ end`
 		for _, r := range recs {
 			t.Logf("  entity: test_function=%q tested=%q confidence=%q", r.Properties["test_function"], r.Properties["tested_function"], r.Properties["confidence"])
 			for _, rel := range r.Relationships {
-				t.Logf("    TESTS->%q conf=%q", rel.Properties["tested"], rel.Properties["confidence"])
+				t.Logf("    TESTS->%q conf=%q", rel.Properties.Get("tested"), rel.Properties.Get("confidence"))
 			}
 		}
 	}
@@ -944,7 +944,7 @@ end`
 	for _, r := range recs {
 		if r.Properties["confidence"] == "high" {
 			for _, rel := range r.Relationships {
-				if rel.Kind == "TESTS" && (rel.Properties["tested"] == "User.create" || rel.Properties["tested"] == "User") {
+				if rel.Kind == "TESTS" && (rel.Properties.Get("tested") == "User.create" || rel.Properties.Get("tested") == "User") {
 					highFound = true
 				}
 			}
@@ -987,7 +987,7 @@ end`
 			continue
 		}
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "UsersController" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "UsersController" {
 				found = true
 			}
 		}
@@ -1022,7 +1022,7 @@ end`
 			continue
 		}
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && (rel.Properties["tested"] == "Product.find" || rel.Properties["tested"] == "Product") {
+			if rel.Kind == "TESTS" && (rel.Properties.Get("tested") == "Product.find" || rel.Properties.Get("tested") == "Product") {
 				found = true
 			}
 		}
@@ -1092,7 +1092,7 @@ end`
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && (rel.Properties["tested"] == "User.new" || rel.Properties["tested"] == "User") {
+			if rel.Kind == "TESTS" && (rel.Properties.Get("tested") == "User.new" || rel.Properties.Get("tested") == "User") {
 				found = true
 			}
 		}
@@ -1161,7 +1161,7 @@ end`
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && strings.HasPrefix(rel.Properties["tested"], "ImportJob") {
+			if rel.Kind == "TESTS" && strings.HasPrefix(rel.Properties.Get("tested"), "ImportJob") {
 				found = true
 			}
 		}
@@ -1273,7 +1273,7 @@ end`
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "UsersController" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "UsersController" {
 				found = true
 			}
 		}
@@ -1372,11 +1372,11 @@ class UserServiceTest {
 	// Confidence must be high (direct call), and assertEquals must NOT leak.
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Properties["tested"] == "svc.register" && rel.Properties["confidence"] != "high" {
-				t.Errorf("register edge confidence=%q, want high", rel.Properties["confidence"])
+			if rel.Properties.Get("tested") == "svc.register" && rel.Properties.Get("confidence") != "high" {
+				t.Errorf("register edge confidence=%q, want high", rel.Properties.Get("confidence"))
 			}
-			if strings.Contains(rel.Properties["tested"], "assertEquals") {
-				t.Errorf("assertEquals leaked as a tested subject: %q", rel.Properties["tested"])
+			if strings.Contains(rel.Properties.Get("tested"), "assertEquals") {
+				t.Errorf("assertEquals leaked as a tested subject: %q", rel.Properties.Get("tested"))
 			}
 		}
 	}
@@ -1429,7 +1429,7 @@ class UserServiceTest {
 	for _, r := range recs {
 		if r.Properties["tested_function"] == "UserService" && r.Properties["confidence"] == "medium" {
 			for _, rel := range r.Relationships {
-				if rel.Kind == "TESTS" && rel.Properties["tested"] == "UserService" {
+				if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "UserService" {
 					found = true
 				}
 			}
@@ -1462,8 +1462,8 @@ class UserServiceSpec : StringSpec({
 	// shouldBe matcher must never leak as a tested subject.
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if strings.Contains(rel.Properties["tested"], "shouldBe") {
-				t.Errorf("kotest matcher shouldBe leaked as tested subject: %q", rel.Properties["tested"])
+			if strings.Contains(rel.Properties.Get("tested"), "shouldBe") {
+				t.Errorf("kotest matcher shouldBe leaked as tested subject: %q", rel.Properties.Get("tested"))
 			}
 		}
 	}
@@ -1538,7 +1538,7 @@ class CheckoutTest {
 	// (gateway.charge) must never appear as tested subjects.
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			tested := rel.Properties["tested"]
+			tested := rel.Properties.Get("tested")
 			switch tested {
 			case "every", "verify", "mockk", "any", "gateway.charge":
 				t.Errorf("MockK helper/mocked-call %q leaked as tested subject", tested)
@@ -1619,10 +1619,10 @@ public class OrderServiceTests
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "OrderService" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "OrderService" {
 				found = true
-				if rel.Properties["confidence"] != "high" {
-					t.Errorf("expected high confidence for OrderService call, got %q", rel.Properties["confidence"])
+				if rel.Properties.Get("confidence") != "high" {
+					t.Errorf("expected high confidence for OrderService call, got %q", rel.Properties.Get("confidence"))
 				}
 			}
 		}
@@ -1632,7 +1632,7 @@ public class OrderServiceTests
 		for _, r := range recs {
 			t.Logf("  entity: test_function=%q tested=%q conf=%q", r.Properties["test_function"], r.Properties["tested_function"], r.Properties["confidence"])
 			for _, rel := range r.Relationships {
-				t.Logf("    TESTS->%q conf=%q", rel.Properties["tested"], rel.Properties["confidence"])
+				t.Logf("    TESTS->%q conf=%q", rel.Properties.Get("tested"), rel.Properties.Get("confidence"))
 			}
 		}
 	}
@@ -1662,7 +1662,7 @@ public class CalculatorTests
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "Calculator" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "Calculator" {
 				found = true
 			}
 		}
@@ -1735,7 +1735,7 @@ public class UserServiceTests
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "UserService" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "UserService" {
 				found = true
 			}
 		}
@@ -1767,7 +1767,7 @@ public class CalculatorTests
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "Calculator" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "Calculator" {
 				found = true
 			}
 		}
@@ -1802,7 +1802,7 @@ public class PaymentServiceTests
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "PaymentService" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "PaymentService" {
 				found = true
 			}
 		}
@@ -1843,7 +1843,7 @@ public class IntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "Program" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "Program" {
 				found = true
 			}
 		}
@@ -1853,7 +1853,7 @@ public class IntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 		for _, r := range recs {
 			t.Logf("  entity: tested=%q conf=%q", r.Properties["tested_function"], r.Properties["confidence"])
 			for _, rel := range r.Relationships {
-				t.Logf("    TESTS->%q conf=%q", rel.Properties["tested"], rel.Properties["confidence"])
+				t.Logf("    TESTS->%q conf=%q", rel.Properties.Get("tested"), rel.Properties.Get("confidence"))
 			}
 		}
 	}
@@ -1880,9 +1880,9 @@ public class OrderServiceTests
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
 			if rel.Kind == "TESTS" {
-				tested := strings.ToLower(rel.Properties["tested"])
+				tested := strings.ToLower(rel.Properties.Get("tested"))
 				if strings.HasPrefix(tested, "assert.") {
-					t.Errorf("Assert.* call leaked as TESTS target: %q", rel.Properties["tested"])
+					t.Errorf("Assert.* call leaked as TESTS target: %q", rel.Properties.Get("tested"))
 				}
 			}
 		}
@@ -1912,7 +1912,7 @@ public class OrderServiceTests
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && (rel.Properties["tested"] == "OrderService" || rel.Properties["tested"] == "_sut.Place") {
+			if rel.Kind == "TESTS" && (rel.Properties.Get("tested") == "OrderService" || rel.Properties.Get("tested") == "_sut.Place") {
 				found = true
 			}
 		}
@@ -1921,7 +1921,7 @@ public class OrderServiceTests
 		t.Errorf("expected TESTS edge targeting OrderService or _sut.Place; recs=%d", len(recs))
 		for _, r := range recs {
 			for _, rel := range r.Relationships {
-				t.Logf("  TESTS->%q conf=%q", rel.Properties["tested"], rel.Properties["confidence"])
+				t.Logf("  TESTS->%q conf=%q", rel.Properties.Get("tested"), rel.Properties.Get("confidence"))
 			}
 		}
 	}
@@ -1986,7 +1986,7 @@ public class OrderServiceTests
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "OrderService" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "OrderService" {
 				found = true
 			}
 		}
@@ -2015,7 +2015,7 @@ func TestCSharp_FilenameConventionOnly(t *testing.T) {
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "ProductRepository" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "ProductRepository" {
 				found = true
 			}
 		}
@@ -3386,12 +3386,12 @@ func TestIssue3173_Pytest_DjangoTestCase_EmitsTESTSEdge(t *testing.T) {
 			if rel.Kind != "TESTS" {
 				continue
 			}
-			if rel.Properties["tested"] == "resolve_device" {
+			if rel.Properties.Get("tested") == "resolve_device" {
 				foundResolveDevice = true
 			}
 			// HTTP test client calls must NOT be emitted as TESTS targets.
 			for _, banned := range []string{"post", "get", "assertEqual"} {
-				if rel.Properties["tested"] == banned {
+				if rel.Properties.Get("tested") == banned {
 					t.Errorf("TESTS edge target %q is a test infrastructure call, not a production function", banned)
 				}
 			}
@@ -3403,7 +3403,7 @@ func TestIssue3173_Pytest_DjangoTestCase_EmitsTESTSEdge(t *testing.T) {
 			t.Logf("  entity: test_function=%q tested=%q", r.Properties["test_function"], r.Properties["tested_function"])
 			for _, rel := range r.Relationships {
 				if rel.Kind == "TESTS" {
-					t.Logf("    TESTS->%q", rel.Properties["tested"])
+					t.Logf("    TESTS->%q", rel.Properties.Get("tested"))
 				}
 			}
 		}
@@ -3425,7 +3425,7 @@ func TestIssue3173_Jest_EmitsTESTSEdge(t *testing.T) {
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
 			if rel.Kind == "TESTS" {
-				targets[rel.Properties["tested"]] = true
+				targets[rel.Properties.Get("tested")] = true
 			}
 		}
 	}
@@ -3519,7 +3519,7 @@ func TestOrdersRouter(t *testing.T) {
 	found := false
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "router.ServeHTTP" {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "router.ServeHTTP" {
 				found = true
 				break
 			}

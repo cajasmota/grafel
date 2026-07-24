@@ -20,7 +20,7 @@ func findImplements(recs []types.EntityRecord, baseName string) *types.Relations
 	for ri := range recs {
 		for rj := range recs[ri].Relationships {
 			r := &recs[ri].Relationships[rj]
-			if r.Kind == "IMPLEMENTS" && r.Properties["base_name"] == baseName {
+			if r.Kind == "IMPLEMENTS" && r.Properties.Get("base_name") == baseName {
 				return r
 			}
 		}
@@ -38,11 +38,11 @@ func TestRubyInclude_EmitsImplementsToModule(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected IMPLEMENTS edge to Greet, got entities=%v", entityNames(got))
 	}
-	if edge.Properties["kind"] != "ruby_mixin" {
-		t.Errorf("kind=%q, want ruby_mixin", edge.Properties["kind"])
+	if edge.Properties.Get("kind") != "ruby_mixin" {
+		t.Errorf("kind=%q, want ruby_mixin", edge.Properties.Get("kind"))
 	}
-	if edge.Properties["mixin_op"] != "include" {
-		t.Errorf("mixin_op=%q, want include", edge.Properties["mixin_op"])
+	if edge.Properties.Get("mixin_op") != "include" {
+		t.Errorf("mixin_op=%q, want include", edge.Properties.Get("mixin_op"))
 	}
 	if edge.FromID != classRef("app/models/user.rb", "User", "ruby") {
 		t.Errorf("FromID=%q, want User class ref", edge.FromID)
@@ -61,8 +61,8 @@ func TestRubyPrepend_RecordsPrependOp(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected IMPLEMENTS edge to Loud")
 	}
-	if edge.Properties["mixin_op"] != "prepend" {
-		t.Errorf("mixin_op=%q, want prepend", edge.Properties["mixin_op"])
+	if edge.Properties.Get("mixin_op") != "prepend" {
+		t.Errorf("mixin_op=%q, want prepend", edge.Properties.Get("mixin_op"))
 	}
 }
 
@@ -75,8 +75,8 @@ func TestRubyExtend_RecordsExtendOp(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected IMPLEMENTS edge to ClassMethods")
 	}
-	if edge.Properties["mixin_op"] != "extend" {
-		t.Errorf("mixin_op=%q, want extend", edge.Properties["mixin_op"])
+	if edge.Properties.Get("mixin_op") != "extend" {
+		t.Errorf("mixin_op=%q, want extend", edge.Properties.Get("mixin_op"))
 	}
 }
 
@@ -124,8 +124,8 @@ func TestPHPTrait_EmitsImplementsToTrait(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected IMPLEMENTS edge to Audit, got entities=%v", entityNames(got))
 	}
-	if edge.Properties["kind"] != "php_trait" {
-		t.Errorf("kind=%q, want php_trait", edge.Properties["kind"])
+	if edge.Properties.Get("kind") != "php_trait" {
+		t.Errorf("kind=%q, want php_trait", edge.Properties.Get("kind"))
 	}
 	if edge.FromID != classRef("src/Order.php", "Order", "php") {
 		t.Errorf("FromID=%q, want Order class ref", edge.FromID)
@@ -153,10 +153,10 @@ func TestPHPTrait_MultipleAndNamespaced(t *testing.T) {
 func TestPHPTrait_TopLevelImportNotTrait(t *testing.T) {
 	src := "<?php\nnamespace App;\nuse Foo\\Bar;\nuse Psr\\Log\\LoggerInterface;\nclass Svc extends Base {\n}\n"
 	got := runExtract(t, "php", "Svc.php", src)
-	if edge := findImplements(got, "Bar"); edge != nil && edge.Properties["kind"] == "php_trait" {
+	if edge := findImplements(got, "Bar"); edge != nil && edge.Properties.Get("kind") == "php_trait" {
 		t.Errorf("top-level import use Foo\\Bar must not be a php_trait edge, got %+v", edge)
 	}
-	if edge := findImplements(got, "LoggerInterface"); edge != nil && edge.Properties["kind"] == "php_trait" {
+	if edge := findImplements(got, "LoggerInterface"); edge != nil && edge.Properties.Get("kind") == "php_trait" {
 		t.Errorf("top-level import must not be a php_trait edge, got %+v", edge)
 	}
 }

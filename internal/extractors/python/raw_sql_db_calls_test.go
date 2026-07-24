@@ -110,7 +110,7 @@ def create_table(conn):
 		return // function not emitted — test moot
 	}
 	for _, r := range fn.Relationships {
-		if (r.Kind == "CALLS" || r.Kind == "READS_FROM") && r.Properties["raw_sql"] == "true" {
+		if (r.Kind == "CALLS" || r.Kind == "READS_FROM") && r.Properties.Get("raw_sql") == "true" {
 			t.Errorf("unexpected raw SQL edge from create_table: %+v", r)
 		}
 	}

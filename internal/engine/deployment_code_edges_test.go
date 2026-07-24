@@ -69,7 +69,7 @@ spec:
 	if e == nil {
 		t.Fatalf("expected DEPLOYS %s -> %s; rels=%v", from, to, rels)
 	}
-	if e.Properties["inferred"] != "true" || e.Properties["match"] != "image_repo" {
+	if e.Properties.Get("inferred") != "true" || e.Properties.Get("match") != "image_repo" {
 		t.Fatalf("expected inferred=true match=image_repo; got %v", e.Properties)
 	}
 	// The canonical code service target node must be minted.

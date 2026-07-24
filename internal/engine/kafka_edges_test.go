@@ -933,8 +933,8 @@ public class OrderPublisher
 		if strings.Contains(p.FromID, "Emit") {
 			foundCaller = true
 		}
-		if p.Properties["messaging_layer"] != "confluent-kafka-dotnet" {
-			t.Errorf("messaging_layer = %q, want confluent-kafka-dotnet", p.Properties["messaging_layer"])
+		if p.Properties.Get("messaging_layer") != "confluent-kafka-dotnet" {
+			t.Errorf("messaging_layer = %q, want confluent-kafka-dotnet", p.Properties.Get("messaging_layer"))
 		}
 	}
 	if !foundTopic {
@@ -1016,7 +1016,7 @@ public class PartitionConsumer
 	found := false
 	for _, s := range sub {
 		if strings.Contains(s.ToID, "kafka:inventory.reserved") &&
-			s.Properties["assignment"] == "manual" &&
+			s.Properties.Get("assignment") == "manual" &&
 			strings.Contains(s.FromID, "Pin") {
 			found = true
 		}
@@ -1045,7 +1045,7 @@ func TestKafka_CSharp_AssignNoMatch(t *testing.T) {
 public class P { public void Pub(IProducer<Null,string> p) { p.Produce("orders", new Message<Null,string>()); } }`
 	_, rels := runKafkaDetect(t, "csharp", "src/P.cs", src)
 	for _, r := range rels {
-		if r.Properties["assignment"] == "manual" {
+		if r.Properties.Get("assignment") == "manual" {
 			t.Fatalf("unexpected manual assignment edge: %v", r)
 		}
 	}

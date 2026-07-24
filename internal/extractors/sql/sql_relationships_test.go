@@ -134,8 +134,8 @@ func TestSQLExtractor_InlineForeignKey(t *testing.T) {
 		for _, r := range e.Relationships {
 			if r.Kind == "REFERENCES" && r.ToID == "accounts" {
 				found = true
-				if r.Properties["reference_kind"] != "foreign_key" {
-					t.Errorf("expected reference_kind=foreign_key, got %q", r.Properties["reference_kind"])
+				if r.Properties.Get("reference_kind") != "foreign_key" {
+					t.Errorf("expected reference_kind=foreign_key, got %q", r.Properties.Get("reference_kind"))
 				}
 				// Issue #141: FromID must be a Format B structural-ref.
 				wantFrom := "scope:schema:column:sql:migrations/001_init.sql:sessions#account_id"

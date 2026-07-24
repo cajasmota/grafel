@@ -43,16 +43,16 @@ function processChecklist() {
 		if r.Properties == nil {
 			t.Fatalf("DISCRIMINATES_ON edge has nil Properties; want line+literal")
 		}
-		if r.Properties["literal"] != "2" {
-			t.Errorf("Properties[literal]=%q, want %q", r.Properties["literal"], "2")
+		if r.Properties.Get("literal") != "2" {
+			t.Errorf("Properties[literal]=%q, want %q", r.Properties.Get("literal"), "2")
 		}
-		if r.Properties["line"] == "" {
+		if r.Properties.Get("line") == "" {
 			t.Errorf("Properties[line] is empty, want non-empty 1-indexed line")
 		}
 		// The comparison sits on line 3 of the snippet (line 1 = leading blank,
 		// line 2 = `function processChecklist() {`, line 3 = the const assignment).
-		if r.Properties["line"] != "3" {
-			t.Errorf("Properties[line]=%q, want %q", r.Properties["line"], "3")
+		if r.Properties.Get("line") != "3" {
+			t.Errorf("Properties[line]=%q, want %q", r.Properties.Get("line"), "3")
 		}
 	}
 	if !found {
@@ -85,7 +85,7 @@ function processChecklist() {
 	byTarget := map[string]map[string]string{}
 	for _, r := range e.Relationships {
 		if r.Kind == "DISCRIMINATES_ON" {
-			byTarget[r.ToID] = r.Properties
+			byTarget[r.ToID] = r.Properties.Snapshot()
 		}
 	}
 	if len(byTarget) < 2 {

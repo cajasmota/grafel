@@ -143,10 +143,10 @@ func applyKubernetesEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   kind,
-			Properties: map[string]string{
-				"language":  "yaml",
-				"k8s_edge":  edgeType,
-				"synthesis": "kubernetes_edges",
+			Properties: types.Props{
+				{K: "k8s_edge", V: edgeType},
+				{K: "language", V: "yaml"},
+				{K: "synthesis", V: "kubernetes_edges"},
 			},
 		})
 	}

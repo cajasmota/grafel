@@ -73,13 +73,13 @@ func applyGraphQLSubscriptionSynthesis(args DetectorPassArgs) DetectorPassResult
 			}
 			return id
 		}
-		props := map[string]string{
-			"field_name":   fieldName,
-			"framework":    framework,
-			"pattern_type": "graphql_subscription_synthesis",
+		props := types.Props{
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: framework},
+			{K: "pattern_type", V: "graphql_subscription_synthesis"},
 		}
 		if args != "" {
-			props["args"] = args
+			props.Set("args", args)
 		}
 		entities = append(entities, types.EntityRecord{
 			ID:                 id,
@@ -87,7 +87,7 @@ func applyGraphQLSubscriptionSynthesis(args DetectorPassArgs) DetectorPassResult
 			Kind:               graphqlSubscriptionKind,
 			SourceFile:         path,
 			Language:           lang,
-			Properties:         props,
+			Properties:         props.Snapshot(),
 			EnrichmentRequired: false,
 			EnrichmentStatus:   types.StatusPending,
 			QualityScore:       0.8,
@@ -96,14 +96,11 @@ func applyGraphQLSubscriptionSynthesis(args DetectorPassArgs) DetectorPassResult
 		return id
 	}
 
-	emitEdge := func(kind, fromID, toID string, props map[string]string) {
+	emitEdge := func(kind, fromID, toID string, props types.Props) {
 		if fromID == "" || toID == "" {
 			return
 		}
-		if props == nil {
-			props = map[string]string{}
-		}
-		props["pattern_type"] = "graphql_subscription_synthesis"
+		props.Set("pattern_type", "graphql_subscription_synthesis")
 		relationships = append(relationships, types.RelationshipRecord{
 			FromID:     fromID,
 			ToID:       toID,
@@ -143,7 +140,7 @@ var graphqlSdlFieldRe = regexp.MustCompile(
 func synthGraphQLSchema(
 	src, path, lang string,
 	emitSub func(field, framework, args string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	// Lightweight prefilter: file must mention "type Subscription".
 	if !strings.Contains(src, "type Subscription") {
@@ -170,12 +167,12 @@ func synthGraphQLSchema(
 			if id == "" {
 				continue
 			}
-			props := map[string]string{
-				"framework":  "graphql_sdl",
-				"field_name": field,
+			props := types.Props{
+				{K: "field_name", V: field},
+				{K: "framework", V: "graphql_sdl"},
 			}
 			if args != "" {
-				props["args"] = args
+				props.Set("args", args)
 			}
 			emitEdge(
 				string(types.RelationshipKindGraphQLPublishes),
@@ -226,7 +223,7 @@ var graphqlResolverFieldRe = regexp.MustCompile(
 func synthGraphQLResolvers(
 	src, path, lang string,
 	emitSub func(field, framework, args string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "Subscription:") && !strings.Contains(src, "Subscription :") {
 		return
@@ -252,12 +249,12 @@ func synthGraphQLResolvers(
 			if id == "" {
 				continue
 			}
-			props := map[string]string{
-				"framework":  "apollo_resolver",
-				"field_name": field,
+			props := types.Props{
+				{K: "field_name", V: field},
+				{K: "framework", V: "apollo_resolver"},
 			}
 			if filtered {
-				props["filtered"] = "true"
+				props.Set("filtered", "true")
 			}
 			emitEdge(
 				string(types.RelationshipKindGraphQLPublishes),
@@ -295,7 +292,7 @@ var graphqlClientHookRe = regexp.MustCompile(
 func synthGraphQLClientSubscriptions(
 	src, path, lang string,
 	emitSub func(field, framework, args string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	// Lightweight prefilter — file must mention `subscription` as a keyword.
 	// SDL `type Subscription` doesn't match the lowercase form below, so we
@@ -344,12 +341,12 @@ func synthGraphQLClientSubscriptions(
 		if caller == "" {
 			fromID = "Function:" + sanitiseID(path)
 		}
-		props := map[string]string{
-			"framework":  framework,
-			"field_name": field,
+		props := types.Props{
+			{K: "field_name", V: field},
+			{K: "framework", V: framework},
 		}
 		if args != "" {
-			props["args"] = args
+			props.Set("args", args)
 		}
 		emitEdge(
 			string(types.RelationshipKindGraphQLSubscribes),

@@ -106,7 +106,7 @@ func callToID(merged []types.EntityRecord, srcFile, caller, leaf string) (string
 			if r.Kind != "CALLS" {
 				continue
 			}
-			if r.Properties["call_leaf"] == leaf || r.ToID == leaf {
+			if r.Properties.Get("call_leaf") == leaf || r.ToID == leaf {
 				return r.ToID, true
 			}
 		}
@@ -159,10 +159,10 @@ func TestIssue4373_CrateAbsoluteCall_NameCollision(t *testing.T) {
 			continue
 		}
 		for _, r := range merged[k].Relationships {
-			if r.Kind == "CALLS" && r.Properties["call_leaf"] == "place_order" {
+			if r.Kind == "CALLS" && r.Properties.Get("call_leaf") == "place_order" {
 				stamped = true
-				stampedDirs = r.Properties["rust_call_pkg_dirs"]
-				stampedLeaf = r.Properties["call_leaf"]
+				stampedDirs = r.Properties.Get("rust_call_pkg_dirs")
+				stampedLeaf = r.Properties.Get("call_leaf")
 			}
 		}
 	}
@@ -267,9 +267,9 @@ func TestIssue4373_NoFalseStampOnBareOrReceiverCall(t *testing.T) {
 	merged := extractRustCrateForTest(t, files)
 	for k := range merged {
 		for _, r := range merged[k].Relationships {
-			if r.Kind == "CALLS" && r.Properties["rust_call_pkg_dirs"] != "" {
+			if r.Kind == "CALLS" && r.Properties.Get("rust_call_pkg_dirs") != "" {
 				t.Errorf("non-path call %q wrongly stamped rust_call_pkg_dirs=%q",
-					r.Properties["call_leaf"], r.Properties["rust_call_pkg_dirs"])
+					r.Properties.Get("call_leaf"), r.Properties.Get("rust_call_pkg_dirs"))
 			}
 		}
 	}
@@ -305,8 +305,8 @@ func TestIssue4373_TypeAssocCall(t *testing.T) {
 			continue
 		}
 		for _, r := range merged[k].Relationships {
-			if r.Kind == "CALLS" && r.Properties["call_leaf"] == "new" {
-				scopeStamped = r.Properties["rust_call_scope"]
+			if r.Kind == "CALLS" && r.Properties.Get("call_leaf") == "new" {
+				scopeStamped = r.Properties.Get("rust_call_scope")
 			}
 		}
 	}

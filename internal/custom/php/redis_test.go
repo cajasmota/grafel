@@ -56,8 +56,8 @@ func TestPHPRedis_Get_ReadsFromLiteralKey(t *testing.T) {
 	if rel == nil {
 		t.Fatalf("expected READS_FROM edge to %q", ref)
 	}
-	if rel.Properties["keyspace"] != "session:abc" {
-		t.Errorf("keyspace prop = %q, want session:abc", rel.Properties["keyspace"])
+	if rel.Properties.Get("keyspace") != "session:abc" {
+		t.Errorf("keyspace prop = %q, want session:abc", rel.Properties.Get("keyspace"))
 	}
 }
 
@@ -101,8 +101,8 @@ func TestPHPRedis_Publish_PublishesToChannel(t *testing.T) {
 	if rel == nil {
 		t.Fatalf("expected PUBLISHES_TO edge to channel %q", ref)
 	}
-	if rel.Properties["channel"] != "events" {
-		t.Errorf("channel prop = %q, want events", rel.Properties["channel"])
+	if rel.Properties.Get("channel") != "events" {
+		t.Errorf("channel prop = %q, want events", rel.Properties.Get("channel"))
 	}
 }
 
@@ -120,8 +120,8 @@ func TestPHPRedis_Xadd_WritesToStream(t *testing.T) {
 	if rel == nil {
 		t.Fatalf("expected WRITES_TO edge to stream %q", ref)
 	}
-	if rel.Properties["stream"] != "orders" {
-		t.Errorf("stream prop = %q, want orders", rel.Properties["stream"])
+	if rel.Properties.Get("stream") != "orders" {
+		t.Errorf("stream prop = %q, want orders", rel.Properties.Get("stream"))
 	}
 }
 

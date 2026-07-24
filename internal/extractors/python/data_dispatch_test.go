@@ -39,9 +39,9 @@ func ddExtract(t *testing.T, filePath, src string) []ddRel {
 				out = append(out, ddRel{
 					from:         e.Name,
 					toID:         r.ToID,
-					importAlias:  r.Properties["import_alias"],
-					callLeaf:     r.Properties["call_leaf"],
-					dataDispatch: r.Properties["data_dispatch"] == "1",
+					importAlias:  r.Properties.Get("import_alias"),
+					callLeaf:     r.Properties.Get("call_leaf"),
+					dataDispatch: r.Properties.Get("data_dispatch") == "1",
 				})
 			}
 		}
@@ -357,8 +357,8 @@ def run(ctx):
 			continue
 		}
 		for _, r := range e.Relationships {
-			if r.Kind == "CALLS" && r.Properties["data_dispatch"] == "1" {
-				if src := r.Properties["dispatch_source"]; src != "MY_STEPS" {
+			if r.Kind == "CALLS" && r.Properties.Get("data_dispatch") == "1" {
+				if src := r.Properties.Get("dispatch_source"); src != "MY_STEPS" {
 					t.Errorf("expected dispatch_source=MY_STEPS, got %q", src)
 				}
 				return
@@ -634,8 +634,8 @@ def run_beta(ctx):
 				continue
 			}
 			for _, r := range e.Relationships {
-				if r.Kind == "CALLS" && r.Properties["data_dispatch"] == "1" {
-					if got := r.Properties["dispatch_source"]; got != expectedSource {
+				if r.Kind == "CALLS" && r.Properties.Get("data_dispatch") == "1" {
+					if got := r.Properties.Get("dispatch_source"); got != expectedSource {
 						t.Errorf("%s: want dispatch_source=%q, got %q", fnName, expectedSource, got)
 					}
 					return

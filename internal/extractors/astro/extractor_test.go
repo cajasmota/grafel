@@ -278,9 +278,9 @@ func TestExtractor_IslandDirectiveProperty(t *testing.T) {
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
 			if rel.Kind == "IMPLEMENTS" && rel.ToID == "ReactCounter" {
-				if !strings.Contains(rel.Properties["island_directive"], "client:load") {
+				if !strings.Contains(rel.Properties.Get("island_directive"), "client:load") {
 					t.Errorf("ReactCounter IMPLEMENTS directive = %q, want client:load",
-						rel.Properties["island_directive"])
+						rel.Properties.Get("island_directive"))
 				}
 				return
 			}

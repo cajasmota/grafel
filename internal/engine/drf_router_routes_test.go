@@ -95,7 +95,7 @@ func TestDetect_DRFRouterRoutes(t *testing.T) {
 	// The composed edges produced by the AST pass carry pattern_type=ast_driven.
 	var found bool
 	for _, r := range result.Relationships {
-		if r.Kind == "ROUTES_TO" && r.FromID == "Route:/api/users" && r.Properties["pattern_type"] == "ast_driven" {
+		if r.Kind == "ROUTES_TO" && r.FromID == "Route:/api/users" && r.Properties.Get("pattern_type") == "ast_driven" {
 			found = true
 			break
 		}

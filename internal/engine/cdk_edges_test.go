@@ -27,7 +27,7 @@ func runCDKDetect(t *testing.T, lang, path, src string) ([]entityResult, []relRe
 	}
 	relOut := make([]relResult, 0, len(res.Relationships))
 	for _, r := range res.Relationships {
-		relOut = append(relOut, relResult{from: r.FromID, to: r.ToID, kind: r.Kind, props: r.Properties})
+		relOut = append(relOut, relResult{from: r.FromID, to: r.ToID, kind: r.Kind, props: r.Properties.Snapshot()})
 	}
 	return out, relOut
 }

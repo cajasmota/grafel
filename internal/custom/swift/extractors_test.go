@@ -216,7 +216,7 @@ func edgeProp(ents []types.EntityRecord, fromName, kind, toID, key string) (stri
 		}
 		for _, r := range e.Relationships {
 			if r.Kind == kind && r.ToID == toID {
-				v, ok := r.Properties[key]
+				v, ok := r.Properties.Lookup(key)
 				return v, ok
 			}
 		}

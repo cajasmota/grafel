@@ -312,8 +312,8 @@ func hasNestedSchemaEdge(ents []types.EntityRecord, childID, fieldPath string) b
 			if r.Kind != string(types.RelationshipKindContains) {
 				continue
 			}
-			if r.ToID == childID && r.Properties["member"] == "nested_schema" &&
-				r.Properties["field_path"] == fieldPath {
+			if r.ToID == childID && r.Properties.Get("member") == "nested_schema" &&
+				r.Properties.Get("field_path") == fieldPath {
 				return true
 			}
 		}
@@ -653,7 +653,7 @@ const Chained = z.string().pipe(Other);`
 	found := false
 	for _, r := range chained.Relationships {
 		if r.Kind == "REFERENCES" && r.ToID == "Schema:Other" &&
-			r.Properties["ref_kind"] == "zod_pipe" {
+			r.Properties.Get("ref_kind") == "zod_pipe" {
 			found = true
 		}
 	}

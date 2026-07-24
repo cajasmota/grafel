@@ -63,12 +63,12 @@ func containsFieldEdge(ownerClass, memberName, fieldName, framework string) type
 		FromID: pyClassRef(ownerClass),
 		ToID:   memberName,
 		Kind:   string(types.RelationshipKindContains),
-		Properties: map[string]string{
-			"framework":  framework,
-			"language":   "python",
-			"member":     "field",
-			"field_name": fieldName,
-			"provenance": "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP",
+		Properties: types.Props{
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: framework},
+			{K: "language", V: "python"},
+			{K: "member", V: "field"},
+			{K: "provenance", V: "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP"},
 		},
 	}
 }
@@ -88,13 +88,13 @@ func referencesClassEdge(memberName, targetClass, framework, fieldName string) t
 		FromID: memberName,
 		ToID:   pyClassRef(targetClass),
 		Kind:   string(types.RelationshipKindReferences),
-		Properties: map[string]string{
-			"framework":   framework,
-			"language":    "python",
-			"ref_kind":    "field_target_type",
-			"field_name":  fieldName,
-			"target_type": targetClass,
-			"provenance":  "INFERRED_FROM_MODEL_FIELD_TARGET",
+		Properties: types.Props{
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: framework},
+			{K: "language", V: "python"},
+			{K: "provenance", V: "INFERRED_FROM_MODEL_FIELD_TARGET"},
+			{K: "ref_kind", V: "field_target_type"},
+			{K: "target_type", V: targetClass},
 		},
 	}
 }

@@ -16,7 +16,7 @@ func countSNSSubscribers(rels []types.RelationshipRecord, topicID string) (int, 
 	for _, r := range rels {
 		if r.Kind == subscribesToEdgeKind && r.ToID == to {
 			n++
-			tools[r.Properties["iac_tool"]] = true
+			tools[r.Properties.Get("iac_tool")] = true
 		}
 	}
 	return n, tools

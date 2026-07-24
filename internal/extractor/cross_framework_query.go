@@ -245,11 +245,12 @@ func BuildCrossFrameworkQueryEntities(hits []CrossFrameworkQueryHit, lang, fileP
 		rels = append(rels, types.RelationshipRecord{
 			ToID: h.Name,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component": componentName,
-				"framework": lang,
-				"subtype":   h.Subtype,
-				"via":       h.Via,
+			// Key-sorted: component < framework < subtype < via.
+			Properties: types.Props{
+				{K: "component", V: componentName},
+				{K: "framework", V: lang},
+				{K: "subtype", V: h.Subtype},
+				{K: "via", V: h.Via},
 			},
 		})
 	}

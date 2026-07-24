@@ -34,8 +34,8 @@ func TestIssue2856_SvelteNavigation(t *testing.T) {
 	for i := range recs {
 		for _, r := range recs[i].Relationships {
 			if r.Kind == "NAVIGATES_TO" {
-				routes[r.Properties["route"]] = true
-				vias[r.Properties["via"]] = true
+				routes[r.Properties.Get("route")] = true
+				vias[r.Properties.Get("via")] = true
 			}
 		}
 	}

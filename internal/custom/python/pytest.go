@@ -242,10 +242,10 @@ func (e *PytestExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID: subj,
 				Kind: string(types.RelationshipKindTests),
-				Properties: map[string]string{
-					"framework":    framework,
-					"match_source": "python_test_name_affinity",
-					"target":       subj,
+				Properties: types.Props{
+					{K: "framework", V: framework},
+					{K: "match_source", V: "python_test_name_affinity"},
+					{K: "target", V: subj},
 				},
 				Confidence: 0.9,
 			})
@@ -265,9 +265,9 @@ func (e *PytestExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "Task:" + taskRef,
 			Kind: string(types.RelationshipKindTests),
-			Properties: map[string]string{
-				"framework": "celery",
-				"call_kind": callKind,
+			Properties: types.Props{
+				{K: "call_kind", V: callKind},
+				{K: "framework", V: "celery"},
 			},
 		})
 	}

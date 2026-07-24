@@ -212,7 +212,7 @@ func TestExtends_CarriesBaseName(t *testing.T) {
 					if rel.Kind != tc.wantKind {
 						continue
 					}
-					bn := rel.Properties["base_name"]
+					bn := rel.Properties.Get("base_name")
 					if bn == "" {
 						t.Errorf("%s edge missing base_name property", tc.wantKind)
 					}

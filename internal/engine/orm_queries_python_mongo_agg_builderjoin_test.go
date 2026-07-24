@@ -111,7 +111,7 @@ def get_inspection_devices(params):
 			// #4244 — drop the node-anchored JOINS_COLLECTION twin so the
 			// count/identity assertions below see the collection-anchored
 			// edge set they were written against.
-			if r.Properties["anchor"] == "stage_node" {
+			if r.Properties.Get("anchor") == "stage_node" {
 				return
 			}
 			rels = append(rels, r)

@@ -174,14 +174,14 @@ func (e *CachingExtractor) Extract(ctx context.Context, file extractor.FileInput
 
 		targetRef := emitRegion(framework, region, dynamic, line)
 
-		edgeProps := map[string]string{
-			"framework": framework,
-			"region":    region,
-			"mode":      mode,
-			"language":  "python",
+		edgeProps := types.Props{
+			{K: "framework", V: framework},
+			{K: "language", V: "python"},
+			{K: "mode", V: mode},
+			{K: "region", V: region},
 		}
 		if dynamic {
-			edgeProps["dynamic"] = "true"
+			edgeProps.Set("dynamic", "true")
 		}
 		owner := entity(ownerRef, "SCOPE.Operation", "cache_method", file.Path, line,
 			map[string]string{

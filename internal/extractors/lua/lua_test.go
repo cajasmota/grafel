@@ -214,7 +214,7 @@ return Derived
 			t.Errorf("expected Derived subtype=class, got %q", e.Subtype)
 		}
 		for _, r := range e.Relationships {
-			if r.Kind == "EXTENDS" && r.Properties["base_name"] == "Base" {
+			if r.Kind == "EXTENDS" && r.Properties.Get("base_name") == "Base" {
 				foundExtends = true
 			}
 		}

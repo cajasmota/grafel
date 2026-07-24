@@ -260,11 +260,11 @@ func makeImportStub(file extractor.FileInput, path string) types.EntityRecord {
 				FromID: file.Path,
 				ToID:   path,
 				Kind:   "IMPORTS",
-				Properties: map[string]string{
-					"local_name":    leaf,
-					"source_module": path,
-					"imported_name": leaf,
-					"import_kind":   "source",
+				Properties: types.Props{
+					{K: "import_kind", V: "source"},
+					{K: "imported_name", V: leaf},
+					{K: "local_name", V: leaf},
+					{K: "source_module", V: path},
 				},
 			},
 		},
@@ -341,13 +341,13 @@ func extractCallRelationships(body ts.Node, src []byte, callerName string, local
 			if head, dynVar := commandHeadName(n, src, binder); head != "" &&
 				head != callerName && localFns[head] && !seen[head] {
 				seen[head] = true
-				props := map[string]string{
-					"line": strconv.Itoa(int(n.StartPoint().Row) + 1),
+				props := types.Props{
+					{K: "line", V: strconv.Itoa(int(n.StartPoint().Row) + 1)},
 				}
 				if dynVar != "" {
 					// Recovered through a literal binding on `$dynVar` (#5158).
-					props["resolved_via"] = extractor.ResolvedViaLiteralBinding
-					props["dynamic_target"] = dynVar
+					props.Set("resolved_via", extractor.ResolvedViaLiteralBinding)
+					props.Set("dynamic_target", dynVar)
 				}
 				rels = append(rels, types.RelationshipRecord{
 					ToID:       head,

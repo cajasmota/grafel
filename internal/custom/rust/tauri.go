@@ -223,11 +223,11 @@ func (e *tauriExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 				FromID: "tauri:generate_handler",
 				ToID:   "tauri:command:" + cmd,
 				Kind:   string(types.RelationshipKindCalls),
-				Properties: map[string]string{
-					"framework":    "tauri",
-					"ipc":          "command",
-					"command_name": cmd,
-					"via":          "INFERRED_FROM_TAURI_GENERATE_HANDLER",
+				Properties: types.Props{
+					{K: "command_name", V: cmd},
+					{K: "framework", V: "tauri"},
+					{K: "ipc", V: "command"},
+					{K: "via", V: "INFERRED_FROM_TAURI_GENERATE_HANDLER"},
 				},
 			})
 		}
@@ -311,11 +311,11 @@ func (e *tauriExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 				FromID: owner.Name,
 				ToID:   "tauri:event:" + evt,
 				Kind:   kind,
-				Properties: map[string]string{
-					"framework":  "tauri",
-					"event_name": evt,
-					"channel":    evt,
-					"via":        provenance,
+				Properties: types.Props{
+					{K: "channel", V: evt},
+					{K: "event_name", V: evt},
+					{K: "framework", V: "tauri"},
+					{K: "via", V: provenance},
 				},
 			})
 			add(owner)

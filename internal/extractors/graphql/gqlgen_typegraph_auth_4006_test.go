@@ -49,22 +49,22 @@ func TestGqlgen_TypeGraph_4006(t *testing.T) {
 			if r.Kind != "GRAPH_RELATES" {
 				continue
 			}
-			if r.Properties["graphql_field"] == "User.orders" {
+			if r.Properties.Get("graphql_field") == "User.orders" {
 				userToOrder = true
-				if r.Properties["cardinality"] != "to_many" {
-					t.Errorf("User.orders cardinality=%q want to_many", r.Properties["cardinality"])
+				if r.Properties.Get("cardinality") != "to_many" {
+					t.Errorf("User.orders cardinality=%q want to_many", r.Properties.Get("cardinality"))
 				}
-				if r.Properties["list"] != "true" {
-					t.Errorf("User.orders list=%q want true", r.Properties["list"])
+				if r.Properties.Get("list") != "true" {
+					t.Errorf("User.orders list=%q want true", r.Properties.Get("list"))
 				}
 			}
-			if r.Properties["graphql_field"] == "User.account" {
+			if r.Properties.Get("graphql_field") == "User.account" {
 				userToAccount = true
-				if r.Properties["cardinality"] != "to_one" {
-					t.Errorf("User.account cardinality=%q want to_one", r.Properties["cardinality"])
+				if r.Properties.Get("cardinality") != "to_one" {
+					t.Errorf("User.account cardinality=%q want to_one", r.Properties.Get("cardinality"))
 				}
-				if r.Properties["nullable"] != "true" {
-					t.Errorf("User.account nullable=%q want true", r.Properties["nullable"])
+				if r.Properties.Get("nullable") != "true" {
+					t.Errorf("User.account nullable=%q want true", r.Properties.Get("nullable"))
 				}
 			}
 		}

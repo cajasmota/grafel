@@ -540,11 +540,11 @@ func makeImportRecord(file extractor.FileInput, requirePath, lhs string) types.E
 				FromID: file.Path,
 				ToID:   requirePath,
 				Kind:   "IMPORTS",
-				Properties: map[string]string{
-					"local_name":    local,
-					"source_module": requirePath,
-					"imported_name": local,
-					"import_kind":   "require",
+				Properties: types.Props{
+					{K: "import_kind", V: "require"},
+					{K: "imported_name", V: local},
+					{K: "local_name", V: local},
+					{K: "source_module", V: requirePath},
 				},
 			},
 		},
@@ -673,8 +673,8 @@ func extractCallRelationships(body ts.Node, src []byte, callerName string) []typ
 		rels = append(rels, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(int(call.StartPoint().Row) + 1)},
 			},
 		})
 	}

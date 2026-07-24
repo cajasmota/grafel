@@ -457,13 +457,13 @@ func extractHelmChart(root ts.Node, file extractor.FileInput) []types.EntityReco
 		// can lift — mirrors the docker_image: / kustomize_path: convention.
 		rel := importsRel(chartRef, "helm_subchart:"+depName, "helm_dependency")
 		if repo != "" {
-			rel.Properties["repository"] = repo
+			rel.Properties.Set("repository", repo)
 		}
 		if ver != "" {
-			rel.Properties["version"] = ver
+			rel.Properties.Set("version", ver)
 		}
 		if alias != "" {
-			rel.Properties["alias"] = alias
+			rel.Properties.Set("alias", alias)
 		}
 		chartEnt.Relationships = append(chartEnt.Relationships, rel)
 	}
@@ -523,11 +523,11 @@ func extractHelmValues(root ts.Node, file extractor.FileInput) []types.EntityRec
 					FromID: file.Path,
 					ToID:   "helm_subchart_values:" + curSub + ":" + relPath,
 					Kind:   string(types.RelationshipKindOverrides),
-					Properties: map[string]string{
-						"override_kind": "helm_subchart_value",
-						"subchart":      curSub,
-						"values_path":   relPath,
-						"parent_path":   path,
+					Properties: types.Props{
+						{K: "override_kind", V: "helm_subchart_value"},
+						{K: "parent_path", V: path},
+						{K: "subchart", V: curSub},
+						{K: "values_path", V: relPath},
 					},
 				}
 				ent.Relationships = append(ent.Relationships, rel)
@@ -724,9 +724,9 @@ func extractHelmTemplate(file extractor.FileInput) []types.EntityRecord {
 			FromID: fromRef,
 			ToID:   "helm_values:" + ref,
 			Kind:   "BINDS",
-			Properties: map[string]string{
-				"binding_kind": "helm_values_ref",
-				"values_path":  ref,
+			Properties: types.Props{
+				{K: "binding_kind", V: "helm_values_ref"},
+				{K: "values_path", V: ref},
 			},
 		}
 		// Attach to the first recovered resource if present, else carry on a
@@ -740,9 +740,9 @@ func extractHelmTemplate(file extractor.FileInput) []types.EntityRecord {
 			FromID: fromRef,
 			ToID:   "helm_template:" + inc,
 			Kind:   "INCLUDES",
-			Properties: map[string]string{
-				"include_kind":  "helm_include",
-				"template_name": inc,
+			Properties: types.Props{
+				{K: "include_kind", V: "helm_include"},
+				{K: "template_name", V: inc},
 			},
 		}
 		entities = appendHelmEdge(entities, file, rel)
@@ -906,13 +906,13 @@ func extractHelmHelpers(file extractor.FileInput) []types.EntityRecord {
 				continue
 			}
 			seenInc[key] = true
-			props := map[string]string{
-				"include_kind":  "helm_include",
-				"template_name": target,
+			props := types.Props{
+				{K: "include_kind", V: "helm_include"},
+				{K: "template_name", V: target},
 			}
 			if arg != "" {
-				props["include_arg"] = arg
-				props["arg_flow"] = helmArgFlowKind(arg)
+				props.Set("include_arg", arg)
+				props.Set("arg_flow", helmArgFlowKind(arg))
 			}
 			attachFromDefiner(definer, types.RelationshipRecord{
 				ToID:       "helm_template:" + target,
@@ -931,9 +931,9 @@ func extractHelmHelpers(file extractor.FileInput) []types.EntityRecord {
 			attachFromDefiner(definer, types.RelationshipRecord{
 				ToID: "helm_values:" + path,
 				Kind: "BINDS",
-				Properties: map[string]string{
-					"binding_kind": "helm_values_ref",
-					"values_path":  path,
+				Properties: types.Props{
+					{K: "binding_kind", V: "helm_values_ref"},
+					{K: "values_path", V: path},
 				},
 			})
 		}

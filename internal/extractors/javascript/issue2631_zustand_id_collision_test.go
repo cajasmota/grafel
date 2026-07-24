@@ -108,7 +108,7 @@ export function handleExpiry() {
 	foundQualified := false
 	for _, r := range caller.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "useAuthStore::logout" &&
-			r.Properties != nil && r.Properties["via"] == "zustand_store" {
+			r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 			foundQualified = true
 			break
 		}
@@ -124,7 +124,7 @@ export function handleExpiry() {
 	// Must NOT have a CALLS edge to the bare "logout".
 	for _, r := range caller.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "logout" &&
-			r.Properties != nil && r.Properties["via"] == "zustand_store" {
+			r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 			t.Errorf("unexpected CALLS handleExpiry→logout (bare name): edge should use qualified ID useAuthStore::logout (issue #2631)")
 		}
 	}

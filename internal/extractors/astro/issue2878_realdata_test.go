@@ -30,7 +30,7 @@ func TestAstro2878RealDataIslandDirective(t *testing.T) {
 	var islandEdges int
 	for _, ent := range ents {
 		for _, r := range ent.Relationships {
-			if r.Kind == "IMPLEMENTS" && r.Properties["island_directive"] != "" {
+			if r.Kind == "IMPLEMENTS" && r.Properties.Get("island_directive") != "" {
 				islandEdges++
 			}
 		}

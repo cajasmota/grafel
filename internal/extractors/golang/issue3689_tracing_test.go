@@ -62,23 +62,23 @@ func query(ctx context.Context) {
 		}
 		t.Fatal("INSTRUMENTS edge query → span:db.query not found")
 	}
-	if r.Properties["span_name"] != "db.query" {
-		t.Errorf("span_name=%q, want db.query", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "db.query" {
+		t.Errorf("span_name=%q, want db.query", r.Properties.Get("span_name"))
 	}
-	if r.Properties["library"] != "opentelemetry" {
-		t.Errorf("library=%q, want opentelemetry", r.Properties["library"])
+	if r.Properties.Get("library") != "opentelemetry" {
+		t.Errorf("library=%q, want opentelemetry", r.Properties.Get("library"))
 	}
-	if r.Properties["api"] != "tracer.Start" {
-		t.Errorf("api=%q, want tracer.Start", r.Properties["api"])
+	if r.Properties.Get("api") != "tracer.Start" {
+		t.Errorf("api=%q, want tracer.Start", r.Properties.Get("api"))
 	}
-	if r.Properties["traced"] != "true" {
-		t.Errorf("traced=%q, want true", r.Properties["traced"])
+	if r.Properties.Get("traced") != "true" {
+		t.Errorf("traced=%q, want true", r.Properties.Get("traced"))
 	}
-	if r.Properties["line"] == "" {
+	if r.Properties.Get("line") == "" {
 		t.Error("line property is empty")
 	}
-	if r.Properties["dynamic"] != "" {
-		t.Errorf("dynamic=%q, want empty for static span name", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "" {
+		t.Errorf("dynamic=%q, want empty for static span name", r.Properties.Get("dynamic"))
 	}
 }
 
@@ -101,8 +101,8 @@ func (s *Server) Handle(ctx context.Context) {
 	if r == nil {
 		t.Fatal("INSTRUMENTS edge Server.Handle → span:server.handle not found")
 	}
-	if r.Properties["span_name"] != "server.handle" {
-		t.Errorf("span_name=%q, want server.handle", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "server.handle" {
+		t.Errorf("span_name=%q, want server.handle", r.Properties.Get("span_name"))
 	}
 }
 
@@ -131,11 +131,11 @@ func run(ctx context.Context, opName string) {
 		}
 		t.Fatal("INSTRUMENTS edge run → span:run not found for dynamic span name")
 	}
-	if r.Properties["dynamic"] != "true" {
-		t.Errorf("dynamic=%q, want true", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "true" {
+		t.Errorf("dynamic=%q, want true", r.Properties.Get("dynamic"))
 	}
-	if _, ok := r.Properties["span_name"]; ok {
-		t.Errorf("span_name must be absent for dynamic name; got %q", r.Properties["span_name"])
+	if _, ok := r.Properties.Lookup("span_name"); ok {
+		t.Errorf("span_name must be absent for dynamic name; got %q", r.Properties.Get("span_name"))
 	}
 }
 

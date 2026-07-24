@@ -245,11 +245,11 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 				types.RelationshipRecord{
 					ToID: "node:" + dstLabel,
 					Kind: string(types.RelationshipKindGraphRelates),
-					Properties: map[string]string{
-						"framework":  "neo4j",
-						"rel_type":   relType,
-						"direction":  direction,
-						"provenance": "INFERRED_FROM_NEO4J_CYPHER",
+					Properties: types.Props{
+						{K: "direction", V: direction},
+						{K: "framework", V: "neo4j"},
+						{K: "provenance", V: "INFERRED_FROM_NEO4J_CYPHER"},
+						{K: "rel_type", V: relType},
 					},
 				},
 			)

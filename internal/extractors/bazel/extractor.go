@@ -130,10 +130,10 @@ func Discover(ctx context.Context, repoRoot string, files []string) ([]types.Ent
 					FromID: fromID,
 					ToID:   toID,
 					Kind:   RelationshipKindBazelDependsOn,
-					Properties: map[string]string{
-						"dep_label":   dep,
-						"source_rule": r.Label(),
-						"rule_kind":   r.Kind,
+					Properties: types.Props{
+						{K: "dep_label", V: dep},
+						{K: "rule_kind", V: r.Kind},
+						{K: "source_rule", V: r.Label()},
 					},
 				})
 			}
@@ -203,10 +203,10 @@ func ruleEntity(r *Rule) types.EntityRecord {
 		StartLine:  r.StartLine,
 		Language:   "bazel",
 		Properties: map[string]string{
-			"rule_kind":     r.Kind,
-			"target_name":   r.Name,
 			"bazel_package": r.Package,
 			"label":         label,
+			"rule_kind":     r.Kind,
+			"target_name":   r.Name,
 		},
 		QualityScore:     1.0,
 		EnrichmentStatus: types.StatusPending,

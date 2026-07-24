@@ -300,12 +300,12 @@ func zodChainMemberEdge(parentSchema, childID, member, kind string, index int) t
 		FromID: "Schema:" + parentSchema,
 		ToID:   childID,
 		Kind:   string(types.RelationshipKindContains),
-		Properties: map[string]string{
-			"framework":   "zod",
-			"member":      member,
-			"chain_kind":  kind,
-			"chain_index": fmt.Sprintf("%d", index),
-			"provenance":  "INFERRED_FROM_ZOD_CHAIN",
+		Properties: types.Props{
+			{K: "chain_index", V: fmt.Sprintf("%d", index)},
+			{K: "chain_kind", V: kind},
+			{K: "framework", V: "zod"},
+			{K: "member", V: member},
+			{K: "provenance", V: "INFERRED_FROM_ZOD_CHAIN"},
 		},
 	}
 }
@@ -318,12 +318,12 @@ func zodPipeEdge(fromID, targetSchema string, index int) types.RelationshipRecor
 		FromID: fromID,
 		ToID:   "Schema:" + targetSchema,
 		Kind:   string(types.RelationshipKindReferences),
-		Properties: map[string]string{
-			"framework":   "zod",
-			"ref_kind":    "zod_pipe",
-			"target_type": targetSchema,
-			"chain_index": fmt.Sprintf("%d", index),
-			"provenance":  "INFERRED_FROM_ZOD_PIPE",
+		Properties: types.Props{
+			{K: "chain_index", V: fmt.Sprintf("%d", index)},
+			{K: "framework", V: "zod"},
+			{K: "provenance", V: "INFERRED_FROM_ZOD_PIPE"},
+			{K: "ref_kind", V: "zod_pipe"},
+			{K: "target_type", V: targetSchema},
 		},
 	}
 }

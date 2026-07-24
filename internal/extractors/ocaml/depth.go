@@ -192,9 +192,9 @@ func extractAlcotestSuite(src, filePath string) []types.EntityRecord {
 		rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
 			ToID: stem,
 			Kind: string(types.RelationshipKindTests),
-			Properties: map[string]string{
-				"framework":    "alcotest",
-				"match_source": "test_stem_affinity",
+			Properties: types.Props{
+				{K: "framework", V: "alcotest"},
+				{K: "match_source", V: "test_stem_affinity"},
 			},
 		})
 	}

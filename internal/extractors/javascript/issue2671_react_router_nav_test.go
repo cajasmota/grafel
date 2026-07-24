@@ -173,11 +173,11 @@ const NavBar = () => {
 	if edges[0].ToID != "route:/dashboard" {
 		t.Errorf("expected route:/dashboard, got %q", edges[0].ToID)
 	}
-	if edges[0].Properties["via"] != "jsx_nav" {
-		t.Errorf("expected via=jsx_nav, got %q", edges[0].Properties["via"])
+	if edges[0].Properties.Get("via") != "jsx_nav" {
+		t.Errorf("expected via=jsx_nav, got %q", edges[0].Properties.Get("via"))
 	}
-	if edges[0].Properties["tag"] != "Link" {
-		t.Errorf("expected tag=Link, got %q", edges[0].Properties["tag"])
+	if edges[0].Properties.Get("tag") != "Link" {
+		t.Errorf("expected tag=Link, got %q", edges[0].Properties.Get("tag"))
 	}
 }
 
@@ -323,8 +323,8 @@ const NavBar = () => {
 	if edges[0].ToID != "route:/about" {
 		t.Errorf("expected route:/about, got %q", edges[0].ToID)
 	}
-	if edges[0].Properties["tag"] != "Link" {
-		t.Errorf("expected tag=Link, got %q", edges[0].Properties["tag"])
+	if edges[0].Properties.Get("tag") != "Link" {
+		t.Errorf("expected tag=Link, got %q", edges[0].Properties.Get("tag"))
 	}
 }
 

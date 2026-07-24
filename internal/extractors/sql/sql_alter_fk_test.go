@@ -21,13 +21,13 @@ func hasFK(entities []types.EntityRecord, table, col, toTable, toCol string) boo
 			if r.Kind != "REFERENCES" || r.ToID != toTable {
 				continue
 			}
-			if r.Properties["reference_kind"] != "foreign_key" {
+			if r.Properties.Get("reference_kind") != "foreign_key" {
 				continue
 			}
-			if toCol != "" && r.Properties["to_column"] != toCol {
+			if toCol != "" && r.Properties.Get("to_column") != toCol {
 				continue
 			}
-			if r.Properties["from_table"] != table {
+			if r.Properties.Get("from_table") != table {
 				continue
 			}
 			return true

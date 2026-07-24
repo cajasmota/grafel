@@ -402,10 +402,10 @@ func scanRubyMongoidAssociations(src string, emitJoin func(rel types.Relationshi
 			FromID: fmt.Sprintf("Class:%s", from),
 			ToID:   fmt.Sprintf("Class:%s", to),
 			Kind:   string(types.RelationshipKindJoinsCollection),
-			Properties: map[string]string{
-				"pattern_type": mongoidRelationPatternType,
-				"via":          macro,
-				"association":  sym,
+			Properties: types.Props{
+				{K: "association", V: sym},
+				{K: "pattern_type", V: mongoidRelationPatternType},
+				{K: "via", V: macro},
 			},
 		})
 	}

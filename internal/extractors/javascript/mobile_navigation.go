@@ -251,19 +251,19 @@ func (x *extractor) emitNativeModuleSignals(root ts.Node, fileEnt *types.EntityR
 		// import_path carries the raw, un-dotted module specifier
 		// (e.g. "@capacitor/geolocation"); source_module is dotted
 		// ("@capacitor.geolocation") so it cannot be prefix-matched.
-		spec := rel.Properties["import_path"]
+		spec := rel.Properties.Get("import_path")
 		if spec == "" {
 			spec = rel.ToID
 		}
 		// A NativeModules / requireNativeComponent binding from 'react-native'.
-		named := rel.Properties["imported_name"]
+		named := rel.Properties.Get("imported_name")
 		if isNativeModuleSpecifier(spec) {
 			ensurePropsRel(rel)
-			rel.Properties["native_module"] = "1"
+			rel.Properties.Set("native_module", "1")
 			mods = append(mods, spec)
 		} else if spec == "react-native" && (named == "NativeModules" || named == "requireNativeComponent" || named == "NativeEventEmitter" || named == "TurboModuleRegistry") {
 			ensurePropsRel(rel)
-			rel.Properties["native_module"] = "1"
+			rel.Properties.Set("native_module", "1")
 			mods = append(mods, "react-native:"+named)
 		}
 	}
@@ -429,12 +429,12 @@ func (x *extractor) emitNativeBridgeEntities(fileEnt *types.EntityRecord, deps [
 		fileEnt.Relationships = append(fileEnt.Relationships, types.RelationshipRecord{
 			ToID: "native_module:" + d.name,
 			Kind: string(types.RelationshipKindDependsOn),
-			Properties: map[string]string{
-				"native_bridge": "1",
-				"native_name":   d.name,
-				"subtype":       d.subtype,
-				"via":           d.via,
-				"line":          strconv.Itoa(d.line),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(d.line)},
+				{K: "native_bridge", V: "1"},
+				{K: "native_name", V: d.name},
+				{K: "subtype", V: d.subtype},
+				{K: "via", V: d.via},
 			},
 		})
 
@@ -463,11 +463,9 @@ func (x *extractor) emitNativeBridgeEntities(fileEnt *types.EntityRecord, deps [
 	x.entities = append(x.entities, ents...)
 }
 
-func ensurePropsRel(rel *types.RelationshipRecord) {
-	if rel.Properties == nil {
-		rel.Properties = make(map[string]string)
-	}
-}
+// ensurePropsRel is a no-op retained for call-site compatibility: types.Props
+// is usable in its zero (nil) state, so no eager allocation is needed.
+func ensurePropsRel(*types.RelationshipRecord) {}
 
 // stringArg returns the first string-literal argument of a call, unquoted, or "".
 func stringArg(x *extractor, call ts.Node) string {
@@ -578,18 +576,18 @@ func isScreenTag(tag string) bool {
 // addFileNavEdge appends a NAVIGATES_TO edge to the file entity for a declared
 // screen/route or deep-link target.
 func (x *extractor) addFileNavEdge(fileEnt *types.EntityRecord, route, via string, node ts.Node, tag string) {
-	props := map[string]string{
-		"route": route,
-		"line":  strconv.Itoa(int(node.StartPoint().Row) + 1),
-		"via":   via,
+	props := types.Props{
+		{K: "line", V: strconv.Itoa(int(node.StartPoint().Row) + 1)},
+		{K: "route", V: route},
+		{K: "via", V: via},
 	}
 	if tag != "" {
-		props["tag"] = tag
+		props.Set("tag", tag)
 	}
 	// Dedupe per (route,via) on the file entity.
 	for i := range fileEnt.Relationships {
 		r := &fileEnt.Relationships[i]
-		if r.Kind == "NAVIGATES_TO" && r.ToID == "route:"+route && r.Properties["via"] == via {
+		if r.Kind == "NAVIGATES_TO" && r.ToID == "route:"+route && r.Properties.Get("via") == via {
 			return
 		}
 	}

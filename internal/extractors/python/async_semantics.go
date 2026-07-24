@@ -180,13 +180,13 @@ func applyAsyncSemantics(root ts.Node, file extractor.FileInput, entities *[]typ
 			types.RelationshipRecord{
 				ToID: ext,
 				Kind: "CALLS",
-				Properties: map[string]string{
-					"language":     "python",
-					"framework":    "django_channels",
-					"pattern_type": "channel_layer_dispatch",
-					"method":       method,
-					"dispatch":     "async",
-					"line":         callLine,
+				Properties: types.Props{
+					{K: "dispatch", V: "async"},
+					{K: "framework", V: "django_channels"},
+					{K: "language", V: "python"},
+					{K: "line", V: callLine},
+					{K: "method", V: method},
+					{K: "pattern_type", V: "channel_layer_dispatch"},
 				},
 			})
 	}

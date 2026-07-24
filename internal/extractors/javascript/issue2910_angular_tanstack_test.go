@@ -84,7 +84,7 @@ func TestIssue2910_AngularTanstackQuery(t *testing.T) {
 	}
 	contains := 0
 	for _, r := range comp.Relationships {
-		if r.Kind == "CONTAINS" && r.Properties["subtype"] == "tanstack_query" {
+		if r.Kind == "CONTAINS" && r.Properties.Get("subtype") == "tanstack_query" {
 			contains++
 		}
 	}

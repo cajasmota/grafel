@@ -126,12 +126,12 @@ func (x *extractor) angularRxjsPatterns(body ts.Node, className string) []types.
 				rels = append(rels, types.RelationshipRecord{
 					ToID: "rxjs:operator:" + op,
 					Kind: string(types.RelationshipKindTransforms),
-					Properties: map[string]string{
-						"operator":       op,
-						"known_operator": known,
-						"component":      className,
-						"framework":      "angular",
-						"rxjs":           "operator",
+					Properties: types.Props{
+						{K: "component", V: className},
+						{K: "framework", V: "angular"},
+						{K: "known_operator", V: known},
+						{K: "operator", V: op},
+						{K: "rxjs", V: "operator"},
 					},
 				})
 			}
@@ -156,11 +156,11 @@ func (x *extractor) angularRxjsPatterns(body ts.Node, className string) []types.
 			rels := []types.RelationshipRecord{{
 				ToID: "rxjs:observable:" + source,
 				Kind: string(types.RelationshipKindSubscribesTo),
-				Properties: map[string]string{
-					"source":    source,
-					"component": className,
-					"framework": "angular",
-					"rxjs":      "subscription",
+				Properties: types.Props{
+					{K: "component", V: className},
+					{K: "framework", V: "angular"},
+					{K: "rxjs", V: "subscription"},
+					{K: "source", V: source},
 				},
 			}}
 			e := x.newAngularOp(className, "rxjs_subscription",
@@ -388,11 +388,11 @@ func (x *extractor) angularGuardClassRels(class ts.Node, className string) (role
 	rels = []types.RelationshipRecord{{
 		ToID: iface,
 		Kind: string(types.RelationshipKindImplements),
-		Properties: map[string]string{
-			"implementer":  className,
-			"interface":    iface,
-			"angular_role": role,
-			"framework":    "angular",
+		Properties: types.Props{
+			{K: "angular_role", V: role},
+			{K: "framework", V: "angular"},
+			{K: "implementer", V: className},
+			{K: "interface", V: iface},
 		},
 	}}
 	return role, iface, rels

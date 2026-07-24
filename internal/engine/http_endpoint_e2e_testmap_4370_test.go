@@ -176,7 +176,7 @@ func TestIssue4370_SpringE2ERouteTestsLinkToEndpoints(t *testing.T) {
 			if r.Kind != string(types.RelationshipKindTests) {
 				continue
 			}
-			if r.Properties["match_source"] != "e2e_supertest_route" {
+			if r.Properties.Get("match_source") != "e2e_supertest_route" {
 				continue
 			}
 			to := r.ToID
@@ -188,7 +188,7 @@ func TestIssue4370_SpringE2ERouteTestsLinkToEndpoints(t *testing.T) {
 				wantGet = true
 			}
 			// Framework attributed from the JUnit suite, not hard-coded jest.
-			if fw := r.Properties["framework"]; fw == "jest" {
+			if fw := r.Properties.Get("framework"); fw == "jest" {
 				t.Errorf("Spring suite TESTS edge mislabeled framework=%q", fw)
 			}
 		}

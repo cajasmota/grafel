@@ -283,9 +283,9 @@ func (x *extractor) handleAngularClass(n ts.Node, decorator string, call ts.Node
 				rels = append(rels, types.RelationshipRecord{
 					ToID: tag,
 					Kind: "RENDERS",
-					Properties: map[string]string{
-						"renderer":  className,
-						"framework": "angular",
+					Properties: types.Props{
+						{K: "framework", V: "angular"},
+						{K: "renderer", V: className},
 					},
 				})
 			}
@@ -309,10 +309,10 @@ func (x *extractor) handleAngularClass(n ts.Node, decorator string, call ts.Node
 				FromID: dep,
 				ToID:   className,
 				Kind:   string(types.RelationshipKindInjectedInto),
-				Properties: map[string]string{
-					"consumer":  className,
-					"provider":  dep,
-					"framework": framework,
+				Properties: types.Props{
+					{K: "consumer", V: className},
+					{K: "framework", V: framework},
+					{K: "provider", V: dep},
 				},
 			})
 		}
@@ -399,9 +399,9 @@ func (x *extractor) handleAngularClass(n ts.Node, decorator string, call ts.Node
 		rels = append(rels, types.RelationshipRecord{
 			ToID: dfEnts[i].ID,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component": className,
-				"framework": "angular",
+			Properties: types.Props{
+				{K: "component", V: className},
+				{K: "framework", V: "angular"},
 			},
 		})
 	}
@@ -712,10 +712,10 @@ func (x *extractor) angularDataFetching(body ts.Node, className string) ([]types
 		rels = append(rels, types.RelationshipRecord{
 			ToID: e.ID,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"caller":      className,
-				"http_method": verb,
-				"framework":   "angular",
+			Properties: types.Props{
+				{K: "caller", V: className},
+				{K: "framework", V: "angular"},
+				{K: "http_method", V: verb},
 			},
 		})
 	}
@@ -871,11 +871,11 @@ func (x *extractor) angularStateManagement(body ts.Node, className string) ([]ty
 		rels = append(rels, types.RelationshipRecord{
 			ToID: "Store." + method,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"caller":       className,
-				"store_method": method,
-				"framework":    "angular",
-				"state_lib":    "ngrx",
+			Properties: types.Props{
+				{K: "caller", V: className},
+				{K: "framework", V: "angular"},
+				{K: "state_lib", V: "ngrx"},
+				{K: "store_method", V: method},
 			},
 		})
 	}

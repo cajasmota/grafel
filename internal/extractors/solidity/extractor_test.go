@@ -681,7 +681,7 @@ func TestSolidity_LanguageTagOnRelationships(t *testing.T) {
 	for _, ent := range ents {
 		for _, r := range ent.Relationships {
 			if r.Kind == "IMPORTS" || r.Kind == "EXTENDS" || r.Kind == "CALLS" || r.Kind == "CONTAINS" {
-				if r.Properties == nil || r.Properties["language"] != "solidity" {
+				if r.Properties == nil || r.Properties.Get("language") != "solidity" {
 					t.Errorf("relationship %s → %q missing language=solidity tag", r.Kind, r.ToID)
 				}
 			}

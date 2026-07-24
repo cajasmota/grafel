@@ -328,17 +328,17 @@ func (e *composeExtractor) Extract(ctx context.Context, file extractor.FileInput
 			return
 		}
 		edgeSeen[key] = true
-		props := map[string]string{
-			"route":     route,
-			"via":       via,
-			"caller":    from,
-			"framework": "compose",
-			"line":      strconv.Itoa(lineOf(src, off)),
+		props := types.Props{
+			{K: "caller", V: from},
+			{K: "framework", V: "compose"},
+			{K: "line", V: strconv.Itoa(lineOf(src, off))},
+			{K: "route", V: route},
+			{K: "via", V: via},
 		}
 		if via == "navigate_route_const" {
 			// Sealed-class Screen.X.route indirection: the literal route string
 			// lives in another file, so the target is partial/unresolved here.
-			props["unresolved"] = "true"
+			props.Set("unresolved", "true")
 		}
 		relsByComposable[from] = append(relsByComposable[from], types.RelationshipRecord{
 			ToID:       "route:" + route,
@@ -369,12 +369,12 @@ func (e *composeExtractor) Extract(ctx context.Context, file extractor.FileInput
 		relsByComposable[from] = append(relsByComposable[from], types.RelationshipRecord{
 			ToID: vmType,
 			Kind: "USES",
-			Properties: map[string]string{
-				"viewmodel": vmType,
-				"via":       via,
-				"caller":    from,
-				"framework": "compose",
-				"line":      strconv.Itoa(lineOf(src, off)),
+			Properties: types.Props{
+				{K: "caller", V: from},
+				{K: "framework", V: "compose"},
+				{K: "line", V: strconv.Itoa(lineOf(src, off))},
+				{K: "via", V: via},
+				{K: "viewmodel", V: vmType},
 			},
 		})
 	}

@@ -315,12 +315,12 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		// targets are honest-partial and stay as props only.
 		ownerIdx := owningNodeIdx(m[0])
 		if ownerIdx >= 0 && targetType != "" && knownNodes[targetType] {
-			relProps := map[string]string{
-				"framework":  "neo4j",
-				"rel_type":   relType,
-				"direction":  direction,
-				"field_name": fieldName,
-				"provenance": "INFERRED_FROM_NEO4J_RELATIONSHIP",
+			relProps := types.Props{
+				{K: "direction", V: direction},
+				{K: "field_name", V: fieldName},
+				{K: "framework", V: "neo4j"},
+				{K: "provenance", V: "INFERRED_FROM_NEO4J_RELATIONSHIP"},
+				{K: "rel_type", V: relType},
 			}
 			entities[ownerIdx].Relationships = append(
 				entities[ownerIdx].Relationships,

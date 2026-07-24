@@ -317,7 +317,7 @@ entity Foo is end entity Foo;
 	for _, ent := range ents {
 		for _, r := range ent.Relationships {
 			if r.Kind == "IMPORTS" || r.Kind == "USES" || r.Kind == "CONTAINS" || r.Kind == "PORT_OF" {
-				if r.Properties == nil || r.Properties["language"] != "vhdl" {
+				if r.Properties == nil || r.Properties.Get("language") != "vhdl" {
 					t.Errorf("relationship %s → %q missing language=vhdl tag", r.Kind, r.ToID)
 				}
 			}
@@ -587,17 +587,17 @@ end architecture rtl;
 	if !ok {
 		t.Fatal("missing USES edge → CounterTop")
 	}
-	if dut.Properties["instance_name"] != "u_dut" {
-		t.Errorf("CounterTop instance_name=%q want u_dut", dut.Properties["instance_name"])
+	if dut.Properties.Get("instance_name") != "u_dut" {
+		t.Errorf("CounterTop instance_name=%q want u_dut", dut.Properties.Get("instance_name"))
 	}
-	if dut.Properties["component_type"] != "CounterTop" {
-		t.Errorf("CounterTop component_type=%q want CounterTop", dut.Properties["component_type"])
+	if dut.Properties.Get("component_type") != "CounterTop" {
+		t.Errorf("CounterTop component_type=%q want CounterTop", dut.Properties.Get("component_type"))
 	}
 	cfg, ok := got["ParamBlock"]
 	if !ok {
 		t.Fatal("missing USES edge → ParamBlock")
 	}
-	if cfg.Properties["parameterized"] != "true" {
+	if cfg.Properties.Get("parameterized") != "true" {
 		t.Errorf("ParamBlock should be flagged parameterized; props=%v", cfg.Properties)
 	}
 }

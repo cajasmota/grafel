@@ -19,7 +19,7 @@ func runMongoidAgg(t *testing.T, src string) ([]types.EntityRecord, []types.Rela
 			// #4244 — drop the node-anchored JOINS_COLLECTION twin so the
 			// count/identity assertions below see the collection-anchored
 			// edge set they were written against.
-			if r.Properties["anchor"] == "stage_node" {
+			if r.Properties.Get("anchor") == "stage_node" {
 				return
 			}
 			rels = append(rels, r)
@@ -62,19 +62,19 @@ result = Book.collection.aggregate([
 	if j == nil {
 		t.Fatalf("expected JOINS_COLLECTION(Class:Book -> Class:Author); rels=%+v", rels)
 	}
-	if got := j.Properties["local_field"]; got != "author_id" {
+	if got := j.Properties.Get("local_field"); got != "author_id" {
 		t.Errorf("local_field = %q, want author_id", got)
 	}
-	if got := j.Properties["foreign_field"]; got != "_id" {
+	if got := j.Properties.Get("foreign_field"); got != "_id" {
 		t.Errorf("foreign_field = %q, want _id", got)
 	}
-	if got := j.Properties["as"]; got != "author" {
+	if got := j.Properties.Get("as"); got != "author" {
 		t.Errorf("as = %q, want author", got)
 	}
 	// The JOINS_COLLECTION edge carries the SHARED mongoAggPatternType (the
 	// shared mongoAggJoinEdge builder), matching the JS/Python/Go/Java siblings;
 	// the stage ENTITY carries the Mongoid-specific tag (asserted below).
-	if got := j.Properties["pattern_type"]; got != mongoAggPatternType {
+	if got := j.Properties.Get("pattern_type"); got != mongoAggPatternType {
 		t.Errorf("edge pattern_type = %q, want %q", got, mongoAggPatternType)
 	}
 
@@ -127,11 +127,11 @@ end
 	if j := mongoidFindJoin(rels, "Book", "Author"); j == nil {
 		t.Fatalf("expected JOINS_COLLECTION(Class:Book -> Class:Author) for belongs_to; rels=%+v", rels)
 	} else {
-		if j.Properties["via"] != "belongs_to" {
-			t.Errorf("via = %q, want belongs_to", j.Properties["via"])
+		if j.Properties.Get("via") != "belongs_to" {
+			t.Errorf("via = %q, want belongs_to", j.Properties.Get("via"))
 		}
-		if j.Properties["association"] != "author" {
-			t.Errorf("association = %q, want author", j.Properties["association"])
+		if j.Properties.Get("association") != "author" {
+			t.Errorf("association = %q, want author", j.Properties.Get("association"))
 		}
 	}
 	// has_many :reviews -> singularised Review.
@@ -216,7 +216,7 @@ Book.collection.aggregate(pipeline)
 `
 	ents, rels := runMongoidAgg(t, src)
 	for _, r := range rels {
-		if r.Properties["pattern_type"] == mongoidAggPatternType {
+		if r.Properties.Get("pattern_type") == mongoidAggPatternType {
 			t.Fatalf("expected no agg join edge for variable-bound pipeline; got %+v", r)
 		}
 	}

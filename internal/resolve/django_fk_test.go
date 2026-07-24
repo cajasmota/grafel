@@ -52,10 +52,10 @@ func TestResolveDjangoStringFKRefs_SameAppCrossFile(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel":       "ForeignKey",
-					"self_ref":         "false",
-					"django_fk_string": "Building",
+				Properties: types.Props{
+					{K: "django_fk_string", V: "Building"},
+					{K: "django_rel", V: "ForeignKey"},
+					{K: "self_ref", V: "false"},
 				},
 			},
 		},
@@ -103,10 +103,10 @@ func TestResolveDjangoStringFKRefs_CrossApp(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel":       "ForeignKey",
-					"self_ref":         "false",
-					"django_fk_string": "auth.User",
+				Properties: types.Props{
+					{K: "django_fk_string", V: "auth.User"},
+					{K: "django_rel", V: "ForeignKey"},
+					{K: "self_ref", V: "false"},
 				},
 			},
 		},
@@ -153,10 +153,10 @@ func TestResolveDjangoStringFKRefs_SelfRefSkipped(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel":       "ForeignKey",
-					"self_ref":         "true",
-					"django_fk_string": "self",
+				Properties: types.Props{
+					{K: "django_fk_string", V: "self"},
+					{K: "django_rel", V: "ForeignKey"},
+					{K: "self_ref", V: "true"},
 				},
 			},
 		},
@@ -200,8 +200,8 @@ func TestResolveDjangoStringFKRefs_AlreadyResolved(t *testing.T) {
 			{
 				ToID: hexID,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel": "ForeignKey",
+				Properties: types.Props{
+					{K: "django_rel", V: "ForeignKey"},
 				},
 			},
 		},
@@ -234,9 +234,9 @@ func TestResolveDjangoStringFKRefs_NonDjangoRelSkipped(t *testing.T) {
 			{
 				ToID:       stub,
 				Kind:       "REFERENCES",
-				Properties: map[string]string{
+				Properties: types.PropsFromMap(map[string]string{
 					// No django_rel property — not a Django FK edge.
-				},
+				}),
 			},
 		},
 	}
@@ -287,9 +287,9 @@ func TestResolveDjangoStringFKRefs_AmbiguousSkipped(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel":       "ForeignKey",
-					"django_fk_string": "User",
+				Properties: types.Props{
+					{K: "django_fk_string", V: "User"},
+					{K: "django_rel", V: "ForeignKey"},
 				},
 			},
 		},
@@ -337,9 +337,9 @@ func TestResolveDjangoStringFKRefs_NestedModelsPackage(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel":       "ForeignKey",
-					"django_fk_string": "myapp.models.User",
+				Properties: types.Props{
+					{K: "django_fk_string", V: "myapp.models.User"},
+					{K: "django_rel", V: "ForeignKey"},
 				},
 			},
 		},
@@ -375,8 +375,8 @@ func TestResolveDjangoStringFKRefs_NonScopeStubSkipped(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel": "ForeignKey",
+				Properties: types.Props{
+					{K: "django_rel", V: "ForeignKey"},
 				},
 			},
 		},
@@ -429,10 +429,10 @@ func TestResolveDjangoStringFKRefs_BareNameGlobalModelUnique(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel":       "ForeignKey",
-					"self_ref":         "false",
-					"django_fk_string": "User",
+				Properties: types.Props{
+					{K: "django_fk_string", V: "User"},
+					{K: "django_rel", V: "ForeignKey"},
+					{K: "self_ref", V: "false"},
 				},
 			},
 		},
@@ -485,10 +485,10 @@ func TestResolveDjangoStringFKRefs_BareNameGlobalModelAmbiguous(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel":       "ForeignKey",
-					"self_ref":         "false",
-					"django_fk_string": "User",
+				Properties: types.Props{
+					{K: "django_fk_string", V: "User"},
+					{K: "django_rel", V: "ForeignKey"},
+					{K: "self_ref", V: "false"},
 				},
 			},
 		},
@@ -535,10 +535,10 @@ func TestResolveDjangoStringFKRefs_BareNameNoModelMatch(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel":       "ForeignKey",
-					"self_ref":         "false",
-					"django_fk_string": "User",
+				Properties: types.Props{
+					{K: "django_fk_string", V: "User"},
+					{K: "django_rel", V: "ForeignKey"},
+					{K: "self_ref", V: "false"},
 				},
 			},
 		},
@@ -583,10 +583,10 @@ func TestResolveDjangoStringFKRefs_AppLabelRegression(t *testing.T) {
 			{
 				ToID: stub,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"django_rel":       "ForeignKey",
-					"self_ref":         "false",
-					"django_fk_string": "auth.User",
+				Properties: types.Props{
+					{K: "django_fk_string", V: "auth.User"},
+					{K: "django_rel", V: "ForeignKey"},
+					{K: "self_ref", V: "false"},
 				},
 			},
 		},

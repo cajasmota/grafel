@@ -87,13 +87,13 @@ func extractExpressGlobalMiddleware(src string, routerVars map[string]bool) map[
 			FromID: expressAppEntityName,
 			ToID:   sym,
 			Kind:   string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"framework": "express",
-				"di_role":   role,
-				"di_scope":  "global",
-				"global":    "true",
-				"order":     itoaJS(order),
-				"via":       "express_app_use",
+			Properties: types.Props{
+				{K: "di_role", V: role},
+				{K: "di_scope", V: "global"},
+				{K: "framework", V: "express"},
+				{K: "global", V: "true"},
+				{K: "order", V: itoaJS(order)},
+				{K: "via", V: "express_app_use"},
 			},
 		})
 		order++

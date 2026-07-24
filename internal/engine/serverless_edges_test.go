@@ -201,8 +201,8 @@ async function triggerResize(imageKey) {
 	if len(callsEdges) == 0 {
 		t.Fatal("expected at least one CALLS edge")
 	}
-	if callsEdges[0].Properties["sdk"] != "aws-sdk-v3" {
-		t.Errorf("sdk property=%q, want aws-sdk-v3", callsEdges[0].Properties["sdk"])
+	if callsEdges[0].Properties.Get("sdk") != "aws-sdk-v3" {
+		t.Errorf("sdk property=%q, want aws-sdk-v3", callsEdges[0].Properties.Get("sdk"))
 	}
 }
 

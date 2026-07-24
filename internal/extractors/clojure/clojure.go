@@ -524,14 +524,14 @@ func buildImportEntities(filePath string, imports []importSpec) []types.EntityRe
 		}
 		seen[key] = true
 
-		props := map[string]string{
-			"source_module": parentModule(im.module),
+		props := types.Props{
+			{K: "source_module", V: parentModule(im.module)},
 		}
 		if im.wildcard {
-			props["wildcard"] = "1"
+			props.Set("wildcard", "1")
 		} else if im.localName != "" {
-			props["local_name"] = im.localName
-			props["imported_name"] = im.importedAs
+			props.Set("local_name", im.localName)
+			props.Set("imported_name", im.importedAs)
 		}
 		out = append(out, types.EntityRecord{
 			Name:       topSegment(im.module),
@@ -633,8 +633,8 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 		out = append(out, types.RelationshipRecord{
 			ToID: head,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(lineNum),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(lineNum)},
 			},
 		})
 	}

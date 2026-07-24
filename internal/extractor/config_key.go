@@ -134,9 +134,9 @@ func EmitConfigReads(entities *[]types.EntityRecord, lang string, reads []Config
 		edgeKey := r.FromName + "\x00" + key
 		if !seenEdge[edgeKey] {
 			seenEdge[edgeKey] = true
-			props := map[string]string{"config_key": key}
+			props := types.Props{{K: "config_key", V: key}}
 			if r.Pattern != "" {
-				props["pattern"] = r.Pattern
+				props.Set("pattern", r.Pattern)
 			}
 			(*entities)[hostIdx].Relationships = append((*entities)[hostIdx].Relationships,
 				types.RelationshipRecord{

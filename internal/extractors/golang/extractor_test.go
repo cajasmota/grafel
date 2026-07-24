@@ -1099,7 +1099,7 @@ func (mx *Mux) Mount(pattern string) {
 	if hit == nil {
 		t.Fatalf("expected CALLS → handle on Mux.Mount, got %+v", mount.Relationships)
 	}
-	if hit.Properties == nil || hit.Properties["receiver_type"] != "Mux" {
+	if hit.Properties == nil || hit.Properties.Get("receiver_type") != "Mux" {
 		t.Errorf("expected Properties[receiver_type]=Mux on self-method CALLS edge, got %+v", hit.Properties)
 	}
 }
@@ -1142,7 +1142,7 @@ func (mx *Mux) handle(pattern string) {}
 	if hit == nil {
 		t.Fatal("expected CALLS edge to handle on Mux.Mount")
 	}
-	if hit.Properties == nil || hit.Properties["receiver_type"] != "Mux" {
+	if hit.Properties == nil || hit.Properties.Get("receiver_type") != "Mux" {
 		t.Errorf("expected receiver_type=Mux from param-type stamp, got %+v", hit.Properties)
 	}
 }
@@ -1181,7 +1181,7 @@ var _ = http.HandlerFunc(handler)
 		if r.Kind != "CALLS" || r.Properties == nil {
 			continue
 		}
-		if rt := r.Properties["receiver_type"]; rt != "" {
+		if rt := r.Properties.Get("receiver_type"); rt != "" {
 			got[r.ToID] = rt
 		}
 	}
@@ -1226,7 +1226,7 @@ func driver() {
 	if hit == nil {
 		t.Fatal("expected CALLS edge to Bar on driver")
 	}
-	if hit.Properties == nil || hit.Properties["receiver_type"] != "Foo" {
+	if hit.Properties == nil || hit.Properties.Get("receiver_type") != "Foo" {
 		t.Errorf("expected receiver_type=Foo from short-var-decl, got %+v", hit.Properties)
 	}
 }
@@ -1263,7 +1263,7 @@ func setup() {
 		if hit == nil {
 			t.Fatalf("expected CALLS edge to %s on setup", want)
 		}
-		if hit.Properties == nil || hit.Properties["receiver_type"] != "chi.Mux" {
+		if hit.Properties == nil || hit.Properties.Get("receiver_type") != "chi.Mux" {
 			t.Errorf("CALLS %s: expected receiver_type=chi.Mux, got %+v", want, hit.Properties)
 		}
 	}
@@ -2300,7 +2300,7 @@ func (h *UsersHandler) List() {
 				continue
 			}
 			found = true
-			gotType := rel.Properties["interface_dispatch_type"]
+			gotType := rel.Properties.Get("interface_dispatch_type")
 			if gotType != "store.Store" {
 				t.Errorf("interface_dispatch_type = %q, want %q", gotType, "store.Store")
 			}

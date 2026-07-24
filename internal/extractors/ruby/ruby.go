@@ -281,7 +281,7 @@ func extractCallRelationships(body ts.Node, src []byte, callerName string) []typ
 		rels = append(rels, types.RelationshipRecord{
 			ToID:       target,
 			Kind:       "CALLS",
-			Properties: map[string]string{"line": callLine},
+			Properties: types.Props{{K: "line", V: callLine}},
 		})
 	}
 	// Pass 1: explicit call / command / method_call / yield / super.
@@ -364,7 +364,7 @@ func buildRequireImport(node ts.Node, file extractor.FileInput) (types.EntityRec
 		if raw == "" {
 			continue
 		}
-		props := map[string]string{"require_kind": mname}
+		props := types.Props{{K: "require_kind", V: mname}}
 		// #4783 — stamp the `imported_name`/`local_name` contract so the
 		// per-symbol external-node synthesis (#4515) can mint a stable
 		// `ext:<gem>:<Const>` node. Only meaningful for gem requires (NOT
@@ -376,8 +376,8 @@ func buildRequireImport(node ts.Node, file extractor.FileInput) (types.EntityRec
 		// handled below.
 		if mname == "require" || mname == "autoload" {
 			if c := rubyRequireConstant(node, file, mname, raw); c != "" {
-				props["imported_name"] = c
-				props["local_name"] = c
+				props.Set("imported_name", c)
+				props.Set("local_name", c)
 			}
 		}
 		return types.EntityRecord{

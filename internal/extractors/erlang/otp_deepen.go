@@ -180,16 +180,16 @@ func enrichOTPMessageEdges(rec *types.EntityRecord, msgs []otpMessageEdge) bool 
 			continue
 		}
 		if rel.Properties == nil {
-			rel.Properties = map[string]string{}
+			rel.Properties = types.Props{}
 		}
-		rel.Properties["otp_msg_kind"] = msg.kind
+		rel.Properties.Set("otp_msg_kind", msg.kind)
 		if msg.server != "" {
-			rel.Properties["otp_msg_server"] = msg.server
+			rel.Properties.Set("otp_msg_server", msg.server)
 		}
 		if msg.tag != "" {
-			rel.Properties["otp_msg_tag"] = msg.tag
+			rel.Properties.Set("otp_msg_tag", msg.tag)
 		}
-		rel.Properties["provenance"] = "otp_client_send"
+		rel.Properties.Set("provenance", "otp_client_send")
 		enriched = true
 	}
 	if !enriched {
@@ -450,13 +450,13 @@ func recoverTableAccessEdges(bodies []string) []types.RelationshipRecord {
 			rels = append(rels, types.RelationshipRecord{
 				ToID: erlangTableRef(engine, name),
 				Kind: "ACCESSES_TABLE",
-				Properties: map[string]string{
-					"engine":     engine,
-					"table":      name,
-					"op":         op,
-					"primitive":  prim,
-					"line":       strconv.Itoa(lineNum),
-					"provenance": "erlang_table_access",
+				Properties: types.Props{
+					{K: "engine", V: engine},
+					{K: "line", V: strconv.Itoa(lineNum)},
+					{K: "op", V: op},
+					{K: "primitive", V: prim},
+					{K: "provenance", V: "erlang_table_access"},
+					{K: "table", V: name},
 				},
 			})
 		}
@@ -465,7 +465,7 @@ func recoverTableAccessEdges(bodies []string) []types.RelationshipRecord {
 		if rels[i].ToID != rels[j].ToID {
 			return rels[i].ToID < rels[j].ToID
 		}
-		return rels[i].Properties["op"] < rels[j].Properties["op"]
+		return rels[i].Properties.Get("op") < rels[j].Properties.Get("op")
 	})
 	return rels
 }

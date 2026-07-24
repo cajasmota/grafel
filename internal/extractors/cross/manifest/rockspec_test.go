@@ -104,8 +104,8 @@ dependencies = { "lua >= 5.1" }
 	if len(rels) != 1 {
 		t.Fatalf("expected 1 DEPENDS_ON edge, got %d", len(rels))
 	}
-	if rels[0].Properties["package_manager"] != "luarocks" {
-		t.Errorf("edge package_manager=%q want luarocks", rels[0].Properties["package_manager"])
+	if rels[0].Properties.Get("package_manager") != "luarocks" {
+		t.Errorf("edge package_manager=%q want luarocks", rels[0].Properties.Get("package_manager"))
 	}
 }
 

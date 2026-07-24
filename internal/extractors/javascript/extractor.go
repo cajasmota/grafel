@@ -1396,10 +1396,10 @@ func (x *extractor) handleInterfaceDeclaration(n ts.Node) {
 		rels = append(rels, types.RelationshipRecord{
 			ToID: base,
 			Kind: "EXTENDS",
-			Properties: map[string]string{
-				"subtype": "extends",
-				"from":    name,
-				"to":      base,
+			Properties: types.Props{
+				{K: "from", V: name},
+				{K: "subtype", V: "extends"},
+				{K: "to", V: base},
 			},
 		})
 	}
@@ -2686,7 +2686,7 @@ func (x *extractor) extractCallRelationships(body ts.Node, callerName string, fr
 		// to a `validator:<lib>` stub in addition to the normal CALLS edge,
 		// so the route↔validator linkage is a first-class graph fact.
 		if valEdge, valOK := x.extractValidationEdge(call); valOK {
-			valKey := "validates:" + valEdge.ToID + ":" + valEdge.Properties["line"]
+			valKey := "validates:" + valEdge.ToID + ":" + valEdge.Properties.Get("line")
 			if !seen[valKey] {
 				seen[valKey] = true
 				rels = append(rels, valEdge)
@@ -2700,7 +2700,7 @@ func (x *extractor) extractCallRelationships(body ts.Node, callerName string, fr
 		// schema-as-contract link is a first-class graph fact for the
 		// Express/Fastify/Koa/Hapi/Hono/Feathers/Polka/Restify/Marble/Sails family.
 		if dtoEdge, dtoOK := x.extractSchemaDTOEdge(call); dtoOK {
-			dtoKey := "validates:" + dtoEdge.ToID + ":" + dtoEdge.Properties["line"]
+			dtoKey := "validates:" + dtoEdge.ToID + ":" + dtoEdge.Properties.Get("line")
 			if !seen[dtoKey] {
 				seen[dtoKey] = true
 				rels = append(rels, dtoEdge)
@@ -2735,10 +2735,7 @@ func (x *extractor) extractCallRelationships(body ts.Node, callerName string, fr
 					seen[dbRel.ToID] = true
 				}
 				// Stamp the call-site line number from the tree-sitter node.
-				if dbRel.Properties == nil {
-					dbRel.Properties = make(map[string]string, 1)
-				}
-				dbRel.Properties["line"] = strconv.Itoa(int(call.StartPoint().Row) + 1)
+				dbRel.Properties.Set("line", strconv.Itoa(int(call.StartPoint().Row)+1))
 				rels = append(rels, *dbRel)
 			}
 			continue
@@ -2752,12 +2749,12 @@ func (x *extractor) extractCallRelationships(body ts.Node, callerName string, fr
 		rel := types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": callLine,
+			Properties: types.Props{
+				{K: "line", V: callLine},
 			},
 		}
 		if pkg := x.frameworkDSL.receiverPackageForCall(x, call); pkg != "" {
-			rel.Properties[PropReceiverPackage] = pkg
+			rel.Properties.Set(PropReceiverPackage, pkg)
 		}
 		rels = append(rels, rel)
 		// Issue #2554 — React Query / TanStack Query hook calls pass inline
@@ -2779,7 +2776,7 @@ func (x *extractor) extractCallRelationships(body ts.Node, callerName string, fr
 	// on the same line is not double-counted (rare, but cheap to guard).
 	for _, jr := range jsxNavRels {
 		key := "nav:" + jr.ToID
-		if line, ok := jr.Properties["line"]; ok {
+		if line, ok := jr.Properties.Lookup("line"); ok {
 			key += ":" + line
 		}
 		if seen[key] {
@@ -2908,9 +2905,9 @@ func (x *extractor) extractReactQueryHookCalls(call ts.Node, callerName string, 
 				rels = append(rels, types.RelationshipRecord{
 					ToID: target,
 					Kind: "CALLS",
-					Properties: map[string]string{
-						"via":  "react_query_hook",
-						"line": strconv.Itoa(int(ic.StartPoint().Row) + 1),
+					Properties: types.Props{
+						{K: "line", V: strconv.Itoa(int(ic.StartPoint().Row) + 1)},
+						{K: "via", V: "react_query_hook"},
 					},
 				})
 			}
@@ -2981,9 +2978,9 @@ func (x *extractor) dispatchMapCallEdges(call ts.Node, callerName string) []type
 			return []types.RelationshipRecord{{
 				ToID: h,
 				Kind: "CALLS",
-				Properties: map[string]string{
-					"via":  viaProp,
-					"line": callLine,
+				Properties: types.Props{
+					{K: "line", V: callLine},
+					{K: "via", V: viaProp},
 				},
 			}}
 		}
@@ -3001,9 +2998,9 @@ func (x *extractor) dispatchMapCallEdges(call ts.Node, callerName string) []type
 		rels = append(rels, types.RelationshipRecord{
 			ToID: h,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"via":  viaProp,
-				"line": callLine,
+			Properties: types.Props{
+				{K: "line", V: callLine},
+				{K: "via", V: viaProp},
 			},
 		})
 	}
@@ -3672,17 +3669,17 @@ func (x *extractor) emitImport(module string, n ts.Node, bindings []*importBindi
 		})
 	} else {
 		for _, b := range bindings {
-			props := map[string]string{
-				"local_name":    b.localName,
-				"source_module": b.sourceModule,
-				"imported_name": b.importedName,
-				"import_path":   b.importPath,
+			props := types.Props{
+				{K: "import_path", V: b.importPath},
+				{K: "imported_name", V: b.importedName},
+				{K: "local_name", V: b.localName},
+				{K: "source_module", V: b.sourceModule},
 			}
 			if b.wildcard {
-				props["wildcard"] = "1"
+				props.Set("wildcard", "1")
 			}
 			if b.resolvedFile != "" {
-				props["resolved_file"] = b.resolvedFile
+				props.Set("resolved_file", b.resolvedFile)
 			}
 			// Issue #505 — for ALIAS-resolved imports, switch the
 			// IMPORTS ToID from the raw alias spec (`@/src/store/foo`,

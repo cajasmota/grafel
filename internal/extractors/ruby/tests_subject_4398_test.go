@@ -18,7 +18,7 @@ func findTestsEdgeTarget(ents []types.EntityRecord, subtype string) (string, boo
 		}
 		for _, r := range e.Relationships {
 			if r.Kind == string(types.RelationshipKindTests) &&
-				r.Properties["match_source"] == "spec_subject_affinity" {
+				r.Properties.Get("match_source") == "spec_subject_affinity" {
 				return r.ToID, true
 			}
 		}

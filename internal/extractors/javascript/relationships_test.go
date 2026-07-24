@@ -193,7 +193,7 @@ const lodash = require("lodash");
 			}
 			// Match by import_path property (preferred) or raw ToID.
 			if r.Properties != nil {
-				if ip := r.Properties["import_path"]; ip != "" {
+				if ip := r.Properties.Get("import_path"); ip != "" {
 					if _, ok := wantModules[ip]; ok {
 						wantModules[ip] = true
 					}
@@ -249,7 +249,7 @@ function helper() {}
 		for j := range ents[i].Relationships {
 			r := &ents[i].Relationships[j]
 			if r.Kind == "IMPORTS" {
-				if r.Properties != nil && r.Properties["import_path"] == "./x" {
+				if r.Properties != nil && r.Properties.Get("import_path") == "./x" {
 					importEdgeFound = true
 				}
 				if r.ToID == "./x" {
@@ -340,13 +340,13 @@ func findImportProps(ents []types.EntityRecord, module, localName string) map[st
 				continue
 			}
 			// Match on import_path (preferred — exact spec string) or source_module.
-			importPath := r.Properties["import_path"]
-			sourceMod := r.Properties["source_module"]
+			importPath := r.Properties.Get("import_path")
+			sourceMod := r.Properties.Get("source_module")
 			if importPath != module && sourceMod != module {
 				continue
 			}
-			if r.Properties["local_name"] == localName {
-				return r.Properties
+			if r.Properties.Get("local_name") == localName {
+				return r.Properties.Snapshot()
 			}
 		}
 	}

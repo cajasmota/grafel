@@ -20,7 +20,7 @@ func runGoMongoAgg(t *testing.T, src string) ([]types.EntityRecord, []types.Rela
 			// #4244 — drop the node-anchored JOINS_COLLECTION twin so the
 			// count/identity assertions below see the collection-anchored
 			// edge set they were written against.
-			if r.Properties["anchor"] == "stage_node" {
+			if r.Properties.Get("anchor") == "stage_node" {
 				return
 			}
 			rels = append(rels, r)
@@ -70,17 +70,17 @@ func report(ctx context.Context, db *mongo.Database) {
 	if join.ToID != "Class:Author" {
 		t.Errorf("join ToID = %q, want Class:Author", join.ToID)
 	}
-	if join.Properties["local_field"] != "author_id" {
-		t.Errorf("join local_field = %q, want author_id", join.Properties["local_field"])
+	if join.Properties.Get("local_field") != "author_id" {
+		t.Errorf("join local_field = %q, want author_id", join.Properties.Get("local_field"))
 	}
-	if join.Properties["foreign_field"] != "_id" {
-		t.Errorf("join foreign_field = %q, want _id", join.Properties["foreign_field"])
+	if join.Properties.Get("foreign_field") != "_id" {
+		t.Errorf("join foreign_field = %q, want _id", join.Properties.Get("foreign_field"))
 	}
-	if join.Properties["as"] != "author" {
-		t.Errorf("join as = %q, want author", join.Properties["as"])
+	if join.Properties.Get("as") != "author" {
+		t.Errorf("join as = %q, want author", join.Properties.Get("as"))
 	}
-	if join.Properties["stage"] != "lookup" {
-		t.Errorf("join stage = %q, want lookup", join.Properties["stage"])
+	if join.Properties.Get("stage") != "lookup" {
+		t.Errorf("join stage = %q, want lookup", join.Properties.Get("stage"))
 	}
 
 	// Stage order preserved.
@@ -141,11 +141,11 @@ func orders(ctx context.Context, db *mongo.Database) {
 	if join.FromID != "Class:Order" {
 		t.Errorf("join FromID = %q, want Class:Order (coll var -> db.Collection(\"orders\"))", join.FromID)
 	}
-	if join.Properties["local_field"] != "customer_id" {
-		t.Errorf("join local_field = %q, want customer_id", join.Properties["local_field"])
+	if join.Properties.Get("local_field") != "customer_id" {
+		t.Errorf("join local_field = %q, want customer_id", join.Properties.Get("local_field"))
 	}
-	if join.Properties["foreign_field"] != "_id" {
-		t.Errorf("join foreign_field = %q, want _id", join.Properties["foreign_field"])
+	if join.Properties.Get("foreign_field") != "_id" {
+		t.Errorf("join foreign_field = %q, want _id", join.Properties.Get("foreign_field"))
 	}
 }
 
@@ -173,11 +173,11 @@ func tree(ctx context.Context, db *mongo.Database) {
 	if join.FromID != "Class:Employee" {
 		t.Errorf("join FromID = %q, want Class:Employee", join.FromID)
 	}
-	if join.Properties["stage"] != "graphLookup" {
-		t.Errorf("join stage = %q, want graphLookup", join.Properties["stage"])
+	if join.Properties.Get("stage") != "graphLookup" {
+		t.Errorf("join stage = %q, want graphLookup", join.Properties.Get("stage"))
 	}
-	if join.Properties["as"] != "reportingHierarchy" {
-		t.Errorf("join as = %q, want reportingHierarchy", join.Properties["as"])
+	if join.Properties.Get("as") != "reportingHierarchy" {
+		t.Errorf("join as = %q, want reportingHierarchy", join.Properties.Get("as"))
 	}
 	st := findStage(ents, "$graphLookup")
 	if st == nil || st.Properties["from"] != "employees" {
@@ -318,8 +318,8 @@ func report(ctx context.Context, db *mongo.Database) {
 	if join.FromID != "Class:Post" {
 		t.Errorf("join FromID = %q, want Class:Post", join.FromID)
 	}
-	if join.Properties["local_field"] != "user_id" {
-		t.Errorf("join local_field = %q, want user_id", join.Properties["local_field"])
+	if join.Properties.Get("local_field") != "user_id" {
+		t.Errorf("join local_field = %q, want user_id", join.Properties.Get("local_field"))
 	}
 }
 

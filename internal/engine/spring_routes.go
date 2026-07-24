@@ -257,9 +257,9 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 				FromID: fmt.Sprintf("Route:%s", composedPath),
 				ToID:   fmt.Sprintf("Controller:%s", methodName),
 				Kind:   "ROUTES_TO",
-				Properties: map[string]string{
-					"framework":    "java",
-					"pattern_type": "ast_driven",
+				Properties: types.Props{
+					{K: "framework", V: "java"},
+					{K: "pattern_type", V: "ast_driven"},
 				},
 			})
 		}

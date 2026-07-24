@@ -793,12 +793,12 @@ func extractCallRelationships(body ts.Node, src []byte, callerName string) []typ
 		rel := types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(int(call.StartPoint().Row) + 1)},
 			},
 		}
 		if recv != "" {
-			rel.Properties["receiver_type"] = recv
+			rel.Properties.Set("receiver_type", recv)
 		}
 		rels = append(rels, rel)
 	}
@@ -1130,14 +1130,14 @@ func buildImportRecord(node ts.Node, file extractor.FileInput) (types.EntityReco
 
 	// Determine ToID and properties.
 	var toID string
-	props := map[string]string{}
+	props := types.Props{}
 	if isStatic {
-		props["import_kind"] = "static"
+		props.Set("import_kind", "static")
 	}
 	if hasWildcard {
 		toID = path
-		props["source_module"] = path
-		props["wildcard"] = "1"
+		props.Set("source_module", path)
+		props.Set("wildcard", "1")
 	} else {
 		// Plain import (with optional alias). Static non-wildcard imports
 		// also have shape `static foo.Util.helper` where the leaf is the
@@ -1154,9 +1154,9 @@ func buildImportRecord(node ts.Node, file extractor.FileInput) (types.EntityReco
 		if alias != "" {
 			localName = alias
 		}
-		props["local_name"] = localName
-		props["source_module"] = mod
-		props["imported_name"] = importedName
+		props.Set("local_name", localName)
+		props.Set("source_module", mod)
+		props.Set("imported_name", importedName)
 	}
 
 	top := toID

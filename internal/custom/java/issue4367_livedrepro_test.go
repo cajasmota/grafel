@@ -127,11 +127,11 @@ func collectEdges4367(ents []types.EntityRecord) (contains int, refTargets map[s
 		for _, r := range e.Relationships {
 			switch r.Kind {
 			case string(types.RelationshipKindContains):
-				if r.Properties["member"] == "field" {
+				if r.Properties.Get("member") == "field" {
 					contains++
 				}
 			case string(types.RelationshipKindReferences):
-				if r.Properties["ref_kind"] == "field_target_type" {
+				if r.Properties.Get("ref_kind") == "field_target_type" {
 					refTargets[r.ToID]++
 				}
 			}

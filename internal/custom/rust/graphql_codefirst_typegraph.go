@@ -215,18 +215,18 @@ func (e *rustGraphQLTypeGraphExtractor) Extract(ctx context.Context, file extrac
 		seen[key] = true
 		ownerRef := extractor.BuildOperationStructuralRef("graphql", file.Path, owner)
 		targetRef := extractor.BuildOperationStructuralRef("graphql", file.Path, target)
-		props := map[string]string{
-			"field_name":    fieldName,
-			"list":          rustGqlBool(tc.list),
-			"nullable":      rustGqlBool(tc.nullable),
-			"cardinality":   rustGqlCardLabel(tc),
-			"self_ref":      rustGqlBool(target == owner),
-			"graphql_field": owner + "." + fieldName,
-			"framework":     "async-graphql",
-			"provenance":    "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD",
+		props := types.Props{
+			{K: "cardinality", V: rustGqlCardLabel(tc)},
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: "async-graphql"},
+			{K: "graphql_field", V: owner + "." + fieldName},
+			{K: "list", V: rustGqlBool(tc.list)},
+			{K: "nullable", V: rustGqlBool(tc.nullable)},
+			{K: "provenance", V: "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD"},
+			{K: "self_ref", V: rustGqlBool(target == owner)},
 		}
 		if tc.list {
-			props["item_nullable"] = rustGqlBool(tc.itemNullable)
+			props.Set("item_nullable", rustGqlBool(tc.itemNullable))
 		}
 		idx := nodes[owner]
 		out[idx].Relationships = append(out[idx].Relationships,

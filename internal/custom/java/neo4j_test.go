@@ -256,17 +256,17 @@ public class Person {
 	if edge == nil {
 		t.Fatalf("expected Person ─GRAPH_RELATES→ Class:Movie edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "ACTED_IN" {
-		t.Errorf("rel_type: want ACTED_IN, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "ACTED_IN" {
+		t.Errorf("rel_type: want ACTED_IN, got %q", edge.Properties.Get("rel_type"))
 	}
-	if edge.Properties["direction"] != "OUTGOING" {
-		t.Errorf("direction: want OUTGOING, got %q", edge.Properties["direction"])
+	if edge.Properties.Get("direction") != "OUTGOING" {
+		t.Errorf("direction: want OUTGOING, got %q", edge.Properties.Get("direction"))
 	}
-	if edge.Properties["field_name"] != "movie" {
-		t.Errorf("field_name: want movie, got %q", edge.Properties["field_name"])
+	if edge.Properties.Get("field_name") != "movie" {
+		t.Errorf("field_name: want movie, got %q", edge.Properties.Get("field_name"))
 	}
-	if edge.Properties["framework"] != "neo4j" {
-		t.Errorf("framework: want neo4j, got %q", edge.Properties["framework"])
+	if edge.Properties.Get("framework") != "neo4j" {
+		t.Errorf("framework: want neo4j, got %q", edge.Properties.Get("framework"))
 	}
 
 	// The owner @Node entity is the source ("table"); the reverse edge must NOT
@@ -305,8 +305,8 @@ public class Person {
 	if edge == nil {
 		t.Fatalf("expected Person ─GRAPH_RELATES→ Class:Person self-edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "KNOWS" {
-		t.Errorf("rel_type: want KNOWS, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "KNOWS" {
+		t.Errorf("rel_type: want KNOWS, got %q", edge.Properties.Get("rel_type"))
 	}
 }
 

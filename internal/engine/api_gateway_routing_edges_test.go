@@ -94,8 +94,8 @@ spring:
 
 	const userSvc = "service:USER-SERVICE"
 	e := apiGwHasRoutesTo(t, ents, rels, userSvc)
-	if e.Properties["predicate"] != "/users/**" {
-		t.Fatalf("edge predicate = %q, want /users/**", e.Properties["predicate"])
+	if e.Properties.Get("predicate") != "/users/**" {
+		t.Fatalf("edge predicate = %q, want /users/**", e.Properties.Get("predicate"))
 	}
 	// The route node carries the path + uri.
 	route := apiGwEntity(ents, e.FromID)
@@ -148,8 +148,8 @@ public class GatewayConfig {
 `
 	ents, rels := runAPIGwDetect(t, "java", "GatewayConfig.java", src)
 	e := apiGwHasRoutesTo(t, ents, rels, "service:order-service")
-	if e.Properties["predicate"] != "/orders/**" {
-		t.Fatalf("java route predicate = %q, want /orders/**", e.Properties["predicate"])
+	if e.Properties.Get("predicate") != "/orders/**" {
+		t.Fatalf("java route predicate = %q, want /orders/**", e.Properties.Get("predicate"))
 	}
 	apiGwHasRoutesTo(t, ents, rels, "service:user-service")
 }

@@ -192,17 +192,17 @@ func (e *Extractor) harvestClientCalls(ctx context.Context, file extractor.FileI
 			if !strings.EqualFold(rel.Kind, "CALLS") {
 				continue
 			}
-			if rel.Properties["kind"] != "external_http_call" {
+			if rel.Properties.Get("kind") != "external_http_call" {
 				continue
 			}
-			rawURL := rel.Properties["url"]
+			rawURL := rel.Properties.Get("url")
 			p := normalizePath(extractURLPath(rawURL))
 			if p == "" {
 				continue
 			}
 			out = append(out, clientCall{
 				callerRef: rel.FromID,
-				method:    strings.ToUpper(strings.TrimSpace(rel.Properties["http_method"])),
+				method:    strings.ToUpper(strings.TrimSpace(rel.Properties.Get("http_method"))),
 				url:       rawURL,
 				path:      p,
 			})
@@ -322,13 +322,13 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 				FromID: c.callerRef,
 				ToID:   ep.entityID,
 				Kind:   string(types.RelationshipKindConsumesAPI),
-				Properties: map[string]string{
-					"method":        c.method,
-					"matched_url":   c.url,
-					"matched_path":  c.path,
-					"endpoint_path": ep.rawPath,
-					"via":           "same_file_http_consumption",
-					"provenance":    "INFERRED_FROM_HTTP_CLIENT_CALL",
+				Properties: types.Props{
+					{K: "endpoint_path", V: ep.rawPath},
+					{K: "matched_path", V: c.path},
+					{K: "matched_url", V: c.url},
+					{K: "method", V: c.method},
+					{K: "provenance", V: "INFERRED_FROM_HTTP_CLIENT_CALL"},
+					{K: "via", V: "same_file_http_consumption"},
 				},
 			})
 		}

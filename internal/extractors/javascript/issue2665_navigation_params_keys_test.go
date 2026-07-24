@@ -20,7 +20,7 @@ func findNavParamsKeys(ents []types.EntityRecord, name string) string {
 	}
 	for _, r := range e.Relationships {
 		if r.Kind == "NAVIGATES_TO" && r.Properties != nil {
-			return r.Properties["params_keys"]
+			return r.Properties.Get("params_keys")
 		}
 	}
 	return ""

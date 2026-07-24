@@ -59,12 +59,12 @@ func buildChannelBindingFixture() ([]types.EntityRecord, []types.RelationshipRec
 		{
 			FromID: "scope:channelbinding:quarkus_properties:app.properties:outgoing:orders-out",
 			ToID:   "orders-out", Kind: string(types.RelationshipKindBindsChannel),
-			Properties: map[string]string{"channel": "orders-out", "direction": "outgoing"},
+			Properties: types.Props{{K: "channel", V: "orders-out"}, {K: "direction", V: "outgoing"}},
 		},
 		{
 			FromID: "scope:channelbinding:quarkus_properties:app.properties:outgoing:orders-out",
 			ToID:   "kafka:orders.placed", Kind: string(types.RelationshipKindBindsTopic),
-			Properties: map[string]string{"topic": "orders.placed"},
+			Properties: types.Props{{K: "topic", V: "orders.placed"}},
 		},
 	}
 	return entities, rels
@@ -111,7 +111,7 @@ func TestResolveChannelBindings_DirectionMustAgree(t *testing.T) {
 	rels := []types.RelationshipRecord{{
 		FromID: "scope:channelbinding:quarkus_properties:app.properties:outgoing:shared",
 		ToID:   "shared", Kind: string(types.RelationshipKindBindsChannel),
-		Properties: map[string]string{"channel": "shared", "direction": "outgoing"},
+		Properties: types.Props{{K: "channel", V: "shared"}, {K: "direction", V: "outgoing"}},
 	}}
 	if n := ResolveChannelBindings(entities, rels); n != 0 {
 		t.Fatalf("rewrote %d edges; outgoing binding must not bind an @Incoming op", n)
@@ -177,7 +177,7 @@ func TestReferencesWithAllowlist_UnresolvedBindsChannelNotSwept(t *testing.T) {
 	rels := []types.RelationshipRecord{{
 		FromID: "scope:channelbinding:quarkus_properties:app.properties:outgoing:orders-out",
 		ToID:   "orders-out", Kind: string(types.RelationshipKindBindsChannel),
-		Properties: map[string]string{"channel": "orders-out", "direction": "outgoing"},
+		Properties: types.Props{{K: "channel", V: "orders-out"}, {K: "direction", V: "outgoing"}},
 	}}
 
 	// Dedicated pass first (no matching op -> leaves ToID unresolved).

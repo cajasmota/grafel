@@ -149,9 +149,9 @@ func edgeConf(recs []types.EntityRecord, test, prod string) string {
 			continue
 		}
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == prod {
-				if rank[rel.Properties["confidence"]] > rank[best] {
-					best = rel.Properties["confidence"]
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == prod {
+				if rank[rel.Properties.Get("confidence")] > rank[best] {
+					best = rel.Properties.Get("confidence")
 				}
 			}
 		}

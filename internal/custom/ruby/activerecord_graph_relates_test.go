@@ -39,17 +39,17 @@ end
 	if hm == nil {
 		t.Fatal("expected GRAPH_RELATES User → Order (has_many)")
 	}
-	if hm.Properties["cardinality"] != "one_to_many" {
-		t.Errorf("has_many cardinality: want one_to_many, got %q", hm.Properties["cardinality"])
+	if hm.Properties.Get("cardinality") != "one_to_many" {
+		t.Errorf("has_many cardinality: want one_to_many, got %q", hm.Properties.Get("cardinality"))
 	}
 
 	ho := arGraphRelates(ents, "Class:User", "Class:Profile")
-	if ho == nil || ho.Properties["cardinality"] != "one_to_one" {
+	if ho == nil || ho.Properties.Get("cardinality") != "one_to_one" {
 		t.Errorf("expected GRAPH_RELATES User → Profile one_to_one, got %v", ho)
 	}
 
 	habtm := arGraphRelates(ents, "Class:User", "Class:Tag")
-	if habtm == nil || habtm.Properties["cardinality"] != "many_to_many" {
+	if habtm == nil || habtm.Properties.Get("cardinality") != "many_to_many" {
 		t.Errorf("expected GRAPH_RELATES User → Tag many_to_many, got %v", habtm)
 	}
 
@@ -77,8 +77,8 @@ end
 	if bt == nil {
 		t.Fatal("expected GRAPH_RELATES Order → User (belongs_to)")
 	}
-	if bt.Properties["cardinality"] != "many_to_one" {
-		t.Errorf("belongs_to cardinality: want many_to_one, got %q", bt.Properties["cardinality"])
+	if bt.Properties.Get("cardinality") != "many_to_one" {
+		t.Errorf("belongs_to cardinality: want many_to_one, got %q", bt.Properties.Get("cardinality"))
 	}
 }
 

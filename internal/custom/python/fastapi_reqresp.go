@@ -107,7 +107,7 @@ func (e *FastAPIReqRespExtractor) Extract(ctx context.Context, file extractor.Fi
 			ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
 				ToID:       "Class:" + dtoName,
 				Kind:       string(types.RelationshipKindAcceptsInput),
-				Properties: map[string]string{"framework": "fastapi", "match_source": matchSource, "param_name": paramName, "dto_type": dtoName},
+				Properties: types.Props{{K: "dto_type", V: dtoName}, {K: "framework", V: "fastapi"}, {K: "match_source", V: matchSource}, {K: "param_name", V: paramName}},
 			})
 			out = append(out, ep)
 		}
@@ -160,7 +160,7 @@ func (e *FastAPIReqRespExtractor) Extract(ctx context.Context, file extractor.Fi
 				ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
 					ToID:       "Class:" + dtoName,
 					Kind:       string(types.RelationshipKindReturns),
-					Properties: map[string]string{"framework": "fastapi", "match_source": "response_model_decorator", "dto_type": dtoName},
+					Properties: types.Props{{K: "dto_type", V: dtoName}, {K: "framework", V: "fastapi"}, {K: "match_source", V: "response_model_decorator"}},
 				})
 				out = append(out, ep)
 			}
@@ -177,7 +177,7 @@ func (e *FastAPIReqRespExtractor) Extract(ctx context.Context, file extractor.Fi
 				ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
 					ToID:       "Class:" + dtoName,
 					Kind:       string(types.RelationshipKindReturns),
-					Properties: map[string]string{"framework": "fastapi", "match_source": "return_type_annotation", "dto_type": dtoName},
+					Properties: types.Props{{K: "dto_type", V: dtoName}, {K: "framework", V: "fastapi"}, {K: "match_source", V: "return_type_annotation"}},
 				})
 				out = append(out, ep)
 			}

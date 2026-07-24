@@ -358,7 +358,7 @@ func patternResultToRecords(res *PatternResult, filePath string) []types.EntityR
 		rr := types.RelationshipRecord{
 			ToID:       r.TargetRef,
 			Kind:       r.RelationshipType,
-			Properties: map[string]string{},
+			Properties: types.Props{},
 		}
 		// #4367 — explicit FromID override. When the edge's source must resolve
 		// to an entity OTHER than its carrier (the field-membership CONTAINS edge
@@ -370,9 +370,9 @@ func patternResultToRecords(res *PatternResult, filePath string) []types.EntityR
 			rr.FromID = r.FromName
 		}
 		for k, v := range r.Properties {
-			rr.Properties[k] = v
+			rr.Properties.Set(k, v)
 		}
-		rr.Properties["language"] = "java"
+		rr.Properties.Set("language", "java")
 		records[idx].Relationships = append(records[idx].Relationships, rr)
 	}
 

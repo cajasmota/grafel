@@ -306,9 +306,9 @@ func main() {
 	for _, r := range rels {
 		if r.Kind == grpcImplementsEdgeKind &&
 			strings.Contains(r.ToID, "StreamLogs") {
-			if r.Properties["streaming"] != "server_streaming" {
+			if r.Properties.Get("streaming") != "server_streaming" {
 				t.Errorf("expected streaming=server_streaming on GRPC_IMPLEMENTS, got %q",
-					r.Properties["streaming"])
+					r.Properties.Get("streaming"))
 			}
 		}
 	}
@@ -420,7 +420,7 @@ def serve():
 		}
 		for method := range want {
 			if strings.Contains(r.ToID, "/"+method) || strings.HasSuffix(r.ToID, method) {
-				seen[method] = r.Properties["streaming"]
+				seen[method] = r.Properties.Get("streaming")
 			}
 		}
 	}

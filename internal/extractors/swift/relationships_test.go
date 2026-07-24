@@ -295,8 +295,8 @@ func TestSwift_CallsReceiverTypeProperty(t *testing.T) {
 	for _, r := range caller.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "incrementAndGet" {
 			found = true
-			if r.Properties["receiver_type"] != "AtomicInteger" {
-				t.Errorf("expected receiver_type=AtomicInteger, got %q (props=%+v)", r.Properties["receiver_type"], r.Properties)
+			if r.Properties.Get("receiver_type") != "AtomicInteger" {
+				t.Errorf("expected receiver_type=AtomicInteger, got %q (props=%+v)", r.Properties.Get("receiver_type"), r.Properties)
 			}
 		}
 	}
@@ -333,14 +333,14 @@ import SwiftUI
 			if r.FromID != "Test.swift" {
 				t.Errorf("IMPORTS %s: expected FromID=Test.swift, got %q", r.ToID, r.FromID)
 			}
-			if r.Properties["local_name"] != w.local {
-				t.Errorf("IMPORTS %s: local_name=%q want %q", r.ToID, r.Properties["local_name"], w.local)
+			if r.Properties.Get("local_name") != w.local {
+				t.Errorf("IMPORTS %s: local_name=%q want %q", r.ToID, r.Properties.Get("local_name"), w.local)
 			}
-			if r.Properties["source_module"] != w.mod {
-				t.Errorf("IMPORTS %s: source_module=%q want %q", r.ToID, r.Properties["source_module"], w.mod)
+			if r.Properties.Get("source_module") != w.mod {
+				t.Errorf("IMPORTS %s: source_module=%q want %q", r.ToID, r.Properties.Get("source_module"), w.mod)
 			}
-			if r.Properties["imported_name"] != w.local {
-				t.Errorf("IMPORTS %s: imported_name=%q want %q", r.ToID, r.Properties["imported_name"], w.local)
+			if r.Properties.Get("imported_name") != w.local {
+				t.Errorf("IMPORTS %s: imported_name=%q want %q", r.ToID, r.Properties.Get("imported_name"), w.local)
 			}
 		}
 	}

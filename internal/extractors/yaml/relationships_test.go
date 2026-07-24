@@ -104,7 +104,7 @@ jobs:
 
 	// Language tagging.
 	for _, r := range append(contains, imports...) {
-		if r.Properties["language"] != "yaml" {
+		if r.Properties.Get("language") != "yaml" {
 			t.Errorf("relationship %+v missing language=yaml tag", r)
 		}
 	}
@@ -179,7 +179,7 @@ volumes:
 
 	// Language tagging.
 	for _, r := range append(contains, imports...) {
-		if r.Properties["language"] != "yaml" {
+		if r.Properties.Get("language") != "yaml" {
 			t.Errorf("relationship %+v missing language=yaml tag", r)
 		}
 	}

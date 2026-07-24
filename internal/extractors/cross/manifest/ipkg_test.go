@@ -63,8 +63,8 @@ depends = base, prelude
 		t.Fatalf("expected 2 DEPENDS_ON edges, got %d", len(rels))
 	}
 	for _, r := range rels {
-		if r.Properties["package_manager"] != "idris2" {
-			t.Errorf("edge package_manager=%q want idris2", r.Properties["package_manager"])
+		if r.Properties.Get("package_manager") != "idris2" {
+			t.Errorf("edge package_manager=%q want idris2", r.Properties.Get("package_manager"))
 		}
 	}
 }

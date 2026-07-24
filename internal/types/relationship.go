@@ -8,10 +8,10 @@ import (
 // RelationshipRecord represents a directed edge between two entities.
 // Kind values are enumerated by RelationshipKind (see kinds.go).
 type RelationshipRecord struct {
-	FromID     string            `json:"from_id"`
-	ToID       string            `json:"to_id"`
-	Kind       string            `json:"kind"`
-	Properties map[string]string `json:"properties,omitempty"`
+	FromID     string `json:"from_id"`
+	ToID       string `json:"to_id"`
+	Kind       string `json:"kind"`
+	Properties Props  `json:"properties,omitempty"`
 	// Confidence in [0.0, 1.0]; zero reads as 1.0. Phase 1C (#2769).
 	Confidence float64 `json:"confidence,omitempty"`
 }
@@ -39,10 +39,10 @@ func (r *RelationshipRecord) Validate() error {
 // SourceID/TargetID map to FromID/ToID in RelationshipRecord.
 // Used by downstream handlers and matches the task brief field names.
 type Relationship struct {
-	SourceID   string            `json:"source_id"`
-	TargetID   string            `json:"target_id"`
-	Type       string            `json:"type"`
-	Properties map[string]string `json:"properties,omitempty"`
+	SourceID   string `json:"source_id"`
+	TargetID   string `json:"target_id"`
+	Type       string `json:"type"`
+	Properties Props  `json:"properties,omitempty"`
 	// Confidence in [0.0, 1.0]; zero reads as 1.0. Phase 1C (#2769).
 	Confidence float64 `json:"confidence,omitempty"`
 }

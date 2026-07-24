@@ -423,12 +423,12 @@ func (e *prismaExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 						FromID: "Class:" + blk.name,
 						ToID:   "Class:" + baseType,
 						Kind:   string(types.RelationshipKindGraphRelates),
-						Properties: map[string]string{
-							"framework":    "prisma",
-							"cardinality":  card,
-							"field_name":   fieldName,
-							"target_model": baseType,
-							"provenance":   "INFERRED_FROM_PRISMA_RELATION_FIELD",
+						Properties: types.Props{
+							{K: "cardinality", V: card},
+							{K: "field_name", V: fieldName},
+							{K: "framework", V: "prisma"},
+							{K: "provenance", V: "INFERRED_FROM_PRISMA_RELATION_FIELD"},
+							{K: "target_model", V: baseType},
 						},
 					})
 			}

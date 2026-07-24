@@ -76,8 +76,8 @@ func TestAsd_DependsOnEdges(t *testing.T) {
 		t.Fatalf("expected 2 DEPENDS_ON edges, got %d", len(rels))
 	}
 	for _, r := range rels {
-		if r.Properties["package_manager"] != "asdf" {
-			t.Errorf("edge package_manager=%q want asdf", r.Properties["package_manager"])
+		if r.Properties.Get("package_manager") != "asdf" {
+			t.Errorf("edge package_manager=%q want asdf", r.Properties.Get("package_manager"))
 		}
 	}
 }

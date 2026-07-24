@@ -341,7 +341,7 @@ func DispatchWelcomeEmail() error {
 	trig := triggersEdges(rels)
 	foundTrigger := false
 	for _, e := range trig {
-		if e.ToID == "Function:handleEmailSend" && e.Properties["framework"] == "asynq" {
+		if e.ToID == "Function:handleEmailSend" && e.Properties.Get("framework") == "asynq" {
 			foundTrigger = true
 		}
 	}
@@ -356,7 +356,7 @@ func DispatchWelcomeEmail() error {
 	for _, e := range enq {
 		if e.ToID == scheduledJobKind+":asynq:email:send" &&
 			e.FromID == "SCOPE.Operation:DispatchWelcomeEmail" &&
-			e.Properties["framework"] == "asynq" {
+			e.Properties.Get("framework") == "asynq" {
 			foundEnqueue = true
 		}
 	}
@@ -379,7 +379,7 @@ func Dispatch() {
 `
 	_, rels := runScheduledDetect(t, "go", "producer.go", src)
 	for _, e := range enqueuesEdges(rels) {
-		if e.Properties["framework"] == "asynq" {
+		if e.Properties.Get("framework") == "asynq" {
 			t.Errorf("expected no asynq ENQUEUES edge for unregistered task type, got %+v", e)
 		}
 	}
@@ -550,11 +550,11 @@ end
 	if e.ToID != scheduledJobKind+":sidekiq:EmailWorker" {
 		t.Errorf("expected ENQUEUES to %s:sidekiq:EmailWorker, got %q", scheduledJobKind, e.ToID)
 	}
-	if e.Properties["dispatch_method"] != "perform_async" {
-		t.Errorf("expected dispatch_method=perform_async, got %q", e.Properties["dispatch_method"])
+	if e.Properties.Get("dispatch_method") != "perform_async" {
+		t.Errorf("expected dispatch_method=perform_async, got %q", e.Properties.Get("dispatch_method"))
 	}
-	if e.Properties["worker_class"] != "EmailWorker" {
-		t.Errorf("expected worker_class=EmailWorker, got %q", e.Properties["worker_class"])
+	if e.Properties.Get("worker_class") != "EmailWorker" {
+		t.Errorf("expected worker_class=EmailWorker, got %q", e.Properties.Get("worker_class"))
 	}
 }
 
@@ -622,7 +622,7 @@ end
 func enqueuesByFramework(rels []types.RelationshipRecord, framework string) []types.RelationshipRecord {
 	var out []types.RelationshipRecord
 	for _, r := range enqueuesEdges(rels) {
-		if r.Properties["framework"] == framework {
+		if r.Properties.Get("framework") == framework {
 			out = append(out, r)
 		}
 	}
@@ -683,8 +683,8 @@ end
 	if e.ToID != scheduledJobKind+":resque:EmailJob" {
 		t.Errorf("expected ENQUEUES to %s:resque:EmailJob, got %q", scheduledJobKind, e.ToID)
 	}
-	if e.Properties["dispatch_method"] != "enqueue" {
-		t.Errorf("expected dispatch_method=enqueue, got %q", e.Properties["dispatch_method"])
+	if e.Properties.Get("dispatch_method") != "enqueue" {
+		t.Errorf("expected dispatch_method=enqueue, got %q", e.Properties.Get("dispatch_method"))
 	}
 }
 
@@ -709,8 +709,8 @@ end
 	if enq[0].ToID != scheduledJobKind+":resque:ReportJob" {
 		t.Errorf("expected ENQUEUES to resque:ReportJob, got %q", enq[0].ToID)
 	}
-	if enq[0].Properties["dispatch_method"] != "enqueue_in" {
-		t.Errorf("expected dispatch_method=enqueue_in, got %q", enq[0].Properties["dispatch_method"])
+	if enq[0].Properties.Get("dispatch_method") != "enqueue_in" {
+		t.Errorf("expected dispatch_method=enqueue_in, got %q", enq[0].Properties.Get("dispatch_method"))
 	}
 }
 

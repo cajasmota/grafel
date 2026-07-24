@@ -277,10 +277,10 @@ func buildVHDLImportEntities(filePath, scrubbed, lang string) []types.EntityReco
 		}
 		seen["lib:"+libName] = true
 
-		props := map[string]string{
-			"source_module": libName,
-			"imported_name": libName,
-			"local_name":    libName,
+		props := types.Props{
+			{K: "imported_name", V: libName},
+			{K: "local_name", V: libName},
+			{K: "source_module", V: libName},
 		}
 		out = append(out, types.EntityRecord{
 			Name:       libName,
@@ -309,10 +309,10 @@ func buildVHDLImportEntities(filePath, scrubbed, lang string) []types.EntityReco
 		}
 		seen["use:"+libName] = true
 
-		props := map[string]string{
-			"source_module": libName,
-			"imported_name": libName,
-			"local_name":    libName,
+		props := types.Props{
+			{K: "imported_name", V: libName},
+			{K: "local_name", V: libName},
+			{K: "source_module", V: libName},
 		}
 		out = append(out, types.EntityRecord{
 			Name:       libName,
@@ -811,12 +811,12 @@ func collectVHDLInstantiations(body, ownerName string) []types.RelationshipRecor
 		}
 		seen[key] = true
 
-		props := map[string]string{
-			"instance_name":  instLabel,
-			"component_type": compType,
+		props := types.Props{
+			{K: "component_type", V: compType},
+			{K: "instance_name", V: instLabel},
 		}
 		if mapKind == "generic map" {
-			props["parameterized"] = "true"
+			props.Set("parameterized", "true")
 		}
 
 		out = append(out, types.RelationshipRecord{
@@ -1026,8 +1026,8 @@ func buildVHDLToolEntities(src, scrubbed, filePath, lang string) []types.EntityR
 					FromID: filePath,
 					ToID:   spec.id,
 					Kind:   "USES",
-					Properties: map[string]string{
-						"tool": spec.id,
+					Properties: types.Props{
+						{K: "tool", V: spec.id},
 					},
 				},
 			},

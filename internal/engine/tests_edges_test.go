@@ -51,8 +51,8 @@ var routesToFoo = []types.RelationshipRecord{
 		FromID: "Route:/api/v1/foo",
 		ToID:   "View:FooView",
 		Kind:   "ROUTES_TO",
-		Properties: map[string]string{
-			"pattern_type": "ast_driven",
+		Properties: types.Props{
+			{K: "pattern_type", V: "ast_driven"},
 		},
 	},
 }
@@ -92,14 +92,14 @@ func TestTestsEdges_MultiHopViaHttpClient(t *testing.T) {
 		if e.ToID != "View:FooView" {
 			continue
 		}
-		if e.Properties["via"] != "http_router" {
-			t.Errorf("expected via=http_router, got %q", e.Properties["via"])
+		if e.Properties.Get("via") != "http_router" {
+			t.Errorf("expected via=http_router, got %q", e.Properties.Get("via"))
 		}
-		if e.Properties["pattern_type"] != "tests_multi_hop_http_router" {
-			t.Errorf("expected pattern_type=tests_multi_hop_http_router, got %q", e.Properties["pattern_type"])
+		if e.Properties.Get("pattern_type") != "tests_multi_hop_http_router" {
+			t.Errorf("expected pattern_type=tests_multi_hop_http_router, got %q", e.Properties.Get("pattern_type"))
 		}
-		if e.Properties["confidence"] != "high" {
-			t.Errorf("expected confidence=high, got %q", e.Properties["confidence"])
+		if e.Properties.Get("confidence") != "high" {
+			t.Errorf("expected confidence=high, got %q", e.Properties.Get("confidence"))
 		}
 		found = true
 	}
@@ -112,7 +112,7 @@ func TestTestsEdges_MultiHopViaHttpClient(t *testing.T) {
 	testFuncs := map[string]bool{}
 	for _, e := range edges {
 		if e.ToID == "View:FooView" {
-			testFuncs[e.Properties["test_function"]] = true
+			testFuncs[e.Properties.Get("test_function")] = true
 		}
 	}
 	if !testFuncs["test_create_foo"] {
@@ -179,7 +179,7 @@ func runFrameworkTestClientCase(t *testing.T, name, testFile, src, wantToID, wan
 			FromID:     "Route:/api/items",
 			ToID:       wantToID,
 			Kind:       "ROUTES_TO",
-			Properties: map[string]string{"pattern_type": "ast_driven"},
+			Properties: types.Props{{K: "pattern_type", V: "ast_driven"}},
 		},
 	}
 	reader := func(p string) []byte {
@@ -191,8 +191,8 @@ func runFrameworkTestClientCase(t *testing.T, name, testFile, src, wantToID, wan
 	edges := ApplyTestsMultiHopViaHTTP([]string{testFile}, reader, routes)
 	for _, e := range edges {
 		if e.Kind == "TESTS" && e.ToID == wantToID &&
-			e.Properties["test_function"] == wantFunc &&
-			e.Properties["via"] == "http_router" {
+			e.Properties.Get("test_function") == wantFunc &&
+			e.Properties.Get("via") == "http_router" {
 			return
 		}
 	}
@@ -655,8 +655,8 @@ class ImportCSVTest(APITestCase):
 	var found bool
 	for _, e := range edges {
 		if e.ToID == "SCOPE.Operation:ImportViewSet.create" &&
-			e.Properties["test_function"] == "test_import_csv_returns_200" &&
-			e.Properties["via"] == "http_router" {
+			e.Properties.Get("test_function") == "test_import_csv_returns_200" &&
+			e.Properties.Get("via") == "http_router" {
 			found = true
 		}
 	}
@@ -686,7 +686,7 @@ class TestFooDetail(APITestCase):
 
 	var found bool
 	for _, e := range edges {
-		if e.ToID == "View:FooView" && e.Properties["test_function"] == "test_retrieve_foo" {
+		if e.ToID == "View:FooView" && e.Properties.Get("test_function") == "test_retrieve_foo" {
 			found = true
 		}
 	}

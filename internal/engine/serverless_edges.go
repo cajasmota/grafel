@@ -156,13 +156,13 @@ func applyServerlessEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		props := map[string]string{
-			"provider":     provider,
-			"pattern_type": "serverless_synthesis",
+		props := types.Props{
+			{K: "pattern_type", V: "serverless_synthesis"},
+			{K: "provider", V: provider},
 		}
 		for k, v := range extraProps {
 			if v != "" {
-				props[k] = v
+				props.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{
@@ -182,13 +182,13 @@ func applyServerlessEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		props := map[string]string{
-			"provider":     provider,
-			"pattern_type": "serverless_synthesis",
+		props := types.Props{
+			{K: "pattern_type", V: "serverless_synthesis"},
+			{K: "provider", V: provider},
 		}
 		for k, v := range extraProps {
 			if v != "" {
-				props[k] = v
+				props.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{

@@ -143,16 +143,16 @@ func collectGlobalUses4377(ents []types.EntityRecord) []globalUse {
 			if r.Kind != string(types.RelationshipKindUses) {
 				continue
 			}
-			if r.Properties["global"] != "true" {
+			if r.Properties.Get("global") != "true" {
 				continue
 			}
 			from := r.FromID // explicit FromName override, else empty (carrier)
 			out = append(out, globalUse{
 				from:     from,
 				to:       r.ToID,
-				role:     r.Properties["di_role"],
-				order:    r.Properties["order"],
-				patterns: r.Properties["path_patterns"],
+				role:     r.Properties.Get("di_role"),
+				order:    r.Properties.Get("order"),
+				patterns: r.Properties.Get("path_patterns"),
 			})
 		}
 	}

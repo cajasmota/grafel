@@ -74,7 +74,7 @@ func TestIssue5494_TanstackEndpointEdge(t *testing.T) {
 	// tanstack_query provenance.
 	for _, op := range ops {
 		for _, r := range op.Relationships {
-			if (r.Kind == "USES" || r.Kind == "CALLS") && r.Properties["via"] == propViaTanstackQuery5494 {
+			if (r.Kind == "USES" || r.Kind == "CALLS") && r.Properties.Get("via") == propViaTanstackQuery5494 {
 				if op.Properties["fetcher_linked"] != "true" {
 					t.Errorf("%s carries a fetcher edge but fetcher_linked != true", op.Name)
 				}

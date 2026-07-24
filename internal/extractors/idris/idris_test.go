@@ -317,7 +317,7 @@ process (Node n) = show n
 	ents := runIdris(t, src, "tagged.idr")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "idris" {
+			if r.Properties == nil || r.Properties.Get("language") != "idris" {
 				t.Errorf("rel %s→%s missing language=idris (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

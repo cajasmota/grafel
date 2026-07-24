@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -481,7 +482,7 @@ func enclosingGoFuncBodyStart(src string, offset int) int {
 // sink; tightening it to per-payload co-location is a follow-up.
 func applyEventTypeProducerGo(
 	path, src string,
-	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+	emitEdge func(fromID, verbatim, kind string, props types.Props),
 ) {
 	bindings := buildGoStringBindingTable(src)
 	for _, m := range goPublishSiteRe.FindAllStringIndex(src, -1) {
@@ -520,7 +521,7 @@ func applyEventTypeProducerGo(
 			producerSourceRef("go", path, caller),
 			value,
 			"PUBLISHES_TO",
-			map[string]string{"lang": "go", "key": key, "detection": detection},
+			types.Props{{K: "detection", V: detection}, {K: "key", V: key}, {K: "lang", V: "go"}},
 		)
 	}
 }
@@ -685,7 +686,7 @@ func nearestGoEventConstructorLiteral(scope string) (value string, ok bool) {
 // the full v1-limitations list.
 func applyEventTypeProducerGoEventStore(
 	path, src string,
-	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+	emitEdge func(fromID, verbatim, kind string, props types.Props),
 ) {
 	for _, m := range goEventStoreWriteSiteRe.FindAllStringIndex(src, -1) {
 		bodyStart := enclosingGoFuncBodyStart(src, m[0])
@@ -699,7 +700,7 @@ func applyEventTypeProducerGoEventStore(
 			producerSourceRef("go", path, caller),
 			value,
 			"PUBLISHES_TO",
-			map[string]string{"lang": "go", "detection": "event-store-constructor-arg"},
+			types.Props{{K: "detection", V: "event-store-constructor-arg"}, {K: "lang", V: "go"}},
 		)
 	}
 }
@@ -739,7 +740,7 @@ func enclosingNodeFuncBodyStart(src string, offset int) int {
 // the `const evt = {eventType:"X"}; ...; client.send(evt)` shape.
 func applyEventTypeProducerJSTS(
 	lang, path, src string,
-	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+	emitEdge func(fromID, verbatim, kind string, props types.Props),
 ) {
 	for _, m := range jstsPublishSiteRe.FindAllStringIndex(src, -1) {
 		openParen := m[1] - 1
@@ -759,7 +760,7 @@ func applyEventTypeProducerJSTS(
 			producerSourceRef(lang, path, caller),
 			value,
 			"PUBLISHES_TO",
-			map[string]string{"lang": "javascript", "key": key, "detection": detection},
+			types.Props{{K: "detection", V: detection}, {K: "key", V: key}, {K: "lang", V: "javascript"}},
 		)
 	}
 }
@@ -938,7 +939,7 @@ func maskJavaCommentsAndStrings(src string) string {
 //   - STRING-LITERAL detailType only (variable/constant-bound deferred).
 func applyEventTypeProducerJava(
 	path, src string,
-	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+	emitEdge func(fromID, verbatim, kind string, props types.Props),
 ) {
 	methods := indexJavaEnclosingMethods(src)
 	masked := maskJavaCommentsAndStrings(src)
@@ -975,7 +976,7 @@ func applyEventTypeProducerJava(
 			producerSourceRef("java", path, caller),
 			value,
 			"PUBLISHES_TO",
-			map[string]string{"lang": "java", "key": "detailType", "detection": "publish-site-literal"},
+			types.Props{{K: "detection", V: "publish-site-literal"}, {K: "key", V: "detailType"}, {K: "lang", V: "java"}},
 		)
 	}
 }
@@ -1035,7 +1036,7 @@ var hclESMFunctionNameLiteralRe = regexp.MustCompile(`function_name\s*=\s*"([^"]
 // (event_bus_edges.go:220-264) to the ESM `data.eventType` shape.
 func applyEventTypeConsumerHCL(
 	src string,
-	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+	emitEdge func(fromID, verbatim, kind string, props types.Props),
 ) {
 	if !strings.Contains(src, "aws_lambda_event_source_mapping") {
 		return
@@ -1070,7 +1071,7 @@ func applyEventTypeConsumerHCL(
 		fromID := fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaID)
 		for _, v := range values {
 			emitEdge(fromID, v, "SUBSCRIBES_TO",
-				map[string]string{"iac": "terraform", "resource": resName, "detection": "event-source-mapping-filter-criteria"})
+				types.Props{{K: "detection", V: "event-source-mapping-filter-criteria"}, {K: "iac", V: "terraform"}, {K: "resource", V: resName}})
 		}
 	}
 }
@@ -1089,7 +1090,7 @@ var serverlessESMFunctionNameRe = regexp.MustCompile(`(?m)^  (\w+):\s*$`)
 // applyEventBridgeServerlessYML's text-only path.
 func applyEventTypeConsumerServerlessYML(
 	src string,
-	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+	emitEdge func(fromID, verbatim, kind string, props types.Props),
 ) {
 	if !strings.Contains(src, "filterPatterns") && !strings.Contains(src, "filter_criteria") {
 		return
@@ -1126,7 +1127,7 @@ func applyEventTypeConsumerServerlessYML(
 		fromID := fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaID)
 		for _, v := range values {
 			emitEdge(fromID, v, "SUBSCRIBES_TO",
-				map[string]string{"iac": "serverless.yml", "function_name": fnName, "detection": "event-source-mapping-filter-criteria"})
+				types.Props{{K: "detection", V: "event-source-mapping-filter-criteria"}, {K: "function_name", V: fnName}, {K: "iac", V: "serverless.yml"}})
 		}
 	}
 }
@@ -1239,7 +1240,7 @@ func collectCFNPatternValues(block string) string {
 // real `FilterCriteria` block is scanned — nothing looser.
 func applyEventTypeConsumerCFN(
 	src string,
-	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+	emitEdge func(fromID, verbatim, kind string, props types.Props),
 ) {
 	if !cfnTemplateGateRe.MatchString(src) {
 		return
@@ -1294,13 +1295,13 @@ func applyEventTypeConsumerCFN(
 
 		// Resolve the consumer function name per shape.
 		fnName := ""
-		props := map[string]string{"iac": "cloudformation", "detection": "event-source-mapping-filter-criteria"}
+		props := types.Props{{K: "detection", V: "event-source-mapping-filter-criteria"}, {K: "iac", V: "cloudformation"}}
 		switch resType {
 		case "AWS::Serverless::Function":
 			// Shape 1 — inline Events on the SAM function; the function IS the
 			// enclosing logical id.
 			fnName = logicalID
-			props["sam_function"] = logicalID
+			props.Set("sam_function", logicalID)
 		case "AWS::Lambda::EventSourceMapping":
 			// Shape 2 — standalone ESM; target is FunctionName: !Ref <id>.
 			if fm := cfnFunctionNameRefRe.FindStringSubmatch(block); fm != nil {
@@ -1313,7 +1314,7 @@ func applyEventTypeConsumerCFN(
 					fnName = fm[3]
 				}
 			}
-			props["esm_resource"] = logicalID
+			props.Set("esm_resource", logicalID)
 		default:
 			continue
 		}

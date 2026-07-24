@@ -257,8 +257,8 @@ func buildImportEntities(filePath, src string) []types.EntityRecord {
 					FromID: filePath,
 					ToID:   ns,
 					Kind:   "IMPORTS",
-					Properties: map[string]string{
-						"source_module": parentNamespace(ns),
+					Properties: types.Props{
+						{K: "source_module", V: parentNamespace(ns)},
 					},
 				},
 			},

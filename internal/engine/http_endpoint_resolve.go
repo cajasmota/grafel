@@ -373,14 +373,14 @@ func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag st
 				def := &merged[defIdx]
 				callStub := r.Kind + ":" + r.Name
 				defStub := def.Kind + ":" + def.Name
-				edgeProps := map[string]string{
-					"pattern_type": "http_endpoint_split_resolved",
-					"resolved":     "true",
+				edgeProps := types.Props{
+					{K: "pattern_type", V: "http_endpoint_split_resolved"},
+					{K: "resolved", V: "true"},
 				}
 				// #2547 — stamp prefix_normalized when tier-2 prefix-injection
 				// matched so the match strategy is traceable in the graph.
 				if prefixNorm != "" {
-					edgeProps["prefix_normalized"] = prefixNorm
+					edgeProps.Set("prefix_normalized", prefixNorm)
 				}
 				r.Relationships = append(r.Relationships, types.RelationshipRecord{
 					FromID:     callStub,
@@ -401,10 +401,10 @@ func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag st
 					FromID: r.Kind + ":" + r.Name,
 					ToID:   r.Name, // canonical ID stub — no definition entity exists
 					Kind:   string(types.RelationshipKindUnresolvedFetch),
-					Properties: map[string]string{
-						"pattern_type": "http_endpoint_split_unresolved",
-						"path":         propOr(r, "path", ""),
-						"verb":         propOr(r, "verb", ""),
+					Properties: types.Props{
+						{K: "path", V: propOr(r, "path", "")},
+						{K: "pattern_type", V: "http_endpoint_split_unresolved"},
+						{K: "verb", V: propOr(r, "verb", "")},
 					},
 				})
 				stats.CallsUnresolved++
@@ -650,15 +650,15 @@ func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag st
 				if rel.Kind != fetchesEdgeKind {
 					continue
 				}
-				if rel.Properties["pattern_type"] != "http_endpoint_client_synthesis_resolved" {
+				if rel.Properties.Get("pattern_type") != "http_endpoint_client_synthesis_resolved" {
 					continue
 				}
 				if defStub, ok := callStubToDefStub[rel.ToID]; ok {
 					rel.ToID = defStub
 					if rel.Properties == nil {
-						rel.Properties = map[string]string{}
+						rel.Properties = types.Props{}
 					}
-					rel.Properties["retargeted"] = "http_endpoint_call_to_definition"
+					rel.Properties.Set("retargeted", "http_endpoint_call_to_definition")
 					stats.CallerEdgesRetargeted++
 				}
 			}
@@ -755,9 +755,9 @@ func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag st
 					FromID: merged[dtoIdx].ID,
 					ToID:   handlerID,
 					Kind:   string(types.RelationshipKindReferences),
-					Properties: map[string]string{
-						"reference_kind": refKind,
-						"pattern_type":   "dto_handler_bidirectional",
+					Properties: types.Props{
+						{K: "pattern_type", V: "dto_handler_bidirectional"},
+						{K: "reference_kind", V: refKind},
 					},
 				})
 			stats.DTOHandlerEdgesEmitted++
@@ -893,9 +893,9 @@ func bridgeEndpointToHandler(handler, r *types.EntityRecord) {
 		FromID: handler.Kind + ":" + handler.Name,
 		ToID:   r.Kind + ":" + r.Name,
 		Kind:   implementsEdgeKind,
-		Properties: map[string]string{
-			"pattern_type": "http_endpoint_synthesis_resolved",
-			"framework":    propOr(r, "framework", ""),
+		Properties: types.Props{
+			{K: "framework", V: propOr(r, "framework", "")},
+			{K: "pattern_type", V: "http_endpoint_synthesis_resolved"},
 		},
 	})
 	// deploy-9 item-3 — propagate the endpoint's resolved fine-grained
@@ -968,9 +968,9 @@ func resolveCallerToFetchesEdge(
 			FromID: fromStub,
 			ToID:   toStub,
 			Kind:   string(types.RelationshipKindFetches),
-			Properties: map[string]string{
-				"pattern_type": "http_endpoint_client_synthesis_resolved",
-				"framework":    propOr(syn, "framework", ""),
+			Properties: types.Props{
+				{K: "framework", V: propOr(syn, "framework", "")},
+				{K: "pattern_type", V: "http_endpoint_client_synthesis_resolved"},
 			},
 		})
 		delete(syn.Properties, "source_caller")

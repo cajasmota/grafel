@@ -290,12 +290,10 @@ func TagRelationshipsLanguage(records []types.EntityRecord, lang string) {
 		for j := range rels {
 			r := &rels[j]
 			if r.Properties == nil {
-				r.Properties = map[string]string{"language": lang}
+				r.Properties = types.Props{{K: "language", V: lang}}
 				continue
 			}
-			if _, ok := r.Properties["language"]; !ok {
-				r.Properties["language"] = lang
-			}
+			r.Properties.SetDefault("language", lang)
 		}
 	}
 }
@@ -378,12 +376,10 @@ func TagStandaloneRelationshipsLanguage(rels []types.RelationshipRecord, lang st
 	for j := range rels {
 		r := &rels[j]
 		if r.Properties == nil {
-			r.Properties = map[string]string{"language": lang}
+			r.Properties = types.Props{{K: "language", V: lang}}
 			continue
 		}
-		if _, ok := r.Properties["language"]; !ok {
-			r.Properties["language"] = lang
-		}
+		r.Properties.SetDefault("language", lang)
 	}
 }
 

@@ -52,8 +52,8 @@ func routeUsesRole(ents []types.EntityRecord, target string) string {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == string(types.RelationshipKindUses) && r.ToID == target &&
-				r.Properties["via"] == "angular_route_config" {
-				return r.Properties["di_role"]
+				r.Properties.Get("via") == "angular_route_config" {
+				return r.Properties.Get("di_role")
 			}
 		}
 	}
@@ -127,8 +127,8 @@ func TestIssue4415_MultipleGuardsArray(t *testing.T) {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == string(types.RelationshipKindUses) &&
-				r.Properties["via"] == "angular_route_config" &&
-				r.Properties["route_key"] == "canActivate" {
+				r.Properties.Get("via") == "angular_route_config" &&
+				r.Properties.Get("route_key") == "canActivate" {
 				count++
 			}
 		}
@@ -152,7 +152,7 @@ const routes: Routes = [
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == string(types.RelationshipKindUses) &&
-				r.Properties["via"] == "angular_route_config" {
+				r.Properties.Get("via") == "angular_route_config" {
 				t.Fatalf("guard-free route emitted a spurious USES edge to %s", r.ToID)
 			}
 		}

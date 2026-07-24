@@ -372,8 +372,8 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 		out = append(out, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(lineNum),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(lineNum)},
 			},
 		})
 	}

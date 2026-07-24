@@ -166,11 +166,11 @@ func scanJSMongoosePopulateJoins(
 			FromID: fmt.Sprintf("Class:%s", from),
 			ToID:   fmt.Sprintf("Class:%s", to),
 			Kind:   string(types.RelationshipKindJoinsCollection),
-			Properties: map[string]string{
-				"pattern_type": mongoosePopulatePatternType,
-				"via":          "populate",
-				"ref":          rf.ref,
-				"ref_field":    rf.field,
+			Properties: types.Props{
+				{K: "pattern_type", V: mongoosePopulatePatternType},
+				{K: "ref", V: rf.ref},
+				{K: "ref_field", V: rf.field},
+				{K: "via", V: "populate"},
 			},
 		})
 	}

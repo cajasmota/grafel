@@ -53,8 +53,8 @@ export function resolveAuthor(post) {
 	foundBatches := false
 	for _, r := range loader.Relationships {
 		if r.Kind == string(types.RelationshipKindBatches) && r.ToID == "batchUsers" {
-			if r.Properties["via"] != "graphql_dataloader" {
-				t.Fatalf("BATCHES via = %q; want graphql_dataloader", r.Properties["via"])
+			if r.Properties.Get("via") != "graphql_dataloader" {
+				t.Fatalf("BATCHES via = %q; want graphql_dataloader", r.Properties.Get("via"))
 			}
 			foundBatches = true
 		}
@@ -75,8 +75,8 @@ export function resolveAuthor(post) {
 	foundUses := false
 	for _, r := range resolver.Relationships {
 		if r.Kind == string(types.RelationshipKindUses) && r.ToID == "userLoader" {
-			if r.Properties["via"] != "graphql_dataloader" {
-				t.Fatalf("USES via = %q; want graphql_dataloader", r.Properties["via"])
+			if r.Properties.Get("via") != "graphql_dataloader" {
+				t.Fatalf("USES via = %q; want graphql_dataloader", r.Properties.Get("via"))
 			}
 			foundUses = true
 		}
@@ -168,7 +168,7 @@ export function resolveOwner(parent, args, context) {
 	foundUses := false
 	for _, r := range resolver.Relationships {
 		if r.Kind == string(types.RelationshipKindUses) && r.ToID == "userLoader" &&
-			r.Properties["via"] == "graphql_dataloader" {
+			r.Properties.Get("via") == "graphql_dataloader" {
 			foundUses = true
 		}
 	}
