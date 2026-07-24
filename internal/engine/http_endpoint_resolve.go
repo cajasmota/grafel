@@ -45,9 +45,8 @@
 //
 // Returning a slice of EntityRecords (with unresolved producer
 // synthetics dropped) keeps the data flow obvious at the call site. The
-// pass CONSUMES the input slice: it edits records in place and compacts
-// the drops over the same backing array (#5954), so callers must use the
-// returned slice and never the pre-call view.
+// pass CONSUMES the input slice — see the ownership contract on
+// ResolveHTTPEndpointHandlersWithRepo.
 //
 // Refs #534 Phase 2, #754.
 package engine
@@ -119,10 +118,7 @@ type ResolveHTTPEndpointStats struct {
 //
 // `merged` MUST already be sorted in canonical order (entity-id
 // disambiguation depends on first-writer-wins). The slice may be
-// returned as-is if no synthetics were dropped; otherwise the survivors
-// are compacted into `merged`'s own backing array and the tail is
-// zeroed. Either way the pass takes ownership of `merged` — read the
-// returned slice, not the one you passed in.
+// returned as-is if no synthetics were dropped.
 // httpResolveKey is the (kind, name, sourceFile) index key used by the
 // resolver to look up entities by their stable in-file identity.
 type httpResolveKey struct{ kind, name, sourceFile string }
@@ -139,6 +135,10 @@ type httpResolveNameKey struct{ kind, name string }
 // ResolveHTTPEndpointHandlersWithRepo from the production pipeline so the e2e
 // pass can mint each endpoint's unique entity ID directly and resolve
 // same-Name endpoint collisions (#4651).
+//
+// OWNERSHIP: this pass CONSUMES `merged` — see
+// ResolveHTTPEndpointHandlersWithRepo for the full contract. Use the returned
+// slice; never read the one you passed in.
 func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRecord, ResolveHTTPEndpointStats) {
 	return ResolveHTTPEndpointHandlersWithRepo(merged, "")
 }
@@ -151,6 +151,27 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 // route whose synthesized endpoint Name collides across modules (acme-v3 has
 // many same-named handlers/routes, e.g. `getCounts`) still credits the correct,
 // per-file endpoint as covered rather than dangling on an ambiguous name.
+//
+// `merged` MUST already be sorted in canonical order (entity-id
+// disambiguation depends on first-writer-wins downstream, #481). The returned
+// slice preserves that order exactly, minus the dropped synthetics.
+//
+// OWNERSHIP: this pass CONSUMES `merged`. Pass it a slice you solely own, and
+// read ONLY the returned slice afterwards — never the one you passed in.
+// Specifically the pass:
+//
+//   - edits records in place (rewrites Kind for the #1217 http_endpoint split,
+//     appends to embedded Relationships, clears resolved source_handler /
+//     source_caller properties, retargets edge IDs);
+//   - compacts dropped synthetics over `merged`'s OWN backing array (#5954 —
+//     copying the whole record set just to skip a few entries was the single
+//     largest allocation at the corpus index peak), so element POSITIONS and
+//     the effective length change and any index into the pre-call slice is
+//     invalidated.
+//
+// Aliasing therefore matters: if two slices share this backing array, or a
+// caller retains the pre-call view, the compaction will be visible to them as
+// scrambled contents. If you need the input intact, hand over a copy.
 func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag string) ([]types.EntityRecord, ResolveHTTPEndpointStats) {
 	var stats ResolveHTTPEndpointStats
 
@@ -767,8 +788,14 @@ func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag st
 		}
 		out = append(out, merged[i])
 	}
-	// Release the tail so the dropped records — and the Properties maps /
-	// Relationships slices they carry — are not retained by the backing array.
+	// Zero the tail so `out` itself holds no reference to the dropped records
+	// past its length. This is hygiene, not a production memory win: in the
+	// real pipeline the pass1/pass2/pass3 slices that fed `merged` stay live
+	// in cmd/grafel/index.go well after buildDocument returns, so the dropped
+	// records' Properties maps and Relationships slices remain reachable
+	// through those regardless. What it does guarantee is that re-slicing or
+	// re-growing `out` can never resurrect a dropped record, and that callers
+	// with no other reference (the test entry point) do drop them.
 	for i := len(out); i < len(merged); i++ {
 		merged[i] = types.EntityRecord{}
 	}

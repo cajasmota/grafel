@@ -111,9 +111,9 @@ func TestResolveHTTPEndpointHandlers_DropCompactionOrderParity(t *testing.T) {
 }
 
 // TestResolveHTTPEndpointHandlers_DropCompactionZeroesTail asserts the
-// in-place compaction releases the tail of the backing array, so dropped
-// records (and the Properties / Relationships maps + slices they carry)
-// are not retained by the surviving slice.
+// in-place compaction zeroes the tail of the backing array, so no dropped
+// record survives past len(out) where re-slicing or re-growing the result
+// could resurrect it.
 func TestResolveHTTPEndpointHandlers_DropCompactionZeroesTail(t *testing.T) {
 	in := []types.EntityRecord{
 		keeper5954("keep_a"),
@@ -129,7 +129,7 @@ func TestResolveHTTPEndpointHandlers_DropCompactionZeroesTail(t *testing.T) {
 	}
 
 	// The compaction reuses `in`'s backing array; everything past len(out)
-	// must be the zero record so the dropped payloads are collectable.
+	// must be the zero record.
 	tail := in[:n]
 	for i := len(out); i < n; i++ {
 		r := tail[i]
