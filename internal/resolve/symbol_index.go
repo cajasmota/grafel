@@ -265,8 +265,8 @@ func MergeModuleBatch(si *SymbolIndex, offset, batchSize int) (Index, int) {
 		ambigKind:          make(map[string]map[string]bool),
 		byName:             make(map[string]string, total),
 		ambigName:          make(map[string]bool),
-		nameKinds:          make(map[string]map[string]string, total),
-		nameKindsReal:      make(map[string]map[string]string, total),
+		nameKinds:          make(map[string]kindIDs, total),
+		nameKindsReal:      make(map[string]kindIDs, total),
 		byLocation:         make(LocationIndex, total/2+1),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex, total/2+1),
@@ -517,8 +517,8 @@ func accumulatorIndex(totalEntities int) Index {
 		ambigKind:          make(map[string]map[string]bool),
 		byName:             make(map[string]string, totalEntities),
 		ambigName:          make(map[string]bool),
-		nameKinds:          make(map[string]map[string]string, totalEntities),
-		nameKindsReal:      make(map[string]map[string]string, totalEntities),
+		nameKinds:          make(map[string]kindIDs, totalEntities),
+		nameKindsReal:      make(map[string]kindIDs, totalEntities),
 		byLocation:         make(LocationIndex, cap2),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex, cap2),
@@ -542,8 +542,8 @@ func emptyIndex() Index {
 		ambigKind:          make(map[string]map[string]bool),
 		byName:             make(map[string]string),
 		ambigName:          make(map[string]bool),
-		nameKinds:          make(map[string]map[string]string),
-		nameKindsReal:      make(map[string]map[string]string),
+		nameKinds:          make(map[string]kindIDs),
+		nameKindsReal:      make(map[string]kindIDs),
 		byLocation:         make(LocationIndex),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex),
@@ -615,35 +615,23 @@ func insertModuleEntry(
 		bucket[me.name] = me.id
 	}
 
-	// nameKinds (all kinds, including SCOPE.*).
+	// nameKinds (all kinds, including SCOPE.*). Mirror of BuildIndex's
+	// writer using the compact kindIDs bucket (#5954). Stored back by value
+	// since kindIDs lives inline in the map.
 	nameKindBucket := idx.nameKinds[me.name]
-	if nameKindBucket == nil {
-		nameKindBucket = make(map[string]string)
-		idx.nameKinds[me.name] = nameKindBucket
-	}
 	for _, kind := range kinds {
 		if kind == "" {
 			continue
 		}
-		if existing, ok := nameKindBucket[kind]; ok && existing != me.id {
-			nameKindBucket[kind] = ""
-		} else {
-			nameKindBucket[kind] = me.id
-		}
+		nameKindBucket.set(kind, me.id)
 	}
+	idx.nameKinds[me.name] = nameKindBucket
 
 	// nameKindsReal — original kind only.
 	if me.kind != "" {
 		realBucket := idx.nameKindsReal[me.name]
-		if realBucket == nil {
-			realBucket = make(map[string]string)
-			idx.nameKindsReal[me.name] = realBucket
-		}
-		if existing, ok := realBucket[me.kind]; ok && existing != me.id {
-			realBucket[me.kind] = ""
-		} else {
-			realBucket[me.kind] = me.id
-		}
+		realBucket.set(me.kind, me.id)
+		idx.nameKindsReal[me.name] = realBucket
 	}
 
 	// Location indexes.
@@ -652,42 +640,28 @@ func insertModuleEntry(
 		// byLocationKind (both kinds).
 		fileKindBucket := idx.byLocationKind[sf]
 		if fileKindBucket == nil {
-			fileKindBucket = make(map[string]map[string]string)
+			fileKindBucket = make(map[string]kindIDs)
 			idx.byLocationKind[sf] = fileKindBucket
 		}
 		nameKindBucketLoc := fileKindBucket[me.name]
-		if nameKindBucketLoc == nil {
-			nameKindBucketLoc = make(map[string]string)
-			fileKindBucket[me.name] = nameKindBucketLoc
-		}
 		for _, kind := range kinds {
 			if kind == "" {
 				continue
 			}
-			if existing, ok := nameKindBucketLoc[kind]; ok && existing != me.id {
-				nameKindBucketLoc[kind] = ""
-			} else {
-				nameKindBucketLoc[kind] = me.id
-			}
+			nameKindBucketLoc.set(kind, me.id)
 		}
+		fileKindBucket[me.name] = nameKindBucketLoc
 
 		// byLocationKindReal — original kind only.
 		if me.kind != "" {
 			realFileBucket := idx.byLocationKindReal[sf]
 			if realFileBucket == nil {
-				realFileBucket = make(map[string]map[string]string)
+				realFileBucket = make(map[string]kindIDs)
 				idx.byLocationKindReal[sf] = realFileBucket
 			}
 			realNameBucket := realFileBucket[me.name]
-			if realNameBucket == nil {
-				realNameBucket = make(map[string]string)
-				realFileBucket[me.name] = realNameBucket
-			}
-			if existing, ok := realNameBucket[me.kind]; ok && existing != me.id {
-				realNameBucket[me.kind] = ""
-			} else {
-				realNameBucket[me.kind] = me.id
-			}
+			realNameBucket.set(me.kind, me.id)
+			realFileBucket[me.name] = realNameBucket
 		}
 
 		// byLocation (kind-agnostic, unique within file).

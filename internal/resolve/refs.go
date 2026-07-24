@@ -399,7 +399,7 @@ type Index struct {
 	// name. A blank string sentinel means two entities share that
 	// (name, kind) tuple — i.e. the kind itself is ambiguous for this
 	// name and the kind hint cannot disambiguate via this family.
-	nameKinds map[string]map[string]string
+	nameKinds map[string]kindIDs
 
 	// nameKindsReal[name][kind] = entity_id, indexed under the entity's
 	// ORIGINAL kind only (no SCOPE.* dual-indexing). Used by
@@ -409,7 +409,7 @@ type Index struct {
 	// string sentinel marks (name, kind) collisions; identical
 	// semantics to nameKinds but without the cross-tier ambiguity that
 	// dual-indexing introduces.
-	nameKindsReal map[string]map[string]string
+	nameKindsReal map[string]kindIDs
 
 	// byLocation[file_path][name] = entity_id, retained only when unique
 	// within the file. Used by structural-ref Format A resolution.
@@ -542,7 +542,100 @@ type LocationIndex map[string]map[string]string
 // kind-aware structural-ref / location resolver path to disambiguate
 // same-file (file, name) collisions when the relationship supplies a kind
 // hint. A blank string value is the ambiguous-within-kind sentinel.
-type LocationKindIndex map[string]map[string]map[string]string
+//
+// The innermost kind->id level is a compact kindIDs rather than a
+// map[string]string: these buckets almost always hold a SINGLE (kind, id)
+// entry, and paying full Go-map overhead (~300B heap) per 1-entry map made
+// the four kind->id inner maps 32% of the index-internal peak heap (#5954).
+// kindIDs stores the first entry inline (zero heap in the common case).
+type LocationKindIndex map[string]map[string]kindIDs
+
+// kindID is one (kind, entity_id) pair inside a kindIDs.
+type kindID struct{ kind, id string }
+
+// kindIDs is a heap-frugal replacement for map[string]string (kind -> id) in
+// the resolver Index's four dominant inner buckets (nameKinds, nameKindsReal,
+// byLocationKind, byLocationKindReal). The first entry lives inline (k0/v0);
+// additional kinds spill to rest. Since these buckets carry ~1 entry each, the
+// inline path never touches the heap — that is the entire point of the type.
+//
+// Semantics MUST match the map it replaces exactly (#5954):
+//   - kind keys are never "" (the writers skip empty kinds), so k0 == "" is a
+//     reliable "inline slot empty" sentinel.
+//   - a VALUE of "" is the ambiguous-within-kind sentinel: a present-but-blank
+//     entry is DISTINCT from an absent one. get returns ("", true) for a
+//     blanked entry and ("", false) for an absent one — callers rely on this.
+type kindIDs struct {
+	k0, v0 string   // first (kind, id) entry, inline — zero heap for cardinality 1
+	rest   []kindID // spill for the rare >1-kind case
+}
+
+// get returns the id registered under kind and whether the kind is present.
+// A present-but-blank entry returns ("", true); an absent kind ("", false).
+func (b kindIDs) get(kind string) (string, bool) {
+	if b.k0 == "" {
+		return "", false // inline slot empty => whole bucket empty
+	}
+	if b.k0 == kind {
+		return b.v0, true
+	}
+	for i := range b.rest {
+		if b.rest[i].kind == kind {
+			return b.rest[i].id, true
+		}
+	}
+	return "", false
+}
+
+// set applies the resolver's exact write rule: first writer wins per kind; a
+// second writer with a DIFFERENT id blanks the entry to "" (ambiguous-within-
+// kind sentinel); re-writing the same id is a no-op; a blanked entry stays
+// blank. Callers never pass an empty kind.
+func (b *kindIDs) set(kind, id string) {
+	if existing, ok := b.get(kind); ok {
+		if existing != id {
+			b.put(kind, "") // collision => blank sentinel
+		}
+		return
+	}
+	b.put(kind, id)
+}
+
+// put unconditionally upserts (kind, val). Internal helper for set.
+func (b *kindIDs) put(kind, val string) {
+	if b.k0 == "" || b.k0 == kind {
+		b.k0, b.v0 = kind, val
+		return
+	}
+	for i := range b.rest {
+		if b.rest[i].kind == kind {
+			b.rest[i].id = val
+			return
+		}
+	}
+	b.rest = append(b.rest, kindID{kind, val})
+}
+
+// len reports how many (kind, id) entries are stored, including blanked ones.
+func (b kindIDs) len() int {
+	if b.k0 == "" {
+		return 0
+	}
+	return 1 + len(b.rest)
+}
+
+// each calls fn for every stored (kind, id) entry, inline slot first then spill
+// in insertion order. Blanked entries (id == "") are enumerated too, matching
+// map-range semantics.
+func (b kindIDs) each(fn func(kind, id string)) {
+	if b.k0 == "" {
+		return
+	}
+	fn(b.k0, b.v0)
+	for i := range b.rest {
+		fn(b.rest[i].kind, b.rest[i].id)
+	}
+}
 
 // Stats reports how many relationship endpoints the resolver rewrote and how
 // many it left as stubs because of ambiguity / missing matches. Surfaced via
@@ -726,8 +819,8 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		ambigKind:          make(map[string]map[string]bool),
 		byName:             make(map[string]string),
 		ambigName:          make(map[string]bool),
-		nameKinds:          make(map[string]map[string]string),
-		nameKindsReal:      make(map[string]map[string]string),
+		nameKinds:          make(map[string]kindIDs),
+		nameKindsReal:      make(map[string]kindIDs),
 		byLocation:         make(LocationIndex),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex),
@@ -904,24 +997,19 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		// disambiguate when byName flips to ambiguous. The plain entity
 		// kind is enough here; SCOPE.* kinds are tracked under both forms
 		// to mirror the byKind dual-indexing above.
+		// First writer wins per kind; if a second entity shares the
+		// (name, kind) we mark the kind ambiguous for that name by
+		// blanking the entry so the hint falls through. kindIDs.set
+		// encapsulates that rule; the value is stored back since kindIDs
+		// lives inline in the map (no per-entry heap in the 1-kind case).
 		nameKindBucket := idx.nameKinds[e.Name]
-		if nameKindBucket == nil {
-			nameKindBucket = make(map[string]string)
-			idx.nameKinds[e.Name] = nameKindBucket
-		}
 		for _, kind := range kinds {
 			if kind == "" {
 				continue
 			}
-			// First writer wins per kind; if a second entity shares the
-			// (name, kind) we mark the kind ambiguous for that name by
-			// blanking the entry so the hint falls through.
-			if existing, ok := nameKindBucket[kind]; ok && existing != e.ID {
-				nameKindBucket[kind] = ""
-			} else {
-				nameKindBucket[kind] = e.ID
-			}
+			nameKindBucket.set(kind, e.ID)
 		}
+		idx.nameKinds[e.Name] = nameKindBucket
 
 		// nameKindsReal — single-pass under the entity's original kind
 		// only. Used by lookupByKindHint's tier-1 real-entity pass
@@ -931,15 +1019,8 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		// the same original kind.
 		if e.Kind != "" {
 			realBucket := idx.nameKindsReal[e.Name]
-			if realBucket == nil {
-				realBucket = make(map[string]string)
-				idx.nameKindsReal[e.Name] = realBucket
-			}
-			if existing, ok := realBucket[e.Kind]; ok && existing != e.ID {
-				realBucket[e.Kind] = ""
-			} else {
-				realBucket[e.Kind] = e.ID
-			}
+			realBucket.set(e.Kind, e.ID)
+			idx.nameKindsReal[e.Name] = realBucket
 		}
 
 		// Location index — (file_path, name) -> entity_id. Same logic as
@@ -951,24 +1032,17 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			// trimmed kinds to mirror byKind.
 			fileKindBucket := idx.byLocationKind[sourceFile]
 			if fileKindBucket == nil {
-				fileKindBucket = make(map[string]map[string]string)
+				fileKindBucket = make(map[string]kindIDs)
 				idx.byLocationKind[sourceFile] = fileKindBucket
 			}
 			nameKindBucketLoc := fileKindBucket[e.Name]
-			if nameKindBucketLoc == nil {
-				nameKindBucketLoc = make(map[string]string)
-				fileKindBucket[e.Name] = nameKindBucketLoc
-			}
 			for _, kind := range kinds {
 				if kind == "" {
 					continue
 				}
-				if existing, ok := nameKindBucketLoc[kind]; ok && existing != e.ID {
-					nameKindBucketLoc[kind] = "" // ambiguous within (file, name, kind)
-				} else {
-					nameKindBucketLoc[kind] = e.ID
-				}
+				nameKindBucketLoc.set(kind, e.ID) // ambiguous within (file, name, kind) => blank
 			}
+			fileKindBucket[e.Name] = nameKindBucketLoc
 
 			// byLocationKindReal — single-pass under the entity's
 			// original kind only. Powers the real-tier preference in
@@ -979,19 +1053,12 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			if e.Kind != "" {
 				realFileBucket := idx.byLocationKindReal[sourceFile]
 				if realFileBucket == nil {
-					realFileBucket = make(map[string]map[string]string)
+					realFileBucket = make(map[string]kindIDs)
 					idx.byLocationKindReal[sourceFile] = realFileBucket
 				}
 				realNameBucket := realFileBucket[e.Name]
-				if realNameBucket == nil {
-					realNameBucket = make(map[string]string)
-					realFileBucket[e.Name] = realNameBucket
-				}
-				if existing, ok := realNameBucket[e.Kind]; ok && existing != e.ID {
-					realNameBucket[e.Kind] = ""
-				} else {
-					realNameBucket[e.Kind] = e.ID
-				}
+				realNameBucket.set(e.Kind, e.ID)
+				realFileBucket[e.Name] = realNameBucket
 			}
 
 			if idx.ambigLocation[sourceFile] == nil || !idx.ambigLocation[sourceFile][e.Name] {
@@ -1636,13 +1703,13 @@ func (idx Index) lookupByKindHint(name, relKind string) (string, bool) {
 	// kind bucket (#525). When a real Component / Class / View / Model
 	// (or Operation / Function / Method) uniquely matches, return it
 	// without consulting the SCOPE.* placeholder tier at all.
-	if realBucket := idx.nameKindsReal[name]; len(realBucket) > 0 {
+	if realBucket := idx.nameKindsReal[name]; realBucket.len() > 0 {
 		if id, ok := uniqueMatchInFamily(realBucket, families, false); ok {
 			return id, true
 		}
 	}
 	bucket := idx.nameKinds[name]
-	if len(bucket) == 0 {
+	if bucket.len() == 0 {
 		return "", false
 	}
 	// Tier 2: full family including SCOPE.* placeholders.
@@ -1654,13 +1721,13 @@ func (idx Index) lookupByKindHint(name, relKind string) (string, bool) {
 // When includePlaceholders is false, kinds prefixed with scopeKindPrefix
 // are skipped — used by the tier-1 pass of lookupByKindHint to prefer
 // real Component over SCOPE.Component (#525).
-func uniqueMatchInFamily(bucket map[string]string, families []string, includePlaceholders bool) (string, bool) {
+func uniqueMatchInFamily(bucket kindIDs, families []string, includePlaceholders bool) (string, bool) {
 	var match string
 	for _, k := range families {
 		if !includePlaceholders && strings.HasPrefix(k, scopeKindPrefix) {
 			continue
 		}
-		id := bucket[k]
+		id, _ := bucket.get(k)
 		if id == "" {
 			continue
 		}
@@ -1715,10 +1782,10 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 				return qid, statusRewritten, true
 			}
 			// Tier 3: unique within the callable (Function/Method) kind family
-			if bucket := idx.nameKinds[qname]; len(bucket) > 0 {
+			if bucket := idx.nameKinds[qname]; bucket.len() > 0 {
 				var hit string
 				for _, knd := range []string{"Function", "Method"} {
-					if id, ok := bucket[knd]; ok && id != "" {
+					if id, ok := bucket.get(knd); ok && id != "" {
 						if hit != "" && hit != id {
 							hit = "" // ambiguous across function/method
 							break
@@ -1831,10 +1898,10 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 				if qid, ok := idx.byName[member]; ok && qid != "" {
 					return qid, statusRewritten, true
 				}
-				if bucket := idx.nameKinds[member]; len(bucket) > 0 {
+				if bucket := idx.nameKinds[member]; bucket.len() > 0 {
 					var hit string
 					for _, knd := range []string{"Function", "Method", "Operation", "SCOPE.Operation"} {
-						if id, ok := bucket[knd]; ok && id != "" {
+						if id, ok := bucket.get(knd); ok && id != "" {
 							if hit != "" && hit != id {
 								hit = ""
 								break
@@ -2109,7 +2176,7 @@ func (idx Index) lookupUniqueRealComponentByName(name string) (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	if realBucket := idx.nameKindsReal[name]; len(realBucket) > 0 {
+	if realBucket := idx.nameKindsReal[name]; realBucket.len() > 0 {
 		if id, ok := uniqueMatchInFamily(realBucket, componentKindFamily, false); ok {
 			return id, true
 		}
@@ -2123,10 +2190,7 @@ func (idx Index) lookupUniqueRealComponentByName(name string) (string, bool) {
 	var match string
 	for _, fileBucket := range idx.byLocationKind {
 		nameBucket := fileBucket[name]
-		if nameBucket == nil {
-			continue
-		}
-		id := nameBucket[scopeKind]
+		id, _ := nameBucket.get(scopeKind)
 		if id == "" {
 			continue
 		}
@@ -2169,7 +2233,7 @@ func (idx Index) lookupUniqueSchemaFieldByName(fieldName string) (string, bool) 
 			}
 			// Must be a Schema-family entity.
 			for _, fam := range schemaKindFamily {
-				id := kindBucket[fam]
+				id, _ := kindBucket.get(fam)
 				if id == "" {
 					continue
 				}
@@ -2223,7 +2287,7 @@ func (idx Index) lookupLocationKind(filePath, name string, families []string) (s
 		return "", false
 	}
 	if realFileBucket := idx.byLocationKindReal[filePath]; realFileBucket != nil {
-		if realNameBucket := realFileBucket[name]; len(realNameBucket) > 0 {
+		if realNameBucket := realFileBucket[name]; realNameBucket.len() > 0 {
 			if id, ok := uniqueMatchInFamily(realNameBucket, families, false); ok {
 				return id, true
 			}
@@ -2234,7 +2298,7 @@ func (idx Index) lookupLocationKind(filePath, name string, families []string) (s
 		return "", false
 	}
 	nameBucket := fileBucket[name]
-	if len(nameBucket) == 0 {
+	if nameBucket.len() == 0 {
 		return "", false
 	}
 	return uniqueMatchInFamily(nameBucket, families, true)
@@ -2735,26 +2799,25 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 		// preference in lookupByKindHint (#525).
 		if len(families) > 0 {
 			if fileBucket := idx.byLocationKindReal[callerFile]; fileBucket != nil {
-				if nameBucket := fileBucket[name]; nameBucket != nil {
-					var match string
-					ambig := false
-					for _, k := range families {
-						if strings.HasPrefix(k, scopeKindPrefix) {
-							continue
-						}
-						id := nameBucket[k]
-						if id == "" {
-							continue
-						}
-						if match != "" && match != id {
-							ambig = true
-							break
-						}
-						match = id
+				nameBucket := fileBucket[name]
+				var match string
+				ambig := false
+				for _, k := range families {
+					if strings.HasPrefix(k, scopeKindPrefix) {
+						continue
 					}
-					if !ambig && match != "" {
-						return match, true
+					id, _ := nameBucket.get(k)
+					if id == "" {
+						continue
 					}
+					if match != "" && match != id {
+						ambig = true
+						break
+					}
+					match = id
+				}
+				if !ambig && match != "" {
+					return match, true
 				}
 			}
 		}
@@ -2809,13 +2872,12 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 	// collisions remain ambig.
 	if callerFile != "" && strings.ToUpper(relKind) == "CALLS" {
 		if fileBucket := idx.byLocationKind[callerFile]; fileBucket != nil {
-			if nameBucket := fileBucket[name]; nameBucket != nil {
-				if id := nameBucket[scopeKindPrefix+"Operation"]; id != "" {
-					return id, true
-				}
-				if id := nameBucket[scopeKindPrefix+"Component"]; id != "" {
-					return id, true
-				}
+			nameBucket := fileBucket[name]
+			if id, _ := nameBucket.get(scopeKindPrefix + "Operation"); id != "" {
+				return id, true
+			}
+			if id, _ := nameBucket.get(scopeKindPrefix + "Component"); id != "" {
+				return id, true
 			}
 		}
 	}
@@ -2836,7 +2898,7 @@ func (idx Index) nameExists(name string) bool {
 	if idx.ambigName[name] {
 		return true
 	}
-	if bucket, ok := idx.nameKinds[name]; ok && len(bucket) > 0 {
+	if bucket, ok := idx.nameKinds[name]; ok && bucket.len() > 0 {
 		return true
 	}
 	return false
@@ -2914,10 +2976,10 @@ func (idx Index) DiagnoseBugResolver(originalStub, relKind string) BugResolverDi
 	diag.StubKind = kind
 
 	if bucket, ok := idx.nameKinds[name]; ok {
-		kinds := make([]string, 0, len(bucket))
-		for k := range bucket {
+		kinds := make([]string, 0, bucket.len())
+		bucket.each(func(k, _ string) {
 			kinds = append(kinds, k)
-		}
+		})
 		sort.Strings(kinds)
 		diag.KindsPresent = kinds
 	}

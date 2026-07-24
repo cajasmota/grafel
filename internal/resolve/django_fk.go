@@ -58,13 +58,13 @@ func (idx Index) lookupUniqueModelByName(name string) (string, bool) {
 		return "", false
 	}
 	realBucket := idx.nameKindsReal[name]
-	if len(realBucket) == 0 {
+	if realBucket.len() == 0 {
 		return "", false
 	}
 	// nameKindsReal[name][kind] = "" sentinel means ambiguous (>=2
 	// entities share that name+kind pair); a non-empty value is the
 	// unique entity ID for that pair.
-	id, ok := realBucket[string(types.EntityKindModel)]
+	id, ok := realBucket.get(string(types.EntityKindModel))
 	if !ok || id == "" {
 		return "", false
 	}
