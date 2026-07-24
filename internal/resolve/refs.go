@@ -395,21 +395,11 @@ type Index struct {
 	// ambigName[name] = true when a name appears in two or more entities.
 	ambigName map[string]bool
 
-	// nameKinds[name][kind] = entity_id for every entity sharing this
-	// name. A blank string sentinel means two entities share that
-	// (name, kind) tuple — i.e. the kind itself is ambiguous for this
-	// name and the kind hint cannot disambiguate via this family.
-	nameKinds map[string]kindIDs
-
-	// nameKindsReal[name][kind] = entity_id, indexed under the entity's
-	// ORIGINAL kind only (no SCOPE.* dual-indexing). Used by
-	// lookupByKindHint's tier-1 pass to prefer real entities over
-	// SCOPE.* placeholders when EXTENDS / IMPLEMENTS / CALLS edges
-	// resolve a bare name that lives under both tiers (#525). Blank
-	// string sentinel marks (name, kind) collisions; identical
-	// semantics to nameKinds but without the cross-tier ambiguity that
-	// dual-indexing introduces.
-	nameKindsReal map[string]kindIDs
+	// nameKinds[name] carries BOTH name-keyed kind buckets in one entry
+	// (#5954 outer-map compaction): .base is the all-kinds bucket
+	// (including SCOPE.* dual-indexing) and .real is the original-kind-only
+	// bucket. See nameKindEntry for the semantics of each field.
+	nameKinds map[string]nameKindEntry
 
 	// byLocation[file_path][name] = entity_id, retained only when unique
 	// within the file. Used by structural-ref Format A resolution.
@@ -553,8 +543,31 @@ type LocationKindIndex map[string]map[string]kindIDs
 // kindID is one (kind, entity_id) pair inside a kindIDs.
 type kindID struct{ kind, id string }
 
+// nameKindEntry merges the two formerly-parallel name-keyed tables
+// (nameKinds + nameKindsReal) into a single map value (#5954). Both tables
+// were written over the IDENTICAL e.Name key set in the same loop iteration,
+// so storing them as two fields of one value removes ~427k duplicate name-key
+// headers plus one whole map's bucket array.
+//
+// The two fields are INDEPENDENT state, never derivable from one another:
+//   - base: indexed under every kind form (original AND SCOPE-trimmed), i.e.
+//     the dual-indexed bucket. A (name, kind) collision DESTRUCTIVELY blanks
+//     the entry to the "" sentinel via kindIDs.set, so a real entity's id can
+//     become unrecoverable from base alone.
+//   - real: indexed ONLY under the entity's original kind (no SCOPE.*
+//     dual-indexing), so lookupByKindHint's tier-1 pass can prefer a real
+//     entity over a same-named SCOPE.* placeholder (#525). It is NOT a
+//     filtered view of base — it survives collisions base has already blanked.
+//
+// Blanking is therefore applied to each field separately, exactly as the two
+// separate maps did. Deriving real from base (e.g. "store base and filter
+// SCOPE.* at read time") is UNSAFE and would silently corrupt resolution.
+type nameKindEntry struct {
+	base, real kindIDs
+}
+
 // kindIDs is a heap-frugal replacement for map[string]string (kind -> id) in
-// the resolver Index's four dominant inner buckets (nameKinds, nameKindsReal,
+// the resolver Index's four dominant inner buckets (nameKinds .base/.real,
 // byLocationKind, byLocationKindReal). The first entry lives inline (k0/v0);
 // additional kinds spill to rest. Since these buckets carry ~1 entry each, the
 // inline path never touches the heap — that is the entire point of the type.
@@ -819,8 +832,7 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		ambigKind:          make(map[string]map[string]bool),
 		byName:             make(map[string]string),
 		ambigName:          make(map[string]bool),
-		nameKinds:          make(map[string]kindIDs),
-		nameKindsReal:      make(map[string]kindIDs),
+		nameKinds:          make(map[string]nameKindEntry),
 		byLocation:         make(LocationIndex),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex),
@@ -1002,26 +1014,25 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		// blanking the entry so the hint falls through. kindIDs.set
 		// encapsulates that rule; the value is stored back since kindIDs
 		// lives inline in the map (no per-entry heap in the 1-kind case).
-		nameKindBucket := idx.nameKinds[e.Name]
+		//
+		// .real is a single pass under the entity's ORIGINAL kind only.
+		// Used by lookupByKindHint's tier-1 real-entity pass (#525) so
+		// that SCOPE.Component dual-indexing under "Component" doesn't
+		// poison the hint when a same-named real Component coexists.
+		// Blank sentinel marks collisions within the same original kind.
+		// .base and .real are blanked INDEPENDENTLY — a collision in one
+		// never touches the other (#5954 merge invariant).
+		nameKindEnt := idx.nameKinds[e.Name]
 		for _, kind := range kinds {
 			if kind == "" {
 				continue
 			}
-			nameKindBucket.set(kind, e.ID)
+			nameKindEnt.base.set(kind, e.ID)
 		}
-		idx.nameKinds[e.Name] = nameKindBucket
-
-		// nameKindsReal — single-pass under the entity's original kind
-		// only. Used by lookupByKindHint's tier-1 real-entity pass
-		// (#525) so that SCOPE.Component dual-indexing under
-		// "Component" doesn't poison the hint when a same-named real
-		// Component coexists. Blank sentinel marks collisions within
-		// the same original kind.
 		if e.Kind != "" {
-			realBucket := idx.nameKindsReal[e.Name]
-			realBucket.set(e.Kind, e.ID)
-			idx.nameKindsReal[e.Name] = realBucket
+			nameKindEnt.real.set(e.Kind, e.ID)
 		}
+		idx.nameKinds[e.Name] = nameKindEnt
 
 		// Location index — (file_path, name) -> entity_id. Same logic as
 		// byKind: ambiguous (file, name) tuples are tracked separately so
@@ -1698,17 +1709,18 @@ func (idx Index) lookupByKindHint(name, relKind string) (string, bool) {
 	if len(families) == 0 {
 		return "", false
 	}
-	// Tier 1: real entity kinds only, consulted via nameKindsReal so
-	// SCOPE.* dual-indexing in nameKinds doesn't blank a real entity's
+	// Tier 1: real entity kinds only, consulted via nameKinds[name].real so
+	// SCOPE.* dual-indexing in .base doesn't blank a real entity's
 	// kind bucket (#525). When a real Component / Class / View / Model
 	// (or Operation / Function / Method) uniquely matches, return it
 	// without consulting the SCOPE.* placeholder tier at all.
-	if realBucket := idx.nameKindsReal[name]; realBucket.len() > 0 {
-		if id, ok := uniqueMatchInFamily(realBucket, families, false); ok {
+	entry := idx.nameKinds[name]
+	if entry.real.len() > 0 {
+		if id, ok := uniqueMatchInFamily(entry.real, families, false); ok {
 			return id, true
 		}
 	}
-	bucket := idx.nameKinds[name]
+	bucket := entry.base
 	if bucket.len() == 0 {
 		return "", false
 	}
@@ -1782,7 +1794,7 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 				return qid, statusRewritten, true
 			}
 			// Tier 3: unique within the callable (Function/Method) kind family
-			if bucket := idx.nameKinds[qname]; bucket.len() > 0 {
+			if bucket := idx.nameKinds[qname].base; bucket.len() > 0 {
 				var hit string
 				for _, knd := range []string{"Function", "Method"} {
 					if id, ok := bucket.get(knd); ok && id != "" {
@@ -1898,7 +1910,7 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 				if qid, ok := idx.byName[member]; ok && qid != "" {
 					return qid, statusRewritten, true
 				}
-				if bucket := idx.nameKinds[member]; bucket.len() > 0 {
+				if bucket := idx.nameKinds[member].base; bucket.len() > 0 {
 					var hit string
 					for _, knd := range []string{"Function", "Method", "Operation", "SCOPE.Operation"} {
 						if id, ok := bucket.get(knd); ok && id != "" {
@@ -2176,7 +2188,7 @@ func (idx Index) lookupUniqueRealComponentByName(name string) (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	if realBucket := idx.nameKindsReal[name]; realBucket.len() > 0 {
+	if realBucket := idx.nameKinds[name].real; realBucket.len() > 0 {
 		if id, ok := uniqueMatchInFamily(realBucket, componentKindFamily, false); ok {
 			return id, true
 		}
@@ -2898,7 +2910,10 @@ func (idx Index) nameExists(name string) bool {
 	if idx.ambigName[name] {
 		return true
 	}
-	if bucket, ok := idx.nameKinds[name]; ok && bucket.len() > 0 {
+	// The merged nameKinds key set is exactly the old base-table key set:
+	// .base is written on every entity iteration, .real only on a subset of
+	// those same iterations, so presence semantics are unchanged (#5954).
+	if entry, ok := idx.nameKinds[name]; ok && entry.base.len() > 0 {
 		return true
 	}
 	return false
@@ -2975,7 +2990,8 @@ func (idx Index) DiagnoseBugResolver(originalStub, relKind string) BugResolverDi
 	diag.Name = name
 	diag.StubKind = kind
 
-	if bucket, ok := idx.nameKinds[name]; ok {
+	if entry, ok := idx.nameKinds[name]; ok {
+		bucket := entry.base
 		kinds := make([]string, 0, bucket.len())
 		bucket.each(func(k, _ string) {
 			kinds = append(kinds, k)

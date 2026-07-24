@@ -129,7 +129,6 @@ func indexParityDiff(a, b Index) []string {
 	cmp("byName", a.byName, b.byName)
 	cmp("ambigName", a.ambigName, b.ambigName)
 	cmp("nameKinds", a.nameKinds, b.nameKinds)
-	cmp("nameKindsReal", a.nameKindsReal, b.nameKindsReal)
 	cmp("byLocation", a.byLocation, b.byLocation)
 	cmp("ambigLocation", a.ambigLocation, b.ambigLocation)
 	cmp("byLocationKind", a.byLocationKind, b.byLocationKind)

@@ -104,12 +104,30 @@ func oracleLocKind(ents []types.EntityRecord, realOnly bool) map[string]map[stri
 	return m
 }
 
-// liveNameKinds materialises a kindIDs map back into a plain map for comparison.
-func liveNameKinds(m map[string]kindIDs) map[string]map[string]string {
+// liveNameKindsBase materialises the .base field of the merged nameKinds map
+// back into a plain map for comparison.
+func liveNameKindsBase(m map[string]nameKindEntry) map[string]map[string]string {
 	out := map[string]map[string]string{}
-	for name, kid := range m {
+	for name, ent := range m {
 		b := map[string]string{}
-		kid.each(func(k, id string) { b[k] = id })
+		ent.base.each(func(k, id string) { b[k] = id })
+		out[name] = b
+	}
+	return out
+}
+
+// liveNameKindsReal materialises the .real field of the merged nameKinds map.
+// The oracle only records a name once an entity with a non-empty Kind carries
+// it, so names whose .real bucket is empty are omitted here — matching the
+// pre-merge nameKindsReal key set exactly.
+func liveNameKindsReal(m map[string]nameKindEntry) map[string]map[string]string {
+	out := map[string]map[string]string{}
+	for name, ent := range m {
+		if ent.real.len() == 0 {
+			continue
+		}
+		b := map[string]string{}
+		ent.real.each(func(k, id string) { b[k] = id })
 		out[name] = b
 	}
 	return out
@@ -158,11 +176,11 @@ func TestKindIDs_IndexMapParity(t *testing.T) {
 	ents := equivFixture()
 	idx := BuildIndex(ents)
 
-	if got, want := liveNameKinds(idx.nameKinds), oracleNameKinds(ents); !reflect.DeepEqual(got, want) {
-		t.Fatalf("nameKinds diverges from oracle:\n live=%v\noracle=%v", got, want)
+	if got, want := liveNameKindsBase(idx.nameKinds), oracleNameKinds(ents); !reflect.DeepEqual(got, want) {
+		t.Fatalf("nameKinds.base diverges from oracle:\n live=%v\noracle=%v", got, want)
 	}
-	if got, want := liveNameKinds(idx.nameKindsReal), oracleNameKindsReal(ents); !reflect.DeepEqual(got, want) {
-		t.Fatalf("nameKindsReal diverges from oracle:\n live=%v\noracle=%v", got, want)
+	if got, want := liveNameKindsReal(idx.nameKinds), oracleNameKindsReal(ents); !reflect.DeepEqual(got, want) {
+		t.Fatalf("nameKinds.real diverges from oracle:\n live=%v\noracle=%v", got, want)
 	}
 	if got, want := liveLocKind(idx.byLocationKind), oracleLocKind(ents, false); !reflect.DeepEqual(got, want) {
 		t.Fatalf("byLocationKind diverges from oracle:\n live=%v\noracle=%v", got, want)
@@ -245,8 +263,8 @@ func TestKindIDs_CollisionSentinelPreserved(t *testing.T) {
 		ent("bbbbbbbbbbbbbbbb", "Function", "Dup"),
 	}
 	idx := BuildIndex(ents)
-	// nameKinds[Dup][Function] must be present-but-blank.
-	id, present := idx.nameKinds["Dup"].get("Function")
+	// nameKinds[Dup].base[Function] must be present-but-blank.
+	id, present := idx.nameKinds["Dup"].base.get("Function")
 	if !present {
 		t.Fatalf("collision entry absent; want present blank sentinel")
 	}
