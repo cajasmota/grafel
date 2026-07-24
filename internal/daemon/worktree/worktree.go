@@ -114,6 +114,13 @@ type WorktreeChild struct {
 	ParentSlug string `json:"parent_slug"`
 	// GroupName is the grafel group that owns the parent.
 	GroupName string `json:"group_name"`
+	// ParentPath is the absolute path of the parent repo's main checkout
+	// (ParentRepo.Path at discovery time) — the state-dir key for the
+	// parent's graph. Populated at discovery/refresh; omitempty so a
+	// worktrees.json written before this field existed loads unchanged
+	// with ParentPath == "" (callers fall back to derivation in that
+	// case). See #5964.
+	ParentPath string `json:"parent_path,omitempty"`
 	// Path is the absolute path of the worktree on disk.
 	Path string `json:"path"`
 	// Branch is the git ref checked out in the worktree.
@@ -768,6 +775,7 @@ func (w *Watcher) poll() {
 				child := &WorktreeChild{
 					ParentSlug:   p.Slug,
 					GroupName:    p.GroupName,
+					ParentPath:   p.Path,
 					Path:         normPath(raw.Path),
 					Branch:       raw.Branch,
 					Locked:       raw.Locked,
@@ -783,6 +791,12 @@ func (w *Watcher) poll() {
 				existing.LastSeenAt = now
 				existing.Branch = raw.Branch
 				existing.Locked = raw.Locked
+				// Correct a re-registered parent path/slug (e.g. the parent
+				// repo moved on disk or was re-registered under a new slug)
+				// and backfill legacy store entries persisted before
+				// ParentPath existed.
+				existing.ParentPath = p.Path
+				existing.ParentSlug = p.Slug
 				if existing.Status == StatusExpired {
 					existing.Status = StatusActive
 					existing.StaleAt = nil

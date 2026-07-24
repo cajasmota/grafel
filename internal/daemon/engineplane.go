@@ -13,6 +13,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/watchreg"
 	"github.com/cajasmota/grafel/internal/daemon/worktree"
 	"github.com/cajasmota/grafel/internal/gitmeta"
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // enginePlane holds the engine-plane background runtime (scheduler, watcher,
@@ -297,6 +298,16 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 				// RefCapture(worktreePath), so the graph lands in the correct
 				// per-ref dir keyed by the worktree path (multi-ref model).
 				wtWatcher.OnActivate = func(child *worktree.WorktreeChild) {
+					// #5964 increment 1: probe-only diagnostic. This resolves
+					// and logs the worktree→parent state-dir mapping but does
+					// NOT copy/seed anything and does NOT alter what gets
+					// enqueued below — zero behaviour change. OnActivate fires
+					// once per activation transition (new discovery or
+					// re-activation after expiry, see worktree.Watcher.poll),
+					// so this logs once per worktree activation, not per poll
+					// tick.
+					logWorktreeParentSeedProbe(logger, child, cfg.WorktreeParents)
+
 					activateSem <- struct{}{}
 					_, aerr := watcher.AddRepo(child.Path)
 					<-activateSem
@@ -435,4 +446,114 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 	logger.Info("startup: docgen-sweeper done")
 
 	return ep
+}
+
+// logWorktreeParentSeedProbe resolves and logs the worktree→parent state-dir
+// mapping for a newly-activated worktree (#5964 increment 1). It is a
+// diagnostic PROBE ONLY: it never copies, seeds, or otherwise changes what
+// gets indexed — it exists solely to confirm or kill, on real data, the
+// finding that killed the first clone-from-parent attempt (#3652): that
+// attempt resolved the parent via StateDirForRepoRef(worktreePath, "main"),
+// which is keyed by the WORKTREE's own path (wrong root) and a hardcoded ref
+// (wrong ref for any parent not on "main"), so it always resolved to an
+// empty directory.
+//
+// Resolution order:
+//  1. child.ParentPath, populated at discovery (worktree.Watcher.poll).
+//  2. Fallback via gitmeta.ResolveCommonDir when ParentPath is empty (a
+//     store entry persisted before this field existed) — matched against
+//     the same parents provider the watcher itself uses, rather than the
+//     O(registered repos) registry scan in internal/mcp/routing.go.
+//
+// dst is the worktree's own state dir (StateDirForRepoRef(child.Path,
+// child.Branch), unchanged from today's Enqueue target). src is the
+// parent's CURRENT state dir — StateDirForRepo(parentPath), which resolves
+// the parent's actual HEAD ref via gitmeta.Capture, not a hardcoded ref name
+// (the same bug class as #3652). Whether src actually holds a usable graph
+// is reported via graph.CurrentGraphDescriptor, which is segment-set aware
+// (a graph.<gen>/ dir with a `current` pointer is not necessarily a flat
+// graph.fb).
+func logWorktreeParentSeedProbe(logger *slog.Logger, child *worktree.WorktreeChild, parentsProvider func() []worktree.ParentRepo) {
+	parentPath := child.ParentPath
+	fallbackUsed := false
+	if parentPath == "" {
+		parentPath = resolveWorktreeParentPathFallback(child.Path, parentsProvider)
+		fallbackUsed = true
+	}
+
+	// current_repo_tag: what Index() would default repoTag to for this
+	// worktree TODAY (filepath.Base(absRepo), cmd/grafel/index.go:~462 —
+	// the daemon always passes repoTag=""), vs the parent's slug it would
+	// need to be pinned to for entity IDs to agree with a full index of the
+	// parent (graph.EntityID hashes repoTag as its first component). This
+	// increment only REPORTS the mismatch; pinning repoTag is a separate,
+	// follow-up increment.
+	currentRepoTag := filepath.Base(filepath.Clean(child.Path))
+
+	if parentPath == "" {
+		logger.Info("worktree: parent-seed probe — no parent path (neither recorded nor derivable)",
+			"path", child.Path, "branch", child.Branch, "parent_slug", child.ParentSlug,
+			"current_repo_tag", currentRepoTag, "fallback_attempted", fallbackUsed)
+		return
+	}
+
+	dst := StateDirForRepoRef(child.Path, child.Branch)
+	src := StateDirForRepo(parentPath)
+
+	desc, descErr := graph.CurrentGraphDescriptor(src)
+	hasGraph := descErr == nil && desc.Kind != graph.GraphAbsent
+	kind := "absent"
+	switch desc.Kind {
+	case graph.GraphSingleFile:
+		kind = "single_file"
+	case graph.GraphSegmentSet:
+		kind = "segment_set"
+	}
+
+	logger.Info("worktree: parent-seed probe",
+		"path", child.Path,
+		"branch", child.Branch,
+		"parent_path", parentPath,
+		"parent_slug", child.ParentSlug,
+		"current_repo_tag", currentRepoTag,
+		"repo_tag_mismatch", currentRepoTag != child.ParentSlug,
+		"parent_path_source", map[bool]string{true: "fallback_commondir", false: "recorded"}[fallbackUsed],
+		"src_state_dir", src,
+		"dst_state_dir", dst,
+		"src_has_graph", hasGraph,
+		"src_graph_kind", kind,
+		"src_descriptor_err", errString(descErr),
+	)
+}
+
+// resolveWorktreeParentPathFallback derives a worktree's parent repo path
+// when WorktreeChild.ParentPath is empty (legacy store entry predating
+// #5964). It compares the worktree's git common-dir against each candidate
+// parent's own common-dir — the same fact gitmeta.ResolveCommonDir /
+// internal/mcp/routing.go's ResolveCWD already use to attribute a worktree
+// to its parent, but matched directly against the watcher's own parents
+// provider instead of the O(registered repos) registry scan. Returns "" when
+// no parent's common-dir matches (or parentsProvider is nil).
+func resolveWorktreeParentPathFallback(worktreePath string, parentsProvider func() []worktree.ParentRepo) string {
+	if parentsProvider == nil {
+		return ""
+	}
+	childCommon := gitmeta.ResolveCommonDir(worktreePath)
+	if childCommon == "" {
+		return ""
+	}
+	for _, p := range parentsProvider() {
+		if gitmeta.ResolveCommonDir(p.Path) == childCommon {
+			return p.Path
+		}
+	}
+	return ""
+}
+
+// errString renders err for structured logging, "" for nil.
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

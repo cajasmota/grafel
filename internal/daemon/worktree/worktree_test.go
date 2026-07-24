@@ -577,6 +577,67 @@ func TestWatcher_OnActivate_fires_on_discovery(t *testing.T) {
 	}
 }
 
+// TestWatcher_poll_populatesParentPath verifies poll() records the parent
+// repo's absolute path AND slug on discovery (#5964 increment 1) — ParentPath
+// is the field that #3652's clone-from-parent attempt discarded, forcing it
+// to guess the parent via a hardcoded ref name and find nothing. ParentSlug
+// already existed on WorktreeChild but is asserted here too because it is
+// the input to a follow-up increment (pinning a worktree's repoTag to its
+// parent's slug) and must stay correct as ParentPath is added alongside it.
+func TestWatcher_poll_populatesParentPath(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	tmp := t.TempDir()
+	repoDir := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepo(t, repoDir)
+	wt1 := filepath.Join(tmp, "wt1")
+	addWorktree(t, repoDir, wt1, "feat/parentpath")
+
+	store := worktree.NewStore(filepath.Join(tmp, "wt.json"))
+	parents := func() []worktree.ParentRepo {
+		return []worktree.ParentRepo{{GroupName: "g", Slug: "r", Path: repoDir}}
+	}
+	w := worktree.NewWatcher(store, parents, nil)
+	w.Poll()
+
+	realWt1 := realPath(t, wt1)
+	child := store.Lookup(realWt1)
+	if child == nil {
+		child = store.Lookup(wt1)
+	}
+	if child == nil {
+		t.Fatalf("worktree %q not found in store after poll", wt1)
+	}
+	realRepoDir := realPath(t, repoDir)
+	if child.ParentPath != repoDir && child.ParentPath != realRepoDir {
+		t.Errorf("ParentPath = %q, want %q (or resolved %q)", child.ParentPath, repoDir, realRepoDir)
+	}
+	if child.ParentSlug != "r" {
+		t.Errorf("ParentSlug = %q, want %q", child.ParentSlug, "r")
+	}
+
+	// Re-poll (refresh path): ParentPath/ParentSlug must still be populated,
+	// not wiped or left stale, so a re-registered parent self-corrects.
+	w.Poll()
+	child = store.Lookup(realWt1)
+	if child == nil {
+		child = store.Lookup(wt1)
+	}
+	if child == nil {
+		t.Fatalf("worktree %q not found in store after second poll", wt1)
+	}
+	if child.ParentPath != repoDir && child.ParentPath != realRepoDir {
+		t.Errorf("after refresh: ParentPath = %q, want %q (or resolved %q)", child.ParentPath, repoDir, realRepoDir)
+	}
+	if child.ParentSlug != "r" {
+		t.Errorf("after refresh: ParentSlug = %q, want %q", child.ParentSlug, "r")
+	}
+}
+
 // TestWatcher_OnExpire_fires_on_removal verifies OnExpire fires when a
 // worktree is removed — the daemon uses it to unsubscribe the working tree.
 func TestWatcher_OnExpire_fires_on_removal(t *testing.T) {
