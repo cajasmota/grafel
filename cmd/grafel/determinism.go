@@ -73,57 +73,12 @@ func sortRelationshipRecords(rs []types.RelationshipRecord) {
 }
 
 // sortDocumentForEmission is the final, post-everything sort applied
-// immediately before graph.WriteAtomic. Even with every fan-in already
-// sorted, intermediate passes that mutate slices in place (external
-// synthesis appends, Pass 4 reads via maps) deserve a defensive belt-and-
-// braces sort. Sorting on the canonical graph IDs keeps diffs minimal.
+// immediately before graph.WriteAtomic. The implementation lives in
+// internal/graph (#5974) so the incremental-reindex producer in
+// internal/extractors shares one canonical order with the full-index
+// producer here instead of carrying a copy that can drift.
 func sortDocumentForEmission(doc *graph.Document) {
-	sort.SliceStable(doc.Entities, func(i, j int) bool {
-		return doc.Entities[i].ID < doc.Entities[j].ID
-	})
-	sort.SliceStable(doc.Relationships, func(i, j int) bool {
-		a, b := &doc.Relationships[i], &doc.Relationships[j]
-		if a.FromID != b.FromID {
-			return a.FromID < b.FromID
-		}
-		if a.ToID != b.ToID {
-			return a.ToID < b.ToID
-		}
-		if a.Kind != b.Kind {
-			return a.Kind < b.Kind
-		}
-		return a.ID < b.ID
-	})
-	// Pass 4 outputs — order by community ID (already deterministic from the
-	// algorithms layer) then size as a tiebreaker, then top-entity name to
-	// stabilise ties across re-runs.
-	sort.SliceStable(doc.Communities, func(i, j int) bool {
-		a, b := &doc.Communities[i], &doc.Communities[j]
-		if a.Size != b.Size {
-			return a.Size > b.Size
-		}
-		if a.ID != b.ID {
-			return a.ID < b.ID
-		}
-		ai, bi := "", ""
-		if len(a.TopEntities) > 0 {
-			ai = a.TopEntities[0]
-		}
-		if len(b.TopEntities) > 0 {
-			bi = b.TopEntities[0]
-		}
-		return ai < bi
-	})
-	sort.SliceStable(doc.SurpriseEdges, func(i, j int) bool {
-		a, b := &doc.SurpriseEdges[i], &doc.SurpriseEdges[j]
-		if a.Score != b.Score {
-			return a.Score > b.Score
-		}
-		if a.FromID != b.FromID {
-			return a.FromID < b.FromID
-		}
-		return a.ToID < b.ToID
-	})
+	graph.SortDocumentForEmission(doc)
 }
 
 // deterministicGeneratedAt returns the timestamp to stamp into Document.

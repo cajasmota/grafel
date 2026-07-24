@@ -59,7 +59,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 
 	flatbuffers "github.com/google/flatbuffers/go"
@@ -144,19 +143,7 @@ func WriteGraphGenSegmented(stateDir string, doc *graph.Document) (string, error
 // this is idempotent; it is repeated here to make the per-segment key-bounds
 // invariant hold regardless of the caller.
 func sortDocForSegments(doc *graph.Document) {
-	sort.SliceStable(doc.Entities, func(i, j int) bool {
-		return doc.Entities[i].ID < doc.Entities[j].ID
-	})
-	sort.SliceStable(doc.Relationships, func(i, j int) bool {
-		a, b := &doc.Relationships[i], &doc.Relationships[j]
-		if a.FromID != b.FromID {
-			return a.FromID < b.FromID
-		}
-		if a.ToID != b.ToID {
-			return a.ToID < b.ToID
-		}
-		return a.Kind < b.Kind
-	})
+	graph.SortDocumentForEmission(doc)
 }
 
 // graphFitsSingleBuilder reports whether the entire graph serializes to fewer

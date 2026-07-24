@@ -949,39 +949,16 @@ func relRecordToGraphRel(r types.RelationshipRecord) graph.Relationship {
 	}.WithProperties(r.Properties)
 }
 
-// sortGraphDocumentForEmission sorts entities and relationships in the same
-// canonical order used by cmd/grafel/index.go (sortDocumentForEmission).
-// Kept here to avoid a cmd → internal import cycle.
+// sortGraphDocumentForEmission sorts entities and relationships into the
+// canonical emission order. #5974: this used to be a local copy that ordered
+// entities by (SourceFile, Kind, QualifiedName, Name, StartLine, ID) — NOT the
+// ID order the full-index path uses and the FlatBuffers `(key)` binary search
+// in fbreader requires, so LookupEntityByID silently missed entities in every
+// incrementally written graph. It now delegates to the one shared
+// implementation in internal/graph; there is no cmd → internal cycle because
+// both producers depend on internal/graph already.
 func sortGraphDocumentForEmission(doc *graph.Document) {
-	sort.SliceStable(doc.Entities, func(a, b int) bool {
-		ra, rb := &doc.Entities[a], &doc.Entities[b]
-		if ra.SourceFile != rb.SourceFile {
-			return ra.SourceFile < rb.SourceFile
-		}
-		if ra.Kind != rb.Kind {
-			return ra.Kind < rb.Kind
-		}
-		if ra.QualifiedName != rb.QualifiedName {
-			return ra.QualifiedName < rb.QualifiedName
-		}
-		if ra.Name != rb.Name {
-			return ra.Name < rb.Name
-		}
-		if ra.StartLine != rb.StartLine {
-			return ra.StartLine < rb.StartLine
-		}
-		return ra.ID < rb.ID
-	})
-	sort.SliceStable(doc.Relationships, func(a, b int) bool {
-		ra, rb := &doc.Relationships[a], &doc.Relationships[b]
-		if ra.FromID != rb.FromID {
-			return ra.FromID < rb.FromID
-		}
-		if ra.ToID != rb.ToID {
-			return ra.ToID < rb.ToID
-		}
-		return ra.Kind < rb.Kind
-	})
+	graph.SortDocumentForEmission(doc)
 }
 
 // entityPropKey returns a stable string key for an entity used in the
