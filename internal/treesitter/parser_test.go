@@ -94,12 +94,22 @@ func )()()(  }{}{}{} :::
 	if !errors.Is(err, treesitter.ErrHighSyntaxErrorRate) {
 		t.Errorf("expected ErrHighSyntaxErrorRate, got: %v", err)
 	}
-	// Result is returned alongside the error so callers can inspect the tree.
+	// Result is returned alongside the error so callers can inspect the
+	// metadata (Language/ErrorRatio/NodeCount), but NOT the tree itself: no
+	// caller uses the tree on this path, and an un-Close()d tree leaks C heap
+	// for the life of the process (#5963, same class as #5962). The tree is
+	// closed internally before the error is returned, so TSTree must be nil
+	// here — that is the directly-testable contract; asserting the C memory
+	// was actually freed isn't possible from Go without cgo instrumentation.
 	if res == nil {
-		t.Error("expected non-nil ParseResult even on ErrHighSyntaxErrorRate")
+		t.Fatal("expected non-nil ParseResult even on ErrHighSyntaxErrorRate")
 	}
-	if res != nil && res.ErrorRatio <= 0.10 {
+	if res.ErrorRatio <= 0.10 {
 		t.Errorf("expected error_ratio > 0.10, got %.4f", res.ErrorRatio)
+	}
+	if res.TSTree != nil {
+		t.Error("expected TSTree to be nil on ErrHighSyntaxErrorRate — the tree must be closed internally " +
+			"before returning since no caller takes ownership on this path (#5963)")
 	}
 }
 
