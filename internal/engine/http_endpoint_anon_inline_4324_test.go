@@ -83,7 +83,12 @@ func assertInlineEndpointBridged(t *testing.T, ents []types.EntityRecord, rels [
 
 	// Mirror buildDocument: resolve the http-endpoint pass, stamp IDs, then run
 	// the CENTRAL resolver over the synthesis relationships.
-	merged, _ := ResolveHTTPEndpointHandlers(ents)
+	//
+	// cloneEnts: the resolve pass CONSUMES its input (it edits records in
+	// place and compacts drops over the same backing array, #5954). Callers
+	// invoke this helper repeatedly against the SAME fixture set, so each run
+	// needs its own copy.
+	merged, _ := ResolveHTTPEndpointHandlers(cloneEnts(ents))
 	for i := range merged {
 		merged[i].ID = merged[i].ComputeID()
 	}

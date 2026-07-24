@@ -43,9 +43,11 @@
 //     are valuable cross-repo bridges regardless of caller resolution)
 //     but no FETCHES edge is emitted.
 //
-// Returning a NEW slice of EntityRecords (with unresolved producer
-// synthetics dropped) keeps the data flow obvious and avoids in-place
-// slice shuffling at the call site.
+// Returning a slice of EntityRecords (with unresolved producer
+// synthetics dropped) keeps the data flow obvious at the call site. The
+// pass CONSUMES the input slice: it edits records in place and compacts
+// the drops over the same backing array (#5954), so callers must use the
+// returned slice and never the pre-call view.
 //
 // Refs #534 Phase 2, #754.
 package engine
@@ -117,7 +119,10 @@ type ResolveHTTPEndpointStats struct {
 //
 // `merged` MUST already be sorted in canonical order (entity-id
 // disambiguation depends on first-writer-wins). The slice may be
-// returned as-is if no synthetics were dropped.
+// returned as-is if no synthetics were dropped; otherwise the survivors
+// are compacted into `merged`'s own backing array and the tail is
+// zeroed. Either way the pass takes ownership of `merged` — read the
+// returned slice, not the one you passed in.
 // httpResolveKey is the (kind, name, sourceFile) index key used by the
 // resolver to look up entities by their stable in-file identity.
 type httpResolveKey struct{ kind, name, sourceFile string }
@@ -741,12 +746,31 @@ func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag st
 	if len(drop) == 0 {
 		return merged, stats
 	}
-	out := make([]types.EntityRecord, 0, len(merged)-len(drop))
+	// #5954 — compact IN PLACE over `merged`'s existing backing array.
+	// Allocating a second full []types.EntityRecord here just to skip a
+	// handful of dropped synthetics was the single largest line-level
+	// allocation at the corpus index peak (183 MB live, both copies
+	// simultaneously reachable). EntityRecord is a fat struct, so the
+	// per-element value copy is what costs — and it is the SAME copy we
+	// already have to do to close the gaps.
+	//
+	// Safe because `merged` is consumed by this call: the only production
+	// caller (buildDocument in cmd/grafel/index.go) builds `merged` fresh,
+	// passes it here and assigns the result straight back over the same
+	// variable, keeping no pre-filter view. The order-preserving forward
+	// walk keeps output byte-identical to the copy-based version (#481 —
+	// merged order drives first-writer-wins downstream).
+	out := merged[:0]
 	for i := range merged {
 		if drop[i] {
 			continue
 		}
 		out = append(out, merged[i])
+	}
+	// Release the tail so the dropped records — and the Properties maps /
+	// Relationships slices they carry — are not retained by the backing array.
+	for i := len(out); i < len(merged); i++ {
+		merged[i] = types.EntityRecord{}
 	}
 	return out, stats
 }
