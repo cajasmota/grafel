@@ -236,8 +236,18 @@ v1 tier-1 payload deliberately omits `pagerank` + `source_file` to keep its wire
 shape tight, but the cosmos.gl renderer needs both (node sizing + the "module"
 group-by). A clean v2 endpoint keeps the two UIs independent. Like v1, it shares
 the server-side payload cache + strong ETag/304 + mux-level gzip (cache keys are
-namespaced with a `v2:` prefix). Entity detail for the inspector still uses the
-v1 `GET /api/graph/{group}/entity/{id}` (unchanged, raw JSON).
+namespaced with a `v2:` prefix). Pre-serialised payloads are also persisted as
+immutable, checksummed artifacts under
+`~/.grafel/cache/dashboard/v1/<group-hash>/<source-hash>/`. The source hash
+covers the group config, each repo's active graph generation (single-file or
+segment-set), description and flow sidecars, the group algorithm overlay and
+the cross-repo links file. A matching artifact can therefore be served after a
+daemon restart without first materialising the graph; any watched source
+change naturally selects a new source hash. Corrupt or unknown cache files are
+treated as misses and rebuilt asynchronously after the live response is
+generated. Retention is bounded to eight source versions per group and 64
+parameter variants per source version. Entity detail for the inspector still
+uses the v1 `GET /api/graph/{group}/entity/{id}` (unchanged, raw JSON).
 
 ---
 

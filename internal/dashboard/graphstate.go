@@ -46,25 +46,38 @@ import (
 // (filterKind, filterRepo, repos, includeExternal, includeModules).
 //
 // Invalidation: any call to graphPayloadCache.InvalidateGroup(group) drops
-// ALL entries whose key starts with "<group>::".  This is called from
-// GraphCache.Invalidate / InvalidateAll so the two caches are always in sync.
+// the v1 and v2 in-memory entries for that group. Disk artifacts are immutable
+// and source-versioned, so changed inputs select a different path instead of
+// requiring eager deletion during watcher or memory-pressure events.
 
 // payloadEntry is one cached response.
 type payloadEntry struct {
-	body []byte // raw JSON bytes (not compressed — withGzip compresses on write)
-	etag string // strong ETag value, including the surrounding quotes
+	body          []byte // raw JSON bytes (not compressed — withGzip compresses on write)
+	etag          string // strong ETag value, including the surrounding quotes
+	sourceVersion string // empty for legacy in-memory-only entries
 }
 
 // graphPayloadCache is a concurrency-safe store of pre-serialised graph
-// payloads.  It is intentionally separate from GraphCache so the two caches
-// can be invalidated together without circular dependencies.
+// payloads backed by an optional immutable disk cache.
 type graphPayloadCache struct {
 	mu      sync.RWMutex
 	entries map[string]*payloadEntry // cache key → entry
+	disk    *diskPayloadCache
 }
 
 func newGraphPayloadCache() *graphPayloadCache {
-	return &graphPayloadCache{entries: map[string]*payloadEntry{}}
+	home, err := registry.HomeDir()
+	if err != nil {
+		return &graphPayloadCache{entries: map[string]*payloadEntry{}}
+	}
+	return newGraphPayloadCacheAt(filepath.Join(home, "cache", "dashboard", "v1"))
+}
+
+func newGraphPayloadCacheAt(root string) *graphPayloadCache {
+	return &graphPayloadCache{
+		entries: map[string]*payloadEntry{},
+		disk:    newDiskPayloadCache(root),
+	}
 }
 
 // payloadCacheKey returns a stable, collision-resistant key for the given
@@ -87,33 +100,58 @@ func payloadCacheKey(group, filterKind, filterRepo, reposParam string, includeEx
 
 // Get returns the cached entry and true when a valid entry exists,
 // or nil and false on a miss.
-func (c *graphPayloadCache) Get(key string) (*payloadEntry, bool) {
+func (c *graphPayloadCache) Get(key string, sourceVersion ...string) (*payloadEntry, bool) {
 	c.mu.RLock()
 	e, ok := c.entries[key]
 	c.mu.RUnlock()
-	return e, ok
+	if ok && (len(sourceVersion) == 0 || sourceVersion[0] == "" || e.sourceVersion == sourceVersion[0]) {
+		return e, true
+	}
+	if c.disk == nil || len(sourceVersion) == 0 || sourceVersion[0] == "" {
+		return nil, false
+	}
+	e, ok = c.disk.Get(key, sourceVersion[0])
+	if !ok {
+		return nil, false
+	}
+	c.mu.Lock()
+	c.entries[key] = e
+	c.mu.Unlock()
+	return e, true
 }
 
 // Set stores (or replaces) a payload entry.
-func (c *graphPayloadCache) Set(key string, body []byte, etag string) {
+func (c *graphPayloadCache) Set(key string, body []byte, etag string, sourceVersion ...string) {
+	version := ""
+	if len(sourceVersion) > 0 {
+		version = sourceVersion[0]
+	}
+	e := &payloadEntry{body: body, etag: etag, sourceVersion: version}
 	c.mu.Lock()
-	c.entries[key] = &payloadEntry{body: body, etag: etag}
+	c.entries[key] = e
 	c.mu.Unlock()
+	if c.disk != nil && len(sourceVersion) > 0 && sourceVersion[0] != "" {
+		c.disk.SetAsync(key, sourceVersion[0], e)
+	}
 }
 
-// InvalidateGroup drops all entries whose key begins with "<group>::".
+// InvalidateGroup drops all v1 and v2 in-memory entries for group. Valid disk
+// entries remain reusable after RAM eviction; source changes cannot hit them.
 func (c *graphPayloadCache) InvalidateGroup(group string) {
-	prefix := group + "::"
+	prefixes := []string{group + "::", "v2:" + group + "::"}
 	c.mu.Lock()
 	for k := range c.entries {
-		if strings.HasPrefix(k, prefix) {
-			delete(c.entries, k)
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(k, prefix) {
+				delete(c.entries, k)
+				break
+			}
 		}
 	}
 	c.mu.Unlock()
 }
 
-// InvalidateAll drops every entry.
+// InvalidateAll drops every in-memory entry. Versioned disk artifacts remain.
 func (c *graphPayloadCache) InvalidateAll() {
 	c.mu.Lock()
 	c.entries = map[string]*payloadEntry{}
@@ -183,6 +221,10 @@ type DashGroup struct {
 	// fresh sidecar), so the full sweep is computed OFF the request after this
 	// group is published (schedulePendingAlgo, #50). Read-only after load.
 	pendingAlgo []pendingAlgoRepo
+
+	// sourceVersion fingerprints every disk artifact used to materialise this
+	// group. Payload snapshots are restored only when this value matches.
+	sourceVersion string
 }
 
 // diskUnchanged reports whether the graph.fb (or graph.json fallback) for every
@@ -382,6 +424,17 @@ func (c *GraphCache) GetGroupCached(groupName string) (*DashGroup, bool) {
 
 // GetGroupCachedForRef is the ref-scoped variant of GetGroupCached (PH1c).
 func (c *GraphCache) GetGroupCachedForRef(groupName, ref string) (*DashGroup, bool) {
+	grp, ok := c.peekGroupCachedForRef(groupName, ref)
+	if !ok {
+		go func() { _, _ = c.GetGroupForRef(groupName, ref) }()
+	}
+	return grp, ok
+}
+
+// peekGroupCachedForRef returns a fresh warm entry without starting a disk
+// load on a miss. The graph handlers use it before probing the durable payload
+// cache so a valid snapshot remains a true graph-materialisation bypass.
+func (c *GraphCache) peekGroupCachedForRef(groupName, ref string) (*DashGroup, bool) {
 	cacheKey := groupName
 	if ref != "" {
 		cacheKey = groupName + "@" + ref
@@ -396,9 +449,6 @@ func (c *GraphCache) GetGroupCachedForRef(groupName, ref string) (*DashGroup, bo
 	if ok && ent.group.diskUnchanged() {
 		return ent.group, true
 	}
-	// Not warm (or the file changed): trigger an async warm so the next caller
-	// is fast, but return immediately so we never block first paint.
-	go func() { _, _ = c.GetGroupForRef(groupName, ref) }()
 	return nil, false
 }
 
@@ -705,6 +755,9 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 			grp.Links = normalizeLinkEndpoints(links, grp.Repos)
 		}
 	}
+	if version, versionErr := dashboardSourceVersion(groupName, ref); versionErr == nil {
+		grp.sourceVersion = version
+	}
 
 	// Build the in-memory search index once at load time so that
 	// /api/search/{group} does not need to scan all entities on every request
@@ -792,6 +845,76 @@ func entityPageRank(entity *graph.Entity) float64 {
 		return 0
 	}
 	return *entity.PageRank
+}
+
+// dashboardSourceVersion fingerprints the files that define a dashboard group
+// without loading graph.fb. Handlers use it to validate disk payloads before
+// materialising the graph, making a valid snapshot a true cold-start fast path.
+func dashboardSourceVersion(groupName, ref string) (string, error) {
+	groups, err := registry.Groups()
+	if err != nil {
+		return "", err
+	}
+	var cfgPath string
+	for _, group := range groups {
+		if group.Name == groupName {
+			cfgPath = group.ConfigPath
+			break
+		}
+	}
+	if cfgPath == "" {
+		return "", fmt.Errorf("group %q not registered", groupName)
+	}
+	cfg, err := registry.LoadGroupConfig(cfgPath)
+	if err != nil {
+		return "", err
+	}
+	repos := append([]registry.Repo(nil), cfg.Repos...)
+	sort.Slice(repos, func(i, j int) bool { return repos[i].Slug < repos[j].Slug })
+
+	h := sha256.New()
+	_, _ = fmt.Fprintf(h, "dashboard-payload-v2\x00%s\x00%s\x00", groupName, ref)
+	hashDashboardArtifact(h, "config", cfgPath)
+	for _, repo := range repos {
+		stateDir := daemon.StateDirForRepo(repo.Path)
+		if ref != "" {
+			stateDir = daemon.StateDirForRepoRef(repo.Path, ref)
+		}
+		_, _ = fmt.Fprintf(h, "repo\x00%s\x00%s\x00", repo.Slug, stateDir)
+		hashDashboardRepoArtifacts(h, stateDir)
+	}
+	if ref == "" {
+		if overlayPath, pathErr := groupalgo.OverlayPath(groupName); pathErr == nil {
+			hashDashboardArtifact(h, "overlay", overlayPath)
+		}
+	}
+	hashDashboardArtifact(h, "links", defaultLinksFile(groupName))
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func hashDashboardRepoArtifacts(h interface{ Write([]byte) (int, error) }, stateDir string) {
+	desc, err := graph.CurrentGraphDescriptor(stateDir)
+	switch {
+	case err != nil:
+		_, _ = fmt.Fprintf(h, "graph\x00%s\x00invalid\x00", stateDir)
+	case desc.Kind == graph.GraphSingleFile:
+		hashDashboardArtifact(h, "graph", desc.Path)
+	case desc.Kind == graph.GraphSegmentSet:
+		hashDashboardArtifact(h, "graph-manifest", filepath.Join(desc.GenDir, graph.ManifestFileName))
+	default:
+		hashDashboardArtifact(h, "graph-json", filepath.Join(stateDir, "graph.json"))
+	}
+	hashDashboardArtifact(h, "descriptions", descriptions.Path(stateDir))
+	hashDashboardArtifact(h, "flows", flows.Path(stateDir))
+}
+
+func hashDashboardArtifact(h interface{ Write([]byte) (int, error) }, kind, path string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		_, _ = fmt.Fprintf(h, "%s\x00%s\x00missing\x00", kind, path)
+		return
+	}
+	_, _ = fmt.Fprintf(h, "%s\x00%s\x00%d\x00%d\x00", kind, path, info.Size(), info.ModTime().UnixNano())
 }
 
 // normalizeLinkEndpoints rewrites the "<repo-slug>::<entity-id>" endpoints of
