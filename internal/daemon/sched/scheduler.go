@@ -228,7 +228,9 @@ type Config struct {
 	// running N simultaneously on an N-core host saturates all cores and
 	// spikes RSS proportionally.
 	//
-	// 0 (or negative) means: auto = max(2, runtime.NumCPU()/2).
+	// 0 (or negative) means: auto = min(3, max(2, runtime.NumCPU()/2)),
+	// clamped to a hard ceiling of 3 cores so indexing/algo work never
+	// saturates the user's machine, even on large hosts.
 	// Set to 1 to fully serialise algo passes.
 	AlgoCap int
 
@@ -382,9 +384,10 @@ type Scheduler struct {
 	shutdownCancel context.CancelFunc
 
 	// algoSem limits the number of concurrent algorithm passes (#2141
-	// root-cause C / #2140 hyp-2). Capacity = max(2, NumCPU/2) unless
-	// Config.AlgoCap is set. Nil means unbounded (legacy; not used in
-	// production).
+	// root-cause C / #2140 hyp-2). Capacity = min(3, max(2, NumCPU/2))
+	// unless Config.AlgoCap is set — the auto path is hard-capped at 3
+	// cores so indexing never freezes the user's machine. Nil means
+	// unbounded (legacy; not used in production).
 	algoSem chan struct{}
 
 	mu           sync.Mutex
@@ -523,10 +526,11 @@ type LogEntry struct {
 const maxRecentLog = 32
 
 // resolveAlgoCap returns the effective concurrency cap for algorithm passes.
-// If cfg.AlgoCap > 0 it is returned as-is. Otherwise it is auto-tuned to
-// max(2, runtime.NumCPU()/2) so that on an 8-core machine only 4 algo
-// passes run in parallel, leaving headroom for the watcher, indexers, and
-// the Go runtime itself.
+// If cfg.AlgoCap > 0 it is returned as-is (an explicit operator override is
+// honored verbatim). Otherwise it is auto-tuned to
+// min(3, max(2, runtime.NumCPU()/2)): the project hard-caps indexing/algo
+// work at 3 concurrent cores regardless of host size, so a large box never
+// gets its CPU saturated and the user's machine stays responsive.
 func resolveAlgoCap(cap int) int {
 	if cap > 0 {
 		return cap
@@ -534,6 +538,9 @@ func resolveAlgoCap(cap int) int {
 	n := runtime.NumCPU() / 2
 	if n < 2 {
 		n = 2
+	}
+	if n > 3 {
+		n = 3
 	}
 	return n
 }

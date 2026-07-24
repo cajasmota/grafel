@@ -478,11 +478,15 @@ func TestResolveAlgoCap(t *testing.T) {
 		t.Errorf("resolveAlgoCap(1) = %d, want 1", got)
 	}
 
-	// Auto-tune: floor at 2.
+	// Auto-tune: floor at 2, ceil at 3 (project hard cap: indexing/algo
+	// work must never exceed 3 concurrent cores, regardless of host size).
 	auto := resolveAlgoCap(0)
 	expected := runtime.NumCPU() / 2
 	if expected < 2 {
 		expected = 2
+	}
+	if expected > 3 {
+		expected = 3
 	}
 	if auto != expected {
 		t.Errorf("resolveAlgoCap(0) = %d, want %d (NumCPU=%d)", auto, expected, runtime.NumCPU())
