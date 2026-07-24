@@ -133,14 +133,41 @@ func liveNameKindsReal(m map[string]nameKindEntry) map[string]map[string]string 
 	return out
 }
 
-func liveLocKind(m LocationKindIndex) map[string]map[string]map[string]string {
+// liveLocKindBase materialises the .base field of the merged byLocationKind
+// inner values back into a plain map for comparison.
+func liveLocKindBase(m LocationKindIndex) map[string]map[string]map[string]string {
 	out := map[string]map[string]map[string]string{}
 	for file, fb := range m {
 		of := map[string]map[string]string{}
-		for name, kid := range fb {
+		for name, ent := range fb {
 			b := map[string]string{}
-			kid.each(func(k, id string) { b[k] = id })
+			ent.base.each(func(k, id string) { b[k] = id })
 			of[name] = b
+		}
+		out[file] = of
+	}
+	return out
+}
+
+// liveLocKindReal materialises the .real field of the merged byLocationKind
+// inner values. The oracle only records a (file, name) once an entity with a
+// non-empty Kind carries it, so entries whose .real bucket is empty — and
+// files left with no populated .real at all — are omitted here, matching the
+// pre-merge byLocationKindReal key set exactly at BOTH levels.
+func liveLocKindReal(m LocationKindIndex) map[string]map[string]map[string]string {
+	out := map[string]map[string]map[string]string{}
+	for file, fb := range m {
+		of := map[string]map[string]string{}
+		for name, ent := range fb {
+			if ent.real.len() == 0 {
+				continue
+			}
+			b := map[string]string{}
+			ent.real.each(func(k, id string) { b[k] = id })
+			of[name] = b
+		}
+		if len(of) == 0 {
+			continue
 		}
 		out[file] = of
 	}
@@ -182,11 +209,11 @@ func TestKindIDs_IndexMapParity(t *testing.T) {
 	if got, want := liveNameKindsReal(idx.nameKinds), oracleNameKindsReal(ents); !reflect.DeepEqual(got, want) {
 		t.Fatalf("nameKinds.real diverges from oracle:\n live=%v\noracle=%v", got, want)
 	}
-	if got, want := liveLocKind(idx.byLocationKind), oracleLocKind(ents, false); !reflect.DeepEqual(got, want) {
-		t.Fatalf("byLocationKind diverges from oracle:\n live=%v\noracle=%v", got, want)
+	if got, want := liveLocKindBase(idx.byLocationKind), oracleLocKind(ents, false); !reflect.DeepEqual(got, want) {
+		t.Fatalf("byLocationKind.base diverges from oracle:\n live=%v\noracle=%v", got, want)
 	}
-	if got, want := liveLocKind(idx.byLocationKindReal), oracleLocKind(ents, true); !reflect.DeepEqual(got, want) {
-		t.Fatalf("byLocationKindReal diverges from oracle:\n live=%v\noracle=%v", got, want)
+	if got, want := liveLocKindReal(idx.byLocationKind), oracleLocKind(ents, true); !reflect.DeepEqual(got, want) {
+		t.Fatalf("byLocationKind.real diverges from oracle:\n live=%v\noracle=%v", got, want)
 	}
 }
 
