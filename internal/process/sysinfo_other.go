@@ -8,3 +8,9 @@ package process
 func TotalMemoryMB() int64 {
 	return 0
 }
+
+// AvailableMemoryMB returns 0 on unsupported platforms — "unknown", not zero
+// available memory. Callers must fall back to a safe default (#5954).
+func AvailableMemoryMB() int64 {
+	return 0
+}

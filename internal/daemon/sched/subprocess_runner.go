@@ -372,6 +372,12 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 	}
 	gmp, reason := resolveChildGOMAXPROCS(interactive, foregroundCap)
 	cmd.Env = append(cmd.Env, "GOMAXPROCS="+strconv.Itoa(gmp))
+	// #5954: GODEBUG is read once at process start, so the child cannot set
+	// madvdontneed for itself the way it sets its own GOMEMLIMIT
+	// (applyIndexMemoryLimit). Returning freed pages with MADV_DONTNEED rather
+	// than MADV_FREE makes the RSS drop from that soft limit visible to the OS
+	// (and to the operator) immediately instead of lazily under pressure.
+	cmd.Env = withMadvDontNeed(cmd.Env)
 	if logger != nil {
 		logger.Info("subprocess-indexer: "+reason, "gomaxprocs", gmp, "repo", repoPath)
 	}

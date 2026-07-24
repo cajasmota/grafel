@@ -26,6 +26,12 @@ import (
 //   - stdout  = JSON progress lines (one per pipeline phase)
 //   - SIGTERM = clean cancellation; exit non-zero
 func runIndexInternal(argv []string) int {
+	// Bound this process's peak footprint before any indexing work starts
+	// (#5954). Measured on the real corpus: 4026MB -> 3203MB peak RSS for
+	// +1.7% wall time. Applied here rather than via a GOMEMLIMIT env var so it
+	// holds no matter how the child was launched. Never fatal.
+	applyIndexMemoryLimit()
+
 	fs := flag.NewFlagSet("index-internal", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
