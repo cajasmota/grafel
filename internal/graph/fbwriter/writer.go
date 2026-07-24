@@ -89,7 +89,12 @@ func WriteGraphGen(stateDir string, doc *graph.Document) (genPath string, err er
 // doc into one buffer (fail-softing an oversized-graph panic into an error) and
 // write it as a new graph.<gen>.fb generation. It is the flag-OFF path and the
 // SegmentedWriter's single-file fast path, so both share byte-identical output.
+//
+// #5974 — the canonical sort runs here as well as in WriteGraphGenSegmented so
+// the two writers cannot emit different orders for the same document. It is
+// idempotent: producers already sort before calling.
 func writeGraphGenFlat(stateDir string, doc *graph.Document) (genPath string, err error) {
+	graph.SortDocumentForEmission(doc)
 	buf, err := Marshal(doc)
 	if err != nil {
 		return "", fmt.Errorf("fbwriter: marshal: %w", err)
