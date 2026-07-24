@@ -265,8 +265,7 @@ func MergeModuleBatch(si *SymbolIndex, offset, batchSize int) (Index, int) {
 		ambigKind:          make(map[string]map[string]bool),
 		byName:             make(map[string]string, total),
 		ambigName:          make(map[string]bool),
-		nameKinds:          make(map[string]kindIDs, total),
-		nameKindsReal:      make(map[string]kindIDs, total),
+		nameKinds:          make(map[string]nameKindEntry, total),
 		byLocation:         make(LocationIndex, total/2+1),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex, total/2+1),
@@ -517,8 +516,7 @@ func accumulatorIndex(totalEntities int) Index {
 		ambigKind:          make(map[string]map[string]bool),
 		byName:             make(map[string]string, totalEntities),
 		ambigName:          make(map[string]bool),
-		nameKinds:          make(map[string]kindIDs, totalEntities),
-		nameKindsReal:      make(map[string]kindIDs, totalEntities),
+		nameKinds:          make(map[string]nameKindEntry, totalEntities),
 		byLocation:         make(LocationIndex, cap2),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex, cap2),
@@ -542,8 +540,7 @@ func emptyIndex() Index {
 		ambigKind:          make(map[string]map[string]bool),
 		byName:             make(map[string]string),
 		ambigName:          make(map[string]bool),
-		nameKinds:          make(map[string]kindIDs),
-		nameKindsReal:      make(map[string]kindIDs),
+		nameKinds:          make(map[string]nameKindEntry),
 		byLocation:         make(LocationIndex),
 		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex),
@@ -615,24 +612,21 @@ func insertModuleEntry(
 		bucket[me.name] = me.id
 	}
 
-	// nameKinds (all kinds, including SCOPE.*). Mirror of BuildIndex's
-	// writer using the compact kindIDs bucket (#5954). Stored back by value
-	// since kindIDs lives inline in the map.
-	nameKindBucket := idx.nameKinds[me.name]
+	// nameKinds — .base carries all kinds (including SCOPE.*), .real only the
+	// original kind. Mirror of BuildIndex's merged writer (#5954). Stored
+	// back by value since nameKindEntry lives inline in the map. .base and
+	// .real are blanked independently (the #525 invariant).
+	nameKindEnt := idx.nameKinds[me.name]
 	for _, kind := range kinds {
 		if kind == "" {
 			continue
 		}
-		nameKindBucket.set(kind, me.id)
+		nameKindEnt.base.set(kind, me.id)
 	}
-	idx.nameKinds[me.name] = nameKindBucket
-
-	// nameKindsReal — original kind only.
 	if me.kind != "" {
-		realBucket := idx.nameKindsReal[me.name]
-		realBucket.set(me.kind, me.id)
-		idx.nameKindsReal[me.name] = realBucket
+		nameKindEnt.real.set(me.kind, me.id)
 	}
+	idx.nameKinds[me.name] = nameKindEnt
 
 	// Location indexes.
 	sf := me.sourceFile
