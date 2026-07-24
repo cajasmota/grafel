@@ -80,7 +80,7 @@ func TestRuntimeCaps_RebuildFileOverride(t *testing.T) {
 // exactly the pre-#5137 env→default behavior.
 func TestRuntimeCaps_NoStore_FallsThrough(t *testing.T) {
 	SetRuntimeCaps(nil)
-	if got := extractGOMAXPROCS(); got != 2 {
-		t.Fatalf("no store: extractGOMAXPROCS() = %d, want default 2", got)
+	if got := extractGOMAXPROCS(); got != 1 {
+		t.Fatalf("no store: extractGOMAXPROCS() = %d, want default 1 (#5960)", got)
 	}
 }

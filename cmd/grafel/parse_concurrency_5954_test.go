@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/indexstate"
+	"github.com/cajasmota/grafel/internal/process"
 )
 
 // TestIndexParseCoreBudget_Is25PercentOfMachine pins the indexing core budget
@@ -30,6 +31,13 @@ func TestIndexParseCoreBudget_Is25PercentOfMachine(t *testing.T) {
 	}
 	if n := runtime.NumCPU(); n >= 4 && got > n/4 {
 		t.Errorf("budget %d exceeds 25%% of %d cores", got, n)
+	}
+	// #5960: there must be exactly ONE definition of the 25% policy in the
+	// tree. This call site is a named wrapper over the canonical helper; if
+	// someone re-inlines a private copy here, the two can silently diverge.
+	if want := process.IndexCoreBudget(); got != want {
+		t.Errorf("indexParseCoreBudget() = %d but process.IndexCoreBudget() = %d — "+
+			"the 25%% policy has been duplicated instead of shared", got, want)
 	}
 }
 
