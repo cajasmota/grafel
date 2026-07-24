@@ -25,9 +25,10 @@ import (
 // background reindex making slow progress without competing for the foreground
 // index's cores, so foreground+background together stay within the machine's
 // budget. When no foreground index is active the background reindex runs at its
-// normal cap (the child's own GRAFEL_EXTRACT_GOMAXPROCS, default 2). Restored
-// automatically the moment the foreground index finishes — the decision is made
-// per-subprocess at launch and re-evaluated for each subsequent reindex.
+// normal cap (the child's own GOMAXPROCS, i.e. ReindexGraphPhaseGOMAXPROCS).
+// Restored automatically the moment the foreground index finishes — the
+// decision is made per-subprocess at launch and re-evaluated for each
+// subsequent reindex.
 const backgroundYieldGOMAXPROCSDefault = 1
 
 // BackgroundYieldGOMAXPROCS resolves the GOMAXPROCS a background reindex yields
@@ -60,9 +61,11 @@ func backgroundYieldGOMAXPROCS() (int, bool) {
 // Daemon-wide reindex CPU ceiling for the graph-wide phases (#5602).
 //
 // PROBLEM. A per-repo reindex runs as `grafel index-internal` (subprocess, S5).
-// The extract sub-subprocesses it spawns are bounded by GRAFEL_EXTRACT_GOMAXPROCS
-// (default 2), but the GRAPH-WIDE PHASES that run IN the index-internal process
-// itself — resolution, cross-repo links, flow, buildIndex/classification, plus
+// The extract sub-subprocesses it spawns — only on the opt-in
+// GRAFEL_SUBPROC_EXTRACT path — are bounded by GRAFEL_EXTRACT_GOMAXPROCS
+// (default 1 since #5960), but the GRAPH-WIDE PHASES that run IN the
+// index-internal process itself (and, by default, the extraction too) —
+// resolution, cross-repo links, flow, buildIndex/classification, plus
 // the Go GC that scales with GOMAXPROCS — run at the child's GOMAXPROCS. Today
 // RunSubprocessIndex sets the child's GOMAXPROCS only when YIELDING to a
 // foreground index (#5328); in the normal background case it sets nothing, so
@@ -200,8 +203,10 @@ func resolveChildGOMAXPROCS(interactive bool, foregroundCap int) (n int, reason 
 // core count) and the Go runtime spins one worker thread per core — the v0.1.3
 // CPU regression where it pinned a 12-core machine at 500–1000% for hours.
 //
-// Default 2 mirrors GRAFEL_EXTRACT_GOMAXPROCS: "the less the better" for a
-// background job. The user can set GRAFEL_GROUP_ALGO_CPU=1 to throttle it to a
+// Default 2 follows the extract subprocess's principle — "the less the better"
+// for a background job. (GRAFEL_EXTRACT_GOMAXPROCS itself dropped to 1 in #5960
+// because that fanout is budgeted across many children; the group-algo pass is a
+// single child, so it keeps 2.) The user can set GRAFEL_GROUP_ALGO_CPU=1 to throttle it to a
 // single core.
 const groupAlgoGOMAXPROCSDefault = 2
 
@@ -229,10 +234,17 @@ func GroupAlgoGOMAXPROCS() int {
 // Why default ON: the in-process path runs the reindex at the daemon's own
 // GOMAXPROCS (= host core count) with no per-job CPU bound — the runaway the
 // dogfooding report observed (300–998% CPU, ~10 cores, for 10–20 min per
-// push). The subprocess path forks `grafel index-internal`, which the
-// extract coordinator bounds to GRAFEL_EXTRACT_GOMAXPROCS (default 2) cores
-// per child, so background reindexes cannot saturate the host on a fresh
-// `curl|bash` install that sets no env vars. It also keeps the daemon heap
+// push). The subprocess path forks `grafel index-internal`, whose GOMAXPROCS
+// RunSubprocessIndex sets from resolveChildGOMAXPROCS — the #5328 yield cap
+// while a foreground index is active, else the #5602 daemon-wide reindex
+// ceiling (ReindexGraphPhaseGOMAXPROCS). NOT GRAFEL_EXTRACT_GOMAXPROCS: that
+// env var is read only by the extract coordinator, which this path does not
+// invoke unless the opt-in GRAFEL_SUBPROC_EXTRACT=1 is set (see
+// cmd/grafel/index.go). By default index-internal extracts IN-PROCESS across
+// i.workers goroutines, so its GOMAXPROCS plus the in-process tree-sitter
+// parse gate — not the extract fanout caps — are what bound it. Either way
+// background reindexes cannot saturate the host on a fresh `curl|bash`
+// install that sets no env vars. It also keeps the daemon heap
 // flat (the original #2155 motivation). Operators who need the legacy
 // in-process behaviour can still force it with GRAFEL_SUBPROCESS_INDEXER=0.
 //

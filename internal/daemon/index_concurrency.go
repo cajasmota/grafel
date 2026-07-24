@@ -3,10 +3,13 @@
 // PROBLEM. When a group/monorepo with many modules is registered or rebuilt,
 // the rebuild fan-out (cmd/grafel: rebuildWorkerPool) used to index every module
 // up to the memory-auto-tuned rebuild cap (8 on a 16GB host, 16 on 32GB). The
-// per-index core cap (GRAFEL_EXTRACT_GOMAXPROCS, default 2) bounds cores PER
-// index but NOT the number of concurrent indexes — so a 30-module group spun up
-// ~8-16 indexers at once × 2 cores = 16-32 cores of pressure and pinned the
-// machine (real user report: 30-module monorepo storm).
+// per-index core cap bounds cores PER index but NOT the number of concurrent
+// indexes — so a 30-module group spun up ~8-16 indexers at once × ~2 cores each
+// = 16-32 cores of pressure and pinned the machine (real user report: 30-module
+// monorepo storm). (The per-index cap is the child's GOMAXPROCS — #5602's
+// ReindexGraphPhaseGOMAXPROCS on the default in-process path, or
+// GRAFEL_EXTRACT_GOMAXPROCS, 1 since #5960, on the opt-in
+// GRAFEL_SUBPROC_EXTRACT fanout.)
 //
 // FIX. A single process-wide IndexGate bounds the number of module/repo index
 // operations that may run CONCURRENTLY to N (default 2, env
@@ -33,9 +36,9 @@ import (
 const IndexConcurrencyEnv = "GRAFEL_INDEX_CONCURRENCY"
 
 // defaultIndexConcurrency is the safe default for the foreground+background mix:
-// 2 concurrent indexes × ~2 cores each (GRAFEL_EXTRACT_GOMAXPROCS) ≈ 4 cores of
-// pressure, which leaves headroom on a typical machine. The old rebuild cap of 8
-// (× 2 cores = 16) oversubscribed; 2 is the storm-safe default.
+// 2 concurrent indexes × the per-index core cap (a couple of cores each) ≈ 4
+// cores of pressure, which leaves headroom on a typical machine. The old rebuild
+// cap of 8 (× 2 cores = 16) oversubscribed; 2 is the storm-safe default.
 const defaultIndexConcurrency = 2
 
 // resolveIndexConcurrency returns the effective concurrency cap, honoring

@@ -28,31 +28,35 @@ func TestConcurrencyEnvOverride(t *testing.T) {
 	}
 }
 
-// TestBackgroundConcurrencyCap pins the conservative background-fan-out default:
-// min(NumCPU/2, 4). This cap is INTENTIONALLY low — the daemon reindexes in the
-// background on the developer's own box while they work, and each child also
-// runs GOMAXPROCS=2, so the effective draw is ~concurrency × 2 threads. A low
-// cap leaves CPU headroom so background indexing never hangs the machine
-// (#3648). Index speed is not the priority; box responsiveness is. Power users
-// who want more cores opt in via GRAFEL_EXTRACT_CONCURRENCY (tested separately).
+// TestBackgroundConcurrencyCap pins the background-fan-out default under the
+// #5960 core-budget policy: the fanout is the 25%-of-machine budget
+// (max(1, NumCPU/4)) divided by the per-child GOMAXPROCS (default 1 since
+// #5960), so concurrency × GOMAXPROCS never exceeds the budget.
 //
-// #5692 briefly lifted this to a NumCPU/2 formula with a ceiling of 12 (only
-// memory-clamped); that saturated high-core dev boxes and was reverted. The cap
-// stays flat at 4 by default regardless of host core count.
+// The daemon reindexes in the background on the developer's own box while they
+// work, so background indexing gets a quarter of the machine and no more. Unlike
+// the previous flat "min(NumCPU/2, 4)" cap (which drew 4 × GOMAXPROCS 2 = ~8
+// threads on a 12-core host — the #5960 bug), the budget now scales with the
+// host: a 32-core workstation indexes faster than a 12-core laptop instead of
+// being pinned to the same flat 4.
+//
+// History: #5692 briefly lifted this to NumCPU/2 with a ceiling of 12; that
+// saturated high-core dev boxes and was reverted. Power users who want more
+// cores still opt in via GRAFEL_EXTRACT_CONCURRENCY (tested separately).
 func TestBackgroundConcurrencyCap(t *testing.T) {
 	cases := []struct {
 		name   string
 		numCPU int
 		want   int
 	}{
-		{"1-core", 1, 1},
+		{"1-core", 1, 1}, // floor: never 0 subprocesses
 		{"2-core", 2, 1},
-		{"4-core", 4, 2},
-		{"8-core", 8, 4},   // min(4, 4) = 4
-		{"9-core", 9, 4},   // 9/2 = 4
-		{"10-core", 10, 4}, // restored default: capped at 4, NOT 5 (#5692 lift reverted)
-		{"16-core", 16, 4}, // high-core host still capped at 4 by default
-		{"64-core", 64, 4}, // no ceiling-12 lift; stays conservative
+		{"4-core", 4, 1},   // 4/4 = 1
+		{"8-core", 8, 2},   // 8/4 = 2
+		{"12-core", 12, 3}, // matches the old static <=3-core rule
+		{"16-core", 16, 4},
+		{"32-core", 32, 8},  // bigger host → proportionally faster indexing
+		{"64-core", 64, 16}, // still only 25% of the box
 		{"zero-core", 0, 1},
 	}
 	for _, tc := range cases {
@@ -65,27 +69,43 @@ func TestBackgroundConcurrencyCap(t *testing.T) {
 	}
 }
 
+// TestBackgroundConcurrencyShrinksUnderGOMAXPROCSOverride proves the budget
+// invariant holds when an operator raises the per-child GOMAXPROCS: the derived
+// default fanout divides down so the product stays inside the budget, and it
+// never reaches 0 (which would stall indexing entirely).
+func TestBackgroundConcurrencyShrinksUnderGOMAXPROCSOverride(t *testing.T) {
+	t.Setenv("GRAFEL_EXTRACT_GOMAXPROCS", "2")
+	// 32-core host: budget 8, GOMAXPROCS 2 → 4 children × 2 = 8 threads.
+	if got := backgroundConcurrency(32); got != 4 {
+		t.Fatalf("backgroundConcurrency(32) with GOMAXPROCS=2 = %d, want 4", got)
+	}
+	// 4-core host: budget 1, GOMAXPROCS 2 → floored at 1 child, not 0.
+	if got := backgroundConcurrency(4); got != 1 {
+		t.Fatalf("backgroundConcurrency(4) with GOMAXPROCS=2 = %d, want 1 (floor)", got)
+	}
+}
+
 // TestExtractGOMAXPROCS verifies the per-subprocess GOMAXPROCS cap and its
 // override. Each extract subprocess inherits this value so concurrent children
 // cannot collectively saturate the host (#3648 runaway).
 func TestExtractGOMAXPROCS(t *testing.T) {
-	if got := extractGOMAXPROCS(); got != 2 {
-		t.Fatalf("default extractGOMAXPROCS() = %d, want 2", got)
+	if got := extractGOMAXPROCS(); got != 1 {
+		t.Fatalf("default extractGOMAXPROCS() = %d, want 1 (#5960)", got)
 	}
 
-	t.Setenv("GRAFEL_EXTRACT_GOMAXPROCS", "1")
-	if got := extractGOMAXPROCS(); got != 1 {
-		t.Fatalf("override extractGOMAXPROCS() = %d, want 1", got)
+	t.Setenv("GRAFEL_EXTRACT_GOMAXPROCS", "3")
+	if got := extractGOMAXPROCS(); got != 3 {
+		t.Fatalf("override extractGOMAXPROCS() = %d, want 3", got)
 	}
 
 	// Non-positive / garbage → default.
 	t.Setenv("GRAFEL_EXTRACT_GOMAXPROCS", "0")
-	if got := extractGOMAXPROCS(); got != 2 {
-		t.Fatalf("zero override ignored: extractGOMAXPROCS() = %d, want 2", got)
+	if got := extractGOMAXPROCS(); got != 1 {
+		t.Fatalf("zero override ignored: extractGOMAXPROCS() = %d, want 1", got)
 	}
 	t.Setenv("GRAFEL_EXTRACT_GOMAXPROCS", "-4")
-	if got := extractGOMAXPROCS(); got != 2 {
-		t.Fatalf("negative override ignored: extractGOMAXPROCS() = %d, want 2", got)
+	if got := extractGOMAXPROCS(); got != 1 {
+		t.Fatalf("negative override ignored: extractGOMAXPROCS() = %d, want 1", got)
 	}
 }
 
@@ -164,8 +184,8 @@ func TestChildGOMAXPROCSSplit(t *testing.T) {
 }
 
 // TestInteractiveConcurrency verifies the #5135 fan-out split: an explicit
-// rebuild fans out to NumCPU subprocesses while a background reindex stays at
-// the conservative NumCPU/2-capped-at-4 default — unless an explicit
+// rebuild fans out to NumCPU subprocesses while a background reindex stays
+// inside the 25%-of-machine core budget (#5960) — unless an explicit
 // CoordinatorConfig.Concurrency or GRAFEL_EXTRACT_CONCURRENCY ceiling is set.
 func TestInteractiveConcurrency(t *testing.T) {
 	// No env override: interactive fans wider than background.

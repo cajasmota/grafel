@@ -22,16 +22,19 @@ import (
 	"github.com/cajasmota/grafel/internal/executil"
 	bazelextract "github.com/cajasmota/grafel/internal/extractors/bazel"
 	configextract "github.com/cajasmota/grafel/internal/extractors/config"
+	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/treesitter"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
-// CoordinatorConfig governs subprocess fan-out. Defaults are tuned to
-// stay under the 600MB Phase-F target on a typical laptop:
+// CoordinatorConfig governs subprocess fan-out. Defaults are tuned to stay
+// inside the background core budget (#5960) and under the 600MB Phase-F memory
+// target on a typical laptop:
 //
-//	Concurrency = NumCPU / 2 capped at 4   → 4 × 150MB = 600MB worst-case
-//	BatchSize   = 80 files                  → ~100MB peak per subprocess
+//	Concurrency = process.IndexCoreBudget() / extractGOMAXPROCS()
+//	              → 3 on a 12-core host = 3 × 150MB worst-case
+//	BatchSize   = 80 files → ~100MB peak per subprocess
 //
 // All fields zero-valued fall back to defaults.
 type CoordinatorConfig struct {
@@ -42,7 +45,9 @@ type CoordinatorConfig struct {
 	BinaryPath string
 
 	// Concurrency caps the number of concurrent extract subprocesses.
-	// Zero means runtime.NumCPU()/2 capped at 4.
+	// Zero means the background default (see backgroundConcurrency): the
+	// 25%-of-machine core budget divided by the per-child GOMAXPROCS, or
+	// runtime.NumCPU() for an Interactive rebuild.
 	Concurrency int
 
 	// BatchSize is the number of files per subprocess. Zero means 80.
@@ -70,7 +75,7 @@ type CoordinatorConfig struct {
 	// true the coordinator uses the higher GRAFEL_REBUILD_GOMAXPROCS cap
 	// (default = host core count) and the rebuild fan-out concurrency, so the
 	// foreground rebuild runs fast; only the throttled background path keeps
-	// the conservative GRAFEL_EXTRACT_GOMAXPROCS=2 default.
+	// the conservative GRAFEL_EXTRACT_GOMAXPROCS default (1 since #5960).
 	Interactive bool
 }
 
@@ -143,37 +148,88 @@ func (c CoordinatorConfig) concurrency() int {
 }
 
 // backgroundConcurrency computes the default number of concurrent extract
-// subprocesses for a BACKGROUND (watch/churn) reindex: min(NumCPU/2, 4).
+// subprocesses for a BACKGROUND (watch/churn) reindex, sized so the whole
+// extraction fanout fits inside the project's core budget (#5960):
 //
-// This cap is INTENTIONALLY low. The daemon reindexes in the background on a
-// developer's own machine while they are actively working; the goal is to leave
-// CPU headroom so continuous background indexing never hangs the box. It is
-// deliberately NOT sized to "use all the cores" — index speed is not the
-// priority here, developer-box responsiveness is.
+//	concurrency = max(1, process.IndexCoreBudget() / extractGOMAXPROCS())
+//	invariant:    concurrency × extractGOMAXPROCS() ≤ process.IndexCoreBudget()
 //
-// The cap compounds with the per-subprocess GOMAXPROCS cap (extractGOMAXPROCS,
-// default 2): each of these children also runs its own Go runtime pinned to 2
-// cores, so the effective background CPU draw is ~concurrency × 2 threads.
-// Lifting this cap toward the host core count therefore saturates every core
-// (concurrency × 2 threads) and is exactly the #3648 runaway we guard against.
+// process.IndexCoreBudget() is the canonical 25%-of-machine rule
+// (max(1, NumCPU/4)): 3 on a 12-core laptop — matching the previous static
+// ≤3-core rule — 8 on a 32-core workstation, 1 on a 4-core box. Bigger machines
+// therefore get proportionally better index times instead of a flat cap, while
+// every machine keeps 75% of its capacity for the human using it.
 //
-// Power users who genuinely want more cores opt in explicitly via
-// GRAFEL_EXTRACT_CONCURRENCY (or cpu.json / an explicit Concurrency field),
-// which is checked before this default. Foreground (Interactive) rebuilds are
-// untouched — the user is waiting on those, so they resolve to NumCPU above and
-// never call this function.
+// Why this fanout has to obey the budget: when it runs, it is the dominant CPU
+// consumer of an index. The previous default — min(NumCPU/2, 4) children ×
+// GOMAXPROCS 2 — drew ~8 threads on a 12-core host, nearly 3× over budget
+// (#5960).
 //
-// Kept as a small pure function so the cap stays unit-testable (#3648).
+// WHEN it runs, though, is narrow, and this doc must not be read as covering
+// indexing generally: Coordinate has exactly ONE caller (cmd/grafel/index.go),
+// behind `if subprocExtract()` — GRAFEL_SUBPROC_EXTRACT, which is default-OFF.
+// In the default configuration a reindex forks `grafel index-internal` and
+// extracts IN-PROCESS across i.workers goroutines, never touching this
+// function, this concurrency, or GRAFEL_EXTRACT_GOMAXPROCS. That path is
+// bounded by the child's own GOMAXPROCS (sched.ReindexGraphPhaseGOMAXPROCS)
+// plus the in-process tree-sitter parse gate installed in Index(). So this
+// budget hardens the opt-in subprocess-extract path; it is not what keeps the
+// default path inside 25% of the machine.
+//
+// Why the split is "all budget to process fanout, GOMAXPROCS=1 per child"
+// rather than "one child at GOMAXPROCS=N":
+//
+//   - Each extract child processes its batch SEQUENTIALLY (see subproc.go —
+//     there is no in-child fanout), so a child's GOMAXPROCS buys only GC and
+//     runtime parallelism, never extraction throughput. Spending the budget on
+//     GOMAXPROCS would buy nothing measurable; spending it on child count is
+//     the only lever that produces real file/module parallelism.
+//
+//   - GOMAXPROCS cannot bound the expensive part. tree-sitter parsing is cgo: a
+//     goroutine in a cgo call parks in _Gsyscall and the runtime hands its P to
+//     another goroutine, so N concurrent parses occupy N OS threads regardless
+//     of GOMAXPROCS. The number of *processes* is something we actually
+//     control, so that is where the budget is enforced. Each child additionally
+//     pins its own parse semaphore to its GOMAXPROCS
+//     (indexstate.SetParseConcurrency, see runExtractSubprocess), which is what
+//     makes concurrency × GOMAXPROCS a genuine bound on concurrent cgo parses
+//     rather than bookkeeping.
+//
+//     This is LIVE, not theoretical, since #5954/#5972 removed the process-wide
+//     treesitter.parseMu that used to serialise every factory-routed parse.
+//     Concurrent ts_parser_parse calls are now real, and the counting
+//     semaphores — this fanout plus the per-child parse gate — are what bound
+//     them. GOMAXPROCS contributes nothing to that bound.
+//
+//   - RSS should be a wash-to-better: each child is a full grafel process, and
+//     on a 12-core host this yields 3 children instead of the previous 4. NOTE:
+//     reasoned, not measured — do not repeat it as a measured result, and do
+//     not carry it over to the default in-process path, which forks no extract
+//     children at all.
+//
+// Operator overrides are checked BEFORE this default (see concurrency()) and are
+// deliberately NOT clamped to the budget — an explicit Concurrency field,
+// GRAFEL_EXTRACT_CONCURRENCY, or cpu.json is an escape hatch and is honored as
+// asked. Raising GRAFEL_EXTRACT_GOMAXPROCS shrinks this derived default
+// proportionally (that is the point of the invariant) but never below 1
+// subprocess, since 0 children means indexing never progresses.
+//
+// Foreground (Interactive) rebuilds never call this function — the user is
+// waiting on those, so they stay uncapped at NumCPU (#5135).
+//
+// Kept as a small function of numCPU so the policy stays unit-testable
+// (#3648, #5960).
 func backgroundConcurrency(numCPU int) int {
-	n := numCPU / 2
+	n := process.IndexCoreBudgetFor(numCPU) / extractGOMAXPROCS()
 	if n < 1 {
 		n = 1
 	}
-	if n > 4 {
-		n = 4
-	}
 	return n
 }
+
+// extractGOMAXPROCSDefault is the per-extract-subprocess GOMAXPROCS default
+// (#5960). See extractGOMAXPROCS / backgroundConcurrency for why it is 1.
+const extractGOMAXPROCSDefault = 1
 
 // extractGOMAXPROCS returns the per-subprocess GOMAXPROCS cap. Each extract
 // subprocess is a full grafel process; without this it inherits the
@@ -186,8 +242,15 @@ func backgroundConcurrency(numCPU int) int {
 // concurrency × cap cores, leaving headroom for the consuming repo's CI.
 //
 //	GRAFEL_EXTRACT_GOMAXPROCS overrides the per-child value.
-//	Default: 2 (so 4 children × 2 = ~8 worker threads worst-case, vs the
-//	         previous unbounded 4 × hostCores).
+//	Default: 1 (#5960).
+//
+// #5960: the default dropped from 2 to 1 so the whole core budget goes to
+// process fanout, which is the only lever that yields real parallelism here —
+// each child extracts its batch sequentially, and its cgo (tree-sitter) parses
+// are not bounded by GOMAXPROCS at all. See backgroundConcurrency for the full
+// reasoning. This value is also the child's in-process parse-semaphore cap
+// (indexstate.SetParseConcurrency in runExtractSubprocess), which is what turns
+// "concurrency × GOMAXPROCS ≤ budget" into a real bound on concurrent parses.
 //
 // #5135: this is the BACKGROUND (watch/churn-triggered) cap. Explicit
 // foreground rebuilds use childGOMAXPROCS() with Interactive=true, which
@@ -200,7 +263,7 @@ func extractGOMAXPROCS() int {
 	if n := loadRuntimeCaps().ExtractGOMAXPROCSValue(); n > 0 {
 		return n
 	}
-	return 2
+	return extractGOMAXPROCSDefault
 }
 
 // rebuildGOMAXPROCS returns the per-subprocess GOMAXPROCS cap for an EXPLICIT,

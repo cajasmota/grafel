@@ -41,6 +41,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/memtrace"
 	"github.com/cajasmota/grafel/internal/module"
+	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/treesitter"
@@ -161,17 +162,20 @@ func (r *resolvePassTimer) finish() {
 // path is allowed to spend on tree-sitter parsing: 25% of machine capacity,
 // minimum 1.
 //
-// Dynamic on purpose. The previous policy was a static "never more than 3
-// cores", which protected a laptop but punished a big machine — a 32-core box
-// got the same 3 as a 4-core one. A proportional budget keeps the "grafel must
-// not make the box feel busy" property while letting bigger machines index
-// faster: 4 cores -> 1, 12 -> 3 (identical to the old rule), 32 -> 8.
+// Thin named wrapper over process.IndexCoreBudget(), which is the ONE
+// definition of the 25% rule in the tree (#5960). #5954 computed it inline here
+// "pending a canonical shared helper"; this is that helper, so the duplicate is
+// gone. Behaviour is unchanged — still max(1, NumCPU/4) — and the interactive
+// exemption still lives in ensureParseConcurrencyDefault, not here. The wrapper
+// is kept because the name documents WHICH budget this call site means.
 //
-// NumCPU, not GOMAXPROCS: this budget governs C parsing, and GOMAXPROCS is
-// neither the machine's capacity nor a bound on cgo. Computed inline pending a
-// canonical shared helper.
+// See process.IndexCoreBudget for the policy rationale: dynamic rather than the
+// old static 3-core cap, so a 32-core box indexes faster than a 4-core one
+// while every machine keeps 75% of its capacity. NumCPU, not GOMAXPROCS: this
+// budget governs C parsing, and GOMAXPROCS is neither the machine's capacity
+// nor a bound on cgo.
 func indexParseCoreBudget() int {
-	return max(1, runtime.NumCPU()/4)
+	return process.IndexCoreBudget()
 }
 
 // ensureParseConcurrencyDefault installs the in-process tree-sitter parse
@@ -365,7 +369,8 @@ type Indexer struct {
 	// to the subprocess extract coordinator (when GRAFEL_SUBPROC_EXTRACT=1)
 	// so the foreground rebuild runs at the higher GRAFEL_REBUILD_GOMAXPROCS
 	// cap (default = host cores) instead of the throttled background
-	// GRAFEL_EXTRACT_GOMAXPROCS cap (default 2). Wired via WithInteractive.
+	// GRAFEL_EXTRACT_GOMAXPROCS cap (default 1 since #5960). Wired via
+	// WithInteractive.
 	interactive bool
 
 	// coverageCfg is the per-group coverage-ingestion config (#5061/#5036).
@@ -513,8 +518,9 @@ func WithCoverage(cfg coverage.Config) IndexOption {
 // rebuild rather than a background watch/churn-triggered reindex (#5135). When
 // true (and GRAFEL_SUBPROC_EXTRACT=1), the subprocess extract coordinator
 // runs at the higher GRAFEL_REBUILD_GOMAXPROCS cap (default = host cores)
-// and wider fan-out, instead of the throttled background extract cap (default
-// GRAFEL_EXTRACT_GOMAXPROCS=2). Set by the daemon's rebuild RPC path and by
+// and wider fan-out, instead of the throttled background extract cap
+// (GRAFEL_EXTRACT_GOMAXPROCS, default 1 since #5960). Set by the daemon's
+// rebuild RPC path and by
 // the `grafel index` CLI; left false on the scheduler's reactive reindex.
 func WithInteractive(enabled bool) IndexOption {
 	return func(i *Indexer) { i.interactive = enabled }

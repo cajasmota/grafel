@@ -5,10 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/daemon/extract"
+	"github.com/cajasmota/grafel/internal/indexstate"
 )
 
 // subprocExtract reports whether the indexer should route per-file
@@ -21,8 +23,43 @@ func subprocExtract() bool {
 	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
 }
 
+// extractParseConcurrency is the hard bound on CONCURRENT in-process
+// tree-sitter parses inside one extract subprocess (#5960).
+//
+// The coordinator budgets the background extraction fanout as
+// `concurrency × GOMAXPROCS ≤ process.IndexCoreBudget()`, but GOMAXPROCS alone
+// cannot make that accounting true: tree-sitter parsing is cgo, and a goroutine
+// inside a cgo call parks in _Gsyscall while the Go runtime hands its P to
+// another goroutine — so N concurrent parses occupy N OS threads no matter what
+// GOMAXPROCS says. Pinning the child's parse semaphore
+// (indexstate.SetParseConcurrency / AcquireParseSlot) to the same GOMAXPROCS
+// the coordinator accounted for turns that budget into a real bound on cgo
+// threads, and keeps it true if the child ever grows in-process fanout.
+//
+// Scope: this bounds ONE extract child, on the opt-in GRAFEL_SUBPROC_EXTRACT
+// path only — extract.Coordinate has a single caller (cmd/grafel/index.go),
+// gated on that default-OFF env var. The DEFAULT path never reaches here: it
+// extracts in-process inside `grafel index-internal`, and is bounded by the
+// parse gate installed in Index() (ensureParseConcurrencyDefault). Since
+// #5954/#5972 removed the process-wide treesitter.parseMu, this gate is the
+// only thing bounding concurrent ts_parser_parse inside an extract child — not
+// belt-and-braces.
+//
+// Mirrors the daemon's own parse cap (#5630, cmd/grafel/daemon.go), which pins
+// the in-process gate to the daemon's effective GOMAXPROCS for the same reason.
+// Floored at 1: 0 means "unbounded" to the gate, which is the opposite of what
+// a degenerate GOMAXPROCS should produce here.
+func extractParseConcurrency() int {
+	n := runtime.GOMAXPROCS(0)
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
 // subprocConcurrency overrides the coordinator's default subprocess
-// fan-out (NumCPU/2 capped at 4). Zero means use the default.
+// fan-out (the #5960 core budget / per-child GOMAXPROCS). Zero means use
+// the default.
 func subprocConcurrency() int {
 	v := strings.TrimSpace(os.Getenv("GRAFEL_SUBPROC_CONCURRENCY"))
 	if v == "" {
@@ -90,6 +127,10 @@ func runExtractSubprocess(argv []string) error {
 	if *repo == "" || *batch == "" {
 		return fmt.Errorf("extract: --repo and --batch are required")
 	}
+
+	// #5960: bound this child's concurrent cgo parses to the same per-child
+	// GOMAXPROCS the coordinator budgeted for. See extractParseConcurrency.
+	indexstate.SetParseConcurrency(extractParseConcurrency())
 
 	skipSet := map[string]bool{}
 	for _, p := range strings.Split(*skipPasses, ",") {
