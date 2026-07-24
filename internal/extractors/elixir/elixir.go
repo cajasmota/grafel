@@ -284,8 +284,8 @@ func extractCallRelationships(body ts.Node, src []byte, callerName string) []typ
 		rels = append(rels, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(int(call.StartPoint().Row) + 1)},
 			},
 		})
 	}
@@ -432,11 +432,11 @@ func buildImportRecord(node ts.Node, file extractor.FileInput, kind string) (typ
 		mod = raw[:dot]
 	}
 
-	props := map[string]string{
-		"local_name":    leaf,
-		"source_module": mod,
-		"imported_name": leaf,
-		"import_kind":   kind,
+	props := types.Props{
+		{K: "import_kind", V: kind},
+		{K: "imported_name", V: leaf},
+		{K: "local_name", V: leaf},
+		{K: "source_module", V: mod},
 	}
 
 	return types.EntityRecord{

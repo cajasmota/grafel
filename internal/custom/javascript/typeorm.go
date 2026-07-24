@@ -330,12 +330,12 @@ func (e *typeormExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 					FromID: "Class:" + owner.name,
 					ToID:   "Class:" + target,
 					Kind:   string(types.RelationshipKindGraphRelates),
-					Properties: map[string]string{
-						"framework":     "typeorm",
-						"cardinality":   card,
-						"relation_type": relType,
-						"field_name":    fieldName,
-						"provenance":    "INFERRED_FROM_TYPEORM_RELATION",
+					Properties: types.Props{
+						{K: "cardinality", V: card},
+						{K: "field_name", V: fieldName},
+						{K: "framework", V: "typeorm"},
+						{K: "provenance", V: "INFERRED_FROM_TYPEORM_RELATION"},
+						{K: "relation_type", V: relType},
 					},
 				})
 		}

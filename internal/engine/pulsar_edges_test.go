@@ -24,7 +24,7 @@ func runPulsarDetect(t *testing.T, lang, path, src string) ([]entityResult, []re
 	}
 	relOut := make([]relResult, 0, len(rels))
 	for _, r := range rels {
-		relOut = append(relOut, relResult{from: r.FromID, to: r.ToID, kind: r.Kind, props: r.Properties})
+		relOut = append(relOut, relResult{from: r.FromID, to: r.ToID, kind: r.Kind, props: r.Properties.Snapshot()})
 	}
 	return out, relOut
 }

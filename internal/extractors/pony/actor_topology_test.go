@@ -75,17 +75,17 @@ func TestActorTopology_MessageSendEnrichment(t *testing.T) {
 			continue
 		}
 		foundRun = true
-		if rel.Properties["pony_msg_send"] != "true" {
+		if rel.Properties.Get("pony_msg_send") != "true" {
 			t.Errorf("run CALLS edge not marked pony_msg_send, props=%v", rel.Properties)
 		}
-		if rel.Properties["pony_msg_receiver"] != "w" {
-			t.Errorf("run receiver = %q, want w", rel.Properties["pony_msg_receiver"])
+		if rel.Properties.Get("pony_msg_receiver") != "w" {
+			t.Errorf("run receiver = %q, want w", rel.Properties.Get("pony_msg_receiver"))
 		}
-		if rel.Properties["pony_msg_behaviour"] != "run" {
-			t.Errorf("run behaviour = %q, want run", rel.Properties["pony_msg_behaviour"])
+		if rel.Properties.Get("pony_msg_behaviour") != "run" {
+			t.Errorf("run behaviour = %q, want run", rel.Properties.Get("pony_msg_behaviour"))
 		}
-		if rel.Properties["pony_msg_actor"] != "Worker" {
-			t.Errorf("run target actor = %q, want Worker", rel.Properties["pony_msg_actor"])
+		if rel.Properties.Get("pony_msg_actor") != "Worker" {
+			t.Errorf("run target actor = %q, want Worker", rel.Properties.Get("pony_msg_actor"))
 		}
 	}
 	if !foundRun {
@@ -109,7 +109,7 @@ func TestActorTopology_NoActorsNoOp(t *testing.T) {
 			t.Errorf("non-actor file gained topology tag on %s: %v", e.Name, e.Tags)
 		}
 		for _, rel := range e.Relationships {
-			if rel.Properties["pony_msg_send"] == "true" {
+			if rel.Properties.Get("pony_msg_send") == "true" {
 				t.Errorf("non-actor file gained a pony_msg_send edge on %s", e.Name)
 			}
 		}
@@ -135,7 +135,7 @@ actor Main
 		t.Fatal("Main.create not extracted")
 	}
 	for _, rel := range mainCtor.Relationships {
-		if rel.ToID == "helper" && rel.Properties["pony_msg_send"] == "true" {
+		if rel.ToID == "helper" && rel.Properties.Get("pony_msg_send") == "true" {
 			t.Error("synchronous fun call 'helper' must not be marked pony_msg_send")
 		}
 	}

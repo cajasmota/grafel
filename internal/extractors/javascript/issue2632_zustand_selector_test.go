@@ -49,12 +49,12 @@ export const handleLogout = () => {
 	found := false
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "useAuthStore::softLogout" {
-			if r.Properties != nil && r.Properties["via"] == "zustand_selector" {
+			if r.Properties != nil && r.Properties.Get("via") == "zustand_selector" {
 				found = true
 				break
 			}
 			t.Logf("CALLS handleLogout→useAuthStore::softLogout found but via=%q (want zustand_selector); props=%v",
-				r.Properties["via"], r.Properties)
+				r.Properties.Get("via"), r.Properties)
 		}
 	}
 	if !found {
@@ -95,7 +95,7 @@ export const handleLogout = () => {
 	found := false
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "useAuthStore::softLogout" &&
-			r.Properties != nil && r.Properties["via"] == "zustand_selector" {
+			r.Properties != nil && r.Properties.Get("via") == "zustand_selector" {
 			found = true
 			break
 		}
@@ -138,7 +138,7 @@ export const handleLogout = () => {
 	found := false
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "useAuthStore::softLogout" &&
-			r.Properties != nil && r.Properties["via"] == "zustand_selector" {
+			r.Properties != nil && r.Properties.Get("via") == "zustand_selector" {
 			found = true
 			break
 		}
@@ -181,7 +181,7 @@ export const handleLogout = () => {
 	found := false
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "useAuthStore::softLogout" &&
-			r.Properties != nil && r.Properties["via"] == "zustand_selector" {
+			r.Properties != nil && r.Properties.Get("via") == "zustand_selector" {
 			found = true
 			break
 		}

@@ -29,7 +29,7 @@ func relExists(records []types.EntityRecord, kind, from, to string, propKey, pro
 			if propKey == "" {
 				return true
 			}
-			if rel.Properties != nil && rel.Properties[propKey] == propVal {
+			if rel.Properties != nil && rel.Properties.Get(propKey) == propVal {
 				return true
 			}
 		}
@@ -149,7 +149,7 @@ resource "aws_instance" "n" {
 		t.Errorf("did not expect iteration_source for literal count, got %v", r.Metadata["iteration_source"])
 	}
 	for _, rel := range collectRels(records, "USES") {
-		if rel.Properties["dataflow"] == "iteration" {
+		if rel.Properties.Get("dataflow") == "iteration" {
 			t.Errorf("unexpected iteration USES edge for literal count: %+v", rel)
 		}
 	}
@@ -233,8 +233,8 @@ terraform {
 	}
 	awsVer := ""
 	for _, rel := range collectRels(records, "IMPORTS") {
-		if rel.ToID == "aws" && rel.Properties["import_kind"] == "required_provider" {
-			awsVer = rel.Properties["version"]
+		if rel.ToID == "aws" && rel.Properties.Get("import_kind") == "required_provider" {
+			awsVer = rel.Properties.Get("version")
 		}
 	}
 	if awsVer != "~> 5.0" {

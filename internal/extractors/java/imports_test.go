@@ -56,7 +56,7 @@ func findJavaImportEdge(ents []types.EntityRecord, sourceModule string) *types.R
 			if r.Kind != "IMPORTS" {
 				continue
 			}
-			if r.Properties != nil && r.Properties["source_module"] == sourceModule {
+			if r.Properties != nil && r.Properties.Get("source_module") == sourceModule {
 				return r
 			}
 		}
@@ -136,10 +136,10 @@ func TestJavaImportsSkipsRelative(t *testing.T) {
 			Relationships: []types.RelationshipRecord{{
 				ToID: ".users.UserService",
 				Kind: "IMPORTS",
-				Properties: map[string]string{
-					"source_module": ".users",
-					"local_name":    "UserService",
-					"imported_name": "UserService",
+				Properties: types.Props{
+					{K: "imported_name", V: "UserService"},
+					{K: "local_name", V: "UserService"},
+					{K: "source_module", V: ".users"},
 				},
 			}},
 		},
@@ -208,8 +208,8 @@ public class Demo {}
 			for j := range e.Relationships {
 				r := &e.Relationships[j]
 				if r.Kind == "IMPORTS" && r.Properties != nil &&
-					r.Properties["source_module"] == sourceModule {
-					return r.Properties["local_name"]
+					r.Properties.Get("source_module") == sourceModule {
+					return r.Properties.Get("local_name")
 				}
 			}
 		}
@@ -264,17 +264,17 @@ public class Demo {}
 				if r.Kind != "IMPORTS" || r.Properties == nil {
 					continue
 				}
-				if r.Properties["source_module"] != sourceModule {
+				if r.Properties.Get("source_module") != sourceModule {
 					continue
 				}
 				if localName == "" {
 					// wildcard: no local_name key expected
-					if r.Properties["wildcard"] == "1" {
+					if r.Properties.Get("wildcard") == "1" {
 						return r
 					}
 					continue
 				}
-				if r.Properties["local_name"] == localName {
+				if r.Properties.Get("local_name") == localName {
 					return r
 				}
 			}

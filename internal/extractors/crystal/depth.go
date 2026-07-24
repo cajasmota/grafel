@@ -150,8 +150,8 @@ func extractAliases(src, filePath string) []types.EntityRecord {
 			rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
 				ToID: t,
 				Kind: string(types.RelationshipKindReferences),
-				Properties: map[string]string{
-					"alias": name,
+				Properties: types.Props{
+					{K: "alias", V: name},
 				},
 			})
 		}
@@ -304,10 +304,10 @@ func extractSpecSuite(src, filePath string) []types.EntityRecord {
 		rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
 			ToID: "Class:" + subject,
 			Kind: string(types.RelationshipKindTests),
-			Properties: map[string]string{
-				"framework":    "spectator",
-				"match_source": "spec_subject_affinity",
-				"target_type":  subject,
+			Properties: types.Props{
+				{K: "framework", V: "spectator"},
+				{K: "match_source", V: "spec_subject_affinity"},
+				{K: "target_type", V: subject},
 			},
 			Confidence: 0.9,
 		})

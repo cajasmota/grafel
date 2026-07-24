@@ -390,7 +390,7 @@ func resolveImportToIDs(entities []types.EntityRecord) {
 			// when present, else fall back to ToID.
 			mod := ""
 			if r.Properties != nil {
-				mod = r.Properties["source_module"]
+				mod = r.Properties.Get("source_module")
 			}
 			if mod == "" {
 				mod = r.ToID

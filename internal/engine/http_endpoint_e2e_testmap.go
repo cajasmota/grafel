@@ -113,11 +113,11 @@ func linkE2ERouteTestsToEndpoints(
 				FromID: s.Kind + ":" + s.Name,
 				ToID:   e2eEndpointToID(def, repoTag),
 				Kind:   string(types.RelationshipKindTests),
-				Properties: map[string]string{
-					"framework":    propOr(s, "framework", "jest"),
-					"match_source": "e2e_supertest_route",
-					"verb":         verb,
-					"route":        route,
+				Properties: types.Props{
+					{K: "framework", V: propOr(s, "framework", "jest")},
+					{K: "match_source", V: "e2e_supertest_route"},
+					{K: "route", V: route},
+					{K: "verb", V: verb},
 				},
 				Confidence: 0.9,
 			})

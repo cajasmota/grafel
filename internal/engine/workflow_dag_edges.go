@@ -194,9 +194,9 @@ func (e *dagEmitter) executes(wfID, taskID, engine string) {
 		FromID: fmt.Sprintf("%s:%s", workflowKind, wfID),
 		ToID:   fmt.Sprintf("%s:%s", activityKind, taskID),
 		Kind:   executesActivityEdgeKind,
-		Properties: map[string]string{
-			"workflow_engine": engine,
-			"pattern_type":    "workflow_synthesis",
+		Properties: types.Props{
+			{K: "pattern_type", V: "workflow_synthesis"},
+			{K: "workflow_engine", V: engine},
 		},
 	})
 }
@@ -217,9 +217,9 @@ func (e *dagEmitter) dependsOn(upstreamID, downstreamID, engine string) {
 		FromID: fmt.Sprintf("%s:%s", activityKind, upstreamID),
 		ToID:   fmt.Sprintf("%s:%s", activityKind, downstreamID),
 		Kind:   taskDependsOnEdgeKind,
-		Properties: map[string]string{
-			"workflow_engine": engine,
-			"pattern_type":    "workflow_synthesis",
+		Properties: types.Props{
+			{K: "pattern_type", V: "workflow_synthesis"},
+			{K: "workflow_engine", V: engine},
 		},
 	})
 }

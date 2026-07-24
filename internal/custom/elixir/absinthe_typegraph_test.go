@@ -41,7 +41,7 @@ func findGraphRelates(owner *types.EntityRecord, fieldName string) *types.Relati
 	}
 	for i := range owner.Relationships {
 		r := owner.Relationships[i]
-		if r.Kind == string(types.RelationshipKindGraphRelates) && r.Properties["field_name"] == fieldName {
+		if r.Kind == string(types.RelationshipKindGraphRelates) && r.Properties.Get("field_name") == fieldName {
 			return &owner.Relationships[i]
 		}
 	}
@@ -108,17 +108,17 @@ end
 	if orders.ToID != extreg.BuildOperationStructuralRef("graphql", "schema.ex", "order") {
 		t.Errorf("orders edge ToID = %q, want ref to :order", orders.ToID)
 	}
-	if orders.Properties["list"] != "true" {
-		t.Errorf("orders list = %q, want true", orders.Properties["list"])
+	if orders.Properties.Get("list") != "true" {
+		t.Errorf("orders list = %q, want true", orders.Properties.Get("list"))
 	}
-	if orders.Properties["cardinality"] != "to_many" {
-		t.Errorf("orders cardinality = %q, want to_many", orders.Properties["cardinality"])
+	if orders.Properties.Get("cardinality") != "to_many" {
+		t.Errorf("orders cardinality = %q, want to_many", orders.Properties.Get("cardinality"))
 	}
-	if orders.Properties["self_ref"] != "false" {
-		t.Errorf("orders self_ref = %q, want false", orders.Properties["self_ref"])
+	if orders.Properties.Get("self_ref") != "false" {
+		t.Errorf("orders self_ref = %q, want false", orders.Properties.Get("self_ref"))
 	}
-	if orders.Properties["graphql_field"] != "user.orders" {
-		t.Errorf("orders graphql_field = %q", orders.Properties["graphql_field"])
+	if orders.Properties.Get("graphql_field") != "user.orders" {
+		t.Errorf("orders graphql_field = %q", orders.Properties.Get("graphql_field"))
 	}
 
 	// :account -> to_one nullable edge.
@@ -126,14 +126,14 @@ end
 	if account == nil {
 		t.Fatal("expected GRAPH_RELATES user.account -> account")
 	}
-	if account.Properties["list"] != "false" {
-		t.Errorf("account list = %q, want false", account.Properties["list"])
+	if account.Properties.Get("list") != "false" {
+		t.Errorf("account list = %q, want false", account.Properties.Get("list"))
 	}
-	if account.Properties["cardinality"] != "to_one" {
-		t.Errorf("account cardinality = %q, want to_one", account.Properties["cardinality"])
+	if account.Properties.Get("cardinality") != "to_one" {
+		t.Errorf("account cardinality = %q, want to_one", account.Properties.Get("cardinality"))
 	}
-	if account.Properties["nullable"] != "true" {
-		t.Errorf("account nullable = %q, want true (bare Absinthe field)", account.Properties["nullable"])
+	if account.Properties.Get("nullable") != "true" {
+		t.Errorf("account nullable = %q, want true (bare Absinthe field)", account.Properties.Get("nullable"))
 	}
 
 	// self-ref :user -> :user.
@@ -141,8 +141,8 @@ end
 	if manager == nil {
 		t.Fatal("expected GRAPH_RELATES user.manager -> user (self-ref)")
 	}
-	if manager.Properties["self_ref"] != "true" {
-		t.Errorf("manager self_ref = %q, want true", manager.Properties["self_ref"])
+	if manager.Properties.Get("self_ref") != "true" {
+		t.Errorf("manager self_ref = %q, want true", manager.Properties.Get("self_ref"))
 	}
 }
 
@@ -179,11 +179,11 @@ end
 	if author == nil {
 		t.Fatal("expected GRAPH_RELATES post.author -> user")
 	}
-	if author.Properties["nullable"] != "false" {
-		t.Errorf("author nullable = %q, want false", author.Properties["nullable"])
+	if author.Properties.Get("nullable") != "false" {
+		t.Errorf("author nullable = %q, want false", author.Properties.Get("nullable"))
 	}
-	if author.Properties["list"] != "false" {
-		t.Errorf("author list = %q, want false", author.Properties["list"])
+	if author.Properties.Get("list") != "false" {
+		t.Errorf("author list = %q, want false", author.Properties.Get("list"))
 	}
 
 	// list_of(non_null(:tag)) -> list=true, item_nullable=false, list itself nullable.
@@ -191,14 +191,14 @@ end
 	if tags == nil {
 		t.Fatal("expected GRAPH_RELATES post.tags -> tag")
 	}
-	if tags.Properties["list"] != "true" {
-		t.Errorf("tags list = %q, want true", tags.Properties["list"])
+	if tags.Properties.Get("list") != "true" {
+		t.Errorf("tags list = %q, want true", tags.Properties.Get("list"))
 	}
-	if tags.Properties["item_nullable"] != "false" {
-		t.Errorf("tags item_nullable = %q, want false", tags.Properties["item_nullable"])
+	if tags.Properties.Get("item_nullable") != "false" {
+		t.Errorf("tags item_nullable = %q, want false", tags.Properties.Get("item_nullable"))
 	}
-	if tags.Properties["nullable"] != "true" {
-		t.Errorf("tags nullable = %q, want true (bare list_of is nullable)", tags.Properties["nullable"])
+	if tags.Properties.Get("nullable") != "true" {
+		t.Errorf("tags nullable = %q, want true (bare list_of is nullable)", tags.Properties.Get("nullable"))
 	}
 
 	// non_null(list_of(:user)) -> list=true, nullable=false (the list), item nullable.
@@ -206,14 +206,14 @@ end
 	if reviewers == nil {
 		t.Fatal("expected GRAPH_RELATES post.reviewers -> user")
 	}
-	if reviewers.Properties["list"] != "true" {
-		t.Errorf("reviewers list = %q, want true", reviewers.Properties["list"])
+	if reviewers.Properties.Get("list") != "true" {
+		t.Errorf("reviewers list = %q, want true", reviewers.Properties.Get("list"))
 	}
-	if reviewers.Properties["nullable"] != "false" {
-		t.Errorf("reviewers nullable = %q, want false (non_null list)", reviewers.Properties["nullable"])
+	if reviewers.Properties.Get("nullable") != "false" {
+		t.Errorf("reviewers nullable = %q, want false (non_null list)", reviewers.Properties.Get("nullable"))
 	}
-	if reviewers.Properties["item_nullable"] != "true" {
-		t.Errorf("reviewers item_nullable = %q, want true", reviewers.Properties["item_nullable"])
+	if reviewers.Properties.Get("item_nullable") != "true" {
+		t.Errorf("reviewers item_nullable = %q, want true", reviewers.Properties.Get("item_nullable"))
 	}
 }
 

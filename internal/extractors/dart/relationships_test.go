@@ -183,8 +183,8 @@ func TestDart_CallsReceiverChain(t *testing.T) {
 	for _, r := range caller.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "add" {
 			foundAdd = true
-			if r.Properties["receiver_root"] != "_items" {
-				t.Errorf("expected receiver_root=_items, got %q", r.Properties["receiver_root"])
+			if r.Properties.Get("receiver_root") != "_items" {
+				t.Errorf("expected receiver_root=_items, got %q", r.Properties.Get("receiver_root"))
 			}
 		}
 	}
@@ -197,7 +197,7 @@ func TestDart_CallsReceiverChain(t *testing.T) {
 	for _, r := range caller.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "helper" {
 			foundHelper = true
-			if rr := r.Properties["receiver_root"]; rr != "" {
+			if rr := r.Properties.Get("receiver_root"); rr != "" {
 				t.Errorf("expected no receiver_root for this.helper(), got %q", rr)
 			}
 		}
@@ -211,8 +211,8 @@ func TestDart_CallsReceiverChain(t *testing.T) {
 	for _, r := range caller.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "d" {
 			foundD = true
-			if r.Properties["receiver_root"] != "a" {
-				t.Errorf("expected receiver_root=a, got %q", r.Properties["receiver_root"])
+			if r.Properties.Get("receiver_root") != "a" {
+				t.Errorf("expected receiver_root=a, got %q", r.Properties.Get("receiver_root"))
 			}
 		}
 	}
@@ -254,14 +254,14 @@ import 'foo.dart';
 			if r.FromID != "Test.dart" {
 				t.Errorf("IMPORTS %s: FromID=%q want Test.dart", r.ToID, r.FromID)
 			}
-			if r.Properties["local_name"] != w.local {
-				t.Errorf("IMPORTS %s: local_name=%q want %q", r.ToID, r.Properties["local_name"], w.local)
+			if r.Properties.Get("local_name") != w.local {
+				t.Errorf("IMPORTS %s: local_name=%q want %q", r.ToID, r.Properties.Get("local_name"), w.local)
 			}
-			if r.Properties["source_module"] != w.mod {
-				t.Errorf("IMPORTS %s: source_module=%q want %q", r.ToID, r.Properties["source_module"], w.mod)
+			if r.Properties.Get("source_module") != w.mod {
+				t.Errorf("IMPORTS %s: source_module=%q want %q", r.ToID, r.Properties.Get("source_module"), w.mod)
 			}
-			if r.Properties["imported_name"] != w.imported {
-				t.Errorf("IMPORTS %s: imported_name=%q want %q", r.ToID, r.Properties["imported_name"], w.imported)
+			if r.Properties.Get("imported_name") != w.imported {
+				t.Errorf("IMPORTS %s: imported_name=%q want %q", r.ToID, r.Properties.Get("imported_name"), w.imported)
 			}
 		}
 	}
@@ -290,7 +290,7 @@ class A {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			rels++
-			if r.Properties["language"] != "dart" {
+			if r.Properties.Get("language") != "dart" {
 				t.Errorf("rel %s/%s missing language=dart property: %+v",
 					r.Kind, r.ToID, r.Properties)
 			}

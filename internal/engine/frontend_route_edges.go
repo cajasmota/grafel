@@ -201,12 +201,12 @@ func applyFrontendRouteEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: id,
 			ToID:   component, // bare name; cross-file resolver binds to the component entity
 			Kind:   feRouteRoutesTo,
-			Properties: map[string]string{
-				"synthesis": "frontend_routing",
-				"scope":     "client",
-				"framework": framework,
-				"via":       via,
-				"route":     path,
+			Properties: types.Props{
+				{K: "framework", V: framework},
+				{K: "route", V: path},
+				{K: "scope", V: "client"},
+				{K: "synthesis", V: "frontend_routing"},
+				{K: "via", V: via},
 			},
 		})
 	}

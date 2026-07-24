@@ -90,14 +90,14 @@ func TestNeo4jGoGraphRelatesEdge(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Person ─GRAPH_RELATES→ node:Movie edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "ACTED_IN" {
-		t.Errorf("rel_type: want ACTED_IN, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "ACTED_IN" {
+		t.Errorf("rel_type: want ACTED_IN, got %q", edge.Properties.Get("rel_type"))
 	}
-	if edge.Properties["direction"] != "OUTGOING" {
-		t.Errorf("direction: want OUTGOING, got %q", edge.Properties["direction"])
+	if edge.Properties.Get("direction") != "OUTGOING" {
+		t.Errorf("direction: want OUTGOING, got %q", edge.Properties.Get("direction"))
 	}
-	if edge.Properties["framework"] != "neo4j" {
-		t.Errorf("framework: want neo4j, got %q", edge.Properties["framework"])
+	if edge.Properties.Get("framework") != "neo4j" {
+		t.Errorf("framework: want neo4j, got %q", edge.Properties.Get("framework"))
 	}
 
 	// The OUTGOING source node is the edge owner; the reverse edge must NOT
@@ -125,11 +125,11 @@ func TestNeo4jGoGraphRelatesIncomingArrow(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Director ─GRAPH_RELATES→ node:Movie edge (left-arrow), got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "DIRECTED" {
-		t.Errorf("rel_type: want DIRECTED, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "DIRECTED" {
+		t.Errorf("rel_type: want DIRECTED, got %q", edge.Properties.Get("rel_type"))
 	}
-	if edge.Properties["direction"] != "OUTGOING" {
-		t.Errorf("direction: want OUTGOING, got %q", edge.Properties["direction"])
+	if edge.Properties.Get("direction") != "OUTGOING" {
+		t.Errorf("direction: want OUTGOING, got %q", edge.Properties.Get("direction"))
 	}
 	// The written-left endpoint must NOT be the source.
 	if findGoGraphRelates(ents, "Movie", "Director") != nil {
@@ -150,10 +150,10 @@ func TestNeo4jGoGraphRelatesCreateMerge(t *testing.T) {
 
 	ents := extractNeo4jRaw(t, src)
 
-	if e := findGoGraphRelates(ents, "User", "Team"); e == nil || e.Properties["rel_type"] != "FOLLOWS" {
+	if e := findGoGraphRelates(ents, "User", "Team"); e == nil || e.Properties.Get("rel_type") != "FOLLOWS" {
 		t.Errorf("expected User ─GRAPH_RELATES(FOLLOWS)→ Team from CREATE, got %+v", ents)
 	}
-	if e := findGoGraphRelates(ents, "Account", "Wallet"); e == nil || e.Properties["rel_type"] != "OWNS" {
+	if e := findGoGraphRelates(ents, "Account", "Wallet"); e == nil || e.Properties.Get("rel_type") != "OWNS" {
 		t.Errorf("expected Account ─GRAPH_RELATES(OWNS)→ Wallet from MERGE, got %+v", ents)
 	}
 }
@@ -175,11 +175,11 @@ func TestNeo4jGoGraphRelatesUndirected(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Person ─GRAPH_RELATES(KNOWS)→ Person self-edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "KNOWS" {
-		t.Errorf("rel_type: want KNOWS, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "KNOWS" {
+		t.Errorf("rel_type: want KNOWS, got %q", edge.Properties.Get("rel_type"))
 	}
-	if edge.Properties["direction"] != "UNDIRECTED" {
-		t.Errorf("direction: want UNDIRECTED, got %q", edge.Properties["direction"])
+	if edge.Properties.Get("direction") != "UNDIRECTED" {
+		t.Errorf("direction: want UNDIRECTED, got %q", edge.Properties.Get("direction"))
 	}
 }
 

@@ -41,7 +41,7 @@ func findJunTG(ents []types.EntityRecord, fromID, toID, field string) *types.Rel
 		for j := range ents[i].Relationships {
 			r := &ents[i].Relationships[j]
 			if r.Kind == string(types.RelationshipKindGraphRelates) &&
-				r.FromID == fromID && r.ToID == toID && r.Properties["field_name"] == field {
+				r.FromID == fromID && r.ToID == toID && r.Properties.Get("field_name") == field {
 				return r
 			}
 		}
@@ -115,18 +115,18 @@ struct NewUser { name: String, account: Option<Account> }
 	if o == nil {
 		t.Fatal("missing User.orders -> Order GRAPH_RELATES edge")
 	}
-	if o.Properties["cardinality"] != "to_many" || o.Properties["list"] != "true" {
+	if o.Properties.Get("cardinality") != "to_many" || o.Properties.Get("list") != "true" {
 		t.Errorf("User.orders want list=true/to_many, got list=%q card=%q",
-			o.Properties["list"], o.Properties["cardinality"])
+			o.Properties.Get("list"), o.Properties.Get("cardinality"))
 	}
-	if o.Properties["nullable"] != "false" {
-		t.Errorf("User.orders want nullable=false, got %q", o.Properties["nullable"])
+	if o.Properties.Get("nullable") != "false" {
+		t.Errorf("User.orders want nullable=false, got %q", o.Properties.Get("nullable"))
 	}
-	if o.Properties["framework"] != "juniper" {
-		t.Errorf("want framework=juniper, got %q", o.Properties["framework"])
+	if o.Properties.Get("framework") != "juniper" {
+		t.Errorf("want framework=juniper, got %q", o.Properties.Get("framework"))
 	}
-	if o.Properties["graphql_field"] != "User.orders" {
-		t.Errorf("want graphql_field=User.orders, got %q", o.Properties["graphql_field"])
+	if o.Properties.Get("graphql_field") != "User.orders" {
+		t.Errorf("want graphql_field=User.orders, got %q", o.Properties.Get("graphql_field"))
 	}
 
 	// account: Option<Account> -> nullable to_one edge.
@@ -134,12 +134,12 @@ struct NewUser { name: String, account: Option<Account> }
 	if a == nil {
 		t.Fatal("missing User.account -> Account GRAPH_RELATES edge")
 	}
-	if a.Properties["cardinality"] != "to_one" || a.Properties["list"] != "false" {
+	if a.Properties.Get("cardinality") != "to_one" || a.Properties.Get("list") != "false" {
 		t.Errorf("User.account want to_one/list=false, got card=%q list=%q",
-			a.Properties["cardinality"], a.Properties["list"])
+			a.Properties.Get("cardinality"), a.Properties.Get("list"))
 	}
-	if a.Properties["nullable"] != "true" {
-		t.Errorf("User.account want nullable=true, got %q", a.Properties["nullable"])
+	if a.Properties.Get("nullable") != "true" {
+		t.Errorf("User.account want nullable=true, got %q", a.Properties.Get("nullable"))
 	}
 
 	// manager: Option<User> -> self_ref.
@@ -147,18 +147,18 @@ struct NewUser { name: String, account: Option<Account> }
 	if m == nil {
 		t.Fatal("missing User.manager -> User self-reference edge")
 	}
-	if m.Properties["self_ref"] != "true" {
-		t.Errorf("User.manager want self_ref=true, got %q", m.Properties["self_ref"])
+	if m.Properties.Get("self_ref") != "true" {
+		t.Errorf("User.manager want self_ref=true, got %q", m.Properties.Get("self_ref"))
 	}
 
 	// Scalar fields id/name make NO edge. NewUser input fields make NO edge.
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
-			switch r.Properties["field_name"] {
+			switch r.Properties.Get("field_name") {
 			case "id", "name":
-				t.Errorf("scalar field %q must not produce an edge", r.Properties["field_name"])
+				t.Errorf("scalar field %q must not produce an edge", r.Properties.Get("field_name"))
 			}
-			if r.Properties["graphql_field"] == "NewUser.account" {
+			if r.Properties.Get("graphql_field") == "NewUser.account" {
 				t.Error("GraphQLInputObject field must not produce an edge")
 			}
 		}
@@ -202,8 +202,8 @@ impl Query {
 	if u == nil {
 		t.Fatal("missing Query.user -> User resolver edge (FieldResult<T> unwrap)")
 	}
-	if u.Properties["cardinality"] != "to_one" {
-		t.Errorf("Query.user want to_one, got %q", u.Properties["cardinality"])
+	if u.Properties.Get("cardinality") != "to_one" {
+		t.Errorf("Query.user want to_one, got %q", u.Properties.Get("cardinality"))
 	}
 
 	// orders(...) -> Vec<Order> to_many edge.
@@ -211,14 +211,14 @@ impl Query {
 	if o == nil {
 		t.Fatal("missing Query.orders -> Order resolver edge")
 	}
-	if o.Properties["cardinality"] != "to_many" {
-		t.Errorf("Query.orders want to_many, got %q", o.Properties["cardinality"])
+	if o.Properties.Get("cardinality") != "to_many" {
+		t.Errorf("Query.orders want to_many, got %q", o.Properties.Get("cardinality"))
 	}
 
 	// count(...) -> i32 scalar return makes NO edge.
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
-			if r.Properties["field_name"] == "count" {
+			if r.Properties.Get("field_name") == "count" {
 				t.Error("scalar resolver return i32 must not produce an edge")
 			}
 		}
@@ -306,16 +306,16 @@ struct User {
 	if e == nil {
 		t.Fatal("missing cross-file User.external -> RemoteThing GRAPH_RELATES edge")
 	}
-	if e.Properties["cross_file"] != "true" {
-		t.Errorf("cross-file edge want cross_file=true, got %q", e.Properties["cross_file"])
+	if e.Properties.Get("cross_file") != "true" {
+		t.Errorf("cross-file edge want cross_file=true, got %q", e.Properties.Get("cross_file"))
 	}
-	if e.Properties["cardinality"] != "to_many" {
-		t.Errorf("cross-file edge want to_many, got %q", e.Properties["cardinality"])
+	if e.Properties.Get("cardinality") != "to_many" {
+		t.Errorf("cross-file edge want to_many, got %q", e.Properties.Get("cardinality"))
 	}
 	// A lowercase same-file-unknown token is NOT a type -> no edge.
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
-			if r.Properties["field_name"] == "lower" {
+			if r.Properties.Get("field_name") == "lower" {
 				t.Error("lowercase non-type token must not produce a cross-file edge")
 			}
 		}
@@ -358,13 +358,13 @@ struct Order { id: i32 }
 	if e == nil {
 		t.Fatal("missing renamed Account.primaryOrders -> Order edge")
 	}
-	if e.Properties["graphql_field"] != "Account.primaryOrders" {
-		t.Errorf("want graphql_field=Account.primaryOrders, got %q", e.Properties["graphql_field"])
+	if e.Properties.Get("graphql_field") != "Account.primaryOrders" {
+		t.Errorf("want graphql_field=Account.primaryOrders, got %q", e.Properties.Get("graphql_field"))
 	}
 	// The Rust field name must not survive as the field_name.
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
-			if r.Properties["graphql_field"] == "Account.orders" {
+			if r.Properties.Get("graphql_field") == "Account.orders" {
 				t.Error("un-renamed Account.orders edge must not exist")
 			}
 		}
@@ -418,7 +418,7 @@ struct Crew {
 		for i := range ents {
 			for _, r := range ents[i].Relationships {
 				if r.ToID == charRef && r.FromID == junTGRef(path, obj) &&
-					r.Properties["relation"] == "implements" {
+					r.Properties.Get("relation") == "implements" {
 					found = true
 				}
 			}

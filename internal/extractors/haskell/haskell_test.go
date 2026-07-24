@@ -373,7 +373,7 @@ process (Node n) = show n
 	ents := runHaskell(t, src, "tagged.hs")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "haskell" {
+			if r.Properties == nil || r.Properties.Get("language") != "haskell" {
 				t.Errorf("rel %s→%s missing language=haskell (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

@@ -5370,10 +5370,10 @@ func relLanguage(r *types.RelationshipRecord) string {
 	if r == nil || r.Properties == nil {
 		return ""
 	}
-	if v, ok := r.Properties[propLanguage]; ok && v != "" {
+	if v, ok := r.Properties.Lookup(propLanguage); ok && v != "" {
 		return v
 	}
-	if v, ok := r.Properties[propLang]; ok && v != "" {
+	if v, ok := r.Properties.Lookup(propLang); ok && v != "" {
 		return v
 	}
 	return ""
@@ -5489,7 +5489,7 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 				// the extractor proved its method set is a superset of
 				// the interface's. Combined with the "exactly one match"
 				// gate, the surfaced CALLS edge is precise.
-				if ifaceType := r.Properties["interface_dispatch_type"]; ifaceType != "" {
+				if ifaceType := r.Properties.Get("interface_dispatch_type"); ifaceType != "" {
 					ifaceName := ifaceType
 					// Strip a leading `*` and any package qualifier
 					// (`store.Store` → `Store`) to align with the
@@ -5533,7 +5533,7 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 				// probe the package-scoped member index FIRST so a bare-name
 				// target like "handle" binds to the local "<pkg>/Mux.handle"
 				// rather than colliding with same-named methods elsewhere.
-				if recvType := r.Properties["receiver_type"]; recvType != "" && parentPkgDir != "" {
+				if recvType := r.Properties.Get("receiver_type"); recvType != "" && parentPkgDir != "" {
 					// Issue #148 baseline: try the stamped type as-is.
 					// Issue #364 follow-up: when the stamp is package-
 					// qualified (e.g. `chi.Mux` from `chi.NewRouter()` /
@@ -5611,7 +5611,7 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 				// code per issue #104). The receiver_package property is the
 				// framework-presence gate: if it is set, the edge is
 				// definitionally a framework-DSL call and should be Dynamic.
-				if r.Properties != nil && r.Properties["receiver_package"] != "" && (lang == "javascript" || lang == "typescript") {
+				if r.Properties != nil && r.Properties.Get("receiver_package") != "" && (lang == "javascript" || lang == "typescript") {
 					stats.recordDisposition(DispositionDynamic, orig)
 					continue
 				}

@@ -287,8 +287,10 @@ func (e *flutterExtractor) Extract(ctx context.Context, file extractor.FileInput
 			attachEdge(s.name, types.RelationshipRecord{
 				ToID: pName,
 				Kind: string(types.RelationshipKindHasProps),
-				Properties: map[string]string{
-					"framework": "flutter", "prop_name": propName, "prop_type": propType,
+				Properties: types.Props{
+					{K: "framework", V: "flutter"},
+					{K: "prop_name", V: propName},
+					{K: "prop_type", V: propType},
 				},
 			})
 		}
@@ -347,8 +349,10 @@ func (e *flutterExtractor) Extract(ctx context.Context, file extractor.FileInput
 		attachEdge(enclosingClass(spans, m[0]), types.RelationshipRecord{
 			ToID: stub,
 			Kind: string(types.RelationshipKindNavigatesTo),
-			Properties: map[string]string{
-				"framework": "flutter", "nav_kind": "pushNamed", "target": "route",
+			Properties: types.Props{
+				{K: "framework", V: "flutter"},
+				{K: "nav_kind", V: "pushNamed"},
+				{K: "target", V: "route"},
 			},
 		})
 	}
@@ -359,8 +363,10 @@ func (e *flutterExtractor) Extract(ctx context.Context, file extractor.FileInput
 		attachEdge(enclosingClass(spans, m[0]), types.RelationshipRecord{
 			ToID: target,
 			Kind: string(types.RelationshipKindNavigatesTo),
-			Properties: map[string]string{
-				"framework": "flutter", "nav_kind": "MaterialPageRoute", "target": "widget",
+			Properties: types.Props{
+				{K: "framework", V: "flutter"},
+				{K: "nav_kind", V: "MaterialPageRoute"},
+				{K: "target", V: "widget"},
 			},
 		})
 	}
@@ -372,8 +378,10 @@ func (e *flutterExtractor) Extract(ctx context.Context, file extractor.FileInput
 		attachEdge(enclosingClass(spans, m[0]), types.RelationshipRecord{
 			ToID: stub,
 			Kind: string(types.RelationshipKindNavigatesTo),
-			Properties: map[string]string{
-				"framework": "flutter", "nav_kind": "go_router", "target": "route",
+			Properties: types.Props{
+				{K: "framework", V: "flutter"},
+				{K: "nav_kind", V: "go_router"},
+				{K: "target", V: "route"},
 			},
 		})
 	}
@@ -389,8 +397,10 @@ func (e *flutterExtractor) Extract(ctx context.Context, file extractor.FileInput
 			attachEdge(stub, types.RelationshipRecord{
 				ToID: screen,
 				Kind: string(types.RelationshipKindNavigatesTo),
-				Properties: map[string]string{
-					"framework": "flutter", "nav_kind": "go_route_builder", "target": "widget",
+				Properties: types.Props{
+					{K: "framework", V: "flutter"},
+					{K: "nav_kind", V: "go_route_builder"},
+					{K: "target", V: "widget"},
 				},
 			})
 		}
@@ -410,8 +420,10 @@ func (e *flutterExtractor) Extract(ctx context.Context, file extractor.FileInput
 		attachEdge(enclosingClass(spans, offset), types.RelationshipRecord{
 			ToID: target,
 			Kind: string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"framework": "flutter", "access_method": accessMethod, "bind_kind": bindKind,
+			Properties: types.Props{
+				{K: "access_method", V: accessMethod},
+				{K: "bind_kind", V: bindKind},
+				{K: "framework", V: "flutter"},
 			},
 		})
 	}
@@ -447,9 +459,9 @@ func (e *flutterExtractor) Extract(ctx context.Context, file extractor.FileInput
 		hi, ok := idxByName[pe.host]
 		if !ok {
 			if pe.rel.Properties == nil {
-				pe.rel.Properties = map[string]string{}
+				pe.rel.Properties = types.Props{}
 			}
-			pe.rel.Properties["unresolved"] = "true"
+			pe.rel.Properties.Set("unresolved", "true")
 			if len(entities) == 0 {
 				continue // nothing to anchor on
 			}

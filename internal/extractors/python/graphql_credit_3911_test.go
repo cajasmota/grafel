@@ -98,7 +98,7 @@ func TestGraphene_ConfigConsumptionFires(t *testing.T) {
 	var sawEnvEdge bool
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Kind == "DEPENDS_ON_CONFIG" && strings.Contains(r.Properties["keys"], "ACCOUNT_REGION") {
+			if r.Kind == "DEPENDS_ON_CONFIG" && strings.Contains(r.Properties.Get("keys"), "ACCOUNT_REGION") {
 				sawEnvEdge = true
 			}
 		}
@@ -125,8 +125,8 @@ func TestAriadne_TypeSystemAndConfigFire(t *testing.T) {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == "DEPENDS_ON_CONFIG" &&
-				r.Properties["config_name"] == "settings" &&
-				strings.Contains(r.Properties["keys"], "GRAPHQL_PAGE_SIZE") {
+				r.Properties.Get("config_name") == "settings" &&
+				strings.Contains(r.Properties.Get("keys"), "GRAPHQL_PAGE_SIZE") {
 				sawSettingsEdge = true
 			}
 		}

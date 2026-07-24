@@ -195,19 +195,19 @@ func typeGraphEdges(owner, filePath string, fields []fieldHit, st schemaTypes) [
 			return
 		}
 		seen[key] = true
-		props := map[string]string{
-			"field_name":    fieldName,
-			"list":          boolToString(tc.list),
-			"nullable":      boolToString(tc.nullable),
-			"cardinality":   cardinalityLabel(tc),
-			"self_ref":      boolToString(target == owner),
-			"graphql_field": owner + "." + fieldName,
+		props := types.Props{
+			{K: "cardinality", V: cardinalityLabel(tc)},
+			{K: "field_name", V: fieldName},
+			{K: "graphql_field", V: owner + "." + fieldName},
+			{K: "list", V: boolToString(tc.list)},
+			{K: "nullable", V: boolToString(tc.nullable)},
+			{K: "self_ref", V: boolToString(target == owner)},
 		}
 		if tc.list {
-			props["item_nullable"] = boolToString(tc.itemNullable)
+			props.Set("item_nullable", boolToString(tc.itemNullable))
 		}
 		if viaUnion != "" {
-			props["via_union"] = viaUnion
+			props.Set("via_union", viaUnion)
 		}
 		out = append(out, types.RelationshipRecord{
 			FromID:     ownerRef,

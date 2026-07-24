@@ -90,20 +90,20 @@ func TestIssue4399_BrowserE2ERouteTestsLinkToEndpoints(t *testing.T) {
 		}
 		for _, r := range e.Relationships {
 			if r.Kind != string(types.RelationshipKindTests) ||
-				r.Properties["match_source"] != "e2e_supertest_route" {
+				r.Properties.Get("match_source") != "e2e_supertest_route" {
 				continue
 			}
 			switch {
-			case strings.HasPrefix(e.SourceFile, "e2e/") && r.Properties["verb"] == "POST" &&
-				r.Properties["route"] == "/api/users":
+			case strings.HasPrefix(e.SourceFile, "e2e/") && r.Properties.Get("verb") == "POST" &&
+				r.Properties.Get("route") == "/api/users":
 				gotPost = true
-				if fw := r.Properties["framework"]; fw != "playwright" {
+				if fw := r.Properties.Get("framework"); fw != "playwright" {
 					t.Errorf("playwright suite TESTS edge framework=%q, want playwright", fw)
 				}
-			case strings.Contains(e.SourceFile, "cypress/") && r.Properties["verb"] == "GET" &&
-				r.Properties["route"] == "/api/users":
+			case strings.Contains(e.SourceFile, "cypress/") && r.Properties.Get("verb") == "GET" &&
+				r.Properties.Get("route") == "/api/users":
 				gotGet = true
-				if fw := r.Properties["framework"]; fw != "cypress" {
+				if fw := r.Properties.Get("framework"); fw != "cypress" {
 					t.Errorf("cypress suite TESTS edge framework=%q, want cypress", fw)
 				}
 			}
@@ -123,7 +123,7 @@ func TestIssue4399_BrowserE2ERouteTestsLinkToEndpoints(t *testing.T) {
 			continue
 		}
 		for _, r := range e.Relationships {
-			if r.Kind == string(types.RelationshipKindTests) && r.Properties["verb"] == "GET" {
+			if r.Kind == string(types.RelationshipKindTests) && r.Properties.Get("verb") == "GET" {
 				t.Fatalf("interpolated GET produced a spurious TESTS edge from the Playwright suite")
 			}
 		}

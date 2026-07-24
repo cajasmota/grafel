@@ -136,20 +136,20 @@ type Book @node {
 	if edge == nil {
 		t.Fatalf("expected Book ─GRAPH_RELATES→ Class:Author edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "WRITTEN_BY" {
-		t.Errorf("rel_type: want WRITTEN_BY, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "WRITTEN_BY" {
+		t.Errorf("rel_type: want WRITTEN_BY, got %q", edge.Properties.Get("rel_type"))
 	}
-	if edge.Properties["direction"] != "OUTGOING" {
-		t.Errorf("direction: want OUTGOING, got %q", edge.Properties["direction"])
+	if edge.Properties.Get("direction") != "OUTGOING" {
+		t.Errorf("direction: want OUTGOING, got %q", edge.Properties.Get("direction"))
 	}
-	if edge.Properties["field_name"] != "author" {
-		t.Errorf("field_name: want author, got %q", edge.Properties["field_name"])
+	if edge.Properties.Get("field_name") != "author" {
+		t.Errorf("field_name: want author, got %q", edge.Properties.Get("field_name"))
 	}
-	if edge.Properties["framework"] != "grafeo-ogm" {
-		t.Errorf("framework: want grafeo-ogm, got %q", edge.Properties["framework"])
+	if edge.Properties.Get("framework") != "grafeo-ogm" {
+		t.Errorf("framework: want grafeo-ogm, got %q", edge.Properties.Get("framework"))
 	}
-	if edge.Properties["relationship_properties"] != "WrittenBy" {
-		t.Errorf("relationship_properties: want WrittenBy, got %q", edge.Properties["relationship_properties"])
+	if edge.Properties.Get("relationship_properties") != "WrittenBy" {
+		t.Errorf("relationship_properties: want WrittenBy, got %q", edge.Properties.Get("relationship_properties"))
 	}
 	// direction is a property, not endpoint-swapping: no reverse edge from this field.
 	if findGrafeoGraphRelates(ents, "Author", "Book") != nil {
@@ -178,11 +178,11 @@ type Author @node {
 	if edge == nil {
 		t.Fatalf("expected Author ─GRAPH_RELATES→ Class:Book edge, got %+v", ents)
 	}
-	if edge.Properties["direction"] != "INCOMING" {
-		t.Errorf("direction: want INCOMING, got %q", edge.Properties["direction"])
+	if edge.Properties.Get("direction") != "INCOMING" {
+		t.Errorf("direction: want INCOMING, got %q", edge.Properties.Get("direction"))
 	}
-	if edge.Properties["rel_type"] != "WRITTEN_BY" {
-		t.Errorf("rel_type: want WRITTEN_BY, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "WRITTEN_BY" {
+		t.Errorf("rel_type: want WRITTEN_BY, got %q", edge.Properties.Get("rel_type"))
 	}
 }
 
@@ -213,9 +213,9 @@ func TestGrafeoInlineTypeDefs(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Book ─GRAPH_RELATES→ Class:Category edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "IN_CATEGORY" || edge.Properties["direction"] != "OUTGOING" {
+	if edge.Properties.Get("rel_type") != "IN_CATEGORY" || edge.Properties.Get("direction") != "OUTGOING" {
 		t.Errorf("want IN_CATEGORY/OUTGOING, got %q/%q",
-			edge.Properties["rel_type"], edge.Properties["direction"])
+			edge.Properties.Get("rel_type"), edge.Properties.Get("direction"))
 	}
 }
 
@@ -246,8 +246,8 @@ type User @node(labels: ["Entity", "User"]) {
 	if edge == nil {
 		t.Fatalf("expected Entity ─GRAPH_RELATES→ Class:Permission edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "HAS_PERMISSION" {
-		t.Errorf("rel_type: want HAS_PERMISSION, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "HAS_PERMISSION" {
+		t.Errorf("rel_type: want HAS_PERMISSION, got %q", edge.Properties.Get("rel_type"))
 	}
 }
 
@@ -265,8 +265,8 @@ type User @node {
 	if edge == nil {
 		t.Fatalf("expected User ─GRAPH_RELATES→ Class:User self-edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "FOLLOWS" {
-		t.Errorf("rel_type: want FOLLOWS, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "FOLLOWS" {
+		t.Errorf("rel_type: want FOLLOWS, got %q", edge.Properties.Get("rel_type"))
 	}
 }
 

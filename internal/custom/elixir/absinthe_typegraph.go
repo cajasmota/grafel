@@ -195,18 +195,18 @@ func (e *absintheTypeGraphExtractor) Extract(ctx context.Context, file extractor
 		seen[key] = true
 		ownerRef := extractor.BuildOperationStructuralRef("graphql", file.Path, owner)
 		targetRef := extractor.BuildOperationStructuralRef("graphql", file.Path, target)
-		props := map[string]string{
-			"field_name":    fieldName,
-			"list":          absintheBool(tc.list),
-			"nullable":      absintheBool(tc.nullable),
-			"cardinality":   absintheCardLabel(tc),
-			"self_ref":      absintheBool(target == owner),
-			"graphql_field": owner + "." + fieldName,
-			"framework":     "absinthe",
-			"provenance":    "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD",
+		props := types.Props{
+			{K: "cardinality", V: absintheCardLabel(tc)},
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: "absinthe"},
+			{K: "graphql_field", V: owner + "." + fieldName},
+			{K: "list", V: absintheBool(tc.list)},
+			{K: "nullable", V: absintheBool(tc.nullable)},
+			{K: "provenance", V: "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD"},
+			{K: "self_ref", V: absintheBool(target == owner)},
 		}
 		if tc.list {
-			props["item_nullable"] = absintheBool(tc.itemNullable)
+			props.Set("item_nullable", absintheBool(tc.itemNullable))
 		}
 		idx := nodes[owner]
 		out[idx].Relationships = append(out[idx].Relationships,

@@ -315,7 +315,7 @@ proc process(n: Node): string =
 	ents := runNim(t, src, "tag.nim")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "nim" {
+			if r.Properties == nil || r.Properties.Get("language") != "nim" {
 				t.Errorf("rel %s→%s missing language=nim (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

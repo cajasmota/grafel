@@ -568,12 +568,12 @@ func applyFeatureFlagEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: buildFeatureFlagCallerID(h.caller, path),
 			ToID:   flagID,
 			Kind:   featureFlagEdgeKind,
-			Properties: map[string]string{
-				"flag":         h.key,
-				"sdk":          h.sdk,
-				"method":       h.method,
-				"line":         strconv.Itoa(h.line),
-				"pattern_type": featureFlagPatternType,
+			Properties: types.Props{
+				{K: "flag", V: h.key},
+				{K: "line", V: strconv.Itoa(h.line)},
+				{K: "method", V: h.method},
+				{K: "pattern_type", V: featureFlagPatternType},
+				{K: "sdk", V: h.sdk},
 			},
 		})
 	}

@@ -194,12 +194,12 @@ func applyInngestEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   publishesToEdgeKind,
-			Properties: map[string]string{
-				"framework":       "inngest",
-				"messaging_layer": "inngest",
-				"event":           eventName,
-				"topic_id":        "event:" + eventName,
-				"provenance":      "INFERRED_FROM_INNGEST_SEND",
+			Properties: types.Props{
+				{K: "event", V: eventName},
+				{K: "framework", V: "inngest"},
+				{K: "messaging_layer", V: "inngest"},
+				{K: "provenance", V: "INFERRED_FROM_INNGEST_SEND"},
+				{K: "topic_id", V: "event:" + eventName},
 			},
 		})
 	}
@@ -265,12 +265,12 @@ func applyInngestEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   subscribesToEdgeKind,
-			Properties: map[string]string{
-				"framework":       "inngest",
-				"messaging_layer": "inngest",
-				"event":           eventName,
-				"topic_id":        "event:" + eventName,
-				"provenance":      "INFERRED_FROM_INNGEST_CREATE_FUNCTION",
+			Properties: types.Props{
+				{K: "event", V: eventName},
+				{K: "framework", V: "inngest"},
+				{K: "messaging_layer", V: "inngest"},
+				{K: "provenance", V: "INFERRED_FROM_INNGEST_CREATE_FUNCTION"},
+				{K: "topic_id", V: "event:" + eventName},
 			},
 		})
 	}

@@ -127,8 +127,11 @@ func (e *jsCachingExtractor) Extract(ctx context.Context, file extreg.FileInput)
 		ref := emitRegion("nestjs", key, false, line)
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: ref, Kind: "CACHES",
-			Properties: map[string]string{
-				"framework": "nestjs", "region": key, "mode": "read_through", "language": file.Language,
+			Properties: types.Props{
+				{K: "framework", V: "nestjs"},
+				{K: "language", V: file.Language},
+				{K: "mode", V: "read_through"},
+				{K: "region", V: key},
 			},
 		})
 		add(ent)
@@ -154,11 +157,14 @@ func (e *jsCachingExtractor) Extract(ctx context.Context, file extreg.FileInput)
 			setProps(&ent, "dynamic", "true")
 		}
 		ref := emitRegion("cache_manager", key, dynamic, line)
-		edgeProps := map[string]string{
-			"framework": "cache_manager", "region": key, "mode": mode, "language": file.Language,
+		edgeProps := types.Props{
+			{K: "framework", V: "cache_manager"},
+			{K: "language", V: file.Language},
+			{K: "mode", V: mode},
+			{K: "region", V: key},
 		}
 		if dynamic {
-			edgeProps["dynamic"] = "true"
+			edgeProps.Set("dynamic", "true")
 		}
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: ref, Kind: relType, Properties: edgeProps,

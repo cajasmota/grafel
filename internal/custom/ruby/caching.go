@@ -143,11 +143,14 @@ func (e *railsCachingExtractor) Extract(ctx context.Context, file extractor.File
 		}
 
 		targetRef := emitRegion(key, dynamic, line)
-		edgeProps := map[string]string{
-			"framework": "rails", "region": key, "mode": mode, "language": file.Language,
+		edgeProps := types.Props{
+			{K: "framework", V: "rails"},
+			{K: "language", V: file.Language},
+			{K: "mode", V: mode},
+			{K: "region", V: key},
 		}
 		if dynamic {
-			edgeProps["dynamic"] = "true"
+			edgeProps.Set("dynamic", "true")
 		}
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID:       targetRef,

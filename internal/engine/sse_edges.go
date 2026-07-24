@@ -87,14 +87,14 @@ func applySSESynthesis(args DetectorPassArgs) DetectorPassResult {
 		return id
 	}
 
-	emitEdge := func(kind, fromID, toID string, props map[string]string) {
+	emitEdge := func(kind, fromID, toID string, props types.Props) {
 		if fromID == "" || toID == "" {
 			return
 		}
 		if props == nil {
-			props = map[string]string{}
+			props = types.Props{}
 		}
-		props["pattern_type"] = "sse_synthesis"
+		props.Set("pattern_type", "sse_synthesis")
 		relationships = append(relationships, types.RelationshipRecord{
 			FromID:     fromID,
 			ToID:       toID,
@@ -140,7 +140,7 @@ var nodeSSESetHeaderRe = regexp.MustCompile(
 func synthSSENodeServer(
 	src, path string,
 	emitStream func(rawPath, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "text/event-stream") {
 		return
@@ -162,7 +162,7 @@ func synthSSENodeServer(
 			string(types.RelationshipKindStreamsTo),
 			"Function:"+caller,
 			id,
-			map[string]string{"framework": "node_sse", "path": channelPath},
+			types.Props{{K: "framework", V: "node_sse"}, {K: "path", V: channelPath}},
 		)
 	}
 }
@@ -178,7 +178,7 @@ var eventSourceClientRe = regexp.MustCompile(
 func synthSSEEventSourceClient(
 	src, path string,
 	emitStream func(rawPath, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "new EventSource") {
 		return
@@ -231,7 +231,7 @@ func synthSSEEventSourceClient(
 			string(types.RelationshipKindStreamsFrom),
 			fromID,
 			id,
-			map[string]string{"framework": "event_source", "path": channelPath},
+			types.Props{{K: "framework", V: "event_source"}, {K: "path", V: channelPath}},
 		)
 	}
 }
@@ -254,7 +254,7 @@ var pyDefRe = regexp.MustCompile(`(?m)^[ \t]*(?:async\s+)?def\s+(\w+)`)
 func synthSSEDjangoStreaming(
 	src, path string,
 	emitStream func(rawPath, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "StreamingHttpResponse") || !strings.Contains(src, "text/event-stream") {
 		return
@@ -270,7 +270,7 @@ func synthSSEDjangoStreaming(
 			string(types.RelationshipKindStreamsTo),
 			"Function:"+handler,
 			id,
-			map[string]string{"framework": "django_sse", "path": channelPath},
+			types.Props{{K: "framework", V: "django_sse"}, {K: "path", V: channelPath}},
 		)
 	}
 }
@@ -304,7 +304,7 @@ var fastapiStreamingRe = regexp.MustCompile(
 func synthSSEFastAPIStreaming(
 	src, path string,
 	emitStream func(rawPath, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "StreamingResponse") || !strings.Contains(src, "text/event-stream") {
 		return
@@ -320,7 +320,7 @@ func synthSSEFastAPIStreaming(
 			string(types.RelationshipKindStreamsTo),
 			"Function:"+handler,
 			id,
-			map[string]string{"framework": "fastapi_sse", "path": channelPath},
+			types.Props{{K: "framework", V: "fastapi_sse"}, {K: "path", V: channelPath}},
 		)
 	}
 }
@@ -345,7 +345,7 @@ var springSseEmitterMethodRe = regexp.MustCompile(
 func synthSSESpringEmitter(
 	src, path string,
 	emitStream func(rawPath, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "SseEmitter") {
 		return
@@ -362,7 +362,7 @@ func synthSSESpringEmitter(
 			string(types.RelationshipKindStreamsTo),
 			"Class:"+handler,
 			id,
-			map[string]string{"framework": "spring_sse", "path": channelPath, "handler": handler},
+			types.Props{{K: "framework", V: "spring_sse"}, {K: "handler", V: handler}, {K: "path", V: channelPath}},
 		)
 	}
 	for _, m := range springSseEmitterRe.FindAllStringSubmatch(src, -1) {
@@ -390,7 +390,7 @@ var quarkusSseProducesRe = regexp.MustCompile(
 func synthSSEQuarkusProduces(
 	src, path string,
 	emitStream func(rawPath, framework string) string,
-	emitEdge func(kind, from, to string, props map[string]string),
+	emitEdge func(kind, from, to string, props types.Props),
 ) {
 	if !strings.Contains(src, "text/event-stream") && !strings.Contains(src, "SERVER_SENT_EVENTS") {
 		return
@@ -406,7 +406,7 @@ func synthSSEQuarkusProduces(
 			string(types.RelationshipKindStreamsTo),
 			"Class:"+handler,
 			id,
-			map[string]string{"framework": "quarkus_sse", "path": channelPath, "handler": handler},
+			types.Props{{K: "framework", V: "quarkus_sse"}, {K: "handler", V: handler}, {K: "path", V: channelPath}},
 		)
 	}
 }

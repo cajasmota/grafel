@@ -321,14 +321,14 @@ func TestCpp_IncludeImportsProperties(t *testing.T) {
 		if r.Kind != "IMPORTS" {
 			t.Errorf("include %q: expected IMPORTS, got %s", tc.name, r.Kind)
 		}
-		if r.Properties["local_name"] != tc.leaf {
-			t.Errorf("include %q: local_name=%q want %q", tc.name, r.Properties["local_name"], tc.leaf)
+		if r.Properties.Get("local_name") != tc.leaf {
+			t.Errorf("include %q: local_name=%q want %q", tc.name, r.Properties.Get("local_name"), tc.leaf)
 		}
-		if r.Properties["source_module"] != tc.mod {
-			t.Errorf("include %q: source_module=%q want %q", tc.name, r.Properties["source_module"], tc.mod)
+		if r.Properties.Get("source_module") != tc.mod {
+			t.Errorf("include %q: source_module=%q want %q", tc.name, r.Properties.Get("source_module"), tc.mod)
 		}
-		if r.Properties["imported_name"] != tc.leaf {
-			t.Errorf("include %q: imported_name=%q want %q", tc.name, r.Properties["imported_name"], tc.leaf)
+		if r.Properties.Get("imported_name") != tc.leaf {
+			t.Errorf("include %q: imported_name=%q want %q", tc.name, r.Properties.Get("imported_name"), tc.leaf)
 		}
 	}
 }
@@ -370,11 +370,11 @@ using std::cout;
 	if r.Kind != "IMPORTS" {
 		t.Errorf("expected IMPORTS, got %s", r.Kind)
 	}
-	if r.Properties["local_name"] != "cout" {
-		t.Errorf("local_name=%q want cout", r.Properties["local_name"])
+	if r.Properties.Get("local_name") != "cout" {
+		t.Errorf("local_name=%q want cout", r.Properties.Get("local_name"))
 	}
-	if r.Properties["source_module"] != "std" {
-		t.Errorf("source_module=%q want std", r.Properties["source_module"])
+	if r.Properties.Get("source_module") != "std" {
+		t.Errorf("source_module=%q want std", r.Properties.Get("source_module"))
 	}
 }
 
@@ -395,7 +395,7 @@ class A {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			saw = true
-			if r.Properties["language"] != "cpp" {
+			if r.Properties.Get("language") != "cpp" {
 				t.Errorf("relationship %+v missing language tag (Properties=%v)", r, r.Properties)
 			}
 		}

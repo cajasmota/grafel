@@ -111,17 +111,17 @@ class Person(StructuredNode):
 	if edge == nil {
 		t.Fatalf("expected Person ─GRAPH_RELATES→ Class:Movie edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "ACTED_IN" {
-		t.Errorf("rel_type: want ACTED_IN, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "ACTED_IN" {
+		t.Errorf("rel_type: want ACTED_IN, got %q", edge.Properties.Get("rel_type"))
 	}
-	if edge.Properties["direction"] != "OUTGOING" {
-		t.Errorf("direction: want OUTGOING, got %q", edge.Properties["direction"])
+	if edge.Properties.Get("direction") != "OUTGOING" {
+		t.Errorf("direction: want OUTGOING, got %q", edge.Properties.Get("direction"))
 	}
-	if edge.Properties["field_name"] != "movies" {
-		t.Errorf("field_name: want movies, got %q", edge.Properties["field_name"])
+	if edge.Properties.Get("field_name") != "movies" {
+		t.Errorf("field_name: want movies, got %q", edge.Properties.Get("field_name"))
 	}
-	if edge.Properties["framework"] != "neomodel" {
-		t.Errorf("framework: want neomodel, got %q", edge.Properties["framework"])
+	if edge.Properties.Get("framework") != "neomodel" {
+		t.Errorf("framework: want neomodel, got %q", edge.Properties.Get("framework"))
 	}
 
 	// direction is a property, not endpoint-swapping: no reverse edge.
@@ -147,11 +147,11 @@ class Movie(StructuredNode):
 	if edge == nil {
 		t.Fatalf("expected Movie ─GRAPH_RELATES→ Class:Person edge, got %+v", ents)
 	}
-	if edge.Properties["direction"] != "INCOMING" {
-		t.Errorf("direction: want INCOMING, got %q", edge.Properties["direction"])
+	if edge.Properties.Get("direction") != "INCOMING" {
+		t.Errorf("direction: want INCOMING, got %q", edge.Properties.Get("direction"))
 	}
-	if edge.Properties["rel_type"] != "ACTED_IN" {
-		t.Errorf("rel_type: want ACTED_IN, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "ACTED_IN" {
+		t.Errorf("rel_type: want ACTED_IN, got %q", edge.Properties.Get("rel_type"))
 	}
 }
 
@@ -170,8 +170,8 @@ class Person(StructuredNode):
 	if edge == nil {
 		t.Fatalf("expected Person ─GRAPH_RELATES→ Class:Person self-edge, got %+v", ents)
 	}
-	if edge.Properties["rel_type"] != "KNOWS" {
-		t.Errorf("rel_type: want KNOWS, got %q", edge.Properties["rel_type"])
+	if edge.Properties.Get("rel_type") != "KNOWS" {
+		t.Errorf("rel_type: want KNOWS, got %q", edge.Properties.Get("rel_type"))
 	}
 }
 

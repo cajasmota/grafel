@@ -48,10 +48,10 @@ func detectORM(t *testing.T, lang, path, content string) []ormEdge {
 		out = append(out, ormEdge{
 			From:       r.FromID,
 			To:         r.ToID,
-			Op:         r.Properties["operation"],
-			ORM:        r.Properties["orm"],
-			IsJoin:     r.Properties["is_join"],
-			FilterKeys: r.Properties["filter_keys"],
+			Op:         r.Properties.Get("operation"),
+			ORM:        r.Properties.Get("orm"),
+			IsJoin:     r.Properties.Get("is_join"),
+			FilterKeys: r.Properties.Get("filter_keys"),
 		})
 	}
 	return out

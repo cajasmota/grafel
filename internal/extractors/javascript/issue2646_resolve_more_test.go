@@ -110,7 +110,7 @@ export function handleSignOut() {
 	found := false
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "useAuthStore::logout" {
-			if r.Properties != nil && r.Properties["via"] == "zustand_store" {
+			if r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 				found = true
 				break
 			}
@@ -188,7 +188,7 @@ export function doSomething() {
 		// tagged as zustand_store.
 		for _, r := range e.Relationships {
 			if r.Kind == "CALLS" && r.ToID == "user" &&
-				r.Properties != nil && r.Properties["via"] == "zustand_store" {
+				r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 				t.Errorf("spurious CALLS doSomething→user via=zustand_store for non-factory store")
 			}
 		}

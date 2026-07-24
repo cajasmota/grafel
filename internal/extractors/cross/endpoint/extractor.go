@@ -218,10 +218,10 @@ func buildEntity(
 			FromID: entityID,
 			ToID:   tRef,
 			Kind:   "SERVES",
-			Properties: map[string]string{
-				"handler_qname": m.handlerQName,
-				"framework":     framework,
-				"method":        m.method,
+			Properties: types.Props{
+				{K: "framework", V: framework},
+				{K: "handler_qname", V: m.handlerQName},
+				{K: "method", V: m.method},
 			},
 		})
 	}

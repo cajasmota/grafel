@@ -92,10 +92,10 @@ func applyReExports(file extractor.FileInput, entities *[]types.EntityRecord) ma
 				continue
 			}
 			if r.Properties == nil {
-				r.Properties = map[string]string{}
+				r.Properties = types.Props{}
 			}
 			// Mark every IMPORTS edge on an __init__.py with package_init.
-			r.Properties["package_init"] = "true"
+			r.Properties.Set("package_init", "true")
 
 			// Re-export marker — only for relative imports (source_module
 			// starts with "." in extractImports' current encoding, OR
@@ -106,14 +106,14 @@ func applyReExports(file extractor.FileInput, entities *[]types.EntityRecord) ma
 			// as a candidate re-export: docgen consumers care about
 			// "public surface of this package", which includes both
 			// relative AND absolute re-exports in idiomatic Python.
-			r.Properties["re_export"] = "true"
+			r.Properties.Set("re_export", "true")
 
 			// Alias annotation — when local_name differs from
 			// imported_name the original source used `as <alias>`.
-			local := r.Properties["local_name"]
-			imported := r.Properties["imported_name"]
+			local := r.Properties.Get("local_name")
+			imported := r.Properties.Get("imported_name")
 			if local != "" && imported != "" && local != imported {
-				r.Properties["alias"] = local
+				r.Properties.Set("alias", local)
 			}
 
 			// Public marker — symbol listed in __all__.
@@ -125,7 +125,7 @@ func applyReExports(file extractor.FileInput, entities *[]types.EntityRecord) ma
 				key = imported
 			}
 			if key != "" && publicNames[key] {
-				r.Properties["public"] = "true"
+				r.Properties.Set("public", "true")
 			}
 		}
 	}

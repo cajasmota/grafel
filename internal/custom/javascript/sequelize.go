@@ -379,11 +379,11 @@ func (e *sequelizeExtractor) Extract(ctx context.Context, file extreg.FileInput)
 				FromID: "Class:" + sourceModel,
 				ToID:   "Class:" + targetModel,
 				Kind:   string(types.RelationshipKindGraphRelates),
-				Properties: map[string]string{
-					"framework":        "sequelize",
-					"cardinality":      card,
-					"association_type": assocType,
-					"provenance":       "INFERRED_FROM_SEQUELIZE_ASSOCIATION",
+				Properties: types.Props{
+					{K: "association_type", V: assocType},
+					{K: "cardinality", V: card},
+					{K: "framework", V: "sequelize"},
+					{K: "provenance", V: "INFERRED_FROM_SEQUELIZE_ASSOCIATION"},
 				},
 			})
 		}

@@ -195,12 +195,12 @@ func csContainsFieldEdge(ownerClass, memberID, fieldName string) types.Relations
 		FromID: "Class:" + ownerClass,
 		ToID:   memberID,
 		Kind:   string(types.RelationshipKindContains),
-		Properties: map[string]string{
-			"framework":  "data-annotations",
-			"language":   "csharp",
-			"member":     "field",
-			"field_name": fieldName,
-			"provenance": "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP",
+		Properties: types.Props{
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: "data-annotations"},
+			{K: "language", V: "csharp"},
+			{K: "member", V: "field"},
+			{K: "provenance", V: "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP"},
 		},
 	}
 }

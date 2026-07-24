@@ -462,20 +462,20 @@ func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bo
 		top = raw[:idx]
 	}
 
-	props := map[string]string{}
+	props := types.Props{}
 	leaf := raw
 	mod := raw
 	if dot := strings.LastIndexByte(raw, '.'); dot > 0 {
 		leaf = raw[dot+1:]
 		mod = raw[:dot]
 	}
-	props["language"] = "csharp"
-	props["source_module"] = mod
-	props["imported_name"] = leaf
+	props.Set("language", "csharp")
+	props.Set("source_module", mod)
+	props.Set("imported_name", leaf)
 	if alias != "" {
-		props["local_name"] = alias
+		props.Set("local_name", alias)
 	} else {
-		props["local_name"] = leaf
+		props.Set("local_name", leaf)
 	}
 
 	return types.EntityRecord{
@@ -627,8 +627,8 @@ func extractCallRelationships(
 			continue
 		}
 		seen[target] = true
-		props := map[string]string{
-			"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+		props := types.Props{
+			{K: "line", V: strconv.Itoa(int(call.StartPoint().Row) + 1)},
 		}
 		// Issue #4374 — stamp the resolved (namespace candidates, type, leaf)
 		// for a qualified cross-namespace call so the resolver can bind it via
@@ -639,9 +639,9 @@ func extractCallRelationships(
 		if cross != nil && call.Type() == "invocation_expression" {
 			if fn := call.ChildByFieldName("function"); fn != nil {
 				if b := cross.resolveQualifiedCall(fn, src, cc, merged); b != nil {
-					props["csharp_call_ns"] = strings.Join(b.nsCandidates, ";")
-					props["csharp_call_type"] = b.typ
-					props["call_leaf"] = b.leaf
+					props.Set("csharp_call_ns", strings.Join(b.nsCandidates, ";"))
+					props.Set("csharp_call_type", b.typ)
+					props.Set("call_leaf", b.leaf)
 				}
 			}
 		}

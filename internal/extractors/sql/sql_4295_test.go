@@ -108,11 +108,11 @@ func TestSQL4295_ColumnFlagsAndFK(t *testing.T) {
 	for i := range entities {
 		for _, rel := range entities[i].Relationships {
 			if rel.Kind == "REFERENCES" &&
-				rel.Properties["from_table"] == "users" &&
+				rel.Properties.Get("from_table") == "users" &&
 				rel.ToID == "orgs" {
 				foundFK = true
-				if rel.Properties["to_column"] != "id" {
-					t.Errorf("FK to_column = %q, want id", rel.Properties["to_column"])
+				if rel.Properties.Get("to_column") != "id" {
+					t.Errorf("FK to_column = %q, want id", rel.Properties.Get("to_column"))
 				}
 				if c := findColumn(entities, "users", "org_id"); c != nil &&
 					entities[i].Name != c.Name {

@@ -173,10 +173,10 @@ func extractEdges(t *testing.T, name string, file extreg.FileInput) []edgeSummar
 		for _, r := range ent.Relationships {
 			es := edgeSummary{From: r.FromID, To: r.ToID, Kind: r.Kind}
 			if r.Properties != nil {
-				es.BindKind = r.Properties["bind_kind"]
-				es.NavKind = r.Properties["nav_kind"]
-				es.Target = r.Properties["target"]
-				es.Unresolved = r.Properties["unresolved"]
+				es.BindKind = r.Properties.Get("bind_kind")
+				es.NavKind = r.Properties.Get("nav_kind")
+				es.Target = r.Properties.Get("target")
+				es.Unresolved = r.Properties.Get("unresolved")
 			}
 			out = append(out, es)
 		}

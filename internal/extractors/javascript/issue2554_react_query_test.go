@@ -52,7 +52,7 @@ const useInspections = () => useQuery({
 		found := false
 		for _, r := range e.Relationships {
 			if r.Kind == "CALLS" && r.ToID == "getAll" {
-				if r.Properties != nil && r.Properties["via"] == "react_query_hook" {
+				if r.Properties != nil && r.Properties.Get("via") == "react_query_hook" {
 					found = true
 				} else {
 					t.Errorf("CALLS useInspections→getAll missing Properties[via]=react_query_hook; got %v", r.Properties)
@@ -128,7 +128,7 @@ const useCounter = () => {
 	e := findByNameRel(ents, "useCounter")
 	if e != nil {
 		for _, r := range e.Relationships {
-			if r.Kind == "CALLS" && r.Properties != nil && r.Properties["via"] == "react_query_hook" {
+			if r.Kind == "CALLS" && r.Properties != nil && r.Properties.Get("via") == "react_query_hook" {
 				t.Errorf("unexpected CALLS with via=react_query_hook on plain useState; got %s→%s", "useCounter", r.ToID)
 			}
 		}

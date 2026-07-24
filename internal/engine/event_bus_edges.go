@@ -133,7 +133,7 @@ func applyEventBusEdges(args DetectorPassArgs) DetectorPassResult {
 		})
 	}
 
-	emitEdge := func(fromID, toID, kind string, props map[string]string) {
+	emitEdge := func(fromID, toID, kind string, props types.Props) {
 		if fromID == "" || toID == "" {
 			return
 		}
@@ -267,7 +267,7 @@ var serverlessYMLEBDetailTypeRe = regexp.MustCompile(`detail-type\s*:\s*\[\s*['"
 func applyEventBridgeEdges(
 	lang, src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Fast-path guard — skip files with no EventBridge tokens.
 	if !strings.Contains(src, "eventbridge") &&
@@ -302,7 +302,7 @@ func applyEventBridgeEdges(
 func applyEventBridgePython(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Producer: .put_events(Entries=[{...}])
 	for _, m := range pyEventBridgePutEventsRe.FindAllStringIndex(src, -1) {
@@ -328,7 +328,7 @@ func applyEventBridgePython(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"PUBLISHES_TO",
-			map[string]string{"bus": "eventbridge", "source": source, "detail_type": detailType, "sdk": "boto3"},
+			types.Props{{K: "bus", V: "eventbridge"}, {K: "detail_type", V: detailType}, {K: "sdk", V: "boto3"}, {K: "source", V: source}},
 		)
 	}
 }
@@ -336,7 +336,7 @@ func applyEventBridgePython(
 func applyEventBridgeNode(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Producer: new PutEventsCommand({ Entries: [...] })
 	for _, m := range nodeEBPutEventsCommandRe.FindAllStringIndex(src, -1) {
@@ -364,7 +364,7 @@ func applyEventBridgeNode(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"PUBLISHES_TO",
-			map[string]string{"bus": "eventbridge", "source": source, "detail_type": detailType, "sdk": "aws-sdk-v3"},
+			types.Props{{K: "bus", V: "eventbridge"}, {K: "detail_type", V: detailType}, {K: "sdk", V: "aws-sdk-v3"}, {K: "source", V: source}},
 		)
 	}
 
@@ -377,7 +377,7 @@ func applyEventBridgeNode(
 func applyEventBridgeGo(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	for _, m := range goEBPutEventsRe.FindAllStringIndex(src, -1) {
 		end := m[1] + 600
@@ -403,7 +403,7 @@ func applyEventBridgeGo(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"PUBLISHES_TO",
-			map[string]string{"bus": "eventbridge", "source": source, "detail_type": detailType, "sdk": "aws-sdk-go-v2"},
+			types.Props{{K: "bus", V: "eventbridge"}, {K: "detail_type", V: detailType}, {K: "sdk", V: "aws-sdk-go-v2"}, {K: "source", V: source}},
 		)
 	}
 }
@@ -413,7 +413,7 @@ func applyEventBridgeGo(
 func applyEventBridgeHCL(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Step 1: parse rules — collect ruleName → (source, detailType)
 	type ruleInfo struct {
@@ -446,7 +446,7 @@ func applyEventBridgeHCL(
 		emitEvent(id, "eventbridge", source, detailType, map[string]string{"iac": "terraform", "rule_name": ruleName})
 		ruleEntityID := fmt.Sprintf("SCOPE.Component:aws_cloudwatch_event_rule.%s", ruleName)
 		emitEdge(ruleEntityID, fmt.Sprintf("%s:%s", eventBusEventKind, id), "SUBSCRIBES_TO",
-			map[string]string{"bus": "eventbridge", "source": source, "detail_type": detailType, "iac": "terraform"})
+			types.Props{{K: "bus", V: "eventbridge"}, {K: "detail_type", V: detailType}, {K: "iac", V: "terraform"}, {K: "source", V: source}})
 	}
 
 	// Step 2: parse targets — link rule → lambda.
@@ -487,7 +487,7 @@ func applyEventBridgeHCL(
 			ruleEntityID,
 			fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaID),
 			eventBridgeTriggersEdge,
-			map[string]string{"bus": "eventbridge", "target_type": "lambda", "lambda_name": lambdaName, "iac": "terraform"},
+			types.Props{{K: "bus", V: "eventbridge"}, {K: "iac", V: "terraform"}, {K: "lambda_name", V: lambdaName}, {K: "target_type", V: "lambda"}},
 		)
 
 		// Also emit SUBSCRIBES_TO from lambda to the event if we resolved the rule.
@@ -498,7 +498,7 @@ func applyEventBridgeHCL(
 					fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaID),
 					fmt.Sprintf("%s:%s", eventBusEventKind, id),
 					"SUBSCRIBES_TO",
-					map[string]string{"bus": "eventbridge", "via": "rule", "rule_name": ruleName, "iac": "terraform"},
+					types.Props{{K: "bus", V: "eventbridge"}, {K: "iac", V: "terraform"}, {K: "rule_name", V: ruleName}, {K: "via", V: "rule"}},
 				)
 			}
 		}
@@ -572,7 +572,7 @@ func extractBalancedBraces(src string, start int) string {
 func applyCDKEventPattern(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Find eventPattern blocks and extract source + detail-type.
 	sourceMatches := cdkEventPatternSourceRe.FindAllStringSubmatch(src, -1)
@@ -593,7 +593,7 @@ func applyCDKEventPattern(
 		caller := findEnclosingNodeFunctionName(src, 0)
 		ruleID := fmt.Sprintf("SCOPE.Function:%s", caller)
 		emitEdge(ruleID, fmt.Sprintf("%s:%s", eventBusEventKind, id), "SUBSCRIBES_TO",
-			map[string]string{"bus": "eventbridge", "source": source, "detail_type": detailType, "iac": "cdk"})
+			types.Props{{K: "bus", V: "eventbridge"}, {K: "detail_type", V: detailType}, {K: "iac", V: "cdk"}, {K: "source", V: source}})
 
 		// addTarget — link to lambda.
 		if tm := cdkLambdaTargetRe.FindStringSubmatch(src); tm != nil {
@@ -602,7 +602,7 @@ func applyCDKEventPattern(
 			emitEdge(ruleID,
 				fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaID),
 				eventBridgeTriggersEdge,
-				map[string]string{"bus": "eventbridge", "target_var": lambdaVarName, "iac": "cdk"})
+				types.Props{{K: "bus", V: "eventbridge"}, {K: "iac", V: "cdk"}, {K: "target_var", V: lambdaVarName}})
 		}
 	}
 }
@@ -611,7 +611,7 @@ func applyCDKEventPattern(
 func applyEventBridgeServerlessYML(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	if !strings.Contains(src, "eventBridge") {
 		return
@@ -633,7 +633,7 @@ func applyEventBridgeServerlessYML(
 			fmt.Sprintf("SCOPE.Config:%s", path),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"SUBSCRIBES_TO",
-			map[string]string{"bus": "eventbridge", "iac": "serverless.yml"},
+			types.Props{{K: "bus", V: "eventbridge"}, {K: "iac", V: "serverless.yml"}},
 		)
 	}
 }
@@ -754,7 +754,7 @@ var csharpEGTriggerRe = regexp.MustCompile(`\[EventGridTrigger\]|\bEventGridEven
 func applyEventGridEdges(
 	lang, src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Fast-path guard.
 	if !strings.Contains(src, "eventgrid") &&
@@ -776,7 +776,7 @@ func applyEventGridEdges(
 func applyEventGridPython(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Producer: EventGridPublisherClient(...).send(...)
 	if pyEventGridSendRe.MatchString(src) {
@@ -805,7 +805,7 @@ func applyEventGridPython(
 				fmt.Sprintf("SCOPE.Function:%s", caller),
 				fmt.Sprintf("%s:%s", eventBusEventKind, id),
 				"PUBLISHES_TO",
-				map[string]string{"bus": "eventgrid", "event_type": eventType, "subject": subject, "sdk": "azure-eventgrid-python"},
+				types.Props{{K: "bus", V: "eventgrid"}, {K: "event_type", V: eventType}, {K: "sdk", V: "azure-eventgrid-python"}, {K: "subject", V: subject}},
 			)
 		}
 	}
@@ -819,7 +819,7 @@ func applyEventGridPython(
 			fmt.Sprintf("SCOPE.Function:%s", fnName),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"SUBSCRIBES_TO",
-			map[string]string{"bus": "eventgrid", "trigger": "event_grid_trigger", "sdk": "azure-functions-python"},
+			types.Props{{K: "bus", V: "eventgrid"}, {K: "sdk", V: "azure-functions-python"}, {K: "trigger", V: "event_grid_trigger"}},
 		)
 		// Also emit EVENTGRID_TRIGGERS → azure-function entity (from #925).
 		azID := azureFunctionID(fnName)
@@ -827,7 +827,7 @@ func applyEventGridPython(
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			fmt.Sprintf("%s:%s", serverlessFunctionKind, azID),
 			eventGridTriggersEdge,
-			map[string]string{"bus": "eventgrid", "function_name": fnName},
+			types.Props{{K: "bus", V: "eventgrid"}, {K: "function_name", V: fnName}},
 		)
 	}
 }
@@ -835,7 +835,7 @@ func applyEventGridPython(
 func applyEventGridNode(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	if !nodeEGSendRe.MatchString(src) {
 		return
@@ -864,7 +864,7 @@ func applyEventGridNode(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"PUBLISHES_TO",
-			map[string]string{"bus": "eventgrid", "event_type": eventType, "subject": subject, "sdk": "azure-eventgrid-js"},
+			types.Props{{K: "bus", V: "eventgrid"}, {K: "event_type", V: eventType}, {K: "sdk", V: "azure-eventgrid-js"}, {K: "subject", V: subject}},
 		)
 	}
 }
@@ -872,7 +872,7 @@ func applyEventGridNode(
 func applyEventGridCSharp(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Producer: EventGridPublisherClient.SendEventsAsync
 	if csharpEGSendRe.MatchString(src) {
@@ -900,7 +900,7 @@ func applyEventGridCSharp(
 				fmt.Sprintf("SCOPE.Function:%s", caller),
 				fmt.Sprintf("%s:%s", eventBusEventKind, id),
 				"PUBLISHES_TO",
-				map[string]string{"bus": "eventgrid", "event_type": eventType, "subject": subject, "sdk": "azure-eventgrid-dotnet"},
+				types.Props{{K: "bus", V: "eventgrid"}, {K: "event_type", V: eventType}, {K: "sdk", V: "azure-eventgrid-dotnet"}, {K: "subject", V: subject}},
 			)
 		}
 	}
@@ -924,14 +924,14 @@ func applyEventGridCSharp(
 				fmt.Sprintf("SCOPE.Function:%s", methodName),
 				fmt.Sprintf("%s:%s", eventBusEventKind, id),
 				"SUBSCRIBES_TO",
-				map[string]string{"bus": "eventgrid", "trigger": "EventGridTrigger", "sdk": "azure-functions-dotnet"},
+				types.Props{{K: "bus", V: "eventgrid"}, {K: "sdk", V: "azure-functions-dotnet"}, {K: "trigger", V: "EventGridTrigger"}},
 			)
 			azID := azureFunctionID(methodName)
 			emitEdge(
 				fmt.Sprintf("%s:%s", eventBusEventKind, id),
 				fmt.Sprintf("%s:%s", serverlessFunctionKind, azID),
 				eventGridTriggersEdge,
-				map[string]string{"bus": "eventgrid", "function_name": methodName},
+				types.Props{{K: "bus", V: "eventgrid"}, {K: "function_name", V: methodName}},
 			)
 		}
 	}
@@ -992,7 +992,7 @@ var goCloudEventClientRe = regexp.MustCompile(`cloudevents\.NewClientHTTP\s*\(\s
 func applyCloudEventEdges(
 	lang, src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Fast-path guard — skip files without CloudEvent tokens.
 	if !strings.Contains(src, "CloudEvent") &&
@@ -1025,7 +1025,7 @@ func applyCloudEventEdges(
 func applyCloudEventPython(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	for _, m := range pyCloudEventBuilderRe.FindAllStringIndex(src, -1) {
 		end := m[1] + 400
@@ -1051,7 +1051,7 @@ func applyCloudEventPython(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"PUBLISHES_TO",
-			map[string]string{"bus": "cloudevents", "ce_type": ceType, "ce_source": ceSource, "sdk": "cloudevents-python"},
+			types.Props{{K: "bus", V: "cloudevents"}, {K: "ce_source", V: ceSource}, {K: "ce_type", V: ceType}, {K: "sdk", V: "cloudevents-python"}},
 		)
 	}
 }
@@ -1059,7 +1059,7 @@ func applyCloudEventPython(
 func applyCloudEventNode(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	for _, m := range nodeCloudEventBuilderRe.FindAllStringIndex(src, -1) {
 		end := m[1] + 400
@@ -1085,7 +1085,7 @@ func applyCloudEventNode(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"PUBLISHES_TO",
-			map[string]string{"bus": "cloudevents", "ce_type": ceType, "ce_source": ceSource, "sdk": "cloudevents-js"},
+			types.Props{{K: "bus", V: "cloudevents"}, {K: "ce_source", V: ceSource}, {K: "ce_type", V: ceType}, {K: "sdk", V: "cloudevents-js"}},
 		)
 	}
 }
@@ -1093,7 +1093,7 @@ func applyCloudEventNode(
 func applyCloudEventGo(
 	src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Producer: cloudevents.NewEvent() + SetType + SetSource
 	for _, m := range goCloudEventNewEventRe.FindAllStringIndex(src, -1) {
@@ -1120,7 +1120,7 @@ func applyCloudEventGo(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"PUBLISHES_TO",
-			map[string]string{"bus": "cloudevents", "ce_type": ceType, "ce_source": ceSource, "sdk": "cloudevents-go"},
+			types.Props{{K: "bus", V: "cloudevents"}, {K: "ce_source", V: ceSource}, {K: "ce_type", V: ceType}, {K: "sdk", V: "cloudevents-go"}},
 		)
 	}
 
@@ -1133,7 +1133,7 @@ func applyCloudEventGo(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			fmt.Sprintf("%s:%s", eventBusEventKind, id),
 			"SUBSCRIBES_TO",
-			map[string]string{"bus": "cloudevents", "sdk": "cloudevents-go"},
+			types.Props{{K: "bus", V: "cloudevents"}, {K: "sdk", V: "cloudevents-go"}},
 		)
 	}
 }
@@ -1143,7 +1143,7 @@ func applyCloudEventGo(
 func applyCloudEventHTTPHeaders(
 	lang, src, path string,
 	emitEvent func(id, busType, source, detailType string, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Try to extract the literal ce-type and ce-source from the same handler.
 	ceType := ""
@@ -1176,7 +1176,7 @@ func applyCloudEventHTTPHeaders(
 				fmt.Sprintf("SCOPE.Function:%s", caller),
 				fmt.Sprintf("%s:%s", eventBusEventKind, id),
 				cloudEventFlowsEdge,
-				map[string]string{"bus": "cloudevents", "detection": "http-header", "ce_type": ceType},
+				types.Props{{K: "bus", V: "cloudevents"}, {K: "ce_type", V: ceType}, {K: "detection", V: "http-header"}},
 			)
 			break // one edge per handler
 		}
@@ -1187,7 +1187,7 @@ func applyCloudEventHTTPHeaders(
 				fmt.Sprintf("SCOPE.Function:%s", caller),
 				fmt.Sprintf("%s:%s", eventBusEventKind, id),
 				cloudEventFlowsEdge,
-				map[string]string{"bus": "cloudevents", "detection": "http-header", "ce_type": ceType},
+				types.Props{{K: "bus", V: "cloudevents"}, {K: "ce_type", V: ceType}, {K: "detection", V: "http-header"}},
 			)
 			break
 		}
@@ -1198,7 +1198,7 @@ func applyCloudEventHTTPHeaders(
 				fmt.Sprintf("SCOPE.Function:%s", caller),
 				fmt.Sprintf("%s:%s", eventBusEventKind, id),
 				cloudEventFlowsEdge,
-				map[string]string{"bus": "cloudevents", "detection": "http-header", "ce_type": ceType},
+				types.Props{{K: "bus", V: "cloudevents"}, {K: "ce_type", V: ceType}, {K: "detection", V: "http-header"}},
 			)
 			break
 		}

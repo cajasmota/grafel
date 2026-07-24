@@ -163,9 +163,9 @@ func TestKotlinImportsSkipsRelative(t *testing.T) {
 			Relationships: []types.RelationshipRecord{{
 				ToID: ".users.UserService",
 				Kind: "IMPORTS",
-				Properties: map[string]string{
-					"source_module": ".users.UserService",
-					"imported_name": "UserService",
+				Properties: types.Props{
+					{K: "imported_name", V: "UserService"},
+					{K: "source_module", V: ".users.UserService"},
 				},
 			}},
 		},

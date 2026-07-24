@@ -213,18 +213,18 @@ func stampPythonTracingSpans(funcNode, decoratorParent ts.Node, enclosingName st
 	}
 	e := &(*out)[idx]
 	for _, h := range hits {
-		props := map[string]string{
-			"library": "opentelemetry",
-			"api":     h.api,
-			"line":    strconv.Itoa(h.line),
-			"traced":  "true",
+		props := types.Props{
+			{K: "api", V: h.api},
+			{K: "library", V: "opentelemetry"},
+			{K: "line", V: strconv.Itoa(h.line)},
+			{K: "traced", V: "true"},
 		}
 		var toID string
 		if h.dynamic {
-			props["dynamic"] = "true"
+			props.Set("dynamic", "true")
 			toID = "span:" + enclosingName
 		} else {
-			props["span_name"] = h.spanName
+			props.Set("span_name", h.spanName)
 			toID = "span:" + h.spanName
 		}
 		e.Relationships = append(e.Relationships, types.RelationshipRecord{

@@ -33,7 +33,7 @@ end
 				continue
 			}
 			found = true
-			lineStr, ok := r.Properties["line"]
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Fatalf("CALLS edge to %q missing Properties[\"line\"]", r.ToID)
 			}
@@ -75,7 +75,7 @@ end
 			if r.Kind != "CALLS" {
 				continue
 			}
-			lineStr, ok := r.Properties["line"]
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Errorf("entity %q: CALLS edge to %q missing Properties[\"line\"]", ent.Name, r.ToID)
 				continue

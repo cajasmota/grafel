@@ -457,11 +457,11 @@ func buildCollapsedEntity(
 			FromID: entityID,
 			ToID:   toID,
 			Kind:   "TESTS",
-			Properties: map[string]string{
-				"test_framework": framework,
-				"confidence":     tc.confidence,
-				"test_function":  testQName,
-				"tested":         tc.qname,
+			Properties: types.Props{
+				{K: "confidence", V: tc.confidence},
+				{K: "test_framework", V: framework},
+				{K: "test_function", V: testQName},
+				{K: "tested", V: tc.qname},
 			},
 		})
 	}
@@ -527,11 +527,11 @@ func buildEntity(
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   "TESTS",
-			Properties: map[string]string{
-				"test_framework": framework,
-				"confidence":     tc.confidence,
-				"test_function":  testQName,
-				"tested":         tc.qname,
+			Properties: types.Props{
+				{K: "confidence", V: tc.confidence},
+				{K: "test_framework", V: framework},
+				{K: "test_function", V: testQName},
+				{K: "tested", V: tc.qname},
 			},
 		})
 	}

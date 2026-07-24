@@ -16,7 +16,7 @@ func scalaCallRecv(ents []types.EntityRecord, fn, toID string) (string, bool) {
 	}
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == toID {
-			return r.Properties["receiver_type"], true
+			return r.Properties.Get("receiver_type"), true
 		}
 	}
 	return "", false

@@ -130,7 +130,7 @@ func (e *aspnetReqRespExtractor) Extract(ctx context.Context, file extractor.Fil
 				rels = append(rels, types.RelationshipRecord{
 					ToID:       "Class:" + dtoType,
 					Kind:       string(types.RelationshipKindAcceptsInput),
-					Properties: map[string]string{"framework": "aspnet_core", "match_source": "from_body_param", "dto_type": dtoType},
+					Properties: types.Props{{K: "dto_type", V: dtoType}, {K: "framework", V: "aspnet_core"}, {K: "match_source", V: "from_body_param"}},
 				})
 			}
 		}
@@ -144,7 +144,7 @@ func (e *aspnetReqRespExtractor) Extract(ctx context.Context, file extractor.Fil
 			rels = append(rels, types.RelationshipRecord{
 				ToID:       "Class:" + retType,
 				Kind:       string(types.RelationshipKindReturns),
-				Properties: map[string]string{"framework": "aspnet_core", "match_source": "action_return_type", "dto_type": retType},
+				Properties: types.Props{{K: "dto_type", V: retType}, {K: "framework", V: "aspnet_core"}, {K: "match_source", V: "action_return_type"}},
 			})
 		}
 

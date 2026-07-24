@@ -152,7 +152,7 @@ func buildRecord(v map[string]interface{}, file extractor.FileInput, out *[]type
 			rels = append(rels, types.RelationshipRecord{
 				ToID:       extractor.BuildOperationStructuralRef("avro", file.Path, ref),
 				Kind:       "REFERENCES",
-				Properties: map[string]string{"via_field": fname, "type": ref},
+				Properties: types.Props{{K: "type", V: ref}, {K: "via_field", V: fname}},
 			})
 		}
 

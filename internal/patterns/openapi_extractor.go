@@ -135,8 +135,8 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 				FromID: entityName,
 				ToID:   "openapi_schema_" + target,
 				Kind:   "REFERENCES",
-				Properties: map[string]string{
-					"reference_kind": "schema_ref",
+				Properties: types.Props{
+					{K: "reference_kind", V: "schema_ref"},
 				},
 			})
 		}
@@ -238,8 +238,8 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 					FromID: pendingOps[i].entity.Name,
 					ToID:   "openapi_schema_" + target,
 					Kind:   "REFERENCES",
-					Properties: map[string]string{
-						"reference_kind": "schema_ref",
+					Properties: types.Props{
+						{K: "reference_kind", V: "schema_ref"},
 					},
 				},
 			)
@@ -259,8 +259,8 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 					FromID: pendingOps[i].entity.Name,
 					ToID:   "openapi_parameter_" + target,
 					Kind:   "REFERENCES",
-					Properties: map[string]string{
-						"reference_kind": "parameter_ref",
+					Properties: types.Props{
+						{K: "reference_kind", V: "parameter_ref"},
 					},
 				},
 			)
@@ -284,8 +284,8 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 						FromID: pendingOps[i].entity.Name,
 						ToID:   "openapi_tag_" + tag,
 						Kind:   "TAGGED_AS",
-						Properties: map[string]string{
-							"tag": tag,
+						Properties: types.Props{
+							{K: "tag", V: tag},
 						},
 					},
 				)
@@ -301,8 +301,8 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 					FromID: specEntity.Name,
 					ToID:   pendingOps[i].entity.Name,
 					Kind:   "CONTAINS",
-					Properties: map[string]string{
-						"contained_kind": "operation",
+					Properties: types.Props{
+						{K: "contained_kind", V: "operation"},
 					},
 				})
 		}
@@ -312,8 +312,8 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 					FromID: specEntity.Name,
 					ToID:   s.Name,
 					Kind:   "CONTAINS",
-					Properties: map[string]string{
-						"contained_kind": "schema",
+					Properties: types.Props{
+						{K: "contained_kind", V: "schema"},
 					},
 				})
 		}
@@ -323,8 +323,8 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 					FromID: specEntity.Name,
 					ToID:   p.Name,
 					Kind:   "CONTAINS",
-					Properties: map[string]string{
-						"contained_kind": "parameter",
+					Properties: types.Props{
+						{K: "contained_kind", V: "parameter"},
 					},
 				})
 		}

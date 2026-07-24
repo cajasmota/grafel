@@ -212,9 +212,9 @@ func EmitTemplateEdges(entities *[]types.EntityRecord, lang string, edges []Temp
 		edgeKey := ed.FromName + "\x00" + name
 		if !seenEdge[edgeKey] {
 			seenEdge[edgeKey] = true
-			props := map[string]string{"template": name}
+			props := types.Props{{K: "template", V: name}}
 			if ed.Pattern != "" {
-				props["pattern"] = ed.Pattern
+				props.Set("pattern", ed.Pattern)
 			}
 			(*entities)[hostIdx].Relationships = append((*entities)[hostIdx].Relationships,
 				types.RelationshipRecord{

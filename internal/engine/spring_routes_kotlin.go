@@ -222,9 +222,9 @@ func processKotlinSpringClass(
 				FromID: id,
 				ToID:   fmt.Sprintf("Controller:%s", methodName),
 				Kind:   "ROUTES_TO",
-				Properties: map[string]string{
-					"framework":    "spring_mvc",
-					"pattern_type": "ast_driven",
+				Properties: types.Props{
+					{K: "framework", V: "spring_mvc"},
+					{K: "pattern_type", V: "ast_driven"},
 				},
 			})
 		}

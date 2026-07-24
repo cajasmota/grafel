@@ -201,7 +201,7 @@ __all__ = ("User",)
 				FromID: r.FromID,
 				ToID:   r.ToID,
 				Kind:   r.Kind,
-			}.WithProperties(r.Properties))
+			}.WithProperties(r.Properties.Snapshot()))
 		}
 	}
 	if len(rels) == 0 {
@@ -311,7 +311,7 @@ def helper():
 				FromID: r.FromID,
 				ToID:   r.ToID,
 				Kind:   r.Kind,
-			}.WithProperties(r.Properties))
+			}.WithProperties(r.Properties.Snapshot()))
 		}
 	}
 	if len(rels) < 2 {
@@ -379,10 +379,10 @@ __all__ = ("PublicUser",)
 	}
 	var sawReExport, sawAlias bool
 	for _, r := range initEdges {
-		if r.Properties["re_export"] == "true" {
+		if r.Properties.Get("re_export") == "true" {
 			sawReExport = true
 		}
-		if r.Properties["alias"] == "PublicUser" {
+		if r.Properties.Get("alias") == "PublicUser" {
 			sawAlias = true
 		}
 	}
@@ -409,7 +409,7 @@ def helper():
 	}
 	var sawDead bool
 	for _, r := range modEdges {
-		if r.Properties["dead_import"] == "true" {
+		if r.Properties.Get("dead_import") == "true" {
 			sawDead = true
 		}
 	}

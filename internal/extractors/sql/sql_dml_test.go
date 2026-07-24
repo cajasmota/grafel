@@ -92,11 +92,11 @@ func TestSQLExtractor_DMLProperties(t *testing.T) {
 	for _, r := range fn.Relationships {
 		switch r.Kind {
 		case "READS_FROM":
-			if r.Properties["dml"] == "" {
+			if r.Properties.Get("dml") == "" {
 				t.Errorf("READS_FROM edge to %q missing Properties[dml]", r.ToID)
 			}
 		case "WRITES_TO":
-			if r.Properties["dml"] == "" {
+			if r.Properties.Get("dml") == "" {
 				t.Errorf("WRITES_TO edge to %q missing Properties[dml]", r.ToID)
 			}
 		}

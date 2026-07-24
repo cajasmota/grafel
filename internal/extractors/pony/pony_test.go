@@ -314,7 +314,7 @@ actor Main
 	ents := runPony(t, src, "main.pony")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "pony" {
+			if r.Properties == nil || r.Properties.Get("language") != "pony" {
 				t.Errorf("rel %s→%s missing language=pony (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

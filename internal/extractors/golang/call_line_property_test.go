@@ -54,9 +54,9 @@ func caller() {
 
 	var found bool
 	for _, r := range calls {
-		if r.ToID == "helper" || (r.Properties != nil && r.Properties["line"] != "") {
+		if r.ToID == "helper" || (r.Properties != nil && r.Properties.Get("line") != "") {
 			found = true
-			lineStr, ok := r.Properties["line"]
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Fatal("CALLS edge missing Properties[\"line\"]")
 			}
@@ -93,8 +93,8 @@ func TestExtractor_CallEdge_CorrectLineNumber(t *testing.T) {
 
 	calls := findCalls(ents, "foo")
 	for _, r := range calls {
-		if r.ToID == "bar" || (r.Properties != nil && r.Properties["line"] != "") {
-			lineStr, ok := r.Properties["line"]
+		if r.ToID == "bar" || (r.Properties != nil && r.Properties.Get("line") != "") {
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Fatal("CALLS edge missing Properties[\"line\"]")
 			}
@@ -137,7 +137,7 @@ func c() {
 			if r.Kind != "CALLS" {
 				continue
 			}
-			lineStr, ok := r.Properties["line"]
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Errorf("entity %q: CALLS edge to %q missing Properties[\"line\"]", ent.Name, r.ToID)
 				continue

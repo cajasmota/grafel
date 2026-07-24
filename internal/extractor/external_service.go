@@ -375,9 +375,9 @@ func EmitServiceDependencyEdges(entities *[]types.EntityRecord, lang string, cal
 		edgeKey := c.FromName + "\x00" + service
 		if !seenEdge[edgeKey] {
 			seenEdge[edgeKey] = true
-			props := map[string]string{"service": service}
+			props := types.Props{{K: "service", V: service}}
 			if c.Operation != "" {
-				props["operation"] = c.Operation
+				props.Set("operation", c.Operation)
 			}
 			(*entities)[hostIdx].Relationships = append((*entities)[hostIdx].Relationships,
 				types.RelationshipRecord{
@@ -392,8 +392,8 @@ func EmitServiceDependencyEdges(entities *[]types.EntityRecord, lang string, cal
 			// less-informative `new <Ctor>` placeholder from the construction
 			// site, so the recorded operation names the actual integration use.
 			if hostRel := findServiceRel(&(*entities)[hostIdx], service); hostRel != nil {
-				if op := hostRel.Properties["operation"]; op == "" || isConstructorOp(op) {
-					hostRel.Properties["operation"] = c.Operation
+				if op := hostRel.Properties.Get("operation"); op == "" || isConstructorOp(op) {
+					hostRel.Properties.Set("operation", c.Operation)
 				}
 			}
 		}

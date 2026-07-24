@@ -32,7 +32,7 @@ func hasTransition(rels []types.RelationshipRecord, lib, machine, source, target
 		if r.Kind != transitionsToEdgeKind || r.FromID != wantFrom || r.ToID != wantTo {
 			continue
 		}
-		if r.Properties["event"] == event {
+		if r.Properties.Get("event") == event {
 			return true
 		}
 	}

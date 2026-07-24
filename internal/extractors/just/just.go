@@ -158,10 +158,10 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 					FromID: file.Path,
 					ToID:   path,
 					Kind:   "IMPORTS",
-					Properties: map[string]string{
-						"source_module": path,
-						"imported_name": path,
-						"import_kind":   "import",
+					Properties: types.Props{
+						{K: "import_kind", V: "import"},
+						{K: "imported_name", V: path},
+						{K: "source_module", V: path},
 					},
 				},
 			},

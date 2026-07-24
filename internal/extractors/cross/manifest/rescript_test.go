@@ -73,8 +73,8 @@ func TestReScriptJSON_DependsOnEdges(t *testing.T) {
 		for _, rel := range r.Relationships {
 			if rel.Kind == "DEPENDS_ON" {
 				dependsOn++
-				if rel.Properties["package_manager"] != "npm" {
-					t.Errorf("DEPENDS_ON package_manager=%q want npm", rel.Properties["package_manager"])
+				if rel.Properties.Get("package_manager") != "npm" {
+					t.Errorf("DEPENDS_ON package_manager=%q want npm", rel.Properties.Get("package_manager"))
 				}
 			}
 		}

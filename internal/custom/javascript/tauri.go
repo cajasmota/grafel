@@ -154,12 +154,12 @@ func (e *tauriFrontendExtractor) Extract(ctx context.Context, file extreg.FileIn
 			// resolver joins frontend invoke → Rust command across JS↔Rust.
 			ToID: "tauri:command:" + cmd,
 			Kind: string(types.RelationshipKindCalls),
-			Properties: map[string]string{
-				"framework":    "tauri",
-				"ipc":          "command",
-				"command_name": cmd,
-				"cross_lang":   "js_to_rust",
-				"via":          "INFERRED_FROM_TAURI_FRONTEND_INVOKE",
+			Properties: types.Props{
+				{K: "command_name", V: cmd},
+				{K: "cross_lang", V: "js_to_rust"},
+				{K: "framework", V: "tauri"},
+				{K: "ipc", V: "command"},
+				{K: "via", V: "INFERRED_FROM_TAURI_FRONTEND_INVOKE"},
 			},
 		})
 		add(caller)
@@ -204,11 +204,11 @@ func (e *tauriFrontendExtractor) Extract(ctx context.Context, file extreg.FileIn
 				FromID: owner.Name,
 				ToID:   "tauri:event:" + evt,
 				Kind:   kind,
-				Properties: map[string]string{
-					"framework":  "tauri",
-					"event_name": evt,
-					"channel":    evt,
-					"via":        provenance,
+				Properties: types.Props{
+					{K: "channel", V: evt},
+					{K: "event_name", V: evt},
+					{K: "framework", V: "tauri"},
+					{K: "via", V: provenance},
 				},
 			})
 			add(owner)

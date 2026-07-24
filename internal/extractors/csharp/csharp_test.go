@@ -349,7 +349,7 @@ public class Caller {
 		if e.Name == "Caller.Run" && e.Kind == "SCOPE.Operation" {
 			for _, rel := range e.Relationships {
 				if rel.Kind == "CALLS" && rel.ToID == "Helper" {
-					lineStr, ok := rel.Properties["line"]
+					lineStr, ok := rel.Properties.Lookup("line")
 					if !ok {
 						t.Fatal("CALLS edge missing Properties[\"line\"]")
 					}

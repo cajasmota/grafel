@@ -31,7 +31,7 @@ func jsSvcOp(recs []types.EntityRecord, fromName, service string) string {
 		}
 		for _, r := range recs[i].Relationships {
 			if r.Kind == string(types.RelationshipKindDependsOnService) && r.ToID == want {
-				return r.Properties["operation"]
+				return r.Properties.Get("operation")
 			}
 		}
 	}

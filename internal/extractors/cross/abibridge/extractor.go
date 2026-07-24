@@ -239,14 +239,14 @@ func buildExternDeclEntities(src, filePath, lang string) []types.EntityRecord {
 			FromID: markerRef,
 			ToID:   sym,
 			Kind:   string(types.RelationshipKindImplements),
-			Properties: map[string]string{
+			Properties: types.PropsFromMap(map[string]string{
 				abiBridgeProp: "asm_implements_c_decl",
 				"symbol":      sym,
 				"linkage":     "extern",
 				"resolution":  "by_name",
 				"boundary":    "c_asm_abi",
 				"line":        itoa(line),
-			},
+			}),
 		})
 	}
 	if len(rels) == 0 {
@@ -294,12 +294,12 @@ func buildInlineAsmEntities(src, filePath, lang string) []types.EntityRecord {
 				FromID: markerRef,
 				ToID:   target,
 				Kind:   string(types.RelationshipKindCalls),
-				Properties: map[string]string{
+				Properties: types.PropsFromMap(map[string]string{
 					abiBridgeProp: "c_inline_asm_call",
 					"symbol":      target,
 					"resolution":  "by_name",
 					"boundary":    "c_asm_abi",
-				},
+				}),
 			})
 		}
 	}

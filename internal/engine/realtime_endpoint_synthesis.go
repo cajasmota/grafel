@@ -139,10 +139,10 @@ func applyRealtimeEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 				FromID: handlerRef,
 				ToID:   id,
 				Kind:   string(types.RelationshipKindHandles),
-				Properties: map[string]string{
-					"framework":    framework,
-					"transport":    transport,
-					"pattern_type": "realtime_endpoint_synthesis",
+				Properties: types.Props{
+					{K: "framework", V: framework},
+					{K: "pattern_type", V: "realtime_endpoint_synthesis"},
+					{K: "transport", V: transport},
 				},
 			})
 		}

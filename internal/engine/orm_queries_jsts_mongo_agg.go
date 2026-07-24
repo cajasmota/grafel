@@ -572,18 +572,18 @@ func mongoAggStringField(stage, key string) string {
 // mongoAggJoinEdge builds the JOINS_COLLECTION relationship from the
 // aggregating collection to the looked-up `from` collection.
 func mongoAggJoinEdge(fromColl string, lk mongoAggLookup, stageName string) types.RelationshipRecord {
-	props := map[string]string{
-		"pattern_type": mongoAggPatternType,
-		"stage":        stageName,
+	props := types.Props{
+		{K: "pattern_type", V: mongoAggPatternType},
+		{K: "stage", V: stageName},
 	}
 	if lk.localField != "" {
-		props["local_field"] = lk.localField
+		props.Set("local_field", lk.localField)
 	}
 	if lk.foreignField != "" {
-		props["foreign_field"] = lk.foreignField
+		props.Set("foreign_field", lk.foreignField)
 	}
 	if lk.as != "" {
-		props["as"] = lk.as
+		props.Set("as", lk.as)
 	}
 	return types.RelationshipRecord{
 		FromID:     fmt.Sprintf("Class:%s", capitalisedSingular(fromColl)),
@@ -674,13 +674,13 @@ func mongoAggStageNodeJoinRel(nodeID, fromColl string) types.RelationshipRecord 
 		FromID: nodeID,
 		ToID:   fmt.Sprintf("Class:%s", capitalisedSingular(fromColl)),
 		Kind:   mongoAggJoinEdgeKind,
-		Properties: map[string]string{
+		Properties: types.PropsFromMap(map[string]string{
 			"pattern_type": mongoAggPatternType,
 			"stage":        "$lookup",
 			// Flag the node-anchored twin so a reader (and any de-dup pass)
 			// can tell it apart from the collection-anchored edge.
 			"anchor": "stage_node",
-		},
+		}),
 	}
 }
 

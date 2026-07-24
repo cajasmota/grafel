@@ -40,7 +40,7 @@ func findGR(ents []types.EntityRecord, fromID, toID, field string) *types.Relati
 		for j := range ents[i].Relationships {
 			r := &ents[i].Relationships[j]
 			if r.Kind == string(types.RelationshipKindGraphRelates) &&
-				r.FromID == fromID && r.ToID == toID && r.Properties["field_name"] == field {
+				r.FromID == fromID && r.ToID == toID && r.Properties.Get("field_name") == field {
 				return r
 			}
 		}
@@ -83,7 +83,7 @@ class User:
 	if e == nil {
 		t.Fatal("expected GRAPH_RELATES User→Order for orders")
 	}
-	if e.Properties["list"] != "true" || e.Properties["cardinality"] != "to_many" {
+	if e.Properties.Get("list") != "true" || e.Properties.Get("cardinality") != "to_many" {
 		t.Errorf("orders edge: want list=true to_many, got %v", e.Properties)
 	}
 
@@ -92,14 +92,14 @@ class User:
 	if a == nil {
 		t.Fatal("expected GRAPH_RELATES User→Account for account")
 	}
-	if a.Properties["cardinality"] != "to_one" || a.Properties["list"] != "false" {
+	if a.Properties.Get("cardinality") != "to_one" || a.Properties.Get("list") != "false" {
 		t.Errorf("account edge: want to_one list=false, got %v", a.Properties)
 	}
 
 	// scalar field name: str → NO edge.
 	for i := range ents {
 		for j := range ents[i].Relationships {
-			if ents[i].Relationships[j].Properties["field_name"] == "name" {
+			if ents[i].Relationships[j].Properties.Get("field_name") == "name" {
 				t.Error("scalar `name` must not produce an edge")
 			}
 		}
@@ -152,7 +152,7 @@ class Account(graphene.ObjectType):
 	if e == nil {
 		t.Fatal("expected GRAPH_RELATES User→Order for orders (graphene List(lambda: Order))")
 	}
-	if e.Properties["list"] != "true" || e.Properties["cardinality"] != "to_many" {
+	if e.Properties.Get("list") != "true" || e.Properties.Get("cardinality") != "to_many" {
 		t.Errorf("orders edge: want list=true to_many, got %v", e.Properties)
 	}
 
@@ -160,14 +160,14 @@ class Account(graphene.ObjectType):
 	if a == nil {
 		t.Fatal("expected GRAPH_RELATES User→Account for account (graphene Field)")
 	}
-	if a.Properties["cardinality"] != "to_one" {
+	if a.Properties.Get("cardinality") != "to_one" {
 		t.Errorf("account edge: want to_one, got %v", a.Properties)
 	}
 
 	// scalar graphene.String() → no edge
 	for i := range ents {
 		for j := range ents[i].Relationships {
-			if ents[i].Relationships[j].Properties["field_name"] == "name" {
+			if ents[i].Relationships[j].Properties.Get("field_name") == "name" {
 				t.Error("graphene scalar `name` must not produce an edge")
 			}
 		}

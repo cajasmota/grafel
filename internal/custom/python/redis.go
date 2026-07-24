@@ -253,8 +253,10 @@ func (e *RedisExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 					ToID: ref,
 					Kind: cacheEdgeKind(op.verb),
-					Properties: map[string]string{
-						"framework": "redis", "op": strings.ToLower(op.verb), "keyspace": label,
+					Properties: types.Props{
+						{K: "framework", V: "redis"},
+						{K: "keyspace", V: label},
+						{K: "op", V: strings.ToLower(op.verb)},
 					},
 				})
 			}
@@ -285,8 +287,10 @@ func (e *RedisExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 					ToID: ref,
 					Kind: pubsubEdgeKind(op.verb),
-					Properties: map[string]string{
-						"framework": "redis", "op": strings.ToLower(op.verb), "channel": label,
+					Properties: types.Props{
+						{K: "channel", V: label},
+						{K: "framework", V: "redis"},
+						{K: "op", V: strings.ToLower(op.verb)},
 					},
 				})
 			}
@@ -317,8 +321,10 @@ func (e *RedisExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 					ToID: ref,
 					Kind: streamEdgeKind(op.verb),
-					Properties: map[string]string{
-						"framework": "redis", "op": strings.ToLower(op.verb), "stream": label,
+					Properties: types.Props{
+						{K: "framework", V: "redis"},
+						{K: "op", V: strings.ToLower(op.verb)},
+						{K: "stream", V: label},
 					},
 				})
 			}

@@ -256,7 +256,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 				usesOZ = true
 				setProp(&rec.Properties, "framework", "openzeppelin")
 				setProp(&rec.Properties, "openzeppelin", "true")
-				edge.Properties = map[string]string{"framework": "openzeppelin"}
+				edge.Properties = types.Props{{K: "framework", V: "openzeppelin"}}
 			}
 			rec.Relationships = append(rec.Relationships, edge)
 		}
@@ -400,10 +400,10 @@ func buildImportEntities(filePath, src string) []types.EntityRecord {
 		}
 		displayName = strings.TrimSuffix(displayName, ".sol")
 
-		props := map[string]string{
-			"source_module": importPath,
-			"imported_name": displayName,
-			"local_name":    displayName,
+		props := types.Props{
+			{K: "imported_name", V: displayName},
+			{K: "local_name", V: displayName},
+			{K: "source_module", V: importPath},
 		}
 
 		out = append(out, types.EntityRecord{

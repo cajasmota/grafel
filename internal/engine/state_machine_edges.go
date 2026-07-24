@@ -145,13 +145,13 @@ func (e *fsmEmitter) transition(lib, machine, source, target, event string) {
 		return
 	}
 	e.seenEdge[key] = true
-	props := map[string]string{
-		"library":      lib,
-		"machine":      machine,
-		"pattern_type": "state_machine",
+	props := types.Props{
+		{K: "library", V: lib},
+		{K: "machine", V: machine},
+		{K: "pattern_type", V: "state_machine"},
 	}
 	if event != "" {
-		props["event"] = event
+		props.Set("event", event)
 	}
 	e.relationships = append(e.relationships, types.RelationshipRecord{
 		FromID:     fmt.Sprintf("%s:%s", fsmStateKind, fromID),

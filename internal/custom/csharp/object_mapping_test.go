@@ -74,8 +74,8 @@ func TestObjectMappingAutoMapperMapster(t *testing.T) {
 	}
 	if r := mapEdgeOf(um, "MAPS_TO", "Class:User", "Class:UserDto"); r == nil {
 		t.Error("expected MAPS_TO Class:User -> Class:UserDto")
-	} else if r.Properties["framework"] != "automapper" {
-		t.Errorf("MAPS_TO framework = %q, want automapper", r.Properties["framework"])
+	} else if r.Properties.Get("framework") != "automapper" {
+		t.Errorf("MAPS_TO framework = %q, want automapper", r.Properties.Get("framework"))
 	}
 
 	// --- CreateMap<Order, OrderDto>().ReverseMap() — both directions ---

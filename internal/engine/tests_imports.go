@@ -428,14 +428,14 @@ func ApplyTestsViaImports(
 					FromID: "scope:operation:" + p + "#" + tf.name,
 					ToID:   "scope:operation:?#" + imp.qname,
 					Kind:   "TESTS",
-					Properties: map[string]string{
-						"via":            "import",
-						"test_file":      p,
-						"test_function":  tf.name,
-						"tested":         imp.qname,
-						"pattern_type":   "tests_via_import",
-						"confidence":     "high",
-						"test_framework": "pytest",
+					Properties: types.Props{
+						{K: "confidence", V: "high"},
+						{K: "pattern_type", V: "tests_via_import"},
+						{K: "test_file", V: p},
+						{K: "test_framework", V: "pytest"},
+						{K: "test_function", V: tf.name},
+						{K: "tested", V: imp.qname},
+						{K: "via", V: "import"},
 					},
 				})
 			}

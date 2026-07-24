@@ -246,9 +246,9 @@ func applyWorkflowEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fmt.Sprintf("%s:%s", callerKind, callerName),
 			ToID:   fmt.Sprintf("%s:%s", workflowKind, wfID),
 			Kind:   startsWorkflowEdgeKind,
-			Properties: map[string]string{
-				"workflow_engine": engine,
-				"pattern_type":    "workflow_synthesis",
+			Properties: types.Props{
+				{K: "pattern_type", V: "workflow_synthesis"},
+				{K: "workflow_engine", V: engine},
 			},
 		})
 	}
@@ -266,9 +266,9 @@ func applyWorkflowEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fmt.Sprintf("%s:%s", workflowKind, wfID),
 			ToID:   fmt.Sprintf("%s:%s", activityKind, actID),
 			Kind:   executesActivityEdgeKind,
-			Properties: map[string]string{
-				"workflow_engine": engine,
-				"pattern_type":    "workflow_synthesis",
+			Properties: types.Props{
+				{K: "pattern_type", V: "workflow_synthesis"},
+				{K: "workflow_engine", V: engine},
 			},
 		})
 	}
@@ -963,10 +963,10 @@ func applyASLWorkflowEdges(
 			FromID: fmt.Sprintf("%s:%s", stateMachineKind, smID),
 			ToID:   targetID,
 			Kind:   stepFunctionStepInvokesEdgeKind,
-			Properties: map[string]string{
-				"step_name":       stepName,
-				"workflow_engine": "aws-sfn",
-				"pattern_type":    "workflow_synthesis",
+			Properties: types.Props{
+				{K: "pattern_type", V: "workflow_synthesis"},
+				{K: "step_name", V: stepName},
+				{K: "workflow_engine", V: "aws-sfn"},
 			},
 		})
 	}
@@ -1113,9 +1113,9 @@ func applyTerraformSFNEdges(
 				FromID: fmt.Sprintf("%s:%s", stateMachineKind, smID),
 				ToID:   targetID,
 				Kind:   stepFunctionStepInvokesEdgeKind,
-				Properties: map[string]string{
-					"workflow_engine": "aws-sfn",
-					"pattern_type":    "workflow_synthesis",
+				Properties: types.Props{
+					{K: "pattern_type", V: "workflow_synthesis"},
+					{K: "workflow_engine", V: "aws-sfn"},
 				},
 			})
 		}
@@ -1324,9 +1324,9 @@ func applyCloudFormationSFNEdges(
 			FromID: fmt.Sprintf("%s:%s", stateMachineKind, smID),
 			ToID:   targetID,
 			Kind:   stepFunctionStepInvokesEdgeKind,
-			Properties: map[string]string{
-				"workflow_engine": "aws-sfn",
-				"pattern_type":    "workflow_synthesis",
+			Properties: types.Props{
+				{K: "pattern_type", V: "workflow_synthesis"},
+				{K: "workflow_engine", V: "aws-sfn"},
 			},
 		})
 	}
@@ -1380,9 +1380,9 @@ func applyCDKStateMachineJSON(
 				FromID: fmt.Sprintf("%s:%s", stateMachineKind, smID),
 				ToID:   targetID,
 				Kind:   stepFunctionStepInvokesEdgeKind,
-				Properties: map[string]string{
-					"workflow_engine": "aws-sfn",
-					"pattern_type":    "workflow_synthesis",
+				Properties: types.Props{
+					{K: "pattern_type", V: "workflow_synthesis"},
+					{K: "workflow_engine", V: "aws-sfn"},
 				},
 			})
 		}
@@ -1452,9 +1452,9 @@ func applySFNStartExecutionEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fmt.Sprintf("%s:%s", callerKind, callerName),
 			ToID:   fmt.Sprintf("%s:%s", stateMachineKind, smID),
 			Kind:   startsWorkflowEdgeKind,
-			Properties: map[string]string{
-				"workflow_engine": "aws-sfn",
-				"pattern_type":    "workflow_synthesis",
+			Properties: types.Props{
+				{K: "pattern_type", V: "workflow_synthesis"},
+				{K: "workflow_engine", V: "aws-sfn"},
 			},
 		})
 	}

@@ -64,7 +64,7 @@ func TestGraphQL_ApolloResolver_EmitsPublishes(t *testing.T) {
 	}
 	foundFiltered := false
 	for _, p := range pubs {
-		if p.Properties["filtered"] == "true" {
+		if p.Properties.Get("filtered") == "true" {
 			foundFiltered = true
 		}
 	}
@@ -103,8 +103,8 @@ func TestGraphQL_ClientUseSubscription_EmitsSubscribes(t *testing.T) {
 	if len(sb) == 0 {
 		t.Fatalf("expected GRAPHQL_SUBSCRIBES edge")
 	}
-	if !strings.Contains(sb[0].Properties["args"], "channelId") {
-		t.Errorf("expected args=channelId on subscription edge; got %q", sb[0].Properties["args"])
+	if !strings.Contains(sb[0].Properties.Get("args"), "channelId") {
+		t.Errorf("expected args=channelId on subscription edge; got %q", sb[0].Properties.Get("args"))
 	}
 }
 

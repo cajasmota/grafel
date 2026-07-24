@@ -86,9 +86,9 @@ func TestDetect_DjangoRouteComposition_Issue64(t *testing.T) {
 		k := rel{r.FromID, r.ToID}
 		if _, ok := wantRels[k]; ok {
 			wantRels[k] = true
-			if r.Properties["pattern_type"] != "ast_driven" {
+			if r.Properties.Get("pattern_type") != "ast_driven" {
 				t.Errorf("ROUTES_TO %s->%s pattern_type = %q, want ast_driven",
-					r.FromID, r.ToID, r.Properties["pattern_type"])
+					r.FromID, r.ToID, r.Properties.Get("pattern_type"))
 			}
 		}
 	}

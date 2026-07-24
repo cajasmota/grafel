@@ -271,7 +271,7 @@ class AssistantConfig {
 		if r.Kind != "USES" {
 			t.Errorf("expected USES edge, got %s", r.Kind)
 		}
-		got[r.ToID] = r.Properties["wire_role"]
+		got[r.ToID] = r.Properties.Get("wire_role")
 	}
 	for target, role := range want {
 		if got[target] != role {
@@ -327,9 +327,9 @@ class AssistantConfig {
 		if r.Kind != "USES" {
 			continue
 		}
-		got[r.ToID] = r.Properties["wire_role"]
-		if r.Properties["arg_kind"] != "inline_component" {
-			t.Errorf("edge to %q: arg_kind=%q want inline_component", r.ToID, r.Properties["arg_kind"])
+		got[r.ToID] = r.Properties.Get("wire_role")
+		if r.Properties.Get("arg_kind") != "inline_component" {
+			t.Errorf("edge to %q: arg_kind=%q want inline_component", r.ToID, r.Properties.Get("arg_kind"))
 		}
 	}
 	for target, role := range want {
@@ -385,9 +385,9 @@ class Factory {
 		if r.Kind != "USES" {
 			continue
 		}
-		got[r.ToID] = r.Properties["wire_role"]
-		if r.Properties["arg_kind"] != "identifier" {
-			t.Errorf("edge to %q: arg_kind=%q want identifier", r.ToID, r.Properties["arg_kind"])
+		got[r.ToID] = r.Properties.Get("wire_role")
+		if r.Properties.Get("arg_kind") != "identifier" {
+			t.Errorf("edge to %q: arg_kind=%q want identifier", r.ToID, r.Properties.Get("arg_kind"))
 		}
 	}
 	for target, role := range want {
@@ -430,10 +430,10 @@ val assistant = AiServices.create(Assistant::class.java, OpenAiChatModel.builder
 	}
 	var found bool
 	for _, r := range svc.Relationships {
-		if r.Kind == "USES" && r.ToID == "OpenAiChatModel" && r.Properties["wire_role"] == "chat_model" {
+		if r.Kind == "USES" && r.ToID == "OpenAiChatModel" && r.Properties.Get("wire_role") == "chat_model" {
 			found = true
-			if r.Properties["arg_kind"] != "inline_component" {
-				t.Errorf("arg_kind=%q want inline_component", r.Properties["arg_kind"])
+			if r.Properties.Get("arg_kind") != "inline_component" {
+				t.Errorf("arg_kind=%q want inline_component", r.Properties.Get("arg_kind"))
 			}
 		}
 	}
@@ -491,7 +491,7 @@ interface Assistant {
 		if r.Kind != "DEPENDS_ON" {
 			t.Errorf("expected DEPENDS_ON edge, got %s", r.Kind)
 		}
-		sysEdges[r.Properties["template_var"]] = r.ToID
+		sysEdges[r.Properties.Get("template_var")] = r.ToID
 	}
 	if sysEdges["role"] != "position" || sysEdges["company"] != "org" {
 		t.Errorf("system DEPENDS_ON edges = %v, want role->position, company->org", sysEdges)
@@ -598,7 +598,7 @@ interface Assistant {
 	// The DEPENDS_ON edge for `user` carries the nested-field marker + path.
 	var userEdge *types.RelationshipRecord
 	for i := range sys.Relationships {
-		if sys.Relationships[i].Properties["template_var"] == "user" {
+		if sys.Relationships[i].Properties.Get("template_var") == "user" {
 			userEdge = &sys.Relationships[i]
 		}
 	}
@@ -608,17 +608,17 @@ interface Assistant {
 	if userEdge.ToID != "user" {
 		t.Errorf("user edge ToID: got %q, want user", userEdge.ToID)
 	}
-	if userEdge.Properties["nested_field"] != "true" {
-		t.Errorf("user edge nested_field: got %q, want true", userEdge.Properties["nested_field"])
+	if userEdge.Properties.Get("nested_field") != "true" {
+		t.Errorf("user edge nested_field: got %q, want true", userEdge.Properties.Get("nested_field"))
 	}
-	if userEdge.Properties["field_path"] != "user.name,user.address.city" {
-		t.Errorf("user edge field_path: got %q", userEdge.Properties["field_path"])
+	if userEdge.Properties.Get("field_path") != "user.name,user.address.city" {
+		t.Errorf("user edge field_path: got %q", userEdge.Properties.Get("field_path"))
 	}
 	// The plain `role` var carries no nested-field marker.
 	for i := range sys.Relationships {
 		r := sys.Relationships[i]
-		if r.Properties["template_var"] == "role" && r.Properties["nested_field"] != "" {
-			t.Errorf("role edge should not be marked nested_field, got %q", r.Properties["nested_field"])
+		if r.Properties.Get("template_var") == "role" && r.Properties.Get("nested_field") != "" {
+			t.Errorf("role edge should not be marked nested_field, got %q", r.Properties.Get("nested_field"))
 		}
 	}
 }

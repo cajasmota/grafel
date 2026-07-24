@@ -330,7 +330,7 @@ let process (n: Node) = n.Value
 	ents := runFSharp(t, src, "tag.fs")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "fsharp" {
+			if r.Properties == nil || r.Properties.Get("language") != "fsharp" {
 				t.Errorf("rel %s→%s missing language=fsharp (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}
@@ -425,7 +425,7 @@ let caller n =
 			if r.Kind != "CALLS" {
 				continue
 			}
-			if r.Properties == nil || r.Properties["line"] == "" {
+			if r.Properties == nil || r.Properties.Get("line") == "" {
 				t.Errorf("CALLS %s→%s missing line Property (got %v)", e.Name, r.ToID, r.Properties)
 			}
 		}
@@ -435,13 +435,13 @@ let caller n =
 	// space-call `other n` on file line 8 (file-absolute, not body-relative).
 	if r := fsRel(ents, "caller", "SCOPE.Operation", "CALLS", "helper"); r == nil {
 		t.Error("expected CALLS caller→helper")
-	} else if r.Properties["line"] != "7" {
-		t.Errorf("helper call line = %q, want 7 (file-absolute)", r.Properties["line"])
+	} else if r.Properties.Get("line") != "7" {
+		t.Errorf("helper call line = %q, want 7 (file-absolute)", r.Properties.Get("line"))
 	}
 	if r := fsRel(ents, "caller", "SCOPE.Operation", "CALLS", "other"); r == nil {
 		t.Error("expected CALLS caller→other")
-	} else if r.Properties["line"] != "8" {
-		t.Errorf("other call line = %q, want 8 (file-absolute)", r.Properties["line"])
+	} else if r.Properties.Get("line") != "8" {
+		t.Errorf("other call line = %q, want 8 (file-absolute)", r.Properties.Get("line"))
 	}
 }
 
@@ -1026,13 +1026,13 @@ let fetchAll () =
 	if uses == nil {
 		t.Fatal("expected USES edge to task builder")
 	}
-	if uses.Properties["ce_builder"] != "task" {
-		t.Errorf("ce_builder=%q, want task", uses.Properties["ce_builder"])
+	if uses.Properties.Get("ce_builder") != "task" {
+		t.Errorf("ce_builder=%q, want task", uses.Properties.Get("ce_builder"))
 	}
-	if !strings.Contains(uses.Properties["ce_bind_points"], "let!") {
-		t.Errorf("ce_bind_points=%q, want let!", uses.Properties["ce_bind_points"])
+	if !strings.Contains(uses.Properties.Get("ce_bind_points"), "let!") {
+		t.Errorf("ce_bind_points=%q, want let!", uses.Properties.Get("ce_bind_points"))
 	}
-	if !strings.Contains(uses.Properties["ce_bind_points"], "return") {
+	if !strings.Contains(uses.Properties.Get("ce_bind_points"), "return") {
 		// 'return' (no bang) is not a bind point; only return! counts. Just
 		// confirm let! is present (above) — this is a sanity guard.
 		_ = uses
@@ -1064,14 +1064,14 @@ let combine () =
 	for _, r := range op.Relationships {
 		if r.Kind == "USES" && r.ToID == "OptionBuilder" {
 			found = true
-			if r.Properties["ce_builder"] != "optional" {
-				t.Errorf("ce_builder=%q, want optional", r.Properties["ce_builder"])
+			if r.Properties.Get("ce_builder") != "optional" {
+				t.Errorf("ce_builder=%q, want optional", r.Properties.Get("ce_builder"))
 			}
-			if r.Properties["ce_builder_type"] != "OptionBuilder" {
-				t.Errorf("ce_builder_type=%q, want OptionBuilder", r.Properties["ce_builder_type"])
+			if r.Properties.Get("ce_builder_type") != "OptionBuilder" {
+				t.Errorf("ce_builder_type=%q, want OptionBuilder", r.Properties.Get("ce_builder_type"))
 			}
-			if !strings.Contains(r.Properties["ce_bind_points"], "return!") {
-				t.Errorf("ce_bind_points=%q, want return!", r.Properties["ce_bind_points"])
+			if !strings.Contains(r.Properties.Get("ce_bind_points"), "return!") {
+				t.Errorf("ce_bind_points=%q, want return!", r.Properties.Get("ce_bind_points"))
 			}
 		}
 	}
@@ -1106,10 +1106,10 @@ let classify n =
 	var even, odd *types.RelationshipRecord
 	for i := range op.Relationships {
 		r := &op.Relationships[i]
-		if r.Kind != "USES" || r.Properties["match_site"] != "true" {
+		if r.Kind != "USES" || r.Properties.Get("match_site") != "true" {
 			continue
 		}
-		switch r.Properties["active_pattern_case"] {
+		switch r.Properties.Get("active_pattern_case") {
 		case "Even":
 			even = r
 		case "Odd":
@@ -1146,9 +1146,9 @@ let describe x =
 		t.Fatal("expected SCOPE.Operation describe")
 	}
 	for _, r := range op.Relationships {
-		if r.Properties["match_site"] == "true" {
+		if r.Properties.Get("match_site") == "true" {
 			t.Errorf("unexpected match-site edge for non-active-pattern case %q",
-				r.Properties["active_pattern_case"])
+				r.Properties.Get("active_pattern_case"))
 		}
 	}
 }
@@ -1222,11 +1222,11 @@ let run () =
 	for _, r := range op.Relationships {
 		if r.Kind == "USES" && r.ToID == "mkBuilder" {
 			found = true
-			if r.Properties["ce_head"] != "computed" {
-				t.Errorf("ce_head=%q, want computed", r.Properties["ce_head"])
+			if r.Properties.Get("ce_head") != "computed" {
+				t.Errorf("ce_head=%q, want computed", r.Properties.Get("ce_head"))
 			}
-			if !strings.Contains(r.Properties["ce_bind_points"], "let!") {
-				t.Errorf("ce_bind_points=%q, want let!", r.Properties["ce_bind_points"])
+			if !strings.Contains(r.Properties.Get("ce_bind_points"), "let!") {
+				t.Errorf("ce_bind_points=%q, want let!", r.Properties.Get("ce_bind_points"))
 			}
 		}
 	}
@@ -1250,7 +1250,7 @@ func TestFSharp_CE_WrongLanguageNoOp(t *testing.T) {
 			t.Errorf("unexpected F# CE/active-pattern artefact %q on wrong-language input", e.Name)
 		}
 		for _, r := range e.Relationships {
-			if r.Properties["match_site"] == "true" || r.Properties["ce_head"] == "computed" {
+			if r.Properties.Get("match_site") == "true" || r.Properties.Get("ce_head") == "computed" {
 				t.Errorf("unexpected CE/match-site edge on wrong-language input from %q", e.Name)
 			}
 		}
@@ -1300,19 +1300,19 @@ let validateUser (dto: UserDto) =
 	if r == nil {
 		t.Fatal("expected validateUser VALIDATES validator:validus")
 	}
-	if r.Properties["library"] != "validus" {
-		t.Errorf("library=%q, want validus", r.Properties["library"])
+	if r.Properties.Get("library") != "validus" {
+		t.Errorf("library=%q, want validus", r.Properties.Get("library"))
 	}
-	if r.Properties["computation_expression"] != "true" {
-		t.Errorf("expected computation_expression=true, got %q", r.Properties["computation_expression"])
+	if r.Properties.Get("computation_expression") != "true" {
+		t.Errorf("expected computation_expression=true, got %q", r.Properties.Get("computation_expression"))
 	}
-	combos := r.Properties["combinators"]
+	combos := r.Properties.Get("combinators")
 	for _, want := range []string{"Check.String.notEmpty", "Check.String.betweenLen", "Check.Int.greaterThan"} {
 		if !strings.Contains(combos, want) {
 			t.Errorf("combinators=%q, want to contain %q", combos, want)
 		}
 	}
-	if r.Properties["line"] == "" {
+	if r.Properties.Get("line") == "" {
 		t.Error("expected a line property on the VALIDATES edge")
 	}
 }
@@ -1334,8 +1334,8 @@ let nameValidator =
 	if r == nil {
 		t.Fatal("expected nameValidator VALIDATES validator:validus")
 	}
-	if !strings.Contains(r.Properties["combinators"], "ValidatorGroup") {
-		t.Errorf("combinators=%q, want ValidatorGroup", r.Properties["combinators"])
+	if !strings.Contains(r.Properties.Get("combinators"), "ValidatorGroup") {
+		t.Errorf("combinators=%q, want ValidatorGroup", r.Properties.Get("combinators"))
 	}
 }
 
@@ -1358,11 +1358,11 @@ let validateForm (input: FormInput) =
 	if r == nil {
 		t.Fatal("expected validateForm VALIDATES validator:fstoolkit")
 	}
-	if r.Properties["computation_expression"] != "true" {
-		t.Errorf("expected computation_expression=true, got %q", r.Properties["computation_expression"])
+	if r.Properties.Get("computation_expression") != "true" {
+		t.Errorf("expected computation_expression=true, got %q", r.Properties.Get("computation_expression"))
 	}
-	if !strings.Contains(r.Properties["combinators"], "Validation.ofResult") {
-		t.Errorf("combinators=%q, want Validation.ofResult", r.Properties["combinators"])
+	if !strings.Contains(r.Properties.Get("combinators"), "Validation.ofResult") {
+		t.Errorf("combinators=%q, want Validation.ofResult", r.Properties.Get("combinators"))
 	}
 }
 
@@ -1388,8 +1388,8 @@ type Order = {
 	if r == nil {
 		t.Fatal("expected Order VALIDATES Address (nested_model)")
 	}
-	if r.Properties["via"] != "nested_model" {
-		t.Errorf("via=%q, want nested_model", r.Properties["via"])
+	if r.Properties.Get("via") != "nested_model" {
+		t.Errorf("via=%q, want nested_model", r.Properties.Get("via"))
 	}
 	// Only ONE edge per distinct nested type even though two fields reference it.
 	count := 0
@@ -1423,14 +1423,14 @@ type SignupDto = {
 	if r == nil {
 		t.Fatal("expected SignupDto VALIDATES validator:dataannotations (custom_validation)")
 	}
-	if r.Properties["via"] != "custom_validation" {
-		t.Errorf("via=%q, want custom_validation", r.Properties["via"])
+	if r.Properties.Get("via") != "custom_validation" {
+		t.Errorf("via=%q, want custom_validation", r.Properties.Get("via"))
 	}
-	if r.Properties["validator_type"] != "UserValidators" {
-		t.Errorf("validator_type=%q, want UserValidators", r.Properties["validator_type"])
+	if r.Properties.Get("validator_type") != "UserValidators" {
+		t.Errorf("validator_type=%q, want UserValidators", r.Properties.Get("validator_type"))
 	}
-	if r.Properties["method"] != "ValidateAge" {
-		t.Errorf("method=%q, want ValidateAge", r.Properties["method"])
+	if r.Properties.Get("method") != "ValidateAge" {
+		t.Errorf("method=%q, want ValidateAge", r.Properties.Get("method"))
 	}
 	// The custom-validation attribute must NOT leak into the field validation chips.
 	if fe := fsFind(ents, "SignupDto.Age", "SCOPE.Schema"); fe == nil {
@@ -1460,8 +1460,8 @@ type RegistrationDto =
 	if r == nil {
 		t.Fatal("expected RegistrationDto VALIDATES validator:dataannotations (ivalidatableobject)")
 	}
-	if r.Properties["via"] != "ivalidatableobject" {
-		t.Errorf("via=%q, want ivalidatableobject", r.Properties["via"])
+	if r.Properties.Get("via") != "ivalidatableobject" {
+		t.Errorf("via=%q, want ivalidatableobject", r.Properties.Get("via"))
 	}
 }
 

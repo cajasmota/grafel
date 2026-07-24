@@ -174,8 +174,8 @@ tasks:
 			contains++
 		case "IMPORTS":
 			imports++
-			if r.Properties["include_namespace"] != "sub" {
-				t.Errorf("import namespace = %q, want sub", r.Properties["include_namespace"])
+			if r.Properties.Get("include_namespace") != "sub" {
+				t.Errorf("import namespace = %q, want sub", r.Properties.Get("include_namespace"))
 			}
 		}
 	}
@@ -197,7 +197,7 @@ tasks:
 			buildLint = true
 		case r.FromID == idByName["ci"] && r.ToID == idByName["build"]:
 			ciBuild = true
-		case r.FromID == idByName["ci"] && r.Properties["dep_task"] == "sub:deploy":
+		case r.FromID == idByName["ci"] && r.Properties.Get("dep_task") == "sub:deploy":
 			ciExt = true
 		}
 	}

@@ -87,8 +87,8 @@ func syntheticModules(numModules, entitiesPerModule int) (map[ModuleKey][]types.
 				FromID: id,
 				ToID:   "SCOPE.Operation:" + targetName,
 				Kind:   "CALLS",
-				Properties: map[string]string{
-					"language": "go",
+				Properties: types.Props{
+					{K: "language", V: "go"},
 				},
 			})
 		}

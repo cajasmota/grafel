@@ -153,11 +153,11 @@ func applyIaCSNSEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   subscribesToEdgeKind,
-			Properties: map[string]string{
-				"broker":       "sns_sqs",
-				"pattern_type": "iac_sns_fanout",
-				"sns_fanout":   "true",
-				"iac_tool":     iacTool,
+			Properties: types.Props{
+				{K: "broker", V: "sns_sqs"},
+				{K: "iac_tool", V: iacTool},
+				{K: "pattern_type", V: "iac_sns_fanout"},
+				{K: "sns_fanout", V: "true"},
 			},
 		})
 	}

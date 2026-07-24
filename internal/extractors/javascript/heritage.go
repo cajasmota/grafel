@@ -76,10 +76,10 @@ func (x *extractor) classHeritageRels(class ts.Node, className string) []types.R
 				rels = append(rels, types.RelationshipRecord{
 					ToID: name,
 					Kind: string(kind),
-					Properties: map[string]string{
-						"subtype": strings.ToLower(string(kind)),
-						"from":    className,
-						"to":      name,
+					Properties: types.Props{
+						{K: "from", V: className},
+						{K: "subtype", V: strings.ToLower(string(kind))},
+						{K: "to", V: name},
 					},
 				})
 			}

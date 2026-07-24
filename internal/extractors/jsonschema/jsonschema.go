@@ -117,7 +117,7 @@ func buildObjectSchema(schema map[string]interface{}, name string, file extracto
 		rels = append(rels, types.RelationshipRecord{
 			ToID:       extractor.BuildOperationStructuralRef("jsonschema", file.Path, ref),
 			Kind:       "REFERENCES",
-			Properties: map[string]string{"type": ref},
+			Properties: types.Props{{K: "type", V: ref}},
 		})
 	}
 
@@ -144,7 +144,7 @@ func buildObjectSchema(schema map[string]interface{}, name string, file extracto
 			rels = append(rels, types.RelationshipRecord{
 				ToID:       extractor.BuildOperationStructuralRef("jsonschema", file.Path, ref),
 				Kind:       "REFERENCES",
-				Properties: map[string]string{"via_field": pname, "type": ref},
+				Properties: types.Props{{K: "type", V: ref}, {K: "via_field", V: pname}},
 			})
 		}
 	}

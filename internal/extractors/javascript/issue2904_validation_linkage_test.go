@@ -27,7 +27,7 @@ func hasValidatesEdge(ents []types.EntityRecord, fromName, toID, via string) boo
 		return false
 	}
 	for _, r := range e.Relationships {
-		if r.Kind == "VALIDATES" && r.ToID == toID && r.Properties["via"] == via {
+		if r.Kind == "VALIDATES" && r.ToID == toID && r.Properties.Get("via") == via {
 			return true
 		}
 	}
@@ -84,7 +84,7 @@ export function handler(req: any, res: any) {
 	}
 	found := false
 	for _, r := range e.Relationships {
-		if r.Kind == "VALIDATES" && r.Properties["via"] == "request_validation" {
+		if r.Kind == "VALIDATES" && r.Properties.Get("via") == "request_validation" {
 			found = true
 		}
 	}
@@ -209,7 +209,7 @@ func TestValidationLinkage_Fixtures(t *testing.T) {
 			found := false
 			for _, e := range ents {
 				for _, r := range e.Relationships {
-					if r.Kind == "VALIDATES" && r.Properties["via"] == tc.via {
+					if r.Kind == "VALIDATES" && r.Properties.Get("via") == tc.via {
 						found = true
 					}
 				}

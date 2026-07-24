@@ -65,7 +65,7 @@ func hasDispatchCallEdge(ents []types.EntityRecord, fromName, toID string) bool 
 		}
 		for _, r := range ents[i].Relationships {
 			if r.Kind == "CALLS" && r.ToID == toID &&
-				r.Properties != nil && r.Properties["via"] == "dynamic_dispatch_map" {
+				r.Properties != nil && r.Properties.Get("via") == "dynamic_dispatch_map" {
 				return true
 			}
 		}
@@ -82,7 +82,7 @@ func hasPlainCallEdge(ents []types.EntityRecord, fromName, toID string) bool {
 		}
 		for _, r := range ents[i].Relationships {
 			if r.Kind == "CALLS" && r.ToID == toID {
-				if r.Properties == nil || r.Properties["via"] == "" {
+				if r.Properties == nil || r.Properties.Get("via") == "" {
 					return true
 				}
 			}
@@ -100,7 +100,7 @@ func countDispatchCallEdges(ents []types.EntityRecord, fromName string) int {
 		}
 		n := 0
 		for _, r := range ents[i].Relationships {
-			if r.Kind == "CALLS" && r.Properties != nil && r.Properties["via"] == "dynamic_dispatch_map" {
+			if r.Kind == "CALLS" && r.Properties != nil && r.Properties.Get("via") == "dynamic_dispatch_map" {
 				n++
 			}
 		}
@@ -220,8 +220,8 @@ func relSummary(ents []types.EntityRecord, name string) string {
 		var parts []string
 		for _, r := range ents[i].Relationships {
 			via := ""
-			if r.Properties != nil && r.Properties["via"] != "" {
-				via = "[via=" + r.Properties["via"] + "]"
+			if r.Properties != nil && r.Properties.Get("via") != "" {
+				via = "[via=" + r.Properties.Get("via") + "]"
 			}
 			parts = append(parts, r.Kind+"→"+r.ToID+via)
 		}

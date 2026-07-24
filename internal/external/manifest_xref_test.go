@@ -285,7 +285,7 @@ func TestCrossReference_EndToEnd(t *testing.T) {
 			for _, rel := range r.Relationships {
 				doc.Relationships = append(doc.Relationships, graph.Relationship{
 					FromID: rel.FromID, ToID: rel.ToID, Kind: rel.Kind,
-				}.WithProperties(rel.Properties))
+				}.WithProperties(rel.Properties.Snapshot()))
 			}
 		}
 	}

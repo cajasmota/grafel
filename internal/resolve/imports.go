@@ -227,19 +227,19 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 			if file == "" {
 				continue
 			}
-			module := strings.TrimSpace(rel.Properties[importPropSourceModule])
+			module := strings.TrimSpace(rel.Properties.Get(importPropSourceModule))
 			if module == "" {
 				continue
 			}
-			if rel.Properties[importPropWildcard] == "1" {
+			if rel.Properties.Get(importPropWildcard) == "1" {
 				tbl.wildcardModules[file] = append(tbl.wildcardModules[file], module)
 				continue
 			}
-			local := strings.TrimSpace(rel.Properties[importPropLocalName])
+			local := strings.TrimSpace(rel.Properties.Get(importPropLocalName))
 			if local == "" {
 				continue
 			}
-			imported := strings.TrimSpace(rel.Properties[importPropImportedName])
+			imported := strings.TrimSpace(rel.Properties.Get(importPropImportedName))
 			if imported == "" {
 				imported = local
 			}
@@ -1535,8 +1535,8 @@ func (t ImportTable) ResolvePythonModuleImport(dotted string) (string, bool) {
 	return id, true
 }
 
-func isCSharpImportSource(entityLang, callerFile string, props map[string]string) bool {
-	if props != nil && props["language"] == "csharp" {
+func isCSharpImportSource(entityLang, callerFile string, props types.Props) bool {
+	if props.Get("language") == "csharp" {
 		return true
 	}
 	if entityLang == "csharp" {
@@ -2032,8 +2032,8 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 				// resolution surface still gets a turn (e.g. the leaf might be
 				// directly imported elsewhere in the file).
 				if rel.Properties != nil {
-					if alias := rel.Properties["import_alias"]; alias != "" {
-						leaf := rel.Properties["call_leaf"]
+					if alias := rel.Properties.Get("import_alias"); alias != "" {
+						leaf := rel.Properties.Get("call_leaf")
 						if leaf == "" {
 							leaf = to
 						}
@@ -2165,11 +2165,11 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					// tie-break: prefer the entity whose SourceFile basename
 					// matches the class name (Java naming convention).
 					if !ok && rel.Properties != nil &&
-						rel.Properties[importPropSourceModule] != "" &&
-						rel.Properties[importPropImportedName] != "" &&
-						rel.Properties["language"] == "java" {
-						srcMod := rel.Properties[importPropSourceModule]
-						impName := rel.Properties[importPropImportedName]
+						rel.Properties.Get(importPropSourceModule) != "" &&
+						rel.Properties.Get(importPropImportedName) != "" &&
+						rel.Properties.Get("language") == "java" {
+						srcMod := rel.Properties.Get(importPropSourceModule)
+						impName := rel.Properties.Get(importPropImportedName)
 						id, ok = tbl.lookupModuleEntityJavaCanonical(srcMod, impName)
 					}
 					// Refs #44 — Python module-level import resolution.
@@ -2183,7 +2183,7 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					// property on the IMPORTS edge) so other languages with
 					// dotted paths are not widened.
 					if !ok && rel.Properties != nil &&
-						rel.Properties["language"] == "python" {
+						rel.Properties.Get("language") == "python" {
 						id, ok = tbl.ResolvePythonModuleImport(normalized)
 					}
 					// #1991 — Python __init__.py re-exports of module
@@ -2204,7 +2204,7 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					// an unresolved EXTERNAL synthetic node, breaking the
 					// re-export chain and the dead-imports detector.
 					if !ok && rel.Properties != nil &&
-						rel.Properties["language"] == "python" {
+						rel.Properties.Get("language") == "python" {
 						if dot := strings.LastIndexByte(normalized, '.'); dot > 0 {
 							parent := normalized[:dot]
 							id, ok = tbl.ResolvePythonModuleImport(parent)
@@ -2265,7 +2265,7 @@ func ResolveGoInTreeImports(records []types.EntityRecord) int {
 			if r.Properties == nil {
 				continue
 			}
-			pkgDir := r.Properties["go_pkg_dir"]
+			pkgDir := r.Properties.Get("go_pkg_dir")
 			if pkgDir == "" {
 				continue
 			}
@@ -2325,8 +2325,8 @@ func (idx Index) ResolveGoCrossPackageCalls(records []types.EntityRecord) int {
 			if r.Kind != "CALLS" || r.Properties == nil {
 				continue
 			}
-			pkgDir := r.Properties["go_call_pkg_dir"]
-			leaf := r.Properties["call_leaf"]
+			pkgDir := r.Properties.Get("go_call_pkg_dir")
+			leaf := r.Properties.Get("call_leaf")
 			if pkgDir == "" || leaf == "" {
 				continue
 			}
@@ -2400,15 +2400,15 @@ func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
 			if r.Kind != "CALLS" || r.Properties == nil {
 				continue
 			}
-			dirsRaw := r.Properties["rust_call_pkg_dirs"]
-			leaf := r.Properties["call_leaf"]
+			dirsRaw := r.Properties.Get("rust_call_pkg_dirs")
+			leaf := r.Properties.Get("call_leaf")
 			if dirsRaw == "" || leaf == "" {
 				continue
 			}
 			if r.ToID == "" || isHexID(r.ToID) {
 				continue // already resolved
 			}
-			scope := r.Properties["rust_call_scope"]
+			scope := r.Properties.Get("rust_call_scope")
 			dirs := strings.Split(dirsRaw, ";")
 
 			// Try each candidate directory; require a single unambiguous
@@ -2511,9 +2511,9 @@ func (idx Index) ResolveCSharpCrossNamespaceCalls(records []types.EntityRecord) 
 			if r.Kind != "CALLS" || r.Properties == nil {
 				continue
 			}
-			nsRaw := r.Properties["csharp_call_ns"]
-			typ := r.Properties["csharp_call_type"]
-			leaf := r.Properties["call_leaf"]
+			nsRaw := r.Properties.Get("csharp_call_ns")
+			typ := r.Properties.Get("csharp_call_type")
+			leaf := r.Properties.Get("call_leaf")
 			if nsRaw == "" || typ == "" || leaf == "" {
 				continue
 			}
@@ -2605,15 +2605,15 @@ func (idx Index) ResolveKotlinCrossPackageCalls(records []types.EntityRecord) in
 			if r.Kind != "CALLS" || r.Properties == nil {
 				continue
 			}
-			pkgRaw := r.Properties["kotlin_call_pkg"]
-			leaf := r.Properties["call_leaf"]
+			pkgRaw := r.Properties.Get("kotlin_call_pkg")
+			leaf := r.Properties.Get("call_leaf")
 			if pkgRaw == "" || leaf == "" {
 				continue
 			}
 			if r.ToID == "" || isHexID(r.ToID) {
 				continue // already resolved
 			}
-			typ := r.Properties["kotlin_call_type"] // "" => top-level function
+			typ := r.Properties.Get("kotlin_call_type") // "" => top-level function
 			resolved := ""
 			conflict := false
 			for _, pkg := range strings.Split(pkgRaw, ";") {

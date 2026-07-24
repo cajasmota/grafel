@@ -96,9 +96,9 @@ func applyScheduledJobEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: scheduledJobKind + ":" + jobID,
 			ToID:   "Function:" + handler,
 			Kind:   triggersEdgeKind,
-			Properties: map[string]string{
-				"framework":    framework,
-				"pattern_type": "scheduled_job_synthesis",
+			Properties: types.Props{
+				{K: "framework", V: framework},
+				{K: "pattern_type", V: "scheduled_job_synthesis"},
 			},
 		})
 	}
@@ -336,9 +336,9 @@ func synthesizeCeleryCallSiteEdges(
 			FromID: "SCOPE.Operation:" + callerFunc,
 			ToID:   scheduledJobKind + ":" + jobID,
 			Kind:   "PUBLISHES_TO",
-			Properties: map[string]string{
-				"framework":    "celery",
-				"pattern_type": "celery_pubsub_synthesis",
+			Properties: types.Props{
+				{K: "framework", V: "celery"},
+				{K: "pattern_type", V: "celery_pubsub_synthesis"},
 			},
 		})
 	}
@@ -811,11 +811,11 @@ func synthesizeSidekiqEnqueueEdges(
 			FromID: "SCOPE.Operation:" + caller,
 			ToID:   scheduledJobKind + ":" + jobID,
 			Kind:   string(types.RelationshipKindEnqueues),
-			Properties: map[string]string{
-				"framework":       "sidekiq",
-				"pattern_type":    "sidekiq_enqueue_synthesis",
-				"worker_class":    workerClass,
-				"dispatch_method": src[idx[4]:idx[5]],
+			Properties: types.Props{
+				{K: "dispatch_method", V: src[idx[4]:idx[5]]},
+				{K: "framework", V: "sidekiq"},
+				{K: "pattern_type", V: "sidekiq_enqueue_synthesis"},
+				{K: "worker_class", V: workerClass},
 			},
 		})
 	}
@@ -912,10 +912,10 @@ func synthesizeGoAsynqEnqueueEdges(
 			FromID: "SCOPE.Operation:" + caller,
 			ToID:   scheduledJobKind + ":" + jobID,
 			Kind:   string(types.RelationshipKindEnqueues),
-			Properties: map[string]string{
-				"framework":    "asynq",
-				"pattern_type": "asynq_enqueue_synthesis",
-				"task_type":    taskType,
+			Properties: types.Props{
+				{K: "framework", V: "asynq"},
+				{K: "pattern_type", V: "asynq_enqueue_synthesis"},
+				{K: "task_type", V: taskType},
 			},
 		})
 	}
@@ -1028,11 +1028,11 @@ func synthesizeResqueEnqueueEdges(
 			FromID: "SCOPE.Operation:" + caller,
 			ToID:   scheduledJobKind + ":" + jobID,
 			Kind:   string(types.RelationshipKindEnqueues),
-			Properties: map[string]string{
-				"framework":       "resque",
-				"pattern_type":    "resque_enqueue_synthesis",
-				"job_class":       jobClass,
-				"dispatch_method": dispatchMethod,
+			Properties: types.Props{
+				{K: "dispatch_method", V: dispatchMethod},
+				{K: "framework", V: "resque"},
+				{K: "job_class", V: jobClass},
+				{K: "pattern_type", V: "resque_enqueue_synthesis"},
 			},
 		})
 	}
@@ -1130,10 +1130,10 @@ func synthesizeRQEnqueueEdges(
 			FromID: "SCOPE.Operation:" + caller,
 			ToID:   "Function:" + short,
 			Kind:   string(types.RelationshipKindEnqueues),
-			Properties: map[string]string{
-				"framework":    "rq",
-				"pattern_type": "rq_enqueue_synthesis",
-				"callable":     callable,
+			Properties: types.Props{
+				{K: "callable", V: callable},
+				{K: "framework", V: "rq"},
+				{K: "pattern_type", V: "rq_enqueue_synthesis"},
 			},
 		})
 	}

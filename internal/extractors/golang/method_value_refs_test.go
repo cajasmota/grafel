@@ -52,7 +52,7 @@ func findCallsEdgeWithViaValue(e *types.EntityRecord, toSubstr string) *types.Re
 		if !strings.Contains(r.ToID, toSubstr) {
 			continue
 		}
-		if r.Properties["via_value"] == "true" {
+		if r.Properties.Get("via_value") == "true" {
 			return r
 		}
 	}
@@ -83,10 +83,10 @@ func methodValueSummary(ents []types.EntityRecord) string {
 			if r.Kind == "CALLS" {
 				b.WriteString(e.Name)
 				b.WriteString(" -[CALLS")
-				if r.Properties["via_value"] == "true" {
+				if r.Properties.Get("via_value") == "true" {
 					b.WriteString(",via_value")
 				}
-				if rt := r.Properties["receiver_type"]; rt != "" {
+				if rt := r.Properties.Get("receiver_type"); rt != "" {
 					b.WriteString(",recv=")
 					b.WriteString(rt)
 				}
@@ -143,7 +143,7 @@ func (s *Server) registerTools() {
 		t.Fatalf("expected CALLS via_value=true from Server.registerTools -> handleQueryGraph; all edges: %s",
 			methodValueSummary(ents))
 	}
-	if hit.Properties["receiver_type"] != "Server" {
+	if hit.Properties.Get("receiver_type") != "Server" {
 		t.Errorf("expected receiver_type=Server on via_value CALLS edge, got %+v", hit.Properties)
 	}
 }
@@ -236,7 +236,7 @@ func driver(x *Foo) {
 			methodValueSummary(ents))
 	}
 	// It must NOT carry via_value=true (the direct-invocation case).
-	if direct.Properties["via_value"] == "true" {
+	if direct.Properties.Get("via_value") == "true" {
 		t.Errorf("direct invocation x.Bar() should NOT carry via_value=true, got %+v", direct.Properties)
 	}
 }
@@ -297,7 +297,7 @@ func (s *Server) setup() {
 		t.Fatal("Server.setup entity not found")
 	}
 	for _, r := range caller.Relationships {
-		if r.Kind == "CALLS" && strings.Contains(r.ToID, "setup") && r.Properties["via_value"] == "true" {
+		if r.Kind == "CALLS" && strings.Contains(r.ToID, "setup") && r.Properties.Get("via_value") == "true" {
 			t.Errorf("self-loop via_value edge leaked: %+v", r)
 		}
 	}

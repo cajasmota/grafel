@@ -132,13 +132,13 @@ func applyKafkaEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		base := map[string]string{
-			"broker":       "kafka",
-			"pattern_type": "kafka_synthesis",
+		base := types.Props{
+			{K: "broker", V: "kafka"},
+			{K: "pattern_type", V: "kafka_synthesis"},
 		}
 		for k, v := range props {
 			if v != "" {
-				base[k] = v
+				base.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{
@@ -162,9 +162,9 @@ func applyKafkaEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fmt.Sprintf("%s:%s", messageTopicKind, fromTopicID),
 			ToID:   fmt.Sprintf("%s:%s", messageTopicKind, toTopicID),
 			Kind:   transformsEdgeKind,
-			Properties: map[string]string{
-				"broker":       "kafka",
-				"pattern_type": "kafka_synthesis",
+			Properties: types.Props{
+				{K: "broker", V: "kafka"},
+				{K: "pattern_type", V: "kafka_synthesis"},
 			},
 		})
 	}

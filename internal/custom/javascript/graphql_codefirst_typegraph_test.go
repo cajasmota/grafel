@@ -85,11 +85,11 @@ class User {
 	if e == nil {
 		t.Fatal("expected GRAPH_RELATES User→Order")
 	}
-	if e.Properties["list"] != "true" || e.Properties["cardinality"] != "to_many" {
+	if e.Properties.Get("list") != "true" || e.Properties.Get("cardinality") != "to_many" {
 		t.Errorf("orders edge: want list=true to_many, got %v", e.Properties)
 	}
-	if e.Properties["field_name"] != "orders" {
-		t.Errorf("want field_name=orders, got %q", e.Properties["field_name"])
+	if e.Properties.Get("field_name") != "orders" {
+		t.Errorf("want field_name=orders, got %q", e.Properties.Get("field_name"))
 	}
 
 	// There are two User→Order edges (orders=list, latest=to_one); confirm a
@@ -99,9 +99,9 @@ class User {
 		for j := range ents[i].Relationships {
 			r := &ents[i].Relationships[j]
 			if r.FromID == ref(path, "User") && r.ToID == ref(path, "Order") &&
-				r.Properties["field_name"] == "latest" {
+				r.Properties.Get("field_name") == "latest" {
 				sawToOne = true
-				if r.Properties["list"] != "false" || r.Properties["cardinality"] != "to_one" {
+				if r.Properties.Get("list") != "false" || r.Properties.Get("cardinality") != "to_one" {
 					t.Errorf("latest edge: want to_one, got %v", r.Properties)
 				}
 			}
@@ -173,7 +173,7 @@ export const User = objectType({
 		for j := range ents[i].Relationships {
 			r := &ents[i].Relationships[j]
 			if r.FromID == ref(path, "User") && r.ToID == ref(path, "Order") {
-				switch r.Properties["field_name"] {
+				switch r.Properties.Get("field_name") {
 				case "orders":
 					list = r
 				case "primary":
@@ -182,16 +182,16 @@ export const User = objectType({
 			}
 		}
 	}
-	if list == nil || list.Properties["list"] != "true" || list.Properties["cardinality"] != "to_many" {
+	if list == nil || list.Properties.Get("list") != "true" || list.Properties.Get("cardinality") != "to_many" {
 		t.Errorf("nexus orders: want list=true to_many, got %v", list)
 	}
-	if nonNull == nil || nonNull.Properties["nullable"] != "false" || nonNull.Properties["cardinality"] != "to_one" {
+	if nonNull == nil || nonNull.Properties.Get("nullable") != "false" || nonNull.Properties.Get("cardinality") != "to_one" {
 		t.Errorf("nexus primary: want nullable=false to_one, got %v", nonNull)
 	}
 	// scalar t.string("name") → no edge
 	for i := range ents {
 		for j := range ents[i].Relationships {
-			if ents[i].Relationships[j].Properties["field_name"] == "name" {
+			if ents[i].Relationships[j].Properties.Get("field_name") == "name" {
 				t.Error("nexus scalar `name` must not produce an edge")
 			}
 		}
@@ -222,7 +222,7 @@ builder.objectType("User", {
 		for j := range ents[i].Relationships {
 			r := &ents[i].Relationships[j]
 			if r.FromID == ref(path, "User") && r.ToID == ref(path, "Order") {
-				switch r.Properties["field_name"] {
+				switch r.Properties.Get("field_name") {
 				case "orders":
 					list = r
 				case "primary":
@@ -231,10 +231,10 @@ builder.objectType("User", {
 			}
 		}
 	}
-	if list == nil || list.Properties["list"] != "true" || list.Properties["cardinality"] != "to_many" {
+	if list == nil || list.Properties.Get("list") != "true" || list.Properties.Get("cardinality") != "to_many" {
 		t.Errorf("pothos orders: want list=true to_many, got %v", list)
 	}
-	if single == nil || single.Properties["cardinality"] != "to_one" {
+	if single == nil || single.Properties.Get("cardinality") != "to_one" {
 		t.Errorf("pothos primary: want to_one, got %v", single)
 	}
 }

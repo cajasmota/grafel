@@ -138,8 +138,8 @@ func TestGroovy_CallsDottedReceiver(t *testing.T) {
 		}
 		if r.ToID == wantDotted {
 			gotDotted = true
-			if r.Properties["receiver_type"] != "Service" {
-				t.Errorf("Service.run receiver_type=%q want Service", r.Properties["receiver_type"])
+			if r.Properties.Get("receiver_type") != "Service" {
+				t.Errorf("Service.run receiver_type=%q want Service", r.Properties.Get("receiver_type"))
 			}
 		}
 		if r.ToID == wantBare {
@@ -240,8 +240,8 @@ class A {}
 			if r.Kind != "IMPORTS" {
 				continue
 			}
-			got[r.ToID] = r.Properties
-			if r.Properties["wildcard"] == "1" && r.ToID == "foo.helpers" {
+			got[r.ToID] = r.Properties.Snapshot()
+			if r.Properties.Get("wildcard") == "1" && r.ToID == "foo.helpers" {
 				wildcardSeen = true
 			}
 		}
@@ -282,8 +282,8 @@ class A {
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			relCount++
-			if r.Properties["language"] != "groovy" {
-				t.Errorf("rel %s→%s missing language=groovy (got=%q)", r.Kind, r.ToID, r.Properties["language"])
+			if r.Properties.Get("language") != "groovy" {
+				t.Errorf("rel %s→%s missing language=groovy (got=%q)", r.Kind, r.ToID, r.Properties.Get("language"))
 			}
 		}
 	}

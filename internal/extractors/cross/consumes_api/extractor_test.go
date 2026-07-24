@@ -186,17 +186,17 @@ func TestEmitsSpecificConsumesAPIEdge(t *testing.T) {
 	if rel.FromID != "scope:component:http_caller:bff/users.js" {
 		t.Errorf("CONSUMES_API FromID=%q, want the http_caller stub", rel.FromID)
 	}
-	if rel.Properties["method"] != "GET" {
-		t.Errorf("edge method=%q, want GET", rel.Properties["method"])
+	if rel.Properties.Get("method") != "GET" {
+		t.Errorf("edge method=%q, want GET", rel.Properties.Get("method"))
 	}
-	if rel.Properties["matched_path"] != "/api/users/{*}" {
-		t.Errorf("edge matched_path=%q, want /api/users/{*}", rel.Properties["matched_path"])
+	if rel.Properties.Get("matched_path") != "/api/users/{*}" {
+		t.Errorf("edge matched_path=%q, want /api/users/{*}", rel.Properties.Get("matched_path"))
 	}
-	if rel.Properties["endpoint_path"] != "/api/users/{id}" {
-		t.Errorf("edge endpoint_path=%q, want /api/users/{id}", rel.Properties["endpoint_path"])
+	if rel.Properties.Get("endpoint_path") != "/api/users/{id}" {
+		t.Errorf("edge endpoint_path=%q, want /api/users/{id}", rel.Properties.Get("endpoint_path"))
 	}
-	if rel.Properties["via"] != "same_file_http_consumption" {
-		t.Errorf("edge via=%q, want same_file_http_consumption", rel.Properties["via"])
+	if rel.Properties.Get("via") != "same_file_http_consumption" {
+		t.Errorf("edge via=%q, want same_file_http_consumption", rel.Properties.Get("via"))
 	}
 }
 

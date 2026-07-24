@@ -299,13 +299,13 @@ func applyPulumiEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		props := map[string]string{
-			"iac_tool":     "pulumi",
-			"pattern_type": "pulumi_program",
-			"reason":       reason,
+		props := types.Props{
+			{K: "iac_tool", V: "pulumi"},
+			{K: "pattern_type", V: "pulumi_program"},
+			{K: "reason", V: reason},
 		}
 		if detail != "" {
-			props[reason] = detail
+			props.Set(reason, detail)
 		}
 		relationships = append(relationships, types.RelationshipRecord{
 			FromID:     fromID,

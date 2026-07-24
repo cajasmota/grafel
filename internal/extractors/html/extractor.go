@@ -666,10 +666,10 @@ func buildAssetImportRel(fromPath, ref string) types.RelationshipRecord {
 		FromID: fromPath,
 		ToID:   ref,
 		Kind:   "IMPORTS",
-		Properties: map[string]string{
-			"local_name":    assetBasename(ref),
-			"source_module": ref,
-			"imported_name": "",
+		Properties: types.Props{
+			{K: "imported_name", V: ""},
+			{K: "local_name", V: assetBasename(ref)},
+			{K: "source_module", V: ref},
 		},
 	}
 }

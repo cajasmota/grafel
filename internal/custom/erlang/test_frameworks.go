@@ -127,9 +127,9 @@ func (e *erlangTestFrameworksExtractor) Extract(
 		suite.Relationships = append(suite.Relationships, types.RelationshipRecord{
 			ToID: sut,
 			Kind: "TESTS",
-			Properties: map[string]string{
-				"test_framework": framework,
-				"provenance":     "erlang_test_naming_convention",
+			Properties: types.Props{
+				{K: "provenance", V: "erlang_test_naming_convention"},
+				{K: "test_framework", V: framework},
 			},
 		})
 	}

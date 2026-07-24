@@ -108,17 +108,17 @@ func TestFederation_ExtendType_EmitsFederatesEdge(t *testing.T) {
 	if rel.ToID != "Product" {
 		t.Errorf("FEDERATES ToID = %q, want \"Product\" (the owning entity)", rel.ToID)
 	}
-	if rel.Properties["federation"] != "apollo" {
-		t.Errorf("federation = %q, want \"apollo\"", rel.Properties["federation"])
+	if rel.Properties.Get("federation") != "apollo" {
+		t.Errorf("federation = %q, want \"apollo\"", rel.Properties.Get("federation"))
 	}
-	if rel.Properties["import_kind"] != "federation_extend" {
-		t.Errorf("import_kind = %q, want \"federation_extend\"", rel.Properties["import_kind"])
+	if rel.Properties.Get("import_kind") != "federation_extend" {
+		t.Errorf("import_kind = %q, want \"federation_extend\"", rel.Properties.Get("import_kind"))
 	}
-	if rel.Properties["key_fields"] != "id" {
-		t.Errorf("key_fields = %q, want \"id\"", rel.Properties["key_fields"])
+	if rel.Properties.Get("key_fields") != "id" {
+		t.Errorf("key_fields = %q, want \"id\"", rel.Properties.Get("key_fields"))
 	}
-	if rel.Properties["external_fields"] != "id" {
-		t.Errorf("external_fields = %q, want \"id\"", rel.Properties["external_fields"])
+	if rel.Properties.Get("external_fields") != "id" {
+		t.Errorf("external_fields = %q, want \"id\"", rel.Properties.Get("external_fields"))
 	}
 
 	// The legacy IMPORTS edge must still be emitted for back-compat.
@@ -142,14 +142,14 @@ func TestFederation_ExtendType_RequiresAndProvides(t *testing.T) {
 		t.Fatalf("want 1 FEDERATES edge, got %d", len(feds))
 	}
 	p := feds[0].Properties
-	if p["external_fields"] != "id,email" {
-		t.Errorf("external_fields = %q, want \"id,email\"", p["external_fields"])
+	if p.Get("external_fields") != "id,email" {
+		t.Errorf("external_fields = %q, want \"id,email\"", p.Get("external_fields"))
 	}
-	if p["requires_fields"] != "shippingEstimate" {
-		t.Errorf("requires_fields = %q, want \"shippingEstimate\"", p["requires_fields"])
+	if p.Get("requires_fields") != "shippingEstimate" {
+		t.Errorf("requires_fields = %q, want \"shippingEstimate\"", p.Get("requires_fields"))
 	}
-	if p["provides_fields"] != "account" {
-		t.Errorf("provides_fields = %q, want \"account\"", p["provides_fields"])
+	if p.Get("provides_fields") != "account" {
+		t.Errorf("provides_fields = %q, want \"account\"", p.Get("provides_fields"))
 	}
 }
 

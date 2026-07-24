@@ -287,10 +287,10 @@ func (e *jestExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]t
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID: "Class:" + subj,
 				Kind: string(types.RelationshipKindTests),
-				Properties: map[string]string{
-					"framework":    "jest",
-					"match_source": "spec_subject_resolution",
-					"target_type":  subj,
+				Properties: types.Props{
+					{K: "framework", V: "jest"},
+					{K: "match_source", V: "spec_subject_resolution"},
+					{K: "target_type", V: subj},
 				},
 				Confidence: 0.9,
 			})

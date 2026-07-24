@@ -298,13 +298,13 @@ func (e *middlewareExtraExtractor) Extract(ctx context.Context, file extractor.F
 			FromID: dotnetAppEntityName,
 			ToID:   middlewareType,
 			Kind:   string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"framework": "aspnet-core",
-				"di_role":   "middleware",
-				"di_scope":  "global",
-				"global":    "true",
-				"order":     itoa(mwOrder),
-				"via":       "dotnet_use_middleware",
+			Properties: types.Props{
+				{K: "di_role", V: "middleware"},
+				{K: "di_scope", V: "global"},
+				{K: "framework", V: "aspnet-core"},
+				{K: "global", V: "true"},
+				{K: "order", V: itoa(mwOrder)},
+				{K: "via", V: "dotnet_use_middleware"},
 			},
 		})
 		mwOrder++

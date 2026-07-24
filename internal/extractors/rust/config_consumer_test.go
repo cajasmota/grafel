@@ -57,7 +57,7 @@ func rustConfigEdgeFrom(recs []types.EntityRecord, from string) map[string]strin
 		}
 		for _, r := range e.Relationships {
 			if r.Kind == "DEPENDS_ON_CONFIG" {
-				out[r.Properties["config_key"]] = r.Properties["pattern"]
+				out[r.Properties.Get("config_key")] = r.Properties.Get("pattern")
 			}
 		}
 	}

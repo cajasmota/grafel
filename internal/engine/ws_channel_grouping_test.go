@@ -265,7 +265,7 @@ func signalREdge(rels []types.RelationshipRecord, caller, channelID, scope, meth
 	for _, r := range rels {
 		if r.Kind == string(types.RelationshipKindBroadcastsTo) &&
 			r.FromID == "Function:"+caller && r.ToID == channelID &&
-			r.Properties["signalr_scope"] == scope && r.Properties["method"] == method {
+			r.Properties.Get("signalr_scope") == scope && r.Properties.Get("method") == method {
 			return true
 		}
 	}
@@ -309,7 +309,7 @@ public class ChatHub : Hub
 	// The literal group arg rides on the edge.
 	foundArg := false
 	for _, r := range rels {
-		if r.ToID == "SCOPE.Channel:signalr:group:lobby" && r.Properties["scope_arg"] == "lobby" {
+		if r.ToID == "SCOPE.Channel:signalr:group:lobby" && r.Properties.Get("scope_arg") == "lobby" {
 			foundArg = true
 		}
 	}
@@ -365,8 +365,8 @@ public class ChatHub : Hub
 		}
 	}
 	for _, r := range rels {
-		if r.ToID == "SCOPE.Channel:signalr:group" && r.Properties["scope_arg"] != "" {
-			t.Errorf("dynamic group must carry no scope_arg; got %q", r.Properties["scope_arg"])
+		if r.ToID == "SCOPE.Channel:signalr:group" && r.Properties.Get("scope_arg") != "" {
+			t.Errorf("dynamic group must carry no scope_arg; got %q", r.Properties.Get("scope_arg"))
 		}
 	}
 }

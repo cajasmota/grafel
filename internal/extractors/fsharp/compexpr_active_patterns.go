@@ -359,18 +359,18 @@ func collectCEUsage(body string, bindings map[string]string) []types.Relationshi
 		}
 		seen[target] = true
 		line := 1 + strings.Count(scrubbed[:off], "\n")
-		props := map[string]string{
-			"ce_builder": symbol,
-			"line":       strconv.Itoa(line),
+		props := types.Props{
+			{K: "ce_builder", V: symbol},
+			{K: "line", V: strconv.Itoa(line)},
 		}
 		if resolvedType != "" {
-			props["ce_builder_type"] = resolvedType
+			props.Set("ce_builder_type", resolvedType)
 		}
 		if computed {
-			props["ce_head"] = "computed"
+			props.Set("ce_head", "computed")
 		}
 		if len(bindList) > 0 {
-			props["ce_bind_points"] = strings.Join(bindList, ",")
+			props.Set("ce_bind_points", strings.Join(bindList, ","))
 		}
 		out = append(out, types.RelationshipRecord{
 			ToID:       target,
@@ -424,10 +424,10 @@ func collectMatchSiteEdges(body, filePath string, knownCases map[string]string) 
 		out = append(out, types.RelationshipRecord{
 			ToID: extractor.BuildSchemaFieldStructuralRef("fsharp", filePath, dotted),
 			Kind: "USES",
-			Properties: map[string]string{
-				"active_pattern_case": caseName,
-				"match_site":          "true",
-				"line":                strconv.Itoa(line),
+			Properties: types.Props{
+				{K: "active_pattern_case", V: caseName},
+				{K: "line", V: strconv.Itoa(line)},
+				{K: "match_site", V: "true"},
 			},
 		})
 	}

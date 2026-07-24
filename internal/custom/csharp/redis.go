@@ -270,9 +270,9 @@ func (e *redisExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 					ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 						ToID: ref,
 						Kind: edgeFor(op.verb),
-						Properties: map[string]string{
+						Properties: types.PropsFromMap(map[string]string{
 							"framework": "redis", "op": op.verb, edgeLabel: label,
-						},
+						}),
 					})
 				}
 			} else {

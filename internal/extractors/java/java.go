@@ -847,7 +847,7 @@ func extractCallRelationships(
 		rels = append(rels, types.RelationshipRecord{
 			ToID:       target,
 			Kind:       "CALLS",
-			Properties: map[string]string{"line": callLine},
+			Properties: types.Props{{K: "line", V: callLine}},
 		})
 	}
 	return rels

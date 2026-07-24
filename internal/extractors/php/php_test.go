@@ -418,7 +418,7 @@ class PostType extends AbstractType {}
 			if r.Kind != "IMPORTS" {
 				continue
 			}
-			gotProps[r.ToID] = r.Properties
+			gotProps[r.ToID] = r.Properties.Snapshot()
 		}
 	}
 	for to, wantP := range want {

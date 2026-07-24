@@ -49,7 +49,7 @@ func TestElixirEctoRepoDynamic(t *testing.T) {
 				FromID:     "0000000000000000",
 				ToID:       target,
 				Kind:       "CALLS",
-				Properties: map[string]string{"language": "elixir"},
+				Properties: types.Props{{K: "language", V: "elixir"}},
 			}}
 			idx := BuildIndex(nil)
 			stats := ReferencesWithAllowlist(rels, idx, nil)
@@ -96,7 +96,7 @@ func TestElixirPhoenixConnDynamic(t *testing.T) {
 				FromID:     "0000000000000000",
 				ToID:       target,
 				Kind:       "CALLS",
-				Properties: map[string]string{"language": "elixir"},
+				Properties: types.Props{{K: "language", V: "elixir"}},
 			}}
 			idx := BuildIndex(nil)
 			stats := ReferencesWithAllowlist(rels, idx, nil)
@@ -139,7 +139,7 @@ func TestElixirOTPCallbacksDynamic(t *testing.T) {
 				FromID:     "0000000000000000",
 				ToID:       target,
 				Kind:       "CALLS",
-				Properties: map[string]string{"language": "elixir"},
+				Properties: types.Props{{K: "language", V: "elixir"}},
 			}}
 			idx := BuildIndex(nil)
 			stats := ReferencesWithAllowlist(rels, idx, nil)
@@ -183,7 +183,7 @@ func TestElixirChangesetDynamic(t *testing.T) {
 				FromID:     "0000000000000000",
 				ToID:       target,
 				Kind:       "CALLS",
-				Properties: map[string]string{"language": "elixir"},
+				Properties: types.Props{{K: "language", V: "elixir"}},
 			}}
 			idx := BuildIndex(nil)
 			stats := ReferencesWithAllowlist(rels, idx, nil)
@@ -222,7 +222,7 @@ func TestElixirDynamic_NotFiredForOtherLanguages(t *testing.T) {
 					FromID:     "0000000000000000",
 					ToID:       stub,
 					Kind:       "CALLS",
-					Properties: map[string]string{"language": lang},
+					Properties: types.Props{{K: "language", V: lang}},
 				}}
 				idx := BuildIndex(nil)
 				_ = ReferencesWithAllowlist(rels, idx, nil)

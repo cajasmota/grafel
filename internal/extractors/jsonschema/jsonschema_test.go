@@ -103,8 +103,8 @@ func TestJSONSchema_RefEdge(t *testing.T) {
 	for _, r := range user.Relationships {
 		if r.Kind == "REFERENCES" && r.ToID == wantRef {
 			found = true
-			if r.Properties["via_field"] != "address" {
-				t.Errorf("REFERENCES via_field = %q, want address", r.Properties["via_field"])
+			if r.Properties.Get("via_field") != "address" {
+				t.Errorf("REFERENCES via_field = %q, want address", r.Properties.Get("via_field"))
 			}
 		}
 	}

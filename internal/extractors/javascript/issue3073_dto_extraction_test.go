@@ -229,7 +229,7 @@ export function go(req, res) {
 		t.Fatal("go entity not found")
 	}
 	for _, r := range e.Relationships {
-		if r.Kind == "VALIDATES" && r.Properties["via"] == "dto_extraction" {
+		if r.Kind == "VALIDATES" && r.Properties.Get("via") == "dto_extraction" {
 			t.Fatalf("unexpected dto_extraction edge on go: %+v", r)
 		}
 	}
@@ -259,7 +259,7 @@ export function handler(req, res) {
 	e := findByNameRel(ents, "handler")
 	if e != nil {
 		for _, r := range e.Relationships {
-			if r.Kind == "VALIDATES" && r.Properties["via"] == "dto_extraction" {
+			if r.Kind == "VALIDATES" && r.Properties.Get("via") == "dto_extraction" {
 				t.Errorf("unexpected dto_extraction edge on handler for inline schema: %+v", r)
 			}
 		}
@@ -318,7 +318,7 @@ func TestDTOExtraction_Fixtures(t *testing.T) {
 			foundEdge := false
 			for _, e := range ents {
 				for _, r := range e.Relationships {
-					if r.Kind == "VALIDATES" && r.Properties["via"] == "dto_extraction" {
+					if r.Kind == "VALIDATES" && r.Properties.Get("via") == "dto_extraction" {
 						foundEdge = true
 					}
 				}

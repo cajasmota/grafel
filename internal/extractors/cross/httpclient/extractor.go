@@ -434,13 +434,13 @@ func buildEntitiesAndRels(filePath string, calls []call, importedModules map[str
 		}
 
 		protocol := detectProtocol(c.url, importedModules)
-		relProps := map[string]string{
-			"kind":     "external_http_call",
-			"url":      c.url,
-			"protocol": protocol,
+		relProps := types.Props{
+			{K: "kind", V: "external_http_call"},
+			{K: "protocol", V: protocol},
+			{K: "url", V: c.url},
 		}
 		if c.method != "" {
-			relProps["http_method"] = c.method
+			relProps.Set("http_method", c.method)
 		}
 
 		out[idx].Relationships = append(out[idx].Relationships, types.RelationshipRecord{

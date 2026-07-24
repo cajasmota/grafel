@@ -162,8 +162,8 @@ func TestIssue4332_CrossPackageCall_NameCollision(t *testing.T) {
 			continue
 		}
 		for _, r := range merged[k].Relationships {
-			if r.Kind == "CALLS" && r.Properties["go_call_pkg_dir"] == "internal/resolve" &&
-				r.Properties["call_leaf"] == "BuildIndex" {
+			if r.Kind == "CALLS" && r.Properties.Get("go_call_pkg_dir") == "internal/resolve" &&
+				r.Properties.Get("call_leaf") == "BuildIndex" {
 				stamped = true
 			}
 		}
@@ -215,9 +215,9 @@ func TestIssue4332_NoFalseStampOnLocalCall(t *testing.T) {
 	merged := extractGoModuleForTest(t, module, files)
 	for k := range merged {
 		for _, r := range merged[k].Relationships {
-			if r.Kind == "CALLS" && r.Properties["go_call_pkg_dir"] != "" {
+			if r.Kind == "CALLS" && r.Properties.Get("go_call_pkg_dir") != "" {
 				t.Errorf("local-var call wrongly stamped go_call_pkg_dir=%q (no import named that)",
-					r.Properties["go_call_pkg_dir"])
+					r.Properties.Get("go_call_pkg_dir"))
 			}
 		}
 	}

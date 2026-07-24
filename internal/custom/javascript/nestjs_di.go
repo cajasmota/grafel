@@ -152,12 +152,12 @@ func extractNestDIEdges(src string) map[string][]types.RelationshipRecord {
 				FromID: provider,
 				ToID:   c.name,
 				Kind:   string(types.RelationshipKindInjectedInto),
-				Properties: map[string]string{
-					"consumer":  c.name,
-					"provider":  provider,
-					"framework": "nestjs",
-					"via":       "nestjs_constructor",
-					"di_role":   p.role,
+				Properties: types.Props{
+					{K: "consumer", V: c.name},
+					{K: "di_role", V: p.role},
+					{K: "framework", V: "nestjs"},
+					{K: "provider", V: provider},
+					{K: "via", V: "nestjs_constructor"},
 				},
 			})
 		}
@@ -167,11 +167,11 @@ func extractNestDIEdges(src string) map[string][]types.RelationshipRecord {
 				FromID: c.name,
 				ToID:   u.target,
 				Kind:   string(types.RelationshipKindUses),
-				Properties: map[string]string{
-					"framework": "nestjs",
-					"di_role":   u.role,
-					"di_scope":  "class",
-					"via":       "nestjs_use_decorator",
+				Properties: types.Props{
+					{K: "di_role", V: u.role},
+					{K: "di_scope", V: "class"},
+					{K: "framework", V: "nestjs"},
+					{K: "via", V: "nestjs_use_decorator"},
 				},
 			})
 		}
@@ -190,12 +190,12 @@ func extractNestDIEdges(src string) map[string][]types.RelationshipRecord {
 				FromID: owner,
 				ToID:   u.target,
 				Kind:   string(types.RelationshipKindUses),
-				Properties: map[string]string{
-					"framework":   "nestjs",
-					"di_role":     u.role,
-					"di_scope":    "handler",
-					"method_name": h.methodName,
-					"via":         "nestjs_use_decorator",
+				Properties: types.Props{
+					{K: "di_role", V: u.role},
+					{K: "di_scope", V: "handler"},
+					{K: "framework", V: "nestjs"},
+					{K: "method_name", V: h.methodName},
+					{K: "via", V: "nestjs_use_decorator"},
 				},
 			})
 		}
@@ -247,14 +247,14 @@ func extractNestDIEdges(src string) map[string][]types.RelationshipRecord {
 		}
 		for _, n := range order {
 			b := binds[n]
-			props := map[string]string{
+			props := types.PropsFromMap(map[string]string{
 				"framework":    "nestjs",
 				"binding_kind": b.kind, // provider|controller|import|export
 				"module":       module,
 				"via":          "nestjs_module",
-			}
+			})
 			if b.exported {
-				props["exported"] = "true"
+				props.Set("exported", "true")
 			}
 			add(module, types.RelationshipRecord{
 				FromID:     module,
@@ -276,13 +276,13 @@ func extractNestDIEdges(src string) map[string][]types.RelationshipRecord {
 				FromID: token,
 				ToID:   impl,
 				Kind:   string(types.RelationshipKindBinds),
-				Properties: map[string]string{
+				Properties: types.PropsFromMap(map[string]string{
 					"framework":    "nestjs",
 					"binding_kind": strings.ToLower(useKind[:1]) + useKind[1:], // useClass etc.
 					"token":        token,
 					"module":       module,
 					"via":          "nestjs_provider_token",
-				},
+				}),
 			})
 
 			// Global cross-cutting DI mounts: { provide: APP_*, useClass|…: Impl }
@@ -296,14 +296,14 @@ func extractNestDIEdges(src string) map[string][]types.RelationshipRecord {
 					FromID: module,
 					ToID:   impl,
 					Kind:   string(types.RelationshipKindUses),
-					Properties: map[string]string{
-						"framework": "nestjs",
-						"di_role":   role,
-						"di_scope":  "global",
-						"di_token":  token,
-						"global":    "true",
-						"module":    module,
-						"via":       "nestjs_app_token",
+					Properties: types.Props{
+						{K: "di_role", V: role},
+						{K: "di_scope", V: "global"},
+						{K: "di_token", V: token},
+						{K: "framework", V: "nestjs"},
+						{K: "global", V: "true"},
+						{K: "module", V: module},
+						{K: "via", V: "nestjs_app_token"},
 					},
 				})
 			}
@@ -345,12 +345,12 @@ func extractNestGlobalWiring(src string) map[string][]types.RelationshipRecord {
 				FromID: nestAppEntityName,
 				ToID:   cls,
 				Kind:   string(types.RelationshipKindUses),
-				Properties: map[string]string{
-					"framework": "nestjs",
-					"di_role":   role,
-					"di_scope":  "global",
-					"global":    "true",
-					"via":       "nestjs_use_global",
+				Properties: types.Props{
+					{K: "di_role", V: role},
+					{K: "di_scope", V: "global"},
+					{K: "framework", V: "nestjs"},
+					{K: "global", V: "true"},
+					{K: "via", V: "nestjs_use_global"},
 				},
 			})
 		}

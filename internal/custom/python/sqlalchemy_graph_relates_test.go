@@ -62,12 +62,12 @@ class Order(Base):
 	if hm == nil {
 		t.Fatal("expected GRAPH_RELATES User → Order (collection relationship)")
 	}
-	if hm.Properties["cardinality"] != "one_to_many" {
-		t.Errorf("collection relationship cardinality: want one_to_many, got %q", hm.Properties["cardinality"])
+	if hm.Properties.Get("cardinality") != "one_to_many" {
+		t.Errorf("collection relationship cardinality: want one_to_many, got %q", hm.Properties.Get("cardinality"))
 	}
 
 	o2o := saGraphRelates(ents, "Class:User", "Class:Profile")
-	if o2o == nil || o2o.Properties["cardinality"] != "one_to_one" {
+	if o2o == nil || o2o.Properties.Get("cardinality") != "one_to_one" {
 		t.Errorf("expected GRAPH_RELATES User → Profile one_to_one (uselist=False), got %v", o2o)
 	}
 }

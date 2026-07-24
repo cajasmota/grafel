@@ -146,7 +146,7 @@ func TestSplit_DefinitionCallCrossLink(t *testing.T) {
 	}
 	found := false
 	for _, rel := range callEntity.Relationships {
-		if rel.Kind == fetchesEdgeKind && rel.Properties["resolved"] == "true" {
+		if rel.Kind == fetchesEdgeKind && rel.Properties.Get("resolved") == "true" {
 			found = true
 		}
 	}

@@ -29,7 +29,7 @@ import Chart from '../components/Chart.jsx'
 	var islandEdges int
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Kind == "IMPLEMENTS" && r.Properties["island_directive"] != "" {
+			if r.Kind == "IMPLEMENTS" && r.Properties.Get("island_directive") != "" {
 				islandEdges++
 			}
 		}

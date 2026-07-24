@@ -204,7 +204,7 @@ func relSummary(recs []types.EntityRecord) string {
 		for _, rel := range r.Relationships {
 			if rel.Kind == "TESTS" {
 				fmt.Fprintf(&b, "[%s -> %s (%s)] ",
-					rel.Properties["test_function"], rel.Properties["tested"], rel.Properties["confidence"])
+					rel.Properties.Get("test_function"), rel.Properties.Get("tested"), rel.Properties.Get("confidence"))
 			}
 		}
 	}

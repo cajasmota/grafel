@@ -99,17 +99,17 @@ func TestClojureExtractor_RequireImports(t *testing.T) {
 
 	// :refer :all → wildcard property.
 	if rel, ok := imps["clojure.walk"]; ok {
-		if rel.Properties["wildcard"] != "1" {
-			t.Errorf("expected wildcard=1 on clojure.walk, got %q", rel.Properties["wildcard"])
+		if rel.Properties.Get("wildcard") != "1" {
+			t.Errorf("expected wildcard=1 on clojure.walk, got %q", rel.Properties.Get("wildcard"))
 		}
 	}
 	// :as alias becomes local_name.
 	if rel, ok := imps["clojure.string"]; ok {
-		if rel.Properties["local_name"] != "str" {
-			t.Errorf("expected local_name=str on clojure.string, got %q", rel.Properties["local_name"])
+		if rel.Properties.Get("local_name") != "str" {
+			t.Errorf("expected local_name=str on clojure.string, got %q", rel.Properties.Get("local_name"))
 		}
-		if rel.Properties["language"] != "clojure" {
-			t.Errorf("expected language=clojure tag, got %q", rel.Properties["language"])
+		if rel.Properties.Get("language") != "clojure" {
+			t.Errorf("expected language=clojure tag, got %q", rel.Properties.Get("language"))
 		}
 	}
 }
@@ -128,7 +128,7 @@ func TestClojureExtractor_UseImports(t *testing.T) {
 		t.Errorf("expected IMPORTS edge for clojure.test, got %v", keys(imps))
 	}
 	if rel, ok := imps["clojure.test"]; ok {
-		if rel.Properties["wildcard"] != "1" {
+		if rel.Properties.Get("wildcard") != "1" {
 			t.Errorf("expected :use to mark wildcard=1 on clojure.test")
 		}
 	}
@@ -253,8 +253,8 @@ func TestClojureExtractor_LanguageTag(t *testing.T) {
 
 	for _, e := range got {
 		for _, r := range e.Relationships {
-			if r.Properties["language"] != "clojure" {
-				t.Errorf("expected language=clojure on every relationship, got %q on %+v", r.Properties["language"], r)
+			if r.Properties.Get("language") != "clojure" {
+				t.Errorf("expected language=clojure on every relationship, got %q on %+v", r.Properties.Get("language"), r)
 			}
 		}
 	}

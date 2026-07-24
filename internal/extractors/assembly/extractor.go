@@ -486,10 +486,10 @@ func buildIncludeEntities(filePath, scrubbed, lang string) []types.EntityRecord 
 				FromID: filePath,
 				ToID:   inc,
 				Kind:   "IMPORTS",
-				Properties: map[string]string{
-					"source_module": inc,
-					"imported_name": display,
-					"local_name":    display,
+				Properties: types.Props{
+					{K: "imported_name", V: display},
+					{K: "local_name", V: display},
+					{K: "source_module", V: inc},
 				},
 			}},
 		})
@@ -879,10 +879,10 @@ func buildProcedureEntities(lines []string, filePath, lang, dialect string, expo
 					out[curIdx].Relationships = append(out[curIdx].Relationships, types.RelationshipRecord{
 						ToID: syntheticSyscallTarget,
 						Kind: "CALLS",
-						Properties: map[string]string{
-							"effect":   "syscall",
-							"locality": "external",
-							"line":     strconv.Itoa(i + 1),
+						Properties: types.Props{
+							{K: "effect", V: "syscall"},
+							{K: "line", V: strconv.Itoa(i + 1)},
+							{K: "locality", V: "external"},
 						},
 					})
 				}
@@ -910,26 +910,26 @@ func buildProcedureEntities(lines []string, filePath, lang, dialect string, expo
 		}
 		seenEdge[key] = true
 
-		props := map[string]string{
-			"line":      strconv.Itoa(i + 1),
-			"edge_kind": kindTag,
+		props := types.Props{
+			{K: "edge_kind", V: kindTag},
+			{K: "line", V: strconv.Itoa(i + 1)},
 		}
 		if external[target] {
-			props["locality"] = "external"
+			props.Set("locality", "external")
 		}
 
 		// #2836 — edge classification.
 		// Self-recursion: a call/branch whose target is the enclosing
 		// procedure's own label.
 		if target == out[curIdx].Name {
-			props["recursion"] = "self"
+			props.Set("recursion", "self")
 		}
 		// Tail call: an unconditional branch (jmp/bra/b) to ANOTHER
 		// procedure (not a local label, not self) is a tail call — control
 		// transfers without a return frame.
 		if isBranch && !localLabels[target] && target != out[curIdx].Name &&
 			(lower == "jmp" || lower == "jmpq" || lower == "bra" || lower == "b" || lower == "j") {
-			props["tail_call"] = "true"
+			props.Set("tail_call", "true")
 		}
 
 		// #2836 — intra-file branch-target resolution. When the destination
@@ -939,7 +939,7 @@ func buildProcedureEntities(lines []string, filePath, lang, dialect string, expo
 		toID := target
 		if localLabels[target] {
 			toID = localLabelStub(lang, filePath, target)
-			props["resolution"] = "intra_file"
+			props.Set("resolution", "intra_file")
 		}
 		out[curIdx].Relationships = append(out[curIdx].Relationships, types.RelationshipRecord{
 			ToID:       toID,

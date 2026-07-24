@@ -141,9 +141,9 @@ func applyDeploymentTopologyEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   kind,
-			Properties: map[string]string{
-				"flow":      flow,
-				"synthesis": "deployment_topology",
+			Properties: types.Props{
+				{K: "flow", V: flow},
+				{K: "synthesis", V: "deployment_topology"},
 			},
 		})
 	}

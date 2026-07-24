@@ -634,12 +634,12 @@ func (e *mobilePlatformExtractor) Extract(ctx context.Context, file extractor.Fi
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "route:" + route,
 			Kind: string(types.RelationshipKindNavigatesTo),
-			Properties: map[string]string{
-				"route":       route,
-				"via":         "register_route",
-				"target_page": pageType,
-				"framework":   "maui",
-				"line":        itoa(lineOf(src, m[0])),
+			Properties: types.Props{
+				{K: "framework", V: "maui"},
+				{K: "line", V: itoa(lineOf(src, m[0]))},
+				{K: "route", V: route},
+				{K: "target_page", V: pageType},
+				{K: "via", V: "register_route"},
 			},
 		})
 		add(ent)
@@ -666,15 +666,15 @@ func (e *mobilePlatformExtractor) Extract(ctx context.Context, file extractor.Fi
 			file.Path, "csharp", lineOf(src, m[0]))
 		setProps(&ent, "framework", "maui", "provenance", "INFERRED_FROM_SHELL_CONTENT",
 			"route", route)
-		props := map[string]string{
-			"route":     route,
-			"via":       "shell_content",
-			"framework": "maui",
-			"line":      itoa(lineOf(src, m[0])),
+		props := types.Props{
+			{K: "framework", V: "maui"},
+			{K: "line", V: itoa(lineOf(src, m[0]))},
+			{K: "route", V: route},
+			{K: "via", V: "shell_content"},
 		}
 		if targetPage != "" {
 			setProps(&ent, "target_page", targetPage)
-			props["target_page"] = targetPage
+			props.Set("target_page", targetPage)
 		}
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID:       "route:" + route,
@@ -697,11 +697,11 @@ func (e *mobilePlatformExtractor) Extract(ctx context.Context, file extractor.Fi
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "route:" + route,
 			Kind: string(types.RelationshipKindNavigatesTo),
-			Properties: map[string]string{
-				"route":     route,
-				"via":       "goto_async",
-				"framework": "maui",
-				"line":      itoa(lineOf(src, m[0])),
+			Properties: types.Props{
+				{K: "framework", V: "maui"},
+				{K: "line", V: itoa(lineOf(src, m[0]))},
+				{K: "route", V: route},
+				{K: "via", V: "goto_async"},
 			},
 		})
 		add(ent)
@@ -717,12 +717,12 @@ func (e *mobilePlatformExtractor) Extract(ctx context.Context, file extractor.Fi
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "route:" + page,
 			Kind: string(types.RelationshipKindNavigatesTo),
-			Properties: map[string]string{
-				"route":       page,
-				"via":         "goto_nameof",
-				"target_page": page,
-				"framework":   "maui",
-				"line":        itoa(lineOf(src, m[0])),
+			Properties: types.Props{
+				{K: "framework", V: "maui"},
+				{K: "line", V: itoa(lineOf(src, m[0]))},
+				{K: "route", V: page},
+				{K: "target_page", V: page},
+				{K: "via", V: "goto_nameof"},
 			},
 		})
 		add(ent)
@@ -755,12 +755,12 @@ func (e *mobilePlatformExtractor) Extract(ctx context.Context, file extractor.Fi
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "viewmodel:" + vm,
 			Kind: string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"viewmodel": vm,
-				"view":      enclosingPage,
-				"via":       via,
-				"framework": "maui",
-				"line":      itoa(line),
+			Properties: types.Props{
+				{K: "framework", V: "maui"},
+				{K: "line", V: itoa(line)},
+				{K: "via", V: via},
+				{K: "view", V: enclosingPage},
+				{K: "viewmodel", V: vm},
 			},
 		})
 		add(ent)
@@ -823,12 +823,12 @@ func (e *mobilePlatformExtractor) Extract(ctx context.Context, file extractor.Fi
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "impl:" + impl,
 			Kind: string(types.RelationshipKindBinds),
-			Properties: map[string]string{
-				"interface":      iface,
-				"implementation": impl,
-				"lifetime":       lifetime,
-				"framework":      "maui",
-				"line":           itoa(lineOf(src, m[0])),
+			Properties: types.Props{
+				{K: "framework", V: "maui"},
+				{K: "implementation", V: impl},
+				{K: "interface", V: iface},
+				{K: "lifetime", V: lifetime},
+				{K: "line", V: itoa(lineOf(src, m[0]))},
 			},
 		})
 		add(ent)
@@ -852,11 +852,11 @@ func (e *mobilePlatformExtractor) Extract(ctx context.Context, file extractor.Fi
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "impl:" + svc,
 			Kind: string(types.RelationshipKindRegisters),
-			Properties: map[string]string{
-				"service":   svc,
-				"lifetime":  lifetime,
-				"framework": "maui",
-				"line":      itoa(lineOf(src, m[0])),
+			Properties: types.Props{
+				{K: "framework", V: "maui"},
+				{K: "lifetime", V: lifetime},
+				{K: "line", V: itoa(lineOf(src, m[0]))},
+				{K: "service", V: svc},
 			},
 		})
 		add(ent)

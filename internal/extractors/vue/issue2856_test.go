@@ -47,8 +47,8 @@ function goSettings() {
 	for i := range ents {
 		for _, r := range ents[i].Relationships {
 			if r.Kind == "NAVIGATES_TO" {
-				routes[r.Properties["route"]] = true
-				vias[r.Properties["via"]] = true
+				routes[r.Properties.Get("route")] = true
+				vias[r.Properties.Get("via")] = true
 			}
 		}
 	}

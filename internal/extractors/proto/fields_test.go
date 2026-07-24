@@ -73,8 +73,8 @@ message User {
 	for _, r := range userMsg.Relationships {
 		if r.Kind == "REFERENCES" && r.ToID == wantRef {
 			found = true
-			if r.Properties["via_field"] != "orders" {
-				t.Errorf("REFERENCES via_field = %q, want orders", r.Properties["via_field"])
+			if r.Properties.Get("via_field") != "orders" {
+				t.Errorf("REFERENCES via_field = %q, want orders", r.Properties.Get("via_field"))
 			}
 		}
 	}

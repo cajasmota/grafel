@@ -162,8 +162,8 @@ func TestBuildZig_DependsOnEdges(t *testing.T) {
 		for _, rel := range r.Relationships {
 			if rel.Kind == "DEPENDS_ON" {
 				dependsOn++
-				if rel.Properties["package_manager"] != "zig" {
-					t.Errorf("DEPENDS_ON package_manager=%q want zig", rel.Properties["package_manager"])
+				if rel.Properties.Get("package_manager") != "zig" {
+					t.Errorf("DEPENDS_ON package_manager=%q want zig", rel.Properties.Get("package_manager"))
 				}
 			}
 		}

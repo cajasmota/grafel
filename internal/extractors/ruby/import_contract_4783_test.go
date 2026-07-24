@@ -41,10 +41,10 @@ func TestRuby_ImportContract_RequireGem(t *testing.T) {
 	if r == nil {
 		t.Fatalf("no IMPORTS edge for active_record; got %+v", rels)
 	}
-	if r.Properties["require_kind"] != "require" {
-		t.Fatalf("require_kind=%q, want require", r.Properties["require_kind"])
+	if r.Properties.Get("require_kind") != "require" {
+		t.Fatalf("require_kind=%q, want require", r.Properties.Get("require_kind"))
 	}
-	if r.Properties["imported_name"] != "ActiveRecord" || r.Properties["local_name"] != "ActiveRecord" {
+	if r.Properties.Get("imported_name") != "ActiveRecord" || r.Properties.Get("local_name") != "ActiveRecord" {
 		t.Fatalf("props=%v, want imported_name=local_name=ActiveRecord", r.Properties)
 	}
 }
@@ -55,7 +55,7 @@ func TestRuby_ImportContract_RequireSimple(t *testing.T) {
 `
 	rels := rbImportRels(runRuby(t, src))
 	r := rbFindImport(rels, "json")
-	if r == nil || r.Properties["imported_name"] != "Json" {
+	if r == nil || r.Properties.Get("imported_name") != "Json" {
 		t.Fatalf("json import props wrong: %+v", r)
 	}
 }
@@ -70,10 +70,10 @@ func TestRuby_ImportContract_RequireRelative(t *testing.T) {
 	if r == nil {
 		t.Fatalf("no IMPORTS edge for require_relative helper; got %+v", rels)
 	}
-	if r.Properties["require_kind"] != "require_relative" {
-		t.Fatalf("require_kind=%q, want require_relative", r.Properties["require_kind"])
+	if r.Properties.Get("require_kind") != "require_relative" {
+		t.Fatalf("require_kind=%q, want require_relative", r.Properties.Get("require_kind"))
 	}
-	if _, ok := r.Properties["imported_name"]; ok {
+	if _, ok := r.Properties.Lookup("imported_name"); ok {
 		t.Fatalf("require_relative must NOT stamp imported_name, got %v", r.Properties)
 	}
 }

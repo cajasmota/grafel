@@ -39,7 +39,7 @@ func runMongoAggPyXFile(
 			// edges only; strip the twin here so they remain meaningful. The
 			// twin itself is asserted by TestMongoAggPy_LookupNode_*_4244,
 			// which collects the unfiltered edge set directly.
-			if r.Properties["anchor"] == "stage_node" {
+			if r.Properties.Get("anchor") == "stage_node" {
 				return
 			}
 			rels = append(rels, r)
@@ -105,8 +105,8 @@ def inspection_report(db):
 		if j.FromID != "Class:"+capitalisedSingular("inspections") {
 			t.Errorf("join from %s = %q, want aggregating collection inspections", coll, j.FromID)
 		}
-		if j.Properties["stage"] != "lookup" {
-			t.Errorf("join to %s stage = %q, want lookup", coll, j.Properties["stage"])
+		if j.Properties.Get("stage") != "lookup" {
+			t.Errorf("join to %s stage = %q, want lookup", coll, j.Properties.Get("stage"))
 		}
 	}
 	if n := len(rels); n != 3 {
@@ -115,7 +115,7 @@ def inspection_report(db):
 
 	// Local/foreign field props captured on the first lookup edge.
 	jg := pyFindJoinTo(rels, capitalisedSingular("inspection_groups"))
-	if jg.Properties["local_field"] != "group_id" || jg.Properties["foreign_field"] != "_id" || jg.Properties["as"] != "groups" {
+	if jg.Properties.Get("local_field") != "group_id" || jg.Properties.Get("foreign_field") != "_id" || jg.Properties.Get("as") != "groups" {
 		t.Errorf("inspection_groups join props = %+v", jg.Properties)
 	}
 
@@ -188,8 +188,8 @@ def _get_me_inspections():
 		if j.FromID != "Class:"+capitalisedSingular("inspections") {
 			t.Errorf("join to %s from = %q, want aggregating collection Class:Inspection", coll, j.FromID)
 		}
-		if j.Properties["stage"] != "lookup" {
-			t.Errorf("join to %s stage = %q, want lookup", coll, j.Properties["stage"])
+		if j.Properties.Get("stage") != "lookup" {
+			t.Errorf("join to %s stage = %q, want lookup", coll, j.Properties.Get("stage"))
 		}
 	}
 	if n := len(rels); n != 3 {
@@ -198,8 +198,8 @@ def _get_me_inspections():
 
 	// The correlated `as` alias is captured even without local/foreign fields.
 	jg := pyFindJoinTo(rels, capitalisedSingular("inspection_groups"))
-	if jg.Properties["as"] != "inspections_group" {
-		t.Errorf("inspection_groups join as = %q, want inspections_group", jg.Properties["as"])
+	if jg.Properties.Get("as") != "inspections_group" {
+		t.Errorf("inspection_groups join as = %q, want inspections_group", jg.Properties.Get("as"))
 	}
 
 	// Stage entities + order: project, match, lookup, unwind, lookup, unwind,
@@ -296,8 +296,8 @@ def _get_me_inspections():
 		if j.FromID != "Class:"+capitalisedSingular("inspections") {
 			t.Errorf("join to %s from = %q, want aggregating collection Class:Inspection", coll, j.FromID)
 		}
-		if j.Properties["stage"] != "lookup" {
-			t.Errorf("join to %s stage = %q, want lookup", coll, j.Properties["stage"])
+		if j.Properties.Get("stage") != "lookup" {
+			t.Errorf("join to %s stage = %q, want lookup", coll, j.Properties.Get("stage"))
 		}
 	}
 	if n := len(rels); n != 3 {
@@ -305,8 +305,8 @@ def _get_me_inspections():
 	}
 
 	jg := pyFindJoinTo(rels, capitalisedSingular("inspection_groups"))
-	if jg.Properties["as"] != "inspections_group" {
-		t.Errorf("inspection_groups join as = %q, want inspections_group", jg.Properties["as"])
+	if jg.Properties.Get("as") != "inspections_group" {
+		t.Errorf("inspection_groups join as = %q, want inspections_group", jg.Properties.Get("as"))
 	}
 
 	// 8 stages, order preserved: project, match, lookup, unwind, lookup, unwind,
@@ -417,7 +417,7 @@ def run(db):
 	if j.FromID != "Class:"+capitalisedSingular("inspections") {
 		t.Errorf("join FromID = %q, want Class:Inspection (aggregating collection at executor)", j.FromID)
 	}
-	if j.Properties["as"] != "d" || j.Properties["local_field"] != "device_id" {
+	if j.Properties.Get("as") != "d" || j.Properties.Get("local_field") != "device_id" {
 		t.Errorf("join props = %+v, want as=d local_field=device_id", j.Properties)
 	}
 	if len(ents) != 1 || ents[0].Subtype != "$lookup" {
@@ -647,7 +647,7 @@ def run(db):
 	if jg.FromID != "Class:"+capitalisedSingular("inspections") {
 		t.Errorf("append join FromID = %q, want Class:Inspection (aggregating coll)", jg.FromID)
 	}
-	if jg.Properties["as"] != "g" || jg.Properties["local_field"] != "group_id" {
+	if jg.Properties.Get("as") != "g" || jg.Properties.Get("local_field") != "group_id" {
 		t.Errorf("append join props = %+v, want as=g local_field=group_id", jg.Properties)
 	}
 	jd := pyFindJoinTo(rels, capitalisedSingular("m_devices"))
@@ -770,8 +770,8 @@ def run(db):
 	if rels[0].ToID != "Class:"+capitalisedSingular("categories") {
 		t.Errorf("join ToID = %q, want Class:Category", rels[0].ToID)
 	}
-	if rels[0].Properties["stage"] != "graphLookup" {
-		t.Errorf("join stage = %q, want graphLookup", rels[0].Properties["stage"])
+	if rels[0].Properties.Get("stage") != "graphLookup" {
+		t.Errorf("join stage = %q, want graphLookup", rels[0].Properties.Get("stage"))
 	}
 	if len(ents) != 1 || ents[0].Subtype != "$graphLookup" {
 		t.Fatalf("expected 1 $graphLookup stage, got %+v", ents)
@@ -860,13 +860,13 @@ async def stats(db):
 
 	if j := pyFindJoinTo(rels, capitalisedSingular("customers")); j == nil {
 		t.Fatalf("expected $lookup join to customers; rels=%+v", rels)
-	} else if j.Properties["stage"] != "lookup" {
-		t.Errorf("customers join stage = %q, want lookup", j.Properties["stage"])
+	} else if j.Properties.Get("stage") != "lookup" {
+		t.Errorf("customers join stage = %q, want lookup", j.Properties.Get("stage"))
 	}
 	if j := pyFindJoinTo(rels, capitalisedSingular("categories")); j == nil {
 		t.Fatalf("expected $graphLookup join to categories; rels=%+v", rels)
-	} else if j.Properties["stage"] != "graphLookup" {
-		t.Errorf("categories join stage = %q, want graphLookup", j.Properties["stage"])
+	} else if j.Properties.Get("stage") != "graphLookup" {
+		t.Errorf("categories join stage = %q, want graphLookup", j.Properties.Get("stage"))
 	}
 	if len(rels) != 2 {
 		t.Fatalf("expected 2 join edges, got %d: %+v", len(rels), rels)
@@ -1038,7 +1038,7 @@ def get_inspection_devices_pipeline(db):
 	if j.FromID != "Class:"+capitalisedSingular("devices") {
 		t.Errorf("cross-file join FromID = %q, want Class:Device (aggregating collection at executor)", j.FromID)
 	}
-	if j.Properties["local_field"] != "inspection_id" || j.Properties["as"] != "insp" {
+	if j.Properties.Get("local_field") != "inspection_id" || j.Properties.Get("as") != "insp" {
 		t.Errorf("cross-file join props = %+v, want local_field=inspection_id as=insp", j.Properties)
 	}
 	if len(ents) != 1 || ents[0].Subtype != "$lookup" {
@@ -1119,7 +1119,7 @@ def run(db):
 	if nested.FromID != "Class:"+capitalisedSingular("inspections") {
 		t.Errorf("nested join FromID = %q, want Class:Inspection (correlated against aggregating coll)", nested.FromID)
 	}
-	if nested.Properties["local_field"] != "gid" || nested.Properties["as"] != "gds" {
+	if nested.Properties.Get("local_field") != "gid" || nested.Properties.Get("as") != "gds" {
 		t.Errorf("nested join props = %+v, want local_field=gid as=gds", nested.Properties)
 	}
 	// Exactly the two joins — no phantom edges from the inner $match.
@@ -1218,7 +1218,7 @@ def run(db):
 		func(r types.RelationshipRecord) {
 			// #4244 — drop the node-anchored JOINS_COLLECTION twin so the
 			// count assertion sees the collection-anchored edge set.
-			if r.Properties["anchor"] == "stage_node" {
+			if r.Properties.Get("anchor") == "stage_node" {
 				return
 			}
 			rels = append(rels, r)

@@ -441,8 +441,8 @@ module "network" {
 			if rel.Kind == "IMPORTS" &&
 				rel.FromID == "main.tf" &&
 				rel.ToID == "./modules/network" &&
-				rel.Properties["import_kind"] == "module" &&
-				rel.Properties["source_module"] == "./modules/network" {
+				rel.Properties.Get("import_kind") == "module" &&
+				rel.Properties.Get("source_module") == "./modules/network" {
 				foundImport = true
 			}
 		}

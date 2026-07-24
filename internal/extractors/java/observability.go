@@ -120,25 +120,25 @@ func javaObsEdges(methodNode ts.Node, methodName string, src []byte) []types.Rel
 	seen := make(map[string]bool)
 	out := make([]types.RelationshipRecord, 0, len(hits))
 	for _, h := range hits {
-		props := map[string]string{
-			"library": h.library,
-			"api":     h.api,
-			"line":    strconv.Itoa(h.line),
-			"traced":  "true",
+		props := types.Props{
+			{K: "api", V: h.api},
+			{K: "library", V: h.library},
+			{K: "line", V: strconv.Itoa(h.line)},
+			{K: "traced", V: "true"},
 		}
 		prefix := h.kind + ":"
 		var toID string
 		if h.dynamic || h.name == "" {
-			props["dynamic"] = "true"
+			props.Set("dynamic", "true")
 			toID = prefix + methodName
 		} else {
 			switch h.kind {
 			case "metric":
-				props["metric_name"] = h.name
+				props.Set("metric_name", h.name)
 			case "log":
-				props["log_name"] = h.name
+				props.Set("log_name", h.name)
 			default:
-				props["span_name"] = h.name
+				props.Set("span_name", h.name)
 			}
 			toID = prefix + h.name
 		}

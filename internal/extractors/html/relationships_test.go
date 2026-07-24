@@ -56,13 +56,13 @@ func TestRelationships_Imports_ScriptSrc(t *testing.T) {
 	if r.ToID != "/static/app.js" {
 		t.Errorf("ToID = %q, want /static/app.js", r.ToID)
 	}
-	if got := r.Properties["local_name"]; got != "app.js" {
+	if got := r.Properties.Get("local_name"); got != "app.js" {
 		t.Errorf("local_name = %q, want app.js", got)
 	}
-	if got := r.Properties["source_module"]; got != "/static/app.js" {
+	if got := r.Properties.Get("source_module"); got != "/static/app.js" {
 		t.Errorf("source_module = %q, want /static/app.js", got)
 	}
-	if got, ok := r.Properties["imported_name"]; !ok || got != "" {
+	if got, ok := r.Properties.Lookup("imported_name"); !ok || got != "" {
 		t.Errorf("imported_name = %q (present=%v), want empty present", got, ok)
 	}
 }
@@ -79,8 +79,8 @@ func TestRelationships_Imports_LinkStylesheet(t *testing.T) {
 	if rels[0].ToID != "/css/main.css" {
 		t.Errorf("ToID = %q", rels[0].ToID)
 	}
-	if rels[0].Properties["local_name"] != "main.css" {
-		t.Errorf("local_name = %q, want main.css", rels[0].Properties["local_name"])
+	if rels[0].Properties.Get("local_name") != "main.css" {
+		t.Errorf("local_name = %q, want main.css", rels[0].Properties.Get("local_name"))
 	}
 }
 
@@ -107,8 +107,8 @@ func TestRelationships_Imports_ImgSrc(t *testing.T) {
 	if rels[0].ToID != "/img/hero.png" {
 		t.Errorf("ToID = %q", rels[0].ToID)
 	}
-	if rels[0].Properties["local_name"] != "hero.png" {
-		t.Errorf("local_name = %q, want hero.png", rels[0].Properties["local_name"])
+	if rels[0].Properties.Get("local_name") != "hero.png" {
+		t.Errorf("local_name = %q, want hero.png", rels[0].Properties.Get("local_name"))
 	}
 }
 
@@ -169,11 +169,11 @@ func TestRelationships_Imports_StripsQueryAndFragment(t *testing.T) {
 	if len(rels) != 1 {
 		t.Fatalf("IMPORTS count = %d, want 1", len(rels))
 	}
-	if got := rels[0].Properties["local_name"]; got != "app.js" {
+	if got := rels[0].Properties.Get("local_name"); got != "app.js" {
 		t.Errorf("local_name = %q, want app.js (query/fragment stripped)", got)
 	}
 	// source_module preserves the raw value.
-	if got := rels[0].Properties["source_module"]; got != "/js/app.js?v=42#hash" {
+	if got := rels[0].Properties.Get("source_module"); got != "/js/app.js?v=42#hash" {
 		t.Errorf("source_module = %q, want raw value preserved", got)
 	}
 }

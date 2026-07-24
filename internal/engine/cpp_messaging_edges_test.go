@@ -72,8 +72,8 @@ void run_publisher() {
 	if e.FromID != "SCOPE.Operation:run_publisher" {
 		t.Errorf("FromID = %q, want SCOPE.Operation:run_publisher", e.FromID)
 	}
-	if e.Properties["socket_role"] != "pub" {
-		t.Errorf("edge socket_role = %q, want pub", e.Properties["socket_role"])
+	if e.Properties.Get("socket_role") != "pub" {
+		t.Errorf("edge socket_role = %q, want pub", e.Properties.Get("socket_role"))
 	}
 }
 
@@ -102,8 +102,8 @@ void run_subscriber() {
 	if e.FromID != "SCOPE.Operation:run_subscriber" {
 		t.Errorf("FromID = %q, want SCOPE.Operation:run_subscriber", e.FromID)
 	}
-	if e.Properties["transport"] != "connect" {
-		t.Errorf("transport = %q, want connect", e.Properties["transport"])
+	if e.Properties.Get("transport") != "connect" {
+		t.Errorf("transport = %q, want connect", e.Properties.Get("transport"))
 	}
 }
 
@@ -177,8 +177,8 @@ void send_reading(struct mosquitto *mosq) {
 	if sub.FromID != "SCOPE.Operation:on_connect" {
 		t.Errorf("sub FromID = %q, want SCOPE.Operation:on_connect", sub.FromID)
 	}
-	if sub.Properties["messaging_layer"] != "mosquitto" {
-		t.Errorf("messaging_layer = %q, want mosquitto", sub.Properties["messaging_layer"])
+	if sub.Properties.Get("messaging_layer") != "mosquitto" {
+		t.Errorf("messaging_layer = %q, want mosquitto", sub.Properties.Get("messaging_layer"))
 	}
 
 	pub := edgeTo(rels, publishesToEdgeKind, "mqtt:sensors/temp")
@@ -211,8 +211,8 @@ void publish_status(mqtt::async_client& client) {
 	if e.FromID != "SCOPE.Operation:publish_status" {
 		t.Errorf("FromID = %q, want SCOPE.Operation:publish_status", e.FromID)
 	}
-	if e.Properties["messaging_layer"] != "paho-cpp" {
-		t.Errorf("messaging_layer = %q, want paho-cpp", e.Properties["messaging_layer"])
+	if e.Properties.Get("messaging_layer") != "paho-cpp" {
+		t.Errorf("messaging_layer = %q, want paho-cpp", e.Properties.Get("messaging_layer"))
 	}
 }
 
@@ -234,8 +234,8 @@ void setup(MQTTClient client) {
 	if e == nil {
 		t.Fatalf("expected SUBSCRIBES_TO mqtt:home/livingroom/light")
 	}
-	if e.Properties["messaging_layer"] != "paho-c" {
-		t.Errorf("messaging_layer = %q, want paho-c", e.Properties["messaging_layer"])
+	if e.Properties.Get("messaging_layer") != "paho-c" {
+		t.Errorf("messaging_layer = %q, want paho-c", e.Properties.Get("messaging_layer"))
 	}
 }
 

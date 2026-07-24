@@ -215,16 +215,16 @@ func tryEmitRegisterEdge(
 	emitted[viewSetName] = true
 
 	toID := buildDjangoModelClassRef(file.Path, viewSetName)
-	props := map[string]string{
-		"router_register": "true",
-		"url_prefix":      prefix,
-		"viewset":         viewSetName,
+	props := types.Props{
+		{K: "router_register", V: "true"},
+		{K: "url_prefix", V: prefix},
+		{K: "viewset", V: viewSetName},
 	}
 	if routerVar != "" {
-		props["router_var"] = routerVar
+		props.Set("router_var", routerVar)
 	}
 	if basename != "" {
-		props["basename"] = basename
+		props.Set("basename", basename)
 	}
 	(*entities)[fileIdx].Relationships = append((*entities)[fileIdx].Relationships,
 		types.RelationshipRecord{

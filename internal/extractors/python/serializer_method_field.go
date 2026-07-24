@@ -199,9 +199,9 @@ func scanSerializerBody(body ts.Node, file extractor.FileInput, parentClass stri
 				types.RelationshipRecord{
 					ToID: toID,
 					Kind: "RESOLVED_BY",
-					Properties: map[string]string{
-						"serializer_method_field": "true",
-						"method_name":             methodName,
+					Properties: types.Props{
+						{K: "method_name", V: methodName},
+						{K: "serializer_method_field", V: "true"},
 					},
 				})
 		}

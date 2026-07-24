@@ -46,23 +46,23 @@ def process(order):
 		}
 		t.Fatal("INSTRUMENTS edge process → span:checkout not found")
 	}
-	if r.Properties["span_name"] != "checkout" {
-		t.Errorf("span_name=%q, want %q", r.Properties["span_name"], "checkout")
+	if r.Properties.Get("span_name") != "checkout" {
+		t.Errorf("span_name=%q, want %q", r.Properties.Get("span_name"), "checkout")
 	}
-	if r.Properties["library"] != "opentelemetry" {
-		t.Errorf("library=%q, want opentelemetry", r.Properties["library"])
+	if r.Properties.Get("library") != "opentelemetry" {
+		t.Errorf("library=%q, want opentelemetry", r.Properties.Get("library"))
 	}
-	if r.Properties["api"] != "start_as_current_span" {
-		t.Errorf("api=%q, want start_as_current_span", r.Properties["api"])
+	if r.Properties.Get("api") != "start_as_current_span" {
+		t.Errorf("api=%q, want start_as_current_span", r.Properties.Get("api"))
 	}
-	if r.Properties["traced"] != "true" {
-		t.Errorf("traced=%q, want true", r.Properties["traced"])
+	if r.Properties.Get("traced") != "true" {
+		t.Errorf("traced=%q, want true", r.Properties.Get("traced"))
 	}
-	if r.Properties["line"] == "" {
+	if r.Properties.Get("line") == "" {
 		t.Error("line property is empty")
 	}
-	if r.Properties["dynamic"] != "" {
-		t.Errorf("dynamic=%q, want empty for static span name", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "" {
+		t.Errorf("dynamic=%q, want empty for static span name", r.Properties.Get("dynamic"))
 	}
 }
 
@@ -80,11 +80,11 @@ class Repo:
 	if r == nil {
 		t.Fatal("INSTRUMENTS edge Repo.fetch → span:db.query not found")
 	}
-	if r.Properties["span_name"] != "db.query" {
-		t.Errorf("span_name=%q, want db.query", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "db.query" {
+		t.Errorf("span_name=%q, want db.query", r.Properties.Get("span_name"))
 	}
-	if r.Properties["api"] != "start_span" {
-		t.Errorf("api=%q, want start_span", r.Properties["api"])
+	if r.Properties.Get("api") != "start_span" {
+		t.Errorf("api=%q, want start_span", r.Properties.Get("api"))
 	}
 }
 
@@ -107,8 +107,8 @@ def handle(req):
 		}
 		t.Fatal("INSTRUMENTS edge handle → span:handle not found")
 	}
-	if r.Properties["span_name"] != "handle" {
-		t.Errorf("span_name=%q, want handle", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "handle" {
+		t.Errorf("span_name=%q, want handle", r.Properties.Get("span_name"))
 	}
 }
 
@@ -133,14 +133,14 @@ def run(op_name):
 		}
 		t.Fatal("INSTRUMENTS edge run → span:run not found for dynamic span name")
 	}
-	if r.Properties["dynamic"] != "true" {
-		t.Errorf("dynamic=%q, want true", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "true" {
+		t.Errorf("dynamic=%q, want true", r.Properties.Get("dynamic"))
 	}
-	if r.Properties["traced"] != "true" {
-		t.Errorf("traced=%q, want true", r.Properties["traced"])
+	if r.Properties.Get("traced") != "true" {
+		t.Errorf("traced=%q, want true", r.Properties.Get("traced"))
 	}
-	if _, ok := r.Properties["span_name"]; ok {
-		t.Errorf("span_name must be absent for dynamic name; got %q", r.Properties["span_name"])
+	if _, ok := r.Properties.Lookup("span_name"); ok {
+		t.Errorf("span_name must be absent for dynamic name; got %q", r.Properties.Get("span_name"))
 	}
 }
 

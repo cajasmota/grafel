@@ -216,7 +216,7 @@ func applyDebeziumCDCEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID:     connectorName,
 			ToID:       bare,
 			Kind:       "CAPTURES",
-			Properties: map[string]string{"cdc_source_table": table, "pattern_type": "debezium_cdc"},
+			Properties: types.Props{{K: "cdc_source_table", V: table}, {K: "pattern_type", V: "debezium_cdc"}},
 		})
 		// Emit a stub table entity so even if the SQL migration is in
 		// another repo (or not yet indexed) the captured table still
@@ -240,10 +240,10 @@ func applyDebeziumCDCEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: connectorName,
 			ToID:   topicID,
 			Kind:   "PUBLISHES_TO",
-			Properties: map[string]string{
-				"broker":       "kafka",
-				"topic_name":   topic,
-				"pattern_type": "debezium_cdc",
+			Properties: types.Props{
+				{K: "broker", V: "kafka"},
+				{K: "pattern_type", V: "debezium_cdc"},
+				{K: "topic_name", V: topic},
 			},
 		})
 		// Emit the canonical MessageTopic node, matching the

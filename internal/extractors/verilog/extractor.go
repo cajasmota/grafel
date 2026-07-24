@@ -333,8 +333,8 @@ func buildToolEntities(src, scrubbed, filePath, lang string) []types.EntityRecor
 					FromID: filePath,
 					ToID:   spec.id,
 					Kind:   "USES",
-					Properties: map[string]string{
-						"tool": spec.id,
+					Properties: types.Props{
+						{K: "tool", V: spec.id},
 					},
 				},
 			},
@@ -622,10 +622,10 @@ func buildIncludeEntities(filePath, src, lang string) []types.EntityRecord {
 		displayName = strings.TrimSuffix(displayName, ".v")
 		displayName = strings.TrimSuffix(displayName, ".sv")
 
-		props := map[string]string{
-			"source_module": includePath,
-			"imported_name": displayName,
-			"local_name":    displayName,
+		props := types.Props{
+			{K: "imported_name", V: displayName},
+			{K: "local_name", V: displayName},
+			{K: "source_module", V: includePath},
 		}
 
 		out = append(out, types.EntityRecord{
@@ -660,10 +660,10 @@ func buildImportEntities(filePath, scrubbed, lang string) []types.EntityRecord {
 		}
 		seen[pkgName] = true
 
-		props := map[string]string{
-			"source_module": pkgName,
-			"imported_name": pkgName,
-			"local_name":    pkgName,
+		props := types.Props{
+			{K: "imported_name", V: pkgName},
+			{K: "local_name", V: pkgName},
+			{K: "source_module", V: pkgName},
 		}
 
 		out = append(out, types.EntityRecord{
@@ -737,12 +737,12 @@ func collectInstantiations(body, ownerName string) []types.RelationshipRecord {
 		}
 		seen[key] = true
 
-		props := map[string]string{
-			"instance_name": instName,
-			"module_type":   typeName,
+		props := types.Props{
+			{K: "instance_name", V: instName},
+			{K: "module_type", V: typeName},
 		}
 		if hasParamOverride {
-			props["parameterized"] = "true"
+			props.Set("parameterized", "true")
 		}
 
 		out = append(out, types.RelationshipRecord{

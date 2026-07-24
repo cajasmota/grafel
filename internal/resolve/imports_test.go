@@ -9,7 +9,7 @@ import (
 // importerRecord builds an EntityRecord for the IMPORTING file's marker
 // entity carrying a single IMPORTS relationship. Mirrors what
 // internal/extractors/python/extractor.go:importRecord emits.
-func importerRecord(file, modulePath string, props map[string]string) types.EntityRecord {
+func importerRecord(file, modulePath string, props types.Props) types.EntityRecord {
 	return types.EntityRecord{
 		Name:       modulePath,
 		Kind:       "SCOPE.Component",
@@ -66,10 +66,10 @@ func callerRecord(name, file, target string) types.EntityRecord {
 // "foo" to the entity id of the `foo` defined in module x.
 func TestResolveImports_PlainImport(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "remote", map[string]string{
-			"local_name":    "remote",
-			"source_module": "remote",
-			"imported_name": "remote",
+		importerRecord("client/app.py", "remote", types.Props{
+			{K: "imported_name", V: "remote"},
+			{K: "local_name", V: "remote"},
+			{K: "source_module", V: "remote"},
 		}),
 		targetRecord("dispatch", "remote/__init__.py", "aaaaaaaaaaaaaaaa"),
 		callerRecord("run", "client/app.py", "dispatch"),
@@ -88,10 +88,10 @@ func TestResolveImports_PlainImport(t *testing.T) {
 // TestResolveImports_FromImport covers `from foo import bar; bar()`.
 func TestResolveImports_FromImport(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "foo.bar", map[string]string{
-			"local_name":    "bar",
-			"source_module": "foo",
-			"imported_name": "bar",
+		importerRecord("client/app.py", "foo.bar", types.Props{
+			{K: "imported_name", V: "bar"},
+			{K: "local_name", V: "bar"},
+			{K: "source_module", V: "foo"},
 		}),
 		targetRecord("bar", "foo/__init__.py", "bbbbbbbbbbbbbbbb"),
 		callerRecord("run", "client/app.py", "bar"),
@@ -111,10 +111,10 @@ func TestResolveImports_FromImport(t *testing.T) {
 // rewrite to the entity for `bar` defined in module foo.
 func TestResolveImports_FromImportAlias(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "foo.bar", map[string]string{
-			"local_name":    "baz",
-			"source_module": "foo",
-			"imported_name": "bar",
+		importerRecord("client/app.py", "foo.bar", types.Props{
+			{K: "imported_name", V: "bar"},
+			{K: "local_name", V: "baz"},
+			{K: "source_module", V: "foo"},
 		}),
 		targetRecord("bar", "foo/__init__.py", "cccccccccccccccc"),
 		callerRecord("run", "client/app.py", "baz"),
@@ -151,10 +151,10 @@ func TestResolveImports_BareNameNotImported(t *testing.T) {
 // classifier will tag it ExternalKnown via the allowlist).
 func TestResolveImports_ExternalImportNoEntity(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "os", map[string]string{
-			"local_name":    "os",
-			"source_module": "os",
-			"imported_name": "os",
+		importerRecord("client/app.py", "os", types.Props{
+			{K: "imported_name", V: "os"},
+			{K: "local_name", V: "os"},
+			{K: "source_module", V: "os"},
 		}),
 		callerRecord("run", "client/app.py", "getcwd"),
 	}
@@ -173,10 +173,10 @@ func TestResolveImports_ExternalImportNoEntity(t *testing.T) {
 // byMember and must not be touched here.
 func TestResolveImports_DottedTargetSkipped(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "foo.bar", map[string]string{
-			"local_name":    "bar",
-			"source_module": "foo",
-			"imported_name": "bar",
+		importerRecord("client/app.py", "foo.bar", types.Props{
+			{K: "imported_name", V: "bar"},
+			{K: "local_name", V: "bar"},
+			{K: "source_module", V: "foo"},
 		}),
 		targetRecord("bar", "foo/__init__.py", "dddddddddddddddd"),
 		{
@@ -206,9 +206,9 @@ func TestResolveImports_DottedTargetSkipped(t *testing.T) {
 // CALLS target is rewritten.
 func TestResolveImports_Wildcard(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "foo", map[string]string{
-			"source_module": "foo",
-			"wildcard":      "1",
+		importerRecord("client/app.py", "foo", types.Props{
+			{K: "source_module", V: "foo"},
+			{K: "wildcard", V: "1"},
 		}),
 		targetRecord("bar", "foo/__init__.py", "eeeeeeeeeeeeeeee"),
 		callerRecord("run", "client/app.py", "bar"),
@@ -228,10 +228,10 @@ func TestResolveImports_Wildcard(t *testing.T) {
 // resolver must leave the CALLS target alone rather than guess.
 func TestResolveImports_AmbiguousModuleEntity(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "foo.bar", map[string]string{
-			"local_name":    "bar",
-			"source_module": "foo",
-			"imported_name": "bar",
+		importerRecord("client/app.py", "foo.bar", types.Props{
+			{K: "imported_name", V: "bar"},
+			{K: "local_name", V: "bar"},
+			{K: "source_module", V: "foo"},
 		}),
 		// Two entities with name "bar" both in foo/__init__.py — the
 		// (foo, bar) tuple is ambiguous, so the resolver must skip.
@@ -279,10 +279,10 @@ func TestResolveImports_AmbiguousModuleEntity(t *testing.T) {
 // source-root strip) is emitted, so no rewrite happens.
 func TestResolveImports_MonorepoTopLevelCollision(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "helpers.compute", map[string]string{
-			"local_name":    "compute",
-			"source_module": "helpers",
-			"imported_name": "compute",
+		importerRecord("client/app.py", "helpers.compute", types.Props{
+			{K: "imported_name", V: "compute"},
+			{K: "local_name", V: "compute"},
+			{K: "source_module", V: "helpers"},
 		}),
 		// Unrelated entity buried under a deeper path. Only its precise
 		// dotted form ("tools.shared.helpers") should be indexed.
@@ -305,10 +305,10 @@ func TestResolveImports_MonorepoTopLevelCollision(t *testing.T) {
 // "requests.api".
 func TestResolveImports_SrcPrefixStripped(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "requests.api.get", map[string]string{
-			"local_name":    "get",
-			"source_module": "requests.api",
-			"imported_name": "get",
+		importerRecord("client/app.py", "requests.api.get", types.Props{
+			{K: "imported_name", V: "get"},
+			{K: "local_name", V: "get"},
+			{K: "source_module", V: "requests.api"},
 		}),
 		targetRecord("get", "src/requests/api.py", "5555555555555555"),
 		callerRecord("run", "client/app.py", "get"),
@@ -330,15 +330,15 @@ func TestResolveImports_SrcPrefixStripped(t *testing.T) {
 // runs. The post-fix collects all candidates and drops on >1.
 func TestResolveImports_PlainImportAmbiguous(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "alpha", map[string]string{
-			"local_name":    "alpha",
-			"source_module": "alpha",
-			"imported_name": "alpha",
+		importerRecord("client/app.py", "alpha", types.Props{
+			{K: "imported_name", V: "alpha"},
+			{K: "local_name", V: "alpha"},
+			{K: "source_module", V: "alpha"},
 		}),
-		importerRecord("client/app.py", "beta", map[string]string{
-			"local_name":    "beta",
-			"source_module": "beta",
-			"imported_name": "beta",
+		importerRecord("client/app.py", "beta", types.Props{
+			{K: "imported_name", V: "beta"},
+			{K: "local_name", V: "beta"},
+			{K: "source_module", V: "beta"},
 		}),
 		// Both alpha and beta export a function named `tick`.
 		targetRecord("tick", "alpha/__init__.py", "6666666666666666"),
@@ -380,10 +380,10 @@ func TestResolveImports_DottedImportEdgeRewrite(t *testing.T) {
 	records := []types.EntityRecord{
 		// Importing file: `from conduit.database import db`. The Python
 		// extractor emits ToID = "conduit.database.db" (modPath + "." + name).
-		importerRecord("app/views.py", "conduit.database.db", map[string]string{
-			"local_name":    "db",
-			"source_module": "conduit.database",
-			"imported_name": "db",
+		importerRecord("app/views.py", "conduit.database.db", types.Props{
+			{K: "imported_name", V: "db"},
+			{K: "local_name", V: "db"},
+			{K: "source_module", V: "conduit.database"},
 		}),
 		// Real entity for `db` lives at conduit/database.py with name "db".
 		targetRecord("db", "conduit/database.py", "8888888888888888"),
@@ -406,10 +406,10 @@ func TestResolveImports_DottedImportEdgeRewrite(t *testing.T) {
 // form, so the (conduit.models, db) tuple resolves.
 func TestResolveImports_DottedImportEdgePackageInit(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("app/views.py", "conduit.models.db", map[string]string{
-			"local_name":    "db",
-			"source_module": "conduit.models",
-			"imported_name": "db",
+		importerRecord("app/views.py", "conduit.models.db", types.Props{
+			{K: "imported_name", V: "db"},
+			{K: "local_name", V: "db"},
+			{K: "source_module", V: "conduit.models"},
 		}),
 		targetRecord("db", "conduit/models/__init__.py", "9999999999999999"),
 	}
@@ -425,11 +425,11 @@ func TestResolveImports_DottedImportEdgePackageInit(t *testing.T) {
 
 func TestResolveImports_CSharpTypeImportUsesNamespaceProperty(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("src/App/Handler.cs", "Acme.Shop.Domain.Order", map[string]string{
-			"language":      "csharp",
-			"local_name":    "Order",
-			"source_module": "Acme.Shop.Domain",
-			"imported_name": "Order",
+		importerRecord("src/App/Handler.cs", "Acme.Shop.Domain.Order", types.Props{
+			{K: "imported_name", V: "Order"},
+			{K: "language", V: "csharp"},
+			{K: "local_name", V: "Order"},
+			{K: "source_module", V: "Acme.Shop.Domain"},
 		}),
 		{
 			ID:         "aaaaaaaaaaaaaaaa",
@@ -464,10 +464,10 @@ func TestResolveImports_CSharpNamespaceImportBindsRepresentativeEntity(t *testin
 				FromID: "src/App/Handler.cs",
 				ToID:   "Acme.Shop.Domain",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "Domain",
-					"source_module": "Acme.Shop",
-					"imported_name": "Domain",
+				Properties: types.Props{
+					{K: "imported_name", V: "Domain"},
+					{K: "local_name", V: "Domain"},
+					{K: "source_module", V: "Acme.Shop"},
 				},
 			}},
 		},
@@ -498,10 +498,10 @@ func TestResolveImports_CSharpNamespaceImportBindsRepresentativeEntity(t *testin
 // the external-synthesis pass can route it to ext:marshmallow.
 func TestResolveImports_DottedImportEdgeExternalLeftAlone(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("app/views.py", "marshmallow.Schema", map[string]string{
-			"local_name":    "Schema",
-			"source_module": "marshmallow",
-			"imported_name": "Schema",
+		importerRecord("app/views.py", "marshmallow.Schema", types.Props{
+			{K: "imported_name", V: "Schema"},
+			{K: "local_name", V: "Schema"},
+			{K: "source_module", V: "marshmallow"},
 		}),
 	}
 	tbl := BuildImportTable(records)
@@ -522,10 +522,10 @@ func TestResolveImports_DottedImportEdgeExternalLeftAlone(t *testing.T) {
 // the IMPORTS edge points at by convention).
 func TestResolveImports_DottedImportPlainModule(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("app/views.py", "conduit.database", map[string]string{
-			"local_name":    "conduit",
-			"source_module": "conduit.database",
-			"imported_name": "conduit.database",
+		importerRecord("app/views.py", "conduit.database", types.Props{
+			{K: "imported_name", V: "conduit.database"},
+			{K: "local_name", V: "conduit"},
+			{K: "source_module", V: "conduit.database"},
 		}),
 		targetRecord("db", "conduit/database.py", "aaaa1111aaaa1111"),
 	}
@@ -581,10 +581,10 @@ func TestResolveImports_JavaFromImport(t *testing.T) {
 				FromID: "src/main/java/x/App.java",
 				ToID:   "com.foo.Bar",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "Bar",
-					"source_module": "com.foo",
-					"imported_name": "Bar",
+				Properties: types.Props{
+					{K: "imported_name", V: "Bar"},
+					{K: "local_name", V: "Bar"},
+					{K: "source_module", V: "com.foo"},
 				},
 			}},
 		},
@@ -641,10 +641,10 @@ func TestResolveImports_JavaSrcMainJavaStripped(t *testing.T) {
 				FromID: "src/main/java/x/App.java",
 				ToID:   "com.foo.Bar",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "Bar",
-					"source_module": "com.foo",
-					"imported_name": "Bar",
+				Properties: types.Props{
+					{K: "imported_name", V: "Bar"},
+					{K: "local_name", V: "Bar"},
+					{K: "source_module", V: "com.foo"},
 				},
 			}},
 		},
@@ -735,10 +735,10 @@ func TestResolveImports_PHPProjectLocalNamespace(t *testing.T) {
 				FromID: "src/Form/PostType.php",
 				ToID:   "App\\Entity\\Post",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "Post",
-					"source_module": "App.Entity",
-					"imported_name": "Post",
+				Properties: types.Props{
+					{K: "imported_name", V: "Post"},
+					{K: "local_name", V: "Post"},
+					{K: "source_module", V: "App.Entity"},
 				},
 			}},
 		},
@@ -778,10 +778,10 @@ func TestResolveImports_PHPSameLeafTwoNamespaces(t *testing.T) {
 				FromID: "src/Controller/UserController.php",
 				ToID:   "App\\Entity\\User",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "User",
-					"source_module": "App.Entity",
-					"imported_name": "User",
+				Properties: types.Props{
+					{K: "imported_name", V: "User"},
+					{K: "local_name", V: "User"},
+					{K: "source_module", V: "App.Entity"},
 				},
 			}},
 		},
@@ -828,10 +828,10 @@ func TestResolveImports_PHPExternalNamespaceLeftAlone(t *testing.T) {
 				FromID: "src/Form/PostType.php",
 				ToID:   "Symfony\\Component\\Form\\AbstractType",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "AbstractType",
-					"source_module": "Symfony.Component.Form",
-					"imported_name": "AbstractType",
+				Properties: types.Props{
+					{K: "imported_name", V: "AbstractType"},
+					{K: "local_name", V: "AbstractType"},
+					{K: "source_module", V: "Symfony.Component.Form"},
 				},
 			}},
 		},
@@ -1050,15 +1050,15 @@ func TestResolveImports_PHPFQNMethodAmbiguousMethodLeftAlone(t *testing.T) {
 // both bindings and leave the CALLS stub alone.
 func TestResolveImports_FileLocalCollisionDropsBinding(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("client/app.py", "foo.bar", map[string]string{
-			"local_name":    "bar",
-			"source_module": "foo",
-			"imported_name": "bar",
+		importerRecord("client/app.py", "foo.bar", types.Props{
+			{K: "imported_name", V: "bar"},
+			{K: "local_name", V: "bar"},
+			{K: "source_module", V: "foo"},
 		}),
-		importerRecord("client/app.py", "qux.bar", map[string]string{
-			"local_name":    "bar",
-			"source_module": "qux",
-			"imported_name": "bar",
+		importerRecord("client/app.py", "qux.bar", types.Props{
+			{K: "imported_name", V: "bar"},
+			{K: "local_name", V: "bar"},
+			{K: "source_module", V: "qux"},
 		}),
 		targetRecord("bar", "foo/__init__.py", "2222222222222222"),
 		targetRecord("bar", "qux/__init__.py", "3333333333333333"),
@@ -1136,10 +1136,10 @@ func TestResolveImports_TypeScriptCrossFileNamedImport(t *testing.T) {
 				FromID: "src/users/users.controller.ts",
 				ToID:   "./services/user.service",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "UserService",
-					"source_module": "src.users.services.user.service",
-					"imported_name": "UserService",
+				Properties: types.Props{
+					{K: "imported_name", V: "UserService"},
+					{K: "local_name", V: "UserService"},
+					{K: "source_module", V: "src.users.services.user.service"},
 				},
 			}},
 		},
@@ -1195,11 +1195,11 @@ func markdownDocRecord(file, importTarget, importerID string) types.EntityRecord
 			FromID: file,
 			ToID:   importTarget,
 			Kind:   "IMPORTS",
-			Properties: map[string]string{
-				"source_module": importTarget,
-				"imported_name": importTarget,
-				"import_kind":   "link",
-				"language":      "markdown",
+			Properties: types.Props{
+				{K: "import_kind", V: "link"},
+				{K: "imported_name", V: importTarget},
+				{K: "language", V: "markdown"},
+				{K: "source_module", V: importTarget},
 			},
 		}}
 	}
@@ -1306,7 +1306,7 @@ func TestResolveImports_MarkdownFilePathMiss(t *testing.T) {
 
 // scalaImporterRecord mirrors importerRecord but tags Language="scala"
 // so the language-conditional dedup helpers run the scala branch.
-func scalaImporterRecord(file, modulePath string, props map[string]string) types.EntityRecord {
+func scalaImporterRecord(file, modulePath string, props types.Props) types.EntityRecord {
 	return types.EntityRecord{
 		Name:       modulePath,
 		Kind:       "SCOPE.Component",
@@ -1408,10 +1408,10 @@ func TestModulesForScalaFile_RepoRootBail(t *testing.T) {
 // rewrites the IMPORTS ToID to the SCOPE.Component entity ID.
 func TestResolveImports_ScalaPlayProjectLocal(t *testing.T) {
 	records := []types.EntityRecord{
-		scalaImporterRecord("test/UnitSpec.scala", "controllers.AsyncController", map[string]string{
-			"local_name":    "AsyncController",
-			"source_module": "controllers",
-			"imported_name": "AsyncController",
+		scalaImporterRecord("test/UnitSpec.scala", "controllers.AsyncController", types.Props{
+			{K: "imported_name", V: "AsyncController"},
+			{K: "local_name", V: "AsyncController"},
+			{K: "source_module", V: "controllers"},
 		}),
 		scalaScopeTarget("AsyncController", "app/controllers/AsyncController.scala", "aaaabbbbccccdddd"),
 	}
@@ -1436,10 +1436,10 @@ func TestResolveImports_ScalaPlayProjectLocal(t *testing.T) {
 // the binding target.
 func TestResolveImports_ScalaPlayFrameworkProjectionNotAmbiguous(t *testing.T) {
 	records := []types.EntityRecord{
-		scalaImporterRecord("test/UnitSpec.scala", "controllers.AsyncController", map[string]string{
-			"local_name":    "AsyncController",
-			"source_module": "controllers",
-			"imported_name": "AsyncController",
+		scalaImporterRecord("test/UnitSpec.scala", "controllers.AsyncController", types.Props{
+			{K: "imported_name", V: "AsyncController"},
+			{K: "local_name", V: "AsyncController"},
+			{K: "source_module", V: "controllers"},
 		}),
 		scalaScopeTarget("AsyncController", "app/controllers/AsyncController.scala", "1111222233334444"),
 		scalaFrameworkTarget("AsyncController", "app/controllers/AsyncController.scala", "5555666677778888"),
@@ -1593,7 +1593,7 @@ func referencerRecord(callerName, callerFile string, stubKind, stubFile, stubNam
 // internal/extractors/python/imports.go:resolveImportToIDs stamps
 // (`ext:<root>[:<name>]` for known external roots; the dotted module
 // path otherwise).
-func importerWithToID(file, modulePath, toID string, props map[string]string) types.EntityRecord {
+func importerWithToID(file, modulePath, toID string, props types.Props) types.EntityRecord {
 	rec := importerRecord(file, modulePath, props)
 	rec.Relationships[0].ToID = toID
 	return rec
@@ -1607,10 +1607,10 @@ func importerWithToID(file, modulePath, toID string, props map[string]string) ty
 // resolver must rewrite the REFERENCES ToID to the binding's `ext:` ID.
 func TestResolveImports_ReferencesCrossFileExternal(t *testing.T) {
 	records := []types.EntityRecord{
-		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", map[string]string{
-			"local_name":    "Model",
-			"source_module": "django.db.models",
-			"imported_name": "Model",
+		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", types.Props{
+			{K: "imported_name", V: "Model"},
+			{K: "local_name", V: "Model"},
+			{K: "source_module", V: "django.db.models"},
 		}),
 		referencerRecord("UserView.get", "api/views.py", "component", "api/views.py", "Model"),
 	}
@@ -1636,10 +1636,10 @@ func TestResolveImports_ReferencesCrossFileExternal(t *testing.T) {
 // and rewrite the REFERENCES ToID to the hex entity ID of Post.
 func TestResolveImports_ReferencesCrossFileInternal(t *testing.T) {
 	records := []types.EntityRecord{
-		importerWithToID("app/views.py", "app.models.Post", "app.models.Post", map[string]string{
-			"local_name":    "Post",
-			"source_module": "app.models",
-			"imported_name": "Post",
+		importerWithToID("app/views.py", "app.models.Post", "app.models.Post", types.Props{
+			{K: "imported_name", V: "Post"},
+			{K: "local_name", V: "Post"},
+			{K: "source_module", V: "app.models"},
 		}),
 		targetRecord("Post", "app/models.py", "dddddddddddddddd"),
 		referencerRecord("list_posts", "app/views.py", "component", "app/views.py", "Post"),
@@ -1664,10 +1664,10 @@ func TestResolveImports_ReferencesFileLocalUntouched(t *testing.T) {
 	records := []types.EntityRecord{
 		// Same file ALSO imports a name `helper` from elsewhere — the
 		// local definition still shadows the import in Python semantics.
-		importerWithToID("app/views.py", "app.utils.helper", "app.utils.helper", map[string]string{
-			"local_name":    "helper",
-			"source_module": "app.utils",
-			"imported_name": "helper",
+		importerWithToID("app/views.py", "app.utils.helper", "app.utils.helper", types.Props{
+			{K: "imported_name", V: "helper"},
+			{K: "local_name", V: "helper"},
+			{K: "source_module", V: "app.utils"},
 		}),
 		// File-local definition of `helper` in the same file.
 		targetRecord("helper", "app/views.py", "eeeeeeeeeeeeeeee"),
@@ -1692,10 +1692,10 @@ func TestResolveImports_ReferencesUnresolvedNameUntouched(t *testing.T) {
 	original := "scope:component:ref:python:api/views.py:Unknown"
 	records := []types.EntityRecord{
 		// Caller's file has an import, but for a DIFFERENT name.
-		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", map[string]string{
-			"local_name":    "Model",
-			"source_module": "django.db.models",
-			"imported_name": "Model",
+		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", types.Props{
+			{K: "imported_name", V: "Model"},
+			{K: "local_name", V: "Model"},
+			{K: "source_module", V: "django.db.models"},
 		}),
 		referencerRecord("entry", "api/views.py", "component", "api/views.py", "Unknown"),
 	}
@@ -1717,10 +1717,10 @@ func TestResolveImports_ReferencesUnresolvedNameUntouched(t *testing.T) {
 func TestResolveImports_ReferencesFormatBSkipped(t *testing.T) {
 	original := "scope:component:ref:python:api/views.py:UserView#Model"
 	records := []types.EntityRecord{
-		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", map[string]string{
-			"local_name":    "Model",
-			"source_module": "django.db.models",
-			"imported_name": "Model",
+		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", types.Props{
+			{K: "imported_name", V: "Model"},
+			{K: "local_name", V: "Model"},
+			{K: "source_module", V: "django.db.models"},
 		}),
 		{
 			ID:         "0123456789abcdef",
@@ -1790,11 +1790,11 @@ func TestJavaCanonicalLookup_WinsOverHierarchyInferenceEntity(t *testing.T) {
 				FromID: "src/main/java/com/example/service/Svc.java",
 				ToID:   module + ".MyException",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "MyException",
-					"source_module": module,
-					"imported_name": "MyException",
-					"language":      "java",
+				Properties: types.Props{
+					{K: "imported_name", V: "MyException"},
+					{K: "language", V: "java"},
+					{K: "local_name", V: "MyException"},
+					{K: "source_module", V: module},
 				},
 			}},
 		},
@@ -1859,11 +1859,11 @@ func TestJavaCanonicalLookup_EntityFileSetForIncomingCollision(t *testing.T) {
 				FromID: "src/main/java/com/example/svc/Consumer.java",
 				ToID:   module + ".Widget",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "Widget",
-					"source_module": module,
-					"imported_name": "Widget",
-					"language":      "java",
+				Properties: types.Props{
+					{K: "imported_name", V: "Widget"},
+					{K: "language", V: "java"},
+					{K: "local_name", V: "Widget"},
+					{K: "source_module", V: module},
 				},
 			}},
 		},
@@ -1926,11 +1926,11 @@ func TestJavaCanonicalLookup_ScopePreferredOverFrameworkProjection(t *testing.T)
 				FromID: "src/main/java/com/example/ctrl/Ctrl.java",
 				ToID:   module + ".OrderService",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "OrderService",
-					"source_module": module,
-					"imported_name": "OrderService",
-					"language":      "java",
+				Properties: types.Props{
+					{K: "imported_name", V: "OrderService"},
+					{K: "language", V: "java"},
+					{K: "local_name", V: "OrderService"},
+					{K: "source_module", V: module},
 				},
 			}},
 		},
@@ -1987,11 +1987,11 @@ func TestJavaCanonicalLookup_LateArrivalAfterAmbigFlag(t *testing.T) {
 				FromID: "src/main/java/com/example/ctrl/CheckoutCtrl.java",
 				ToID:   module + ".PayService",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "PayService",
-					"source_module": module,
-					"imported_name": "PayService",
-					"language":      "java",
+				Properties: types.Props{
+					{K: "imported_name", V: "PayService"},
+					{K: "language", V: "java"},
+					{K: "local_name", V: "PayService"},
+					{K: "source_module", V: module},
 				},
 			}},
 		},
@@ -2052,11 +2052,11 @@ func TestJavaCanonicalLookup_BareCallsViaResolveBareCallTarget(t *testing.T) {
 					FromID: callerFile,
 					ToID:   module + ".MyError",
 					Kind:   importRelKind,
-					Properties: map[string]string{
-						"local_name":    "MyError",
-						"source_module": module,
-						"imported_name": "MyError",
-						"language":      "java",
+					Properties: types.Props{
+						{K: "imported_name", V: "MyError"},
+						{K: "language", V: "java"},
+						{K: "local_name", V: "MyError"},
+						{K: "source_module", V: module},
 					},
 				},
 			},
@@ -2122,11 +2122,11 @@ func TestJavaCanonicalLookup_NoFalseBindWhenMultipleCanonicalFiles(t *testing.T)
 				FromID: "src/main/java/com/example/App.java",
 				ToID:   "com.example.Util",
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"local_name":    "Util",
-					"source_module": "com.example",
-					"imported_name": "Util",
-					"language":      "java",
+				Properties: types.Props{
+					{K: "imported_name", V: "Util"},
+					{K: "language", V: "java"},
+					{K: "local_name", V: "Util"},
+					{K: "source_module", V: "com.example"},
 				},
 			}},
 		},
@@ -2141,10 +2141,10 @@ func TestJavaCanonicalLookup_NoFalseBindWhenMultipleCanonicalFiles(t *testing.T)
 
 func TestResolveImports_ReferencesHexToIDUntouched(t *testing.T) {
 	records := []types.EntityRecord{
-		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", map[string]string{
-			"local_name":    "Model",
-			"source_module": "django.db.models",
-			"imported_name": "Model",
+		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", types.Props{
+			{K: "imported_name", V: "Model"},
+			{K: "local_name", V: "Model"},
+			{K: "source_module", V: "django.db.models"},
 		}),
 		{
 			ID:         "0123456789abcdef",
@@ -2174,7 +2174,7 @@ func TestResolveImports_ReferencesHexToIDUntouched(t *testing.T) {
 // CALL-target tests (issue #1694) to inject the `import_alias` /
 // `call_leaf` hints the Python extractor stamps for
 // `<alias>.<leaf>(...)` shapes.
-func callerRecordWithProps(name, file, target string, props map[string]string) types.EntityRecord {
+func callerRecordWithProps(name, file, target string, props types.Props) types.EntityRecord {
 	return types.EntityRecord{
 		ID:         "0123456789abcdef",
 		Name:       name,
@@ -2199,15 +2199,15 @@ func callerRecordWithProps(name, file, target string, props map[string]string) t
 // real `create_order` entity in services/order_saga/app/steps.py.
 func TestResolveImports_CrossModuleCall_FromImportSubmodule(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("services/order_saga/app/orchestrator.py", "services.order_saga.app.steps", map[string]string{
-			"local_name":    "steps",
-			"source_module": "services.order_saga.app",
-			"imported_name": "steps",
+		importerRecord("services/order_saga/app/orchestrator.py", "services.order_saga.app.steps", types.Props{
+			{K: "imported_name", V: "steps"},
+			{K: "local_name", V: "steps"},
+			{K: "source_module", V: "services.order_saga.app"},
 		}),
 		targetRecord("create_order", "services/order_saga/app/steps.py", "abcdef0123456789"),
-		callerRecordWithProps("run", "services/order_saga/app/orchestrator.py", "create_order", map[string]string{
-			"import_alias": "steps",
-			"call_leaf":    "create_order",
+		callerRecordWithProps("run", "services/order_saga/app/orchestrator.py", "create_order", types.Props{
+			{K: "call_leaf", V: "create_order"},
+			{K: "import_alias", V: "steps"},
 		}),
 	}
 	tbl := BuildImportTable(records)
@@ -2225,15 +2225,15 @@ func TestResolveImports_CrossModuleCall_FromImportSubmodule(t *testing.T) {
 // imported_name; the resolver probes (source_module, call_leaf) directly.
 func TestResolveImports_CrossModuleCall_PlainImport(t *testing.T) {
 	records := []types.EntityRecord{
-		importerRecord("services/orders/checkout.py", "billing", map[string]string{
-			"local_name":    "billing",
-			"source_module": "billing",
-			"imported_name": "billing",
+		importerRecord("services/orders/checkout.py", "billing", types.Props{
+			{K: "imported_name", V: "billing"},
+			{K: "local_name", V: "billing"},
+			{K: "source_module", V: "billing"},
 		}),
 		targetRecord("charge_card", "billing/__init__.py", "1111222233334444"),
-		callerRecordWithProps("checkout", "services/orders/checkout.py", "charge_card", map[string]string{
-			"import_alias": "billing",
-			"call_leaf":    "charge_card",
+		callerRecordWithProps("checkout", "services/orders/checkout.py", "charge_card", types.Props{
+			{K: "call_leaf", V: "charge_card"},
+			{K: "import_alias", V: "billing"},
 		}),
 	}
 	tbl := BuildImportTable(records)
@@ -2258,10 +2258,10 @@ func TestResolveImports_CrossModuleCall_UnknownAliasUnchanged(t *testing.T) {
 	// and the bare-name resolver must also miss (no binding).
 	records := []types.EntityRecord{
 		targetRecord("charge_card", "billing/__init__.py", "9999888877776666"),
-		callerRecordWithProps("checkout", "services/orders/checkout.py", "charge_card", map[string]string{
+		callerRecordWithProps("checkout", "services/orders/checkout.py", "charge_card", types.PropsFromMap(map[string]string{
 			"import_alias": "billing", // alias not in bucket
 			"call_leaf":    "charge_card",
-		}),
+		})),
 	}
 	tbl := BuildImportTable(records)
 	stats := ResolveImports(records, tbl)
@@ -2278,9 +2278,9 @@ func TestResolveImports_CrossModuleCall_UnknownAliasUnchanged(t *testing.T) {
 // goImporterRecord builds a Go IMPORTS entity record as the extractor would
 // emit when go.mod is present and the import is an in-tree package.
 func goImporterRecord(importerFile, importPath, pkgDir, moduleRoot string) types.EntityRecord {
-	props := map[string]string{
-		"go_pkg_dir":     pkgDir,
-		"go_module_root": moduleRoot,
+	props := types.Props{
+		{K: "go_module_root", V: moduleRoot},
+		{K: "go_pkg_dir", V: pkgDir},
 	}
 	return types.EntityRecord{
 		Name:       importPath,
@@ -2436,9 +2436,9 @@ func TestResolveGoInTreeImports_AlreadyHexUnchanged(t *testing.T) {
 				FromID: "cmd/main.go",
 				ToID:   fileID, // already rewritten
 				Kind:   importRelKind,
-				Properties: map[string]string{
-					"go_pkg_dir":     "internal/types",
-					"go_module_root": "github.com/myorg/repo",
+				Properties: types.Props{
+					{K: "go_module_root", V: "github.com/myorg/repo"},
+					{K: "go_pkg_dir", V: "internal/types"},
 				},
 			}},
 		},

@@ -141,12 +141,12 @@ func applyAPIGatewayRoutingEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		props := map[string]string{
-			"flow":      flow,
-			"synthesis": "api_gateway_routing",
+		props := types.Props{
+			{K: "flow", V: flow},
+			{K: "synthesis", V: "api_gateway_routing"},
 		}
 		if predicate != "" {
-			props["predicate"] = predicate
+			props.Set("predicate", predicate)
 		}
 		relationships = append(relationships, types.RelationshipRecord{
 			FromID:     routeID,

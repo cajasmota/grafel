@@ -202,9 +202,9 @@ func (e *nimAllographerMigrationsExtractor) Extract(
 			if o.fkColumn != "" {
 				props["fk_column"] = o.fkColumn
 			}
-			relProps := map[string]string{"fk_field": o.column, "to_table": o.fkTable}
+			relProps := types.Props{{K: "fk_field", V: o.column}, {K: "to_table", V: o.fkTable}}
 			if o.fkColumn != "" {
-				relProps["references"] = o.fkColumn
+				relProps.Set("references", o.fkColumn)
 			}
 			rec.Relationships = []types.RelationshipRecord{{
 				ToID: o.fkTable, Kind: "REFERENCES", Properties: relProps,

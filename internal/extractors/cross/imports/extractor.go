@@ -469,11 +469,11 @@ func buildEntitiesAndRels(filePath string, imports []importRecord) []types.Entit
 			FromID: fRef,
 			ToID:   modRef,
 			Kind:   "DEPENDS_ON",
-			Properties: map[string]string{
-				"kind":       "import",
-				"module":     imp.module,
-				"is_local":   boolStr(imp.isLocal),
-				"raw_import": imp.raw,
+			Properties: types.Props{
+				{K: "is_local", V: boolStr(imp.isLocal)},
+				{K: "kind", V: "import"},
+				{K: "module", V: imp.module},
+				{K: "raw_import", V: imp.raw},
 			},
 		})
 	}

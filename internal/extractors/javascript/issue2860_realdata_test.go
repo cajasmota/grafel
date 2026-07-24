@@ -64,7 +64,7 @@ func TestIssue2860_RealData_ReactNativeNavigator(t *testing.T) {
 		if r.Kind != "NAVIGATES_TO" {
 			continue
 		}
-		switch r.Properties["via"] {
+		switch r.Properties.Get("via") {
 		case "screen_config":
 			screenEdges++
 		case "deep_link":

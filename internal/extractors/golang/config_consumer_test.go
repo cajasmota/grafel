@@ -51,7 +51,7 @@ func configReadKeysFrom(recs []types.EntityRecord, from string) map[string]bool 
 		}
 		for _, r := range e.Relationships {
 			if r.Kind == "DEPENDS_ON_CONFIG" {
-				keys[r.Properties["config_key"]] = true
+				keys[r.Properties.Get("config_key")] = true
 			}
 		}
 	}

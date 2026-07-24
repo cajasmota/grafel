@@ -193,7 +193,7 @@ func TestIssue4329_RealMainNoFalseGlobals(t *testing.T) {
 	path, content := loadNest4329(t, "main.ts", "src/main.ts")
 	ents := nestExtract4329(t, path, content)
 	for _, r := range usesEdges(ents) {
-		if r.Properties["global"] == "true" {
+		if r.Properties.Get("global") == "true" {
 			t.Errorf("real main.ts should not produce a global USES edge, got %+v", r)
 		}
 	}

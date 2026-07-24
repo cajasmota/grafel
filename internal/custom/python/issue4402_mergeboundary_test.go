@@ -137,7 +137,7 @@ func TestIssue4402_BaseContainsSurvivesMerge_WorkaroundDisabled(t *testing.T) {
 		if r.Kind != string(types.RelationshipKindContains) {
 			continue
 		}
-		if r.Properties["provenance"] == "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP" {
+		if r.Properties.Get("provenance") == "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP" {
 			workaroundContains++
 			continue
 		}
@@ -168,7 +168,7 @@ func TestIssue4402_BaseContainsSurvivesMerge_WorkaroundDisabled(t *testing.T) {
 	containsOwnedBySurvivor := 0
 	for _, r := range contract.Relationships {
 		if r.Kind != string(types.RelationshipKindContains) ||
-			r.Properties["provenance"] == "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP" {
+			r.Properties.Get("provenance") == "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP" {
 			continue
 		}
 		if r.FromID == baseClassID {
@@ -212,7 +212,7 @@ func stripWorkaroundContains(ents []types.EntityRecord) []types.EntityRecord {
 		kept := out[i].Relationships[:0:0]
 		for _, r := range out[i].Relationships {
 			if r.Kind == string(types.RelationshipKindContains) &&
-				r.Properties["provenance"] == "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP" {
+				r.Properties.Get("provenance") == "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP" {
 				continue
 			}
 			kept = append(kept, r)

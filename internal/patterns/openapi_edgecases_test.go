@@ -87,7 +87,7 @@ func TestOpenAPI_ParameterRefResolves(t *testing.T) {
 	}
 	wantParams := map[string]bool{"PageSize": false, "PageToken": false}
 	for _, r := range listOp.Relationships {
-		if r.Kind == "REFERENCES" && r.Properties["reference_kind"] == "parameter_ref" {
+		if r.Kind == "REFERENCES" && r.Properties.Get("reference_kind") == "parameter_ref" {
 			for k := range wantParams {
 				if r.ToID == "openapi_parameter_"+k {
 					wantParams[k] = true
@@ -122,7 +122,7 @@ func TestOpenAPI_SpecContainsParameters(t *testing.T) {
 	}
 	containsParams := 0
 	for _, r := range spec.Relationships {
-		if r.Kind == "CONTAINS" && r.Properties["contained_kind"] == "parameter" {
+		if r.Kind == "CONTAINS" && r.Properties.Get("contained_kind") == "parameter" {
 			containsParams++
 		}
 	}
@@ -195,7 +195,7 @@ func TestSwagger2_ParameterRefResolves(t *testing.T) {
 	}
 	wantParams := map[string]bool{"Limit": false, "Offset": false}
 	for _, r := range listOp.Relationships {
-		if r.Kind == "REFERENCES" && r.Properties["reference_kind"] == "parameter_ref" {
+		if r.Kind == "REFERENCES" && r.Properties.Get("reference_kind") == "parameter_ref" {
 			for k := range wantParams {
 				if r.ToID == "openapi_parameter_"+k {
 					wantParams[k] = true

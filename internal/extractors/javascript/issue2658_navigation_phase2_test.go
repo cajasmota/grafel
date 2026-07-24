@@ -54,7 +54,7 @@ const UserProfile = () => {
 			if r.Properties == nil {
 				t.Fatal("NAVIGATES_TO edge has no Properties")
 			}
-			gotRoute := r.Properties["route"]
+			gotRoute := r.Properties.Get("route")
 			if !strings.Contains(gotRoute, "{*}") {
 				t.Errorf("expected route to contain '{*}' placeholder, got %q", gotRoute)
 			}
@@ -109,11 +109,11 @@ const MyScreen = () => {
 	}
 	for _, r := range e.Relationships {
 		if r.Kind == "NAVIGATES_TO" && r.ToID == "route:Home" {
-			if r.Properties["route"] != "Home" {
-				t.Errorf("expected Properties[route]='Home', got %v", r.Properties["route"])
+			if r.Properties.Get("route") != "Home" {
+				t.Errorf("expected Properties[route]='Home', got %v", r.Properties.Get("route"))
 			}
-			if r.Properties["via"] != "navigation_call" {
-				t.Errorf("expected Properties[via]='navigation_call', got %v", r.Properties["via"])
+			if r.Properties.Get("via") != "navigation_call" {
+				t.Errorf("expected Properties[via]='navigation_call', got %v", r.Properties.Get("via"))
 			}
 			return
 		}

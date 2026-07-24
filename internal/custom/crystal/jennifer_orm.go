@@ -143,9 +143,9 @@ func (e *jenniferORMExtractor) Extract(
 			rels = append(rels, types.RelationshipRecord{
 				ToID: target,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"fk_field": a.name,
-					"to_model": target,
+				Properties: types.Props{
+					{K: "fk_field", V: a.name},
+					{K: "to_model", V: target},
 				},
 			})
 		}

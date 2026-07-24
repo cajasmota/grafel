@@ -26,7 +26,7 @@ func findGraphRelates(entities []types.EntityRecord, file, owner, target, field 
 				continue
 			}
 			if r.FromID == fromRef && r.ToID == toRef &&
-				(field == "" || r.Properties["field_name"] == field) {
+				(field == "" || r.Properties.Get("field_name") == field) {
 				return &e.Relationships[i]
 			}
 		}
@@ -70,17 +70,17 @@ type Order {
 	if e.FromID != wantFrom {
 		t.Errorf("FromID = %q, want canonical type node ref %q", e.FromID, wantFrom)
 	}
-	if e.Properties["list"] != "true" {
-		t.Errorf("list = %q, want true", e.Properties["list"])
+	if e.Properties.Get("list") != "true" {
+		t.Errorf("list = %q, want true", e.Properties.Get("list"))
 	}
-	if e.Properties["nullable"] != "false" {
-		t.Errorf("nullable = %q, want false ([Order!]! list is non-null)", e.Properties["nullable"])
+	if e.Properties.Get("nullable") != "false" {
+		t.Errorf("nullable = %q, want false ([Order!]! list is non-null)", e.Properties.Get("nullable"))
 	}
-	if e.Properties["item_nullable"] != "false" {
-		t.Errorf("item_nullable = %q, want false (Order! items non-null)", e.Properties["item_nullable"])
+	if e.Properties.Get("item_nullable") != "false" {
+		t.Errorf("item_nullable = %q, want false (Order! items non-null)", e.Properties.Get("item_nullable"))
 	}
-	if e.Properties["cardinality"] != "to_many" {
-		t.Errorf("cardinality = %q, want to_many", e.Properties["cardinality"])
+	if e.Properties.Get("cardinality") != "to_many" {
+		t.Errorf("cardinality = %q, want to_many", e.Properties.Get("cardinality"))
 	}
 }
 
@@ -99,14 +99,14 @@ type User {
 	if e == nil {
 		t.Fatal("expected GRAPH_RELATES Order → User on field user")
 	}
-	if e.Properties["list"] != "false" {
-		t.Errorf("list = %q, want false", e.Properties["list"])
+	if e.Properties.Get("list") != "false" {
+		t.Errorf("list = %q, want false", e.Properties.Get("list"))
 	}
-	if e.Properties["nullable"] != "false" {
-		t.Errorf("nullable = %q, want false (User!)", e.Properties["nullable"])
+	if e.Properties.Get("nullable") != "false" {
+		t.Errorf("nullable = %q, want false (User!)", e.Properties.Get("nullable"))
 	}
-	if e.Properties["cardinality"] != "to_one" {
-		t.Errorf("cardinality = %q, want to_one", e.Properties["cardinality"])
+	if e.Properties.Get("cardinality") != "to_one" {
+		t.Errorf("cardinality = %q, want to_one", e.Properties.Get("cardinality"))
 	}
 }
 
@@ -121,8 +121,8 @@ type B { id: ID! }
 	if e == nil {
 		t.Fatal("expected GRAPH_RELATES A → B")
 	}
-	if e.Properties["nullable"] != "true" {
-		t.Errorf("nullable = %q, want true (B has no !)", e.Properties["nullable"])
+	if e.Properties.Get("nullable") != "true" {
+		t.Errorf("nullable = %q, want true (B has no !)", e.Properties.Get("nullable"))
 	}
 }
 
@@ -137,7 +137,7 @@ type B { id: ID! }
 	if e == nil {
 		t.Fatal("expected GRAPH_RELATES A → B (list)")
 	}
-	if e.Properties["list"] != "true" || e.Properties["nullable"] != "true" || e.Properties["item_nullable"] != "true" {
+	if e.Properties.Get("list") != "true" || e.Properties.Get("nullable") != "true" || e.Properties.Get("item_nullable") != "true" {
 		t.Errorf("cardinality props = %+v, want list=true nullable=true item_nullable=true", e.Properties)
 	}
 }
@@ -209,8 +209,8 @@ func TestTypeGraph_SelfRef(t *testing.T) {
 	if e == nil {
 		t.Fatal("expected self-referential GRAPH_RELATES Employee → Employee")
 	}
-	if e.Properties["self_ref"] != "true" {
-		t.Errorf("self_ref = %q, want true", e.Properties["self_ref"])
+	if e.Properties.Get("self_ref") != "true" {
+		t.Errorf("self_ref = %q, want true", e.Properties.Get("self_ref"))
 	}
 }
 
@@ -229,10 +229,10 @@ type Query2 { results: [SearchResult!]! }
 	if toUser == nil || toPost == nil {
 		t.Fatalf("expected union expansion Query2 → {User, Post}, got user=%v post=%v", toUser, toPost)
 	}
-	if toUser.Properties["via_union"] != "SearchResult" {
-		t.Errorf("via_union = %q, want SearchResult", toUser.Properties["via_union"])
+	if toUser.Properties.Get("via_union") != "SearchResult" {
+		t.Errorf("via_union = %q, want SearchResult", toUser.Properties.Get("via_union"))
 	}
-	if toUser.Properties["list"] != "true" {
+	if toUser.Properties.Get("list") != "true" {
 		t.Errorf("union member edge should carry the field's list cardinality, got %+v", toUser.Properties)
 	}
 }
@@ -251,8 +251,8 @@ type Post { id: ID! }
 	if e == nil {
 		t.Fatal("expected GRAPH_RELATES User → Post for field with args")
 	}
-	if e.Properties["list"] != "true" {
-		t.Errorf("list = %q, want true", e.Properties["list"])
+	if e.Properties.Get("list") != "true" {
+		t.Errorf("list = %q, want true", e.Properties.Get("list"))
 	}
 }
 

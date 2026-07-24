@@ -120,7 +120,7 @@ func applyServerlessFrameworkEdges(args DetectorPassArgs) DetectorPassResult {
 		seenEnt[key] = true
 		entities = append(entities, rec)
 	}
-	emitEdge := func(fromID, toID, kind string, props map[string]string) {
+	emitEdge := func(fromID, toID, kind string, props types.Props) {
 		if fromID == "" || toID == "" {
 			return
 		}
@@ -180,11 +180,11 @@ func applyServerlessFrameworkEdges(args DetectorPassArgs) DetectorPassResult {
 				fmt.Sprintf("SCOPE.Function:%s", symbol),
 				fnEntityRef,
 				serverlessHandlesEdgeKind,
-				map[string]string{
-					"provider":       "aws-lambda",
-					"pattern_type":   "serverless_framework",
-					"handler":        fn.handler,
-					"handler_module": handlerModule(fn.handler),
+				types.Props{
+					{K: "handler", V: fn.handler},
+					{K: "handler_module", V: handlerModule(fn.handler)},
+					{K: "pattern_type", V: "serverless_framework"},
+					{K: "provider", V: "aws-lambda"},
 				},
 			)
 		}
@@ -218,9 +218,9 @@ func applyServerlessFrameworkEdges(args DetectorPassArgs) DetectorPassResult {
 				})
 				// SERVES: function → endpoint.
 				emitEdge(fnEntityRef, fmt.Sprintf("%s:%s", httpEndpointDefinitionKind, epID),
-					slsServesEdgeKind, map[string]string{
-						"pattern_type": "serverless_framework",
-						"event_type":   ev.kind,
+					slsServesEdgeKind, types.Props{
+						{K: "event_type", V: ev.kind},
+						{K: "pattern_type", V: "serverless_framework"},
 					})
 
 			case "sqs":
@@ -243,10 +243,10 @@ func applyServerlessFrameworkEdges(args DetectorPassArgs) DetectorPassResult {
 				})
 				// TRIGGERS: queue → function (the event source triggers the fn).
 				emitEdge(fmt.Sprintf("%s:%s", queueEntityKind, qID), fnEntityRef,
-					slsTriggersEdgeKind, map[string]string{
-						"broker":       "sqs",
-						"pattern_type": "serverless_framework",
-						"event_type":   "sqs",
+					slsTriggersEdgeKind, types.Props{
+						{K: "broker", V: "sqs"},
+						{K: "event_type", V: "sqs"},
+						{K: "pattern_type", V: "serverless_framework"},
 					})
 
 			case "sns":
@@ -268,10 +268,10 @@ func applyServerlessFrameworkEdges(args DetectorPassArgs) DetectorPassResult {
 					QualityScore:     0.8,
 				})
 				emitEdge(fmt.Sprintf("%s:%s", messageTopicKind, tID), fnEntityRef,
-					slsTriggersEdgeKind, map[string]string{
-						"broker":       "sns",
-						"pattern_type": "serverless_framework",
-						"event_type":   "sns",
+					slsTriggersEdgeKind, types.Props{
+						{K: "broker", V: "sns"},
+						{K: "event_type", V: "sns"},
+						{K: "pattern_type", V: "serverless_framework"},
 					})
 
 			case "stream", "kinesis":
@@ -294,10 +294,10 @@ func applyServerlessFrameworkEdges(args DetectorPassArgs) DetectorPassResult {
 					QualityScore:     0.8,
 				})
 				emitEdge(fmt.Sprintf("%s:%s", queueEntityKind, sID), fnEntityRef,
-					slsTriggersEdgeKind, map[string]string{
-						"broker":       "kinesis",
-						"pattern_type": "serverless_framework",
-						"event_type":   ev.kind,
+					slsTriggersEdgeKind, types.Props{
+						{K: "broker", V: "kinesis"},
+						{K: "event_type", V: ev.kind},
+						{K: "pattern_type", V: "serverless_framework"},
 					})
 
 			case "schedule":
@@ -320,10 +320,10 @@ func applyServerlessFrameworkEdges(args DetectorPassArgs) DetectorPassResult {
 				})
 				// TRIGGERS: scheduled job → function.
 				emitEdge(fmt.Sprintf("%s:%s", scheduledJobKind, jobID), fnEntityRef,
-					slsTriggersEdgeKind, map[string]string{
-						"pattern_type": "serverless_framework",
-						"event_type":   "schedule",
-						"schedule":     ev.source,
+					slsTriggersEdgeKind, types.Props{
+						{K: "event_type", V: "schedule"},
+						{K: "pattern_type", V: "serverless_framework"},
+						{K: "schedule", V: ev.source},
 					})
 			}
 		}

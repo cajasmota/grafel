@@ -82,8 +82,8 @@ public class OrderEndpoint {
 	if len(subs) < 1 {
 		t.Fatalf("expected WS_SUBSCRIBES_TO edge, got %d", len(subs))
 	}
-	if subs[0].Properties["schema"] != "OrderEvent" {
-		t.Errorf("schema property = %q, want OrderEvent", subs[0].Properties["schema"])
+	if subs[0].Properties.Get("schema") != "OrderEvent" {
+		t.Errorf("schema property = %q, want OrderEvent", subs[0].Properties.Get("schema"))
 	}
 	emits := filterRels(res.Relationships, "WS_EMITS")
 	if len(emits) < 1 {
@@ -197,7 +197,7 @@ io.on('connection', (socket) => {
 	}
 	scopes := map[string]int{}
 	for _, e := range emits {
-		scopes[e.Properties["scope"]]++
+		scopes[e.Properties.Get("scope")]++
 	}
 	if scopes["broadcast"] == 0 {
 		t.Errorf("expected scope=broadcast emit, got %v", scopes)
@@ -211,7 +211,7 @@ io.on('connection', (socket) => {
 	// Look for the room name.
 	foundRoom := false
 	for _, e := range emits {
-		if e.Properties["room"] == "room1" {
+		if e.Properties.Get("room") == "room1" {
 			foundRoom = true
 		}
 	}
@@ -235,8 +235,8 @@ function start() {
 	if len(conns) < 1 {
 		t.Fatalf("expected WS_CONNECTS from io(\"/orders\"), got %d", len(conns))
 	}
-	if conns[0].Properties["fallback"] != "long_poll" {
-		t.Errorf("expected fallback=long_poll, got %q", conns[0].Properties["fallback"])
+	if conns[0].Properties.Get("fallback") != "long_poll" {
+		t.Errorf("expected fallback=long_poll, got %q", conns[0].Properties.Get("fallback"))
 	}
 }
 

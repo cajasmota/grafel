@@ -255,7 +255,7 @@ let process = (n: node) => n.value;
 	ents := runReasonML(t, src, "tag.re")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "reasonml" {
+			if r.Properties == nil || r.Properties.Get("language") != "reasonml" {
 				t.Errorf("rel %s→%s missing language=reasonml (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

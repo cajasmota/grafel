@@ -203,8 +203,8 @@ func TestPaket_DependsOnEdges(t *testing.T) {
 	if len(rels) != 1 {
 		t.Fatalf("expected 1 DEPENDS_ON edge, got %d", len(rels))
 	}
-	if rels[0].Properties["package_manager"] != "paket" {
-		t.Errorf("edge package_manager=%q want paket", rels[0].Properties["package_manager"])
+	if rels[0].Properties.Get("package_manager") != "paket" {
+		t.Errorf("edge package_manager=%q want paket", rels[0].Properties.Get("package_manager"))
 	}
 }
 

@@ -34,7 +34,7 @@ func countAdminRefsFrom(entities []types.EntityRecord, filePath string) []types.
 			if r.Kind != "REFERENCES" {
 				continue
 			}
-			if r.Properties["pattern_type"] != "admin_register" {
+			if r.Properties.Get("pattern_type") != "admin_register" {
 				continue
 			}
 			out = append(out, r)

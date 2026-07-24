@@ -47,17 +47,17 @@ class Book(models.Model):
 	if fk == nil {
 		t.Fatal("expected GRAPH_RELATES Book → Author (ForeignKey)")
 	}
-	if fk.Properties["cardinality"] != "many_to_one" {
-		t.Errorf("ForeignKey cardinality: want many_to_one, got %q", fk.Properties["cardinality"])
+	if fk.Properties.Get("cardinality") != "many_to_one" {
+		t.Errorf("ForeignKey cardinality: want many_to_one, got %q", fk.Properties.Get("cardinality"))
 	}
 
 	m2m := djangoGraphRelates(ents, "Tag")
-	if m2m == nil || m2m.Properties["cardinality"] != "many_to_many" {
+	if m2m == nil || m2m.Properties.Get("cardinality") != "many_to_many" {
 		t.Errorf("expected GRAPH_RELATES Book → Tag many_to_many, got %v", m2m)
 	}
 
 	o2o := djangoGraphRelates(ents, "Cover")
-	if o2o == nil || o2o.Properties["cardinality"] != "one_to_one" {
+	if o2o == nil || o2o.Properties.Get("cardinality") != "one_to_one" {
 		t.Errorf("expected GRAPH_RELATES Book → Cover one_to_one, got %v", o2o)
 	}
 }

@@ -218,9 +218,9 @@ func (e *nimOrminORMExtractor) extractNimQueries(src, path string) []types.Entit
 		rels = append(rels, types.RelationshipRecord{
 			ToID: e.table,
 			Kind: "QUERIES",
-			Properties: map[string]string{
-				"operation": e.op,
-				"table":     e.table,
+			Properties: types.Props{
+				{K: "operation", V: e.op},
+				{K: "table", V: e.table},
 			},
 		})
 	}
@@ -256,9 +256,9 @@ func (e *nimOrminORMExtractor) extractSQLSchema(src, path string) []types.Entity
 		var rels []types.RelationshipRecord
 		for _, c := range t.columns {
 			if c.fkTable != "" && c.fkTable != t.name {
-				props := map[string]string{"fk_field": c.name, "to_table": c.fkTable}
+				props := types.Props{{K: "fk_field", V: c.name}, {K: "to_table", V: c.fkTable}}
 				if c.fkColumn != "" {
-					props["references"] = c.fkColumn
+					props.Set("references", c.fkColumn)
 				}
 				rels = append(rels, types.RelationshipRecord{
 					ToID: c.fkTable, Kind: "REFERENCES", Properties: props,

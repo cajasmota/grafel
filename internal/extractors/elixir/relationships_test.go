@@ -269,17 +269,17 @@ end
 			if r.FromID != "test.ex" {
 				t.Errorf("IMPORTS %s: expected FromID=test.ex, got %q", r.ToID, r.FromID)
 			}
-			if r.Properties["local_name"] != w.local {
-				t.Errorf("IMPORTS %s: local_name=%q want %q", r.ToID, r.Properties["local_name"], w.local)
+			if r.Properties.Get("local_name") != w.local {
+				t.Errorf("IMPORTS %s: local_name=%q want %q", r.ToID, r.Properties.Get("local_name"), w.local)
 			}
-			if r.Properties["source_module"] != w.mod {
-				t.Errorf("IMPORTS %s: source_module=%q want %q", r.ToID, r.Properties["source_module"], w.mod)
+			if r.Properties.Get("source_module") != w.mod {
+				t.Errorf("IMPORTS %s: source_module=%q want %q", r.ToID, r.Properties.Get("source_module"), w.mod)
 			}
-			if r.Properties["imported_name"] != w.local {
-				t.Errorf("IMPORTS %s: imported_name=%q want %q", r.ToID, r.Properties["imported_name"], w.local)
+			if r.Properties.Get("imported_name") != w.local {
+				t.Errorf("IMPORTS %s: imported_name=%q want %q", r.ToID, r.Properties.Get("imported_name"), w.local)
 			}
-			if r.Properties["import_kind"] != w.kind {
-				t.Errorf("IMPORTS %s: import_kind=%q want %q", r.ToID, r.Properties["import_kind"], w.kind)
+			if r.Properties.Get("import_kind") != w.kind {
+				t.Errorf("IMPORTS %s: import_kind=%q want %q", r.ToID, r.Properties.Get("import_kind"), w.kind)
 			}
 		}
 	}
@@ -305,11 +305,11 @@ end
 				continue
 			}
 			found = true
-			if r.Properties["local_name"] != "Foo" {
-				t.Errorf("local_name=%q want Foo", r.Properties["local_name"])
+			if r.Properties.Get("local_name") != "Foo" {
+				t.Errorf("local_name=%q want Foo", r.Properties.Get("local_name"))
 			}
-			if r.Properties["source_module"] != "Foo" {
-				t.Errorf("source_module=%q want Foo", r.Properties["source_module"])
+			if r.Properties.Get("source_module") != "Foo" {
+				t.Errorf("source_module=%q want Foo", r.Properties.Get("source_module"))
 			}
 		}
 	}
@@ -333,7 +333,7 @@ end
 	ents := runElixir(t, src)
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties["language"] != "elixir" {
+			if r.Properties.Get("language") != "elixir" {
 				t.Errorf("entity %q rel %s→%s missing language tag (props=%+v)",
 					e.Name, r.Kind, r.ToID, r.Properties)
 			}

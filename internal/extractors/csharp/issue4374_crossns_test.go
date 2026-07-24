@@ -106,8 +106,8 @@ func callEdge(merged []types.EntityRecord, srcFile, caller, leaf string) (string
 			if r.Kind != "CALLS" {
 				continue
 			}
-			if r.Properties["call_leaf"] == leaf || r.ToID == leaf {
-				return r.ToID, r.Properties, true
+			if r.Properties.Get("call_leaf") == leaf || r.ToID == leaf {
+				return r.ToID, r.Properties.Snapshot(), true
 			}
 		}
 	}
@@ -130,7 +130,7 @@ func importEdge(merged []types.EntityRecord, srcFile, target string) (string, ma
 		}
 		for _, r := range merged[k].Relationships {
 			if r.Kind == "IMPORTS" && r.ToID == target {
-				return r.ToID, r.Properties, true
+				return r.ToID, r.Properties.Snapshot(), true
 			}
 		}
 	}
@@ -373,7 +373,7 @@ func TestIssue4374_NoFalseStamp_BareAndInstanceCalls(t *testing.T) {
 			if r.Kind != "CALLS" {
 				continue
 			}
-			if r.Properties["csharp_call_ns"] != "" {
+			if r.Properties.Get("csharp_call_ns") != "" {
 				t.Fatalf("false stamp on non-cross-namespace call: ToID=%q props=%v", r.ToID, r.Properties)
 			}
 		}

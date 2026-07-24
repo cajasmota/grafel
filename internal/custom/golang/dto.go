@@ -380,12 +380,12 @@ func (e *dtoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 					ToID: "Class:" + structName,
 					Kind: edgeKind,
-					Properties: map[string]string{
-						"framework":       framework,
-						"match_source":    sig.subtype,
-						"dto_type":        structName,
-						"dto_direction":   sig.direction,
-						"binding_subtype": sig.subtype,
+					Properties: types.Props{
+						{K: "binding_subtype", V: sig.subtype},
+						{K: "dto_direction", V: sig.direction},
+						{K: "dto_type", V: structName},
+						{K: "framework", V: framework},
+						{K: "match_source", V: sig.subtype},
 					},
 				})
 				// Field-as-member sub-entities (#4715): each struct field becomes a

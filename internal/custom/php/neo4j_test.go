@@ -79,13 +79,13 @@ func TestPHPNeo4jGraphRelatesEdge(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Person -GRAPH_RELATES-> node:Movie edge; got %+v", ents)
 	}
-	if got := edge.Properties["rel_type"]; got != "ACTED_IN" {
+	if got := edge.Properties.Get("rel_type"); got != "ACTED_IN" {
 		t.Errorf("rel_type = %q, want ACTED_IN", got)
 	}
-	if got := edge.Properties["direction"]; got != "OUTGOING" {
+	if got := edge.Properties.Get("direction"); got != "OUTGOING" {
 		t.Errorf("direction = %q, want OUTGOING", got)
 	}
-	if got := edge.Properties["framework"]; got != "neo4j" {
+	if got := edge.Properties.Get("framework"); got != "neo4j" {
 		t.Errorf("framework = %q, want neo4j", got)
 	}
 }
@@ -100,7 +100,7 @@ func TestPHPNeo4jSingleQuoted(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected User -GRAPH_RELATES-> node:Order; got %+v", ents)
 	}
-	if got := edge.Properties["rel_type"]; got != "OWNS" {
+	if got := edge.Properties.Get("rel_type"); got != "OWNS" {
 		t.Errorf("rel_type = %q, want OWNS", got)
 	}
 }
@@ -117,7 +117,7 @@ func TestPHPNeo4jLeftArrow(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Person -GRAPH_RELATES-> node:Movie (arrow flipped); got %+v", ents)
 	}
-	if got := edge.Properties["direction"]; got != "OUTGOING" {
+	if got := edge.Properties.Get("direction"); got != "OUTGOING" {
 		t.Errorf("direction = %q, want OUTGOING", got)
 	}
 	if rev := findPHPGraphRelates(ents, "Movie", "Person"); rev != nil {
@@ -135,7 +135,7 @@ func TestPHPNeo4jUndirected(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Person -GRAPH_RELATES-> node:Person; got %+v", ents)
 	}
-	if got := edge.Properties["direction"]; got != "UNDIRECTED" {
+	if got := edge.Properties.Get("direction"); got != "UNDIRECTED" {
 		t.Errorf("direction = %q, want UNDIRECTED", got)
 	}
 }

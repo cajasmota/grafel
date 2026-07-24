@@ -123,7 +123,7 @@ func hasResolvableExtends(ents []types.EntityRecord, from, to string) bool {
 		}
 		for _, r := range e.Relationships {
 			if r.Kind == "EXTENDS" && r.ToID == to &&
-				r.Properties != nil && r.Properties["to"] == to {
+				r.Properties != nil && r.Properties.Get("to") == to {
 				return true
 			}
 		}

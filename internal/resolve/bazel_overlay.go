@@ -114,7 +114,7 @@ func RunBazelOverlay(entities []types.EntityRecord, rels []types.RelationshipRec
 		if !ok1 || !ok2 {
 			continue
 		}
-		declaredPairs[edgePair{fromLabel, toLabel}] = r.Properties["dep_label"]
+		declaredPairs[edgePair{fromLabel, toLabel}] = r.Properties.Get("dep_label")
 	}
 
 	// Build index of call/import edges that cross Bazel target boundaries.
@@ -200,11 +200,11 @@ func RunBazelOverlay(entities []types.EntityRecord, rels []types.RelationshipRec
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   "BAZEL_DEP_STATUS",
-			Properties: map[string]string{
-				"status":    status,
-				"dep_label": depLabel,
-				"from":      pair.from,
-				"to":        pair.to,
+			Properties: types.Props{
+				{K: "dep_label", V: depLabel},
+				{K: "from", V: pair.from},
+				{K: "status", V: status},
+				{K: "to", V: pair.to},
 			},
 		})
 	}
@@ -226,10 +226,10 @@ func RunBazelOverlay(entities []types.EntityRecord, rels []types.RelationshipRec
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   "BAZEL_DEP_STATUS",
-			Properties: map[string]string{
-				"status": "undeclared_used",
-				"from":   pair.from,
-				"to":     pair.to,
+			Properties: types.Props{
+				{K: "from", V: pair.from},
+				{K: "status", V: "undeclared_used"},
+				{K: "to", V: pair.to},
 			},
 		})
 	}

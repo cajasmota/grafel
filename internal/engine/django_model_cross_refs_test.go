@@ -83,13 +83,13 @@ class DeviceSerializer(serializers.ModelSerializer):
 		if r.ToID != want {
 			t.Errorf("edge from %q: want ToID %q got %q", r.FromID, want, r.ToID)
 		}
-		if r.Properties["pattern_type"] != "serializer_meta_model" {
+		if r.Properties.Get("pattern_type") != "serializer_meta_model" {
 			t.Errorf("edge from %q: want pattern_type serializer_meta_model, got %q",
-				r.FromID, r.Properties["pattern_type"])
+				r.FromID, r.Properties.Get("pattern_type"))
 		}
-		if r.Properties["framework"] != "drf" {
+		if r.Properties.Get("framework") != "drf" {
 			t.Errorf("edge from %q: want framework drf, got %q",
-				r.FromID, r.Properties["framework"])
+				r.FromID, r.Properties.Get("framework"))
 		}
 	}
 }
@@ -170,9 +170,9 @@ def on_contract_deleted(sender, instance, **kwargs):
 			if r.FromID != "SCOPE.Operation:replicate_signal" {
 				t.Errorf("GroupDeviceSettings listener: want FromID SCOPE.Operation:replicate_signal, got %q", r.FromID)
 			}
-			if r.Properties["pattern_type"] != "receiver_sender_model" {
+			if r.Properties.Get("pattern_type") != "receiver_sender_model" {
 				t.Errorf("GroupDeviceSettings listener: want pattern_type receiver_sender_model, got %q",
-					r.Properties["pattern_type"])
+					r.Properties.Get("pattern_type"))
 			}
 		}
 	}
@@ -281,13 +281,13 @@ class Device(models.Model):
 		if r.ToID != want {
 			t.Errorf("edge from %q: want ToID %q got %q", r.FromID, want, r.ToID)
 		}
-		if r.Properties["pattern_type"] != "filterset_meta_model" {
+		if r.Properties.Get("pattern_type") != "filterset_meta_model" {
 			t.Errorf("edge from %q: want pattern_type filterset_meta_model, got %q",
-				r.FromID, r.Properties["pattern_type"])
+				r.FromID, r.Properties.Get("pattern_type"))
 		}
-		if r.Properties["framework"] != "django_filter" {
+		if r.Properties.Get("framework") != "django_filter" {
 			t.Errorf("edge from %q: want framework django_filter, got %q",
-				r.FromID, r.Properties["framework"])
+				r.FromID, r.Properties.Get("framework"))
 		}
 	}
 }
@@ -321,8 +321,8 @@ def replicate_building(sender, instance, created, **kwargs):
 	if r.ToID != "Class:Building" {
 		t.Errorf("ToID: want Class:Building, got %q", r.ToID)
 	}
-	if r.Properties["pattern_type"] != "receiver_sender_model" {
-		t.Errorf("pattern_type: want receiver_sender_model, got %q", r.Properties["pattern_type"])
+	if r.Properties.Get("pattern_type") != "receiver_sender_model" {
+		t.Errorf("pattern_type: want receiver_sender_model, got %q", r.Properties.Get("pattern_type"))
 	}
 }
 
@@ -379,8 +379,8 @@ def on_building_saved(sender, instance, created, **kwargs):
 	if r.ToID != "Class:Building" {
 		t.Errorf("ToID: want Class:Building, got %q", r.ToID)
 	}
-	if r.Properties["via"] != "@receiver(sender=apps.get_model())" {
-		t.Errorf("via: want @receiver(sender=apps.get_model()), got %q", r.Properties["via"])
+	if r.Properties.Get("via") != "@receiver(sender=apps.get_model())" {
+		t.Errorf("via: want @receiver(sender=apps.get_model()), got %q", r.Properties.Get("via"))
 	}
 }
 
@@ -474,8 +474,8 @@ def replicate_signal(sender, instance, created, **kwargs):
 		if r.FromID != wantFromID {
 			t.Errorf("edge to %q: want FromID %q, got %q", wantToID, wantFromID, r.FromID)
 		}
-		if r.Properties["framework"] != "django_signals" {
-			t.Errorf("edge to %q: want framework django_signals, got %q", wantToID, r.Properties["framework"])
+		if r.Properties.Get("framework") != "django_signals" {
+			t.Errorf("edge to %q: want framework django_signals, got %q", wantToID, r.Properties.Get("framework"))
 		}
 	}
 }

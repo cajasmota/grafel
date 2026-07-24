@@ -169,7 +169,7 @@ type
 	for _, en := range ents {
 		if en.Name == "Post" && en.Subtype == "model" {
 			for _, r := range en.Relationships {
-				if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties["fk_field"] == "author" {
+				if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties.Get("fk_field") == "author" {
 					fkFound = true
 				}
 			}
@@ -292,7 +292,7 @@ proc store(db: DbConn, p: Post) =
 	fkEdge := false
 	if postModel != nil {
 		for _, r := range postModel.rels {
-			if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties["fk_pragma"] == "true" {
+			if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties.Get("fk_pragma") == "true" {
 				fkEdge = true
 			}
 		}
@@ -306,7 +306,7 @@ proc store(db: DbConn, p: Post) =
 	if postModel != nil {
 		for _, r := range postModel.rels {
 			if r.Kind == "QUERIES" {
-				postOps[r.Properties["operation"]] = true
+				postOps[r.Properties.Get("operation")] = true
 			}
 		}
 	}
@@ -316,7 +316,7 @@ proc store(db: DbConn, p: Post) =
 	userSelect := false
 	if userModel != nil {
 		for _, r := range userModel.rels {
-			if r.Kind == "QUERIES" && r.Properties["operation"] == "select" && r.ToID == "users" {
+			if r.Kind == "QUERIES" && r.Properties.Get("operation") == "select" && r.ToID == "users" {
 				userSelect = true
 			}
 		}
@@ -447,7 +447,7 @@ proc run(db: DbConn) =
 				if ops[en.Name] == nil {
 					ops[en.Name] = map[string]bool{}
 				}
-				ops[en.Name][r.Properties["operation"]] = true
+				ops[en.Name][r.Properties.Get("operation")] = true
 			}
 		}
 	}
@@ -576,7 +576,7 @@ schema().create(
 	fkEdge := false
 	if pt := pick("posts", "table"); pt != nil {
 		for _, r := range pt.rels {
-			if r.Kind == "REFERENCES" && r.ToID == "users" && r.Properties["fk_field"] == "user_id" && r.Properties["references"] == "id" {
+			if r.Kind == "REFERENCES" && r.ToID == "users" && r.Properties.Get("fk_field") == "user_id" && r.Properties.Get("references") == "id" {
 				fkEdge = true
 			}
 		}
@@ -700,13 +700,13 @@ discard db.get(User, 1)
 	}
 	fkTyped, fkPragma, postInsert := false, false, false
 	for _, r := range post.rels {
-		if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties["fk_field"] == "author" {
+		if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties.Get("fk_field") == "author" {
 			fkTyped = true
 		}
-		if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties["fk_field"] == "authorId" && r.Properties["fk_pragma"] == "true" {
+		if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties.Get("fk_field") == "authorId" && r.Properties.Get("fk_pragma") == "true" {
 			fkPragma = true
 		}
-		if r.Kind == "QUERIES" && r.Properties["operation"] == "insert" {
+		if r.Kind == "QUERIES" && r.Properties.Get("operation") == "insert" {
 			postInsert = true
 		}
 	}
@@ -730,7 +730,7 @@ discard db.get(User, 1)
 	userGet := false
 	if user != nil {
 		for _, r := range user.rels {
-			if r.Kind == "QUERIES" && r.Properties["operation"] == "get" {
+			if r.Kind == "QUERIES" && r.Properties.Get("operation") == "get" {
 				userGet = true
 			}
 		}
@@ -869,7 +869,7 @@ create table Post(
 	fkEdge := false
 	if pt := pickView(views, "Post", "table"); pt != nil {
 		for _, r := range pt.rels {
-			if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties["fk_field"] == "author" && r.Properties["references"] == "id" {
+			if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties.Get("fk_field") == "author" && r.Properties.Get("references") == "id" {
 				fkEdge = true
 			}
 		}
@@ -1051,7 +1051,7 @@ schema().drop(unknownDynamicTbl)
 	foundRef := false
 	for _, r := range v.rels {
 		if r.Kind == "REFERENCES" && r.ToID == "users" &&
-			r.Properties["fk_field"] == "author_id" && r.Properties["references"] == "id" {
+			r.Properties.Get("fk_field") == "author_id" && r.Properties.Get("references") == "id" {
 			foundRef = true
 		}
 	}
@@ -1163,10 +1163,10 @@ rdb().transaction(proc() =
 			if r.Kind != "QUERIES" || r.ToID != table {
 				continue
 			}
-			if r.Properties["operation"] != op || r.Properties["table"] != table {
+			if r.Properties.Get("operation") != op || r.Properties.Get("table") != table {
 				continue
 			}
-			if txn != (r.Properties["transaction"] == "true") {
+			if txn != (r.Properties.Get("transaction") == "true") {
 				continue
 			}
 			return true
@@ -1271,7 +1271,7 @@ rdb().transaction(proc() =
 			}
 			ok := true
 			for k, val := range want {
-				if r.Properties[k] != val {
+				if r.Properties.Get(k) != val {
 					ok = false
 					break
 				}
@@ -1492,7 +1492,7 @@ proc fetch() =
 	got := map[string]string{} // table -> operation
 	for _, r := range q.Relationships {
 		if r.Kind == "QUERIES" {
-			got[r.Properties["table"]] = r.Properties["operation"]
+			got[r.Properties.Get("table")] = r.Properties.Get("operation")
 		}
 	}
 	want := map[string]string{

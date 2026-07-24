@@ -258,13 +258,13 @@ var _ = util.Foo
 	if r == nil {
 		t.Fatalf("missing IMPORTS edge for internal/util")
 	}
-	if r.Properties == nil || r.Properties["go_pkg_dir"] != "internal/util" {
+	if r.Properties == nil || r.Properties.Get("go_pkg_dir") != "internal/util" {
 		t.Errorf("internal/util IMPORTS go_pkg_dir = %q, want %q",
-			r.Properties["go_pkg_dir"], "internal/util")
+			r.Properties.Get("go_pkg_dir"), "internal/util")
 	}
-	if r.Properties["go_module_root"] != "github.com/myorg/myrepo" {
+	if r.Properties.Get("go_module_root") != "github.com/myorg/myrepo" {
 		t.Errorf("internal/util IMPORTS go_module_root = %q, want %q",
-			r.Properties["go_module_root"], "github.com/myorg/myrepo")
+			r.Properties.Get("go_module_root"), "github.com/myorg/myrepo")
 	}
 
 	// pkg/server import → go_pkg_dir should be "pkg/server"
@@ -272,9 +272,9 @@ var _ = util.Foo
 	if r2 == nil {
 		t.Fatalf("missing IMPORTS edge for pkg/server")
 	}
-	if r2.Properties == nil || r2.Properties["go_pkg_dir"] != "pkg/server" {
+	if r2.Properties == nil || r2.Properties.Get("go_pkg_dir") != "pkg/server" {
 		t.Errorf("pkg/server IMPORTS go_pkg_dir = %q, want %q",
-			r2.Properties["go_pkg_dir"], "pkg/server")
+			r2.Properties.Get("go_pkg_dir"), "pkg/server")
 	}
 
 	// fmt is external — should NOT have go_pkg_dir (gets ext: rewrite instead)
@@ -282,8 +282,8 @@ var _ = util.Foo
 	if r3 == nil {
 		t.Fatalf("missing IMPORTS edge for fmt")
 	}
-	if r3.Properties != nil && r3.Properties["go_pkg_dir"] != "" {
-		t.Errorf("fmt IMPORTS go_pkg_dir should be empty, got %q", r3.Properties["go_pkg_dir"])
+	if r3.Properties != nil && r3.Properties.Get("go_pkg_dir") != "" {
+		t.Errorf("fmt IMPORTS go_pkg_dir should be empty, got %q", r3.Properties.Get("go_pkg_dir"))
 	}
 	if r3.ToID != "ext:fmt" {
 		t.Errorf("fmt IMPORTS ToID = %q, want ext:fmt", r3.ToID)

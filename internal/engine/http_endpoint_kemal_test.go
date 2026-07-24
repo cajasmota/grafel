@@ -151,8 +151,8 @@ func TestKemal_E2ERouteTestLinkage(t *testing.T) {
 		}
 		for _, r := range resolved[i].Relationships {
 			if r.Kind == string(types.RelationshipKindTests) &&
-				r.Properties["match_source"] == "e2e_supertest_route" &&
-				r.Properties["route"] == "/todos" {
+				r.Properties.Get("match_source") == "e2e_supertest_route" &&
+				r.Properties.Get("route") == "/todos" {
 				found = true
 			}
 		}

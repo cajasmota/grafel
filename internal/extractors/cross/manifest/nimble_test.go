@@ -90,8 +90,8 @@ requires "nim >= 2.0.0"
 	if len(rels) != 1 {
 		t.Fatalf("expected 1 DEPENDS_ON edge, got %d", len(rels))
 	}
-	if rels[0].Properties["package_manager"] != "nimble" {
-		t.Errorf("edge package_manager=%q want nimble", rels[0].Properties["package_manager"])
+	if rels[0].Properties.Get("package_manager") != "nimble" {
+		t.Errorf("edge package_manager=%q want nimble", rels[0].Properties.Get("package_manager"))
 	}
 }
 

@@ -169,16 +169,16 @@ func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.En
 				if r.Kind != "IMPORTS" {
 					continue
 				}
-				local := r.Properties["local_name"]
+				local := r.Properties.Get("local_name")
 				if local == "" {
 					continue
 				}
 				// Use the imported_name as the symbol name so the structural-ref
 				// resolves back to the right ext: entity (e.g. "Optional" not
 				// the full module path "typing.Optional").
-				importedName := r.Properties["imported_name"]
+				importedName := r.Properties.Get("imported_name")
 				if importedName == "" {
-					importedName = r.Properties["source_module"]
+					importedName = r.Properties.Get("source_module")
 				}
 				if importedName == "" {
 					importedName = local

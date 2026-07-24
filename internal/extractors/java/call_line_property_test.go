@@ -58,7 +58,7 @@ func TestExtractor_CallEdge_HasLineProperty(t *testing.T) {
 				continue
 			}
 			found = true
-			lineStr, ok := r.Properties["line"]
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Fatalf("CALLS edge to %q missing Properties[\"line\"]", r.ToID)
 			}
@@ -98,7 +98,7 @@ func TestExtractor_CallEdge_CorrectLineNumber(t *testing.T) {
 			if r.Kind != "CALLS" {
 				continue
 			}
-			lineStr, ok := r.Properties["line"]
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Fatal("CALLS edge missing Properties[\"line\"]")
 			}
@@ -127,7 +127,7 @@ func TestExtractor_AllCallEdges_HaveLineProperty(t *testing.T) {
 			if r.Kind != "CALLS" {
 				continue
 			}
-			lineStr, ok := r.Properties["line"]
+			lineStr, ok := r.Properties.Lookup("line")
 			if !ok {
 				t.Errorf("entity %q: CALLS edge to %q missing Properties[\"line\"]", ent.Name, r.ToID)
 				continue

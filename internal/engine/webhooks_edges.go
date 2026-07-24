@@ -130,11 +130,11 @@ func applyWebhookEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: "http_endpoint:" + epID,
 			ToID:   fmt.Sprintf("%s:%s", webhookExternalKind, extID),
 			Kind:   subscribesToEdgeKind, // "SUBSCRIBES_TO" from kafka_edges.go
-			Properties: map[string]string{
-				"webhook_provider":           provider,
-				"webhook_signature_verified": verifiedLabel,
-				"confidence":                 confLabel,
-				"pattern_type":               "webhook_synthesis",
+			Properties: types.Props{
+				{K: "confidence", V: confLabel},
+				{K: "pattern_type", V: "webhook_synthesis"},
+				{K: "webhook_provider", V: provider},
+				{K: "webhook_signature_verified", V: verifiedLabel},
 			},
 		})
 	}

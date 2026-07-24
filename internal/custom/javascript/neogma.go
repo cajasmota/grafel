@@ -264,12 +264,12 @@ func (e *neogmaExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 					types.RelationshipRecord{
 						ToID: "Class:" + targetLabel,
 						Kind: string(types.RelationshipKindGraphRelates),
-						Properties: map[string]string{
-							"framework":  "neogma",
-							"rel_type":   relType,
-							"direction":  direction,
-							"field_name": fieldName,
-							"provenance": "INFERRED_FROM_NEO4J_NEOGMA_RELATIONSHIP",
+						Properties: types.Props{
+							{K: "direction", V: direction},
+							{K: "field_name", V: fieldName},
+							{K: "framework", V: "neogma"},
+							{K: "provenance", V: "INFERRED_FROM_NEO4J_NEOGMA_RELATIONSHIP"},
+							{K: "rel_type", V: relType},
 						},
 					})
 			}

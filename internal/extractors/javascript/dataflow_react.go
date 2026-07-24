@@ -91,10 +91,10 @@ func (x *extractor) extractComponentProps(params ts.Node, componentName string) 
 		rels = append(rels, types.RelationshipRecord{
 			ToID: e.ID,
 			Kind: "CONTAINS",
-			Properties: map[string]string{
-				"component": componentName,
-				"prop":      propName,
-				"framework": "react",
+			Properties: types.Props{
+				{K: "component", V: componentName},
+				{K: "framework", V: "react"},
+				{K: "prop", V: propName},
 			},
 		})
 	}

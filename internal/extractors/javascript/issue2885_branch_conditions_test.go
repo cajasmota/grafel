@@ -75,13 +75,13 @@ func TestMobile_NativeScript_MemberBranchConditions(t *testing.T) {
 	for _, e := range edges {
 		if e.ToID == "branch:this._counter<=0" {
 			found = true
-			if e.Properties["operator"] != "<=" {
-				t.Errorf("decrement branch: operator=%q, want %q", e.Properties["operator"], "<=")
+			if e.Properties.Get("operator") != "<=" {
+				t.Errorf("decrement branch: operator=%q, want %q", e.Properties.Get("operator"), "<=")
 			}
-			if e.Properties["kind"] != "if" {
-				t.Errorf("decrement branch: kind=%q, want %q", e.Properties["kind"], "if")
+			if e.Properties.Get("kind") != "if" {
+				t.Errorf("decrement branch: kind=%q, want %q", e.Properties.Get("kind"), "if")
 			}
-			if e.Properties["line"] == "" {
+			if e.Properties.Get("line") == "" {
 				t.Errorf("decrement branch: missing line property")
 			}
 		}

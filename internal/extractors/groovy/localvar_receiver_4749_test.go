@@ -30,7 +30,7 @@ func hasCall(e *types.EntityRecord, toID, recv string) bool {
 		if recv == "" {
 			return true
 		}
-		if r.Properties["receiver_type"] == recv {
+		if r.Properties.Get("receiver_type") == recv {
 			return true
 		}
 	}

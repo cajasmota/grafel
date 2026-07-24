@@ -114,8 +114,8 @@ class Book {
 	}
 	if r := relOf(model, "REFERENCES", "Author"); r == nil {
 		t.Errorf("expected REFERENCES edge Book->Author; model rels=%v", model.Relationships)
-	} else if r.Properties["fk_field"] != "author" {
-		t.Errorf("REFERENCES fk_field=%q, want author", r.Properties["fk_field"])
+	} else if r.Properties.Get("fk_field") != "author" {
+		t.Errorf("REFERENCES fk_field=%q, want author", r.Properties.Get("fk_field"))
 	}
 }
 
@@ -204,7 +204,7 @@ class BookService {
 	for _, op := range []string{"select", "insert", "delete"} {
 		found := false
 		for _, r := range model.Relationships {
-			if r.Kind == "QUERIES" && r.Properties["operation"] == op && r.ToID == "books" {
+			if r.Kind == "QUERIES" && r.Properties.Get("operation") == op && r.ToID == "books" {
 				found = true
 			}
 		}

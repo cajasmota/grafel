@@ -231,16 +231,16 @@ func isFelizDSLHead(tok string) bool {
 // emits one edge.
 func addDispatchEdge(e *types.EntityRecord, helper string) {
 	for _, r := range e.Relationships {
-		if r.Kind == "USES" && r.Properties["dispatch"] == helper {
+		if r.Kind == "USES" && r.Properties.Get("dispatch") == helper {
 			return
 		}
 	}
 	e.Relationships = append(e.Relationships, types.RelationshipRecord{
 		ToID: "Cmd",
 		Kind: "USES",
-		Properties: map[string]string{
-			"dispatch":       helper,
-			"elmish_command": "true",
+		Properties: types.Props{
+			{K: "dispatch", V: helper},
+			{K: "elmish_command", V: "true"},
 		},
 	})
 }

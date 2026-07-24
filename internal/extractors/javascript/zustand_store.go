@@ -646,9 +646,9 @@ func (t *zustandTracker) zustandGetStateActionEdges(x *extractor, callNode ts.No
 	rel := types.RelationshipRecord{
 		ToID: storeVar + "::" + actionName,
 		Kind: "CALLS",
-		Properties: map[string]string{
-			"via":  PropViaZustandStore,
-			"line": strconv.Itoa(int(callNode.StartPoint().Row) + 1),
+		Properties: types.Props{
+			{K: "line", V: strconv.Itoa(int(callNode.StartPoint().Row) + 1)},
+			{K: "via", V: PropViaZustandStore},
 		},
 	}
 	return []types.RelationshipRecord{rel}
@@ -767,9 +767,9 @@ func (t *zustandTracker) zustandSelectorActionEdges(x *extractor, callNode ts.No
 	rel := types.RelationshipRecord{
 		ToID: storeVar + "::" + actionName,
 		Kind: "CALLS",
-		Properties: map[string]string{
-			"via":  PropViaZustandStore,
-			"line": strconv.Itoa(int(callNode.StartPoint().Row) + 1),
+		Properties: types.Props{
+			{K: "line", V: strconv.Itoa(int(callNode.StartPoint().Row) + 1)},
+			{K: "via", V: PropViaZustandStore},
 		},
 	}
 	return []types.RelationshipRecord{rel}

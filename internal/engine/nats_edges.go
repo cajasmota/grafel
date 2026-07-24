@@ -118,13 +118,13 @@ func applyNATSEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		base := map[string]string{
-			"broker":       "nats",
-			"pattern_type": "nats_synthesis",
+		base := types.Props{
+			{K: "broker", V: "nats"},
+			{K: "pattern_type", V: "nats_synthesis"},
 		}
 		for k, v := range props {
 			if v != "" {
-				base[k] = v
+				base.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{

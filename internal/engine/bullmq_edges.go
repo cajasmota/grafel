@@ -154,13 +154,13 @@ func applyBullMQEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		base := map[string]string{
-			"broker":       "bullmq",
-			"pattern_type": "bullmq_synthesis",
+		base := types.Props{
+			{K: "broker", V: "bullmq"},
+			{K: "pattern_type", V: "bullmq_synthesis"},
 		}
 		for k, v := range props {
 			if v != "" {
-				base[k] = v
+				base.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{

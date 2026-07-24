@@ -22,10 +22,10 @@ func cljQueriesEdge(rels []types.RelationshipRecord, model, op, orm string) *typ
 		if r.ToID != "Class:"+model {
 			continue
 		}
-		if op != "" && r.Properties["operation"] != op {
+		if op != "" && r.Properties.Get("operation") != op {
 			continue
 		}
-		if orm != "" && r.Properties["orm"] != orm {
+		if orm != "" && r.Properties.Get("orm") != orm {
 			continue
 		}
 		return &r

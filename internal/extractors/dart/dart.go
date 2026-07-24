@@ -329,13 +329,13 @@ func buildImportRecord(imp importInfo, filePath string) types.EntityRecord {
 	if imp.prefix != "" {
 		local = imp.prefix
 	}
-	props := map[string]string{
-		"local_name":    local,
-		"source_module": mod,
-		"imported_name": leaf,
+	props := types.Props{
+		{K: "imported_name", V: leaf},
+		{K: "local_name", V: local},
+		{K: "source_module", V: mod},
 	}
 	if imp.prefix != "" {
-		props["alias"] = imp.prefix
+		props.Set("alias", imp.prefix)
 	}
 
 	top := dartTopName(imp.uri)
@@ -483,12 +483,12 @@ func extractCallRelationships(body, callerName string) []types.RelationshipRecor
 		rel := types.RelationshipRecord{
 			ToID: callee,
 			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(lineNum),
+			Properties: types.Props{
+				{K: "line", V: strconv.Itoa(lineNum)},
 			},
 		}
 		if recvRoot != "" {
-			rel.Properties["receiver_root"] = recvRoot
+			rel.Properties.Set("receiver_root", recvRoot)
 		}
 		rels = append(rels, rel)
 	}

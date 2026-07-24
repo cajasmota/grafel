@@ -472,8 +472,8 @@ func destructureBindingCallEdge(callee string, bindings map[string]*destructureB
 	rel := types.RelationshipRecord{
 		ToID: b.sourceTarget,
 		Kind: "CALLS",
-		Properties: map[string]string{
-			"via": b.via,
+		Properties: types.Props{
+			{K: "via", V: b.via},
 		},
 	}
 	return &rel

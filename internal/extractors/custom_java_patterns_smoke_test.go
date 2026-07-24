@@ -614,8 +614,8 @@ public class Order {
 	foundKind := false
 	for _, r := range order.Relationships {
 		if r.Kind == "DEPENDS_ON" && r.ToID == wantTarget {
-			if r.Properties["association_kind"] != "OneToMany" {
-				t.Errorf("association_kind = %q, want OneToMany", r.Properties["association_kind"])
+			if r.Properties.Get("association_kind") != "OneToMany" {
+				t.Errorf("association_kind = %q, want OneToMany", r.Properties.Get("association_kind"))
 			}
 			foundKind = true
 		}

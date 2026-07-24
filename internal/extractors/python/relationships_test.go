@@ -171,7 +171,7 @@ import os.path
 			if r.Kind != "IMPORTS" || r.Properties == nil {
 				continue
 			}
-			mod := r.Properties["source_module"]
+			mod := r.Properties.Get("source_module")
 			if _, ok := wantModules[mod]; ok {
 				wantModules[mod] = true
 			}
@@ -211,7 +211,7 @@ func TestExtract_ImportsFromSymbol(t *testing.T) {
 			if r.Kind != "IMPORTS" || r.Properties == nil {
 				continue
 			}
-			name := r.Properties["imported_name"]
+			name := r.Properties.Get("imported_name")
 			if _, ok := want[name]; ok {
 				want[name] = true
 			}
@@ -233,7 +233,7 @@ func relProperty(ents []types.EntityRecord, fromName, kind, toID, key string) st
 	}
 	for _, r := range src.Relationships {
 		if r.Kind == kind && r.ToID == toID {
-			return r.Properties[key]
+			return r.Properties.Get(key)
 		}
 	}
 	return ""

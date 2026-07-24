@@ -180,13 +180,13 @@ func applyORMFieldEdges(args DetectorPassArgs) DetectorPassResult {
 					FromID: fromID,
 					ToID:   "Class:" + fqName,
 					Kind:   edgeKind,
-					Properties: map[string]string{
-						"orm":          "django",
-						"verb":         link.verb,
-						"field":        field,
-						"model":        modelName,
-						"resolution":   resolution,
-						"pattern_type": ormFieldEdgesPatternType,
+					Properties: types.Props{
+						{K: "field", V: field},
+						{K: "model", V: modelName},
+						{K: "orm", V: "django"},
+						{K: "pattern_type", V: ormFieldEdgesPatternType},
+						{K: "resolution", V: resolution},
+						{K: "verb", V: link.verb},
 					},
 				})
 			}

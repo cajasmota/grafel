@@ -345,7 +345,7 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 					ToID:       djangoModelRef(decorator.senderModel),
 					Kind:       string(types.RelationshipKindHandlesSignal),
-					Properties: map[string]string{"signal_type": decorator.signalType, "framework": "django"},
+					Properties: types.Props{{K: "framework", V: "django"}, {K: "signal_type", V: decorator.signalType}},
 				})
 			}
 		}
@@ -401,7 +401,7 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		ent := entity(handlerName, "SCOPE.Operation", "function", file.Path, lineOf(source, m[0]), props)
 		// Emit the HANDLES_SIGNAL edge. With a sender, target the model; without
 		// one, target the signal itself so the wiring is still represented.
-		edgeProps := map[string]string{"signal_type": signalType, "framework": "django", "di_role": "signal_handler"}
+		edgeProps := types.Props{{K: "di_role", V: "signal_handler"}, {K: "framework", V: "django"}, {K: "signal_type", V: signalType}}
 		if senderModel != "" {
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID:       djangoModelRef(djangoLeafName(senderModel)),
@@ -436,7 +436,7 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID:       djangoModelRef(modelName),
 			Kind:       string(types.RelationshipKindRegisters),
-			Properties: map[string]string{"framework": "django", "model": modelName},
+			Properties: types.Props{{K: "framework", V: "django"}, {K: "model", V: modelName}},
 		})
 		out = append(out, ent)
 	}
@@ -449,7 +449,7 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID:       djangoModelRef(modelName),
 			Kind:       string(types.RelationshipKindRegisters),
-			Properties: map[string]string{"framework": "django", "model": modelName},
+			Properties: types.Props{{K: "framework", V: "django"}, {K: "model", V: modelName}},
 		})
 		out = append(out, ent)
 	}
@@ -1034,12 +1034,12 @@ func appendDRFSerializerEdges(ent *types.EntityRecord, body string) {
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: pyClassRef(serializer),
 			Kind: kind,
-			Properties: map[string]string{
-				"framework":    "drf",
-				"language":     "python",
-				"dto_type":     serializer,
-				"match_source": matchSource,
-				"provenance":   "INFERRED_FROM_DRF_VIEW_SERIALIZER",
+			Properties: types.Props{
+				{K: "dto_type", V: serializer},
+				{K: "framework", V: "drf"},
+				{K: "language", V: "python"},
+				{K: "match_source", V: matchSource},
+				{K: "provenance", V: "INFERRED_FROM_DRF_VIEW_SERIALIZER"},
 			},
 		})
 	}

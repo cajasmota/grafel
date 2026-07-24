@@ -395,7 +395,7 @@ func TestVerilog_LanguageTagOnRelationships(t *testing.T) {
 	for _, ent := range ents {
 		for _, r := range ent.Relationships {
 			if r.Kind == "IMPORTS" || r.Kind == "USES" || r.Kind == "CONTAINS" || r.Kind == "EXTENDS" {
-				if r.Properties == nil || r.Properties["language"] != "verilog" {
+				if r.Properties == nil || r.Properties.Get("language") != "verilog" {
 					t.Errorf("relationship %s → %q missing language=verilog tag", r.Kind, r.ToID)
 				}
 			}
@@ -409,7 +409,7 @@ func TestSV_LanguageTagOnRelationships(t *testing.T) {
 	for _, ent := range ents {
 		for _, r := range ent.Relationships {
 			if r.Kind == "IMPORTS" || r.Kind == "USES" || r.Kind == "CONTAINS" {
-				if r.Properties == nil || r.Properties["language"] != "systemverilog" {
+				if r.Properties == nil || r.Properties.Get("language") != "systemverilog" {
 					t.Errorf("relationship %s → %q missing language=systemverilog tag", r.Kind, r.ToID)
 				}
 			}
@@ -788,17 +788,17 @@ func TestVerilog_InstanceTopology(t *testing.T) {
 	if !ok {
 		t.Fatal("missing USES edge top → sub_a")
 	}
-	if a.Properties["instance_name"] != "u_a" {
-		t.Errorf("sub_a instance_name=%q want u_a", a.Properties["instance_name"])
+	if a.Properties.Get("instance_name") != "u_a" {
+		t.Errorf("sub_a instance_name=%q want u_a", a.Properties.Get("instance_name"))
 	}
 	b, ok := got["sub_b"]
 	if !ok {
 		t.Fatal("missing USES edge top → sub_b")
 	}
-	if b.Properties["instance_name"] != "u_b" {
-		t.Errorf("sub_b instance_name=%q want u_b", b.Properties["instance_name"])
+	if b.Properties.Get("instance_name") != "u_b" {
+		t.Errorf("sub_b instance_name=%q want u_b", b.Properties.Get("instance_name"))
 	}
-	if b.Properties["parameterized"] != "true" {
+	if b.Properties.Get("parameterized") != "true" {
 		t.Errorf("sub_b should be flagged parameterized; props=%v", b.Properties)
 	}
 }

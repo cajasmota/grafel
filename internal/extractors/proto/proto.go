@@ -305,7 +305,7 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 				rels = append(rels, types.RelationshipRecord{
 					ToID:       extractor.BuildOperationStructuralRef("proto", file.Path, ref),
 					Kind:       "REFERENCES",
-					Properties: map[string]string{"via_field": fname, "type": ref},
+					Properties: types.Props{{K: "type", V: ref}, {K: "via_field", V: fname}},
 				})
 			}
 		}
@@ -564,7 +564,7 @@ func buildImportEntities(file extractor.FileInput) []types.EntityRecord {
 			Kind:   "IMPORTS",
 		}
 		if public {
-			rel.Properties = map[string]string{"public": "true"}
+			rel.Properties = types.Props{{K: "public", V: "true"}}
 		}
 		entities = append(entities, types.EntityRecord{
 			Name:               path,

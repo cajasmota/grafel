@@ -121,11 +121,11 @@ func applyEventTypeEdges(args DetectorPassArgs) DetectorPassResult {
 
 	// emitEdge mints the event-type node (idempotent) and appends a
 	// PUBLISHES_TO / SUBSCRIBES_TO edge, subject to the per-name fan-out cap.
-	emitEdge := func(fromID, verbatim, kind string, props map[string]string) {
+	emitEdge := func(fromID, verbatim, kind string, props types.Props) {
 		if fromID == "" || verbatim == "" {
 			return
 		}
-		emitEventType(verbatim, props)
+		emitEventType(verbatim, props.Snapshot())
 
 		id := eventTypeID(verbatim)
 		if emissionCount[id] >= eventTypeEmissionCapPerName {

@@ -116,12 +116,12 @@ func applyKafkaWrapperEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		base := map[string]string{
-			"pattern_type": "kafka_wrapper_synthesis",
+		base := types.Props{
+			{K: "pattern_type", V: "kafka_wrapper_synthesis"},
 		}
 		for k, v := range props {
 			if v != "" {
-				base[k] = v
+				base.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{

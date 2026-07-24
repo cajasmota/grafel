@@ -5177,7 +5177,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 				Kind:   rel.Kind,
 
 				Confidence: rel.Confidence, // Phase 1C (#2769).
-			}.WithProperties(rel.Properties))
+			}.WithProperties(rel.Properties.Snapshot()))
 		}
 
 		// #5955 — drain the record now that it is fully converted. This is the
@@ -5214,7 +5214,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			Kind:   rel.Kind,
 
 			Confidence: rel.Confidence, // Phase 1C (#2769).
-		}.WithProperties(rel.Properties))
+		}.WithProperties(rel.Properties.Snapshot()))
 	}
 
 	// SCOPE.Pattern → file CONTAINS fixup (see buildPatternContainsRels
@@ -5235,7 +5235,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			FromID: rel.FromID,
 			ToID:   rel.ToID,
 			Kind:   rel.Kind,
-		}.WithProperties(rel.Properties))
+		}.WithProperties(rel.Properties.Snapshot()))
 	}
 
 	// #4244 — node-anchored $lookup JOINS_COLLECTION twins (see
@@ -5254,7 +5254,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			FromID: rel.FromID,
 			ToID:   rel.ToID,
 			Kind:   rel.Kind,
-		}.WithProperties(rel.Properties))
+		}.WithProperties(rel.Properties.Snapshot()))
 	}
 
 	return &graph.Document{

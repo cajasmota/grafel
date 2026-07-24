@@ -273,7 +273,7 @@ func extractCallRelationships(body ts.Node, src []byte, callerName, ownerName st
 		seen[target] = true
 		// Line is 1-based: tree-sitter StartPoint().Row is 0-based.
 		callLine := strconv.Itoa(int(call.StartPoint().Row) + 1)
-		props := map[string]string{"line": callLine}
+		props := types.Props{{K: "line", V: callLine}}
 		// Issue #4373 — stamp the resolved module/crate path qualifier so the
 		// resolver can bind a cross-module CALL to the exact callee module's
 		// entity instead of collapsing to an ambiguity-prone bare leaf. Only
@@ -282,10 +282,10 @@ func extractCallRelationships(body ts.Node, src []byte, callerName, ownerName st
 		// untouched.
 		if crossCtx != nil && len(pathSegs) >= 2 {
 			if dirs, scope := crossCtx.resolveCallPath(pathSegs); len(dirs) > 0 {
-				props["rust_call_pkg_dirs"] = strings.Join(dirs, ";")
-				props["call_leaf"] = pathSegs[len(pathSegs)-1]
+				props.Set("rust_call_pkg_dirs", strings.Join(dirs, ";"))
+				props.Set("call_leaf", pathSegs[len(pathSegs)-1])
 				if scope != "" {
-					props["rust_call_scope"] = scope
+					props.Set("rust_call_scope", scope)
 				}
 			}
 		}
@@ -898,20 +898,20 @@ func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bo
 	syms := parseRustUsePath(raw)
 	rels := make([]types.RelationshipRecord, 0, len(syms))
 	for _, s := range syms {
-		props := map[string]string{
-			"import_path":   s.path,
-			"source_module": s.path,
+		props := types.Props{
+			{K: "import_path", V: s.path},
+			{K: "source_module", V: s.path},
 		}
 		if s.wildcard {
-			props["wildcard"] = "1"
+			props.Set("wildcard", "1")
 			// The namespace local is the last concrete path segment (`use a::b::*`
 			// → namespace local `b`); the per-symbol synth resolves `b.<member>`.
 			if s.local != "" {
-				props["local_name"] = s.local
+				props.Set("local_name", s.local)
 			}
 		} else {
-			props["imported_name"] = s.imported
-			props["local_name"] = s.local
+			props.Set("imported_name", s.imported)
+			props.Set("local_name", s.local)
 		}
 		rels = append(rels, types.RelationshipRecord{
 			FromID:     file.Path,

@@ -492,7 +492,7 @@ func TestExtract_LanguageTaggedOnRelationships(t *testing.T) {
 	entities := extract(t, "src/Counter.vue", compositionSFC)
 	for _, ent := range entities {
 		for _, r := range ent.Relationships {
-			lang := r.Properties["language"]
+			lang := r.Properties.Get("language")
 			if lang != "vue" {
 				t.Errorf("entity %q rel %q: language tag = %q, want %q", ent.Name, r.Kind, lang, "vue")
 			}

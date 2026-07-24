@@ -264,8 +264,8 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (out 
 				FromID: componentRef(file.Path, c.name),
 				ToID:   propsSchemaRef(file.Path, propsType),
 				Kind:   RelHasProps,
-				Properties: map[string]string{
-					"props_type": propsType,
+				Properties: types.Props{
+					{K: "props_type", V: propsType},
 				},
 			})
 			hasPropsCount++
@@ -276,8 +276,8 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (out 
 				FromID: componentRef(file.Path, c.name),
 				ToID:   componentRef(file.Path, child),
 				Kind:   RelRenders,
-				Properties: map[string]string{
-					"child_name": child,
+				Properties: types.Props{
+					{K: "child_name", V: child},
 				},
 			})
 			rendersCount++
@@ -288,8 +288,8 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (out 
 				FromID: componentRef(file.Path, c.name),
 				ToID:   hookRef(file.Path, hook),
 				Kind:   RelUsesHook,
-				Properties: map[string]string{
-					"hook_name": hook,
+				Properties: types.Props{
+					{K: "hook_name", V: hook},
 				},
 			})
 			usesHookCount++

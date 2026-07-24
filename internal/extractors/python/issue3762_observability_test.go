@@ -56,20 +56,20 @@ def checkout(cart):
 		dumpInstr(t, ents, "checkout")
 		t.Fatal("INSTRUMENTS edge checkout → span:checkout not found")
 	}
-	if r.Properties["library"] != "ddtrace" {
-		t.Errorf("library=%q, want ddtrace", r.Properties["library"])
+	if r.Properties.Get("library") != "ddtrace" {
+		t.Errorf("library=%q, want ddtrace", r.Properties.Get("library"))
 	}
-	if r.Properties["api"] != "tracer.wrap" {
-		t.Errorf("api=%q, want tracer.wrap", r.Properties["api"])
+	if r.Properties.Get("api") != "tracer.wrap" {
+		t.Errorf("api=%q, want tracer.wrap", r.Properties.Get("api"))
 	}
-	if r.Properties["span_name"] != "checkout" {
-		t.Errorf("span_name=%q, want checkout", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "checkout" {
+		t.Errorf("span_name=%q, want checkout", r.Properties.Get("span_name"))
 	}
-	if r.Properties["traced"] != "true" {
-		t.Errorf("traced=%q, want true", r.Properties["traced"])
+	if r.Properties.Get("traced") != "true" {
+		t.Errorf("traced=%q, want true", r.Properties.Get("traced"))
 	}
-	if r.Properties["dynamic"] != "" {
-		t.Errorf("dynamic=%q, want empty", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "" {
+		t.Errorf("dynamic=%q, want empty", r.Properties.Get("dynamic"))
 	}
 }
 
@@ -87,8 +87,8 @@ def checkout(cart):
 		dumpInstr(t, ents, "checkout")
 		t.Fatal("INSTRUMENTS edge checkout → span:pay.op not found")
 	}
-	if r.Properties["span_name"] != "pay.op" {
-		t.Errorf("span_name=%q, want pay.op", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "pay.op" {
+		t.Errorf("span_name=%q, want pay.op", r.Properties.Get("span_name"))
 	}
 }
 
@@ -106,11 +106,11 @@ def fetch():
 		dumpInstr(t, ents, "fetch")
 		t.Fatal("INSTRUMENTS edge fetch → span:db.query not found")
 	}
-	if r.Properties["api"] != "tracer.trace" {
-		t.Errorf("api=%q, want tracer.trace", r.Properties["api"])
+	if r.Properties.Get("api") != "tracer.trace" {
+		t.Errorf("api=%q, want tracer.trace", r.Properties.Get("api"))
 	}
-	if r.Properties["library"] != "ddtrace" {
-		t.Errorf("library=%q, want ddtrace", r.Properties["library"])
+	if r.Properties.Get("library") != "ddtrace" {
+		t.Errorf("library=%q, want ddtrace", r.Properties.Get("library"))
 	}
 }
 
@@ -130,11 +130,11 @@ def handler(req):
 		dumpInstr(t, ents, "handler")
 		t.Fatal("INSTRUMENTS edge handler → span:handler not found")
 	}
-	if r.Properties["library"] != "sentry" {
-		t.Errorf("library=%q, want sentry", r.Properties["library"])
+	if r.Properties.Get("library") != "sentry" {
+		t.Errorf("library=%q, want sentry", r.Properties.Get("library"))
 	}
-	if r.Properties["api"] != "trace" {
-		t.Errorf("api=%q, want trace", r.Properties["api"])
+	if r.Properties.Get("api") != "trace" {
+		t.Errorf("api=%q, want trace", r.Properties.Get("api"))
 	}
 }
 
@@ -152,11 +152,11 @@ def process():
 		dumpInstr(t, ents, "process")
 		t.Fatal("INSTRUMENTS edge process → span:checkout not found")
 	}
-	if r.Properties["api"] != "start_transaction" {
-		t.Errorf("api=%q, want start_transaction", r.Properties["api"])
+	if r.Properties.Get("api") != "start_transaction" {
+		t.Errorf("api=%q, want start_transaction", r.Properties.Get("api"))
 	}
-	if r.Properties["span_name"] != "checkout" {
-		t.Errorf("span_name=%q, want checkout", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "checkout" {
+		t.Errorf("span_name=%q, want checkout", r.Properties.Get("span_name"))
 	}
 }
 
@@ -179,17 +179,17 @@ def handler(req):
 		dumpInstr(t, ents, "handler")
 		t.Fatal("INSTRUMENTS edge handler → metric:request_seconds not found")
 	}
-	if r.Properties["library"] != "prometheus" {
-		t.Errorf("library=%q, want prometheus", r.Properties["library"])
+	if r.Properties.Get("library") != "prometheus" {
+		t.Errorf("library=%q, want prometheus", r.Properties.Get("library"))
 	}
-	if r.Properties["api"] != "metric.time" {
-		t.Errorf("api=%q, want metric.time", r.Properties["api"])
+	if r.Properties.Get("api") != "metric.time" {
+		t.Errorf("api=%q, want metric.time", r.Properties.Get("api"))
 	}
-	if r.Properties["metric_name"] != "request_seconds" {
-		t.Errorf("metric_name=%q, want request_seconds", r.Properties["metric_name"])
+	if r.Properties.Get("metric_name") != "request_seconds" {
+		t.Errorf("metric_name=%q, want request_seconds", r.Properties.Get("metric_name"))
 	}
-	if r.Properties["traced"] != "true" {
-		t.Errorf("traced=%q, want true", r.Properties["traced"])
+	if r.Properties.Get("traced") != "true" {
+		t.Errorf("traced=%q, want true", r.Properties.Get("traced"))
 	}
 }
 
@@ -209,11 +209,11 @@ def handle(req):
 		dumpInstr(t, ents, "handle")
 		t.Fatal("INSTRUMENTS edge handle → metric:http_requests_total not found")
 	}
-	if r.Properties["api"] != "metric.inc" {
-		t.Errorf("api=%q, want metric.inc", r.Properties["api"])
+	if r.Properties.Get("api") != "metric.inc" {
+		t.Errorf("api=%q, want metric.inc", r.Properties.Get("api"))
 	}
-	if r.Properties["metric_name"] != "http_requests_total" {
-		t.Errorf("metric_name=%q, want http_requests_total", r.Properties["metric_name"])
+	if r.Properties.Get("metric_name") != "http_requests_total" {
+		t.Errorf("metric_name=%q, want http_requests_total", r.Properties.Get("metric_name"))
 	}
 }
 
@@ -253,14 +253,14 @@ def worker(job):
 		dumpInstr(t, ents, "worker")
 		t.Fatal("INSTRUMENTS edge worker → span:worker not found")
 	}
-	if r.Properties["library"] != "newrelic" {
-		t.Errorf("library=%q, want newrelic", r.Properties["library"])
+	if r.Properties.Get("library") != "newrelic" {
+		t.Errorf("library=%q, want newrelic", r.Properties.Get("library"))
 	}
-	if r.Properties["api"] != "function_trace" {
-		t.Errorf("api=%q, want function_trace", r.Properties["api"])
+	if r.Properties.Get("api") != "function_trace" {
+		t.Errorf("api=%q, want function_trace", r.Properties.Get("api"))
 	}
-	if r.Properties["span_name"] != "worker" {
-		t.Errorf("span_name=%q, want worker", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "worker" {
+		t.Errorf("span_name=%q, want worker", r.Properties.Get("span_name"))
 	}
 }
 
@@ -278,8 +278,8 @@ def worker(job):
 		dumpInstr(t, ents, "worker")
 		t.Fatal("INSTRUMENTS edge worker → span:batch not found")
 	}
-	if r.Properties["span_name"] != "batch" {
-		t.Errorf("span_name=%q, want batch", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "batch" {
+		t.Errorf("span_name=%q, want batch", r.Properties.Get("span_name"))
 	}
 }
 
@@ -299,11 +299,11 @@ def run(op_name):
 		dumpInstr(t, ents, "run")
 		t.Fatal("INSTRUMENTS edge run → span:run not found for dynamic name")
 	}
-	if r.Properties["dynamic"] != "true" {
-		t.Errorf("dynamic=%q, want true", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "true" {
+		t.Errorf("dynamic=%q, want true", r.Properties.Get("dynamic"))
 	}
-	if _, ok := r.Properties["span_name"]; ok {
-		t.Errorf("span_name must be absent for dynamic name; got %q", r.Properties["span_name"])
+	if _, ok := r.Properties.Lookup("span_name"); ok {
+		t.Errorf("span_name must be absent for dynamic name; got %q", r.Properties.Get("span_name"))
 	}
 }
 

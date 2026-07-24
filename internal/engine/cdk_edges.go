@@ -338,13 +338,13 @@ func applyCDKEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		props := map[string]string{
-			"iac_tool":     "aws-cdk",
-			"pattern_type": "cdk_synthesis",
-			"reason":       reason,
+		props := types.Props{
+			{K: "iac_tool", V: "aws-cdk"},
+			{K: "pattern_type", V: "cdk_synthesis"},
+			{K: "reason", V: reason},
 		}
 		if detail != "" {
-			props[reason] = detail
+			props.Set(reason, detail)
 		}
 		relationships = append(relationships, types.RelationshipRecord{
 			FromID:     fromID,

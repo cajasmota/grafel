@@ -232,9 +232,9 @@ func enrichDjangoModelFieldsAndManagers(
 				// (1b) Relational field → REFERENCES edge.
 				if _, isRel := djangoRelationalFieldTypes[leafType]; isRel {
 					if targetName, rawFKString, isSelf := extractRelationalTargetName(rhs, file.Content, parentClass); targetName != "" {
-						props := map[string]string{
-							"django_rel": leafType,
-							"self_ref":   boolToString(isSelf),
+						props := types.Props{
+							{K: "django_rel", V: leafType},
+							{K: "self_ref", V: boolToString(isSelf)},
 						}
 						// #2049 — stamp the raw string FK value on the edge so the
 						// graph-wide ResolveDjangoStringFKRefs pass can use the
@@ -242,7 +242,7 @@ func enrichDjangoModelFieldsAndManagers(
 						// Only set for string literal forms; identifier/attribute forms
 						// resolve accurately via byLocation and don't need the hint.
 						if rawFKString != "" {
-							props["django_fk_string"] = rawFKString
+							props.Set("django_fk_string", rawFKString)
 						}
 						(*out)[idx].Relationships = append((*out)[idx].Relationships,
 							types.RelationshipRecord{
@@ -261,11 +261,11 @@ func enrichDjangoModelFieldsAndManagers(
 									FromID: buildDjangoModelClassRef(file.Path, parentClass),
 									ToID:   buildDjangoModelClassRef(file.Path, targetName),
 									Kind:   string(types.RelationshipKindGraphRelates),
-									Properties: map[string]string{
-										"django_rel":  leafType,
-										"cardinality": card,
-										"field_name":  attr,
-										"self_ref":    boolToString(isSelf),
+									Properties: types.Props{
+										{K: "cardinality", V: card},
+										{K: "django_rel", V: leafType},
+										{K: "field_name", V: attr},
+										{K: "self_ref", V: boolToString(isSelf)},
 									},
 								})
 						}
@@ -293,9 +293,9 @@ func enrichDjangoModelFieldsAndManagers(
 				types.RelationshipRecord{
 					ToID: buildDjangoModelClassRef(file.Path, funcText),
 					Kind: "REFERENCES",
-					Properties: map[string]string{
-						"django_attachment": "manager",
-						"manager_attr":      attr,
+					Properties: types.Props{
+						{K: "django_attachment", V: "manager"},
+						{K: "manager_attr", V: attr},
 					},
 				})
 		}

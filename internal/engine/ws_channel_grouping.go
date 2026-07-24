@@ -219,11 +219,11 @@ func applyWSChannelGrouping(args DetectorPassArgs) DetectorPassResult {
 			FromID: "Function:" + caller,
 			ToID:   nodeID,
 			Kind:   string(edgeKind),
-			Properties: map[string]string{
-				"channel":      room,
-				"framework":    framework,
-				"transport":    transport,
-				"pattern_type": "ws_channel_grouping",
+			Properties: types.Props{
+				{K: "channel", V: room},
+				{K: "framework", V: framework},
+				{K: "pattern_type", V: "ws_channel_grouping"},
+				{K: "transport", V: transport},
 			},
 		})
 	}
@@ -265,15 +265,15 @@ func applyWSChannelGrouping(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		props := map[string]string{
-			"channel":      room,
-			"framework":    framework,
-			"transport":    transport,
-			"pattern_type": "ws_channel_grouping",
+		props := types.Props{
+			{K: "channel", V: room},
+			{K: "framework", V: framework},
+			{K: "pattern_type", V: "ws_channel_grouping"},
+			{K: "transport", V: transport},
 		}
 		for k, v := range extra {
 			if v != "" {
-				props[k] = v
+				props.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{

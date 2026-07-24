@@ -311,7 +311,7 @@ func TestES6Import(t *testing.T) {
 			}
 			ip := ""
 			if r.Properties != nil {
-				ip = r.Properties["import_path"]
+				ip = r.Properties.Get("import_path")
 			}
 			if ip == "" {
 				ip = r.ToID
@@ -662,7 +662,7 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
 			}
 			ip := ""
 			if r.Properties != nil {
-				ip = r.Properties["import_path"]
+				ip = r.Properties.Get("import_path")
 			}
 			if ip == "" {
 				ip = r.ToID

@@ -543,9 +543,9 @@ func collectRegisterCalls(
 							FromID: fmt.Sprintf("Route:%s", composedPath),
 							ToID:   fmt.Sprintf("View:%s", viewSet),
 							Kind:   "ROUTES_TO",
-							Properties: map[string]string{
-								"framework":    "python",
-								"pattern_type": "ast_driven",
+							Properties: types.Props{
+								{K: "framework", V: "python"},
+								{K: "pattern_type", V: "ast_driven"},
 							},
 						})
 					}

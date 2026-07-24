@@ -120,18 +120,18 @@ func TestExtractX8664Gas(t *testing.T) {
 	}
 	if e, ok := mc["printf"]; !ok {
 		t.Error("main should CALL printf (PLT suffix stripped)")
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("printf call locality=%q want external", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("printf call locality=%q want external", e.Properties.Get("locality"))
 	}
 	// Branch to a local label is rewritten to a file-scoped Format A stub so
 	// it resolves intra-file (#2836).
 	doneStub := localLabelStub("assembly", "boot.s", ".Ldone")
 	if e, ok := mc[doneStub]; !ok {
 		t.Errorf("main should branch to .Ldone (stub %q); got %v", doneStub, mc)
-	} else if e.Properties["edge_kind"] != "branch" {
-		t.Errorf(".Ldone edge_kind=%q want branch", e.Properties["edge_kind"])
-	} else if e.Properties["resolution"] != "intra_file" {
-		t.Errorf(".Ldone resolution=%q want intra_file", e.Properties["resolution"])
+	} else if e.Properties.Get("edge_kind") != "branch" {
+		t.Errorf(".Ldone edge_kind=%q want branch", e.Properties.Get("edge_kind"))
+	} else if e.Properties.Get("resolution") != "intra_file" {
+		t.Errorf(".Ldone resolution=%q want intra_file", e.Properties.Get("resolution"))
 	}
 
 	// Syscall effect on greet.
@@ -141,8 +141,8 @@ func TestExtractX8664Gas(t *testing.T) {
 	gc := callTargets(greet)
 	if e, ok := gc[syntheticSyscallTarget]; !ok {
 		t.Error("greet should CALL __syscall")
-	} else if e.Properties["effect"] != "syscall" {
-		t.Errorf("__syscall effect=%q want syscall", e.Properties["effect"])
+	} else if e.Properties.Get("effect") != "syscall" {
+		t.Errorf("__syscall effect=%q want syscall", e.Properties.Get("effect"))
 	}
 
 	// Sections.
@@ -181,8 +181,8 @@ func TestExtractARM64(t *testing.T) {
 	}
 	if e, ok := sc["memcpy"]; !ok {
 		t.Error("_start should CALL memcpy (bl external)")
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("memcpy locality=%q want external", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("memcpy locality=%q want external", e.Properties.Get("locality"))
 	}
 	loopStub := localLabelStub("assembly", "start.s", ".Lloop")
 	if _, ok := sc[loopStub]; !ok {
@@ -214,8 +214,8 @@ func TestExtractNASM(t *testing.T) {
 	}
 	if e, ok := sc["puts"]; !ok {
 		t.Error("_start should CALL puts (extern)")
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("puts locality=%q want external", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("puts locality=%q want external", e.Properties.Get("locality"))
 	}
 	if start.Properties["has_syscall"] != "true" {
 		t.Error("_start should have syscall effect")
@@ -341,27 +341,27 @@ func TestExtractM68k(t *testing.T) {
 	// jsr setup → call.
 	if e, ok := sc["setup"]; !ok {
 		t.Errorf("_start should jsr→CALL setup; got %v", sc)
-	} else if e.Properties["edge_kind"] != "call" {
-		t.Errorf("setup edge_kind=%q want call", e.Properties["edge_kind"])
+	} else if e.Properties.Get("edge_kind") != "call" {
+		t.Errorf("setup edge_kind=%q want call", e.Properties.Get("edge_kind"))
 	}
 	// bsr.w helper → call (size suffix stripped).
 	if e, ok := sc["helper"]; !ok {
 		t.Error("_start should bsr.w→CALL helper (size suffix stripped)")
-	} else if e.Properties["edge_kind"] != "call" {
-		t.Errorf("helper edge_kind=%q want call", e.Properties["edge_kind"])
+	} else if e.Properties.Get("edge_kind") != "call" {
+		t.Errorf("helper edge_kind=%q want call", e.Properties.Get("edge_kind"))
 	}
 	// jsr memcpy → external call.
 	if e, ok := sc["memcpy"]; !ok {
 		t.Error("_start should jsr→CALL memcpy")
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("memcpy locality=%q want external", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("memcpy locality=%q want external", e.Properties.Get("locality"))
 	}
 	// dbra %d0, .Lloop → branch to local label (label is LAST operand).
 	loopStub := localLabelStub("assembly", "boot68k.s", ".Lloop")
 	if e, ok := sc[loopStub]; !ok {
 		t.Errorf("_start should dbra→branch .Lloop via stub %q; got %v", loopStub, sc)
-	} else if e.Properties["edge_kind"] != "branch" {
-		t.Errorf(".Lloop edge_kind=%q want branch", e.Properties["edge_kind"])
+	} else if e.Properties.Get("edge_kind") != "branch" {
+		t.Errorf(".Lloop edge_kind=%q want branch", e.Properties.Get("edge_kind"))
 	}
 	// bra .Ldone → branch to local label.
 	doneStub := localLabelStub("assembly", "boot68k.s", ".Ldone")
@@ -380,8 +380,8 @@ func TestExtractM68k(t *testing.T) {
 	hc := callTargets(helper)
 	if e, ok := hc["helper"]; !ok {
 		t.Error("helper should branch to itself")
-	} else if e.Properties["recursion"] != "self" {
-		t.Errorf("helper self-branch recursion=%q want self", e.Properties["recursion"])
+	} else if e.Properties.Get("recursion") != "self" {
+		t.Errorf("helper self-branch recursion=%q want self", e.Properties.Get("recursion"))
 	}
 
 	// Local-label anchors emitted.
@@ -418,21 +418,21 @@ func TestExtractRISCV(t *testing.T) {
 	// jal ra, setup → intra-file call (label is the LAST operand, ra skipped).
 	if e, ok := sc["setup"]; !ok {
 		t.Errorf("_start should jal→CALL setup; got %v", sc)
-	} else if e.Properties["edge_kind"] != "call" {
-		t.Errorf("setup edge_kind=%q want call", e.Properties["edge_kind"])
+	} else if e.Properties.Get("edge_kind") != "call" {
+		t.Errorf("setup edge_kind=%q want call", e.Properties.Get("edge_kind"))
 	}
 	// jal ra, memcpy → external call.
 	if e, ok := sc["memcpy"]; !ok {
 		t.Error("_start should jal→CALL memcpy (external)")
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("memcpy locality=%q want external", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("memcpy locality=%q want external", e.Properties.Get("locality"))
 	}
 	// beqz a0, .Ldone → branch to local label (label is LAST operand).
 	doneStub := localLabelStub("assembly", "boot_rv.s", ".Ldone")
 	if e, ok := sc[doneStub]; !ok {
 		t.Errorf("_start should beqz→branch .Ldone via stub %q; got %v", doneStub, sc)
-	} else if e.Properties["edge_kind"] != "branch" {
-		t.Errorf(".Ldone edge_kind=%q want branch", e.Properties["edge_kind"])
+	} else if e.Properties.Get("edge_kind") != "branch" {
+		t.Errorf(".Ldone edge_kind=%q want branch", e.Properties.Get("edge_kind"))
 	}
 	// bnez a0, .Lloop → branch to local label.
 	loopStub := localLabelStub("assembly", "boot_rv.s", ".Lloop")
@@ -496,8 +496,8 @@ func TestExtractX8664Intel(t *testing.T) {
 	}
 	if e, ok := sc["printf"]; !ok {
 		t.Error("_start should CALL printf (extern)")
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("printf locality=%q want external", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("printf locality=%q want external", e.Properties.Get("locality"))
 	}
 	// Memory-indirect calls must NOT produce a static target.
 	for bad := range sc {
@@ -509,8 +509,8 @@ func TestExtractX8664Intel(t *testing.T) {
 	nextStub := localLabelStub("assembly", "intel.asm", ".next")
 	if e, ok := sc[nextStub]; !ok {
 		t.Errorf("_start should branch to .next (near) via stub %q; got %v", nextStub, sc)
-	} else if e.Properties["edge_kind"] != "branch" {
-		t.Errorf(".next edge_kind=%q want branch", e.Properties["edge_kind"])
+	} else if e.Properties.Get("edge_kind") != "branch" {
+		t.Errorf(".next edge_kind=%q want branch", e.Properties.Get("edge_kind"))
 	}
 	if start.Properties["has_syscall"] != "true" {
 		t.Error("_start should have syscall effect")
@@ -520,8 +520,8 @@ func TestExtractX8664Intel(t *testing.T) {
 	wc := callTargets(work)
 	if e, ok := wc["done"]; !ok {
 		t.Error("work should branch (tail call) to done")
-	} else if e.Properties["tail_call"] != "true" {
-		t.Errorf("work→done tail_call=%q want true", e.Properties["tail_call"])
+	} else if e.Properties.Get("tail_call") != "true" {
+		t.Errorf("work→done tail_call=%q want true", e.Properties.Get("tail_call"))
 	}
 }
 
@@ -579,8 +579,8 @@ func TestCrossFileResolution(t *testing.T) {
 	// Cross-file call carries the bare exported name (resolved by byName).
 	if e, ok := cc["lib_func"]; !ok {
 		t.Errorf("caller should CALL lib_func (cross-file); got %v", cc)
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("lib_func locality=%q want external (declared .extern)", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("lib_func locality=%q want external (declared .extern)", e.Properties.Get("locality"))
 	}
 	// Intra-file branch to .Lretry is file-scoped, NOT a bare name (so it
 	// never mis-binds to a same-named local label in xref_lib.s).
@@ -656,7 +656,7 @@ func importedModules(recs []types.EntityRecord) map[string]bool {
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
 			if rel.Kind == "IMPORTS" {
-				out[rel.Properties["source_module"]] = true
+				out[rel.Properties.Get("source_module")] = true
 			}
 		}
 	}
@@ -692,13 +692,13 @@ func TestExtractMASMStructured(t *testing.T) {
 	// EXTERN printf:PROC → external locality on the printf call.
 	if e, ok := cc["printf"]; !ok {
 		t.Errorf("main should CALL printf; got %v", cc)
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("printf locality=%q want external (EXTERN)", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("printf locality=%q want external (EXTERN)", e.Properties.Get("locality"))
 	}
 	if e, ok := cc["ExitProcess"]; !ok {
 		t.Errorf("main should CALL ExitProcess; got %v", cc)
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("ExitProcess locality=%q want external (EXTERN)", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("ExitProcess locality=%q want external (EXTERN)", e.Properties.Get("locality"))
 	}
 
 	// INCLUDE / INCLUDELIB → IMPORTS edges.
@@ -811,8 +811,8 @@ func TestExtractARMArmasmStructured(t *testing.T) {
 	cc := callTargets(byName(recs, "main"))
 	if e, ok := cc["printf"]; !ok {
 		t.Errorf("main should CALL printf; got %v", cc)
-	} else if e.Properties["locality"] != "external" {
-		t.Errorf("printf locality=%q want external (IMPORT)", e.Properties["locality"])
+	} else if e.Properties.Get("locality") != "external" {
+		t.Errorf("printf locality=%q want external (IMPORT)", e.Properties.Get("locality"))
 	}
 	if _, ok := cc["compute"]; !ok {
 		t.Errorf("main should CALL compute; got %v", cc)

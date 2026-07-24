@@ -415,11 +415,11 @@ func emitDataClasses(add func(types.EntityRecord), src string, heads []classHead
 				validatesEdges = append(validatesEdges, types.RelationshipRecord{
 					ToID: nested,
 					Kind: "VALIDATES",
-					Properties: map[string]string{
-						"field":     pname,
-						"via":       "valid_annotation",
-						"framework": "BeanValidation",
-						"owner_dto": h.name,
+					Properties: types.Props{
+						{K: "field", V: pname},
+						{K: "framework", V: "BeanValidation"},
+						{K: "owner_dto", V: h.name},
+						{K: "via", V: "valid_annotation"},
 					},
 				})
 			}

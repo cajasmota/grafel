@@ -135,9 +135,9 @@ func TestDetect_SpringRoutes(t *testing.T) {
 		if r.Kind != "ROUTES_TO" {
 			continue
 		}
-		if r.Properties["pattern_type"] != "ast_driven" {
+		if r.Properties.Get("pattern_type") != "ast_driven" {
 			t.Errorf("ROUTES_TO %s -> %s: pattern_type = %q, want ast_driven",
-				r.FromID, r.ToID, r.Properties["pattern_type"])
+				r.FromID, r.ToID, r.Properties.Get("pattern_type"))
 		}
 	}
 

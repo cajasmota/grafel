@@ -462,7 +462,7 @@ func applyCloudFormationEdges(args DetectorPassArgs) DetectorPassResult {
 		})
 	}
 
-	emitEdge := func(fromID, toID, kind string, props map[string]string) {
+	emitEdge := func(fromID, toID, kind string, props types.Props) {
 		if fromID == "" || toID == "" {
 			return
 		}
@@ -505,26 +505,26 @@ func applyCloudFormationEdges(args DetectorPassArgs) DetectorPassResult {
 		}
 		kind := cfnResourceKind(r.typ)
 		eid := resourceRef(r.logicalID)
-		props := map[string]string{
-			"kind":              "iac",
-			"iac_tool":          "cloudformation",
-			"resource_type":     r.typ,
-			"logical_id":        r.logicalID,
-			"resource_category": types.IaCResourceCategory(r.typ),
+		props := types.Props{
+			{K: "iac_tool", V: "cloudformation"},
+			{K: "kind", V: "iac"},
+			{K: "logical_id", V: r.logicalID},
+			{K: "resource_category", V: types.IaCResourceCategory(r.typ)},
+			{K: "resource_type", V: r.typ},
 		}
 		if strings.HasPrefix(r.typ, "AWS::Serverless::") {
-			props["iac_tool"] = "sam"
+			props.Set("iac_tool", "sam")
 		}
 		// Epic #4194 — stamp curated scalar config properties (InstanceType,
 		// Runtime, MemorySize, Timeout, DBInstanceClass, ...) from the resource
 		// body. Intrinsic-function values (Ref/GetAtt/Sub/...) are skipped (they
 		// remain reference edges mined below).
 		for k, v := range cfnExtractScalarProperties(r.body) {
-			if _, exists := props[k]; !exists {
-				props[k] = v
+			if _, exists := props.Lookup(k); !exists {
+				props.Set(k, v)
 			}
 		}
-		emitEntity(eid, kind, "cfn_resource", r.logicalID, r.line, props)
+		emitEntity(eid, kind, "cfn_resource", r.logicalID, r.line, props.Snapshot())
 		knownIDs[r.logicalID] = eid
 	}
 
@@ -552,7 +552,7 @@ func applyCloudFormationEdges(args DetectorPassArgs) DetectorPassResult {
 				}
 			}
 			emitEdge(fromID, cfnResourceKindFromID(toKind, toEID), edgeKind,
-				map[string]string{"iac_tool": "cloudformation", "ref_kind": edgeKind})
+				types.Props{{K: "iac_tool", V: "cloudformation"}, {K: "ref_kind", V: edgeKind}})
 		}
 
 		// Cross-stack imports referenced by this resource.
@@ -562,14 +562,14 @@ func applyCloudFormationEdges(args DetectorPassArgs) DetectorPassResult {
 				map[string]string{"kind": "iac", "iac_tool": "cloudformation", "export_name": exp})
 			emitEdge(fromID, fmt.Sprintf("%s:%s", cfnConfigEntityKind, expID),
 				cfnDependsOnEdgeKind,
-				map[string]string{"iac_tool": "cloudformation", "cross_stack": "true"})
+				types.Props{{K: "cross_stack", V: "true"}, {K: "iac_tool", V: "cloudformation"}})
 		}
 
 		// Nested stacks: AWS::CloudFormation::Stack TemplateURL → IMPORTS.
 		if r.typ == "AWS::CloudFormation::Stack" {
 			if url := cfnExtractTemplateURL(r.body); url != "" {
 				emitEdge(fromID, "ext:cfn-stack:"+url, cfnImportsEdgeKind,
-					map[string]string{"iac_tool": "cloudformation", "nested_stack": "true"})
+					types.Props{{K: "iac_tool", V: "cloudformation"}, {K: "nested_stack", V: "true"}})
 			}
 		}
 
@@ -627,7 +627,7 @@ func cfnApplySAMFunction(
 	knownIDs map[string]string,
 	resourceRef func(string) string,
 	emitEntity func(id, kind, subtype, name string, line int, props map[string]string),
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	// Join the serverless synthetic: logical name → aws-lambda:<name>. Prefer
 	// an explicit FunctionName, else the logical id.
@@ -640,9 +640,9 @@ func cfnApplySAMFunction(
 	// ID for the handler code; emit a HANDLES-style USES edge so the CFN resource
 	// links to its runtime function entity (collapses cross-repo on shared ID).
 	emitEntity(lambdaID, "SCOPE.ServerlessFunction", "sam_function", fnName, r.line,
-		map[string]string{"provider": "aws-lambda", "function_name": fnName, "iac_tool": "sam"})
+		map[string]string{"function_name": fnName, "iac_tool": "sam", "provider": "aws-lambda"})
 	emitEdge(fromID, "SCOPE.ServerlessFunction:"+lambdaID, cfnUsesEdgeKind,
-		map[string]string{"iac_tool": "sam", "join": "serverless_synthetic"})
+		types.Props{{K: "iac_tool", V: "sam"}, {K: "join", V: "serverless_synthetic"}})
 
 	// Walk Events: looking for trigger types.
 	eventsBody := cfnIndentedSubBody(r.body, "Events")
@@ -669,15 +669,15 @@ func cfnApplySAMFunction(
 			}
 			epID := "http_endpoint_definition:" + method + " " + path
 			emitEntity(epID, "http_endpoint_definition", "sam_api", method+" "+path, r.line,
-				map[string]string{"http_method": method, "route_path": path, "iac_tool": "sam"})
+				map[string]string{"http_method": method, "iac_tool": "sam", "route_path": path})
 			emitEdge("http_endpoint_definition:"+epID, fromID, cfnRoutesToEdgeKind,
-				map[string]string{"iac_tool": "sam", "trigger": tm[1]})
+				types.Props{{K: "iac_tool", V: "sam"}, {K: "trigger", V: tm[1]}})
 		case "SQS", "SNS", "SnsTopic", "DynamoDB", "Kinesis", "S3":
 			// Resolve the source resource via a Ref/GetAtt inside the event.
 			for target := range cfnCollectRefs(ev) {
 				if toEID, ok := knownIDs[target]; ok {
 					emitEdge(fromID, "SCOPE.Queue:"+toEID, cfnSubscribesToKind,
-						map[string]string{"iac_tool": "sam", "trigger": tm[1]})
+						types.Props{{K: "iac_tool", V: "sam"}, {K: "trigger", V: tm[1]}})
 					// Fall back: also link via generic kind if not a queue.
 				}
 			}
@@ -690,7 +690,7 @@ func cfnApplySAMFunction(
 			emitEntity(jobID, cfnScheduledJobKind, "sam_schedule", r.logicalID+" schedule", r.line,
 				map[string]string{"iac_tool": "sam", "schedule": expr})
 			emitEdge(fmt.Sprintf("%s:%s", cfnScheduledJobKind, jobID), fromID,
-				cfnTriggersEdgeKind, map[string]string{"iac_tool": "sam", "schedule": expr})
+				cfnTriggersEdgeKind, types.Props{{K: "iac_tool", V: "sam"}, {K: "schedule", V: expr}})
 		}
 	}
 }
@@ -733,7 +733,7 @@ func cfnApplyEventSourceMapping(
 	r cfnResource,
 	resources []cfnResource,
 	knownIDs map[string]string,
-	emitEdge func(fromID, toID, kind string, props map[string]string),
+	emitEdge func(fromID, toID, kind string, props types.Props),
 ) {
 	sourceLogical := ""
 	if m := cfnESMEventSourceArnGetAttRe.FindStringSubmatch(r.body); m != nil {
@@ -775,10 +775,10 @@ func cfnApplyEventSourceMapping(
 	handlerFromID := cfnResourceKindFromID(handlerKind, handlerEID)
 	sourceToID := cfnResourceKindFromID(sourceKind, sourceEID)
 	emitEdge(handlerFromID, sourceToID, cfnSubscribesToKind,
-		map[string]string{
-			"iac_tool":      "cloudformation",
-			"trigger":       "EventSourceMapping",
-			"resource_type": r.typ,
+		types.Props{
+			{K: "iac_tool", V: "cloudformation"},
+			{K: "resource_type", V: r.typ},
+			{K: "trigger", V: "EventSourceMapping"},
 		})
 }
 

@@ -259,9 +259,9 @@ func (e *phpRedisExtractor) Extract(ctx context.Context, file extractor.FileInpu
 					ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 						ToID: ref,
 						Kind: edgeFor(op.verb),
-						Properties: map[string]string{
+						Properties: types.PropsFromMap(map[string]string{
 							"framework": "redis", "op": strings.ToLower(op.verb), edgeLabel: label,
-						},
+						}),
 					})
 				}
 			} else {

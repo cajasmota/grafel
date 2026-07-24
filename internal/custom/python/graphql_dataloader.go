@@ -142,9 +142,9 @@ func (e *GraphQLDataLoaderExtractor) Extract(ctx context.Context, file extractor
 			rels = append(rels, types.RelationshipRecord{
 				ToID: batchFn,
 				Kind: string(types.RelationshipKindBatches),
-				Properties: map[string]string{
-					"via":      "graphql_dataloader",
-					"language": "python",
+				Properties: types.Props{
+					{K: "language", V: "python"},
+					{K: "via", V: "graphql_dataloader"},
 				},
 			})
 		}
@@ -201,10 +201,10 @@ func (e *GraphQLDataLoaderExtractor) Extract(ctx context.Context, file extractor
 			owner.Relationships = append(owner.Relationships, types.RelationshipRecord{
 				ToID: loaderName,
 				Kind: string(types.RelationshipKindUses),
-				Properties: map[string]string{
-					"via":      "graphql_dataloader",
-					"loader":   loaderName,
-					"language": "python",
+				Properties: types.Props{
+					{K: "language", V: "python"},
+					{K: "loader", V: loaderName},
+					{K: "via", V: "graphql_dataloader"},
 				},
 			})
 		}

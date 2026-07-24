@@ -61,7 +61,7 @@ func phpReceiverFor(e *types.EntityRecord, toID string) string {
 			if r.Properties == nil {
 				return ""
 			}
-			return r.Properties["receiver_type"]
+			return r.Properties.Get("receiver_type")
 		}
 	}
 	return ""
@@ -307,7 +307,7 @@ function caller(): void { other(); }
 		if r.Kind != "CALLS" {
 			continue
 		}
-		if r.Properties["language"] != "php" {
+		if r.Properties.Get("language") != "php" {
 			t.Errorf("expected Properties[language]=php on CALLS edge, got %v", r.Properties)
 		}
 	}

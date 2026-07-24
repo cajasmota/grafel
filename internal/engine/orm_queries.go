@@ -118,14 +118,14 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 		_ = classNames // index retained for future tightening; phase 1 is permissive
 		fromID := buildCallerID(lang, callerName, path)
 		toID := buildModelID(lang, modelName)
-		props := map[string]string{
-			"operation":    op,
-			"orm":          orm,
-			"pattern_type": ormQueriesPatternType,
-			"is_join":      boolStr(isJoin),
+		props := types.Props{
+			{K: "is_join", V: boolStr(isJoin)},
+			{K: "operation", V: op},
+			{K: "orm", V: orm},
+			{K: "pattern_type", V: ormQueriesPatternType},
 		}
 		if filterKeys != "" {
-			props["filter_keys"] = filterKeys
+			props.Set("filter_keys", filterKeys)
 		}
 		relationships = append(relationships, types.RelationshipRecord{
 			FromID:     fromID,

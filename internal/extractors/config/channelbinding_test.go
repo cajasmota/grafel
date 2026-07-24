@@ -84,8 +84,8 @@ mp.messaging.incoming.payments-in.connector=smallrye-kafka
 	if len(binds) != 1 || binds[0].ToID != "orders-out" {
 		t.Fatalf("BINDS_CHANNEL refs = %+v, want single ToID=orders-out", binds)
 	}
-	if binds[0].Properties["direction"] != "outgoing" {
-		t.Errorf("BINDS_CHANNEL direction prop = %q", binds[0].Properties["direction"])
+	if binds[0].Properties.Get("direction") != "outgoing" {
+		t.Errorf("BINDS_CHANNEL direction prop = %q", binds[0].Properties.Get("direction"))
 	}
 	// The channel edge must NOT reuse the Helm/DI "BINDS" kind (semantic bleed).
 	if bleed := relsFrom(rels, out.ID, string(types.RelationshipKindBinds)); len(bleed) != 0 {

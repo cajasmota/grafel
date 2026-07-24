@@ -19,7 +19,7 @@ func runMongoAggPHP(t *testing.T, src string) ([]types.EntityRecord, []types.Rel
 			// #4244 — drop the node-anchored JOINS_COLLECTION twin so the
 			// count/identity assertions below see the collection-anchored
 			// edge set they were written against.
-			if r.Properties["anchor"] == "stage_node" {
+			if r.Properties.Get("anchor") == "stage_node" {
 				return
 			}
 			rels = append(rels, r)
@@ -72,10 +72,10 @@ class BookService {
 	if j.ToID != "Class:Author" {
 		t.Errorf("join ToID = %q, want Class:Author", j.ToID)
 	}
-	if j.Properties["stage"] != "lookup" {
-		t.Errorf("join stage = %q, want lookup", j.Properties["stage"])
+	if j.Properties.Get("stage") != "lookup" {
+		t.Errorf("join stage = %q, want lookup", j.Properties.Get("stage"))
 	}
-	if j.Properties["local_field"] != "author_id" || j.Properties["foreign_field"] != "_id" || j.Properties["as"] != "author" {
+	if j.Properties.Get("local_field") != "author_id" || j.Properties.Get("foreign_field") != "_id" || j.Properties.Get("as") != "author" {
 		t.Errorf("join props = %+v", j.Properties)
 	}
 
@@ -152,7 +152,7 @@ class Book {
 	if j.FromID != "Class:Book" {
 		t.Errorf("reference join FromID = %q, want Class:Book", j.FromID)
 	}
-	if j.Properties["via"] != "reference" || j.Properties["reference"] != "ReferenceMany" {
+	if j.Properties.Get("via") != "reference" || j.Properties.Get("reference") != "ReferenceMany" {
 		t.Errorf("reference join props = %+v", j.Properties)
 	}
 	if p := phpFindJoinTo(rels, "Publisher"); p == nil || p.FromID != "Class:Book" {
@@ -180,8 +180,8 @@ class Book {
 	if j == nil || j.FromID != "Class:Book" {
 		t.Fatalf("expected JOINS_COLLECTION(Class:Book -> Class:Author); rels=%+v", rels)
 	}
-	if j.Properties["reference"] != "ReferenceMany" {
-		t.Errorf("reference kind = %q, want ReferenceMany", j.Properties["reference"])
+	if j.Properties.Get("reference") != "ReferenceMany" {
+		t.Errorf("reference kind = %q, want ReferenceMany", j.Properties.Get("reference"))
 	}
 }
 
@@ -217,7 +217,7 @@ class Book extends Model {
 	if j.FromID != "Class:Book" {
 		t.Errorf("join FromID = %q, want Class:Book (from Book::raw)", j.FromID)
 	}
-	if j.Properties["local_field"] != "author_id" || j.Properties["foreign_field"] != "_id" || j.Properties["as"] != "author" {
+	if j.Properties.Get("local_field") != "author_id" || j.Properties.Get("foreign_field") != "_id" || j.Properties.Get("as") != "author" {
 		t.Errorf("laravel $lookup props = %+v", j.Properties)
 	}
 	// One stage entity for the $lookup ($match yields no edge; only $lookup

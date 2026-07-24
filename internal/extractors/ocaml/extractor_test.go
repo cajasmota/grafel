@@ -258,7 +258,7 @@ let size t =
 	ents := runOCaml(t, src, "tagged.ml")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "ocaml" {
+			if r.Properties == nil || r.Properties.Get("language") != "ocaml" {
 				t.Errorf("rel %s→%s missing language=ocaml (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

@@ -239,11 +239,11 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 				FromID: file.Path,
 				ToID:   cfEnts[i].Name,
 				Kind:   "CONTAINS",
-				Properties: map[string]string{
-					"component": componentName,
-					"framework": "svelte",
-					"subtype":   cfEnts[i].Subtype,
-					"via":       cfEnts[i].Properties["via"],
+				Properties: types.Props{
+					{K: "component", V: componentName},
+					{K: "framework", V: "svelte"},
+					{K: "subtype", V: cfEnts[i].Subtype},
+					{K: "via", V: cfEnts[i].Properties["via"]},
 				},
 			})
 		}
@@ -540,11 +540,11 @@ func extractContext(script string, scriptStartLine int, filePath, componentName 
 				FromID: filePath,
 				ToID:   name,
 				Kind:   "USES",
-				Properties: map[string]string{
-					"component":    componentName,
-					"context_key":  key,
-					"context_role": role,
-					"framework":    "svelte",
+				Properties: types.Props{
+					{K: "component", V: componentName},
+					{K: "context_key", V: key},
+					{K: "context_role", V: role},
+					{K: "framework", V: "svelte"},
 				},
 			})
 		}
@@ -584,10 +584,10 @@ func extractScriptDataFlow(script string, scriptStartLine int, filePath, compone
 			FromID: filePath,
 			ToID:   name,
 			Kind:   "USES",
-			Properties: map[string]string{
-				"component": componentName,
-				"framework": "svelte",
-				"subtype":   subtype,
+			Properties: types.Props{
+				{K: "component", V: componentName},
+				{K: "framework", V: "svelte"},
+				{K: "subtype", V: subtype},
 			},
 		})
 	}
@@ -673,10 +673,10 @@ func extractBranchConditions(template string, templateStartLine int, filePath, c
 			FromID: filePath,
 			ToID:   name,
 			Kind:   "USES",
-			Properties: map[string]string{
-				"component":   componentName,
-				"branch_kind": kind,
-				"framework":   "svelte",
+			Properties: types.Props{
+				{K: "branch_kind", V: kind},
+				{K: "component", V: componentName},
+				{K: "framework", V: "svelte"},
 			},
 		})
 	}
@@ -702,12 +702,12 @@ func extractScriptNavigation(script string, scriptStartLine int, filePath, compo
 			FromID: filePath,
 			ToID:   "route:" + route,
 			Kind:   "NAVIGATES_TO",
-			Properties: map[string]string{
-				"route":     route,
-				"via":       via,
-				"caller":    componentName,
-				"framework": "svelte",
-				"line":      fmt.Sprintf("%d", lineNum),
+			Properties: types.Props{
+				{K: "caller", V: componentName},
+				{K: "framework", V: "svelte"},
+				{K: "line", V: fmt.Sprintf("%d", lineNum)},
+				{K: "route", V: route},
+				{K: "via", V: via},
 			},
 		})
 	}
@@ -739,12 +739,12 @@ func extractRouteDirectives(template string, templateStartLine int, filePath, co
 				FromID: filePath,
 				ToID:   "route:" + route,
 				Kind:   "NAVIGATES_TO",
-				Properties: map[string]string{
-					"route":     route,
-					"via":       via,
-					"caller":    componentName,
-					"framework": "svelte",
-					"line":      fmt.Sprintf("%d", lineNum),
+				Properties: types.Props{
+					{K: "caller", V: componentName},
+					{K: "framework", V: "svelte"},
+					{K: "line", V: fmt.Sprintf("%d", lineNum)},
+					{K: "route", V: route},
+					{K: "via", V: via},
 				},
 			})
 		}
@@ -798,11 +798,11 @@ func extractStateSetters(script string, scriptStartLine int, filePath, component
 			Relationships: []types.RelationshipRecord{{
 				ToID: "state:" + stateName,
 				Kind: "WRITES_TO",
-				Properties: map[string]string{
-					"setter":    name,
-					"state":     stateName,
-					"component": componentName,
-					"framework": "svelte",
+				Properties: types.Props{
+					{K: "component", V: componentName},
+					{K: "framework", V: "svelte"},
+					{K: "setter", V: name},
+					{K: "state", V: stateName},
 				},
 			}},
 		})
@@ -873,10 +873,10 @@ func extractReactiveStatements(script string, scriptStartLine int, filePath, com
 			Relationships: []types.RelationshipRecord{{
 				ToID: "state:" + name,
 				Kind: "DEPENDS_ON",
-				Properties: map[string]string{
-					"component": componentName,
-					"target":    name,
-					"framework": "svelte",
+				Properties: types.Props{
+					{K: "component", V: componentName},
+					{K: "framework", V: "svelte"},
+					{K: "target", V: name},
 				},
 			}},
 		})
@@ -884,10 +884,10 @@ func extractReactiveStatements(script string, scriptStartLine int, filePath, com
 			FromID: filePath,
 			ToID:   name,
 			Kind:   "USES",
-			Properties: map[string]string{
-				"component":     componentName,
-				"reactive_kind": "assignment",
-				"framework":     "svelte",
+			Properties: types.Props{
+				{K: "component", V: componentName},
+				{K: "framework", V: "svelte"},
+				{K: "reactive_kind", V: "assignment"},
 			},
 		})
 	}
@@ -922,10 +922,10 @@ func extractReactiveStatements(script string, scriptStartLine int, filePath, com
 			FromID: filePath,
 			ToID:   name,
 			Kind:   "USES",
-			Properties: map[string]string{
-				"component":     componentName,
-				"reactive_kind": "block",
-				"framework":     "svelte",
+			Properties: types.Props{
+				{K: "component", V: componentName},
+				{K: "framework", V: "svelte"},
+				{K: "reactive_kind", V: "block"},
 			},
 		})
 	}
@@ -971,10 +971,10 @@ func extractActions(template string, templateStartLine int, filePath, componentN
 			FromID: filePath,
 			ToID:   name,
 			Kind:   "USES",
-			Properties: map[string]string{
-				"component": componentName,
-				"action":    action,
-				"framework": "svelte",
+			Properties: types.Props{
+				{K: "action", V: action},
+				{K: "component", V: componentName},
+				{K: "framework", V: "svelte"},
 			},
 		})
 	}
@@ -1040,10 +1040,10 @@ func extractChildComponents(template string, templateStartLine int, filePath, co
 			FromID: filePath,
 			ToID:   name,
 			Kind:   "RENDERS",
-			Properties: map[string]string{
-				"from_component": componentName,
-				"to_component":   name,
-				"line":           fmt.Sprintf("%d", lineNum),
+			Properties: types.Props{
+				{K: "from_component", V: componentName},
+				{K: "line", V: fmt.Sprintf("%d", lineNum)},
+				{K: "to_component", V: name},
 			},
 		})
 	}

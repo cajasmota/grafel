@@ -177,10 +177,10 @@ func ApplySerializerMetaModelEdges(
 				FromID: "Class:" + className,
 				ToID:   "Class:" + modelName,
 				Kind:   string(types.RelationshipKindReferences),
-				Properties: map[string]string{
-					"framework":    "drf",
-					"pattern_type": "serializer_meta_model",
-					"via":          "Meta.model",
+				Properties: types.Props{
+					{K: "framework", V: "drf"},
+					{K: "pattern_type", V: "serializer_meta_model"},
+					{K: "via", V: "Meta.model"},
 				},
 			})
 		}
@@ -269,10 +269,10 @@ func ApplyReceiverSenderEdges(
 			FromID: "SCOPE.Operation:" + handlerFunc,
 			ToID:   "Class:" + senderModel,
 			Kind:   string(types.RelationshipKindHandlesSignal),
-			Properties: map[string]string{
-				"framework":    "django_signals",
-				"pattern_type": "receiver_sender_model",
-				"via":          via,
+			Properties: types.Props{
+				{K: "framework", V: "django_signals"},
+				{K: "pattern_type", V: "receiver_sender_model"},
+				{K: "via", V: via},
 			},
 		})
 	}
@@ -404,10 +404,10 @@ func ApplyFilterSetMetaModelEdges(
 				FromID: "Class:" + className,
 				ToID:   "Class:" + modelName,
 				Kind:   string(types.RelationshipKindReferences),
-				Properties: map[string]string{
-					"framework":    "django_filter",
-					"pattern_type": "filterset_meta_model",
-					"via":          "Meta.model",
+				Properties: types.Props{
+					{K: "framework", V: "django_filter"},
+					{K: "pattern_type", V: "filterset_meta_model"},
+					{K: "via", V: "Meta.model"},
 				},
 			})
 		}

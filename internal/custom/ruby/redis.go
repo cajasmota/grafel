@@ -242,9 +242,9 @@ func (e *rubyRedisExtractor) Extract(ctx context.Context, file extractor.FileInp
 					ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 						ToID: ref,
 						Kind: edgeFor(op.verb),
-						Properties: map[string]string{
+						Properties: types.PropsFromMap(map[string]string{
 							"framework": "redis", "op": op.verb, edgeLabel: label,
-						},
+						}),
 					})
 				}
 			} else {

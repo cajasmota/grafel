@@ -243,11 +243,11 @@ func (e *rustDIExtractor) Extract(ctx context.Context, file extractor.FileInput)
 					FromID: typ,
 					ToID:   site + ":" + typ,
 					Kind:   string(types.RelationshipKindBinds),
-					Properties: map[string]string{
-						"framework": framework,
-						"mechanism": mech,
-						"scope":     scope,
-						"via":       provenance,
+					Properties: types.Props{
+						{K: "framework", V: framework},
+						{K: "mechanism", V: mech},
+						{K: "scope", V: scope},
+						{K: "via", V: provenance},
 					},
 				})
 
@@ -273,12 +273,12 @@ func (e *rustDIExtractor) Extract(ctx context.Context, file extractor.FileInput)
 						FromID: typ,
 						ToID:   inj.handler,
 						Kind:   string(types.RelationshipKindInjectedInto),
-						Properties: map[string]string{
-							"framework": framework,
-							"mechanism": mech,
-							"scope":     scope,
-							"consumer":  inj.handler,
-							"via":       provenance,
+						Properties: types.Props{
+							{K: "consumer", V: inj.handler},
+							{K: "framework", V: framework},
+							{K: "mechanism", V: mech},
+							{K: "scope", V: scope},
+							{K: "via", V: provenance},
 						},
 					})
 			}

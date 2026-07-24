@@ -93,7 +93,7 @@ func TestJS_AxiosGet(t *testing.T) {
 	}
 	found := false
 	for _, r := range rels {
-		if r.Properties["http_method"] == "GET" {
+		if r.Properties.Get("http_method") == "GET" {
 			found = true
 		}
 	}
@@ -111,7 +111,7 @@ func TestJS_AxiosPost(t *testing.T) {
 	}
 	found := false
 	for _, r := range rels {
-		if r.Properties["http_method"] == "POST" {
+		if r.Properties.Get("http_method") == "POST" {
 			found = true
 		}
 	}
@@ -207,7 +207,7 @@ response = httpx.post("https://service.example.com/submit", json=payload)
 	rels := callRels(records)
 	found := false
 	for _, r := range rels {
-		if r.Properties["http_method"] == "POST" {
+		if r.Properties.Get("http_method") == "POST" {
 			found = true
 		}
 	}
@@ -250,7 +250,7 @@ func TestGo_HttpGet(t *testing.T) {
 	rels := callRels(records)
 	found := false
 	for _, r := range rels {
-		if r.Properties["http_method"] == "GET" {
+		if r.Properties.Get("http_method") == "GET" {
 			found = true
 		}
 	}
@@ -269,7 +269,7 @@ func TestGo_HttpPost(t *testing.T) {
 	rels := callRels(records)
 	found := false
 	for _, r := range rels {
-		if r.Properties["http_method"] == "POST" {
+		if r.Properties.Get("http_method") == "POST" {
 			found = true
 		}
 	}
@@ -288,7 +288,7 @@ func TestGo_HttpNewRequest(t *testing.T) {
 	rels := callRels(records)
 	found := false
 	for _, r := range rels {
-		if r.Properties["http_method"] == "PUT" {
+		if r.Properties.Get("http_method") == "PUT" {
 			found = true
 		}
 	}
@@ -350,8 +350,8 @@ func TestProtocol_GRPC(t *testing.T) {
 	if len(rels) == 0 {
 		t.Fatal("expected relationships")
 	}
-	if rels[0].Properties["protocol"] != "grpc" {
-		t.Errorf("protocol=%q want grpc", rels[0].Properties["protocol"])
+	if rels[0].Properties.Get("protocol") != "grpc" {
+		t.Errorf("protocol=%q want grpc", rels[0].Properties.Get("protocol"))
 	}
 }
 
@@ -362,8 +362,8 @@ func TestProtocol_WebSocket(t *testing.T) {
 	if len(rels) == 0 {
 		t.Fatal("expected relationships")
 	}
-	if rels[0].Properties["protocol"] != "websocket" {
-		t.Errorf("protocol=%q want websocket", rels[0].Properties["protocol"])
+	if rels[0].Properties.Get("protocol") != "websocket" {
+		t.Errorf("protocol=%q want websocket", rels[0].Properties.Get("protocol"))
 	}
 }
 
@@ -374,8 +374,8 @@ func TestProtocol_RestDefault(t *testing.T) {
 	if len(rels) == 0 {
 		t.Fatal("expected relationships")
 	}
-	if rels[0].Properties["protocol"] != "rest" {
-		t.Errorf("protocol=%q want rest", rels[0].Properties["protocol"])
+	if rels[0].Properties.Get("protocol") != "rest" {
+		t.Errorf("protocol=%q want rest", rels[0].Properties.Get("protocol"))
 	}
 }
 
@@ -415,10 +415,10 @@ func TestRelProperties(t *testing.T) {
 	if r.Kind != "CALLS" {
 		t.Errorf("rel kind=%q want CALLS", r.Kind)
 	}
-	if r.Properties["kind"] != "external_http_call" {
-		t.Errorf("kind prop=%q want external_http_call", r.Properties["kind"])
+	if r.Properties.Get("kind") != "external_http_call" {
+		t.Errorf("kind prop=%q want external_http_call", r.Properties.Get("kind"))
 	}
-	if r.Properties["url"] == "" {
+	if r.Properties.Get("url") == "" {
 		t.Error("url property missing")
 	}
 }

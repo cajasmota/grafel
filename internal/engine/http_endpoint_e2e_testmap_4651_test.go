@@ -77,7 +77,7 @@ func TestIssue4651_DupNameEndpointsCreditedToOwnSpec(t *testing.T) {
 	got := map[string]string{} // spec FromID -> endpoint ToID
 	for _, e := range out {
 		for _, r := range e.Relationships {
-			if r.Kind == string(types.RelationshipKindTests) && r.Properties["match_source"] == "e2e_supertest_route" {
+			if r.Kind == string(types.RelationshipKindTests) && r.Properties.Get("match_source") == "e2e_supertest_route" {
 				got[r.FromID] = r.ToID
 			}
 		}
@@ -119,7 +119,7 @@ func TestIssue4651_LegacyStubPathStillPicksRightDef(t *testing.T) {
 	var fromID string
 	for _, e := range out {
 		for _, r := range e.Relationships {
-			if r.Kind == string(types.RelationshipKindTests) && r.Properties["match_source"] == "e2e_supertest_route" {
+			if r.Kind == string(types.RelationshipKindTests) && r.Properties.Get("match_source") == "e2e_supertest_route" {
 				fromID = r.FromID
 			}
 		}

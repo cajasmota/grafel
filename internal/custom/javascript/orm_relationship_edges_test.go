@@ -43,7 +43,7 @@ func assertCardinality(t *testing.T, r *types.RelationshipRecord, from, to, card
 	if r == nil {
 		t.Fatalf("expected GRAPH_RELATES %s → %s, not found", from, to)
 	}
-	if got := r.Properties["cardinality"]; got != card {
+	if got := r.Properties.Get("cardinality"); got != card {
 		t.Errorf("cardinality: want %q, got %q (props=%v)", card, got, r.Properties)
 	}
 }

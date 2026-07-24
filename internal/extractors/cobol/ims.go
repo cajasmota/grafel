@@ -195,13 +195,13 @@ func buildIMSMessageQueueEntity(filePath, fnQName, fnRef, pcb, op string, line i
 		FromID: fnRef,
 		ToID:   ref,
 		Kind:   edgeKind,
-		Properties: map[string]string{
-			"function_qname": fnQName,
-			"orm":            ormIMSDLI,
-			"operation":      op,
-			"pcb":            pcb,
-			"via":            via,
-			"line":           strconv.Itoa(line),
+		Properties: types.Props{
+			{K: "function_qname", V: fnQName},
+			{K: "line", V: strconv.Itoa(line)},
+			{K: "operation", V: op},
+			{K: "orm", V: ormIMSDLI},
+			{K: "pcb", V: pcb},
+			{K: "via", V: via},
 		},
 	})
 	return rec
@@ -459,14 +459,14 @@ func extractIMSMacroDeck(src, filePath string) []types.EntityRecord {
 				out[curDBIdx].Relationships = append(out[curDBIdx].Relationships,
 					types.RelationshipRecord{
 						ToID: imsSegmentRef(curDB, seg), Kind: "CONTAINS",
-						Properties: map[string]string{"child": seg, "kind": "root-segment"},
+						Properties: types.Props{{K: "child", V: seg}, {K: "kind", V: "root-segment"}},
 					})
 			} else if parent != "" {
 				if pIdx, ok := segByName[parent]; ok {
 					out[pIdx].Relationships = append(out[pIdx].Relationships,
 						types.RelationshipRecord{
 							ToID: imsSegmentRef(curDB, seg), Kind: "CONTAINS",
-							Properties: map[string]string{"child": seg, "parent": parent, "kind": "child-segment"},
+							Properties: types.Props{{K: "child", V: seg}, {K: "kind", V: "child-segment"}, {K: "parent", V: parent}},
 						})
 				}
 			}
@@ -502,7 +502,7 @@ func extractIMSMacroDeck(src, filePath string) []types.EntityRecord {
 				out[sIdx].Relationships = append(out[sIdx].Relationships,
 					types.RelationshipRecord{
 						ToID: fldRef, Kind: "CONTAINS",
-						Properties: map[string]string{"child": fld, "kind": "field"},
+						Properties: types.Props{{K: "child", V: fld}, {K: "kind", V: "field"}},
 					})
 			}
 			continue
@@ -562,7 +562,7 @@ func extractIMSMacroDeck(src, filePath string) []types.EntityRecord {
 				rec.Relationships = append(rec.Relationships,
 					types.RelationshipRecord{
 						ToID: imsDatabaseRef(dbName), Kind: "ACCESSES_TABLE",
-						Properties: map[string]string{"dbdname": dbName, "via": "PCB-DBDNAME"},
+						Properties: types.Props{{K: "dbdname", V: dbName}, {K: "via", V: "PCB-DBDNAME"}},
 					})
 			}
 			out = append(out, rec)
@@ -579,7 +579,7 @@ func extractIMSMacroDeck(src, filePath string) []types.EntityRecord {
 			out[curPCBIdx].Relationships = append(out[curPCBIdx].Relationships,
 				types.RelationshipRecord{
 					ToID: to, Kind: "ACCESSES_TABLE",
-					Properties: map[string]string{"segment": seg, "via": "SENSEG", "pcb": curPCBLabel},
+					Properties: types.Props{{K: "pcb", V: curPCBLabel}, {K: "segment", V: seg}, {K: "via", V: "SENSEG"}},
 				})
 			continue
 		}

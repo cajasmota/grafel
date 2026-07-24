@@ -39,7 +39,7 @@ func runWithRoot(t *testing.T, path, src, repoRoot string) []types.EntityRecord 
 // matches book, or false.
 func importEdge(recs []types.EntityRecord, book string) (types.RelationshipRecord, bool) {
 	for _, rel := range relationsByKind(recs, "IMPORTS") {
-		if rel.Properties["copybook"] == book {
+		if rel.Properties.Get("copybook") == book {
 			return rel, true
 		}
 	}
@@ -159,7 +159,7 @@ func TestExtractor_PerformIsIntraCall(t *testing.T) {
 	// PERFORM edges carry via=PERFORM.
 	var foundVia bool
 	for _, rel := range relationsByKind(recs, "CALLS") {
-		if rel.ToID == "CALCULATE-PAY" && rel.Properties["via"] == "PERFORM" {
+		if rel.ToID == "CALCULATE-PAY" && rel.Properties.Get("via") == "PERFORM" {
 			foundVia = true
 		}
 	}
@@ -172,7 +172,7 @@ func TestExtractor_PerformIsIntraCall(t *testing.T) {
 // via, or false.
 func relByViaTo(recs []types.EntityRecord, target, via string) (types.RelationshipRecord, bool) {
 	for _, rel := range relationsByKind(recs, "CALLS") {
-		if rel.ToID == target && rel.Properties["via"] == via {
+		if rel.ToID == target && rel.Properties.Get("via") == via {
 			return rel, true
 		}
 	}
@@ -210,7 +210,7 @@ func TestExtractor_PerformThruRange(t *testing.T) {
 	if !ok {
 		t.Fatal("expected PERFORM-THRU edge to range-end STEP-C")
 	}
-	if end.Properties["range_start"] != "STEP-A" {
+	if end.Properties.Get("range_start") != "STEP-A" {
 		t.Errorf("PERFORM-THRU edge to STEP-C missing range_start=STEP-A: %v", end.Properties)
 	}
 	// THROUGH spelling also works.
@@ -265,7 +265,7 @@ func TestExtractor_CallIsExternal(t *testing.T) {
 	var external bool
 	for _, rel := range relationsByKind(recs, "CALLS") {
 		if rel.ToID == "TAXCALC" {
-			if rel.Properties["external"] != "true" || rel.Properties["via"] != "CALL" {
+			if rel.Properties.Get("external") != "true" || rel.Properties.Get("via") != "CALL" {
 				t.Errorf("CALL edge to TAXCALC missing external/via props: %v", rel.Properties)
 			}
 			external = true
@@ -280,7 +280,7 @@ func TestExtractor_CallIsExternal(t *testing.T) {
 // dynamic_target property equals the given source data item.
 func callByDynamicTarget(recs []types.EntityRecord, item string) (types.RelationshipRecord, bool) {
 	for _, rel := range relationsByKind(recs, "CALLS") {
-		if rel.Properties["dynamic_target"] == item {
+		if rel.Properties.Get("dynamic_target") == item {
 			return rel, true
 		}
 	}
@@ -305,13 +305,13 @@ func TestExtractor_DynamicCallResolvedViaMoveLiteral(t *testing.T) {
 	if rel.ToID != "TAXCALC" {
 		t.Errorf("resolved dynamic CALL ToID = %q, want TAXCALC", rel.ToID)
 	}
-	if rel.Properties["resolved_via"] != "move-literal" {
+	if rel.Properties.Get("resolved_via") != "move-literal" {
 		t.Errorf("resolved CALL missing resolved_via=move-literal: %v", rel.Properties)
 	}
-	if rel.Properties["dynamic_ref"] != "true" {
+	if rel.Properties.Get("dynamic_ref") != "true" {
 		t.Errorf("resolved CALL must keep dynamic_ref=true: %v", rel.Properties)
 	}
-	if rel.Properties["external"] != "true" {
+	if rel.Properties.Get("external") != "true" {
 		t.Errorf("resolved CALL must keep external=true: %v", rel.Properties)
 	}
 
@@ -326,10 +326,10 @@ func TestExtractor_DynamicCallResolvedViaMoveLiteral(t *testing.T) {
 	for _, rel := range relationsByKind(recs, "CALLS") {
 		if rel.ToID == "WS-COND" {
 			foundCond = true
-			if rel.Properties["resolved_via"] != "" {
+			if rel.Properties.Get("resolved_via") != "" {
 				t.Errorf("tainted CALL WS-COND should NOT carry resolved_via: %v", rel.Properties)
 			}
-			if rel.Properties["dynamic_ref"] != "true" {
+			if rel.Properties.Get("dynamic_ref") != "true" {
 				t.Errorf("unresolved CALL WS-COND must keep dynamic_ref=true: %v", rel.Properties)
 			}
 		}
@@ -360,7 +360,7 @@ func TestExtractor_DynamicCallWrongLanguageNoOp(t *testing.T) {
 	src := "function callProgram() {\n  const WS_PROGRAM = 'TAXCALC';\n  call(WS_PROGRAM);\n}\n"
 	recs := run(t, "notcobol.js", src)
 	for _, rel := range relationsByKind(recs, "CALLS") {
-		if rel.Properties["resolved_via"] == "move-literal" {
+		if rel.Properties.Get("resolved_via") == "move-literal" {
 			t.Errorf("non-COBOL input produced a move-literal resolution: %v", rel.Properties)
 		}
 	}
@@ -378,7 +378,7 @@ func TestExtractor_DynamicCallNoMatchNoOp(t *testing.T) {
 		"           CALL 'AUDITLOG' USING WS-X.\n"
 	recs := run(t, "nomatch.cbl", src)
 	for _, rel := range relationsByKind(recs, "CALLS") {
-		if rel.Properties["resolved_via"] == "move-literal" {
+		if rel.Properties.Get("resolved_via") == "move-literal" {
 			t.Errorf("no MOVE present but got a move-literal resolution: %v", rel.Properties)
 		}
 	}
@@ -477,7 +477,7 @@ func TestExtractor_LanguageTagging(t *testing.T) {
 			t.Fatalf("entity %q language = %q, want cobol", r.Name, r.Language)
 		}
 		for _, rel := range r.Relationships {
-			if rel.Properties["language"] != "cobol" {
+			if rel.Properties.Get("language") != "cobol" {
 				t.Fatalf("relationship %s->%s language not tagged cobol", rel.FromID, rel.ToID)
 			}
 		}
@@ -515,15 +515,15 @@ func TestExtractor_CopybookResolution(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected IMPORTS edge for %q", book)
 		}
-		if rel.Properties["resolved"] != "true" {
-			t.Errorf("COPY %s expected resolved=true, got %q", book, rel.Properties["resolved"])
+		if rel.Properties.Get("resolved") != "true" {
+			t.Errorf("COPY %s expected resolved=true, got %q", book, rel.Properties.Get("resolved"))
 		}
-		if rel.Properties["copybook_path"] == "" {
+		if rel.Properties.Get("copybook_path") == "" {
 			t.Errorf("COPY %s expected copybook_path, got empty", book)
 		}
 		// A resolved COPY binds the edge ToID to the resolved file path.
-		if rel.ToID != rel.Properties["copybook_path"] {
-			t.Errorf("COPY %s ToID=%q should equal copybook_path=%q", book, rel.ToID, rel.Properties["copybook_path"])
+		if rel.ToID != rel.Properties.Get("copybook_path") {
+			t.Errorf("COPY %s ToID=%q should equal copybook_path=%q", book, rel.ToID, rel.Properties.Get("copybook_path"))
 		}
 	}
 }
@@ -539,8 +539,8 @@ func TestExtractor_CopybookUnresolved(t *testing.T) {
 	if !ok {
 		t.Fatal("expected IMPORTS edge for EMPREC even when unresolved")
 	}
-	if rel.Properties["resolved"] != "false" {
-		t.Errorf("unresolved COPY expected resolved=false, got %q", rel.Properties["resolved"])
+	if rel.Properties.Get("resolved") != "false" {
+		t.Errorf("unresolved COPY expected resolved=false, got %q", rel.Properties.Get("resolved"))
 	}
 	if rel.ToID != "EMPREC" {
 		t.Errorf("unresolved COPY ToID should be bare name EMPREC, got %q", rel.ToID)
@@ -557,10 +557,10 @@ func TestExtractor_CopybookReplacing(t *testing.T) {
 	if !ok {
 		t.Fatal("expected IMPORTS edge for EMPREC")
 	}
-	if rel.Properties["replacing"] == "" {
+	if rel.Properties.Get("replacing") == "" {
 		t.Error("expected REPLACING clause to be captured on COPY EMPREC")
 	}
-	if pairs := rel.Properties["replacing_pairs"]; pairs != "EM=>WS-EM" {
+	if pairs := rel.Properties.Get("replacing_pairs"); pairs != "EM=>WS-EM" {
 		t.Errorf("expected replacing_pairs=EM=>WS-EM, got %q", pairs)
 	}
 }
@@ -607,8 +607,8 @@ func TestExtractor_EmbeddedSQLCursor(t *testing.T) {
 	// OPEN / FETCH / CLOSE reference the cursor.
 	ops := map[string]bool{}
 	for _, rel := range relationsByKind(recs, "REFERENCES") {
-		if rel.Properties["cursor"] == "LEDGER-CUR" {
-			ops[rel.Properties["operation"]] = true
+		if rel.Properties.Get("cursor") == "LEDGER-CUR" {
+			ops[rel.Properties.Get("operation")] = true
 		}
 	}
 	for _, op := range []string{"OPEN", "FETCH", "CLOSE"} {
@@ -653,7 +653,7 @@ func TestExtractor_IMSDLISegments(t *testing.T) {
 	// Each segment access carries an orm=ims-dli ACCESSES_TABLE edge.
 	var imsEdges int
 	for _, rel := range relationsByKind(recs, "ACCESSES_TABLE") {
-		if rel.Properties["orm"] == "ims-dli" {
+		if rel.Properties.Get("orm") == "ims-dli" {
 			imsEdges++
 		}
 	}
@@ -722,7 +722,7 @@ func TestExtractor_CICSProgramTransfer(t *testing.T) {
 	// START TRANSID('AUDT') schedules a transaction.
 	var foundTransid bool
 	for _, rel := range relationsByKind(recs, "CALLS") {
-		if rel.ToID == "AUDT" && rel.Properties["transid"] == "AUDT" {
+		if rel.ToID == "AUDT" && rel.Properties.Get("transid") == "AUDT" {
 			foundTransid = true
 		}
 	}
@@ -733,7 +733,7 @@ func TestExtractor_CICSProgramTransfer(t *testing.T) {
 	var linkTagged bool
 	for _, rel := range relationsByKind(recs, "CALLS") {
 		if rel.ToID == "PRICESVC" {
-			if rel.Properties["via"] != "EXEC-CICS-LINK" || rel.Properties["external"] != "true" {
+			if rel.Properties.Get("via") != "EXEC-CICS-LINK" || rel.Properties.Get("external") != "true" {
 				t.Errorf("CICS LINK edge to PRICESVC missing via/external: %v", rel.Properties)
 			}
 			linkTagged = true
@@ -770,12 +770,12 @@ func TestExtractor_CICSQueues(t *testing.T) {
 	// READQ TS → READS_FROM; WRITEQ TS → WRITES_TO, both binding the queue.
 	var readOK, writeOK bool
 	for _, rel := range relationsByKind(recs, "READS_FROM") {
-		if rel.ToID == q.QualifiedName && rel.Properties["via"] == "EXEC-CICS-READQ" {
+		if rel.ToID == q.QualifiedName && rel.Properties.Get("via") == "EXEC-CICS-READQ" {
 			readOK = true
 		}
 	}
 	for _, rel := range relationsByKind(recs, "WRITES_TO") {
-		if rel.ToID == q.QualifiedName && rel.Properties["via"] == "EXEC-CICS-WRITEQ" {
+		if rel.ToID == q.QualifiedName && rel.Properties.Get("via") == "EXEC-CICS-WRITEQ" {
 			writeOK = true
 		}
 	}
@@ -808,7 +808,7 @@ func TestExtractor_CICSScreenMaps(t *testing.T) {
 	// RECEIVE MAP('ORDMAP') → REFERENCES (operator input read back).
 	var refOK bool
 	for _, rel := range relationsByKind(recs, "REFERENCES") {
-		if rel.ToID == m.QualifiedName && rel.Properties["via"] == "EXEC-CICS-RECEIVE" {
+		if rel.ToID == m.QualifiedName && rel.Properties.Get("via") == "EXEC-CICS-RECEIVE" {
 			refOK = true
 		}
 	}
@@ -844,7 +844,7 @@ func TestExtractor_CICSScreenMapSend(t *testing.T) {
 	}
 	var renderOK bool
 	for _, rel := range relationsByKind(recs, "RENDERS") {
-		if rel.ToID == m.QualifiedName && rel.Properties["via"] == "EXEC-CICS-SEND" {
+		if rel.ToID == m.QualifiedName && rel.Properties.Get("via") == "EXEC-CICS-SEND" {
 			renderOK = true
 		}
 	}
@@ -888,7 +888,7 @@ func TestExtractor_CICSQueueLiteralAndTD(t *testing.T) {
 	}
 	var delOK bool
 	for _, rel := range relationsByKind(recs, "WRITES_TO") {
-		if rel.ToID == tmpq.QualifiedName && rel.Properties["via"] == "EXEC-CICS-DELETEQ" {
+		if rel.ToID == tmpq.QualifiedName && rel.Properties.Get("via") == "EXEC-CICS-DELETEQ" {
 			delOK = true
 		}
 	}
@@ -923,7 +923,7 @@ func TestExtractor_CICSTDQueueDestidSysid(t *testing.T) {
 	}
 	var audtWrite bool
 	for _, rel := range relationsByKind(recs, "WRITES_TO") {
-		if rel.ToID == audtq.QualifiedName && rel.Properties["via"] == "EXEC-CICS-WRITEQ" {
+		if rel.ToID == audtq.QualifiedName && rel.Properties.Get("via") == "EXEC-CICS-WRITEQ" {
 			audtWrite = true
 		}
 	}
@@ -947,7 +947,7 @@ func TestExtractor_CICSTDQueueDestidSysid(t *testing.T) {
 	}
 	var logRemoteEdge bool
 	for _, rel := range relationsByKind(recs, "WRITES_TO") {
-		if rel.ToID == logq.QualifiedName && rel.Properties["sysid"] == "PRD2" {
+		if rel.ToID == logq.QualifiedName && rel.Properties.Get("sysid") == "PRD2" {
 			logRemoteEdge = true
 		}
 	}
@@ -965,7 +965,7 @@ func TestExtractor_CICSTDQueueDestidSysid(t *testing.T) {
 	}
 	var wsRead bool
 	for _, rel := range relationsByKind(recs, "READS_FROM") {
-		if rel.ToID == wsq.QualifiedName && rel.Properties["via"] == "EXEC-CICS-READQ" {
+		if rel.ToID == wsq.QualifiedName && rel.Properties.Get("via") == "EXEC-CICS-READQ" {
 			wsRead = true
 		}
 	}
@@ -1005,10 +1005,10 @@ func TestExtractor_DialectScreenIO(t *testing.T) {
 
 	var rendersMS, refsMS, rendersWS, refsWS bool
 	for _, rel := range relationsByKind(recs, "RENDERS") {
-		if rel.ToID == ms.QualifiedName && rel.Properties["via"] == "SCREEN-SECTION" {
+		if rel.ToID == ms.QualifiedName && rel.Properties.Get("via") == "SCREEN-SECTION" {
 			rendersMS = true
 		}
-		if rel.ToID == wsv.QualifiedName && rel.Properties["via"] == "UPON-CRT" {
+		if rel.ToID == wsv.QualifiedName && rel.Properties.Get("via") == "UPON-CRT" {
 			rendersWS = true
 		}
 	}
@@ -1016,7 +1016,7 @@ func TestExtractor_DialectScreenIO(t *testing.T) {
 		if rel.ToID == ms.QualifiedName {
 			refsMS = true
 		}
-		if rel.ToID == wsv.QualifiedName && rel.Properties["via"] == "FROM-CRT" {
+		if rel.ToID == wsv.QualifiedName && rel.Properties.Get("via") == "FROM-CRT" {
 			refsWS = true
 		}
 	}
@@ -1094,7 +1094,7 @@ func TestExtractor_DataHierarchy(t *testing.T) {
 	for _, r := range findByKind(recs, "SCOPE.Schema", "field") {
 		if r.Name == "EMP-RECORD" {
 			for _, rel := range r.Relationships {
-				if rel.Kind == "CONTAINS" && rel.Properties["child"] == "EMP-ID" {
+				if rel.Kind == "CONTAINS" && rel.Properties.Get("child") == "EMP-ID" {
 					contains = true
 				}
 			}
@@ -1172,7 +1172,7 @@ func TestExtractor_FileIODataFlow(t *testing.T) {
 	writes := relationsByKind(recs, "WRITES_TO")
 	hasFile := func(rels []types.RelationshipRecord, file string) bool {
 		for _, r := range rels {
-			if r.Properties["file"] == file {
+			if r.Properties.Get("file") == file {
 				return true
 			}
 		}
@@ -1258,7 +1258,7 @@ func segmentEntity(recs []types.EntityRecord, seg string) (types.EntityRecord, b
 // hasContainsChild reports whether parent entity has a CONTAINS edge to child.
 func hasContainsChild(parent types.EntityRecord, child string) bool {
 	for _, rel := range parent.Relationships {
-		if rel.Kind == "CONTAINS" && rel.Properties["child"] == child {
+		if rel.Kind == "CONTAINS" && rel.Properties.Get("child") == child {
 			return true
 		}
 	}
@@ -1354,11 +1354,11 @@ func TestExtractor_IMSPSBView(t *testing.T) {
 			continue
 		}
 		switch {
-		case rel.Properties["dbdname"] == "PARTSDB":
+		case rel.Properties.Get("dbdname") == "PARTSDB":
 			toDB = true
-		case rel.Properties["segment"] == "PARTROOT":
+		case rel.Properties.Get("segment") == "PARTROOT":
 			toRoot = true
-		case rel.Properties["segment"] == "PARTDETL":
+		case rel.Properties.Get("segment") == "PARTDETL":
 			toDetl = true
 		}
 	}
@@ -1532,9 +1532,9 @@ func TestMainframeLineageSpike_CopybookFields(t *testing.T) {
 	if !ok {
 		t.Fatal("expected a COPY TAXRULES IMPORTS edge from payroll.cbl")
 	}
-	if imp.Properties["resolved"] != "true" {
+	if imp.Properties.Get("resolved") != "true" {
 		t.Errorf("COPY TAXRULES resolved = %q, want true (on-disk .cpy present)",
-			imp.Properties["resolved"])
+			imp.Properties.Get("resolved"))
 	}
 }
 
@@ -1554,11 +1554,11 @@ func TestMainframeLineageSpike_CallGraph(t *testing.T) {
 	// Intra-program PERFORM → CALLS(via=PERFORM).
 	var perform, external bool
 	for _, rel := range relationsByKind(recs, "CALLS") {
-		switch rel.Properties["via"] {
+		switch rel.Properties.Get("via") {
 		case "PERFORM", "PERFORM-THRU":
 			perform = true
 		case "CALL":
-			if rel.Properties["external"] == "true" {
+			if rel.Properties.Get("external") == "true" {
 				external = true
 			}
 		}

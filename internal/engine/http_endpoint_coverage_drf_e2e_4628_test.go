@@ -127,7 +127,7 @@ func runFullCoveragePipeline(merged []types.EntityRecord) (*graph.CoverageReport
 				FromID: from,
 				ToID:   r.ToID,
 				Kind:   r.Kind,
-			}.WithProperties(r.Properties))
+			}.WithProperties(r.Properties.Snapshot()))
 		}
 	}
 	return graph.ComputeCoverage(doc), resolved
@@ -187,9 +187,9 @@ func TestIssue4628_DRFEndpointCreditedViaHandlerHop(t *testing.T) {
 			{
 				ToID: "SCOPE.Operation:InspectionViewSet.get_counts",
 				Kind: string(types.RelationshipKindTests),
-				Properties: map[string]string{
-					"framework":    "pytest",
-					"match_source": "python_test_name_affinity",
+				Properties: types.Props{
+					{K: "framework", V: "pytest"},
+					{K: "match_source", V: "python_test_name_affinity"},
 				},
 			},
 		},

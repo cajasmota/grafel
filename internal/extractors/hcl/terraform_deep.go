@@ -88,10 +88,10 @@ func applyIterationMeta(rec *types.EntityRecord, body ts.Node, src []byte, path,
 		FromID: extractor.BuildOperationStructuralRef(lang, path, selfRef),
 		ToID:   extractor.BuildOperationStructuralRef(lang, path, srcRef),
 		Kind:   "USES",
-		Properties: map[string]string{
-			"dataflow":  "iteration",
-			"meta_arg":  mode,
-			"data_flow": "iteration_source",
+		Properties: types.Props{
+			{K: "data_flow", V: "iteration_source"},
+			{K: "dataflow", V: "iteration"},
+			{K: "meta_arg", V: mode},
 		},
 	})
 }
@@ -150,8 +150,8 @@ func extractDynamicBlocks(body ts.Node, src []byte, path, lang, parentRef string
 			FromID: extractor.BuildOperationStructuralRef(lang, path, parentRef),
 			ToID:   extractor.BuildOperationStructuralRef(lang, path, selfRef),
 			Kind:   "CONTAINS",
-			Properties: map[string]string{
-				"nested": "dynamic",
+			Properties: types.Props{
+				{K: "nested", V: "dynamic"},
 			},
 		})
 		out = append(out, rec)
@@ -199,10 +199,10 @@ func extractModuleDataFlow(body ts.Node, src []byte, path, lang, selfRef string)
 							FromID: extractor.BuildOperationStructuralRef(lang, path, selfRef),
 							ToID:   extractor.BuildOperationStructuralRef(lang, path, ref),
 							Kind:   "USES",
-							Properties: map[string]string{
-								"dataflow":  "module_io",
-								"input_arg": argName,
-								"data_flow": "module_output",
+							Properties: types.Props{
+								{K: "data_flow", V: "module_output"},
+								{K: "dataflow", V: "module_io"},
+								{K: "input_arg", V: argName},
 							},
 						})
 					}
@@ -243,9 +243,9 @@ func extractRemoteStateDeps(body ts.Node, src []byte, path, lang, fromRef string
 						FromID: extractor.BuildOperationStructuralRef(lang, path, fromRef),
 						ToID:   extractor.BuildOperationStructuralRef(lang, path, target),
 						Kind:   "DEPENDS_ON",
-						Properties: map[string]string{
-							"cross_stack":  "true",
-							"remote_state": name,
+						Properties: types.Props{
+							{K: "cross_stack", V: "true"},
+							{K: "remote_state", V: name},
 						},
 					})
 				}
@@ -354,13 +354,13 @@ func extractTerraformBlock(n ts.Node, src []byte, path, lang string, start, end 
 						FromID: extractor.BuildOperationStructuralRef(lang, path, "terraform.settings"),
 						ToID:   name,
 						Kind:   "IMPORTS",
-						Properties: map[string]string{
-							"import_kind":   "required_provider",
-							"source_module": name,
-							"imported_name": name,
-							"provider":      name,
-							"version":       ver,
-							"language":      lang,
+						Properties: types.Props{
+							{K: "import_kind", V: "required_provider"},
+							{K: "imported_name", V: name},
+							{K: "language", V: lang},
+							{K: "provider", V: name},
+							{K: "source_module", V: name},
+							{K: "version", V: ver},
 						},
 					})
 				}

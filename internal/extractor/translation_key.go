@@ -161,9 +161,9 @@ func EmitTranslationKeyEdges(entities *[]types.EntityRecord, lang string, uses [
 		edgeKey := u.FromName + "\x00" + key
 		if !seenEdge[edgeKey] {
 			seenEdge[edgeKey] = true
-			props := map[string]string{"key": key}
+			props := types.Props{{K: "key", V: key}}
 			if u.Tag != "" {
-				props["framework"] = u.Tag
+				props.Set("framework", u.Tag)
 			}
 			(*entities)[hostIdx].Relationships = append((*entities)[hostIdx].Relationships,
 				types.RelationshipRecord{

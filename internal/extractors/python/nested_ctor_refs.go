@@ -129,7 +129,7 @@ func emitNestedConstructorRefs(root ts.Node, file extractor.FileInput, entities 
 				if r.Kind != "IMPORTS" {
 					continue
 				}
-				local := r.Properties["local_name"]
+				local := r.Properties.Get("local_name")
 				if local == "" {
 					continue
 				}
@@ -137,7 +137,7 @@ func emitNestedConstructorRefs(root ts.Node, file extractor.FileInput, entities 
 				if !isCapitalisedIdent(local) {
 					continue
 				}
-				imported := r.Properties["imported_name"]
+				imported := r.Properties.Get("imported_name")
 				if imported == "" {
 					imported = local
 				}
@@ -183,9 +183,9 @@ func emitNestedConstructorRefs(root ts.Node, file extractor.FileInput, entities 
 			types.RelationshipRecord{
 				ToID: toID,
 				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"nested_ctor":  "true",
-					"target_class": t.emittedName,
+				Properties: types.Props{
+					{K: "nested_ctor", V: "true"},
+					{K: "target_class", V: t.emittedName},
 				},
 			})
 	}

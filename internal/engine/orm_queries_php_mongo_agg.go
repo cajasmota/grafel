@@ -369,11 +369,11 @@ func scanPHPDoctrineReferences(src string, emitJoin func(rel types.RelationshipR
 			FromID: fmt.Sprintf("Class:%s", from),
 			ToID:   fmt.Sprintf("Class:%s", to),
 			Kind:   mongoAggJoinEdgeKind,
-			Properties: map[string]string{
-				"pattern_type": mongoAggPatternType,
-				"via":          "reference",
-				"reference":    kind,
-				"ref":          target,
+			Properties: types.Props{
+				{K: "pattern_type", V: mongoAggPatternType},
+				{K: "ref", V: target},
+				{K: "reference", V: kind},
+				{K: "via", V: "reference"},
 			},
 		})
 	}

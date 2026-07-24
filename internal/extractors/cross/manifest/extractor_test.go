@@ -508,8 +508,8 @@ func TestRelationshipsEmitted(t *testing.T) {
 	if r.Kind != "DEPENDS_ON" {
 		t.Errorf("rel kind=%q want DEPENDS_ON", r.Kind)
 	}
-	if r.Properties["kind"] != "external_dependency" {
-		t.Errorf("rel kind property=%q want external_dependency", r.Properties["kind"])
+	if r.Properties.Get("kind") != "external_dependency" {
+		t.Errorf("rel kind property=%q want external_dependency", r.Properties.Get("kind"))
 	}
 }
 
@@ -1507,22 +1507,22 @@ func TestSBOM_PackageNode_NPM(t *testing.T) {
 	if rreact.FromID != "scope:component:project:frontend/package.json" {
 		t.Errorf("edge FromID=%q want project anchor ref", rreact.FromID)
 	}
-	if rreact.Properties["version"] != "^18.2.0" {
-		t.Errorf("react edge version=%q want ^18.2.0", rreact.Properties["version"])
+	if rreact.Properties.Get("version") != "^18.2.0" {
+		t.Errorf("react edge version=%q want ^18.2.0", rreact.Properties.Get("version"))
 	}
-	if rreact.Properties["dev"] != "false" {
-		t.Errorf("react edge dev=%q want false", rreact.Properties["dev"])
+	if rreact.Properties.Get("dev") != "false" {
+		t.Errorf("react edge dev=%q want false", rreact.Properties.Get("dev"))
 	}
-	if rreact.Properties["package_manager"] != "npm" {
-		t.Errorf("react edge package_manager=%q want npm", rreact.Properties["package_manager"])
+	if rreact.Properties.Get("package_manager") != "npm" {
+		t.Errorf("react edge package_manager=%q want npm", rreact.Properties.Get("package_manager"))
 	}
 	// jest is a devDependency -> dev=true on its edge.
 	jest, ok := byTo["scope:package:npm:jest"]
 	if !ok {
 		t.Fatalf("expected DEPENDS_ON_PACKAGE edge to jest")
 	}
-	if jest.Properties["dev"] != "true" {
-		t.Errorf("jest edge dev=%q want true", jest.Properties["dev"])
+	if jest.Properties.Get("dev") != "true" {
+		t.Errorf("jest edge dev=%q want true", jest.Properties.Get("dev"))
 	}
 }
 
@@ -1552,8 +1552,8 @@ require github.com/gin-gonic/gin v1.9.0
 	for _, r := range rels {
 		if r.ToID == "scope:package:go_modules:github.com/gin-gonic/gin" {
 			found = true
-			if r.Properties["version"] != "v1.9.0" {
-				t.Errorf("gin edge version=%q want v1.9.0", r.Properties["version"])
+			if r.Properties.Get("version") != "v1.9.0" {
+				t.Errorf("gin edge version=%q want v1.9.0", r.Properties.Get("version"))
 			}
 		}
 	}
@@ -1618,8 +1618,8 @@ func TestSBOM_MavenPackageNode(t *testing.T) {
 	for _, r := range rels {
 		if r.ToID == "scope:package:maven:org.springframework:spring-core" {
 			edgeFound = true
-			if r.Properties["version"] != "5.3.0" {
-				t.Errorf("spring-core edge version=%q want 5.3.0", r.Properties["version"])
+			if r.Properties.Get("version") != "5.3.0" {
+				t.Errorf("spring-core edge version=%q want 5.3.0", r.Properties.Get("version"))
 			}
 		}
 	}

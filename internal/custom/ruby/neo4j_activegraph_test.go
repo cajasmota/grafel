@@ -76,20 +76,20 @@ end
 	if actedIn == nil {
 		t.Fatal("missing Person -GRAPH_RELATES-> Class:Movie edge")
 	}
-	if got := actedIn.Properties["rel_type"]; got != "ACTED_IN" {
+	if got := actedIn.Properties.Get("rel_type"); got != "ACTED_IN" {
 		t.Errorf("Movie edge rel_type = %q, want ACTED_IN", got)
 	}
-	if got := actedIn.Properties["direction"]; got != "OUTGOING" {
+	if got := actedIn.Properties.Get("direction"); got != "OUTGOING" {
 		t.Errorf("Movie edge (has_many :out) direction = %q, want OUTGOING", got)
 	}
 
 	if owns == nil {
 		t.Fatal("missing Person -GRAPH_RELATES-> Class:Studio edge")
 	}
-	if got := owns.Properties["rel_type"]; got != "OWNS" {
+	if got := owns.Properties.Get("rel_type"); got != "OWNS" {
 		t.Errorf("Studio edge rel_type = %q, want OWNS", got)
 	}
-	if got := owns.Properties["direction"]; got != "INCOMING" {
+	if got := owns.Properties.Get("direction"); got != "INCOMING" {
 		t.Errorf("Studio edge (has_one :in) direction = %q, want INCOMING", got)
 	}
 }

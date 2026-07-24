@@ -228,10 +228,10 @@ func (x *extractor) stampBranchConditions(body ts.Node) {
 		last.Relationships = append(last.Relationships, types.RelationshipRecord{
 			ToID: "branch:" + h.expr,
 			Kind: string(types.RelationshipKindBranchesOn),
-			Properties: map[string]string{
-				"line":     strconv.Itoa(h.line),
-				"operator": h.operator,
-				"kind":     string(h.kind),
+			Properties: types.Props{
+				{K: "kind", V: string(h.kind)},
+				{K: "line", V: strconv.Itoa(h.line)},
+				{K: "operator", V: h.operator},
 			},
 		})
 	}

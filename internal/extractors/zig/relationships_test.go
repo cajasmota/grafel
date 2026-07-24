@@ -216,7 +216,7 @@ const Foo = struct {
 	ents := runZig(t, src, "tag.zig")
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties == nil || r.Properties["language"] != "zig" {
+			if r.Properties == nil || r.Properties.Get("language") != "zig" {
 				t.Errorf("rel %s→%s missing language=zig (got %v)", r.Kind, r.ToID, r.Properties)
 			}
 		}

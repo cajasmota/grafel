@@ -81,11 +81,11 @@ end
 	if rels[0].FromID != "config.fish" {
 		t.Errorf("IMPORTS FromID = %q, want config.fish", rels[0].FromID)
 	}
-	if rels[0].Properties["import_kind"] != "source" {
-		t.Errorf("import_kind = %q, want source", rels[0].Properties["import_kind"])
+	if rels[0].Properties.Get("import_kind") != "source" {
+		t.Errorf("import_kind = %q, want source", rels[0].Properties.Get("import_kind"))
 	}
-	if rels[0].Properties["language"] != "fish" {
-		t.Errorf("language = %q, want fish", rels[0].Properties["language"])
+	if rels[0].Properties.Get("language") != "fish" {
+		t.Errorf("language = %q, want fish", rels[0].Properties.Get("language"))
 	}
 }
 

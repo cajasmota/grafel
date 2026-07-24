@@ -405,8 +405,10 @@ func (e *nestjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID: "Class:" + dto,
 				Kind: string(types.RelationshipKindAcceptsInput),
-				Properties: map[string]string{
-					"framework": "nestjs", "match_source": "body_param_annotation", "dto_type": dto,
+				Properties: types.Props{
+					{K: "dto_type", V: dto},
+					{K: "framework", V: "nestjs"},
+					{K: "match_source", V: "body_param_annotation"},
 				},
 			})
 		}
@@ -452,9 +454,11 @@ func (e *nestjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 					ToID: "Class:" + dto,
 					Kind: string(types.RelationshipKindAcceptsInput),
-					Properties: map[string]string{
-						"framework": "nestjs", "match_source": "param_decorator", "dto_type": dto,
-						"param_in": p.In,
+					Properties: types.Props{
+						{K: "dto_type", V: dto},
+						{K: "framework", V: "nestjs"},
+						{K: "match_source", V: "param_decorator"},
+						{K: "param_in", V: p.In},
 					},
 				})
 			}
@@ -467,8 +471,10 @@ func (e *nestjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 					ToID: "Class:" + dto,
 					Kind: string(types.RelationshipKindReturns),
-					Properties: map[string]string{
-						"framework": "nestjs", "match_source": "return_type_annotation", "dto_type": dto,
+					Properties: types.Props{
+						{K: "dto_type", V: dto},
+						{K: "framework", V: "nestjs"},
+						{K: "match_source", V: "return_type_annotation"},
 					},
 				})
 				// #4325 — the RETURNS edge alone made the Paths panel count a

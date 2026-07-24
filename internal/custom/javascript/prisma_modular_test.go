@@ -39,7 +39,7 @@ func referencesEdge(ents []types.EntityRecord, target, fieldName string) *types.
 			r := &ents[ei].Relationships[ri]
 			if r.Kind == string(types.RelationshipKindReferences) &&
 				r.ToID == "Class:"+target &&
-				r.Properties["field_name"] == fieldName {
+				r.Properties.Get("field_name") == fieldName {
 				return r
 			}
 		}

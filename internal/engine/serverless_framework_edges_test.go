@@ -218,8 +218,8 @@ functions:
 	if sqsEdge == nil {
 		t.Fatalf("expected sqs TRIGGERS edge %s -> %s; rels=%v", qID, fnRef, rels)
 	}
-	if sqsEdge.Properties["event_type"] != "sqs" {
-		t.Errorf("sqs trigger event_type = %q, want sqs", sqsEdge.Properties["event_type"])
+	if sqsEdge.Properties.Get("event_type") != "sqs" {
+		t.Errorf("sqs trigger event_type = %q, want sqs", sqsEdge.Properties.Get("event_type"))
 	}
 
 	// scheduled job TRIGGERS the function, tagged event_type=schedule.
@@ -231,8 +231,8 @@ functions:
 	if schedEdge == nil {
 		t.Fatalf("expected schedule TRIGGERS edge %s -> %s; rels=%v", jobID, fnRef, rels)
 	}
-	if schedEdge.Properties["event_type"] != "schedule" {
-		t.Errorf("schedule trigger event_type = %q, want schedule", schedEdge.Properties["event_type"])
+	if schedEdge.Properties.Get("event_type") != "schedule" {
+		t.Errorf("schedule trigger event_type = %q, want schedule", schedEdge.Properties.Get("event_type"))
 	}
 }
 

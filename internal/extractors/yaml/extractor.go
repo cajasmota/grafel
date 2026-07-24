@@ -1968,15 +1968,15 @@ func kustExtractPatches(kustEnt *types.EntityRecord, pairs []ts.Node, kustRef st
 			FromID: kustRef,
 			ToID:   toID,
 			Kind:   "PATCHES",
-			Properties: map[string]string{
-				"patch_style": style,
+			Properties: types.Props{
+				{K: "patch_style", V: style},
 			},
 		}
 		if targetKind != "" {
-			rel.Properties["target_kind"] = targetKind
+			rel.Properties.Set("target_kind", targetKind)
 		}
 		if targetName != "" {
-			rel.Properties["target_name"] = targetName
+			rel.Properties.Set("target_name", targetName)
 		}
 		kustEnt.Relationships = append(kustEnt.Relationships, rel)
 	}

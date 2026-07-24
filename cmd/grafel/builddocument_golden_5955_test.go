@@ -80,7 +80,7 @@ func buildDocumentGoldenFixture() (pass1 []types.EntityRecord, pass2Rels []types
 	pass2Rels = []types.RelationshipRecord{
 		{
 			FromID: bazelAID, ToID: bazelBID, Kind: "BAZEL_DEPENDS_ON",
-			Properties: map[string]string{"dep_label": "//svc/b"},
+			Properties: types.Props{{K: "dep_label", V: "//svc/b"}},
 		},
 		{FromID: funcAID, ToID: funcBID, Kind: string(types.RelationshipKindCalls)},
 	}

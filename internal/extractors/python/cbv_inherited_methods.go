@@ -85,7 +85,7 @@ func emitCBVInheritedMethodAnnotations(_ ts.Node, file extractor.FileInput, enti
 			if r.Kind != "EXTENDS" {
 				continue
 			}
-			baseLeaf := r.Properties["base_name"]
+			baseLeaf := r.Properties.Get("base_name")
 			if baseLeaf == "" {
 				baseLeaf = extractLeafFromExtendsToID(r.ToID)
 			}
@@ -120,7 +120,7 @@ func emitCBVInheritedMethodAnnotations(_ ts.Node, file extractor.FileInput, enti
 			if r.Kind != "EXTENDS" {
 				continue
 			}
-			baseLeaf := r.Properties["base_name"]
+			baseLeaf := r.Properties.Get("base_name")
 			if baseLeaf == "" {
 				baseLeaf = extractLeafFromExtendsToID(r.ToID)
 			}

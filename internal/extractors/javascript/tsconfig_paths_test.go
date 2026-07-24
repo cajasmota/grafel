@@ -67,7 +67,7 @@ func importsEdgePaths2572(entities []types.EntityRecord) map[string]bool {
 				continue
 			}
 			if r.Properties != nil {
-				if ip := r.Properties["import_path"]; ip != "" {
+				if ip := r.Properties.Get("import_path"); ip != "" {
 					out[ip] = true
 				}
 			}

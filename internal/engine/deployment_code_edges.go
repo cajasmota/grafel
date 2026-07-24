@@ -145,11 +145,11 @@ func applyDeploymentCodeEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: fromID,
 			ToID:   toID,
 			Kind:   deployCodeEdgeKind,
-			Properties: map[string]string{
+			Properties: types.PropsFromMap(map[string]string{
 				"inferred":  "true",
 				"match":     match, // "image_repo" | "compose_build" | "serverless_handler"
 				"synthesis": "deployment_code_edges",
-			},
+			}),
 		})
 	}
 

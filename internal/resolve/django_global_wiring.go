@@ -88,10 +88,10 @@ func (idx Index) ResolveDjangoGlobalWiringRefs(records []types.EntityRecord) int
 			if r.Kind != string(types.RelationshipKindUses) {
 				continue
 			}
-			if r.Properties == nil || r.Properties["global"] != "true" {
+			if r.Properties == nil || r.Properties.Get("global") != "true" {
 				continue
 			}
-			dotted := r.Properties["dotted_path"]
+			dotted := r.Properties.Get("dotted_path")
 			if dotted == "" {
 				continue
 			}
@@ -113,7 +113,7 @@ func (idx Index) ResolveDjangoGlobalWiringRefs(records []types.EntityRecord) int
 			// QualifiedName case where the surviving node is still indexed by
 			// its bare Name. class_name is stamped by the extractor; fall back
 			// to splitting the dotted path if absent.
-			leaf := r.Properties["class_name"]
+			leaf := r.Properties.Get("class_name")
 			if leaf == "" {
 				if i := strings.LastIndexByte(dotted, '.'); i >= 0 && i+1 < len(dotted) {
 					leaf = dotted[i+1:]

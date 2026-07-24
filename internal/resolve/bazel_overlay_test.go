@@ -41,9 +41,9 @@ func makeBazelDep(fromID, toID, depLabel string) types.RelationshipRecord {
 		FromID: fromID,
 		ToID:   toID,
 		Kind:   bazel.RelationshipKindBazelDependsOn,
-		Properties: map[string]string{
-			"dep_label":   depLabel,
-			"source_rule": "",
+		Properties: types.Props{
+			{K: "dep_label", V: depLabel},
+			{K: "source_rule", V: ""},
 		},
 	}
 }
@@ -70,7 +70,7 @@ func makeImportEdge(fromID, toID string) types.RelationshipRecord {
 func findStatus(rels []types.RelationshipRecord, fromID, toID string) string {
 	for _, r := range rels {
 		if r.Kind == "BAZEL_DEP_STATUS" && r.FromID == fromID && r.ToID == toID {
-			return r.Properties["status"]
+			return r.Properties.Get("status")
 		}
 	}
 	return ""
@@ -161,7 +161,7 @@ func TestBazelOverlay_UndeclaredUsed(t *testing.T) {
 	// Find the undeclared_used status edge.
 	found := false
 	for _, r := range result.AnnotatedRels {
-		if r.Kind == "BAZEL_DEP_STATUS" && r.Properties["status"] == "undeclared_used" {
+		if r.Kind == "BAZEL_DEP_STATUS" && r.Properties.Get("status") == "undeclared_used" {
 			found = true
 		}
 	}

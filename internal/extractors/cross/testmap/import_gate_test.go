@@ -70,8 +70,8 @@ describe('UserService', () => {
 	var edge *struct{ from, to, conf string }
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "UserService" {
-				edge = &struct{ from, to, conf string }{rel.FromID, rel.ToID, rel.Properties["confidence"]}
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "UserService" {
+				edge = &struct{ from, to, conf string }{rel.FromID, rel.ToID, rel.Properties.Get("confidence")}
 			}
 		}
 	}
@@ -113,11 +113,11 @@ describe('mixed', () => {
 			if rel.Kind != "TESTS" {
 				continue
 			}
-			switch rel.Properties["tested"] {
+			switch rel.Properties.Get("tested") {
 			case "UserService.create":
-				userConf = rel.Properties["confidence"]
+				userConf = rel.Properties.Get("confidence")
 			case "OtherThing.doStuff":
-				otherConf = rel.Properties["confidence"]
+				otherConf = rel.Properties.Get("confidence")
 			}
 		}
 	}
@@ -149,11 +149,11 @@ describe('orders', () => {
 			if rel.Kind != "TESTS" {
 				continue
 			}
-			switch rel.Properties["tested"] {
+			switch rel.Properties.Get("tested") {
 			case "UnusedHelper":
-				sawUnused = rel.Properties["confidence"]
+				sawUnused = rel.Properties.Get("confidence")
 			case "createOrder":
-				sawCreate = rel.Properties["confidence"]
+				sawCreate = rel.Properties.Get("confidence")
 			}
 		}
 	}
@@ -182,11 +182,11 @@ def test_create_user():
 			if rel.Kind != "TESTS" {
 				continue
 			}
-			switch rel.Properties["tested"] {
+			switch rel.Properties.Get("tested") {
 			case "create_user":
-				createConf = rel.Properties["confidence"]
+				createConf = rel.Properties.Get("confidence")
 			case "legacy_helper":
-				legacyConf = rel.Properties["confidence"]
+				legacyConf = rel.Properties.Get("confidence")
 			}
 		}
 	}
@@ -210,8 +210,8 @@ func TestParseConfig(t *testing.T) {
 	var conf string
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == "ParseConfig" {
-				conf = rel.Properties["confidence"]
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == "ParseConfig" {
+				conf = rel.Properties.Get("confidence")
 			}
 		}
 	}
@@ -226,7 +226,7 @@ func mustEntityTesting(t *testing.T, recs []types.EntityRecord, subject string) 
 	t.Helper()
 	for _, r := range recs {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "TESTS" && rel.Properties["tested"] == subject {
+			if rel.Kind == "TESTS" && rel.Properties.Get("tested") == subject {
 				return r
 			}
 		}

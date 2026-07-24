@@ -50,11 +50,11 @@ func containsFieldEdge(ownerClass, memberID, fieldName, framework string) types.
 		FromID: "Class:" + ownerClass,
 		ToID:   memberID,
 		Kind:   string(types.RelationshipKindContains),
-		Properties: map[string]string{
-			"framework":  framework,
-			"member":     "field",
-			"field_name": fieldName,
-			"provenance": "INFERRED_FROM_DECORATED_FIELD_MEMBERSHIP",
+		Properties: types.Props{
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: framework},
+			{K: "member", V: "field"},
+			{K: "provenance", V: "INFERRED_FROM_DECORATED_FIELD_MEMBERSHIP"},
 		},
 	}
 }
@@ -70,12 +70,12 @@ func referencesClassEdge(fromID, targetClass, framework, fieldName string) types
 		FromID: fromID,
 		ToID:   "Class:" + targetClass,
 		Kind:   string(types.RelationshipKindReferences),
-		Properties: map[string]string{
-			"framework":   framework,
-			"ref_kind":    "field_target_type",
-			"field_name":  fieldName,
-			"target_type": targetClass,
-			"provenance":  "INFERRED_FROM_DECORATOR_THUNK_TARGET",
+		Properties: types.Props{
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: framework},
+			{K: "provenance", V: "INFERRED_FROM_DECORATOR_THUNK_TARGET"},
+			{K: "ref_kind", V: "field_target_type"},
+			{K: "target_type", V: targetClass},
 		},
 	}
 }

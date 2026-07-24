@@ -124,14 +124,14 @@ func TestExtractor_ExecPgmCallsEdge(t *testing.T) {
 	if !ok {
 		t.Fatal("expected CALLS edge to PAYROLL from EXEC PGM=PAYROLL")
 	}
-	if rel.Properties["via"] != "EXEC PGM" {
-		t.Errorf("PAYROLL CALL via = %q, want 'EXEC PGM'", rel.Properties["via"])
+	if rel.Properties.Get("via") != "EXEC PGM" {
+		t.Errorf("PAYROLL CALL via = %q, want 'EXEC PGM'", rel.Properties.Get("via"))
 	}
-	if rel.Properties["external"] != "true" {
-		t.Errorf("PAYROLL CALL external = %q, want true", rel.Properties["external"])
+	if rel.Properties.Get("external") != "true" {
+		t.Errorf("PAYROLL CALL external = %q, want true", rel.Properties.Get("external"))
 	}
-	if rel.Properties["cross_language"] != "cobol" {
-		t.Errorf("PAYROLL CALL cross_language = %q, want cobol", rel.Properties["cross_language"])
+	if rel.Properties.Get("cross_language") != "cobol" {
+		t.Errorf("PAYROLL CALL cross_language = %q, want cobol", rel.Properties.Get("cross_language"))
 	}
 }
 
@@ -142,8 +142,8 @@ func TestExtractor_ExecProcCallsEdge(t *testing.T) {
 	if !ok {
 		t.Fatal("expected CALLS edge to ARCHPROC from EXEC PROC=ARCHPROC")
 	}
-	if rel.Properties["via"] != "EXEC PROC" {
-		t.Errorf("ARCHPROC CALL via = %q, want 'EXEC PROC'", rel.Properties["via"])
+	if rel.Properties.Get("via") != "EXEC PROC" {
+		t.Errorf("ARCHPROC CALL via = %q, want 'EXEC PROC'", rel.Properties.Get("via"))
 	}
 }
 
@@ -161,7 +161,7 @@ func TestExtractor_ProcDefinition(t *testing.T) {
 	var procContainsCopy bool
 	for _, r := range findByKind(recs, "SCOPE.Component", "proc") {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "CONTAINS" && rel.Properties["child"] == "COPYSTEP" {
+			if rel.Kind == "CONTAINS" && rel.Properties.Get("child") == "COPYSTEP" {
 				procContainsCopy = true
 			}
 		}
@@ -277,7 +277,7 @@ func TestCrossLanguageBridge_JCLtoCOBOL(t *testing.T) {
 	var bridged bool
 	for _, rel := range jclRels {
 		if rel.Kind == "CALLS" && rel.ToID == cobolProgramID &&
-			rel.Properties["cross_language"] == "cobol" {
+			rel.Properties.Get("cross_language") == "cobol" {
 			bridged = true
 		}
 	}
@@ -307,7 +307,7 @@ func TestMainframeLineageSpike_JobPgmDataset(t *testing.T) {
 	}
 	var jobContainsStep bool
 	for _, rel := range jobs[0].Relationships {
-		if rel.Kind == "CONTAINS" && rel.Properties["child"] == "PAYSTEP" {
+		if rel.Kind == "CONTAINS" && rel.Properties.Get("child") == "PAYSTEP" {
 			jobContainsStep = true
 		}
 	}
@@ -320,7 +320,7 @@ func TestMainframeLineageSpike_JobPgmDataset(t *testing.T) {
 	if !ok {
 		t.Fatal("expected EXEC PGM=PAYROLL CALLS edge")
 	}
-	if rel.Properties["via"] != "EXEC PGM" || rel.Properties["cross_language"] != "cobol" {
+	if rel.Properties.Get("via") != "EXEC PGM" || rel.Properties.Get("cross_language") != "cobol" {
 		t.Errorf("PAYROLL CALL props = %+v, want via=EXEC PGM cross_language=cobol", rel.Properties)
 	}
 
@@ -358,11 +358,11 @@ func TestExtractor_IncludeImports(t *testing.T) {
 	if !ok {
 		t.Fatal("expected IMPORTS edge to INCLUDE member SHRSET")
 	}
-	if found.Properties["import_kind"] != "include" {
-		t.Errorf("import_kind = %q, want include", found.Properties["import_kind"])
+	if found.Properties.Get("import_kind") != "include" {
+		t.Errorf("import_kind = %q, want include", found.Properties.Get("import_kind"))
 	}
-	if found.Properties["member"] != "SHRSET" {
-		t.Errorf("member = %q, want SHRSET", found.Properties["member"])
+	if found.Properties.Get("member") != "SHRSET" {
+		t.Errorf("member = %q, want SHRSET", found.Properties.Get("member"))
 	}
 }
 
@@ -375,14 +375,14 @@ func TestExtractor_TSOCallEdge(t *testing.T) {
 	if !ok {
 		t.Fatal("expected CALLS edge to BILLING from TSO CALL control card")
 	}
-	if rel.Properties["via"] != "TSO CALL" {
-		t.Errorf("BILLING CALL via = %q, want 'TSO CALL'", rel.Properties["via"])
+	if rel.Properties.Get("via") != "TSO CALL" {
+		t.Errorf("BILLING CALL via = %q, want 'TSO CALL'", rel.Properties.Get("via"))
 	}
-	if rel.Properties["cross_language"] != "cobol" {
-		t.Errorf("BILLING CALL cross_language = %q, want cobol", rel.Properties["cross_language"])
+	if rel.Properties.Get("cross_language") != "cobol" {
+		t.Errorf("BILLING CALL cross_language = %q, want cobol", rel.Properties.Get("cross_language"))
 	}
-	if rel.Properties["host_program"] != "IKJEFT01" {
-		t.Errorf("BILLING CALL host_program = %q, want IKJEFT01", rel.Properties["host_program"])
+	if rel.Properties.Get("host_program") != "IKJEFT01" {
+		t.Errorf("BILLING CALL host_program = %q, want IKJEFT01", rel.Properties.Get("host_program"))
 	}
 	// The bare IKJEFT01 PGM= edge must NOT leak past the next step: REPORTER
 	// is a normal program in the following step, not a TSO callee.
@@ -390,7 +390,7 @@ func TestExtractor_TSOCallEdge(t *testing.T) {
 		// REPORTER is a legitimate EXEC PGM= edge — confirm it is via EXEC PGM,
 		// not mis-attributed as a TSO CALL.
 		r, _ := callTo(recs, "REPORTER")
-		if r.Properties["via"] == "TSO CALL" {
+		if r.Properties.Get("via") == "TSO CALL" {
 			t.Error("REPORTER mis-attributed as a TSO CALL across the step boundary")
 		}
 	}
@@ -421,20 +421,20 @@ func TestExtractor_DSNRunProgramEdge(t *testing.T) {
 	if !ok {
 		t.Fatal("expected CALLS edge to PAYRPT from DSN RUN PROGRAM control card")
 	}
-	if rel.Properties["via"] != "DSN RUN PROGRAM" {
-		t.Errorf("PAYRPT CALL via = %q, want 'DSN RUN PROGRAM'", rel.Properties["via"])
+	if rel.Properties.Get("via") != "DSN RUN PROGRAM" {
+		t.Errorf("PAYRPT CALL via = %q, want 'DSN RUN PROGRAM'", rel.Properties.Get("via"))
 	}
-	if rel.Properties["db2_plan"] != "PAYPLAN" {
-		t.Errorf("PAYRPT db2_plan = %q, want PAYPLAN", rel.Properties["db2_plan"])
+	if rel.Properties.Get("db2_plan") != "PAYPLAN" {
+		t.Errorf("PAYRPT db2_plan = %q, want PAYPLAN", rel.Properties.Get("db2_plan"))
 	}
-	if rel.Properties["db2_system"] != "DB2P" {
-		t.Errorf("PAYRPT db2_system = %q, want DB2P", rel.Properties["db2_system"])
+	if rel.Properties.Get("db2_system") != "DB2P" {
+		t.Errorf("PAYRPT db2_system = %q, want DB2P", rel.Properties.Get("db2_system"))
 	}
-	if rel.Properties["cross_language"] != "cobol" {
-		t.Errorf("PAYRPT cross_language = %q, want cobol", rel.Properties["cross_language"])
+	if rel.Properties.Get("cross_language") != "cobol" {
+		t.Errorf("PAYRPT cross_language = %q, want cobol", rel.Properties.Get("cross_language"))
 	}
-	if rel.Properties["host_program"] != "IKJEFT01" {
-		t.Errorf("PAYRPT host_program = %q, want IKJEFT01", rel.Properties["host_program"])
+	if rel.Properties.Get("host_program") != "IKJEFT01" {
+		t.Errorf("PAYRPT host_program = %q, want IKJEFT01", rel.Properties.Get("host_program"))
 	}
 }
 
@@ -454,11 +454,11 @@ func TestExtractor_DSNUTILBRunProgram(t *testing.T) {
 	if !ok {
 		t.Fatal("expected CALLS edge to LOADTAB from DSNUTILB RUN PROGRAM")
 	}
-	if rel.Properties["via"] != "DSN RUN PROGRAM" {
-		t.Errorf("LOADTAB via = %q, want 'DSN RUN PROGRAM'", rel.Properties["via"])
+	if rel.Properties.Get("via") != "DSN RUN PROGRAM" {
+		t.Errorf("LOADTAB via = %q, want 'DSN RUN PROGRAM'", rel.Properties.Get("via"))
 	}
-	if rel.Properties["db2_plan"] != "LOADPLN" {
-		t.Errorf("LOADTAB db2_plan = %q, want LOADPLN", rel.Properties["db2_plan"])
+	if rel.Properties.Get("db2_plan") != "LOADPLN" {
+		t.Errorf("LOADTAB db2_plan = %q, want LOADPLN", rel.Properties.Get("db2_plan"))
 	}
 }
 
@@ -473,12 +473,12 @@ func TestExtractor_IDCAMSReproDatasets(t *testing.T) {
 	}
 	var readOK, writeOK bool
 	for _, r := range relationsByKind(recs, string(types.RelationshipKindReadsFrom)) {
-		if r.ToID == "PROD.SRC.VSAM" && r.Properties["via"] == "IDCAMS" {
+		if r.ToID == "PROD.SRC.VSAM" && r.Properties.Get("via") == "IDCAMS" {
 			readOK = true
 		}
 	}
 	for _, r := range relationsByKind(recs, string(types.RelationshipKindWritesTo)) {
-		if r.ToID == "PROD.TGT.VSAM" && r.Properties["via"] == "IDCAMS" {
+		if r.ToID == "PROD.TGT.VSAM" && r.Properties.Get("via") == "IDCAMS" {
 			writeOK = true
 		}
 	}
@@ -553,8 +553,8 @@ func TestExtractor_SetSymbolSubstitution(t *testing.T) {
 	if !ok {
 		t.Fatal("expected CALLS edge to PAYROLL after &PGMNAME substitution")
 	}
-	if rel.Properties["cross_language"] != "cobol" {
-		t.Errorf("PAYROLL cross_language = %q, want cobol", rel.Properties["cross_language"])
+	if rel.Properties.Get("cross_language") != "cobol" {
+		t.Errorf("PAYROLL cross_language = %q, want cobol", rel.Properties.Get("cross_language"))
 	}
 	// The step records the pre-substitution literal.
 	var srcOK bool
@@ -790,14 +790,14 @@ func TestExtractor_GDGRelativeGeneration(t *testing.T) {
 	// (-1) is a read of a prior generation.
 	if rel, ok := relForTo(recs, string(types.RelationshipKindReadsFrom), "PROD.HISTORY.GDG"); !ok {
 		t.Error("expected READS_FROM PROD.HISTORY.GDG (-1)")
-	} else if rel.Properties["gdg_generation"] != "-1" {
-		t.Errorf("read gdg_generation = %q, want -1", rel.Properties["gdg_generation"])
+	} else if rel.Properties.Get("gdg_generation") != "-1" {
+		t.Errorf("read gdg_generation = %q, want -1", rel.Properties.Get("gdg_generation"))
 	}
 	// (+1) is a freshly-created generation = a write.
 	if rel, ok := relForTo(recs, string(types.RelationshipKindWritesTo), "PROD.HISTORY.GDG"); !ok {
 		t.Error("expected WRITES_TO PROD.HISTORY.GDG (+1)")
-	} else if rel.Properties["gdg_generation"] != "+1" {
-		t.Errorf("write gdg_generation = %q, want +1", rel.Properties["gdg_generation"])
+	} else if rel.Properties.Get("gdg_generation") != "+1" {
+		t.Errorf("write gdg_generation = %q, want +1", rel.Properties.Get("gdg_generation"))
 	}
 }
 
@@ -814,8 +814,8 @@ func TestExtractor_PDSMember(t *testing.T) {
 	}
 	if rel, ok := relForTo(recs, string(types.RelationshipKindReadsFrom), "PROD.LOADLIB(PAYROLL)"); !ok {
 		t.Error("expected READS_FROM PROD.LOADLIB(PAYROLL)")
-	} else if rel.Properties["pds_member"] != "PAYROLL" {
-		t.Errorf("read pds_member = %q, want PAYROLL", rel.Properties["pds_member"])
+	} else if rel.Properties.Get("pds_member") != "PAYROLL" {
+		t.Errorf("read pds_member = %q, want PAYROLL", rel.Properties.Get("pds_member"))
 	}
 }
 
@@ -886,7 +886,7 @@ func TestExtractor_CondStepSkip(t *testing.T) {
 	for _, rel := range s1.Relationships {
 		if rel.Kind == string(types.RelationshipKindPrecedes) && strings.Contains(rel.ToID, "STEP2") {
 			found = true
-			if rel.Properties["flow"] != "conditional" || rel.Properties["cond_op"] != "LT" {
+			if rel.Properties.Get("flow") != "conditional" || rel.Properties.Get("cond_op") != "LT" {
 				t.Errorf("PRECEDES props = %v", rel.Properties)
 			}
 		}
@@ -901,8 +901,8 @@ func TestExtractor_CondStepSkip(t *testing.T) {
 	}
 	if rel, ok := precedesFromTo(recs, "STEP3"); !ok {
 		t.Error("expected PRECEDES edge to STEP3 (implicit prior-step COND)")
-	} else if rel.Properties["cond_scope"] != "all_prior" {
-		t.Errorf("STEP3 cond edge cond_scope = %q, want all_prior", rel.Properties["cond_scope"])
+	} else if rel.Properties.Get("cond_scope") != "all_prior" {
+		t.Errorf("STEP3 cond edge cond_scope = %q, want all_prior", rel.Properties.Get("cond_scope"))
 	}
 }
 

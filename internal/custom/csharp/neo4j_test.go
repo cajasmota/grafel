@@ -90,13 +90,13 @@ func TestCSNeo4jGraphRelatesEdge(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Person -GRAPH_RELATES-> node:Movie edge; got entities %+v", ents)
 	}
-	if got := edge.Properties["rel_type"]; got != "ACTED_IN" {
+	if got := edge.Properties.Get("rel_type"); got != "ACTED_IN" {
 		t.Errorf("rel_type = %q, want ACTED_IN", got)
 	}
-	if got := edge.Properties["direction"]; got != "OUTGOING" {
+	if got := edge.Properties.Get("direction"); got != "OUTGOING" {
 		t.Errorf("direction = %q, want OUTGOING", got)
 	}
-	if got := edge.Properties["framework"]; got != "neo4j" {
+	if got := edge.Properties.Get("framework"); got != "neo4j" {
 		t.Errorf("framework = %q, want neo4j", got)
 	}
 }
@@ -118,7 +118,7 @@ func TestCSNeo4jGraphRelatesLeftArrow(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Person -GRAPH_RELATES-> node:Movie (arrow flipped); got %+v", ents)
 	}
-	if got := edge.Properties["direction"]; got != "OUTGOING" {
+	if got := edge.Properties.Get("direction"); got != "OUTGOING" {
 		t.Errorf("direction = %q, want OUTGOING", got)
 	}
 	// And there must be NO edge in the written left→right order.
@@ -143,10 +143,10 @@ func TestCSNeo4jGraphRelatesUndirected(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Person -GRAPH_RELATES-> node:Person; got %+v", ents)
 	}
-	if got := edge.Properties["rel_type"]; got != "KNOWS" {
+	if got := edge.Properties.Get("rel_type"); got != "KNOWS" {
 		t.Errorf("rel_type = %q, want KNOWS", got)
 	}
-	if got := edge.Properties["direction"]; got != "UNDIRECTED" {
+	if got := edge.Properties.Get("direction"); got != "UNDIRECTED" {
 		t.Errorf("direction = %q, want UNDIRECTED", got)
 	}
 }
@@ -167,7 +167,7 @@ func TestCSNeo4jClientFluentMatch(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected User -GRAPH_RELATES-> node:Org via .Match; got %+v", ents)
 	}
-	if got := edge.Properties["rel_type"]; got != "FOLLOWS" {
+	if got := edge.Properties.Get("rel_type"); got != "FOLLOWS" {
 		t.Errorf("rel_type = %q, want FOLLOWS", got)
 	}
 }
@@ -187,7 +187,7 @@ func TestCSNeo4jCreateWritePattern(t *testing.T) {
 	if edge == nil {
 		t.Fatalf("expected Author -GRAPH_RELATES-> node:Book; got %+v", ents)
 	}
-	if got := edge.Properties["rel_type"]; got != "WROTE" {
+	if got := edge.Properties.Get("rel_type"); got != "WROTE" {
 		t.Errorf("rel_type = %q, want WROTE", got)
 	}
 	// The query op verb should be sniffed as "create".

@@ -204,7 +204,7 @@ func resolveImportToIDs(entities []types.EntityRecord) {
 				continue
 			}
 			wildcard := false
-			if r.Properties != nil && r.Properties["wildcard"] == "1" {
+			if r.Properties != nil && r.Properties.Get("wildcard") == "1" {
 				wildcard = true
 			}
 			lower := strings.ToLower(prefix)

@@ -106,7 +106,7 @@ end
 		}
 		if en.Name == "Post" && en.Subtype == "model" {
 			for _, r := range en.Relationships {
-				if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties["fk_field"] == "user" {
+				if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties.Get("fk_field") == "user" {
 					fkFound = true
 				}
 			}
@@ -160,7 +160,7 @@ end
 		if en.Name == "User" && en.Subtype == "model" {
 			for _, r := range en.Relationships {
 				if r.Kind == "QUERIES" {
-					ops[r.Properties["operation"]] = r.Properties["table"]
+					ops[r.Properties.Get("operation")] = r.Properties.Get("table")
 				}
 			}
 		}
@@ -373,7 +373,7 @@ end
 	for _, en := range ents {
 		if en.Name == "Comment" && en.Subtype == "model" {
 			for _, r := range en.Relationships {
-				if r.Kind == "REFERENCES" && r.ToID == "Account" && r.Properties["fk_field"] == "author_id" {
+				if r.Kind == "REFERENCES" && r.ToID == "Account" && r.Properties.Get("fk_field") == "author_id" {
 					fkEdge = true
 				}
 			}

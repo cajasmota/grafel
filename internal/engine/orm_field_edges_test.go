@@ -62,9 +62,9 @@ func detectFieldEdges(t *testing.T, content string) []fieldEdge {
 			From:  r.FromID,
 			To:    r.ToID,
 			Kind:  r.Kind,
-			Field: r.Properties["field"],
-			Model: r.Properties["model"],
-			Op:    r.Properties["verb"],
+			Field: r.Properties.Get("field"),
+			Model: r.Properties.Get("model"),
+			Op:    r.Properties.Get("verb"),
 		})
 	}
 	return out
@@ -248,7 +248,7 @@ def fetch(uid):
 	}
 	found := false
 	for _, r := range res.Relationships {
-		if r.Kind == ormReadsFieldKind && r.Properties["model"] == "Phantom" && r.Properties["field"] == "id" {
+		if r.Kind == ormReadsFieldKind && r.Properties.Get("model") == "Phantom" && r.Properties.Get("field") == "id" {
 			found = true
 			break
 		}
@@ -311,10 +311,10 @@ def rotate(uid, new_id):
 	readsCog := 0
 	writesCog := 0
 	for _, r := range res.Relationships {
-		if r.Properties["model"] != "User" || r.Properties["field"] != "cognito_id" {
+		if r.Properties.Get("model") != "User" || r.Properties.Get("field") != "cognito_id" {
 			continue
 		}
-		if r.Properties["resolution"] != "cross_file" {
+		if r.Properties.Get("resolution") != "cross_file" {
 			t.Errorf("expected resolution=cross_file on %+v", r)
 		}
 		switch r.Kind {
@@ -383,12 +383,12 @@ def get_user(uid):
 		if r.Kind != ormReadsFieldKind {
 			continue
 		}
-		if r.Properties["model"] != "User" || r.Properties["field"] != "cognito_id" {
+		if r.Properties.Get("model") != "User" || r.Properties.Get("field") != "cognito_id" {
 			continue
 		}
 		found = true
-		if r.Properties["resolution"] != "intra_file" {
-			t.Errorf("resolution = %q, want intra_file", r.Properties["resolution"])
+		if r.Properties.Get("resolution") != "intra_file" {
+			t.Errorf("resolution = %q, want intra_file", r.Properties.Get("resolution"))
 		}
 	}
 	if !found {

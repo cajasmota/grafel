@@ -67,7 +67,7 @@ func csExcPattern(recs []types.EntityRecord, fromName, kind, typeName string) st
 		}
 		for _, r := range recs[i].Relationships {
 			if r.Kind == kind && r.ToID == want {
-				return r.Properties["pattern"]
+				return r.Properties.Get("pattern")
 			}
 		}
 	}

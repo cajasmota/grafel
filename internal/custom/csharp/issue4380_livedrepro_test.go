@@ -85,13 +85,13 @@ func TestIssue4380_UseMiddleware_AppUsesClass(t *testing.T) {
 		if r == nil {
 			t.Fatalf("expected app USES %s (UseMiddleware<%s>)", cls, cls)
 		}
-		if r.Properties["global"] != "true" {
-			t.Errorf("%s: expected global=true, got %q", cls, r.Properties["global"])
+		if r.Properties.Get("global") != "true" {
+			t.Errorf("%s: expected global=true, got %q", cls, r.Properties.Get("global"))
 		}
-		if r.Properties["di_role"] != "middleware" {
-			t.Errorf("%s: expected di_role=middleware, got %q", cls, r.Properties["di_role"])
+		if r.Properties.Get("di_role") != "middleware" {
+			t.Errorf("%s: expected di_role=middleware, got %q", cls, r.Properties.Get("di_role"))
 		}
-		if got := r.Properties["order"]; got != itoaTest(i) {
+		if got := r.Properties.Get("order"); got != itoaTest(i) {
 			t.Errorf("%s: expected order=%d, got %q", cls, i, got)
 		}
 	}

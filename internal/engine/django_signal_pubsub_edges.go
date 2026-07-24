@@ -152,11 +152,11 @@ func ApplyCeleryDispatchEdges(
 				FromID: "SCOPE.Operation:" + caller,
 				ToID:   "Function:" + taskName,
 				Kind:   string(types.RelationshipKindCalls),
-				Properties: map[string]string{
-					"framework":    "celery",
-					"pattern_type": "celery_dispatch_synthesis",
-					"dispatch":     "async",
-					"line":         dispatchLine,
+				Properties: types.Props{
+					{K: "dispatch", V: "async"},
+					{K: "framework", V: "celery"},
+					{K: "line", V: dispatchLine},
+					{K: "pattern_type", V: "celery_dispatch_synthesis"},
 				},
 			})
 		}
@@ -302,9 +302,9 @@ func ApplyDjangoSignalPubSub(
 			FromID: "SCOPE.Operation:" + fromOp,
 			ToID:   topicStub,
 			Kind:   kind,
-			Properties: map[string]string{
-				"framework":    "django_signals",
-				"pattern_type": "django_signal_pubsub_synthesis",
+			Properties: types.Props{
+				{K: "framework", V: "django_signals"},
+				{K: "pattern_type", V: "django_signal_pubsub_synthesis"},
 			},
 		})
 	}

@@ -417,11 +417,11 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 					FromID: filePath,
 					ToID:   path,
 					Kind:   "IMPORTS",
-					Properties: map[string]string{
-						"local_name":    leaf,
-						"source_module": path,
-						"imported_name": leaf,
-						"import_kind":   "include",
+					Properties: types.Props{
+						{K: "import_kind", V: "include"},
+						{K: "imported_name", V: leaf},
+						{K: "local_name", V: leaf},
+						{K: "source_module", V: path},
 					},
 				},
 			},
@@ -453,12 +453,12 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 						FromID: filePath,
 						ToID:   mod + ":" + fn,
 						Kind:   "IMPORTS",
-						Properties: map[string]string{
-							"local_name":    fn,
-							"source_module": mod,
-							"imported_name": fn,
-							"arity":         ar,
-							"import_kind":   "function",
+						Properties: types.Props{
+							{K: "arity", V: ar},
+							{K: "import_kind", V: "function"},
+							{K: "imported_name", V: fn},
+							{K: "local_name", V: fn},
+							{K: "source_module", V: mod},
 						},
 					},
 				},
@@ -704,12 +704,12 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 				rel := types.RelationshipRecord{
 					ToID: c.module,
 					Kind: "SUPERVISES",
-					Properties: map[string]string{
-						"provenance": "otp_child_spec",
+					Properties: types.Props{
+						{K: "provenance", V: "otp_child_spec"},
 					},
 				}
 				if c.id != "" {
-					rel.Properties["child_id"] = c.id
+					rel.Properties.Set("child_id", c.id)
 				}
 				entities[moduleIdx].Relationships = append(
 					entities[moduleIdx].Relationships, rel)
@@ -1016,9 +1016,9 @@ func collectCallsFromText(bodies []string, callerName string, importedFn, import
 			return
 		}
 		seen[target] = true
-		p := map[string]string{"line": strconv.Itoa(lineNum)}
+		p := types.Props{{K: "line", V: strconv.Itoa(lineNum)}}
 		for k, v := range props {
-			p[k] = v
+			p.Set(k, v)
 		}
 		rels = append(rels, types.RelationshipRecord{
 			ToID:       target,

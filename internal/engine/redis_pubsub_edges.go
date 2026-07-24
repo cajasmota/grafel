@@ -183,13 +183,13 @@ func applyRedisPubSubEdges(args DetectorPassArgs) DetectorPassResult {
 			return
 		}
 		seenEdge[key] = true
-		base := map[string]string{
-			"broker":       "redis",
-			"pattern_type": "redis_pubsub_synthesis",
+		base := types.Props{
+			{K: "broker", V: "redis"},
+			{K: "pattern_type", V: "redis_pubsub_synthesis"},
 		}
 		for k, v := range props {
 			if v != "" {
-				base[k] = v
+				base.Set(k, v)
 			}
 		}
 		relationships = append(relationships, types.RelationshipRecord{

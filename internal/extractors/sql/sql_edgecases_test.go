@@ -117,7 +117,7 @@ func TestSQL_MySQL_ForeignKeyExtracted(t *testing.T) {
 		for _, r := range e.Relationships {
 			if r.Kind == "REFERENCES" &&
 				r.ToID == "products" &&
-				r.Properties["reference_kind"] == "foreign_key" {
+				r.Properties.Get("reference_kind") == "foreign_key" {
 				hasFK = true
 				break
 			}

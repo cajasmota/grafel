@@ -104,7 +104,7 @@ func (idx Index) ResolveDjangoStringFKRefs(records []types.EntityRecord) int {
 			if r.Kind != "REFERENCES" {
 				continue
 			}
-			if r.Properties == nil || r.Properties[djangoRelPropKey] == "" {
+			if r.Properties == nil || r.Properties.Get(djangoRelPropKey) == "" {
 				continue
 			}
 			// Only try to rewrite if the ToID is still a structural-ref stub
@@ -141,7 +141,7 @@ func (idx Index) ResolveDjangoStringFKRefs(records []types.EntityRecord) int {
 			// Uses Properties["django_fk_string"] = "app_label.ClassName" or
 			// "ClassName" (bare). For dotted forms, derive the app directory
 			// from the app_label segment and probe byPackageComponent.
-			if fkStr := r.Properties[djangoFKStringPropKey]; fkStr != "" && fkStr != "self" {
+			if fkStr := r.Properties.Get(djangoFKStringPropKey); fkStr != "" && fkStr != "self" {
 				if dot := strings.IndexByte(fkStr, '.'); dot > 0 {
 					// Dotted form: "app_label.ModelName" — the app directory is
 					// app_label (the first segment). Django convention maps the

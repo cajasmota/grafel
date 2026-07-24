@@ -133,9 +133,9 @@ func importsRel(fromID, toID, importKind string) types.RelationshipRecord {
 		FromID: fromID,
 		ToID:   toID,
 		Kind:   "IMPORTS",
-		Properties: map[string]string{
-			"import_kind":   importKind,
-			"source_module": toID,
+		Properties: types.Props{
+			{K: "import_kind", V: importKind},
+			{K: "source_module", V: toID},
 		},
 	}
 }

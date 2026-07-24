@@ -252,7 +252,7 @@ func TestTestsEdge_FrameworkPropertyStamped(t *testing.T) {
 				continue
 			}
 			if r.Properties != nil {
-				seen = r.Properties["test_framework"]
+				seen = r.Properties.Get("test_framework")
 			}
 		}
 	}

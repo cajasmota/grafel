@@ -55,12 +55,12 @@ export async function syncEngine() {
 	found := false
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "useSyncQueueStore::process" {
-			if r.Properties != nil && r.Properties["via"] == "zustand_store" {
+			if r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 				found = true
 				break
 			}
 			t.Logf("CALLS syncEngine→useSyncQueueStore::process found but via=%q (want zustand_store); props=%v",
-				r.Properties["via"], r.Properties)
+				r.Properties.Get("via"), r.Properties)
 		}
 	}
 	if !found {
@@ -110,7 +110,7 @@ async function processSyncQueue(id) {
 		found := false
 		for _, r := range e.Relationships {
 			if r.Kind == "CALLS" && r.ToID == qualifiedAction &&
-				r.Properties != nil && r.Properties["via"] == "zustand_store" {
+				r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 				found = true
 				break
 			}
@@ -153,7 +153,7 @@ function onSessionExpired() {
 	found := false
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "useAuthStore::logout" &&
-			r.Properties != nil && r.Properties["via"] == "zustand_store" {
+			r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 			found = true
 			break
 		}
@@ -197,7 +197,7 @@ function readQueue() {
 	e := findByNameRel(ents, "readQueue")
 	for _, r := range e.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "queue" &&
-			r.Properties != nil && r.Properties["via"] == "zustand_store" {
+			r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 			t.Errorf("unexpected CALLS readQueue→queue (via=zustand_store); 'queue' is a plain array, not an action")
 		}
 	}
@@ -302,7 +302,7 @@ export async function loginWithBiometrics() {
 	found := false
 	for _, r := range caller.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "useAuthStore::unlockWithBiometrics" &&
-			r.Properties != nil && r.Properties["via"] == "zustand_store" {
+			r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 			found = true
 			break
 		}
@@ -385,7 +385,7 @@ function useCtx() {
 
 	if e := findByNameRel(ents, "useCtx"); e != nil {
 		for _, r := range e.Relationships {
-			if r.Kind == "CALLS" && r.Properties != nil && r.Properties["via"] == "zustand_store" {
+			if r.Kind == "CALLS" && r.Properties != nil && r.Properties.Get("via") == "zustand_store" {
 				t.Errorf("unexpected CALLS via=zustand_store for non-zustand create(); got %s→%s",
 					"useCtx", r.ToID)
 			}

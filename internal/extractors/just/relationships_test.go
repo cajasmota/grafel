@@ -80,11 +80,11 @@ build:
 	if rels[0].FromID != "justfile" {
 		t.Errorf("IMPORTS FromID = %q, want justfile", rels[0].FromID)
 	}
-	if rels[0].Properties["import_kind"] != "import" {
-		t.Errorf("import_kind = %q, want import", rels[0].Properties["import_kind"])
+	if rels[0].Properties.Get("import_kind") != "import" {
+		t.Errorf("import_kind = %q, want import", rels[0].Properties.Get("import_kind"))
 	}
-	if rels[0].Properties["language"] != "just" {
-		t.Errorf("language = %q, want just", rels[0].Properties["language"])
+	if rels[0].Properties.Get("language") != "just" {
+		t.Errorf("language = %q, want just", rels[0].Properties.Get("language"))
 	}
 }
 

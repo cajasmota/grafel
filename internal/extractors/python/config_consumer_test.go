@@ -64,11 +64,11 @@ class Mailer:
 	if len(edges) != 1 {
 		t.Fatalf("get_email_host: expected 1 DEPENDS_ON_CONFIG edge, got %d", len(edges))
 	}
-	if edges[0].Properties["config_name"] != "settings" {
-		t.Errorf("edge config_name = %q, want \"settings\"", edges[0].Properties["config_name"])
+	if edges[0].Properties.Get("config_name") != "settings" {
+		t.Errorf("edge config_name = %q, want \"settings\"", edges[0].Properties.Get("config_name"))
 	}
-	if !strings.Contains(edges[0].Properties["keys"], "EMAIL_HOST") {
-		t.Errorf("edge keys = %q, want to contain EMAIL_HOST", edges[0].Properties["keys"])
+	if !strings.Contains(edges[0].Properties.Get("keys"), "EMAIL_HOST") {
+		t.Errorf("edge keys = %q, want to contain EMAIL_HOST", edges[0].Properties.Get("keys"))
 	}
 
 	// Method-scope edge.
@@ -76,7 +76,7 @@ class Mailer:
 	if len(methodEdges) != 1 {
 		t.Fatalf("Mailer.send: expected 1 DEPENDS_ON_CONFIG edge, got %d", len(methodEdges))
 	}
-	keys := methodEdges[0].Properties["keys"]
+	keys := methodEdges[0].Properties.Get("keys")
 	if !strings.Contains(keys, "EMAIL_HOST") || !strings.Contains(keys, "EMAIL_PORT") {
 		t.Errorf("Mailer.send keys = %q, want to contain EMAIL_HOST and EMAIL_PORT", keys)
 	}
@@ -95,8 +95,8 @@ def view():
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 DEPENDS_ON_CONFIG edge, got %d", len(edges))
 	}
-	if edges[0].Properties["keys"] != "DEBUG" {
-		t.Errorf("keys = %q, want \"DEBUG\"", edges[0].Properties["keys"])
+	if edges[0].Properties.Get("keys") != "DEBUG" {
+		t.Errorf("keys = %q, want \"DEBUG\"", edges[0].Properties.Get("keys"))
 	}
 }
 
@@ -115,10 +115,10 @@ def boot():
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 DEPENDS_ON_CONFIG edge, got %d", len(edges))
 	}
-	if edges[0].Properties["config_name"] != ".env" {
-		t.Errorf("config_name = %q, want \".env\"", edges[0].Properties["config_name"])
+	if edges[0].Properties.Get("config_name") != ".env" {
+		t.Errorf("config_name = %q, want \".env\"", edges[0].Properties.Get("config_name"))
 	}
-	keys := edges[0].Properties["keys"]
+	keys := edges[0].Properties.Get("keys")
 	if !strings.Contains(keys, "DATABASE_URL") || !strings.Contains(keys, "SECRET_KEY") {
 		t.Errorf("keys = %q, want to contain DATABASE_URL and SECRET_KEY", keys)
 	}
@@ -136,8 +136,8 @@ def boot():
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 DEPENDS_ON_CONFIG edge, got %d", len(edges))
 	}
-	if edges[0].Properties["keys"] != "MY_KEY" {
-		t.Errorf("keys = %q, want \"MY_KEY\"", edges[0].Properties["keys"])
+	if edges[0].Properties.Get("keys") != "MY_KEY" {
+		t.Errorf("keys = %q, want \"MY_KEY\"", edges[0].Properties.Get("keys"))
 	}
 }
 

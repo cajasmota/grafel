@@ -97,8 +97,8 @@ func TestIssue4410_SpringSecurityFilterChain_Wired(t *testing.T) {
 	findFilter := func(to string) (types.RelationshipRecord, bool) {
 		for _, e := range all {
 			for _, r := range e.Relationships {
-				if r.ToID == to && r.Properties["di_role"] == "security_filter" &&
-					r.Properties["global"] == "true" {
+				if r.ToID == to && r.Properties.Get("di_role") == "security_filter" &&
+					r.Properties.Get("global") == "true" {
 					return r, true
 				}
 			}
@@ -110,24 +110,24 @@ func TestIssue4410_SpringSecurityFilterChain_Wired(t *testing.T) {
 	if r, ok := findFilter("Class:JwtAuthFilter"); !ok {
 		t.Error("missing security_filter USES edge -> Class:JwtAuthFilter (#4410)")
 	} else {
-		if r.Properties["relative_order"] != "before" {
-			t.Errorf("JwtAuthFilter: relative_order=%q, want before", r.Properties["relative_order"])
+		if r.Properties.Get("relative_order") != "before" {
+			t.Errorf("JwtAuthFilter: relative_order=%q, want before", r.Properties.Get("relative_order"))
 		}
-		if r.Properties["relative_to"] != "UsernamePasswordAuthenticationFilter" {
-			t.Errorf("JwtAuthFilter: relative_to=%q, want UsernamePasswordAuthenticationFilter", r.Properties["relative_to"])
+		if r.Properties.Get("relative_to") != "UsernamePasswordAuthenticationFilter" {
+			t.Errorf("JwtAuthFilter: relative_to=%q, want UsernamePasswordAuthenticationFilter", r.Properties.Get("relative_to"))
 		}
 	}
 	if r, ok := findFilter("Class:AuditFilter"); !ok {
 		t.Error("missing security_filter USES edge -> Class:AuditFilter (#4410)")
-	} else if r.Properties["relative_order"] != "after" {
-		t.Errorf("AuditFilter: relative_order=%q, want after", r.Properties["relative_order"])
+	} else if r.Properties.Get("relative_order") != "after" {
+		t.Errorf("AuditFilter: relative_order=%q, want after", r.Properties.Get("relative_order"))
 	}
 
 	// --- legacy WebSecurityConfigurerAdapter ---
 	if r, ok := findFilter("Class:TenantAuthFilter"); !ok {
 		t.Error("missing security_filter USES edge -> Class:TenantAuthFilter (legacy adapter) (#4410)")
-	} else if r.Properties["relative_to"] != "UsernamePasswordAuthenticationFilter" {
-		t.Errorf("TenantAuthFilter: relative_to=%q", r.Properties["relative_to"])
+	} else if r.Properties.Get("relative_to") != "UsernamePasswordAuthenticationFilter" {
+		t.Errorf("TenantAuthFilter: relative_to=%q", r.Properties.Get("relative_to"))
 	}
 
 	// --- @EnableMethodSecurity posture ---
@@ -136,10 +136,10 @@ func TestIssue4410_SpringSecurityFilterChain_Wired(t *testing.T) {
 	foundProvider := false
 	for _, e := range all {
 		for _, r := range e.Relationships {
-			if r.Properties["di_role"] == "method_security" {
+			if r.Properties.Get("di_role") == "method_security" {
 				foundMethodSec = true
 			}
-			if r.Properties["di_role"] == "security_provider" && r.ToID == "Class:UserDetailsService" {
+			if r.Properties.Get("di_role") == "security_provider" && r.ToID == "Class:UserDetailsService" {
 				foundProvider = true
 			}
 		}

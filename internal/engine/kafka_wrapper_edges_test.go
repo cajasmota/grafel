@@ -196,13 +196,13 @@ public class OrderEnricher {
 
 	// Verify source has stream_role=source and sink has stream_role=sink.
 	for _, r := range subs {
-		if r.Properties["stream_role"] != "source" {
-			t.Errorf("SUBSCRIBES_TO stream_role: want source, got %q", r.Properties["stream_role"])
+		if r.Properties.Get("stream_role") != "source" {
+			t.Errorf("SUBSCRIBES_TO stream_role: want source, got %q", r.Properties.Get("stream_role"))
 		}
 	}
 	for _, r := range pub {
-		if r.Properties["stream_role"] != "sink" {
-			t.Errorf("PUBLISHES_TO stream_role: want sink, got %q", r.Properties["stream_role"])
+		if r.Properties.Get("stream_role") != "sink" {
+			t.Errorf("PUBLISHES_TO stream_role: want sink, got %q", r.Properties.Get("stream_role"))
 		}
 	}
 }

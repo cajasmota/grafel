@@ -42,11 +42,11 @@ func TestPy5158_HappyPath_BoundLiteral(t *testing.T) {
 	if rel == nil {
 		t.Fatalf("expected resolved CALLS run→OrderHandler.handle_order; got %#v", relSummary(ents))
 	}
-	if rel.Properties["resolved_via"] != extractor.ResolvedViaLiteralBinding {
-		t.Errorf("resolved_via = %q; want %q", rel.Properties["resolved_via"], extractor.ResolvedViaLiteralBinding)
+	if rel.Properties.Get("resolved_via") != extractor.ResolvedViaLiteralBinding {
+		t.Errorf("resolved_via = %q; want %q", rel.Properties.Get("resolved_via"), extractor.ResolvedViaLiteralBinding)
 	}
-	if rel.Properties["dynamic_target"] != "action" {
-		t.Errorf("dynamic_target = %q; want action", rel.Properties["dynamic_target"])
+	if rel.Properties.Get("dynamic_target") != "action" {
+		t.Errorf("dynamic_target = %q; want action", rel.Properties.Get("dynamic_target"))
 	}
 }
 
@@ -63,8 +63,8 @@ func TestPy5158_HappyPath_InlineLiteral(t *testing.T) {
 	if rel == nil {
 		t.Fatalf("expected resolved CALLS run→H.handle_stock; got %#v", relSummary(ents))
 	}
-	if rel.Properties["dynamic_target"] != "getattr-literal" {
-		t.Errorf("inline form dynamic_target = %q; want getattr-literal", rel.Properties["dynamic_target"])
+	if rel.Properties.Get("dynamic_target") != "getattr-literal" {
+		t.Errorf("inline form dynamic_target = %q; want getattr-literal", rel.Properties.Get("dynamic_target"))
 	}
 }
 
@@ -121,7 +121,7 @@ func TestPy5158_NoMatch_NoOp_NonLiteralName(t *testing.T) {
 	// No resolved getattr edge should be present (name is non-static).
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Properties["pattern_type"] == "getattr_dispatch" {
+			if r.Properties.Get("pattern_type") == "getattr_dispatch" {
 				t.Fatalf("non-static name must NOT produce getattr dispatch edge; got %#v", r)
 			}
 		}

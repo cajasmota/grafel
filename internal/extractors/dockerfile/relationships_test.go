@@ -42,11 +42,11 @@ EXPOSE 8080
 		if _, ok := wantImages[r.ToID]; ok {
 			wantImages[r.ToID] = true
 		}
-		if r.Properties["language"] != "dockerfile" {
-			t.Errorf("IMPORTS missing language=dockerfile, got %q", r.Properties["language"])
+		if r.Properties.Get("language") != "dockerfile" {
+			t.Errorf("IMPORTS missing language=dockerfile, got %q", r.Properties.Get("language"))
 		}
-		if r.Properties["import_kind"] != "from" {
-			t.Errorf("IMPORTS import_kind: want 'from', got %q", r.Properties["import_kind"])
+		if r.Properties.Get("import_kind") != "from" {
+			t.Errorf("IMPORTS import_kind: want 'from', got %q", r.Properties.Get("import_kind"))
 		}
 	}
 	for img, seen := range wantImages {
@@ -122,11 +122,11 @@ COPY --from=builder /app/bin /usr/local/bin
 	if uses[0].ToID != wantTo {
 		t.Errorf("USES ToID: want %q, got %q", wantTo, uses[0].ToID)
 	}
-	if uses[0].Properties["language"] != "dockerfile" {
-		t.Errorf("USES missing language=dockerfile, got %q", uses[0].Properties["language"])
+	if uses[0].Properties.Get("language") != "dockerfile" {
+		t.Errorf("USES missing language=dockerfile, got %q", uses[0].Properties.Get("language"))
 	}
-	if uses[0].Properties["from_stage"] != "builder" {
-		t.Errorf("USES from_stage: want 'builder', got %q", uses[0].Properties["from_stage"])
+	if uses[0].Properties.Get("from_stage") != "builder" {
+		t.Errorf("USES from_stage: want 'builder', got %q", uses[0].Properties.Get("from_stage"))
 	}
 }
 

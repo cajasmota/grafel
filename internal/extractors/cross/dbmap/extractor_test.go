@@ -822,8 +822,8 @@ func ListAdults(db *gorm.DB) {
 			edge = rel
 		}
 	}
-	if edge.Properties["function_qname"] != "ListAdults" {
-		t.Errorf("edge function_qname=%q, want ListAdults", edge.Properties["function_qname"])
+	if edge.Properties.Get("function_qname") != "ListAdults" {
+		t.Errorf("edge function_qname=%q, want ListAdults", edge.Properties.Get("function_qname"))
 	}
 }
 
@@ -856,14 +856,14 @@ def load(db):
 		t.Errorf("orm=%q, want dbapi", r.Properties["orm"])
 	}
 	edge := findEdge(t, r)
-	if edge.Properties["table"] != "users" {
-		t.Errorf("edge table=%q, want users", edge.Properties["table"])
+	if edge.Properties.Get("table") != "users" {
+		t.Errorf("edge table=%q, want users", edge.Properties.Get("table"))
 	}
-	if edge.Properties["operation"] != OpSelect {
-		t.Errorf("edge operation=%q, want %s", edge.Properties["operation"], OpSelect)
+	if edge.Properties.Get("operation") != OpSelect {
+		t.Errorf("edge operation=%q, want %s", edge.Properties.Get("operation"), OpSelect)
 	}
-	if edge.Properties["function_qname"] != "load" {
-		t.Errorf("edge function_qname=%q, want load", edge.Properties["function_qname"])
+	if edge.Properties.Get("function_qname") != "load" {
+		t.Errorf("edge function_qname=%q, want load", edge.Properties.Get("function_qname"))
 	}
 }
 
@@ -876,7 +876,7 @@ def add(conn):
 	recs := runExtract(t, "add.py", "python", src)
 	r := findByOpTable(t, recs, OpInsert, "orders")
 	edge := findEdge(t, r)
-	if edge.Properties["table"] != "orders" || edge.Properties["operation"] != OpInsert {
+	if edge.Properties.Get("table") != "orders" || edge.Properties.Get("operation") != OpInsert {
 		t.Errorf("edge=%v, want table=orders op=INSERT", edge.Properties)
 	}
 }
@@ -917,8 +917,8 @@ func Fetch(db *DB) {
 		t.Errorf("orm=%q, want go_sql_driver", r.Properties["orm"])
 	}
 	edge := findEdge(t, r)
-	if edge.Properties["table"] != "accounts" {
-		t.Errorf("edge table=%q, want accounts", edge.Properties["table"])
+	if edge.Properties.Get("table") != "accounts" {
+		t.Errorf("edge table=%q, want accounts", edge.Properties.Get("table"))
 	}
 }
 
@@ -958,7 +958,7 @@ class Dao {
 		t.Errorf("orm=%q, want jdbc", r.Properties["orm"])
 	}
 	edge := findEdge(t, r)
-	if edge.Properties["table"] != "employees" || edge.Properties["operation"] != OpSelect {
+	if edge.Properties.Get("table") != "employees" || edge.Properties.Get("operation") != OpSelect {
 		t.Errorf("edge=%v, want table=employees op=SELECT", edge.Properties)
 	}
 }

@@ -111,7 +111,7 @@ class ParentSerializer:
 	// nested_ctor provenance property is stamped.
 	found := false
 	for _, r := range method.Relationships {
-		if r.Kind == "REFERENCES" && r.Properties["nested_ctor"] == "true" {
+		if r.Kind == "REFERENCES" && r.Properties.Get("nested_ctor") == "true" {
 			found = true
 			break
 		}
@@ -206,7 +206,7 @@ class Profile(models.Model):
 	}
 	found := false
 	for _, r := range profile.Relationships {
-		if r.Kind == "REFERENCES" && r.Properties["nested_ctor"] == "true" && strings.Contains(r.ToID, ":User") {
+		if r.Kind == "REFERENCES" && r.Properties.Get("nested_ctor") == "true" && strings.Contains(r.ToID, ":User") {
 			found = true
 			break
 		}
@@ -246,13 +246,13 @@ router.register(r"jurisdictions", JurisdictionViewSet)
 			break
 		}
 	}
-	if permitEdge.Properties["url_prefix"] != "permits" {
-		t.Errorf("url_prefix = %q, want permits", permitEdge.Properties["url_prefix"])
+	if permitEdge.Properties.Get("url_prefix") != "permits" {
+		t.Errorf("url_prefix = %q, want permits", permitEdge.Properties.Get("url_prefix"))
 	}
-	if permitEdge.Properties["basename"] != "permit" {
-		t.Errorf("basename = %q, want permit", permitEdge.Properties["basename"])
+	if permitEdge.Properties.Get("basename") != "permit" {
+		t.Errorf("basename = %q, want permit", permitEdge.Properties.Get("basename"))
 	}
-	if permitEdge.Properties["router_register"] != "true" {
+	if permitEdge.Properties.Get("router_register") != "true" {
 		t.Errorf("router_register property missing")
 	}
 }
@@ -266,7 +266,7 @@ router.register(r"permits", PermitViewSet)
 	entities := runPy(t, "client_fixture_a/api/handlers.py", src)
 	fileEnt := findEnt(t, entities, "SCOPE.Component", "file", "client_fixture_a/api/handlers.py")
 	for _, r := range fileEnt.Relationships {
-		if r.Kind == "REFERENCES" && r.Properties["router_register"] == "true" {
+		if r.Kind == "REFERENCES" && r.Properties.Get("router_register") == "true" {
 			t.Fatalf("router_register edge emitted from non-urls file: %+v", r)
 		}
 	}

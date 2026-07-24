@@ -229,7 +229,7 @@ func resolveImportToIDs(entities []types.EntityRecord) {
 			if strings.HasPrefix(r.ToID, "ext:") {
 				continue // already external-tagged
 			}
-			mod := r.Properties["source_module"]
+			mod := r.Properties.Get("source_module")
 			if mod == "" {
 				continue
 			}
@@ -249,7 +249,7 @@ func resolveImportToIDs(entities []types.EntityRecord) {
 			}
 			// Build ext: ToID. Use the LOWERCASED root for parity with
 			// the resolver's case-folded allowlist lookup.
-			imported := r.Properties["imported_name"]
+			imported := r.Properties.Get("imported_name")
 			// For plain module imports the extractor sets imported_name
 			// to the dotted module path (e.g. "requests.exceptions").
 			// Distinguish between:

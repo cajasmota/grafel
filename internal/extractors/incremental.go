@@ -946,7 +946,10 @@ func relRecordToGraphRel(r types.RelationshipRecord) graph.Relationship {
 		Kind:   r.Kind,
 
 		Confidence: r.Confidence, // Phase 1C (#2769).
-	}.WithProperties(r.Properties)
+		// Snapshot at the record→graph seam: graph.Relationship keeps its own
+		// compact backing (#5850 Phase B) and WithProperties still accepts a
+		// plain map, so the intermediate map is transient and never retained.
+	}.WithProperties(r.Properties.Snapshot())
 }
 
 // sortGraphDocumentForEmission sorts entities and relationships into the

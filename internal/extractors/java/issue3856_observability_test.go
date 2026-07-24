@@ -54,20 +54,20 @@ class OrderService {
 		dumpEdges(t, ents, "OrderService.create")
 		t.Fatal("INSTRUMENTS edge OrderService.create → metric:orders.created not found")
 	}
-	if r.Properties["metric_name"] != "orders.created" {
-		t.Errorf("metric_name=%q, want orders.created", r.Properties["metric_name"])
+	if r.Properties.Get("metric_name") != "orders.created" {
+		t.Errorf("metric_name=%q, want orders.created", r.Properties.Get("metric_name"))
 	}
-	if r.Properties["library"] != "micrometer" {
-		t.Errorf("library=%q, want micrometer", r.Properties["library"])
+	if r.Properties.Get("library") != "micrometer" {
+		t.Errorf("library=%q, want micrometer", r.Properties.Get("library"))
 	}
-	if r.Properties["api"] != "registry.counter" {
-		t.Errorf("api=%q, want registry.counter", r.Properties["api"])
+	if r.Properties.Get("api") != "registry.counter" {
+		t.Errorf("api=%q, want registry.counter", r.Properties.Get("api"))
 	}
-	if r.Properties["traced"] != "true" {
-		t.Errorf("traced=%q, want true", r.Properties["traced"])
+	if r.Properties.Get("traced") != "true" {
+		t.Errorf("traced=%q, want true", r.Properties.Get("traced"))
 	}
-	if r.Properties["dynamic"] != "" {
-		t.Errorf("dynamic=%q, want empty for literal name", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "" {
+		t.Errorf("dynamic=%q, want empty for literal name", r.Properties.Get("dynamic"))
 	}
 }
 
@@ -86,11 +86,11 @@ class M {
 		dumpEdges(t, ents, "M.wire")
 		t.Fatal("INSTRUMENTS edge M.wire → metric:payments.failed not found")
 	}
-	if r.Properties["api"] != "builder" {
-		t.Errorf("api=%q, want builder", r.Properties["api"])
+	if r.Properties.Get("api") != "builder" {
+		t.Errorf("api=%q, want builder", r.Properties.Get("api"))
 	}
-	if r.Properties["metric_name"] != "payments.failed" {
-		t.Errorf("metric_name=%q, want payments.failed", r.Properties["metric_name"])
+	if r.Properties.Get("metric_name") != "payments.failed" {
+		t.Errorf("metric_name=%q, want payments.failed", r.Properties.Get("metric_name"))
 	}
 }
 
@@ -108,14 +108,14 @@ class Api {
 		dumpEdges(t, ents, "Api.handle")
 		t.Fatal("INSTRUMENTS edge Api.handle → metric:api.latency not found")
 	}
-	if r.Properties["api"] != "Timed" {
-		t.Errorf("api=%q, want Timed", r.Properties["api"])
+	if r.Properties.Get("api") != "Timed" {
+		t.Errorf("api=%q, want Timed", r.Properties.Get("api"))
 	}
-	if r.Properties["metric_name"] != "api.latency" {
-		t.Errorf("metric_name=%q, want api.latency", r.Properties["metric_name"])
+	if r.Properties.Get("metric_name") != "api.latency" {
+		t.Errorf("metric_name=%q, want api.latency", r.Properties.Get("metric_name"))
 	}
-	if r.Properties["library"] != "micrometer" {
-		t.Errorf("library=%q, want micrometer", r.Properties["library"])
+	if r.Properties.Get("library") != "micrometer" {
+		t.Errorf("library=%q, want micrometer", r.Properties.Get("library"))
 	}
 }
 
@@ -134,11 +134,11 @@ class Api {
 		dumpEdges(t, ents, "Api.run")
 		t.Fatal("INSTRUMENTS edge Api.run → metric:run not found for bare @Timed")
 	}
-	if r.Properties["dynamic"] != "true" {
-		t.Errorf("dynamic=%q, want true", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "true" {
+		t.Errorf("dynamic=%q, want true", r.Properties.Get("dynamic"))
 	}
-	if _, ok := r.Properties["metric_name"]; ok {
-		t.Errorf("metric_name must be absent for bare @Timed; got %q", r.Properties["metric_name"])
+	if _, ok := r.Properties.Lookup("metric_name"); ok {
+		t.Errorf("metric_name must be absent for bare @Timed; got %q", r.Properties.Get("metric_name"))
 	}
 }
 
@@ -159,11 +159,11 @@ class M {
 		dumpEdges(t, ents, "M.rec")
 		t.Fatal("INSTRUMENTS edge M.rec → metric:rec not found for dynamic name")
 	}
-	if r.Properties["dynamic"] != "true" {
-		t.Errorf("dynamic=%q, want true", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "true" {
+		t.Errorf("dynamic=%q, want true", r.Properties.Get("dynamic"))
 	}
-	if _, ok := r.Properties["metric_name"]; ok {
-		t.Errorf("metric_name must be absent for dynamic name; got %q", r.Properties["metric_name"])
+	if _, ok := r.Properties.Lookup("metric_name"); ok {
+		t.Errorf("metric_name must be absent for dynamic name; got %q", r.Properties.Get("metric_name"))
 	}
 }
 
@@ -185,11 +185,11 @@ class Endpoint {
 		dumpEdges(t, ents, "Endpoint.serve")
 		t.Fatal("INSTRUMENTS edge Endpoint.serve → metric:http.requests not found")
 	}
-	if r.Properties["library"] != "dropwizard" {
-		t.Errorf("library=%q, want dropwizard", r.Properties["library"])
+	if r.Properties.Get("library") != "dropwizard" {
+		t.Errorf("library=%q, want dropwizard", r.Properties.Get("library"))
 	}
-	if r.Properties["api"] != "registry.meter" {
-		t.Errorf("api=%q, want registry.meter", r.Properties["api"])
+	if r.Properties.Get("api") != "registry.meter" {
+		t.Errorf("api=%q, want registry.meter", r.Properties.Get("api"))
 	}
 }
 
@@ -211,14 +211,14 @@ class Checkout {
 		dumpEdges(t, ents, "Checkout.checkout")
 		t.Fatal("INSTRUMENTS edge Checkout.checkout → span:checkout not found")
 	}
-	if r.Properties["library"] != "brave" {
-		t.Errorf("library=%q, want brave", r.Properties["library"])
+	if r.Properties.Get("library") != "brave" {
+		t.Errorf("library=%q, want brave", r.Properties.Get("library"))
 	}
-	if r.Properties["span_name"] != "checkout" {
-		t.Errorf("span_name=%q, want checkout", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "checkout" {
+		t.Errorf("span_name=%q, want checkout", r.Properties.Get("span_name"))
 	}
-	if r.Properties["api"] != "tracer.nextSpan" {
-		t.Errorf("api=%q, want tracer.nextSpan", r.Properties["api"])
+	if r.Properties.Get("api") != "tracer.nextSpan" {
+		t.Errorf("api=%q, want tracer.nextSpan", r.Properties.Get("api"))
 	}
 }
 
@@ -240,14 +240,14 @@ class Orders {
 		dumpEdges(t, ents, "Orders.place")
 		t.Fatal("INSTRUMENTS edge Orders.place → log:order placed not found")
 	}
-	if r.Properties["library"] != "slf4j" {
-		t.Errorf("library=%q, want slf4j", r.Properties["library"])
+	if r.Properties.Get("library") != "slf4j" {
+		t.Errorf("library=%q, want slf4j", r.Properties.Get("library"))
 	}
-	if r.Properties["log_name"] != "order placed" {
-		t.Errorf("log_name=%q, want 'order placed'", r.Properties["log_name"])
+	if r.Properties.Get("log_name") != "order placed" {
+		t.Errorf("log_name=%q, want 'order placed'", r.Properties.Get("log_name"))
 	}
-	if r.Properties["api"] != "fluent.log" {
-		t.Errorf("api=%q, want fluent.log", r.Properties["api"])
+	if r.Properties.Get("api") != "fluent.log" {
+		t.Errorf("api=%q, want fluent.log", r.Properties.Get("api"))
 	}
 }
 

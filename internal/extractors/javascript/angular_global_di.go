@@ -311,21 +311,21 @@ func angularFunctionalInterceptorEdges(body string) []angularProviderEdge {
 // angularGlobalUsesEdge builds the module/app → target USES edge for a global
 // provider binding (#4378), tagged global=true + di_token/di_role + multi.
 func angularGlobalUsesEdge(owner string, e angularProviderEdge, framework, via string, fromApp bool) types.RelationshipRecord {
-	props := map[string]string{
-		"framework": framework,
-		"di_role":   e.role,
-		"di_scope":  "global",
-		"di_token":  e.token,
-		"global":    "true",
-		"via":       via,
+	props := types.Props{
+		{K: "di_role", V: e.role},
+		{K: "di_scope", V: "global"},
+		{K: "di_token", V: e.token},
+		{K: "framework", V: framework},
+		{K: "global", V: "true"},
+		{K: "via", V: via},
 	}
 	if fromApp {
-		props["owner"] = owner
+		props.Set("owner", owner)
 	} else {
-		props["module"] = owner
+		props.Set("module", owner)
 	}
 	if e.multi {
-		props["multi"] = "true"
+		props.Set("multi", "true")
 	}
 	return types.RelationshipRecord{
 		FromID:     owner,

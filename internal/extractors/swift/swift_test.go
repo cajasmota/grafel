@@ -540,7 +540,7 @@ class C {
 				continue
 			}
 			callTargets[rel.ToID] = true
-			if rt, ok := rel.Properties["receiver_type"]; ok {
+			if rt, ok := rel.Properties.Lookup("receiver_type"); ok {
 				receivers[rel.ToID] = rt
 			}
 		}

@@ -12,9 +12,9 @@ func makeRoutesToRel(path, recv string) types.RelationshipRecord {
 		FromID: "Route:" + path,
 		ToID:   "Controller:" + recv,
 		Kind:   "ROUTES_TO",
-		Properties: map[string]string{
-			"framework":    "go",
-			"pattern_type": "yaml_driven",
+		Properties: types.Props{
+			{K: "framework", V: "go"},
+			{K: "pattern_type", V: "yaml_driven"},
 		},
 	}
 }
@@ -44,8 +44,8 @@ func main() {
 	if got[1].ToID != "Controller:UsersHandler.Get" {
 		t.Errorf("ToID[1] = %q, want Controller:UsersHandler.Get", got[1].ToID)
 	}
-	if got[0].Properties["pattern_type"] != "ast_driven" {
-		t.Errorf("pattern_type[0] = %q, want ast_driven", got[0].Properties["pattern_type"])
+	if got[0].Properties.Get("pattern_type") != "ast_driven" {
+		t.Errorf("pattern_type[0] = %q, want ast_driven", got[0].Properties.Get("pattern_type"))
 	}
 }
 
@@ -76,8 +76,8 @@ func main() {
 	if got[1].ToID != "Controller:UsersHandler.Get" {
 		t.Errorf("ToID[1] = %q, want Controller:UsersHandler.Get", got[1].ToID)
 	}
-	if got[0].Properties["go_route_binding"] != "method_receiver_resolved" {
-		t.Errorf("go_route_binding[0] = %q, want method_receiver_resolved", got[0].Properties["go_route_binding"])
+	if got[0].Properties.Get("go_route_binding") != "method_receiver_resolved" {
+		t.Errorf("go_route_binding[0] = %q, want method_receiver_resolved", got[0].Properties.Get("go_route_binding"))
 	}
 }
 
@@ -109,8 +109,8 @@ func main() {
 	if got[1].ToID != "Controller:UsersHandler.Get" {
 		t.Errorf("ToID[1] = %q, want Controller:UsersHandler.Get", got[1].ToID)
 	}
-	if got[0].Properties["go_route_binding"] != "method_receiver_resolved" {
-		t.Errorf("go_route_binding[0] = %q, want method_receiver_resolved", got[0].Properties["go_route_binding"])
+	if got[0].Properties.Get("go_route_binding") != "method_receiver_resolved" {
+		t.Errorf("go_route_binding[0] = %q, want method_receiver_resolved", got[0].Properties.Get("go_route_binding"))
 	}
 }
 
@@ -199,9 +199,9 @@ func register() {
 	if got[0].ToID != "Controller:h" {
 		t.Errorf("ToID = %q, want unchanged Controller:h", got[0].ToID)
 	}
-	if got[0].Properties["pattern_type"] != "yaml_driven" {
+	if got[0].Properties.Get("pattern_type") != "yaml_driven" {
 		t.Errorf("pattern_type should stay yaml_driven, got %q",
-			got[0].Properties["pattern_type"])
+			got[0].Properties.Get("pattern_type"))
 	}
 }
 
@@ -281,7 +281,7 @@ func main() {
 			FromID:     "Route:/users",
 			ToID:       "Controller:Existing.Qualified",
 			Kind:       "ROUTES_TO",
-			Properties: map[string]string{"pattern_type": "yaml_driven"},
+			Properties: types.Props{{K: "pattern_type", V: "yaml_driven"}},
 		},
 	}
 	_res := applyGoRouteComposition(DetectorPassArgs{Lang: "go", Path: "main.go", Content: src, Relationships: rels})
@@ -397,8 +397,8 @@ func setupRoutes(app *fiber.App) {
 		if r.ToID == "Controller:h" {
 			t.Errorf("bare receiver not rewritten for fiber route %q: %q", r.FromID, r.ToID)
 		}
-		if r.Properties["pattern_type"] != "ast_driven" {
-			t.Errorf("route %q: pattern_type=%q, want ast_driven", r.FromID, r.Properties["pattern_type"])
+		if r.Properties.Get("pattern_type") != "ast_driven" {
+			t.Errorf("route %q: pattern_type=%q, want ast_driven", r.FromID, r.Properties.Get("pattern_type"))
 		}
 	}
 }

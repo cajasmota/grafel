@@ -139,7 +139,7 @@ func TestDiscover_BasicFixture(t *testing.T) {
 	type edgePair struct{ src, dst string }
 	edgeByProp := func(srcProp, dstProp string) bool {
 		for _, r := range depRels {
-			if r.Properties["source_rule"] == srcProp && r.Properties["dep_label"] == dstProp {
+			if r.Properties.Get("source_rule") == srcProp && r.Properties.Get("dep_label") == dstProp {
 				return true
 			}
 		}
@@ -184,8 +184,8 @@ func TestDiscover_ExternalDeps(t *testing.T) {
 	// auth_lib has @pip//:pyjwt as a dep.
 	found := false
 	for _, r := range depRels {
-		if r.Properties["source_rule"] == "//services/auth:auth_lib" &&
-			r.Properties["dep_label"] == "@pip//:pyjwt" {
+		if r.Properties.Get("source_rule") == "//services/auth:auth_lib" &&
+			r.Properties.Get("dep_label") == "@pip//:pyjwt" {
 			found = true
 			// ToID must be a 16-char hex string (stable synthetic ID).
 			if len(r.ToID) != 16 {
@@ -332,8 +332,8 @@ func TestDiscover_ShortFormLabelsResolved(t *testing.T) {
 	// auth_server depends on ":auth_lib" — should resolve to "//services/auth:auth_lib".
 	found := false
 	for _, r := range depRels {
-		if r.Properties["source_rule"] == "//services/auth:auth_server" &&
-			r.Properties["dep_label"] == "//services/auth:auth_lib" {
+		if r.Properties.Get("source_rule") == "//services/auth:auth_server" &&
+			r.Properties.Get("dep_label") == "//services/auth:auth_lib" {
 			found = true
 			break
 		}
@@ -342,8 +342,8 @@ func TestDiscover_ShortFormLabelsResolved(t *testing.T) {
 		t.Error("short-form :auth_lib dep not resolved to //services/auth:auth_lib")
 		t.Log("actual edges from //services/auth:auth_server:")
 		for _, r := range depRels {
-			if r.Properties["source_rule"] == "//services/auth:auth_server" {
-				t.Logf("  dep_label=%q", r.Properties["dep_label"])
+			if r.Properties.Get("source_rule") == "//services/auth:auth_server" {
+				t.Logf("  dep_label=%q", r.Properties.Get("dep_label"))
 			}
 		}
 	}
@@ -381,7 +381,7 @@ go_library(
 	depRels := findRelsByKind(rels, bazel.RelationshipKindBazelDependsOn)
 	labels := make([]string, len(depRels))
 	for i, r := range depRels {
-		labels[i] = r.Properties["dep_label"]
+		labels[i] = r.Properties.Get("dep_label")
 	}
 	sort.Strings(labels)
 

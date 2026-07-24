@@ -258,11 +258,11 @@ func applyORMLifecycleHookEdges(args DetectorPassArgs) DetectorPassResult {
 			FromID: stub,
 			ToID:   "Function:" + handler,
 			Kind:   string(types.RelationshipKindTriggers),
-			Properties: map[string]string{
-				"model":        model,
-				"event":        event,
-				"framework":    framework,
-				"pattern_type": "orm_lifecycle_hook_synthesis",
+			Properties: types.Props{
+				{K: "event", V: event},
+				{K: "framework", V: framework},
+				{K: "model", V: model},
+				{K: "pattern_type", V: "orm_lifecycle_hook_synthesis"},
 			},
 		})
 	}

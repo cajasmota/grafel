@@ -105,7 +105,7 @@ func TestIssue5492_TanstackEntities(t *testing.T) {
 	}
 	contains := 0
 	for _, r := range owner.Relationships {
-		if r.Kind == "CONTAINS" && r.Properties["via"] == "tanstack_query" {
+		if r.Kind == "CONTAINS" && r.Properties.Get("via") == "tanstack_query" {
 			contains++
 		}
 	}

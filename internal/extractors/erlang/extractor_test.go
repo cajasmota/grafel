@@ -537,7 +537,7 @@ run() -> ok.
 			t.Errorf("expected language=erlang, got %q on entity %q", rec.Language, rec.Name)
 		}
 		for _, rel := range rec.Relationships {
-			if lang, ok := rel.Properties["language"]; ok && lang != "erlang" {
+			if lang, ok := rel.Properties.Lookup("language"); ok && lang != "erlang" {
 				t.Errorf("expected relationship language=erlang, got %q on rel %q→%q", lang, rel.FromID, rel.ToID)
 			}
 		}
@@ -765,10 +765,10 @@ func TestErlangExtractor_SupervisionTreeEdges(t *testing.T) {
 			sup = true
 			for _, rel := range rec.Relationships {
 				if rel.Kind == "SUPERVISES" {
-					supervised[rel.ToID] = rel.Properties["child_id"]
-					if rel.Properties["provenance"] != "otp_child_spec" {
+					supervised[rel.ToID] = rel.Properties.Get("child_id")
+					if rel.Properties.Get("provenance") != "otp_child_spec" {
 						t.Errorf("SUPERVISES %s: expected provenance otp_child_spec, got %q",
-							rel.ToID, rel.Properties["provenance"])
+							rel.ToID, rel.Properties.Get("provenance"))
 					}
 				}
 			}
@@ -959,7 +959,7 @@ func TestErlangExtractor_ImportResolution(t *testing.T) {
 	var importTargets []string
 	for _, rec := range got {
 		for _, rel := range rec.Relationships {
-			if rel.Kind == "IMPORTS" && rel.Properties["import_kind"] == "function" {
+			if rel.Kind == "IMPORTS" && rel.Properties.Get("import_kind") == "function" {
 				importTargets = append(importTargets, rel.ToID)
 			}
 		}
@@ -1088,21 +1088,21 @@ func TestErlangExtractor_ClientMessageEdges(t *testing.T) {
 		}
 		var matched bool
 		for _, rel := range rec.Relationships {
-			if rel.Kind != "CALLS" || rel.Properties["otp_msg_kind"] == "" {
+			if rel.Kind != "CALLS" || rel.Properties.Get("otp_msg_kind") == "" {
 				continue
 			}
 			matched = true
-			if rel.Properties["otp_msg_kind"] != w.kind {
-				t.Errorf("%s: otp_msg_kind=%q, want %q", rec.Name, rel.Properties["otp_msg_kind"], w.kind)
+			if rel.Properties.Get("otp_msg_kind") != w.kind {
+				t.Errorf("%s: otp_msg_kind=%q, want %q", rec.Name, rel.Properties.Get("otp_msg_kind"), w.kind)
 			}
-			if rel.Properties["otp_msg_tag"] != w.tag {
-				t.Errorf("%s: otp_msg_tag=%q, want %q", rec.Name, rel.Properties["otp_msg_tag"], w.tag)
+			if rel.Properties.Get("otp_msg_tag") != w.tag {
+				t.Errorf("%s: otp_msg_tag=%q, want %q", rec.Name, rel.Properties.Get("otp_msg_tag"), w.tag)
 			}
-			if rel.Properties["otp_msg_server"] != w.server {
-				t.Errorf("%s: otp_msg_server=%q, want %q", rec.Name, rel.Properties["otp_msg_server"], w.server)
+			if rel.Properties.Get("otp_msg_server") != w.server {
+				t.Errorf("%s: otp_msg_server=%q, want %q", rec.Name, rel.Properties.Get("otp_msg_server"), w.server)
 			}
-			if rel.Properties["provenance"] != "otp_client_send" {
-				t.Errorf("%s: provenance=%q, want otp_client_send", rec.Name, rel.Properties["provenance"])
+			if rel.Properties.Get("provenance") != "otp_client_send" {
+				t.Errorf("%s: provenance=%q, want otp_client_send", rec.Name, rel.Properties.Get("provenance"))
 			}
 		}
 		if !matched {
@@ -1254,7 +1254,7 @@ cache_get(K) ->
 		for _, rel := range rec.Relationships {
 			if rel.Kind == "ACCESSES_TABLE" {
 				accesses[rec.Name] = append(accesses[rec.Name],
-					acc{rel.Properties["table"], rel.Properties["op"]})
+					acc{rel.Properties.Get("table"), rel.Properties.Get("op")})
 			}
 		}
 	}

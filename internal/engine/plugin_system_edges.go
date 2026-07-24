@@ -135,14 +135,14 @@ func applyPluginSystemEdges(args DetectorPassArgs) DetectorPassResult {
 		}
 		emittedEdge[pluginID] = true
 
-		edgeProps := map[string]string{
-			"plugin":       h.name,
-			"system":       h.system,
-			"line":         strconv.Itoa(h.line),
-			"pattern_type": pluginPatternType,
+		edgeProps := types.Props{
+			{K: "line", V: strconv.Itoa(h.line)},
+			{K: "pattern_type", V: pluginPatternType},
+			{K: "plugin", V: h.name},
+			{K: "system", V: h.system},
 		}
 		if h.group != "" {
-			edgeProps["group"] = h.group
+			edgeProps.Set("group", h.group)
 		}
 		relationships = append(relationships, types.RelationshipRecord{
 			FromID:     fromID,

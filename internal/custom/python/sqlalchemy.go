@@ -213,12 +213,12 @@ func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileIn
 					FromID: "Class:" + className,
 					ToID:   "Class:" + targetModel,
 					Kind:   string(types.RelationshipKindGraphRelates),
-					Properties: map[string]string{
-						"framework":    "sqlalchemy",
-						"cardinality":  card,
-						"field_name":   relAttr,
-						"target_model": targetModel,
-						"provenance":   "INFERRED_FROM_SQLALCHEMY_RELATIONSHIP",
+					Properties: types.Props{
+						{K: "cardinality", V: card},
+						{K: "field_name", V: relAttr},
+						{K: "framework", V: "sqlalchemy"},
+						{K: "provenance", V: "INFERRED_FROM_SQLALCHEMY_RELATIONSHIP"},
+						{K: "target_model", V: targetModel},
 					},
 				})
 		}

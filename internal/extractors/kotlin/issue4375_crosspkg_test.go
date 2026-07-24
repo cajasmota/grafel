@@ -106,8 +106,8 @@ func ktCallEdge(merged []types.EntityRecord, srcFile, caller, leaf string) (stri
 			if r.Kind != "CALLS" {
 				continue
 			}
-			if r.Properties["call_leaf"] == leaf || r.ToID == leaf {
-				return r.ToID, r.Properties, true
+			if r.Properties.Get("call_leaf") == leaf || r.ToID == leaf {
+				return r.ToID, r.Properties.Snapshot(), true
 			}
 		}
 	}

@@ -68,7 +68,7 @@ class ResolveDeviceTest(TestCase):
 `
 
 func importEdgeKey(r types.RelationshipRecord) string {
-	return r.Properties["test_function"] + "->" + r.Properties["tested"]
+	return r.Properties.Get("test_function") + "->" + r.Properties.Get("tested")
 }
 
 func TestApplyTestsViaImports_LinksImportedSymbols(t *testing.T) {
@@ -113,8 +113,8 @@ func TestApplyTestsViaImports_LinksImportedSymbols(t *testing.T) {
 		if e.ToID != "scope:operation:?#"+w.qname {
 			t.Errorf("edge %s: unexpected ToID %q", key, e.ToID)
 		}
-		if e.Properties["via"] != "import" {
-			t.Errorf("edge %s: expected via=import, got %q", key, e.Properties["via"])
+		if e.Properties.Get("via") != "import" {
+			t.Errorf("edge %s: expected via=import, got %q", key, e.Properties.Get("via"))
 		}
 	}
 
@@ -158,7 +158,7 @@ def test_multi():
 
 	var qns []string
 	for _, e := range edges {
-		qns = append(qns, e.Properties["tested"])
+		qns = append(qns, e.Properties.Get("tested"))
 	}
 	sort.Strings(qns)
 	want := []string{

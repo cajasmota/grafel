@@ -380,12 +380,12 @@ func extractARModelsAndAssociations(src string, file extractor.FileInput, add fu
 						FromID: "Class:" + modelName,
 						ToID:   "Class:" + target,
 						Kind:   string(types.RelationshipKindGraphRelates),
-						Properties: map[string]string{
-							"framework":        "activerecord",
-							"cardinality":      card,
-							"association_type": macro,
-							"association_name": assocName,
-							"provenance":       "INFERRED_FROM_AR_ASSOCIATION_DEEP",
+						Properties: types.Props{
+							{K: "association_name", V: assocName},
+							{K: "association_type", V: macro},
+							{K: "cardinality", V: card},
+							{K: "framework", V: "activerecord"},
+							{K: "provenance", V: "INFERRED_FROM_AR_ASSOCIATION_DEEP"},
 						},
 					})
 			}

@@ -353,11 +353,11 @@ func (e *wcfExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "contract:" + contract,
 			Kind: string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"contract_type": contract,
-				"framework":     "wcf",
-				"proxy_kind":    "channel_factory",
-				"line":          itoa(line),
+			Properties: types.Props{
+				{K: "contract_type", V: contract},
+				{K: "framework", V: "wcf"},
+				{K: "line", V: itoa(line)},
+				{K: "proxy_kind", V: "channel_factory"},
 			},
 		})
 		add(ent)
@@ -376,12 +376,12 @@ func (e *wcfExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID: "contract:" + contract,
 				Kind: string(types.RelationshipKindUses),
-				Properties: map[string]string{
-					"client_class":  clientName,
-					"contract_type": contract,
-					"framework":     "wcf",
-					"proxy_kind":    "client_base",
-					"line":          itoa(line),
+				Properties: types.Props{
+					{K: "client_class", V: clientName},
+					{K: "contract_type", V: contract},
+					{K: "framework", V: "wcf"},
+					{K: "line", V: itoa(line)},
+					{K: "proxy_kind", V: "client_base"},
 				},
 			})
 		}
@@ -465,11 +465,11 @@ func (e *wcfExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 			ToID: "contract:" + contract,
 			Kind: string(types.RelationshipKindUses),
-			Properties: map[string]string{
-				"contract_type": contract,
-				"framework":     "wcf",
-				"proxy_kind":    "create_channel",
-				"line":          itoa(line),
+			Properties: types.Props{
+				{K: "contract_type", V: contract},
+				{K: "framework", V: "wcf"},
+				{K: "line", V: itoa(line)},
+				{K: "proxy_kind", V: "create_channel"},
 			},
 		})
 		add(ent)
@@ -499,10 +499,10 @@ func (e *wcfExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID: "operation:" + op,
 				Kind: string(types.RelationshipKindUses),
-				Properties: map[string]string{
-					"fault_type": fault,
-					"framework":  "wcf",
-					"line":       itoa(line),
+				Properties: types.Props{
+					{K: "fault_type", V: fault},
+					{K: "framework", V: "wcf"},
+					{K: "line", V: itoa(line)},
 				},
 			})
 		}

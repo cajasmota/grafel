@@ -118,8 +118,10 @@ func (e *phpDIExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 			}, types.RelationshipRecord{
 				FromID: token, ToID: impl,
 				Kind: string(types.RelationshipKindBinds),
-				Properties: map[string]string{
-					"framework": "symfony", "token": token, "via": "symfony_services_yaml",
+				Properties: types.Props{
+					{K: "framework", V: "symfony"},
+					{K: "token", V: token},
+					{K: "via", V: "symfony_services_yaml"},
 				},
 			})
 		}
@@ -145,9 +147,11 @@ func (e *phpDIExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		}, types.RelationshipRecord{
 			FromID: token, ToID: impl,
 			Kind: string(types.RelationshipKindBinds),
-			Properties: map[string]string{
-				"framework": "laravel", "bind_kind": bindKind, "token": token,
-				"via": "laravel_container_bind",
+			Properties: types.Props{
+				{K: "bind_kind", V: bindKind},
+				{K: "framework", V: "laravel"},
+				{K: "token", V: token},
+				{K: "via", V: "laravel_container_bind"},
 			},
 		})
 	}
@@ -178,9 +182,11 @@ func (e *phpDIExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 			}, types.RelationshipRecord{
 				FromID: typ, ToID: cls.name,
 				Kind: string(types.RelationshipKindInjectedInto),
-				Properties: map[string]string{
-					"framework": "php-di", "provider": typ, "consumer": cls.name,
-					"via": "php_constructor",
+				Properties: types.Props{
+					{K: "consumer", V: cls.name},
+					{K: "framework", V: "php-di"},
+					{K: "provider", V: typ},
+					{K: "via", V: "php_constructor"},
 				},
 			})
 		}

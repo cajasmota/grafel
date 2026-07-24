@@ -192,18 +192,18 @@ func (e *graphqlCodeFirstTypeGraphExtractor) Extract(ctx context.Context, file e
 		}
 		ownerRef := extreg.BuildOperationStructuralRef("graphql", file.Path, owner)
 		targetRef := extreg.BuildOperationStructuralRef("graphql", file.Path, target)
-		props := map[string]string{
-			"field_name":    fieldName,
-			"list":          gqlcfBool(tc.list),
-			"nullable":      gqlcfBool(tc.nullable),
-			"cardinality":   gqlcfCardLabel(tc),
-			"self_ref":      gqlcfBool(target == owner),
-			"graphql_field": owner + "." + fieldName,
-			"framework":     framework,
-			"provenance":    "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD",
+		props := types.Props{
+			{K: "cardinality", V: gqlcfCardLabel(tc)},
+			{K: "field_name", V: fieldName},
+			{K: "framework", V: framework},
+			{K: "graphql_field", V: owner + "." + fieldName},
+			{K: "list", V: gqlcfBool(tc.list)},
+			{K: "nullable", V: gqlcfBool(tc.nullable)},
+			{K: "provenance", V: "INFERRED_FROM_CODEFIRST_GRAPHQL_FIELD"},
+			{K: "self_ref", V: gqlcfBool(target == owner)},
 		}
 		if tc.list {
-			props["item_nullable"] = gqlcfBool(tc.itemNullable)
+			props.Set("item_nullable", gqlcfBool(tc.itemNullable))
 		}
 		idx := nodes[owner]
 		entities[idx].Relationships = append(entities[idx].Relationships,

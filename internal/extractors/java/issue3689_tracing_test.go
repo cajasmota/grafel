@@ -47,20 +47,20 @@ class Service {
 		}
 		t.Fatal("INSTRUMENTS edge Service.handle → span:handle not found")
 	}
-	if r.Properties["span_name"] != "handle" {
-		t.Errorf("span_name=%q, want handle", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "handle" {
+		t.Errorf("span_name=%q, want handle", r.Properties.Get("span_name"))
 	}
-	if r.Properties["api"] != "WithSpan" {
-		t.Errorf("api=%q, want WithSpan", r.Properties["api"])
+	if r.Properties.Get("api") != "WithSpan" {
+		t.Errorf("api=%q, want WithSpan", r.Properties.Get("api"))
 	}
-	if r.Properties["library"] != "opentelemetry" {
-		t.Errorf("library=%q, want opentelemetry", r.Properties["library"])
+	if r.Properties.Get("library") != "opentelemetry" {
+		t.Errorf("library=%q, want opentelemetry", r.Properties.Get("library"))
 	}
-	if r.Properties["traced"] != "true" {
-		t.Errorf("traced=%q, want true", r.Properties["traced"])
+	if r.Properties.Get("traced") != "true" {
+		t.Errorf("traced=%q, want true", r.Properties.Get("traced"))
 	}
-	if r.Properties["dynamic"] != "" {
-		t.Errorf("dynamic=%q, want empty for @WithSpan default name", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "" {
+		t.Errorf("dynamic=%q, want empty for @WithSpan default name", r.Properties.Get("dynamic"))
 	}
 }
 
@@ -78,8 +78,8 @@ class Service {
 	if r == nil {
 		t.Fatal("INSTRUMENTS edge Service.run → span:custom-op not found")
 	}
-	if r.Properties["span_name"] != "custom-op" {
-		t.Errorf("span_name=%q, want custom-op", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "custom-op" {
+		t.Errorf("span_name=%q, want custom-op", r.Properties.Get("span_name"))
 	}
 }
 
@@ -104,11 +104,11 @@ class Repo {
 		}
 		t.Fatal("INSTRUMENTS edge Repo.query → span:db.query not found")
 	}
-	if r.Properties["span_name"] != "db.query" {
-		t.Errorf("span_name=%q, want db.query", r.Properties["span_name"])
+	if r.Properties.Get("span_name") != "db.query" {
+		t.Errorf("span_name=%q, want db.query", r.Properties.Get("span_name"))
 	}
-	if r.Properties["api"] != "spanBuilder" {
-		t.Errorf("api=%q, want spanBuilder", r.Properties["api"])
+	if r.Properties.Get("api") != "spanBuilder" {
+		t.Errorf("api=%q, want spanBuilder", r.Properties.Get("api"))
 	}
 }
 
@@ -134,11 +134,11 @@ class Repo {
 		}
 		t.Fatal("INSTRUMENTS edge Repo.run → span:run not found for dynamic name")
 	}
-	if r.Properties["dynamic"] != "true" {
-		t.Errorf("dynamic=%q, want true", r.Properties["dynamic"])
+	if r.Properties.Get("dynamic") != "true" {
+		t.Errorf("dynamic=%q, want true", r.Properties.Get("dynamic"))
 	}
-	if _, ok := r.Properties["span_name"]; ok {
-		t.Errorf("span_name must be absent for dynamic name; got %q", r.Properties["span_name"])
+	if _, ok := r.Properties.Lookup("span_name"); ok {
+		t.Errorf("span_name must be absent for dynamic name; got %q", r.Properties.Get("span_name"))
 	}
 }
 

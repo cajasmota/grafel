@@ -91,8 +91,8 @@ data:
 	// (1) Service → Deployment ROUTES_TO (label superset match).
 	if e := k8sFindEdge(rels, svcRef, deployRef, "ROUTES_TO"); e == nil {
 		t.Fatalf("missing Service→Deployment ROUTES_TO edge (%s → %s); rels=%+v", svcRef, deployRef, rels)
-	} else if e.Properties["k8s_edge"] != "selector_match" {
-		t.Fatalf("ROUTES_TO edge has wrong k8s_edge tag: %q", e.Properties["k8s_edge"])
+	} else if e.Properties.Get("k8s_edge") != "selector_match" {
+		t.Fatalf("ROUTES_TO edge has wrong k8s_edge tag: %q", e.Properties.Get("k8s_edge"))
 	}
 
 	// (2) container → ConfigMap USES (env configMapKeyRef).
@@ -211,8 +211,8 @@ spec:
 	to := prefix + "resource/Service/web"
 	if e := k8sFindEdge(rels, from, to, "ROUTES_TO"); e == nil {
 		t.Fatalf("missing Ingress→Service ROUTES_TO edge (%s → %s); rels=%+v", from, to, rels)
-	} else if e.Properties["k8s_edge"] != "ingress_backend" {
-		t.Fatalf("ingress edge wrong tag: %q", e.Properties["k8s_edge"])
+	} else if e.Properties.Get("k8s_edge") != "ingress_backend" {
+		t.Fatalf("ingress edge wrong tag: %q", e.Properties.Get("k8s_edge"))
 	}
 }
 
@@ -237,8 +237,8 @@ spec:
 	to := prefix + "resource/Deployment/web"
 	if e := k8sFindEdge(rels, from, to, "DEPENDS_ON"); e == nil {
 		t.Fatalf("missing HPA→Deployment DEPENDS_ON edge (%s → %s); rels=%+v", from, to, rels)
-	} else if e.Properties["k8s_edge"] != "hpa_target" {
-		t.Fatalf("hpa edge wrong tag: %q", e.Properties["k8s_edge"])
+	} else if e.Properties.Get("k8s_edge") != "hpa_target" {
+		t.Fatalf("hpa edge wrong tag: %q", e.Properties.Get("k8s_edge"))
 	}
 }
 
@@ -272,11 +272,11 @@ spec:
 	if e == nil {
 		t.Fatalf("missing HPA→Deployment DEPENDS_ON edge (%s → %s); rels=%+v", from, to, rels)
 	}
-	if e.Properties["k8s_edge"] != "hpa_target" {
-		t.Errorf("attribution k8s_edge = %q, want hpa_target", e.Properties["k8s_edge"])
+	if e.Properties.Get("k8s_edge") != "hpa_target" {
+		t.Errorf("attribution k8s_edge = %q, want hpa_target", e.Properties.Get("k8s_edge"))
 	}
-	if e.Properties["synthesis"] != "kubernetes_edges" {
-		t.Errorf("attribution synthesis = %q, want kubernetes_edges", e.Properties["synthesis"])
+	if e.Properties.Get("synthesis") != "kubernetes_edges" {
+		t.Errorf("attribution synthesis = %q, want kubernetes_edges", e.Properties.Get("synthesis"))
 	}
 }
 
@@ -307,8 +307,8 @@ spec:
 	to := prefix + "resource/Deployment/web"
 	if e := k8sFindEdge(rels, from, to, "DEPENDS_ON"); e == nil {
 		t.Fatalf("missing ownerReference DEPENDS_ON edge (%s → %s); rels=%+v", from, to, rels)
-	} else if e.Properties["k8s_edge"] != "owner_reference" {
-		t.Fatalf("owner edge wrong tag: %q", e.Properties["k8s_edge"])
+	} else if e.Properties.Get("k8s_edge") != "owner_reference" {
+		t.Fatalf("owner edge wrong tag: %q", e.Properties.Get("k8s_edge"))
 	}
 }
 
@@ -442,7 +442,7 @@ spec:
 	// that scoping held.
 	selectorEdges := map[string]bool{}
 	for _, r := range rels {
-		if r.Properties["k8s_edge"] == "selector_match" {
+		if r.Properties.Get("k8s_edge") == "selector_match" {
 			selectorEdges[r.FromID+"->"+r.ToID] = true
 		}
 	}
@@ -530,8 +530,8 @@ spec:
 	if e == nil {
 		t.Fatalf("missing NetworkPolicy→Deployment DEPENDS_ON edge (%s → %s); rels=%+v", from, to, rels)
 	}
-	if e.Properties["k8s_edge"] != "networkpolicy_podselector" {
-		t.Fatalf("netpol edge wrong tag: %q", e.Properties["k8s_edge"])
+	if e.Properties.Get("k8s_edge") != "networkpolicy_podselector" {
+		t.Fatalf("netpol edge wrong tag: %q", e.Properties.Get("k8s_edge"))
 	}
 }
 
@@ -571,8 +571,8 @@ spec:
 	to := prefix + "resource/Deployment/web"
 	if e := k8sFindEdge(rels, from, to, "DEPENDS_ON"); e == nil {
 		t.Fatalf("missing PDB→Deployment DEPENDS_ON edge; rels=%+v", rels)
-	} else if e.Properties["k8s_edge"] != "pdb_selector" {
-		t.Fatalf("pdb edge wrong tag: %q", e.Properties["k8s_edge"])
+	} else if e.Properties.Get("k8s_edge") != "pdb_selector" {
+		t.Fatalf("pdb edge wrong tag: %q", e.Properties.Get("k8s_edge"))
 	}
 }
 
@@ -609,7 +609,7 @@ spec:
 	to := prefix + "resource/Service/web"
 	if e := k8sFindEdge(rels, from, to, "DEPENDS_ON"); e == nil {
 		t.Fatalf("missing ServiceMonitor→Service DEPENDS_ON edge; rels=%+v", rels)
-	} else if e.Properties["k8s_edge"] != "servicemonitor_selector" {
-		t.Fatalf("servicemonitor edge wrong tag: %q", e.Properties["k8s_edge"])
+	} else if e.Properties.Get("k8s_edge") != "servicemonitor_selector" {
+		t.Fatalf("servicemonitor edge wrong tag: %q", e.Properties.Get("k8s_edge"))
 	}
 }
