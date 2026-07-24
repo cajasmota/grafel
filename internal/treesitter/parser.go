@@ -97,18 +97,50 @@ type ParseResult struct {
 
 // ParserFactory creates tree-sitter parsers for supported languages.
 //
-// Issue #481 — empirically, concurrent Parse() calls produced
-// non-deterministic output. Until that is re-validated against the official
-// binding (ADR 0023 §5) we serialise the parse + node-walk via parseMu;
-// correctness wins over the per-file parallelism we lose, and the impact on
-// real-world repos dominated by I/O+extractor work is marginal.
+// Concurrency. Parse is safe for concurrent use from any number of goroutines
+// (#5954, closing the ADR-0023 §5 open follow-up). The historical global
+// `parseMu` that serialised every process-wide parse is gone; it was a
+// workaround for issue #481, whose root cause ADR-0023:73 identifies as a
+// shared-grammar-state race in the *smacker* binding — a binding that has
+// since been removed entirely (see the package godoc). Under the official
+// binding the safety argument is:
+//
+//   - Every parse builds and owns its OWN *tsofficial.Parser
+//     (parseOfficial -> adapter.NewParser -> ts_parser_new, Close'd on
+//     return). tree-sitter's C contract is "one TSParser per thread", which
+//     this satisfies by construction — no parser instance is ever shared.
+//   - The only object shared across goroutines is the per-language
+//     ts.Language handle in migratedLanguages (adapters.go). A TSLanguage is
+//     an immutable, statically-allocated const struct; ts_parser_set_language
+//     stores it via ts_language_copy, which for a non-wasm language is a
+//     no-op returning the same pointer (upstream src/language.c). Nothing
+//     ever writes through it, and tree-sitter documents TSLanguage as safe to
+//     share read-only across parsers.
+//   - No bundled grammar's external scanner keeps mutable file-scope state;
+//     scanner state is allocated per parser by its create() hook. (The
+//     TSLanguage ref-count path in ts_language_copy is wasm-only and
+//     unreachable: TREE_SITTER_FEATURE_WASM is not in any cgo CFLAGS line.)
+//   - Corroborating evidence that this was always safe: unserialised
+//     concurrent parsing has been shipping regardless. parseMu only ever
+//     covered ParserFactory.Parse, while internal/extractors/yaml/helm.go
+//     (unconditionally, for every Helm template) and every extractor's
+//     `if file.TSTree == nil { NewParser… }` fallback construct their own
+//     parser and call Parse OUTSIDE the mutex, from the same worker pool. The
+//     mutex was cargo, not a constraint.
+//
+// CONCURRENCY IS NOT UNBOUNDED. See parseOfficial: the #5630 parse gate
+// (indexstate.AcquireParseSlot) is the real ceiling on simultaneous
+// ts_parser_parse calls, and it must be, because GOMAXPROCS does not bound cgo.
+//
+// Determinism is NOT provided by serialisation and never was: parseMu wrapped
+// only ts_parser_parse, while the node walk, the extractors, and the
+// append-to-shared-slice all ran outside it. The actual #481 fix is the
+// canonical sort applied to the worker-pool output before anything downstream
+// consumes it (sortClassifiedFiles / sortEntityRecords in
+// cmd/grafel/index.go), which is unaffected by this change.
 type ParserFactory struct {
 	tracer trace.Tracer
 }
-
-// parseMu serialises tree-sitter parse calls across goroutines. See the
-// ParserFactory godoc for the rationale.
-var parseMu sync.Mutex
 
 // NewParserFactory constructs a ParserFactory.
 // If tracer is nil, the global OTel tracer provider is used.
@@ -191,24 +223,52 @@ func (f *ParserFactory) parseOfficial(span trace.Span, source []byte, language s
 
 	// Parser construction/teardown operate on a per-call, independent parser
 	// instance (fresh ts_parser_new + SetLanguage; Close frees only that
-	// parser, and the produced tree outlives it). Issue #481's
-	// non-determinism is specific to the parse itself, so we keep those out of
-	// the critical section and serialise ONLY the parse below.
+	// parser, and the produced tree outlives it). This per-call ownership is
+	// what makes the parse below safe to run concurrently — see the
+	// ParserFactory godoc for the full thread-safety argument (#5954).
 	p, err := adapter.NewParser(lang)
 	if err != nil {
 		return nil, fmt.Errorf("treesitter: parser init failed for language %s: %w", language, err)
 	}
 	defer p.Close()
 
-	// Issue #481 — serialise the parse across goroutines (see ParserFactory
-	// godoc for the rationale). The per-parse watchdog in official.Parse
-	// (GRAFEL_PARSE_TIMEOUT) bounds how long this critical section can be held:
-	// a runaway parse is halted at the deadline and returns an error instead of
-	// hanging, so a single pathological file can no longer pin parseMu — and
-	// thus ALL in-process parsing — indefinitely (was: ~26-min freeze, #5473).
-	parseMu.Lock()
+	// #5954 — parses run concurrently; the process-wide parseMu is gone.
+	//
+	// WHAT BOUNDS THIS. Exactly one thing: the AcquireParseSlot gate above
+	// (#5630). It is a counting semaphore taken on the Go side and held ACROSS
+	// this cgo call, so at most ParseConcurrencyCap() goroutines are inside
+	// ts_parser_parse at any instant.
+	//
+	// GOMAXPROCS DOES NOT BOUND THIS, and it is a mistake to reason as if it
+	// did: a goroutine in a cgo call parks in _Gsyscall and the runtime hands
+	// its P to another goroutine, so N concurrent cgo calls occupy N OS threads
+	// whatever GOMAXPROCS says. grafel's extract CPU budget is implemented
+	// purely as GOMAXPROCS=<n> in a child's env, so it caps Go-side parallelism
+	// and nothing else. The gate is therefore load-bearing, not belt-and-braces
+	// — it is what makes GRAFEL_EXTRACT_GOMAXPROCS mean anything for C parsing.
+	//
+	// The cap is installed by the daemon at startup and, for the non-daemon
+	// index path, by ensureParseConcurrencyDefault in cmd/grafel/index.go,
+	// which sets the background indexing core budget: 25% of machine capacity,
+	// max(1, NumCPU/4). Foreground/interactive rebuilds are deliberately
+	// exempt — they are user-initiated and awaited. When no cap is installed
+	// (a bare library caller, most tests) parsing is unbounded here and the
+	// caller owns the ceiling.
+	//
+	// Coverage: the gate is NOT only this factory. Every extractor-level parse
+	// that constructs its own ts.Parser and so bypasses the factory —
+	// internal/extractors/yaml/helm.go and the seven `file.TSTree == nil`
+	// inline fallbacks — takes the same slot around its Parse call (#5954).
+	// That matters because those paths bypassed parseMu too, which is why they
+	// are also the proof that unserialised concurrent parsing already shipped.
+	// The one remaining ungated parse is abiGuard's per-language probe: it runs
+	// once per language per process, on a few dozen bytes, before this gate is
+	// acquired, so it is bounded by construction.
+	//
+	// The per-parse watchdog in official.Parse (GRAFEL_PARSE_TIMEOUT) still
+	// bounds a runaway parse (#5473) — it now costs one slot instead of
+	// freezing ALL in-process parsing.
 	tree, err := p.Parse(source)
-	parseMu.Unlock()
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("treesitter: parse failed for language %s: %w", language, err)

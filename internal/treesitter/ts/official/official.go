@@ -110,10 +110,12 @@ type Parser struct {
 // pin the daemon indefinitely (#5473).
 //
 // Why this matters. A runtime build was observed sitting ~26 min in one runaway
-// C parse (ts_parser_parse / ts_node_child hot). Because the factory holds a
-// process-wide parse mutex (issue #481) AND a parse slot across this call, that
-// one hung parse froze ALL in-process parsing and the daemon went silent. The
-// bare p.Parse(source, nil) is unbounded.
+// C parse (ts_parser_parse / ts_node_child hot). At the time the factory held a
+// process-wide parse mutex (issue #481) AND a parse slot across this call, so
+// that one hung parse froze ALL in-process parsing and the daemon went silent.
+// The global mutex is gone (#5954) — a runaway parse now only pins its own
+// worker's parse slot — but the bare p.Parse(source, nil) is still unbounded,
+// so the watchdog remains the thing that converts a freeze into an error.
 //
 // Mechanism (v0.24-native). go-tree-sitter v0.24 exposes the C wall-clock
 // deadline ts_parser_set_timeout_micros: tree-sitter checks the elapsed budget
@@ -121,7 +123,7 @@ type Parser struct {
 // returns a nil tree. That is exactly the cancellation path the v0.25 progress
 // callback would provide, without the goroutine/cancellation-flag plumbing. On
 // a halt we return ErrParseDeadlineExceeded so the factory converts the freeze
-// into a bounded, logged per-file failure and releases parseMu + the slot. A
+// into a bounded, logged per-file failure and releases the parse slot. A
 // genuine empty parse (no halt) still maps to (nil, nil). The parser is
 // single-use here (the factory closes it after this call), so no Reset of the
 // halted state is needed.

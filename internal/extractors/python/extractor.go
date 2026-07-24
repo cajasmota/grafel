@@ -25,6 +25,7 @@ package python
 import (
 	"context"
 	"fmt"
+	"github.com/cajasmota/grafel/internal/indexstate"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -111,7 +112,30 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 			return nil, fmt.Errorf("python extractor: parser init failed: %w", parseErr)
 		}
 		defer parser.Close()
-		tree, parseErr = parser.Parse(file.Content)
+		// #5954 — bound this parse by the same daemon-wide gate that
+		// treesitter.ParserFactory.Parse uses. This fallback bypasses the
+		// factory, so before #5954 it bypassed parseMu; it must not now
+		// bypass AcquireParseSlot, or the in-process parse ceiling is
+		// illusory (GOMAXPROCS cannot bound cgo).
+		//
+		// WHY THE DEFER IS SCOPED TO A CLOSURE, not to this function. Both
+		// halves are load-bearing and neither is a style choice:
+		//   - the closure keeps the release BEFORE the node walk. A
+		//     function-scoped defer would hold the slot across the whole
+		//     extractor, which would throttle EXTRACTION instead of parsing —
+		//     a severe regression at a budget of 3.
+		//   - the defer makes the release panic-safe. A bare Acquire/Release
+		//     pair leaks both the slot and the ParseBegin/ParseEnd busy counter
+		//     forever if Parse panics, and daemon.go recovers index panics and
+		//     keeps running — so one panic would permanently cost 33% of a
+		//     cap-3 budget and pin index_status at "parsing" for the life of
+		//     the daemon.
+		// Do not "simplify" either property away.
+		func() {
+			indexstate.AcquireParseSlot()
+			defer indexstate.ReleaseParseSlot()
+			tree, parseErr = parser.Parse(file.Content)
+		}()
 		if parseErr != nil {
 			return nil, fmt.Errorf("python extractor: parse failed: %w", parseErr)
 		}

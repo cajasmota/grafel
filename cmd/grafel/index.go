@@ -36,6 +36,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	idiff "github.com/cajasmota/grafel/internal/indexer/diff"
+	"github.com/cajasmota/grafel/internal/indexstate"
 	"github.com/cajasmota/grafel/internal/ingest"
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/memtrace"
@@ -83,6 +84,140 @@ func memtraceLogf(format string, args ...any) {
 	memtraceLogOnce.Do(func() {
 		fmt.Fprintf(os.Stderr, "grafel: "+format+"\n", args...)
 	})
+}
+
+// resolvePassTimer instruments the resolving_refs window (#5954).
+//
+// PROBLEM IT SOLVES. resolving_refs was a single phase label covering ~52% of
+// cold-index wall time across a dozen unrelated passes. Nobody could tell how
+// that time split between per-FILE work (which a content-addressed per-file
+// extraction cache would eliminate) and GLOBAL work (which it would not) — and
+// that split is exactly what decides whether such a cache is worth building.
+//
+// ZERO-RISK CONTRACT. This is observability only; it must not be able to change
+// the graph or the UI.
+//   - enter() calls Tracker.SubPhase, which stamps CurrentPhase WITHOUT
+//     publishing an Event, so the SSE/CLI/wizard streams are unchanged. The
+//     memtrace sampler reads CurrentPhase, so its phase= tag gets the split for
+//     free — no new plumbing, no new file.
+//   - The exact per-pass wall times are only printed when memtrace is already
+//     enabled (GRAFEL_MEMTRACE_DIR set). In a normal run this type does nothing
+//     but a few atomic stores, and stderr is byte-identical to before. The
+//     printed line exists because the sampler polls at 250ms, which is too
+//     coarse to attribute a sub-second pass.
+type resolvePassTimer struct {
+	trk    *progress.Tracker
+	traced bool
+	label  string
+	since  time.Time
+	rows   []string
+}
+
+func newResolvePassTimer(trk *progress.Tracker) *resolvePassTimer {
+	return &resolvePassTimer{
+		trk:    trk,
+		traced: os.Getenv(memtrace.DirEnv) != "",
+	}
+}
+
+// enter closes out the pass that was running (if any) and stamps label as the
+// active sub-phase. Safe on a nil receiver and a nil tracker.
+func (r *resolvePassTimer) enter(label string) {
+	if r == nil {
+		return
+	}
+	r.closeCurrent()
+	r.label = label
+	r.since = time.Now()
+	r.trk.SubPhase(label)
+}
+
+// closeCurrent records the elapsed time of the in-flight pass.
+func (r *resolvePassTimer) closeCurrent() {
+	if r.label == "" {
+		return
+	}
+	if r.traced {
+		r.rows = append(r.rows, fmt.Sprintf("%s=%.3fs", r.label, time.Since(r.since).Seconds()))
+	}
+	r.label = ""
+}
+
+// finish closes the last pass and, under memtrace, emits one machine-greppable
+// stderr line with every pass's wall time. Call it immediately before the next
+// PhaseStart.
+func (r *resolvePassTimer) finish() {
+	if r == nil {
+		return
+	}
+	r.closeCurrent()
+	if r.traced && len(r.rows) > 0 {
+		fmt.Fprintf(os.Stderr, "grafel: resolve-pass-timing %s\n", strings.Join(r.rows, " "))
+	}
+	r.rows = nil
+}
+
+// indexParseCoreBudget returns the number of cores the BACKGROUND indexing
+// path is allowed to spend on tree-sitter parsing: 25% of machine capacity,
+// minimum 1.
+//
+// Dynamic on purpose. The previous policy was a static "never more than 3
+// cores", which protected a laptop but punished a big machine — a 32-core box
+// got the same 3 as a 4-core one. A proportional budget keeps the "grafel must
+// not make the box feel busy" property while letting bigger machines index
+// faster: 4 cores -> 1, 12 -> 3 (identical to the old rule), 32 -> 8.
+//
+// NumCPU, not GOMAXPROCS: this budget governs C parsing, and GOMAXPROCS is
+// neither the machine's capacity nor a bound on cgo. Computed inline pending a
+// canonical shared helper.
+func indexParseCoreBudget() int {
+	return max(1, runtime.NumCPU()/4)
+}
+
+// ensureParseConcurrencyDefault installs the in-process tree-sitter parse
+// concurrency cap for processes that are NOT the daemon. It never lowers or
+// overrides a cap that is already installed.
+//
+// WHY THIS IS REQUIRED (#5954). Removing the global parseMu means N extraction
+// workers can now sit inside ts_parser_parse simultaneously. Two bounds that
+// look like they would contain that do NOT:
+//
+//   - The #5630 parse gate was daemon-only. indexstate.SetParseConcurrency had
+//     exactly one production caller (daemon.go), and parsegate.go treats cap<=0
+//     as UNBOUNDED — so for `grafel index-internal` (the child the scheduler /
+//     rebuild path fork-execs) AcquireParseSlot was a no-op.
+//   - GOMAXPROCS does not bound cgo. A goroutine inside a cgo call parks in
+//     _Gsyscall and the runtime hands its P to another goroutine, so N
+//     concurrent cgo calls occupy N OS threads regardless of GOMAXPROCS. Since
+//     the extract CPU budget is implemented purely as GOMAXPROCS=<n> in the
+//     child's env (sched/subprocess_runner.go, extract/coordinator.go),
+//     GRAFEL_EXTRACT_GOMAXPROCS=2 would have given no protection at all
+//     against 8 concurrent ts_parser_parse (i.workers is 8).
+//
+// The parse gate DOES bound cgo, because it is a counting semaphore acquired on
+// the Go side and held ACROSS the cgo call (AcquireParseSlot in
+// treesitter.parseOfficial, and — since #5954 — around every extractor-level
+// parse that bypasses the factory). At most `cap` goroutines can be inside
+// ts_parser_parse at once, whatever the scheduler does with Ps and threads.
+//
+// INTERACTIVE IS EXEMPT. A foreground rebuild is user-initiated and awaited, so
+// it may use the whole machine; capping it would only make the human wait. The
+// budget applies to the background/CLI-index path, which is the one that runs
+// unasked while the developer is working. This mirrors the same Interactive
+// signal the extract coordinator already uses (CoordinatorConfig.Interactive).
+// Returns the cap now in force (0 = unbounded) and whether THIS call installed
+// it — the caller logs only in the latter case, so a run inside the daemon does
+// not re-announce the daemon's own ceiling as if it were the index budget.
+func ensureParseConcurrencyDefault(interactive bool) (inForce int, installed bool) {
+	if existing := indexstate.ParseConcurrencyCap(); existing > 0 {
+		return existing, false
+	}
+	if interactive {
+		return 0, false
+	}
+	budget := indexParseCoreBudget()
+	indexstate.SetParseConcurrency(budget)
+	return budget, true
 }
 
 // allPassNames is used to validate --skip-pass entries.
@@ -507,6 +642,20 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	}
 	for _, opt := range opts {
 		opt(idx)
+	}
+
+	// #5954 — bound concurrent in-process tree-sitter parses on the non-daemon
+	// path. Placed AFTER the options are applied because the budget depends on
+	// idx.interactive: a foreground, user-awaited rebuild is deliberately
+	// exempt. See ensureParseConcurrencyDefault.
+	//
+	// The one-line log mirrors the daemon's own "cpu-tune: in-process parse
+	// concurrency cap=N" so the ceiling in force is observable in a child's
+	// stderr instead of having to be inferred. Only emitted when this call is
+	// what installed the cap.
+	if cap, installed := ensureParseConcurrencyDefault(idx.interactive); installed {
+		fmt.Fprintf(os.Stderr, "grafel: cpu-tune: in-process parse concurrency cap=%d (25%% of %d cores, #5954)\n",
+			cap, runtime.NumCPU())
 	}
 
 	// #4306: env fallback for the opt-in markdown-ingestion flag, so the
@@ -1062,6 +1211,12 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// fork-execs `grafel extract` per language-bucketed batch and
 	// returns the merged record set (Pass 1 + 2.5 + 3 combined); the
 	// daemon then runs everything from buildDocument onward unchanged.
+
+	// #5954 — per-pass timing inside the composite resolving_refs window. The
+	// timer only stamps sub-phase labels (no published events), so this is
+	// observability with no behavioural surface. See resolvePassTimer.
+	passTimer := newResolvePassTimer(trk)
+
 	trk.PhaseStart(progress.PhaseExtractAST, 0, 0)
 	if subprocExtract() {
 		res, cerr := extract.Coordinate(ctx, absRepo, files, extract.CoordinatorConfig{
@@ -1123,6 +1278,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 
 		// Pass 2.5 — YAML-driven framework rules.
 		trk.PhaseStart(progress.PhaseResolveRefs, len(files), len(pass1Records))
+		passTimer.enter(progress.SubPhasePass25FrameworkRules)
 		pass2Records, pass2Rels, err = i.runPass25FrameworkRules(ctx, absRepo, classified, pass1Records)
 		if err != nil {
 			trk.Fail(err.Error())
@@ -1131,6 +1287,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		i.stats.pass2Rels = len(pass2Rels) + countEmbeddedRels(pass2Records)
 
 		// Pass 3 — cross-language extractors.
+		passTimer.enter(progress.SubPhasePass3CrossLang)
 		pass3Records, err = i.runPass3CrossLang(ctx, absRepo, classified)
 		if err != nil {
 			trk.Fail(err.Error())
@@ -1146,6 +1303,17 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// the classifier would otherwise drop. The pass is idempotent and
 	// always runs against `allFiles` so incremental indexing keeps the
 	// Config entities even when no source file changed.
+	//
+	// NOTE (#5954): passes 3.5 onward run in BOTH the in-process and the
+	// subprocess-extract branch, but only the in-process branch has entered
+	// PhaseResolveRefs. Under GRAFEL_SUBPROC_EXTRACT=1 the active phase is
+	// still extracting_ast, so Tracker.SubPhase DROPS these resolving_refs.*
+	// stamps rather than misattributing samples across phases — the labels'
+	// "<parent>.<pass>" contract is enforced there, not merely documented.
+	// Those passes then read as plain extracting_ast, exactly as before #5954.
+	// The alternative (entering PhaseResolveRefs on the subproc path too) would
+	// change that path's published event stream, which this change must not do.
+	passTimer.enter(progress.SubPhasePass35ConfigDiscovery)
 	configEntities, configRels, configErr := configextract.Discover(ctx, absRepo, allFiles)
 	if configErr != nil {
 		fmt.Fprintf(os.Stderr, "grafel: config-discover warning: %v\n", configErr)
@@ -1162,6 +1330,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// emitting BAZEL_DEPENDS_ON edges between declared Bazel targets.
 	// Runs after config discovery so all graph entities are available for
 	// the resolver overlay.
+	passTimer.enter(progress.SubPhasePass36Bazel)
 	bazelEntities, bazelRels, bazelErr := bazelextract.Discover(ctx, absRepo, allFiles)
 	if bazelErr != nil {
 		fmt.Fprintf(os.Stderr, "grafel: bazel-discover warning: %v\n", bazelErr)
@@ -1177,6 +1346,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Parses mage-tagged magefile.go / magefiles/*.go via go/parser, emitting
 	// one SCOPE.Operation per exported target and MAGE_DEPENDS_ON edges for
 	// mg.Deps / mg.SerialDeps / mg.CtxDeps prerequisites.
+	passTimer.enter(progress.SubPhasePass37Mage)
 	mageEntities, mageRels, mageErr := mageextract.Discover(ctx, absRepo, allFiles)
 	if mageErr != nil {
 		fmt.Fprintf(os.Stderr, "grafel: mage-discover warning: %v\n", mageErr)
@@ -1191,6 +1361,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Pass 3.8 — Task (taskfile.dev) build-graph fusion (#3217).
 	// Parses Taskfile.yml/.yaml, emitting one SCOPE.Operation per task and
 	// TASK_DEPENDS_ON edges for deps: prerequisites and { task: <name> } cmds.
+	passTimer.enter(progress.SubPhasePass38Task)
 	taskEntities, taskRels, taskErr := taskextract.Discover(ctx, absRepo, allFiles)
 	if taskErr != nil {
 		fmt.Fprintf(os.Stderr, "grafel: task-discover warning: %v\n", taskErr)
@@ -1209,6 +1380,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// passes in Pass 2.5 can only see each file in isolation.
 	// Results are appended to pass3Records for buildDocument to merge.
 	if !i.skipPasses[PassFramework] {
+		passTimer.enter(progress.SubPhasePass26DjangoRoutes)
 		nestedEntities := runDjangoNestedURLConf(classified)
 
 		// Pass 2.6b — DRF router.register expansion (#703, #705). Emits
@@ -1284,6 +1456,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		// dispatch sites across files (tasks/ ← views/ ← signals/ ← services/)
 		// and emits CALLS edges so find_callees / find_callers on a task and
 		// the flows view show task dispatch. Append-only.
+		passTimer.enter(progress.SubPhasePass26DjangoEdges)
 		celeryDispatchRels := runCeleryDispatchEdges(classified)
 		if len(celeryDispatchRels) > 0 {
 			fmt.Fprintf(os.Stderr, "grafel: celery_dispatch_edges=%d\n", len(celeryDispatchRels))
@@ -1341,6 +1514,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// intervening annotations between @VERB and @Path). Must run before the
 	// classified slice is released below. Refs #682, #683.
 	if !i.skipPasses[PassFramework] {
+		passTimer.enter(progress.SubPhasePass26JavaRoutes)
 		javaEntities := runJavaAnnotationRoutes(classified)
 		pass3Records = append(pass3Records, javaEntities...)
 	}
@@ -1360,6 +1534,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// before buildDocument (where ResolveHTTPEndpointHandlers clears
 	// the source_handler property post-resolution).
 	if !i.skipPasses[PassFramework] && len(classified) > 0 {
+		passTimer.enter(progress.SubPhasePass27ResponseShapes)
 		// Build a file-content lookup from the classified slice.
 		contentByPath := make(map[string][]byte, len(classified))
 		allPaths := make([]string, 0, len(classified))
@@ -1415,6 +1590,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// by following HTTP client call sites through the ROUTES_TO graph.
 	// Must run before releaseClassifiedASTs since we need file content access.
 	if !i.skipPasses[PassFramework] && len(classified) > 0 {
+		passTimer.enter(progress.SubPhasePass28TestsMultiHop)
 		// Gather all paths and build the file-content lookup.
 		var allPaths []string
 		contentByPath := make(map[string][]byte, len(classified))
@@ -1472,9 +1648,11 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// across the entire downstream pipeline (resolver, build-document,
 	// external-synthesis, Pass 4). tree-sitter trees are CGo-allocated so
 	// runtime.GC alone can't reclaim them — Close() is required.
+	passTimer.enter(progress.SubPhaseReleaseASTs)
 	releaseClassifiedASTs(classified)
 	classified = nil
 	runtime.GC()
+	passTimer.finish()
 
 	// Pass 5 — build document (deduped).
 	trk.PhaseStart(progress.PhaseMaterialize, len(files), 0)

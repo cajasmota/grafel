@@ -277,8 +277,15 @@ committing the whole codebase to it.)
   (`docs/grammar-canary-baseline.json`) per grammar — catches ABI mismatch (§6)
   that compiles but crashes/garbles at runtime. Refresh the canary baseline after
   each promotion (grammar version changed ⇒ expected node shape may shift).
-- Re-test the **#481 race**: confirm whether the official binding still needs the
-  `parseMu` global serialization (a freebie if it doesn't).
+- ~~Re-test the **#481 race**: confirm whether the official binding still needs the
+  `parseMu` global serialization (a freebie if it doesn't).~~ **DONE (#5954).** It
+  does not. Every parse owns a private `TSParser` (`ts_parser_new` per call), the
+  only shared object is the immutable per-language `TSLanguage` (whose
+  `ts_language_copy` is a no-op for non-wasm grammars), and no bundled external
+  scanner keeps mutable file-scope state. `parseMu` was removed; see
+  `TestParse_ConcurrentMultiLanguage_NoRace` (`-race`) and the `ParserFactory`
+  godoc for the argument. Determinism is anchored by the post-worker-pool sorts
+  in `cmd/grafel/index.go`, not by the mutex.
 
 ### Rollback
 

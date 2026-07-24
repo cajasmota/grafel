@@ -29,6 +29,7 @@ package hcl
 import (
 	"bytes"
 	"context"
+	"github.com/cajasmota/grafel/internal/indexstate"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
@@ -87,7 +88,20 @@ func (e *HCLExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		}
 		defer parser.Close()
 		var err error
-		tree, err = parser.Parse(file.Content)
+		// #5954 — bound this parse by the same daemon-wide gate that
+		// treesitter.ParserFactory.Parse uses. This fallback bypasses the
+		// factory, so before #5954 it bypassed parseMu; it must not now
+		// bypass AcquireParseSlot, or the in-process parse ceiling is
+		// illusory (GOMAXPROCS cannot bound cgo). The defer is scoped to a
+		// closure around the parse alone so the release happens BEFORE the node
+		// walk (holding it across the walk would throttle extraction, not
+		// parsing) and still survives a panic in Parse. See the python
+		// extractor for the full rationale.
+		func() {
+			indexstate.AcquireParseSlot()
+			defer indexstate.ReleaseParseSlot()
+			tree, err = parser.Parse(file.Content)
+		}()
 		if err != nil {
 			return nil, err
 		}
