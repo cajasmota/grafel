@@ -28,7 +28,7 @@ package treesitter_test
 //      into the existing ParseErrorCanary. This is a CI-safe proxy for a
 //      daemon-level parse loop: a full daemon is too heavy for CI, but every real
 //      parse funnels through the same in-process chokepoint a runaway daemon
-//      parse would hold (parseMu #481 + the parse slot #5630), so a corpus that
+//      parse would hold (the parse slot #5630), so a corpus that
 //      never settles is the same signal as a daemon that never settles.
 //
 // BOUNDS / MARGIN (deterministic, generous-but-finite)
@@ -59,7 +59,7 @@ const (
 
 	// corpusBound is the wall-clock budget for parsing the entire corpus
 	// sequentially through one factory. ~28 files * (parse + node walk),
-	// serialised on parseMu; 90s is comfortable on the slowest CI runner yet
+	// bounded by the parse-slot gate; 90s is comfortable on the slowest CI runner yet
 	// well under the minutes-long hang a daemon-level loop produces.
 	corpusBound = 90 * time.Second
 
@@ -845,7 +845,7 @@ func TestParseCanary_RealFiles_TimeBounded(t *testing.T) {
 // a single aggregate wall-clock bound, folding every result into the existing
 // ParseErrorCanary. A full daemon is too heavy for CI, but every real parse
 // funnels through the same in-process chokepoint a runaway daemon parse holds
-// (parseMu #481 + the parse slot #5630), so a corpus that never settles is the
+// (the parse slot #5630), so a corpus that never settles is the
 // same signal as a daemon that never settles. It also exercises the aggregate
 // canary path end-to-end (Observe across many files of many languages).
 func TestParseCanary_CorpusSettles_TimeBounded(t *testing.T) {
@@ -899,7 +899,7 @@ func TestParseCanary_CorpusSettles_TimeBounded(t *testing.T) {
 		t.Logf("corpus settled: %d files across %d languages", r.files, len(snap))
 	case <-time.After(corpusBound):
 		t.Fatalf("corpus did NOT settle within %s — daemon-level non-termination suspected "+
-			"(a single looping parse holds parseMu/the parse slot and stalls the whole pipeline, "+
+			"(a single looping parse holds the parse slot and stalls the whole pipeline, "+
 			"the Wave A daemon symptom)", corpusBound)
 	}
 }

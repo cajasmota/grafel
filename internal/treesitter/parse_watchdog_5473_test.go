@@ -30,9 +30,12 @@ func bigGoSource(terms int) []byte {
 // TestParse_WatchdogHaltsRunawayAndReleasesLock proves the #5473 safety net:
 //  1. a parse that exceeds the per-parse deadline returns a BOUNDED, sentinel
 //     error (official.ErrParseDeadlineExceeded) instead of hanging, and
-//  2. parseMu is released afterwards — a subsequent normal parse succeeds
-//     (a leaked lock would deadlock here, which the timed wait surfaces as a
-//     clear failure rather than a hang).
+//  2. the daemon-wide parse slot (indexstate) is released afterwards — a
+//     subsequent normal parse succeeds (a leaked slot would deadlock here,
+//     which the timed wait surfaces as a clear failure rather than a hang).
+//
+// The historical global parseMu is gone (#5954); the release invariant this
+// test guards now applies to the parse slot alone.
 func TestParse_WatchdogHaltsRunawayAndReleasesLock(t *testing.T) {
 	// Arm the watchdog tightly. 1ms is comfortably above tree-sitter's deadline
 	// granularity (the binding's own timeout tests use 1000µs) yet far below the
@@ -70,8 +73,8 @@ func TestParse_WatchdogHaltsRunawayAndReleasesLock(t *testing.T) {
 		t.Fatalf("watchdog halt must yield no ParseResult, got: %+v", got.res)
 	}
 
-	// Lock-release invariant: with a normal budget restored, a subsequent parse
-	// must succeed. If parseMu had leaked, this would block forever.
+	// Slot-release invariant: with a normal budget restored, a subsequent parse
+	// must succeed. If the parse slot had leaked, this would block forever.
 	t.Setenv("GRAFEL_PARSE_TIMEOUT", "20s")
 	next := make(chan result, 1)
 	go func() {
@@ -81,7 +84,7 @@ func TestParse_WatchdogHaltsRunawayAndReleasesLock(t *testing.T) {
 	select {
 	case got = <-next:
 	case <-time.After(15 * time.Second):
-		t.Fatal("subsequent parse hung — parseMu was not released after the watchdog halt")
+		t.Fatal("subsequent parse hung — the parse slot was not released after the watchdog halt")
 	}
 	if got.err != nil {
 		t.Fatalf("subsequent normal parse failed: %v", got.err)

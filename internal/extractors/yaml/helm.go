@@ -41,6 +41,7 @@ package yaml
 
 import (
 	"bytes"
+	"github.com/cajasmota/grafel/internal/indexstate"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -678,7 +679,29 @@ func extractHelmTemplate(file extractor.FileInput) []types.EntityRecord {
 	}
 	if parser, perr := yamlAdapter.NewParser(yamlGrammar()); perr == nil {
 		defer parser.Close()
-		tree, err := parser.Parse(res.stripped)
+		// #5954 — bound this parse by the same daemon-wide gate that
+		// treesitter.ParserFactory.Parse uses. Unlike the per-extractor
+		// `file.TSTree == nil` fallbacks this is an UNCONDITIONAL second parse
+		// of every Helm template (the templating-stripped content), so it is a
+		// hot production path that has always bypassed the factory — and thus
+		// bypassed parseMu, which is the clearest evidence that unserialised
+		// concurrent ts_parser_parse was already shipping. It must not also
+		// bypass AcquireParseSlot, or the in-process parse ceiling is illusory
+		// (GOMAXPROCS cannot bound cgo).
+		//
+		// The slot is taken and released inside a closure around the parse
+		// alone, so it is released BEFORE the node walk below (holding it
+		// across the walk would throttle extraction rather than parsing — a
+		// severe regression at a budget of 3) AND the release survives a panic
+		// in Parse (a leaked slot is permanent: daemon.go recovers index
+		// panics). The closure returns its values rather than assigning to
+		// outer ones so the existing := stays put and nothing is shadowed. See
+		// the python extractor for the full rationale.
+		tree, err := func() (ts.Tree, error) {
+			indexstate.AcquireParseSlot()
+			defer indexstate.ReleaseParseSlot()
+			return parser.Parse(res.stripped)
+		}()
 		if err == nil && tree != nil {
 			root := tree.RootNode()
 			if root != nil {

@@ -17,6 +17,7 @@
 package progress
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -85,6 +86,67 @@ const (
 	// SSE tick is delivered. See wizard_split_progress.go's
 	// emitStatusPlaneRowEvents (grafel wizard split-mode index).
 	PhaseIndexing = "indexing"
+)
+
+// subPhaseSep separates a sub-phase label's parent phase from its pass name.
+// Filename-safe on purpose: memtrace writes a heap profile named after the
+// active phase on every transition, so a "/" here would break os.Create.
+const subPhaseSep = "."
+
+// Sub-phase labels for the resolving_refs window (#5954).
+//
+// resolving_refs is a COMPOSITE phase: a single label covered ~52% of cold
+// index wall time across a dozen independent passes, so nothing downstream
+// could tell which of them was expensive — and specifically not how much of it
+// is per-FILE work (which a content-addressed per-file extraction cache could
+// eliminate) versus GLOBAL work (which it could not). These labels split that
+// window, one per distinct pass.
+//
+// They are OBSERVABILITY-ONLY. Unlike the phases above they are never
+// published as an Event: Tracker.SubPhase stamps currentPhase without emitting,
+// so the SSE stream, the CLI renderer, and the wizard see exactly the phases
+// they saw before. The only consumer is Tracker.CurrentPhase — i.e. the
+// memtrace sampler's phase= tag (#5956), which is where the timings land.
+//
+// Naming contract, relied on by the analysis scripts: every label is
+// "<parent phase>.<pass>", so grouping memtrace samples on the segment before
+// the first "." reproduces the coarse phase breakdown exactly as before, while
+// grouping on the full string gives the per-pass split. Keep these stable.
+//
+// Tracker.SubPhase enforces the "<parent>.<pass>" contract at stamp time: a
+// label whose parent is not the active phase is dropped rather than recorded.
+const (
+	// Per-file: the YAML rule engine runs over each classified file's content.
+	SubPhasePass25FrameworkRules = PhaseResolveRefs + subPhaseSep + "pass25_framework_rules"
+	// Per-file: cross-language extractors, driven off the classified slice.
+	SubPhasePass3CrossLang = PhaseResolveRefs + subPhaseSep + "pass3_cross_lang"
+	// Per-file: config-entity discovery over the pre-classification file list.
+	SubPhasePass35ConfigDiscovery = PhaseResolveRefs + subPhaseSep + "pass35_config_discovery"
+	// Per-file: BUILD/BUILD.bazel parse (only Bazel files are read).
+	SubPhasePass36Bazel = PhaseResolveRefs + subPhaseSep + "pass36_bazel"
+	// Per-file: magefile parse (only mage-tagged Go files are read).
+	SubPhasePass37Mage = PhaseResolveRefs + subPhaseSep + "pass37_mage"
+	// Per-file: Taskfile.yml parse (only taskfiles are read).
+	SubPhasePass38Task = PhaseResolveRefs + subPhaseSep + "pass38_task"
+	// Per-file scan, global join: Django/DRF route synthesis walks every
+	// classified Python file but composes URLconf chains ACROSS files, so its
+	// output is not a pure function of any single file.
+	SubPhasePass26DjangoRoutes = PhaseResolveRefs + subPhaseSep + "pass26_django_routes"
+	// Per-file scan, global join: Celery dispatch, custom-signal pub/sub,
+	// Serializer/FilterSet Meta.model and @receiver(sender=) edges — all
+	// cross-file resolutions over the same scan.
+	SubPhasePass26DjangoEdges = PhaseResolveRefs + subPhaseSep + "pass26_django_edges"
+	// Per-file: Java JAX-RS / Spring MVC annotation route composition.
+	SubPhasePass26JavaRoutes = PhaseResolveRefs + subPhaseSep + "pass26_java_routes"
+	// Global: response-shape + Sails auth attribution join the whole record
+	// set against the whole file set (handler lives in another module).
+	SubPhasePass27ResponseShapes = PhaseResolveRefs + subPhaseSep + "pass27_response_shapes"
+	// Global: multi-hop TESTS edges follow the corpus-wide ROUTES_TO graph.
+	SubPhasePass28TestsMultiHop = PhaseResolveRefs + subPhaseSep + "pass28_tests_multihop"
+	// Global: release the per-file ASTs/content and force a GC before
+	// buildDocument. Charged separately because runtime.GC() on a multi-GB
+	// heap is not free and would otherwise be misattributed to pass 2.8.
+	SubPhaseReleaseASTs = PhaseResolveRefs + subPhaseSep + "release_asts"
 )
 
 // TickEveryNFiles is the default file-tick interval for the AST extraction
@@ -412,6 +474,57 @@ func (t *Tracker) Phase(phase, passName string, entitiesSoFar int) {
 		PhaseStartedAtMS: t.phaseStartedAtMS,
 		TS:               nowMS(),
 	})
+}
+
+// SubPhase stamps a finer-grained label inside the phase already started by
+// PhaseStart/Phase, WITHOUT publishing an Event (#5954).
+//
+// This is the deliberate difference from PhaseStart and Phase: every consumer
+// of the progress stream — SSE, the CLI renderer, the wizard's fold table —
+// keeps seeing exactly the coarse phases it saw before, byte for byte, while
+// the memtrace sampler (which reads CurrentPhase, not the event stream) starts
+// tagging its samples with the sub-pass that is actually running. It is
+// therefore safe to call from anywhere inside a phase: it can neither change
+// the UI nor perturb the graph.
+//
+// Pass one of the SubPhase* constants; they encode their parent phase as a
+// "<phase>.<pass>" prefix so aggregate-by-phase analysis still works.
+//
+// The prefix contract is ENFORCED, not merely documented: a label whose parent
+// does not match the currently-active phase is IGNORED. Without that guard the
+// contract is violable by the shipped code — the pass-3.5-and-later sites in
+// cmd/grafel/index.go run in both the in-process and the
+// GRAFEL_SUBPROC_EXTRACT branch, and only the former has entered
+// resolving_refs, so under subproc-extract they would stamp "resolving_refs.*"
+// while extracting_ast is active and silently misattribute those samples. A
+// dropped stamp just leaves the coarse phase in place, which is exactly the
+// pre-#5954 behaviour.
+//
+// The stamp is sticky: it stays in effect until the next SubPhase, PhaseStart,
+// or Phase call. There is no "end" call — the following PhaseStart naturally
+// resets it, and a gap between two sub-phases is attributed to the earlier one,
+// which is the right default for a strictly sequential pass list.
+//
+// Concurrency: currentPhase is an atomic.Value, so this is safe to call while
+// the sampler goroutine is polling CurrentPhase (same contract as PhaseStart).
+func (t *Tracker) SubPhase(label string) {
+	if t == nil || label == "" {
+		return
+	}
+	parent, _, ok := strings.Cut(label, subPhaseSep)
+	if !ok || parent == "" {
+		return // not a well-formed sub-phase label
+	}
+	// The active phase is either the parent itself (first sub-phase of the
+	// window) or an earlier sub-phase of the same parent.
+	active := t.CurrentPhase()
+	if activeParent, _, isSub := strings.Cut(active, subPhaseSep); isSub {
+		active = activeParent
+	}
+	if active != parent {
+		return
+	}
+	t.currentPhase.Store(label)
 }
 
 // AlgorithmEvent emits an entry or exit event for a named graph algorithm.
