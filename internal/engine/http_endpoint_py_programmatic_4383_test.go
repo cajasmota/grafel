@@ -74,7 +74,10 @@ func assertNamedEndpointBridged(t *testing.T, ents []types.EntityRecord, rels []
 		t.Errorf("[%s] named handler %s %s wrongly synthesized an inline stand-in", framework, verb, path)
 	}
 
-	merged, _ := ResolveHTTPEndpointHandlers(ents)
+	// cloneEnts: the resolve pass CONSUMES its input (in-place edits +
+	// in-place drop compaction, #5954) and this helper is called repeatedly
+	// against the SAME fixture set.
+	merged, _ := ResolveHTTPEndpointHandlers(cloneEnts(ents))
 	for i := range merged {
 		merged[i].ID = merged[i].ComputeID()
 	}
