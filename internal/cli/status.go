@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -142,6 +143,24 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 				len(st.PendingAlgo) > 0 || len(st.PendingLinks) > 0 {
 				fmt.Fprintf(w, "  scheduler: queue=%d in_flight=%d pending_algo=%d pending_links=%d\n",
 					st.QueueLen, len(st.IndexInFlight), len(st.PendingAlgo), len(st.PendingLinks))
+			}
+			// #5954 heavy write-stage gate. Printed whenever the gate is doing
+			// ANYTHING (holding, deferring, or being barged) so an operator — or
+			// a peak-RSS measurement run — can confirm from outside the process
+			// that it fired, instead of inferring it from RSS shape. Silent when
+			// the gate is idle, which is the overwhelmingly common case.
+			if st.StageGateHolder != "" || len(st.StageGateDeferred) > 0 || len(st.StageGateBarging) > 0 {
+				fmt.Fprint(w, "  stage_gate:")
+				if len(st.StageGateBarging) > 0 {
+					fmt.Fprintf(w, " barging=%s", strings.Join(st.StageGateBarging, ","))
+				}
+				if st.StageGateHolder != "" {
+					fmt.Fprintf(w, " holder=%s", st.StageGateHolder)
+				}
+				if len(st.StageGateDeferred) > 0 {
+					fmt.Fprintf(w, " deferred=%s", strings.Join(st.StageGateDeferred, ","))
+				}
+				fmt.Fprintln(w)
 			}
 			if st.RSSBudgetMB > 0 {
 				// Two separate lines: daemon idle RSS (informational) vs.

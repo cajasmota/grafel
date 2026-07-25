@@ -1326,6 +1326,22 @@ func daemonRebuildFuncCore(
 	indexFn func(repoPath, outPath, repoTag string, skipPasses []string, pretty, jsonStats bool, opts ...IndexOption) error,
 	linksFn func(ctx context.Context, group string) error,
 ) ([]string, string, error) {
+	// #5954 FOREGROUND BARGE. This rebuild indexes every repo DIRECTLY (via
+	// indexFn → Index(...)) and then runs its OWN in-process cross-repo link
+	// pass — it never calls scheduler.Enqueue, so s.inflight stays empty and the
+	// heavy write-stage gate would read an IDLE machine for the entire 10–12
+	// minutes. That is exactly what the post-#5993 measurement caught: peak rose
+	// 4258 → 5430 MB with `index child 2979 MB + group-algo 1618 MB` co-resident.
+	//
+	// Registering here holds background link/group-algo passes off for the whole
+	// rebuild — index batch AND link pass — at zero interactive cost: the barge
+	// never waits, whatever the gate's state. It is deliberately the FIRST thing
+	// in the function and released via `defer`, so every exit path (unknown
+	// group, config error, group deleted mid-rebuild, extractor panic) unwinds
+	// it; the closure is idempotent. Inert when no scheduler is running (CLI
+	// one-shots, watcher-less daemons, tests) and when GRAFEL_STAGE_GATE=0.
+	defer sched.BargeForeground("rebuild:" + args.Group)()
+
 	rebuildStart := time.Now()
 	fmt.Fprintf(os.Stderr, "grafel: rebuild start group=%s slug=%q wipe=%v incremental=%v\n",
 		args.Group, args.Slug, args.Wipe, args.Incremental)

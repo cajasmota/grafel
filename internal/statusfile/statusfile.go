@@ -178,6 +178,25 @@ type File struct {
 	WarmPendingAlgo   int  `json:"warm_pending_algo,omitempty"`
 	WarmPendingLinks  int  `json:"warm_pending_links,omitempty"`
 
+	// StageGate* mirror sched.StageGateState (#5954) — the heavy write-stage
+	// gate's live decisions. They cross the engine→serve boundary for the same
+	// reason the Warm* fields do: in SPLIT MODE (the default) the scheduler
+	// lives in the engine process, so a `grafel status` served by the serve
+	// process has no in-process scheduler to read and would otherwise report
+	// NOTHING about the gate — not even its RecentLog ring. That left no way to
+	// confirm from outside the process that the gate had fired at all, which is
+	// how a measurement run was misread as "the gate is dead" when it was
+	// merely invisible.
+	//
+	// StageGateHolder names the EXCLUSIVE stage holding the token
+	// ("links:<group>" / "group-algo:<group>"); StageGateDeferred lists stages
+	// the gate is turning away; StageGateBarging lists live FOREGROUND holds
+	// ("rebuild:<group>") — non-empty means a rebuild is registered and
+	// background heavy stages are yielding to it.
+	StageGateHolder   string   `json:"stage_gate_holder,omitempty"`
+	StageGateDeferred []string `json:"stage_gate_deferred,omitempty"`
+	StageGateBarging  []string `json:"stage_gate_barging,omitempty"`
+
 	// --- Process metrics (wizard CPU/RAM readout) ---
 	// These are only meaningful on the ENGINE-LIVENESS sidecar (same scope as
 	// the Engine-global fields above): RSS/CPU are per-PROCESS, not per-repo,

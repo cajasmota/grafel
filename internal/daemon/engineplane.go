@@ -81,7 +81,18 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 			PendingLinks:  len(snap.PendingLinks),
 		}
 	}
-	stopEngineLiveness := startEngineLivenessHeartbeat(cfg.Layout.Root, statusHeartbeatInterval(), warmingFn, logger)
+	// #5954: the heavy write-stage gate's live state, published on the same
+	// heartbeat and off the same schedulerPtr. Degrades to the zero value
+	// (no holder, nothing deferred, nothing barging) before the scheduler is
+	// up or when none is configured — never a crash or a stale read.
+	gateFn := func() sched.StageGateState {
+		sc := schedulerPtr.Load()
+		if sc == nil {
+			return sched.StageGateState{}
+		}
+		return sc.StageGateState()
+	}
+	stopEngineLiveness := startEngineLivenessHeartbeat(cfg.Layout.Root, statusHeartbeatInterval(), warmingFn, gateFn, logger)
 	ep.add(stopEngineLiveness)
 
 	// Phase B — bring up the scheduler + watcher when the caller

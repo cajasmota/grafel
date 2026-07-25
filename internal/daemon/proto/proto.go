@@ -74,6 +74,25 @@ type StatusReply struct {
 	IndexedRepos   []IndexedRepoState `json:"indexed_repos,omitempty"`
 	RecentLog      []SchedLogEntry    `json:"recent_log,omitempty"`
 
+	// Heavy write-stage gate (#5954) — the daemon-wide token that keeps the
+	// index batch, the cross-repo link pass and the group-algo pass from being
+	// co-resident (two copies of the same group union graph were the measured
+	// cause of a 4.4–5.4GB whole-machine peak).
+	//
+	// StageGateHolder names the EXCLUSIVE stage holding the token
+	// ("links:<group>" / "group-algo:<group>"). StageGateDeferred lists stages
+	// the gate is currently turning away. StageGateBarging lists live FOREGROUND
+	// holds ("rebuild:<group>") — non-empty means a rebuild is registered and
+	// background heavy stages are yielding to it.
+	//
+	// Populated from the in-process scheduler in monolith mode, and from the
+	// engine-liveness status sidecar in SPLIT mode (the default), where the
+	// scheduler lives in the engine and serve answers Status. Both routes agree;
+	// see Service.Status.
+	StageGateHolder   string   `json:"stage_gate_holder,omitempty"`
+	StageGateDeferred []string `json:"stage_gate_deferred,omitempty"`
+	StageGateBarging  []string `json:"stage_gate_barging,omitempty"`
+
 	// Concurrency-cap additions. BudgetMB=0 means admission control is
 	// disabled.
 	//
