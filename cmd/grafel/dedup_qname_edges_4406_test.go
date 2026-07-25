@@ -96,10 +96,8 @@ func TestDedup4406_QNameAndEdgesSurviveDedup(t *testing.T) {
 	caller := types.EntityRecord{Kind: "Function", Name: "save_contract", SourceFile: "core/services.py", StartLine: 3}
 
 	idx := dedup4406Indexer()
-	doc := idx.buildDocument(
-		[]types.EntityRecord{survivor, duplicate, field, caller},
-		nil, nil, nil,
-	)
+	pass1 := []types.EntityRecord{survivor, duplicate, field, caller}
+	doc := idx.buildDocument(&pass1, nil, nil, nil)
 
 	got := findEntity(t, doc.Entities, id)
 
@@ -175,7 +173,8 @@ func TestDedup4406_SurvivorQNameNotOverridden(t *testing.T) {
 	}
 
 	idx := dedup4406Indexer()
-	doc := idx.buildDocument([]types.EntityRecord{survivor, duplicate}, nil, nil, nil)
+	pass1 := []types.EntityRecord{survivor, duplicate}
+	doc := idx.buildDocument(&pass1, nil, nil, nil)
 	got := findEntity(t, doc.Entities, id)
 	if got.QualifiedName != "app.User" {
 		t.Fatalf("survivor QualifiedName = %q; want survivor's own app.User preserved (not overridden by duplicate)", got.QualifiedName)
@@ -200,7 +199,8 @@ func TestDedup4406_NonDuplicateUnchanged(t *testing.T) {
 	other := types.EntityRecord{Kind: "Class", Name: "Line", SourceFile: srcFile, StartLine: 20}
 
 	idx := dedup4406Indexer()
-	doc := idx.buildDocument([]types.EntityRecord{ent, other}, nil, nil, nil)
+	pass1 := []types.EntityRecord{ent, other}
+	doc := idx.buildDocument(&pass1, nil, nil, nil)
 
 	got := findEntity(t, doc.Entities, id)
 	if got.QualifiedName != "Lib::Order" {

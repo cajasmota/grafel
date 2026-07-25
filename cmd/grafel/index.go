@@ -1662,7 +1662,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 
 	// Pass 5 — build document (deduped).
 	trk.PhaseStart(progress.PhaseMaterialize, len(files), 0)
-	doc := i.buildDocument(pass1Records, pass2Records, pass2Rels, pass3Records)
+	doc := i.buildDocument(&pass1Records, &pass2Records, pass2Rels, &pass3Records)
 
 	// #2719 — incremental merge: when this run processed only the changed
 	// subset of files, splice the unchanged-file portion of the previous
@@ -1751,6 +1751,14 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Metadata maps and embedded Relationship slices; releasing them
 	// before the resolver-classification + Pass 4 algorithms cuts the
 	// peak by roughly the merged-set size on entity-dense repos.
+	//
+	// #5985 — pass1Records / pass2Records / pass3Records are ALREADY nil here:
+	// buildDocument takes them by pointer and releases each one the instant it
+	// has copied it into `merged` (mergePassRecords), so the duplicate spine is
+	// collectable during buildDocument instead of only after it returns. The
+	// assignments below are kept for pass2Rels (still passed by value) and as a
+	// belt-and-braces statement of the "dead after buildDocument" contract —
+	// nothing between the buildDocument call above and this point may read them.
 	pass1Records = nil
 	pass2Records = nil
 	pass2Rels = nil
@@ -4646,14 +4654,52 @@ func useModuleResolveIndex() bool {
 	}
 }
 
+// mergePassRecords concatenates the per-pass entity records into one slice, in
+// canonical pass order (pass1, pass2, pass3), and RELEASES each caller-owned
+// slice header as soon as its records have been copied.
+//
+// #5985 — the copy into the merged slice is SHALLOW: every record's Properties
+// / Metadata / Tags / embedded Relationships live on unchanged in the merged
+// copy. Dropping the caller's header therefore frees only the duplicate spine
+// (the per-pass backing arrays — ~165 MB on a large corpus, where `merged`
+// itself is ~183 MB), never any entity payload. Before this, both spines stayed
+// live for the whole of buildDocument because the caller did not release the
+// pass slices until well after buildDocument returned.
+//
+// A nil pointer means "this pass produced nothing" (unit tests and the daemon's
+// single-stream path both rely on that).
+func mergePassRecords(pass1, pass2, pass3 *[]types.EntityRecord) []types.EntityRecord {
+	n := lenRecords(pass1) + lenRecords(pass2) + lenRecords(pass3)
+	merged := make([]types.EntityRecord, 0, n)
+	merged = appendAndRelease(merged, pass1)
+	merged = appendAndRelease(merged, pass2)
+	merged = appendAndRelease(merged, pass3)
+	return merged
+}
+
+func lenRecords(p *[]types.EntityRecord) int {
+	if p == nil {
+		return 0
+	}
+	return len(*p)
+}
+
+// appendAndRelease appends *src to dst and then drops the caller's reference to
+// src's backing array. See mergePassRecords for why this is safe.
+func appendAndRelease(dst []types.EntityRecord, src *[]types.EntityRecord) []types.EntityRecord {
+	if src == nil {
+		return dst
+	}
+	dst = append(dst, *src...)
+	*src = nil
+	return dst
+}
+
 // buildDocument merges entity records from every pass, dedupes by stable
 // graph-entity ID, resolves cross-file CALLS edges, then assembles the
 // final on-disk document.
-func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []types.RelationshipRecord, pass3 []types.EntityRecord) *graph.Document {
-	merged := make([]types.EntityRecord, 0, len(pass1)+len(pass2)+len(pass3))
-	merged = append(merged, pass1...)
-	merged = append(merged, pass2...)
-	merged = append(merged, pass3...)
+func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []types.RelationshipRecord, pass3 *[]types.EntityRecord) *graph.Document {
+	merged := mergePassRecords(pass1, pass2, pass3)
 
 	// Issue #481 — the merged slice drives BuildIndex's first-writer-wins
 	// disambiguation. Sort by canonical fields so identically-named entities
