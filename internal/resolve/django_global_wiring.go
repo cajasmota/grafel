@@ -61,7 +61,17 @@ func uniqueID(ids []string) string {
 // It is a method on Index because it reads the symbol table. It mutates the
 // Relationships slice of affected EntityRecords in place.
 func (idx Index) ResolveDjangoGlobalWiringRefs(records []types.EntityRecord) int {
+	rewrites, _ := idx.resolveDjangoGlobalWiringRefs(records)
+	return rewrites
+}
+
+// resolveDjangoGlobalWiringRefs is the implementation. It additionally returns
+// the number of times the lazy whole-corpus bare-Name index was materialised,
+// which the #5986 tests assert on: 0 when no edge reaches Strategy 3, and
+// exactly 1 no matter how many edges do.
+func (idx Index) resolveDjangoGlobalWiringRefs(records []types.EntityRecord) (int, int) {
 	rewrites := 0
+	nameIndexBuilds := 0
 
 	// byNameSrc indexes candidate entities by bare Name → list of (id,
 	// sourceFile). Used by the module-qualified leaf fallback (Strategy 3),
@@ -69,16 +79,35 @@ func (idx Index) ResolveDjangoGlobalWiringRefs(records []types.EntityRecord) int
 	// index (e.g. a MiddlewareMixin subclass re-emitted as both a CBV endpoint
 	// and a SCOPE.Pattern, dropping its QualifiedName) by matching the dotted
 	// path's module against the entity's source-file-derived Python module.
+	//
+	// #5986: this is a whole-corpus map (~42-75 MB live on a 427k-entity
+	// corpus) and it is live concurrently with resolve.BuildIndex, so it adds
+	// to the peak heap. It serves ONLY Strategy 3, which requires a global
+	// USES edge with a dotted_path, an unresolved non-hex ToID, AND both
+	// Strategies 1 and 2 missing — conditions no non-Django repo can meet.
+	// So it is built lazily on first Strategy-3 need rather than behind an
+	// early-return guard: a guard would have to restate those conditions and
+	// could drift out of sync with them, whereas laziness is correct by
+	// construction. nameIndex() memoises, so the build is O(entities) ONCE for
+	// the whole pass — never per-edge, which would be O(edges × entities).
 	type nameCand struct {
 		id, src, kind string
 	}
-	byNameSrc := map[string][]nameCand{}
-	for i := range records {
-		e := &records[i]
-		if e.ID == "" || e.Name == "" || e.SourceFile == "" {
-			continue
+	var byNameSrc map[string][]nameCand
+	nameIndex := func() map[string][]nameCand {
+		if byNameSrc != nil {
+			return byNameSrc
 		}
-		byNameSrc[e.Name] = append(byNameSrc[e.Name], nameCand{e.ID, e.SourceFile, e.Kind})
+		byNameSrc = map[string][]nameCand{}
+		nameIndexBuilds++
+		for i := range records {
+			e := &records[i]
+			if e.ID == "" || e.Name == "" || e.SourceFile == "" {
+				continue
+			}
+			byNameSrc[e.Name] = append(byNameSrc[e.Name], nameCand{e.ID, e.SourceFile, e.Kind})
+		}
+		return byNameSrc
 	}
 
 	for k := range records {
@@ -144,7 +173,7 @@ func (idx Index) ResolveDjangoGlobalWiringRefs(records []types.EntityRecord) int
 					// SCOPE.Pattern), so prefer a definition-bearing node and
 					// resolve only when a single best candidate exists.
 					var defIDs, allIDs []string
-					for _, c := range byNameSrc[leaf] {
+					for _, c := range nameIndex()[leaf] {
 						matched := false
 						for _, mod := range modulesForPythonFile(c.src) {
 							if mod == wantModule {
@@ -176,5 +205,5 @@ func (idx Index) ResolveDjangoGlobalWiringRefs(records []types.EntityRecord) int
 			}
 		}
 	}
-	return rewrites
+	return rewrites, nameIndexBuilds
 }
