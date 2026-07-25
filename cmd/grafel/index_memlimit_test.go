@@ -25,13 +25,18 @@ func TestResolveIndexMemLimit(t *testing.T) {
 		{"tiny host 1GiB -> unset (do not attempt to bound)", uint64(giB), memLimitUnset},
 		{"small host 3GiB -> unset", uint64(3 * giB), memLimitUnset},
 		{"just under the 4GiB attempt threshold -> unset", uint64(4*giB) - 1, memLimitUnset},
-		{"exactly at the 4GiB threshold -> safe floor 3GiB", uint64(4 * giB), 3 * giB},
-		{"just over the threshold -> safe floor 3GiB", uint64(4*giB) + 1, 3 * giB},
+		// NB: these two are the 0.75*available path, not the floor path. 0.75 of
+		// 4GiB is already 3GiB, so the two coincide here.
+		{"exactly at the 4GiB threshold -> 0.75*available = 3GiB", uint64(4 * giB), 3 * giB},
+		{"just over the threshold -> 0.75*available, still 3GiB", uint64(4*giB) + 1, 3 * giB},
 		// Regression pin for the REQUEST-CHANGES bug: the real value this host
-		// reports. The old max(2GiB, available/2) policy returned 2280MB here,
-		// BELOW the measured ~2.5-2.7GB live heap — i.e. the thrash regime was
-		// the DEFAULT outcome on the measurement machine, not an edge case.
-		{"real host 4560MB -> 3420MB (was 2280MB, below live heap)", uint64(4560 * miB), 3420 * miB},
+		// reports. The old max(2GiB, available/2) policy returned 2280MB here.
+		// That was justified at the time by a "~2.5-2.7GB live heap" reading
+		// which was really heap_inuse/heap_alloc — see measuredLiveHeapPeakMB
+		// for the corrected figure (1714MB), against which 2280MB is 1.33x
+		// live: tight rather than fatal. The 3/4 policy stands regardless; only
+		// the justification for it was wrong.
+		{"real host 4560MB -> 3420MB (was 2280MB, only 1.33x live)", uint64(4560 * miB), 3420 * miB},
 		{"6GiB -> 4.5GiB", uint64(6 * giB), 6 * giB * 3 / 4},
 		{"large host 64GiB -> 48GiB (non-binding, as intended)", uint64(64 * giB), 48 * giB},
 	}
@@ -53,13 +58,18 @@ func TestResolveIndexMemLimit(t *testing.T) {
 // GC CPU. madvdontneed=1 COMPOUNDS it (freed pages go back to the OS and are
 // immediately re-faulted), and the tree-sitter CGo arenas are invisible to
 // GOMEMLIMIT, so the runtime GCs toward a target that non-Go memory
-// guarantees it can never reach. Measured: 1200MiB against a ~2.7GB live heap
-// ran >4x slower (>16 min vs 235 s) and never completed.
+// guarantees it can never reach. Measured: 1200MiB against a 1714MB live heap
+// (0.70x live — see measuredLiveHeapPeakMB) ran >4x slower (>16 min vs 235 s)
+// and never completed.
 //
 // So the trade is asymmetric: a too-low limit costs unbounded, non-terminating
 // time; no limit at all costs a bounded +823MB. The invariant therefore is
-// EITHER unset OR >= 3GiB — never a value in between. The previous
-// ">= 2GiB" form of this test passed on the harmful 2280MB and pinned the bug.
+// EITHER unset OR >= the safe floor — never a value in between.
+//
+// This test restates the implementation constant on purpose: its subject is
+// the "never in between" SHAPE, not the value. The value has to be pinned
+// against the measured hazard instead — an earlier form of this test asserted
+// ">= 2GiB" while the harmful value was 2280MB, so it passed on the bug.
 func TestResolveIndexMemLimitSafeFloorInvariant(t *testing.T) {
 	for avail := uint64(0); avail <= uint64(96*giB); avail += uint64(64 * miB) {
 		got := resolveIndexMemLimit(avail)
@@ -168,8 +178,14 @@ func TestGCThrashWarning(t *testing.T) {
 			if (got != "") != tc.wantWarn {
 				t.Errorf("gcThrashWarning(%d, %v) = %q, wantWarn=%v", tc.limit, tc.fraction, got, tc.wantWarn)
 			}
-			if tc.wantWarn && !strings.Contains(got, "GRAFEL_INDEX_MEMLIMIT") {
-				t.Errorf("warning should name the escape hatch, got %q", got)
+			if tc.wantWarn {
+				// Both knobs, because either can be the cause — and the
+				// GC-percent one is the likelier since the GOGC cap landed.
+				for _, knob := range []string{"GRAFEL_INDEX_GOGC", "GRAFEL_INDEX_MEMLIMIT"} {
+					if !strings.Contains(got, knob) {
+						t.Errorf("warning should name the %s escape hatch, got %q", knob, got)
+					}
+				}
 			}
 		})
 	}

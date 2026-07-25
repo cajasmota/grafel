@@ -34,6 +34,14 @@ func main() {
 		// runIndexInternal is also invoked in-process by the package's tests.
 		// Never fatal.
 		applyIndexMemoryLimit()
+		// Bound GC PACING as well (#5954). The soft memory limit above is an
+		// absolute target and is therefore floored well clear of the live heap;
+		// GOGC is relative (next_gc = live * (1+GOGC/100)) and so does the
+		// actual RSS trimming without any risk of the unsatisfiable-target
+		// death spiral. os.Args[1] is passed explicitly so the "background
+		// only, never interactive" rule is a property of the policy function
+		// and not of this call site. Never fatal.
+		applyIndexGCPercent(os.Args[1], os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
 		os.Exit(runIndexInternal(os.Args[2:]))
 	}
 	// Hidden group-level algorithm harness (#5349 A1 / epic #5350). Assembles

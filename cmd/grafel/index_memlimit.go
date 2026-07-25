@@ -212,6 +212,14 @@ const gcThrashCPUThreshold = 0.30
 // When no limit was applied (limit == math.MaxInt64, the runtime default) we
 // stay quiet: high GC CPU then has nothing to do with our tuning and pointing
 // at GRAFEL_INDEX_MEMLIMIT would send a support case down the wrong path.
+//
+// The advice names BOTH knobs, and names the GC-percent one first, because
+// since the GOGC cap landed that is the likelier cause. The soft limit is
+// unreachable on every host that gets one at all (the adaptive policy returns
+// at least 0.75*4GiB = 3GiB, always above the safe floor), whereas the GOGC
+// cap binds on every background index by design and roughly doubles the number
+// of mark cycles. Telling an operator to raise GRAFEL_INDEX_MEMLIMIT when
+// GRAFEL_INDEX_GOGC is what is pacing the collector would waste their time.
 func gcThrashWarning(limit int64, gcFraction float64) string {
 	if limit <= 0 || limit == math.MaxInt64 {
 		return ""
@@ -221,9 +229,11 @@ func gcThrashWarning(limit int64, gcFraction float64) string {
 	}
 	return fmt.Sprintf(
 		"index-internal: WARNING gc_cpu_fraction=%.2f exceeded %.2f with go_soft_memory_limit_mb=%d (#5954). "+
-			"The limit may be below this repo's live heap, which makes the runtime GC continuously. "+
-			"Set GRAFEL_INDEX_MEMLIMIT to a larger value, or to 'off' to disable the limit entirely.",
-		gcFraction, gcThrashCPUThreshold, limit/(1024*1024))
+			"Most likely the GC-percent cap is pacing the collector too aggressively for this repo: "+
+			"raise GRAFEL_INDEX_GOGC (default %d), or set it to 'off'. "+
+			"Less likely, the soft memory limit is below this repo's live heap, which makes the runtime "+
+			"GC continuously: set GRAFEL_INDEX_MEMLIMIT to a larger value, or to 'off' to disable it entirely.",
+		gcFraction, gcThrashCPUThreshold, limit/(1024*1024), indexGCPercentDefault)
 }
 
 // reportGCThrash samples GC CPU once, after indexing has finished, and logs a
