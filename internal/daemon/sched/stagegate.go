@@ -23,12 +23,18 @@ import (
 // co-resident copies of the same graph (engine 1816MB + group-algo 2368MB) even
 // at instants when the index child was at 0MB.
 //
-// The gate is a single daemon-wide token with two classes of holder:
+// The gate is a single daemon-wide token with three classes of holder:
 //
-//   - SHARED  — index jobs. Their occupancy is already tracked exactly by
-//     s.inflight, so the gate reads that rather than duplicating a counter.
+//   - SHARED  — scheduler-dispatched index jobs. Their occupancy is already
+//     tracked exactly by s.inflight, so the gate reads that rather than
+//     duplicating a counter.
 //   - EXCLUSIVE — the link pass and the group-algo pass, one at a time,
 //     and never while any index job is executing.
+//   - BARGE — foreground work that runs OUTSIDE the scheduler entirely (the
+//     rebuild RPC's index batch and its own cross-repo link pass). It
+//     registers unconditionally and never waits; exclusive stages defer to it.
+//     See stagegate_barge.go — including why s.inflight alone left the single
+//     largest process on the machine invisible to this gate.
 //
 // Neither side ever BLOCKS on the other, so the gate cannot deadlock:
 //
@@ -39,6 +45,21 @@ import (
 //
 // Starvation (see noteStageDeferLocked) is bounded by escalating a long-running
 // deferral into a DRAIN BARRIER rather than by letting the stage run anyway.
+//
+// THE INVARIANT, stated truthfully. At most one heavy write-side stage is
+// resident at a time, with exactly two documented exceptions, both of which are
+// single hand-offs rather than steady states:
+//
+//  1. after a FORFEIT — reapStageLocked clears a wedged exclusive holder
+//     without cancelling it (it has no handle that could), so a successor may
+//     become co-resident with it; and
+//  2. the ONE exclusive stage already mid-flight when foreground work BARGES.
+//     The barge neither cancels it (that would discard minutes of unresumable
+//     work) nor waits for it (the foreground path must never pay latency), so
+//     that single pair overlaps. Every exclusive stage that STARTS after the
+//     barge defers until it lifts.
+//
+// Both exceptions are loud: `stage_gate_forfeit` (ERROR) and `stage_gate_barge`.
 
 const (
 	// stageGateRetryDefault is how long a deferred heavy stage waits before
@@ -126,6 +147,10 @@ func (s *Scheduler) stopped() bool {
 // holder's token. Everything else in the gate holds unconditionally; this is the
 // one documented exception, and it is loud (ERROR + stage_gate_forfeit event).
 func (s *Scheduler) reapStageLocked(now time.Time) {
+	// Foreground barges expire on their OWN, much longer bound — never on
+	// StageGateHoldMax. See stageGateBargeMaxDefault for why the two liveness
+	// guarantees differ and why sharing the bound would be actively harmful.
+	s.reapBargeLocked(now)
 	if s.stageHolder != "" && s.cfg.StageGateHoldMax > 0 &&
 		now.Sub(s.stageHeldSince) > s.cfg.StageGateHoldMax {
 		held := now.Sub(s.stageHeldSince).Truncate(time.Second)
@@ -163,14 +188,20 @@ func (s *Scheduler) reapStageLocked(now time.Time) {
 // only caller routed through this gate is Index{Async:true} — background,
 // already-debounced, fire-and-forget reindexing.
 //
-// SCOPE LIMIT — the rebuild link pass is NOT covered. repolock is a per-repo
-// INDEX mutex (internal/repolock: foreground rebuild vs. scheduler reindex of
-// the same repo path); it says nothing about heavy GROUP stages. The rebuild RPC
-// runs its OWN in-process cross-repo link pass (cmd/grafel/daemon.go linksFn →
-// runLinksHookWithCtx) entirely outside the scheduler, so a multi-minute rebuild
-// link pass can still be co-resident with a scheduler group-algo pass. That
-// hazard predates this gate and is user-initiated, so it is not a regression —
-// but do not read this gate as covering it.
+// The foreground rebuild is covered from the OTHER side, by the BARGE (#5954
+// follow-up, stagegate_barge.go): daemonRebuildFuncCore registers a barge for
+// its whole duration — its direct index batch AND its own in-process cross-repo
+// link pass, the SCOPE LIMIT this comment previously flagged as uncovered — so
+// background exclusive stages defer around it. The rebuild still never waits and
+// is still never held by THIS function.
+//
+// SCOPE LIMIT — a barge does not hold index ADMISSION. Scheduler-dispatched
+// index jobs may still be dispatched during a foreground rebuild; they remain
+// bounded by the RSS admission ledger, and same-repo collisions by repolock's
+// foreground claim. Holding admission for the 10–12 minutes of a rebuild would
+// starve the watcher queue for the whole window, which the measurement does not
+// ask for. Also uncovered: the synchronous `grafel index` RPC (daemonIndexFunc),
+// which is single-repo and an order of magnitude smaller than a group rebuild.
 func (s *Scheduler) allowIndexAdmitLocked(now time.Time) bool {
 	if s.cfg.StageGateDisabled {
 		return true
@@ -206,6 +237,12 @@ func (s *Scheduler) tryAcquireStageLocked(name string, now time.Time) bool {
 		return true
 	}
 	s.reapStageLocked(now)
+	// #5954 barge: foreground work (a rebuild's index batch and its own link
+	// pass) runs entirely outside the scheduler, so s.inflight below cannot see
+	// it. A registered barge holds background stages off for its duration.
+	if s.bargeHeldLocked() {
+		return false
+	}
 	if s.stageHolder != "" {
 		return false
 	}
@@ -255,7 +292,17 @@ func (s *Scheduler) noteStageDeferLocked(name string, now time.Time) time.Durati
 		s.logger.Info("sched: deferring heavy write stage to avoid a co-resident graph copy",
 			"stage", name, "reason", s.stageBlockReasonLocked(), "retry_in", s.cfg.StageGateRetry)
 	}
-	if waited := now.Sub(first); waited >= s.cfg.StageGateMaxDefer && s.stageDrainFor == "" {
+	// A deferral caused by a FOREGROUND BARGE must not escalate to a drain
+	// barrier. The barrier's whole mechanism is "stop admitting index jobs so
+	// the in-flight batch drains" — against a barge that is inert, because the
+	// blocker is a rebuild the scheduler does not dispatch and draining
+	// s.inflight cannot end it. Escalating anyway would hold scheduler index
+	// dispatch and emit a starvation WARN every StageGateDrainMax for the whole
+	// 10–12 minutes of a rebuild, buying nothing. The deferral CLOCK keeps
+	// running, so if index churn is what blocks the stage once the barge lifts,
+	// the barrier is raised immediately on the next retry — the starvation
+	// budget is preserved, only the useless escalation is suppressed.
+	if waited := now.Sub(first); waited >= s.cfg.StageGateMaxDefer && s.stageDrainFor == "" && !s.bargeHeldLocked() {
 		s.stageDrainFor = name
 		s.stageDrainUntil = now.Add(s.cfg.StageGateDrainMax)
 		s.logEventLocked("stage_gate_drain", "",
@@ -270,6 +317,8 @@ func (s *Scheduler) noteStageDeferLocked(name string, now time.Time) time.Durati
 // MUST be called with s.mu held.
 func (s *Scheduler) stageBlockReasonLocked() string {
 	switch {
+	case s.bargeHeldLocked():
+		return "foreground " + strings.Join(s.bargeNamesLocked(), ",") + " is barging"
 	case s.stageHolder != "":
 		return "stage " + s.stageHolder + " holds the token"
 	case len(s.inflight) > 0:

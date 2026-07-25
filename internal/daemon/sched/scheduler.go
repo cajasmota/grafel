@@ -329,6 +329,17 @@ type Config struct {
 	// while jobs are still executing. <=0 defaults to stageGateDrainMaxDefault
 	// (2m). Env: GRAFEL_STAGE_GATE_DRAIN_MAX.
 	StageGateDrainMax time.Duration
+
+	// StageGateBargeMax bounds a FOREGROUND BARGE hold (see stagegate_barge.go).
+	// Deliberately NOT shared with StageGateHoldMax: a rebuild runs 10–12
+	// minutes, right at that 15m bound, so a barge governed by it would forfeit
+	// itself mid-rebuild on exactly the longest runs and silently reintroduce
+	// the overlap it exists to remove. This is a leak backstop with an
+	// hour-scale default; a `stage_gate_barge_expired` event means a foreground
+	// goroutine never unwound its release — investigate rather than raise it.
+	// <=0 defaults to stageGateBargeMaxDefault (60m).
+	// Env: GRAFEL_STAGE_GATE_BARGE_MAX.
+	StageGateBargeMax time.Duration
 }
 
 // deadManTimeout is how long the scheduler waits with a non-empty pending
@@ -530,6 +541,17 @@ type Scheduler struct {
 	// index dispatch can never be blocked indefinitely.
 	stageDrainFor   string
 	stageDrainUntil time.Time
+	// stageBarge holds the live FOREGROUND registrations (see
+	// stagegate_barge.go), keyed by a monotonic id from stageBargeSeq. A
+	// foreground rebuild indexes OUTSIDE the scheduler — it never populates
+	// s.inflight — so without this the gate reads an idle machine for the whole
+	// 10–12 minutes of a `grafel reset` and lets a background group-algo pass go
+	// co-resident with the largest process on the box. Separate from stageHolder
+	// because a barge must coexist with an already-running background stage
+	// rather than wait for it, and because it carries its own (much longer)
+	// expiry bound. Guarded by mu.
+	stageBarge    map[int64]bargeHold
+	stageBargeSeq int64
 	// stageAdmitBlocked debounces the admit-side "held by a heavy stage" log to
 	// one line per blocked period (admitLoop retries once a second).
 	stageAdmitBlocked bool
@@ -667,6 +689,9 @@ func New(cfg Config) *Scheduler {
 	if cfg.StageGateDrainMax <= 0 {
 		cfg.StageGateDrainMax = stageGateDurationFromEnv("GRAFEL_STAGE_GATE_DRAIN_MAX", stageGateDrainMaxDefault)
 	}
+	if cfg.StageGateBargeMax <= 0 {
+		cfg.StageGateBargeMax = stageGateDurationFromEnv("GRAFEL_STAGE_GATE_BARGE_MAX", stageGateBargeMaxDefault)
+	}
 	algoCap := resolveAlgoCap(cfg.AlgoCap)
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	return &Scheduler{
@@ -693,6 +718,7 @@ func New(cfg Config) *Scheduler {
 		indexCancel:       map[string]context.CancelFunc{},
 		indexedRepos:      map[string]repoStats{},
 		stageDeferSince:   map[string]time.Time{},
+		stageBarge:        map[int64]bargeHold{},
 		groupAlgoDeferred: map[string]bool{},
 		shutdownCtx:       shutdownCtx,
 		shutdownCancel:    shutdownCancel,
@@ -702,6 +728,14 @@ func New(cfg Config) *Scheduler {
 // Start spins up the dedup goroutine + admission loop + worker pool +
 // dead-man switch. Stop reverses it.
 func (s *Scheduler) Start() {
+	// #5954: publish the foreground-barge bridge. cmd/grafel's rebuild path
+	// runs in the same process but has no scheduler handle (daemon.Config
+	// carries Rebuild INWARD to where the scheduler is built), so it reaches
+	// the gate through the package-level sched.BargeForeground. Registering
+	// here rather than at a call site in the wiring layer means the bridge can
+	// never be silently left unwired — the failure mode this whole change
+	// exists to fix. Withdrawn (identity-checked) in Stop.
+	publishBargeBridge(s)
 	s.wg.Add(1)
 	go s.dedupLoop()
 	s.wg.Add(1)
@@ -731,6 +765,11 @@ func (s *Scheduler) Start() {
 // so a second call returns immediately after the first call's wg.Wait()
 // completes. This is the fix for the double-Stop panic described in issue #2494.
 func (s *Scheduler) Stop() {
+	// #5954: withdraw the foreground-barge bridge before draining, so a rebuild
+	// racing shutdown gets an inert no-op rather than a hold on a scheduler
+	// that is going away. Identity-checked inside, so a newer scheduler that
+	// already published (test suites) is not unpublished by this one.
+	withdrawBargeBridge(s)
 	s.stopOnce.Do(func() {
 		// Cancel the shutdown context first so any in-flight IndexFn /
 		// Incremental / Clone call that spawned a child process via
@@ -761,6 +800,11 @@ func (s *Scheduler) Stop() {
 	s.stageDeferSince = map[string]time.Time{}
 	s.stageDrainFor = ""
 	s.stageDrainUntil = time.Time{}
+	// Live foreground barges are dropped too: their only effect is to make
+	// background stages defer, and there are no background stages left to
+	// defer. A rebuild goroutine that outlives Stop still holds an id-keyed
+	// release closure, but releasing an absent id is a no-op by construction.
+	s.stageBarge = map[int64]bargeHold{}
 }
 
 // Enqueue requests a (debounced+deduped) reindex of repoPath. The current
@@ -2169,6 +2213,21 @@ type Snapshot struct {
 	// when its in-flight run completes — these are the requests that, before
 	// coalescing, would have stacked into concurrent same-repo reindex jobs.
 	CoalescedDirty []string
+
+	// --- heavy write-stage gate (#5954) telemetry. ---
+	// The gate's decisions previously existed only as RecentLog entries, so an
+	// operator (or a peak-RSS measurement run) could not tell from outside
+	// whether the gate had fired at all. These three fields make the CURRENT
+	// state directly observable via `grafel status` / the daemon status RPC.
+	//
+	// StageHolder names the exclusive stage holding the token ("links:<group>" /
+	// "group-algo:<group>"), or "". StageDeferred lists stages currently turned
+	// away by the gate. Barging lists live foreground holds ("rebuild:<group>")
+	// — non-empty means a rebuild is registered and background heavy stages are
+	// yielding to it. All sorted for deterministic output.
+	StageHolder   string   `json:"stage_holder,omitempty"`
+	StageDeferred []string `json:"stage_deferred,omitempty"`
+	Barging       []string `json:"barging,omitempty"`
 }
 
 // InFlightJob is one currently-running index, with its reserved MB.
@@ -2236,6 +2295,18 @@ func (s *Scheduler) Snapshot() Snapshot {
 	if n := len(s.recentLog); n > 0 {
 		out.RecentLog = append(out.RecentLog, s.recentLog...)
 	}
+	// #5954 gate telemetry. Reported verbatim, WITHOUT reaping expired holders
+	// first: Snapshot is a read-only observation surface and must not have
+	// scheduling side effects. A holder past its bound therefore stays visible
+	// here until a real gate decision reaps it — which is the honest reading,
+	// since it genuinely is still resident.
+	out.StageHolder = s.stageHolder
+	for name := range s.stageDeferSince {
+		out.StageDeferred = append(out.StageDeferred, name)
+	}
+	sort.Strings(out.StageDeferred)
+	out.Barging = s.bargeNamesLocked()
+	sort.Strings(out.Barging)
 	return out
 }
 
