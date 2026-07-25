@@ -25,6 +25,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
+	"github.com/cajasmota/grafel/internal/memtrace"
 )
 
 func runGroupAlgo(args []string) int {
@@ -57,6 +58,22 @@ func runGroupAlgo(args []string) int {
 	// Windows. The GOMAXPROCS cap is applied by the parent (env, default 2);
 	// nice is best-effort self-renice so it holds however the child is spawned.
 	sched.NiceSelf()
+
+	// #5954 / #5956 memtrace: opt-in phase-tagged memstats sampler + per-phase
+	// heap profiles, gated entirely behind GRAFEL_MEMTRACE_DIR (which this child
+	// inherits, since its env derives from the daemon's os.Environ()). Start
+	// returns nil — no goroutine, no file — when the var is unset, so this is
+	// zero overhead by default.
+	//
+	// WHY THIS EXISTS. Whole-machine measurement put the memory peak entirely
+	// POST-index: at the peak instant the index child is at 0MB while this
+	// process is one of the two largest on the box, and it reported NOTHING.
+	// The phase comes from groupalgo.CurrentPhase, stamped by the pass itself,
+	// mirroring how the index child feeds memtrace from progress.Tracker's
+	// CurrentPhase — one source of phase state, so the trace cannot drift.
+	// Best-effort: no memtrace failure can affect the result or the exit code.
+	memSampler := memtrace.Start("group-algo", groupalgo.CurrentPhase, memtraceLogf)
+	defer memSampler.Stop()
 
 	// --diff (#5349 A4): run the differential validator (per-repo-old vs
 	// group-new) and emit a machine-readable JSON report on stdout. It writes
@@ -113,6 +130,7 @@ func runGroupAlgo(args []string) int {
 	}
 
 	if write {
+		groupalgo.SetPhase(groupalgo.PhaseWritingOverlay)
 		if werr := groupalgo.WriteOverlayFromResult(res); werr != nil {
 			fmt.Fprintf(os.Stderr, "grafel group-algo: write overlay: %v\n", werr)
 			return 1

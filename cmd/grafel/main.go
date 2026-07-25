@@ -49,6 +49,20 @@ func main() {
 	// at group scope, printing stats. --dry-run writes no files. Not part of the
 	// public command surface; intercepted before cobra dispatch.
 	if len(os.Args) >= 2 && os.Args[1] == "group-algo" {
+		// Bound GC PACING for this child too (#5954). Whole-machine measurement
+		// after the index child was optimised showed the peak instant had moved
+		// entirely post-index: the index child is at 0MB there while this
+		// process is one of the two largest on the machine, running at the
+		// GOGC=100 default and otherwise untuned. os.Args[1] is passed
+		// explicitly so the "background only, never interactive" rule stays a
+		// property of the policy function rather than of this call site.
+		//
+		// Deliberately NO applyIndexMemoryLimit here. GOMEMLIMIT is an absolute
+		// soft target and this child's live heap is not yet measured; an
+		// absolute target below live heap is the documented >4x death spiral
+		// (see index_memlimit.go). GOGC is relative — live * (1+GOGC/100) — and
+		// so cannot enter that regime by construction. Never fatal.
+		applyIndexGCPercent(os.Args[1], os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
 		os.Exit(runGroupAlgo(os.Args[2:]))
 	}
 	// Release acceptance ladder (#5224). Intercepted before cobra dispatch

@@ -9,7 +9,12 @@ import (
 )
 
 // indexGCPercentEnv is the operator escape hatch for the GC pacing the
-// `index-internal` child applies to itself. It accepts a positive integer
+// BACKGROUND children apply to themselves — both of them: `index-internal` and
+// `group-algo` (see backgroundGCPercentCommands). Deliberately ONE knob and not
+// one per child: the policy is a single product decision ("nobody is waiting on
+// a background batch child, so trade GC CPU for RSS there"), the default is the
+// same value for both, and a second env var would only create a way for the two
+// to drift apart in a support case. It accepts a positive integer
 // percentage, optionally with a trailing "%" ("50", "35", "60%"). The values
 // "0", "off", "disabled", "none" and "false" mean "apply no cap at all" (leave
 // whatever the Go runtime already has). A malformed value is ignored (logged,
@@ -24,12 +29,36 @@ const indexGCPercentEnv = "GRAFEL_INDEX_GOGC"
 const gcPercentUnset = 0
 
 // backgroundIndexCommand is the argv[1] of the hidden subprocess-indexer
-// entrypoint the daemon fork-execs. It is the ONLY command whose GC pacing we
-// cap: background indexing is a batch job nobody is watching, so trading GC
-// CPU for RSS is free there. Interactive/foreground work stays uncapped by
-// standing product decision — a user waiting on a command should not pay GC
-// time to save memory they are not short of.
+// entrypoint the daemon fork-execs.
 const backgroundIndexCommand = "index-internal"
+
+// backgroundGroupAlgoCommand is the argv[1] of the hidden group-scope analytics
+// entrypoint the daemon's scheduler fork-execs (RunSubprocessGroupAlgo).
+const backgroundGroupAlgoCommand = "group-algo"
+
+// backgroundGCPercentCommands is the ALLOW-LIST of commands whose GC pacing we
+// cap. Both members are batch children the daemon fork-execs with no human
+// waiting on them, so trading GC CPU for RSS is free there.
+//
+// It became a set rather than a single constant when whole-machine measurement
+// showed the peak instant had moved entirely post-index (#5954): at that
+// instant the index child is at 0MB and `group-algo` is one of the two largest
+// processes on the box, at GOGC=100 and completely untuned.
+//
+// An ALLOW-LIST, not a deny-list, is the load-bearing choice. Interactive /
+// foreground work stays uncapped by standing product decision — a user waiting
+// on a command should not pay GC time to save memory they are not short of —
+// and a deny-list would silently cap every future command by default.
+var backgroundGCPercentCommands = map[string]bool{
+	backgroundIndexCommand:     true,
+	backgroundGroupAlgoCommand: true,
+}
+
+// isBackgroundGCPercentCommand reports whether argv[1] names a background batch
+// child. Everything else — including the empty command — is interactive.
+func isBackgroundGCPercentCommand(command string) bool {
+	return backgroundGCPercentCommands[command]
+}
 
 // indexGCPercentDefault is the GC pacing applied to the background index
 // child: next_gc = live * 1.5 instead of the default live * 2.
@@ -92,16 +121,16 @@ func parseIndexGCPercentEnv(raw string) (percent int, decided bool) {
 //
 // Precedence, highest first:
 //
-//  1. command is not the background index child -> never capped. This gate is
-//     first on purpose: GRAFEL_INDEX_GOGC tunes the background cap, it does
-//     not create one on the interactive path.
+//  1. command is not one of the background batch children -> never capped.
+//     This gate is first on purpose: GRAFEL_INDEX_GOGC tunes the background
+//     cap, it does not create one on the interactive path.
 //  2. GRAFEL_INDEX_GOGC, when well-formed -> the operator's explicit choice.
 //  3. GOGC set explicitly in the environment -> leave the runtime alone. The
 //     runtime has already applied it; overriding would silently discard an
 //     instruction the operator gave in the most standard way there is.
 //  4. otherwise -> indexGCPercentDefault.
 func indexGCPercentDecision(command, rawEnv, rawGOGC string) (percent int, source string) {
-	if command != backgroundIndexCommand {
+	if !isBackgroundGCPercentCommand(command) {
 		return gcPercentUnset, "interactive/foreground path (" + command + ") — GC pacing is not capped"
 	}
 	if n, decided := parseIndexGCPercentEnv(rawEnv); decided {
@@ -128,13 +157,29 @@ func indexGCPercentDecision(command, rawEnv, rawGOGC string) (percent int, sourc
 // exits, every earlier phase also allocates heavily (extracting_ast peaks at
 // ~1.9GB RSS), and a tighter GOGC in those phases is just as welcome. There is
 // no "after" to restore to, so there is no restore path.
+// GROUP-ALGO GETS GOGC AND DELIBERATELY NOT GOMEMLIMIT. The group-algo child's
+// live heap is, as of this change, UNMEASURED (that is what the memtrace
+// instrumentation added alongside this is for). GOMEMLIMIT is an ABSOLUTE soft
+// target: set below a workload's live heap it is unsatisfiable and the runtime
+// answers with back-to-back mark cycles forever — the >4x death spiral this
+// repo measured and documented in index_memlimit.go. Picking an absolute target
+// for a heap nobody has measured is exactly how you land in that regime. GOGC
+// is RELATIVE — next_gc = live * (1 + GOGC/100) — so it is defined in terms of
+// whatever the live heap turns out to be and cannot fall below it at any value,
+// on any group. The death spiral is unreachable by construction. That is the
+// whole reason group-algo may be paced now and memory-limited only once it has
+// been measured.
 func applyIndexGCPercent(command, rawEnv, rawGOGC string) {
 	percent, source := indexGCPercentDecision(command, rawEnv, rawGOGC)
+	tag := command
+	if tag == "" {
+		tag = "grafel"
+	}
 	if percent == gcPercentUnset {
-		fmt.Fprintf(os.Stderr, "index-internal: GC percent not capped (#5954) source=%s\n", source)
+		fmt.Fprintf(os.Stderr, "%s: GC percent not capped (#5954) source=%s\n", tag, source)
 		return
 	}
 	prev := debug.SetGCPercent(percent)
-	fmt.Fprintf(os.Stderr, "index-internal: applied GC percent (#5954) gogc=%d previous=%d source=%s\n",
-		percent, prev, source)
+	fmt.Fprintf(os.Stderr, "%s: applied GC percent (#5954) gogc=%d previous=%d source=%s\n",
+		tag, percent, prev, source)
 }

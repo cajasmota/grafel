@@ -225,6 +225,7 @@ func AssembleGroupGraph(group string) (entities []graph.Entity, rels []graph.Rel
 // Results is an empty AlgorithmResults (graph.RunAlgorithms guards len==0), so
 // callers get a safe no-op rather than a panic.
 func RunGroupAlgorithms(group string) (*GroupAlgoResult, error) {
+	SetPhase(PhaseAssembling)
 	entities, rels, entityRepo, srcMtimes, err := AssembleGroupGraph(group)
 	if err != nil {
 		return nil, err
@@ -236,6 +237,16 @@ func RunGroupAlgorithms(group string) (*GroupAlgoResult, error) {
 		numRepos = len(cfg.Repos)
 	}
 
+	// Hash BEFORE running the algorithms, matching RunGroupAlgorithmsIncremental.
+	// inputHash is a pure function of (entities, rels) and has no dependency on
+	// res, so the order is free — and one true phase order across both
+	// entrypoints is worth more than a comment explaining two. The phase labels
+	// are the operator-facing contract for reading a memtrace, in a workstream
+	// whose premise is that a misread memory metric already cost a day.
+	SetPhase(PhaseHashing)
+	inputHash := graph.CommunityInputHash(entities, rels)
+
+	SetPhase(PhaseRunningAlgorithms)
 	res := graph.RunAlgorithms(entities, rels)
 
 	return &GroupAlgoResult{
@@ -246,7 +257,7 @@ func RunGroupAlgorithms(group string) (*GroupAlgoResult, error) {
 		NumEntities:  len(entities),
 		NumRels:      len(rels),
 		NumRepos:     numRepos,
-		InputHash:    graph.CommunityInputHash(entities, rels),
+		InputHash:    inputHash,
 	}, nil
 }
 
@@ -277,6 +288,11 @@ func RunGroupAlgorithms(group string) (*GroupAlgoResult, error) {
 // the whole union and a partial pass could not reproduce the exact same labels
 // a full pass assigns — that would break strict parity.)
 func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
+	// Phase stamps (#5954). The group-algo child is one of the two largest
+	// processes on the machine at the whole-machine memory peak and had zero
+	// instrumentation; memtrace polls CurrentPhase on a ticker so each memstats
+	// sample and each per-phase heap profile is attributable to a stage.
+	SetPhase(PhaseAssembling)
 	entities, rels, entityRepo, srcMtimes, err := AssembleGroupGraph(group)
 	if err != nil {
 		return nil, err
@@ -288,6 +304,7 @@ func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
 		numRepos = len(cfg.Repos)
 	}
 
+	SetPhase(PhaseHashing)
 	inputHash := graph.CommunityInputHash(entities, rels)
 
 	// Skip-when-unaffected: a prior overlay whose recorded input hash matches the
@@ -335,6 +352,7 @@ func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
 	}
 
 	// Full deterministic recompute (input changed, or no usable prior overlay).
+	SetPhase(PhaseRunningAlgorithms)
 	res := graph.RunAlgorithms(entities, rels)
 	// Record BEFORE returning (and thus before the caller's overlay write), so a
 	// persist failure cannot cause a re-run for this same version.
