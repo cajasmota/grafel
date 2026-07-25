@@ -2,6 +2,7 @@ package sched
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -74,6 +75,15 @@ func TestCancelGroup_SupersededLinkPassCancelledThenNoneSurvives(t *testing.T) {
 	s := New(Config{
 		Workers:      1,
 		LinkDebounce: time.Millisecond,
+		// #5954: this test asserts the cancel-token IDENTITY machinery, whose
+		// whole premise is two link passes for one group running CONCURRENTLY.
+		// The heavy write-stage gate now makes that impossible in production
+		// (a second pass defers until the first releases the token), so the
+		// gate is switched off here to keep exercising the identity logic —
+		// which must remain correct as the defense-in-depth layer. The gated
+		// behaviour (a DEFERRED link pass is still reachable by CancelGroup) is
+		// covered by TestCancelGroup_DeferredLinkPassNeverRuns below.
+		StageGateDisabled: true,
 		Links: func(ctx context.Context, _ string) error {
 			n := int(atomic.AddInt32(&callN, 1) - 1)
 			if n > 1 {
@@ -113,6 +123,69 @@ func TestCancelGroup_SupersededLinkPassCancelledThenNoneSurvives(t *testing.T) {
 	}
 }
 
+// TestCancelGroup_DeferredLinkPassNeverRuns is the gate-ON counterpart of the
+// supersede test (#5954). With the heavy write-stage gate active, a second
+// group's link pass does not run concurrently — it DEFERS, staying armed under
+// linkTimers[group]. CancelGroup must still reach it, so a deleted group's
+// deferred pass never runs after the delete.
+func TestCancelGroup_DeferredLinkPassNeverRuns(t *testing.T) {
+	startedA := make(chan struct{})
+	releaseA := make(chan struct{})
+	var ranB atomic.Int32
+
+	s := New(Config{
+		Workers:        1,
+		LinkDebounce:   time.Millisecond,
+		StageGateRetry: 5 * time.Millisecond,
+		Links: func(_ context.Context, group string) error {
+			if group == "gB" {
+				ranB.Add(1)
+				return nil
+			}
+			close(startedA)
+			<-releaseA
+			return nil
+		},
+		MemReleaseDisabled: true,
+	})
+	var releaseOnce sync.Once
+	releaseAFn := func() { releaseOnce.Do(func() { close(releaseA) }) }
+	s.Start()
+	defer func() { releaseAFn(); s.Stop() }()
+
+	s.scheduleLinks("gA")
+	<-startedA
+
+	// gB's pass fires while gA holds the token → it must defer, not run.
+	s.scheduleLinks("gB")
+	waitFor(t, 2*time.Second, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		_, deferred := s.stageDeferSince["links:gB"]
+		return deferred
+	})
+	if n := ranB.Load(); n != 0 {
+		t.Fatalf("gB's link pass ran %d time(s) while gA held the stage token", n)
+	}
+
+	// Deleting gB must drop the deferred pass entirely.
+	s.CancelGroup("gB")
+
+	s.mu.Lock()
+	_, stillArmed := s.linkTimers["gB"]
+	_, stillDeferred := s.stageDeferSince["links:gB"]
+	s.mu.Unlock()
+	if stillArmed || stillDeferred {
+		t.Fatalf("CancelGroup must drop a DEFERRED link pass (armed=%v deferred=%v)", stillArmed, stillDeferred)
+	}
+
+	releaseAFn()
+	time.Sleep(50 * time.Millisecond)
+	if n := ranB.Load(); n != 0 {
+		t.Fatalf("a cancelled, deferred link pass ran %d time(s) after the group was deleted", n)
+	}
+}
+
 // TestCancelGroup_ScopedToGroup verifies cancellation is scoped: cancelling
 // group g1 does NOT cancel a different group g2's in-flight link pass.
 func TestCancelGroup_ScopedToGroup(t *testing.T) {
@@ -128,6 +201,11 @@ func TestCancelGroup_ScopedToGroup(t *testing.T) {
 	s := New(Config{
 		Workers:      1,
 		LinkDebounce: time.Millisecond,
+		// #5954: cancellation SCOPING is asserted by having two groups' link
+		// passes in flight simultaneously — which the heavy write-stage gate now
+		// serialises. Disable the gate so the scoping assertion (cancelling g1
+		// must not touch g2) keeps testing what it was written to test.
+		StageGateDisabled: true,
 		Links: func(ctx context.Context, group string) error {
 			close(started[group])
 			select {
