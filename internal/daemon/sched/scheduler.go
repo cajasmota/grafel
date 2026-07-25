@@ -285,6 +285,50 @@ type Config struct {
 	// heap to the OS. nil defaults to runtime/debug.FreeOSMemory. Overridable
 	// so tests can assert the trigger fires without paying for a real STW GC.
 	FreeOSMemory func()
+
+	// StageGateDisabled turns off the daemon-wide heavy write-stage gate
+	// (#5954), restoring the legacy behaviour where the index batch, the
+	// cross-repo link pass and the group-algo pass may run CONCURRENTLY. The
+	// gate is on by default: two co-resident copies of the same group union
+	// graph were the measured cause of the 4.4–5.3GB whole-machine peak. Kept
+	// as an escape hatch so the wall-clock cost of serialising is measurable
+	// against the pre-gate baseline. Env: GRAFEL_STAGE_GATE=0.
+	StageGateDisabled bool
+
+	// StageGateRetry is how long a DEFERRED heavy stage waits before re-testing
+	// the gate. <=0 defaults to stageGateRetryDefault (15s). Env:
+	// GRAFEL_STAGE_GATE_RETRY.
+	StageGateRetry time.Duration
+
+	// StageGateMaxDefer bounds how long an exclusive stage may be deferred by
+	// index activity before the gate raises a DRAIN BARRIER (stops admitting new
+	// index jobs so the in-flight batch clears and the starved stage can acquire
+	// without overlapping). This is the gate's own starvation guard — it
+	// replaces, rather than shares, GroupAlgoMaxWait, because gate deferral
+	// deliberately takes precedence over that max-wait. <=0 defaults to
+	// stageGateMaxDeferDefault (300s). Env: GRAFEL_STAGE_GATE_MAX_DEFER.
+	StageGateMaxDefer time.Duration
+
+	// StageGateHoldMax is the longest an exclusive stage may hold the token
+	// before the gate forfeits it and resumes index dispatch. The token is held
+	// across a subprocess spawn, so a crashed/wedged child must not wedge the
+	// daemon.
+	//
+	// This is the SCALE-SENSITIVE knob. It must exceed the duration of a
+	// LEGITIMATE group-algo pass on the deployment's largest group, or every
+	// pass is forfeited mid-flight and the gate silently degrades to no-gate on
+	// exactly the corpora it was built for. Watch for `stage_gate_forfeit` events
+	// and raise it if they appear. <=0 defaults to stageGateHoldMaxDefault (15m).
+	// Env: GRAFEL_STAGE_GATE_HOLD_MAX.
+	StageGateHoldMax time.Duration
+
+	// StageGateDrainMax bounds the drain barrier: how long index dispatch may be
+	// held while waiting for the in-flight batch to clear for a starved stage.
+	// The barrier only lapses once the batch has actually drained (see
+	// reapStageLocked), so this is the floor on that wait, not a hard cutoff
+	// while jobs are still executing. <=0 defaults to stageGateDrainMaxDefault
+	// (2m). Env: GRAFEL_STAGE_GATE_DRAIN_MAX.
+	StageGateDrainMax time.Duration
 }
 
 // deadManTimeout is how long the scheduler waits with a non-empty pending
@@ -468,6 +512,33 @@ type Scheduler struct {
 	// CURRENT idle period, so we release at most once until activity resumes
 	// (which resets it). Guarded by mu.
 	memReleased bool
+
+	// --- heavy write-stage gate (#5954). See stagegate.go. ---
+	// stageHolder names the exclusive stage currently holding the daemon-wide
+	// heavy write-stage token ("links:<group>" / "group-algo:<group>"), or "".
+	// The SHARED (index) side of the gate is not counted here: s.inflight
+	// already tracks it exactly.
+	stageHolder string
+	// stageHeldSince is when stageHolder acquired; drives StageGateHoldMax.
+	stageHeldSince time.Time
+	// stageDeferSince records, per stage name, when its CURRENT continuous
+	// deferral began. Cleared on acquire. Drives both the "deferred for N"
+	// observability and the StageGateMaxDefer starvation guard.
+	stageDeferSince map[string]time.Time
+	// stageDrainFor / stageDrainUntil are the DRAIN BARRIER: the starved stage
+	// that raised it, and the bounded deadline after which the barrier lapses so
+	// index dispatch can never be blocked indefinitely.
+	stageDrainFor   string
+	stageDrainUntil time.Time
+	// stageAdmitBlocked debounces the admit-side "held by a heavy stage" log to
+	// one line per blocked period (admitLoop retries once a second).
+	stageAdmitBlocked bool
+	// groupAlgoDeferred marks groups whose group-algo pass is currently DEFERRED
+	// by the gate. While set, the scheduler holds an indexstate.GroupAlgoBegin
+	// on the group's behalf so grafel_stats does NOT report an idle daemon
+	// across a deferral (an MCP consumer would otherwise read a stale overlay
+	// believing the work had settled). Guarded by mu.
+	groupAlgoDeferred map[string]bool
 }
 
 // jobToken couples a repo path with the predicted MB that admission
@@ -579,33 +650,52 @@ func New(cfg Config) *Scheduler {
 	if cfg.FreeOSMemory == nil {
 		cfg.FreeOSMemory = debug.FreeOSMemory
 	}
+	// Heavy write-stage gate (#5954). On by default; GRAFEL_STAGE_GATE=0 opts
+	// out. An explicit StageGateDisabled=true always wins.
+	if !cfg.StageGateDisabled && stageGateDisabledFromEnv() {
+		cfg.StageGateDisabled = true
+	}
+	if cfg.StageGateRetry <= 0 {
+		cfg.StageGateRetry = stageGateDurationFromEnv("GRAFEL_STAGE_GATE_RETRY", stageGateRetryDefault)
+	}
+	if cfg.StageGateMaxDefer <= 0 {
+		cfg.StageGateMaxDefer = stageGateDurationFromEnv("GRAFEL_STAGE_GATE_MAX_DEFER", stageGateMaxDeferDefault)
+	}
+	if cfg.StageGateHoldMax <= 0 {
+		cfg.StageGateHoldMax = stageGateDurationFromEnv("GRAFEL_STAGE_GATE_HOLD_MAX", stageGateHoldMaxDefault)
+	}
+	if cfg.StageGateDrainMax <= 0 {
+		cfg.StageGateDrainMax = stageGateDurationFromEnv("GRAFEL_STAGE_GATE_DRAIN_MAX", stageGateDrainMaxDefault)
+	}
 	algoCap := resolveAlgoCap(cfg.AlgoCap)
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	return &Scheduler{
-		cfg:              cfg,
-		logger:           cfg.Logger,
-		enq:              make(chan enqueueRequest, 64),
-		jobs:             make(chan jobToken, cfg.Workers),
-		wake:             make(chan struct{}, 1),
-		stop:             make(chan struct{}),
-		algoSem:          make(chan struct{}, algoCap),
-		inflight:         map[string]int64{},
-		pendingIndex:     map[string]bool{},
-		dirty:            map[string]bool{},
-		pendingRefs:      map[string]string{},
-		pendingCommits:   map[string]string{},
-		linkTimers:       map[string]*time.Timer{},
-		linkPending:      map[string]bool{},
-		groupAlgoTimers:  map[string]*time.Timer{},
-		groupAlgoPending: map[string]bool{},
-		groupAlgoCancel:  map[string]context.CancelFunc{},
-		groupAlgoArmedAt: map[string]time.Time{},
-		groupAlgoFireAt:  map[string]time.Time{},
-		linkCancel:       map[string]*linkPassCancel{},
-		indexCancel:      map[string]context.CancelFunc{},
-		indexedRepos:     map[string]repoStats{},
-		shutdownCtx:      shutdownCtx,
-		shutdownCancel:   shutdownCancel,
+		cfg:               cfg,
+		logger:            cfg.Logger,
+		enq:               make(chan enqueueRequest, 64),
+		jobs:              make(chan jobToken, cfg.Workers),
+		wake:              make(chan struct{}, 1),
+		stop:              make(chan struct{}),
+		algoSem:           make(chan struct{}, algoCap),
+		inflight:          map[string]int64{},
+		pendingIndex:      map[string]bool{},
+		dirty:             map[string]bool{},
+		pendingRefs:       map[string]string{},
+		pendingCommits:    map[string]string{},
+		linkTimers:        map[string]*time.Timer{},
+		linkPending:       map[string]bool{},
+		groupAlgoTimers:   map[string]*time.Timer{},
+		groupAlgoPending:  map[string]bool{},
+		groupAlgoCancel:   map[string]context.CancelFunc{},
+		groupAlgoArmedAt:  map[string]time.Time{},
+		groupAlgoFireAt:   map[string]time.Time{},
+		linkCancel:        map[string]*linkPassCancel{},
+		indexCancel:       map[string]context.CancelFunc{},
+		indexedRepos:      map[string]repoStats{},
+		stageDeferSince:   map[string]time.Time{},
+		groupAlgoDeferred: map[string]bool{},
+		shutdownCtx:       shutdownCtx,
+		shutdownCancel:    shutdownCancel,
 	}
 }
 
@@ -662,6 +752,15 @@ func (s *Scheduler) Stop() {
 	for _, c := range s.groupAlgoCancel {
 		c()
 	}
+	// #5954: drop every deferred-by-the-gate marker so the process-global
+	// indexstate counters return to zero on shutdown (they are balanced
+	// Begin/End pairs held on the scheduler's behalf, not per-goroutine defers).
+	for g := range s.groupAlgoDeferred {
+		s.markGroupAlgoDeferredLocked(g, false)
+	}
+	s.stageDeferSince = map[string]time.Time{}
+	s.stageDrainFor = ""
+	s.stageDrainUntil = time.Time{}
 }
 
 // Enqueue requests a (debounced+deduped) reindex of repoPath. The current
@@ -827,13 +926,19 @@ func (s *Scheduler) checkDeadMan() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if len(s.pendingQ) == 0 || len(s.inflight) > 0 {
+	now := time.Now()
+	// #5954: a held stage token (or a drain barrier) means heavy write-side work
+	// IS in progress — just not index work. The dead-man exists to detect
+	// "queue non-empty and nothing is happening"; force-admitting here would
+	// re-create the exact co-residency the gate removes. Both gate states are
+	// independently time-bounded (StageGateHoldMax / stageGateDrainMax), so the
+	// dead-man's own liveness guarantee survives the suppression.
+	if len(s.pendingQ) == 0 || len(s.inflight) > 0 || s.stageBusyLocked(now) {
 		// Queue is clear OR jobs are running — reset the clock.
 		s.deadManAt = time.Time{}
 		return
 	}
 
-	now := time.Now()
 	if s.deadManAt.IsZero() {
 		// Start the clock: queue has jobs but nothing is running.
 		s.deadManAt = now
@@ -991,6 +1096,12 @@ func (s *Scheduler) busyLocked() bool {
 	if len(s.inflight) > 0 || s.queueLen > 0 || len(s.pendingQ) > 0 {
 		return true
 	}
+	// #5954: an exclusive heavy stage holding the gate, or a stage deferred by
+	// it, is write-side work in flight — releasing the heap underneath it would
+	// be paid straight back.
+	if s.stageHolder != "" || s.stageDrainFor != "" || len(s.stageDeferSince) > 0 {
+		return true
+	}
 	for _, p := range s.groupAlgoPending {
 		if p {
 			return true
@@ -1126,6 +1237,23 @@ func (s *Scheduler) groupAlgoBusyLocked(group string) bool {
 func (s *Scheduler) tryAdmit() {
 	s.mu.Lock()
 	for len(s.pendingQ) > 0 {
+		// #5954: hold index dispatch while an exclusive heavy stage (link pass /
+		// group-algo) owns the daemon-wide stage token, or while a starved stage
+		// has raised the drain barrier. The queue is untouched — every release
+		// pokes the admission loop, and the 1s safety tick is a second path back
+		// here, so nothing is lost.
+		if !s.allowIndexAdmitLocked(time.Now()) {
+			if !s.stageAdmitBlocked {
+				s.stageAdmitBlocked = true
+				s.logEventLocked("admit_stage_defer", s.pendingQ[0],
+					"holding index dispatch — "+s.stageBlockReasonLocked()+" (#5954)")
+				s.logger.Info("sched: holding index dispatch behind a heavy write stage",
+					"reason", s.stageBlockReasonLocked(), "queued", len(s.pendingQ))
+			}
+			s.mu.Unlock()
+			return
+		}
+		s.stageAdmitBlocked = false
 		repo := s.pendingQ[0]
 		ref := s.pendingRefs[repo]
 		commit := s.pendingCommits[repo]
@@ -1557,49 +1685,73 @@ func (s *Scheduler) scheduleLinks(group string) {
 		t.Stop()
 	}
 	s.linkPending[group] = true
-	s.linkTimers[group] = time.AfterFunc(s.cfg.LinkDebounce, func() {
-		s.mu.Lock()
-		s.linkPending[group] = false
-		delete(s.linkTimers, group)
-		// Derive a PER-GROUP cancel context from shutdownCtx (not shutdownCtx
-		// directly) so that a group delete can interrupt THIS group's in-flight
-		// link pass via CancelGroup without waiting for daemon Stop(). Still
-		// rooted at shutdownCtx so daemon shutdown also cancels it. Stored so
-		// CancelGroup can reach it; cleared once runLinks returns.
-		ctx, cancel := context.WithCancel(s.shutdownCtx)
-		tok := &linkPassCancel{cancel: cancel}
-		// Supersede any still-registered predecessor by CANCELLING it before
-		// overwriting the entry — do NOT just drop it. runLinks executes on this
-		// timer AfterFunc goroutine (not the worker pool), so when a link pass
-		// outlasts LinkDebounce and a repo reindex re-arms scheduleLinks, pass-1
-		// and pass-2 run CONCURRENTLY. Without this cancel, only pass-2's token is
-		// in the map, so a later CancelGroup reaches only pass-2 and pass-1 (the
-		// long betweenness/phantom pass) runs to completion for a deleted group.
-		// Cancelling the predecessor makes link passes single-flight for
-		// cancellation: at any moment only the newest pass is live, so CancelGroup
-		// always reaches it and NO pass survives a delete. The superseded pass
-		// aborts at its next ctx checkpoint (RunLinksForGroupCtx); its output is
-		// harmless — the newer pass rewrites everything from the latest graphs.
-		if prev, ok := s.linkCancel[group]; ok {
-			prev.cancel()
-		}
-		s.linkCancel[group] = tok
-		s.mu.Unlock()
-
-		s.runLinks(ctx, group)
-
-		s.mu.Lock()
-		// Only clear the entry if it is still OUR token. An overlapping second
-		// link pass (this group's timer re-armed while we ran) or a CancelGroup
-		// may have already replaced/removed it; blind-deleting here would drop
-		// the newer pass's live cancel and re-open the leak.
-		if s.linkCancel[group] == tok {
-			delete(s.linkCancel, group)
-		}
-		s.mu.Unlock()
-		cancel()
-	})
+	s.linkTimers[group] = time.AfterFunc(s.cfg.LinkDebounce, func() { s.fireLinks(group) })
 	s.mu.Unlock()
+}
+
+// fireLinks is the link-debounce timer body, split out of scheduleLinks so a
+// firing timer that finds the machine BUSY can re-arm itself instead of running
+// (#5954). It acquires the daemon-wide heavy write-stage token first; on failure
+// the pass stays PENDING (linkPending is never cleared) and a fresh retry timer
+// is armed under the same linkTimers[group] key — so CancelGroup still reaches
+// it and no work is lost.
+func (s *Scheduler) fireLinks(group string) {
+	if s.stopped() {
+		return // shutting down — do not re-arm a retry timer that outlives Stop
+	}
+	name := "links:" + group
+	now := time.Now()
+
+	s.mu.Lock()
+	if !s.tryAcquireStageLocked(name, now) {
+		delay := s.noteStageDeferLocked(name, now)
+		s.linkPending[group] = true
+		if t, ok := s.linkTimers[group]; ok {
+			t.Stop()
+		}
+		s.linkTimers[group] = time.AfterFunc(delay, func() { s.fireLinks(group) })
+		s.mu.Unlock()
+		return
+	}
+	s.linkPending[group] = false
+	delete(s.linkTimers, group)
+	// Derive a PER-GROUP cancel context from shutdownCtx (not shutdownCtx
+	// directly) so that a group delete can interrupt THIS group's in-flight
+	// link pass via CancelGroup without waiting for daemon Stop(). Still
+	// rooted at shutdownCtx so daemon shutdown also cancels it. Stored so
+	// CancelGroup can reach it; cleared once runLinks returns.
+	ctx, cancel := context.WithCancel(s.shutdownCtx)
+	tok := &linkPassCancel{cancel: cancel}
+	// Supersede any still-registered predecessor by CANCELLING it before
+	// overwriting the entry — do NOT just drop it. runLinks executes on this
+	// timer AfterFunc goroutine (not the worker pool), so when a link pass
+	// outlasts LinkDebounce and a repo reindex re-arms scheduleLinks, pass-1
+	// and pass-2 could run CONCURRENTLY. (The stage token now also serialises
+	// them, but the identity check remains the cancellation-correctness
+	// guarantee.) Without this cancel, only pass-2's token is in the map, so a
+	// later CancelGroup reaches only pass-2 and pass-1 (the long
+	// betweenness/phantom pass) runs to completion for a deleted group.
+	if prev, ok := s.linkCancel[group]; ok {
+		prev.cancel()
+	}
+	s.linkCancel[group] = tok
+	s.mu.Unlock()
+
+	// Release on EVERY exit path — normal return, error, cancellation, panic.
+	defer s.releaseStage(name)
+
+	s.runLinks(ctx, group)
+
+	s.mu.Lock()
+	// Only clear the entry if it is still OUR token. An overlapping second
+	// link pass (this group's timer re-armed while we ran) or a CancelGroup
+	// may have already replaced/removed it; blind-deleting here would drop
+	// the newer pass's live cancel and re-open the leak.
+	if s.linkCancel[group] == tok {
+		delete(s.linkCancel, group)
+	}
+	s.mu.Unlock()
+	cancel()
 }
 
 func (s *Scheduler) runLinks(ctx context.Context, group string) {
@@ -1758,26 +1910,84 @@ func (s *Scheduler) scheduleGroupAlgo(group string) {
 	s.groupAlgoArmedAt[group] = armedAt
 	s.groupAlgoFireAt[group] = fireAt
 	s.groupAlgoPending[group] = true
-	s.groupAlgoTimers[group] = time.AfterFunc(delay, func() {
-		s.mu.Lock()
-		s.groupAlgoPending[group] = false
-		delete(s.groupAlgoTimers, group)
-		delete(s.groupAlgoArmedAt, group) // window closed — next arm starts fresh
-		delete(s.groupAlgoFireAt, group)
-		// Derive the per-run cancel context from shutdownCtx (not
-		// context.Background()) so that on Stop() the in-flight group-algo pass
-		// — which may fork a subprocess — receives cancellation. Mirrors runIndex
-		// and runLinks. Fixes the leak class of issue #2493.
-		ctx, cancel := context.WithCancel(s.shutdownCtx)
-		s.groupAlgoCancel[group] = cancel
-		s.mu.Unlock()
+	s.groupAlgoTimers[group] = time.AfterFunc(delay, func() { s.fireGroupAlgo(group) })
+}
 
-		s.runGroupAlgo(ctx, group)
+// fireGroupAlgo is the group-algo debounce timer body, split out of
+// scheduleGroupAlgo so a firing timer that finds the machine BUSY can re-arm
+// itself instead of running (#5954).
+//
+// This is where the #5450 max-wait and the stage gate meet. The max-wait forces
+// the timer to FIRE promptly under sustained churn; the gate can still refuse to
+// let it RUN. Deferral wins — a max-wait firing that runs anyway would make the
+// gate decorative under exactly the sustained-churn conditions that produce the
+// worst peaks. The gate's own bounded starvation guard (the drain barrier, see
+// noteStageDeferLocked) is what keeps the pass from being starved forever.
+func (s *Scheduler) fireGroupAlgo(group string) {
+	if s.stopped() {
+		return // shutting down — do not re-arm a retry timer that outlives Stop
+	}
+	name := "group-algo:" + group
+	now := time.Now()
 
-		s.mu.Lock()
-		delete(s.groupAlgoCancel, group)
+	s.mu.Lock()
+	if !s.tryAcquireStageLocked(name, now) {
+		delay := s.noteStageDeferLocked(name, now)
+		// A DEFERRED pass must stay visible to grafel_stats exactly like a
+		// RUNNING one, or an MCP consumer polling across the deferral sees an
+		// idle daemon and trusts a stale overlay.
+		s.markGroupAlgoDeferredLocked(group, true)
+		s.groupAlgoPending[group] = true
+		if t, ok := s.groupAlgoTimers[group]; ok {
+			t.Stop()
+		}
+		s.groupAlgoFireAt[group] = now.Add(delay)
+		s.groupAlgoTimers[group] = time.AfterFunc(delay, func() { s.fireGroupAlgo(group) })
 		s.mu.Unlock()
-	})
+		return
+	}
+	s.groupAlgoPending[group] = false
+	delete(s.groupAlgoTimers, group)
+	delete(s.groupAlgoArmedAt, group) // window closed — next arm starts fresh
+	delete(s.groupAlgoFireAt, group)
+	// Derive the per-run cancel context from shutdownCtx (not
+	// context.Background()) so that on Stop() the in-flight group-algo pass
+	// — which may fork a subprocess — receives cancellation. Mirrors runIndex
+	// and runLinks. Fixes the leak class of issue #2493.
+	ctx, cancel := context.WithCancel(s.shutdownCtx)
+	s.groupAlgoCancel[group] = cancel
+	s.mu.Unlock()
+
+	// Release on EVERY exit path — normal return, error, cancellation, panic.
+	defer s.releaseStage(name)
+
+	s.runGroupAlgo(ctx, group)
+
+	s.mu.Lock()
+	delete(s.groupAlgoCancel, group)
+	// Drop the deferred marker only now: runGroupAlgo holds its own
+	// GroupAlgoBegin for the RUNNING window, so clearing here keeps the
+	// deferred→running indexstate coverage continuous (count 1 → 2 → 1 → 0)
+	// rather than dipping to zero between the two.
+	s.markGroupAlgoDeferredLocked(group, false)
+	s.mu.Unlock()
+	cancel()
+}
+
+// markGroupAlgoDeferredLocked toggles a group's "deferred by the stage gate"
+// marker, holding exactly one balanced indexstate.GroupAlgoBegin/End pair for
+// the duration. Idempotent. MUST be called with s.mu held.
+func (s *Scheduler) markGroupAlgoDeferredLocked(group string, deferred bool) {
+	if s.groupAlgoDeferred[group] == deferred {
+		return
+	}
+	if deferred {
+		s.groupAlgoDeferred[group] = true
+		indexstate.GroupAlgoBegin()
+		return
+	}
+	delete(s.groupAlgoDeferred, group)
+	indexstate.GroupAlgoEnd()
 }
 
 // cancelGroupAlgoLocked stops any pending timer or cancels an in-flight
@@ -1797,6 +2007,23 @@ func (s *Scheduler) cancelGroupAlgoLocked(group string) {
 	// superseding pass) ends the window so the next arm starts a fresh budget.
 	delete(s.groupAlgoArmedAt, group)
 	delete(s.groupAlgoFireAt, group)
+	// #5954: the pass is no longer deferred-by-the-gate — drop the marker (and
+	// its balanced indexstate hold) plus any deferral bookkeeping, so a cancelled
+	// pass cannot leave the daemon looking permanently busy.
+	s.markGroupAlgoDeferredLocked(group, false)
+	s.clearStageDeferralLocked("group-algo:" + group)
+}
+
+// clearStageDeferralLocked drops a stage's deferral bookkeeping (and the drain
+// barrier if that stage owns it), so a cancelled or superseded stage does not
+// keep index dispatch held or the scheduler reported busy. MUST be called with
+// s.mu held.
+func (s *Scheduler) clearStageDeferralLocked(name string) {
+	delete(s.stageDeferSince, name)
+	if s.stageDrainFor == name {
+		s.stageDrainFor = ""
+		s.stageDrainUntil = time.Time{}
+	}
 }
 
 // linkPassCancel is a per-in-flight-link-pass identity token wrapping its cancel
@@ -1840,6 +2067,7 @@ func (s *Scheduler) CancelGroup(group string) {
 		tok.cancel()
 		delete(s.linkCancel, group)
 	}
+	s.clearStageDeferralLocked("links:" + group)
 
 	// In-flight per-repo reindexes whose repo belongs ONLY to this group (or to
 	// this group among others that are also being torn down). A repo still
