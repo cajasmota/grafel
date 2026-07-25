@@ -119,7 +119,7 @@ func canonicalDocHash(t *testing.T, doc *graph.Document) string {
 func TestBuildDocumentGolden5955(t *testing.T) {
 	pass1, pass2Rels := buildDocumentGoldenFixture()
 	idx := &Indexer{repoTag: "test_repo"}
-	doc := idx.buildDocument(pass1, nil, pass2Rels, nil)
+	doc := idx.buildDocument(&pass1, nil, pass2Rels, nil)
 
 	// Sanity: the fixture must have exercised the Bazel overlay (a
 	// BAZEL_DEP_STATUS edge must be present), otherwise target-1 is not
