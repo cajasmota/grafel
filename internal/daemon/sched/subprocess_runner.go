@@ -484,6 +484,25 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 // The child inherits the daemon's full environment (GRAFEL_HOME /
 // GRAFEL_DAEMON_ROOT) so it resolves the same group config + state dirs and
 // writes the overlay into the same ~/.grafel/groups directory.
+// groupAlgoChildEnv builds the environment for the group-algo child: the
+// GOMAXPROCS bound plus the madvdontneed reclaim setting, merged into any
+// inherited GODEBUG. Extracted as a pure function so the constructed env is
+// assertable without fork-execing anything.
+//
+// The GODEBUG entry is why this exists. GODEBUG is read ONCE at process start,
+// so — unlike GOGC, which the child sets on itself in main() — madvdontneed can
+// only be delivered through the child's environment. Without it the runtime
+// returns freed pages with MADV_FREE and any RSS group-algo gives back stays
+// invisible to the OS until the kernel comes under pressure, which is precisely
+// what whole-machine peak measurement reads (#5954). The index child has had
+// this since RunSubprocessIndex; group-algo was simply never given it.
+func groupAlgoChildEnv(base []string, gomaxprocs int) []string {
+	env := make([]string, 0, len(base)+2)
+	env = append(env, base...)
+	env = append(env, "GOMAXPROCS="+strconv.Itoa(gomaxprocs))
+	return withMadvDontNeed(env)
+}
+
 func RunSubprocessGroupAlgo(ctx context.Context, group string, logger *slog.Logger) error {
 	binary, err := os.Executable()
 	if err != nil {
@@ -495,9 +514,10 @@ func RunSubprocessGroupAlgo(ctx context.Context, group string, logger *slog.Logg
 	// env GRAFEL_GROUP_ALGO_CPU) so the background analytics pass cannot scale
 	// its worker pool to the full host core count — the v0.1.3 CPU regression.
 	// GOMAXPROCS is appended last so it wins over any inherited value. Mirrors
-	// the extract subprocess (GRAFEL_EXTRACT_GOMAXPROCS).
+	// the extract subprocess (GRAFEL_EXTRACT_GOMAXPROCS). groupAlgoChildEnv also
+	// merges GODEBUG=madvdontneed=1 — see its doc comment.
 	gomaxprocs := GroupAlgoGOMAXPROCS()
-	cmd.Env = append(os.Environ(), "GOMAXPROCS="+strconv.Itoa(gomaxprocs))
+	cmd.Env = groupAlgoChildEnv(os.Environ(), gomaxprocs)
 	// Lower the child's OS scheduling priority (nice +10) so even its capped
 	// cores yield to foreground work (a consumer's CI / dev harness). No-op /
 	// guarded off on platforms without setpriority (e.g. Windows). See
