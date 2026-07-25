@@ -1,8 +1,13 @@
 package groupalgo
 
 import (
+	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // The group-algo child had ZERO memory instrumentation while being one of the
@@ -11,30 +16,71 @@ import (
 // phaseFn; this package owns that phase state so the four stages of the pass
 // are distinguishable in the NDJSON and in the per-phase heap profiles.
 //
-// Without a phase label the trace is one flat curve and the same misreading
-// that cost this epic a day — attributing heap_inuse to the wrong stage — is
-// exactly as available as before.
+// These tests must OBSERVE THE PASS. An earlier version of TestPhaseOrder
+// compared the four constants to four string literals and round-tripped them
+// through the holder — a tautology: every stamp except `assembling` could be
+// deleted from the production code with the whole package still green. The
+// labels are only worth anything if the pass actually stamps them, in order.
 
-// TestPhaseOrder asserts the labels a full group-algo pass stamps, in the
-// order the pass stamps them. The labels are the operator-facing contract with
-// the measurement harness, so they are spelled out here rather than derived
-// from the constants.
+// TestPhaseOrder runs a real RunGroupAlgorithms and asserts the sequence of
+// phases the pass stamped. Deleting any single SetPhase call in
+// RunGroupAlgorithms fails this test.
+//
+// An empty (registered but never-indexed) group is deliberate: assembly,
+// hashing and the algorithm pass all still run — graph.RunAlgorithms guards
+// len==0 — so all three stamps are exercised with no graph.fb fixture, and the
+// test stays fast enough to leave the ordering the only thing under assertion.
 func TestPhaseOrder(t *testing.T) {
 	restorePhase(t)
+	registerEmptyGroup(t, "phase-order")
+	ResetPhaseHistory()
 
-	want := []string{"assembling", "hashing", "running_algorithms", "writing_overlay"}
-	got := []string{PhaseAssembling, PhaseHashing, PhaseRunningAlgorithms, PhaseWritingOverlay}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("phase %d = %q, want %q", i, got[i], want[i])
-		}
+	if _, err := RunGroupAlgorithms("phase-order"); err != nil {
+		t.Fatalf("RunGroupAlgorithms: %v", err)
 	}
 
-	// The holder must report whatever the pass last stamped, in sequence.
-	for _, p := range want {
-		SetPhase(p)
-		if CurrentPhase() != p {
-			t.Fatalf("after SetPhase(%q), CurrentPhase() = %q", p, CurrentPhase())
+	// Spelled out rather than derived from the constants: these strings are the
+	// operator-facing contract — they appear verbatim in the memtrace NDJSON
+	// `phase` field and in the heap-profile filenames — so a rename must break
+	// a test rather than silently re-key every trace the harness has collected.
+	want := []string{"assembling", "hashing", "running_algorithms"}
+	if got := PhaseHistory(); !slices.Equal(got, want) {
+		t.Fatalf("phases stamped by RunGroupAlgorithms = %v, want %v", got, want)
+	}
+}
+
+// TestPhaseOrderIncremental asserts the incremental entrypoint — the one the
+// daemon's --write child actually calls — stamps the SAME order. The two
+// entrypoints agreeing is the property that lets the phase doc state one order
+// instead of two.
+func TestPhaseOrderIncremental(t *testing.T) {
+	restorePhase(t)
+	registerEmptyGroup(t, "phase-order-inc")
+	ResetPhaseHistory()
+
+	if _, err := RunGroupAlgorithmsIncremental("phase-order-inc"); err != nil {
+		t.Fatalf("RunGroupAlgorithmsIncremental: %v", err)
+	}
+
+	want := []string{"assembling", "hashing", "running_algorithms"}
+	if got := PhaseHistory(); !slices.Equal(got, want) {
+		t.Fatalf("phases stamped by RunGroupAlgorithmsIncremental = %v, want %v", got, want)
+	}
+}
+
+// TestPhaseConstantsMatchTheContract pins the label spellings themselves. The
+// order tests above compare against literals, so this is the one place a
+// constant rename is reported as a rename rather than as a mystery sequence
+// mismatch.
+func TestPhaseConstantsMatchTheContract(t *testing.T) {
+	for _, tc := range []struct{ got, want string }{
+		{PhaseAssembling, "assembling"},
+		{PhaseHashing, "hashing"},
+		{PhaseRunningAlgorithms, "running_algorithms"},
+		{PhaseWritingOverlay, "writing_overlay"},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("phase constant = %q, want %q", tc.got, tc.want)
 		}
 	}
 }
@@ -44,9 +90,30 @@ func TestPhaseOrder(t *testing.T) {
 // goroutine and may well poll before the pass has stamped anything.
 func TestCurrentPhaseBeforeAnyStamp(t *testing.T) {
 	restorePhase(t)
-	currentPhase = phaseHolder{}
+	ResetPhaseHistory()
 	if got := CurrentPhase(); got != "" {
 		t.Fatalf("CurrentPhase() before any stamp = %q, want \"\"", got)
+	}
+	if got := PhaseHistory(); len(got) != 0 {
+		t.Fatalf("PhaseHistory() before any stamp = %v, want empty", got)
+	}
+}
+
+// TestPhaseHistoryRecordsTransitionsNotCalls asserts a re-stamp of the same
+// phase does not grow the log. The log is read as a transition sequence, and a
+// stamp inside a loop must not turn it into a call counter.
+func TestPhaseHistoryRecordsTransitionsNotCalls(t *testing.T) {
+	restorePhase(t)
+	ResetPhaseHistory()
+
+	SetPhase(PhaseAssembling)
+	SetPhase(PhaseAssembling)
+	SetPhase(PhaseHashing)
+	SetPhase(PhaseAssembling)
+
+	want := []string{"assembling", "hashing", "assembling"}
+	if got := PhaseHistory(); !slices.Equal(got, want) {
+		t.Fatalf("PhaseHistory() = %v, want %v", got, want)
 	}
 }
 
@@ -58,7 +125,7 @@ func TestPhaseHolderIsRaceFree(t *testing.T) {
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		for {
@@ -70,6 +137,17 @@ func TestPhaseHolderIsRaceFree(t *testing.T) {
 			}
 		}
 	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = PhaseHistory()
+			}
+		}
+	}()
 	for i := 0; i < 1000; i++ {
 		SetPhase(PhaseRunningAlgorithms)
 		SetPhase(PhaseHashing)
@@ -78,26 +156,58 @@ func TestPhaseHolderIsRaceFree(t *testing.T) {
 	wg.Wait()
 }
 
-// TestAssemblingIsStampedByTheEntrypoint asserts the FIRST stamp is real —
-// that the phase is set by the pass itself and not only by the tests. A group
-// that does not resolve fails inside assembly, which is precisely when the
-// phase must already read "assembling".
-func TestAssemblingIsStampedByTheEntrypoint(t *testing.T) {
+// TestAssemblingIsStampedOnTheFailurePath asserts the first stamp lands before
+// assembly can fail — the phase must already read "assembling" when a group
+// that does not resolve blows up inside it, or a trace of a failed run is
+// unattributable.
+func TestAssemblingIsStampedOnTheFailurePath(t *testing.T) {
 	restorePhase(t)
-	currentPhase = phaseHolder{}
+	ResetPhaseHistory()
 
 	if _, err := RunGroupAlgorithms("grafel-no-such-group-5954"); err == nil {
 		t.Skip("unexpected: a bogus group resolved; cannot exercise the assembly failure path")
 	}
 	if got := CurrentPhase(); got != PhaseAssembling {
-		t.Fatalf("CurrentPhase() after a failed assembly = %q, want %q — the entrypoint does not stamp the phase",
-			got, PhaseAssembling)
+		t.Fatalf("CurrentPhase() after a failed assembly = %q, want %q", got, PhaseAssembling)
+	}
+}
+
+// registerEmptyGroup registers a group whose single repo was never indexed (no
+// graph.fb), so assembly yields an empty union without needing a fixture.
+func registerEmptyGroup(t *testing.T, name string) {
+	t.Helper()
+	testsupport.IsolateHome(t)
+	root := t.TempDir()
+	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
+	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))
+
+	cfgPath, err := registry.ConfigPathFor(name)
+	if err != nil {
+		t.Fatalf("config path: %v", err)
+	}
+	cfg := &registry.GroupConfig{
+		Name:  name,
+		Repos: []registry.Repo{{Slug: "ghost", Path: filepath.Join(root, "ghost")}},
+	}
+	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
+		t.Fatalf("save group config: %v", err)
+	}
+	if err := registry.AddGroup(name, cfgPath); err != nil {
+		t.Fatalf("add group: %v", err)
 	}
 }
 
 // restorePhase makes the process-wide holder test-local.
 func restorePhase(t *testing.T) {
 	t.Helper()
-	prev := CurrentPhase()
-	t.Cleanup(func() { SetPhase(prev) })
+	prevPhase, prevHistory := CurrentPhase(), PhaseHistory()
+	t.Cleanup(func() {
+		ResetPhaseHistory()
+		for _, p := range prevHistory {
+			SetPhase(p)
+		}
+		if prevPhase != "" {
+			SetPhase(prevPhase)
+		}
+	})
 }

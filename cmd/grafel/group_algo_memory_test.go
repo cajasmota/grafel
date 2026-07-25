@@ -1,10 +1,61 @@
 package main
 
 import (
+	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/graph/groupalgo"
+	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
+
+// TestWriteOverlayPhaseIsStamped asserts the FOURTH phase label — the one
+// stamped here in cmd/grafel rather than inside the pass — actually lands on
+// the daemon's real `--write` path.
+//
+// It matters more than its size suggests. writing_overlay got ZERO memtrace
+// samples on the first real corpus run (the phase is far shorter than the
+// 250ms default sampling interval), so the NDJSON alone can never confirm the
+// stamp exists; without this test, deleting it would be invisible in both the
+// test suite and the trace.
+func TestWriteOverlayPhaseIsStamped(t *testing.T) {
+	testsupport.IsolateHome(t)
+	root := t.TempDir()
+	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
+	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))
+
+	// A registered group whose single repo was never indexed: assembly yields an
+	// empty union, so the whole pass runs end-to-end with no graph.fb fixture.
+	const group = "overlay-phase"
+	cfgPath, err := registry.ConfigPathFor(group)
+	if err != nil {
+		t.Fatalf("config path: %v", err)
+	}
+	cfg := &registry.GroupConfig{
+		Name:  group,
+		Repos: []registry.Repo{{Slug: "ghost", Path: filepath.Join(root, "ghost")}},
+	}
+	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
+		t.Fatalf("save group config: %v", err)
+	}
+	if err := registry.AddGroup(group, cfgPath); err != nil {
+		t.Fatalf("add group: %v", err)
+	}
+
+	groupalgo.ResetPhaseHistory()
+	t.Cleanup(groupalgo.ResetPhaseHistory)
+	if code := runGroupAlgo([]string{group, "--write"}); code != 0 {
+		t.Fatalf("runGroupAlgo --write exit code = %d, want 0", code)
+	}
+
+	want := []string{"assembling", "hashing", "running_algorithms", "writing_overlay"}
+	if got := groupalgo.PhaseHistory(); !slices.Equal(got, want) {
+		t.Fatalf("phases stamped by a --write run = %v, want %v", got, want)
+	}
+}
 
 // The GC-pacing cap was originally scoped to the `index-internal` child alone
 // (#5954). Whole-machine measurement then showed the peak instant has moved

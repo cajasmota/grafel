@@ -237,11 +237,17 @@ func RunGroupAlgorithms(group string) (*GroupAlgoResult, error) {
 		numRepos = len(cfg.Repos)
 	}
 
-	SetPhase(PhaseRunningAlgorithms)
-	res := graph.RunAlgorithms(entities, rels)
-
+	// Hash BEFORE running the algorithms, matching RunGroupAlgorithmsIncremental.
+	// inputHash is a pure function of (entities, rels) and has no dependency on
+	// res, so the order is free — and one true phase order across both
+	// entrypoints is worth more than a comment explaining two. The phase labels
+	// are the operator-facing contract for reading a memtrace, in a workstream
+	// whose premise is that a misread memory metric already cost a day.
 	SetPhase(PhaseHashing)
 	inputHash := graph.CommunityInputHash(entities, rels)
+
+	SetPhase(PhaseRunningAlgorithms)
+	res := graph.RunAlgorithms(entities, rels)
 
 	return &GroupAlgoResult{
 		Group:        group,
