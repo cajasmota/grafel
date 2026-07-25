@@ -190,3 +190,63 @@ func TestGCThrashWarning(t *testing.T) {
 		})
 	}
 }
+
+// TestIndexMemLimitSafeFloorIsDerivedFromMeasuredLiveHeap pins the safe floor
+// against the measured hazard rather than restating the constant.
+//
+// The defect this corrects: the floor was documented as "~1.15x the measured
+// ~2.7GB live-heap ceiling", but 2.7GB was a heap_inuse/heap_alloc reading —
+// live PLUS uncollected garbage. The true live peak is measuredLiveHeapPeakMB.
+// Two consequences: the stated rule no longer produced the stated constant
+// (3072MB is 1.79x live, a margin nobody chose), and the mis-named input
+// invited the same mistake again. The implementation now DERIVES the floor
+// from a named live-heap input times a named margin, so this test can check
+// the derivation instead of the answer.
+//
+// Note what is deliberately NOT asserted here: any bound involving
+// indexGCPercentDefault. A thrash floor is a safety property and must be
+// driven by distance from the hazard alone; making it a dependent of the
+// pacing knob would mean that tuning GOGC down later silently drags the safety
+// floor toward the cliff. The bounds below reference only measured values and
+// the Go runtime's own default pacing.
+func TestIndexMemLimitSafeFloorIsDerivedFromMeasuredLiveHeap(t *testing.T) {
+	if measuredThrashLimitMB >= measuredLiveHeapPeakMB {
+		t.Fatalf("test premise broken: the measured thrash limit %dMB is not below the live peak %dMB",
+			measuredThrashLimitMB, measuredLiveHeapPeakMB)
+	}
+
+	// The input must be the LIVE heap, and it must be the measured one. This is
+	// the assertion that makes the original category error impossible to repeat
+	// silently: swap in a heap_inuse figure and this goes red.
+	if got := indexMemLimitSafeFloorLiveHeapPeakBytes / miB; got != measuredLiveHeapPeakMB {
+		t.Errorf("safe floor is derived from a %dMB live-heap input, but the measured live-heap peak is %dMB",
+			got, measuredLiveHeapPeakMB)
+	}
+
+	// LOWER BOUND — distance from the observed cliff. The measured death-spiral
+	// value was 1200MiB against a 1714MB live peak, i.e. 0.70x live. 1.4x is
+	// double that distance on the safe side.
+	if indexMemLimitSafeFloorMarginPct < 140 {
+		t.Errorf("safe-floor margin %d%% of live is too close to the measured cliff (%dMB = %d%% of live); want >= 140%%",
+			indexMemLimitSafeFloorMarginPct, measuredThrashLimitMB,
+			measuredThrashLimitMB*100/measuredLiveHeapPeakMB)
+	}
+
+	// UPPER BOUND — at 200% the soft limit sits exactly at the heap goal the Go
+	// runtime picks unaided at its GOGC=100 default, so it could never bind on
+	// any host, even with GRAFEL_INDEX_GOGC=off. A floor above that is not a
+	// bound, it is a number. 100 is the runtime's default, not our policy
+	// value, so this bound does not move when the policy is tuned.
+	const goRuntimeDefaultGCPercent = 100
+	if indexMemLimitSafeFloorMarginPct > 100+goRuntimeDefaultGCPercent {
+		t.Errorf("safe-floor margin %d%% of live is at or above the runtime's own unaided heap goal (%d%%) — it could never bind",
+			indexMemLimitSafeFloorMarginPct, 100+goRuntimeDefaultGCPercent)
+	}
+
+	// And the resulting absolute value must be below the most favourable
+	// unbounded run, or it cannot trim the arena on any measured run.
+	if floorMB := indexMemLimitSafeFloorBytes / miB; floorMB >= measuredUnlimitedHeapSysMB {
+		t.Errorf("safe floor %dMB is at or above the smallest measured unbounded heap_sys (%dMB)",
+			floorMB, measuredUnlimitedHeapSysMB)
+	}
+}

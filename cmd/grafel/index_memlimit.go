@@ -23,9 +23,50 @@ const indexMemLimitEnv = "GRAFEL_INDEX_MEMLIMIT"
 // memLimitUnset is the sentinel for "do not call debug.SetMemoryLimit at all".
 const memLimitUnset int64 = 0
 
-// indexMemLimitSafeFloorBytes is the smallest soft limit we will ever apply.
-// It is ~1.15x the measured ~2.7GB live-heap ceiling of a full corpus index,
-// so the runtime always has room to actually REACH the target.
+// indexMemLimitSafeFloorLiveHeapPeakBytes is the measured LIVE-heap peak of a
+// full corpus index, and the input the safe floor is derived from.
+//
+// WHICH METRIC, AND WHY THE NAME IS EXPLICIT — this used to be an inline
+// "~2.7GB live-heap ceiling" in the comment below. That 2.7GB was a
+// heap_inuse/heap_alloc reading: live PLUS uncollected garbage, not live. Live
+// heap is next_gc/2 while the child runs at the GOGC=100 default, because Go
+// sets next_gc = live * (1 + GOGC/100) at the end of every mark cycle. Across
+// 8 full corpus runs (.claude/dev/perf/runs, child.ndjson) the live-heap peak
+// is 1571-1714MB, always in `materializing`, against a heap_inuse of up to
+// 3449MB and a post-GC heap_alloc of up to 2285MB. We take the worst, 1714MB.
+// An independent pprof -inuse_space sample at the same phase reads
+// 1173-1539MB, confirming the order of magnitude.
+//
+// It is a named constant rather than a number inside the floor so that the
+// unit test can assert the floor is derived from a LIVE-heap figure that
+// matches the harness data — the category error above cannot recur silently.
+const indexMemLimitSafeFloorLiveHeapPeakBytes int64 = 1714 << 20
+
+// indexMemLimitSafeFloorMarginPct is how far above the live heap the smallest
+// soft limit we will ever apply must sit, in percent.
+//
+// 150% is bounded on both sides by the hazard, not by any tuning knob:
+//   - below ~140% the limit approaches the unsatisfiable regime (the measured
+//     death-spiral value, 1200MiB, was 70% of live);
+//   - at 200% it coincides with the heap goal the Go runtime picks unaided at
+//     its GOGC=100 default, so it could never bind on any host.
+//
+// The old 3GiB constant is 179% of the corrected live peak — inside that band,
+// so it was not unsafe, but it was not derivable from its own stated 1.15x
+// rule either. 150% restates the intent against the corrected input.
+const indexMemLimitSafeFloorMarginPct = 150
+
+// indexMemLimitSafeFloorBytes is the smallest soft limit we will ever apply:
+// 1.5x the measured live-heap peak, so the runtime always has room to actually
+// REACH the target.
+//
+// Note this floor does not currently bind for ANY input: the adaptive policy
+// declines to set a limit at all below 4GiB available, and 3/4 of 4GiB is
+// already above it. It stays as an explicit invariant guard so that a future
+// change to the 3/4 multiplier or to indexMemLimitMinAvailableBytes cannot
+// silently start returning a thrashing limit. Since the GOGC cap landed
+// (indexGCPercentDefault) that cap, not this limit, is what actually trims
+// peak RSS.
 //
 // This floor is the anti-thrash guarantee. GOMEMLIMIT is SOFT: set BELOW the
 // live heap, the runtime cannot honor it and instead runs repeated full-heap
@@ -42,37 +83,43 @@ const memLimitUnset int64 = 0
 //     keeps GC'ing toward a target that non-Go memory guarantees it can
 //     never reach.
 //
-// Measured on the real corpus (#5954): GOMEMLIMIT=1200MiB against a ~2.7GB
-// live heap made `index-internal` >4x slower (>16 min vs 235 s) and never
-// completed. So the trade is ASYMMETRIC — a too-low limit costs unbounded,
-// non-terminating time; no limit at all costs a bounded +823MB. Never take
-// the former to avoid the latter.
-const indexMemLimitSafeFloorBytes int64 = 3 << 30 // 3 GiB
+// Measured on the real corpus (#5954): GOMEMLIMIT=1200MiB against a 1714MB
+// live heap (70% of live) made `index-internal` >4x slower (>16 min vs 235 s)
+// and never completed. So the trade is ASYMMETRIC — a too-low limit costs
+// unbounded, non-terminating time; no limit at all costs a bounded +823MB.
+// Never take the former to avoid the latter.
+const indexMemLimitSafeFloorBytes int64 = indexMemLimitSafeFloorLiveHeapPeakBytes * indexMemLimitSafeFloorMarginPct / 100 // 2571MB
 
 // indexMemLimitMinAvailableBytes is the amount of available RAM below which we
-// do not attempt to bound the indexer AT ALL. Under 4GiB available there is no
-// limit that is simultaneously above the safe floor and actually useful, so the
-// honest answer is "unset": degrade to today's unbounded behavior rather than
-// strangle the process. This is the small-host escape valve that the previous
+// do not attempt to bound the indexer AT ALL. Under 4GiB available, 3/4 of
+// available is under 3GiB and closing on the 1714MB live heap, so the honest
+// answer is "unset": degrade to today's unbounded behavior rather than strangle
+// the process. Note this gate is also why the safe floor never binds — it
+// already excludes every input for which 3/4 of available would fall below it. This is the small-host escape valve that the previous
 // max(2GiB, available/2) policy got wrong — it kept returning a limit no matter
 // how little RAM there was.
 const indexMemLimitMinAvailableBytes uint64 = 4 << 30 // 4 GiB
 
 // resolveIndexMemLimit implements the adaptive policy (#5954):
 //
-//	unset                            if available == 0 or available < 4GiB
-//	max(3GiB, availableRAM * 3/4)    otherwise
+//	unset                                if available == 0 or available < 4GiB
+//	max(safeFloor, availableRAM * 3/4)   otherwise
 //
 // availableBytes == 0 means "available RAM could not be determined"; we return
 // memLimitUnset rather than guessing, leaving the Go runtime default in place.
 //
 // Why 3/4 rather than 1/2: on the measurement host (4560MB available) 3/4
-// yields 3420MB — safely ABOVE the ~2.7GB live heap while still ~600MB below
-// the 4026MB unlimited baseline, so it trims the reclaimable arena without
-// entering the thrash regime. 1/2 yielded 2280MB there, i.e. BELOW the live
-// heap: the harmful case was the DEFAULT outcome on that machine, not an edge
-// case. On a 4GB-available host the policy degrades to today's behavior; on a
-// 32GB host it is non-binding, which is correct — the limit exists to trim the
+// yields 3420MB — 2.0x the 1714MB live heap while still ~600MB below the
+// 4026MB unlimited baseline, so it trims the reclaimable arena without
+// entering the thrash regime. 1/2 yields 2280MB there, only 1.33x live, which
+// is inside the band this floor exists to keep us out of.
+//
+// (The original justification for 3/4 said 2280MB was BELOW the live heap.
+// That rested on the same mis-read of heap_inuse as the old safe floor; the
+// conclusion survives the correction, the reasoning did not.)
+//
+// On a 4GB-available host the policy degrades to today's behavior; on a 32GB
+// host it is non-binding, which is correct — the limit exists to trim the
 // reclaimable arena, not to act as a quota.
 //
 // Integer math throughout: a float multiply here would be a needless source of
@@ -167,7 +214,7 @@ func indexMemLimitDecision(rawEnv string, availableBytes uint64) (limit int64, s
 		return resolveIndexMemLimit(availableBytes),
 			"adaptive (ignored malformed " + indexMemLimitEnv + "=" + strings.TrimSpace(rawEnv) + ")"
 	}
-	return resolveIndexMemLimit(availableBytes), "adaptive (max(3GiB, 0.75*available); unset under 4GiB available)"
+	return resolveIndexMemLimit(availableBytes), "adaptive (max(safe floor, 0.75*available); unset under 4GiB available)"
 }
 
 // applyIndexMemoryLimit sets the Go soft memory limit for THIS process (the
