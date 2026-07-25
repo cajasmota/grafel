@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 	"github.com/cajasmota/grafel/internal/indexstate"
@@ -360,7 +361,14 @@ func (s *cpuSampler) sample(pid int, now time.Time) float64 {
 // is wired, e.g. in a test harness with no SchedulerIndex — the corresponding
 // fields are simply omitted). It is invoked on every tick, never cached, so a
 // reader always sees the CURRENT warming state, not a snapshot from startup.
-func startEngineLivenessHeartbeat(root string, interval time.Duration, warmingFn func() WarmingSnapshot, logger *slog.Logger) (stop func()) {
+//
+// #5954: gateFn is the analogous read-only accessor for the heavy write-stage
+// gate. Same contract (nil ⇒ fields omitted; sampled fresh every tick), and
+// same reason for existing: in split mode the scheduler is in THIS process and
+// serve has none, so without this the gate's state — whether a rebuild is
+// barging, whether a background stage is deferring — is unobservable from
+// outside the engine.
+func startEngineLivenessHeartbeat(root string, interval time.Duration, warmingFn func() WarmingSnapshot, gateFn func() sched.StageGateState, logger *slog.Logger) (stop func()) {
 	if interval <= 0 {
 		interval = defaultStatusHeartbeatInterval
 	}
@@ -400,6 +408,15 @@ func startEngineLivenessHeartbeat(root string, interval time.Duration, warmingFn
 			f.WarmIndexInFlight = warm.IndexInFlight
 			f.WarmPendingAlgo = warm.PendingAlgo
 			f.WarmPendingLinks = warm.PendingLinks
+		}
+		// #5954: publish the heavy write-stage gate's live decisions. This is
+		// the ONLY route by which they reach a split-mode serve process, whose
+		// Service.Status has no in-process scheduler to read.
+		if gateFn != nil {
+			g := gateFn()
+			f.StageGateHolder = g.Holder
+			f.StageGateDeferred = g.Deferred
+			f.StageGateBarging = g.Barging
 		}
 		if err := statusfile.Write(key, f); err != nil && logger != nil {
 			logger.Warn("engine liveness: statusfile write failed", "err", err)

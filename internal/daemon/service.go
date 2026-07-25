@@ -440,6 +440,27 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 				Msg:  e.Msg,
 			})
 		}
+		// #5954 heavy write-stage gate.
+		reply.StageGateHolder = snap.StageHolder
+		reply.StageGateDeferred = snap.StageDeferred
+		reply.StageGateBarging = snap.Barging
+	} else if g, ok := StageGateFromStatusFile(); ok {
+		// SPLIT MODE (the default): the scheduler lives in the ENGINE process,
+		// so the serve process answering this RPC has s.scheduler == nil and
+		// every field in the block above — including the RecentLog ring that
+		// carries the stage_gate_* events — is simply absent. Without this
+		// fallback the gate is completely unobservable in the default
+		// deployment mode, which is how a measurement run got misread as "the
+		// gate never fired" when it had merely never been reported.
+		//
+		// The engine publishes the same three values onto its liveness sidecar
+		// every heartbeat (startEngineLivenessHeartbeat), so this is the ONE
+		// on-disk source of truth both modes converge on. A missing or stale
+		// sidecar yields ok=false and the fields stay empty — "unknown", never
+		// fabricated.
+		reply.StageGateHolder = g.Holder
+		reply.StageGateDeferred = g.Deferred
+		reply.StageGateBarging = g.Barging
 	}
 	return nil
 }

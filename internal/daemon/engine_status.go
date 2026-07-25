@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/statusfile"
 )
 
@@ -81,6 +82,34 @@ func WarmingFromStatusFile() WarmingSnapshot {
 		PendingAlgo:   f.WarmPendingAlgo,
 		PendingLinks:  f.WarmPendingLinks,
 	}
+}
+
+// StageGateFromStatusFile reconstructs the heavy write-stage gate's live state
+// (#5954) from the ambient engine's liveness sidecar, for a reader with no
+// in-process scheduler handle — chiefly a SPLIT-MODE serve process answering
+// Service.Status, where the scheduler is in the engine.
+//
+// It is the exact analogue of WarmingFromStatusFile, and deliberately shares
+// its file and its freshness rule, so monolith and split mode converge on one
+// path. ok=false means "unknown": no engine has ever written the sidecar, or
+// its heartbeat is stale (engine down, starting, or wedged). Callers must leave
+// the gate fields EMPTY in that case rather than reporting a stale holder as
+// live — a phantom "group-algo holds the token" reading would be worse than no
+// reading, given this surface exists to adjudicate exactly that question.
+func StageGateFromStatusFile() (g sched.StageGateState, ok bool) {
+	layout, err := DefaultLayout()
+	if err != nil {
+		return sched.StageGateState{}, false
+	}
+	f, fresh := EngineLivenessStatus(layout.Root)
+	if !fresh || f == nil {
+		return sched.StageGateState{}, false
+	}
+	return sched.StageGateState{
+		Holder:   f.StageGateHolder,
+		Deferred: f.StageGateDeferred,
+		Barging:  f.StageGateBarging,
+	}, true
 }
 
 // FlushRepoStatusFile synchronously recomputes and writes repoPath's per-repo

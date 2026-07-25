@@ -2295,16 +2295,47 @@ func (s *Scheduler) Snapshot() Snapshot {
 	if n := len(s.recentLog); n > 0 {
 		out.RecentLog = append(out.RecentLog, s.recentLog...)
 	}
-	// #5954 gate telemetry. Reported verbatim, WITHOUT reaping expired holders
-	// first: Snapshot is a read-only observation surface and must not have
-	// scheduling side effects. A holder past its bound therefore stays visible
-	// here until a real gate decision reaps it — which is the honest reading,
-	// since it genuinely is still resident.
-	out.StageHolder = s.stageHolder
+	g := s.stageGateStateLocked()
+	out.StageHolder, out.StageDeferred, out.Barging = g.Holder, g.Deferred, g.Barging
+	return out
+}
+
+// StageGateState is the heavy write-stage gate's live state (#5954), sampled
+// cheaply. Snapshot() carries the same three fields, but Snapshot copies the
+// whole RecentLog ring and every RepoSnapshot; the engine-liveness heartbeat
+// samples this on a 5s tick and must not pay for that.
+type StageGateState struct {
+	// Holder names the EXCLUSIVE stage holding the token ("links:<group>" /
+	// "group-algo:<group>"), or "" when none does.
+	Holder string
+	// Deferred lists stages the gate is currently turning away.
+	Deferred []string
+	// Barging lists live FOREGROUND holds ("rebuild:<group>"). Non-empty means
+	// a rebuild is registered and background heavy stages are yielding to it.
+	Barging []string
+}
+
+// StageGateState returns the gate's live state for observability. Safe to call
+// from any goroutine.
+func (s *Scheduler) StageGateState() StageGateState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stageGateStateLocked()
+}
+
+// stageGateStateLocked is the shared implementation. MUST be called with s.mu
+// held.
+//
+// Reported VERBATIM, without reaping expired holders first: this is a read-only
+// observation surface and must not have scheduling side effects. A holder past
+// its bound therefore stays visible until a real gate decision reaps it — which
+// is also the honest reading, since it genuinely is still resident.
+func (s *Scheduler) stageGateStateLocked() StageGateState {
+	out := StageGateState{Holder: s.stageHolder}
 	for name := range s.stageDeferSince {
-		out.StageDeferred = append(out.StageDeferred, name)
+		out.Deferred = append(out.Deferred, name)
 	}
-	sort.Strings(out.StageDeferred)
+	sort.Strings(out.Deferred)
 	out.Barging = s.bargeNamesLocked()
 	sort.Strings(out.Barging)
 	return out

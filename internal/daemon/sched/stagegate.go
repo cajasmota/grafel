@@ -195,6 +195,15 @@ func (s *Scheduler) reapStageLocked(now time.Time) {
 // background exclusive stages defer around it. The rebuild still never waits and
 // is still never held by THIS function.
 //
+// One bounded interaction, for the reader tracing a stall: if a drain barrier
+// is ALREADY up when a rebuild barges, the starved stage can no longer acquire
+// (tryAcquireStageLocked's barge check precedes the branch that clears the
+// barrier on acquisition), so the barrier cannot be cleared that way. It is
+// still bounded, and NOT by the barge's lifetime: reapStageLocked expires it
+// once now > stageDrainUntil AND the in-flight batch has cleared, so index
+// dispatch is held for at most StageGateDrainMax (2m), not the 10–12 minutes of
+// a rebuild.
+//
 // SCOPE LIMIT — a barge does not hold index ADMISSION. Scheduler-dispatched
 // index jobs may still be dispatched during a foreground rebuild; they remain
 // bounded by the RSS admission ledger, and same-repo collisions by repolock's

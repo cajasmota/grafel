@@ -86,7 +86,7 @@ func TestStartEngineLivenessHeartbeat_PopulatesRSS(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	root := t.TempDir()
 
-	stop := startEngineLivenessHeartbeat(root, 0, nil, nil)
+	stop := startEngineLivenessHeartbeat(root, 0, nil, nil, nil)
 	t.Cleanup(stop)
 
 	// The writer's first write happens inside its own goroutine (fired right

@@ -199,10 +199,22 @@ var (
 	bargeBridge   *Scheduler
 )
 
+// publishBargeBridge installs s as the process's barge target.
+//
+// A silent overwrite of a LIVE predecessor would make that predecessor's barges
+// invisible — the exact shape of the bug this whole slice exists to fix (a
+// guard that is present, looks correct, and does not bind the path that runs).
+// No production path constructs two schedulers, so this cannot bind today; it
+// is loud rather than silent so that if one ever does, it says so instead of
+// quietly degrading to no-barge.
 func publishBargeBridge(s *Scheduler) {
 	bargeBridgeMu.Lock()
+	prev := bargeBridge
 	bargeBridge = s
 	bargeBridgeMu.Unlock()
+	if prev != nil && prev != s {
+		s.logger.Warn("sched: a second scheduler replaced the foreground-barge bridge — the previous scheduler's barges are now invisible to it (#5954)")
+	}
 }
 
 func withdrawBargeBridge(s *Scheduler) {

@@ -295,3 +295,109 @@ func TestStageGateBarge_ProcessBridgeFollowsSchedulerLifetime(t *testing.T) {
 		t.Fatalf("stageBarge = %d after Stop; the bridge must be withdrawn", got)
 	}
 }
+
+// TestStageGateBarge_BridgeWithdrawIsIdentityChecked pins the identity check in
+// withdrawBargeBridge. Stop() withdraws the bridge, but a scheduler must only
+// ever unpublish ITSELF: an older scheduler stopping AFTER a newer one has
+// published must not tear the newer one's bridge down, or every subsequent
+// rebuild silently barges into the void and the gate is back to reading an idle
+// machine — the precise failure this slice exists to fix, reintroduced by a
+// shutdown ordering accident.
+func TestStageGateBarge_BridgeWithdrawIsIdentityChecked(t *testing.T) {
+	var runs1, runs2 atomic.Int32
+	s1 := newBargeTestScheduler(t, &runs1, nil)
+	s2 := newBargeTestScheduler(t, &runs2, nil)
+
+	s1.Start()
+	s2.Start() // s2 is now the published bridge
+	defer s2.Stop()
+
+	// s1 stops LAST. Its withdraw must be a no-op, because it is not the
+	// currently published scheduler.
+	s1.Stop()
+
+	release := BargeForeground("rebuild:acme")
+	defer release()
+	if got := bargeHeld(s2); got != 1 {
+		t.Fatalf("stageBarge on the LIVE scheduler = %d, want 1: an older scheduler's Stop() tore down "+
+			"the newer scheduler's barge bridge — every rebuild after it would register nowhere", got)
+	}
+	if got := bargeHeld(s1); got != 0 {
+		t.Fatalf("stageBarge on the STOPPED scheduler = %d, want 0", got)
+	}
+}
+
+// TestStageGateBarge_DeferralUnderBargeDoesNotRaiseDrainBarrier pins the
+// escalation-suppression half of the change, and the "clock keeps running"
+// claim that makes suppressing it safe.
+//
+// A drain barrier means "stop admitting index jobs so the in-flight batch
+// drains, then the starved stage can acquire". Against a BARGE that mechanism
+// is inert: the blocker is a rebuild the scheduler does not dispatch, so
+// draining s.inflight cannot end it. Raising one anyway would hold scheduler
+// index dispatch and log a starvation WARN every StageGateDrainMax for the
+// entire 10–12 minutes of a rebuild, buying nothing.
+//
+// The deferral CLOCK is deliberately NOT reset, so the starvation budget is
+// preserved rather than forgiven: the moment the barge lifts, an already-starved
+// stage that is still blocked (here, by an index job) raises the barrier on its
+// very next retry. Both halves are asserted.
+func TestStageGateBarge_DeferralUnderBargeDoesNotRaiseDrainBarrier(t *testing.T) {
+	var runs atomic.Int32
+	indexEntered := make(chan struct{}, 1)
+	releaseIndex := make(chan struct{})
+	var once sync.Once
+	letIndexFinish := func() { once.Do(func() { close(releaseIndex) }) }
+
+	s := newBargeTestScheduler(t, &runs, func(c *Config) {
+		// Zero-length starvation budget: EVERY deferral is instantly eligible
+		// to escalate, so a surviving escalation is caught on the first retry
+		// rather than depending on timing.
+		c.StageGateMaxDefer = time.Nanosecond
+		c.StageGateDrainMax = time.Hour
+		c.Index = func(_ context.Context, _ string, _ string) error {
+			select {
+			case indexEntered <- struct{}{}:
+			default:
+			}
+			<-releaseIndex
+			return nil
+		}
+	})
+	s.Start()
+	defer func() { letIndexFinish(); s.Stop() }()
+
+	release := s.bargeForeground("rebuild:acme")
+
+	s.scheduleGroupAlgo("acme")
+	waitFor(t, time.Second, func() bool { return s.stageDeferredFor("group-algo:acme") })
+
+	// Several retry cycles at StageGateRetry=5ms, every one of them past
+	// StageGateMaxDefer. No barrier may be raised while the barge is the blocker.
+	time.Sleep(60 * time.Millisecond)
+	s.mu.Lock()
+	drainFor := s.stageDrainFor
+	_, stillDeferred := s.stageDeferSince["group-algo:acme"]
+	s.mu.Unlock()
+	if drainFor != "" {
+		t.Fatalf("drain barrier raised for %q while a foreground barge was the blocker: "+
+			"draining s.inflight cannot end a rebuild, so the barrier holds index dispatch and warns for "+
+			"the whole rebuild while buying nothing", drainFor)
+	}
+	if !stillDeferred {
+		t.Fatal("group-algo stopped being deferred while the barge was held")
+	}
+
+	// Now start an index job and lift the barge. The stage is still blocked —
+	// this time by index churn, which a barrier CAN resolve — and its deferral
+	// clock was never reset, so the barrier must go up on the next retry.
+	s.Enqueue("/slow-repo")
+	<-indexEntered
+	release()
+
+	waitFor(t, 3*time.Second, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.stageDrainFor == "group-algo:acme"
+	})
+}
