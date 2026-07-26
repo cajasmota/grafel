@@ -164,16 +164,22 @@ func resolveGroup(group string) (*registry.GroupConfig, error) {
 //
 // MISSING/ZERO STATS ARE CONTRIBUTED AS ZERO, deliberately. A repo that has no
 // readable graph descriptor (never indexed, or graph.json-only — the JSON
-// fallback carries no header counts) is simply not counted, so the hint is an
-// UNDER-estimate and the remaining share is filled by ordinary append growth
-// from a truthful base. That direction is the safe one: a hint that
-// OVER-estimates would allocate a union larger than the union, which is exactly
-// the hazard this change exists to remove. For the same reason nothing is ever
-// guessed, rounded up, or extrapolated from a sibling repo.
+// fallback carries no header counts) is simply not counted, so it makes the hint
+// an UNDER-estimate and the remaining share is filled by ordinary append growth
+// from a truthful base. That is the safe direction: a hint that OVER-estimates
+// would allocate a union larger than the union, which is exactly the hazard this
+// change exists to remove. For the same reason nothing is ever guessed, rounded
+// up, or extrapolated from a sibling repo.
 //
-// The hint can still under-count by a small delta if a repo is re-indexed
-// between this header pre-pass and its LoadGraphFromDir below; that is a
-// bounded under-estimate, handled by the same append growth.
+// The one way the hint can go WRONG IN EITHER DIRECTION is the TOCTOU window
+// between this header pre-pass and each repo's LoadGraphFromDir below: a repo
+// re-indexed LARGER in that window under-counts, and one re-indexed SMALLER
+// over-counts. Both are bounded by that single repo's own delta, both are
+// transient, and neither has any correctness effect — an under-count is
+// absorbed by append growth, an over-count leaves the union slice with spare
+// capacity for its (short) lifetime. Nothing is re-read or reconciled to close
+// the window: a second header pass would only move it, and the group union is
+// discarded at the end of the pass either way.
 func unionCapacityHint(cfg *registry.GroupConfig) (entCap, relCap int) {
 	if cfg == nil {
 		return 0, 0
