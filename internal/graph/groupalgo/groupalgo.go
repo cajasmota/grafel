@@ -148,6 +148,51 @@ func resolveGroup(group string) (*registry.GroupConfig, error) {
 	return cfg, nil
 }
 
+// unionCapacityHint pre-computes the exact size of the union about to be
+// assembled, from each repo's PERSISTED header counts (#5909, refs #5954).
+//
+// Why: the assembly below appends entities one at a time and relationships
+// repo-by-repo. An unpresized append grows by doubling, so at the copy instant
+// the process transiently holds BOTH the old backing array and a new one up to
+// ~2x its size — for the real corpus (427k entities) that copy is the single
+// largest allocation in the group-algo child. Presizing removes every growth
+// copy: one allocation of the final size, no transient double.
+//
+// graph.PersistedStatsFromDir is a header read (fbreader/MultiReader entity +
+// relationship counts) — no entity materialization — the same cheap pre-pass
+// cmd/grafel/daemon.go:767 uses for SchedulerEntityCount.
+//
+// MISSING/ZERO STATS ARE CONTRIBUTED AS ZERO, deliberately. A repo that has no
+// readable graph descriptor (never indexed, or graph.json-only — the JSON
+// fallback carries no header counts) is simply not counted, so the hint is an
+// UNDER-estimate and the remaining share is filled by ordinary append growth
+// from a truthful base. That direction is the safe one: a hint that
+// OVER-estimates would allocate a union larger than the union, which is exactly
+// the hazard this change exists to remove. For the same reason nothing is ever
+// guessed, rounded up, or extrapolated from a sibling repo.
+//
+// The hint can still under-count by a small delta if a repo is re-indexed
+// between this header pre-pass and its LoadGraphFromDir below; that is a
+// bounded under-estimate, handled by the same append growth.
+func unionCapacityHint(cfg *registry.GroupConfig) (entCap, relCap int) {
+	if cfg == nil {
+		return 0, 0
+	}
+	for _, r := range cfg.Repos {
+		ps, ok := graph.PersistedStatsFromDir(daemon.StateDirForRepo(r.Path))
+		if !ok {
+			continue
+		}
+		if ps.Entities > 0 {
+			entCap += ps.Entities
+		}
+		if ps.Relationships > 0 {
+			relCap += ps.Relationships
+		}
+	}
+	return entCap, relCap
+}
+
 // AssembleGroupGraph loads every repo's graph.fb and concatenates entities +
 // relationships into a single in-memory group graph. The cross-repo phantom
 // CALLS edges are already present in each repo's graph.fb (post-P5), so the
@@ -169,9 +214,14 @@ func AssembleGroupGraph(group string) (entities []graph.Entity, rels []graph.Rel
 		return nil, nil, nil, nil, err
 	}
 
-	entities = []graph.Entity{}
-	rels = []graph.Relationship{}
-	entityRepo = map[string]string{}
+	// Presize from the persisted per-repo header counts (#5909). Under-estimates
+	// are safe (append growth covers the rest); over-estimates are the hazard, so
+	// unionCapacityHint never guesses for a repo it cannot read. cap==0 degrades
+	// to exactly the previous behaviour.
+	entCap, relCap := unionCapacityHint(cfg)
+	entities = make([]graph.Entity, 0, entCap)
+	rels = make([]graph.Relationship, 0, relCap)
+	entityRepo = make(map[string]string, entCap)
 	srcMtimes = map[string]int64{}
 
 	for _, r := range cfg.Repos {
@@ -288,6 +338,42 @@ func RunGroupAlgorithms(group string) (*GroupAlgoResult, error) {
 // the whole union and a partial pass could not reproduce the exact same labels
 // a full pass assigns — that would break strict parity.)
 func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
+	return runGroupAlgorithmsIncremental(group, true)
+}
+
+// RunGroupAlgorithmsIncrementalOneShot is RunGroupAlgorithmsIncremental for a
+// process that computes ONCE and then exits — the `grafel group-algo --write`
+// child the daemon's scheduler forks (#5909, refs #5954).
+//
+// It is identical in every observable way (same union, same input_hash, same
+// deterministic results, same overlay) except that it does NOT populate the
+// process-local memo. The memo exists so a LONG-LIVED daemon does not re-run
+// Louvain + PageRank + O(V*E) betweenness for a group-version it already
+// computed, and so a failed overlay persist cannot reopen the
+// recompute->persist-fail->recompute spin. Neither property can ever be
+// exercised by a process that is about to exit: for the one-shot child the memo
+// is pure retention — a SECOND live reference to the PageRank / community /
+// centrality maps over the whole union, pinned across the entire
+// WriteOverlayFromResult window, which is precisely when the child is already
+// at its heap peak (running_algorithms measured at 1433 MB live / 1983 MB RSS
+// on the 427k-entity corpus, #5992).
+//
+// NOTE ON #5909's FRAMING: the issue says the retention is "on the in-process
+// path (GRAFEL_SUBPROCESS_INDEXER=0)". That is inverted. storeMemoizedGroupResult
+// was called UNCONDITIONALLY from the single incremental entrypoint, so the
+// subprocess child paid the retention too — and the child is the process where
+// it can never pay for itself. The in-process/daemon path keeps the memo
+// unchanged; it is the one caller for which the memo is the point.
+func RunGroupAlgorithmsIncrementalOneShot(group string) (*GroupAlgoResult, error) {
+	return runGroupAlgorithmsIncremental(group, false)
+}
+
+// runGroupAlgorithmsIncremental is the shared body. memoize selects whether a
+// full recompute is recorded in the process-local guard: true for the
+// long-lived daemon (see RunGroupAlgorithmsIncremental), false for the one-shot
+// child (see RunGroupAlgorithmsIncrementalOneShot). It affects RETENTION only —
+// never the union, the hash, the results, or the overlay.
+func runGroupAlgorithmsIncremental(group string, memoize bool) (*GroupAlgoResult, error) {
 	// Phase stamps (#5954). The group-algo child is one of the two largest
 	// processes on the machine at the whole-machine memory peak and had zero
 	// instrumentation; memtrace polls CurrentPhase on a ticker so each memstats
@@ -355,8 +441,12 @@ func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
 	SetPhase(PhaseRunningAlgorithms)
 	res := graph.RunAlgorithms(entities, rels)
 	// Record BEFORE returning (and thus before the caller's overlay write), so a
-	// persist failure cannot cause a re-run for this same version.
-	storeMemoizedGroupResult(group, inputHash, res)
+	// persist failure cannot cause a re-run for this same version. Skipped for
+	// the one-shot child, which exits before any second run could read it — see
+	// RunGroupAlgorithmsIncrementalOneShot.
+	if memoize {
+		storeMemoizedGroupResult(group, inputHash, res)
+	}
 	return &GroupAlgoResult{
 		Group:        group,
 		Results:      res,
