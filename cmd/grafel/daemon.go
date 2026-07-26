@@ -41,6 +41,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 	"github.com/cajasmota/grafel/internal/indexstate"
 	"github.com/cajasmota/grafel/internal/jobs"
+	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/mcp"
 	"github.com/cajasmota/grafel/internal/memtrace"
 	"github.com/cajasmota/grafel/internal/process"
@@ -671,8 +672,18 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 	// (inherited automatically — RunSubprocessIndex builds the child's env
 	// from os.Environ(), so setting this var before starting the daemon is
 	// enough for both the engine/serve process AND every child it forks to
-	// trace). No phase concept applies to the long-running engine/serve
-	// plane, so phaseFn is nil (every sample's phase is ""). Inert by
+	// trace).
+	//
+	// #5954: phaseFn is links.CurrentPhase, NOT nil. It used to be nil on the
+	// reasoning that "no phase concept applies to a long-running process", and
+	// the cost of that was a whole unprofiled plane: the engine peaks AFTER the
+	// index child exits and holds ~1.9GB for minutes with every sample tagged
+	// "", leaving heap-peak.pprof as the only usable artifact. The engine DOES
+	// have one heavy staged workload — the cross-repo link pass, which
+	// materialises the group union twice — and that is what this reports.
+	// Outside a link pass the phase reads "" (none run yet) or "idle" (one has
+	// finished), and an idle-tagged sample is itself the finding: it is
+	// plateau — memory held but not being worked on. Inert by
 	// default: Start returns nil (no goroutine, no file) when
 	// GRAFEL_MEMTRACE_DIR is unset. Runs for the lifetime of the process —
 	// no Stop() call needed, matching other fire-and-forget daemon-startup
@@ -681,7 +692,7 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 	if runMode == daemonRunModeEngine {
 		memtraceRole = "engine"
 	}
-	memtrace.Start(memtraceRole, nil, func(format string, args ...any) {
+	memtrace.Start(memtraceRole, links.CurrentPhase, func(format string, args ...any) {
 		logger.Warn(fmt.Sprintf("memtrace: "+format, args...))
 	})
 
@@ -1096,12 +1107,56 @@ func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) erro
 	return err
 }
 
+// subprocessLinksRunner is the fork-exec used by daemonSchedulerLinks. A var
+// solely so a test can observe that the scheduler path forks (and that the
+// foreground path does not) without spawning a real multi-minute child.
+var subprocessLinksRunner = sched.RunSubprocessLinks
+
 // daemonSchedulerLinks re-runs the cross-repo link passes for a group.
-// Delegates to the context-aware version of the links hook so the scheduler's
-// shutdownCtx is threaded through for clean cancellation on daemon shutdown.
-// Behaviour is identical to a force rebuild's link step, except context is
-// propagated.
+//
+// By default the pass runs in a short-lived child process
+// (`grafel links-internal <group>`) so its heap is isolated from the engine and
+// reclaimed by the OS on exit (#5954; mirrors group-algo and the subprocess
+// indexer). Until this change it was the last heavy stage still running inside
+// the long-lived engine, and it showed: per-phase measurement put the pass
+// window at ~830MB LIVE heap / ~1.2GB heap_inuse — a plateau the engine then
+// held for the rest of its life, on top of everything else it is resident for.
+// The child also inherits GOGC=50, GODEBUG=madvdontneed=1 and a GOMAXPROCS cap,
+// none of which the in-process pass ever had.
+// GRAFEL_SUBPROCESS_INDEXER=0 opts back into the in-process path.
+//
+// THE STAGE TOKEN SPANS THE FORK. The scheduler calls this while holding the
+// daemon-wide EXCLUSIVE heavy-stage token (fireLinks → tryAcquireStageLocked,
+// released by a defer around the call), so this function must not return until
+// the child has exited — otherwise the token would be released with the heavy
+// work still running and the gate would stop serialising the very stage it
+// exists for. RunSubprocessLinks waits on the child, so the token covers the
+// child's whole lifetime exactly as it does for group-algo.
+//
+// CANCELLATION. ctx is the scheduler's per-group cancel context (derived from
+// shutdownCtx), so daemon shutdown or a CancelGroup on a group delete still
+// stops the pass; across the fork the in-process ctx checks become a SIGKILL of
+// the child (exec.CommandContext's default Cancel is cmd.Process.Kill — not a
+// SIGTERM). More prompt than the boundary checks it replaces, at the cost of
+// leaking the pass's staging temp dir, which stageGraphsDir sweeps.
 func daemonSchedulerLinks(ctx context.Context, group string) error {
+	if sched.SubprocessIndexEnabled() {
+		return subprocessLinksRunner(ctx, group, slog.Default())
+	}
+	// In-process fallback (opt-out via GRAFEL_SUBPROCESS_INDEXER=0).
+	return runLinksHookWithCtx(ctx, group)
+}
+
+// daemonForegroundLinks is the link step of a user-initiated rebuild, run
+// synchronously inside daemonRebuildFuncCore.
+//
+// It deliberately does NOT fork (#5954). The rebuild is foreground work with a
+// human waiting on it — the wizard's "Detecting cross-repo links…" phase — and
+// it is already covered by the stage gate's barge, so the memory argument that
+// justifies the child on the scheduler path does not apply here while the
+// latency and progress-plumbing costs of a fork would. Kept as a named function
+// rather than an inline closure so that this distinction is testable.
+func daemonForegroundLinks(ctx context.Context, group string) error {
 	return runLinksHookWithCtx(ctx, group)
 }
 
@@ -1201,12 +1256,12 @@ func makeDaemonRebuildFunc(concurrency int) daemon.RebuildFunc {
 		opts = append([]IndexOption{WithInteractive(true)}, opts...)
 		return Index(repoPath, outPath, repoTag, skipPasses, pretty, jsonStats, opts...)
 	}
-	linksFn := func(ctx context.Context, group string) error {
-		// Context-aware so a group delete mid-rebuild cancels the (multi-minute)
-		// cross-repo link/phantom pass instead of running it to completion for a
-		// group that no longer exists (v0.1.8 leak fix).
-		return runLinksHookWithCtx(ctx, group)
-	}
+	// Context-aware so a group delete mid-rebuild cancels the (multi-minute)
+	// cross-repo link/phantom pass instead of running it to completion for a
+	// group that no longer exists (v0.1.8 leak fix). Runs IN-PROCESS — see
+	// daemonForegroundLinks for why the #5954 fork is scoped to the
+	// scheduler-driven pass only.
+	linksFn := daemonForegroundLinks
 	return func(args proto.RebuildArgs) ([]string, string, error) {
 		return daemonRebuildFuncCore(concurrency, args, indexFn, linksFn)
 	}

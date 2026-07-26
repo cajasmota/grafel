@@ -479,7 +479,12 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 // MCP apply path picks up the fresh overlay by mtime on the next group load.
 //
 // Cancellation: ctx.Done() (daemon shutdown, or a newer link pass superseding
-// this one) sends SIGTERM to the child via exec.CommandContext.
+// this one) SIGKILLs the child. exec.CommandContext's default Cancel is
+// cmd.Process.Kill(), not a SIGTERM — an earlier version of this comment said
+// SIGTERM and was simply wrong. The child gets no chance to run deferred
+// cleanup, so nothing on the group-algo path may depend on a graceful shutdown;
+// the overlay write is a temp+rename swap, so a kill mid-write leaves an orphan
+// temp file and never a torn overlay.
 //
 // The child inherits the daemon's full environment (GRAFEL_HOME /
 // GRAFEL_DAEMON_ROOT) so it resolves the same group config + state dirs and
@@ -571,6 +576,173 @@ func RunSubprocessGroupAlgo(ctx context.Context, group string, logger *slog.Logg
 	}
 	if logger != nil {
 		logger.Info("subprocess-group-algo: completed", "pid", pid, "group", group)
+	}
+	return nil
+}
+
+// linksGOMAXPROCSDefault is the per-child CPU cap for the background cross-repo
+// link child. Same reasoning and same default as the group-algo child: it is a
+// single background batch process nobody is waiting on, so "the less the
+// better", and 2 leaves the host responsive while still letting the per-pass
+// worker pools do useful concurrent work. GRAFEL_LINKS_CPU=1 throttles it
+// further.
+//
+// Until #5954 this pass ran IN-PROCESS in the engine, i.e. at the engine's
+// GOMAXPROCS (= host core count) with no cap at all — so this constant is not
+// just isolation bookkeeping, it is the first CPU bound the link pass has ever
+// had.
+const linksGOMAXPROCSDefault = 2
+
+// LinksGOMAXPROCS resolves the GOMAXPROCS cap applied to the links child,
+// honouring GRAFEL_LINKS_CPU (a strictly-positive integer; 1 is valid). Unset,
+// empty, non-numeric, or <= 0 → linksGOMAXPROCSDefault. Mirrors
+// GroupAlgoGOMAXPROCS exactly.
+func LinksGOMAXPROCS() int {
+	if raw := strings.TrimSpace(os.Getenv("GRAFEL_LINKS_CPU")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+	}
+	return linksGOMAXPROCSDefault
+}
+
+// linksChildEnv builds the environment for the links child: the GOMAXPROCS
+// bound plus the madvdontneed reclaim setting, merged into any inherited
+// GODEBUG. Extracted as a pure function so the constructed env is assertable
+// without fork-execing anything.
+//
+// The GODEBUG entry is the reason this is a function and not an inline append.
+// GODEBUG is read ONCE at process start, so — unlike GOGC, which the child sets
+// on itself in main() — madvdontneed can only be delivered through the child's
+// environment. Without it the runtime hands freed pages back with MADV_FREE and
+// the RSS the child gives up stays invisible to the OS until the kernel comes
+// under pressure, which is exactly what whole-machine peak measurement reads
+// (#5954). group-algo shipped without it and needed a follow-up; this child has
+// it from its first commit.
+func linksChildEnv(base []string, gomaxprocs int) []string {
+	env := make([]string, 0, len(base)+2)
+	env = append(env, base...)
+	env = append(env, "GOMAXPROCS="+strconv.Itoa(gomaxprocs))
+	return withMadvDontNeed(env)
+}
+
+// linksChildBinary resolves the executable to fork for the links child. It is a
+// var solely so a test can substitute a stand-in and exercise the fork /
+// cancel / argv contract without running the real multi-minute pass.
+var linksChildBinary = os.Executable
+
+// RunSubprocessLinks forks `grafel links-internal <group>` for one cross-repo
+// link pass and waits for it to exit (#5954). It is the exact analogue of
+// RunSubprocessGroupAlgo, for the same reason: the pass materialises the whole
+// group union TWICE in sequence — once in links.RunAllPasses (every repo's
+// Document, held live across ~19 passes) and again in the phantom-edge pass's
+// docs map — and while it ran in-process the engine kept that arena for the
+// rest of its life. Measured on the real corpus the pass window alone peaks at
+// ~830MB LIVE heap (~1.2GB heap_inuse), and the engine held ~1.9GB for minutes
+// after the index child had already exited. In a child the OS takes it all back
+// on exit.
+//
+// SCOPE: the SCHEDULER-DRIVEN background pass only. The foreground rebuild's
+// link step stays in-process — it is user-initiated and latency-sensitive, and
+// is already covered by the stage gate's barge.
+//
+// STATE HANDED OVER: the group name, and nothing else. Everything the pass
+// needs is re-derived in the child from the registry — the group config, each
+// repo's on-disk path (which is what links.SetRepoSourcePaths is populated
+// from, inside RunLinksForGroupCtx, at the start of every pass), and each
+// repo's state dir. That works because the child inherits the daemon's full
+// environment (GRAFEL_HOME / GRAFEL_DAEMON_ROOT) and therefore resolves the
+// same registry and the same state dirs. The pass's process-global
+// SetRepoSourcePaths is written before use on every entry, so the child's fresh
+// globals are not a hazard — they are one less thing to invalidate.
+//
+// CONCURRENCY around the known #5978 hazard (candidates.go / string_pass.go
+// build temp files as path+".tmp", deterministic per destination, so two
+// concurrent writers collide): this change does NOT make it worse. The pass is
+// serialised by the daemon's EXCLUSIVE heavy-stage token, which is held across
+// this call for the child's whole lifetime, so at most one background link pass
+// exists at a time — the same guarantee the in-process path had.
+//
+// CANCELLATION IS SIGKILL, NOT SIGTERM. ctx.Done() (daemon shutdown, or
+// CancelGroup on a group delete) makes exec.CommandContext run its default
+// Cancel, which is cmd.Process.Kill() — see os/exec. That is more prompt than
+// the in-process ctx checks it replaces (those only took effect at a pass
+// boundary, which on this pass can be minutes away), and it is why the child
+// installs no signal handler: under SIGKILL no handler could run.
+//
+// What that costs, precisely: the child cannot run deferred cleanup, so the
+// pass's staging dir (os.MkdirTemp "grafel-links-*", a symlink/hardlink farm)
+// is LEAKED on every cancellation. This is a real regression against the
+// in-process path, where cancellation was cooperative and the deferred cleanup
+// ran; it is not merely the pre-existing daemon-kill case. stageGraphsDir
+// sweeps old strays at pass start to bound the accumulation.
+//
+// What it does NOT cost: output integrity. Every sink the pass writes —
+// flows.WriteTo and graph.WriteLinkStats (writeJSONAtomic) — is
+// write-temp-then-rename, and the flows temp name is pid-suffixed, so a killed
+// child leaves at most an orphan .tmp and never a truncated or torn side-table.
+func RunSubprocessLinks(ctx context.Context, group string, logger *slog.Logger) error {
+	binary, err := linksChildBinary()
+	if err != nil {
+		return fmt.Errorf("subprocess-links: resolve binary: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, binary, "links-internal", group)
+	gomaxprocs := LinksGOMAXPROCS()
+	cmd.Env = linksChildEnv(os.Environ(), gomaxprocs)
+	// Put the child in its own process group so it is independently
+	// schedulable; the nice increment itself is applied by the child at startup
+	// (sched.NiceSelf). applyGroupAlgoNice is the shared spawn-side hook for
+	// both background batch children — it is named for the first one that
+	// needed it, not scoped to it.
+	applyGroupAlgoNice(cmd)
+	// On Windows, prevent a console window from flashing when the daemon
+	// (running as a Task Scheduler task) spawns this subprocess.
+	executil.NoWindow(cmd)
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("subprocess-links: stderr pipe: %w", err)
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("subprocess-links: stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("subprocess-links: start: %w", err)
+	}
+	pid := cmd.Process.Pid
+	if logger != nil {
+		logger.Info("subprocess-links: started", "pid", pid, "group", group, "gomaxprocs", gomaxprocs)
+	}
+
+	drain := func(r interface{ Read([]byte) (int, error) }, tag string, done chan struct{}) {
+		defer close(done)
+		sc := bufio.NewScanner(r)
+		for sc.Scan() {
+			if logger != nil {
+				logger.Info(tag, "pid", pid, "line", sc.Text())
+			}
+		}
+	}
+	stdoutDone := make(chan struct{})
+	stderrDone := make(chan struct{})
+	go drain(stdoutPipe, "[links]", stdoutDone)
+	go drain(stderrPipe, "[links]", stderrDone)
+
+	<-stdoutDone
+	<-stderrDone
+	waitErr := cmd.Wait()
+
+	if waitErr != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("subprocess-links: cancelled: %w", ctx.Err())
+		}
+		return fmt.Errorf("subprocess-links: child exit: %w", waitErr)
+	}
+	if logger != nil {
+		logger.Info("subprocess-links: completed", "pid", pid, "group", group)
 	}
 	return nil
 }

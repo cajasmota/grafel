@@ -65,6 +65,22 @@ func main() {
 		applyIndexGCPercent(os.Args[1], os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
 		os.Exit(runGroupAlgo(os.Args[2:]))
 	}
+	// Hidden cross-repo link child (#5954). The daemon's scheduler fork-execs
+	// this instead of running the multi-minute link pass inside the long-lived
+	// engine, where its ~830MB live / ~1.2GB heap_inuse arena became a plateau
+	// the engine held for the rest of its life. Intercepted before cobra
+	// dispatch; the public `grafel links pass <group>` is unaffected.
+	//
+	// Same GC pacing as the other two background children, and for the same
+	// reason: nobody is waiting on it, so trading GC CPU for RSS is free.
+	// Deliberately NO applyIndexMemoryLimit — GOMEMLIMIT is an absolute soft
+	// target and an absolute target below the live heap is the documented >4x
+	// death spiral (index_memlimit.go); GOGC is relative and cannot enter that
+	// regime. Never fatal.
+	if len(os.Args) >= 2 && os.Args[1] == backgroundLinksCommand {
+		applyIndexGCPercent(os.Args[1], os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
+		os.Exit(runLinksInternal(os.Args[2:]))
+	}
 	// Release acceptance ladder (#5224). Intercepted before cobra dispatch
 	// because it owns its own argv, lifecycle, and exit code (it boots an
 	// isolated in-process daemon and asserts each layer). Lives in cmd/grafel

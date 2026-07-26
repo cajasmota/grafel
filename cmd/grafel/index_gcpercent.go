@@ -36,9 +36,15 @@ const backgroundIndexCommand = "index-internal"
 // entrypoint the daemon's scheduler fork-execs (RunSubprocessGroupAlgo).
 const backgroundGroupAlgoCommand = "group-algo"
 
+// backgroundLinksCommand is the argv[1] of the hidden cross-repo link
+// entrypoint the daemon's scheduler fork-execs (RunSubprocessLinks). Note it is
+// NOT "links" — that name belongs to the public cobra command, which is
+// interactive and must stay uncapped.
+const backgroundLinksCommand = "links-internal"
+
 // backgroundGCPercentCommands is the ALLOW-LIST of commands whose GC pacing we
-// cap. Both members are batch children the daemon fork-execs with no human
-// waiting on them, so trading GC CPU for RSS is free there.
+// cap. Every member is a batch child the daemon fork-execs with no human
+// waiting on it, so trading GC CPU for RSS is free there.
 //
 // It became a set rather than a single constant when whole-machine measurement
 // showed the peak instant had moved entirely post-index (#5954): at that
@@ -52,6 +58,7 @@ const backgroundGroupAlgoCommand = "group-algo"
 var backgroundGCPercentCommands = map[string]bool{
 	backgroundIndexCommand:     true,
 	backgroundGroupAlgoCommand: true,
+	backgroundLinksCommand:     true,
 }
 
 // isBackgroundGCPercentCommand reports whether argv[1] names a background batch

@@ -57,6 +57,16 @@ func RunLinksForGroup(group string) error {
 // the partial work already written to disk is harmless (the group is being torn
 // down anyway).
 func RunLinksForGroupCtx(ctx context.Context, group string) error {
+	// #5954 — phase stamps for the memory trace. The link pass is the widest
+	// live-heap window in whichever process runs it (it materialises the group
+	// union twice, sequentially), and until these stamps existed every sample
+	// the ENGINE emitted was tagged "" so no stage could be blamed. The `idle`
+	// stamp on the way out is load-bearing for reading an engine trace: samples
+	// tagged idle are the post-pass PLATEAU — memory the process is still
+	// holding but no longer working on — which is the whole reason the
+	// scheduler-driven pass now runs in a child. See internal/links/phase.go.
+	links.SetPhase(links.PhaseStage)
+	defer links.SetPhase(links.PhaseIdle)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -111,6 +121,7 @@ func RunLinksForGroupCtx(ctx context.Context, group string) error {
 		// Best-effort: log but don't fail the link pass.
 		fmt.Fprintf(os.Stderr, "grafel: phantom-edge pass warning: %v\n", perr)
 	}
+	links.SetPhase(links.PhaseLinkStats)
 	// #5692: record link_ms into each group repo's dedicated link-stats.json.
 	// The link pass is the SOLE writer of that file, so this never races the
 	// reindex worker's graph-stats.json write. Best-effort — a write failure
@@ -233,7 +244,8 @@ func runLinksForGroup(cmd *cobra.Command, group string) error {
 //   - GraphAbsent: nothing to stage for the fb side (graph.json, if any, is
 //     still staged below).
 func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
-	tmp, err := os.MkdirTemp("", "grafel-links-")
+	sweepStaleStagingDirs()
+	tmp, err := os.MkdirTemp("", stagingDirPrefix)
 	if err != nil {
 		return "", func() {}, err
 	}
@@ -300,6 +312,49 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 		}
 	}
 	return tmp, cleanup, nil
+}
+
+// stagingDirPrefix names the pass's scratch dir. Shared by the creator and the
+// sweeper so the two cannot drift.
+const stagingDirPrefix = "grafel-links-"
+
+// stagingDirMaxAge is how long a staging dir must have gone untouched before
+// the sweeper will remove it. It only has to exceed the longest plausible link
+// pass — the real corpus runs ~9 minutes — with enough margin that a slow or
+// deferred pass is never swept out from under itself. A leaked dir surviving an
+// extra day costs nothing; deleting a LIVE pass's staged graphs would fail the
+// pass outright, so the guard is deliberately lopsided.
+const stagingDirMaxAge = 24 * time.Hour
+
+// sweepStaleStagingDirs removes abandoned staging dirs from previous passes.
+//
+// #5954: the scheduler-driven pass now runs in a child that the daemon cancels
+// with SIGKILL (exec.CommandContext's default Cancel is cmd.Process.Kill), so
+// the `defer cleanup()` below cannot run on cancellation. That is a genuine
+// regression against the in-process path, where a CancelGroup unwound the pass
+// cooperatively and the cleanup ran; a group deleted or a daemon stopped
+// mid-pass now leaves a symlink farm under $TMPDIR every time. This bounds the
+// accumulation without pretending the leak is not there.
+//
+// Best-effort by construction: every error is ignored. This is a housekeeping
+// courtesy on the way into a multi-minute pass, and no staging failure of any
+// kind may be allowed to fail the pass itself.
+func sweepStaleStagingDirs() {
+	entries, err := os.ReadDir(os.TempDir())
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-stagingDirMaxAge)
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), stagingDirPrefix) {
+			continue
+		}
+		info, ierr := e.Info()
+		if ierr != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(os.TempDir(), e.Name()))
+	}
 }
 
 // linkOrCopyFile stages src at dst by symlink, falling back to a byte copy when
@@ -370,6 +425,12 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 
 	// Load each repo's graph.Document. Prefer graph.fb when available
 	// (ADR-0016 flip-day #808); fall back to graph.json via LoadGraphFromDir.
+	//
+	// #5954: this is the SECOND full materialisation of the group union in this
+	// process (RunAllPasses already loaded and released one), so it gets its own
+	// phase — the two windows want different fixes and an untagged trace cannot
+	// tell them apart.
+	links.SetPhase(links.PhasePhantomLoad)
 	docs := make(map[string]*graph.Document, len(cfg.Repos))
 	graphPaths := make(map[string]string, len(cfg.Repos)) // slug → graph.json path for WriteAtomic
 	for _, r := range cfg.Repos {
@@ -414,12 +475,23 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 	}
 
 	// Promote phantom edges.
+	links.SetPhase(links.PhasePhantomPromote)
 	added, err := links.PromoteToPhantomEdges(allLinks, docs, group)
 	if err != nil {
 		return added, fmt.Errorf("phantom-edge pass: promote: %w", err)
 	}
 
 	// Re-run RunProcessFlow on each affected doc + write back to disk.
+	//
+	// #5954: stamped unconditionally, before the loop, so the phase reflects the
+	// stage the pass ENTERED rather than whether it found work — an empty
+	// affectedRepos set is a legitimate outcome (all cross-repo links removed)
+	// and must still be distinguishable from the load stage in a trace. The
+	// side-table writes are folded into this phase deliberately: stamping them
+	// separately inside the loop would produce an alternating flow/write history
+	// that says nothing a per-repo log line does not already say, and the writes
+	// are trivial next to the companion-set recompute they interleave with.
+	links.SetPhase(links.PhasePhantomFlow)
 	slugs := sortedStringKeys(affectedRepos)
 	for _, slug := range slugs {
 		doc, ok := docs[slug]
@@ -499,6 +571,7 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 	// read overlay would resurrect old cross-repo flows for a repo whose links
 	// were removed (without a reindex to invalidate the source_key). The phantom
 	// pass is the sole writer of the flow side-table, so it owns this cleanup.
+	links.SetPhase(links.PhasePhantomCleanup)
 	for slug := range docs {
 		if affectedRepos[slug] {
 			continue

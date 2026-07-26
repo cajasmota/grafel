@@ -288,6 +288,10 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Stamp BEFORE the load: loadAllGraphs is the first full materialisation
+	// of the group union and must be billed to its own phase, not to the
+	// pass that happens to run first (#5954).
+	SetPhase(PhaseLoad)
 	graphs, err := loadAllGraphs(graphsDir)
 	if err != nil {
 		return nil, err
@@ -305,6 +309,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 		OutReject: paths.Rejections,
 	}
 
+	SetPhase(PhaseForPass("import"))
 	p1, err := runImportPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("import pass: %w", err)
@@ -317,6 +322,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// canonicalise consumer-side dynamic_baseurl HTTP endpoint paths
 	// before the HTTP pass below sees them, lifting those orphans into
 	// the resolvable bucket.
+	SetPhase(PhaseForPass("constant_propagation"))
 	pCP, resolver, err := runConstantPropagationPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("constant propagation pass: %w", err)
@@ -339,6 +345,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// reading entity.Properties see the effect annotation. Mutates
 	// entity.Properties in-memory; emits a <group>-links-effects.json
 	// sidecar for the MCP grafel_effects tool.
+	SetPhase(PhaseForPass("effect_propagation"))
 	pEP, err := runEffectPropagationPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("effect propagation pass: %w", err)
@@ -352,18 +359,21 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// annotation. Mutates entity.Properties in-memory and emits the
 	// <group>-links-taint.json sidecar consumed by the MCP
 	// grafel_security_findings tool.
+	SetPhase(PhaseForPass("taint_flow"))
 	pTF, err := runTaintFlowPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("taint flow pass: %w", err)
 	}
 	res.Results = append(res.Results, pTF)
 
+	SetPhase(PhaseForPass("label"))
 	p2, err := runLabelPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("label pass: %w", err)
 	}
 	res.Results = append(res.Results, p2)
 
+	SetPhase(PhaseForPass("string"))
 	p3, err := runStringPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("string pass: %w", err)
@@ -374,6 +384,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// after the structural / label / string passes so that its
 	// method-segregated entries are rewritten cleanly without
 	// disturbing earlier output.
+	SetPhase(PhaseForPass("http"))
 	p4, err := runHTTPPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("http pass: %w", err)
@@ -383,6 +394,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// P5 — OpenAPI spec → HTTP route cross-linker. Uses openapi_operation
 	// entities emitted by the patterns extractor as the pivot to create
 	// consumer-caller → producer-handler links with method=openapi-spec.
+	SetPhase(PhaseForPass("openapi-spec"))
 	p5, err := runOpenAPISpecPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("openapi-spec pass: %w", err)
@@ -392,6 +404,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// P6 — cross-repo gRPC client-stub → server-impl linker. Uses
 	// SCOPE.GrpcMethod entities with canonical name grpc:Service/Method
 	// emitted by the gRPC engine pass (#725) as the join key.
+	SetPhase(PhaseForPass("grpc"))
 	p6, err := runGRPCPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("grpc pass: %w", err)
@@ -401,6 +414,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// P7 — cross-repo message-topic publisher↔subscriber linker. Uses
 	// SCOPE.MessageTopic entities emitted by the Kafka/SNS/SQS/EventBridge
 	// passes as the join key, matched by canonical topic Name.
+	SetPhase(PhaseForPass("topic"))
 	p7, err := runTopicPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("topic pass: %w", err)
@@ -412,6 +426,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// kinds) that live in shared-lib repos and share enough field names to
 	// be the same concept across languages (e.g. py-shared Order ↔
 	// js-shared Order). See sameas_pass.go.
+	SetPhase(PhaseForPass("same_as"))
 	p8, err := runSameAsPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("same-as pass: %w", err)
@@ -422,6 +437,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// last so it observes the in-memory entity/edge state after every
 	// upstream pass has had a chance to mutate it (e.g. the constant
 	// propagation pass rewriting consumer-side HTTP endpoint paths).
+	SetPhase(PhaseForPass("reachability"))
 	pReach, err := runReachabilityPass(group, graphs, paths)
 	if err != nil {
 		return nil, fmt.Errorf("reachability pass: %w", err)
@@ -434,6 +450,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// payload-shape facts emitted by the substrate sniffers. Findings
 	// land in a sidecar JSON document read by the
 	// grafel_payload_drift MCP tool.
+	SetPhase(PhaseForPass("payload_drift"))
 	pDrift, err := runPayloadDriftPass(group, graphs, paths)
 	if err != nil {
 		return nil, fmt.Errorf("payload drift pass: %w", err)
@@ -445,6 +462,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// marked pure=true with a low confidence floor. Runs after the
 	// effect propagation pass so it observes the in-memory effect
 	// annotations stamped on entity Properties.
+	SetPhase(PhaseForPass("pure_functions"))
 	pPure, err := runPureFunctionPass(graphs, paths)
 	if err != nil {
 		return nil, fmt.Errorf("pure-function pass: %w", err)
@@ -455,6 +473,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// over IMPORTS edges. Language-agnostic; stamps `module_cycle_id`
 	// on every cycle participant and emits a sidecar with full SCC
 	// membership for the grafel_import_cycles MCP tool.
+	SetPhase(PhaseForPass("module_cycles"))
 	pCycle, err := runModuleCyclePass(graphs, paths)
 	if err != nil {
 		return nil, fmt.Errorf("module-cycle pass: %w", err)
@@ -466,6 +485,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// definitions (last-write-wins), stamps a compact summary on the
 	// owning function entity, and persists the full chain set in a
 	// sidecar for the grafel_def_use MCP tool.
+	SetPhase(PhaseForPass("def_use"))
 	pDU, err := runDefUsePass(graphs, paths)
 	if err != nil {
 		return nil, fmt.Errorf("def-use pass: %w", err)
@@ -476,6 +496,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// format / SQL templates). Per-language sniffer lifts every recog-
 	// nised template literal; the pass persists them in a sidecar for
 	// the grafel_template_patterns MCP tool.
+	SetPhase(PhaseForPass("template_patterns"))
 	pTP, err := runTemplatePatternPass(graphs, paths)
 	if err != nil {
 		return nil, fmt.Errorf("template-pattern pass: %w", err)
@@ -490,6 +511,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// idempotent and finds the value already present (both call the same
 	// ComputeFunctionComplexity, so they can never diverge). Generalises part
 	// (a) (#4821), which only stamped data-flow-bound handlers.
+	SetPhase(PhaseForPass(MethodComplexity))
 	pCx, err := runComplexityPass(graphs, paths)
 	if err != nil {
 		return nil, fmt.Errorf("complexity pass: %w", err)
@@ -500,6 +522,7 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// DATA_FLOWS_TO links (intra-function + one local-call hop) from the
 	// per-language substrate dataflow sniffers. Honest-partial: see
 	// internal/links/dataflow_pass.go.
+	SetPhase(PhaseForPass("data_flow"))
 	pDF, err := runDataFlowPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("data-flow pass: %w", err)
