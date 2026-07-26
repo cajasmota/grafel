@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
@@ -262,5 +263,54 @@ func TestRunPhantomEdgePass_SegmentSetNotSkipped(t *testing.T) {
 	}
 	if added != 1 {
 		t.Fatalf("phantom edges added = %d, want 1 (segment-set source repo must not be skipped)", added)
+	}
+}
+
+// #5954 — the scheduler-driven pass runs in a child the daemon cancels with
+// SIGKILL, so stageGraphsDir's `defer cleanup()` cannot run on cancellation and
+// every cancelled pass leaks its staging dir. sweepStaleStagingDirs bounds that.
+// The two guards that matter are asymmetric on purpose: sweeping a stale dir is
+// housekeeping, but sweeping a LIVE pass's dir would fail that pass outright, so
+// the age cutoff and the prefix match are both tested from the entry point that
+// production actually calls (stageGraphsDir), not from the sweeper directly.
+func TestStageGraphsDir_SweepsOnlyStaleStagingDirs(t *testing.T) {
+	tmpRoot := t.TempDir()
+	t.Setenv("TMPDIR", tmpRoot)
+	if os.TempDir() != tmpRoot {
+		t.Skipf("os.TempDir() = %s, not honouring TMPDIR on this platform", os.TempDir())
+	}
+
+	mkdir := func(name string, age time.Duration) string {
+		p := filepath.Join(tmpRoot, name)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		when := time.Now().Add(-age)
+		if err := os.Chtimes(p, when, when); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	stale := mkdir(stagingDirPrefix+"abandoned", stagingDirMaxAge+time.Hour)
+	live := mkdir(stagingDirPrefix+"inflight", time.Minute)
+	unrelated := mkdir("some-other-tool-cache", stagingDirMaxAge+time.Hour)
+
+	staged, cleanup, err := stageGraphsDir(&registry.GroupConfig{Name: "g"})
+	if err != nil {
+		t.Fatalf("stageGraphsDir: %v", err)
+	}
+	defer cleanup()
+	if _, err := os.Stat(staged); err != nil {
+		t.Fatalf("staging dir not created: %v", err)
+	}
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale staging dir survived the sweep (err=%v)", err)
+	}
+	if _, err := os.Stat(live); err != nil {
+		t.Errorf("a recent staging dir was swept — that would pull the graphs out from under a running pass: %v", err)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Errorf("the sweep removed a non-grafel temp dir: %v", err)
 	}
 }
