@@ -120,7 +120,14 @@ func runGroupAlgo(args []string) int {
 	var res *groupalgo.GroupAlgoResult
 	var err error
 	if write {
-		res, err = groupalgo.RunGroupAlgorithmsIncremental(group)
+		// ONE-SHOT variant (#5909): this process computes once and exits, so the
+		// process-local memo can never be read again — populating it would only
+		// pin a SECOND full *AlgorithmResults (PageRank + community + centrality
+		// maps over the whole union) live across the overlay write, at the exact
+		// point this child is already at its heap peak. The daemon's in-process
+		// fallback (daemon.go daemonSchedulerGroupAlgo) still uses the memoizing
+		// entrypoint, where the guard is load-bearing.
+		res, err = groupalgo.RunGroupAlgorithmsIncrementalOneShot(group)
 	} else {
 		res, err = groupalgo.RunGroupAlgorithms(group)
 	}
