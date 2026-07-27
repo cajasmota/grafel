@@ -377,7 +377,7 @@ func atofSafe(s string) float64 {
 // result slice and their members are assigned community_id=-1 ("ungrouped").
 // This prevents singleton/micro-community noise from reaching the MCP surface
 // and the dashboard. Set opts.MinSize=1 to disable denoising.
-func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityNames map[string]string, opts CommunityOptions) ([]CommunityResult, map[string]int, float64, int) {
+func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityNames []string, opts CommunityOptions) ([]CommunityResult, map[string]int, float64, int) {
 	// Project the directed graph onto an undirected graph; community detection
 	// in gonum operates on undirected (or otherwise symmetric) inputs.
 	und := simple.NewWeightedUndirectedGraph(0, 0)
@@ -542,7 +542,7 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 		top := make([]string, 0, topN)
 		for k := 0; k < topN; k++ {
 			eid := idx.fromInt[members[k].id]
-			name := entityNames[eid]
+			name := nameOf(entityNames, members[k].id)
 			if name == "" {
 				name = eid
 			}
@@ -732,16 +732,6 @@ func logBetweennessPath(p betweennessPath, nodes int) {
 }
 
 func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[string]float64, map[string]float64) {
-	betw := make(map[string]float64, idx.next)
-	pr := make(map[string]float64, idx.next)
-	// Pre-seed every entity with a 0 so callers can rely on the keys being
-	// present even when gonum's algorithms only populate the active subset
-	// (e.g. unreachable nodes in PageRank, leaf nodes in Betweenness).
-	for _, id := range idx.toInt {
-		betw[idx.fromInt[id]] = 0
-		pr[idx.fromInt[id]] = 0
-	}
-
 	// Betweenness — choose exact-weighted vs unweighted vs sampled by size.
 	// The selection is factored into chooseBetweennessPath so it is unit-testable
 	// and so operators can force exact computation via GRAFEL_BETWEENNESS_FORCE_EXACT
@@ -771,8 +761,21 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 	if raw == nil {
 		raw = network.Betweenness(g)
 	}
+	// #5954 — betweenness is SPARSE: gonum (and sampledBetweenness) only report
+	// nodes with a non-zero score, so this map is sized to the reported set, not
+	// to the entity count. Callers must read an absent key as 0 (Go's zero value
+	// for a map read), which is what every consumer does — see
+	// identifyGodNodesFrom below, groupalgo.BuildOverlay, and the two
+	// entity-attachment loops (cmd/grafel/index.go, dashboard.applyAlgorithmResults)
+	// that gate on PageRank membership.
+	betw := make(map[string]float64, len(raw))
 	for nid, v := range raw {
-		betw[idx.fromInt[nid]] = roundForDeterminism(sanitizeFloat(v))
+		// Zero scores are dropped, not stored: that makes "absent" the single
+		// representation of a zero betweenness, so a reconstituted result (see
+		// groupalgo.overlayToResults) is comparable to a freshly computed one.
+		if rv := roundForDeterminism(sanitizeFloat(v)); rv != 0 {
+			betw[idx.fromInt[nid]] = rv
+		}
 	}
 
 	// PageRank requires a directed graph — use g directly. damping=0.85,
@@ -786,7 +789,13 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 	// init vector and converge to the same scores; roundForDeterminism()
 	// rounds to 1e-4 (well above the 1e-6 solver tolerance) so the on-disk
 	// bytes stay stable. Always use sparse — code graphs are sparse by nature.
+	//
+	// PageRank is DENSE: PageRankSparse returns a score for every node in g, and
+	// BuildGraph inserts a node per entity, so `pr` still has one entry per
+	// entity. Consumers that need the full entity set (the overlay writer's
+	// fold-in loop, the entity-attachment loops) key off this map.
 	prRaw := network.PageRankSparse(g, 0.85, 1e-6)
+	pr := make(map[string]float64, len(prRaw))
 	for nid, v := range prRaw {
 		pr[idx.fromInt[nid]] = roundForDeterminism(sanitizeFloat(v))
 	}
@@ -966,46 +975,108 @@ func sanitizeFloat(v float64) float64 {
 	return v
 }
 
-// IdentifyGodNodes returns the union of the top-5% nodes by betweenness AND
-// the top-5% nodes by PageRank. Empty maps yield an empty result.
-func IdentifyGodNodes(betw, pr map[string]float64) map[string]bool {
+// identifyGodNodesFrom returns the union of the top-5% entities by betweenness
+// AND the top-5% by PageRank, with the candidate universe taken from the node
+// index (every entity) rather than from each map's key set.
+//
+// It replaces the exported IdentifyGodNodes, deleted in #5954: that function
+// ranked each map over its own keys, which was the entity universe only while
+// both maps were pre-seeded with a zero per entity. The betweenness map is
+// sparse now, so its key set is no longer the right denominator and an exported
+// entry point taking just the two maps cannot compute the cut correctly. It had
+// no callers outside this file.
+//
+// This reproduces the selection made before #5954, when both maps were
+// pre-seeded with a 0 for every entity: the 5% cut is over the entity count,
+// and entities with no score rank last, ordered by id — exactly where an
+// explicit 0 sorted them. TestGodNodesParityWithZeroPreSeed checks it against a
+// verbatim copy of that implementation, including a fixture where the cut is
+// filled entirely from the zero tail.
+func identifyGodNodesFrom(betw, pr map[string]float64, idx *nodeIndex) map[string]bool {
+	universeLen := int(idx.next)
+	universe := func() []string { return mapKeys(idx.toInt) }
 	out := make(map[string]bool)
-	if len(betw) == 0 && len(pr) == 0 {
-		return out
+	for _, id := range pickTopFraction(betw, universeLen, universe) {
+		out[id] = true
 	}
-	pickTop5 := func(m map[string]float64) []string {
-		type pair struct {
-			id string
-			v  float64
-		}
-		ps := make([]pair, 0, len(m))
-		for k, v := range m {
-			ps = append(ps, pair{k, v})
-		}
-		// Issue #481 — ties on score were resolved by map-iteration order,
-		// so the top-5% set flipped between runs. Stable sort with an ID
-		// tiebreaker pins the membership.
-		sort.SliceStable(ps, func(i, j int) bool {
+	for _, id := range pickTopFraction(pr, universeLen, universe) {
+		out[id] = true
+	}
+	return out
+}
+
+// mapKeys collects the keys of m in unspecified order. Callers sort.
+func mapKeys[V any](m map[string]V) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	return ks
+}
+
+// pickTopFraction returns the top universeLen/20 (5%, minimum 1) ids ranked by
+// score descending with an id-ascending tiebreak, where every id in the universe
+// that is absent from m scores 0.
+//
+// Issue #481 — ties on score were resolved by map-iteration order, so the top-5%
+// set flipped between runs; the id tiebreaker pins the membership.
+//
+// The universe is passed as a size plus a lazy accessor because on the
+// RunAlgorithms path it is the full entity set (~430k ids): the id slice is only
+// materialised when the positively-scored entries do not already fill the cut,
+// which is the small/sparse-graph case. Scores are non-negative in practice, but
+// the split is written as ">0 first, then the rest ranked the same way" so it
+// stays order-equivalent to ranking one combined slice regardless.
+func pickTopFraction(m map[string]float64, universeLen int, universe func() []string) []string {
+	k := universeLen / 20 // 5%
+	if k == 0 && universeLen > 0 {
+		k = 1
+	}
+	if k == 0 {
+		return nil
+	}
+	type pair struct {
+		id string
+		v  float64
+	}
+	byScore := func(ps []pair) func(i, j int) bool {
+		return func(i, j int) bool {
 			if ps[i].v != ps[j].v {
 				return ps[i].v > ps[j].v
 			}
 			return ps[i].id < ps[j].id
-		})
-		k := len(ps) / 20 // 5%
-		if k == 0 && len(ps) > 0 {
-			k = 1
 		}
-		out := make([]string, 0, k)
-		for i := 0; i < k; i++ {
-			out = append(out, ps[i].id)
+	}
+
+	ps := make([]pair, 0, len(m))
+	for id, v := range m {
+		if v > 0 {
+			ps = append(ps, pair{id, v})
 		}
+	}
+	sort.SliceStable(ps, byScore(ps))
+	if len(ps) > k {
+		ps = ps[:k]
+	}
+	out := make([]string, 0, k)
+	for _, p := range ps {
+		out = append(out, p.id)
+	}
+	if len(out) == k {
 		return out
 	}
-	for _, id := range pickTop5(betw) {
-		out[id] = true
+
+	// The positive scores did not fill the cut — rank the zero/negative tail.
+	ids := universe()
+	tail := make([]pair, 0, len(ids)-len(out))
+	for _, id := range ids {
+		if v := m[id]; v <= 0 {
+			tail = append(tail, pair{id, v})
+		}
 	}
-	for _, id := range pickTop5(pr) {
-		out[id] = true
+	sort.SliceStable(tail, byScore(tail))
+	for i := 0; i < len(tail) && len(out) < k; i++ {
+		out = append(out, tail[i].id)
 	}
 	return out
 }
@@ -1187,6 +1258,31 @@ func IdentifyArticulationPoints(g *simple.WeightedDirectedGraph, idx *nodeIndex)
 	return out
 }
 
+// nodeNames returns entity display names indexed by the gonum node id that
+// BuildGraph assigned to each entity id — the lookup table ComputeCommunities
+// takes. Entities sharing an id collapse onto one slot, last write winning,
+// which is how the map[string]string it replaced resolved them too. An entity
+// absent from the index (BuildGraph indexes every entity it is given, so only a
+// mismatched pair reaches this) is skipped rather than panicking.
+func nodeNames(entities []Entity, idx *nodeIndex) []string {
+	names := make([]string, idx.next)
+	for _, e := range entities {
+		if nid, ok := idx.toInt[e.ID]; ok {
+			names[nid] = e.Name
+		}
+	}
+	return names
+}
+
+// nameOf returns the display name recorded for a gonum node id, or "" when the
+// slice does not cover it.
+func nameOf(names []string, nid int64) string {
+	if nid < 0 || nid >= int64(len(names)) {
+		return ""
+	}
+	return names[nid]
+}
+
 // RunAlgorithms executes the full Pass 4 sweep with default options (community
 // MinSize=5). It is a convenience wrapper over RunAlgorithmsWithOptions.
 func RunAlgorithms(entities []Entity, rels []Relationship) *AlgorithmResults {
@@ -1212,17 +1308,19 @@ func RunAlgorithmsWithOptions(entities []Entity, rels []Relationship, opts Commu
 
 	g, idx := BuildGraph(entities, rels)
 
-	names := make(map[string]string, len(entities))
-	for _, e := range entities {
-		names[e.ID] = e.Name
-	}
+	// Community naming needs at most 5 entity names per community, so #5954
+	// replaced the map[string]string over every entity with a []string indexed
+	// by the gonum node id BuildGraph already assigned: the same lookups off a
+	// flat slice instead of a ~430k-entry string-keyed map (measured 21.5 MB ->
+	// 6.6 MB at 433k entities).
+	names := nodeNames(entities, idx)
 
 	commResults, commOf, overallQ, denoised := ComputeCommunities(g, idx, names, opts)
 	// Layer-1 deterministic naming (TF-IDF over member entity names +
 	// qualified names + source-file basenames). Mutates commResults in place.
 	AssignCommunityNames(commResults, entities, commOf)
 	betw, pr := ComputeCentrality(g, idx)
-	gods := IdentifyGodNodes(betw, pr)
+	gods := identifyGodNodesFrom(betw, pr, idx)
 	arts := IdentifyArticulationPoints(g, idx)
 	surprises := ComputeSurpriseEdges(rels, commOf)
 

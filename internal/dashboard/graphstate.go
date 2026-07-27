@@ -1228,9 +1228,11 @@ func applyAlgorithmResults(doc *graph.Document, res *graph.AlgorithmResults) {
 		if pr, ok := res.PageRank[e.ID]; ok {
 			prCopy := pr
 			e.PageRank = &prCopy
-		}
-		if bt, ok := res.Centrality[e.ID]; ok {
-			btCopy := bt
+			// #5954 — Centrality follows PageRank membership: PageRank covers
+			// every entity in the pass, while the betweenness map now holds only
+			// non-zero scores, so an absent key means 0 (what the removed zero
+			// pre-seed stored explicitly).
+			btCopy := res.Centrality[e.ID]
 			e.Centrality = &btCopy
 		}
 		if res.GodNodes[e.ID] {

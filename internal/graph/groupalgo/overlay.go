@@ -317,8 +317,9 @@ func readOverlayUnconditional(path string) *Overlay {
 // applies to entities — are fully reconstructed.
 func overlayToResults(ov *Overlay, entities []graph.Entity) *graph.AlgorithmResults {
 	res := &graph.AlgorithmResults{
-		CommunityID:        make(map[string]int, len(ov.Results)),
-		Centrality:         make(map[string]float64, len(ov.Results)),
+		CommunityID: make(map[string]int, len(ov.Results)),
+		// Sparse: non-zero scores only, matching graph.ComputeCentrality.
+		Centrality:         map[string]float64{},
 		PageRank:           make(map[string]float64, len(ov.Results)),
 		GodNodes:           map[string]bool{},
 		ArticulationPoints: map[string]bool{},
@@ -336,7 +337,13 @@ func overlayToResults(ov *Overlay, entities []graph.Entity) *graph.AlgorithmResu
 		}
 		res.CommunityID[id] = eo.CommunityID
 		res.PageRank[id] = eo.PageRank
-		res.Centrality[id] = eo.Centrality
+		// #5954 — the Centrality map holds non-zero betweenness only (absent
+		// reads as 0), matching what graph.ComputeCentrality now returns, so a
+		// reconstituted result stays equal to a full recompute. The overlay
+		// itself still records an explicit 0 for every entity.
+		if eo.Centrality != 0 {
+			res.Centrality[id] = eo.Centrality
+		}
 		if eo.IsGodNode {
 			res.GodNodes[id] = true
 		}

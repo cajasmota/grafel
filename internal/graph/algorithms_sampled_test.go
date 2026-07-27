@@ -126,8 +126,17 @@ func TestBetweennessSampleThresholdGate(t *testing.T) {
 		t.Fatalf("threshold override not honoured: got %d want 100000", got)
 	}
 	betwExact, _ := ComputeCentrality(g, idx)
-	if len(betwExact) != len(ents) {
-		t.Errorf("exact path: betw map has %d keys, want %d", len(betwExact), len(ents))
+	// The betweenness map is sparse (#5954): it carries non-zero scores only,
+	// never a zero pre-seed, so it must be non-empty but no larger than the
+	// node set.
+	if len(betwExact) == 0 || len(betwExact) > len(ents) {
+		t.Errorf("exact path: betw map has %d keys, want 1..%d", len(betwExact), len(ents))
+	}
+	for id, v := range betwExact {
+		if v == 0 {
+			t.Errorf("exact path: betw map holds an explicit zero for %q; zeros must be absent", id)
+			break
+		}
 	}
 }
 
@@ -203,8 +212,13 @@ func TestBetweennessPerfBudget_28k(t *testing.T) {
 	if elapsed > budget {
 		t.Errorf("centrality pass took %s, over budget %s", elapsed, budget)
 	}
-	if len(betw) != n || len(pr) != n {
-		t.Errorf("expected %d betw/%d pr keys, got %d/%d", n, n, len(betw), len(pr))
+	// PageRank is dense (a score per node); betweenness is sparse since #5954 —
+	// non-zero scores only, no zero pre-seed.
+	if len(pr) != n {
+		t.Errorf("expected %d pr keys, got %d", n, len(pr))
+	}
+	if len(betw) == 0 || len(betw) > n {
+		t.Errorf("expected 1..%d betw keys, got %d", n, len(betw))
 	}
 }
 
