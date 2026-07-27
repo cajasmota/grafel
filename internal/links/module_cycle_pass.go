@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // MethodModuleCycles identifies sidecar artefacts from this pass.
@@ -138,9 +140,9 @@ func runModuleCyclePass(graphs []repoGraph, paths Paths) (PassResult, error) {
 					continue
 				}
 				if e.Properties == nil {
-					e.Properties = map[string]string{}
+					e.Properties = types.Props{}
 				}
-				e.Properties[ModuleCyclePropertyKey] = tag
+				e.Properties.Set(ModuleCyclePropertyKey, tag)
 				mem = append(mem, moduleCycleMember{
 					Repo:       g.Repo,
 					EntityID:   id,

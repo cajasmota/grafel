@@ -40,6 +40,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/substrate"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // MethodReachability identifies entries produced by the Phase 1B
@@ -309,19 +311,19 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 			e := &g.Entities[ei]
 			isReach := reachable[e.ID] != nil
 			if e.Properties == nil {
-				e.Properties = map[string]string{}
+				e.Properties = types.Props{}
 			}
 			if isReach {
-				e.Properties["reachable"] = "true"
+				e.Properties.Set("reachable", "true")
 				vias := keysOf(reachable[e.ID])
 				sort.Strings(vias)
 				if len(vias) > 8 {
 					vias = vias[:8]
 				}
-				e.Properties["reachable_via"] = strings.Join(vias, ",")
+				e.Properties.Set("reachable_via", strings.Join(vias, ","))
 				repoReachable++
 			} else {
-				e.Properties["reachable"] = "false"
+				e.Properties.Set("reachable", "false")
 			}
 			// Only emit entries for code-bearing entities — keeps the
 			// sidecar focused. Skip Module/File/Document/External

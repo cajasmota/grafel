@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // SchemaVersion is the integer version of the links file shape.
@@ -661,16 +662,39 @@ type entityNode struct {
 	Subtype string // package/function/...; required to discriminate
 	// real external packages (subtype=package) from bare-name built-in
 	// placeholders (subtype=function). See issue #566 / import_pass.go.
-	SourceFile string            // relative path
-	StartLine  int               // 1-indexed body start (0 when unknown)
-	EndLine    int               // 1-indexed body end (0 when unknown)
-	Properties map[string]string // optional
+	SourceFile string // relative path
+	StartLine  int    // 1-indexed body start (0 when unknown)
+	EndLine    int    // 1-indexed body end (0 when unknown)
+	// Properties is the compact sorted key/value slice, NOT a map: at
+	// ~427k entities in the group union a per-entity map[string]string
+	// header+bucket costs ~336 B against ~64 B for the equivalent Props
+	// (#5954). Reads go through Get/Lookup, writes through Set/SetDefault
+	// on a *entityNode. Do not add a .Snapshot() at a read site — that
+	// re-creates exactly the map this field exists to avoid.
+	Properties types.Props // optional
 }
 
 type edgeRef struct {
 	FromID string
 	ToID   string
 	Kind   string // imports, calls, ...
+}
+
+// newEntityNode projects one graph.Entity into the link pass's entityNode.
+// Called once per entity in the group union (~427k on the reference corpus),
+// so its per-call allocation is a first-order term in the link pass's peak
+// RSS (#5954).
+func newEntityNode(e graph.Entity) entityNode {
+	return entityNode{
+		ID:         e.ID,
+		Name:       e.Name,
+		Kind:       e.Kind,
+		Subtype:    e.Subtype,
+		SourceFile: e.SourceFile,
+		StartLine:  e.StartLine,
+		EndLine:    e.EndLine,
+		Properties: e.PropsClone(),
+	}
 }
 
 // loadAllGraphs walks graphsDir and returns one repoGraph per slug directory
@@ -805,17 +829,9 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 			Path:     filepath.Join(dir, "graph.json"), // keep for logging/compat
 			FileRoot: filepath.Dir(realDir),
 		}
+		rg.Entities = make([]entityNode, 0, len(doc.Entities))
 		for _, e := range doc.Entities {
-			rg.Entities = append(rg.Entities, entityNode{
-				ID:         e.ID,
-				Name:       e.Name,
-				Kind:       e.Kind,
-				Subtype:    e.Subtype,
-				SourceFile: e.SourceFile,
-				StartLine:  e.StartLine,
-				EndLine:    e.EndLine,
-				Properties: e.PropsSnapshot(),
-			})
+			rg.Entities = append(rg.Entities, newEntityNode(e))
 		}
 		for _, r := range doc.Relationships {
 			rg.Edges = append(rg.Edges, edgeRef{FromID: r.FromID, ToID: r.ToID, Kind: r.Kind})

@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "links": [
+    {
+      "id": "03878b59",
+      "source": "acme-core::ep-prod-1",
+      "target": "acme-web::ep-cons-1",
+      "relation": "imports",
+      "method": "import",
+      "confidence": 1,
+      "channel": null,
+      "identifier": null,
+      "discovered_at": "<TS>"
+    },
+    {
+      "id": "23b930e3",
+      "source": "acme-core::ep-prod-1",
+      "target": "acme-worker::ep-cons-4",
+      "relation": "imports",
+      "method": "import",
+      "confidence": 1,
+      "channel": null,
+      "identifier": null,
+      "discovered_at": "<TS>"
+    },
+    {
+      "id": "5deaa6d1",
+      "source": "acme-web::ep-cons-1",
+      "target": "acme-worker::ep-cons-4",
+      "relation": "imports",
+      "method": "import",
+      "confidence": 1,
+      "channel": null,
+      "identifier": null,
+      "discovered_at": "<TS>"
+    },
+    {
+      "id": "2c38d270",
+      "source": "acme-web::ep-cons-3",
+      "target": "acme-core::view1",
+      "relation": "calls",
+      "method": "http",
+      "confidence": 1,
+      "channel": "http",
+      "identifier": "http:GET:${BASE}/api/v1/orders",
+      "discovered_at": "<TS>",
+      "source_locations": [
+        [
+          "src/api/dyn.ts"
+        ],
+        [
+          "core/views/orders.py"
+        ]
+      ],
+      "match_quality": "exact_verb",
+      "properties": {
+        "confidence": "resolved"
+      }
+    },
+    {
+      "id": "84230933",
+      "source": "acme-web::svc1",
+      "target": "acme-core::view1",
+      "relation": "calls",
+      "method": "http",
+      "confidence": 1,
+      "channel": "http",
+      "identifier": "http:GET:/api/v1/orders",
+      "discovered_at": "<TS>",
+      "source_locations": [
+        [
+          "src/api/orders.ts"
+        ],
+        [
+          "core/views/orders.py"
+        ]
+      ],
+      "match_quality": "exact_verb",
+      "properties": {
+        "confidence": "resolved"
+      }
+    },
+    {
+      "id": "84ce2fae",
+      "source": "acme-worker::job1",
+      "target": "acme-core::model1",
+      "relation": "imports",
+      "method": "import",
+      "confidence": 1,
+      "channel": null,
+      "identifier": null,
+      "discovered_at": "<TS>"
+    },
+    {
+      "id": "b38c3320",
+      "source": "acme-worker::job1",
+      "target": "acme-core::view1",
+      "relation": "calls",
+      "method": "http",
+      "confidence": 1,
+      "channel": "http",
+      "identifier": "http:GET:/api/v1/orders",
+      "discovered_at": "<TS>",
+      "source_locations": [
+        [
+          "worker/jobs/reconcile.go"
+        ],
+        [
+          "core/views/orders.py"
+        ]
+      ],
+      "match_quality": "exact_verb",
+      "properties": {
+        "confidence": "resolved"
+      }
+    }
+  ]
+}

@@ -27,6 +27,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // MethodPureFunctions identifies sidecar artefacts produced by this pass.
@@ -82,15 +84,15 @@ func runPureFunctionPass(graphs []repoGraph, paths Paths) (PassResult, error) {
 				continue
 			}
 			if e.Properties == nil {
-				e.Properties = map[string]string{}
+				e.Properties = types.Props{}
 			}
 			// If Phase 1A stamped effects, this entity is not pure.
-			if eff := e.Properties[EffectPropertyKeyList]; eff != "" {
-				e.Properties[PurePropertyKeyPure] = "false"
+			if eff := e.Properties.Get(EffectPropertyKeyList); eff != "" {
+				e.Properties.Set(PurePropertyKeyPure, "false")
 				continue
 			}
-			e.Properties[PurePropertyKeyPure] = "true"
-			e.Properties[PurePropertyKeyConfidence] = fmt.Sprintf("%.2f", purityConfidence)
+			e.Properties.Set(PurePropertyKeyPure, "true")
+			e.Properties.Set(PurePropertyKeyConfidence, fmt.Sprintf("%.2f", purityConfidence))
 			totalPure++
 			entries = append(entries, pureEntry{
 				Repo:       g.Repo,

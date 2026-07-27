@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "links": [
+    {
+      "id": "7c7e3f1c",
+      "source": "acme-core::ep-prod-1",
+      "target": "acme-web::ep-cons-1",
+      "relation": "shared_label",
+      "method": "label_match",
+      "confidence": 0.6548794940695398,
+      "channel": null,
+      "identifier": "http:get:/api/v1/orders",
+      "discovered_at": "<TS>",
+      "reason": "label_match below threshold",
+      "properties": {
+        "confidence": "heuristic"
+      }
+    },
+    {
+      "id": "1ee28d97",
+      "source": "acme-core::ep-prod-1",
+      "target": "acme-worker::ep-cons-4",
+      "relation": "shared_label",
+      "method": "label_match",
+      "confidence": 0.6548794940695398,
+      "channel": null,
+      "identifier": "http:get:/api/v1/orders",
+      "discovered_at": "<TS>",
+      "reason": "label_match below threshold",
+      "properties": {
+        "confidence": "heuristic"
+      }
+    },
+    {
+      "id": "0c1a1697",
+      "source": "acme-core::view1",
+      "target": "acme-web::svc1",
+      "relation": "shared_label",
+      "method": "label_match",
+      "confidence": 0.6024397470347699,
+      "channel": null,
+      "identifier": "order",
+      "discovered_at": "<TS>",
+      "reason": "label_match below threshold",
+      "properties": {
+        "confidence": "heuristic"
+      }
+    },
+    {
+      "id": "1c1207af",
+      "source": "acme-web::ep-cons-1",
+      "target": "acme-worker::ep-cons-4",
+      "relation": "shared_label",
+      "method": "label_match",
+      "confidence": 0.6548794940695398,
+      "channel": null,
+      "identifier": "http:get:/api/v1/orders",
+      "discovered_at": "<TS>",
+      "reason": "label_match below threshold",
+      "properties": {
+        "confidence": "heuristic"
+      }
+    }
+  ]
+}

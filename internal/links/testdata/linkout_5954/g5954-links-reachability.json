@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "group": "g5954",
+  "written_at": "<TS>",
+  "total_entities": 15,
+  "reachable": 7,
+  "unreachable": 8,
+  "entry_points": 7,
+  "entries": [
+    {
+      "repo": "acme-core",
+      "entity_id": "ep-prod-1",
+      "name": "http:GET:/api/v1/orders",
+      "kind": "http_endpoint",
+      "source_file": "core/views/orders.py",
+      "reachable": true,
+      "reachable_via": [
+        "graph:http_endpoint"
+      ],
+      "entry_source": "graph:http_endpoint"
+    },
+    {
+      "repo": "acme-core",
+      "entity_id": "ep-prod-2",
+      "name": "http:POST:/api/v1/orders/{id}",
+      "kind": "http_endpoint",
+      "source_file": "core/views/orders.py",
+      "reachable": true,
+      "reachable_via": [
+        "graph:http_endpoint"
+      ],
+      "entry_source": "graph:http_endpoint"
+    },
+    {
+      "repo": "acme-core",
+      "entity_id": "model1",
+      "name": "Order",
+      "kind": "Model",
+      "source_file": "core/models.py",
+      "reachable": false
+    },
+    {
+      "repo": "acme-core",
+      "entity_id": "mount1",
+      "name": "urls",
+      "kind": "http_endpoint",
+      "source_file": "core/urls.py",
+      "reachable": true,
+      "reachable_via": [
+        "graph:http_endpoint"
+      ],
+      "entry_source": "graph:http_endpoint"
+    },
+    {
+      "repo": "acme-core",
+      "entity_id": "spec1",
+      "name": "openapi:GET:/api/v1/orders",
+      "kind": "openapi_operation",
+      "source_file": "openapi.yaml",
+      "reachable": false
+    },
+    {
+      "repo": "acme-core",
+      "entity_id": "view1",
+      "name": "OrderViewSet",
+      "kind": "Controller",
+      "source_file": "core/views/orders.py",
+      "reachable": false
+    },
+    {
+      "repo": "acme-web",
+      "entity_id": "ep-cons-1",
+      "name": "http:GET:/api/v1/orders",
+      "kind": "http_endpoint",
+      "source_file": "src/api/orders.ts",
+      "reachable": true,
+      "reachable_via": [
+        "graph:http_endpoint"
+      ],
+      "entry_source": "graph:http_endpoint"
+    },
+    {
+      "repo": "acme-web",
+      "entity_id": "ep-cons-2",
+      "name": "http:POST:/orders/{orderId}",
+      "kind": "http_endpoint",
+      "source_file": "src/api/orders.ts",
+      "reachable": true,
+      "reachable_via": [
+        "graph:http_endpoint"
+      ],
+      "entry_source": "graph:http_endpoint"
+    },
+    {
+      "repo": "acme-web",
+      "entity_id": "ep-cons-3",
+      "name": "http:GET:/api/v1/orders",
+      "kind": "http_endpoint",
+      "source_file": "src/api/dyn.ts",
+      "reachable": true,
+      "reachable_via": [
+        "graph:http_endpoint"
+      ],
+      "entry_source": "graph:http_endpoint"
+    },
+    {
+      "repo": "acme-web",
+      "entity_id": "model2",
+      "name": "Order",
+      "kind": "Interface",
+      "source_file": "src/models/order.ts",
+      "reachable": false
+    },
+    {
+      "repo": "acme-web",
+      "entity_id": "spec2",
+      "name": "openapi:POST:/api/v1/orders/{id}",
+      "kind": "openapi_operation",
+      "source_file": "spec/openapi.yaml",
+      "reachable": false
+    },
+    {
+      "repo": "acme-web",
+      "entity_id": "svc1",
+      "name": "OrderService",
+      "kind": "Class",
+      "source_file": "src/api/orders.ts",
+      "reachable": false
+    },
+    {
+      "repo": "acme-worker",
+      "entity_id": "ep-cons-4",
+      "name": "http:GET:/api/v1/orders",
+      "kind": "http_endpoint",
+      "source_file": "worker/jobs/reconcile.go",
+      "reachable": true,
+      "reachable_via": [
+        "graph:http_endpoint"
+      ],
+      "entry_source": "graph:http_endpoint"
+    },
+    {
+      "repo": "acme-worker",
+      "entity_id": "job1",
+      "name": "OrderReconcileJob",
+      "kind": "Function",
+      "source_file": "worker/jobs/reconcile.go",
+      "reachable": false
+    },
+    {
+      "repo": "acme-worker",
+      "entity_id": "pkg1",
+      "name": "OrderBook",
+      "kind": "class",
+      "source_file": "worker/pkg/book.go",
+      "reachable": false
+    }
+  ]
+}

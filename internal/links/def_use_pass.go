@@ -30,6 +30,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/substrate"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // MethodDefUse identifies sidecar artefacts from this pass.
@@ -170,11 +172,11 @@ func runDefUsePass(graphs []repoGraph, paths Paths) (PassResult, error) {
 					}
 					e := &g.Entities[ei]
 					if e.Properties == nil {
-						e.Properties = map[string]string{}
+						e.Properties = types.Props{}
 					}
 					summary := formatDefUseSummary(chains, maxPropertyChains)
-					e.Properties[DefUsePropertyKeyChains] = summary
-					e.Properties[DefUsePropertyKeyCount] = fmt.Sprintf("%d", len(chains))
+					e.Properties.Set(DefUsePropertyKeyChains, summary)
+					e.Properties.Set(DefUsePropertyKeyCount, fmt.Sprintf("%d", len(chains)))
 					allEntries = append(allEntries, defUseEntry{
 						Repo:       g.Repo,
 						EntityID:   eid,

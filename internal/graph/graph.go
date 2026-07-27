@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // SchemaVersion is the integer version of the on-disk graph.json schema.
@@ -416,6 +418,23 @@ func (e Entity) PropLen() int {
 // internal storage.
 func (e Entity) PropsSnapshot() map[string]string {
 	return propsToMap(e.properties)
+}
+
+// PropsClone returns an independent copy of the properties as a types.Props,
+// or nil if there are none. It is the map-free counterpart of PropsSnapshot:
+// both graph's internal propKV and types.PropKV are the same sorted key/value
+// pair shape, so this is one exact-sized slice allocation with no hmap header
+// or bucket. Callers that only need keyed reads should prefer this over
+// PropsSnapshot — at group-union scale the map header dominates (#5954).
+func (e Entity) PropsClone() types.Props {
+	if len(e.properties) == 0 {
+		return nil
+	}
+	out := make(types.Props, len(e.properties))
+	for i, kv := range e.properties {
+		out[i] = types.PropKV{K: kv.K, V: kv.V}
+	}
+	return out
 }
 
 // WithProperties returns a copy of e with its properties replaced by props,

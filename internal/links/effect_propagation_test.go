@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // TestEffectPropagation_HandlerServiceRepoChain exercises the canonical
@@ -53,16 +55,16 @@ def handle(req):
 	}
 	// Look up the handler — should carry db_write transitively.
 	h := graphs[0].Entities[0]
-	effs := h.Properties[EffectPropertyKeyList]
+	effs := h.Properties.Get(EffectPropertyKeyList)
 	if !strings.Contains(effs, "db_write") {
 		t.Fatalf("handler effects=%q; want db_write", effs)
 	}
-	if got := h.Properties[EffectPropertyKeySource]; got != "transitive" {
+	if got := h.Properties.Get(EffectPropertyKeySource); got != "transitive" {
 		t.Errorf("handler effect_source=%q; want transitive", got)
 	}
 	// Repo should be the direct owner.
 	r := graphs[0].Entities[2]
-	if got := r.Properties[EffectPropertyKeySource]; got != "direct" {
+	if got := r.Properties.Get(EffectPropertyKeySource); got != "direct" {
 		t.Errorf("repo effect_source=%q; want direct", got)
 	}
 	// Sidecar written.
@@ -118,14 +120,14 @@ class ContractViewSet:
 		t.Fatal(err)
 	}
 	// Repo owns the direct db_read.
-	if got := graphs[0].Entities[2].Properties[EffectPropertyKeySource]; got != "direct" {
+	if got := graphs[0].Entities[2].Properties.Get(EffectPropertyKeySource); got != "direct" {
 		t.Errorf("repo effect_source=%q; want direct", got)
 	}
-	if effs := graphs[0].Entities[2].Properties[EffectPropertyKeyList]; !strings.Contains(effs, "db_read") {
+	if effs := graphs[0].Entities[2].Properties.Get(EffectPropertyKeyList); !strings.Contains(effs, "db_read") {
 		t.Fatalf("repo effects=%q; want db_read (the read sniffer must match self.queryset.filter)", effs)
 	}
 	// Controller inherits db_read transitively — the #4668 reach.
-	cEffs := graphs[0].Entities[0].Properties[EffectPropertyKeyList]
+	cEffs := graphs[0].Entities[0].Properties.Get(EffectPropertyKeyList)
 	if !strings.Contains(cEffs, "db_read") {
 		t.Fatalf("controller effects=%q; want db_read to reach the GET/list handler transitively", cEffs)
 	}
@@ -151,7 +153,7 @@ def add(a, b):
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := graphs[0].Entities[0].Properties[EffectPropertyKeyList]; ok {
+	if v, ok := graphs[0].Entities[0].Properties.Lookup(EffectPropertyKeyList); ok {
 		t.Errorf("pure function carries effects=%q; want unstamped", v)
 	}
 }
@@ -248,7 +250,7 @@ def persist_to_db(row):
 	if job == nil {
 		t.Fatal("process_job not stamped — qualified-name binding regression (#2804)")
 	}
-	effs := job[EffectPropertyKeyList]
+	effs := job.Get(EffectPropertyKeyList)
 	// Direct sinks on the task body.
 	for _, want := range []string{"http_out", "env_read"} {
 		if !strings.Contains(effs, want) {
@@ -262,7 +264,7 @@ def persist_to_db(row):
 		}
 	}
 	// Helper is the direct DB owner.
-	if got := graphs[0].Entities[1].Properties[EffectPropertyKeySource]; got != "direct" {
+	if got := graphs[0].Entities[1].Properties.Get(EffectPropertyKeySource); got != "direct" {
 		t.Errorf("persist_to_db effect_source=%q; want direct", got)
 	}
 }
@@ -299,7 +301,7 @@ def process_job(self, payload):
 		t.Fatal(err)
 	}
 	for _, ent := range graphs[0].Entities {
-		effs := ent.Properties[EffectPropertyKeyList]
+		effs := ent.Properties.Get(EffectPropertyKeyList)
 		if effs == "" {
 			t.Fatalf("%s node (%s) left unstamped — decorator-wrapper binding regression (#2804)", ent.Kind, ent.ID)
 		}
@@ -308,7 +310,7 @@ def process_job(self, payload):
 				t.Errorf("%s node effects=%q; want %q", ent.Kind, effs, want)
 			}
 		}
-		if got := ent.Properties[EffectPropertyKeySource]; got != "direct" {
+		if got := ent.Properties.Get(EffectPropertyKeySource); got != "direct" {
 			t.Errorf("%s node effect_source=%q; want direct", ent.Kind, got)
 		}
 	}
@@ -332,7 +334,7 @@ class BuildingViewSet:
 		Entities: []entityNode{
 			{ID: "h1", Name: "create", Kind: "SCOPE.Function", SourceFile: "views.py"},
 			{ID: "ep1", Name: "http:POST:/buildings", Kind: "http_endpoint", SourceFile: "views.py",
-				Properties: map[string]string{"verb": "POST", "path": "/buildings", "pattern_type": "http_endpoint_synthesis"}},
+				Properties: types.PropsFromMap(map[string]string{"verb": "POST", "path": "/buildings", "pattern_type": "http_endpoint_synthesis"})},
 		},
 		Edges: []edgeRef{
 			// handler → endpoint (producer-side IMPLEMENTS).
@@ -344,11 +346,11 @@ class BuildingViewSet:
 		t.Fatal(err)
 	}
 	ep := graphs[0].Entities[1]
-	effs := ep.Properties[EffectPropertyKeyList]
+	effs := ep.Properties.Get(EffectPropertyKeyList)
 	if !strings.Contains(effs, "db_write") {
 		t.Fatalf("endpoint effects=%q; want db_write inherited from handler", effs)
 	}
-	if got := ep.Properties[EffectPropertyKeySource]; got != "endpoint" {
+	if got := ep.Properties.Get(EffectPropertyKeySource); got != "endpoint" {
 		t.Errorf("endpoint effect_source=%q; want endpoint", got)
 	}
 	// Sidecar entry for the endpoint should also carry source=endpoint.
@@ -379,7 +381,7 @@ class HealthView:
 		Entities: []entityNode{
 			{ID: "h1", Name: "get", Kind: "SCOPE.Function", SourceFile: "ping.py"},
 			{ID: "ep1", Name: "http:GET:/health", Kind: "http_endpoint", SourceFile: "ping.py",
-				Properties: map[string]string{"verb": "GET", "path": "/health"}},
+				Properties: types.PropsFromMap(map[string]string{"verb": "GET", "path": "/health"})},
 		},
 		Edges: []edgeRef{
 			{FromID: "h1", ToID: "ep1", Kind: "IMPLEMENTS"},
@@ -388,7 +390,7 @@ class HealthView:
 	if _, err := runEffectPropagationPass(graphs, Paths{}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := graphs[0].Entities[1].Properties[EffectPropertyKeyList]; ok {
+	if v, ok := graphs[0].Entities[1].Properties.Lookup(EffectPropertyKeyList); ok {
 		t.Errorf("endpoint with pure handler carries effects=%q; want unstamped", v)
 	}
 }
@@ -418,10 +420,10 @@ def send_me_notifications():
 			// The synthetic ScheduledJob node, as scheduled_jobs_edges.go emits
 			// it: Name is the celery job ID, the bare task name is in `handler`.
 			{ID: "job", Name: "celery:tasks.py:send_me_notifications", Kind: "SCOPE.ScheduledJob",
-				SourceFile: "tasks.py", Properties: map[string]string{
+				SourceFile: "tasks.py", Properties: types.PropsFromMap(map[string]string{
 					"handler":   "send_me_notifications",
 					"framework": "celery",
-				}},
+				})},
 		},
 	}}
 	if _, err := runEffectPropagationPass(graphs, Paths{}, nil); err != nil {
@@ -440,7 +442,7 @@ def send_me_notifications():
 	if job.Properties == nil {
 		t.Fatal("ScheduledJob node left unstamped — #3869 binding regression")
 	}
-	effs := job.Properties[EffectPropertyKeyList]
+	effs := job.Properties.Get(EffectPropertyKeyList)
 	if !strings.Contains(effs, "db_write") {
 		t.Fatalf("ScheduledJob (celery:...:send_me_notifications) effects=%q; "+
 			"want db_write inherited from the task body (#3869)", effs)
@@ -465,10 +467,10 @@ def add_numbers():
 		Entities: []entityNode{
 			{ID: "op", Name: "add_numbers", Kind: "SCOPE.Operation", SourceFile: "tasks.py"},
 			{ID: "job", Name: "celery:tasks.py:add_numbers", Kind: "SCOPE.ScheduledJob",
-				SourceFile: "tasks.py", Properties: map[string]string{
+				SourceFile: "tasks.py", Properties: types.PropsFromMap(map[string]string{
 					"handler":   "add_numbers",
 					"framework": "celery",
-				}},
+				})},
 		},
 	}}
 	if _, err := runEffectPropagationPass(graphs, Paths{}, nil); err != nil {
@@ -483,7 +485,7 @@ def add_numbers():
 	if job == nil {
 		t.Fatal("ScheduledJob entity missing from graph")
 	}
-	if v, ok := job.Properties[EffectPropertyKeyList]; ok {
+	if v, ok := job.Properties.Lookup(EffectPropertyKeyList); ok {
 		t.Errorf("pure-bodied ScheduledJob carries fabricated effects=%q; want unstamped", v)
 	}
 }
@@ -519,10 +521,10 @@ def _do_clear():
 			// The synthetic ScheduledJob wrapper: name is the celery job ID, bare
 			// task name is in `handler`. It has NO outgoing CALLS of its own.
 			{ID: "job", Name: "celery:tasks.py:clear_inspections_task", Kind: "SCOPE.ScheduledJob",
-				SourceFile: "tasks.py", Properties: map[string]string{
+				SourceFile: "tasks.py", Properties: types.PropsFromMap(map[string]string{
 					"handler":   "clear_inspections_task",
 					"framework": "celery",
-				}},
+				})},
 		},
 		Edges: []edgeRef{
 			// CALLS lives on the BODY function, not the wrapper.
@@ -544,7 +546,7 @@ def _do_clear():
 	if job.Properties == nil {
 		t.Fatal("ScheduledJob node left unstamped — #3934 transitive-via-helper gap")
 	}
-	effs := job.Properties[EffectPropertyKeyList]
+	effs := job.Properties.Get(EffectPropertyKeyList)
 	// The .delete() ORM sink classifies as db_write (and may add db_delete);
 	// the wrapper must carry the helper's transitive effect, not be pure.
 	if !strings.Contains(effs, "db_write") && !strings.Contains(effs, "db_delete") {
@@ -553,14 +555,14 @@ def _do_clear():
 	}
 	// Effects arrived through a helper the body CALLS, not a direct sink on the
 	// wrapper itself → source must be transitive.
-	if got := job.Properties[EffectPropertyKeySource]; got != "transitive" {
+	if got := job.Properties.Get(EffectPropertyKeySource); got != "transitive" {
 		t.Errorf("ScheduledJob effect_source=%q; want transitive (inherited via helper)", got)
 	}
 	// The body itself must also carry the transitive effect (sanity on the join).
-	if !strings.Contains(graphs[0].Entities[0].Properties[EffectPropertyKeyList], "db_write") &&
-		!strings.Contains(graphs[0].Entities[0].Properties[EffectPropertyKeyList], "db_delete") {
+	if !strings.Contains(graphs[0].Entities[0].Properties.Get(EffectPropertyKeyList), "db_write") &&
+		!strings.Contains(graphs[0].Entities[0].Properties.Get(EffectPropertyKeyList), "db_delete") {
 		t.Errorf("task body effects=%q; want transitive db_write/db_delete",
-			graphs[0].Entities[0].Properties[EffectPropertyKeyList])
+			graphs[0].Entities[0].Properties.Get(EffectPropertyKeyList))
 	}
 }
 
@@ -588,10 +590,10 @@ def _pure_add():
 			{ID: "op", Name: "compute_task", Kind: "SCOPE.Operation", SourceFile: "tasks.py"},
 			{ID: "helper", Name: "_pure_add", Kind: "SCOPE.Operation", SourceFile: "helpers.py"},
 			{ID: "job", Name: "celery:tasks.py:compute_task", Kind: "SCOPE.ScheduledJob",
-				SourceFile: "tasks.py", Properties: map[string]string{
+				SourceFile: "tasks.py", Properties: types.PropsFromMap(map[string]string{
 					"handler":   "compute_task",
 					"framework": "celery",
-				}},
+				})},
 		},
 		Edges: []edgeRef{
 			{FromID: "op", ToID: "helper", Kind: "CALLS"},
@@ -609,16 +611,16 @@ def _pure_add():
 	if job == nil {
 		t.Fatal("ScheduledJob entity missing from graph")
 	}
-	if v, ok := job.Properties[EffectPropertyKeyList]; ok {
+	if v, ok := job.Properties.Lookup(EffectPropertyKeyList); ok {
 		t.Errorf("pure-chain ScheduledJob carries fabricated effects=%q; want unstamped", v)
 	}
 }
 
-func confFromProps(props map[string]string, effect string) float64 {
+func confFromProps(props types.Props, effect string) float64 {
 	if props == nil {
 		return 0
 	}
-	raw := props[EffectPropertyKeyConfidence]
+	raw := props.Get(EffectPropertyKeyConfidence)
 	for _, part := range strings.Split(raw, ",") {
 		if !strings.HasPrefix(part, effect+"=") {
 			continue
