@@ -156,6 +156,30 @@ type Recommendation struct {
 // corpus=true forces directory mode regardless of layout, which matches the
 // --corpus flag wired by the CLI.
 func AuditPath(path string, corpus bool) (*Report, error) {
+	return AuditPathWithWorkers(path, corpus, DefaultAuditWorkers)
+}
+
+// DefaultAuditWorkers is the corpus-mode fan-out AuditPath uses. Each worker
+// holds its own fully materialised graph.Document, so the peak heap of a
+// corpus audit is workers × the largest repo's Document.
+const DefaultAuditWorkers = 4
+
+// AuditPathWithWorkers is AuditPath with an explicit corpus-mode fan-out.
+//
+// #5954: four concurrent workers each materialise a 300–600 MB Document. That
+// is the right trade for the interactive CLI (`grafel quality audit-orphans
+// --corpus`), where a human is waiting on wall-clock. It is the wrong trade
+// for anything running INSIDE the daemon — a background metrics write has no
+// latency budget worth four co-resident copies of the corpus graph, and the
+// daemon is exactly the process whose resident footprint this epic is trying to
+// shrink. In-daemon callers pass 1.
+//
+// workers < 1 is clamped to 1. The single-repo (non-corpus) branch is
+// unaffected: it audits one repo inline and never fans out.
+func AuditPathWithWorkers(path string, corpus bool, workers int) (*Report, error) {
+	if workers < 1 {
+		workers = 1
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve path: %w", err)
@@ -184,7 +208,7 @@ func AuditPath(path string, corpus bool) (*Report, error) {
 		if len(paths) == 0 {
 			return nil, fmt.Errorf("no .grafel/graph.json found under %s", abs)
 		}
-		rep.Repos = auditMany(paths)
+		rep.Repos = auditMany(paths, workers)
 	}
 	rep.Aggregate = aggregate(rep.Repos)
 	rep.Recommendations = recommend(rep.Aggregate)
@@ -243,12 +267,19 @@ func findRepos(root string) ([]string, error) {
 	return out, nil
 }
 
-// auditMany runs auditRepo on each path with a small worker pool (4) so a
+// auditMany runs auditRepo on each path with a small worker pool so a
 // 25-repo corpus completes well under a minute. Each goroutine owns its own
 // json.Decoder; the shared mutex only guards the output slice.
-func auditMany(paths []string) []*RepoReport {
+//
+// The pool size is a parameter (#5954) because each worker holds a full
+// Document: concurrency here IS peak heap, and in-daemon callers must not pay
+// it. Output is written into a pre-sized slice by index, so the report is
+// byte-identical at any pool size.
+func auditMany(paths []string, workers int) []*RepoReport {
 	out := make([]*RepoReport, len(paths))
-	const workers = 4
+	if workers < 1 {
+		workers = 1
+	}
 	var wg sync.WaitGroup
 	jobs := make(chan int)
 	wg.Add(workers)
@@ -460,6 +491,19 @@ func isFunctionLike(e *graph.Entity) bool {
 	}
 	return false
 }
+
+// ClassifyImportToID is the exported form of classifyImportToID (#5954).
+//
+// It exists so the daemon's streaming analytics scan buckets IMPORTS edges with
+// the SAME function the audit report uses, rather than a second copy that could
+// drift and silently move the persisted bug rate.
+func ClassifyImportToID(toID string) ImportFormat { return classifyImportToID(toID) }
+
+// IsStructuralRelKind reports whether an UPPERCASED relationship kind is a
+// containment/declaration edge that does not count toward connectivity — the
+// orphan-detection rule of #1597. Exported for the same single-source-of-truth
+// reason as ClassifyImportToID.
+func IsStructuralRelKind(upperKind string) bool { return structuralRelKinds[upperKind] }
 
 // classifyImportToID buckets an IMPORTS edge's to_id by shape. Anything that
 // doesn't look like an entity id (16 lowercase hex) or an "ext:" placeholder

@@ -34,7 +34,19 @@ import (
 // startBargeObserverScheduler starts a minimal real scheduler so the process
 // bridge (sched.BargeForeground) resolves to something observable, and returns
 // a func reporting how many foreground barge holds are live right now.
+//
+// It counts ALL live holds. Use startRebuildBargeObserver in tests whose
+// subject is the rebuild's own hold: the post-rebuild analytics batch takes its
+// own barge from a goroutine that outlives daemonRebuildFuncCore (#5954), so an
+// unscoped count is both wrong and racy for those assertions.
 func startBargeObserverScheduler(t *testing.T) func() int {
+	names := startBargeObserverSchedulerNames(t)
+	return func() int { return len(names()) }
+}
+
+// startBargeObserverSchedulerNames is the same observer, returning the live
+// holder names so a caller can scope its assertion to one of them.
+func startBargeObserverSchedulerNames(t *testing.T) func() []string {
 	t.Helper()
 	s := sched.New(sched.Config{
 		Workers:            1,
@@ -50,7 +62,26 @@ func startBargeObserverScheduler(t *testing.T) func() int {
 	})
 	s.Start()
 	t.Cleanup(s.Stop)
-	return func() int { return len(s.Snapshot().Barging) }
+	return func() []string { return s.Snapshot().Barging }
+}
+
+// startRebuildBargeObserver is startBargeObserverScheduler scoped to the
+// REBUILD's own foreground hold. The three tests below assert that
+// daemonRebuildFuncCore acquires and unwinds its barge; the analytics batch's
+// independent, asynchronous hold is not their subject and must not make them
+// flake. Deleting the rebuild's acquisition still fails them.
+func startRebuildBargeObserver(t *testing.T) func() int {
+	t.Helper()
+	all := startBargeObserverSchedulerNames(t)
+	return func() int {
+		n := 0
+		for _, name := range all() {
+			if strings.HasPrefix(name, "rebuild:") {
+				n++
+			}
+		}
+		return n
+	}
 }
 
 // TestRebuild_HoldsForegroundBargeAcrossIndexAndLinks: while daemonRebuildFuncCore
@@ -60,7 +91,7 @@ func startBargeObserverScheduler(t *testing.T) func() int {
 // entirely outside the scheduler's view.
 func TestRebuild_HoldsForegroundBargeAcrossIndexAndLinks(t *testing.T) {
 	group := setupTestGroup(t, "barge-group", []string{"first", "second"})
-	barges := startBargeObserverScheduler(t)
+	barges := startRebuildBargeObserver(t)
 
 	var duringIndex, duringLinks atomic.Int32
 	mockIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
@@ -98,7 +129,7 @@ func TestRebuild_HoldsForegroundBargeAcrossIndexAndLinks(t *testing.T) {
 // forever behind a rebuild that is long gone.
 func TestRebuild_ReleasesForegroundBargeOnError(t *testing.T) {
 	_ = setupTestGroup(t, "barge-err-group", []string{"only"})
-	barges := startBargeObserverScheduler(t)
+	barges := startRebuildBargeObserver(t)
 
 	failIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error { return nil }
 	_, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: "no-such-group"}, failIndexFn, noopLinksFn)
@@ -115,7 +146,7 @@ func TestRebuild_ReleasesForegroundBargeOnError(t *testing.T) {
 // cancellation error. That path must release the barge too.
 func TestRebuild_ReleasesForegroundBargeOnGroupCancel(t *testing.T) {
 	group := setupTestGroup(t, "barge-cancel-group", []string{"first", "second"})
-	barges := startBargeObserverScheduler(t)
+	barges := startRebuildBargeObserver(t)
 
 	var once sync.Once
 	mockIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {

@@ -57,25 +57,34 @@ func FindImportCycles(entities []Entity, rels []Relationship, pagerank map[strin
 	// Build adjacency list of IMPORTS edges (directed: from → to).
 	// importsAdj[u] = list of v where u IMPORTS v.
 	importsAdj := make(map[string][]string)
-	// importsEdge is a lookup set for edges inside cycles.
-	type edgeKey struct{ from, to string }
-	edgeSet := make(map[edgeKey]bool)
-
 	for i := range rels {
 		r := &rels[i]
-		if r.Kind != "IMPORTS" {
-			continue
-		}
-		if !known[r.FromID] || !known[r.ToID] {
-			continue
-		}
-		if r.FromID == r.ToID {
-			continue // self-import: not a cycle
-		}
-		importsAdj[r.FromID] = append(importsAdj[r.FromID], r.ToID)
-		edgeSet[edgeKey{r.FromID, r.ToID}] = true
+		addImportEdge(importsAdj, known, r.Kind, r.FromID, r.ToID)
 	}
+	return findImportCyclesFromAdjacency(importsAdj, pagerank)
+}
 
+// addImportEdge appends one IMPORTS edge to the adjacency map, applying the
+// same three filters FindImportCycles has always applied: non-IMPORTS kinds,
+// edges with a dangling endpoint, and self-imports are all skipped. Extracted
+// (#5954) so the mmap-backed CountImportCyclesFromView builds a byte-identical
+// adjacency without materialising []Entity / []Relationship.
+func addImportEdge(importsAdj map[string][]string, known map[string]bool, kind, fromID, toID string) {
+	if kind != "IMPORTS" {
+		return
+	}
+	if !known[fromID] || !known[toID] {
+		return
+	}
+	if fromID == toID {
+		return // self-import: not a cycle
+	}
+	importsAdj[fromID] = append(importsAdj[fromID], toID)
+}
+
+// findImportCyclesFromAdjacency is the Tarjan core, shared verbatim by the
+// slice-based FindImportCycles and the view-based CountImportCyclesFromView.
+func findImportCyclesFromAdjacency(importsAdj map[string][]string, pagerank map[string]float64) []ImportCycle {
 	if len(importsAdj) == 0 {
 		return nil
 	}
