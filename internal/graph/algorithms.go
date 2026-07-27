@@ -44,6 +44,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"sort"
 	"time"
 
@@ -845,53 +846,14 @@ func sampledBetweenness(g *simple.WeightedDirectedGraph, k int, seed uint64) map
 	}
 	pivots := perm[:k]
 
-	// Pre-extract successor adjacency once (avoids repeated gonum map lookups).
-	succ := make(map[int64][]int64, v)
-	for _, id := range ids {
-		var out []int64
-		it := g.From(id)
-		for it.Next() {
-			out = append(out, it.Node().ID())
-		}
-		sort.Slice(out, func(i, j int) bool { return out[i] < out[j] }) // determinism
-		succ[id] = out
-	}
+	// Dense successor adjacency, built once. Node i is the i-th entry of the
+	// ascending-id `ids` slice, so adjacency sorted by dense index is the same
+	// order as the previous sort-by-node-id — every float summation below
+	// therefore happens in exactly the order the map-based version used.
+	sc := newBCScratch(g, ids)
 
 	for _, s := range pivots {
-		// Single-source Brandes (unweighted BFS).
-		stack := make([]int64, 0, v)
-		pred := make(map[int64][]int64, v)
-		sigma := make(map[int64]float64, v)
-		dist := make(map[int64]int, v)
-		sigma[s] = 1
-		dist[s] = 0
-		queue := []int64{s}
-		for len(queue) > 0 {
-			cur := queue[0]
-			queue = queue[1:]
-			stack = append(stack, cur)
-			for _, w := range succ[cur] {
-				if _, seen := dist[w]; !seen {
-					dist[w] = dist[cur] + 1
-					queue = append(queue, w)
-				}
-				if dist[w] == dist[cur]+1 {
-					sigma[w] += sigma[cur]
-					pred[w] = append(pred[w], cur)
-				}
-			}
-		}
-		// Back-accumulation.
-		delta := make(map[int64]float64, len(stack))
-		for i := len(stack) - 1; i >= 0; i-- {
-			w := stack[i]
-			for _, p := range pred[w] {
-				delta[p] += (sigma[p] / sigma[w]) * (1 + delta[w])
-			}
-			if w != s {
-				cb[w] += delta[w]
-			}
-		}
+		sc.accumulatePivot(sc.dense.of(s), cb, ids)
 	}
 
 	// Rescale so sampled magnitudes match full Brandes (V/K estimator scale).
@@ -900,6 +862,247 @@ func sampledBetweenness(g *simple.WeightedDirectedGraph, k int, seed uint64) map
 		cb[id] *= scale
 	}
 	return cb
+}
+
+// denseIDMap maps a gonum node id to its index in an ascending-sorted id slice.
+//
+// BuildGraph hands out node ids sequentially from 0, so in production ids[i]==i
+// and the lookup is a subtraction. The map fallback covers any caller that
+// supplies a sparse id space (e.g. a graph built by hand in a test).
+type denseIDMap struct {
+	contiguous bool
+	base       int64
+	byID       map[int64]int32
+}
+
+func newDenseIDMap(ids []int64) *denseIDMap {
+	d := &denseIDMap{contiguous: true}
+	if len(ids) == 0 {
+		return d
+	}
+	d.base = ids[0]
+	for i, id := range ids {
+		if id != d.base+int64(i) {
+			d.contiguous = false
+			break
+		}
+	}
+	if !d.contiguous {
+		d.byID = make(map[int64]int32, len(ids))
+		for i, id := range ids {
+			d.byID[id] = int32(i)
+		}
+	}
+	return d
+}
+
+func (d *denseIDMap) of(id int64) int32 {
+	if d.contiguous {
+		return int32(id - d.base)
+	}
+	return d.byID[id]
+}
+
+// bcScratch is the reusable working set for sampled Brandes. Every field is
+// allocated ONCE for the whole K-pivot run; a pivot mutates it and then restores
+// only the entries it touched. This is the #5954 fix: the previous version
+// allocated four V-hinted maps plus a V-capacity stack PER PIVOT, which on the
+// reference corpus (V=427k, K=512) churned ~25 GB to produce a 9 MB result.
+//
+// Representation choices, all of which preserve the exact arithmetic order of
+// the map-based original:
+//
+//   - dist is generation-stamped (`gen`/`curGen`) so it is never cleared: a
+//     dist entry is meaningful only when gen[i] == curGen, which makes "has this
+//     pivot's BFS seen node i?" an O(1) test with no per-pivot O(V) reset.
+//   - sigma/delta are flat float64 slices indexed by dense node index instead of
+//     map[int64]float64.
+//   - predecessors are a linked list over the CSR edge slots (predHead/predNext/
+//     predNode) instead of a map of append-grown slices.
+//   - the BFS queue and the Brandes stack are the same sequence (dequeue order
+//     == the order nodes are pushed), so one slice with a read cursor serves as
+//     both.
+//
+// The two EXACT betweenness paths (betweennessPathExactWeighted and
+// betweennessPathExactBrandes) are gonum's own implementations and deliberately
+// do NOT share this scratch: they run only below betweennessSampleThreshold
+// (8000 nodes) where the per-source allocation is not the bottleneck, and
+// rewriting them would put their output — which this change keeps byte-identical
+// — at risk for no memory benefit.
+type bcScratch struct {
+	n   int
+	off []int32 // len n+1, CSR row offsets into adj
+	adj []int32 // len off[n], successor dense indices, ascending within a row
+
+	dist   []int32  // valid only where gen[i] == curGen
+	gen    []uint32 // generation stamp per node
+	curGen uint32
+
+	sigma []float64 // path counts; reset to 0 for touched nodes after each pivot
+	delta []float64 // dependencies; reset to 0 for touched nodes after each pivot
+
+	stack []int32 // BFS visit order; doubles as the back-accumulation stack
+
+	predHead []int32 // len n, -1 == empty; head slot of the predecessor list
+	predNext []int32 // len off[n], next slot in the predecessor list, -1 == end
+	predNode []int32 // len off[n], the predecessor's dense index
+	predCnt  int32   // slots used by the current pivot
+
+	// dense maps gonum node ids to dense indices; retained so callers can
+	// translate a pivot id without rebuilding the mapping.
+	dense *denseIDMap
+}
+
+// newBCScratch builds the dense successor CSR and allocates all per-run scratch.
+// ids must be ascending; dense index i corresponds to gonum node ids[i].
+func newBCScratch(g *simple.WeightedDirectedGraph, ids []int64) *bcScratch {
+	n := len(ids)
+	sc := &bcScratch{
+		n:        n,
+		dense:    newDenseIDMap(ids),
+		off:      make([]int32, n+1),
+		dist:     make([]int32, n),
+		gen:      make([]uint32, n),
+		sigma:    make([]float64, n),
+		delta:    make([]float64, n),
+		stack:    make([]int32, 0, n),
+		predHead: make([]int32, n),
+	}
+	if n == 0 {
+		return sc
+	}
+
+	// Materialise the edge list ONCE via a single global iterator. Calling
+	// g.From(id) per node instead would allocate one gonum iterator per node
+	// per pass — 2V allocations and hundreds of MB of churn at corpus scale.
+	dense := sc.dense
+	type edge struct{ u, v int32 }
+	var edges []edge
+	if it := g.Edges(); it != nil {
+		edges = make([]edge, 0, it.Len())
+		for it.Next() {
+			e := it.Edge()
+			edges = append(edges, edge{dense.of(e.From().ID()), dense.of(e.To().ID())})
+		}
+	}
+
+	for i := range edges {
+		sc.off[edges[i].u+1]++
+	}
+	for i := 0; i < n; i++ {
+		sc.off[i+1] += sc.off[i]
+	}
+	total := sc.off[n]
+	sc.adj = make([]int32, total)
+	sc.predNext = make([]int32, total)
+	sc.predNode = make([]int32, total)
+
+	cursor := make([]int32, n)
+	copy(cursor, sc.off[:n])
+	for i := range edges {
+		e := edges[i]
+		sc.adj[cursor[e.u]] = e.v
+		cursor[e.u]++
+	}
+	// gonum's edge iteration order is map-derived and unstable, so each row is
+	// sorted by dense index (== ascending node id). slices.Sort, not sort.Slice:
+	// the latter allocates a closure and a reflect-based swapper per row, which
+	// at corpus scale is V extra allocations.
+	for i := 0; i < n; i++ {
+		slices.Sort(sc.adj[sc.off[i]:sc.off[i+1]])
+	}
+
+	for i := range sc.predHead {
+		sc.predHead[i] = -1
+	}
+	return sc
+}
+
+// accumulatePivot runs one single-source Brandes pass from pivot s (a dense
+// index), adding its dependency contributions into cb (keyed by gonum node id),
+// then restores the scratch so the next pivot starts from a clean state.
+//
+// The float arithmetic is identical to the map-based original:
+//   - sigma[w] accumulates over predecessors in BFS-discovery order, which is
+//     fixed by (queue order, ascending-successor order) — unchanged here.
+//   - in the back-accumulation, a given w contributes to delta[p] for each of
+//     its predecessors p; the graph is simple, so p appears at most ONCE in
+//     pred[w] and each delta[p] receives exactly one += per w. Predecessor
+//     iteration order therefore cannot change any sum, only which distinct
+//     accumulator is touched. The order of w itself (reverse stack) is
+//     unchanged, so delta[p] sees its addends in the same sequence as before.
+func (sc *bcScratch) accumulatePivot(s int32, cb map[int64]float64, ids []int64) {
+	if sc.n == 0 || int(s) >= sc.n {
+		return
+	}
+	sc.curGen++
+	if sc.curGen == 0 {
+		// Generation counter wrapped: clear the stamps so no stale entry can
+		// alias generation 0. Happens at most once per 4 billion pivots.
+		for i := range sc.gen {
+			sc.gen[i] = 0
+		}
+		sc.curGen = 1
+	}
+	gen := sc.curGen
+	sc.predCnt = 0
+	sc.stack = sc.stack[:0]
+
+	sc.dist[s] = 0
+	sc.gen[s] = gen
+	sc.sigma[s] = 1
+	sc.stack = append(sc.stack, s)
+
+	// BFS. `head` is the queue read cursor into stack; stack grows as nodes are
+	// enqueued, so stack[head:] is exactly the pending queue.
+	for head := 0; head < len(sc.stack); head++ {
+		cur := sc.stack[head]
+		dcur := sc.dist[cur]
+		scur := sc.sigma[cur]
+		for p := sc.off[cur]; p < sc.off[cur+1]; p++ {
+			w := sc.adj[p]
+			if sc.gen[w] != gen {
+				sc.gen[w] = gen
+				sc.dist[w] = dcur + 1
+				sc.stack = append(sc.stack, w)
+			}
+			if sc.dist[w] == dcur+1 {
+				sc.sigma[w] += scur
+				// Prepend cur onto w's predecessor list. Order within the list
+				// is irrelevant to the sums (see the doc comment above).
+				slot := sc.predCnt
+				sc.predCnt++
+				sc.predNode[slot] = cur
+				sc.predNext[slot] = sc.predHead[w]
+				sc.predHead[w] = slot
+			}
+		}
+	}
+
+	// Back-accumulation, then per-node cleanup in the same sweep.
+	for i := len(sc.stack) - 1; i >= 0; i-- {
+		w := sc.stack[i]
+		sw := sc.sigma[w]
+		// Kept in the ORIGINAL (sigma[p]/sigma[w]) * (1+delta[w]) form. Hoisting
+		// the division out as (1+delta[w])/sigma[w] would be algebraically equal
+		// but NOT bit-identical, and this feeds a persisted ranking.
+		// delta[w] cannot change inside this loop: every p has dist[p] < dist[w],
+		// so p != w.
+		factor := 1 + sc.delta[w]
+		for slot := sc.predHead[w]; slot >= 0; slot = sc.predNext[slot] {
+			p := sc.predNode[slot]
+			sc.delta[p] += (sc.sigma[p] / sw) * factor
+		}
+		if w != s {
+			cb[ids[w]] += sc.delta[w]
+		}
+	}
+	// Reset only what this pivot touched. dist/gen need no reset (stamped).
+	for _, w := range sc.stack {
+		sc.sigma[w] = 0
+		sc.delta[w] = 0
+		sc.predHead[w] = -1
+	}
 }
 
 // runtimeMSFor returns wall-clock milliseconds elapsed since start, or 0
