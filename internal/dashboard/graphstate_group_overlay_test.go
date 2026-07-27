@@ -19,6 +19,7 @@ func TestApplyGroupAlgorithmOverlay(t *testing.T) {
 		}}},
 	}}
 	ov := &groupalgo.Overlay{
+		AlgoVersion: groupalgo.OverlayAlgoVersion,
 		Results: map[string]groupalgo.EntityOverlay{
 			"api:a": {CommunityID: 7, PageRank: 0.8, Centrality: 0.4, IsGodNode: true},
 			"api:b": {CommunityID: 7, PageRank: 0.2},
@@ -52,6 +53,7 @@ func TestApplyGroupAlgorithmOverlay(t *testing.T) {
 func TestRestorePersistedGroupAlgorithmOverlay(t *testing.T) {
 	mtimes := map[string]int64{"repo": 42}
 	ov := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "cold-overlay",
 		SourceMtimes: mtimes,
 		Results: map[string]groupalgo.EntityOverlay{

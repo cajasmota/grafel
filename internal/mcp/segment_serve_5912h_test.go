@@ -426,7 +426,7 @@ func TestSegmentSet_OverlayMergeOverMultiReader_5912h(t *testing.T) {
 		t.Fatalf("cross-segment pair not contiguous: %d,%d", fromIdx, toIdx)
 	}
 
-	ov := &groupalgo.Overlay{Results: map[string]groupalgo.EntityOverlay{
+	ov := &groupalgo.Overlay{AlgoVersion: groupalgo.OverlayAlgoVersion, Results: map[string]groupalgo.EntityOverlay{
 		fromID: {CommunityID: 111, Centrality: 0.5, IsGodNode: true},
 		toID:   {CommunityID: 222},
 	}}

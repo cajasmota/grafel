@@ -3401,46 +3401,8 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	if layout, lerr := daemon.DefaultLayout(); lerr == nil {
 		engineFile, engineFresh = daemon.EngineLivenessStatus(layout.Root)
 	}
-	if engineFresh && engineFile != nil {
-		isIndexing := engineFile.EngineInFlight > 0 || engineFile.EngineGroupAlgoInFlight > 0
-		totals["is_indexing"] = isIndexing
-		if isIndexing {
-			totals["indexing_in_flight"] = engineFile.EngineInFlight
-			// #5349 A3: surface an in-flight group-scope algorithm pass so a
-			// coordinator can tell the daemon is busy recomputing communities /
-			// centrality over the union, not just reindexing a repo.
-			if engineFile.EngineGroupAlgoInFlight > 0 {
-				totals["group_algo_in_flight"] = engineFile.EngineGroupAlgoInFlight
-			}
-			if !engineFile.EngineBusyStartedAt.IsZero() {
-				totals["indexing_started_at"] = engineFile.EngineBusyStartedAt.UTC().Format(time.RFC3339)
-			}
-		}
-	} else {
-		// No fresh engine-liveness sidecar exists yet — either no engine plane
-		// has ever run against this daemon root (e.g. this *mcp.Server was
-		// constructed directly in a test harness with no daemon/heartbeat
-		// goroutine), or the engine is down/starting/degraded. Fall back to the
-		// process-global indexstate record so an in-process scheduler (true
-		// legacy monolith, or a test that drives indexstate directly) is still
-		// reflected immediately rather than waiting on the periodic heartbeat —
-		// this is the exact pre-#5729-PR3 behavior, preserved for equivalence.
-		ix := indexstate.Get()
-		totals["is_indexing"] = ix.IsIndexing
-		// is_enhancing surfaces the post-extraction ENRICHMENT tail (group-algo
-		// passes) distinctly from extraction, so a consumer never mistakes the
-		// enrichment tail for "still indexing".
-		totals["is_enhancing"] = ix.IsEnhancing
-		if ix.IsIndexing {
-			totals["indexing_in_flight"] = ix.InFlight
-		}
-		if ix.IsEnhancing {
-			totals["group_algo_in_flight"] = ix.GroupAlgoInFlight
-		}
-		if (ix.IsIndexing || ix.IsEnhancing) && !ix.StartedAt.IsZero() {
-			totals["indexing_started_at"] = ix.StartedAt.UTC().Format(time.RFC3339)
-		}
-	}
+	applyBusyTotals(totals, engineFile, engineFresh)
+	publishOverlayState(totals, lg)
 
 	// #5433/#5729 PR3: surface per-repo index freshness from the status-plane
 	// sidecars (a disk scan, not process memory) so this works identically in

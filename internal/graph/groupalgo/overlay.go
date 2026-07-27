@@ -48,8 +48,48 @@ type EntityOverlay struct {
 	IsArticulationPoint bool    `json:"is_articulation_point,omitempty"`
 }
 
+// OverlayAlgoVersion identifies the ALGORITHM CONTRACT a stored overlay was
+// produced under: the community-detection / centrality / ranking implementation
+// whose output the overlay's numbers are.
+//
+// WHY THIS EXISTS. Every skip in this package is justified by determinism —
+// "the same input hash means a recompute would reproduce this overlay
+// byte-for-byte" (see Overlay.InputHash, OverlayNeedsRecompute, and the
+// disk-overlay skip in runGroupAlgorithmsIncremental). That premise is
+// conditional on the algorithm being fixed. Swap the community detector for one
+// that produces a different — even equally good — partition and the premise
+// silently fails: the union is unchanged, so the hash matches, so every gate
+// skips, and the daemon keeps serving the PREVIOUS implementation's partition
+// indefinitely. A user who upgrades gets none of the new behaviour and a stored
+// overlay that disagrees with what the running binary would compute.
+//
+// So the version is part of every skip/apply decision, not just the input hash.
+// A mismatch in EITHER direction invalidates:
+//
+//   - OLDER stored version (upgrade, incl. 0 = written before this field):
+//     recompute. That is the case this constant exists for.
+//   - NEWER stored version (a downgrade, or a shared $GRAFEL_HOME between two
+//     binaries): also recompute. An old binary must not apply an overlay it did
+//     not produce and cannot reproduce — skipping and recomputing is correct,
+//     mixing two implementations' partitions is not. The recompute simply
+//     rewrites the file at THIS binary's version.
+//
+// BUMPING IT. Any change to the partitioning or ranking a pass produces must
+// bump this in the same commit — including replacing the Louvain
+// implementation, changing its resolution/seed/tie-breaks, or changing PageRank
+// or betweenness in a way that moves the stored numbers. Do NOT bump it for
+// changes that cannot move the output (refactors, performance work with
+// identical results): every bump invalidates every overlay on every machine and
+// costs one full recompute per group. TestOverlayAlgoVersion_MustBeBumpedDeliberately
+// pins the value so the decision has to be made explicitly.
+const OverlayAlgoVersion = 1
+
 // Overlay is the on-disk <group>-algo.json document.
 type Overlay struct {
+	// AlgoVersion is the OverlayAlgoVersion of the build that computed this
+	// overlay. Absent/0 on overlays written before the field existed, which are
+	// therefore always invalidated. See OverlayAlgoVersion.
+	AlgoVersion int `json:"algo_version,omitempty"`
 	// Group is the group name (informational; the filename is authoritative).
 	Group string `json:"group"`
 	// ComputedAt is when the group-algo pass that produced this overlay ran.
@@ -94,6 +134,7 @@ func BuildOverlay(res *GroupAlgoResult) *Overlay {
 	r := res.Results
 	ov := &Overlay{
 		Group:        res.Group,
+		AlgoVersion:  OverlayAlgoVersion,
 		ComputedAt:   time.Now().UTC(),
 		SourceMtimes: map[string]int64{},
 		InputHash:    res.InputHash,
@@ -206,10 +247,41 @@ func ReadOverlay(path string, currentMtimes map[string]int64) (*Overlay, bool) {
 	if err := json.Unmarshal(data, &ov); err != nil {
 		return nil, false // corrupt (e.g. a partial write that — impossibly — leaked)
 	}
+	if !OverlayAlgoVersionCurrent(&ov) {
+		// Produced by a different algorithm implementation — do not apply it.
+		// Absent-tolerance is already the contract for every consumer of this
+		// function, so a version mismatch degrades to exactly the same "no
+		// overlay yet" state rather than mixing two partitions.
+		return nil, false
+	}
 	if IsOverlayStale(&ov, currentMtimes) {
 		return nil, false
 	}
 	return &ov, true
+}
+
+// OverlayAlgoVersionCurrent reports whether an overlay was produced by THIS
+// build's algorithm contract. Exported so status/observability surfaces can
+// distinguish "no overlay yet" from "an overlay exists but this binary will not
+// use it" — an upgraded daemon recomputing every group is expected behaviour
+// that has to be explainable, not a mystery reindex.
+func OverlayAlgoVersionCurrent(ov *Overlay) bool {
+	return ov != nil && ov.AlgoVersion == OverlayAlgoVersion
+}
+
+// OverlayAlgoVersionOnDisk returns the algorithm version stamped on a group's
+// stored overlay, and whether an overlay could be read at all. A present
+// overlay written before the field existed reports (0, true).
+func OverlayAlgoVersionOnDisk(group string) (int, bool) {
+	path, err := OverlayPath(group)
+	if err != nil || path == "" {
+		return 0, false
+	}
+	ov := readOverlayUnconditional(path)
+	if ov == nil {
+		return 0, false
+	}
+	return ov.AlgoVersion, true
 }
 
 // readOverlayUnconditional loads and unmarshals the overlay at path WITHOUT the
@@ -363,6 +435,17 @@ func OverlayNeedsRecompute(group string) bool {
 	var ov Overlay
 	if err := json.Unmarshal(data, &ov); err != nil {
 		return false // corrupt — a fresh pass will overwrite it; don't thrash.
+	}
+	// ALGORITHM VERSION comes BEFORE the mtime gate, deliberately. An upgrade
+	// that changes the partitioning moves nothing on disk: the graphs, their
+	// mtimes and the community input hash are all unchanged, so both gates below
+	// would report "fresh" and the daemon would serve the previous
+	// implementation's partition forever. This is the one condition that must
+	// force a recompute with the graph completely idle.
+	if !OverlayAlgoVersionCurrent(&ov) {
+		slog.Default().Info("group-algo: overlay algorithm version changed — forcing recompute",
+			"group", group, "stored_version", ov.AlgoVersion, "current_version", OverlayAlgoVersion)
+		return true
 	}
 	cur, err := CurrentSourceMtimes(group)
 	if err != nil {

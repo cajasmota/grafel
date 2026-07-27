@@ -164,6 +164,7 @@ func TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc(t *testing.T) {
 
 	alpha, bravo := ids[0], ids[1] // charlie (ids[2]) deliberately un-overlaid
 	ov := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{
@@ -271,6 +272,7 @@ func TestOverlaySideTable_BuiltFromReaderNotDoc(t *testing.T) {
 
 	alpha, bravo := ids[0], ids[1] // charlie (ids[2]) deliberately un-overlaid
 	ov := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{
@@ -345,6 +347,7 @@ func TestOverlaySideTable_FlagOffBuildsNoSideTableAndReadsDoc(t *testing.T) {
 
 	alpha := ids[0]
 	ov := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{

@@ -121,7 +121,7 @@ func TestOverlaySweep_DoesNotReArmInFlightPass(t *testing.T) {
 	// Simulate an in-flight pass: a cancel func registered, no pending timer.
 	_, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
-	s.groupAlgoCancel["acme"] = cancel
+	s.groupAlgoCancel["acme"] = &groupAlgoPassCancel{cancel: cancel}
 	s.mu.Unlock()
 
 	s.sweepStaleOverlays()

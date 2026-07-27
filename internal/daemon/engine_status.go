@@ -114,6 +114,27 @@ func StageGateFromStatusFile() (g sched.StageGateState, ok bool) {
 	}, true
 }
 
+// GroupAlgoInFlightFromStatusFile reports how many group-algo ANNOTATION passes
+// the ambient engine has in flight, read from its liveness sidecar for a reader
+// with no in-process scheduler handle (split-mode serve answering
+// Service.Status). 0 when the sidecar is missing or stale — "unknown" reported
+// as "none pending", the same conservative default the rest of this file uses.
+//
+// The pass writes the community/pagerank/centrality overlay AFTER the rebuild
+// has already reported completion, so without this the only observable symptom
+// of "the overlay is still being computed" is that clusters come back empty.
+func GroupAlgoInFlightFromStatusFile() int {
+	layout, err := DefaultLayout()
+	if err != nil {
+		return 0
+	}
+	f, fresh := EngineLivenessStatus(layout.Root)
+	if !fresh || f == nil {
+		return 0
+	}
+	return f.EngineGroupAlgoInFlight
+}
+
 // FlushRepoStatusFile synchronously recomputes and writes repoPath's per-repo
 // status-plane sidecar from the CURRENT indexstate + the on-disk graph.fb, right
 // now — the same work the async statusWriter goroutine would do on its next

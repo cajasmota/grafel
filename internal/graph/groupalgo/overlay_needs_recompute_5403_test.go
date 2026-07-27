@@ -21,7 +21,11 @@ import (
 func setupGroupWithOverlay(t *testing.T, name string, seedMtimes map[string]int64) {
 	t.Helper()
 	ov := &Overlay{
-		Group:        name,
+		Group: name,
+		// Stamped like a real compute: these fixtures stand in for "an overlay
+		// this build just wrote", so they must carry the current algorithm
+		// version or the version gate (correctly) invalidates them.
+		AlgoVersion:  OverlayAlgoVersion,
 		ComputedAt:   time.Now().UTC(),
 		SourceMtimes: seedMtimes,
 		Results:      map[string]EntityOverlay{},

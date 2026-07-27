@@ -74,6 +74,20 @@ type StatusReply struct {
 	IndexedRepos   []IndexedRepoState `json:"indexed_repos,omitempty"`
 	RecentLog      []SchedLogEntry    `json:"recent_log,omitempty"`
 
+	// GroupAlgoRunning names the groups whose ANNOTATION (group-algo) pass is
+	// executing right now, and GroupAlgoInFlight counts them. The pass produces
+	// the community/pagerank/centrality overlay, which is written separately
+	// from graph.fb and does not exist until the pass completes — so "my
+	// communities are missing" is only diagnosable if the pending/running state
+	// is visible. PendingAlgo above covers the ARMED-but-not-yet-running case
+	// (including a recompute queued behind a running pass).
+	//
+	// Monolith mode fills the names from the scheduler snapshot; SPLIT mode (the
+	// default, where serve has no scheduler) fills only the count, from the
+	// engine-liveness sidecar. Both routes agree on "is an overlay pending".
+	GroupAlgoRunning  []string `json:"group_algo_running,omitempty"`
+	GroupAlgoInFlight int      `json:"group_algo_in_flight,omitempty"`
+
 	// Heavy write-stage gate (#5954) — the daemon-wide token that keeps the
 	// index batch, the cross-repo link pass and the group-algo pass from being
 	// co-resident (two copies of the same group union graph were the measured

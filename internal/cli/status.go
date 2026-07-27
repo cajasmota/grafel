@@ -144,6 +144,7 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 				fmt.Fprintf(w, "  scheduler: queue=%d in_flight=%d pending_algo=%d pending_links=%d\n",
 					st.QueueLen, len(st.IndexInFlight), len(st.PendingAlgo), len(st.PendingLinks))
 			}
+			printAnnotationStatus(w, st)
 			// #5954 heavy write-stage gate. Printed whenever the gate is doing
 			// ANYTHING (holding, deferring, or being barged) so an operator — or
 			// a peak-RSS measurement run — can confirm from outside the process
