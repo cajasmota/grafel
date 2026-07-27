@@ -329,7 +329,7 @@ const stagingDirMaxAge = 24 * time.Hour
 // sweepStaleStagingDirs removes abandoned staging dirs from previous passes.
 //
 // #5954: the scheduler-driven pass now runs in a child that the daemon cancels
-// with SIGKILL (exec.CommandContext's default Cancel is cmd.Process.Kill), so
+// with a SIGKILL of the child's whole process group (#5999), so
 // the `defer cleanup()` below cannot run on cancellation. That is a genuine
 // regression against the in-process path, where a CancelGroup unwound the pass
 // cooperatively and the cleanup ran; a group deleted or a daemon stopped

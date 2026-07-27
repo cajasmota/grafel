@@ -62,8 +62,8 @@ func runLinksInternal(args []string) int {
 	defer memSampler.Stop()
 
 	// context.Background(), deliberately: cancellation of this child is a
-	// SIGKILL from the parent (exec.CommandContext's default Cancel is
-	// cmd.Process.Kill), not an in-process ctx. A signal handler is therefore
+	// SIGKILL from the parent, delivered to this process's whole process group
+	// (#5999), not an in-process ctx. A signal handler is therefore
 	// not an option — SIGKILL cannot be caught — and none is wanted: the kill
 	// is more prompt than the ctx checks it replaces, which only took effect at
 	// a pass boundary. The pass's writes are temp+rename so a kill cannot tear

@@ -403,9 +403,11 @@ type ipcEvent struct {
 // repo basename) so the daemon log file includes child extractor output
 // without growing the daemon's own heap.
 //
-// Cancellation: ctx.Done() sends SIGTERM to the child. The child is
-// expected to exit on SIGTERM; if it does not, the parent waits and the
-// context timeout (if any) will eventually unblock the caller.
+// Cancellation: ctx.Done() SIGKILLs the child's whole process group — the
+// child plus every `grafel extract` subprocess its coordinator forked (#5999).
+// It is NOT a SIGTERM: an earlier version of this comment said so and was
+// simply wrong, and nothing on this path may depend on the child getting a
+// chance to run deferred cleanup.
 func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []string, opts *SubprocessIndexOptions, logger *slog.Logger) error {
 	binary, err := os.Executable()
 	if err != nil {
@@ -487,6 +489,15 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 	if logger != nil {
 		logger.Info("subprocess-indexer: "+reason, "gomaxprocs", gmp, "repo", repoPath)
 	}
+	// Own process group + group-wide kill on cancellation (#5999). This child is
+	// the one that actually fans out: the extract coordinator forks a `grafel
+	// extract` subprocess per batch. Under the os/exec default Cancel — a
+	// single-pid SIGKILL — every one of those extract processes survived the
+	// cancellation, kept the inherited stderr pipe open, and so also kept this
+	// runner blocked in its drain loop. Both call sites are inside the daemon
+	// (no controlling terminal), so moving the child out of the daemon's process
+	// group costs no signal delivery that anything relies on.
+	applyGroupAlgoNice(cmd)
 	// On Windows, prevent a console window from flashing when the daemon
 	// (running as a Task Scheduler task) spawns this subprocess.
 	executil.NoWindow(cmd)
@@ -573,9 +584,9 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 // MCP apply path picks up the fresh overlay by mtime on the next group load.
 //
 // Cancellation: ctx.Done() (daemon shutdown, or a newer link pass superseding
-// this one) SIGKILLs the child. exec.CommandContext's default Cancel is
-// cmd.Process.Kill(), not a SIGTERM — an earlier version of this comment said
-// SIGTERM and was simply wrong. The child gets no chance to run deferred
+// this one) SIGKILLs the child's process group — see applyProcessGroupCancel,
+// wired by applyGroupAlgoNice below. It is not a SIGTERM: an earlier version of
+// this comment said SIGTERM and was simply wrong. The child gets no chance to run deferred
 // cleanup, so nothing on the group-algo path may depend on a graceful shutdown;
 // the overlay write is a temp+rename swap, so a kill mid-write leaves an orphan
 // temp file and never a torn overlay.
@@ -607,8 +618,14 @@ func groupAlgoChildEnv(base []string, gomaxprocs int, foreground bool) []string 
 	return withMadvDontNeed(env)
 }
 
+// groupAlgoChildBinary resolves the executable to fork for the group-algo
+// child. A var for the same reason as linksChildBinary: a test can substitute a
+// stand-in and exercise the fork / cancel contract without running the real
+// pass.
+var groupAlgoChildBinary = os.Executable
+
 func RunSubprocessGroupAlgo(ctx context.Context, group string, logger *slog.Logger) error {
-	binary, err := os.Executable()
+	binary, err := groupAlgoChildBinary()
 	if err != nil {
 		return fmt.Errorf("subprocess-group-algo: resolve binary: %w", err)
 	}
@@ -771,16 +788,19 @@ var linksChildBinary = os.Executable
 // SetRepoSourcePaths is written before use on every entry, so the child's fresh
 // globals are not a hazard — they are one less thing to invalidate.
 //
-// CONCURRENCY around the known #5978 hazard (candidates.go / string_pass.go
-// build temp files as path+".tmp", deterministic per destination, so two
-// concurrent writers collide): this change does NOT make it worse. The pass is
+// CONCURRENCY: the pass's temp files are now uniquely named per writer
+// (#5978 — links.writeFileAtomic), so two concurrent writers to one
+// destination no longer collide. Independently of that, the pass is
 // serialised by the daemon's EXCLUSIVE heavy-stage token, which is held across
 // this call for the child's whole lifetime, so at most one background link pass
 // exists at a time — the same guarantee the in-process path had.
 //
 // CANCELLATION IS SIGKILL, NOT SIGTERM. ctx.Done() (daemon shutdown, or
-// CancelGroup on a group delete) makes exec.CommandContext run its default
-// Cancel, which is cmd.Process.Kill() — see os/exec. That is more prompt than
+// CancelGroup on a group delete) SIGKILLs the child's whole process GROUP:
+// applyGroupAlgoNice below sets Setpgid and overrides cmd.Cancel accordingly
+// (#5999), replacing os/exec's default single-pid cmd.Process.Kill() — which
+// left anything the child forked alive, holding this runner's pipes open past
+// the child's own death. That is more prompt than
 // the in-process ctx checks it replaces (those only took effect at a pass
 // boundary, which on this pass can be minutes away), and it is why the child
 // installs no signal handler: under SIGKILL no handler could run.
