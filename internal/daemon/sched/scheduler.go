@@ -2247,6 +2247,17 @@ func (s *Scheduler) CancelGroup(group string) {
 		}
 	}
 
+	// Drop any foreground mark on the group (#5954). The group is being deleted,
+	// so no epoch can still be current and the epoch-scoped clear does not
+	// apply — this is the one unconditional teardown. Without it a group deleted
+	// and recreated inside the 30m linger window would run its first BACKGROUND
+	// pass at foreground caps and un-niced, which is exactly the policy
+	// inversion this epic is fixing.
+	//
+	// Safe under s.mu: the foreground registry has its own mutex and never
+	// takes s.mu, so there is no lock-order edge to invert.
+	ForgetGroupForeground(group)
+
 	s.logEventLocked("group_cancelled", "", group+": cancelled in-flight enrichment on group delete")
 }
 
@@ -2280,7 +2291,12 @@ func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
 	// so `cap=` reflects the cores the pass can consume, not the old, misleading
 	// NumCPU/2 concurrency number (the CPU-regression diagnosis confusion).
 	// Log the cap the child will ACTUALLY be spawned with, which since #5954
-	// depends on whether this group is user-awaited (foreground.go).
+	// depends on whether this group is user-awaited (foreground.go). The epoch
+	// is captured HERE, at the start of the pass, so the clear at the end names
+	// the mark this pass was actually spawned under — a rebuild that re-marks
+	// the group while this (long) pass runs must not have its mark wiped by
+	// this pass finishing.
+	fgEpoch, _ := GroupForegroundState(group)
 	capN := groupAlgoChildGOMAXPROCS(group)
 	s.logger.Info("group-algo: starting", "group", group, "cap", capN)
 	select {
@@ -2322,7 +2338,10 @@ func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
 	// Only on success, and only here: on error or cancellation the awaited
 	// artifact does not exist yet, so the retry stays foreground and the linger
 	// window in foreground.go is what bounds it.
-	ClearGroupForeground(group)
+	//
+	// Epoch-scoped: a pass that started under one rebuild's mark and finished
+	// after a NEWER rebuild re-marked the group clears nothing.
+	ClearGroupForeground(group, fgEpoch)
 }
 
 // Snapshot reports current scheduler state for the Status RPC.

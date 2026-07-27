@@ -85,6 +85,19 @@ var (
 	foregroundHolds = map[string]int{}
 	// foregroundLinger is the expiry of the post-hold window per group.
 	foregroundLinger = map[string]time.Time{}
+	// foregroundEpochs is the identity of the CURRENT mark on each group. Every
+	// MarkGroupForeground call stamps a fresh, process-monotonic epoch.
+	//
+	// It exists so a completion can name the mark it is completing. Without it
+	// a LATE completion silently wipes a FRESHER mark: rebuild #1 marks and
+	// arms a linger; its long group-algo pass starts; rebuild #2 for the same
+	// group runs and re-marks; then #1's pass succeeds and clears — dropping
+	// rebuild #2's mark, so #2's own follow-on link and group-algo children
+	// spawn at background caps with the user still waiting on them.
+	foregroundEpochs = map[string]uint64{}
+	// foregroundEpochSeq is the monotonic source for the above. Never reused, so
+	// two marks on the same group are always distinguishable.
+	foregroundEpochSeq uint64
 	// foregroundNow is the clock, swappable in tests. Read under foregroundMu.
 	foregroundNow = time.Now
 )
@@ -101,6 +114,8 @@ func MarkGroupForeground(group string) (release func()) {
 	}
 	foregroundMu.Lock()
 	foregroundHolds[group]++
+	foregroundEpochSeq++
+	foregroundEpochs[group] = foregroundEpochSeq
 	foregroundMu.Unlock()
 
 	var once sync.Once
@@ -128,39 +143,96 @@ func MarkGroupForeground(group string) (release func()) {
 // GroupIsForeground reports whether work for group should resolve FOREGROUND
 // caps: a hold is live, or the post-hold linger has not expired.
 //
-// Cheap enough to call on every spawn; expired linger entries are reaped here
-// so the maps cannot grow without bound.
+// Cheap enough to call on every spawn.
 func GroupIsForeground(group string) bool {
+	_, fg := GroupForegroundState(group)
+	return fg
+}
+
+// GroupForegroundState reports whether group should resolve FOREGROUND caps,
+// and the epoch of the mark that says so (0 when it should not).
+//
+// Capture the epoch when work is SPAWNED and hand it back to
+// ClearGroupForeground when that work completes, so a slow pass reporting in
+// late cannot clear a mark that a newer rebuild has since installed.
+//
+// Every read sweeps ALL expired linger entries, not just this group's. Per-key
+// reaping would leak any group that is rebuilt once and then deleted or
+// renamed — nothing would ever look it up again to expire it. The map holds one
+// entry per recently-rebuilt group, so a full pass is trivial and this is
+// genuinely bounded rather than bounded-in-the-comment-only.
+func GroupForegroundState(group string) (epoch uint64, foreground bool) {
 	if group == "" {
-		return false
+		return 0, false
 	}
+	foregroundMu.Lock()
+	defer foregroundMu.Unlock()
+	sweepExpiredLingerLocked()
+	if foregroundHolds[group] > 0 {
+		return foregroundEpochs[group], true
+	}
+	if _, ok := foregroundLinger[group]; ok {
+		return foregroundEpochs[group], true
+	}
+	return 0, false
+}
+
+// sweepExpiredLingerLocked drops every linger window that has passed, and the
+// epoch of any group that is left with neither a hold nor a linger. MUST be
+// called with foregroundMu held.
+func sweepExpiredLingerLocked() {
+	now := foregroundNow()
+	for g, exp := range foregroundLinger {
+		if !now.Before(exp) {
+			delete(foregroundLinger, g)
+		}
+	}
+	for g := range foregroundEpochs {
+		if foregroundHolds[g] > 0 {
+			continue
+		}
+		if _, ok := foregroundLinger[g]; ok {
+			continue
+		}
+		delete(foregroundEpochs, g)
+	}
+}
+
+// ClearGroupForeground ends the post-hold linger for group, but ONLY if epoch
+// is still the current mark. Called when the last stage of the user-awaited
+// work — the group-algo pass — completes: the graph the user asked for exists,
+// so anything that runs from here on is background churn again.
+//
+// The epoch check is what makes a late completion safe. A pass spawned under
+// rebuild #1 can finish long after rebuild #2 has re-marked the group; without
+// the check it would clear #2's mark and send #2's own follow-on children to
+// background caps while the user is still waiting on them.
+//
+// It also deliberately does NOT cancel live holds. A hold means a foreground
+// rebuild is running right now; only its own release may end it.
+func ClearGroupForeground(group string, epoch uint64) {
 	foregroundMu.Lock()
 	defer foregroundMu.Unlock()
 	if foregroundHolds[group] > 0 {
-		return true
+		return
 	}
-	exp, ok := foregroundLinger[group]
-	if !ok {
-		return false
-	}
-	if foregroundNow().Before(exp) {
-		return true
+	if foregroundEpochs[group] != epoch {
+		return
 	}
 	delete(foregroundLinger, group)
-	return false
+	delete(foregroundEpochs, group)
 }
 
-// ClearGroupForeground ends the post-hold linger for group. Called when the
-// last stage of the user-awaited work — the group-algo pass — completes: the
-// graph the user asked for exists, so anything that runs from here on is
-// background churn again.
-//
-// It deliberately does NOT cancel live holds. A hold means a foreground rebuild
-// is running right now; only its own release may end it.
-func ClearGroupForeground(group string) {
+// ForgetGroupForeground drops all foreground state for group unconditionally.
+// For teardown — a group delete — where no epoch can still be current because
+// the group itself is gone. Called from Scheduler.CancelGroup, which is the
+// path Service.DeleteGroup invokes.
+func ForgetGroupForeground(group string) {
 	foregroundMu.Lock()
 	defer foregroundMu.Unlock()
+	delete(foregroundHolds, group)
 	delete(foregroundLinger, group)
+	delete(foregroundEpochs, group)
 }
 
 // resetForegroundGroups drops all foreground state. Test-only seam — production
@@ -170,6 +242,7 @@ func resetForegroundGroups() {
 	defer foregroundMu.Unlock()
 	foregroundHolds = map[string]int{}
 	foregroundLinger = map[string]time.Time{}
+	foregroundEpochs = map[string]uint64{}
 }
 
 // setForegroundClockForTest swaps the clock and returns a restore func. Test-only.

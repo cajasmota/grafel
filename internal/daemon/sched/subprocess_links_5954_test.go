@@ -30,7 +30,7 @@ import (
 // only be delivered through the environment; asserting on the constructed env
 // is the only way to pin it without fork-execing.
 func TestLinksChildEnvSetsMadvDontNeed(t *testing.T) {
-	env := linksChildEnv([]string{"PATH=/usr/bin", "HOME=/home/x"}, 2)
+	env := linksChildEnv([]string{"PATH=/usr/bin", "HOME=/home/x"}, 2, false)
 
 	godebug, ok := lookupEnv(env, "GODEBUG")
 	if !ok {
@@ -51,13 +51,13 @@ func TestLinksChildEnvSetsMadvDontNeed(t *testing.T) {
 // operator's other GODEBUG settings are merged, not clobbered, and an explicit
 // madvdontneed=0 is left alone.
 func TestLinksChildEnvMergesInheritedGODEBUG(t *testing.T) {
-	env := linksChildEnv([]string{"GODEBUG=http2debug=1"}, 3)
+	env := linksChildEnv([]string{"GODEBUG=http2debug=1"}, 3, false)
 	godebug, _ := lookupEnv(env, "GODEBUG")
 	if !strings.Contains(godebug, "http2debug=1") || !strings.Contains(godebug, madvDontNeedSetting) {
 		t.Errorf("GODEBUG = %q, want both the inherited setting and %q", godebug, madvDontNeedSetting)
 	}
 
-	env = linksChildEnv([]string{"GODEBUG=madvdontneed=0"}, 1)
+	env = linksChildEnv([]string{"GODEBUG=madvdontneed=0"}, 1, false)
 	godebug, _ = lookupEnv(env, "GODEBUG")
 	if godebug != "madvdontneed=0" {
 		t.Errorf("GODEBUG = %q, want an explicit operator madvdontneed=0 left alone", godebug)

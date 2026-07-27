@@ -47,7 +47,10 @@ func runLinksInternal(args []string) int {
 	// Lower this child's OS scheduling priority so even its capped cores yield
 	// to foreground work. Best-effort self-renice, so it holds however the child
 	// is spawned (the GOMAXPROCS cap itself comes from the parent's env).
-	sched.NiceSelf()
+	//
+	// Skipped when the parent told us this pass is user-awaited (#5954) — see
+	// the same call in group_algo.go.
+	sched.NiceSelfUnlessForeground()
 
 	// #5954 / #5956 memtrace: phase-tagged memstats sampler + per-phase heap
 	// profiles, gated entirely behind GRAFEL_MEMTRACE_DIR (inherited, since the

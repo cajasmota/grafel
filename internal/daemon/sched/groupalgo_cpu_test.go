@@ -89,6 +89,13 @@ func TestGroupAlgoNiceValue(t *testing.T) {
 			t.Fatalf("groupAlgoNice on %s = %d, want positive demotion", runtime.GOOS, groupAlgoNice)
 		}
 	}
-	// Best-effort, must not panic regardless of platform/permission.
-	NiceSelf()
+	// NiceSelf is DELIBERATELY not called here. setpriority(2) is a permanent,
+	// one-way demotion of the calling process — nothing can lower it again
+	// without privilege — so calling it in-process renices the whole test binary
+	// to groupAlgoNice for the rest of the run, and every child any later test
+	// forks INHERITS that. That silently destroyed the only assertion that can
+	// catch the #5954 nice bug (a foreground child must come back un-niced):
+	// with the parent already at 10, foreground and background children read
+	// identically. The "must never panic" exercise now happens in a forked
+	// child instead — see TestNiceSelfUnlessForeground_RealPriorityInAForkedChild.
 }

@@ -4,6 +4,7 @@ package sched
 
 import (
 	"os/exec"
+	"strconv"
 	"syscall"
 )
 
@@ -29,12 +30,30 @@ func applyGroupAlgoNice(cmd *exec.Cmd) {
 }
 
 // NiceSelf lowers the CURRENT process's OS scheduling priority by
-// groupAlgoNice. Called by the group-algo child at startup so it runs niced
-// regardless of how it was spawned. Best-effort: a failure (e.g. lacking
-// permission to renice) is silently ignored — the cap is the primary control.
+// groupAlgoNice. Best-effort: a failure (e.g. lacking permission to renice) is
+// silently ignored — the cap is the primary control.
+//
+// Prefer NiceSelfUnlessForeground at a child's startup: an unconditional
+// NiceSelf is what put a user-blocking rebuild's group-algo pass below the
+// user's editor.
 func NiceSelf() {
 	// PRIO_PROCESS=0, who=0 → the calling process. A positive value lowers
 	// priority. Errors are ignored: renicing DOWN never requires privilege, but
 	// guard anyway.
 	_ = syscall.Setpriority(syscall.PRIO_PROCESS, 0, groupAlgoNice)
+}
+
+// niceIsSupported reports whether this platform demotes priority at all.
+func niceIsSupported() bool { return true }
+
+// itoaPriority renders the calling process's current nice value, for tests that
+// need the OS's answer rather than a function's return value.
+func itoaPriority() string {
+	n, err := syscall.Getpriority(syscall.PRIO_PROCESS, 0)
+	if err != nil {
+		return "err"
+	}
+	// Darwin/Linux return the raw nice value from Getpriority via the syscall
+	// package (no PZERO bias), so this is directly comparable to groupAlgoNice.
+	return strconv.Itoa(n)
 }

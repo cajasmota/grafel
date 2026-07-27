@@ -214,9 +214,108 @@ func TestForegroundGroupSurvivesTheHoldRelease(t *testing.T) {
 		t.Fatal("group stopped being foreground the instant the rebuild returned — " +
 			"the debounced group-algo pass the user is still waiting for would get background caps (#5954)")
 	}
-	ClearGroupForeground("acme")
+	epoch, _ := GroupForegroundState("acme")
+	ClearGroupForeground("acme", epoch)
 	if GroupIsForeground("acme") {
 		t.Fatal("ClearGroupForeground did not clear the linger")
+	}
+}
+
+// A LATE completion must not wipe a FRESHER mark. The reachable sequence:
+// rebuild #1 marks the group and arms a linger; its (long) group-algo pass
+// starts; rebuild #2 for the same group runs and arms a fresh linger; then the
+// pass from step 2 finally succeeds and clears — silently dropping rebuild #2's
+// mark, so rebuild #2's own follow-on link and group-algo children spawn at
+// background caps while the user waits on them.
+//
+// The completion therefore has to name the mark it is completing.
+func TestClearForegroundIsEpochScoped(t *testing.T) {
+	resetForegroundForTest(t)
+
+	// Rebuild #1 runs and leaves a linger.
+	MarkGroupForeground("acme")()
+	epoch1, fg := GroupForegroundState("acme")
+	if !fg {
+		t.Fatal("group is not foreground after rebuild #1")
+	}
+
+	// Rebuild #2 for the SAME group runs while #1's pass is still going.
+	MarkGroupForeground("acme")()
+	epoch2, fg := GroupForegroundState("acme")
+	if !fg {
+		t.Fatal("group is not foreground after rebuild #2")
+	}
+	if epoch2 == epoch1 {
+		t.Fatal("a second foreground rebuild reused the first one's epoch — " +
+			"a late completion cannot then tell them apart")
+	}
+
+	// #1's pass completes LATE and clears against the epoch it was spawned under.
+	ClearGroupForeground("acme", epoch1)
+	if !GroupIsForeground("acme") {
+		t.Fatal("a stale completion wiped a fresher foreground mark: rebuild #2's " +
+			"follow-on link and group-algo children would spawn at background caps (#5954)")
+	}
+
+	// #2's own completion does clear it.
+	ClearGroupForeground("acme", epoch2)
+	if GroupIsForeground("acme") {
+		t.Fatal("the matching completion did not clear the mark")
+	}
+}
+
+// A completion must never clear a mark that is still HELD — a rebuild running
+// right now outranks any pass reporting in.
+func TestClearForegroundDoesNotCancelALiveHold(t *testing.T) {
+	resetForegroundForTest(t)
+
+	MarkGroupForeground("acme")()
+	epoch, _ := GroupForegroundState("acme")
+	release := MarkGroupForeground("acme") // a new rebuild starts
+	defer release()
+
+	ClearGroupForeground("acme", epoch)
+	if !GroupIsForeground("acme") {
+		t.Fatal("a completion cleared a group with a LIVE foreground hold on it")
+	}
+}
+
+// Group teardown is the one unconditional clear, and it is not epoch-scoped:
+// the group is gone, so no epoch can be current.
+func TestForgetGroupForegroundIsUnconditional(t *testing.T) {
+	resetForegroundForTest(t)
+
+	MarkGroupForeground("acme")()
+	ForgetGroupForeground("acme")
+	if GroupIsForeground("acme") {
+		t.Fatal("ForgetGroupForeground left the group marked")
+	}
+}
+
+// ...and the teardown path must actually CALL it. CancelGroup is what
+// Service.DeleteGroup invokes; without this the mark outlives the group, so a
+// group deleted and recreated inside the linger window gets its first
+// background pass at foreground caps and un-niced.
+func TestCancelGroup_ForgetsTheForegroundMark(t *testing.T) {
+	resetForegroundForTest(t)
+	s := New(Config{Workers: 1})
+	s.Start()
+	defer s.Stop()
+
+	MarkGroupForeground("doomed")()
+	MarkGroupForeground("survivor")()
+	if !GroupIsForeground("doomed") {
+		t.Fatal("precondition: group is not marked foreground")
+	}
+
+	s.CancelGroup("doomed")
+
+	if GroupIsForeground("doomed") {
+		t.Error("CancelGroup left the deleted group marked foreground — recreating it " +
+			"inside the linger window would run its background passes at foreground caps, un-niced")
+	}
+	if !GroupIsForeground("survivor") {
+		t.Error("CancelGroup cleared an unrelated group's foreground mark")
 	}
 }
 
@@ -262,7 +361,7 @@ func TestForegroundGroupRefcounted(t *testing.T) {
 		t.Fatal("the first release dropped a still-held group")
 	}
 	d2()
-	ClearGroupForeground("acme")
+	ForgetGroupForeground("acme")
 	if GroupIsForeground("acme") {
 		t.Fatal("group still foreground after all holds released and cleared")
 	}

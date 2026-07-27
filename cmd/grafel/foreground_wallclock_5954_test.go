@@ -26,7 +26,7 @@ import (
 // stages the user is still waiting on are not spawned at background caps.
 func TestRebuild_MarksTheGroupForeground(t *testing.T) {
 	group := setupTestGroup(t, "fg-caps-group", []string{"first", "second"})
-	t.Cleanup(func() { sched.ClearGroupForeground(group) })
+	t.Cleanup(func() { sched.ForgetGroupForeground(group) })
 
 	var duringIndex, duringLinks atomic.Bool
 	mockIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error {
@@ -62,7 +62,7 @@ func TestRebuild_MarksTheGroupForeground(t *testing.T) {
 // foreground caps, and must not leave a permanent hold.
 func TestRebuild_ForegroundMarkDoesNotLeakToOtherGroups(t *testing.T) {
 	group := setupTestGroup(t, "fg-caps-other", []string{"only"})
-	t.Cleanup(func() { sched.ClearGroupForeground(group) })
+	t.Cleanup(func() { sched.ForgetGroupForeground(group) })
 
 	idx := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error { return nil }
 	if _, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}, idx, noopLinksFn); err != nil {

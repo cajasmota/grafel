@@ -214,18 +214,36 @@ func resolveChildGOMAXPROCS(interactive bool, foregroundCap int) (n int, reason 
 // WHY /8 AND NOT /4. process.IndexCoreBudget's 25% is the budget for the whole
 // INDEXING fanout, which is many processes sharing it. These are single
 // children, and the divisor was chosen so the value is UNCHANGED at 12 cores —
-// the configuration the current caps were measured on — while still scaling on
-// bigger hosts. It is therefore strictly inside the 25% policy (12.5%) and
-// cannot regress the background behaviour on the machine that reported the
-// problem.
+// the configuration the current caps were measured on — so this cannot regress
+// the background behaviour on the machine that reported the problem.
+//
+// WHAT THIS IS NOT. It is not "the 25% rule". Be precise, because the user's
+// directive was specific and this deviates from it in BOTH directions:
+//
+//   - Above 8 cores it is HALF of what the directive asks. At 32 cores the 25%
+//     rule would give 8; this gives 4. That is a deliberate conservatism for a
+//     single always-on background child, not a fulfilment of the policy, and if
+//     the user wants literal 25% here the divisor is the one thing to change.
+//   - Below 8 cores the FLOOR EXCEEDS 25%. On a 4-core box 2 cores is 50%; on a
+//     2-core box it is 100%. A floor means exactly that — the proportional rule
+//     is overridden at the small end so a background pass can still finish.
+//
+// So: proportional above 8 cores at 12.5%, floored at 2 below that.
 //
 // WHY A FLOOR OF 2. Below 2 the pass loses GC/runtime parallelism entirely and
 // a background pass that never finishes is its own kind of failure. On a
 // 1-core host the floor yields to the machine (clamped to NumCPU).
 //
-// Unlike the index fanout this cap is expressed purely as GOMAXPROCS, which is
-// sound here: neither pass is cgo-bound (no tree-sitter), so GOMAXPROCS really
-// does bound their parallelism.
+// WHAT THIS NUMBER ACTUALLY BUYS TODAY: very little, in either direction. Both
+// passes are SERIAL — internal/links, internal/graph, internal/graph/groupalgo
+// and the gonum packages they call (graph/community, graph/network, graph/path,
+// mat) have no goroutine fan-out, and algorithms.go's network.PageRankSparse
+// never reaches the one parallel path in the dependency (blas dgemm/sgemm). A
+// live group-algo child shows one thread running and the rest asleep. So this
+// value mostly sizes the GC's mark workers, not the pass. It is kept honest and
+// proportional anyway, because it is the number that will bind the moment
+// either pass is parallelised, and because a wrong number here is invisible
+// until it is expensive. Do not cite it as a throughput control.
 const (
 	backgroundBatchCoreDivisor = 8
 	backgroundBatchCoreFloor   = 2
@@ -577,10 +595,15 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 // invisible to the OS until the kernel comes under pressure, which is precisely
 // what whole-machine peak measurement reads (#5954). The index child has had
 // this since RunSubprocessIndex; group-algo was simply never given it.
-func groupAlgoChildEnv(base []string, gomaxprocs int) []string {
-	env := make([]string, 0, len(base)+2)
+//
+// foreground also crosses here (#5954). The child renices ITSELF at startup, so
+// the only way to stop a user-awaited pass running below the user's editor is
+// to tell the child; see nice_foreground.go.
+func groupAlgoChildEnv(base []string, gomaxprocs int, foreground bool) []string {
+	env := make([]string, 0, len(base)+3)
 	env = append(env, base...)
 	env = append(env, "GOMAXPROCS="+strconv.Itoa(gomaxprocs))
+	env = append(env, childForegroundEnvEntry(foreground))
 	return withMadvDontNeed(env)
 }
 
@@ -598,12 +621,18 @@ func RunSubprocessGroupAlgo(ctx context.Context, group string, logger *slog.Logg
 	// host speed, background churn stays on the proportional background cap.
 	// GOMAXPROCS is appended last so it wins over any inherited value.
 	// groupAlgoChildEnv also merges GODEBUG=madvdontneed=1 — see its doc.
-	gomaxprocs := groupAlgoChildGOMAXPROCS(group)
-	cmd.Env = groupAlgoChildEnv(os.Environ(), gomaxprocs)
-	// Lower the child's OS scheduling priority (nice +10) so even its capped
-	// cores yield to foreground work (a consumer's CI / dev harness). No-op /
-	// guarded off on platforms without setpriority (e.g. Windows). See
-	// applyGroupAlgoNice (platform-split files).
+	//
+	// Resolved ONCE here and used for both the cap and the nice signal, so the
+	// two cannot disagree about what kind of work this is.
+	foreground := GroupIsForeground(group)
+	gomaxprocs := GroupAlgoGOMAXPROCSFor(foreground)
+	cmd.Env = groupAlgoChildEnv(os.Environ(), gomaxprocs, foreground)
+	// Put the child in its own process group so it is independently schedulable.
+	// This hook does NOT set priority — despite its name it only sets Setpgid;
+	// the nice increment is applied by the CHILD to itself at startup, and since
+	// #5954 only when it was not told it is foreground
+	// (sched.NiceSelfUnlessForeground, delivered via childForegroundEnv above).
+	// No-op on platforms without process groups (Windows).
 	applyGroupAlgoNice(cmd)
 	// On Windows, prevent a console window from flashing when the daemon
 	// (running as a Task Scheduler task) spawns this subprocess.
@@ -702,10 +731,13 @@ func linksChildGOMAXPROCS(group string) int {
 // under pressure, which is exactly what whole-machine peak measurement reads
 // (#5954). group-algo shipped without it and needed a follow-up; this child has
 // it from its first commit.
-func linksChildEnv(base []string, gomaxprocs int) []string {
-	env := make([]string, 0, len(base)+2)
+//
+// foreground crosses here too — see groupAlgoChildEnv.
+func linksChildEnv(base []string, gomaxprocs int, foreground bool) []string {
+	env := make([]string, 0, len(base)+3)
 	env = append(env, base...)
 	env = append(env, "GOMAXPROCS="+strconv.Itoa(gomaxprocs))
+	env = append(env, childForegroundEnvEntry(foreground))
 	return withMadvDontNeed(env)
 }
 
@@ -771,14 +803,17 @@ func RunSubprocessLinks(ctx context.Context, group string, logger *slog.Logger) 
 	}
 
 	cmd := exec.CommandContext(ctx, binary, "links-internal", group)
-	// Foreground/background split — see groupAlgoChildGOMAXPROCS.
-	gomaxprocs := linksChildGOMAXPROCS(group)
-	cmd.Env = linksChildEnv(os.Environ(), gomaxprocs)
-	// Put the child in its own process group so it is independently
-	// schedulable; the nice increment itself is applied by the child at startup
-	// (sched.NiceSelf). applyGroupAlgoNice is the shared spawn-side hook for
-	// both background batch children — it is named for the first one that
-	// needed it, not scoped to it.
+	// Foreground/background split — see groupAlgoChildGOMAXPROCS. One resolution
+	// feeds both the CPU cap and the OS-priority signal.
+	foreground := GroupIsForeground(group)
+	gomaxprocs := LinksGOMAXPROCSFor(foreground)
+	cmd.Env = linksChildEnv(os.Environ(), gomaxprocs, foreground)
+	// Put the child in its own process group so it is independently schedulable;
+	// the nice increment itself is applied by the child at startup, and only
+	// when it was not told it is foreground (sched.NiceSelfUnlessForeground,
+	// delivered via childForegroundEnv above). applyGroupAlgoNice is the shared
+	// spawn-side hook for both background batch children — it is named for the
+	// first one that needed it, not scoped to it.
 	applyGroupAlgoNice(cmd)
 	// On Windows, prevent a console window from flashing when the daemon
 	// (running as a Task Scheduler task) spawns this subprocess.
