@@ -403,7 +403,13 @@ func runGroupAlgorithmsIncremental(group string, memoize bool) (*GroupAlgoResult
 	// freshly assembled union is, by determinism, exactly what a full recompute
 	// would produce. Reconstitute it instead of re-running Louvain+PageRank.
 	if path, perr := OverlayPath(group); perr == nil && path != "" {
-		if prior := readOverlayUnconditional(path); prior != nil && prior.InputHash != "" && prior.InputHash == inputHash {
+		// OverlayAlgoVersionCurrent is part of the skip condition, not just the
+		// hash: the hash covers the INPUT, the version covers the FUNCTION
+		// applied to it. Without it, an upgrade that changes the partitioning
+		// hits this memo on an unchanged union and reconstitutes the OLD
+		// implementation's overlay indefinitely. See OverlayAlgoVersion.
+		if prior := readOverlayUnconditional(path); prior != nil && OverlayAlgoVersionCurrent(prior) &&
+			prior.InputHash != "" && prior.InputHash == inputHash {
 			res := overlayToResults(prior, entities)
 			return &GroupAlgoResult{
 				Group:        group,

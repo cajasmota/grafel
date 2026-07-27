@@ -81,6 +81,7 @@ func TestForEachEntity_FlagOnParityWithOverlay(t *testing.T) {
 
 	alpha, bravo := ids[0], ids[1] // charlie deliberately un-overlaid
 	ov := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{
@@ -403,6 +404,7 @@ func TestForEachEntity_RealReloadOverlayRestampRace(t *testing.T) {
 
 	writeOverlay := func(mtimes map[string]int64, seed int) {
 		ov := &groupalgo.Overlay{
+			AlgoVersion:  groupalgo.OverlayAlgoVersion,
 			Group:        "acme",
 			SourceMtimes: mtimes,
 			Results: map[string]groupalgo.EntityOverlay{

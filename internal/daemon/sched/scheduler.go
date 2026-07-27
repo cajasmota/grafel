@@ -483,7 +483,20 @@ type Scheduler struct {
 	// assembled group union, chained off link completion.
 	groupAlgoTimers  map[string]*time.Timer
 	groupAlgoPending map[string]bool
-	groupAlgoCancel  map[string]context.CancelFunc
+	// groupAlgoCancel holds a per-in-flight-pass identity TOKEN (not a bare
+	// cancel func) so a pass that returns LATE can distinguish its own registry
+	// entry from a successor's — the same shape linkCancel uses. Blind-deleting
+	// here let a late returner drop a live successor's handle, so a subsequent
+	// CancelGroup/Stop had nothing to cancel and the successor ran on for a
+	// deleted group (#6001).
+	groupAlgoCancel map[string]*groupAlgoPassCancel
+	// groupAlgoRerun marks a group whose overlay recompute was REQUESTED while a
+	// pass was already in flight. The request is deliberately NOT serviced by
+	// cancelling the running pass (see scheduleGroupAlgo); instead the flag is
+	// consumed when that pass returns, which re-arms the debounce. It is the
+	// "the newer request is not silently dropped" half of the let-it-finish
+	// contract. Guarded by mu.
+	groupAlgoRerun map[string]bool
 	// groupAlgoArmedAt records when a group's debounce window FIRST started (and
 	// is NOT reset on subsequent re-arms while still pending). It bounds debounce
 	// starvation: once the window has been continuously armed for
@@ -752,7 +765,8 @@ func New(cfg Config) *Scheduler {
 		linkPending:       map[string]bool{},
 		groupAlgoTimers:   map[string]*time.Timer{},
 		groupAlgoPending:  map[string]bool{},
-		groupAlgoCancel:   map[string]context.CancelFunc{},
+		groupAlgoCancel:   map[string]*groupAlgoPassCancel{},
+		groupAlgoRerun:    map[string]bool{},
 		groupAlgoArmedAt:  map[string]time.Time{},
 		groupAlgoFireAt:   map[string]time.Time{},
 		linkCancel:        map[string]*linkPassCancel{},
@@ -829,8 +843,8 @@ func (s *Scheduler) Stop() {
 	for _, t := range s.groupAlgoTimers {
 		t.Stop()
 	}
-	for _, c := range s.groupAlgoCancel {
-		c()
+	for _, tok := range s.groupAlgoCancel {
+		tok.cancel()
 	}
 	// #5954: drop every deferred-by-the-gate marker so the process-global
 	// indexstate counters return to zero on shutdown (they are balanced
@@ -2024,12 +2038,42 @@ func overlaySweepIntervalFromEnv() time.Duration {
 // since the armedAt+maxWait deadline does not move across re-arms, continuous
 // churn can push the fire out no later than that deadline. Still one pass per
 // window (coalesced) and still on the CPU-capped path — no unbounded recompute.
+//
+// LET AN IN-FLIGHT PASS FINISH. A re-arm that arrives while a pass is RUNNING
+// does NOT cancel it. It used to: scheduleGroupAlgo called cancelGroupAlgoLocked
+// unconditionally, which SIGKILLed the group-algo child and restarted it from
+// zero. On the reference 25-repo corpus, where the pass outlives the interval
+// between triggers, that is an infinite churn loop — the daemon's own logs show
+// 91 `group-algo: starting` events against 2 completions, i.e. the overlay was
+// effectively never produced while the daemon looked permanently busy.
+//
+// Letting it finish is correct, not merely cheaper. The pass is a PURE
+// ANNOTATION over an already-written graph.fb: it loads a SNAPSHOT of the
+// per-repo graphs, computes over the union, and writes a separate overlay file.
+// Its result is therefore always internally consistent — it is at worst stale
+// relative to content that landed after the snapshot, never wrong. Cancelling
+// trades a slightly-stale-but-real overlay for NO overlay plus a full recompute,
+// and under sustained churn that trade never converges. So: the running pass
+// keeps its input snapshot and runs to completion, and the newer request is
+// recorded (groupAlgoRerun) and serviced by re-arming the debounce the moment
+// that pass returns. Staleness is bounded by the follow-up pass; unavailability
+// under the old behaviour was not bounded at all.
 func (s *Scheduler) scheduleGroupAlgo(group string) {
 	if s.cfg.GroupAlgo == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// A pass is RUNNING right now. Record the request and leave it alone; the
+	// completion path in fireGroupAlgo consumes the flag and re-arms.
+	if _, running := s.groupAlgoCancel[group]; running {
+		if !s.groupAlgoRerun[group] {
+			s.groupAlgoRerun[group] = true
+			s.logEventLocked("group_algo_requeued", "",
+				group+": recompute requested while a pass is in flight — letting it finish, re-arming on completion")
+		}
+		return
+	}
 	// Preserve the window-start timestamp across re-arms.
 	armedAt, hadWindow := s.groupAlgoArmedAt[group]
 	now := time.Now()
@@ -2115,7 +2159,8 @@ func (s *Scheduler) fireGroupAlgo(group string) {
 	// — which may fork a subprocess — receives cancellation. Mirrors runIndex
 	// and runLinks. Fixes the leak class of issue #2493.
 	ctx, cancel := context.WithCancel(s.shutdownCtx)
-	s.groupAlgoCancel[group] = cancel
+	tok := &groupAlgoPassCancel{cancel: cancel}
+	s.groupAlgoCancel[group] = tok
 	// Give the gate a handle on this pass — cancelling it SIGKILLs the
 	// group-algo child (subprocess_runner.go). Only the forfeit-grace expiry
 	// uses it; a plain forfeit deliberately does not.
@@ -2130,7 +2175,20 @@ func (s *Scheduler) fireGroupAlgo(group string) {
 	s.runGroupAlgo(ctx, group)
 
 	s.mu.Lock()
-	delete(s.groupAlgoCancel, group)
+	// #6001: only clear the entry if it is still OUR token. A CancelGroup may
+	// have drained the map and a successor pass registered its own handle while
+	// this (long) pass was returning; blind-deleting would drop the LIVE
+	// successor's cancel func, leaving a later CancelGroup/Stop with nothing to
+	// cancel. fireLinks has guarded the same shape since the v0.1.8 leak fix.
+	if s.groupAlgoCancel[group] == tok {
+		delete(s.groupAlgoCancel, group)
+	}
+	// A recompute requested WHILE this pass ran was deliberately not serviced by
+	// cancelling us (see scheduleGroupAlgo). Consume the marker now so the newer
+	// content gets its own pass — this is what keeps "let it finish" from
+	// silently dropping the request.
+	rerun := s.groupAlgoRerun[group]
+	delete(s.groupAlgoRerun, group)
 	// Drop the deferred marker only now: runGroupAlgo holds its own
 	// GroupAlgoBegin for the RUNNING window, so clearing here keeps the
 	// deferred→running indexstate coverage continuous (count 1 → 2 → 1 → 0)
@@ -2138,6 +2196,18 @@ func (s *Scheduler) fireGroupAlgo(group string) {
 	s.markGroupAlgoDeferredLocked(group, false)
 	s.mu.Unlock()
 	cancel()
+
+	if rerun && !s.stopped() {
+		s.logEvent("group_algo_rearm", "", group+": servicing the recompute requested during the previous pass")
+		s.scheduleGroupAlgo(group)
+	}
+}
+
+// groupAlgoPassCancel is a per-in-flight-group-algo-pass identity token wrapping
+// its cancel func, so a completing pass can distinguish ITS OWN registry entry
+// from a successor's (#6001). Mirrors linkPassCancel.
+type groupAlgoPassCancel struct {
+	cancel context.CancelFunc
 }
 
 // markGroupAlgoDeferredLocked toggles a group's "deferred by the stage gate"
@@ -2164,10 +2234,14 @@ func (s *Scheduler) cancelGroupAlgoLocked(group string) {
 		delete(s.groupAlgoTimers, group)
 		s.groupAlgoPending[group] = false
 	}
-	if c, ok := s.groupAlgoCancel[group]; ok {
-		c()
+	if tok, ok := s.groupAlgoCancel[group]; ok {
+		tok.cancel()
 		delete(s.groupAlgoCancel, group)
 	}
+	// An explicit cancel (shutdown, group delete) drops a queued re-run too:
+	// there is nothing left to annotate. Note scheduleGroupAlgo never reaches
+	// here for a running pass — only Stop and CancelGroup do.
+	delete(s.groupAlgoRerun, group)
 	// Clear the max-wait window (#5450). scheduleGroupAlgo snapshots and restores
 	// this for a re-arm of a still-open window; an explicit cancel (shutdown, or a
 	// superseding pass) ends the window so the next arm starts a fresh budget.
@@ -2349,11 +2423,19 @@ type Snapshot struct {
 	QueueLen int
 	InFlight []InFlightJob
 	// PendingAlgo lists groups with a debounced GROUP-algo pass armed (#5349
-	// A3). The per-repo algo pass was removed; this is now group-keyed.
-	PendingAlgo  []string
-	PendingLinks []string
-	IndexedRepos []RepoSnapshot
-	RecentLog    []LogEntry
+	// A3). The per-repo algo pass was removed; this is now group-keyed. It also
+	// covers a recompute QUEUED behind an in-flight pass (groupAlgoRerun), so a
+	// deferred request is never invisible.
+	PendingAlgo []string
+	// GroupAlgoRunning lists groups whose annotation (group-algo) pass is
+	// executing RIGHT NOW. The overlay it produces — communities, pagerank,
+	// centrality — does not exist until it completes, so "my communities are
+	// missing" needs this to be diagnosable from `grafel status` rather than
+	// inferred from the RSS shape or the log ring.
+	GroupAlgoRunning []string
+	PendingLinks     []string
+	IndexedRepos     []RepoSnapshot
+	RecentLog        []LogEntry
 
 	// Budget telemetry (added with admission control).
 	BudgetMB    int64
@@ -2436,7 +2518,18 @@ func (s *Scheduler) Snapshot() Snapshot {
 			out.PendingAlgo = append(out.PendingAlgo, g)
 		}
 	}
+	// A recompute queued behind an in-flight pass is pending too — it just has
+	// no timer yet, because the completion of the running pass is what arms it.
+	for g := range s.groupAlgoRerun {
+		if s.groupAlgoRerun[g] && !s.groupAlgoPending[g] {
+			out.PendingAlgo = append(out.PendingAlgo, g)
+		}
+	}
 	sort.Strings(out.PendingAlgo)
+	for g := range s.groupAlgoCancel {
+		out.GroupAlgoRunning = append(out.GroupAlgoRunning, g)
+	}
+	sort.Strings(out.GroupAlgoRunning)
 	for g := range s.linkPending {
 		if s.linkPending[g] {
 			out.PendingLinks = append(out.PendingLinks, g)

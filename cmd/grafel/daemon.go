@@ -983,11 +983,28 @@ func daemonGroupsForRepo(repoPath string) []string {
 // push, or an idle re-stat) settles the overlay in place and is NOT returned
 // here, so the sweep no longer fires a ~½-core Louvain burst on an idle daemon.
 //
-// Groups with NO overlay yet are deliberately excluded (OverlayNeedsRecompute
-// returns false for an absent overlay): those take the normal first-compute
-// link-pass chain after their first reindex, and the sweep must not force-fire
-// them. Best-effort: any registry error yields an empty list (sweep skips this
-// tick) rather than wedging.
+// FIRST COMPUTE (#6002). It ALSO returns a group that has member graphs on disk
+// but NO overlay at all. That case used to be deliberately excluded, on the
+// reasoning that "those take the normal first-compute link-pass chain after
+// their first reindex" — but that chain does not cover the path a user actually
+// takes. `grafel rebuild` / `grafel reset` runs its own IN-PROCESS link pass
+// (daemonRebuildFuncCore → daemonForegroundLinks); it never goes through the
+// scheduler, so runLinks — the only caller of scheduleGroupAlgo — never runs and
+// no pass is ever armed. With the sweep also excluding the group (no overlay
+// file), a freshly reset group could sit indefinitely with a complete, queryable
+// graph and no communities at all, until some unrelated watcher-driven reindex
+// happened to fire the chain. That is exactly the "silently dropped" failure the
+// background overlay must not have: taking the pass off the rebuild's critical
+// path is only acceptable if something reliably picks it up afterwards.
+//
+// The extra work is bounded: the sweep skips groups with a pending/in-flight
+// pass, and a successful pass writes an overlay, so this fires once per group
+// and then falls back to the (content-gated) staleness predicate. A group with
+// no indexed member yet is excluded — assembling an empty union would be pure
+// waste, and it will be picked up on the sweep after its first index.
+//
+// Best-effort throughout: any registry error yields an empty list (sweep skips
+// this tick) rather than wedging.
 func daemonSchedulerStaleGroups() []string {
 	groups, err := registry.Groups()
 	if err != nil {
@@ -995,11 +1012,48 @@ func daemonSchedulerStaleGroups() []string {
 	}
 	var out []string
 	for _, g := range groups {
-		if groupalgo.OverlayNeedsRecompute(g.Name) {
+		if groupAlgoSweepWants(g.Name, groupalgo.OverlayNeedsRecompute, groupHasOverlay, groupHasIndexedMember) {
 			out = append(out, g.Name)
 		}
 	}
 	return out
+}
+
+// groupAlgoSweepWants is the testable core of the sweep predicate: recompute a
+// stale-and-changed overlay, or compute a missing one for a group that has at
+// least one indexed member. The three probes are injected so the decision can be
+// tested without a registry, a $GRAFEL_HOME, or real graph files.
+func groupAlgoSweepWants(group string, needsRecompute, hasOverlay, hasIndexedMember func(string) bool) bool {
+	if needsRecompute(group) {
+		return true
+	}
+	if hasOverlay(group) {
+		return false // present and not stale-with-changed-content → nothing to do.
+	}
+	return hasIndexedMember(group)
+}
+
+// groupHasOverlay reports whether a group has an overlay file on disk at all.
+// An unresolvable path reports true — "unknown" must not force-fire a heavy
+// pass.
+func groupHasOverlay(group string) bool {
+	path, err := groupalgo.OverlayPath(group)
+	if err != nil || path == "" {
+		return true
+	}
+	_, statErr := os.Stat(path)
+	return statErr == nil
+}
+
+// groupHasIndexedMember reports whether at least one of a group's repos has a
+// materialized graph. CurrentSourceMtimes omits repos with no graph yet, so a
+// non-empty map is exactly "something to assemble".
+func groupHasIndexedMember(group string) bool {
+	mt, err := groupalgo.CurrentSourceMtimes(group)
+	if err != nil {
+		return false
+	}
+	return len(mt) > 0
 }
 
 // daemonWorktreeParents returns the registered repos whose group opts into

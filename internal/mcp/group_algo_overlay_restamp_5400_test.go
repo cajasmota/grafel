@@ -135,6 +135,7 @@ func TestApplyOverlay_ReStampsReparsedMobileRepo(t *testing.T) {
 	// the backend god-node to 39, the frontend to 203 — mirroring the live acme
 	// overlay shape from the validation report.
 	ov := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{

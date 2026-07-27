@@ -36,6 +36,7 @@ func TestGroupReapplyOverlayOnMtimeAdvance(t *testing.T) {
 
 	// --- v1 overlay: mobile → community 80.
 	ovV1 := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{
@@ -80,6 +81,7 @@ func TestGroupReapplyOverlayOnMtimeAdvance(t *testing.T) {
 	// settled-daemon case (#5403): the scheduler/CLI rewrote the overlay on disk
 	// but never poked the cached group.
 	ovV2 := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{

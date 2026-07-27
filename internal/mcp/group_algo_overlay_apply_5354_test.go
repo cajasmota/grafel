@@ -136,6 +136,7 @@ func TestApplyOverlay_GroupValuesAppliedAtLoad(t *testing.T) {
 	st, overlayPath, cur, serviceID, leafID := setupApplyGroup(t)
 
 	ov := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{
@@ -229,6 +230,7 @@ func TestApplyOverlay_StaleNotApplied(t *testing.T) {
 		stale[slug] = mt + 1 // off by one nano → mismatch
 	}
 	ov := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: stale,
 		Results: map[string]groupalgo.EntityOverlay{
@@ -264,6 +266,7 @@ func TestApplyOverlay_MidSessionSwap(t *testing.T) {
 
 	write := func(pr float64) {
 		ov := &groupalgo.Overlay{
+			AlgoVersion:  groupalgo.OverlayAlgoVersion,
 			Group:        "acme",
 			SourceMtimes: cur,
 			Results:      map[string]groupalgo.EntityOverlay{serviceID: {CommunityID: 1, PageRank: pr}},

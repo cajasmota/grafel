@@ -445,6 +445,7 @@ func TestEvictGroup_ReviveKeepsOverlay(t *testing.T) {
 	st, overlayPath, cur, serviceID, _ := setupApplyGroup(t)
 
 	ov := &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{

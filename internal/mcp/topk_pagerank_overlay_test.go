@@ -220,6 +220,7 @@ func TestGetTopKPageRank_FlagOnOffParity_SideTableNotSentinel(t *testing.T) {
 		// Assign PageRank so the ranked order (Charlie > Alpha > Bravo) is the
 		// REVERSE-ish of vector order, so a sentinel-collapse is detectable.
 		ov := &groupalgo.Overlay{
+			AlgoVersion:  groupalgo.OverlayAlgoVersion,
 			Group:        "acme",
 			SourceMtimes: cur,
 			Results: map[string]groupalgo.EntityOverlay{

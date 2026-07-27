@@ -34,6 +34,7 @@ import (
 // test: backend/frontend/mobile each get a distinct cross-repo community.
 func buildOverlayFor5729(cur map[string]int64, beID, feID, mobID string) *groupalgo.Overlay {
 	return &groupalgo.Overlay{
+		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
 		SourceMtimes: cur,
 		Results: map[string]groupalgo.EntityOverlay{
