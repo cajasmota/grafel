@@ -542,6 +542,17 @@ type Scheduler struct {
 	// The SHARED (index) side of the gate is not counted here: s.inflight
 	// already tracks it exactly.
 	stageHolder string
+	// stageEpoch is the IDENTITY of the current holder, bumped on every
+	// acquisition and never reset. stageHolder alone cannot serve as an
+	// identity: the two exclusive stages are named "links:<group>" and
+	// "group-algo:<group>", so the pass that follows an ABANDONED
+	// "group-algo:acme" is very often a fresh "group-algo:acme" — the SAME
+	// STRING. Without the epoch, the abandoned pass returning late would find
+	// its own name in stageHolder and clear its SUCCESSOR'S token, admitting a
+	// third stage beside two live ones (strictly worse than the degrade the
+	// abandonment already advertises). releaseStage and setStageCancelLocked
+	// therefore match on (name, epoch), not on name.
+	stageEpoch int64
 	// stageHeldSince is when stageHolder acquired; drives StageGateHoldMax.
 	stageHeldSince time.Time
 	// stageForfeitedAt is when stageHolder was declared FORFEITED (it blew
@@ -1183,7 +1194,26 @@ func (s *Scheduler) publishRepoStatesLocked() {
 // here. Barge holds are id-keyed (not name-keyed), so independent registrations
 // never collide, never overwrite one another, and each release drops only its
 // own id — two subsystems can register concurrently without coordinating.
-func (s *Scheduler) workInFlightLocked() bool {
+//
+// It REAPS the barge first, per bargeHeldLocked's contract. That is not
+// bookkeeping hygiene here, it is the liveness bound: this predicate gates
+// FreeOSMemory, and a leaked barge (a foreground goroutine that vanished without
+// unwinding its release) would otherwise read as in-flight work forever and
+// starve the heap release on an idle daemon — with nothing else to reap it,
+// since every other reap site is a GATE decision and an idle daemon makes none.
+// Reaping stops that at StageGateBargeMax. The stage holder needs no equivalent
+// reap: this predicate must report a forfeited-but-resident holder as in-flight
+// (it IS running), and its own bound is enforced by the gate paths.
+//
+// `now` is threaded from the caller rather than read as time.Now() here, because
+// the caller (maybeReleaseMemory) already takes an injected clock so tests can
+// drive the idle/debounce logic synthetically. Reading the wall clock instead
+// would work today only because the existing tests seed bargeHold.since from
+// real time; a test that advanced a synthetic `now` past StageGateBargeMax would
+// silently fail to reap, and the bound this reap exists to enforce would go
+// untested exactly where it was being asserted.
+func (s *Scheduler) workInFlightLocked(now time.Time) bool {
+	s.reapBargeLocked(now)
 	return len(s.inflight) > 0 || s.stageHolder != "" || s.bargeHeldLocked()
 }
 
@@ -1227,8 +1257,8 @@ func (s *Scheduler) workPendingLocked() bool {
 // busyLocked reports whether any indexing-related work is in flight OR pending.
 // Must be called with s.mu held. Callers that specifically mean "is anything
 // executing" want workInFlightLocked instead.
-func (s *Scheduler) busyLocked() bool {
-	return s.workInFlightLocked() || s.workPendingLocked()
+func (s *Scheduler) busyLocked(now time.Time) bool {
+	return s.workInFlightLocked(now) || s.workPendingLocked()
 }
 
 // maybeReleaseMemory is the testable core of the idle-release trigger. It
@@ -1241,7 +1271,7 @@ func (s *Scheduler) maybeReleaseMemory(now time.Time) {
 	s.mu.Lock()
 	// Gated on IN-FLIGHT work only, never on pending work — see
 	// workPendingLocked for the wedge that conflating them caused.
-	if s.workInFlightLocked() {
+	if s.workInFlightLocked(now) {
 		// Activity resumed (or never settled): reset the idle clock so the
 		// next idle period must serve out a fresh debounce, and re-arm the
 		// one-shot release.
@@ -1821,7 +1851,8 @@ func (s *Scheduler) fireLinks(group string) {
 	now := time.Now()
 
 	s.mu.Lock()
-	if !s.tryAcquireStageLocked(name, now) {
+	stageEpoch, acquired := s.tryAcquireStageLocked(name, now)
+	if !acquired {
 		delay := s.noteStageDeferLocked(name, now)
 		s.linkPending[group] = true
 		if t, ok := s.linkTimers[group]; ok {
@@ -1855,11 +1886,13 @@ func (s *Scheduler) fireLinks(group string) {
 	s.linkCancel[group] = tok
 	// Give the gate a handle on this pass, so a forfeit that outlives its grace
 	// has something to cancel instead of reclaiming the token beside a live one.
-	s.setStageCancelLocked(name, cancel)
+	s.setStageCancelLocked(name, stageEpoch, cancel)
 	s.mu.Unlock()
 
 	// Release on EVERY exit path — normal return, error, cancellation, panic.
-	defer s.releaseStage(name)
+	// Carries the epoch so that a pass whose token was already abandoned by the
+	// forfeit-grace expiry cannot free its successor's token here.
+	defer s.releaseStage(name, stageEpoch)
 
 	s.runLinks(ctx, group)
 
@@ -2052,7 +2085,8 @@ func (s *Scheduler) fireGroupAlgo(group string) {
 	now := time.Now()
 
 	s.mu.Lock()
-	if !s.tryAcquireStageLocked(name, now) {
+	stageEpoch, acquired := s.tryAcquireStageLocked(name, now)
+	if !acquired {
 		delay := s.noteStageDeferLocked(name, now)
 		// A DEFERRED pass must stay visible to grafel_stats exactly like a
 		// RUNNING one, or an MCP consumer polling across the deferral sees an
@@ -2080,11 +2114,13 @@ func (s *Scheduler) fireGroupAlgo(group string) {
 	// Give the gate a handle on this pass — cancelling it SIGKILLs the
 	// group-algo child (subprocess_runner.go). Only the forfeit-grace expiry
 	// uses it; a plain forfeit deliberately does not.
-	s.setStageCancelLocked(name, cancel)
+	s.setStageCancelLocked(name, stageEpoch, cancel)
 	s.mu.Unlock()
 
 	// Release on EVERY exit path — normal return, error, cancellation, panic.
-	defer s.releaseStage(name)
+	// Carries the epoch so that a pass whose token was already abandoned by the
+	// forfeit-grace expiry cannot free its successor's token here.
+	defer s.releaseStage(name, stageEpoch)
 
 	s.runGroupAlgo(ctx, group)
 
@@ -2311,10 +2347,17 @@ type Snapshot struct {
 	// It is a FAILURE counter, not a warning: any non-zero value means a heavy
 	// stage held the gate past a 4h bound. A measurement run should assert it
 	// stays 0.
-	StageHolder   string   `json:"stage_holder,omitempty"`
-	StageDeferred []string `json:"stage_deferred,omitempty"`
-	Barging       []string `json:"barging,omitempty"`
-	StageForfeits int64    `json:"stage_forfeits,omitempty"`
+	//
+	// StageForfeitedHolder is the LIVE counterpart of that sticky counter:
+	// StageHolder is past its hold-max RIGHT NOW and the gate is deliberately
+	// keeping it resident rather than releasing it. The counter alone cannot
+	// answer "is the gate in a forfeit grace at this instant", which is the
+	// question an operator staring at a stalled daemon actually has.
+	StageHolder          string   `json:"stage_holder,omitempty"`
+	StageDeferred        []string `json:"stage_deferred,omitempty"`
+	Barging              []string `json:"barging,omitempty"`
+	StageForfeits        int64    `json:"stage_forfeits,omitempty"`
+	StageForfeitedHolder bool     `json:"stage_forfeited_holder,omitempty"`
 }
 
 // InFlightJob is one currently-running index, with its reserved MB.
@@ -2384,7 +2427,7 @@ func (s *Scheduler) Snapshot() Snapshot {
 	}
 	g := s.stageGateStateLocked()
 	out.StageHolder, out.StageDeferred, out.Barging = g.Holder, g.Deferred, g.Barging
-	out.StageForfeits = g.Forfeits
+	out.StageForfeits, out.StageForfeitedHolder = g.Forfeits, g.ForfeitedHolder
 	return out
 }
 
@@ -2405,7 +2448,11 @@ type StageGateState struct {
 	// Non-zero is a FAILURE signal, not a warning — see Snapshot.StageForfeits.
 	Forfeits int64
 	// ForfeitedHolder is true when Holder has been forfeited and is being kept
-	// resident by the gate rather than released (see reapStageLocked).
+	// resident by the gate rather than released (see reapStageLocked). Unlike
+	// Forfeits, which is sticky for the life of the daemon, this is the LIVE
+	// signal: the gate is inside a forfeit grace at this instant, and Holder
+	// will be cancelled when it expires. Reaches `grafel status` in both
+	// monolith and split mode alongside Forfeits.
 	ForfeitedHolder bool
 }
 

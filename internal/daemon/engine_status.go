@@ -106,10 +106,11 @@ func StageGateFromStatusFile() (g sched.StageGateState, ok bool) {
 		return sched.StageGateState{}, false
 	}
 	return sched.StageGateState{
-		Holder:   f.StageGateHolder,
-		Deferred: f.StageGateDeferred,
-		Barging:  f.StageGateBarging,
-		Forfeits: f.StageGateForfeits,
+		Holder:          f.StageGateHolder,
+		Deferred:        f.StageGateDeferred,
+		Barging:         f.StageGateBarging,
+		Forfeits:        f.StageGateForfeits,
+		ForfeitedHolder: f.StageGateForfeitedHolder,
 	}, true
 }
 

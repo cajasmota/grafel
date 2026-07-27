@@ -445,6 +445,7 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 		reply.StageGateDeferred = snap.StageDeferred
 		reply.StageGateBarging = snap.Barging
 		reply.StageGateForfeits = snap.StageForfeits
+		reply.StageGateForfeitedHolder = snap.StageForfeitedHolder
 	} else if g, ok := StageGateFromStatusFile(); ok {
 		// SPLIT MODE (the default): the scheduler lives in the ENGINE process,
 		// so the serve process answering this RPC has s.scheduler == nil and
@@ -463,6 +464,7 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 		reply.StageGateDeferred = g.Deferred
 		reply.StageGateBarging = g.Barging
 		reply.StageGateForfeits = g.Forfeits
+		reply.StageGateForfeitedHolder = g.ForfeitedHolder
 	}
 	return nil
 }

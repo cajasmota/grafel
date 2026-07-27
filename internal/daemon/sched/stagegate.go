@@ -212,8 +212,12 @@ func (s *Scheduler) stopped() bool {
 // a holder to blow StageGateHoldMax (4h) AND survive cancellation for
 // StageGateForfeitGrace (30m) — a child stuck in uninterruptible I/O, not a slow
 // pass. It is loud and separately named: `stage_gate_forfeit_abandoned`.
-// The identity check in releaseStage is the other half — a late-returning
-// abandoned stage must not clear the NEW holder's token.
+// The epoch check in releaseStage is the other half — a late-returning
+// abandoned stage must not clear the NEW holder's token. It has to be an EPOCH
+// and not a name: the successor to an abandoned "group-algo:acme" is usually
+// another "group-algo:acme", so a name comparison would let the late returner
+// free its successor's token and admit a third stage beside two live ones.
+// See Scheduler.stageEpoch.
 func (s *Scheduler) reapStageLocked(now time.Time) {
 	// Foreground barges expire on their OWN, much longer bound — never on
 	// StageGateHoldMax. See stageGateBargeMaxDefault for why the two liveness
@@ -300,11 +304,21 @@ func (s *Scheduler) clearStageHolderLocked() {
 
 // setStageCancelLocked registers the cancel handle for the current exclusive
 // holder, so a forfeit that outlives its grace has something to cancel. It is a
-// no-op unless `name` is still the holder — a stage whose token was already
-// abandoned must not attach its cancel to its successor. MUST be called with
+// no-op unless (name, epoch) still identifies the holder. MUST be called with
 // s.mu held.
-func (s *Scheduler) setStageCancelLocked(name string, cancel func()) {
-	if s.stageHolder == name {
+//
+// The guard is BELT-AND-BRACES, not a live hazard, and the distinction is worth
+// stating so nobody later "hardens" it on a misreading. Both call sites
+// (fireLinks, fireGroupAlgo) acquire the token and register the handle inside
+// ONE unbroken s.mu critical section, and nothing in between reaps, so the
+// holder provably still is us — mutating this back to a name-only comparison
+// leaves the whole suite green, correctly. It takes the epoch because the
+// authorising identity of a holder IS the epoch (see Scheduler.stageEpoch) and
+// having one identity check in the package rather than two spellings is what
+// keeps a future caller that registers outside the acquiring critical section
+// from being silently wrong.
+func (s *Scheduler) setStageCancelLocked(name string, epoch int64, cancel func()) {
+	if s.stageHolder == name && s.stageEpoch == epoch {
 		s.stageCancel = cancel
 	}
 }
@@ -371,27 +385,36 @@ func (s *Scheduler) stageBusyLocked(now time.Time) bool {
 // `name`. It never blocks. It succeeds only when no other exclusive stage holds
 // the token AND no index job is executing. MUST be called with s.mu held.
 //
+// On success it returns the holder's EPOCH, which the caller must carry to
+// releaseStage and setStageCancelLocked. The epoch is the holder's identity;
+// `name` is not, because a successor commonly shares it (see Scheduler.
+// stageEpoch). It is returned rather than re-read from s.stageEpoch so that a
+// caller cannot silently acquire without capturing one.
+//
 // A drain barrier raised by a DIFFERENT stage also blocks acquisition, so the
 // starved stage that paid for the barrier is the one that gets through it.
-func (s *Scheduler) tryAcquireStageLocked(name string, now time.Time) bool {
+func (s *Scheduler) tryAcquireStageLocked(name string, now time.Time) (epoch int64, ok bool) {
 	if s.cfg.StageGateDisabled {
-		return true
+		// The escape hatch runs ungated, so there is no holder and no identity.
+		// Epoch 0 never matches a real acquisition (stageEpoch is pre-incremented
+		// from 0), and every guard it feeds is a no-op with no holder set.
+		return 0, true
 	}
 	s.reapStageLocked(now)
 	// #5954 barge: foreground work (a rebuild's index batch and its own link
 	// pass) runs entirely outside the scheduler, so s.inflight below cannot see
 	// it. A registered barge holds background stages off for its duration.
 	if s.bargeHeldLocked() {
-		return false
+		return 0, false
 	}
 	if s.stageHolder != "" {
-		return false
+		return 0, false
 	}
 	if len(s.inflight) > 0 {
-		return false
+		return 0, false
 	}
 	if s.stageDrainFor != "" && s.stageDrainFor != name {
-		return false
+		return 0, false
 	}
 	if since, ok := s.stageDeferSince[name]; ok {
 		waited := now.Sub(since).Truncate(time.Millisecond)
@@ -405,9 +428,10 @@ func (s *Scheduler) tryAcquireStageLocked(name string, now time.Time) bool {
 		s.stageDrainFor = ""
 		s.stageDrainUntil = time.Time{}
 	}
+	s.stageEpoch++
 	s.stageHolder = name
 	s.stageHeldSince = now
-	return true
+	return s.stageEpoch, true
 }
 
 // noteStageDeferLocked records that `name` could not acquire the token, and
@@ -474,9 +498,21 @@ func (s *Scheduler) stageBlockReasonLocked() string {
 // releaseStage hands the exclusive token back and wakes admission. Always
 // invoked via `defer` at the acquisition site, so it also runs when the stage
 // returns an error, is cancelled, or panics.
-func (s *Scheduler) releaseStage(name string) {
+//
+// `epoch` is the value tryAcquireStageLocked returned, and it — not `name` — is
+// what authorises the release. A stage whose token was ABANDONED by the
+// forfeit-grace expiry (reapForfeitedStageLocked) is still running and will
+// still reach this defer, potentially long after a SUCCESSOR acquired. Matching
+// on name alone would let it free the successor's token, because the successor
+// is usually the same name (a fresh group-algo after an abandoned group-algo);
+// the gate would then admit a third stage beside two live ones. Matching on the
+// epoch makes the late return a no-op, which is the whole of the guarantee the
+// abandonment path advertises: the gate is non-binding against the ONE
+// abandoned stage, and no further.
+func (s *Scheduler) releaseStage(name string, epoch int64) {
 	s.mu.Lock()
-	if s.stageHolder == name {
+	switch {
+	case s.stageHolder == name && s.stageEpoch == epoch:
 		held := time.Since(s.stageHeldSince).Truncate(time.Millisecond)
 		forfeited := !s.stageForfeitedAt.IsZero()
 		s.clearStageHolderLocked()
@@ -488,6 +524,27 @@ func (s *Scheduler) releaseStage(name string) {
 			msg += " (was forfeited — returned before the grace expired; no work lost)"
 		}
 		s.logEventLocked("stage_gate_release", "", msg)
+	default:
+		// Not the authorised holder, so this is an ABANDONED stage finally
+		// exiting. Worth saying: it closes out the `stage_gate_forfeit_abandoned`
+		// ERROR that opened the non-binding window, which otherwise has no end —
+		// an operator reading it needs to see when the invariant was restored.
+		//
+		// The condition is DEFAULT rather than something narrower like
+		// `epoch < s.stageEpoch` ("a successor has already acquired"). That test
+		// would miss the PRIMARY case: the grace expiry cancels the stage, so it
+		// usually exits within moments and long before anything else acquires —
+		// and clearStageHolderLocked does not bump the epoch, so with no
+		// successor the epoch is unchanged and the branch would never be taken,
+		// precisely in the window the operator is watching. The only other way to
+		// land here is epoch 0, i.e. the gate-disabled escape hatch, which never
+		// held anything; a set holder always carries the current epoch.
+		if epoch != 0 {
+			s.logEventLocked("stage_gate_abandoned_returned", "",
+				name+" (epoch "+itoa(epoch)+"): abandoned stage finally returned — its token was reclaimed by the "+
+					"forfeit grace, so this release is a no-op and any current holder keeps it. "+
+					"The no-co-residency invariant is guaranteed again (#5954)")
+		}
 	}
 	s.mu.Unlock()
 	// Capacity has freed: let the admission loop dispatch queued index jobs.

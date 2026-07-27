@@ -160,11 +160,21 @@ func TestStageGate_ForfeitDoesNotAdmitWhileForfeitedStageIsAlive(t *testing.T) {
 	if got := h.s.Snapshot().StageForfeits; got != 1 {
 		t.Fatalf("forfeit counter must be observable in Snapshot: want 1 got %d", got)
 	}
+	// The counter is STICKY for the life of the daemon; it cannot answer "is a
+	// forfeit grace running right now", which is the state an operator looking
+	// at a stalled daemon is actually trying to identify. That live signal must
+	// be observable too, on both surfaces that reach `grafel status`.
+	if !h.s.StageGateState().ForfeitedHolder {
+		t.Fatal("StageGateState must report a LIVE forfeit grace, not only the sticky counter")
+	}
+	if !h.s.Snapshot().StageForfeitedHolder {
+		t.Fatal("Snapshot must report a LIVE forfeit grace, not only the sticky counter")
+	}
 
 	// (a) The gate stays CLOSED to a second exclusive stage while the forfeited
 	// one is still alive.
 	h.s.mu.Lock()
-	acquired := h.s.tryAcquireStageLocked("links:acme", time.Now())
+	_, acquired := h.s.tryAcquireStageLocked("links:acme", time.Now())
 	holder := h.s.stageHolder
 	h.s.mu.Unlock()
 	if acquired {
@@ -216,58 +226,122 @@ func TestStageGate_ForfeitDoesNotCancelTheStageOrRecomputeIt(t *testing.T) {
 	waitFor(t, 3*time.Second, func() bool { return h.indexRuns.Load() >= 1 })
 }
 
+// TestStageGate_AbandonedStageReturningWithNoSuccessorIsStillAnnounced pins the
+// PRIMARY timing of the abandoned-return event, which is the one with NO
+// successor.
+//
+// stage_gate_forfeit_abandoned is an open-ended ERROR: it says the gate is
+// non-binding and does not say when that stopped. stage_gate_abandoned_returned
+// is what closes it out. But the grace expiry has just cancelled the stage
+// (SIGKILLing its child), so the likeliest sequence by far is that it exits
+// within moments — BEFORE anything else acquires. Announcing the recovery only
+// once a successor happens to acquire would miss exactly the window an operator
+// is staring at the ERROR in, and would leave a quiet daemon looking permanently
+// degraded when it had recovered seconds later.
+//
+// Guarding the branch on `epoch < s.stageEpoch` (i.e. "a successor has already
+// acquired") gets this backwards, because clearStageHolderLocked does not bump
+// the epoch: with no successor the epoch is unchanged and the release falls
+// through in silence. The authorising release and the stale release are the only
+// two possibilities, so the stale one is the DEFAULT, not a narrower case.
+func TestStageGate_AbandonedStageReturningWithNoSuccessorIsStillAnnounced(t *testing.T) {
+	h := newForfeitHarness(t, 20*time.Millisecond, 30*time.Millisecond, false /* ignores ctx */)
+
+	h.s.scheduleGroupAlgo("acme")
+	<-h.entered
+
+	time.Sleep(40 * time.Millisecond)
+	h.reap(time.Now()) // tier 1: forfeit
+	time.Sleep(60 * time.Millisecond)
+	h.reap(time.Now()) // tier 2: cancel + abandon
+
+	if !hasEvent(h.s, "stage_gate_forfeit_abandoned") {
+		t.Fatal("precondition: the stage must have been abandoned")
+	}
+	// The abandoned pass now returns with NOTHING having acquired in between —
+	// the whole point of this case.
+	h.unwedge()
+	waitFor(t, 3*time.Second, func() bool { return hasEvent(h.s, "stage_gate_abandoned_returned") })
+
+	h.s.mu.Lock()
+	holder, epoch := h.s.stageHolder, h.s.stageEpoch
+	h.s.mu.Unlock()
+	if holder != "" || epoch != 1 {
+		t.Fatalf("precondition drifted: this test must exercise the NO-successor path "+
+			"(holder=%q epoch=%d, want \"\" and 1)", holder, epoch)
+	}
+}
+
 // TestStageGate_ForfeitGraceIsBoundedAndLateReturnerCannotStealToken: the
 // escape hatch. A stage that survives cancellation (an uninterruptible child)
 // must not wedge the daemon forever — after StageGateForfeitGrace the token is
 // abandoned, loudly, and index dispatch resumes. This is the ONE reachable
 // condition under which the gate degrades to no-gate, so it gets its own
 // event kind rather than sharing stage_gate_forfeit.
+//
+// It is parametrised over the SUCCESSOR'S NAME, and the same-name case is the
+// one that matters. The abandoned stage is `group-algo:acme`; the pass that
+// naturally follows an abandonment is a fresh `group-algo:acme` — the SAME
+// NAME. A release guarded only by `s.stageHolder == name` cannot tell the two
+// apart, so the late returner would clear its successor's token and admit a
+// THIRD stage beside two live ones: strictly worse than the state the
+// abandonment already advertises. Only a monotonic epoch captured at acquire
+// distinguishes them. The differently-named case is kept as the weaker control:
+// it passes under a name-only check, which is precisely why it could not catch
+// this.
 func TestStageGate_ForfeitGraceIsBoundedAndLateReturnerCannotStealToken(t *testing.T) {
-	h := newForfeitHarness(t, 20*time.Millisecond, 30*time.Millisecond, false /* ignores ctx */)
+	for _, successor := range []string{"links:acme", "group-algo:acme"} {
+		t.Run(successor, func(t *testing.T) {
+			h := newForfeitHarness(t, 20*time.Millisecond, 30*time.Millisecond, false /* ignores ctx */)
 
-	h.s.scheduleGroupAlgo("acme")
-	<-h.entered
+			h.s.scheduleGroupAlgo("acme")
+			<-h.entered
 
-	// Past hold-max: forfeited, cancelled, still held.
-	time.Sleep(40 * time.Millisecond)
-	h.reap(time.Now())
-	if h.holder() == "" {
-		t.Fatal("token released before the forfeit grace elapsed")
-	}
-	// Past hold-max + grace: abandoned.
-	time.Sleep(60 * time.Millisecond)
-	h.reap(time.Now())
+			// Past hold-max: forfeited, cancelled, still held.
+			time.Sleep(40 * time.Millisecond)
+			h.reap(time.Now())
+			if h.holder() == "" {
+				t.Fatal("token released before the forfeit grace elapsed")
+			}
+			// Past hold-max + grace: abandoned.
+			time.Sleep(60 * time.Millisecond)
+			h.reap(time.Now())
 
-	if h.holder() != "" {
-		t.Fatalf("forfeit grace did not bound the wedge — holder still %q", h.holder())
-	}
-	if !hasEvent(h.s, "stage_gate_forfeit_abandoned") {
-		t.Fatal("abandoning a forfeited stage must emit its own loud event")
-	}
+			if h.holder() != "" {
+				t.Fatalf("forfeit grace did not bound the wedge — holder still %q", h.holder())
+			}
+			if !hasEvent(h.s, "stage_gate_forfeit_abandoned") {
+				t.Fatal("abandoning a forfeited stage must emit its own loud event")
+			}
 
-	// Index dispatch resumes.
-	h.s.Enqueue("/repo-a")
-	waitFor(t, 3*time.Second, func() bool { return h.indexRuns.Load() >= 1 })
+			// Index dispatch resumes.
+			h.s.Enqueue("/repo-a")
+			waitFor(t, 3*time.Second, func() bool { return h.indexRuns.Load() >= 1 })
 
-	// A successor takes the token...
-	waitFor(t, 3*time.Second, func() bool {
-		h.s.mu.Lock()
-		defer h.s.mu.Unlock()
-		return len(h.s.inflight) == 0
-	})
-	h.s.mu.Lock()
-	ok := h.s.tryAcquireStageLocked("links:acme", time.Now())
-	h.s.mu.Unlock()
-	if !ok {
-		t.Fatal("an abandoned token must be re-acquirable by a new stage")
+			// A successor takes the token...
+			waitFor(t, 3*time.Second, func() bool {
+				h.s.mu.Lock()
+				defer h.s.mu.Unlock()
+				return len(h.s.inflight) == 0
+			})
+			h.s.mu.Lock()
+			_, ok := h.s.tryAcquireStageLocked(successor, time.Now())
+			h.s.mu.Unlock()
+			if !ok {
+				t.Fatal("an abandoned token must be re-acquirable by a new stage")
+			}
+			// ...and the abandoned pass returning LATE must not steal it back,
+			// even when it shares the successor's name.
+			h.unwedge()
+			time.Sleep(100 * time.Millisecond)
+			if got := h.holder(); got != successor {
+				t.Fatalf("a late-returning abandoned stage cleared the new holder's token (holder=%q, want %q)", got, successor)
+			}
+			h.s.mu.Lock()
+			h.s.clearStageHolderLocked()
+			h.s.mu.Unlock()
+		})
 	}
-	// ...and the abandoned pass returning LATE must not steal it back.
-	h.unwedge()
-	time.Sleep(100 * time.Millisecond)
-	if got := h.holder(); got != "links:acme" {
-		t.Fatalf("a late-returning abandoned stage cleared the new holder's token (holder=%q)", got)
-	}
-	h.s.releaseStage("links:acme")
 }
 
 // TestStageGate_ForfeitGraceCancelsTheStage: reclaiming the token beside a
@@ -389,5 +463,63 @@ func TestMemRelease_InFlightWorkStillBlocksRelease(t *testing.T) {
 				t.Fatalf("released the heap under in-flight work; want 0 got %d", got)
 			}
 		})
+	}
+}
+
+// TestMemRelease_LeakedBargeIsReapedAndStopsBlockingRelease: making the barge
+// gate FreeOSMemory (the test above) created a net-new way to wedge the heap
+// release, because workInFlightLocked read bargeHeldLocked WITHOUT reaping
+// first — in violation of that function's stated contract. Every other reap
+// site is a gate DECISION (acquire/admit/defer), and an idle daemon makes none,
+// so on the one machine state where FreeOSMemory matters most there was nothing
+// left to expire a leaked hold: a foreground goroutine that vanished without
+// unwinding its release would have blocked the heap release forever. Pre-commit
+// the barge did not gate the release at all, so this exposure is entirely the
+// gate's own to bound.
+//
+// Driven on a fully SYNTHETIC clock, which is also the point of threading `now`
+// into workInFlightLocked rather than letting it read time.Now(): with a wall
+// clock inside, advancing `now` past StageGateBargeMax here would not reap, and
+// this assertion would pass or fail on real elapsed time instead of on the bound
+// it claims to test.
+func TestMemRelease_LeakedBargeIsReapedAndStopsBlockingRelease(t *testing.T) {
+	const (
+		debounce = 10 * time.Second
+		bargeMax = 30 * time.Minute
+	)
+	var freed atomic.Int32
+	s := newMemTestScheduler(debounce, func() { freed.Add(1) })
+	s.cfg.StageGateBargeMax = bargeMax
+
+	base := time.Now()
+	// A hold whose release closure was never called — the leak the backstop
+	// exists for.
+	s.mu.Lock()
+	s.stageBarge = map[int64]bargeHold{1: {name: "rebuild:acme", since: base}}
+	s.mu.Unlock()
+
+	// Well past the debounce but inside the backstop: the barge is still a live
+	// foreground hold and must keep blocking.
+	s.maybeReleaseMemory(base)
+	s.maybeReleaseMemory(base.Add(debounce + time.Second))
+	if got := freed.Load(); got != 0 {
+		t.Fatalf("a live barge must still block the heap release; want 0 got %d", got)
+	}
+
+	// Past StageGateBargeMax the hold is reclaimed BY THIS PATH — there is no
+	// gate decision anywhere in this test to reap it, which is the whole point:
+	// an idle daemon makes none.
+	after := base.Add(bargeMax + time.Second)
+	s.maybeReleaseMemory(after)
+	s.mu.Lock()
+	n := len(s.stageBarge)
+	s.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("the leaked barge was never reaped by the heap-release path; %d hold(s) remain", n)
+	}
+	// ...and the release then serves out a fresh debounce and fires.
+	s.maybeReleaseMemory(after.Add(debounce + time.Second))
+	if got := freed.Load(); got != 1 {
+		t.Fatalf("heap release still starved after the leaked barge expired; want 1 got %d", got)
 	}
 }
