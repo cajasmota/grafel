@@ -12,6 +12,13 @@ import "os/exec"
 const groupAlgoNice = 0
 
 // applyGroupAlgoNice is a no-op on Windows.
+//
+// It is also where the #5999 process-group kill lives on Unix. Windows has no
+// setpgid and no signals, so there is nothing equivalent to wire here: cmd.Cancel
+// is left at the os/exec default (cmd.Process.Kill(), which terminates the child
+// alone). Killing a whole tree on Windows needs a Job object around the spawn,
+// which this hook deliberately does not attempt — so on Windows a cancelled
+// child's grandchildren still outlive it.
 func applyGroupAlgoNice(cmd *exec.Cmd) {}
 
 // NiceSelf is a no-op on Windows.

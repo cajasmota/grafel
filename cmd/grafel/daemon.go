@@ -1202,8 +1202,8 @@ var subprocessLinksRunner = sched.RunSubprocessLinks
 // CANCELLATION. ctx is the scheduler's per-group cancel context (derived from
 // shutdownCtx), so daemon shutdown or a CancelGroup on a group delete still
 // stops the pass; across the fork the in-process ctx checks become a SIGKILL of
-// the child (exec.CommandContext's default Cancel is cmd.Process.Kill — not a
-// SIGTERM). More prompt than the boundary checks it replaces, at the cost of
+// the child's whole process group (#5999 — not a SIGTERM, and not the
+// single-pid kill os/exec would do by default). More prompt than the boundary checks it replaces, at the cost of
 // leaking the pass's staging temp dir, which stageGraphsDir sweeps.
 func daemonSchedulerLinks(ctx context.Context, group string) error {
 	if sched.SubprocessIndexEnabled() {
