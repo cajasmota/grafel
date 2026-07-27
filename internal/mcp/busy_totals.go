@@ -53,6 +53,32 @@ const (
 	overlayStatePending = "pending"
 )
 
+// publishOverlayState writes grafel_stats' `communities_overlay` field.
+//
+// The community/pagerank/centrality overlay is produced by the group-algo
+// annotation pass AFTER a rebuild reports completion, so an empty `communities`
+// count is ambiguous on its own — it means either "this group genuinely has no
+// communities" or "the pass has not run yet". Every consumer degrades SILENTLY
+// when the overlay is absent (nil community pointers, empty cluster lists), so
+// the state is published explicitly rather than left for callers to infer.
+//
+// PRESENCE, NOT CONTENT. The signal is grp.algoApplied — "a present,
+// non-stale, current-algorithm-version overlay was applied" — and deliberately
+// NOT len(grp.Communities). A group whose overlay legitimately contains zero
+// communities (tiny group, everything ungrouped) is fully computed; reporting
+// it as `pending` would reintroduce, for exactly that group, the ambiguity this
+// field exists to remove, and would tell an agent to keep retrying something
+// that is already finished.
+//
+// The `is_enhancing` source is load-bearing: it must be the ENRICHMENT signal,
+// not `is_indexing`. An absent overlay while extraction happens to be running
+// is still `pending` — a running index does not mean the annotation pass is on
+// its way. Only a running group-algo pass justifies telling a caller to retry.
+func publishOverlayState(totals map[string]any, grp *LoadedGroup) {
+	loaded := grp != nil && grp.algoApplied
+	totals["communities_overlay"] = overlayStateFor(loaded, totals["is_enhancing"] == true)
+}
+
 // overlayStateFor maps (overlay loaded?, annotation pass running?) onto the
 // published state string. Split out so the mapping is testable and so the two
 // "absent" cases stay distinguishable — an agent that sees `computing` should

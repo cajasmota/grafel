@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/cajasmota/grafel/internal/graph/groupalgo"
+)
 
 // #6002: taking the group-algo annotation pass off the critical path of a
 // user-awaited rebuild is only acceptable if something reliably produces the
@@ -52,5 +58,41 @@ func TestGroupAlgoSweepWants_NeedsRecomputeAlwaysWins(t *testing.T) {
 
 	if !groupAlgoSweepWants("acme", yes /*needsRecompute*/, yes /*hasOverlay*/, yes) {
 		t.Fatal("needsRecompute (stale content, or a changed algorithm version) must always arm a pass")
+	}
+}
+
+// A CORRUPT overlay is the last state that could leave a group with no
+// communities forever: OverlayNeedsRecompute returns false on an unmarshal
+// failure (deliberately — do not thrash on garbage) and a bare os.Stat would
+// see the file and report it present, so both gates say "nothing to do".
+// groupHasOverlay must treat unparseable as absent so the first-compute path
+// overwrites it.
+func TestGroupHasOverlay_CorruptFileCountsAsAbsent(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+
+	path, err := groupalgo.OverlayPath("acme")
+	if err != nil {
+		t.Fatalf("OverlayPath: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	if groupHasOverlay("acme") {
+		t.Fatal("no overlay file at all must report absent")
+	}
+
+	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("write corrupt overlay: %v", err)
+	}
+	if groupHasOverlay("acme") {
+		t.Fatal("a corrupt overlay must count as ABSENT so the sweep re-computes it — otherwise the group has no communities forever")
+	}
+
+	if err := os.WriteFile(path, []byte(`{"group":"acme","algo_version":1,"results":{}}`), 0o644); err != nil {
+		t.Fatalf("write valid overlay: %v", err)
+	}
+	if !groupHasOverlay("acme") {
+		t.Fatal("a well-formed overlay must count as present")
 	}
 }

@@ -94,3 +94,50 @@ func TestOverlayStateFor(t *testing.T) {
 		t.Fatal("computing (retry) and pending (do not spin) must be distinguishable states")
 	}
 }
+
+// WIRING of communities_overlay. overlayStateFor is well covered above, but the
+// call site is where the two inputs are chosen — and both choices are easy to
+// get wrong in a way no other test notices.
+//
+// (a) presence, not content: a group whose overlay genuinely holds zero
+// communities is COMPUTED. Deriving the state from len(Communities) would
+// report it `pending` forever, reintroducing the exact ambiguity this field
+// removes.
+func TestPublishOverlayState_EmptyButAppliedOverlayIsCurrent(t *testing.T) {
+	totals := map[string]any{"is_enhancing": false}
+	publishOverlayState(totals, &LoadedGroup{algoApplied: true, Communities: nil})
+
+	if got := totals["communities_overlay"]; got != overlayStateCurrent {
+		t.Fatalf("an applied overlay with zero communities is COMPUTED, not pending: communities_overlay = %v, want %q", got, overlayStateCurrent)
+	}
+}
+
+func TestPublishOverlayState_NoOverlayIsPending(t *testing.T) {
+	totals := map[string]any{"is_enhancing": false}
+	publishOverlayState(totals, &LoadedGroup{algoApplied: false})
+
+	if got := totals["communities_overlay"]; got != overlayStatePending {
+		t.Fatalf("communities_overlay = %v, want %q", got, overlayStatePending)
+	}
+}
+
+// (b) the retry signal must come from is_ENHANCING. Wiring it to is_indexing
+// would tell an agent to retry whenever any extraction is running, and would
+// stay `pending` through the annotation pass that is actually about to produce
+// the overlay.
+func TestPublishOverlayState_RetrySignalComesFromEnhancingNotIndexing(t *testing.T) {
+	// Annotation pass running, no extraction → the caller SHOULD retry.
+	enhancing := map[string]any{"is_enhancing": true, "is_indexing": false}
+	publishOverlayState(enhancing, &LoadedGroup{algoApplied: false})
+	if got := enhancing["communities_overlay"]; got != overlayStateComputing {
+		t.Fatalf("a running annotation pass must report %q, got %v", overlayStateComputing, got)
+	}
+
+	// Extraction running, no annotation pass → nothing is producing an overlay,
+	// so the caller must NOT be told to spin.
+	indexing := map[string]any{"is_enhancing": false, "is_indexing": true}
+	publishOverlayState(indexing, &LoadedGroup{algoApplied: false})
+	if got := indexing["communities_overlay"]; got != overlayStatePending {
+		t.Fatalf("a running INDEX is not a running annotation pass: communities_overlay = %v, want %q (wiring must read is_enhancing, not is_indexing)", got, overlayStatePending)
+	}
+}

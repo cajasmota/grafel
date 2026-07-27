@@ -172,6 +172,80 @@ func TestGroupAlgoRerunPending_VisibleAsPending(t *testing.T) {
 	close(release)
 }
 
+// TestCancelGroupAlgo_DropsQueuedRerun: the other side of the let-it-finish
+// contract. A re-arm that lands mid-pass is DEFERRED rather than serviced, so
+// it lives as a flag until the running pass returns. An EXPLICIT cancel —
+// daemon shutdown, or a group delete — must drop that flag with everything
+// else: the group is going away, so servicing a queued recompute afterwards
+// would run a heavy pass for a group nobody asked about, exactly the leak
+// CancelGroup exists to close.
+//
+// Note this path is unreachable from scheduleGroupAlgo, which never cancels a
+// running pass any more; only Stop and CancelGroup get here.
+func TestCancelGroupAlgo_DropsQueuedRerun(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var runs atomic.Int32
+
+	s := New(Config{
+		Workers:           1,
+		GroupAlgoDebounce: 5 * time.Millisecond,
+		GroupAlgoMaxWait:  time.Hour,
+		Index:             func(_ context.Context, _ string, _ string) error { return nil },
+		Links:             func(_ context.Context, _ string) error { return nil },
+		GroupAlgo: func(ctx context.Context, _ string) error {
+			runs.Add(1)
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			return nil
+		},
+		MemReleaseDisabled: true,
+	})
+	s.Start()
+	defer s.Stop()
+
+	s.scheduleGroupAlgo("acme")
+	<-entered
+
+	s.scheduleGroupAlgo("acme") // queued behind the running pass
+	s.mu.Lock()
+	queued := s.groupAlgoRerun["acme"]
+	s.mu.Unlock()
+	if !queued {
+		t.Fatal("setup: the mid-pass re-arm should have queued a re-run")
+	}
+
+	s.CancelGroup("acme") // group deleted — cancels the pass AND drops the queue
+	close(release)
+
+	waitFor(t, 2*time.Second, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		_, running := s.groupAlgoCancel["acme"]
+		return !running
+	})
+
+	s.mu.Lock()
+	stillQueued := s.groupAlgoRerun["acme"]
+	s.mu.Unlock()
+	if stillQueued {
+		t.Fatal("an explicit cancel must drop a queued group-algo re-run — a deleted group must not get a follow-up pass")
+	}
+
+	// And no follow-up pass may actually run for the cancelled group.
+	time.Sleep(80 * time.Millisecond) // well past the 5ms debounce
+	if n := runs.Load(); n != 1 {
+		t.Fatalf("cancelled group ran %d group-algo passes, want exactly the one that was already in flight", n)
+	}
+}
+
 // TestFireGroupAlgo_LateReturnKeepsSuccessorCancel (#6001): fireGroupAlgo used
 // to blind-delete s.groupAlgoCancel[group] on return, so a pass that returns
 // late — after a CancelGroup cleared the map and a successor registered its own

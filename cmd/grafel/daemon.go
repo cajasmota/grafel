@@ -1033,16 +1033,27 @@ func groupAlgoSweepWants(group string, needsRecompute, hasOverlay, hasIndexedMem
 	return hasIndexedMember(group)
 }
 
-// groupHasOverlay reports whether a group has an overlay file on disk at all.
-// An unresolvable path reports true — "unknown" must not force-fire a heavy
-// pass.
+// groupHasOverlay reports whether a group has a USABLE overlay on disk.
+//
+// Usable, not merely present: a CORRUPT overlay (truncated write from a killed
+// process, a hand-edited file) is the last state that could still leave a group
+// with no communities forever. OverlayNeedsRecompute returns false on an
+// unmarshal failure — deliberately, so the sweep does not thrash on garbage —
+// and a bare os.Stat would report the file as present, so both gates would say
+// "nothing to do" and the backstop would never fire. OverlayAlgoVersionOnDisk
+// reports ok=false for absent AND unparseable, which routes corruption into the
+// first-compute path that overwrites it. Still bounded: one pass, after which a
+// valid overlay exists.
+//
+// An unresolvable overlay path reports true — "unknown" must not force-fire a
+// heavy pass.
 func groupHasOverlay(group string) bool {
 	path, err := groupalgo.OverlayPath(group)
 	if err != nil || path == "" {
 		return true
 	}
-	_, statErr := os.Stat(path)
-	return statErr == nil
+	_, ok := groupalgo.OverlayAlgoVersionOnDisk(group)
+	return ok
 }
 
 // groupHasIndexedMember reports whether at least one of a group's repos has a

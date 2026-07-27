@@ -3402,13 +3402,7 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 		engineFile, engineFresh = daemon.EngineLivenessStatus(layout.Root)
 	}
 	applyBusyTotals(totals, engineFile, engineFresh)
-	// #6002: the community/pagerank/centrality overlay is produced by the
-	// group-algo annotation pass AFTER a rebuild reports completion, so an empty
-	// `communities` count is ambiguous — it means either "this group genuinely
-	// has no communities" or "the pass has not run yet". Every consumer degrades
-	// SILENTLY when the overlay is absent (nil community pointers, empty cluster
-	// lists), so publish the state explicitly instead of making callers infer it.
-	totals["communities_overlay"] = overlayStateFor(len(lg.Communities) > 0, totals["is_enhancing"] == true)
+	publishOverlayState(totals, lg)
 
 	// #5433/#5729 PR3: surface per-repo index freshness from the status-plane
 	// sidecars (a disk scan, not process memory) so this works identically in

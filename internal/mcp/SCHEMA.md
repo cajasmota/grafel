@@ -634,6 +634,33 @@ both mean "every loaded repo".
 `grafel_index_status`) when the daemon has per-repo state. For a cheap freshness
 poll that does NOT assemble the group graph, prefer `grafel_index_status`.
 
+**Busy signals — `is_indexing` vs `is_enhancing`.** Two different stages can
+make the daemon busy, and they mean opposite things for whether you should wait:
+
+| Field | Stage | What it means for you |
+|-------|-------|-----------------------|
+| `is_indexing` | EXTRACTION + the cross-repo link pass, which write `graph.fb` | The graph is incomplete. Wait. (Prefer `grafel_index_status` — see below — so you gate on **your** repo, not any repo.) |
+| `is_enhancing` | The group-algo ANNOTATION pass, which writes a separate overlay | The graph is **fully queryable**. Every structural tool (`grafel_find`, `grafel_expand`, `grafel_find_callers`, `grafel_traces`, `grafel_cross_links`, `grafel_get_source`) works right now. Only cluster/ranking data is not ready. |
+
+Both are always present. `group_algo_in_flight` carries the annotation-pass
+count when `is_enhancing` is true. Do **not** treat `is_enhancing` as "not
+ready" — on a large corpus the annotation pass runs far longer than the index
+it follows, and waiting on it is waiting for nothing.
+
+**`communities_overlay`** — the state of the community / pagerank / centrality
+overlay for this group. It exists so an empty `communities` count is never
+ambiguous:
+
+| Value | Meaning | What to do |
+|-------|---------|------------|
+| `current` | An overlay is applied. `community_id` / pagerank / centrality are real values. A group can legitimately be `current` with **zero** communities. | Use them. |
+| `computing` | No overlay yet, and the annotation pass is running now. | Retry later if you need clusters; everything else works. |
+| `pending` | No overlay, and no pass running — never computed, or the last one failed. The daemon's overlay sweep re-arms one, so this is "not yet", not permanent. | Do not spin. Proceed without cluster data; `grafel status` shows the annotation state. |
+
+When `communities_overlay` is not `current`, `grafel_clusters` returns an empty
+list and entity `community_id` fields are absent — that is "not computed", not
+"no structure found".
+
 ---
 
 ### `grafel_index_status`

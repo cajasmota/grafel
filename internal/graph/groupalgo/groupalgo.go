@@ -435,6 +435,15 @@ func runGroupAlgorithmsIncremental(group string, memoize bool) (*GroupAlgoResult
 	// the heavy pass run at most once per group-version in a process regardless of
 	// whether the overlay reached disk; a real re-index bumps the input hash and
 	// falls through to exactly one recompute (correctness preserved).
+	//
+	// VERSION SAFETY. This memo is keyed on (group, inputHash) with NO
+	// OverlayAlgoVersion component, unlike the disk skip above. That is safe for
+	// exactly one reason: OverlayAlgoVersion is a compile-time constant and the
+	// memo is process-local, so every entry was necessarily produced by the
+	// running binary — a hit can never be another version's result. If this memo
+	// is ever persisted across restarts, or shared between processes, that
+	// argument evaporates and the key MUST gain the version, or an upgraded
+	// daemon will serve the previous implementation's partition from cache.
 	if res, ok := loadMemoizedGroupResult(group, inputHash); ok {
 		return &GroupAlgoResult{
 			Group:        group,
