@@ -41,7 +41,7 @@ func main() {
 		// death spiral. os.Args[1] is passed explicitly so the "background
 		// only, never interactive" rule is a property of the policy function
 		// and not of this call site. Never fatal.
-		applyIndexGCPercent(os.Args[1], os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
+		applyIndexGCPercent(os.Args[1], argvIsInteractive(os.Args[2:]), os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
 		os.Exit(runIndexInternal(os.Args[2:]))
 	}
 	// Hidden group-level algorithm harness (#5349 A1 / epic #5350). Assembles
@@ -62,7 +62,12 @@ func main() {
 		// absolute target below live heap is the documented >4x death spiral
 		// (see index_memlimit.go). GOGC is relative — live * (1+GOGC/100) — and
 		// so cannot enter that regime by construction. Never fatal.
-		applyIndexGCPercent(os.Args[1], os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
+		// foreground=false unconditionally: the batch children keep GOGC=50
+		// even when the pass they are running was caused by a foreground
+		// rebuild. Their live heap is UNMEASURED, and a looser GC target on an
+		// unmeasured heap is the death-spiral risk index_memlimit.go documents.
+		// They get the wall-time win from the CPU cap lift, not from GC pacing.
+		applyIndexGCPercent(os.Args[1], false, os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
 		os.Exit(runGroupAlgo(os.Args[2:]))
 	}
 	// Hidden cross-repo link child (#5954). The daemon's scheduler fork-execs
@@ -78,7 +83,12 @@ func main() {
 	// death spiral (index_memlimit.go); GOGC is relative and cannot enter that
 	// regime. Never fatal.
 	if len(os.Args) >= 2 && os.Args[1] == backgroundLinksCommand {
-		applyIndexGCPercent(os.Args[1], os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
+		// foreground=false unconditionally: the batch children keep GOGC=50
+		// even when the pass they are running was caused by a foreground
+		// rebuild. Their live heap is UNMEASURED, and a looser GC target on an
+		// unmeasured heap is the death-spiral risk index_memlimit.go documents.
+		// They get the wall-time win from the CPU cap lift, not from GC pacing.
+		applyIndexGCPercent(os.Args[1], false, os.Getenv(indexGCPercentEnv), os.Getenv("GOGC"))
 		os.Exit(runLinksInternal(os.Args[2:]))
 	}
 	// Release acceptance ladder (#5224). Intercepted before cobra dispatch

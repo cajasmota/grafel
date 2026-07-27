@@ -2279,7 +2279,9 @@ func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
 	// core usage of the (subprocess) pass is its GOMAXPROCS. Log that real value
 	// so `cap=` reflects the cores the pass can consume, not the old, misleading
 	// NumCPU/2 concurrency number (the CPU-regression diagnosis confusion).
-	capN := GroupAlgoGOMAXPROCS()
+	// Log the cap the child will ACTUALLY be spawned with, which since #5954
+	// depends on whether this group is user-awaited (foreground.go).
+	capN := groupAlgoChildGOMAXPROCS(group)
 	s.logger.Info("group-algo: starting", "group", group, "cap", capN)
 	select {
 	case s.algoSem <- struct{}{}:
@@ -2312,6 +2314,15 @@ func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
 		return
 	}
 	s.logEvent("group_algo_ok", "", group+" "+time.Since(t0).Truncate(time.Millisecond).String())
+	// #5954 wall-time: the group-algo pass is the LAST stage of the work a
+	// foreground rebuild sets in motion. Its success means the graph the user
+	// asked for now exists, so the group stops being "user-awaited" and any
+	// later pass is background churn again, on background caps.
+	//
+	// Only on success, and only here: on error or cancellation the awaited
+	// artifact does not exist yet, so the retry stays foreground and the linger
+	// window in foreground.go is what bounds it.
+	ClearGroupForeground(group)
 }
 
 // Snapshot reports current scheduler state for the Status RPC.

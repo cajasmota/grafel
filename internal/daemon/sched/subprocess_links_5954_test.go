@@ -66,8 +66,8 @@ func TestLinksChildEnvMergesInheritedGODEBUG(t *testing.T) {
 
 func TestLinksGOMAXPROCSDefaultAndOverride(t *testing.T) {
 	t.Setenv("GRAFEL_LINKS_CPU", "")
-	if got := LinksGOMAXPROCS(); got != linksGOMAXPROCSDefault {
-		t.Fatalf("default LinksGOMAXPROCS = %d, want %d", got, linksGOMAXPROCSDefault)
+	if got := LinksGOMAXPROCS(); got != BackgroundBatchGOMAXPROCS() {
+		t.Fatalf("default LinksGOMAXPROCS = %d, want %d", got, BackgroundBatchGOMAXPROCS())
 	}
 	for _, c := range []struct {
 		env  string
@@ -75,9 +75,9 @@ func TestLinksGOMAXPROCSDefaultAndOverride(t *testing.T) {
 	}{
 		{"3", 3},
 		{"1", 1},
-		{"0", linksGOMAXPROCSDefault},
-		{"garbage", linksGOMAXPROCSDefault},
-		{"-4", linksGOMAXPROCSDefault},
+		{"0", BackgroundBatchGOMAXPROCS()},
+		{"garbage", BackgroundBatchGOMAXPROCS()},
+		{"-4", BackgroundBatchGOMAXPROCS()},
 	} {
 		t.Setenv("GRAFEL_LINKS_CPU", c.env)
 		if got := LinksGOMAXPROCS(); got != c.want {
