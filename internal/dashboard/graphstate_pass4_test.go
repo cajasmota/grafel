@@ -86,6 +86,42 @@ func TestApplyAlgorithmResults_PersistsCentralityAndArticulation(t *testing.T) {
 	}
 }
 
+// TestApplyAlgorithmResults_ZeroBetweennessKeepsExplicitCentrality pins the
+// serialisation boundary #5954 depends on, on the dashboard's attachment path.
+//
+// Entity.Centrality is *float64 with `json:",omitempty"`: nil DROPS the key,
+// pointer-to-zero emits `"centrality": 0` (and handlers_graph.go only reports
+// `betweenness` when the pointer is non-nil). Before #5954 the result map held
+// an explicit 0 for every entity, so `if bt, ok := res.Centrality[e.ID]; ok`
+// was always true. The map is sparse now, so the loop keys off PageRank
+// membership — dense over the entity set — and reads centrality with the zero
+// default. Reverting that would silently strip the zero from every
+// zero-betweenness entity; this test fails if it does.
+func TestApplyAlgorithmResults_ZeroBetweennessKeepsExplicitCentrality(t *testing.T) {
+	// A→B→C plus an isolated D: only B has non-zero betweenness.
+	doc := pathGraphDoc()
+	doc.Entities = append(doc.Entities, graph.Entity{ID: "D", Name: "D", Kind: "function"})
+	attachAlgorithmResults(doc)
+
+	if b := entByID(doc, "B"); b == nil || b.Centrality == nil || *b.Centrality <= 0 {
+		t.Fatalf("B must carry a positive betweenness (it is on the A→C path)")
+	}
+	for _, id := range []string{"A", "C", "D"} {
+		e := entByID(doc, id)
+		if e == nil {
+			t.Fatalf("entity %s missing", id)
+		}
+		if e.Centrality == nil {
+			t.Errorf("%s.Centrality is nil — a zero-betweenness entity lost its explicit 0, so the "+
+				"serialised graph omits the \"centrality\"/\"betweenness\" key it has always carried", id)
+			continue
+		}
+		if *e.Centrality != 0 {
+			t.Errorf("%s.Centrality = %v, want 0", id, *e.Centrality)
+		}
+	}
+}
+
 // pendingGrp builds a cache + a published group with one repo whose doc needs a
 // background Pass-4 sweep, mirroring the shape loadGroupForRef publishes.
 func pendingGrp(t *testing.T, doc *graph.Document, stateDir string, fbMtime time.Time) (*GraphCache, *DashGroup) {

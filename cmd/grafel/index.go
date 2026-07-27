@@ -2924,13 +2924,17 @@ func (i *Indexer) runPass4AlgorithmsWithProgress(doc *graph.Document, trk *progr
 			cidCopy := cid
 			e.CommunityID = &cidCopy
 		}
-		if c, ok := res.Centrality[e.ID]; ok {
-			cCopy := c
-			e.Centrality = &cCopy
-		}
 		if p, ok := res.PageRank[e.ID]; ok {
 			pCopy := p
 			e.PageRank = &pCopy
+			// #5954 — Centrality is keyed off PageRank membership, not off its
+			// own: PageRank covers every entity that took part in the pass,
+			// whereas the betweenness map now holds only non-zero scores. An
+			// entity in the pass with no betweenness entry scores 0, exactly as
+			// the removed zero pre-seed recorded it, so graph.json keeps the
+			// explicit "centrality": 0 it has always carried.
+			cCopy := res.Centrality[e.ID]
+			e.Centrality = &cCopy
 		}
 		if res.GodNodes[e.ID] {
 			e.IsGodNode = true
