@@ -454,80 +454,12 @@ func TestStageGate_ReleasedOnPanic(t *testing.T) {
 	}
 }
 
-// TestStageGate_HoldMaxForfeitsAndLateReturnerCannotStealToken pins the one
-// branch where the no-overlap invariant is deliberately given up. A stage that
-// holds the token past StageGateHoldMax is FORFEITED — index dispatch must
-// resume (a permanently wedged daemon is worse than a transient overlap) — and
-// when the wedged stage eventually returns, its releaseStage must NOT clear the
-// token of whoever holds it by then.
-func TestStageGate_HoldMaxForfeitsAndLateReturnerCannotStealToken(t *testing.T) {
-	var indexRuns atomic.Int32
-	releaseAlgo := make(chan struct{})
-	algoEntered := make(chan struct{}, 1)
-
-	s := New(Config{
-		Workers:           1,
-		LinkDebounce:      time.Hour,
-		GroupAlgoDebounce: 5 * time.Millisecond,
-		GroupAlgoMaxWait:  time.Hour,
-		StageGateRetry:    5 * time.Millisecond,
-		StageGateMaxDefer: time.Hour,
-		StageGateHoldMax:  20 * time.Millisecond, // wedge threshold, for the test
-		Index: func(_ context.Context, _ string, _ string) error {
-			indexRuns.Add(1)
-			return nil
-		},
-		Links: func(_ context.Context, _ string) error { return nil },
-		GroupAlgo: func(_ context.Context, _ string) error {
-			select {
-			case algoEntered <- struct{}{}:
-			default:
-			}
-			<-releaseAlgo // wedged: holds the token past StageGateHoldMax
-			return nil
-		},
-		GroupsForRepo:      func(_ string) []string { return nil },
-		MemReleaseDisabled: true,
-	})
-	var releaseOnce sync.Once
-	releaseAlgoFn := func() { releaseOnce.Do(func() { close(releaseAlgo) }) }
-	s.Start()
-	defer func() { releaseAlgoFn(); s.Stop() }()
-
-	s.scheduleGroupAlgo("acme")
-	<-algoEntered
-
-	// (a) Index dispatch must resume once the hold-max forfeits the token,
-	// even though the wedged pass is still running.
-	s.Enqueue("/repo-a")
-	waitFor(t, 3*time.Second, func() bool { return indexRuns.Load() >= 1 })
-
-	// (b) A NEW exclusive stage takes the token after the forfeit...
-	waitFor(t, 3*time.Second, func() bool {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		return len(s.inflight) == 0
-	})
-	s.mu.Lock()
-	if !s.tryAcquireStageLocked("links:acme", time.Now()) {
-		s.mu.Unlock()
-		t.Fatal("a forfeited token must be re-acquirable by a new stage")
-	}
-	s.mu.Unlock()
-
-	// ...and the wedged pass returning LATE must not steal it back.
-	releaseAlgoFn()
-	time.Sleep(100 * time.Millisecond)
-
-	s.mu.Lock()
-	holder := s.stageHolder
-	s.mu.Unlock()
-	if holder != "links:acme" {
-		t.Fatalf("a late-returning forfeited stage cleared the new holder's token (holder=%q, want %q)",
-			holder, "links:acme")
-	}
-	s.releaseStage("links:acme")
-}
+// The hold-max forfeit used to be pinned here, asserting that a stage past
+// StageGateHoldMax has its token cleared and index dispatch resumed while it
+// runs on. That behaviour was the bug, not the contract: on the real corpus it
+// fired every run and made the gate non-binding. The forfeit now keeps the gate
+// closed; see stagegate_forfeit_5954_test.go, which covers the forfeit, the
+// bounded grace, and the late-returner identity check that lived here.
 
 // TestStageGate_DeferredGroupAlgoStaysVisibleToIndexState: constraint 3. An MCP
 // consumer polling grafel_stats must not see the daemon go quiet while a heavy

@@ -92,6 +92,10 @@ type StatusReply struct {
 	StageGateHolder   string   `json:"stage_gate_holder,omitempty"`
 	StageGateDeferred []string `json:"stage_gate_deferred,omitempty"`
 	StageGateBarging  []string `json:"stage_gate_barging,omitempty"`
+	// StageGateForfeits counts stages that blew StageGateHoldMax (4h) since
+	// daemon start. It is a FAILURE counter: any non-zero value means the gate
+	// caught a wedged heavy stage, and a measurement run should assert it is 0.
+	StageGateForfeits int64 `json:"stage_gate_forfeits,omitempty"`
 
 	// Concurrency-cap additions. BudgetMB=0 means admission control is
 	// disabled.

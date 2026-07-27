@@ -94,10 +94,21 @@ func TestMaybeReleaseMemory_BusyResetsAndDebounces(t *testing.T) {
 	}
 }
 
-// TestMaybeReleaseMemory_PendingAlgoCountsAsBusy asserts a pending downstream
+// TestMaybeReleaseMemory_PendingAlgoDoesNotBlockRelease pins the corrected
+// rule. This test previously asserted the OPPOSITE — that a pending downstream
 // algo pass keeps the scheduler "busy" so we don't FreeOSMemory in the gap
-// between an index completing and its algo/link passes running.
-func TestMaybeReleaseMemory_PendingAlgoCountsAsBusy(t *testing.T) {
+// between an index completing and its passes running.
+//
+// That rule was wrong in both directions. It never protected in-flight work (a
+// PENDING pass is by definition not executing), and it made the release
+// starvable: a stage the gate defers keeps groupAlgoPending set for as long as
+// it is blocked, so one wedged gate meant 8+ hours without a single heap
+// release. It also held the arena through the 180s group-algo debounce — a
+// two-and-a-half-minute idle window, against a 30s release debounce — which is
+// the best moment to scavenge, not the worst.
+//
+// Release is now gated on workInFlightLocked only. See workPendingLocked.
+func TestMaybeReleaseMemory_PendingAlgoDoesNotBlockRelease(t *testing.T) {
 	var freed atomic.Int32
 	s := newMemTestScheduler(10*time.Second, func() { freed.Add(1) })
 
@@ -107,19 +118,21 @@ func TestMaybeReleaseMemory_PendingAlgoCountsAsBusy(t *testing.T) {
 
 	base := time.Now()
 	s.maybeReleaseMemory(base)
-	s.maybeReleaseMemory(base.Add(20 * time.Second))
-	if got := freed.Load(); got != 0 {
-		t.Fatalf("released while an algo pass was pending; want 0 got %d", got)
+	s.maybeReleaseMemory(base.Add(11 * time.Second))
+	if got := freed.Load(); got != 1 {
+		t.Fatalf("a merely-pending algo pass blocked the heap release; want 1 got %d", got)
 	}
 
-	// Algo pass clears → now genuinely idle.
+	// ...but once it is actually RUNNING (it holds the stage gate), the release
+	// must stop: that is the case the old rule was reaching for.
 	s.mu.Lock()
 	s.groupAlgoPending["shared"] = false
+	s.stageHolder = "group-algo:shared"
 	s.mu.Unlock()
-	s.maybeReleaseMemory(base.Add(30 * time.Second)) // arms fresh clock
-	s.maybeReleaseMemory(base.Add(41 * time.Second)) // fires
+	s.maybeReleaseMemory(base.Add(20 * time.Second))
+	s.maybeReleaseMemory(base.Add(40 * time.Second))
 	if got := freed.Load(); got != 1 {
-		t.Fatalf("did not release once truly idle; want 1 got %d", got)
+		t.Fatalf("released the heap under a RUNNING algo pass; want 1 got %d", got)
 	}
 }
 

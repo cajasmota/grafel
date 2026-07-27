@@ -109,6 +109,7 @@ func StageGateFromStatusFile() (g sched.StageGateState, ok bool) {
 		Holder:   f.StageGateHolder,
 		Deferred: f.StageGateDeferred,
 		Barging:  f.StageGateBarging,
+		Forfeits: f.StageGateForfeits,
 	}, true
 }
 
