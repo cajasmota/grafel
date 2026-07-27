@@ -321,10 +321,11 @@ func scanFile(absPath, relPath, cacheDir string) ([]Extraction, error) {
 		_ = os.MkdirAll(filepath.Dir(cacheFile), 0o755)
 		entry := scanCacheEntry{File: absPath, Mtime: fi.ModTime().UnixNano(), Size: fi.Size(), Values: out}
 		if b, err := json.Marshal(entry); err == nil {
-			tmp := cacheFile + ".tmp"
-			if err := os.WriteFile(tmp, b, 0o644); err == nil {
-				_ = os.Rename(tmp, cacheFile)
-			}
+			// Unique temp name per writer (#5978): two passes scanning the
+			// same file at once would otherwise share cacheFile+".tmp" and
+			// leave a torn cache entry behind — and the rename error that
+			// follows is discarded right here, so nothing would report it.
+			_ = writeFileAtomic(cacheFile, b, 0o644)
 		}
 	}
 	return out, nil

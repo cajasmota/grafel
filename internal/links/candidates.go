@@ -53,11 +53,56 @@ func writeDoc(path string, d *Document) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	return writeFileAtomic(path, b, 0o644)
+}
+
+// writeFileAtomic writes b to path via a UNIQUE temp file in path's own
+// directory, then renames it over path.
+//
+// The temp name comes from os.CreateTemp and NOT from path+".tmp" (#5978). A
+// temp name derived from the destination is shared by every writer aiming at
+// that destination, so two concurrent link passes over one group interleave
+// inside one temp file: they overwrite each other's bytes (the destination can
+// end up holding a torn mix), and the writer that renames second fails with
+// ENOENT because the first already moved the file away. On the scan-cache sink
+// in string_pass.go that rename error is discarded, so the collision there is
+// invisible at runtime.
+//
+// The temp file is created in path's directory so the rename stays within one
+// filesystem and is therefore atomic; it is removed on every error path.
+//
+// MODE: perm is applied verbatim, NOT masked by the process umask — os.CreateTemp
+// makes the file 0600 and the Chmod below sets exactly what the caller asked
+// for. os.WriteFile, which this replaced, passes perm through open(2) and so
+// WAS umask-masked. Under a restrictive umask (077) these files therefore widen
+// from 0600 to 0644. That is deliberate: the destinations are per-user state
+// under the grafel home, and a deterministic mode is easier to reason about
+// than one that depends on the umask of whichever process (daemon, CLI, child)
+// happened to run the pass.
+func writeFileAtomic(path string, b []byte, perm os.FileMode) (err error) {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmp := f.Name()
+	defer func() {
+		if err != nil {
+			_ = os.Remove(tmp)
+		}
+	}()
+	if _, err = f.Write(b); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	// os.CreateTemp always uses 0600; restore the caller's intended mode.
+	if err = os.Chmod(tmp, perm); err != nil {
+		return err
+	}
+	err = os.Rename(tmp, path)
+	return err
 }
 
 // loadRejections reads the rejection file and returns a set keyed by
