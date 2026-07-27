@@ -15,9 +15,17 @@
 //
 // # Community detection algorithm
 //
-// We use Louvain modularity maximisation (gonum's community.Modularize) with a
-// fixed PCG seed (1, 2) and stable node-ordering so results are byte-identical
-// across re-runs of the same graph.
+// We use Louvain modularity maximisation. The implementation is in-repo
+// (louvain.go) rather than gonum's community.Modularize: gonum evaluates a
+// candidate move by iterating every member of the target community, making one
+// local-moving sweep cost Σ_c |c|². On the production corpus that was 3h15m,
+// 99.5% of the whole indexing pipeline. The in-repo version is the SAME
+// algorithm computed the standard way (incremental sigma_tot, neighbour-side
+// k_{i,C}, CSR adjacency) at O(E) per sweep. See louvain.go.
+//
+// It carries no PRNG at all: node ordering, adjacency ordering and move
+// tie-breaks are fixed, so results are byte-identical across re-runs of the
+// same graph by construction.
 //
 // Leiden was evaluated for this release (#1382) and deferred because no
 // production-quality Go Leiden library exists: github.com/vsuryav/leiden-go and
@@ -40,7 +48,6 @@ import (
 	"time"
 
 	gonumgraph "gonum.org/v1/gonum/graph"
-	"gonum.org/v1/gonum/graph/community"
 	"gonum.org/v1/gonum/graph/network"
 	"gonum.org/v1/gonum/graph/path"
 	"gonum.org/v1/gonum/graph/simple"
@@ -206,9 +213,18 @@ func BuildGraph(entities []Entity, rels []Relationship) (*simple.WeightedDirecte
 // transformation BuildGraph applies). The hash is the COMPLETE determinant of
 // the deterministic Pass-4 output (community partition + integer labels +
 // PageRank + betweenness): the gonum node-id assignment is a pure function of
-// entity insertion order, and Modularize is seeded with a fixed PCG source, so
-// two unions with the same CommunityInputHash produce byte-identical
-// AlgorithmResults.
+// entity insertion order, and louvainPartition is a deterministic function of
+// the node/edge set with no PRNG at all, so two unions with the same
+// CommunityInputHash produce byte-identical AlgorithmResults.
+//
+// Scope note: "byte-identical" is a claim about two runs of the SAME grafel
+// build. It is not a claim across builds — a change to the community algorithm
+// itself (as in the #5954 replacement of gonum's community.Modularize with the
+// in-repo Louvain in louvain.go) re-partitions the graph without changing this
+// hash. That is by design: the hash covers the INPUT, not the algorithm
+// version. Any such change therefore requires a full recompute of stored
+// overlays even where the hash matches, and is gated on partition quality
+// (modularity), not on equality with the previously stored partition.
 //
 // This is the gate for incremental community detection (#5309 layer 4): when a
 // reindex leaves this hash unchanged (docs/comment/config edits, or any change
@@ -388,11 +404,12 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 		und.SetWeightedEdge(und.NewWeightedEdge(simple.Node(from), simple.Node(to), e.Weight()))
 	}
 
-	// Deterministic source so the test suite is repeatable.
-	src := rand.NewPCG(1, 2)
-	reduced := community.Modularize(und, 1.0, src)
-
-	groups := reduced.Communities()
+	// In-repo Louvain (louvain.go). No PRNG: node order, adjacency order and
+	// tie-breaks are all fixed, so the partition is deterministic by
+	// construction rather than by seeding. See #5954 / louvain.go for why
+	// gonum's community.Modularize was replaced.
+	const resolution = 1.0
+	groups := louvainPartition(und, resolution)
 
 	// Issue #633 phase-2 — pprof showed `community.Q` accounted for ~90% of
 	// indexing allocations (21.6 GB on client-fixture-b: 9,549 communities ×
@@ -406,9 +423,8 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 	//   3. Per-community contribution: q_c = (2*internal_w - K_C^2/m2) / m2
 	//      (BuildGraph drops self-loops, so the diagonal term collapses to 0
 	//      and gonum's "2*w_uv for u<v" off-diagonal sum becomes 2*internal_w).
-	//   4. Overall Q = Σ q_c — matches gonum's `community.Q(und, groups, 1)`
+	//   4. Overall Q = Σ q_c — matches the textbook modularity of `groups`
 	//      to the rounding tolerance enforced by roundForDeterminism().
-	const resolution = 1.0
 	type nodeStat struct {
 		k      float64
 		cidIdx int // index into groups
@@ -418,8 +434,7 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 	// First, mark community membership so the edge sweep can classify edges
 	// in O(1) without consulting `groups` repeatedly.
 	for cid, gg := range groups {
-		for _, n := range gg {
-			nid := n.ID()
+		for _, nid := range gg {
 			if _, ok := nodeStats[nid]; !ok {
 				nodeStats[nid] = &nodeStat{cidIdx: cid}
 			} else {
@@ -439,9 +454,9 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 		fid, tid := e.From().ID(), e.To().ID()
 		nf, ok := nodeStats[fid]
 		if !ok {
-			// Isolated-from-Modularize node: gonum's Communities() still
-			// covers every node from the original graph, but defensively
-			// guard so the loop is total.
+			// Node absent from the partition: louvainPartition covers every
+			// node of the undirected projection, but defensively guard so the
+			// loop is total.
 			nf = &nodeStat{cidIdx: -1}
 			nodeStats[fid] = nf
 		}
@@ -464,8 +479,8 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 	K := make([]float64, len(groups))
 	for cid, gg := range groups {
 		var k float64
-		for _, n := range gg {
-			if ns, ok := nodeStats[n.ID()]; ok {
+		for _, nid := range gg {
+			if ns, ok := nodeStats[nid]; ok {
 				k += ns.k
 			}
 		}
@@ -486,9 +501,9 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 	overallQ := roundForDeterminism(sanitizeFloat(overallQRaw))
 
 	communityOf := make(map[string]int, idx.next)
-	// Default every node into community -1; Modularize's Communities() lists
-	// only nodes that participate in the reduced graph, but we want a value
-	// for isolated entities too.
+	// Default every node into community -1; the partition lists only nodes
+	// present in the undirected projection, but we want a value for entities
+	// that never made it into the graph too.
 	for sid := range idx.toInt {
 		communityOf[sid] = -1
 	}
@@ -502,8 +517,7 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 			degree int
 		}
 		members := make([]member, 0, len(g))
-		for _, n := range g {
-			nid := n.ID()
+		for _, nid := range g {
 			communityOf[idx.fromInt[nid]] = cid
 			deg := 0
 			if ns, ok := nodeStats[nid]; ok {
@@ -545,7 +559,8 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 		})
 	}
 	// Issue #481 — tiebreak Size-equal communities on the integer community
-	// id assigned by Modularize so result ordering is stable across runs.
+	// id assigned by the partition (ascending lowest-member node index) so
+	// result ordering is stable across runs.
 	sort.SliceStable(results, func(i, j int) bool {
 		if results[i].Size != results[j].Size {
 			return results[i].Size > results[j].Size
