@@ -242,7 +242,7 @@ func (s *Server) handleRunQualityOrphans(w http.ResponseWriter, r *http.Request)
 	// then merge the results into a group-level summary.
 	var allRepos []*audit.RepoReport
 	for _, rp := range repoPaths {
-		rep, aErr := audit.AuditPath(rp.Path, false)
+		rep, aErr := audit.AuditPathWithWorkers(rp.Path, false, inDaemonAuditWorkers)
 		if aErr != nil {
 			// Non-fatal: surface the error as an empty stub repo.
 			allRepos = append(allRepos, &audit.RepoReport{
@@ -694,7 +694,7 @@ func (s *Server) handleQualityComposite(w http.ResponseWriter, r *http.Request) 
 	repos := 0
 
 	for _, rp := range repoPaths {
-		rep, aErr := audit.AuditPath(rp.Path, false)
+		rep, aErr := audit.AuditPathWithWorkers(rp.Path, false, inDaemonAuditWorkers)
 		if aErr != nil || len(rep.Repos) == 0 {
 			continue
 		}
@@ -728,3 +728,14 @@ func (s *Server) handleQualityComposite(w http.ResponseWriter, r *http.Request) 
 		Repos:         repos,
 	})
 }
+
+// inDaemonAuditWorkers is the corpus-audit fan-out for audits that run INSIDE
+// the daemon process (#5954).
+//
+// audit's default is 4, which is right for the interactive CLI: a human is
+// waiting on wall-clock and the process exits afterwards. Inside the daemon
+// neither holds. Each worker materialises a full graph.Document — 300–600 MB
+// for a corpus repo — so four workers put four co-resident copies of the corpus
+// graph into the process whose resident footprint this epic exists to shrink,
+// to save wall-clock on a dashboard panel nobody is blocking on. One worker.
+const inDaemonAuditWorkers = 1

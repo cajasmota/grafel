@@ -47,6 +47,7 @@ import (
 	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/quality"
+	"github.com/cajasmota/grafel/internal/quality/analytics"
 	"github.com/cajasmota/grafel/internal/quality/audit"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/repolock"
@@ -1843,10 +1844,17 @@ func daemonRebuildFuncCore(
 	return rebuilt, warning, nil
 }
 
-// buildAgentsMapStats loads the per-repo graph artefacts produced by the
+// buildAgentsMapStats reads the per-repo graph artefacts produced by the
 // just-completed index and assembles the Stats struct passed to
 // agents.InjectArchitectureMap. It is intentionally best-effort — any read
 // failure yields a zero-valued field rather than an error.
+//
+// #5954: this was the FOURTH full graph.LoadGraphFromDir per repo per rebuild —
+// ~608 MB of materialised heap for a 325 MB graph, to produce six integers. It
+// is now a kind-only streaming tally over the mmap (analytics.TallyRepo), which
+// materialises nothing. The counts and the kind rules are unchanged; see
+// analytics.TallyDocument, the materialised reference the tally is tested
+// against.
 func buildAgentsMapStats(group, repoPath string) agents.Stats {
 	stateDir := daemon.StateDirForRepo(repoPath)
 
@@ -1855,43 +1863,29 @@ func buildAgentsMapStats(group, repoPath string) agents.Stats {
 		DashboardPort: resolveDefaultDashboardPort(),
 	}
 
-	// Read graph.fb for per-kind entity breakdown. Falls back gracefully if the
-	// file is absent or the FB decoder is unavailable.
-	if doc, err := loadGraphFromStateDir(stateDir); err == nil && doc != nil {
-		s.Entities = doc.Stats.Entities
-		s.Relationships = doc.Stats.Relationships
-		for _, e := range doc.Entities {
-			switch e.Kind {
-			// #1217: count all three http endpoint kind strings.
-			case "http_endpoint", "http_endpoint_definition", "http_endpoint_call":
-				s.HTTPEndpoints++
-			case "queue":
-				s.Queues++
-			case "topic", "pubsub_topic":
-				s.Topics++
-			}
-			if strings.HasPrefix(e.Kind, "SCOPE.Process") || e.Kind == "process" {
-				s.ProcessFlows++
-			}
-		}
+	if t, err := analytics.TallyRepo(stateDir); err == nil {
+		s.Entities = t.Entities
+		s.Relationships = t.Relationships
+		s.HTTPEndpoints = t.HTTPEndpoints
+		s.Queues = t.Queues
+		s.Topics = t.Topics
+		s.ProcessFlows = t.ProcessFlows
 	}
 
 	return s
 }
 
-// loadGraphFromStateDir is a thin wrapper around graph.LoadGraphFromDir that
-// isolates the graph-loading call used by buildAgentsMapStats. Keeping it
-// separate makes it easy to stub in tests without touching the full graph
-// package.
-func loadGraphFromStateDir(stateDir string) (*graph.Document, error) {
-	return graph.LoadGraphFromDir(stateDir)
-}
-
 // daemonQualityAuditFunc is the QualityAuditFunc handed to daemon.Run.
 // It calls audit.AuditPath (in this process — the daemon process) and
 // serialises the result into the wire reply.
+//
+// #5954: it audits with ONE worker, not audit's CLI default of four. A corpus
+// audit's fan-out is peak heap — each worker holds a full graph.Document — and
+// this runs inside the long-lived daemon, on behalf of an RPC that is not a
+// latency-critical path. The report is byte-identical at any pool size
+// (auditMany writes into a pre-sized slice by index).
 func daemonQualityAuditFunc(args proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
-	rep, err := audit.AuditPath(args.RepoPath, args.Corpus)
+	rep, err := audit.AuditPathWithWorkers(args.RepoPath, args.Corpus, 1)
 	if err != nil {
 		return proto.QualityAuditReply{}, err
 	}

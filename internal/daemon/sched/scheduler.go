@@ -1241,6 +1241,11 @@ func (s *Scheduler) workPendingLocked() bool {
 	if s.stageDrainFor != "" || len(s.stageDeferSince) > 0 {
 		return true
 	}
+	// A live FOREGROUND BARGE is deliberately NOT tested here: it is work IN
+	// FLIGHT, not pending, and workInFlightLocked already reads it (see #5954 and
+	// the barge paragraph on that function's doc comment). Duplicating it here
+	// would be dead weight — busyLocked ORs the two predicates — and would wrongly
+	// report a running rebuild as "queued" to any future solo caller of this one.
 	for _, p := range s.groupAlgoPending {
 		if p {
 			return true
