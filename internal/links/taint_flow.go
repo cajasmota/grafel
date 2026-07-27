@@ -50,6 +50,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/substrate"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // MethodTaintFlow identifies sidecar artefacts produced by the Phase
@@ -437,7 +439,7 @@ func stampTaintRoles(graphs []repoGraph, byEntity map[string][]substrate.TaintMa
 				continue
 			}
 			if e.Properties == nil {
-				e.Properties = map[string]string{}
+				e.Properties = types.Props{}
 			}
 			// Canonical order: source, sink, sanitizer.
 			parts := make([]string, 0, 3)
@@ -446,9 +448,9 @@ func stampTaintRoles(graphs []repoGraph, byEntity map[string][]substrate.TaintMa
 					parts = append(parts, string(k))
 				}
 			}
-			e.Properties[TaintRolePropertyKey] = strings.Join(parts, ",")
+			e.Properties.Set(TaintRolePropertyKey, strings.Join(parts, ","))
 			if c := findingCount[full]; c > 0 {
-				e.Properties[TaintFindingCountPropertyKey] = fmt.Sprintf("%d", c)
+				e.Properties.Set(TaintFindingCountPropertyKey, fmt.Sprintf("%d", c))
 			}
 			stamped++
 		}

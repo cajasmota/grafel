@@ -1044,13 +1044,13 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 			// slash by the emitter) and the canonical join in `path`. Both
 			// are recorded under a normalised "/<segments>/" shape so the
 			// retry sweep can prepend them verbatim.
-			if e.Properties != nil && e.Properties["pattern_type"] == patternTypeURLMountPoint {
-				raw := e.Properties["url_prefix"]
+			if e.Properties != nil && e.Properties.Get("pattern_type") == patternTypeURLMountPoint {
+				raw := e.Properties.Get("url_prefix")
 				if raw == "" {
-					raw = e.Properties["route"]
+					raw = e.Properties.Get("route")
 				}
 				if raw == "" {
-					raw = e.Properties["path"]
+					raw = e.Properties.Get("path")
 				}
 				if pfx := normalizeMountPrefix(raw); pfx != "" {
 					if mountPrefixesByRepo[g.Repo] == nil {
@@ -1072,20 +1072,20 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				sourceFile: e.SourceFile,
 			}
 			if e.Properties != nil {
-				hit.verb = e.Properties["verb"]
-				hit.canonicalPath = e.Properties["path"]
-				hit.framework = e.Properties["framework"]
-				hit.urlPrefix = e.Properties["url_prefix"]
+				hit.verb = e.Properties.Get("verb")
+				hit.canonicalPath = e.Properties.Get("path")
+				hit.framework = e.Properties.Get("framework")
+				hit.urlPrefix = e.Properties.Get("url_prefix")
 				// #2808 — capture the producer's overridden detail-route param
 				// name. lookup_url_kwarg takes precedence over lookup_field (DRF
 				// uses lookup_url_kwarg for the URL placeholder, falling back to
 				// lookup_field). Empty ⇒ the DRF default `pk`.
-				if lk := e.Properties["lookup_url_kwarg"]; lk != "" {
+				if lk := e.Properties.Get("lookup_url_kwarg"); lk != "" {
 					hit.lookupKwarg = lk
-				} else if lf := e.Properties["lookup_field"]; lf != "" {
+				} else if lf := e.Properties.Get("lookup_field"); lf != "" {
 					hit.lookupKwarg = lf
 				}
-				switch e.Properties["pattern_type"] {
+				switch e.Properties.Get("pattern_type") {
 				case patternTypeProducer:
 					hit.side = sideProducer
 				case patternTypeConsumer:
@@ -1094,7 +1094,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				// Resolve source_caller (consumer side) to a stamped
 				// entity ID in the same file. Falls through silently
 				// when missing or unresolvable.
-				if ref := e.Properties["source_caller"]; ref != "" {
+				if ref := e.Properties.Get("source_caller"); ref != "" {
 					if kind, name, ok := splitKindNameRef(ref); ok {
 						if id := entIDByKey[entKey{kind, name, e.SourceFile}]; id != "" {
 							hit.callerID = id

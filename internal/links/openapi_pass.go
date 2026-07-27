@@ -102,8 +102,8 @@ func runOpenAPISpecPass(graphs []repoGraph, paths Paths, rejects map[string]bool
 			if e.Properties == nil {
 				continue
 			}
-			verb := strings.ToUpper(e.Properties["method"])
-			path := e.Properties["path"]
+			verb := strings.ToUpper(e.Properties.Get("method"))
+			path := e.Properties.Get("path")
 			if verb == "" || path == "" {
 				continue
 			}
@@ -193,8 +193,8 @@ func runOpenAPISpecPass(graphs []repoGraph, paths Paths, rejects map[string]bool
 			if e.Name == "" || e.Properties == nil {
 				continue
 			}
-			verb := strings.ToUpper(e.Properties["verb"])
-			path := e.Properties["path"]
+			verb := strings.ToUpper(e.Properties.Get("verb"))
+			path := e.Properties.Get("path")
 			if verb == "" && path == "" {
 				// Fall back to parsing from canonical name.
 				if v, p, ok := parseHTTPName(e.Name); ok {
@@ -214,11 +214,11 @@ func runOpenAPISpecPass(graphs []repoGraph, paths Paths, rejects map[string]bool
 				verb:          verb,
 				canonicalPath: path,
 				sourceFile:    e.SourceFile,
-				framework:     e.Properties["framework"],
+				framework:     e.Properties.Get("framework"),
 			}
 
 			// Determine side from pattern_type property.
-			switch e.Properties["pattern_type"] {
+			switch e.Properties.Get("pattern_type") {
 			case patternTypeProducer:
 				hit.side = sideProducer
 			case patternTypeConsumer:
@@ -226,7 +226,7 @@ func runOpenAPISpecPass(graphs []repoGraph, paths Paths, rejects map[string]bool
 			}
 
 			// Resolve source_caller (consumer side).
-			if ref := e.Properties["source_caller"]; ref != "" {
+			if ref := e.Properties.Get("source_caller"); ref != "" {
 				if kind, name, ok := splitKindNameRef(ref); ok {
 					if id := entIDByKey[entKey{kind, name, e.SourceFile}]; id != "" {
 						hit.callerID = id

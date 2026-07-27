@@ -29,6 +29,8 @@ import (
 	"sort"
 
 	"github.com/cajasmota/grafel/internal/substrate"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // MethodComplexity identifies this pass in telemetry.
@@ -89,12 +91,12 @@ func runComplexityPass(graphs []repoGraph, _ Paths) (PassResult, error) {
 			}
 			res.Candidates++
 			if e.Properties == nil {
-				e.Properties = map[string]string{}
+				e.Properties = types.Props{}
 			}
 			// Idempotent: if a prior path (e.g. the data-flow pass for a bound
 			// handler) already stamped complexity, leave it — both paths call the
 			// same ComputeFunctionComplexity, so the value is identical anyway.
-			if _, ok := e.Properties[ComplexityPropertyKeyCyclomatic]; ok {
+			if _, ok := e.Properties.Lookup(ComplexityPropertyKeyCyclomatic); ok {
 				continue
 			}
 			content := readFile(e.SourceFile)
@@ -106,8 +108,8 @@ func runComplexityPass(graphs []repoGraph, _ Paths) (PassResult, error) {
 				continue
 			}
 			cx := substrate.ComputeFunctionComplexity(win)
-			e.Properties[ComplexityPropertyKeyCyclomatic] = fmt.Sprintf("%d", cx.Cyclomatic)
-			e.Properties[ComplexityPropertyKeyBranchCount] = fmt.Sprintf("%d", cx.BranchCount)
+			e.Properties.Set(ComplexityPropertyKeyCyclomatic, fmt.Sprintf("%d", cx.Cyclomatic))
+			e.Properties.Set(ComplexityPropertyKeyBranchCount, fmt.Sprintf("%d", cx.BranchCount))
 			stamped++
 		}
 	}

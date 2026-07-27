@@ -45,6 +45,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/substrate"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // MethodEffectPropagation identifies sidecar artefacts produced by the
@@ -248,9 +250,9 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 				continue
 			}
 			if e.Properties == nil {
-				e.Properties = map[string]string{}
+				e.Properties = types.Props{}
 			}
-			stampEffectProperties(e.Properties, *set, directByEntity[fullID] != nil, endpointDerived[fullID])
+			stampEffectProperties(&e.Properties, *set, directByEntity[fullID] != nil, endpointDerived[fullID])
 			stamped++
 		}
 	}
@@ -384,7 +386,7 @@ func propagateScheduledJobEffects(graphs []repoGraph, effects map[string]*substr
 			if !isScheduledJobKind(e.Kind) {
 				continue
 			}
-			handler := e.Properties["handler"]
+			handler := e.Properties.Get("handler")
 			if handler == "" {
 				continue
 			}
@@ -423,7 +425,7 @@ func propagateScheduledJobEffects(graphs []repoGraph, effects map[string]*substr
 // effect_source key, with endpoint taking precedence so an http_endpoint
 // reads as source="endpoint" rather than the underlying direct/transitive
 // shape of its handler.
-func stampEffectProperties(props map[string]string, set substrate.EffectSet, direct, endpoint bool) {
+func stampEffectProperties(props *types.Props, set substrate.EffectSet, direct, endpoint bool) {
 	effs := set.AsList()
 	if len(effs) == 0 {
 		return
@@ -438,18 +440,18 @@ func stampEffectProperties(props map[string]string, set substrate.EffectSet, dir
 			sinks = append(sinks, string(e)+":"+s)
 		}
 	}
-	props[EffectPropertyKeyList] = strings.Join(names, ",")
-	props[EffectPropertyKeyConfidence] = strings.Join(confs, ",")
+	props.Set(EffectPropertyKeyList, strings.Join(names, ","))
+	props.Set(EffectPropertyKeyConfidence, strings.Join(confs, ","))
 	if len(sinks) > 0 {
-		props[EffectPropertyKeySinks] = strings.Join(sinks, ",")
+		props.Set(EffectPropertyKeySinks, strings.Join(sinks, ","))
 	}
 	switch {
 	case endpoint:
-		props[EffectPropertyKeySource] = "endpoint"
+		props.Set(EffectPropertyKeySource, "endpoint")
 	case direct:
-		props[EffectPropertyKeySource] = "direct"
+		props.Set(EffectPropertyKeySource, "direct")
 	default:
-		props[EffectPropertyKeySource] = "transitive"
+		props.Set(EffectPropertyKeySource, "transitive")
 	}
 }
 
@@ -518,7 +520,7 @@ func newEffectBinder(graphs []repoGraph) *effectBinder {
 			// task-body def with that name exists in the file, the sniffer
 			// produces no match and nothing is fabricated.
 			if isScheduledJobKind(e.Kind) {
-				if h := e.Properties["handler"]; h != "" && h != e.Name {
+				if h := e.Properties.Get("handler"); h != "" && h != e.Name {
 					fileIdx[h] = append(fileIdx[h], e.ID)
 				}
 			}

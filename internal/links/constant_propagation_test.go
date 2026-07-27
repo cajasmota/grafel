@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 func writeFile(t *testing.T, dir, rel, content string) {
@@ -93,12 +95,12 @@ fetch(`+"`"+`${apiUrl}/things`+"`"+`);
 				Name:       "GET /{apiUrl}/things",
 				Kind:       "http_endpoint_call",
 				SourceFile: "src/app.ts",
-				Properties: map[string]string{
+				Properties: types.PropsFromMap(map[string]string{
 					"verb":        "GET",
 					"path":        "/{apiUrl}/things",
 					"url_kind":    "dynamic_baseurl",
 					"caller_file": "src/app.ts",
-				},
+				}),
 			},
 		},
 	}}
@@ -111,13 +113,13 @@ fetch(`+"`"+`${apiUrl}/things`+"`"+`);
 		t.Fatalf("mutated = %d, want 1", mutated)
 	}
 	e := graphs[0].Entities[0]
-	if e.Properties["path"] != "/things" {
-		t.Errorf("rewritten path = %q, want /things", e.Properties["path"])
+	if e.Properties.Get("path") != "/things" {
+		t.Errorf("rewritten path = %q, want /things", e.Properties.Get("path"))
 	}
-	if e.Properties["url_kind"] != "literal" {
-		t.Errorf("url_kind = %q, want literal", e.Properties["url_kind"])
+	if e.Properties.Get("url_kind") != "literal" {
+		t.Errorf("url_kind = %q, want literal", e.Properties.Get("url_kind"))
 	}
-	if e.Properties["substrate_resolved_value"] != "https://api.example.com" {
+	if e.Properties.Get("substrate_resolved_value") != "https://api.example.com" {
 		t.Errorf("substrate_resolved_value missing or wrong: %+v", e.Properties)
 	}
 }

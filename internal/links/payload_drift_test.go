@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // TestPayloadDrift_MissingFieldsOnBothSides exercises the canonical
@@ -44,7 +46,7 @@ function submit() {
 			Entities: []entityNode{
 				{ID: "h1", Name: "create_user", Kind: "SCOPE.Function", SourceFile: "server/handler.py"},
 				{ID: "ep1", Name: "http:POST:/api/users", Kind: "synthetic.http_endpoint",
-					Properties: map[string]string{"pattern_type": "http_endpoint_synthesis", "verb": "POST", "path": "/api/users"}},
+					Properties: types.PropsFromMap(map[string]string{"pattern_type": "http_endpoint_synthesis", "verb": "POST", "path": "/api/users"})},
 			},
 			Edges: []edgeRef{
 				{FromID: "h1", ToID: "ep1", Kind: "IMPLEMENTS"},
@@ -56,7 +58,7 @@ function submit() {
 			Entities: []entityNode{
 				{ID: "c1", Name: "submit", Kind: "SCOPE.Function", SourceFile: "client/submit.ts"},
 				{ID: "ep2", Name: "http:POST:/api/users", Kind: "synthetic.http_endpoint_call",
-					Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis", "verb": "POST", "path": "/api/users"}},
+					Properties: types.PropsFromMap(map[string]string{"pattern_type": "http_endpoint_client_synthesis", "verb": "POST", "path": "/api/users"})},
 			},
 			Edges: []edgeRef{
 				{FromID: "c1", ToID: "ep2", Kind: "CALLS"},
@@ -123,7 +125,7 @@ function submit() {
 			Entities: []entityNode{
 				{ID: "h1", Name: "create_user", Kind: "SCOPE.Function", SourceFile: "server/handler.py"},
 				{ID: "ep1", Name: "http:POST:/api/users", Kind: "synthetic.http_endpoint",
-					Properties: map[string]string{"pattern_type": "http_endpoint_synthesis", "verb": "POST", "path": "/api/users"}},
+					Properties: types.PropsFromMap(map[string]string{"pattern_type": "http_endpoint_synthesis", "verb": "POST", "path": "/api/users"})},
 			},
 			Edges: []edgeRef{{FromID: "h1", ToID: "ep1", Kind: "IMPLEMENTS"}},
 		},
@@ -132,7 +134,7 @@ function submit() {
 			Entities: []entityNode{
 				{ID: "c1", Name: "submit", Kind: "SCOPE.Function", SourceFile: "client/submit.ts"},
 				{ID: "ep2", Name: "http:POST:/api/users", Kind: "synthetic.http_endpoint_call",
-					Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis"}},
+					Properties: types.PropsFromMap(map[string]string{"pattern_type": "http_endpoint_client_synthesis"})},
 			},
 			Edges: []edgeRef{{FromID: "c1", ToID: "ep2", Kind: "CALLS"}},
 		},
@@ -187,7 +189,7 @@ function submit() {
 			Entities: []entityNode{
 				{ID: "h1", Name: "create_user", Kind: "SCOPE.Function", SourceFile: "server/handler.py"},
 				{ID: "ep1", Name: "http:POST:/api/users", Kind: "synthetic.http_endpoint",
-					Properties: map[string]string{"pattern_type": "http_endpoint_synthesis"}},
+					Properties: types.PropsFromMap(map[string]string{"pattern_type": "http_endpoint_synthesis"})},
 			},
 			Edges: []edgeRef{{FromID: "h1", ToID: "ep1", Kind: "IMPLEMENTS"}},
 		},

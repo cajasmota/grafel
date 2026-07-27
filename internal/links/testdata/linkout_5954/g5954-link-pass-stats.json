@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "group": "g5954",
+  "written_at": "<TS>",
+  "passes": [
+    {
+      "pass": "import",
+      "links_added": 4,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "constant_propagation",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "effect_propagation",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "taint_flow",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "label",
+      "links_added": 0,
+      "candidates": 4,
+      "skipped": 0
+    },
+    {
+      "pass": "string",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "http",
+      "links_added": 3,
+      "candidates": 0,
+      "skipped": 0,
+      "cross_repo_resolved": 4
+    },
+    {
+      "pass": "openapi-spec",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "grpc",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "topic",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "same_as",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "reachability",
+      "links_added": 7,
+      "candidates": 8,
+      "skipped": 7
+    },
+    {
+      "pass": "payload_drift",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "pure_functions",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "module_cycles",
+      "links_added": 0,
+      "candidates": 4,
+      "skipped": 2
+    },
+    {
+      "pass": "def_use",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "template_patterns",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "complexity",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    },
+    {
+      "pass": "data_flow",
+      "links_added": 0,
+      "candidates": 0,
+      "skipped": 0
+    }
+  ],
+  "http_resolve": {
+    "cross_repo_resolve_attempts": 4,
+    "cross_repo_resolve_hits_by_strategy": {
+      "exact": 3
+    }
+  }
+}

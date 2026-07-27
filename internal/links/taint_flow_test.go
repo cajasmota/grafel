@@ -37,7 +37,7 @@ def search(cursor):
 	if res.LinksAdded == 0 {
 		t.Fatal("expected at least one entity stamped with taint_role")
 	}
-	role := graphs[0].Entities[0].Properties[TaintRolePropertyKey]
+	role := graphs[0].Entities[0].Properties.Get(TaintRolePropertyKey)
 	if !strings.Contains(role, "source") || !strings.Contains(role, "sink") {
 		t.Errorf("entity taint_role=%q; want source+sink", role)
 	}

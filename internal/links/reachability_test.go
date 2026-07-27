@@ -57,7 +57,7 @@ func orphan() {}
 	// orphanFn must be flagged unreachable.
 	got := map[string]string{}
 	for _, e := range graphs[0].Entities {
-		got[e.ID] = e.Properties["reachable"]
+		got[e.ID] = e.Properties.Get("reachable")
 	}
 	if got["orphanFn"] != "false" {
 		t.Errorf("orphanFn should be reachable=false, got %q", got["orphanFn"])

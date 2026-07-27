@@ -2,6 +2,8 @@ package links
 
 import (
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // runComplexityForTest runs the universal complexity pass over a single in-memory
@@ -50,10 +52,10 @@ func computeScore(a, b int) int { // line 3
 	}})
 
 	e := g.Entities[0]
-	if got := e.Properties[ComplexityPropertyKeyCyclomatic]; got != "4" {
+	if got := e.Properties.Get(ComplexityPropertyKeyCyclomatic); got != "4" {
 		t.Fatalf("cyclomatic_complexity = %q, want 4", got)
 	}
-	if got := e.Properties[ComplexityPropertyKeyBranchCount]; got != "3" {
+	if got := e.Properties.Get(ComplexityPropertyKeyBranchCount); got != "3" {
 		t.Fatalf("branch_count = %q, want 3", got)
 	}
 }
@@ -63,10 +65,10 @@ func computeScore(a, b int) int { // line 3
 // truth and preventing double-counting.
 func TestComplexityPass_Idempotent(t *testing.T) {
 	src := "func f() { if x { return } }\n"
-	pre := map[string]string{
+	pre := types.PropsFromMap(map[string]string{
 		ComplexityPropertyKeyCyclomatic:  "99",
 		ComplexityPropertyKeyBranchCount: "98",
-	}
+	})
 	g := runComplexityForTest(t, "f.go", src, []entityNode{{
 		ID:         "fn:f",
 		Name:       "f",
@@ -76,7 +78,7 @@ func TestComplexityPass_Idempotent(t *testing.T) {
 		EndLine:    1,
 		Properties: pre,
 	}})
-	if got := g.Entities[0].Properties[ComplexityPropertyKeyCyclomatic]; got != "99" {
+	if got := g.Entities[0].Properties.Get(ComplexityPropertyKeyCyclomatic); got != "99" {
 		t.Fatalf("idempotency broken: cyclomatic_complexity = %q, want preserved 99", got)
 	}
 }
@@ -92,7 +94,7 @@ func TestComplexityPass_NoSourceLineInfoSkipped(t *testing.T) {
 		SourceFile: "f.go",
 		StartLine:  0, // unknown
 	}})
-	if _, ok := g.Entities[0].Properties[ComplexityPropertyKeyCyclomatic]; ok {
+	if _, ok := g.Entities[0].Properties.Lookup(ComplexityPropertyKeyCyclomatic); ok {
 		t.Fatal("expected no complexity property when StartLine is unknown")
 	}
 }
@@ -108,7 +110,7 @@ func TestComplexityPass_NonFunctionKindSkipped(t *testing.T) {
 		StartLine:  1,
 		EndLine:    1,
 	}})
-	if _, ok := g.Entities[0].Properties[ComplexityPropertyKeyCyclomatic]; ok {
+	if _, ok := g.Entities[0].Properties.Lookup(ComplexityPropertyKeyCyclomatic); ok {
 		t.Fatal("expected no complexity property on a non-function entity")
 	}
 }

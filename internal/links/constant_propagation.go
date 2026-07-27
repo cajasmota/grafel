@@ -462,14 +462,14 @@ func applyResolverToConsumerHTTP(graphs []repoGraph, resolver *Resolver) int {
 			if e.Properties == nil {
 				continue
 			}
-			if e.Properties["url_kind"] != "dynamic_baseurl" {
+			if e.Properties.Get("url_kind") != "dynamic_baseurl" {
 				continue
 			}
-			callerFile := e.Properties["caller_file"]
+			callerFile := e.Properties.Get("caller_file")
 			if callerFile == "" {
 				callerFile = e.SourceFile
 			}
-			path := e.Properties["path"]
+			path := e.Properties.Get("path")
 			if path == "" {
 				continue
 			}
@@ -487,11 +487,11 @@ func applyResolverToConsumerHTTP(graphs []repoGraph, resolver *Resolver) int {
 			if replaced == "" || replaced[0] != '/' {
 				replaced = "/" + replaced
 			}
-			e.Properties["path"] = replaced
-			e.Properties["url_kind"] = "literal"
-			e.Properties["substrate_resolved_value"] = rr.Value
-			e.Properties["substrate_resolved_via"] = joinSteps(rr.Steps)
-			e.Properties["substrate_confidence"] = fmt.Sprintf("%.2f", rr.Confidence)
+			e.Properties.Set("path", replaced)
+			e.Properties.Set("url_kind", "literal")
+			e.Properties.Set("substrate_resolved_value", rr.Value)
+			e.Properties.Set("substrate_resolved_via", joinSteps(rr.Steps))
+			e.Properties.Set("substrate_confidence", fmt.Sprintf("%.2f", rr.Confidence))
 			mutated++
 		}
 	}

@@ -198,7 +198,7 @@ func fieldsForModel(g repoGraph, model entityNode, childrenByParent map[string][
 
 	// Representation 1: comma-separated `fields` property.
 	if model.Properties != nil {
-		if raw, ok := model.Properties["fields"]; ok && raw != "" {
+		if raw, ok := model.Properties.Lookup("fields"); ok && raw != "" {
 			for _, f := range strings.Split(raw, ",") {
 				if n := normalizeFieldName(f); n != "" {
 					out[n] = true
