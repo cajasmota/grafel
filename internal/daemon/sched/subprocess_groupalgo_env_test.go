@@ -20,7 +20,7 @@ import (
 // TestGroupAlgoChildEnvSetsMadvDontNeed asserts the constructed child env
 // carries the reclaim setting, and still carries the CPU bound.
 func TestGroupAlgoChildEnvSetsMadvDontNeed(t *testing.T) {
-	env := groupAlgoChildEnv([]string{"PATH=/usr/bin", "HOME=/home/x"}, 2)
+	env := groupAlgoChildEnv([]string{"PATH=/usr/bin", "HOME=/home/x"}, 2, false)
 
 	godebug, ok := lookupEnv(env, "GODEBUG")
 	if !ok {
@@ -41,13 +41,13 @@ func TestGroupAlgoChildEnvSetsMadvDontNeed(t *testing.T) {
 // GODEBUG settings are merged rather than clobbered, matching withMadvDontNeed's
 // contract, and that an explicit madvdontneed=0 is left alone.
 func TestGroupAlgoChildEnvMergesInheritedGODEBUG(t *testing.T) {
-	env := groupAlgoChildEnv([]string{"GODEBUG=http2debug=1"}, 3)
+	env := groupAlgoChildEnv([]string{"GODEBUG=http2debug=1"}, 3, false)
 	godebug, _ := lookupEnv(env, "GODEBUG")
 	if !strings.Contains(godebug, "http2debug=1") || !strings.Contains(godebug, madvDontNeedSetting) {
 		t.Errorf("GODEBUG = %q, want both the inherited setting and %q", godebug, madvDontNeedSetting)
 	}
 
-	env = groupAlgoChildEnv([]string{"GODEBUG=madvdontneed=0"}, 1)
+	env = groupAlgoChildEnv([]string{"GODEBUG=madvdontneed=0"}, 1, false)
 	godebug, _ = lookupEnv(env, "GODEBUG")
 	if godebug != "madvdontneed=0" {
 		t.Errorf("GODEBUG = %q, want an explicit operator madvdontneed=0 left alone", godebug)

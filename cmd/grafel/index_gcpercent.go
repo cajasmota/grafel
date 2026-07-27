@@ -122,23 +122,76 @@ func parseIndexGCPercentEnv(raw string) (percent int, decided bool) {
 	return n, true
 }
 
-// indexGCPercentDecision combines the path guard, the escape hatch and the
-// policy default. The returned source string is operator-facing — it goes
-// straight into the one-shot log line.
+// argvIsInteractive reports whether an `index-internal` argv carries the
+// --interactive flag, i.e. the child was fork-exec'd for a human-awaited
+// rebuild rather than background churn (#5135 sets the flag; see
+// SubprocessIndexOptions.Interactive).
+//
+// Parsed here, from raw argv, rather than read off the flag.FlagSet inside
+// runIndexInternal, because the GC decision has to be made in main() BEFORE the
+// command runs — debug.SetGCPercent wants to be set before the heap grows, not
+// after. Accepts every spelling Go's flag package does: -interactive,
+// --interactive, and =true/=false forms.
+func argvIsInteractive(argv []string) bool {
+	for _, a := range argv {
+		name := strings.TrimPrefix(strings.TrimPrefix(a, "--"), "-")
+		value := ""
+		if i := strings.IndexByte(name, '='); i >= 0 {
+			name, value = name[:i], name[i+1:]
+		}
+		if name != "interactive" {
+			continue
+		}
+		if value == "" {
+			return true
+		}
+		return !(value == "false" || value == "0" || value == "no")
+	}
+	return false
+}
+
+// indexGCPercentDecision combines the path guard, the foreground exemption, the
+// escape hatch and the policy default. The returned source string is
+// operator-facing — it goes straight into the one-shot log line.
 //
 // Precedence, highest first:
 //
 //  1. command is not one of the background batch children -> never capped.
 //     This gate is first on purpose: GRAFEL_INDEX_GOGC tunes the background
 //     cap, it does not create one on the interactive path.
-//  2. GRAFEL_INDEX_GOGC, when well-formed -> the operator's explicit choice.
-//  3. GOGC set explicitly in the environment -> leave the runtime alone. The
+//
+//  2. the child is the INDEX child of a foreground rebuild -> never capped.
+//     Same standing rule as (1) — "a user waiting on a command should not pay
+//     GC time to save memory they are not short of" — reaching a case the
+//     allow-list structurally cannot see, because argv[1] is `index-internal`
+//     for both a background reindex and the rebuild the user just typed. The
+//     cap costs ~4.7% wall on this child (measured, #5954) for RSS that only
+//     matters when the child is competing with the developer's own work; on the
+//     foreground path the stage-gate barge has already held the other heavy
+//     stages off, so it is not competing with anything.
+//
+//     Bounded by evidence, not by preference: this child's heap IS measured —
+//     ~1707MB live peak, and at GOGC=100 it carried a 3679MB heap_sys, which
+//     fits a 16GB box with the barge in force. The two BATCH children
+//     (group-algo, links) get no such exemption even in foreground: their live
+//     heap is unmeasured, and picking a looser GC target for an unmeasured heap
+//     is how this repo landed in the GOMEMLIMIT death spiral it documents in
+//     index_memlimit.go. When they are measured, revisit — not before.
+//
+//  3. GRAFEL_INDEX_GOGC, when well-formed -> the operator's explicit choice.
+//
+//  4. GOGC set explicitly in the environment -> leave the runtime alone. The
 //     runtime has already applied it; overriding would silently discard an
 //     instruction the operator gave in the most standard way there is.
-//  4. otherwise -> indexGCPercentDefault.
-func indexGCPercentDecision(command, rawEnv, rawGOGC string) (percent int, source string) {
+//
+//  5. otherwise -> indexGCPercentDefault.
+func indexGCPercentDecision(command string, foreground bool, rawEnv, rawGOGC string) (percent int, source string) {
 	if !isBackgroundGCPercentCommand(command) {
 		return gcPercentUnset, "interactive/foreground path (" + command + ") — GC pacing is not capped"
+	}
+	if foreground && command == backgroundIndexCommand {
+		return gcPercentUnset, "foreground rebuild index child (" + command +
+			" --interactive) — a human is waiting; GC pacing is not capped (#5954)"
 	}
 	if n, decided := parseIndexGCPercentEnv(rawEnv); decided {
 		return n, indexGCPercentEnv + "=" + strings.TrimSpace(rawEnv) + " (env)"
@@ -176,8 +229,8 @@ func indexGCPercentDecision(command, rawEnv, rawGOGC string) (percent int, sourc
 // on any group. The death spiral is unreachable by construction. That is the
 // whole reason group-algo may be paced now and memory-limited only once it has
 // been measured.
-func applyIndexGCPercent(command, rawEnv, rawGOGC string) {
-	percent, source := indexGCPercentDecision(command, rawEnv, rawGOGC)
+func applyIndexGCPercent(command string, foreground bool, rawEnv, rawGOGC string) {
+	percent, source := indexGCPercentDecision(command, foreground, rawEnv, rawGOGC)
 	tag := command
 	if tag == "" {
 		tag = "grafel"

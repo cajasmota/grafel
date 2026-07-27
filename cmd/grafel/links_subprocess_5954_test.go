@@ -107,7 +107,7 @@ func TestLinksInternalIsOnTheGCPacingAllowList(t *testing.T) {
 	if !isBackgroundGCPercentCommand(backgroundLinksCommand) {
 		t.Fatalf("%q is not on the background GC-pacing allow-list", backgroundLinksCommand)
 	}
-	pct, source := indexGCPercentDecision(backgroundLinksCommand, "", "")
+	pct, source := indexGCPercentDecision(backgroundLinksCommand, false, "", "")
 	if pct != indexGCPercentDefault {
 		t.Fatalf("GC percent for %q = %d (%s), want the background default %d",
 			backgroundLinksCommand, pct, source, indexGCPercentDefault)

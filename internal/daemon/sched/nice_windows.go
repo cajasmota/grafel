@@ -16,3 +16,9 @@ func applyGroupAlgoNice(cmd *exec.Cmd) {}
 
 // NiceSelf is a no-op on Windows.
 func NiceSelf() {}
+
+// niceIsSupported reports that this platform does not demote priority.
+func niceIsSupported() bool { return false }
+
+// itoaPriority has no meaningful answer on Windows.
+func itoaPriority() string { return "0" }

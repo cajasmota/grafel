@@ -55,9 +55,14 @@ func runGroupAlgo(args []string) int {
 	// PageRank + betweenness over the whole group union). Lower its OS
 	// scheduling priority so even its capped cores yield to foreground work —
 	// the v0.1.3 CPU regression starved a consumer's test harness. No-op on
-	// Windows. The GOMAXPROCS cap is applied by the parent (env, default 2);
-	// nice is best-effort self-renice so it holds however the child is spawned.
-	sched.NiceSelf()
+	// Windows. The GOMAXPROCS cap is applied by the parent (env); nice is a
+	// best-effort self-renice so it holds however the child is spawned.
+	//
+	// UNLESS the parent told us this pass is user-awaited (#5954). An
+	// unconditional renice here is what put a `grafel reset` the user is
+	// blocking on below their editor: the demotion is right for background
+	// churn and wrong for work someone explicitly asked for and is waiting on.
+	sched.NiceSelfUnlessForeground()
 
 	// #5954 / #5956 memtrace: opt-in phase-tagged memstats sampler + per-phase
 	// heap profiles, gated entirely behind GRAFEL_MEMTRACE_DIR (which this child

@@ -110,7 +110,7 @@ func TestGroupAlgoGCPercentDecision(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotPercent, gotSource := indexGCPercentDecision(tc.command, tc.rawEnv, tc.rawGOGC)
+			gotPercent, gotSource := indexGCPercentDecision(tc.command, false, tc.rawEnv, tc.rawGOGC)
 			if gotPercent != tc.wantPercent {
 				t.Errorf("indexGCPercentDecision(%q, %q, %q) percent = %d, want %d",
 					tc.command, tc.rawEnv, tc.rawGOGC, gotPercent, tc.wantPercent)
@@ -133,7 +133,7 @@ func TestApplyGroupAlgoGCPercentReachesTheRuntime(t *testing.T) {
 
 	t.Run("group-algo child is capped at the policy value", func(t *testing.T) {
 		debug.SetGCPercent(100)
-		applyIndexGCPercent("group-algo", "", "")
+		applyIndexGCPercent("group-algo", false, "", "")
 		if got := debug.SetGCPercent(100); got != indexGCPercentDefault {
 			t.Fatalf("GOGC in force after applyIndexGCPercent(group-algo) = %d, want %d", got, indexGCPercentDefault)
 		}
@@ -141,7 +141,7 @@ func TestApplyGroupAlgoGCPercentReachesTheRuntime(t *testing.T) {
 
 	t.Run("operator override is what actually reaches the runtime", func(t *testing.T) {
 		debug.SetGCPercent(100)
-		applyIndexGCPercent("group-algo", "35", "")
+		applyIndexGCPercent("group-algo", false, "35", "")
 		if got := debug.SetGCPercent(100); got != 35 {
 			t.Fatalf("GOGC in force after applyIndexGCPercent(group-algo) = %d, want 35", got)
 		}
@@ -155,7 +155,7 @@ func TestApplyGroupAlgoGCPercentReachesTheRuntime(t *testing.T) {
 	t.Run("interactive commands stay uncapped even with the override set", func(t *testing.T) {
 		for _, cmd := range []string{"index", "rebuild", "daemon", ""} {
 			debug.SetGCPercent(100)
-			applyIndexGCPercent(cmd, "35", "")
+			applyIndexGCPercent(cmd, false, "35", "")
 			if got := debug.SetGCPercent(100); got != 100 {
 				t.Fatalf("applyIndexGCPercent(%q, \"35\", \"\") changed GOGC to %d, want it left at 100", cmd, got)
 			}

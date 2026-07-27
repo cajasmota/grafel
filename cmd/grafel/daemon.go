@@ -1398,6 +1398,22 @@ func daemonRebuildFuncCore(
 	// one-shots, watcher-less daemons, tests) and when GRAFEL_STAGE_GATE=0.
 	defer sched.BargeForeground("rebuild:" + args.Group)()
 
+	// #5954 WALL TIME. The barge above tells the stage gate "hold background
+	// stages off"; this tells every child spawn helper "a human is waiting on
+	// THIS group, resolve foreground caps". They are separate signals on
+	// purpose — see internal/daemon/sched/foreground.go. The barge lifts when
+	// this function returns, but the stages that dominate the user's wall clock
+	// (the scheduler's cross-repo link pass, and the debounced group-algo pass
+	// that finishes the graph) are spawned minutes AFTER that, so a cap resolved
+	// off the barge would still hand the user's rebuild the 2-core background
+	// cap for its heaviest stage — the 10min → 30min+ regression.
+	//
+	// The mark lingers past this release and is closed by the group-algo pass
+	// completing (sched.ClearGroupForeground in runGroupAlgo), with a time
+	// backstop so a group whose group-algo never runs cannot keep drawing full
+	// machine capacity for background churn.
+	defer sched.MarkGroupForeground(args.Group)()
+
 	rebuildStart := time.Now()
 	fmt.Fprintf(os.Stderr, "grafel: rebuild start group=%s slug=%q wipe=%v incremental=%v\n",
 		args.Group, args.Slug, args.Wipe, args.Incremental)

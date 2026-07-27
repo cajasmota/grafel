@@ -77,7 +77,7 @@ func TestIndexGCPercentDecision(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotPercent, gotSource := indexGCPercentDecision(tc.command, tc.rawEnv, tc.rawGOGC)
+			gotPercent, gotSource := indexGCPercentDecision(tc.command, false, tc.rawEnv, tc.rawGOGC)
 			if gotPercent != tc.wantPercent {
 				t.Errorf("indexGCPercentDecision(%q, %q, %q) percent = %d, want %d",
 					tc.command, tc.rawEnv, tc.rawGOGC, gotPercent, tc.wantPercent)
@@ -137,7 +137,7 @@ func TestApplyIndexGCPercentActuallyApplies(t *testing.T) {
 
 	t.Run("background child is capped at the policy value", func(t *testing.T) {
 		debug.SetGCPercent(100)
-		applyIndexGCPercent(backgroundIndexCommand, "", "")
+		applyIndexGCPercent(backgroundIndexCommand, false, "", "")
 		if got := debug.SetGCPercent(100); got != indexGCPercentDefault {
 			t.Fatalf("GOGC in force after applyIndexGCPercent = %d, want %d", got, indexGCPercentDefault)
 		}
@@ -145,7 +145,7 @@ func TestApplyIndexGCPercentActuallyApplies(t *testing.T) {
 
 	t.Run("operator override is what actually reaches the runtime", func(t *testing.T) {
 		debug.SetGCPercent(100)
-		applyIndexGCPercent(backgroundIndexCommand, "35", "")
+		applyIndexGCPercent(backgroundIndexCommand, false, "35", "")
 		if got := debug.SetGCPercent(100); got != 35 {
 			t.Fatalf("GOGC in force after applyIndexGCPercent = %d, want 35", got)
 		}
@@ -153,7 +153,7 @@ func TestApplyIndexGCPercentActuallyApplies(t *testing.T) {
 
 	t.Run("interactive path is left untouched", func(t *testing.T) {
 		debug.SetGCPercent(100)
-		applyIndexGCPercent("index", "", "")
+		applyIndexGCPercent("index", false, "", "")
 		if got := debug.SetGCPercent(100); got != 100 {
 			t.Fatalf("interactive path changed GOGC to %d, want it left at 100", got)
 		}
@@ -161,7 +161,7 @@ func TestApplyIndexGCPercentActuallyApplies(t *testing.T) {
 
 	t.Run("explicit GOGC is left untouched", func(t *testing.T) {
 		debug.SetGCPercent(100)
-		applyIndexGCPercent(backgroundIndexCommand, "", "200")
+		applyIndexGCPercent(backgroundIndexCommand, false, "", "200")
 		if got := debug.SetGCPercent(100); got != 100 {
 			t.Fatalf("explicit GOGC was overridden to %d, want it left at 100", got)
 		}

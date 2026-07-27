@@ -2247,6 +2247,17 @@ func (s *Scheduler) CancelGroup(group string) {
 		}
 	}
 
+	// Drop any foreground mark on the group (#5954). The group is being deleted,
+	// so no epoch can still be current and the epoch-scoped clear does not
+	// apply — this is the one unconditional teardown. Without it a group deleted
+	// and recreated inside the 30m linger window would run its first BACKGROUND
+	// pass at foreground caps and un-niced, which is exactly the policy
+	// inversion this epic is fixing.
+	//
+	// Safe under s.mu: the foreground registry has its own mutex and never
+	// takes s.mu, so there is no lock-order edge to invert.
+	ForgetGroupForeground(group)
+
 	s.logEventLocked("group_cancelled", "", group+": cancelled in-flight enrichment on group delete")
 }
 
@@ -2279,7 +2290,14 @@ func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
 	// core usage of the (subprocess) pass is its GOMAXPROCS. Log that real value
 	// so `cap=` reflects the cores the pass can consume, not the old, misleading
 	// NumCPU/2 concurrency number (the CPU-regression diagnosis confusion).
-	capN := GroupAlgoGOMAXPROCS()
+	// Log the cap the child will ACTUALLY be spawned with, which since #5954
+	// depends on whether this group is user-awaited (foreground.go). The epoch
+	// is captured HERE, at the start of the pass, so the clear at the end names
+	// the mark this pass was actually spawned under — a rebuild that re-marks
+	// the group while this (long) pass runs must not have its mark wiped by
+	// this pass finishing.
+	fgEpoch, _ := GroupForegroundState(group)
+	capN := groupAlgoChildGOMAXPROCS(group)
 	s.logger.Info("group-algo: starting", "group", group, "cap", capN)
 	select {
 	case s.algoSem <- struct{}{}:
@@ -2312,6 +2330,18 @@ func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
 		return
 	}
 	s.logEvent("group_algo_ok", "", group+" "+time.Since(t0).Truncate(time.Millisecond).String())
+	// #5954 wall-time: the group-algo pass is the LAST stage of the work a
+	// foreground rebuild sets in motion. Its success means the graph the user
+	// asked for now exists, so the group stops being "user-awaited" and any
+	// later pass is background churn again, on background caps.
+	//
+	// Only on success, and only here: on error or cancellation the awaited
+	// artifact does not exist yet, so the retry stays foreground and the linger
+	// window in foreground.go is what bounds it.
+	//
+	// Epoch-scoped: a pass that started under one rebuild's mark and finished
+	// after a NEWER rebuild re-marked the group clears nothing.
+	ClearGroupForeground(group, fgEpoch)
 }
 
 // Snapshot reports current scheduler state for the Status RPC.
