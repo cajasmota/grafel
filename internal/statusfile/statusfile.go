@@ -196,6 +196,13 @@ type File struct {
 	StageGateHolder   string   `json:"stage_gate_holder,omitempty"`
 	StageGateDeferred []string `json:"stage_gate_deferred,omitempty"`
 	StageGateBarging  []string `json:"stage_gate_barging,omitempty"`
+	// StageGateForfeits counts stages that blew StageGateHoldMax since daemon
+	// start — a FAILURE counter, see proto.StatusReply.
+	StageGateForfeits int64 `json:"stage_gate_forfeits,omitempty"`
+	// StageGateForfeitedHolder is the LIVE half of that counter: the holder
+	// named above is past its hold-max right now and the gate is inside a
+	// forfeit grace. See proto.StatusReply.
+	StageGateForfeitedHolder bool `json:"stage_gate_forfeited_holder,omitempty"`
 
 	// --- Process metrics (wizard CPU/RAM readout) ---
 	// These are only meaningful on the ENGINE-LIVENESS sidecar (same scope as

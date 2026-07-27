@@ -15,6 +15,7 @@ package daemon
 // scheduler (monolith) and the engine-liveness status sidecar (split mode).
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -76,6 +77,90 @@ func TestStatus_StageGateFieldsFromInProcessScheduler(t *testing.T) {
 	}
 }
 
+// TestStatus_ForfeitedHolderFromInProcessScheduler pins the MONOLITH half of
+// the live forfeit signal, driving a real forfeit through a real scheduler
+// rather than asserting on a hand-built snapshot.
+//
+// The split-mode test below covers the sidecar route, but monolith mode reads a
+// different line in Service.Status (snap.StageForfeitedHolder, not
+// g.ForfeitedHolder). Deleting that line left the whole daemon suite green until
+// this test existed — the two branches have to be pinned separately or one of
+// them silently reports nothing.
+func TestStatus_ForfeitedHolderFromInProcessScheduler(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	svc := newStageGateTestService(t)
+
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	s := sched.New(sched.Config{
+		Workers: 1,
+		// An index chains to the LINK pass, and group-algo is chained off the
+		// link pass's success path (#5349 A3) — so links must be allowed to run
+		// or the group-algo pass this test needs is never scheduled at all.
+		LinkDebounce:      time.Millisecond,
+		GroupAlgoDebounce: time.Millisecond,
+		GroupAlgoMaxWait:  time.Hour,
+		StageGateRetry:    5 * time.Millisecond,
+		StageGateMaxDefer: time.Hour,
+		// Forfeit almost immediately, but never reach the grace: this test is
+		// about the FORFEITED-AND-STILL-HELD state, which is the whole point of
+		// a live signal the sticky counter cannot express.
+		StageGateHoldMax:      10 * time.Millisecond,
+		StageGateForfeitGrace: time.Hour,
+		Index:                 func(context.Context, string, string) error { return nil },
+		Links:                 func(context.Context, string) error { return nil },
+		GroupAlgo: func(context.Context, string) error {
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			<-release // wedged past hold-max
+			return nil
+		},
+		GroupsForRepo:      func(string) []string { return []string{"acme"} },
+		MemReleaseDisabled: true,
+	})
+	s.Start()
+	defer func() { close(release); s.Stop() }()
+	svc.scheduler = s
+
+	// An index job schedules the group-algo pass, which takes the token and wedges.
+	s.Enqueue("/repo-a")
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("group-algo never started; cannot exercise the forfeit path")
+	}
+
+	// The forfeit is declared by the next gate DECISION, not by a timer, so poke
+	// the admit loop into making one.
+	deadline := time.Now().Add(10 * time.Second)
+	var reply proto.StatusReply
+	for {
+		s.Enqueue("/repo-b")
+		reply = proto.StatusReply{}
+		if err := svc.Status(&proto.StatusArgs{}, &reply); err != nil {
+			t.Fatalf("Status RPC: %v", err)
+		}
+		// Require the WEDGED holder specifically. The instantaneous link pass
+		// shares this gate and could in principle be the one caught by a reap,
+		// which would satisfy a bare ForfeitedHolder check without exercising
+		// what this test is about.
+		if reply.StageGateForfeitedHolder && reply.StageGateHolder == "group-algo:acme" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("StageGateForfeitedHolder never became true for the wedged group-algo in monolith mode "+
+				"(holder=%q forfeited=%v forfeits=%d): the live forfeit-grace signal does not reach the status RPC",
+				reply.StageGateHolder, reply.StageGateForfeitedHolder, reply.StageGateForfeits)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if reply.StageGateForfeits < 1 {
+		t.Errorf("StageGateForfeits = %d, want >= 1 alongside the live signal", reply.StageGateForfeits)
+	}
+}
+
 // TestStatus_StageGateFieldsFromEngineLivenessSidecarInSplitMode is the split-
 // mode half, and the one that actually matters: serve has NO scheduler, so the
 // only route is the engine's liveness sidecar. Without the fallback this reply
@@ -88,10 +173,12 @@ func TestStatus_StageGateFieldsFromEngineLivenessSidecarInSplitMode(t *testing.T
 	}
 
 	writeStageGateLivenessFixture(t, &statusfile.File{
-		HeartbeatAt:       time.Now().UTC(),
-		StageGateHolder:   "group-algo:acme",
-		StageGateDeferred: []string{"links:acme"},
-		StageGateBarging:  []string{"rebuild:acme"},
+		HeartbeatAt:              time.Now().UTC(),
+		StageGateHolder:          "group-algo:acme",
+		StageGateDeferred:        []string{"links:acme"},
+		StageGateBarging:         []string{"rebuild:acme"},
+		StageGateForfeits:        2,
+		StageGateForfeitedHolder: true,
 	})
 
 	var reply proto.StatusReply
@@ -100,6 +187,18 @@ func TestStatus_StageGateFieldsFromEngineLivenessSidecarInSplitMode(t *testing.T
 	}
 	if reply.StageGateHolder != "group-algo:acme" {
 		t.Errorf("StageGateHolder = %q, want %q", reply.StageGateHolder, "group-algo:acme")
+	}
+	if reply.StageGateForfeits != 2 {
+		t.Errorf("StageGateForfeits = %d, want 2", reply.StageGateForfeits)
+	}
+	// The LIVE forfeit signal, which is the one an operator looking at a stalled
+	// daemon actually needs: FORFEITS=n is sticky for the life of the daemon and
+	// cannot answer "is a forfeit grace running right now". It crosses the
+	// engine→serve boundary by exactly the same route as the rest, and in split
+	// mode — the default — that route is the ONLY one.
+	if !reply.StageGateForfeitedHolder {
+		t.Errorf("StageGateForfeitedHolder = false, want true: the live 'inside a forfeit grace' signal " +
+			"must survive the sidecar round trip, or it is invisible in the default deployment mode")
 	}
 	if len(reply.StageGateDeferred) != 1 || reply.StageGateDeferred[0] != "links:acme" {
 		t.Errorf("StageGateDeferred = %v, want [links:acme]", reply.StageGateDeferred)
@@ -141,9 +240,11 @@ func TestStatus_StageGateFieldsOmittedWhenSidecarStale(t *testing.T) {
 func TestEngineLivenessHeartbeat_PublishesStageGateState(t *testing.T) {
 	root := t.TempDir()
 	gate := sched.StageGateState{
-		Holder:   "group-algo:acme",
-		Deferred: []string{"links:acme"},
-		Barging:  []string{"rebuild:acme"},
+		Holder:          "group-algo:acme",
+		Deferred:        []string{"links:acme"},
+		Barging:         []string{"rebuild:acme"},
+		Forfeits:        2,
+		ForfeitedHolder: true,
 	}
 	stop := startEngineLivenessHeartbeat(root, 0, nil, func() sched.StageGateState { return gate }, nil)
 	stop() // writeOnce has already run synchronously before the ticker loop
@@ -160,5 +261,15 @@ func TestEngineLivenessHeartbeat_PublishesStageGateState(t *testing.T) {
 	}
 	if len(f.StageGateBarging) != 1 || f.StageGateBarging[0] != "rebuild:acme" {
 		t.Errorf("StageGateBarging = %v, want [rebuild:acme]", f.StageGateBarging)
+	}
+	if f.StageGateForfeits != 2 {
+		t.Errorf("StageGateForfeits = %d, want 2", f.StageGateForfeits)
+	}
+	// The heartbeat is the ONLY writer of the split-mode route, so a field the
+	// reader handles but the writer never stamps is dead in the default
+	// deployment mode while looking wired end to end.
+	if !f.StageGateForfeitedHolder {
+		t.Errorf("StageGateForfeitedHolder = false, want true: the heartbeat must publish the live " +
+			"forfeit-grace signal, not only the sticky counter")
 	}
 }

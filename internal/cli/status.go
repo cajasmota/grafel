@@ -149,16 +149,29 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 			// a peak-RSS measurement run — can confirm from outside the process
 			// that it fired, instead of inferring it from RSS shape. Silent when
 			// the gate is idle, which is the overwhelmingly common case.
-			if st.StageGateHolder != "" || len(st.StageGateDeferred) > 0 || len(st.StageGateBarging) > 0 {
+			if st.StageGateHolder != "" || len(st.StageGateDeferred) > 0 || len(st.StageGateBarging) > 0 ||
+				st.StageGateForfeits > 0 {
 				fmt.Fprint(w, "  stage_gate:")
 				if len(st.StageGateBarging) > 0 {
 					fmt.Fprintf(w, " barging=%s", strings.Join(st.StageGateBarging, ","))
 				}
 				if st.StageGateHolder != "" {
 					fmt.Fprintf(w, " holder=%s", st.StageGateHolder)
+					// LIVE, unlike FORFEITS below: this holder blew the 4h
+					// hold-max and the gate is inside its forfeit grace right
+					// now. It is the state an operator staring at a stalled
+					// daemon is trying to identify, so it rides on the holder.
+					if st.StageGateForfeitedHolder {
+						fmt.Fprint(w, "(FORFEITED,awaiting-cancel)")
+					}
 				}
 				if len(st.StageGateDeferred) > 0 {
 					fmt.Fprintf(w, " deferred=%s", strings.Join(st.StageGateDeferred, ","))
+				}
+				// Sticky: a forfeit is a failure, so it stays on the line for
+				// the life of the daemon rather than vanishing with the holder.
+				if st.StageGateForfeits > 0 {
+					fmt.Fprintf(w, " FORFEITS=%d", st.StageGateForfeits)
 				}
 				fmt.Fprintln(w)
 			}

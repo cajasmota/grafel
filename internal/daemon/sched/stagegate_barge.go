@@ -29,16 +29,25 @@ import (
 //     hold in tryAcquireStageLocked and DEFER, exactly as they defer for each
 //     other — re-arming their own timer, staying pending, losing no work.
 //
-// THE INVARIANT, stated honestly. At most one heavy write-side stage is
-// resident at a time, EXCEPT:
+// THE INVARIANT, stated honestly. This is the SAME invariant stated at the head
+// of stagegate.go — read that for the authoritative version; the exceptions are
+// restated here only because case 2 is this file's doing. At most one heavy
+// write-side stage is resident at a time, EXCEPT:
 //
-//  1. after a forfeit — reapStageLocked clears a wedged exclusive holder
-//     without cancelling it (see its doc), so a successor can overlap it; and
+//  1. after a forfeit is ABANDONED. A plain forfeit is NOT an exception: it
+//     changes nothing, keeps the gate closed, and leaves the stage running (see
+//     reapStageLocked). Only a holder that blows StageGateHoldMax (4h) AND then
+//     survives cancellation for StageGateForfeitGrace (30m) has its token
+//     reclaimed while it may still be alive, so a successor may overlap it. The
+//     gate DOES hold a cancel handle (stageCancel) and uses it at that expiry —
+//     it cancels first and reclaims second — so this exception is a process
+//     ignoring SIGKILL, not a policy choice; and
 //  2. the ONE background exclusive stage that was already mid-flight at the
-//     instant a rebuild barged. The barge does not cancel it (the gate has no
-//     handle that could resume the lost work) and does not wait for it. That
-//     one hand-off overlaps; every background stage that STARTS after the barge
-//     defers until the barge lifts.
+//     instant a rebuild barged. Here the gate declines to use that handle: the
+//     work is minutes of unresumable analytics and cancelling it would discard
+//     it outright, so the barge neither cancels the stage nor waits for it.
+//     That one hand-off overlaps; every background stage that STARTS after the
+//     barge defers until the barge lifts.
 //
 // Both exceptions are single-hand-off, not steady-state. Case 2 costs at most
 // one background pass' worth of overlap at the START of a rebuild, versus the

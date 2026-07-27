@@ -92,6 +92,18 @@ type StatusReply struct {
 	StageGateHolder   string   `json:"stage_gate_holder,omitempty"`
 	StageGateDeferred []string `json:"stage_gate_deferred,omitempty"`
 	StageGateBarging  []string `json:"stage_gate_barging,omitempty"`
+	// StageGateForfeits counts stages that blew StageGateHoldMax (4h) since
+	// daemon start. It is a FAILURE counter: any non-zero value means the gate
+	// caught a wedged heavy stage, and a measurement run should assert it is 0.
+	StageGateForfeits int64 `json:"stage_gate_forfeits,omitempty"`
+	// StageGateForfeitedHolder reports that StageGateHolder is INSIDE A FORFEIT
+	// GRACE right now: it blew the 4h hold-max, the gate is deliberately keeping
+	// it resident rather than releasing it (which would admit a successor beside
+	// a live stage), and it will be cancelled when the grace expires. The
+	// counter above is sticky for the life of the daemon and cannot answer
+	// "is this happening now"; this can, which is what an operator looking at a
+	// stalled daemon needs.
+	StageGateForfeitedHolder bool `json:"stage_gate_forfeited_holder,omitempty"`
 
 	// Concurrency-cap additions. BudgetMB=0 means admission control is
 	// disabled.

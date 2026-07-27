@@ -50,16 +50,20 @@ import (
 // resident at a time, with exactly two documented exceptions, both of which are
 // single hand-offs rather than steady states:
 //
-//  1. after a FORFEIT — reapStageLocked clears a wedged exclusive holder
-//     without cancelling it (it has no handle that could), so a successor may
-//     become co-resident with it; and
+//  1. after a forfeit is ABANDONED — a stage that blew StageGateHoldMax (4h)
+//     and then survived cancellation for StageGateForfeitGrace (30m) has its
+//     token reclaimed while it may still be alive, so a successor may become
+//     co-resident with it. (A plain FORFEIT is no longer an exception: it keeps
+//     the gate closed. See reapStageLocked for why that changed.) And
 //  2. the ONE exclusive stage already mid-flight when foreground work BARGES.
 //     The barge neither cancels it (that would discard minutes of unresumable
 //     work) nor waits for it (the foreground path must never pay latency), so
 //     that single pair overlaps. Every exclusive stage that STARTS after the
 //     barge defers until it lifts.
 //
-// Both exceptions are loud: `stage_gate_forfeit` (ERROR) and `stage_gate_barge`.
+// Both exceptions are loud: `stage_gate_forfeit_abandoned` (ERROR) and
+// `stage_gate_barge`. A `stage_gate_forfeit` (ERROR) means the gate DETECTED a
+// wedge and is holding the line, not that it gave up.
 
 const (
 	// stageGateRetryDefault is how long a deferred heavy stage waits before
@@ -76,18 +80,55 @@ const (
 	// peaks), so it must carry an equivalent starvation budget of its own.
 	stageGateMaxDeferDefault = 300 * time.Second
 
+	// stageGateMeasuredPassWorst is THE MEASUREMENT the hold-max is sized
+	// against, kept as its own named constant so the next person sizing this
+	// knob has the number rather than a round figure to argue with.
+	//
+	// Observed in the live daemon's own logs (2026-07, the grafel corpus):
+	//
+	//   ERROR "heavy write-stage token forfeited after hold-max" stage=group-algo
+	//         held_for=53m27s hold_max=15m0s
+	//
+	// That 53m27s was a LEGITIMATE group-algo pass, not a wedge. Rounded up.
+	stageGateMeasuredPassWorst = 54 * time.Minute
+
+	// stageGateHoldMaxGrowthFactor is the corpus growth the default must absorb
+	// without ever firing on legitimate work. A group-algo pass is dominated by
+	// whole-graph analytics (Louvain + PageRank + betweenness) whose cost grows
+	// FASTER than node count, so the headroom has to be multiplicative, not a
+	// fixed "+30 min" that a slightly bigger group eats immediately.
+	stageGateHoldMaxGrowthFactor = 4
+
 	// stageGateHoldMaxDefault is the longest an exclusive stage may hold the
-	// token before the gate FORFEITS it and resumes index dispatch. The token
-	// is held across a subprocess spawn (group-algo), so a child that wedges or
-	// is SIGKILLed in a way that never returns must not wedge the daemon
-	// forever. This is a safety valve, not a scheduling parameter — but it is
-	// SCALE-SENSITIVE and must be tunable in the field (GRAFEL_STAGE_GATE_HOLD_
-	// MAX / Config.StageGateHoldMax). A group-algo pass measures ~4 min on the
-	// current corpus, so 15m is ~3.75x headroom; on a corpus ~4x larger a
-	// LEGITIMATE pass would exceed it, be forfeited on every run, and silently
-	// degrade the gate to no-gate precisely on the largest corpora it exists
-	// for. A burst of `stage_gate_forfeit` events is that signal — raise this.
-	stageGateHoldMaxDefault = 15 * time.Minute
+	// token before the gate declares it FORFEITED. The token is held across a
+	// subprocess spawn (group-algo), so a child that wedges or is SIGKILLed in a
+	// way that never returns must not wedge the daemon forever.
+	//
+	// THIS IS A WEDGE DETECTOR, NOT A SCHEDULING PARAMETER, and it shipped
+	// mis-sized. The original 15m was derived from a ~4 min pass on a small
+	// corpus; the real corpus measured 32–53 minutes, so the gate forfeited its
+	// own token on EVERY run, deterministically, and degraded to no-gate on
+	// exactly the corpora it exists for. The env override nobody sets was not a
+	// mitigation. The default has to be right.
+	//
+	// 4h is stageGateHoldMaxGrowthFactor x stageGateMeasuredPassWorst rounded up
+	// (4 x 54m = 3h36m): a corpus four times this one cannot reach it. A holder
+	// past FOUR HOURS is not slow, it is broken — which is what lets the forfeit
+	// path below be as conservative as it is. Still tunable in the field via
+	// GRAFEL_STAGE_GATE_HOLD_MAX / Config.StageGateHoldMax.
+	stageGateHoldMaxDefault = 4 * time.Hour
+
+	// stageGateForfeitGraceDefault is how long a FORFEITED stage keeps the gate
+	// closed before the gate gives up on it, cancels it, and reclaims the token.
+	//
+	// See reapStageLocked for why the forfeit itself neither cancels nor
+	// releases. This grace is the terminal remedy behind that decision: it
+	// bounds the wedge the forfeit-without-release reintroduces. It is measured
+	// from the forfeit, i.e. from StageGateHoldMax, so the total patience before
+	// anything is killed is 4h30m — an order of magnitude past any legitimate
+	// pass, so no real work is ever destroyed by it.
+	// Env: GRAFEL_STAGE_GATE_FORFEIT_GRACE.
+	stageGateForfeitGraceDefault = 30 * time.Minute
 
 	// stageGateDrainMaxDefault bounds the DRAIN BARRIER (the starvation guard).
 	// While the barrier is up no NEW index job is dispatched, so the in-flight
@@ -136,31 +177,53 @@ func (s *Scheduler) stopped() bool {
 // be called with s.mu held. It is the "no lost work, no wedge" half of the gate:
 // every blocking-ish piece of state has a bounded lifetime.
 //
-// THE NO-OVERLAP INVARIANT IS CONDITIONAL ON THIS FUNCTION NOT FIRING. The
-// forfeit below clears stageHolder WITHOUT cancelling the wedged stage — the
-// gate has no cancel handle for it, and even if it did, a stage that has stopped
-// responding for StageGateHoldMax is unlikely to honour one. So after a forfeit a
-// second exclusive stage CAN become co-resident with the first. That is the
-// deliberate trade: a transient overlap is strictly better than a permanently
-// wedged daemon that never indexes again. The identity check in releaseStage is
-// the other half — a late-returning forfeited stage must not clear the NEW
-// holder's token. Everything else in the gate holds unconditionally; this is the
-// one documented exception, and it is loud (ERROR + stage_gate_forfeit event).
+// THE FORFEIT, AND WHY IT NO LONGER RELEASES THE TOKEN.
+//
+// The original forfeit cleared stageHolder without cancelling the stage and
+// resumed admitting — knowingly trading the no-overlap invariant for liveness.
+// On the real corpus that trade was not transient, it was the steady state, and
+// it was strictly negative on BOTH axes it was supposed to balance:
+//
+//   - MEMORY. hold-max was 15m against a group-algo pass that measures 32–53
+//     minutes, so the forfeit fired on every run and admitted a link pass
+//     alongside a still-live group-algo child — precisely the co-residency the
+//     gate exists to prevent, on every single run.
+//   - WALL TIME. Worse than the memory cost. releaseStage → links acquires →
+//     runLinks' SUCCESS path calls scheduleGroupAlgo (scheduler.go), which arms
+//     a FRESH group-algo pass. So a forfeit does not merely permit overlap, it
+//     RE-RUNS the very pass it forfeited: observed 11:51:51 forfeit → 12:00:51
+//     links resumed → 12:10:43 a second "group-algo: starting". A 32–53 minute
+//     pass paid twice, both copies co-resident, on a machine a user was waiting
+//     on. Cancelling the child on forfeit is no better: it discards up to 53
+//     minutes of completed work AND the re-arm still recomputes it from scratch.
+//
+// So the forfeit is now a DIAGNOSTIC, not a release. The gate stays closed, the
+// stage keeps running, it finishes, and normal ordering resumes — no work
+// discarded, no pass recomputed, invariant intact. The forfeit's job is to say
+// loudly that a holder has blown a bound that no legitimate pass can reach.
+//
+// The wedge risk that release existed to bound is instead bounded by
+// StageGateForfeitGrace: once a stage has been forfeited for that long, the gate
+// CANCELS it (SIGKILLing its subprocess — see subprocess_runner.go) and only
+// then reclaims the token. Killing before releasing is what keeps the invariant:
+// a successor is never admitted next to a child we have not first told to die.
+//
+// This leaves exactly ONE reachable path to a no-gate state, and it now requires
+// a holder to blow StageGateHoldMax (4h) AND survive cancellation for
+// StageGateForfeitGrace (30m) — a child stuck in uninterruptible I/O, not a slow
+// pass. It is loud and separately named: `stage_gate_forfeit_abandoned`.
+// The epoch check in releaseStage is the other half — a late-returning
+// abandoned stage must not clear the NEW holder's token. It has to be an EPOCH
+// and not a name: the successor to an abandoned "group-algo:acme" is usually
+// another "group-algo:acme", so a name comparison would let the late returner
+// free its successor's token and admit a third stage beside two live ones.
+// See Scheduler.stageEpoch.
 func (s *Scheduler) reapStageLocked(now time.Time) {
 	// Foreground barges expire on their OWN, much longer bound — never on
 	// StageGateHoldMax. See stageGateBargeMaxDefault for why the two liveness
 	// guarantees differ and why sharing the bound would be actively harmful.
 	s.reapBargeLocked(now)
-	if s.stageHolder != "" && s.cfg.StageGateHoldMax > 0 &&
-		now.Sub(s.stageHeldSince) > s.cfg.StageGateHoldMax {
-		held := now.Sub(s.stageHeldSince).Truncate(time.Second)
-		s.logEventLocked("stage_gate_forfeit", "",
-			s.stageHolder+": held the heavy-stage token for "+held.String()+" — forfeiting so index dispatch resumes (#5954)")
-		s.logger.Error("sched: heavy write-stage token forfeited after hold-max — a stage or its subprocess never returned",
-			"stage", s.stageHolder, "held_for", held, "hold_max", s.cfg.StageGateHoldMax)
-		s.stageHolder = ""
-		s.stageHeldSince = time.Time{}
-	}
+	s.reapForfeitedStageLocked(now)
 	// Expire a stale drain barrier — but ONLY once the batch it was raised to
 	// drain has actually cleared. Expiring while index jobs are still executing
 	// would re-open dispatch in the one state the barrier exists to prevent, and
@@ -174,6 +237,89 @@ func (s *Scheduler) reapStageLocked(now time.Time) {
 			s.stageDrainFor+": drain barrier expired without acquiring — resuming index dispatch (#5954)")
 		s.stageDrainFor = ""
 		s.stageDrainUntil = time.Time{}
+	}
+}
+
+// reapForfeitedStageLocked implements the two-tier forfeit described above:
+// tier 1 (hold-max) marks and shouts but changes nothing; tier 2 (forfeit
+// grace) cancels the stage, then reclaims the token. MUST be called with s.mu
+// held.
+func (s *Scheduler) reapForfeitedStageLocked(now time.Time) {
+	if s.stageHolder == "" || s.cfg.StageGateHoldMax <= 0 {
+		return
+	}
+	// Tier 1 — declare the forfeit. No cancel, no release: the gate stays
+	// closed so the holder cannot become co-resident with a successor, and its
+	// in-flight work is neither discarded nor scheduled for recomputation.
+	if s.stageForfeitedAt.IsZero() {
+		if now.Sub(s.stageHeldSince) <= s.cfg.StageGateHoldMax {
+			return
+		}
+		held := now.Sub(s.stageHeldSince).Truncate(time.Second)
+		s.stageForfeitedAt = now
+		s.stageForfeits++
+		s.logEventLocked("stage_gate_forfeit", "",
+			s.stageHolder+": held the heavy-stage token for "+held.String()+" (hold-max "+
+				s.cfg.StageGateHoldMax.String()+") — FORFEITED; the gate stays CLOSED and the stage is NOT "+
+				"cancelled, so no work is discarded or recomputed. It will be cancelled in "+
+				s.cfg.StageGateForfeitGrace.String()+" if it has not returned (#5954)")
+		s.logger.Error("sched: heavy write-stage FORFEITED — a holder blew a bound no legitimate pass can reach",
+			"stage", s.stageHolder, "held_for", held, "hold_max", s.cfg.StageGateHoldMax,
+			"action", "gate stays closed; stage will be cancelled after the forfeit grace",
+			"cancel_in", s.cfg.StageGateForfeitGrace, "forfeits", s.stageForfeits)
+		return
+	}
+	// Tier 2 — the terminal remedy. Cancel FIRST (SIGKILLs a group-algo child),
+	// then reclaim, so a successor is never admitted beside a child that has not
+	// been told to die. This is the only path that can leave the gate
+	// non-binding, and only against a process that survived cancellation.
+	if s.cfg.StageGateForfeitGrace <= 0 || now.Sub(s.stageForfeitedAt) <= s.cfg.StageGateForfeitGrace {
+		return
+	}
+	held := now.Sub(s.stageHeldSince).Truncate(time.Second)
+	name := s.stageHolder
+	cancel := s.stageCancel
+	s.logEventLocked("stage_gate_forfeit_abandoned", "",
+		name+": still resident "+held.String()+" after forfeit — cancelling it and reclaiming the token. "+
+			"THE GATE IS NON-BINDING until it exits (#5954)")
+	s.logger.Error("sched: forfeited write-stage abandoned after the grace window — cancelling and reclaiming; "+
+		"the no-co-residency invariant is NOT guaranteed until this stage exits",
+		"stage", name, "held_for", held, "forfeit_grace", s.cfg.StageGateForfeitGrace)
+	s.clearStageHolderLocked()
+	// Safe under s.mu: a context.CancelFunc never re-enters the scheduler
+	// synchronously (fireLinks does the same at its supersede site).
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// clearStageHolderLocked drops every field describing the current exclusive
+// holder. MUST be called with s.mu held.
+func (s *Scheduler) clearStageHolderLocked() {
+	s.stageHolder = ""
+	s.stageHeldSince = time.Time{}
+	s.stageForfeitedAt = time.Time{}
+	s.stageCancel = nil
+}
+
+// setStageCancelLocked registers the cancel handle for the current exclusive
+// holder, so a forfeit that outlives its grace has something to cancel. It is a
+// no-op unless (name, epoch) still identifies the holder. MUST be called with
+// s.mu held.
+//
+// The guard is BELT-AND-BRACES, not a live hazard, and the distinction is worth
+// stating so nobody later "hardens" it on a misreading. Both call sites
+// (fireLinks, fireGroupAlgo) acquire the token and register the handle inside
+// ONE unbroken s.mu critical section, and nothing in between reaps, so the
+// holder provably still is us — mutating this back to a name-only comparison
+// leaves the whole suite green, correctly. It takes the epoch because the
+// authorising identity of a holder IS the epoch (see Scheduler.stageEpoch) and
+// having one identity check in the package rather than two spellings is what
+// keeps a future caller that registers outside the acquiring critical section
+// from being silently wrong.
+func (s *Scheduler) setStageCancelLocked(name string, epoch int64, cancel func()) {
+	if s.stageHolder == name && s.stageEpoch == epoch {
+		s.stageCancel = cancel
 	}
 }
 
@@ -239,27 +385,36 @@ func (s *Scheduler) stageBusyLocked(now time.Time) bool {
 // `name`. It never blocks. It succeeds only when no other exclusive stage holds
 // the token AND no index job is executing. MUST be called with s.mu held.
 //
+// On success it returns the holder's EPOCH, which the caller must carry to
+// releaseStage and setStageCancelLocked. The epoch is the holder's identity;
+// `name` is not, because a successor commonly shares it (see Scheduler.
+// stageEpoch). It is returned rather than re-read from s.stageEpoch so that a
+// caller cannot silently acquire without capturing one.
+//
 // A drain barrier raised by a DIFFERENT stage also blocks acquisition, so the
 // starved stage that paid for the barrier is the one that gets through it.
-func (s *Scheduler) tryAcquireStageLocked(name string, now time.Time) bool {
+func (s *Scheduler) tryAcquireStageLocked(name string, now time.Time) (epoch int64, ok bool) {
 	if s.cfg.StageGateDisabled {
-		return true
+		// The escape hatch runs ungated, so there is no holder and no identity.
+		// Epoch 0 never matches a real acquisition (stageEpoch is pre-incremented
+		// from 0), and every guard it feeds is a no-op with no holder set.
+		return 0, true
 	}
 	s.reapStageLocked(now)
 	// #5954 barge: foreground work (a rebuild's index batch and its own link
 	// pass) runs entirely outside the scheduler, so s.inflight below cannot see
 	// it. A registered barge holds background stages off for its duration.
 	if s.bargeHeldLocked() {
-		return false
+		return 0, false
 	}
 	if s.stageHolder != "" {
-		return false
+		return 0, false
 	}
 	if len(s.inflight) > 0 {
-		return false
+		return 0, false
 	}
 	if s.stageDrainFor != "" && s.stageDrainFor != name {
-		return false
+		return 0, false
 	}
 	if since, ok := s.stageDeferSince[name]; ok {
 		waited := now.Sub(since).Truncate(time.Millisecond)
@@ -273,9 +428,10 @@ func (s *Scheduler) tryAcquireStageLocked(name string, now time.Time) bool {
 		s.stageDrainFor = ""
 		s.stageDrainUntil = time.Time{}
 	}
+	s.stageEpoch++
 	s.stageHolder = name
 	s.stageHeldSince = now
-	return true
+	return s.stageEpoch, true
 }
 
 // noteStageDeferLocked records that `name` could not acquire the token, and
@@ -342,13 +498,53 @@ func (s *Scheduler) stageBlockReasonLocked() string {
 // releaseStage hands the exclusive token back and wakes admission. Always
 // invoked via `defer` at the acquisition site, so it also runs when the stage
 // returns an error, is cancelled, or panics.
-func (s *Scheduler) releaseStage(name string) {
+//
+// `epoch` is the value tryAcquireStageLocked returned, and it — not `name` — is
+// what authorises the release. A stage whose token was ABANDONED by the
+// forfeit-grace expiry (reapForfeitedStageLocked) is still running and will
+// still reach this defer, potentially long after a SUCCESSOR acquired. Matching
+// on name alone would let it free the successor's token, because the successor
+// is usually the same name (a fresh group-algo after an abandoned group-algo);
+// the gate would then admit a third stage beside two live ones. Matching on the
+// epoch makes the late return a no-op, which is the whole of the guarantee the
+// abandonment path advertises: the gate is non-binding against the ONE
+// abandoned stage, and no further.
+func (s *Scheduler) releaseStage(name string, epoch int64) {
 	s.mu.Lock()
-	if s.stageHolder == name {
+	switch {
+	case s.stageHolder == name && s.stageEpoch == epoch:
 		held := time.Since(s.stageHeldSince).Truncate(time.Millisecond)
-		s.stageHolder = ""
-		s.stageHeldSince = time.Time{}
-		s.logEventLocked("stage_gate_release", "", name+" held "+held.String())
+		forfeited := !s.stageForfeitedAt.IsZero()
+		s.clearStageHolderLocked()
+		msg := name + " held " + held.String()
+		if forfeited {
+			// A forfeited stage that returns of its own accord is the GOOD
+			// outcome of the two-tier forfeit: the gate never opened, the work
+			// was never discarded, and it is now complete.
+			msg += " (was forfeited — returned before the grace expired; no work lost)"
+		}
+		s.logEventLocked("stage_gate_release", "", msg)
+	default:
+		// Not the authorised holder, so this is an ABANDONED stage finally
+		// exiting. Worth saying: it closes out the `stage_gate_forfeit_abandoned`
+		// ERROR that opened the non-binding window, which otherwise has no end —
+		// an operator reading it needs to see when the invariant was restored.
+		//
+		// The condition is DEFAULT rather than something narrower like
+		// `epoch < s.stageEpoch` ("a successor has already acquired"). That test
+		// would miss the PRIMARY case: the grace expiry cancels the stage, so it
+		// usually exits within moments and long before anything else acquires —
+		// and clearStageHolderLocked does not bump the epoch, so with no
+		// successor the epoch is unchanged and the branch would never be taken,
+		// precisely in the window the operator is watching. The only other way to
+		// land here is epoch 0, i.e. the gate-disabled escape hatch, which never
+		// held anything; a set holder always carries the current epoch.
+		if epoch != 0 {
+			s.logEventLocked("stage_gate_abandoned_returned", "",
+				name+" (epoch "+itoa(epoch)+"): abandoned stage finally returned — its token was reclaimed by the "+
+					"forfeit grace, so this release is a no-op and any current holder keeps it. "+
+					"The no-co-residency invariant is guaranteed again (#5954)")
+		}
 	}
 	s.mu.Unlock()
 	// Capacity has freed: let the admission loop dispatch queued index jobs.

@@ -417,6 +417,8 @@ func startEngineLivenessHeartbeat(root string, interval time.Duration, warmingFn
 			f.StageGateHolder = g.Holder
 			f.StageGateDeferred = g.Deferred
 			f.StageGateBarging = g.Barging
+			f.StageGateForfeits = g.Forfeits
+			f.StageGateForfeitedHolder = g.ForfeitedHolder
 		}
 		if err := statusfile.Write(key, f); err != nil && logger != nil {
 			logger.Warn("engine liveness: statusfile write failed", "err", err)
