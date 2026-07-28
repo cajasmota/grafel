@@ -894,7 +894,11 @@ type aslState struct {
 // sfnLambdaARNRe extracts the function name from a Lambda ARN or
 // `arn:aws:states:::lambda:invoke` resource string.
 // Group 1 = function name (last colon-separated segment, stripping aliases).
-var sfnLambdaARNRe = regexp.MustCompile(`arn:aws(?:-[a-z]+)*:lambda:[^:]+:\d+:function:([^:$/\s]+)`)
+// The capture class excludes quote characters and backslashes so an ARN that
+// appears inside a string literal (`"...:function:charge-card"`) does not carry
+// the closing quote into the function name, which would point the edge at a
+// Lambda entity that does not exist (#6012).
+var sfnLambdaARNRe = regexp.MustCompile(`arn:aws(?:-[a-z]+)*:lambda:[^:]+:\d+:function:([^:$/\s"'` + "`" + `\\,]+)`)
 
 // sfnStatesLambdaRe matches `arn:aws:states:::lambda:invoke` style resources.
 // The actual Lambda ARN is in the Parameters block which we parse separately.
@@ -1293,45 +1297,168 @@ func applyCloudFormationSFNEdges(
 		return entities, relationships
 	}
 
-	smName := sfnStateMachineNameFromPath(path)
-	smID := sfnStateMachineID(smName)
+	// One entity per StateMachine *resource*, named after its logical ID.
+	// Naming after the file path collapsed every machine in a template into a
+	// single node holding the union of their targets (#6012).
+	resources := cfnSFNStateMachineResources(src)
+	if len(resources) == 0 {
+		// No logical ID could be identified (fragment, flow-style mapping,
+		// JSON template, ...): keep the previous file-derived behaviour rather
+		// than dropping the machine.
+		resources = []cfnSFNResource{{LogicalID: sfnStateMachineNameFromPath(path), Body: src}}
+	}
 
-	entities = append(entities, types.EntityRecord{
-		Name:               smID,
-		Kind:               stateMachineKind,
-		SourceFile:         path,
-		Language:           "yaml",
-		Properties:         map[string]string{"sm_name": smName, "pattern_type": "workflow_synthesis"},
-		EnrichmentRequired: false,
-		EnrichmentStatus:   types.StatusPending,
-		QualityScore:       0.85,
-	})
+	for _, res := range resources {
+		smName := res.LogicalID
+		smID := sfnStateMachineID(smName)
 
-	seenEdge := map[string]bool{}
-	for _, m := range cfSFNLambdaARNRe.FindAllStringSubmatch(src, -1) {
-		fnName := m[1]
-		if !looksLikeFunctionName(fnName) {
-			continue
+		props := map[string]string{"sm_name": smName, "pattern_type": "workflow_synthesis"}
+		// The deployed name, when the template states it literally. Recorded as
+		// a property, never as identity: StateMachineName is optional and is
+		// frequently an unresolved !Sub/!Ref, which would make node identity
+		// non-deterministic. Cross-source resolution can still match on it.
+		if dn := cfnLiteralStateMachineName(res.Body); dn != "" {
+			props["state_machine_name"] = dn
 		}
-		lambdaEntityID := lambdaFunctionID(fnName)
-		targetID := fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaEntityID)
-		key := smID + "|" + targetID
-		if seenEdge[key] {
-			continue
-		}
-		seenEdge[key] = true
-		relationships = append(relationships, types.RelationshipRecord{
-			FromID: fmt.Sprintf("%s:%s", stateMachineKind, smID),
-			ToID:   targetID,
-			Kind:   stepFunctionStepInvokesEdgeKind,
-			Properties: types.Props{
-				{K: "pattern_type", V: "workflow_synthesis"},
-				{K: "workflow_engine", V: "aws-sfn"},
-			},
+
+		entities = append(entities, types.EntityRecord{
+			Name:               smID,
+			Kind:               stateMachineKind,
+			SourceFile:         path,
+			Language:           "yaml",
+			Properties:         props,
+			EnrichmentRequired: false,
+			EnrichmentStatus:   types.StatusPending,
+			QualityScore:       0.85,
 		})
+
+		seenEdge := map[string]bool{}
+		for _, m := range cfSFNLambdaARNRe.FindAllStringSubmatch(res.Body, -1) {
+			fnName := m[1]
+			if !looksLikeFunctionName(fnName) {
+				continue
+			}
+			lambdaEntityID := lambdaFunctionID(fnName)
+			targetID := fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaEntityID)
+			key := smID + "|" + targetID
+			if seenEdge[key] {
+				continue
+			}
+			seenEdge[key] = true
+			relationships = append(relationships, types.RelationshipRecord{
+				FromID: fmt.Sprintf("%s:%s", stateMachineKind, smID),
+				ToID:   targetID,
+				Kind:   stepFunctionStepInvokesEdgeKind,
+				Properties: types.Props{
+					{K: "pattern_type", V: "workflow_synthesis"},
+					{K: "workflow_engine", V: "aws-sfn"},
+				},
+			})
+		}
 	}
 
 	return entities, relationships
+}
+
+// cfnSFNResource is one AWS::StepFunctions::StateMachine resource located in a
+// CloudFormation template: its logical ID and its own block body.
+type cfnSFNResource struct {
+	LogicalID string
+	Body      string
+}
+
+// sfnCFNLogicalIDLineRe matches a block-style YAML mapping key with no inline
+// value — the shape of a CloudFormation logical ID under `Resources:`.
+var sfnCFNLogicalIDLineRe = regexp.MustCompile(`^([ ]*)([A-Za-z0-9][A-Za-z0-9_-]*):[ \t]*(#.*)?$`)
+
+// cfnStateMachineNameRe captures a literal `StateMachineName:` value.
+var cfnStateMachineNameRe = regexp.MustCompile(`StateMachineName\s*:\s*["']?([^"'\n\r]+)["']?`)
+
+// cfnLiteralStateMachineName returns the resource's StateMachineName when the
+// template states it literally, and "" when it is absent or an unresolved
+// intrinsic (`!Sub`, `!Ref`, `${...}`).
+func cfnLiteralStateMachineName(body string) string {
+	m := cfnStateMachineNameRe.FindStringSubmatch(body)
+	if len(m) < 2 {
+		return ""
+	}
+	name := strings.TrimSpace(m[1])
+	if name == "" || strings.HasPrefix(name, "!") || strings.Contains(name, "${") {
+		return ""
+	}
+	return name
+}
+
+// cfnSFNStateMachineResources finds every AWS::StepFunctions::StateMachine
+// resource in a block-style YAML template, returning each logical ID with the
+// body of its own block so ARN scans can be scoped to it.
+//
+// A key qualifies when its *immediate* children include the StateMachine Type
+// marker; that indent check is what stops the enclosing `Resources:` key from
+// matching and swallowing every machine in the template.
+//
+// Returns nil when nothing qualifies (fragments, flow-style mappings, JSON
+// templates) so the caller can fall back to the file-derived name.
+func cfnSFNStateMachineResources(src string) []cfnSFNResource {
+	lines := strings.Split(src, "\n")
+	var out []cfnSFNResource
+
+	for i, line := range lines {
+		m := sfnCFNLogicalIDLineRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		indent := len(m[1])
+		logicalID := m[2]
+
+		// Collect the block body: following lines that are blank or indented
+		// deeper than the key.
+		end := i + 1
+		childIndent := -1
+		for ; end < len(lines); end++ {
+			l := lines[end]
+			if strings.TrimSpace(l) == "" {
+				continue
+			}
+			li := wfLeadingSpaces(l)
+			if li <= indent {
+				break
+			}
+			if childIndent < 0 || li < childIndent {
+				childIndent = li
+			}
+		}
+		if childIndent < 0 {
+			continue
+		}
+
+		// The Type marker must sit at the immediate-child indent.
+		isStateMachine := false
+		for _, l := range lines[i+1 : end] {
+			if wfLeadingSpaces(l) == childIndent && cfSFNResourceRe.MatchString(l) {
+				isStateMachine = true
+				break
+			}
+		}
+		if !isStateMachine {
+			continue
+		}
+		out = append(out, cfnSFNResource{
+			LogicalID: logicalID,
+			Body:      strings.Join(lines[i+1:end], "\n"),
+		})
+	}
+	return out
+}
+
+// wfLeadingSpaces counts the leading spaces of a line (YAML forbids tabs for
+// indentation, so spaces are the whole story).
+func wfLeadingSpaces(s string) int {
+	n := 0
+	for n < len(s) && s[n] == ' ' {
+		n++
+	}
+	return n
 }
 
 // ---------------------------------------------------------------------------
@@ -1352,7 +1479,8 @@ func applyCDKStateMachineJSON(
 	if !strings.Contains(src, "StateMachine") {
 		return entities, relationships
 	}
-	for _, m := range cdkStateMachineRe.FindAllStringSubmatchIndex(src, -1) {
+	matches := cdkStateMachineRe.FindAllStringSubmatchIndex(src, -1)
+	for i, m := range matches {
 		smName := src[m[2]:m[3]]
 		if !looksLikeFunctionName(smName) {
 			continue
@@ -1368,14 +1496,31 @@ func applyCDKStateMachineJSON(
 			EnrichmentStatus:   types.StatusPending,
 			QualityScore:       0.8,
 		})
-		// Scan nearby for Lambda ARNs.
-		for _, lm := range sfnLambdaARNRe.FindAllStringSubmatch(src, -1) {
+		// Scan for Lambda ARNs *inside this construct's own props object only*.
+		// Scanning the whole file here would join every state machine in the
+		// file to every Lambda in the file — a cartesian product of edges that
+		// do not exist (#6012).
+		bound := len(src)
+		if i+1 < len(matches) {
+			bound = matches[i+1][0]
+		}
+		body := cdkConstructPropsBody(src, m[1], bound)
+		if body == "" {
+			continue
+		}
+		seenEdge := map[string]bool{}
+		for _, lm := range sfnLambdaARNRe.FindAllStringSubmatch(body, -1) {
 			fnName := lm[1]
 			if !looksLikeFunctionName(fnName) {
 				continue
 			}
 			lambdaEntityID := lambdaFunctionID(fnName)
 			targetID := fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaEntityID)
+			key := smID + "|" + targetID
+			if seenEdge[key] {
+				continue
+			}
+			seenEdge[key] = true
 			relationships = append(relationships, types.RelationshipRecord{
 				FromID: fmt.Sprintf("%s:%s", stateMachineKind, smID),
 				ToID:   targetID,
@@ -1388,6 +1533,59 @@ func applyCDKStateMachineJSON(
 		}
 	}
 	return entities, relationships
+}
+
+// cdkConstructPropsBody returns the props object belonging to a
+// `new StateMachine(this, "id"` match that ended at `from`.
+//
+// The props object must be this construct's own third argument: the next
+// non-space byte after the construct id must be ',' and the one after that
+// '{'. Anything else — a variable (`new StateMachine(this, "id", props)`), a
+// call, or no third argument at all — means this construct has no inline props
+// object, and "" is returned. Searching forward for the first '{' instead would
+// adopt whatever unrelated construct happens to come next in the file and
+// attribute its Lambda ARNs to this state machine (#6012).
+//
+// `bound` (the start of the next StateMachine construct, or EOF) additionally
+// clamps the body. That matters when a brace inside a string literal
+// desynchronises the counter and the "matching" brace lands past the next
+// construct.
+//
+// "" is likewise returned when no balanced closing brace exists — declining to
+// emit an edge is strictly better than emitting one attributed to the wrong
+// state machine.
+func cdkConstructPropsBody(src string, from, bound int) string {
+	if from < 0 || from >= bound || bound > len(src) {
+		return ""
+	}
+	i := from
+	for i < bound && wfIsSpaceByte(src[i]) {
+		i++
+	}
+	if i >= bound || src[i] != ',' {
+		return ""
+	}
+	i++
+	for i < bound && wfIsSpaceByte(src[i]) {
+		i++
+	}
+	if i >= bound || src[i] != '{' {
+		return ""
+	}
+	open := i
+	closeIdx := findMatchingBraceWF(src, open)
+	if closeIdx < 0 {
+		return ""
+	}
+	if closeIdx > bound {
+		closeIdx = bound
+	}
+	return src[open:closeIdx]
+}
+
+// wfIsSpaceByte reports whether b is ASCII whitespace.
+func wfIsSpaceByte(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
 }
 
 // ---------------------------------------------------------------------------
