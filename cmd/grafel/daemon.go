@@ -397,6 +397,14 @@ func installCapReloadHandler(store *caps.Store, logf interface{ Printf(string, .
 			} else {
 				logf.Printf("cpu-tune: SIGHUP reload — daemon GOMAXPROCS unchanged (=%d, host=%d)", n, runtime.NumCPU())
 			}
+			// #5970: the in-process parse gate reads the same cpu.json pin, so
+			// re-resolve it here too. Without this an operator who tightens
+			// cpu.json and SIGHUPs would move the daemon's GOMAXPROCS while the
+			// parse gate — the thing that actually bounds cgo — kept its
+			// start-up value. Raising wakes queued parses; lowering applies to
+			// the next acquirer and never preempts a parse already running.
+			parseCap := installDaemonParseCap(runtime.NumCPU(), store)
+			logf.Printf("cpu-tune: SIGHUP reload — in-process parse concurrency cap=%d (#5970)", parseCap)
 		}
 	}()
 }
@@ -415,6 +423,83 @@ func envPositiveInt2(name string) int {
 		return 0
 	}
 	return n
+}
+
+// daemonParseCap resolves the cap on CONCURRENT in-process tree-sitter parses
+// for a daemon process (`grafel serve` / `grafel engine`), given the host core
+// count. Never returns 0 — 0 means "unbounded" to the gate, the opposite of
+// what a degenerate core count must produce.
+//
+// WHY NOT GOMAXPROCS (#5970). Until this change the daemon sized this gate from
+// runtime.GOMAXPROCS(0), i.e. 100% of its own runtime parallelism — half the
+// box on a default install, the WHOLE box whenever the half-cores default did
+// not apply (unknown core count, or an operator raising the pin). That is the
+// reactive path: the watcher fires on the user's own `git checkout`/save, the
+// daemon re-parses in-process, and the user's machine slows down while they
+// type. The standing policy is 25% of machine capacity for background indexing
+// (process.IndexCoreBudget), and #5972/#5973 shipped it for the CLI index path
+// and the extract-subprocess fanout respectively — both of which fork, and
+// neither of which touched this call site. This is the last one, and the only
+// one that runs unasked during the user's normal work.
+//
+// GOMAXPROCS is also not a substitute for this gate in the first place:
+// tree-sitter parsing is cgo, and a goroutine inside a cgo call parks in
+// _Gsyscall while the runtime hands its P to another goroutine, so N concurrent
+// parses occupy N OS threads whatever GOMAXPROCS says. The counting semaphore
+// held across the cgo call is the real bound (see internal/indexstate/parsegate.go).
+//
+// OPERATOR OVERRIDE. The two surfaces that pin the daemon's CPU — the
+// GRAFEL_DAEMON_GOMAXPROCS env var and cpu.json's daemon GOMAXPROCS field —
+// are operator decisions about how much of the machine this daemon may use,
+// and keep top precedence UNCLAMPED in both directions: either may tighten the
+// gate below the budget or open it above, up to and including the whole host.
+// fileVal is the cpu.json value (0 = unset), so the precedence here is the same
+// env > cpu.json > default chain resolveDaemonGOMAXPROCSWith documents; only
+// the trailing default differs, and deliberately: the 25% background budget,
+// not the half-cores GOMAXPROCS default. That default is a bound on the
+// daemon's Go-runtime parallelism (query handling included), not a statement
+// about how much background parsing may draw.
+func daemonParseCap(hostCPU, fileVal int) int {
+	if n := envPositiveInt2("GRAFEL_DAEMON_GOMAXPROCS"); n > 0 {
+		return n
+	}
+	if fileVal > 0 {
+		return fileVal
+	}
+	return process.IndexCoreBudgetFor(hostCPU)
+}
+
+// daemonParseCapFileVal reads the cpu.json daemon-GOMAXPROCS pin from the caps
+// store, returning 0 when there is no store, no file, or no value. Kept
+// separate from daemonParseCap so the resolution policy stays a pure function.
+func daemonParseCapFileVal(store *caps.Store) int {
+	if store == nil {
+		return 0
+	}
+	cfg, err := store.Load()
+	if err != nil {
+		return 0
+	}
+	return cfg.DaemonGOMAXPROCSValue()
+}
+
+// installDaemonParseCap resolves the daemon's parse cap for hostCPU (honouring
+// the cpu.json pin in store, if any) and installs it on the process-wide gate,
+// returning the value now in force.
+//
+// Separated from runDaemonMode so the value that actually reaches
+// indexstate is assertable in a test — runDaemonMode binds sockets, spawns
+// children and blocks forever, so it cannot itself be unit-tested, and the two
+// previous attempts at this fix both left a cap that "looked right" on a path
+// no test exercised.
+//
+// The installed cap is the BACKGROUND ceiling. User-awaited in-process parsing
+// inside this same process lifts it for its duration via
+// indexstate.BeginForegroundParse (see daemonIndexFunc, daemonRebuildFuncCore).
+func installDaemonParseCap(hostCPU int, store *caps.Store) int {
+	cap := daemonParseCap(hostCPU, daemonParseCapFileVal(store))
+	indexstate.SetParseConcurrency(cap)
+	return cap
 }
 
 // daemonRunMode selects which of the daemon.Config-driven entrypoints
@@ -491,19 +576,6 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 		prev := runtime.GOMAXPROCS(gmp)
 		gcLog.Printf("cpu-tune: GRAFEL_DAEMON_GOMAXPROCS=%d applied (was %d, host=%d)", gmp, prev, runtime.NumCPU())
 	}
-
-	// #5630: bound CONCURRENT in-process tree-sitter parses. The reactive
-	// incremental reindex (and the opt-out in-process full index) re-parse
-	// changed files INSIDE the daemon — work that escapes both the IndexGate
-	// (#5493, rebuild-only) and the #5602 reindex GOMAXPROCS cap (subprocess-
-	// only), so it can monopolise the box while index_status reports idle. Cap
-	// it at the daemon's effective GOMAXPROCS (the same core budget the daemon
-	// runtime itself uses) so an in-process parse burst cannot draw more cores
-	// than the daemon is allowed. Mirrors the runtime cap above; honors the same
-	// resolve path so a tightened GRAFEL_DAEMON_GOMAXPROCS also tightens parsing.
-	parseCap := runtime.GOMAXPROCS(0)
-	indexstate.SetParseConcurrency(parseCap)
-	gcLog.Printf("cpu-tune: in-process parse concurrency cap=%d (#5630)", parseCap)
 
 	// #5675: raise RLIMIT_NOFILE toward the hard limit so a worktree indexing
 	// storm (each subscribed working tree costs ~1 fd per directory on Linux
@@ -641,6 +713,17 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 	capStore := caps.NewStore(caps.DefaultPath(layout.Root))
 	extract.SetRuntimeCaps(capStore)
 	installCapReloadHandler(capStore, gcLog)
+
+	// #5630/#5970: bound CONCURRENT in-process tree-sitter parses at the
+	// BACKGROUND core budget. See installDaemonParseCap for why GOMAXPROCS was
+	// the wrong number here, and for the foreground exemption. Installed HERE,
+	// after capStore exists, so the cpu.json pin is honoured — the same
+	// env > cpu.json > default precedence every other daemon CPU knob has, and
+	// re-applied on SIGHUP by installCapReloadHandler. Nothing between process
+	// start and this point parses, so the gate is in force before any acquirer
+	// reaches it.
+	parseCap := installDaemonParseCap(runtime.NumCPU(), capStore)
+	gcLog.Printf("cpu-tune: in-process parse concurrency cap=%d of %d cores (#5970)", parseCap, runtime.NumCPU())
 
 	// #1626: one-time sweep to relocate any pre-existing in-repo
 	// `.grafel/` graph artifacts into the external store, so groups
@@ -1266,6 +1349,14 @@ func daemonSchedulerGroupAlgo(ctx context.Context, group string) error {
 // RPC argument struct onto the existing in-process Index() entrypoint
 // defined in this same package.
 func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
+	// #5970 FOREGROUND EXEMPTION. This runs Index() IN-PROCESS, inside the
+	// daemon, synchronously under an RPC the user's CLI is blocked on — the same
+	// judgement WithInteractive(true) below already encodes. The daemon's parse
+	// gate is sized for BACKGROUND work (25% of the box, installDaemonParseCap),
+	// so without this hold a `grafel index` would be throttled to a quarter of
+	// the machine with a human waiting on it. Released on every exit path.
+	defer indexstate.BeginForegroundParse()()
+
 	opts := []IndexOption{
 		WithRepairCandidates(args.Repair),
 		WithRepairApply(args.RepairApply),
@@ -1462,6 +1553,32 @@ func daemonRebuildFuncCore(
 	// it; the closure is idempotent. Inert when no scheduler is running (CLI
 	// one-shots, watcher-less daemons, tests) and when GRAFEL_STAGE_GATE=0.
 	defer sched.BargeForeground("rebuild:" + args.Group)()
+
+	// #5970 FOREGROUND EXEMPTION, in-process half — ON THE OPT-OUT PATH ONLY.
+	// The barge and the per-group foreground registry below resolve caps for the
+	// CHILDREN this rebuild spawns; neither touches the daemon's own
+	// process-wide parse gate, which is sized for background work. That gate
+	// binds this function only when indexFn runs IN-PROCESS, i.e. under
+	// GRAFEL_SUBPROCESS_INDEXER=0. On the shipped default the per-repo index
+	// forks (runRebuildSubprocess) and the child sizes its own gate from
+	// --interactive, and daemonForegroundLinks does no tree-sitter parsing at
+	// all (internal/links has no treesitter dependency) — so a hold here would
+	// buy this rebuild nothing while suspending the 25% budget process-wide for
+	// the whole 10-12 minute window.
+	//
+	// That asymmetry is the point: BeginForegroundParse lifts the cap for EVERY
+	// concurrent acquirer, not just this call tree (see its doc). The
+	// watcher-driven reindex keeps running throughout a rebuild — the barge
+	// holds heavy write STAGES off, it does not gate index admission — so an
+	// unconditional hold here would let background parsing run uncapped for the
+	// duration on the one config where the hold does nothing. Bounded either
+	// way (the scheduler's worker pool is 2 and TryIncremental extracts
+	// sequentially), but "suspend the budget for 12 minutes to no benefit" is
+	// not a trade worth making. A per-caller exemption that leaves the cap
+	// standing for everyone else is the correct end state; tracked in #6022.
+	if !sched.SubprocessIndexEnabled() {
+		defer indexstate.BeginForegroundParse()()
+	}
 
 	// #5954 WALL TIME. The barge above tells the stage gate "hold background
 	// stages off"; this tells every child spawn helper "a human is waiting on
