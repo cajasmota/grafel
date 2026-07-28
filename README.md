@@ -250,11 +250,13 @@ For code contributions, see [CONTRIBUTING.md](CONTRIBUTING.md). If you're an AI 
 
 ## Acknowledgments
 
-Thanks to grafel's contributors:
+grafel is built by the people below — every extractor fix, quality report and review is in here somewhere. Thank you.
 
-- [@marcus555](https://github.com/marcus555)
-- [@auxmedrano](https://github.com/auxmedrano)
-- [@walter-ajanel](https://github.com/walter-ajanel)
+<a href="https://github.com/cajasmota/grafel/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=cajasmota/grafel" alt="grafel contributors" />
+</a>
+
+Also a separate thank-you to [@auxmedrano](https://github.com/auxmedrano) and [@walter-ajanel](https://github.com/walter-ajanel), whose quality reports and issue triage shaped the extractors without ever landing as a commit.
 
 ---
 
