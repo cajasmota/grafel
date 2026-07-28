@@ -80,10 +80,34 @@ func splitFormatAStructuralRef(stub string) (filePath, name string, ok bool) {
 }
 
 // ScopedResult is the output of ResolveScoped.
+//
+// The two relationship slices are deliberately kept SEPARATE (#6033). They have
+// different merge semantics in the caller and conflating them into one merged
+// slice caused every incremental pass to duplicate the entire surviving edge
+// set (multiplicity 2, 4, 8, 16 …), because the caller appended the merged
+// slice to a `doc.Relationships` that already held the survivors:
+//
+//	doc.Relationships = UpdatedExistingRelationships          // REPLACE in place
+//	doc.Relationships = append(doc.Relationships,
+//	                           ResolvedNewRelationships...)   // then APPEND
 type ScopedResult struct {
-	// NewRelationships is the merged + re-resolved relationship slice to use
-	// in the patched graph. Only valid when FallbackRequired is false.
-	NewRelationships []graph.Relationship
+	// UpdatedExistingRelationships is the COMPLETE surviving relationship set
+	// passed in as existingRels, in input order, with the scoped resolver's
+	// mutations applied in place: inbound stub ToIDs bound to (possibly
+	// re-keyed) entity IDs, and the RelationshipID recomputed for those edges.
+	// Unmutated survivors are carried through verbatim.
+	//
+	// It REPLACES the caller's existing relationship slice — it is not an
+	// addition to it. Only valid when FallbackRequired is false.
+	UpdatedExistingRelationships []graph.Relationship
+
+	// ResolvedNewRelationships is exactly the newRels input with stub From/To
+	// endpoints resolved — the genuinely new edges extracted from the changed
+	// files, and nothing else. It is APPENDED by the caller, and is also the
+	// correct blast-radius input for the downstream scoped passes (flow
+	// recompute, affected-module aggregation), which are meaningless when fed
+	// the whole graph. Only valid when FallbackRequired is false.
+	ResolvedNewRelationships []graph.Relationship
 
 	// FallbackRequired is true when the scoped resolver found a relationship
 	// whose target cannot be resolved. The caller must fall back to full reindex.
@@ -310,17 +334,14 @@ func ResolveScoped(
 		}
 	}
 
-	merged := make([]graph.Relationship, 0, len(resolvedNewRels)+len(updatedExistingRels))
-	merged = append(merged, updatedExistingRels...)
-	merged = append(merged, resolvedNewRels...)
-
 	logger.Printf("sresolver: inbound-fixed=%d signature-rewired=%d new-rels=%d existing-rels=%d",
 		inboundFixed, signatureRewired, len(resolvedNewRels), len(updatedExistingRels))
 
 	return ScopedResult{
-		NewRelationships: merged,
-		InboundFixed:     inboundFixed,
-		SignatureRewired: signatureRewired,
+		UpdatedExistingRelationships: updatedExistingRels,
+		ResolvedNewRelationships:     resolvedNewRels,
+		InboundFixed:                 inboundFixed,
+		SignatureRewired:             signatureRewired,
 	}
 }
 

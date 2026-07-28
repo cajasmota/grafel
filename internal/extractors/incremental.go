@@ -39,9 +39,19 @@
 //   - Corruption recovery: if LoadManifest returns a malformed manifest we log
 //     and fall back to full reindex rather than panicking.
 //
-// Golden-file equivalence is verified in incremental_test.go: a full reindex
-// and an incremental pass on the same input must produce byte-identical
-// graph.fb output.
+// Test coverage — read this before trusting a claim of equivalence (#6033).
+// incremental_test.go does NOT compare against a full reindex: running the full
+// Index() pipeline from this package's tests would import cmd/grafel and create
+// an import cycle. What it verifies is that the incremental path's own output
+// tracks source mutations (entities appear/disappear as expected). Full-vs-
+// incremental equivalence is only covered at the integration level.
+//
+// incremental_dupe_test.go carries the relationship-CARDINALITY assertions.
+// They exist because every other assertion in this package is existence-only
+// ("is edge X present?"), which is blind to duplication — that blindness is
+// exactly how #6033 (every pass duplicating the whole surviving edge set)
+// survived from #2167 until incremental became default-on in #5231. Any change
+// to the merge step in Step 7/8 below must keep those cardinality tests green.
 package extractors
 
 import (
@@ -554,7 +564,17 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		logger.Printf("incremental: fallback reason=unresolved-rel target=%s", scopedResult.UnresolvedTarget)
 		return fallback(t0, "unresolved-rel target="+scopedResult.UnresolvedTarget)
 	}
-	newRels = scopedResult.NewRelationships
+	// #6033: the two slices have different merge semantics and must not be
+	// conflated. UpdatedExistingRelationships is the COMPLETE surviving edge set
+	// with the resolver's inbound fixes applied in place — it REPLACES
+	// doc.Relationships (appending it would duplicate every survivor, which is
+	// exactly what #6033 was: multiplicity 2, 4, 8, 16 … per pass, and stale
+	// unbound stub edges left alongside their rewired copies).
+	// ResolvedNewRelationships holds only the genuinely new edges; those are
+	// appended at Step 8 and are also the correct blast-radius input for the
+	// flow / affected-module passes below.
+	doc.Relationships = scopedResult.UpdatedExistingRelationships
+	newRels = scopedResult.ResolvedNewRelationships
 
 	// --- Step 7a: stamp Properties["module"] on new entities (#5309 layer 2) ---
 	// The full-rebuild path stamps every sourced entity with a deterministic
