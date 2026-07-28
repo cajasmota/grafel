@@ -101,6 +101,23 @@ type ScopedResult struct {
 	// addition to it. Only valid when FallbackRequired is false.
 	UpdatedExistingRelationships []graph.Relationship
 
+	// MutatedExistingRelationships is the SUBSET of
+	// UpdatedExistingRelationships whose ToID this pass actually rewrote (the
+	// inbound-fix edges: a stub ToID bound to a real entity ID). It is a
+	// blast-radius signal ONLY — every edge in it is already present in
+	// UpdatedExistingRelationships, so appending it to the document would
+	// re-introduce the #6033 duplication.
+	//
+	// It exists because rewiring an inbound edge can create a cross-module
+	// dependency that the previous build could not see: a full build leaves
+	// X→"foo" unresolved, so aggregateModules skips it and emits no M2→M3
+	// DEPENDS_ON. When a later incremental pass binds "foo" to Y in M3, that
+	// M2→M3 edge becomes derivable — but neither M2 nor M3 is in the changed
+	// file's module set, so without this signal the affected-module set misses
+	// them and the module layer silently diverges from a full rebuild until
+	// something else happens to touch M2 or M3.
+	MutatedExistingRelationships []graph.Relationship
+
 	// ResolvedNewRelationships is exactly the newRels input with stub From/To
 	// endpoints resolved — the genuinely new edges extracted from the changed
 	// files, and nothing else. It is APPENDED by the caller, and is also the
@@ -300,6 +317,9 @@ func ResolveScoped(
 	signatureRewired := 0
 	var fallbackTarget string
 	updatedExistingRels := make([]graph.Relationship, 0, len(existingRels))
+	// Blast-radius signal: the survivors this pass actually rewrote. See the
+	// MutatedExistingRelationships doc comment — these are NOT extra edges.
+	var mutatedExistingRels []graph.Relationship
 	for _, r := range existingRels {
 		if !isHexID(r.ToID) {
 			if resolved, ok := resolveStub(r.ToID); ok {
@@ -310,6 +330,7 @@ func ResolveScoped(
 				r.ToID = resolved
 				r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
 				inboundFixed++
+				mutatedExistingRels = append(mutatedExistingRels, r)
 			} else if newFileSet[r.ToID] {
 				// Safety-net: ToID is a source-file path from the re-extracted
 				// file set, but the corresponding entity is absent from newEntities.
@@ -339,6 +360,7 @@ func ResolveScoped(
 
 	return ScopedResult{
 		UpdatedExistingRelationships: updatedExistingRels,
+		MutatedExistingRelationships: mutatedExistingRels,
 		ResolvedNewRelationships:     resolvedNewRels,
 		InboundFixed:                 inboundFixed,
 		SignatureRewired:             signatureRewired,

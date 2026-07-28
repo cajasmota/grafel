@@ -9,6 +9,21 @@
 // An existence assertion cannot see duplication. The tests below assert on
 // relationship MULTISET CARDINALITY across repeated passes — that is the
 // property that actually binds this class of defect.
+//
+// SCOPE WARNING — DO NOT GENERALISE THE "x1" ASSERTIONS.
+// Several tests here assert that EVERY relationship has multiplicity exactly 1.
+// That is a property of THESE FIXTURES, not a grafel invariant. RelationshipID
+// is hash(from, to, kind), and extractors deliberately emit multiple distinct
+// edges sharing one ID — e.g. the Go extractor's multi-value call handling
+// (internal/extractors/golang/extractor.go, `mvKey := mvTarget + "?mv"`) emits
+// two CALLS with the same ID and different properties. A full rebuild keeps
+// both. The fixtures below are chosen to contain no such construct, which is
+// what makes the blanket "x1" check safe HERE.
+//
+// This is also why the #6033 fix does not dedupe: deduping by RelationshipID
+// would collapse legitimately-distinct edges and diverge from a full rebuild.
+// If you add a fixture with multi-value calls, overloads, or repeated calls at
+// different lines, assert on the SEEDED edge's count rather than on all edges.
 package extractors_test
 
 import (
@@ -36,17 +51,15 @@ func relMultiset(t *testing.T, stateDir string) (map[string]int, int) {
 	return counts, len(doc.Relationships)
 }
 
-// extractors_TryIncremental runs the incremental pass and fails the test if it
+// runIncremental runs the incremental pass and fails the test if it
 // falls back to a full reindex (a fallback would silently void every assertion
 // in this file, since the fallback path never merges anything).
-func extractors_TryIncremental(t *testing.T, repo, stateDir string) bool {
+func runIncremental(t *testing.T, repo, stateDir string) {
 	t.Helper()
 	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 	if !res.Done {
 		t.Fatalf("TryIncremental fell back (%s) — the merge path under test never ran", res.FallbackReason)
-		return false
 	}
-	return true
 }
 
 // formatMultiset renders a multiset deterministically for failure messages.
@@ -123,10 +136,7 @@ func TestIncremental_RepeatedPasses_RelationshipMultiplicityStable(t *testing.T)
 		writeFile(t, repo, "churn.go",
 			fmt.Sprintf("package p\n\nfunc Churn%d() {}\n", pass))
 
-		res := extractors_TryIncremental(t, repo, stateDir)
-		if !res {
-			continue // fallback recorded by the helper via t.Fatalf
-		}
+		runIncremental(t, repo, stateDir)
 
 		counts, total := relMultiset(t, stateDir)
 
@@ -176,9 +186,7 @@ func TestIncremental_UnchangedRepo_RelationshipsIdempotent(t *testing.T) {
 
 	var first map[string]int
 	for pass := 1; pass <= 3; pass++ {
-		if !extractors_TryIncremental(t, repo, stateDir) {
-			continue
-		}
+		runIncremental(t, repo, stateDir)
 		counts, total := relMultiset(t, stateDir)
 		for key, n := range counts {
 			if n != 1 {
@@ -236,9 +244,7 @@ func TestIncremental_NewEdgeFromChangedFileAppendedExactlyOnce(t *testing.T) {
 	// freshly-extracted (new) relationship slice.
 	writeFile(t, repo, "caller.go", "package p\n\nfunc Caller() { Helper() }\n")
 
-	if !extractors_TryIncremental(t, repo, stateDir) {
-		return
-	}
+	runIncremental(t, repo, stateDir)
 
 	counts, _ := relMultiset(t, stateDir)
 
@@ -311,9 +317,7 @@ func TestIncremental_InboundStubRewiredExactlyOnce(t *testing.T) {
 	// scoped resolver still has to bind the stub).
 	writeFile(t, repo, "target.go", "package p\n\nfunc Target() { _ = 1 }\n")
 
-	if !extractors_TryIncremental(t, repo, stateDir) {
-		return
-	}
+	runIncremental(t, repo, stateDir)
 
 	counts, _ := relMultiset(t, stateDir)
 

@@ -133,12 +133,27 @@ func TestNoReindexLoop_GenOnlyDir(t *testing.T) {
 	}
 }
 
-// TestNoFbversionBump: the gen layout must NOT bump the on-disk FB format
-// version — bumping it would force-reindex every existing repo. Assert the
-// constant is still 4 and that a freshly-written gen file's header is v4.
-func TestNoFbversionBump(t *testing.T) {
-	if fbversion.Version != 4 {
-		t.Fatalf("fbversion.Version = %d, want 4 (a bump force-reindexes the whole corpus)", fbversion.Version)
+// TestFbversionPinned is a tripwire against an ACCIDENTAL on-disk format bump:
+// bumping fbversion.Version force-reindexes every existing repo in the corpus,
+// so it must always be a deliberate, documented decision. The constant here is
+// hard-coded (not read from fbversion) precisely so a bump cannot pass silently
+// — whoever bumps must come here, update the number, and say why.
+//
+// Currently pinned at 5. History:
+//   - 4 (#4881) schema change: added the Entity `signature` slot.
+//   - 5 (#6033) DATA-REPAIR bump, payload format unchanged: v4 graphs can hold
+//     2/4/8/16 duplicate copies of every relationship (every incremental pass
+//     duplicated the surviving edge set). The fix stops the growth but cannot
+//     repair existing files, and dedupe is not an option — see the fbversion
+//     doc comment. Rejecting v4 is what makes existing users self-heal via the
+//     daemon's auto-reindex arm.
+//
+// It was previously named TestNoFbversionBump and asserted the gen-layout work
+// introduced no bump; the invariant it actually protects is "no UNINTENTIONAL
+// bump", which survives a deliberate one.
+func TestFbversionPinned(t *testing.T) {
+	if fbversion.Version != 5 {
+		t.Fatalf("fbversion.Version = %d, want 5 (a bump force-reindexes the whole corpus — deliberate only)", fbversion.Version)
 	}
 	dir := t.TempDir()
 	genPath, err := fbwriter.WriteGraphGen(dir, smallDoc("gen-mini"))
@@ -150,8 +165,8 @@ func TestNoFbversionBump(t *testing.T) {
 		t.Fatalf("open gen file: %v", err)
 	}
 	defer r.Close()
-	if v := r.Version(); v != 4 {
-		t.Fatalf("gen file header version = %d, want 4", v)
+	if v := r.Version(); v != 5 {
+		t.Fatalf("gen file header version = %d, want 5", v)
 	}
 }
 

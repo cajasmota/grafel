@@ -17,7 +17,13 @@
 // the fallback/limit/manifest safety valves.
 //
 // What they do NOT verify:
-//   - full-vs-incremental parity (integration-level concern);
+//   - full-vs-incremental parity. That is covered at the integration level by
+//     cmd/grafel/diff_reindex_validator_test.go (TestDiffReindex_*) — but note
+//     that harness was ALSO blind to #6033: internal/graph/parity compares
+//     relationship SETS, not multisets (parity.go:322 builds a map[relKey]), so
+//     duplicate edges collapse into one slot and a doubled graph compares equal
+//     to a clean one. Its strict empty tolerance profile did not help. Treat
+//     "TestDiffReindex is green" as saying nothing about edge cardinality.
 //   - relationship CARDINALITY. Every relationship assertion in this file is
 //     existence-only ("is edge X present?"), which is structurally blind to
 //     duplication. That blindness let #6033 — every incremental pass

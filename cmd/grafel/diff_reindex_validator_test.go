@@ -39,6 +39,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/extractors"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/graph/parity"
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 )
@@ -438,4 +439,318 @@ func TestDiffReindex_NewCrossFileCall(t *testing.T) {
 	c := dvFullRebuild(t, repo, endDir)
 
 	dvAssertParity(t, b, c)
+}
+
+// ─────────────── multi-module delta cases (#6033 blast-radius) ──────────────
+//
+// WHY THESE EXIST. Every case above runs on dvStartCorpus: a single Go package
+// in one directory, i.e. exactly ONE module. Cross-module DEPENDS_ON scoping is
+// therefore never exercised by them, so nothing pinned the module blast radius
+// or the DEPENDS_ON weights it produces. `services/…` directories make
+// detect.DetectMonorepo report a true monorepo, so entities get per-package
+// module labels rather than one repo-wide label.
+//
+// What these cases actually catch (each verified by mutation):
+//   - M1/M2 catch the #6033 duplication's effect on the module layer: duplicate
+//     relationships are counted twice when aggregateModules sums edge weights,
+//     so re-introducing the duplication yields DEPENDS_ON weight=2 where a full
+//     rebuild computes 1. Under the pre-fix code these cases fail on weight.
+//   - M3 catches the loss of the inbound-fix blast-radius signal
+//     (scopedResult.MutatedExistingRelationships).
+//
+// A NOTE ON WHAT THEY DO NOT CATCH, so nobody assumes otherwise. Dropping
+// `newRels` itself from `aggNewRels` is INERT: it changes no observable output
+// in this suite. The reason is that module.AggregateIncremental's re-emit guard
+// (aggregate.go:273) is `!include(from) && !include(to)` — SYMMETRIC — while
+// that same function's comment directly above it claims "emit iff the
+// from-module is in scope". The comment is stale. Because the guard is
+// symmetric, and because every freshly-extracted edge has its from-entity in a
+// changed file (hence an already-affected module), the to-side modules
+// `newRels` contributes are redundant. It is kept as a conservative input, not
+// because anything here binds it. The one case the symmetry does NOT cover is
+// M3: a SURVIVOR edge rewritten to point at a SURVIVOR entity, where neither
+// endpoint module is otherwise affected.
+
+// dvMultiModuleCorpus writes a two-module monorepo with a MUTUAL cross-module
+// dependency: alpha calls into beta and beta calls back into alpha. The mutual
+// shape is what makes the strip/re-emit asymmetry observable — editing alpha
+// affects the alpha→beta edge on its FROM side (re-emitted from alpha) and the
+// beta→alpha edge on its TO side (re-emittable only if beta is ALSO affected,
+// which happens only via the relationship endpoints of the changed file).
+func dvMultiModuleCorpus(t *testing.T, repo string) {
+	dvWriteFile(t, repo, "services/alpha/a.go", "package alpha\n\n"+
+		"import \"x/services/beta\"\n\n"+
+		"func AlphaFn() int { return beta.BetaFn() }\n\n"+
+		"func AlphaHelper() int { return 3 }\n")
+	dvWriteFile(t, repo, "services/beta/b.go", "package beta\n\n"+
+		"import \"x/services/alpha\"\n\n"+
+		"func BetaFn() int { return 1 }\n\n"+
+		"func BetaBack() int { return alpha.AlphaHelper() }\n")
+}
+
+// dvCountDependsOnBetweenModules counts Module→Module DEPENDS_ON edges (both
+// endpoints are synthetic Module nodes). Used as a fixture precondition so a
+// multi-module case can never pass vacuously on a single-module corpus.
+func dvCountDependsOnBetweenModules(doc *graph.Document) int {
+	isModule := make(map[string]bool)
+	for i := range doc.Entities {
+		if doc.Entities[i].Kind == "Module" {
+			isModule[doc.Entities[i].ID] = true
+		}
+	}
+	n := 0
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		if r.Kind == "DEPENDS_ON" && isModule[r.FromID] && isModule[r.ToID] {
+			n++
+		}
+	}
+	return n
+}
+
+// Case M1 — edit one module of a mutually-dependent pair.
+//
+// This is the case that dies when `newRels` is dropped from the module blast
+// radius: `affected` collapses to {services/alpha}, the strip removes BOTH
+// DEPENDS_ON edges, and only alpha→beta is re-emitted — beta→alpha is silently
+// lost relative to a full rebuild.
+func TestDiffReindex_MultiModule_MutualDependencyEdit(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+	dvMultiModuleCorpus(t, repo)
+
+	dvFullRebuild(t, repo, stateDir)
+	dvSeedManifest(t, repo, stateDir)
+
+	// Precondition: the baseline really does hold BOTH cross-module edges, so a
+	// green result below cannot come from the fixture being single-module.
+	base, err := graph.LoadGraphFromDir(stateDir)
+	if err != nil {
+		t.Fatalf("load baseline: %v", err)
+	}
+	if n := dvCountDependsOnBetweenModules(base); n < 2 {
+		t.Fatalf("fixture is not exercising cross-module DEPENDS_ON: found %d module→module edges, want ≥2", n)
+	}
+
+	// Edit ONLY services/alpha.
+	dvWriteFile(t, repo, "services/alpha/a.go", "package alpha\n\n"+
+		"import \"x/services/beta\"\n\n"+
+		"func AlphaFn() int { return beta.BetaFn() + 1 }\n\n"+
+		"func AlphaHelper() int { return 4 }\n")
+
+	b := dvIncremental(t, repo, stateDir)
+
+	endDir := t.TempDir()
+	c := dvFullRebuild(t, repo, endDir)
+
+	dvAssertModuleLayerParity(t, b, c)
+}
+
+// Case M2 — a NEW cross-module edge appears in the edited module. The changed
+// file is in beta, so beta is affected via its entities; alpha enters the
+// affected set only through the relationship endpoints of the freshly
+// extracted edges.
+func TestDiffReindex_MultiModule_NewCrossModuleEdge(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+	dvMultiModuleCorpus(t, repo)
+
+	dvFullRebuild(t, repo, stateDir)
+	dvSeedManifest(t, repo, stateDir)
+
+	// beta gains a second cross-module call, changing the beta→alpha weight.
+	dvWriteFile(t, repo, "services/beta/b.go", "package beta\n\n"+
+		"import \"x/services/alpha\"\n\n"+
+		"func BetaFn() int { return 1 }\n\n"+
+		"func BetaBack() int { return alpha.AlphaHelper() }\n\n"+
+		"func BetaBack2() int { return alpha.AlphaHelper() + alpha.AlphaFn() }\n")
+
+	b := dvIncremental(t, repo, stateDir)
+
+	endDir := t.TempDir()
+	c := dvFullRebuild(t, repo, endDir)
+
+	dvAssertModuleLayerParity(t, b, c)
+}
+
+// dvAssertModuleLayerParity compares ONLY the module layer — the Module nodes
+// and the Module→Module DEPENDS_ON edges (including their `weight` property) —
+// between the incremental result b and the full rebuild c.
+//
+// WHY NOT dvAssertParity HERE. Full parity on a multi-module corpus currently
+// fails for a reason that has nothing to do with the module blast radius: when
+// a changed file carries a Go import, the incremental path re-emits the
+// file→import-placeholder REFERENCES edge with an EMPTY FromID, where the full
+// path emits it from the file component (the full path's
+// import-placeholder-prune hoists those edges; the incremental path has no
+// equivalent). Reproduced on the pre-#6033 baseline too, so it is pre-existing
+// and independent — it is being tracked separately. Asserting full parity here
+// would land a permanently-red test; asserting the module layer pins exactly
+// the property these cases exist to protect.
+//
+// The narrower assertion is still sharp: it is what dies when the module
+// blast-radius input is wrong.
+func dvAssertModuleLayerParity(t *testing.T, b, c *graph.Document) {
+	t.Helper()
+	got := dvModuleLayer(b)
+	want := dvModuleLayer(c)
+
+	for k, wv := range want {
+		gv, ok := got[k]
+		if !ok {
+			t.Errorf("module-layer edge missing from the incremental graph: %s (full rebuild has it, weight=%s)", k, wv)
+			continue
+		}
+		if gv != wv {
+			t.Errorf("module-layer edge %s: incremental weight=%s, full rebuild weight=%s", k, gv, wv)
+		}
+	}
+	for k, gv := range got {
+		if _, ok := want[k]; !ok {
+			t.Errorf("module-layer edge present ONLY in the incremental graph: %s (weight=%s)", k, gv)
+		}
+	}
+	if t.Failed() {
+		t.Fatalf("module layer diverged from a full rebuild\nincremental: %v\nfull rebuild: %v", got, want)
+	}
+}
+
+// dvModuleLayer projects a document's Module→Module DEPENDS_ON edges into a
+// "fromModuleName→toModuleName" → weight map, resolving the synthetic Module
+// node IDs to their names so the result is readable and stable across runs.
+func dvModuleLayer(doc *graph.Document) map[string]string {
+	name := make(map[string]string)
+	for i := range doc.Entities {
+		if doc.Entities[i].Kind == "Module" {
+			name[doc.Entities[i].ID] = doc.Entities[i].Name
+		}
+	}
+	out := make(map[string]string)
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		if r.Kind != "DEPENDS_ON" {
+			continue
+		}
+		from, fok := name[r.FromID]
+		to, tok := name[r.ToID]
+		if !fok || !tok {
+			continue
+		}
+		w := ""
+		if v, ok := r.PropLookup("weight"); ok {
+			w = v
+		}
+		out[from+"→"+to] = w
+	}
+	return out
+}
+
+// Case M3 — an inbound stub bound by the scoped resolver creates a
+// cross-module dependency between two modules that are BOTH unaffected.
+//
+// This is the one shape where the module blast radius genuinely cannot be
+// derived from the changed file alone. module.AggregateIncremental strips a
+// Module→Module DEPENDS_ON when EITHER endpoint module is affected and
+// re-emits it when EITHER endpoint is in scope (aggregate.go:273 — note the
+// function's own comment there says "iff the from-module is in scope", which is
+// stale: the guard is symmetric). That symmetry means a changed file's own
+// module covers almost everything. The exception is here: when ResolveScoped
+// binds a SURVIVOR edge's stub ToID to an entity that is ALSO a survivor, the
+// resulting module pair can involve neither the changed file's module nor any
+// re-extracted entity — so nothing in newEntities/newRels names it.
+//
+// The baseline is hand-corrupted into exactly that state: a resolved
+// cross-module CALLS edge is pushed back to an unresolved bare-name stub and
+// its derived Module→Module DEPENDS_ON removed, reproducing a graph where the
+// full resolver had left the ref unbound. An edit to an UNRELATED third module
+// then triggers the scoped resolver, which binds it — and the module layer must
+// converge on what a full rebuild computes.
+//
+// Fails when scopedResult.MutatedExistingRelationships is not folded into
+// aggNewRels: the m2→m3 edge is never derived.
+func TestDiffReindex_MultiModule_InboundStubBindCreatesCrossModuleEdge(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	dvWriteFile(t, repo, "services/m3/three.go", "package m3\n\n"+
+		"func Foo() int { return 7 }\n")
+	dvWriteFile(t, repo, "services/m2/two.go", "package m2\n\n"+
+		"import \"x/services/m3\"\n\n"+
+		"func Bar() int { return m3.Foo() }\n")
+	dvWriteFile(t, repo, "services/m1/one.go", "package m1\n\n"+
+		"func One() int { return 1 }\n")
+
+	dvFullRebuild(t, repo, stateDir)
+
+	// ── Corrupt the baseline into the "unbound cross-module ref" state ───────
+	base, err := graph.LoadGraphFromDir(stateDir)
+	if err != nil {
+		t.Fatalf("load baseline: %v", err)
+	}
+	fooID, barID := "", ""
+	modName := map[string]string{}
+	for i := range base.Entities {
+		e := &base.Entities[i]
+		if e.Kind == "Module" {
+			modName[e.ID] = e.Name
+			continue
+		}
+		switch e.Name {
+		case "Foo":
+			fooID = e.ID
+		case "Bar":
+			barID = e.ID
+		}
+	}
+	if fooID == "" || barID == "" {
+		t.Fatalf("fixture: could not locate Foo/Bar entities (foo=%q bar=%q)", fooID, barID)
+	}
+
+	pushedBack := false
+	var kept []graph.Relationship
+	for _, r := range base.Relationships {
+		// Drop the derived Module(m2)→Module(m3) DEPENDS_ON so ONLY the
+		// re-emit path can bring it back.
+		if r.Kind == "DEPENDS_ON" &&
+			modName[r.FromID] == "services/m2" && modName[r.ToID] == "services/m3" {
+			continue
+		}
+		// Push the resolved Bar→Foo CALLS edge back to a bare-name stub.
+		if r.FromID == barID && r.ToID == fooID {
+			r.ToID = "Foo"
+			r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
+			pushedBack = true
+		}
+		kept = append(kept, r)
+	}
+	if !pushedBack {
+		t.Fatal("fixture: no resolved Bar→Foo edge found to push back to a stub")
+	}
+	base.Relationships = kept
+	base.Stats.Relationships = len(kept)
+	if _, err := fbwriter.WriteGraphGen(stateDir, base); err != nil {
+		t.Fatalf("rewrite corrupted baseline: %v", err)
+	}
+
+	// Precondition: the corrupted baseline really lacks the m2→m3 edge.
+	if _, ok := dvModuleLayer(base)["services/m2→services/m3"]; ok {
+		t.Fatal("fixture: the corrupted baseline still holds the m2→m3 DEPENDS_ON edge")
+	}
+	dvSeedManifest(t, repo, stateDir)
+
+	// Edit an UNRELATED third module. Neither m2 nor m3 is touched.
+	dvWriteFile(t, repo, "services/m1/one.go", "package m1\n\n"+
+		"func One() int { return 2 }\n")
+
+	b := dvIncremental(t, repo, stateDir)
+
+	endDir := t.TempDir()
+	c := dvFullRebuild(t, repo, endDir)
+
+	// Sanity: the full rebuild does derive the edge, so the assertion is real.
+	if _, ok := dvModuleLayer(c)["services/m2→services/m3"]; !ok {
+		t.Fatalf("fixture: the full rebuild does not derive m2→m3; layer=%v", dvModuleLayer(c))
+	}
+
+	dvAssertModuleLayerParity(t, b, c)
 }

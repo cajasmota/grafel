@@ -626,8 +626,23 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// affected set so their `_external` Module node + CONTAINS edges are
 	// (re-)derived exactly as a full rebuild's Pass 8 would, and so a flow strip
 	// that removed the last member of a module triggers that module's re-derive.
+	//
+	// #6033: the SURVIVOR edges the scoped resolver rewrote must join the blast
+	// radius too. Binding an inbound stub ToID can make a cross-module
+	// DEPENDS_ON derivable that the previous build could not see — a full build
+	// leaves X→"foo" unresolved, so aggregateModules skips it and emits no
+	// M2→M3 edge; once this pass binds "foo" to Y in M3 that edge exists, yet
+	// neither M2 nor M3 is in the changed file's module set. Without this the
+	// module layer silently diverges from a full rebuild until something else
+	// happens to touch M2 or M3.
+	//
+	// These are a blast-radius SIGNAL only: every one of them is already in
+	// doc.Relationships via UpdatedExistingRelationships, so they must never be
+	// appended to the document (that is exactly the #6033 duplication). Hence
+	// they are folded in HERE and not into `newRels`.
 	aggNewEnts := append(append([]graph.Entity(nil), newEntities...), flowEntities...)
 	aggNewRels := append(append([]graph.Relationship(nil), newRels...), flowRels...)
+	aggNewRels = append(aggNewRels, scopedResult.MutatedExistingRelationships...)
 	affectedModules := affectedModuleSet(doc, removedModuleKeys, aggNewEnts, aggNewRels)
 	module.AggregateIncremental(doc, affectedModules)
 
