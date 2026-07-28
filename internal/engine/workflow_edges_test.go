@@ -984,3 +984,202 @@ func TestCDKStateMachineBodyClampedToNextConstruct(t *testing.T) {
 		t.Errorf("expected at most 2 STEPFUNCTION_STEP_INVOKES edges, got %d: %v", total, targets)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #6012 — CloudFormation state machines are named per logical ID, not per file
+// ---------------------------------------------------------------------------
+
+// cfnTwoMachineTemplate is a template declaring TWO
+// AWS::StepFunctions::StateMachine resources with TWO distinct Lambda targets.
+// One machine and one Lambda cannot distinguish correct behaviour from a
+// per-file collapse or a cartesian product; two of each can.
+const cfnTwoMachineTemplate = `
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  OrderFlow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      RoleArn: arn:aws:iam::111122223333:role/sfn
+      DefinitionString: |
+        {
+          "StartAt": "Validate",
+          "States": {
+            "Validate": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:us-east-1:111122223333:function:validate-order",
+              "End": true
+            }
+          }
+        }
+  RefundFlow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      RoleArn: arn:aws:iam::111122223333:role/sfn
+      DefinitionString: |
+        {
+          "StartAt": "Refund",
+          "States": {
+            "Refund": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:us-east-1:111122223333:function:issue-refund",
+              "End": true
+            }
+          }
+        }
+`
+
+func TestCloudFormationStateMachinesNamedByLogicalID(t *testing.T) {
+	ents, rels := runWorkflowEdges(t, "yaml", "infra/template.yaml", cfnTwoMachineTemplate)
+
+	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("OrderFlow"), "cfn sfn")
+	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("RefundFlow"), "cfn sfn")
+
+	// The file-derived name must NOT be used when logical IDs are available:
+	// that node conflates the two machines.
+	if workflowEntityByID(ents, stateMachineKind, sfnStateMachineID("template")) != nil {
+		t.Errorf("file-derived state machine %q emitted alongside logical-ID machines",
+			sfnStateMachineID("template"))
+	}
+
+	smCount := 0
+	for _, e := range ents {
+		if e.Kind == stateMachineKind {
+			smCount++
+		}
+	}
+	if smCount != 2 {
+		t.Errorf("expected 2 state machine entities (one per logical ID), got %d", smCount)
+	}
+
+	targets, total := sfnInvokeTargets(rels)
+	if total != 2 {
+		t.Errorf("expected exactly 2 STEPFUNCTION_STEP_INVOKES edges, got %d: %v", total, targets)
+	}
+	if got, want := targets[sfnMachineFromID("OrderFlow")], []string{sfnLambdaToID("validate-order")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("OrderFlow targets: got %v, want %v", got, want)
+	}
+	if got, want := targets[sfnMachineFromID("RefundFlow")], []string{sfnLambdaToID("issue-refund")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("RefundFlow targets: got %v, want %v", got, want)
+	}
+}
+
+func TestCloudFormationStateMachineRecordsLiteralStateMachineName(t *testing.T) {
+	// StateMachineName is recorded as a property so cross-source resolution has
+	// something to match on. Node identity must still come from the logical ID:
+	// the field is optional and often an unresolved intrinsic.
+	src := `
+Resources:
+  OrderFlow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: prod-order-flow
+      DefinitionString: '{"States": {}}'
+  RefundFlow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub '${AWS::StackName}-refund'
+      DefinitionString: '{"States": {}}'
+  AuditFlow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      DefinitionString: '{"States": {}}'
+`
+	ents, _ := runWorkflowEdges(t, "yaml", "infra/template.yaml", src)
+
+	for _, tc := range []struct{ logicalID, wantName string }{
+		{"OrderFlow", "prod-order-flow"},
+		{"RefundFlow", ""}, // unresolved !Sub — not recorded
+		{"AuditFlow", ""},  // absent
+	} {
+		e := workflowEntityByID(ents, stateMachineKind, sfnStateMachineID(tc.logicalID))
+		if e == nil {
+			t.Errorf("%s: entity not found (identity must come from the logical ID)", tc.logicalID)
+			continue
+		}
+		if got := e.Properties["state_machine_name"]; got != tc.wantName {
+			t.Errorf("%s: state_machine_name = %q, want %q", tc.logicalID, got, tc.wantName)
+		}
+		if got := e.Properties["sm_name"]; got != tc.logicalID {
+			t.Errorf("%s: sm_name = %q, want the logical ID", tc.logicalID, got)
+		}
+	}
+}
+
+func TestCloudFormationStateMachineWithoutLambdaEmitsNoInvokeEdges(t *testing.T) {
+	src := `
+Resources:
+  PassOnlyFlow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      DefinitionString: |
+        {"StartAt": "NoOp", "States": {"NoOp": {"Type": "Pass", "End": true}}}
+  OrderFlow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      DefinitionString: |
+        {"StartAt": "Validate", "States": {"Validate": {"Type": "Task",
+         "Resource": "arn:aws:lambda:us-east-1:111122223333:function:validate-order", "End": true}}}
+`
+	ents, rels := runWorkflowEdges(t, "yaml", "infra/template.yaml", src)
+
+	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("PassOnlyFlow"), "cfn sfn")
+
+	targets, total := sfnInvokeTargets(rels)
+	if total != 1 {
+		t.Errorf("expected exactly 1 STEPFUNCTION_STEP_INVOKES edge, got %d: %v", total, targets)
+	}
+	if got := targets[sfnMachineFromID("PassOnlyFlow")]; len(got) != 0 {
+		t.Errorf("PassOnlyFlow must invoke nothing, got %v", got)
+	}
+}
+
+func TestCloudFormationStateMachinesSharingTargetKeepBothEdges(t *testing.T) {
+	src := `
+Resources:
+  OrderFlow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      DefinitionString: |
+        {"States": {"Audit": {"Type": "Task",
+         "Resource": "arn:aws:lambda:us-east-1:111122223333:function:audit-log", "End": true}}}
+  RefundFlow:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      DefinitionString: |
+        {"States": {"Audit": {"Type": "Task",
+         "Resource": "arn:aws:lambda:us-east-1:111122223333:function:audit-log", "End": true}}}
+`
+	_, rels := runWorkflowEdges(t, "yaml", "infra/template.yaml", src)
+
+	targets, total := sfnInvokeTargets(rels)
+	if total != 2 {
+		t.Errorf("expected 2 STEPFUNCTION_STEP_INVOKES edges (one per machine), got %d: %v", total, targets)
+	}
+	for _, sm := range []string{"OrderFlow", "RefundFlow"} {
+		if got, want := targets[sfnMachineFromID(sm)], []string{sfnLambdaToID("audit-log")}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s targets: got %v, want %v", sm, got, want)
+		}
+	}
+}
+
+func TestCloudFormationStateMachineFallsBackToPathNameWithoutLogicalID(t *testing.T) {
+	// A fragment where the resource type marker is present but no enclosing
+	// logical-ID key can be identified: keep the old file-derived name rather
+	// than dropping the machine entirely.
+	src := `
+Type: AWS::StepFunctions::StateMachine
+Properties:
+  DefinitionString: '{"States": {"Validate": {"Type": "Task", "Resource": "arn:aws:lambda:us-east-1:111122223333:function:validate-order", "End": true}}}'
+`
+	ents, rels := runWorkflowEdges(t, "yaml", "infra/order-flow-template.yaml", src)
+
+	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("order-flow-template"), "cfn sfn fallback")
+
+	targets, total := sfnInvokeTargets(rels)
+	if total != 1 {
+		t.Errorf("expected 1 STEPFUNCTION_STEP_INVOKES edge, got %d: %v", total, targets)
+	}
+	if got, want := targets[sfnMachineFromID("order-flow-template")], []string{sfnLambdaToID("validate-order")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("fallback machine targets: got %v, want %v", got, want)
+	}
+}
