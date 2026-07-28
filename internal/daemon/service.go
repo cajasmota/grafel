@@ -475,6 +475,23 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 		// enough to answer "is an overlay recompute in flight" — which is the
 		// question behind "why are my communities missing".
 		reply.GroupAlgoInFlight = GroupAlgoInFlightFromStatusFile()
+		// #6014: the REBUILD counters have the same problem and the same cure.
+		// s.rebuildInFlight / s.groupsActiveCount are incremented below
+		// Service.Rebuild's split-mode early return, so in the default mode they
+		// are a structural zero — "no rebuild is running" was reported whether
+		// or not one was. The engine's per-group rebuild guard is the real
+		// count; it rides the same sidecar.
+		//
+		// Assigned only when non-zero: a fresh sidecar reporting 0 tells us
+		// nothing the local 0 did not already say, and this way the branch can
+		// never clobber a genuine local count in the (test-only) shape where a
+		// monolith has no scheduler but does rebuild in-process.
+		if n := RebuildInFlightFromStatusFile(); n > 0 {
+			reply.RebuildInFlight = n
+			// The engine guard is per-group and admits one rebuild per group at
+			// a time, so the in-flight count IS the active-group count.
+			reply.RebuildGroupsActive = n
+		}
 	}
 	return nil
 }
@@ -622,6 +639,24 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 		s.progressBroker.ClearTerminal(args.Group)
 	}
 
+	// #6014 — s.inFlight is serve's count of RPCs currently executing IN THIS
+	// PROCESS (StatusReply.InFlight, printed as `in_flight=` by `grafel
+	// status`). It used to be incremented further down, below the split-mode
+	// early return, which made it structurally unreachable in the default mode.
+	// That was invisible for the fire-and-forget path (nothing IS in flight
+	// there — the RPC returns as soon as the request file lands) but a real lie
+	// for WaitForCompletion, which BLOCKS this handler in
+	// awaitRebuildCompletion for the entire multi-minute rebuild while
+	// reporting in_flight=0.
+	//
+	// Incrementing at the top of the handler — before any branch — is both the
+	// fix and the honest definition: the RPC is in flight for exactly as long
+	// as this function is on the stack, in every mode. It says nothing about
+	// whether the ENGINE is rebuilding; that is RebuildInFlight's job, sourced
+	// from the engine's liveness sidecar (see Status).
+	atomic.AddInt64(&s.inFlight, 1)
+	defer atomic.AddInt64(&s.inFlight, -1)
+
 	// ADR-0024 PR6 prerequisite (epic #5729): in split mode this RPC is
 	// answered by the SERVE process. Unlike Service.Index (whose split-mode
 	// fast path is gated by s.scheduler being nil there), s.rebuild here is
@@ -681,9 +716,6 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 		// ack for a WaitForCompletion request so its OK/error outcome is readable.
 		return s.awaitRebuildCompletion(dir, id)
 	}
-
-	atomic.AddInt64(&s.inFlight, 1)
-	defer atomic.AddInt64(&s.inFlight, -1)
 
 	// Per-group single-flight (#2097 + #5681). Load-or-store a capacity-1
 	// semaphore for this group so concurrent Rebuild RPCs targeting the same

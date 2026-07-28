@@ -392,10 +392,14 @@ func startEngineLivenessHeartbeat(root string, interval time.Duration, warmingFn
 			ParseInFlight:           snap.ParseInFlight,
 			EngineInFlight:          snap.InFlight,
 			EngineGroupAlgoInFlight: snap.GroupAlgoInFlight,
-			EngineBusyStartedAt:     snap.StartedAt,
-			ConcurrencyActive:       conc.Active,
-			ConcurrencyQueued:       conc.Queued,
-			ConcurrencyCap:          conc.Cap,
+			// #6014: group rebuilds bypass the scheduler, so indexstate knows
+			// nothing about them. This is the only publication of "a rebuild is
+			// running in this engine" that crosses the process boundary.
+			EngineRebuildInFlight: EngineRebuildInFlightCount(),
+			EngineBusyStartedAt:   snap.StartedAt,
+			ConcurrencyActive:     conc.Active,
+			ConcurrencyQueued:     conc.Queued,
+			ConcurrencyCap:        conc.Cap,
 		}
 		populateProcessMetrics(f)
 		// CPU% is a delta across successive heartbeat writes (the first tick

@@ -135,6 +135,52 @@ func GroupAlgoInFlightFromStatusFile() int {
 	return f.EngineGroupAlgoInFlight
 }
 
+// RebuildInFlightFromStatusFile reports how many GROUP REBUILDS the ambient
+// engine is running, read from its liveness sidecar by a process that has none
+// of its own — a SPLIT-MODE serve answering Service.Status (#6014).
+//
+// This is the exact analogue of GroupAlgoInFlightFromStatusFile, and shares its
+// file and its freshness rule, so both modes converge on one path. It exists
+// because Service.rebuildInFlight / groupsActiveCount are STRUCTURALLY zero in
+// split mode: their increments sit below Service.Rebuild's split-mode early
+// return, and the rebuild itself runs in the engine. Serve therefore has no
+// local information at all about a running rebuild, so StatusReply.RebuildInFlight
+// was a constant 0 — a working rebuild was indistinguishable from a dropped one.
+//
+// The RPC field was only half the problem. `grafel status` printed its
+// `rebuild: in_flight=` line inside a block gated on StatusReply.RSSBudgetMB,
+// which is itself populated only from an in-process scheduler — so in split
+// mode the line did not print AT ALL, and a correct value here would still have
+// been invisible. That gate was hoisted in the same change (internal/cli's
+// printDaemonDetail); this accessor is only observable because of it.
+//
+// LATENCY, honestly: the value is published by a plain 5s ticker
+// (startEngineLivenessHeartbeat, defaultStatusHeartbeatInterval) with no
+// state-change coalescing — unlike startStatusWriter, which has a notify seam.
+// So a rebuild that has just started still reads 0 here for up to one heartbeat
+// interval. Group rebuilds are multi-minute, so a ≤5s false zero at the very
+// start is acceptable; it is called out because it is this same bug in
+// miniature, and anyone tightening it should add a notify on
+// rebuildWorker.submit rather than shortening the tick.
+//
+// 0 when the sidecar is missing or stale ("unknown" reported as "none"), the
+// same conservative default as the rest of this file. A stale sidecar's
+// last-known count must NEVER be reported as live: this surface exists to
+// answer "is a rebuild running RIGHT NOW", so a phantom non-zero would mislead
+// exactly the reader it was built for — no better than the wrong zero it
+// replaces.
+func RebuildInFlightFromStatusFile() int {
+	layout, err := DefaultLayout()
+	if err != nil {
+		return 0
+	}
+	f, fresh := EngineLivenessStatus(layout.Root)
+	if !fresh || f == nil {
+		return 0
+	}
+	return f.EngineRebuildInFlight
+}
+
 // FlushRepoStatusFile synchronously recomputes and writes repoPath's per-repo
 // status-plane sidecar from the CURRENT indexstate + the on-disk graph.fb, right
 // now — the same work the async statusWriter goroutine would do on its next

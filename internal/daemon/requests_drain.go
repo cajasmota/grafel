@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/proto"
@@ -75,6 +76,26 @@ const maxRebuildAttempts = 3
 // for the SAME group run one rebuildFn at a time (the second waits), while
 // DIFFERENT groups still proceed concurrently.
 var engineGroupRebuildGuard groupRebuildGuard
+
+// engineRebuildInFlight counts the group rebuilds this ENGINE process is
+// running right now (#6014). One entry per rebuildWorker.submit goroutine, i.e.
+// per group, so it is simultaneously "rebuilds in flight" and "groups actively
+// rebuilding" — the engine guard is per-group and admits one at a time.
+//
+// WHY A COUNTER AT ALL. In split mode (the default, ADR-0024) the rebuild runs
+// HERE, in the engine, while `grafel status` is answered by SERVE. Serve's own
+// Service.rebuildInFlight can never be non-zero in that mode — its increment is
+// below the split-mode early return — so serve has literally no local
+// information from which to report a running rebuild. This counter is the real,
+// work-derived number the heartbeat publishes onto the engine-liveness sidecar
+// for serve to read. Serve never invents a value of its own.
+var engineRebuildInFlight atomic.Int64
+
+// EngineRebuildInFlightCount reports how many group rebuilds this process is
+// running. Read by the engine-liveness heartbeat (statuswriter.go); meaningful
+// only in the process that actually applies rebuilds (the engine, or a monolith
+// draining its own queue).
+func EngineRebuildInFlightCount() int { return int(engineRebuildInFlight.Load()) }
 
 // groupRebuildGuard is a per-group capacity-1 semaphore keyed by group name.
 type groupRebuildGuard struct {
@@ -274,8 +295,15 @@ func (w *rebuildWorker) submit(root, dir, group string) {
 	w.wg.Add(1)
 	w.mu.Unlock()
 
+	// #6014: the process-global mirror of w.active, published by the engine's
+	// liveness heartbeat so a split-mode serve can report a running rebuild.
+	// Incremented here — on the claim, in lockstep with w.active — rather than
+	// inside runGroup, so the count can never disagree with the guard.
+	engineRebuildInFlight.Add(1)
+
 	go func() {
 		defer func() {
+			engineRebuildInFlight.Add(-1)
 			w.mu.Lock()
 			delete(w.active, group)
 			w.mu.Unlock()
