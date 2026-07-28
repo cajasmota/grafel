@@ -14179,7 +14179,7 @@ records:
         tests:
           - file: internal/extractors/solidity/extractor_test.go
             functions: [TestSolidity_ContractDeclaration, TestSolidity_LibraryDeclaration, TestSolidity_InterfaceDeclaration, TestSolidity_Functions, TestSolidity_Events, TestSolidity_Modifiers, TestSolidity_ContainsEdges, TestSolidity_FunctionSignatures, TestSolidity_EventAndModifierSignatures, TestSolidity_SignatureIgnoresDelimitersInCommentsAndStrings]
-        issues_implemented: []
+        issues_implemented: [6028]
         verified_at: "2026-07-28"
 
   lang.c-cpp.framework.crow:
