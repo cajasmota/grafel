@@ -130,6 +130,20 @@ type csrGraph struct {
 // into CSR form. Nodes are indexed by ascending node id; ids[i] is the gonum
 // node id of index i. Adjacency lists are sorted by target index so every
 // downstream float summation happens in a fixed order.
+//
+// NO PRODUCTION CALLER since #5954 S5/S6 — production reaches Louvain through
+// buildCSRFromDirected, which projects the shared directed CSR without a gonum
+// graph in the middle. This survives as the adapter the Louvain QUALITY suite
+// runs on (planted-partition and Barabasi-Albert fixtures are built as gonum
+// undirected graphs), so every quality assertion in louvain_test.go is made
+// about a graph that reached the algorithm through this function rather than
+// through the production one.
+//
+// The single bridge that makes those assertions transfer is
+// TestUndirectedProjectionFromCSRMatchesGonumProjection, which proves the two
+// projections produce bit-identical csrGraphs (off/adj/w/selfw/k/m2) on the
+// same input. If that test is ever weakened or deleted, the Louvain quality
+// suite stops saying anything about production.
 func buildCSRFromUndirected(und *simple.WeightedUndirectedGraph) (*csrGraph, []int64) {
 	var ids []int64
 	nodes := und.Nodes()
@@ -199,6 +213,105 @@ func buildCSRFromUndirected(und *simple.WeightedUndirectedGraph) (*csrGraph, []i
 		g.w[cursor[e.v]] = e.w
 		cursor[e.v]++
 	}
+	g.sortAdjacency()
+	g.computeDegrees()
+	return g, ids
+}
+
+// buildCSRFromDirected derives the UNDIRECTED projection of a directedCSR
+// straight into Louvain's csrGraph, with no intermediate gonum graph.
+//
+// Previously ComputeCommunities materialised a simple.WeightedUndirectedGraph
+// (a map-of-maps holding one boxed edge per pair) purely so that
+// buildCSRFromUndirected could immediately walk it back out again. This does
+// the same projection in one pass over the flat arrays.
+//
+// Projection semantics are identical to the gonum route:
+//
+//   - node set is unchanged (index i is node id i, isolated nodes included);
+//   - a reciprocal pair u->v and v->u collapses to ONE undirected edge whose
+//     weight is the sum of both directions. The sum is taken with the lower
+//     index first; IEEE addition is commutative, so this is bit-identical to
+//     gonum's map-order-dependent accumulation, and unlike it, deterministic;
+//   - self-loops cannot occur (directedCSR drops them), so selfw stays zero.
+//
+// ids[i] == int64(i) because BuildGraph assigns gonum node ids 0..n-1; it is
+// returned anyway so louvainPartitionFromCSR stays agnostic about that.
+//
+// It takes the nodeIndex rather than the directedCSR so that the
+// derivation counter it bumps lands on the index: directedCSR is aliased into
+// bcScratch and must have no writer after BuildGraph returns.
+func buildCSRFromDirected(idx *nodeIndex) (*csrGraph, []int64) {
+	idx.undirectedDerivations++
+	d := idx.csr
+
+	n := d.n
+	g := &csrGraph{
+		n:     n,
+		off:   make([]int32, n+1),
+		selfw: make([]float64, n),
+		k:     make([]float64, n),
+	}
+	ids := make([]int64, n)
+	for i := range ids {
+		ids[i] = int64(i)
+	}
+	if n == 0 {
+		return g, ids
+	}
+
+	// Pass 1 — undirected degree. Each unordered pair is counted exactly once:
+	// the pair is owned by whichever endpoint sees it first in ascending-u
+	// order, which for a reciprocal pair is the lower index.
+	for u := int32(0); u < int32(n); u++ {
+		lo, hi := d.row(u)
+		for p := lo; p < hi; p++ {
+			v := d.adj[p]
+			if v < u && d.hasEdge(v, u) {
+				continue // already counted when u' == v
+			}
+			g.off[u+1]++
+			g.off[v+1]++
+		}
+	}
+	for i := 0; i < n; i++ {
+		g.off[i+1] += g.off[i]
+	}
+	total := g.off[n]
+	g.adj = make([]int32, total)
+	g.w = make([]float64, total)
+
+	// Pass 2 — fill, same ownership rule.
+	cursor := make([]int32, n)
+	copy(cursor, g.off[:n])
+	put := func(a, b int32, w float64) {
+		g.adj[cursor[a]] = b
+		g.w[cursor[a]] = w
+		cursor[a]++
+		g.adj[cursor[b]] = a
+		g.w[cursor[b]] = w
+		cursor[b]++
+	}
+	for u := int32(0); u < int32(n); u++ {
+		lo, hi := d.row(u)
+		for p := lo; p < hi; p++ {
+			v := d.adj[p]
+			if v < u {
+				if d.hasEdge(v, u) {
+					continue // already emitted when u' == v
+				}
+				put(v, u, d.w[p])
+				continue
+			}
+			// u < v: this endpoint owns the pair. Sum both directions.
+			w := d.w[p]
+			if rev, ok := d.weightOf(v, u); ok {
+				w += rev
+			}
+			put(u, v, w)
+		}
+	}
+
 	g.sortAdjacency()
 	g.computeDegrees()
 	return g, ids
@@ -439,8 +552,24 @@ func louvainPartition(und *simple.WeightedUndirectedGraph, resolution float64) [
 // louvainMaxSweeps is a real truncation bound and silent truncation is the one
 // way this implementation can degrade partition quality at scale — so it has to
 // be observable, not inferred.
+//
+// Like louvainPartition and buildCSRFromUndirected, this has no production
+// caller since #5954 S5/S6: it is the gonum-graph adapter the quality suite
+// runs on. See buildCSRFromUndirected for why that is sound and which single
+// test the soundness rests on.
 func louvainPartitionWithSweeps(und *simple.WeightedUndirectedGraph, resolution float64) ([][]int64, []int) {
 	base, ids := buildCSRFromUndirected(und)
+	groups, sweeps := louvainPartitionFromCSR(base, ids, resolution)
+	return groups, sweeps
+}
+
+// louvainPartitionFromCSR is the multi-level Louvain driver proper: it takes an
+// already-built undirected CSR plus the index->gonum-id mapping and never looks
+// at a gonum graph. The production path (ComputeCommunities) reaches it via
+// buildCSRFromDirected, so the graph structure is walked once for the whole
+// pass; louvainPartitionWithSweeps is the gonum-graph adapter kept for the
+// tests that construct undirected fixtures directly.
+func louvainPartitionFromCSR(base *csrGraph, ids []int64, resolution float64) ([][]int64, []int) {
 	n := base.n
 	if n == 0 {
 		return nil, nil
