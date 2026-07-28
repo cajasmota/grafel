@@ -64,7 +64,9 @@ Flags:
 			}
 			// --full overrides --incremental.
 			inc := incremental && !full
-			return runRebuildClient(cmd, args, false, quiet, jsonProgress, plain, resolvedRef, inc, timeoutFlag)
+			// `rebuild` does not request a completion guarantee, so it has no
+			// wait to bound (#5991 is scoped to `reset`).
+			return runRebuildClient(cmd, args, false, quiet, jsonProgress, plain, resolvedRef, inc, timeoutFlag, 0)
 		},
 	}
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "suppress progress output; print only the final summary")
@@ -84,16 +86,36 @@ func newResetCmd() *cobra.Command {
 	var plain bool
 	var refFlag string
 	var timeoutFlag string
+	var waitTimeoutFlag string
 
 	cmd := &cobra.Command{
 		Use:   "reset [group] [slug]",
 		Short: "Wipe .grafel/ and rebuild via the daemon",
+		Long: `Reset wipes each repo's .grafel/ and rebuilds the group from scratch.
+
+Unlike ` + "`grafel rebuild`" + `, reset BLOCKS until the daemon confirms the wipe and
+rebuild actually completed, and exits non-zero if it cannot confirm them
+(#5991) — a reset that reports success must mean the graph was really rebuilt.
+A large group therefore holds the command for the whole rebuild; the daemon's
+own bound is 2h. Use --wait-timeout to bound the wait on scripted paths.
+
+Flags:
+  --quiet           suppress progress output; print only the final summary
+  --plain           no ANSI color or carriage-return overwriting (CI-safe)
+  --json-progress   NDJSON output: one broker event per line (for scripting)
+  --ref <ref>       operate on a specific git ref; @all is refused (destructive)
+  --timeout <dur>   per-repo rebuild watchdog (daemon-side; see below)
+  --wait-timeout    how long THIS command waits for the daemon to confirm`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resolvedRef, _, err := resolveRef(refFlag, false /* @all NOT ok — destructive */)
 			if err != nil {
 				return err
 			}
-			return runRebuildClient(cmd, args, true, quiet, jsonProgress, plain, resolvedRef, false, timeoutFlag)
+			waitTimeout, err := parseWaitTimeout(waitTimeoutFlag)
+			if err != nil {
+				return err
+			}
+			return runRebuildClient(cmd, args, true, quiet, jsonProgress, plain, resolvedRef, false, timeoutFlag, waitTimeout)
 		},
 	}
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "suppress progress output; print only the final summary")
@@ -102,7 +124,59 @@ func newResetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&refFlag, "ref", "", refFlagUsage)
 	cmd.Flags().StringVar(&timeoutFlag, "timeout", "",
 		`override the per-repo rebuild watchdog for this invocation (Go duration, e.g. "45m"; "0" disables it; default: GRAFEL_REBUILD_REPO_TIMEOUT or 30m)`)
+	cmd.Flags().StringVar(&waitTimeoutFlag, "wait-timeout", "",
+		`bound how long THIS command waits for the daemon to confirm the wipe+rebuild (Go duration, e.g. "30m"; default/"0" = unbounded, i.e. until the daemon's own 2h bound). On expiry reset exits non-zero with an UNCONFIRMED outcome — the rebuild may still be running. Distinct from --timeout, which is the daemon-side per-repo watchdog.`)
 	return cmd
+}
+
+// parseWaitTimeout parses the --wait-timeout flag. "" and "0" mean unbounded.
+// A malformed value is REJECTED rather than ignored: silently falling back to
+// unbounded would leave the caller believing they were bounded.
+func parseWaitTimeout(raw string) (time.Duration, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("--wait-timeout %q is not a valid Go duration (e.g. \"30m\", \"90s\"; \"0\" or unset = unbounded): %w", raw, err)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("--wait-timeout %q must not be negative", raw)
+	}
+	return d, nil
+}
+
+// errRebuildUnconfirmed marks the CLI's OWN give-up: the --wait-timeout bound
+// expired before the daemon answered. It is deliberately distinct from a
+// daemon-reported failure — we stopped waiting, we did not learn the outcome,
+// so the wipe+rebuild may or may not have completed.
+var errRebuildUnconfirmed = errors.New("the daemon did not answer in time")
+
+// boundOutcome bounds a rebuild-outcome wait at timeout, yielding an
+// errRebuildUnconfirmed outcome if the daemon has not answered by then. A
+// non-positive timeout means unbounded and returns src unchanged, so the common
+// path adds no goroutine at all.
+//
+// On expiry the source goroutine is left blocked on the RPC — net/rpc offers no
+// cancellation and the process is on its way out; the bound exists so a scripted
+// caller regains control, not to tear the call down.
+func boundOutcome(src <-chan rebuildOutcome, timeout time.Duration) <-chan rebuildOutcome {
+	if timeout <= 0 {
+		return src
+	}
+	out := make(chan rebuildOutcome, 1)
+	go func() {
+		t := time.NewTimer(timeout)
+		defer t.Stop()
+		select {
+		case o := <-src:
+			out <- o
+		case <-t.C:
+			out <- rebuildOutcome{err: fmt.Errorf("no completion confirmed within %s: %w", timeout, errRebuildUnconfirmed)}
+		}
+	}()
+	return out
 }
 
 // progressToken generates a short unique token for a rebuild session.
@@ -163,12 +237,41 @@ func fmtDuration(d time.Duration) string {
 // operate on that specific ref). @all is pre-rejected by the caller since
 // rebuild/reset are destructive. Wiring ref into the daemon RPC is tracked
 // separately (#2220); for now it is validated and stored but not forwarded.
-func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, jsonProgress bool, plain bool, ref string, incremental bool, repoTimeout string) error {
+//
+// waitTimeout bounds how long THIS command waits for the daemon's answer
+// (`reset --wait-timeout`); 0 means unbounded. See boundOutcome.
+func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, jsonProgress bool, plain bool, ref string, incremental bool, repoTimeout string, waitTimeout time.Duration) error {
 	if len(args) == 0 {
 		return errors.New("supply [group] (and optional [slug])")
 	}
 
 	inc := incremental
+
+	// #5991 — `reset` must never report success for work that did not happen.
+	//
+	// Split mode is the DEFAULT (daemon.SplitModeEnabled is true unless
+	// GRAFEL_SPLIT_MODE is explicitly falsy). There, Service.Rebuild is
+	// fire-and-forget: it writes a KindRebuild request file for the group and
+	// returns nil immediately, with the ZERO RebuildReply. The engine drains
+	// that file on its own schedule — and if it never does (engine down,
+	// crash-resume backoff, dead-letter), nothing ever wipes `.grafel/` or
+	// rebuilds, because BOTH the wipe and the rebuild live inside the
+	// engine-side RebuildFunc. The CLI saw err==nil + an empty reply and
+	// printed nothing after "Rebuilding group '<g>'...", so `reset` exited 0
+	// having done precisely nothing.
+	//
+	// `reset` is the destructive escape hatch users reach for when they
+	// suspect the index is bad, so a silent no-op there is the worst possible
+	// outcome. Opt INTO the #5790 completion contract (the same one
+	// `group add --index` uses): WaitForCompletion makes the daemon block on
+	// the engine's terminal ack and return nil ONLY on a real StatusOK
+	// completion, and a clear error on failure / dead-letter / engine-death /
+	// timeout. In monolith mode the flag is inert (that path is already
+	// synchronous), so this is a no-op there.
+	//
+	// Deliberately scoped to wipe (i.e. `reset`) — plain `rebuild` keeps its
+	// existing fire-and-forget semantics; see #5991 for that discussion.
+	waitForCompletion := wipe
 
 	c, err := client.Dial()
 	if err != nil {
@@ -192,19 +295,27 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 		fmt.Fprintf(w, "Note: --ref %q recorded; daemon-side ref routing is tracked in #2220.\n", ref)
 	}
 
-	// --quiet: skip progress, run synchronously with no token.
+	// --quiet: skip progress, no token. The RPC still runs on a goroutine so
+	// --wait-timeout can bound it — with WaitForCompletion this call blocks for
+	// the whole rebuild, and --quiet prints nothing while it does, so an
+	// unbounded wait here is a silent multi-hour hang on scripted paths.
 	if quiet {
-		// #5328: an explicit `grafel rebuild`/repair is human-awaited → foreground.
-		reply, err := c.Rebuild(proto.RebuildArgs{Group: group, Slug: slug, Wipe: wipe, Incremental: inc, Interactive: true, RepoTimeout: repoTimeout})
-		if err != nil {
-			return err
+		quietCh := make(chan rebuildOutcome, 1)
+		go func() {
+			// #5328: an explicit `grafel rebuild`/repair is human-awaited → foreground.
+			reply, rpcErr := c.Rebuild(proto.RebuildArgs{Group: group, Slug: slug, Wipe: wipe, Incremental: inc, Interactive: true, RepoTimeout: repoTimeout, WaitForCompletion: waitForCompletion})
+			quietCh <- rebuildOutcome{repos: reply.Repos, warning: reply.Warning, err: rpcErr}
+		}()
+		outcome := <-boundOutcome(quietCh, waitTimeout)
+		if outcome.err != nil {
+			return wrapResetFailure(wipe, group, outcome.err)
 		}
-		for _, r := range reply.Repos {
-			// reply.Repos contains absolute paths since #1076 fix; show basename.
+		for _, r := range outcome.repos {
+			// repos contains absolute paths since #1076 fix; show basename.
 			fmt.Fprintf(w, "rebuilt %s\n", filepath.Base(r))
 		}
-		if reply.Warning != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", reply.Warning)
+		if outcome.warning != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", outcome.warning)
 		}
 		return nil
 	}
@@ -216,7 +327,8 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 	}
 
 	// Kick off the async rebuild RPC on the primary connection.
-	outcomeCh := make(chan rebuildOutcome, 1)
+	rpcCh := make(chan rebuildOutcome, 1)
+	var outcomeCh <-chan rebuildOutcome
 	token := progressToken()
 	go func() {
 		reply, rpcErr := c.Rebuild(proto.RebuildArgs{
@@ -228,8 +340,10 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 			// #5328: explicit user-triggered repair → foreground (priority + cap).
 			Interactive: true,
 			RepoTimeout: repoTimeout,
+			// #5991: reset blocks for a real completion ack; see above.
+			WaitForCompletion: waitForCompletion,
 		})
-		outcomeCh <- rebuildOutcome{
+		rpcCh <- rebuildOutcome{
 			repos:    reply.Repos,
 			warning:  reply.Warning,
 			elapsed:  reply.ElapsedSec,
@@ -238,6 +352,11 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 			err:      rpcErr,
 		}
 	}()
+
+	// Apply the --wait-timeout bound ONCE, on the channel every progress path
+	// below consumes, so the bound cannot be reachable on one renderer and not
+	// the other. No-op (same channel) when unbounded.
+	outcomeCh = boundOutcome(rpcCh, waitTimeout)
 
 	if !jsonProgress {
 		fmt.Fprintf(w, "Rebuilding group '%s'...\n", group)
@@ -250,10 +369,10 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 
 		sseCh, sseErr := subscribeSSE(ctx, dashPort, group, token)
 		if sseErr == nil {
-			outcome := runBrokerProgress(ctx, w, group, sseCh, outcomeCh, plain, jsonProgress)
+			outcome := runBrokerProgress(ctx, w, group, sseCh, outcomeCh, plain, jsonProgress, waitForCompletion)
 			cancel()
 			if outcome.err != nil {
-				return outcome.err
+				return wrapResetFailure(wipe, group, outcome.err)
 			}
 			return finishRebuild(cmd, w, group, token, outcome.repos, outcome.warning,
 				outcome.elapsed, outcome.entities, outcome.rels, jsonProgress)
@@ -272,7 +391,10 @@ func runPollProgress(
 	w io.Writer,
 	group, _ string,
 	token string,
-	_ bool,
+	// wipe identifies a `reset` (as opposed to a plain `rebuild`) so a
+	// non-completing run is reported as "not wiped or rebuilt" (#5991). This
+	// parameter was previously accepted and ignored (`_ bool`).
+	wipe bool,
 	resultCh <-chan rebuildOutcome,
 	jsonProgress bool,
 	c *client.Client,
@@ -283,7 +405,7 @@ func runPollProgress(
 		// Polling unavailable — wait for RPC result silently.
 		outcome := <-resultCh
 		if outcome.err != nil {
-			return outcome.err
+			return wrapResetFailure(wipe, group, outcome.err)
 		}
 		for _, r := range outcome.repos {
 			fmt.Fprintf(w, "rebuilt %s\n", filepath.Base(r))
@@ -357,11 +479,34 @@ func runPollProgress(
 	}
 
 	if finalOutcome.err != nil {
-		return finalOutcome.err
+		return wrapResetFailure(wipe, group, finalOutcome.err)
 	}
 
 	return finishRebuild(cmd, w, group, token, finalOutcome.repos, finalOutcome.warning,
 		finalOutcome.elapsed, finalOutcome.entities, finalOutcome.rels, jsonProgress)
+}
+
+// wrapResetFailure names what did NOT happen when a `reset` fails to complete
+// (#5991). `reset`'s whole contract is "wipe `.grafel/`, then rebuild", and
+// both halves run engine-side inside RebuildFunc — so an unconfirmed rebuild
+// means neither happened, and the previous (possibly corrupt) graph is still
+// on disk. The raw daemon error alone ("timed out after 2h0m0s") does not say
+// that; this prefix does, and names the group.
+//
+// Plain `rebuild` (wipe=false) is returned unwrapped so its message is
+// unchanged.
+func wrapResetFailure(wipe bool, group string, err error) error {
+	if err == nil || !wipe {
+		return err
+	}
+	// The CLI's own --wait-timeout give-up is NOT a confirmed failure: we
+	// stopped waiting, we did not learn the outcome. Saying "was NOT wiped or
+	// rebuilt" there would be exactly the kind of confident-but-wrong report
+	// this issue is about, pointed the other way.
+	if errors.Is(err, errRebuildUnconfirmed) {
+		return fmt.Errorf("reset: group %q — %w; the rebuild may or may not have completed (check `grafel status`), and --wait-timeout only bounds this command, it does not cancel the daemon", group, err)
+	}
+	return fmt.Errorf("reset: group %q was NOT wiped or rebuilt (the previous graph is still on disk): %w", group, err)
 }
 
 // finishRebuild renders the final summary after a rebuild completes.
@@ -487,7 +632,9 @@ func indexGroupWithProgress(w, errW io.Writer, group string) error {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		if sseCh, sseErr := subscribeSSE(ctx, dashPort, group, token); sseErr == nil {
-			outcome := runBrokerProgress(ctx, w, group, sseCh, outcomeCh, false, false)
+			// indexGroupWithProgress does not request WaitForCompletion, so it
+			// keeps the historical 5s post-SSE-close give-up (#5991).
+			outcome := runBrokerProgress(ctx, w, group, sseCh, outcomeCh, false, false, false)
 			cancel()
 			if outcome.err != nil {
 				return outcome.err

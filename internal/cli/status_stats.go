@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -65,6 +66,29 @@ type RepoStatus struct {
 	// run, and this marker sits alongside it as an additional warning. Cleared
 	// (nil again) once a subsequent rebuild of this repo succeeds.
 	RebuildFailure *statusfile.RebuildFailure
+
+	// GraphLoadError is non-empty when this repo HAS a graph artefact on disk
+	// but it could not be read: a truncated/garbage graph.fb (the flatbuffers
+	// accessors PANIC on those), an unreadable segment-set manifest, an
+	// incompatible format version, or a nil Document from a load that reported
+	// no error. It is the third state, distinct from BOTH:
+	//
+	//   - healthy      → GraphLoadError == "" and the counts below are real;
+	//   - no graph yet → GraphLoadError == "" with LastIndexedAge "(never)".
+	//
+	// The string-valued "the last load failed, here is why" shape mirrors the
+	// representation the rest of the codebase already uses for exactly this
+	// condition: internal/mcp's LoadedRepo.loadErr (state.go), surfaced as the
+	// dashboard's LoadError and as tools.go's "unavailable" list. See #6013
+	// (this defect), #6010 (a nil Doc from the same failed-load state reaching
+	// BuildLabelIndex) and #5969 (the malformed-graph class).
+	//
+	// When set, the Files / IndexedRef / IndexedSHA / IsWorktree fields and the
+	// group's HTTPEndpoints / ProcessFlows / orphan-rate contributions from
+	// this repo are MISSING, not zero — which is precisely why reporting the
+	// failure matters: silently under-reported numbers read as a healthy,
+	// smaller repo.
+	GraphLoadError string
 }
 
 // ComputeStatusSummary loads the per-repo graph-stats.json files and enrichment
@@ -142,19 +166,47 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 			}
 		}
 
-		// Load full graph document to extract entities with incoming rels + kind-based counts.
-		// Errors are silently skipped — graph may not exist yet or may be invalid.
-		// This is only for computing derived counts like HTTPEndpoints and ProcessFlows;
-		// the main entity/relationship counts come from graph-stats.json.
+		// Load full graph document to extract entities with incoming rels +
+		// kind-based counts. This is only for computing derived counts like
+		// HTTPEndpoints and ProcessFlows; the main entity/relationship counts
+		// come from graph-stats.json.
+		//
+		// #6013: this used to swallow BOTH failure modes — a `recover()` with
+		// an empty body ("Silently ignore panics during graph loading"), and
+		// an `if err == nil && doc != nil` that dropped the returned error on
+		// the floor. A corrupt/truncated graph.fb (the flatbuffers accessors
+		// panic with "slice bounds out of range") therefore produced a
+		// plausible, SMALLER-than-reality repo line with no warning at all,
+		// indistinguishable from a healthy repo.
+		//
+		// The recover STAYS — `status` must remain non-fatal and keep
+		// reporting every other repo and group — but the failure is now
+		// RECORDED on rs.GraphLoadError and rendered by PrintStatusSummary.
+		// A repo that simply has no graph yet is NOT a failure: that keeps the
+		// existing "0 entities … indexed (never)" shape, so the three states
+		// (healthy / not indexed yet / failed) stay distinguishable.
 		func() {
 			defer func() {
-				// Catch panics from malformed graph files (e.g., in tests).
-				if r := recover(); r != nil {
-					// Silently ignore panics during graph loading.
+				// Catch panics from malformed graph files.
+				if rec := recover(); rec != nil {
+					rs.GraphLoadError = scrubPaths(fmt.Sprintf("panic while reading the graph: %v", rec))
 				}
 			}()
 			doc, err := graph.LoadGraphFromDir(stateDir)
-			if err == nil && doc != nil {
+			switch {
+			case err != nil:
+				// Only a graph that EXISTS and cannot be read is a failure.
+				// "neither graph.fb nor graph.json found" is the never-indexed
+				// state and stays silent.
+				if graphArtifactPresent(stateDir) {
+					rs.GraphLoadError = scrubPaths(err.Error())
+				}
+			case doc == nil:
+				// A nil Document with a nil error is the same failed-load state
+				// that reaches BuildLabelIndex in #6010 — report it, never treat
+				// it as an empty-but-healthy repo.
+				rs.GraphLoadError = "graph loaded as a nil document"
+			default:
 				rs.Files = doc.Stats.Files
 				// Phase 0 git metadata (#2088).
 				rs.IndexedRef = doc.IndexedRef
@@ -220,6 +272,61 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 	s.CrossRepoEdges = loadCrossRepoEdgeCount(group)
 
 	return s
+}
+
+// fsPathRe matches an absolute (or otherwise multi-segment) filesystem path,
+// Unix or Windows. It requires at least one INTERIOR separator so ordinary
+// prose like "and/or" is never mistaken for a path.
+var fsPathRe = regexp.MustCompile(`(?:[A-Za-z]:)?[/\\](?:[^\s:/\\]+[/\\])+[^\s:/\\]*`)
+
+// scrubPaths reduces every filesystem path in a message to its last segment.
+//
+// GraphLoadError is printed to the terminal and is exactly the kind of string a
+// user pastes into a bug report, and graph-load errors readily embed absolute
+// paths — a corrupt segment-set manifest surfaces as
+// "graph: resolve segment-set <abs>: graph: parse manifest in <abs>: …",
+// which discloses the repository layout. Scrubbing here rather than relying on
+// which underlying error happens to fire keeps that true for load failures we
+// have not seen yet. The basename is kept so the diagnosis (which generation,
+// which file, what went wrong) survives.
+func scrubPaths(msg string) string {
+	return fsPathRe.ReplaceAllStringFunc(msg, func(p string) string {
+		trimmed := strings.TrimRight(p, `/\`)
+		if i := strings.LastIndexAny(trimmed, `/\`); i >= 0 {
+			trimmed = trimmed[i+1:]
+		}
+		if trimmed == "" {
+			return "<path>"
+		}
+		return trimmed
+	})
+}
+
+// graphArtifactPresent reports whether stateDir contains something that is
+// MEANT to be a graph. It is what separates the two error outcomes of
+// graph.LoadGraphFromDir (#6013):
+//
+//   - present + load error  → a real failure, surfaced as GraphLoadError;
+//   - absent                → the never-indexed state ("neither graph.fb nor
+//     graph.json found in …"), which is normal and must stay silent.
+//
+// A CurrentGraphDescriptor that itself errors counts as PRESENT: the only way
+// it errors is a segment-set pointer whose manifest is corrupt, which is a
+// broken artefact, not a missing one.
+func graphArtifactPresent(stateDir string) bool {
+	desc, err := graph.CurrentGraphDescriptor(stateDir)
+	if err != nil {
+		return true
+	}
+	if desc.Kind != graph.GraphAbsent {
+		return true
+	}
+	// GraphAbsent only speaks for the .fb layouts; graph.json is the other
+	// artefact LoadGraphFromDir accepts.
+	if _, statErr := os.Stat(filepath.Join(stateDir, "graph.json")); statErr == nil {
+		return true
+	}
+	return false
 }
 
 // formatTimeSince returns a human-readable duration like "5m ago" relative to now.
@@ -352,15 +459,43 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 			fmt.Fprintf(w, "  %-*s  ⚠ last rebuild FAILED: %s%s — see daemon.err; raise GRAFEL_REBUILD_REPO_TIMEOUT (or `grafel rebuild --timeout <dur>`) or rebuild again\n",
 				maxSlugLen, "", rf.Reason, formatRebuildFailureRef(rf))
 		}
+		// #6013: a graph that exists but cannot be READ used to be swallowed
+		// entirely, so the line above read as a healthy — merely smaller —
+		// repo. Say so explicitly, and say which numbers on that line are
+		// therefore missing rather than genuinely zero.
+		if rs.GraphLoadError != "" {
+			fmt.Fprintf(w, "  %-*s  ⚠ graph FAILED to load: %s — file/endpoint/flow counts above are INCOMPLETE; run `grafel reset %s` to rebuild from scratch\n",
+				maxSlugLen, "", rs.GraphLoadError, s.GroupName)
+		}
 	}
 
 	// Print aggregated totals.
-	fmt.Fprintf(w, "\n  TOTAL: %s entities · %s relationships · %s cross-repo edges · %s flows · %s endpoints\n",
+	//
+	// #6013: every repo whose graph failed to load contributed NOTHING to the
+	// flow/endpoint/orphan aggregates, so this headline under-reports. Marking
+	// only the per-repo lines would leave the number most people actually read
+	// silently wrong.
+	incomplete := 0
+	for _, rs := range s.RepoStats {
+		if rs.GraphLoadError != "" {
+			incomplete++
+		}
+	}
+	totalSuffix := ""
+	if incomplete > 0 {
+		noun := "repos"
+		if incomplete == 1 {
+			noun = "repo"
+		}
+		totalSuffix = fmt.Sprintf("  ⚠ INCOMPLETE — %d %s could not be read (see above)", incomplete, noun)
+	}
+	fmt.Fprintf(w, "\n  TOTAL: %s entities · %s relationships · %s cross-repo edges · %s flows · %s endpoints%s\n",
 		fmtInt(s.TotalEntities),
 		fmtInt(s.TotalRelationships),
 		fmtInt(s.CrossRepoEdges),
 		fmtInt(s.ProcessFlows),
-		fmtInt(s.HTTPEndpoints))
+		fmtInt(s.HTTPEndpoints),
+		totalSuffix)
 
 	// Print available optional candidates.
 	//
