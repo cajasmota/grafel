@@ -53,6 +53,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // Quarantine tuning. All values are env-overridable (see quarantineConfig).
@@ -654,11 +656,9 @@ func writeQuarantineFile(repo string, dirs []QuarantineReason) error {
 	if err != nil {
 		return err
 	}
-	tmp := quarantinePath(repo) + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, quarantinePath(repo))
+	// #6018: unique temp name — the tracker (persistLocked) and this free
+	// function both target the same destination from different goroutines.
+	return atomicfile.WriteFile(quarantinePath(repo), data, 0o644)
 }
 
 // UnquarantineFile removes rel from a repo's persisted quarantine set. Returns
@@ -769,13 +769,12 @@ func (q *QuarantineTracker) persistLocked(repo string) {
 	if err != nil {
 		return
 	}
-	// Atomic-ish: write temp then rename.
-	tmp := quarantinePath(repo) + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	// Atomic: unique temp then rename (#6018 — the temp name used to be
+	// quarantinePath(repo)+".tmp", shared with writeQuarantineFile above).
+	if err := atomicfile.WriteFile(quarantinePath(repo), data, 0o644); err != nil {
 		if q.audit != nil {
 			q.audit("persist-error", repo, "", err.Error())
 		}
 		return
 	}
-	_ = os.Rename(tmp, quarantinePath(repo))
 }

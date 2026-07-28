@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // PinRecord is a single user-managed pin entry.
@@ -88,11 +90,8 @@ func (s *PinStore) save() error {
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
+	// #6018: unique temp name (s.mu only serialises writers inside ONE process).
+	return atomicfile.WriteFile(s.path, data, 0o600)
 }
 
 // Pin adds a pin for (group, repo, ref). Idempotent — re-pinning an already

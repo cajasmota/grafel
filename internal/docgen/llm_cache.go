@@ -21,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // CacheEntry is the on-disk value stored for one section result.
@@ -80,13 +82,10 @@ func WriteCache(cacheDir string, entry CacheEntry) error {
 		return fmt.Errorf("marshal cache entry: %w", err)
 	}
 	target := cacheFilePath(cacheDir, entry.PromptHash)
-	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("write tmp cache file %q: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, target); err != nil {
-		_ = os.Remove(tmp) // best-effort cleanup
-		return fmt.Errorf("rename cache file %q→%q: %w", tmp, target, err)
+	// #6018: unique temp name — docgen passes write this cache from concurrent
+	// workers, and two passes computing the same prompt hash aim at one path.
+	if err := atomicfile.WriteFile(target, data, 0o644); err != nil {
+		return fmt.Errorf("write cache file %q: %w", target, err)
 	}
 	return nil
 }

@@ -60,6 +60,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/atomicfile"
 	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/fsnotify/fsnotify"
 )
@@ -177,13 +178,23 @@ func (s *Store) Load() error {
 	return nil
 }
 
+// writeStoreFile is the store's atomic-write seam. It is a var solely so the
+// #5675 retry-once can be tested with an injected transient failure: since
+// #6018 the staging file has a unique name chosen inside atomicfile, so a test
+// can no longer seed a known temp path to make the first attempt fail.
+//
+// It is a bare var with no mutex, and Store.save() reads it from the daemon's
+// reconcile goroutines: NOT SAFE TO SWAP CONCURRENTLY. Tests that swap it must
+// not be parallel with each other or with anything that persists a Store.
+var writeStoreFile = atomicfile.WriteFile
+
 // save writes the store atomically (caller must hold s.mu).
 //
-// It is resilient to a transient failure writing the `.tmp` staging file
-// (#5675): the daemon persists on every reconciliation tick, so a momentary
-// fd-exhaustion or I/O blip must not drop the whole reconcile. The `.tmp`
-// write is retried ONCE before giving up. The caller keeps this NON-FATAL —
-// nothing here ever calls os.Exit/log.Fatal.
+// It is resilient to a transient failure writing the staging file (#5675): the
+// daemon persists on every reconciliation tick, so a momentary fd-exhaustion or
+// I/O blip must not drop the whole reconcile. The atomic write is retried ONCE
+// before giving up. The caller keeps this NON-FATAL — nothing here ever calls
+// os.Exit/log.Fatal.
 func (s *Store) save() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
@@ -192,17 +203,21 @@ func (s *Store) save() error {
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		// Retry once: a transient fd/I-O blip during a storm should not drop
-		// the reconcile silently. A best-effort remove of a possibly
-		// partially-written tmp precedes the retry.
-		_ = os.Remove(tmp)
-		if err2 := os.WriteFile(tmp, data, 0o644); err2 != nil {
-			return err2
-		}
+	// #6018: unique temp name via atomicfile (the staging file used to be
+	// s.path+".tmp", shared by every writer aiming at this store).
+	//
+	// The retry-once from #5675 is kept: a transient fd/I-O blip during a storm
+	// must not drop the whole reconcile. atomicfile removes its own temp file on
+	// every error path, so the retry needs no cleanup of its own — that cleanup
+	// is covered by atomicfile's TestWriteFile_RemovesTempOnError, NOT by the
+	// retry test here, which injects its failure through the writeStoreFile seam
+	// before any temp file exists. The retry now covers the rename as well as
+	// the staging write, which the split form did not — both are the same
+	// transient class.
+	if err := writeStoreFile(s.path, data, 0o644); err != nil {
+		return writeStoreFile(s.path, data, 0o644)
 	}
-	return os.Rename(tmp, s.path)
+	return nil
 }
 
 // All returns a snapshot of all children (active and expired).
