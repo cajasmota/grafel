@@ -206,9 +206,9 @@ func TestSampledBetweenness_BitIdenticalToLegacy(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ents, rels := buildHeavyTailedGraph(tc.n, tc.deg, tc.seed)
-			g, _ := BuildGraph(ents, rels)
+			g, idx := BuildGraph(ents, rels)
 			want := sampledBetweennessLegacy(g, tc.k, betweennessSampleSeed)
-			got := sampledBetweenness(g, tc.k, betweennessSampleSeed)
+			got := sampledBetweenness(g, idx.csr, tc.k, betweennessSampleSeed)
 			assertSameBetweenness(t, want, got)
 			nonzero := 0
 			for _, v := range got {
@@ -225,7 +225,7 @@ func TestSampledBetweenness_BitIdenticalToLegacy(t *testing.T) {
 // empty graph, and a graph with no edges at all (every BFS visits one node).
 func TestSampledBetweenness_EmptyAndIsolated(t *testing.T) {
 	empty := simple.NewWeightedDirectedGraph(0, 0)
-	if got := sampledBetweenness(empty, 8, betweennessSampleSeed); len(got) != 0 {
+	if got := sampledBetweenness(empty, nil, 8, betweennessSampleSeed); len(got) != 0 {
 		t.Fatalf("empty graph: want 0 entries, got %d", len(got))
 	}
 
@@ -233,9 +233,9 @@ func TestSampledBetweenness_EmptyAndIsolated(t *testing.T) {
 	for i := range ents {
 		ents[i] = Entity{ID: fmt.Sprintf("e%d", i), Name: fmt.Sprintf("E%d", i), Kind: "function"}
 	}
-	g, _ := BuildGraph(ents, nil)
+	g, idx := BuildGraph(ents, nil)
 	want := sampledBetweennessLegacy(g, 8, betweennessSampleSeed)
-	got := sampledBetweenness(g, 8, betweennessSampleSeed)
+	got := sampledBetweenness(g, idx.csr, 8, betweennessSampleSeed)
 	assertSameBetweenness(t, want, got)
 }
 
@@ -247,12 +247,18 @@ func TestComputeCentrality_ByteIdenticalOnSampledPath(t *testing.T) {
 	g, idx := BuildGraph(ents, rels)
 
 	legacyRaw := sampledBetweennessLegacy(g, betweennessSampleSize, betweennessSampleSeed)
-	want := make(map[string]float64, len(ents))
-	for _, id := range idx.toInt {
-		want[idx.fromInt[id]] = 0
-	}
+	// ComputeCentrality's betweenness map is SPARSE: #5954 stopped storing a
+	// rounded score of zero so that "absent" is the single representation of a
+	// zero betweenness. This expectation used to be built by pre-seeding a zero
+	// for every entity, which made the key-count assertion below compare 4000
+	// pre-seeded keys against the ~850 the production map actually holds — the
+	// test has been failing on main since that change. Build it the same way
+	// ComputeCentrality does instead.
+	want := make(map[string]float64, len(legacyRaw))
 	for nid, v := range legacyRaw {
-		want[idx.fromInt[nid]] = roundForDeterminism(sanitizeFloat(v))
+		if rv := roundForDeterminism(sanitizeFloat(v)); rv != 0 {
+			want[idx.fromInt[nid]] = rv
+		}
 	}
 
 	got, _ := ComputeCentrality(g, idx)
@@ -283,12 +289,12 @@ func TestComputeCentrality_ByteIdenticalOnSampledPath(t *testing.T) {
 // would expose scratch left dirty between calls).
 func TestSampledBetweenness_Deterministic(t *testing.T) {
 	ents, rels := buildHeavyTailedGraph(2000, 4, 21)
-	g, _ := BuildGraph(ents, rels)
-	a := sampledBetweenness(g, 128, betweennessSampleSeed)
+	g, idx := BuildGraph(ents, rels)
+	a := sampledBetweenness(g, idx.csr, 128, betweennessSampleSeed)
 	other, orels := buildHeavyTailedGraph(500, 3, 22)
-	og, _ := BuildGraph(other, orels)
-	_ = sampledBetweenness(og, 64, betweennessSampleSeed)
-	b := sampledBetweenness(g, 128, betweennessSampleSeed)
+	og, oidx := BuildGraph(other, orels)
+	_ = sampledBetweenness(og, oidx.csr, 64, betweennessSampleSeed)
+	b := sampledBetweenness(g, idx.csr, 128, betweennessSampleSeed)
 	assertSameBetweenness(t, a, b)
 }
 
@@ -355,16 +361,16 @@ func TestSampledBetweenness_ScratchIsReusedAcrossPivots(t *testing.T) {
 	}
 	const n = 60_000
 	ents, rels := buildHeavyTailedGraph(n, 5, 0x5954)
-	g, _ := BuildGraph(ents, rels)
+	g, idx := BuildGraph(ents, rels)
 
 	const kLo, kHi = 64, 512
 	var out map[int64]float64
 	_, churnLo := betweennessMemProbe(func() {
-		out = sampledBetweenness(g, kLo, betweennessSampleSeed)
+		out = sampledBetweenness(g, idx.csr, kLo, betweennessSampleSeed)
 	})
 	runtime.KeepAlive(out)
 	peakHeap, churnHi := betweennessMemProbe(func() {
-		out = sampledBetweenness(g, kHi, betweennessSampleSeed)
+		out = sampledBetweenness(g, idx.csr, kHi, betweennessSampleSeed)
 	})
 	runtime.KeepAlive(out)
 	runtime.KeepAlive(g)
@@ -402,7 +408,7 @@ func TestSampledBetweenness_ScratchIsReusedAcrossPivots(t *testing.T) {
 func BenchmarkSampledBetweenness_HeavyTailed(b *testing.B) {
 	const n = 60_000
 	ents, rels := buildHeavyTailedGraph(n, 5, 0x5954)
-	g, _ := BuildGraph(ents, rels)
+	g, idx := BuildGraph(ents, rels)
 
 	var peakSum, iters uint64
 	b.ReportAllocs()
@@ -410,7 +416,7 @@ func BenchmarkSampledBetweenness_HeavyTailed(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var out map[int64]float64
 		p, _ := betweennessMemProbe(func() {
-			out = sampledBetweenness(g, betweennessSampleSize, betweennessSampleSeed)
+			out = sampledBetweenness(g, idx.csr, betweennessSampleSize, betweennessSampleSeed)
 		})
 		runtime.KeepAlive(out)
 		peakSum += p

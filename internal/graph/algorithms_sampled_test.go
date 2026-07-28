@@ -106,7 +106,7 @@ func TestBetweennessSampleThresholdGate(t *testing.T) {
 	// guarantees at this size (exact Betweenness is also deterministic, so we
 	// additionally verify the dedicated sampled function matches the gated call).
 	betw, _ := ComputeCentrality(g, idx)
-	direct := sampledBetweenness(g, betweennessSampleSize, betweennessSampleSeed)
+	direct := sampledBetweenness(g, idx.csr, betweennessSampleSize, betweennessSampleSeed)
 	// The gated ComputeCentrality rounds for determinism; compare top-tier.
 	gatedTop := topKByValue(betw, 10)
 	directScaled := map[string]float64{}
@@ -144,9 +144,9 @@ func TestBetweennessSampleThresholdGate(t *testing.T) {
 // byte-reproducible (fixed seed) across repeated calls on the same graph.
 func TestBetweennessSampledDeterministic(t *testing.T) {
 	ents, rels := buildSyntheticGraph(1000, 4, 7)
-	g, _ := BuildGraph(ents, rels)
-	a := sampledBetweenness(g, 256, betweennessSampleSeed)
-	b := sampledBetweenness(g, 256, betweennessSampleSeed)
+	g, idx := BuildGraph(ents, rels)
+	a := sampledBetweenness(g, idx.csr, 256, betweennessSampleSeed)
+	b := sampledBetweenness(g, idx.csr, 256, betweennessSampleSeed)
 	if len(a) != len(b) {
 		t.Fatalf("non-deterministic key count: %d vs %d", len(a), len(b))
 	}
@@ -173,7 +173,7 @@ func TestBetweennessSampledTop50Overlap(t *testing.T) {
 	}
 
 	// Sampled with the production K.
-	sampRaw := sampledBetweenness(g, betweennessSampleSize, betweennessSampleSeed)
+	sampRaw := sampledBetweenness(g, idx.csr, betweennessSampleSize, betweennessSampleSeed)
 	samp := map[string]float64{}
 	for nid, v := range sampRaw {
 		samp[idx.fromInt[nid]] = v

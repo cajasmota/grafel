@@ -139,6 +139,26 @@ type nodeIndex struct {
 	toInt   map[string]int64
 	fromInt map[int64]string
 	next    int64
+
+	// csr is the directed adjacency of the graph BuildGraph just built, in
+	// compact CSR form. It is derived ONCE, from the relationship slice, and
+	// then shared by every consumer that needs adjacency (sampled betweenness,
+	// the Louvain undirected projection). See directedCSR.
+	csr *directedCSR
+	// csrBuilds counts how many times a directed CSR was derived for this
+	// index. It must be exactly 1 after BuildGraph and must not grow when the
+	// downstream algorithms run — that invariant is the entire point of #5954
+	// S5/S6 and is pinned by TestDirectedCSRIsBuiltExactlyOncePerBuildGraph.
+	csrBuilds int
+	// undirectedDerivations counts how many undirected projections have been
+	// derived from csr. One full Pass-4 run must derive exactly one; a second
+	// would mean the Louvain path is walking the structure twice again.
+	//
+	// It lives here rather than on directedCSR so that directedCSR itself has
+	// NO writer once BuildGraph returns: newBCScratch ALIASES its arrays, and
+	// "read-only apart from one counter" is a weaker invariant than that
+	// aliasing deserves.
+	undirectedDerivations int
 }
 
 func newNodeIndex() *nodeIndex {
@@ -159,12 +179,274 @@ func (n *nodeIndex) get(id string) int64 {
 	return v
 }
 
+// directedCSR is the directed adjacency of the graph BuildGraph constructs,
+// in compressed-sparse-row form: `off` holds n+1 row offsets and `adj`/`w` are
+// the flat, row-major neighbour and weight arrays. Node i of the CSR is gonum
+// node id i (BuildGraph hands out ids 0..n-1 in entity order), so no id
+// translation is needed by any consumer.
+//
+// # Why this exists (#5954 S5/S6)
+//
+// The directed gonum graph stays — ComputeCentrality's PageRank and
+// IdentifyArticulationPoints both consume it. But the adjacency STRUCTURE was
+// previously re-derived from it up to four separate times per Pass-4 run, each
+// time through gonum's interface-returning edge iterator, which materialises
+// one boxed graph.WeightedEdge per edge into a slice sized by the whole edge
+// set. Profiling after the S4 scratch-reuse fix attributed 105.1 MB (62% of
+// what was left) to exactly that boxing. Deriving the adjacency once, from the
+// relationship slice, and sharing it removes those walks outright.
+//
+// # int32 sizing
+//
+// The reference corpus is ~427k entities and ~1.33M collapsed edges, both three
+// orders of magnitude below math.MaxInt32, so int32 indices are safe and halve
+// the footprint of `off`/`adj` relative to int64. buildDirectedCSR ENFORCES the
+// bound on both the node count and the pre-collapse edge count — see
+// csrIndexLimit for why it enforces by panicking.
+//
+// # Mutability
+//
+// Every field is written once, during construction, and is READ-ONLY
+// thereafter. newBCScratch relies on that: it aliases off/adj rather than
+// copying them. Do not add mutable state here — the two derivation counters
+// this change needs live on nodeIndex precisely so this object has no writer
+// after BuildGraph returns.
+type directedCSR struct {
+	n   int
+	off []int32   // len n+1
+	adj []int32   // len off[n], target node ids, ASCENDING within a row
+	w   []float64 // len off[n], parallel to adj
+}
+
+// csrIndexLimit is the largest node count and edge count directedCSR's int32
+// indices can address.
+//
+// Exceeding it PANICS rather than degrading. The alternative — returning a
+// truncated or all-zero CSR — is a silent wrong answer: newBCScratch would
+// accept an all-zero offset array and produce all-zero betweenness, and the
+// Louvain projection would produce n singleton communities, both of which are
+// then PERSISTED as if they were real scores. A graph two thousand times larger
+// than the reference corpus is a situation that needs a human, not a fallback.
+//
+// It is a var only so TestDirectedCSRIndexLimitIsEnforced can lower it and drive
+// the real BuildGraph path: a bound that can only be exercised by calling a
+// helper directly is a bound nothing proves is wired into the code that runs.
+// Nothing in production writes it.
+var csrIndexLimit int64 = math.MaxInt32
+
+// row returns the [lo, hi) slice bounds of u's adjacency row.
+func (c *directedCSR) row(u int32) (int32, int32) { return c.off[u], c.off[u+1] }
+
+// hasEdge reports whether the directed edge u->v is present. Rows are sorted
+// ascending, so this is a binary search.
+func (c *directedCSR) hasEdge(u, v int32) bool {
+	lo, hi := c.row(u)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		switch {
+		case c.adj[mid] < v:
+			lo = mid + 1
+		case c.adj[mid] > v:
+			hi = mid
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+// weightOf returns the weight of u->v and whether it exists.
+func (c *directedCSR) weightOf(u, v int32) (float64, bool) {
+	lo, hi := c.row(u)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		switch {
+		case c.adj[mid] < v:
+			lo = mid + 1
+		case c.adj[mid] > v:
+			hi = mid
+		default:
+			return c.w[mid], true
+		}
+	}
+	return 0, false
+}
+
+// csrEndpoints applies BuildGraph's edge-admission rules to one relationship
+// and returns the dense endpoint pair. It is the SINGLE definition of "which
+// relationships become edges", shared with BuildGraph's gonum insertion loop so
+// the two cannot drift:
+//
+//   - blank endpoint id      -> rejected
+//   - endpoint not an entity -> rejected (bare stdlib names etc.)
+//   - self-loop              -> rejected (gonum rejects them on simple graphs)
+//
+// Parallel edges are ADMITTED here and collapsed downstream, mirroring
+// BuildGraph's weight accumulation.
+func csrEndpoints(idx *nodeIndex, r *Relationship) (from, to int32, ok bool) {
+	if r.FromID == "" || r.ToID == "" {
+		return 0, 0, false
+	}
+	f, ok := idx.toInt[r.FromID]
+	if !ok {
+		return 0, 0, false
+	}
+	t, ok := idx.toInt[r.ToID]
+	if !ok {
+		return 0, 0, false
+	}
+	if f == t {
+		return 0, 0, false
+	}
+	return int32(f), int32(t), true
+}
+
+// buildDirectedCSR derives the compact directed adjacency straight from the
+// relationship slice — it never touches the gonum graph, so it costs no edge
+// boxing at all.
+//
+// It reproduces BuildGraph's three structural behaviours exactly:
+//
+//  1. every entity is a node, including isolated ones (n = idx.next, so a node
+//     with no incident relationship still gets an — empty — row);
+//  2. self-loops are dropped (csrEndpoints);
+//  3. parallel edges are collapsed with their weights ACCUMULATED, in
+//     relationship order, so the resulting float is bit-identical to the
+//     `w += existing.Weight()` chain BuildGraph runs.
+//
+// Allocation is count-then-fill, never append-from-zero: pass 1 counts raw
+// out-degrees, pass 2 fills exactly-sized raw arrays, then parallel edges are
+// collapsed in place and the result copied into exactly-sized final arrays.
+func buildDirectedCSR(idx *nodeIndex, rels []Relationship) *directedCSR {
+	idx.csrBuilds++
+	n := int(idx.next)
+	if int64(n) > csrIndexLimit {
+		panic(fmt.Sprintf("graph: %d entities exceeds the int32 CSR index limit %d", n, csrIndexLimit))
+	}
+	c := &directedCSR{n: n, off: make([]int32, n+1)}
+	if n == 0 {
+		return c
+	}
+
+	// Pass 1 — raw out-degree per source. Parallel edges are still counted
+	// separately at this point; they collapse below. The running total is int64
+	// so the bound check below cannot itself be the thing that overflows.
+	rawOff := make([]int32, n+1)
+	var maxRow int32
+	var admitted int64
+	for i := range rels {
+		u, _, ok := csrEndpoints(idx, &rels[i])
+		if !ok {
+			continue
+		}
+		rawOff[u+1]++
+		admitted++
+	}
+	if admitted > csrIndexLimit {
+		panic(fmt.Sprintf("graph: %d admitted relationships exceeds the int32 CSR index limit %d", admitted, csrIndexLimit))
+	}
+	for i := 0; i < n; i++ {
+		if d := rawOff[i+1]; d > maxRow {
+			maxRow = d
+		}
+		rawOff[i+1] += rawOff[i]
+	}
+	rawTotal := rawOff[n]
+
+	// Pass 2 — fill. Within a row, entries land in relationship order, which
+	// is what makes the collapse below reproduce BuildGraph's accumulation
+	// order.
+	adj := make([]int32, rawTotal)
+	w := make([]float64, rawTotal)
+	cursor := make([]int32, n)
+	copy(cursor, rawOff[:n])
+	for i := range rels {
+		u, v, ok := csrEndpoints(idx, &rels[i])
+		if !ok {
+			continue
+		}
+		p := cursor[u]
+		adj[p] = v
+		w[p] = edgeWeight(rels[i].PropsSnapshot())
+		cursor[u] = p + 1
+	}
+
+	// Collapse parallel edges in place. Rows are processed in ascending order
+	// and the write cursor never overtakes the row start, so the compacted
+	// prefix is always behind the row being read. `rowW` shadows the row's
+	// weights because the write can land on the row's own first slot.
+	//
+	// The sort key packs (target, arrival index within the row) into one int64
+	// so slices.Sort — no closure, no reflect swapper — gives a target-ordered,
+	// arrival-stable permutation. Arrival stability is what preserves the
+	// float accumulation order.
+	keys := make([]int64, 0, maxRow)
+	rowW := make([]float64, maxRow)
+	var write int32
+	for u := 0; u < n; u++ {
+		lo, hi := rawOff[u], rawOff[u+1]
+		c.off[u] = write
+		if lo == hi {
+			continue
+		}
+		keys = keys[:0]
+		for p := lo; p < hi; p++ {
+			keys = append(keys, int64(adj[p])<<32|int64(p-lo))
+		}
+		copy(rowW, w[lo:hi])
+		slices.Sort(keys)
+		for j := 0; j < len(keys); {
+			target := int32(keys[j] >> 32)
+			// BuildGraph computes `w := edgeWeight(...)` then `w += existing`,
+			// i.e. new + accumulated. IEEE-754 addition is commutative, so the
+			// left-to-right accumulation here is bit-identical.
+			sum := rowW[keys[j]&0xffffffff]
+			j++
+			for j < len(keys) && int32(keys[j]>>32) == target {
+				sum += rowW[keys[j]&0xffffffff]
+				j++
+			}
+			adj[write] = target
+			w[write] = sum
+			write++
+		}
+	}
+	c.off[n] = write
+
+	if write == rawTotal {
+		c.adj, c.w = adj, w
+		return c
+	}
+	c.adj = make([]int32, write)
+	c.w = make([]float64, write)
+	copy(c.adj, adj[:write])
+	copy(c.w, w[:write])
+	return c
+}
+
 // BuildGraph constructs a weighted directed graph plus an index mapping
 // string entity IDs to gonum int64 node IDs. Edge weight follows the spec:
 //
 //	weight = max(1, callsite_count) * confidence
 //
 // with both properties drawn from Relationship.Properties (string-typed).
+//
+// The CSR is built FIRST and the gonum edge set is then materialised from it
+// (#5954 S5/S6). The obvious ordering — build g by walking rels, then derive the
+// CSR by walking rels again — reads every relationship's properties twice, and
+// Relationship.PropsSnapshot() materialises a fresh map[string]string on every
+// call. On a 60k-entity fixture whose relationships actually carry
+// callsite_count/confidence (as corpus relationships do) that cost 31.6% of
+// BuildGraph's wall time; it is invisible on a fixture with no properties,
+// which is how it initially escaped review. Building in this order reads them
+// exactly once, and additionally spares gonum the remove-and-reinsert churn
+// that parallel edges used to cause, because the CSR arrives pre-collapsed.
+//
+// The two representations are therefore no longer independent derivations.
+// legacyBuildGraph in algorithms_csr_legacy_test.go preserves the original
+// walk-rels-into-gonum implementation verbatim, and
+// TestDirectedCSRMatchesGonumAdjacencyBitForBit checks BOTH the CSR and g
+// against it, so the equivalence claim still rests on an independent oracle.
 func BuildGraph(entities []Entity, rels []Relationship) (*simple.WeightedDirectedGraph, *nodeIndex) {
 	g := simple.NewWeightedDirectedGraph(0, 0)
 	idx := newNodeIndex()
@@ -177,31 +459,20 @@ func BuildGraph(entities []Entity, rels []Relationship) (*simple.WeightedDirecte
 		}
 	}
 
-	for _, r := range rels {
-		if r.FromID == "" || r.ToID == "" {
-			continue
+	// Derive the shared directed adjacency ONCE. Every downstream consumer of
+	// adjacency reads this instead of re-walking g's interface-returning edge
+	// iterator. See directedCSR.
+	idx.csr = buildDirectedCSR(idx, rels)
+
+	// Materialise the gonum edge set from the CSR. Self-loops are already gone
+	// and parallel edges already collapsed, so this is one SetWeightedEdge per
+	// surviving edge with no lookup, no RemoveEdge and no re-accumulation.
+	for u := int32(0); u < int32(idx.csr.n); u++ {
+		lo, hi := idx.csr.row(u)
+		for p := lo; p < hi; p++ {
+			g.SetWeightedEdge(g.NewWeightedEdge(
+				simple.Node(int64(u)), simple.Node(int64(idx.csr.adj[p])), idx.csr.w[p]))
 		}
-		// Skip edges whose endpoints aren't in the entity set (e.g. bare
-		// stdlib names): they'd inflate node count without contributing
-		// real structure.
-		if _, ok := idx.toInt[r.FromID]; !ok {
-			continue
-		}
-		if _, ok := idx.toInt[r.ToID]; !ok {
-			continue
-		}
-		from := idx.get(r.FromID)
-		to := idx.get(r.ToID)
-		if from == to {
-			continue // gonum rejects self-loops on simple graphs
-		}
-		w := edgeWeight(r.PropsSnapshot())
-		// If the edge already exists, accumulate weight (multiple call sites).
-		if existing := g.WeightedEdge(from, to); existing != nil {
-			w += existing.Weight()
-			g.RemoveEdge(from, to)
-		}
-		g.SetWeightedEdge(g.NewWeightedEdge(simple.Node(from), simple.Node(to), w))
 	}
 	return g, idx
 }
@@ -378,39 +649,21 @@ func atofSafe(s string) float64 {
 // result slice and their members are assigned community_id=-1 ("ungrouped").
 // This prevents singleton/micro-community noise from reaching the MCP surface
 // and the dashboard. Set opts.MinSize=1 to disable denoising.
-func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityNames []string, opts CommunityOptions) ([]CommunityResult, map[string]int, float64, int) {
-	// Project the directed graph onto an undirected graph; community detection
-	// in gonum operates on undirected (or otherwise symmetric) inputs.
-	und := simple.NewWeightedUndirectedGraph(0, 0)
-	nodes := g.Nodes()
-	for nodes.Next() {
-		n := nodes.Node()
-		if und.Node(n.ID()) == nil {
-			und.AddNode(simple.Node(n.ID()))
-		}
-	}
-	edges := g.WeightedEdges()
-	for edges.Next() {
-		e := edges.WeightedEdge()
-		from, to := e.From().ID(), e.To().ID()
-		if from == to {
-			continue
-		}
-		if existing := und.WeightedEdge(from, to); existing != nil {
-			w := existing.Weight() + e.Weight()
-			und.RemoveEdge(from, to)
-			und.SetWeightedEdge(und.NewWeightedEdge(simple.Node(from), simple.Node(to), w))
-			continue
-		}
-		und.SetWeightedEdge(und.NewWeightedEdge(simple.Node(from), simple.Node(to), e.Weight()))
-	}
+func ComputeCommunities(idx *nodeIndex, entityNames []string, opts CommunityOptions) ([]CommunityResult, map[string]int, float64, int) {
+	// Undirected projection, derived ONCE from the shared directed CSR
+	// BuildGraph already built (#5954 S5/S6). This replaced a
+	// simple.WeightedUndirectedGraph that existed only to be walked straight
+	// back out again by buildCSRFromUndirected: two boxed edge iterations plus
+	// a full map-of-maps copy of the edge set, for a projection that is one
+	// pass over flat arrays.
+	ucsr, ids := buildCSRFromDirected(idx)
 
 	// In-repo Louvain (louvain.go). No PRNG: node order, adjacency order and
 	// tie-breaks are all fixed, so the partition is deterministic by
 	// construction rather than by seeding. See #5954 / louvain.go for why
 	// gonum's community.Modularize was replaced.
 	const resolution = 1.0
-	groups := louvainPartition(und, resolution)
+	groups, _ := louvainPartitionFromCSR(ucsr, ids, resolution)
 
 	// Issue #633 phase-2 — pprof showed `community.Q` accounted for ~90% of
 	// indexing allocations (21.6 GB on client-fixture-b: 9,549 communities ×
@@ -426,53 +679,52 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 	//      and gonum's "2*w_uv for u<v" off-diagonal sum becomes 2*internal_w).
 	//   4. Overall Q = Σ q_c — matches the textbook modularity of `groups`
 	//      to the rounding tolerance enforced by roundForDeterminism().
-	type nodeStat struct {
-		k      float64
-		cidIdx int // index into groups
-		degree int
+	//
+	// The per-node stats are three flat slices indexed by node id rather than a
+	// map[int64]*nodeStat: node ids are dense 0..n-1 (BuildGraph assigns them),
+	// so the map was ~430k entries of pointer-to-heap-struct for data that fits
+	// in three contiguous arrays.
+	n := ucsr.n
+	nodeK := make([]float64, n)
+	nodeDeg := make([]int32, n)
+	nodeCID := make([]int32, n)
+	for i := range nodeCID {
+		nodeCID[i] = -1
 	}
-	nodeStats := make(map[int64]*nodeStat, idx.next)
-	// First, mark community membership so the edge sweep can classify edges
-	// in O(1) without consulting `groups` repeatedly.
 	for cid, gg := range groups {
 		for _, nid := range gg {
-			if _, ok := nodeStats[nid]; !ok {
-				nodeStats[nid] = &nodeStat{cidIdx: cid}
-			} else {
-				nodeStats[nid].cidIdx = cid
-			}
+			nodeCID[nid] = int32(cid)
 		}
 	}
 	// Walk every undirected edge once: contribute weight to each endpoint's
 	// `k` (weighted degree) and, when both endpoints share a community, to
 	// that community's internal-weight accumulator.
+	//
+	// Each unordered pair appears in both endpoints' CSR rows; the `v > u`
+	// filter visits it exactly once, in ascending (u, v) order. The previous
+	// version walked gonum's edge iterator, whose order is map-derived and
+	// therefore differed run to run — so this loop is strictly MORE
+	// deterministic than what it replaces, at the cost that a float sum here
+	// may land on a different last ulp than any one prior run happened to
+	// produce. roundForDeterminism() quantises the published value well above
+	// that.
 	internalW := make([]float64, len(groups))
 	var m2 float64
-	wedges := und.WeightedEdges()
-	for wedges.Next() {
-		e := wedges.WeightedEdge()
-		w := e.Weight()
-		fid, tid := e.From().ID(), e.To().ID()
-		nf, ok := nodeStats[fid]
-		if !ok {
-			// Node absent from the partition: louvainPartition covers every
-			// node of the undirected projection, but defensively guard so the
-			// loop is total.
-			nf = &nodeStat{cidIdx: -1}
-			nodeStats[fid] = nf
-		}
-		nt, ok := nodeStats[tid]
-		if !ok {
-			nt = &nodeStat{cidIdx: -1}
-			nodeStats[tid] = nt
-		}
-		nf.k += w
-		nt.k += w
-		nf.degree++
-		nt.degree++
-		m2 += 2 * w // undirected: each edge contributes 2 to Σ k.
-		if nf.cidIdx >= 0 && nf.cidIdx == nt.cidIdx {
-			internalW[nf.cidIdx] += w
+	for u := int32(0); u < int32(n); u++ {
+		for p := ucsr.off[u]; p < ucsr.off[u+1]; p++ {
+			v := ucsr.adj[p]
+			if v <= u {
+				continue
+			}
+			w := ucsr.w[p]
+			nodeK[u] += w
+			nodeK[v] += w
+			nodeDeg[u]++
+			nodeDeg[v]++
+			m2 += 2 * w // undirected: each edge contributes 2 to Σ k.
+			if nodeCID[u] >= 0 && nodeCID[u] == nodeCID[v] {
+				internalW[nodeCID[u]] += w
+			}
 		}
 	}
 
@@ -481,9 +733,7 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 	for cid, gg := range groups {
 		var k float64
 		for _, nid := range gg {
-			if ns, ok := nodeStats[nid]; ok {
-				k += ns.k
-			}
+			k += nodeK[nid]
 		}
 		K[cid] = k
 	}
@@ -520,11 +770,7 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 		members := make([]member, 0, len(g))
 		for _, nid := range g {
 			communityOf[idx.fromInt[nid]] = cid
-			deg := 0
-			if ns, ok := nodeStats[nid]; ok {
-				deg = ns.degree
-			}
-			members = append(members, member{nid, deg})
+			members = append(members, member{nid, int(nodeDeg[nid])})
 		}
 		// Issue #481 — degree ties were resolved by map-iteration order
 		// (g.Nodes / und.From); tiebreak on the gonum int64 node id so
@@ -748,7 +994,7 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 		// Large group union (#5349 A4 / #5692): exact Brandes is O(V·E) and the
 		// enrichment-bound cost (~240s on a 291k-node graph). Use the
 		// deterministic sampled-pivot approximation.
-		raw = sampledBetweenness(g, betweennessSampleSize, betweennessSampleSeed)
+		raw = sampledBetweenness(g, idx.csr, betweennessSampleSize, betweennessSampleSeed)
 	case betweennessPathExactWeighted:
 		// FloydWarshall is O(V^3) and precomputes all shortest paths; on
 		// graphs <= cutoff this is the most accurate option.
@@ -817,7 +1063,11 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 // across runs of the same graph (the on-disk determinism contract, #481).
 // Unweighted shortest paths are used (matching network.Betweenness, the exact
 // fallback above the FloydWarshall cutoff) so the comparison is apples-to-apples.
-func sampledBetweenness(g *simple.WeightedDirectedGraph, k int, seed uint64) map[int64]float64 {
+// csr is the shared directed adjacency from BuildGraph; when it covers this
+// graph the BFS reads it directly and no edge iteration happens at all. Pass
+// nil for a hand-built graph (tests), which falls back to deriving adjacency
+// from g's edge iterator.
+func sampledBetweenness(g *simple.WeightedDirectedGraph, csr *directedCSR, k int, seed uint64) map[int64]float64 {
 	nodes := gonumgraph.NodesOf(g.Nodes())
 	v := len(nodes)
 	cb := make(map[int64]float64, v)
@@ -850,7 +1100,7 @@ func sampledBetweenness(g *simple.WeightedDirectedGraph, k int, seed uint64) map
 	// ascending-id `ids` slice, so adjacency sorted by dense index is the same
 	// order as the previous sort-by-node-id — every float summation below
 	// therefore happens in exactly the order the map-based version used.
-	sc := newBCScratch(g, ids)
+	sc := newBCScratch(g, ids, csr)
 
 	for _, s := range pivots {
 		sc.accumulatePivot(sc.dense.of(s), cb, ids)
@@ -951,16 +1201,28 @@ type bcScratch struct {
 	// dense maps gonum node ids to dense indices; retained so callers can
 	// translate a pivot id without rebuilding the mapping.
 	dense *denseIDMap
+
+	// sharedCSR records whether off/adj alias the directedCSR BuildGraph
+	// derived (true) or were re-derived here from g's edge iterator (false).
+	// Production must always be true; the false branch exists only for
+	// hand-built test graphs. Asserted by
+	// TestSampledBetweennessUsesSharedCSROnTheBuildGraphPath.
+	sharedCSR bool
 }
 
 // newBCScratch builds the dense successor CSR and allocates all per-run scratch.
 // ids must be ascending; dense index i corresponds to gonum node ids[i].
-func newBCScratch(g *simple.WeightedDirectedGraph, ids []int64) *bcScratch {
+// csr, when non-nil and dimensionally compatible with ids, is used DIRECTLY as
+// the successor adjacency: it already has exactly the shape this needs (row
+// offsets plus ascending-sorted targets, dense index == gonum node id), so the
+// slices are aliased rather than copied and g's edge iterator is never touched.
+// That is the #5954 S5/S6 win — the 1.33M-edge boxing walk this function used
+// to perform is gone on the production path.
+func newBCScratch(g *simple.WeightedDirectedGraph, ids []int64, csr *directedCSR) *bcScratch {
 	n := len(ids)
 	sc := &bcScratch{
 		n:        n,
 		dense:    newDenseIDMap(ids),
-		off:      make([]int32, n+1),
 		dist:     make([]int32, n),
 		gen:      make([]uint32, n),
 		sigma:    make([]float64, n),
@@ -969,12 +1231,31 @@ func newBCScratch(g *simple.WeightedDirectedGraph, ids []int64) *bcScratch {
 		predHead: make([]int32, n),
 	}
 	if n == 0 {
+		sc.off = make([]int32, 1)
 		return sc
 	}
 
-	// Materialise the edge list ONCE via a single global iterator. Calling
-	// g.From(id) per node instead would allocate one gonum iterator per node
-	// per pass — 2V allocations and hundreds of MB of churn at corpus scale.
+	// The shared CSR is addressed by gonum node id, so it is usable only when
+	// this graph's id space is exactly 0..n-1 — which is what BuildGraph hands
+	// out. Any other id space (hand-built test graphs) takes the fallback.
+	if csr != nil && csr.n == n && sc.dense.contiguous && sc.dense.base == 0 {
+		sc.sharedCSR = true
+		sc.off = csr.off
+		sc.adj = csr.adj
+		total := csr.off[n]
+		sc.predNext = make([]int32, total)
+		sc.predNode = make([]int32, total)
+		for i := range sc.predHead {
+			sc.predHead[i] = -1
+		}
+		return sc
+	}
+
+	sc.off = make([]int32, n+1)
+	// Fallback: materialise the edge list ONCE via a single global iterator.
+	// Calling g.From(id) per node instead would allocate one gonum iterator per
+	// node per pass — 2V allocations and hundreds of MB of churn at corpus
+	// scale.
 	dense := sc.dense
 	type edge struct{ u, v int32 }
 	var edges []edge
@@ -1518,7 +1799,7 @@ func RunAlgorithmsWithOptions(entities []Entity, rels []Relationship, opts Commu
 	// 6.6 MB at 433k entities).
 	names := nodeNames(entities, idx)
 
-	commResults, commOf, overallQ, denoised := ComputeCommunities(g, idx, names, opts)
+	commResults, commOf, overallQ, denoised := ComputeCommunities(idx, names, opts)
 	// Layer-1 deterministic naming (TF-IDF over member entity names +
 	// qualified names + source-file basenames). Mutates commResults in place.
 	AssignCommunityNames(commResults, entities, commOf)
