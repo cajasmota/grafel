@@ -298,6 +298,131 @@ contract StakingVault {
 	}
 }
 
+// ── Signature extraction ──────────────────────────────────────────────────────
+
+func TestSolidity_FunctionSignatures(t *testing.T) {
+	src := `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IVault {
+    function totalSupply() external view returns (uint256);
+}
+
+contract Vault is IVault {
+    function totalSupply() external view returns (uint256) {
+        return _total;
+    }
+
+    function transfer(
+        address to,
+        uint256 amount
+    ) public onlyOwner returns (bool ok) {
+        return true;
+    }
+
+    function forEach(function(uint256) external returns (bool) cb) public {
+        cb(1);
+    }
+}
+`
+	ents := runSolidity(t, src, "Vault.sol")
+
+	want := map[string]string{
+		"IVault.totalSupply": "function totalSupply() external view returns (uint256)",
+		"Vault.totalSupply":  "function totalSupply() external view returns (uint256)",
+		"Vault.transfer":     "function transfer( address to, uint256 amount ) public onlyOwner returns (bool ok)",
+		"Vault.forEach":      "function forEach(function(uint256) external returns (bool) cb) public",
+	}
+	for name, sig := range want {
+		fn := solFindSubtype(ents, name, "SCOPE.Operation", "function")
+		if fn == nil {
+			t.Errorf("expected function %s", name)
+			continue
+		}
+		if fn.Signature != sig {
+			t.Errorf("%s signature = %q, want %q", name, fn.Signature, sig)
+		}
+	}
+}
+
+func TestSolidity_EventAndModifierSignatures(t *testing.T) {
+	src := `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Vault {
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    modifier onlyRoleOrOwner(bytes32 role) {
+        require(hasRole(role, msg.sender) || msg.sender == owner, "denied");
+        _;
+    }
+}
+`
+	ents := runSolidity(t, src, "Vault.sol")
+
+	ev := solFindSubtype(ents, "Vault.Transfer", "SCOPE.Operation", "event")
+	if ev == nil {
+		t.Fatal("expected event Vault.Transfer")
+	}
+	const wantEv = "event Transfer(address indexed from, address indexed to, uint256 value)"
+	if ev.Signature != wantEv {
+		t.Errorf("Transfer signature = %q, want %q", ev.Signature, wantEv)
+	}
+
+	mod := solFindSubtype(ents, "Vault.onlyRoleOrOwner", "SCOPE.Operation", "modifier")
+	if mod == nil {
+		t.Fatal("expected modifier Vault.onlyRoleOrOwner")
+	}
+	const wantMod = "modifier onlyRoleOrOwner(bytes32 role)"
+	if mod.Signature != wantMod {
+		t.Errorf("onlyRoleOrOwner signature = %q, want %q", mod.Signature, wantMod)
+	}
+}
+
+func TestSolidity_SignatureIgnoresDelimitersInCommentsAndStrings(t *testing.T) {
+	src := `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Guarded {
+    function withdraw(
+        address, // recipient )
+        uint256 amount
+    ) public onlyRole("ADMIN)ROLE") {
+        _send(amount);
+    }
+
+    function upgrade(
+        uint64, /* newVersion ) */
+        bytes calldata /* data */
+    ) internal virtual override {
+        _bump();
+    }
+
+    event Logged(uint256 a /* ) */, uint256 b);
+}
+`
+	ents := runSolidity(t, src, "Guarded.sol")
+
+	// Blanking leaves the erased comment/string body visible as a gap.
+	cases := []struct {
+		name, subtype, want string
+	}{
+		{"Guarded.withdraw", "function", "function withdraw( address, uint256 amount ) public onlyRole( )"},
+		{"Guarded.upgrade", "function", "function upgrade( uint64, bytes calldata ) internal virtual override"},
+		{"Guarded.Logged", "event", "event Logged(uint256 a , uint256 b)"},
+	}
+	for _, tc := range cases {
+		e := solFindSubtype(ents, tc.name, "SCOPE.Operation", tc.subtype)
+		if e == nil {
+			t.Errorf("expected %s %s", tc.subtype, tc.name)
+			continue
+		}
+		if e.Signature != tc.want {
+			t.Errorf("%s signature = %q, want %q", tc.name, e.Signature, tc.want)
+		}
+	}
+}
+
 // ── CONTAINS edges ────────────────────────────────────────────────────────────
 
 func TestSolidity_ContainsEdges(t *testing.T) {

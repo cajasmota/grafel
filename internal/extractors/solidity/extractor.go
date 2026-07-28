@@ -286,8 +286,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			if fnEndLine == 0 {
 				fnEndLine = fnStartLine
 			}
-			sigEnd := fm[1]
-			rawFnSig := strings.Join(strings.Fields(body[fm[0]:sigEnd]), " ")
+			rawFnSig := declSignature(body, fm[0], fm[1])
 
 			callRels := collectCallsFromBody(fnBody, qualName)
 			fnRec := types.EntityRecord{
@@ -321,7 +320,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			evName := body[em[2]:em[3]]
 			qualName := name + "." + evName
 			evStartLine := bodyLineOffset + strings.Count(body[:em[0]], "\n")
-			rawEvSig := strings.Join(strings.Fields(body[em[0]:em[1]]), " ")
+			rawEvSig := declSignature(body, em[0], em[1])
 
 			evRec := types.EntityRecord{
 				Name:       qualName,
@@ -350,7 +349,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			modName := body[mm[2]:mm[3]]
 			qualName := name + "." + modName
 			modStartLine := bodyLineOffset + strings.Count(body[:mm[0]], "\n")
-			rawModSig := strings.Join(strings.Fields(body[mm[0]:mm[1]]), " ")
+			rawModSig := declSignature(body, mm[0], mm[1])
 			modBody, _ := extractBracedBody(body, mm[1])
 
 			callRels := collectCallsFromBody(modBody, qualName)
@@ -546,6 +545,28 @@ func extractBracedBody(src string, openPos int) (string, int) {
 		i++
 	}
 	return "", 0
+}
+
+// declSignature returns the declaration starting at declStart up to the first
+// '{' or ';' outside parentheses, with runs of whitespace collapsed. src is
+// scrubbed (see stripCommentsAndStrings), so a delimiter inside a comment or a
+// string literal cannot end the signature early. Falls back to the span up to
+// fallbackEnd when the declaration has no terminator.
+func declSignature(src string, declStart, fallbackEnd int) string {
+	depth := 0
+	for i := declStart; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case '{', ';':
+			if depth == 0 {
+				return strings.Join(strings.Fields(src[declStart:i]), " ")
+			}
+		}
+	}
+	return strings.Join(strings.Fields(src[declStart:fallbackEnd]), " ")
 }
 
 // stripCommentsAndStrings replaces Solidity // and /* */ comments and string
