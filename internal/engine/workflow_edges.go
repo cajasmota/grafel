@@ -894,7 +894,11 @@ type aslState struct {
 // sfnLambdaARNRe extracts the function name from a Lambda ARN or
 // `arn:aws:states:::lambda:invoke` resource string.
 // Group 1 = function name (last colon-separated segment, stripping aliases).
-var sfnLambdaARNRe = regexp.MustCompile(`arn:aws(?:-[a-z]+)*:lambda:[^:]+:\d+:function:([^:$/\s]+)`)
+// The capture class excludes quote characters and backslashes so an ARN that
+// appears inside a string literal (`"...:function:charge-card"`) does not carry
+// the closing quote into the function name, which would point the edge at a
+// Lambda entity that does not exist (#6012).
+var sfnLambdaARNRe = regexp.MustCompile(`arn:aws(?:-[a-z]+)*:lambda:[^:]+:\d+:function:([^:$/\s"'` + "`" + `\\,]+)`)
 
 // sfnStatesLambdaRe matches `arn:aws:states:::lambda:invoke` style resources.
 // The actual Lambda ARN is in the Parameters block which we parse separately.
@@ -1352,7 +1356,8 @@ func applyCDKStateMachineJSON(
 	if !strings.Contains(src, "StateMachine") {
 		return entities, relationships
 	}
-	for _, m := range cdkStateMachineRe.FindAllStringSubmatchIndex(src, -1) {
+	matches := cdkStateMachineRe.FindAllStringSubmatchIndex(src, -1)
+	for i, m := range matches {
 		smName := src[m[2]:m[3]]
 		if !looksLikeFunctionName(smName) {
 			continue
@@ -1368,14 +1373,31 @@ func applyCDKStateMachineJSON(
 			EnrichmentStatus:   types.StatusPending,
 			QualityScore:       0.8,
 		})
-		// Scan nearby for Lambda ARNs.
-		for _, lm := range sfnLambdaARNRe.FindAllStringSubmatch(src, -1) {
+		// Scan for Lambda ARNs *inside this construct's own props object only*.
+		// Scanning the whole file here would join every state machine in the
+		// file to every Lambda in the file — a cartesian product of edges that
+		// do not exist (#6012).
+		bound := len(src)
+		if i+1 < len(matches) {
+			bound = matches[i+1][0]
+		}
+		body := cdkConstructPropsBody(src, m[1], bound)
+		if body == "" {
+			continue
+		}
+		seenEdge := map[string]bool{}
+		for _, lm := range sfnLambdaARNRe.FindAllStringSubmatch(body, -1) {
 			fnName := lm[1]
 			if !looksLikeFunctionName(fnName) {
 				continue
 			}
 			lambdaEntityID := lambdaFunctionID(fnName)
 			targetID := fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaEntityID)
+			key := smID + "|" + targetID
+			if seenEdge[key] {
+				continue
+			}
+			seenEdge[key] = true
 			relationships = append(relationships, types.RelationshipRecord{
 				FromID: fmt.Sprintf("%s:%s", stateMachineKind, smID),
 				ToID:   targetID,
@@ -1388,6 +1410,59 @@ func applyCDKStateMachineJSON(
 		}
 	}
 	return entities, relationships
+}
+
+// cdkConstructPropsBody returns the props object belonging to a
+// `new StateMachine(this, "id"` match that ended at `from`.
+//
+// The props object must be this construct's own third argument: the next
+// non-space byte after the construct id must be ',' and the one after that
+// '{'. Anything else — a variable (`new StateMachine(this, "id", props)`), a
+// call, or no third argument at all — means this construct has no inline props
+// object, and "" is returned. Searching forward for the first '{' instead would
+// adopt whatever unrelated construct happens to come next in the file and
+// attribute its Lambda ARNs to this state machine (#6012).
+//
+// `bound` (the start of the next StateMachine construct, or EOF) additionally
+// clamps the body. That matters when a brace inside a string literal
+// desynchronises the counter and the "matching" brace lands past the next
+// construct.
+//
+// "" is likewise returned when no balanced closing brace exists — declining to
+// emit an edge is strictly better than emitting one attributed to the wrong
+// state machine.
+func cdkConstructPropsBody(src string, from, bound int) string {
+	if from < 0 || from >= bound || bound > len(src) {
+		return ""
+	}
+	i := from
+	for i < bound && wfIsSpaceByte(src[i]) {
+		i++
+	}
+	if i >= bound || src[i] != ',' {
+		return ""
+	}
+	i++
+	for i < bound && wfIsSpaceByte(src[i]) {
+		i++
+	}
+	if i >= bound || src[i] != '{' {
+		return ""
+	}
+	open := i
+	closeIdx := findMatchingBraceWF(src, open)
+	if closeIdx < 0 {
+		return ""
+	}
+	if closeIdx > bound {
+		closeIdx = bound
+	}
+	return src[open:closeIdx]
+}
+
+// wfIsSpaceByte reports whether b is ASCII whitespace.
+func wfIsSpaceByte(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
 }
 
 // ---------------------------------------------------------------------------

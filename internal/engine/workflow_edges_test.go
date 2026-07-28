@@ -18,6 +18,8 @@
 package engine
 
 import (
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -728,4 +730,257 @@ class ShipmentWorkflow:
 		}
 	}
 	t.Error("ShipmentWorkflow entity not found")
+}
+
+// ---------------------------------------------------------------------------
+// #6012 — CDK StateMachine: no cartesian product of STEPFUNCTION_STEP_INVOKES
+// ---------------------------------------------------------------------------
+
+// sfnInvokeTargets returns, per state-machine FromID, the sorted list of
+// STEPFUNCTION_STEP_INVOKES target IDs, plus the total edge count (so callers
+// can also assert on duplicates, which a per-machine view alone would hide).
+func sfnInvokeTargets(rels []types.RelationshipRecord) (map[string][]string, int) {
+	out := map[string][]string{}
+	total := 0
+	for _, r := range rels {
+		if r.Kind != stepFunctionStepInvokesEdgeKind {
+			continue
+		}
+		total++
+		out[r.FromID] = append(out[r.FromID], r.ToID)
+	}
+	for k := range out {
+		sort.Strings(out[k])
+	}
+	return out, total
+}
+
+func sfnMachineFromID(name string) string {
+	return stateMachineKind + ":" + sfnStateMachineID(name)
+}
+
+func sfnLambdaToID(name string) string {
+	return serverlessFunctionKind + ":" + lambdaFunctionID(name)
+}
+
+func TestSFNLambdaARNNameExcludesSurroundingQuote(t *testing.T) {
+	// An ARN inside a string literal must not carry the closing quote into the
+	// captured function name — that points the edge at a Lambda entity ID that
+	// no serverless-function entity will ever match.
+	src := `
+resource "aws_sfn_state_machine" "order" {
+  name       = "order-flow"
+  definition = <<EOF
+{
+  "StartAt": "Validate",
+  "States": {
+    "Validate": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-1:111122223333:function:validate-order",
+      "End": true
+    }
+  }
+}
+EOF
+}
+`
+	// NOTE: the Terraform path emits this edge twice (once from the block-level
+	// ARN scan, once from the embedded-ASL re-parse, each with its own dedupe
+	// map). That duplication pre-dates #6012 and is deliberately not asserted
+	// on here; this test is about the *target ID*, not the edge count.
+	_, rels := applyTerraformSFNEdges("infra/sfn.tf", []byte(src), nil, nil)
+	targets, total := sfnInvokeTargets(rels)
+	if total == 0 {
+		t.Fatalf("expected a STEPFUNCTION_STEP_INVOKES edge, got none")
+	}
+	for _, got := range targets[sfnMachineFromID("order-flow")] {
+		if got != sfnLambdaToID("validate-order") {
+			t.Errorf("target ID: got %q, want %q", got, sfnLambdaToID("validate-order"))
+		}
+	}
+	if len(targets[sfnMachineFromID("order-flow")]) == 0 {
+		t.Errorf("no edge from order-flow; got %v", targets)
+	}
+}
+
+func TestCDKStateMachineNoCartesianInvokeEdges(t *testing.T) {
+	// Two state machines and two Lambdas in one file, each machine invoking
+	// exactly one of the Lambdas. A whole-file ARN scan run inside the
+	// per-machine loop joins every machine to every Lambda (4 edges).
+	src := `{
+  "source": "
+    const orderFlow = new StateMachine(this, 'OrderFlow', {
+      definition: new LambdaInvoke(this, 'Validate', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:validate-order'
+      })
+    });
+    const refundFlow = new StateMachine(this, 'RefundFlow', {
+      definition: new LambdaInvoke(this, 'Refund', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:issue-refund'
+      })
+    });
+  "
+}`
+	ents, rels := runWorkflowEdges(t, "json", "cdk/app-stack.json", src)
+
+	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("OrderFlow"), "cdk sfn")
+	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("RefundFlow"), "cdk sfn")
+
+	targets, total := sfnInvokeTargets(rels)
+	if total != 2 {
+		t.Errorf("expected exactly 2 STEPFUNCTION_STEP_INVOKES edges (no cartesian product), got %d: %v", total, targets)
+	}
+	if got, want := targets[sfnMachineFromID("OrderFlow")], []string{sfnLambdaToID("validate-order")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("OrderFlow targets: got %v, want %v", got, want)
+	}
+	if got, want := targets[sfnMachineFromID("RefundFlow")], []string{sfnLambdaToID("issue-refund")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("RefundFlow targets: got %v, want %v", got, want)
+	}
+}
+
+func TestCDKStateMachineWithoutLambdaEmitsNoInvokeEdges(t *testing.T) {
+	// A machine that invokes no Lambda must still yield an entity, and must
+	// not inherit its sibling's target.
+	src := `{
+  "source": "
+    new StateMachine(this, 'PassOnlyFlow', {
+      definition: new Pass(this, 'NoOp')
+    });
+    new StateMachine(this, 'OrderFlow', {
+      definition: new LambdaInvoke(this, 'Validate', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:validate-order'
+      })
+    });
+  "
+}`
+	ents, rels := runWorkflowEdges(t, "json", "cdk/app-stack.json", src)
+
+	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("PassOnlyFlow"), "cdk sfn")
+
+	targets, total := sfnInvokeTargets(rels)
+	if total != 1 {
+		t.Errorf("expected exactly 1 STEPFUNCTION_STEP_INVOKES edge, got %d: %v", total, targets)
+	}
+	if got := targets[sfnMachineFromID("PassOnlyFlow")]; len(got) != 0 {
+		t.Errorf("PassOnlyFlow must invoke nothing, got %v", got)
+	}
+}
+
+func TestCDKStateMachinesSharingTargetKeepBothEdges(t *testing.T) {
+	// Two machines genuinely invoking the same Lambda must produce one edge
+	// each — dedupe is per-machine, not per-target-across-machines.
+	src := `{
+  "source": "
+    new StateMachine(this, 'OrderFlow', {
+      definition: new LambdaInvoke(this, 'Audit', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:audit-log'
+      })
+    });
+    new StateMachine(this, 'RefundFlow', {
+      definition: new LambdaInvoke(this, 'Audit', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:audit-log'
+      })
+    });
+  "
+}`
+	_, rels := runWorkflowEdges(t, "json", "cdk/app-stack.json", src)
+
+	targets, total := sfnInvokeTargets(rels)
+	if total != 2 {
+		t.Errorf("expected 2 STEPFUNCTION_STEP_INVOKES edges (one per machine), got %d: %v", total, targets)
+	}
+	for _, sm := range []string{"OrderFlow", "RefundFlow"} {
+		if got, want := targets[sfnMachineFromID(sm)], []string{sfnLambdaToID("audit-log")}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s targets: got %v, want %v", sm, got, want)
+		}
+	}
+}
+
+func TestCDKStateMachineDedupesRepeatedARNWithinOneMachine(t *testing.T) {
+	// The same Lambda referenced twice inside one machine's body yields one
+	// edge — matching the CloudFormation sibling's seenEdge behaviour.
+	src := `{
+  "source": "
+    new StateMachine(this, 'OrderFlow', {
+      definition: Chain.start(new LambdaInvoke(this, 'A', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:validate-order'
+      })).next(new LambdaInvoke(this, 'B', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:validate-order'
+      }))
+    });
+  "
+}`
+	_, rels := runWorkflowEdges(t, "json", "cdk/app-stack.json", src)
+
+	targets, total := sfnInvokeTargets(rels)
+	if total != 1 {
+		t.Errorf("expected 1 deduped STEPFUNCTION_STEP_INVOKES edge, got %d: %v", total, targets)
+	}
+}
+
+func TestCDKStateMachineWithoutInlinePropsAdoptsNothing(t *testing.T) {
+	// A machine whose props come from a variable has no inline props object of
+	// its own. It must adopt neither a *later* construct's braces nor an
+	// unrelated intervening construct's braces — both would attribute an edge
+	// to the wrong machine, which is the whole point of #6012.
+	src := `{
+  "source": "
+    new StateMachine(this, 'FromVariable', props);
+    const fn = new Function(this, 'Worker', {
+      environment: { TARGET_ARN: 'arn:aws:lambda:us-east-1:111122223333:function:gamma-worker' }
+    });
+    new StateMachine(this, 'OrderFlow', {
+      definition: new LambdaInvoke(this, 'Validate', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:validate-order'
+      })
+    });
+  "
+}`
+	ents, rels := runWorkflowEdges(t, "json", "cdk/app-stack.json", src)
+
+	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("FromVariable"), "cdk sfn")
+
+	targets, total := sfnInvokeTargets(rels)
+	if total != 1 {
+		t.Errorf("expected exactly 1 STEPFUNCTION_STEP_INVOKES edge, got %d: %v", total, targets)
+	}
+	if got := targets[sfnMachineFromID("FromVariable")]; len(got) != 0 {
+		t.Errorf("FromVariable has no inline props and must invoke nothing, got %v", got)
+	}
+	if got, want := targets[sfnMachineFromID("OrderFlow")], []string{sfnLambdaToID("validate-order")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("OrderFlow targets: got %v, want %v", got, want)
+	}
+}
+
+func TestCDKStateMachineBodyClampedToNextConstruct(t *testing.T) {
+	// A brace inside a string literal desynchronises the brace counter, so the
+	// "closing" brace found for OrderFlow lies beyond the next construct. The
+	// body must still be clamped to where RefundFlow begins, or OrderFlow
+	// swallows RefundFlow's target.
+	src := `{
+  "source": "
+    new StateMachine(this, 'OrderFlow', {
+      comment: 'this literal opens a brace { and never closes it',
+      definition: new LambdaInvoke(this, 'Validate', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:validate-order'
+      })
+    });
+    new StateMachine(this, 'RefundFlow', {
+      definition: new LambdaInvoke(this, 'Refund', {
+        lambdaFunctionArn: 'arn:aws:lambda:us-east-1:111122223333:function:issue-refund'
+      })
+    });
+    const trailing = 'and this literal closes it }';
+  "
+}`
+	_, rels := runWorkflowEdges(t, "json", "cdk/app-stack.json", src)
+
+	targets, total := sfnInvokeTargets(rels)
+	if got := targets[sfnMachineFromID("OrderFlow")]; len(got) != 0 &&
+		!reflect.DeepEqual(got, []string{sfnLambdaToID("validate-order")}) {
+		t.Errorf("OrderFlow must not reach past RefundFlow's declaration, got %v", got)
+	}
+	if total > 2 {
+		t.Errorf("expected at most 2 STEPFUNCTION_STEP_INVOKES edges, got %d: %v", total, targets)
+	}
 }
