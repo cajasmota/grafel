@@ -165,6 +165,17 @@ type File struct {
 	EngineInFlight int `json:"engine_in_flight,omitempty"`
 	// EngineGroupAlgoInFlight mirrors indexstate.Snapshot.GroupAlgoInFlight.
 	EngineGroupAlgoInFlight int `json:"engine_group_algo_in_flight,omitempty"`
+	// EngineRebuildInFlight is the number of GROUP REBUILDS the engine has
+	// running right now — the size of the engine-side per-group rebuild guard
+	// (daemon.rebuildWorker.active), one goroutine per group (#6014).
+	//
+	// It is deliberately NOT derived from indexstate: the engine's direct
+	// group-rebuild path (daemonRebuildFuncCore) bypasses the scheduler, so
+	// indexstate.InFlight — the source of EngineInFlight above — stays 0 for
+	// the whole of a group rebuild. Without this field a split-mode serve has
+	// no data at all from which to answer "is a rebuild running?", and
+	// StatusReply.RebuildInFlight is a structural zero.
+	EngineRebuildInFlight int `json:"engine_rebuild_in_flight,omitempty"`
 	// EngineBusyStartedAt mirrors indexstate.Snapshot.StartedAt (zero when idle).
 	EngineBusyStartedAt time.Time `json:"engine_busy_started_at,omitempty"`
 	// ConcurrencyActive/Queued/Cap mirror indexstate.IndexConcurrency (#5493).
