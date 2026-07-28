@@ -136,8 +136,12 @@ func readSSEEvents(ctx context.Context, r io.Reader, ch chan<- sseEvent) {
 //
 // Flags:
 //
-//	plain      — no ANSI escapes, one line per event
-//	jsonEvents — NDJSON one line per broker event
+//	plain             — no ANSI escapes, one line per event
+//	jsonEvents        — NDJSON one line per broker event
+//	waitForCompletion — the caller asked the daemon for a real completion
+//	                    guarantee (proto.RebuildArgs.WaitForCompletion), so the
+//	                    RPC outcome is the ONLY authority on whether the work
+//	                    happened. See the `!ok` arm below.
 func runBrokerProgress(
 	ctx context.Context,
 	w io.Writer,
@@ -146,6 +150,7 @@ func runBrokerProgress(
 	resultCh <-chan rebuildOutcome,
 	plain bool,
 	jsonEvents bool,
+	waitForCompletion bool,
 ) rebuildOutcome {
 	tty := isTTY(w) && !plain
 
@@ -166,8 +171,12 @@ func runBrokerProgress(
 			if ok {
 				outcome = o
 				rpcDone = true
-				// Drain one last batch from SSE before returning.
-				drainSSE(ctx, w, group, sseCh, lastLineLen, tty, plain, jsonEvents, 300*time.Millisecond)
+				// Drain one last batch from SSE before returning. Skipped when
+				// the stream already closed (sseCh nil'd above) — there is
+				// nothing left to drain and the wait would be dead time.
+				if sseCh != nil {
+					drainSSE(ctx, w, group, sseCh, lastLineLen, tty, plain, jsonEvents, 300*time.Millisecond)
+				}
 				return outcome
 			}
 
@@ -176,6 +185,27 @@ func runBrokerProgress(
 				// SSE stream closed (daemon shutdown or group done).
 				if rpcDone {
 					return outcome
+				}
+				// #5991: an SSE close is NOT evidence the rebuild finished.
+				// The dashboard's progress handler
+				// (internal/dashboard/handlers_progress.go) matches only on
+				// RunToken and has no repo scoping, so it closes the WHOLE
+				// group stream on the FIRST per-repo terminal event — long
+				// before a multi-repo group is done. Giving up here and
+				// returning the zero `outcome` hands the caller err == nil
+				// with no repos, which `reset` then reported as success for a
+				// rebuild that may never have run.
+				//
+				// When the caller asked the daemon for a real completion
+				// guarantee, the RPC result is the ONLY authority: stop
+				// selecting on the dead SSE channel (nil blocks forever) and
+				// keep looping so resultCh — and the 10s heartbeat that keeps
+				// the user informed — stay live for as long as the rebuild
+				// takes. Callers that did NOT ask for a guarantee keep the
+				// historical 5-second give-up.
+				if waitForCompletion {
+					sseCh = nil
+					continue
 				}
 				// Wait up to 5 seconds for the RPC to land.
 				select {
