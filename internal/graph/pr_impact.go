@@ -73,6 +73,20 @@ type PRImpactResult struct {
 	CommunityCount   int  `json:"impacted_community_count"`
 	BlastRadiusCount int  `json:"blast_radius_count"`
 	Truncated        bool `json:"truncated,omitempty"`
+
+	// CommunityDataAvailable reports whether the analysed graph carried ANY real
+	// community assignment (issue #6006). It is NOT a quality metric — it is the
+	// validity flag for every community-derived field in this struct
+	// (ImpactedCommunities, CommunityCount, ImpactedCommunityIDs, and therefore
+	// the whole merge-risk analysis built on top of them).
+	//
+	// It exists because the per-repo Pass-4 algorithm pass was removed when the
+	// group-scope algo pass replaced it: entities loaded straight out of graph.fb
+	// carry the -2/nil sentinel, so every community-derived output collapses to
+	// empty. Without this flag "no impacted communities" is indistinguishable
+	// from "communities were never computed" — and on a merge-risk question that
+	// reads as "safe to merge", which is the worst direction to be wrong in.
+	CommunityDataAvailable bool `json:"community_data_available"`
 }
 
 // PRImpactOptions bounds the analysis.
@@ -144,8 +158,16 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 	opts = opts.normalized()
 
 	byID := make(map[string]Entity, len(entities))
+	communityDataAvailable := false
 	for i := range entities {
 		byID[entities[i].ID] = entities[i]
+		// #6006: "did community detection actually run on this graph?" — answered
+		// over the WHOLE entity set, not just the changed slice, so a change that
+		// happens to touch only ungrouped entities is reported as a real (empty)
+		// answer rather than as missing data.
+		if entities[i].CommunityID != nil && *entities[i].CommunityID >= 0 {
+			communityDataAvailable = true
+		}
 	}
 
 	// Inbound adjacency: in[X] = entities that depend on X (callers). Restricted
@@ -286,6 +308,16 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 	}
 	impacted := make([]ImpactedCommunity, 0, len(commIDs))
 	for c := range commIDs {
+		// #6006: align this filter with ImpactedCommunityIDs and AnalyzeMergeRisk,
+		// both of which already drop c < 0. Without it the payload reported
+		// impacted_community_count: 1 with a single community_id: -1 — the
+		// "ungrouped" bucket dressed up as a real community, which reads as a
+		// genuine (and singular) impact signal. Entities with no community are
+		// still fully reported in changed_entities / blast_radius, each carrying
+		// community_id: -1; they just do not manufacture a community here.
+		if c < 0 {
+			continue
+		}
 		impacted = append(impacted, ImpactedCommunity{
 			CommunityID:    c,
 			ChangedCount:   communityChanged[c],
@@ -310,6 +342,8 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 		CommunityCount:      len(impacted),
 		BlastRadiusCount:    blastTotal,
 		Truncated:           truncated,
+
+		CommunityDataAvailable: communityDataAvailable,
 	}
 }
 
@@ -339,6 +373,13 @@ func (r PRImpactResult) ImpactedCommunityIDs() []int {
 type ChangeImpact struct {
 	Ref         string // ref / branch / PR label
 	Communities []int  // impacted community ids (grouped only)
+
+	// CommunityDataAvailable carries PRImpactResult.CommunityDataAvailable for
+	// this ref (#6006). An empty Communities slice means "this change touched no
+	// community" only when this is true; when it is false the slice is empty
+	// because nothing was computed, and no conclusion about merge safety can be
+	// drawn from this ref at all.
+	CommunityDataAvailable bool
 }
 
 // MergeRiskPair is two refs whose impacted-community sets overlap.
@@ -354,6 +395,17 @@ type MergeRiskResult struct {
 	Pairs      []MergeRiskPair `json:"risk_pairs"`
 	RefCount   int             `json:"ref_count"`
 	RiskyPairs int             `json:"risky_pair_count"`
+
+	// CommunityDataAvailable is false when ANY input ref lacked community data
+	// (#6006). A zero risky_pair_count is only a "these refs do not conflict"
+	// answer when this is true; when it is false the analysis did not run and the
+	// empty pair list carries no safety information whatsoever.
+	//
+	// Deliberately conservative: one uncovered ref taints the whole result,
+	// because merge risk is a property of the pair set, not of a single ref.
+	CommunityDataAvailable bool `json:"community_data_available"`
+	// RefsWithoutCommunityData names the refs that had no community data, sorted.
+	RefsWithoutCommunityData []string `json:"refs_without_community_data,omitempty"`
 }
 
 // AnalyzeMergeRisk intersects every change's impacted-community set pairwise and
@@ -368,6 +420,12 @@ func AnalyzeMergeRisk(impacts []ChangeImpact) MergeRiskResult {
 	norm := make([]ChangeImpact, len(impacts))
 	copy(norm, impacts)
 	sort.SliceStable(norm, func(i, j int) bool { return norm[i].Ref < norm[j].Ref })
+	var missing []string
+	for _, ci := range norm {
+		if !ci.CommunityDataAvailable {
+			missing = append(missing, ci.Ref)
+		}
+	}
 	sets := make([]map[int]struct{}, len(norm))
 	for i, ci := range norm {
 		s := make(map[int]struct{}, len(ci.Communities))
@@ -409,6 +467,9 @@ func AnalyzeMergeRisk(impacts []ChangeImpact) MergeRiskResult {
 		Pairs:      pairs,
 		RefCount:   len(norm),
 		RiskyPairs: len(pairs),
+
+		CommunityDataAvailable:   len(missing) == 0,
+		RefsWithoutCommunityData: missing,
 	}
 }
 
