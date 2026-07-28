@@ -89133,8 +89133,8 @@
           "status": "full",
           "cites": ["internal/extractors/solidity/extractor.go","internal/extractors/solidity/extractor_test.go"],
           "issue": "5371",
-          "notes": "Regex extractor (no bundled tree-sitter Solidity grammar). contractRE emits contract/library/interface/abstract-contract as SCOPE.Component (subtype contract/library/interface); functionRE/eventRE/modifierRE emit members as SCOPE.Operation (subtype function/event/modifier) with CONTAINS edges from the owning contract. Comments and string literals are scrubbed (stripCommentsAndStrings) and brace-matched bodies extracted (extractBracedBody) before member/call scanning. Proven by the extractor_test.go suite (contract/library/interface discovery, member CONTAINS, signature capture).",
-          "verified_at": "2026-06-24"
+          "notes": "Regex extractor (no bundled tree-sitter Solidity grammar). contractRE emits contract/library/interface/abstract-contract as SCOPE.Component (subtype contract/library/interface); functionRE/eventRE/modifierRE emit members as SCOPE.Operation (subtype function/event/modifier) with CONTAINS edges from the owning contract. Comments and string literals are scrubbed (stripCommentsAndStrings) and brace-matched bodies extracted (extractBracedBody) before member/call scanning. The member regexes end at the opening paren, so declSignature scans on from the match with paren depth to the terminating { or ; and Signature carries the full parameter list, mutability/visibility and returns clause; before that it stopped at the paren (5255 truncated signatures across seven production Solidity repos, none complete). Proven by the extractor_test.go suite (contract/library/interface discovery, member CONTAINS, signature capture).",
+          "verified_at": "2026-07-28"
         },
         "import_resolution_quality": {
           "status": "partial",
