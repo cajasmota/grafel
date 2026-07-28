@@ -80,10 +80,51 @@ func splitFormatAStructuralRef(stub string) (filePath, name string, ok bool) {
 }
 
 // ScopedResult is the output of ResolveScoped.
+//
+// The two relationship slices are deliberately kept SEPARATE (#6033). They have
+// different merge semantics in the caller and conflating them into one merged
+// slice caused every incremental pass to duplicate the entire surviving edge
+// set (multiplicity 2, 4, 8, 16 …), because the caller appended the merged
+// slice to a `doc.Relationships` that already held the survivors:
+//
+//	doc.Relationships = UpdatedExistingRelationships          // REPLACE in place
+//	doc.Relationships = append(doc.Relationships,
+//	                           ResolvedNewRelationships...)   // then APPEND
 type ScopedResult struct {
-	// NewRelationships is the merged + re-resolved relationship slice to use
-	// in the patched graph. Only valid when FallbackRequired is false.
-	NewRelationships []graph.Relationship
+	// UpdatedExistingRelationships is the COMPLETE surviving relationship set
+	// passed in as existingRels, in input order, with the scoped resolver's
+	// mutations applied in place: inbound stub ToIDs bound to (possibly
+	// re-keyed) entity IDs, and the RelationshipID recomputed for those edges.
+	// Unmutated survivors are carried through verbatim.
+	//
+	// It REPLACES the caller's existing relationship slice — it is not an
+	// addition to it. Only valid when FallbackRequired is false.
+	UpdatedExistingRelationships []graph.Relationship
+
+	// MutatedExistingRelationships is the SUBSET of
+	// UpdatedExistingRelationships whose ToID this pass actually rewrote (the
+	// inbound-fix edges: a stub ToID bound to a real entity ID). It is a
+	// blast-radius signal ONLY — every edge in it is already present in
+	// UpdatedExistingRelationships, so appending it to the document would
+	// re-introduce the #6033 duplication.
+	//
+	// It exists because rewiring an inbound edge can create a cross-module
+	// dependency that the previous build could not see: a full build leaves
+	// X→"foo" unresolved, so aggregateModules skips it and emits no M2→M3
+	// DEPENDS_ON. When a later incremental pass binds "foo" to Y in M3, that
+	// M2→M3 edge becomes derivable — but neither M2 nor M3 is in the changed
+	// file's module set, so without this signal the affected-module set misses
+	// them and the module layer silently diverges from a full rebuild until
+	// something else happens to touch M2 or M3.
+	MutatedExistingRelationships []graph.Relationship
+
+	// ResolvedNewRelationships is exactly the newRels input with stub From/To
+	// endpoints resolved — the genuinely new edges extracted from the changed
+	// files, and nothing else. It is APPENDED by the caller, and is also the
+	// correct blast-radius input for the downstream scoped passes (flow
+	// recompute, affected-module aggregation), which are meaningless when fed
+	// the whole graph. Only valid when FallbackRequired is false.
+	ResolvedNewRelationships []graph.Relationship
 
 	// FallbackRequired is true when the scoped resolver found a relationship
 	// whose target cannot be resolved. The caller must fall back to full reindex.
@@ -276,6 +317,9 @@ func ResolveScoped(
 	signatureRewired := 0
 	var fallbackTarget string
 	updatedExistingRels := make([]graph.Relationship, 0, len(existingRels))
+	// Blast-radius signal: the survivors this pass actually rewrote. See the
+	// MutatedExistingRelationships doc comment — these are NOT extra edges.
+	var mutatedExistingRels []graph.Relationship
 	for _, r := range existingRels {
 		if !isHexID(r.ToID) {
 			if resolved, ok := resolveStub(r.ToID); ok {
@@ -286,6 +330,7 @@ func ResolveScoped(
 				r.ToID = resolved
 				r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
 				inboundFixed++
+				mutatedExistingRels = append(mutatedExistingRels, r)
 			} else if newFileSet[r.ToID] {
 				// Safety-net: ToID is a source-file path from the re-extracted
 				// file set, but the corresponding entity is absent from newEntities.
@@ -310,17 +355,15 @@ func ResolveScoped(
 		}
 	}
 
-	merged := make([]graph.Relationship, 0, len(resolvedNewRels)+len(updatedExistingRels))
-	merged = append(merged, updatedExistingRels...)
-	merged = append(merged, resolvedNewRels...)
-
 	logger.Printf("sresolver: inbound-fixed=%d signature-rewired=%d new-rels=%d existing-rels=%d",
 		inboundFixed, signatureRewired, len(resolvedNewRels), len(updatedExistingRels))
 
 	return ScopedResult{
-		NewRelationships: merged,
-		InboundFixed:     inboundFixed,
-		SignatureRewired: signatureRewired,
+		UpdatedExistingRelationships: updatedExistingRels,
+		MutatedExistingRelationships: mutatedExistingRels,
+		ResolvedNewRelationships:     resolvedNewRels,
+		InboundFixed:                 inboundFixed,
+		SignatureRewired:             signatureRewired,
 	}
 }
 

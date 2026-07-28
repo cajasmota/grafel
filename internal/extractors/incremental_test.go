@@ -4,24 +4,32 @@
 // (issue #2153 of epic #2149). Tests are organised by the scenarios listed in
 // the spec; each test has a precise correctness assertion labelled in-line.
 //
-// Golden-file equivalence test strategy
-// ──────────────────────────────────────
-// We use a small synthetic Go repo as the reference corpus.  A full reindex
-// produces a baseline graph.fb. We then mutate one file and compare:
+// What this file does and does NOT verify (#6033)
+// ───────────────────────────────────────────────
+// This header previously described a "golden-file equivalence test strategy"
+// comparing a full reindex against an incremental pass. No such comparison
+// exists here and none can: running the full Index() pipeline from this package
+// would import cmd/grafel and create an import cycle. Nothing below ever
+// produces a full-rebuild baseline.
 //
-//	a) The output of a second full reindex against the mutated repo.
-//	b) The output of TryIncremental against the mutated repo starting from
-//	   the baseline graph.fb.
+// What the tests here DO verify: that TryIncremental's own output tracks source
+// mutations — entities appear, disappear and are re-keyed as expected — plus
+// the fallback/limit/manifest safety valves.
 //
-// Both outputs must produce the same set of entity names (sorted). We cannot
-// require byte-identical FB buffers because FlatBuffers builder offsets are
-// layout-dependent and the sorting pass is identical but the builder state is
-// not. Instead we compare the decoded entity/relationship sets for semantic
-// equivalence — which is the property that matters for query correctness.
-//
-// (True byte-identical comparison would require re-running the full pipeline
-// with the same seed data, which is out of scope for a unit test. The
-// scheduler integration path is tested separately.)
+// What they do NOT verify:
+//   - full-vs-incremental parity. That is covered at the integration level by
+//     cmd/grafel/diff_reindex_validator_test.go (TestDiffReindex_*) — but note
+//     that harness was ALSO blind to #6033: internal/graph/parity compares
+//     relationship SETS, not multisets (parity.go:322 builds a map[relKey]), so
+//     duplicate edges collapse into one slot and a doubled graph compares equal
+//     to a clean one. Its strict empty tolerance profile did not help. Treat
+//     "TestDiffReindex is green" as saying nothing about edge cardinality.
+//   - relationship CARDINALITY. Every relationship assertion in this file is
+//     existence-only ("is edge X present?"), which is structurally blind to
+//     duplication. That blindness let #6033 — every incremental pass
+//     duplicating the entire surviving relationship set — ship live. The
+//     cardinality assertions live in incremental_dupe_test.go; add new merge-
+//     path coverage there, not here.
 package extractors_test
 
 import (
@@ -1036,18 +1044,27 @@ func TestIncremental_CodelessRepo_PresentZeroEntityGraph_NoLoop(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test: golden-file semantic equivalence — full reindex vs incremental
+// Test: entity set tracks source mutations across two incremental passes
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// This is the primary correctness test. We verify that after a single-file
-// mutation the incremental path produces the same set of entity names and
-// relationship tuples as a freshly produced graph would contain.
+// NAMING HONESTY (#6033). This test was called
+// TestIncremental_GoldenSemanticEquivalence and was documented as "the primary
+// correctness test … full reindex vs incremental". It never ran a full reindex
+// — doing so from this package would import cmd/grafel and create a cycle — so
+// it could not compare anything against a full rebuild, and the overstated name
+// is part of why #6033 (the entire surviving relationship set duplicated on
+// every pass) went unnoticed for so long.
 //
-// Implementation note: we cannot run the full Index() pipeline here without
-// importing cmd/grafel (cycle). So we use a reference approach: run
-// TryIncremental twice — once on the original state (no change), once on a
-// mutated repo — and verify the expected entity set is present/absent.
-func TestIncremental_GoldenSemanticEquivalence(t *testing.T) {
+// What it ACTUALLY covers, and all it covers:
+//   - a no-op incremental pass preserves the pre-existing entities;
+//   - a single-file mutation makes the removed function disappear from the
+//     entity-NAME set and the added one appear.
+//
+// It asserts nothing about relationships, nothing about cardinality, and
+// nothing about full-vs-incremental parity. Relationship cardinality lives in
+// incremental_dupe_test.go; full-vs-incremental parity is an integration-level
+// concern and is NOT covered by this package.
+func TestIncremental_EntitySetTracksSourceMutation(t *testing.T) {
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 
@@ -1093,7 +1110,7 @@ func TestIncremental_GoldenSemanticEquivalence(t *testing.T) {
 			t.Errorf("phase-2: Beta should be absent after mutation, got %v", names)
 		}
 	}
-	t.Logf("golden-equivalence names after phase-2 mutation: %v", names)
+	t.Logf("entity names after phase-2 mutation: %v", names)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

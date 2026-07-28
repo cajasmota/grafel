@@ -51,8 +51,8 @@ func TestResolveScoped_NoChanges(t *testing.T) {
 	if res.FallbackRequired {
 		t.Errorf("expected no fallback, got FallbackRequired=true target=%q", res.UnresolvedTarget)
 	}
-	if len(res.NewRelationships) != 1 {
-		t.Errorf("expected 1 relationship, got %d", len(res.NewRelationships))
+	if len(res.UpdatedExistingRelationships) != 1 {
+		t.Errorf("expected 1 relationship, got %d", len(res.UpdatedExistingRelationships))
 	}
 }
 
@@ -84,14 +84,14 @@ func TestResolveScoped_StubToIDResolved(t *testing.T) {
 	}
 
 	found := false
-	for _, r := range res.NewRelationships {
+	for _, r := range res.ResolvedNewRelationships {
 		if r.Kind == "CALLS" && r.ToID == "beef0011beef0011" {
 			found = true
 		}
 	}
 	if !found {
 		t.Errorf("stub ToID 'Callee' should have been resolved to 'beef0011beef0011', rels=%+v",
-			res.NewRelationships)
+			res.ResolvedNewRelationships)
 	}
 }
 
@@ -125,14 +125,14 @@ func TestResolveScoped_InboundFixed(t *testing.T) {
 	}
 	// The ToID should now be the new entity's ID.
 	found := false
-	for _, r := range res.NewRelationships {
+	for _, r := range res.UpdatedExistingRelationships {
 		if r.ToID == "dead0001dead0001" {
 			found = true
 		}
 	}
 	if !found {
 		t.Errorf("inbound rel ToID should have been updated to 'dead0001dead0001', rels=%+v",
-			res.NewRelationships)
+			res.UpdatedExistingRelationships)
 	}
 }
 
@@ -195,9 +195,15 @@ func TestResolveScoped_HexIDsUntouched(t *testing.T) {
 	}
 }
 
-// TestResolveScoped_MergeOrder verifies that existing rels come before new rels
-// in the merged output.
-func TestResolveScoped_MergeOrder(t *testing.T) {
+// TestResolveScoped_ExistingAndNewKeptSeparate pins the #6033 contract: the
+// surviving edge set and the freshly-extracted edge set are returned in TWO
+// distinct slices and NEITHER contains the other. The caller replaces its
+// existing slice with the first and appends the second; if ResolveScoped ever
+// merges them again, every incremental pass duplicates the whole graph.
+//
+// (This test replaces TestResolveScoped_MergeOrder, which asserted the merged
+// ordering that was itself the bug.)
+func TestResolveScoped_ExistingAndNewKeptSeparate(t *testing.T) {
 	existingRel := makeRel("aaaa0000aaaa0000", "bbbb1111bbbb1111", "CALLS")
 	newRel := makeRel("cccc2222cccc2222", "dddd3333dddd3333", "DEPENDS_ON")
 
@@ -211,14 +217,30 @@ func TestResolveScoped_MergeOrder(t *testing.T) {
 	if res.FallbackRequired {
 		t.Fatalf("unexpected fallback")
 	}
-	if len(res.NewRelationships) != 2 {
-		t.Fatalf("expected 2 relationships, got %d", len(res.NewRelationships))
+	if len(res.UpdatedExistingRelationships) != 1 {
+		t.Fatalf("UpdatedExistingRelationships must hold exactly the 1 surviving edge, got %d: %+v",
+			len(res.UpdatedExistingRelationships), res.UpdatedExistingRelationships)
 	}
-	if res.NewRelationships[0].Kind != "CALLS" {
-		t.Errorf("first relationship should be the existing CALLS rel, got %s", res.NewRelationships[0].Kind)
+	if got := res.UpdatedExistingRelationships[0].Kind; got != "CALLS" {
+		t.Errorf("UpdatedExistingRelationships[0] should be the existing CALLS edge, got %s", got)
 	}
-	if res.NewRelationships[1].Kind != "DEPENDS_ON" {
-		t.Errorf("second relationship should be the new DEPENDS_ON rel, got %s", res.NewRelationships[1].Kind)
+	if len(res.ResolvedNewRelationships) != 1 {
+		t.Fatalf("ResolvedNewRelationships must hold exactly the 1 new edge, got %d: %+v",
+			len(res.ResolvedNewRelationships), res.ResolvedNewRelationships)
+	}
+	if got := res.ResolvedNewRelationships[0].Kind; got != "DEPENDS_ON" {
+		t.Errorf("ResolvedNewRelationships[0] should be the new DEPENDS_ON edge, got %s", got)
+	}
+	// Neither slice may leak the other's edges.
+	for _, r := range res.UpdatedExistingRelationships {
+		if r.Kind == "DEPENDS_ON" {
+			t.Errorf("new edge leaked into UpdatedExistingRelationships — the #6033 duplication shape")
+		}
+	}
+	for _, r := range res.ResolvedNewRelationships {
+		if r.Kind == "CALLS" {
+			t.Errorf("surviving edge leaked into ResolvedNewRelationships — the #6033 duplication shape")
+		}
 	}
 }
 
@@ -257,11 +279,11 @@ func TestResolveScoped_SignatureChange_CallsEdgeRewired(t *testing.T) {
 	if res.SignatureRewired != 1 {
 		t.Errorf("expected SignatureRewired=1 for one CALLS edge, got %d", res.SignatureRewired)
 	}
-	if len(res.NewRelationships) != 1 {
-		t.Errorf("CALLS edge should be preserved, got %d relationships", len(res.NewRelationships))
+	if len(res.UpdatedExistingRelationships) != 1 {
+		t.Errorf("CALLS edge should be preserved, got %d relationships", len(res.UpdatedExistingRelationships))
 	}
-	if res.NewRelationships[0].ToID != "beef0011beef0011" {
-		t.Errorf("CALLS edge ToID should be preserved as %q, got %q", "beef0011beef0011", res.NewRelationships[0].ToID)
+	if res.UpdatedExistingRelationships[0].ToID != "beef0011beef0011" {
+		t.Errorf("CALLS edge ToID should be preserved as %q, got %q", "beef0011beef0011", res.UpdatedExistingRelationships[0].ToID)
 	}
 }
 
@@ -295,8 +317,8 @@ func TestResolveScoped_SignatureChange_NonSignatureEdgeNotCounted(t *testing.T) 
 		t.Errorf("IMPORTS edge should not be counted as signature-rewired, got SignatureRewired=%d", res.SignatureRewired)
 	}
 	// Edge should still be preserved.
-	if len(res.NewRelationships) != 1 {
-		t.Errorf("IMPORTS edge should be preserved, got %d relationships", len(res.NewRelationships))
+	if len(res.UpdatedExistingRelationships) != 1 {
+		t.Errorf("IMPORTS edge should be preserved, got %d relationships", len(res.UpdatedExistingRelationships))
 	}
 }
 
