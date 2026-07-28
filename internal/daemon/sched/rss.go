@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/atomicfile"
 	"github.com/cajasmota/grafel/internal/daemon/walk"
 )
 
@@ -120,13 +121,13 @@ func (h *RSSHistory) Record(repoPath string, peakMB int64) {
 	}
 	prev.LastIndex = time.Now().UTC()
 	h.data[repoPath] = prev
-	tmp := h.path + ".tmp"
 	b, _ := json.MarshalIndent(h.data, "", "  ")
 	h.mu.Unlock()
 	if h.path == "" {
 		return
 	}
-	if err := os.WriteFile(tmp, b, 0o600); err == nil {
-		_ = os.Rename(tmp, h.path)
-	}
+	// #6018: unique temp name. Errors stay deliberately discarded — this is a
+	// best-effort budget calibration and a miss only costs a re-measure — but a
+	// TORN history file would be read back as truth on the next start.
+	_ = atomicfile.WriteFile(h.path, b, 0o600)
 }

@@ -35,6 +35,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // currentPointerName is the tiny pointer file naming the active generation.
@@ -380,57 +382,65 @@ var (
 )
 
 // WriteCurrentPointer atomically points <dir>/current at genName (a bare
-// graph.<gen>.fb filename) via a sibling .tmp + rename. The pointer file is
-// tiny and NEVER memory-mapped, so this rename-over is safe on every platform
-// (it is not the ERROR_USER_MAPPED_FILE hazard the gen layout removes); a
-// bounded retry absorbs the transient Windows reader-open race.
+// graph.<gen>.fb filename) via a unique sibling temp + rename. The pointer file
+// is tiny and NEVER memory-mapped, so this rename-over is safe on every
+// platform (it is not the ERROR_USER_MAPPED_FILE hazard the gen layout
+// removes); a bounded retry absorbs the transient Windows reader-open race.
 func WriteCurrentPointer(dir, genName string) error {
 	if _, ok := parseGen(genName); !ok {
 		return fmt.Errorf("graph.WriteCurrentPointer: invalid gen name %q", genName)
 	}
-	tmp := filepath.Join(dir, currentPointerName+".tmp")
-	if err := os.WriteFile(tmp, []byte(genName+"\n"), 0o644); err != nil {
-		return fmt.Errorf("graph.WriteCurrentPointer: write tmp: %w", err)
+	if err := flipCurrentPointer(dir, genName); err != nil {
+		return fmt.Errorf("graph.WriteCurrentPointer: %w", err)
 	}
+	return nil
+}
+
+// flipCurrentPointer writes name into <dir>/current atomically, retrying the
+// whole write+rename up to pointerFlipRetries times.
+//
+// #6018: the staging file used to be a FIXED filepath.Join(dir, "current.tmp")
+// in the shared gen directory, so the indexer publishing a graph while anything
+// else flipped the same pointer tore one temp inode and could rename a garbled
+// gen name into `current` — after which the daemon and MCP, which read this
+// pointer cross-process to locate the current graph, resolve to a nonexistent
+// or wrong generation. atomicfile gives each writer its own temp.
+//
+// The retry now covers the staging write as well as the rename, where the
+// split form retried only the rename: atomicfile does both in one call and does
+// not report which half failed. A hard failure (missing or unwritable dir)
+// therefore costs pointerFlipRetries*pointerFlipRetryDelay (~200ms) before it
+// surfaces, instead of failing immediately. That is irrelevant next to a
+// publish that cannot complete at all.
+func flipCurrentPointer(dir, name string) error {
 	dst := filepath.Join(dir, currentPointerName)
 	var err error
 	for i := 0; i < pointerFlipRetries; i++ {
-		if err = os.Rename(tmp, dst); err == nil {
+		if err = atomicfile.WriteFile(dst, []byte(name+"\n"), 0o644); err == nil {
 			return nil
 		}
 		time.Sleep(pointerFlipRetryDelay)
 	}
-	os.Remove(tmp)
-	return fmt.Errorf("graph.WriteCurrentPointer: rename: %w", err)
+	return fmt.Errorf("flip pointer: %w", err)
 }
 
 // WriteCurrentPointerRaw atomically points <dir>/current at name, where name
 // may be EITHER a single-file gen ("graph.<gen>.fb") OR a segment-set gen dir
 // ("graph.<gen>") or its manifest ("graph.<gen>/manifest.json"). It is the
 // segment-aware superset of WriteCurrentPointer (which only accepts the
-// single-file shape); the two share the same atomic tmp+rename + bounded retry.
-// This is a format primitive for the FUTURE streaming writer (#5902) and the
-// test fixtures — no existing producer calls it.
+// single-file shape); the two share the same atomic write + bounded retry via
+// flipCurrentPointer. This is a format primitive for the FUTURE streaming
+// writer (#5902) and the test fixtures — no existing producer calls it.
 func WriteCurrentPointerRaw(dir, name string) error {
 	_, single := parseGen(name)
 	_, seg := parseSegPointer(name)
 	if !single && !seg {
 		return fmt.Errorf("graph.WriteCurrentPointerRaw: invalid pointer target %q", name)
 	}
-	tmp := filepath.Join(dir, currentPointerName+".tmp")
-	if err := os.WriteFile(tmp, []byte(name+"\n"), 0o644); err != nil {
-		return fmt.Errorf("graph.WriteCurrentPointerRaw: write tmp: %w", err)
+	if err := flipCurrentPointer(dir, name); err != nil {
+		return fmt.Errorf("graph.WriteCurrentPointerRaw: %w", err)
 	}
-	dst := filepath.Join(dir, currentPointerName)
-	var err error
-	for i := 0; i < pointerFlipRetries; i++ {
-		if err = os.Rename(tmp, dst); err == nil {
-			return nil
-		}
-		time.Sleep(pointerFlipRetryDelay)
-	}
-	os.Remove(tmp)
-	return fmt.Errorf("graph.WriteCurrentPointerRaw: rename: %w", err)
+	return nil
 }
 
 // GCStaleGens best-effort unlinks generation files older than the
@@ -524,13 +534,11 @@ func WriteGenGraph(dir string, buf []byte) (genPath string, err error) {
 	gen := NextGen(dir)
 	name := GenFileName(gen)
 	genPath = filepath.Join(dir, name)
-	tmp := genPath + ".tmp"
-	if err := os.WriteFile(tmp, buf, 0o644); err != nil {
-		return "", fmt.Errorf("graph.WriteGenGraph: write tmp: %w", err)
-	}
-	if err := os.Rename(tmp, genPath); err != nil {
-		os.Remove(tmp)
-		return "", fmt.Errorf("graph.WriteGenGraph: rename gen: %w", err)
+	// #6018: unique temp name. buf is already fully in memory, so this is a
+	// drop-in; two indexers landing on the same gen number would otherwise share
+	// one staging inode and publish a torn graph file.
+	if err := atomicfile.WriteFile(genPath, buf, 0o644); err != nil {
+		return "", fmt.Errorf("graph.WriteGenGraph: write gen: %w", err)
 	}
 	if err := WriteCurrentPointer(dir, name); err != nil {
 		return "", fmt.Errorf("graph.WriteGenGraph: flip pointer: %w", err)

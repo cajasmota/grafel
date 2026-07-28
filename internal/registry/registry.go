@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // StackList is a JSON-polymorphic list of language tags for a repo.
@@ -297,11 +299,10 @@ func saveTo(path string, r *Registry) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	// #6018: unique temp name. The registry is written by BOTH the CLI and the
+	// daemon with no cross-process lock, so a deterministic path+".tmp" is
+	// shared by concurrent writers and a torn registry is a broken install.
+	return atomicfile.WriteFile(path, b, 0o644)
 }
 
 // AddGroup adds a group to the registry and persists. Idempotent: if the
@@ -381,11 +382,9 @@ func SaveGroupConfig(path string, cfg *GroupConfig) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	// #6018: unique temp name — same cross-process CLI/daemon exposure as the
+	// registry itself.
+	return atomicfile.WriteFile(path, b, 0o644)
 }
 
 // LoadManifest reads a committed teammate manifest from

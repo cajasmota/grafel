@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // Mode is one of the three operational presets.
@@ -134,15 +136,13 @@ func SaveConfig(path string, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("marshal daemon config: %w", err)
 	}
-	tmp := path + ".tmp"
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write daemon config tmp: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("rename daemon config: %w", err)
+	// #6018: unique temp name — the daemon config is written by CLI processes
+	// and by the daemon itself, with no cross-process lock.
+	if err := atomicfile.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write daemon config %s: %w", path, err)
 	}
 	return nil
 }

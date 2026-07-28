@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/atomicfile"
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
@@ -171,13 +172,10 @@ func SaveDocgenState(group string, st DocgenState) error {
 		return fmt.Errorf("docstate: marshal: %w", err)
 	}
 	path := filepath.Join(dir, "docgen-state.json")
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("docstate: write tmp: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("docstate: rename: %w", err)
+	// #6018: unique temp name. Parallel agent sessions write this concurrently,
+	// and a deterministic path+".tmp" is shared by all of them.
+	if err := atomicfile.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("docstate: write %s: %w", path, err)
 	}
 	return nil
 }

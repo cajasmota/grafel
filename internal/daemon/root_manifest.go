@@ -35,6 +35,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // RootManifestName is the basename of the per-root source-path manifest written
@@ -97,15 +99,9 @@ func WriteRootManifest(repoPath string) error {
 		return err
 	}
 	dst := filepath.Join(root, RootManifestName)
-	tmp := dst + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	// #6018: unique temp name — several repos under one store root can be
+	// (re)registered concurrently.
+	return atomicfile.WriteFile(dst, data, 0o644)
 }
 
 // ReadRootManifest reads `<root>/root.json` for the given top-level store-root

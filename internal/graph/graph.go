@@ -13,6 +13,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/atomicfile"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -576,27 +577,31 @@ func WriteSidecar(outPath string, side *GraphStatsSidecar, pretty bool) error {
 	return writeJSONAtomic(filepath.Join(dir, "graph-stats.json"), side, pretty)
 }
 
-// writeJSONAtomic encodes v to target via a sibling .tmp + rename.
+// writeJSONAtomic encodes v to target via a unique sibling temp + rename
+// (#6018 — the temp used to be a fixed target+".tmp").
+//
+// It used json.NewEncoder against the open temp file, but v is a single
+// in-memory value, so this is a marshal-then-write, not a stream. The trailing
+// newline that json.Encoder.Encode appends and json.Marshal does not is added
+// back explicitly so the output stays byte-identical.
 func writeJSONAtomic(target string, v any, pretty bool) error {
-	tmp := target + ".tmp"
-	f, err := os.Create(tmp)
-	if err != nil {
-		return fmt.Errorf("graph: create sidecar tmp: %w", err)
-	}
-	enc := json.NewEncoder(f)
+	var (
+		b   []byte
+		err error
+	)
 	if pretty {
-		enc.SetIndent("", "  ")
+		b, err = json.MarshalIndent(v, "", "  ")
+	} else {
+		b, err = json.Marshal(v)
 	}
-	if err := enc.Encode(v); err != nil {
-		f.Close()
-		os.Remove(tmp)
+	if err != nil {
 		return fmt.Errorf("graph: encode sidecar: %w", err)
 	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
-		return err
+	b = append(b, '\n')
+	if err := atomicfile.WriteFile(target, b, 0o644); err != nil {
+		return fmt.Errorf("graph: write sidecar %s: %w", target, err)
 	}
-	return os.Rename(tmp, target)
+	return nil
 }
 
 // SidecarPath returns the graph-stats.json path inside stateDir.

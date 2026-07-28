@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/atomicfile"
 	"github.com/cajasmota/grafel/internal/daemon/requests"
 )
 
@@ -68,11 +69,9 @@ func recordDeadLetter(root string, dl DeadLetter) error {
 		return err
 	}
 	final := filepath.Join(dir, dl.ID+".json")
-	tmp := final + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, final)
+	// #6018: unique temp name — dead letters are recorded from several
+	// concurrent daemon workers.
+	return atomicfile.WriteFile(final, data, 0o644)
 }
 
 // ReadDeadLetters returns every dead-letter record under root, newest first. A

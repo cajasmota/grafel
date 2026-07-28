@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/atomicfile"
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
@@ -222,13 +223,10 @@ func writeToDisk(stateDir string, r *Results) error {
 	}
 
 	cachePath := filepath.Join(stateDir, cacheFileName)
-	tmp := cachePath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("write tmp: %w", err)
-	}
-	if err := os.Rename(tmp, cachePath); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("rename: %w", err)
+	// #6018: unique temp name. A torn cache here is worse than a missing one —
+	// it is read back as a valid envelope on the next load.
+	if err := atomicfile.WriteFile(cachePath, data, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", cachePath, err)
 	}
 	return nil
 }
