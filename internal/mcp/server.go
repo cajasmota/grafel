@@ -1802,7 +1802,10 @@ func (s *Server) registerTools() {
 	// ranked merge-order/conflict triage. Core logic is pure (graph.AnalyzePRImpact
 	// / AnalyzeMergeRisk); refs are taken explicitly (offline, deterministic).
 	s.addTool(mcpapi.NewTool("grafel_pr_impact",
-		mcpapi.WithDescription("PR impact + merge-risk: changes->communities->blast radius."),
+		// #6006: the 80-char budget (budget_test.go) leaves room for exactly one
+		// safety fact, and this is it — an agent must not read a missing answer as
+		// a zero-risk one. The full explanation is in the error result itself.
+		mcpapi.WithDescription("PR impact + merge-risk. Conflicts mode errors (not 0 pairs) when uncomputed."),
 		mcpapi.WithString("repo", mcpapi.Required()),
 		mcpapi.WithString("base"),
 		mcpapi.WithString("head"),
