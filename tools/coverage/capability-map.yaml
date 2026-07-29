@@ -14169,18 +14169,22 @@ records:
     capabilities:
       core_extraction:
         # Regex extractor: no tree-sitter Solidity grammar is bundled.
-        # stripCommentsAndStrings blanks comments and literals first;
-        # findContracts walks the declarations; declSignature scans past the
-        # member regex match with paren depth so Signature is complete.
+        # stripCommentsAndStrings blanks comments and literals first, keeping
+        # byte length and newline positions; findContracts walks the
+        # declarations; declSignature scans past the member regex match with
+        # paren depth so Signature is complete; lineOf derives reported lines,
+        # with members anchored on the contract's opening brace.
         status: full
         symbols:
           - file: internal/extractors/solidity/extractor.go
-            functions: [findContracts, declSignature, extractBracedBody, stripCommentsAndStrings]
+            functions: [findContracts, declSignature, extractBracedBody, stripCommentsAndStrings, buildImportEntities, lineOf]
         tests:
           - file: internal/extractors/solidity/extractor_test.go
             functions: [TestSolidity_ContractDeclaration, TestSolidity_LibraryDeclaration, TestSolidity_InterfaceDeclaration, TestSolidity_Functions, TestSolidity_Events, TestSolidity_Modifiers, TestSolidity_ContainsEdges, TestSolidity_FunctionSignatures, TestSolidity_EventAndModifierSignatures, TestSolidity_SignatureIgnoresDelimitersInCommentsAndStrings]
-        issues_implemented: [6028]
-        verified_at: "2026-07-28"
+          - file: internal/extractors/solidity/line_attribution_test.go
+            functions: [TestSolidity_LineAttribution]
+        issues_implemented: [6028, 6040]
+        verified_at: "2026-07-29"
 
   lang.c-cpp.framework.crow:
     capabilities:
