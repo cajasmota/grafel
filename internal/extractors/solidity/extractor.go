@@ -44,7 +44,7 @@ var (
 	//   import "./Foo.sol";
 	//   import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 	importRE = regexp.MustCompile(
-		`(?m)^\s*import\s+(?:[^"']*\s+)?["']([^"']+)["']`,
+		`(?m)^[ \t]*import\s+(?:[^"']*\s+)?["']([^"']+)["']`,
 	)
 
 	// contractRE matches contract/library/abstract contract/interface declarations.
@@ -52,25 +52,25 @@ var (
 	// Group 2: name
 	// Group 3: inheritance list after "is" (may be empty string)
 	contractRE = regexp.MustCompile(
-		`(?m)^\s*(abstract\s+contract|contract|library|interface)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:is\s+([A-Za-z_][A-Za-z0-9_,\s]*))?[{]`,
+		`(?m)^[ \t]*(abstract\s+contract|contract|library|interface)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:is\s+([A-Za-z_][A-Za-z0-9_,\s]*))?[{]`,
 	)
 
 	// functionRE matches function declarations inside contracts.
 	// Group 1: function name (plain identifier; does NOT match receive/fallback specials)
 	functionRE = regexp.MustCompile(
-		`(?m)^\s*function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
+		`(?m)^[ \t]*function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
 	)
 
 	// eventRE matches event declarations.
 	// Group 1: event name
 	eventRE = regexp.MustCompile(
-		`(?m)^\s*event\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
+		`(?m)^[ \t]*event\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
 	)
 
 	// modifierRE matches modifier declarations.
 	// Group 1: modifier name
 	modifierRE = regexp.MustCompile(
-		`(?m)^\s*modifier\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
+		`(?m)^[ \t]*modifier\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
 	)
 
 	// callRE matches dotted or bare function-call patterns.
@@ -187,7 +187,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			}
 		}
 
-		startLine := strings.Count(src[:m[0]], "\n") + 1
+		startLine := lineOf(src, m[0])
 
 		// Find the contract body boundary.
 		bodyStart := m[1] // position just past the opening '{' marker position
@@ -271,7 +271,8 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 		if body == "" {
 			continue
 		}
-		bodyLineOffset := startLine // functions' start-lines are relative offsets within body
+		// body starts just past '{', so a child N newlines in sits N lines below it.
+		braceLine := lineOf(src, bodyStart-1)
 
 		// Functions.
 		for _, fm := range functionRE.FindAllStringSubmatchIndex(body, -1) {
@@ -280,7 +281,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			}
 			fnName := body[fm[2]:fm[3]]
 			qualName := name + "." + fnName
-			fnStartLine := bodyLineOffset + strings.Count(body[:fm[0]], "\n")
+			fnStartLine := braceLine + strings.Count(body[:fm[0]], "\n")
 			fnBody, fnEndLine := extractBracedBody(body, fm[1])
 			_ = fnBody
 			if fnEndLine == 0 {
@@ -319,7 +320,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			}
 			evName := body[em[2]:em[3]]
 			qualName := name + "." + evName
-			evStartLine := bodyLineOffset + strings.Count(body[:em[0]], "\n")
+			evStartLine := braceLine + strings.Count(body[:em[0]], "\n")
 			rawEvSig := declSignature(body, em[0], em[1])
 
 			evRec := types.EntityRecord{
@@ -348,7 +349,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			}
 			modName := body[mm[2]:mm[3]]
 			qualName := name + "." + modName
-			modStartLine := bodyLineOffset + strings.Count(body[:mm[0]], "\n")
+			modStartLine := braceLine + strings.Count(body[:mm[0]], "\n")
 			rawModSig := declSignature(body, mm[0], mm[1])
 			modBody, _ := extractBracedBody(body, mm[1])
 
@@ -382,15 +383,16 @@ func buildImportEntities(filePath, src string) []types.EntityRecord {
 	seen := make(map[string]bool)
 	var out []types.EntityRecord
 
-	for _, m := range importRE.FindAllStringSubmatch(src, -1) {
-		if len(m) < 2 {
+	for _, m := range importRE.FindAllStringSubmatchIndex(src, -1) {
+		if len(m) < 4 {
 			continue
 		}
-		importPath := strings.TrimSpace(m[1])
+		importPath := strings.TrimSpace(src[m[2]:m[3]])
 		if importPath == "" || seen[importPath] {
 			continue
 		}
 		seen[importPath] = true
+		startLine := lineOf(src, m[0])
 
 		// Display name: last path segment without extension.
 		displayName := importPath
@@ -410,6 +412,8 @@ func buildImportEntities(filePath, src string) []types.EntityRecord {
 			Kind:       "SCOPE.Component",
 			SourceFile: filePath,
 			Language:   "solidity",
+			StartLine:  startLine,
+			EndLine:    startLine,
 			Relationships: []types.RelationshipRecord{
 				{
 					FromID:     filePath,
@@ -538,7 +542,7 @@ func extractBracedBody(src string, openPos int) (string, int) {
 			depth--
 			if depth == 0 {
 				body := src[start+1 : i]
-				endLine := strings.Count(src[:i], "\n") + 1
+				endLine := lineOf(src, i)
 				return body, endLine
 			}
 		}
@@ -569,8 +573,15 @@ func declSignature(src string, declStart, fallbackEnd int) string {
 	return strings.Join(strings.Fields(src[declStart:fallbackEnd]), " ")
 }
 
+// lineOf returns the 1-based line number of the byte at offset in src.
+func lineOf(src string, offset int) int {
+	return strings.Count(src[:offset], "\n") + 1
+}
+
 // stripCommentsAndStrings replaces Solidity // and /* */ comments and string
-// literals with spaces so regexes don't match inside them.
+// literals with spaces so regexes don't match inside them. The result has the
+// same byte length AND the same newline positions as src, so an offset into it
+// names the same byte, and the same line, as that offset into src.
 func stripCommentsAndStrings(src string) string {
 	out := make([]byte, len(src))
 	copy(out, src)
@@ -643,6 +654,13 @@ func stripCommentsAndStrings(src string) string {
 			continue
 		}
 		i++
+	}
+	// Restore newlines blanked inside multi-line comments and strings. Their
+	// contents are already spaces, so the reintroduced line starts match nothing.
+	for i := range out {
+		if src[i] == '\n' {
+			out[i] = '\n'
+		}
 	}
 	return string(out)
 }
