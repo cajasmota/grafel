@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
@@ -21,6 +22,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/testsupport"
+	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
 // prImpact6006Env is the on-disk world a grafel_pr_impact call needs: a
@@ -57,20 +59,32 @@ func setupPRImpact6006(t *testing.T) prImpact6006Env {
 		t.Fatalf("mkdir repo: %v", err)
 	}
 
-	base := []graph.Entity{prImpact6006Ent("svc:A"), prImpact6006Ent("svc:B")}
-	mk := func(extra string) *graph.Document {
-		d := &graph.Document{Version: 1, Repo: "svc"}
-		d.Entities = append(d.Entities, base...)
-		if extra != "" {
-			d.Entities = append(d.Entities, prImpact6006Ent(extra))
-			d.Relationships = []graph.Relationship{{FromID: extra, ToID: "svc:A", Kind: "CALLS"}}
+	// mk builds a ref graph. sigA perturbs svc:A's signature, which feeds
+	// graph.DiffDocs' sourceWindowHash and so classifies it as MODIFIED (and
+	// which load.go explicitly round-trips through graph.fb); added names an
+	// entity that exists only on this ref.
+	mk := func(sigA string, added string) *graph.Document {
+		a := prImpact6006Ent("svc:A")
+		a.Signature = sigA
+		d := &graph.Document{Version: 1, Repo: "svc",
+			Entities: []graph.Entity{a, prImpact6006Ent("svc:B")}}
+		if added != "" {
+			d.Entities = append(d.Entities, prImpact6006Ent(added))
+			d.Relationships = []graph.Relationship{{FromID: added, ToID: "svc:A", Kind: "CALLS"}}
 		}
 		return d
 	}
 	refs := map[string]*graph.Document{
-		"main":     mk(""),
-		"featureA": mk("svc:NewA"),
-		"featureB": mk("svc:NewB"),
+		"main": mk("func A()", ""),
+		// Two refs that MODIFY a pre-existing, overlay-covered entity.
+		"modA":  mk("func A(x int)", ""),
+		"modA2": mk("func A(y string)", ""),
+		// Two refs that only ADD entities. These are the #6006 D1 shape: the
+		// overlay is computed from the indexed group union, so svc:NewA / svc:NewB
+		// CANNOT be in it. A fixture that stamps them into the overlay is testing a
+		// state production cannot produce.
+		"addOnly1": mk("func A()", "svc:NewA"),
+		"addOnly2": mk("func A()", "svc:NewB"),
 	}
 	for ref, doc := range refs {
 		dir := daemon.StateDirForRepoRef(repoPath, ref)
@@ -80,7 +94,7 @@ func setupPRImpact6006(t *testing.T) prImpact6006Env {
 	}
 	// The HEAD-ref graph.fb the overlay's staleness check keys off.
 	if err := fbwriter.WriteAtomic(
-		filepath.Join(daemon.StateDirForRepo(repoPath), "graph.fb"), mk("")); err != nil {
+		filepath.Join(daemon.StateDirForRepo(repoPath), "graph.fb"), mk("func A()", "")); err != nil {
 		t.Fatalf("write HEAD graph.fb: %v", err)
 	}
 
@@ -111,32 +125,74 @@ func setupPRImpact6006(t *testing.T) prImpact6006Env {
 	}
 }
 
-// writeOverlay6006 stamps every fixture entity into ONE community (7), so the
-// two feature refs genuinely conflict.
+// writeOverlay writes the overlay in the PRODUCTION shape: it covers exactly the
+// entities that exist in the indexed group union (svc:A, svc:B) and nothing
+// else. Entities that live only on a feature ref are deliberately absent —
+// stamping them in would fabricate a state the group-algo pass cannot produce
+// and would make the add-only test below vacuously pass.
 func (e prImpact6006Env) writeOverlay(t *testing.T) {
 	t.Helper()
 	res := map[string]groupalgo.EntityOverlay{}
-	for _, id := range []string{"svc:A", "svc:B", "svc:NewA", "svc:NewB"} {
+	for _, id := range []string{"svc:A", "svc:B"} {
 		res[id] = groupalgo.EntityOverlay{CommunityID: 7, PageRank: 0.1}
 	}
 	ov := &groupalgo.Overlay{
 		AlgoVersion:  groupalgo.OverlayAlgoVersion,
 		Group:        "acme",
+		ComputedAt:   time.Now().UTC().Add(-time.Hour),
 		SourceMtimes: e.curMtimes,
 		Results:      res,
-		Communities:  []graph.CommunityResult{{ID: 7, Size: 4, AutoName: "core"}},
+		Communities:  []graph.CommunityResult{{ID: 7, Size: 2, AutoName: "core"}},
 	}
 	if err := groupalgo.WriteOverlayTo(e.overlayPath, ov); err != nil {
 		t.Fatalf("write overlay: %v", err)
 	}
 }
 
+// conflictsArgs asks the merge-risk question about two refs that MODIFY a
+// pre-existing, overlay-covered entity.
 func conflictsArgs() map[string]any {
 	return map[string]any{
 		"group": "acme", "repo": "svc",
 		"base": "main",
-		"refs": []any{"featureA", "featureB"},
+		"refs": []any{"modA", "modA2"},
 	}
+}
+
+// addOnlyConflictsArgs asks it about two refs that only ADD entities — the shape
+// the overlay cannot cover.
+func addOnlyConflictsArgs() map[string]any {
+	return map[string]any{
+		"group": "acme", "repo": "svc",
+		"base": "main",
+		"refs": []any{"addOnly1", "addOnly2"},
+	}
+}
+
+// prImpact6006Payload is the union of the fields these tests assert on.
+type prImpact6006Payload struct {
+	RiskyPairCount         int    `json:"risky_pair_count"`
+	CommunityDataAvailable bool   `json:"community_data_available"`
+	CommunityDataStale     bool   `json:"community_data_stale"`
+	OverlayComputedAt      string `json:"overlay_computed_at"`
+	CommunityCount         int    `json:"impacted_community_count"`
+	ChangedCount           int    `json:"changed_count"`
+	ChangedUncovered       int    `json:"changed_entities_without_community"`
+	RiskPairs              []struct {
+		SharedCommunities []int `json:"shared_communities"`
+	} `json:"risk_pairs"`
+}
+
+func mustPayload(t *testing.T, res *mcpapi.CallToolResult) prImpact6006Payload {
+	t.Helper()
+	if res == nil || res.IsError {
+		t.Fatalf("expected a successful result, got: %s", resultText(res))
+	}
+	var p prImpact6006Payload
+	if err := json.Unmarshal([]byte(resultText(res)), &p); err != nil {
+		t.Fatalf("unmarshal payload: %v\n%s", err, resultText(res))
+	}
+	return p
 }
 
 // Control arm: with the group overlay present, the two refs DO conflict. This is
@@ -147,30 +203,53 @@ func TestPRImpact6006_ConflictsDetectedWithOverlay(t *testing.T) {
 	env := setupPRImpact6006(t)
 	env.writeOverlay(t)
 
-	res := callHandlerResult(t, env.srv.handlePRImpact, conflictsArgs())
-	if res == nil || res.IsError {
-		t.Fatalf("expected a successful result, got: %v / %s", res, resultText(res))
+	p := mustPayload(t, callHandlerResult(t, env.srv.handlePRImpact, conflictsArgs()))
+	if !p.CommunityDataAvailable {
+		t.Errorf("overlay covers the changed entity; community_data_available = false")
 	}
-	var payload struct {
-		RiskyPairCount         int  `json:"risky_pair_count"`
-		CommunityDataAvailable bool `json:"community_data_available"`
-		RiskPairs              []struct {
-			SharedCommunities []int `json:"shared_communities"`
-		} `json:"risk_pairs"`
+	if p.CommunityDataStale {
+		t.Errorf("overlay records the current graph.fb mtimes; community_data_stale = true")
 	}
-	if err := json.Unmarshal([]byte(resultText(res)), &payload); err != nil {
-		t.Fatalf("unmarshal payload: %v\n%s", err, resultText(res))
+	if p.OverlayComputedAt == "" {
+		t.Errorf("overlay_computed_at missing — callers cannot judge the partition's age")
 	}
-	if !payload.CommunityDataAvailable {
-		t.Errorf("overlay is present and fresh; community_data_available = false")
+	if p.RiskyPairCount != 1 {
+		t.Fatalf("expected 1 risky pair from the shared community, got %d", p.RiskyPairCount)
 	}
-	if payload.RiskyPairCount != 1 {
-		t.Fatalf("expected 1 risky pair from the shared community, got %d: %s",
-			payload.RiskyPairCount, resultText(res))
+	if len(p.RiskPairs) != 1 || len(p.RiskPairs[0].SharedCommunities) != 1 ||
+		p.RiskPairs[0].SharedCommunities[0] != 7 {
+		t.Errorf("expected shared community [7], got %+v", p.RiskPairs)
 	}
-	if len(payload.RiskPairs) != 1 || len(payload.RiskPairs[0].SharedCommunities) != 1 ||
-		payload.RiskPairs[0].SharedCommunities[0] != 7 {
-		t.Errorf("expected shared community [7], got %+v", payload.RiskPairs)
+}
+
+// D1 — the regression the first fix missed. The overlay is present, fresh, and
+// covers the repo; the two refs only ADD entities, so nothing they changed is in
+// it. Before this fix the tool returned risky_pair_count:0 alongside
+// community_data_available:true — an affirmative all-clear on a change nothing
+// was known about, which is worse than the original bug.
+func TestPRImpact6006_AddOnlyRefsAreNotReportedAsNoConflicts(t *testing.T) {
+	env := setupPRImpact6006(t)
+	env.writeOverlay(t)
+
+	res := callHandlerResult(t, env.srv.handlePRImpact, addOnlyConflictsArgs())
+	if res == nil {
+		t.Fatal("nil result")
+	}
+	text := resultText(res)
+	if !res.IsError {
+		t.Fatalf("no changed entity is covered by the overlay, so merge risk was not computed; "+
+			"must not return a payload: %s", text)
+	}
+	// The remedy differs from the absent-overlay case: telling a user to run a
+	// group index when the overlay exists and is fresh is actively misleading.
+	if !strings.Contains(text, "does not cover the changed entities") {
+		t.Errorf("error must name the real cause (overlay does not cover the changed entities), got: %s", text)
+	}
+	var payload map[string]any
+	if json.Unmarshal([]byte(text), &payload) == nil {
+		if v, ok := payload["risky_pair_count"]; ok {
+			t.Errorf("uncomputed merge risk still emitted risky_pair_count=%v", v)
+		}
 	}
 }
 
@@ -194,6 +273,10 @@ func TestPRImpact6006_NoOverlayIsNotReportedAsNoConflicts(t *testing.T) {
 			t.Errorf("error message should explain the unavailability and that it is NOT a no-conflicts answer; missing %q in: %s", want, text)
 		}
 	}
+	// The absent case must NOT be described as staleness — the remedy differs.
+	if !strings.Contains(text, "absent, corrupt") {
+		t.Errorf("error should name the absent/corrupt overlay specifically, got: %s", text)
+	}
 	// Belt and braces: whatever shape the message takes, it must not be a JSON
 	// payload that an agent could parse as a clean zero-risk answer.
 	var payload map[string]any
@@ -204,17 +287,70 @@ func TestPRImpact6006_NoOverlayIsNotReportedAsNoConflicts(t *testing.T) {
 	}
 }
 
-// A STALE overlay is treated exactly like an absent one — it must not silently
-// supply a partition that no longer matches the graphs being compared.
-func TestPRImpact6006_StaleOverlayIsNotReportedAsNoConflicts(t *testing.T) {
+// D2 — a STALE overlay must still ANSWER, flagged. The staleness key is the
+// currently-checked-out ref's graph.fb, so refusing on stale turned "I am
+// standing on a feature branch" — the only posture from which anyone asks this
+// question — into a hard error, and made the tool unusable for ~50 minutes after
+// any reindex. A community-level verdict from a slightly older partition is
+// worth far more than a refusal.
+func TestPRImpact6006_StaleOverlayStillAnswersButIsFlagged(t *testing.T) {
 	env := setupPRImpact6006(t)
-	// Record mtimes that do not match anything on disk → IsOverlayStale.
+	// Record mtimes that match nothing on disk → IsOverlayStale.
 	env.curMtimes = map[string]int64{"svc": 1}
 	env.writeOverlay(t)
 
-	res := callHandlerResult(t, env.srv.handlePRImpact, conflictsArgs())
-	if res == nil || !res.IsError {
-		t.Fatalf("stale overlay must be reported, not silently treated as no-conflicts; got: %s", resultText(res))
+	p := mustPayload(t, callHandlerResult(t, env.srv.handlePRImpact, conflictsArgs()))
+	if p.RiskyPairCount != 1 {
+		t.Fatalf("a stale partition still places these refs in community 7; "+
+			"expected the conflict to be reported, got %d", p.RiskyPairCount)
+	}
+	if !p.CommunityDataStale {
+		t.Errorf("overlay IS stale but community_data_stale = false — the caller cannot tell")
+	}
+	if !p.CommunityDataAvailable {
+		t.Errorf("stale is not unavailable: community_data_available should be true")
+	}
+	if p.OverlayComputedAt == "" {
+		t.Errorf("overlay_computed_at missing — the only way to judge how stale")
+	}
+}
+
+// D4 — the overlay is parsed once per (path, mtime), not once per call. On the
+// live corpus the file is 31.9 MB: ~326 ms and ~76 MB of transient heap per
+// read, and concurrent MCP agents are exactly the workload that cannot afford it.
+func TestPRImpact6006_OverlayReadIsMemoized(t *testing.T) {
+	env := setupPRImpact6006(t)
+	env.writeOverlay(t)
+
+	// Prime the cache, then measure hits across two further calls.
+	_ = callHandlerResult(t, env.srv.handlePRImpact, conflictsArgs())
+	overlayCacheMu.Lock()
+	before := overlayCacheHits
+	overlayCacheMu.Unlock()
+
+	for i := 0; i < 2; i++ {
+		_ = mustPayload(t, callHandlerResult(t, env.srv.handlePRImpact, conflictsArgs()))
+	}
+
+	overlayCacheMu.Lock()
+	got := overlayCacheHits - before
+	overlayCacheMu.Unlock()
+	if got != 2 {
+		t.Errorf("expected 2 cache hits across 2 repeat calls, got %d (overlay re-parsed per call)", got)
+	}
+
+	// A rewritten overlay must invalidate: same path, new content.
+	time.Sleep(10 * time.Millisecond) // ensure a distinct mtime
+	env.writeOverlay(t)
+	overlayCacheMu.Lock()
+	before = overlayCacheHits
+	overlayCacheMu.Unlock()
+	_ = mustPayload(t, callHandlerResult(t, env.srv.handlePRImpact, conflictsArgs()))
+	overlayCacheMu.Lock()
+	got = overlayCacheHits - before
+	overlayCacheMu.Unlock()
+	if got != 0 {
+		t.Errorf("a rewritten overlay must invalidate the cache, got %d hits", got)
 	}
 }
 
@@ -223,35 +359,42 @@ func TestPRImpact6006_StaleOverlayIsNotReportedAsNoConflicts(t *testing.T) {
 // impacted_communities is explicable.
 func TestPRImpact6006_SingleModeLabelsCommunityData(t *testing.T) {
 	env := setupPRImpact6006(t)
-	args := map[string]any{"group": "acme", "repo": "svc", "base": "main", "head": "featureA"}
-
-	parse := func(t *testing.T) (bool, int) {
+	parse := func(t *testing.T, head string) prImpact6006Payload {
 		t.Helper()
-		res := callHandlerResult(t, env.srv.handlePRImpact, args)
-		if res == nil || res.IsError {
-			t.Fatalf("single mode should succeed, got: %s", resultText(res))
-		}
-		var p struct {
-			CommunityDataAvailable bool `json:"community_data_available"`
-			CommunityCount         int  `json:"impacted_community_count"`
-			ChangedCount           int  `json:"changed_count"`
-		}
-		if err := json.Unmarshal([]byte(resultText(res)), &p); err != nil {
-			t.Fatalf("unmarshal: %v\n%s", err, resultText(res))
-		}
+		p := mustPayload(t, callHandlerResult(t, env.srv.handlePRImpact,
+			map[string]any{"group": "acme", "repo": "svc", "base": "main", "head": head}))
 		if p.ChangedCount == 0 {
-			t.Fatalf("fixture produced no changed entities — it cannot test anything: %s", resultText(res))
+			t.Fatalf("fixture produced no changed entities for head=%s — it cannot test anything", head)
 		}
-		return p.CommunityDataAvailable, p.CommunityCount
+		return p
 	}
 
+	// No overlay at all.
 	_ = os.Remove(env.overlayPath)
-	if avail, count := parse(t); avail || count != 0 {
-		t.Errorf("no overlay: want community_data_available=false and 0 communities, got %v/%d", avail, count)
+	if p := parse(t, "modA"); p.CommunityDataAvailable || p.CommunityCount != 0 {
+		t.Errorf("no overlay: want available=false / 0 communities, got %v/%d",
+			p.CommunityDataAvailable, p.CommunityCount)
 	}
 
+	// Overlay present, change touches a covered entity.
 	env.writeOverlay(t)
-	if avail, count := parse(t); !avail || count != 1 {
-		t.Errorf("with overlay: want community_data_available=true and 1 community, got %v/%d", avail, count)
+	p := parse(t, "modA")
+	if !p.CommunityDataAvailable || p.CommunityCount != 1 {
+		t.Errorf("with overlay: want available=true / 1 community, got %v/%d",
+			p.CommunityDataAvailable, p.CommunityCount)
+	}
+	if p.ChangedUncovered != 0 {
+		t.Errorf("the modified entity IS covered; changed_entities_without_community = %d", p.ChangedUncovered)
+	}
+
+	// D1 in single mode: same fresh overlay, add-only change. Single mode still
+	// returns its payload (the blast radius is valid) but must NOT claim the
+	// community data covered this change.
+	add := parse(t, "addOnly1")
+	if add.CommunityDataAvailable {
+		t.Errorf("add-only change is uncovered by the overlay; community_data_available must be false")
+	}
+	if add.ChangedUncovered != 1 {
+		t.Errorf("changed_entities_without_community = %d, want 1", add.ChangedUncovered)
 	}
 }

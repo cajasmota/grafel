@@ -74,11 +74,10 @@ type PRImpactResult struct {
 	BlastRadiusCount int  `json:"blast_radius_count"`
 	Truncated        bool `json:"truncated,omitempty"`
 
-	// CommunityDataAvailable reports whether the analysed graph carried ANY real
-	// community assignment (issue #6006). It is NOT a quality metric — it is the
-	// validity flag for every community-derived field in this struct
-	// (ImpactedCommunities, CommunityCount, ImpactedCommunityIDs, and therefore
-	// the whole merge-risk analysis built on top of them).
+	// CommunityDataAvailable is the validity flag for every community-derived
+	// field in this struct (ImpactedCommunities, CommunityCount,
+	// ImpactedCommunityIDs, and therefore the whole merge-risk analysis built on
+	// top of them). Issue #6006.
 	//
 	// It exists because the per-repo Pass-4 algorithm pass was removed when the
 	// group-scope algo pass replaced it: entities loaded straight out of graph.fb
@@ -86,7 +85,27 @@ type PRImpactResult struct {
 	// empty. Without this flag "no impacted communities" is indistinguishable
 	// from "communities were never computed" — and on a merge-risk question that
 	// reads as "safe to merge", which is the worst direction to be wrong in.
+	//
+	// MEASURED OVER THE CHANGED SET, NOT THE ENTITY SET. The first cut of this
+	// flag asked "does any entity anywhere in the graph carry a community?", and
+	// that is the wrong question: the group-algo overlay is computed from the
+	// INDEXED GROUP UNION, so entities that exist only on a feature ref — every
+	// entity a PR ADDS — are absent from it by construction. A pure add-only PR
+	// therefore has a fully-covered repo and a completely uncovered change set,
+	// and the graph-wide flag reported `community_data_available: true` next to
+	// `risky_pair_count: 0` — an affirmative all-clear on a change nothing was
+	// known about. Coverage of the entities we are actually reasoning about is
+	// the only coverage that makes the answer valid.
+	//
+	// An EMPTY change set is vacuously available: nothing changed, so nothing can
+	// conflict, and that is a real answer rather than a missing one. (This is the
+	// live default-base case — conflicts mode diffs refs[0] against itself.)
 	CommunityDataAvailable bool `json:"community_data_available"`
+	// ChangedWithoutCommunity counts changed entities carrying no community, i.e.
+	// the entities this analysis could not place. Non-zero with
+	// CommunityDataAvailable=true is PARTIAL coverage: the verdict stands on the
+	// entities that were placed, but this many were invisible to it.
+	ChangedWithoutCommunity int `json:"changed_entities_without_community"`
 }
 
 // PRImpactOptions bounds the analysis.
@@ -158,16 +177,8 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 	opts = opts.normalized()
 
 	byID := make(map[string]Entity, len(entities))
-	communityDataAvailable := false
 	for i := range entities {
 		byID[entities[i].ID] = entities[i]
-		// #6006: "did community detection actually run on this graph?" — answered
-		// over the WHOLE entity set, not just the changed slice, so a change that
-		// happens to touch only ungrouped entities is reported as a real (empty)
-		// answer rather than as missing data.
-		if entities[i].CommunityID != nil && *entities[i].CommunityID >= 0 {
-			communityDataAvailable = true
-		}
 	}
 
 	// Inbound adjacency: in[X] = entities that depend on X (callers). Restricted
@@ -204,6 +215,10 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 	changed := make([]ChangedEntity, 0, len(changedIDs))
 	// communityChanged[community] = #changed entities in it.
 	communityChanged := map[int]int{}
+	// #6006: how many changed entities we could NOT place in a community. This,
+	// not the graph-wide entity set, decides whether the community-derived output
+	// below means anything — see PRImpactResult.CommunityDataAvailable.
+	changedWithoutCommunity := 0
 	seedSet := make(map[string]struct{}, len(changedIDs))
 	for _, id := range changedIDs {
 		seedSet[id] = struct{}{}
@@ -231,7 +246,13 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 			CommunityID: comm,
 		})
 		communityChanged[comm]++
+		if comm < 0 {
+			changedWithoutCommunity++
+		}
 	}
+	// Vacuously available when nothing changed; otherwise at least one changed
+	// entity must have been placed for the community verdict to mean anything.
+	communityDataAvailable := len(changedIDs) == 0 || changedWithoutCommunity < len(changedIDs)
 
 	// ── Part 2: downstream blast radius (inbound BFS from all seeds) ──────────
 	// Multi-source BFS: distance is hops from the nearest changed seed.
@@ -343,7 +364,8 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 		BlastRadiusCount:    blastTotal,
 		Truncated:           truncated,
 
-		CommunityDataAvailable: communityDataAvailable,
+		CommunityDataAvailable:  communityDataAvailable,
+		ChangedWithoutCommunity: changedWithoutCommunity,
 	}
 }
 

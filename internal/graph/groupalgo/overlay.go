@@ -260,6 +260,38 @@ func ReadOverlay(path string, currentMtimes map[string]int64) (*Overlay, bool) {
 	return &ov, true
 }
 
+// ReadOverlayAnyAge is ReadOverlay without the mtime-staleness gate: it returns
+// the stored overlay even when a source graph.fb has moved on, leaving the
+// caller to decide what a stale partition is worth. Absent, corrupt and
+// version-mismatched still collapse to (nil, false) — those are overlays that
+// cannot be applied at all, as opposed to ones that are merely older than the
+// graphs.
+//
+// It exists for consumers whose question is COMMUNITY-LEVEL rather than
+// entity-exact (issue #6006: grafel_pr_impact merge risk). The staleness key is
+// the currently-checked-out ref's graph.fb, so a `git checkout` of the very
+// branch the user is asking about flips a fresh overlay to stale, and after any
+// reindex of any repo in the group the overlay is stale for ~50 minutes until
+// the group-algo pass catches up. For a verdict like "do these two refs touch
+// the same community?" a partition that is 50 minutes old is overwhelmingly the
+// same partition, so refusing to answer buys almost no correctness and costs the
+// tool its entire workflow. Consumers that need entity-exact values
+// (PageRank/centrality shown as numbers) must keep using ReadOverlay.
+//
+// Callers MUST surface the staleness they were handed — use IsOverlayStale with
+// CurrentSourceMtimes — rather than silently presenting a stale partition as
+// current.
+func ReadOverlayAnyAge(path string) (*Overlay, bool) {
+	ov := readOverlayUnconditional(path)
+	if ov == nil {
+		return nil, false // absent, unreadable, or corrupt
+	}
+	if !OverlayAlgoVersionCurrent(ov) {
+		return nil, false // a different algorithm's partition — never applicable
+	}
+	return ov, true
+}
+
 // OverlayAlgoVersionCurrent reports whether an overlay was produced by THIS
 // build's algorithm contract. Exported so status/observability surfaces can
 // distinguish "no overlay yet" from "an overlay exists but this binary will not

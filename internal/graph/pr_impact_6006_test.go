@@ -48,6 +48,94 @@ func TestAnalyzePRImpact_CommunityDataAvailability(t *testing.T) {
 	}
 }
 
+// D1 — the production shape. The GRAPH is fully covered by communities but the
+// CHANGED entity is not, which is exactly what an add-only PR looks like: the
+// group-algo overlay is computed from the indexed group union, so an entity that
+// exists only on a feature ref cannot be in it.
+//
+// The first cut of CommunityDataAvailable measured the whole entity set and
+// reported `true` here — an affirmative all-clear on a change nothing was known
+// about. Availability must follow the changed set.
+func TestAnalyzePRImpact_AvailabilityFollowsChangedSetNotEntitySet(t *testing.T) {
+	ents, rels := prImpactFixture() // a,b,c,d,e — ALL in communities
+	// The added entity is the only uncovered one, and it is the only thing that
+	// changed. It depends on c, so it is a well-formed member of the graph.
+	ents = append(ents, Entity{ID: "new", Name: "New", Kind: "function", SourceFile: "api/new.go"})
+	rels = append(rels, Relationship{FromID: "new", ToID: "c", Kind: "CALLS"})
+
+	res := AnalyzePRImpact(ents, rels, ChangeSet{
+		Added: []DiffEntityEntry{{ID: "new", Name: "New", Kind: "function"}},
+	}, DefaultPRImpactOptions())
+
+	if res.ChangedCount != 1 {
+		t.Fatalf("fixture must change exactly the uncovered entity, got %+v", res.ChangedEntities)
+	}
+	if res.CommunityDataAvailable {
+		t.Errorf("no CHANGED entity carries a community, yet CommunityDataAvailable = true — " +
+			"this is the #6006 false negative wearing an availability stamp")
+	}
+	if res.ChangedWithoutCommunity != 1 {
+		t.Errorf("ChangedWithoutCommunity = %d, want 1", res.ChangedWithoutCommunity)
+	}
+	if len(res.ImpactedCommunityIDs()) != 0 {
+		t.Errorf("an uncovered added entity has no downstream in HEAD, so no communities; got %v",
+			res.ImpactedCommunityIDs())
+	}
+}
+
+// Partial coverage is NOT unavailability: one covered changed entity is enough
+// for the verdict to stand, but the uncovered count must be reported so the
+// caller knows the verdict is incomplete.
+func TestAnalyzePRImpact_PartialCoverageIsAvailableButCounted(t *testing.T) {
+	ents, rels := prImpactFixture()
+	ents = append(ents, Entity{ID: "new", Name: "New", Kind: "function"})
+
+	res := AnalyzePRImpact(ents, rels, ChangeSet{
+		Modified: []DiffEntityEntry{{ID: "c"}},              // covered (community 0)
+		Added:    []DiffEntityEntry{{ID: "new", Name: "N"}}, // uncovered
+	}, DefaultPRImpactOptions())
+
+	if !res.CommunityDataAvailable {
+		t.Errorf("one covered changed entity is enough to make the verdict valid")
+	}
+	if res.ChangedWithoutCommunity != 1 {
+		t.Errorf("ChangedWithoutCommunity = %d, want 1 (the added entity)", res.ChangedWithoutCommunity)
+	}
+}
+
+// An EMPTY change set is vacuously available — nothing changed, so nothing can
+// conflict. This is the live default-base path (conflicts mode diffs refs[0]
+// against itself), so getting it wrong would hard-error every default call.
+func TestAnalyzePRImpact_EmptyChangeSetIsAvailable(t *testing.T) {
+	ents, rels := prImpactFixture()
+	res := AnalyzePRImpact(stripCommunities(ents), rels, ChangeSet{}, DefaultPRImpactOptions())
+	if !res.CommunityDataAvailable {
+		t.Errorf("an empty change set is a real answer (nothing changed), not missing data")
+	}
+}
+
+// D3 — a NON-NIL pointer to a negative community id. Reachable in production:
+// stamp() copies EntityOverlay.CommunityID verbatim, and the overlay uses -2 for
+// "not assigned a community"; legacy graph.json can carry -1 directly. If such a
+// value counted as coverage, CommunityDataAvailable would be true while all
+// three `c >= 0` filters dropped everything — #6006 again, stamped available.
+func TestAnalyzePRImpact_NegativeCommunityIDIsNotCoverage(t *testing.T) {
+	for _, cid := range []int{-1, -2} {
+		ents := []Entity{{ID: "a", Name: "A", Kind: "function", CommunityID: ci(cid)}}
+		res := AnalyzePRImpact(ents, nil, ChangeSet{
+			Modified: []DiffEntityEntry{{ID: "a"}},
+		}, DefaultPRImpactOptions())
+		if res.CommunityDataAvailable {
+			t.Errorf("community_id=%d is the ungrouped sentinel, not a community; "+
+				"CommunityDataAvailable must be false", cid)
+		}
+		if res.ChangedWithoutCommunity != 1 {
+			t.Errorf("community_id=%d: ChangedWithoutCommunity = %d, want 1",
+				cid, res.ChangedWithoutCommunity)
+		}
+	}
+}
+
 // The ungrouped bucket must not be presented as a real community. The fixture
 // mixes a grouped changed entity with an ungrouped one so the filter has
 // something to remove AND something to keep — a fixture with only ungrouped
