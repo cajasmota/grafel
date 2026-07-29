@@ -109,6 +109,16 @@ func (s *Server) handlePRImpact(_ context.Context, req mcpapi.CallToolRequest) (
 		// impacted_communities is indistinguishable from "nothing was computed".
 		"community_data_available":           res.CommunityDataAvailable,
 		"changed_entities_without_community": res.ChangedWithoutCommunity,
+		// #6042: each changed_entities row carries community_source
+		// (overlay|inferred|none); these are the aggregates. An inferred placement
+		// is a deduction from placed neighbours, not a reading of the group
+		// partition, and a caller must be able to tell the two apart.
+		"changed_entities_with_overlay_community":  res.ChangedWithOverlayCommunity,
+		"changed_entities_with_inferred_community": res.ChangedWithInferredCommunity,
+		"community_data_inferred_only":             res.CommunityDataInferredOnly,
+	}
+	if res.CommunityDataInferredOnly {
+		out["community_data_note"] = inferredOnlyNote
 	}
 	stamper.describeInto(out)
 	if !res.CommunityDataAvailable {
@@ -186,12 +196,24 @@ func (s groupCommunityStamper) unavailableCause(group string) string {
 			"(%s-algo.json is absent, corrupt, or was produced by a different algorithm "+
 			"version) — run or await a group index so community detection produces it", group, group)
 	}
-	return "the group-algo overlay exists but does not cover the changed entities. " +
-		"The overlay is computed from the INDEXED group union, so entities that exist only " +
-		"on a feature ref are absent from it by construction — this is the expected shape for " +
-		"a change that only ADDS entities. Reindex the group with those refs' code present, " +
+	return "the group-algo overlay exists but does not cover the changed entities, and no " +
+		"community could be INFERRED for them either (#6042: grafel tries the containing file, " +
+		"the module, and the placed entities they call). The overlay is computed from the " +
+		"INDEXED group union, so entities that exist only on a feature ref are absent from it by " +
+		"construction — this is the expected shape for a change that only ADDS entities. " +
+		"Inference then failed because those entities have no overlay-placed neighbours at all, " +
+		"or because their signals disagreed. Reindex the group with those refs' code present, " +
 		"or fall back to single mode and triage by blast radius"
 }
+
+// inferredOnlyNote is attached to any payload whose every placement was
+// inferred (#6042). The structured flags are the contract; this is the sentence
+// that stops an agent reading the verdict as a measurement.
+const inferredOnlyNote = "every community placement behind this verdict was INFERRED from " +
+	"placed neighbours (containing file / module / outbound call targets), not read from the " +
+	"group-algo partition — the changed entities are new, so the partition has never seen them. " +
+	"Treat this as a well-founded estimate of what community detection would say, not as a " +
+	"measurement. Per-entity provenance is in changed_entities[].community_source."
 
 // ── overlay read cache (one entry) ───────────────────────────────────────────
 //
@@ -298,6 +320,8 @@ func (s *Server) prImpactConflicts(groupName, repoSlug, repoPath, base string, r
 			Ref:                    ref,
 			Communities:            comms,
 			CommunityDataAvailable: res.CommunityDataAvailable,
+			OverlayEntityCount:     res.ChangedWithOverlayCommunity,
+			InferredEntityCount:    res.ChangedWithInferredCommunity,
 		})
 		perRef = append(perRef, map[string]any{
 			"ref":                  ref,
@@ -308,6 +332,10 @@ func (s *Server) prImpactConflicts(groupName, repoSlug, repoPath, base string, r
 			// that (say) 3 of 4 changed entities were placed even when the overall
 			// verdict stands.
 			"changed_entities_without_community": res.ChangedWithoutCommunity,
+			// #6042: and how much of this ref's placement was measured vs deduced.
+			"changed_entities_with_overlay_community":  res.ChangedWithOverlayCommunity,
+			"changed_entities_with_inferred_community": res.ChangedWithInferredCommunity,
+			"community_data_inferred_only":             res.CommunityDataInferredOnly,
 		})
 	}
 
@@ -335,6 +363,18 @@ func (s *Server) prImpactConflicts(groupName, repoSlug, repoPath, base string, r
 		"ref_count":                risk.RefCount,
 		"risky_pair_count":         risk.RiskyPairs,
 		"community_data_available": risk.CommunityDataAvailable,
+		// #6042 — the verdict-level confidence marker. `inferred_only` means the
+		// pairs above are grafel's best reconstruction of what the group partition
+		// WOULD have said about entities it has never seen, not a reading of what
+		// it did say. Zero risky pairs under that flag is a weaker all-clear.
+		"inferred_entity_count":        risk.InferredEntityCount,
+		"community_data_inferred_only": risk.CommunityDataInferredOnly,
+	}
+	if len(risk.RefsWithInferredCommunityData) > 0 {
+		out["refs_with_inferred_community_data"] = risk.RefsWithInferredCommunityData
+	}
+	if risk.CommunityDataInferredOnly {
+		out["community_data_note"] = inferredOnlyNote
 	}
 	stamper.describeInto(out)
 	return jsonResult(out), nil
