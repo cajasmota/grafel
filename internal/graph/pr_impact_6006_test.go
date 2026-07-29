@@ -119,10 +119,33 @@ func TestAnalyzePRImpact_EmptyChangeSetIsAvailable(t *testing.T) {
 // "not assigned a community"; legacy graph.json can carry -1 directly. If such a
 // value counted as coverage, CommunityDataAvailable would be true while all
 // three `c >= 0` filters dropped everything — #6006 again, stamped available.
+//
+// THE FIXTURE MUST HAVE NEIGHBOURS (#6042). The first cut of this test used a
+// lone entity with no file siblings, no module and no edges — a shape production
+// essentially never produces. Once #6042 added inference, that fixture passed
+// for the wrong reason: there was simply nothing to infer FROM, so it no longer
+// tested the sentinel at all. The entity below sits in a placed file, in a
+// concentrated module, and calls two placed entities, so every inference signal
+// is available and must still be refused: this entity was IN the last group
+// index and community detection declined to place it. Inferring here would
+// overrule the algorithm, not fill a gap in it.
 func TestAnalyzePRImpact_NegativeCommunityIDIsNotCoverage(t *testing.T) {
 	for _, cid := range []int{-1, -2} {
-		ents := []Entity{{ID: "a", Name: "A", Kind: "function", CommunityID: ci(cid)}}
-		res := AnalyzePRImpact(ents, nil, ChangeSet{
+		ents := []Entity{
+			Entity{ID: "sib1", Name: "S1", Kind: "function", SourceFile: "core/a.go", CommunityID: ci(4)}.
+				WithProperties(map[string]string{"module": "core"}),
+			Entity{ID: "sib2", Name: "S2", Kind: "function", SourceFile: "core/b.go", CommunityID: ci(4)}.
+				WithProperties(map[string]string{"module": "core"}),
+			Entity{ID: "sib3", Name: "S3", Kind: "function", SourceFile: "core/c.go", CommunityID: ci(4)}.
+				WithProperties(map[string]string{"module": "core"}),
+			Entity{ID: "a", Name: "A", Kind: "function", SourceFile: "core/a.go", CommunityID: ci(cid)}.
+				WithProperties(map[string]string{"module": "core"}),
+		}
+		rels := []Relationship{
+			{FromID: "a", ToID: "sib2", Kind: "CALLS"},
+			{FromID: "a", ToID: "sib3", Kind: "CALLS"},
+		}
+		res := AnalyzePRImpact(ents, rels, ChangeSet{
 			Modified: []DiffEntityEntry{{ID: "a"}},
 		}, DefaultPRImpactOptions())
 		if res.CommunityDataAvailable {
@@ -132,6 +155,11 @@ func TestAnalyzePRImpact_NegativeCommunityIDIsNotCoverage(t *testing.T) {
 		if res.ChangedWithoutCommunity != 1 {
 			t.Errorf("community_id=%d: ChangedWithoutCommunity = %d, want 1",
 				cid, res.ChangedWithoutCommunity)
+		}
+		if res.ChangedWithInferredCommunity != 0 {
+			t.Errorf("community_id=%d: the partition SAW this entity and declined to place it; "+
+				"inference must not overrule that (ChangedWithInferredCommunity = %d)",
+				cid, res.ChangedWithInferredCommunity)
 		}
 	}
 }

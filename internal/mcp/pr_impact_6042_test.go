@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -65,10 +66,11 @@ func setupPRImpact6042(t *testing.T) prImpact6042Env {
 			prImpact6042Ent("svc:A", "core/a.go", "core"),
 			prImpact6042Ent("svc:B", "core/b.go", "core"),
 			prImpact6042Ent("svc:C", "util/c.go", "util"),
+			prImpact6042Ent("svc:D", "extra/d.go", "extra"),
 		}
 	}
-	// mk builds a ref graph: the base three entities plus zero or one added
-	// entity, with the given outbound CALLS edges.
+	// mk builds a ref graph: the base entities plus zero or one added entity,
+	// with the given outbound CALLS edges.
 	mk := func(added graph.Entity, calls ...string) *graph.Document {
 		d := &graph.Document{Version: 1, Repo: "svc", Entities: base()}
 		if added.ID != "" {
@@ -80,11 +82,10 @@ func setupPRImpact6042(t *testing.T) prImpact6042Env {
 		}
 		return d
 	}
-	// modA perturbs svc:A's signature so DiffDocs classifies it as MODIFIED —
-	// the measured control arm.
-	modA := func() *graph.Document {
-		d := mk(graph.Entity{})
-		d.Entities[0].Signature = "func A(x int)"
+	// modify perturbs one base entity's signature so DiffDocs classifies it as
+	// MODIFIED — a MEASURED changed entity, since the overlay covers it.
+	modify := func(d *graph.Document, idx int, sig string) *graph.Document {
+		d.Entities[idx].Signature = sig
 		return d
 	}
 
@@ -97,8 +98,16 @@ func setupPRImpact6042(t *testing.T) prImpact6042Env {
 		"viaTargets": mk(prImpact6042Ent("svc:NewT", "newpkg/t.go", "newpkg"), "svc:A", "svc:B"),
 		// Nothing to infer from: new file, new module, no edges.
 		"isolated": mk(prImpact6042Ent("svc:NewI", "lonely/i.go", "lonely")),
-		// Measured control arm.
-		"modA": modA(),
+		// Measured control arms: both modify an overlay-covered entity in
+		// community 7, so their overlap is observed on BOTH sides.
+		"modA": modify(mk(graph.Entity{}), 0, "func A(x int)"),
+		"modB": modify(mk(graph.Entity{}), 1, "func B(x int)"),
+		// The D1 shape: each ref has a MEASURED community of its own (9 / 5) plus
+		// an added entity inferred into 7. Their ONLY overlap is 7 — the inferred
+		// one — so the conflict is manufactured while every aggregate flag reads
+		// "measured".
+		"mixedA": modify(mk(prImpact6042Ent("svc:NewMA", "core/a.go", "core")), 2, "func C(x int)"),
+		"mixedB": modify(mk(prImpact6042Ent("svc:NewMB", "core/b.go", "core")), 3, "func D(x int)"),
 	}
 	for ref, doc := range refs {
 		dir := daemon.StateDirForRepoRef(repoPath, ref)
@@ -153,8 +162,10 @@ func (e prImpact6042Env) writeOverlay(t *testing.T) {
 			"svc:A": {CommunityID: 7, PageRank: 0.1},
 			"svc:B": {CommunityID: 7, PageRank: 0.1},
 			"svc:C": {CommunityID: 9, PageRank: 0.1},
+			"svc:D": {CommunityID: 5, PageRank: 0.1},
 		},
 		Communities: []graph.CommunityResult{
+			{ID: 5, Size: 1, AutoName: "extra"},
 			{ID: 7, Size: 2, AutoName: "core"},
 			{ID: 9, Size: 1, AutoName: "util"},
 		},
@@ -183,28 +194,44 @@ func (e prImpact6042Env) single(t *testing.T, head string) *mcpapi.CallToolResul
 }
 
 type prImpact6042Payload struct {
-	RiskyPairCount            int  `json:"risky_pair_count"`
-	CommunityDataAvailable    bool `json:"community_data_available"`
-	CommunityDataInferredOnly bool `json:"community_data_inferred_only"`
-	InferredEntityCount       int  `json:"inferred_entity_count"`
-	ChangedCount              int  `json:"changed_count"`
-	ChangedUncovered          int  `json:"changed_entities_without_community"`
-	ChangedOverlay            int  `json:"changed_entities_with_overlay_community"`
-	ChangedInferred           int  `json:"changed_entities_with_inferred_community"`
+	RiskyPairCount            int      `json:"risky_pair_count"`
+	CommunityDataAvailable    bool     `json:"community_data_available"`
+	CommunityDataInferredOnly bool     `json:"community_data_inferred_only"`
+	InferredEntityCount       int      `json:"inferred_entity_count"`
+	InferredOnlyPairCount     int      `json:"inferred_only_pair_count"`
+	CommunityDataNote         string   `json:"community_data_note"`
+	RefsWithInferred          []string `json:"refs_with_inferred_community_data"`
+	ChangedCount              int      `json:"changed_count"`
+	ChangedUncovered          int      `json:"changed_entities_without_community"`
+	ChangedOverlay            int      `json:"changed_entities_with_overlay_community"`
+	ChangedInferred           int      `json:"changed_entities_with_inferred_community"`
 	RiskPairs                 []struct {
-		SharedCommunities []int `json:"shared_communities"`
+		SharedCommunities         []int `json:"shared_communities"`
+		InferredSharedCommunities []int `json:"inferred_shared_communities"`
+		InferredOnly              bool  `json:"inferred_only"`
 	} `json:"risk_pairs"`
 	PerRef []struct {
-		Ref             string `json:"ref"`
-		ChangedOverlay  int    `json:"changed_entities_with_overlay_community"`
-		ChangedInferred int    `json:"changed_entities_with_inferred_community"`
-		Uncovered       int    `json:"changed_entities_without_community"`
+		Ref                 string `json:"ref"`
+		ImpactedCommunities []int  `json:"impacted_communities"`
+		InferredCommunities []int  `json:"inferred_communities"`
+		ChangedOverlay      int    `json:"changed_entities_with_overlay_community"`
+		ChangedInferred     int    `json:"changed_entities_with_inferred_community"`
+		Uncovered           int    `json:"changed_entities_without_community"`
 	} `json:"per_ref"`
 	ChangedEntities []struct {
-		ID              string `json:"id"`
-		CommunityID     int    `json:"community_id"`
-		CommunitySource string `json:"community_source"`
+		ID                 string `json:"id"`
+		CommunityID        int    `json:"community_id"`
+		CommunitySource    string `json:"community_source"`
+		CommunityInference *struct {
+			Signals []string `json:"signals"`
+			Support int      `json:"support"`
+			Sample  int      `json:"sample"`
+		} `json:"community_inference"`
 	} `json:"changed_entities"`
+	ImpactedCommunities []struct {
+		CommunityID  int  `json:"community_id"`
+		InferredOnly bool `json:"inferred_only"`
+	} `json:"impacted_communities"`
 }
 
 func must6042Payload(t *testing.T, res *mcpapi.CallToolResult) prImpact6042Payload {
@@ -251,6 +278,124 @@ func TestPRImpact6042_AddOnlyRefsGetAnInferredVerdict(t *testing.T) {
 			t.Errorf("per_ref %s = overlay %d / inferred %d / none %d, want 0/1/0",
 				r.Ref, r.ChangedOverlay, r.ChangedInferred, r.Uncovered)
 		}
+		// Conflicts mode emits no changed_entities, so this is the ONLY place a
+		// caller can see which communities this ref reached by inference.
+		if len(r.InferredCommunities) != 1 || r.InferredCommunities[0] != 7 {
+			t.Errorf("per_ref %s inferred_communities = %v, want [7]", r.Ref, r.InferredCommunities)
+		}
+	}
+	// The pair itself must be marked, not just the verdict.
+	if !p.RiskPairs[0].InferredOnly || len(p.RiskPairs[0].InferredSharedCommunities) != 1 {
+		t.Errorf("the shared community is inferred on both sides; risk pair must say so: %+v",
+			p.RiskPairs[0])
+	}
+	if p.InferredOnlyPairCount != 1 {
+		t.Errorf("inferred_only_pair_count = %d, want 1", p.InferredOnlyPairCount)
+	}
+	// Structured flags are the contract, but the prose note is what stops an
+	// agent reading the verdict as a measurement.
+	if !strings.Contains(strings.ToLower(p.CommunityDataNote), "inferred") {
+		t.Errorf("community_data_note missing or unhelpful: %q", p.CommunityDataNote)
+	}
+	if !reflect.DeepEqual(p.RefsWithInferred, []string{"inFile", "viaTargets"}) {
+		t.Errorf("refs_with_inferred_community_data = %v, want [inFile viaTargets]", p.RefsWithInferred)
+	}
+}
+
+// THE D1 REGRESSION, end to end. Both refs modify an overlay-covered entity, so
+// both carry MEASURED communities and every aggregate flag reads "measured" —
+// community_data_inferred_only is legitimately false. But their measured
+// communities (9 and 5) do not overlap: the ONLY shared community is 7, which
+// each ref reaches solely through an entity the partition has never seen.
+//
+// The reported conflict is therefore entirely manufactured, and a whole-verdict
+// flag cannot say so. Without per-pair provenance an agent reads a fabricated
+// conflict as measured — the #6006 defect class at the granularity a merge
+// decision is actually made at.
+func TestPRImpact6042_ConflictRestingOnlyOnInferenceIsMarkedPerPair(t *testing.T) {
+	env := setupPRImpact6042(t)
+
+	p := must6042Payload(t, env.conflicts(t, "mixedA", "mixedB"))
+
+	if p.RiskyPairCount != 1 || len(p.RiskPairs) != 1 {
+		t.Fatalf("want exactly 1 risky pair, got %+v", p)
+	}
+	pair := p.RiskPairs[0]
+	if !reflect.DeepEqual(pair.SharedCommunities, []int{7}) {
+		t.Fatalf("fixture must overlap on community 7 only, got %v — the test proves nothing otherwise",
+			pair.SharedCommunities)
+	}
+	// The precondition that makes this dangerous: the verdict looks measured.
+	if p.CommunityDataInferredOnly {
+		t.Fatalf("precondition: both refs modify overlay-covered entities, so the verdict "+
+			"is not inferred-only; got %+v", p)
+	}
+	for _, r := range p.PerRef {
+		if r.ChangedOverlay != 1 || r.ChangedInferred != 1 {
+			t.Fatalf("precondition: per_ref %s must have 1 measured + 1 inferred entity, got %+v", r.Ref, r)
+		}
+	}
+
+	if !pair.InferredOnly {
+		t.Errorf("every shared community is reached only by inference, so this reported conflict " +
+			"is DEDUCED — risk_pairs[].inferred_only = false lets an agent read it as measured")
+	}
+	if !reflect.DeepEqual(pair.InferredSharedCommunities, []int{7}) {
+		t.Errorf("inferred_shared_communities = %v, want [7]", pair.InferredSharedCommunities)
+	}
+	if p.InferredOnlyPairCount != 1 {
+		t.Errorf("inferred_only_pair_count = %d, want 1", p.InferredOnlyPairCount)
+	}
+	// And the note must fire even though the verdict-level flag is false.
+	if !strings.Contains(strings.ToLower(p.CommunityDataNote), "deduced") {
+		t.Errorf("a manufactured conflict must be called out in prose too; note = %q", p.CommunityDataNote)
+	}
+}
+
+// The measured control arm for the pair marker: two refs that overlap on a
+// community they BOTH really touch must not be marked deduced. Without this,
+// "inferred_only: true" everywhere would satisfy the test above while carrying
+// no information at all.
+func TestPRImpact6042_MeasuredConflictIsNotMarkedInferred(t *testing.T) {
+	env := setupPRImpact6042(t)
+
+	// modA modifies svc:A and modB modifies svc:B — both overlay-covered, both in
+	// community 7. Nothing here is inferred on either side.
+	p := must6042Payload(t, env.conflicts(t, "modA", "modB"))
+	if p.RiskyPairCount != 1 {
+		t.Fatalf("want 1 risky pair on community 7, got %+v", p)
+	}
+	if p.RiskPairs[0].InferredOnly || len(p.RiskPairs[0].InferredSharedCommunities) != 0 {
+		t.Errorf("both refs reach community 7 by MEASUREMENT; the overlap is real: %+v", p.RiskPairs[0])
+	}
+	if p.InferredOnlyPairCount != 0 || p.InferredEntityCount != 0 {
+		t.Errorf("inferred_only_pair_count = %d / inferred_entity_count = %d, want 0/0",
+			p.InferredOnlyPairCount, p.InferredEntityCount)
+	}
+	if p.CommunityDataNote != "" {
+		t.Errorf("a fully measured conflict must carry no inference note: %q", p.CommunityDataNote)
+	}
+	for _, r := range p.PerRef {
+		if len(r.InferredCommunities) != 0 {
+			t.Errorf("per_ref %s inferred_communities = %v, want []", r.Ref, r.InferredCommunities)
+		}
+	}
+}
+
+// One inferred SIDE is enough to make the overlap deduced: modA really touches
+// community 7, but mixedA only gets there through an entity the partition has
+// never seen, so the claim "these two refs collide in community 7" is half
+// guess. It must be marked even though one side is solid.
+func TestPRImpact6042_OneInferredSideStillMarksTheConflict(t *testing.T) {
+	env := setupPRImpact6042(t)
+
+	p := must6042Payload(t, env.conflicts(t, "modA", "mixedA"))
+	if p.RiskyPairCount != 1 || !reflect.DeepEqual(p.RiskPairs[0].SharedCommunities, []int{7}) {
+		t.Fatalf("fixture must produce exactly one overlap, on community 7: %+v", p.RiskPairs)
+	}
+	if !p.RiskPairs[0].InferredOnly {
+		t.Errorf("mixedA reaches community 7 only by inference, so the OVERLAP was never observed: %+v",
+			p.RiskPairs[0])
 	}
 }
 
@@ -315,6 +460,21 @@ func TestPRImpact6042_SingleModeLabelsInferencePerEntity(t *testing.T) {
 	got := p.ChangedEntities[0]
 	if got.ID != "svc:NewInA" || got.CommunityID != 7 || got.CommunitySource != "inferred" {
 		t.Errorf("changed entity = %+v, want svc:NewInA / community 7 / source inferred", got)
+	}
+	// The margin must survive to the wire: "inferred" alone cannot tell a file
+	// consensus from a coin flip.
+	if got.CommunityInference == nil || len(got.CommunityInference.Signals) == 0 ||
+		got.CommunityInference.Sample == 0 {
+		t.Errorf("community_inference missing from the payload: %+v", got.CommunityInference)
+	}
+	if !strings.Contains(strings.ToLower(p.CommunityDataNote), "inferred") {
+		t.Errorf("single mode must carry the prose note when the whole verdict is inferred; got %q",
+			p.CommunityDataNote)
+	}
+	// The impacted community carries its own inference marker too.
+	if len(p.ImpactedCommunities) != 1 || !p.ImpactedCommunities[0].InferredOnly {
+		t.Errorf("impacted_communities must mark community 7 as inference-only: %+v",
+			p.ImpactedCommunities)
 	}
 	if !p.CommunityDataAvailable || !p.CommunityDataInferredOnly {
 		t.Errorf("want available=true inferred_only=true, got %v/%v",

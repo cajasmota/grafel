@@ -1,5 +1,5 @@
 // pr_impact_infer.go — issue #6042: infer a community for a changed entity the
-// group-algo overlay cannot place, from the entities around it that it CAN.
+// group-algo partition has NEVER SEEN, from the entities around it that it has.
 //
 // WHY THIS EXISTS. The overlay is computed from the last indexed group union, so
 // an entity that a PR ADDS is absent from it by construction. #6006 made that
@@ -9,126 +9,205 @@
 //
 // WHAT IT MUST NOT BECOME. Inference presented as fact is the #6006 defect one
 // layer up: a confident answer the caller cannot tell from a measured one. So
-// every inferred placement is labelled at the entity level
-// (ChangedEntity.CommunitySource) and aggregated at the verdict level
-// (CommunityDataInferredOnly / InferredEntityCount), and inference that fails
-// falls back to the existing decline path unchanged.
+// every inferred placement is labelled per entity (CommunitySource), carries its
+// own margin (CommunityInference), is tracked per community (ImpactedCommunity.
+// InferredOnly) and per merge-risk pair (MergeRiskPair.InferredOnly), and
+// inference that fails falls back to the existing decline path unchanged.
+//
+// ── Who is a candidate ──────────────────────────────────────────────────────
+//
+// ONLY entities ABSENT from the overlay — Entity.CommunityID == nil. This is not
+// the same as communityOf(e) < 0, and the difference matters:
+//
+//	nil                     the partition has never seen this entity: it did not
+//	                        exist at the last group index. THIS is #6042.
+//	non-nil, negative (-2)  the partition DID see it and declined to place it
+//	                        (groupalgo writes -2 for "not assigned a community";
+//	                        legacy graph.json can carry -1 directly).
+//
+// Inferring for the second class would override the group algorithm's own
+// decision with a path-prefix heuristic — a strictly worse answer than the one
+// community detection already gave, wearing a confident label. See
+// TestAnalyzePRImpact_NegativeCommunityIDIsNotInferred.
 //
 // ── The signals, and why these three ────────────────────────────────────────
 //
-// Only signals the graph actually carries at this layer were used:
+//	container (primary) — the placed entities sharing the new entity's
+//	    SourceFile, plus any placed CONTAINS parent. A file is the smallest unit
+//	    community detection would essentially never split, so a new function in
+//	    an already-placed file is in that file's community with high confidence.
 //
-//	container (weight 3) — the entities sharing the new entity's SourceFile, plus
-//	    any CONTAINS parent. A new function in an already-placed file is in that
-//	    file's community with very high confidence; a file is the smallest unit
-//	    Louvain would essentially never split.
-//	module (weight 2) — Properties["module"], stamped on both the full
-//	    (cmd/grafel/index.go) and incremental (internal/extractors/incremental.go)
-//	    paths and round-tripped through graph.fb (load.go restores the FB scalar
-//	    into props). It is a depth-capped path rollup, so it is a COARSER version
-//	    of the container signal rather than an independent one — hence a lower
-//	    weight, and hence it can never outvote the file on its own.
-//	targets (weight 1) — placed entities the new entity calls/references. This is
-//	    closest to what Louvain itself would have seen. It requires at least
-//	    minPlacedTargets placed targets: one outbound edge is not evidence
-//	    (everything calls a logger), and a single-edge rule would place half of
-//	    every new package into whatever community the nearest shared utility
-//	    happens to sit in.
+//	module (fallback) — Properties["module"], stamped on both the full
+//	    (cmd/grafel/index.go) and incremental (extractors/incremental.go) paths
+//	    and round-tripped through graph.fb (load.go restores the FB scalar into
+//	    props). It votes ONLY when the container abstains, because it is not an
+//	    independent signal: module is module.Derive(SourceFile), a pure function
+//	    of the path, so the module histogram is a strict SUPERSET of the file
+//	    histogram. Letting both vote would count one measurement twice, and a
+//	    file-vs-module disagreement is never "two sources disagree" — it is "my
+//	    file leans X while the wider directory leans Y", where the file is
+//	    strictly the more specific evidence.
 //
-// ── The decision rule ───────────────────────────────────────────────────────
+//	    module.Derive is also weak on its own: MarkerFileNames has no per-Go-
+//	    package marker, so a single-module Go repo falls through to DefaultDepth
+//	    and everything under (say) internal/graph/** shares one label. A bare
+//	    plurality over such a bucket (26 of 51) is not a community signal, so the
+//	    module vote additionally requires a real sample AND real concentration.
 //
-// Each signal casts ONE vote, for the strict plurality of its own evidence; a
-// signal with no unique winner (a file split 1-1 across communities) abstains
-// entirely rather than letting map order decide. A community is then inferred
-// only when its weight is STRICTLY GREATER than the total weight of every
-// dissenting vote. So:
+//	call targets — placed entities the new entity CALLS/USES/EXTENDS/…, over an
+//	    ALLOWLIST of edge kinds (inferTargetKinds). This is the only signal not
+//	    derived from the file path, and the closest to what community detection
+//	    itself would have seen. IMPORTS is excluded: importing two placed
+//	    packages is universal, so it would clear the >= 2 threshold for
+//	    essentially every new file while carrying almost no community
+//	    information. CONTAINS is excluded because it IS the container signal and
+//	    must not vote twice under a second name.
 //
-//	container alone                     -> infer      (3 > 0)
-//	container 7 vs module 9             -> infer 7    (3 > 2; container is weighted highest)
-//	container 7 vs module 9 + targets 9 -> DECLINE    (3 is not > 3)
-//	module alone / targets alone        -> infer      (2 > 0 / 1 > 0)
-//	nothing available                   -> DECLINE
+// ── The decision rule: unanimity ────────────────────────────────────────────
+//
+// At most two votes are ever cast — the container-or-module primary, and the
+// call targets — and BOTH must agree:
+//
+//	primary only             -> infer
+//	targets only             -> infer
+//	primary + targets agree  -> infer (the strongest case)
+//	primary + targets differ -> DECLINE
+//	nothing votes            -> DECLINE
+//
+// This is the issue's own rule ("no inference at all when signals disagree"),
+// and it is deliberately arithmetic-free. An earlier cut scored the signals
+// 3/2/1 and required the winner to outweigh all dissent; once module is
+// subordinate to the container that comparison can never actually block
+// anything, so it was a guard held by nothing — exactly the kind of untested
+// branch this feature must not ship. Each signal also abstains internally when
+// its own evidence has no unique winner (a file split 1-1), rather than letting
+// map iteration order decide.
 //
 // ── What is deliberately NOT inferred ───────────────────────────────────────
 //
-//   - Overlay-placed entities. The overlay is ground truth and always wins.
-//   - Removed entities. They are absent from the head graph, so they have no
-//     neighbours; the diff record is not a community signal.
-//   - Blast-radius entities. Only the CHANGED set drives the verdict, and
-//     inferring for a potentially unbounded downstream set would cost far more
-//     than it is worth.
+//   - Entities the overlay placed (it is ground truth) or explicitly declined to
+//     place (see "Who is a candidate").
+//   - Removed entities: absent from the head graph, so they have no neighbours;
+//     the diff record is not a community signal.
+//   - Blast-radius entities: only the CHANGED set drives the verdict, and
+//     inferring for an unbounded downstream set would cost far more than it is
+//     worth.
 //   - Chained inference. Only OVERLAY-placed entities vote. An inferred
-//     placement is a guess, and letting guesses vote would propagate one weak
-//     signal across an entire new package — and would make the result depend on
-//     the order entities were processed in.
+//     placement is a guess; letting guesses vote would propagate one weak signal
+//     across an entire new package and make the result depend on processing
+//     order.
 //
 // ── Cost ────────────────────────────────────────────────────────────────────
 //
-// Nothing is built unless at least one changed entity is present in the head
-// graph AND unplaced. When that holds, the added work is:
-//
-//	one pass over `entities`, filtered to the (small) set of files and modules
-//	the unplaced changed entities live in — O(N) comparisons, allocations bounded
-//	by the changed set, not by the graph; and
-//	outbound/CONTAINS edges captured during the adjacency pass AnalyzePRImpact
-//	already makes, and only for changed ids — O(E) comparisons, O(deg(changed))
-//	memory.
-//
-// No BFS, no transitive walk. Next to the 31.9 MB overlay parse the handler
-// already performs (memoized on path+mtime+size), this is noise.
+// Nothing is built unless a changed entity is present in the head graph AND
+// absent from the overlay. Then: one pass over `entities` filtered to the small
+// set of files and modules those entities occupy, plus outbound/CONTAINS edges
+// captured during the adjacency pass AnalyzePRImpact already makes, for changed
+// ids only. No BFS, no transitive walk. See BenchmarkAnalyzePRImpact_Inference,
+// whose fixture ASSERTS that inference actually fires before timing it.
 package graph
 
-// CommunitySource labels HOW a changed entity's community was determined.
-// It is the whole point of #6042: an inferred placement that a caller cannot
-// distinguish from a measured one is worse than no placement at all.
+// CommunitySource labels HOW a changed entity's community was determined. It is
+// the whole point of #6042: an inferred placement a caller cannot distinguish
+// from a measured one is worse than no placement at all.
 const (
 	// CommunitySourceOverlay — measured. The group-algo overlay placed this
 	// entity directly; it existed at the last group index.
 	CommunitySourceOverlay = "overlay"
-	// CommunitySourceInferred — a guess, from placed neighbours. Good enough to
+	// CommunitySourceInferred — deduced from placed neighbours. Good enough to
 	// triage merge risk with, not good enough to present as measured.
 	CommunitySourceInferred = "inferred"
-	// CommunitySourceNone — not placed and not inferrable. These entities are the
-	// ones #6006's decline path exists for.
+	// CommunitySourceNone — not placed and not inferrable. These entities are
+	// what #6006's decline path exists for.
 	CommunitySourceNone = "none"
 )
 
+// Signal names as they appear in CommunityInference.Signals.
 const (
-	inferWeightContainer = 3
-	inferWeightModule    = 2
-	inferWeightTargets   = 1
-
-	// minPlacedTargets is how many placed outbound targets the weakest signal
-	// needs before it votes at all. See the package comment: one edge is not
-	// evidence, and this threshold is also what keeps #6006's add-only decline
-	// (a new entity calling exactly one placed entity) binding.
-	minPlacedTargets = 2
+	inferSignalContainer = "container"
+	inferSignalModule    = "module"
+	inferSignalTargets   = "call_targets"
 )
 
-// communityInferrer holds the (small) indexes needed to place unplaced changed
-// entities. Zero value infers nothing, which is what callers get when every
-// changed entity was already placed.
+const (
+	// minPlacedTargets is how many placed outbound targets the call-target signal
+	// needs before it votes. One edge is not evidence, and this threshold is also
+	// what keeps #6006's add-only decline (a new entity calling exactly one placed
+	// entity) binding.
+	minPlacedTargets = 2
+	// minModuleSample / minModuleConcentration bound the module fallback: at
+	// least this many placed entities in the module, and at least this fraction
+	// of them in the winning community. A 26/51 plurality over a depth-capped
+	// path bucket is not a community signal; 40/41 is.
+	minModuleSample        = 3
+	minModuleConcentration = 0.7
+)
+
+// inferTargetKinds is the allowlist of edge kinds the call-target signal reads.
+// Containment edges (CONTAINS — that is the container signal) and package-level
+// edges (IMPORTS, DEPENDS_ON — universal, and already what the module signal
+// measures) are excluded on purpose; see the package comment.
+var inferTargetKinds = map[string]struct{}{
+	"CALLS":         {},
+	"REFERENCES":    {},
+	"USES":          {},
+	"USES_HOOK":     {},
+	"EXTENDS":       {},
+	"IMPLEMENTS":    {},
+	"INJECTED_INTO": {},
+	"RETURNS":       {},
+	"ACCEPTS_INPUT": {},
+}
+
+// isInferTargetKind reports whether an edge kind carries community signal for
+// the call-target vote.
+func isInferTargetKind(kind string) bool {
+	_, ok := inferTargetKinds[kind]
+	return ok
+}
+
+// overlayAbsent reports whether the group-algo partition has never seen this
+// entity — the only class #6042 infers for. See the package comment.
+func overlayAbsent(e Entity) bool { return e.CommunityID == nil }
+
+// CommunityInference is the provenance of ONE inferred placement: which signals
+// voted, and how strong the deciding signal's evidence was. Without the margin a
+// 26-of-51 plurality and a 40-of-41 consensus are indistinguishable on the wire,
+// and an agent cannot weigh them differently.
+type CommunityInference struct {
+	// Signals that voted, primary first. Two entries means the container-or-module
+	// primary and the call targets independently agreed — the strongest case.
+	Signals []string `json:"signals"`
+	// Support / Sample are the deciding signal's placed neighbours backing the
+	// chosen community, out of those it considered.
+	Support int `json:"support"`
+	Sample  int `json:"sample"`
+}
+
+// communityInferrer holds the (small) indexes needed to place overlay-absent
+// changed entities. A nil inferrer infers nothing, which is what callers get
+// when every changed entity was already placed — or explicitly declined — by the
+// partition.
 type communityInferrer struct {
 	byID map[string]Entity
 	// byFile/byModule are community histograms over OVERLAY-PLACED entities,
-	// restricted to the files/modules the unplaced changed entities occupy.
+	// restricted to the files/modules the candidate entities occupy.
 	byFile   map[string]map[int]int
 	byModule map[string]map[int]int
-	// parents[id] = CONTAINS parents of id; targets[id] = outbound edge targets of
-	// id. Populated only for unplaced changed ids.
+	// parents[id] = CONTAINS parents of id; targets[id] = allowlisted outbound
+	// edge targets of id. Populated only for candidate ids.
 	parents map[string][]string
 	targets map[string][]string
 }
 
-// newCommunityInferrer builds the indexes for `want` — the unplaced changed
-// entity ids that are present in the head graph. Returns the zero inferrer when
-// there is nothing to infer, so the O(N) entity pass is skipped entirely.
+// newCommunityInferrer builds the indexes for `want` — the overlay-absent
+// changed entity ids present in the head graph. Returns nil when there is
+// nothing to infer, so the O(N) entity pass is skipped entirely.
 func newCommunityInferrer(entities []Entity, byID map[string]Entity, want map[string]struct{},
 	parents, targets map[string][]string) *communityInferrer {
 	if len(want) == 0 {
 		return nil
 	}
-	// Which files/modules do we actually care about? Usually a handful.
 	wantFiles := make(map[string]struct{}, len(want))
 	wantModules := make(map[string]struct{}, len(want))
 	for id := range want {
@@ -140,9 +219,6 @@ func newCommunityInferrer(entities []Entity, byID map[string]Entity, want map[st
 			wantModules[m] = struct{}{}
 		}
 	}
-	// Also index the files/modules of the CONTAINS parents, so a parent that
-	// lives elsewhere still contributes through its own community (below we read
-	// the parent's community directly, so no extra file bookkeeping is needed).
 	ci := &communityInferrer{
 		byID:     byID,
 		byFile:   make(map[string]map[int]int, len(wantFiles)),
@@ -150,13 +226,13 @@ func newCommunityInferrer(entities []Entity, byID map[string]Entity, want map[st
 		parents:  parents,
 		targets:  targets,
 	}
-	if len(wantFiles) == 0 && len(wantModules) == 0 && len(parents) == 0 && len(targets) == 0 {
-		return ci // nothing to histogram; target/parent votes still work
+	if len(wantFiles) == 0 && len(wantModules) == 0 {
+		return ci // no path signals possible; target/parent votes still work
 	}
 	for i := range entities {
 		c := communityOf(entities[i])
 		if c < 0 {
-			continue // only OVERLAY-placed entities vote — no chained inference
+			continue // only OVERLAY-PLACED entities vote — no chained inference
 		}
 		if f := entities[i].SourceFile; f != "" {
 			if _, ok := wantFiles[f]; ok {
@@ -183,56 +259,75 @@ func addVote(dst map[string]map[int]int, key string, community int) {
 	h[community]++
 }
 
-// infer returns the community inferred for id, and whether inference succeeded.
-// See the package comment for the rule; the short version is that each signal
-// casts one weighted vote and the winner must strictly outweigh all dissent.
-func (ci *communityInferrer) infer(id string) (int, bool) {
+// signalVote is one signal's opinion, with the evidence behind it.
+type signalVote struct {
+	name      string
+	community int
+	support   int
+	sample    int
+}
+
+// infer returns the inferred community for id and its provenance. Unanimity: the
+// container-or-module primary and the call targets must not contradict each
+// other, and at least one must vote. See the package comment.
+func (ci *communityInferrer) infer(id string) (int, *CommunityInference, bool) {
 	if ci == nil {
-		return -1, false
+		return -1, nil, false
 	}
 	e, ok := ci.byID[id]
 	if !ok {
-		return -1, false // removed entity: no head-graph neighbours to read
+		return -1, nil, false // removed entity: no head-graph neighbours to read
 	}
 
-	votes := map[int]int{}
-	if c, ok := ci.containerVote(id, e); ok {
-		votes[c] += inferWeightContainer
+	// Primary: the containing component, falling back to the module ONLY when the
+	// container has NO EVIDENCE — module is a coarser view of the same path, so
+	// the two must never both vote.
+	//
+	// The distinction between "no evidence" and "contradictory evidence" is
+	// load-bearing. A file split 1-1 across two communities has spoken: this
+	// location is genuinely ambiguous. Falling through to the module then asks a
+	// SUPERSET of that same evidence — the file's entities are inside the
+	// module's sample — and gets a confident answer purely because the wider
+	// bucket dilutes the contradiction. That is manufacturing agreement.
+	primary, hasPrimary, containerHadEvidence := ci.containerVote(id, e)
+	switch {
+	case hasPrimary:
+	case containerHadEvidence:
+		return -1, nil, false // the container looked and found a contradiction
+	default:
+		primary, hasPrimary = ci.moduleVote(e)
 	}
-	if m := e.PropGet("module"); m != "" {
-		if c, ok := plurality(ci.byModule[m], 1); ok {
-			votes[c] += inferWeightModule
-		}
-	}
-	if c, ok := ci.targetVote(id); ok {
-		votes[c] += inferWeightTargets
-	}
-	if len(votes) == 0 {
-		return -1, false
-	}
+	targets, hasTargets := ci.targetVote(id)
 
-	best, bestW, total := -1, 0, 0
-	tied := false
-	for c, w := range votes {
-		total += w
-		switch {
-		case w > bestW:
-			best, bestW, tied = c, w, false
-		case w == bestW:
-			tied = true
+	switch {
+	case hasPrimary && hasTargets:
+		if primary.community != targets.community {
+			return -1, nil, false // signals disagree — decline rather than guess
 		}
+		return primary.community, &CommunityInference{
+			Signals: []string{primary.name, targets.name},
+			Support: primary.support,
+			Sample:  primary.sample,
+		}, true
+	case hasPrimary:
+		return primary.community, &CommunityInference{
+			Signals: []string{primary.name}, Support: primary.support, Sample: primary.sample,
+		}, true
+	case hasTargets:
+		return targets.community, &CommunityInference{
+			Signals: []string{targets.name}, Support: targets.support, Sample: targets.sample,
+		}, true
 	}
-	// Strictly greater than the sum of all dissent: 2*bestW > total.
-	if tied || 2*bestW <= total {
-		return -1, false
-	}
-	return best, true
+	return -1, nil, false
 }
 
-// containerVote combines the entity's own file with any CONTAINS parents — the
-// "containing component" signal. Both describe the same thing (what physically
-// encloses the entity) so they share one vote rather than double-counting.
-func (ci *communityInferrer) containerVote(id string, e Entity) (int, bool) {
+// containerVote combines the entity's own file with any CONTAINS parents — both
+// describe what physically encloses the entity, so they share one vote.
+//
+// The third return says whether the container had ANY placed evidence to look
+// at, which is what lets infer() tell "the file is new" (fall through to the
+// module) from "the file is contradictory" (decline outright).
+func (ci *communityInferrer) containerVote(id string, e Entity) (signalVote, bool, bool) {
 	var hist map[int]int
 	if base := ci.byFile[e.SourceFile]; e.SourceFile != "" && len(base) > 0 {
 		hist = make(map[int]int, len(base)+1)
@@ -252,18 +347,37 @@ func (ci *communityInferrer) containerVote(id string, e Entity) (int, bool) {
 			hist[c]++
 		}
 	}
-	return plurality(hist, 1)
+	c, support, sample, ok := plurality(hist, 1)
+	return signalVote{inferSignalContainer, c, support, sample}, ok, len(hist) > 0
 }
 
-// targetVote is the plurality community of the entity's placed outbound targets,
-// requiring at least minPlacedTargets of them.
-func (ci *communityInferrer) targetVote(id string) (int, bool) {
+// moduleVote is the fallback prior. It demands a real sample AND real
+// concentration, because module is a depth-capped path rollup that can cover a
+// large, heterogeneous slice of a repo — a bare plurality over such a bucket is
+// noise wearing a community id.
+func (ci *communityInferrer) moduleVote(e Entity) (signalVote, bool) {
+	m := e.PropGet("module")
+	if m == "" {
+		return signalVote{}, false
+	}
+	c, support, sample, ok := plurality(ci.byModule[m], minModuleSample)
+	if !ok {
+		return signalVote{}, false
+	}
+	if float64(support)/float64(sample) < minModuleConcentration {
+		return signalVote{}, false
+	}
+	return signalVote{inferSignalModule, c, support, sample}, true
+}
+
+// targetVote is the plurality community of the entity's placed outbound targets
+// over the allowlisted edge kinds, requiring at least minPlacedTargets of them.
+func (ci *communityInferrer) targetVote(id string) (signalVote, bool) {
 	tgts := ci.targets[id]
 	if len(tgts) < minPlacedTargets {
-		return -1, false
+		return signalVote{}, false
 	}
 	hist := map[int]int{}
-	placed := 0
 	for _, tid := range tgts {
 		t, ok := ci.byID[tid]
 		if !ok {
@@ -271,23 +385,21 @@ func (ci *communityInferrer) targetVote(id string) (int, bool) {
 		}
 		if c := communityOf(t); c >= 0 {
 			hist[c]++
-			placed++
 		}
 	}
-	if placed < minPlacedTargets {
-		return -1, false
-	}
-	return plurality(hist, minPlacedTargets)
+	c, support, sample, ok := plurality(hist, minPlacedTargets)
+	return signalVote{inferSignalTargets, c, support, sample}, ok
 }
 
-// plurality returns the uniquely most-common community in hist, provided it has
-// at least `min` votes. A tie ABSTAINS: with no unique winner the answer would
-// otherwise be decided by map iteration order, which is both non-deterministic
-// and, worse, an invented placement.
-func plurality(hist map[int]int, min int) (int, bool) {
-	best, bestN := -1, 0
+// plurality returns the uniquely most-common community in hist, with its support
+// and the total sample, provided the sample is at least minSample. A tie
+// ABSTAINS: with no unique winner the answer would be decided by map iteration
+// order — non-deterministic, and an invented placement.
+func plurality(hist map[int]int, minSample int) (community, support, sample int, ok bool) {
+	best, bestN, total := -1, 0, 0
 	tied := false
 	for c, n := range hist {
+		total += n
 		switch {
 		case n > bestN:
 			best, bestN, tied = c, n, false
@@ -295,8 +407,8 @@ func plurality(hist map[int]int, min int) (int, bool) {
 			tied = true
 		}
 	}
-	if best < 0 || bestN < min || tied {
-		return -1, false
+	if best < 0 || total < minSample || tied {
+		return -1, 0, 0, false
 	}
-	return best, true
+	return best, bestN, total, true
 }

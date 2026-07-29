@@ -215,6 +215,16 @@ const inferredOnlyNote = "every community placement behind this verdict was INFE
 	"Treat this as a well-founded estimate of what community detection would say, not as a " +
 	"measurement. Per-entity provenance is in changed_entities[].community_source."
 
+// inferredPairsNote covers the narrower — and more dangerous — case (#6042 D1):
+// the verdict as a whole rests partly on measured data, so every aggregate flag
+// reads "measured", yet some reported CONFLICT exists only because one side was
+// inferred into the shared community. The pair is where the merge decision is
+// actually made, so this must be said even when the verdict-level flag is false.
+const inferredPairsNote = "at least one reported conflict is DEDUCED, not observed: the refs " +
+	"overlap only on communities that one or both sides reached by inference from placed " +
+	"neighbours. See risk_pairs[].inferred_only and per_ref[].inferred_communities — the " +
+	"entities behind those communities are new, so the group-algo partition has never seen them."
+
 // ── overlay read cache (one entry) ───────────────────────────────────────────
 //
 // The overlay is read and unmarshalled on every grafel_pr_impact call, in both
@@ -316,12 +326,14 @@ func (s *Server) prImpactConflicts(groupName, repoSlug, repoPath, base string, r
 		}
 		res := graph.AnalyzePRImpact(headDoc.Entities, headDoc.Relationships, change, opts)
 		comms := res.ImpactedCommunityIDs()
+		inferredComms := res.InferredOnlyCommunityIDs()
 		impacts = append(impacts, graph.ChangeImpact{
-			Ref:                    ref,
-			Communities:            comms,
-			CommunityDataAvailable: res.CommunityDataAvailable,
-			OverlayEntityCount:     res.ChangedWithOverlayCommunity,
-			InferredEntityCount:    res.ChangedWithInferredCommunity,
+			Ref:                     ref,
+			Communities:             comms,
+			CommunityDataAvailable:  res.CommunityDataAvailable,
+			OverlayEntityCount:      res.ChangedWithOverlayCommunity,
+			InferredEntityCount:     res.ChangedWithInferredCommunity,
+			InferredOnlyCommunities: inferredComms,
 		})
 		perRef = append(perRef, map[string]any{
 			"ref":                  ref,
@@ -336,6 +348,11 @@ func (s *Server) prImpactConflicts(groupName, repoSlug, repoPath, base string, r
 			"changed_entities_with_overlay_community":  res.ChangedWithOverlayCommunity,
 			"changed_entities_with_inferred_community": res.ChangedWithInferredCommunity,
 			"community_data_inferred_only":             res.CommunityDataInferredOnly,
+			// #6042 D1 — WHICH of impacted_communities this ref reaches only by
+			// inference. Conflicts mode emits no changed_entities, so without this
+			// the per-entity community_source is invisible here and a caller cannot
+			// tell which side of an overlap was deduced.
+			"inferred_communities": inferredComms,
 		})
 	}
 
@@ -369,12 +386,20 @@ func (s *Server) prImpactConflicts(groupName, repoSlug, repoPath, base string, r
 		// it did say. Zero risky pairs under that flag is a weaker all-clear.
 		"inferred_entity_count":        risk.InferredEntityCount,
 		"community_data_inferred_only": risk.CommunityDataInferredOnly,
+		// #6042 D1 — how many of the reported conflicts are deduced rather than
+		// observed. This can be non-zero while community_data_inferred_only is
+		// false: both refs can carry measured communities and still overlap ONLY on
+		// an inferred one, which makes the reported conflict manufactured.
+		"inferred_only_pair_count": risk.InferredOnlyPairCount,
 	}
 	if len(risk.RefsWithInferredCommunityData) > 0 {
 		out["refs_with_inferred_community_data"] = risk.RefsWithInferredCommunityData
 	}
-	if risk.CommunityDataInferredOnly {
+	switch {
+	case risk.CommunityDataInferredOnly:
 		out["community_data_note"] = inferredOnlyNote
+	case risk.InferredOnlyPairCount > 0:
+		out["community_data_note"] = inferredPairsNote
 	}
 	stamper.describeInto(out)
 	return jsonResult(out), nil

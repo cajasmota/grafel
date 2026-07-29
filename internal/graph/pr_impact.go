@@ -51,6 +51,11 @@ type ChangedEntity struct {
 	// is the same defect class as #6006 — hence no omitempty: the label is always
 	// on the wire.
 	CommunitySource string `json:"community_source"`
+	// CommunityInference is the provenance of an inferred placement: which signals
+	// voted and how strong the deciding one was. Present only when
+	// CommunitySource == "inferred". A 26-of-51 plurality and a 40-of-41 consensus
+	// are both "inferred"; only this tells them apart.
+	CommunityInference *CommunityInference `json:"community_inference,omitempty"`
 }
 
 // ImpactedCommunity is a community touched by the change, with how many changed
@@ -60,9 +65,13 @@ type ImpactedCommunity struct {
 	ChangedCount   int `json:"changed_count"`    // changed entities in this community
 	BlastRadiusHit int `json:"blast_radius_hit"` // downstream entities in this community
 	// InferredChangedCount is how many of ChangedCount were placed here by
-	// INFERENCE rather than by the overlay (#6042). Equal to ChangedCount means
-	// this community's involvement is entirely deduced.
+	// INFERENCE rather than by the overlay (#6042).
 	InferredChangedCount int `json:"inferred_changed_count,omitempty"`
+	// InferredOnly is true when this community appears in the impact set SOLELY
+	// because of inferred placements: no overlay-placed changed entity and no
+	// blast-radius entity puts it here. Such a community is a deduction, and any
+	// merge-risk overlap resting on it is a deduced conflict, not a measured one.
+	InferredOnly bool `json:"inferred_only,omitempty"`
 }
 
 // BlastEntity is a downstream entity that transitively depends on a changed
@@ -229,15 +238,21 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 
 	changedIDs := change.ChangedIDs()
 	seedSet := make(map[string]struct{}, len(changedIDs))
-	// #6042: the changed entities the overlay could NOT place, and which are
-	// present in the head graph so they have neighbours to read. Computed before
-	// the edge pass below so that pass can capture their edges in one sweep
-	// instead of building a whole outbound adjacency for the graph.
-	unplacedChanged := make(map[string]struct{})
+	// #6042: the inference CANDIDATES — changed entities present in the head graph
+	// that the partition has never seen (Entity.CommunityID == nil). Computed
+	// before the edge pass below so that pass can capture their edges in one
+	// sweep instead of building a whole outbound adjacency for the graph.
+	//
+	// NOT communityOf(e) < 0. An entity carrying a NON-NIL negative id was in the
+	// last group index and community detection declined to place it (-2 is
+	// groupalgo's "not assigned"; legacy graph.json can carry -1). Inferring for
+	// those would overrule the algorithm's own decision with a path heuristic —
+	// see overlayAbsent and TestAnalyzePRImpact_NegativeCommunityIDIsNotInferred.
+	inferCandidates := make(map[string]struct{})
 	for _, id := range changedIDs {
 		seedSet[id] = struct{}{}
-		if e, ok := byID[id]; ok && communityOf(e) < 0 {
-			unplacedChanged[id] = struct{}{}
+		if e, ok := byID[id]; ok && overlayAbsent(e) {
+			inferCandidates[id] = struct{}{}
 		}
 	}
 
@@ -246,13 +261,13 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 	// edge-filtering contract used elsewhere.
 	//
 	// The same sweep collects the #6042 inference inputs — outbound targets and
-	// CONTAINS parents — but ONLY for unplaced changed entities, so the extra
-	// memory is O(deg(changed)) rather than O(E).
+	// CONTAINS parents — but ONLY for inference candidates, so the extra memory is
+	// O(deg(changed)) rather than O(E).
 	in := make(map[string][]string, len(entities))
 	var inferParents, inferTargets map[string][]string
-	if len(unplacedChanged) > 0 {
-		inferParents = make(map[string][]string, len(unplacedChanged))
-		inferTargets = make(map[string][]string, len(unplacedChanged))
+	if len(inferCandidates) > 0 {
+		inferParents = make(map[string][]string, len(inferCandidates))
+		inferTargets = make(map[string][]string, len(inferCandidates))
 	}
 	for _, r := range rels {
 		if r.FromID == "" || r.ToID == "" || r.FromID == r.ToID {
@@ -267,18 +282,26 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 		// r.FromID depends on r.ToID, so FromID is a downstream dependent of ToID.
 		in[r.ToID] = append(in[r.ToID], r.FromID)
 
-		if len(unplacedChanged) > 0 {
-			if _, ok := unplacedChanged[r.FromID]; ok {
-				inferTargets[r.FromID] = append(inferTargets[r.FromID], r.ToID)
+		if len(inferCandidates) > 0 {
+			// Only edge kinds that actually carry community signal feed the target
+			// vote. IMPORTS in particular is excluded: every new file imports two
+			// placed packages, so it would clear the minPlacedTargets threshold
+			// universally while saying almost nothing about community membership.
+			// CONTAINS is excluded here because it is the CONTAINER signal, captured
+			// separately below — one edge must not vote twice under two names.
+			if isInferTargetKind(r.Kind) {
+				if _, ok := inferCandidates[r.FromID]; ok {
+					inferTargets[r.FromID] = append(inferTargets[r.FromID], r.ToID)
+				}
 			}
 			if r.Kind == "CONTAINS" {
-				if _, ok := unplacedChanged[r.ToID]; ok {
+				if _, ok := inferCandidates[r.ToID]; ok {
 					inferParents[r.ToID] = append(inferParents[r.ToID], r.FromID)
 				}
 			}
 		}
 	}
-	inferrer := newCommunityInferrer(entities, byID, unplacedChanged, inferParents, inferTargets)
+	inferrer := newCommunityInferrer(entities, byID, inferCandidates, inferParents, inferTargets)
 
 	changed := make([]ChangedEntity, 0, len(changedIDs))
 	// communityChanged[community] = #changed entities in it; communityInferred is
@@ -295,13 +318,14 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 	for _, id := range changedIDs {
 		comm := -1
 		source := CommunitySourceNone
+		var detail *CommunityInference
 		var name, kind, src string
 		if e, ok := byID[id]; ok {
 			comm = communityOf(e)
 			if comm >= 0 {
 				source = CommunitySourceOverlay
-			} else if c, inferred := inferrer.infer(id); inferred {
-				comm, source = c, CommunitySourceInferred
+			} else if c, d, inferred := inferrer.infer(id); inferred {
+				comm, source, detail = c, CommunitySourceInferred, d
 			}
 			name, kind, src = e.Name, e.Kind, e.SourceFile
 		} else {
@@ -315,13 +339,14 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 			}
 		}
 		changed = append(changed, ChangedEntity{
-			ID:              id,
-			Name:            name,
-			Kind:            kind,
-			SourceFile:      src,
-			Change:          classOf[id],
-			CommunityID:     comm,
-			CommunitySource: source,
+			ID:                 id,
+			Name:               name,
+			Kind:               kind,
+			SourceFile:         src,
+			Change:             classOf[id],
+			CommunityID:        comm,
+			CommunitySource:    source,
+			CommunityInference: detail,
 		})
 		communityChanged[comm]++
 		switch source {
@@ -427,11 +452,18 @@ func AnalyzePRImpact(entities []Entity, rels []Relationship, change ChangeSet, o
 		if c < 0 {
 			continue
 		}
+		// #6042 D1: this community rests ENTIRELY on inference when no
+		// overlay-placed changed entity and no blast-radius entity put it here.
+		// The blast radius counts as measured: it is real edges from real seeds to
+		// entities the overlay did place.
+		inferredOnlyCommunity := communityInferred[c] > 0 &&
+			communityChanged[c] == communityInferred[c] && communityBlast[c] == 0
 		impacted = append(impacted, ImpactedCommunity{
 			CommunityID:          c,
 			ChangedCount:         communityChanged[c],
 			BlastRadiusHit:       communityBlast[c],
 			InferredChangedCount: communityInferred[c],
+			InferredOnly:         inferredOnlyCommunity,
 		})
 	}
 	// Rank by total touch (changed+blast) desc, then community id asc.
@@ -478,6 +510,26 @@ func (r PRImpactResult) ImpactedCommunityIDs() []int {
 	return out
 }
 
+// InferredOnlyCommunityIDs returns the sorted subset of ImpactedCommunityIDs
+// whose presence rests ENTIRELY on inferred placements (#6042 D1).
+//
+// This is what makes per-PAIR provenance possible. CommunityDataInferredOnly is
+// a whole-verdict flag and says nothing about an individual overlap: a ref can
+// have two measured communities and one inferred one, and if the inferred one is
+// the ONLY community it shares with another ref, the reported conflict is
+// entirely manufactured while the verdict-level flag reads false.
+func (r PRImpactResult) InferredOnlyCommunityIDs() []int {
+	out := make([]int, 0, len(r.ImpactedCommunities))
+	for _, c := range r.ImpactedCommunities {
+		if c.CommunityID < 0 || !c.InferredOnly {
+			continue
+		}
+		out = append(out, c.CommunityID)
+	}
+	sort.Ints(out)
+	return out
+}
+
 // ---------------------------------------------------------------------------
 // Cross-change merge-risk
 // ---------------------------------------------------------------------------
@@ -501,6 +553,10 @@ type ChangeImpact struct {
 	// group-algo partition or on inference from placed neighbours.
 	OverlayEntityCount  int
 	InferredEntityCount int
+	// InferredOnlyCommunities are the subset of Communities that this ref touches
+	// ONLY through inferred placements (PRImpactResult.InferredOnlyCommunityIDs).
+	// A pair overlapping solely on these is a deduced conflict.
+	InferredOnlyCommunities []int
 }
 
 // MergeRiskPair is two refs whose impacted-community sets overlap.
@@ -509,6 +565,21 @@ type MergeRiskPair struct {
 	RefB              string `json:"ref_b"`
 	SharedCount       int    `json:"shared_community_count"`
 	SharedCommunities []int  `json:"shared_communities"`
+
+	// InferredSharedCommunities are the shared communities that at least one side
+	// touches ONLY through inference (#6042 D1). The overlap on such a community
+	// was not observed — it was deduced on one or both sides.
+	InferredSharedCommunities []int `json:"inferred_shared_communities,omitempty"`
+	// InferredOnly is true when EVERY shared community is in the list above, i.e.
+	// this reported conflict is entirely a product of inference.
+	//
+	// The verdict-level CommunityDataInferredOnly cannot express this: a pair of
+	// refs can each have measured communities (so the verdict looks measured) and
+	// still overlap ONLY on an inferred one, making the reported conflict
+	// manufactured while every aggregate flag reads "measured". That is the #6006
+	// defect class at pair granularity, which is the granularity a merge decision
+	// is actually made at.
+	InferredOnly bool `json:"inferred_only"`
 }
 
 // MergeRiskResult is the ranked triage output of AnalyzeMergeRisk.
@@ -542,6 +613,12 @@ type MergeRiskResult struct {
 	// RefsWithInferredCommunityData names the refs that contributed at least one
 	// inferred placement, sorted.
 	RefsWithInferredCommunityData []string `json:"refs_with_inferred_community_data,omitempty"`
+	// InferredOnlyPairCount is how many of the reported risk pairs overlap SOLELY
+	// on communities that at least one side reached by inference. Non-zero means
+	// at least one reported conflict is deduced rather than observed — even when
+	// CommunityDataInferredOnly is false, which it will be whenever the refs also
+	// touch measured communities that happen not to overlap.
+	InferredOnlyPairCount int `json:"inferred_only_pair_count"`
 }
 
 // AnalyzeMergeRisk intersects every change's impacted-community set pairwise and
@@ -569,6 +646,7 @@ func AnalyzeMergeRisk(impacts []ChangeImpact) MergeRiskResult {
 		}
 	}
 	sets := make([]map[int]struct{}, len(norm))
+	inferredSets := make([]map[int]struct{}, len(norm))
 	for i, ci := range norm {
 		s := make(map[int]struct{}, len(ci.Communities))
 		for _, c := range ci.Communities {
@@ -577,6 +655,13 @@ func AnalyzeMergeRisk(impacts []ChangeImpact) MergeRiskResult {
 			}
 		}
 		sets[i] = s
+		inf := make(map[int]struct{}, len(ci.InferredOnlyCommunities))
+		for _, c := range ci.InferredOnlyCommunities {
+			if c >= 0 {
+				inf[c] = struct{}{}
+			}
+		}
+		inferredSets[i] = inf
 	}
 
 	var pairs []MergeRiskPair
@@ -587,11 +672,24 @@ func AnalyzeMergeRisk(impacts []ChangeImpact) MergeRiskResult {
 				continue
 			}
 			sort.Ints(shared)
+			// #6042 D1 — per-pair provenance. A shared community is DEDUCED when
+			// either side reaches it only through inference: the overlap was never
+			// observed on that side, so the conflict itself is a deduction.
+			var inferredShared []int
+			for _, c := range shared {
+				_, a := inferredSets[i][c]
+				_, b := inferredSets[j][c]
+				if a || b {
+					inferredShared = append(inferredShared, c)
+				}
+			}
 			pairs = append(pairs, MergeRiskPair{
-				RefA:              norm[i].Ref,
-				RefB:              norm[j].Ref,
-				SharedCount:       len(shared),
-				SharedCommunities: shared,
+				RefA:                      norm[i].Ref,
+				RefB:                      norm[j].Ref,
+				SharedCount:               len(shared),
+				SharedCommunities:         shared,
+				InferredSharedCommunities: inferredShared,
+				InferredOnly:              len(inferredShared) == len(shared),
 			})
 		}
 	}
@@ -605,6 +703,13 @@ func AnalyzeMergeRisk(impacts []ChangeImpact) MergeRiskResult {
 		return pairs[i].RefB < pairs[j].RefB
 	})
 
+	inferredOnlyPairs := 0
+	for _, p := range pairs {
+		if p.InferredOnly {
+			inferredOnlyPairs++
+		}
+	}
+
 	return MergeRiskResult{
 		Pairs:      pairs,
 		RefCount:   len(norm),
@@ -617,6 +722,7 @@ func AnalyzeMergeRisk(impacts []ChangeImpact) MergeRiskResult {
 		// Available, something was inferred, and nothing at all was measured.
 		CommunityDataInferredOnly:     len(missing) == 0 && totalInferred > 0 && totalOverlay == 0,
 		RefsWithInferredCommunityData: inferredRefs,
+		InferredOnlyPairCount:         inferredOnlyPairs,
 	}
 }
 
