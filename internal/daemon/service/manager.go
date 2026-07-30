@@ -180,6 +180,41 @@ func restart(ctx context.Context, sm ServiceManager, cfg readinessConfig, onProg
 	return ensureLoaded(ctx, sm, cfg, onProgress)
 }
 
+// stopConverge takes an installed service down NOW — Unload only, no Load —
+// and then CONFIRMS convergence via Status() before returning success
+// (issue #6044). This is the entry point `grafel stop` routes through when an
+// OS service is installed for this root, instead of only sending the daemon
+// an RPC and trusting it: launchd/systemd/schtasks KeepAlive-equivalent
+// respawn logic means an RPC-only stop can be undone before the caller even
+// sees the result, and the old `grafel stop` reported success (exit 0)
+// regardless (the same defect class as #5991's `grafel reset`).
+//
+// Semantics: this is a PERSISTENT stop, not merely "kill the current
+// instance" — Unload on every platform backend already reaches for that
+// (launchd: bootout + disable so RunAtLoad does not fire at the next login;
+// systemd: `disable --now`; schtasks: task deletion), and the matching Load
+// unconditionally re-enables/recreates before starting, so a normal
+// install/start/restart cycle (Unload;Load) is unaffected — only a caller
+// that stops WITHOUT a following Load (this one) observes the persisted-down
+// state. `grafel start` is the explicit, symmetric way back.
+//
+// stopConverge does NOT call RemoveArtifacts — the unit/plist/task file is
+// left on disk so `grafel start` can re-register from it without needing
+// `grafel install` again. That is what distinguishes stop from uninstall.
+func stopConverge(sm ServiceManager) (StatusInfo, error) {
+	if err := sm.Unload(); err != nil {
+		return StatusInfo{}, fmt.Errorf("unload service: %w", err)
+	}
+	st, err := sm.Status()
+	if err != nil {
+		return StatusInfo{}, fmt.Errorf("confirm service stopped: %w", err)
+	}
+	if st.Running {
+		return st, fmt.Errorf("service manager still reports the daemon running (pid %d) after stop", st.PID)
+	}
+	return st, nil
+}
+
 // teardown idempotently removes the service: Unload (treating not-loaded as
 // success) then RemoveArtifacts (treating missing files as success). It never
 // fails because the service is already gone — the desired post-state is

@@ -10,6 +10,7 @@ func install(_ Options) (StatusInfo, error)        { return StatusInfo{}, errUns
 func uninstall(_ Options) error                    { return errUnsupported }
 func status(_ Options) (StatusInfo, error)         { return StatusInfo{}, errUnsupported }
 func restartService(_ Options) (StatusInfo, error) { return StatusInfo{}, errUnsupported }
+func stopService(_ Options) (StatusInfo, error)    { return StatusInfo{}, errUnsupported }
 
 // registeredRoot has no service to read on unsupported platforms.
 func registeredRoot() (string, bool, error) { return "", false, errUnsupported }

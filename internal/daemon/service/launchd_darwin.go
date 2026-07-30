@@ -169,10 +169,28 @@ func (m *launchdManager) Unload() error {
 	// signal. So we ignore the result entirely rather than branching on the
 	// localized error text, which would break on non-English macOS.
 	_ = exec.Command("launchctl", "bootout", "gui/"+m.uid+"/"+launchLabel).Run()
+
+	// #6044: bootout alone only clears the CURRENT session's loaded job — the
+	// plist on disk is untouched, and RunAtLoad fires again at the next
+	// login, so a bare bootout is a "stop until next login", not a real stop.
+	// `launchctl disable` writes a persistent override that suppresses that
+	// automatic relaunch (survives login/reboot), which is what puts macOS on
+	// equal footing with systemd's `disable --now` (systemd_linux.go Unload)
+	// and schtasks's task deletion (schtasks_windows.go Unload) — both of
+	// which already persist past a reboot. Load() below always re-enables
+	// before bootstrap, so this has no effect on the ordinary
+	// install/start/restart Unload;Load cycle — it only matters for a caller
+	// (`grafel stop`) that stops WITHOUT a following Load.
+	_ = exec.Command("launchctl", "disable", "gui/"+m.uid+"/"+launchLabel).Run()
 	return nil
 }
 
 func (m *launchdManager) Load() error {
+	// Clear any persisted disable — from a prior `grafel stop`, or a stale
+	// state — before bootstrap. Without this, RunAtLoad silently does
+	// nothing on a disabled service and WaitReady times out with no
+	// explanation. See the disable call in Unload for the pairing.
+	_ = exec.Command("launchctl", "enable", "gui/"+m.uid+"/"+launchLabel).Run()
 	out, err := exec.Command("launchctl", "bootstrap", "gui/"+m.uid, m.plistPath).CombinedOutput()
 	if err != nil {
 		// bootstrap exits non-zero (err 5 / "already bootstrapped") when a
@@ -230,6 +248,16 @@ func restartService(opts Options) (StatusInfo, error) {
 		return StatusInfo{}, err
 	}
 	return restart(context.Background(), sm, defaultReadiness, nil)
+}
+
+// stopService is the macOS implementation of Stop: bootout + persistent
+// disable, then confirm the service is actually down (issue #6044).
+func stopService(opts Options) (StatusInfo, error) {
+	sm, err := newServiceManager(opts)
+	if err != nil {
+		return StatusInfo{}, err
+	}
+	return stopConverge(sm)
 }
 
 // uninstall is the macOS implementation of Uninstall: idempotent teardown.

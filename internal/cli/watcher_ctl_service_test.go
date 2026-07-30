@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/daemon"
@@ -115,6 +116,78 @@ func TestRunDaemonRestart_RoutesToServiceRestart_WhenInstalled_NoManualForkOrPid
 	}
 	if _, statErr := os.Stat(layout.PIDPath); statErr == nil {
 		t.Fatalf("pidfile should not exist — the service-restart path must not touch it")
+	}
+}
+
+// --- stop routing (issue #6044) ---------------------------------------------
+
+// stubStopSeam overrides serviceInstalledForThisRoot / serviceStopForThisRoot
+// for the duration of the test and restores them on cleanup. Mirrors
+// stubServiceSeams but for the stop path.
+func stubStopSeam(t *testing.T, installed bool) (stopCalls *int) {
+	t.Helper()
+	stopCalls = new(int)
+
+	origInstalled := serviceInstalledForThisRoot
+	origStop := serviceStopForThisRoot
+	t.Cleanup(func() {
+		serviceInstalledForThisRoot = origInstalled
+		serviceStopForThisRoot = origStop
+	})
+
+	serviceInstalledForThisRoot = func() bool { return installed }
+	serviceStopForThisRoot = func(_ io.Writer) error {
+		*stopCalls++
+		return nil
+	}
+	return stopCalls
+}
+
+// TestRunDaemonStop_RoutesToServiceStop_WhenInstalled pins the #6044 fix: when
+// an OS service is installed for this root, `grafel stop` must route through
+// the service manager (serviceStopForThisRoot) — exactly symmetric with how
+// `grafel start`/`restart` already route to serviceRestartForThisRoot —
+// instead of only sending an RPC that launchd's KeepAlive can undo before the
+// caller observes anything.
+func TestRunDaemonStop_RoutesToServiceStop_WhenInstalled(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(daemon.EnvRoot, dir)
+
+	stopCalls := stubStopSeam(t, true)
+
+	var out bytes.Buffer
+	if err := runDaemonStop(&out); err != nil {
+		t.Fatalf("runDaemonStop: %v", err)
+	}
+	if *stopCalls != 1 {
+		t.Fatalf("expected serviceStopForThisRoot to be called once, got %d", *stopCalls)
+	}
+}
+
+// TestRunDaemonStop_FallsBackToRPC_WhenNotInstalled is the OTHER direction of
+// the same fixture: prove the gate can and does take the RPC-only path when
+// no OS service is registered (a manually-started foreground daemon) — the
+// service seam must NOT fire in that case.
+func TestRunDaemonStop_FallsBackToRPC_WhenNotInstalled(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(daemon.EnvRoot, dir)
+
+	stopCalls := stubStopSeam(t, false)
+
+	var out bytes.Buffer
+	// No daemon is running in this sandboxed root, so the RPC dial itself
+	// fails with ErrDaemonNotRunning — that is fine, it proves the code took
+	// the RPC branch (and not the service branch) rather than exercising a
+	// live daemon.
+	err := runDaemonStop(&out)
+	if err != nil {
+		t.Fatalf("runDaemonStop (no daemon running): %v", err)
+	}
+	if !strings.Contains(out.String(), "daemon not running") {
+		t.Fatalf("expected the RPC-path 'daemon not running' message, got %q", out.String())
+	}
+	if *stopCalls != 0 {
+		t.Fatalf("expected serviceStopForThisRoot NOT to be called, got %d calls", *stopCalls)
 	}
 }
 

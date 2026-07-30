@@ -19,6 +19,30 @@ func engineChildSysProcAttr() *syscall.SysProcAttr {
 
 // signalTerminate asks the engine child to shut down gracefully (SIGTERM). Its
 // RunEngine signal handler catches this and unwinds the scheduler/watcher.
+//
+// Group-directed (issue #6044, following the #5999 precedent in
+// internal/daemon/sched/nice_unix.go applyProcessGroupCancel): the engine
+// child owns its own process group (Setpgid, engineChildSysProcAttr above).
+// A single-pid signal — the trap exec.CommandContext's default Cancel falls
+// into — only reaches the child itself, not any grandchildren it forks (its
+// own subprocess fanout), leaving them running as orphans once the child
+// exits. Negative pid addresses the whole group the child leads. Fall back
+// to the single-pid signal if the group kill fails (group already gone, or
+// Setpgid didn't take for some reason) rather than silently doing nothing.
 func signalTerminate(p *os.Process) error {
-	return p.Signal(syscall.SIGTERM)
+	if err := syscall.Kill(-p.Pid, syscall.SIGTERM); err != nil {
+		return p.Signal(syscall.SIGTERM)
+	}
+	return nil
+}
+
+// signalKill is the SIGKILL escalation used when the child does not exit
+// within the drain window. Group-directed for the same reason as
+// signalTerminate: a lone SIGKILL to the child pid can leave grandchildren
+// alive.
+func signalKill(p *os.Process) error {
+	if err := syscall.Kill(-p.Pid, syscall.SIGKILL); err != nil {
+		return p.Kill()
+	}
+	return nil
 }

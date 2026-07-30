@@ -31,6 +31,14 @@ type fakeManager struct {
 
 	// neverReady forces Probe to always return false (budget-exhaustion case).
 	neverReady bool
+
+	// stubbornRunning makes Status() report Running=true even after Unload
+	// has been called — simulating a service manager whose KeepAlive/Restart
+	// equivalent respawned the daemon before stop could confirm it was down
+	// (the exact #6044 defect: launchd's unconditional KeepAlive winning the
+	// race against a bare RPC stop).
+	stubbornRunning bool
+	statusErr       error
 }
 
 func (f *fakeManager) record(name string) {
@@ -86,7 +94,15 @@ func (f *fakeManager) Probe() bool {
 func (f *fakeManager) Status() (StatusInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return StatusInfo{Installed: true, Running: f.loaded}, nil
+	if f.statusErr != nil {
+		return StatusInfo{}, f.statusErr
+	}
+	running := f.loaded || f.stubbornRunning
+	pid := 0
+	if running {
+		pid = 12345
+	}
+	return StatusInfo{Installed: true, Running: running, PID: pid}, nil
 }
 
 func (f *fakeManager) callOrder() []string {
@@ -296,6 +312,74 @@ func TestTeardown_NotLoadedIsIdempotent(t *testing.T) {
 	// Second teardown is still a no-op success.
 	if err := teardown(f); err != nil {
 		t.Fatalf("repeated teardown should be idempotent: %v", err)
+	}
+}
+
+// --- stop (issue #6044) -----------------------------------------------------
+
+// TestStopConverge_UnloadsAndConfirmsDown is the fixture-validity anchor:
+// a well-behaved Unload actually clears f.loaded, so stopConverge must
+// observe Running=false and return success. Also confirms stopConverge never
+// touches RemoveArtifacts — stop must not delete the unit file (that is what
+// distinguishes it from uninstall/teardown).
+func TestStopConverge_UnloadsAndConfirmsDown(t *testing.T) {
+	f := &fakeManager{loaded: true}
+	st, err := stopConverge(f)
+	if err != nil {
+		t.Fatalf("stopConverge: %v", err)
+	}
+	if st.Running {
+		t.Errorf("expected Running=false after stopConverge, got %+v", st)
+	}
+	if indexOf(f.callOrder(), "Unload") < 0 {
+		t.Errorf("expected Unload to be called, got %v", f.callOrder())
+	}
+	if indexOf(f.callOrder(), "RemoveArtifacts") >= 0 {
+		t.Errorf("stopConverge must not remove artifacts (that is uninstall's job), got %v", f.callOrder())
+	}
+}
+
+// TestStopConverge_StubbornServiceReportsError is the OTHER direction of the
+// same fixture: prove stopConverge can and does fail when the service manager
+// still reports the daemon running after Unload — the exact #6044 shape
+// (KeepAlive/Restart respawning it faster than the caller can observe). This
+// pins requirement 3: stop must stop lying about its outcome.
+func TestStopConverge_StubbornServiceReportsError(t *testing.T) {
+	f := &fakeManager{loaded: true, stubbornRunning: true}
+	st, err := stopConverge(f)
+	if err == nil {
+		t.Fatalf("expected stopConverge to report an error when the service manager still shows it running, got success %+v", st)
+	}
+	if !st.Running {
+		t.Errorf("expected the returned status to still show Running=true (the honest observation), got %+v", st)
+	}
+}
+
+// TestStopConverge_NotLoadedIsIdempotent: stopping an already-stopped service
+// succeeds (Unload treats not-loaded as success by contract).
+func TestStopConverge_NotLoadedIsIdempotent(t *testing.T) {
+	f := &fakeManager{loaded: false}
+	if _, err := stopConverge(f); err != nil {
+		t.Fatalf("stopConverge of an already-stopped service should succeed: %v", err)
+	}
+}
+
+// TestStopConverge_UnloadErrorPropagates: a genuine Unload failure (not just
+// "already not loaded") must abort and be reported, not swallowed.
+func TestStopConverge_UnloadErrorPropagates(t *testing.T) {
+	f := &fakeManager{loaded: true, unloadErr: errors.New("launchctl bootout: permission denied")}
+	if _, err := stopConverge(f); err == nil {
+		t.Fatal("expected Unload error to propagate")
+	}
+}
+
+// TestStopConverge_StatusErrorPropagates: if the post-Unload confirmation
+// query itself fails, stop must report that failure rather than silently
+// claiming success.
+func TestStopConverge_StatusErrorPropagates(t *testing.T) {
+	f := &fakeManager{loaded: true, statusErr: errors.New("launchctl list: boom")}
+	if _, err := stopConverge(f); err == nil {
+		t.Fatal("expected Status error to propagate")
 	}
 }
 

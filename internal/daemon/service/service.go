@@ -190,6 +190,25 @@ func Restart(opts Options) (StatusInfo, error) {
 	return restartService(opts)
 }
 
+// Stop takes an already-installed OS service down now and confirms it is
+// actually down before returning (issue #6044). Unlike Restart/Install, it
+// does NOT re-Load: the desired end-state is "stopped", not "stopped then
+// immediately restarted". See stopConverge in manager.go for the exact
+// semantics (persistent — survives the next login/reboot — and why that does
+// not disturb the ordinary install/start/restart Unload;Load cycle).
+//
+// This is the entry point `grafel stop` routes through when it detects an OS
+// service registered for this root, instead of only sending the daemon a
+// Stop RPC and trusting the result: a bare RPC stop races the service
+// manager's own KeepAlive/Restart-equivalent respawn, which can undo it
+// before the caller observes anything.
+func Stop(opts Options) (StatusInfo, error) {
+	if err := resolveOptions(&opts); err != nil {
+		return StatusInfo{}, fmt.Errorf("resolve options: %w", err)
+	}
+	return stopService(opts)
+}
+
 // RegisteredRoot returns the daemon root directory recorded in the currently
 // installed OS service unit (the HOME baked into the launchd plist / systemd
 // unit at install time, or the root derived from the installed task's socket on
