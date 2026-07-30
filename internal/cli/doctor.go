@@ -391,13 +391,11 @@ func printIndexingModes(w io.Writer) {
 	// Go soft memory limit (#5237). Report the resolved limit + where it
 	// came from so operators can see whether GOMEMLIMIT / the env override /
 	// the fraction-of-RAM default is in effect.
-	if mb, src := daemon.MemLimitSummary(); mb > 0 {
-		fmt.Fprintf(w, "%s go soft mem limit: %dMB (%s; GRAFEL_DAEMON_MEMLIMIT_MB)\n",
-			statusOK, mb, src)
-	} else {
-		fmt.Fprintf(w, "%s go soft mem limit: unbounded (%s; GRAFEL_DAEMON_MEMLIMIT_MB)\n",
-			statusOK, src)
-	}
+	// #6045: report the installation-wide total plus the per-plane shares —
+	// in split mode two processes divide this budget.
+	memVal, memSrc := memLimitDescription()
+	fmt.Fprintf(w, "%s go soft mem limit: %s (%s; GRAFEL_DAEMON_MEMLIMIT_MB)\n",
+		statusOK, memVal, memSrc)
 }
 
 func checkRepo(w io.Writer, r registry.Repo) {

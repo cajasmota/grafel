@@ -423,8 +423,10 @@ func RunEngine(ctx context.Context, cfg EngineConfig) error {
 
 	// #3648: match Run's conservative Go soft memory limit — the engine is the
 	// heavy plane (extraction/reindex/fbwriter), exactly the workload the cap
-	// bounds.
-	applyMemoryLimit(logger)
+	// bounds. #6045: the resolved limit is the budget for the WHOLE
+	// installation, so the engine takes only its (majority) share of it — serve
+	// takes the rest in its own process.
+	applyMemoryLimit(logger, memPlaneEngine)
 
 	if err := EnsureLayout(cfg.Layout); err != nil {
 		return fmt.Errorf("engine: ensure layout: %w", err)
@@ -541,7 +543,12 @@ func run(ctx context.Context, cfg Config, plane daemonPlaneMode) error {
 	// 16GB host during concurrent reindex bursts. Combined with the
 	// scheduler's idle FreeOSMemory trigger this attacks both the PEAK
 	// (GOMEMLIMIT) and the idle RETAINED arena (FreeOSMemory).
-	applyMemoryLimit(logger)
+	//
+	// #6045: the resolved limit is an INSTALLATION budget. In split mode this
+	// is the serve plane and a sibling engine process takes the rest, so serve
+	// applies only its share; in the monolith there is one process and it keeps
+	// the whole budget.
+	applyMemoryLimit(logger, memPlaneForDaemonPlane(plane))
 
 	// Layer 1 self-defense: refuse to start if a canonical (non-/tmp) daemon
 	// is already running and this binary lives under /tmp. This prevents the
