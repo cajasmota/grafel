@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/cli/wiztui"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 )
 
@@ -22,6 +23,11 @@ func TestOutstandingCaveat_NothingOutstanding_ReturnsEmpty(t *testing.T) {
 		StageGateHolder:   "group-algo:other-group",
 		StageGateDeferred: []string{"links:other-group"},
 		StageGateBarging:  []string{"analytics:other-group"},
+		// A non-empty GroupAlgoRunning naming only other-group must NOT let
+		// the coarse GroupAlgoInFlight count override it for mygroup (#6047
+		// review round 3 — see TestOutstandingCaveat_GroupAlgoInFlight_
+		// DoesNotOverrideNonEmptyRunningList for the dedicated regression).
+		GroupAlgoInFlight: 1,
 	}
 	got := outstandingCaveat(st, "mygroup")
 	if got != "" {
@@ -145,6 +151,43 @@ func TestOutstandingCaveat_GroupAlgoInFlight_ReturnsCaveat(t *testing.T) {
 	}
 }
 
+// TestOutstandingCaveat_GroupAlgoInFlight_DoesNotOverrideNonEmptyRunningList
+// is the REQUIRED regression for #6047 review round 3: GroupAlgoInFlight is
+// a process-wide count (indexstate.go's backing field is a bare
+// atomic.Int64, not keyed by group), while GroupAlgoRunning — when
+// populated, i.e. MONOLITH mode — is exact and names groups. Reviewer's
+// probe, reproduced verbatim: an operator indexes group B via the daemon;
+// the wizard finishes group A, which has fully drained (genuinely absent
+// from GroupAlgoRunning); the count is still positive because of B. The
+// wizard must NOT report group-algo outstanding for A — the issue text
+// explicitly forbids reporting a stage "that has already drained".
+func TestOutstandingCaveat_GroupAlgoInFlight_DoesNotOverrideNonEmptyRunningList(t *testing.T) {
+	st := proto.StatusReply{
+		GroupAlgoRunning:  []string{"someone-elses-group"},
+		GroupAlgoInFlight: 1,
+	}
+	got := outstandingCaveat(st, "mygroup")
+	if got != "" {
+		t.Errorf("outstandingCaveat = %q, want empty — mygroup is absent from a NON-EMPTY GroupAlgoRunning, so the coarse count must not override it", got)
+	}
+}
+
+// TestOutstandingCaveat_GroupAlgoInFlight_FallsBackWhenRunningListEmpty pins
+// the other direction of the same guard: when GroupAlgoRunning is EMPTY
+// (split mode, structurally always empty — or a genuinely idle monolith),
+// GroupAlgoInFlight > 0 must still fall back to producing a caveat — the
+// guard must not accidentally disable the split-mode signal entirely.
+func TestOutstandingCaveat_GroupAlgoInFlight_FallsBackWhenRunningListEmpty(t *testing.T) {
+	st := proto.StatusReply{GroupAlgoInFlight: 1} // GroupAlgoRunning is nil/empty
+	got := outstandingCaveat(st, "mygroup")
+	if got == "" {
+		t.Fatal("outstandingCaveat = \"\", want a non-empty caveat when GroupAlgoRunning is empty and GroupAlgoInFlight > 0")
+	}
+	if !strings.Contains(got, "group-algo") {
+		t.Errorf("caveat = %q, want it to name group-algo", got)
+	}
+}
+
 // TestOutstandingCaveat_GroupAlgoInFlightZero_NoCaveat pins the other
 // direction for the same field: GroupAlgoInFlight==0 (the JSON zero value,
 // indistinguishable from "field never populated") must NOT, by itself,
@@ -195,24 +238,15 @@ func TestOutstandingCaveat_AnalyticsPlusGroupAlgo_NamesBothWithOverlayClause(t *
 	}
 }
 
-// TestAttachOutstanding_NilClient_ReturnsEmpty: attachOutstanding must never
-// panic or block on a nil client (e.g. --no-index / daemon-down paths that
-// never dial) — it degrades to "no caveat", same as an absent RSS reading.
-func TestAttachOutstanding_NilClient_ReturnsEmpty(t *testing.T) {
-	if got := attachOutstanding(nil, "mygroup"); got != "" {
-		t.Errorf("attachOutstanding(nil, ...) = %q, want empty", got)
-	}
-}
-
 // TestAttachOutstandingWith_QueriesAndAppliesCaveat is the pinning test for
-// the attachOutstanding→outstandingCaveat BRIDGE (#6047 review round 2
-// finding 3): a mutation that replaces attachOutstanding's body with "call
-// the fetcher, discard the result, return ”" left the entire ./internal/cli
-// suite green, because nothing exercised the bridge — only the nil-client
-// short-circuit and the pure outstandingCaveat function were pinned
-// separately. This drives attachOutstandingWith with a fake fetcher standing
-// in for c.Status, proving the fetched StatusReply is actually threaded
-// through to the returned caveat.
+// the fetch→outstandingCaveat BRIDGE (#6047 review round 2 finding 3, closed
+// in round 3): a mutation that replaces attachOutstandingWith's body with
+// "call the fetcher, discard the result, return ”" must die here — this is
+// now the wizard's ONLY entry point into the caveat computation (production
+// calls toIndexOutcome with c.Status, which has this exact statusFetcher
+// signature). Drives attachOutstandingWith with a fake fetcher standing in
+// for c.Status, proving the fetched StatusReply is actually threaded through
+// to the returned caveat.
 func TestAttachOutstandingWith_QueriesAndAppliesCaveat(t *testing.T) {
 	fetch := func() (proto.StatusReply, error) {
 		return proto.StatusReply{GroupAlgoRunning: []string{"mygroup"}}, nil
@@ -245,10 +279,51 @@ func TestAttachOutstandingWith_FetchError_ReturnsEmpty(t *testing.T) {
 	}
 }
 
-// TestAttachOutstandingWith_NilFetcher_ReturnsEmpty: a nil fetcher (mirrors
-// attachOutstanding's nil-client short-circuit) must never panic.
+// TestAttachOutstandingWith_NilFetcher_ReturnsEmpty: a nil fetcher must never
+// panic — it degrades to "no caveat", same as an absent RSS reading.
 func TestAttachOutstandingWith_NilFetcher_ReturnsEmpty(t *testing.T) {
 	if got := attachOutstandingWith(nil, "mygroup"); got != "" {
 		t.Errorf("attachOutstandingWith(nil, ...) = %q, want empty", got)
+	}
+}
+
+// TestToIndexOutcome_ThreadsCaveatFromFetcher is the REQUIRED regression for
+// #6047 review round 3's "close the last seam" ask: toIndexOutcome
+// (wizard_tui_run.go) now takes a statusFetcher directly (production passes
+// c.Status) instead of a *client.Client, specifically so a mutation that
+// bypasses attachOutstandingWith and hardcodes Outstanding: "" is caught
+// here rather than only at the (now-deleted) trivial nil-client wrapper.
+// This drives toIndexOutcome itself with a fake fetcher reporting an
+// outstanding stage and asserts the caveat survives all the way to the
+// returned wiztui.IndexOutcome.
+func TestToIndexOutcome_ThreadsCaveatFromFetcher(t *testing.T) {
+	fetch := func() (proto.StatusReply, error) {
+		return proto.StatusReply{GroupAlgoRunning: []string{"mygroup"}}, nil
+	}
+	oc := toIndexOutcome(rebuildOutcome{entities: 10, rels: 20}, wiztui.InstallSummary{}, fetch, "mygroup")
+	if oc.Outstanding == "" {
+		t.Fatal("toIndexOutcome(...).Outstanding empty, want the fetcher's caveat threaded through")
+	}
+	if !strings.Contains(oc.Outstanding, "group-algo") {
+		t.Errorf("Outstanding = %q, want it to name group-algo", oc.Outstanding)
+	}
+}
+
+// TestToIndexOutcome_ErrorOutcome_NeverQueriesStatus pins the other
+// direction: an error outcome must return immediately with Outstanding ""
+// and must NEVER invoke fetch — nothing was indexed, so there is nothing to
+// ask the daemon about.
+func TestToIndexOutcome_ErrorOutcome_NeverQueriesStatus(t *testing.T) {
+	calls := 0
+	fetch := func() (proto.StatusReply, error) {
+		calls++
+		return proto.StatusReply{GroupAlgoRunning: []string{"mygroup"}}, nil
+	}
+	oc := toIndexOutcome(rebuildOutcome{err: errors.New("boom")}, wiztui.InstallSummary{}, fetch, "mygroup")
+	if oc.Outstanding != "" {
+		t.Errorf("Outstanding = %q, want empty on an error outcome", oc.Outstanding)
+	}
+	if calls != 0 {
+		t.Errorf("fetch called %d times on an error outcome, want 0", calls)
 	}
 }

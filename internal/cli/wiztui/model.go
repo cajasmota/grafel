@@ -498,6 +498,17 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// already-captured interim stats — the alternative to just waiting for
 		// the final outcome to land on its own.
 		if msg.String() == "enter" && m.idx.queryable && !m.idx.terminal {
+			// #6047 round 3, acknowledged not addressed: !m.idx.terminal here
+			// only reflects what THIS model has already processed off outCh —
+			// the real terminal outcome can already be sitting in outCh,
+			// unread, at the exact instant this keypress lands (waitOutcome's
+			// receive and this Update call are two separate tea.Msg
+			// deliveries). In that millisecond-scale window the background
+			// pass may have already acked for real, and this still prints the
+			// earlyFinishOutstandingCaveat below for work that just finished.
+			// Errs toward caution (a stale caveat, never a missing one) and
+			// is far narrower than the defect this file fixes, so it is left
+			// as a known, LOW-severity gap rather than chased here.
 			m.idx.terminal = true
 			// Overlay the interim classify's per-repo stats FIRST (so a repo
 			// that emitted no progress events shows its real count, not 0),

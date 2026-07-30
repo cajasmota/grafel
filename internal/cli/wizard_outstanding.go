@@ -56,27 +56,51 @@ package cli
 //     empty" — literally #6047's failure mode, from the commit that added the
 //     signal).
 //
-//     KNOWN IMPRECISION, ACCEPTED: GroupAlgoInFlight is a global COUNT across
-//     every group the engine happens to be running group-algo for right now —
-//     it does not name groups, so a wizard finishing group A while an
-//     unrelated group B's overlay pass happens to be executing will
-//     (rarely, and only when the operator runs two groups concurrently)
-//     over-report A as outstanding. Given the alternative in split mode is
-//     ALWAYS reporting nothing (silently repeating the bug this file fixes),
-//     this tradeoff is deliberate, not an oversight.
+//     GUARDED, NOT UNCONDITIONAL (#6047 review round 3 — an unguarded `||`
+//     shipped in round 2 was wrong): GroupAlgoInFlight is a global COUNT
+//     across every group the engine happens to be running group-algo for
+//     right now (indexstate.go's backing field is a bare atomic.Int64, not
+//     keyed by group) — it does not name groups. In MONOLITH mode
+//     GroupAlgoRunning is populated too, and is exact
+//     (service.go:453 sets GroupAlgoInFlight = len(snap.GroupAlgoRunning) —
+//     the two fields describe the SAME snapshot, one as names, one as a
+//     count). An unguarded `|| GroupAlgoInFlight > 0` therefore let the
+//     imprecise count override the precise list in the one mode where the
+//     precise list exists and is correct: group A finishes (drained,
+//     genuinely absent from GroupAlgoRunning) while unrelated group B's pass
+//     is executing, and the wizard reported A as outstanding — exactly the
+//     direction the issue forbids ("must not report an outstanding stage
+//     that has already drained"). outstandingCaveat therefore only falls
+//     back to the count when the list is EMPTY
+//     (len(st.GroupAlgoRunning) == 0 && st.GroupAlgoInFlight > 0): empty
+//     means split mode (structurally always empty there) or a genuinely idle
+//     monolith (nothing running, so a stray positive count would itself be a
+//     bug elsewhere) — never "monolith with an unrelated group's pass mid-
+//     flight", which is exactly the case a non-empty list correctly rules
+//     group out of.
 //
-//     GroupAlgoInFlight also does NOT close the debounce-armed window (a
-//     group-algo pass armed but not yet actually executing, so not yet
-//     counted "in flight" by indexstate.Get().GroupAlgoInFlight, which backs
-//     the sidecar field) — that gap is a separate, pre-existing, accepted
-//     plumbing limit, not something this file's scope covers.
+//     GroupAlgoInFlight COVERS MORE THAN THE COMMENT ORIGINALLY CLAIMED: its
+//     two increment sites are scheduler.go:2391 (the pass begins actually
+//     executing) and scheduler.go:2222 (markGroupAlgoDeferredLocked — the
+//     pass was ARMED but got turned away at the gate, i.e. gate-deferred).
+//     So in split mode the guarded fallback also catches the gate-deferred
+//     state, not just "actively executing" — which is precisely the state
+//     the issue's own repro captured (`stage_gate: ... deferred=group-algo:
+//     <group>,links:<group>`). It still does NOT fire at timer-arm time,
+//     before the pass has reached the gate at all — that debounce-armed
+//     window remains open (see below).
+//
+//     GroupAlgoInFlight does NOT close the debounce-armed window (a
+//     group-algo pass armed but not yet having reached the gate at all, so
+//     neither executing nor deferred, so not yet counted "in flight") — that
+//     narrower gap is a separate, pre-existing, accepted plumbing limit, not
+//     something this file's scope covers.
 
 import (
 	"fmt"
 	"slices"
 	"strings"
 
-	"github.com/cajasmota/grafel/internal/daemon/client"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 )
 
@@ -108,19 +132,23 @@ const outstandingOverlayCaveat = "communities/pagerank/centrality overlay not ye
 // populated only in MONOLITH mode, see this file's top doc) or the
 // fine-grained stage gate (StageGateHolder/StageGateDeferred) names
 // "group-algo:<group>" / "links:<group>" (populated in BOTH modes) or — for
-// group-algo only, the split-mode-native signal — GroupAlgoInFlight > 0 (see
-// this file's top doc for its known imprecision). analytics counts as
-// outstanding if StageGateBarging names "analytics:<group>" (the
-// quality-metrics history scan's foreground barge registration — see
-// cmd/grafel/rebuild_history.go).
+// group-algo only, and ONLY when GroupAlgoRunning is empty (see this file's
+// top doc for why an unguarded check is wrong) — the split-mode-native
+// fallback signal GroupAlgoInFlight > 0. analytics counts as outstanding if
+// StageGateBarging names "analytics:<group>" (the quality-metrics history
+// scan's foreground barge registration — see cmd/grafel/rebuild_history.go).
 //
 // Returns "" when nothing is outstanding for group — the caller (see
-// attachOutstanding) leaves wiztui.IndexOutcome.Outstanding "" in that case,
-// and indexView renders nothing extra (a caveat, not decoration).
+// attachOutstandingWith) leaves wiztui.IndexOutcome.Outstanding "" in that
+// case, and indexView renders nothing extra (a caveat, not decoration).
 func outstandingCaveat(st proto.StatusReply, group string) string {
 	algoRunning := slices.Contains(st.GroupAlgoRunning, group) ||
 		st.StageGateHolder == "group-algo:"+group ||
-		st.GroupAlgoInFlight > 0
+		// Fall back to the coarse (unnamed, global) count ONLY when the
+		// precise list is empty — a non-empty GroupAlgoRunning that omits
+		// group means group's pass has genuinely drained, and the count must
+		// not override that (#6047 review round 3).
+		(len(st.GroupAlgoRunning) == 0 && st.GroupAlgoInFlight > 0)
 	algoPending := slices.Contains(st.PendingAlgo, group) || slices.Contains(st.StageGateDeferred, "group-algo:"+group)
 	linksRunning := st.StageGateHolder == "links:"+group
 	linksPending := slices.Contains(st.PendingLinks, group) || slices.Contains(st.StageGateDeferred, "links:"+group)
@@ -161,18 +189,25 @@ func outstandingCaveat(st proto.StatusReply, group string) string {
 }
 
 // statusFetcher mirrors client.Client.Status's signature — the seam
-// attachOutstandingWith is tested against without a live daemon (#6047 review
-// round 2: the production wiring from attachOutstanding through
-// outstandingCaveat had no test proving the daemon is actually queried and
-// its answer actually used — replacing attachOutstanding's body with "query,
-// discard, return ”" left the whole ./internal/cli suite green). Production
-// passes c.Status directly, which already has this exact signature.
+// attachOutstandingWith is tested against without a live daemon (#6047
+// review round 2: an earlier attachOutstanding(c *client.Client, group
+// string) took the concrete client type, so nothing but its own trivial
+// nil-check was exercised by any test — a mutation that bypassed the whole
+// computation and returned "" still left the suite green. #6047 review round
+// 3 closed that seam: toIndexOutcome (wizard_tui_run.go) now takes a
+// statusFetcher directly instead of a *client.Client, and passes c.Status —
+// which already has this exact signature — at all three of its call sites.
+// wizard_split_progress_test.go's toIndexOutcome tests pass a fake
+// statusFetcher for the same reason, so production and tests now go through
+// the identical seam).
 type statusFetcher func() (proto.StatusReply, error)
 
 // attachOutstandingWith calls fetch and folds the result through
 // outstandingCaveat for group, or returns "" on ANY failure — a nil fetcher
-// or an RPC error. This is the side-effect-free half of attachOutstanding,
-// unit-testable with a fake fetcher.
+// (--no-index / daemon-down paths that never dialed a client to take
+// c.Status from) or an RPC error. This is the wizard's ONLY entry point into
+// this file's completion-honesty caveat — best-effort, unit-testable with a
+// fake fetcher.
 func attachOutstandingWith(fetch statusFetcher, group string) string {
 	if fetch == nil {
 		return ""
@@ -182,15 +217,4 @@ func attachOutstandingWith(fetch statusFetcher, group string) string {
 		return ""
 	}
 	return outstandingCaveat(st, group)
-}
-
-// attachOutstanding queries the daemon's current status (via c.Status,
-// production's statusFetcher) and returns the completion caveat for group —
-// best-effort, see attachOutstandingWith's doc; never attempted when c is
-// nil (--no-index / daemon-down paths that never dialed).
-func attachOutstanding(c *client.Client, group string) string {
-	if c == nil {
-		return ""
-	}
-	return attachOutstandingWith(c.Status, group)
 }

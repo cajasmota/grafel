@@ -14,11 +14,22 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/cli/wiztui"
+	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/statusfile"
 	"github.com/cajasmota/grafel/internal/testsupport"
 )
+
+// fakeIdleStatusFetch stands in for c.Status in these toIndexOutcome tests
+// (#6047 review round 3 — toIndexOutcome takes a statusFetcher, not a
+// *client.Client, precisely so tests exercise the same seam production
+// does). It reports a fully idle StatusReply: these tests assert on
+// Entities/Rels/Err, not on the completion-honesty caveat, so "nothing
+// outstanding" is the correct, uninteresting answer here.
+func fakeIdleStatusFetch() (proto.StatusReply, error) {
+	return proto.StatusReply{}, nil
+}
 
 // fakeSplitClock advances virtual time on Sleep so the poll loop's timeout
 // accounting works without any real delay.
@@ -242,7 +253,7 @@ func TestSplit_OutcomeCarriesClassifiedStats(t *testing.T) {
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
-	oc := toIndexOutcome(o, wiztui.InstallSummary{}, nil, "")
+	oc := toIndexOutcome(o, wiztui.InstallSummary{}, fakeIdleStatusFetch, "grp")
 	if oc.Entities != E || oc.Rels != R {
 		t.Fatalf("IndexOutcome stats = (%d,%d); want (%d,%d)", oc.Entities, oc.Rels, E, R)
 	}
@@ -847,7 +858,7 @@ func TestRunSplitIndexCore_ThreadsPerRepoStatsIntoOutcome(t *testing.T) {
 		t.Fatalf("len(o.repoStats) = %d, want 3", len(o.repoStats))
 	}
 
-	oc := toIndexOutcome(o, wiztui.InstallSummary{}, nil, "")
+	oc := toIndexOutcome(o, wiztui.InstallSummary{}, fakeIdleStatusFetch, "grp")
 	if len(oc.RepoStats) != 3 {
 		t.Fatalf("len(IndexOutcome.RepoStats) = %d, want 3", len(oc.RepoStats))
 	}
