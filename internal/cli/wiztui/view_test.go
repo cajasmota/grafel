@@ -416,3 +416,20 @@ func TestIndexView_MetricSuffix_PresentAndAbsent(t *testing.T) {
 		t.Errorf("expected \"2.3 GB\" in output:\n%s", bothOut)
 	}
 }
+
+// TestIndexView_MetricSuffix_LabelledAsPeak is the pinning test for #6047: the
+// RAM readout must be explicitly labelled "peak" — an unlabelled reading next
+// to a frozen "Done · 15m55s" reads as the run's total when it is really
+// whatever the engine happened to be using at whatever instant was last
+// polled, understating the real high-water mark by several times (per the
+// issue's measured 0.9GB-at-exit vs 1444MB engine-peak numbers).
+func TestIndexView_MetricSuffix_LabelledAsPeak(t *testing.T) {
+	v := newIndexView("grp", 1)
+	v.width = 100
+	v.foldEvent(progress.Event{RepoSlug: "backend", Phase: progress.PhaseExtractAST, FilesDone: 1, FilesTotal: 10, TS: 1})
+	v.rssMB = 2355
+	out := v.metricSuffix()
+	if !strings.Contains(out, "peak 2.3 GB") {
+		t.Errorf("metricSuffix must label the RSS reading as \"peak\":\n%s", out)
+	}
+}

@@ -117,6 +117,17 @@ type IndexOutcome struct {
 	// nil/empty in monolith mode, which has no per-repo classify — rows there
 	// fall back entirely to finalizeRows.
 	RepoStats []RepoStat
+
+	// Outstanding names the post-extraction stage(s) (group-algo / links) for
+	// this group that were still running or pending the instant this outcome
+	// was produced, phrased in the same vocabulary `grafel status`'s
+	// annotation/stage_gate lines use — or "" when nothing was outstanding
+	// (#6047). Only meaningful on a terminal, successful (Err==nil,
+	// !DaemonDown) outcome; the cli package is responsible for querying the
+	// daemon's status and leaves it "" when the query itself fails (a
+	// best-effort caveat, never a reason to fail or delay completion). See
+	// indexView.outstanding's doc for how it renders.
+	Outstanding string
 }
 
 // RepoStat is one selected repo's final classified result (see
@@ -353,7 +364,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, waitEvent(m.evCh)
 
 	case metricsMsg:
-		m.idx.rssMB = msg.RSSMB
+		// rssMB tracks the RUNNING PEAK, never a raw latest sample (#6047) — see
+		// indexView.rssMB's doc for why an unlabelled instant reading next to a
+		// frozen "Done" understates the run's actual high-water mark. cpuPct
+		// stays a plain live reading (no equivalent complaint for CPU%).
+		if msg.RSSMB > m.idx.rssMB {
+			m.idx.rssMB = msg.RSSMB
+		}
 		m.idx.cpuPct = msg.CPUPct
 		if m.idx.done() {
 			// Index screen is finished (Done/Failed) — stop polling rather
@@ -412,6 +429,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// still on an intermediate phase to Done — its final SSE events may
 			// have arrived after the RPC returned and been dropped (#5340).
 			m.idx.finalizeRows()
+			// Completion-honesty caveat (#6047): only meaningful when the group
+			// was genuinely indexed (not DaemonDown — nothing ran, so nothing
+			// can be outstanding). The cli package already leaves Outstanding ""
+			// in that case, but gate on it here too so wiztui's own invariant
+			// doesn't depend on the caller getting that right.
+			if !o.DaemonDown {
+				m.idx.outstanding = o.Outstanding
+			}
 		}
 		m.idx.finishedAt = time.Now()
 		m.scr = scrDone

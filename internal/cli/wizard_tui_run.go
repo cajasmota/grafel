@@ -404,7 +404,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 		if !perRepoRows {
 			o.repoStats = nil // monorepo: suppress the aggregate-as-repo-row overlay
 		}
-		outCh <- toIndexOutcome(o, summary)
+		outCh <- toIndexOutcome(o, summary, c, group)
 		return
 	}
 
@@ -421,7 +421,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 			rpcCh := triggerRebuild(c, group, token)
 			o := forwardBrokerToChannel(ctx, sseCh, rpcCh, evCh)
 			cancel()
-			outCh <- toIndexOutcome(o, summary)
+			outCh <- toIndexOutcome(o, summary, c, group)
 			return
 		}
 	}
@@ -429,7 +429,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 	// No dashboard broker — just trigger the rebuild and wait for the outcome.
 	rpcCh := triggerRebuild(c, group, token)
 	o := <-rpcCh
-	outCh <- toIndexOutcome(o, summary)
+	outCh <- toIndexOutcome(o, summary, c, group)
 }
 
 // triggerRebuild fires the daemon Rebuild RPC for group on a goroutine and
@@ -523,8 +523,12 @@ func jsonUnmarshalEvent(data string, e *progress.Event) bool {
 }
 
 // toIndexOutcome maps a rebuildOutcome to the TUI's terminal IndexOutcome,
-// attaching the captured install summary so the Done screen renders it.
-func toIndexOutcome(o rebuildOutcome, summary wiztui.InstallSummary) wiztui.IndexOutcome {
+// attaching the captured install summary so the Done screen renders it. On a
+// genuine success it also attaches the completion-honesty caveat (#6047) by
+// querying the daemon's status ONE more time via c for group — best-effort,
+// see attachOutstanding's doc; never attempted on an error outcome, since
+// nothing was indexed to have an outstanding stage.
+func toIndexOutcome(o rebuildOutcome, summary wiztui.InstallSummary, c *client.Client, group string) wiztui.IndexOutcome {
 	if o.err != nil {
 		return wiztui.IndexOutcome{Err: o.err, Install: summary}
 	}
@@ -533,11 +537,12 @@ func toIndexOutcome(o rebuildOutcome, summary wiztui.InstallSummary) wiztui.Inde
 		elapsed = fmtDuration(time.Duration(o.elapsed * float64(time.Second)))
 	}
 	return wiztui.IndexOutcome{
-		Entities:  o.entities,
-		Rels:      o.rels,
-		Elapsed:   elapsed,
-		Install:   summary,
-		RepoStats: toWiztuiRepoStats(o.repoStats),
+		Entities:    o.entities,
+		Rels:        o.rels,
+		Elapsed:     elapsed,
+		Install:     summary,
+		RepoStats:   toWiztuiRepoStats(o.repoStats),
+		Outstanding: attachOutstanding(c, group),
 	}
 }
 

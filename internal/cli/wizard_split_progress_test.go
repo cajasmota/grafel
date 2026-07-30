@@ -242,7 +242,7 @@ func TestSplit_OutcomeCarriesClassifiedStats(t *testing.T) {
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
-	oc := toIndexOutcome(o, wiztui.InstallSummary{})
+	oc := toIndexOutcome(o, wiztui.InstallSummary{}, nil, "")
 	if oc.Entities != E || oc.Rels != R {
 		t.Fatalf("IndexOutcome stats = (%d,%d); want (%d,%d)", oc.Entities, oc.Rels, E, R)
 	}
@@ -847,7 +847,7 @@ func TestRunSplitIndexCore_ThreadsPerRepoStatsIntoOutcome(t *testing.T) {
 		t.Fatalf("len(o.repoStats) = %d, want 3", len(o.repoStats))
 	}
 
-	oc := toIndexOutcome(o, wiztui.InstallSummary{})
+	oc := toIndexOutcome(o, wiztui.InstallSummary{}, nil, "")
 	if len(oc.RepoStats) != 3 {
 		t.Fatalf("len(IndexOutcome.RepoStats) = %d, want 3", len(oc.RepoStats))
 	}
