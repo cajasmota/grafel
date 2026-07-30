@@ -149,15 +149,15 @@ func TestApplyMemoryLimit_DoesNotPanic(t *testing.T) {
 	debug.SetMemoryLimit(prev)
 	t.Cleanup(func() { debug.SetMemoryLimit(prev) })
 
-	t.Setenv("GOMEMLIMIT", "")    // don't defer to a real env limit
-	t.Setenv(memLimitEnv, "8192") // 8GB soft limit
-	applyMemoryLimit(nil)         // nil logger → slog.Default()
+	t.Setenv("GOMEMLIMIT", "")              // don't defer to a real env limit
+	t.Setenv(memLimitEnv, "8192")           // 8GB soft limit
+	applyMemoryLimit(nil, memPlaneMonolith) // nil logger → slog.Default()
 	if got := debug.SetMemoryLimit(-1); got != 8192*1024*1024 {
 		t.Errorf("applyMemoryLimit(8192MB): runtime limit = %d, want %d", got, int64(8192)*1024*1024)
 	}
 
 	t.Setenv(memLimitEnv, "off") // disabled path must not change the limit
-	applyMemoryLimit(nil)
+	applyMemoryLimit(nil, memPlaneMonolith)
 	if got := debug.SetMemoryLimit(-1); got != 8192*1024*1024 {
 		t.Errorf("disabled path changed the limit to %d", got)
 	}

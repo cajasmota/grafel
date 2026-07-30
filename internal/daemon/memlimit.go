@@ -49,6 +49,109 @@ const memLimitCeilingMB int64 = 2560
 // untouched by either clamp.
 const memLimitFloorMB int64 = 2048
 
+// MemLimitServeShare is the fraction of the INSTALLATION-WIDE soft memory
+// limit granted to the serve (read) plane when the daemon runs split
+// (ADR-0024 default). The engine (write) plane gets the remainder.
+//
+// Why 30/70 rather than an even split (#6045):
+//
+//   - The engine is the write plane — scheduler, watcher, extraction,
+//     fbwriter — and is where the heavy allocation happens. A legitimate large
+//     reindex peaks at ~1-1.5GB Go heap per job (measured, see
+//     memLimitCeilingMB), so an even split of the 2560MB default ceiling
+//     (1280MB) would sit BELOW the engine's normal working set and make the
+//     runtime GC continuously against a limit it cannot honour.
+//   - serve's large data structure — the graph_cache mmap — is file-backed and
+//     NOT Go-heap, so GOMEMLIMIT does not account for it at all. What serve
+//     actually allocates on the heap is MCP request/response marshalling and
+//     dashboard JSON: small, bursty, short-lived.
+//
+// 0.30 of the 2560MB default gives serve 768MB and the engine 1792MB, which
+// clears the measured per-job peak with headroom while keeping the pair's TOTAL
+// equal to the single advertised figure. Both limits remain SOFT: a plane that
+// briefly exceeds its share GCs harder, it is not OOM-killed.
+const MemLimitServeShare = 0.30
+
+// SplitMemLimitMB divides an installation-wide soft limit (MB) into the serve
+// and engine shares. The two shares sum to EXACTLY totalMB — the engine
+// absorbs the rounding — which is the whole point of #6045: the pair must not
+// be able to exceed the number `grafel status` advertises.
+//
+// A non-positive totalMB means "limit disabled" and propagates as-is to both
+// shares; splitting must never synthesize a limit where there was none.
+func SplitMemLimitMB(totalMB int64) (serveMB, engineMB int64) {
+	if totalMB <= 0 {
+		return totalMB, totalMB
+	}
+	serveMB = int64(float64(totalMB) * MemLimitServeShare)
+	if serveMB < 1 {
+		serveMB = 1 // never hand a plane a zero limit
+	}
+	if serveMB >= totalMB {
+		serveMB = totalMB - 1
+	}
+	return serveMB, totalMB - serveMB
+}
+
+// memPlane identifies which process is applying the soft memory limit, and
+// therefore which share of the installation budget it gets.
+//
+// The share is derived from the plane the process is ACTUALLY running, not
+// from an env var handed down by serve. That is deliberate: the engine child
+// inherits serve's environment verbatim and defaultEngineChildCommand must not
+// mutate it (see its doc comment — synthesizing env for the child is exactly
+// what broke the store-root invariant once already). Both processes see the
+// same env, the same settings.json and the same host RAM, so both resolve the
+// identical TOTAL independently and then take their own slice of it. No
+// channel, nothing to keep in sync, and a standalone `grafel engine` started
+// by hand still stays inside the installation budget.
+type memPlane int
+
+const (
+	// memPlaneMonolith is the single-process daemon (escape hatch
+	// GRAFEL_SPLIT_MODE=0): one process, so it gets the WHOLE budget.
+	memPlaneMonolith memPlane = iota
+	// memPlaneServe is the split-mode serve (read) plane.
+	memPlaneServe
+	// memPlaneEngine is the split-mode engine (write) plane.
+	memPlaneEngine
+)
+
+func (p memPlane) String() string {
+	switch p {
+	case memPlaneServe:
+		return "serve"
+	case memPlaneEngine:
+		return "engine"
+	default:
+		return "monolith"
+	}
+}
+
+// shareOf returns this plane's slice of an installation-wide limit (MB).
+func (p memPlane) shareOf(totalMB int64) int64 {
+	if totalMB <= 0 {
+		return totalMB
+	}
+	serve, engine := SplitMemLimitMB(totalMB)
+	switch p {
+	case memPlaneServe:
+		return serve
+	case memPlaneEngine:
+		return engine
+	default:
+		return totalMB
+	}
+}
+
+// memPlaneForDaemonPlane maps the run() plane selector onto the memory plane.
+func memPlaneForDaemonPlane(plane daemonPlaneMode) memPlane {
+	if plane == planeServeOnly {
+		return memPlaneServe
+	}
+	return memPlaneMonolith
+}
+
 // applyMemoryLimit sets a conservative Go soft memory limit (GOMEMLIMIT) so
 // the runtime collects more aggressively as it nears the cap, bounding the
 // daemon's peak footprint (#3648, tightened in #5237).
@@ -65,27 +168,40 @@ const memLimitFloorMB int64 = 2048
 // This is intentionally a soft limit: Go will exceed it transiently rather
 // than OOM-killing the indexer, it just GCs harder — so a legitimate heavy
 // reindex still completes, it simply doesn't get to retain a multi-GB arena.
-func applyMemoryLimit(logger *slog.Logger) {
+//
+// The resolved value is the budget for the WHOLE INSTALLATION, not for one
+// process (#6045). In split mode two processes start — serve and engine — and
+// each used to apply the full resolved limit, so the real ceiling was 2x the
+// figure `grafel status` advertised. Each process now applies only its plane's
+// share (see memPlane / SplitMemLimitMB); the monolith, being one process,
+// still gets the whole thing.
+func applyMemoryLimit(logger *slog.Logger, plane memPlane) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	// Respect an explicit GOMEMLIMIT — the runtime already applied it at
 	// startup; re-setting from here would clobber the operator's choice.
+	// NOTE: this path is genuinely per-process — the runtime read the env var
+	// before main() in BOTH planes and we cannot retroactively split it. That
+	// is the operator's explicit choice, and the log names the plane so the
+	// doubling is at least visible.
 	if v := os.Getenv("GOMEMLIMIT"); v != "" && v != "off" {
-		logger.Info("daemon: GOMEMLIMIT already set by runtime env; not overriding (#3648)", "gomemlimit", v)
+		logger.Info("daemon: GOMEMLIMIT already set by runtime env; not overriding (#3648)",
+			"gomemlimit", v, "plane", plane.String())
 		return
 	}
 
-	limitMB, source := resolveMemLimitMB()
-	if limitMB <= 0 {
-		logger.Info("daemon: Go soft memory limit disabled (#3648)", "source", source)
+	totalMB, source := resolveMemLimitMB()
+	if totalMB <= 0 {
+		logger.Info("daemon: Go soft memory limit disabled (#3648)", "source", source, "plane", plane.String())
 		return
 	}
+	limitMB := plane.shareOf(totalMB)
 	limitBytes := limitMB * 1024 * 1024
 	debug.SetMemoryLimit(limitBytes)
-	logger.Info("daemon: applied Go soft memory limit (#3648)",
-		"limit_mb", limitMB, "source", source)
+	logger.Info("daemon: applied Go soft memory limit (#3648, split #6045)",
+		"limit_mb", limitMB, "total_mb", totalMB, "plane", plane.String(), "source", source)
 }
 
 // resolveMemLimitMB returns the soft-limit in MB and a short tag describing
@@ -151,4 +267,30 @@ func MemLimitSummary() (mb int64, source string) {
 		return 0, "GOMEMLIMIT=" + v + " (runtime env)"
 	}
 	return resolveMemLimitMB()
+}
+
+// MemLimitPlaneSummary reports the INSTALLATION-WIDE soft memory limit and how
+// it is divided across the running processes, for operator-facing surfaces
+// (grafel status / doctor). Added for #6045, where status advertised a single
+// figure that two processes each applied in full.
+//
+//   - totalMB is the whole-installation budget (<=0 means disabled/unbounded).
+//   - split reports whether the daemon runs the serve/engine process split.
+//   - When split, serveMB+engineMB == totalMB exactly.
+//   - When NOT split (monolith escape hatch GRAFEL_SPLIT_MODE=0) there is one
+//     process: serveMB == totalMB and engineMB == 0.
+//
+// Like MemLimitSummary this reads the local process env, which a co-located
+// daemon shares.
+func MemLimitPlaneSummary() (totalMB, serveMB, engineMB int64, source string, split bool) {
+	totalMB, source = MemLimitSummary()
+	split = SplitModeEnabled()
+	if totalMB <= 0 {
+		return totalMB, 0, 0, source, split
+	}
+	if !split {
+		return totalMB, totalMB, 0, source, false
+	}
+	serveMB, engineMB = SplitMemLimitMB(totalMB)
+	return totalMB, serveMB, engineMB, source, true
 }

@@ -122,11 +122,10 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 					onOff(ecfg.IsIncrementalEnabled()), onOff(sched.SubprocessIndexEnabled()))
 				// Go soft memory limit (#5237): show the resolved limit +
 				// source so operators can see what's bounding daemon RSS.
-				if mb, src := daemon.MemLimitSummary(); mb > 0 {
-					fmt.Fprintf(w, "  mem_limit: %dMB (%s)\n", mb, src)
-				} else {
-					fmt.Fprintf(w, "  mem_limit: unbounded (%s)\n", src)
-				}
+				// #6045: in split mode TWO processes share this budget, so the
+				// line names the total and both per-plane shares.
+				memVal, memSrc := memLimitDescription()
+				fmt.Fprintf(w, "  mem_limit: %s (%s)\n", memVal, memSrc)
 			}
 			printDaemonDetail(w, st)
 		}
@@ -235,6 +234,30 @@ func onOff(b bool) string {
 		return "on"
 	}
 	return "off"
+}
+
+// memLimitDescription renders the Go soft memory limit for operator-facing
+// surfaces (grafel status / grafel doctor) as a value + a source tag.
+//
+// #6045: the limit is a budget for the WHOLE INSTALLATION, but in split mode
+// two processes run — serve (read plane) and engine (write plane). Reporting a
+// bare single figure understated real consumption by 2x, because each process
+// used to apply that figure in full. The value therefore names the total AND
+// both shares, e.g.
+//
+//	2560MB (768MB serve + 1792MB engine)
+//
+// In monolith mode (GRAFEL_SPLIT_MODE=0) there is one process and the value is
+// just the total.
+func memLimitDescription() (value, source string) {
+	total, serve, engine, src, split := daemon.MemLimitPlaneSummary()
+	if total <= 0 {
+		return "unbounded", src
+	}
+	if !split {
+		return fmt.Sprintf("%dMB", total), src
+	}
+	return fmt.Sprintf("%dMB (%dMB serve + %dMB engine)", total, serve, engine), src
 }
 
 // humanBytes formats a byte count as a short human-readable string. We
