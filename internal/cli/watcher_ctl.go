@@ -515,7 +515,11 @@ func defaultServiceStopForThisRoot(out io.Writer) error {
 		SocketPath: layout.SocketPath,
 		LogDir:     layout.LogDir,
 	}); err != nil {
-		return fmt.Errorf("service stop: %w", err)
+		// #6044 review item 7: the RPC path's failure names a log to check
+		// (layout.LogPath); give the service path the same next step instead
+		// of leaving the user with only "service stop: <err>" and no idea
+		// what to do about it.
+		return fmt.Errorf("service stop: %w (check %s, or run 'grafel status')", err, layout.LogPath)
 	}
 	fmt.Fprintln(out, "daemon stopped (will not restart automatically — even across reboot — until 'grafel start')")
 	return nil

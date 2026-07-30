@@ -117,6 +117,16 @@ type launchdManager struct {
 	opts      Options
 	plistPath string
 	uid       string
+
+	// lastDisableErr records the outcome of the most recent launchctlDisable
+	// call made by Unload (issue #6044 review item 3). stopConverge's
+	// ServiceManager interface has no room for a second, persistence-specific
+	// error channel, so stopService (which holds the concrete *launchdManager,
+	// not just the interface) reads this directly after a successful
+	// stopConverge to decide whether it can honestly claim the stop survives
+	// reboot/login, instead of asserting that unconditionally over a
+	// discarded error.
+	lastDisableErr error
 }
 
 func newServiceManager(opts Options) (ServiceManager, error) {
@@ -148,6 +158,33 @@ func (m *launchdManager) WriteUnit() error {
 	return nil
 }
 
+// launchctlBootout / launchctlBootstrap / launchctlDisable / launchctlEnable
+// are package vars (not direct inline exec.Command calls) so Unload/Load's
+// full behavior — including the #6044 persistent-stop pairing (review item
+// 2) — is unit-testable without ever invoking a real `launchctl bootout` /
+// `bootstrap` against gui/$UID/com.grafel.daemon, which on a dev machine is
+// the user's actual, live daemon (see launchd_darwin_stop_test.go: it
+// overrides all four and calls the REAL Unload()/Load() methods, so the full
+// call graph — not just an isolated helper — is under test). Before this,
+// disable/enable were bare, result-discarding exec.Command(...).Run() calls
+// with no seam to observe them at all, so deleting either line outright left
+// the whole suite green.
+var launchctlBootout = func(uid string) error {
+	return exec.Command("launchctl", "bootout", "gui/"+uid+"/"+launchLabel).Run()
+}
+
+var launchctlBootstrap = func(uid, plistPath string) ([]byte, error) {
+	return exec.Command("launchctl", "bootstrap", "gui/"+uid, plistPath).CombinedOutput()
+}
+
+var launchctlDisable = func(uid string) error {
+	return exec.Command("launchctl", "disable", "gui/"+uid+"/"+launchLabel).Run()
+}
+
+var launchctlEnable = func(uid string) error {
+	return exec.Command("launchctl", "enable", "gui/"+uid+"/"+launchLabel).Run()
+}
+
 func (m *launchdManager) IsLoaded() (bool, error) {
 	// `launchctl list <label>` exits non-zero (113) when the service is not
 	// loaded; that is a clean "false", not an error.
@@ -168,7 +205,7 @@ func (m *launchdManager) Unload() error {
 	// non-fatal here: the subsequent Load + readiness poll is the real success
 	// signal. So we ignore the result entirely rather than branching on the
 	// localized error text, which would break on non-English macOS.
-	_ = exec.Command("launchctl", "bootout", "gui/"+m.uid+"/"+launchLabel).Run()
+	_ = launchctlBootout(m.uid)
 
 	// #6044: bootout alone only clears the CURRENT session's loaded job — the
 	// plist on disk is untouched, and RunAtLoad fires again at the next
@@ -181,7 +218,14 @@ func (m *launchdManager) Unload() error {
 	// before bootstrap, so this has no effect on the ordinary
 	// install/start/restart Unload;Load cycle — it only matters for a caller
 	// (`grafel stop`) that stops WITHOUT a following Load.
-	_ = exec.Command("launchctl", "disable", "gui/"+m.uid+"/"+launchLabel).Run()
+	//
+	// The outcome is recorded (not discarded) on lastDisableErr: Unload's own
+	// contract stays best-effort (a disable hiccup must not fail
+	// ensureLoaded's restart/install path, which re-enables via Load()
+	// immediately afterward regardless), but stopService reads this field to
+	// decide whether it can honestly report the stop as persistent (#6044
+	// review item 3) instead of asserting that unconditionally.
+	m.lastDisableErr = launchctlDisable(m.uid)
 	return nil
 }
 
@@ -189,9 +233,11 @@ func (m *launchdManager) Load() error {
 	// Clear any persisted disable — from a prior `grafel stop`, or a stale
 	// state — before bootstrap. Without this, RunAtLoad silently does
 	// nothing on a disabled service and WaitReady times out with no
-	// explanation. See the disable call in Unload for the pairing.
-	_ = exec.Command("launchctl", "enable", "gui/"+m.uid+"/"+launchLabel).Run()
-	out, err := exec.Command("launchctl", "bootstrap", "gui/"+m.uid, m.plistPath).CombinedOutput()
+	// explanation. See the disable call in Unload for the pairing. Best
+	// effort like Unload's own disable: bootstrap immediately below is the
+	// real convergence signal, and a failed enable here does not block it.
+	_ = launchctlEnable(m.uid)
+	out, err := launchctlBootstrap(m.uid, m.plistPath)
 	if err != nil {
 		// bootstrap exits non-zero (err 5 / "already bootstrapped") when a
 		// previous bootout did not fully clear the service. The goal is "loaded";
@@ -251,13 +297,29 @@ func restartService(opts Options) (StatusInfo, error) {
 }
 
 // stopService is the macOS implementation of Stop: bootout + persistent
-// disable, then confirm the service is actually down (issue #6044).
+// disable, then confirm — by polling the daemon socket, not launchd-domain
+// membership — that the daemon is actually down (issue #6044 item 1).
+//
+// If the daemon is confirmed down but the disable call itself failed
+// (m.lastDisableErr), stop does NOT report the persistent-stop success —
+// it returns that failure instead (#6044 review item 3): the caller asked
+// for a stop that survives reboot/login, so failing to make it persistent is
+// a genuine failure of the requested operation, not a detail to gloss over
+// in the success message.
 func stopService(opts Options) (StatusInfo, error) {
 	sm, err := newServiceManager(opts)
 	if err != nil {
 		return StatusInfo{}, err
 	}
-	return stopConverge(sm)
+	st, err := stopConverge(context.Background(), sm, defaultReadiness, nil)
+	if err != nil {
+		return st, err
+	}
+	if lm, ok := sm.(*launchdManager); ok && lm.lastDisableErr != nil {
+		return st, fmt.Errorf("daemon stopped, but could not persist the stop across reboot/login "+
+			"(launchctl disable failed): %w", lm.lastDisableErr)
+	}
+	return st, nil
 }
 
 // uninstall is the macOS implementation of Uninstall: idempotent teardown.
@@ -266,7 +328,21 @@ func uninstall(opts Options) error {
 	if err != nil {
 		return err
 	}
-	return teardown(sm)
+	if err := teardown(sm); err != nil {
+		return err
+	}
+	// #6044 follow-up (review item 6): teardown's Unload() persists a
+	// `launchctl disable` override (see Unload's doc comment) so a bare
+	// `grafel stop` survives reboot. A full uninstall removes the plist
+	// entirely, so nothing on disk explains that override afterward — clear
+	// it so the label carries no residue past uninstall. Best-effort: this is
+	// cleanup, not the operation's success signal (RemoveArtifacts already
+	// succeeded by this point), and a fresh `grafel install` would write a
+	// new plist and re-enable via Load() regardless.
+	if lm, ok := sm.(*launchdManager); ok {
+		_ = launchctlEnable(lm.uid)
+	}
+	return nil
 }
 
 // registeredRoot is the macOS implementation: it reads the installed

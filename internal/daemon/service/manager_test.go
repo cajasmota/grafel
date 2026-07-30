@@ -39,6 +39,17 @@ type fakeManager struct {
 	// race against a bare RPC stop).
 	stubbornRunning bool
 	statusErr       error
+
+	// probeAlwaysUp forces Probe() to always report the daemon reachable,
+	// independent of loaded/probeReadyAfter/probeCalls — models the daemon's
+	// actual socket still answering regardless of what the service manager's
+	// domain membership says. This is the axis review item 1 (#6044) insists
+	// stopConverge trust: Status()/loaded reflects "is the job registered
+	// with the service manager", which can say "not running" for a daemon
+	// that isn't in that domain at all (started manually) yet is still very
+	// much alive. Checked before neverReady/probeReadyAfter so it composes
+	// cleanly with a fakeManager that also has loaded=false.
+	probeAlwaysUp bool
 }
 
 func (f *fakeManager) record(name string) {
@@ -84,7 +95,11 @@ func (f *fakeManager) Probe() bool {
 	f.mu.Lock()
 	f.probeCalls++
 	n := f.probeCalls
+	up := f.probeAlwaysUp
 	f.mu.Unlock()
+	if up {
+		return true
+	}
 	if f.neverReady {
 		return false
 	}
@@ -318,13 +333,16 @@ func TestTeardown_NotLoadedIsIdempotent(t *testing.T) {
 // --- stop (issue #6044) -----------------------------------------------------
 
 // TestStopConverge_UnloadsAndConfirmsDown is the fixture-validity anchor:
-// a well-behaved Unload actually clears f.loaded, so stopConverge must
-// observe Running=false and return success. Also confirms stopConverge never
-// touches RemoveArtifacts — stop must not delete the unit file (that is what
-// distinguishes it from uninstall/teardown).
+// a well-behaved stop actually makes the daemon socket stop responding
+// (Probe() goes false), so stopConverge must observe that and return
+// success. Also confirms stopConverge never touches RemoveArtifacts — stop
+// must not delete the unit file (that is what distinguishes it from
+// uninstall/teardown).
 func TestStopConverge_UnloadsAndConfirmsDown(t *testing.T) {
-	f := &fakeManager{loaded: true}
-	st, err := stopConverge(f)
+	// neverReady here means "Probe always reports false" — i.e. the daemon
+	// socket is confirmed gone, which is exactly the success condition.
+	f := &fakeManager{loaded: true, neverReady: true}
+	st, err := stopConverge(context.Background(), f, fastReadiness, nil)
 	if err != nil {
 		t.Fatalf("stopConverge: %v", err)
 	}
@@ -340,26 +358,45 @@ func TestStopConverge_UnloadsAndConfirmsDown(t *testing.T) {
 }
 
 // TestStopConverge_StubbornServiceReportsError is the OTHER direction of the
-// same fixture: prove stopConverge can and does fail when the service manager
-// still reports the daemon running after Unload — the exact #6044 shape
-// (KeepAlive/Restart respawning it faster than the caller can observe). This
-// pins requirement 3: stop must stop lying about its outcome.
+// same fixture: prove stopConverge can and does fail when the daemon socket
+// is STILL reachable after Unload — the exact #6044 shape (KeepAlive/Restart
+// respawning it faster than the caller can observe). This pins requirement
+// 3: stop must stop lying about its outcome.
 func TestStopConverge_StubbornServiceReportsError(t *testing.T) {
-	f := &fakeManager{loaded: true, stubbornRunning: true}
-	st, err := stopConverge(f)
+	f := &fakeManager{loaded: true, stubbornRunning: true, probeAlwaysUp: true}
+	st, err := stopConverge(context.Background(), f, fastReadiness, nil)
 	if err == nil {
-		t.Fatalf("expected stopConverge to report an error when the service manager still shows it running, got success %+v", st)
+		t.Fatalf("expected stopConverge to report an error when the daemon socket is still reachable, got success %+v", st)
 	}
 	if !st.Running {
 		t.Errorf("expected the returned status to still show Running=true (the honest observation), got %+v", st)
 	}
 }
 
+// TestStopConverge_TrustsProbeNotStatus is the #6044 review item-1 pin: a
+// service manager can report the job "not loaded"/"not running"
+// (Status().Running=false) while the daemon itself is still reachable — the
+// concrete failure was a daemon started manually, outside the service
+// manager's domain entirely, for which bootout is a silent, correct no-op
+// and Status() derived from domain membership is very nearly a tautological
+// "not running". stopConverge must trust Probe() (the real socket), not
+// Status(), and fail here even though Status alone would have said success.
+func TestStopConverge_TrustsProbeNotStatus(t *testing.T) {
+	f := &fakeManager{loaded: false, probeAlwaysUp: true} // Status: not running. Probe: still there.
+	if st, err := f.Status(); err != nil || st.Running {
+		t.Fatalf("fixture invalid: expected Status().Running=false pre-check, got %+v err=%v", st, err)
+	}
+	_, err := stopConverge(context.Background(), f, fastReadiness, nil)
+	if err == nil {
+		t.Fatal("expected stopConverge to fail: Probe (the real socket) still responds even though Status reports not-running")
+	}
+}
+
 // TestStopConverge_NotLoadedIsIdempotent: stopping an already-stopped service
 // succeeds (Unload treats not-loaded as success by contract).
 func TestStopConverge_NotLoadedIsIdempotent(t *testing.T) {
-	f := &fakeManager{loaded: false}
-	if _, err := stopConverge(f); err != nil {
+	f := &fakeManager{loaded: false, neverReady: true}
+	if _, err := stopConverge(context.Background(), f, fastReadiness, nil); err != nil {
 		t.Fatalf("stopConverge of an already-stopped service should succeed: %v", err)
 	}
 }
@@ -368,8 +405,24 @@ func TestStopConverge_NotLoadedIsIdempotent(t *testing.T) {
 // "already not loaded") must abort and be reported, not swallowed.
 func TestStopConverge_UnloadErrorPropagates(t *testing.T) {
 	f := &fakeManager{loaded: true, unloadErr: errors.New("launchctl bootout: permission denied")}
-	if _, err := stopConverge(f); err == nil {
+	if _, err := stopConverge(context.Background(), f, fastReadiness, nil); err == nil {
 		t.Fatal("expected Unload error to propagate")
+	}
+}
+
+// TestStopConverge_NeverStopsRespondingFailsAfterBudget: the daemon socket
+// never goes away — the timeout/budget path of waitStopped must still be
+// reached and reported (not hang forever, not silently succeed).
+func TestStopConverge_NeverStopsRespondingFailsAfterBudget(t *testing.T) {
+	f := &fakeManager{loaded: true, probeAlwaysUp: true}
+	cfg := readinessConfig{budget: 100 * time.Millisecond, interval: 10 * time.Millisecond}
+	start := time.Now()
+	_, err := stopConverge(context.Background(), f, cfg, nil)
+	if err == nil {
+		t.Fatal("expected stopConverge to fail when the daemon never stops responding")
+	}
+	if elapsed := time.Since(start); elapsed < cfg.budget {
+		t.Errorf("stopConverge gave up before the full budget elapsed (%s < %s)", elapsed, cfg.budget)
 	}
 }
 
@@ -377,8 +430,8 @@ func TestStopConverge_UnloadErrorPropagates(t *testing.T) {
 // query itself fails, stop must report that failure rather than silently
 // claiming success.
 func TestStopConverge_StatusErrorPropagates(t *testing.T) {
-	f := &fakeManager{loaded: true, statusErr: errors.New("launchctl list: boom")}
-	if _, err := stopConverge(f); err == nil {
+	f := &fakeManager{loaded: true, neverReady: true, statusErr: errors.New("launchctl list: boom")}
+	if _, err := stopConverge(context.Background(), f, fastReadiness, nil); err == nil {
 		t.Fatal("expected Status error to propagate")
 	}
 }

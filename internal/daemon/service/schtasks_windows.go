@@ -273,13 +273,14 @@ func restartService(opts Options) (StatusInfo, error) {
 
 // stopService is the Windows implementation of Stop: schtasks task deletion
 // (already persistent — the task will not fire at next logon) via Unload,
-// then confirm the daemon is actually down (issue #6044).
+// then confirm — by polling the daemon socket — that the daemon is actually
+// down (issue #6044).
 func stopService(opts Options) (StatusInfo, error) {
 	sm, err := newServiceManager(opts)
 	if err != nil {
 		return StatusInfo{}, err
 	}
-	return stopConverge(sm)
+	return stopConverge(context.Background(), sm, defaultReadiness, nil)
 }
 
 // uninstall is the Windows implementation of Uninstall.
