@@ -193,6 +193,17 @@ func restartService(opts Options) (StatusInfo, error) {
 	return restart(context.Background(), sm, defaultReadiness, nil)
 }
 
+// stopService is the Linux implementation of Stop: `systemctl disable --now`
+// (already persistent — survives the next boot) via Unload, then confirm —
+// by polling the daemon socket — that the daemon is actually down (#6044).
+func stopService(opts Options) (StatusInfo, error) {
+	sm, err := newServiceManager(opts)
+	if err != nil {
+		return StatusInfo{}, err
+	}
+	return stopConverge(context.Background(), sm, defaultReadiness, nil)
+}
+
 // uninstall is the Linux implementation of Uninstall.
 func uninstall(opts Options) error {
 	sm, err := newServiceManager(opts)

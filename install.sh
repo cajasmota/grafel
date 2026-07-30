@@ -221,13 +221,33 @@ restart_daemon() {
       uid=$(id -u)
       target="gui/${uid}/com.grafel.daemon"
       plist="$HOME/Library/LaunchAgents/com.grafel.daemon.plist"
-      # Detect a registered launchd agent (print, falling back to list).
-      if ! launchctl print "$target" >/dev/null 2>&1 &&
-         ! launchctl list 2>/dev/null | grep -q "com.grafel.daemon"; then
-        return 1
-      fi
-      if ! launchctl kickstart -k "$target" >/dev/null 2>&1; then
-        info "warning: failed to restart the grafel daemon; $hint" >&2
+      # Detect a registered (currently LOADED) launchd agent (print, falling
+      # back to list).
+      if launchctl print "$target" >/dev/null 2>&1 ||
+         launchctl list 2>/dev/null | grep -q "com.grafel.daemon"; then
+        if ! launchctl kickstart -k "$target" >/dev/null 2>&1; then
+          info "warning: failed to restart the grafel daemon; $hint" >&2
+          return 1
+        fi
+      elif [ -f "$plist" ]; then
+        # Not currently loaded, but a plist IS registered on disk — the
+        # #6044 shape: `grafel stop` pairs `launchctl bootout` with a
+        # persistent `launchctl disable` (so the stop survives reboot/
+        # logout, matching what Unload() does in
+        # internal/daemon/service/launchd_darwin.go), which is exactly why
+        # the print/list check above finds nothing. The OLD code treated
+        # that identically to "nothing registered at all" and gave up with
+        # only the generic post-install message — silently undoing nothing,
+        # but also silently NOT restarting a daemon the user has every
+        # reason to expect gets updated. Clear the disable (mirrors Load()
+        # in the Go service package) and bootstrap it back.
+        launchctl enable "$target" >/dev/null 2>&1 || true
+        if ! launchctl bootstrap "gui/${uid}" "$plist" >/dev/null 2>&1; then
+          info "warning: failed to restart the grafel daemon; $hint" >&2
+          return 1
+        fi
+      else
+        # No plist at all — nothing registered to restart.
         return 1
       fi
       ;;

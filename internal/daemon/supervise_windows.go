@@ -22,3 +22,9 @@ func engineChildSysProcAttr() *syscall.SysProcAttr {
 func signalTerminate(p *os.Process) error {
 	return p.Kill()
 }
+
+// signalKill mirrors signalTerminate on Windows: there is no POSIX group-kill
+// primitive here, so both escalation levels collapse to the same p.Kill().
+func signalKill(p *os.Process) error {
+	return p.Kill()
+}

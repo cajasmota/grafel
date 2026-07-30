@@ -131,6 +131,60 @@ func waitReady(ctx context.Context, probe func() bool, cfg readinessConfig, onPr
 	}
 }
 
+// errStillResponding is returned by waitStopped when the daemon endpoint is
+// still connectable after the full budget has elapsed.
+var errStillResponding = errors.New("daemon endpoint is still responding after stop")
+
+// waitStopped is the mirror image of waitReady: it polls probe until it
+// returns FALSE (endpoint no longer connectable) or the budget is exhausted.
+//
+// This exists because Status() alone is the WRONG axis to confirm a stop on
+// (issue #6044 review, item 1). On darwin, status() derives Running purely
+// from `launchctl list <label>`'s exit code — i.e. "is the job loaded in the
+// launchd domain", not "is the serve process still alive". Immediately after
+// Unload (bootout) the job is, by definition, no longer in the domain, so
+// Running=false there is very nearly a tautology: it would say "stopped" even
+// for a daemon that was started manually (never loaded in the domain to
+// begin with) and is still very much running. Probe() dials the actual
+// daemon socket — the same signal Install/Restart already trust for the
+// opposite question ("did it come up?") — so it is the axis that actually
+// answers "is the daemon still there".
+func waitStopped(ctx context.Context, probe func() bool, cfg readinessConfig, onProgress progressFn) error {
+	if cfg.budget <= 0 {
+		cfg.budget = defaultReadiness.budget
+	}
+	if cfg.interval <= 0 {
+		cfg.interval = defaultReadiness.interval
+	}
+
+	if !probe() {
+		return nil
+	}
+
+	deadline := time.Now().Add(cfg.budget)
+	ticker := time.NewTicker(cfg.interval)
+	defer ticker.Stop()
+
+	lastProgress := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for daemon endpoint to stop responding: %w", ctx.Err())
+		case <-ticker.C:
+			if !probe() {
+				return nil
+			}
+			if now := time.Now(); now.After(deadline) {
+				return fmt.Errorf("%w (%s)", errStillResponding, cfg.budget)
+			} else if now.Sub(lastProgress) >= 5*time.Second {
+				remaining := time.Until(deadline).Round(time.Second)
+				onProgress.emit("  waiting for the daemon socket to close… (%s remaining)", remaining)
+				lastProgress = now
+			}
+		}
+	}
+}
+
 // ensureLoaded converges the OS service to the loaded+ready state in an
 // idempotent, race-free way (issue #4458):
 //
@@ -178,6 +232,44 @@ func ensureLoaded(ctx context.Context, sm ServiceManager, cfg readinessConfig, o
 // reinstall) that semantically mean "restart".
 func restart(ctx context.Context, sm ServiceManager, cfg readinessConfig, onProgress progressFn) (StatusInfo, error) {
 	return ensureLoaded(ctx, sm, cfg, onProgress)
+}
+
+// stopConverge takes an installed service down NOW — Unload only, no Load —
+// and then CONFIRMS convergence by polling Probe() (the daemon's actual
+// socket, NOT Status()/launchd-domain membership — see waitStopped) before
+// returning success (issue #6044). This is the entry point `grafel stop`
+// routes through when an OS service is installed for this root, instead of
+// only sending the daemon an RPC and trusting it: launchd/systemd/schtasks
+// KeepAlive-equivalent respawn logic means an RPC-only stop can be undone
+// before the caller even sees the result, and the old `grafel stop` reported
+// success (exit 0) regardless (the same defect class as #5991's
+// `grafel reset`).
+//
+// Semantics: this is a PERSISTENT stop, not merely "kill the current
+// instance" — Unload on every platform backend already reaches for that
+// (launchd: bootout + disable so RunAtLoad does not fire at the next login;
+// systemd: `disable --now`; schtasks: task deletion), and the matching Load
+// unconditionally re-enables/recreates before starting, so a normal
+// install/start/restart cycle (Unload;Load) is unaffected — only a caller
+// that stops WITHOUT a following Load (this one) observes the persisted-down
+// state. `grafel start` is the explicit, symmetric way back.
+//
+// stopConverge does NOT call RemoveArtifacts — the unit/plist/task file is
+// left on disk so `grafel start` can re-register from it without needing
+// `grafel install` again. That is what distinguishes stop from uninstall.
+func stopConverge(ctx context.Context, sm ServiceManager, cfg readinessConfig, onProgress progressFn) (StatusInfo, error) {
+	if err := sm.Unload(); err != nil {
+		return StatusInfo{}, fmt.Errorf("unload service: %w", err)
+	}
+	if err := waitStopped(ctx, sm.Probe, cfg, onProgress); err != nil {
+		st, _ := sm.Status()
+		return st, fmt.Errorf("service manager unloaded the job, but the daemon is still reachable: %w", err)
+	}
+	st, err := sm.Status()
+	if err != nil {
+		return StatusInfo{}, fmt.Errorf("confirm service stopped: %w", err)
+	}
+	return st, nil
 }
 
 // teardown idempotently removes the service: Unload (treating not-loaded as

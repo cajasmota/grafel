@@ -61,6 +61,19 @@ Stopping the daemon also stops all services it manages:
   - Indexer + file-watcher
   - Dashboard HTTP server
 
+When the daemon is registered as an OS service (launchd on macOS, systemd on
+Linux, Task Scheduler on Windows — i.e. it was set up via 'grafel install'),
+stop goes through that service manager instead of only asking the daemon to
+exit over RPC: an RPC-only stop is undone almost immediately by the service
+manager's own keep-alive/restart behavior. Going through the service manager
+also makes stop PERSISTENT — it disables auto-start, so the daemon stays down
+across logout/reboot too, not just for the current session. 'grafel start'
+re-enables it.
+
+For a manually-started foreground daemon (no OS service installed), stop
+sends the shutdown RPC directly and waits to confirm the daemon actually
+exited before reporting success.
+
 Use 'grafel start' to bring everything back up.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDaemonStop(cmd.OutOrStdout())
@@ -120,7 +133,9 @@ func runDaemonRestart(out io.Writer) error {
 	// exact process exits (rather than racing a freshly-spawned one).
 	oldPID := daemon.ReadPIDFile(layout.PIDPath)
 
-	if err := runDaemonStop(out); err != nil && !errors.Is(err, client.ErrDaemonNotRunning) {
+	if err := runDaemonStop(out); err != nil &&
+		!errors.Is(err, client.ErrDaemonNotRunning) &&
+		!errors.Is(err, errStopNotConfirmed) {
 		return err
 	}
 
@@ -483,7 +498,48 @@ func pidStillAlive(pid int) bool {
 	return process.IsAlive(pid)
 }
 
+// serviceStopForThisRoot performs the OS-service-aware stop (launchctl
+// bootout+disable / systemctl disable --now / schtasks /delete) via
+// service.Stop, instead of only sending the daemon a Stop RPC and trusting
+// the result. Overridable for tests; production default is
+// defaultServiceStopForThisRoot.
+var serviceStopForThisRoot = defaultServiceStopForThisRoot
+
+func defaultServiceStopForThisRoot(out io.Writer) error {
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "OS service detected for this daemon; stopping via the OS service manager")
+	if _, err := service.Stop(service.Options{
+		SocketPath: layout.SocketPath,
+		LogDir:     layout.LogDir,
+	}); err != nil {
+		// #6044 review item 7: the RPC path's failure names a log to check
+		// (layout.LogPath); give the service path the same next step instead
+		// of leaving the user with only "service stop: <err>" and no idea
+		// what to do about it.
+		return fmt.Errorf("service stop: %w (check %s, or run 'grafel status')", err, layout.LogPath)
+	}
+	fmt.Fprintln(out, "daemon stopped (will not restart automatically — even across reboot — until 'grafel start')")
+	return nil
+}
+
 func runDaemonStop(out io.Writer) error {
+	// #6044: `start` is service-aware (it routes through the OS service
+	// manager when one is installed for this root, via
+	// serviceRestartForThisRoot); `stop` was not — it only asked the daemon
+	// to exit over RPC, and launchd's unconditional KeepAlive (or the
+	// systemd/schtasks equivalent) immediately respawned it, so the command
+	// reported "stop requested" and exit 0 over a daemon that came right
+	// back. Route through the same service manager start/restart use
+	// whenever one is installed for this root; only fall back to the
+	// RPC-only path for a manually-started foreground daemon (no OS service
+	// registered here).
+	if serviceInstalledForThisRoot() {
+		return serviceStopForThisRoot(out)
+	}
+
 	c, err := client.Dial()
 	if err != nil {
 		if errors.Is(err, client.ErrDaemonNotRunning) {
@@ -496,8 +552,63 @@ func runDaemonStop(out io.Writer) error {
 	if err := c.Stop(); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "stop requested")
+
+	// #6044 (same defect class as #5991's `grafel reset`): confirm the
+	// daemon actually exited instead of unconditionally reporting success. A
+	// manually-started foreground daemon has no service manager to respawn
+	// it, but a stuck shutdown or a slow drain should still be reported
+	// honestly rather than as "stop requested" over a daemon that, in fact,
+	// is still up.
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return err
+	}
+	if !waitForSocketGone(layout.SocketPath, stopConfirmTimeout) {
+		return fmt.Errorf("%w: stop requested but the daemon is still running after %s (check %s)",
+			errStopNotConfirmed, stopConfirmTimeout, layout.LogPath)
+	}
+	fmt.Fprintln(out, "daemon stopped")
 	return nil
+}
+
+// errStopNotConfirmed marks a stop RPC that was accepted but whose
+// completion runDaemonStop could not confirm within stopConfirmTimeout.
+// runDaemonRestart tolerates this specific error (like ErrDaemonNotRunning)
+// because it performs its own, more thorough pid-based wait + SIGKILL
+// escalation immediately afterward — this sentinel exists so `grafel stop`
+// itself can still report the honest failure (#6044) without that stricter
+// confirmation breaking restart's own slower-but-more-patient sequence.
+var errStopNotConfirmed = errors.New("stop not confirmed")
+
+// stopConfirmTimeout bounds how long the RPC-only stop path waits to confirm
+// the daemon's socket has actually gone away before reporting a failure. A
+// var (not a const) so tests can shrink it instead of waiting out the real
+// production budget; see stopConfirmTimeoutForTest in the test file.
+var stopConfirmTimeout = 5 * time.Second
+
+// waitForSocketGone polls until the daemon socket at socketPath is no longer
+// connectable (client.ErrDaemonNotRunning) or timeout elapses. Returns true
+// once confirmed gone.
+func waitForSocketGone(socketPath string, timeout time.Duration) bool {
+	gone := func() bool {
+		c, err := client.DialPath(socketPath)
+		if err != nil {
+			return errors.Is(err, client.ErrDaemonNotRunning)
+		}
+		_ = c.Close()
+		return false
+	}
+	if gone() {
+		return true
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+		if gone() {
+			return true
+		}
+	}
+	return false
 }
 
 func runDaemonLogs(out io.Writer, follow bool, tail int) error {

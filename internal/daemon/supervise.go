@@ -431,7 +431,7 @@ func (s *engineSupervisor) terminateChild(cmd *exec.Cmd, waitCh chan error) {
 	case <-timer.C:
 		s.logger.Warn("engine supervisor: engine child did not exit within drain window — SIGKILL",
 			"pid", pid, "timeout", s.drainTimeout)
-		_ = cmd.Process.Kill()
+		_ = signalKill(cmd.Process)
 		<-waitCh // reap
 	}
 	s.setChildPID(0)
