@@ -364,10 +364,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, waitEvent(m.evCh)
 
 	case metricsMsg:
-		// rssMB tracks the RUNNING PEAK, never a raw latest sample (#6047) — see
-		// indexView.rssMB's doc for why an unlabelled instant reading next to a
-		// frozen "Done" understates the run's actual high-water mark. cpuPct
-		// stays a plain live reading (no equivalent complaint for CPU%).
+		// rssMB tracks the RUNNING PEAK of the engine process, never a raw
+		// latest sample (#6047) — see indexView.rssMB's doc for why an
+		// unlabelled instant reading next to a frozen "Done" understates even
+		// the ENGINE's own high-water mark, let alone the whole run's (rssMB
+		// is scoped to the engine only — see the same doc for why "engine
+		// peak" is the honest label, not just "peak"). cpuPct stays a plain
+		// live reading (no equivalent complaint for CPU%).
 		if msg.RSSMB > m.idx.rssMB {
 			m.idx.rssMB = msg.RSSMB
 		}
@@ -502,6 +505,14 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// path so finishing early is consistent with waiting.
 			m.idx.applyRepoStats(m.idx.interimRepoStats)
 			m.idx.finalizeRows()
+			// Completion-honesty caveat (#6047 round 2): finishing early is,
+			// BY DEFINITION, leaving before the background enhancement pass
+			// has acked (queryable && !terminal means exactly that) — the
+			// queryableBanner the user was just looking at said so, and
+			// setting v.terminal above makes view() replace that banner with
+			// doneSummary. Without this line the caveat that banner carried
+			// is silently dropped the instant the user acts on it.
+			m.idx.outstanding = earlyFinishOutstandingCaveat
 			m.idx.finishedAt = time.Now()
 			m.scr = scrDone
 			m.step = StepDone

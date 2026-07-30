@@ -417,19 +417,27 @@ func TestIndexView_MetricSuffix_PresentAndAbsent(t *testing.T) {
 	}
 }
 
-// TestIndexView_MetricSuffix_LabelledAsPeak is the pinning test for #6047: the
-// RAM readout must be explicitly labelled "peak" — an unlabelled reading next
-// to a frozen "Done · 15m55s" reads as the run's total when it is really
-// whatever the engine happened to be using at whatever instant was last
-// polled, understating the real high-water mark by several times (per the
-// issue's measured 0.9GB-at-exit vs 1444MB engine-peak numbers).
-func TestIndexView_MetricSuffix_LabelledAsPeak(t *testing.T) {
+// TestIndexView_MetricSuffix_LabelledAsEnginePeak is the pinning test for
+// #6047 (corrected in round 2 review): the RAM readout must be explicitly
+// labelled "engine peak", not a bare "peak" — v.rssMB is scoped to the
+// engine process alone (internal/daemon/statuswriter.go populates it from
+// process.RSSBytes(os.Getpid())), while extraction runs in separate child OS
+// processes and is the dominant consumer (issue's own repro: extract child
+// peak 3411 MB vs. engine peak 1444 MB). An unqualified "peak 1.4 GB" would
+// be a second, still-wrong, now-falsifiable claim about the run's actual
+// maximum — the label must say exactly what it measures.
+func TestIndexView_MetricSuffix_LabelledAsEnginePeak(t *testing.T) {
 	v := newIndexView("grp", 1)
 	v.width = 100
 	v.foldEvent(progress.Event{RepoSlug: "backend", Phase: progress.PhaseExtractAST, FilesDone: 1, FilesTotal: 10, TS: 1})
 	v.rssMB = 2355
 	out := v.metricSuffix()
-	if !strings.Contains(out, "peak 2.3 GB") {
-		t.Errorf("metricSuffix must label the RSS reading as \"peak\":\n%s", out)
+	if !strings.Contains(out, "engine peak 2.3 GB") {
+		t.Errorf("metricSuffix must label the RSS reading as \"engine peak\":\n%s", out)
+	}
+	// A bare, unscoped "peak" (without "engine") would silently reintroduce
+	// the over-broad claim this fix corrects.
+	if strings.Count(out, "peak") != 1 {
+		t.Errorf("expected exactly one \"peak\" occurrence (as part of \"engine peak\"):\n%s", out)
 	}
 }

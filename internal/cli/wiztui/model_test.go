@@ -463,6 +463,56 @@ func TestModel_EnterInQueryableState_FinishesWithInterimStats(t *testing.T) {
 	}
 }
 
+// TestModel_EnterEarly_CarriesOutstandingCaveat is the pinning test for #6047
+// round 2 finding 1 (reviewer probe, reproduced verbatim): pressing enter
+// from the queryable/interim sub-state (background enhancement pass has, BY
+// CONSTRUCTION, not yet acked) must land on a done screen that still says so
+// — not a bare "Done" that is strictly less honest than the queryableBanner
+// the user was just looking at.
+func TestModel_EnterEarly_CarriesOutstandingCaveat(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 777, Rels: 33}))
+	if m.scr != scrIndex {
+		t.Fatalf("scr = %v, want scrIndex after interim", m.scr)
+	}
+
+	// BEFORE enter: the banner is on screen and honestly says enhancement is
+	// still running.
+	before := m.idx.view()
+	if !strings.Contains(before, "enhancing relationships in the background") {
+		t.Fatalf("queryableBanner missing before enter:\n%s", before)
+	}
+
+	m = m.update(key("enter"))
+
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone after enter in queryable state", m.scr)
+	}
+	if m.idx.outstanding == "" {
+		t.Fatal("idx.outstanding empty after finishing early — the banner's honesty was silently dropped")
+	}
+	after := m.idx.view()
+	if !strings.Contains(after, "still running") {
+		t.Errorf("done screen after early finish must still name outstanding work:\n%s", after)
+	}
+}
+
+// TestModel_NormalTerminalOutcome_DoesNotUseEarlyFinishCaveat proves the
+// early-finish caveat is scoped to the enter-early path only: a NORMAL
+// terminal outcome (no interim, straight to Done, nothing outstanding) must
+// render no caveat at all — the fixture that pins the opposite direction of
+// TestModel_EnterEarly_CarriesOutstandingCaveat.
+func TestModel_NormalTerminalOutcome_DoesNotUseEarlyFinishCaveat(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Entities: 777, Rels: 33}))
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone", m.scr)
+	}
+	if m.idx.outstanding != "" {
+		t.Errorf("idx.outstanding = %q, want empty on a plain terminal outcome with nothing outstanding", m.idx.outstanding)
+	}
+}
+
 // TestModel_EnterEarlyAppliesInterimRepoStats: when the user finishes early
 // from the queryable state, the interim outcome's per-repo classify stats must
 // be overlaid onto the rows — otherwise a repo that emitted zero progress
