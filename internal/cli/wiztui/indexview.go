@@ -85,17 +85,82 @@ type indexView struct {
 	// bgAnimDir is the current direction (+1 or -1) of the bgPct sweep.
 	bgAnimDir float64
 
-	// rssMB / cpuPct are the engine process's live CPU/RAM readout (wizard
-	// CPU/RAM readout — see internal/statusfile.File's RSSMB/CPUPct doc),
-	// polled periodically from the engine-liveness status-plane sidecar via
-	// Model's metricsFn (see model.go). Zero/absent means "unknown or not yet
-	// polled" and the readout is omitted entirely — never rendered as a
-	// misleading 0%/0.0 GB. rssMB is the must-have signal (it shows the
-	// multi-GB enrichment-phase peak); cpuPct is best-effort and independently
-	// omittable.
+	// rssMB / cpuPct are the ENGINE process's CPU/RAM readout (wizard CPU/RAM
+	// readout — see internal/statusfile.File's RSSMB/CPUPct doc), polled
+	// periodically from the engine-liveness status-plane sidecar via Model's
+	// metricsFn (see model.go). Zero/absent means "unknown or not yet polled"
+	// and the readout is omitted entirely — never rendered as a misleading
+	// 0%/0.0 GB.
+	//
+	// rssMB is the RUNNING PEAK of that ONE process, not the latest
+	// instantaneous sample (#6047 round 1) and NOT the whole run's footprint
+	// (#6047 round 2 correction): Model's metricsMsg handler only ever raises
+	// it, never lowers it, so it tracks the engine's own high-water mark
+	// instead of whatever it happened to be using at the exact instant the
+	// wizard polled last.
+	//
+	// It is still explicitly SCOPED to the engine (internal/daemon/
+	// statuswriter.go populates the sidecar field from
+	// process.RSSBytes(os.Getpid()) — the writing process alone), which is
+	// NOT the whole run: extraction runs in separate child OS processes and
+	// is the dominant consumer (measured on #6047's own repro: extract child
+	// peak 3411 MB vs. engine peak 1444 MB, whole-installation peak 3525 MB —
+	// the engine alone is under half the true peak). Aggregating the extract
+	// children's own RSS is NOT done here: their self-reported figure
+	// (extract/subproc.go, runtime.MemStats.Sys) excludes the CGO/tree-sitter
+	// heap that dominates that process, so it would need its own fix first —
+	// filed separately as #6048, out of scope here. metricSuffix therefore
+	// labels this reading "engine peak", not just "peak" — an unqualified
+	// "peak" would be a second, differently-wrong claim about the run's
+	// actual maximum (understating it by roughly the same ~2.5x the original
+	// instantaneous-at-exit reading did). cpuPct stays a live instantaneous
+	// engine reading (best-effort, independently omittable) — there is no
+	// equivalent "peak CPU%" complaint from #6047, and peak-CPU% is a much
+	// noisier, less meaningful number than peak RSS.
 	rssMB  int64
 	cpuPct float64
+
+	// outstanding names the post-extraction stage(s) (group-algo / links /
+	// analytics) for this group that were still running or pending the
+	// instant the wizard's terminal outcome landed, in the same vocabulary
+	// `grafel status`'s annotation/stage_gate lines use (#6047) — or "" when
+	// nothing was outstanding (the common case: a small group, or an
+	// already-warm overlay). The wizard deliberately does NOT block on this:
+	// the graph itself is queryable the instant extraction + the cross-repo
+	// link merge finish, and waiting for the community/pagerank/centrality
+	// overlay too would turn a ~16-minute run into a ~26-minute one for no
+	// user benefit. This is purely a completion-honesty caveat appended to
+	// doneSummary, set once — either from IndexOutcome.Outstanding on a
+	// normal terminal outcome (a fresh daemon status query, see
+	// wizard_outstanding.go), or to earlyFinishOutstandingCaveat when the
+	// user finishes EARLY via enter from the queryable sub-state (see
+	// Model's updateKey scrIndex case — that path has no outcome to read
+	// Outstanding from, but by construction — queryable && !terminal — the
+	// background enhancement pass has NOT yet acked, so the caveat is
+	// unconditional there, not queried) — never updated afterward (the
+	// wizard has already exited its polling loops by then).
+	outstanding string
 }
+
+// earlyFinishOutstandingCaveat is the completion-honesty caveat (#6047 round
+// 2) shown when the user finishes EARLY from the queryable/interim sub-state
+// (enter pressed before the background enhancement pass has acked — see
+// Model's updateKey scrIndex case). Before enter, that sub-state is rendered
+// by queryableBanner ("Graph queryable ... enhancing relationships in the
+// background"); pressing enter sets v.terminal, which makes view() dispatch
+// to doneSummary INSTEAD (see view()'s v.terminal/v.queryable branch order)
+// — so without this, the banner's honesty is simply discarded the moment the
+// user acts on it, landing on a screen that claims plain "Done" while the
+// same background work the banner just described is still running.
+//
+// Unlike the normal terminal-outcome caveat (computed by the cli package
+// from a fresh daemon status query and able to name specific stages — see
+// wizard_outstanding.go's outstandingCaveat), finishing early has, BY
+// CONSTRUCTION, no such query available: queryable && !terminal means the
+// engine has not yet acked the background enhancement pass, full stop, so
+// this is a fixed, honest caveat rather than a queried one — phrased with
+// the SAME "graph itself is queryable" wording `grafel status` uses.
+const earlyFinishOutstandingCaveat = "background enhancement still running (communities/pagerank/centrality overlay not yet current; the graph itself is queryable)"
 
 func newIndexView(group string, expectedRepos int) indexView {
 	b := progress.New(
@@ -352,11 +417,27 @@ func (v indexView) renderRow(r Row, spinnerFrame string) string {
 	return fmt.Sprintf("%s %s  %s%s", glyph, name, phase, tail)
 }
 
-// metricSuffix renders the live "CPU / RAM" readout that appears to the right
-// of the overall progress bar's percentage — reassurance that a large-monorepo
-// rebuild's multi-minute post-index enrichment phase (where the bar sits near
-// 100% for a long stretch) is still doing real work, not stuck (motivation for
-// this whole feature).
+// metricSuffix renders the live "CPU / peak RAM" readout that appears to the
+// right of the overall progress bar's percentage — reassurance that a
+// large-monorepo rebuild's multi-minute post-index enrichment phase (where the
+// bar sits near 100% for a long stretch) is still doing real work, not stuck
+// (motivation for this whole feature).
+//
+// The RAM figure is explicitly labelled "engine peak" (#6047, corrected in
+// round 2 review from a bare "peak"): v.rssMB is the max of every poll this
+// run has seen (see indexView.rssMB's doc) — fixing the original "live
+// instant read as a total" defect — but it is ONLY the wizard-owning engine
+// process, not the whole run. Extraction runs in separate child OS processes
+// and is the DOMINANT consumer (measured on #6047's own repro: extract child
+// peak 3411 MB vs. engine peak 1444 MB): an unqualified "peak 1.4 GB" would
+// be a new, still-wrong, now-FALSIFIABLE claim about the run's actual
+// maximum — worse than the original unlabelled instant, not better. "engine
+// peak" is the honest, cheap label: true of what it names, silent about what
+// it doesn't cover (aggregating the extract children is #6048, not this
+// file's scope — see indexView.rssMB's doc for why). cpuPct stays a live
+// instantaneous reading, so it keeps its plain "CPU" label rather than "peak
+// CPU" (no equivalent complaint, and a live number still reads correctly as
+// a live number even while indexing is ongoing).
 //
 // Omits gracefully: an absent/zero rssMB (old status file predating this
 // field, engine metric read failed, or no poll has landed yet) returns "" and
@@ -371,9 +452,9 @@ func (v indexView) metricSuffix() string {
 	gb := float64(v.rssMB) / 1024.0
 	var text string
 	if v.cpuPct > 0 {
-		text = fmt.Sprintf("%s CPU %.0f%% %s %.1f GB", g.MidDot, v.cpuPct, g.MidDot, gb)
+		text = fmt.Sprintf("%s CPU %.0f%% %s engine peak %.1f GB", g.MidDot, v.cpuPct, g.MidDot, gb)
 	} else {
-		text = fmt.Sprintf("%s %.1f GB", g.MidDot, gb)
+		text = fmt.Sprintf("%s engine peak %.1f GB", g.MidDot, gb)
 	}
 	return "  " + rowCountStyle.Render(text)
 }
@@ -576,6 +657,17 @@ func (v indexView) doneSummary() string {
 	for _, w := range v.install.WatcherWarnings {
 		b.WriteString("\n")
 		b.WriteString(rowWarnStyle.Render(g.Warn + " " + w))
+	}
+
+	// Completion-honesty caveat (#6047): "Done" covers extraction + the
+	// cross-repo link merge — the graph itself is queryable — but the
+	// community/pagerank/centrality overlay (and, while links itself is the
+	// outstanding stage, cross-repo edges/flows) may still be computing in the
+	// background. Silent when nothing was outstanding at completion (the
+	// common case), never printed for a failed/daemon-down outcome.
+	if v.outstanding != "" {
+		b.WriteString("\n")
+		b.WriteString(rowWarnStyle.Render(g.Warn + " " + v.outstanding))
 	}
 
 	return b.String()

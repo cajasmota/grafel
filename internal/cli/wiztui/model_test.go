@@ -1,6 +1,7 @@
 package wiztui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -462,6 +463,56 @@ func TestModel_EnterInQueryableState_FinishesWithInterimStats(t *testing.T) {
 	}
 }
 
+// TestModel_EnterEarly_CarriesOutstandingCaveat is the pinning test for #6047
+// round 2 finding 1 (reviewer probe, reproduced verbatim): pressing enter
+// from the queryable/interim sub-state (background enhancement pass has, BY
+// CONSTRUCTION, not yet acked) must land on a done screen that still says so
+// — not a bare "Done" that is strictly less honest than the queryableBanner
+// the user was just looking at.
+func TestModel_EnterEarly_CarriesOutstandingCaveat(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 777, Rels: 33}))
+	if m.scr != scrIndex {
+		t.Fatalf("scr = %v, want scrIndex after interim", m.scr)
+	}
+
+	// BEFORE enter: the banner is on screen and honestly says enhancement is
+	// still running.
+	before := m.idx.view()
+	if !strings.Contains(before, "enhancing relationships in the background") {
+		t.Fatalf("queryableBanner missing before enter:\n%s", before)
+	}
+
+	m = m.update(key("enter"))
+
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone after enter in queryable state", m.scr)
+	}
+	if m.idx.outstanding == "" {
+		t.Fatal("idx.outstanding empty after finishing early — the banner's honesty was silently dropped")
+	}
+	after := m.idx.view()
+	if !strings.Contains(after, "still running") {
+		t.Errorf("done screen after early finish must still name outstanding work:\n%s", after)
+	}
+}
+
+// TestModel_NormalTerminalOutcome_DoesNotUseEarlyFinishCaveat proves the
+// early-finish caveat is scoped to the enter-early path only: a NORMAL
+// terminal outcome (no interim, straight to Done, nothing outstanding) must
+// render no caveat at all — the fixture that pins the opposite direction of
+// TestModel_EnterEarly_CarriesOutstandingCaveat.
+func TestModel_NormalTerminalOutcome_DoesNotUseEarlyFinishCaveat(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Entities: 777, Rels: 33}))
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone", m.scr)
+	}
+	if m.idx.outstanding != "" {
+		t.Errorf("idx.outstanding = %q, want empty on a plain terminal outcome with nothing outstanding", m.idx.outstanding)
+	}
+}
+
 // TestModel_EnterEarlyAppliesInterimRepoStats: when the user finishes early
 // from the queryable state, the interim outcome's per-repo classify stats must
 // be overlaid onto the rows — otherwise a repo that emitted zero progress
@@ -537,6 +588,93 @@ func TestModel_FinalOutcomeAfterInterim_ReachesDoneWithFinalStats(t *testing.T) 
 	}
 	if m.idx.elapsed != "5m00s" {
 		t.Errorf("final elapsed not applied: %q", m.idx.elapsed)
+	}
+}
+
+// TestModel_TerminalOutcome_CarriesOutstandingCaveat is the pinning test for
+// #6047 direction 1: a terminal outcome that names an outstanding
+// post-extraction stage must have that caveat applied to idx.outstanding —
+// and it must render on the done screen (proving the fixture CAN exhibit an
+// outstanding stage, not just that the field exists).
+func TestModel_TerminalOutcome_CarriesOutstandingCaveat(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	const caveat = "still running: group-algo, links  (communities/pagerank/centrality overlay not yet current; the graph itself is queryable)"
+	m = m.update(outcomeMsg(IndexOutcome{Entities: 500, Rels: 90, Outstanding: caveat}))
+
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone", m.scr)
+	}
+	if m.idx.outstanding != caveat {
+		t.Errorf("idx.outstanding = %q, want %q", m.idx.outstanding, caveat)
+	}
+	// Use idx.view() (the unframed body), not the outer m.View() — the outer
+	// frame word-wraps to the terminal width, which would break this long
+	// caveat across lines and defeat a plain substring check.
+	if out := m.idx.view(); !strings.Contains(out, caveat) {
+		t.Errorf("done screen missing outstanding caveat:\n%s", out)
+	}
+}
+
+// TestModel_TerminalOutcome_NoOutstanding_RendersNoCaveat is the pinning test
+// for #6047 direction 2: a terminal outcome with NO outstanding stage
+// (Outstanding=="") must leave idx.outstanding empty and the done screen must
+// not print any "still running" text — proving the same code path can also
+// exhibit the "nothing outstanding" outcome, not just the caveat one.
+func TestModel_TerminalOutcome_NoOutstanding_RendersNoCaveat(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Entities: 500, Rels: 90}))
+
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone", m.scr)
+	}
+	if m.idx.outstanding != "" {
+		t.Errorf("idx.outstanding = %q, want empty", m.idx.outstanding)
+	}
+	if out := m.idx.view(); strings.Contains(out, "still running") {
+		t.Errorf("done screen rendered a caveat with nothing outstanding:\n%s", out)
+	}
+}
+
+// TestModel_TerminalOutcome_DaemonDown_SuppressesOutstanding: a DaemonDown
+// completion (nothing was actually indexed) must never surface an outstanding
+// caveat even if the IndexOutcome carried one — there is nothing running to
+// name.
+func TestModel_TerminalOutcome_DaemonDown_SuppressesOutstanding(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{DaemonDown: true, Outstanding: "still running: group-algo  (bogus)"}))
+
+	if m.idx.outstanding != "" {
+		t.Errorf("idx.outstanding = %q, want empty on DaemonDown", m.idx.outstanding)
+	}
+}
+
+// TestModel_MetricsMsg_TracksPeakNotLatest is the pinning test for #6047's
+// memory-readout fix: rssMB must track the RUNNING MAX across polls, not the
+// latest sample — a poll reporting a LOWER RSS than a previous one (the
+// realistic shape: RSS falls once the enrichment phase finishes and buffers
+// are released) must not lower the displayed figure.
+func TestModel_MetricsMsg_TracksPeakNotLatest(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+
+	m = m.update(metricsMsg(Metrics{RSSMB: 900, CPUPct: 10}))
+	if m.idx.rssMB != 900 {
+		t.Fatalf("rssMB = %d, want 900 after first poll", m.idx.rssMB)
+	}
+
+	m = m.update(metricsMsg(Metrics{RSSMB: 1444, CPUPct: 300}))
+	if m.idx.rssMB != 1444 {
+		t.Fatalf("rssMB = %d, want 1444 (the higher mid-run sample)", m.idx.rssMB)
+	}
+
+	// A later, LOWER sample (RSS falling post-enrichment) must not regress
+	// the displayed peak.
+	m = m.update(metricsMsg(Metrics{RSSMB: 900, CPUPct: 5}))
+	if m.idx.rssMB != 1444 {
+		t.Errorf("rssMB = %d, want 1444 (must not regress to a later, lower sample)", m.idx.rssMB)
+	}
+	// cpuPct stays a live instantaneous reading, unlike rssMB.
+	if m.idx.cpuPct != 5 {
+		t.Errorf("cpuPct = %v, want 5 (a live reading, not a peak)", m.idx.cpuPct)
 	}
 }
 

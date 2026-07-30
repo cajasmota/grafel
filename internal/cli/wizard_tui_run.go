@@ -404,7 +404,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 		if !perRepoRows {
 			o.repoStats = nil // monorepo: suppress the aggregate-as-repo-row overlay
 		}
-		outCh <- toIndexOutcome(o, summary)
+		outCh <- toIndexOutcome(o, summary, c.Status, group)
 		return
 	}
 
@@ -421,7 +421,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 			rpcCh := triggerRebuild(c, group, token)
 			o := forwardBrokerToChannel(ctx, sseCh, rpcCh, evCh)
 			cancel()
-			outCh <- toIndexOutcome(o, summary)
+			outCh <- toIndexOutcome(o, summary, c.Status, group)
 			return
 		}
 	}
@@ -429,7 +429,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 	// No dashboard broker — just trigger the rebuild and wait for the outcome.
 	rpcCh := triggerRebuild(c, group, token)
 	o := <-rpcCh
-	outCh <- toIndexOutcome(o, summary)
+	outCh <- toIndexOutcome(o, summary, c.Status, group)
 }
 
 // triggerRebuild fires the daemon Rebuild RPC for group on a goroutine and
@@ -523,8 +523,21 @@ func jsonUnmarshalEvent(data string, e *progress.Event) bool {
 }
 
 // toIndexOutcome maps a rebuildOutcome to the TUI's terminal IndexOutcome,
-// attaching the captured install summary so the Done screen renders it.
-func toIndexOutcome(o rebuildOutcome, summary wiztui.InstallSummary) wiztui.IndexOutcome {
+// attaching the captured install summary so the Done screen renders it. On a
+// genuine success it also attaches the completion-honesty caveat (#6047) by
+// querying the daemon's status ONE more time via fetch for group —
+// best-effort, see attachOutstandingWith's doc; never attempted on an error
+// outcome, since nothing was indexed to have an outstanding stage.
+//
+// fetch is a statusFetcher (production always passes c.Status, never a
+// *client.Client directly) — #6047 review round 3: taking the client
+// directly here let a mutation that bypassed attachOutstandingWith entirely
+// (calling attachOutstanding's nil-check and stopping) still leave the whole
+// suite green, since nothing exercised toIndexOutcome with anything other
+// than a nil client. Taking the narrower statusFetcher type means a fake in
+// wizard_split_progress_test.go's toIndexOutcome tests now exercises the
+// exact same seam production does, closing that gap.
+func toIndexOutcome(o rebuildOutcome, summary wiztui.InstallSummary, fetch statusFetcher, group string) wiztui.IndexOutcome {
 	if o.err != nil {
 		return wiztui.IndexOutcome{Err: o.err, Install: summary}
 	}
@@ -533,11 +546,12 @@ func toIndexOutcome(o rebuildOutcome, summary wiztui.InstallSummary) wiztui.Inde
 		elapsed = fmtDuration(time.Duration(o.elapsed * float64(time.Second)))
 	}
 	return wiztui.IndexOutcome{
-		Entities:  o.entities,
-		Rels:      o.rels,
-		Elapsed:   elapsed,
-		Install:   summary,
-		RepoStats: toWiztuiRepoStats(o.repoStats),
+		Entities:    o.entities,
+		Rels:        o.rels,
+		Elapsed:     elapsed,
+		Install:     summary,
+		RepoStats:   toWiztuiRepoStats(o.repoStats),
+		Outstanding: attachOutstandingWith(fetch, group),
 	}
 }
 

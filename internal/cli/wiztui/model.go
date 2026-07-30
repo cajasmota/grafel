@@ -117,6 +117,17 @@ type IndexOutcome struct {
 	// nil/empty in monolith mode, which has no per-repo classify — rows there
 	// fall back entirely to finalizeRows.
 	RepoStats []RepoStat
+
+	// Outstanding names the post-extraction stage(s) (group-algo / links) for
+	// this group that were still running or pending the instant this outcome
+	// was produced, phrased in the same vocabulary `grafel status`'s
+	// annotation/stage_gate lines use — or "" when nothing was outstanding
+	// (#6047). Only meaningful on a terminal, successful (Err==nil,
+	// !DaemonDown) outcome; the cli package is responsible for querying the
+	// daemon's status and leaves it "" when the query itself fails (a
+	// best-effort caveat, never a reason to fail or delay completion). See
+	// indexView.outstanding's doc for how it renders.
+	Outstanding string
 }
 
 // RepoStat is one selected repo's final classified result (see
@@ -353,7 +364,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, waitEvent(m.evCh)
 
 	case metricsMsg:
-		m.idx.rssMB = msg.RSSMB
+		// rssMB tracks the RUNNING PEAK of the engine process, never a raw
+		// latest sample (#6047) — see indexView.rssMB's doc for why an
+		// unlabelled instant reading next to a frozen "Done" understates even
+		// the ENGINE's own high-water mark, let alone the whole run's (rssMB
+		// is scoped to the engine only — see the same doc for why "engine
+		// peak" is the honest label, not just "peak"). cpuPct stays a plain
+		// live reading (no equivalent complaint for CPU%).
+		if msg.RSSMB > m.idx.rssMB {
+			m.idx.rssMB = msg.RSSMB
+		}
 		m.idx.cpuPct = msg.CPUPct
 		if m.idx.done() {
 			// Index screen is finished (Done/Failed) — stop polling rather
@@ -412,6 +432,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// still on an intermediate phase to Done — its final SSE events may
 			// have arrived after the RPC returned and been dropped (#5340).
 			m.idx.finalizeRows()
+			// Completion-honesty caveat (#6047): only meaningful when the group
+			// was genuinely indexed (not DaemonDown — nothing ran, so nothing
+			// can be outstanding). The cli package already leaves Outstanding ""
+			// in that case, but gate on it here too so wiztui's own invariant
+			// doesn't depend on the caller getting that right.
+			if !o.DaemonDown {
+				m.idx.outstanding = o.Outstanding
+			}
 		}
 		m.idx.finishedAt = time.Now()
 		m.scr = scrDone
@@ -470,6 +498,17 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// already-captured interim stats — the alternative to just waiting for
 		// the final outcome to land on its own.
 		if msg.String() == "enter" && m.idx.queryable && !m.idx.terminal {
+			// #6047 round 3, acknowledged not addressed: !m.idx.terminal here
+			// only reflects what THIS model has already processed off outCh —
+			// the real terminal outcome can already be sitting in outCh,
+			// unread, at the exact instant this keypress lands (waitOutcome's
+			// receive and this Update call are two separate tea.Msg
+			// deliveries). In that millisecond-scale window the background
+			// pass may have already acked for real, and this still prints the
+			// earlyFinishOutstandingCaveat below for work that just finished.
+			// Errs toward caution (a stale caveat, never a missing one) and
+			// is far narrower than the defect this file fixes, so it is left
+			// as a known, LOW-severity gap rather than chased here.
 			m.idx.terminal = true
 			// Overlay the interim classify's per-repo stats FIRST (so a repo
 			// that emitted no progress events shows its real count, not 0),
@@ -477,6 +516,14 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// path so finishing early is consistent with waiting.
 			m.idx.applyRepoStats(m.idx.interimRepoStats)
 			m.idx.finalizeRows()
+			// Completion-honesty caveat (#6047 round 2): finishing early is,
+			// BY DEFINITION, leaving before the background enhancement pass
+			// has acked (queryable && !terminal means exactly that) — the
+			// queryableBanner the user was just looking at said so, and
+			// setting v.terminal above makes view() replace that banner with
+			// doneSummary. Without this line the caveat that banner carried
+			// is silently dropped the instant the user acts on it.
+			m.idx.outstanding = earlyFinishOutstandingCaveat
 			m.idx.finishedAt = time.Now()
 			m.scr = scrDone
 			m.step = StepDone

@@ -266,6 +266,37 @@ func TestIndexView_DoneSummary_Commafied(t *testing.T) {
 	}
 }
 
+// TestIndexView_DoneSummary_OutstandingCaveat_PresentAndAbsent is the pinning
+// test for #6047's completion-honesty caveat: doneSummary must render the
+// outstanding-stage line when v.outstanding is set (a fixture WITH an
+// outstanding post-extraction stage), and must NOT render it — nor any stray
+// "still running"/overlay text — when v.outstanding is empty (a fixture with
+// none). Both directions are asserted against the SAME base view so neither
+// branch is a fixture that can only ever prove one outcome.
+func TestIndexView_DoneSummary_OutstandingCaveat_PresentAndAbsent(t *testing.T) {
+	base := newIndexView("grp", 1)
+	base.terminal = true
+	base.summaryEntities = 100
+	base.summaryRels = 200
+
+	// Direction 1: nothing outstanding — the caveat must be absent entirely.
+	clean := base
+	clean.outstanding = ""
+	cleanOut := clean.doneSummary()
+	if strings.Contains(cleanOut, "still running") {
+		t.Errorf("doneSummary rendered a caveat with nothing outstanding:\n%s", cleanOut)
+	}
+
+	// Direction 2: an outstanding stage — the exact caveat text must render.
+	caveat := "still running: group-algo  (communities/pagerank/centrality overlay not yet current; the graph itself is queryable)"
+	dirty := base
+	dirty.outstanding = caveat
+	dirtyOut := dirty.doneSummary()
+	if !strings.Contains(dirtyOut, caveat) {
+		t.Errorf("doneSummary missing outstanding caveat:\ngot:\n%s\nwant substring:\n%s", dirtyOut, caveat)
+	}
+}
+
 // TestRenderRow_FilesCountCommafied asserts the per-row files-done/total and
 // entities-so-far counters render with thousands separators.
 func TestRenderRow_FilesCountCommafied(t *testing.T) {
