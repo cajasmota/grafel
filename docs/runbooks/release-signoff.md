@@ -49,17 +49,25 @@ ladder. Run it on real hardware for each release.
       **Triaging a red run — known flake.** `internal/daemon` has a
       *pre-existing* family of test-seam data races that `-race` reports at
       roughly **1 run in 8**, i.e. ~1 dispatch in 3 reds at least one OS leg.
-      The shape is a plain package-var timeout seam written by a test while a
-      live goroutine reads it: `rebuildRPCTimeout` (written by
+      The shape is a plain package-var seam written by a test while a live
+      goroutine reads it: `rebuildRPCTimeout` (written by
       `rebuild_singleflight_test.go`, read from the `net/rpc` serving goroutine
       in `service.go`, failing `TestRebuild_SingleFlight_NoConcurrentOverlap`),
-      and the `rebuildWaitTimeout` / `rebuildWaitInterval` /
-      `rebuildStartupWindow` / `rebuildStaleAfter` group documented at
-      `internal/daemon/rebuild_wait.go`. If a red run's `WARNING: DATA RACE`
-      names one of those vars, it is the known flake — **re-dispatch**, and do
-      not treat it as a release blocker. Anything else is real: read the report
-      before deciding. Tracked separately; when that family is fixed, delete
-      this paragraph rather than letting it excuse a future failure.
+      plus the group declared in `internal/daemon/rebuild_wait.go` —
+      `rebuildWaitTimeout`, `rebuildWaitInterval`, `rebuildWaitStartupWindow`,
+      `rebuildWaitStaleAfter`, `rebuildWaitClock` and `rebuildEngineAliveFn`.
+
+      **Match the report against those exact identifiers.** The instruction
+      below is scoped by name, which is the only reason it is safe — it cannot
+      launder an unrelated race. A misspelled name in this list breaks that
+      property rather than merely being untidy, so every name here has been
+      grepped against the tree; re-grep before editing it.
+
+      If a red run's `WARNING: DATA RACE` names one of those vars, it is the
+      known flake — **re-dispatch**, and do not treat it as a release blocker.
+      Anything else is real: read the report before deciding. Tracked
+      separately; when that family is fixed, delete this paragraph rather than
+      letting it excuse a future failure.
 - [ ] `CHANGELOG.md` has a `[X.Y.Z] — YYYY-MM-DD` section; `[Unreleased]` is
       drained.
 - [ ] `go build ./...` and `go vet ./...` are clean locally.

@@ -111,27 +111,29 @@ func TestBackgroundAlgoSeams_ConcurrentSetAndRead(t *testing.T) {
 // worth recording, because "the fix made the latent bug catchable" is the only
 // reason this test can exist at all.
 //
-// Two ingredients make the window reachable, and both are load-bearing:
+// THREE ingredients make the window reachable. Each has been verified
+// load-bearing by mutating it away:
 //
 //  1. A CLOSED channel as the installed gate. Every other fixture installs
 //     either an open channel (the sweep parks on load #2 and never returns) or
 //     nil (load #1 is false, so load #2 never executes). Neither traverses the
 //     window more than once. A closed channel makes the receive non-blocking,
 //     so the reader streams through the window as fast as it can be scheduled.
+//     Mutate the close() away and this test fails with "background sweep never
+//     reported completion" instead of exercising anything.
 //  2. BOUNDED in-flight sweeps, via the backgroundAlgoDone seam: wait for each
 //     sweep to finish before scheduling the next. Unbounded, the harness dies
 //     of "pthread_create failed: Resource temporarily unavailable" on CORRECT
 //     code — a false positive that reds both arms and proves nothing.
+//  3. An EMPTY doc and a READ-ONLY state dir, so a sweep costs almost nothing
+//     but the window itself. With a real doc and a writable dir the sweep rate
+//     drops ~50x and the mutated arm survives.
 //
-// Third ingredient: an EMPTY doc and a READ-ONLY state dir, so a sweep costs
-// almost nothing but the window itself. With a real doc and a writable dir the
-// sweep rate drops ~50x and the mutated arm survives.
-//
-// Verified to separate, on the final fixture (M-series laptop):
+// Verified to separate, on the final fixture (M-series laptop, 16 runs):
 //
 //	              correct code            double-read mutation
-//	-race         8/8 PASS  1.5-4.0s      5/5 FAIL  panic in 1.2-1.5s
-//	no -race      8/8 PASS  0.76-0.92s    3/3 FAIL  panic in 0.8-1.5s
+//	-race         5/5 PASS  2.5-4.5s      5/5 FAIL  panic in 1.1-1.7s
+//	no -race      3/3 PASS  1.0-1.3s      3/3 FAIL  panic in 0.8-1.4s
 //
 // Note the panic is a plain TOCTOU, not a data race: the detector is NOT what
 // catches it, which is why the no-race arm has to work too and why it needs its
@@ -203,28 +205,41 @@ func TestBackgroundAlgoGate_ClearedBetweenCheckAndUse(t *testing.T) {
 	// power is a function of how many times the reader crosses the window, and
 	// the rate varies ~30x between modes (measured on an M-series laptop:
 	// ~5000 traversals/s without -race, ~150/s with it) and again with machine
-	// speed. A fixed time budget would therefore hand a slow CI runner far less
-	// sampling than the machine it was tuned on — and this test now sits behind
-	// a REQUIRED release checkbox, so a fixture that reds on slowness would be
-	// worse than no fixture. Targeting a count makes the sampling identical
-	// everywhere; the wall cap only bounds a pathological machine.
-	// The two modes need DIFFERENT targets, and both were measured against the
-	// mutated arm rather than guessed:
-	//   -race    → 400 traversals. -race widens the window, so the double-read
-	//              mutation panics within a few hundred; 400 costs ~3s.
-	//   no -race → 5000 traversals. The window is a couple of instructions
-	//              wide, so detection needs volume; at 400 the mutated arm
-	//              survived 3/3 runs, at 5000 it fails. Costs ~1s.
-	// Using the -race number in both modes would leave the no-race arm unable
-	// to exhibit the bug — the failure mode this repo hits most often.
+	// speed. A fixed time budget would hand a slow CI runner far less sampling
+	// than the machine it was tuned on; targeting a count makes the sampling
+	// identical everywhere.
+	//
+	// The two modes need DIFFERENT targets, both measured against the mutated
+	// arm rather than guessed. Detection vs traversal count without -race,
+	// 5 runs per level:
+	//
+	//	  100 → 0/5 detected      2000 → 3/5
+	//	  400 → 1/5               3000 → 5/5   ← knee
+	//	 1000 → 1/5               5000 → 4/4
+	//
+	// Hence 5000 without -race (1.67x above the knee). Under -race the window
+	// is far wider, 400 detects 4/4, and 5000 would cost ~33s for nothing.
+	//
+	// FALLING SHORT OF THE TARGET IS A FAILURE, not a warning. An earlier
+	// version logged "reduced sampling" and PASSED above a floor of 100 — but
+	// the table above shows detection at 100 is exactly ZERO, and most of the
+	// 100..2500 band is non-detecting. A hatch like that does not trade full
+	// coverage for reduced coverage; across most of its range it trades
+	// coverage for none while still reporting PASS. That is the precise defect
+	// class #6056 exists to close, so it is gone. Wiring failures are caught by
+	// the 10s no-completion Fatal below and by the zero-mtime re-entry guard
+	// above, both of which are wiring checks rather than coverage floors.
+	//
+	// maxWall is 180s so that failure can never be a speed red: it is ~34x the
+	// -race arm's cost on a loaded machine (400 traversals in ~5.3s) and ~138x
+	// the no-race arm's (5000 in ~1.3s). It is 0.75% of the 40m per-binary CI
+	// budget on a test that runs once. The point is to stop NEEDING a hatch,
+	// not to make the hatch quiet.
 	targetSweeps := 5000
 	if raceEnabled {
 		targetSweeps = 400
 	}
-	const (
-		minSweeps = 100 // below this the fixture is not driving the reader
-		maxWall   = 45 * time.Second
-	)
+	const maxWall = 180 * time.Second
 
 	hardDeadline := time.Now().Add(maxWall)
 	sweeps := 0
@@ -243,21 +258,16 @@ func TestBackgroundAlgoGate_ClearedBetweenCheckAndUse(t *testing.T) {
 		}
 	}
 
-	// Vacuity guard. The strong signal is the 10s no-completion Fatal above;
-	// this catches the subtler case where sweeps DO complete but the fixture
-	// has stopped re-entering schedulePendingAlgo (e.g. a filterAlreadyComputed
-	// change that makes the zero-mtime re-entry a no-op), leaving a handful of
-	// traversals that could never sample the window.
-	if sweeps < minSweeps {
-		t.Fatalf("only %d sweeps completed in %s — the fixture is not driving "+
-			"the reader through the check-then-use window; it cannot exhibit "+
-			"the bug it guards", sweeps, maxWall)
-	}
+	// Short of target = FAIL. Below the target this fixture cannot reliably
+	// exhibit the bug it guards, so passing would be a false green — see the
+	// detection table above. If this ever fires on a machine that is merely
+	// slow, raise maxWall; do not lower the target and do not restore a
+	// warn-and-pass band.
 	if sweeps < targetSweeps {
-		// Reached the wall cap on a slow machine. Still meaningful sampling, so
-		// do not red the run — but say so rather than implying full coverage.
-		t.Logf("WARNING: reduced sampling — %d/%d traversals before the %s cap",
-			sweeps, targetSweeps, maxWall)
+		t.Fatalf("only %d/%d traversals of the check-then-use window within %s — "+
+			"below target this fixture cannot detect the double-read regression "+
+			"it exists to catch (measured: 0/5 at 100 traversals, 5/5 at 3000), "+
+			"so a PASS here would be a false green", sweeps, targetSweeps, maxWall)
 	}
 	t.Logf("drove %d bounded sweeps through the gate window", sweeps)
 }
