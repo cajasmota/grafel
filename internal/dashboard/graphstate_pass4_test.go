@@ -152,9 +152,9 @@ func TestApplyAlgorithmsOnLoad_NonBlockingThenPersistsAndEvicts(t *testing.T) {
 	// returned BEFORE the full sweep ran.
 	gate := make(chan struct{})
 	done := make(chan string, 1)
-	backgroundAlgoGate = gate
-	backgroundAlgoDone = func(k string) { done <- k }
-	t.Cleanup(func() { backgroundAlgoGate = nil; backgroundAlgoDone = nil })
+	setBackgroundAlgoGateForTest(gate)
+	setBackgroundAlgoDoneForTest(func(k string) { done <- k })
+	t.Cleanup(func() { setBackgroundAlgoGateForTest(nil); setBackgroundAlgoDoneForTest(nil) })
 
 	stateDir := t.TempDir()
 	doc := pathGraphDoc()
@@ -213,10 +213,10 @@ func TestApplyAlgorithmsOnLoad_NonBlockingThenPersistsAndEvicts(t *testing.T) {
 // Communities/PageRank/Centrality WHILE the background sweep runs. Because the
 // sweep is read-only over the published doc, `go test -race` must be clean.
 func TestSchedulePendingAlgo_NoDataRaceWithConcurrentReaders(t *testing.T) {
-	backgroundAlgoGate = nil // run immediately, maximise overlap with readers
+	setBackgroundAlgoGateForTest(nil) // run immediately, maximise overlap with readers
 	done := make(chan string, 1)
-	backgroundAlgoDone = func(k string) { done <- k }
-	t.Cleanup(func() { backgroundAlgoDone = nil })
+	setBackgroundAlgoDoneForTest(func(k string) { done <- k })
+	t.Cleanup(func() { setBackgroundAlgoDoneForTest(nil) })
 
 	stateDir := t.TempDir()
 	doc := pathGraphDocN(60)
@@ -285,11 +285,11 @@ func TestSchedulePendingAlgo_PersistFailureDoesNotRecomputeForever(t *testing.T)
 		// POSIX dir-write-permission semantics are a real requirement here.
 		t.Skip("POSIX dir-write-permission semantics required")
 	}
-	backgroundAlgoGate = nil // run immediately
+	setBackgroundAlgoGateForTest(nil) // run immediately
 	var computes int32
 	done := make(chan string, 4)
-	backgroundAlgoDone = func(k string) { atomic.AddInt32(&computes, 1); done <- k }
-	t.Cleanup(func() { backgroundAlgoDone = nil })
+	setBackgroundAlgoDoneForTest(func(k string) { atomic.AddInt32(&computes, 1); done <- k })
+	t.Cleanup(func() { setBackgroundAlgoDoneForTest(nil) })
 
 	stateDir := t.TempDir()
 	// Force persistAlgoResults to fail: a read-only state dir makes its

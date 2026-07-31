@@ -61,10 +61,12 @@ func TestMain(m *testing.M) {
 // load (i.e. before the fixture hands the caller a live URL).
 func quiesceGraphCache(t *testing.T, srv *Server) {
 	t.Helper()
-	prev := backgroundAlgoGate
-	backgroundAlgoGate = make(chan struct{}) // never closed → sweeps park pre-write
+	prev := backgroundAlgoGate.Load()
+	setBackgroundAlgoGateForTest(make(chan struct{})) // never closed → sweeps park pre-write
 	t.Cleanup(func() {
-		backgroundAlgoGate = prev
+		// Restoring via the atomic is what makes this cleanup safe: the parked
+		// sweep goroutine is still live and still reading the seam (#6056).
+		backgroundAlgoGate.Store(prev)
 		if srv != nil && srv.graphs != nil {
 			srv.graphs.InvalidateAll()
 		}

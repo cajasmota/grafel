@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/process"
@@ -44,11 +45,32 @@ const (
 	engineHealthStaleMultiplier = 3
 )
 
-// engineChildCommand builds the exec.Cmd that launches the engine child. It is
-// a package var so tests can substitute a helper-process command (the standard
-// os/exec subprocess-testing pattern) instead of spawning a real grafel binary.
-// Production uses defaultEngineChildCommand.
-var engineChildCommand = defaultEngineChildCommand
+// engineChildCommandFunc builds the exec.Cmd that launches the engine child.
+type engineChildCommandFunc func(selfExe, root string) *exec.Cmd
+
+// engineChildCommandOverride holds the test seam that substitutes a
+// helper-process command (the standard os/exec subprocess-testing pattern) for
+// a real grafel binary. nil (the zero value) means "use production's
+// defaultEngineChildCommand"; production never stores anything here.
+//
+// #6056: this MUST stay an atomic. engineSupervisor.run resolves the seam
+// repeatedly from a live goroutine, so a test's deferred restore() writing it
+// during cleanup races that loop. Making it an atomic.Pointer removes the
+// plain-access form entirely: there is no way to read or write it
+// unsynchronised, so the protection cannot be silently dropped by a caller
+// that forgets to join the supervisor first. (Contrast listenFn, read exactly
+// once at startup — repeated reads from a live goroutine are the hazard, not
+// the seam pattern.)
+var engineChildCommandOverride atomic.Pointer[engineChildCommandFunc]
+
+// engineChildCommand resolves the effective child-spawn constructor: the test
+// override when one is installed, else the production default.
+func engineChildCommand(selfExe, root string) *exec.Cmd {
+	if fn := engineChildCommandOverride.Load(); fn != nil {
+		return (*fn)(selfExe, root)
+	}
+	return defaultEngineChildCommand(selfExe, root)
+}
 
 // defaultEngineChildCommand launches `grafel engine --foreground` from the
 // current executable, in its own process group, with stdio inherited so its
@@ -92,10 +114,13 @@ func defaultEngineChildCommand(selfExe, root string) *exec.Cmd {
 // child for the duration of a test and returns a restore closure. Tests use it
 // to spawn a helper subprocess (re-invoking the test binary) rather than a real
 // grafel binary. Production code must never call this.
+// Overrides nest LIFO: restore() puts back whatever was installed before, so
+// an inner Set/restore pair inside an outer one behaves correctly.
 func SetEngineChildCommandForTest(fn func(selfExe, root string) *exec.Cmd) (restore func()) {
-	prev := engineChildCommand
-	engineChildCommand = fn
-	return func() { engineChildCommand = prev }
+	prev := engineChildCommandOverride.Load()
+	next := engineChildCommandFunc(fn)
+	engineChildCommandOverride.Store(&next)
+	return func() { engineChildCommandOverride.Store(prev) }
 }
 
 // engineSupervisor spawns and supervises the split-mode engine child process.
