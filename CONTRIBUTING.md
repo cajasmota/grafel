@@ -92,3 +92,58 @@ Tags should only be pushed from `main` after all CI is green.
 | Push to `main` | `board-hygiene` (passes) + `test` + `linux-smoke` |
 | Tag push (`v1.2.3`) | `board-hygiene` (passes) + `test` + `linux-smoke` + `release` pipeline |
 | `workflow_dispatch` from Actions UI | Whichever workflow(s) you trigger |
+
+## Performance tests
+
+Performance and scaling assertions live behind the **`perf` build tag** and are
+excluded from `test` — that is, from the release gate.
+
+```bash
+make test-perf                                  # everything, on a quiet machine
+go test -tags perf ./internal/graph/ -run Scaling -v   # one of them
+```
+
+They also run weekly (and on demand) via the `perf` workflow. That job is
+**advisory**: never make it a required check and never gate a release on it.
+
+### Which side of the line is a test on?
+
+The tag is not "slow tests" — it is **"assertions a shared runner cannot make"**.
+Both of these are timing tests, and they belong in different places:
+
+| | Belongs in the gate | Belongs behind `perf` |
+|---|---|---|
+| What it asserts | Something **completes** / does not deadlock, hang, or block | Something is **fast**, or scales at exponent X, or allocates under N bytes |
+| Failure mode it catches | Unbounded: hangs forever, or costs 5s / 113s instead of 1ms | Bounded: costs 2x what it should |
+| Budget sizing | As generous as possible while still separating from the failure mode | As tight as the measurement supports |
+| Example | `readSourceWindow` under an fsnotify watcher — pre-fix it took exactly 5.000s, so a 1s bound catches it with a 1000x margin over the healthy path | `TestLouvainScalingExponent` — a fitted `N^1.45` bound that went red at `N^1.72` on a loaded Windows runner with no algorithmic change |
+
+Rules of thumb when writing or reviewing one:
+
+- **A hang guard is not a latency budget.** If the failure you are guarding
+  against is "blocks forever" or "takes 5s instead of 1ms", pick a bound that
+  sits comfortably between the two and leave it there. Do not tighten it later
+  because "it only takes 3ms in practice" — that converts a correctness test
+  into a flake generator without adding coverage.
+- **Headroom is not immunity.** `TestIncremental_Performance_SingleFileEdit`
+  ran in 116-249ms against a 1s budget — 4-8x headroom — and still failed at
+  1.073s inside a loaded full-suite run. If a bound can be crossed by
+  contention alone, it does not belong in the gate at any headroom.
+- **Keep the correctness half in the gate.** When a test mixes both (e.g. "the
+  incremental path is taken AND it is fast"), move the timing assertion behind
+  the tag and make sure the correctness assertion still runs by default —
+  duplicate it into an untagged test if nothing else covers it.
+- **Log, don't assert, on numbers you cannot bound.** Several tests here log
+  heap/alloc figures and assert only on structure. That is the right shape.
+
+### Do not add `-short` to CI
+
+`testing.Short()` is **not** the mechanism for this. 29 files call it and CI has
+never passed `-short`, so none of those guards has ever fired. Auditing what
+they actually guard: alongside genuinely slow benches they cover the entire
+`internal/daemon/watch` watcher suite (debounce, gitignore/skip-dir handling,
+worktree exclusion, extension acceptance), the `internal/docgen` LLM-mode
+integration tests, `internal/daemon/extract`'s end-to-end entity-equivalence
+tests, and `internal/extractors/golang`'s large-file extraction — all
+correctness. Adding `-short` would silently narrow the release gate, which is
+the exact defect class this mechanism exists to prevent. Use the build tag.

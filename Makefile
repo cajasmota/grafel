@@ -1,4 +1,4 @@
-.PHONY: build dashboard-build verify-dashboard test lint fmt vet clean fbgen fb-bench mcp-audit coverage coverage-validate
+.PHONY: build dashboard-build verify-dashboard test test-perf lint fmt vet clean fbgen fb-bench mcp-audit coverage coverage-validate
 
 GO ?= go
 NPM ?= npm
@@ -51,6 +51,16 @@ build-go-only:
 
 test:
 	$(GO) test -race -count=1 ./...
+
+# test-perf runs the performance/scaling tests that are excluded from the
+# default suite (and therefore from the release gate) by the `perf` build tag.
+# See CONTRIBUTING.md, "Performance tests". Run on a QUIET machine — every
+# assertion behind this tag is a wall-clock or heap measurement, and a
+# contended host produces meaningless numbers in both directions.
+#
+# No -race: the detector's instrumentation invalidates the timings.
+test-perf:
+	$(GO) test -tags perf -count=1 -timeout 30m ./...
 
 lint: lint-localematch
 	$(GO) vet ./...

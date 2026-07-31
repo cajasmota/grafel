@@ -16,7 +16,6 @@ package install_test
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -694,29 +693,6 @@ func splitByNewline(s string) []string {
 	return lines
 }
 
-// TestDoctorQuickMode_Timing: RunQuickDoctor (no live daemon) should complete in <200ms.
-// This is a soft timing test — it only fails if dramatically over budget.
-func TestDoctorQuickMode_Timing(t *testing.T) {
-	env := newDoctorTestEnv(t)
-
-	var buf bytes.Buffer
-	opts := install.QuickOptions{
-		StatePath:     env.statePath,
-		DaemonPort:    1, // unreachable
-		DaemonTimeout: 100 * time.Millisecond,
-		Out:           &buf,
-	}
-
-	start := time.Now()
-	if err := install.RunQuickDoctor(opts); err != nil {
-		t.Errorf("RunQuickDoctor: %v", err)
-	}
-	elapsed := time.Since(start)
-
-	// Budget: 200ms (100ms daemon timeout + SHA + overhead).
-	// We use 200ms because CI machines may be slow.
-	if elapsed > 200*time.Millisecond {
-		t.Errorf("RunQuickDoctor took %s, want <200ms", elapsed)
-	}
-	_ = fmt.Sprintf("quick-doctor elapsed: %s", elapsed)
-}
+// TestDoctorQuickMode_Timing lives in doctor_perf_test.go behind the `perf`
+// build tag: a 200ms wall-clock budget with a 100ms dial timeout inside it
+// leaves ~100ms of slack, which a shared CI runner cannot guarantee.

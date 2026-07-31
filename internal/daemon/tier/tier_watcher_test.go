@@ -239,10 +239,13 @@ func TestColdWakeResumeLatency(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 
-	// The 500ms budget is well within reach for a fake hook; real budget is
-	// for the fsnotify re-subscribe. Verify we didn't introduce any blocking.
-	if elapsed > 500*time.Millisecond {
-		t.Errorf("cold-wake round-trip %s exceeds 500ms budget", elapsed)
+	// This asserts Touch does not BLOCK, not that it is fast. The hook is a
+	// fake, so the healthy path is microseconds; the failure mode (a synchronous
+	// fsnotify re-subscribe on the wake path) costs seconds or hangs. 5s keeps
+	// that separation with ~10000x headroom over the healthy path, and cannot be
+	// tripped by a busy runner the way 500ms could.
+	if elapsed > 5*time.Second {
+		t.Errorf("cold-wake round-trip %s exceeds the 5s non-blocking budget", elapsed)
 	}
 }
 

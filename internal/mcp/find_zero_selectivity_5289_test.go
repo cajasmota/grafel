@@ -91,10 +91,13 @@ func TestFind_ZeroSelectivity_NoWholeRepoDump_5289(t *testing.T) {
 		t.Errorf("expected low-confidence hint; got:\n%s", res)
 	}
 
-	// 3) Must be fast — the unbounded path took ~113s live; bounded logic on a
-	//    6k-node fixture must be well under a second.
-	if elapsed > 2*time.Second {
-		t.Fatalf("zero-selectivity query too slow: %v (expected << 1s)", elapsed)
+	// 3) Must not be unbounded — the unbounded path took ~113s live; bounded
+	//    logic on a 6k-node fixture runs well under a second. The bound is 20s,
+	//    not 2s: it exists to catch the unbounded scan (a ~5.6x separation from
+	//    113s that no runner contention can close), not to certify latency. A 2s
+	//    budget on a sub-second operation measures the runner.
+	if elapsed > 20*time.Second {
+		t.Fatalf("zero-selectivity query took %v — the unbounded whole-graph scan is back (bounded path is sub-second)", elapsed)
 	}
 	t.Logf("zero-selectivity query: %d node mentions, elapsed=%v", mentions, elapsed)
 }

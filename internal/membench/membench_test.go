@@ -1,9 +1,24 @@
+//go:build perf
+
+// Heap-measurement benchmarks for the Pass-4 algorithm pipeline.
+//
+// Gated behind the `perf` build tag (see CONTRIBUTING.md, "Performance tests").
+// Both tests build a large synthetic corpus and assert on runtime.MemStats
+// samples: TestSingleRunPeak's "retained must be <50% of transient peak" is a
+// GC-timing-dependent heuristic, and TestOverlapPeak asserts nothing beyond
+// non-nil — it exists to produce the overlap number. Neither is a measurement a
+// shared CI runner can make, and neither is a correctness property.
+//
+// The structural half of the same change — betweenness sparsity, PageRank
+// density — is TestAlgoResultMapFootprint in algomaps_test.go, which stays in
+// the default suite and in the release gate.
+//
+//	go test -tags perf ./internal/membench/ -v
+
 package membench
 
 import (
-	"os"
 	"runtime"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -11,31 +26,6 @@ import (
 	"github.com/cajasmota/grafel/internal/external"
 	"github.com/cajasmota/grafel/internal/graph"
 )
-
-// specFromEnv returns the fixture spec, scaled down by default so a plain
-// `go test ./internal/membench` runs in bounded time/heap, but overridable to
-// the full #5681 monorepo scale via GRAFEL_MEMBENCH_ENTITIES=220000 (and the
-// companion knobs) for the real measurement run.
-func specFromEnv() FixtureSpec {
-	s := FixtureSpec{
-		Entities:         40_000,
-		Files:            4_000,
-		CallEdges:        200_000,
-		ImportsPerFile:   16,
-		ExternalPackages: 2_000,
-		Seed:             0x5681,
-	}
-	if v := os.Getenv("GRAFEL_MEMBENCH_ENTITIES"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			s = DefaultLargeSpec()
-			s.Entities = n
-			// Scale companion counts proportionally to keep a realistic density.
-			s.Files = n / 12
-			s.CallEdges = n * 5
-		}
-	}
-	return s
-}
 
 // runPipeline executes the in-process post-extraction pipeline the split-mode
 // engine runs per repo: external synthesis + the group-scope algorithm pass.
@@ -49,9 +39,6 @@ func runPipeline(doc *graph.Document) *graph.AlgorithmResults {
 // dropped. It also asserts the sampled-betweenness path is taken so an
 // accidental regression back to exact O(V*E) Brandes is caught.
 func TestSingleRunPeak(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping heavy memory bench in -short")
-	}
 	spec := specFromEnv()
 	doc := BuildSyntheticDocument(spec)
 
@@ -101,9 +88,6 @@ func TestSingleRunPeak(t *testing.T) {
 // driver: each coexisting run adds its full multi-GB heap. This is the
 // behaviour the P0 single-flight fix must prevent at the daemon level.
 func TestOverlapPeak(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping heavy memory bench in -short")
-	}
 	spec := specFromEnv()
 
 	// Two independent docs so both runs hold live heap simultaneously (mirrors

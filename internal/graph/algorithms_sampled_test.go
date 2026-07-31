@@ -5,7 +5,6 @@ import (
 	"math/rand/v2"
 	"sort"
 	"testing"
-	"time"
 
 	"gonum.org/v1/gonum/graph/network"
 )
@@ -188,39 +187,9 @@ func TestBetweennessSampledTop50Overlap(t *testing.T) {
 	}
 }
 
-// TestBetweennessPerfBudget_28k is the perf guard: on a >=28k-entity synthetic
-// group the centrality pass (with sampling enabled by the node-count gate)
-// completes under a budget. Gated behind testing.Short() so the default suite
-// stays fast.
-func TestBetweennessPerfBudget_28k(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping 28k-synthetic perf test in -short mode")
-	}
-	const n = 28000
-	const budget = 60 * time.Second
-
-	ents, rels := buildSyntheticGraph(n, 5, 99)
-	g, idx := BuildGraph(ents, rels)
-	if int(idx.next) <= betweennessSampleThresholdValue() {
-		t.Fatalf("28k graph (%d nodes) did not exceed sampling threshold %d", idx.next, betweennessSampleThresholdValue())
-	}
-
-	start := time.Now()
-	betw, pr := ComputeCentrality(g, idx)
-	elapsed := time.Since(start)
-	t.Logf("28k-node centrality (sampled betweenness) completed in %s (budget %s)", elapsed, budget)
-	if elapsed > budget {
-		t.Errorf("centrality pass took %s, over budget %s", elapsed, budget)
-	}
-	// PageRank is dense (a score per node); betweenness is sparse since #5954 —
-	// non-zero scores only, no zero pre-seed.
-	if len(pr) != n {
-		t.Errorf("expected %d pr keys, got %d", n, len(pr))
-	}
-	if len(betw) == 0 || len(betw) > n {
-		t.Errorf("expected 1..%d betw keys, got %d", n, len(betw))
-	}
-}
+// TestBetweennessPerfBudget_28k lives in algorithms_perf_test.go behind the
+// `perf` build tag: a 60s wall-clock budget on a 28k-node synthetic graph is
+// not a measurement a shared CI runner can make.
 
 // overlapFraction returns |A ∩ B| / |A| for two ID slices.
 func overlapFraction(a, b []string) float64 {

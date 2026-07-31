@@ -1221,57 +1221,10 @@ func import_resolve_test(t *testing.T) {
 	t.Log("scoped resolver safety-net exercised via delete-file scenario above")
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Test: performance smoke — incremental should complete under 1 second
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestIncremental_Performance_SingleFileEdit(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping perf smoke test in -short mode")
-	}
-
-	repo := t.TempDir()
-	stateDir := t.TempDir()
-
-	// Create a synthetic repo with 10 Go files (small but realistic for
-	// the unit test; the 60 k-entity benchmark is an integration scenario).
-	for i := 0; i < 10; i++ {
-		src := fmt.Sprintf("package svc\n\nfunc Func%d() {}\nfunc Helper%d() {}\n", i, i)
-		writeFile(t, repo, fmt.Sprintf("svc/svc%d.go", i), src)
-	}
-
-	// Build a baseline graph with placeholder entities.
-	var entities []graph.Entity
-	for i := 0; i < 10; i++ {
-		for _, fn := range []string{fmt.Sprintf("Func%d", i), fmt.Sprintf("Helper%d", i)} {
-			sf := fmt.Sprintf("svc/svc%d.go", i)
-			entities = append(entities, graph.Entity{
-				ID:         graph.EntityID("test-repo", "SCOPE.Operation", fn, sf),
-				Name:       fn,
-				Kind:       "SCOPE.Operation",
-				SourceFile: sf,
-				Language:   "go",
-			})
-		}
-	}
-	buildMinimalGraph(t, stateDir, entities, nil)
-	seedManifest(t, repo, stateDir)
-
-	// Mutate one file.
-	writeFile(t, repo, "svc/svc0.go", "package svc\n\nfunc Func0Updated() {}\nfunc Helper0Updated() {}\n")
-
-	t0 := time.Now()
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
-	dur := time.Since(t0)
-
-	if !res.Done {
-		t.Fatalf("incremental: unexpected fallback: %s", res.FallbackReason)
-	}
-	if dur > time.Second {
-		t.Errorf("incremental pass took %s on 10-file repo, expected < 1s", dur)
-	}
-	t.Logf("perf smoke: incremental pass took %s for 1 changed file in 10-file repo", dur.Truncate(time.Millisecond))
-}
+// TestIncremental_Performance_SingleFileEdit lives in incremental_perf_test.go
+// behind the `perf` build tag: its 1s budget on a 10-file repo that runs in
+// 116-249ms in isolation still went red at 1.073s under a loaded full-suite
+// run, which makes it a runner measurement, not a code assertion.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test: graph.fb is readable after incremental write

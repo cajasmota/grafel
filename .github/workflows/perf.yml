@@ -1,0 +1,59 @@
+name: perf
+
+# Performance / scaling tests, gated out of the release gate by the `perf`
+# build tag.
+#
+# Why they are not in `test`: every assertion behind the tag is a wall-clock
+# ratio, a fitted scaling exponent, or a runtime.MemStats delta. On a shared
+# GitHub Actions runner those numbers track the co-tenant, not the diff —
+# TestLouvainScalingExponent went red at N^1.72 against a 1.45 bound on a loaded
+# Windows runner with no algorithmic change in the PR. A red release gate must
+# mean "something is broken", not "the runner was busy".
+#
+# Why they still run here: a perf test nobody ever runs is deleted code with
+# extra steps. This workflow exists so (a) the tagged files must keep compiling
+# and passing, and (b) an actual asymptotic regression is still caught, on a
+# weekly cadence rather than per-PR.
+#
+# This job is ADVISORY. Do not add it as a required check and do not gate a
+# release on it — that would reintroduce exactly the flakiness it removes. Read
+# it as a signal to investigate, and reproduce on a quiet machine
+# (`make test-perf`) before believing a red.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sundays 04:17 UTC — off-peak, so the runner is as quiet as a shared
+    # runner gets. Weekly is enough to catch a regression that landed during
+    # the week while keeping the tagged files from rotting.
+    - cron: '17 4 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  perf:
+    name: Performance / scaling (advisory)
+    runs-on: ubuntu-latest
+    # Single platform on purpose. The cross-platform value of these tests is
+    # low (they measure the runner more than the OS) and the historical false
+    # reds came from windows-latest and macos-latest specifically.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # Compile-check FIRST, and separately from the run. This is the guard
+      # that actually matters day to day: a build-tagged file that stops
+      # compiling is invisible to every other workflow, and silently-rotted
+      # perf tests are worse than the flakes they replaced.
+      - name: Build perf-tagged tests
+        run: go vet -tags perf ./...
+
+      # No -race: the detector's instrumentation invalidates every timing the
+      # tagged tests assert on.
+      - name: Run perf-tagged tests
+        run: go test -tags perf -count=1 -timeout 40m ./...
