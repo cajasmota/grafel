@@ -45,6 +45,21 @@ ladder. Run it on real hardware for each release.
 
       Expect this to take substantially longer than a non-race run — `-race`
       costs roughly 5-10x wall time, and `internal/mcp` alone is ~9-10 min.
+
+      **Triaging a red run — known flake.** `internal/daemon` has a
+      *pre-existing* family of test-seam data races that `-race` reports at
+      roughly **1 run in 8**, i.e. ~1 dispatch in 3 reds at least one OS leg.
+      The shape is a plain package-var timeout seam written by a test while a
+      live goroutine reads it: `rebuildRPCTimeout` (written by
+      `rebuild_singleflight_test.go`, read from the `net/rpc` serving goroutine
+      in `service.go`, failing `TestRebuild_SingleFlight_NoConcurrentOverlap`),
+      and the `rebuildWaitTimeout` / `rebuildWaitInterval` /
+      `rebuildStartupWindow` / `rebuildStaleAfter` group documented at
+      `internal/daemon/rebuild_wait.go`. If a red run's `WARNING: DATA RACE`
+      names one of those vars, it is the known flake — **re-dispatch**, and do
+      not treat it as a release blocker. Anything else is real: read the report
+      before deciding. Tracked separately; when that family is fixed, delete
+      this paragraph rather than letting it excuse a future failure.
 - [ ] `CHANGELOG.md` has a `[X.Y.Z] — YYYY-MM-DD` section; `[Unreleased]` is
       drained.
 - [ ] `go build ./...` and `go vet ./...` are clean locally.

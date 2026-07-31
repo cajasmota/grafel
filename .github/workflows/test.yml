@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       race:
-        description: 'Run the suite under the Go race detector (-race). ON by default so a pre-release dispatch matches the tag gate exactly; turn it off for a quick platform-only check.'
+        description: 'Run the suite under the Go race detector (-race). ON by default so a pre-release dispatch matches the tag run exactly; turn it off for a quick platform-only check.'
         type: boolean
         default: true
 
