@@ -323,11 +323,15 @@ func TestIncremental_SingleFileEdit_FunctionBodyChange(t *testing.T) {
 		t.Errorf("NewFunc should appear in graph after incremental reindex, names=%v", names)
 	}
 
-	// Performance: on a tiny synthetic repo the incremental pass must complete
-	// well under 1 second (the target is ≤200ms on 60k-entity repos; here we
-	// use a generous 2s to avoid flakiness on CI).
-	if dur > 2*time.Second {
-		t.Errorf("incremental pass took %s, expected < 2s", dur)
+	// Smoke bound, not a latency budget: 5s, raised from 2s. The same shape
+	// measured 116-249ms in isolation but 1.081s with seven packages running in
+	// parallel on one host, so 2s was under 2x headroom over the contended
+	// number — a live flake, and the same defect that took its sibling
+	// TestIncremental_Performance_SingleFileEdit red in CI. The real timing
+	// assertion lives in incremental_perf_test.go behind the `perf` build tag;
+	// this line only catches the incremental path hanging outright.
+	if dur > 5*time.Second {
+		t.Errorf("incremental pass took %s, expected well under 5s", dur)
 	}
 	t.Logf("incremental pass took %s (target ≤200ms on 60k-entity repo)", dur)
 }

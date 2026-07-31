@@ -84,8 +84,13 @@ func TestWaitForWarmGroup_TimesOut(t *testing.T) {
 	if got != nil {
 		t.Fatalf("group = %v, want nil on timeout", got)
 	}
-	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
-		t.Fatalf("timeout took %v, expected to bail near the 40ms deadline", elapsed)
+	// 5s, not 500ms. The assertion that matters is outcome == warmTimedOut
+	// above; this bound only catches waitForWarmGroup ignoring its deadline
+	// entirely (i.e. never returning). 500ms is 12x a 40ms deadline, which a
+	// contended runner can close; 5s cannot be reached by a poll loop that
+	// honours 40ms at all.
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("timeout took %v — waitForWarmGroup ignored its 40ms deadline", elapsed)
 	}
 }
 
