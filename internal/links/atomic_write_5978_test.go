@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // TestWriteDocConcurrentPassesLoseNothing models two (here: eight) link passes
@@ -160,18 +162,18 @@ func TestWriteFileAtomicConcurrentWritersLoseNothing(t *testing.T) {
 func TestWriteFileAtomicAppliesRequestedMode(t *testing.T) {
 	dir := t.TempDir()
 
-	for _, perm := range []os.FileMode{0o644, 0o600} {
+	for _, perm := range []os.FileMode{0o644, 0o600, 0o444} {
 		path := filepath.Join(dir, fmt.Sprintf("mode-%o.json", perm))
 		if err := writeFileAtomic(path, []byte("{}"), perm); err != nil {
 			t.Fatalf("writeFileAtomic(%o): %v", perm, err)
 		}
-		fi, err := os.Stat(path)
-		if err != nil {
-			t.Fatalf("stat: %v", err)
-		}
-		if got := fi.Mode().Perm(); got != perm {
-			t.Errorf("mode = %o, want %o — the temp file's 0600 must not survive the rename", got, perm)
-		}
+		// Asserted through testsupport.AssertPerm because Windows cannot
+		// represent Unix permission bits at all (#6053); there the 0644/0600
+		// rows degrade to "the file is writable" and the 0444 row — which
+		// Windows DOES represent, as FILE_ATTRIBUTE_READONLY — is the one that
+		// still catches a lost chmod.
+		testsupport.AssertPerm(t, path, perm)
+		_ = os.Chmod(path, 0o666)
 	}
 
 	// And through the real caller, so writeDoc's own choice of mode is covered.
@@ -179,13 +181,7 @@ func TestWriteFileAtomicAppliesRequestedMode(t *testing.T) {
 	if err := writeDoc(path, &Document{Version: SchemaVersion}); err != nil {
 		t.Fatalf("writeDoc: %v", err)
 	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat: %v", err)
-	}
-	if got := fi.Mode().Perm(); got != 0o644 {
-		t.Errorf("writeDoc mode = %o, want 644", got)
-	}
+	testsupport.AssertPerm(t, path, 0o644)
 }
 
 func assertNoTempLeftovers(t *testing.T, dir, dest string) {

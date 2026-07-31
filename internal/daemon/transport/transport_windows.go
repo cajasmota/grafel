@@ -124,3 +124,14 @@ func (sl *statsListener) Accept() (net.Conn, error) {
 	}
 	return newStatsConn(c), nil
 }
+
+// Close closes the named-pipe listener under a bounded budget.
+//
+// go-winio's win32PipeListener.Close can block forever when an Accept is
+// outstanding and the aborted connect completes with an errno its
+// classification misses — see closeBounded for the full mechanism and the CI
+// evidence. Unix has no equivalent hazard (net.UnixListener.Close is already
+// bounded), which is why this override lives only on the Windows side.
+func (sl *statsListener) Close() error {
+	return closeBounded(sl.Listener.Close)
+}

@@ -32,7 +32,6 @@ import (
 	"errors"
 	"log/slog"
 	"os"
-	"syscall"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/watchreg"
@@ -278,9 +277,16 @@ func (r *Reaper) Sweep() ReapResult {
 // live-but-orphaned watchers (owned by a previous daemon generation). Returns
 // the number of entries reaped. A nil WatchRegistry disables the sweep.
 //
-// Liveness uses the same signal-0 probe as the daemon pidfile; the kill is a
-// SIGTERM (graceful — the watcher's signal handler exits cleanly). Both are
-// injected as functions only in tests; production uses the real syscalls.
+// Liveness uses pidAlive — internal/process.IsAlive — the SAME probe as the
+// daemon pidfile, and the only one that is correct on every platform. It used
+// to be a private signal-0 copy (pidAliveProbe), which on Windows returns
+// EWINDOWS for every pid and therefore reported every live watcher DEAD: the
+// !Alive branch in watchreg.Sweep runs before the ownership check, so the
+// whole of #5933's fail-closed orphan contract was unreachable there and the
+// daemon silently dropped its entire watcher inventory each sweep (#6053).
+// The kill is a SIGTERM (graceful — the watcher's signal handler exits
+// cleanly). Both are injected as functions only in tests; production uses the
+// real syscalls.
 func (r *Reaper) sweepWatchers() int {
 	if r.cfg.WatchRegistry == nil {
 		return 0
@@ -307,7 +313,7 @@ func (r *Reaper) sweepWatchers() int {
 		liveDaemonPID = func() int { return live }
 	}
 	res, err := r.cfg.WatchRegistry.Sweep(watchreg.SweepDeps{
-		Alive:         pidAliveProbe,
+		Alive:         pidAlive,
 		Kill:          sigtermPID,
 		LiveDaemonPID: liveDaemonPID,
 	})
@@ -388,19 +394,6 @@ func (r *Reaper) sweepForeignWatchers() int {
 			"reaped", reaped, "foreign", len(plan.Foreign), "duplicate", len(plan.Duplicate))
 	}
 	return reaped
-}
-
-// pidAliveProbe reports whether pid names a live process (signal-0 existence
-// probe; portable on darwin/linux).
-func pidAliveProbe(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return p.Signal(syscall.Signal(0)) == nil
 }
 
 // sigtermPID sends SIGTERM to pid via the process package's portable Kill.

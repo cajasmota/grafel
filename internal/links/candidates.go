@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // readDoc loads a Document from disk. A missing file returns an empty
@@ -72,37 +74,27 @@ func writeDoc(path string, d *Document) error {
 // filesystem and is therefore atomic; it is removed on every error path.
 //
 // MODE: perm is applied verbatim, NOT masked by the process umask — os.CreateTemp
-// makes the file 0600 and the Chmod below sets exactly what the caller asked
+// makes the file 0600 and an explicit Chmod sets exactly what the caller asked
 // for. os.WriteFile, which this replaced, passes perm through open(2) and so
 // WAS umask-masked. Under a restrictive umask (077) these files therefore widen
 // from 0600 to 0644. That is deliberate: the destinations are per-user state
 // under the grafel home, and a deterministic mode is easier to reason about
 // than one that depends on the umask of whichever process (daemon, CLI, child)
 // happened to run the pass.
-func writeFileAtomic(path string, b []byte, perm os.FileMode) (err error) {
-	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer func() {
-		if err != nil {
-			_ = os.Remove(tmp)
-		}
-	}()
-	if _, err = f.Write(b); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err = f.Close(); err != nil {
-		return err
-	}
-	// os.CreateTemp always uses 0600; restore the caller's intended mode.
-	if err = os.Chmod(tmp, perm); err != nil {
-		return err
-	}
-	err = os.Rename(tmp, path)
-	return err
+//
+// The body is now internal/atomicfile.WriteFile (#6018 generalised this exact
+// helper) rather than a second copy of it. That copy was still calling
+// os.Rename directly, which on Windows cannot replace a read-only destination
+// and loses races against other open handles — so this package's own
+// concurrency tests failed there while the shared helper's passed (#6053).
+// Keep this a one-line delegation; a private copy is how the bug got back in
+// the first place. (For the avoidance of a wrong number: the tree still holds
+// five OTHER hand-rolled Windows rename-retry loops — graph/groupalgo,
+// graph/descriptions, graph/flows, statusfile, install — and consolidating
+// them is a separate sweep, deliberately not done on this release-blocking
+// branch. See internal/atomicfile/rename.go.)
+func writeFileAtomic(path string, b []byte, perm os.FileMode) error {
+	return atomicfile.WriteFile(path, b, perm)
 }
 
 // loadRejections reads the rejection file and returns a set keyed by
