@@ -4,36 +4,47 @@ package atomicfile
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
-// The Win32 codes MoveFileEx returns for the two failures in rename.go.
-// Declared here rather than taken from golang.org/x/sys/windows so this
-// package keeps its stdlib-only dependency set (package syscall on Windows
-// does not export the sharing/lock codes).
-const (
-	errorAccessDenied     = syscall.Errno(5)  // ERROR_ACCESS_DENIED
-	errorSharingViolation = syscall.Errno(32) // ERROR_SHARING_VIOLATION
-	errorLockViolation    = syscall.Errno(33) // ERROR_LOCK_VIOLATION
-)
-
-// renameErrRecoverable reports whether err is one of the two failures
-// renameOver knows how to recover from. ERROR_ACCESS_DENIED covers both: it is
-// what REPLACE_EXISTING returns for a read-only destination AND what a
-// no-FILE_SHARE_DELETE opener produces, so the driver tries the deterministic
-// remedy first and falls through to the retry.
+// renameErrRecoverable reports whether err is one of the failures renameOver
+// knows how to recover from.
 //
-// Everything else — ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND,
-// ERROR_NOT_SAME_DEVICE — is a real error and must surface immediately.
+// Deliberately identical to the five existing copies of this predicate
+// (internal/graph/{groupalgo,descriptions,flows}.isSharingOrAccessError,
+// internal/install.isAccessOrSharingError,
+// internal/statusfile.isRetryableReplaceError) rather than a sixth dialect:
+// same fs.ErrPermission first test, same three golang.org/x/sys/windows
+// constants. An earlier draft hand-declared syscall.Errno(5/32/33) to keep
+// this package stdlib-only — a bad trade, since golang.org/x/sys is already a
+// direct go.mod requirement and internal/process (which this PR's reaper fix
+// now leans on) imports it too.
+//
+// ERROR_ACCESS_DENIED covers both failure modes: it is what REPLACE_EXISTING
+// returns for a read-only destination AND what a no-FILE_SHARE_DELETE opener
+// produces, so renameOver tries the deterministic remedy first and falls
+// through to the retry. Everything else — ERROR_FILE_NOT_FOUND,
+// ERROR_PATH_NOT_FOUND, ERROR_NOT_SAME_DEVICE — is a real error and must
+// surface immediately.
 func renameErrRecoverable(err error) bool {
-	var errno syscall.Errno
-	if !errors.As(err, &errno) {
+	if err == nil {
 		return false
 	}
-	switch errno {
-	case errorAccessDenied, errorSharingViolation, errorLockViolation:
+	if errors.Is(err, fs.ErrPermission) {
 		return true
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		switch errno {
+		case windows.ERROR_ACCESS_DENIED,
+			windows.ERROR_SHARING_VIOLATION,
+			windows.ERROR_LOCK_VIOLATION:
+			return true
+		}
 	}
 	return false
 }
@@ -43,8 +54,9 @@ func renameErrRecoverable(err error) bool {
 // Go's Windows os.Stat reports exactly two permission values — 0444 for a file
 // with the read-only attribute and 0666 for one without — so the owner-write
 // bit is a faithful reading of the attribute. Using os.Stat/os.Chmod rather
-// than GetFileAttributes/SetFileAttributesW keeps this to the stdlib and to
-// the same mapping os.Chmod uses on the way back out.
+// than GetFileAttributes/SetFileAttributesW keeps the read and the write on
+// one mapping: syscall.Chmod toggles FILE_ATTRIBUTE_READONLY off the S_IWRITE
+// bit, which is precisely the bit tested here.
 func destIsReadOnly(path string) bool {
 	fi, err := os.Stat(path)
 	if err != nil {

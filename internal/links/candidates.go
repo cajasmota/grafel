@@ -87,8 +87,12 @@ func writeDoc(path string, d *Document) error {
 // os.Rename directly, which on Windows cannot replace a read-only destination
 // and loses races against other open handles — so this package's own
 // concurrency tests failed there while the shared helper's passed (#6053).
-// Keep this a one-line delegation; a fourth private copy is how the bug got
-// back in the first place.
+// Keep this a one-line delegation; a private copy is how the bug got back in
+// the first place. (For the avoidance of a wrong number: the tree still holds
+// five OTHER hand-rolled Windows rename-retry loops — graph/groupalgo,
+// graph/descriptions, graph/flows, statusfile, install — and consolidating
+// them is a separate sweep, deliberately not done on this release-blocking
+// branch. See internal/atomicfile/rename.go.)
 func writeFileAtomic(path string, b []byte, perm os.FileMode) error {
 	return atomicfile.WriteFile(path, b, perm)
 }
