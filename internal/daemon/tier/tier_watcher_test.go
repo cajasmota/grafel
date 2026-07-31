@@ -214,7 +214,7 @@ func TestWatcherResumedOnColdWake(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Resume latency within 500ms
+// Test: Resume latency: cold wake must not block
 // ---------------------------------------------------------------------------
 
 func TestColdWakeResumeLatency(t *testing.T) {

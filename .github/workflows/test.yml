@@ -73,6 +73,18 @@ jobs:
 
       - run: go vet ./...
 
+      # Compile-guard for the `perf` build tag (see CONTRIBUTING.md,
+      # "Performance tests"). Performance/scaling tests are excluded from this
+      # suite by the tag, so nothing else here would notice them failing to
+      # compile — an undefined symbol in a tagged file passes plain `go vet` and
+      # only fails with the tag set. Gated tests that rot are worse than the
+      # flakes they replaced, and this is the release gate, so it is checked
+      # here rather than left to the weekly `perf` workflow.
+      # Linux only: it is a compile check, not a platform check.
+      - name: go vet (perf-tagged tests still compile)
+        if: runner.os == 'Linux'
+        run: go vet -tags perf ./...
+
       # Guard against the locale-bug class (#5317): control flow that matches a
       # localized OS command output / error string (e.g.
       # strings.Contains(out, "cannot find")) breaks on non-English locales.

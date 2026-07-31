@@ -270,12 +270,26 @@ func TestIndexErrorRecorded(t *testing.T) {
 	defer s.Stop()
 
 	s.Enqueue("/x")
-	time.Sleep(150 * time.Millisecond)
-	snap := s.Snapshot()
+
+	// Poll rather than sleep-then-assert. The original was a bare
+	// time.Sleep(150ms) followed by a single Snapshot read; under a loaded
+	// full-suite run the index took 158ms, the snapshot was still empty, and the
+	// test failed for timing rather than for behaviour. Polling to a generous
+	// deadline is strictly better: it returns as soon as the error is recorded
+	// (faster than the old sleep in the common case) and still fails if the
+	// error is never recorded at all, which is the property under test.
+	var snap Snapshot
 	found := false
-	for _, r := range snap.IndexedRepos {
-		if r.Path == "/x" && r.LastErr == "boom" {
-			found = true
+	deadline := time.Now().Add(30 * time.Second)
+	for !found && time.Now().Before(deadline) {
+		snap = s.Snapshot()
+		for _, r := range snap.IndexedRepos {
+			if r.Path == "/x" && r.LastErr == "boom" {
+				found = true
+			}
+		}
+		if !found {
+			time.Sleep(5 * time.Millisecond)
 		}
 	}
 	if !found {

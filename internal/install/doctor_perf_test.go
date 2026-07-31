@@ -3,12 +3,15 @@
 // Latency budget for RunQuickDoctor (#2211).
 //
 // Gated behind the `perf` build tag (see CONTRIBUTING.md, "Performance tests").
-// This is the tightest budget in the repo: 200ms total, of which 100ms is the
-// daemon dial timeout the test itself configures, leaving ~100ms of slack for
-// process start, SHA hashing and everything the runner is doing at the same
-// time. It is a latency measurement, not a correctness property — that
-// RunQuickDoctor succeeds against a tampered/absent daemon is covered by the
-// quick-mode tests in doctor_test.go, which stay in the release gate.
+// This is the tightest budget in the repo at 200ms. Note that the 100ms
+// DaemonTimeout below is NOT part of that budget in practice: port 1 refuses
+// the connection immediately, so the dial returns without the timeout ever
+// elapsing and the whole call measures ~12ms. The 200ms is therefore ~16x
+// headroom over the healthy path — but it is still 200ms of absolute wall
+// clock on a shared runner, and it is a latency measurement rather than a
+// correctness property. That RunQuickDoctor succeeds against a tampered or
+// absent daemon is covered by the quick-mode tests in doctor_test.go, which
+// stay in the release gate.
 //
 //	go test -tags perf ./internal/install/ -run QuickMode_Timing -v
 

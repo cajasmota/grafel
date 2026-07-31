@@ -15,10 +15,17 @@ name: perf
 # and passing, and (b) an actual asymptotic regression is still caught, on a
 # weekly cadence rather than per-PR.
 #
-# This job is ADVISORY. Do not add it as a required check and do not gate a
-# release on it — that would reintroduce exactly the flakiness it removes. Read
-# it as a signal to investigate, and reproduce on a quiet machine
-# (`make test-perf`) before believing a red.
+# The `perf` job is ADVISORY. Do not add it as a required check and do not gate
+# a release on it — that would reintroduce exactly the flakiness it removes.
+# Read it as a signal to investigate, and reproduce on a quiet machine
+# (`make test-perf`) before believing a red. The `perf-race` job below is not
+# advisory in the same sense: it asserts no timings at all.
+#
+# NOTE ON THE SCHEDULE: GitHub disables scheduled workflows after 60 days with
+# no repository activity, and notifies only the last person to edit this file.
+# If this repo ever goes quiet, this job stops silently. The `test`-workflow
+# compile guard (`go vet -tags perf ./...`) is the backstop that does not depend
+# on this schedule surviving.
 
 on:
   workflow_dispatch:
@@ -46,14 +53,39 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      # Compile-check FIRST, and separately from the run. This is the guard
-      # that actually matters day to day: a build-tagged file that stops
-      # compiling is invisible to every other workflow, and silently-rotted
-      # perf tests are worse than the flakes they replaced.
+      # Compile-check FIRST, and separately from the run. Duplicated from the
+      # `test` workflow on purpose: this job must not report a green run that
+      # actually skipped a file which failed to build.
       - name: Build perf-tagged tests
         run: go vet -tags perf ./...
 
-      # No -race: the detector's instrumentation invalidates every timing the
-      # tagged tests assert on.
+      # No -race here: the detector's instrumentation invalidates every timing
+      # the tagged tests assert on. See perf-race below for the coverage that
+      # genuinely needs the detector.
       - name: Run perf-tagged tests
         run: go test -tags perf -count=1 -timeout 40m ./...
+
+  perf-race:
+    name: Concurrent RunAlgorithms under -race
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # TestOverlapPeak is the ONLY test in the tree that runs two
+      # graph.RunAlgorithms pipelines concurrently. Gating internal/membench
+      # behind the tag therefore removed concurrent-RunAlgorithms coverage from
+      # the -race release gate entirely; this job puts it back.
+      #
+      # Running it under -race is safe precisely because TestOverlapPeak asserts
+      # nothing about time or heap — its only assertions are non-nil results;
+      # the peak figures are logged, not bounded. So detector overhead cannot
+      # make it flake. Do NOT widen this to the whole tagged set:
+      # TestSingleRunPeak in the same package DOES assert a heap ratio, which
+      # -race distorts.
+      - name: Run concurrent-pipeline test under -race
+        run: go test -race -tags perf -count=1 -timeout 25m -run TestOverlapPeak ./internal/membench/

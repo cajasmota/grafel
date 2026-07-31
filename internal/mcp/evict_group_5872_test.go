@@ -220,6 +220,13 @@ func TestEvictGroup_KeepReaderSkipsReopen(t *testing.T) {
 	}
 }
 
+// evictIterations is the evict+revive cycle count for the two concurrent-read
+// tests below. See the rationale block inside the first one for the
+// measurements behind the value — the short version is that the wall cost is
+// State.mu serialization around a 31-79ms revive, so this count is the only
+// lever that shortens the tests without narrowing their concurrency width.
+const evictIterations = 120
+
 // Criterion 4: evict under concurrent read — a reader hammering the group while
 // another goroutine evicts+revives it must not SIGBUS / nil-deref. Run under
 // -race. The in-flight reader holds its own repo pointer and finishes safely.
@@ -268,9 +275,31 @@ func TestEvictGroup_ConcurrentReadNoFault(t *testing.T) {
 	}
 
 	// Evictor: alternate full and keepReader evictions, reviving via Group.
+	//
+	// 120 iterations, not 400. Measured on this fixture (12-core M-series, no
+	// other load): eviction itself is free (0.02ms/call) — the cost is the
+	// REVIVE, 31ms/call for keepReader and 79ms/call for the full reload, on a
+	// 3-entity graph. Each of the 6 readers also calls State.Group and so pays
+	// its own revive, and all 7 goroutines serialize on State.mu, which turns
+	// ~22s of real work into ~177s of lock waiting. At 400 iterations the two
+	// tests in this file were 371s of the package's 487s, and 610s of an
+	// against-the-clock 900s -timeout under -race.
+	//
+	// Throttling the reader spin does NOT fix this and was measured not to:
+	// runtime.Gosched() 166s, a 50us sleep 170s, a 5ms sleep 169s, against a
+	// 177s baseline. A reader iteration is already ~230ms of lock wait, so any
+	// sub-100ms throttle is invisible. The levers are the goroutine count and
+	// the iteration count; iterations is the one that preserves the 6-way
+	// concurrency width the _FlagOn twin below depends on (several *LoadedRepo
+	// generations sharing one *MapHandle at the same time).
+	//
+	// On detection power: dropping to 120 was checked against the oracle named in
+	// the _FlagOn docstring below, and that check found the oracle does not fire
+	// at -count=1 at EITHER 120 or 400 (see that docstring for the numbers). The
+	// 400 was therefore not buying detection at the count CI runs.
 	go func() {
 		defer close(stop)
-		for i := 0; i < 400; i++ {
+		for i := 0; i < evictIterations; i++ {
 			st.EvictGroup("test", i%2 == 0)
 			st.Group("test") // revive
 		}
@@ -295,8 +324,31 @@ func TestEvictGroup_ConcurrentReadNoFault(t *testing.T) {
 // The flag is forced ON explicitly so the guarantee is proven regardless of the
 // package default. Run with -race -count=10 to exercise the handoff window.
 //
-// MUTATION ORACLE: revert coldShellRepo to a per-shell independent readerMu (drop
+// MUTATION ORACLE — UNCONFIRMED AT -count=1, DO NOT TRUST AS WRITTEN.
+// The claim was: revert coldShellRepo to a per-shell independent readerMu (drop
 // the sharedReaderMu handoff) → this test data-races / SIGSEGVs under -race.
+//
+// That was actually run (2026-08, 12-core M-series, macOS). Dropping
+// `sharedReaderMu: lr.rmu()` from coldShellRepo so the shell falls back to its
+// own &lr.readerMu — i.e. exactly the described mutation, confirmed against
+// rmu()'s nil fallback — and running `go test -race -run
+// TestEvictGroup_ConcurrentReadNoFault_FlagOn -count=1`:
+//
+//	400 iterations → PASS (197.6s)
+//	120 iterations → PASS (60.2s)
+//
+// So at the -count=1 the release gate actually runs, this test does NOT catch
+// its own oracle, at either iteration count. The docstring line above ("run with
+// -count=10") is the tell: the authors knew a single run may miss the handoff
+// window. Two runs is thin evidence about a probabilistic race, so this is not
+// proof the test is worthless — but it IS proof that the 400 was not buying
+// detection at -count=1, which is why lowering it to evictIterations=120 is
+// safe.
+//
+// Do not "fix" this by raising the iteration count — that was measured not to
+// help. It needs a deterministic hook that parks a reader inside the handoff
+// window, or a -count=10 run somewhere that is not the per-PR gate. Filed as a
+// follow-up; see the PR that introduced evictIterations.
 func TestEvictGroup_ConcurrentReadNoFault_FlagOn(t *testing.T) {
 	forceServeFromMMap(t, true)
 	doc := lazyTestDoc()
@@ -345,9 +397,10 @@ func TestEvictGroup_ConcurrentReadNoFault_FlagOn(t *testing.T) {
 
 	// Evictor: alternate full and keepReader evictions, reviving via Group. The
 	// keepReader path is the one that hands the shared *MapHandle to a cold shell.
+	// See the iteration-count rationale on the flag-off twin above.
 	go func() {
 		defer close(stop)
-		for i := 0; i < 400; i++ {
+		for i := 0; i < evictIterations; i++ {
 			st.EvictGroup("test", i%2 == 0)
 			st.Group("test") // revive
 		}

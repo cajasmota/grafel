@@ -3,10 +3,13 @@
 // Scaling assertion for the response-shape Python memoization (#5143).
 //
 // Gated behind the `perf` build tag (see CONTRIBUTING.md, "Performance tests").
-// The correctness half of #5143 — that the memoized extraction is
-// byte-identical to a no-cache reference extraction — stays in the default
-// suite as TestResponseShapePython_MemoizationIdentical. Only the wall-clock
-// ratio lives here.
+// The correctness sibling that stays in the default suite is
+// TestResponseShapePython_MemoizationIdentical. Do not overstate what it
+// covers: it compares a warm run against a run after resetPyIndexCache(), so
+// both sides execute the SAME memoized code. That proves cache-reset
+// determinism — the memo does not leak state across resets — not equivalence
+// with a pre-memoization reference implementation, which no longer exists in
+// the tree to compare against. Only the wall-clock ratio lives here.
 //
 //	go test -tags perf ./internal/engine/ -run NearLinearScaling -v
 

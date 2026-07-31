@@ -71,17 +71,21 @@ func TestIncremental_Performance_SingleFileEdit(t *testing.T) {
 	//
 	// Measured on this fixture: 116-249ms with the package run in isolation;
 	// 1.081s with seven packages running in parallel on the same host (that run
-	// is what reproduced the CI red locally). The thing this test exists to
-	// catch is the incremental path degenerating into full-reindex cost — the
-	// forced-full-reindex case in incremental_test.go
-	// ("absent-graph-nonempty-tree → force full reindex") takes ~3-4s on the
-	// same box. 3s sits below that and above the contended incremental number,
-	// so the test still fails for the reason it exists and stops failing for
-	// the reason it kept failing.
+	// is what reproduced the CI red locally). 3s clears the contended number
+	// with ~3x margin.
 	//
-	// If you want to tighten this, run it with `go test -tags perf
-	// ./internal/extractors/` alone and look at the logged number, not at this
-	// bound.
+	// Be honest about what this can and cannot detect. It is a SMOKE bound, not
+	// a discriminator: on a 10-file fixture there is no measurable separation
+	// between "incremental" and "degenerated into a full reindex", because a
+	// full parse of 10 tiny files is itself fast. (The sibling
+	// TestIncremental_AbsentGraphNonEmptyTree_ForcesFullParse takes 0.52s and
+	// does not even perform a full reindex — it asserts TryIncremental returns
+	// Done=false, i.e. the fallback SIGNAL.) The `!res.Done` check above is what
+	// proves the incremental path was taken; this bound only catches it hanging.
+	//
+	// Making it a real perf assertion needs a fixture big enough for the two
+	// paths to separate — a few thousand files, not ten. Until then do not
+	// tighten it on the strength of the logged number.
 	if dur > 3*time.Second {
 		t.Errorf("incremental pass took %s on a 10-file repo — that is full-reindex cost, "+
 			"the incremental path has degenerated", dur)

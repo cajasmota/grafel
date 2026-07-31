@@ -1,5 +1,10 @@
-// Performance + correctness guard for the response-shape Python extractor
-// memoization (#5143).
+// Correctness guard for the response-shape Python extractor memoization
+// (#5143).
+//
+// This file is NOT perf-tagged and holds no timing assertions — it was renamed
+// off `..._perf_test.go` for exactly that reason, since every other
+// `*_perf_test.go` in the tree carries `//go:build perf`. The scaling assertion
+// that used to live here is in response_shape_python_scaling_perf_test.go.
 //
 // The corpus pass (ApplyResponseShapesCorpus) drove findHandlerBody /
 // walkPyClassFields / walkDRFSerializer in an O(endpoints × methods ×

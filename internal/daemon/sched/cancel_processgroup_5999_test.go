@@ -79,7 +79,13 @@ func waitPidGone(pid int, d time.Duration) bool {
 // live `sleep` behind, and a mutation sweep leaves a pile of them on the box.
 func readPidFile(t *testing.T, path string) int {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	// 30s, not 5s. This is FIXTURE SETUP, not the assertion: it waits for the
+	// stand-in child to fork a grandchild and write its pid. Under a loaded
+	// full-suite run that process start took longer than 5s and the test failed
+	// here — before reaching anything it exists to check. Widening cannot mask a
+	// bug: if the pid is never written the t.Fatalf below still fires, just
+	// later. The real assertions have their own budgets (see the const block).
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if b, err := os.ReadFile(path); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && pid > 0 {
