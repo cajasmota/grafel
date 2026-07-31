@@ -176,6 +176,16 @@ func TestApplyAlgorithmsOnLoad_NonBlockingThenPersistsAndEvicts(t *testing.T) {
 	c.schedulePendingAlgo("g", grp)
 
 	// Still gated: entry present, live doc untouched.
+	//
+	// CAVEAT (#6056 review F7, filed separately): this block does NOT actually
+	// prove the gate held. Mutating setBackgroundAlgoGateForTest so the gate is
+	// never installed leaves this test passing 5/5 — the background goroutine
+	// simply has not been scheduled yet by the time we look. The assertion is
+	// timing luck, not gate coverage. Real coverage of the seam's install/clear
+	// behaviour lives in TestBackgroundAlgoSeams_ConcurrentSetAndRead
+	// (graphstate_seam_race_test.go), which does go RED under that mutation.
+	// Making THIS test honest needs a deterministic "sweep has reached the
+	// gate" signal, not a stronger assertion here.
 	c.mu.Lock()
 	_, present := c.entries["g"]
 	c.mu.Unlock()

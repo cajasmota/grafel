@@ -31,6 +31,20 @@ ladder. Run it on real hardware for each release.
 - [ ] `acceptance.yml` has a **green** `workflow_dispatch` run on the release
       commit across **all three** OSes (ubuntu-latest, windows-latest,
       macos-14). Re-dispatch if the last run predates the commit.
+- [ ] `test.yml` has a **green** `workflow_dispatch` run **with the `race`
+      input left ON (the default)** on the release commit, across all three
+      OSes. Re-dispatch if the last run predates the commit.
+
+      **This is the only thing that makes the race detector a release gate.**
+      `test.yml` does run with `-race` on a `v*` tag push, but `release.yml`
+      fires on that *same* tag and does not depend on it: the two start
+      concurrently, and `release.yml` typically publishes the Release before
+      the slowest `test.yml` leg finishes. A race caught by the tag run lands
+      on a tag that has already shipped. Dispatching **before** tagging is what
+      converts `-race` from a post-mortem into a gate (#6056).
+
+      Expect this to take substantially longer than a non-race run — `-race`
+      costs roughly 5-10x wall time, and `internal/mcp` alone is ~9-10 min.
 - [ ] `CHANGELOG.md` has a `[X.Y.Z] — YYYY-MM-DD` section; `[Unreleased]` is
       drained.
 - [ ] `go build ./...` and `go vet ./...` are clean locally.

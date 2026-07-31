@@ -94,3 +94,45 @@ func TestEngineChildCommandSeam_ConcurrentOverrideAndRead(t *testing.T) {
 		t.Fatal("seam override was never invoked — fixture cannot exhibit the race it claims to guard")
 	}
 }
+
+// TestSetEngineChildCommandForTest_NilClears pins the nil convention (#6056
+// review F6): passing nil CLEARS the override rather than installing a nil
+// func, matching setBackgroundAlgoGateForTest / setBackgroundAlgoDoneForTest in
+// internal/dashboard. Without the nil branch this test panics with
+// "invalid memory address or nil pointer dereference" on the resolve below,
+// which is exactly the trap the convention exists to remove.
+func TestSetEngineChildCommandForTest_NilClears(t *testing.T) {
+	root := t.TempDir()
+
+	// Install a real override first, so "clear" has something to clear and a
+	// no-op implementation cannot pass by accident.
+	installed := false
+	restoreOuter := SetEngineChildCommandForTest(func(selfExe, r string) *exec.Cmd {
+		installed = true
+		return exec.Command("true")
+	})
+	defer restoreOuter()
+	if cmd := engineChildCommand("/nonexistent/selfexe", root); cmd == nil {
+		t.Fatal("resolve returned nil under the installed override")
+	}
+	if !installed {
+		t.Fatal("override was not invoked — fixture cannot detect a failed clear")
+	}
+
+	restoreNil := SetEngineChildCommandForTest(nil)
+	cmd := engineChildCommand("/nonexistent/selfexe", root)
+	if len(cmd.Args) < 3 || cmd.Args[1] != "engine" || cmd.Args[2] != "--foreground" {
+		t.Fatalf("nil did not clear the override: args=%v", cmd.Args)
+	}
+
+	// restore() after a nil clear must put the previous override back, so a
+	// nil clear nests like any other.
+	restoreNil()
+	installed = false
+	if cmd := engineChildCommand("/nonexistent/selfexe", root); cmd == nil {
+		t.Fatal("resolve returned nil after restoring the outer override")
+	}
+	if !installed {
+		t.Fatal("restore() after a nil clear did not reinstate the previous override")
+	}
+}

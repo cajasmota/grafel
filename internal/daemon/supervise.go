@@ -116,8 +116,19 @@ func defaultEngineChildCommand(selfExe, root string) *exec.Cmd {
 // grafel binary. Production code must never call this.
 // Overrides nest LIFO: restore() puts back whatever was installed before, so
 // an inner Set/restore pair inside an outer one behaves correctly.
+//
+// fn == nil CLEARS the override (the seam falls back to
+// defaultEngineChildCommand), matching setBackgroundAlgoGateForTest /
+// setBackgroundAlgoDoneForTest in internal/dashboard. Without this branch a nil
+// fn would store a non-nil pointer to a nil func and the next resolve would
+// panic on the call — a latent trap for the first caller that clears by passing
+// nil rather than by calling restore().
 func SetEngineChildCommandForTest(fn func(selfExe, root string) *exec.Cmd) (restore func()) {
 	prev := engineChildCommandOverride.Load()
+	if fn == nil {
+		engineChildCommandOverride.Store(nil)
+		return func() { engineChildCommandOverride.Store(prev) }
+	}
 	next := engineChildCommandFunc(fn)
 	engineChildCommandOverride.Store(&next)
 	return func() { engineChildCommandOverride.Store(prev) }
