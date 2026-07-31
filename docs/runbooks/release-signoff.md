@@ -46,28 +46,43 @@ ladder. Run it on real hardware for each release.
       Expect this to take substantially longer than a non-race run — `-race`
       costs roughly 5-10x wall time, and `internal/mcp` alone is ~9-10 min.
 
-      **Triaging a red run — known flake.** `internal/daemon` has a
-      *pre-existing* family of test-seam data races that `-race` reports at
-      roughly **1 run in 8**, i.e. ~1 dispatch in 3 reds at least one OS leg.
-      The shape is a plain package-var seam written by a test while a live
-      goroutine reads it: `rebuildRPCTimeout` (written by
+      **Triaging a red run — two known failures.** Both are pre-existing and
+      tracked separately. Anything that is not one of these two is real: read
+      the report before deciding. When either is fixed, delete its entry rather
+      than letting it excuse a future failure.
+
+      **(a) `internal/daemon` test-seam data races** — reported at roughly
+      **1 run in 8**, i.e. ~1 dispatch in 3 reds at least one OS leg. The shape
+      is a plain package-var seam written by a test while a live goroutine
+      reads it: `rebuildRPCTimeout` (written by
       `rebuild_singleflight_test.go`, read from the `net/rpc` serving goroutine
       in `service.go`, failing `TestRebuild_SingleFlight_NoConcurrentOverlap`),
       plus the group declared in `internal/daemon/rebuild_wait.go` —
       `rebuildWaitTimeout`, `rebuildWaitInterval`, `rebuildWaitStartupWindow`,
       `rebuildWaitStaleAfter`, `rebuildWaitClock` and `rebuildEngineAliveFn`.
 
-      **Match the report against those exact identifiers.** The instruction
-      below is scoped by name, which is the only reason it is safe — it cannot
-      launder an unrelated race. A misspelled name in this list breaks that
-      property rather than merely being untidy, so every name here has been
-      grepped against the tree; re-grep before editing it.
+      **Match the report against those exact identifiers.** This instruction is
+      scoped by name, which is the only reason it is safe — it cannot launder
+      an unrelated race. A misspelled name in this list breaks that property
+      rather than merely being untidy, so every name here has been grepped
+      against the tree; re-grep before editing it. If a red run's
+      `WARNING: DATA RACE` names one of those vars → **re-dispatch**.
 
-      If a red run's `WARNING: DATA RACE` names one of those vars, it is the
-      known flake — **re-dispatch**, and do not treat it as a release blocker.
-      Anything else is real: read the report before deciding. Tracked
-      separately; when that family is fixed, delete this paragraph rather than
-      letting it excuse a future failure.
+      **(b) `TestV2GraphRestoresDiskPayloadBeforeLoadingGraph`
+      (`internal/dashboard`)** — assertion-only, **no `DATA RACE` in the
+      report**. It fails with `cold disk response = status 200 body
+      {...total_node_count:0}`: the disk-payload lookup missed and an empty
+      graph was served. Seen at roughly **2 runs in 21**, only in FULL-package
+      runs — it has never reproduced in isolation (20/20 clean with `-run`), so
+      do not try to confirm it by re-running the single test. → **Re-dispatch
+      once. If it repeats on the re-dispatch, escalate** — the rate is low
+      enough that twice in a row is not the known failure.
+
+      Entry (b) is listed for the same reason (a) is: this checkbox is a
+      REQUIRED gate, and a red gate whose cause is undocumented stalls a
+      release just as effectively as a real defect. Documenting only the race
+      and silently omitting this one would leave the gate untrustworthy in
+      exactly the way #6056 was about.
 - [ ] `CHANGELOG.md` has a `[X.Y.Z] — YYYY-MM-DD` section; `[Unreleased]` is
       drained.
 - [ ] `go build ./...` and `go vet ./...` are clean locally.

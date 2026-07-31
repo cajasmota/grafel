@@ -254,7 +254,16 @@ func TestBackgroundAlgoGate_ClearedBetweenCheckAndUse(t *testing.T) {
 		case <-swept:
 			sweeps++
 		case <-time.After(10 * time.Second):
-			t.Fatal("background sweep never reported completion — seam wiring broken")
+			// 10s is now the tighter of this test's two bounds (maxWall is
+			// 180s), so word this for both causes rather than only the likely
+			// one. A sweep here is an empty doc plus an os.CreateTemp that
+			// fails immediately against a read-only dir — microseconds of work,
+			// so 10s is ~10^6x headroom and "broken wiring" is the overwhelming
+			// favourite. It is not the only possibility.
+			t.Fatal("background sweep never reported completion within 10s — " +
+				"either the seam wiring is broken (backgroundAlgoDone no longer " +
+				"fires, or schedulePendingAlgo stopped spawning) or the machine " +
+				"is pathologically slow, in which case raise this bound")
 		}
 	}
 
