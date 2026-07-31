@@ -2046,7 +2046,14 @@ func (x *extractor) isFunctionWrapperCall(n ts.Node) bool {
 		// also take a function but are imperative side-effects,
 		// not values bound to a name — the `const cleanup =
 		// useEffect(...)` shape is not idiomatic.
-		"useCallback", "useMemo":
+		"useCallback", "useMemo",
+		// Next.js data cache (next/cache): `const getItems =
+		// unstable_cache(async (...) => {...}, [key], {revalidate})`
+		// returns the cached wrapper around its first argument, so the
+		// bound name is a function, the same shape as the hook wrappers
+		// above. Without this the declaration falls through every
+		// branch and no entity is emitted for the name at all.
+		"unstable_cache":
 		return true
 	}
 	// Issue #2859 — generic Higher-Order Component naming convention.
