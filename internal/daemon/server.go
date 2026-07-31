@@ -611,7 +611,7 @@ func run(ctx context.Context, cfg Config, plane daemonPlaneMode) error {
 	_ = os.Remove(cfg.Layout.SocketPath)
 
 	logger.Info("startup: socket-listen begin", "socket", cfg.Layout.SocketPath)
-	listener, err := transport.Listen(cfg.Layout.SocketPath)
+	listener, err := listenFn(cfg.Layout.SocketPath)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", cfg.Layout.SocketPath, err)
 	}
@@ -796,15 +796,31 @@ func run(ctx context.Context, cfg Config, plane daemonPlaneMode) error {
 	// accepted connection's handler returns, and Rebuild has no shutdown/
 	// ctx.Done case in its own select.
 	//
-	// The close itself is bounded by the transport (see transport.closeBounded):
-	// go-winio's named-pipe listener could otherwise block here forever, which
-	// meant `grafel stop` never completed on Windows — the #6044 symptom. If the
-	// transport could not confirm the close we say so rather than swallow it,
-	// because the alternative is a silent recurrence.
+	// Two separate hazards live in these few lines on Windows, and bounding only
+	// the first would move the hang down one line rather than remove it.
+	//
+	//  1. listener.Close() itself. go-winio's named-pipe listener can block
+	//     indefinitely (see transport.closeBounded), which meant `grafel stop`
+	//     never completed — the #6044 symptom. The transport now bounds it and
+	//     reports a close it could not confirm rather than swallowing it.
+	//
+	//  2. <-acceptDone. This used to be a bare receive. When the close is NOT
+	//     confirmed the listener is by definition still live, so go-winio's
+	//     listenerRoutine can still accept the accept-loop's next handoff and
+	//     park waiting for a client that never arrives; Accept never returns,
+	//     acceptLoop never closes acceptDone, and shutdown wedges here instead.
+	//     The watchdog case is what actually makes this step finite. Falling
+	//     through on watchdogCtx.Done() lands in the select below, which takes
+	//     its already-closed watchdog case and force-exits — the intended
+	//     terminal path.
 	if err := listener.Close(); err != nil {
 		logger.Warn("graceful shutdown: listener close not confirmed", "err", err)
 	}
-	<-acceptDone
+	select {
+	case <-acceptDone:
+	case <-watchdogCtx.Done():
+		logger.Warn("graceful shutdown: accept loop did not stop before the watchdog expired")
+	}
 	connDone := make(chan struct{})
 	go func() {
 		connWG.Wait()
@@ -854,6 +870,27 @@ func SetShutdownExitFuncForTest(f func(int)) (restore func()) {
 	prev := osExit
 	osExit = f
 	return func() { osExit = prev }
+}
+
+// listenFn is the seam through which Run obtains its RPC listener. It exists
+// so a test can inject a listener whose Close does not actually unblock
+// Accept — the "close not confirmed" shape that transport.closeBounded can
+// legitimately return on Windows, and which used to wedge Run at its bare
+// `<-acceptDone` receive. That behaviour is unreachable with a real
+// net.UnixListener, whose Close always unblocks Accept, so on Unix it can only
+// be exercised through a seam.
+var listenFn = transport.Listen
+
+// SetListenFuncForTest overrides the listener constructor for the duration of
+// a test and returns a restore closure. Same rationale and constraints as
+// SetShutdownExitFuncForTest above: tests live in package daemon_test, so an
+// exported hook is the only way in.
+//
+// Production code must never call this.
+func SetListenFuncForTest(f func(string) (net.Listener, error)) (restore func()) {
+	prev := listenFn
+	listenFn = f
+	return func() { listenFn = prev }
 }
 
 // mcpDrainTimeout bounds how long graceful shutdown waits for in-flight MCP

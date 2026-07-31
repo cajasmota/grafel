@@ -16,10 +16,16 @@ package transport
 //
 // The tests below reproduce that state machine faithfully (line references are
 // to github.com/Microsoft/go-winio@v0.6.2/pipe.go) and pin both directions:
-// the model DOES deadlock when the aborted connect is misclassified, and it
-// does NOT when it is classified correctly — so the fixture is not merely
-// always-stuck. closeBounded is then shown to convert the deadlock into a
-// genuine, confirmed close rather than a give-up.
+// the model DOES deadlock when the abort result escapes the classification at
+// pipe.go:452, and it does NOT when that result is classified correctly — so
+// the fixture is not merely always-stuck. closeBounded is then shown to convert
+// the deadlock into a genuine, confirmed close rather than a give-up.
+//
+// SCOPE — what these tests do and do not establish. They prove a conditional:
+// IF an error escapes pipe.go:452, THEN Close deadlocks and a retry resolves
+// it. They do NOT establish which errno escaped in CI, and they deliberately
+// do not name one — see errUnclassifiedModel and closebounded.go for why the
+// obvious candidate is ruled out by the library source.
 //
 // NOTE: this runs on every platform because it models the library rather than
 // calling it. The real Windows behaviour could not be executed here.
@@ -31,17 +37,26 @@ import (
 	"time"
 )
 
-// Sentinels standing in for go-winio's exported errors and for the Windows
-// errno that the library fails to recognise.
+// Sentinels standing in for go-winio's exported errors.
 var (
 	errPipeListenerClosedModel = errors.New("use of closed network connection")
 	errFileClosedModel         = errors.New("file has already been closed")
-	// errOperationAbortedModel stands in for windows.ERROR_OPERATION_ABORTED,
-	// the errno a pending ConnectNamedPipe reports once its handle is closed
-	// out from under it. pipe.go:452 normalises only nil and ErrFileClosed to
-	// ErrPipeListenerClosed, so this value escapes as an ordinary accept
-	// error — which is the whole bug.
-	errOperationAbortedModel = errors.New("the I/O operation has been aborted")
+	// errUnclassifiedModel stands for ANY errno that reaches pipe.go:452
+	// without being nil or ErrFileClosed, and is therefore not promoted to
+	// ErrPipeListenerClosed.
+	//
+	// It is deliberately anonymous. An earlier version of this file named it
+	// ERROR_OPERATION_ABORTED; that was wrong for v0.6.2, where file.go:194-197
+	// always remaps that errno to ErrFileClosed (closeHandle sets f.closing at
+	// file.go:117 before cancelIoEx and before the wg.Wait() that gates
+	// asyncIO's read of it). Naming a specific errno here would re-assert a
+	// claim the library source refutes.
+	//
+	// What these tests establish is the conditional, which is the half that
+	// matters and is errno-independent: IF any error escapes the classification
+	// at 452, THEN Close deadlocks, AND a retry resolves it. Which errno
+	// actually escaped in CI is not established here — see closebounded.go.
+	errUnclassifiedModel = errors.New("an errno pipe.go:452 does not promote")
 )
 
 // winioListenerModel reproduces win32PipeListener's concurrency structure:
@@ -170,11 +185,11 @@ func driveToPendingAccept(t *testing.T, m *winioListenerModel) {
 // --- fixture validity: the model must be able to produce BOTH outcomes ------
 
 // TestWinioModel_MisclassifiedAbortDeadlocksASingleClose is the negative
-// anchor. With ERROR_OPERATION_ABORTED escaping pipe.go:452, one Close hangs
+// anchor. With any unpromoted error escaping pipe.go:452, one Close hangs
 // forever. If this ever starts passing quickly the model has stopped
 // reproducing the bug and every other test in this file is vacuous.
 func TestWinioModel_MisclassifiedAbortDeadlocksASingleClose(t *testing.T) {
-	m := newWinioListenerModel(errOperationAbortedModel)
+	m := newWinioListenerModel(errUnclassifiedModel)
 	driveToPendingAccept(t, m)
 
 	returned := make(chan struct{})
@@ -232,7 +247,7 @@ func TestWinioModel_CorrectlyClassifiedAbortClosesOnFirstTry(t *testing.T) {
 // releasing the original Close as well. The listener is genuinely released,
 // not abandoned.
 func TestCloseBounded_RecoversTheMisclassifiedAbortDeadlock(t *testing.T) {
-	m := newWinioListenerModel(errOperationAbortedModel)
+	m := newWinioListenerModel(errUnclassifiedModel)
 	driveToPendingAccept(t, m)
 
 	start := time.Now()
@@ -301,6 +316,89 @@ func TestCloseBounded_ReturnsWithinBudgetWhenCloseCanNeverSucceed(t *testing.T) 
 	}
 	if elapsed > 5*time.Second {
 		t.Fatalf("took %v; the total budget is not being enforced", elapsed)
+	}
+}
+
+// TestCloseBounded_RetryErrorNeverMasksASuccessfulClose pins attribution.
+//
+// The retries are closeBoundedFor's own doing, so a retry that fails says
+// nothing about whether the listener closed. The realistic shape: the first
+// Close is slow but succeeds, and a retry fired in the meantime reports "use of
+// closed network connection" — which is what a listener that HAS closed says.
+// Returning that would make server.go log a shutdown failure for a shutdown
+// that worked.
+func TestCloseBounded_RetryErrorNeverMasksASuccessfulClose(t *testing.T) {
+	alreadyClosed := errors.New("use of closed network connection")
+
+	var calls atomic.Int32
+	closeFn := func() error {
+		if calls.Add(1) == 1 {
+			// The real close: slow enough that a retry fires first, but it
+			// does succeed.
+			time.Sleep(150 * time.Millisecond)
+			return nil
+		}
+		return alreadyClosed
+	}
+
+	err := closeBoundedFor(closeFn, 40*time.Millisecond, 4)
+	if err != nil {
+		t.Fatalf("a close that succeeded was reported as failed: %v", err)
+	}
+	if calls.Load() < 2 {
+		t.Fatalf("fixture never fired a retry (%d calls), so it cannot exhibit the masking bug", calls.Load())
+	}
+}
+
+// TestCloseBounded_FirstAttemptErrorIsStillReported is the opposite anchor for
+// the rule above: discarding retry errors must not turn into discarding the
+// real one. Attempt 0's error is authoritative and must survive.
+func TestCloseBounded_FirstAttemptErrorIsStillReported(t *testing.T) {
+	realFailure := errors.New("permission denied")
+
+	var calls atomic.Int32
+	closeFn := func() error {
+		if calls.Add(1) == 1 {
+			time.Sleep(150 * time.Millisecond)
+			return realFailure
+		}
+		return errors.New("some later noise")
+	}
+
+	err := closeBoundedFor(closeFn, 40*time.Millisecond, 4)
+	if !errors.Is(err, realFailure) {
+		t.Fatalf("attempt 0's error was lost; got %v", err)
+	}
+	if calls.Load() < 2 {
+		t.Fatalf("fixture never fired a retry (%d calls), so it does not exercise the rule", calls.Load())
+	}
+}
+
+// TestCloseBounded_LeaksAtMostOneGoroutinePerAttempt pins the documented cost
+// of giving up. The leaked goroutines are unrecoverable by construction — they
+// are blocked inside a Close that does not return — so the contract that
+// matters is that the leak is BOUNDED by maxAttempts rather than unbounded.
+//
+// Counting in-flight closeFn invocations is deterministic, unlike
+// runtime.NumGoroutine, which other tests in this package would perturb.
+func TestCloseBounded_LeaksAtMostOneGoroutinePerAttempt(t *testing.T) {
+	const attempts = 4
+
+	var inFlight atomic.Int32
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) }) // let the leaked goroutines exit with the test
+
+	err := closeBoundedFor(func() error {
+		inFlight.Add(1)
+		<-release
+		return nil
+	}, 30*time.Millisecond, attempts)
+
+	if !errors.Is(err, errCloseNotConfirmed) {
+		t.Fatalf("expected errCloseNotConfirmed, got %v", err)
+	}
+	if got := inFlight.Load(); got != attempts {
+		t.Fatalf("expected exactly %d blocked close goroutines (the documented leak), got %d", attempts, got)
 	}
 }
 
