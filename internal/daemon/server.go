@@ -795,7 +795,15 @@ func run(ctx context.Context, cfg Config, plane daemonPlaneMode) error {
 	// forever behind a stalled Rebuild RPC: connWG.Wait() blocks until every
 	// accepted connection's handler returns, and Rebuild has no shutdown/
 	// ctx.Done case in its own select.
-	_ = listener.Close()
+	//
+	// The close itself is bounded by the transport (see transport.closeBounded):
+	// go-winio's named-pipe listener could otherwise block here forever, which
+	// meant `grafel stop` never completed on Windows — the #6044 symptom. If the
+	// transport could not confirm the close we say so rather than swallow it,
+	// because the alternative is a silent recurrence.
+	if err := listener.Close(); err != nil {
+		logger.Warn("graceful shutdown: listener close not confirmed", "err", err)
+	}
 	<-acceptDone
 	connDone := make(chan struct{})
 	go func() {
