@@ -47153,6 +47153,13 @@
       },
       "framework_specific": {
         "Next.js Internals": {
+          "hoc_wrapper_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/extractor_test.go","internal/extractors/javascript/next_dynamic.go"],
+            "issue": "https://github.com/cajasmota/grafel/issues/6054",
+            "notes": "Next.js-specific wrapper calls bound to a const are classified SCOPE.Operation subtype=function by isFunctionWrapperCall (extractor.go), the same cell the Expo/Ionic/NativeScript/React/React Native records already carry. Two recognisers: unstable_cache from next/cache by callee name (#6053), and next/dynamic by argument shape — first argument must be a function literal whose body performs a dynamic import(), since the bare name `dynamic` is a plausible ordinary identifier (next_dynamic.go). Recognised dynamic() entities are stamped react_lazy=true (shared code-split-boundary semantics with React.lazy), next_dynamic=true, and lazy_module when the specifier is statically recoverable. Renamed default imports (`import dyn from 'next/dynamic'`) and the legacy `dynamic({loader})` object form are deliberately not recognised. Proved by TestConstExportNextDynamic (incl. four same-callee negative controls), TestConstExportNextDynamicTypeAnnotated, TestConstExportNextDynamicInFunctionBody and the TestConstExportNextUnstableCache* trio in extractor_test.go.",
+            "verified_at": "2026-07-31"
+          },
           "middleware_runtime_detection": {
             "status": "full",
             "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/nextjs.go"],

@@ -238,7 +238,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | 🟡 1/2 | — | 🟢 2/2 | 🔴 0/1 | 🟡 21/24 | 🟡 2/4 | |
 | [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | 🔴 0/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | 🔴 0/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
-| [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 11/11 | |
+| [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 12/12 | |
 | [JS/TS](../by-language/jsts.md) | [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |

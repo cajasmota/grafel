@@ -1923,6 +1923,20 @@ func (x *extractor) handleVariableDeclarator(n ts.Node, parentClass string, cb *
 					x.stampLastEntityProp("lazy_module", mod)
 				}
 			}
+			// Issue #6054 — next/dynamic is the same code-split boundary as
+			// React.lazy (Next.js implements it on top of lazy + Suspense), so
+			// it reuses react_lazy/lazy_module rather than minting a parallel
+			// property that every existing reader of react_lazy would have to
+			// learn. next_dynamic is stamped alongside so the framework
+			// provenance is not lost — react_lazy answers "is this a code-split
+			// point", next_dynamic answers "which primitive drew it".
+			if x.isNextDynamicWrapper(valueNode) {
+				x.stampLastEntityProp("react_lazy", "true")
+				x.stampLastEntityProp("next_dynamic", "true")
+				if mod := x.nextDynamicModule(valueNode); mod != "" {
+					x.stampLastEntityProp("lazy_module", mod)
+				}
+			}
 			// Issue #1748 — wrapper calls (forwardRef, memo, etc.) inside a
 			// function body are non-addressable; tag as local_scope.
 			if x.funcDepth > 0 {
@@ -2054,6 +2068,25 @@ func (x *extractor) isFunctionWrapperCall(n ts.Node) bool {
 		// above. Without this the declaration falls through every
 		// branch and no entity is emitted for the name at all.
 		"unstable_cache":
+		return true
+	}
+	// Issue #6054 — React 19's cache(). Same "returns a memoized wrapper around
+	// its first argument" shape as unstable_cache, but the bare name `cache` is
+	// too ordinary to accept on the name alone, so it carries an arity gate:
+	// React's cache() takes exactly one argument, the function to memoize. That
+	// rules out the two collision shapes that actually occur — the zero-arg
+	// cache-factory (`const c = cache()`) and the multi-arg LRU constructor
+	// (`const c = cache(max, ttl)`). A "must be a function literal" gate was
+	// considered and rejected: `cache(implFn)` (a bare function reference) is
+	// the majority shape in real Next.js sources, and the wrapper branch
+	// already supports non-literal inner shapes (see forwardRef, above).
+	if leaf == "cache" && callArgCount(n) == 1 {
+		return true
+	}
+	// Issue #6054 — next/dynamic. Recognised by argument shape rather than by
+	// name, because `dynamic` is a plausible ordinary identifier. See
+	// next_dynamic.go for the gate and the forms it deliberately excludes.
+	if x.isNextDynamicWrapper(n) {
 		return true
 	}
 	// Issue #2859 — generic Higher-Order Component naming convention.

@@ -142,10 +142,20 @@ func (x *extractor) lazyImportModule(valueNode ts.Node) string {
 	if x.calleeLeaf(valueNode) != "lazy" {
 		return ""
 	}
-	// Find the dynamic import call inside the lazy() argument: tree-sitter
+	return x.dynamicImportSpecifier(valueNode)
+}
+
+// dynamicImportSpecifier returns the recovered specifier of the first dynamic
+// `import(...)` call anywhere inside n, or "" when there is none or it is not
+// statically recoverable. Extracted from lazyImportModule (issue #6054) so that
+// next/dynamic's loader callback can reuse the identical specifier-recovery
+// rules — see nextDynamicModule in next_dynamic.go. Callers are responsible for
+// deciding which subtree is legitimate to search.
+func (x *extractor) dynamicImportSpecifier(n ts.Node) string {
+	// Find the dynamic import call inside the subtree: tree-sitter
 	// models `import('m')` as a call_expression whose function child is the
 	// `import` keyword node.
-	for _, c := range findAllNodes(valueNode, "call_expression") {
+	for _, c := range findAllNodes(n, "call_expression") {
 		fn := c.ChildByFieldName("function")
 		if fn == nil || fn.Type() != "import" {
 			continue

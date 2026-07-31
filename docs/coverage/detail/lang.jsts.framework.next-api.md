@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Meta Framework
-- **Capability cells:** 42
+- **Capability cells:** 43
 
 ## Capabilities
 
@@ -105,6 +105,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| HOC wrapper recognition | ✅ `full` | `2026-07-31` | [link](https://github.com/cajasmota/grafel/issues/6054) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/extractor_test.go`<br>`internal/extractors/javascript/next_dynamic.go` | Next.js-specific wrapper calls bound to a const are classified SCOPE.Operation subtype=function by isFunctionWrapperCall (extractor.go), the same cell the Expo/Ionic/NativeScript/React/React Native records already carry. Two recognisers: unstable_cache from next/cache by callee name (#6053), and next/dynamic by argument shape — first argument must be a function literal whose body performs a dynamic import(), since the bare name `dynamic` is a plausible ordinary identifier (next_dynamic.go). Recognised dynamic() entities are stamped react_lazy=true (shared code-split-boundary semantics with React.lazy), next_dynamic=true, and lazy_module when the specifier is statically recoverable. Renamed default imports (`import dyn from 'next/dynamic'`) and the legacy `dynamic({loader})` object form are deliberately not recognised. Proved by TestConstExportNextDynamic (incl. four same-callee negative controls), TestConstExportNextDynamicTypeAnnotated, TestConstExportNextDynamicInFunctionBody and the TestConstExportNextUnstableCache* trio in extractor_test.go. |
 | Middleware runtime detection | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/2878) | `internal/custom/javascript/issue2878_metafw_idioms_test.go`<br>`internal/custom/javascript/nextjs.go` | — |
 | Next config detection | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/2878) | `internal/custom/javascript/issue2878_metafw_idioms_test.go`<br>`internal/custom/javascript/nextjs.go` | — |
 | Server actions | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/2878) | `internal/custom/javascript/issue2878_metafw_idioms_test.go`<br>`internal/custom/javascript/nextjs.go` | — |
