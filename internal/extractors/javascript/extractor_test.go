@@ -759,6 +759,26 @@ func TestConstExportReactWrappers(t *testing.T) {
 	assertKind(t, entities, "Connected", "SCOPE.Operation")
 }
 
+const constExportNextUnstableCacheSrc = `
+import { unstable_cache } from "next/cache";
+
+export const getItems = unstable_cache(
+  async (ownerId) => fetchItems(ownerId),
+  ["items"],
+  { revalidate: 60 },
+);
+`
+
+// unstable_cache returns the cached wrapper around its first argument, so the
+// bound name is callable. Same shape as useCallback/useMemo.
+func TestConstExportNextUnstableCache(t *testing.T) {
+	src := []byte(constExportNextUnstableCacheSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "getItems", "SCOPE.Operation")
+}
+
 const constExportHookAliasSrc = `
 import { useSelector, useDispatch } from "react-redux";
 
