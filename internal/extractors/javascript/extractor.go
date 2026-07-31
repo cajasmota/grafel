@@ -2072,15 +2072,34 @@ func (x *extractor) isFunctionWrapperCall(n ts.Node) bool {
 	}
 	// Issue #6054 — React 19's cache(). Same "returns a memoized wrapper around
 	// its first argument" shape as unstable_cache, but the bare name `cache` is
-	// too ordinary to accept on the name alone, so it carries an arity gate:
-	// React's cache() takes exactly one argument, the function to memoize. That
-	// rules out the two collision shapes that actually occur — the zero-arg
-	// cache-factory (`const c = cache()`) and the multi-arg LRU constructor
-	// (`const c = cache(max, ttl)`). A "must be a function literal" gate was
-	// considered and rejected: `cache(implFn)` (a bare function reference) is
-	// the majority shape in real Next.js sources, and the wrapper branch
-	// already supports non-literal inner shapes (see forwardRef, above).
-	if leaf == "cache" && callArgCount(n) == 1 {
+	// too ordinary to accept on the name alone, so it carries two gates.
+	//
+	// Arity: React's cache() takes exactly one argument, the function to
+	// memoize. That rules out the zero-arg cache factory (`const c = cache()`)
+	// and the multi-arg LRU constructor (`const c = cache(max, ttl)`).
+	//
+	// Argument type: that argument must not be a string, number or template
+	// literal. React's cache() is never called with a key, so `cache("config")`,
+	// `cache(1000)` and `cache(`+"`"+`user:${id}`+"`"+`)` are cache-library
+	// lookups binding a value, not a function. Arity alone cannot separate them
+	// from cache(fn), and this matters more than a bare-name corpus scan can
+	// show: `leaf` reduces a member_expression callee to its property, so
+	// `store.cache(1000)` reaches this rule too, and `.cache(` outnumbers the
+	// bare form by roughly 16:1 in the same corpus.
+	//
+	// A "must be a function literal" gate was considered and rejected:
+	// `cache(implFn)` (a bare function reference) is the majority shape in real
+	// Next.js sources, and the wrapper branch already supports non-literal
+	// inner shapes (see forwardRef, above).
+	//
+	// Two residual false-positive shapes are accepted deliberately:
+	//   - `redisClient.cache(loaderFn)` — member callee, identifier argument.
+	//     Rejecting member callees outright would also reject `React.cache(fn)`,
+	//     and leaf-matching through member_expression is the package-wide
+	//     convention (styled.div, React.lazy, …).
+	//   - `const hit = cache(cacheKey)` — an identifier argument is
+	//     indistinguishable from `cache(implFn)` without type information.
+	if leaf == "cache" && callArgCount(n) == 1 && !isLiteralArgNode(firstCallArg(n)) {
 		return true
 	}
 	// Issue #6054 — next/dynamic. Recognised by argument shape rather than by
@@ -2113,6 +2132,11 @@ func isHOCName(leaf string) bool {
 }
 
 // callArgCount returns the number of named argument nodes in a call_expression.
+//
+// Comments are excluded (issue #6054 review): in tree-sitter-javascript
+// `comment` is a NAMED node, so `withAuth(/* c */ Component)` used to count two
+// arguments and fail every single-argument gate built on this helper. An
+// argument-position comment is not an argument.
 func callArgCount(n ts.Node) int {
 	args := n.ChildByFieldName("arguments")
 	if args == nil {
@@ -2120,7 +2144,7 @@ func callArgCount(n ts.Node) int {
 	}
 	count := 0
 	for i := 0; i < int(args.ChildCount()); i++ {
-		if c := args.Child(i); c != nil && c.IsNamed() {
+		if c := args.Child(i); c != nil && c.IsNamed() && c.Type() != "comment" {
 			count++
 		}
 	}

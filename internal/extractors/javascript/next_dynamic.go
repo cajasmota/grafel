@@ -21,10 +21,20 @@ import (
 //
 //	first argument is a function literal whose body performs a dynamic import()
 //
-// Everything that is not that shape is left alone, including `dynamic(x)`,
+// Call shapes that are not that shape are left alone, including `dynamic(x)`,
 // `dynamic({loader: ...})` and `dynamic()`. The gate is deliberately narrower
 // than Next.js's full accepted surface; see nextDynamicModule for what that
 // costs.
+//
+// What the gate does NOT establish is provenance. It matches on shape and on a
+// callee leaf, never on the import that bound the name, so a user-defined
+// `function dynamic(f){…}` or a method call `loaders.dynamic(() => import(…))`
+// that happens to take an importing loader is recognised too — the corpus has a
+// real `this.dynamic(pathname)` method site, saved from recognition only by the
+// argument shape. react_lazy is defensible on any of those (they genuinely are
+// code-split points); next_dynamic asserts a framework that shape alone cannot
+// prove, and is a best-effort attribution rather than a guarantee. Fixing that
+// properly needs import tracking, which the wrapper switch does not have.
 //
 // Recognised (Next.js documented forms):
 //
@@ -92,12 +102,28 @@ func (x *extractor) nextDynamicModule(n ts.Node) string {
 	}
 	// Search only the loader callback, never the options object: a stray
 	// import() in `{ loading: () => import('spinner') }` is not the split
-	// target and must not be reported as one.
+	// target and must not be reported as one. This narrowing is load-bearing,
+	// not defensive — dynamicImportSpecifier yields reverse document order, so
+	// a trailing `loading` option would win outright. Pinned by
+	// TestConstExportNextDynamicIgnoresLoadingOption.
+	//
+	// The narrowing stops at the loader boundary, not at its return position:
+	// `dynamic(() => { registerPrefetch(() => import('./Prefetch')); return C })`
+	// still stamps lazy_module="./Prefetch". Same error class one level in,
+	// rare enough in real code to leave rather than chase with return-position
+	// analysis the rest of this file does not do.
 	return x.dynamicImportSpecifier(loader)
 }
 
 // firstCallArg returns the first named argument node of a call_expression, or
 // nil when the call has no arguments.
+//
+// Comments are skipped for the same reason callArgCount skips them (issue #6054
+// review): `comment` is a NAMED node in tree-sitter-javascript, so without this
+// `dynamic(/* lazy */ () => import('./Chart'))` resolved its "first argument"
+// to the comment, failed the function-literal check, and silently produced no
+// entity at all — and `// eslint-disable-next-line` in argument position is
+// common in real Next.js code.
 func firstCallArg(n ts.Node) ts.Node {
 	args := n.ChildByFieldName("arguments")
 	if args == nil {
@@ -105,11 +131,25 @@ func firstCallArg(n ts.Node) ts.Node {
 	}
 	for i := 0; i < int(args.ChildCount()); i++ {
 		c := args.Child(i)
-		if c != nil && c.IsNamed() {
+		if c != nil && c.IsNamed() && c.Type() != "comment" {
 			return c
 		}
 	}
 	return nil
+}
+
+// isLiteralArgNode reports whether n is a string, number or template literal —
+// argument shapes that prove a call is not React's cache(fn). Kept next to
+// firstCallArg because the two are always used together.
+func isLiteralArgNode(n ts.Node) bool {
+	if n == nil {
+		return false
+	}
+	switch n.Type() {
+	case "string", "number", "template_string", "template_literal":
+		return true
+	}
+	return false
 }
 
 // hasDynamicImportCall reports whether the subtree rooted at n contains a

@@ -1000,6 +1000,45 @@ func TestConstExportNextDynamicInFunctionBody(t *testing.T) {
 	assertProp(t, entities, "ModuleChart", "local_scope", "")
 }
 
+// Issue #6054 review — pins that specifier recovery searches the loader
+// callback and nothing else. This is observable, contrary to what the original
+// submission claimed: findAllNodes (extractor.go:3591) is a stack-based DFS
+// that pushes children left-to-right and pops from the tail, so it yields
+// REVERSE document order and reaches the trailing options object first.
+//
+// Both consts are documented Next.js shapes — `loading` is the second most
+// common option after `ssr`, and it is conventionally another import(). If the
+// search were widened from the loader to the whole call:
+//   - WithLoading.lazy_module would become "./Spinner" (wrong target), and
+//   - ComputedWithLoading would gain a lazy_module at all, where the correct
+//     answer is no stamp, because its own specifier is unrecoverable.
+//
+// The second is the sharper of the two: a wrong-but-plausible specifier is
+// worse than a missing one, and only ComputedWithLoading can catch a widening
+// that happens to pick the right module by luck.
+const constExportNextDynamicLoadingOptionSrc = `
+import dynamic from "next/dynamic";
+
+export const WithLoading = dynamic(() => import("./Chart"),
+  { ssr: false, loading: () => import("./Spinner") });
+
+export const ComputedWithLoading = dynamic(() => import(chartPath),
+  { loading: () => import("./Spinner") });
+`
+
+func TestConstExportNextDynamicIgnoresLoadingOption(t *testing.T) {
+	src := []byte(constExportNextDynamicLoadingOptionSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKindSubtype(t, entities, "WithLoading", "SCOPE.Operation", "function")
+	assertProp(t, entities, "WithLoading", "lazy_module", "./Chart")
+
+	assertKindSubtype(t, entities, "ComputedWithLoading", "SCOPE.Operation", "function")
+	assertProp(t, entities, "ComputedWithLoading", "react_lazy", "true")
+	assertPropAbsent(t, entities, "ComputedWithLoading", "lazy_module")
+}
+
 // Issue #6054 item 4 — React 19's cache(). The bare name is common, so unlike
 // the six bare-name entries already in the switch this one carries an arity
 // gate: React's cache() takes exactly one argument (the function to memoize).
@@ -1032,6 +1071,83 @@ func TestConstExportReactCache(t *testing.T) {
 			t.Errorf("%s must not be emitted (arity is not React cache(fn)); got %+v", name, e)
 		}
 	}
+}
+
+// Issue #6054 review — arity alone cannot separate React's cache(fn) from a
+// cache-library lookup, because `leaf` reduces a member_expression callee to
+// its property and the corpus scan behind the arity gate could only observe
+// bare-identifier callees on `const` declarators. A first argument that is a
+// string, number or template literal is provably not React's cache(fn), which
+// takes the function to memoize, so those are rejected outright.
+//
+// keptLiteralFn / keptRefFn are the controls that prove the literal rejection
+// did not simply disable the rule: both survive it, and they are the only two
+// argument shapes present among the seven real cache() sites in the corpus.
+const constExportReactCacheLiteralArgSrc = `
+import { cache } from "react";
+
+export const keptLiteralFn = cache(async (id) => db.find(id));
+export const keptRefFn = cache(getUserImpl);
+
+export const configValue = cache("config");
+export const ttlCache = cache(1000);
+export const keyedValue = cache(` + "`" + `user:${id}` + "`" + `);
+export const memberTTL = store.cache(1000);
+`
+
+func TestConstExportReactCacheRejectsLiteralArgument(t *testing.T) {
+	src := []byte(constExportReactCacheLiteralArgSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	// Controls — the rule is still live for both real argument shapes.
+	assertKindSubtype(t, entities, "keptLiteralFn", "SCOPE.Operation", "function")
+	assertKindSubtype(t, entities, "keptRefFn", "SCOPE.Operation", "function")
+
+	for _, name := range []string{"configValue", "ttlCache", "keyedValue", "memberTTL"} {
+		if e := findByName(entities, name); e != nil {
+			t.Errorf("%s must not be emitted (React cache(fn) never takes a literal); got %+v", name, e)
+		}
+	}
+}
+
+// Issue #6054 review — in tree-sitter-javascript `comment` is a NAMED node, so
+// any argument-position comment shifts firstCallArg onto the comment and
+// inflates callArgCount. One `/* … */` or `// eslint-disable-next-line` in
+// argument position silently turned a recognised code-split point into no
+// entity at all.
+//
+// The three module-scope consts below each carry a comment in the argument
+// list; every one of them must still be emitted. withComment additionally
+// pins the pre-existing callArgCount, which the same fix widens: before it,
+// `withFoo(/* c */ Comp)` counted two arguments and failed the single-argument
+// HOC gate.
+const constExportArgumentCommentSrc = `
+import dynamic from "next/dynamic";
+import { cache } from "react";
+
+export const Chart = dynamic(/* lazy */ () => import("./Chart"));
+export const getUser = cache(/* memoized */ getUserImpl);
+export const Wrapped = withAuth(
+  // eslint-disable-next-line react/display-name
+  BaseComponent,
+);
+`
+
+func TestConstExportArgumentCommentsDoNotDefeatGates(t *testing.T) {
+	src := []byte(constExportArgumentCommentSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKindSubtype(t, entities, "Chart", "SCOPE.Operation", "function")
+	assertProp(t, entities, "Chart", "next_dynamic", "true")
+	assertProp(t, entities, "Chart", "lazy_module", "./Chart")
+
+	assertKindSubtype(t, entities, "getUser", "SCOPE.Operation", "function")
+
+	// callArgCount is shared with the with<Capital> HOC rule; the comment fix
+	// widens that rule too, and this pins the widening deliberately.
+	assertKindSubtype(t, entities, "Wrapped", "SCOPE.Operation", "function")
 }
 
 const constExportHookAliasSrc = `

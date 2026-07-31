@@ -145,12 +145,20 @@ func (x *extractor) lazyImportModule(valueNode ts.Node) string {
 	return x.dynamicImportSpecifier(valueNode)
 }
 
-// dynamicImportSpecifier returns the recovered specifier of the first dynamic
-// `import(...)` call anywhere inside n, or "" when there is none or it is not
-// statically recoverable. Extracted from lazyImportModule (issue #6054) so that
+// dynamicImportSpecifier returns the recovered specifier of a dynamic
+// `import(...)` call inside n, or "" when there is none or it is not statically
+// recoverable. Extracted from lazyImportModule (issue #6054) so that
 // next/dynamic's loader callback can reuse the identical specifier-recovery
-// rules — see nextDynamicModule in next_dynamic.go. Callers are responsible for
-// deciding which subtree is legitimate to search.
+// rules — see nextDynamicModule in next_dynamic.go.
+//
+// When n contains more than one dynamic import, the one returned is the LAST in
+// document order, not the first: findAllNodes is a stack-based DFS that pushes
+// children left-to-right and pops from the tail, so it yields reverse document
+// order. This is long-standing behaviour, harmless for React.lazy (whose single
+// argument holds at most one import), and the reason callers must narrow the
+// subtree themselves rather than rely on "the first one wins" — see
+// nextDynamicModule, where a trailing `loading: () => import('./Spinner')`
+// option would otherwise be picked over the real split target.
 func (x *extractor) dynamicImportSpecifier(n ts.Node) string {
 	// Find the dynamic import call inside the subtree: tree-sitter
 	// models `import('m')` as a call_expression whose function child is the
