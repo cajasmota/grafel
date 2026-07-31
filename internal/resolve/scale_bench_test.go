@@ -284,94 +284,10 @@ func TestMergeModuleBatch_SingleBatch(t *testing.T) {
 // O(N log N) scaling assertion
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestBuildIndexFromModules_SubQuadratic times BuildIndexFromModules at two
-// corpus sizes and asserts the build does not scale quadratically in module
-// count.
-//
-// This test is intentionally NOT a benchmark (b.N loop) so it runs in the
-// normal test suite with a deterministic pass/fail gate.
-//
-// De-flaking rationale (#5636): the original compared 100 vs 500 modules (only
-// a 5x corpus) against a 12x bound. For an O(N log N) build the expected ratio
-// is ~5 × log(500)/log(100) ≈ 6.5, so the headroom to the 12x bound was barely
-// ~1.85x — and ordinary CI jitter (GC pauses, CPU throttling, co-scheduled
-// load) routinely ate that headroom with no real complexity regression
-// (12.25x observed on a loaded macOS runner). It was the third perf-ratio
-// scaling test to flake this way after #5607 and #5628.
-//
-// We apply the #5607 pattern: a wide 10x corpus gap. The wide gap is what
-// makes the bound robust — it places a large window between the expected
-// complexity and the next-worse one:
-//
-//   - O(N log N): 1000/100 × log(1000)/log(100) ≈ 10 × 1.5 = 15x
-//   - O(N²):      1000²/100²                     = 100x
-//
-// Aggregation across samples was originally the MEDIAN of several timing
-// runs per size, but that still flaked on noisy CI runners (see
-// internal/engine/response_shape_python_perf_test.go's #5751 Windows
-// follow-up: a median-of-5 got dragged up by runner contention with no
-// algorithmic change). Wall-clock noise (GC pauses, scheduler contention,
-// co-scheduled load) only ever ADDS time to a sample, never subtracts it, so
-// a handful of contended runs can drag the median upward with no ceiling —
-// the median doesn't actually bound the noise contribution. We now take the
-// MINIMUM of the per-size samples instead: it is the least-contended
-// observation, the best available estimate of true algorithmic cost, and a
-// genuine O(N²) code path is still ~100x slower at N=1000 vs N=100 on every
-// run including the cleanest one, so switching to min loses none of the
-// regression-detection power. samples is bumped 5→8 to give the minimum more
-// draws at a clean run while staying fast.
-//
-// A 40x bound sits ~2.7x above the n-log-n expectation (generous slack for
-// fixed overhead and CI noise) yet ~2.5x below the quadratic signal, so a
-// genuine O(N²) reintroduction still fails loudly (~100x) while CI jitter
-// never does. With min-based timing this margin is if anything more
-// comfortable than before, since min filters out upward noise directly
-// rather than relying on the bound alone to absorb it.
-func TestBuildIndexFromModules_SubQuadratic(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping scaling test in short mode")
-	}
-
-	const (
-		entPerMod = 50
-		smallN    = 100
-		largeN    = 1000 // 10x corpus → n-log-n ≈ 15x time, quadratic ≈ 100x
-		samples   = 8    // min of N runs damps CI outliers without masking true cost
-		bound     = 40.0 // ~2.7x over n-log-n (15x), ~2.5x under quadratic (100x)
-	)
-
-	// min times BuildIndexFromModules `samples` times at the given module
-	// count and returns the minimum, which is far more stable than the
-	// median under CI noise: a GC pause or co-scheduled spike can only ever
-	// inflate a sample, so the smallest sample is the one least corrupted by
-	// noise and the best estimate of true algorithmic cost.
-	minRun := func(numMods int) int64 {
-		modules, _ := syntheticModules(numMods, entPerMod)
-		best := int64(-1)
-		for i := 0; i < samples; i++ {
-			t0 := nanoTime()
-			_ = BuildIndexFromModules(modules, 0)
-			d := nanoTime() - t0
-			if best < 0 || d < best {
-				best = d
-			}
-		}
-		return best
-	}
-
-	tSmall := minRun(smallN)
-	tLarge := minRun(largeN)
-
-	// +1µs floor on the denominator guards against a 0ns small measurement.
-	ratio := float64(tLarge) / float64(tSmall+1000)
-	t.Logf("%d-mod min: %dns  %d-mod min: %dns  ratio: %.2fx (n-log-n≈15.0, quadratic≈100.0)",
-		smallN, tSmall, largeN, tLarge, ratio)
-
-	if ratio > bound {
-		t.Errorf("scaling ratio %.2fx exceeds %.0fx threshold (%dx corpus) — possible O(N²) regression",
-			ratio, bound, largeN/smallN)
-	}
-}
+// TestBuildIndexFromModules_SubQuadratic lives in scale_perf_test.go behind the
+// `perf` build tag: it is a wall-clock ratio, not a correctness property.
+// TestBuildIndexFromModules_Parity and _ResolutionRate above keep the
+// correctness half in the release gate.
 
 // nanoTime returns a monotonic nanosecond timestamp.  Using
 // time.Now().UnixNano() is accurate enough for the loose scaling assertion in

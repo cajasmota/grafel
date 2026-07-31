@@ -6,7 +6,6 @@ import (
 	"math/rand/v2"
 	"sort"
 	"testing"
-	"time"
 
 	"gonum.org/v1/gonum/graph/community"
 	"gonum.org/v1/gonum/graph/simple"
@@ -600,40 +599,9 @@ func csrModularity(g *csrGraph, comm []int32, nc int, resolution float64) float6
 // Scaling
 // ---------------------------------------------------------------------------
 
-// TestLouvainScalingExponent — the whole point of this change. gonum's local
-// mover scales ~N^1.8 because a sweep costs Σ|c|²; the neighbour-side
-// formulation costs O(E) per sweep, i.e. ~N^1.0-1.2 on a fixed-degree family.
-//
-// Pinning the EXPONENT rather than a wall-clock threshold is deliberate: a
-// fixed threshold passes on a fast machine even after an asymptotic
-// regression, an exponent does not.
-func TestLouvainScalingExponent(t *testing.T) {
-	if testing.Short() {
-		t.Skip("scaling fit is slow; skipped under -short")
-	}
-	sizes := []int{8000, 16000, 32000, 64000}
-	var logN, logT []float64
-	for _, n := range sizes {
-		und := defaultPlanted(n, 21)
-		// Warm up allocator/page cache, then take the best of 3 to damp noise.
-		best := time.Duration(math.MaxInt64)
-		for r := 0; r < 3; r++ {
-			start := time.Now()
-			louvainPartition(und, 1.0)
-			if d := time.Since(start); d < best {
-				best = d
-			}
-		}
-		t.Logf("n=%-6d louvain=%v", n, best)
-		logN = append(logN, math.Log(float64(n)))
-		logT = append(logT, math.Log(float64(best.Nanoseconds())))
-	}
-	exp := leastSquaresSlope(logN, logT)
-	t.Logf("fitted scaling exponent: N^%.2f", exp)
-	if exp > 1.45 {
-		t.Errorf("scaling exponent N^%.2f exceeds 1.45 — the O(E)-per-sweep property has regressed", exp)
-	}
-}
+// TestLouvainScalingExponent lives in louvain_scaling_perf_test.go behind the
+// `perf` build tag: a fitted wall-clock exponent is not measurable on a shared
+// CI runner. Run `go test -tags perf ./internal/graph/` to exercise it.
 
 // leastSquaresSlope fits y = a + b*x and returns b.
 func leastSquaresSlope(x, y []float64) float64 {

@@ -1,0 +1,147 @@
+name: perf
+
+# Performance / scaling tests, gated out of the release gate by the `perf`
+# build tag.
+#
+# Why they are not in `test`: every assertion behind the tag is a wall-clock
+# ratio, a fitted scaling exponent, or a runtime.MemStats delta. On a shared
+# GitHub Actions runner those numbers track the co-tenant, not the diff —
+# TestLouvainScalingExponent went red at N^1.72 against a 1.45 bound on a loaded
+# Windows runner with no algorithmic change in the PR. A red release gate must
+# mean "something is broken", not "the runner was busy".
+#
+# Why they still run here: a perf test nobody ever runs is deleted code with
+# extra steps. This workflow exists so (a) the tagged files must keep compiling
+# and passing, and (b) an actual asymptotic regression is still caught, on a
+# weekly cadence rather than per-PR.
+#
+# The `perf` job is ADVISORY. Do not add it as a required check and do not gate
+# a release on it — that would reintroduce exactly the flakiness it removes.
+# Read it as a signal to investigate, and reproduce on a quiet machine
+# (`make test-perf`) before believing a red. The `perf-race` job below is not
+# advisory in the same sense: it asserts no timings at all.
+#
+# NOTE ON THE SCHEDULE: GitHub disables scheduled workflows after 60 days with
+# no repository activity, and notifies only the last person to edit this file.
+# If this repo ever goes quiet, this job stops silently. The `test`-workflow
+# compile guard (`go vet -tags perf ./...`) is the backstop that does not depend
+# on this schedule surviving.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sundays 04:17 UTC — off-peak, so the runner is as quiet as a shared
+    # runner gets. Weekly is enough to catch a regression that landed during
+    # the week while keeping the tagged files from rotting.
+    - cron: '17 4 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  perf:
+    name: Performance / scaling (advisory)
+    runs-on: ubuntu-latest
+    # Single platform on purpose. The cross-platform value of these tests is
+    # low (they measure the runner more than the OS) and the historical false
+    # reds came from windows-latest and macos-latest specifically.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # Compile-check FIRST, and separately from the run. Duplicated from the
+      # `test` workflow on purpose: this job must not report a green run that
+      # actually skipped a file which failed to build.
+      - name: Build perf-tagged tests
+        run: go vet -tags perf ./...
+
+      # No -race here: the detector's instrumentation invalidates every timing
+      # the tagged tests assert on. See perf-race below for the coverage that
+      # genuinely needs the detector.
+      - name: Run perf-tagged tests
+        run: go test -tags perf -count=1 -timeout 40m ./...
+
+  perf-race:
+    name: Concurrent RunAlgorithms under -race
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # TestOverlapPeak is the ONLY test in the tree that runs two
+      # graph.RunAlgorithms pipelines concurrently. Gating internal/membench
+      # behind the tag therefore removed concurrent-RunAlgorithms coverage from
+      # the -race release gate entirely; this job puts it back.
+      #
+      # Running it under -race is safe precisely because TestOverlapPeak asserts
+      # nothing about time or heap — its only assertions are non-nil results;
+      # the peak figures are logged, not bounded. So detector overhead cannot
+      # make it flake. Do NOT widen this to the whole tagged set:
+      # TestSingleRunPeak in the same package DOES assert a heap ratio, which
+      # -race distorts.
+      - name: Run concurrent-pipeline test under -race
+        run: go test -race -tags perf -count=1 -timeout 25m -run TestOverlapPeak ./internal/membench/
+
+  race-soak:
+    # One job PER TEST. `-run TestEvictGroup_ConcurrentReadNoFault` (unanchored)
+    # matches BOTH tests, so a single job is 2 x 10 x ~190s ~= 63 min, and these
+    # timings come from an M-series box — ubuntu-latest is typically ~1.3x
+    # slower, which lands ~82 min and brushes any 85-90m ceiling. A soak that
+    # silently times out delivers neither the coverage nor the signal, and the
+    # ~90%/week claim below would outlive the reality.
+    #
+    # Splitting halves the wall time per job at zero statistical cost: the two
+    # tests are independent (each builds its own State), and -count=10 per test
+    # is exactly what the coverage claim is about. The -run patterns are ANCHORED
+    # with ^...$ so the flag-off arm does not also pull in _FlagOn — verified with
+    # `go test -list`.
+    strategy:
+      fail-fast: false # one arm failing must not cancel the other's signal
+      matrix:
+        test:
+          - TestEvictGroup_ConcurrentReadNoFault
+          - TestEvictGroup_ConcurrentReadNoFault_FlagOn
+    name: '#5872 soak: ${{ matrix.test }} (-count=10)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # The two TestEvictGroup_ConcurrentReadNoFault tests guard #5872 (a cold
+      # shell munmapping a mapping an old-generation reader is still
+      # dereferencing). They are PROBABILISTIC, and the per-run odds are poor:
+      # measured against the real oracle — dropping `sharedReaderMu: lr.rmu()`
+      # from coldShellRepo — a single run detected it 2 times in 10 (pooled with
+      # an independent 2-of-3 measurement: 4/13 ~= 0.31, 95% CI ~[0.09, 0.61]).
+      # So one release-gate run catches a #5872 regression roughly one time in
+      # three at best, and possibly one in ten. That is not a guard anything
+      # should rely on alone, and it is why this job exists rather than being a
+      # nice-to-have.
+      #
+      # -count=10 raises that to ~1-0.8^10 = 0.89 per weekly run at the point
+      # estimate. It cannot live in the gate: each test is ~190s under -race at
+      # -count=1, so ten rounds of one test is over half an hour and of both is
+      # over an hour.
+      #
+      # -timeout 50m sits under timeout-minutes: 60 on purpose, so an overrun
+      # surfaces as a Go panic trace naming the stuck test rather than a silent
+      # job kill.
+      #
+      # Do NOT "optimise" this by lowering evictIterations or evictReaders in
+      # the test. Detection probability and wall time are the SAME variable
+      # here — see the measured table above those constants. Every speedup tried
+      # cost detection roughly in proportion.
+      - name: Soak the #5872 evict/revive race
+        run: go test -race -count=10 -timeout 50m -run '^${{ matrix.test }}$' ./internal/mcp/

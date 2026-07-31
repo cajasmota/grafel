@@ -42,6 +42,21 @@ func fakeGroupAlgoBinary(t *testing.T, body string) {
 	t.Cleanup(func() { groupAlgoChildBinary = prev })
 }
 
+// Budgets for the cancellation contract. These are DEADLOCK budgets, not
+// latency budgets: the failure mode #5999 describes is a runner that blocks
+// FOREVER because a surviving grandchild holds the inherited stdout pipe open,
+// and a grandchild that is never reaped because the kill went to a single pid
+// instead of the process group. Neither failure gets faster on a fast machine,
+// so the budgets are sized to never fire on a busy one — the original 5s/2s
+// pair produced a false red on a loaded macOS runner and passed on retry.
+//
+// Do not tighten these to "assert cancellation is fast". If cancellation
+// latency ever needs a bound, that is a separate perf-tagged test.
+const (
+	cancelUnblockBudget  = 30 * time.Second
+	grandchildReapBudget = 10 * time.Second
+)
+
 // pidIsAlive reports whether pid still exists (signal 0 probe).
 func pidIsAlive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
@@ -64,7 +79,13 @@ func waitPidGone(pid int, d time.Duration) bool {
 // live `sleep` behind, and a mutation sweep leaves a pile of them on the box.
 func readPidFile(t *testing.T, path string) int {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	// 30s, not 5s. This is FIXTURE SETUP, not the assertion: it waits for the
+	// stand-in child to fork a grandchild and write its pid. Under a loaded
+	// full-suite run that process start took longer than 5s and the test failed
+	// here — before reaching anything it exists to check. Widening cannot mask a
+	// bug: if the pid is never written the t.Fatalf below still fires, just
+	// later. The real assertions have their own budgets (see the const block).
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if b, err := os.ReadFile(path); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && pid > 0 {
@@ -98,12 +119,12 @@ func TestRunSubprocessLinks_CancelKillsGrandchildren(t *testing.T) {
 		if err == nil {
 			t.Fatal("cancelled run returned nil error, want a cancellation error")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatalf("runner still blocked 5s after cancel — grandchild pid %d alive=%v holding the inherited pipes",
-			pid, pidIsAlive(pid))
+	case <-time.After(cancelUnblockBudget):
+		t.Fatalf("runner still blocked %s after cancel — grandchild pid %d alive=%v holding the inherited pipes",
+			cancelUnblockBudget, pid, pidIsAlive(pid))
 	}
 
-	if !waitPidGone(pid, 2*time.Second) {
+	if !waitPidGone(pid, grandchildReapBudget) {
 		t.Fatalf("grandchild pid %d survived cancellation — the kill did not reach the process group", pid)
 	}
 }
@@ -128,12 +149,12 @@ func TestRunSubprocessGroupAlgo_CancelKillsGrandchildren(t *testing.T) {
 		if err == nil {
 			t.Fatal("cancelled group-algo returned nil error, want a cancellation error")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatalf("group-algo runner still blocked 5s after cancel — grandchild pid %d alive=%v",
-			pid, pidIsAlive(pid))
+	case <-time.After(cancelUnblockBudget):
+		t.Fatalf("group-algo runner still blocked %s after cancel — grandchild pid %d alive=%v",
+			cancelUnblockBudget, pid, pidIsAlive(pid))
 	}
 
-	if !waitPidGone(pid, 2*time.Second) {
+	if !waitPidGone(pid, grandchildReapBudget) {
 		t.Fatalf("group-algo grandchild pid %d survived cancellation — the kill did not reach the process group", pid)
 	}
 }

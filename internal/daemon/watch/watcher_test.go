@@ -75,7 +75,16 @@ func TestDebounce(t *testing.T) {
 
 	var calls atomic.Int32
 	doneCh := make(chan string, 4)
-	w, err := newTestWatcher(150*time.Millisecond, func(repoPath string, _ bool) {
+	// 2s debounce, not 150ms. The burst below is 5 writes spaced by
+	// time.Sleep(10ms) — nominally ~50ms, comfortably inside 150ms on an idle
+	// box. Under load those sleeps stretch, the burst spills past the window and
+	// the debouncer legitimately fires twice: observed "expected single
+	// debounced fire, got 2" on a loaded full-suite run. Widening the window
+	// does not weaken anything — the assertion is still "exactly one fire", and
+	// a debouncer that stopped coalescing would fire ~5 times regardless of the
+	// window size.
+	const debounceWindow = 2 * time.Second
+	w, err := newTestWatcher(debounceWindow, func(repoPath string, _ bool) {
 		calls.Add(1)
 		doneCh <- repoPath
 	})
@@ -99,12 +108,13 @@ func TestDebounce(t *testing.T) {
 
 	select {
 	case <-doneCh:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("debounce did not fire within 2s; calls=%d", calls.Load())
+	case <-time.After(debounceWindow + 10*time.Second):
+		t.Fatalf("debounce did not fire; calls=%d", calls.Load())
 	}
 
-	// Wait long enough that any leftover timer would have fired.
-	time.Sleep(400 * time.Millisecond)
+	// Wait longer than the window so any leftover timer would have fired: if
+	// coalescing is broken the extra fires land here and calls != 1.
+	time.Sleep(debounceWindow + 500*time.Millisecond)
 	if got := calls.Load(); got != 1 {
 		t.Errorf("expected single debounced fire, got %d", got)
 	}

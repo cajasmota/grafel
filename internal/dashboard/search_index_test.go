@@ -142,26 +142,10 @@ func assertSearchFast(t *testing.T, grp *DashGroup, q string, deadline time.Dura
 	}
 }
 
-func TestSearchIndex_Scale_1k(t *testing.T) {
-	grp := makeScaleGroup(1_000)
-	assertSearchFast(t, grp, "alpha", 500*time.Millisecond)
-	assertSearchFast(t, grp, "entity", 500*time.Millisecond)
-	assertSearchFast(t, grp, "beta", 500*time.Millisecond)
-}
-
-func TestSearchIndex_Scale_10k(t *testing.T) {
-	grp := makeScaleGroup(10_000)
-	assertSearchFast(t, grp, "alpha", 500*time.Millisecond)
-	assertSearchFast(t, grp, "entity", 500*time.Millisecond)
-	assertSearchFast(t, grp, "service5", 500*time.Millisecond)
-}
-
-func TestSearchIndex_Scale_50k(t *testing.T) {
-	grp := makeScaleGroup(50_000)
-	assertSearchFast(t, grp, "alpha", 1000*time.Millisecond)  // 1000ms — bumped from 500ms (#2477) to accommodate macOS CI runners (639ms p99 measured). Ubuntu/Linux still well within budget.
-	assertSearchFast(t, grp, "entity", 1000*time.Millisecond) // 1000ms — bumped from 500ms (#2477) to accommodate macOS CI runners (639ms p99 measured). Ubuntu/Linux still well within budget.
-	assertSearchFast(t, grp, "beta", 1000*time.Millisecond)   // 1000ms — bumped from 500ms (#2477) to accommodate macOS CI runners (639ms p99 measured). Ubuntu/Linux still well within budget.
-}
+// TestSearchIndex_Scale_1k / _10k / _50k live in search_index_perf_test.go
+// behind the `perf` build tag: assertSearchFast asserts on wall clock only, so
+// those three tests carry no correctness signal a shared runner can be trusted
+// to produce.
 
 // ---------------------------------------------------------------------------
 // concurrency test
@@ -174,7 +158,14 @@ func TestSearchIndex_Concurrent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	errCh := make(chan string, numGoroutines)
-	deadline := 2 * time.Second
+	// 30s, not 2s. This test stays in the release gate for its CONCURRENCY
+	// value — under -race it is the only thing exercising concurrent readers
+	// against the shared index — and a latency budget is not what it is here to
+	// measure. 30s still fails on the failure mode that matters (a lock that
+	// serialises or deadlocks the readers) while never failing because the
+	// runner was busy. Do not tighten this back towards a latency budget; put
+	// latency budgets in search_index_perf_test.go instead.
+	deadline := 30 * time.Second
 	start := time.Now()
 
 	for i := 0; i < numGoroutines; i++ {

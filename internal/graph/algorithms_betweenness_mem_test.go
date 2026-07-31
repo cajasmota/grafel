@@ -345,62 +345,11 @@ func betweennessMemProbe(fn func()) (peakHeapInuse, totalAlloc uint64) {
 	return peakHeapInuse, after.TotalAlloc - base.TotalAlloc
 }
 
-// TestSampledBetweenness_ScratchIsReusedAcrossPivots is the anti-regression
-// guard for the whole point of this change: scratch must be allocated ONCE,
-// not per pivot.
-//
-// The assertion is on the MARGINAL cost of a pivot: the same graph is run at
-// two pivot counts and the churn difference is divided by the pivot-count
-// difference. Every one-time cost (CSR build, scratch allocation, result map)
-// cancels, so the number left is exactly "bytes allocated per additional
-// pivot". Legacy allocates four V-hinted maps + a V-capacity stack per pivot,
-// which at V=60k is several MB; the scratch-reusing version must be ~0.
-func TestSampledBetweenness_ScratchIsReusedAcrossPivots(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping memory-budget test in -short mode")
-	}
-	const n = 60_000
-	ents, rels := buildHeavyTailedGraph(n, 5, 0x5954)
-	g, idx := BuildGraph(ents, rels)
-
-	const kLo, kHi = 64, 512
-	var out map[int64]float64
-	_, churnLo := betweennessMemProbe(func() {
-		out = sampledBetweenness(g, idx.csr, kLo, betweennessSampleSeed)
-	})
-	runtime.KeepAlive(out)
-	peakHeap, churnHi := betweennessMemProbe(func() {
-		out = sampledBetweenness(g, idx.csr, kHi, betweennessSampleSeed)
-	})
-	runtime.KeepAlive(out)
-	runtime.KeepAlive(g)
-
-	var marginal float64
-	if churnHi > churnLo {
-		marginal = float64(churnHi-churnLo) / float64(kHi-kLo)
-	}
-	t.Logf("V=%d E=%d: churn K=%d -> %.1f MB, K=%d -> %.1f MB; marginal = %.1f KB/pivot; peak HeapInuse over baseline (K=%d) = %.1f MB; result entries = %d",
-		n, len(rels),
-		kLo, float64(churnLo)/(1<<20), kHi, float64(churnHi)/(1<<20),
-		marginal/(1<<10), kHi, float64(peakHeap)/(1<<20), len(out))
-
-	// At V=60k the legacy per-pivot scratch is >1 MB. 32 KB/pivot leaves ample
-	// room for the result map filling in as more pivots run, while being ~30x
-	// below anything that allocates per-node state per pivot.
-	if marginal > 32*1024 {
-		t.Errorf("marginal allocation %.1f KB per additional pivot exceeds 32 KB — scratch is not being reused across pivots",
-			marginal/(1<<10))
-	}
-
-	// Peak HeapInuse: scratch is O(V+E) ints/floats. At V=60k / E~300k that is
-	// well under the budget even with the result map and GC slack. Legacy peaked
-	// at ~161 MB over baseline on this exact shape.
-	const peakBudget = 64 << 20
-	if peakHeap > peakBudget {
-		t.Errorf("peak HeapInuse over baseline %.1f MB exceeds budget %.1f MB",
-			float64(peakHeap)/(1<<20), float64(peakBudget)/(1<<20))
-	}
-}
+// TestSampledBetweenness_ScratchIsReusedAcrossPivots lives in
+// algorithms_perf_test.go behind the `perf` build tag: it asserts on
+// runtime.MemStats deltas over a 60k-node graph, which is a measurement, not a
+// correctness property. TestSampledBetweenness_BitIdenticalToLegacy above keeps
+// the correctness half of that change in the release gate.
 
 // BenchmarkSampledBetweenness_HeavyTailed measures the production pivot count
 // on a heavy-tailed graph and reports peak HeapInuse over baseline as a custom

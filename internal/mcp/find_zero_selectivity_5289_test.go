@@ -91,10 +91,24 @@ func TestFind_ZeroSelectivity_NoWholeRepoDump_5289(t *testing.T) {
 		t.Errorf("expected low-confidence hint; got:\n%s", res)
 	}
 
-	// 3) Must be fast — the unbounded path took ~113s live; bounded logic on a
-	//    6k-node fixture must be well under a second.
-	if elapsed > 2*time.Second {
-		t.Fatalf("zero-selectivity query too slow: %v (expected << 1s)", elapsed)
+	// 3) Liveness only. The real guard for #5289 is the `mentions` cap in (1)
+	//    above, not this bound.
+	//
+	//    Do NOT read the 20s as "5.6x below the 113s unbounded path". The ~113s
+	//    in #5289 was measured on a LIVE graph; this 6000-node fixture cannot
+	//    reach it. Reverting the whole #5289 fix (restore the preserve-one-hit
+	//    guard, drop `&& !lowConfidence`, raise all three limits to 1<<30) makes
+	//    this query take 146ms, not 113s — and the run still fails, on the
+	//    `mentions` assertion above, which is the assertion that actually
+	//    encodes the regression.
+	//
+	//    So this line is a hang guard and nothing more: it catches the query
+	//    never returning. It is 20s rather than the original 2s because 2s on a
+	//    sub-second operation measures the runner, and failing here would point
+	//    a maintainer at a regression that the mentions check would have named
+	//    precisely.
+	if elapsed > 20*time.Second {
+		t.Fatalf("zero-selectivity query took %v — the unbounded whole-graph scan is back (bounded path is sub-second)", elapsed)
 	}
 	t.Logf("zero-selectivity query: %d node mentions, elapsed=%v", mentions, elapsed)
 }

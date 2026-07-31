@@ -220,28 +220,60 @@ func TestEvictGroup_KeepReaderSkipsReopen(t *testing.T) {
 	}
 }
 
-// Criterion 4: evict under concurrent read — a reader hammering the group while
-// another goroutine evicts+revives it must not SIGBUS / nil-deref. Run under
-// -race. The in-flight reader holds its own repo pointer and finishes safely.
-func TestEvictGroup_ConcurrentReadNoFault(t *testing.T) {
-	doc := lazyTestDoc()
-	st, lr, _ := seedRepoOnDisk(t, doc)
-	// Open a real reader once so the read path exercises the mmap fallback under
-	// retire (Doc fallback on the flag-off default path).
-	st.mu.Lock()
-	lr.mtime = time.Time{}
-	lr.contentHash = 0
-	_, _, _ = st.reloadAllLocked()
-	st.mu.Unlock()
+// evictIterations / evictReaders drive the two concurrent-read tests below.
+//
+// DO NOT TUNE THESE FOR SPEED. These two tests are the slowest thing in the
+// package — ~190s each under -race, and internal/mcp is ~610s against the
+// suite's 15m -timeout — so the temptation is obvious and has been acted on
+// before, incorrectly. The finding is that for this test DETECTION PROBABILITY
+// AND WALL TIME ARE THE SAME VARIABLE: both are driven by how much concurrent
+// State.Group revive churn happens, so every speedup buys its speed out of the
+// same pot the detection comes from.
+//
+// The cost. State.Group is the reviving call: on an evicted group it reloads
+// under the State-GLOBAL s.mu at 31ms (keepReader) or 79ms (full reload), even
+// for this 3-entity fixture — it is nearly all fixed overhead, so it will not
+// amortise. With six readers plus the evictor all calling it they serialise on
+// that one mutex; the evictor alone (no readers) does 400 cycles in 31.6s, so
+// ~84% of the runtime is readers queueing behind each other's revives.
+//
+// What was tried, and what it cost. Wall time is one -race run of the flag-off
+// test; detection is out of 10 -race runs against the #5872 oracle (see the
+// _FlagOn docstring below):
+//
+//	variant                                   wall     detected
+//	6 readers, Group() every spin (SHIPPED)   ~190s      2/10
+//	  + runtime.Gosched() in the loop          166s      — (no speedup)
+//	  + 50us sleep in the loop                 170s      — (no speedup)
+//	  + re-capture every 64 spins              186s      — (no speedup)
+//	2 readers, Group() every spin               64s      2/10
+//	6 readers, capture once, never re-capture   26s      1/10
+//
+// Three things to take from that. First, anything that "throttles" without
+// changing the RATE of s.mu acquisition does nothing — a spin on a held capture
+// costs microseconds, so neither a 50us sleep nor a 64-spin gate delays the next
+// Group call in wall-clock terms. Second, capture-once looks attractive at 26s
+// but is the weakest arm: readers pin generation 0 forever, so after the first
+// few cycles nothing they still hold is being retired. Third, and most
+// important: at n=10 these arms are NOT statistically distinguishable, so the
+// table does not license swapping in a faster one. Establishing that 2 readers
+// really is as good as 6 would take hundreds of runs.
+//
+// So the configuration is left alone deliberately. If you need better odds than
+// one gate run gives, do not tune these constants — run the soak.
+// `.github/workflows/perf.yml` has a `race-soak` job that runs these two tests
+// at -count=10 weekly, which is where the near-certainty lives.
+const (
+	evictIterations = 400
+	evictReaders    = 6
+)
 
-	var faults atomic.Int64
-	stop := make(chan struct{})
-	var wg sync.WaitGroup
-
-	// Readers: capture the group, then read derived state lock-free (exactly the
-	// production seam). A revive may have swapped the group out from under a prior
-	// capture; the captured pointers must still resolve without a fault.
-	for i := 0; i < 6; i++ {
+// spawnEvictReaders starts evictReaders goroutines that model the production
+// serve seam: look the group up, then read derived state off that capture
+// lock-free. A revive may have swapped the group out from under a prior
+// capture; the captured pointers must still resolve without a fault.
+func spawnEvictReaders(st *State, faults *atomic.Int64, stop <-chan struct{}, wg *sync.WaitGroup) {
+	for i := 0; i < evictReaders; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -266,11 +298,39 @@ func TestEvictGroup_ConcurrentReadNoFault(t *testing.T) {
 			}
 		}()
 	}
+}
+
+// Criterion 4: evict under concurrent read — a reader hammering the group while
+// another goroutine evicts+revives it must not SIGBUS / nil-deref. Run under
+// -race. The in-flight reader holds its own repo pointer and finishes safely.
+func TestEvictGroup_ConcurrentReadNoFault(t *testing.T) {
+	doc := lazyTestDoc()
+	st, lr, _ := seedRepoOnDisk(t, doc)
+	// Open a real reader once so the read path exercises the mmap fallback under
+	// retire (Doc fallback on the flag-off default path).
+	st.mu.Lock()
+	lr.mtime = time.Time{}
+	lr.contentHash = 0
+	_, _, _ = st.reloadAllLocked()
+	st.mu.Unlock()
+
+	var faults atomic.Int64
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Readers: capture the group, then read derived state lock-free (exactly the
+	// production seam). A revive may have swapped the group out from under a prior
+	// capture; the captured pointers must still resolve without a fault.
+	spawnEvictReaders(st, &faults, stop, &wg)
 
 	// Evictor: alternate full and keepReader evictions, reviving via Group.
+	// The alternation is load-bearing: the keepReader cycle is what hands the
+	// shared *MapHandle to a cold shell, and the following full evict is what
+	// retires it. See the evictIterations/evictReaders block above for why
+	// neither constant may be tuned down for speed.
 	go func() {
 		defer close(stop)
-		for i := 0; i < 400; i++ {
+		for i := 0; i < evictIterations; i++ {
 			st.EvictGroup("test", i%2 == 0)
 			st.Group("test") // revive
 		}
@@ -295,8 +355,41 @@ func TestEvictGroup_ConcurrentReadNoFault(t *testing.T) {
 // The flag is forced ON explicitly so the guarantee is proven regardless of the
 // package default. Run with -race -count=10 to exercise the handoff window.
 //
-// MUTATION ORACLE: revert coldShellRepo to a per-shell independent readerMu (drop
-// the sharedReaderMu handoff) → this test data-races / SIGSEGVs under -race.
+// MUTATION ORACLE: revert coldShellRepo to a per-shell independent readerMu
+// (drop `sharedReaderMu: lr.rmu()`, state.go) → this test data-races under
+// -race. The oracle is REAL and was executed, but it is PROBABILISTIC and the
+// per-run odds are poor. Measured 2026-08, 12-core M-series macOS, that exact
+// mutation, `-race -count=10` of this test:
+//
+//	config                                    wall/run   detected
+//	6 readers, Group() every spin (shipped)     ~190s      2/10
+//	2 readers, Group() every spin                ~64s      2/10
+//	6 readers, capture once, no re-capture       ~26s      1/10
+//
+// Read those numbers carefully, because they are easy to over-read in both
+// directions:
+//
+//   - A single gate run catches a #5872 regression maybe one time in five. This
+//     test is NOT a reliable per-tag guard for that bug and never was. Do not
+//     treat a green gate as evidence the handoff is correct.
+//   - The three configs are NOT distinguishable at n=10. With 1-2 events per
+//     arm the confidence intervals overlap almost completely; separating p=0.2
+//     from p=0.1 would need hundreds of runs (tens of hours). So these numbers
+//     do NOT license "2 readers is just as good, ship the faster one" — that
+//     inference is exactly the underpowered-negative mistake that a previous
+//     revision of this file made when it lowered evictIterations to 120 on the
+//     strength of ONE passing run.
+//
+// The conclusion drawn: leave the configuration alone (a coverage change that
+// cannot be measured is not a coverage change worth making), and get the real
+// assurance from repetition instead — `.github/workflows/perf.yml` runs these
+// two tests at -count=10 weekly in the `race-soak` job, which converts ~20% per
+// run into ~90% per week.
+//
+// If you want this to be a deterministic guard rather than a lottery, the fix
+// is a test hook that parks a reader inside the handoff window (between the
+// shell taking the handle and the retire) so the interleaving is forced rather
+// than hoped for. That is a real piece of work and is not attempted here.
 func TestEvictGroup_ConcurrentReadNoFault_FlagOn(t *testing.T) {
 	forceServeFromMMap(t, true)
 	doc := lazyTestDoc()
@@ -317,37 +410,14 @@ func TestEvictGroup_ConcurrentReadNoFault_FlagOn(t *testing.T) {
 	// Readers: capture the group, then read derived state lock-free (exactly the
 	// production seam). Flag-ON these getters materialize entities out of the mmap
 	// via the readerMu-guarded LabelIndex.at, so a mishandled retire faults here.
-	for i := 0; i < 6; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-stop:
-					return
-				default:
-				}
-				grp := st.Group("test")
-				if grp == nil {
-					continue // transiently mid-evict; revive on the next spin
-				}
-				r := grp.Repos["r"]
-				if r == nil {
-					faults.Add(1)
-					continue
-				}
-				_ = r.getByID()
-				_ = r.getBM25().Search("A", 5)
-				_ = r.getAdjacency()
-			}
-		}()
-	}
+	spawnEvictReaders(st, &faults, stop, &wg)
 
 	// Evictor: alternate full and keepReader evictions, reviving via Group. The
 	// keepReader path is the one that hands the shared *MapHandle to a cold shell.
+	// See the iteration-count rationale on the flag-off twin above.
 	go func() {
 		defer close(stop)
-		for i := 0; i < 400; i++ {
+		for i := 0; i < evictIterations; i++ {
 			st.EvictGroup("test", i%2 == 0)
 			st.Group("test") // revive
 		}

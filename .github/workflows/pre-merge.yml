@@ -25,6 +25,13 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
+      # Compile-guard for the `perf` build tag (see CONTRIBUTING.md,
+      # "Performance tests"). The perf-tagged tests are excluded from the
+      # release gate, so nothing else in CI would notice them failing to
+      # compile until the weekly `perf` workflow ran. Gated tests that rot are
+      # worse than the flakes they replaced; this costs seconds.
+      - name: go vet (perf-tagged tests still compile)
+        run: go vet -tags perf ./...
       # Guard against the locale-bug class (#5317): control flow that matches a
       # localized OS command output / error string breaks on non-English locales.
       - name: lint-localematch (locale-invariant command checks)

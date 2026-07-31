@@ -148,8 +148,13 @@ func TestGetSource_TimesOutOnStuckOpen(t *testing.T) {
 		elapsed := time.Since(start)
 		// Post-#1773: non-regular files are rejected by the Lstat layer in <1ms.
 		// Pre-fix: the handler hung for 5s on the raw os.Open deadline.
-		if elapsed > 500*time.Millisecond {
-			t.Fatalf("handler returned but took too long: %v (expected <500ms, fix regression?)", elapsed)
+		// 2s, not 500ms. Pre-#1773 the handler hung for 5s on the raw os.Open
+		// deadline and the outer 7s arm below caught it; post-fix the Lstat layer
+		// rejects a FIFO in <1ms. 2s sits 2.5x under the pre-fix hang, so the
+		// regression still fails loudly, with 2000x headroom over the healthy
+		// path instead of 500x. This is a hang guard, not a latency budget.
+		if elapsed > 2*time.Second {
+			t.Fatalf("handler returned but took too long: %v (expected well under the 5s pre-#1773 hang)", elapsed)
 		}
 		if got.err != nil {
 			t.Fatalf("handler returned go error (want nil): %v", got.err)
@@ -251,8 +256,13 @@ func TestGetSource_FsnotifyWatcher_CompletesQuickly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readSourceWindow failed under fsnotify watcher: %v (elapsed %v)", err, elapsed)
 	}
-	if elapsed > 100*time.Millisecond {
-		t.Fatalf("readSourceWindow took %v under fsnotify watcher — expected <100ms; #1773 regression?", elapsed)
+	// 1s, not 100ms. Pre-fix this call took exactly 5.000s (the context
+	// deadline); post-fix the non-blocking open path returns in <1ms. 1s keeps a
+	// 5x margin under the pre-fix signal while giving 1000x headroom over the
+	// healthy path — a loaded runner cannot manufacture a 1s stat+read, but it
+	// can manufacture a 100ms one. Hang guard, not a latency budget.
+	if elapsed > time.Second {
+		t.Fatalf("readSourceWindow took %v under fsnotify watcher — expected well under the 5s pre-#1773 stall; regression?", elapsed)
 	}
 	if !strings.Contains(out, "package watched") {
 		t.Errorf("unexpected output: %q", out)
