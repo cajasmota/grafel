@@ -47153,6 +47153,13 @@
       },
       "framework_specific": {
         "Next.js Internals": {
+          "hoc_wrapper_recognition": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/extractor_test.go","internal/extractors/javascript/next_dynamic.go"],
+            "issue": "https://github.com/cajasmota/grafel/issues/6054",
+            "notes": "Next.js-specific wrapper calls bound to a const are classified SCOPE.Operation subtype=function by isFunctionWrapperCall (extractor.go), the same cell the Expo/Ionic/NativeScript/React/React Native records already carry. Two recognisers here: unstable_cache from next/cache by callee name (#6053), and next/dynamic by argument shape — first argument must be a function literal whose body performs a dynamic import(), since the bare name `dynamic` is a plausible ordinary identifier (next_dynamic.go). React 19's cache() is a separate recogniser tracked under the React record's hoc_wrapper_recognition cell. Recognised dynamic() entities are stamped react_lazy=true (shared code-split-boundary semantics with React.lazy), next_dynamic=true, and lazy_module when the specifier is statically recoverable — recovered from the loader callback only, never the options object, since specifier search yields reverse document order and a trailing `loading: () => import(...)` would otherwise win. The gate matches shape, not provenance: a user-defined `dynamic` or a `x.dynamic(loader)` method call of the same shape is recognised too, so next_dynamic is best-effort attribution. Renamed default imports (`import dyn from 'next/dynamic'`) and the legacy `dynamic({loader})` object form are deliberately not recognised. Proved by TestConstExportNextDynamic (incl. four same-callee negative controls), TestConstExportNextDynamicTypeAnnotated, TestConstExportNextDynamicInFunctionBody, TestConstExportNextDynamicIgnoresLoadingOption, TestConstExportArgumentCommentsDoNotDefeatGates and the TestConstExportNextUnstableCache* trio in extractor_test.go.",
+            "verified_at": "2026-07-31"
+          },
           "middleware_runtime_detection": {
             "status": "full",
             "cites": ["internal/custom/javascript/issue2878_metafw_idioms_test.go","internal/custom/javascript/nextjs.go"],
@@ -48331,8 +48338,10 @@
           },
           "hoc_wrapper_recognition": {
             "status": "full",
-            "cites": ["internal/extractors/javascript/extractor.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/extractor_test.go"],
+            "issue": "https://github.com/cajasmota/grafel/issues/6054",
+            "notes": "forwardRef/memo/lazy/connect/styled/withX and the hook wrappers are matched on the callee leaf name alone. React 19's cache() (#6054) is the one entry that is not: the bare name is common, so it additionally requires exactly one argument that is not a string/number/template literal, which excludes the cache-library lookup and LRU-constructor shapes (`cache()`, `cache(max, ttl)`, `cache(\"config\")`, `store.cache(1000)`). Two residual false-positive shapes are accepted deliberately and documented in-source: a member callee with an identifier argument (`redisClient.cache(loaderFn)`, since rejecting member callees would also reject `React.cache(fn)`), and `cache(someKey)`, which is indistinguishable from `cache(implFn)` without type information. Proved by TestConstExportReactCache and TestConstExportReactCacheRejectsLiteralArgument.",
+            "verified_at": "2026-07-31"
           },
           "hook_recognition": {
             "status": "full",
