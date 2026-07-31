@@ -91,9 +91,27 @@ jobs:
         run: go test -race -tags perf -count=1 -timeout 25m -run TestOverlapPeak ./internal/membench/
 
   race-soak:
-    name: '#5872 evict/revive race soak (-count=10)'
+    # One job PER TEST. `-run TestEvictGroup_ConcurrentReadNoFault` (unanchored)
+    # matches BOTH tests, so a single job is 2 x 10 x ~190s ~= 63 min, and these
+    # timings come from an M-series box — ubuntu-latest is typically ~1.3x
+    # slower, which lands ~82 min and brushes any 85-90m ceiling. A soak that
+    # silently times out delivers neither the coverage nor the signal, and the
+    # ~90%/week claim below would outlive the reality.
+    #
+    # Splitting halves the wall time per job at zero statistical cost: the two
+    # tests are independent (each builds its own State), and -count=10 per test
+    # is exactly what the coverage claim is about. The -run patterns are ANCHORED
+    # with ^...$ so the flag-off arm does not also pull in _FlagOn — verified with
+    # `go test -list`.
+    strategy:
+      fail-fast: false # one arm failing must not cancel the other's signal
+      matrix:
+        test:
+          - TestEvictGroup_ConcurrentReadNoFault
+          - TestEvictGroup_ConcurrentReadNoFault_FlagOn
+    name: '#5872 soak: ${{ matrix.test }} (-count=10)'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -105,19 +123,25 @@ jobs:
       # shell munmapping a mapping an old-generation reader is still
       # dereferencing). They are PROBABILISTIC, and the per-run odds are poor:
       # measured against the real oracle — dropping `sharedReaderMu: lr.rmu()`
-      # from coldShellRepo — a single run detected it 2 times in 10. So one
-      # release-gate run catches a #5872 regression roughly one time in five.
-      # That is not a guard anything should rely on alone, and it is why this
-      # job exists rather than being a nice-to-have.
+      # from coldShellRepo — a single run detected it 2 times in 10 (pooled with
+      # an independent 2-of-3 measurement: 4/13 ~= 0.31, 95% CI ~[0.09, 0.61]).
+      # So one release-gate run catches a #5872 regression roughly one time in
+      # three at best, and possibly one in ten. That is not a guard anything
+      # should rely on alone, and it is why this job exists rather than being a
+      # nice-to-have.
       #
-      # -count=10 raises that to roughly 9 in 10 per weekly run. It cannot live
-      # in the gate: these two tests are ~190s each under -race at -count=1, so
-      # ten rounds is over half an hour, and internal/mcp is already the longest
-      # binary in the suite against a 15m -timeout.
+      # -count=10 raises that to ~1-0.8^10 = 0.89 per weekly run at the point
+      # estimate. It cannot live in the gate: each test is ~190s under -race at
+      # -count=1, so ten rounds of one test is over half an hour and of both is
+      # over an hour.
+      #
+      # -timeout 50m sits under timeout-minutes: 60 on purpose, so an overrun
+      # surfaces as a Go panic trace naming the stuck test rather than a silent
+      # job kill.
       #
       # Do NOT "optimise" this by lowering evictIterations or evictReaders in
       # the test. Detection probability and wall time are the SAME variable
       # here — see the measured table above those constants. Every speedup tried
       # cost detection roughly in proportion.
       - name: Soak the #5872 evict/revive race
-        run: go test -race -count=10 -timeout 85m -run TestEvictGroup_ConcurrentReadNoFault ./internal/mcp/
+        run: go test -race -count=10 -timeout 50m -run '^${{ matrix.test }}$' ./internal/mcp/
