@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 func sidecarFixture() *GraphStatsSidecar {
@@ -113,11 +115,8 @@ func TestWriteSidecar_Perm(t *testing.T) {
 	if err := WriteSidecar(out, sidecarFixture(), false); err != nil {
 		t.Fatalf("WriteSidecar: %v", err)
 	}
-	fi, err := os.Stat(filepath.Join(dir, "graph-stats.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := fi.Mode().Perm(); got != 0o644 {
-		t.Fatalf("mode = %04o, want 0644", got)
-	}
+	// Windows has no Unix permission bits, so AssertPerm degrades this to
+	// "the sidecar is writable" there rather than failing on 0666 != 0644
+	// (#6053). The Unix bits are still asserted exactly on unix.
+	testsupport.AssertPerm(t, filepath.Join(dir, "graph-stats.json"), 0o644)
 }

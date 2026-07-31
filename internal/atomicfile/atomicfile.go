@@ -113,6 +113,8 @@ func WriteFile(path string, b []byte, perm os.FileMode) (err error) {
 	if err = os.Chmod(tmp, perm); err != nil {
 		return err
 	}
-	err = os.Rename(tmp, path)
+	// Not os.Rename: on Windows that alone cannot replace a read-only
+	// destination and loses races against other handles. See rename.go.
+	err = renameAtomic(tmp, path)
 	return err
 }

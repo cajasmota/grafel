@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/atomicfile"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 func TestWriteFile_WritesContent(t *testing.T) {
@@ -31,21 +32,23 @@ func TestWriteFile_WritesContent(t *testing.T) {
 // temp file 0600, so WITHOUT an explicit Chmod every destination lands at 0600
 // regardless of the requested perm. Deleting the Chmod from the helper must
 // fail this test — that is the whole point of it (#5978 lost exactly this).
+//
+// The 0444 row is load-bearing on Windows and only there. Windows has no Unix
+// permission bits (see testsupport.AssertPerm), so the 0600/0644/0755 rows all
+// collapse to "the file is writable" and a deleted Chmod would sail past them.
+// 0444 is the one requested mode Windows CAN represent — as
+// FILE_ATTRIBUTE_READONLY — so without the Chmod that row fails there too.
 func TestWriteFile_AppliesPerm(t *testing.T) {
-	for _, perm := range []os.FileMode{0o600, 0o644, 0o755} {
+	for _, perm := range []os.FileMode{0o600, 0o644, 0o755, 0o444} {
 		t.Run(fmt.Sprintf("%04o", perm), func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "out.bin")
 			if err := atomicfile.WriteFile(path, []byte("x"), perm); err != nil {
 				t.Fatalf("WriteFile: %v", err)
 			}
-			fi, err := os.Stat(path)
-			if err != nil {
-				t.Fatalf("Stat: %v", err)
-			}
-			if got := fi.Mode().Perm(); got != perm {
-				t.Fatalf("mode = %04o, want %04o", got, perm)
-			}
+			testsupport.AssertPerm(t, path, perm)
+			// Leave it writable so TempDir cleanup can remove it on Windows.
+			_ = os.Chmod(path, 0o666)
 		})
 	}
 }
@@ -89,10 +92,7 @@ func TestWriteFile_OverwritesExisting(t *testing.T) {
 	if string(got) != "new" {
 		t.Fatalf("content = %q, want %q", got, "new")
 	}
-	fi, _ := os.Stat(path)
-	if fi.Mode().Perm() != 0o644 {
-		t.Fatalf("mode = %04o, want 0644", fi.Mode().Perm())
-	}
+	testsupport.AssertPerm(t, path, 0o644)
 }
 
 // TestWriteFile_NoTempLeftBehind asserts the success path leaves the
@@ -264,13 +264,7 @@ func TestWriteFile_ConcurrentWritersSameDestination(t *testing.T) {
 			t.Fatalf("iteration %d: destination holds a torn write (%d bytes, prefix %q)",
 				it, len(got), truncate(got, 32))
 		}
-		fi, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if fi.Mode().Perm() != 0o644 {
-			t.Fatalf("iteration %d: mode = %04o, want 0644", it, fi.Mode().Perm())
-		}
+		testsupport.AssertPerm(t, path, 0o644)
 	}
 }
 
