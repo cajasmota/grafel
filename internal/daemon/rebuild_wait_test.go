@@ -44,15 +44,9 @@ func withSplitWaitTest(t *testing.T) {
 	t.Setenv(SplitModeEnvVar, "1")
 	t.Setenv(EnvRoot, t.TempDir())
 
-	savInterval, savTimeout, savStartup := rebuildWaitInterval, rebuildWaitTimeout, rebuildWaitStartupWindow
-	savAlive := rebuildEngineAliveFn
-	t.Cleanup(func() {
-		rebuildWaitInterval, rebuildWaitTimeout, rebuildWaitStartupWindow = savInterval, savTimeout, savStartup
-		rebuildEngineAliveFn = savAlive
-	})
-	rebuildWaitInterval = 3 * time.Millisecond
-	rebuildWaitStartupWindow = 50 * time.Millisecond
-	rebuildWaitTimeout = 3 * time.Second
+	t.Cleanup(setRebuildWaitIntervalForTest(3 * time.Millisecond))
+	t.Cleanup(setRebuildWaitStartupWindowForTest(50 * time.Millisecond))
+	t.Cleanup(setRebuildWaitTimeoutForTest(3 * time.Second))
 }
 
 func newWaitService(t *testing.T) *Service {
@@ -68,7 +62,7 @@ func newWaitService(t *testing.T) *Service {
 // engine drains+acks it — exercising the REAL requests ack machinery.
 func TestRebuild_SplitMode_WaitForCompletion_BlocksUntilAck(t *testing.T) {
 	withSplitWaitTest(t)
-	rebuildEngineAliveFn = func() bool { return true }
+	t.Cleanup(setRebuildEngineAliveForTest(func() bool { return true }))
 	const group = "g"
 	svc := newWaitService(t)
 
@@ -114,7 +108,7 @@ func TestRebuild_SplitMode_WaitForCompletion_BlocksUntilAck(t *testing.T) {
 // `indexed:true` is impossible off a failed rebuild.
 func TestRebuild_SplitMode_WaitForCompletion_FailedRebuildReturnsError(t *testing.T) {
 	withSplitWaitTest(t)
-	rebuildEngineAliveFn = func() bool { return true }
+	t.Cleanup(setRebuildEngineAliveForTest(func() bool { return true }))
 	const group = "g"
 	svc := newWaitService(t)
 
@@ -150,7 +144,7 @@ func TestRebuild_SplitMode_WaitForCompletion_FailedRebuildReturnsError(t *testin
 // waiter must surface it as an error, not a false success.
 func TestRebuild_SplitMode_WaitForCompletion_DeadLetterReturnsError(t *testing.T) {
 	withSplitWaitTest(t)
-	rebuildEngineAliveFn = func() bool { return true }
+	t.Cleanup(setRebuildEngineAliveForTest(func() bool { return true }))
 	const group = "g"
 	svc := newWaitService(t)
 
@@ -183,8 +177,8 @@ func TestRebuild_SplitMode_WaitForCompletion_DeadLetterReturnsError(t *testing.T
 // acks — Rebuild must return a clear timeout error, not hang forever.
 func TestRebuild_SplitMode_WaitForCompletion_AckTimeout(t *testing.T) {
 	withSplitWaitTest(t)
-	rebuildEngineAliveFn = func() bool { return true }
-	rebuildWaitTimeout = 80 * time.Millisecond
+	t.Cleanup(setRebuildEngineAliveForTest(func() bool { return true }))
+	t.Cleanup(setRebuildWaitTimeoutForTest(80 * time.Millisecond))
 	svc := newWaitService(t)
 
 	var reply proto.RebuildReply
@@ -202,8 +196,10 @@ func TestRebuild_SplitMode_WaitForCompletion_AckTimeout(t *testing.T) {
 func TestRebuild_SplitMode_WaitForCompletion_EngineDeath(t *testing.T) {
 	withSplitWaitTest(t)
 	var polls int32
-	rebuildEngineAliveFn = func() bool { return atomic.AddInt32(&polls, 1) <= 1 } // alive once, then dead
-	rebuildWaitTimeout = 3 * time.Second                                          // high, so death (not timeout) is what fires
+	// alive once, then dead
+	t.Cleanup(setRebuildEngineAliveForTest(func() bool { return atomic.AddInt32(&polls, 1) <= 1 }))
+	// high, so death (not timeout) is what fires
+	t.Cleanup(setRebuildWaitTimeoutForTest(3 * time.Second))
 	svc := newWaitService(t)
 
 	var reply proto.RebuildReply
@@ -221,7 +217,7 @@ func TestRebuild_SplitMode_WaitForCompletion_EngineDeath(t *testing.T) {
 // engine (proved by a dead engine that a wait would have errored on).
 func TestRebuild_SplitMode_FireAndForget_ReturnsImmediately(t *testing.T) {
 	withSplitWaitTest(t)
-	rebuildEngineAliveFn = func() bool { return false }
+	t.Cleanup(setRebuildEngineAliveForTest(func() bool { return false }))
 	svc := newWaitService(t)
 
 	done := make(chan error, 1)

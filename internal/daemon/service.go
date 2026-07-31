@@ -29,16 +29,27 @@ import (
 	"github.com/cajasmota/grafel/internal/version"
 )
 
-// rebuildRPCTimeout is the maximum wall-clock time a single Rebuild RPC is
-// allowed to run. A rebuild that exceeds this limit is treated as a deadlock
+// defaultRebuildRPCTimeout is the maximum wall-clock time a single Rebuild RPC
+// is allowed to run. A rebuild that exceeds this limit is treated as a deadlock
 // and returns an error so the RPC client is unblocked. The underlying index
 // goroutines are abandoned (they will eventually complete or panic-recover and
 // be cleaned up). 2 hours is intentionally conservative — even a full cold
 // re-index of a large group should finish well under 30 minutes in practice.
-//
-// A var (not const) so tests can shrink it to exercise the timeout / single-
-// flight paths deterministically; production never reassigns it.
-var rebuildRPCTimeout = 2 * time.Hour
+const defaultRebuildRPCTimeout = 2 * time.Hour
+
+// rebuildRPCTimeout resolves the effective Rebuild RPC cap: a test override
+// when one is installed, else defaultRebuildRPCTimeout. See the rebuild* seam
+// family note in rebuild_wait.go for WHY this is an accessor over an atomic
+// rather than a plain package var (#6059).
+func rebuildRPCTimeout() time.Duration {
+	return loadDurationSeam(&rebuildRPCTimeoutOverride, defaultRebuildRPCTimeout)
+}
+
+// setRebuildRPCTimeoutForTest installs a test override and returns a restore
+// closure. d == 0 CLEARS the override. Production must never call this.
+func setRebuildRPCTimeoutForTest(d time.Duration) (restore func()) {
+	return storeDurationSeam(&rebuildRPCTimeoutOverride, d)
+}
 
 // defaultStallWarnInterval is how long a Rebuild RPC may run without producing
 // a result before the dead-man detector logs a "possible stall" warning plus a
@@ -732,12 +743,16 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	// re-triggered rebuilds can never coexist and pile up N multi-GB docs.
 	semVal, _ := s.groupRebuildMu.LoadOrStore(args.Group, make(chan struct{}, 1))
 	groupSem := semVal.(chan struct{})
-	acqTimer := time.NewTimer(rebuildRPCTimeout)
+	// Resolve the seam ONCE into a local: the timer and the message it explains
+	// must describe the same bound even if a test restores the override in
+	// between (the single-Load-into-a-local form, #6059).
+	acqTimeout := rebuildRPCTimeout()
+	acqTimer := time.NewTimer(acqTimeout)
 	select {
 	case groupSem <- struct{}{}:
 		acqTimer.Stop()
 	case <-acqTimer.C:
-		return fmt.Errorf("rebuild group=%s timed out after %s waiting for an in-flight rebuild of the same group to finish", args.Group, rebuildRPCTimeout)
+		return fmt.Errorf("rebuild group=%s timed out after %s waiting for an in-flight rebuild of the same group to finish", args.Group, acqTimeout)
 	}
 	atomic.AddInt64(&s.groupsActiveCount, 1)
 	atomic.AddInt64(&s.rebuildInFlight, 1)
@@ -850,7 +865,9 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 		deadManDone.Wait()
 	}()
 
-	timer := time.NewTimer(rebuildRPCTimeout)
+	// Same single-resolve discipline as the acquire path above (#6059).
+	rpcTimeout := rebuildRPCTimeout()
+	timer := time.NewTimer(rpcTimeout)
 	defer timer.Stop()
 
 	var res rebuildResult
@@ -861,7 +878,7 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 		if s.logger != nil {
 			s.logger.Warn("rebuild: RPC timeout — unblocked; background index may still be running",
 				"group", args.Group,
-				"timeout", rebuildRPCTimeout.String(),
+				"timeout", rpcTimeout.String(),
 			)
 		}
 		if sess != nil {
@@ -876,7 +893,7 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 			}
 			sess.mu.Unlock()
 		}
-		return fmt.Errorf("rebuild group=%s timed out after %s", args.Group, rebuildRPCTimeout)
+		return fmt.Errorf("rebuild group=%s timed out after %s", args.Group, rpcTimeout)
 	}
 
 	if sess != nil {
