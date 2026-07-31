@@ -13,6 +13,7 @@ package atomicfile
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -243,5 +244,34 @@ func TestDefaultRenameOps_Wired(t *testing.T) {
 		defaultRenameOps.setReadOnly == nil || defaultRenameOps.recoverable == nil ||
 		defaultRenameOps.sleep == nil {
 		t.Fatal("defaultRenameOps has a nil primitive")
+	}
+}
+
+// TestWriteFile_RoutesThroughRenameAtomic is the one test that can notice
+// WriteFile going back to a bare os.Rename.
+//
+// On unix renameAtomic IS a single os.Rename — the recovery is compiled to
+// constant-false predicates — so no black-box test off Windows can tell the
+// two apart, and a revert would sail through the whole suite here and only
+// resurface as lost writes on windows-latest. Intercepting the primitive is
+// the only way to bind the wiring on the platform we can actually run.
+func TestWriteFile_RoutesThroughRenameAtomic(t *testing.T) {
+	orig := defaultRenameOps.rename
+	t.Cleanup(func() { defaultRenameOps.rename = orig })
+
+	calls := 0
+	defaultRenameOps.rename = func(oldpath, newpath string) error {
+		calls++
+		return orig(oldpath, newpath)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.json")
+	if err := WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("renameAtomic rename calls = %d, want 1 — WriteFile is not going through "+
+			"renameAtomic, so the Windows recovery in rename.go is bypassed", calls)
 	}
 }
