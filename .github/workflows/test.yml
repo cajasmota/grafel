@@ -1,13 +1,29 @@
 name: test
 
-# Free-tier minute budget: macOS bills 10x, Windows 2x — one full 3-OS run ~195 billed min.
+# Free-tier minute budget: macOS bills 10x, Windows 2x. The "~195 billed min"
+# figure this comment used to quote was measured WITHOUT -race and no longer
+# describes the tag/dispatch path: -race costs roughly 5-10x wall time, and it
+# is now on by default for both (see the Race detector policy step below).
+# Locally the -race suite is ~30 min of package wall time vs ~5 min without, so
+# treat a tag run as multiples of 195 billed min, not 195. NOT re-measured on
+# GitHub runners — do that before relying on any number here (#6056).
 # Default: NO auto-CI on routine pushes/PRs. Local `go test -race` is the routine backstop.
 # Milestone gate: full 3-platform matrix runs on version tags (push: tags 'v*') + manual workflow_dispatch.
 #   → batch the platform checks before shipping a milestone.
 # Opt-in: add label `ci:full` to force full 3-platform testing on a specific PR.
+# Race detector: ON for tag pushes and (by default) workflow_dispatch — see the
+# "Race detector policy" comment on the Test step for exactly what each trigger
+# delivers, and for why a tag push is NOT a release gate. There is deliberately
+# NO push-to-main trigger; the comment used to claim post-merge race sanity on
+# main that the triggers never provided (#6056).
 
 on:
   workflow_dispatch:
+    inputs:
+      race:
+        description: 'Run the suite under the Go race detector (-race). ON by default so a pre-release dispatch matches the tag run exactly; turn it off for a quick platform-only check.'
+        type: boolean
+        default: true
 
   push:
     tags: ['v*']
@@ -21,12 +37,22 @@ permissions:
 jobs:
   test:
     # Gate: run when —
-    #   (a) workflow_dispatch / push to main, OR
-    #   (b) pull_request_target with the `ci:full` label.
+    #   (a) workflow_dispatch, OR
+    #   (b) a `v*` tag push (the only `push` this workflow subscribes to), OR
+    #   (c) pull_request_target with the `ci:full` label.
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
       (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'ci:full'))
+
+    # Bound the whole matrix leg. GitHub's default is 6 HOURS, billed at 10x on
+    # macOS — so a genuine deadlock, which is exactly what -race exists to
+    # surface, used to be the most expensive possible outcome. 90m is well above
+    # the observed -race wall time (see the Test step's timing notes) and well
+    # below the default. Distinct from `go test -timeout`, which is per test
+    # binary and only fires if a binary hangs; this one also catches a hang in
+    # any other step (module download, MSYS2 setup, the build).
+    timeout-minutes: 90
 
     strategy:
       fail-fast: false
@@ -40,7 +66,7 @@ jobs:
       # We explicitly ref the PR HEAD here. This is safe because the workflow is
       # gated by the `ci:full` label (line 28 above), which only collaborators with
       # write access can apply — making this functionally equivalent to pull_request.
-      # The `|| github.sha` fallback handles workflow_dispatch and push-to-main.
+      # The `|| github.sha` fallback handles workflow_dispatch and tag pushes.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -154,25 +180,75 @@ jobs:
             exit 1
           fi
 
-      # Race detector policy (#2406):
-      #   - push to main → always race (post-merge sanity)
-      #   - release event → always race
-      #   - PR with ci:full label → race (platform-sensitive opt-in)
-      #   - all other CI runs (standard PRs) → no race; saves ~4 min per run
+      # Race detector policy (#2406, rewired in #6056).
       #
-      # -timeout 15m: the suite with -race on a loaded CI runner can take
-      # 8-10 min end-to-end. Without -race, 3-4 min is the observed ceiling.
-      # 15m gives headroom for both modes while catching real deadlocks well
-      # before GitHub's 6-hour job limit (refs #1797 / #937 / #2196).
+      # Every condition below is reachable from this workflow's `on:` block —
+      # that is the point of #6056. The previous version documented three
+      # guarantees, two of which the triggers could never deliver: it gated on
+      # `push && ref == refs/heads/main` (this workflow has no
+      # `push: branches: [main]`, so a push to main never starts it) and on
+      # `event_name == 'release'` (there is no `release:` trigger). A `v*` tag
+      # push arrives as refs/tags/v*, so the release path ran WITHOUT -race and
+      # only a `ci:full`-labelled PR ever turned the detector on. Do not add a
+      # condition here without adding the matching trigger above.
+      #
+      # What the triggers actually deliver now:
+      #   - push of a `v*` tag  → race, on all three platforms.
+      #   - workflow_dispatch   → race when the `race` input is true (default).
+      #   - PR with `ci:full`   → race (platform-sensitive opt-in).
+      #   - anything else       → no race (there is nothing else today; the
+      #     branch exists so adding a cheap trigger later stays cheap).
+      #
+      # A TAG PUSH IS NOT A RELEASE GATE. Say what the trigger delivers and no
+      # more — claiming otherwise is the #6056 defect all over again.
+      # release.yml is `on: push: tags: ['v*']`, the SAME trigger, and its job
+      # graph (dashboard → build → release) has no `needs:` on this workflow, no
+      # `workflow_run`, and no environment approval. The two workflows start
+      # concurrently and neither can fail the other: release.yml can publish the
+      # Release at ~14 min while this workflow is still running, and a race
+      # tripped by the windows leg at ~22 min lands on an already-shipped tag.
+      # On the tag path -race is a POST-MORTEM.
+      # The only mechanism by which -race actually blocks a release today is the
+      # manual `workflow_dispatch` on the release commit BEFORE tagging — which
+      # is why the `race` input exists and why it defaults to true, and it is a
+      # required §0 checkbox in docs/runbooks/release-signoff.md.
+      # Recommended follow-up (NOT done here — it changes how releases work and
+      # is the user's call): make release.yml's first job `needs:` a green test
+      # run, or gate the publish step on a `workflow_run` of this workflow.
+      #
+      # -timeout is PER TEST BINARY, and the two branches need different values.
+      #
+      # -race branch → 40m. Measured on an M-series laptop at -p 2:
+      # internal/mcp 525s (610s in a second, independent measurement) and
+      # internal/engine 349s. Against the old 15m/900s ceiling that is 58-68%
+      # and 39% respectively — consumed BEFORE the two effects that only apply
+      # on CI: default -p equals runner cores (4 on ubuntu/windows, i.e. MORE
+      # concurrent packages than measured here), and the runners' CPUs are
+      # slower than this laptop. This file's own history cites 4.3x contention
+      # inflation. 15m would therefore have produced `panic: test timed out` in
+      # internal/mcp on the very tag run this change enables — red, with no race
+      # signal, indistinguishable from a real failure and strictly worse than no
+      # signal at all. 40m (not 30m) so the value does not depend on any other
+      # branch landing an internal/mcp speedup first.
+      # Next-slowest under -race: cmd/grafel 134s, internal/graph 119s,
+      # internal/membench 108s, internal/cli 44s, internal/daemon 34s; the
+      # remaining ~230 packages < 30s.
+      #
+      # no-race branch → 15m, unchanged; nothing about the non-race path moved.
+      #
+      # Job-level timeout-minutes: 90 (above) bounds the whole matrix leg. A
+      # genuine deadlock — precisely what -race exists to surface — otherwise
+      # runs to GitHub's 6-hour default on a 10x-billed macOS runner.
+      # (refs #1797 / #937 / #2196)
       - name: Test
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]] || \
-             [[ "${{ github.event_name }}" == "release" ]] || \
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]] || \
+             [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.race }}" == "true" ]] || \
              [[ "${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}" == "true" ]]; then
-            echo "Running with -race (main / release / ci:full label)"
-            go test -race -count=1 -timeout 15m ./...
+            echo "Running with -race (tag push / dispatch with race=true / ci:full label)"
+            go test -race -count=1 -timeout 40m ./...
           else
-            echo "Running without -race (PR fast path)"
+            echo "Running without -race"
             go test -count=1 -timeout 15m ./...
           fi

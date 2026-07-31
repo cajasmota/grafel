@@ -31,6 +31,58 @@ ladder. Run it on real hardware for each release.
 - [ ] `acceptance.yml` has a **green** `workflow_dispatch` run on the release
       commit across **all three** OSes (ubuntu-latest, windows-latest,
       macos-14). Re-dispatch if the last run predates the commit.
+- [ ] `test.yml` has a **green** `workflow_dispatch` run **with the `race`
+      input left ON (the default)** on the release commit, across all three
+      OSes. Re-dispatch if the last run predates the commit.
+
+      **This is the only thing that makes the race detector a release gate.**
+      `test.yml` does run with `-race` on a `v*` tag push, but `release.yml`
+      fires on that *same* tag and does not depend on it: the two start
+      concurrently, and `release.yml` typically publishes the Release before
+      the slowest `test.yml` leg finishes. A race caught by the tag run lands
+      on a tag that has already shipped. Dispatching **before** tagging is what
+      converts `-race` from a post-mortem into a gate (#6056).
+
+      Expect this to take substantially longer than a non-race run — `-race`
+      costs roughly 5-10x wall time, and `internal/mcp` alone is ~9-10 min.
+
+      **Triaging a red run — two known failures.** Both are pre-existing and
+      tracked separately. Anything that is not one of these two is real: read
+      the report before deciding. When either is fixed, delete its entry rather
+      than letting it excuse a future failure.
+
+      **(a) `internal/daemon` test-seam data races** — reported at roughly
+      **1 run in 8**, i.e. ~1 dispatch in 3 reds at least one OS leg. The shape
+      is a plain package-var seam written by a test while a live goroutine
+      reads it: `rebuildRPCTimeout` (written by
+      `rebuild_singleflight_test.go`, read from the `net/rpc` serving goroutine
+      in `service.go`, failing `TestRebuild_SingleFlight_NoConcurrentOverlap`),
+      plus the group declared in `internal/daemon/rebuild_wait.go` —
+      `rebuildWaitTimeout`, `rebuildWaitInterval`, `rebuildWaitStartupWindow`,
+      `rebuildWaitStaleAfter`, `rebuildWaitClock` and `rebuildEngineAliveFn`.
+
+      **Match the report against those exact identifiers.** This instruction is
+      scoped by name, which is the only reason it is safe — it cannot launder
+      an unrelated race. A misspelled name in this list breaks that property
+      rather than merely being untidy, so every name here has been grepped
+      against the tree; re-grep before editing it. If a red run's
+      `WARNING: DATA RACE` names one of those vars → **re-dispatch**.
+
+      **(b) `TestV2GraphRestoresDiskPayloadBeforeLoadingGraph`
+      (`internal/dashboard`)** — assertion-only, **no `DATA RACE` in the
+      report**. It fails with `cold disk response = status 200 body
+      {...total_node_count:0}`: the disk-payload lookup missed and an empty
+      graph was served. Seen at roughly **2 runs in 21**, only in FULL-package
+      runs — it has never reproduced in isolation (20/20 clean with `-run`), so
+      do not try to confirm it by re-running the single test. → **Re-dispatch
+      once. If it repeats on the re-dispatch, escalate** — the rate is low
+      enough that twice in a row is not the known failure.
+
+      Entry (b) is listed for the same reason (a) is: this checkbox is a
+      REQUIRED gate, and a red gate whose cause is undocumented stalls a
+      release just as effectively as a real defect. Documenting only the race
+      and silently omitting this one would leave the gate untrustworthy in
+      exactly the way #6056 was about.
 - [ ] `CHANGELOG.md` has a `[X.Y.Z] — YYYY-MM-DD` section; `[Unreleased]` is
       drained.
 - [ ] `go build ./...` and `go vet ./...` are clean locally.

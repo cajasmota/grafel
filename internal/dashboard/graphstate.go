@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
@@ -1037,16 +1038,53 @@ type persistedAlgo struct {
 	Results         *graph.AlgorithmResults `json:"results"`
 }
 
-// backgroundAlgoGate, when non-nil, blocks a scheduled background Pass-4
-// computation until it receives — a TEST-ONLY seam so a test can deterministically
-// assert the load returned WITHOUT the full sweep having run. Never set in prod.
-var backgroundAlgoGate chan struct{}
+// backgroundAlgoGate / backgroundAlgoDone are TEST-ONLY seams, never set in
+// prod, both read from the background Pass-4 goroutine started by
+// schedulePendingAlgo.
+//
+// #6056: both MUST stay atomics. The reader is a LIVE goroutine that outlives
+// the request that started it, while the writer is a test's t.Cleanup —
+// exactly the shape that raced in internal/daemon's engineChildCommand. Storing
+// them in an atomic.Pointer removes the plain-access form entirely, so the
+// protection cannot be silently dropped by a fixture that forgets to join the
+// sweep before restoring. (A seam read exactly once at startup would be fine;
+// repeated reads from a live goroutine are the hazard.)
+type (
+	algoGateChan chan struct{}
+	algoDoneFunc func(cacheKey string)
+)
 
-// backgroundAlgoDone, when non-nil, is invoked with the cache key after a
-// background Pass-4 computation has been persisted AND its cache entry evicted.
-// Test-only seam so a test can wait for the async work without polling. Never
-// set in prod.
-var backgroundAlgoDone func(cacheKey string)
+// backgroundAlgoGate, when set, blocks a scheduled background Pass-4
+// computation until it receives — so a test can deterministically assert the
+// load returned WITHOUT the full sweep having run.
+var backgroundAlgoGate atomic.Pointer[algoGateChan]
+
+// backgroundAlgoDone, when set, is invoked with the cache key after a
+// background Pass-4 computation has been persisted AND its cache entry evicted,
+// so a test can wait for the async work without polling.
+var backgroundAlgoDone atomic.Pointer[algoDoneFunc]
+
+// setBackgroundAlgoGateForTest installs (ch != nil) or clears (ch == nil) the
+// gate seam. Test-only.
+func setBackgroundAlgoGateForTest(ch chan struct{}) {
+	if ch == nil {
+		backgroundAlgoGate.Store(nil)
+		return
+	}
+	g := algoGateChan(ch)
+	backgroundAlgoGate.Store(&g)
+}
+
+// setBackgroundAlgoDoneForTest installs (fn != nil) or clears (fn == nil) the
+// completion seam. Test-only.
+func setBackgroundAlgoDoneForTest(fn func(cacheKey string)) {
+	if fn == nil {
+		backgroundAlgoDone.Store(nil)
+		return
+	}
+	d := algoDoneFunc(fn)
+	backgroundAlgoDone.Store(&d)
+}
 
 // pendingAlgoRepo names a repo whose served graph.fb omitted Pass-4 and whose
 // sidecar was absent/stale, so the full sweep must be computed off the request
@@ -1109,8 +1147,8 @@ func (c *GraphCache) schedulePendingAlgo(cacheKey string, grp *DashGroup) {
 		return
 	}
 	go func() {
-		if backgroundAlgoGate != nil {
-			<-backgroundAlgoGate
+		if gate := backgroundAlgoGate.Load(); gate != nil {
+			<-(chan struct{})(*gate)
 		}
 		for _, p := range pending {
 			// READ-ONLY over p.doc.Entities/Relationships (RunAlgorithms mutates
@@ -1132,8 +1170,8 @@ func (c *GraphCache) schedulePendingAlgo(cacheKey string, grp *DashGroup) {
 			delete(c.entries, cacheKey)
 		}
 		c.mu.Unlock()
-		if backgroundAlgoDone != nil {
-			backgroundAlgoDone(cacheKey)
+		if done := backgroundAlgoDone.Load(); done != nil {
+			(*done)(cacheKey)
 		}
 	}()
 }

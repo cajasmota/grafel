@@ -61,10 +61,25 @@ func TestMain(m *testing.M) {
 // load (i.e. before the fixture hands the caller a live URL).
 func quiesceGraphCache(t *testing.T, srv *Server) {
 	t.Helper()
-	prev := backgroundAlgoGate
-	backgroundAlgoGate = make(chan struct{}) // never closed → sweeps park pre-write
+	prev := backgroundAlgoGate.Load()
+	setBackgroundAlgoGateForTest(make(chan struct{})) // never closed → sweeps park pre-write
 	t.Cleanup(func() {
-		backgroundAlgoGate = prev
+		// Going through the atomic makes this restore free of a DATA RACE: the
+		// parked sweep goroutine is still live and still loading the seam
+		// (#6056). It does NOT make the restore logically safe, and this
+		// cleanup does not claim to.
+		//
+		// KNOWN GAP (#6056 review F5, filed separately): we neither close the
+		// gate nor join the sweep. A schedulePendingAlgo goroutine that has not
+		// yet reached its gate load can observe the RESTORED value (usually
+		// nil = "run immediately"), skip parking, and go on to write
+		// graph-algo.json into the t.TempDir that RemoveAll is tearing down —
+		// the precise Windows failure this helper exists to prevent. -race
+		// slows scheduling 5-20x and therefore WIDENS that window rather than
+		// narrowing it. Closing this properly needs the sweep to be joinable
+		// (a WaitGroup or a done channel the fixture can wait on), which is a
+		// production-side change, not a comment.
+		backgroundAlgoGate.Store(prev)
 		if srv != nil && srv.graphs != nil {
 			srv.graphs.InvalidateAll()
 		}
