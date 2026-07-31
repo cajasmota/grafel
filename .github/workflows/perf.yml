@@ -89,3 +89,35 @@ jobs:
       # -race distorts.
       - name: Run concurrent-pipeline test under -race
         run: go test -race -tags perf -count=1 -timeout 25m -run TestOverlapPeak ./internal/membench/
+
+  race-soak:
+    name: '#5872 evict/revive race soak (-count=10)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # The two TestEvictGroup_ConcurrentReadNoFault tests guard #5872 (a cold
+      # shell munmapping a mapping an old-generation reader is still
+      # dereferencing). They are PROBABILISTIC, and the per-run odds are poor:
+      # measured against the real oracle — dropping `sharedReaderMu: lr.rmu()`
+      # from coldShellRepo — a single run detected it 2 times in 10. So one
+      # release-gate run catches a #5872 regression roughly one time in five.
+      # That is not a guard anything should rely on alone, and it is why this
+      # job exists rather than being a nice-to-have.
+      #
+      # -count=10 raises that to roughly 9 in 10 per weekly run. It cannot live
+      # in the gate: these two tests are ~190s each under -race at -count=1, so
+      # ten rounds is over half an hour, and internal/mcp is already the longest
+      # binary in the suite against a 15m -timeout.
+      #
+      # Do NOT "optimise" this by lowering evictIterations or evictReaders in
+      # the test. Detection probability and wall time are the SAME variable
+      # here — see the measured table above those constants. Every speedup tried
+      # cost detection roughly in proportion.
+      - name: Soak the #5872 evict/revive race
+        run: go test -race -count=10 -timeout 85m -run TestEvictGroup_ConcurrentReadNoFault ./internal/mcp/
