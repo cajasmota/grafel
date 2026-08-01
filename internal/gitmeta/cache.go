@@ -3,6 +3,7 @@ package gitmeta
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -145,6 +146,29 @@ func CaptureCached(repoPath string) Info {
 	captureCache[repoPath] = captureEntry{info: info, headStat: key}
 	captureMu.Unlock()
 	return info
+}
+
+// HeadToken returns an opaque token identifying the CURRENT state of repoPath's
+// HEAD pointer, and whether one could be determined. The token changes whenever
+// HEAD is rewritten — commit, checkout, branch-switch — and is otherwise stable,
+// which makes it a pure-os.Stat invalidation signal for anything a caller
+// derived from the repo's current ref.
+//
+// It is the same key CaptureCached memoizes on, exported (#6060) so callers that
+// cache a DERIVED value (e.g. the resolved per-ref state directory) can
+// invalidate on the same event without paying a Capture — including for
+// non-git directories, where Capture is a wasted fork that CaptureCached cannot
+// memoize. ok=false means "not a resolvable git checkout"; such a path has no
+// ref to move, so a caller may treat its derived value as permanently valid.
+func HeadToken(repoPath string) (string, bool) {
+	if repoPath == "" {
+		return "", false
+	}
+	key, ok := headPointerKey(repoPath)
+	if !ok {
+		return "", false
+	}
+	return key.path + "\x00" + key.mtime.UTC().Format(time.RFC3339Nano) + "\x00" + strconv.FormatInt(key.size, 10), true
 }
 
 // resetCaptureCacheForTest clears the memo. Test-only.

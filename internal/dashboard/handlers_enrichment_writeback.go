@@ -214,7 +214,7 @@ func (s *Server) handleEnrichmentWriteback(w http.ResponseWriter, r *http.Reques
 	}
 	found.entity.PropSet("description", req.Description)
 
-	stateDir := daemon.StateDirForRepo(found.repoPath)
+	stateDir := enrichmentStateDir(found.repoPath)
 	// graphPath is informational only (echoed in the response); it is NOT written.
 	graphPath := daemon.GraphPathForRepo(found.repoPath)
 
@@ -373,4 +373,47 @@ func yamlScalar(s string) string {
 		return "'" + escaped + "'"
 	}
 	return s
+}
+
+// enrichmentStateDir returns the directory the description side-table must be
+// WRITTEN to for repoPath.
+//
+// This is the writer half of a pair (#6060). The reader is
+// mcp.applyDescriptionOverlay, which resolves the sidecar from
+// filepath.Dir(lr.GraphFile) — the directory the MCP loader DISCOVERED the
+// graph in, via #3648's FindGraphFileAnyRef. The two must agree, so this writer
+// resolves the same way the reader's loader did rather than re-deriving
+// current-HEAD.
+//
+// The failure this prevents is a silently lost durable write:
+//
+//	repo indexed at "main"; HEAD later moves to "feature"; the current-HEAD ref
+//	dir is empty, so FindGraphFileAnyRef serves .../refs/main/graph.fb. A writer
+//	resolving current-HEAD puts descriptions.json in .../refs/feature/, and the
+//	in-memory PropSet in the handler makes the call LOOK successful. The next
+//	reload reads .../refs/main/descriptions.json, finds nothing, and the
+//	description is gone — no error, no log line, nothing to notice.
+//
+// Note this deliberately does NOT use the dashboard's own DashGroup.stateDirs,
+// which is current-HEAD (or an explicitly requested ref) because that is where
+// the dashboard loads its Document from. The sidecar has to follow the MCP
+// reader, not the dashboard's view — and descriptions.Upsert stamps SourceKey
+// from the graph in whichever directory it writes to, so writing to the reader's
+// directory is also what keeps the freshness key checkable by the reader.
+//
+// The flow side-table is NOT on this convention and deliberately stays off it:
+// its writer (internal/cli/links.go, the phantom pass) loads its Document from
+// daemon.StateDirForRepo and writes beside it, so both its halves are
+// current-HEAD and correctly paired as they stand. (links.go's
+// `filepath.Dir(graphPaths[slug])` reads like the discovered dir but graphPaths
+// is daemon.GraphPathForRepo = StateDirForRepo + "graph.json".) Converting flows
+// means moving that pass's LOAD too, which is an indexer-side change.
+//
+// A repo with no discoverable graph falls back to the previous behaviour rather
+// than writing to "".
+func enrichmentStateDir(repoPath string) string {
+	if graphPath, _ := daemon.FindGraphFileAnyRef(repoPath); graphPath != "" {
+		return filepath.Dir(graphPath)
+	}
+	return daemon.StateDirForRepo(repoPath)
 }

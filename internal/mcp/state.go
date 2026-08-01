@@ -31,6 +31,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/embed"
+	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
@@ -459,6 +460,26 @@ type LoadedRepo struct {
 	descStampedMt time.Time
 	descFileMt    time.Time
 	descApplied   bool
+
+	// curRefDir / curRefHeadTok memoize this repo's CURRENT-HEAD per-ref state
+	// directory (#6060). reloadAllLocked compares it against the directory the
+	// resident graph was discovered in to decide whether discovery has gone stale
+	// — see the #2550/#6060 gate there.
+	//
+	// Resolving it means daemon.StateDirForRepo, and doing that per repo per
+	// reload would undo the very cost this issue removed: gitmeta memoizes the
+	// capture for a git checkout, but for a NON-git directory it cannot (there is
+	// no HEAD to key on) and every call is a wasted fork. So the resolved value is
+	// cached here and invalidated on gitmeta.HeadToken, which is a pure os.Stat of
+	// the HEAD pointer — the same signal CaptureCached uses.
+	//
+	// curRefHeadTok is "" for a non-git directory. Such a path has no ref that can
+	// move (it always resolves to the "_unknown" sentinel), so the cached dir is
+	// permanently valid and is resolved at most once per repo per process.
+	// Mutated only under s.mu, inside reloadAllLocked.
+	curRefDir     string
+	curRefHeadTok string
+	curRefKnown   bool
 
 	// flowOverlay / flowStampedMt / flowFileMt / flowApplied memoize the FLOW
 	// side-table apply (#5904 PR-b), mirroring descApplied for the per-repo
@@ -1334,6 +1355,33 @@ func skeletonizeDocRows(doc *graph.Document) {
 	doc.SurpriseEdges = nil
 }
 
+// currentRefDirLocked returns repoPath's CURRENT-HEAD per-ref state directory,
+// memoized on the repo and invalidated whenever the HEAD pointer is rewritten
+// (#6060). Caller MUST hold s.mu.
+//
+// The steady state is a single os.Stat of <repo>/.git/HEAD via gitmeta.HeadToken
+// — no Capture, no fork — which is what makes it affordable to check on every
+// reload for every repo. A non-git directory has no HEAD to move, so its
+// resolution is cached permanently rather than re-forked per reload; that case
+// is precisely the one gitmeta.CaptureCached cannot memoize.
+// A non-git directory yields tok=="" and is cached under that key, which is why
+// the "resolved yet?" signal is the separate curRefKnown flag rather than a
+// non-empty token.
+//
+// Callers MUST pass lr.Path, not any other spelling of the repo path: the memo
+// has one slot, so two callers feeding it different paths would invalidate each
+// other on every call and reinstate the per-call fork this exists to remove.
+func (lr *LoadedRepo) currentRefDirLocked(repoPath string) string {
+	tok, _ := gitmeta.HeadToken(repoPath)
+	if lr.curRefKnown && tok == lr.curRefHeadTok {
+		return lr.curRefDir
+	}
+	lr.curRefDir = daemon.StateDirForRepo(repoPath)
+	lr.curRefHeadTok = tok
+	lr.curRefKnown = true
+	return lr.curRefDir
+}
+
 // reloadAllLocked is the reload body; the caller MUST already hold s.mu. Split
 // out of reloadLocked (memory epic #5850 PR1) so the eviction revive path can
 // reload from disk while already holding s.mu (Group -> reviveEvictedLocked)
@@ -1375,9 +1423,40 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 			// PATH cache). When lr.GraphFile is already set from a previous reload,
 			// stat the file directly — no git subprocesses needed. Only fall through
 			// to FindGraphFile on first load or when the cached path disappears.
+			//
+			// #6060: that short-circuit also PINNED the ref. lr.GraphFile keeps
+			// pointing at refs/<old>/graph.fb after HEAD moves, because that file
+			// still exists and stats fine, so discovery never re-ran — and the daemon
+			// served the old ref's graph indefinitely even once the new ref had been
+			// indexed (the DEFAULT shape: watchers ON, so a branch switch is followed
+			// by an index of the new ref). It also desynchronised the repo from every
+			// resolver that re-derives per call, which is how a description write-back
+			// could land in one ref's directory while the reader looked in another's
+			// and the write was silently lost.
+			//
+			// The gate below keeps the fast path for the overwhelmingly common case
+			// (pinned file is already in the current-HEAD ref dir → one memoized
+			// capture and a string compare) and re-runs discovery only when the repo
+			// is being served from a NON-current ref, which is exactly the state that
+			// needs re-checking. The git-subprocess cost #2550 was avoiding is gone
+			// regardless: StateDirForRepo memoizes the HEAD capture (see
+			// daemon.StateDirForRepo).
+			//
+			// What this gate fixes is REF staleness, and only that. It does not make
+			// the resident graph current in general: the pinned path can still name a
+			// superseded GENERATION inside the right ref dir, because
+			// graph.GCStaleGens retains gen N-1, so a same-branch reindex leaves the
+			// old generation on disk and this stat keeps succeeding against it with an
+			// unchanged mtime. Pre-existing and tracked separately — do not read the
+			// gate as a freshness guarantee beyond the ref.
 			var graphPath string
 			var modtimeNs int64
-			if ok && lr.GraphFile != "" {
+			// lr.Path, not rEntry.Path: the memo has one slot and applyFlowOverlay
+			// keys it on lr.Path, so feeding two spellings here would make the two
+			// callers invalidate each other every call. They are the same value today
+			// (lr.Path is assigned from rEntry.Path at construction and never
+			// reassigned) — this keeps them the same value by construction.
+			if ok && lr.GraphFile != "" && filepath.Dir(lr.GraphFile) == lr.currentRefDirLocked(lr.Path) {
 				if fi, statErr := os.Stat(lr.GraphFile); statErr == nil {
 					graphPath = lr.GraphFile
 					modtimeNs = fi.ModTime().UnixNano()
@@ -1871,17 +1950,12 @@ var reviveMaterializeHook func(name string)
 //
 // Cost (issue #6060): each of these is memoized to a stat-and-skip in the steady
 // state, which is why the WARM serving path can afford to run them under the
-// State-global lock. The dominant per-call cost is NOT the stat — it is that
-// both side-table overlays resolve their state directory through
-// daemon.StateDirForRepo, whose HEAD capture forks git subprocesses. That
-// resolution is now memoized inside gitmeta (CaptureCached, see
-// daemon.StateDirForRepo), which is what makes the steady state actually cheap
-// rather than merely described as cheap. Sourcing the directory from the repo's
-// already-discovered graph file instead — which would remove the call entirely,
-// and which the reader/writer pairing arguably requires — is deliberately NOT
-// done here: it changes which directory the daemon reads durable side-tables
-// from, so it belongs with the matching writer change, not in a lock-scope
-// commit.
+// State-global lock. The stat is now genuinely all it costs: both side-table
+// overlays source their directory from the repo's already-discovered graph file
+// (repoStateDir) rather than re-resolving current-HEAD through
+// daemon.StateDirForRepo, whose HEAD capture forks git subprocesses. Before that
+// change every routing decision — warm calls included, not just revives — paid
+// two such resolutions per repo.
 func (s *State) touchGroupLocked(grp *LoadedGroup) {
 	// Stamp the LRU/PIN signal on every routing decision (issue #5872 PR2).
 	// This is the per-call choke point, so the group with the newest lastAccess
@@ -2965,7 +3039,14 @@ func applyDescriptionOverlay(grp *LoadedGroup) {
 		if lr == nil || lr.Doc == nil || lr.Path == "" {
 			continue
 		}
-		stateDir := daemon.StateDirForRepo(lr.Path)
+		stateDir := repoStateDir(lr)
+		if stateDir == "" {
+			// No discovered graph → no sidecar directory. Skip rather than fall
+			// through: descriptions.Path("") is "descriptions.json", a CWD-RELATIVE
+			// path that would be stat'd (and on the write side, written) against the
+			// daemon's working directory.
+			continue
+		}
 		var fileMt time.Time
 		if fi, err := os.Stat(descriptions.Path(stateDir)); err == nil {
 			fileMt = fi.ModTime()
@@ -3019,6 +3100,73 @@ func applyDescriptionOverlay(grp *LoadedGroup) {
 	}
 }
 
+// repoStateDir returns the directory holding lr's per-repo durable side-tables
+// (descriptions.json, flows.json). It is the directory the repo's graph file was
+// actually DISCOVERED in — the same value reloadAllLocked computes as
+// filepath.Dir(lr.GraphFile) and hands to readDocumentFromDir and the embeddings
+// sidecar.
+//
+// WHY NOT daemon.StateDirForRepo(lr.Path), which is what this used to be.
+//
+// That call always returns the CURRENT-HEAD per-ref directory. But #3648's
+// FindGraphFileAnyRef deliberately falls back to the newest graph under ANY
+// indexed ref when the current-HEAD ref dir is empty — the common shape for a
+// group registered via `group add --index` (watchers default OFF) whose HEAD has
+// since moved. In that population lr.GraphFile lives under refs/<indexed> while
+// StateDirForRepo returns refs/<current>, so the overlays stamped a Document
+// loaded from one ref with side-tables read from another.
+//
+// The failure that makes this worth fixing is a SILENTLY LOST DURABLE WRITE, not
+// a mismatch: an agent enriches an entity, the write lands in the current-HEAD
+// dir and the in-memory PropSet makes it look applied, and then the next reload
+// reads the indexed-ref dir, finds nothing, and the description is gone with no
+// error anywhere. The reader and the writer must agree on one directory; this
+// function and enrichmentStateDir (dashboard) are the two halves of that
+// agreement.
+//
+// SCOPE OF THAT PRINCIPLE. It is stated generally because it is generally true,
+// but it is NOT uniformly applied in this package. The FLOW side-table is not
+// converted and stays current-HEAD on both halves (see applyFlowOverlay), and
+// roughly ten other per-repo side-tables — repair.json,
+// enrichment-candidates.json, the doc-semantics and docgen artifacts — still
+// resolve through daemon.StateDirForRepo on both sides. Each is presumably
+// self-paired, which is why none of them is a defect today; the point is that
+// "reader and writer agree" was established here for descriptions only, and a
+// future change to any of those must re-establish it for that pair rather than
+// assume it.
+//
+// FRESHNESS, and the limit of it. "The directory the graph was discovered in" is
+// only a correct target if discovery is current. It was not: the #2550
+// short-circuit in reloadAllLocked pinned lr.GraphFile to the ref it was first
+// discovered under, so after a HEAD move plus a reindex this resolved a stale
+// ref's directory while the writer (which re-derives per call) had moved on —
+// the same lost write in the DEFAULT population. That gate is fixed in the same
+// change; this function is only sound because of it.
+//
+// The guarantee that gate delivers is freshness at REF granularity, and no
+// further. Within a ref directory lr.GraphFile can still name a superseded
+// GENERATION: graph.GCStaleGens (internal/graph/genpath.go) deliberately retains
+// gen N-1, so a plain same-branch reindex writes gen N+1 and flips `current`
+// while gen N stays on disk — the gate passes (same directory), the os.Stat
+// succeeds, the mtime is unchanged, and the daemon keeps serving the older
+// generation. That is pre-existing, predates this change, and is tracked
+// separately. It does not affect the pairing argument above: the ref DIRECTORY
+// is right either way, and the directory is all this function resolves.
+//
+// A repo with no discovered graph file returns "". Callers MUST treat that as
+// "no sidecar directory" and skip — it is NOT a harmless miss, because
+// descriptions.Path("") is "descriptions.json", a CWD-relative path that would
+// be resolved against the daemon's working directory. Both callers do skip. The
+// case is also unreachable today (a repo with a parsed Doc always has GraphFile
+// set by reloadAllLocked, and both callers `continue` on lr.Doc == nil), so this
+// is a defensive floor rather than a live path.
+func repoStateDir(lr *LoadedRepo) string {
+	if lr == nil || lr.GraphFile == "" {
+		return ""
+	}
+	return filepath.Dir(lr.GraphFile)
+}
+
 // applyFlowOverlay stamps the per-repo FLOW side-table (#5904 PR-b) onto a
 // loaded group's repos with REPLACE semantics. For each repo it reads
 // <stateDir>/flows.json (absence/corrupt/stale-tolerant) and publishes the
@@ -3041,6 +3189,27 @@ func applyDescriptionOverlay(grp *LoadedGroup) {
 // same lock) + re-arming stepOnce/callsOnce under idxMu (so the adjacencies
 // rebuild against the REPLACE set) mirrors resetIndexes' invalidation. Caller
 // holds s.mu.
+//
+// STATE DIR (#6060). This deliberately stays on daemon.StateDirForRepo while
+// applyDescriptionOverlay moved to repoStateDir, because a side-table's reader
+// must resolve the same directory as its WRITER and the two side-tables have
+// different writers:
+//
+//   - descriptions — written by the dashboard enrichment write-back, which this
+//     issue moved onto the discovered graph dir (enrichmentStateDir). Reader
+//     moved with it.
+//   - flows — written by the phantom-edge pass (internal/cli/links.go). That
+//     pass LOADS its Document from daemon.StateDirForRepo and writes the delta
+//     back beside it: links.go's `filepath.Dir(graphPaths[slug])` looks like the
+//     discovered dir but graphPaths is daemon.GraphPathForRepo, i.e.
+//     StateDirForRepo + "graph.json". It is current-HEAD wearing a filepath.Dir
+//     disguise.
+//
+// So flows is CURRENT-HEAD on both halves and correctly paired as it stands.
+// Moving this reader alone would unpair it — precisely the defect this issue is
+// about. Converting flows means moving the phantom pass's LOAD as well (so its
+// delta and its SourceKey are computed against the graph the reader will serve),
+// which is an indexer-side change and deliberately out of scope here.
 func applyFlowOverlay(grp *LoadedGroup) {
 	if grp == nil {
 		return
@@ -3049,7 +3218,15 @@ func applyFlowOverlay(grp *LoadedGroup) {
 		if lr == nil || lr.Doc == nil || lr.Path == "" {
 			continue
 		}
-		stateDir := daemon.StateDirForRepo(lr.Path)
+		// Current-HEAD, matching this side-table's writer (see the doc comment).
+		// Resolved through the per-repo memo rather than daemon.StateDirForRepo
+		// directly: this runs on EVERY State.Group call, and for a non-git repo
+		// path gitmeta cannot memoize the capture, so a direct call would fork git
+		// per call per repo — the exact cost #6060 removed.
+		stateDir := lr.currentRefDirLocked(lr.Path)
+		if stateDir == "" {
+			continue
+		}
 		var fileMt time.Time
 		if fi, err := os.Stat(flows.Path(stateDir)); err == nil {
 			fileMt = fi.ModTime()
