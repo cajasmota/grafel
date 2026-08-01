@@ -431,10 +431,11 @@ func TestStageGate_ReleasedOnPanic(t *testing.T) {
 		MemReleaseDisabled: true,
 	})
 
+	arm := armedGroupAlgo(t, s, "acme")
 	panicked := make(chan any, 1)
 	go func() {
 		defer func() { panicked <- recover() }()
-		s.fireGroupAlgo("acme")
+		s.fireGroupAlgo("acme", arm)
 	}()
 
 	select {
@@ -498,7 +499,7 @@ func TestStageGate_DeferredGroupAlgoStaysVisibleToIndexState(t *testing.T) {
 	s.inflight["/busy"] = 1
 	s.mu.Unlock()
 
-	s.fireGroupAlgo("acme")
+	s.fireGroupAlgo("acme", armedGroupAlgo(t, s, "acme"))
 
 	snap := indexstate.Get()
 	if snap.GroupAlgoInFlight <= before {

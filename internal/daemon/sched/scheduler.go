@@ -478,8 +478,9 @@ type Scheduler struct {
 	linkTimers     map[string]*time.Timer
 	linkPending    map[string]bool
 	// linkArm is the identity of the CURRENTLY ARMED link timer for a group,
-	// and linkArmSeq the monotonic source of those ids. Every arm site
-	// (scheduleLinks and fireLinks' defer-retry) goes through
+	// and armSeq the monotonic source of those ids (shared with groupAlgoArm;
+	// the two keyspaces are independent but the counter need not be). Every arm
+	// site (scheduleLinks and fireLinks' defer-retry) goes through
 	// armLinkTimerLocked, which allocates a new id.
 	//
 	// Timer.Stop() cannot stop a timer that has already fired, so CancelGroup
@@ -490,8 +491,20 @@ type Scheduler struct {
 	// fireLinks therefore re-checks its own arm id against this map under the
 	// same lock hold that acquires the stage token, and CancelGroup deletes the
 	// entry — so the delete strictly orders against the fire. Guarded by mu.
-	linkArm    map[string]uint64
-	linkArmSeq uint64
+	linkArm map[string]uint64
+	// groupAlgoArm is the same mechanism for the group-algo family, and it
+	// matters MORE there. A link pass that escapes its delete at least runs
+	// under a ctx CancelGroup can still cancel; runGroupAlgo's ctx is rooted
+	// only at shutdownCtx, so an escaped group-algo pass — Louvain + PageRank +
+	// betweenness over the group union, in a subprocess, the heaviest job the
+	// daemon runs — has nothing left to cancel it and burns cores to completion
+	// for a group that no longer exists. On the gate-deferred path the escape
+	// was worse than wasted work: the body called markGroupAlgoDeferredLocked
+	// (indexstate.GroupAlgoBegin) after cancelGroupAlgoLocked had already
+	// released the pair, leaving the process-global counter permanently +1 and
+	// grafel_stats reporting a pass in flight forever.
+	groupAlgoArm map[string]uint64
+	armSeq       uint64
 	// Per-GROUP algorithm pass (#5349 A3). Mirrors the link timer machinery:
 	// debounce timer + pending flag + in-flight cancel func, all keyed by group.
 	// Replaces the old per-repo algo timers — algorithms now run once over the
@@ -779,6 +792,7 @@ func New(cfg Config) *Scheduler {
 		linkTimers:        map[string]*time.Timer{},
 		linkPending:       map[string]bool{},
 		linkArm:           map[string]uint64{},
+		groupAlgoArm:      map[string]uint64{},
 		groupAlgoTimers:   map[string]*time.Timer{},
 		groupAlgoPending:  map[string]bool{},
 		groupAlgoCancel:   map[string]*groupAlgoPassCancel{},
@@ -863,6 +877,7 @@ func (s *Scheduler) Stop() {
 	for _, t := range s.groupAlgoTimers {
 		t.Stop()
 	}
+	s.groupAlgoArm = map[string]uint64{}
 	for _, tok := range s.groupAlgoCancel {
 		tok.cancel()
 	}
@@ -1884,8 +1899,8 @@ func (s *Scheduler) scheduleLinks(group string) {
 // its id gone and returns without running or re-arming.
 // MUST be called with s.mu held.
 func (s *Scheduler) armLinkTimerLocked(group string, delay time.Duration) {
-	s.linkArmSeq++
-	arm := s.linkArmSeq
+	s.armSeq++
+	arm := s.armSeq
 	s.linkArm[group] = arm
 	s.linkTimers[group] = time.AfterFunc(delay, func() { s.fireLinks(group, arm) })
 }
@@ -2163,7 +2178,20 @@ func (s *Scheduler) scheduleGroupAlgo(group string) {
 	s.groupAlgoArmedAt[group] = armedAt
 	s.groupAlgoFireAt[group] = fireAt
 	s.groupAlgoPending[group] = true
-	s.groupAlgoTimers[group] = time.AfterFunc(delay, func() { s.fireGroupAlgo(group) })
+	s.armGroupAlgoTimerLocked(group, delay)
+}
+
+// armGroupAlgoTimerLocked arms (or re-arms) group's group-algo timer under a
+// FRESH arm id, recorded in groupAlgoArm. It is the group-algo twin of
+// armLinkTimerLocked and exists for the same reason: Timer.Stop() cannot stop a
+// timer that has already fired, so the id — which cancelGroupAlgoLocked deletes
+// — is the only thing that can reach that in-flight body.
+// MUST be called with s.mu held.
+func (s *Scheduler) armGroupAlgoTimerLocked(group string, delay time.Duration) {
+	s.armSeq++
+	arm := s.armSeq
+	s.groupAlgoArm[group] = arm
+	s.groupAlgoTimers[group] = time.AfterFunc(delay, func() { s.fireGroupAlgo(group, arm) })
 }
 
 // fireGroupAlgo is the group-algo debounce timer body, split out of
@@ -2176,7 +2204,14 @@ func (s *Scheduler) scheduleGroupAlgo(group string) {
 // gate decorative under exactly the sustained-churn conditions that produce the
 // worst peaks. The gate's own bounded starvation guard (the drain barrier, see
 // noteStageDeferLocked) is what keeps the pass from being starved forever.
-func (s *Scheduler) fireGroupAlgo(group string) {
+// arm is the identity of the timer whose body this is; see groupAlgoArm. The
+// check and the stage acquisition share ONE hold of s.mu, so a group delete is
+// strictly ordered against a fire: either the delete lands first and this
+// returns having touched nothing — in particular NOT having taken a fresh
+// indexstate.GroupAlgoBegin the delete can no longer balance — or the pass
+// already holds the token and has registered its groupAlgoCancel token, which
+// the delete then cancels.
+func (s *Scheduler) fireGroupAlgo(group string, arm uint64) {
 	if s.stopped() {
 		return // shutting down — do not re-arm a retry timer that outlives Stop
 	}
@@ -2184,6 +2219,14 @@ func (s *Scheduler) fireGroupAlgo(group string) {
 	now := time.Now()
 
 	s.mu.Lock()
+	if live, ok := s.groupAlgoArm[group]; !ok || live != arm {
+		// Cancelled (group deleted) or superseded while this timer body was in
+		// flight. Returning here is what keeps the heaviest pass in the daemon
+		// from running for a group that is gone, and what keeps the deferred
+		// branch below from re-taking an indexstate hold nobody will release.
+		s.mu.Unlock()
+		return
+	}
 	stageEpoch, acquired := s.tryAcquireStageLocked(name, now)
 	if !acquired {
 		delay := s.noteStageDeferLocked(name, now)
@@ -2196,12 +2239,13 @@ func (s *Scheduler) fireGroupAlgo(group string) {
 			t.Stop()
 		}
 		s.groupAlgoFireAt[group] = now.Add(delay)
-		s.groupAlgoTimers[group] = time.AfterFunc(delay, func() { s.fireGroupAlgo(group) })
+		s.armGroupAlgoTimerLocked(group, delay)
 		s.mu.Unlock()
 		return
 	}
 	s.groupAlgoPending[group] = false
 	delete(s.groupAlgoTimers, group)
+	delete(s.groupAlgoArm, group)
 	delete(s.groupAlgoArmedAt, group) // window closed — next arm starts fresh
 	delete(s.groupAlgoFireAt, group)
 	// Derive the per-run cancel context from shutdownCtx (not
@@ -2229,7 +2273,9 @@ func (s *Scheduler) fireGroupAlgo(group string) {
 	// have drained the map and a successor pass registered its own handle while
 	// this (long) pass was returning; blind-deleting would drop the LIVE
 	// successor's cancel func, leaving a later CancelGroup/Stop with nothing to
-	// cancel. fireLinks has guarded the same shape since the v0.1.8 leak fix.
+	// cancel. fireLinks guards the identical shape at its own completion site —
+	// and both now also guard the ARM, one hazard earlier: a timer that fires
+	// just before the delete lands (see groupAlgoArm / linkArm).
 	if s.groupAlgoCancel[group] == tok {
 		delete(s.groupAlgoCancel, group)
 	}
@@ -2284,6 +2330,10 @@ func (s *Scheduler) cancelGroupAlgoLocked(group string) {
 		delete(s.groupAlgoTimers, group)
 		s.groupAlgoPending[group] = false
 	}
+	// Stop() above is a no-op for a timer that ALREADY fired: its fireGroupAlgo
+	// body is in flight and holds only its arm id, so dropping the id is what
+	// stops it — see groupAlgoArm.
+	delete(s.groupAlgoArm, group)
 	if tok, ok := s.groupAlgoCancel[group]; ok {
 		tok.cancel()
 		delete(s.groupAlgoCancel, group)
