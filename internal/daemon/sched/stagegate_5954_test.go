@@ -499,7 +499,18 @@ func TestStageGate_DeferredGroupAlgoStaysVisibleToIndexState(t *testing.T) {
 	s.inflight["/busy"] = 1
 	s.mu.Unlock()
 
-	s.fireGroupAlgo("acme", armedGroupAlgo(t, s, "acme"))
+	arm := armedGroupAlgo(t, s, "acme")
+	// armedGroupAlgo goes through scheduleGroupAlgo, which sets groupAlgoPending
+	// itself. Leaving that in place would PRE-SATISFY the "still pending" check
+	// below, so it would no longer bind on anything fireGroupAlgo does: deleting
+	// the deferred branch's own `groupAlgoPending[group] = true` leaves this test
+	// green. Clear it, so re-setting it is the deferred branch's job alone —
+	// which is what the assertion claims to be checking.
+	s.mu.Lock()
+	delete(s.groupAlgoPending, "acme")
+	s.mu.Unlock()
+
+	s.fireGroupAlgo("acme", arm)
 
 	snap := indexstate.Get()
 	if snap.GroupAlgoInFlight <= before {
