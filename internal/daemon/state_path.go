@@ -400,11 +400,38 @@ func StateDirForRepoRef(repoPath, ref string) string {
 //
 // The directory is NOT created here; callers that write should
 // os.MkdirAll the returned path.
+//
+// Cost (#6060): the HEAD capture is served through gitmeta.CaptureCached, not
+// the raw gitmeta.Capture. This function is not a cold-start-only helper — it
+// sits under FindGraphFileAnyRef, i.e. under the MCP group revive path, where
+// the ~5 git subprocesses it used to fork per call were measured at ~14 ms and
+// accounted for the whole of a full-reload revive on a THREE-entity graph.
+// CaptureCached is keyed on the repo's HEAD-pointer (path, mtime, size) and the
+// ONLY field consumed here is meta.Ref — which is precisely what a HEAD rewrite
+// changes. Non-git directories are never cached and fall through to a live
+// Capture, preserving prior behaviour exactly.
+//
+// RESIDUAL, stated so the bound is known rather than assumed. The mtime term is
+// what disambiguates two branch switches whose ref names are the SAME LENGTH
+// (the size term does nothing there — see
+// TestCaptureCached_InvalidatesOnEqualLengthHeadSwitch, which exists because
+// dropping mtime from the key passed every other cache test). On a filesystem
+// with coarse mtime granularity — HFS+, FAT/exFAT, some SMB/NFS mounts at 1-2 s
+// — two equal-length branch switches inside a single tick can therefore serve a
+// stale meta.Ref. APFS and ext4 carry ns resolution and are unaffected.
+//
+// This hazard is PRE-EXISTING, not introduced here: CaptureCached already backs
+// routing.go (ResolveCWD) and tools.go (grafel_whoami). Routing this call site
+// through it widens the blast radius rather than creating the hazard, and the
+// consequence here is the mildest of the three: a stale ref makes
+// FindGraphFileAnyRef try the per-ref directories in the wrong ORDER, and its
+// AnyRef fallback still finds the newest indexed graph — "tried the wrong dir
+// first", not "found nothing".
 func StateDirForRepo(repoPath string) string {
 	if repoPath == "" {
 		return ""
 	}
-	meta := gitmeta.Capture(repoPath)
+	meta := gitmeta.CaptureCached(repoPath)
 	return StateDirForRepoRef(repoPath, meta.Ref)
 }
 

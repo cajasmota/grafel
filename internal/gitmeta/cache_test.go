@@ -103,6 +103,66 @@ func TestCaptureCached_InvalidatesOnHeadChange(t *testing.T) {
 	}
 }
 
+// TestCaptureCached_InvalidatesOnEqualLengthHeadSwitch pins the MTIME term of
+// the cache key (#6060).
+//
+// Every other cache test switches between refs of DIFFERENT length
+// ("main" -> "feature/x", "main" -> "other"), which changes HEAD's SIZE — so the
+// size term alone disambiguates them and the whole suite passes even with mtime
+// deleted from headKey. That makes "the cache self-invalidates on any checkout"
+// an unpinned claim, which is exactly the kind of fixture-cannot-fail gap this
+// test closes: "main" -> "mian" is a real branch switch that the size term
+// CANNOT see, so only mtime can catch it.
+//
+// The size assertion below is load-bearing, not decoration: without it a future
+// rename of either branch could silently restore the size term and turn this
+// test back into a duplicate of TestCaptureCached_InvalidatesOnHeadChange.
+//
+// Proof the fixture can fail: deleting the mtime field from headKey (leaving
+// {path, size}) leaves every other test in this package green and fails only
+// this one, with "stale ref served".
+func TestCaptureCached_InvalidatesOnEqualLengthHeadSwitch(t *testing.T) {
+	resetCaptureCacheForTest()
+	dir := initGitRepo(t)
+
+	headPath := filepath.Join(dir, ".git", "HEAD")
+	sizeBefore := statSize(t, headPath)
+
+	first := CaptureCached(dir)
+	if first.Ref != "main" {
+		t.Fatalf("expected ref main, got %q", first.Ref)
+	}
+
+	// "mian" is the same length as "main", so HEAD's size is unchanged and only
+	// its mtime distinguishes the two states.
+	time.Sleep(10 * time.Millisecond) // distinct mtime on coarse-granularity clocks
+	cmd := exec.Command("git", "checkout", "-b", "mian")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout: %v\n%s", err, out)
+	}
+
+	if sizeAfter := statSize(t, headPath); sizeAfter != sizeBefore {
+		t.Fatalf("HEAD size changed %d -> %d: the refs are not equal-length, so this "+
+			"fixture cannot prove the mtime term is load-bearing", sizeBefore, sizeAfter)
+	}
+
+	got := CaptureCached(dir)
+	if got.Ref != "mian" {
+		t.Fatalf("stale ref served after an equal-length branch switch: got %q want mian "+
+			"(the mtime term of headKey is not doing its job)", got.Ref)
+	}
+}
+
+func statSize(t *testing.T, path string) int64 {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	return fi.Size()
+}
+
 // BenchmarkCapture_vs_CaptureCached documents the steady-state speedup: the
 // cached path is a single os.Stat vs ~5 git subprocesses.
 func BenchmarkCaptureUncached(b *testing.B) {
