@@ -1118,6 +1118,26 @@ type State struct {
 	// lives here in PR1 — this is the eviction PRIMITIVE's bookkeeping only.
 	evicted map[string]*LoadedGroup
 
+	// reviveGates holds one mutex PER GROUP NAME, single-flighting that group's
+	// cold-wake revive (issue #6060). It is what replaces "the whole revive runs
+	// under one State-global lock":
+	//
+	//   - MUTUAL EXCLUSION per group — at most one goroutine materializes a given
+	//     group's dropped heap; the rest block here and, on entry, re-observe the
+	//     now-resident group under s.mu.
+	//   - ISOLATION between groups — a cold wake of group A takes only A's gate,
+	//     so it can never stall a call to group B (the head-of-line blocking this
+	//     field exists to remove).
+	//
+	// LOCK ORDER: reviveGates[name] is ALWAYS acquired with s.mu NOT held, and
+	// s.mu may be acquired while it is held. The order is gate -> s.mu, never the
+	// reverse, so it cannot invert against any other State critical section.
+	//
+	// The map itself is mutated only under s.mu; the mutexes it hands out are
+	// stable for the life of the State (one per group name ever revived — bounded
+	// by the registry, so no unbounded growth).
+	reviveGates map[string]*sync.Mutex
+
 	// CrossLinkCache is the ref-keyed in-memory cache for cross-repo link
 	// candidates (issue #2224). Keyed by (repoA, refA, repoB, refB); the
 	// secondary index allows O(affected-entries) invalidation on ref-switch.
@@ -1705,40 +1725,182 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 // missing overlay → no re-apply (today's behavior). Runs under s.mu, the same
 // lock applyGroupAlgoOverlay holds during Reload, so the shared apply/memo
 // fields are mutated race-free.
+//
+// Lock scope (issue #6060). This used to hold the State-GLOBAL s.mu across the
+// whole cold-wake revive, so a revive of group A blocked every call to every
+// other group — head-of-line blocking across the fleet, which is exactly the
+// wrong shape for a server whose consumers are concurrent agents. The warm path
+// (the overwhelmingly common one) still runs entirely under s.mu because it is
+// three memoized stats; the COLD path now:
+//
+//  1. observes the miss under s.mu, takes a PER-GROUP revive gate, and releases
+//     s.mu before doing any work;
+//  2. re-checks under s.mu after the gate (another goroutine may have finished
+//     the revive while this one queued);
+//  3. materializes the keepReader heap OUTSIDE s.mu, then publishes it into
+//     s.groups in one map write under s.mu.
+//
+// The invariant that replaces "everything under one global lock" is:
+//
+//   - s.mu still guards EVERY read and write of s.groups / s.evicted, so no
+//     caller can observe a partially populated map;
+//   - a group is published into s.groups only AFTER it is fully materialized, so
+//     no caller can observe a half-revived group — the shell stays parked in
+//     s.evicted (invisible to lookups, still drained by Close) for the whole
+//     materialization window;
+//   - the per-group gate makes the materialization itself single-flighted, so two
+//     concurrent revives of the same group cannot both rebuild the same heap;
+//   - the mmap deref/munmap ordering was never s.mu's job — readerMu is the
+//     strictly-innermost lock that pairs BuildLabelIndexFromReader against
+//     retireHandle/publishHandle, and it is unchanged here.
+//
+// The full-evict (cold == nil) revive still runs under s.mu: it goes through
+// reloadAllLocked, which mutates the registry, the registry signature and every
+// resident group, and is not a per-group operation.
+//
+// KNOWN RESIDUAL — revive racing Close. A Group call that is already past its
+// s.groups miss when Close runs will publish a group into a closed State. This
+// is PRE-EXISTING, not introduced here: before this change a Group() call
+// arriving after Close() resurrected a group identically, because Close does not
+// mark the State closed and reloadAllLocked/reviveEvictedLocked are happy to
+// repopulate s.groups afterwards. What changed is the WIDTH of the window — the
+// materialization now happens with s.mu released, so a Close can land in the
+// middle of it rather than only before or after. The consequence is bounded:
+// Close retires each repo's handle under readerMu, so the revive observes
+// lr.Reader == nil and falls back to BuildLabelIndex(lr.Doc). Under
+// GRAFEL_SERVE_FROM_MMAP (default OFF) the Doc still carries the rows, so the
+// resurrected group is correct; with mmap serving ON the rows were skeletonized
+// away and the group is resident-but-empty. Fixing it properly means a closed
+// flag on State that Group honours, which is a lifecycle change, not a locking
+// one — out of scope here and deliberately left as a comment rather than a
+// silent assumption.
 func (s *State) Group(name string) *LoadedGroup {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	grp := s.groups[name]
-	if grp == nil {
-		// Cold-gate revive (memory epic #5850, issue #5872 PR1): a group EvictGroup
-		// reclaimed is absent from s.groups and pinned in s.evicted. An explicit
-		// access is exactly the "touch" that ends the eviction — bring it back on
-		// demand (re-materialize from the retained Reader, or reload from disk).
-		if cold, gated := s.evicted[name]; gated {
-			grp = s.reviveEvictedLocked(name, cold)
+	if grp := s.groups[name]; grp != nil {
+		s.touchGroupLocked(grp)
+		s.mu.Unlock()
+		return grp
+	}
+	// Cold-gate revive (memory epic #5850, issue #5872 PR1): a group EvictGroup
+	// reclaimed is absent from s.groups and pinned in s.evicted. An explicit
+	// access is exactly the "touch" that ends the eviction — bring it back on
+	// demand (re-materialize from the retained Reader, or reload from disk).
+	if _, gated := s.evicted[name]; !gated {
+		s.mu.Unlock()
+		return nil
+	}
+	gate := s.reviveGateLocked(name)
+	s.mu.Unlock()
+
+	// gate -> s.mu, never the reverse (see State.reviveGates).
+	gate.Lock()
+	defer gate.Unlock()
+
+	s.mu.Lock()
+	// Re-check: a revive that was already in flight when we queued on the gate
+	// may have published the group by now.
+	if grp := s.groups[name]; grp != nil {
+		s.touchGroupLocked(grp)
+		s.mu.Unlock()
+		return grp
+	}
+	cold, gated := s.evicted[name]
+	if !gated {
+		s.mu.Unlock()
+		return nil
+	}
+	if cold == nil {
+		// Full evict: reload from disk. reloadAllLocked is a whole-State operation
+		// (registry refresh, every resident group, tool-surface signature), so it
+		// stays under s.mu.
+		grp := s.reviveEvictedLocked(name, nil)
+		if grp != nil {
+			s.touchGroupLocked(grp)
+		}
+		s.mu.Unlock()
+		return grp
+	}
+	s.mu.Unlock()
+
+	// keepReader: rebuild each repo's dropped heap from its retained, still-mapped
+	// Reader with s.mu RELEASED. The shell is reachable only through s.evicted,
+	// which no lookup consults for serving and which only a revive (gated above)
+	// mutates, so nobody can observe it mid-materialization.
+	if hook := reviveMaterializeHook; hook != nil {
+		hook(name)
+	}
+	for _, lr := range cold.Repos {
+		if lr != nil {
+			lr.rematerializeFromReader()
 		}
 	}
-	if grp != nil {
-		// Stamp the LRU/PIN signal on every routing decision (issue #5872 PR2).
-		// This is the per-call choke point, so the group with the newest lastAccess
-		// is definitionally the active working set — SweepIdleGroups pins it. It is
-		// also why a group queried within the idle window is never idle-evicted, and
-		// why a revive (below) immediately re-arms the signal for the freshly
-		// re-materialized group.
-		grp.lastAccess = time.Now()
-		s.refreshGroupAlgoOverlayLocked(grp)
-		// Re-check the per-repo description side-table mtimes on the serving path so
-		// a write-back that advanced <stateDir>/descriptions.json mid-session takes
-		// effect without a full Reload (mirrors refreshGroupAlgoOverlayLocked). The
-		// per-repo memo inside applyDescriptionOverlay keeps the steady state a
-		// cheap stat-and-skip.
-		applyDescriptionOverlay(grp)
-		// Re-check the per-repo flow side-table on the serving path so a phantom
-		// write-back that advanced <stateDir>/flows.json mid-session takes effect
-		// (REPLACE) without a full Reload. Per-repo memoized → cheap stat-and-skip.
-		applyFlowOverlay(grp)
+
+	s.mu.Lock()
+	delete(s.evicted, name)
+	s.groups[name] = cold
+	s.touchGroupLocked(cold)
+	s.mu.Unlock()
+	return cold
+}
+
+// reviveGateLocked returns the per-group revive mutex for name, creating it on
+// first use. Caller MUST hold s.mu; the returned mutex MUST be acquired only
+// after s.mu is released (lock order gate -> s.mu, see State.reviveGates).
+func (s *State) reviveGateLocked(name string) *sync.Mutex {
+	if s.reviveGates == nil {
+		s.reviveGates = map[string]*sync.Mutex{}
 	}
-	return grp
+	g, ok := s.reviveGates[name]
+	if !ok {
+		g = &sync.Mutex{}
+		s.reviveGates[name] = g
+	}
+	return g
+}
+
+// reviveMaterializeHook, when non-nil, is invoked with the group name inside the
+// revive's materialization window — the window issue #6060 moved OUT from under
+// the State-global s.mu. TEST-ONLY seam, always nil in production: it exists so a
+// test can park a revive of group A there and prove a call to group B still
+// completes. If the materialization is ever moved back under s.mu that test
+// deadlocks, which is the regression signal.
+var reviveMaterializeHook func(name string)
+
+// touchGroupLocked stamps the LRU/PIN signal and re-checks the three memoized
+// side-table overlays for grp. Caller MUST hold s.mu.
+//
+// Cost (issue #6060): each of these is memoized to a stat-and-skip in the steady
+// state, which is why the WARM serving path can afford to run them under the
+// State-global lock. The dominant per-call cost is NOT the stat — it is that
+// both side-table overlays resolve their state directory through
+// daemon.StateDirForRepo, whose HEAD capture forks git subprocesses. That
+// resolution is now memoized inside gitmeta (CaptureCached, see
+// daemon.StateDirForRepo), which is what makes the steady state actually cheap
+// rather than merely described as cheap. Sourcing the directory from the repo's
+// already-discovered graph file instead — which would remove the call entirely,
+// and which the reader/writer pairing arguably requires — is deliberately NOT
+// done here: it changes which directory the daemon reads durable side-tables
+// from, so it belongs with the matching writer change, not in a lock-scope
+// commit.
+func (s *State) touchGroupLocked(grp *LoadedGroup) {
+	// Stamp the LRU/PIN signal on every routing decision (issue #5872 PR2).
+	// This is the per-call choke point, so the group with the newest lastAccess
+	// is definitionally the active working set — SweepIdleGroups pins it. It is
+	// also why a group queried within the idle window is never idle-evicted, and
+	// why a revive immediately re-arms the signal for the freshly re-materialized
+	// group.
+	grp.lastAccess = time.Now()
+	s.refreshGroupAlgoOverlayLocked(grp)
+	// Re-check the per-repo description side-table mtimes on the serving path so
+	// a write-back that advanced <stateDir>/descriptions.json mid-session takes
+	// effect without a full Reload (mirrors refreshGroupAlgoOverlayLocked). The
+	// per-repo memo inside applyDescriptionOverlay keeps the steady state a
+	// cheap stat-and-skip.
+	applyDescriptionOverlay(grp)
+	// Re-check the per-repo flow side-table on the serving path so a phantom
+	// write-back that advanced <stateDir>/flows.json mid-session takes effect
+	// (REPLACE) without a full Reload. Per-repo memoized → cheap stat-and-skip.
+	applyFlowOverlay(grp)
 }
 
 // EvictGroup reclaims the resident graph of group name — the per-group whole-graph
@@ -1874,7 +2036,7 @@ func (s *State) reviveEvictedLocked(name string, cold *LoadedGroup) *LoadedGroup
 		// still-mapped Reader — no fbreader.Open, no disk re-read — then reinstall.
 		for _, lr := range cold.Repos {
 			if lr != nil {
-				lr.rematerializeFromReaderLocked()
+				lr.rematerializeFromReader()
 			}
 		}
 		s.groups[name] = cold
@@ -1887,15 +2049,25 @@ func (s *State) reviveEvictedLocked(name string, cold *LoadedGroup) *LoadedGroup
 	return s.groups[name]
 }
 
-// rematerializeFromReaderLocked rebuilds the heap indexes dropped by a keepReader
+// rematerializeFromReader rebuilds the heap indexes dropped by a keepReader
 // eviction from this repo's retained mmap Reader, mirroring reloadLocked's
-// LabelIndex wiring. Caller MUST hold s.mu. No fbreader.Open and no disk read: the
-// Reader is the same mapping the eviction kept resident. The lazy derived indexes
+// LabelIndex wiring. No fbreader.Open and no disk read: the Reader is the same
+// mapping the eviction kept resident. The lazy derived indexes
 // (adjacency/BM25/byID/…) are left for their getters to rebuild on first use
 // (resetIndexes re-arms the Once guards). The group-algo overlay side-table is
 // re-applied by the caller's refreshGroupAlgoOverlayLocked (forced via the shell's
 // algoApplied=false).
-func (lr *LoadedRepo) rematerializeFromReaderLocked() {
+//
+// Locking (issue #6060): the caller does NOT need to hold s.mu. It was called
+// under s.mu when it lived inside State.Group's global critical section, but s.mu
+// was never what made it safe — the mmap deref/munmap ordering is carried by
+// readerMu, the strictly-innermost lock this takes around
+// BuildLabelIndexFromReader and that retireHandle/publishHandle take around the
+// munmap. A concurrent Close therefore either retires first (lr.Reader observed
+// nil here → Doc fallback) or waits for this build to finish; it can never unmap
+// underneath the iteration. The caller (State.Group's cold path) additionally
+// holds that group's revive gate, so no second goroutine rebuilds the same repo.
+func (lr *LoadedRepo) rematerializeFromReader() {
 	lr.rmu().Lock()
 	if lr.Reader != nil {
 		li := BuildLabelIndexFromReader(lr.Reader, lr.Doc)
