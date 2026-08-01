@@ -2831,7 +2831,13 @@ func (s *Server) handleSaveResult(ctx context.Context, req mcpapi.CallToolReques
 	if err := os.MkdirAll(memDir, 0o755); err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
-	ts := time.Now().UTC().Format("20060102T150405Z")
+	// #6073: both the filename stamp and saved_at read the injectable clock
+	// (serverNow) rather than time.Now directly, so a test can pin them to a
+	// fixed instant and compare two saves byte-for-byte. now is resolved ONCE:
+	// the filename and the payload must describe the same instant even if the
+	// call straddles a second boundary.
+	now := serverNow()
+	ts := now.Format("20060102T150405Z")
 	sum := sha256.Sum256([]byte(question + answer))
 	short := hex.EncodeToString(sum[:])[:8]
 	path := filepath.Join(memDir, fmt.Sprintf("%s-%s.json", ts, short))
@@ -2841,7 +2847,7 @@ func (s *Server) handleSaveResult(ctx context.Context, req mcpapi.CallToolReques
 		"type":        argString(req, "type", "note"),
 		"nodes":       argStringSlice(req, "nodes"),
 		"repo_filter": argStringSlice(req, "repo_filter"),
-		"saved_at":    time.Now().UTC().Format(time.RFC3339),
+		"saved_at":    now.Format(time.RFC3339),
 	}
 	data, _ := json.MarshalIndent(payload, "", "  ")
 	if err := os.WriteFile(path, data, 0o644); err != nil {

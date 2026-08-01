@@ -2,12 +2,14 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/registry"
@@ -146,61 +148,122 @@ func TestAnalysisFindingsDispatch(t *testing.T) {
 	assertSameDispatch(t, "action=list", srv.handleAnalysisFindings,
 		map[string]any{"group": "g", "action": "list"}, srv.handleListFindings, g)
 	assertSameDispatch(t, "action=default", srv.handleAnalysisFindings, g, srv.handleListFindings, g)
-	// save: handleSaveResult requires question + answer. The result is
-	// {"path": "<memDir>/<ts>-<hash>.json"}; the <ts> segment is wall-clock and
-	// two independent saves can straddle a second boundary (flaky on slow CI),
-	// so we compare the saved path with its volatile timestamp normalized away
-	// rather than pinning identical filenames.
+	// save: handleSaveResult requires question + answer, and returns
+	// {"path": "<memDir>/<ts>-<hash>.json"} where <ts> is second-resolution.
+	//
+	// #6073: rather than normalising <ts> away (which leaves the field checked
+	// in NEITHER direction — it passes whether or not the two handlers agree,
+	// and fails when they do), we pin the clock so BOTH dispatch paths observe
+	// the same instant. The comparison is then exact and total: a genuine
+	// divergence in how either handler stamps the timestamp now fails the test,
+	// which the normalising version could not detect at all.
+	setFixedNowForTest(t, time.Date(2031, 3, 4, 5, 6, 7, 0, time.UTC))
 	save := map[string]any{"group": "g", "question": "q", "answer": "a"}
 	assertSameSaveDispatch(t, "action=save", srv.handleAnalysisFindings,
 		map[string]any{"group": "g", "action": "save", "question": "q", "answer": "a"},
 		srv.handleSaveResult, save)
 }
 
-// savedPathTimestamp matches the leading "<YYYYMMDDThhmmssZ>-" of a saved
-// findings filename (see handleSaveResult). The timestamp is wall-clock and
-// therefore non-deterministic between two independent saves; the trailing hash
-// segment is deterministic (sha256 of question+answer).
-var savedPathTimestamp = regexp.MustCompile(`/\d{8}T\d{6}Z-`)
-
-// normalizeSaveResult rewrites the volatile timestamp in a {"path": ...} save
-// result to a fixed sentinel so two genuinely-equivalent saves compare equal,
-// while still asserting that a path was returned and that the deterministic
-// (memDir + hash) portion matches. Non-object/error results pass through.
-func normalizeSaveResult(t *testing.T, s string) string {
-	t.Helper()
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(s), &obj); err != nil {
-		return s // not a JSON object (error/text result) — compare verbatim
-	}
-	raw, ok := obj["path"]
-	if !ok {
-		t.Errorf("save result missing path key: %s", s)
-		return s
-	}
-	var path string
-	if err := json.Unmarshal(raw, &path); err != nil {
-		t.Errorf("save result path not a string: %s", raw)
-		return s
-	}
-	path = savedPathTimestamp.ReplaceAllString(path, "/<ts>-")
-	obj["path"], _ = json.Marshal(path)
-	out, _ := json.Marshal(obj)
-	return string(out)
-}
-
 // assertSameSaveDispatch is assertSameDispatch specialized for the findings
-// save path: it verifies the canonical dispatcher routes to handleSaveResult
-// with the same args, comparing the structural result with the non-deterministic
-// timestamp in the saved filename normalized away (see normalizeSaveResult).
+// save path. It compares the returned {"path": ...} payload BYTE-FOR-BYTE (no
+// normalisation — the clock is pinned by the caller, see #6073) and, because
+// the save handler's real output is a file on disk rather than the returned
+// payload, additionally compares the bytes each call actually wrote. Both
+// calls resolve to the same filename under a pinned clock, so the written
+// content is read back after each call, before the next one overwrites it.
 func assertSameSaveDispatch(t *testing.T, label string,
 	canonical func(context.Context, mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error), canonArgs map[string]any,
 	old func(context.Context, mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error), oldArgs map[string]any) {
 	t.Helper()
-	got := normalizeSaveResult(t, callBare(t, canonical, canonArgs))
-	want := normalizeSaveResult(t, callBare(t, old, oldArgs))
+	got, gotBody := callSaveAndReadBack(t, canonical, canonArgs)
+	want, wantBody := callSaveAndReadBack(t, old, oldArgs)
 	if got != want {
 		t.Errorf("%s: canonical dispatch differs from absorbed handler\n got=%s\nwant=%s", label, got, want)
+	}
+	if gotBody != wantBody {
+		t.Errorf("%s: canonical dispatch wrote different file content than absorbed handler\n got=%s\nwant=%s",
+			label, gotBody, wantBody)
+	}
+}
+
+// callSaveAndReadBack invokes a save handler and returns both its JSON result
+// and the bytes it wrote at the reported path.
+func callSaveAndReadBack(t *testing.T, fn func(context.Context, mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error),
+	args map[string]any) (result, body string) {
+	t.Helper()
+	result = callBare(t, fn, args)
+	var obj struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(result), &obj); err != nil || obj.Path == "" {
+		t.Fatalf("save result is not {\"path\": ...}: %s (err=%v)", result, err)
+	}
+	buf, err := os.ReadFile(obj.Path)
+	if err != nil {
+		t.Fatalf("reading back saved finding %s: %v", obj.Path, err)
+	}
+	return result, string(buf)
+}
+
+// TestSaveResultUsesInjectedClock pins the clock and asserts the saved
+// filename and the saved_at payload field are BOTH derived from it, in the
+// documented formats. This is the coverage the previous normalise-it-away
+// fixture removed: without it, nothing checks that the timestamp segment is
+// well-formed or that it corresponds to the instant the save happened.
+func TestSaveResultUsesInjectedClock(t *testing.T) {
+	srv := coreTestServer(t)
+	at := time.Date(2031, 3, 4, 5, 6, 7, 0, time.UTC)
+	setFixedNowForTest(t, at)
+
+	out := callBare(t, srv.handleSaveResult, map[string]any{"group": "g", "question": "q", "answer": "a"})
+	var obj struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(out), &obj); err != nil {
+		t.Fatalf("save result not JSON: %v (%s)", err, out)
+	}
+	// sha256("qa")[:8] — the deterministic content-hash segment.
+	sum := sha256.Sum256([]byte("qa"))
+	wantBase := "20310304T050607Z-" + hex.EncodeToString(sum[:])[:8] + ".json"
+	if base := filepath.Base(obj.Path); base != wantBase {
+		t.Errorf("saved filename = %q, want %q (timestamp must come from the injected clock)", base, wantBase)
+	}
+	buf, err := os.ReadFile(obj.Path)
+	if err != nil {
+		t.Fatalf("read saved finding: %v", err)
+	}
+	var payload struct {
+		SavedAt string `json:"saved_at"`
+	}
+	if err := json.Unmarshal(buf, &payload); err != nil {
+		t.Fatalf("saved finding not JSON: %v (%s)", err, buf)
+	}
+	if want := at.Format(time.RFC3339); payload.SavedAt != want {
+		t.Errorf("saved_at = %q, want %q", payload.SavedAt, want)
+	}
+}
+
+// TestSaveResultDispatchIsClockIndependent is the direct regression guard for
+// #6073. It drives the two dispatch calls so they are GUARANTEED to straddle a
+// wall-clock second boundary — the exact condition that reddened
+// windows-latest under -race — and asserts the results are still identical.
+// Before the clock seam this failed 100% of the time on every OS; the previous
+// normalise-the-timestamp fallback masked it on POSIX only, because its regex
+// was anchored on "/" and is a no-op on a Windows path separator.
+func TestSaveResultDispatchIsClockIndependent(t *testing.T) {
+	srv := coreTestServer(t)
+	setFixedNowForTest(t, time.Date(2031, 3, 4, 5, 6, 7, 0, time.UTC))
+	save := map[string]any{"group": "g", "question": "q", "answer": "a"}
+
+	got := callBare(t, srv.handleAnalysisFindings,
+		map[string]any{"group": "g", "action": "save", "question": "q", "answer": "a"})
+	// Sleep past the next real second boundary: the injected clock must make
+	// the crossing invisible to the handlers.
+	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second + 5*time.Millisecond)))
+	want := callBare(t, srv.handleSaveResult, save)
+
+	if got != want {
+		t.Errorf("save dispatch differs across a real second boundary — the handlers are still reading the wall clock\n got=%s\nwant=%s", got, want)
 	}
 }
 
