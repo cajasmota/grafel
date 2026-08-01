@@ -65,6 +65,39 @@ func commitFile(t *testing.T, dir, name string) {
 	run("commit", "-m", "add "+name)
 }
 
+// eventHangGuard bounds how long a test waits for an event the poller MUST
+// emit. It is deliberately far larger than any plausible detection latency
+// because it is a hang guard, not a latency budget: the assertion under test is
+// "the event is emitted", never "the event is emitted within X".
+//
+// Sizing it as a budget is what made TestGitHeadPoller_SHAChange the only red
+// on the windows-latest leg of the v0.2.0 gate (macos/ubuntu green, same
+// commit). Detecting a new commit costs one poll tick plus SIX git subprocess
+// spawns on the critical path — five in gitmeta.Capture (rev-parse
+// --show-toplevel, rev-parse --short=12, symbolic-ref, rev-parse --git-dir,
+// rev-parse --git-common-dir) and one more for classifyRefChange's git diff.
+// That is ~100ms on an idle macOS box and comfortably over a second on a loaded
+// Windows runner, where process creation is an order of magnitude dearer. Note
+// which sibling survived: TestGitHeadPoller_BranchSwitch had the same 1s wait
+// but short-circuits the git diff (oldSHA == newSHA), i.e. it was one spawn
+// away from the same red.
+const eventHangGuard = 30 * time.Second
+
+// waitForEvent polls have() until it reports true or the hang guard expires,
+// then returns either way. It deliberately does not assert: the caller's own
+// check is the one that names the missing event, so a timeout still fails the
+// test — with the message that describes the defect rather than "timed out".
+func waitForEvent(t *testing.T, have func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(eventHangGuard)
+	for time.Now().Before(deadline) {
+		if have() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // TestGitHeadPoller_BranchSwitch verifies that switching branches emits
 // exactly one BranchSwitchEvent with the correct old/new ref.
 func TestGitHeadPoller_BranchSwitch(t *testing.T) {
@@ -88,17 +121,11 @@ func TestGitHeadPoller_BranchSwitch(t *testing.T) {
 	// Switch to a new branch.
 	switchBranch(t, repoDir, "feat/test-branch")
 
-	// Wait up to 1 second for the event to arrive.
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
+	waitForEvent(t, func() bool {
 		mu.Lock()
-		n := len(events)
-		mu.Unlock()
-		if n >= 1 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		defer mu.Unlock()
+		return len(events) >= 1
+	})
 
 	mu.Lock()
 	got := make([]BranchSwitchEvent, len(events))
@@ -165,16 +192,11 @@ func TestGitHeadPoller_SHAChange(t *testing.T) {
 	// Make a new commit on main (SHA advances, ref stays "main").
 	commitFile(t, repoDir, "new-file.txt")
 
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
+	waitForEvent(t, func() bool {
 		mu.Lock()
-		n := len(events)
-		mu.Unlock()
-		if n >= 1 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		defer mu.Unlock()
+		return len(events) >= 1
+	})
 
 	mu.Lock()
 	got := make([]BranchSwitchEvent, len(events))
@@ -359,16 +381,11 @@ func TestCommonDirDedup_FanOut_BaseRepoReceivesEvent(t *testing.T) {
 	// Switch branch in the base repo (advances HEAD on the shared common-dir).
 	switchBranch(t, base, "feat/fanout-test")
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
+	waitForEvent(t, func() bool {
 		mu.Lock()
-		n := received[base]
-		mu.Unlock()
-		if n >= 1 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		defer mu.Unlock()
+		return received[base] >= 1
+	})
 
 	mu.Lock()
 	baseEvents := received[base]
@@ -423,16 +440,11 @@ func TestCommonDirDedup_FanOut_AllWorktreesReceiveEvent(t *testing.T) {
 	// that worktree, triggering an event for worktrees[0] at minimum.
 	commitFile(t, worktrees[0], "from-wt0.go")
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
+	waitForEvent(t, func() bool {
 		mu.Lock()
-		n := received[worktrees[0]]
-		mu.Unlock()
-		if len(n) >= 1 {
-			break
-		}
-		time.Sleep(15 * time.Millisecond)
-	}
+		defer mu.Unlock()
+		return len(received[worktrees[0]]) >= 1
+	})
 
 	mu.Lock()
 	defer mu.Unlock()

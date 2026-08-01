@@ -158,10 +158,15 @@ func TestRebuildSeams_ConcurrentOverrideAndRead(t *testing.T) {
 	// nest under it, which is what the writer loop below exercises.
 	var readerIters int64
 	stop := make(chan struct{})
+	readerLive := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		// Announce BEFORE the loop, not after an iteration: every counted
+		// iteration must be concurrent with the writer, so the barrier must not
+		// itself contribute one.
+		close(readerLive)
 		for {
 			select {
 			case <-stop:
@@ -172,13 +177,32 @@ func TestRebuildSeams_ConcurrentOverrideAndRead(t *testing.T) {
 			atomic.AddInt64(&readerIters, 1)
 		}
 	}()
+	// The writer must not start until the reader goroutine is provably running.
+	// Without this the whole 2000-iteration writer loop can complete and close
+	// `stop` before the reader is ever scheduled — the fixture then reports
+	// itself vacuous, which is exactly what windows-latest did on the v0.2.0
+	// gate (macos/ubuntu green). Go gives no scheduling guarantee to a freshly
+	// created goroutine on any OS; Windows just loses the coin flip more often
+	// under -race with several test binaries sharing the runner's cores.
+	<-readerLive
 
 	// writerWrites counts SEAM WRITES performed while the reader goroutine is
 	// live. It is incremented only from installAllRebuildSeamOverrides' return
 	// value, so it cannot be kept while the writes are removed — see the guard
 	// below for why that matters.
 	var writerWrites int
-	for i := 0; i < 2000; i++ {
+
+	// The loop runs 2000 iterations, and KEEPS GOING past 2000 until the reader
+	// has resolved at least once. That extension is a hang guard, not a latency
+	// budget: it does not decide whether the assertion holds, it only refuses to
+	// stop writing while the reader still has nothing to be concurrent WITH. On
+	// a host that hands the reader a core promptly it never runs a single extra
+	// iteration; on a starved one it keeps the write side live instead of
+	// declaring the fixture vacuous. Bounded by wall clock so a reader that
+	// genuinely cannot run still reaches the guard below and fails the test
+	// rather than hanging the package.
+	writerDeadline := time.Now().Add(30 * time.Second)
+	for i := 0; i < 2000 || (atomic.LoadInt64(&readerIters) == 0 && time.Now().Before(writerDeadline)); i++ {
 		restore, n := installAllRebuildSeamOverrides(i, &aliveCalls, &clockUses)
 		writerWrites += n
 		// Resolve under the override too, so each seam is exercised in both
@@ -186,10 +210,15 @@ func TestRebuildSeams_ConcurrentOverrideAndRead(t *testing.T) {
 		resolveAllRebuildSeams()
 		restore()
 	}
+	// Sampled BEFORE close(stop) so it counts only resolves that happened while
+	// the writer was still writing. Reading it after wg.Wait() would also count
+	// the iterations the reader gets in during the shutdown handshake, which are
+	// concurrent with nothing and would let the guard pass vacuously.
+	concurrentIters := atomic.LoadInt64(&readerIters)
 
 	close(stop)
 	wg.Wait()
-	if atomic.LoadInt64(&readerIters) == 0 {
+	if concurrentIters == 0 {
 		t.Fatal("reader goroutine never resolved a seam — fixture cannot exhibit the race it claims to guard")
 	}
 	// The writer half of the same guard, and NOT redundant with Phase 1. Phase 1
