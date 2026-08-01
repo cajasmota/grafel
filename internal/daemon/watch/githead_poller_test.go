@@ -293,9 +293,47 @@ func makeSharedCommonDirRepos(t *testing.T, n int) (base string, worktrees []str
 	return base, worktrees
 }
 
+// statsPerCycleFloor is how many poll cycles the two dedup measurements below
+// wait for before they assert. It is a FLOOR ON EVIDENCE, not a rate: the
+// assertion is stats-per-cycle, which is independent of how fast the runner
+// ticks, but a single observed cycle would let a rounding accident pass, so the
+// tests insist on several before believing the ratio.
+const statsPerCycleFloor = 5
+
+// runPollCycles starts p, waits until it has COMPLETED at least
+// statsPerCycleFloor poll cycles, stops it, and returns the stats and cycles
+// observed. Stop() joins the loop goroutine, so no poll can be half-done when
+// the counters are read: every stat those cycles issued is already counted.
+//
+// The wait is a hang guard (eventHangGuard), not a budget — it bounds "the
+// poller ticks at all", and a runner too starved to manage five 50ms ticks in
+// 30s fails loudly here instead of quietly asserting on a sample of one. This
+// is what replaces the old fixed time.Sleep + wall-clock-derived call-count
+// bounds, which a tick-starved Windows runner could only push BELOW their lower
+// bound (#6069).
+func runPollCycles(t *testing.T, p *GitHeadPoller) (stats, cycles uint64) {
+	t.Helper()
+	p.Start()
+	deadline := time.Now().Add(eventHangGuard)
+	for p.PollCycles() < statsPerCycleFloor && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	p.Stop()
+	stats, cycles = p.StatCalls(), p.PollCycles()
+	if cycles < statsPerCycleFloor {
+		t.Fatalf("poller completed only %d cycle(s) in %s (want >= %d) — the runner never granted enough ticks to measure anything",
+			cycles, eventHangGuard, statsPerCycleFloor)
+	}
+	return stats, cycles
+}
+
 // TestCommonDirDedup_SharedRepos_OneStatPerCycle is the primary M1 measurement
 // test. 11 repos (base + 10 linked worktrees) sharing one common-dir must
 // produce 2 stat calls per poll cycle (HEAD + ref), not 22.
+//
+// The measurement is expressed per CYCLE, not per wall-clock interval: how many
+// ticks the machine grants is the runner's business, how many stats the poller
+// issues per tick is the poller's (#6069).
 func TestCommonDirDedup_SharedRepos_OneStatPerCycle(t *testing.T) {
 	const numWorktrees = 10
 	base, worktrees := makeSharedCommonDirRepos(t, numWorktrees)
@@ -311,16 +349,13 @@ func TestCommonDirDedup_SharedRepos_OneStatPerCycle(t *testing.T) {
 		t.Fatalf("GroupCount: want 1 (all repos share common-dir), got %d", gc)
 	}
 
-	p.Start()
-	// Let ~5 poll cycles run (50ms * 5 = 250ms, +slack).
-	time.Sleep(300 * time.Millisecond)
-	p.Stop()
+	stats, cycles := runPollCycles(t, p)
 
-	got := p.StatCalls()
-	// Expect ~10 stat calls (2 per cycle × 5 cycles). Allow [8,18] for jitter.
-	// Without M1 dedup: 11 repos × 2 files × 5 cycles = 110 calls.
-	if got < 8 || got > 18 {
-		t.Errorf("StatCalls: want 8-18 (2/cycle × ~5 cycles), got %d (dedup broken? without dedup: ~110)", got)
+	// 2 stats per GROUP per cycle (HEAD + ref), and dedup collapses all 11 repos
+	// into 1 group. Without M1 dedup this is 22 per cycle.
+	if want := 2 * cycles; stats != want {
+		t.Errorf("StatCalls: %d stats over %d cycles = %.2f/cycle, want exactly %d (2/cycle: HEAD + ref for the single shared common-dir; without dedup it is 22/cycle)",
+			stats, cycles, float64(stats)/float64(cycles), want)
 	}
 }
 
@@ -339,14 +374,16 @@ func TestCommonDirDedup_IndependentRepos_OneStatEachPerCycle(t *testing.T) {
 		t.Fatalf("GroupCount: want %d (one per repo), got %d", numRepos, gc)
 	}
 
-	p.Start()
-	time.Sleep(300 * time.Millisecond)
-	p.Stop()
+	stats, cycles := runPollCycles(t, p)
 
-	got := p.StatCalls()
-	// Expect ~100 stat calls (10 repos × 2 files × 5 cycles). Allow [60,140].
-	if got < 60 || got > 140 {
-		t.Errorf("StatCalls: want 60-140 (10 repos × 2 files × ~5 cycles), got %d", got)
+	// The counterweight to the dedup test: 10 independent repos are 10 groups,
+	// so the poller MUST issue 2 stats each per cycle. An over-eager dedup that
+	// collapsed unrelated repos would show up here as a rate below 20/cycle,
+	// where the old wall-clock bound [60,140] could not tell that apart from a
+	// slow runner.
+	if want := 2 * uint64(numRepos) * cycles; stats != want {
+		t.Errorf("StatCalls: %d stats over %d cycles = %.2f/cycle, want exactly %d (%d repos × 2 files per cycle)",
+			stats, cycles, float64(stats)/float64(cycles), want, numRepos)
 	}
 }
 

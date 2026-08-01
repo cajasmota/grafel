@@ -145,6 +145,14 @@ type GitHeadPoller struct {
 	repoToGroup map[string]string          // key: abs repo path → common-dir
 
 	statCalls uint64 // atomic — total os.Stat calls on HEAD/ref files (for measurement)
+	// pollCycles counts COMPLETED poll cycles (atomic). It is the honest
+	// denominator for the stat-rate measurement: asserting stats against a
+	// wall-clock sleep measures how many ticks the runner granted, which a
+	// loaded CI host can drive arbitrarily low, whereas stats-per-cycle is a
+	// property of the poller alone (#6069). Incremented at the END of poll() so
+	// the counter never runs ahead of the stats its cycles issued; a reader that
+	// also joins the loop goroutine (Stop) sees the two exactly in step.
+	pollCycles uint64
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
@@ -193,6 +201,13 @@ func (p *GitHeadPoller) Stop() {
 // measurement of the M1 dedup.
 func (p *GitHeadPoller) StatCalls() uint64 {
 	return atomic.LoadUint64(&p.statCalls)
+}
+
+// PollCycles returns the number of poll cycles COMPLETED since the poller was
+// created. Paired with StatCalls it expresses the dedup measurement as a rate
+// per cycle rather than per wall-clock second (#6069).
+func (p *GitHeadPoller) PollCycles() uint64 {
+	return atomic.LoadUint64(&p.pollCycles)
 }
 
 // GroupCount returns the number of distinct common-dir groups currently
@@ -414,6 +429,10 @@ func (p *GitHeadPoller) statModTime(path string) int64 {
 // classification is per-repo (correct: the working tree differs per repo path
 // even when HEAD is shared).
 func (p *GitHeadPoller) poll() {
+	// Counted LAST so PollCycles never runs ahead of the stats that cycle
+	// issued (#6069).
+	defer atomic.AddUint64(&p.pollCycles, 1)
+
 	// Snapshot group metadata under the lock, then do all I/O outside it.
 	p.mu.Lock()
 	type groupSnap struct {
