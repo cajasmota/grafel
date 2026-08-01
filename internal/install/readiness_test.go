@@ -89,10 +89,16 @@ func TestLooksLikeVersion(t *testing.T) {
 		{"", false},
 		{"<!doctype html><html></html>", false},
 		{"<html><body>hi</body></html>", false},
-		{"line1\nline2", false},          // multi-line
-		{strings.Repeat("a", 65), false}, // too long
-		{"{\"version\":\"1.0\"}", true},  // short JSON is tolerated (no angle brackets / newline)
-		{"<svg>", false},                 // angle brackets
+		{"line1\nline2", false}, // multi-line
+		// #6070: the cap was 64, which rejected the 67-char version string a
+		// Makefile-built daemon really reports (`git describe` + commit + date)
+		// — the probe failed as "implausible" before any comparison ran. These
+		// two are measured from real builds, not invented.
+		{"v0.1.9-82-gf2fb8c315 (commit f2fb8c315, built 2026-08-01T11:08:38Z)", true},
+		{"v0.1.9-82-gf2fb8c315-dirty (commit f2fb8c315, built 2026-08-01T11:08:38Z)", true},
+		{strings.Repeat("a", maxPlausibleVersionLen+1), false}, // too long
+		{"{\"version\":\"1.0\"}", true},                        // short JSON is tolerated (no angle brackets / newline)
+		{"<svg>", false},                                       // angle brackets
 		// #5850: exact SPA-fallback body a shadowed version-probe channel could
 		// return; must be rejected so a stale-daemon check never treats this as
 		// a version match.

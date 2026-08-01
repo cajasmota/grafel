@@ -483,8 +483,10 @@ func TestRunCopy_NoOnDiskSkills_EmbeddedFallbackInstalls(t *testing.T) {
 		// Step 4 now re-verifies the running daemon's version against the
 		// installed version (#5850); stub both so this test keeps exercising
 		// only the skills-fallback behavior it was written for.
-		ProbeDaemonVersion: func() (string, error) { return "test-daemon-v0", nil },
-		InstalledVersion:   "test-daemon-v0",
+		ProbeDaemonVersion: func() (install.ProbedVersion, error) {
+			return install.ProbedVersion{Display: "test-daemon-v0", Bare: "test-daemon-v0"}, nil
+		},
+		InstalledVersion: "test-daemon-v0",
 	}
 
 	result, err := install.RunCopy(opts)
@@ -530,6 +532,17 @@ func TestRunCopy_NoOnDiskSkills_EmbeddedFallbackInstalls(t *testing.T) {
 	}
 }
 
+// decorated renders a bare release tag the way a real daemon reports it over
+// the RPC socket — version.String()'s "<version> (commit <sha>, built <date>)".
+//
+// #6070: every fixture below used to pass the BARE tag on both sides of the
+// step-4 version check, so the whole suite stayed green while `grafel install`
+// aborted on all three platforms for two weeks. The daemon never sends a bare
+// string; it sends this. Keep the format in sync with internal/version.String.
+func decorated(tag string) string {
+	return tag + " (commit f2fb8c3, built 2026-07-25T12:00:00Z)"
+}
+
 // ── step 4: post-restart version verification (#5850) ──────────────────────
 //
 // `grafel install`/`update` previously restarted the daemon and gated success
@@ -556,16 +569,18 @@ func TestRunCopy_DaemonVersionMatch_NoEscalation(t *testing.T) {
 		StatePath:         env.statePath,
 		WorkingDir:        env.gitRepo,
 		SkipDaemonRestart: false,
-		InstalledVersion:  "1.2.3",
+		InstalledVersion:  "v1.2.3",
 		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
-			return "1.2.3", nil
+			return decorated("v1.2.3"), nil
 		},
-		ProbeDaemonVersion: func() (string, error) {
-			return "1.2.3", nil
+		// #6070: a real daemon answers Ping with the DECORATED version.String()
+		// plus the structured bare field — not the bare tag the installer holds.
+		ProbeDaemonVersion: func() (install.ProbedVersion, error) {
+			return install.ProbedVersion{Display: decorated("v1.2.3"), Bare: "v1.2.3"}, nil
 		},
 		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
 			escalateCalled = true
-			return "1.2.3", nil
+			return decorated("v1.2.3"), nil
 		},
 	}
 
@@ -573,8 +588,9 @@ func TestRunCopy_DaemonVersionMatch_NoEscalation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunCopy: %v", err)
 	}
-	if result.DaemonVersion != "1.2.3" {
-		t.Errorf("DaemonVersion = %q, want %q", result.DaemonVersion, "1.2.3")
+	if result.DaemonVersion != decorated("v1.2.3") {
+		t.Errorf("DaemonVersion = %q, want the verbatim display string %q",
+			result.DaemonVersion, decorated("v1.2.3"))
 	}
 	if escalateCalled {
 		t.Error("escalation must NOT run when the post-restart probe already matches the installed version")
@@ -598,23 +614,27 @@ func TestRunCopy_DaemonVersionMismatch_EscalatesThenSucceeds(t *testing.T) {
 		StatePath:         env.statePath,
 		WorkingDir:        env.gitRepo,
 		SkipDaemonRestart: false,
-		InstalledVersion:  "2.0.0",
+		InstalledVersion:  "v2.0.0",
 		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
 			// The (idempotent) restart succeeds but the daemon answering is
 			// still the stale one — RestartDaemon has no way to know that on
 			// its own, which is exactly the #5850 gap.
-			return "0.9.0", nil
+			return decorated("v0.9.0"), nil
 		},
-		ProbeDaemonVersion: func() (string, error) {
+		ProbeDaemonVersion: func() (install.ProbedVersion, error) {
 			probeCalls++
 			if probeCalls == 1 {
-				return "0.9.0", nil // stale daemon still on the socket
+				// A genuinely stale daemon predates PingReply.VersionBare, so
+				// it reports NO structured field — the comparison must fall
+				// back to parsing the decorated display string and still catch
+				// it (#6070).
+				return install.ProbedVersion{Display: decorated("v0.9.0")}, nil
 			}
-			return "2.0.0", nil // post-escalation: fresh daemon
+			return install.ProbedVersion{Display: decorated("v2.0.0"), Bare: "v2.0.0"}, nil
 		},
 		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
 			escalateCalled = true
-			return "2.0.0", nil
+			return decorated("v2.0.0"), nil
 		},
 	}
 
@@ -628,8 +648,8 @@ func TestRunCopy_DaemonVersionMismatch_EscalatesThenSucceeds(t *testing.T) {
 	if probeCalls < 2 {
 		t.Errorf("expected the probe to be called again after escalation, got %d calls", probeCalls)
 	}
-	if result.DaemonVersion != "2.0.0" {
-		t.Errorf("DaemonVersion = %q, want %q", result.DaemonVersion, "2.0.0")
+	if result.DaemonVersion != decorated("v2.0.0") {
+		t.Errorf("DaemonVersion = %q, want %q", result.DaemonVersion, decorated("v2.0.0"))
 	}
 }
 
@@ -648,17 +668,18 @@ func TestRunCopy_DaemonStillStaleAfterEscalation_ReturnsError(t *testing.T) {
 		StatePath:         env.statePath,
 		WorkingDir:        env.gitRepo,
 		SkipDaemonRestart: false,
-		InstalledVersion:  "3.5.0",
+		InstalledVersion:  "v3.5.0",
 		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
-			return "3.4.0", nil
+			return decorated("v3.4.0"), nil
 		},
-		ProbeDaemonVersion: func() (string, error) {
-			// Always reports the stale version, even after escalation.
-			return "3.4.0", nil
+		ProbeDaemonVersion: func() (install.ProbedVersion, error) {
+			// Always reports the stale version, even after escalation — and it
+			// reports it the way a real daemon does, decorated (#6070).
+			return install.ProbedVersion{Display: decorated("v3.4.0"), Bare: "v3.4.0"}, nil
 		},
 		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
 			escalateCalled = true
-			return "3.4.0", nil
+			return decorated("v3.4.0"), nil
 		},
 	}
 
@@ -710,20 +731,21 @@ func TestRunCopy_DaemonVersionProbeHTML_TreatedAsUnknown_TriggersEscalation(t *t
 		StatePath:         env.statePath,
 		WorkingDir:        env.gitRepo,
 		SkipDaemonRestart: false,
-		InstalledVersion:  "4.1.0",
+		InstalledVersion:  "v4.1.0",
 		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
-			return "4.1.0", nil
+			return decorated("v4.1.0"), nil
 		},
-		ProbeDaemonVersion: func() (string, error) {
+		ProbeDaemonVersion: func() (install.ProbedVersion, error) {
 			probeCalls++
 			if probeCalls == 1 {
-				return htmlBody, nil // SPA-fallback garbage, must count as "unknown"
+				// SPA-fallback garbage, must count as "unknown".
+				return install.ProbedVersion{Display: htmlBody}, nil
 			}
-			return "4.1.0", nil
+			return install.ProbedVersion{Display: decorated("v4.1.0"), Bare: "v4.1.0"}, nil
 		},
 		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
 			escalateCalled = true
-			return "4.1.0", nil
+			return decorated("v4.1.0"), nil
 		},
 	}
 
@@ -734,8 +756,8 @@ func TestRunCopy_DaemonVersionProbeHTML_TreatedAsUnknown_TriggersEscalation(t *t
 	if !escalateCalled {
 		t.Error("expected an HTML/garbage version probe to be treated as unknown and trigger escalation")
 	}
-	if result.DaemonVersion != "4.1.0" {
-		t.Errorf("DaemonVersion = %q, want %q", result.DaemonVersion, "4.1.0")
+	if result.DaemonVersion != decorated("v4.1.0") {
+		t.Errorf("DaemonVersion = %q, want %q", result.DaemonVersion, decorated("v4.1.0"))
 	}
 }
 
