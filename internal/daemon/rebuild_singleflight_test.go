@@ -26,9 +26,7 @@ func TestRebuild_SingleFlight_NoConcurrentOverlap(t *testing.T) {
 	// Shrink the RPC timeout so the first rebuild "times out" quickly while its
 	// worker keeps running, and the second rebuild's acquire also times out
 	// quickly. Restored after the test.
-	prev := rebuildRPCTimeout
-	rebuildRPCTimeout = 120 * time.Millisecond
-	t.Cleanup(func() { rebuildRPCTimeout = prev })
+	t.Cleanup(setRebuildRPCTimeoutForTest(120 * time.Millisecond))
 
 	var (
 		concurrent    int32
@@ -120,7 +118,10 @@ func TestRebuild_SingleFlight_NoConcurrentOverlap(t *testing.T) {
 	close(release)
 
 	// Give the orphan a moment to release the guard.
-	rebuildRPCTimeout = 2 * time.Second
+	// Widen the cap for RPC #3. This write is the one the #6059 detector report
+	// named: RPC #1's serving goroutine is still live and still resolving the
+	// seam. Restored LIFO, back to the 120ms installed above.
+	t.Cleanup(setRebuildRPCTimeoutForTest(2 * time.Second))
 	release3 := make(chan struct{})
 	close(release3) // #3 returns immediately
 	// Re-point rebuildFn's release for #3 by using a fresh service-independent

@@ -202,14 +202,8 @@ func TestStatus_InFlightCountsBlockingSplitModeRebuildRPC(t *testing.T) {
 
 	// Keep the completion wait honest but fast: the engine is "alive" and we
 	// poll frequently, so the handler blocks until we write the terminal ack.
-	origAlive := rebuildEngineAliveFn
-	origInterval := rebuildWaitInterval
-	rebuildEngineAliveFn = func() bool { return true }
-	rebuildWaitInterval = time.Millisecond
-	t.Cleanup(func() {
-		rebuildEngineAliveFn = origAlive
-		rebuildWaitInterval = origInterval
-	})
+	t.Cleanup(setRebuildEngineAliveForTest(func() bool { return true }))
+	t.Cleanup(setRebuildWaitIntervalForTest(time.Millisecond))
 
 	svc := newService(nil, func(proto.RebuildArgs) ([]string, string, error) {
 		t.Error("split mode must never call s.rebuild in serve")
