@@ -394,6 +394,31 @@ func buildCollapsedEntity(
 	testQName string,
 	calls []testedCall,
 ) types.EntityRecord {
+	// #5954 — cut the body/source backing arrays loose before anything is
+	// retained.
+	//
+	// testQName and every testedCall.qname reach this function as SUBSTRING
+	// VIEWS: regexp's String API returns `input[a:b]`, so a 10-byte identifier
+	// keeps the entire captured test-function body (and, for the test name,
+	// the whole file source) alive for as long as it is reachable. These
+	// records live from pass 3 all the way to the document write, so without
+	// the clone every emitted test_coverage entity pins its own multi-KB body
+	// across the peak-heap phase — 223 MB of otherwise-dead bodies on the
+	// child's peak profile.
+	//
+	// Cloning here (the single chokepoint through which testmap emits records)
+	// copies a handful of short identifiers per test function and lets the
+	// bodies die with the extraction of their file. The cloned strings compare
+	// equal to the originals, so entity IDs, relationship IDs, ordering and
+	// every serialized byte are unchanged.
+	testQName = strings.Clone(testQName)
+	if len(calls) > 0 {
+		calls = append([]testedCall(nil), calls...)
+		for i := range calls {
+			calls[i].qname = strings.Clone(calls[i].qname)
+		}
+	}
+
 	// Primary call: highest-confidence entry (calls is already sorted high→low).
 	var primary testedCall
 	if len(calls) > 0 {
@@ -469,75 +494,14 @@ func buildCollapsedEntity(
 	return rec
 }
 
-// buildEntity assembles a SCOPE.Pattern EntityRecord (subtype "test_coverage")
-// plus its TESTS edge from the test function to the production function.
-//
-// Deprecated: prefer buildCollapsedEntity which emits one entity per test
-// function with all TESTS edges collapsed in, avoiding degree-0 orphans.
-// Retained for any callers that need the original one-entity-per-call form.
-func buildEntity(
-	filePath string,
-	language string,
-	framework string,
-	testType string,
-	testQName string,
-	tc testedCall,
-) types.EntityRecord {
-	entityID := testCoverageEntityID(filePath, testQName, tc.qname)
-	props := map[string]string{
-		"test_framework":  framework,
-		"test_type":       testType,
-		"tested_function": tc.qname,
-		"confidence":      tc.confidence,
-		"test_function":   testQName,
-		"ref":             entityID,
-		"provenance":      confidenceProvenance(tc.confidence),
-		// pattern_kind preserves the original semantic ("test_coverage")
-		// after we collapsed the entity Kind into the SCOPE.Pattern bucket so the graph
-		// allowlist validation passes.
-		"pattern_kind": "test_coverage",
-	}
-	// tested_file is only stamped for the low-confidence naming-convention
-	// fallback (issue #2060) — for high/medium calls prodFile is now also
-	// populated as a resolver hint, but the file is a convention guess and
-	// not a verified location, so we keep the property meaning ("the
-	// best-guess tested file when no direct call/mock was found").
-	if tc.prodFile != "" && tc.confidence == "low" {
-		props["tested_file"] = tc.prodFile
-	}
-
-	rec := types.EntityRecord{
-		Name: testQName + " -> " + tc.qname,
-		// SCOPE.TestCoverage is not in the 14-type allowlist.
-		// Coverage records map to SCOPE.Pattern (canonical bucket for inferred
-		// structural patterns); the framework-specific test type is preserved on
-		// Subtype, and the originating test framework remains on Properties.
-		Kind:         "SCOPE.Pattern",
-		SourceFile:   filePath,
-		Language:     language,
-		Subtype:      testType,
-		Properties:   props,
-		QualityScore: confidenceScore(tc.confidence),
-	}
-
-	fromID := testFunctionRef(filePath, testQName)
-	toID := productionFunctionRef(tc.prodFile, tc.qname)
-	if toID != "" {
-		rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
-			FromID: fromID,
-			ToID:   toID,
-			Kind:   "TESTS",
-			Properties: types.Props{
-				{K: "confidence", V: tc.confidence},
-				{K: "test_framework", V: framework},
-				{K: "test_function", V: testQName},
-				{K: "tested", V: tc.qname},
-			},
-		})
-	}
-
-	return rec
-}
+// #5954 — the deprecated one-entity-per-call buildEntity was deleted here.
+// It had zero callers (buildCollapsedEntity superseded it in #2080) but built
+// records the same way WITHOUT cloning the resolver's substring views, so a
+// future caller reviving it would have silently reintroduced the test-body
+// retention this package's guards are written against — and no guard would
+// have caught it, because they exercise the emit path that actually runs.
+// Recover it from git history if the one-entity-per-call form is ever needed;
+// it must clone testQName and tc.qname the way buildCollapsedEntity does.
 
 func confidenceProvenance(c string) string {
 	switch c {
