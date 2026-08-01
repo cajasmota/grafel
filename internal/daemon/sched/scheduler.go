@@ -48,6 +48,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/extractor"
@@ -505,6 +506,43 @@ type Scheduler struct {
 	// grafel_stats reporting a pass in flight forever.
 	groupAlgoArm map[string]uint64
 	armSeq       uint64
+	// groupCancelSeq is the per-group CANCEL GENERATION: CancelGroup bumps it,
+	// and nothing else touches it. It closes the one window the arm ids
+	// structurally cannot (#6068).
+	//
+	// The arm id orders a delete against a timer that has already FIRED. It
+	// cannot order a delete against a re-arm that happens LATER, on a path that
+	// decided to re-arm while it still held s.mu but calls scheduleGroupAlgo
+	// after releasing it: fireGroupAlgo's rerun path, and runLinks' chained
+	// group-algo arm. A CancelGroup landing in that gap has already run — it
+	// dropped the arm id and cancelled what existed — so the re-arm that follows
+	// allocates a FRESH, legitimately-live arm id for a group that is gone, and
+	// ~180s later the heaviest pass in the daemon runs for it under a ctx rooted
+	// only at shutdownCtx.
+	//
+	// A continuation therefore captures the generation under the SAME hold that
+	// authorised it and re-presents it to scheduleGroupAlgoFor, which refuses to
+	// arm if the generation has moved. Chosen over widening the lock hold
+	// because runLinks' call site cannot be brought under s.mu at all (cfg.Links
+	// runs for minutes between the authorising hold and the arm), so the lock
+	// change would fix one site and leave the other — and over a group-existence
+	// re-check because the scheduler has no group oracle (Config exposes only
+	// GroupsForRepo, keyed by repo) and CancelGroup IS the delete signal it
+	// would be asking about.
+	//
+	// Entries are never deleted, and that is CORRECT BY DESIGN rather than an
+	// oversight — do not "tidy" it into a leak fix. Deleting group's entry
+	// resets its generation to 0, which is precisely the value a continuation
+	// authorised before the very first CancelGroup is still holding; that
+	// continuation would then match and re-arm, reopening the window this field
+	// exists to close. The generation MUST outlive every other piece of the
+	// group's state, including the group itself. The cost is bounded by the
+	// number of distinct group names ever cancelled in one daemon lifetime (a
+	// uint64 per name, and a group delete is a human-initiated operation), which
+	// is not a growth curve worth trading correctness for. Guarded by mu.
+	groupCancelSeq map[string]uint64
+	// rearmGapHook is a test-only seam; see fireRearmGapHook. Nil in production.
+	rearmGapHook atomic.Pointer[func(site, group string)]
 	// Per-GROUP algorithm pass (#5349 A3). Mirrors the link timer machinery:
 	// debounce timer + pending flag + in-flight cancel func, all keyed by group.
 	// Replaces the old per-repo algo timers — algorithms now run once over the
@@ -793,6 +831,7 @@ func New(cfg Config) *Scheduler {
 		linkPending:       map[string]bool{},
 		linkArm:           map[string]uint64{},
 		groupAlgoArm:      map[string]uint64{},
+		groupCancelSeq:    map[string]uint64{},
 		groupAlgoTimers:   map[string]*time.Timer{},
 		groupAlgoPending:  map[string]bool{},
 		groupAlgoCancel:   map[string]*groupAlgoPassCancel{},
@@ -1542,7 +1581,56 @@ func (s *Scheduler) workerLoop() {
 func (s *Scheduler) runIndex(tok jobToken) {
 	repoPath := tok.repoPath
 
+	// #6068 (one hop upstream of runLinks): the success path below chains
+	// scheduleLinks for every group this repo belongs to, after an index that
+	// runs for MINUTES and outside every lock. A CancelGroup landing in that
+	// span is invisible to everything downstream — by the time the chained link
+	// timer fires, fireLinks reads the POST-delete generation and matches it, so
+	// the group-algo guard passes and the heaviest pass in the daemon runs for a
+	// group that is gone. This is reachable rather than theoretical: CancelGroup
+	// deliberately leaves running any reindex whose repo a surviving group still
+	// references (repoBelongsOnlyToLocked), and DeleteGroup cancels BEFORE it
+	// tears the registry down, so GroupsForRepo can still name the deleted group
+	// when this returns.
+	//
+	// So snapshot the cancel GENERATIONS under the hold that dequeues this job —
+	// the hold that AUTHORISES the whole downstream chain — and re-present them
+	// at the arm.
+	//
+	// The snapshot is of groupCancelSeq WHOLESALE, not of this repo's group
+	// membership, and that distinction is the whole correctness argument. A
+	// membership-keyed capture has nothing to say about a group that joins after
+	// it is taken, and "nothing to say" can only be resolved as an exemption —
+	// which reopens the hazard through exactly the window described above: repo
+	// joins gB after the capture, gB is deleted, the terminal membership read
+	// still names gB because teardown has not finished, and an exempt arm goes
+	// live for a deleted group. Snapshotting generations instead turns an absent
+	// name into the positive claim "generation 0 as of the hold", which a later
+	// CancelGroup contradicts and the guard below then catches.
+	//
+	// Absent-means-0 costs nothing in over-suppression, because 0 is also the
+	// current generation of every group that has never been cancelled: a
+	// brand-new group arms (0 == 0), and a group re-registered under a
+	// previously-cancelled name arms too (the snapshot carries that name's real
+	// generation, so it matches). Only a cancel landing INSIDE this index's
+	// window can produce a mismatch.
+	//
+	// Membership is read before the hold because cfg.GroupsForRepo is an
+	// external callback and must not run under s.mu (#6060); it is only needed
+	// to keep the snapshot covering names the map has not seen yet.
+	var startGroups []string
+	if s.cfg.GroupsForRepo != nil {
+		startGroups = s.cfg.GroupsForRepo(repoPath)
+	}
+
 	s.mu.Lock()
+	linkGen := make(map[string]uint64, len(s.groupCancelSeq)+len(startGroups))
+	for g, v := range s.groupCancelSeq {
+		linkGen[g] = v
+	}
+	for _, g := range startGroups {
+		linkGen[g] = s.groupGenLocked(g)
+	}
 	s.pendingIndex[repoPath] = false
 	s.queueLen--
 	// #5138 no-lost-update: clear the dirty marker BEFORE the index runs so
@@ -1870,7 +1958,14 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// one-repo union, computed by the group pass.
 	if s.cfg.GroupsForRepo != nil {
 		for _, g := range s.cfg.GroupsForRepo(repoPath) {
-			s.scheduleLinks(g)
+			// #6068: re-present the generation snapshotted at the authorising
+			// hold. A name absent from the snapshot had generation 0 then — the
+			// zero value IS the claim, not a missing one — so it arms unless a
+			// CancelGroup has moved it since. No exemption branch: an exemption
+			// here is precisely the hole that lets a group which joined after
+			// the snapshot and was then deleted arm a live timer.
+			s.fireRearmGapHook("index-done", g)
+			s.scheduleLinksFor(g, linkGen[g])
 		}
 	}
 }
@@ -1879,16 +1974,53 @@ func (s *Scheduler) runIndex(tok jobToken) {
 // window is meant to coalesce bursts where multiple repos in a group
 // re-index back-to-back.
 func (s *Scheduler) scheduleLinks(group string) {
+	s.scheduleLinksFor(group, groupGenFresh)
+}
+
+// scheduleLinksFor is scheduleLinks with the #6068 continuation guard, the same
+// shape as scheduleGroupAlgoFor. gen is the cancel generation the caller
+// snapshotted under the hold that AUTHORISED this arm; if a CancelGroup has
+// landed since, the generation has moved and the arm is refused — the link pass
+// it would arm chains the group-algo pass in turn, so letting it through leaks
+// the heaviest pass in the daemon to a deleted group.
+//
+// 0 is a MEANINGFUL gen, not a "don't know": it is the generation of every group
+// that has never been cancelled, so a caller whose snapshot lacks a name still
+// makes a real, falsifiable claim by passing 0. Only callers with genuinely
+// nothing to re-present — a fresh trigger that is not a continuation of anything
+// — pass groupGenFresh, which bypasses the check outright.
+//
+// The guard is deliberately narrow. CancelGroup has exactly two production
+// callers (Service.cancelGroupWork and the engine's KindCancelGroup drain), both
+// of which mean "this group was deleted", so a moved generation is never a
+// transient condition a live group can be in. Over-suppression would be the
+// worse defect — a silently dropped link + group-algo pass for a group that
+// still exists is invisible — and the snapshot form costs none of it: a
+// never-cancelled group matches at 0, and a group re-registered under a
+// previously-cancelled name matches at that name's real snapshotted generation.
+// Only a cancel landing inside the authorised window can refuse an arm.
+//
+// The single residual: a group deleted and RE-created inside one index's window
+// is live at the arm and still refused. That is self-healing rather than a
+// silent loss — re-registering a group enqueues its repos, and those indexes
+// chain their own arms under a fresh snapshot — and it is the same exposure the
+// other two call sites already carry, not something this one introduces.
+func (s *Scheduler) scheduleLinksFor(group string, gen uint64) {
 	if s.cfg.Links == nil {
 		return
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if gen != groupGenFresh && s.groupCancelSeq[group] != gen {
+		s.logEventLocked("link_arm_dropped", "",
+			group+": group cancelled while the index that would arm its link pass was in flight — not arming")
+		return
+	}
 	if t, ok := s.linkTimers[group]; ok {
 		t.Stop()
 	}
 	s.linkPending[group] = true
 	s.armLinkTimerLocked(group, s.cfg.LinkDebounce)
-	s.mu.Unlock()
 }
 
 // armLinkTimerLocked arms (or re-arms) group's link timer under a FRESH arm id
@@ -1948,6 +2080,11 @@ func (s *Scheduler) fireLinks(group string, arm uint64) {
 	s.linkPending[group] = false
 	delete(s.linkTimers, group)
 	delete(s.linkArm, group)
+	// Cancel generation as of the hold that authorises THIS pass (#6068). The
+	// chained group-algo arm at the end of runLinks happens minutes later and
+	// outside s.mu; re-presenting this generation there is what stops a group
+	// deleted in the meantime from getting a fresh, live arm.
+	gen := s.groupGenLocked(group)
 	// Derive a PER-GROUP cancel context from shutdownCtx (not shutdownCtx
 	// directly) so that a group delete can interrupt THIS group's in-flight
 	// link pass via CancelGroup without waiting for daemon Stop(). Still
@@ -1978,7 +2115,7 @@ func (s *Scheduler) fireLinks(group string, arm uint64) {
 	// forfeit-grace expiry cannot free its successor's token here.
 	defer s.releaseStage(name, stageEpoch)
 
-	s.runLinks(ctx, group)
+	s.runLinks(ctx, group, gen)
 
 	s.mu.Lock()
 	// Only clear the entry if it is still OUR token. An overlapping second
@@ -1992,7 +2129,9 @@ func (s *Scheduler) fireLinks(group string, arm uint64) {
 	cancel()
 }
 
-func (s *Scheduler) runLinks(ctx context.Context, group string) {
+// gen is the cancel generation captured by fireLinks when it authorised this
+// pass; it gates the chained group-algo arm below (#6068).
+func (s *Scheduler) runLinks(ctx context.Context, group string, gen uint64) {
 	s.logEvent("links_start", "", group)
 	t0 := time.Now()
 	err := s.cfg.Links(ctx, group)
@@ -2008,7 +2147,12 @@ func (s *Scheduler) runLinks(ctx context.Context, group string) {
 	// scheduleLinks already coalesced a burst of repo reindexes into this one
 	// link pass, chaining the algo pass here means N file saves → 1 link pass →
 	// 1 group-algo pass. Re-arm (cancel previous) on every link completion.
-	s.scheduleGroupAlgo(group)
+	//
+	// The #6068 gap, in its widest form: cfg.Links above can run for minutes,
+	// and this arm is not under s.mu (nor can it be). A CancelGroup at any point
+	// since fireLinks authorised this pass must suppress the chained arm.
+	s.fireRearmGapHook("links-done", group)
+	s.scheduleGroupAlgoFor(group, gen)
 }
 
 // groupAlgoDebounceDefault is the settling window between a successful link
@@ -2124,11 +2268,43 @@ func overlaySweepIntervalFromEnv() time.Duration {
 // that pass returns. Staleness is bounded by the follow-up pass; unavailability
 // under the old behaviour was not bounded at all.
 func (s *Scheduler) scheduleGroupAlgo(group string) {
+	s.scheduleGroupAlgoFor(group, groupGenFresh)
+}
+
+// groupGenFresh marks a scheduleGroupAlgoFor call that is a FRESH trigger, not
+// a continuation of work authorised earlier, and therefore has no generation to
+// re-present. uint64 max is unreachable as a real generation (it counts
+// CancelGroup calls for one group).
+const groupGenFresh = ^uint64(0)
+
+// groupGenLocked returns group's current cancel generation, to be re-presented
+// to scheduleGroupAlgoFor by a continuation that will arm after releasing s.mu.
+// MUST be called with s.mu held.
+func (s *Scheduler) groupGenLocked(group string) uint64 {
+	return s.groupCancelSeq[group]
+}
+
+// scheduleGroupAlgoFor is scheduleGroupAlgo with the #6068 continuation guard.
+// gen is the cancel generation the caller captured under the hold that
+// AUTHORISED this arm; if a CancelGroup has landed since, the generation has
+// moved and the arm is refused. Callers with nothing to re-present pass
+// groupGenFresh — a delete must not gate a genuinely new request, only a
+// continuation of work the delete already cancelled.
+func (s *Scheduler) scheduleGroupAlgoFor(group string, gen uint64) {
 	if s.cfg.GroupAlgo == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if gen != groupGenFresh && s.groupCancelSeq[group] != gen {
+		// The group was deleted between the authorising hold and this arm. The
+		// arm ids cannot see this: CancelGroup dropped an id we are about to
+		// replace, so a fresh one here would be legitimately live for a group
+		// that is gone.
+		s.logEventLocked("group_algo_arm_dropped", "",
+			group+": group cancelled while the pass that would re-arm it was in flight — not re-arming")
+		return
+	}
 	// A pass is RUNNING right now. Record the request and leave it alone; the
 	// completion path in fireGroupAlgo consumes the flag and re-arms.
 	if _, running := s.groupAlgoCancel[group]; running {
@@ -2285,6 +2461,11 @@ func (s *Scheduler) fireGroupAlgo(group string, arm uint64) {
 	// silently dropping the request.
 	rerun := s.groupAlgoRerun[group]
 	delete(s.groupAlgoRerun, group)
+	// Capture the cancel generation under the SAME hold that decides to re-arm
+	// (#6068). A CancelGroup that lands BEFORE this hold has already cleared
+	// groupAlgoRerun, so rerun is false and there is nothing to suppress; one
+	// that lands AFTER it moves the generation, and the re-arm below is refused.
+	gen := s.groupGenLocked(group)
 	// Drop the deferred marker only now: runGroupAlgo holds its own
 	// GroupAlgoBegin for the RUNNING window, so clearing here keeps the
 	// deferred→running indexstate coverage continuous (count 1 → 2 → 1 → 0)
@@ -2292,10 +2473,37 @@ func (s *Scheduler) fireGroupAlgo(group string, arm uint64) {
 	s.markGroupAlgoDeferredLocked(group, false)
 	s.mu.Unlock()
 	cancel()
+	// The #6068 gap: s.mu is released, the decision to re-arm has been taken,
+	// and the arm has not happened yet. A CancelGroup landing HERE is invisible
+	// to the arm id (it drops an id we are about to replace) — only the cancel
+	// generation captured above can see it.
+	s.fireRearmGapHook("group-algo-rerun", group)
 
 	if rerun && !s.stopped() {
 		s.logEvent("group_algo_rearm", "", group+": servicing the recompute requested during the previous pass")
-		s.scheduleGroupAlgo(group)
+		s.scheduleGroupAlgoFor(group, gen)
+	}
+}
+
+// rearmGapHook is a TEST-ONLY seam, nil in production, invoked on the three
+// paths that release s.mu and then re-arm downstream work (#6068):
+// fireGroupAlgo's rerun completion ("group-algo-rerun"), runLinks' chained
+// group-algo arm ("links-done"), and runIndex's chained link arm
+// ("index-done"). It exists because those gaps cannot otherwise be driven
+// deterministically — a test installs a hook that calls CancelGroup, which
+// places the delete EXACTLY in the gap instead of racing for it.
+//
+// PRECONDITION, for any call site added later: this MUST NOT be called with
+// s.mu held. The hook a test installs calls s.CancelGroup, which takes s.mu, so
+// a call site under the lock self-deadlocks the moment a test installs a hook.
+// All three current sites are lock-free, and that is load-bearing, not
+// incidental.
+//
+// An atomic pointer, not a plain field: the hook is read from the timer/link
+// goroutine while the test goroutine may still be storing it (#6056/#6059).
+func (s *Scheduler) fireRearmGapHook(site, group string) {
+	if h := s.rearmGapHook.Load(); h != nil {
+		(*h)(site, group)
 	}
 }
 
@@ -2393,6 +2601,14 @@ type linkPassCancel struct {
 func (s *Scheduler) CancelGroup(group string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Bump the cancel generation FIRST (#6068). Everything below cancels state
+	// that exists NOW; the generation is what reaches the arms that do not exist
+	// yet — a completion path that has already decided to re-arm, released s.mu,
+	// and not yet called scheduleGroupAlgo. Bumping before the teardown means
+	// there is no sub-window in which a continuation could observe the old
+	// generation and still find its state cancelled.
+	s.groupCancelSeq[group]++
 
 	// Group-algo pass (pending timer + in-flight run) — already per-group.
 	s.cancelGroupAlgoLocked(group)

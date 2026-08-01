@@ -293,9 +293,47 @@ func makeSharedCommonDirRepos(t *testing.T, n int) (base string, worktrees []str
 	return base, worktrees
 }
 
+// statsPerCycleFloor is how many poll cycles the two dedup measurements below
+// wait for before they assert. It is a FLOOR ON EVIDENCE, not a rate: the
+// assertion is stats-per-cycle, which is independent of how fast the runner
+// ticks, but a single observed cycle would let a rounding accident pass, so the
+// tests insist on several before believing the ratio.
+const statsPerCycleFloor = 5
+
+// runPollCycles starts p, waits until it has COMPLETED at least
+// statsPerCycleFloor poll cycles, stops it, and returns the stats and cycles
+// observed. Stop() joins the loop goroutine, so no poll can be half-done when
+// the counters are read: every stat those cycles issued is already counted.
+//
+// The wait is a hang guard (eventHangGuard), not a budget — it bounds "the
+// poller ticks at all", and a runner too starved to manage five 50ms ticks in
+// 30s fails loudly here instead of quietly asserting on a sample of one. This
+// is what replaces the old fixed time.Sleep + wall-clock-derived call-count
+// bounds, which a tick-starved Windows runner could only push BELOW their lower
+// bound (#6069).
+func runPollCycles(t *testing.T, p *GitHeadPoller) (stats, cycles uint64) {
+	t.Helper()
+	p.Start()
+	deadline := time.Now().Add(eventHangGuard)
+	for p.PollCycles() < statsPerCycleFloor && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	p.Stop()
+	stats, cycles = p.StatCalls(), p.PollCycles()
+	if cycles < statsPerCycleFloor {
+		t.Fatalf("poller completed only %d cycle(s) in %s (want >= %d) — the runner never granted enough ticks to measure anything",
+			cycles, eventHangGuard, statsPerCycleFloor)
+	}
+	return stats, cycles
+}
+
 // TestCommonDirDedup_SharedRepos_OneStatPerCycle is the primary M1 measurement
 // test. 11 repos (base + 10 linked worktrees) sharing one common-dir must
 // produce 2 stat calls per poll cycle (HEAD + ref), not 22.
+//
+// The measurement is expressed per CYCLE, not per wall-clock interval: how many
+// ticks the machine grants is the runner's business, how many stats the poller
+// issues per tick is the poller's (#6069).
 func TestCommonDirDedup_SharedRepos_OneStatPerCycle(t *testing.T) {
 	const numWorktrees = 10
 	base, worktrees := makeSharedCommonDirRepos(t, numWorktrees)
@@ -311,16 +349,13 @@ func TestCommonDirDedup_SharedRepos_OneStatPerCycle(t *testing.T) {
 		t.Fatalf("GroupCount: want 1 (all repos share common-dir), got %d", gc)
 	}
 
-	p.Start()
-	// Let ~5 poll cycles run (50ms * 5 = 250ms, +slack).
-	time.Sleep(300 * time.Millisecond)
-	p.Stop()
+	stats, cycles := runPollCycles(t, p)
 
-	got := p.StatCalls()
-	// Expect ~10 stat calls (2 per cycle × 5 cycles). Allow [8,18] for jitter.
-	// Without M1 dedup: 11 repos × 2 files × 5 cycles = 110 calls.
-	if got < 8 || got > 18 {
-		t.Errorf("StatCalls: want 8-18 (2/cycle × ~5 cycles), got %d (dedup broken? without dedup: ~110)", got)
+	// 2 stats per GROUP per cycle (HEAD + ref), and dedup collapses all 11 repos
+	// into 1 group. Without M1 dedup this is 22 per cycle.
+	if want := 2 * cycles; stats != want {
+		t.Errorf("StatCalls: %d stats over %d cycles = %.2f/cycle, want exactly %d (2/cycle: HEAD + ref for the single shared common-dir; without dedup it is 22/cycle)",
+			stats, cycles, float64(stats)/float64(cycles), want)
 	}
 }
 
@@ -339,14 +374,16 @@ func TestCommonDirDedup_IndependentRepos_OneStatEachPerCycle(t *testing.T) {
 		t.Fatalf("GroupCount: want %d (one per repo), got %d", numRepos, gc)
 	}
 
-	p.Start()
-	time.Sleep(300 * time.Millisecond)
-	p.Stop()
+	stats, cycles := runPollCycles(t, p)
 
-	got := p.StatCalls()
-	// Expect ~100 stat calls (10 repos × 2 files × 5 cycles). Allow [60,140].
-	if got < 60 || got > 140 {
-		t.Errorf("StatCalls: want 60-140 (10 repos × 2 files × ~5 cycles), got %d", got)
+	// The counterweight to the dedup test: 10 independent repos are 10 groups,
+	// so the poller MUST issue 2 stats each per cycle. An over-eager dedup that
+	// collapsed unrelated repos would show up here as a rate below 20/cycle,
+	// where the old wall-clock bound [60,140] could not tell that apart from a
+	// slow runner.
+	if want := 2 * uint64(numRepos) * cycles; stats != want {
+		t.Errorf("StatCalls: %d stats over %d cycles = %.2f/cycle, want exactly %d (%d repos × 2 files per cycle)",
+			stats, cycles, float64(stats)/float64(cycles), want, numRepos)
 	}
 }
 
@@ -458,61 +495,76 @@ func TestCommonDirDedup_FanOut_AllWorktreesReceiveEvent(t *testing.T) {
 	}
 }
 
-// TestCommonDirDedup_StatCountMeasurement is an instrumented measurement test
-// that prints before/after stat rates for the PR description.
+// TestCommonDirDedup_StatCountMeasurement is the instrumented side-by-side
+// measurement: the same repo count, deduped vs not, in one test.
 //
-// Before M1: N repos → N stats/cycle.
-// After M1:  N repos sharing 1 common-dir → 1 stat/cycle.
+// Before M1: N repos → 2N stats/cycle.
+// After M1:  N repos sharing 1 common-dir → 2 stats/cycle.
+//
+// Converted off the wall clock for the same reason as the two tests above
+// (#6069). It used to sleep for a fixed measureWindow and then assert against
+// `cycles := measureWindow / pollInterval` — a count ASSUMED rather than
+// OBSERVED, which silently presumes the runner grants every tick. Injecting
+// 150ms of per-cycle latency drove indepStats to 44 against a `>= 55` bound: a
+// red that says nothing about the poller. Both pollers now run through
+// runPollCycles, so each is measured over the cycles it actually completed, and
+// both bounds are exact equalities on that basis.
 func TestCommonDirDedup_StatCountMeasurement(t *testing.T) {
 	const (
-		numSubRepos   = 10
-		pollInterval  = 20 * time.Millisecond
-		measureWindow = 200 * time.Millisecond // ~10 cycles
+		numSubRepos  = 10
+		pollInterval = 20 * time.Millisecond
 	)
 
-	// Shared common-dir scenario.
+	// Shared common-dir scenario: numSubRepos+1 repos, exactly 1 group.
 	base, worktrees := makeSharedCommonDirRepos(t, numSubRepos)
 	pShared := NewGitHeadPoller(pollInterval, func(_ BranchSwitchEvent) {}, nil)
 	pShared.AddRepo(base)
 	for _, wt := range worktrees {
 		pShared.AddRepo(wt)
 	}
-	pShared.Start()
-	time.Sleep(measureWindow)
-	pShared.Stop()
-	sharedStats := pShared.StatCalls()
+	if gc := pShared.GroupCount(); gc != 1 {
+		t.Fatalf("shared: GroupCount want 1 (all repos share a common-dir), got %d — the two arms would not be comparable", gc)
+	}
+	sharedStats, sharedCycles := runPollCycles(t, pShared)
 
-	// Independent repos scenario.
+	// Independent repos scenario: the same repo count, numSubRepos+1 groups.
 	pIndep := NewGitHeadPoller(pollInterval, func(_ BranchSwitchEvent) {}, nil)
 	for i := 0; i <= numSubRepos; i++ {
 		pIndep.AddRepo(initGitRepo(t))
 	}
-	pIndep.Start()
-	time.Sleep(measureWindow)
-	pIndep.Stop()
-	indepStats := pIndep.StatCalls()
+	if gc := pIndep.GroupCount(); gc != numSubRepos+1 {
+		t.Fatalf("independent: GroupCount want %d (one per repo), got %d", numSubRepos+1, gc)
+	}
+	indepStats, indepCycles := runPollCycles(t, pIndep)
 
-	cycles := int(measureWindow / pollInterval)
-	t.Logf("M1 measurement (%d sub-repos, %s window, ~%d cycles):", numSubRepos, measureWindow, cycles)
-	t.Logf("  Shared common-dir: %d stat calls (want ~%d = 1×cycles)", sharedStats, cycles)
-	t.Logf("  Independent repos: %d stat calls (want ~%d = %d×cycles)", indepStats, cycles*(numSubRepos+1), numSubRepos+1)
+	t.Logf("M1 measurement (%d repos each arm, %s interval):", numSubRepos+1, pollInterval)
+	t.Logf("  Shared common-dir: %d stats over %d cycles = %.2f/cycle", sharedStats, sharedCycles, float64(sharedStats)/float64(sharedCycles))
+	t.Logf("  Independent repos: %d stats over %d cycles = %.2f/cycle", indepStats, indepCycles, float64(indepStats)/float64(indepCycles))
 
-	// Shared: 2 stats per cycle (HEAD + ref file), 1 group.
-	// Allow up to 4× cycles for timing jitter.
-	if sharedStats > uint64(cycles*4) {
-		t.Errorf("shared: too many stat calls — want ≤%d (2/cycle×%d cycles), got %d",
-			cycles*4, cycles, sharedStats)
+	// Shared: 2 stats per GROUP per cycle (HEAD + ref) × 1 group. Exact, not a
+	// 4× ceiling: the old `sharedStats > cycles*4` was a 4× upper bound on a 2×
+	// expectation, so it survived a mutant issuing 50% extra stats and asserted
+	// close to nothing.
+	if want := 2 * sharedCycles; sharedStats != want {
+		t.Errorf("shared: %d stats over %d cycles = %.2f/cycle, want exactly %d (2/cycle: HEAD + ref for the one shared common-dir)",
+			sharedStats, sharedCycles, float64(sharedStats)/float64(sharedCycles), want)
 	}
 
-	// Independent: 2 stats per repo per cycle × (N+1) repos.
-	expectedIndep := uint64(cycles * (numSubRepos + 1))
-	if indepStats < expectedIndep/2 {
-		t.Errorf("independent: too few stat calls — want ≥%d, got %d", expectedIndep/2, indepStats)
+	// Independent: 2 stats per repo per cycle × (N+1) repos — the un-deduped
+	// baseline the shared arm is measured against.
+	if want := 2 * uint64(numSubRepos+1) * indepCycles; indepStats != want {
+		t.Errorf("independent: %d stats over %d cycles = %.2f/cycle, want exactly %d (%d repos × 2 files per cycle)",
+			indepStats, indepCycles, float64(indepStats)/float64(indepCycles), want, numSubRepos+1)
 	}
 
-	// Key ratio: shared (1 group) must be ≥3× cheaper than independent (11 groups).
-	if indepStats > 0 && sharedStats*3 > indepStats {
-		t.Errorf("dedup ratio insufficient: shared=%d indep=%d (need shared ≤ indep/3)",
-			sharedStats, indepStats)
+	// The headline claim, stated as a RATE ratio so the two arms need not have
+	// been granted the same number of ticks. Implied by the two equalities above
+	// when both hold, but it is the number the M1 work exists to move, so it is
+	// asserted directly rather than left to be inferred from a red elsewhere.
+	sharedRate := float64(sharedStats) / float64(sharedCycles)
+	indepRate := float64(indepStats) / float64(indepCycles)
+	if sharedRate*3 > indepRate {
+		t.Errorf("dedup ratio insufficient: shared=%.2f/cycle indep=%.2f/cycle (need shared ≤ indep/3)",
+			sharedRate, indepRate)
 	}
 }
