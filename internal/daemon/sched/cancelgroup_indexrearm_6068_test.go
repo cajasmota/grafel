@@ -192,17 +192,94 @@ func TestRunIndex_ChainedLinksCancelInGap_DoesNotArm(t *testing.T) {
 	}
 }
 
-// TestRunIndex_GroupJoiningDuringIndexStillArms is the third over-suppression
-// guard, and the one a plausible wrong implementation trips: a group that was
-// NOT a member when the index started has no captured generation, so the arm
-// must treat it as a fresh trigger. Defaulting the missing entry to 0 instead
-// (the zero value) looks harmless and is not — for any group name that had ever
-// been cancelled, groupCancelSeq is non-zero, 0 never matches, and the first
-// link pass of that newly-added repo/group pair is dropped silently and forever.
+// TestRunIndex_GroupJoiningThenCancelledDuringIndex_DoesNotArm closes the
+// absent-group branch, which is the same #6068 hazard reached through the
+// permissive default rather than through a captured generation.
+//
+// A snapshot keyed on the groups the repo belonged to at the authorising hold
+// has nothing to say about a group that joined AFTERWARDS — and "nothing to
+// say" was being read as "arm unconditionally":
+//
+//  1. Repo R is in gA only. runIndex(R) dequeues; the pre-hold membership read
+//     returns ["gA"], so only gA's generation is captured.
+//  2. R is added to gB — live, never cancelled.
+//  3. gB is deleted. CancelGroup bumps its generation 0→1. Registry teardown
+//     starts but has not finished.
+//  4. The index completes and the terminal membership read returns
+//     ["gA","gB"] — the very window DeleteGroup's cancel-before-teardown
+//     ordering opens, and the same reachability argument that motivates the
+//     guard in the first place.
+//  5. gB is absent from the capture, so a permissive default arms a LIVE link
+//     timer for it, and the whole chain runs for a deleted group.
+//
+// The fix is to snapshot the GENERATIONS (all of groupCancelSeq) rather than
+// the MEMBERSHIP: an absent name then means "generation 0 as of the hold", a
+// real claim that a later CancelGroup contradicts, instead of an exemption.
+func TestRunIndex_GroupJoiningThenCancelledDuringIndex_DoesNotArm(t *testing.T) {
+	var s *Scheduler
+	joined := &atomic.Bool{}
+	deleted := &atomic.Bool{}
+	s, _, algoRan := indexRearmScheduler(nil, nil)
+	s.cfg.GroupsForRepo = func(_ string) []string {
+		if joined.Load() {
+			return []string{"gA", "gB"}
+		}
+		return []string{"gA"}
+	}
+	s.cfg.Index = func(_ context.Context, _ string, _ string) error {
+		// gB joins AFTER the pre-hold membership read, so it is absent from the
+		// capture...
+		joined.Store(true)
+		// ...and is then deleted, still during the index.
+		s.CancelGroup("gB")
+		deleted.Store(true)
+		return nil
+	}
+	s.Start()
+	defer s.Stop()
+
+	s.runIndex(jobToken{repoPath: "/repo-a", ref: "main", commit: "c0"})
+
+	if !joined.Load() || !deleted.Load() {
+		t.Fatalf("the index body did not complete the join-then-delete sequence (joined=%v deleted=%v) — the fixture never opened the window and every assertion below is vacuous", joined.Load(), deleted.Load())
+	}
+	// The terminal membership read must actually still name gB, or the test is
+	// passing for the wrong reason (nothing to arm rather than an arm refused).
+	if got := s.cfg.GroupsForRepo("/repo-a"); len(got) != 2 {
+		t.Fatalf("the terminal membership read returned %v — the fixture must still name the deleted group, which is the whole cancel-before-teardown window", got)
+	}
+
+	if timer, arm, pending := linkArmed(s, "gB"); timer || arm || pending {
+		t.Fatalf("a group that joined AFTER the capture and was then deleted still armed a live link timer (timer=%v arm=%v pending=%v) — absent from the capture must mean 'generation 0 as of the hold', not 'exempt from the guard'", timer, arm, pending)
+	}
+	// Over-suppression guard: gA was captured, never cancelled, same loop.
+	if timer, arm, pending := linkArmed(s, "gA"); !timer || !arm || !pending {
+		t.Fatalf("the live captured group gA was suppressed (timer=%v arm=%v pending=%v)", timer, arm, pending)
+	}
+	if n := algoRan.Load(); n != 0 {
+		t.Fatalf("no group-algo pass should have run, ran %d", n)
+	}
+}
+
+// TestRunIndex_GroupJoiningDuringIndexStillArms is the over-suppression
+// counterweight to the test above, and the reason the snapshot must cover
+// groupCancelSeq WHOLESALE rather than just this repo's current membership.
+//
+// A group re-registered under a previously-cancelled name joins mid-index. Its
+// generation is non-zero (an earlier delete moved it), and it is not in the
+// repo's membership at the authorising hold — so a snapshot keyed on membership
+// alone would have no entry, resolve it to 0, find 0 != 1 and suppress. That
+// silently drops the first link pass, and the group-algo pass behind it, for
+// every newly-added repo/group pair whose name had ever been deleted.
+//
+// The wholesale copy carries that name's real generation forward, so the arm
+// matches and proceeds. The two tests are a matched pair: the same mutation —
+// narrowing the snapshot to membership — makes this one fail by suppressing a
+// live group and the one above fail by arming a dead one.
 func TestRunIndex_GroupJoiningDuringIndexStillArms(t *testing.T) {
 	// gJoin is deleted up front, so its generation is 1, not the zero value.
-	// Membership then changes mid-index: gJoin is absent at the authorising hold
-	// and present at the chained arm.
+	// Membership then changes mid-index: gJoin is absent from the repo's groups
+	// at the authorising hold and present at the chained arm.
 	var s *Scheduler
 	joined := &atomic.Bool{}
 	s, _, _ = indexRearmScheduler(nil, nil)
@@ -227,7 +304,7 @@ func TestRunIndex_GroupJoiningDuringIndexStillArms(t *testing.T) {
 		t.Fatal("the index body never ran — membership never changed, so the fixture is not exercising the join-during-index path")
 	}
 	if timer, arm, pending := linkArmed(s, "gJoin"); !timer || !arm || !pending {
-		t.Fatalf("a group that JOINED during the index was suppressed (timer=%v arm=%v pending=%v) — it has no captured generation because it is not a continuation of anything, and gating it drops the first link pass of every newly-added repo/group pair, invisibly", timer, arm, pending)
+		t.Fatalf("a group that JOINED during the index was suppressed (timer=%v arm=%v pending=%v) — its generation never moved during this index, so the snapshot must carry it forward; suppressing here drops the first link pass of every newly-added repo/group pair whose name had ever been deleted, invisibly", timer, arm, pending)
 	}
 }
 

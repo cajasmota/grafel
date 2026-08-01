@@ -1593,20 +1593,41 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// tears the registry down, so GroupsForRepo can still name the deleted group
 	// when this returns.
 	//
-	// So capture the membership BEFORE the authorising hold (cfg.GroupsForRepo
-	// is an external callback and must not run under s.mu — #6060) and the
-	// generations inside it, then re-present them at the arm.
+	// So snapshot the cancel GENERATIONS under the hold that dequeues this job —
+	// the hold that AUTHORISES the whole downstream chain — and re-present them
+	// at the arm.
+	//
+	// The snapshot is of groupCancelSeq WHOLESALE, not of this repo's group
+	// membership, and that distinction is the whole correctness argument. A
+	// membership-keyed capture has nothing to say about a group that joins after
+	// it is taken, and "nothing to say" can only be resolved as an exemption —
+	// which reopens the hazard through exactly the window described above: repo
+	// joins gB after the capture, gB is deleted, the terminal membership read
+	// still names gB because teardown has not finished, and an exempt arm goes
+	// live for a deleted group. Snapshotting generations instead turns an absent
+	// name into the positive claim "generation 0 as of the hold", which a later
+	// CancelGroup contradicts and the guard below then catches.
+	//
+	// Absent-means-0 costs nothing in over-suppression, because 0 is also the
+	// current generation of every group that has never been cancelled: a
+	// brand-new group arms (0 == 0), and a group re-registered under a
+	// previously-cancelled name arms too (the snapshot carries that name's real
+	// generation, so it matches). Only a cancel landing INSIDE this index's
+	// window can produce a mismatch.
+	//
+	// Membership is read before the hold because cfg.GroupsForRepo is an
+	// external callback and must not run under s.mu (#6060); it is only needed
+	// to keep the snapshot covering names the map has not seen yet.
 	var startGroups []string
 	if s.cfg.GroupsForRepo != nil {
 		startGroups = s.cfg.GroupsForRepo(repoPath)
 	}
 
 	s.mu.Lock()
-	// Cancel generation per group as of the hold that dequeues this job — the
-	// hold that AUTHORISES the whole downstream chain. A group absent from this
-	// map when the success path runs joined during the index; that is genuinely
-	// new membership, not a continuation of cancelled work, so it arms freely.
-	linkGen := make(map[string]uint64, len(startGroups))
+	linkGen := make(map[string]uint64, len(s.groupCancelSeq)+len(startGroups))
+	for g, v := range s.groupCancelSeq {
+		linkGen[g] = v
+	}
 	for _, g := range startGroups {
 		linkGen[g] = s.groupGenLocked(g)
 	}
@@ -1937,17 +1958,14 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// one-repo union, computed by the group pass.
 	if s.cfg.GroupsForRepo != nil {
 		for _, g := range s.cfg.GroupsForRepo(repoPath) {
-			// #6068: re-present the generation captured at the authorising hold.
-			// A group that was NOT a member when this index started (linkGen has
-			// no entry) is fresh membership, not a continuation, and is never
-			// gated — gating it would silently drop the first link pass of every
-			// newly-added repo/group pair.
-			gen, known := linkGen[g]
-			if !known {
-				gen = groupGenFresh
-			}
+			// #6068: re-present the generation snapshotted at the authorising
+			// hold. A name absent from the snapshot had generation 0 then — the
+			// zero value IS the claim, not a missing one — so it arms unless a
+			// CancelGroup has moved it since. No exemption branch: an exemption
+			// here is precisely the hole that lets a group which joined after
+			// the snapshot and was then deleted arm a live timer.
 			s.fireRearmGapHook("index-done", g)
-			s.scheduleLinksFor(g, gen)
+			s.scheduleLinksFor(g, linkGen[g])
 		}
 	}
 }
@@ -1961,18 +1979,32 @@ func (s *Scheduler) scheduleLinks(group string) {
 
 // scheduleLinksFor is scheduleLinks with the #6068 continuation guard, the same
 // shape as scheduleGroupAlgoFor. gen is the cancel generation the caller
-// captured under the hold that AUTHORISED this arm; if a CancelGroup has landed
-// since, the generation has moved and the arm is refused, because the link pass
-// it would arm chains the group-algo pass in turn. Callers with nothing to
-// re-present pass groupGenFresh.
+// snapshotted under the hold that AUTHORISED this arm; if a CancelGroup has
+// landed since, the generation has moved and the arm is refused — the link pass
+// it would arm chains the group-algo pass in turn, so letting it through leaks
+// the heaviest pass in the daemon to a deleted group.
+//
+// 0 is a MEANINGFUL gen, not a "don't know": it is the generation of every group
+// that has never been cancelled, so a caller whose snapshot lacks a name still
+// makes a real, falsifiable claim by passing 0. Only callers with genuinely
+// nothing to re-present — a fresh trigger that is not a continuation of anything
+// — pass groupGenFresh, which bypasses the check outright.
 //
 // The guard is deliberately narrow. CancelGroup has exactly two production
 // callers (Service.cancelGroupWork and the engine's KindCancelGroup drain), both
-// of which mean "this group was deleted" — so a moved generation is never a
+// of which mean "this group was deleted", so a moved generation is never a
 // transient condition a live group can be in. Over-suppression would be the
-// worse defect (a silently dropped link + group-algo pass for a group that still
-// exists is invisible), which is why only continuations are gated and every
-// fresh trigger passes straight through.
+// worse defect — a silently dropped link + group-algo pass for a group that
+// still exists is invisible — and the snapshot form costs none of it: a
+// never-cancelled group matches at 0, and a group re-registered under a
+// previously-cancelled name matches at that name's real snapshotted generation.
+// Only a cancel landing inside the authorised window can refuse an arm.
+//
+// The single residual: a group deleted and RE-created inside one index's window
+// is live at the arm and still refused. That is self-healing rather than a
+// silent loss — re-registering a group enqueues its repos, and those indexes
+// chain their own arms under a fresh snapshot — and it is the same exposure the
+// other two call sites already carry, not something this one introduces.
 func (s *Scheduler) scheduleLinksFor(group string, gen uint64) {
 	if s.cfg.Links == nil {
 		return
