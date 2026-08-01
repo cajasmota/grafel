@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -114,25 +115,83 @@ func (s *Server) handleUpdatesCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, reply)
 }
 
-// isNewerVersion is a best-effort semver comparison: returns true when
-// latestStr is lexicographically greater than currentStr, ignoring pre-release
-// suffixes. Handles the common case where current="0.0.0-dev".
+// isNewerVersion is a best-effort semver comparison: returns true when latest
+// names a strictly newer release than current, ignoring pre-release suffixes.
+// Handles the common case where current="0.0.0-dev".
+//
+// #6070 (same defect class as the install version guard, one function away):
+// this used to compare the two strings BYTE-WISE, and its callers hand it two
+// differently-shaped strings — handleUpdatesCheck passes a v-STRIPPED GitHub
+// tag ("0.2.1") against a raw, v-PREFIXED version.Version ("v0.2.0"). Because
+// '0' (0x30) sorts before 'v' (0x76), `"0.2.1" > "v0.2.0"` is false, so the
+// dashboard's update banner never appeared on ANY release build — the only
+// builds that can be updated. Byte-wise comparison also got double-digit
+// components backwards ("0.10.0" > "0.9.0" is false). Both are fixed by
+// normalising the 'v' and comparing numerically, component by component.
 func isNewerVersion(latest, current string) bool {
 	if latest == "" || current == "" {
 		return false
 	}
 	// In dev builds the current version is 0.0.0-dev; any real release is newer.
 	if strings.HasSuffix(current, "-dev") {
-		return latest != ""
+		return true
 	}
-	// Strip pre-release suffix for comparison.
-	stripPre := func(v string) string {
-		if idx := strings.IndexByte(v, '-'); idx >= 0 {
-			return v[:idx]
+	return compareReleases(releaseComponents(latest), releaseComponents(current)) > 0
+}
+
+// releaseComponents reduces a version string to its numeric dotted components,
+// tolerating a leading 'v' and discarding any pre-release / build suffix.
+//
+//	"v0.2.1"                → [0 2 1]
+//	"0.10.0"                → [0 10 0]
+//	"v0.1.9-82-gf2fb8c315"  → [0 1 9]
+//
+// Non-numeric components stop the parse: a version we cannot read numerically
+// yields a short (or empty) component list, which compareReleases treats as
+// "not newer" rather than guessing.
+func releaseComponents(v string) []int {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	// Drop pre-release / build metadata.
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	var out []int
+	for _, part := range strings.Split(v, ".") {
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			break
 		}
-		return v
+		out = append(out, n)
 	}
-	return stripPre(latest) > stripPre(current)
+	return out
+}
+
+// compareReleases returns >0 when a is newer than b, <0 when older, 0 when the
+// two name the same release. Missing trailing components read as zero, so
+// "1.2" and "1.2.0" compare equal.
+func compareReleases(a, b []int) int {
+	n := len(a)
+	if len(b) > n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		var av, bv int
+		if i < len(a) {
+			av = a[i]
+		}
+		if i < len(b) {
+			bv = b[i]
+		}
+		if av != bv {
+			if av > bv {
+				return 1
+			}
+			return -1
+		}
+	}
+	return 0
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
