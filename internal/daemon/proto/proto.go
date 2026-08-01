@@ -18,7 +18,23 @@ type PingArgs struct{}
 
 // PingReply carries the daemon's self-reported version.
 type PingReply struct {
+	// Version is the HUMAN-READABLE build descriptor — internal/version.String(),
+	// e.g. "v0.2.0 (commit f2fb8c3, built 2026-07-25T12:00:00Z)". Display only.
 	Version string `json:"version"`
+
+	// VersionBare is the STRUCTURED release identifier — internal/version.Version,
+	// e.g. "v0.2.0" — with no commit or build-date decoration. Added in #6070:
+	// `grafel install` step 4 compares the running daemon's release against the
+	// installed release, and doing that by string-matching the decorated Version
+	// field aborted every install on every platform for two weeks. Consumers
+	// MUST compare on this field, never on Version.
+	//
+	// Per this package's compatibility contract, daemons built before #6070
+	// (v0.2.0 and earlier) simply omit it, so an empty value means "this daemon
+	// predates the field" — NOT "no version". Callers must degrade gracefully;
+	// see install.verifyDaemonVersion, which falls back to parsing the leading
+	// token out of Version.
+	VersionBare string `json:"version_bare,omitempty"`
 }
 
 // StatusArgs requests a snapshot of daemon state.

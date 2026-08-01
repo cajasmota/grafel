@@ -227,8 +227,15 @@ func TestRunUpdate_VerifiesAgainstTargetTag_NotRunningVersion(t *testing.T) {
 		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
 			return tag, nil
 		},
-		ProbeDaemonVersion: func() (string, error) {
-			return tag, nil
+		// A real daemon reports the DECORATED string plus the structured bare
+		// release field (#6070); mirror both here rather than echoing a bare
+		// tag, so this test cannot pass against a comparison that only works
+		// for bare-vs-bare.
+		ProbeDaemonVersion: func() (install.ProbedVersion, error) {
+			return install.ProbedVersion{
+				Display: tag + " (commit f2fb8c3, built 2026-07-25T12:00:00Z)",
+				Bare:    tag,
+			}, nil
 		},
 		EscalateDaemonRestart: func(_ string, _ int, _ time.Duration) (string, error) {
 			escalateCalled = true
@@ -248,9 +255,12 @@ func TestRunUpdate_VerifiesAgainstTargetTag_NotRunningVersion(t *testing.T) {
 	if result.InstallResult == nil {
 		t.Fatal("InstallResult is nil after a successful update")
 	}
-	if result.InstallResult.DaemonVersion != tag {
-		t.Errorf("recorded daemon version = %q, want the target tag %q",
-			result.InstallResult.DaemonVersion, tag)
+	// The RECORDED version stays the daemon's verbatim display string — only
+	// the COMPARISON is normalised to a release identity (#6070).
+	const wantRecorded = tag + " (commit f2fb8c3, built 2026-07-25T12:00:00Z)"
+	if result.InstallResult.DaemonVersion != wantRecorded {
+		t.Errorf("recorded daemon version = %q, want the daemon's verbatim display string %q",
+			result.InstallResult.DaemonVersion, wantRecorded)
 	}
 
 	// The binary must be the new one (i.e. no rollback happened).

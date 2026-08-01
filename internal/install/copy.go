@@ -113,15 +113,37 @@ func defaultHealthzGet(port int) (string, error) {
 	return string(body), nil
 }
 
+// maxPlausibleVersionLen bounds a plausible daemon version string.
+//
+// #6070 (second half): this was 64, which is SHORTER than the version string a
+// Makefile-built daemon actually reports. `make build` bakes
+// version.Version = `git describe --tags --always --dirty`, so version.String()
+// renders e.g.
+//
+//	"v0.1.9-82-gf2fb8c315 (commit f2fb8c315, built 2026-08-01T11:08:38Z)"  → 67
+//	"v0.1.9-82-gf2fb8c315-dirty (commit f2fb8c315, built …)"               → 73
+//
+// Both were rejected as "implausible", so the version probe errored out BEFORE
+// any comparison happened — meaning fixing versionsEquivalent alone would still
+// have left `grafel install` broken for every developer running a locally-built
+// daemon. Measured against real builds, not estimated.
+//
+// 200 keeps the guard's actual job intact: it exists to stop an HTML document
+// (the /healthz SPA-fallback of #5596) from being printed as a version, and
+// that job is done by the newline / angle-bracket / doctype checks below, which
+// no real HTML page escapes. The length bound is only a coarse backstop.
+const maxPlausibleVersionLen = 200
+
 // looksLikeVersion reports whether s is a plausible daemon version string
-// (short, single-line, not an HTML/JSON document). It is the last line of
+// (single-line, bounded, not an HTML/JSON document). It is the last line of
 // defense against the /healthz SPA-fallback bug: even if a future /healthz
 // response slips past the content-type check, we never let a multi-line HTML
 // blob become the printed "daemon" version. A real version looks like
-// "0.1.5.2", "v0.1.5", "1.2.3-socket", or "dev".
+// "0.1.5.2", "v0.1.5", "1.2.3-socket", "dev", or the full decorated descriptor
+// "v0.2.0 (commit f2fb8c3, built 2026-07-25T12:00:00Z)".
 func looksLikeVersion(s string) bool {
 	s = strings.TrimSpace(s)
-	if s == "" || len(s) > 64 {
+	if s == "" || len(s) > maxPlausibleVersionLen {
 		return false
 	}
 	if strings.ContainsAny(s, "\n\r<>") {
@@ -164,12 +186,31 @@ func defaultDaemonRestart(binPath string, port int, timeout time.Duration) (stri
 // the daemon could not be restarted or did not become healthy in time.
 type DaemonRestartFunc func(binPath string, healthzPort int, timeout time.Duration) (version string, err error)
 
+// ProbedVersion is what the running daemon reported about its own build.
+//
+// The two fields exist because they are NOT interchangeable, and conflating
+// them is what broke `grafel install` on every platform for two weeks (#6070):
+//
+//   - Display is the human-readable descriptor — version.String(), e.g.
+//     "v0.2.0 (commit f2fb8c3, built 2026-07-25T12:00:00Z)". It is what we
+//     record in install.json and print. It is NEVER compared directly.
+//   - Bare is the structured release identifier — version.Version, e.g.
+//     "v0.2.0" — carried in proto.PingReply.VersionBare. It is the comparison
+//     basis. It is EMPTY when the daemon answering the probe predates that
+//     field (any build up to and including v0.2.0), which is precisely the
+//     stale-daemon population this probe exists to detect — so the comparison
+//     must degrade to parsing Display rather than assume Bare is present.
+type ProbedVersion struct {
+	Display string
+	Bare    string
+}
+
 // DaemonVersionProbeFunc queries the CURRENTLY RUNNING daemon's version via a
 // reliable source (the RPC socket, not the HTML-shadowable dashboard route)
 // so step 4 can detect a daemon that stayed bound to the socket through a
 // restart that fast-pathed to a no-op (#5850). Injectable so tests never dial
 // a real socket.
-type DaemonVersionProbeFunc func() (version string, err error)
+type DaemonVersionProbeFunc func() (ProbedVersion, error)
 
 // defaultDaemonVersionProbe is the production version-probe: dial the RPC
 // socket directly (the same liveness/version channel `grafel status` uses,
@@ -178,19 +219,27 @@ type DaemonVersionProbeFunc func() (version string, err error)
 // looksLikeVersion). The result is guarded by looksLikeVersion so an
 // implausible response is reported as an error ("version unknown") rather
 // than silently treated as a match.
-func defaultDaemonVersionProbe() (string, error) {
+func defaultDaemonVersionProbe() (ProbedVersion, error) {
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
-		return "", fmt.Errorf("resolve daemon layout: %w", err)
+		return ProbedVersion{}, fmt.Errorf("resolve daemon layout: %w", err)
 	}
-	v, err := defaultSocketPing(layout.SocketPath)
+	c, err := dclient.DialPath(layout.SocketPath)
 	if err != nil {
-		return "", err
+		return ProbedVersion{}, err
 	}
-	if !looksLikeVersion(v) {
-		return "", fmt.Errorf("daemon reported an implausible version %q", v)
+	defer func() { _ = c.Close() }()
+	reply, err := c.Ping()
+	if err != nil {
+		return ProbedVersion{}, err
 	}
-	return strings.TrimSpace(v), nil
+	display := strings.TrimSpace(reply.Version)
+	if !looksLikeVersion(display) {
+		return ProbedVersion{}, fmt.Errorf("daemon reported an implausible version %q", reply.Version)
+	}
+	// VersionBare is absent on daemons up to v0.2.0; an empty Bare is expected
+	// and handled by the caller, not an error.
+	return ProbedVersion{Display: display, Bare: strings.TrimSpace(reply.VersionBare)}, nil
 }
 
 // defaultDaemonEscalateRestart is the production HARD-restart used when the
@@ -221,7 +270,8 @@ func defaultDaemonEscalateRestart(binPath string, port int, timeout time.Duratio
 // value) on mismatch. An empty installed value skips the comparison (treated
 // as "nothing to verify against").
 func verifyDaemonVersion(installed string, probe DaemonVersionProbeFunc) (string, error) {
-	running, err := probe()
+	probed, err := probe()
+	running := probed.Display
 	if err == nil && !looksLikeVersion(running) {
 		err = fmt.Errorf("implausible version %q", running)
 	}
@@ -229,23 +279,86 @@ func verifyDaemonVersion(installed string, probe DaemonVersionProbeFunc) (string
 		return "", fmt.Errorf("could not verify running daemon version (installed %q): %w", installed, err)
 	}
 	running = strings.TrimSpace(running)
-	// Defensive normalization: compare with any single leading 'v' stripped so
-	// a v-prefixed release tag ("v0.1.9") and a bare version ("0.1.9") — or the
-	// reverse — are treated as the same release. In practice the release build
-	// bakes version.Version = ${GITHUB_REF_NAME} (v-prefixed) and update.go
-	// threads the v-prefixed tag through, so they already match exactly; this
-	// just guards against either side drifting on the 'v'. We still RETURN the
-	// running string verbatim so the recorded/printed version is unmodified.
-	if installed != "" && !versionsEquivalent(running, installed) {
-		return "", fmt.Errorf("daemon is running stale version %q, installed version is %q", running, installed)
+	if installed == "" {
+		return running, nil
 	}
+
+	// #6070: compare RELEASE IDENTITIES, never the raw strings.
+	//
+	// The two sides of this comparison have different shapes and always did:
+	// the daemon reports version.String() — "v0.2.0 (commit f2fb8c3, built
+	// 2026-07-25T…)" — while `installed` is the bare tag "v0.2.0". The previous
+	// implementation compared them for equality after stripping one leading
+	// 'v', which can never succeed, so the guard fired on the SUCCESS path and
+	// rolled back every install on every platform from v0.2.0 onward. The old
+	// comment here asserted the two "already match exactly"; that assumption was
+	// the bug, and it was never checked against a real daemon.
+	runningID, basis := probedReleaseIdentity(probed)
+	installedID := releaseIdentity(installed)
+	if runningID != installedID {
+		// Name the normalised identities and the comparison basis alongside the
+		// raw strings. When this fires in CI the reader must be able to tell at
+		// a glance whether the RELEASES actually differ or the COMPARISON is
+		// wrong again — not being able to tell those apart is why acceptance.yml
+		// sat red for five consecutive runs and was written off as "acceptance
+		// is just broken".
+		return "", fmt.Errorf(
+			"daemon is running stale version %q (release %q, %s), installed version is %q (release %q)",
+			running, runningID, basis, installed, installedID)
+	}
+	// The comparison is normalised; the RECORD is not. Return the running
+	// string verbatim so the printed/persisted version keeps its decoration.
 	return running, nil
 }
 
-// versionsEquivalent reports whether two version strings name the same release,
-// tolerating a single leading 'v' on either side.
+// probedReleaseIdentity reduces a probe result to the token used for the
+// release comparison, and names where that token came from.
+//
+// The daemon's STRUCTURED field is authoritative when present: it is the
+// release identifier verbatim, immune to any future change in how
+// version.String() formats its display output. Re-deriving the release by
+// parsing a display string is precisely the fragility that produced #6070, so
+// it is the fallback, not the mechanism.
+//
+// The fallback is nonetheless mandatory, not defensive padding: proto.PingReply
+// gained VersionBare in this fix, so every daemon up to and including v0.2.0
+// omits it — and a stale pre-v0.2.1 daemon still bound to the socket is exactly
+// the case this guard exists to catch (#5850). Comparing on the structured
+// field alone would leave the guard with nothing to compare in its most
+// important scenario.
+func probedReleaseIdentity(p ProbedVersion) (id, basis string) {
+	if bare := strings.TrimSpace(p.Bare); bare != "" {
+		return releaseIdentity(bare), "from the daemon's structured version field"
+	}
+	return releaseIdentity(p.Display),
+		"parsed from the daemon's display string — it reports no structured version field, so it predates v0.2.1"
+}
+
+// releaseIdentity reduces a version string to the token that names its release.
+//
+// It accepts either shape this codebase produces:
+//
+//	bare       version.Version  →  "v0.2.0"
+//	decorated  version.String() →  "v0.2.0 (commit f2fb8c3, built 2026-07-25T…)"
+//
+// by taking everything up to the first space/tab/paren, then stripping a single
+// leading 'v' so a v-prefixed release tag and a bare version name the same
+// release. It deliberately does NOT understand semver ordering — this is an
+// identity check ("is the daemon serving the release we just installed?"), not
+// a precedence check, and a fuzzy match here would silently admit a stale
+// daemon, which is worse than the bug it replaces.
+func releaseIdentity(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, " \t("); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimPrefix(strings.TrimSpace(s), "v")
+}
+
+// versionsEquivalent reports whether two version strings name the same release.
+// Either side may be bare or decorated, and either may carry a leading 'v'.
 func versionsEquivalent(a, b string) bool {
-	return strings.TrimPrefix(a, "v") == strings.TrimPrefix(b, "v")
+	return releaseIdentity(a) == releaseIdentity(b)
 }
 
 // CopyOptions is the input to RunCopy. All fields have sensible defaults;

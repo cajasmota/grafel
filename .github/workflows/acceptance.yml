@@ -343,13 +343,38 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/.claude"
           echo '{}' > "$HOME/.claude/.claude.json"
+          LOG="${RUNNER_TEMP:-/tmp}/grafel-install.log"
+          # A non-zero exit here is tolerated ONLY because headless CI has no
+          # service manager to register the daemon with. It is NOT proof that
+          # the failure was benign — the previous version of this step printed
+          # "service step warned … tolerated" unconditionally, which asserted a
+          # diagnosis it had not made. `grafel install` aborted at step 4 on all
+          # three OS legs for five consecutive runs (#6070) and this line
+          # labelled it a service warning every time, so the red was read as
+          # "acceptance is just broken" for two weeks while a shipped install
+          # failure hid behind it. Capture the real exit code and output, and
+          # let the assertions below decide.
+          set +e
           grafel install --copy \
             --skills-source-dir ./skills \
             --claude-config-dirs "$HOME/.claude/.claude.json" \
-            --force || echo "install: service step warned (no service manager in CI) — tolerated"
-          test -f "$HOME/.grafel/install.json" || { echo "FAIL: install.json not written"; exit 1; }
-          test -d "$HOME/.grafel" || { echo "FAIL: ~/.grafel not created"; exit 1; }
-          grep -q grafel "$HOME/.claude/.claude.json" || { echo "FAIL: MCP not registered in .claude.json"; exit 1; }
+            --force 2>&1 | tee "$LOG"
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::grafel install exited $rc — tolerated only if the integrity assertions below pass"
+          fi
+          fail() {
+            echo "FAIL: $1"
+            echo "grafel install exit code: $rc"
+            echo "── grafel install output ──────────────────────────────────"
+            cat "$LOG"
+            echo "───────────────────────────────────────────────────────────"
+            exit 1
+          }
+          test -d "$HOME/.grafel" || fail "~/.grafel not created"
+          test -f "$HOME/.grafel/install.json" || fail "install.json not written"
+          grep -q grafel "$HOME/.claude/.claude.json" || fail "MCP not registered in .claude.json"
           echo "integrity OK: ~/.grafel + install.json + MCP config present"
 
       - name: Integrity — MCP config + install.json (windows)
@@ -367,13 +392,34 @@ jobs:
           New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
           $claudeCfg = Join-Path $claudeDir '.claude.json'
           '{}' | Set-Content -Path $claudeCfg
+          # See the unix leg for why the tolerated-failure message must not
+          # assert a diagnosis: this printed "service step warned … tolerated"
+          # while `grafel install` was in fact aborting at step 4 (#6070), which
+          # is how a shipped install failure stayed invisible for two weeks.
+          # Keep the output so a failure below is self-diagnosing.
+          $installLog = ''
+          $rc = 0
           try {
-            grafel install --copy --skills-source-dir ./skills --claude-config-dirs $claudeCfg --force
-          } catch { Write-Host "install: service step warned (no service manager in CI) — tolerated" }
+            $installLog = (grafel install --copy --skills-source-dir ./skills --claude-config-dirs $claudeCfg --force 2>&1 | Out-String)
+            $rc = $LASTEXITCODE
+          } catch {
+            $installLog = "$_"
+            $rc = 1
+          }
+          Write-Host $installLog
+          if ($rc -ne 0) { Write-Host "::warning::grafel install exited $rc — tolerated only if the integrity assertions below pass" }
+          $global:LASTEXITCODE = 0
+          function Fail-Integrity($msg) {
+            Write-Host "grafel install exit code: $rc"
+            Write-Host "── grafel install output ──────────────────────────────────"
+            Write-Host $installLog
+            Write-Host "───────────────────────────────────────────────────────────"
+            throw $msg
+          }
           $prefix = Join-Path $GrafelHome '.grafel'
-          if (-not (Test-Path (Join-Path $prefix 'install.json'))) { throw "install.json not written" }
-          if (-not (Test-Path $prefix)) { throw "~/.grafel not created" }
-          if (-not (Select-String -Path $claudeCfg -Pattern 'grafel' -Quiet)) { throw "MCP not registered in .claude.json" }
+          if (-not (Test-Path $prefix)) { Fail-Integrity "~/.grafel not created" }
+          if (-not (Test-Path (Join-Path $prefix 'install.json'))) { Fail-Integrity "install.json not written" }
+          if (-not (Select-String -Path $claudeCfg -Pattern 'grafel' -Quiet)) { Fail-Integrity "MCP not registered in .claude.json" }
           Write-Host "integrity OK: ~/.grafel + install.json + MCP config present"
 
       # ── 4. THE HEART: grafel selftest (functional acceptance ladder) ────────

@@ -349,6 +349,11 @@ func (s *Service) waitDrain(timeout time.Duration) bool {
 // "daemon not running" from "daemon running but unhealthy".
 func (s *Service) Ping(_ *proto.PingArgs, reply *proto.PingReply) error {
 	reply.Version = version.String()
+	// #6070: also report the BARE release identifier. `grafel install` step 4
+	// needs to know which RELEASE is serving the socket, and deriving that by
+	// string-matching the decorated Version above is what aborted every install
+	// on every platform between v0.2.0 and this fix.
+	reply.VersionBare = version.Version
 	return nil
 }
 
