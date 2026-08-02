@@ -1135,11 +1135,22 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// downstream consumer (algorithms, embeddings, on-disk write) sees a tiny
 	// fraction of the real graph.
 	var (
-		diffManifest      *idiff.Manifest
-		allFiles          = files // original full list for manifest update
-		incrementalPrev   *graph.Document
+		diffManifest *idiff.Manifest
+		allFiles     = files // original full list for manifest update
+		// incrementalPrev is a STREAM over the previous graph, not a
+		// materialised Document (#5954 item 16). LoadGraphFromDir decoded every
+		// prior entity and relationship into Go objects up front and held them
+		// alive across the whole pipeline, so the prior graph existed twice at
+		// the merge point — once in the loaded Document's backing arrays and
+		// again in the merged one's. The stream keeps the mmap open instead and
+		// decodes a row only while it is being looked at; rows the merge drops
+		// are never allocated at all.
+		incrementalPrev   *graph.GraphStream
 		incrementalChange map[string]bool // changed-file set (forward-slash, relative)
 	)
+	// The stream owns an mmap for the lifetime of the run; release it on every
+	// exit path. Nil-safe, so this is correct on the full-index path too.
+	defer func() { _ = incrementalPrev.Close() }()
 	if i.incremental && i.incrementalStateDir != "" {
 		diffManifest = idiff.LoadManifest(i.incrementalStateDir)
 		changed, unchanged := idiff.FilterWithGit(absRepo, files, diffManifest)
@@ -1160,7 +1171,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			// pipeline reindexes everything (the old broken behaviour of
 			// silently corrupting the graph is replaced with a safe
 			// full-reindex fallback).
-			prev, perr := graph.LoadGraphFromDir(i.incrementalStateDir)
+			prev, perr := graph.OpenGraphStream(i.incrementalStateDir)
 			if perr != nil || prev == nil {
 				fmt.Fprintf(os.Stderr,
 					"grafel: incremental — previous graph not loadable (%v); falling back to full reindex\n", perr)
@@ -1179,14 +1190,18 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 				// file is out of this run's extraction scope. Only real,
 				// source-bearing entities are carried (ext:* synthetics are
 				// regenerated downstream and have no stable provider identity).
-				cf := make([]types.EntityRecord, 0, len(prev.Entities))
-				for ei := range prev.Entities {
-					pe := &prev.Entities[ei]
+				//
+				// Streamed: only the records that pass the two filters are
+				// ever built. Under LoadGraphFromDir the whole prior entity
+				// vector was materialised first and this loop then copied a
+				// subset out of it.
+				cf := make([]types.EntityRecord, 0, prev.EntityCount())
+				prev.EachEntity(func(pe graph.Entity) bool {
 					if pe.SourceFile == "" {
-						continue
+						return true
 					}
 					if incrementalChange[filepath.ToSlash(pe.SourceFile)] {
-						continue
+						return true
 					}
 					cf = append(cf, types.EntityRecord{
 						ID:         pe.ID,
@@ -1196,7 +1211,8 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 						SourceFile: pe.SourceFile,
 						Properties: pe.PropsSnapshot(),
 					})
-				}
+					return true
+				})
 				i.incrementalCarryForwardEntities = cf
 			}
 		}
@@ -1680,7 +1696,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// entity are dropped here — the resolver passes already attached above
 	// produced replacements for them against the fresh entity IDs.
 	if incrementalPrev != nil && incrementalChange != nil {
-		mergeStats := mergeIncrementalPrevDoc(doc, incrementalPrev, incrementalChange)
+		mergeStats := mergeIncrementalPrevSource(doc, incrementalPrev, incrementalChange)
 		fmt.Fprintf(os.Stderr,
 			"grafel: incremental — carried forward %d entities and %d relationships from previous graph (dropped %d stale edges)\n",
 			mergeStats.entitiesAdded, mergeStats.relsAdded, mergeStats.relsDropped)
@@ -5373,6 +5389,55 @@ type incrementalMergeStats struct {
 // duplicated by design — both implementations are exercised by their own
 // regression tests in this package and internal/extractors.
 func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedFiles map[string]bool) incrementalMergeStats {
+	if prev == nil {
+		return incrementalMergeStats{}
+	}
+	return mergeIncrementalPrevSource(doc, docPrevSource{prev}, changedFiles)
+}
+
+// prevGraphSource is the merge's read contract over the previous graph. It
+// exists so the merge can be driven either by a fully materialised
+// *graph.Document (every unit test in this package, and the graph.json
+// fallback) or by a *graph.GraphStream that decodes rows straight off the
+// mmap and never holds them all at once (#5954 item 16 — the production
+// incremental path). The two must be indistinguishable to the merge, which is
+// what TestMergeIncrementalPrevSource_StreamMatchesDocument asserts.
+//
+// Both walks are re-enterable: the indexer streams entities once early (to seed
+// the resolver index with unchanged-file identities) and again here.
+type prevGraphSource interface {
+	EntityCount() int
+	RelationshipCount() int
+	EachEntity(func(graph.Entity) bool)
+	EachRelationship(func(graph.Relationship) bool)
+}
+
+// docPrevSource adapts an in-memory Document to prevGraphSource.
+type docPrevSource struct{ d *graph.Document }
+
+func (s docPrevSource) EntityCount() int       { return len(s.d.Entities) }
+func (s docPrevSource) RelationshipCount() int { return len(s.d.Relationships) }
+
+func (s docPrevSource) EachEntity(visit func(graph.Entity) bool) {
+	for i := range s.d.Entities {
+		if !visit(s.d.Entities[i]) {
+			return
+		}
+	}
+}
+
+func (s docPrevSource) EachRelationship(visit func(graph.Relationship) bool) {
+	for i := range s.d.Relationships {
+		if !visit(s.d.Relationships[i]) {
+			return
+		}
+	}
+}
+
+// mergeIncrementalPrevSource is the merge itself, driven by prevGraphSource.
+// See mergeIncrementalPrevDoc's doc comment for the semantics — this function
+// owns them; that one is the Document-shaped entry point.
+func mergeIncrementalPrevSource(doc *graph.Document, prev prevGraphSource, changedFiles map[string]bool) incrementalMergeStats {
 	var stats incrementalMergeStats
 	if doc == nil || prev == nil {
 		return stats
@@ -5393,24 +5458,25 @@ func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedF
 	// until the relationship pass has told us which of them a surviving edge
 	// still references (#6085).
 	var syntheticPrev []graph.Entity
-	for _, e := range prev.Entities {
+	prev.EachEntity(func(e graph.Entity) bool {
 		if e.SourceFile == "" {
 			if !docEntityIDs[e.ID] {
 				syntheticPrev = append(syntheticPrev, e)
 			}
-			continue
+			return true
 		}
 		if changedFiles[filepath.ToSlash(e.SourceFile)] {
 			changedEntityIDs[e.ID] = true
-			continue
+			return true
 		}
 		if docEntityIDs[e.ID] {
-			continue
+			return true
 		}
 		doc.Entities = append(doc.Entities, e)
 		docEntityIDs[e.ID] = true
 		stats.entitiesAdded++
-	}
+		return true
+	})
 
 	// Second pass: copy across every prev relationship that this run did not
 	// supersede. See the doc comment for the exact drop predicate (#6085).
@@ -5473,16 +5539,16 @@ func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedF
 		docRelKeys[relKey(&doc.Relationships[k])] = true
 	}
 	referenced := make(map[string]bool)
-	for _, r := range prev.Relationships {
+	prev.EachRelationship(func(r graph.Relationship) bool {
 		// (a) the edge's owning file was re-extracted this run.
 		if changedEntityIDs[r.FromID] {
 			stats.relsDropped++
-			continue
+			return true
 		}
 		// (b) the edge's target was destroyed by this run's re-extraction.
 		if changedEntityIDs[r.ToID] && !docEntityIDs[r.ToID] {
 			stats.relsDropped++
-			continue
+			return true
 		}
 		// Mark the endpoints BEFORE the dedupe below: an edge the fresh pass
 		// already emitted still references its endpoints, and the synthetic
@@ -5493,7 +5559,7 @@ func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedF
 		if docRelKeys[key] {
 			// Already in the merged graph — either emitted by this run's
 			// extraction, or an exact duplicate row earlier in prev.
-			continue
+			return true
 		}
 		docRelKeys[key] = true
 		if r.ID == "" {
@@ -5501,7 +5567,8 @@ func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedF
 		}
 		doc.Relationships = append(doc.Relationships, r)
 		stats.relsAdded++
-	}
+		return true
+	})
 
 	// Third pass: re-attach the source-less synthetic endpoints that surviving
 	// edges still point at, so no carried edge dangles. Synthetics nothing
