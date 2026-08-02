@@ -76,6 +76,30 @@ type RegistryRepo struct {
 	GraphFile string `json:"graph_file,omitempty"`
 }
 
+// groupsIsJSONArray reports whether the top-level "groups" member of data is a
+// JSON array — the CLI registry format — as opposed to an object (legacy MCP
+// format), some other type, or absent. Decoding "groups" into a json.RawMessage
+// keeps the check on the value's SHAPE and independent of how many elements it
+// holds, which is the whole point of issue #5932: an empty CLI registry is still
+// a CLI registry.
+func groupsIsJSONArray(data []byte) bool {
+	var probe struct {
+		Groups json.RawMessage `json:"groups"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return false
+	}
+	for _, b := range probe.Groups {
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		default:
+			return b == '['
+		}
+	}
+	return false
+}
+
 // UnmarshalJSON implements custom unmarshaling to accept both array format
 // (written by CLI registry) and map format (legacy MCP format).
 // CLI format: {"version":1,"groups":[{"name":"...","config_path":"..."}]}
@@ -90,8 +114,17 @@ func (r *Registry) UnmarshalJSON(data []byte) error {
 		Version int      `json:"version"`
 		Groups  []rawRef `json:"groups"`
 	}
+	// Issue #5932: discriminate on the JSON SHAPE of "groups", not on how many
+	// elements it has. Keying off len(raw.Groups) > 0 conflated "not CLI format"
+	// with "CLI format, zero groups", so a legitimate {"version":1,"groups":[]}
+	// — what a fresh install or removal of the last group writes — fell through
+	// to the legacy branch, failed to unmarshal an array into a map, and bricked
+	// the whole MCP session down to a single sentinel tool for its lifetime.
 	var raw rawReg
-	if err := json.Unmarshal(data, &raw); err == nil && len(raw.Groups) > 0 {
+	if groupsIsJSONArray(data) {
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return fmt.Errorf("unmarshal registry: CLI format: %w", err)
+		}
 		// CLI format: groups is an array of refs with names and config paths
 		r.Groups = make(map[string]RegistryGroup, len(raw.Groups))
 		for _, ref := range raw.Groups {
