@@ -6,7 +6,7 @@
 // against live state across five surfaces:
 //
 //   - CLI binary SHA-256 (Critical)
-//   - Daemon /healthz reachability + version (Critical)
+//   - Daemon RPC-socket reachability + version (Critical)
 //   - Skills per-file SHA manifests (Critical)
 //   - MCP registration in detected .claude.json files (Critical)
 //   - Conventions per-file SHA manifests (Warning)
@@ -20,7 +20,6 @@ package install
 
 import (
 	"bufio"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -101,13 +100,29 @@ type DoctorOptions struct {
 	// ClaudeConfigDirs overrides .claude.json auto-detection (same flag as install).
 	ClaudeConfigDirs []string
 
-	// DaemonPort is the HTTP port for the daemon's /healthz endpoint.
-	// Defaults to 47274.
+	// DaemonPort is the daemon's dashboard HTTP port. Defaults to 47274.
+	//
+	// #6072: the daemon version check no longer uses it — it reads the RPC
+	// socket, because /healthz is not a registered route and an HTTP probe of
+	// it returns the dashboard SPA's index.html. Retained because it is part of
+	// the exported options surface and is still the port other tooling reports.
 	DaemonPort int
 
-	// DaemonTimeout is the maximum wait for the /healthz call.
-	// Defaults to 2 seconds.
+	// DaemonTimeout bounds the daemon version probe. Defaults to 2 seconds.
 	DaemonTimeout time.Duration
+
+	// ProbeDaemonVersion queries the running daemon's version. Defaults to a
+	// DaemonTimeout-bounded RPC-socket probe.
+	//
+	// Injectable for the same reason install.Options.ProbeDaemonVersion is
+	// (copy.go/update.go): without a seam, every RunDoctor test dials whatever
+	// real socket daemon.DefaultLayout() resolves to on the developer's
+	// machine. On macOS a test's t.Setenv("HOME", tmp) happens to isolate that;
+	// on Linux with XDG_RUNTIME_DIR set (internal/daemon/paths_unix.go) HOME is
+	// not consulted at all, so a developer with a live daemon got a real
+	// version comparison against the test's fake install.json and the daemon
+	// checks failed. CI passed only because CI runs no daemon.
+	ProbeDaemonVersion DaemonVersionProbeFunc
 
 	// SkillsDir is the primary Claude skills directory.
 	// When empty it is derived from ClaudeConfigDirs or auto-detected from HOME.
@@ -136,6 +151,9 @@ func (o *DoctorOptions) applyDefaults() error {
 	}
 	if o.DaemonTimeout == 0 {
 		o.DaemonTimeout = 2 * time.Second
+	}
+	if o.ProbeDaemonVersion == nil {
+		o.ProbeDaemonVersion = boundedDaemonVersionProbe(o.DaemonTimeout)
 	}
 	return nil
 }
@@ -192,8 +210,8 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 	// ── Check 1: CLI binary SHA ─────────────────────────────────────────────
 	report.Checks = append(report.Checks, checkCLI(state))
 
-	// ── Check 2: Daemon /healthz ────────────────────────────────────────────
-	report.Checks = append(report.Checks, checkDaemon(state, opts.DaemonPort, opts.DaemonTimeout))
+	// ── Check 2: Daemon version via the RPC socket (#6072) ──────────────────
+	report.Checks = append(report.Checks, checkDaemon(state, opts.ProbeDaemonVersion))
 
 	// ── Check 2b: Engine liveness + version skew (ADR-0024 PR5/PR6, epic #5729) ──
 	// Monolith-aware: when the escape hatch (GRAFEL_SPLIT_MODE=0) puts the
@@ -340,67 +358,68 @@ func isGitDirAFile(dir string) bool {
 	return !info.IsDir()
 }
 
-// healthzResponse is a minimal struct for parsing the /healthz JSON body.
-type healthzResponse struct {
-	Version string `json:"version"`
-}
-
-// checkDaemon probes /healthz and validates the version against install.json.
-func checkDaemon(state *State, port int, timeout time.Duration) CheckResult {
+// checkDaemon probes the daemon's RPC socket and validates the version it
+// reports against install.json.
+//
+// #6072: this used to GET http://127.0.0.1:<port>/healthz. That route does not
+// exist — the daemon registers no /healthz handler, so the request fell through
+// to the dashboard SPA catch-all and came back HTTP 200 with ~900 bytes of
+// index.html. json.Unmarshal failed on the HTML, the plain-text fallback stuffed
+// the ENTIRE document into the version field, and `grafel doctor` printed the
+// dashboard's HTML as "running=". (Dormant until #6070: before it every install
+// rolled back, so install.json had no DaemonVersion and the `!= ""` guard never
+// let the comparison run.)
+//
+// Hardening the HTML parse was not an option worth taking: there is no /healthz
+// endpoint to harden, so rejecting HTML would leave every healthy daemon
+// reporting "returned no version" forever — a permanent false warning in place
+// of a wrong one. The RPC socket is this package's own designated version
+// authority (defaultDaemonVersionProbe, already used by install step 4), it is
+// not shadowable by the SPA, and since #6071 it carries a STRUCTURED
+// VersionBare. Reusing it therefore also replaces the raw string equality with
+// the normalised probedReleaseIdentity/releaseIdentity comparison #6070
+// established as the correct one — the decorated display string the daemon
+// reports could never equal the bare tag install.json records.
+func checkDaemon(state *State, probe DaemonVersionProbeFunc) CheckResult {
 	cr := CheckResult{Surface: "daemon", OK: true}
 
-	url := fmt.Sprintf("http://127.0.0.1:%d/healthz", port)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	probed, err := probe()
 	if err != nil {
+		// Socket dial / Ping failed: the daemon is not answering at all. That is
+		// the same class of failure the old "daemon unreachable" branch reported.
 		cr.OK = false
 		cr.Severity = SeverityCritical
-		cr.Drift = []string{fmt.Sprintf("build request: %v", err)}
+		cr.Drift = []string{fmt.Sprintf("daemon unreachable via RPC socket: %v", err)}
 		return cr
 	}
 
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		cr.OK = false
-		cr.Severity = SeverityCritical
-		cr.Drift = []string{fmt.Sprintf("daemon unreachable at %s: %v", url, err)}
-		return cr
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		cr.OK = false
-		cr.Severity = SeverityCritical
-		cr.Drift = []string{fmt.Sprintf("daemon /healthz returned HTTP %d", resp.StatusCode)}
-		return cr
-	}
-
-	body, _ := io.ReadAll(resp.Body)
-	// Try to parse JSON version response; also accept plain text version.
-	var hzResp healthzResponse
-	if jerr := json.Unmarshal(body, &hzResp); jerr != nil {
-		// Plain text fallback.
-		hzResp.Version = strings.TrimSpace(string(body))
-	}
-
-	if hzResp.Version == "" {
-		cr.Drift = append(cr.Drift, "daemon /healthz returned no version")
-		// Warning only — daemon is up but didn't report version.
+	// looksLikeVersion is the load-bearing guard of #6072: whatever the version
+	// channel hands back, an HTML document (or any multi-line / bracketed blob)
+	// must never be echoed as the running version.
+	running := strings.TrimSpace(probed.Display)
+	if !looksLikeVersion(running) {
 		cr.OK = false
 		cr.Severity = SeverityWarning
+		cr.Drift = []string{"daemon reported no usable version"}
 		return cr
 	}
 
-	// If install.json recorded a daemon version, compare.
-	if state.DaemonVersion != "" && hzResp.Version != state.DaemonVersion {
-		cr.OK = false
-		cr.Severity = SeverityWarning
-		cr.Drift = []string{fmt.Sprintf("daemon version mismatch: running=%s installed=%s", hzResp.Version, state.DaemonVersion)}
+	if state.DaemonVersion == "" {
+		return cr
 	}
 
+	// Compare RELEASE IDENTITIES, not raw strings (#6070): the daemon reports a
+	// decorated descriptor ("v0.2.1 (commit …, built …)") while install.json
+	// records the bare tag, so raw equality can never succeed.
+	runningID, basis := probedReleaseIdentity(probed)
+	installedID := releaseIdentity(state.DaemonVersion)
+	if runningID != installedID {
+		cr.OK = false
+		cr.Severity = SeverityWarning
+		cr.Drift = []string{fmt.Sprintf(
+			"daemon version mismatch: running=%s (release %q, %s) installed=%s (release %q)",
+			running, runningID, basis, state.DaemonVersion, installedID)}
+	}
 	return cr
 }
 
@@ -1009,8 +1028,10 @@ func checkEngineLiveness(state *State, deps engineLivenessDeps) CheckResult {
 		return cr
 	}
 
-	// Version skew: serve's own recorded binary_version (install.json,
-	// refreshed from /healthz on restart — see checkDaemon) vs the engine
+	// Version skew: serve's own recorded binary_version (install.json, written
+	// by install/dev from the daemon-readiness probe — copy.go/dev.go set
+	// state.DaemonVersion; NOT from /healthz, which is not a route at all — see
+	// checkDaemon and #6072) vs the engine
 	// child's self-reported version in the liveness statusfile. Only
 	// meaningful in split mode (we already know engine.pid is present here);
 	// in monolith mode there's a single binary so this branch is unreachable.
