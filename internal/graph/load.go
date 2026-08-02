@@ -672,6 +672,16 @@ func fbRelToGraphRel(r *fb.Relationship, si *stringInterner) Relationship {
 	if id, ok := rel.PropLookup("id"); ok {
 		rel.ID = id
 	}
+	// #6085 — graph.fb has no id field and fbwriter.buildRelationship stores
+	// no "id" property, so every relationship used to come back from disk with
+	// an EMPTY ID. RelationshipID is a pure function of (from, to, kind) — the
+	// exact expression buildDocument used when it minted the ID — so recompute
+	// it here rather than persisting a redundant 16-byte string per edge. Edge
+	// identity is what the incremental merge dedupes on; without it each
+	// incremental run re-appended edges the fresh pass had already emitted.
+	if rel.ID == "" {
+		rel.ID = RelationshipID(rel.FromID, rel.ToID, rel.Kind)
+	}
 	return rel
 }
 

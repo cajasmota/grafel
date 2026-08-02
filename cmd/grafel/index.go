@@ -5336,14 +5336,32 @@ type incrementalMergeStats struct {
 //   - Adds every prev entity whose SourceFile is NOT in changedFiles, unless
 //     an entity with the same ID is already present in doc (which would
 //     indicate a re-extraction collision from a freshly-extracted file).
-//   - Adds every prev relationship whose endpoints are both alive — meaning
-//     both endpoints are either already in doc or are being carried forward
-//     in this same merge. Edges with an endpoint sourced from a changed file
-//     are dropped: the per-file extraction pass already re-emitted the
-//     authoritative version of those edges against the fresh entity IDs.
-//   - Pure-string-keyed relationships pointing at synthetic / external nodes
-//     (kind="ext:*", or any entity ID present in doc.Entities) are carried
-//     forward normally — the surviving-endpoint check covers them.
+//   - Carries a prev relationship forward UNLESS it is genuinely superseded by
+//     this run's re-extraction. #6085: the staleness test is "was this edge
+//     re-produced by the files we just re-extracted?", NOT "do both endpoints
+//     resolve to a live entity row". An edge is dropped iff:
+//     (a) its FromID is a prev entity anchored in a CHANGED file — that file's
+//     re-extraction re-emitted its outgoing edges, so the prev copy is
+//     superseded; or
+//     (b) its ToID is a prev entity anchored in a CHANGED file that no longer
+//     exists after re-extraction (renamed/deleted) — the edge now points at
+//     a destroyed node.
+//     Every other prev edge is preserved verbatim, including edges whose
+//     endpoint is a synthetic ext:* node or an unresolved bare name. Those
+//     endpoints are not entity rows, so the old endpoint-liveness test dropped
+//     them wholesale even though a full reindex keeps them (#6085: ~35% of the
+//     graph on archigraph — every IMPORTS/CALLS edge into an external package
+//     plus every unresolved-target edge).
+//   - Carries forward the source-less prev entities (ext:* / _external
+//     synthetics) that are still referenced by a surviving edge, so those
+//     carried edges do not dangle. external.Synthesize runs after this merge
+//     and is idempotent against entity IDs already present, so re-adding them
+//     here does not double-emit.
+//   - Restores the deterministic relationship ID on carried edges. graph.fb
+//     does not persist Relationship.ID (see fbRelToGraphRel), so prev edges
+//     arrive with an empty ID; leaving it empty defeated the dedupe below and
+//     made every incremental run append duplicates of edges the fresh pass had
+//     already emitted (#6085: the run-to-run count drift).
 //
 // The function is intentionally separate from internal/extractors.TryIncremental:
 // TryIncremental owns the daemon's fast in-place reindex (Path A), while this
@@ -5365,49 +5383,82 @@ func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedF
 		docEntityIDs[e.ID] = true
 	}
 
-	// First pass: copy across entities sourced from UNCHANGED files. Track
-	// every entity ID that will survive the merge so we can filter
-	// relationships in the second pass.
-	survivingIDs := make(map[string]bool, len(docEntityIDs)+len(prev.Entities))
-	for id := range docEntityIDs {
-		survivingIDs[id] = true
-	}
+	// First pass: copy across entities sourced from UNCHANGED files, and
+	// record the IDs of prev entities anchored in a CHANGED file — those are
+	// the only ones whose incident edges this run could have superseded.
+	changedEntityIDs := make(map[string]bool)
+	// Source-less prev entities (ext:* / _external synthetics) are held back
+	// until the relationship pass has told us which of them a surviving edge
+	// still references (#6085).
+	var syntheticPrev []graph.Entity
 	for _, e := range prev.Entities {
-		// Entities without a source file (e.g. ext:* synthetics) are
-		// regenerated downstream by external.Synthesize against the merged
-		// graph; skip them here so we do not double-emit.
 		if e.SourceFile == "" {
+			if !docEntityIDs[e.ID] {
+				syntheticPrev = append(syntheticPrev, e)
+			}
 			continue
 		}
 		if changedFiles[filepath.ToSlash(e.SourceFile)] {
+			changedEntityIDs[e.ID] = true
 			continue
 		}
 		if docEntityIDs[e.ID] {
 			continue
 		}
 		doc.Entities = append(doc.Entities, e)
-		survivingIDs[e.ID] = true
+		docEntityIDs[e.ID] = true
 		stats.entitiesAdded++
 	}
 
-	// Second pass: copy across relationships whose endpoints are both alive
-	// in the merged graph. Edges incident to a changed-file entity are
-	// dropped — the fresh extraction has already emitted the canonical
-	// replacements against the new entity IDs in this run.
-	docRelIDs := make(map[string]bool, len(doc.Relationships))
-	for _, r := range doc.Relationships {
-		docRelIDs[r.ID] = true
+	// Second pass: copy across every prev relationship that this run did not
+	// supersede. See the doc comment for the exact drop predicate (#6085).
+	// Dedupe is keyed on the deterministic (from, to, kind) triple rather than
+	// on Relationship.ID: graph.fb does not persist the ID, so prev edges
+	// arrive with an empty one.
+	relKey := func(r *graph.Relationship) string {
+		return r.FromID + "\x00" + r.ToID + "\x00" + r.Kind
 	}
+	docRelKeys := make(map[string]bool, len(doc.Relationships))
+	for k := range doc.Relationships {
+		docRelKeys[relKey(&doc.Relationships[k])] = true
+	}
+	referenced := make(map[string]bool)
 	for _, r := range prev.Relationships {
-		if !survivingIDs[r.FromID] || !survivingIDs[r.ToID] {
+		// (a) the edge's owning file was re-extracted this run.
+		if changedEntityIDs[r.FromID] {
 			stats.relsDropped++
 			continue
 		}
-		if docRelIDs[r.ID] {
+		// (b) the edge's target was destroyed by this run's re-extraction.
+		if changedEntityIDs[r.ToID] && !docEntityIDs[r.ToID] {
+			stats.relsDropped++
 			continue
+		}
+		key := relKey(&r)
+		if docRelKeys[key] {
+			continue
+		}
+		docRelKeys[key] = true
+		if r.ID == "" {
+			r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
 		}
 		doc.Relationships = append(doc.Relationships, r)
 		stats.relsAdded++
+		referenced[r.FromID] = true
+		referenced[r.ToID] = true
+	}
+
+	// Third pass: re-attach the source-less synthetic endpoints that surviving
+	// edges still point at, so no carried edge dangles. Synthetics nothing
+	// references are left out — external.Synthesize regenerates whatever the
+	// current graph actually needs.
+	for _, e := range syntheticPrev {
+		if !referenced[e.ID] || docEntityIDs[e.ID] {
+			continue
+		}
+		doc.Entities = append(doc.Entities, e)
+		docEntityIDs[e.ID] = true
+		stats.entitiesAdded++
 	}
 
 	doc.Stats.Entities = len(doc.Entities)

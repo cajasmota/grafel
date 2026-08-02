@@ -225,3 +225,37 @@ func TestLoadGraphFromDir_EmbeddingRefRoundTrip(t *testing.T) {
 			handlerEnt.EmbeddingRef, "sha256:embedding-round-trip-hash")
 	}
 }
+
+// TestLoadGraphFromDir_RelationshipIDSurvivesFBRoundTrip pins #6085: graph.fb
+// has no relationship id field and fbwriter stores no "id" property, so every
+// relationship used to come back from disk with an EMPTY ID. The incremental
+// merge keys its dedupe on edge identity, so ID-less prev edges made each
+// incremental run re-append edges the fresh pass had already emitted.
+//
+// RelationshipID is a pure function of (from, to, kind) — the same expression
+// buildDocument uses to mint the ID — so the loader recomputes it. IDs minted
+// any other way are NOT recoverable from graph.fb; every producer in the
+// pipeline uses graph.RelationshipID.
+func TestLoadGraphFromDir_RelationshipIDSurvivesFBRoundTrip(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	doc := makeTestDoc()
+	doc.Relationships[0].ID = graph.RelationshipID(
+		doc.Relationships[0].FromID, doc.Relationships[0].ToID, doc.Relationships[0].Kind)
+	want := doc.Relationships[0].ID
+
+	if err := fbwriter.WriteAtomic(filepath.Join(dir, "graph.fb"), doc); err != nil {
+		t.Fatalf("WriteAtomic: %v", err)
+	}
+	got, err := graph.LoadGraphFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadGraphFromDir: %v", err)
+	}
+	if len(got.Relationships) != 1 {
+		t.Fatalf("relationships: got %d want 1", len(got.Relationships))
+	}
+	if got.Relationships[0].ID != want {
+		t.Errorf("relationship ID after FB round-trip = %q, want %q (#6085)",
+			got.Relationships[0].ID, want)
+	}
+}
