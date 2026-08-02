@@ -72,7 +72,15 @@ func OpenGraphStream(dir string) (*GraphStream, error) {
 	}
 
 	if desc.Kind == GraphSegmentSet {
-		v, err := OpenSegmentReader(desc.GenDir)
+		// Open from desc.Manifest — the manifest CurrentGraphDescriptor already
+		// read and validated — rather than via OpenSegmentReader, which would
+		// re-read manifest.json off disk. Re-reading opens a window in which a
+		// concurrent generation flip lands between the descriptor resolve and
+		// the manifest read, yielding a stream over a DIFFERENT generation than
+		// the descriptor named. loadSegmentSetDocument (load.go) uses
+		// desc.Manifest for exactly this reason; match it.
+		paths, ranges := segmentOpenArgs(desc.Manifest, desc.GenDir)
+		v, err := fbreader.OpenSegmentsWithRanges(paths, ranges)
 		if err != nil {
 			return nil, fmt.Errorf("graph.OpenGraphStream: open %s: %w", desc.GenDir, err)
 		}
@@ -127,6 +135,11 @@ func (s *GraphStream) EntityCount() int {
 	if s.doc != nil {
 		return len(s.doc.Entities)
 	}
+	if s.view == nil {
+		// Closed (Close nils the view). An exported type must not panic on
+		// use-after-Close; report an empty stream instead.
+		return 0
+	}
 	return s.view.EntityCount()
 }
 
@@ -138,6 +151,9 @@ func (s *GraphStream) RelationshipCount() int {
 	}
 	if s.doc != nil {
 		return len(s.doc.Relationships)
+	}
+	if s.view == nil {
+		return 0
 	}
 	return s.view.RelationshipCount()
 }
@@ -157,6 +173,10 @@ func (s *GraphStream) EachEntity(visit func(Entity) bool) {
 				return
 			}
 		}
+		return
+	}
+	if s.view == nil {
+		// Closed: walk nothing rather than deref a nil view.
 		return
 	}
 	// NOT memoized, deliberately. The indexer walks entities twice (once early
@@ -193,6 +213,9 @@ func (s *GraphStream) EachRelationship(visit func(Relationship) bool) {
 				return
 			}
 		}
+		return
+	}
+	if s.view == nil {
 		return
 	}
 	n := s.view.RelationshipCount()

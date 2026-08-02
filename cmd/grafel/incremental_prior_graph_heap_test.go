@@ -16,16 +16,25 @@ package main
 // MEASURED FINDINGS from the change this file was written to justify
 // (streaming the prior graph instead of materialising it — #5954 item 16).
 // 16 GB macOS laptop, swap steady at 3.84 GB used across every run, 3-file
-// delta. "merge-end" is HeapAlloc after a forced GC at the last statement of
-// the merge, with the prior graph still reachable — the structural peak of the
-// incremental path, and a far lower-variance number than the sampled run peak.
+// delta.
 //
-//	files   metric        before      after      delta
-//	 2500   merge-end     148.1 MB    140.6 MB   -7.5 MB  (-5.1%)
-//	 2500   run peak      ~140 MB     ~141 MB    no significant change
-//	 7000   merge-end     304.9 MB    284.9 MB   -20.0 MB (-6.6%)
-//	 7000   run peak      309.8 MB    282.7 MB   -27.1 MB (-8.7%)
-//	 7000   inc/full      1.56-1.65   1.50-1.52
+// PROVENANCE — read before quoting any of these. Only the "run peak" and
+// "inc/full" rows are reproducible from this tree: they are what
+// TestIncrementalPriorGraphPeakHeapProfile logs when run with
+// GRAFEL_INC_HEAP_MEASURE=1 and GRAFEL_INC_HEAP_FILES set to the stated file
+// count. The "merge-end" rows are marked AD-HOC: they came from a temporary
+// runtime.GC()+ReadMemStats probe hand-inserted at the last statement of the
+// merge (prior graph still reachable), which was NOT committed. Nothing in
+// this file emits them, and re-running the committed test will not reproduce
+// them. They are retained because they are the lower-variance signal for the
+// structural claim; they are not evidence this test produces.
+//
+//	files   metric              before      after      delta
+//	 2500   merge-end (AD-HOC)  148.1 MB    140.6 MB   -7.5 MB  (-5.1%)
+//	 2500   run peak            ~140 MB     ~141 MB    no significant change
+//	 7000   merge-end (AD-HOC)  304.9 MB    284.9 MB   -20.0 MB (-6.6%)
+//	 7000   run peak            309.8 MB    282.7 MB   -27.1 MB (-8.7%)
+//	 7000   inc/full            1.56-1.65   1.50-1.52
 //
 // Read the 2500-file row carefully: the merge point is NOT the run's peak at
 // that scale, so a real 7.5 MB saving at the merge moves the run peak by

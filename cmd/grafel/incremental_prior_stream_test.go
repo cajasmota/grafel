@@ -193,9 +193,11 @@ func TestMergeIncrementalPrevSource_StreamMatchesDocument(t *testing.T) {
 	}
 }
 
-// The dedupe key is the second thing the swap could silently break: it now
-// stores a digest rather than the full serialized key. Two edges that differ
-// ONLY in a property, or ONLY in ID, must remain two edges.
+// The dedupe key is the second thing the swap could silently break. It is the
+// FULL serialized key — endpoints, kind, normalized ID, then the sorted
+// property payload (a 128-bit-digest variant was tried and dropped: it saved
+// nothing measurable, see incremental_prior_graph_heap_test.go). Two edges that
+// differ ONLY in a property, or ONLY in ID, must remain two edges.
 func TestMergeIncrementalPrevSource_DedupeKeepsNearIdenticalEdges(t *testing.T) {
 	prev := &graph.Document{
 		Entities: []graph.Entity{
