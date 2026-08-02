@@ -214,7 +214,17 @@ func (l *LabelIndex) add(ki *keyInterner, i int32, id, name, qname, kind string)
 // materialize a heap copy out of doc.Entities. This is the nil-Reader fallback
 // (JSON-only load / no graph.fb) and the parity baseline for the Reader-sourced
 // build.
+//
+// A nil doc yields a usable EMPTY index rather than panicking (issue #6010): a
+// repo whose graph failed to parse carries Doc == nil and Reader == nil, and a
+// keepReader evict/revive routes it straight through rematerializeFromReader's
+// nil-Reader fallback into here. Every lookup on the result is a clean miss,
+// which is the correct answer for a repo with no graph.
 func BuildLabelIndex(doc *graph.Document) *LabelIndex {
+	if doc == nil {
+		idx, _ := newLabelIndex(0)
+		return idx
+	}
 	idx, ki := newLabelIndex(len(doc.Entities))
 	idx.doc = doc
 	for i := range doc.Entities {
