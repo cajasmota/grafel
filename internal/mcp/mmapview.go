@@ -190,14 +190,25 @@ func (v mmapRelationshipView) FromID() string { return zeroCopyString(v.r.FromId
 func (v mmapRelationshipView) ToID() string   { return zeroCopyString(v.r.ToId()) }
 func (v mmapRelationshipView) Kind() string   { return zeroCopyString(v.r.Kind()) }
 
-// ID mirrors fbRelToGraphRel: the relationship id is tunneled through the "id"
-// property (the writer stores it there), restored to rel.ID on load. "" when
-// absent.
+// ID mirrors graph.fbRelToGraphRel (#6085): identity is tunneled through the
+// reserved graph.RelationshipIDProperty slot, which the writer populates ONLY
+// when the ID is not derivable from (from, to, kind). When the slot is absent —
+// the majority of edges, plus every edge in a pre-#6085 graph.fb — the ID is
+// the derived one. Returning "" here instead would diverge from the heap view
+// for almost every relationship.
 func (v mmapRelationshipView) ID() string {
-	if id, ok := v.PropLookup("id"); ok {
+	if id, ok := v.reservedID(); ok {
 		return id
 	}
-	return ""
+	return graph.RelationshipID(v.FromID(), v.ToID(), v.Kind())
+}
+
+// reservedID reads the reserved identity slot straight off the property vector,
+// bypassing the accessors below (which hide it).
+func (v mmapRelationshipView) reservedID() (string, bool) {
+	return lookupPropertyEntry(graph.RelationshipIDProperty, v.r.PropertiesLength(), func(pe *fb.PropertyEntry, i int) bool {
+		return v.r.Properties(pe, i)
+	})
 }
 
 // PropGet returns the value for key, or "" if absent — zero-copy. Mirrors
@@ -209,15 +220,28 @@ func (v mmapRelationshipView) PropGet(key string) string {
 
 // PropLookup returns the value for key and whether present, zero-copy — a straight
 // property-vector lookup, matching Relationship.PropLookup.
+//
+// The reserved identity slot is NOT a property: graph.fbRelToGraphRel lifts it
+// out of the set on load, so every accessor here hides it too or the two views
+// disagree on PropLen/PropsSnapshot/PropRange for every salted edge (#6085).
 func (v mmapRelationshipView) PropLookup(key string) (string, bool) {
+	if key == graph.RelationshipIDProperty {
+		return "", false
+	}
 	return lookupPropertyEntry(key, v.r.PropertiesLength(), func(pe *fb.PropertyEntry, i int) bool {
 		return v.r.Properties(pe, i)
 	})
 }
 
-// PropLen returns the number of properties (incl. the tunneled "id"), matching
-// heap Relationship.PropLen (fbRelToGraphRel leaves "id" in the property set).
-func (v mmapRelationshipView) PropLen() int { return v.r.PropertiesLength() }
+// PropLen returns the number of properties, EXCLUDING the reserved identity
+// slot, matching heap Relationship.PropLen.
+func (v mmapRelationshipView) PropLen() int {
+	n := v.r.PropertiesLength()
+	if _, ok := v.reservedID(); ok {
+		n--
+	}
+	return n
+}
 
 // PropRange calls f for every key/value pair in key-sorted order, zero-copy,
 // stopping early if f returns false. Same lifetime contract as the entity view's.
@@ -226,7 +250,11 @@ func (v mmapRelationshipView) PropRange(f func(k, v string) bool) {
 	var pe fb.PropertyEntry
 	for i := 0; i < n; i++ {
 		if v.r.Properties(&pe, i) {
-			if !f(zeroCopyString(pe.Key()), zeroCopyString(pe.Value())) {
+			k := zeroCopyString(pe.Key())
+			if k == graph.RelationshipIDProperty {
+				continue
+			}
+			if !f(k, zeroCopyString(pe.Value())) {
 				return
 			}
 		}
@@ -245,8 +273,14 @@ func (v mmapRelationshipView) PropsSnapshot() map[string]string {
 	var pe fb.PropertyEntry
 	for i := 0; i < n; i++ {
 		if v.r.Properties(&pe, i) {
+			if zeroCopyString(pe.Key()) == graph.RelationshipIDProperty {
+				continue
+			}
 			out[string(pe.Key())] = string(pe.Value())
 		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

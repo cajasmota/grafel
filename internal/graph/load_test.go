@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 )
 
@@ -223,5 +225,195 @@ func TestLoadGraphFromDir_EmbeddingRefRoundTrip(t *testing.T) {
 	if handlerEnt.EmbeddingRef != "sha256:embedding-round-trip-hash" {
 		t.Errorf("EmbeddingRef: got %q want %q",
 			handlerEnt.EmbeddingRef, "sha256:embedding-round-trip-hash")
+	}
+}
+
+// TestLoadGraphFromDir_RelationshipIdentitySurvivesFBRoundTrip pins #6085:
+// graph.fb must preserve Relationship.ID for edges whose ID is NOT derivable
+// from (from, to, kind).
+//
+// The IDs below are not invented for the test — they are built with the exact
+// salting scheme of real producers, which is the contract that matters:
+//
+//	internal/engine/migration_schema_ops.go:134  RelationshipID(f,t,kind+"\x00"+op)
+//	internal/links/phantom_edges.go:149          RelationshipID(f,t,"CALLS:phantom:"+method)
+//	internal/engine/process_flow.go:475          RelationshipID(f,t,kind+":"+stepIndex)
+//	internal/graph/tests_walkup.go:161           domain-prefixed 4-tuple
+//	internal/daemon/mcp/handlers.go:177          residual edge id
+//
+// All of them store a PLAIN Kind, so all of them collide under
+// RelationshipID(from, to, kind). Asserting only that the loader reproduces
+// graph.RelationshipID would pin the loader against itself and pass while
+// three distinct edges collapse onto one identity. The assertions here are on
+// the ORIGINAL IDs the producer minted.
+func TestLoadGraphFromDir_RelationshipIdentitySurvivesFBRoundTrip(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	const from, to = "aabbccdd00000001", "aabbccdd00000002"
+	doc := makeTestDoc()
+	// One ordinary edge (ID derivable from the triple) …
+	plain := graph.Relationship{
+		ID: graph.RelationshipID(from, to, "CALLS"), FromID: from, ToID: to, Kind: "CALLS",
+	}
+	// … and three salted edges that share a single (from, to, kind) triple.
+	salted := func(op string) graph.Relationship {
+		return graph.Relationship{
+			ID:     graph.RelationshipID(from, to, "MODIFIES\x00"+op),
+			FromID: from, ToID: to, Kind: "MODIFIES",
+		}.WithProperties(map[string]string{"op": op})
+	}
+	ops := []string{"create_table", "add_column", "drop_column"}
+	doc.Relationships = []graph.Relationship{plain, salted(ops[0]), salted(ops[1]), salted(ops[2])}
+
+	wantIDs := map[string]bool{}
+	for _, r := range doc.Relationships {
+		wantIDs[r.ID] = true
+	}
+	if len(wantIDs) != 4 {
+		t.Fatalf("fixture is wrong: %d distinct IDs, want 4", len(wantIDs))
+	}
+
+	if err := fbwriter.WriteAtomic(filepath.Join(dir, "graph.fb"), doc); err != nil {
+		t.Fatalf("WriteAtomic: %v", err)
+	}
+	got, err := graph.LoadGraphFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadGraphFromDir: %v", err)
+	}
+	if len(got.Relationships) != 4 {
+		t.Fatalf("relationships after round-trip: got %d want 4", len(got.Relationships))
+	}
+	gotIDs := map[string]bool{}
+	for _, r := range got.Relationships {
+		if r.ID == "" {
+			t.Errorf("edge %s→%s (%s) lost its ID in the FB round-trip", r.FromID, r.ToID, r.Kind)
+		}
+		gotIDs[r.ID] = true
+	}
+	if len(gotIDs) != 4 {
+		t.Errorf("round-trip collapsed 4 distinct edge identities onto %d (#6085): %v", len(gotIDs), gotIDs)
+	}
+	for id := range wantIDs {
+		if !gotIDs[id] {
+			t.Errorf("producer-minted ID %q did not survive the FB round-trip", id)
+		}
+	}
+
+	// The reserved id slot is identity, not a property: a round-tripped edge
+	// must carry exactly the properties it was written with.
+	for _, r := range got.Relationships {
+		if _, leaked := r.PropLookup(graph.RelationshipIDProperty); leaked {
+			t.Errorf("edge %s leaked the reserved %q key into Properties",
+				r.ID, graph.RelationshipIDProperty)
+		}
+		if r.Kind == "MODIFIES" {
+			if op, ok := r.PropLookup("op"); !ok || !slices.Contains(ops, op) {
+				t.Errorf("edge %s lost its op property (got %q, ok=%v)", r.ID, op, ok)
+			}
+		}
+	}
+}
+
+// TestFBWriter_ReservedIDSlotOnlyForNonDerivableIDs guards the write predicate
+// itself (#6085). fbwriter persists the reserved identity slot ONLY when the ID
+// cannot be recomputed from (from, to, kind); an unsalted edge must cost zero
+// extra bytes on disk and be reconstructed by the loader instead.
+//
+// Without this, "always persist the ID" is an unguarded claim: it round-trips
+// identically, so every behavioural test still passes while the graph pays ~16
+// bytes plus a property entry on every edge in the corpus. The assertion is on
+// the RAW property-vector length, which is the only place the difference shows.
+func TestFBWriter_ReservedIDSlotOnlyForNonDerivableIDs(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	const from, to = "aabbccdd00000001", "aabbccdd00000002"
+	doc := makeTestDoc()
+	doc.Relationships = []graph.Relationship{
+		// Derivable ID: the slot must NOT be written — 1 property on disk.
+		graph.Relationship{
+			ID: graph.RelationshipID(from, to, "CALLS"), FromID: from, ToID: to, Kind: "CALLS",
+		}.WithProperties(map[string]string{"line": "12"}),
+		// Salted ID: the slot IS written — 2 properties on disk.
+		graph.Relationship{
+			ID: graph.RelationshipID(from, to, "MODIFIES\x00add_column"), FromID: from, ToID: to, Kind: "MODIFIES",
+		}.WithProperties(map[string]string{"line": "12"}),
+	}
+
+	path := filepath.Join(dir, "graph.fb")
+	if err := fbwriter.WriteAtomic(path, doc); err != nil {
+		t.Fatalf("WriteAtomic: %v", err)
+	}
+	r, err := fbreader.Open(path)
+	if err != nil {
+		t.Fatalf("fbreader.Open: %v", err)
+	}
+	defer r.Close()
+
+	if got := r.RelationshipCount(); got != 2 {
+		t.Fatalf("relationship count on disk = %d, want 2", got)
+	}
+	wantRaw := []int{1, 2} // derivable → no slot; salted → slot present
+	for i, want := range wantRaw {
+		if got := r.RelationshipAt(i).PropertiesLength(); got != want {
+			t.Errorf("rel[%d] on-disk property count = %d, want %d — the write predicate changed",
+				i, got, want)
+		}
+	}
+
+	// And the heap view of both is identical: one property, right ID.
+	loaded, err := graph.LoadGraphFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadGraphFromDir: %v", err)
+	}
+	for i, rel := range loaded.Relationships {
+		if rel.PropLen() != 1 {
+			t.Errorf("rel[%d] loaded PropLen=%d want 1 (reserved slot must not surface)", i, rel.PropLen())
+		}
+		if rel.ID != doc.Relationships[i].ID {
+			t.Errorf("rel[%d] ID=%q want %q", i, rel.ID, doc.Relationships[i].ID)
+		}
+	}
+}
+
+// TestFBWriter_ProducerSuppliedIDPropertyIsNotIdentity pins the other half of
+// the reserved-key choice (#6085): a relationship property literally called
+// "id" is an ORDINARY property. It must round-trip as one, and it must not be
+// mistaken for identity in either direction — neither swallowed into
+// Relationship.ID and deleted from the payload, nor overwritten by the writer.
+// Such relationships exist in tree (internal/mcp/mmapview_test.go:70), which is
+// why RelationshipIDProperty carries a NUL that no producer can emit.
+func TestFBWriter_ProducerSuppliedIDPropertyIsNotIdentity(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	const from, to = "aabbccdd00000001", "aabbccdd00000002"
+	saltedID := graph.RelationshipID(from, to, "MODIFIES\x00add_column")
+	doc := makeTestDoc()
+	doc.Relationships = []graph.Relationship{
+		graph.Relationship{ID: saltedID, FromID: from, ToID: to, Kind: "MODIFIES"}.
+			WithProperties(map[string]string{"id": "edge-0001", "line": "12"}),
+	}
+
+	if err := fbwriter.WriteAtomic(filepath.Join(dir, "graph.fb"), doc); err != nil {
+		t.Fatalf("WriteAtomic: %v", err)
+	}
+	got, err := graph.LoadGraphFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadGraphFromDir: %v", err)
+	}
+	if len(got.Relationships) != 1 {
+		t.Fatalf("relationships: got %d want 1", len(got.Relationships))
+	}
+	rel := got.Relationships[0]
+	if rel.ID != saltedID {
+		t.Errorf("ID=%q want %q — a producer's \"id\" property must not become identity", rel.ID, saltedID)
+	}
+	if v, ok := rel.PropLookup("id"); !ok || v != "edge-0001" {
+		t.Errorf(`PropLookup("id") = (%q,%v), want ("edge-0001",true) — the producer's property was swallowed`, v, ok)
+	}
+	if rel.PropLen() != 2 {
+		t.Errorf("PropLen=%d want 2 (id, line)", rel.PropLen())
 	}
 }
