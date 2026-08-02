@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -226,23 +227,51 @@ func TestLoadGraphFromDir_EmbeddingRefRoundTrip(t *testing.T) {
 	}
 }
 
-// TestLoadGraphFromDir_RelationshipIDSurvivesFBRoundTrip pins #6085: graph.fb
-// has no relationship id field and fbwriter stores no "id" property, so every
-// relationship used to come back from disk with an EMPTY ID. The incremental
-// merge keys its dedupe on edge identity, so ID-less prev edges made each
-// incremental run re-append edges the fresh pass had already emitted.
+// TestLoadGraphFromDir_RelationshipIdentitySurvivesFBRoundTrip pins #6085:
+// graph.fb must preserve Relationship.ID for edges whose ID is NOT derivable
+// from (from, to, kind).
 //
-// RelationshipID is a pure function of (from, to, kind) — the same expression
-// buildDocument uses to mint the ID — so the loader recomputes it. IDs minted
-// any other way are NOT recoverable from graph.fb; every producer in the
-// pipeline uses graph.RelationshipID.
-func TestLoadGraphFromDir_RelationshipIDSurvivesFBRoundTrip(t *testing.T) {
+// The IDs below are not invented for the test — they are built with the exact
+// salting scheme of real producers, which is the contract that matters:
+//
+//	internal/engine/migration_schema_ops.go:134  RelationshipID(f,t,kind+"\x00"+op)
+//	internal/links/phantom_edges.go:149          RelationshipID(f,t,"CALLS:phantom:"+method)
+//	internal/engine/process_flow.go:475          RelationshipID(f,t,kind+":"+stepIndex)
+//	internal/graph/tests_walkup.go:161           domain-prefixed 4-tuple
+//	internal/daemon/mcp/handlers.go:177          residual edge id
+//
+// All of them store a PLAIN Kind, so all of them collide under
+// RelationshipID(from, to, kind). Asserting only that the loader reproduces
+// graph.RelationshipID would pin the loader against itself and pass while
+// three distinct edges collapse onto one identity. The assertions here are on
+// the ORIGINAL IDs the producer minted.
+func TestLoadGraphFromDir_RelationshipIdentitySurvivesFBRoundTrip(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
+
+	const from, to = "aabbccdd00000001", "aabbccdd00000002"
 	doc := makeTestDoc()
-	doc.Relationships[0].ID = graph.RelationshipID(
-		doc.Relationships[0].FromID, doc.Relationships[0].ToID, doc.Relationships[0].Kind)
-	want := doc.Relationships[0].ID
+	// One ordinary edge (ID derivable from the triple) …
+	plain := graph.Relationship{
+		ID: graph.RelationshipID(from, to, "CALLS"), FromID: from, ToID: to, Kind: "CALLS",
+	}
+	// … and three salted edges that share a single (from, to, kind) triple.
+	salted := func(op string) graph.Relationship {
+		return graph.Relationship{
+			ID:     graph.RelationshipID(from, to, "MODIFIES\x00"+op),
+			FromID: from, ToID: to, Kind: "MODIFIES",
+		}.WithProperties(map[string]string{"op": op})
+	}
+	ops := []string{"create_table", "add_column", "drop_column"}
+	doc.Relationships = []graph.Relationship{plain, salted(ops[0]), salted(ops[1]), salted(ops[2])}
+
+	wantIDs := map[string]bool{}
+	for _, r := range doc.Relationships {
+		wantIDs[r.ID] = true
+	}
+	if len(wantIDs) != 4 {
+		t.Fatalf("fixture is wrong: %d distinct IDs, want 4", len(wantIDs))
+	}
 
 	if err := fbwriter.WriteAtomic(filepath.Join(dir, "graph.fb"), doc); err != nil {
 		t.Fatalf("WriteAtomic: %v", err)
@@ -251,11 +280,36 @@ func TestLoadGraphFromDir_RelationshipIDSurvivesFBRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadGraphFromDir: %v", err)
 	}
-	if len(got.Relationships) != 1 {
-		t.Fatalf("relationships: got %d want 1", len(got.Relationships))
+	if len(got.Relationships) != 4 {
+		t.Fatalf("relationships after round-trip: got %d want 4", len(got.Relationships))
 	}
-	if got.Relationships[0].ID != want {
-		t.Errorf("relationship ID after FB round-trip = %q, want %q (#6085)",
-			got.Relationships[0].ID, want)
+	gotIDs := map[string]bool{}
+	for _, r := range got.Relationships {
+		if r.ID == "" {
+			t.Errorf("edge %s→%s (%s) lost its ID in the FB round-trip", r.FromID, r.ToID, r.Kind)
+		}
+		gotIDs[r.ID] = true
+	}
+	if len(gotIDs) != 4 {
+		t.Errorf("round-trip collapsed 4 distinct edge identities onto %d (#6085): %v", len(gotIDs), gotIDs)
+	}
+	for id := range wantIDs {
+		if !gotIDs[id] {
+			t.Errorf("producer-minted ID %q did not survive the FB round-trip", id)
+		}
+	}
+
+	// The reserved id slot is identity, not a property: a round-tripped edge
+	// must carry exactly the properties it was written with.
+	for _, r := range got.Relationships {
+		if _, leaked := r.PropLookup(graph.RelationshipIDProperty); leaked {
+			t.Errorf("edge %s leaked the reserved %q key into Properties",
+				r.ID, graph.RelationshipIDProperty)
+		}
+		if r.Kind == "MODIFIES" {
+			if op, ok := r.PropLookup("op"); !ok || !slices.Contains(ops, op) {
+				t.Errorf("edge %s lost its op property (got %q, ok=%v)", r.ID, op, ok)
+			}
+		}
 	}
 }

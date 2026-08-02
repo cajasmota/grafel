@@ -268,7 +268,22 @@ func EntityID(repo, kind, name, sourceFile string) string {
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
-// RelationshipID computes a stable 16-char hex id for an edge.
+// RelationshipIDProperty is the reserved property key under which graph.fb
+// persists Relationship.ID (#6085). graph.fb has no id field, and (from, to,
+// kind) is NOT a unique key for an edge: producers deliberately mint distinct
+// IDs for edges that share a triple — migration ops salted per operation
+// (internal/engine/migration_schema_ops.go), phantom CALLS salted per HTTP
+// method (internal/links/phantom_edges.go), process/event steps salted per
+// step index — so identity cannot be recovered from the endpoints alone.
+//
+// The key is reserved: no producer emits a relationship property called "id",
+// fbwriter writes it only when the ID is not derivable from the triple, and
+// the loader strips it back out of Properties after restoring the ID. It must
+// never be read or written as an ordinary property.
+const RelationshipIDProperty = "id"
+
+// RelationshipID computes a stable 16-char hex id for an edge. It is the
+// DEFAULT identity scheme, not the only one — see RelationshipIDProperty.
 func RelationshipID(fromID, toID, kind string) string {
 	h := sha256.New()
 	h.Write([]byte(fromID))

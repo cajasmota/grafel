@@ -5357,11 +5357,13 @@ type incrementalMergeStats struct {
 //     carried edges do not dangle. external.Synthesize runs after this merge
 //     and is idempotent against entity IDs already present, so re-adding them
 //     here does not double-emit.
-//   - Restores the deterministic relationship ID on carried edges. graph.fb
-//     does not persist Relationship.ID (see fbRelToGraphRel), so prev edges
-//     arrive with an empty ID; leaving it empty defeated the dedupe below and
-//     made every incremental run append duplicates of edges the fresh pass had
-//     already emitted (#6085: the run-to-run count drift).
+//   - Dedupes carried edges against the fresh ones by (from, to, kind, ID)
+//     multiplicity. Before #6085 graph.fb persisted no relationship ID at all,
+//     so every prev edge arrived with an empty one, the dedupe never matched,
+//     and each incremental run appended duplicates of edges the fresh pass had
+//     already emitted (the run-to-run count drift). fbwriter now persists the
+//     ID; the key includes it because (from, to, kind) is NOT unique — see
+//     graph.RelationshipIDProperty for the producers that rely on that.
 //
 // The function is intentionally separate from internal/extractors.TryIncremental:
 // TryIncremental owns the daemon's fast in-place reindex (Path A), while this
@@ -5412,11 +5414,59 @@ func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedF
 
 	// Second pass: copy across every prev relationship that this run did not
 	// supersede. See the doc comment for the exact drop predicate (#6085).
-	// Dedupe is keyed on the deterministic (from, to, kind) triple rather than
-	// on Relationship.ID: graph.fb does not persist the ID, so prev edges
-	// arrive with an empty one.
+	//
+	// Dedupe key is (from, to, kind, ID, properties).
+	//
+	// The ID is load-bearing, NOT redundant: several producers deliberately
+	// mint distinct IDs for edges that share one triple (migration ops salted
+	// per operation, phantom CALLS salted per HTTP method, process/event steps
+	// salted per step index — see graph.RelationshipIDProperty), so a
+	// triple-keyed dedupe silently collapses semantically distinct edges.
+	//
+	// The properties are load-bearing too, for the upgrade path: a graph.fb
+	// written before #6085 persisted no identity at all, so those salted
+	// siblings all load with the SAME derived ID and are separable only by
+	// their payload. Keying on the payload keeps all of them.
+	//
+	// Anything left over — same endpoints, same kind, same identity, same
+	// payload — is the same edge twice, never two edges. Collapsing it is what
+	// stops the graph growing: passes that run AFTER this merge append edges
+	// that are already in the carried-forward set, and without this the
+	// duplicates compound on every incremental run (measured: +380 rows/run,
+	// unbounded).
+	//
+	// An absent ID is normalized to the derived one — exactly what
+	// LoadGraphFromDir does — so a prev Document assembled by hand keys the
+	// same way as one read off disk, and an ID-less prev edge cannot slip past
+	// the dedupe and duplicate an edge the fresh pass already emitted.
 	relKey := func(r *graph.Relationship) string {
-		return r.FromID + "\x00" + r.ToID + "\x00" + r.Kind
+		id := r.ID
+		if id == "" {
+			id = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
+		}
+		var b strings.Builder
+		b.WriteString(r.FromID)
+		b.WriteByte(0)
+		b.WriteString(r.ToID)
+		b.WriteByte(0)
+		b.WriteString(r.Kind)
+		b.WriteByte(0)
+		b.WriteString(id)
+		props := r.PropsSnapshot()
+		if len(props) > 0 {
+			keys := make([]string, 0, len(props))
+			for k := range props {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				b.WriteByte(0)
+				b.WriteString(k)
+				b.WriteByte(1)
+				b.WriteString(props[k])
+			}
+		}
+		return b.String()
 	}
 	docRelKeys := make(map[string]bool, len(doc.Relationships))
 	for k := range doc.Relationships {
@@ -5434,8 +5484,15 @@ func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedF
 			stats.relsDropped++
 			continue
 		}
+		// Mark the endpoints BEFORE the dedupe below: an edge the fresh pass
+		// already emitted still references its endpoints, and the synthetic
+		// node it points at must be carried forward for THAT edge's sake.
+		referenced[r.FromID] = true
+		referenced[r.ToID] = true
 		key := relKey(&r)
 		if docRelKeys[key] {
+			// Already in the merged graph — either emitted by this run's
+			// extraction, or an exact duplicate row earlier in prev.
 			continue
 		}
 		docRelKeys[key] = true
@@ -5444,8 +5501,6 @@ func mergeIncrementalPrevDoc(doc *graph.Document, prev *graph.Document, changedF
 		}
 		doc.Relationships = append(doc.Relationships, r)
 		stats.relsAdded++
-		referenced[r.FromID] = true
-		referenced[r.ToID] = true
 	}
 
 	// Third pass: re-attach the source-less synthetic endpoints that surviving

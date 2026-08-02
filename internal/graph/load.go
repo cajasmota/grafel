@@ -653,32 +653,42 @@ func fbRelToGraphRel(r *fb.Relationship, si *stringInterner) Relationship {
 	// fbEntityToGraphEntity above — the FB vector is already key-sorted.
 	n := r.PropertiesLength()
 	var props []propKV
+	// #6085 — the reserved RelationshipIDProperty slot carries the edge's ID
+	// when it is not derivable from (from, to, kind). It is identity, not a
+	// property: lift it out here so a round-tripped Relationship carries
+	// exactly the properties fbwriter was handed.
+	storedID := ""
 	if n > 0 {
 		props = make([]propKV, 0, n)
 		var pe fb.PropertyEntry
 		for i := 0; i < n; i++ {
-			if r.Properties(&pe, i) {
-				props = append(props, propKV{K: si.intern(pe.Key()), V: string(pe.Value())})
+			if !r.Properties(&pe, i) {
+				continue
 			}
+			k := si.intern(pe.Key())
+			if k == RelationshipIDProperty {
+				storedID = string(pe.Value())
+				continue
+			}
+			props = append(props, propKV{K: k, V: string(pe.Value())})
 		}
 	}
 	rel := Relationship{
+		ID:     storedID,
 		FromID: si.intern(r.FromId()),
 		ToID:   si.intern(r.ToId()),
 		Kind:   si.intern(r.Kind()),
 	}
 	rel.properties = props
-	// Restore the ID from Properties if the writer stored it.
-	if id, ok := rel.PropLookup("id"); ok {
-		rel.ID = id
-	}
-	// #6085 — graph.fb has no id field and fbwriter.buildRelationship stores
-	// no "id" property, so every relationship used to come back from disk with
-	// an EMPTY ID. RelationshipID is a pure function of (from, to, kind) — the
-	// exact expression buildDocument used when it minted the ID — so recompute
-	// it here rather than persisting a redundant 16-byte string per edge. Edge
-	// identity is what the incremental merge dedupes on; without it each
-	// incremental run re-appended edges the fresh pass had already emitted.
+	// No stored ID means one of two things, and both recompute correctly:
+	// the writer omitted it because ID == RelationshipID(from, to, kind), or
+	// the file predates #6085 (graph.fb persisted no identity at all, so every
+	// edge loaded with an EMPTY ID — a broken key for every consumer, and the
+	// reason each incremental run re-appended edges the fresh pass had already
+	// emitted). On a pre-#6085 file the salted producers' edges are genuinely
+	// unrecoverable and collapse onto one derived ID; the incremental merge
+	// therefore dedupes on MULTIPLICITY, not on key presence, so colliding rows
+	// still survive. One rewrite restores real identity.
 	if rel.ID == "" {
 		rel.ID = RelationshipID(rel.FromID, rel.ToID, rel.Kind)
 	}

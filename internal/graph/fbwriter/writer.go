@@ -239,7 +239,28 @@ func buildRelationship(b *flatbuffers.Builder, r *graph.Relationship) flatbuffer
 	fromOff := b.CreateSharedString(r.FromID)
 	toOff := b.CreateSharedString(r.ToID)
 	kindOff := b.CreateSharedString(r.Kind)
-	propsVec := buildPropertyVector(b, r.PropsSnapshot())
+	props := r.PropsSnapshot()
+	// #6085 — persist relationship identity. graph.fb has no id field, so a
+	// round-trip used to return every edge with an EMPTY ID, and (from,to,kind)
+	// is NOT a key: several producers deliberately mint distinct IDs for edges
+	// that share a triple (migration ops salted per operation, phantom CALLS
+	// salted per HTTP method, process/event steps salted per step index). Those
+	// edges are semantically distinct and must stay distinct across a reload.
+	//
+	// The ID is stored as a reserved "id" property (no schema change, no format
+	// bump — the loader strips it back out, so a round-tripped Relationship has
+	// exactly the properties it was written with). It is written ONLY when the
+	// ID is not derivable from (from, to, kind), so the common unsalted edge
+	// costs nothing on disk and the loader recomputes it instead.
+	if r.ID != "" && r.ID != graph.RelationshipID(r.FromID, r.ToID, r.Kind) {
+		withID := make(map[string]string, len(props)+1)
+		for k, v := range props {
+			withID[k] = v
+		}
+		withID[graph.RelationshipIDProperty] = r.ID
+		props = withID
+	}
+	propsVec := buildPropertyVector(b, props)
 	fb.RelationshipStart(b)
 	fb.RelationshipAddFromId(b, fromOff)
 	fb.RelationshipAddToId(b, toOff)
