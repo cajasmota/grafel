@@ -16,6 +16,7 @@ package install_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,14 +142,29 @@ func newDoctorTestEnv(t *testing.T) *doctorTestEnv {
 	}
 }
 
-func runDoctor(t *testing.T, env *doctorTestEnv, port int) *install.DoctorReport {
+// daemonDownProbe stands in for a daemon that is not running — the state every
+// test in this file wants for the daemon check.
+//
+// It replaces the old `runDoctor(t, env, 1)` "port 1 is non-routable" premise,
+// which became vacuous when the daemon check moved off HTTP (#6072): the port
+// argument no longer reached the daemon check at all, so these tests were
+// passing for a reason unrelated to what they claimed. Worse, with no seam they
+// dialled whatever real socket daemon.DefaultLayout() resolved to — isolated on
+// macOS only by t.Setenv("HOME"), and not at all on Linux with XDG_RUNTIME_DIR
+// set, where a developer running a live grafel daemon saw the daemon check come
+// back Warning (version mismatch vs the fake v1.0.0-test) instead of Critical.
+func daemonDownProbe() (install.ProbedVersion, error) {
+	return install.ProbedVersion{}, errors.New("daemon not running: socket missing")
+}
+
+func runDoctor(t *testing.T, env *doctorTestEnv, probe install.DaemonVersionProbeFunc) *install.DoctorReport {
 	t.Helper()
 	opts := install.DoctorOptions{
-		StatePath:        env.statePath,
-		ClaudeConfigDirs: []string{env.claudeJSON},
-		DaemonPort:       port,
-		DaemonTimeout:    200 * time.Millisecond,
-		SkillsDir:        env.skillsDir,
+		StatePath:          env.statePath,
+		ClaudeConfigDirs:   []string{env.claudeJSON},
+		DaemonTimeout:      200 * time.Millisecond,
+		ProbeDaemonVersion: probe,
+		SkillsDir:          env.skillsDir,
 	}
 	report, err := install.RunDoctor(opts)
 	if err != nil {
@@ -170,13 +186,12 @@ func findCheck(report *install.DoctorReport, surface string) *install.CheckResul
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 // TestDoctorHappyPath: clean install state, daemon down, all file checks pass.
-// Daemon will be unreachable (we use port 0 or a closed port) — the daemon
-// check is Critical so OK will be false, but CLI + skills + MCP should pass.
-// We verify those surfaces individually.
+// The injected probe reports the daemon as down, so the daemon check is
+// Critical and report.OK is false — but CLI + skills + MCP + gitignore must all
+// pass. We verify those surfaces individually.
 func TestDoctorHappyPath_NoLiveDaemon(t *testing.T) {
 	env := newDoctorTestEnv(t)
-	// Use port 1 — guaranteed unreachable without root.
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	// CLI check must pass.
 	cli := findCheck(report, "cli")
@@ -232,7 +247,7 @@ func TestDoctorCLITamper(t *testing.T) {
 		t.Fatalf("tamper binary: %v", err)
 	}
 
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	cli := findCheck(report, "cli")
 	if cli == nil {
@@ -269,7 +284,7 @@ func TestDoctorMissingCLIRecordCritical(t *testing.T) {
 		t.Fatalf("write state: %v", err)
 	}
 
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 	cli := findCheck(report, "cli")
 	if cli == nil {
 		t.Fatal("cli check missing")
@@ -292,7 +307,7 @@ func TestDoctorSkillTamper(t *testing.T) {
 		t.Fatalf("tamper SKILL.md: %v", err)
 	}
 
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	skillSurface := "skills/" + env.skillName
 	skill := findCheck(report, skillSurface)
@@ -329,7 +344,7 @@ func TestDoctorSkillMissingFile(t *testing.T) {
 		t.Fatalf("remove SKILL.md: %v", err)
 	}
 
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	skillSurface := "skills/" + env.skillName
 	skill := findCheck(report, skillSurface)
@@ -350,12 +365,18 @@ func TestDoctorSkillMissingFile(t *testing.T) {
 	}
 }
 
-// TestDoctorDaemonOffline: daemon not running → check reports unreachable cleanly (no panic).
+// TestDoctorDaemonOffline: daemon not running → check reports unreachable
+// cleanly (no panic), as Critical rather than a version Warning.
+//
+// The premise is now the injected probe's failure, not a port number. It used
+// to be "port 1 is non-routable without root", which stopped meaning anything
+// once the daemon check moved to the RPC socket (#6072) — RunDoctor never
+// passed the port to it again, so this test was asserting Critical while the
+// real determinant was whatever socket happened to exist on the machine.
 func TestDoctorDaemonOffline(t *testing.T) {
 	env := newDoctorTestEnv(t)
 
-	// Port 1 is non-routable without root — will fail immediately.
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	daemon := findCheck(report, "daemon")
 	if daemon == nil {
@@ -369,6 +390,11 @@ func TestDoctorDaemonOffline(t *testing.T) {
 	}
 	if len(daemon.Drift) == 0 {
 		t.Error("daemon check should report drift message")
+	}
+	// The drift must come from the probe we injected — proof the seam is
+	// actually wired, not that some ambient socket produced a similar verdict.
+	if joined := strings.Join(daemon.Drift, " "); !strings.Contains(joined, "socket missing") {
+		t.Errorf("daemon drift %q does not carry the injected probe error", joined)
 	}
 
 	// report.OK can be false (daemon critical) — that's expected.
@@ -386,7 +412,7 @@ func TestDoctorMCPDrift(t *testing.T) {
 		t.Fatalf("overwrite .claude.json: %v", err)
 	}
 
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	mcp := findCheck(report, "mcp")
 	if mcp == nil {
@@ -406,7 +432,7 @@ func TestDoctorGitignoreMissing(t *testing.T) {
 		t.Fatalf("overwrite .gitignore: %v", err)
 	}
 
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	gitSurface := "gitignore/" + filepath.Base(env.gitRepo)
 	git := findCheck(report, gitSurface)
@@ -436,7 +462,7 @@ func TestDoctorStaleStagingDirs(t *testing.T) {
 		t.Fatalf("chtimes: %v", err)
 	}
 
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	staging := findCheck(report, "staging")
 	if staging == nil {
@@ -482,7 +508,7 @@ func TestDoctorMissingInstallJSON(t *testing.T) {
 // TestDoctorJSONOutput: --json output is valid JSON with schema_version=1.
 func TestDoctorJSONOutput(t *testing.T) {
 	env := newDoctorTestEnv(t)
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	// Marshal to JSON.
 	b, err := json.Marshal(report)
@@ -512,7 +538,7 @@ func TestDoctorJSONOutput(t *testing.T) {
 // TestDoctorJSONSchema: verify required fields are present and stable.
 func TestDoctorJSONSchema(t *testing.T) {
 	env := newDoctorTestEnv(t)
-	report := runDoctor(t, env, 1)
+	report := runDoctor(t, env, daemonDownProbe)
 
 	b, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {

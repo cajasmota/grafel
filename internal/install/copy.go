@@ -220,19 +220,87 @@ type DaemonVersionProbeFunc func() (ProbedVersion, error)
 // implausible response is reported as an error ("version unknown") rather
 // than silently treated as a match.
 func defaultDaemonVersionProbe() (ProbedVersion, error) {
-	layout, err := daemon.DefaultLayout()
-	if err != nil {
-		return ProbedVersion{}, fmt.Errorf("resolve daemon layout: %w", err)
+	return boundedDaemonVersionProbe(defaultDaemonProbeTimeout)()
+}
+
+// defaultDaemonProbeTimeout bounds a single Ping round-trip. This is a local
+// Unix socket answering a no-op RPC, so 2s is enormously generous — it matches
+// the dial budget DialPath already applies.
+const defaultDaemonProbeTimeout = 2 * time.Second
+
+// boundedDaemonVersionProbe returns a DaemonVersionProbeFunc that gives up
+// after timeout instead of blocking forever.
+//
+// The timeout is load-bearing, not defensive padding (#6072 review, H-1).
+// dclient.DialPath bounds only the DIAL (2s). Client.Ping sets no deadline,
+// and neither does net/rpc/jsonrpc — there is no SetDeadline anywhere on that
+// path. So a daemon that ACCEPTS the connection and then answers nothing — the
+// wedged state, which is exactly what someone runs `grafel doctor` to diagnose
+// — blocked the caller indefinitely. A daemon that is merely DOWN was never
+// the problem: os.Stat on the missing socket fails instantly.
+// internal/daemon/pidfile.go:51 is this codebase's own precedent for pairing a
+// dial timeout with a conn deadline.
+func boundedDaemonVersionProbe(timeout time.Duration) DaemonVersionProbeFunc {
+	return func() (ProbedVersion, error) {
+		layout, err := daemon.DefaultLayout()
+		if err != nil {
+			return ProbedVersion{}, fmt.Errorf("resolve daemon layout: %w", err)
+		}
+		return probeDaemonVersionWithin(timeout, layout.SocketPath)
 	}
-	c, err := dclient.DialPath(layout.SocketPath)
+}
+
+// probeDaemonVersionWithin dials socketPath and Pings it, giving up after
+// timeout. Split out from boundedDaemonVersionProbe so tests can point it at a
+// stub socket without touching daemon.DefaultLayout / the real environment.
+func probeDaemonVersionWithin(timeout time.Duration, socketPath string) (ProbedVersion, error) {
+	if timeout <= 0 {
+		timeout = defaultDaemonProbeTimeout
+	}
+	c, err := dclient.DialPath(socketPath)
 	if err != nil {
 		return ProbedVersion{}, err
 	}
-	defer func() { _ = c.Close() }()
-	reply, err := c.Ping()
-	if err != nil {
-		return ProbedVersion{}, err
+
+	type pingResult struct {
+		reply proto.PingReply
+		err   error
 	}
+	// Buffered so the goroutine can always deliver and exit, even when this
+	// function has already returned down the timeout branch.
+	done := make(chan pingResult, 1)
+	go func() {
+		reply, perr := c.Ping()
+		done <- pingResult{reply: reply, err: perr}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case r := <-done:
+		_ = c.Close()
+		if r.err != nil {
+			return ProbedVersion{}, r.err
+		}
+		return versionFromPingReply(r.reply)
+	case <-timer.C:
+		// Closing the client is what makes this a REAL timeout rather than a
+		// leaked goroutine: with no read deadline available through net/rpc,
+		// tearing down the connection is the only way to abort the in-flight
+		// Ping, and it lets the goroutine above return.
+		_ = c.Close()
+		return ProbedVersion{}, fmt.Errorf(
+			"daemon accepted the connection but did not answer Ping within %s (wedged daemon at %s)",
+			timeout, socketPath)
+	}
+}
+
+// versionFromPingReply validates a Ping reply and reduces it to a
+// ProbedVersion. looksLikeVersion is applied here so an implausible response
+// is reported as an error ("version unknown") rather than silently treated as
+// a match.
+func versionFromPingReply(reply proto.PingReply) (ProbedVersion, error) {
 	display := strings.TrimSpace(reply.Version)
 	if !looksLikeVersion(display) {
 		return ProbedVersion{}, fmt.Errorf("daemon reported an implausible version %q", reply.Version)

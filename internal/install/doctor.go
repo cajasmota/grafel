@@ -108,9 +108,21 @@ type DoctorOptions struct {
 	// the exported options surface and is still the port other tooling reports.
 	DaemonPort int
 
-	// DaemonTimeout is the maximum wait for an HTTP daemon probe.
-	// Defaults to 2 seconds. See DaemonPort re: #6072.
+	// DaemonTimeout bounds the daemon version probe. Defaults to 2 seconds.
 	DaemonTimeout time.Duration
+
+	// ProbeDaemonVersion queries the running daemon's version. Defaults to a
+	// DaemonTimeout-bounded RPC-socket probe.
+	//
+	// Injectable for the same reason install.Options.ProbeDaemonVersion is
+	// (copy.go/update.go): without a seam, every RunDoctor test dials whatever
+	// real socket daemon.DefaultLayout() resolves to on the developer's
+	// machine. On macOS a test's t.Setenv("HOME", tmp) happens to isolate that;
+	// on Linux with XDG_RUNTIME_DIR set (internal/daemon/paths_unix.go) HOME is
+	// not consulted at all, so a developer with a live daemon got a real
+	// version comparison against the test's fake install.json and the daemon
+	// checks failed. CI passed only because CI runs no daemon.
+	ProbeDaemonVersion DaemonVersionProbeFunc
 
 	// SkillsDir is the primary Claude skills directory.
 	// When empty it is derived from ClaudeConfigDirs or auto-detected from HOME.
@@ -139,6 +151,9 @@ func (o *DoctorOptions) applyDefaults() error {
 	}
 	if o.DaemonTimeout == 0 {
 		o.DaemonTimeout = 2 * time.Second
+	}
+	if o.ProbeDaemonVersion == nil {
+		o.ProbeDaemonVersion = boundedDaemonVersionProbe(o.DaemonTimeout)
 	}
 	return nil
 }
@@ -196,7 +211,7 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 	report.Checks = append(report.Checks, checkCLI(state))
 
 	// ── Check 2: Daemon version via the RPC socket (#6072) ──────────────────
-	report.Checks = append(report.Checks, checkDaemon(state, defaultDaemonVersionProbe))
+	report.Checks = append(report.Checks, checkDaemon(state, opts.ProbeDaemonVersion))
 
 	// ── Check 2b: Engine liveness + version skew (ADR-0024 PR5/PR6, epic #5729) ──
 	// Monolith-aware: when the escape hatch (GRAFEL_SPLIT_MODE=0) puts the
