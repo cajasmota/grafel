@@ -61,6 +61,16 @@ const Version = 1
 // manifestFile is the name of the per-repo manifest inside the state directory.
 const manifestFile = "file-index.json"
 
+// ManifestFileName is the exported basename of the per-repo diff manifest.
+// Callers outside this package that must COPY or REMOVE the manifest as an
+// artifact — rather than read it through LoadManifest — need the basename:
+// #5964's worktree graph seeding copies the parent ref's manifest alongside
+// its graph so the child's first incremental pass has the parent's baseline.
+// Seeding a graph without its manifest is silently wrong, so the coupling is
+// named here rather than re-spelled as a literal at each call site (it was
+// already re-spelled once, in internal/daemon/state_migrate.go).
+const ManifestFileName = manifestFile
+
 // FileEntry holds the hash + metadata for one indexed source file.
 type FileEntry struct {
 	SHA256 string `json:"sha256"`
@@ -335,6 +345,38 @@ func FilterWithGit(absRepo string, relPaths []string, manifest *Manifest) (chang
 	if err != nil || gitChanged == nil {
 		// git unavailable or repo is not a git repo — fall back to hash comparison.
 		return Filter(absRepo, relPaths, manifest)
+	}
+
+	// HEAD-ADVANCE UNION (#5964).
+	//
+	// GitChangedFiles only ever answers "working tree vs the CURRENT HEAD".
+	// Trusting it alone is sound only while the manifest was written at the
+	// commit the repo is on NOW. Whenever HEAD has moved since — a
+	// fetch+reset / checkout / pull, or a worktree state dir SEEDED with its
+	// parent ref's manifest (#5964) — every file that differs by a commit
+	// looks clean to that diff and is never hashed, so its stale entities
+	// survive into the graph silently.
+	//
+	// So union in the commit-RANGE diff manifest.GitCommit..HEAD. One extra
+	// bounded `git diff`, and only when HEAD actually moved. When the range
+	// cannot be computed at all — manifest.GitCommit unreachable after a gc,
+	// shallow clone or history rewrite — we must NOT read that as "nothing
+	// changed": fall back to the full hash comparison, which is slower but
+	// cannot be silently stale.
+	//
+	// internal/extractors.TryIncremental performs the same union for its own
+	// path (#5710). Doing it here covers Index()+WithIncremental too, which
+	// had no HEAD-advance handling at all.
+	if manifest != nil && manifest.GitCommit != "" {
+		if head := headCommit(absRepo); head != "" && head != manifest.GitCommit {
+			since, serr := GitChangedFilesSince(absRepo, manifest.GitCommit)
+			if serr != nil {
+				return Filter(absRepo, relPaths, manifest)
+			}
+			for rel := range since {
+				gitChanged[rel] = true
+			}
+		}
 	}
 
 	// git-aware path: files reported by git go through hash-based check;

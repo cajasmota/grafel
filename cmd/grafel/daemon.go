@@ -829,26 +829,7 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 		// Issue #2406: capture extractorCfg at construction time so the closure
 		// owns an immutable pointer — no package-level singleton needed.
 		SchedulerIncremental: func(ctx context.Context, repoPath string, ref string) sched.IncrementalResult {
-			// Issue #5719: ref can be "" (unknown at enqueue time). Resolve it
-			// to HEAD via ResolveIncrementalStateDir instead of encoding the
-			// empty ref as the "refs/_unknown/" sentinel — otherwise the
-			// incremental pass can never find the real graph and falls back
-			// forever.
-			stateDir := daemon.ResolveIncrementalStateDir(repoPath, ref)
-			// Use the caller-supplied ctx (the scheduler's shutdownCtx) so that
-			// daemon SIGTERM cancels any in-flight incremental subprocess —
-			// matching the fix applied to runIndex in issue #2176/#2491.
-			// Fixes issue #2495.
-			res := extractors.TryIncremental(ctx, repoPath, stateDir, nil, &extractorCfg)
-			if res.Done {
-				invalidateAfterIndex(repoPath)
-				tierAfterIndex(repoPath, ref)
-			}
-			return sched.IncrementalResult{
-				Done:           res.Done,
-				FallbackReason: res.FallbackReason,
-				ChangedFiles:   res.ChangedFiles,
-			}
+			return daemonSchedulerIncremental(ctx, repoPath, ref, &extractorCfg)
 		},
 		// #5710 follow-up: cheap entity count for the "indexer: completed" log so
 		// a silent 0-entity completion (empty-graph store recreation) is visible.
@@ -1234,18 +1215,153 @@ func daemonWorktreeParents() []worktree.ParentRepo {
 // reindex workloads AND the per-child GOMAXPROCS cap (default 2) bounds CPU.
 // The in-process path is the OPT-OUT (GRAFEL_SUBPROCESS_INDEXER=0); see
 // sched.SubprocessIndexEnabled for the env gate.
+// daemonSchedulerIncremental is the scheduler's S3 incremental-reindex
+// callback, lifted out of the config literal so it can be driven directly by a
+// test. Keeping it inline made the #5964 seed-verification guard below
+// unreachable from any test: deleting the guard left every suite green.
+func daemonSchedulerIncremental(ctx context.Context, repoPath string, ref string, extractorCfg *extractor.ExtractorConfig) sched.IncrementalResult {
+	// Issue #5719: ref can be "" (unknown at enqueue time). Resolve it to
+	// HEAD via ResolveIncrementalStateDir instead of encoding the empty ref
+	// as the "refs/_unknown/" sentinel — otherwise the incremental pass can
+	// never find the real graph and falls back forever.
+	stateDir := daemon.ResolveIncrementalStateDir(repoPath, ref)
+	// #5964: a worktree state dir may have been SEEDED from its parent ref's
+	// graph. Before that seed is consumed, prove it is still the generation it
+	// claims to be — a seed whose graph and diff manifest straddle two parent
+	// generations makes files that really differ read as unchanged, so their
+	// stale entities survive into the child's graph. That is worse than slow:
+	// it is invisible. On any failed check the seed is discarded (leaving
+	// nothing resolvable, so a full index runs) and the reason is reported,
+	// never swallowed.
+	if reason, ok := verifyOrDiscardSeed(stateDir); !ok {
+		return sched.IncrementalResult{Done: false, FallbackReason: "seed_" + reason}
+	}
+	// Use the caller-supplied ctx (the scheduler's shutdownCtx) so that daemon
+	// SIGTERM cancels any in-flight incremental subprocess — matching the fix
+	// applied to runIndex in issue #2176/#2491. Fixes issue #2495.
+	res := extractors.TryIncremental(ctx, repoPath, stateDir, nil, extractorCfg)
+	if res.Done {
+		invalidateAfterIndex(repoPath)
+		tierAfterIndex(repoPath, ref)
+	}
+	return sched.IncrementalResult{
+		Done:           res.Done,
+		FallbackReason: res.FallbackReason,
+		ChangedFiles:   res.ChangedFiles,
+	}
+}
+
+// verifyOrDiscardSeed re-checks any #5964 worktree seed sitting in stateDir
+// before a pass consumes it. It returns (reason, false) when the seed could
+// not be trusted — the caller must then run a FULL index and surface the
+// reason — and ("", true) otherwise, which includes the overwhelming common
+// case of a state dir that was never seeded at all.
+//
+// On success the stamp is consumed immediately: from here the pass owns the
+// dir and will write a new generation into it, so a stamp left behind would
+// make the NEXT verification report generation_moved against the child's own
+// legitimate graph.
+func verifyOrDiscardSeed(stateDir string) (string, bool) {
+	stamp, reason, _ := daemon.VerifySeededGraph(stateDir)
+	// Branch on the VERDICT, not on `reason != ""`. A superseded stamp — the
+	// dir's pointer already names a generation newer than the seed, i.e. the
+	// child built its own graph over it — is benign and must not be discarded,
+	// or a full corpus reindex the child paid for is thrown away.
+	if !daemon.SeedVerdictIsBenign(reason) {
+		if derr := daemon.DiscardSeed(stateDir); derr != nil {
+			slog.Default().Warn("worktree: failed to discard an untrusted seed",
+				"state_dir", stateDir, "reason", string(reason), "err", derr)
+		}
+		slog.Default().Warn("worktree: seeded graph rejected — running a full index",
+			"state_dir", stateDir,
+			"reason", string(reason),
+			"parent_ref", seedStampParentRef(stamp),
+			"parent_generation", seedStampParentGen(stamp))
+		return string(reason), false
+	}
+	if stamp != nil {
+		if cerr := daemon.ConsumeSeedStamp(stateDir); cerr != nil {
+			slog.Default().Warn("worktree: failed to consume seed stamp",
+				"state_dir", stateDir, "err", cerr)
+		}
+		if reason == daemon.SeedFallbackSuperseded {
+			slog.Default().Info("worktree: stale seed stamp cleared — the child's own graph is newer",
+				"state_dir", stateDir,
+				"parent_ref", stamp.ParentRef,
+				"seed_generation", stamp.ParentPointer)
+		} else {
+			slog.Default().Info("worktree: seeded graph verified — indexing the delta only",
+				"state_dir", stateDir,
+				"parent_ref", stamp.ParentRef,
+				"parent_generation", stamp.ParentPointer,
+				"repo_tag", stamp.RepoTag)
+		}
+	}
+	return "", true
+}
+
+func seedStampParentRef(s *daemon.SeedStamp) string {
+	if s == nil {
+		return ""
+	}
+	return s.ParentRef
+}
+
+func seedStampParentGen(s *daemon.SeedStamp) string {
+	if s == nil {
+		return ""
+	}
+	return s.ParentPointer
+}
+
+// resolveIndexRepoTag returns the repo tag an index of stateDir's repo must be
+// pinned to, or "" to keep Index()'s default (filepath.Base(repoPath)).
+//
+// #5964: graph.EntityID hashes the repo tag FIRST, and for a worktree the
+// default is the WORKTREE directory's own name, which disagrees with the
+// parent's slug. A full index of a worktree must use the same tag a seeded
+// index would, or the two graphs have different entity ids: parity between
+// them becomes untestable and a later seed can never be correct. Empty for
+// every non-worktree repo, preserving today's default exactly.
+//
+// A separate named seam so a test can pin the forwarding without indexing.
+func resolveIndexRepoTag(stateDir string) string {
+	return daemon.ReadRepoTagPin(stateDir)
+}
+
 func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) error {
 	var err error
+	stateDir := daemon.ResolveIncrementalStateDir(repoPath, ref)
+	repoTag := resolveIndexRepoTag(stateDir)
+	// #5964: a FULL index also consumes a seeded state dir — it merges nothing,
+	// it simply overwrites — and it is the ONLY path taken when incremental
+	// reindexing is disabled (GRAFEL_INCREMENTAL_REINDEX=0), where the
+	// scheduler never calls the incremental callback that would otherwise
+	// consume the stamp. Left behind, that stamp goes stale the moment this
+	// index writes its own generation. Consuming it here closes the second of
+	// the two paths that can reach a seeded dir.
+	defer func() {
+		if cerr := daemon.ConsumeSeedStamp(stateDir); cerr != nil {
+			slog.Default().Warn("worktree: failed to consume seed stamp after a full index",
+				"state_dir", stateDir, "err", cerr)
+		}
+	}()
 	if sched.SubprocessIndexEnabled() {
 		// S5 path: fork-exec `grafel index-internal` for memory isolation.
-		err = sched.RunSubprocessIndex(ctx, repoPath, ref, []string{"graph-algo"}, nil, slog.Default())
+		var opts *sched.SubprocessIndexOptions
+		if repoTag != "" {
+			// RepoSlug is forwarded to the child as --repo-tag. No publisher is
+			// set, so no other subprocess flag changes.
+			opts = &sched.SubprocessIndexOptions{RepoSlug: repoTag}
+		}
+		err = sched.RunSubprocessIndex(ctx, repoPath, ref, []string{"graph-algo"}, opts, slog.Default())
 	} else {
 		// In-process path (opt-out via GRAFEL_SUBPROCESS_INDEXER=0).
 		// ADR-0016 flip-day (#808): graph.fb is always written by default now.
 		// ref is stored via StateDirForRepo → StateDirForRepoRef at write time;
 		// the indexer itself resolves the correct path via gitmeta at index time.
 		_ = ref
-		err = Index(repoPath, "", "", []string{"graph-algo"}, false, false)
+		err = Index(repoPath, "", repoTag, []string{"graph-algo"}, false, false)
 	}
 	// Drop the cached mmap so the next MCP query reopens against the
 	// freshly written graph.fb. Done on both success and failure paths
