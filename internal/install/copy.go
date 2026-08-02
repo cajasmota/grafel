@@ -32,6 +32,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	dclient "github.com/cajasmota/grafel/internal/daemon/client"
+	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/daemon/service"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/skilllink"
