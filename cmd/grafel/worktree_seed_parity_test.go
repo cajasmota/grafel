@@ -373,6 +373,89 @@ func TestWorktreeSeedConsumedByTheDaemonPath(t *testing.T) {
 	}
 }
 
+// TestWorktreeSeedParity_PathAOnASeededBaseMatchesPathAOnASelfBuiltBase is the
+// parity gate for the path users actually take.
+//
+// A naive "Path A seeded vs full scratch index" compare would be noisy: Path A
+// is an in-place patch that re-runs a reduced pass set, so its output is not
+// expected to equal a full pipeline run. That noise is cancelled by running
+// Path A on BOTH sides and varying only the thing under test — where the base
+// graph came from:
+//
+//	X: worktree indexed from scratch at parent content, then the delta applied,
+//	   then Path A  -> base graph built by this worktree itself
+//	Y: worktree SEEDED from the parent, same delta, then Path A
+//	   -> base graph byte-copied from the parent
+//
+// Both worktrees hold identical content and are pinned to the same repo tag, so
+// their entity ids coincide. Any difference in the resulting sets is
+// attributable to seeding — including a merge that drops carry-forward edges,
+// which is what the entity-only assertions elsewhere cannot see.
+func TestWorktreeSeedParity_PathAOnASeededBaseMatchesPathAOnASelfBuiltBase(t *testing.T) {
+	if testing.Short() {
+		t.Skip("indexes fixture repos; skipped under -short")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemonroot"))
+
+	parentPath := filepath.Join(root, "parent")
+	const parentRef = "release/2026-07"
+	writeSeedFixtureRepo(t, parentPath, parentRef)
+	parentSD := daemon.StateDirForRepo(parentPath)
+	if err := Index(parentPath, "", parityRepoTag, []string{"graph-algo"}, false, false,
+		WithIncremental(parentSD)); err != nil {
+		t.Fatalf("index parent: %v", err)
+	}
+
+	// --- X: self-built base ---
+	xPath := filepath.Join(root, "wt-selfbuilt")
+	addFixtureWorktree(t, parentPath, xPath, "feat/selfbuilt")
+	xSD := daemon.StateDirForRepo(xPath)
+	if err := Index(xPath, "", parityRepoTag, []string{"graph-algo"}, false, false,
+		WithIncremental(xSD)); err != nil {
+		t.Fatalf("index worktree X at parent content: %v", err)
+	}
+	applyChildDelta(t, xPath)
+	resX := extractors.TryIncremental(context.Background(), xPath, xSD, nil, nil)
+	if !resX.Done {
+		t.Fatalf("Path A fell back on the self-built base (%q) — the control arm did not run", resX.FallbackReason)
+	}
+	digX := digestOf(t, xSD)
+
+	// --- Y: seeded base ---
+	yPath := filepath.Join(root, "wt-seeded")
+	addFixtureWorktree(t, parentPath, yPath, "feat/seeded")
+	applyChildDelta(t, yPath)
+	ySD := daemon.StateDirForRepo(yPath)
+	out := daemon.SeedWorktreeGraph(daemon.SeedRequest{
+		ParentPath: parentPath, ParentRef: parentRef,
+		ChildPath: yPath, ChildRef: "feat/seeded", RepoTag: parityRepoTag,
+	})
+	if !out.Seeded {
+		t.Fatalf("seed failed: %s — %s", out.Reason, out.Detail)
+	}
+	if _, reason, err := daemon.VerifySeededGraph(ySD); err != nil || reason != "" {
+		t.Fatalf("verify: reason=%q err=%v", reason, err)
+	}
+	resY := extractors.TryIncremental(context.Background(), yPath, ySD, nil, nil)
+	if !resY.Done {
+		t.Fatalf("Path A fell back on the seeded base (%q)", resY.FallbackReason)
+	}
+	digY := digestOf(t, ySD)
+
+	if len(digX.entities) == 0 || len(digX.rels) == 0 {
+		t.Fatal("control arm produced an empty graph — the fixture proves nothing")
+	}
+	t.Logf("Path A control: %d entities / %d rels (changed=%d); seeded: %d entities / %d rels (changed=%d)",
+		len(digX.entities), len(digX.rels), resX.ChangedFiles,
+		len(digY.entities), len(digY.rels), resY.ChangedFiles)
+
+	assertParity(t, digX, digY, "pathA-seeded-vs-pathA-selfbuilt")
+}
+
 func digestHasName(d semanticDigest, name string) bool {
 	for k := range d.entities {
 		parts := strings.Split(k, "|")

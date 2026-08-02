@@ -65,6 +65,99 @@ func seedableParent(t *testing.T, stateDir string, gen uint64, body string) {
 	}
 }
 
+// WIRING GUARD. Everything below this comment tests seedWorktreeOnActivate
+// directly. This one drives the handler the engine plane actually installs as
+// worktree.Watcher.OnActivate, so that deleting the seeding call from the
+// activation path — the mutant that removes the entire feature and leaves
+// every suite green — fails here.
+//
+// It asserts observable behaviour only: a seeded graph on disk, and that the
+// activation's pre-existing duties (watch + enqueue) still happen. No source
+// scanning: an import alias or a call moved behind a comment would defeat that,
+// and two such guards were written this week and both fell to trivial mutants.
+func TestNewWorktreeActivateHandler_SeedsTheWorktreeAndStillWatchesAndEnqueues(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(EnvRoot, root)
+
+	parentPath := filepath.Join(root, "parent-repo")
+	childPath := filepath.Join(root, "wt", "agent-wired")
+	for _, d := range []string{parentPath, childPath} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seedableParent(t, StateDirForRepo(parentPath), 4, "PARENT-GRAPH-VIA-HANDLER")
+
+	var watched, enqueued []string
+	logger, buf := captureLogger()
+	handler := newWorktreeActivateHandler(worktreeActivateDeps{
+		Logger:      logger,
+		Parents:     nil,
+		AddRepo:     func(p string) error { watched = append(watched, p); return nil },
+		Enqueue:     func(p string) { enqueued = append(enqueued, p) },
+		ActivateSem: make(chan struct{}, 1),
+	})
+
+	handler(&worktree.WorktreeChild{
+		ParentSlug: "myservice",
+		ParentPath: parentPath,
+		Path:       childPath,
+		Branch:     "feat/wired",
+	})
+
+	childSD := StateDirForRepoRef(childPath, "feat/wired")
+	desc, _ := graph.CurrentGraphDescriptor(childSD)
+	if desc.Kind == graph.GraphAbsent {
+		t.Fatalf("activation did not seed the worktree — the graph-seeding payload is not wired into OnActivate.\nlog:\n%s", buf.String())
+	}
+	body, _ := os.ReadFile(desc.Path)
+	if string(body) != "PARENT-GRAPH-VIA-HANDLER" {
+		t.Errorf("seeded body=%q want PARENT-GRAPH-VIA-HANDLER", body)
+	}
+	if got := ReadRepoTagPin(childSD); got != "myservice" {
+		t.Errorf("repo-tag pin=%q want myservice", got)
+	}
+	// The activation's original duties must survive the refactor.
+	if len(watched) != 1 || watched[0] != childPath {
+		t.Errorf("AddRepo calls=%v want exactly [%s]", watched, childPath)
+	}
+	if len(enqueued) != 1 || enqueued[0] != childPath {
+		t.Errorf("Enqueue calls=%v want exactly [%s]", enqueued, childPath)
+	}
+}
+
+// The handler must still watch + enqueue when seeding cannot happen: a
+// worktree whose parent is unindexed must not be left unwatched.
+func TestNewWorktreeActivateHandler_WatchesAndEnqueuesEvenWhenSeedingIsSkipped(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(EnvRoot, root)
+	parentPath := filepath.Join(root, "parent-repo") // never indexed
+	childPath := filepath.Join(root, "wt", "agent-noseed")
+	for _, d := range []string{parentPath, childPath} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var watched, enqueued []string
+	logger, buf := captureLogger()
+	handler := newWorktreeActivateHandler(worktreeActivateDeps{
+		Logger:  logger,
+		AddRepo: func(p string) error { watched = append(watched, p); return nil },
+		Enqueue: func(p string) { enqueued = append(enqueued, p) },
+	})
+	handler(&worktree.WorktreeChild{
+		ParentSlug: "myservice", ParentPath: parentPath,
+		Path: childPath, Branch: "feat/noseed",
+	})
+
+	if len(watched) != 1 || len(enqueued) != 1 {
+		t.Errorf("watched=%v enqueued=%v — activation duties were skipped on the no-seed path", watched, enqueued)
+	}
+	if !logHas(t, buf, "reason", string(SeedFallbackParentNotIndexed)) {
+		t.Errorf("fallback reason not logged; got:\n%s", buf.String())
+	}
+}
+
 func TestSeedWorktreeOnActivate_SeedsFromTheParentsActualRef(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(EnvRoot, root)

@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,7 +120,32 @@ const (
 	// do not hash to what it recorded. The seed is not provably tied to the
 	// generation it claims.
 	SeedFallbackStampMismatch SeedFallbackReason = "stamp_mismatch"
+	// SeedFallbackSuperseded — BENIGN. The state dir's `current` pointer names
+	// a generation STRICTLY NEWER than the one the stamp recorded: the child
+	// has already built its own graph over the seed and the stamp is simply
+	// stale. The caller must consume the stamp and carry on — it must NOT
+	// discard, because the graph being pointed at is the child's own.
+	//
+	// This verdict exists because ConsumeSeedStamp is only reachable from the
+	// paths that go looking for a stamp, and the scheduler skips the
+	// incremental callback entirely when incremental reindexing is disabled
+	// (GRAFEL_INCREMENTAL_REINDEX=0 — documented and supported). A full index
+	// can therefore run over a seeded dir and leave the stamp behind. Reading
+	// that stale stamp as "generation moved" and discarding would throw away a
+	// full corpus reindex the child legitimately paid for: the exact cost this
+	// feature exists to eliminate.
+	SeedFallbackSuperseded SeedFallbackReason = "seed_superseded_by_child_graph"
 )
+
+// SeedVerdictIsBenign reports whether a reason returned by VerifySeededGraph
+// describes a state dir that is FINE to keep using — as opposed to one whose
+// graph cannot be trusted and must be discarded in favour of a full index.
+//
+// Callers must branch on this rather than on `reason != ""`, or a superseded
+// (stale-stamp) dir will be treated as corrupt and its graph thrown away.
+func SeedVerdictIsBenign(reason SeedFallbackReason) bool {
+	return reason == "" || reason == SeedFallbackSuperseded
+}
 
 // SeedStamp is the provenance record written next to a seeded graph. It is
 // what makes the seed provably tied to the parent generation it came from:
@@ -298,6 +325,15 @@ func SeedWorktreeGraph(req SeedRequest) SeedOutcome {
 	// Copy. The `current` pointer is deliberately NOT copied yet: until it
 	// lands the child's dir does not resolve to a graph, so a crash or a
 	// torn copy leaves inert bytes rather than a silently-wrong graph.
+	//
+	// KNOWN, ACCEPTED: a process crash between here and the stamp write
+	// orphans a full graph generation on disk with neither a stamp nor a
+	// pointer, so cleanupSeedArtifacts never runs and nothing later collects
+	// it. Correctness is unaffected — an unpointed, unstamped file is inert
+	// and the next pass runs a clean full index — but it is a disk leak
+	// proportional to one graph. Reclaiming it belongs with the existing
+	// generation GC (graph.IsGraphFileName already recognises these files),
+	// not here.
 	for _, rel := range rels {
 		sum, n, cerr := copyArtifact(filepath.Join(parentSD, rel), filepath.Join(childSD, rel))
 		if cerr != nil {
@@ -378,9 +414,19 @@ func VerifySeededGraph(stateDir string) (*SeedStamp, SeedFallbackReason, error) 
 	if stamp.Version != seedStampVersion {
 		return stamp, SeedFallbackStampMismatch, nil
 	}
-	// The pointer must still name the stamped generation.
+	// The pointer must still name the stamped generation — UNLESS it names a
+	// strictly newer one, which means the child has already built its own
+	// graph over the seed and the stamp is merely stale. Generation numbers
+	// within one state dir are minted monotonically by the writer, so "newer
+	// gen in this dir" is the child's own work, never the parent's.
 	ptr, _, perr := parentGeneration(stateDir)
-	if perr != nil || ptr != stamp.ParentPointer {
+	if perr != nil {
+		return stamp, SeedFallbackGenerationMoved, nil
+	}
+	if ptr != stamp.ParentPointer {
+		if movedForward(stamp.ParentPointer, ptr) {
+			return stamp, SeedFallbackSuperseded, nil
+		}
 		return stamp, SeedFallbackGenerationMoved, nil
 	}
 	// Every stamped artifact must hash to what was recorded. This is the
@@ -412,6 +458,19 @@ func DiscardSeed(stateDir string) error {
 		// it un-resolvable, so a full index runs) and the stamp.
 		_ = os.Remove(filepath.Join(stateDir, graph.CurrentPointerName))
 		return os.Remove(filepath.Join(stateDir, SeedStampFileName))
+	}
+	// REFUSAL. If the dir's active generation is strictly NEWER than the one
+	// the stamp recorded, the graph being pointed at is the child's own — the
+	// stamp is merely stale (see SeedFallbackSuperseded). Removing the pointer
+	// here would make a full corpus reindex the child paid for unresolvable.
+	// Drop only the stale stamp. This is deliberately enforced in DiscardSeed
+	// itself rather than only at the call sites, so the data loss is
+	// structurally impossible rather than merely unreached by today's callers.
+	if ptr, _, perr := parentGeneration(stateDir); perr == nil && movedForward(stamp.ParentPointer, ptr) {
+		if rerr := os.Remove(filepath.Join(stateDir, SeedStampFileName)); rerr != nil && !os.IsNotExist(rerr) {
+			return rerr
+		}
+		return nil
 	}
 	// Remove the pointer FIRST so the dir stops resolving to the seeded graph
 	// even if a later removal fails.
@@ -539,6 +598,39 @@ func parentGeneration(stateDir string) (string, graph.GraphDescriptor, error) {
 	return "", desc, nil
 }
 
+// seedGenRe extracts the generation number from any shape a `current` pointer
+// can take: graph.<gen>.fb, graph.<gen>, or graph.<gen>/manifest.json.
+var seedGenRe = regexp.MustCompile(`^graph\.(\d+)(?:\.fb|/manifest\.json)?$`)
+
+// pointerGen parses a pointer value's generation number. The legacy flat
+// "graph.fb" sentinel has no generation and reports ok=false.
+func pointerGen(ptr string) (uint64, bool) {
+	m := seedGenRe.FindStringSubmatch(strings.TrimSpace(ptr))
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(m[1], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// movedForward reports whether `now` names a strictly newer generation than
+// `stamped`, in the same state dir. Generation numbers are minted
+// monotonically per dir by the writer, so this is the signal that the child
+// built its own graph over the seed.
+//
+// Fails CLOSED: if either pointer has no parseable generation (the legacy flat
+// layout, or a hostile value), this returns false and the caller treats the
+// mismatch as untrusted rather than benign. Being wrong in that direction
+// costs a full reindex; being wrong the other way loses a graph.
+func movedForward(stamped, now string) bool {
+	sg, sok := pointerGen(stamped)
+	ng, nok := pointerGen(now)
+	return sok && nok && ng > sg
+}
+
 // seedArtifactRels lists the graph artifacts to copy, relative to stateDir:
 // the single generation file, or every file inside the generation directory
 // for a segment set.
@@ -562,7 +654,13 @@ func seedArtifactRels(stateDir string, desc graph.GraphDescriptor) ([]string, er
 		}
 		for _, e := range ents {
 			if e.IsDir() {
-				continue
+				// Fail LOUD rather than skipping. Gen dirs are flat today, so
+				// this is unreachable — but if the layout ever nests, silently
+				// skipping a subdirectory would copy a PARTIAL graph, stamp
+				// only what was copied, pass verification, and leave the child
+				// resolving an incomplete graph. Silently wrong is the failure
+				// class this whole design is built against.
+				return nil, fmt.Errorf("segment-set dir %s contains a subdirectory %q; seeding cannot prove it copied the whole graph", desc.GenDir, e.Name())
 			}
 			rels = append(rels, filepath.Join(genRel, e.Name()))
 		}

@@ -16,22 +16,30 @@ package main
 //   vm_stat ; sysctl vm.swapusage
 //
 // MEASURED FINDING, recorded here so it is not re-inferred the other way.
-// Seeding is O(delta) in WORK and WALL CLOCK, not in peak memory:
+// Seeding is O(delta) in WORK, and its wall-clock win is SCALE-DEPENDENT. It is
+// never a memory win. 16 GB macOS laptop, 3 changed files, swap steady across
+// every run:
 //
-//   2500-file fixture, 3 changed files, 16 GB macOS laptop (swap 1877 MB used,
-//   unchanged across the run):
-//     A  full index of the worktree : peak live heap 105.3 MB, wall 7.252 s
-//     B  seed + incremental delta   : peak live heap 138.8 MB, wall 1.245 s
-//     ratio B/A                     : heap 1.32x, wall 0.17x
-//   800-file fixture: heap 1.15x, wall 0.83x.
+//   files   full index          seeded + delta      heap    wall
+//     400   60.7 MB / 515 ms    62.3 MB / 533 ms    1.03x   1.03x   (no win)
+//    1200   75.8 MB / 997 ms    91.3 MB / 668 ms    1.20x   0.67x
+//    2500  105.3 MB / 7.252 s  138.8 MB / 1.245 s   1.32x   0.17x
 //
-// The seeded pass re-extracts 3 of 2503 files, but it must MATERIALISE THE
+// The wall-clock crossover is between 400 and 1200 files: below it, seeding is
+// break-even or marginally worse. The heap ratio degrades monotonically with
+// graph size.
+//
+// Why: the seeded pass re-extracts 3 of N files, but it must MATERIALISE THE
 // WHOLE PARENT GRAPH to merge the unchanged-file portion forward
-// (graph.LoadGraphFromDir + mergeIncrementalPrevDoc + the carry-forward entity
-// slice), and holds it alongside the document being built. So peak heap tracks
-// GRAPH SIZE, not delta size, and comes out slightly ABOVE a full index rather
-// than below it. Anyone sizing concurrent per-worktree indexing off this should
-// budget for the graph, not for the delta.
+// (internal/extractors/incremental.go calls graph.LoadGraphFromDir; the
+// Index() path does the same via mergeIncrementalPrevDoc plus the carry-forward
+// entity slice) and holds it alongside the document being built. Peak heap
+// therefore tracks GRAPH SIZE, not delta size, and lands ABOVE a full index
+// rather than below it. This is structural, not a fixture artifact.
+//
+// Consequence for epic #5954: seeding does NOT reduce the per-process memory
+// budget for concurrent per-worktree indexing. Anyone sizing that must budget
+// for the graph, not for the delta.
 
 import (
 	"fmt"

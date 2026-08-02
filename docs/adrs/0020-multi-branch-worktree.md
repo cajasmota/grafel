@@ -172,7 +172,17 @@ tier system and Pass-4 semantics are unchanged - this is index-side only.
 4. **Verify before use.** The consuming pass re-hashes every stamped artifact
    and re-reads the pointer (`VerifySeededGraph`) before the seed is used. The
    stamp is consumed at the moment verification succeeds, since the pass then
-   writes its own generation into the same dir.
+   writes its own generation into the same dir. Both paths that can reach a
+   seeded dir consume it - the incremental callback and `daemonSchedulerIndex` -
+   because the scheduler skips the incremental callback entirely when
+   `GRAFEL_INCREMENTAL_REINDEX=0`, a documented and supported setting.
+   Belt and braces, a pointer naming a generation *newer* than the stamp is
+   classified `seed_superseded_by_child_graph` (benign: the child built its own
+   graph, so the stamp is merely stale), and `DiscardSeed` **refuses** to touch
+   such a dir. Without both, a stale stamp would make `DiscardSeed` remove the
+   `current` pointer and render a full corpus reindex the child legitimately
+   paid for unresolvable - throwing away exactly the cost this work exists to
+   eliminate.
 5. **Index the delta.** The existing content-hash + git machinery
    (`diff.FilterWithGit`) recomputes the changed set from the child's working
    tree. Because the baseline is content hashes rather than a commit range,
@@ -207,23 +217,43 @@ every FlatBuffers offset), and counts alone are insufficient - a bug that loses
 N rows and invents N others passes a count assertion, and #6085 was itself a
 count bug.
 
-**Measured, not inferred.** On a 2500-file fixture with a 3-file delta
-(16 GB macOS laptop; `TestWorktreeSeedPeakHeapAndWallClock`, opt-in via
-`GRAFEL_SEED_HEAP_MEASURE=1`):
+**Measured, not inferred. Read this before quoting a benefit.** Seeding is
+O(delta) in work; its wall-clock win is **scale-dependent**, and it is **never a
+memory win**. 16 GB macOS laptop, 3 changed files, swap steady across every run
+(`TestWorktreeSeedPeakHeapAndWallClock`, opt-in via `GRAFEL_SEED_HEAP_MEASURE=1`;
+peak is live heap `next_gc / (1 + GOGC/100)`, not RSS - macOS RSS counts
+`MADV_FREE` pages and is an upper bound, not a footprint):
 
-| | full index of the worktree | seed + incremental delta |
-|---|---|---|
-| peak live heap | 105.3 MB | 138.8 MB (1.32x) |
-| wall clock | 7.252 s | 1.245 s (0.17x) |
+| files | full index | seed + delta | heap | wall |
+|---|---|---|---|---|
+| 400 | 60.7 MB / 515 ms | 62.3 MB / 533 ms | 1.03x | **1.03x - no win** |
+| 1200 | 75.8 MB / 997 ms | 91.3 MB / 668 ms | 1.20x | 0.67x |
+| 2500 | 105.3 MB / 7.252 s | 138.8 MB / 1.245 s | 1.32x | 0.17x |
 
-Seeding is O(delta) in work and wall clock, **not** in peak memory. The seeded
-pass re-extracts 3 of 2503 files, but it materialises the whole parent graph to
-merge the unchanged-file portion forward, and holds it alongside the document
-being built - so peak heap tracks graph size and lands slightly *above* a full
-index. Peak is reported as live heap (`next_gc / (1 + GOGC/100)`), not RSS:
-macOS RSS counts `MADV_FREE` pages and is an upper bound, not a footprint.
-Sizing concurrent per-worktree indexing off this must budget for the graph, not
-for the delta.
+The wall-clock crossover sits between 400 and 1200 files; below it seeding is
+break-even or marginally worse. The heap ratio degrades monotonically with graph
+size.
+
+This is **structural, not a fixture artifact**. The seeded pass re-extracts 3 of
+N files, but it must materialise the *whole parent graph* to merge the
+unchanged-file portion forward (`internal/extractors/incremental.go` calls
+`graph.LoadGraphFromDir`; the `Index()` path does the same via
+`mergeIncrementalPrevDoc` plus the carry-forward entity slice) and holds it
+alongside the document being built. Peak heap therefore tracks **graph size**,
+not delta size, and lands *above* a full index.
+
+**So: "seed instead of full index" is a latency optimisation, not a memory one.
+It does NOT reduce the per-process memory budget that epic #5954 exists to
+reduce** - the ~1.0-1.1 GB per concurrent indexing process is untouched by this
+change, and anyone sizing concurrent per-worktree indexing must budget for the
+graph, not for the delta. Reducing that peak is separate work.
+
+**One-time entity-id change for already-indexed worktrees.** The repo-tag pin is
+written on activation, so a worktree that was already indexed under the default
+tag (its own directory basename) has every entity id re-minted from the parent's
+slug on its next full index. No hybrid graph arises - the whole graph is
+rewritten in one pass - but ids that external state may have cached do change
+once. Repos that are not worktrees never get a pin and are entirely unaffected.
 
 **Not covered.** Seeding is wired to worktree activation only. An in-place
 branch switch on a single checkout (the `.git/HEAD` watch path above) is not

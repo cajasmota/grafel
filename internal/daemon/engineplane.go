@@ -307,29 +307,16 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 				// scheduler.Enqueue captures the worktree's checked-out ref via
 				// RefCapture(worktreePath), so the graph lands in the correct
 				// per-ref dir keyed by the worktree path (multi-ref model).
-				wtWatcher.OnActivate = func(child *worktree.WorktreeChild) {
-					// #5964: seed this worktree's graph from its parent ref's
-					// graph before the reindex below is enqueued, so that
-					// reindex becomes an incremental pass over the delta
-					// instead of a full index of the whole corpus. What gets
-					// enqueued is UNCHANGED; only the state dir it finds
-					// differs. Every outcome — seeded or not — is logged with a
-					// named reason. OnActivate fires once per activation
-					// transition (new discovery or re-activation after expiry,
-					// see worktree.Watcher.poll), so this runs once per
-					// worktree activation, not per poll tick.
-					seedWorktreeOnActivate(logger, child, cfg.WorktreeParents)
-
-					activateSem <- struct{}{}
-					_, aerr := watcher.AddRepo(child.Path)
-					<-activateSem
-					if aerr != nil {
-						logger.Warn("worktree: failed to watch working tree", "path", child.Path, "err", aerr)
-					}
-					scheduler.Enqueue(child.Path)
-					logger.Info("worktree: watching working tree + enqueued initial reindex",
-						"path", child.Path, "branch", child.Branch, "group", child.GroupName, "slug", child.ParentSlug, "locked", child.Locked)
-				}
+				wtWatcher.OnActivate = newWorktreeActivateHandler(worktreeActivateDeps{
+					Logger:  logger,
+					Parents: cfg.WorktreeParents,
+					AddRepo: func(path string) error {
+						_, err := watcher.AddRepo(path)
+						return err
+					},
+					Enqueue:     scheduler.Enqueue,
+					ActivateSem: activateSem,
+				})
 				// On expiry, unsubscribe the working tree from the watcher.
 				wtWatcher.OnExpire = func(child *worktree.WorktreeChild) {
 					watcher.RemoveRepo(child.Path)
@@ -458,6 +445,64 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 	logger.Info("startup: docgen-sweeper done")
 
 	return ep
+}
+
+// worktreeActivateDeps is what the worktree activation handler needs from the
+// engine plane, narrowed to function values so a test can drive the real
+// handler without an fsnotify watcher or a scheduler.
+type worktreeActivateDeps struct {
+	Logger  *slog.Logger
+	Parents func() []worktree.ParentRepo
+	// AddRepo subscribes a worktree's working tree to the file watcher.
+	AddRepo func(path string) error
+	// Enqueue schedules the worktree's initial reindex.
+	Enqueue func(path string)
+	// ActivateSem bounds concurrent watcher subscriptions (#5675). May be nil
+	// in tests.
+	ActivateSem chan struct{}
+}
+
+// newWorktreeActivateHandler builds the worktree.Watcher.OnActivate callback.
+//
+// This is a named factory rather than an inline closure specifically so the
+// #5964 seeding call below is reachable from a test. Inline, the entire
+// feature could be deleted from the activation path — `_ = child` — and every
+// suite stayed green: the unit tests for seedWorktreeOnActivate all still
+// passed, because nothing asserted it was ever CALLED. A source-scanning guard
+// would not have helped either (an import alias or a call moved behind a
+// comment defeats it); the test drives this handler and asserts a seed landed
+// on disk.
+func newWorktreeActivateHandler(deps worktreeActivateDeps) func(*worktree.WorktreeChild) {
+	return func(child *worktree.WorktreeChild) {
+		// #5964: seed this worktree's graph from its parent ref's graph before
+		// the reindex below is enqueued, so that reindex becomes an incremental
+		// pass over the delta instead of a full index of the whole corpus. What
+		// gets enqueued is UNCHANGED; only the state dir it finds differs.
+		// Every outcome — seeded or not — is logged with a named reason.
+		// OnActivate fires once per activation transition (new discovery or
+		// re-activation after expiry, see worktree.Watcher.poll), so this runs
+		// once per worktree activation, not per poll tick.
+		seedWorktreeOnActivate(deps.Logger, child, deps.Parents)
+
+		if deps.ActivateSem != nil {
+			deps.ActivateSem <- struct{}{}
+		}
+		var aerr error
+		if deps.AddRepo != nil {
+			aerr = deps.AddRepo(child.Path)
+		}
+		if deps.ActivateSem != nil {
+			<-deps.ActivateSem
+		}
+		if aerr != nil {
+			deps.Logger.Warn("worktree: failed to watch working tree", "path", child.Path, "err", aerr)
+		}
+		if deps.Enqueue != nil {
+			deps.Enqueue(child.Path)
+		}
+		deps.Logger.Info("worktree: watching working tree + enqueued initial reindex",
+			"path", child.Path, "branch", child.Branch, "group", child.GroupName, "slug", child.ParentSlug, "locked", child.Locked)
+	}
 }
 
 // seedWorktreeOnActivate seeds a newly-activated worktree's graph from its

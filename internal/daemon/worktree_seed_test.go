@@ -371,7 +371,10 @@ func TestVerifySeededGraph_RejectsWhenTheDiffManifestWasSwappedIndependently(t *
 	}
 }
 
-func TestVerifySeededGraph_RejectsWhenTheCurrentPointerNoLongerNamesTheSeed(t *testing.T) {
+func TestVerifySeededGraph_RejectsWhenTheCurrentPointerMovedToAnUnrelatedGeneration(t *testing.T) {
+	// A pointer that moved BACKWARD (or sideways) is not the child having
+	// built its own graph — generations are minted monotonically per state
+	// dir — so it cannot be classified as superseded and must be rejected.
 	root := t.TempDir()
 	parentSD := filepath.Join(root, "parent-state")
 	childSD := filepath.Join(root, "child-state")
@@ -379,16 +382,19 @@ func TestVerifySeededGraph_RejectsWhenTheCurrentPointerNoLongerNamesTheSeed(t *t
 	if out := SeedWorktreeGraph(seedReq(t, parentSD, childSD)); !out.Seeded {
 		t.Fatalf("seed failed: %s", out.Reason)
 	}
-	if err := os.WriteFile(filepath.Join(childSD, graph.GenFileName(99)), []byte("OTHER"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(childSD, graph.GenFileName(2)), []byte("OTHER"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.WriteCurrentPointer(childSD, graph.GenFileName(99)); err != nil {
+	if err := graph.WriteCurrentPointer(childSD, graph.GenFileName(2)); err != nil {
 		t.Fatal(err)
 	}
 
 	_, reason, _ := VerifySeededGraph(childSD)
 	if reason != SeedFallbackGenerationMoved {
 		t.Fatalf("reason=%q want %q", reason, SeedFallbackGenerationMoved)
+	}
+	if SeedVerdictIsBenign(reason) {
+		t.Error("a backward pointer move must not be treated as benign")
 	}
 }
 
@@ -430,6 +436,113 @@ func TestDiscardSeed_RemovesEverySeededArtifactAndThePointer(t *testing.T) {
 	}
 	if _, err := ReadSeedStamp(childSD); err == nil {
 		t.Error("stamp survived DiscardSeed")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// A stale stamp must never destroy the child's own graph.
+//
+// ConsumeSeedStamp is only reachable on the paths that go looking for a stamp.
+// The scheduler skips cfg.Incremental entirely when incremental reindexing is
+// disabled (GRAFEL_INCREMENTAL_REINDEX=0, a documented, supported setting), so
+// a full index can run over a seeded dir and leave the stamp behind. If the
+// next verification then read that stale stamp as "generation moved" and
+// DiscardSeed removed the pointer, a full corpus reindex the child legitimately
+// paid for would be thrown away — the exact cost this feature exists to
+// eliminate.
+// ---------------------------------------------------------------------------
+
+func TestVerifySeededGraph_TreatsAPointerMovedFORWARDAsASupersededSeed(t *testing.T) {
+	root := t.TempDir()
+	parentSD := filepath.Join(root, "parent-state")
+	childSD := filepath.Join(root, "child-state")
+	writeParentStateDir(t, parentSD, 1, "PARENT")
+	if out := SeedWorktreeGraph(seedReq(t, parentSD, childSD)); !out.Seeded {
+		t.Fatalf("seed failed: %s", out.Reason)
+	}
+	// The child runs a FULL index over the seeded dir (the path that never
+	// consumes the stamp) and writes its own, newer generation.
+	if err := os.WriteFile(filepath.Join(childSD, graph.GenFileName(2)), []byte("CHILD-OWN-GRAPH"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.WriteCurrentPointer(childSD, graph.GenFileName(2)); err != nil {
+		t.Fatal(err)
+	}
+
+	stamp, reason, err := VerifySeededGraph(childSD)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if reason != SeedFallbackSuperseded {
+		t.Fatalf("reason=%q want %q — a stale stamp over the child's OWN newer graph was reported as an untrusted seed", reason, SeedFallbackSuperseded)
+	}
+	if stamp == nil {
+		t.Fatal("stamp must still be returned so the caller can consume it")
+	}
+	if !SeedVerdictIsBenign(reason) {
+		t.Error("a superseded seed must be classified benign — the caller consumes the stamp, it does not fall back")
+	}
+	if SeedVerdictIsBenign(SeedFallbackGenerationMoved) || SeedVerdictIsBenign(SeedFallbackStampMismatch) {
+		t.Error("genuinely untrusted verdicts must NOT be classified benign")
+	}
+}
+
+func TestDiscardSeed_RefusesToRemoveAGraphNEWERThanTheStamp(t *testing.T) {
+	// Belt and braces: even if a caller ignores the superseded verdict and
+	// calls DiscardSeed anyway, the child's own graph must survive. This is
+	// the mechanism that makes the data loss structurally impossible rather
+	// than merely unreached.
+	root := t.TempDir()
+	parentSD := filepath.Join(root, "parent-state")
+	childSD := filepath.Join(root, "child-state")
+	writeParentStateDir(t, parentSD, 1, "PARENT")
+	if out := SeedWorktreeGraph(seedReq(t, parentSD, childSD)); !out.Seeded {
+		t.Fatalf("seed failed: %s", out.Reason)
+	}
+	if err := os.WriteFile(filepath.Join(childSD, graph.GenFileName(2)), []byte("CHILD-OWN-GRAPH"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.WriteCurrentPointer(childSD, graph.GenFileName(2)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DiscardSeed(childSD); err != nil {
+		t.Fatalf("DiscardSeed: %v", err)
+	}
+
+	desc, _ := graph.CurrentGraphDescriptor(childSD)
+	if desc.Kind == graph.GraphAbsent {
+		t.Fatal("DATA LOSS: DiscardSeed made the child's own legitimately built graph unresolvable")
+	}
+	body, _ := os.ReadFile(desc.Path)
+	if string(body) != "CHILD-OWN-GRAPH" {
+		t.Errorf("resolved body=%q want CHILD-OWN-GRAPH", body)
+	}
+	// The stale stamp itself must be gone, so the dir stops re-triggering this.
+	if _, err := ReadSeedStamp(childSD); err == nil {
+		t.Error("the stale stamp survived DiscardSeed")
+	}
+}
+
+func TestDiscardSeed_StillRemovesAGraphThatIsNOTNewerThanTheStamp(t *testing.T) {
+	// The refusal above must not become a blanket refusal: a seed that is
+	// genuinely untrusted (same generation, tampered content) must still be
+	// made unresolvable so a full index runs.
+	root := t.TempDir()
+	parentSD := filepath.Join(root, "parent-state")
+	childSD := filepath.Join(root, "child-state")
+	writeParentStateDir(t, parentSD, 3, "PARENT")
+	if out := SeedWorktreeGraph(seedReq(t, parentSD, childSD)); !out.Seeded {
+		t.Fatalf("seed failed: %s", out.Reason)
+	}
+	if err := os.WriteFile(filepath.Join(childSD, graph.GenFileName(3)), []byte("TAMPERED"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := DiscardSeed(childSD); err != nil {
+		t.Fatalf("DiscardSeed: %v", err)
+	}
+	if desc, _ := graph.CurrentGraphDescriptor(childSD); desc.Kind != graph.GraphAbsent {
+		t.Fatal("an untrusted, non-superseded seed stayed resolvable")
 	}
 }
 
