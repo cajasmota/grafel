@@ -13,7 +13,6 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/watchreg"
 	"github.com/cajasmota/grafel/internal/daemon/worktree"
 	"github.com/cajasmota/grafel/internal/gitmeta"
-	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // enginePlane holds the engine-plane background runtime (scheduler, watcher,
@@ -309,15 +308,17 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 				// RefCapture(worktreePath), so the graph lands in the correct
 				// per-ref dir keyed by the worktree path (multi-ref model).
 				wtWatcher.OnActivate = func(child *worktree.WorktreeChild) {
-					// #5964 increment 1: probe-only diagnostic. This resolves
-					// and logs the worktree→parent state-dir mapping but does
-					// NOT copy/seed anything and does NOT alter what gets
-					// enqueued below — zero behaviour change. OnActivate fires
-					// once per activation transition (new discovery or
-					// re-activation after expiry, see worktree.Watcher.poll),
-					// so this logs once per worktree activation, not per poll
-					// tick.
-					logWorktreeParentSeedProbe(logger, child, cfg.WorktreeParents)
+					// #5964: seed this worktree's graph from its parent ref's
+					// graph before the reindex below is enqueued, so that
+					// reindex becomes an incremental pass over the delta
+					// instead of a full index of the whole corpus. What gets
+					// enqueued is UNCHANGED; only the state dir it finds
+					// differs. Every outcome — seeded or not — is logged with a
+					// named reason. OnActivate fires once per activation
+					// transition (new discovery or re-activation after expiry,
+					// see worktree.Watcher.poll), so this runs once per
+					// worktree activation, not per poll tick.
+					seedWorktreeOnActivate(logger, child, cfg.WorktreeParents)
 
 					activateSem <- struct{}{}
 					_, aerr := watcher.AddRepo(child.Path)
@@ -459,81 +460,122 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 	return ep
 }
 
-// logWorktreeParentSeedProbe resolves and logs the worktree→parent state-dir
-// mapping for a newly-activated worktree (#5964 increment 1). It is a
-// diagnostic PROBE ONLY: it never copies, seeds, or otherwise changes what
-// gets indexed — it exists solely to confirm or kill, on real data, the
-// finding that killed the first clone-from-parent attempt (#3652): that
-// attempt resolved the parent via StateDirForRepoRef(worktreePath, "main"),
-// which is keyed by the WORKTREE's own path (wrong root) and a hardcoded ref
-// (wrong ref for any parent not on "main"), so it always resolved to an
-// empty directory.
+// seedWorktreeOnActivate seeds a newly-activated worktree's graph from its
+// parent ref's graph (#5964, epic #5954), replacing the increment-1 probe that
+// only logged the resolution.
 //
-// Resolution order:
-//  1. child.ParentPath, populated at discovery (worktree.Watcher.poll).
-//  2. Fallback via gitmeta.ResolveCommonDir when ParentPath is empty (a
-//     store entry persisted before this field existed) — matched against
-//     the same parents provider the watcher itself uses, rather than the
-//     O(registered repos) registry scan in internal/mcp/routing.go.
+// What it does, in order:
+//  1. Resolve the parent repo path — child.ParentPath, recorded at discovery
+//     (worktree.Watcher.poll); otherwise derived via gitmeta.ResolveCommonDir
+//     against the same parents provider the watcher uses, for a store entry
+//     persisted before that field existed.
+//  2. Resolve the parent's ACTUAL current ref via gitmeta.CaptureCached. Never
+//     a hardcoded "main" — that is the bug that killed the first
+//     clone-from-parent attempt (#3652), which resolved
+//     StateDirForRepoRef(worktreePath, "main"): wrong root AND wrong ref, so it
+//     always read an empty directory.
+//  3. Pin the repo tag to the parent's slug. graph.EntityID hashes the repo tag
+//     first and cmd/grafel.Index defaults it to the repo dir's basename — the
+//     WORKTREE dir's name — so without this pin a seeded graph mixes two id
+//     spaces. The pin is written even when seeding does not happen, because a
+//     FULL index of the worktree must use the same tag for the two graphs to
+//     be comparable at all.
+//  4. Copy + stamp via SeedWorktreeGraph.
 //
-// dst is the worktree's own state dir (StateDirForRepoRef(child.Path,
-// child.Branch), unchanged from today's Enqueue target). src is the
-// parent's CURRENT state dir — StateDirForRepo(parentPath), which resolves
-// the parent's actual HEAD ref via gitmeta.Capture, not a hardcoded ref name
-// (the same bug class as #3652). Whether src actually holds a usable graph
-// is reported via graph.CurrentGraphDescriptor, which is segment-set aware
-// (a graph.<gen>/ dir with a `current` pointer is not necessarily a flat
-// graph.fb).
-func logWorktreeParentSeedProbe(logger *slog.Logger, child *worktree.WorktreeChild, parentsProvider func() []worktree.ParentRepo) {
+// Every outcome is logged. On success the log names the source generation; on
+// any fallback it names WHICH check failed — a silent fallback is the rejected
+// design, because a seed that systematically never fires would be invisible.
+//
+// Seeding never blocks or changes what is enqueued: the caller enqueues the
+// same reindex it always did. A seeded state dir simply turns that reindex
+// into an incremental pass over the delta (the existing content-hash + git
+// machinery recomputes the changed set from the child's working tree, so
+// uncommitted and untracked edits are covered), while an unseeded one runs the
+// full index exactly as before.
+func seedWorktreeOnActivate(logger *slog.Logger, child *worktree.WorktreeChild, parentsProvider func() []worktree.ParentRepo) SeedOutcome {
 	parentPath := child.ParentPath
-	fallbackUsed := false
+	parentPathSource := "recorded"
 	if parentPath == "" {
 		parentPath = resolveWorktreeParentPathFallback(child.Path, parentsProvider)
-		fallbackUsed = true
+		parentPathSource = "fallback_commondir"
 	}
 
-	// current_repo_tag: what Index() would default repoTag to for this
-	// worktree TODAY (filepath.Base(absRepo), cmd/grafel/index.go:~462 —
-	// the daemon always passes repoTag=""), vs the parent's slug it would
-	// need to be pinned to for entity IDs to agree with a full index of the
-	// parent (graph.EntityID hashes repoTag as its first component). This
-	// increment only REPORTS the mismatch; pinning repoTag is a separate,
-	// follow-up increment.
-	currentRepoTag := filepath.Base(filepath.Clean(child.Path))
+	childStateDir := StateDirForRepoRef(child.Path, child.Branch)
+
+	// defaultRepoTag is what Index() would use for this worktree with no pin:
+	// filepath.Base(absRepo). Logged so the mismatch the pin corrects stays
+	// visible in the field.
+	defaultRepoTag := filepath.Base(filepath.Clean(child.Path))
+
+	// The pin is written FIRST and unconditionally (when a slug is known), so
+	// the full-index fallback path uses the parent's tag too.
+	if child.ParentSlug != "" && childStateDir != "" {
+		if err := WriteRepoTagPin(childStateDir, child.ParentSlug); err != nil {
+			logger.Warn("worktree: failed to pin repo tag; a later seed cannot match a graph indexed without it",
+				"path", child.Path, "branch", child.Branch, "repo_tag", child.ParentSlug, "err", err)
+		}
+	}
 
 	if parentPath == "" {
-		logger.Info("worktree: parent-seed probe — no parent path (neither recorded nor derivable)",
-			"path", child.Path, "branch", child.Branch, "parent_slug", child.ParentSlug,
-			"current_repo_tag", currentRepoTag, "fallback_attempted", fallbackUsed)
-		return
+		out := SeedOutcome{
+			Reason:        SeedFallbackParentPathUnresolved,
+			Detail:        "no parent path recorded and none derivable from the git common-dir",
+			ChildStateDir: childStateDir,
+		}
+		logSeedFallback(logger, child, parentPath, parentPathSource, defaultRepoTag, "", out)
+		return out
 	}
 
-	dst := StateDirForRepoRef(child.Path, child.Branch)
-	src := StateDirForRepo(parentPath)
+	// The parent's ACTUAL ref — the #3652 guard.
+	parentRef := gitmeta.CaptureCached(parentPath).Ref
 
-	desc, descErr := graph.CurrentGraphDescriptor(src)
-	hasGraph := descErr == nil && desc.Kind != graph.GraphAbsent
-	kind := "absent"
-	switch desc.Kind {
-	case graph.GraphSingleFile:
-		kind = "single_file"
-	case graph.GraphSegmentSet:
-		kind = "segment_set"
+	out := SeedWorktreeGraph(SeedRequest{
+		ParentPath:    parentPath,
+		ParentRef:     parentRef,
+		ChildPath:     child.Path,
+		ChildRef:      child.Branch,
+		ChildStateDir: childStateDir,
+		RepoTag:       child.ParentSlug,
+	})
+	if !out.Seeded {
+		logSeedFallback(logger, child, parentPath, parentPathSource, defaultRepoTag, parentRef, out)
+		return out
 	}
 
-	logger.Info("worktree: parent-seed probe",
+	logger.Info("worktree: seeded graph from parent ref",
 		"path", child.Path,
 		"branch", child.Branch,
 		"parent_path", parentPath,
+		"parent_ref", parentRef,
+		"parent_path_source", parentPathSource,
+		"repo_tag", child.ParentSlug,
+		"default_repo_tag", defaultRepoTag,
+		"repo_tag_pinned", child.ParentSlug != defaultRepoTag,
+		"src_state_dir", out.ParentStateDir,
+		"dst_state_dir", out.ChildStateDir,
+		"parent_generation", out.Stamp.ParentPointer,
+		"artifacts", len(out.Stamp.Artifacts),
+		"bytes_copied", out.BytesCopied,
+	)
+	return out
+}
+
+// logSeedFallback emits the single, always-present line that names which check
+// refused the seed. Kept separate so every fallback path is guaranteed to log
+// the same fields — the reason must never be swallowed.
+func logSeedFallback(logger *slog.Logger, child *worktree.WorktreeChild, parentPath, parentPathSource, defaultRepoTag, parentRef string, out SeedOutcome) {
+	logger.Info("worktree: graph seeding skipped — running a full index",
+		"path", child.Path,
+		"branch", child.Branch,
+		"parent_path", parentPath,
+		"parent_ref", parentRef,
+		"parent_path_source", parentPathSource,
 		"parent_slug", child.ParentSlug,
-		"current_repo_tag", currentRepoTag,
-		"repo_tag_mismatch", currentRepoTag != child.ParentSlug,
-		"parent_path_source", map[bool]string{true: "fallback_commondir", false: "recorded"}[fallbackUsed],
-		"src_state_dir", src,
-		"dst_state_dir", dst,
-		"src_has_graph", hasGraph,
-		"src_graph_kind", kind,
-		"src_descriptor_err", errString(descErr),
+		"default_repo_tag", defaultRepoTag,
+		"src_state_dir", out.ParentStateDir,
+		"dst_state_dir", out.ChildStateDir,
+		"reason", string(out.Reason),
+		"detail", out.Detail,
 	)
 }
 
@@ -559,12 +601,4 @@ func resolveWorktreeParentPathFallback(worktreePath string, parentsProvider func
 		}
 	}
 	return ""
-}
-
-// errString renders err for structured logging, "" for nil.
-func errString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }

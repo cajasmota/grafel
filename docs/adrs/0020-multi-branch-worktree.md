@@ -107,8 +107,9 @@ extended to watch `.git/HEAD` in addition to source files. A HEAD change event:
 1. Reads the new ref name via `gitmeta.Capture`.
 2. Marks the old slot as WARM (triggers the idle timer immediately).
 3. Triggers an incremental reindex for the new ref's slot. If the new ref has
-   never been indexed, the clone-from-parent optimisation is tried first (see
-   below). If clone fails or is not applicable, a full index runs (#2129).
+   never been indexed, a full index runs (#2129). Graph seeding (see "Worktree
+   graph seeding" below) is wired to worktree ACTIVATION, not to this
+   HEAD-switch path.
 
 Git hooks (`post-checkout`, `post-merge`, `post-rewrite`) installed by
 `grafel install-hooks` send an explicit signal to the daemon via the
@@ -126,23 +127,129 @@ Worktree slots receive `SlotKindWorktree` in the tier manager, applying the
 aggressive eviction policy. Worktrees that are removed between two discovery
 cycles have their slots transitioned to COLD (#2138, watcher pause/resume #2139).
 
-### Clone-from-parent optimisation
+### Worktree graph seeding
 
-When a new ref has never been indexed (no `graph.fb` present), the daemon
-checks whether a close ancestor ref's graph can be seeded. If the diff between
-the ancestor and the new ref touches ≤ `GRAFEL_CLONE_MAX_FILES` files
-(default 20, hard cap 100), the optimisation:
+> **Status correction (#5964).** This section previously described a
+> *"clone-from-parent optimisation"* in the present indicative, as though it
+> shipped. It did not. That attempt (#3652) was written, found broken, and
+> deleted in `65427c5a8`; `GRAFEL_CLONE_MAX_FILES` has never existed in the
+> code, and the "~5 s -> ~180 ms" figure was never measured against a shipped
+> implementation. The original text is preserved, collapsed, at the end of this
+> section rather than deleted: an ADR asserting a guarantee the code does not
+> deliver is a defect class this repo has paid for repeatedly, and removing the
+> claim silently would hide that it was ever made.
 
-1. Copies the parent's `graph.fb` and side-cars to the new ref's store dir.
-2. Patches the metadata header (`indexed_ref`, `indexed_sha`, `computed_at`)
-   via a streaming read-modify-write (no in-place FlatBuffers mutation).
-3. Re-extracts only the changed files: removes stale entities/relationships,
-   runs the language extractor callback, merges new results.
-4. Persists the updated `graph.fb` atomically.
+When a linked worktree is activated (`worktree.Watcher.OnActivate`), the daemon
+seeds the worktree's `(path, ref)` slot from its parent's graph before the
+initial reindex is enqueued, so that reindex becomes an incremental pass over
+the delta instead of a full index of the corpus. Implemented in
+`internal/daemon/worktree_seed.go`. The read path, storage format, cache keys,
+tier system and Pass-4 semantics are unchanged - this is index-side only.
 
-Typical speedup on a 6 k-entity repo with 5 changed files: ~5 s → ~180 ms.
-If any precondition fails, the partially-built graph is removed and a full
-reindex runs (#2146).
+1. **Resolve the parent.** `WorktreeChild.ParentPath` (recorded at discovery),
+   falling back to `gitmeta.ResolveCommonDir` matched against the watcher's own
+   parents provider. The parent's **actual** current ref is then read via
+   `gitmeta.CaptureCached` - never a hardcoded `"main"`. Resolving a hardcoded
+   ref against the *worktree's* own path was the bug that killed #3652: wrong
+   store root and wrong ref name, so it always read an empty directory.
+2. **Pin the repo tag.** `graph.EntityID` hashes the repo tag first, and
+   `Index()` defaults it to `filepath.Base(repoPath)` - for a worktree, the
+   worktree directory's own name, which disagrees with the parent's slug.
+   Without a pin a seeded graph would mix two id spaces, leaving every
+   cross-file edge between them dangling. The pin (`repo-tag`, in the state
+   dir) is written whether or not seeding succeeds, because a *full* index of
+   the worktree must use the same tag for the two graphs to be comparable at
+   all.
+3. **Copy and stamp.** The parent's active graph generation (single-file or
+   segment-set) **and its `file-index.json` diff manifest** are copied into
+   `StateDirForRepoRef(child.Path, child.Branch)`. The manifest is not
+   optional: it is the baseline the child's changed-file set is computed
+   against, and a graph seeded without it is silently wrong. The copy is
+   bracketed by a generation-stability check and recorded in
+   `seed-provenance.json` with a SHA-256 of every artifact copied. The
+   `current` pointer is published **last**, so a torn copy leaves inert bytes
+   rather than a resolvable, wrong graph.
+4. **Verify before use.** The consuming pass re-hashes every stamped artifact
+   and re-reads the pointer (`VerifySeededGraph`) before the seed is used. The
+   stamp is consumed at the moment verification succeeds, since the pass then
+   writes its own generation into the same dir.
+5. **Index the delta.** The existing content-hash + git machinery
+   (`diff.FilterWithGit`) recomputes the changed set from the child's working
+   tree. Because the baseline is content hashes rather than a commit range,
+   committed changes, uncommitted working-tree edits and untracked files are
+   all covered by one mechanism - a `git diff <parentRef>..<childRef>` alone
+   would miss the last two, which are exactly an agent's in-progress work.
+
+`diff.FilterWithGit` was extended as part of this work. It previously trusted
+`git diff --name-only HEAD` and never hashed a file git did not report, which
+is sound only while the manifest was written at the commit the repo is on now.
+A seeded state dir violates that by construction (the manifest is the
+parent's), so `FilterWithGit` now unions in the `manifest.GitCommit..HEAD`
+range diff, and falls back to a full hash comparison when that range cannot be
+resolved (unreachable commit after a gc, shallow clone, or history rewrite).
+The parity test below found this: without the union, a file changed by a
+*commit* on the child branch was never re-extracted and its stale entities
+survived. The same hole affected any `Index()`+`WithIncremental` run after a
+HEAD advance; `internal/extractors.TryIncremental` had its own equivalent
+(#5710).
+
+**Fallback policy.** Every failed precondition - parent not indexed, parent
+without a diff manifest, generation moved mid-copy, copy error, child already
+indexed, no repo tag to pin, stamp mismatch - falls back to a full index **and
+logs a named reason**. A silent fallback is explicitly rejected: a seed that
+systematically never fired would be invisible.
+
+**Correctness gate.** `TestWorktreeSeedParity_SeededGraphMatchesAFullIndex`
+(`cmd/grafel/`) indexes the same worktree twice - seeded, and from scratch -
+and diffs the full entity and relationship identity sets both ways. Byte
+comparison of `graph.fb` is invalid (#6083: one length change cascades through
+every FlatBuffers offset), and counts alone are insufficient - a bug that loses
+N rows and invents N others passes a count assertion, and #6085 was itself a
+count bug.
+
+**Measured, not inferred.** On a 2500-file fixture with a 3-file delta
+(16 GB macOS laptop; `TestWorktreeSeedPeakHeapAndWallClock`, opt-in via
+`GRAFEL_SEED_HEAP_MEASURE=1`):
+
+| | full index of the worktree | seed + incremental delta |
+|---|---|---|
+| peak live heap | 105.3 MB | 138.8 MB (1.32x) |
+| wall clock | 7.252 s | 1.245 s (0.17x) |
+
+Seeding is O(delta) in work and wall clock, **not** in peak memory. The seeded
+pass re-extracts 3 of 2503 files, but it materialises the whole parent graph to
+merge the unchanged-file portion forward, and holds it alongside the document
+being built - so peak heap tracks graph size and lands slightly *above* a full
+index. Peak is reported as live heap (`next_gc / (1 + GOGC/100)`), not RSS:
+macOS RSS counts `MADV_FREE` pages and is an upper bound, not a footprint.
+Sizing concurrent per-worktree indexing off this must budget for the graph, not
+for the delta.
+
+**Not covered.** Seeding is wired to worktree activation only. An in-place
+branch switch on a single checkout (the `.git/HEAD` watch path above) is not
+seeded from the previous ref.
+
+<details>
+<summary>Superseded: the #3652 "clone-from-parent optimisation" as this ADR
+previously described it. NEVER SHIPPED.</summary>
+
+> When a new ref has never been indexed (no `graph.fb` present), the daemon
+> checks whether a close ancestor ref's graph can be seeded. If the diff between
+> the ancestor and the new ref touches ≤ `GRAFEL_CLONE_MAX_FILES` files
+> (default 20, hard cap 100), the optimisation:
+>
+> 1. Copies the parent's `graph.fb` and side-cars to the new ref's store dir.
+> 2. Patches the metadata header (`indexed_ref`, `indexed_sha`, `computed_at`)
+>    via a streaming read-modify-write (no in-place FlatBuffers mutation).
+> 3. Re-extracts only the changed files: removes stale entities/relationships,
+>    runs the language extractor callback, merges new results.
+> 4. Persists the updated `graph.fb` atomically.
+>
+> Typical speedup on a 6 k-entity repo with 5 changed files: ~5 s → ~180 ms.
+> If any precondition fails, the partially-built graph is removed and a full
+> reindex runs (#2146).
+
+</details>
 
 ### CLI `--ref` flag
 
