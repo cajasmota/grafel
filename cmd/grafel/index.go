@@ -3412,6 +3412,74 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 
 				ents, extractErr := extractors.Extract(ctx, file)
 
+				// #5989 — dispatch the custom/framework extractors registered
+				// under internal/custom/** (Django/DRF/Celery/Flask/FastAPI/
+				// SQLAlchemy + 20 other languages). They register under
+				// PREFIXED registry keys ("python_django"), which the exact-key
+				// Get(file.Language) lookup inside extractors.Extract above can
+				// never match — RunCustomExtractors is the only dispatcher that
+				// selects them.
+				//
+				// SEAM PLACEMENT IS LOAD-BEARING: this must sit AFTER
+				// extractors.Extract (so base entities exist to merge into) and
+				// BEFORE the TSTree.Close() below, because custom extractors
+				// walk the same parse tree. Moving it after the Close is a
+				// use-after-free, not merely a no-op.
+				//
+				// Default-OFF: see inProcCustomExtractors (cmd/grafel/inproc_custom.go)
+				// for why, and why this is NOT the same thing as flipping
+				// GRAFEL_SUBPROC_EXTRACT.
+				//
+				// THE GATE IS NOT PURELY ADDITIVE, AND NOT PYTHON-ONLY (#6104).
+				// MergeWithCustom supersedes by NAME, so a custom entity whose
+				// Name collides with a base entity REPLACES it. Measured effects
+				// per language on the #5989 fixtures:
+				//
+				//   python — Celery tasks destroy TWO base entities each
+				//            (Task + SCOPE.Operation), replaced by one
+				//            SCOPE.Service. A different-KIND collision.
+				//   java   — SCOPE.Operation is mutated IN PLACE: subtype
+				//            method->endpoint and EndLine truncated to the start
+				//            line, losing the body extent; the truncation
+				//            propagates into the derived http_endpoint_definition.
+				//            A SAME-KIND collision, so keying supersede on
+				//            (Kind, Name) would NOT fix it.
+				//   js     — route operations are REPLACED by better-positioned
+				//            ones (base emits them at line 0). An improvement,
+				//            but still a substitution, and invisible to any
+				//            count-based comparison.
+				//   go, ruby — genuinely inert; identical content tuples.
+				//
+				// The total loss set is 280 entities across 5 kinds and 2
+				// languages. This is the blocker for flipping the gate on by
+				// default; it is pinned by
+				// TestInProcCustomExtractorsSupersedeDestroysBaseEntities and
+				// TestInProcCustomExtractorsJavaEntityMutation. Do not flip the
+				// default until #6104 is closed.
+				//
+				// The `file.TSTree != nil` guard is load-bearing beyond avoiding
+				// a use-after-free: a subset of custom extractors work on file
+				// CONTENT and emit entities even with no parse tree, so without
+				// the guard a file that FAILED to parse would still produce
+				// custom entities. See
+				// TestInProcCustomExtractorsNilTreeGuardIsLoadBearing.
+				if inProcCustomExtractors() && file.TSTree != nil {
+					customEnts, customErrs := extractors.RunCustomExtractors(ctx, file)
+					if len(customErrs) > 0 && verbose() {
+						for _, ce := range customErrs {
+							fmt.Fprintf(os.Stderr, "custom extractor: %v\n", ce)
+						}
+					}
+					if len(customEnts) > 0 {
+						// MergeWithCustom applies the #4402 supersede
+						// semantics (carry base QualifiedName + structural
+						// edges onto the surviving custom entity) rather than
+						// a naive append; cross-kind dedup still happens
+						// downstream in deduplicateEntities.
+						ents = extractors.MergeWithCustom(ents, customEnts)
+					}
+				}
+
 				// #5954 — release the parse tree the moment its only consumer
 				// (the Pass-1 language extractor above) has returned. Mirrors
 				// internal/daemon/extract/subproc.go:446-453 ("this is what
@@ -3445,6 +3513,21 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				mu.Lock()
 				i.stats.processed++
 				if extractErr != nil {
+					// #5989 CAVEAT: `ents` is DISCARDED entirely on this branch —
+					// allRecords is only appended in the else below. When the
+					// custom-extractor gate is on, that means any file whose base
+					// extractor returned an error (notably
+					// ErrNoExtractorForLanguage) has already run ~340 custom
+					// extractors, allocated their output and merged it, only for
+					// all of it to be thrown away here.
+					//
+					// Two consequences: (a) wasted work proportional to the number
+					// of such files, and (b) a trap for anyone who later expects a
+					// language to be covered by custom extractors ALONE — that can
+					// never work while base failure discards the merged result.
+					// Deliberately left as-is: changing it would alter default-path
+					// behaviour for base-extractor failures, which is out of scope
+					// for a default-off gate.
 					if errors.Is(extractErr, extractors.ErrNoExtractorForLanguage) {
 						i.stats.skipped++
 					} else {
