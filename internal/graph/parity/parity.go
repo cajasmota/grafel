@@ -24,9 +24,17 @@
 //
 // Design
 // ──────
-//   - Order-independent: everything is set/map compared, never slice-index
-//     compared. Two documents that list the same entities in a different order
-//     are equivalent.
+//   - Order-independent: everything is grouped by identity key, never
+//     slice-index compared. Two documents that list the same entities in a
+//     different order are equivalent.
+//   - MULTISET, not set (#6037). Rows are grouped, not overwritten, so a graph
+//     carrying a row N times does NOT compare equal to one carrying it once.
+//     This is the dimension the comparator was blind to while the incremental
+//     path persisted duplicate entity and relationship rows (#6094), and the
+//     dimension a duplicated edge's DEPENDS_ON weight over-count rides on
+//     (#6098). Note the assertion is "multiplicities are EQUAL between A and
+//     B", never "every multiplicity is 1" — the full path legitimately emits
+//     distinct edges sharing a RelationshipID, so the latter would false-alarm.
 //   - Strict on graph STRUCTURE: entity identity + structural fields,
 //     relationship (from, to, kind) + properties, and per-entity community
 //     assignment.
@@ -99,6 +107,12 @@ type Report struct {
 	// structural fields differ, with a per-field description.
 	EntityFieldDiffs []FieldDiff
 
+	// EntityMultiplicityDiffs lists entity identities present in BOTH documents
+	// but a DIFFERENT NUMBER OF TIMES (#6037). A duplicated row is a real
+	// divergence: the incremental path persists it into graph.fb (#6094), and a
+	// set comparison is structurally incapable of seeing it.
+	EntityMultiplicityDiffs []FieldDiff
+
 	// RelsOnlyInA / RelsOnlyInB list relationship identities (from→to:kind)
 	// present in exactly one document.
 	RelsOnlyInA []string
@@ -106,6 +120,11 @@ type Report struct {
 
 	// RelPropDiffs lists relationships present in both whose properties differ.
 	RelPropDiffs []FieldDiff
+
+	// RelMultiplicityDiffs lists relationship identities present in BOTH
+	// documents but a DIFFERENT NUMBER OF TIMES (#6037 / #6094). See
+	// EntityMultiplicityDiffs.
+	RelMultiplicityDiffs []FieldDiff
 
 	// CommunityAssignmentDiffs lists entities whose community_id differs between
 	// the two documents (a community split / merge / relabel that drifted).
@@ -173,9 +192,11 @@ func (r Report) String() string {
 
 	writeList("entities only in A (full rebuild)", r.EntitiesOnlyInA)
 	writeList("entities only in B (incremental)", r.EntitiesOnlyInB)
+	writeFieldDiffs("entity row-count diffs", r.EntityMultiplicityDiffs)
 	writeFieldDiffs("entity field diffs", r.EntityFieldDiffs)
 	writeList("relationships only in A (full rebuild)", r.RelsOnlyInA)
 	writeList("relationships only in B (incremental)", r.RelsOnlyInB)
+	writeFieldDiffs("relationship row-count diffs", r.RelMultiplicityDiffs)
 	writeFieldDiffs("relationship property diffs", r.RelPropDiffs)
 	writeFieldDiffs("community assignment diffs", r.CommunityAssignmentDiffs)
 	writeList("community membership diffs", r.CommunitySetDiff)
@@ -208,9 +229,9 @@ func CompareWithOptions(a, b *graph.Document, opts Options) Report {
 	compareCommunities(a, b, &r)
 
 	if len(r.EntitiesOnlyInA) > 0 || len(r.EntitiesOnlyInB) > 0 ||
-		len(r.EntityFieldDiffs) > 0 ||
+		len(r.EntityFieldDiffs) > 0 || len(r.EntityMultiplicityDiffs) > 0 ||
 		len(r.RelsOnlyInA) > 0 || len(r.RelsOnlyInB) > 0 ||
-		len(r.RelPropDiffs) > 0 ||
+		len(r.RelPropDiffs) > 0 || len(r.RelMultiplicityDiffs) > 0 ||
 		len(r.CommunityAssignmentDiffs) > 0 || len(r.CommunitySetDiff) > 0 {
 		r.Equivalent = false
 	}
@@ -235,35 +256,83 @@ func entityKey(e graph.Entity) string {
 	return fmt.Sprintf("%s|%s|%s|%s|%s", id, e.Kind, e.Name, e.QualifiedName, e.SourceFile)
 }
 
+// compareEntities compares the two entity collections as MULTISETS (#6037).
+//
+// The pre-#6037 implementation keyed a map[string]graph.Entity, so N rows
+// sharing an identity collapsed into one slot: a graph carrying duplicate rows
+// (#6094 persists them into graph.fb on the incremental path) compared equal to
+// one carrying a single row, and the surviving row was whichever landed LAST in
+// slice order. Grouping instead of overwriting fixes both: row COUNT is compared
+// per key, and the field comparison over a duplicate group is order-independent.
 func compareEntities(a, b *graph.Document, r *Report, opts Options) {
-	mapA := make(map[string]graph.Entity, len(a.Entities))
-	for _, e := range a.Entities {
-		mapA[entityKey(e)] = e
-	}
-	mapB := make(map[string]graph.Entity, len(b.Entities))
-	for _, e := range b.Entities {
-		mapB[entityKey(e)] = e
-	}
+	mapA := groupEntities(a.Entities)
+	mapB := groupEntities(b.Entities)
 
-	for k, ea := range mapA {
-		eb, ok := mapB[k]
+	for k, ga := range mapA {
+		gb, ok := mapB[k]
 		if !ok {
-			r.EntitiesOnlyInA = append(r.EntitiesOnlyInA, k)
+			r.EntitiesOnlyInA = append(r.EntitiesOnlyInA, keyWithCount(k, len(ga)))
 			continue
 		}
-		if diff := entityStructuralDiff(ea, eb, opts); diff != "" {
+		if len(ga) != len(gb) {
+			r.EntityMultiplicityDiffs = append(r.EntityMultiplicityDiffs, FieldDiff{
+				Key:    k,
+				Detail: fmt.Sprintf("row count %d in A (full rebuild) ≠ %d in B (incremental)", len(ga), len(gb)),
+			})
+		}
+		if diff := entityGroupDiff(ga, gb, opts); diff != "" {
 			r.EntityFieldDiffs = append(r.EntityFieldDiffs, FieldDiff{Key: k, Detail: diff})
 		}
 	}
-	for k := range mapB {
+	for k, gb := range mapB {
 		if _, ok := mapA[k]; !ok {
-			r.EntitiesOnlyInB = append(r.EntitiesOnlyInB, k)
+			r.EntitiesOnlyInB = append(r.EntitiesOnlyInB, keyWithCount(k, len(gb)))
 		}
 	}
 
 	sort.Strings(r.EntitiesOnlyInA)
 	sort.Strings(r.EntitiesOnlyInB)
 	sortFieldDiffs(r.EntityFieldDiffs)
+	sortFieldDiffs(r.EntityMultiplicityDiffs)
+}
+
+func groupEntities(ents []graph.Entity) map[string][]graph.Entity {
+	m := make(map[string][]graph.Entity, len(ents))
+	for _, e := range ents {
+		k := entityKey(e)
+		m[k] = append(m[k], e)
+	}
+	return m
+}
+
+// entityGroupDiff compares two non-empty groups of entities sharing an identity
+// key. The 1:1 case (overwhelmingly the common one) delegates to
+// entityStructuralDiff so the message stays per-field and legible. For a
+// duplicate group it compares the SORTED structural signatures of each side, so
+// the answer depends on content rather than on which row happened to land last.
+func entityGroupDiff(ga, gb []graph.Entity, opts Options) string {
+	if len(ga) == 1 && len(gb) == 1 {
+		return entityStructuralDiff(ga[0], gb[0], opts)
+	}
+	sa := sortedSignatures(ga, func(e graph.Entity) string { return entitySignature(e, opts) })
+	sb := sortedSignatures(gb, func(e graph.Entity) string { return entitySignature(e, opts) })
+	if strings.Join(sa, " | ") == strings.Join(sb, " | ") {
+		return ""
+	}
+	return fmt.Sprintf("duplicate-key group differs: A=[%s] B=[%s]",
+		strings.Join(sa, " | "), strings.Join(sb, " | "))
+}
+
+// entitySignature renders exactly the fields entityStructuralDiff compares, in a
+// fixed order, so two entities are signature-equal iff that function reports no
+// diff between them.
+func entitySignature(e graph.Entity, opts Options) string {
+	tags := append([]string(nil), e.Tags...)
+	sort.Strings(tags)
+	return fmt.Sprintf("name=%s;qn=%s;kind=%s;subtype=%s;file=%s;lang=%s;sig=%s;lines=%d-%d;tags=%s;props=%s",
+		e.Name, e.QualifiedName, e.Kind, e.Subtype, e.SourceFile, e.Language, e.Signature,
+		e.StartLine, e.EndLine, strings.Join(tags, ","),
+		renderMap(filterMap(e.PropsSnapshot(), opts.IgnoreEntityProps)))
 }
 
 // entityStructuralDiff compares the structural (correctness-bearing) fields of
@@ -319,40 +388,74 @@ func compareRelationships(a, b *graph.Document, r *Report, opts Options) {
 	// gap) folds onto the entity it names. No-op unless NormalizeStubEndpoints.
 	resolver := newEndpointResolver(a, b, opts)
 
-	mapA := make(map[string]graph.Relationship, len(a.Relationships))
-	for _, rel := range a.Relationships {
-		if opts.IgnoreRelKinds[rel.Kind] {
-			continue
-		}
-		mapA[relKey(resolver(rel.FromID), resolver(rel.ToID), rel.Kind)] = rel
-	}
-	mapB := make(map[string]graph.Relationship, len(b.Relationships))
-	for _, rel := range b.Relationships {
-		if opts.IgnoreRelKinds[rel.Kind] {
-			continue
-		}
-		mapB[relKey(resolver(rel.FromID), resolver(rel.ToID), rel.Kind)] = rel
-	}
+	mapA := groupRelationships(a.Relationships, resolver, opts)
+	mapB := groupRelationships(b.Relationships, resolver, opts)
 
-	for k, ra := range mapA {
-		rb, ok := mapB[k]
+	for k, ga := range mapA {
+		gb, ok := mapB[k]
 		if !ok {
-			r.RelsOnlyInA = append(r.RelsOnlyInA, k)
+			r.RelsOnlyInA = append(r.RelsOnlyInA, keyWithCount(k, len(ga)))
 			continue
 		}
-		if d := stringMapDiff("properties", filterMap(ra.PropsSnapshot(), opts.IgnoreRelProps), filterMap(rb.PropsSnapshot(), opts.IgnoreRelProps)); d != "" {
+		if len(ga) != len(gb) {
+			r.RelMultiplicityDiffs = append(r.RelMultiplicityDiffs, FieldDiff{
+				Key:    k,
+				Detail: fmt.Sprintf("row count %d in A (full rebuild) ≠ %d in B (incremental)", len(ga), len(gb)),
+			})
+		}
+		if d := relGroupPropDiff(ga, gb, opts); d != "" {
 			r.RelPropDiffs = append(r.RelPropDiffs, FieldDiff{Key: k, Detail: d})
 		}
 	}
-	for k := range mapB {
+	for k, gb := range mapB {
 		if _, ok := mapA[k]; !ok {
-			r.RelsOnlyInB = append(r.RelsOnlyInB, k)
+			r.RelsOnlyInB = append(r.RelsOnlyInB, keyWithCount(k, len(gb)))
 		}
 	}
 
 	sort.Strings(r.RelsOnlyInA)
 	sort.Strings(r.RelsOnlyInB)
 	sortFieldDiffs(r.RelPropDiffs)
+	sortFieldDiffs(r.RelMultiplicityDiffs)
+}
+
+func groupRelationships(rels []graph.Relationship, resolver func(string) string, opts Options) map[string][]graph.Relationship {
+	m := make(map[string][]graph.Relationship, len(rels))
+	for _, rel := range rels {
+		if opts.IgnoreRelKinds[rel.Kind] {
+			continue
+		}
+		k := relKey(resolver(rel.FromID), resolver(rel.ToID), rel.Kind)
+		m[k] = append(m[k], rel)
+	}
+	return m
+}
+
+// relGroupPropDiff compares the properties of two non-empty groups of
+// relationships sharing a (from, to, kind) key.
+//
+// The duplicate-group case is real, not hypothetical: RelationshipID is
+// sha256(from, 0, to, 0, kind) with properties excluded BY DESIGN, and the Go
+// extractor deliberately emits distinct edges sharing that id (the `?mv`
+// multi-value call sites). The pre-#6037 comparator kept whichever row landed
+// last, making the property diff a function of slice order. Comparing the sorted
+// property signatures of the whole group makes it a function of content.
+func relGroupPropDiff(ga, gb []graph.Relationship, opts Options) string {
+	if len(ga) == 1 && len(gb) == 1 {
+		return stringMapDiff("properties",
+			filterMap(ga[0].PropsSnapshot(), opts.IgnoreRelProps),
+			filterMap(gb[0].PropsSnapshot(), opts.IgnoreRelProps))
+	}
+	sig := func(rel graph.Relationship) string {
+		return renderMap(filterMap(rel.PropsSnapshot(), opts.IgnoreRelProps))
+	}
+	sa := sortedSignatures(ga, sig)
+	sb := sortedSignatures(gb, sig)
+	if strings.Join(sa, " | ") == strings.Join(sb, " | ") {
+		return ""
+	}
+	return fmt.Sprintf("duplicate-key group properties differ: A=[%s] B=[%s]",
+		strings.Join(sa, " | "), strings.Join(sb, " | "))
 }
 
 // ──────────────────────────── communities ───────────────────────────
@@ -444,6 +547,53 @@ func communityLabel(e graph.Entity) string {
 }
 
 // ─────────────────────────── shared helpers ─────────────────────────
+
+// keyWithCount annotates a key present on exactly one side with its row count,
+// so "invented once" and "invented three times" are distinguishable in the
+// report. n==1 renders bare, keeping the common case's output unchanged.
+func keyWithCount(key string, n int) string {
+	if n <= 1 {
+		return key
+	}
+	return fmt.Sprintf("%s ×%d", key, n)
+}
+
+// sortedSignatures renders each element of a group via sig and returns the
+// DISTINCT results, sorted — an order-independent fingerprint of the group's
+// CONTENT. Repetition is deliberately dropped here: row COUNT is reported by its
+// own bucket (Entity/RelMultiplicityDiffs), so folding it in again would report
+// one defect twice.
+func sortedSignatures[T any](group []T, sig func(T) string) []string {
+	seen := make(map[string]struct{}, len(group))
+	out := make([]string, 0, len(group))
+	for _, v := range group {
+		s := sig(v)
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// renderMap renders a string map deterministically (sorted by key).
+func renderMap(m map[string]string) string {
+	if len(m) == 0 {
+		return "{}"
+	}
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	parts := make([]string, 0, len(ks))
+	for _, k := range ks {
+		parts = append(parts, fmt.Sprintf("%s=%q", k, m[k]))
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
 
 func stringSliceDiff(name string, a, b []string) string {
 	sa := append([]string(nil), a...)
