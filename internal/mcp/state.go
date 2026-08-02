@@ -2130,6 +2130,22 @@ func coldShellRepo(lr *LoadedRepo) *LoadedRepo {
 		// (rebuilding the LabelIndex side-table dropped with the heap) is the shell
 		// group's algoApplied=false, set in EvictGroup — not a spurious stale mtime.
 		algoStampedMt: lr.algoStampedMt,
+		// #6010 follow-up: the LAST-reload failure record must survive the cycle.
+		// A keepReader eviction does NOT re-read graph.fb — the shell inherits the
+		// exact same (possibly stale, possibly absent) Doc/Reader — so the reason
+		// the load failed is still the current truth about this repo. Dropping it
+		// silently degrades both consumers: handleGraphStats renders
+		// totals.unavailable as "<repo>: "+loadErr → a bare "repo: ", and
+		// handleDiagnostics's `load_error,omitempty` field disappears entirely.
+		// reindexRequired/reindexReason are the version-skew half of that same
+		// failure record and travel with it for the same reason.
+		//
+		// Contrast with descApplied/flowApplied/curRef* (deliberately NOT copied):
+		// those are memo caches whose absence merely forces a correct re-apply /
+		// re-resolve on revive, exactly like the forced algoApplied=false.
+		loadErr:         lr.loadErr,
+		reindexRequired: lr.reindexRequired,
+		reindexReason:   lr.reindexReason,
 	}
 }
 
