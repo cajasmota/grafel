@@ -276,11 +276,19 @@ func EntityID(repo, kind, name, sourceFile string) string {
 // method (internal/links/phantom_edges.go), process/event steps salted per
 // step index — so identity cannot be recovered from the endpoints alone.
 //
-// The key is reserved: no producer emits a relationship property called "id",
-// fbwriter writes it only when the ID is not derivable from the triple, and
+// The leading NUL makes the key unreachable by construction rather than by
+// convention: no producer can collide with it, so identity can never be
+// hijacked by a payload key and a payload key can never be swallowed as
+// identity. A plain "id" WOULD collide — relationships carrying a producer-set
+// "id" property already exist in tree (internal/mcp/mmapview_test.go:70) — and
+// the failure would be silent in both directions: the loader would lift the
+// producer's value into Relationship.ID and delete the property, and the writer
+// would overwrite the producer's value on any salted edge.
+//
+// fbwriter writes the key only when the ID is not derivable from the triple;
 // the loader strips it back out of Properties after restoring the ID. It must
 // never be read or written as an ordinary property.
-const RelationshipIDProperty = "id"
+const RelationshipIDProperty = "\x00id"
 
 // RelationshipID computes a stable 16-char hex id for an edge. It is the
 // DEFAULT identity scheme, not the only one — see RelationshipIDProperty.

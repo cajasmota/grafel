@@ -38,8 +38,8 @@ func TestZeroCopyStringEmptyByteVector(t *testing.T) {
 
 // parityDoc builds a Document exercising every field the views expose plus the
 // empty-ByteVector cases that WILL hit real data: an entity with empty
-// Signature and empty Subtype, an entity with no module, a relationship with
-// and without the tunneled "id" property, and multi/zero property sets.
+// Signature and empty Subtype, an entity with no module, relationships with and
+// without the reserved identity slot (#6085), and multi/zero property sets.
 func parityDoc() *graph.Document {
 	e0 := graph.Entity{
 		ID: "r::pkg.Foo", Name: "Foo", QualifiedName: "pkg.Foo", Kind: "type",
@@ -66,15 +66,30 @@ func parityDoc() *graph.Document {
 		SourceFile: "pkg/baz.go", Language: "go",
 	}
 
+	// A producer-supplied "id" PROPERTY. Since #6085 that is an ordinary
+	// property with no bearing on identity — the reserved slot carries a NUL
+	// no producer can emit — so both views must surface it as a property and
+	// neither may treat it as the edge's ID.
 	r0 := graph.Relationship{FromID: "r::pkg.Foo", ToID: "r::pkg.bar", Kind: "calls"}
 	r0.PropsReplace(map[string]string{"id": "edge-0001", "line": "12"})
 
-	// Relationship without an id property → ID() must be "" on both sides.
+	// No reserved slot on disk (its ID is derivable), so BOTH views must
+	// reconstruct ID() as graph.RelationshipID(from, to, kind).
 	r1 := graph.Relationship{FromID: "r::pkg.bar", ToID: "r::pkg.Baz", Kind: "references"}
+	r1.ID = graph.RelationshipID(r1.FromID, r1.ToID, r1.Kind)
+
+	// A SALTED id — not derivable from the triple — so fbwriter writes the
+	// reserved slot. Both views must report that ID and both must hide the
+	// slot from the property surface (PropLen 1, not 2). Without a salted edge
+	// in this fixture the slot is never present on disk and the mmap view's
+	// hiding of it is untested.
+	r2 := graph.Relationship{FromID: "r::pkg.Foo", ToID: "r::pkg.Baz", Kind: "modifies"}
+	r2.ID = graph.RelationshipID(r2.FromID, r2.ToID, r2.Kind+"\x00add_column")
+	r2.PropsReplace(map[string]string{"op": "add_column"})
 
 	return &graph.Document{
 		Entities:      []graph.Entity{e0, e1, e2},
-		Relationships: []graph.Relationship{r0, r1},
+		Relationships: []graph.Relationship{r0, r1, r2},
 	}
 }
 
@@ -273,9 +288,11 @@ func assertRelViewEqual(t *testing.T, i int, want, got graph.RelationshipView) {
 	if want.Kind() != got.Kind() {
 		t.Errorf("rel[%d] Kind: heap %q mmap %q", i, want.Kind(), got.Kind())
 	}
-	// W2: full read-only property surface parity, incl. the id-tunneled "id"
-	// property (which also backs ID()).
-	assertPropReadParity(t, "rel["+strconv.Itoa(i)+"]", want, got, []string{"id", "line", "__absent__"})
+	// W2: full read-only property surface parity. The probe list includes the
+	// producer-supplied "id" property (an ordinary property since #6085) and
+	// the reserved identity slot, which BOTH views must hide.
+	assertPropReadParity(t, "rel["+strconv.Itoa(i)+"]", want, got,
+		[]string{"id", "op", "line", graph.RelationshipIDProperty, "__absent__"})
 }
 
 func idsOfViews(vs []graph.EntityView) []string {
