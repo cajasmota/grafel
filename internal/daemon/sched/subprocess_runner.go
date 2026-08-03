@@ -234,16 +234,37 @@ func resolveChildGOMAXPROCS(interactive bool, foregroundCap int) (n int, reason 
 // a background pass that never finishes is its own kind of failure. On a
 // 1-core host the floor yields to the machine (clamped to NumCPU).
 //
-// WHAT THIS NUMBER ACTUALLY BUYS TODAY: very little, in either direction. Both
-// passes are SERIAL — internal/links, internal/graph, internal/graph/groupalgo
-// and the gonum packages they call (graph/community, graph/network, graph/path,
-// mat) have no goroutine fan-out, and algorithms.go's network.PageRankSparse
-// never reaches the one parallel path in the dependency (blas dgemm/sgemm). A
-// live group-algo child shows one thread running and the rest asleep. So this
-// value mostly sizes the GC's mark workers, not the pass. It is kept honest and
-// proportional anyway, because it is the number that will bind the moment
-// either pass is parallelised, and because a wrong number here is invisible
-// until it is expensive. Do not cite it as a throughput control.
+// WHAT THIS NUMBER ACTUALLY BUYS — CORRECTED (#6108). Both passes really are
+// SERIAL: internal/links, internal/graph (including louvain.go),
+// internal/graph/groupalgo and every gonum package in the dependency closure
+// have no goroutine fan-out, and gonum's network.Betweenness even carries a
+// literal "TODO: Consider using the parallel algorithm when GOMAXPROCS != 1". A
+// live group-algo child shows one thread running and the rest asleep.
+//
+// This comment used to draw the inference that the cap therefore "buys very
+// little" and should not be cited as a throughput control. THAT INFERENCE IS
+// WRONG, and it is what let an unbounded in-process pass sustain 571.9% CPU
+// inside the daemon while the scheduler logged cap=2 (#6108).
+//
+// "This value mostly sizes the GC's mark workers, not the pass" is the true
+// half — and on this workload the GC's mark workers ARE the CPU. GC mark
+// parallelism is sized by GOMAXPROCS, and idle mark workers are scheduled on
+// every otherwise-idle P, so a single-threaded mutator on a 12-P runtime hands
+// the collector 11 Ps to fill. Measured on a serial mutator over a
+// pointer-dense retained heap (getrusage, total CPU seconds):
+//
+//	GOMAXPROCS=12   cpu=0.55s   311.1%
+//	GOMAXPROCS= 3   cpu=0.38s   188.0%
+//	GOMAXPROCS= 1   cpu=0.38s    99.2%
+//
+// The CPU SECONDS fall — the excess is idle-mark-worker overhead the cap
+// deletes, not work redistributed. Serial does not imply cheap when the live
+// set is a dense pointer graph, which is exactly what these passes retain.
+//
+// So this number binds TODAY, on real machines, and is load-bearing for the
+// in-process caps in internal/process/gomaxprocs.go as well as for the children.
+// It is a CPU control, not a throughput control: raising it does not make a
+// serial pass faster, but lowering it genuinely reduces what the host gives up.
 const (
 	backgroundBatchCoreDivisor = 8
 	backgroundBatchCoreFloor   = 2

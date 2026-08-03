@@ -368,12 +368,16 @@ func applyDaemonGOMAXPROCSFromCaps(store *caps.Store, hostCPU int) (int, int, bo
 	if target < 1 {
 		target = 1
 	}
-	cur := runtime.GOMAXPROCS(0) // query without changing
-	if cur == target {
-		return target, cur, false
-	}
-	prev := runtime.GOMAXPROCS(target)
-	return target, prev, true
+	// #6108 — MUST go through process.ApplyGOMAXPROCS, not runtime directly.
+	// The daemon now opens capped GOMAXPROCS regions around its in-process
+	// analytics passes, and a handler that read/wrote the runtime value itself
+	// lost this reload whenever one was open: a target equal to the region's
+	// clamp read back as "unchanged" and no-oped, and the region's restore then
+	// wrote back the pre-region host value — leaving the daemon PERMANENTLY
+	// ABOVE the operator's configured cap. Routing through the package makes the
+	// operator's value the baseline a live region restores to.
+	prev, changed := process.ApplyGOMAXPROCS(target)
+	return target, prev, changed
 }
 
 // installCapReloadHandler registers a SIGHUP handler that re-reads cpu.json and
@@ -1425,6 +1429,13 @@ func daemonForegroundLinks(ctx context.Context, group string) error {
 	return runLinksHookWithCtx(ctx, group)
 }
 
+// groupAlgoCapApply applies the resolved CPU bound around the in-process
+// group-algo pass (#6108). It is process.WithGOMAXPROCSCap; a var only so a
+// test can observe the cap the fallback ACTUALLY asks for and the GOMAXPROCS
+// actually in force when the pass body runs — the assertion #6091 taught us to
+// make behaviourally rather than by reading the source.
+var groupAlgoCapApply = process.WithGOMAXPROCSCap
+
 // daemonSchedulerGroupAlgo runs the group-scope algorithm pass ONCE over the
 // assembled union of a group's per-repo graphs and writes the <group>-algo.json
 // overlay (#5349 A3, epic #5350). It replaces the old per-repo daemonSchedulerAlgo:
@@ -1442,23 +1453,158 @@ func daemonSchedulerGroupAlgo(ctx context.Context, group string) error {
 		// Preferred path: fork-exec for heap isolation under the per-child CPU
 		// cap. The child writes the overlay; the MCP apply path picks it up by
 		// mtime on the next group load (no daemon-side cache to poke).
+		//
+		// The heartbeat covers this branch too: the child's own per-phase
+		// memtrace is off unless GRAFEL_MEMTRACE is set, so without this the
+		// daemon log goes silent between "starting" and the child's exit — which
+		// on the real corpus is tens of minutes, and on a loaded host was
+		// measured at ~4 hours (#6108).
+		defer startGroupAlgoProgress(ctx, group, "child")()
 		return sched.RunSubprocessGroupAlgo(ctx, group, slog.Default())
 	}
 	// In-process fallback (opt-out via GRAFEL_SUBPROCESS_INDEXER=0). Runs under
 	// the scheduler's algoSem cap. The union heap is freed when the result goes
 	// out of scope; no per-repo graph.fb is rewritten.
 	//
-	// #5309 layer 4 — incremental community detection: when the assembled union's
-	// community-input hash matches the prior overlay's, the heavy Louvain +
-	// PageRank + betweenness recompute is skipped and the prior overlay is
-	// reconstituted verbatim (strict parity by determinism); otherwise a full
-	// deterministic recompute runs (CPU-bounded by #5602). Either way the overlay
-	// is re-written so its source_mtimes settle the staleness gate.
-	res, err := groupalgo.RunGroupAlgorithmsIncremental(group)
-	if err != nil {
-		return err
+	// #6108 — CPU BOUND. There is no child here to hand a GOMAXPROCS to, so the
+	// pass used to run at the daemon's own GOMAXPROCS (= every core on the box)
+	// while the scheduler logged the CHILD's cap. Resolve the SAME cap the child
+	// would have been spawned with and apply it to this process for the duration.
+	// Foreground groups resolve to the host core count, and WithGOMAXPROCSCap
+	// never raises, so user-awaited work is left uncapped exactly as #5954
+	// intends. See internal/process/gomaxprocs.go for why GOMAXPROCS is the
+	// right lever for a pass with no goroutine fan-out of its own (it is the
+	// GC's parallelism, not the algorithm's, that produced 571.9%).
+	capN := sched.GroupAlgoGOMAXPROCSFor(sched.GroupIsForeground(group))
+	defer startGroupAlgoProgress(ctx, group, "in-process")()
+	return groupAlgoCapApply(capN, func() error {
+		// #5309 layer 4 — incremental community detection: when the assembled
+		// union's community-input hash matches the prior overlay's, the heavy
+		// Louvain + PageRank + betweenness recompute is skipped and the prior
+		// overlay is reconstituted verbatim (strict parity by determinism);
+		// otherwise a full deterministic recompute runs (CPU-bounded by #5602).
+		// Either way the overlay is re-written so its source_mtimes settle the
+		// staleness gate.
+		res, err := groupalgo.RunGroupAlgorithmsIncremental(group)
+		if err != nil {
+			return err
+		}
+		return groupalgo.WriteOverlayFromResult(res)
+	})
+}
+
+// groupAlgoProgressInterval is how often a running group-algo pass reports
+// progress. GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL overrides it; any non-positive
+// duration ("0", "0s", "-1s") disables the heartbeat entirely.
+//
+// 60s is chosen against the failure it exists for: a pass with a ~40 minute
+// expectation that ran for ~4 hours and emitted NOTHING after "starting", so an
+// operator staring at a daemon holding six cores could not tell slow progress
+// from a wedge. At 60s a healthy pass adds a handful of lines and a pathological
+// one leaves a per-phase timeline. Anything much finer would spam the ring
+// buffer that holds the daemon's recent log.
+//
+// groupAlgoProgressMin is a hard floor on the override. Without it
+// GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL=1ns is accepted and the heartbeat spins a
+// core logging — a diagnostic knob that becomes its own CPU incident. 10ms is
+// low enough for a test to drive and high enough to cost nothing.
+const (
+	groupAlgoProgressInterval = time.Minute
+	groupAlgoProgressMin      = 10 * time.Millisecond
+)
+
+func groupAlgoProgressEvery() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL"))
+	if raw == "" {
+		return groupAlgoProgressInterval
 	}
-	return groupalgo.WriteOverlayFromResult(res)
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		// A bare "0" is not a valid Go duration but is the conventional and
+		// documented way to disable a knob, so honour it rather than silently
+		// falling back to the default the operator was trying to turn off.
+		if raw == "0" {
+			return 0
+		}
+		return groupAlgoProgressInterval
+	}
+	if d <= 0 {
+		return 0
+	}
+	if d < groupAlgoProgressMin {
+		return groupAlgoProgressMin
+	}
+	return d
+}
+
+// startGroupAlgoProgress emits a periodic progress line for an in-flight
+// group-algo pass and returns a stop function (call it, or defer it, exactly
+// once).
+//
+// WHAT IT REPORTS AND WHY EACH FIELD IS THERE:
+//
+//   - phase — groupalgo.CurrentPhase(), the same stamp the memtrace sampler
+//     reads, so the two can never disagree. Only meaningful on the in-process
+//     branch; the child stamps its own copy in its own address space, so the
+//     child branch reports the mode instead of a phase it cannot see. A phase
+//     that has not advanced in twenty lines is what "wedged" looks like.
+//   - elapsed — wall time since the pass started.
+//   - cpu — percent of one core, averaged over the interval, derived from the
+//     process's cumulative CPU seconds. This is the field that would have made
+//     #6108 self-evident from the log alone: `cap=2` beside `cpu=571%` is the
+//     whole bug in one line. On the child branch it is the DAEMON's own draw,
+//     which is the number that matters for "is the daemon eating my machine".
+//
+// It never takes a lock the pass can block on and never fails the pass: a CPU
+// read error simply drops the cpu field for that tick.
+func startGroupAlgoProgress(ctx context.Context, group, mode string) func() {
+	every := groupAlgoProgressEvery()
+	if every <= 0 {
+		return func() {}
+	}
+	logger := slog.Default()
+	pid := os.Getpid()
+	start := time.Now()
+	lastWall := start
+	lastCPU, cpuOK := 0.0, false
+	if s, err := process.CPUTimeSeconds(pid); err == nil {
+		lastCPU, cpuOK = s, true
+	}
+
+	done := make(chan struct{})
+	var once sync.Once
+	go func() {
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case now := <-t.C:
+				attrs := []any{
+					"group", group,
+					"mode", mode,
+					"elapsed", time.Since(start).Truncate(time.Second).String(),
+				}
+				if phase := groupalgo.CurrentPhase(); phase != "" && mode != "child" {
+					attrs = append(attrs, "phase", phase)
+				}
+				if s, err := process.CPUTimeSeconds(pid); err == nil {
+					if wall := now.Sub(lastWall).Seconds(); cpuOK && wall > 0 {
+						if pct := 100 * (s - lastCPU) / wall; pct >= 0 {
+							attrs = append(attrs, "cpu_pct", int(pct))
+						}
+					}
+					lastCPU, cpuOK = s, true
+				}
+				lastWall = now
+				logger.Info("group-algo: progress", attrs...)
+			}
+		}
+	}()
+	return func() { once.Do(func() { close(done) }) }
 }
 
 // daemonIndexFunc is the IndexFunc handed to daemon.Run. It bridges the

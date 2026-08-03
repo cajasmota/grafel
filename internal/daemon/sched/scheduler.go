@@ -2690,17 +2690,40 @@ func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
 	// the mark this pass was actually spawned under — a rebuild that re-marks
 	// the group while this (long) pass runs must not have its mark wiped by
 	// this pass finishing.
+	//
+	// #6108 — `cap` MUST NAME SOMETHING THAT IS ACTUALLY ENFORCED. This value is
+	// the pass's GOMAXPROCS, and until #6108 it was enforced only when the pass
+	// ran as a CHILD: the in-process fallback had nothing to hand it to and ran
+	// at the daemon's own GOMAXPROCS, which is how `cap=2` was logged beside a
+	// sustained 571.9%. Both paths now apply it (the in-process one via
+	// process.WithGOMAXPROCSCap in daemonSchedulerGroupAlgo), and `mode` says
+	// which enforcement is in play so the line can be read without guessing.
 	fgEpoch, _ := GroupForegroundState(group)
 	capN := groupAlgoChildGOMAXPROCS(group)
-	s.logger.Info("group-algo: starting", "group", group, "cap", capN)
+	mode := "in-process"
+	if SubprocessIndexEnabled() {
+		mode = "child"
+	}
+	s.logger.Info("group-algo: starting", "group", group, "cap", capN, "mode", mode)
+	// Try the semaphore without blocking first, purely so a pass that is QUEUED
+	// rather than running says so. "starting" followed by hours of silence has
+	// two very different causes — waiting for a slot, and running slowly — and
+	// the log could not distinguish them (#6108).
 	select {
 	case s.algoSem <- struct{}{}:
-		// acquired
-	case <-ctx.Done():
-		s.logEvent("group_algo_cancelled", "", group+": waiting for algo-sem slot")
-		return
-	case <-s.stop:
-		return
+		// acquired immediately
+	default:
+		s.logger.Info("group-algo: waiting for an algo slot", "group", group, "slots", cap(s.algoSem))
+		s.logEvent("group_algo_queued", "", group)
+		select {
+		case s.algoSem <- struct{}{}:
+			// acquired
+		case <-ctx.Done():
+			s.logEvent("group_algo_cancelled", "", group+": waiting for algo-sem slot")
+			return
+		case <-s.stop:
+			return
+		}
 	}
 	defer func() { <-s.algoSem }()
 
