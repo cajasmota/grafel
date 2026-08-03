@@ -30,6 +30,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
+	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -1054,6 +1055,12 @@ type (
 	algoDoneFunc func(cacheKey string)
 )
 
+// backgroundAlgoCapApply applies the background CPU bound around the deferred
+// Pass-4 sweep (#6108). It is process.WithGOMAXPROCSCap; a var only so a test
+// can observe the cap the sweep asks for and the GOMAXPROCS actually in force
+// when RunAlgorithms runs, rather than asserting the fix by reading the source.
+var backgroundAlgoCapApply = process.WithGOMAXPROCSCap
+
 // backgroundAlgoGate, when set, blocks a scheduled background Pass-4
 // computation until it receives — so a test can deterministically assert the
 // load returned WITHOUT the full sweep having run.
@@ -1150,18 +1157,39 @@ func (c *GraphCache) schedulePendingAlgo(cacheKey string, grp *DashGroup) {
 		if gate := backgroundAlgoGate.Load(); gate != nil {
 			<-(chan struct{})(*gate)
 		}
-		for _, p := range pending {
-			// READ-ONLY over p.doc.Entities/Relationships (RunAlgorithms mutates
-			// neither, and touches only heap slices — not the mmap reader). Safe
-			// to run concurrently with handlers reading the same doc, and safe if
-			// the group was already evicted under us (concern #2).
-			res := graph.RunAlgorithms(p.doc.Entities, p.doc.Relationships)
-			persistAlgoResults(p.stateDir, p.fbMtime, res)
-			// Record that this graph.fb version has been computed BEFORE the evict
-			// below, so a reload triggered by the eviction filters this repo out
-			// (termination) even if the persist above failed.
-			c.markAlgoComputed(p.stateDir, p.fbMtime)
-		}
+		// #6108 — CPU BOUND. This is the daemon's OTHER in-process Pass-4 site,
+		// and it had no bound at all: no child process to give a GOMAXPROCS to,
+		// nothing to inherit the extract fanout's budget, running at whatever
+		// GOMAXPROCS `serve` itself has. The sweep is unambiguously BACKGROUND —
+		// the request that triggered it was already answered with the degree
+		// fallback (attachDegreeFallback) and nobody is waiting on this — so it
+		// takes the canonical background budget, process.IndexCoreBudget().
+		//
+		// GOMAXPROCS is the right lever even though the sweep is serial: it is
+		// the GC, sized by GOMAXPROCS and free to fill every idle P with mark
+		// workers, that turns a single-threaded Brandes over a large union into
+		// the multi-hundred-percent draw #6108 measured. See
+		// internal/process/gomaxprocs.go.
+		//
+		// COST: WithGOMAXPROCSCap serialises capped regions process-wide, so two
+		// groups warming at once now sweep one after the other instead of
+		// together. That is the intended trade — concurrent unbounded sweeps are
+		// how the daemon came to be the top process on the user's machine.
+		_ = backgroundAlgoCapApply(process.IndexCoreBudget(), func() error {
+			for _, p := range pending {
+				// READ-ONLY over p.doc.Entities/Relationships (RunAlgorithms mutates
+				// neither, and touches only heap slices — not the mmap reader). Safe
+				// to run concurrently with handlers reading the same doc, and safe if
+				// the group was already evicted under us (concern #2).
+				res := graph.RunAlgorithms(p.doc.Entities, p.doc.Relationships)
+				persistAlgoResults(p.stateDir, p.fbMtime, res)
+				// Record that this graph.fb version has been computed BEFORE the evict
+				// below, so a reload triggered by the eviction filters this repo out
+				// (termination) even if the persist above failed.
+				c.markAlgoComputed(p.stateDir, p.fbMtime)
+			}
+			return nil
+		})
 		// Evict THIS entry (only if it is still the group we computed for) so the
 		// next request reloads with the persisted Pass-4 applied synchronously.
 		c.mu.Lock()
