@@ -459,6 +459,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	var newEntities []graph.Entity
 	var newRels []graph.Relationship
+	// #6094 — mirrors buildDocument's `seenRel`: one identity per
+	// (FromID, ToID, Kind) across this whole re-extraction batch.
+	seenNewRel := make(map[string]bool)
 
 	for _, rel := range reallyChanged {
 		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
@@ -499,7 +502,29 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			e := entityRecordToGraphEntity(rec, doc.Repo)
 			newEntities = append(newEntities, e)
 			for _, relRec := range rec.Relationships {
-				newRels = append(newRels, relRecordToGraphRel(relRec))
+				// #6094: a record-embedded edge with no explicit FromID is OWNED
+				// by the record carrying it — the full-index assembly loop
+				// (cmd/grafel/index.go, buildDocument) substitutes the owning
+				// entity's ID, and so must this path. Leaving it empty makes the
+				// edge invisible to every FromID-keyed consumer: the stale-edge
+				// eviction above never drops it (so each pass appends another
+				// copy — the unbounded accumulation in #6094) and module
+				// aggregation cannot attribute it to a module (so it never
+				// contributes to the DEPENDS_ON weight — #6098).
+				r := relRecordToGraphRel(relRec, e.ID)
+				// #6094: the full path also guards with `seenRel` keyed on
+				// (FromID, ToID, Kind), because an extractor may emit the same
+				// owned edge twice within one file. types.RelationshipRecord has
+				// no ID field, so record-embedded edges can never carry the
+				// salted IDs some engine passes use to keep distinct edges that
+				// share a triple — the triple is a safe identity HERE and only
+				// here. seenNewRel is scoped to this re-extraction batch, exactly
+				// as buildDocument's is scoped to its own assembly.
+				if seenNewRel[r.ID] {
+					continue
+				}
+				seenNewRel[r.ID] = true
+				newRels = append(newRels, r)
 			}
 		}
 	}
@@ -971,12 +996,23 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 }
 
 // relRecordToGraphRel converts an embedded types.RelationshipRecord to a
-// graph.Relationship.
-func relRecordToGraphRel(r types.RelationshipRecord) graph.Relationship {
-	id := graph.RelationshipID(r.FromID, r.ToID, r.Kind)
+// graph.Relationship, mirroring the full-index assembly loop in
+// cmd/grafel/index.go (buildDocument).
+//
+// ownerID is the ID of the entity record that carried r. A record-embedded edge
+// may legitimately omit FromID to mean "from my owner"; the full path
+// substitutes the owner's ID in that case and this path must agree, or the edge
+// lands with an empty FromID and becomes invisible to every FromID-keyed
+// consumer downstream (#6094 duplicate accumulation, #6098 weight shortfall).
+func relRecordToGraphRel(r types.RelationshipRecord, ownerID string) graph.Relationship {
+	fromID := r.FromID
+	if fromID == "" {
+		fromID = ownerID
+	}
+	id := graph.RelationshipID(fromID, r.ToID, r.Kind)
 	return graph.Relationship{
 		ID:     id,
-		FromID: r.FromID,
+		FromID: fromID,
 		ToID:   r.ToID,
 		Kind:   r.Kind,
 
