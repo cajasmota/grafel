@@ -355,98 +355,118 @@ func TestInProcCustomExtractorsJavaScriptIsNotInert(t *testing.T) {
 	t.Logf("javascript destroyed=%v added=%v", destroyed, added)
 }
 
-// TestInProcCustomExtractorsJavaEntityMutation PINS A KNOWN DEFECT (#6104).
+// TestInProcCustomExtractorsJavaEnrichment is the INVERSION of the former
+// TestInProcCustomExtractorsJavaEntityMutation, which pinned #6104's known
+// defect. It is now a correctness test.
 //
-// The Java custom extractors mutate existing entities IN PLACE rather than
-// adding new ones. The collision is SAME KIND, SAME NAME, SAME FILE — only
-// Subtype and EndLine differ:
+// WHAT IT USED TO PIN. The Java custom extractors collide with the base path
+// on SAME KIND, SAME NAME, SAME FILE:
 //
 //	OFF: SCOPE.Operation|OrdersController.list|api.OrdersController.list|method  |...|9|12
 //	ON:  SCOPE.Operation|OrdersController.list|api.OrdersController.list|endpoint|...|9| 9
 //
-// Two things are corrupted: Subtype flips method -> endpoint, and EndLine is
-// TRUNCATED to the start line, losing the body extent. The truncation
-// propagates into the derived http_endpoint_definition entity too.
+// Two things changed, and the old test asserted BOTH as broken behaviour:
+// Subtype flipped method -> endpoint, and EndLine was TRUNCATED to the start
+// line, losing the body extent — a truncation that propagated into the derived
+// http_endpoint_definition.
 //
-// WHY THIS TEST EXISTS SEPARATELY FROM THE CELERY PIN. Because the Java
-// collision is same-(Kind, Name), the obvious remedy for the Celery loss —
-// keying supersede on (Kind, Name) instead of Name alone — does NOT fix Java.
-// Without this test, that fix would turn the Celery pin red, be declared
-// complete, and ship with the Java corruption entirely unpinned.
+// WHAT IT ASSERTS NOW, AND WHY THE TWO ARE TREATED DIFFERENTLY. Those two
+// changes are not the same kind of change:
 //
-// Asserts the BROKEN behaviour deliberately. When #6104 is fixed this test
-// fails and should be inverted, not deleted.
-func TestInProcCustomExtractorsJavaEntityMutation(t *testing.T) {
+//   - The Subtype refinement is INFORMATION. "This method is really an
+//     endpoint" is exactly what the framework extractor exists to know, and
+//     discarding it would discard the point of the gate. It is KEPT, and the
+//     value it displaced is retained under types.EntityBaseSubtypeProperty so
+//     nothing is lost. Still asserted, now as desired behaviour.
+//
+//   - The EndLine truncation is DATA LOSS with no compensating information.
+//     Same kind, same name, same file means these are the same graph node, and
+//     a merge of two observations of one node must never produce a narrower
+//     span than either observation. Now asserted as forbidden.
+//
+// The old test's third assertion — that the truncation propagates to the
+// derived http_endpoint_definition — is kept and inverted with it: the
+// derived entity must not be truncated either.
+func TestInProcCustomExtractorsJavaEnrichment(t *testing.T) {
 	off, on := indexBothArms(t, "java_lang_repo")
-	destroyed, added := tupleDelta(entityTuples(off, "java"), entityTuples(on, "java"))
+	offT, onT := entityTuples(off, "java"), entityTuples(on, "java")
+	destroyed, added := tupleDelta(offT, onT)
 
-	if len(destroyed) == 0 {
-		t.Fatalf("KNOWN DEFECT APPEARS FIXED: the gate no longer destroys Java entities. " +
-			"If #6104 was fixed, invert this test to assert Java is inert.")
-	}
-
-	// 1. Subtype mutation on a same-kind/same-name/same-file entity.
-	var subtypeMutated bool
+	// 1. The Subtype refinement is KEPT — this is the gate's value on Java.
+	var subtypeRefined bool
 	for _, d := range destroyed {
 		if !strings.HasPrefix(d, "SCOPE.Operation|OrdersController.list|") || !strings.Contains(d, "|method|") {
 			continue
 		}
 		for _, a := range added {
 			if strings.HasPrefix(a, "SCOPE.Operation|OrdersController.list|") && strings.Contains(a, "|endpoint|") {
-				subtypeMutated = true
+				subtypeRefined = true
 			}
 		}
 	}
-	if !subtypeMutated {
-		t.Errorf("expected Java SCOPE.Operation subtype mutation method->endpoint; destroyed=%v added=%v",
+	if !subtypeRefined {
+		t.Errorf("expected the Java SCOPE.Operation subtype refinement method->endpoint to survive; destroyed=%v added=%v",
 			destroyed, added)
 	}
 
-	// 2. EndLine truncation — the body extent is lost. Compare the EndLine of
-	// the destroyed vs added tuple for the same Kind|Name|File.
-	endLineOf := func(tuple string) (kindName string, endLine int, ok bool) {
+	// 2. NO SPAN MAY NARROW. Compare the span of every destroyed tuple against
+	// its same Kind|Name|SourceFile successor in `added`. This is the
+	// assertion that used to require a truncation to exist.
+	spanOf := func(tuple string) (kindNameFile string, start, end int, ok bool) {
 		parts := strings.Split(tuple, "|")
 		if len(parts) != 7 {
-			return "", 0, false
+			return "", 0, 0, false
 		}
-		n, err := strconv.Atoi(parts[6])
+		st, err := strconv.Atoi(parts[5])
 		if err != nil {
-			return "", 0, false
+			return "", 0, 0, false
 		}
-		return parts[0] + "|" + parts[1] + "|" + parts[4], n, true
+		en, err := strconv.Atoi(parts[6])
+		if err != nil {
+			return "", 0, 0, false
+		}
+		return parts[0] + "|" + parts[1] + "|" + parts[4], st, en, true
 	}
-	offEnd := map[string]int{}
+	type span struct{ start, end int }
+	offSpan := map[string]span{}
 	for _, d := range destroyed {
-		if k, n, ok := endLineOf(d); ok {
-			offEnd[k] = n
+		if k, st, en, ok := spanOf(d); ok {
+			offSpan[k] = span{st, en}
 		}
 	}
-	var truncated []string
+	var narrowed []string
 	for _, a := range added {
-		k, n, ok := endLineOf(a)
+		k, st, en, ok := spanOf(a)
 		if !ok {
 			continue
 		}
-		if prev, seen := offEnd[k]; seen && n < prev {
-			truncated = append(truncated, fmt.Sprintf("%s EndLine %d->%d", k, prev, n))
+		prev, seen := offSpan[k]
+		if !seen {
+			continue
+		}
+		if en < prev.end {
+			narrowed = append(narrowed, fmt.Sprintf("%s EndLine %d->%d", k, prev.end, en))
+		}
+		// StartLine may only move EARLIER, or fill in from 0 (unknown).
+		if prev.start != 0 && st > prev.start {
+			narrowed = append(narrowed, fmt.Sprintf("%s StartLine %d->%d", k, prev.start, st))
 		}
 	}
-	if len(truncated) == 0 {
-		t.Errorf("expected Java EndLine truncation under the gate; destroyed=%v added=%v",
-			destroyed, added)
+	if len(narrowed) != 0 {
+		t.Errorf("#6104: the merge narrowed %d Java span(s), which is data loss regardless "+
+			"of which side wins: %v", len(narrowed), narrowed)
 	}
-	t.Logf("java truncations: %v", truncated)
 
-	// 3. The truncation must be visible on the derived endpoint entity too,
-	// proving the corruption propagates beyond the entity it originated on.
-	var endpointTruncated bool
-	for _, s := range truncated {
-		if strings.HasPrefix(s, "http_endpoint_definition|") {
-			endpointTruncated = true
+	// 3. And specifically the derived http_endpoint_definition — the entity the
+	// truncation used to propagate into — must be span-identical in both arms.
+	for tuple, n := range offT {
+		if !strings.HasPrefix(tuple, "http_endpoint_definition|") {
+			continue
 		}
-	}
-	if !endpointTruncated {
-		t.Errorf("expected the EndLine truncation to propagate to http_endpoint_definition; got %v", truncated)
+		if onT[tuple] < n {
+			t.Errorf("derived http_endpoint_definition tuple lost or altered under the gate: %q "+
+				"(off=%d on=%d); added=%v", tuple, n, onT[tuple], added)
+		}
 	}
 }
 
@@ -525,72 +545,87 @@ func unresolvedEdgeTargets(doc *graph.Document) map[string]int {
 	return out
 }
 
-// TestInProcCustomExtractorsSupersedeDestroysBaseEntities PINS A KNOWN DEFECT
-// (#6104). It asserts the BROKEN behaviour deliberately so the defect is
-// visible in CI rather than papered over.
+// TestInProcCustomExtractorsSupersedeIsNonDestructive is the INVERSION of the
+// former TestInProcCustomExtractorsSupersedeDestroysBaseEntities, which pinned
+// #6104's known defect deliberately.
 //
-// WHAT BREAKS. MergeWithCustom supersedes by NAME alone. When a custom
-// extractor emits an entity whose Name collides with a base entity, the base
-// node is REPLACED — so the gate is not purely additive, it DESTROYS content
-// the base path produced.
+// WHAT IT USED TO PIN. MergeWithCustom superseded by NAME alone, so a custom
+// entity whose Name collided with a base entity REPLACED it. The gate was not
+// additive, it DESTROYED content the base path produced — 280 entities across
+// 5 kinds and 2 languages on the full fixture, in three shapes: cross-kind
+// (Task vs SCOPE.Operation), same-kind same-name, and same-kind in-place
+// corruption (subtype rewrite + EndLine truncation).
 //
-// THE LOSS SET IS NOT ONE KIND AND NOT ONE LANGUAGE. On the full fixture the
-// loss spans 5 kinds and 2 languages. Two distinct collision shapes exist, and
-// they need DIFFERENT fixes:
+// WHAT IT ASSERTS NOW. The merge policy is keyed on the graph's own identity
+// (SourceFile, Kind, Name) and enforces two invariants — never lose an entity,
+// never narrow a span. Both are asserted here at the WHOLE-GRAPH level, on
+// content tuples compared as MULTISETS and on entity IDs, never on counts.
 //
-//   - DIFFERENT-KIND collision (python/Celery). `@shared_task def
-//     send_receipt` destroys TWO base entities — `Task|send_receipt` AND
-//     `SCOPE.Operation|send_receipt|function` — replaced by a single
-//     `SCOPE.Service|send_receipt|task`. Keying supersede on (Kind, Name)
-//     would fix this shape.
-//
-//   - SAME-KIND collision (java/Spring). `SCOPE.Operation|C.list|method` is
-//     replaced by `SCOPE.Operation|C.list|endpoint` with EndLine truncated.
-//     Kind, Name and SourceFile are all IDENTICAL, so a (Kind, Name) key does
-//     NOT fix this shape.
-//
-// THIS TEST DELIBERATELY COVERS BOTH SHAPES. If it only pinned the Celery
-// loss, the obvious (Kind, Name) remedy would turn it red, be declared
-// complete, and ship with the Java corruption unpinned. The same-kind
-// assertion below is what makes a (Kind, Name)-only fix insufficient to make
-// this test pass — it must still fail until the same-kind shape is fixed too.
-//
-// See also TestInProcCustomExtractorsJavaEntityMutation, which pins the Java
-// field-level corruption in detail.
-func TestInProcCustomExtractorsSupersedeDestroysBaseEntities(t *testing.T) {
+// ON THE ONE ID THAT LEGITIMATELY DISAPPEARS. `Task|send_receipt` still leaves
+// the ON arm — but not at the merge boundary. It is consumed by the #1613
+// class-shadow fold, which enforces a separate, pre-existing "one node per
+// class symbol" invariant: SCOPE.Service outranks Task in
+// frameworkClassKindPriority (100 vs 70), so the pair is folded and the edges
+// are REPOINTED onto the survivor. That is a genuine combine, not a silent
+// drop, and assertion (a) below is written to tell the two apart: a retired ID
+// is only acceptable if a same-(Name, SourceFile) survivor exists AND no edge
+// is left pointing at it.
+func TestInProcCustomExtractorsSupersedeIsNonDestructive(t *testing.T) {
 	off, on := indexBothArms(t, "supersede_repo")
-
-	destroyed, added := tupleDelta(entityTuples(off, ""), entityTuples(on, ""))
-	if len(destroyed) == 0 {
-		t.Fatalf("KNOWN DEFECT APPEARS FIXED: the gate destroys no base entities. " +
-			"If #6104 was fixed, invert this test to assert the gate is purely additive.")
-	}
-	t.Logf("gate destroys %d base entity tuple(s):", len(destroyed))
+	offT, onT := entityTuples(off, ""), entityTuples(on, "")
+	destroyed, added := tupleDelta(offT, onT)
+	t.Logf("gate replaces %d base entity tuple(s) with enriched versions:", len(destroyed))
 	for _, d := range destroyed {
-		t.Logf("    DESTROYED %s", d)
+		t.Logf("    WAS %s", d)
 	}
 
-	// --- Shape 1: DIFFERENT-KIND collision (python / Celery) ---------------
-	// BOTH base entities for the task must be destroyed, not just the Task.
-	// Pinning only `Task` understates the loss by half.
-	wantDestroyed := []string{
-		"Task|send_receipt|",            // the Celery task entity
-		"SCOPE.Operation|send_receipt|", // AND its operation entity
+	// --- (a) INVARIANT 1: a merge never loses an entity -------------------
+	onIDs := make(map[string]bool, len(on.Entities))
+	for i := range on.Entities {
+		onIDs[on.Entities[i].ID] = true
 	}
-	for _, want := range wantDestroyed {
-		found := false
-		for _, d := range destroyed {
-			if strings.HasPrefix(d, want) {
-				found = true
-				break
-			}
+	onNameFile := make(map[string][]string, len(on.Entities))
+	for i := range on.Entities {
+		k := on.Entities[i].Name + "|" + on.Entities[i].SourceFile
+		onNameFile[k] = append(onNameFile[k], on.Entities[i].Kind)
+	}
+	onRefs := make(map[string]int, len(on.Relationships))
+	for i := range on.Relationships {
+		onRefs[on.Relationships[i].FromID]++
+		onRefs[on.Relationships[i].ToID]++
+	}
+	for i := range off.Entities {
+		e := &off.Entities[i]
+		if onIDs[e.ID] {
+			continue
 		}
-		if !found {
-			t.Errorf("expected the gate to destroy an entity matching %q; destroyed=%v",
-				want, destroyed)
+		survivors := onNameFile[e.Name+"|"+e.SourceFile]
+		if len(survivors) == 0 {
+			t.Errorf("#6104: the gate DESTROYED %s|%s (%s) — no entity with the same "+
+				"name survives in that file", e.Kind, e.Name, e.SourceFile)
+			continue
+		}
+		if n := onRefs[e.ID]; n > 0 {
+			t.Errorf("#6104: %s|%s (%s) was retired but %d edge(s) still point at its "+
+				"ID %s — a fold/supersede must re-key every edge, not only the node's own",
+				e.Kind, e.Name, e.SourceFile, n, e.ID)
+		}
+		t.Logf("retired-and-folded (OK, #1613): %s|%s -> %v, 0 dangling edges",
+			e.Kind, e.Name, survivors)
+	}
+
+	// --- (b) Shape 1 + 2: the Celery collisions ---------------------------
+	// `@shared_task def send_receipt` used to destroy BOTH `Task|send_receipt`
+	// (cross-kind) and `SCOPE.Operation|send_receipt` (the second half of the
+	// double-destruction the original report missed). The SCOPE.Operation must
+	// now survive untouched, and the SCOPE.Service must still be ADDED — the
+	// gate's value is that it adds a kind, not that it swaps one for another.
+	for _, d := range destroyed {
+		if strings.HasPrefix(d, "SCOPE.Operation|send_receipt|") {
+			t.Errorf("#6104 shape 1: the gate still destroys the Celery task's operation "+
+				"entity: %q", d)
 		}
 	}
-	// The replacement is a single entity of a DIFFERENT kind.
 	var serviceAdded bool
 	for _, a := range added {
 		if strings.HasPrefix(a, "SCOPE.Service|send_receipt|") {
@@ -598,55 +633,93 @@ func TestInProcCustomExtractorsSupersedeDestroysBaseEntities(t *testing.T) {
 		}
 	}
 	if !serviceAdded {
-		t.Errorf("expected a SCOPE.Service replacement for the superseded task; added=%v", added)
+		t.Errorf("expected the Celery custom extractor to ADD a SCOPE.Service; added=%v", added)
 	}
 
-	// --- Shape 2: SAME-KIND collision (java / Spring) ---------------------
-	// This is the assertion a (Kind, Name)-keyed fix cannot satisfy. Find a
-	// destroyed tuple whose Kind, Name AND SourceFile all reappear in `added`
-	// with different field values — i.e. a substitution that keying on
-	// (Kind, Name) would still permit.
-	keyOf := func(tuple string) (string, bool) {
+	// --- (c) INVARIANT 2: a merge never narrows a span --------------------
+	// Every remaining same-(Kind, Name, SourceFile) substitution must be an
+	// ENRICHMENT: subtype refinement and/or a WIDER span. This is the shape the
+	// old test required to exist; it is now constrained rather than forbidden,
+	// because a same-identity pair IS one graph node and combining them is
+	// correct — silently shrinking them was not.
+	parse := func(tuple string) (key string, start, end int, ok bool) {
 		parts := strings.Split(tuple, "|")
 		if len(parts) != 7 {
-			return "", false
+			return "", 0, 0, false
 		}
-		return parts[0] + "|" + parts[1] + "|" + parts[4], true // Kind|Name|SourceFile
-	}
-	addedKeys := map[string]bool{}
-	for _, a := range added {
-		if k, ok := keyOf(a); ok {
-			addedKeys[k] = true
+		st, err := strconv.Atoi(parts[5])
+		if err != nil {
+			return "", 0, 0, false
 		}
+		en, err := strconv.Atoi(parts[6])
+		if err != nil {
+			return "", 0, 0, false
+		}
+		return parts[0] + "|" + parts[1] + "|" + parts[4], st, en, true
 	}
-	var sameKindSubstitutions []string
+	type span struct{ start, end int }
+	was := map[string]span{}
 	for _, d := range destroyed {
-		if k, ok := keyOf(d); ok && addedKeys[k] {
-			sameKindSubstitutions = append(sameKindSubstitutions, k)
+		if k, st, en, ok := parse(d); ok {
+			was[k] = span{st, en}
 		}
 	}
-	if len(sameKindSubstitutions) == 0 {
-		t.Fatalf("KNOWN DEFECT APPEARS PARTIALLY FIXED: no same-(Kind, Name, SourceFile) "+
-			"substitutions remain. A (Kind, Name)-keyed fix is NOT sufficient — the "+
-			"same-kind shape (java/Spring) must be fixed too before this test may be "+
-			"inverted. destroyed=%v added=%v", destroyed, added)
+	var narrowed, substitutions []string
+	for _, a := range added {
+		k, st, en, ok := parse(a)
+		if !ok {
+			continue
+		}
+		prev, seen := was[k]
+		if !seen {
+			continue
+		}
+		substitutions = append(substitutions, k)
+		if en < prev.end {
+			narrowed = append(narrowed, fmt.Sprintf("%s EndLine %d->%d", k, prev.end, en))
+		}
+		if prev.start != 0 && st > prev.start {
+			narrowed = append(narrowed, fmt.Sprintf("%s StartLine %d->%d", k, prev.start, st))
+		}
 	}
-	t.Logf("same-(Kind,Name,SourceFile) substitutions a (Kind,Name) fix would NOT prevent: %v",
-		sameKindSubstitutions)
+	if len(narrowed) != 0 {
+		t.Errorf("#6104: the merge narrowed %d span(s): %v", len(narrowed), narrowed)
+	}
+	sort.Strings(substitutions)
+	t.Logf("same-(Kind,Name,SourceFile) enrichments (all span-widening or neutral): %v",
+		substitutions)
 
-	// --- Dangling edges left behind by the supersede -----------------------
+	// --- (d) No supersede-induced dangling edges --------------------------
+	// The gate may still introduce dangling endpoints of its own — the
+	// synthetic `Class:<Name>` stubs the framework extractors emit are tracked
+	// separately as #6105 and are explicitly OUT OF SCOPE here. What must NOT
+	// appear is a dangle naming an ID that EXISTED in the gate-off arm: that is
+	// the supersede/re-keying failure this issue is about.
+	offEntityIDs := make(map[string]bool, len(off.Entities))
+	for i := range off.Entities {
+		offEntityIDs[off.Entities[i].ID] = true
+	}
 	uo, un := unresolvedEdgeTargets(off), unresolvedEdgeTargets(on)
-	var introduced []string
+	var introduced, supersedeDangles []string
 	for id := range un {
-		if _, existed := uo[id]; !existed {
-			introduced = append(introduced, id)
+		if _, existed := uo[id]; existed {
+			continue
+		}
+		introduced = append(introduced, id)
+		if offEntityIDs[id] {
+			supersedeDangles = append(supersedeDangles, id)
 		}
 	}
-	if len(introduced) == 0 {
-		t.Errorf("expected the supersede to leave dangling edge endpoints behind")
+	if len(supersedeDangles) != 0 {
+		sort.Strings(supersedeDangles)
+		t.Errorf("#6104: %d edge endpoint(s) now dangle on IDs that were REAL ENTITIES "+
+			"with the gate off — the supersede did not re-key them: %v",
+			len(supersedeDangles), supersedeDangles)
 	}
 	sort.Strings(introduced)
-	t.Logf("gate introduces %d new dangling edge endpoint(s): %v", len(introduced), introduced)
+	t.Logf("gate introduces %d new dangling endpoint(s), none of them retired entity IDs "+
+		"(synthetic Class:<Name> stubs are #6105, out of scope here): %v",
+		len(introduced), introduced)
 }
 
 // TestInProcCustomExtractorsNilTreeGuardIsLoadBearing pins the

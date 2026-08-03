@@ -421,6 +421,20 @@ type Index struct {
 	// (file, name, kind) collisions.
 	byLocationKind LocationKindIndex
 
+	// aliasIncumbent[key] = true when the current byName / byQualifiedName
+	// entry for `key` was written by a MERGE FACET rather than by a real
+	// definition (#6104). Keys are prefixed "n:"/"q:" to share one map.
+	//
+	// A facet (EntityTwinOfProperty) is a second Kind describing the SAME
+	// source construct as a co-located base entity — e.g. SCOPE.Schema|Order
+	// alongside the base SCOPE.Component|Order the ORM extractor recognised as
+	// a model. Both are real graph nodes, but for NAME resolution the facet is
+	// an alias, not a competing definition: it must never flip a name to
+	// ambiguous and never displace its anchor. Tracking incumbency is what
+	// makes the rule order-independent — a real entity arriving after a facet
+	// still takes the entry.
+	aliasIncumbent map[string]bool
+
 	// byQualifiedName[qualified_name] = entity_id. Direct lookup for
 	// stubs whose ToID is an entity QualifiedName verbatim (e.g. markdown
 	// CONTAINS edges where ToID = "<file>::<heading-slug>"). Issue #100.
@@ -913,11 +927,29 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		// the byKind nor byName paths see it (splitStub on the first ':'
 		// produces a non-existent "kind" segment). First writer wins;
 		// collisions blank the entry so the resolver leaves the stub.
+		isFacet := e.IsMergeTwinAlias()
 		if e.QualifiedName != "" {
 			if existing, ok := idx.byQualifiedName[e.QualifiedName]; ok && existing != e.ID {
-				idx.byQualifiedName[e.QualifiedName] = ""
+				// #6104 — a merge facet inherits its anchor's QualifiedName.
+				// That is not a collision between two definitions, so it must
+				// not blank the entry.
+				switch {
+				case isFacet:
+					// facet never competes
+				case idx.aliasIncumbent["q:"+e.QualifiedName]:
+					idx.byQualifiedName[e.QualifiedName] = e.ID
+					delete(idx.aliasIncumbent, "q:"+e.QualifiedName)
+				default:
+					idx.byQualifiedName[e.QualifiedName] = ""
+				}
 			} else {
 				idx.byQualifiedName[e.QualifiedName] = e.ID
+				if isFacet {
+					if idx.aliasIncumbent == nil {
+						idx.aliasIncumbent = make(map[string]bool)
+					}
+					idx.aliasIncumbent["q:"+e.QualifiedName] = true
+				}
 			}
 		}
 		// Flask-realworld wave — index Properties["ref"] under the same
@@ -1387,11 +1419,30 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			continue
 		}
 		if existing, ok := idx.byName[e.Name]; ok && existing != e.ID {
-			delete(idx.byName, e.Name)
-			idx.ambigName[e.Name] = true
+			// #6104 — a merge facet is an ALIAS of a co-located base entity,
+			// not a second definition. Without this, enabling the custom
+			// extractors would flip every framework-modelled class name
+			// (Order, Contract, …) to ambiguous and silently un-resolve the
+			// edges that name it.
+			switch {
+			case isFacet:
+				// facet never competes
+			case idx.aliasIncumbent["n:"+e.Name]:
+				idx.byName[e.Name] = e.ID
+				delete(idx.aliasIncumbent, "n:"+e.Name)
+			default:
+				delete(idx.byName, e.Name)
+				idx.ambigName[e.Name] = true
+			}
 			continue
 		}
 		idx.byName[e.Name] = e.ID
+		if isFacet {
+			if idx.aliasIncumbent == nil {
+				idx.aliasIncumbent = make(map[string]bool)
+			}
+			idx.aliasIncumbent["n:"+e.Name] = true
+		}
 	}
 	return idx
 }

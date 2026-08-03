@@ -316,33 +316,37 @@ func TestMergeWithCustomReturnsBaseWhenCustomEmpty(t *testing.T) {
 	}
 }
 
-func TestMergeWithCustomOverridesBaseEntityByName(t *testing.T) {
+// REWRITTEN FOR #6104. This test used to be
+// TestMergeWithCustomOverridesBaseEntityByName and asserted that a custom
+// SCOPE.View DESTROYS a base SCOPE.Class of the same Name. That is the defect
+// itself: Name is not an identity, and two records that disagree on Kind are
+// two different graph nodes (ComputeID includes Kind). The rewritten
+// assertion is that BOTH survive and the custom one is still distinguishable.
+func TestMergeWithCustomNameCollisionAcrossKindsKeepsBoth(t *testing.T) {
 	base := []types.EntityRecord{
-		{Name: "UserView", Kind: "SCOPE.Class", Signature: "base"},
-		{Name: "Helper", Kind: "SCOPE.Function"},
+		{Name: "UserView", Kind: "SCOPE.Class", SourceFile: "v.py", Signature: "base"},
+		{Name: "Helper", Kind: "SCOPE.Function", SourceFile: "v.py"},
 	}
 	custom := []types.EntityRecord{
-		{Name: "UserView", Kind: "SCOPE.View", Signature: "custom"},
+		{Name: "UserView", Kind: "SCOPE.View", SourceFile: "v.py", Signature: "custom"},
 	}
 	got := MergeWithCustom(base, custom)
 
-	if len(got) != 2 {
-		t.Fatalf("expected 2 merged entities, got %d", len(got))
+	if len(got) != 3 {
+		t.Fatalf("expected 3 merged entities (nothing destroyed), got %d: %v", len(got), kindNames(got))
 	}
-	// UserView must be the custom version; Helper must be the base version.
+	seen := map[string]types.EntityRecord{}
 	for _, e := range got {
-		switch e.Name {
-		case "UserView":
-			if e.Kind != "SCOPE.View" || e.Signature != "custom" {
-				t.Errorf("UserView should be custom, got kind=%s signature=%s", e.Kind, e.Signature)
-			}
-		case "Helper":
-			if e.Kind != "SCOPE.Function" {
-				t.Errorf("Helper should be unchanged, got kind=%s", e.Kind)
-			}
-		default:
-			t.Errorf("unexpected entity %s", e.Name)
-		}
+		seen[e.Kind+"|"+e.Name] = e
+	}
+	if e, ok := seen["SCOPE.Class|UserView"]; !ok || e.Signature != "base" {
+		t.Errorf("base UserView was destroyed or mutated: %+v", e)
+	}
+	if e, ok := seen["SCOPE.View|UserView"]; !ok || e.Signature != "custom" {
+		t.Errorf("custom UserView missing or mutated: %+v", e)
+	}
+	if e, ok := seen["SCOPE.Function|Helper"]; !ok || e.Kind != "SCOPE.Function" {
+		t.Errorf("Helper should be unchanged, got %+v", e)
 	}
 }
 
@@ -368,49 +372,63 @@ func TestMergeWithCustomPreservesBaseOrder(t *testing.T) {
 		{Name: "Third"},
 	}
 	custom := []types.EntityRecord{
-		{Name: "Second", Kind: "SCOPE.View"}, // overrides middle
+		{Name: "Second", Kind: "SCOPE.View"}, // name-twin of the middle entity
 	}
 	got := MergeWithCustom(base, custom)
-	if len(got) != 3 {
-		t.Fatalf("expected 3 entities, got %d", len(got))
+	// #6104: the base entities carry no Kind, so the custom SCOPE.View is a
+	// DIFFERENT graph node and is appended rather than replacing the middle
+	// entity. Base order is still what this test is about.
+	if len(got) != 4 {
+		t.Fatalf("expected 4 entities, got %d: %v", len(got), kindNames(got))
 	}
 	if got[0].Name != "First" || got[1].Name != "Second" || got[2].Name != "Third" {
 		t.Errorf("merge did not preserve base order: %v", extractNames(got))
 	}
-	if got[1].Kind != "SCOPE.View" {
-		t.Errorf("Second was not overridden, got kind=%s", got[1].Kind)
+	if got[1].Kind != "" {
+		t.Errorf("base Second must not be overridden, got kind=%s", got[1].Kind)
+	}
+	if got[3].Kind != "SCOPE.View" || got[3].Name != "Second" {
+		t.Errorf("custom entity must be appended after the base run, got %+v", got[3])
 	}
 }
 
-// TestMergeWithCustomPreservesBaseQualifiedName proves the supersede rule
-// (issue #4402): when a custom node replaces a base node of the same Name but
-// leaves QualifiedName empty, the base node's QualifiedName is carried onto the
-// survivor. A non-empty custom QualifiedName is never overridden.
+// TestMergeWithCustomPreservesBaseQualifiedName proves the #4402 property —
+// a custom node that leaves QualifiedName empty inherits the base node's,
+// which is what makes it resolvable by qualified name (#4379).
+//
+// REWRITTEN FOR #6104. #4402 obtained that state by DESTROYING the base node.
+// It is now obtained by Tier B enrichment, with the base node still standing,
+// so the assertions are per-Kind rather than per-Name and both nodes are
+// checked. The QualifiedName rule itself is unchanged.
 func TestMergeWithCustomPreservesBaseQualifiedName(t *testing.T) {
 	base := []types.EntityRecord{
-		{Name: "Contract", Kind: "SCOPE.Component", QualifiedName: "app.models.Contract"},
-		{Name: "Order", Kind: "SCOPE.Component", QualifiedName: "app.models.Order"},
+		{Name: "Contract", Kind: "SCOPE.Component", SourceFile: "m.py", QualifiedName: "app.models.Contract"},
+		{Name: "Order", Kind: "SCOPE.Component", SourceFile: "m.py", QualifiedName: "app.models.Order"},
 	}
 	custom := []types.EntityRecord{
-		{Name: "Contract", Kind: "SCOPE.Schema", Subtype: "model"},                             // empty QName -> inherit
-		{Name: "Order", Kind: "SCOPE.Schema", Subtype: "model", QualifiedName: "custom.Order"}, // explicit QName -> keep
+		{Name: "Contract", Kind: "SCOPE.Schema", SourceFile: "m.py", Subtype: "model"},                             // empty QName -> inherit
+		{Name: "Order", Kind: "SCOPE.Schema", SourceFile: "m.py", Subtype: "model", QualifiedName: "custom.Order"}, // explicit QName -> keep
 	}
 	got := MergeWithCustom(base, custom)
 
+	if len(got) != 4 {
+		t.Fatalf("expected 4 entities (2 base + 2 custom, nothing destroyed), got %d: %v", len(got), kindNames(got))
+	}
+	byKey := map[string]types.EntityRecord{}
 	for _, e := range got {
-		switch e.Name {
-		case "Contract":
-			if e.Kind != "SCOPE.Schema" {
-				t.Errorf("Contract should keep custom Kind, got %s", e.Kind)
-			}
-			if e.QualifiedName != "app.models.Contract" {
-				t.Errorf("Contract should inherit base QualifiedName, got %q", e.QualifiedName)
-			}
-		case "Order":
-			if e.QualifiedName != "custom.Order" {
-				t.Errorf("Order custom QualifiedName must not be overridden, got %q", e.QualifiedName)
-			}
-		}
+		byKey[e.Kind+"|"+e.Name] = e
+	}
+	if e := byKey["SCOPE.Schema|Contract"]; e.QualifiedName != "app.models.Contract" {
+		t.Errorf("custom Contract should inherit base QualifiedName, got %q", e.QualifiedName)
+	}
+	if e := byKey["SCOPE.Schema|Order"]; e.QualifiedName != "custom.Order" {
+		t.Errorf("custom Order QualifiedName must not be overridden, got %q", e.QualifiedName)
+	}
+	if e := byKey["SCOPE.Component|Contract"]; e.QualifiedName != "app.models.Contract" {
+		t.Errorf("base Contract was destroyed or mutated, got %+v", e)
+	}
+	if e := byKey["SCOPE.Component|Order"]; e.QualifiedName != "app.models.Order" {
+		t.Errorf("base Order was destroyed or mutated, got %+v", e)
 	}
 }
 
@@ -439,14 +457,28 @@ func TestMergeWithCustomUnionsBaseEdges(t *testing.T) {
 	custom := []types.EntityRecord{customNode}
 
 	got := MergeWithCustom(base, custom)
-	if len(got) != 1 {
-		t.Fatalf("expected 1 merged entity, got %d", len(got))
+	// #6104: the base node is NO LONGER DESTROYED — a Kind disagreement means
+	// two graph nodes. The edge-carry property this test exists for now
+	// applies to the enriched custom node, and the base node keeps its own.
+	if len(got) != 2 {
+		t.Fatalf("expected 2 merged entities (base kept), got %d: %v", len(got), kindNames(got))
 	}
-	surv := got[0]
-	if surv.ID == "" {
-		surv.ID = surv.ComputeID()
+	var surv types.EntityRecord
+	for _, e := range got {
+		if e.Kind == "SCOPE.Schema" {
+			surv = e
+		}
+		if e.Kind == "SCOPE.Component" && len(e.Relationships) != 2 {
+			t.Errorf("base node lost its own edges: %v", e.Relationships)
+		}
 	}
-	survID := surv.ComputeID()
+	if surv.Kind == "" {
+		t.Fatalf("custom node missing from merge: %v", kindNames(got))
+	}
+	survID := surv.ID
+	if survID == "" {
+		survID = surv.ComputeID()
+	}
 
 	var status, amount int
 	for _, r := range surv.Relationships {

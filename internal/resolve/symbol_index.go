@@ -569,9 +569,25 @@ func insertModuleEntry(
 	// QualifiedName index.
 	if me.qualifiedName != "" {
 		if existing, ok := idx.byQualifiedName[me.qualifiedName]; ok && existing != me.id {
-			idx.byQualifiedName[me.qualifiedName] = ""
+			// #6104 — mirrors flat BuildIndex: a merge facet never blanks the
+			// entry its anchor owns.
+			switch {
+			case me.isMergeFacet():
+				// facet never competes
+			case idx.aliasIncumbent["q:"+me.qualifiedName]:
+				idx.byQualifiedName[me.qualifiedName] = me.id
+				delete(idx.aliasIncumbent, "q:"+me.qualifiedName)
+			default:
+				idx.byQualifiedName[me.qualifiedName] = ""
+			}
 		} else {
 			idx.byQualifiedName[me.qualifiedName] = me.id
+			if me.isMergeFacet() {
+				if idx.aliasIncumbent == nil {
+					idx.aliasIncumbent = make(map[string]bool)
+				}
+				idx.aliasIncumbent["q:"+me.qualifiedName] = true
+			}
 		}
 	}
 	// ref property indexing (endpoint, testcoverage, interface stubs).
@@ -870,11 +886,38 @@ func insertModuleEntry(
 		return
 	}
 	if existing, ok := idx.byName[me.name]; ok && existing != me.id {
-		delete(idx.byName, me.name)
-		idx.ambigName[me.name] = true
+		// #6104 — mirrors flat BuildIndex: a merge facet is an alias of its
+		// co-located anchor, not a competing definition.
+		switch {
+		case me.isMergeFacet():
+			// facet never competes
+		case idx.aliasIncumbent["n:"+me.name]:
+			idx.byName[me.name] = me.id
+			delete(idx.aliasIncumbent, "n:"+me.name)
+		default:
+			delete(idx.byName, me.name)
+			idx.ambigName[me.name] = true
+		}
 		return
 	}
 	idx.byName[me.name] = me.id
+	if me.isMergeFacet() {
+		if idx.aliasIncumbent == nil {
+			idx.aliasIncumbent = make(map[string]bool)
+		}
+		idx.aliasIncumbent["n:"+me.name] = true
+	}
+}
+
+// isMergeFacet reports whether this module entry is a #6104 merge facet — a
+// second Kind describing the same source construct as a co-located base
+// entity. See types.EntityTwinOfProperty.
+func (me *moduleEntry) isMergeFacet() bool {
+	if len(me.properties) == 0 {
+		return false
+	}
+	anchor := me.properties[types.EntityTwinOfProperty]
+	return anchor != "" && anchor != me.id
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

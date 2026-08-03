@@ -80,6 +80,37 @@ func (e *EntityRecord) Validate() error {
 	return nil
 }
 
+// Merge-provenance property keys (issue #6104). The merge boundary between
+// base-path and custom/framework extractor output records what it displaced
+// and what it aliased, so nothing is silently lost.
+const (
+	// EntityBaseSubtypeProperty holds a base-path Subtype that a more
+	// specific custom-extractor Subtype displaced (e.g. "method" displaced by
+	// "endpoint"). The custom value wins because it is more specific; the
+	// displaced value is retained rather than discarded.
+	EntityBaseSubtypeProperty = "grafel.base_subtype"
+
+	// EntityTwinOfProperty holds the entity ID of the co-located base-path
+	// entity this record is a FACET of — same source construct, same file,
+	// same name, DIFFERENT Kind (e.g. SCOPE.Schema|Order alongside the base
+	// SCOPE.Component|Order that the ORM extractor recognised as a model).
+	//
+	// Both nodes exist in the graph, but for name resolution a facet is an
+	// ALIAS, not a competing definition: it must never flip a name to
+	// ambiguous and never displace its anchor in a symbol table.
+	EntityTwinOfProperty = "grafel.twin_of"
+)
+
+// IsMergeTwinAlias reports whether this record is a merge facet of another
+// co-located entity (see EntityTwinOfProperty).
+func (e *EntityRecord) IsMergeTwinAlias() bool {
+	if len(e.Properties) == 0 {
+		return false
+	}
+	anchor := e.Properties[EntityTwinOfProperty]
+	return anchor != "" && anchor != e.ID
+}
+
 // ComputeID generates a deterministic 16-character hex ID from the entity's
 // identity fields. Formula: sha256(OrgID+ProjectID+SourceFile+Kind+Name)[:16].
 func (e *EntityRecord) ComputeID() string {
