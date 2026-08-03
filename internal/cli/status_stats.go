@@ -101,9 +101,6 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 		RepoStats: make(map[string]*RepoStatus),
 	}
 
-	// Track entities with incoming relationships to compute orphan rate later.
-	hasIncoming := make(map[string]bool)
-
 	for _, r := range repos {
 		rs := &RepoStatus{
 			Slug:           r.Slug,
@@ -166,10 +163,28 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 			}
 		}
 
-		// Load full graph document to extract entities with incoming rels +
-		// kind-based counts. This is only for computing derived counts like
-		// HTTPEndpoints and ProcessFlows; the main entity/relationship counts
-		// come from graph-stats.json.
+		// Read the graph's header + entity KINDS to fill in the derived counts
+		// (HTTPEndpoints, ProcessFlows) and the git metadata; the main
+		// entity/relationship counts come from graph-stats.json above.
+		//
+		// #5995: this used to call graph.LoadGraphFromDir, which materialises
+		// EVERY entity and EVERY relationship of the repo's graph onto the Go
+		// heap — hundreds of megabytes on a corpus-sized repo — to read four
+		// header fields and tally two entity kinds. `status` is the CLI's
+		// most-polled command (shell prompts, statusline, editor integrations,
+		// watch scripts), so that cost recurs on a timer on a memory-
+		// constrained machine (epic #5954).
+		//
+		// It now streams: graph.OpenGraphStream holds the mmap open and hands
+		// rows over one at a time without retaining them, Header() reads the
+		// Graph root table directly, and EachEntityKind decodes ONLY the kind
+		// string per row. Nothing here holds a row past the visit call.
+		//
+		// The relationship walk is GONE, not streamed. It populated a
+		// `hasIncoming` map ("to compute orphan rate later") that no code ever
+		// read — the orphan rate is computed in doctor_summary.go from its own
+		// load. Relationships outnumber entities ~8:1 on the real corpus, so
+		// that dead walk was the single largest item here.
 		//
 		// #6013: this used to swallow BOTH failure modes — a `recover()` with
 		// an empty body ("Silently ignore panics during graph loading"), and
@@ -192,42 +207,67 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 					rs.GraphLoadError = scrubPaths(fmt.Sprintf("panic while reading the graph: %v", rec))
 				}
 			}()
-			doc, err := graph.LoadGraphFromDir(stateDir)
+			stream, err := graph.OpenGraphStream(stateDir)
 			switch {
 			case err != nil:
 				// Only a graph that EXISTS and cannot be read is a failure.
 				// "neither graph.fb nor graph.json found" is the never-indexed
 				// state and stays silent.
 				if graphArtifactPresent(stateDir) {
-					rs.GraphLoadError = scrubPaths(err.Error())
+					rs.GraphLoadError = scrubPaths(loadErrorText(stateDir, err))
 				}
-			case doc == nil:
-				// A nil Document with a nil error is the same failed-load state
-				// that reaches BuildLabelIndex in #6010 — report it, never treat
-				// it as an empty-but-healthy repo.
+			case stream == nil:
+				// A nil stream with a nil error is the analogue of the nil
+				// Document that reaches BuildLabelIndex in #6010 — report it,
+				// never treat it as an empty-but-healthy repo.
 				rs.GraphLoadError = "graph loaded as a nil document"
 			default:
-				rs.Files = doc.Stats.Files
-				// Phase 0 git metadata (#2088).
-				rs.IndexedRef = doc.IndexedRef
-				rs.IndexedSHA = doc.IndexedSHA
-				rs.IsWorktree = doc.IsWorktree
-				for _, e := range doc.Entities {
+				defer stream.Close()
+				// Staged in locals and committed only once the walk has
+				// completed. LoadGraphFromDir decoded every row BEFORE its
+				// caller saw a single field, so a graph that PANICKED part-way
+				// through contributed nothing at all: no git metadata, no
+				// partial kind tallies. A streamed read reaches the panic AFTER
+				// publishing whatever it has already seen. Without this
+				// staging, a truncated graph.fb starts reporting a ref/sha next
+				// to its "FAILED to load" warning and folds a partial endpoint
+				// count into the group TOTAL — a reported-value change, which
+				// #5995 must not make.
+				//
+				// The invariant this buys is exactly "a PANIC publishes
+				// nothing", and no more. A walk that completes but silently
+				// visits fewer rows than the graph holds — EachEntityKind skips
+				// a nil vector slot with `continue`, and has no way to report
+				// that it did — still commits its undercount. That is not a
+				// regression: materializeGraphView skips nil slots the same way
+				// and the old code committed the same undercount. It is a
+				// pre-existing gap in both, noted so this staging is not read
+				// as protecting against more than it does.
+				//
+				// Stats.Files is zero for every .fb-backed graph (the format
+				// encodes no file count) and real only for the graph.json
+				// fallback — see GraphStream.DocStats. Preserved verbatim.
+				files := stream.DocStats().Files
+				// Phase 0 git metadata (#2088), straight off the header.
+				meta := stream.Header()
+				endpoints, flows := 0, 0
+				stream.EachEntityKind(func(kind string) bool {
 					// #1217: count all three http endpoint kind strings.
-					if e.Kind == "http_endpoint" || e.Kind == "http_endpoint_definition" || e.Kind == "http_endpoint_call" {
-						s.HTTPEndpoints++
+					if kind == "http_endpoint" || kind == "http_endpoint_definition" || kind == "http_endpoint_call" {
+						endpoints++
 					}
 					// Check for process flows: SCOPE.Process or process kind.
-					if e.Kind == "process" || strings.HasPrefix(e.Kind, "SCOPE.Process") {
-						s.ProcessFlows++
+					if kind == "process" || strings.HasPrefix(kind, "SCOPE.Process") {
+						flows++
 					}
-				}
-				// Track which entities have incoming relationships.
-				for _, rel := range doc.Relationships {
-					if rel.ToID != "" {
-						hasIncoming[rel.ToID] = true
-					}
-				}
+					return true
+				})
+				rs.Files = files
+				rs.IndexedRef = meta.IndexedRef
+				rs.IndexedSHA = meta.IndexedSHA
+				rs.IsWorktree = meta.IsWorktree
+				s.HTTPEndpoints += endpoints
+				s.ProcessFlows += flows
 			}
 		}()
 
@@ -272,6 +312,38 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 	s.CrossRepoEdges = loadCrossRepoEdgeCount(group)
 
 	return s
+}
+
+// loadErrorText returns the message to report for a graph that exists but
+// could not be opened.
+//
+// #5995 replaced graph.LoadGraphFromDir with graph.OpenGraphStream here. The
+// two resolve a dir identically but WORD their failures differently (e.g.
+// "graph.loadFBDocument: …" vs "graph.OpenGraphStream: open …"), and this text
+// is printed to the terminal — changing it would change what `status` reports.
+// So when the stream fails to open, ask the loader for its wording.
+//
+// It asks the HEADER-ONLY loader, deliberately. LoadGraphFromDir gives the same
+// wording — loadFBDocument and loadFBDocumentHeaderOnly are one function
+// (loadFBDoc) and share both the open error and materializeGraphView's
+// format-version error, and the segment-set path is literally the same
+// loadSegmentSetDocument call — but it is UNBOUNDED on the one input this
+// reasoning does not cover: a load that SUCCEEDS where the stream failed.
+// `status` is polled constantly, so a generation flip landing between the
+// stream's descriptor resolve and its open is the plausible way to get there,
+// and the full loader would then materialise the entire graph inside the
+// command whose whole purpose is not to. LoadGraphHeaderOnlyFromDir cannot:
+// it skips both materialize loops. Its only delegation to the full loader is
+// the no-.fb case (graph.json or absent), where OpenGraphStream materialises
+// the JSON document too — so that branch costs exactly what it did before.
+//
+// If the loader somehow does NOT fail, the stream's own error stands rather
+// than inventing a success.
+func loadErrorText(stateDir string, streamErr error) string {
+	if _, lerr := graph.LoadGraphHeaderOnlyFromDir(stateDir); lerr != nil {
+		return lerr.Error()
+	}
+	return streamErr.Error()
 }
 
 // fsPathRe matches an absolute (or otherwise multi-segment) filesystem path,
