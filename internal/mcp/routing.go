@@ -433,7 +433,7 @@ func ResolveCWD(s *State, cwd string) CWDResolution {
 	s.mu.Unlock()
 	if wl != nil {
 		// Walk up to the git toplevel for this cwd, then look up that path.
-		wtMeta := gitmeta.CaptureCached(abs)
+		wtMeta := gitmeta.CaptureCachedFresh(abs)
 		if wtMeta.IsWorktree && wtMeta.TopLevel != "" {
 			wtTop := filepath.Clean(wtMeta.TopLevel)
 			if gname, slug, branch := wl.LookupPath(wtTop); gname != "" {
@@ -454,7 +454,7 @@ func ResolveCWD(s *State, cwd string) CWDResolution {
 	if group != "" {
 		// Determine which repo slug contains cwd (longest-prefix match).
 		slug, repoPath := repoSlugForCWD(s, group, abs)
-		meta := gitmeta.CaptureCached(repoPath)
+		meta := gitmeta.CaptureCachedFresh(repoPath)
 		// M3 (#2180): if the matched repo has declared modules, determine which
 		// module sub-path cwd is inside.
 		modSlug := moduleSlugForCWD(s, group, slug, repoPath, abs)
@@ -477,7 +477,7 @@ func ResolveCWD(s *State, cwd string) CWDResolution {
 		return CWDResolution{Source: "none"}
 	}
 	// Ask git for the toplevel of whatever repo cwd is inside.
-	meta := gitmeta.CaptureCached(abs)
+	meta := gitmeta.CaptureCachedFresh(abs)
 	if meta.TopLevel == "" || !meta.IsWorktree {
 		// Not inside a git repo at all, or not a linked worktree.
 		return CWDResolution{Source: "none"}

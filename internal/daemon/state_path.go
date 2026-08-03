@@ -506,6 +506,21 @@ func GraphFBExistsForRepo(repoPath string) bool {
 	return err == nil && desc.Kind != graph.GraphAbsent
 }
 
+// FindGraphFileInDir resolves the ACTIVE graph artifact inside an
+// already-known per-ref state directory: it reads the `current` generation
+// pointer (falling back to the legacy flat graph.fb) and returns that path plus
+// its freshness mtime. Returns ("", 0) when the directory holds no graph.
+//
+// It is the directory-level half of FindGraphFile / FindGraphFileAnyRef, split
+// out (#6080) so a caller that already knows the repo's current-ref directory
+// can re-resolve the active GENERATION without paying StateDirForRepo's git
+// capture. Cost is a `current` pointer read plus two or three os.Stat calls —
+// no subprocesses — which is what makes it affordable on the serving reload
+// path that #6060 exists to keep fork-free.
+func FindGraphFileInDir(dir string) (path string, modtime int64) {
+	return findGraphFileInDir(dir)
+}
+
 // findGraphFileInDir checks dir for graph.fb / graph.json and returns the
 // path + modtime of the newest one. Returns ("", 0) if neither exists.
 func findGraphFileInDir(dir string) (path string, modtime int64) {
@@ -523,24 +538,49 @@ func findGraphFileInDir(dir string) (path string, modtime int64) {
 	// mtime advances on each rebuild). Downstream readers route on this via the
 	// descriptor; the mmap zero-copy cutover correctly declines a dir (see
 	// internal/mcp/state.go's .fb-ext guard) and serves the segment-set Document.
-	if desc, dErr := graph.CurrentGraphDescriptor(dir); dErr == nil && desc.Kind == graph.GraphSegmentSet {
+	// #6080: resolve the `current` pointer ONCE. This used to call
+	// CurrentGraphDescriptor and then CurrentGraphPath, each of which opens and
+	// reads <dir>/current — and that read, not the stats, is the dominant cost
+	// (~22us vs ~1.6us for an os.Stat on an M2 Pro under load). Halving it
+	// matters now that the MCP reload gate calls this per repo per reload to
+	// detect a generation flip; CurrentGraphDescriptor already resolves every
+	// layout CurrentGraphPath does, so the second read was pure duplication.
+	var fbPath string
+	var fbMtime int64
+	desc, dErr := graph.CurrentGraphDescriptor(dir)
+	switch {
+	case dErr != nil:
+		// Only a resolvable gen dir with a CORRUPT manifest errors. Preserve the
+		// pre-#6080 behaviour of falling back to the flat path in that case.
+		fbPath = graph.CurrentGraphPath(dir)
+	case desc.Kind == graph.GraphSegmentSet:
+		fbPath = desc.GenDir
+		// The gen dir is not itself a freshness signal; manifest.json is (a real
+		// file whose mtime advances at the atomic commit point of a rebuild).
 		if fi, err := os.Stat(filepath.Join(desc.GenDir, graph.ManifestFileName)); err == nil {
-			segMtime := fi.ModTime().UnixNano()
-			jsonPath := filepath.Join(dir, "graph.json")
-			if jInfo, jErr := os.Stat(jsonPath); jErr == nil && jInfo.ModTime().UnixNano() > segMtime {
-				return jsonPath, jInfo.ModTime().UnixNano()
-			}
-			return desc.GenDir, segMtime
+			fbMtime = fi.ModTime().UnixNano()
+		} else {
+			// Torn segment-set: fall back to the flat path exactly as before.
+			fbPath = graph.CurrentGraphPath(dir)
+		}
+	default:
+		// GraphSingleFile (gen file or legacy flat) and GraphAbsent both carry
+		// the path to stat in desc.Path — for GraphAbsent that is the flat
+		// graph.fb, which is expected not to exist.
+		fbPath = desc.Path
+	}
+
+	jsonPath := filepath.Join(dir, "graph.json")
+	if fbMtime == 0 && fbPath != "" {
+		if fi, err := os.Stat(fbPath); err == nil {
+			fbMtime = fi.ModTime().UnixNano()
+		} else {
+			fbPath = ""
 		}
 	}
-	fbPath := graph.CurrentGraphPath(dir)
-	jsonPath := filepath.Join(dir, "graph.json")
-
-	fbInfo, fbErr := os.Stat(fbPath)
 	jsonInfo, jsonErr := os.Stat(jsonPath)
 
-	if fbErr == nil {
-		fbMtime := fbInfo.ModTime().UnixNano()
+	if fbPath != "" {
 		if jsonErr == nil {
 			jsonMtime := jsonInfo.ModTime().UnixNano()
 			if fbMtime >= jsonMtime {
