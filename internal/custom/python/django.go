@@ -666,7 +666,7 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		})
 		modelEnt := entity(className, "SCOPE.Schema", "model", file.Path, classLine, props)
 
-		// Issue #4366 — field membership. MergeWithCustom replaces the base
+		// Issue #4366 — field membership. MergeWithCustom used to REPLACE the base
 		// tree-sitter class node (which carried the #526 class→field CONTAINS
 		// edges) with this custom model node, so without re-emitting membership
 		// here every model field is left an orphan. Walk the class body and hang
@@ -679,7 +679,8 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		seenMember := map[string]bool{}
 		// (a) CONTAINS membership for every class-body attribute (fields,
 		// choices constants, manager attachments) — restores parity with the
-		// base class node that MergeWithCustom replaces.
+		// base class node that MergeWithCustom used to replace (it no longer
+		// does — see #6104; the base node survives and this one is a facet).
 		for _, aIdx := range allMatchesIndex(djangoModelAttrRe, body) {
 			attr := body[aIdx[2]:aIdx[3]]
 			if attr == "" || seenMember[attr] || strings.HasPrefix(attr, "__") {

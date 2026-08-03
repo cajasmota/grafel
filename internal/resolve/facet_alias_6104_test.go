@@ -190,3 +190,130 @@ func TestFacetAliasRuleMatchesOnTheModuleIndexPath(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ORPHANED FACETS (#6104 review finding M2)
+// ---------------------------------------------------------------------------
+//
+// The alias rule is scoped to the facet/ANCHOR PAIR. An earlier revision
+// short-circuited on "is a facet" alone, which excluded facets from ambiguity
+// detection GLOBALLY. That is reachable in production: deduplicateEntities
+// runs AFTER the merge and can remove the anchor, orphaning the facet. With
+// the global short-circuit, an orphaned facet standing next to a genuinely
+// unrelated same-named definition let that unrelated definition SILENTLY own
+// the bare name — trading an honestly-unresolved edge for a possibly-wrong
+// one, deterministically, in both orderings.
+//
+// These pin the pair-scoping in BOTH index builders.
+
+// orphanedFacetEnts builds the ORD-6 shape: a facet whose anchor is ABSENT
+// from the batch, plus an unrelated genuine definition of the same name in a
+// different file.
+func orphanedFacetEnts() (facet, unrelated types.EntityRecord) {
+	missingAnchor := anchorEnt("SCOPE.Component", "Order", "a/m.py", "a.m.Order")
+	facet = facetEnt("SCOPE.Schema", "Order", "a/m.py", "a.m.Order", missingAnchor.ID)
+	unrelated = anchorEnt("SCOPE.Component", "Order", "totally/other.py", "totally.other.Order")
+	return facet, unrelated
+}
+
+func TestOrphanedFacetDoesNotHandTheNameToAnUnrelatedDefinition(t *testing.T) {
+	facet, unrelated := orphanedFacetEnts()
+
+	for _, tc := range []struct {
+		name string
+		ents []types.EntityRecord
+	}{
+		{"facet first", []types.EntityRecord{facet, unrelated}},
+		{"unrelated first", []types.EntityRecord{unrelated, facet}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			idx := BuildIndex(tc.ents)
+			if id, ok := idx.Lookup("Order"); ok {
+				var who string
+				switch id {
+				case unrelated.ID:
+					who = "the UNRELATED definition in totally/other.py"
+				case facet.ID:
+					who = "the orphaned facet"
+				default:
+					who = "an unexpected entity"
+				}
+				t.Errorf("an orphaned facet must not suppress a real ambiguity: "+
+					"bare name resolved to %s (%q); it must stay ambiguous", who, id)
+			}
+		})
+	}
+}
+
+// Same shape on the module-index path (#4901), which must not diverge (#5206).
+func TestOrphanedFacetOnTheModuleIndexPath(t *testing.T) {
+	facet, unrelated := orphanedFacetEnts()
+
+	for _, tc := range []struct {
+		name string
+		ents []types.EntityRecord
+	}{
+		{"facet first", []types.EntityRecord{facet, unrelated}},
+		{"unrelated first", []types.EntityRecord{unrelated, facet}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			flat := BuildIndex(tc.ents)
+			mod := BuildIndexFromModulesOrdered(tc.ents, ModuleKeyByPkgDir)
+
+			flatID, flatOK := flat.Lookup("Order")
+			modID, modOK := mod.Lookup("Order")
+			if modOK != flatOK || modID != flatID {
+				t.Errorf("module index DIVERGES from flat on the orphaned-facet shape: "+
+					"module=(%q,%v) flat=(%q,%v)", modID, modOK, flatID, flatOK)
+			}
+			if modOK {
+				t.Errorf("module index: orphaned facet suppressed a real ambiguity, resolved to %q", modID)
+			}
+		})
+	}
+}
+
+// A facet must not suppress ambiguity against a THIRD entity even when its own
+// anchor IS present — the rule protects the pair, not the name.
+func TestFacetDoesNotSuppressAmbiguityAgainstAThirdDefinition(t *testing.T) {
+	anchor := anchorEnt("SCOPE.Component", "Order", "a/m.py", "a.m.Order")
+	facet := facetEnt("SCOPE.Schema", "Order", "a/m.py", "a.m.Order", anchor.ID)
+	third := anchorEnt("SCOPE.Component", "Order", "totally/other.py", "totally.other.Order")
+
+	for _, tc := range []struct {
+		name string
+		ents []types.EntityRecord
+	}{
+		{"anchor facet third", []types.EntityRecord{anchor, facet, third}},
+		{"third facet anchor", []types.EntityRecord{third, facet, anchor}},
+		{"facet third anchor", []types.EntityRecord{facet, third, anchor}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if id, ok := BuildIndex(tc.ents).Lookup("Order"); ok {
+				t.Errorf("a third real definition must still make the name ambiguous, got %q", id)
+			}
+		})
+	}
+}
+
+// The QualifiedName tier needs the same pair-scoping: an orphaned facet must
+// not let an unrelated entity own a QualifiedName it shares.
+func TestOrphanedFacetDoesNotHandOverAQualifiedName(t *testing.T) {
+	missingAnchor := anchorEnt("SCOPE.Component", "Order", "a/m.py", "shared.Order")
+	facet := facetEnt("SCOPE.Schema", "Order", "a/m.py", "shared.Order", missingAnchor.ID)
+	unrelated := anchorEnt("SCOPE.Operation", "handle", "totally/other.py", "shared.Order")
+
+	for _, tc := range []struct {
+		name string
+		ents []types.EntityRecord
+	}{
+		{"facet first", []types.EntityRecord{facet, unrelated}},
+		{"unrelated first", []types.EntityRecord{unrelated, facet}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if id, ok := BuildIndex(tc.ents).Lookup("shared.Order"); ok {
+				t.Errorf("orphaned facet let %q own a contested QualifiedName", id)
+			}
+		})
+	}
+}

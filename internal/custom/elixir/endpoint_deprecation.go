@@ -56,7 +56,8 @@
 // router route lives in a SEPARATE file), and a Sunset header is written in an
 // action body — neither is the composed route op, so attaching the contract to a
 // route would fabricate a binding. The marker carries the full contract as
-// evidence; MergeWithCustom dedups by Name. One marker per deprecation site.
+// evidence; MergeWithCustom folds it onto the base op when (SourceFile, Kind,
+// Name) all match (#6104). One marker per deprecation site.
 //
 // Honest-partial (NEVER fabricated):
 //   - a route/action with NO deprecation marker → no marker emitted;

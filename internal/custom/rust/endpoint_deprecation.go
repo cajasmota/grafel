@@ -25,7 +25,8 @@
 //	api_version            — "1" | "2" | … numeric version from the route path
 //
 // Three recognised Rust surfaces (Names match the producer extractors so the
-// stamped op merges onto the plain route op by Name via MergeWithCustom):
+// stamped op merges onto the plain route op via MergeWithCustom, which keys on
+// (SourceFile, Kind, Name) since #6104):
 //
 //	axum — `.route("/path", get(handler))`. The route names a handler by symbol;
 //	    the Rust `#[deprecated(since = "2.0", note = "use /api/v2/users")]`

@@ -297,14 +297,38 @@ func tupleDelta(a, b map[string]int) (destroyed, added []string) {
 	return destroyed, added
 }
 
-// indexBothArms runs the fixture with the gate off and on and returns both docs.
+// persistAndReload round-trips a Document through the on-disk graph and reads
+// it back with graph.LoadGraphFromDir.
+//
+// WHY NOT ASSERT ON THE IN-MEMORY DOCUMENT (#6104 review finding M3).
+// runIndexerOn returns the Document straight out of idx.Run(). Anything the
+// persistence layer does — dropping, rewriting or normalising entities and
+// edges on the way to disk — is invisible to assertions made on that value.
+// Entity-loss and dangling-edge claims have to be measured on what actually
+// lands in the graph, so every arm below is compared after a real write/read
+// cycle.
+func persistAndReload(t *testing.T, doc *graph.Document) *graph.Document {
+	t.Helper()
+	dir := t.TempDir()
+	if err := graph.WriteAtomic(filepath.Join(dir, "graph.json"), doc, false); err != nil {
+		t.Fatalf("persist graph: %v", err)
+	}
+	loaded, err := graph.LoadGraphFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadGraphFromDir: %v", err)
+	}
+	return loaded
+}
+
+// indexBothArms runs the fixture with the gate off and on and returns both
+// docs AS PERSISTED AND RELOADED (see persistAndReload).
 func indexBothArms(t *testing.T, tag string) (off, on *graph.Document) {
 	t.Helper()
 	fixture := writeDjangoFixture(t)
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
-	off = runIndexerOn(t, fixture, tag, nil)
+	off = persistAndReload(t, runIndexerOn(t, fixture, tag, nil))
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "1")
-	on = runIndexerOn(t, fixture, tag, nil)
+	on = persistAndReload(t, runIndexerOn(t, fixture, tag, nil))
 	return off, on
 }
 
@@ -580,38 +604,130 @@ func TestInProcCustomExtractorsSupersedeIsNonDestructive(t *testing.T) {
 	}
 
 	// --- (a) INVARIANT 1: a merge never loses an entity -------------------
-	onIDs := make(map[string]bool, len(on.Entities))
+	//
+	// THIS ASSERTION IS Kind-AWARE ON PURPOSE. An earlier revision excused a
+	// retired entity whenever ANY same-(Name, SourceFile) entity survived,
+	// ignoring Kind — which is precisely the cross-kind supersede shape
+	// (Task|send_receipt -> SCOPE.Service|send_receipt). Had the original
+	// #6104 defect re-keyed its edges, that assertion would have PASSED on the
+	// bug it exists to catch. A retirement is now excused only when either:
+	//
+	//   A. a same-(Kind, Name, SourceFile) successor exists — a Tier A
+	//      combine, which is one graph node either way; or
+	//   B. it is a cross-kind fold that satisfies the #1613 contract IN FULL:
+	//      the survivor's kind strictly OUTRANKS the retired kind in
+	//      frameworkClassKindPriority, AND every edge incident on the retired
+	//      ID in the gate-off arm has a counterpart incident on the survivor
+	//      in the gate-on arm.
+	//
+	// EDGE CONSERVATION, NOT "ZERO DANGLING". Counting dangling references to
+	// the retired ID cannot tell "edges repointed" from "edges deleted" — a
+	// pass that DROPS them scores a perfect zero. Conservation is checked by
+	// content-keyed edge tuples, so a drop fails.
+	//
+	// The non-destruction of the merge itself is separately and directly
+	// pinned at unit level (TestMergeWithCustomCrossKindCollisionKeepsBoth-
+	// Entities); that is the assertion the original defect cannot pass, and
+	// this graph-level test does not try to re-derive it from a delta.
+	offByID := make(map[string]*graph.Entity, len(off.Entities))
+	for i := range off.Entities {
+		offByID[off.Entities[i].ID] = &off.Entities[i]
+	}
+	onByID := make(map[string]*graph.Entity, len(on.Entities))
 	for i := range on.Entities {
-		onIDs[on.Entities[i].ID] = true
+		onByID[on.Entities[i].ID] = &on.Entities[i]
 	}
-	onNameFile := make(map[string][]string, len(on.Entities))
-	for i := range on.Entities {
-		k := on.Entities[i].Name + "|" + on.Entities[i].SourceFile
-		onNameFile[k] = append(onNameFile[k], on.Entities[i].Kind)
+	// Content key for an edge endpoint: the entity's content tuple when the ID
+	// names a real entity, else the raw stub. Mirrors internal/graph/parity's
+	// newEndpointResolver so IDs never leak into the comparison (#6083).
+	contentKey := func(byID map[string]*graph.Entity, id string) string {
+		if e, ok := byID[id]; ok {
+			return fmt.Sprintf("%s|%s|%s", e.Kind, e.Name, e.SourceFile)
+		}
+		return "STUB:" + id
 	}
-	onRefs := make(map[string]int, len(on.Relationships))
-	for i := range on.Relationships {
-		onRefs[on.Relationships[i].FromID]++
-		onRefs[on.Relationships[i].ToID]++
+	// incidentEdges returns content-keyed (direction, kind, otherEndpoint)
+	// tuples for every edge touching id, as a MULTISET.
+	incidentEdges := func(doc *graph.Document, byID map[string]*graph.Entity, id string) map[string]int {
+		out := map[string]int{}
+		for i := range doc.Relationships {
+			r := &doc.Relationships[i]
+			if r.FromID == id {
+				out["out|"+r.Kind+"|"+contentKey(byID, r.ToID)]++
+			}
+			if r.ToID == id {
+				out["in|"+r.Kind+"|"+contentKey(byID, r.FromID)]++
+			}
+		}
+		return out
 	}
+
 	for i := range off.Entities {
 		e := &off.Entities[i]
-		if onIDs[e.ID] {
+		if _, alive := onByID[e.ID]; alive {
 			continue
 		}
-		survivors := onNameFile[e.Name+"|"+e.SourceFile]
-		if len(survivors) == 0 {
-			t.Errorf("#6104: the gate DESTROYED %s|%s (%s) — no entity with the same "+
-				"name survives in that file", e.Kind, e.Name, e.SourceFile)
+		// (A) same-(Kind, Name, SourceFile) successor?
+		var sameKindSuccessor *graph.Entity
+		var crossKindSurvivors []*graph.Entity
+		for j := range on.Entities {
+			s := &on.Entities[j]
+			if s.Name != e.Name || s.SourceFile != e.SourceFile {
+				continue
+			}
+			if s.Kind == e.Kind {
+				sameKindSuccessor = s
+			} else {
+				crossKindSurvivors = append(crossKindSurvivors, s)
+			}
+		}
+		if sameKindSuccessor != nil {
+			continue // Tier A combine
+		}
+		if len(crossKindSurvivors) == 0 {
+			t.Errorf("#6104: the gate DESTROYED %s|%s (%s) — nothing with that name "+
+				"survives in that file", e.Kind, e.Name, e.SourceFile)
 			continue
 		}
-		if n := onRefs[e.ID]; n > 0 {
-			t.Errorf("#6104: %s|%s (%s) was retired but %d edge(s) still point at its "+
-				"ID %s — a fold/supersede must re-key every edge, not only the node's own",
-				e.Kind, e.Name, e.SourceFile, n, e.ID)
+		// (B) cross-kind retirement — must satisfy the #1613 fold contract.
+		var promoted *graph.Entity
+		for _, s := range crossKindSurvivors {
+			if frameworkClassKindPriority[s.Kind] > frameworkClassKindPriority[e.Kind] {
+				promoted = s
+				break
+			}
 		}
-		t.Logf("retired-and-folded (OK, #1613): %s|%s -> %v, 0 dangling edges",
-			e.Kind, e.Name, survivors)
+		if promoted == nil {
+			var kinds []string
+			for _, s := range crossKindSurvivors {
+				kinds = append(kinds, fmt.Sprintf("%s(prio %d)", s.Kind, frameworkClassKindPriority[s.Kind]))
+			}
+			t.Errorf("#6104: %s|%s (%s, prio %d) was retired cross-kind with NO "+
+				"higher-priority survivor — that is a supersede, not a #1613 fold; "+
+				"survivors=%v", e.Kind, e.Name, e.SourceFile,
+				frameworkClassKindPriority[e.Kind], kinds)
+			continue
+		}
+		// EDGE CONSERVATION.
+		wasIncident := incidentEdges(off, offByID, e.ID)
+		nowIncident := incidentEdges(on, onByID, promoted.ID)
+		var lostEdges []string
+		for edge, n := range wasIncident {
+			if nowIncident[edge] < n {
+				lostEdges = append(lostEdges, fmt.Sprintf("%s (x%d, now x%d)", edge, n, nowIncident[edge]))
+			}
+		}
+		if len(lostEdges) > 0 {
+			sort.Strings(lostEdges)
+			t.Errorf("#6104: %s|%s was folded into %s but %d edge class(es) were NOT "+
+				"carried over — a fold must REPOINT edges, not drop them: %v",
+				e.Kind, e.Name, promoted.Kind, len(lostEdges), lostEdges)
+			continue
+		}
+		t.Logf("retired-and-folded (OK, #1613): %s|%s (prio %d) -> %s (prio %d); "+
+			"all %d incident edge class(es) conserved on the survivor",
+			e.Kind, e.Name, frameworkClassKindPriority[e.Kind],
+			promoted.Kind, frameworkClassKindPriority[promoted.Kind], len(wasIncident))
 	}
 
 	// --- (b) Shape 1 + 2: the Celery collisions ---------------------------

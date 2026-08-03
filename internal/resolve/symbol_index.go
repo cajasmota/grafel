@@ -568,25 +568,28 @@ func insertModuleEntry(
 ) {
 	// QualifiedName index.
 	if me.qualifiedName != "" {
+		qk := "q:" + me.qualifiedName
+		anchor, isFacet := me.mergeFacetAnchor()
 		if existing, ok := idx.byQualifiedName[me.qualifiedName]; ok && existing != me.id {
 			// #6104 — mirrors flat BuildIndex: a merge facet never blanks the
-			// entry its anchor owns.
+			// entry ITS OWN ANCHOR owns. An orphaned facet still collides.
 			switch {
-			case me.isMergeFacet():
-				// facet never competes
-			case idx.aliasIncumbent["q:"+me.qualifiedName]:
+			case isFacet && existing == anchor:
+				// facet does not compete with its own anchor
+			case !isFacet && idx.aliasAnchor[qk] == me.id:
 				idx.byQualifiedName[me.qualifiedName] = me.id
-				delete(idx.aliasIncumbent, "q:"+me.qualifiedName)
+				delete(idx.aliasAnchor, qk)
 			default:
 				idx.byQualifiedName[me.qualifiedName] = ""
+				delete(idx.aliasAnchor, qk)
 			}
 		} else {
 			idx.byQualifiedName[me.qualifiedName] = me.id
-			if me.isMergeFacet() {
-				if idx.aliasIncumbent == nil {
-					idx.aliasIncumbent = make(map[string]bool)
+			if isFacet {
+				if idx.aliasAnchor == nil {
+					idx.aliasAnchor = make(map[string]string)
 				}
-				idx.aliasIncumbent["q:"+me.qualifiedName] = true
+				idx.aliasAnchor[qk] = anchor
 			}
 		}
 	}
@@ -885,39 +888,45 @@ func insertModuleEntry(
 	if idx.ambigName[me.name] {
 		return
 	}
+	nk := "n:" + me.name
+	nameAnchor, nameIsFacet := me.mergeFacetAnchor()
 	if existing, ok := idx.byName[me.name]; ok && existing != me.id {
-		// #6104 — mirrors flat BuildIndex: a merge facet is an alias of its
-		// co-located anchor, not a competing definition.
+		// #6104 — mirrors flat BuildIndex: a merge facet is an alias of ITS
+		// OWN ANCHOR, not a competing definition. An orphaned facet (anchor
+		// removed downstream) still collides with an unrelated same-named
+		// definition, rather than silently handing it the name.
 		switch {
-		case me.isMergeFacet():
-			// facet never competes
-		case idx.aliasIncumbent["n:"+me.name]:
+		case nameIsFacet && existing == nameAnchor:
+			// facet does not compete with its own anchor
+		case !nameIsFacet && idx.aliasAnchor[nk] == me.id:
 			idx.byName[me.name] = me.id
-			delete(idx.aliasIncumbent, "n:"+me.name)
+			delete(idx.aliasAnchor, nk)
 		default:
 			delete(idx.byName, me.name)
+			delete(idx.aliasAnchor, nk)
 			idx.ambigName[me.name] = true
 		}
 		return
 	}
 	idx.byName[me.name] = me.id
-	if me.isMergeFacet() {
-		if idx.aliasIncumbent == nil {
-			idx.aliasIncumbent = make(map[string]bool)
+	if nameIsFacet {
+		if idx.aliasAnchor == nil {
+			idx.aliasAnchor = make(map[string]string)
 		}
-		idx.aliasIncumbent["n:"+me.name] = true
+		idx.aliasAnchor[nk] = nameAnchor
 	}
 }
 
-// isMergeFacet reports whether this module entry is a #6104 merge facet — a
-// second Kind describing the same source construct as a co-located base
-// entity. See types.EntityTwinOfProperty.
-func (me *moduleEntry) isMergeFacet() bool {
+// mergeFacetAnchor reports whether this module entry is a #6104 merge facet —
+// a second Kind describing the same source construct as a co-located base
+// entity — and if so the ID of the anchor it is a facet OF. See
+// types.EntityTwinOfProperty.
+func (me *moduleEntry) mergeFacetAnchor() (anchor string, ok bool) {
 	if len(me.properties) == 0 {
-		return false
+		return "", false
 	}
-	anchor := me.properties[types.EntityTwinOfProperty]
-	return anchor != "" && anchor != me.id
+	anchor = me.properties[types.EntityTwinOfProperty]
+	return anchor, anchor != "" && anchor != me.id
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

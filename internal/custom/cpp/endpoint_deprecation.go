@@ -51,7 +51,8 @@ package cpp
 // def, a banner comment, a header write) is not on the same line as the route
 // macro, so there is no single composed endpoint op to attach to without
 // fabricating a route binding. The marker carries the full contract as evidence;
-// MergeWithCustom dedups by Name. One marker per deprecation site.
+// MergeWithCustom folds on (SourceFile, Kind, Name) since #6104. One marker
+// per deprecation site.
 //
 // Honest-partial (NEVER fabricated):
 //   - a route handler with NO deprecation marker → no marker emitted;

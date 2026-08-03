@@ -296,16 +296,34 @@ func RunCustomExtractors(ctx context.Context, file FileInput) (entities []types.
 //
 //	Tier C — no collision. Appended in dispatch order, unchanged.
 //
-// EDGE RE-KEYING. When a Tier A combine retires an ID (the base and custom
-// records carried different pre-stamped IDs), EVERY relationship visible to
-// the merge is re-keyed off the retired ID — not just the survivor's own
-// self-edges, which is all #4402 did, leaving edges emitted by other passes
-// dangling. MergeWithCustomRels additionally accepts and re-keys a standalone
-// relationship set for callers that hold one.
+// EDGE RE-KEYING, AND EXACTLY HOW FAR IT REACHES. When a Tier A combine
+// retires an ID, every relationship VISIBLE TO THE MERGE is re-keyed off it.
+// #4402 re-keyed only the superseded node's OWN self-edges; the sweep now
+// covers the relationships of every entity in the merged set, so an edge
+// emitted by a different pass and hanging off a different entity is corrected
+// too.
 //
-// The survivor prefers the BASE record's ID when it has one: base and custom
-// agree on every identity field in Tier A, and the base ID is the one the rest
-// of the base pass's edges already point at.
+// BE PRECISE ABOUT THE SCOPE. "Visible to the merge" means the relationships
+// carried on the merged EntityRecords. At the only production call site
+// (cmd/grafel/index.go, the #5989 in-process seam) that is ALL of them: pass 1
+// has no standalone relationship slice — classifyAndReadWithProgress returns
+// ([]classifiedFile, []types.EntityRecord) and relationships live exclusively
+// on EntityRecord.Relationships until later passes. So there is currently no
+// production caller of MergeWithCustomRels, and passing it a relationship set
+// is a capability for future callers rather than something exercised today.
+// This does NOT close the #4402 failure mode for edges created after the merge
+// by later passes; those never pass through here at all.
+//
+// ID PREFERENCE IS CONDITIONAL. The survivor prefers the BASE record's ID
+// *when the base has one stamped* — base and custom agree on every identity
+// field in Tier A, and the base ID is the one the rest of the base pass's
+// edges already point at. When the base has NOT been stamped yet, the custom
+// record's ID survives instead. ID stamping is per-extractor (~20 scattered
+// `e.ID = e.ComputeID()` sites), so which side wins depends on which extractor
+// happened to stamp. That is safe but not uniform: the `retired` map re-keys
+// whichever ID lost, so nothing dangles either way. Pinned by
+// TestMergeWithCustomPrefersTheBaseID and
+// TestMergeWithCustomKeepsCustomIDWhenBaseIsUnstamped.
 //
 // Cross-kind dedup is still handled downstream by run-extractor's
 // deduplicateEntities pass, which runs after this merge.
@@ -319,6 +337,10 @@ const BaseSubtypeProperty = types.EntityBaseSubtypeProperty
 // facet of, so the resolver can treat it as an alias rather than as a second
 // competing definition of the same name (#6104).
 const TwinOfProperty = types.EntityTwinOfProperty
+
+// DisjointSpanProperty records a custom-extractor span that was NOT unioned
+// into the survivor because it did not overlap the base span (#6104 / M4).
+const DisjointSpanProperty = "grafel.disjoint_custom_span"
 
 // identityKey is the graph's own entity identity, minus the org/project scope
 // (constant within one merge).
@@ -339,10 +361,13 @@ func MergeWithCustom(baseEntities, customEntities []types.EntityRecord) []types.
 // MergeWithCustomRels merges baseEntities with customEntities and re-keys
 // `rels` against any ID retired by a Tier A combine.
 //
-// The signature exists because the #6104 re-keying requirement cannot be met
-// without the merge seeing the relationship set: #4402 could only re-key the
-// superseded node's own self-edges, so edges produced by other passes were
-// left pointing at an ID that no longer existed.
+// NO PRODUCTION CALLER TODAY. The only production merge site has no standalone
+// relationship slice to hand over (see the policy block above), so every
+// production call goes through MergeWithCustom and `rels` is nil. This entry
+// point exists so that a caller which DOES hold a standalone set can have it
+// re-keyed rather than silently left dangling; it is currently exercised only
+// by tests. Do not describe the #4402 failure mode as closed for standalone
+// relationship streams on the strength of this function alone.
 func MergeWithCustomRels(baseEntities, customEntities []types.EntityRecord, rels []types.RelationshipRecord) ([]types.EntityRecord, []types.RelationshipRecord) {
 	if len(customEntities) == 0 {
 		return baseEntities, rels
@@ -476,9 +501,32 @@ func combineSameIdentity(be, ce types.EntityRecord) types.EntityRecord {
 	// (I2) NEVER NARROW A SPAN. 0 means "position unknown", not "line 0", so
 	// StartLine takes the minimum of the NON-ZERO values while EndLine takes
 	// the plain maximum.
-	survivor.StartLine = minNonZero(be.StartLine, ce.StartLine)
-	if be.EndLine > survivor.EndLine {
+	//
+	// DISJOINT SPANS ARE NOT UNIONED. A blind union of two spans that do not
+	// overlap invents a third span covering code belonging to NEITHER entity
+	// (base 5-8 with custom 40-60 would yield 5-60). That is reachable: Java
+	// method overloads give two declarations the same (Kind, Name, SourceFile)
+	// at different lines, so a custom record can legitimately combine against
+	// the wrong one. When both spans are known AND disjoint we therefore keep
+	// the BASE span — the base AST extractor is the one that actually located
+	// the declaration — and record the discarded custom span as provenance
+	// rather than merging or dropping it silently. The never-narrow invariant
+	// is preserved with respect to the base span, which is the span #6104 was
+	// about (EndLine 12 -> 9 was a base span being truncated).
+	if spansAreDisjoint(be, ce) {
+		if survivor.Properties == nil {
+			survivor.Properties = make(map[string]string, 1)
+		}
+		if _, exists := survivor.Properties[DisjointSpanProperty]; !exists {
+			survivor.Properties[DisjointSpanProperty] = fmt.Sprintf("%d-%d", ce.StartLine, ce.EndLine)
+		}
+		survivor.StartLine = be.StartLine
 		survivor.EndLine = be.EndLine
+	} else {
+		survivor.StartLine = minNonZero(be.StartLine, ce.StartLine)
+		if be.EndLine > survivor.EndLine {
+			survivor.EndLine = be.EndLine
+		}
 	}
 
 	// A displaced base Subtype is retained rather than discarded.
@@ -623,6 +671,23 @@ func enrichFromTwin(ce, be types.EntityRecord) types.EntityRecord {
 		}
 	}
 	return out
+}
+
+// spansAreDisjoint reports whether both records carry a KNOWN span (StartLine
+// > 0) and the two spans do not overlap or touch. A 0 StartLine means "position
+// unknown", which can never be disjoint from anything.
+func spansAreDisjoint(a, b types.EntityRecord) bool {
+	if a.StartLine <= 0 || b.StartLine <= 0 {
+		return false
+	}
+	aEnd, bEnd := a.EndLine, b.EndLine
+	if aEnd < a.StartLine {
+		aEnd = a.StartLine
+	}
+	if bEnd < b.StartLine {
+		bEnd = b.StartLine
+	}
+	return aEnd < b.StartLine || bEnd < a.StartLine
 }
 
 // minNonZero returns the smaller of two line numbers, treating 0 as "unknown"

@@ -59,7 +59,8 @@
 // Like the sibling passes these surfaces add NO new node KIND beyond a marker
 // (`SCOPE.Pattern/rate_limit`) — a governor layer guards a whole Router/App and
 // a tower RateLimitLayer wraps a Service rather than a named route. The marker
-// carries the full throttle posture as evidence; MergeWithCustom dedups by Name.
+// carries the full throttle posture as evidence; MergeWithCustom folds it onto
+// the base op when (SourceFile, Kind, Name) all match (#6104).
 //
 // Honest-partial cases (rate_limited stamped, numeric rate OMITTED):
 //   - per_second / burst_size / RateLimitLayer args are non-literal (a config

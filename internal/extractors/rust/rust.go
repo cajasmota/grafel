@@ -100,7 +100,9 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, cro
 			// Issue #4854 — general field membership: one SCOPE.Schema/field
 			// per named struct field (serde wire name / skip honoured) + a
 			// struct→field CONTAINS edge, so a plain data struct has field
-			// children (dedups by Name with the serde DTO members in #4635).
+			// children (folds with the serde DTO members in #4635 when the Kind
+			// matches too — MergeWithCustom keys on (SourceFile, Kind, Name)
+			// since #6104, not on Name alone).
 			fieldEnts := emitRustStructFields(node, file, rec.Name)
 			attachRustFieldContains(*out, idx, file.Path, fieldEnts)
 			*out = append(*out, fieldEnts...)

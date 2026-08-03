@@ -421,19 +421,30 @@ type Index struct {
 	// (file, name, kind) collisions.
 	byLocationKind LocationKindIndex
 
-	// aliasIncumbent[key] = true when the current byName / byQualifiedName
-	// entry for `key` was written by a MERGE FACET rather than by a real
-	// definition (#6104). Keys are prefixed "n:"/"q:" to share one map.
+	// aliasAnchor[key] = the ANCHOR ID of the merge facet that currently owns
+	// the byName / byQualifiedName entry for `key` (#6104). Keys are prefixed
+	// "n:"/"q:" to share one map. Absent = the entry is owned by a real
+	// definition, not a facet.
 	//
 	// A facet (EntityTwinOfProperty) is a second Kind describing the SAME
 	// source construct as a co-located base entity — e.g. SCOPE.Schema|Order
 	// alongside the base SCOPE.Component|Order the ORM extractor recognised as
 	// a model. Both are real graph nodes, but for NAME resolution the facet is
-	// an alias, not a competing definition: it must never flip a name to
-	// ambiguous and never displace its anchor. Tracking incumbency is what
-	// makes the rule order-independent — a real entity arriving after a facet
-	// still takes the entry.
-	aliasIncumbent map[string]bool
+	// an alias of ITS OWN ANCHOR, not a competing definition.
+	//
+	// THE ANCHOR IDENTITY IS LOAD-BEARING, NOT DECORATIVE. The rule is scoped
+	// to the facet/anchor PAIR: a facet suppresses ambiguity only against the
+	// entity it is a facet OF. An earlier revision short-circuited on "is a
+	// facet" alone, which excluded facets from ambiguity detection GLOBALLY —
+	// so an ORPHANED facet (its anchor removed downstream by
+	// deduplicateEntities, which runs after the merge) sitting alongside a
+	// genuinely unrelated same-named definition let that unrelated definition
+	// silently own the bare name. That trades an honestly-unresolved edge for
+	// a possibly-wrong one. Storing the anchor ID rather than a bool is what
+	// makes the check possible in both directions, and keeps the rule
+	// order-independent: the anchor arriving AFTER its facet still takes the
+	// entry, but any OTHER entity arriving after a facet is a real collision.
+	aliasAnchor map[string]string
 
 	// byQualifiedName[qualified_name] = entity_id. Direct lookup for
 	// stubs whose ToID is an entity QualifiedName verbatim (e.g. markdown
@@ -928,27 +939,35 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		// produces a non-existent "kind" segment). First writer wins;
 		// collisions blank the entry so the resolver leaves the stub.
 		isFacet := e.IsMergeTwinAlias()
+		facetAnchor := ""
+		if isFacet {
+			facetAnchor = e.Properties[types.EntityTwinOfProperty]
+		}
 		if e.QualifiedName != "" {
+			qk := "q:" + e.QualifiedName
 			if existing, ok := idx.byQualifiedName[e.QualifiedName]; ok && existing != e.ID {
 				// #6104 — a merge facet inherits its anchor's QualifiedName.
 				// That is not a collision between two definitions, so it must
-				// not blank the entry.
+				// not blank the entry — but ONLY against its own anchor.
 				switch {
-				case isFacet:
-					// facet never competes
-				case idx.aliasIncumbent["q:"+e.QualifiedName]:
+				case isFacet && existing == facetAnchor:
+					// facet does not compete with its own anchor
+				case !isFacet && idx.aliasAnchor[qk] == e.ID:
+					// the anchor itself, arriving after its facet: take over
 					idx.byQualifiedName[e.QualifiedName] = e.ID
-					delete(idx.aliasIncumbent, "q:"+e.QualifiedName)
+					delete(idx.aliasAnchor, qk)
 				default:
+					// any other pairing is a real collision
 					idx.byQualifiedName[e.QualifiedName] = ""
+					delete(idx.aliasAnchor, qk)
 				}
 			} else {
 				idx.byQualifiedName[e.QualifiedName] = e.ID
 				if isFacet {
-					if idx.aliasIncumbent == nil {
-						idx.aliasIncumbent = make(map[string]bool)
+					if idx.aliasAnchor == nil {
+						idx.aliasAnchor = make(map[string]string)
 					}
-					idx.aliasIncumbent["q:"+e.QualifiedName] = true
+					idx.aliasAnchor[qk] = facetAnchor
 				}
 			}
 		}
@@ -1418,30 +1437,36 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		if idx.ambigName[e.Name] {
 			continue
 		}
+		nk := "n:" + e.Name
 		if existing, ok := idx.byName[e.Name]; ok && existing != e.ID {
 			// #6104 — a merge facet is an ALIAS of a co-located base entity,
 			// not a second definition. Without this, enabling the custom
 			// extractors would flip every framework-modelled class name
 			// (Order, Contract, …) to ambiguous and silently un-resolve the
-			// edges that name it.
+			// edges that name it. Scoped to the facet/anchor PAIR: an
+			// ORPHANED facet must NOT suppress ambiguity against an unrelated
+			// same-named definition.
 			switch {
-			case isFacet:
-				// facet never competes
-			case idx.aliasIncumbent["n:"+e.Name]:
+			case isFacet && existing == facetAnchor:
+				// facet does not compete with its own anchor
+			case !isFacet && idx.aliasAnchor[nk] == e.ID:
+				// the anchor itself, arriving after its facet: take over
 				idx.byName[e.Name] = e.ID
-				delete(idx.aliasIncumbent, "n:"+e.Name)
+				delete(idx.aliasAnchor, nk)
 			default:
+				// any other pairing is a real collision
 				delete(idx.byName, e.Name)
+				delete(idx.aliasAnchor, nk)
 				idx.ambigName[e.Name] = true
 			}
 			continue
 		}
 		idx.byName[e.Name] = e.ID
 		if isFacet {
-			if idx.aliasIncumbent == nil {
-				idx.aliasIncumbent = make(map[string]bool)
+			if idx.aliasAnchor == nil {
+				idx.aliasAnchor = make(map[string]string)
 			}
-			idx.aliasIncumbent["n:"+e.Name] = true
+			idx.aliasAnchor[nk] = facetAnchor
 		}
 	}
 	return idx

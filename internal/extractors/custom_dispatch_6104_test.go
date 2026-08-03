@@ -333,3 +333,126 @@ func kindNames(ents []types.EntityRecord) []string {
 	}
 	return out
 }
+
+// ---- ID preference (#6104 review finding M1) ------------------------------
+//
+// "The survivor prefers the base ID" is a policy claim, and it was unpinned:
+// deleting the preference killed no test in any package. It is also
+// CONDITIONALLY TRUE, which the pins below make explicit rather than papering
+// over. Either way the `retired` map re-keys the losing ID, so nothing dangles
+// — that is asserted here too, because it is the property that actually
+// matters.
+
+// When the base record HAS a stamped ID, the survivor carries it — that is the
+// ID the rest of the base pass's edges already point at.
+func TestMergeWithCustomPrefersTheBaseID(t *testing.T) {
+	base := types.EntityRecord{Name: "list", Kind: "SCOPE.Operation", SourceFile: "C.java", StartLine: 1, EndLine: 9}
+	base.ID = "base-stamped-id"
+	custom := types.EntityRecord{Name: "list", Kind: "SCOPE.Operation", SourceFile: "C.java", Subtype: "endpoint", StartLine: 1, EndLine: 1}
+	custom.ID = "custom-stamped-id"
+
+	got := MergeWithCustom([]types.EntityRecord{base}, []types.EntityRecord{custom})
+	if len(got) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(got))
+	}
+	if got[0].ID != "base-stamped-id" {
+		t.Errorf("survivor must carry the BASE id, got %q", got[0].ID)
+	}
+}
+
+// When the base has NOT been stamped, the custom ID survives instead. ID
+// stamping is per-extractor, so which side wins depends on which extractor
+// happened to stamp — documented as conditional, and pinned so it cannot drift
+// silently.
+func TestMergeWithCustomKeepsCustomIDWhenBaseIsUnstamped(t *testing.T) {
+	base := types.EntityRecord{Name: "list", Kind: "SCOPE.Operation", SourceFile: "C.java", StartLine: 1, EndLine: 9}
+	retired := base.ComputeID() // effective ID of the unstamped base
+	custom := types.EntityRecord{Name: "list", Kind: "SCOPE.Operation", SourceFile: "C.java", Subtype: "endpoint", StartLine: 1, EndLine: 1}
+	custom.ID = "custom-stamped-id"
+
+	// A third entity points at the base's effective ID.
+	caller := types.EntityRecord{Name: "caller", Kind: "SCOPE.Operation", SourceFile: "C.java", ID: "caller-id"}
+	caller.Relationships = []types.RelationshipRecord{{FromID: "caller-id", ToID: retired, Kind: "CALLS"}}
+
+	got := MergeWithCustom([]types.EntityRecord{base, caller}, []types.EntityRecord{custom})
+
+	var survivorID string
+	for _, e := range got {
+		if e.Name == "list" {
+			survivorID = e.ID
+		}
+	}
+	if survivorID != "custom-stamped-id" {
+		t.Errorf("with an unstamped base the CUSTOM id survives; got %q", survivorID)
+	}
+	// Whichever side loses, the retired ID must not be left dangling.
+	for _, e := range got {
+		for _, r := range e.Relationships {
+			if r.FromID == retired || r.ToID == retired {
+				t.Errorf("edge %s->%s (%s) still points at the retired base ID %s",
+					r.FromID, r.ToID, r.Kind, retired)
+			}
+		}
+	}
+}
+
+// ---- Disjoint spans (#6104 review finding M4) -----------------------------
+
+// A blind span union invents a span covering code belonging to NEITHER entity.
+// The Java method-overload shape reaches this: two declarations can share
+// (Kind, Name, SourceFile) at different lines, so a custom record may combine
+// against the wrong one. Disjoint spans are therefore NOT unioned.
+func TestMergeWithCustomDoesNotUnionDisjointSpans(t *testing.T) {
+	base := []types.EntityRecord{{Name: "list", Kind: "SCOPE.Operation", SourceFile: "C.java", StartLine: 5, EndLine: 8}}
+	custom := []types.EntityRecord{{Name: "list", Kind: "SCOPE.Operation", SourceFile: "C.java", Subtype: "endpoint", StartLine: 40, EndLine: 60}}
+
+	got := MergeWithCustom(base, custom)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(got))
+	}
+	s := got[0]
+	if s.StartLine == 5 && s.EndLine == 60 {
+		t.Fatalf("disjoint spans were unioned into 5-60, which covers code belonging to neither entity")
+	}
+	if s.StartLine != 5 || s.EndLine != 8 {
+		t.Errorf("expected the BASE span 5-8 to be kept, got %d-%d", s.StartLine, s.EndLine)
+	}
+	if got := s.Properties[DisjointSpanProperty]; got != "40-60" {
+		t.Errorf("the discarded custom span must be recorded as provenance, got %q", got)
+	}
+	// The refinement itself is still kept.
+	if s.Subtype != "endpoint" {
+		t.Errorf("subtype refinement lost, got %q", s.Subtype)
+	}
+}
+
+// Touching and overlapping spans ARE unioned — the guard must not disable the
+// never-narrow invariant for the ordinary case.
+func TestMergeWithCustomUnionsOverlappingAndTouchingSpans(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		bStart, bEnd, cStart, cEnd int
+		wantStart, wantEnd         int
+	}{
+		{"overlapping", 9, 12, 9, 9, 9, 12},
+		{"touching", 5, 8, 8, 20, 5, 20},
+		{"adjacent-contained", 5, 20, 7, 8, 5, 20},
+		{"base position unknown", 0, 0, 5, 5, 5, 5},
+		{"custom position unknown", 4, 20, 0, 0, 4, 20},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base := []types.EntityRecord{{Name: "h", Kind: "SCOPE.Operation", SourceFile: "s.go", StartLine: tc.bStart, EndLine: tc.bEnd}}
+			custom := []types.EntityRecord{{Name: "h", Kind: "SCOPE.Operation", SourceFile: "s.go", StartLine: tc.cStart, EndLine: tc.cEnd}}
+			got := MergeWithCustom(base, custom)
+			if len(got) != 1 {
+				t.Fatalf("expected 1 entity, got %d", len(got))
+			}
+			if got[0].StartLine != tc.wantStart || got[0].EndLine != tc.wantEnd {
+				t.Errorf("want %d-%d, got %d-%d", tc.wantStart, tc.wantEnd, got[0].StartLine, got[0].EndLine)
+			}
+			if _, marked := got[0].Properties[DisjointSpanProperty]; marked {
+				t.Errorf("non-disjoint spans must not be marked disjoint")
+			}
+		})
+	}
+}

@@ -21,7 +21,7 @@ import (
 // for JS/TS.
 //
 // Property/param Name is "<Owner>.<prop>" (the PHP member name with the leading
-// `$` stripped) so it dedups by Name in MergeWithCustom against the framework
+// `$` stripped) so it folds in MergeWithCustom against the framework
 // DTO field members.
 //
 //	Kind      = "SCOPE.Schema"

@@ -19,7 +19,7 @@ import (
 // gap #4850/#4855 closed for Go and #4845/#4851 for JS/TS.
 //
 // Field Name is "<Owner>.<Property>" (the C# member name, NOT a wire name) so
-// it dedups by Name against the custom DTO field members in MergeWithCustom —
+// it folds against the custom DTO field members in MergeWithCustom —
 // the richer custom entity (validators, library, optionality) wins.
 //
 //	Kind      = "SCOPE.Schema"
