@@ -12,7 +12,8 @@
 // Kind==http_endpoint_definition — can never reach them. Same gating issue as
 // endpoint_response_codes; the resolution is identical: re-emit the endpoint op
 // carrying the pagination contract from the framework's own idioms, merging onto
-// the producer route op by Name via MergeWithCustom.
+// the producer route op via MergeWithCustom, which keys on (SourceFile, Kind,
+// Name) since #6104.
 //
 // Property contract (mirrors the flagship http_endpoint_pagination.go):
 //

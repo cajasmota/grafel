@@ -54,7 +54,8 @@
 // Like the sibling passes these surfaces add NO new node KIND beyond a marker
 // (`SCOPE.Pattern/rate_limit`) — there is no single per-route endpoint to attach
 // an app-wide http4s Throttle to, and the akka throttle binds to a stream rather
-// than a named route. MergeWithCustom dedups by Name; the marker carries the
+// than a named route. MergeWithCustom folds on (SourceFile, Kind, Name) since
+// #6104; the marker carries the
 // full throttle posture as evidence.
 //
 // Honest-partial cases (rate_limited stamped, numeric rate OMITTED):

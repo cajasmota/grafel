@@ -251,76 +251,458 @@ func RunCustomExtractors(ctx context.Context, file FileInput) (entities []types.
 	return entities, errs
 }
 
-// MergeWithCustom merges baseEntities with customEntities applying the
-// dedup rule: when a custom extractor emits an entity with the same
-// Name as a base extractor entity, the custom extractor's version wins.
+// ---------------------------------------------------------------------------
+// MERGE POLICY (issue #6104)
+// ---------------------------------------------------------------------------
 //
-// The merge preserves the original ordering of base entities, replacing any
-// base entity in place when a custom entity with the same Name exists. Custom
-// entities whose Name does not collide with any base entity are appended after
-// the base entities in their dispatch order (already deterministic via
-// CustomExtractorsFor's sort).
+// The old rule was "a custom entity with the same NAME as a base entity
+// replaces it". Name is not an identity. The graph's identity function is
+// EntityRecord.ComputeID = sha256(OrgID+ProjectID+SourceFile+Kind+Name), so
+// keying the merge on Name alone superseded on strictly LESS information than
+// the identity being superseded. On a 361-file fixture that destroyed 280
+// entities across 5 kinds and 2 languages, in three distinct shapes:
 //
-// SUPERSEDE SEMANTICS (issue #4402). A naive "custom wins, base discarded"
-// replacement silently drops two kinds of state the base node carried and the
-// custom node usually does not:
+//   1. cross-kind      Task|send_receipt replaced by SCOPE.Service|send_receipt
+//   2. same-kind       a second Task|send_receipt replacing the first
+//   3. in-place        SCOPE.Operation|C.list|method rewritten to |endpoint
+//                      with EndLine truncated 12 -> 9, propagating into the
+//                      derived SCOPE.Process and http_endpoint_definition
 //
-//   - QualifiedName — the module-qualified name that drives byQualifiedName
-//     resolution and cross-repo joins. Custom/framework extractors typically
-//     emit a bare Name with no QualifiedName; dropping the base one leaves the
-//     surviving entity unresolvable by qualified name (root cause behind the
-//     #4379 settings→middleware late-binding workaround).
-//   - Structural edges — relationships already attached to the base node,
-//     notably the class→field CONTAINS membership emitted by the base
-//     class-body walk (#526). Dropping these orphans every field (root cause
-//     behind the #4366 per-language CONTAINS re-emit workaround).
+// Keying on (Kind, Name) closes only shape 1. The defect is the POLICY, not
+// the key. The policy is now:
 //
-// supersedeBase therefore carries base-only state onto the surviving custom
-// entity: it fills the QualifiedName (and other) gaps the custom node left
-// empty WITHOUT overriding any value the custom node provided, and UNIONS the
-// base node's relationships into the survivor (re-keying base self-edges from
-// the base ID to the survivor ID and deduping). This makes the dropped-state
-// bug impossible at the merge boundary rather than patching it per-language
-// downstream.
+//	Tier A — SAME IDENTITY (SourceFile, Kind, Name).
+//	    These two records ARE the same graph node; the ID-keyed store would
+//	    collapse them anyway. They are COMBINED into one survivor. Custom
+//	    values win where they disagree (the framework extractor is the more
+//	    specific observer), base fills every gap, and:
+//	      * the SPAN IS UNIONED — StartLine takes the minimum of the non-zero
+//	        values, EndLine the maximum. A merge never narrows a span. This is
+//	        what closes shape 3: EndLine 12 survives the "endpoint" rewrite.
+//	      * a displaced non-empty base Subtype is retained under
+//	        BaseSubtypeProperty. "This method is really an endpoint" is real
+//	        information and the custom value wins, but the value it displaced
+//	        is preserved rather than discarded — enrichment, not replacement.
 //
-// This function does NOT perform cross-kind dedup — that is handled downstream
-// by run-extractor's deduplicateEntities pass which runs after this merge.
+//	Tier B — NAME COLLISION, DIFFERENT IDENTITY (different Kind, or different
+//	    SourceFile). These are DIFFERENT graph nodes. BOTH SURVIVE. This is
+//	    what closes shapes 1 and 2. The base node is left untouched; the
+//	    custom node is ENRICHED from its base twin (same file, same name) with
+//	    the base-only state #4402 was created to preserve — QualifiedName
+//	    (#4379), span, descriptive fields, and a re-keyed COPY of the base
+//	    node's structural edges (class->field CONTAINS, #526/#4366). #4402
+//	    obtained that state by destroying the base node; enrichment obtains
+//	    the same state with the base node still standing.
+//
+//	Tier C — no collision. Appended in dispatch order, unchanged.
+//
+// EDGE RE-KEYING, AND EXACTLY HOW FAR IT REACHES. When a Tier A combine
+// retires an ID, every relationship VISIBLE TO THE MERGE is re-keyed off it.
+// #4402 re-keyed only the superseded node's OWN self-edges; the sweep now
+// covers the relationships of every entity in the merged set, so an edge
+// emitted by a different pass and hanging off a different entity is corrected
+// too.
+//
+// BE PRECISE ABOUT THE SCOPE. "Visible to the merge" means the relationships
+// carried on the merged EntityRecords. At the only production call site
+// (cmd/grafel/index.go, the #5989 in-process seam) that is ALL of them: pass 1
+// has no standalone relationship slice — classifyAndReadWithProgress returns
+// ([]classifiedFile, []types.EntityRecord) and relationships live exclusively
+// on EntityRecord.Relationships until later passes. So there is currently no
+// production caller of MergeWithCustomRels, and passing it a relationship set
+// is a capability for future callers rather than something exercised today.
+// This does NOT close the #4402 failure mode for edges created after the merge
+// by later passes; those never pass through here at all.
+//
+// ID PREFERENCE IS CONDITIONAL. The survivor prefers the BASE record's ID
+// *when the base has one stamped* — base and custom agree on every identity
+// field in Tier A, and the base ID is the one the rest of the base pass's
+// edges already point at. When the base has NOT been stamped yet, the custom
+// record's ID survives instead. ID stamping is per-extractor (~20 scattered
+// `e.ID = e.ComputeID()` sites), so which side wins depends on which extractor
+// happened to stamp. That is safe but not uniform: the `retired` map re-keys
+// whichever ID lost, so nothing dangles either way. Pinned by
+// TestMergeWithCustomPrefersTheBaseID and
+// TestMergeWithCustomKeepsCustomIDWhenBaseIsUnstamped.
+//
+// Cross-kind dedup is still handled downstream by run-extractor's
+// deduplicateEntities pass, which runs after this merge.
+
+// BaseSubtypeProperty is the Properties key under which a base-path Subtype
+// displaced by a more specific custom-extractor Subtype is retained, so the
+// displaced value is preserved rather than lost (#6104).
+const BaseSubtypeProperty = types.EntityBaseSubtypeProperty
+
+// TwinOfProperty marks a Tier B facet with the ID of the base entity it is a
+// facet of, so the resolver can treat it as an alias rather than as a second
+// competing definition of the same name (#6104).
+const TwinOfProperty = types.EntityTwinOfProperty
+
+// DisjointSpanProperty records a custom-extractor span that was NOT unioned
+// into the survivor because it did not overlap the base span (#6104 / M4).
+const DisjointSpanProperty = "grafel.disjoint_custom_span"
+
+// identityKey is the graph's own entity identity, minus the org/project scope
+// (constant within one merge).
+type identityKey struct{ file, kind, name string }
+
+// twinKey identifies "the same source construct, modelled under a different
+// Kind" — used for Tier B enrichment only, never for supersede.
+type twinKey struct{ file, name string }
+
+// MergeWithCustom merges baseEntities with customEntities under the merge
+// policy documented above. It is MergeWithCustomRels with no standalone
+// relationship set.
 func MergeWithCustom(baseEntities, customEntities []types.EntityRecord) []types.EntityRecord {
+	ents, _ := MergeWithCustomRels(baseEntities, customEntities, nil)
+	return ents
+}
+
+// MergeWithCustomRels merges baseEntities with customEntities and re-keys
+// `rels` against any ID retired by a Tier A combine.
+//
+// NO PRODUCTION CALLER TODAY. The only production merge site has no standalone
+// relationship slice to hand over (see the policy block above), so every
+// production call goes through MergeWithCustom and `rels` is nil. This entry
+// point exists so that a caller which DOES hold a standalone set can have it
+// re-keyed rather than silently left dangling; it is currently exercised only
+// by tests. Do not describe the #4402 failure mode as closed for standalone
+// relationship streams on the strength of this function alone.
+func MergeWithCustomRels(baseEntities, customEntities []types.EntityRecord, rels []types.RelationshipRecord) ([]types.EntityRecord, []types.RelationshipRecord) {
 	if len(customEntities) == 0 {
-		return baseEntities
+		return baseEntities, rels
 	}
 
-	// Index the first custom entity per Name (dispatch order).
-	customByName := make(map[string]int, len(customEntities))
-	for i, e := range customEntities {
-		if _, seen := customByName[e.Name]; !seen {
-			customByName[e.Name] = i
-		}
+	// Work on a copy: Tier B enriches custom records in place and the caller's
+	// slice must not be mutated.
+	custom := make([]types.EntityRecord, len(customEntities))
+	copy(custom, customEntities)
+
+	byIdentity := make(map[identityKey][]int, len(custom))
+	byTwin := make(map[twinKey][]int, len(custom))
+	for i, ce := range custom {
+		ik := identityKey{ce.SourceFile, ce.Kind, ce.Name}
+		tk := twinKey{ce.SourceFile, ce.Name}
+		byIdentity[ik] = append(byIdentity[ik], i)
+		byTwin[tk] = append(byTwin[tk], i)
 	}
 
-	used := make(map[int]bool, len(customEntities))
-	merged := make([]types.EntityRecord, 0, len(baseEntities)+len(customEntities))
+	combined := make([]bool, len(custom))
+	enriched := make([]bool, len(custom))
+	retired := make(map[string]string) // retired ID -> survivor ID
+	merged := make([]types.EntityRecord, 0, len(baseEntities)+len(custom))
 
-	// Replace base entities in place when a custom entity shares the Name,
-	// carrying base-only state (QualifiedName + structural edges) onto the
-	// surviving custom entity (issue #4402).
 	for _, be := range baseEntities {
-		if idx, ok := customByName[be.Name]; ok && !used[idx] {
-			merged = append(merged, supersedeBase(be, customEntities[idx]))
-			used[idx] = true
+		// --- Tier A: same identity -> combine into one survivor -------------
+		//
+		// A custom record with an empty SourceFile is matched against the base
+		// record's file: dispatch is per-file, so "no file" means "this file".
+		idxs := pickUnused(byIdentity[identityKey{be.SourceFile, be.Kind, be.Name}], combined)
+		if be.SourceFile != "" {
+			idxs = append(idxs, pickUnused(byIdentity[identityKey{"", be.Kind, be.Name}], combined)...)
+		}
+		if len(idxs) > 0 {
+			survivor := be
+			for _, i := range idxs {
+				survivor = combineSameIdentity(survivor, custom[i])
+				combined[i] = true
+			}
+			survivorID := effectiveID(&survivor)
+			if id := effectiveID(&be); id != "" && id != survivorID {
+				retired[id] = survivorID
+			}
+			for _, i := range idxs {
+				if id := effectiveID(&custom[i]); id != "" && id != survivorID {
+					retired[id] = survivorID
+				}
+			}
+			merged = append(merged, survivor)
 			continue
 		}
+
+		// --- Tier B: name twin of a different Kind -> BOTH survive ----------
+		twins := byTwin[twinKey{be.SourceFile, be.Name}]
+		if be.SourceFile != "" {
+			twins = append(twins, byTwin[twinKey{"", be.Name}]...)
+		}
+		for _, i := range twins {
+			if combined[i] || enriched[i] {
+				continue
+			}
+			custom[i] = enrichFromTwin(custom[i], be)
+			enriched[i] = true
+		}
+
 		merged = append(merged, be)
 	}
 
-	// Append remaining custom entities that did not replace a base entity.
-	for i, ce := range customEntities {
-		if used[i] {
+	// --- Tier C: custom entities that collided with nothing ----------------
+	for i := range custom {
+		if combined[i] {
 			continue
 		}
-		merged = append(merged, ce)
+		merged = append(merged, custom[i])
 	}
-	return merged
+
+	if len(retired) > 0 {
+		for i := range merged {
+			rekeyRelationships(merged[i].Relationships, retired)
+		}
+		rekeyRelationships(rels, retired)
+	}
+	return merged, rels
+}
+
+// pickUnused returns the indices in idxs not already consumed by a combine.
+func pickUnused(idxs []int, combined []bool) []int {
+	var out []int
+	for _, i := range idxs {
+		if !combined[i] {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// effectiveID is the entity's stamped ID, or the deterministic computed one
+// when the pipeline has not stamped it yet.
+func effectiveID(e *types.EntityRecord) string {
+	if e.ID != "" {
+		return e.ID
+	}
+	return e.ComputeID()
+}
+
+// rekeyRelationships rewrites every endpoint naming a retired ID, in place.
+func rekeyRelationships(rels []types.RelationshipRecord, retired map[string]string) {
+	for i := range rels {
+		if to, ok := retired[rels[i].FromID]; ok {
+			rels[i].FromID = to
+		}
+		if to, ok := retired[rels[i].ToID]; ok {
+			rels[i].ToID = to
+		}
+	}
+}
+
+// combineSameIdentity returns the single survivor for two records that share
+// the graph's identity (SourceFile, Kind, Name) and are therefore the same
+// node. See the merge policy block above.
+func combineSameIdentity(be, ce types.EntityRecord) types.EntityRecord {
+	survivor := supersedeBase(be, ce)
+
+	// The survivor carries the base ID when the base has one: the identity
+	// fields are equal, and the base ID is what the rest of the base pass's
+	// edges already point at.
+	if be.ID != "" {
+		survivor.ID = be.ID
+	}
+
+	// (I2) NEVER NARROW A SPAN. 0 means "position unknown", not "line 0", so
+	// StartLine takes the minimum of the NON-ZERO values while EndLine takes
+	// the plain maximum.
+	//
+	// DISJOINT SPANS ARE NOT UNIONED. A blind union of two spans that do not
+	// overlap invents a third span covering code belonging to NEITHER entity
+	// (base 5-8 with custom 40-60 would yield 5-60). That is reachable: Java
+	// method overloads give two declarations the same (Kind, Name, SourceFile)
+	// at different lines, so a custom record can legitimately combine against
+	// the wrong one. When both spans are known AND disjoint we therefore keep
+	// the BASE span — the base AST extractor is the one that actually located
+	// the declaration — and record the discarded custom span as provenance
+	// rather than merging or dropping it silently. The never-narrow invariant
+	// is preserved with respect to the base span, which is the span #6104 was
+	// about (EndLine 12 -> 9 was a base span being truncated).
+	if spansAreDisjoint(be, ce) {
+		if survivor.Properties == nil {
+			survivor.Properties = make(map[string]string, 1)
+		}
+		if _, exists := survivor.Properties[DisjointSpanProperty]; !exists {
+			survivor.Properties[DisjointSpanProperty] = fmt.Sprintf("%d-%d", ce.StartLine, ce.EndLine)
+		}
+		survivor.StartLine = be.StartLine
+		survivor.EndLine = be.EndLine
+	} else {
+		survivor.StartLine = minNonZero(be.StartLine, ce.StartLine)
+		if be.EndLine > survivor.EndLine {
+			survivor.EndLine = be.EndLine
+		}
+	}
+
+	// A displaced base Subtype is retained rather than discarded.
+	if be.Subtype != "" && survivor.Subtype != be.Subtype {
+		if survivor.Properties == nil {
+			survivor.Properties = make(map[string]string, 1)
+		}
+		if _, exists := survivor.Properties[BaseSubtypeProperty]; !exists {
+			survivor.Properties[BaseSubtypeProperty] = be.Subtype
+		}
+	}
+
+	// Identity scope: a custom extractor never sees the org/project stamps.
+	if survivor.OrgID == "" {
+		survivor.OrgID = be.OrgID
+	}
+	if survivor.ProjectID == "" {
+		survivor.ProjectID = be.ProjectID
+	}
+	if survivor.ProjectSlug == "" {
+		survivor.ProjectSlug = be.ProjectSlug
+	}
+	if survivor.RepoID == "" {
+		survivor.RepoID = be.RepoID
+	}
+	return survivor
+}
+
+// enrichFromTwin returns the custom entity `ce` enriched from its base twin
+// `be` — a record for the same source construct under a DIFFERENT Kind. The
+// base entity is NOT consumed: the caller keeps it in the merged output.
+//
+// This is the non-destructive replacement for #4402's supersede. It carries
+// the same base-only state onto the custom node (QualifiedName, span,
+// descriptive fields, structural edges) without deleting the node it came
+// from.
+func enrichFromTwin(ce, be types.EntityRecord) types.EntityRecord {
+	out := ce
+
+	// Mark the facet. Both nodes are in the graph, but only the base node is a
+	// competing DEFINITION of this name — the facet is an alias of it, and the
+	// symbol index must not read the pair as an ambiguity.
+	if out.Properties == nil {
+		out.Properties = make(map[string]string, 1)
+	}
+	if _, exists := out.Properties[TwinOfProperty]; !exists {
+		out.Properties[TwinOfProperty] = effectiveID(&be)
+	}
+
+	if out.QualifiedName == "" {
+		out.QualifiedName = be.QualifiedName
+	}
+	if out.Signature == "" {
+		out.Signature = be.Signature
+	}
+	if out.Description == "" {
+		out.Description = be.Description
+	}
+	if out.Domain == "" {
+		out.Domain = be.Domain
+	}
+	if out.Content == "" {
+		out.Content = be.Content
+	}
+	if out.Language == "" {
+		out.Language = be.Language
+	}
+	if out.SourceFile == "" {
+		out.SourceFile = be.SourceFile
+	}
+	if out.OrgID == "" {
+		out.OrgID = be.OrgID
+	}
+	if out.ProjectID == "" {
+		out.ProjectID = be.ProjectID
+	}
+	if out.ProjectSlug == "" {
+		out.ProjectSlug = be.ProjectSlug
+	}
+	if out.RepoID == "" {
+		out.RepoID = be.RepoID
+	}
+	// (I2) the twin describes the same construct, so widen rather than clip.
+	out.StartLine = minNonZero(out.StartLine, be.StartLine)
+	if be.EndLine > out.EndLine {
+		out.EndLine = be.EndLine
+	}
+
+	if len(be.Properties) > 0 {
+		if out.Properties == nil {
+			out.Properties = make(map[string]string, len(be.Properties))
+		}
+		for k, v := range be.Properties {
+			if _, ok := out.Properties[k]; !ok {
+				out.Properties[k] = v
+			}
+		}
+	}
+	if len(be.Metadata) > 0 {
+		if out.Metadata == nil {
+			out.Metadata = make(map[string]interface{}, len(be.Metadata))
+		}
+		for k, v := range be.Metadata {
+			if _, ok := out.Metadata[k]; !ok {
+				out.Metadata[k] = v
+			}
+		}
+	}
+
+	// COPY (never move) the base node's owned structural edges, re-keyed onto
+	// the custom node. An edge whose FromID names some third entity belongs to
+	// that entity and is left alone.
+	if len(be.Relationships) > 0 {
+		baseID := effectiveID(&be)
+		outID := effectiveID(&out)
+		type relKey struct{ from, to, kind string }
+		seen := make(map[relKey]bool, len(out.Relationships)+len(be.Relationships))
+		for _, r := range out.Relationships {
+			seen[relKey{r.FromID, r.ToID, r.Kind}] = true
+		}
+		for _, r := range be.Relationships {
+			if r.FromID != "" && r.FromID != baseID {
+				continue
+			}
+			br := r
+			// An empty FromID means "implicitly owned by whichever node
+			// carries this edge" — that is now the custom node, so leave it
+			// empty rather than materialising an ID that would defeat the
+			// dedup against the custom node's own implicit edges.
+			if br.FromID == baseID {
+				br.FromID = outID
+			}
+			if br.ToID == baseID {
+				br.ToID = outID
+			}
+			k := relKey{br.FromID, br.ToID, br.Kind}
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			out.Relationships = append(out.Relationships, br)
+		}
+	}
+	return out
+}
+
+// spansAreDisjoint reports whether both records carry a KNOWN span (StartLine
+// > 0) and the two spans do not overlap or touch. A 0 StartLine means "position
+// unknown", which can never be disjoint from anything.
+func spansAreDisjoint(a, b types.EntityRecord) bool {
+	if a.StartLine <= 0 || b.StartLine <= 0 {
+		return false
+	}
+	aEnd, bEnd := a.EndLine, b.EndLine
+	if aEnd < a.StartLine {
+		aEnd = a.StartLine
+	}
+	if bEnd < b.StartLine {
+		bEnd = b.StartLine
+	}
+	return aEnd < b.StartLine || bEnd < a.StartLine
+}
+
+// minNonZero returns the smaller of two line numbers, treating 0 as "unknown"
+// rather than as line zero.
+func minNonZero(a, b int) int {
+	switch {
+	case a == 0:
+		return b
+	case b == 0:
+		return a
+	case a < b:
+		return a
+	default:
+		return b
+	}
 }
 
 // supersedeBase returns the surviving entity for the case where custom node
@@ -339,8 +721,11 @@ func MergeWithCustom(baseEntities, customEntities []types.EntityRecord) []types.
 //     ID so class→field CONTAINS membership is not dropped. Duplicates (same
 //     from/to/kind) are removed.
 //
-// The custom node's ID/Kind/Name are NOT changed — supersede preserves the
-// custom extractor's chosen identity.
+// supersedeBase is the Tier A field-level carry-over, called only by
+// combineSameIdentity — where base and custom already agree on the full
+// identity (SourceFile, Kind, Name), so no node is being displaced. Span and
+// ID handling are finished by combineSameIdentity, which enforces the
+// never-narrow invariant on top of the gap-fills below.
 func supersedeBase(be, ce types.EntityRecord) types.EntityRecord {
 	survivor := ce
 

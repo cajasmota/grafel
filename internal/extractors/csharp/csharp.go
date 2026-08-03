@@ -198,7 +198,9 @@ func walk(
 		// Issue #4854 — general field membership: one SCOPE.Schema/field per
 		// property / public field / record positional parameter, plus a
 		// class→field CONTAINS edge so a plain data class has field children
-		// (dedups by Name with the endpoint-bound DTO members in #4715).
+		// (folds with the endpoint-bound DTO members in #4715 when the Kind
+		// matches too — MergeWithCustom keys on (SourceFile, Kind, Name)
+		// since #6104, not on Name alone).
 		fieldEnts, baseNames := emitFieldMembers(node, body, file.Content, rec.Name, file.Path)
 		for _, fe := range fieldEnts {
 			toID := extractor.BuildSchemaFieldStructuralRef("csharp", file.Path, fe.Name)

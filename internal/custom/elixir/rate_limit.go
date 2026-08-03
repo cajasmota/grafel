@@ -48,7 +48,9 @@
 //
 // Like the sibling passes, the Hammer/ExRated surface adds NO new node — it
 // stamps the flat contract on the controller-action op phoenix.go already emits
-// (MergeWithCustom dedups by Name so the custom version wins). The PlugAttack
+// (MergeWithCustom folds it onto the base op when the Kind matches too;
+// since #6104 it keys on (SourceFile, Kind, Name), not Name alone, so a
+// Kind disagreement leaves BOTH nodes standing). The PlugAttack
 // surface adds a marker entity (there is no per-route endpoint to attach to).
 //
 // Honest-partial cases (rate_limited stamped, numeric rate OMITTED):
@@ -205,7 +207,7 @@ func (e *rateLimitExtractor) Extract(ctx context.Context, file extractor.FileInp
 
 // extractCheckRate stamps the flat contract on the controller action enclosing
 // each Hammer/ExRated `check_rate` call. The action op shares the `action:<name>`
-// Name phoenix.go emits, so MergeWithCustom replaces phoenix's bare action op
+// Name phoenix.go emits, so MergeWithCustom folds onto phoenix's bare action op
 // with this rate-limited one (scope=route). When no enclosing `def` precedes the
 // call (a module-level limiter helper), the call is skipped — there is no action
 // to attribute it to and inventing a route would be dishonest.

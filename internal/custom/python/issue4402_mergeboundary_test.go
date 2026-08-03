@@ -71,20 +71,36 @@ func mergeBoundary4402(t *testing.T, path string) []types.EntityRecord {
 	return merged
 }
 
-// findMergedClass returns the single surviving entity named `name`. After the
-// merge there must be exactly ONE node per class Name (custom won the identity).
+// findMergedClass returns the FRAMEWORK-modelled node for `name` — the
+// SCOPE.Schema/model facet the Django custom extractor emitted.
+//
+// UPDATED FOR #6104. This used to assert "exactly ONE node per class Name
+// (custom won the identity)". That assertion WAS the defect: a Kind
+// disagreement means two graph nodes, and #4402 obtained the base node's state
+// by DESTROYING it. Both nodes now survive — the base SCOPE.Component and the
+// custom facet — and the facet still carries the base QualifiedName and the
+// base CONTAINS membership, which is the property these tests exist to prove.
+// The base node must also still be there, so we assert on both.
 func findMergedClass(t *testing.T, ents []types.EntityRecord, name string) types.EntityRecord {
 	t.Helper()
-	var found []types.EntityRecord
+	var facet, base []types.EntityRecord
 	for _, e := range ents {
-		if e.Name == name {
-			found = append(found, e)
+		if e.Name != name {
+			continue
+		}
+		if e.Properties[types.EntityTwinOfProperty] != "" {
+			facet = append(facet, e)
+		} else {
+			base = append(base, e)
 		}
 	}
-	if len(found) != 1 {
-		t.Fatalf("expected exactly 1 merged entity named %q, got %d", name, len(found))
+	if len(base) != 1 {
+		t.Fatalf("expected the base node for %q to survive the merge exactly once, got %d", name, len(base))
 	}
-	return found[0]
+	if len(facet) != 1 {
+		t.Fatalf("expected exactly 1 custom facet for %q, got %d", name, len(facet))
+	}
+	return facet[0]
 }
 
 // TestIssue4402_QualifiedNameSurvivesMerge proves the merged model node keeps
@@ -96,7 +112,7 @@ func TestIssue4402_QualifiedNameSurvivesMerge(t *testing.T) {
 
 	contract := findMergedClass(t, merged, "Contract")
 
-	// Identity is the CUSTOM node's (Django model), proving the custom node won.
+	// The facet keeps the CUSTOM node's identity (Django model).
 	if contract.Subtype != "model" {
 		t.Errorf("merged Contract should keep custom identity subtype=model, got %q", contract.Subtype)
 	}

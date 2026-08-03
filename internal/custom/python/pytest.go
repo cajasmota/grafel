@@ -49,7 +49,7 @@ import (
 // relationship kind — no new producer Kind. The single suite entity is named
 // `pytest_suite:<base>` so it never collides by-name with a production
 // function/class node (which would re-orphan it through the resolver's byName
-// index, as in #4343), and so MergeWithCustom's name-keyed replace does not
+// index, as in #4343), and so the MergeWithCustom fold does not
 // clobber the base tree-sitter class/func nodes (lesson from #4366).
 //
 // The cross/testmap Python path (test_coverage entities via direct body-call

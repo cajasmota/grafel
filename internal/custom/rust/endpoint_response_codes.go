@@ -12,7 +12,8 @@
 // gated on Kind==http_endpoint_definition — can never reach them. This is the
 // SAME situation endpoint_deprecation.go faced; the resolution is identical:
 // re-emit the endpoint op carrying the status-code contract from the framework's
-// own idioms, merging onto the producer route op by Name via MergeWithCustom.
+// own idioms, merging onto the producer route op via MergeWithCustom, which
+// keys on (SourceFile, Kind, Name) since #6104.
 //
 // Property contract (mirrors the flagship http_endpoint_response_codes.go):
 //

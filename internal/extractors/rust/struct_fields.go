@@ -21,7 +21,7 @@ import (
 // NO EXTENDS pass.
 //
 // Field Name is "<Owner>.<wire>" where <wire> is the serde rename target if
-// present (else the Rust field name) so it dedups by Name in MergeWithCustom
+// present (else the Rust field name) so it folds in MergeWithCustom
 // against the serde DTO field members; `#[serde(skip)]` fields are excluded.
 //
 //	Kind      = "SCOPE.Schema"

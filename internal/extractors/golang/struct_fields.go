@@ -110,7 +110,7 @@ func extractStructFieldEntities(
 			}
 			// Wire name: prefer the json tag name (matching the endpoint-bound
 			// DTO field members emitted by internal/custom/golang so the two
-			// passes dedup by Name in MergeWithCustom and the richer custom
+			// passes fold together in MergeWithCustom and the richer custom
 			// entity wins). Only single-name fields carry a meaningful tag.
 			wire := fname
 			if len(names) == 1 {

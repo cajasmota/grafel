@@ -3430,32 +3430,34 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				// for why, and why this is NOT the same thing as flipping
 				// GRAFEL_SUBPROC_EXTRACT.
 				//
-				// THE GATE IS NOT PURELY ADDITIVE, AND NOT PYTHON-ONLY (#6104).
-				// MergeWithCustom supersedes by NAME, so a custom entity whose
-				// Name collides with a base entity REPLACES it. Measured effects
-				// per language on the #5989 fixtures:
+				// THE MERGE IS NON-DESTRUCTIVE (#6104, fixed). MergeWithCustom
+				// used to supersede by NAME alone, so a custom entity whose Name
+				// collided with a base entity REPLACED it — 280 entities across 5
+				// kinds and 2 languages on the #5989 fixtures. It is now keyed on
+				// the graph's own identity (SourceFile, Kind, Name) and enforces
+				// two invariants: a merge never loses an entity, and a merge never
+				// narrows a span. Measured effects per language now:
 				//
-				//   python — Celery tasks destroy TWO base entities each
-				//            (Task + SCOPE.Operation), replaced by one
-				//            SCOPE.Service. A different-KIND collision.
-				//   java   — SCOPE.Operation is mutated IN PLACE: subtype
-				//            method->endpoint and EndLine truncated to the start
-				//            line, losing the body extent; the truncation
-				//            propagates into the derived http_endpoint_definition.
-				//            A SAME-KIND collision, so keying supersede on
-				//            (Kind, Name) would NOT fix it.
-				//   js     — route operations are REPLACED by better-positioned
-				//            ones (base emits them at line 0). An improvement,
-				//            but still a substitution, and invisible to any
-				//            count-based comparison.
+				//   python — the Celery task ADDS a SCOPE.Service; the base
+				//            Task and SCOPE.Operation are no longer destroyed by
+				//            the merge. (Task is subsequently folded into
+				//            SCOPE.Service by the #1613 class-shadow fold, which
+				//            repoints its edges — a combine, not a drop.)
+				//   java   — SCOPE.Operation keeps its full span; only the Subtype
+				//            is refined method->endpoint, with the displaced value
+				//            retained under types.EntityBaseSubtypeProperty. The
+				//            derived http_endpoint_definition is no longer
+				//            truncated.
+				//   js     — route operations gain real positions (base emits them
+				//            at line 0). A widening, never a narrowing.
 				//   go, ruby — genuinely inert; identical content tuples.
 				//
-				// The total loss set is 280 entities across 5 kinds and 2
-				// languages. This is the blocker for flipping the gate on by
-				// default; it is pinned by
-				// TestInProcCustomExtractorsSupersedeDestroysBaseEntities and
-				// TestInProcCustomExtractorsJavaEntityMutation. Do not flip the
-				// default until #6104 is closed.
+				// Pinned by TestInProcCustomExtractorsSupersedeIsNonDestructive and
+				// TestInProcCustomExtractorsJavaEnrichment. The gate stays
+				// default-OFF: its wall/alloc cost (+17.5% wall, +18.2%
+				// TotalAlloc) has never been measured at corpus scale, and #6105
+				// (synthetic Class:<Name> endpoints resolving to nothing) is still
+				// open. Flipping the default is a separate decision.
 				//
 				// The `file.TSTree != nil` guard is load-bearing beyond avoiding
 				// a use-after-free: a subset of custom extractors work on file

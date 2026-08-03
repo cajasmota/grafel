@@ -297,14 +297,38 @@ func tupleDelta(a, b map[string]int) (destroyed, added []string) {
 	return destroyed, added
 }
 
-// indexBothArms runs the fixture with the gate off and on and returns both docs.
+// persistAndReload round-trips a Document through the on-disk graph and reads
+// it back with graph.LoadGraphFromDir.
+//
+// WHY NOT ASSERT ON THE IN-MEMORY DOCUMENT (#6104 review finding M3).
+// runIndexerOn returns the Document straight out of idx.Run(). Anything the
+// persistence layer does — dropping, rewriting or normalising entities and
+// edges on the way to disk — is invisible to assertions made on that value.
+// Entity-loss and dangling-edge claims have to be measured on what actually
+// lands in the graph, so every arm below is compared after a real write/read
+// cycle.
+func persistAndReload(t *testing.T, doc *graph.Document) *graph.Document {
+	t.Helper()
+	dir := t.TempDir()
+	if err := graph.WriteAtomic(filepath.Join(dir, "graph.json"), doc, false); err != nil {
+		t.Fatalf("persist graph: %v", err)
+	}
+	loaded, err := graph.LoadGraphFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadGraphFromDir: %v", err)
+	}
+	return loaded
+}
+
+// indexBothArms runs the fixture with the gate off and on and returns both
+// docs AS PERSISTED AND RELOADED (see persistAndReload).
 func indexBothArms(t *testing.T, tag string) (off, on *graph.Document) {
 	t.Helper()
 	fixture := writeDjangoFixture(t)
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
-	off = runIndexerOn(t, fixture, tag, nil)
+	off = persistAndReload(t, runIndexerOn(t, fixture, tag, nil))
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "1")
-	on = runIndexerOn(t, fixture, tag, nil)
+	on = persistAndReload(t, runIndexerOn(t, fixture, tag, nil))
 	return off, on
 }
 
@@ -355,98 +379,118 @@ func TestInProcCustomExtractorsJavaScriptIsNotInert(t *testing.T) {
 	t.Logf("javascript destroyed=%v added=%v", destroyed, added)
 }
 
-// TestInProcCustomExtractorsJavaEntityMutation PINS A KNOWN DEFECT (#6104).
+// TestInProcCustomExtractorsJavaEnrichment is the INVERSION of the former
+// TestInProcCustomExtractorsJavaEntityMutation, which pinned #6104's known
+// defect. It is now a correctness test.
 //
-// The Java custom extractors mutate existing entities IN PLACE rather than
-// adding new ones. The collision is SAME KIND, SAME NAME, SAME FILE — only
-// Subtype and EndLine differ:
+// WHAT IT USED TO PIN. The Java custom extractors collide with the base path
+// on SAME KIND, SAME NAME, SAME FILE:
 //
 //	OFF: SCOPE.Operation|OrdersController.list|api.OrdersController.list|method  |...|9|12
 //	ON:  SCOPE.Operation|OrdersController.list|api.OrdersController.list|endpoint|...|9| 9
 //
-// Two things are corrupted: Subtype flips method -> endpoint, and EndLine is
-// TRUNCATED to the start line, losing the body extent. The truncation
-// propagates into the derived http_endpoint_definition entity too.
+// Two things changed, and the old test asserted BOTH as broken behaviour:
+// Subtype flipped method -> endpoint, and EndLine was TRUNCATED to the start
+// line, losing the body extent — a truncation that propagated into the derived
+// http_endpoint_definition.
 //
-// WHY THIS TEST EXISTS SEPARATELY FROM THE CELERY PIN. Because the Java
-// collision is same-(Kind, Name), the obvious remedy for the Celery loss —
-// keying supersede on (Kind, Name) instead of Name alone — does NOT fix Java.
-// Without this test, that fix would turn the Celery pin red, be declared
-// complete, and ship with the Java corruption entirely unpinned.
+// WHAT IT ASSERTS NOW, AND WHY THE TWO ARE TREATED DIFFERENTLY. Those two
+// changes are not the same kind of change:
 //
-// Asserts the BROKEN behaviour deliberately. When #6104 is fixed this test
-// fails and should be inverted, not deleted.
-func TestInProcCustomExtractorsJavaEntityMutation(t *testing.T) {
+//   - The Subtype refinement is INFORMATION. "This method is really an
+//     endpoint" is exactly what the framework extractor exists to know, and
+//     discarding it would discard the point of the gate. It is KEPT, and the
+//     value it displaced is retained under types.EntityBaseSubtypeProperty so
+//     nothing is lost. Still asserted, now as desired behaviour.
+//
+//   - The EndLine truncation is DATA LOSS with no compensating information.
+//     Same kind, same name, same file means these are the same graph node, and
+//     a merge of two observations of one node must never produce a narrower
+//     span than either observation. Now asserted as forbidden.
+//
+// The old test's third assertion — that the truncation propagates to the
+// derived http_endpoint_definition — is kept and inverted with it: the
+// derived entity must not be truncated either.
+func TestInProcCustomExtractorsJavaEnrichment(t *testing.T) {
 	off, on := indexBothArms(t, "java_lang_repo")
-	destroyed, added := tupleDelta(entityTuples(off, "java"), entityTuples(on, "java"))
+	offT, onT := entityTuples(off, "java"), entityTuples(on, "java")
+	destroyed, added := tupleDelta(offT, onT)
 
-	if len(destroyed) == 0 {
-		t.Fatalf("KNOWN DEFECT APPEARS FIXED: the gate no longer destroys Java entities. " +
-			"If #6104 was fixed, invert this test to assert Java is inert.")
-	}
-
-	// 1. Subtype mutation on a same-kind/same-name/same-file entity.
-	var subtypeMutated bool
+	// 1. The Subtype refinement is KEPT — this is the gate's value on Java.
+	var subtypeRefined bool
 	for _, d := range destroyed {
 		if !strings.HasPrefix(d, "SCOPE.Operation|OrdersController.list|") || !strings.Contains(d, "|method|") {
 			continue
 		}
 		for _, a := range added {
 			if strings.HasPrefix(a, "SCOPE.Operation|OrdersController.list|") && strings.Contains(a, "|endpoint|") {
-				subtypeMutated = true
+				subtypeRefined = true
 			}
 		}
 	}
-	if !subtypeMutated {
-		t.Errorf("expected Java SCOPE.Operation subtype mutation method->endpoint; destroyed=%v added=%v",
+	if !subtypeRefined {
+		t.Errorf("expected the Java SCOPE.Operation subtype refinement method->endpoint to survive; destroyed=%v added=%v",
 			destroyed, added)
 	}
 
-	// 2. EndLine truncation — the body extent is lost. Compare the EndLine of
-	// the destroyed vs added tuple for the same Kind|Name|File.
-	endLineOf := func(tuple string) (kindName string, endLine int, ok bool) {
+	// 2. NO SPAN MAY NARROW. Compare the span of every destroyed tuple against
+	// its same Kind|Name|SourceFile successor in `added`. This is the
+	// assertion that used to require a truncation to exist.
+	spanOf := func(tuple string) (kindNameFile string, start, end int, ok bool) {
 		parts := strings.Split(tuple, "|")
 		if len(parts) != 7 {
-			return "", 0, false
+			return "", 0, 0, false
 		}
-		n, err := strconv.Atoi(parts[6])
+		st, err := strconv.Atoi(parts[5])
 		if err != nil {
-			return "", 0, false
+			return "", 0, 0, false
 		}
-		return parts[0] + "|" + parts[1] + "|" + parts[4], n, true
+		en, err := strconv.Atoi(parts[6])
+		if err != nil {
+			return "", 0, 0, false
+		}
+		return parts[0] + "|" + parts[1] + "|" + parts[4], st, en, true
 	}
-	offEnd := map[string]int{}
+	type span struct{ start, end int }
+	offSpan := map[string]span{}
 	for _, d := range destroyed {
-		if k, n, ok := endLineOf(d); ok {
-			offEnd[k] = n
+		if k, st, en, ok := spanOf(d); ok {
+			offSpan[k] = span{st, en}
 		}
 	}
-	var truncated []string
+	var narrowed []string
 	for _, a := range added {
-		k, n, ok := endLineOf(a)
+		k, st, en, ok := spanOf(a)
 		if !ok {
 			continue
 		}
-		if prev, seen := offEnd[k]; seen && n < prev {
-			truncated = append(truncated, fmt.Sprintf("%s EndLine %d->%d", k, prev, n))
+		prev, seen := offSpan[k]
+		if !seen {
+			continue
+		}
+		if en < prev.end {
+			narrowed = append(narrowed, fmt.Sprintf("%s EndLine %d->%d", k, prev.end, en))
+		}
+		// StartLine may only move EARLIER, or fill in from 0 (unknown).
+		if prev.start != 0 && st > prev.start {
+			narrowed = append(narrowed, fmt.Sprintf("%s StartLine %d->%d", k, prev.start, st))
 		}
 	}
-	if len(truncated) == 0 {
-		t.Errorf("expected Java EndLine truncation under the gate; destroyed=%v added=%v",
-			destroyed, added)
+	if len(narrowed) != 0 {
+		t.Errorf("#6104: the merge narrowed %d Java span(s), which is data loss regardless "+
+			"of which side wins: %v", len(narrowed), narrowed)
 	}
-	t.Logf("java truncations: %v", truncated)
 
-	// 3. The truncation must be visible on the derived endpoint entity too,
-	// proving the corruption propagates beyond the entity it originated on.
-	var endpointTruncated bool
-	for _, s := range truncated {
-		if strings.HasPrefix(s, "http_endpoint_definition|") {
-			endpointTruncated = true
+	// 3. And specifically the derived http_endpoint_definition — the entity the
+	// truncation used to propagate into — must be span-identical in both arms.
+	for tuple, n := range offT {
+		if !strings.HasPrefix(tuple, "http_endpoint_definition|") {
+			continue
 		}
-	}
-	if !endpointTruncated {
-		t.Errorf("expected the EndLine truncation to propagate to http_endpoint_definition; got %v", truncated)
+		if onT[tuple] < n {
+			t.Errorf("derived http_endpoint_definition tuple lost or altered under the gate: %q "+
+				"(off=%d on=%d); added=%v", tuple, n, onT[tuple], added)
+		}
 	}
 }
 
@@ -525,72 +569,179 @@ func unresolvedEdgeTargets(doc *graph.Document) map[string]int {
 	return out
 }
 
-// TestInProcCustomExtractorsSupersedeDestroysBaseEntities PINS A KNOWN DEFECT
-// (#6104). It asserts the BROKEN behaviour deliberately so the defect is
-// visible in CI rather than papered over.
+// TestInProcCustomExtractorsSupersedeIsNonDestructive is the INVERSION of the
+// former TestInProcCustomExtractorsSupersedeDestroysBaseEntities, which pinned
+// #6104's known defect deliberately.
 //
-// WHAT BREAKS. MergeWithCustom supersedes by NAME alone. When a custom
-// extractor emits an entity whose Name collides with a base entity, the base
-// node is REPLACED — so the gate is not purely additive, it DESTROYS content
-// the base path produced.
+// WHAT IT USED TO PIN. MergeWithCustom superseded by NAME alone, so a custom
+// entity whose Name collided with a base entity REPLACED it. The gate was not
+// additive, it DESTROYED content the base path produced — 280 entities across
+// 5 kinds and 2 languages on the full fixture, in three shapes: cross-kind
+// (Task vs SCOPE.Operation), same-kind same-name, and same-kind in-place
+// corruption (subtype rewrite + EndLine truncation).
 //
-// THE LOSS SET IS NOT ONE KIND AND NOT ONE LANGUAGE. On the full fixture the
-// loss spans 5 kinds and 2 languages. Two distinct collision shapes exist, and
-// they need DIFFERENT fixes:
+// WHAT IT ASSERTS NOW. The merge policy is keyed on the graph's own identity
+// (SourceFile, Kind, Name) and enforces two invariants — never lose an entity,
+// never narrow a span. Both are asserted here at the WHOLE-GRAPH level, on
+// content tuples compared as MULTISETS and on entity IDs, never on counts.
 //
-//   - DIFFERENT-KIND collision (python/Celery). `@shared_task def
-//     send_receipt` destroys TWO base entities — `Task|send_receipt` AND
-//     `SCOPE.Operation|send_receipt|function` — replaced by a single
-//     `SCOPE.Service|send_receipt|task`. Keying supersede on (Kind, Name)
-//     would fix this shape.
-//
-//   - SAME-KIND collision (java/Spring). `SCOPE.Operation|C.list|method` is
-//     replaced by `SCOPE.Operation|C.list|endpoint` with EndLine truncated.
-//     Kind, Name and SourceFile are all IDENTICAL, so a (Kind, Name) key does
-//     NOT fix this shape.
-//
-// THIS TEST DELIBERATELY COVERS BOTH SHAPES. If it only pinned the Celery
-// loss, the obvious (Kind, Name) remedy would turn it red, be declared
-// complete, and ship with the Java corruption unpinned. The same-kind
-// assertion below is what makes a (Kind, Name)-only fix insufficient to make
-// this test pass — it must still fail until the same-kind shape is fixed too.
-//
-// See also TestInProcCustomExtractorsJavaEntityMutation, which pins the Java
-// field-level corruption in detail.
-func TestInProcCustomExtractorsSupersedeDestroysBaseEntities(t *testing.T) {
+// ON THE ONE ID THAT LEGITIMATELY DISAPPEARS. `Task|send_receipt` still leaves
+// the ON arm — but not at the merge boundary. It is consumed by the #1613
+// class-shadow fold, which enforces a separate, pre-existing "one node per
+// class symbol" invariant: SCOPE.Service outranks Task in
+// frameworkClassKindPriority (100 vs 70), so the pair is folded and the edges
+// are REPOINTED onto the survivor. That is a genuine combine, not a silent
+// drop, and assertion (a) below is written to tell the two apart: a retired ID
+// is only acceptable if a same-(Name, SourceFile) survivor exists AND no edge
+// is left pointing at it.
+func TestInProcCustomExtractorsSupersedeIsNonDestructive(t *testing.T) {
 	off, on := indexBothArms(t, "supersede_repo")
-
-	destroyed, added := tupleDelta(entityTuples(off, ""), entityTuples(on, ""))
-	if len(destroyed) == 0 {
-		t.Fatalf("KNOWN DEFECT APPEARS FIXED: the gate destroys no base entities. " +
-			"If #6104 was fixed, invert this test to assert the gate is purely additive.")
-	}
-	t.Logf("gate destroys %d base entity tuple(s):", len(destroyed))
+	offT, onT := entityTuples(off, ""), entityTuples(on, "")
+	destroyed, added := tupleDelta(offT, onT)
+	t.Logf("gate replaces %d base entity tuple(s) with enriched versions:", len(destroyed))
 	for _, d := range destroyed {
-		t.Logf("    DESTROYED %s", d)
+		t.Logf("    WAS %s", d)
 	}
 
-	// --- Shape 1: DIFFERENT-KIND collision (python / Celery) ---------------
-	// BOTH base entities for the task must be destroyed, not just the Task.
-	// Pinning only `Task` understates the loss by half.
-	wantDestroyed := []string{
-		"Task|send_receipt|",            // the Celery task entity
-		"SCOPE.Operation|send_receipt|", // AND its operation entity
+	// --- (a) INVARIANT 1: a merge never loses an entity -------------------
+	//
+	// THIS ASSERTION IS Kind-AWARE ON PURPOSE. An earlier revision excused a
+	// retired entity whenever ANY same-(Name, SourceFile) entity survived,
+	// ignoring Kind — which is precisely the cross-kind supersede shape
+	// (Task|send_receipt -> SCOPE.Service|send_receipt). Had the original
+	// #6104 defect re-keyed its edges, that assertion would have PASSED on the
+	// bug it exists to catch. A retirement is now excused only when either:
+	//
+	//   A. a same-(Kind, Name, SourceFile) successor exists — a Tier A
+	//      combine, which is one graph node either way; or
+	//   B. it is a cross-kind fold that satisfies the #1613 contract IN FULL:
+	//      the survivor's kind strictly OUTRANKS the retired kind in
+	//      frameworkClassKindPriority, AND every edge incident on the retired
+	//      ID in the gate-off arm has a counterpart incident on the survivor
+	//      in the gate-on arm.
+	//
+	// EDGE CONSERVATION, NOT "ZERO DANGLING". Counting dangling references to
+	// the retired ID cannot tell "edges repointed" from "edges deleted" — a
+	// pass that DROPS them scores a perfect zero. Conservation is checked by
+	// content-keyed edge tuples, so a drop fails.
+	//
+	// The non-destruction of the merge itself is separately and directly
+	// pinned at unit level (TestMergeWithCustomCrossKindCollisionKeepsBoth-
+	// Entities); that is the assertion the original defect cannot pass, and
+	// this graph-level test does not try to re-derive it from a delta.
+	offByID := make(map[string]*graph.Entity, len(off.Entities))
+	for i := range off.Entities {
+		offByID[off.Entities[i].ID] = &off.Entities[i]
 	}
-	for _, want := range wantDestroyed {
-		found := false
-		for _, d := range destroyed {
-			if strings.HasPrefix(d, want) {
-				found = true
+	onByID := make(map[string]*graph.Entity, len(on.Entities))
+	for i := range on.Entities {
+		onByID[on.Entities[i].ID] = &on.Entities[i]
+	}
+	// Content key for an edge endpoint: the entity's content tuple when the ID
+	// names a real entity, else the raw stub. Mirrors internal/graph/parity's
+	// newEndpointResolver so IDs never leak into the comparison (#6083).
+	contentKey := func(byID map[string]*graph.Entity, id string) string {
+		if e, ok := byID[id]; ok {
+			return fmt.Sprintf("%s|%s|%s", e.Kind, e.Name, e.SourceFile)
+		}
+		return "STUB:" + id
+	}
+	// incidentEdges returns content-keyed (direction, kind, otherEndpoint)
+	// tuples for every edge touching id, as a MULTISET.
+	incidentEdges := func(doc *graph.Document, byID map[string]*graph.Entity, id string) map[string]int {
+		out := map[string]int{}
+		for i := range doc.Relationships {
+			r := &doc.Relationships[i]
+			if r.FromID == id {
+				out["out|"+r.Kind+"|"+contentKey(byID, r.ToID)]++
+			}
+			if r.ToID == id {
+				out["in|"+r.Kind+"|"+contentKey(byID, r.FromID)]++
+			}
+		}
+		return out
+	}
+
+	for i := range off.Entities {
+		e := &off.Entities[i]
+		if _, alive := onByID[e.ID]; alive {
+			continue
+		}
+		// (A) same-(Kind, Name, SourceFile) successor?
+		var sameKindSuccessor *graph.Entity
+		var crossKindSurvivors []*graph.Entity
+		for j := range on.Entities {
+			s := &on.Entities[j]
+			if s.Name != e.Name || s.SourceFile != e.SourceFile {
+				continue
+			}
+			if s.Kind == e.Kind {
+				sameKindSuccessor = s
+			} else {
+				crossKindSurvivors = append(crossKindSurvivors, s)
+			}
+		}
+		if sameKindSuccessor != nil {
+			continue // Tier A combine
+		}
+		if len(crossKindSurvivors) == 0 {
+			t.Errorf("#6104: the gate DESTROYED %s|%s (%s) — nothing with that name "+
+				"survives in that file", e.Kind, e.Name, e.SourceFile)
+			continue
+		}
+		// (B) cross-kind retirement — must satisfy the #1613 fold contract.
+		var promoted *graph.Entity
+		for _, s := range crossKindSurvivors {
+			if frameworkClassKindPriority[s.Kind] > frameworkClassKindPriority[e.Kind] {
+				promoted = s
 				break
 			}
 		}
-		if !found {
-			t.Errorf("expected the gate to destroy an entity matching %q; destroyed=%v",
-				want, destroyed)
+		if promoted == nil {
+			var kinds []string
+			for _, s := range crossKindSurvivors {
+				kinds = append(kinds, fmt.Sprintf("%s(prio %d)", s.Kind, frameworkClassKindPriority[s.Kind]))
+			}
+			t.Errorf("#6104: %s|%s (%s, prio %d) was retired cross-kind with NO "+
+				"higher-priority survivor — that is a supersede, not a #1613 fold; "+
+				"survivors=%v", e.Kind, e.Name, e.SourceFile,
+				frameworkClassKindPriority[e.Kind], kinds)
+			continue
+		}
+		// EDGE CONSERVATION.
+		wasIncident := incidentEdges(off, offByID, e.ID)
+		nowIncident := incidentEdges(on, onByID, promoted.ID)
+		var lostEdges []string
+		for edge, n := range wasIncident {
+			if nowIncident[edge] < n {
+				lostEdges = append(lostEdges, fmt.Sprintf("%s (x%d, now x%d)", edge, n, nowIncident[edge]))
+			}
+		}
+		if len(lostEdges) > 0 {
+			sort.Strings(lostEdges)
+			t.Errorf("#6104: %s|%s was folded into %s but %d edge class(es) were NOT "+
+				"carried over — a fold must REPOINT edges, not drop them: %v",
+				e.Kind, e.Name, promoted.Kind, len(lostEdges), lostEdges)
+			continue
+		}
+		t.Logf("retired-and-folded (OK, #1613): %s|%s (prio %d) -> %s (prio %d); "+
+			"all %d incident edge class(es) conserved on the survivor",
+			e.Kind, e.Name, frameworkClassKindPriority[e.Kind],
+			promoted.Kind, frameworkClassKindPriority[promoted.Kind], len(wasIncident))
+	}
+
+	// --- (b) Shape 1 + 2: the Celery collisions ---------------------------
+	// `@shared_task def send_receipt` used to destroy BOTH `Task|send_receipt`
+	// (cross-kind) and `SCOPE.Operation|send_receipt` (the second half of the
+	// double-destruction the original report missed). The SCOPE.Operation must
+	// now survive untouched, and the SCOPE.Service must still be ADDED — the
+	// gate's value is that it adds a kind, not that it swaps one for another.
+	for _, d := range destroyed {
+		if strings.HasPrefix(d, "SCOPE.Operation|send_receipt|") {
+			t.Errorf("#6104 shape 1: the gate still destroys the Celery task's operation "+
+				"entity: %q", d)
 		}
 	}
-	// The replacement is a single entity of a DIFFERENT kind.
 	var serviceAdded bool
 	for _, a := range added {
 		if strings.HasPrefix(a, "SCOPE.Service|send_receipt|") {
@@ -598,55 +749,93 @@ func TestInProcCustomExtractorsSupersedeDestroysBaseEntities(t *testing.T) {
 		}
 	}
 	if !serviceAdded {
-		t.Errorf("expected a SCOPE.Service replacement for the superseded task; added=%v", added)
+		t.Errorf("expected the Celery custom extractor to ADD a SCOPE.Service; added=%v", added)
 	}
 
-	// --- Shape 2: SAME-KIND collision (java / Spring) ---------------------
-	// This is the assertion a (Kind, Name)-keyed fix cannot satisfy. Find a
-	// destroyed tuple whose Kind, Name AND SourceFile all reappear in `added`
-	// with different field values — i.e. a substitution that keying on
-	// (Kind, Name) would still permit.
-	keyOf := func(tuple string) (string, bool) {
+	// --- (c) INVARIANT 2: a merge never narrows a span --------------------
+	// Every remaining same-(Kind, Name, SourceFile) substitution must be an
+	// ENRICHMENT: subtype refinement and/or a WIDER span. This is the shape the
+	// old test required to exist; it is now constrained rather than forbidden,
+	// because a same-identity pair IS one graph node and combining them is
+	// correct — silently shrinking them was not.
+	parse := func(tuple string) (key string, start, end int, ok bool) {
 		parts := strings.Split(tuple, "|")
 		if len(parts) != 7 {
-			return "", false
+			return "", 0, 0, false
 		}
-		return parts[0] + "|" + parts[1] + "|" + parts[4], true // Kind|Name|SourceFile
-	}
-	addedKeys := map[string]bool{}
-	for _, a := range added {
-		if k, ok := keyOf(a); ok {
-			addedKeys[k] = true
+		st, err := strconv.Atoi(parts[5])
+		if err != nil {
+			return "", 0, 0, false
 		}
+		en, err := strconv.Atoi(parts[6])
+		if err != nil {
+			return "", 0, 0, false
+		}
+		return parts[0] + "|" + parts[1] + "|" + parts[4], st, en, true
 	}
-	var sameKindSubstitutions []string
+	type span struct{ start, end int }
+	was := map[string]span{}
 	for _, d := range destroyed {
-		if k, ok := keyOf(d); ok && addedKeys[k] {
-			sameKindSubstitutions = append(sameKindSubstitutions, k)
+		if k, st, en, ok := parse(d); ok {
+			was[k] = span{st, en}
 		}
 	}
-	if len(sameKindSubstitutions) == 0 {
-		t.Fatalf("KNOWN DEFECT APPEARS PARTIALLY FIXED: no same-(Kind, Name, SourceFile) "+
-			"substitutions remain. A (Kind, Name)-keyed fix is NOT sufficient — the "+
-			"same-kind shape (java/Spring) must be fixed too before this test may be "+
-			"inverted. destroyed=%v added=%v", destroyed, added)
+	var narrowed, substitutions []string
+	for _, a := range added {
+		k, st, en, ok := parse(a)
+		if !ok {
+			continue
+		}
+		prev, seen := was[k]
+		if !seen {
+			continue
+		}
+		substitutions = append(substitutions, k)
+		if en < prev.end {
+			narrowed = append(narrowed, fmt.Sprintf("%s EndLine %d->%d", k, prev.end, en))
+		}
+		if prev.start != 0 && st > prev.start {
+			narrowed = append(narrowed, fmt.Sprintf("%s StartLine %d->%d", k, prev.start, st))
+		}
 	}
-	t.Logf("same-(Kind,Name,SourceFile) substitutions a (Kind,Name) fix would NOT prevent: %v",
-		sameKindSubstitutions)
+	if len(narrowed) != 0 {
+		t.Errorf("#6104: the merge narrowed %d span(s): %v", len(narrowed), narrowed)
+	}
+	sort.Strings(substitutions)
+	t.Logf("same-(Kind,Name,SourceFile) enrichments (all span-widening or neutral): %v",
+		substitutions)
 
-	// --- Dangling edges left behind by the supersede -----------------------
+	// --- (d) No supersede-induced dangling edges --------------------------
+	// The gate may still introduce dangling endpoints of its own — the
+	// synthetic `Class:<Name>` stubs the framework extractors emit are tracked
+	// separately as #6105 and are explicitly OUT OF SCOPE here. What must NOT
+	// appear is a dangle naming an ID that EXISTED in the gate-off arm: that is
+	// the supersede/re-keying failure this issue is about.
+	offEntityIDs := make(map[string]bool, len(off.Entities))
+	for i := range off.Entities {
+		offEntityIDs[off.Entities[i].ID] = true
+	}
 	uo, un := unresolvedEdgeTargets(off), unresolvedEdgeTargets(on)
-	var introduced []string
+	var introduced, supersedeDangles []string
 	for id := range un {
-		if _, existed := uo[id]; !existed {
-			introduced = append(introduced, id)
+		if _, existed := uo[id]; existed {
+			continue
+		}
+		introduced = append(introduced, id)
+		if offEntityIDs[id] {
+			supersedeDangles = append(supersedeDangles, id)
 		}
 	}
-	if len(introduced) == 0 {
-		t.Errorf("expected the supersede to leave dangling edge endpoints behind")
+	if len(supersedeDangles) != 0 {
+		sort.Strings(supersedeDangles)
+		t.Errorf("#6104: %d edge endpoint(s) now dangle on IDs that were REAL ENTITIES "+
+			"with the gate off — the supersede did not re-key them: %v",
+			len(supersedeDangles), supersedeDangles)
 	}
 	sort.Strings(introduced)
-	t.Logf("gate introduces %d new dangling edge endpoint(s): %v", len(introduced), introduced)
+	t.Logf("gate introduces %d new dangling endpoint(s), none of them retired entity IDs "+
+		"(synthetic Class:<Name> stubs are #6105, out of scope here): %v",
+		len(introduced), introduced)
 }
 
 // TestInProcCustomExtractorsNilTreeGuardIsLoadBearing pins the
@@ -676,4 +865,173 @@ func TestInProcCustomExtractorsNilTreeGuardIsLoadBearing(t *testing.T) {
 	}
 	t.Logf("with a nil parse tree, RunCustomExtractors still emits %d entity(ies) — "+
 		"this is what the `file.TSTree != nil` guard at the seam suppresses", len(ents))
+}
+
+// TestInProcCustomExtractorsThreeCollisionShapesAreClosed is the per-shape
+// evidence for #6104. Each of the three CONFIRMED collision shapes gets its own
+// assertion so a partial fix cannot pass.
+//
+// WHY MULTISETS AND NOT COUNTS. A per-kind count table cannot see
+// destroy-and-re-add: on the full fixture `SCOPE.Operation` showed +120 while
+// 120 of its members were destroyed, and gains masked losses exactly. That is
+// how this defect was originally under-reported by 3.5x. Every assertion below
+// is over entityTuples — a CONTENT multiset (counts per tuple) — or over entity
+// IDs. Same instrument as internal/graph/parity after #6037.
+//
+// WHY THE THREE SHAPES ARE LISTED SEPARATELY. The obvious remedy — keying the
+// supersede on (Kind, Name) instead of Name alone — closes shape 1 ONLY. It was
+// verified by mutation that shapes 2 and 3 survive it intact. Listing them
+// apart keeps that trap visible.
+func TestInProcCustomExtractorsThreeCollisionShapesAreClosed(t *testing.T) {
+	off, on := indexBothArms(t, "shapes_repo")
+	offT, onT := entityTuples(off, ""), entityTuples(on, "")
+	destroyed, added := tupleDelta(offT, onT)
+
+	// Content-tuple multiset survival: a tuple present N times off must be
+	// present at least N times on, OR have a same-(Kind,Name,SourceFile)
+	// successor (a Tier A combine, which is one node either way).
+	key := func(tuple string) string {
+		p := strings.Split(tuple, "|")
+		if len(p) != 7 {
+			return tuple
+		}
+		return p[0] + "|" + p[1] + "|" + p[4]
+	}
+	addedKeys := map[string]bool{}
+	for _, a := range added {
+		addedKeys[key(a)] = true
+	}
+	survived := func(prefix string) (ok bool, why string) {
+		for tuple, n := range offT {
+			if !strings.HasPrefix(tuple, prefix) {
+				continue
+			}
+			if onT[tuple] >= n {
+				return true, "tuple survives verbatim (" + tuple + ")"
+			}
+			if addedKeys[key(tuple)] {
+				return true, "combined into a same-(Kind,Name,File) successor (" + tuple + ")"
+			}
+			return false, "DESTROYED with no successor: " + tuple
+		}
+		return false, "no such tuple in the gate-off arm — fixture drift, assertion is vacuous"
+	}
+
+	// ---- Shape 1: CROSS-KIND collision (python / Celery) -----------------
+	// `@shared_task def send_receipt` used to destroy BOTH the base
+	// `Task|send_receipt` AND `SCOPE.Operation|send_receipt`, collapsing them
+	// into one `SCOPE.Service|send_receipt`. Keying on (Kind, Name) closes
+	// this one. Both base entities must now survive the MERGE.
+	if ok, why := survived("SCOPE.Operation|send_receipt|"); !ok {
+		t.Errorf("shape 1 (cross-kind) NOT closed: %s", why)
+	} else {
+		t.Logf("shape 1 (cross-kind, SCOPE.Operation|send_receipt): CLOSED — %s", why)
+	}
+
+	// ---- Shape 2: SAME-KIND, SAME NAME (python / Celery) -----------------
+	// The custom extractor also emits a `Task`-kind entity of the same name,
+	// so this collision is same-kind and a (Kind, Name) key does NOT close it.
+	// The base Task must not be destroyed AT THE MERGE. It is subsequently
+	// consumed by the #1613 class-shadow fold (SCOPE.Service outranks Task,
+	// 100 vs 70) which REPOINTS its edges — a combine, so we assert on the
+	// fold's contract rather than on tuple identity: a same-(Name, SourceFile)
+	// survivor exists and nothing dangles on the retired ID.
+	onIDs := make(map[string]bool, len(on.Entities))
+	for i := range on.Entities {
+		onIDs[on.Entities[i].ID] = true
+	}
+	onRefs := map[string]int{}
+	for i := range on.Relationships {
+		onRefs[on.Relationships[i].FromID]++
+		onRefs[on.Relationships[i].ToID]++
+	}
+	var checkedShape2 bool
+	for i := range off.Entities {
+		e := &off.Entities[i]
+		if e.Kind != "Task" || !strings.HasPrefix(e.Name, "send_receipt") {
+			continue
+		}
+		checkedShape2 = true
+		if onIDs[e.ID] {
+			t.Logf("shape 2 (same-kind, Task|%s): CLOSED — entity survives verbatim", e.Name)
+			continue
+		}
+		var survivors []string
+		for j := range on.Entities {
+			s := &on.Entities[j]
+			if s.Name == e.Name && s.SourceFile == e.SourceFile {
+				survivors = append(survivors, s.Kind)
+			}
+		}
+		if len(survivors) == 0 {
+			t.Errorf("shape 2 (same-kind) NOT closed: Task|%s destroyed with no survivor "+
+				"in %s", e.Name, e.SourceFile)
+			continue
+		}
+		if n := onRefs[e.ID]; n > 0 {
+			t.Errorf("shape 2: Task|%s was retired but %d edge(s) still point at %s — "+
+				"the retiring pass did not re-key them", e.Name, n, e.ID)
+			continue
+		}
+		t.Logf("shape 2 (same-kind, Task|%s): CLOSED at the merge — folded by #1613 into %v "+
+			"with 0 dangling edges", e.Name, survivors)
+	}
+	if !checkedShape2 {
+		t.Errorf("shape 2 assertion is vacuous: no base Task entity in the gate-off arm")
+	}
+
+	// ---- Shape 3: SAME-KIND IN-PLACE CORRUPTION (java / Spring) ----------
+	// Kind, Name and SourceFile all identical — these ARE one graph node. The
+	// custom extractor rewrote Subtype method->endpoint AND truncated EndLine,
+	// and the truncation propagated into the derived SCOPE.Process and
+	// http_endpoint_definition. A (Kind, Name) key treats this as a legitimate
+	// supersede and lets it through, which is why it needed a POLICY fix.
+	//
+	// Closed means: the node is still ONE node, the subtype refinement is
+	// KEPT, and the span is NOT narrower than the gate-off span.
+	spanOf := func(m map[string]int, prefix string) (tuple string, start, end int, found bool) {
+		for tp := range m {
+			if !strings.HasPrefix(tp, prefix) {
+				continue
+			}
+			p := strings.Split(tp, "|")
+			if len(p) != 7 {
+				continue
+			}
+			st, err1 := strconv.Atoi(p[5])
+			en, err2 := strconv.Atoi(p[6])
+			if err1 != nil || err2 != nil {
+				continue
+			}
+			return tp, st, en, true
+		}
+		return "", 0, 0, false
+	}
+	const javaOp = "SCOPE.Operation|OrdersController.list|"
+	offTuple, offStart, offEnd, okOff := spanOf(offT, javaOp)
+	onTuple, onStart, onEnd, okOn := spanOf(onT, javaOp)
+	switch {
+	case !okOff || !okOn:
+		t.Errorf("shape 3 assertion is vacuous: java operation missing (off=%v on=%v)", okOff, okOn)
+	case onEnd < offEnd:
+		t.Errorf("shape 3 (in-place corruption) NOT closed: EndLine narrowed %d->%d\n  off=%s\n  on =%s",
+			offEnd, onEnd, offTuple, onTuple)
+	case offStart != 0 && onStart > offStart:
+		t.Errorf("shape 3 NOT closed: StartLine clipped %d->%d\n  off=%s\n  on =%s",
+			offStart, onStart, offTuple, onTuple)
+	case !strings.Contains(onTuple, "|endpoint|"):
+		t.Errorf("shape 3: the subtype refinement method->endpoint was lost; on=%s", onTuple)
+	default:
+		t.Logf("shape 3 (in-place corruption): CLOSED — span %d-%d preserved (was truncated to %d), "+
+			"subtype refinement kept\n  off=%s\n  on =%s", onStart, onEnd, offStart, offTuple, onTuple)
+	}
+
+	// And the derived entity the corruption used to propagate into.
+	for tuple, n := range offT {
+		if strings.HasPrefix(tuple, "http_endpoint_definition|") && onT[tuple] < n {
+			t.Errorf("shape 3: corruption still propagates to a derived entity: %q lost "+
+				"(off=%d on=%d)", tuple, n, onT[tuple])
+		}
+	}
+	t.Logf("destroyed=%d added=%d (tuple multiset delta)", len(destroyed), len(added))
 }
