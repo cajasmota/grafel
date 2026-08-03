@@ -1475,13 +1475,58 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 			// regardless: StateDirForRepo memoizes the HEAD capture (see
 			// daemon.StateDirForRepo).
 			//
-			// What this gate fixes is REF staleness, and only that. It does not make
-			// the resident graph current in general: the pinned path can still name a
-			// superseded GENERATION inside the right ref dir, because
-			// graph.GCStaleGens retains gen N-1, so a same-branch reindex leaves the
-			// old generation on disk and this stat keeps succeeding against it with an
-			// unchanged mtime. Pre-existing and tracked separately — do not read the
-			// gate as a freshness guarantee beyond the ref.
+			// #6080: the ref gate above was correct at REF granularity and blind one
+			// level down. Stat'ing the pinned lr.GraphFile is not a freshness check,
+			// because a same-branch reindex publishes graph.<gen+1>.fb, flips the
+			// `current` pointer, and DELIBERATELY retains gen N-1 (graph.GCStaleGens
+			// keeps the current generation and the one before it, so an in-flight mmap
+			// is never unlinked underneath a reader). The old generation therefore
+			// keeps stat'ing successfully with an unchanged mtime, the fast path is
+			// taken, and the daemon answers every query from the superseded graph —
+			// with a success response — until the NEXT reindex finally GCs it.
+			//
+			// The fix keeps the shape of the #6060 gate (resolve the current-ref dir
+			// via the memoized HeadToken — no git subprocess) and then re-resolves the
+			// ACTIVE ARTIFACT inside that dir with the very resolver full discovery
+			// uses, daemon.FindGraphFileInDir. That reads the `current` pointer and
+			// stats the resolved generation: a couple of syscalls on a tiny file, no
+			// fork. The expensive part of discovery — StateDirForRepo's git capture,
+			// which is what #2550 and #6060 exist to avoid — is still skipped.
+			//
+			// #6080 asked for this to be measured rather than assumed. On an M2 Pro
+			// under load (internal/daemon's BenchmarkGate_*): the old pinned os.Stat
+			// ~1.6us, this ~25us, and the memoized StateDirForRepo this same loop
+			// already calls per repo ~5.6us — so the gate is a few tens of
+			// microseconds per repo per reload, against the ~50-200ms git fork the
+			// #2550 short-circuit exists to eliminate. Reading <dir>/current is the
+			// dominant term, which is why findGraphFileInDir was changed to read it
+			// ONCE (it used to read it twice, and cost ~45us).
+			//
+			// WHAT THIS DOES AND DOES NOT GUARANTEE — do not restate it more
+			// strongly than this. If the pointer is missing, unreadable, or names a
+			// generation that is not on disk, the resolver returns "" (or the legacy
+			// flat path) and the fast path is DECLINED: we fall through to full
+			// discovery rather than serving the pinned file on trust. That part is
+			// real, and TestReload_UnreadablePointerFallsThroughAndFlagsTheRepo pins
+			// it.
+			//
+			// But the fall-through DESTINATION is not itself safe. If full discovery
+			// also finds nothing, the graphPath=="" branch below sets lr.loadErr and
+			// `continue`s WITHOUT clearing lr.Doc — so the previously-resident
+			// generation keeps being served and a newer one on disk stays invisible.
+			// This gate is therefore "re-resolves the active generation", NOT "never
+			// serves a stale graph".
+			//
+			// That gap is pre-existing (the old gate stat'd the pinned file and
+			// served the same stale graph on the same trigger) and is deliberately
+			// NOT closed here. The correct destination already exists — tools.go's
+			// `unavailable` list keys on Doc==nil plus loadErr, which is exactly the
+			// "report unavailable" shape — but reaching it needs `lr.Doc = nil`,
+			// which appears nowhere in this package and is unsafe while State.Group()
+			// returns the group and drops s.mu: readers nil-check r.Doc and
+			// dereference it later (see tools.go's repo-stats loop), so a concurrent
+			// nil turns a stale answer into a nil-deref panic across the whole read
+			// surface. Close that locking hole first, then clear the Doc.
 			var graphPath string
 			var modtimeNs int64
 			// lr.Path, not rEntry.Path: the memo has one slot and applyFlowOverlay
@@ -1489,12 +1534,12 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 			// callers invalidate each other every call. They are the same value today
 			// (lr.Path is assigned from rEntry.Path at construction and never
 			// reassigned) — this keeps them the same value by construction.
-			if ok && lr.GraphFile != "" && filepath.Dir(lr.GraphFile) == lr.currentRefDirLocked(lr.Path) {
-				if fi, statErr := os.Stat(lr.GraphFile); statErr == nil {
-					graphPath = lr.GraphFile
-					modtimeNs = fi.ModTime().UnixNano()
+			if ok && lr.GraphFile != "" {
+				if refDir := lr.currentRefDirLocked(lr.Path); filepath.Dir(lr.GraphFile) == refDir {
+					graphPath, modtimeNs = daemon.FindGraphFileInDir(refDir)
 				}
-				// If stat failed (file removed) fall through to full discovery below.
+				// A miss (wrong ref dir, or no resolvable graph in it) falls through
+				// to full discovery below.
 			}
 			if graphPath == "" {
 				// Use FindGraphFileAnyRef to discover graph.fb (preferred) or
@@ -1527,6 +1572,15 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 				lr = &LoadedRepo{Repo: rName, Path: rEntry.Path, GraphFile: graphPath}
 				grp.Repos[rName] = lr
 			}
+			// #6080: whether discovery resolved a DIFFERENT artifact than the one
+			// currently resident. lr.mtime describes the file lr.GraphFile named, so
+			// once the path moves (a new generation, or a new ref dir) that memo is
+			// about a different file and is not a valid freshness signal for this
+			// one. Two generations published within one filesystem timestamp tick
+			// compare equal, which would otherwise let the mtime skip below decline
+			// the reparse and keep serving the superseded graph even with discovery
+			// corrected. Computed BEFORE the assignment below.
+			pathChanged := lr.GraphFile != graphPath
 			// Update GraphFile in case .fb appeared after initial load.
 			lr.GraphFile = graphPath
 			fileMtime := time.Unix(0, modtimeNs)
@@ -1537,7 +1591,7 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 			// below must all read from the SAME dir as the parsed Document, or a
 			// fallback-discovered graph would be paired with a stale/empty sidecar.
 			stateDir := filepath.Dir(lr.GraphFile)
-			if !(fileMtime.Equal(lr.mtime) && lr.Doc != nil) {
+			if pathChanged || !(fileMtime.Equal(lr.mtime) && lr.Doc != nil) {
 				// #3377 content-hash skip: the live indexer rewrites graph.fb on
 				// every reindex, bumping mtime even when the bytes are identical
 				// (no-op reindex / touch / unchanged re-emit). Hash the file
@@ -3192,15 +3246,18 @@ func applyDescriptionOverlay(grp *LoadedGroup) {
 // the same lost write in the DEFAULT population. That gate is fixed in the same
 // change; this function is only sound because of it.
 //
-// The guarantee that gate delivers is freshness at REF granularity, and no
-// further. Within a ref directory lr.GraphFile can still name a superseded
-// GENERATION: graph.GCStaleGens (internal/graph/genpath.go) deliberately retains
-// gen N-1, so a plain same-branch reindex writes gen N+1 and flips `current`
-// while gen N stays on disk — the gate passes (same directory), the os.Stat
-// succeeds, the mtime is unchanged, and the daemon keeps serving the older
-// generation. That is pre-existing, predates this change, and is tracked
-// separately. It does not affect the pairing argument above: the ref DIRECTORY
-// is right either way, and the directory is all this function resolves.
+// That gate originally delivered freshness at REF granularity and no further:
+// within a ref directory lr.GraphFile could still name a superseded GENERATION,
+// because graph.GCStaleGens (internal/graph/genpath.go) deliberately retains gen
+// N-1, so a plain same-branch reindex wrote gen N+1 and flipped `current` while
+// gen N stayed on disk — same directory, successful os.Stat, unchanged mtime,
+// and the daemon kept serving the older generation. That was #6080, and it is
+// now fixed in the same gate: the fast path re-resolves the active artifact
+// inside the (cheaply known) ref dir via daemon.FindGraphFileInDir, so
+// lr.GraphFile tracks the `current` pointer as well as the ref.
+//
+// It never affected the pairing argument above either way: the ref DIRECTORY is
+// right in both generations, and the directory is all this function resolves.
 //
 // A repo with no discovered graph file returns "". Callers MUST treat that as
 // "no sidecar directory" and skip — it is NOT a harmless miss, because
