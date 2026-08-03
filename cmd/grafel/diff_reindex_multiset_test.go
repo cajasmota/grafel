@@ -195,6 +195,40 @@ func dvCollapseToSet(doc *graph.Document) *graph.Document {
 	return out
 }
 
+// dvInjectDuplicateRows returns a copy of doc in which ONE relationship of each
+// requested kind has been replicated to the requested multiplicity, replaying
+// the shape #6094 used to produce here before it was fixed. The chosen row is
+// the first of its kind in canonical order, so the injection is deterministic.
+//
+// Injecting rather than mutating in place keeps the caller's document intact,
+// and injecting only EXACT copies is what makes dvCollapseToSet's output differ
+// from the result in multiplicity and in nothing else — the property the
+// comparator assertions below depend on.
+func dvInjectDuplicateRows(t *testing.T, doc *graph.Document, kindMultiplicity map[string]int) *graph.Document {
+	t.Helper()
+	out := &graph.Document{
+		Entities:      append([]graph.Entity(nil), doc.Entities...),
+		Relationships: append([]graph.Relationship(nil), doc.Relationships...),
+	}
+	for kind, mult := range kindMultiplicity {
+		var seed *graph.Relationship
+		for i := range doc.Relationships {
+			if doc.Relationships[i].Kind == kind {
+				seed = &doc.Relationships[i]
+				break
+			}
+		}
+		if seed == nil {
+			t.Fatalf("cannot inject %s duplicates: the persisted graph carries no %s edge at all — "+
+				"the corpus stopped exercising the shape this case is about", kind, kind)
+		}
+		for i := 1; i < mult; i++ {
+			out.Relationships = append(out.Relationships, *seed)
+		}
+	}
+	return out
+}
+
 // ───────────────────────────── the demonstration ────────────────────────────
 
 // TestDiffReindex_MultisetComparatorCatchesDuplicateRows is the #6037 acceptance
@@ -254,13 +288,34 @@ func Use7(x I7) int { return x.Do() }
 	if err != nil {
 		t.Fatalf("load incremental graph: %v", err)
 	}
+	// #6094 IS FIXED, so this graph no longer duplicates rows on its own — the
+	// incremental path now substitutes the owning record's ID for an empty
+	// record-embedded FromID and dedupes the re-extraction batch, exactly as the
+	// full-index assembly loop does. The regression gate for that lives in
+	// TestIncremental_NoDuplicateRowsAcrossPasses_6094.
+	//
+	// What THIS case exists for is #6037: proving the multiset comparator is a
+	// real instrument. That demonstration needs a document carrying duplicate
+	// rows, and it no longer gets one for free. It now INJECTS the duplication
+	// into the persisted graph — re-appending rows that are already present,
+	// with the exact multiplicities the pre-fix defect produced on this very
+	// fixture (CONTAINS ×3, REFERENCES ×6). The comparator input is
+	// therefore the same shape it always was; only its provenance changed, from
+	// "a live defect" to "a defect replayed on purpose".
+	if de, dr, sample := dvDuplicateRows(b); de != 0 || dr != 0 {
+		t.Fatalf("#6094 has REGRESSED: the persisted incremental graph carries duplicate rows again "+
+			"(%d entity, %d relationship): %v", de, dr, sample)
+	}
+	b = dvInjectDuplicateRows(t, b, map[string]int{
+		"CONTAINS":   3,
+		"REFERENCES": 6,
+	})
+
 	dupEnts, dupRels, sample := dvDuplicateRows(b)
-	t.Logf("persisted incremental graph: %d entities, %d relationships; surplus rows: %d entity, %d relationship\nduplicated keys: %v",
+	t.Logf("injected duplication: %d entities, %d relationships; surplus rows: %d entity, %d relationship\nduplicated keys: %v",
 		len(b.Entities), len(b.Relationships), dupEnts, dupRels, sample)
 	if dupEnts+dupRels == 0 {
-		t.Fatalf("fixture no longer reproduces #6094: the persisted incremental graph carries no duplicate rows. " +
-			"Either the defect is fixed (delete this fixture and keep the parity unit cases) or the corpus stopped " +
-			"exercising the pass that duplicates — do NOT weaken the comparator to keep this green")
+		t.Fatal("fixture is inert: the injection produced no duplicate rows, so neither comparator is under test")
 	}
 
 	// A is B with duplicate rows collapsed. A and B therefore differ in

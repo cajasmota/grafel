@@ -459,6 +459,10 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	var newEntities []graph.Entity
 	var newRels []graph.Relationship
+	// #6094 — one identity per (FromID, ToID, Kind), shared across every file in
+	// this re-extraction batch. See convertExtractedRecords for why the triple is
+	// a safe identity here and how this scope differs from buildDocument's.
+	seenNewRel := make(map[string]bool)
 
 	for _, rel := range reallyChanged {
 		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
@@ -495,13 +499,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		}
 
 		// Convert types.EntityRecord → graph.Entity (same logic as buildDocument).
-		for _, rec := range records {
-			e := entityRecordToGraphEntity(rec, doc.Repo)
-			newEntities = append(newEntities, e)
-			for _, relRec := range rec.Relationships {
-				newRels = append(newRels, relRecordToGraphRel(relRec))
-			}
-		}
+		ents, rels := convertExtractedRecords(records, doc.Repo, seenNewRel)
+		newEntities = append(newEntities, ents...)
+		newRels = append(newRels, rels...)
 	}
 
 	// --- Step 6a: inbound-dangling prune (#2719) ---
@@ -970,13 +970,86 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 	}.WithProperties(r.Properties)
 }
 
+// convertExtractedRecords converts one file's extractor output into graph
+// entities and relationships, mirroring the assembly loop in cmd/grafel/index.go
+// (buildDocument). seenRel carries the (FromID, ToID, Kind) identities already
+// emitted and is MUTATED — callers share one map across the whole re-extraction
+// batch.
+//
+// Two behaviours here are the #6094 fix, and both must be preserved:
+//
+// OWNER-ID SUBSTITUTION. A record-embedded edge with no explicit FromID is
+// OWNED by the record carrying it, so the owning entity's ID is substituted (see
+// relRecordToGraphRel). Leaving FromID empty makes the edge invisible to every
+// FromID-keyed consumer: the stale-edge eviction in TryIncremental drops an old
+// edge only when removedEntityIDs[r.FromID], so an empty FromID matched nothing
+// and each pass appended another copy — the unbounded accumulation in #6094.
+//
+// THE seenRel GUARD. An extractor may emit the same owned edge more than once
+// for one file — e.g. Go's `import "strings"` plus `import s2 "strings"` yields
+// two SCOPE.Component records that both emit `<file> -IMPORTS-> ext:strings`.
+// The full path suppresses the repeat and this path must agree, or the
+// incremental graph carries a row the full rebuild does not.
+//
+// WHY (FromID, ToID, Kind) IS A SAFE IDENTITY HERE, AND ONLY HERE.
+// (from, to, kind) is NOT a unique relationship key in general: several engine
+// passes deliberately salt the relationship ID so edges sharing a triple stay
+// distinct (internal/engine/migration_schema_ops.go, phantom_edges.go,
+// process_flow.go, event_flow.go, internal/links, internal/graph). Collapsing on
+// the triple would destroy those. It is safe in THIS function because
+// types.RelationshipRecord has no ID field at all (internal/types/relationship.go)
+// — a record-embedded edge cannot carry a salted ID — and because those salted
+// producers are engine passes that never reach this loop, which only consumes
+// `ext.Extract` output. Kind is therefore load-bearing in the key: two edges
+// between the same pair of endpoints under different kinds are distinct edges and
+// both must survive.
+//
+// SCOPE DIFFERENCE FROM buildDocument. buildDocument's seenRel spans the whole
+// corpus; this one spans only the re-extracted batch, and is NOT seeded from the
+// surviving doc.Relationships. The asymmetry is harmless because the two maps
+// guard disjoint row sets: every entity sourced from a changed file — and, via
+// owner-ID substitution, every edge owned by one — is evicted from
+// doc.Relationships before this runs, so a surviving row and a freshly emitted
+// row cannot share a (FromID, ToID, Kind) identity unless the survivor is
+// inbound from an UNCHANGED file, and inbound rows are not re-emitted here at
+// all. Seeding from the survivors would additionally risk suppressing a
+// legitimately re-emitted edge, so it is deliberately not done.
+func convertExtractedRecords(records []types.EntityRecord, repoTag string, seenRel map[string]bool) ([]graph.Entity, []graph.Relationship) {
+	ents := make([]graph.Entity, 0, len(records))
+	var rels []graph.Relationship
+	for _, rec := range records {
+		e := entityRecordToGraphEntity(rec, repoTag)
+		ents = append(ents, e)
+		for _, relRec := range rec.Relationships {
+			r := relRecordToGraphRel(relRec, e.ID)
+			if seenRel[r.ID] {
+				continue
+			}
+			seenRel[r.ID] = true
+			rels = append(rels, r)
+		}
+	}
+	return ents, rels
+}
+
 // relRecordToGraphRel converts an embedded types.RelationshipRecord to a
-// graph.Relationship.
-func relRecordToGraphRel(r types.RelationshipRecord) graph.Relationship {
-	id := graph.RelationshipID(r.FromID, r.ToID, r.Kind)
+// graph.Relationship, mirroring the full-index assembly loop in
+// cmd/grafel/index.go (buildDocument).
+//
+// ownerID is the ID of the entity record that carried r. A record-embedded edge
+// may legitimately omit FromID to mean "from my owner"; the full path
+// substitutes the owner's ID in that case and this path must agree, or the edge
+// lands with an empty FromID and becomes invisible to every FromID-keyed
+// consumer downstream (#6094 duplicate accumulation, #6098 weight shortfall).
+func relRecordToGraphRel(r types.RelationshipRecord, ownerID string) graph.Relationship {
+	fromID := r.FromID
+	if fromID == "" {
+		fromID = ownerID
+	}
+	id := graph.RelationshipID(fromID, r.ToID, r.Kind)
 	return graph.Relationship{
 		ID:     id,
-		FromID: r.FromID,
+		FromID: fromID,
 		ToID:   r.ToID,
 		Kind:   r.Kind,
 
