@@ -299,7 +299,7 @@ func Use7(x I7) int { return x.Do() }
 	// rows, and it no longer gets one for free. It now INJECTS the duplication
 	// into the persisted graph — re-appending rows that are already present,
 	// with the exact multiplicities the pre-fix defect produced on this very
-	// fixture (CONTAINS ×3, REFERENCES ×6, CONTAINS ×3). The comparator input is
+	// fixture (CONTAINS ×3, REFERENCES ×6). The comparator input is
 	// therefore the same shape it always was; only its provenance changed, from
 	// "a live defect" to "a defect replayed on purpose".
 	if de, dr, sample := dvDuplicateRows(b); de != 0 || dr != 0 {

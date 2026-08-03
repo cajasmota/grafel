@@ -25,6 +25,15 @@
 // unbounded. The fix restores both steps; there is no downstream row dedupe,
 // which would have hidden the malformed edges instead of removing them.
 //
+// BLAST RADIUS — corrected. An earlier reading of #6094, including the version
+// first published on the issue, held that type members were REQUIRED and that
+// plain-function corpora were immune. That is false. The defect rides on ANY
+// omitted-FromID record-embedded edge; a plain-function corpus carrying a single
+// import accumulates too (measured pre-fix: surplus 0/1/2, empty-FromID 1/2/3).
+// Only plain functions with ZERO imports are clean. Type members simply produce
+// more owned edges per file, so they accumulate faster. Both shapes are in the
+// table below for that reason.
+//
 // #6098 IS A DIFFERENT DEFECT and is NOT fixed here. The fix above moves its
 // numbers by exactly zero — see TestIncremental_DependsOnWeightParity_6098
 // below for the measurement and the actual chain.
@@ -114,18 +123,62 @@ func dupEmptyFrom(doc *graph.Document) (n int, sample []string) {
 	return n, sample
 }
 
+// dupImportCorpusFile is the second corpus shape: PLAIN FUNCTIONS ONLY, no
+// types at all, but carrying imports — including the same package imported
+// twice under different aliases.
+//
+// Two things ride on this shape.
+//
+// FIRST, it corrects the blast radius. An earlier reading of #6094 held that
+// type members were REQUIRED to trigger the defect and that plain-function
+// corpora were clean. That is false, and the false version was published: a
+// plain-function corpus with a single import accumulates too (measured on the
+// pre-fix tree: surplus 0/1/2, empty-FromID 1/2/3, growing per pass). Only
+// plain functions with ZERO imports are clean. The defect rides on ANY omitted-
+// FromID record-embedded edge — here the function→import REFERENCES edge.
+// Type members merely produce more of them per file.
+//
+// SECOND, the duplicate-alias import is the only shape in this suite that fires
+// the seenRel dedupe guard through the real pipeline. Go emits one
+// SCOPE.Component record PER import statement, so `strings` + `s2 "strings"`
+// yields two records that both emit `<file> -IMPORTS-> ext:strings`. Without the
+// guard the incremental graph carries that row twice where a full rebuild
+// carries it once. Before this corpus existed the guard never fired once across
+// either suite, and reverting it left every test green.
+func dupImportCorpusFile(i int) string {
+	return fmt.Sprintf(`package svc
+
+import (
+	"strings"
+	s2 "strings"
+	"strconv"
+)
+
+func Up%d(x string) string { return strings.ToUpper(x) }
+
+func Down%d(x string) string { return s2.ToLower(x) }
+
+func Num%d(x int) string { return strconv.Itoa(x + %d) }
+`, i, i, i, i)
+}
+
 // TestIncremental_NoDuplicateRowsAcrossPasses_6094 is the compounding gate.
 //
-// A 40-file Go corpus (structs + interfaces + methods — a corpus of plain
-// functions does NOT reproduce this; the owned CONTAINS/REFERENCES edges the
-// defect rides on only exist for type members) is full-rebuilt, then three
-// SEQUENTIAL single-file deltas are applied, each through a real
-// TryIncremental. After EVERY pass the persisted graph.fb is read back and
-// asserted to carry zero surplus rows and zero empty-FromID edges.
+// A 40-file Go corpus is full-rebuilt, then three SEQUENTIAL single-file deltas
+// are applied, each through a real TryIncremental. After EVERY pass the
+// persisted graph.fb is read back and asserted to carry zero surplus rows and
+// zero empty-FromID edges.
 //
 // Asserting after every pass — not only at the end — is what makes this a
-// compounding gate: the pre-fix numbers were 1 → 5 → 9 surplus rows, so a
-// per-pass trace also documents the accumulation rate if it ever returns.
+// compounding gate: the pre-fix numbers were 1 → 5 → 9 surplus rows on the
+// type-member corpus, so a per-pass trace also documents the accumulation rate
+// if it ever returns.
+//
+// TWO corpus shapes, because they exercise different halves of the fix:
+// "type-members" carries owned CONTAINS/REFERENCES edges from structs,
+// interfaces and methods; "plain-functions-with-imports" has no types at all and
+// pins both the corrected blast radius and the dedupe guard (see
+// dupImportCorpusFile).
 //
 // Every corpus file gets a UNIQUE basename on purpose: diff.Filter
 // cross-invalidates same-basename files, so a corpus of 40 files all named f.go
@@ -133,42 +186,17 @@ func dupEmptyFrom(doc *graph.Document) (n int, sample []string) {
 // full-reindex fallback — silently making the case vacuous. dvIncremental
 // additionally fails the test if TryIncremental falls back.
 func TestIncremental_NoDuplicateRowsAcrossPasses_6094(t *testing.T) {
-	repo := t.TempDir()
-	stateDir := t.TempDir()
-	const nFiles = 40
-	for i := 0; i < nFiles; i++ {
-		dvWriteFile(t, repo, fmt.Sprintf("r%02d.go", i), dvMultisetCorpusFile(i))
-	}
-
-	dvFullRebuild(t, repo, stateDir)
-
-	// Control: the full rebuild must be clean on both dimensions, so anything
-	// observed after an incremental pass is attributable to the incremental path.
-	base, err := graph.LoadGraphFromDir(stateDir)
-	if err != nil {
-		t.Fatalf("load baseline: %v", err)
-	}
-	if n, sample := dupSurplusRows(base); n != 0 {
-		t.Fatalf("control violated: the FULL rebuild already carries %d surplus relationship row(s): %v", n, sample)
-	}
-	if n, sample := dupEmptyFrom(base); n != 0 {
-		t.Fatalf("control violated: the FULL rebuild already carries %d empty-FromID edge(s): %v", n, sample)
-	}
-	// Pass-over-pass stability, not equality with the full rebuild. The
-	// incremental graph is legitimately a few rows SHORT of a full rebuild on
-	// this corpus for an unrelated, still-open reason (#6098: the scoped
-	// resolver has no receiver-type / package-member tier, so an intra-file
-	// method CALLS stays a bare-name stub and the process-flow pass never builds
-	// the SCOPE.Process it would have anchored — see the comment on
-	// TestIncremental_DependsOnWeightParity_6098). Asserting equality here would
-	// couple this gate to that defect. What #6094 is about is GROWTH: the row
-	// count must reach a fixed point after the first pass and stay there.
-	var prevRels int
-
-	var trace []string
-	for pass := 1; pass <= 3; pass++ {
-		dvSeedManifest(t, repo, stateDir)
-		dvWriteFile(t, repo, "r07.go", fmt.Sprintf(`package svc
+	cases := []struct {
+		name string
+		file func(int) string
+		// delta returns the pass-N content of the file that is edited.
+		delta func(pass int) string
+	}{
+		{
+			name: "type-members",
+			file: dvMultisetCorpusFile,
+			delta: func(pass int) string {
+				return fmt.Sprintf(`package svc
 
 type T7 struct{ N int }
 
@@ -181,40 +209,193 @@ func h7() int { return 7 }
 func New7() *T7 { return &T7{N: 7} }
 
 func Use7(x I7) int { return x.Do() }
+`, pass)
+			},
+		},
+		{
+			name: "plain-functions-with-imports",
+			file: dupImportCorpusFile,
+			delta: func(pass int) string {
+				return fmt.Sprintf(`package svc
+
+import (
+	"strings"
+	s2 "strings"
+	"strconv"
+)
+
+func Up7(x string) string { return strings.ToUpper(x) + "%d" }
+
+func Down7(x string) string { return s2.ToLower(x) }
+
+func Num7(x int) string { return strconv.Itoa(x + 7) }
+`, pass)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			stateDir := t.TempDir()
+			const nFiles = 40
+			for i := 0; i < nFiles; i++ {
+				dvWriteFile(t, repo, fmt.Sprintf("r%02d.go", i), tc.file(i))
+			}
+
+			dvFullRebuild(t, repo, stateDir)
+
+			// Control: the full rebuild must be clean on both dimensions, so
+			// anything observed after an incremental pass is attributable to the
+			// incremental path.
+			base, err := graph.LoadGraphFromDir(stateDir)
+			if err != nil {
+				t.Fatalf("load baseline: %v", err)
+			}
+			if n, sample := dupSurplusRows(base); n != 0 {
+				t.Fatalf("control violated: the FULL rebuild already carries %d surplus relationship row(s): %v", n, sample)
+			}
+			if n, sample := dupEmptyFrom(base); n != 0 {
+				t.Fatalf("control violated: the FULL rebuild already carries %d empty-FromID edge(s): %v", n, sample)
+			}
+			fullRels := len(base.Relationships)
+
+			// Pass-over-pass stability, NOT equality with the full rebuild.
+			//
+			// Read this before interpreting the row counts in the trace: the
+			// incremental graph settles on a fixed point that is a few rows SHORT
+			// of a full rebuild (877 vs 882 on the type-member corpus). That
+			// residual gap is #6098 — still open, tracked, and verified to be
+			// entirely attributable to it, not to the #6094 fix. A stable count is
+			// therefore NOT parity with a full rebuild, and nothing here should be
+			// read as claiming it is. #6094 is about GROWTH: the count must reach a
+			// fixed point after the first pass and stay there.
+			var prevRels int
+
+			var trace []string
+			for pass := 1; pass <= 3; pass++ {
+				dvSeedManifest(t, repo, stateDir)
+				dvWriteFile(t, repo, "r07.go", tc.delta(pass))
+				dvIncremental(t, repo, stateDir)
+
+				// Read the PERSISTED graph — never the run log, which over-reports.
+				b, err := graph.LoadGraphFromDir(stateDir)
+				if err != nil {
+					t.Fatalf("pass %d: load persisted graph: %v", pass, err)
+				}
+				surplus, dupSample := dupSurplusRows(b)
+				empty, emptySample := dupEmptyFrom(b)
+				trace = append(trace, fmt.Sprintf("pass %d: rels=%d surplus=%d empty-from=%d", pass, len(b.Relationships), surplus, empty))
+
+				if empty != 0 {
+					t.Errorf("pass %d: persisted graph carries %d relationship(s) with an EMPTY FromID (full rebuild: 0): %v\n"+
+						"the incremental re-extraction must substitute the owning entity record's ID for an empty "+
+						"record-embedded FromID, exactly as the full-index assembly loop does", pass, empty, emptySample)
+				}
+				if surplus != 0 {
+					t.Errorf("pass %d: persisted graph carries %d SURPLUS relationship row(s) keyed on "+
+						"(FromID, ToID, Kind, ID, properties): %v", pass, surplus, dupSample)
+				}
+				// The corpus end-state is the same shape on every pass (only a
+				// literal inside one body changes), so the total row count must be a
+				// fixed point from pass 2 onwards. This catches accumulation even in
+				// a form the surplus key above would miss — e.g. rows that differ in
+				// a property and so are not byte-identical duplicates, but still
+				// pile up.
+				if pass > 1 && len(b.Relationships) != prevRels {
+					t.Errorf("pass %d: persisted relationship count %d ≠ previous pass's %d — the incremental path "+
+						"is not at a fixed point; it is accumulating (or shedding) rows across passes",
+						pass, len(b.Relationships), prevRels)
+				}
+				prevRels = len(b.Relationships)
+			}
+			t.Logf("full rebuild: %d rels (residual gap to the incremental fixed point is #6098, still open)\nper-pass trace:\n  %s",
+				fullRels, strings.Join(trace, "\n  "))
+		})
+	}
+}
+
+// TestIncremental_GuardSuppressesDuplicateImportRow_6094 pins, through the REAL
+// pipeline, that the dedupe guard both FIRES and lands on the full rebuild's
+// row count for a duplicated-alias import.
+//
+// The gate above asserts "no surplus rows", which a guard-less tree can satisfy
+// by accident if the duplicated row is evicted before the next pass. This
+// asserts the positive form directly: the incremental graph must carry the
+// `<file> -IMPORTS-> strings` row EXACTLY as many times as a full rebuild of the
+// identical source does. Reverting the guard makes the incremental count exceed
+// the full-rebuild count, which no other assertion in the suite observes.
+func TestIncremental_GuardSuppressesDuplicateImportRow_6094(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+	const nFiles = 12
+	for i := 0; i < nFiles; i++ {
+		dvWriteFile(t, repo, fmt.Sprintf("r%02d.go", i), dupImportCorpusFile(i))
+	}
+	dvFullRebuild(t, repo, stateDir)
+
+	for pass := 1; pass <= 3; pass++ {
+		dvSeedManifest(t, repo, stateDir)
+		dvWriteFile(t, repo, "r07.go", fmt.Sprintf(`package svc
+
+import (
+	"strings"
+	s2 "strings"
+	"strconv"
+)
+
+func Up7(x string) string { return strings.ToUpper(x) + "%d" }
+
+func Down7(x string) string { return s2.ToLower(x) }
+
+func Num7(x int) string { return strconv.Itoa(x + 7) }
 `, pass))
 		dvIncremental(t, repo, stateDir)
-
-		// Read the PERSISTED graph — never the run log, which over-reports.
-		b, err := graph.LoadGraphFromDir(stateDir)
-		if err != nil {
-			t.Fatalf("pass %d: load persisted graph: %v", pass, err)
-		}
-		surplus, dupSample := dupSurplusRows(b)
-		empty, emptySample := dupEmptyFrom(b)
-		trace = append(trace, fmt.Sprintf("pass %d: rels=%d surplus=%d empty-from=%d", pass, len(b.Relationships), surplus, empty))
-
-		if empty != 0 {
-			t.Errorf("pass %d: persisted graph carries %d relationship(s) with an EMPTY FromID (full rebuild: 0): %v\n"+
-				"the incremental re-extraction must substitute the owning entity record's ID for an empty "+
-				"record-embedded FromID, exactly as the full-index assembly loop does", pass, empty, emptySample)
-		}
-		if surplus != 0 {
-			t.Errorf("pass %d: persisted graph carries %d SURPLUS relationship row(s) keyed on "+
-				"(FromID, ToID, Kind, ID, properties): %v", pass, surplus, dupSample)
-		}
-		// The corpus end-state is the same shape on every pass (only a literal
-		// inside one method body changes), so the total row count must be a fixed
-		// point from pass 2 onwards. This catches accumulation even in a form the
-		// surplus key above would miss — e.g. rows that differ in a property and
-		// so are not byte-identical duplicates, but still pile up.
-		if pass > 1 && len(b.Relationships) != prevRels {
-			t.Errorf("pass %d: persisted relationship count %d ≠ previous pass's %d — the incremental path "+
-				"is not at a fixed point; it is accumulating (or shedding) rows across passes",
-				pass, len(b.Relationships), prevRels)
-		}
-		prevRels = len(b.Relationships)
 	}
-	t.Logf("per-pass trace:\n  %s", strings.Join(trace, "\n  "))
+
+	b, err := graph.LoadGraphFromDir(stateDir)
+	if err != nil {
+		t.Fatalf("load incremental graph: %v", err)
+	}
+	endDir := t.TempDir()
+	c := dvFullRebuild(t, repo, endDir)
+
+	// Count IMPORTS rows sourced from the edited file, on both sides. The
+	// import-placeholder-prune hoists these edges onto the file's SCOPE.Component
+	// and re-keys FromID to its hex ID, so the edited file has to be identified
+	// by resolving FromID back to an entity and reading its SourceFile — matching
+	// on the raw FromID string finds nothing.
+	count := func(doc *graph.Document) map[string]int {
+		src := make(map[string]string, len(doc.Entities))
+		for i := range doc.Entities {
+			src[doc.Entities[i].ID] = doc.Entities[i].SourceFile
+		}
+		out := map[string]int{}
+		for _, r := range doc.Relationships {
+			if r.Kind != "IMPORTS" || src[r.FromID] != "r07.go" {
+				continue
+			}
+			out[src[r.FromID]+"→"+r.ToID]++
+		}
+		return out
+	}
+	got, want := count(b), count(c)
+	if len(want) == 0 {
+		t.Fatal("fixture is vacuous: the full rebuild carries no IMPORTS edge out of r07.go, so the guard " +
+			"cannot be under test here — the extractor's import shape must have changed")
+	}
+	for k, wv := range want {
+		if gv := got[k]; gv != wv {
+			t.Errorf("IMPORTS row %s appears %d× in the incremental graph, %d× in a full rebuild of identical "+
+				"source — the re-extraction dedupe guard is not matching the full path", k, gv, wv)
+		}
+	}
+	for k, gv := range got {
+		if _, ok := want[k]; !ok {
+			t.Errorf("IMPORTS row %s (×%d) exists ONLY in the incremental graph", k, gv)
+		}
+	}
+	t.Logf("IMPORTS rows out of r07.go — incremental: %v ; full rebuild: %v", got, want)
 }
 
 // TestIncremental_DependsOnWeightParity_6098 is a live, self-contained
@@ -242,12 +423,23 @@ func Use7(x I7) int { return x.Do() }
 //  2. With those CALLS dangling, the process-flow pass cannot chain
 //     Use7 → T7.Do → T7.N, so the SCOPE.Process entity `Use7 → T7.N` is never
 //     built on the incremental path (it IS built by the full rebuild).
-//  3. That missing process costs 5 relationship rows: 3 STEP_IN_PROCESS, 1
-//     ENTRY_POINT_OF, 1 CONTAINS — which is exactly the 882 vs 877 row gap.
+//  3. The 882 vs 877 row gap is a NET, not a loss set. A bidirectional multiset
+//     diff on this fixture reports 7 rows LOST and 2 INVENTED (7−2=5). The 2
+//     invented are the same two CALLS in mis-bound stub form — `Use7→"Do"` and
+//     `T7.Do→"N"` — against the resolved `→T7.Do` / `→T7.N` a full rebuild
+//     produces. The net 5 is the missing process: 3 STEP_IN_PROCESS, 1
+//     ENTRY_POINT_OF, 1 CONTAINS. Both absolute counts are corpus-dependent: on
+//     a richer corpus (embedded structs, generics, value + pointer receivers)
+//     they become 14 LOST / 9 INVENTED, net still 5. Read the NET as the
+//     invariant — "net 5; N lost / N−5 invented, N growing with corpus
+//     richness" — and the absolutes as fixture-specific.
 //  4. Module aggregation weighs cross-module edges. The 3 STEP_IN_PROCESS run
 //     _external→test-repo (120−117=3) and the ENTRY_POINT_OF runs
-//     test-repo→_external (40−39=1). The weight shortfall is fully accounted
-//     for by the missing rows, with no residual.
+//     test-repo→_external (40−39=1). The 2 invented stub CALLS contribute 0 in
+//     both directions — intra-module once resolved, and unresolvable while they
+//     remain stubs — so the weight shortfall is fully accounted for, with no
+//     residual. parity.CompareWithOptions reports exactly 2 RelPropDiffs here,
+//     which is that pair and nothing else.
 //
 // So #6098 is a RESOLUTION-PARITY gap in sresolver, surfacing as a weight
 // discrepancy three passes downstream. Closing it means porting the full
