@@ -368,12 +368,16 @@ func applyDaemonGOMAXPROCSFromCaps(store *caps.Store, hostCPU int) (int, int, bo
 	if target < 1 {
 		target = 1
 	}
-	cur := runtime.GOMAXPROCS(0) // query without changing
-	if cur == target {
-		return target, cur, false
-	}
-	prev := runtime.GOMAXPROCS(target)
-	return target, prev, true
+	// #6108 — MUST go through process.ApplyGOMAXPROCS, not runtime directly.
+	// The daemon now opens capped GOMAXPROCS regions around its in-process
+	// analytics passes, and a handler that read/wrote the runtime value itself
+	// lost this reload whenever one was open: a target equal to the region's
+	// clamp read back as "unchanged" and no-oped, and the region's restore then
+	// wrote back the pre-region host value — leaving the daemon PERMANENTLY
+	// ABOVE the operator's configured cap. Routing through the package makes the
+	// operator's value the baseline a live region restores to.
+	prev, changed := process.ApplyGOMAXPROCS(target)
+	return target, prev, changed
 }
 
 // installCapReloadHandler registers a SIGHUP handler that re-reads cpu.json and
@@ -1490,8 +1494,8 @@ func daemonSchedulerGroupAlgo(ctx context.Context, group string) error {
 }
 
 // groupAlgoProgressInterval is how often a running group-algo pass reports
-// progress. GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL overrides it; "0" disables the
-// heartbeat entirely.
+// progress. GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL overrides it; any non-positive
+// duration ("0", "0s", "-1s") disables the heartbeat entirely.
 //
 // 60s is chosen against the failure it exists for: a pass with a ~40 minute
 // expectation that ran for ~4 hours and emitted NOTHING after "starting", so an
@@ -1499,18 +1503,38 @@ func daemonSchedulerGroupAlgo(ctx context.Context, group string) error {
 // from a wedge. At 60s a healthy pass adds a handful of lines and a pathological
 // one leaves a per-phase timeline. Anything much finer would spam the ring
 // buffer that holds the daemon's recent log.
-const groupAlgoProgressInterval = time.Minute
+//
+// groupAlgoProgressMin is a hard floor on the override. Without it
+// GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL=1ns is accepted and the heartbeat spins a
+// core logging — a diagnostic knob that becomes its own CPU incident. 10ms is
+// low enough for a test to drive and high enough to cost nothing.
+const (
+	groupAlgoProgressInterval = time.Minute
+	groupAlgoProgressMin      = 10 * time.Millisecond
+)
 
 func groupAlgoProgressEvery() time.Duration {
-	if raw := strings.TrimSpace(os.Getenv("GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL")); raw != "" {
-		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
-			return d
-		}
+	raw := strings.TrimSpace(os.Getenv("GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL"))
+	if raw == "" {
+		return groupAlgoProgressInterval
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		// A bare "0" is not a valid Go duration but is the conventional and
+		// documented way to disable a knob, so honour it rather than silently
+		// falling back to the default the operator was trying to turn off.
 		if raw == "0" {
 			return 0
 		}
+		return groupAlgoProgressInterval
 	}
-	return groupAlgoProgressInterval
+	if d <= 0 {
+		return 0
+	}
+	if d < groupAlgoProgressMin {
+		return groupAlgoProgressMin
+	}
+	return d
 }
 
 // startGroupAlgoProgress emits a periodic progress line for an in-flight

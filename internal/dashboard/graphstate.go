@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
@@ -1171,11 +1172,24 @@ func (c *GraphCache) schedulePendingAlgo(cacheKey string, grp *DashGroup) {
 		// the multi-hundred-percent draw #6108 measured. See
 		// internal/process/gomaxprocs.go.
 		//
-		// COST: WithGOMAXPROCSCap serialises capped regions process-wide, so two
-		// groups warming at once now sweep one after the other instead of
-		// together. That is the intended trade — concurrent unbounded sweeps are
-		// how the daemon came to be the top process on the user's machine.
-		_ = backgroundAlgoCapApply(process.IndexCoreBudget(), func() error {
+		// WHICH NUMBER, AND WHY NOT IndexCoreBudget DIRECTLY. This uses the same
+		// sched.BackgroundBatchGOMAXPROCS the group-algo child is spawned with,
+		// so the daemon has ONE background-analytics core policy rather than two
+		// that disagree. IndexCoreBudget (NumCPU/4) floors at 1, and a floor of 1
+		// is wrong for this specific workload for reasons this repo already wrote
+		// down: below 2 the pass loses GC/runtime parallelism entirely, and
+		// measurement puts GOMAXPROCS=1 at ~2.2x the wall time of 12 for the same
+		// total CPU — so it would hold a single-P MCP daemon for twice as long to
+		// no benefit. IndexCoreBudget's own doc also says GOMAXPROCS is not a
+		// valid way to enforce THAT budget on its own (it is about cgo parse
+		// slots and child counts); this is a different mechanism for a different
+		// bottleneck. BackgroundBatchGOMAXPROCS floors at 2 and is the policy
+		// written for exactly this pass.
+		//
+		// Regions do not serialise (see internal/process/gomaxprocs.go): two
+		// groups warming at once both run, and the effective GOMAXPROCS is the
+		// minimum of their caps, which bounds the process as a whole.
+		_ = backgroundAlgoCapApply(sched.BackgroundBatchGOMAXPROCS(), func() error {
 			for _, p := range pending {
 				// READ-ONLY over p.doc.Entities/Relationships (RunAlgorithms mutates
 				// neither, and touches only heap slices — not the mmap reader). Safe
