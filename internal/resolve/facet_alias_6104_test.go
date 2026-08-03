@@ -1,0 +1,192 @@
+package resolve
+
+import (
+	"testing"
+
+	"github.com/cajasmota/grafel/internal/types"
+)
+
+// Issue #6104 — merge FACETS in the symbol index.
+//
+// The #6104 merge keeps both nodes when a custom/framework extractor models a
+// source construct the base path already emitted under a different Kind (e.g.
+// SCOPE.Schema|Order alongside the base SCOPE.Component|Order). That puts a
+// SECOND node under an existing name. Without special handling the symbol
+// index reads that as a name collision and flips the name to ambiguous, which
+// un-resolves every edge that names it — the #4366 `Class:Order` and #4379
+// dotted-middleware-path failures.
+//
+// The rule: a facet is an ALIAS of its anchor, not a competing definition.
+//
+//	F1. A facet never makes its anchor unresolvable.
+//	F2. A facet never displaces its anchor in a symbol table.
+//	F3. Order-independence: a real entity arriving AFTER a facet still takes
+//	    the entry.
+//	F4. NON-FACETS ARE UNTOUCHED — two genuinely different definitions sharing
+//	    a name are still ambiguous. This is the regression risk: the alias rule
+//	    must not become a general "first writer wins" that silently resolves
+//	    real ambiguity.
+
+func anchorEnt(kind, name, file, qname string) types.EntityRecord {
+	e := types.EntityRecord{Kind: kind, Name: name, SourceFile: file, QualifiedName: qname}
+	e.ID = e.ComputeID()
+	return e
+}
+
+func facetEnt(kind, name, file, qname, anchorID string) types.EntityRecord {
+	e := types.EntityRecord{
+		Kind: kind, Name: name, SourceFile: file, QualifiedName: qname,
+		Properties: map[string]string{types.EntityTwinOfProperty: anchorID},
+	}
+	e.ID = e.ComputeID()
+	return e
+}
+
+// F1 + F2: the anchor stays resolvable by bare name and by QualifiedName, and
+// the ID returned is the ANCHOR's, not the facet's.
+func TestFacetDoesNotMakeAnchorUnresolvable(t *testing.T) {
+	anchor := anchorEnt("SCOPE.Component", "Order", "app/models/orders.py", "app.models.orders.Order")
+	facet := facetEnt("SCOPE.Schema", "Order", "app/models/orders.py", "app.models.orders.Order", anchor.ID)
+
+	idx := BuildIndex([]types.EntityRecord{anchor, facet})
+
+	id, ok := idx.Lookup("Order")
+	if !ok {
+		t.Fatalf("bare-name lookup of the anchor failed once a facet was added (the #4366 shape)")
+	}
+	if id != anchor.ID {
+		t.Errorf("bare name resolved to the facet %q, want the anchor %q", id, anchor.ID)
+	}
+
+	// Class:Order — kind "Class" is not a SCOPE.Component alias, so this falls
+	// through to the kind-agnostic path. This is the exact stub #4366 asserts.
+	if id, ok := idx.Lookup("Class:Order"); !ok || id != anchor.ID {
+		t.Errorf("Class:Order did not resolve to the anchor (id=%q ok=%v)", id, ok)
+	}
+
+	// QualifiedName — the facet inherits its anchor's, which must not blank the
+	// entry (the #4379 dotted-middleware-path shape).
+	if id, ok := idx.Lookup("app.models.orders.Order"); !ok || id != anchor.ID {
+		t.Errorf("QualifiedName lookup did not resolve to the anchor (id=%q ok=%v)", id, ok)
+	}
+}
+
+// F3: order-independence. The facet is indexed FIRST here; the anchor arriving
+// afterwards must still take the entry rather than colliding with it.
+func TestFacetDoesNotDisplaceAnchorWhenIndexedFirst(t *testing.T) {
+	anchor := anchorEnt("SCOPE.Component", "Order", "app/models/orders.py", "app.models.orders.Order")
+	facet := facetEnt("SCOPE.Schema", "Order", "app/models/orders.py", "app.models.orders.Order", anchor.ID)
+
+	idx := BuildIndex([]types.EntityRecord{facet, anchor}) // facet first
+
+	if id, ok := idx.Lookup("Order"); !ok || id != anchor.ID {
+		t.Errorf("anchor did not take the byName entry from the facet incumbent (id=%q ok=%v)", id, ok)
+	}
+	if id, ok := idx.Lookup("app.models.orders.Order"); !ok || id != anchor.ID {
+		t.Errorf("anchor did not take the byQualifiedName entry from the facet incumbent (id=%q ok=%v)", id, ok)
+	}
+}
+
+// The facet is still addressable under its OWN Kind — keeping both nodes must
+// not make one of them unreachable.
+func TestFacetRemainsAddressableByItsOwnKind(t *testing.T) {
+	anchor := anchorEnt("SCOPE.Component", "Order", "app/models/orders.py", "app.models.orders.Order")
+	facet := facetEnt("SCOPE.Schema", "Order", "app/models/orders.py", "app.models.orders.Order", anchor.ID)
+
+	idx := BuildIndex([]types.EntityRecord{anchor, facet})
+
+	if id, ok := idx.Lookup("SCOPE.Schema:Order"); !ok || id != facet.ID {
+		t.Errorf("facet not addressable by its own kind (id=%q ok=%v want %q)", id, ok, facet.ID)
+	}
+	if id, ok := idx.Lookup("SCOPE.Component:Order"); !ok || id != anchor.ID {
+		t.Errorf("anchor not addressable by its own kind (id=%q ok=%v want %q)", id, ok, anchor.ID)
+	}
+}
+
+// F4 — THE REGRESSION GUARD. Two genuinely different definitions sharing a
+// name are still ambiguous. The alias rule keys strictly on
+// EntityTwinOfProperty; it must not leak into ordinary entities.
+func TestNonFacetNameCollisionIsStillAmbiguous(t *testing.T) {
+	a := anchorEnt("SCOPE.Component", "Order", "app/models/orders.py", "app.models.orders.Order")
+	b := anchorEnt("SCOPE.Component", "Order", "billing/models.py", "billing.models.Order")
+
+	idx := BuildIndex([]types.EntityRecord{a, b})
+
+	if id, ok := idx.Lookup("Order"); ok {
+		t.Errorf("two real definitions named Order must stay AMBIGUOUS, resolved to %q", id)
+	}
+	// Same-kind collision must still be ambiguous within the kind too.
+	if id, ok := idx.Lookup("SCOPE.Component:Order"); ok {
+		t.Errorf("same-kind collision between two real definitions must stay ambiguous, got %q", id)
+	}
+	// Distinct QualifiedNames are unaffected either way.
+	if id, ok := idx.Lookup("billing.models.Order"); !ok || id != b.ID {
+		t.Errorf("distinct QualifiedName broke (id=%q ok=%v)", id, ok)
+	}
+}
+
+// A duplicate QualifiedName between two NON-facets must still blank the entry.
+func TestNonFacetQualifiedNameCollisionIsStillBlanked(t *testing.T) {
+	a := anchorEnt("SCOPE.Component", "Order", "a.py", "shared.Order")
+	b := anchorEnt("SCOPE.Operation", "handle", "b.py", "shared.Order")
+
+	idx := BuildIndex([]types.EntityRecord{a, b})
+	if id, ok := idx.Lookup("shared.Order"); ok {
+		t.Errorf("a duplicate QualifiedName between two real entities must stay ambiguous, got %q", id)
+	}
+}
+
+// A self-referential or empty twin marker is NOT a facet — the property must
+// name a DIFFERENT entity for the alias rule to apply, so a stray or corrupted
+// value cannot be used to suppress a real ambiguity.
+func TestSelfReferentialTwinMarkerIsNotAFacet(t *testing.T) {
+	a := anchorEnt("SCOPE.Component", "Order", "a.py", "a.Order")
+	b := anchorEnt("SCOPE.Component", "Order", "b.py", "b.Order")
+	b.Properties = map[string]string{types.EntityTwinOfProperty: b.ID} // points at itself
+
+	if b.IsMergeTwinAlias() {
+		t.Fatalf("an entity naming ITSELF as its twin must not count as a facet")
+	}
+	idx := BuildIndex([]types.EntityRecord{a, b})
+	if id, ok := idx.Lookup("Order"); ok {
+		t.Errorf("self-referential marker suppressed a real ambiguity, resolved to %q", id)
+	}
+}
+
+// The module-index path (GRAFEL_RESOLVE_MODULE_INDEX=1, #4901) must agree with
+// flat BuildIndex on all of the above — a divergence between the two builders
+// is exactly the #5206 class of bug.
+func TestFacetAliasRuleMatchesOnTheModuleIndexPath(t *testing.T) {
+	anchor := anchorEnt("SCOPE.Component", "Order", "app/models/orders.py", "app.models.orders.Order")
+	facet := facetEnt("SCOPE.Schema", "Order", "app/models/orders.py", "app.models.orders.Order", anchor.ID)
+	other := anchorEnt("SCOPE.Component", "Order", "billing/models.py", "billing.models.Order")
+
+	for _, tc := range []struct {
+		name     string
+		ents     []types.EntityRecord
+		stub     string
+		wantID   string
+		wantOK   bool
+		wantWhat string
+	}{
+		{"facet keeps anchor resolvable", []types.EntityRecord{anchor, facet}, "Order", anchor.ID, true, "anchor"},
+		{"facet first", []types.EntityRecord{facet, anchor}, "Order", anchor.ID, true, "anchor"},
+		{"facet keeps qname resolvable", []types.EntityRecord{anchor, facet}, "app.models.orders.Order", anchor.ID, true, "anchor"},
+		{"real collision stays ambiguous", []types.EntityRecord{anchor, other}, "Order", "", false, "ambiguous"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			flat := BuildIndex(tc.ents)
+			gotFlatID, gotFlatOK := flat.Lookup(tc.stub)
+			if gotFlatOK != tc.wantOK || (tc.wantOK && gotFlatID != tc.wantID) {
+				t.Errorf("flat BuildIndex: got (%q,%v) want %s", gotFlatID, gotFlatOK, tc.wantWhat)
+			}
+
+			mod := BuildIndexFromModulesOrdered(tc.ents, ModuleKeyByPkgDir)
+			gotModID, gotModOK := mod.Lookup(tc.stub)
+			if gotModOK != gotFlatOK || gotModID != gotFlatID {
+				t.Errorf("module index DIVERGES from flat: module=(%q,%v) flat=(%q,%v)",
+					gotModID, gotModOK, gotFlatID, gotFlatOK)
+			}
+		})
+	}
+}

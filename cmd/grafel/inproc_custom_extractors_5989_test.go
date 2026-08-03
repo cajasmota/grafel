@@ -750,3 +750,172 @@ func TestInProcCustomExtractorsNilTreeGuardIsLoadBearing(t *testing.T) {
 	t.Logf("with a nil parse tree, RunCustomExtractors still emits %d entity(ies) — "+
 		"this is what the `file.TSTree != nil` guard at the seam suppresses", len(ents))
 }
+
+// TestInProcCustomExtractorsThreeCollisionShapesAreClosed is the per-shape
+// evidence for #6104. Each of the three CONFIRMED collision shapes gets its own
+// assertion so a partial fix cannot pass.
+//
+// WHY MULTISETS AND NOT COUNTS. A per-kind count table cannot see
+// destroy-and-re-add: on the full fixture `SCOPE.Operation` showed +120 while
+// 120 of its members were destroyed, and gains masked losses exactly. That is
+// how this defect was originally under-reported by 3.5x. Every assertion below
+// is over entityTuples — a CONTENT multiset (counts per tuple) — or over entity
+// IDs. Same instrument as internal/graph/parity after #6037.
+//
+// WHY THE THREE SHAPES ARE LISTED SEPARATELY. The obvious remedy — keying the
+// supersede on (Kind, Name) instead of Name alone — closes shape 1 ONLY. It was
+// verified by mutation that shapes 2 and 3 survive it intact. Listing them
+// apart keeps that trap visible.
+func TestInProcCustomExtractorsThreeCollisionShapesAreClosed(t *testing.T) {
+	off, on := indexBothArms(t, "shapes_repo")
+	offT, onT := entityTuples(off, ""), entityTuples(on, "")
+	destroyed, added := tupleDelta(offT, onT)
+
+	// Content-tuple multiset survival: a tuple present N times off must be
+	// present at least N times on, OR have a same-(Kind,Name,SourceFile)
+	// successor (a Tier A combine, which is one node either way).
+	key := func(tuple string) string {
+		p := strings.Split(tuple, "|")
+		if len(p) != 7 {
+			return tuple
+		}
+		return p[0] + "|" + p[1] + "|" + p[4]
+	}
+	addedKeys := map[string]bool{}
+	for _, a := range added {
+		addedKeys[key(a)] = true
+	}
+	survived := func(prefix string) (ok bool, why string) {
+		for tuple, n := range offT {
+			if !strings.HasPrefix(tuple, prefix) {
+				continue
+			}
+			if onT[tuple] >= n {
+				return true, "tuple survives verbatim (" + tuple + ")"
+			}
+			if addedKeys[key(tuple)] {
+				return true, "combined into a same-(Kind,Name,File) successor (" + tuple + ")"
+			}
+			return false, "DESTROYED with no successor: " + tuple
+		}
+		return false, "no such tuple in the gate-off arm — fixture drift, assertion is vacuous"
+	}
+
+	// ---- Shape 1: CROSS-KIND collision (python / Celery) -----------------
+	// `@shared_task def send_receipt` used to destroy BOTH the base
+	// `Task|send_receipt` AND `SCOPE.Operation|send_receipt`, collapsing them
+	// into one `SCOPE.Service|send_receipt`. Keying on (Kind, Name) closes
+	// this one. Both base entities must now survive the MERGE.
+	if ok, why := survived("SCOPE.Operation|send_receipt|"); !ok {
+		t.Errorf("shape 1 (cross-kind) NOT closed: %s", why)
+	} else {
+		t.Logf("shape 1 (cross-kind, SCOPE.Operation|send_receipt): CLOSED — %s", why)
+	}
+
+	// ---- Shape 2: SAME-KIND, SAME NAME (python / Celery) -----------------
+	// The custom extractor also emits a `Task`-kind entity of the same name,
+	// so this collision is same-kind and a (Kind, Name) key does NOT close it.
+	// The base Task must not be destroyed AT THE MERGE. It is subsequently
+	// consumed by the #1613 class-shadow fold (SCOPE.Service outranks Task,
+	// 100 vs 70) which REPOINTS its edges — a combine, so we assert on the
+	// fold's contract rather than on tuple identity: a same-(Name, SourceFile)
+	// survivor exists and nothing dangles on the retired ID.
+	onIDs := make(map[string]bool, len(on.Entities))
+	for i := range on.Entities {
+		onIDs[on.Entities[i].ID] = true
+	}
+	onRefs := map[string]int{}
+	for i := range on.Relationships {
+		onRefs[on.Relationships[i].FromID]++
+		onRefs[on.Relationships[i].ToID]++
+	}
+	var checkedShape2 bool
+	for i := range off.Entities {
+		e := &off.Entities[i]
+		if e.Kind != "Task" || !strings.HasPrefix(e.Name, "send_receipt") {
+			continue
+		}
+		checkedShape2 = true
+		if onIDs[e.ID] {
+			t.Logf("shape 2 (same-kind, Task|%s): CLOSED — entity survives verbatim", e.Name)
+			continue
+		}
+		var survivors []string
+		for j := range on.Entities {
+			s := &on.Entities[j]
+			if s.Name == e.Name && s.SourceFile == e.SourceFile {
+				survivors = append(survivors, s.Kind)
+			}
+		}
+		if len(survivors) == 0 {
+			t.Errorf("shape 2 (same-kind) NOT closed: Task|%s destroyed with no survivor "+
+				"in %s", e.Name, e.SourceFile)
+			continue
+		}
+		if n := onRefs[e.ID]; n > 0 {
+			t.Errorf("shape 2: Task|%s was retired but %d edge(s) still point at %s — "+
+				"the retiring pass did not re-key them", e.Name, n, e.ID)
+			continue
+		}
+		t.Logf("shape 2 (same-kind, Task|%s): CLOSED at the merge — folded by #1613 into %v "+
+			"with 0 dangling edges", e.Name, survivors)
+	}
+	if !checkedShape2 {
+		t.Errorf("shape 2 assertion is vacuous: no base Task entity in the gate-off arm")
+	}
+
+	// ---- Shape 3: SAME-KIND IN-PLACE CORRUPTION (java / Spring) ----------
+	// Kind, Name and SourceFile all identical — these ARE one graph node. The
+	// custom extractor rewrote Subtype method->endpoint AND truncated EndLine,
+	// and the truncation propagated into the derived SCOPE.Process and
+	// http_endpoint_definition. A (Kind, Name) key treats this as a legitimate
+	// supersede and lets it through, which is why it needed a POLICY fix.
+	//
+	// Closed means: the node is still ONE node, the subtype refinement is
+	// KEPT, and the span is NOT narrower than the gate-off span.
+	spanOf := func(m map[string]int, prefix string) (tuple string, start, end int, found bool) {
+		for tp := range m {
+			if !strings.HasPrefix(tp, prefix) {
+				continue
+			}
+			p := strings.Split(tp, "|")
+			if len(p) != 7 {
+				continue
+			}
+			st, err1 := strconv.Atoi(p[5])
+			en, err2 := strconv.Atoi(p[6])
+			if err1 != nil || err2 != nil {
+				continue
+			}
+			return tp, st, en, true
+		}
+		return "", 0, 0, false
+	}
+	const javaOp = "SCOPE.Operation|OrdersController.list|"
+	offTuple, offStart, offEnd, okOff := spanOf(offT, javaOp)
+	onTuple, onStart, onEnd, okOn := spanOf(onT, javaOp)
+	switch {
+	case !okOff || !okOn:
+		t.Errorf("shape 3 assertion is vacuous: java operation missing (off=%v on=%v)", okOff, okOn)
+	case onEnd < offEnd:
+		t.Errorf("shape 3 (in-place corruption) NOT closed: EndLine narrowed %d->%d\n  off=%s\n  on =%s",
+			offEnd, onEnd, offTuple, onTuple)
+	case offStart != 0 && onStart > offStart:
+		t.Errorf("shape 3 NOT closed: StartLine clipped %d->%d\n  off=%s\n  on =%s",
+			offStart, onStart, offTuple, onTuple)
+	case !strings.Contains(onTuple, "|endpoint|"):
+		t.Errorf("shape 3: the subtype refinement method->endpoint was lost; on=%s", onTuple)
+	default:
+		t.Logf("shape 3 (in-place corruption): CLOSED — span %d-%d preserved (was truncated to %d), "+
+			"subtype refinement kept\n  off=%s\n  on =%s", onStart, onEnd, offStart, offTuple, onTuple)
+	}
+
+	// And the derived entity the corruption used to propagate into.
+	for tuple, n := range offT {
+		if strings.HasPrefix(tuple, "http_endpoint_definition|") && onT[tuple] < n {
+			t.Errorf("shape 3: corruption still propagates to a derived entity: %q lost "+
+				"(off=%d on=%d)", tuple, n, onT[tuple])
+		}
+	}
+	t.Logf("destroyed=%d added=%d (tuple multiset delta)", len(destroyed), len(added))
+}
