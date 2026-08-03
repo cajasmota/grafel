@@ -38,15 +38,46 @@
 // The pass is append-only: it never removes or modifies existing entities or
 // edges.  It is safe to skip (--skip-pass=rename-detect) without affecting any
 // other pass.
+//
+// # Bounding (#6087)
+//
+// Phase 2 is pairwise: |deleted| × |added|.  With a largely dissimilar prior
+// graph over a large repo (~119k entities observed) that is ~1.4e10 pairs at
+// ~0.9 µs each — hours of pinned CPU on an index that otherwise takes 49
+// seconds.  Three ceilings now apply, cheapest first:
+//
+//  1. Kind bucketing — an added entity only ever visits deleted entities of
+//     the same Kind (the old code scanned every deleted entity and rejected on
+//     Kind inside the loop).
+//  2. Name-length banding — nameSimilarity >= 0.65 requires the edit distance
+//     to be <= 35 % of the longer name, and edit distance is at least the
+//     length difference.  Pairs outside that band are rejected without ever
+//     calling levenshtein.
+//  3. A hard pair budget (DefaultRenamePairBudget).  Added entities are
+//     visited cheapest-candidate-set-first, then by entity ID, so the cap
+//     falls in the same place on every run.  When the budget runs out the pass
+//     stops and reports RenameStats.Truncated together with how much work was
+//     dropped — it never silently claims "no renames found".
 package algorithms
 
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/graph"
 )
+
+// DefaultRenamePairBudget caps the number of (deleted, added) candidate pairs
+// Phase 2 may visit in a single DetectRenames call.
+//
+// Sizing: a visited pair costs at most one levenshtein over two entity names,
+// measured at ~0.9 µs for ~18-character names, so 2e6 pairs bounds the pass at
+// roughly two seconds of CPU.  That is a rounding error against a 49-second
+// index and still enough headroom to fully examine any realistic delta — a
+// 1400-deleted × 1400-added change of a single kind fits inside it.
+const DefaultRenamePairBudget = 2_000_000
 
 // RelKindRenamedFrom is the edge kind emitted by the rename-detection pass.
 // The edge runs from the NEW entity (the post-rename entity) → the OLD entity
@@ -64,6 +95,25 @@ type RenameStats struct {
 	Moves int
 	// Splits is the number of split events (one old entity → two+ new ones).
 	Splits int
+
+	// PairBudget is the pair ceiling this run was given (#6087).
+	PairBudget int
+	// PairsExamined is the number of (deleted, added) candidate pairs Phase 2
+	// actually visited.  Always <= PairBudget.
+	PairsExamined int
+	// PairsPrefiltered is the subset of PairsExamined rejected by the cheap
+	// name-length band without running levenshtein.
+	PairsPrefiltered int
+	// Truncated reports that the pair budget ran out before every added entity
+	// had been examined.  Renames may exist that this run did not look for —
+	// callers must not read "0 renames" as "no renames exist".
+	Truncated bool
+	// AddedSkipped is the number of added entities never examined because the
+	// budget ran out.  Zero unless Truncated.
+	AddedSkipped int
+	// PairsSkipped is the number of candidate pairs those skipped entities
+	// would have contributed.  Zero unless Truncated.
+	PairsSkipped int
 }
 
 // DetectRenames compares prevDoc (the last persisted graph) and newDoc (the
@@ -75,6 +125,20 @@ type RenameStats struct {
 // same set of edges (because both docs are immutable from the caller's
 // perspective; only newDoc.Relationships grows).
 func DetectRenames(prevDoc, newDoc *graph.Document) RenameStats {
+	return DetectRenamesBounded(prevDoc, newDoc, DefaultRenamePairBudget)
+}
+
+// DetectRenamesBounded is DetectRenames with an explicit Phase-2 pair budget
+// (#6087).  A budget <= 0 is treated as DefaultRenamePairBudget; there is no
+// unbounded mode, because an unbounded quadratic on the index path is the bug.
+//
+// Phase 1 (exact kind+name move detection) is a map probe and is never subject
+// to the budget: pure moves and pure renames-in-place are always detected in
+// full, however large the delta.
+func DetectRenamesBounded(prevDoc, newDoc *graph.Document, pairBudget int) RenameStats {
+	if pairBudget <= 0 {
+		pairBudget = DefaultRenamePairBudget
+	}
 	if prevDoc == nil || newDoc == nil {
 		return RenameStats{}
 	}
@@ -136,6 +200,7 @@ func DetectRenames(prevDoc, newDoc *graph.Document) RenameStats {
 
 	var stats RenameStats
 	stats.Candidates = len(deleted) * len(added)
+	stats.PairBudget = pairBudget
 
 	// Phase 1 — exact name+kind, file changed (move detection).
 	// Build lookup: (kind, name) → deleted entity for O(1) move probe.
@@ -176,21 +241,78 @@ func DetectRenames(prevDoc, newDoc *graph.Document) RenameStats {
 	}
 
 	// Phase 2 — fuzzy rename matching for remaining added entities.
+	//
+	// Bounded (#6087). Candidates are bucketed by Kind so an added entity never
+	// scans deleted entities it could not possibly match, each bucket is sorted
+	// by ID, and added entities are visited smallest-bucket-first (then by ID).
+	// That ordering is deterministic AND cap-friendly: the cheap, high-yield
+	// candidates are examined before the budget can be burned by one enormous
+	// same-kind bucket.
+	byKind := make(map[string][]candidate, 8)
+	for _, d := range deleted {
+		byKind[d.Kind] = append(byKind[d.Kind], candidate{ent: d, lowLen: len(strings.ToLower(d.Name))})
+	}
+	for kind := range byKind {
+		bucket := byKind[kind]
+		sort.Slice(bucket, func(i, j int) bool { return bucket[i].ent.ID < bucket[j].ent.ID })
+	}
+
+	probes := make([]addedProbe, 0, len(remainingAdded))
 	for _, a := range remainingAdded {
+		probes = append(probes, addedProbe{
+			ent:     a,
+			lowLen:  len(strings.ToLower(a.Name)),
+			bucketN: len(byKind[a.Kind]),
+		})
+	}
+	sort.Slice(probes, func(i, j int) bool {
+		if probes[i].bucketN != probes[j].bucketN {
+			return probes[i].bucketN < probes[j].bucketN
+		}
+		return probes[i].ent.ID < probes[j].ent.ID
+	})
+
+	budgetLeft := pairBudget
+	for pi, p := range probes {
+		bucket := byKind[p.ent.Kind]
+		if len(bucket) > budgetLeft {
+			// Not enough budget left to examine this entity's candidates in
+			// full. Stop here rather than half-examining it: a partial scan
+			// would pick a "best match" from an arbitrary prefix of the
+			// bucket. Everything from here on is reported as dropped.
+			stats.Truncated = true
+			for _, rest := range probes[pi:] {
+				stats.AddedSkipped++
+				stats.PairsSkipped += len(byKind[rest.ent.Kind])
+			}
+			break
+		}
+
+		a := p.ent
 		bestEdge := renameEdge{}
 		bestScore := -1.0
 
-		for _, d := range deleted {
-			if d.Kind != a.Kind {
+		for _, c := range bucket {
+			d := c.ent
+			budgetLeft--
+			stats.PairsExamined++
+
+			// Cheap prefilter: nameSimilarity >= 0.65 requires an edit distance
+			// <= 35 % of the longer name, and edit distance is never smaller
+			// than the length difference. Pairs outside the band cannot pass,
+			// so skip the O(mn) levenshtein entirely.
+			if !lengthBandOK(p.lowLen, c.lowLen) {
+				stats.PairsPrefiltered++
 				continue
 			}
+
 			// Signal 1: name similarity.
 			// Threshold: reject pairs where more than 35 % of the longer name
 			// needs to change (sim < 0.65). This accepts common rename patterns
 			// like getUserByID→getUserByName (sim≈0.69) while rejecting
 			// completely unrelated names like foo→bar (sim=0.0).
 			nameSim := nameSimilarity(d.Name, a.Name)
-			if nameSim < 0.65 {
+			if nameSim < nameSimilarityFloor {
 				continue
 			}
 
@@ -239,8 +361,16 @@ func DetectRenames(prevDoc, newDoc *graph.Document) RenameStats {
 	}
 
 	// Phase 3 — emit edges. Tag splits where one deleted entity maps to 2+
-	// new ones.
-	for deletedID, edges := range matchesByDeleted {
+	// new ones. Keys are sorted so the emitted edge order (and therefore the
+	// on-disk bytes before the final sort) does not depend on map iteration.
+	deletedIDs := make([]string, 0, len(matchesByDeleted))
+	for id := range matchesByDeleted {
+		deletedIDs = append(deletedIDs, id)
+	}
+	sort.Strings(deletedIDs)
+
+	for _, deletedID := range deletedIDs {
+		edges := matchesByDeleted[deletedID]
 		isSplit := len(edges) > 1
 		if isSplit {
 			stats.Splits++
@@ -277,6 +407,49 @@ func DetectRenames(prevDoc, newDoc *graph.Document) RenameStats {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+
+// candidate is a deleted entity plus its lowercased-name length, precomputed
+// once so the Phase-2 inner loop never re-lowercases (#6087).
+type candidate struct {
+	ent    graph.Entity
+	lowLen int
+}
+
+// addedProbe is an added entity plus the size of the candidate bucket it will
+// scan, used to order Phase 2 cheapest-first under the pair budget (#6087).
+type addedProbe struct {
+	ent     graph.Entity
+	lowLen  int
+	bucketN int
+}
+
+// nameSimilarityFloor is the minimum normalised-Levenshtein score Phase 2
+// accepts. It is duplicated as a named constant so lengthBandOK and the inner
+// loop cannot drift apart.
+const nameSimilarityFloor = 0.65
+
+// lengthBandOK reports whether two lowercased names are close enough in length
+// that nameSimilarity COULD reach nameSimilarityFloor.
+//
+// sim = 1 - dist/maxLen and dist >= |lenA-lenB|, so
+// sim <= 1 - |lenA-lenB|/maxLen. If that upper bound is already below the
+// floor, the pair is unmatchable and levenshtein can be skipped. The predicate
+// is a strict superset of the accepted set — it never rejects a pair the full
+// comparison would have accepted.
+func lengthBandOK(lenA, lenB int) bool {
+	maxLen := lenA
+	if lenB > maxLen {
+		maxLen = lenB
+	}
+	if maxLen == 0 {
+		return true
+	}
+	diff := lenA - lenB
+	if diff < 0 {
+		diff = -diff
+	}
+	return 1.0-float64(diff)/float64(maxLen) >= nameSimilarityFloor
+}
 
 // neighborIndex maps an entity ID to the set of IDs it is connected to (both
 // callers and callees across all edge kinds).

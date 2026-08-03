@@ -723,6 +723,17 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 					"rename-detect: %d rename(s) detected (moves=%d splits=%d)\n",
 					renameStats.Renames, renameStats.Moves, renameStats.Splits)
 			}
+			// #6087 — the pass is pair-budgeted. When the budget ran out the
+			// result is a PARTIAL rename scan, so say so explicitly: without
+			// this line a truncated run is indistinguishable from "no renames
+			// existed", which is the confident-wrong-answer failure mode.
+			if renameStats.Truncated {
+				fmt.Fprintf(os.Stderr,
+					"rename-detect: TRUNCATED — pair budget %d exhausted after %d pair(s); %d added entities not examined, %d candidate pair(s) skipped. "+
+						"Rename detection is INCOMPLETE for this run: the prior graph is largely dissimilar to the new one (#6087)\n",
+					renameStats.PairBudget, renameStats.PairsExamined,
+					renameStats.AddedSkipped, renameStats.PairsSkipped)
+			}
 		}
 		// If no previous graph exists (first run) or it cannot be loaded,
 		// we simply skip rename detection — this is not an error.
