@@ -2757,6 +2757,14 @@ type PruneImportPlaceholderStats struct {
 	// stops rewriting (and therefore drops every JS/TS relative
 	// IMPORTS edge from the graph) is visible.
 	EdgeToIDRewrites int
+	// PlaceholderRefRepoints is the number of INCOMING edges (any kind —
+	// in practice REFERENCES) that pointed at a placeholder about to be
+	// pruned and were re-pointed at the entity the pipeline had already
+	// resolved the same (importer file, source_module) import to. See
+	// the #6131 block in the function body. Surfaced so a regression
+	// that silently stops re-pointing — and therefore starts orphaning
+	// those edges again — is visible in the indexer log.
+	PlaceholderRefRepoints int
 }
 
 // PruneImportPlaceholders removes import-placeholder entities (kind =
@@ -2766,10 +2774,16 @@ type PruneImportPlaceholderStats struct {
 // (internal/extractors/cross/imports) as a structural carrier for
 // IMPORTS / DEPENDS_ON relationships. After the import-resolver and
 // references-resolver passes have rewritten ToID / FromID values, the
-// placeholders themselves have no incoming edges — they are pure
-// structural overhead and account for the largest single bucket of
-// orphan entities on the verify2 corpus (2,583 of 9,390 fixture-b
-// orphans, root-cause analysis 2026-05-19).
+// placeholders are pure structural overhead and account for the largest
+// single bucket of orphan entities on the verify2 corpus (2,583 of 9,390
+// fixture-b orphans, root-cause analysis 2026-05-19).
+//
+// This comment used to assert that the placeholders have NO INCOMING EDGES
+// by the time this runs. That has been falsified twice — #642 (JS/TS
+// relative IMPORTS) and #6131 (Python module REFERENCES) — and both times
+// the answer was to carry the incoming edge across to a durable entity
+// rather than accept a dangling endpoint. Both repairs live in the
+// pre-prune blocks below; do not re-introduce the assumption.
 //
 // The function preserves the placeholders' embedded relationships by
 // hoisting them onto the file-level SCOPE.Component entity that
@@ -2790,6 +2804,24 @@ type PruneImportPlaceholderStats struct {
 // a stats record. The input slice's element ordering among survivors
 // is preserved.
 func PruneImportPlaceholders(records []types.EntityRecord) ([]types.EntityRecord, []types.RelationshipRecord, PruneImportPlaceholderStats) {
+	return PruneImportPlaceholdersWithLiveIDs(records, nil)
+}
+
+// PruneImportPlaceholdersWithLiveIDs is PruneImportPlaceholders with an
+// explicit extra set of entity IDs that are KNOWN TO SURVIVE into the final
+// graph even though they are absent from `records`.
+//
+// It exists for the incremental indexer path, where `records` holds only the
+// re-extracted changed files and the unchanged-file entities are spliced back
+// in after this pass runs (see `incrementalCarryForwardEntities` in
+// cmd/grafel/index.go). The #6131 repoint below must be able to re-point an
+// edge at such an entity: on that path the import resolver has already bound
+// the importing file's IMPORTS edge to a carried-forward module, and refusing
+// the target purely because it is not in `records` would leave the edge
+// orphaned on exactly the path the repoint exists to protect.
+//
+// extraLive may be nil, which is the full-rebuild case.
+func PruneImportPlaceholdersWithLiveIDs(records []types.EntityRecord, extraLive map[string]bool) ([]types.EntityRecord, []types.RelationshipRecord, PruneImportPlaceholderStats) {
 	var stats PruneImportPlaceholderStats
 	if len(records) == 0 {
 		return records, nil, stats
@@ -2936,6 +2968,55 @@ func PruneImportPlaceholders(records []types.EntityRecord) ([]types.EntityRecord
 		}
 	}
 
+	// Pre-prune INCOMING-edge repoint (issue #6131).
+	//
+	// This function's contract above states that by the time it runs "the
+	// placeholders themselves have no incoming edges". That premise has now
+	// been falsified twice. The first time was #642 — JS/TS relative IMPORTS,
+	// handled by the ToID rewrite above — and the answer chosen then was NOT
+	// to accept a dangling endpoint but to carry the edge across to a durable
+	// entity before dropping the placeholder. This is the second instance and
+	// takes the same answer.
+	//
+	// The shape (measured on the #6130 parity fixture): the Python extractor
+	// emits an import placeholder for `import cperrs_static`, the references
+	// resolver binds `cperrs_static.cp_raise(x)` inside a function to that
+	// placeholder's stamped id, and prune then removes the placeholder. The
+	// full rebuild's REFERENCES edge is left pointing at an id no entity
+	// carries; the incremental path, which never prunes, keeps it bound. That
+	// is the full-vs-incremental divergence #6131 tracks, and the full side is
+	// the wrong one: the pipeline HAD already resolved that import.
+	//
+	// The repair target is therefore not guessed. The same record set holds an
+	// IMPORTS edge emitted by the SAME importer file for the SAME module,
+	// already rewritten by the import resolver to the real in-repo entity
+	// (`SCOPE.Component/file/cphandler_delta.py --IMPORTS--> Module/cperrs_static`).
+	// We index those and re-point incoming edges at them.
+	//
+	// Deliberately narrow, so this can only ever convert a would-be dangling
+	// endpoint into a live one:
+	//   - only placeholders that are actually being PRUNED are considered;
+	//   - only WHOLE-MODULE imports (imported_name == source_module) supply a
+	//     target — a member import (`from m import Thing`) resolves to the
+	//     member, not to the module the placeholder stands for;
+	//   - a module resolving to two different targets within one file is
+	//     ambiguous and supplies nothing;
+	//   - the target must be a surviving record. Re-pointing at another
+	//     pruned placeholder would just move the dangle.
+	// No edge is created or removed and no already-live endpoint is touched.
+	if repoints := buildPlaceholderRepoints(records, prunable, extraLive); len(repoints) > 0 {
+		for i := range records {
+			r := &records[i]
+			for j := range r.Relationships {
+				rel := &r.Relationships[j]
+				if id, ok := repoints[rel.ToID]; ok {
+					rel.ToID = id
+					stats.PlaceholderRefRepoints++
+				}
+			}
+		}
+	}
+
 	// Second pass: compute the post-prune index for each original
 	// index. Original indices that aren't pruned land at
 	// (originalIdx - prunedBefore). Original indices that are pruned
@@ -2983,6 +3064,123 @@ func PruneImportPlaceholders(records []types.EntityRecord) ([]types.EntityRecord
 	stats.PlaceholderKept = stats.Considered - stats.Pruned
 
 	return out, orphanRels, stats
+}
+
+// buildPlaceholderRepoints maps the stamped id of each import placeholder
+// that is about to be PRUNED onto the id of the entity the import resolver
+// has already bound the same whole-module import to, within the same importer
+// file. PruneImportPlaceholders uses it to re-point incoming edges so they
+// survive the prune bound rather than dangling (issue #6131).
+//
+// prunable is indexed in parallel with records and must already be decided:
+// a placeholder that is being KEPT still has a live id, so its incoming edges
+// need no repair, and a target that is itself being pruned would only relocate
+// the dangle.
+//
+// Returns nil when there is nothing to repair, which is the common case.
+func buildPlaceholderRepoints(records []types.EntityRecord, prunable []bool, extraLive map[string]bool) map[string]string {
+	// ambiguous marks a (file, module) pair with conflicting resolutions. It
+	// cannot collide with a real id because ids are hex.
+	const ambiguous = "\x00ambiguous"
+
+	// Survivor lookup. A repoint target must be a record that outlives the
+	// prune; anything else (an `ext:` qualified name, a raw module string, an
+	// id belonging to a pruned placeholder) supplies no target.
+	survivor := make(map[string]bool, len(records)+len(extraLive))
+	for i := range records {
+		if id := records[i].ID; id != "" && !prunable[i] {
+			survivor[id] = true
+		}
+	}
+	for id := range extraLive {
+		if id != "" {
+			survivor[id] = true
+		}
+	}
+
+	// Placeholders being pruned, keyed by importer file then module string.
+	// Nothing to repair if there are none.
+	type phKey struct{ file, module string }
+	phIDs := make(map[phKey][]string)
+	for i := range records {
+		r := &records[i]
+		if !prunable[i] || r.ID == "" {
+			continue
+		}
+		if !(r.Kind == "SCOPE.Component" && r.Subtype == "import") {
+			continue
+		}
+		module := r.Name
+		if r.Properties != nil {
+			if m := r.Properties["module"]; m != "" {
+				module = m
+			}
+		}
+		file := normalizePath(r.SourceFile)
+		if module == "" || file == "" {
+			continue
+		}
+		k := phKey{file: file, module: module}
+		phIDs[k] = append(phIDs[k], r.ID)
+	}
+	if len(phIDs) == 0 {
+		return nil
+	}
+
+	// Resolved whole-module IMPORTS edges, keyed the same way.
+	resolved := make(map[phKey]string, len(phIDs))
+	for i := range records {
+		r := &records[i]
+		file := normalizePath(r.SourceFile)
+		if file == "" {
+			continue
+		}
+		for j := range r.Relationships {
+			rel := &r.Relationships[j]
+			if rel.Kind != importRelKind {
+				continue
+			}
+			module := rel.Properties.Get("source_module")
+			if module == "" {
+				continue
+			}
+			// Whole-module import only. `from m import Thing` resolves to
+			// Thing, which is not what the placeholder for `m` stands for.
+			if rel.Properties.Get("imported_name") != module {
+				continue
+			}
+			k := phKey{file: file, module: module}
+			if _, want := phIDs[k]; !want {
+				continue
+			}
+			if !survivor[rel.ToID] {
+				continue
+			}
+			if prev, seen := resolved[k]; seen && prev != rel.ToID {
+				resolved[k] = ambiguous
+				continue
+			}
+			resolved[k] = rel.ToID
+		}
+	}
+
+	out := make(map[string]string, len(phIDs))
+	for k, ids := range phIDs {
+		target, ok := resolved[k]
+		if !ok || target == ambiguous {
+			continue
+		}
+		for _, id := range ids {
+			if id == target {
+				continue
+			}
+			out[id] = target
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // resolveRelativeImportTarget resolves a JS/TS relative import string

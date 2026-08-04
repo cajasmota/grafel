@@ -1524,6 +1524,266 @@ func TestPruneImportPlaceholders_RewritesIMPORTSToFileCarrier(t *testing.T) {
 	}
 }
 
+// TestPruneImportPlaceholders_RepointsIncomingEdgesToResolvedImport is the
+// #6131 post-prune half.
+//
+// PruneImportPlaceholders' contract (see its doc comment) asserts that by the
+// time it runs "the placeholders themselves have no incoming edges". That
+// premise has been falsified twice. The first time — #642, JS/TS relative
+// IMPORTS — the answer was NOT to accept the dangling endpoint but to rewrite
+// the edge before dropping the placeholder. This is the second: the Python
+// references-resolver binds a module reference (`cperrs_static.cp_raise(x)`)
+// to the import placeholder, prune drops the placeholder, and the REFERENCES
+// edge is left pointing at an id no entity carries.
+//
+// The repair target is not guessed: the SAME record set already holds an
+// IMPORTS edge, emitted by the SAME importer file for the SAME source_module,
+// that the import resolver has already bound to the real in-repo entity. The
+// prune re-points incoming edges at that, so the graph keeps the resolution
+// the pipeline had already computed instead of discarding it.
+//
+// The two incoming edges below originate from ONE entity and target TWO
+// different placeholders on purpose: an assertion keyed only on (Kind, FromID)
+// collapses them into one and passes while half the fix is missing.
+func TestPruneImportPlaceholders_RepointsIncomingEdgesToResolvedImport(t *testing.T) {
+	const (
+		handlerFile = "cphandler_delta.py"
+		modErrsID   = "1111111111111111" // Module cperrs_static (real, in-repo)
+		modProdID   = "2222222222222222" // Module cpprod_static (real, in-repo)
+		classProdID = "7777777777777777" // class CpProducer, member-imported
+		fileCarrier = "3333333333333333" // SCOPE.Component file for the importer
+		phErrsID    = "4444444444444444" // import placeholder for cperrs_static
+		phProdID    = "5555555555555555" // import placeholder for cpprod_static
+		handlerFn   = "6666666666666666" // the function holding the REFERENCES
+	)
+	records := []types.EntityRecord{
+		{ID: modErrsID, Name: "cperrs_static", Kind: "Module", Subtype: "package", SourceFile: "cperrs_static.py"},
+		{ID: modProdID, Name: "cpprod_static", Kind: "Module", Subtype: "package", SourceFile: "cpprod_static.py"},
+		{ID: classProdID, Name: "CpProducer", Kind: "Controller", Subtype: "class", SourceFile: "cpprod_static.py"},
+		{
+			ID: fileCarrier, Name: handlerFile, Kind: "SCOPE.Component", Subtype: "file", SourceFile: handlerFile,
+			// Already resolved by the import-aware resolver: these are the
+			// bindings the prune must propagate rather than discard.
+			Relationships: []types.RelationshipRecord{
+				{FromID: fileCarrier, ToID: modErrsID, Kind: "IMPORTS", Properties: types.PropsFromMap(map[string]string{"source_module": "cperrs_static", "imported_name": "cperrs_static", "local_name": "cperrs_static"})},
+				{FromID: fileCarrier, ToID: modProdID, Kind: "IMPORTS", Properties: types.PropsFromMap(map[string]string{"source_module": "cpprod_static", "imported_name": "cpprod_static", "local_name": "cpprod_static"})},
+				// `from cpprod_static import CpProducer` — SAME source_module,
+				// DIFFERENT target. The placeholder stands for the module, not
+				// the member, so an implementation that keyed on source_module
+				// alone would either bind the REFERENCES edge to the class or
+				// declare the pair ambiguous and repair nothing. Both are
+				// caught by the assertions below; this row is what makes the
+				// whole-module guard load-bearing rather than decorative.
+				{FromID: fileCarrier, ToID: classProdID, Kind: "IMPORTS", Properties: types.PropsFromMap(map[string]string{"source_module": "cpprod_static", "imported_name": "CpProducer", "local_name": "CpProducer"})},
+			},
+		},
+		{ID: phErrsID, Name: "cperrs_static", Kind: "SCOPE.Component", Subtype: "import", SourceFile: handlerFile},
+		{ID: phProdID, Name: "cpprod_static", Kind: "SCOPE.Component", Subtype: "import", SourceFile: handlerFile},
+		{
+			ID: handlerFn, Name: "cp_handle", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: handlerFile,
+			Relationships: []types.RelationshipRecord{
+				{FromID: handlerFn, ToID: phErrsID, Kind: "REFERENCES"},
+				{FromID: handlerFn, ToID: phProdID, Kind: "REFERENCES"},
+			},
+		},
+	}
+
+	out, _, stats := PruneImportPlaceholders(records)
+
+	if stats.Pruned != 2 {
+		t.Fatalf("expected both placeholders pruned, got %d", stats.Pruned)
+	}
+	if stats.PlaceholderRefRepoints != 2 {
+		t.Errorf("PlaceholderRefRepoints = %d, want 2 (one per incoming REFERENCES edge)", stats.PlaceholderRefRepoints)
+	}
+
+	// Multiset over BOTH endpoints. Keying on (Kind, FromID) alone would let a
+	// fix that repaired only the first edge pass.
+	live := make(map[string]bool, len(out))
+	for _, e := range out {
+		live[e.ID] = true
+	}
+	got := map[string]int{}
+	for _, e := range out {
+		for _, rel := range e.Relationships {
+			if rel.Kind != "REFERENCES" {
+				continue
+			}
+			got[e.ID+"|"+rel.FromID+"->"+rel.ToID]++
+		}
+	}
+	want := map[string]int{
+		handlerFn + "|" + handlerFn + "->" + modErrsID: 1,
+		handlerFn + "|" + handlerFn + "->" + modProdID: 1,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("REFERENCES multiset = %v, want %v", got, want)
+	}
+	for k, n := range want {
+		if got[k] != n {
+			t.Errorf("REFERENCES %s occurs %d time(s), want %d (full multiset: %v)", k, got[k], n, got)
+		}
+	}
+	// The point of the exercise: nothing dangles.
+	for _, e := range out {
+		for _, rel := range e.Relationships {
+			if rel.Kind == "REFERENCES" && !live[rel.ToID] {
+				t.Errorf("REFERENCES from %s left dangling at %q after prune", e.ID, rel.ToID)
+			}
+		}
+	}
+}
+
+// TestPruneImportPlaceholders_RefusesAmbiguousRepointTarget pins the second
+// guard on the #6131 repoint: when one importer file carries two whole-module
+// IMPORTS edges for the SAME module that resolved to DIFFERENT entities — the
+// shape a multi-carrier language produces when a module name maps to both a
+// package entity and a file entity — there is no single answer, and guessing
+// one would silently re-point a reference at the wrong target. The edge is
+// left exactly as the prune leaves it today instead.
+//
+// Without this case a last-write-wins implementation passes every other test
+// in this file.
+func TestPruneImportPlaceholders_RefusesAmbiguousRepointTarget(t *testing.T) {
+	const (
+		f      = "app.py"
+		modA   = "1111111111111111"
+		modB   = "2222222222222222"
+		fileC  = "3333333333333333"
+		ph     = "4444444444444444"
+		fn     = "6666666666666666"
+		module = "shared"
+	)
+	whole := func(to string) types.RelationshipRecord {
+		return types.RelationshipRecord{FromID: fileC, ToID: to, Kind: "IMPORTS",
+			Properties: types.PropsFromMap(map[string]string{"source_module": module, "imported_name": module})}
+	}
+	records := []types.EntityRecord{
+		{ID: modA, Name: module, Kind: "Module", Subtype: "package", SourceFile: "shared/__init__.py"},
+		{ID: modB, Name: module + ".py", Kind: "SCOPE.Component", Subtype: "file", SourceFile: "shared.py"},
+		{
+			ID: fileC, Name: f, Kind: "SCOPE.Component", Subtype: "file", SourceFile: f,
+			Relationships: []types.RelationshipRecord{whole(modA), whole(modB)},
+		},
+		{ID: ph, Name: module, Kind: "SCOPE.Component", Subtype: "import", SourceFile: f},
+		{
+			ID: fn, Name: "handle", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: f,
+			Relationships: []types.RelationshipRecord{{FromID: fn, ToID: ph, Kind: "REFERENCES"}},
+		},
+	}
+	out, _, stats := PruneImportPlaceholders(records)
+	if stats.PlaceholderRefRepoints != 0 {
+		t.Errorf("PlaceholderRefRepoints = %d, want 0 — two whole-module resolutions for %q, no single answer",
+			stats.PlaceholderRefRepoints, module)
+	}
+	for _, e := range out {
+		if e.ID != fn {
+			continue
+		}
+		if len(e.Relationships) != 1 || e.Relationships[0].ToID != ph {
+			t.Errorf("REFERENCES = %+v, want ToID %q left untouched rather than guessed", e.Relationships, ph)
+		}
+	}
+}
+
+// TestPruneImportPlaceholdersWithLiveIDs_AcceptsCarryForwardTarget covers the
+// incremental indexer's shape, where `records` holds ONLY the re-extracted
+// changed file and the import target lives in the carried-forward portion of
+// the previous graph that is spliced back in after this pass.
+//
+// The resolver has already bound the IMPORTS edge to that carried-forward id
+// (it resolves against merged + carry-forward), so the repoint target is just
+// as real as on a full rebuild — it is simply not in this slice. Judging
+// survival by `records` alone therefore orphans the edge on exactly the path
+// the repoint exists to protect, which is what made the #6131 fix fail the
+// Path-B half of the parity gate before extraLive was threaded through.
+//
+// The nil-extraLive leg is the control: it pins that the parameter is what
+// makes the difference, so a change that ignored it could not pass.
+func TestPruneImportPlaceholdersWithLiveIDs_AcceptsCarryForwardTarget(t *testing.T) {
+	const (
+		f       = "cphandler_delta.py"
+		modErrs = "1111111111111111" // carried forward — NOT in records
+		fileC   = "3333333333333333"
+		ph      = "4444444444444444"
+		fn      = "6666666666666666"
+	)
+	build := func() []types.EntityRecord {
+		return []types.EntityRecord{
+			{
+				ID: fileC, Name: f, Kind: "SCOPE.Component", Subtype: "file", SourceFile: f,
+				Relationships: []types.RelationshipRecord{
+					{FromID: fileC, ToID: modErrs, Kind: "IMPORTS", Properties: types.PropsFromMap(map[string]string{"source_module": "cperrs_static", "imported_name": "cperrs_static"})},
+				},
+			},
+			{ID: ph, Name: "cperrs_static", Kind: "SCOPE.Component", Subtype: "import", SourceFile: f},
+			{
+				ID: fn, Name: "cp_handle", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: f,
+				Relationships: []types.RelationshipRecord{{FromID: fn, ToID: ph, Kind: "REFERENCES"}},
+			},
+		}
+	}
+
+	out, _, stats := PruneImportPlaceholdersWithLiveIDs(build(), map[string]bool{modErrs: true})
+	if stats.PlaceholderRefRepoints != 1 {
+		t.Errorf("with carry-forward live set: PlaceholderRefRepoints = %d, want 1", stats.PlaceholderRefRepoints)
+	}
+	for _, e := range out {
+		if e.ID != fn {
+			continue
+		}
+		if len(e.Relationships) != 1 || e.Relationships[0].ToID != modErrs {
+			t.Errorf("REFERENCES = %+v, want ToID re-pointed to the carried-forward module %q", e.Relationships, modErrs)
+		}
+	}
+
+	// Control: without the carry-forward set the target is indistinguishable
+	// from a dead id and must be refused.
+	_, _, nilStats := PruneImportPlaceholdersWithLiveIDs(build(), nil)
+	if nilStats.PlaceholderRefRepoints != 0 {
+		t.Errorf("without carry-forward live set: PlaceholderRefRepoints = %d, want 0 — "+
+			"the target is not known to survive, so re-pointing at it would only move the dangle",
+			nilStats.PlaceholderRefRepoints)
+	}
+}
+
+// TestPruneImportPlaceholders_LeavesUnresolvableIncomingEdgesAlone pins the
+// boundary of the #6131 repair: the re-point fires ONLY when the pipeline has
+// already resolved the same (importer file, module) pair to a real entity. A
+// genuinely third-party import has no such resolution, so there is nothing to
+// propagate and the edge is left exactly as the full rebuild leaves it today.
+// Without this, the repair would be free to invent a binding.
+func TestPruneImportPlaceholders_LeavesUnresolvableIncomingEdgesAlone(t *testing.T) {
+	const (
+		f     = "app.py"
+		fileC = "3333333333333333"
+		ph    = "4444444444444444"
+		fn    = "6666666666666666"
+	)
+	records := []types.EntityRecord{
+		{ID: fileC, Name: f, Kind: "SCOPE.Component", Subtype: "file", SourceFile: f},
+		{ID: ph, Name: "requests", Kind: "SCOPE.Component", Subtype: "import", SourceFile: f},
+		{
+			ID: fn, Name: "handle", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: f,
+			Relationships: []types.RelationshipRecord{
+				{FromID: fn, ToID: ph, Kind: "REFERENCES"},
+			},
+		},
+	}
+	out, _, stats := PruneImportPlaceholders(records)
+	if stats.PlaceholderRefRepoints != 0 {
+		t.Errorf("PlaceholderRefRepoints = %d, want 0 — no resolved IMPORTS edge exists for `requests`", stats.PlaceholderRefRepoints)
+	}
+	for _, e := range out {
+		if e.ID != fn {
+			continue
+		}
+		if len(e.Relationships) != 1 || e.Relationships[0].ToID != ph {
+			t.Errorf("REFERENCES edge was altered: %+v, want ToID %q untouched", e.Relationships, ph)
+		}
+	}
+}
+
 // TestResolveRelativeImportTarget_TriesAllJSExtensions guards the
 // extension-search ordering inside resolveRelativeImportTarget so a
 // future change to jsExtensions doesn't silently stop resolving

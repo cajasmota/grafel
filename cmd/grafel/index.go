@@ -5280,13 +5280,30 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 	// or returns them as standalone rels when no carrier exists.
 	// Cross-repo linker (#566/#570/#578) match targets (file-level
 	// entities and qualified ext:<module>:<name>) are untouched.
-	prunedMerged, pruneOrphanRels, pruneStats := resolve.PruneImportPlaceholders(merged)
+	// #6131 — the prune's incoming-edge repoint must be able to target an
+	// entity that lives in the carried-forward (unchanged-file) portion of an
+	// incremental run: `merged` holds only the re-extracted files, but the
+	// resolver above already bound this run's IMPORTS edges against
+	// `indexEntities`, which includes them. Without this set the repoint would
+	// reject those targets as non-surviving and orphan the edge on exactly the
+	// path it exists to protect. Empty (nil) on a full rebuild.
+	var pruneExtraLive map[string]bool
+	if n := len(i.incrementalCarryForwardEntities); n > 0 {
+		pruneExtraLive = make(map[string]bool, n)
+		for k := range i.incrementalCarryForwardEntities {
+			if id := i.incrementalCarryForwardEntities[k].ID; id != "" {
+				pruneExtraLive[id] = true
+			}
+		}
+	}
+	prunedMerged, pruneOrphanRels, pruneStats := resolve.PruneImportPlaceholdersWithLiveIDs(merged, pruneExtraLive)
 	merged = prunedMerged
 	if pruneStats.Considered > 0 {
 		fmt.Fprintf(os.Stderr,
-			"import-placeholder-prune: considered=%d pruned=%d rels_hoisted=%d rels_orphaned=%d kept=%d edge_toid_rewrites=%d\n",
+			"import-placeholder-prune: considered=%d pruned=%d rels_hoisted=%d rels_orphaned=%d kept=%d edge_toid_rewrites=%d ref_repoints=%d\n",
 			pruneStats.Considered, pruneStats.Pruned, pruneStats.RelsHoisted,
-			pruneStats.RelsOrphaned, pruneStats.PlaceholderKept, pruneStats.EdgeToIDRewrites)
+			pruneStats.RelsOrphaned, pruneStats.PlaceholderKept, pruneStats.EdgeToIDRewrites,
+			pruneStats.PlaceholderRefRepoints)
 	}
 	if len(pruneOrphanRels) > 0 {
 		// Migrate to the standalone pass2Rels stream so the
