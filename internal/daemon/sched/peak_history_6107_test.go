@@ -45,6 +45,16 @@ func TestInProcessRunDoesNotFeedRSSHistory(t *testing.T) {
 		// tax a shared host.
 		return nil
 	})
+	// Honest scope: with no sampler left, observedPeakMB is 0 on this path, and
+	// it is the `observedPeakMB > 0` half of the Record condition that stops the
+	// write here. Dropping the peakSrc == peakSrcChildMaxRSS half alone breaks
+	// nothing and no mutation of it fails this test. That gate is defense in
+	// depth for a future second source of peaks, and the test that shows it is
+	// load-bearing has to reintroduce such a source first (see the M5/M6 pair in
+	// the commit message: M5 adds a daemon-delta source and this test still
+	// passes; M6 adds it AND drops the gate, and this test fails). What is
+	// pinned below is the end-to-end invariant — an in-process run persists
+	// nothing — not the specific clause that enforces it.
 
 	s.runIndex(jobToken{repoPath: repo, ref: "main", commit: "c0"})
 
@@ -237,7 +247,10 @@ func TestRSSHistoryRelaxesTowardRecentPeaks(t *testing.T) {
 func TestRSSHistoryDoesNotExpireByAge(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rss-history.json")
 	ancient := time.Now().UTC().Add(-365 * 24 * time.Hour)
-	body := `{"/repo-ancient": {"peak_rss_mb": 900, "last_index": "` +
+	// Tagged child_maxrss on purpose: an untagged entry is dropped on load by
+	// the src check, which would make this test pass for the wrong reason and
+	// assert nothing about age at all.
+	body := `{"/repo-ancient": {"src": "child_maxrss", "peak_rss_mb": 900, "last_index": "` +
 		ancient.Format(time.RFC3339Nano) + `"}}`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -267,7 +280,9 @@ func TestRSSHistoryDoesNotExpireByAge(t *testing.T) {
 func TestRSSHistoryStaleEntryIsNotAmplified(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rss-history.json")
 	old := time.Now().UTC().Add(-60 * 24 * time.Hour)
-	body := `{"/repo-amplify": {"peak_rss_mb": 4000, "last_index": "` +
+	// Tagged, for the same reason as above: this test is about what Record does
+	// with an OLD entry, so the entry has to survive load to be tested.
+	body := `{"/repo-amplify": {"src": "child_maxrss", "peak_rss_mb": 4000, "last_index": "` +
 		old.Format(time.RFC3339Nano) + `"}}`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -290,5 +305,65 @@ func TestRSSHistoryStaleEntryIsNotAmplified(t *testing.T) {
 	}
 	if after < honest {
 		t.Fatalf("Predict=%d fell below the measurement just taken (%d)", after, honest)
+	}
+}
+
+// TestRSSHistoryDropsLegacyUntaggedEntries covers the gap between "only
+// child_maxrss is recorded from now on" and "the file contains only
+// child_maxrss". The first was true the moment the gate landed; the second was
+// not, and with the TTL removed nothing else would ever have made it true.
+//
+// This is not hypothetical. The development host's live history file held
+// peak_rss_mb 1593 for a large monorepo — the fabricated daemon-RSS-delta this
+// issue is about, written by the pre-#5954 in-process sampler — which would
+// have gone on governing that repo's admission until its next FULL subprocess
+// index, potentially months away given incremental is default-ON.
+//
+// The check is deliberately a one-shot on load, keyed on the measure and not on
+// age, so it cannot reintroduce the resurrection defect that killed the TTL.
+func TestRSSHistoryDropsLegacyUntaggedEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	body := `{
+  "/repo-legacy":  {"peak_rss_mb": 1593, "last_index": "2026-08-04T19:18:08Z"},
+  "/repo-foreign": {"peak_rss_mb": 900,  "last_index": "2026-08-04T19:18:08Z", "src": "daemon_rss_delta"},
+  "/repo-tagged":  {"peak_rss_mb": 812,  "last_index": "2026-08-04T19:18:08Z", "src": "child_maxrss"}
+}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := LoadRSSHistory(path)
+
+	if got := h.Predict("/repo-legacy"); got != 0 {
+		t.Fatalf("Predict(/repo-legacy)=%d; an entry with no src predates the gate "+
+			"entirely and must not govern admission — untagged is not 'probably fine'", got)
+	}
+	if got := h.Predict("/repo-foreign"); got != 0 {
+		t.Fatalf("Predict(/repo-foreign)=%d; a daemon-baselined entry must be dropped "+
+			"on load, not merely refused on write", got)
+	}
+	if got := h.Predict("/repo-tagged"); got != 812 {
+		t.Fatalf("Predict(/repo-tagged)=%d; want 812. Dropping legitimate child_maxrss "+
+			"entries would throw away the only real calibration this system has", got)
+	}
+}
+
+// TestRSSHistoryRecordStampsSrc pins the other half: a value written today must
+// survive the load-time check, or the series would silently empty itself on
+// every daemon restart and the predictor would never keep a measurement.
+func TestRSSHistoryRecordStampsSrc(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	h := LoadRSSHistory(path)
+	h.Record("/repo-roundtrip", 700)
+
+	if got := LoadRSSHistory(path).Predict("/repo-roundtrip"); got != 700 {
+		t.Fatalf("Predict after write+reload=%d; want 700 — Record must stamp the src it "+
+			"is gated on, or its own writes fail the load-time check", got)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"src": "`+peakSrcChildMaxRSS+`"`) {
+		t.Fatalf("history file carries no src tag:\n%s", b)
 	}
 }

@@ -85,10 +85,22 @@ func PredictRSS(repoPath string) int64 {
 //
 // The round-1 concern the TTL was meant to answer — one contaminated sample
 // governing admission forever — is addressed at the source instead: only
-// child_maxrss is ever recorded (see runIndex), so the contaminating measure
-// no longer exists. What remains permanent is a legitimate measurement of this
-// repo, which is what the series is for. LastIndex is still written, and is
-// still read by nothing; it is on-disk forensics for whoever inspects the file.
+// child_maxrss is ever recorded (see runIndex), so the contaminating measure is
+// no longer PRODUCED. That is a claim about new writes and says nothing about
+// entries already on disk, which is why every entry now carries the src that
+// produced it and LoadRSSHistory drops the ones that are not child_maxrss. This
+// matters concretely: a live file on the development host held
+//
+//	"<a large monorepo>": {"peak_rss_mb": 1593, ...}
+//
+// written by the pre-#5954 in-process sampler — the same fabricated
+// daemon-RSS-delta this issue is about — and with the TTL gone nothing else
+// would ever have invalidated it. The check is a one-shot on load and is NOT
+// age-based, so it cannot reintroduce the resurrection defect round 2 found.
+//
+// What remains permanent after that is a legitimate measurement of this repo,
+// which is what the series is for. LastIndex is still written and read by
+// nothing; it is on-disk forensics for whoever inspects the file.
 
 // rssHistoryRelaxDivisor controls how fast a recorded peak walks back toward
 // smaller observations. See Record.
@@ -107,6 +119,14 @@ type RSSHistory struct {
 type RSSHistoryEntry struct {
 	PeakRSSMB int64     `json:"peak_rss_mb"`
 	LastIndex time.Time `json:"last_index"`
+	// Src names the measure PeakRSSMB is, using the same vocabulary as the
+	// completion line's peak_rss_src. Only peakSrcChildMaxRSS is admissible;
+	// LoadRSSHistory drops anything else, including entries written before this
+	// field existed (empty Src), because those predate the gate and can be the
+	// daemon-RSS-delta this issue exists to stop trusting. Untagged is not
+	// "unknown but probably fine" — every untagged entry was written by code
+	// that had no gate at all.
+	Src string `json:"src,omitempty"`
 }
 
 // LoadRSSHistory reads the history file. A missing file is not an
@@ -122,6 +142,16 @@ func LoadRSSHistory(path string) *RSSHistory {
 		return h
 	}
 	_ = json.Unmarshal(b, &h.data)
+	// Drop anything not stamped as a child high-water mark. See the note on
+	// expiry above: this is the one-shot, non-age-based invalidation that makes
+	// "only child_maxrss is recorded" true of the FILE and not merely of future
+	// writes. A dropped entry costs one re-measure; a kept one governs
+	// admission indefinitely.
+	for repo, e := range h.data {
+		if e.Src != peakSrcChildMaxRSS {
+			delete(h.data, repo)
+		}
+	}
 	return h
 }
 
@@ -169,6 +199,11 @@ func (h *RSSHistory) Record(repoPath string, peakMB int64) {
 		}
 	}
 	prev.LastIndex = time.Now().UTC()
+	// Stamp the measure. runIndex is the only caller and it is gated on
+	// peakSrc == peakSrcChildMaxRSS, so this records what that gate already
+	// guarantees — but it records it ON DISK, where the next process can check
+	// it instead of trusting that every past build had the same gate.
+	prev.Src = peakSrcChildMaxRSS
 	h.data[repoPath] = prev
 	b, _ := json.MarshalIndent(h.data, "", "  ")
 	h.mu.Unlock()

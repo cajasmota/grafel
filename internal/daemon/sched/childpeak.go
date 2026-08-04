@@ -87,6 +87,14 @@ var childPeaks = struct {
 // recordChildPeakRSSMB stores the high-water RSS of the index child that just
 // exited for repoPath. Non-positive values are dropped: "no measurement" must
 // stay distinguishable from "measured zero".
+//
+// The mb <= 0 half of that guard is currently UNREACHABLE — maxRSSBytes already
+// rejects Maxrss <= 0, so no caller can get here with a non-positive figure, and
+// a mutation removing it kills nothing. It stays because it is what enforces the
+// honesty invariant at this layer rather than at a caller's: a recorded 0 would
+// surface as "peak_rss_mb=0 peak_rss_src=child_maxrss", which is precisely the
+// false number — a confident zero — that #6107 exists to eliminate. Deleting it
+// would make that outcome one refactor away instead of impossible.
 func recordChildPeakRSSMB(repoPath string, mb int64) {
 	if repoPath == "" || mb <= 0 {
 		return

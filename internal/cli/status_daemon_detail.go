@@ -134,6 +134,21 @@ func printDaemonDetail(w io.Writer, st proto.StatusReply) {
 			if r.IndexedCommitShort != "" {
 				fmt.Fprintf(w, "  commit=%s at_head=%v", r.IndexedCommitShort, r.AtHead)
 			}
+			// #6107: the measured peak reached the wire but was never
+			// rendered, so the number that governs this repo's admission was
+			// invisible. That matters more now there is no TTL: a wrong entry
+			// has no automatic way to clear, and an operator cannot use the
+			// manual escape hatch (delete the entry) without first being able
+			// to see it. Always print the src alongside — the peak survives
+			// runs that measured nothing, so without it a value carried over
+			// from an older full index reads as a fresh one.
+			if r.LastPeakMB > 0 {
+				src := r.LastPeakSrc
+				if src == "" {
+					src = "unknown"
+				}
+				fmt.Fprintf(w, "  last_peak=%dMB(%s)", r.LastPeakMB, src)
+			}
 			fmt.Fprintln(w)
 		}
 	}

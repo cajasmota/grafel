@@ -333,9 +333,9 @@ func TestChildMaxRSSMatchesKnownAllocation(t *testing.T) {
 	// The only hazard the band must tolerate is the child's own runtime and
 	// test binary (~10-30 MiB on top of 256), and this child HOLDS its
 	// allocation rather than churning it — measured 261 MiB for 256 MiB
-	// touched, i.e. 1.02x. 0.8x..1.5x leaves ~4x the observed headroom while
-	// still rejecting the unit errors: a KiB-as-bytes read lands at 0.25x and
-	// a bytes-as-KiB read at 1024x.
+	// touched, i.e. 1.02x. So 0.8x..1.5x sits ~1.5x above what is observed
+	// while still rejecting the unit errors: a KiB-as-bytes read lands at
+	// 0.25x and a bytes-as-KiB read at 1024x.
 	//
 	// Under -race the child is THIS binary with ThreadSanitizer's shadow
 	// memory resident alongside the allocation, which is not a property of the
@@ -343,21 +343,37 @@ func TestChildMaxRSSMatchesKnownAllocation(t *testing.T) {
 	// -race` on every v* tag push) runs exactly this binary, so the band has to
 	// account for it or the gate cannot run at all.
 	//
-	// The inflation is large AND variable: 8 samples on an idle-to-moderate
-	// darwin/arm64 host gave 558, 578, 689, 716, 749, 762, 793, 794 MiB for the
-	// same 256 MiB held — 2.18x to 3.10x. So under instrumentation this test
-	// deliberately checks UNIT SANITY ONLY (0.5x..8x), which still rejects both
-	// scaling errors it was written for: a KiB-as-bytes read lands at 0.25x and
-	// a bytes-as-KiB read at 1024x.
+	// The inflation is large AND variable: samples on darwin/arm64 across two
+	// machines ranged 558-794 MiB for the same 256 MiB held (2.18x-3.10x), with
+	// an independent run clustering at 2.99x-3.10x. Against the 8x ceiling that
+	// is ~2.6x of real headroom. Under instrumentation this test therefore
+	// checks UNIT SANITY ONLY, which still rejects both scaling errors it was
+	// written for. The Linux TSan bound (~5-6x shadow memory) is a PROJECTION,
+	// not something measured here; Windows is moot because the test skips.
 	//
-	// It does NOT resolve a 2x product error under -race, and pretending
-	// otherwise would be false precision — a 2x regression measured 1148 MiB
-	// here, inside the spread a clean build can reach on a loaded runner. That
-	// resolution belongs to the uninstrumented band above, which runs on the
-	// non-race CI leg (`go test -count=1` on PRs and ordinary dispatch) and on
-	// every local run. Choosing a ceiling tight enough to catch 2x under -race
-	// would put the release gate ~1.3x from a false failure, which is how this
-	// test broke the gate in the first place.
+	// It does NOT resolve a 2x product error under -race — a 2x regression
+	// measured 1148 MiB, inside the range a clean instrumented build reaches on
+	// a loaded runner. Choosing a ceiling tight enough to catch that would put
+	// the release gate ~1.3x from a false failure, which is how this test broke
+	// the gate in the first place.
+	//
+	// Which leaves the real detection surface for a 2x regression in
+	// maxRSSBytes, stated exactly, because an earlier version of this comment
+	// got it wrong in the direction that flatters the test:
+	//
+	//	a plain `go test` (NO -race) of this package — and nothing else.
+	//
+	// Every automatic CI path takes the loose band. .github/workflows/test.yml
+	// has no `pull_request` trigger at all; its only PR path is
+	// `pull_request_target: [labeled]` gated on `ci:full`, and that same label
+	// is one of the conditions selecting -race. `workflow_dispatch` declares
+	// `race` with `default: true`. So the non-race leg is reachable ONLY by a
+	// manual dispatch that explicitly sets race=false. windows.yml excludes
+	// internal/daemon (and this test skips on Windows anyway); coverage-docs.yml
+	// is the only workflow with a `pull_request` trigger and it runs no tests.
+	// The file header's own advice — "Local `go test -race` is the routine
+	// backstop" — also takes the loose band. Tightening this band is still
+	// worth it, but it buys local pre-commit detection, not gate coverage.
 	lo, hi := int64(childMB)*8/10, int64(childMB)*15/10
 	band := "0.8x..1.5x"
 	if raceInstrumented {
