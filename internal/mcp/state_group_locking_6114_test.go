@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -414,4 +415,184 @@ func mutateGroup(t *testing.T, s *State, name string, fn func(*LoadedGroup)) {
 		t.Fatalf("group %q is not resident", name)
 	}
 	fn(g)
+}
+
+// TestUnservableRepoRecoversOnTheNextReload pins the recovery half of the
+// unservable contract, which is the half that is easy to get wrong and
+// invisible if you only assert the transition.
+//
+// unservableRepo must not carry contentHash forward. reloadAllLocked's inner
+// fast path is "hash matches what we last parsed → identical bytes → skip the
+// reparse", and it advances mtime WITHOUT ever assigning Doc. A successor that
+// inherited the predecessor's hash is therefore stranded: the graph on disk is
+// valid and untouched, every reload agrees there is nothing to do, and the repo
+// reports unservable forever — until the bytes happen to change.
+//
+// The fixture deliberately does NOT rewrite the graph: recovery must come from
+// the reparse alone, against byte-identical on-disk content.
+func TestUnservableRepoRecoversOnTheNextReload(t *testing.T) {
+	t.Setenv(daemon.EnvRoot, t.TempDir())
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+
+	repoDir := gitRepoForDiscovery(t)
+	mainDir := daemon.StateDirForRepoRef(repoDir, "main")
+	genPath, err := fbwriter.WriteGraphGen(mainDir, genDocWithMarker("alive"))
+	if err != nil {
+		t.Fatalf("publish graph: %v", err)
+	}
+	st := NewState(&Registry{Groups: map[string]RegistryGroup{
+		"test": {Repos: map[string]RegistryRepo{"r": {Path: repoDir}}},
+	}})
+	t.Cleanup(st.Close)
+	if _, _, err := st.reloadLocked(); err != nil {
+		t.Fatalf("initial reload: %v", err)
+	}
+
+	st.mu.Lock()
+	pred := st.groups["test"].Repos["r"]
+	st.mu.Unlock()
+	if pred == nil || pred.Doc == nil {
+		t.Fatal("fixture degenerate: repo not loaded with a Doc")
+	}
+	// Non-vacuity: the predecessor must actually carry a content hash, or
+	// zeroing it in the successor proves nothing.
+	if pred.contentHash == 0 {
+		t.Fatal("vacuous: predecessor has no contentHash, so the fast path could not have stranded it")
+	}
+	fiBefore, err := os.Stat(genPath)
+	if err != nil {
+		t.Fatalf("stat graph: %v", err)
+	}
+
+	// Mark the repo unservable through the successor protocol.
+	st.mu.Lock()
+	st.groups["test"].Repos["r"] = unservableRepo(pred, "simulated unservable")
+	st.mu.Unlock()
+
+	if lr := st.Group("test").Repos["r"]; lr.Doc != nil || lr.loadErr != "simulated unservable" {
+		t.Fatalf("successor is not in the unservable shape: Doc=%v loadErr=%q", lr.Doc, lr.loadErr)
+	}
+
+	// The next reload must bring it back, with no change on disk.
+	if _, _, err := st.reloadLocked(); err != nil {
+		t.Fatalf("recovery reload: %v", err)
+	}
+	fiAfter, err := os.Stat(genPath)
+	if err != nil {
+		t.Fatalf("stat graph after: %v", err)
+	}
+	// Non-vacuity: recovery must be attributable to the reparse, not to the
+	// graph having changed underneath us.
+	if !fiBefore.ModTime().Equal(fiAfter.ModTime()) || fiBefore.Size() != fiAfter.Size() {
+		t.Fatalf("vacuous: the on-disk graph changed across the recovery reload (%v/%d -> %v/%d)",
+			fiBefore.ModTime(), fiBefore.Size(), fiAfter.ModTime(), fiAfter.Size())
+	}
+
+	lr := st.Group("test").Repos["r"]
+	if lr == nil || lr.Doc == nil {
+		t.Fatalf("repo is permanently stranded: reload left Doc=%v loadErr=%q against a valid, untouched graph "+
+			"— unservableRepo must zero contentHash so the reparse is not skipped", lr.Doc, lr.loadErr)
+	}
+	if lr.loadErr != "" {
+		t.Errorf("recovered repo still carries loadErr %q", lr.loadErr)
+	}
+	if _, ok := lr.getByIDOne("alive"); !ok {
+		t.Error("recovered repo does not serve its entity — the Doc was assigned but not usable")
+	}
+}
+
+// TestSnapshotGroupsHandsOutViewsNotLiveGroups covers the SnapshotGroups half of
+// the #6114 change, which otherwise has no test at all: it has no production
+// caller today, so a mutant that reverts it to returning live groups survives
+// the entire suite.
+func TestSnapshotGroupsHandsOutViewsNotLiveGroups(t *testing.T) {
+	st := NewState(&Registry{Groups: map[string]RegistryGroup{
+		"g": {Repos: map[string]RegistryRepo{}},
+	}})
+	lr := &LoadedRepo{Repo: "r"}
+	st.groups["g"] = &LoadedGroup{Name: "g", Repos: map[string]*LoadedRepo{"r": lr}}
+
+	snaps := st.SnapshotGroups()
+	if len(snaps) != 1 {
+		t.Fatalf("SnapshotGroups returned %d groups, want 1", len(snaps))
+	}
+	got := snaps[0]
+
+	live := liveGroup(st, "g")
+	if got == live {
+		t.Fatal("SnapshotGroups returned the LIVE group — an unlocked caller ranging over it races reload's map write (#6114)")
+	}
+	if !got.isView {
+		t.Fatal("SnapshotGroups result is not marked as a view")
+	}
+	// The repo map must be a distinct map: mutating the live one must not be
+	// visible through an already-taken snapshot. This is the actual property —
+	// pointer inequality alone would also hold for a copy that shared the map.
+	st.mu.Lock()
+	st.groups["g"].Repos["added-later"] = &LoadedRepo{Repo: "added-later"}
+	st.mu.Unlock()
+	if _, leaked := got.Repos["added-later"]; leaked {
+		t.Fatal("SnapshotGroups shared the live repo map — a later reload's insert is visible through an in-flight snapshot")
+	}
+	// Repos are shared BY POINTER (that is deliberate, and what keeps index
+	// memoization and handle lifetime intact).
+	if got.Repos["r"] != lr {
+		t.Fatal("SnapshotGroups deep-copied the repo record; it must share *LoadedRepo by pointer")
+	}
+}
+
+// TestApplyGroupAlgoOverlayRejectsAView proves the #6114 view guard actually
+// fires. Without it, the new invariant ("a write through a Group() result is
+// silently discarded") is enforced only by a doc comment — and this change
+// already found six fixtures that had written through the live group, one of
+// which handed that object straight to this very function.
+func TestApplyGroupAlgoOverlayRejectsAView(t *testing.T) {
+	st := NewState(&Registry{Groups: map[string]RegistryGroup{
+		"g": {Repos: map[string]RegistryRepo{}},
+	}})
+	st.groups["g"] = &LoadedGroup{Name: "g", Repos: map[string]*LoadedRepo{}}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("applyGroupAlgoOverlay accepted a Group() view: the write would be silently discarded (#6114)")
+		}
+		msg, _ := r.(string)
+		if !strings.Contains(msg, "view") {
+			t.Fatalf("panicked for the wrong reason: %v", r)
+		}
+	}()
+	applyGroupAlgoOverlay(st.Group("g"))
+}
+
+// TestBorrowGroupHandsOutAView is the #6114 guard on the ADR-0027 F3 read path.
+// borrowGroup is inert today, but it is the designated read path for F3; if it
+// hands back the live group, defect (B) — an unlocked `range Group.Repos`
+// against reload's map write — returns in full the moment F3 lights up. Cheaper
+// to pin now than to rediscover it under a flag flip.
+func TestBorrowGroupHandsOutAView(t *testing.T) {
+	st := NewState(&Registry{Groups: map[string]RegistryGroup{
+		"g": {Repos: map[string]RegistryRepo{}},
+	}})
+	lr := &LoadedRepo{Repo: "r"}
+	st.groups["g"] = &LoadedGroup{Name: "g", Repos: map[string]*LoadedRepo{"r": lr}}
+
+	b := st.borrowGroup("g")
+	if b == nil {
+		t.Fatal("borrowGroup returned nil for a resident group")
+	}
+	defer b.Release()
+
+	if b.Group == liveGroup(st, "g") {
+		t.Fatal("borrowGroup carries the LIVE group — F3 would reintroduce the #6114 repo-set race")
+	}
+	st.mu.Lock()
+	st.groups["g"].Repos["added-later"] = &LoadedRepo{Repo: "added-later"}
+	st.mu.Unlock()
+	if _, leaked := b.Group.Repos["added-later"]; leaked {
+		t.Fatal("borrowGroup shared the live repo map: a reload insert is visible through an in-flight borrow")
+	}
+	if b.Group.Repos["r"] != lr {
+		t.Fatal("borrowGroup deep-copied the repo record; it must share *LoadedRepo by pointer")
+	}
 }

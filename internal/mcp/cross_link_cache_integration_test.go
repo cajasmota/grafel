@@ -363,15 +363,19 @@ func TestCrossLinkCache_QueryPathWireIn(t *testing.T) {
 	// We use the real group name but inject lg.Links directly so we don't need
 	// the links file on disk.
 	const groupName = "wire-in-test-group"
+	// Inject a cross-repo link and a LoadedRepo with the right IndexedRef.
+	// #6114: configure the LIVE group. This previously wrote through a Group()
+	// view and passed only because the same view was read back — the shape that
+	// silently loses the write the moment the two are separated.
+	mutateGroup(t, st, groupName, func(g *LoadedGroup) {
+		g.Links = []CrossRepoLink{
+			{Source: "repo-a::SvcA", Target: "repo-b::SvcB", Kind: "call", Confidence: 0.9},
+			{Source: "repo-b::SvcB", Target: "repo-a::HandlerA", Kind: "import", Confidence: 0.8},
+		}
+	})
 	lg := st.Group(groupName)
 	if lg == nil {
 		t.Fatalf("group %q not found after Reload", groupName)
-	}
-
-	// Inject a cross-repo link and a LoadedRepo with the right IndexedRef.
-	lg.Links = []CrossRepoLink{
-		{Source: "repo-a::SvcA", Target: "repo-b::SvcB", Kind: "call", Confidence: 0.9},
-		{Source: "repo-b::SvcB", Target: "repo-a::HandlerA", Kind: "import", Confidence: 0.8},
 	}
 
 	// Synthetic LoadedRepo for repoA@main.

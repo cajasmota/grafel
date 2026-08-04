@@ -291,7 +291,12 @@ func TestOverlaySideTable_BuiltFromReaderNotDoc(t *testing.T) {
 		t.Fatalf("reload: %v", err)
 	}
 
-	grp := st.Group("acme")
+	// #6114: the LIVE group, not a Group() view — this test both writes
+	// grp.algoApplied and hands grp to applyGroupAlgoOverlay, which is a
+	// production mutator and panics on a view. Written through a view, the
+	// re-stamp below would be silently discarded and the test would assert
+	// against a side-table nobody rebuilt.
+	grp := liveGroup(st, "acme")
 	lr := grp.Repos["svc"]
 	if lr == nil || lr.Reader == nil || lr.LabelIndex == nil {
 		t.Fatalf("svc repo not loaded with a resident Reader + LabelIndex")
