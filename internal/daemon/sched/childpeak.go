@@ -11,9 +11,10 @@ import (
 //
 // Since #5954 the default index path forks `grafel index-internal`, so the
 // memory an index costs is spent in a process the daemon never measures. The
-// daemon's own per-job sampler reads getpid() and therefore reports a flat
-// (usually zero) delta no matter how large the index was — that is the
-// dominant cause of peak_heap_mb=0 on ~99% of production runs.
+// per-job sampler this replaces read getpid() and so reported a flat (usually
+// zero) delta no matter how large the index was — the dominant cause of
+// peak_heap_mb=0 on ~99% of production runs. It has been removed rather than
+// re-timed; see "why there is no in-daemon sampler" below.
 //
 // RunSubprocessIndex reaps the child and knows its kernel high-water RSS.
 // runIndex, two layers up, is what writes the completion line. The two are in
@@ -35,14 +36,43 @@ import (
 // lifetime, kernel-tracked.
 const peakSrcChildMaxRSS = "child_maxrss"
 
-// peakSrcDaemonDelta names the measure used when the index ran inside the
-// daemon: the DAEMON's RSS growth over the run (peak observed RSS minus the
-// RSS at job start), sampled. A delta, not an absolute — the daemon is
-// resident for much else besides this index.
-const peakSrcDaemonDelta = "daemon_rss_delta"
+// peakSrcUnmeasured means this run produced NO peak figure, and the completion
+// line says so rather than emitting a number nobody can defend. Two ways here:
+//
+//   - The index ran inside the daemon (the incremental path, or
+//     GRAFEL_SUBPROCESS_INDEXER=0). See "why there is no in-daemon sampler".
+//   - The index ran in a child on a platform that exposes no rusage (Windows),
+//     so no high-water mark came back with the reaped process.
+const peakSrcUnmeasured = "unmeasured"
 
-// peakSrcNone means no usable measurement was obtained for this run.
-const peakSrcNone = "none"
+// ---------------------------------------------------------------------------
+// Why there is no in-daemon sampler (#6107 review).
+//
+// An earlier shape of this fix kept a sampler reporting the daemon's own RSS
+// growth across a job — currentProcessRSSMB() minus the RSS at job start —
+// under the name daemon_rss_delta. That quantity is not the job's memory, and
+// no amount of sampling earlier, more often, or while the allocation is still
+// reachable repairs it. Measured on darwin/arm64: four identical 320 MiB jobs
+// run back to back in one process, sampled every 100 ms DURING each job while
+// the allocation was still reachable, reported 322, 259, 0, 0 MiB.
+//
+// None of that decay is a race with the garbage collector — an explicit
+// runtime.GC() after a job did not move RSS at all. It is arena reuse: once
+// the process holds enough free spans the allocation faults in no new page, so
+// the daemon's RSS does not grow and the delta is truthfully zero. A
+// long-lived daemon is precisely the process that always holds free spans, so
+// in steady state the metric was guaranteed to read 0 — the symptom #6107
+// opened on. A live-heap delta fails identically, because the baseline taken
+// at job start already counts the previous job's uncollected garbage.
+//
+// The deeper problem: the daemon runs several jobs, an MCP server and mmap'd
+// graphs in one address space, so no figure taken from outside the allocator
+// can be attributed to one job. That is why epic #5954 moved indexing into a
+// child — a child has its own address space and the kernel keeps its
+// high-water mark for free. So the in-process arm reports peakSrcUnmeasured,
+// and dropping the sampler also stops the daemon forking `ps` every 2s per
+// in-flight job on Darwin.
+// ---------------------------------------------------------------------------
 
 type childPeakRecord struct {
 	mb int64
@@ -85,7 +115,7 @@ func takeChildPeakRSSMB(repoPath string, notBefore time.Time) (int64, bool) {
 
 // recordChildPeakFromProcessState is the single call site that turns a reaped
 // child into a recorded peak. Silent no-op when the platform supplies no
-// rusage (Windows) — the daemon sampler then remains the only source.
+// rusage (Windows) — the run is then reported as peakSrcUnmeasured.
 func recordChildPeakFromProcessState(repoPath string, ps *os.ProcessState) {
 	b, ok := maxRSSBytes(ps)
 	if !ok {

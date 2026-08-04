@@ -1682,7 +1682,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// with different baselines, and reporting either under a bare "peak"
 	// field is how this metric came to be misread for an entire epic.
 	var observedPeakMB int64
-	peakSrc := peakSrcNone
+	peakSrc := peakSrcUnmeasured
 
 	// Cross-path mutual exclusion (foreground group-rebuild ⇄ scheduler): the
 	// foreground rebuild path in cmd/grafel indexes a repo directly, bypassing
@@ -1723,53 +1723,15 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		// regressions are diagnosable without a pprof trace (#2141).
 		s.logger.Info("indexer: starting", "repo", repoPath, "ref", tok.ref, "goroutine_id", goroutineID())
 
-		// Spawn the in-daemon RSS sampler. It measures the DAEMON's own RSS
-		// growth across this job, which is the right figure only when the
-		// index actually ran in this process (GRAFEL_SUBPROCESS_INDEXER=0, or
-		// the incremental in-process path). On the default subprocess path the
-		// child's kernel high-water RSS supersedes it below.
+		// #6107: there is deliberately NO in-daemon RSS sampler here. The
+		// figure one produces — this process's RSS minus its RSS at job start
+		// — is not this job's memory: it collapses to 0 in exactly the
+		// long-lived-daemon steady state that matters, and it cannot be
+		// attributed to one of several jobs sharing the address space. The
+		// measurement, the evidence, and why no sampler placement fixes it are
+		// in childpeak.go. The only honest peak comes from the index child's
+		// kernel high-water mark, read below.
 		//
-		// #6107: two defects fixed here.
-		//  1. The old ticker was 5s and had NO sample on the way out, so a job
-		//     shorter than 5s — which is ~99% of production reindexes — took
-		//     zero samples and left observedPeakMB at its zero value. The
-		//     deferred final sample below is what makes a short job report at
-		//     all; it is not an optimisation.
-		//  2. The peak was reported under the name "peak_heap_mb". It has
-		//     never been a heap figure: currentProcessRSSMB reads the OS
-		//     resident-set size. See peakSrcDaemonDelta.
-		//
-		// The tick stays coarse (2s) because currentProcessRSSMB forks `ps` on
-		// Darwin; the ticker exists to catch a mid-run spike that has been
-		// released again by the time the job ends, not to fix the common case.
-		sampleStop := make(chan struct{})
-		var sampleWG sync.WaitGroup
-		sampleWG.Add(1)
-		go func() {
-			defer sampleWG.Done()
-			t := time.NewTicker(2 * time.Second)
-			defer t.Stop()
-			baseline := currentProcessRSSMB()
-			observe := func() {
-				if delta := currentProcessRSSMB() - baseline; delta > observedPeakMB {
-					observedPeakMB = delta
-					peakSrc = peakSrcDaemonDelta
-				}
-			}
-			// Final sample on the way out, taken while the index's memory is
-			// still resident (close(sampleStop) happens immediately after the
-			// index returns, before any teardown).
-			defer observe()
-			for {
-				select {
-				case <-sampleStop:
-					return
-				case <-t.C:
-					observe()
-				}
-			}
-		}()
-
 		// S3: attempt incremental file-level reindex before the full index.
 		// Only tried when the Incremental callback is configured AND the
 		// incremental toggle is active.
@@ -1834,18 +1796,14 @@ func (s *Scheduler) runIndex(tok jobToken) {
 			}
 		}()
 
-		close(sampleStop)
-		sampleWG.Wait()
-
-		// #6107: prefer the index child's kernel high-water RSS when this run
-		// forked one. On the default path the daemon sampler above measured
-		// the wrong process entirely — the index heap lives and dies in
-		// `grafel index-internal`, whose pages the daemon never touches — so
-		// its delta is noise around zero regardless of how large the index
-		// was. The child figure is exact (wait4 fills ru_maxrss; no sampler
-		// can miss a peak between ticks) and it is what History/the predictor
-		// wanted all along. Records stamped before t0 belong to an earlier run
-		// and are dropped by takeChildPeakRSSMB rather than misattributed.
+		// #6107: the index child's kernel high-water RSS is this run's peak,
+		// and the only figure the daemon can honestly produce. On the default
+		// path the index heap lives and dies in `grafel index-internal`, whose
+		// pages the daemon never touches. wait4 fills ru_maxrss over the
+		// child's whole lifetime, so unlike a sampler it cannot miss a peak
+		// between ticks. Records stamped before t0 belong to an earlier run and
+		// are dropped by takeChildPeakRSSMB rather than misattributed. No
+		// child, or no rusage on this platform, leaves peakSrcUnmeasured.
 		if mb, ok := takeChildPeakRSSMB(repoPath, t0); ok {
 			observedPeakMB = mb
 			peakSrc = peakSrcChildMaxRSS
@@ -1874,6 +1832,13 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		// #5433: record the ref this completed index ran against so
 		// grafel_index_status can report indexed_ref per repo.
 		stats.LastIndexedRef = tok.ref
+		// Deliberately NOT gated on err == nil, unlike History.Record below.
+		// The asymmetry is the point: LastPeakMB is diagnostic state surfaced
+		// by `grafel status`, and the peak of a run that died is the single
+		// most useful number there when the question is "did it get OOM
+		// killed". History.Record is a budget input consumed by admission, and
+		// a run that aborted before its true peak would bias that budget low —
+		// the dangerous direction. Same measurement, opposite risk.
 		if observedPeakMB > 0 {
 			stats.LastPeakMB = observedPeakMB
 		}
@@ -1958,7 +1923,17 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// History persistence happens outside the lock (its own mutex +
 	// file IO). Only record when the job succeeded; failed runs may
 	// have aborted before peak allocation.
-	if err == nil && observedPeakMB > 0 && s.cfg.History != nil {
+	//
+	// #6107 review: also gated on peakSrcChildMaxRSS, and that gate is
+	// load-bearing rather than decorative. RSSHistory is not a log — Record is
+	// a moving max that predictedFor reads on every admission decision — so an
+	// entry that does not mean what the others mean is not a bad data point,
+	// it is a permanently wrong budget. Only the child high-water mark
+	// qualifies: an absolute figure for one process that did nothing but index
+	// THIS repo. Anything measured against the daemon is a delta against a
+	// different baseline, and on a daemon running several jobs it attributes
+	// whatever else was allocating to whichever repo happened to be sampling.
+	if err == nil && peakSrc == peakSrcChildMaxRSS && observedPeakMB > 0 && s.cfg.History != nil {
 		s.cfg.History.Record(repoPath, observedPeakMB)
 	}
 
@@ -1982,15 +1957,13 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		return
 	}
 	dur := time.Since(t0).Truncate(time.Millisecond)
-	// NOT an allocation delta — it is observed-peak minus the admission
-	// predictor's estimate, i.e. the predictor's error for this run. It was
-	// logged as "alloc_diff_mb", which read as an independent live measurement
-	// and disguised the fact that it is a pure function of the same
-	// observedPeakMB that was reporting zero (the widely-quoted
-	// "peak_heap_mb=0 alloc_diff_mb=-1593" line is just "-predictedMB").
-	peakVsPredictedMB := observedPeakMB - tok.predictedMB
+	// The audit stream carries the source too. A bare "peak=" is the exact
+	// ambiguity the structured line below was restructured to remove, and the
+	// two streams disagreeing about what a number means is worse than either
+	// alone: "peak=0 src=unmeasured" says we did not measure, "peak=0" alone
+	// says we measured zero.
 	s.logEvent("index_ok", repoPath,
-		dur.String()+" peak="+formatMB(observedPeakMB))
+		dur.String()+" peak="+formatMB(observedPeakMB)+" src="+peakSrc)
 	// #5710 follow-up: stamp entities=N so a silent 0-entity completion (e.g. an
 	// empty-graph store recreation) is visible at a glance. -1 means "unknown".
 	ents := -1
@@ -1998,19 +1971,31 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		ents = s.cfg.EntityCount(repoPath, tok.ref)
 	}
 	// peak_rss_mb / peak_rss_src (#6107): resident-set size, in MiB, NEVER Go
-	// heap. peak_rss_src says which measure and which baseline:
-	//   child_maxrss     — absolute peak RSS of the `grafel index-internal`
-	//                      child, from wait4 ru_maxrss (the default path).
-	//   daemon_rss_delta — this daemon's RSS growth across the run, sampled
-	//                      (in-process index only).
-	//   none             — no usable measurement (e.g. Windows, where no child
-	//                      peak is available and the sampler saw no growth).
+	// heap. peak_rss_src says which measure the number is:
+	//   child_maxrss — absolute peak RSS of the `grafel index-internal` child,
+	//                  from wait4 ru_maxrss (the default path).
+	//   unmeasured   — no figure at all: the index ran in-process (incremental,
+	//                  or GRAFEL_SUBPROCESS_INDEXER=0), or the platform exposes
+	//                  no rusage (Windows). peak_rss_mb is 0 and means nothing.
 	// RSS is an upper bound on footprint, not the footprint: on Darwin pages
 	// the runtime released with MADV_FREE stay resident until the kernel is
-	// under pressure.
-	s.logger.Info("indexer: completed", "repo", repoPath, "took", dur,
-		"peak_rss_mb", observedPeakMB, "peak_rss_src", peakSrc,
-		"peak_vs_predicted_mb", peakVsPredictedMB, "entities", ents)
+	// under pressure. Measured here on darwin/arm64, child ru_maxrss over live
+	// heap peak is 1.02x for a held allocation and 1.09x for a churning one,
+	// but 1.94x for a sawtooth that repeatedly grows and drops — the shape an
+	// extractor has. Read it as a ceiling, not as a requirement.
+	completedArgs := []any{"repo", repoPath, "took", dur,
+		"peak_rss_mb", observedPeakMB, "peak_rss_src", peakSrc}
+	// peak_vs_predicted_mb is observedPeak - predictedMB: the predictor's error
+	// for this run, NOT an independent measurement (it was once logged as
+	// "alloc_diff_mb", which read like one). Emitted only when there IS an
+	// observed peak, because with none it collapses to -predictedMB — the
+	// widely-quoted "peak_heap_mb=0 alloc_diff_mb=-1593" line was exactly that,
+	// and measured nothing at all.
+	if peakSrc != peakSrcUnmeasured {
+		completedArgs = append(completedArgs, "peak_vs_predicted_mb", observedPeakMB-tok.predictedMB)
+	}
+	completedArgs = append(completedArgs, "entities", ents)
+	s.logger.Info("indexer: completed", completedArgs...)
 
 	// Schedule the downstream cross-repo link pass for each group this repo
 	// belongs to. The group-scope algorithm pass is NOT scheduled here — it is

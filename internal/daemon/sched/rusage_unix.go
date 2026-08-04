@@ -26,7 +26,12 @@ import (
 // as "heap".
 //
 // Units differ by platform and getting this wrong is a 1024x error:
-// Darwin reports ru_maxrss in BYTES, every other Unix in KiB.
+//
+//	darwin, ios        ru_maxrss is in BYTES
+//	solaris, illumos   ru_maxrss is in PAGES (getrusage(3C)) — scale by the page
+//	                   size, NOT by 1024; treating it as KiB under-reports by 4x
+//	                   on a 4 KiB-page host.
+//	every other Unix   ru_maxrss is in KiB
 //
 // Returns ok=false when the process has not been reaped or the platform
 // supplies no rusage.
@@ -39,8 +44,15 @@ func maxRSSBytes(ps *os.ProcessState) (uint64, bool) {
 		return 0, false
 	}
 	v := uint64(ru.Maxrss)
-	if runtime.GOOS == "darwin" || runtime.GOOS == "ios" {
+	switch runtime.GOOS {
+	case "darwin", "ios":
 		return v, true
+	case "solaris", "illumos":
+		if pg := os.Getpagesize(); pg > 0 {
+			return v * uint64(pg), true
+		}
+		return 0, false
+	default:
+		return v * 1024, true
 	}
-	return v * 1024, true
 }

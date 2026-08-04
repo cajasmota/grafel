@@ -64,6 +64,18 @@ func PredictRSS(repoPath string) int64 {
 	return mb
 }
 
+// rssHistoryTTL bounds how long a recorded peak may govern admission (#6107
+// review). RSSHistoryEntry has always carried LastIndex and nothing ever read
+// it, so there was no expiry path at all: an entry written months ago against
+// extractor code that no longer exists still beat the live predictor on every
+// admission decision. Past the TTL the honest answer is "no history", which
+// falls back to PredictRSS and lets the next completed run re-measure.
+const rssHistoryTTL = 30 * 24 * time.Hour
+
+// rssHistoryRelaxDivisor controls how fast a recorded peak walks back toward
+// smaller observations. See Record.
+const rssHistoryRelaxDivisor = 2
+
 // RSSHistory is the on-disk record of per-repo measured peak RSS.
 // Persisted at ~/.grafel/repo-rss-history.json (or wherever the
 // daemon layout points). Atomically replaced on update.
@@ -95,14 +107,22 @@ func LoadRSSHistory(path string) *RSSHistory {
 	return h
 }
 
-// Predict returns the historical peak (in MB) or 0 if no record exists.
+// Predict returns the historical peak (in MB), or 0 when there is no record or
+// the record has aged out (rssHistoryTTL). A 0 sends the caller to PredictRSS.
 func (h *RSSHistory) Predict(repoPath string) int64 {
 	if h == nil {
 		return 0
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.data[repoPath].PeakRSSMB
+	e := h.data[repoPath]
+	// A zero LastIndex is a file written before the field was populated, or
+	// hand-edited. Honour the peak rather than discarding calibration over a
+	// missing timestamp — unknown age is not the same as known-stale.
+	if !e.LastIndex.IsZero() && time.Since(e.LastIndex) > rssHistoryTTL {
+		return 0
+	}
+	return e.PeakRSSMB
 }
 
 // Record updates the running peak for a repo. Persists synchronously
@@ -113,11 +133,29 @@ func (h *RSSHistory) Record(repoPath string, peakMB int64) {
 	}
 	h.mu.Lock()
 	prev := h.data[repoPath]
-	// Use a moving-max: a one-off spike sets the budget, smaller runs
-	// don't shrink it. This is conservative on purpose — the cap is
-	// safer when it slightly over-estimates.
-	if peakMB > prev.PeakRSSMB {
+	// A spike is adopted IMMEDIATELY and in full: under-estimating is the
+	// dangerous direction, because the budget exists to stop concurrent
+	// indexes exhausting the host.
+	//
+	// #6107 review: what changed is the other direction. This was a pure
+	// moving max, so a single outlier — a contended host, a pathological
+	// commit, a Darwin ru_maxrss inflated by MADV_FREE pages the kernel had
+	// not yet reclaimed (measured up to 1.94x live heap on a sawtooth
+	// allocation profile, the shape an extractor has) — governed admission for
+	// the life of the file, with no path back short of deleting it by hand.
+	// That is not a conservative estimate but an unfalsifiable one, and once it
+	// exceeds BudgetMB it pins the repo to the solo admit_oversize path
+	// permanently, serialising it against every other repo. Smaller
+	// measurements now walk the figure halfway back each time, so it converges
+	// on reality within a few runs and never drops below what was just seen.
+	switch {
+	case peakMB > prev.PeakRSSMB:
 		prev.PeakRSSMB = peakMB
+	case prev.PeakRSSMB > peakMB:
+		prev.PeakRSSMB -= (prev.PeakRSSMB - peakMB) / rssHistoryRelaxDivisor
+		if prev.PeakRSSMB < peakMB {
+			prev.PeakRSSMB = peakMB
+		}
 	}
 	prev.LastIndex = time.Now().UTC()
 	h.data[repoPath] = prev

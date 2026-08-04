@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,8 +24,9 @@ import (
 //   - subprocess indexer (the DEFAULT, GRAFEL_SUBPROCESS_INDEXER unset): the
 //     work happens in a `grafel index-internal` child, so the only honest
 //     figure is the kernel's high-water RSS for THAT process (ru_maxrss).
-//   - in-process indexer (GRAFEL_SUBPROCESS_INDEXER=0): the work happens in
-//     the daemon, so the figure is the daemon's own RSS growth across the run.
+//   - in-process indexer (GRAFEL_SUBPROCESS_INDEXER=0, and the incremental
+//     path): the work happens in the daemon, which cannot attribute its own
+//     memory to one of the jobs inside it. That arm reports no figure at all.
 //
 // These tests are behavioural: they measure a KNOWN allocation and assert the
 // reported number stands in a plausible relationship to it. An assertion of
@@ -82,10 +84,17 @@ func completionPeak(t *testing.T, log string) (int64, string) {
 
 // newPeakTestScheduler wires a scheduler whose completion line lands in buf.
 func newPeakTestScheduler(buf *syncBuf, index func(context.Context, string, string) error) *Scheduler {
+	return newPeakTestSchedulerWithHistory(buf, nil, index)
+}
+
+// newPeakTestSchedulerWithHistory is newPeakTestScheduler with a live
+// RSSHistory attached, so a test can observe what a completed run persists.
+func newPeakTestSchedulerWithHistory(buf *syncBuf, h *RSSHistory, index func(context.Context, string, string) error) *Scheduler {
 	return New(Config{
 		Workers: 1,
 		Logger:  slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelInfo})),
 		Index:   index,
+		History: h,
 	})
 }
 
@@ -105,34 +114,89 @@ func touchMB(n int) [][]byte {
 	return blocks
 }
 
-// TestRunIndexReportsInProcessPeakForShortJob is the direct reproduction of
-// #6107 on the in-process path. The job allocates a known 320 MiB and finishes
-// in well under a second — the shape of ~99% of production reindexes. Before
-// the fix the sampler only observed on a 5s ticker, so a sub-5s job produced
-// ZERO samples and the completion line reported 0.
-func TestRunIndexReportsInProcessPeakForShortJob(t *testing.T) {
-	var buf syncBuf
-	s := newPeakTestScheduler(&buf, func(context.Context, string, string) error {
-		blocks := touchMB(testTouchMBs)
-		time.Sleep(300 * time.Millisecond)
-		runtime.KeepAlive(blocks)
-		return nil
-	})
-
-	s.runIndex(jobToken{repoPath: "/repo-shortjob-6107", ref: "main", commit: "c0"})
-
-	peak, src := completionPeak(t, buf.String())
-	// Two-sided band anchored on the 320 MiB the job actually touched. The
-	// lower bound is deliberately loose (the allocator may reuse already
-	// resident spans) but far above any plausible constant; the upper bound
-	// catches a figure that is not a per-run delta at all (e.g. absolute
-	// process RSS, or bytes reported as MB).
-	if peak < int64(testTouchMBs)/4 || peak > int64(testTouchMBs)*8 {
-		t.Fatalf("peak_rss_mb=%d is not plausible for a job that touched %d MiB (want %d..%d)",
-			peak, testTouchMBs, testTouchMBs/4, testTouchMBs*8)
+// TestInProcessRunIsReportedAsUnmeasured pins what the in-process index path
+// may claim, and it is deliberately NOT "a plausible peak".
+//
+// The daemon-side sampler this replaces computed currentProcessRSSMB() minus
+// the daemon's RSS at job start. That quantity is not the job's memory.
+// Measured on darwin/arm64, four identical 320 MiB jobs run back to back in
+// one process, sampled every 100 ms *while the allocation was still
+// reachable*, reported:
+//
+//	job=1 rss_delta_mb=322   job=2 rss_delta_mb=259
+//	job=3 rss_delta_mb=0     job=4 rss_delta_mb=0
+//
+// Nothing about that decay is a race with the garbage collector — an explicit
+// runtime.GC() after a job did not move RSS at all, and sampling earlier or
+// more often does not help. It is arena reuse: once the process holds enough
+// free spans the job's allocation never faults in a new page, so the daemon's
+// RSS does not grow and the delta is truthfully zero. A long-lived daemon is
+// precisely the process that always holds free spans, so the metric was
+// guaranteed to read 0 in steady state — exactly the symptom #6107 opened on.
+// The same collapse defeats a live-heap delta, because the baseline taken at
+// job start already counts the previous job's uncollected garbage.
+//
+// There is no sound repair. Attributing a share of one process's memory to one
+// of several concurrent jobs inside it is not measurable from outside the
+// allocator, which is why epic #5954 moved indexing into a child in the first
+// place: a child has its own address space and the kernel keeps its high-water
+// mark for free. So the in-process arm reports that it has no measurement, and
+// the two properties below are what a caller may rely on.
+func TestInProcessRunIsReportedAsUnmeasured(t *testing.T) {
+	var peaks []int64
+	var srcs []string
+	// Repeat in ONE process: the first run leaves free spans behind, so a
+	// delta-based sampler diverges from run to run. A measurement that changes
+	// when nothing about the job changed is not a measurement.
+	for i := 0; i < 3; i++ {
+		var buf syncBuf
+		s := newPeakTestScheduler(&buf, func(context.Context, string, string) error {
+			blocks := touchMB(testTouchMBs)
+			time.Sleep(50 * time.Millisecond)
+			runtime.KeepAlive(blocks)
+			return nil
+		})
+		s.runIndex(jobToken{repoPath: "/repo-shortjob-6107", ref: "main", commit: "c0"})
+		peak, src := completionPeak(t, buf.String())
+		peaks = append(peaks, peak)
+		srcs = append(srcs, src)
 	}
-	if src != peakSrcDaemonDelta {
-		t.Fatalf("peak_rss_src=%q; the in-process path must name itself %q", src, peakSrcDaemonDelta)
+
+	for i := range peaks {
+		if peaks[i] != peaks[0] || srcs[i] != srcs[0] {
+			t.Fatalf("identical in-process jobs reported different figures across runs: "+
+				"peaks=%v srcs=%v — a per-job peak derived from whole-process RSS is not "+
+				"reproducible (arena reuse), so it must not be reported as one", peaks, srcs)
+		}
+	}
+	if srcs[0] != peakSrcUnmeasured {
+		t.Fatalf("peak_rss_src=%q for an in-process index; want %q — the daemon cannot "+
+			"attribute its own RSS to one of the jobs running inside it", srcs[0], peakSrcUnmeasured)
+	}
+	if peaks[0] != 0 {
+		t.Fatalf("peak_rss_mb=%d alongside src=%q; an unmeasured run must report no "+
+			"figure at all rather than a number readers will treat as one", peaks[0], srcs[0])
+	}
+}
+
+// TestUnmeasuredRunOmitsPeakVsPredicted guards the derived field.
+// peak_vs_predicted_mb is observedPeak - predictedMB, so with no observed peak
+// it degrades to -predictedMB and reads as a large negative "measurement" —
+// this is the origin of the widely-quoted "peak_heap_mb=0 alloc_diff_mb=-1593"
+// line, which measured nothing. When the peak is unmeasured the derived field
+// must be absent, not zero-anchored.
+func TestUnmeasuredRunOmitsPeakVsPredicted(t *testing.T) {
+	var buf syncBuf
+	s := newPeakTestScheduler(&buf, func(context.Context, string, string) error { return nil })
+	s.runIndex(jobToken{repoPath: "/repo-nopeak-6107", ref: "main", commit: "c0", predictedMB: 1593})
+
+	log := buf.String()
+	if !completedRe.MatchString(log) {
+		t.Fatalf("no completion line:\n%s", log)
+	}
+	if strings.Contains(log, "peak_vs_predicted_mb") {
+		t.Fatalf("completion line carries peak_vs_predicted_mb with no measured peak — "+
+			"it is just -predictedMB wearing a measurement's name:\n%s", log)
 	}
 }
 
@@ -177,6 +241,22 @@ func TestRunIndexPrefersChildMaxRSS(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("repo %s absent from Snapshot().IndexedRepos", repo)
+	}
+	// The audit ring must not re-introduce the ambiguity the structured line
+	// was restructured to remove. A bare "peak=N" cannot distinguish an
+	// absolute child high-water mark from no measurement at all, and the two
+	// streams disagreeing about that is worse than either on its own.
+	var okEvent string
+	for _, e := range s.Snapshot().RecentLog {
+		if e.Kind == "index_ok" && e.Repo == repo {
+			okEvent = e.Msg
+		}
+	}
+	if okEvent == "" {
+		t.Fatalf("no index_ok event for %s", repo)
+	}
+	if !strings.Contains(okEvent, "src="+peakSrcChildMaxRSS) {
+		t.Fatalf("index_ok event %q carries a bare peak with no src", okEvent)
 	}
 }
 
@@ -227,12 +307,23 @@ func TestChildMaxRSSMatchesKnownAllocation(t *testing.T) {
 		t.Fatalf("maxRSSBytes reported nothing for a reaped child on %s", runtime.GOOS)
 	}
 	gotMB := int64(got / (1 << 20))
-	// The child is a Go test binary (~10-30 MiB of its own) that touched an
-	// additional 256 MiB. Two-sided: the lower bound rejects a value scaled
-	// down by 1024 (KiB read as bytes), the upper rejects one scaled up.
-	if gotMB < childMB/2 || gotMB > childMB*6 {
-		t.Fatalf("child ru_maxrss=%d MiB for a child that touched %d MiB (want %d..%d) — check the platform unit",
-			gotMB, childMB, childMB/2, childMB*6)
+	// The band is tight ON PURPOSE. A 0.5x-6x band admits both a 2x
+	// over-report and a 2x under-report, which is exactly the size of error
+	// that matters here: Darwin RSS counts MADV_FREE pages, so ru_maxrss can
+	// exceed the live requirement, and whether this figure is safe to feed
+	// admission turns on that ratio. A band that cannot resolve 2x cannot
+	// answer the question it exists to answer.
+	//
+	// The only hazard the band must tolerate is the child's own runtime and
+	// test binary (~10-30 MiB on top of 256), and this child HOLDS its
+	// allocation rather than churning it — measured 261 MiB for 256 MiB
+	// touched, i.e. 1.02x. 0.8x..1.5x leaves ~4x the observed headroom while
+	// still rejecting the unit errors: a KiB-as-bytes read lands at 0.25x and
+	// a bytes-as-KiB read at 1024x.
+	lo, hi := int64(childMB)*8/10, int64(childMB)*15/10
+	if gotMB < lo || gotMB > hi {
+		t.Fatalf("child ru_maxrss=%d MiB for a child that held %d MiB (want %d..%d) — check the platform unit",
+			gotMB, childMB, lo, hi)
 	}
 }
 
