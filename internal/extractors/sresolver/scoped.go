@@ -104,6 +104,94 @@ func splitFormatAStructuralRef(stub string) (filePath, name string, ok bool) {
 	return filePath, tail, true
 }
 
+// kindExternalPlaceholder is the entity kind `internal/external.Synthesize`
+// stamps on the placeholder nodes it creates for references that resolution
+// could not bind to anything in the repo. Kept in lockstep with
+// internal/types.EntityKindExternal / internal/external.KindExternal; duplicated
+// rather than imported for the same package-weight reason as the stub constants
+// above.
+const kindExternalPlaceholder = "SCOPE.External"
+
+// externalPlaceholderRank returns the precedence of e as a name-index candidate.
+// Lower wins. 0 is a real entity extracted from the repo; 1 is a synthesized
+// SCOPE.External placeholder.
+//
+// # Why the scoped resolver needs this and the corpus-wide resolver does not (#6129)
+//
+// On a full rebuild, `external.Synthesize` runs AFTER resolution. The
+// corpus-wide resolver's name index is therefore built over extracted entities
+// only and can never contain an `ext:` placeholder — an IMPORTS edge naming an
+// in-repo package binds to that package's real `Module` entity, and only genuinely
+// unbindable references survive to be given a placeholder afterwards.
+//
+// The scoped resolver's `existingEntities` come from the PREVIOUS PERSISTED
+// GRAPH, which is post-synthesis. So a placeholder synthesized for one
+// reference is visible as an ordinary name-index candidate on the next
+// incremental pass, and under plain last-writer-wins it displaced the real
+// entity: `ext:pkgbeta` overwrote the `Module` named "pkgbeta", and every
+// re-extracted `import pkgbeta` bound to the placeholder. The incremental graph
+// then asserted a dependency on an external package where the source imports a
+// local one, and module-aggregation followed the mis-bound edge into a spurious
+// `DEPENDS_ON <repo> → _external` row that no full rebuild produces.
+//
+// This is a PRECEDENCE rule, not a suppression of the placeholder. The
+// SCOPE.External fallback is deliberate and stays: a name for which no real
+// entity exists still binds to its placeholder. The rank only decides who wins a
+// COLLISION — and a collision is precisely the signal that distinguishes the two
+// cases, because a real in-repo entity carrying that exact name is the thing a
+// full rebuild would have bound to.
+//
+// What the placeholder-only case does NOT mean is parity with a full rebuild.
+// A full rebuild synthesises the placeholder after resolution and then
+// `import-placeholder-prune` drops it again, leaving the edge on a DANGLING
+// endpoint; the incremental path, which never prunes, keeps it bound to a live
+// SCOPE.External node. So on a genuinely-external name the two paths still
+// disagree — full lands on an unresolved id where this lands on the
+// placeholder. That divergence is real, is tracked on the #6130 content-parity
+// allow-list, and is NOT addressed here: this rank fixes the post-synthesis
+// half of the problem (a placeholder shadowing a real entity), not the
+// post-prune half (a placeholder surviving where a full rebuild removed it).
+// # The stricter alternative, and why it does not transfer to THIS path
+//
+// The obvious stronger fix is to exclude SCOPE.External from the scoped name
+// index ENTIRELY, making it mirror the full resolver's index exactly, and let a
+// post-merge `external.Synthesize` regenerate whatever the graph still needs —
+// which would close the post-prune half above as well.
+//
+// That reasoning holds on Path B (`Index` + `WithIncremental`) and is written
+// into cmd/grafel/index.go's merge comments, but it does NOT hold here. Path A
+// (`extractors.TryIncremental`) never synthesises: `internal/extractors` does
+// not import `internal/external` at all, and the only `external.Synthesize`
+// call in the tree is cmd/grafel/index.go:1848, inside `Index`. Every `ext:`
+// node this path sees is INHERITED from the persisted baseline that some
+// earlier full `Index` run produced, and nothing regenerates it. So excluding
+// the kind from the index here would not hand the work to a later synthesis
+// step — it would simply leave those endpoints unbound.
+//
+// (That may in fact be closer to what a full rebuild lands on, since the full
+// path prunes the placeholder and leaves the endpoint dangling. It is also
+// unmeasured, and it changes the binding of every genuinely-external name on
+// this path at once.)
+//
+// The rank is therefore the conservative choice: it alters binding ONLY where a
+// real entity and a placeholder collide. Recorded so the alternative is not
+// rediscovered from scratch — and so its Path-A precondition is not assumed.
+//
+// # Coverage limits of the rank, as it stands
+//
+//   - `SCOPE.ExternalAPI` and `SCOPE.ExternalService` are also synthetic,
+//     file-less kinds and are NOT ranked here. Whether they can shadow a real
+//     entity on this path is untested in either direction — no fixture produces
+//     the collision. Worth a follow-up rather than a silent assumption.
+//   - The measured blast radius is single-fixture (a Python corpus). No Go,
+//     JS/TS or multi-package corpus exercises this rank.
+func externalPlaceholderRank(e graph.Entity) int {
+	if e.Kind == kindExternalPlaceholder {
+		return 1
+	}
+	return 0
+}
+
 // ScopedResult is the output of ResolveScoped.
 //
 // The two relationship slices are deliberately kept SEPARATE (#6033). They have
@@ -232,10 +320,22 @@ func ResolveScoped(
 	// to the unique bare-name index. byLocation[file][name] holds "" as an
 	// ambiguity sentinel when two entities in the same file share a name.
 	byLocation := make(map[string]map[string]string)
-	addName := func(name, id string) {
-		if name != "" {
-			nameToID[name] = id
+	// nameRank records the placeholder rank (see externalPlaceholderRank) of the
+	// entity currently stored in nameToID for each name, so a synthesized
+	// SCOPE.External placeholder can never shadow a real in-repo entity of the
+	// same name. Within a rank, last-writer-wins is preserved verbatim.
+	nameRank := make(map[string]int, len(newEntities)+len(existingEntities))
+	addName := func(name, id string, rank int) {
+		if name == "" {
+			return
 		}
+		if _, seen := nameToID[name]; seen && rank > nameRank[name] {
+			// A lower-precedence candidate (an external placeholder) never
+			// displaces a real entity that already claimed this name.
+			return
+		}
+		nameToID[name] = id
+		nameRank[name] = rank
 	}
 	addLocation := func(e graph.Entity) {
 		if e.SourceFile == "" || e.Name == "" {
@@ -253,13 +353,15 @@ func ResolveScoped(
 		}
 	}
 	for _, e := range existingEntities {
-		addName(e.Name, e.ID)
-		addName(e.QualifiedName, e.ID)
+		rank := externalPlaceholderRank(e)
+		addName(e.Name, e.ID, rank)
+		addName(e.QualifiedName, e.ID, rank)
 		addLocation(e)
 	}
 	for _, e := range newEntities {
-		addName(e.Name, e.ID)
-		addName(e.QualifiedName, e.ID)
+		rank := externalPlaceholderRank(e)
+		addName(e.Name, e.ID, rank)
+		addName(e.QualifiedName, e.ID, rank)
 		addLocation(e)
 	}
 

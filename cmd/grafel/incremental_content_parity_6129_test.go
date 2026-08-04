@@ -15,7 +15,8 @@
 //	#6123 — a mis-bind IMPROVES the dangling-endpoint metric while making the
 //	        graph wrong.
 //	#6129 — Path A binds IMPORTS to SCOPE.External placeholders instead of the
-//	        real in-repo Module entities; Path B emits spurious DEPENDS_ON rows.
+//	        real in-repo Module entities (since FIXED — see the allow-list);
+//	        Path B emits spurious DEPENDS_ON rows.
 //
 // Every metric used in this area historically — entity counts, relationship
 // counts, dangling-endpoint rates, one-directional diffs — reports that shape
@@ -71,12 +72,21 @@
 //
 // Known-divergence allow-list
 // ───────────────────────────
-// The #6129 divergences are REAL and UNFIXED. This gate landing red on them
+// The divergences characterised below are REAL. This gate landing red on them
 // would be correct but useless as a ratchet, so each is characterised
-// explicitly below by its exact shape, issue number and reason. Anything else —
+// explicitly by its exact shape, issue number and reason. Anything else —
 // a new divergence, or an allow-listed one that stops reproducing — fails.
 // The comparison itself is NOT weakened: no tolerance profile, no ignored edge
-// kind, no ignored property. Fixing #6129 is deliberately out of scope here.
+// kind, no ignored property.
+//
+// The ratchet has since paid for itself. #6129's headline Path-A defect was
+// fixed in internal/extractors/sresolver, and this gate — not the fixing
+// change's own tests — is what established the exact scope of that fix: three
+// allow entries went stale (both halves of the IMPORTS mis-bind and the
+// `DEPENDS_ON → _external` weight over-count, which turned out to be a
+// CONSEQUENCE of the mis-bind rather than a second defect), while a fourth was
+// re-keyed rather than deleted because the fix moved its bound target without
+// closing it. A fix's own tests could not have drawn that boundary.
 //
 // Refs #6129, #6037, #6094, #6123, #6083, #6128.
 package main
@@ -399,28 +409,26 @@ func cpEndState(t *testing.T) *graph.Document {
 var cpKnownPathA = []cpKnown{
 	// ── #6129, headline defect: IMPORTS bound to the wrong KIND of target ──
 	//
-	// `import cperrs_static` / `import cpprod_static` name modules that EXIST
-	// in the repo. The full rebuild binds each IMPORTS edge to the in-repo
-	// `Module` entity. The incremental run binds it to a `SCOPE.External`
-	// placeholder — asserting a dependency on a third-party package where the
-	// source imports a local one.
+	// FIXED — the two entries that stood here (the INVENTED
+	// `…→SCOPE.External/…:IMPORTS` half and the LOST `…→Module/…:IMPORTS` half)
+	// went STALE and were removed by the ratchet below.
 	//
-	// This is the pair that motivated the whole gate: the edge is PRESENT and
-	// RESOLVED on both sides, so entity counts, edge counts and dangling-
-	// endpoint rates are all identical and all report "healthy". Only comparing
-	// the CONTENT of the bound target separates them.
-	{
-		Issue:    "#6129",
-		Why:      "Path A binds IMPORTS to a SCOPE.External placeholder instead of the real in-repo Module. Unfixed.",
-		Bucket:   cpEdgeInvented,
-		Contains: []string{"SCOPE.Component/cphandler_delta.py@cphandler_delta.py→SCOPE.External/", ":IMPORTS"},
-	},
-	{
-		Issue:    "#6129",
-		Why:      "The LOST half of the same mis-bind: the real Module target the full rebuild binds.",
-		Bucket:   cpEdgeLost,
-		Contains: []string{"SCOPE.Component/cphandler_delta.py@cphandler_delta.py→Module/", ":IMPORTS"},
-	},
+	// `import cperrs_static` / `import cpprod_static` name modules that EXIST in
+	// the repo, and Path A bound each IMPORTS edge to a `SCOPE.External`
+	// placeholder instead of the in-repo `Module` — asserting a dependency on a
+	// third-party package where the source imports a local one. Root cause: the
+	// scoped resolver indexes the PREVIOUS PERSISTED graph, which is
+	// post-`external.Synthesize`, so the previous run's `ext:` placeholder
+	// competed as an ordinary name candidate and won on last-writer-wins. A full
+	// rebuild's index can never hold one, because Synthesize runs AFTER
+	// resolution. Fixed by a precedence rank in
+	// internal/extractors/sresolver/scoped.go (`externalPlaceholderRank`).
+	//
+	// This was the pair that motivated the whole gate, and it is worth keeping
+	// the reason recorded now that it no longer reproduces: the edge was PRESENT
+	// and RESOLVED on both sides, so entity counts, edge counts and
+	// dangling-endpoint rates were identical and all reported "healthy". Only
+	// comparing the CONTENT of the bound target separated them.
 
 	// ── #6129 family: a from-import left as a verbatim stub ──
 	//
@@ -446,19 +454,33 @@ var cpKnownPathA = []cpKnown{
 		Contains: []string{"→SCOPE.Component/cpcfg_static.py@cpcfg_static.py", ":IMPORTS"},
 	},
 
-	// ── #6129 family: SCOPE.External placeholders survive the prune ──
+	// ── #6129 family: the incremental path never runs import-placeholder-prune ──
+	//
+	// STILL LIVE, but RE-KEYED by the headline fix above — this entry was
+	// updated, not deleted.
 	//
 	// The full run's import-placeholder-prune drops the placeholder entities and
 	// ORPHANS the REFERENCES edges that pointed at them (the full graph keeps
 	// them pointing at a now-absent hex id). The incremental run never prunes,
-	// so the same edges stay bound to a live SCOPE.External entity. Same root
-	// cause as the headline defect — placeholder retention — seen on a different
-	// edge kind.
+	// so the same edges stay bound to something live.
+	//
+	// Before the headline fix that "something live" was the SCOPE.External
+	// placeholder, and this entry was keyed on `→SCOPE.External/`. The fix makes
+	// the same edges bind to the real in-repo `Module` instead, so the key moved
+	// to `→Module/` while the divergence itself — full leaves the endpoint
+	// dangling, incremental binds it — is unchanged. The count evidence that
+	// this is a RE-TARGET and not a new edge: full=56/inc=57 edges, full=23/
+	// inc=24 entities and full=13/inc=12 unbound endpoints are byte-identical
+	// before and after the fix; only the bound CONTENT moved.
+	//
+	// Note the incremental answer is arguably the BETTER one here (a live Module
+	// beats a dangling hex id). Parity is still parity: the two paths must agree,
+	// and closing this one means teaching the incremental path to prune.
 	{
 		Issue:    "#6129",
-		Why:      "Incremental keeps SCOPE.External placeholders the full run's import-placeholder-prune removes. Unfixed.",
+		Why:      "Incremental never runs import-placeholder-prune, so REFERENCES edges the full run orphans stay bound. Unfixed (re-keyed from SCOPE.External to Module by the headline fix).",
 		Bucket:   cpEdgeInvented,
-		Contains: []string{"SCOPE.Operation/cp_handle@cphandler_delta.py→SCOPE.External/", ":REFERENCES"},
+		Contains: []string{"SCOPE.Operation/cp_handle@cphandler_delta.py→Module/", ":REFERENCES"},
 	},
 	{
 		Issue:    "#6129",
@@ -515,18 +537,20 @@ var cpKnownPathA = []cpKnown{
 
 	// ── #6129 / #6098 family: over-counted DEPENDS_ON weight ──
 	//
-	// #6129 reports "an extra DEPENDS_ON test-repo → _external row" on Path A.
-	// On this fixture it lands as a WEIGHT over-count on the single aggregated
-	// row (5 where the full rebuild computes 1) rather than a second row —
-	// module aggregation folds duplicates into the weight property. The
-	// magnitude is pinned so a drift fails.
-	{
-		Issue:          "#6129 (weight over-count class of #6098)",
-		Why:            "Incremental module-aggregation over-counts the external DEPENDS_ON weight 5× (the retained placeholders above). Unfixed.",
-		Bucket:         cpEdgeProps,
-		Contains:       []string{"Module/test-repo@→Module/_external@:DEPENDS_ON"},
-		DetailContains: []string{`weight "1"≠"5"`},
-	},
+	// FIXED — the entry that stood here went STALE and was removed by the
+	// ratchet.
+	//
+	// #6129 reported "an extra DEPENDS_ON test-repo → _external row" on Path A.
+	// On this fixture it landed as a WEIGHT over-count on the single aggregated
+	// row (5 where the full rebuild computes 1) rather than a second row, because
+	// module aggregation folds duplicates into the weight property.
+	//
+	// It was never an independent defect: module-aggregation was faithfully
+	// counting the mis-bound IMPORTS edges from the headline entry above, each of
+	// which pointed into `_external`. Fixing the bind removed the input, and the
+	// weight fell to the full rebuild's 1 with no change to the aggregation code.
+	// Recorded because "extra DEPENDS_ON row" reads like a separate bug in the
+	// issue text and is not one.
 }
 
 // TestContentParity_PathA_6129 runs the gate over Path A.
