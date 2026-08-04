@@ -4605,6 +4605,11 @@ type foldFileComponentStats struct {
 	// EdgesRepointed is the number of edge endpoints rewritten from a folded
 	// class-like component ID to its file-entity survivor ID.
 	EdgesRepointed int
+	// SpansDonated is the number of positionless file entities that took their
+	// span from a surviving stem-named declaration in the same file, because
+	// the class-like component that would normally have donated it was already
+	// consumed by foldClassHierarchyShadows (#6118).
+	SpansDonated int
 }
 
 // filePathStem returns the base filename without extension, lower-cased.
@@ -4738,6 +4743,107 @@ func (i *Indexer) foldFileComponentDuplicates(
 			sv.Relationships = append(sv.Relationships, rel)
 		}
 		r.Relationships = nil
+	}
+
+	// --- Span donation from a surviving stem-named declaration (#6118) ------
+	//
+	// THE DEFECT THIS CLOSES. The loop above is the ONLY thing that ever gives
+	// a SCOPE.Component(subtype="file") entity a position: FileEntity() emits
+	// it with no span, and the span is promoted from the class-like
+	// SCOPE.Component that shares its file and matches its stem. But this pass
+	// runs AFTER foldClassHierarchyShadows, which drops that very class
+	// component whenever a framework-typed node exists for the same symbol.
+	// When it does, the file entity is left at line 0 — an entity that had a
+	// correct position in one configuration loses it in another.
+	//
+	// That is exactly the shape #6118 measured on the corpus: 187 C# file-level
+	// components regressing from a real start line to 0 with
+	// GRAFEL_INPROC_CUSTOM_EXTRACTORS on. The gate does not create the defect,
+	// it only makes it fire more often — turning on the C# custom extractors
+	// emits framework-typed nodes for DbContexts, MassTransit consumers, MediatR
+	// handlers, Quartz jobs and so on, so more class components become shadow
+	// fold sources and disappear before this pass can read them. The same loss
+	// is reachable on the default path wherever a framework-typed node already
+	// exists (an ASP.NET controller, a Spring @Service, a Django CBV).
+	//
+	// The fix is to stop depending on WHICH node survived. A file entity with
+	// no position takes its span from any SURVIVING entity in the same file
+	// whose name matches the file stem — the class-like component when it is
+	// still there, the framework-typed survivor when it is not. This donates a
+	// span only; it folds nothing, drops nothing and re-keys nothing, so it
+	// cannot interact with the remap/drop bookkeeping below and deliberately
+	// sits ahead of the `len(remap) == 0` early return.
+	//
+	// THE DONOR SET IS DELIBERATELY NARROW. It is exactly "a class-like
+	// declaration": a framework-typed class kind (frameworkClassKindPriority —
+	// the survivor set foldClassHierarchyShadows folds INTO) or a class-like
+	// SCOPE.Component (the fold-source set it folds AWAY). Anything looser is
+	// wrong, not merely over-eager: a Go file caller2.go declaring
+	// `func Caller2()` has a SCOPE.Operation whose name matches the stem, and
+	// letting a function donate its line to the file entity says "this file
+	// starts where that function starts", which is false. It also breaks
+	// incremental/full-rebuild equivalence, because the incremental path does
+	// not run this fold at all — caught by TestDiffReindex_NewCrossFileCall and
+	// its four siblings.
+	isClassLikeDonor := func(r *types.EntityRecord) bool {
+		if _, ok := frameworkClassKindPriority[r.Kind]; ok {
+			return true
+		}
+		return r.Kind == "SCOPE.Component" && r.Subtype != "file" &&
+			(classLikeComponentSubtypes[r.Subtype] || r.Properties["role"] == "class")
+	}
+
+	// Deterministic donor choice: smallest real start line, then largest end
+	// line, then smallest ID.
+	for _, fe := range fileBySourceFile {
+		sv := &merged[fe.idx]
+		if sv.StartLine > 0 || drop[fe.idx] {
+			continue
+		}
+		donor := -1
+		for k := range merged {
+			if k == fe.idx || drop[k] {
+				continue
+			}
+			r := &merged[k]
+			if r.StartLine <= 0 || r.SourceFile != sv.SourceFile {
+				continue
+			}
+			if r.Name == "" || strings.ToLower(r.Name) != fe.stem {
+				continue
+			}
+			if !isClassLikeDonor(r) {
+				continue
+			}
+			if donor < 0 {
+				donor = k
+				continue
+			}
+			d := &merged[donor]
+			switch {
+			case r.StartLine != d.StartLine:
+				if r.StartLine < d.StartLine {
+					donor = k
+				}
+			case r.EndLine != d.EndLine:
+				if r.EndLine > d.EndLine {
+					donor = k
+				}
+			default:
+				if r.ID < d.ID {
+					donor = k
+				}
+			}
+		}
+		if donor < 0 {
+			continue
+		}
+		d := &merged[donor]
+		sv.StartLine = d.StartLine
+		if sv.EndLine == 0 && d.EndLine > 0 {
+			sv.EndLine = d.EndLine
+		}
+		stats.SpansDonated++
 	}
 
 	if len(remap) == 0 {
@@ -5204,8 +5310,8 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 		var fileStats foldFileComponentStats
 		merged, pass2Rels, fileStats = i.foldFileComponentDuplicates(merged, pass2Rels)
 		fmt.Fprintf(os.Stderr,
-			"foldFileComponentDuplicates: observed=%d folded=%d (edges_repointed=%d)\n",
-			fileStats.Observed, fileStats.Folded, fileStats.EdgesRepointed)
+			"foldFileComponentDuplicates: observed=%d folded=%d (edges_repointed=%d spans_donated=%d)\n",
+			fileStats.Observed, fileStats.Folded, fileStats.EdgesRepointed, fileStats.SpansDonated)
 	}
 
 	// Pass 3.7 — Bazel resolver overlay (#2183 / M6).
