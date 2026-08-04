@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 )
@@ -156,6 +157,95 @@ func (s *GraphStream) RelationshipCount() int {
 		return 0
 	}
 	return s.view.RelationshipCount()
+}
+
+// Header returns the graph's header fields without decoding a single row.
+//
+// It is the streaming equivalent of reading Document.IndexedRef / IndexedSHA /
+// IsWorktree / Repo / CoverageStatus off a LoadGraphFromDir result: the same
+// values from the same place (the Graph root table), for callers that want the
+// header and NOT the hundreds of megabytes of rows behind it (#5995).
+//
+// On the graph.json fallback the fields are reconstituted from the already-
+// materialised Document so both paths answer identically.
+func (s *GraphStream) Header() fbreader.GraphMeta {
+	if s == nil {
+		return fbreader.GraphMeta{}
+	}
+	if s.doc != nil {
+		m := fbreader.GraphMeta{
+			Version:        s.doc.Version,
+			RepoTag:        s.doc.Repo,
+			IndexedRef:     s.doc.IndexedRef,
+			IndexedSHA:     s.doc.IndexedSHA,
+			IsWorktree:     s.doc.IsWorktree,
+			CoverageStatus: s.doc.CoverageStatus,
+		}
+		if !s.doc.GeneratedAt.IsZero() {
+			m.ComputedAt = s.doc.GeneratedAt.Format(time.RFC3339)
+		}
+		return m
+	}
+	if s.view == nil {
+		return fbreader.GraphMeta{}
+	}
+	return s.view.LoadGraphMeta()
+}
+
+// DocStats returns the Stats block LoadGraphFromDir would have put on the
+// Document, without materialising it.
+//
+// Read the Files field carefully: the .fb formats do NOT encode a file count,
+// so materializeGraphView leaves Stats.Files zero for every .fb-backed graph
+// and only the graph.json fallback carries a real value. This method reproduces
+// that exactly rather than papering over it — a caller that wants the true
+// indexed-file count should read graph-stats.json's TotalFiles instead.
+func (s *GraphStream) DocStats() Stats {
+	if s == nil {
+		return Stats{}
+	}
+	if s.doc != nil {
+		return s.doc.Stats
+	}
+	return Stats{Entities: s.EntityCount(), Relationships: s.RelationshipCount()}
+}
+
+// EachEntityKind visits the Kind field of every entity row, decoding NOTHING
+// else. Return false from visit to stop early.
+//
+// This exists for the kind-tally callers (`grafel status` counts http endpoints
+// and process flows, #5995): EachEntity converts a whole row — name, qualified
+// name, signature, source file, properties — of which a tally reads one string.
+// The kind strings are interned by the same interner the full walk uses, so a
+// tally over a corpus-sized graph allocates a bounded handful of strings rather
+// than one object graph per row.
+func (s *GraphStream) EachEntityKind(visit func(kind string) bool) {
+	if s == nil || visit == nil {
+		return
+	}
+	if s.doc != nil {
+		for i := range s.doc.Entities {
+			if !visit(s.doc.Entities[i].Kind) {
+				return
+			}
+		}
+		return
+	}
+	if s.view == nil {
+		return
+	}
+	n := s.view.EntityCount()
+	for i := 0; i < n; i++ {
+		fbEnt := s.view.EntityAt(i)
+		if fbEnt == nil {
+			// Match EachEntity/materializeGraphView: skip nil vector slots
+			// rather than reporting an empty kind.
+			continue
+		}
+		if !visit(s.si.intern(fbEnt.Kind())) {
+			return
+		}
+	}
 }
 
 // EachEntity decodes and visits every entity row in file order. Return false
