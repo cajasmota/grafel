@@ -1634,6 +1634,101 @@ func TestPruneImportPlaceholders_RepointsIncomingEdgesToResolvedImport(t *testin
 	}
 }
 
+// TestPruneImportPlaceholders_RepointTargetIsFileScoped pins the FIRST guard
+// on the #6131 repoint: a resolution found in one importer file must never
+// supply a target for a placeholder in a different file.
+//
+// This is the guard with the worst failure mode and the least obvious
+// coverage. The ambiguity guard only fires when the SAME key collects two
+// different targets, so it protects nothing here: when file A's `import
+// shared` resolved and file B's did not, an unscoped key sees exactly ONE
+// resolution and repoints B's reference at A's target with full confidence.
+// A confident cross-file mis-bind is strictly worse than the dangling
+// endpoint this change exists to remove — the graph gains a reference that
+// was never written.
+//
+// Dropping `file` from the repoint key survived every other test in this
+// file, the full-vs-incremental parity gate, and an independent multi-language
+// corpus diff. This case is the only thing standing under it.
+func TestPruneImportPlaceholders_RepointTargetIsFileScoped(t *testing.T) {
+	const (
+		fileA  = "a_importer.py"
+		fileB  = "b_importer.py"
+		module = "shared"
+
+		modShared = "1111111111111111" // the real module, resolved from A only
+		carrierA  = "2222222222222222"
+		carrierB  = "3333333333333333"
+		phA       = "4444444444444444"
+		phB       = "5555555555555555"
+		fnA       = "6666666666666666"
+		fnB       = "7777777777777777"
+	)
+	records := []types.EntityRecord{
+		{ID: modShared, Name: module, Kind: "Module", Subtype: "package", SourceFile: "shared.py"},
+		{
+			// File A: the import resolver bound this file's whole-module
+			// IMPORTS edge to the real module.
+			ID: carrierA, Name: fileA, Kind: "SCOPE.Component", Subtype: "file", SourceFile: fileA,
+			Relationships: []types.RelationshipRecord{
+				{FromID: carrierA, ToID: modShared, Kind: "IMPORTS",
+					Properties: types.PropsFromMap(map[string]string{"source_module": module, "imported_name": module})},
+			},
+		},
+		{
+			// File B: imports the SAME module name, but nothing resolved it —
+			// the shape a partially-resolvable corpus produces constantly.
+			// There is no target for B, and A's is not B's to borrow.
+			ID: carrierB, Name: fileB, Kind: "SCOPE.Component", Subtype: "file", SourceFile: fileB,
+		},
+		{ID: phA, Name: module, Kind: "SCOPE.Component", Subtype: "import", SourceFile: fileA},
+		{ID: phB, Name: module, Kind: "SCOPE.Component", Subtype: "import", SourceFile: fileB},
+		{
+			ID: fnA, Name: "a_handle", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: fileA,
+			Relationships: []types.RelationshipRecord{{FromID: fnA, ToID: phA, Kind: "REFERENCES"}},
+		},
+		{
+			ID: fnB, Name: "b_handle", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: fileB,
+			Relationships: []types.RelationshipRecord{{FromID: fnB, ToID: phB, Kind: "REFERENCES"}},
+		},
+	}
+
+	out, _, stats := PruneImportPlaceholders(records)
+
+	if stats.PlaceholderRefRepoints != 1 {
+		t.Errorf("PlaceholderRefRepoints = %d, want 1 — only file A has a resolution; "+
+			"2 means file B borrowed it across the file boundary", stats.PlaceholderRefRepoints)
+	}
+
+	// Assert BOTH endpoints of BOTH edges as a multiset. Keying on the edge
+	// kind alone, or on the from-side alone, cannot tell "B kept its dangle"
+	// apart from "B was repointed at A's module".
+	got := map[string]int{}
+	for _, e := range out {
+		for _, rel := range e.Relationships {
+			if rel.Kind == "REFERENCES" {
+				got[rel.FromID+"->"+rel.ToID]++
+			}
+		}
+	}
+	want := map[string]int{
+		fnA + "->" + modShared: 1, // repaired from A's own resolution
+		fnB + "->" + phB:       1, // left alone: no resolution in B's file
+	}
+	if len(got) != len(want) {
+		t.Fatalf("REFERENCES multiset = %v, want %v", got, want)
+	}
+	for k, n := range want {
+		if got[k] != n {
+			t.Errorf("REFERENCES %s occurs %d time(s), want %d (full multiset: %v)", k, got[k], n, got)
+		}
+	}
+	if got[fnB+"->"+modShared] > 0 {
+		t.Errorf("file B's reference was repointed at file A's target %q — a confident "+
+			"cross-file mis-bind, which is worse than the dangle it replaced", modShared)
+	}
+}
+
 // TestPruneImportPlaceholders_RefusesAmbiguousRepointTarget pins the second
 // guard on the #6131 repoint: when one importer file carries two whole-module
 // IMPORTS edges for the SAME module that resolved to DIFFERENT entities — the

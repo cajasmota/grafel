@@ -2993,17 +2993,56 @@ func PruneImportPlaceholdersWithLiveIDs(records []types.EntityRecord, extraLive 
 	// (`SCOPE.Component/file/cphandler_delta.py --IMPORTS--> Module/cperrs_static`).
 	// We index those and re-point incoming edges at them.
 	//
-	// Deliberately narrow, so this can only ever convert a would-be dangling
-	// endpoint into a live one:
+	// Deliberately narrow. Four guards, each with a test that fails when it is
+	// removed (see imports_test.go — the file-scoping one especially, which
+	// survived a parity gate and a multi-language corpus diff before it had a
+	// case of its own):
 	//   - only placeholders that are actually being PRUNED are considered;
-	//   - only WHOLE-MODULE imports (imported_name == source_module) supply a
-	//     target — a member import (`from m import Thing`) resolves to the
-	//     member, not to the module the placeholder stands for;
+	//   - a resolution is scoped to the IMPORTER FILE it was found in. When one
+	//     file's import of a module resolved and another's did not, borrowing
+	//     the first file's target invents a cross-file reference nobody wrote —
+	//     a confident mis-bind, which is worse than the dangle being repaired.
+	//     The ambiguity guard below does NOT cover this: an unscoped key sees
+	//     one resolution, not a conflict;
+	//   - only WHOLE-MODULE imports supply a target. The test is
+	//     `imported_name == source_module`, i.e. the imported name IS the
+	//     module name, which is exactly what the placeholder stands for. A
+	//     member import (`from m import Thing`) resolves to Thing and supplies
+	//     nothing. Note `from x import x` legitimately passes: in Python that
+	//     rebinds the local name to the submodule, so a reference to `x` SHOULD
+	//     follow that IMPORTS target. It is intended behaviour, not an escape;
 	//   - a module resolving to two different targets within one file is
 	//     ambiguous and supplies nothing;
-	//   - the target must be a surviving record. Re-pointing at another
-	//     pruned placeholder would just move the dangle.
-	// No edge is created or removed and no already-live endpoint is touched.
+	//   - the target must be a surviving record (or, on the incremental path,
+	//     a known-live carried-forward id). Re-pointing at another pruned
+	//     placeholder would just move the dangle.
+	//
+	// No edge is created or removed. Endpoints are moved only where the ToID
+	// equals the stamped id of a placeholder being pruned — which is a
+	// would-be-dangling endpoint by construction, PROVIDED no surviving entity
+	// shares that id. That proviso is not free: graph.EntityID hashes
+	// repo/kind/name/sourceFile and NOT Subtype (internal/graph/graph.go:259),
+	// so a `SCOPE.Component` placeholder named M in file F collides with any
+	// other `SCOPE.Component` named M in F, and edges legitimately bound to the
+	// survivor would move with it. No reachable instance is known and the
+	// collision is pre-existing — every id-keyed pass in this function,
+	// including the #642 rewrite above, rests on the same assumption — but it
+	// is the precondition this block actually relies on, so it is stated
+	// rather than implied.
+	//
+	// Reachability. Both halves must be present in the same file: a placeholder
+	// with Subtype=="import", AND an IMPORTS edge carrying source_module ==
+	// imported_name resolved to a surviving entity. That excludes more
+	// languages than it looks. Go and Java import placeholders leave Subtype
+	// EMPTY (internal/extractors/golang/extractor.go ~2449;
+	// internal/extractors/java/references.go:194 says so outright), so they are
+	// never pruned and never repointed — `SCOPE.Component/fmt@…` survives as a
+	// live entity. JS/TS relative imports are already carried across by the
+	// #642 rewrite above. The placeholders this block actually repairs come
+	// from internal/extractors/cross/imports (Python and its siblings) and any
+	// other extractor emitting both halves. ONLY PYTHON IS EXERCISED, by the
+	// tests here and by the parity gate; the sibling languages are reachable
+	// and unmeasured.
 	if repoints := buildPlaceholderRepoints(records, prunable, extraLive); len(repoints) > 0 {
 		for i := range records {
 			r := &records[i]
@@ -3098,7 +3137,12 @@ func buildPlaceholderRepoints(records []types.EntityRecord, prunable []bool, ext
 		}
 	}
 
-	// Placeholders being pruned, keyed by importer file then module string.
+	// Placeholders being pruned, keyed by importer file AND module string.
+	// The file component of this key is load-bearing, not incidental: without
+	// it a resolution found in one file supplies a target for a placeholder in
+	// another, which invents a cross-file reference. The ambiguity guard below
+	// does not catch that case — see
+	// TestPruneImportPlaceholders_RepointTargetIsFileScoped.
 	// Nothing to repair if there are none.
 	type phKey struct{ file, module string }
 	phIDs := make(map[phKey][]string)
@@ -3144,8 +3188,11 @@ func buildPlaceholderRepoints(records []types.EntityRecord, prunable []bool, ext
 			if module == "" {
 				continue
 			}
-			// Whole-module import only. `from m import Thing` resolves to
-			// Thing, which is not what the placeholder for `m` stands for.
+			// Whole-module import only: the imported name IS the module name,
+			// which is what the placeholder stands for. `from m import Thing`
+			// resolves to Thing and is not a candidate. `from x import x`
+			// passes and SHOULD — in Python that rebinds the local name to the
+			// submodule, so a reference to `x` follows this IMPORTS target.
 			if rel.Properties.Get("imported_name") != module {
 				continue
 			}
