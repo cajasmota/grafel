@@ -308,20 +308,80 @@ func TestRSSHistoryStaleEntryIsNotAmplified(t *testing.T) {
 	}
 }
 
-// TestRSSHistoryDropsLegacyUntaggedEntries covers the gap between "only
-// child_maxrss is recorded from now on" and "the file contains only
-// child_maxrss". The first was true the moment the gate landed; the second was
-// not, and with the TTL removed nothing else would ever have made it true.
+// TestLegacyHistoryEntryStillAdmitsWithinBudget is the test that matters, and
+// it asserts the ADMISSION OUTCOME rather than whether a row survives load.
+// An earlier version of this change dropped untagged entries, and every test
+// then passed while the actual consequence was a throughput regression on the
+// largest repo on the machine. Mechanism-level assertions could not see it.
 //
-// This is not hypothetical. The development host's live history file held
-// peak_rss_mb 1593 for a large monorepo — the fabricated daemon-RSS-delta this
-// issue is about, written by the pre-#5954 in-process sampler — which would
-// have gone on governing that repo's admission until its next FULL subprocess
-// index, potentially months away given incremental is default-ON.
+// Measured on the development host, which is what these constants encode:
 //
-// The check is deliberately a one-shot on load, keyed on the measure and not on
-// age, so it cannot reintroduce the resurrection defect that killed the TTL.
-func TestRSSHistoryDropsLegacyUntaggedEntries(t *testing.T) {
+//	<a large monorepo>  stored peak  1593 MB, untagged
+//	PredictRSS for it                10374 MB
+//	BudgetMB on 16 GiB                2048 MB
+//
+// Keeping the legacy figure: 1593 < 2048, so the repo shares the budget.
+// Dropping it: predictedFor falls through to PredictRSS at 5.07x budget, and
+// tryAdmit will only ever release it through the solo admit_oversize path —
+// indefinitely, because only a FULL index refreshes the series and incremental
+// is default-ON. That is the same failure the 30-day TTL was removed for.
+func TestLegacyHistoryEntryStillAdmitsWithinBudget(t *testing.T) {
+	const repo = "/repo-legacy-admission"
+	const legacyPeakMB int64 = 1593
+	const predictRSSMB int64 = 10374
+	const budgetMB int64 = 2048
+
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	body := `{"` + repo + `": {"peak_rss_mb": 1593, "last_index": "2026-08-04T19:18:08Z"}}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf syncBuf
+	s := newPeakTestSchedulerWithHistory(&buf, LoadRSSHistory(path),
+		func(context.Context, string, string) error { return nil })
+	s.cfg.BudgetMB = budgetMB
+	// Stand-in for the real 70x-source-bytes walk over that repo.
+	s.cfg.Predict = func(string) int64 { return predictRSSMB }
+
+	if got := s.predictedFor(repo); got != legacyPeakMB {
+		t.Fatalf("predictedFor(legacy repo)=%d; want the stored %d. Discarding the entry "+
+			"substitutes PredictRSS=%d, which is %.2fx the %d MB budget — a worse estimate, "+
+			"not a more honest one",
+			got, legacyPeakMB, predictRSSMB, float64(predictRSSMB)/float64(budgetMB), budgetMB)
+	}
+
+	// The consequence: with another job in flight it still fits, so it is
+	// admitted alongside rather than serialised behind everything.
+	s.mu.Lock()
+	s.inflight["/other"] = 200
+	s.usedMB = 200
+	s.pendingQ = []string{repo}
+	s.pendingRefs[repo] = "main"
+	s.pendingCommits[repo] = "c0"
+	s.mu.Unlock()
+
+	s.tryAdmit()
+
+	select {
+	case tok := <-s.jobs:
+		if tok.repoPath != repo {
+			t.Fatalf("admitted %s; want %s", tok.repoPath, repo)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("legacy repo was NOT admitted alongside a 200 MB job: its prediction no "+
+			"longer fits the %d MB budget, so it is now solo-only — the throughput "+
+			"regression this test exists to catch", budgetMB)
+	}
+	if hasEvent(s, "admit_oversize") {
+		t.Fatalf("legacy repo took the solo admit_oversize path; it should fit the budget "+
+			"outright at %d MB", legacyPeakMB)
+	}
+}
+
+// TestRSSHistoryMarksLegacyEntriesWithoutDiscarding pins the mechanism that
+// makes the above work: provenance is recorded, nothing is thrown away.
+func TestRSSHistoryMarksLegacyEntriesWithoutDiscarding(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rss-history.json")
 	body := `{
   "/repo-legacy":  {"peak_rss_mb": 1593, "last_index": "2026-08-04T19:18:08Z"},
@@ -333,17 +393,53 @@ func TestRSSHistoryDropsLegacyUntaggedEntries(t *testing.T) {
 	}
 	h := LoadRSSHistory(path)
 
-	if got := h.Predict("/repo-legacy"); got != 0 {
-		t.Fatalf("Predict(/repo-legacy)=%d; an entry with no src predates the gate "+
-			"entirely and must not govern admission — untagged is not 'probably fine'", got)
+	for _, tc := range []struct {
+		repo    string
+		wantMB  int64
+		wantSrc string
+	}{
+		{"/repo-legacy", 1593, peakSrcLegacyUnverified},
+		{"/repo-foreign", 900, peakSrcLegacyUnverified},
+		{"/repo-tagged", 812, peakSrcChildMaxRSS},
+	} {
+		if got := h.Predict(tc.repo); got != tc.wantMB {
+			t.Errorf("Predict(%s)=%d; want %d — an entry is retained regardless of "+
+				"provenance, because the fallback is measurably worse", tc.repo, got, tc.wantMB)
+		}
+		h.mu.Lock()
+		gotSrc := h.data[tc.repo].Src
+		h.mu.Unlock()
+		if gotSrc != tc.wantSrc {
+			t.Errorf("%s src=%q; want %q — provenance must be explicit on disk so "+
+				"`grafel status` can show the value is not a real measurement",
+				tc.repo, gotSrc, tc.wantSrc)
+		}
 	}
-	if got := h.Predict("/repo-foreign"); got != 0 {
-		t.Fatalf("Predict(/repo-foreign)=%d; a daemon-baselined entry must be dropped "+
-			"on load, not merely refused on write", got)
+}
+
+// TestFirstRealMeasurementReplacesLegacyOutright pins the self-heal rate. A
+// legacy figure is not a measurement, so decaying halfway toward reality from it
+// would need ~7 full indexes to converge — and full indexes are the rare event
+// here. One is enough.
+func TestFirstRealMeasurementReplacesLegacyOutright(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	body := `{"/repo-heal": {"peak_rss_mb": 1593, "last_index": "2026-08-04T19:18:08Z"}}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if got := h.Predict("/repo-tagged"); got != 812 {
-		t.Fatalf("Predict(/repo-tagged)=%d; want 812. Dropping legitimate child_maxrss "+
-			"entries would throw away the only real calibration this system has", got)
+	h := LoadRSSHistory(path)
+	h.Record("/repo-heal", 600)
+
+	if got := h.Predict("/repo-heal"); got != 600 {
+		t.Fatalf("Predict after one real measurement=%d; want 600 exactly. A fabricated "+
+			"legacy figure must not survive as a decay base — that perpetuates it across "+
+			"many full indexes, and full indexes are what is scarce", got)
+	}
+	h.mu.Lock()
+	src := h.data["/repo-heal"].Src
+	h.mu.Unlock()
+	if src != peakSrcChildMaxRSS {
+		t.Fatalf("src=%q after a real measurement; want %q", src, peakSrcChildMaxRSS)
 	}
 }
 

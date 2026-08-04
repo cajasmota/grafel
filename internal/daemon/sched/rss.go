@@ -87,20 +87,40 @@ func PredictRSS(repoPath string) int64 {
 // governing admission forever — is addressed at the source instead: only
 // child_maxrss is ever recorded (see runIndex), so the contaminating measure is
 // no longer PRODUCED. That is a claim about new writes and says nothing about
-// entries already on disk, which is why every entry now carries the src that
-// produced it and LoadRSSHistory drops the ones that are not child_maxrss. This
-// matters concretely: a live file on the development host held
+// entries already on disk, so every entry now carries the src that produced it
+// and LoadRSSHistory marks the ones that are not child_maxrss.
 //
-//	"<a large monorepo>": {"peak_rss_mb": 1593, ...}
+// MARKS, not drops — and that distinction was measured, not assumed. Dropping
+// them was tried and reintroduced the exact hazard the TTL was removed for.
+// On the development host:
 //
-// written by the pre-#5954 in-process sampler — the same fabricated
-// daemon-RSS-delta this issue is about — and with the TTL gone nothing else
-// would ever have invalidated it. The check is a one-shot on load and is NOT
-// age-based, so it cannot reintroduce the resurrection defect round 2 found.
+//	<a large monorepo>: stored peak 1593 MB, untagged
+//	PredictRSS for the same repo:      10374 MB
+//	BudgetMB on a 16 GiB host:          2048 MB
 //
-// What remains permanent after that is a legitimate measurement of this repo,
-// which is what the series is for. LastIndex is still written and read by
-// nothing; it is on-disk forensics for whoever inspects the file.
+// Dropping the entry sends predictedFor to PredictRSS, i.e. from 1593 (under
+// budget, admits concurrently) to 10374 (5.07x budget, permanent solo
+// admit_oversize until the next FULL index, which may be months away because
+// incremental is default-ON). Identical in shape to the TTL failure, on the
+// largest repo on the machine — the one epic #5954 cares most about.
+//
+// It is also not a trade of accuracy for throughput. The daemon has indexed
+// that repo on a 16 GiB host without OOM, so its true peak cannot be anywhere
+// near 10374 MB (63% of RAM for one child). Between two figures that are both
+// wrong, the stored one is closer, so dropping it makes the prediction worse in
+// BOTH dimensions. Honesty is served by making the provenance visible — the src
+// rides through to `grafel status` — not by deleting the number and silently
+// substituting a worse one.
+//
+// A conditional drop ("discard only when PredictRSS is lower") was rejected for
+// a sharper reason: the sampler that wrote these entries fails by reporting
+// ZERO or near-zero — that is this whole issue — so legacy values are biased
+// LOW. A rule keyed on "keep the smaller estimate" would preferentially retain
+// exactly the entries that under-predict, which is the OOM direction.
+//
+// What remains permanent is either a legitimate measurement or a marked legacy
+// figure that any single full index replaces outright (see Record). LastIndex is
+// still written and read by nothing; it is on-disk forensics.
 
 // rssHistoryRelaxDivisor controls how fast a recorded peak walks back toward
 // smaller observations. See Record.
@@ -142,14 +162,17 @@ func LoadRSSHistory(path string) *RSSHistory {
 		return h
 	}
 	_ = json.Unmarshal(b, &h.data)
-	// Drop anything not stamped as a child high-water mark. See the note on
-	// expiry above: this is the one-shot, non-age-based invalidation that makes
-	// "only child_maxrss is recorded" true of the FILE and not merely of future
-	// writes. A dropped entry costs one re-measure; a kept one governs
-	// admission indefinitely.
+	// Normalise provenance on load. Anything not stamped child_maxrss — an
+	// entry predating the field, or any other src — becomes an explicit
+	// legacy_unverified. The entry is KEPT and still governs admission: see the
+	// retention argument above, which is measured rather than assumed. What
+	// this buys is that the value is self-describing from here on, surfaces as
+	// legacy in `grafel status`, and is replaced outright by the first real
+	// measurement instead of being decayed against for several.
 	for repo, e := range h.data {
 		if e.Src != peakSrcChildMaxRSS {
-			delete(h.data, repo)
+			e.Src = peakSrcLegacyUnverified
+			h.data[repo] = e
 		}
 	}
 	return h
@@ -190,6 +213,13 @@ func (h *RSSHistory) Record(repoPath string, peakMB int64) {
 	// measurements now walk the figure halfway back each time, so it converges
 	// on reality within a few runs and never drops below what was just seen.
 	switch {
+	// A legacy figure is not a measurement, so the first real one REPLACES it
+	// rather than being averaged against it. Decaying toward reality from a
+	// fabricated starting point would take ~7 full indexes to converge, and
+	// full indexes are exactly what is rare here (incremental is default-ON and
+	// records nothing). One full index is enough to make the entry real.
+	case prev.Src != peakSrcChildMaxRSS:
+		prev.PeakRSSMB = peakMB
 	case peakMB > prev.PeakRSSMB:
 		prev.PeakRSSMB = peakMB
 	case prev.PeakRSSMB > peakMB:

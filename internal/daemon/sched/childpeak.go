@@ -45,6 +45,13 @@ const peakSrcChildMaxRSS = "child_maxrss"
 //     so no high-water mark came back with the reaped process.
 const peakSrcUnmeasured = "unmeasured"
 
+// peakSrcLegacyUnverified marks an RSSHistory entry that was NOT produced by
+// the child high-water path — an entry written before the src field existed, or
+// one carrying any other src. It is retained and still used for admission; see
+// the retention argument in rss.go. It exists so the value is self-describing
+// on disk and visible in `grafel status`, not so it can be discarded.
+const peakSrcLegacyUnverified = "legacy_unverified"
+
 // ---------------------------------------------------------------------------
 // Why there is no in-daemon sampler (#6107 review).
 //
