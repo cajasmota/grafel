@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/algorithms"
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
@@ -32,6 +33,7 @@ func buildStatsSidecar(
 	canarySpiked bool,
 	prior *graph.GraphStatsSidecar,
 	computedAt time.Time,
+	renameStats algorithms.RenameStats,
 ) *graph.GraphStatsSidecar {
 	side := &graph.GraphStatsSidecar{
 		Version:            1,
@@ -42,6 +44,15 @@ func buildStatsSidecar(
 		ExtractMS:          extractMS,
 		ParseErrorCanary:   canaryRaw,
 		ParseErrorSpike:    canarySpiked,
+
+		// #6087 — rename-detection completeness, always taken from THIS run
+		// and never carried forward from prior: it describes the pass that
+		// produced the graph now being written, so a stale true would be as
+		// wrong as a stale false. A run that skipped the pass or had no prior
+		// graph writes false, which is correct — nothing was dropped.
+		RenameDetectTruncated:    renameStats.Truncated,
+		RenameDetectAddedSkipped: renameStats.AddedSkipped,
+		RenameDetectPairsSkipped: renameStats.PairsSkipped,
 	}
 
 	if doc.AlgorithmStats != nil {
