@@ -46,6 +46,14 @@
 // falling through hands the stub to the unsound tier. That is enforced by
 // TestResolveScoped_ReceiverTypeTier_AmbiguityDoesNotFallThrough, which a
 // mutation-test showed the obvious ("", false) contract does not satisfy.
+//
+// That guard is a DELIBERATE ASYMMETRY with refs.go, not parity with it: on
+// ambiguity refs.go falls through and its global name index binds. Rationale
+// and the residual divergence are documented on lookupReceiver. Two further
+// gaps are named there and on lookupLeaf rather than closed: the
+// byPackageOperation rung of lookupBareWithLocality is not ported, and refs.go
+// enters that ladder on statusAmbiguous as well as on an outright miss —
+// unreachable from here while nameToID binds ambiguous names arbitrarily.
 package sresolver
 
 import (

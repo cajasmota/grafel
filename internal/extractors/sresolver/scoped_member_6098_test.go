@@ -151,6 +151,20 @@ func TestResolveScoped_ReceiverTypeTier_AmbiguousStaysUnresolved(t *testing.T) {
 // literally named `Do11`. Falling through converts a correctly-ambiguous stub
 // into a confident cross-package edge. That mutation survives the previous
 // test and is killed only by this one.
+//
+// THIS ASSERTS A DELIBERATE ASYMMETRY WITH refs.go, NOT PARITY WITH IT.
+// On exactly this shape the corpus-wide resolver BINDS the edge: refs.go:5697
+// `break`s with resolved=false on ambiguity and control reaches
+// rewriteOneWithCaller's global name index, despite an inline comment there
+// claiming it "preserves the stub". So a full rebuild resolves this and the
+// scoped path leaves a stub — a divergence in the #6090 loss direction, which
+// will become a live failure if a fixture ever reaches this shape.
+//
+// We keep the refusal anyway, because refs.go's fall-through is safe only for
+// refs.go: its global tier carries an ambiguity sentinel and the scoped
+// ladder's nameToID does not, so falling through here binds arbitrarily
+// rather than bind-or-refuse. Closing the divergence means fixing the refs.go
+// side; that is filed separately. Do not "restore parity" by deleting this.
 func TestResolveScoped_ReceiverTypeTier_AmbiguityDoesNotFallThrough(t *testing.T) {
 	existing := []graph.Entity{
 		mtEnt(mtDoB, "T11.Do11", "svc/b.go"),
@@ -245,23 +259,47 @@ func TestResolveScoped_LeafTier_AmbiguousStaysUnresolved(t *testing.T) {
 // name with NO scope information, so they are gated to CALLS, matching
 // refs.go's `case "CALLS":`. A DEPENDS_ON naming a type must not catch a
 // same-named method.
+//
+// The stamped sub-case is the one that actually exercises lookupLeaf's inner
+// CALLS gate. Without it the gate is DEAD CODE for testing purposes:
+// relWantsMemberTier already rejects an unstamped non-CALLS edge, so deleting
+// the inner gate leaves the unstamped case passing. The stamp gets the edge
+// past relWantsMemberTier, and a receiver type with no matching scope gets it
+// past tier 1, so the inner gate is the only thing standing between a
+// DEPENDS_ON and a method binding.
 func TestResolveScoped_LeafTier_IsCallsOnly(t *testing.T) {
-	existing := []graph.Entity{mtEnt(mtDoB, "T11.Do11", "svc/b.go")}
-	fresh := []graph.Entity{mtEnt(mtCaller, "Local07", "svc/a.go")}
-	dep := graph.Relationship{
-		ID:     graph.RelationshipID(mtCaller, "Do11", "DEPENDS_ON"),
-		FromID: mtCaller,
-		ToID:   "Do11",
-		Kind:   "DEPENDS_ON",
-	}
+	for _, tc := range []struct {
+		name     string
+		recvType string
+	}{
+		// Rejected early, by relWantsMemberTier.
+		{"unstamped", ""},
+		// Reaches lookupLeaf and is stopped only by its inner CALLS gate. The
+		// receiver type names no scope in the package, so tier 1 misses.
+		{"stamped_with_unknown_receiver", "Tzz"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			existing := []graph.Entity{mtEnt(mtDoB, "T11.Do11", "svc/b.go")}
+			fresh := []graph.Entity{mtEnt(mtCaller, "Local07", "svc/a.go")}
+			dep := graph.Relationship{
+				ID:     graph.RelationshipID(mtCaller, "Do11", "DEPENDS_ON"),
+				FromID: mtCaller,
+				ToID:   "Do11",
+				Kind:   "DEPENDS_ON",
+			}
+			if tc.recvType != "" {
+				dep = dep.WithProperties(map[string]string{"receiver_type": tc.recvType})
+			}
 
-	res := sresolver.ResolveScoped(fresh, existing, []graph.Relationship{dep}, nil, nil)
-	if len(res.ResolvedNewRelationships) != 1 {
-		t.Fatalf("expected 1 rel, got %d", len(res.ResolvedNewRelationships))
-	}
-	if got := res.ResolvedNewRelationships[0]; got.ToID != "Do11" {
-		t.Errorf("the leaf tier is CALLS-only; a DEPENDS_ON must not bind to the method T11.Do11; "+
-			"got ToID=%q", got.ToID)
+			res := sresolver.ResolveScoped(fresh, existing, []graph.Relationship{dep}, nil, nil)
+			if len(res.ResolvedNewRelationships) != 1 {
+				t.Fatalf("expected 1 rel, got %d", len(res.ResolvedNewRelationships))
+			}
+			if got := res.ResolvedNewRelationships[0]; got.ToID != "Do11" {
+				t.Errorf("the leaf tier is CALLS-only; a DEPENDS_ON must not bind to the method "+
+					"T11.Do11 (%s); got ToID=%q", mtDoB, got.ToID)
+			}
+		})
 	}
 }
 

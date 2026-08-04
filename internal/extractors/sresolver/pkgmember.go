@@ -70,14 +70,37 @@ const ambiguous = ""
 //
 //  3. leafByPkg[pkgDir][member] — issue #778,
 //     internal/resolve/refs.go:lookupPackageMemberByLeafName (refs.go:2969).
-//     Same, widened to the caller's package directory. This is the tier that
-//     actually binds the #6090-residual shape: `a.Do11(x)` inside a free
-//     function, where the callee entity is `T11.Do11` in a SIBLING file.
+//     Same, widened to the caller's package directory.
 //
 // The scoped ladder previously had none of them. Its nameToID tier is keyed on
 // the WHOLE entity name (`T11.Do11`, never `Do11`) and its byLocation tier on
 // the EXACT source file, so a same-package/different-file member was
 // unreachable — which is #6098's root cause and #6090's residual.
+//
+// # Tier 1 and tiers 2-3 are REDUNDANT on the integration fixture
+//
+// Stated because an earlier version of this comment claimed the opposite.
+// Ablated tier-by-tier against
+// cmd/grafel:TestIncremental_NewlyIntroducedCrossFileCall_6098:
+//
+//	leaf tiers removed, receiver tier only  → PASSES
+//	receiver tier removed, leaf tiers only  → PASSES
+//	both removed                            → FAILS 3/3 (0 resolved, want 2)
+//
+// The Go extractor DOES stamp receiver_type for `a := &T11{...}; a.Do11(x)`,
+// so tier 1 alone binds that fixture — #6098's stated root cause was
+// sufficient for it. Tiers 2-3 are carried for LADDER PARITY with refs.go, not
+// because this fixture needs them; they are exercised by the unit tests in
+// scoped_member_6098_test.go only.
+//
+// A shape that separates them was looked for and not found within the time
+// box. The nearest candidate — a chained call `New23().Do23(x)`, which the
+// extractor emits as an unstamped Format A stub — is not one: the corpus-wide
+// resolver leaves it unresolved too, so there is nothing to reach parity with.
+//
+// The general lesson, recorded because it cost a wrong published claim:
+// "measured end-to-end" must mean tier-by-tier ablation, not "the whole change
+// makes the test pass".
 //
 // # Memory — why this is not the corpus-sized index the scoped path avoids
 //
@@ -87,12 +110,19 @@ const ambiguous = ""
 // directories of the freshly extracted files — the changed-file delta. Every
 // other entity is scanned (one pointer-walk, no allocation) and discarded.
 //
-// So the retained size is O(entities in the changed files' packages), which is
-// a property of the edit, not of the repository. On a one-file edit to a
-// 20-file package that is a few hundred map entries; the pre-existing nameToID
-// and byLocation maps in ResolveScoped, which ARE built over every surviving
-// entity, dominate it by orders of magnitude. Measured in
+// So the retained size is O(entities in the PACKAGES THE EDIT TOUCHES) — not
+// of the repository, but not of the edit alone either: probeDirs is keyed on
+// directories, so a delta spanning K packages costs K packages' worth of
+// entities regardless of how few files changed in each. On a one-file edit to
+// a 20-file package that is a few hundred map entries; the pre-existing
+// nameToID and byLocation maps in ResolveScoped, which ARE built over every
+// surviving entity, dominate it by orders of magnitude. Measured in
 // pkgmember_memory_test.go.
+//
+// Precision note for future work here: what ResolveScoped already holds is ONE
+// REPOSITORY's entity set. Epic #5954's peak concerns the multi-repo GROUP
+// corpus, which this path genuinely never materialises. "The scoped path
+// already holds the corpus" is true only at repo granularity.
 //
 // A caller outside those directories simply does not get the tiers, which is
 // the status quo for it — a surviving edge left unresolved by the previous
@@ -122,6 +152,16 @@ type callerLocation struct {
 // unresolved (non-hex) ToID that is either receiver-stamped or CALLS-shaped.
 // Format A structural stubs are excluded — they carry colons and are the
 // existing ladder's business.
+//
+// Divergence, verified inert today: refs.go:2875 gates the equivalent bare
+// lookup on !strings.ContainsAny(ref, ":.#"), i.e. it also rejects a DOT and
+// the Format B member delimiter. We reject only ':'. That is currently
+// harmless because every index key here is built from the segment AFTER the
+// last dot, so a dotted stub cannot spuriously match a member key. It goes
+// live the moment key construction changes — e.g. if a scope were ever
+// indexed under its dotted form. Left divergent rather than aligned so the
+// gate keeps stating the condition this code actually depends on, but the
+// coupling is written down here.
 func relWantsMemberTier(r *graph.Relationship) bool {
 	if r.ToID == "" || isHexID(r.ToID) || strings.IndexByte(r.ToID, ':') >= 0 {
 		return false
@@ -213,8 +253,9 @@ func buildMemberIndexes(newEntities, existingEntities []graph.Entity) *memberInd
 // lookup probes the ported tiers for one edge. callerEndpoint is the edge's
 // RAW (pre-resolution) FromID.
 //
-// The return contract has THREE outcomes, mirroring
-// internal/resolve/refs.go:lookupPackageMember:
+// The return contract has THREE outcomes. The SIGNATURE mirrors
+// internal/resolve/refs.go:lookupPackageMember; the LADDER BEHAVIOUR
+// deliberately does not — see the asymmetry note below.
 //
 //	(id, true)  — unambiguous hit; bind.
 //	("", true)  — AMBIGUOUS. Handled, but not bound. The caller must leave the
@@ -228,6 +269,28 @@ func buildMemberIndexes(newEntities, existingEntities []graph.Entity) *memberInd
 // unrelated entity happens to be named after the member. A wrong edge is worse
 // than the stub it replaces — that is the whole reason #6098 was left open
 // rather than half-fixed.
+//
+// # Deliberate asymmetry with refs.go on ambiguity — NOT parity
+//
+// The corpus-wide resolver does the OPPOSITE. At refs.go:5681-5697 an
+// ambiguous (pkg, recv, member) `break`s with resolved=false, so control
+// falls into the Go component tier and then rewriteOneWithCaller → the global
+// name index, WHICH CAN AND DOES BIND. The inline comment there ("fall through
+// to record as unmatched (preserve the stub)") is wrong about its own code —
+// the same misconception this port had to fix on the scoped side.
+//
+// Concretely: for an ambiguous (svc, T11, Do11) plus a single global entity
+// named `Do11` elsewhere, a FULL REBUILD binds the edge and this resolver
+// leaves a stub. That is a divergence in the #6090 loss direction, and
+// TestResolveScoped_ReceiverTypeTier_AmbiguityDoesNotFallThrough asserts our
+// behaviour, not refs.go's.
+//
+// We keep our behaviour because refs.go's is unsound HERE: its global tier
+// carries an ambiguity sentinel, ours does not, so falling through would bind
+// arbitrarily rather than bind-or-refuse. Closing the divergence properly
+// means fixing the refs.go side, which is filed separately. Until then this is
+// a known, deliberate asymmetry — do not "restore parity" by deleting the
+// guard.
 // It is split into two entry points because the two halves sit on OPPOSITE
 // sides of the scoped ladder's whole-string tier, mirroring where the
 // corpus-wide resolver probes each:
@@ -286,6 +349,37 @@ func (idx *memberIndexes) lookupReceiver(r *graph.Relationship, callerEndpoint s
 
 // lookupLeaf probes tiers 2 and 3. Same three-outcome contract as
 // lookupReceiver.
+//
+// # What was NOT ported, and the gap it leaves
+//
+// These two are the tail of refs.go:lookupBareWithLocality (refs.go:2909),
+// which is a four-step ladder: byLocationKind[callerFile] →
+// byPackageOperation[callerPkgDir] → the two leaf lookups. Only the leaf
+// lookups are ported here, and only on an outright MISS — refs.go enters
+// lookupBareWithLocality on statusAmbiguous as well as statusUnmatched.
+//
+// The live gap: when a bare name is GLOBALLY AMBIGUOUS, refs.go rescues it
+// locally via byPackageOperation, whereas the scoped ladder's nameToID is
+// last-writer-wins and binds arbitrarily — possibly cross-package — so
+// control never reaches here at all. That is pre-existing scoped-path
+// unsoundness, not something this change introduced, but it now sits directly
+// beneath tiers that claim refs.go parity, so it is named rather than left
+// implicit. Closing it requires giving nameToID an ambiguity sentinel first;
+// doing that here would change the binding of every existing bare stub and is
+// out of scope for #6098.
+//
+// # The ("", true) refusals below are INERT TODAY
+//
+// Reverting either leaf tier's ambiguity to ("", false) does not change any
+// observable behaviour: lookupLeaf is the LAST rung of resolveToID, so a
+// refusal and a miss are indistinguishable to the caller, and tier-2
+// ambiguity implies tier-3 ambiguity. No guard is missing and no test is
+// absent — the mutants are genuine no-ops.
+//
+// They become load-bearing AND unpinned the instant a tier is appended after
+// lookupLeaf in resolveToID. If you add one, add the counter-test too; the
+// receiver tier's TestResolveScoped_ReceiverTypeTier_AmbiguityDoesNotFallThrough
+// is the shape to copy.
 func (idx *memberIndexes) lookupLeaf(r *graph.Relationship, callerEndpoint string) (string, bool) {
 	if idx == nil || callerEndpoint == "" || !relWantsMemberTier(r) {
 		return "", false
