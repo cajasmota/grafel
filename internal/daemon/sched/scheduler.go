@@ -1675,7 +1675,14 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	t0 := time.Now()
 
 	var err error
+	// observedPeakMB is the peak memory figure reported for this run, and
+	// peakSrc names WHICH measure it is (#6107). The two travel together and
+	// both are logged: "peak" is ambiguous in this codebase — an absolute
+	// child RSS high-water mark and a daemon RSS delta are different numbers
+	// with different baselines, and reporting either under a bare "peak"
+	// field is how this metric came to be misread for an entire epic.
 	var observedPeakMB int64
+	peakSrc := peakSrcNone
 
 	// Cross-path mutual exclusion (foreground group-rebuild ⇄ scheduler): the
 	// foreground rebuild path in cmd/grafel indexes a repo directly, bypassing
@@ -1716,26 +1723,49 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		// regressions are diagnosable without a pprof trace (#2141).
 		s.logger.Info("indexer: starting", "repo", repoPath, "ref", tok.ref, "goroutine_id", goroutineID())
 
-		// Spawn RSS sampler so we capture the peak the daemon hit during
-		// this job. Records into history on completion.
+		// Spawn the in-daemon RSS sampler. It measures the DAEMON's own RSS
+		// growth across this job, which is the right figure only when the
+		// index actually ran in this process (GRAFEL_SUBPROCESS_INDEXER=0, or
+		// the incremental in-process path). On the default subprocess path the
+		// child's kernel high-water RSS supersedes it below.
+		//
+		// #6107: two defects fixed here.
+		//  1. The old ticker was 5s and had NO sample on the way out, so a job
+		//     shorter than 5s — which is ~99% of production reindexes — took
+		//     zero samples and left observedPeakMB at its zero value. The
+		//     deferred final sample below is what makes a short job report at
+		//     all; it is not an optimisation.
+		//  2. The peak was reported under the name "peak_heap_mb". It has
+		//     never been a heap figure: currentProcessRSSMB reads the OS
+		//     resident-set size. See peakSrcDaemonDelta.
+		//
+		// The tick stays coarse (2s) because currentProcessRSSMB forks `ps` on
+		// Darwin; the ticker exists to catch a mid-run spike that has been
+		// released again by the time the job ends, not to fix the common case.
 		sampleStop := make(chan struct{})
 		var sampleWG sync.WaitGroup
 		sampleWG.Add(1)
 		go func() {
 			defer sampleWG.Done()
-			t := time.NewTicker(5 * time.Second)
+			t := time.NewTicker(2 * time.Second)
 			defer t.Stop()
 			baseline := currentProcessRSSMB()
+			observe := func() {
+				if delta := currentProcessRSSMB() - baseline; delta > observedPeakMB {
+					observedPeakMB = delta
+					peakSrc = peakSrcDaemonDelta
+				}
+			}
+			// Final sample on the way out, taken while the index's memory is
+			// still resident (close(sampleStop) happens immediately after the
+			// index returns, before any teardown).
+			defer observe()
 			for {
 				select {
 				case <-sampleStop:
 					return
 				case <-t.C:
-					now := currentProcessRSSMB()
-					delta := now - baseline
-					if delta > observedPeakMB {
-						observedPeakMB = delta
-					}
+					observe()
 				}
 			}
 		}()
@@ -1806,6 +1836,20 @@ func (s *Scheduler) runIndex(tok jobToken) {
 
 		close(sampleStop)
 		sampleWG.Wait()
+
+		// #6107: prefer the index child's kernel high-water RSS when this run
+		// forked one. On the default path the daemon sampler above measured
+		// the wrong process entirely — the index heap lives and dies in
+		// `grafel index-internal`, whose pages the daemon never touches — so
+		// its delta is noise around zero regardless of how large the index
+		// was. The child figure is exact (wait4 fills ru_maxrss; no sampler
+		// can miss a peak between ticks) and it is what History/the predictor
+		// wanted all along. Records stamped before t0 belong to an earlier run
+		// and are dropped by takeChildPeakRSSMB rather than misattributed.
+		if mb, ok := takeChildPeakRSSMB(repoPath, t0); ok {
+			observedPeakMB = mb
+			peakSrc = peakSrcChildMaxRSS
+		}
 
 		// Release the cross-path claim the INSTANT the graph.fb write is done —
 		// BEFORE the stats/follow-up/poke section below. The background claim
@@ -1938,7 +1982,13 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		return
 	}
 	dur := time.Since(t0).Truncate(time.Millisecond)
-	allocDiff := observedPeakMB - tok.predictedMB
+	// NOT an allocation delta — it is observed-peak minus the admission
+	// predictor's estimate, i.e. the predictor's error for this run. It was
+	// logged as "alloc_diff_mb", which read as an independent live measurement
+	// and disguised the fact that it is a pure function of the same
+	// observedPeakMB that was reporting zero (the widely-quoted
+	// "peak_heap_mb=0 alloc_diff_mb=-1593" line is just "-predictedMB").
+	peakVsPredictedMB := observedPeakMB - tok.predictedMB
 	s.logEvent("index_ok", repoPath,
 		dur.String()+" peak="+formatMB(observedPeakMB))
 	// #5710 follow-up: stamp entities=N so a silent 0-entity completion (e.g. an
@@ -1947,7 +1997,20 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	if s.cfg.EntityCount != nil {
 		ents = s.cfg.EntityCount(repoPath, tok.ref)
 	}
-	s.logger.Info("indexer: completed", "repo", repoPath, "took", dur, "peak_heap_mb", observedPeakMB, "alloc_diff_mb", allocDiff, "entities", ents)
+	// peak_rss_mb / peak_rss_src (#6107): resident-set size, in MiB, NEVER Go
+	// heap. peak_rss_src says which measure and which baseline:
+	//   child_maxrss     — absolute peak RSS of the `grafel index-internal`
+	//                      child, from wait4 ru_maxrss (the default path).
+	//   daemon_rss_delta — this daemon's RSS growth across the run, sampled
+	//                      (in-process index only).
+	//   none             — no usable measurement (e.g. Windows, where no child
+	//                      peak is available and the sampler saw no growth).
+	// RSS is an upper bound on footprint, not the footprint: on Darwin pages
+	// the runtime released with MADV_FREE stay resident until the kernel is
+	// under pressure.
+	s.logger.Info("indexer: completed", "repo", repoPath, "took", dur,
+		"peak_rss_mb", observedPeakMB, "peak_rss_src", peakSrc,
+		"peak_vs_predicted_mb", peakVsPredictedMB, "entities", ents)
 
 	// Schedule the downstream cross-repo link pass for each group this repo
 	// belongs to. The group-scope algorithm pass is NOT scheduled here — it is

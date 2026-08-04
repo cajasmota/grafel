@@ -574,7 +574,18 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 	<-stderrDone
 	waitErr := cmd.Wait()
 
+	// #6107 / epic #5954: the index heap lives entirely in this child, so its
+	// kernel high-water RSS is the ONLY honest peak figure for the run. Hand
+	// it to runIndex (which writes the "indexer: completed" line) before
+	// returning; the daemon's own sampler measures the wrong process on this
+	// path and reports a near-zero delta. Recorded on the error path too — a
+	// child that OOMed or was killed is precisely the run whose peak matters.
+	recordChildPeakFromProcessState(repoPath, cmd.ProcessState)
 	if logger != nil {
+		if b, ok := maxRSSBytes(cmd.ProcessState); ok {
+			logger.Info("subprocess-indexer: child peak RSS", "pid", pid,
+				"repo", repoPath, "peak_rss_mb", int64(b/(1<<20)), "peak_rss_src", peakSrcChildMaxRSS)
+		}
 		if waitErr != nil {
 			logger.Error("subprocess-indexer: exited with error", "pid", pid, "err", waitErr)
 		} else {
