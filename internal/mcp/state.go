@@ -1944,8 +1944,9 @@ func (s *State) Group(name string) *LoadedGroup {
 	s.mu.Lock()
 	if grp := s.groups[name]; grp != nil {
 		s.touchGroupLocked(grp)
+		snap := grp.snapshotLocked()
 		s.mu.Unlock()
-		return grp
+		return snap
 	}
 	// Cold-gate revive (memory epic #5850, issue #5872 PR1): a group EvictGroup
 	// reclaimed is absent from s.groups and pinned in s.evicted. An explicit
@@ -1967,8 +1968,9 @@ func (s *State) Group(name string) *LoadedGroup {
 	// may have published the group by now.
 	if grp := s.groups[name]; grp != nil {
 		s.touchGroupLocked(grp)
+		snap := grp.snapshotLocked()
 		s.mu.Unlock()
-		return grp
+		return snap
 	}
 	cold, gated := s.evicted[name]
 	if !gated {
@@ -1983,8 +1985,9 @@ func (s *State) Group(name string) *LoadedGroup {
 		if grp != nil {
 			s.touchGroupLocked(grp)
 		}
+		snap := grp.snapshotLocked()
 		s.mu.Unlock()
-		return grp
+		return snap
 	}
 	s.mu.Unlock()
 
@@ -2005,8 +2008,110 @@ func (s *State) Group(name string) *LoadedGroup {
 	delete(s.evicted, name)
 	s.groups[name] = cold
 	s.touchGroupLocked(cold)
+	snap := cold.snapshotLocked()
 	s.mu.Unlock()
-	return cold
+	return snap
+}
+
+// snapshotLocked returns the immutable per-call VIEW of grp that State.Group
+// hands to an unlocked reader (issue #6114). Caller MUST hold s.mu.
+//
+// What it fixes. The serve read path is lock-free by construction: Group()
+// resolves the group under s.mu, releases the lock, and the handler then reads
+// for the whole tool call with no lock held (see maphandle.go). Handing back the
+// LIVE *LoadedGroup meant an unlocked `range lg.Repos` in every repo-scoped tool
+// (resolveRepoFilter, groupIndexedRefSHA, the repo-stats loop) ran concurrently
+// with reloadAllLocked's `grp.Repos[rName] = lr` / `delete(grp.Repos, rName)` —
+// which fire whenever registry.json gains or loses a repo mid-session. A map
+// write concurrent with an unsynchronised map read is not a benign race in Go:
+// the runtime's best-effort detector can throw "concurrent map read and map
+// write", which is NOT recoverable — it takes the daemon process down, and with
+// it every concurrent agent session. TestGroupReadersDoNotRaceWithRepoSetChange
+// reproduces the race under -race.
+//
+// The copy is per tool call and shallow: the repo set is O(repos in group) —
+// single digits — and every *LoadedRepo is shared BY POINTER, so identity,
+// lazily-built index memoization (idxOnce), and the MapHandle lifetime are all
+// unchanged. Callers that must observe live per-repo mutation (reload swapping
+// GraphFile/Doc) still do, because they hold the same *LoadedRepo.
+//
+// WHAT THIS DOES NOT FIX — do not restate it more strongly. The per-repo record
+// is still MUTATED IN PLACE by reload (`lr.Doc = doc`), so a reader that
+// nil-checks lr.Doc and dereferences it through a second load can still observe
+// two different Docs. Today both are non-nil and the consequence is a
+// mixed-generation answer, not a crash. Clearing Doc is what turns that into a
+// nil deref, which is why `lr.Doc = nil` STILL must not be done in place even
+// with this snapshot: publish a successor *LoadedRepo into the repo set instead,
+// so a reader holding an older snapshot keeps a record whose Doc never changes.
+// See unservableRepo.
+func (grp *LoadedGroup) snapshotLocked() *LoadedGroup {
+	if grp == nil {
+		return nil
+	}
+	// LoadedGroup carries no mutex, so a struct copy is well-defined (and
+	// go vet's copylocks agrees). Slice-header fields (Links, Communities) are
+	// copied by value, which is what makes a reload's whole-slice REPLACEMENT
+	// invisible to an in-flight reader.
+	snap := *grp
+	snap.Repos = make(map[string]*LoadedRepo, len(grp.Repos))
+	for name, lr := range grp.Repos {
+		snap.Repos[name] = lr
+	}
+	return &snap
+}
+
+// unservableRepo returns a copy-on-write SUCCESSOR of lr that reports the repo
+// as unservable: Doc nil plus a loadErr, which is exactly the shape tools.go's
+// `unavailable` list keys on. It is the safe way to reach the "report
+// unavailable" state that #6080's review identified and rejected as unreachable.
+//
+// Why a successor and not `lr.Doc = nil` (issue #6114). Readers hold their
+// *LoadedRepo pointers with no lock for the length of a tool call and use a
+// check-then-dereference shape (`if r.Doc == nil { continue }` … `r.Doc.X`).
+// Clearing Doc on the record a reader is already holding turns a stale answer
+// into a nil dereference across the whole read surface. Publishing a distinct
+// record into the group's repo set under s.mu makes the transition atomic from
+// a reader's point of view: it either holds the predecessor (whose Doc is never
+// written again) or picks up the successor (whose Doc is nil for its whole
+// life). Neither observes a transition.
+//
+// The mapping's lifetime follows coldShellRepo's proven pattern (issue #5872):
+// the successor SHARES lr's *MapHandle and points sharedReaderMu at lr's
+// EFFECTIVE mutex (rmu(), not a fresh zero value), so the successor's eventual
+// retireHandle and an in-flight read on the predecessor serialise on the one
+// mutex that governs that one mapping. Dropping the handle here instead would
+// orphan the mapping — nothing left in s.groups would ever retire it.
+//
+// The derived indexes are deliberately NOT carried over: they are built FROM
+// the Doc this successor no longer has.
+//
+// Caller MUST hold s.mu and MUST publish the result into grp.Repos (replacing
+// lr) rather than mutating lr.
+//
+// INERT: no production caller yet, exactly like borrowGroup at F1. It exists so
+// the seam and its reader-safety are proven
+// (TestUnservableRepoNeverShowsAReaderADocGoingNil) before the #5954 memory work
+// that needs it lands.
+func unservableRepo(lr *LoadedRepo, loadErr string) *LoadedRepo {
+	if lr == nil {
+		return nil
+	}
+	return &LoadedRepo{
+		Repo:      lr.Repo,
+		Path:      lr.Path,
+		GraphFile: lr.GraphFile,
+		// Doc, LabelIndex, BM25 and every derived index are intentionally zero.
+		Reader:          lr.Reader,
+		handle:          lr.handle,
+		sharedReaderMu:  lr.rmu(),
+		Semantic:        lr.Semantic,
+		semMtime:        lr.semMtime,
+		mtime:           lr.mtime,
+		contentHash:     lr.contentHash,
+		loadErr:         loadErr,
+		reindexRequired: lr.reindexRequired,
+		reindexReason:   lr.reindexReason,
+	}
 }
 
 // reviveGateLocked returns the per-group revive mutex for name, creating it on
@@ -2601,13 +2706,16 @@ func (s *State) SweepToMemoryBudget(budgetBytes uint64, keepReader bool) int {
 	return 0
 }
 
-// SnapshotGroups returns a stable list of loaded group pointers.
+// SnapshotGroups returns a stable list of loaded groups as immutable per-call
+// views (issue #6114): like State.Group, each element is a shallow copy with its
+// own repo map, so an unlocked caller ranging over g.Repos cannot race a
+// reload's map write. Repos are shared by pointer.
 func (s *State) SnapshotGroups() []*LoadedGroup {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]*LoadedGroup, 0, len(s.groups))
 	for _, g := range s.groups {
-		out = append(out, g)
+		out = append(out, g.snapshotLocked())
 	}
 	return out
 }

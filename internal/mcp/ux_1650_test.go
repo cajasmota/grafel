@@ -167,13 +167,12 @@ func TestUX1650_EndpointStatsCrossRepoLinks(t *testing.T) {
 	}
 	srv := newTestServer(t, doc)
 	// Inject a cross-repo link covering the caller.
-	lg := srv.State.Group("test")
-	if lg == nil {
-		t.Fatal("no test group")
-	}
-	lg.Links = []CrossRepoLink{
-		{Source: prefixedID("repo1", "caller"), Target: "other_repo::ext_unknown", Kind: "CALLS", Confidence: 1.0},
-	}
+	// #6114: configure the LIVE group; State.Group returns an immutable view.
+	mutateGroup(t, srv.State, "test", func(lg *LoadedGroup) {
+		lg.Links = []CrossRepoLink{
+			{Source: prefixedID("repo1", "caller"), Target: "other_repo::ext_unknown", Kind: "CALLS", Confidence: 1.0},
+		}
+	})
 
 	res := callEndpointTool(t, srv.handleEndpointStats, map[string]any{"group": "test"})
 	totals := res["totals"].(map[string]any)
@@ -202,14 +201,16 @@ func TestUX1650_FindPathsCrossRepo(t *testing.T) {
 		},
 	}
 	srv := newTestServer(t, docA, docB)
-	lg := srv.State.Group("test")
-	lg.Links = []CrossRepoLink{
-		{
-			Source: prefixedID("repoA", "mobile_call"),
-			Target: prefixedID("repoB", "backend_handler"),
-			Kind:   "FETCHES",
-		},
-	}
+	// #6114: configure the LIVE group; State.Group returns an immutable view.
+	mutateGroup(t, srv.State, "test", func(lg *LoadedGroup) {
+		lg.Links = []CrossRepoLink{
+			{
+				Source: prefixedID("repoA", "mobile_call"),
+				Target: prefixedID("repoB", "backend_handler"),
+				Kind:   "FETCHES",
+			},
+		}
+	})
 
 	res := callEndpointTool(t, srv.handleFindPaths, map[string]any{
 		"group": "test",

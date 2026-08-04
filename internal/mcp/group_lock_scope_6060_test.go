@@ -137,8 +137,13 @@ func TestGroup_ConcurrentRevivesMaterializeOnce(t *testing.T) {
 		if g == nil {
 			t.Fatalf("goroutine %d got a nil group", i)
 		}
-		if g != got[0] {
-			t.Errorf("goroutine %d observed a different group instance — revive was not single-flighted", i)
+		// #6114: State.Group returns an immutable per-call VIEW, so the group
+		// POINTER is expected to differ per caller and proves nothing. The
+		// single-flight property is about the MATERIALIZED instance behind the
+		// view, so compare the per-repo record — which the view shares by
+		// pointer and which the revive is what creates.
+		if g.Repos["r"] != got[0].Repos["r"] {
+			t.Errorf("goroutine %d observed a different materialized repo instance — revive was not single-flighted", i)
 		}
 		// Fully materialized, not half: the LabelIndex dropped by the eviction is back.
 		lr := g.Repos["r"]
