@@ -454,40 +454,32 @@ var cpKnownPathA = []cpKnown{
 		Contains: []string{"→SCOPE.Component/cpcfg_static.py@cpcfg_static.py", ":IMPORTS"},
 	},
 
-	// ── #6129 family: the incremental path never runs import-placeholder-prune ──
+	// ── #6131: REFERENCES edges the full run's import-placeholder-prune orphaned ──
 	//
-	// STILL LIVE, but RE-KEYED by the headline fix above — this entry was
-	// updated, not deleted.
+	// FIXED — the two entries that stood here (the INVENTED
+	// `…→Module/…:REFERENCES` half and the LOST `…→«unbound»<hex>:REFERENCES`
+	// half) went STALE and were removed by the ratchet below.
 	//
-	// The full run's import-placeholder-prune drops the placeholder entities and
-	// ORPHANS the REFERENCES edges that pointed at them (the full graph keeps
-	// them pointing at a now-absent hex id). The incremental run never prunes,
-	// so the same edges stay bound to something live.
+	// The history is worth keeping because this divergence is the reason the
+	// ratchet's "re-key, don't delete" rule earned its place: #6129's fix moved
+	// what these edges bound to on the incremental side (SCOPE.External → the
+	// real in-repo Module) WITHOUT closing the divergence, so the entries were
+	// updated in place and kept covering a live defect.
 	//
-	// Before the headline fix that "something live" was the SCOPE.External
-	// placeholder, and this entry was keyed on `→SCOPE.External/`. The fix makes
-	// the same edges bind to the real in-repo `Module` instead, so the key moved
-	// to `→Module/` while the divergence itself — full leaves the endpoint
-	// dangling, incremental binds it — is unchanged. The count evidence that
-	// this is a RE-TARGET and not a new edge: full=56/inc=57 edges, full=23/
-	// inc=24 entities and full=13/inc=12 unbound endpoints are byte-identical
-	// before and after the fix; only the bound CONTENT moved.
-	//
-	// Note the incremental answer is arguably the BETTER one here (a live Module
-	// beats a dangling hex id). Parity is still parity: the two paths must agree,
-	// and closing this one means teaching the incremental path to prune.
-	{
-		Issue:    "#6129",
-		Why:      "Incremental never runs import-placeholder-prune, so REFERENCES edges the full run orphans stay bound. Unfixed (re-keyed from SCOPE.External to Module by the headline fix).",
-		Bucket:   cpEdgeInvented,
-		Contains: []string{"SCOPE.Operation/cp_handle@cphandler_delta.py→Module/", ":REFERENCES"},
-	},
-	{
-		Issue:    "#6129",
-		Why:      "The LOST half: the full rebuild's orphaned REFERENCES edges left pointing at the pruned placeholder's id.",
-		Bucket:   cpEdgeLost,
-		Contains: []string{"SCOPE.Operation/cp_handle@cphandler_delta.py→«unbound»", ":REFERENCES"},
-	},
+	// It was also the one case in this file where the INCREMENTAL answer was the
+	// better one. Full pruned the import placeholder and left the REFERENCES
+	// endpoint pointing at a hex id no entity carried; incremental never pruned
+	// and kept a live Module binding. Parity could have been restored in either
+	// direction — teaching incremental to prune (worse but consistent) or
+	// teaching full not to orphan (better, larger blast radius). Grounding
+	// PruneImportPlaceholders decided it: its own doc comment asserts the
+	// placeholders "have no incoming edges" by the time it runs, and the only
+	// previous falsification of that premise (#642, JS/TS relative IMPORTS) was
+	// answered by rewriting the edge rather than accepting the dangle. The
+	// orphaning was incidental, not intentional, so the FULL path was fixed —
+	// re-pointing each incoming edge at the entity the import resolver had
+	// ALREADY bound the same whole-module import to. See the #6131 block in
+	// internal/resolve/imports.go and `ref_repoints` in the prune's log line.
 
 	// ── #6129 family: builtin CALLS endpoint blanked vs retained ──
 	//
