@@ -29,6 +29,23 @@
 // (toID → []Relationship) over the existing relationships and re-resolves
 // inbound CALLS/REFERENCES edges for those IDs in the scoped pass, avoiding
 // the safety-net full-reindex fallback for pure signature changes.
+//
+// # Ladder parity with the corpus-wide resolver (#6098)
+//
+// This resolver's binding ladder must not be weaker than
+// internal/resolve/refs.go's, or the incremental graph diverges from a full
+// rebuild — and because the incremental path is the DEFAULT for a watched
+// repo, the divergence accumulates. See pkgmember.go for the member tiers
+// ported to close that gap, the memory bound that makes the port viable on
+// this path, and the ambiguity contract that keeps it sound.
+//
+// The scoped ladder is NOT a strict subset of the corpus-wide one: its
+// whole-string tier is last-writer-wins with no ambiguity sentinel, so it is
+// unsound where the full resolver is not. Any tier added here must therefore
+// carry its own ambiguity guard AND terminate the ladder when it fires —
+// falling through hands the stub to the unsound tier. That is enforced by
+// TestResolveScoped_ReceiverTypeTier_AmbiguityDoesNotFallThrough, which a
+// mutation-test showed the obvious ("", false) contract does not satisfy.
 package sresolver
 
 import (
@@ -238,12 +255,24 @@ func ResolveScoped(
 		addLocation(e)
 	}
 
+	// Receiver-type / package-member tier (#6098). Built only over the package
+	// directories this pass will actually probe — see packageMemberIndex for
+	// the memory rationale. nil when no edge carries a receiver_type stamp on
+	// an unresolved ToID, which is the common case.
+	memberIdx := buildMemberIndexes(newEntities, existingEntities)
+
 	// resolveStub maps a non-hex relationship endpoint to a canonical entity ID,
 	// returning ok=false when it cannot be bound (the stub is then left verbatim,
 	// exactly as the full resolver leaves an unresolved structural ref). The ladder
 	// mirrors internal/resolve/refs.go:lookupStructural for Format A stubs:
 	//   1. whole-string name / qualified-name match (handles bare-name stubs);
 	//   2. Format A (file, tail): same-file byLocation, then unique bare-name.
+	//
+	// The receiver-type tier is NOT part of this ladder — it is probed by
+	// resolveToID BEFORE this function, mirroring internal/resolve/refs.go
+	// where the package-scoped member index is consulted first so a bare-name
+	// target binds locally instead of colliding with a same-named symbol
+	// elsewhere.
 	resolveStub := func(stub string) (string, bool) {
 		if id, ok := nameToID[stub]; ok && id != "" {
 			return id, true
@@ -262,6 +291,38 @@ func ResolveScoped(
 		}
 		if id, ok := nameToID[tail]; ok && id != "" {
 			return id, true
+		}
+		return "", false
+	}
+
+	// resolveToID is the ToID-side ladder. It probes the receiver-type /
+	// package-member tier first (#6098, porting internal/resolve/refs.go:5684,
+	// refs #148/#364) and then falls back to the shared resolveStub ladder.
+	//
+	// callerEndpoint MUST be the edge's RAW, pre-resolution FromID: that is the
+	// key buildPackageMemberIndex indexed the caller's package directory under.
+	// The tier order below mirrors internal/resolve/refs.go, which is the
+	// point of the whole change: a stub the corpus-wide resolver binds, the
+	// scoped resolver must bind, to the SAME entity.
+	//
+	//	1. receiver-stamped package member   (refs.go:5684, #148/#364)
+	//	2. the pre-existing scoped ladder    (≈ refs.go rewriteOneWithCaller's
+	//	   whole-string / Format A tiers        global name index)
+	//	3. same-file then same-package leaf  (refs.go:2963/2969, #778)
+	//
+	// `handled` with an empty id is the AMBIGUITY verdict: the tier owns this
+	// stub and refuses to guess. It must NOT fall through — the next tier down
+	// is last-writer-wins and would bind whatever entity happened to be named
+	// after the member.
+	resolveToID := func(r *graph.Relationship, callerEndpoint string) (string, bool) {
+		if id, handled := memberIdx.lookupReceiver(r, callerEndpoint); handled {
+			return id, id != ""
+		}
+		if id, ok := resolveStub(r.ToID); ok {
+			return id, true
+		}
+		if id, handled := memberIdx.lookupLeaf(r, callerEndpoint); handled {
+			return id, id != ""
 		}
 		return "", false
 	}
@@ -293,6 +354,11 @@ func ResolveScoped(
 	resolvedNewRels := make([]graph.Relationship, 0, len(newRels))
 	for _, r := range newRels {
 		changed := false
+		// The from-side MUST be rewritten before the to-side: the member
+		// tiers key the caller's location on an entity ID, and the Go
+		// extractor emits the from-side as a Format A structural stub
+		// (`scope:operation:method:go:r07.go:Local07`). Probing with the raw
+		// FromID finds no caller and every tier silently misses.
 		if !isHexID(r.FromID) {
 			if resolved, ok := resolveStub(r.FromID); ok {
 				r.FromID = resolved
@@ -300,7 +366,7 @@ func ResolveScoped(
 			}
 		}
 		if !isHexID(r.ToID) {
-			if resolved, ok := resolveStub(r.ToID); ok {
+			if resolved, ok := resolveToID(&r, r.FromID); ok {
 				r.ToID = resolved
 				changed = true
 			}
@@ -322,7 +388,7 @@ func ResolveScoped(
 	var mutatedExistingRels []graph.Relationship
 	for _, r := range existingRels {
 		if !isHexID(r.ToID) {
-			if resolved, ok := resolveStub(r.ToID); ok {
+			if resolved, ok := resolveToID(&r, r.FromID); ok {
 				// Bind the inbound stub to the (possibly re-keyed) entity ID via
 				// the same Format A ladder the full resolver uses, so a cross-file
 				// edge from a surviving file is never left in stub form when a
