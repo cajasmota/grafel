@@ -311,6 +311,13 @@ func (e *javaPatternsExtractor) Extract(ctx context.Context, file extreg.FileInp
 // hang off a materialised injection-point entity. The synthesis is idempotent and
 // only fires when no real entity claims the SourceRef, so it never duplicates an
 // emitted carrier nor fabricates phantoms for refs a relationship does not use.
+//
+// #6105 — REFS ARE CANONICALISED HERE, ON EVERY SIDE. Every `scope:` ref minted
+// anywhere in this package is written as `scope:<kind>:<subtype>:<file>:<name>`;
+// the resolver's Format A is `scope:<kind>:<subtype>:<lang>:<file>:<name>`.
+// canonicalStructuralRef inserts the missing language slot on entity Refs,
+// SourceRefs and TargetRefs alike, so the byRef carrier index below still
+// matches and the emitted edge is addressable. See canonicalStructuralRef.
 func patternResultToRecords(res *PatternResult, filePath string) []types.EntityRecord {
 	if res == nil || (len(res.Entities) == 0 && len(res.Relationships) == 0) {
 		return nil
@@ -322,6 +329,7 @@ func patternResultToRecords(res *PatternResult, filePath string) []types.EntityR
 	byRef := make(map[string]int, len(res.Entities)) // ref -> index in records
 
 	for _, se := range res.Entities {
+		se.Ref = canonicalStructuralRef(se.Ref)
 		rec := makeEntity(se.Name, se.Kind, se.Subtype, fileOr(se.SourceFile, filePath), "java", se.LineStart)
 		if se.LineEnd > rec.EndLine {
 			rec.EndLine = se.LineEnd
@@ -334,6 +342,14 @@ func patternResultToRecords(res *PatternResult, filePath string) []types.EntityR
 			rec.Properties["ref"] = se.Ref
 		}
 		// Merge the extractor-set properties (string-coerced).
+		//
+		// #6105 — THIS RUNS AFTER the canonicalised ref is written above, so an
+		// extractor that ever sets se.Properties["ref"] would silently CLOBBER it
+		// with an un-canonicalised value and take the edge back out of the
+		// resolver's reach. No Extract* function does today (the ref lives in
+		// SecondaryEntity.Ref, which is the only supported home). If one ever
+		// needs to, canonicalise it here rather than reordering these two blocks —
+		// the ordering is what lets an extractor override provenance.
 		for k, v := range se.Properties {
 			rec.Properties[k] = stringifyProp(v)
 		}
@@ -345,6 +361,8 @@ func patternResultToRecords(res *PatternResult, filePath string) []types.EntityR
 	// entity claims the SourceRef, synthesise a minimal carrier from the
 	// structured ref so the edge materialises instead of being dropped (#3605).
 	for _, r := range res.Relationships {
+		r.SourceRef = canonicalStructuralRef(r.SourceRef)
+		r.TargetRef = canonicalStructuralRef(r.TargetRef)
 		idx, ok := byRef[r.SourceRef]
 		if !ok {
 			synth, made := synthesizeCarrier(r.SourceRef, filePath)
@@ -379,6 +397,130 @@ func patternResultToRecords(res *PatternResult, filePath string) []types.EntityR
 	return records
 }
 
+// structuralRefLang is the language slot the resolver's Format A expects in a
+// `scope:` structural ref.
+//
+// WHY ONE CONSTANT, WHEN THIS PACKAGE ALSO EXTRACTS KOTLIN (16 files;
+// ExtractSpringAOP accepts ctx.Language == "kotlin"). NOT because the slot is
+// ignored — it is not. The resolver reads it SEMANTICALLY in four places:
+// inferLangFromStub → normalizeLang (internal/resolve/refs.go:286-289), which
+// drives dynamic-pattern classification; the python component widening tier
+// (refs.go:2179); the go schema/receiver tier (refs.go:2225); and the #667 Java
+// cross-file EXTENDS field tier (refs.go:2250).
+//
+// The constant is correct because the slot must agree with the LANGUAGE STAMPED
+// ON THE RECORD, not with the source dialect. makeEntity in this package stamps
+// "java" on every record it builds — Kotlin sources included — so every entity
+// these refs address is indexed as Java. Emitting "kotlin" for Kotlin input
+// would DESYNCHRONISE the two and silently disable the java-gated tier for those
+// refs.
+//
+// So: if this package is ever changed to stamp a per-dialect Language on its
+// records, this constant must move with it. They are one decision, not two.
+const structuralRefLang = "java"
+
+// knownStructuralRefLangs is the set of language tokens that may legitimately
+// occupy Format A's language slot — the identifiers normalizeLang
+// (internal/resolve/refs.go:261-276) accepts, plus its aliases.
+//
+// USED ONLY TO DETECT AN ALREADY-CANONICAL REF, never to choose one. Segment
+// counting cannot do that job: entity names in this package legitimately contain
+// colons (`scope:pattern:obs_log_statement:<file>:<recv>:<level>:<line>`), so
+// segment count is not a function of ref shape.
+//
+// The residual ambiguity is a ref whose FILE segment is exactly a bare language
+// token with no path separator — `scope:x:y:go:Foo`. Such a ref is ambiguous by
+// construction (no reader can tell the two shapes apart) and no site in this
+// package can produce one: every ref interpolates ctx.FilePath, which is a repo-
+// relative path.
+var knownStructuralRefLangs = map[string]bool{
+	"java": true, "kotlin": true, "kt": true, "scala": true, "groovy": true,
+	"python": true, "py": true, "javascript": true, "js": true,
+	"typescript": true, "ts": true, "ruby": true, "rb": true,
+	"go": true, "rust": true, "csharp": true, "php": true, "swift": true,
+	"dart": true, "cpp": true, "c": true, "elixir": true, "lua": true,
+	"crystal": true, "nim": true, "fsharp": true,
+}
+
+// canonicalStructuralRef repairs the five-segment `scope:` refs this package
+// mints so they match the shape the resolver actually parses (#6105).
+//
+// THE DEFECT. Every structural ref in internal/custom/java is built as
+//
+//	scope:<kind>:<subtype>:<filePath>:<name>
+//
+// — the shape synthesizeCarrier's doc comment documents as this package's
+// convention. The resolver's Format A is
+//
+//	scope:<kind>:<subtype>:<lang>:<filePath>:<name>
+//
+// and lookupStructural splits on ':' with stubScopeSegments = 6, returning
+// statusUnmatched outright when the count differs (internal/resolve/refs.go:69,
+// :2037-2039). The Java custom extractors have only ever run behind
+// GRAFEL_SUBPROC_EXTRACT (no writers) or the default-off
+// GRAFEL_INPROC_CUSTOM_EXTRACTORS gate, so nothing ever exercised them against a
+// live resolver index. On the #5989 corpus this accounted for RETURNS
+// (1,072/1,072 dangling), OWNS (466/466) and ACCEPTS_INPUT (85/85).
+//
+// PRECISELY: refs whose NAME contains no colon produced five parts and were
+// rejected on the count. Refs whose name DOES contain colons produced six and
+// therefore parsed — but with every field shifted one place left, so the file
+// segment was read as the LANGUAGE and the first name fragment as the FILE.
+// Those could only ever miss. Both shapes are repaired here; the second is
+// repaired into something that can actually bind, since Format A takes the tail
+// as everything after the file segment (SplitN caps at 6) and
+// `…:<file>:<recv>:<level>:<line>` recomposes as tail `<recv>:<level>:<line>`.
+//
+// A colon-bearing FILE segment (`C:/proj/A.java`, `src/we:ird/`) is the one
+// shape this cannot repair: it yields seven fields and lands back on the
+// count rejection. That is strictly better than the status quo, where such a ref
+// parsed with lang="C" and file="/proj/A.java" and could mis-address; grafel
+// stores repo-relative forward-slash paths, so it is not a live shape.
+//
+// IDEMPOTENT, SHAPE-AWARE. A ref that already carries ANY known language token
+// in the slot is returned unchanged — not just "java:". Guarding on
+// structuralRefLang alone would corrupt exactly the case the guard exists for:
+// `scope:operation:method:kotlin:src/x/A.kt:foo` would become
+// `…:java:kotlin:src/x/A.kt:foo`, seven fields, unmatched. See
+// knownStructuralRefLangs for why a language set and not a segment count.
+//
+// Non-`scope:` refs are returned untouched: `cache:<framework>:<region>`,
+// `Class:<Name>` and the like are name-shaped, not structural, and repairing
+// those is a different defect (see #6105 defect (2)).
+//
+// WIDENING NOTE (#6105 review). Making these refs parse also makes them ELIGIBLE
+// for lookupStructural tiers they could never reach before — in particular the
+// #667 Java cross-file field tier at refs.go:2250, which the
+// `scope:schema:bean_validation_field:…` refs now match on shape. That tier is
+// measured, not assumed: see
+// TestCustomExtractorSchemaFieldRefsStayInTheirOwnFile6105.
+func canonicalStructuralRef(ref string) string {
+	const prefix = "scope:"
+	if !strings.HasPrefix(ref, prefix) {
+		return ref
+	}
+	rest := ref[len(prefix):]
+	// rest must be "<kind>:<subtype>:<tail…>" — three fields minimum.
+	kindEnd := strings.IndexByte(rest, ':')
+	if kindEnd < 0 {
+		return ref
+	}
+	subEnd := strings.IndexByte(rest[kindEnd+1:], ':')
+	if subEnd < 0 {
+		return ref
+	}
+	head := rest[:kindEnd+1+subEnd+1] // "<kind>:<subtype>:"
+	tail := rest[len(head):]
+	// Already canonical when the next field is ANY known language token — not
+	// just this package's. A `structuralRefLang`-only guard would double-stamp a
+	// hand-written `…:kotlin:<file>:<name>` ref into an unmatched seven-field one.
+	if i := strings.IndexByte(tail, ':'); i > 0 &&
+		knownStructuralRefLangs[strings.ToLower(tail[:i])] {
+		return ref
+	}
+	return prefix + head + structuralRefLang + ":" + tail
+}
+
 // synthesizeCarrier builds a minimal carrier EntityRecord for an edge whose
 // SourceRef encodes its owner structurally but never emitted a standalone entity
 // (the di_injection_point and nested-@Valid edges). Pattern refs follow the shape
@@ -390,6 +532,14 @@ func patternResultToRecords(res *PatternResult, filePath string) []types.EntityR
 //
 // Only refs that an actual Relationship.SourceRef references reach this function,
 // so it never fabricates phantom carriers for unrelated refs.
+//
+// #6105 — IT SURVIVES THE LANGUAGE-SLOT INSERTION BY LUCK, NOT BY DESIGN. It
+// reads the kind from the FIRST colon and the name from the LAST, so an extra
+// field in the middle is invisible to it; the doc comment above still describes
+// the pre-#6105 five-field shape and is now one field short of what it receives.
+// Anyone changing this to a positional parse must account for the language slot
+// canonicalStructuralRef inserts, and for the fact that a name legitimately
+// contains colons (so the "last field" is a fragment, not the whole name).
 func synthesizeCarrier(sourceRef, filePath string) (types.EntityRecord, bool) {
 	const prefix = "scope:"
 	if !strings.HasPrefix(sourceRef, prefix) {
