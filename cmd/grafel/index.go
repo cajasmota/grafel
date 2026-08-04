@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -446,6 +447,31 @@ func WithIngestDocs(enabled bool) IndexOption {
 
 // ingestDocsEnvEnabled reports whether GRAFEL_INGEST_DOCS requests doc
 // ingestion (accepts "1", "true", "yes", "on"; case-insensitive).
+// renameWorkBudget returns the Phase-2 work budget for the rename-detection
+// pass (#6087), in Levenshtein DP cells.
+//
+// GRAFEL_RENAME_WORK_BUDGET overrides algorithms.DefaultRenameWorkBudget. It
+// exists for two reasons: an operator who hits truncation on a genuinely huge
+// but legitimate delta can raise the ceiling without a rebuild, and tests can
+// drive the truncation path in milliseconds instead of needing a fixture large
+// enough to burn four billion work units. Unparseable or non-positive values
+// fall back to the default rather than disabling the bound — there is no
+// unbounded mode.
+func renameWorkBudget() int64 {
+	raw := strings.TrimSpace(os.Getenv("GRAFEL_RENAME_WORK_BUDGET"))
+	if raw == "" {
+		return algorithms.DefaultRenameWorkBudget
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || v <= 0 {
+		fmt.Fprintf(os.Stderr,
+			"grafel: ignoring invalid GRAFEL_RENAME_WORK_BUDGET=%q; using default %d\n",
+			raw, algorithms.DefaultRenameWorkBudget)
+		return algorithms.DefaultRenameWorkBudget
+	}
+	return v
+}
+
 func ingestDocsEnvEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("GRAFEL_INGEST_DOCS"))) {
 	case "1", "true", "yes", "on":
@@ -709,6 +735,11 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		}
 	}
 
+	// #6087 — captured here so the truncation flag can be persisted into the
+	// graph-stats.json sidecar further down. Zero value (Truncated=false) is
+	// the correct default when the pass is skipped or no prior graph exists.
+	var renameStats algorithms.RenameStats
+
 	// Pass 5.5 — rename detection (#1344). Load the previous graph from disk
 	// and compare it with the freshly-built doc to detect entity renames,
 	// moves, and splits. Runs BEFORE the final sort and disk write so the
@@ -717,11 +748,25 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	if !skipSet[PassRenameDetect] {
 		stateDir := filepath.Dir(outPath)
 		if prevDoc, err := graph.LoadGraphFromDir(stateDir); err == nil {
-			renameStats := algorithms.DetectRenames(prevDoc, doc)
+			renameStats = algorithms.DetectRenamesBounded(prevDoc, doc, renameWorkBudget())
 			if renameStats.Renames > 0 {
 				fmt.Fprintf(os.Stderr,
 					"rename-detect: %d rename(s) detected (moves=%d splits=%d)\n",
 					renameStats.Renames, renameStats.Moves, renameStats.Splits)
+			}
+			// #6087 — the pass is work-budgeted. When the budget ran out the
+			// result is a PARTIAL rename scan, so say so explicitly: without
+			// this line a truncated run is indistinguishable from "no renames
+			// existed", which is the confident-wrong-answer failure mode.
+			// The same fact is persisted machine-readably into
+			// graph-stats.json below, for consumers that are not a human
+			// tailing stderr.
+			if renameStats.Truncated {
+				fmt.Fprintf(os.Stderr,
+					"rename-detect: TRUNCATED — work budget %d exhausted after %d unit(s) over %d pair(s); %d added entities not examined, %d candidate pair(s) skipped. "+
+						"Rename detection is INCOMPLETE for this run: the prior graph is largely dissimilar to the new one (#6087)\n",
+					renameStats.WorkBudget, renameStats.WorkUsed, renameStats.PairsExamined,
+					renameStats.AddedSkipped, renameStats.PairsSkipped)
 			}
 		}
 		// If no previous graph exists (first run) or it cannot be loaded,
@@ -863,7 +908,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// never zero out real algorithm data that a previous full build
 		// computed.
 		prior, _ := graph.LoadSidecar(filepath.Dir(outPath))
-		side := buildStatsSidecar(doc, extractMS, canaryRaw, canarySpiked, prior, deterministicGeneratedAt())
+		side := buildStatsSidecar(doc, extractMS, canaryRaw, canarySpiked, prior, deterministicGeneratedAt(), renameStats)
 		if err := graph.WriteSidecar(outPath, side, pretty); err != nil {
 			fmt.Fprintf(os.Stderr, "grafel: sidecar write failed: %v\n", err)
 		}

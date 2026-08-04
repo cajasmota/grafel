@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/algorithms"
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
@@ -19,7 +20,7 @@ func TestBuildStatsSidecar_AlgoNil_CountsAlwaysWritten(t *testing.T) {
 	doc := &graph.Document{
 		Stats: graph.Stats{Files: 10, Entities: 200, Relationships: 66000},
 	}
-	side := buildStatsSidecar(doc, 1500, nil, false, nil, time.Unix(1000, 0).UTC())
+	side := buildStatsSidecar(doc, 1500, nil, false, nil, time.Unix(1000, 0).UTC(), algorithms.RenameStats{})
 
 	if side == nil {
 		t.Fatalf("buildStatsSidecar returned nil; sidecar must always be built so it can be written")
@@ -55,7 +56,7 @@ func TestBuildStatsSidecar_AlgoNil_PreservesPriorAlgoFields(t *testing.T) {
 		RuntimeMS:          8800,
 	}
 
-	side := buildStatsSidecar(doc, 2000, nil, false, prior, time.Unix(2000, 0).UTC())
+	side := buildStatsSidecar(doc, 2000, nil, false, prior, time.Unix(2000, 0).UTC(), algorithms.RenameStats{})
 
 	if side.TotalEntities != 300 || side.TotalRelationships != 500 || side.TotalFiles != 12 {
 		t.Errorf("counts must be refreshed from fresh doc.Stats, not carried from prior: %+v", side)
@@ -73,7 +74,7 @@ func TestBuildStatsSidecar_AlgoNil_NoPriorSidecar(t *testing.T) {
 	doc := &graph.Document{
 		Stats: graph.Stats{Files: 1, Entities: 5, Relationships: 4},
 	}
-	side := buildStatsSidecar(doc, 10, nil, false, nil, time.Unix(3000, 0).UTC())
+	side := buildStatsSidecar(doc, 10, nil, false, nil, time.Unix(3000, 0).UTC(), algorithms.RenameStats{})
 
 	if side.TotalEntities != 5 || side.TotalRelationships != 4 {
 		t.Errorf("counts: %+v", side)
@@ -109,7 +110,7 @@ func TestBuildStatsSidecar_AlgoPresent_AllFieldsFromFreshBuild(t *testing.T) {
 	}
 	canary := json.RawMessage(`{"spiked":false}`)
 
-	side := buildStatsSidecar(doc, 777, canary, true, prior, time.Unix(4000, 0).UTC())
+	side := buildStatsSidecar(doc, 777, canary, true, prior, time.Unix(4000, 0).UTC(), algorithms.RenameStats{})
 
 	if side.TotalFiles != 20 || side.TotalEntities != 400 || side.TotalRelationships != 900 {
 		t.Errorf("counts: %+v", side)

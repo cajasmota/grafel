@@ -586,6 +586,26 @@ type GraphStatsSidecar struct {
 	// ParseErrorSpike mirrors ParseErrorCanary.spiked at the top level so
 	// dashboards / crons can read the alarm without decoding the full report.
 	ParseErrorSpike bool `json:"parse_error_spike,omitempty"`
+
+	// RenameDetectTruncated reports that the rename-detection pass (#6087) hit
+	// its work budget and did NOT examine every candidate entity, so the
+	// RENAMED_FROM edges in the accompanying graph are a PARTIAL result.
+	//
+	// This exists because the stderr warning is invisible to every
+	// programmatic consumer: MCP, the dashboard and `grafel doctor` read the
+	// graph, not the indexer's log. A consumer that reports "no renames" off a
+	// truncated index is stating a confident wrong answer; this flag is how it
+	// can tell the difference. Absent/false means the pass ran to completion
+	// (or was skipped, or there was no prior graph to compare against — in all
+	// of which cases no rename data was dropped).
+	RenameDetectTruncated bool `json:"rename_detect_truncated,omitempty"`
+	// RenameDetectAddedSkipped is how many added entities the truncated pass
+	// never examined. Only meaningful when RenameDetectTruncated is true.
+	RenameDetectAddedSkipped int `json:"rename_detect_added_skipped,omitempty"`
+	// RenameDetectPairsSkipped is how many candidate pairs those skipped
+	// entities would have contributed. Only meaningful when
+	// RenameDetectTruncated is true.
+	RenameDetectPairsSkipped int `json:"rename_detect_pairs_skipped,omitempty"`
 }
 
 // WriteSidecar emits the graph-stats.json sidecar next to the main document.
