@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -40,10 +39,10 @@ func TestInProcessRunDoesNotFeedRSSHistory(t *testing.T) {
 
 	var buf syncBuf
 	s := newPeakTestSchedulerWithHistory(&buf, h, func(context.Context, string, string) error {
-		// The in-process arm: real work, real allocation, NO child. Whatever
-		// the daemon's RSS does here is not this repo's number.
-		blocks := touchMB(testTouchMBs)
-		runtime.KeepAlive(blocks)
+		// The in-process arm: no child, so nothing may be recorded. No
+		// allocation here — with the sampler gone there is nothing for it to
+		// influence, and paging in hundreds of MiB to assert that would just
+		// tax a shared host.
 		return nil
 	})
 
@@ -217,28 +216,79 @@ func TestRSSHistoryRelaxesTowardRecentPeaks(t *testing.T) {
 	}
 }
 
-// TestRSSHistoryIgnoresExpiredEntries pins the other half of (2). RSSHistoryEntry
-// has always carried LastIndex and nothing has ever read it, so there is no
-// expiry path at all: an entry written by a build from months ago, against code
-// that no longer exists, is still consulted ahead of the live predictor. Beyond
-// a TTL the honest answer is "no history", which falls back to PredictRSS.
-func TestRSSHistoryIgnoresExpiredEntries(t *testing.T) {
+// TestRSSHistoryDoesNotExpireByAge pins a decision that reversed between
+// review rounds, so the reasoning has to live next to the assertion or it will
+// be "fixed" again.
+//
+// A 30-day TTL on these entries was added and then removed. Two measurements
+// killed it. First, the fallback is worse than the stale data: Predict
+// returning 0 sends predictedFor to PredictRSS = 70x source bytes, measured at
+// 4516 MB for the grafel repo, against a 2048 MB budget on a 16 GiB host — so
+// expiry did not restore a neutral estimate, it guaranteed permanent solo
+// admit_oversize for every repo that aged out. Second, Record is fed only by
+// full subprocess indexes (runIndex skips cfg.Index when the in-process
+// incremental path succeeds, and incremental is default-ON), so the series
+// updates on a scale of months while a 30-day TTL fires on a scale of weeks:
+// it would have expired nearly everything and re-measured nearly nothing.
+//
+// The round-1 concern the TTL answered — one contaminated sample governing
+// admission forever — is handled at the source instead: only child_maxrss is
+// ever recorded, so the contaminating measure does not exist.
+func TestRSSHistoryDoesNotExpireByAge(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rss-history.json")
-	stale := time.Now().UTC().Add(-2 * rssHistoryTTL)
-	fresh := time.Now().UTC().Add(-time.Hour)
-	body := `{
-  "/repo-stale": {"peak_rss_mb": 1593, "last_index": "` + stale.Format(time.RFC3339Nano) + `"},
-  "/repo-fresh": {"peak_rss_mb": 1593, "last_index": "` + fresh.Format(time.RFC3339Nano) + `"}
-}`
+	ancient := time.Now().UTC().Add(-365 * 24 * time.Hour)
+	body := `{"/repo-ancient": {"peak_rss_mb": 900, "last_index": "` +
+		ancient.Format(time.RFC3339Nano) + `"}}`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	h := LoadRSSHistory(path)
-	if got := h.Predict("/repo-fresh"); got != 1593 {
-		t.Fatalf("Predict(/repo-fresh)=%d; a recent measurement must still be used", got)
+	if got := h.Predict("/repo-ancient"); got != 900 {
+		t.Fatalf("Predict(/repo-ancient)=%d for a year-old entry; want 900. Discarding a "+
+			"real measurement sends predictedFor to PredictRSS (70x source bytes, "+
+			"measured 4516 MB for this repo against a 2048 MB budget) — strictly worse "+
+			"than a stale measurement", got)
 	}
-	if got := h.Predict("/repo-stale"); got != 0 {
-		t.Fatalf("Predict(/repo-stale)=%d; an entry older than the %s TTL must fall back "+
-			"to the live predictor, not govern admission indefinitely", got, rssHistoryTTL)
+}
+
+// TestRSSHistoryStaleEntryIsNotAmplified is the regression for the defect the
+// TTL introduced while it existed, kept because it pins the invariant that
+// broke: whatever policy Predict applies, Record must not be able to turn a
+// figure Predict has rejected into a LARGER live prediction than an honest
+// fresh measurement would produce.
+//
+// With the TTL in place, Predict declared an old 4000 MB entry untrustworthy
+// and returned 0 — but Record still read h.data[repo] raw, so an honest
+// re-measure of 500 MB decayed against the discarded 4000 and re-stamped it
+// fresh: Predict went 0 -> 2250, i.e. 4.5x the measurement just taken, and
+// straight over a 2048 MB budget into solo admission. The two policies were
+// individually defensible and jointly produced the exact throughput inversion
+// epic #5954 exists to prevent.
+func TestRSSHistoryStaleEntryIsNotAmplified(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	old := time.Now().UTC().Add(-60 * 24 * time.Hour)
+	body := `{"/repo-amplify": {"peak_rss_mb": 4000, "last_index": "` +
+		old.Format(time.RFC3339Nano) + `"}}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := LoadRSSHistory(path)
+
+	before := h.Predict("/repo-amplify")
+	const honest int64 = 500
+	h.Record("/repo-amplify", honest)
+	after := h.Predict("/repo-amplify")
+
+	if after > before && before == 0 {
+		t.Fatalf("Predict went %d -> %d after recording an honest %d MB: a value Predict "+
+			"had discarded was resurrected as the decay base and re-stamped fresh",
+			before, after, honest)
+	}
+	// Recording a smaller figure must never raise the prediction.
+	if after > before {
+		t.Fatalf("Predict rose %d -> %d after observing %d MB", before, after, honest)
+	}
+	if after < honest {
+		t.Fatalf("Predict=%d fell below the measurement just taken (%d)", after, honest)
 	}
 }

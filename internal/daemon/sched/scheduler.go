@@ -693,12 +693,18 @@ type jobToken struct {
 
 // repoStats records what we know about each successful index pass.
 type repoStats struct {
-	LastIndex   time.Time
-	LastAlgo    time.Time
-	IndexCount  int64
-	AlgoCount   int64
-	LastErr     string
-	LastPeakMB  int64 // observed peak (history) — 0 if predictor-only
+	LastIndex  time.Time
+	LastAlgo   time.Time
+	IndexCount int64
+	AlgoCount  int64
+	LastErr    string
+	LastPeakMB int64 // observed peak (history) — 0 if predictor-only
+	// LastPeakSrc names WHICH measure LastPeakMB is (peakSrcChildMaxRSS today).
+	// #6107: LastPeakMB survives runs that measured nothing, so without this a
+	// reader cannot tell a fresh child high-water mark from one carried over
+	// from an older full index — the exact ambiguity the completion line was
+	// restructured to remove, reappearing on the status wire.
+	LastPeakSrc string
 	PredictedMB int64 // last predicted MB charged for this repo
 	// LastIndexedRef is the git ref the most recent COMPLETED index ran
 	// against (#5433). Used by grafel_index_status to let an agent compare its
@@ -1841,6 +1847,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		// the dangerous direction. Same measurement, opposite risk.
 		if observedPeakMB > 0 {
 			stats.LastPeakMB = observedPeakMB
+			stats.LastPeakSrc = peakSrc
 		}
 	}
 	if err != nil {
@@ -1933,6 +1940,15 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// THIS repo. Anything measured against the daemon is a delta against a
 	// different baseline, and on a daemon running several jobs it attributes
 	// whatever else was allocating to whichever repo happened to be sampling.
+	//
+	// Known coverage loss, stated rather than implied: this fires only for FULL
+	// subprocess indexes. The block above skips cfg.Index entirely when the
+	// incremental path succeeds, and incremental is default-ON and runs fully
+	// in-process, so an actively-maintained repo can go a long time between
+	// samples. That is honest — an incremental pass has no comparable peak, and
+	// the series exists to predict full-index cost — but it does mean the decay
+	// in RSSHistory.Record acts slowly, over full indexes rather than over
+	// wall-clock time.
 	if err == nil && peakSrc == peakSrcChildMaxRSS && observedPeakMB > 0 && s.cfg.History != nil {
 		s.cfg.History.Record(repoPath, observedPeakMB)
 	}
@@ -1983,16 +1999,22 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// heap peak is 1.02x for a held allocation and 1.09x for a churning one,
 	// but 1.94x for a sawtooth that repeatedly grows and drops — the shape an
 	// extractor has. Read it as a ceiling, not as a requirement.
-	completedArgs := []any{"repo", repoPath, "took", dur,
-		"peak_rss_mb", observedPeakMB, "peak_rss_src", peakSrc}
+	completedArgs := []any{"repo", repoPath, "took", dur, "peak_rss_src", peakSrc}
 	// peak_vs_predicted_mb is observedPeak - predictedMB: the predictor's error
 	// for this run, NOT an independent measurement (it was once logged as
 	// "alloc_diff_mb", which read like one). Emitted only when there IS an
 	// observed peak, because with none it collapses to -predictedMB — the
 	// widely-quoted "peak_heap_mb=0 alloc_diff_mb=-1593" line was exactly that,
 	// and measured nothing at all.
+	// peak_rss_mb is OMITTED, not zeroed, when there is no measurement. A
+	// consumer averaging or graphing the field would otherwise fold in zeros
+	// that never meant "this index used no memory" — the same false number
+	// peak_heap_mb=0 was. peak_rss_src is always present, so its absence is
+	// never silent.
 	if peakSrc != peakSrcUnmeasured {
-		completedArgs = append(completedArgs, "peak_vs_predicted_mb", observedPeakMB-tok.predictedMB)
+		completedArgs = append(completedArgs,
+			"peak_rss_mb", observedPeakMB,
+			"peak_vs_predicted_mb", observedPeakMB-tok.predictedMB)
 	}
 	completedArgs = append(completedArgs, "entities", ents)
 	s.logger.Info("indexer: completed", completedArgs...)
@@ -2883,6 +2905,7 @@ type RepoSnapshot struct {
 	AlgoCount   int64     `json:"algo_count"`
 	LastErr     string    `json:"last_err,omitempty"`
 	LastPeakMB  int64     `json:"last_peak_mb,omitempty"`
+	LastPeakSrc string    `json:"last_peak_src,omitempty"`
 	PredictedMB int64     `json:"predicted_mb,omitempty"`
 }
 
@@ -2938,7 +2961,8 @@ func (s *Scheduler) Snapshot() Snapshot {
 		out.IndexedRepos = append(out.IndexedRepos, RepoSnapshot{
 			Path: p, LastIndex: st.LastIndex, LastAlgo: st.LastAlgo,
 			IndexCount: st.IndexCount, AlgoCount: st.AlgoCount,
-			LastErr: st.LastErr, LastPeakMB: st.LastPeakMB, PredictedMB: st.PredictedMB,
+			LastErr: st.LastErr, LastPeakMB: st.LastPeakMB, LastPeakSrc: st.LastPeakSrc,
+			PredictedMB: st.PredictedMB,
 		})
 	}
 	if n := len(s.recentLog); n > 0 {

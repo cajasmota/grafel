@@ -60,8 +60,22 @@ var (
 	testTouchMBs = 320
 )
 
+// completionSrc returns peak_rss_src from the single "indexer: completed"
+// line, and whether a peak_rss_mb field was present at all.
+func completionSrc(t *testing.T, log string) (src string, hasPeak bool) {
+	t.Helper()
+	if !completedRe.MatchString(log) {
+		t.Fatalf("no \"indexer: completed\" line in log:\n%s", log)
+	}
+	if sm := peakSrcRe.FindStringSubmatch(log); sm != nil {
+		src = sm[1]
+	}
+	return src, peakRSSRe.MatchString(log)
+}
+
 // completionPeak extracts (peak_rss_mb, peak_rss_src) from the single
-// "indexer: completed" line in the captured log.
+// "indexer: completed" line in the captured log. Fails when no peak was
+// reported — use completionSrc for the unmeasured case.
 func completionPeak(t *testing.T, log string) (int64, string) {
 	t.Helper()
 	if !completedRe.MatchString(log) {
@@ -143,39 +157,26 @@ func touchMB(n int) [][]byte {
 // mark for free. So the in-process arm reports that it has no measurement, and
 // the two properties below are what a caller may rely on.
 func TestInProcessRunIsReportedAsUnmeasured(t *testing.T) {
-	var peaks []int64
-	var srcs []string
-	// Repeat in ONE process: the first run leaves free spans behind, so a
-	// delta-based sampler diverges from run to run. A measurement that changes
-	// when nothing about the job changed is not a measurement.
-	for i := 0; i < 3; i++ {
-		var buf syncBuf
-		s := newPeakTestScheduler(&buf, func(context.Context, string, string) error {
-			blocks := touchMB(testTouchMBs)
-			time.Sleep(50 * time.Millisecond)
-			runtime.KeepAlive(blocks)
-			return nil
-		})
-		s.runIndex(jobToken{repoPath: "/repo-shortjob-6107", ref: "main", commit: "c0"})
-		peak, src := completionPeak(t, buf.String())
-		peaks = append(peaks, peak)
-		srcs = append(srcs, src)
-	}
+	var buf syncBuf
+	// No allocation here on purpose. There is no sampler left to feed, so
+	// touching hundreds of MiB would prove nothing and cost a shared 16 GiB
+	// host real memory; the evidence that the sampler was unfixable is in the
+	// comment above, not in a runtime cost paid on every test run.
+	s := newPeakTestScheduler(&buf, func(context.Context, string, string) error { return nil })
+	s.runIndex(jobToken{repoPath: "/repo-shortjob-6107", ref: "main", commit: "c0"})
 
-	for i := range peaks {
-		if peaks[i] != peaks[0] || srcs[i] != srcs[0] {
-			t.Fatalf("identical in-process jobs reported different figures across runs: "+
-				"peaks=%v srcs=%v — a per-job peak derived from whole-process RSS is not "+
-				"reproducible (arena reuse), so it must not be reported as one", peaks, srcs)
-		}
-	}
-	if srcs[0] != peakSrcUnmeasured {
+	src, hasPeak := completionSrc(t, buf.String())
+	if src != peakSrcUnmeasured {
 		t.Fatalf("peak_rss_src=%q for an in-process index; want %q — the daemon cannot "+
-			"attribute its own RSS to one of the jobs running inside it", srcs[0], peakSrcUnmeasured)
+			"attribute its own RSS to one of the jobs running inside it", src, peakSrcUnmeasured)
 	}
-	if peaks[0] != 0 {
-		t.Fatalf("peak_rss_mb=%d alongside src=%q; an unmeasured run must report no "+
-			"figure at all rather than a number readers will treat as one", peaks[0], srcs[0])
+	// The field must be ABSENT, not zero. A consumer averaging peak_rss_mb
+	// across completions would otherwise average in a zero that never meant
+	// "this index used no memory" — the same class of false number as the
+	// peak_heap_mb=0 this whole issue is about.
+	if hasPeak {
+		t.Fatalf("completion line still carries peak_rss_mb alongside src=%q; an "+
+			"unmeasured run must omit the field:\n%s", src, buf.String())
 	}
 }
 
@@ -238,6 +239,13 @@ func TestRunIndexPrefersChildMaxRSS(t *testing.T) {
 		if r.LastPeakMB != childMB {
 			t.Fatalf("repoStats.LastPeakMB=%d; want the child's %d MiB", r.LastPeakMB, childMB)
 		}
+		// LastPeakMB persists across later runs that measured nothing, so the
+		// status wire has to say which measure it is or a carried-over peak
+		// from an older full index reads as a fresh one — the ambiguity the
+		// completion line was restructured to remove, surviving on the wire.
+		if r.LastPeakSrc != peakSrcChildMaxRSS {
+			t.Fatalf("repoStats.LastPeakSrc=%q; want %q", r.LastPeakSrc, peakSrcChildMaxRSS)
+		}
 	}
 	if !found {
 		t.Fatalf("repo %s absent from Snapshot().IndexedRepos", repo)
@@ -278,9 +286,17 @@ func TestRunIndexIgnoresStaleChildPeak(t *testing.T) {
 
 	s.runIndex(jobToken{repoPath: repo, ref: "main", commit: "c0"})
 
-	peak, _ := completionPeak(t, buf.String())
-	if peak == 9999 {
-		t.Fatalf("completion line reported a child peak recorded before the job started (%d)", peak)
+	src, hasPeak := completionSrc(t, buf.String())
+	if hasPeak {
+		// Any figure at all here is a bug: the only candidate was the stale
+		// 9999, so reporting a number means the staleness guard let it through.
+		peak, _ := completionPeak(t, buf.String())
+		t.Fatalf("completion line reported peak_rss_mb=%d from a child peak recorded "+
+			"before the job started", peak)
+	}
+	if src != peakSrcUnmeasured {
+		t.Fatalf("peak_rss_src=%q; a run whose only candidate peak was stale must report %q",
+			src, peakSrcUnmeasured)
 	}
 }
 
@@ -320,10 +336,37 @@ func TestChildMaxRSSMatchesKnownAllocation(t *testing.T) {
 	// touched, i.e. 1.02x. 0.8x..1.5x leaves ~4x the observed headroom while
 	// still rejecting the unit errors: a KiB-as-bytes read lands at 0.25x and
 	// a bytes-as-KiB read at 1024x.
+	//
+	// Under -race the child is THIS binary with ThreadSanitizer's shadow
+	// memory resident alongside the allocation, which is not a property of the
+	// code under test. The release gate (.github/workflows/test.yml — `go test
+	// -race` on every v* tag push) runs exactly this binary, so the band has to
+	// account for it or the gate cannot run at all.
+	//
+	// The inflation is large AND variable: 8 samples on an idle-to-moderate
+	// darwin/arm64 host gave 558, 578, 689, 716, 749, 762, 793, 794 MiB for the
+	// same 256 MiB held — 2.18x to 3.10x. So under instrumentation this test
+	// deliberately checks UNIT SANITY ONLY (0.5x..8x), which still rejects both
+	// scaling errors it was written for: a KiB-as-bytes read lands at 0.25x and
+	// a bytes-as-KiB read at 1024x.
+	//
+	// It does NOT resolve a 2x product error under -race, and pretending
+	// otherwise would be false precision — a 2x regression measured 1148 MiB
+	// here, inside the spread a clean build can reach on a loaded runner. That
+	// resolution belongs to the uninstrumented band above, which runs on the
+	// non-race CI leg (`go test -count=1` on PRs and ordinary dispatch) and on
+	// every local run. Choosing a ceiling tight enough to catch 2x under -race
+	// would put the release gate ~1.3x from a false failure, which is how this
+	// test broke the gate in the first place.
 	lo, hi := int64(childMB)*8/10, int64(childMB)*15/10
+	band := "0.8x..1.5x"
+	if raceInstrumented {
+		lo, hi = int64(childMB)/2, int64(childMB)*8
+		band = "0.5x..8x (-race: TSan inflates the child 2.18x-3.10x; unit sanity only)"
+	}
 	if gotMB < lo || gotMB > hi {
-		t.Fatalf("child ru_maxrss=%d MiB for a child that held %d MiB (want %d..%d) — check the platform unit",
-			gotMB, childMB, lo, hi)
+		t.Fatalf("child ru_maxrss=%d MiB for a child that held %d MiB (want %d..%d, %s) — check the platform unit",
+			gotMB, childMB, lo, hi, band)
 	}
 }
 

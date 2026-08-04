@@ -64,13 +64,31 @@ func PredictRSS(repoPath string) int64 {
 	return mb
 }
 
-// rssHistoryTTL bounds how long a recorded peak may govern admission (#6107
-// review). RSSHistoryEntry has always carried LastIndex and nothing ever read
-// it, so there was no expiry path at all: an entry written months ago against
-// extractor code that no longer exists still beat the live predictor on every
-// admission decision. Past the TTL the honest answer is "no history", which
-// falls back to PredictRSS and lets the next completed run re-measure.
-const rssHistoryTTL = 30 * 24 * time.Hour
+// A note on expiry, because its ABSENCE is now a deliberate decision (#6107
+// round-2 review). A 30-day TTL on these entries was tried and removed. It
+// made things strictly worse for two compounding reasons:
+//
+//  1. The fallback is worse than the stale data. Predict returning 0 sends
+//     predictedFor to PredictRSS, which is 70x source bytes — measured at 4516
+//     MB for the grafel repo itself, i.e. 2.2x a 16 GiB host's 2048 MB budget.
+//     So expiry did not restore a neutral estimate, it guaranteed permanent
+//     solo admit_oversize for any repo whose history aged out. Discarding a
+//     real measurement in favour of a heuristic that over-estimates by 3-9x is
+//     a downgrade, however stale the measurement.
+//
+//  2. Expiry and re-measurement run at incompatible rates. Record is fed only
+//     by full subprocess indexes (runIndex skips cfg.Index entirely when the
+//     incremental path succeeds, and incremental is default-ON and fully
+//     in-process), so an actively-maintained repo can go months without a new
+//     sample. A TTL that fires in 30 days against a series that updates in
+//     months expires almost everything and re-measures almost nothing.
+//
+// The round-1 concern the TTL was meant to answer — one contaminated sample
+// governing admission forever — is addressed at the source instead: only
+// child_maxrss is ever recorded (see runIndex), so the contaminating measure
+// no longer exists. What remains permanent is a legitimate measurement of this
+// repo, which is what the series is for. LastIndex is still written, and is
+// still read by nothing; it is on-disk forensics for whoever inspects the file.
 
 // rssHistoryRelaxDivisor controls how fast a recorded peak walks back toward
 // smaller observations. See Record.
@@ -107,22 +125,15 @@ func LoadRSSHistory(path string) *RSSHistory {
 	return h
 }
 
-// Predict returns the historical peak (in MB), or 0 when there is no record or
-// the record has aged out (rssHistoryTTL). A 0 sends the caller to PredictRSS.
+// Predict returns the historical peak (in MB) or 0 if no record exists. Age is
+// deliberately not consulted — see the note on expiry above.
 func (h *RSSHistory) Predict(repoPath string) int64 {
 	if h == nil {
 		return 0
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	e := h.data[repoPath]
-	// A zero LastIndex is a file written before the field was populated, or
-	// hand-edited. Honour the peak rather than discarding calibration over a
-	// missing timestamp — unknown age is not the same as known-stale.
-	if !e.LastIndex.IsZero() && time.Since(e.LastIndex) > rssHistoryTTL {
-		return 0
-	}
-	return e.PeakRSSMB
+	return h.data[repoPath].PeakRSSMB
 }
 
 // Record updates the running peak for a repo. Persists synchronously

@@ -196,13 +196,17 @@ type InFlightJobState struct {
 
 // IndexedRepoState mirrors sched.RepoSnapshot for the wire.
 type IndexedRepoState struct {
-	Path        string `json:"path"`
-	LastIndex   string `json:"last_index,omitempty"`
-	LastAlgo    string `json:"last_algo,omitempty"`
-	IndexCount  int64  `json:"index_count"`
-	AlgoCount   int64  `json:"algo_count"`
-	LastErr     string `json:"last_err,omitempty"`
-	LastPeakMB  int64  `json:"last_peak_mb,omitempty"`
+	Path       string `json:"path"`
+	LastIndex  string `json:"last_index,omitempty"`
+	LastAlgo   string `json:"last_algo,omitempty"`
+	IndexCount int64  `json:"index_count"`
+	AlgoCount  int64  `json:"algo_count"`
+	LastErr    string `json:"last_err,omitempty"`
+	LastPeakMB int64  `json:"last_peak_mb,omitempty"`
+	// LastPeakSrc names which measure LastPeakMB is — "child_maxrss" today.
+	// Without it a stale peak carried over from an older full index is
+	// indistinguishable from a fresh one (#6107).
+	LastPeakSrc string `json:"last_peak_src,omitempty"`
 	PredictedMB int64  `json:"predicted_mb,omitempty"`
 
 	// #5727/#5729-W1 — the exact commit the on-disk graph was indexed at,
