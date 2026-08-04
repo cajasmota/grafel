@@ -87,6 +87,38 @@ type Options struct {
 	// This is the edge-FromID normalization gap #5309 will close in the scoped
 	// resolver; until then the validator normalizes rather than false-alarms.
 	NormalizeStubEndpoints bool
+
+	// ContentKeyedIdentity keys BOTH entities and relationship endpoints by the
+	// CONTENT of the entity rather than by its hex id (#6129).
+	//
+	// Why this exists. The default keying folds graph.EntityID into the entity
+	// key and keys an edge on its verbatim (FromID, ToID) pair. That is exact,
+	// but it is opaque and it is only as stable as the id scheme: EntityID
+	// hashes (repo, kind, name, source_file), so anything that perturbs the repo
+	// tag, and any endpoint that is NOT an entity id at all (a `SCOPE.External`
+	// placeholder, an unresolved stub), produces a key that cannot be read and
+	// cannot be compared against its counterpart on the other side.
+	//
+	// With this on, an endpoint is replaced by the content tuple
+	// `kind/name@source_file` of the entity it binds to IN ITS OWN DOCUMENT, or
+	// by `«unbound»<raw>` when it binds to nothing there. Two consequences,
+	// both load-bearing for the full-vs-incremental gate:
+	//
+	//  1. An edge that resolves to a DIFFERENT entity than the reference run
+	//     shows up as a LOST key plus an INVENTED key naming both targets, in
+	//     terms a human can act on — the exact shape (#6037, #6094, #6123,
+	//     #6129) that entity counts, edge counts, dangling rates and
+	//     one-directional diffs all report as healthy.
+	//  2. Binding to a placeholder is visibly distinct from binding to the real
+	//     in-repo entity, instead of being two opaque hex strings.
+	//
+	// Resolution is deliberately PER-DOCUMENT (unlike NormalizeStubEndpoints,
+	// which builds one name→id index over the union of both sides and would
+	// therefore fold a placeholder onto the real entity that the other side
+	// bound — hiding exactly the defect this is here to catch). The two options
+	// are independent; setting both keeps the union-normalisation OFF for the
+	// endpoint pass.
+	ContentKeyedIdentity bool
 }
 
 // Strict returns the zero-tolerance options (exact structural equality).
@@ -226,7 +258,7 @@ func CompareWithOptions(a, b *graph.Document, opts Options) Report {
 
 	compareEntities(a, b, &r, opts)
 	compareRelationships(a, b, &r, opts)
-	compareCommunities(a, b, &r)
+	compareCommunities(a, b, &r, opts)
 
 	if len(r.EntitiesOnlyInA) > 0 || len(r.EntitiesOnlyInB) > 0 ||
 		len(r.EntityFieldDiffs) > 0 || len(r.EntityMultiplicityDiffs) > 0 ||
@@ -245,7 +277,13 @@ func CompareWithOptions(a, b *graph.Document, opts Options) Report {
 // when present, but fold in the human-readable identity so the diff output is
 // legible and so two entities with a hash collision (astronomically unlikely)
 // still compare on their real fields.
-func entityKey(e graph.Entity) string {
+//
+// Under ContentKeyedIdentity the id is dropped from the key entirely and the
+// entity is identified by its content alone (#6129) — see the option's doc.
+func entityKey(e graph.Entity, opts Options) string {
+	if opts.ContentKeyedIdentity {
+		return fmt.Sprintf("%s|%s|%s|%s", e.Kind, e.Name, e.QualifiedName, e.SourceFile)
+	}
 	id := e.ID
 	if id == "" {
 		id = graph.EntityID("", e.Kind, e.Name, e.SourceFile)
@@ -254,6 +292,31 @@ func entityKey(e graph.Entity) string {
 	// the id already hashes (kind, name, source_file), so two entities that
 	// share a key necessarily share these fields.
 	return fmt.Sprintf("%s|%s|%s|%s|%s", id, e.Kind, e.Name, e.QualifiedName, e.SourceFile)
+}
+
+// contentEndpointResolver maps a relationship endpoint id to the CONTENT tuple
+// of the entity it binds to WITHIN d, or to a `«unbound»`-prefixed marker
+// carrying the verbatim endpoint when nothing in d has that id (#6129).
+//
+// It is built over a SINGLE document on purpose. Resolving against the union of
+// both sides would let an endpoint that binds to a `SCOPE.External` placeholder
+// on one side match the real in-repo entity the other side bound, which is the
+// divergence class this whole option exists to expose.
+func contentEndpointResolver(d *graph.Document) func(string) string {
+	byID := make(map[string]graph.Entity, len(d.Entities))
+	for _, e := range d.Entities {
+		if e.ID != "" {
+			if _, seen := byID[e.ID]; !seen {
+				byID[e.ID] = e
+			}
+		}
+	}
+	return func(id string) string {
+		if e, ok := byID[id]; ok {
+			return fmt.Sprintf("%s/%s@%s", e.Kind, e.Name, e.SourceFile)
+		}
+		return "«unbound»" + id
+	}
 }
 
 // compareEntities compares the two entity collections as MULTISETS (#6037).
@@ -265,8 +328,8 @@ func entityKey(e graph.Entity) string {
 // slice order. Grouping instead of overwriting fixes both: row COUNT is compared
 // per key, and the field comparison over a duplicate group is order-independent.
 func compareEntities(a, b *graph.Document, r *Report, opts Options) {
-	mapA := groupEntities(a.Entities)
-	mapB := groupEntities(b.Entities)
+	mapA := groupEntities(a.Entities, opts)
+	mapB := groupEntities(b.Entities, opts)
 
 	for k, ga := range mapA {
 		gb, ok := mapB[k]
@@ -296,10 +359,10 @@ func compareEntities(a, b *graph.Document, r *Report, opts Options) {
 	sortFieldDiffs(r.EntityMultiplicityDiffs)
 }
 
-func groupEntities(ents []graph.Entity) map[string][]graph.Entity {
+func groupEntities(ents []graph.Entity, opts Options) map[string][]graph.Entity {
 	m := make(map[string][]graph.Entity, len(ents))
 	for _, e := range ents {
-		k := entityKey(e)
+		k := entityKey(e, opts)
 		m[k] = append(m[k], e)
 	}
 	return m
@@ -386,10 +449,15 @@ func compareRelationships(a, b *graph.Document, r *Report, opts Options) {
 	// Build a stub→entity-id resolver over the union of both entity sets so that
 	// an un-resolved cross-file edge endpoint (the incremental scoped-resolver
 	// gap) folds onto the entity it names. No-op unless NormalizeStubEndpoints.
-	resolver := newEndpointResolver(a, b, opts)
+	// Under ContentKeyedIdentity each side resolves its OWN endpoints to entity
+	// content (#6129); otherwise both sides share the union-normalising resolver.
+	resolveA, resolveB := newEndpointResolver(a, b, opts), newEndpointResolver(a, b, opts)
+	if opts.ContentKeyedIdentity {
+		resolveA, resolveB = contentEndpointResolver(a), contentEndpointResolver(b)
+	}
 
-	mapA := groupRelationships(a.Relationships, resolver, opts)
-	mapB := groupRelationships(b.Relationships, resolver, opts)
+	mapA := groupRelationships(a.Relationships, resolveA, opts)
+	mapB := groupRelationships(b.Relationships, resolveB, opts)
 
 	for k, ga := range mapA {
 		gb, ok := mapB[k]
@@ -472,14 +540,14 @@ func relGroupPropDiff(ga, gb []graph.Relationship, opts Options) string {
 // Only entities present in BOTH graphs are considered for assignment parity —
 // entities that are added/removed are already reported by compareEntities, and
 // re-reporting their (necessarily different) community here would be noise.
-func compareCommunities(a, b *graph.Document, r *Report) {
+func compareCommunities(a, b *graph.Document, r *Report, opts Options) {
 	keyA := make(map[string]graph.Entity, len(a.Entities))
 	for _, e := range a.Entities {
-		keyA[entityKey(e)] = e
+		keyA[entityKey(e, opts)] = e
 	}
 
 	for _, eb := range b.Entities {
-		k := entityKey(eb)
+		k := entityKey(eb, opts)
 		ea, ok := keyA[k]
 		if !ok {
 			continue // entity-set diff already reports this
@@ -498,7 +566,7 @@ func compareCommunities(a, b *graph.Document, r *Report) {
 	shared := func(d *graph.Document, other map[string]graph.Entity) map[string][]string {
 		m := make(map[string][]string)
 		for _, e := range d.Entities {
-			k := entityKey(e)
+			k := entityKey(e, opts)
 			if _, ok := other[k]; !ok {
 				continue
 			}
@@ -511,7 +579,7 @@ func compareCommunities(a, b *graph.Document, r *Report) {
 	}
 	keyB := make(map[string]graph.Entity, len(b.Entities))
 	for _, e := range b.Entities {
-		keyB[entityKey(e)] = e
+		keyB[entityKey(e, opts)] = e
 	}
 	memA := shared(a, keyB)
 	memB := shared(b, keyA)
