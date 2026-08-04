@@ -451,6 +451,18 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 	doc.Relationships = filteredRels
 
+	// #6090 — snapshot the OUTBOUND prior edges just pruned, before the
+	// inbound-dangling pass below starts appending to removedRels. These are the
+	// edges the previous (corpus-wide) resolver had already bound; Step 7a
+	// replays those bindings onto the fresh edges the isolated re-extraction
+	// could not resolve.
+	//
+	// The three-index form is load-bearing: Step 6a appends the dangling INBOUND
+	// edges to removedRels, and a two-index sub-slice would let those appends
+	// write into the shared backing array within this snapshot's capacity. Capping
+	// cap==len forces the append to copy, so the snapshot stays outbound-only.
+	priorOutboundRels := removedRels[:len(removedRels):len(removedRels)]
+
 	// --- Step 6: re-extract each changed file ---
 	cls, clsErr := classifier.New("", nil)
 	if clsErr != nil {
@@ -575,6 +587,25 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// flow / affected-module passes below.
 	doc.Relationships = scopedResult.UpdatedExistingRelationships
 	newRels = scopedResult.ResolvedNewRelationships
+
+	// --- Step 7a: prior-resolution replay (#6090) ---
+	// The scoped resolver's binding ladder does not cover what the corpus-wide
+	// one does (it has no member-suffix tier, so entity "T11.Do11" is unreachable
+	// from the call-site stub "Do11"), so an outgoing edge of the changed file
+	// can come back from this isolated pass with an unresolved bare-name ToID
+	// even though a full rebuild binds it. Not a strict subset in the other
+	// direction either: the scoped ladder's whole-string tier is last-writer-wins
+	// with no ambiguity sentinel, so it can bind where the full resolver
+	// deliberately refuses. Step 5 already pruned the prior, RESOLVED copy of
+	// that same edge (it was outbound from a re-extracted entity), so the edge
+	// is lost until the next full reindex — and the loss is monotone across
+	// edits to different files.
+	//
+	// Replay the previous graph's binding onto the fresh edge. See
+	// replayPriorResolution for why this cannot resurrect a deleted call.
+	if healed := replayPriorResolution(newRels, priorOutboundRels, doc.Entities, newEntities); healed > 0 {
+		logger.Printf("incremental: prior-resolution replay bound %d unresolved edge endpoint(s) (#6090)", healed)
+	}
 
 	// --- Step 7a: stamp Properties["module"] on new entities (#5309 layer 2) ---
 	// The full-rebuild path stamps every sourced entity with a deterministic
