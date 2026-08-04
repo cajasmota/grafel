@@ -1248,13 +1248,28 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 					if incrementalChange[filepath.ToSlash(pe.SourceFile)] {
 						return true
 					}
+					// #6119 — QualifiedName is load-bearing here, not cosmetic.
+					// resolve.BuildIndex populates idx.byQualifiedName from this
+					// field; omitting it meant carried (unchanged-file) entities
+					// contributed ZERO entries to that index, which diverged in
+					// two directions at once. (1) A stub whose only resolution
+					// tier is byQualifiedName could not bind to an unchanged-file
+					// entity at all. (2) Worse, byQualifiedName's ambiguity
+					// sentinel — a second entity with the same QualifiedName
+					// blanks the entry so the stub is left alone — could not see a
+					// collision that straddled the changed/unchanged boundary, so
+					// the stub bound CONFIDENTLY to the changed-file entity with
+					// no signal, where a full rebuild binds a different one.
+					// Pinned end-to-end in
+					// incremental_carry_qualifiedname_6119_test.go.
 					cf = append(cf, types.EntityRecord{
-						ID:         pe.ID,
-						Name:       pe.Name,
-						Kind:       pe.Kind,
-						Subtype:    pe.Subtype,
-						SourceFile: pe.SourceFile,
-						Properties: pe.PropsSnapshot(),
+						ID:            pe.ID,
+						Name:          pe.Name,
+						Kind:          pe.Kind,
+						Subtype:       pe.Subtype,
+						QualifiedName: pe.QualifiedName,
+						SourceFile:    pe.SourceFile,
+						Properties:    pe.PropsSnapshot(),
 					})
 					return true
 				})
