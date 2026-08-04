@@ -20,6 +20,20 @@ func lineOf(source string, offset int) int {
 }
 
 // entity builds an EntityRecord with the common fields pre-filled.
+//
+// ENDLINE IS ANCHORED TO STARTLINE, NOT LEFT AT ZERO (#6118). This was the one
+// EntityRecord construction site in the whole of internal/custom/** that
+// populated StartLine and left EndLine at its zero value — every other
+// language's helper (csharp, java, javascript, golang, ruby, rust, php, kotlin,
+// scala, swift, dart, lua, cpp, elixir, fsharp, crystal, groovy, nim, …) emits
+// EndLine == lineNum. A zero EndLine is not "line zero", it is "extent
+// unknown": any consumer that slices source by extent (grafel_get_source,
+// docgen, the dashboard code panels, entity-size metrics) gets an unanchored
+// region rather than a one-line one.
+//
+// These extractors are regex-based and match a single declaration line, so the
+// honest extent IS one line. If a caller knows a wider extent it should widen
+// EndLine after calling; MergeWithCustom's span union never narrows it.
 func entity(name, kind, subtype, sourceFile string, startLine int, props map[string]string) types.EntityRecord {
 	return types.EntityRecord{
 		Name:               name,
@@ -27,6 +41,7 @@ func entity(name, kind, subtype, sourceFile string, startLine int, props map[str
 		Subtype:            subtype,
 		SourceFile:         sourceFile,
 		StartLine:          startLine,
+		EndLine:            startLine,
 		Language:           "python",
 		Properties:         props,
 		EnrichmentRequired: true,
