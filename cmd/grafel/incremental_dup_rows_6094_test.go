@@ -399,9 +399,28 @@ func Num7(x int) string { return strconv.Itoa(x + 7) }
 }
 
 // TestIncremental_DependsOnWeightParity_6098 is a live, self-contained
-// reproduction of #6098 — SKIPPED, because #6098 is a DIFFERENT defect from
-// #6094 and its fix does not belong in this change. Un-skip it when the
-// resolver work below is picked up; it is already red for the right reason.
+// reproduction of #6098. It was landed SKIPPED and is now un-skipped.
+//
+// IT NO LONGER FAILS FOR THE REASON DOCUMENTED BELOW — recorded because the
+// distinction matters to anyone reading this as the #6098 acceptance gate.
+// Measured on this fixture: with prior-resolution replay (#6121) disabled the
+// test is RED at exactly the documented signature, 39/117 against 40/120;
+// with it enabled it is GREEN, and the replay log reports it binding the two
+// endpoints per pass. So #6121 — which landed for #6090 — already closed THIS
+// fixture, because the two CALLS edges exist in the baseline graph and
+// therefore have a prior binding to replay.
+//
+// Verifying that took a corrected mutation: multiplying the replay's return
+// value by zero leaves the test GREEN, because replayPriorResolution mutates
+// its argument in place and only the log line is suppressed. The honest
+// mutation is to not call it at all.
+//
+// What the fixture can no longer see is the residual: a call the edit ITSELF
+// introduces has no prior binding, so replay cannot help and only a resolver
+// tier can bind it. That case is
+// TestIncremental_NewlyIntroducedCrossFileCall_6098, and it was RED here until
+// internal/extractors/sresolver/pkgmember.go landed. This test is kept
+// un-skipped as a weight-parity regression gate.
 //
 // #6098 IS NOT THE SAME ROOT CAUSE AS #6094. Evidence.
 // ─────────────────────────────────────────────────────
@@ -448,9 +467,6 @@ func Num7(x int) string { return strconv.Itoa(x + 7) }
 // path. That is a separate change against a separate component, and shipping a
 // partial version of it here would be worse than leaving the defect visible.
 func TestIncremental_DependsOnWeightParity_6098(t *testing.T) {
-	t.Skip("#6098 is open and is NOT the #6094 root cause — see the comment above for the " +
-		"measured evidence and the exact chain; un-skip when sresolver gains a receiver-type tier")
-
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 	const nFiles = 20
