@@ -69,7 +69,7 @@ public class UserResource {
 	// The injecting class is the carrier: the @EJB DEPENDS_ON edge's SourceRef is
 	// scope:dependency:jakarta:<fp>:UserResource, which #3605 now materialises as a
 	// SCOPE.Class carrier so the edge survives instead of being dropped.
-	carrierRef := "scope:dependency:jakarta:" + path + ":UserResource"
+	carrierRef := "scope:dependency:jakarta:java:" + path + ":UserResource"
 	carrier := findByKindProp(recs, "SCOPE.Class", "ref", carrierRef)
 	if carrier == nil {
 		t.Fatalf("expected a synthesised SCOPE.Class carrier at ref %q for the @EJB injection point; got %v",
@@ -84,7 +84,7 @@ public class UserResource {
 
 	// The restored di_injection_point edge: DEPENDS_ON from UserResource to the
 	// injected UserService bean, tagged kind=ejb_inject.
-	targetRef := "scope:dependency:jakarta:" + path + ":UserService"
+	targetRef := "scope:dependency:jakarta:java:" + path + ":UserService"
 	if !relWithProp(carrier, "DEPENDS_ON", targetRef, "kind", "ejb_inject") {
 		t.Fatalf("expected restored di_injection_point DEPENDS_ON edge "+
 			"UserResource -> UserService (kind=ejb_inject); got rels %v", carrier.Relationships)
@@ -123,7 +123,7 @@ public class OrderRequest {
 	// The owning DTO is the carrier: the nested @Valid VALIDATES edge's SourceRef
 	// is scope:class:bean_validation:<fp>:OrderRequest, which #3605 now materialises
 	// as a SCOPE.Class carrier so the VALIDATES edge survives.
-	carrierRef := "scope:class:bean_validation:" + path + ":OrderRequest"
+	carrierRef := "scope:class:bean_validation:java:" + path + ":OrderRequest"
 	carrier := findByKindProp(recs, "SCOPE.Class", "ref", carrierRef)
 	if carrier == nil {
 		t.Fatalf("expected a synthesised SCOPE.Class carrier at ref %q for the nested @Valid edge; got %v",
@@ -135,7 +135,7 @@ public class OrderRequest {
 
 	// The restored nested_model_extraction edge: VALIDATES from OrderRequest to the
 	// nested Address type via the @Valid annotation on shippingAddress.
-	targetRef := "scope:dependency:bean_validation:" + path + ":Address"
+	targetRef := "scope:dependency:bean_validation:java:" + path + ":Address"
 	if !relWithProp(carrier, "VALIDATES", targetRef, "via", "valid_annotation") {
 		t.Fatalf("expected restored nested_model_extraction VALIDATES edge "+
 			"OrderRequest -> Address (via=valid_annotation); got rels %v", carrier.Relationships)

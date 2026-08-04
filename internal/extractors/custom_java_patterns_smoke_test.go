@@ -20,6 +20,16 @@ import (
 // assertion here therefore proves the dead layer is genuinely wired, not merely
 // unit-callable. Assertions are value-specific (exact Kind/Name and an exact
 // relationship Kind+ToID), never len > 0.
+//
+// #6105 — THE EXPECTED REFS GAINED A `java:` SEGMENT. Every ref asserted below
+// is now `scope:<kind>:<subtype>:java:<file>:<name>` rather than the five-segment
+// `scope:<kind>:<subtype>:<file>:<name>` these tests previously pinned. The old
+// shape was the defect: the resolver's Format A takes six segments
+// (internal/resolve/refs.go:69) and rejects anything else outright, so no ref
+// this package minted could ever bind. patternResultToRecords canonicalises them
+// at the output boundary — see canonicalStructuralRef. The Extract* functions
+// still build the five-segment form internally, so their own unit tests are
+// unaffected; only what LEAVES the package changed.
 
 // runJavaPatterns dispatches the live java custom-extractor pass and returns the
 // emitted records. It asserts the custom_java_patterns extractor is actually
@@ -128,7 +138,7 @@ public class UserService {
 
 	// 3. The @Autowired DI edge UserService -> UserRepository must emit as an
 	//    embedded DEPENDS_ON relationship on the service's stereotype entity.
-	wantTarget := "scope:dependency:spring_boot:" +
+	wantTarget := "scope:dependency:spring_boot:java:" +
 		"src/main/java/com/example/api/UserController.java:UserRepository"
 	if !hasRel(svc, "DEPENDS_ON", wantTarget) {
 		t.Errorf("expected DEPENDS_ON edge from UserService to UserRepository (%s); got rels %v",
@@ -165,7 +175,7 @@ public class Order {
 	}
 
 	// The @OneToMany association Order -> LineItem must emit as a DEPENDS_ON edge.
-	wantTarget := "scope:schema:hibernate_entity:" +
+	wantTarget := "scope:schema:hibernate_entity:java:" +
 		"src/main/java/com/example/model/Order.java:LineItem"
 	if !hasRel(order, "DEPENDS_ON", wantTarget) {
 		t.Errorf("expected DEPENDS_ON association edge Order -> LineItem (%s); got rels %v",
@@ -262,7 +272,7 @@ public class LoggingAspect {
 	recs := runJavaPatterns(t, "src/main/java/x/LoggingAspect.java", src)
 
 	// aspect_extraction
-	aspect := findByRef(recs, "scope:pattern:aspect:src/main/java/x/LoggingAspect.java:LoggingAspect")
+	aspect := findByRef(recs, "scope:pattern:aspect:java:src/main/java/x/LoggingAspect.java:LoggingAspect")
 	if aspect == nil {
 		t.Fatalf("expected @Aspect LoggingAspect to emit SCOPE.Pattern(aspect); got %v", names(recs))
 	}
@@ -271,7 +281,7 @@ public class LoggingAspect {
 	}
 
 	// advice_attribution — advice_type must be the resolved around designator.
-	advice := findByRef(recs, "scope:pattern:advice:src/main/java/x/LoggingAspect.java:LoggingAspect.logAround")
+	advice := findByRef(recs, "scope:pattern:advice:java:src/main/java/x/LoggingAspect.java:LoggingAspect.logAround")
 	if advice == nil {
 		t.Fatalf("expected @Around advice LoggingAspect.logAround to emit; got %v", names(recs))
 	}
@@ -284,7 +294,7 @@ public class LoggingAspect {
 	}
 
 	// pointcut_resolution — pointcut entity + advice REFERENCES pointcut.
-	pc := findByRef(recs, "scope:pattern:pointcut:src/main/java/x/LoggingAspect.java:LoggingAspect.anyOp")
+	pc := findByRef(recs, "scope:pattern:pointcut:java:src/main/java/x/LoggingAspect.java:LoggingAspect.anyOp")
 	if pc == nil {
 		t.Fatalf("expected @Pointcut LoggingAspect.anyOp to emit; got %v", names(recs))
 	}
@@ -312,7 +322,7 @@ public class OrderService {
 `
 	recs := runJavaPatterns(t, "src/main/java/x/OrderService.java", src)
 
-	tx := findByRef(recs, "scope:pattern:transaction_boundary:src/main/java/x/OrderService.java:OrderService.placeOrder")
+	tx := findByRef(recs, "scope:pattern:transaction_boundary:java:src/main/java/x/OrderService.java:OrderService.placeOrder")
 	if tx == nil {
 		t.Fatalf("expected @Transactional method to emit a transaction_boundary entity; got %v", names(recs))
 	}
@@ -344,7 +354,7 @@ public class OrderService {
 `
 	recs := runJavaPatterns(t, "src/main/java/x/OrderService.java", bean)
 	// di_binding_extraction + di_scope_resolution: @Singleton bean.
-	svc := findByRef(recs, "scope:service:micronaut_bean:src/main/java/x/OrderService.java:OrderService")
+	svc := findByRef(recs, "scope:service:micronaut_bean:java:src/main/java/x/OrderService.java:OrderService")
 	if svc == nil {
 		t.Fatalf("expected @Singleton OrderService micronaut bean; got %v", names(recs))
 	}
@@ -352,7 +362,7 @@ public class OrderService {
 		t.Errorf("micronaut bean scope = %q, want Singleton", got)
 	}
 	// di_injection_point: constructor DEPENDS_ON OrderRepository.
-	if !hasRel(svc, "DEPENDS_ON", "scope:dependency:micronaut:src/main/java/x/OrderService.java:OrderRepository") {
+	if !hasRel(svc, "DEPENDS_ON", "scope:dependency:micronaut:java:src/main/java/x/OrderService.java:OrderRepository") {
 		t.Errorf("expected ctor DEPENDS_ON OrderRepository edge; got %v", svc.Relationships)
 	}
 
@@ -368,12 +378,12 @@ public class LoggingInterceptor implements MethodInterceptor<Object, Object> {
 `
 	recs2 := runJavaPatterns(t, "src/main/java/x/LoggingInterceptor.java", interceptor)
 	// AOP aspect_extraction: MethodInterceptor class is an aspect.
-	asp := findByRef(recs2, "scope:pattern:aspect:src/main/java/x/LoggingInterceptor.java:LoggingInterceptor")
+	asp := findByRef(recs2, "scope:pattern:aspect:java:src/main/java/x/LoggingInterceptor.java:LoggingInterceptor")
 	if asp == nil {
 		t.Fatalf("expected MethodInterceptor to emit aspect; got %v", names(recs2))
 	}
 	// AOP advice_attribution: intercept() method advice_type=around + OWNS.
-	adv := findByRef(recs2, "scope:pattern:advice:src/main/java/x/LoggingInterceptor.java:LoggingInterceptor.intercept")
+	adv := findByRef(recs2, "scope:pattern:advice:java:src/main/java/x/LoggingInterceptor.java:LoggingInterceptor.intercept")
 	if adv == nil {
 		t.Fatalf("expected intercept() advice; got %v", names(recs2))
 	}
@@ -394,7 +404,7 @@ public class AuthFilter implements HttpServerFilter {
 `
 	recs3 := runJavaPatterns(t, "src/main/java/x/AuthFilter.java", filter)
 	// middleware_coverage: HttpServerFilter.
-	mw := findByRef(recs3, "scope:component:micronaut_filter:src/main/java/x/AuthFilter.java:AuthFilter")
+	mw := findByRef(recs3, "scope:component:micronaut_filter:java:src/main/java/x/AuthFilter.java:AuthFilter")
 	if mw == nil {
 		t.Fatalf("expected @Filter HttpServerFilter middleware; got %v", names(recs3))
 	}
@@ -419,14 +429,14 @@ public class LoggingInterceptor {
 }
 `
 	recs := runJavaPatterns(t, "src/main/java/x/LoggingInterceptor.java", cdi)
-	asp := findByRef(recs, "scope:pattern:cdi_interceptor:src/main/java/x/LoggingInterceptor.java:LoggingInterceptor")
+	asp := findByRef(recs, "scope:pattern:cdi_interceptor:java:src/main/java/x/LoggingInterceptor.java:LoggingInterceptor")
 	if asp == nil {
 		t.Fatalf("expected @Interceptor CDI aspect; got %v", names(recs))
 	}
 	if got := asp.Properties["kind"]; got != "cdi_interceptor" {
 		t.Errorf("CDI aspect kind = %q, want cdi_interceptor", got)
 	}
-	adv := findByRef(recs, "scope:pattern:cdi_advice:src/main/java/x/LoggingInterceptor.java:LoggingInterceptor.logInvocation")
+	adv := findByRef(recs, "scope:pattern:cdi_advice:java:src/main/java/x/LoggingInterceptor.java:LoggingInterceptor.logInvocation")
 	if adv == nil {
 		t.Fatalf("expected @AroundInvoke advice; got %v", names(recs))
 	}
@@ -448,7 +458,7 @@ public class AuthFilter implements ContainerRequestFilter {
 }
 `
 	recs2 := runJavaPatterns(t, "src/main/java/x/AuthFilter.java", filter)
-	mw := findByRef(recs2, "scope:component:jaxrs_filter:src/main/java/x/AuthFilter.java:AuthFilter")
+	mw := findByRef(recs2, "scope:component:jaxrs_filter:java:src/main/java/x/AuthFilter.java:AuthFilter")
 	if mw == nil {
 		t.Fatalf("expected @Provider ContainerRequestFilter middleware; got %v", names(recs2))
 	}
@@ -473,7 +483,7 @@ public class UserResource {
 }
 `
 	recs := runJavaPatterns(t, "src/main/java/x/UserResource.java", src)
-	scoped := findByRef(recs, "scope:component:cdi_scoped_bean:src/main/java/x/UserResource.java:UserResource")
+	scoped := findByRef(recs, "scope:component:cdi_scoped_bean:java:src/main/java/x/UserResource.java:UserResource")
 	if scoped == nil {
 		t.Fatalf("expected @RequestScoped CDI scope component; got %v", names(recs))
 	}
@@ -526,7 +536,7 @@ public class CreateUserRequest {
 `
 	recs := runJavaPatterns(t, "src/main/java/x/CreateUserRequest.java", dto)
 	// schema_extraction: field-level constraints.
-	field := findByRef(recs, "scope:schema:bean_validation_field:src/main/java/x/CreateUserRequest.java:CreateUserRequest.email")
+	field := findByRef(recs, "scope:schema:bean_validation_field:java:src/main/java/x/CreateUserRequest.java:CreateUserRequest.email")
 	if field == nil {
 		t.Fatalf("expected @NotNull @Email field schema entity; got %v", names(recs))
 	}
@@ -534,7 +544,7 @@ public class CreateUserRequest {
 		t.Errorf("field constraints = %q, want @NotNull,@Email", got)
 	}
 	// nested_model_extraction: the @Valid nested field entity still emits.
-	nested := findByRef(recs, "scope:schema:bean_validation_field:src/main/java/x/CreateUserRequest.java:CreateUserRequest.address")
+	nested := findByRef(recs, "scope:schema:bean_validation_field:java:src/main/java/x/CreateUserRequest.java:CreateUserRequest.address")
 	if nested == nil {
 		t.Fatalf("expected @Valid nested field schema entity; got %v", names(recs))
 	}
@@ -549,7 +559,7 @@ public class PhoneValidator implements ConstraintValidator<ValidPhone, String> {
 `
 	recs2 := runJavaPatterns(t, "src/main/java/x/PhoneValidator.java", cv)
 	// custom_validator_extraction: ConstraintValidator implementor.
-	cve := findByRef(recs2, "scope:custom_validator:bean_validation:src/main/java/x/PhoneValidator.java:PhoneValidator")
+	cve := findByRef(recs2, "scope:custom_validator:bean_validation:java:src/main/java/x/PhoneValidator.java:PhoneValidator")
 	if cve == nil {
 		t.Fatalf("expected ConstraintValidator SCOPE.CustomValidator; got %v", names(recs2))
 	}
@@ -603,7 +613,7 @@ public class Order {
 
 	// relationship_extraction: the @OneToMany association Order -> LineItem must
 	// emit as a directed DEPENDS_ON edge, identical to the plain-JPA path.
-	wantTarget := "scope:schema:hibernate_entity:" + path + ":LineItem"
+	wantTarget := "scope:schema:hibernate_entity:java:" + path + ":LineItem"
 	if !hasRel(order, "DEPENDS_ON", wantTarget) {
 		t.Errorf("expected DEPENDS_ON association edge Order -> LineItem (%s) for spring_data_jpa; got rels %v",
 			wantTarget, order.Relationships)
