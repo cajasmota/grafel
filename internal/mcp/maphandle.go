@@ -1,10 +1,16 @@
 // F1 of ADR-0027 (mmap + zero-copy resident graph): the deferred-unmap
 // MapHandle lifetime. This is the safety keystone the whole epic rests on.
 //
-// Today the serve read path is lock-free by construction: State.Group() copies
-// the *LoadedGroup pointer under s.mu and releases the lock, after which a
-// handler reads the derived state for the whole tool call without holding any
-// lock. That is safe ONLY because the materialized heap *graph.Document stays
+// Today the serve read path is lock-free by construction: State.Group() resolves
+// the group under s.mu and releases the lock, after which a handler reads the
+// derived state for the whole tool call without holding any lock. (#6114: what
+// it returns is an immutable per-call VIEW — a shallow copy with its own repo
+// map — rather than the live *LoadedGroup, so an unlocked `range lg.Repos`
+// cannot race reload's map write. Each *LoadedRepo inside is still shared by
+// pointer, which is what keeps the handle lifetime below meaningful, and is also
+// why residual (A) — reload mutating those records in place — is still open.
+// See snapshotLocked.) That is safe ONLY because the materialized heap
+// *graph.Document stays
 // GC-reachable through the in-flight goroutine's pointers. Once queries alias
 // bytes straight out of the mmap (F3, behind GRAFEL_SERVE_FROM_MMAP), GC
 // reachability no longer covers them — a concurrent reload that munmaps while a

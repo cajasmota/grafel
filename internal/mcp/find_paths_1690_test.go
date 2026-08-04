@@ -44,17 +44,19 @@ func TestFindPaths_1690_RepoPrefixAlias(t *testing.T) {
 		},
 	}
 	srv := newTestServer(t, docMobile, docCore)
-	lg := srv.State.Group("test")
 	// The links emitter wrote the acme-core side as `acme_core::handler_fn`
 	// (path-basename with underscores) — this MUST still resolve.
-	lg.Links = []CrossRepoLink{
-		{
-			Source:   prefixedID("acme-mobile", "ep_call"),
-			Target:   "acme_core::handler_fn",
-			Relation: "calls",
-			Method:   "http",
-		},
-	}
+	// #6114: configure the LIVE group; State.Group returns an immutable view.
+	mutateGroup(t, srv.State, "test", func(lg *LoadedGroup) {
+		lg.Links = []CrossRepoLink{
+			{
+				Source:   prefixedID("acme-mobile", "ep_call"),
+				Target:   "acme_core::handler_fn",
+				Relation: "calls",
+				Method:   "http",
+			},
+		}
+	})
 
 	res := callEndpointTool(t, srv.handleFindPaths, map[string]any{
 		"group": "test",
@@ -105,15 +107,17 @@ func TestFindPaths_1690_ReverseImplementsAcrossRepo(t *testing.T) {
 		},
 	}
 	srv := newTestServer(t, docMobile, docCore)
-	lg := srv.State.Group("test")
-	lg.Links = []CrossRepoLink{
-		{
-			Source:   prefixedID("acme-mobile", "ep_call"),
-			Target:   prefixedID("acme-core", "ep_def"), // lands on the endpoint, NOT the handler
-			Relation: "calls",
-			Method:   "http",
-		},
-	}
+	// #6114: configure the LIVE group; State.Group returns an immutable view.
+	mutateGroup(t, srv.State, "test", func(lg *LoadedGroup) {
+		lg.Links = []CrossRepoLink{
+			{
+				Source:   prefixedID("acme-mobile", "ep_call"),
+				Target:   prefixedID("acme-core", "ep_def"), // lands on the endpoint, NOT the handler
+				Relation: "calls",
+				Method:   "http",
+			},
+		}
+	})
 
 	res := callEndpointTool(t, srv.handleFindPaths, map[string]any{
 		"group": "test",

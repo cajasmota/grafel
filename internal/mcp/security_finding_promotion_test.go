@@ -54,7 +54,11 @@ func TestSecurityFindingPromotionRoundtrip(t *testing.T) {
 
 	// Point the memory store at a temp dir so we never touch ~/.grafel.
 	memDir := t.TempDir()
-	srv.State.Group("test").MemoryDir = memDir
+	// #6114: State.Group returns an immutable per-call VIEW, so writing through
+	// it would be silently discarded. Mutate the live group under s.mu.
+	srv.State.mu.Lock()
+	srv.State.groups["test"].MemoryDir = memDir
+	srv.State.mu.Unlock()
 
 	// 1) Save a benign note first — it must NOT show up in the security query.
 	noteOut := callRawTool(t, srv.handleSaveResult, map[string]any{

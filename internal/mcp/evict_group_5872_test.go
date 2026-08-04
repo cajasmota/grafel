@@ -457,11 +457,15 @@ func TestEvictGroup_LeavesOtherGroupsUntouched(t *testing.T) {
 	}}
 	st.mu.Unlock()
 
-	otherBefore := st.Group("other")
+	// #6114: State.Group hands back an immutable per-call VIEW, so a fresh
+	// pointer every call is expected and says nothing. The property under test —
+	// "evicting 'test' did not disturb the resident 'other'" — is about the LIVE
+	// group instance, so compare that.
+	otherBefore := liveGroup(st, "other")
 	if !st.EvictGroup("test", false) {
 		t.Fatal("EvictGroup(test) returned false")
 	}
-	otherAfter := st.Group("other")
+	otherAfter := liveGroup(st, "other")
 	if otherBefore != otherAfter {
 		t.Fatal("evicting 'test' swapped the 'other' group pointer")
 	}
