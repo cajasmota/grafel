@@ -1,0 +1,465 @@
+package sched
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// ---------------------------------------------------------------------------
+// #6107 review follow-ups — what may be PERSISTED, and what a persisted value
+// then does to admission.
+//
+// RSSHistory is not a log: Record is a moving max that is read back by
+// predictedFor on every admission decision, forever. Two properties have to
+// hold or the series is worse than no series at all:
+//
+//  1. Only ONE kind of measurement may enter it. An absolute child high-water
+//     RSS and a whole-daemon delta are different numbers against different
+//     baselines; merging them into one field makes the maximum meaningless.
+//  2. A single sample must not be able to pin the series permanently. Record
+//     over-estimates on purpose, but an un-decaying, never-expiring max means
+//     one outlier governs admission for the life of the file.
+// ---------------------------------------------------------------------------
+
+// TestInProcessRunDoesNotFeedRSSHistory pins property (1) from the side that
+// can actually cause harm. The in-process index path measures the DAEMON, not
+// the repo: with Workers>1, a concurrent job, or an MCP query faulting in
+// graph.fb, the growth attributed to "this repo" is whatever else happened to
+// be running. Because Record is a permanent moving max, one such sample poisons
+// the repo's admission input for good. Nothing measured against the daemon
+// baseline may be persisted.
+func TestInProcessRunDoesNotFeedRSSHistory(t *testing.T) {
+	const repo = "/repo-inprocess-nohistory-6107"
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	h := LoadRSSHistory(path)
+
+	var buf syncBuf
+	s := newPeakTestSchedulerWithHistory(&buf, h, func(context.Context, string, string) error {
+		// The in-process arm: no child, so nothing may be recorded. No
+		// allocation here — with the sampler gone there is nothing for it to
+		// influence, and paging in hundreds of MiB to assert that would just
+		// tax a shared host.
+		return nil
+	})
+	// Honest scope: with no sampler left, observedPeakMB is 0 on this path, and
+	// it is the `observedPeakMB > 0` half of the Record condition that stops the
+	// write here. Dropping the peakSrc == peakSrcChildMaxRSS half alone breaks
+	// nothing and no mutation of it fails this test. That gate is defense in
+	// depth for a future second source of peaks, and the test that shows it is
+	// load-bearing has to reintroduce such a source first (see the M5/M6 pair in
+	// the commit message: M5 adds a daemon-delta source and this test still
+	// passes; M6 adds it AND drops the gate, and this test fails). What is
+	// pinned below is the end-to-end invariant — an in-process run persists
+	// nothing — not the specific clause that enforces it.
+
+	s.runIndex(jobToken{repoPath: repo, ref: "main", commit: "c0"})
+
+	if got := h.Predict(repo); got != 0 {
+		t.Fatalf("RSSHistory.Predict(%s)=%d after an in-process run; a daemon-baselined "+
+			"sample must never enter the series a child_maxrss prediction is read from", repo, got)
+	}
+	if b, err := os.ReadFile(path); err == nil && strings.Contains(string(b), repo) {
+		t.Fatalf("in-process run persisted an entry for %s:\n%s", repo, b)
+	}
+}
+
+// TestChildPeakFeedsRSSHistory is the positive control for the gate above: the
+// child high-water mark IS the measurement the predictor always wanted, and it
+// must still get through. Without this, "gate the record" could be satisfied by
+// recording nothing at all.
+func TestChildPeakFeedsRSSHistory(t *testing.T) {
+	const repo = "/repo-childpeak-history-6107"
+	const childMB int64 = 812
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	h := LoadRSSHistory(path)
+
+	var buf syncBuf
+	s := newPeakTestSchedulerWithHistory(&buf, h, func(context.Context, string, string) error {
+		recordChildPeakRSSMB(repo, childMB)
+		return nil
+	})
+
+	s.runIndex(jobToken{repoPath: repo, ref: "main", commit: "c0"})
+
+	if got := h.Predict(repo); got != childMB {
+		t.Fatalf("RSSHistory.Predict(%s)=%d; want the child's %d MiB high-water RSS", repo, got, childMB)
+	}
+}
+
+// TestRecordedChildPeakDrivesAdmissionSolo closes the coverage gap the review
+// found: every other admission test injects a prediction directly, so nothing
+// exercised runIndex -> History.Record -> predictedFor -> tryAdmit. That whole
+// chain is what turns a measurement into a scheduling decision.
+//
+// It also PINS the consequence, which is a throughput cliff and not an
+// abstraction: once a repo's recorded peak exceeds BudgetMB, predictedFor
+// returns a figure no ledger state can accommodate, so tryAdmit will only ever
+// release it through the solo `admit_oversize` path — serialised against every
+// other repo. That is the correct OOM-safe behaviour, but it must be a KNOWN
+// property with a test on it, not an emergent surprise (epic #5954 exists to
+// raise concurrency on exactly this kind of host).
+func TestRecordedChildPeakDrivesAdmissionSolo(t *testing.T) {
+	const big = "/repo-oversize-6107"
+	const small = "/repo-small-6107"
+	const budgetMB int64 = 2048
+	// Over budget: the shape a Darwin ru_maxrss reading of a sawtooth
+	// extractor workload produces on a 16 GiB host.
+	const bigPeakMB int64 = 2100
+
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	h := LoadRSSHistory(path)
+
+	var buf syncBuf
+	s := newPeakTestSchedulerWithHistory(&buf, h, func(_ context.Context, repo string, _ string) error {
+		if repo == big {
+			recordChildPeakRSSMB(big, bigPeakMB)
+		}
+		return nil
+	})
+	s.cfg.BudgetMB = budgetMB
+	s.cfg.Predict = func(string) int64 { return 100 }
+
+	// One completed run of the big repo is all it takes.
+	s.runIndex(jobToken{repoPath: big, ref: "main", commit: "c0"})
+
+	if got := s.predictedFor(big); got != bigPeakMB {
+		t.Fatalf("predictedFor(%s)=%d after one recorded run; want the recorded %d "+
+			"(history must beat the source-bytes predictor)", big, got, bigPeakMB)
+	}
+	if s.predictedFor(big) <= budgetMB {
+		t.Fatalf("test premise broken: %d must exceed budget %d", s.predictedFor(big), budgetMB)
+	}
+
+	// With another job already in flight, the oversize repo cannot be admitted:
+	// it waits for an empty ledger. This is head-of-line blocking by design.
+	s.mu.Lock()
+	s.inflight[small] = 100
+	s.usedMB = 100
+	s.pendingQ = []string{big}
+	s.pendingRefs[big] = "main"
+	s.pendingCommits[big] = "c0"
+	s.mu.Unlock()
+
+	s.tryAdmit()
+
+	s.mu.Lock()
+	stillQueued := len(s.pendingQ)
+	s.mu.Unlock()
+	if stillQueued != 1 {
+		t.Fatalf("oversize repo was admitted alongside an in-flight job (pendingQ=%d); "+
+			"a recorded peak above BudgetMB must gate on an empty ledger", stillQueued)
+	}
+	if !strings.Contains(buf.String(), "admit_defer") && !hasEvent(s, "admit_defer") {
+		t.Logf("note: no admit_defer event observed; log=%s", buf.String())
+	}
+
+	// Ledger empty: the solo path is the ONLY way it ever runs again.
+	s.mu.Lock()
+	delete(s.inflight, small)
+	s.usedMB = 0
+	s.mu.Unlock()
+
+	s.tryAdmit()
+
+	select {
+	case tok := <-s.jobs:
+		if tok.repoPath != big {
+			t.Fatalf("admitted %s; want %s", tok.repoPath, big)
+		}
+		if tok.predictedMB != bigPeakMB {
+			t.Fatalf("admitted with predictedMB=%d; want the recorded %d", tok.predictedMB, bigPeakMB)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("oversize repo was never admitted even with an empty ledger — a single " +
+			"recorded sample above budget has starved it completely")
+	}
+	if !hasEvent(s, "admit_oversize") {
+		t.Fatalf("expected an admit_oversize event pinning the solo path")
+	}
+}
+
+// TestRSSHistoryRelaxesTowardRecentPeaks pins property (2). Record is a moving
+// max so a spike still sets the budget immediately, but a max with no decay
+// means one outlier — a contended host, a pathological commit, a
+// MADV_FREE-inflated Darwin reading — governs admission until someone deletes
+// the file by hand. Later, smaller measurements must be able to walk it back.
+func TestRSSHistoryRelaxesTowardRecentPeaks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	h := LoadRSSHistory(path)
+	const repo = "/repo-decay-6107"
+
+	h.Record(repo, 400)
+	if got := h.Predict(repo); got != 400 {
+		t.Fatalf("Predict=%d after first record; want 400", got)
+	}
+	// A spike must take effect at once — under-estimating is the dangerous
+	// direction.
+	h.Record(repo, 2100)
+	if got := h.Predict(repo); got != 2100 {
+		t.Fatalf("Predict=%d after a spike; want it adopted immediately (2100)", got)
+	}
+	// ...and must then decay as reality disagrees with it.
+	prev := h.Predict(repo)
+	for i := 0; i < 8; i++ {
+		h.Record(repo, 400)
+		got := h.Predict(repo)
+		if got > prev {
+			t.Fatalf("Predict rose to %d from %d while observing 400s", got, prev)
+		}
+		if got < 400 {
+			t.Fatalf("Predict fell to %d, below every observation (400) — decay must "+
+				"never under-estimate past the evidence", got)
+		}
+		prev = got
+	}
+	if prev >= 2100 {
+		t.Fatalf("Predict is still %d after 8 consecutive 400 MiB runs; one sample is "+
+			"permanently pinning the series", prev)
+	}
+	if prev > 800 {
+		t.Fatalf("Predict=%d after 8 consecutive 400 MiB runs; decay is too slow to be "+
+			"a guard at all", prev)
+	}
+}
+
+// TestRSSHistoryDoesNotExpireByAge pins a decision that reversed between
+// review rounds, so the reasoning has to live next to the assertion or it will
+// be "fixed" again.
+//
+// A 30-day TTL on these entries was added and then removed. Two measurements
+// killed it. First, the fallback is worse than the stale data: Predict
+// returning 0 sends predictedFor to PredictRSS = 70x source bytes, measured at
+// 4516 MB for the grafel repo, against a 2048 MB budget on a 16 GiB host — so
+// expiry did not restore a neutral estimate, it guaranteed permanent solo
+// admit_oversize for every repo that aged out. Second, Record is fed only by
+// full subprocess indexes (runIndex skips cfg.Index when the in-process
+// incremental path succeeds, and incremental is default-ON), so the series
+// updates on a scale of months while a 30-day TTL fires on a scale of weeks:
+// it would have expired nearly everything and re-measured nearly nothing.
+//
+// The round-1 concern the TTL answered — one contaminated sample governing
+// admission forever — is handled at the source instead: only child_maxrss is
+// ever recorded, so the contaminating measure does not exist.
+func TestRSSHistoryDoesNotExpireByAge(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	ancient := time.Now().UTC().Add(-365 * 24 * time.Hour)
+	// Tagged child_maxrss on purpose: an untagged entry is dropped on load by
+	// the src check, which would make this test pass for the wrong reason and
+	// assert nothing about age at all.
+	body := `{"/repo-ancient": {"src": "child_maxrss", "peak_rss_mb": 900, "last_index": "` +
+		ancient.Format(time.RFC3339Nano) + `"}}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := LoadRSSHistory(path)
+	if got := h.Predict("/repo-ancient"); got != 900 {
+		t.Fatalf("Predict(/repo-ancient)=%d for a year-old entry; want 900. Discarding a "+
+			"real measurement sends predictedFor to PredictRSS (70x source bytes, "+
+			"measured 4516 MB for this repo against a 2048 MB budget) — strictly worse "+
+			"than a stale measurement", got)
+	}
+}
+
+// TestRSSHistoryStaleEntryIsNotAmplified is the regression for the defect the
+// TTL introduced while it existed, kept because it pins the invariant that
+// broke: whatever policy Predict applies, Record must not be able to turn a
+// figure Predict has rejected into a LARGER live prediction than an honest
+// fresh measurement would produce.
+//
+// With the TTL in place, Predict declared an old 4000 MB entry untrustworthy
+// and returned 0 — but Record still read h.data[repo] raw, so an honest
+// re-measure of 500 MB decayed against the discarded 4000 and re-stamped it
+// fresh: Predict went 0 -> 2250, i.e. 4.5x the measurement just taken, and
+// straight over a 2048 MB budget into solo admission. The two policies were
+// individually defensible and jointly produced the exact throughput inversion
+// epic #5954 exists to prevent.
+func TestRSSHistoryStaleEntryIsNotAmplified(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	old := time.Now().UTC().Add(-60 * 24 * time.Hour)
+	// Tagged, for the same reason as above: this test is about what Record does
+	// with an OLD entry, so the entry has to survive load to be tested.
+	body := `{"/repo-amplify": {"src": "child_maxrss", "peak_rss_mb": 4000, "last_index": "` +
+		old.Format(time.RFC3339Nano) + `"}}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := LoadRSSHistory(path)
+
+	before := h.Predict("/repo-amplify")
+	const honest int64 = 500
+	h.Record("/repo-amplify", honest)
+	after := h.Predict("/repo-amplify")
+
+	if after > before && before == 0 {
+		t.Fatalf("Predict went %d -> %d after recording an honest %d MB: a value Predict "+
+			"had discarded was resurrected as the decay base and re-stamped fresh",
+			before, after, honest)
+	}
+	// Recording a smaller figure must never raise the prediction.
+	if after > before {
+		t.Fatalf("Predict rose %d -> %d after observing %d MB", before, after, honest)
+	}
+	if after < honest {
+		t.Fatalf("Predict=%d fell below the measurement just taken (%d)", after, honest)
+	}
+}
+
+// TestLegacyHistoryEntryStillAdmitsWithinBudget is the test that matters, and
+// it asserts the ADMISSION OUTCOME rather than whether a row survives load.
+// An earlier version of this change dropped untagged entries, and every test
+// then passed while the actual consequence was a throughput regression on the
+// largest repo on the machine. Mechanism-level assertions could not see it.
+//
+// Measured on the development host, which is what these constants encode:
+//
+//	<a large monorepo>  stored peak  1593 MB, untagged
+//	PredictRSS for it                10374 MB
+//	BudgetMB on 16 GiB                2048 MB
+//
+// Keeping the legacy figure: 1593 < 2048, so the repo shares the budget.
+// Dropping it: predictedFor falls through to PredictRSS at 5.07x budget, and
+// tryAdmit will only ever release it through the solo admit_oversize path —
+// indefinitely, because only a FULL index refreshes the series and incremental
+// is default-ON. That is the same failure the 30-day TTL was removed for.
+func TestLegacyHistoryEntryStillAdmitsWithinBudget(t *testing.T) {
+	const repo = "/repo-legacy-admission"
+	const legacyPeakMB int64 = 1593
+	const predictRSSMB int64 = 10374
+	const budgetMB int64 = 2048
+
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	body := `{"` + repo + `": {"peak_rss_mb": 1593, "last_index": "2026-08-04T19:18:08Z"}}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf syncBuf
+	s := newPeakTestSchedulerWithHistory(&buf, LoadRSSHistory(path),
+		func(context.Context, string, string) error { return nil })
+	s.cfg.BudgetMB = budgetMB
+	// Stand-in for the real 70x-source-bytes walk over that repo.
+	s.cfg.Predict = func(string) int64 { return predictRSSMB }
+
+	if got := s.predictedFor(repo); got != legacyPeakMB {
+		t.Fatalf("predictedFor(legacy repo)=%d; want the stored %d. Discarding the entry "+
+			"substitutes PredictRSS=%d, which is %.2fx the %d MB budget — a worse estimate, "+
+			"not a more honest one",
+			got, legacyPeakMB, predictRSSMB, float64(predictRSSMB)/float64(budgetMB), budgetMB)
+	}
+
+	// The consequence: with another job in flight it still fits, so it is
+	// admitted alongside rather than serialised behind everything.
+	s.mu.Lock()
+	s.inflight["/other"] = 200
+	s.usedMB = 200
+	s.pendingQ = []string{repo}
+	s.pendingRefs[repo] = "main"
+	s.pendingCommits[repo] = "c0"
+	s.mu.Unlock()
+
+	s.tryAdmit()
+
+	select {
+	case tok := <-s.jobs:
+		if tok.repoPath != repo {
+			t.Fatalf("admitted %s; want %s", tok.repoPath, repo)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("legacy repo was NOT admitted alongside a 200 MB job: its prediction no "+
+			"longer fits the %d MB budget, so it is now solo-only — the throughput "+
+			"regression this test exists to catch", budgetMB)
+	}
+	if hasEvent(s, "admit_oversize") {
+		t.Fatalf("legacy repo took the solo admit_oversize path; it should fit the budget "+
+			"outright at %d MB", legacyPeakMB)
+	}
+}
+
+// TestRSSHistoryMarksLegacyEntriesWithoutDiscarding pins the mechanism that
+// makes the above work: provenance is recorded, nothing is thrown away.
+func TestRSSHistoryMarksLegacyEntriesWithoutDiscarding(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	body := `{
+  "/repo-legacy":  {"peak_rss_mb": 1593, "last_index": "2026-08-04T19:18:08Z"},
+  "/repo-foreign": {"peak_rss_mb": 900,  "last_index": "2026-08-04T19:18:08Z", "src": "daemon_rss_delta"},
+  "/repo-tagged":  {"peak_rss_mb": 812,  "last_index": "2026-08-04T19:18:08Z", "src": "child_maxrss"}
+}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := LoadRSSHistory(path)
+
+	for _, tc := range []struct {
+		repo    string
+		wantMB  int64
+		wantSrc string
+	}{
+		{"/repo-legacy", 1593, peakSrcLegacyUnverified},
+		{"/repo-foreign", 900, peakSrcLegacyUnverified},
+		{"/repo-tagged", 812, peakSrcChildMaxRSS},
+	} {
+		if got := h.Predict(tc.repo); got != tc.wantMB {
+			t.Errorf("Predict(%s)=%d; want %d — an entry is retained regardless of "+
+				"provenance, because the fallback is measurably worse", tc.repo, got, tc.wantMB)
+		}
+		h.mu.Lock()
+		gotSrc := h.data[tc.repo].Src
+		h.mu.Unlock()
+		if gotSrc != tc.wantSrc {
+			t.Errorf("%s src=%q; want %q — provenance must be explicit on disk so "+
+				"`grafel status` can show the value is not a real measurement",
+				tc.repo, gotSrc, tc.wantSrc)
+		}
+	}
+}
+
+// TestFirstRealMeasurementReplacesLegacyOutright pins the self-heal rate. A
+// legacy figure is not a measurement, so decaying halfway toward reality from it
+// would need ~7 full indexes to converge — and full indexes are the rare event
+// here. One is enough.
+func TestFirstRealMeasurementReplacesLegacyOutright(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	body := `{"/repo-heal": {"peak_rss_mb": 1593, "last_index": "2026-08-04T19:18:08Z"}}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := LoadRSSHistory(path)
+	h.Record("/repo-heal", 600)
+
+	if got := h.Predict("/repo-heal"); got != 600 {
+		t.Fatalf("Predict after one real measurement=%d; want 600 exactly. A fabricated "+
+			"legacy figure must not survive as a decay base — that perpetuates it across "+
+			"many full indexes, and full indexes are what is scarce", got)
+	}
+	h.mu.Lock()
+	src := h.data["/repo-heal"].Src
+	h.mu.Unlock()
+	if src != peakSrcChildMaxRSS {
+		t.Fatalf("src=%q after a real measurement; want %q", src, peakSrcChildMaxRSS)
+	}
+}
+
+// TestRSSHistoryRecordStampsSrc pins the other half: a value written today must
+// survive the load-time check, or the series would silently empty itself on
+// every daemon restart and the predictor would never keep a measurement.
+func TestRSSHistoryRecordStampsSrc(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rss-history.json")
+	h := LoadRSSHistory(path)
+	h.Record("/repo-roundtrip", 700)
+
+	if got := LoadRSSHistory(path).Predict("/repo-roundtrip"); got != 700 {
+		t.Fatalf("Predict after write+reload=%d; want 700 — Record must stamp the src it "+
+			"is gated on, or its own writes fail the load-time check", got)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"src": "`+peakSrcChildMaxRSS+`"`) {
+		t.Fatalf("history file carries no src tag:\n%s", b)
+	}
+}

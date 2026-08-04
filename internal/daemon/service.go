@@ -433,6 +433,7 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 				AlgoCount:   r.AlgoCount,
 				LastErr:     r.LastErr,
 				LastPeakMB:  r.LastPeakMB,
+				LastPeakSrc: r.LastPeakSrc,
 				PredictedMB: r.PredictedMB,
 			}
 			// #5727/#5729-W1: surface the exact indexed commit + freshness.

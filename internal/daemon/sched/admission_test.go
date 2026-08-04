@@ -198,12 +198,17 @@ func TestRSSHistoryRoundTrip(t *testing.T) {
 	path := filepath.Join(dir, "rss.json")
 	h := LoadRSSHistory(path)
 	h.Record("/r1", 300)
-	h.Record("/r1", 200) // smaller — moving-max keeps 300
+	// #6107 review: a smaller observation no longer leaves the max untouched.
+	// It relaxes halfway toward what was actually measured (300 -> 250), so a
+	// single outlier cannot govern admission for the life of the file, while
+	// still never dropping below the newest observation. Spikes are still
+	// adopted in full and immediately — see Record.
+	h.Record("/r1", 200)
 	h.Record("/r2", 150)
 	// Reload from disk.
 	h2 := LoadRSSHistory(path)
-	if got := h2.Predict("/r1"); got != 300 {
-		t.Errorf("/r1 peak: got %d, want 300", got)
+	if got := h2.Predict("/r1"); got != 250 {
+		t.Errorf("/r1 peak: got %d, want 250 (300 relaxed halfway toward 200)", got)
 	}
 	if got := h2.Predict("/r2"); got != 150 {
 		t.Errorf("/r2 peak: got %d, want 150", got)
