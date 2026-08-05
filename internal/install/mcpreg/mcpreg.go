@@ -432,7 +432,7 @@ func backupOnce(path string) error {
 //
 // Before its FIRST modification of a given file, RegisterPath snapshots the
 // original (via backupOnce) so a later rollback can restore it exactly — see
-// RestorePath. The merge is surgical: only mcpServers.grafel is added or
+// RestoreSnapshot. The merge is surgical: only mcpServers.grafel is added or
 // updated; every other key and sibling server is preserved.
 func RegisterPath(path, binPath string) (string, error) {
 	guardResolvedConfigPath(path, "MCP host config")
@@ -444,7 +444,7 @@ func RegisterPath(path, binPath string) (string, error) {
 	}
 	if isTOML(path) {
 		// Codex-style TOML host. The same backup/sidecar machinery above
-		// already snapshotted the original, so rollback (RestorePath) is
+		// already snapshotted the original, so rollback (RestoreSnapshot) is
 		// format-agnostic — it restores or deletes the raw bytes.
 		return path, registerTOML(path, binPath)
 	}
@@ -508,27 +508,38 @@ func UnregisterPath(path string) error {
 	return writeSettings(path, doc)
 }
 
-// RestorePath reverses a RegisterPath using the pristine backup taken by
-// backupOnce. This is the rollback/de-register entry point that MUST be used
-// instead of writing `{}`:
+// ErrNoSnapshot reports that no pristine sidecar backup exists for a config
+// path, so there is nothing to restore.
+//
+// There used to be a RestorePath that swallowed this condition and fell
+// through to the surgical UnregisterPath instead. That fallback is what turned
+// a rollback into a deletion of the user's MCP entry once the snapshot had been
+// cleared early (#6168), so it was removed rather than documented around: an
+// exported function whose contract is "silently converts a restore into a
+// delete" is a trap for the next author who reaches for the obvious-looking
+// name. Callers that genuinely want removal call UnregisterPath, which says so.
+var ErrNoSnapshot = errors.New("mcpreg: no pristine snapshot for config path")
+
+// RestoreSnapshot reverses a RegisterPath using the pristine backup taken by
+// backupOnce. It is the rollback entry point, and MUST be used instead of
+// writing `{}`:
 //
 //   - If grafel CREATED the file (sentinel backup), the file is DELETED so
 //     no orphan `{}` / `{"mcpServers":{}}` is left behind.
 //   - If a real original was backed up, the file is restored byte-for-byte,
 //     bringing back every foreign server and unrelated key exactly.
-//   - If no backup exists (e.g. registration never ran), fall back to the
-//     surgical UnregisterPath so we still only remove grafel's own entry.
+//   - If no backup exists, ErrNoSnapshot is returned and NOTHING is written.
+//     There is nothing this function is entitled to undo, and guessing is how
+//     #6168 deleted registrations it had no snapshot for.
 //
 // The sidecar backup is removed after a successful restore.
-func RestorePath(path string) error {
+func RestoreSnapshot(path string) error {
 	guardResolvedConfigPath(path, "MCP host config")
 	sidecar := sidecarBackupPath(path)
 	b, err := os.ReadFile(sidecar)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// No snapshot — fall back to surgical removal so we never
-			// clobber foreign servers.
-			return UnregisterPath(path)
+			return ErrNoSnapshot
 		}
 		return err
 	}
@@ -554,8 +565,20 @@ func RestorePath(path string) error {
 // a SUCCESSFUL install so the next install can take a fresh snapshot (and so a
 // future uninstall does not "restore" stale grafel-containing content).
 // Idempotent: missing backups are ignored.
+//
+// A remove that fails for any other reason is NON-FATAL but warned about: the
+// caller's invariant quietly degrades from "this run snapshots fresh" to "this
+// run inherits whatever was already there", and silence would defer discovery
+// of that to rollback time, when it is expensive (#6168). Callers that need the
+// clear to have worked must check the sidecar themselves.
 func ClearBackup(path string) {
-	_ = os.Remove(sidecarBackupPath(path))
+	sidecar := sidecarBackupPath(path)
+	if err := os.Remove(sidecar); err != nil && !errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(os.Stderr,
+			"grafel: warning – could not discard stale MCP backup %s: %v\n"+
+				"  a rollback may restore outdated content; remove it by hand\n",
+			sidecar, err)
+	}
 }
 
 func readSettings(path string) (map[string]any, error) {

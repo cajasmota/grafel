@@ -2,6 +2,7 @@ package mcpreg
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -947,7 +948,7 @@ func TestRegisterPreservesForeignServer(t *testing.T) {
 }
 
 // TestRestorePreservesForeignServerOnRollback: register into a config holding a
-// foreign server, then roll back via RestorePath. The foreign server must
+// foreign server, then roll back via RestoreSnapshot. The foreign server must
 // survive and the file must NOT be `{}` — it must equal the original byte-wise.
 func TestRestorePreservesForeignServerOnRollback(t *testing.T) {
 	home := withHome(t)
@@ -963,7 +964,7 @@ func TestRestorePreservesForeignServerOnRollback(t *testing.T) {
 	if _, err := RegisterPath(path, "/bin/grafel"); err != nil {
 		t.Fatal(err)
 	}
-	if err := RestorePath(path); err != nil {
+	if err := RestoreSnapshot(path); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1006,7 +1007,7 @@ func TestRestoreNewFileRemovesOrphan(t *testing.T) {
 		t.Fatalf("register should have created the file: %v", err)
 	}
 
-	if err := RestorePath(path); err != nil {
+	if err := RestoreSnapshot(path); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -1090,9 +1091,16 @@ func TestDetectWindsurfPaths_BothCodeiumTargets(t *testing.T) {
 	}
 }
 
-// TestRestoreFallsBackToSurgicalWhenNoBackup: if no sidecar backup exists,
-// RestorePath must still remove only grafel (never wipe foreign servers).
-func TestRestoreFallsBackToSurgicalWhenNoBackup(t *testing.T) {
+// TestUnregisterIsSurgicalWhenNoBackup: removing grafel's entry from a file
+// that was never snapshotted must take out ONLY grafel and never wipe foreign
+// servers.
+//
+// This was TestRestoreFallsBackToSurgicalWhenNoBackup, asserting the same
+// property of RestorePath's no-snapshot fallback. That fallback was deleted
+// with RestorePath (#6168) — a "restore" that deletes is a trap, and callers
+// that want removal now say UnregisterPath. The property is unchanged and
+// still worth pinning; it just belongs to the function that owns it.
+func TestUnregisterIsSurgicalWhenNoBackup(t *testing.T) {
 	home := withHome(t)
 	path := filepath.Join(home, ".claude.json")
 	pre := `{"mcpServers":{"playwright":{"command":"/bin/pw"},"grafel":{"command":"/old"}}}`
@@ -1100,18 +1108,41 @@ func TestRestoreFallsBackToSurgicalWhenNoBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No RegisterPath call → no sidecar backup.
-	if err := RestorePath(path); err != nil {
+	if err := UnregisterPath(path); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(path)
 	if string(b) == "{}" || string(b) == "{}\n" {
-		t.Fatalf("restore-without-backup wiped the file: %s", b)
+		t.Fatalf("surgical removal wiped the file: %s", b)
 	}
 	var doc map[string]any
 	_ = json.Unmarshal(b, &doc)
 	servers, _ := doc["mcpServers"].(map[string]any)
 	if _, ok := servers["playwright"]; !ok {
-		t.Fatalf("foreign server lost in fallback restore: %s", b)
+		t.Fatalf("foreign server lost in surgical removal: %s", b)
+	}
+	if _, ok := servers["grafel"]; ok {
+		t.Fatalf("grafel entry not removed: %s", b)
+	}
+}
+
+// TestRestoreSnapshot_NoSnapshotIsInert: with no snapshot, RestoreSnapshot must
+// report ErrNoSnapshot and write NOTHING — not even grafel's own entry is
+// removed. This is the guard that stops a rollback from deleting a
+// registration it has no snapshot for (#6168).
+func TestRestoreSnapshot_NoSnapshotIsInert(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".claude.json")
+	pre := `{"mcpServers":{"playwright":{"command":"/bin/pw"},"grafel":{"command":"/old"}}}`
+	if err := os.WriteFile(path, []byte(pre), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := RestoreSnapshot(path); !errors.Is(err, ErrNoSnapshot) {
+		t.Fatalf("RestoreSnapshot error = %v, want ErrNoSnapshot", err)
+	}
+	b, _ := os.ReadFile(path)
+	if string(b) != pre {
+		t.Fatalf("RestoreSnapshot modified a file it had no snapshot for:\n got: %s\nwant: %s", b, pre)
 	}
 }
 

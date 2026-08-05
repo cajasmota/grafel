@@ -20,6 +20,7 @@ package install
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -562,8 +563,16 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 			switch s {
 			case 2:
 				rollbackSkillsCopy(opts, state)
-			case 3:
-				rollbackMCPRegistration(opts, state)
+				// Step 3 (MCP registration) is deliberately NOT rolled back
+				// here (#6168). A completed registration is correct whether or
+				// not a LATER step succeeded — the bridge answers `initialize`
+				// locally and falls back to offlineToolList when the daemon is
+				// down (internal/cli/mcp_bridge.go), so a wedged or slow daemon
+				// is not a reason to remove the user's MCP entry. Only a
+				// step-3 failure MID-LOOP leaves inconsistent state, and that
+				// is undone at the failure site itself, where the exact set of
+				// already-written targets is known.
+				//
 				// Steps 1, 4, 5, 6 are either non-destructive (1, 6) or have
 				// best-effort rollback that is a no-op (4 daemon was already
 				// running or we just tried to restart it; 5 gitignore append
@@ -684,13 +693,40 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 	copy(allMCPTargets, claudeDirs)
 	allMCPTargets = append(allMCPTargets, mcpreg.DetectWindsurfPaths()...)
 
+	// Discard any sidecar left behind by an EARLIER run before taking this
+	// run's snapshots. backupOnce refuses to overwrite an existing sidecar, so
+	// without this a snapshot from a previous run — one that ended at a failed
+	// step 4 and so never reached the commit-time clear — would be treated as
+	// this run's pristine original. A later rollback would then write weeks-old
+	// content over the user's live config, or, if that stale snapshot is the
+	// absent-sentinel from a first-ever install, DELETE the config file
+	// outright along with every foreign server in it.
+	//
+	// This is safe at the start of step 3 precisely because no in-flight
+	// transaction can need a previous run's snapshot: rollback only ever
+	// restores what the CURRENT run wrote.
+	if !opts.DryRun {
+		discardStaleMCPBackups(allMCPTargets)
+	}
+
 	for _, cfgPath := range allMCPTargets {
 		if opts.DryRun {
 			registeredPaths = append(registeredPaths, cfgPath)
 			continue
 		}
 		if _, err := mcpreg.RegisterPath(cfgPath, opts.BinPath); err != nil {
+			// Step 3 aborted PART-WAY through its targets: some files now
+			// carry a grafel entry and some do not. That inconsistency is the
+			// one case that genuinely needs step 3 undone, and it is undone
+			// here — at the failure site, where the exact set of written
+			// targets is known. rollback(3) cannot do it: it fires before
+			// `completedSteps` contains 3, and state.MCP.RegisteredPaths is
+			// still empty because it is assigned only after this loop (#6168).
+			rbErr := rollbackMCPRegistration(append(append([]string(nil), registeredPaths...), cfgPath))
 			rollback(3)
+			if rbErr != nil {
+				return nil, fmt.Errorf("step 3 – MCP register %s: %w; ROLLBACK INCOMPLETE: %v", cfgPath, err, rbErr)
+			}
 			return nil, fmt.Errorf("step 3 – MCP register %s: %w", cfgPath, err)
 		}
 		registeredPaths = append(registeredPaths, cfgPath)
@@ -700,15 +736,6 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 		RegisteredPaths: registeredPaths,
 	}
 	result.MCPPaths = registeredPaths
-	// Step 3 succeeded for every target: discard the pristine backups so the
-	// next install snapshots fresh and a later uninstall won't restore stale
-	// grafel-containing content. (Rollback only fires on FAILURE, before
-	// this point.)
-	if !opts.DryRun {
-		for _, cfgPath := range registeredPaths {
-			mcpreg.ClearBackup(cfgPath)
-		}
-	}
 	completedSteps = append(completedSteps, 3)
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -791,6 +818,19 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 	}
 	result.StatePath = opts.StatePath
 	completedSteps = append(completedSteps, 6)
+
+	// ── COMMIT: the transaction can no longer roll back ─────────────────────
+	// THIS run's snapshots are discarded only here, so a rollback anywhere
+	// above still had a real snapshot to restore from. Discarding them on
+	// step-3 SUCCESS (as this used to) put the clear before rollback(4), so a
+	// later rollback found no snapshot and the since-deleted RestorePath
+	// silently degraded to UnregisterPath — a "restore" that deleted (#6168).
+	//
+	// Distinct from the clear at the START of step 3, which discards the
+	// PREVIOUS run's leftovers so this run snapshots the config as it is now.
+	if !opts.DryRun {
+		commitMCPBackups(registeredPaths)
+	}
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// Step 7: Git hook installation (post-checkout, post-merge, post-rewrite,
@@ -1121,12 +1161,64 @@ func rollbackSkillsCopy(opts CopyOptions, state *State) {
 	}
 }
 
-// rollbackMCPRegistration reverses step 3 by RESTORING each touched config
-// file from the pristine backup taken before grafel's first write. This
+// rollbackMCPRegistration reverses an ABORTED step 3 by RESTORING each touched
+// config file from the pristine backup taken before grafel's first write. This
 // brings back any foreign mcpServers entries verbatim and deletes files
 // grafel created — it NEVER resets a shared config to `{}` (see #4829).
-func rollbackMCPRegistration(_ CopyOptions, state *State) {
-	for _, cfgPath := range state.MCP.RegisteredPaths {
-		_ = mcpreg.RestorePath(cfgPath)
+//
+// It takes the touched paths explicitly rather than reading
+// state.MCP.RegisteredPaths, because the only caller is the mid-loop failure
+// site where that field has not been assigned yet (#6168).
+//
+// It calls RestoreSnapshot: with no snapshot there is nothing this function is
+// entitled to undo, so a missing snapshot is skipped rather than guessed at.
+//
+// It returns a non-nil error listing the paths whose restore FAILED. Those
+// files are left partially modified, which the caller must surface: on a
+// multi-host install, a failure to restore host A while reporting only "step 3
+// – MCP register B failed" would leave the user with a silently inconsistent
+// multi-host state and no signal that A needs attention (#6168 S4).
+func rollbackMCPRegistration(touchedPaths []string) error {
+	var failed []string
+	for _, cfgPath := range touchedPaths {
+		err := mcpreg.RestoreSnapshot(cfgPath)
+		switch {
+		case err == nil:
+		case errors.Is(err, mcpreg.ErrNoSnapshot):
+			// Nothing was written to this path (RegisterPath failed before its
+			// first modification), so there is nothing to undo.
+		default:
+			fmt.Fprintf(os.Stderr,
+				"grafel install: rollback warning – restore %s: %v\n", cfgPath, err)
+			failed = append(failed, fmt.Sprintf("%s (%v)", cfgPath, err))
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("could not restore %d config file(s), left partially modified: %s",
+			len(failed), strings.Join(failed, "; "))
+	}
+	return nil
+}
+
+// commitMCPBackups discards the pristine sidecar snapshots once the install
+// transaction has committed. Keeping the snapshot alive for the whole
+// transaction is what makes a rollback a real restore rather than a silent
+// delete (#6168).
+func commitMCPBackups(registeredPaths []string) {
+	for _, cfgPath := range registeredPaths {
+		mcpreg.ClearBackup(cfgPath)
+	}
+}
+
+// discardStaleMCPBackups drops sidecars inherited from an EARLIER run, so this
+// run's backupOnce takes a snapshot of the config as it is NOW.
+//
+// commitMCPBackups alone is not enough: it is unreachable on any failure after
+// step 3, and a failed daemon restart is the common ending for exactly the
+// users this fix targets. Without this second clear, a stale snapshot survives
+// indefinitely and the next run's rollback restores it over live content.
+func discardStaleMCPBackups(targets []string) {
+	for _, cfgPath := range targets {
+		mcpreg.ClearBackup(cfgPath)
 	}
 }

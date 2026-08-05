@@ -53,9 +53,9 @@ func TestGuard_UnregisterPathPanicsWhenWritingRealHome(t *testing.T) {
 	t.Fatalf("UnregisterPath returned without panicking — guard did not fire")
 }
 
-// TestGuard_RestorePathPanicsWhenWritingRealHome mirrors the above for the
+// TestGuard_RestoreSnapshotPanicsWhenWritingRealHome mirrors the above for the
 // rollback path.
-func TestGuard_RestorePathPanicsWhenWritingRealHome(t *testing.T) {
+func TestGuard_RestoreSnapshotPanicsWhenWritingRealHome(t *testing.T) {
 	if realUserHomeAtInit == "" {
 		t.Skip("no real user home captured")
 	}
@@ -65,8 +65,8 @@ func TestGuard_RestorePathPanicsWhenWritingRealHome(t *testing.T) {
 			t.Fatalf("expected guard panic restoring MCP config at real home %q", escape)
 		}
 	}()
-	_ = RestorePath(escape)
-	t.Fatalf("RestorePath returned without panicking — guard did not fire")
+	_ = RestoreSnapshot(escape)
+	t.Fatalf("RestoreSnapshot returned without panicking — guard did not fire")
 }
 
 // TestGuard_AllowsWriteUnderIsolatedHome proves the guard is inert once the
