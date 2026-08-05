@@ -261,7 +261,11 @@ func CaptureCachedFresh(repoPath string) Info {
 	}
 	captureMu.Unlock()
 
-	info := Capture(repoPath)
+	info, trusted := captureStatus(repoPath)
+	if !trusted {
+		// git could not be RUN (#6181) — see CaptureCached.
+		return info
+	}
 
 	captureMu.Lock()
 	captureFreshCache[repoPath] = captureFreshEntry{info: info, headStat: key, commitToken: tok}
@@ -339,7 +343,22 @@ func CaptureCached(repoPath string) Info {
 	}
 	captureMu.Unlock()
 
-	info := Capture(repoPath)
+	info, trusted := captureStatus(repoPath)
+	if !trusted {
+		// git could not be RUN — the 2s deadline fired, or fork failed under
+		// load. The zero Info this produced is a fact about the moment, not
+		// about the repo, and the HEAD-pointer key cannot see the difference:
+		// it is a pure os.Stat that succeeds regardless of load, so the escape
+		// above never fires and the memo would survive until HEAD next moves or
+		// the daemon restarts — pinning the repo to refs/_unknown and a full
+		// reindex on EVERY incremental pass (#6181). Serve the value, keep no
+		// memory of it.
+		//
+		// This is deliberately narrower than "don't cache empty results": a path
+		// git ran against and reported "not a git repository" for is a durable
+		// answer and still caches, which is where the optimisation lives.
+		return info
+	}
 
 	captureMu.Lock()
 	captureCache[repoPath] = captureEntry{info: info, headStat: key}

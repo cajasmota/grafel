@@ -1418,15 +1418,42 @@ func skeletonizeDocRows(doc *graph.Document) {
 // Callers MUST pass lr.Path, not any other spelling of the repo path: the memo
 // has one slot, so two callers feeding it different paths would invalidate each
 // other on every call and reinstate the per-call fork this exists to remove.
+// DO NOT SEAL AN "_unknown" RESOLUTION (#6181). The HEAD token is an os.Stat
+// that succeeds regardless of system load, so it cannot see the difference
+// between "git says this repo has no ref" and "git could not be run just now".
+// gitmeta no longer memoizes the latter, but this memo holds the DERIVED value
+// and would keep serving the sentinel long after gitmeta recovered — until HEAD
+// next moves. That is not cosmetic: applyFlowOverlay feeds this directory
+// straight into flows.Read, so a stuck "_unknown" silently drops the
+// process-flow overlay from every State.Group call, with no error raised.
+//
+// Re-resolving a repo that HAS a HEAD costs a gitmeta.CaptureCached, which for a
+// detached HEAD is a memo hit on a capture git actually answered — a map lookup
+// and a stat, not a fork.
+//
+// A path with NO HEAD is the opposite case and must still be sealed. gitmeta
+// cannot memoize it at all (headPointerKey fails, so CaptureCached falls through
+// to a live Capture), so leaving it unsealed forks git on every call — exactly
+// the per-call cost the paragraph above says this memo exists to remove. It is
+// also safe to seal: no .git means no ref that could later resolve, so there is
+// no recovery to wait for. hasHead is the discriminator.
 func (lr *LoadedRepo) currentRefDirLocked(repoPath string) string {
-	tok, _ := gitmeta.HeadToken(repoPath)
+	tok, hasHead := gitmeta.HeadToken(repoPath)
 	if lr.curRefKnown && tok == lr.curRefHeadTok {
 		return lr.curRefDir
 	}
-	lr.curRefDir = daemon.StateDirForRepo(repoPath)
+	dir := daemon.StateDirForRepo(repoPath)
+	lr.curRefDir = dir
 	lr.curRefHeadTok = tok
-	lr.curRefKnown = true
-	return lr.curRefDir
+	// Seal for a resolution that named a real ref, or for a path with no HEAD to
+	// move at all. Leave a repo that HAS a HEAD but resolved to "_unknown"
+	// unsealed, so it recovers without waiting for HEAD to move (#6181).
+	//
+	// A branch literally named "_unknown" collides with the sentinel and is never
+	// sealed. It is a real repo, so re-resolution is a gitmeta memo hit and costs
+	// no fork; the collision is pre-existing in RefSafeEncode (state_path.go).
+	lr.curRefKnown = dir != "" && (!hasHead || dir != daemon.StateDirForRepoRef(repoPath, ""))
+	return dir
 }
 
 // reloadAllLocked is the reload body; the caller MUST already hold s.mu. Split

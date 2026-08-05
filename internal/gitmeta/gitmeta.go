@@ -8,6 +8,7 @@ package gitmeta
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -171,36 +172,135 @@ func IsDefaultBranch(repoPath string) bool {
 	return false
 }
 
-// RunGit runs git with the given args inside dir and returns stdout trimmed.
-// Returns "" on any failure. Uses a 2-second timeout consistent with Capture.
-// This is the shared low-level runner used by both Capture and callers in
-// other packages that need ad-hoc git queries (e.g. --git-common-dir for
-// worktree resolution in internal/mcp/routing.go, PH1c of #2087).
-func RunGit(dir string, args ...string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+// gitStatus classifies WHY an external git invocation produced no usable
+// output. Empty stdout on its own is ambiguous — it is what you get both when
+// git ran and reported "this is not a git repository" and when git could not be
+// run at all — and that ambiguity is the root of #6181: a transient fork
+// failure was memoized as a durable fact about the repository.
+type gitStatus int
+
+const (
+	// gitOK: git ran and exited 0. The output is the answer.
+	gitOK gitStatus = iota
+	// gitAnswered: git ran to completion and exited non-zero. This is still a
+	// real answer ABOUT THE REPO — "not a git repository", "detached HEAD has no
+	// symbolic ref", "no such ref" — and it is reproducible, so a caller may
+	// safely memoize what it derived from it.
+	gitAnswered
+	// gitUnavailable: git could not be run to completion — the 2s deadline
+	// fired, fork failed (EAGAIN under load), the binary is not on PATH, or a
+	// pipe broke. This says nothing about the repository, only about the moment.
+	// A caller MUST NOT memoize anything derived from it (#6181).
+	gitUnavailable
+)
+
+// runGitFn is the seam through which every git invocation in this package is
+// made. It exists so tests can inject a gitUnavailable outcome deterministically
+// — you cannot reliably starve a machine into a fork failure, and the bug it
+// guards (#6181) is precisely the load-correlated case. Unexported and
+// test-only; production always uses runGitReal.
+//
+// NOT SYNCHRONISED. Both this and gitCallTimeout are plain globals that tests
+// write mid-run, which is only safe because no test in this package calls
+// t.Parallel(). If you add one, these need a mutex or a per-call injection
+// point first — `go test -race` is green today by that accident, not by design.
+var runGitFn = runGitReal
+
+// gitCallTimeout is RunGit's deadline. A var, not a const, only so a test can
+// shrink it and exercise the timeout branch in milliseconds rather than
+// seconds. Production never changes it. See runGitFn on synchronisation.
+var gitCallTimeout = 2 * time.Second
+
+// runGitStatus runs git and reports both stdout and why it failed, if it did.
+func runGitStatus(dir string, args ...string) (string, gitStatus) {
+	return runGitFn(dir, args...)
+}
+
+func runGitReal(dir string, args ...string) (string, gitStatus) {
+	ctx, cancel := context.WithTimeout(context.Background(), gitCallTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	executil.NoWindow(cmd)
 	out, err := cmd.Output()
-	if err != nil {
-		return ""
+	if err == nil {
+		return strings.TrimSpace(string(out)), gitOK
 	}
-	return strings.TrimSpace(string(out))
+	// Deadline first: CommandContext kills the child on timeout. Strictly
+	// redundant with the signal check below — a killed child is a signalled
+	// child — but it is cheaper and it documents the intent at the point where
+	// the timeout is set.
+	if ctx.Err() != nil {
+		return "", gitUnavailable
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		// *exec.ExitError collapses two different meanings, and the axis that
+		// separates them is signalled-vs-exited — NOT deadline-vs-not, which is
+		// only a subset of it. A git killed by the OOM killer, macOS jetsam, or a
+		// SIGTERM propagated to the daemon's process group never got to answer,
+		// and arrives here with ctx.Err() == nil. Classifying that as a durable
+		// fact about the repository is #6181 verbatim, and it is MORE
+		// load-correlated than the timeout: the OOM killer fires under exactly
+		// the memory pressure that makes forks fail.
+		//
+		// ExitCode() returns -1 when the process was terminated by a signal, on
+		// every platform — no syscall import, correct on Windows.
+		if ee.ExitCode() < 0 {
+			return "", gitUnavailable
+		}
+		// A real non-zero exit (128 "not a git repository", 1 "no such ref") is a
+		// reproducible answer about the repo and stays cacheable.
+		return "", gitAnswered
+	}
+	// Everything else — exec.ErrNotFound, EAGAIN on fork, ENOMEM, pipe errors —
+	// means git never got to speak.
+	return "", gitUnavailable
+}
+
+// RunGit runs git with the given args inside dir and returns stdout trimmed.
+// Returns "" on any failure. Uses a 2-second timeout consistent with Capture.
+// This is the shared low-level runner used by both Capture and callers in
+// other packages that need ad-hoc git queries (e.g. --git-common-dir for
+// worktree resolution in internal/mcp/routing.go, PH1c of #2087).
+//
+// It deliberately collapses gitAnswered and gitUnavailable into "": callers
+// outside this package do not memoize on the result, so the distinction buys
+// them nothing. Anything that CACHES a git-derived value must use runGitStatus
+// and refuse to cache a gitUnavailable outcome (#6181).
+func RunGit(dir string, args ...string) string {
+	out, _ := runGitStatus(dir, args...)
+	return out
 }
 
 // Capture runs a small set of git commands against repoPath and returns the
 // HEAD metadata. All git calls use a 2-second timeout; any failure (non-git
 // directory, git not on PATH, etc.) returns the zero-value Info with no error.
 func Capture(repoPath string) Info {
+	info, _ := captureStatus(repoPath)
+	return info
+}
+
+// captureStatus is Capture plus a trust flag. trusted is false when ANY of the
+// git invocations could not be run to completion, which means the returned Info
+// describes the moment rather than the repository and must not be memoized
+// (#6181). A repo that git ran against and reported on — including "not a git
+// repository" and a detached HEAD's empty symbolic-ref — is trusted, so the
+// negative result stays cacheable and the cache keeps its value.
+func captureStatus(repoPath string) (info Info, trusted bool) {
+	trusted = true
 	run := func(args ...string) string {
-		return RunGit(repoPath, args...)
+		out, st := runGitStatus(repoPath, args...)
+		if st == gitUnavailable {
+			trusted = false
+		}
+		return out
 	}
 
 	// Sanity-check: is this a git repo at all?
 	topLevel := run("rev-parse", "--show-toplevel")
 	if topLevel == "" {
-		return Info{}
+		return Info{}, trusted
 	}
 
 	// Abbreviated SHA (12 chars matches GitHub's default).
@@ -219,5 +319,5 @@ func Capture(repoPath string) Info {
 		SHA:        sha,
 		IsWorktree: isWorktree,
 		TopLevel:   topLevel,
-	}
+	}, trusted
 }
