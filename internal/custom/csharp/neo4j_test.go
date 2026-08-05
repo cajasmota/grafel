@@ -42,13 +42,27 @@ func extractCSNeo4j(t *testing.T, src string) []types.EntityRecord {
 // findCSGraphRelates returns the GRAPH_RELATES edge from the node entity named
 // "node:<fromLabel>" to ToID "node:<toLabel>", or nil if absent.
 func findCSGraphRelates(ents []types.EntityRecord, fromLabel, toLabel string) *types.RelationshipRecord {
+	// #6122 — the edge now addresses the target node entity by LOCATION
+	// (scope:schema:<file>#node:<label>), not by its colon-bearing Name. Derive
+	// the expected ToID from the entity ACTUALLY minted for toLabel rather than
+	// hard-coding a path, so a ref naming a file no entity lives in fails here.
+	want := ""
 	for i := range ents {
-		if !(ents[i].Kind == "SCOPE.Schema" && ents[i].Name == "node:"+fromLabel) {
+		if ents[i].Kind == "SCOPE.Schema" && ents[i].Name == extreg.Neo4jNodeName(toLabel) {
+			want = extreg.Neo4jNodeTargetID(ents[i].SourceFile, toLabel)
+			break
+		}
+	}
+	if want == "" {
+		return nil
+	}
+	for i := range ents {
+		if !(ents[i].Kind == "SCOPE.Schema" && ents[i].Name == extreg.Neo4jNodeName(fromLabel)) {
 			continue
 		}
 		for j := range ents[i].Relationships {
 			r := &ents[i].Relationships[j]
-			if r.Kind == string(types.RelationshipKindGraphRelates) && r.ToID == "node:"+toLabel {
+			if r.Kind == string(types.RelationshipKindGraphRelates) && r.ToID == want {
 				return r
 			}
 		}
