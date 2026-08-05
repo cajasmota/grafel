@@ -1116,3 +1116,69 @@ func TestStaleReindexGuard_MarkerForDeletedRepoIsDropped(t *testing.T) {
 		t.Errorf("stale attempts resurrected for a deleted repo: %d", n)
 	}
 }
+
+// TestStaleReindexGuard_AttemptsSurviveRestartWithoutInflating closes the gap
+// mutation testing exposed: with never-dispatched repos no longer penalised,
+// none of the restart tests traverse the penalty path any more, so restoring
+// the admission off-by-one (writing Attempts+1, which reconcile then loads and
+// the next forfeit increments again) survived the whole suite. The double count
+// is still reachable for a GENUINELY stalled repo across a restart, and it
+// still costs it its cap: the durable count must equal the real number of
+// failures, no more.
+func TestStaleReindexGuard_AttemptsSurviveRestartWithoutInflating(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	repo := realRepoDirs(t, "stally")[0]
+	repos := []string{repo}
+	stale := map[string]bool{repo: true}
+
+	dispatched := true
+	mk := func() *staleReindexGuard {
+		g := newTestGuard(clk, 1, 45*time.Second, 15*time.Minute)
+		g.stalledGrace = 90 * time.Second
+		g.retryJitter = 0
+		g.retryBackoff = time.Minute
+		g.activeFn = func() map[string]bool {
+			if dispatched {
+				return map[string]bool{repo: true, "/repo/unrelated": true}
+			}
+			return activeElsewhere()
+		}
+		return g
+	}
+
+	// One real failure: dispatched, then it dies mid-index and stalls out.
+	g := mk()
+	heartbeat(g, repos, stale)
+	clk.advance(30 * time.Second)
+	heartbeat(g, repos, stale) // observed active
+	dispatched = false
+	clk.advance(2 * time.Minute)
+	heartbeat(g, repos, stale) // stalled -> forfeit, one attempt
+
+	if n := g.attemptsFor(repo); n != 1 {
+		t.Fatalf("after one genuine stall, attempts = %d, want 1", n)
+	}
+
+	// It is admitted again, and the daemon restarts while that attempt is live.
+	clk.advance(2 * time.Minute)
+	dispatched = true
+	heartbeat(g, repos, stale)
+	clk.advance(30 * time.Second)
+
+	g2 := mk()
+	heartbeat(g2, repos, stale)
+	if n := g2.attemptsFor(repo); n != 1 {
+		t.Fatalf("after a restart mid-attempt, attempts = %d, want 1 — the durable count must record real failures, not inflate per restart", n)
+	}
+
+	st, ok := readMigrationStateAt(migrationStatePath(repo))
+	if !ok {
+		t.Fatal("expected a durable marker for an admitted repo")
+	}
+	if st.Attempts != 1 {
+		t.Errorf("durable marker Attempts = %d, want 1", st.Attempts)
+	}
+}
