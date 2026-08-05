@@ -42,6 +42,21 @@ func generousDeadline(t *testing.T) {
 	t.Cleanup(func() { gitCallTimeout = prev })
 }
 
+// TestGitCallTimeoutDefault pins the production deadline.
+//
+// generousDeadline now lifts it in most tests in this file, and the only tests
+// that set it deliberately set it short — so nothing else would notice if the
+// default changed. The value is load-bearing in both directions: too low and
+// healthy forks are classified unavailable (measured p99.9 ≈ 171ms under load,
+// so 2s is ~12× headroom); too high and a genuinely wedged git blocks the MCP
+// query path for that long.
+func TestGitCallTimeoutDefault(t *testing.T) {
+	if gitCallTimeout != 2*time.Second {
+		t.Fatalf("gitCallTimeout default is %v, want 2s — if this is a deliberate "+
+			"change, weigh it against both failure modes above, not just one", gitCallTimeout)
+	}
+}
+
 // countingRealGit installs a seam that forwards to real git while counting
 // invocations, so a test can prove a second CaptureCached did (or did not) fork.
 func countingRealGit(t *testing.T) *int {

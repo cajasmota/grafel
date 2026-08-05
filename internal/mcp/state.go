@@ -1427,20 +1427,32 @@ func skeletonizeDocRows(doc *graph.Document) {
 // straight into flows.Read, so a stuck "_unknown" silently drops the
 // process-flow overlay from every State.Group call, with no error raised.
 //
-// Re-resolving an "_unknown" repo costs a gitmeta.CaptureCached, which for a
-// genuinely ref-less repo (detached HEAD, non-git path) is a memo hit on a
-// trusted capture — a map lookup and a stat, not a fork. The per-call fork
-// #6060 removed stays removed.
+// Re-resolving a repo that HAS a HEAD costs a gitmeta.CaptureCached, which for a
+// detached HEAD is a memo hit on a capture git actually answered — a map lookup
+// and a stat, not a fork.
+//
+// A path with NO HEAD is the opposite case and must still be sealed. gitmeta
+// cannot memoize it at all (headPointerKey fails, so CaptureCached falls through
+// to a live Capture), so leaving it unsealed forks git on every call — exactly
+// the per-call cost the paragraph above says this memo exists to remove. It is
+// also safe to seal: no .git means no ref that could later resolve, so there is
+// no recovery to wait for. hasHead is the discriminator.
 func (lr *LoadedRepo) currentRefDirLocked(repoPath string) string {
-	tok, _ := gitmeta.HeadToken(repoPath)
+	tok, hasHead := gitmeta.HeadToken(repoPath)
 	if lr.curRefKnown && tok == lr.curRefHeadTok {
 		return lr.curRefDir
 	}
 	dir := daemon.StateDirForRepo(repoPath)
 	lr.curRefDir = dir
 	lr.curRefHeadTok = tok
-	// Seal the memo only for a resolution that named a real ref.
-	lr.curRefKnown = dir != "" && dir != daemon.StateDirForRepoRef(repoPath, "")
+	// Seal for a resolution that named a real ref, or for a path with no HEAD to
+	// move at all. Leave a repo that HAS a HEAD but resolved to "_unknown"
+	// unsealed, so it recovers without waiting for HEAD to move (#6181).
+	//
+	// A branch literally named "_unknown" collides with the sentinel and is never
+	// sealed. It is a real repo, so re-resolution is a gitmeta memo hit and costs
+	// no fork; the collision is pre-existing in RefSafeEncode (state_path.go).
+	lr.curRefKnown = dir != "" && (!hasHead || dir != daemon.StateDirForRepoRef(repoPath, ""))
 	return dir
 }
 
