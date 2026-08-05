@@ -461,12 +461,36 @@ func semanticDigest6118(doc *graph.Document) string {
 // TheDocumentedSpanGain below asserts that shape directly, so the deviation is
 // pinned behaviourally and not merely absorbed into a hash.
 //
-// If gateOffDigest6118 fails again, the change is no longer gate-scoped in the
+// If the current digest fails again, the change is no longer gate-scoped in the
 // way described here: characterise the new delta and say so, rather than
 // re-baselining a second time.
+//
+// #6138 MOVED IT A SECOND TIME, and the delta is again a pure gain. The file
+// fold now only fires where the ecosystem makes a module and its exported
+// declaration the same entity (fileIsDeclarationExtensions), so eight
+// declarations this fixture used to delete come back, each with the span and
+// signature the extractor read:
+//
+//	cs/CleanupJob.cs           public class CleanupJob           5-11
+//	cs/CreateOrderHandler.cs   public class CreateOrderHandler   5-11
+//	cs/OrderCreatedConsumer.cs public class OrderCreatedConsumer 5-10
+//	cs/OrderValidator.cs       public class OrderValidator       5-11
+//	cs/ShopContext.cs          public class ShopContext          5-8
+//	cs/Startup.cs              public class Startup              5-13
+//	java/OrdersController.java @RestController class OrdersController 7-18
+//	svc/handler.go             type Handler struct               6-6
+//
+// Counts move 141/284 -> 149/292: the eight entities plus the eight
+// Module->declaration CONTAINS edges that carry them. Nothing is destroyed.
+// Every CONTAINS/DEPENDS_ON edge that used to name the file component now names
+// the declaration that actually owns the member, and every file component keeps
+// the position the span donation gives it. The one entity that changes in place
+// is the java/OrdersController.java file component, which hands qualified_name
+// `api.OrdersController` back to the class it belongs to.
 const (
 	gateOffDigest6118Base = "a0a6ede910d8d0465d901153f483b27b8a57a565bdd79dd0104bef53786d9ca1"
 	gateOffDigest6118     = "387a9c36cb585b4d73828afc997744dbe02e6df347e0860054adf69431996d46"
+	gateOffDigest6138     = "8726464ce66a815e8b8a69bf8a9ee272368903f623c161fba81235237e235025"
 )
 
 func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
@@ -474,21 +498,25 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 	got := semanticDigest6118(off)
-	if got == gateOffDigest6118 {
+	if got == gateOffDigest6138 {
 		return
+	}
+	if got == gateOffDigest6118 {
+		t.Fatalf("gate-OFF graph reverted to the pre-#6138 baseline — the file fold is " +
+			"deleting stem-named declarations in container-file languages again")
 	}
 	if got == gateOffDigest6118Base {
 		t.Fatalf("gate-OFF graph reverted to the pre-fix 2f0175dfc baseline — the #6118 " +
 			"span donation is no longer reaching the default path")
 	}
-	t.Fatalf("gate-OFF graph changed against BOTH pinned digests\n got  %s\n post-fix %s\n 2f0175dfc %s\n"+
-		"(entities=%d relationships=%d)", got, gateOffDigest6118, gateOffDigest6118Base,
-		len(off.Entities), len(off.Relationships))
+	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
+		"(entities=%d relationships=%d)", got, gateOffDigest6138, gateOffDigest6118,
+		gateOffDigest6118Base, len(off.Entities), len(off.Relationships))
 }
 
 // TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain pins the shape
 // of the default-path change described above, in content terms rather than as
-// a hash: the gate-OFF graph must keep its 2f0175dfc entity and relationship
+// a hash: the gate-OFF graph must hold its documented entity and relationship
 // counts, every file component that had a position must still have it, and the
 // one entity that was positionless and is now positioned must be the documented
 // one.
@@ -497,9 +525,11 @@ func TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain(t *testing.T)
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 
+	// 141/284 at 2f0175dfc, plus the eight declarations #6138 stopped deleting
+	// and the eight Module->declaration CONTAINS edges that carry them.
 	const (
-		wantEntities = 141
-		wantRels     = 284
+		wantEntities = 149
+		wantRels     = 292
 	)
 	if len(off.Entities) != wantEntities || len(off.Relationships) != wantRels {
 		t.Fatalf("gate-OFF graph size moved: entities=%d (want %d) relationships=%d (want %d) — "+
