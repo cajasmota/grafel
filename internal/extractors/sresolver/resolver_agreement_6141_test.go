@@ -52,7 +52,21 @@ type agreementShape struct {
 	callerFile string
 	members    [][3]string
 	stub       string
+	// lang and signatures carry the extra entity fields the #6177 eligibility
+	// rule reads. lang defaults to "go" and signatures to none, which is what
+	// every pre-#6177 shape wants; signatures is indexed like members.
+	lang       string
+	signatures []string
+	// want, when set, is the member Name the stub MUST resolve to, or
+	// wantDangle when it must resolve to nothing. Agreement alone cannot catch
+	// both resolvers being wrong the SAME way, which is the specific risk when
+	// a rule is expressed differently on each side — #6177 skips per candidate
+	// in internal/resolve and withholds from the index in sresolver. Shapes
+	// that leave it empty assert agreement only, as they did before.
+	want string
 }
+
+const wantDangle = "«nothing»"
 
 var agreementShapes = []agreementShape{
 	{
@@ -118,6 +132,85 @@ var agreementShapes = []agreementShape{
 		},
 		stub: "owner",
 	},
+	{
+		// #6177 — a non-public Solidity state variable is INELIGIBLE, not
+		// merely unpreferred, so both resolvers must refuse. This shape is
+		// what stops the eligibility rule from being fixed on one side only:
+		// a full rebuild would dangle the impossible edge while an incremental
+		// build kept binding it.
+		name:       "solidity_internal_field_is_ineligible_6177",
+		callerFile: "contracts/a.sol",
+		lang:       "solidity",
+		members: [][3]string{
+			{"Config.threshold", "contracts/b.sol", "SCOPE.Schema"},
+		},
+		signatures: []string{"uint256 internal threshold"},
+		stub:       "threshold",
+		want:       wantDangle,
+	},
+	{
+		// The regression half of the same rule: `public` DOES synthesise a
+		// getter, so the call is real and both resolvers must still bind it.
+		name:       "solidity_public_field_still_binds_6177",
+		callerFile: "contracts/a.sol",
+		lang:       "solidity",
+		members: [][3]string{
+			{"Vault.totalAssets", "contracts/b.sol", "SCOPE.Schema"},
+		},
+		signatures: []string{"uint256 public totalAssets"},
+		stub:       "totalAssets",
+		want:       "Vault.totalAssets",
+	},
+	{
+		// #6177 — the first of the two shapes where "skip per candidate" and
+		// "withhold from the index" can come apart. An ineligible field sits
+		// beside an ELIGIBLE sibling of the same leaf name in one package: the
+		// internal field must neither bind nor make the public one look
+		// ambiguous, on BOTH sides. internal/resolve pins this alone in
+		// TestSolidityIneligibleFieldIsSkippedNotFatal_6177; without this shape
+		// sresolver's put() sentinel could poison leafByPkg and dangle the call
+		// while a full rebuild kept binding it.
+		name:       "solidity_ineligible_field_beside_eligible_sibling_6177",
+		callerFile: "contracts/a.sol",
+		lang:       "solidity",
+		members: [][3]string{
+			{"Hidden.cap", "contracts/b.sol", "SCOPE.Schema"},
+			{"Exposed.cap", "contracts/c.sol", "SCOPE.Schema"},
+		},
+		signatures: []string{"uint256 internal cap", "uint256 public cap"},
+		stub:       "cap",
+		want:       "Exposed.cap",
+	},
+	{
+		// #6177 — the second one, and the one that DID come apart. Two sibling
+		// files declare a contract of the SAME name, which is legal Solidity and
+		// ordinary in mock and test trees, so both `Hidden.cap` declarations
+		// collide on one key in internal/resolve's byPackageMember and are
+		// stored as the blank ambiguity sentinel. The sentinel has erased the
+		// IDs, so the per-candidate skip cannot fire for it and the scan
+		// abandoned EVERY remaining scope, dangling a call `Exposed.cap`
+		// answers. sresolver withholds an ineligible entity before the write,
+		// so it never builds that sentinel and bound `Exposed.cap`.
+		//
+		// Measured: at the parent commit both resolvers dangled and AGREED; with
+		// the per-candidate skip alone they disagreed and the incremental side
+		// was the right one. internal/resolve now resolves a sentinel key over
+		// the eligible subset (Index.eligibleMember), pinned there by
+		// TestSolidityIneligibleSentinel_ScanContinuesToEligibleSibling_6177.
+		name:       "solidity_colliding_ineligible_scopes_6177",
+		callerFile: "contracts/a.sol",
+		lang:       "solidity",
+		members: [][3]string{
+			{"Hidden.cap", "contracts/b.sol", "SCOPE.Schema"},
+			{"Hidden.cap", "contracts/d.sol", "SCOPE.Schema"},
+			{"Exposed.cap", "contracts/c.sol", "SCOPE.Schema"},
+		},
+		signatures: []string{
+			"uint256 internal cap", "uint256 internal cap", "uint256 public cap",
+		},
+		stub: "cap",
+		want: "Exposed.cap",
+	},
 }
 
 // TestLeafTier_FullAndIncrementalResolversAgree_6141 drives both resolvers
@@ -127,21 +220,30 @@ func TestLeafTier_FullAndIncrementalResolversAgree_6141(t *testing.T) {
 		t.Run(sh.name, func(t *testing.T) {
 			const callerID = "1111111111111111"
 
+			lang := sh.lang
+			if lang == "" {
+				lang = "go"
+			}
+
 			// Describe the world once; feed both resolvers from it so a
 			// divergence can only come from the resolvers themselves.
-			type member struct{ id, name, file, kind string }
+			type member struct{ id, name, file, kind, sig string }
 			members := make([]member, 0, len(sh.members))
 			for i, m := range sh.members {
+				var sig string
+				if i < len(sh.signatures) {
+					sig = sh.signatures[i]
+				}
 				members = append(members, member{
 					id:   fmt.Sprintf("%016x", i+2),
-					name: m[0], file: m[1], kind: m[2],
+					name: m[0], file: m[1], kind: m[2], sig: sig,
 				})
 			}
 
 			// ---- full-rebuild resolver (internal/resolve) ----
 			recs := []types.EntityRecord{{
 				ID: callerID, Kind: "SCOPE.Operation", Name: "Local07",
-				SourceFile: sh.callerFile,
+				SourceFile: sh.callerFile, Language: lang,
 				Relationships: []types.RelationshipRecord{{
 					FromID: callerID, ToID: sh.stub, Kind: "CALLS",
 				}},
@@ -149,6 +251,7 @@ func TestLeafTier_FullAndIncrementalResolversAgree_6141(t *testing.T) {
 			for _, m := range members {
 				recs = append(recs, types.EntityRecord{
 					ID: m.id, Kind: m.kind, Name: m.name, SourceFile: m.file,
+					Language: lang, Signature: m.sig,
 				})
 			}
 			idx := resolve.BuildIndex(recs)
@@ -156,10 +259,14 @@ func TestLeafTier_FullAndIncrementalResolversAgree_6141(t *testing.T) {
 			full := recs[0].Relationships[0].ToID
 
 			// ---- incremental resolver (sresolver) ----
-			fresh := []graph.Entity{lfEnt(callerID, "Local07", sh.callerFile, "SCOPE.Operation")}
+			caller := lfEnt(callerID, "Local07", sh.callerFile, "SCOPE.Operation")
+			caller.Language = lang
+			fresh := []graph.Entity{caller}
 			var existing []graph.Entity
 			for _, m := range members {
 				e := lfEnt(m.id, m.name, m.file, m.kind)
+				e.Language = lang
+				e.Signature = m.sig
 				// Members in the caller's own file are part of the delta.
 				if m.file == sh.callerFile {
 					fresh = append(fresh, e)
@@ -187,6 +294,23 @@ func TestLeafTier_FullAndIncrementalResolversAgree_6141(t *testing.T) {
 					"for the same source. Align the tier ORDER in sresolver.lookupLeaf with "+
 					"scanLeafMembersPreferring in internal/resolve/refs.go.",
 					sh.stub, describe(full), describe(incr))
+			}
+
+			// Both resolvers agree by here, so one of them names the answer.
+			if sh.want == "" {
+				return
+			}
+			bound := wantDangle
+			for _, m := range members {
+				if m.id == full {
+					bound = m.name
+				}
+			}
+			if bound != sh.want {
+				t.Fatalf("both resolvers agree, and both are WRONG: bare CALLS %q resolved "+
+					"to %s, want %s. Agreement is not correctness — an eligibility rule "+
+					"expressed as a per-candidate skip on one side and an index omission on "+
+					"the other can fail identically on both.", sh.stub, bound, sh.want)
 			}
 		})
 	}

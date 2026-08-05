@@ -35,6 +35,12 @@ import (
 // precision half is pinned below as a known gap rather than silently left
 // untested.
 //
+// #6177 UPDATE — the Solidity slice of that gap is now closed by ELIGIBILITY
+// (see Index.uncallableMember), pinned in
+// solidity_nonpublic_field_calls_6177_test.go. The gap fixtures below still
+// describe live behaviour: they stamp no Language and no Signature, so the new
+// rule cannot reach them, and the gap itself is still open for Java and Go.
+//
 // Every assertion below is on what the edge binds TO, by content
 // (kind / name / source_file) — never on an aggregate dangling count,
 // which is blind here because the two symptoms cancel.

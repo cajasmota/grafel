@@ -309,7 +309,7 @@ func TestReceiverTierPackageWideLeafTierNeverBoundThisAnyway6125(t *testing.T) {
 	all := []types.EntityRecord{a, b, sibling}
 	idx := BuildIndex(all)
 
-	if id, ok := idx.lookupPackageMemberByLeafName(recvPkg6125, recvMember6125, famOperation); ok || id != "" {
+	if id, ok := idx.lookupPackageMemberByLeafName(recvPkg6125, recvMember6125, famOperation, true); ok || id != "" {
 		t.Fatalf("lookupPackageMemberByLeafName(%q,%q) = (%q, %v), want (\"\", false). "+
 			"The blank sentinel from the (pkg, T11, Do11) collision is supposed to "+
 			"poison this scan; if it no longer does, the package-wide tier CAN now "+

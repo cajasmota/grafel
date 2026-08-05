@@ -89133,10 +89133,10 @@
       "capabilities": {
         "call_line_precision": {
           "status": "partial",
-          "cites": ["internal/extractors/solidity/extractor.go","internal/extractors/solidity/extractor_test.go"],
+          "cites": ["internal/extractors/solidity/extractor.go","internal/extractors/solidity/extractor_test.go","internal/extractors/solidity/issue6177_nonpublic_field_calls_test.go","internal/extractors/sresolver/pkgmember.go","internal/resolve/refs.go","internal/resolve/solidity_nonpublic_field_calls_6177_test.go"],
           "issue": "5371",
-          "notes": "collectCallsFromBody emits CALLS edges per dotted (Type.method()) and bare (fn()) invocation in a function/modifier body, with a solidityKeywords denylist dropping control-flow/builtins/type/visibility tokens and self-recursion filtering on undotted leaves (dotted cross-contract calls preserved, #2114). Partial (honest): edges do NOT yet carry a per-call line property; targets are unresolved name strings, not bound to the callee SCOPE.Operation.",
-          "verified_at": "2026-06-24"
+          "notes": "collectCallsFromBody emits CALLS edges per dotted (Type.method()) and bare (fn()) invocation in a function/modifier body, with a solidityKeywords denylist dropping control-flow/builtins/type/visibility tokens and self-recursion filtering on undotted leaves (dotted cross-contract calls preserved, #2114). A bare call no longer binds to a non-public state variable (#6177): Solidity synthesises a getter if and only if the variable is declared public, so an internal, private or default-visibility one is callable from nowhere and the edge is left as a stub. The rule is eligibility rather than kind preference, so it holds in both passes of the leaf-name tier, and it survives the (scope, member) ambiguity sentinel that duplicate contract names in one directory produce: such a key resolves over its callable subset, so a public field still binds beside two internal namesakes. The full rebuild (internal/resolve) and the incremental path (internal/extractors/sresolver) express it differently and are pinned to agree. Partial (honest): edges do NOT yet carry a per-call line property; a bound target is still reached by leaf name rather than by the callee's declared contract.",
+          "verified_at": "2026-08-05"
         },
         "core_extraction": {
           "status": "full",

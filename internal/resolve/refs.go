@@ -499,6 +499,65 @@ type Index struct {
 	// wrong bind. The lazy/module index path is pinned by the parity test.
 	memberFamily map[string]uint8
 
+	// uncallableMember[entity_id] = true for a dotted-name member the source
+	// language cannot express a call to AT ALL. Populated over exactly the
+	// entities memberFamily covers, and for the same reason: the leaf-name
+	// tiers scan indexes whose values are bare entity IDs, so the Language,
+	// Kind and Signature this classification needs are out of reach by the time
+	// a candidate is judged. Issue #6177; only Solidity state variables qualify
+	// today (see uncallableSolidityField).
+	//
+	// ELIGIBILITY, NOT PREFERENCE — separate table on purpose. memberFamily
+	// answers "which candidate is better", and #6141 requires that answer to
+	// lose to nothing: scanLeafMembersPreferring repeats the scan with want = 0
+	// so a preference can never drop a correct field bind. This table answers
+	// "could this candidate be called at all", which has to survive that second
+	// pass. Folding the two together would make the new rule fall through
+	// exactly where it must hold.
+	//
+	// Absent = eligible, so staleness fails OPEN — the pre-#6177 behaviour,
+	// never a wrong bind. The lazy/module index path is pinned by the parity
+	// test.
+	uncallableMember map[string]bool
+
+	// eligibleMember[file_path][scope][member] and
+	// eligiblePackageMember[pkg_dir][scope][member] carry the CALL-ELIGIBLE
+	// subset of a (scope, member) key that byMember / byPackageMember have
+	// already collapsed into their blank ambiguity sentinel. An entry exists
+	// ONLY for a collided key at least one of whose entities is in
+	// uncallableMember, which is why this is not a second copy of the member
+	// indexes: for a corpus with no non-public Solidity field both maps stay
+	// empty.
+	//
+	// Issue #6177 — why uncallableMember alone is not enough. The sentinel has
+	// erased the colliding IDs, so there is no ID to look up in uncallableMember
+	// and the scan reaches its "sentinel ⇒ abort" arm, which abandons EVERY
+	// remaining scope rather than just the colliding one. Two files in one
+	// directory each declaring `contract Hidden { uint256 internal cap; }` is
+	// legal and ordinary in mock and test trees, and it made a bare call to
+	// `cap` dangle even with `contract Exposed { uint256 public cap; }` beside
+	// them. internal/extractors/sresolver has no such hole because it WITHHOLDS
+	// an ineligible entity before the write, so no sentinel is ever created for
+	// it; these two tables are what make the full rebuild answer the same, and
+	// the cross-resolver gate in
+	// internal/extractors/sresolver/resolver_agreement_6141_test.go is what
+	// keeps the two formulations interchangeable.
+	//
+	// Withholding here instead is not available. byMember and byPackageMember
+	// are shared with the #667 inherited-field hint (the Java-gated
+	// scope:schema:ref arm, which passes callableOnly = false), and that site
+	// legitimately resolves a REFERENCES stub to a non-public field: a field a
+	// Java class reads only has to be readable, and in a directory that mixes
+	// languages the destination can be a Solidity field.
+	//
+	// Memory (#5954): one map entry per collided key that an ineligible entity
+	// took part in, and nothing at all for a key whose entities are all
+	// eligible. Absent = "the raw sentinel still means what it always meant",
+	// so staleness fails OPEN like the two tables above. The lazy/module index
+	// path is pinned by the parity test.
+	eligibleMember        map[string]map[string]map[string]eligibleLeaf
+	eligiblePackageMember map[string]map[string]map[string]eligibleLeaf
+
 	// byPackageOperation[pkg_dir][name] = entity_id. Used by the
 	// Refs #44 Go bare-call structural-ref path: the extractor rewrites
 	// identifier-form CALLS edges (e.g. `helper()` from `main`) to
@@ -569,6 +628,22 @@ type Index struct {
 	// point at both the canonical AND every non-canonical variant, giving
 	// each variant identical caller lists in the output graph (#1818).
 	PlatformVariants map[string][]string
+}
+
+// eligibleLeaf is one entry of eligibleMember / eligiblePackageMember: the
+// call-eligible subset of a collided leaf key, reduced to the three outcomes a
+// leaf-name scan can act on (issue #6177).
+type eligibleLeaf struct {
+	// id is the sole call-eligible entity of the key, or "" when the eligible
+	// subset is empty.
+	id string
+
+	// ambiguous marks two or more DISTINCT eligible entities. It must be told
+	// apart from an empty subset: two or more aborts the scan exactly as the
+	// raw sentinel does, while an empty subset makes the key ABSENT so the scan
+	// carries on to the next scope and can still bind a callable sibling of the
+	// same leaf name.
+	ambiguous bool
 }
 
 // LocationIndex maps file_path -> name -> entity_id, retaining only entries
@@ -926,6 +1001,7 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		memberFamily:       make(map[string]uint8),
+		uncallableMember:   make(map[string]bool),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
@@ -933,6 +1009,9 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		byKotlinPkgFunc:    make(map[string]map[string]string),
 		byQualifiedName:    make(map[string]string),
 		PlatformVariants:   make(map[string][]string),
+
+		eligibleMember:        make(map[string]map[string]map[string]eligibleLeaf),
+		eligiblePackageMember: make(map[string]map[string]map[string]eligibleLeaf),
 	}
 
 	// Issue #1811 — build-tag tracking side-tables.
@@ -1211,6 +1290,11 @@ func BuildIndex(entities []types.EntityRecord) Index {
 				if m := memberFamilyMask(e.Kind); m != 0 {
 					idx.memberFamily[e.ID] = m
 				}
+				// #6177 — call-eligibility side-table; see
+				// Index.uncallableMember.
+				if uncallableSolidityField(e.Language, e.Kind, e.Signature) {
+					idx.uncallableMember[e.ID] = true
+				}
 				fileBucket := idx.byMember[sourceFile]
 				if fileBucket == nil {
 					fileBucket = make(map[string]map[string]string)
@@ -1222,6 +1306,10 @@ func BuildIndex(entities []types.EntityRecord) Index {
 					fileBucket[scope] = scopeBucket
 				}
 				if existing, ok := scopeBucket[member]; ok && existing != e.ID {
+					// #6177 — record the eligible subset BEFORE the sentinel
+					// erases both IDs; see Index.eligibleMember.
+					foldEligibleLeaf(idx.eligibleMember, idx.uncallableMember,
+						sourceFile, scope, member, existing, e.ID)
 					scopeBucket[member] = "" // blank sentinel → ambiguous
 				} else {
 					scopeBucket[member] = e.ID
@@ -1232,11 +1320,12 @@ func BuildIndex(entities []types.EntityRecord) Index {
 				// type spread across sibling files share a package. Index
 				// under the dir of sourceFile so a CALLS edge from
 				// chi/tree.go can find Mux.handle declared in chi/mux.go.
-				// Only Go entities benefit from this (other languages
-				// resolve same-class methods via byMember already), but we
-				// index unconditionally — a (pkg_dir, scope, member) tuple
-				// from another language won't be probed because the
-				// receiver_type stamp is Go-extractor-only.
+				// Indexed unconditionally, and read back for every language:
+				// the leaf-name tier (issue #778) scans this bucket for a
+				// bare CALLS stub whatever the caller's language, which is
+				// the path a Solidity call takes. The receiver tier reads it
+				// only for an edge carrying a receiver_type stamp, which no
+				// Solidity extractor emits.
 				pkgDir := pkgDirOf(sourceFile)
 				if pkgDir != "" {
 					pkgBucket := idx.byPackageMember[pkgDir]
@@ -1250,6 +1339,11 @@ func BuildIndex(entities []types.EntityRecord) Index {
 						pkgBucket[scope] = pkgScopeBucket
 					}
 					if existing, ok := pkgScopeBucket[member]; ok && existing != e.ID {
+						// #6177 — as above. This is the bucket the reachable
+						// shape collides in: duplicate contract names across
+						// sibling files in one directory.
+						foldEligibleLeaf(idx.eligiblePackageMember, idx.uncallableMember,
+							pkgDir, scope, member, existing, e.ID)
 						pkgScopeBucket[member] = "" // ambiguous within (pkg, scope, member)
 					} else {
 						pkgScopeBucket[member] = e.ID
@@ -1886,6 +1980,94 @@ func (idx Index) inFamily(id string, want uint8) bool {
 	return idx.memberFamily[id]&want != 0
 }
 
+// publicKeywordRE matches `public` as a whole word. The signal is declaration
+// TEXT, so a substring test would read the keyword out of an identifier like
+// `publicKey` or a type named `PublicFoo`.
+var publicKeywordRE = regexp.MustCompile(`\bpublic\b`)
+
+// uncallableSolidityField reports whether an entity is a Solidity state
+// variable that no call in the source program can reach (issue #6177).
+//
+// Solidity synthesises a getter for a state variable IF AND ONLY IF it is
+// declared `public`. An internal, private or default-visibility variable is
+// not callable from anywhere, including from inside the contract that declares
+// it, so a CALLS edge to one corresponds to no call in the source. `public
+// constant` and `public immutable` DO get a getter, which is why the predicate
+// tests for the visibility keyword and nothing else.
+//
+// SCOPE.Schema is the ONLY Schema-family Kind the Solidity extractor emits
+// (internal/extractors/solidity/extractor.go:384, its state-variable arm), so
+// the language/kind pair identifies a state variable exactly rather than
+// approximately.
+//
+// Visibility is not a property on the entity. #6137 keeps the declaration text
+// in Signature ("uint256 public totalAssets", "IERC20 asset"), and the bodies
+// that text came from were already through stripCommentsAndStrings, so a
+// `public` inside a comment cannot reach it.
+//
+// An EMPTY Signature fails OPEN. Graphs written before #4881 dropped the field
+// on load (internal/graph/load.go:596), and reading "no declaration text" as
+// "not public" would dangle every Solidity field call in one. Same safe
+// direction as memberFamily staleness.
+func uncallableSolidityField(language, kind, signature string) bool {
+	if language != "solidity" || kind != scopeKindPrefix+"Schema" || signature == "" {
+		return false
+	}
+	return !publicKeywordRE.MatchString(signature)
+}
+
+// foldEligibleLeaf folds the entity `id` into the eligible-subset overlay for a
+// leaf key that is COLLIDING right now, `prev` being the value the raw member
+// bucket held for that key before this entity arrived (issue #6177; see
+// Index.eligibleMember). Called from the sentinel branch of both member-index
+// writes, and from insertModuleEntry's mirror of them.
+//
+// Seeding an UNGOVERNED key from `prev` alone is exact. An ineligible entity
+// creates the entry the moment it collides, so an ungoverned key that already
+// holds the sentinel absorbed nothing but eligible IDs and is therefore
+// ambiguous, and an ungoverned key holding a real ID has absorbed exactly that
+// one, whose own eligibility is still in uncallableMember to be read.
+//
+// `ambiguous` is absorbing, so a later fold can never narrow a key back down.
+func foldEligibleLeaf(
+	overlay map[string]map[string]map[string]eligibleLeaf,
+	uncallable map[string]bool,
+	outer, scope, member, prev, id string,
+) {
+	cur, governed := overlay[outer][scope][member]
+	idUncallable := uncallable[id]
+	if !governed {
+		prevUncallable := prev != "" && uncallable[prev]
+		if !prevUncallable && !idUncallable {
+			return
+		}
+		if prev == "" {
+			cur.ambiguous = true
+		} else if !prevUncallable {
+			cur.id = prev
+		}
+	}
+	if !idUncallable && !cur.ambiguous {
+		switch {
+		case cur.id == "":
+			cur.id = id
+		case cur.id != id:
+			cur = eligibleLeaf{ambiguous: true}
+		}
+	}
+	scopes := overlay[outer]
+	if scopes == nil {
+		scopes = make(map[string]map[string]eligibleLeaf)
+		overlay[outer] = scopes
+	}
+	members := scopes[scope]
+	if members == nil {
+		members = make(map[string]eligibleLeaf)
+		scopes[scope] = members
+	}
+	members[member] = cur
+}
+
 // lookupByKindHint disambiguates a name using the relKind hint. Returns
 // (id, true) only when the hinted family yields exactly one entity for
 // this name; otherwise ("", false).
@@ -2358,7 +2540,7 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 					// package's member index for any class that declares
 					// this field name. The ChildClass may differ from
 					// the ParentClass that owns the field.
-					if id, ok := idx.lookupPackageMemberByLeafName(pkgDir, fieldName, 0); ok {
+					if id, ok := idx.lookupPackageMemberByLeafName(pkgDir, fieldName, 0, false); ok {
 						return id, statusRewritten, true
 					}
 				}
@@ -2809,7 +2991,10 @@ func (idx Index) lookupPackageMember(pkgDir, receiverType, member string) (strin
 // its own. See scanLeafMembers for why this is a preference and not a
 // filter; the short version is that a hard filter was measured to destroy
 // real Ruby and JS/TS bindings.
-func (idx Index) lookupMemberByLeafName(filePath, memberName string, prefer uint8) (string, bool) {
+//
+// Issue #6177 — `callableOnly` is the ORTHOGONAL eligibility gate, set only by
+// call sites resolving a CALLS destination. See scanLeafMembers.
+func (idx Index) lookupMemberByLeafName(filePath, memberName string, prefer uint8, callableOnly bool) (string, bool) {
 	if filePath == "" || memberName == "" {
 		return "", false
 	}
@@ -2817,7 +3002,8 @@ func (idx Index) lookupMemberByLeafName(filePath, memberName string, prefer uint
 	if fileBucket == nil {
 		return "", false
 	}
-	return idx.scanLeafMembersPreferring(fileBucket, memberName, prefer)
+	return idx.scanLeafMembersPreferring(
+		fileBucket, idx.eligibleMember[filePath], memberName, prefer, callableOnly)
 }
 
 // scanLeafMembersPreferring runs scanLeafMembers twice: once restricted to
@@ -2854,26 +3040,36 @@ func (idx Index) lookupMemberByLeafName(filePath, memberName string, prefer uint
 //	        no longer trip the cross-scope ambiguity guard and destroy a
 //	        correct binding to a real operation — the operation pass never
 //	        sees the field.
-//	PRECISION (NOT fixed): when NO operation of that leaf name exists, the
+//	PRECISION (NOT fixed HERE): when NO operation of that leaf name exists, the
 //	        second pass still binds the call to a field, which is right for
-//	        Ruby/JS and wrong for Solidity/Java/Go. Fixing it needs the
+//	        Ruby/JS and wrong for Java/Go. Fixing it by KIND needs the
 //	        extractors to distinguish "field" from "invocable member modelled
-//	        as a field"; doing it in the resolver means guessing per
+//	        as a field"; doing that in the resolver means guessing per
 //	        language. Tracked separately — do NOT "finish the job" by
 //	        deleting the fallback without that upstream signal.
+//
+//	        SOLIDITY is now handled, and needs no such guess because the
+//	        language itself decides whether the call can exist: a non-public
+//	        state variable has no getter, so it is INELIGIBLE rather than
+//	        merely unpreferred (#6177, `callableOnly`).
 //
 // The pass order is strictly additive: every binding the unrestricted scan
 // produced before still happens, and the preferred pass only ever converts
 // a previously-AMBIGUOUS stub into a binding.
+//
+// `callableOnly` (#6177) is threaded UNCHANGED into both passes, which is the
+// whole reason it is not part of `prefer`: the "unrestricted" pass is
+// unrestricted in KIND only, never in eligibility.
 func (idx Index) scanLeafMembersPreferring(
-	scopes map[string]map[string]string, memberName string, prefer uint8,
+	scopes map[string]map[string]string, eligible map[string]map[string]eligibleLeaf,
+	memberName string, prefer uint8, callableOnly bool,
 ) (string, bool) {
 	if prefer != 0 {
-		if id, ok := idx.scanLeafMembers(scopes, memberName, prefer); ok {
+		if id, ok := idx.scanLeafMembers(scopes, eligible, memberName, prefer, callableOnly); ok {
 			return id, true
 		}
 	}
-	return idx.scanLeafMembers(scopes, memberName, 0)
+	return idx.scanLeafMembers(scopes, eligible, memberName, 0, callableOnly)
 }
 
 // scanLeafMembers walks every scope bucket for memberName and returns the
@@ -2881,19 +3077,53 @@ func (idx Index) scanLeafMembersPreferring(
 // family; a rejected candidate is SKIPPED rather than aborting the scan,
 // which is what keeps a field from tripping the ambiguity guard.
 //
+// callableOnly (#6177) additionally skips a candidate the source language
+// cannot express a call to at all. It is a SEPARATE question from `want`, and
+// skipping rather than aborting matters twice over: an ineligible candidate
+// cannot trip the ambiguity guard, and a scope holding an eligible member of
+// the same leaf name still binds. A post-check on the returned ID would have
+// neither property — it would turn "one public field beside one internal
+// field" into a dangle instead of a bind.
+//
+// `eligible` is the same-shaped eligible-subset overlay for `scopes`
+// (Index.eligibleMember for byMember, Index.eligiblePackageMember for
+// byPackageMember) and is read only under callableOnly. It is what lets the
+// scan see PAST a blank sentinel that an ineligible entity took part in: the
+// per-candidate skip above cannot fire for a sentinel, because the sentinel has
+// erased the IDs the skip needs. See Index.eligibleMember for the full-vs-
+// incremental divergence that made it necessary.
+//
 // Returns ("", false) when the name is missing from all scopes, when two or
 // more scopes share a member of that leaf name, or when a scope's bucket
 // holds the blank ambiguity sentinel (two overloads in one class — the
 // sentinel has erased both IDs, so no kind information survives for the
-// filter to use).
+// filter to use) and `eligible` does not resolve that sentinel down to a
+// single callable entity.
 func (idx Index) scanLeafMembers(
-	scopes map[string]map[string]string, memberName string, want uint8,
+	scopes map[string]map[string]string, eligible map[string]map[string]eligibleLeaf,
+	memberName string, want uint8, callableOnly bool,
 ) (string, bool) {
 	var match string
-	for _, scopeBucket := range scopes {
+	for scope, scopeBucket := range scopes {
 		id, ok := scopeBucket[memberName]
 		if !ok {
 			continue
+		}
+		if callableOnly {
+			if id == "" {
+				// A governed key's verdict replaces the sentinel wholesale
+				// (see eligibleLeaf). An empty eligible subset continues
+				// rather than aborting, so a callable sibling of the same leaf
+				// name in another scope still wins.
+				if leaf, governed := eligible[scope][memberName]; governed && !leaf.ambiguous {
+					if leaf.id == "" {
+						continue
+					}
+					id = leaf.id
+				}
+			} else if idx.uncallableMember[id] {
+				continue
+			}
 		}
 		if id != "" && !idx.inFamily(id, want) {
 			continue
@@ -2930,7 +3160,12 @@ func (idx Index) scanLeafMembers(
 // a filter. The CALLS call sites pass famOperation. The #667 Java
 // inherited-field hint site passes 0: its stub is field-shaped by
 // construction, so an operation preference there would be actively wrong.
-func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string, prefer uint8) (string, bool) {
+//
+// Issue #6177 — the same split applies to `callableOnly`, and for a sharper
+// reason: the #667 site is resolving a REFERENCES stub, and a field a Java
+// class reads is not required to be callable. It passes false. Only the CALLS
+// sites pass true.
+func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string, prefer uint8, callableOnly bool) (string, bool) {
 	if pkgDir == "" || memberName == "" {
 		return "", false
 	}
@@ -2938,7 +3173,8 @@ func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string, prefer
 	if pkgBucket == nil {
 		return "", false
 	}
-	return idx.scanLeafMembersPreferring(pkgBucket, memberName, prefer)
+	return idx.scanLeafMembersPreferring(
+		pkgBucket, idx.eligiblePackageMember[pkgDir], memberName, prefer, callableOnly)
 }
 
 // isComponentTargetKind reports whether the relationship-kind's natural
@@ -3125,13 +3361,16 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 			// by this bare name — if two different scopes both declare "find",
 			// we cannot pick without additional type information and leave the
 			// stub unresolved (correct: ambiguous, not a false bind).
+			// Issue #6177 — a CALLS destination must be CALLABLE, so both
+			// probes pass the gate. The #667 REFERENCES site above shares
+			// lookupPackageMemberByLeafName and deliberately does not.
 			if callerFile != "" {
-				if id, ok := idx.lookupMemberByLeafName(callerFile, name, famOperation); ok {
+				if id, ok := idx.lookupMemberByLeafName(callerFile, name, famOperation, true); ok {
 					return id, true
 				}
 			}
 			if callerPkgDir != "" {
-				if id, ok := idx.lookupPackageMemberByLeafName(callerPkgDir, name, famOperation); ok {
+				if id, ok := idx.lookupPackageMemberByLeafName(callerPkgDir, name, famOperation, true); ok {
 					return id, true
 				}
 			}
@@ -5939,7 +6178,10 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 					// This also brings the full-rebuild path into line with
 					// internal/extractors/sresolver, fixed for #6098.
 					if ambiguousReceiver && parentSourceFile != "" {
-						if id, ok := idx.lookupMemberByLeafName(parentSourceFile, r.ToID, famOperation); ok && id != "" {
+						// #6177 — callableOnly: receiver_type is stamped on CALLS
+						// records only (golang/extractor.go:1437, :1469), so this
+						// probe is always resolving a call destination.
+						if id, ok := idx.lookupMemberByLeafName(parentSourceFile, r.ToID, famOperation, true); ok && id != "" {
 							r.ToID = id
 							applyEndpointStats(&stats, statusRewritten, false)
 							d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
