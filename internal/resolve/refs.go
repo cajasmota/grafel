@@ -472,6 +472,33 @@ type Index struct {
 	// silently picking a wrong overload.
 	byPackageMember map[string]map[string]map[string]string
 
+	// memberFamily[entity_id] = kind-family bitmask, populated ONLY for the
+	// dotted-name entities that land in byMember / byPackageMember. Issue
+	// #6141: those two indexes are keyed on (scope, member) and carry no
+	// kind, so the leaf-name tiers that scan them for a bare CALLS target
+	// bound a call to whatever shared the leaf name — including a FIELD.
+	// This side-table is what lets those tiers filter by kind family the way
+	// lookupByKindHint already does, without changing the member indexes'
+	// value type (they are shared with Format B structural resolution, which
+	// legitimately addresses fields).
+	//
+	// Memory (#5954): MEASURED at ~47 bytes per entry — Go map overhead
+	// dominates; the uint8 value is free and the key's string header shares
+	// e.ID's backing array, so no character data is copied. That is ~14 MB
+	// per 300k dotted-name entities: bounded and acceptable, but not the
+	// "one byte each" the shape suggests. byMember and byPackageMember
+	// already hold one string entry each per such entity.
+	//
+	// Entries whose mask is zero are omitted, but do NOT count on that as a
+	// saving: in practice almost every dotted-name entity is Operation,
+	// Schema or Component. It matters for correctness, not size.
+	//
+	// Staleness fails OPEN, which is the safe direction: a missing entry
+	// makes the operation-preferring pass skip the candidate, the kind-blind
+	// fallback runs, and the result is the pre-#6141 behaviour — never a
+	// wrong bind. The lazy/module index path is pinned by the parity test.
+	memberFamily map[string]uint8
+
 	// byPackageOperation[pkg_dir][name] = entity_id. Used by the
 	// Refs #44 Go bare-call structural-ref path: the extractor rewrites
 	// identifier-form CALLS edges (e.g. `helper()` from `main`) to
@@ -898,6 +925,7 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		byLocationKind:     make(LocationKindIndex),
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
+		memberFamily:       make(map[string]uint8),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
@@ -1178,6 +1206,11 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			// scope="Foo", member="bar" — unchanged from issue #45.
 			if dot := strings.LastIndexByte(e.Name, dottedNameSep); dot > 0 {
 				scope, member := e.Name[:dot], e.Name[dot+1:]
+				// #6141 — kind-family side-table for the leaf-name tiers.
+				// Zero masks are omitted: absent == "no known family".
+				if m := memberFamilyMask(e.Kind); m != 0 {
+					idx.memberFamily[e.ID] = m
+				}
 				fileBucket := idx.byMember[sourceFile]
 				if fileBucket == nil {
 					fileBucket = make(map[string]map[string]string)
@@ -1794,6 +1827,65 @@ func hintKinds(relKind string) []string {
 	return nil
 }
 
+// Kind-family bitmask (issue #6141). The leaf-name tiers scan member
+// indexes whose values are bare entity IDs, so they need a per-ID kind
+// classification to filter candidates. A 3-bit mask is enough and keeps the
+// side-table one byte per entry.
+const (
+	famOperation uint8 = 1 << iota
+	famComponent
+	famSchema
+)
+
+// familyMaskByKind maps every entity Kind named in the three kind families
+// to its mask bit. Derived from the family slices themselves rather than
+// re-listed, so it cannot drift out of agreement with hintKinds /
+// structuralKindFamilies — the same invariant issue #49 centralised the
+// slices for.
+var familyMaskByKind = func() map[string]uint8 {
+	m := make(map[string]uint8, 16)
+	for _, spec := range []struct {
+		kinds []string
+		bit   uint8
+	}{
+		{operationKindFamily, famOperation},
+		{componentKindFamily, famComponent},
+		{schemaKindFamily, famSchema},
+	} {
+		for _, k := range spec.kinds {
+			m[k] |= spec.bit
+		}
+	}
+	return m
+}()
+
+// memberFamilyMask classifies one entity Kind into the kind-family mask.
+// Both the raw kind and its SCOPE.-trimmed form are consulted, mirroring
+// the dual-indexing BuildIndex applies to byKind — so a hypothetical
+// "SCOPE.Method" classifies as an operation via its trimmed form.
+// Returns 0 for kinds in no family; such an entity is never a candidate
+// for a family-filtered leaf-name lookup.
+func memberFamilyMask(kind string) uint8 {
+	if kind == "" {
+		return 0
+	}
+	mask := familyMaskByKind[kind]
+	if trimmed := strings.TrimPrefix(kind, scopeKindPrefix); trimmed != kind && trimmed != "" {
+		mask |= familyMaskByKind[trimmed]
+	}
+	return mask
+}
+
+// inFamily reports whether the member-indexed entity id belongs to the
+// requested kind family. want == 0 disables the filter (every candidate
+// passes), which is what the field-shaped call sites pass.
+func (idx Index) inFamily(id string, want uint8) bool {
+	if want == 0 {
+		return true
+	}
+	return idx.memberFamily[id]&want != 0
+}
+
 // lookupByKindHint disambiguates a name using the relKind hint. Returns
 // (id, true) only when the hinted family yields exactly one entity for
 // this name; otherwise ("", false).
@@ -2260,7 +2352,7 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 					// package's member index for any class that declares
 					// this field name. The ChildClass may differ from
 					// the ParentClass that owns the field.
-					if id, ok := idx.lookupPackageMemberByLeafName(pkgDir, fieldName); ok {
+					if id, ok := idx.lookupPackageMemberByLeafName(pkgDir, fieldName, 0); ok {
 						return id, statusRewritten, true
 					}
 				}
@@ -2706,7 +2798,12 @@ func (idx Index) lookupPackageMember(pkgDir, receiverType, member string) (strin
 // names). Scanning byMember for the leaf name is the correct fallback:
 // a caller inside InventoryService calling `merge()` should bind to
 // byMember[callerFile]["InventoryService"]["merge"].
-func (idx Index) lookupMemberByLeafName(filePath, memberName string) (string, bool) {
+//
+// Issue #6141 — `prefer` is a kind-family mask that gets a FIRST pass of
+// its own. See scanLeafMembers for why this is a preference and not a
+// filter; the short version is that a hard filter was measured to destroy
+// real Ruby and JS/TS bindings.
+func (idx Index) lookupMemberByLeafName(filePath, memberName string, prefer uint8) (string, bool) {
 	if filePath == "" || memberName == "" {
 		return "", false
 	}
@@ -2714,28 +2811,101 @@ func (idx Index) lookupMemberByLeafName(filePath, memberName string) (string, bo
 	if fileBucket == nil {
 		return "", false
 	}
+	return idx.scanLeafMembersPreferring(fileBucket, memberName, prefer)
+}
+
+// scanLeafMembersPreferring runs scanLeafMembers twice: once restricted to
+// the preferred kind family, then — only if that pass found nothing at all
+// — unrestricted, which is the pre-#6141 behaviour.
+//
+// # Why a PREFERENCE and not a filter
+//
+// Issue #6141 prescribes kind-filtering these tiers to operationKindFamily,
+// on the reasoning that a call target must be an operation. That is true of
+// the LANGUAGE but not of the GRAPH: several extractors deliberately model
+// an invocable member as a field.
+//
+//	ruby   internal/extractors/ruby/field_members.go — every attr_accessor /
+//	       attr_reader / attr_writer symbol becomes `Class.attr` with Kind
+//	       SCOPE.Schema. Those ARE generated methods, Ruby's real methods
+//	       carry BARE names, and ruby.go's rubyCallTarget discards the
+//	       receiver, so a bare `owner` CALLS edge has NO other binding route.
+//	js/ts  internal/extractors/javascript/extractor.go — a class field is
+//	       emitted as an Operation only when its initialiser is an
+//	       `arrow_function`; `handler = function(){}` falls through to
+//	       `Class.handler` / SCOPE.Schema. Interface `method_signature`
+//	       members are emitted as SCOPE.Schema by design.
+//
+// MEASURED on the unfixed tree, not projected: a Ruby method reading its own
+// `attr_accessor :owner` binds to `Account.owner [SCOPE.Schema]`. Under a
+// hard operation-filter that edge DANGLES. The regression test is
+// TestRubyAttrAccessorCallStillBinds_6141 in internal/extractors/ruby.
+//
+// So this two-pass shape takes the half of #6141 that is unconditionally
+// safe and leaves the other half alone:
+//
+//	RECALL  (fixed, every language): an unrelated same-leaf-named FIELD can
+//	        no longer trip the cross-scope ambiguity guard and destroy a
+//	        correct binding to a real operation — the operation pass never
+//	        sees the field.
+//	PRECISION (NOT fixed): when NO operation of that leaf name exists, the
+//	        second pass still binds the call to a field, which is right for
+//	        Ruby/JS and wrong for Solidity/Java/Go. Fixing it needs the
+//	        extractors to distinguish "field" from "invocable member modelled
+//	        as a field"; doing it in the resolver means guessing per
+//	        language. Tracked separately — do NOT "finish the job" by
+//	        deleting the fallback without that upstream signal.
+//
+// The pass order is strictly additive: every binding the unrestricted scan
+// produced before still happens, and the preferred pass only ever converts
+// a previously-AMBIGUOUS stub into a binding.
+func (idx Index) scanLeafMembersPreferring(
+	scopes map[string]map[string]string, memberName string, prefer uint8,
+) (string, bool) {
+	if prefer != 0 {
+		if id, ok := idx.scanLeafMembers(scopes, memberName, prefer); ok {
+			return id, true
+		}
+	}
+	return idx.scanLeafMembers(scopes, memberName, 0)
+}
+
+// scanLeafMembers walks every scope bucket for memberName and returns the
+// single matching entity ID. want != 0 restricts candidates to that kind
+// family; a rejected candidate is SKIPPED rather than aborting the scan,
+// which is what keeps a field from tripping the ambiguity guard.
+//
+// Returns ("", false) when the name is missing from all scopes, when two or
+// more scopes share a member of that leaf name, or when a scope's bucket
+// holds the blank ambiguity sentinel (two overloads in one class — the
+// sentinel has erased both IDs, so no kind information survives for the
+// filter to use).
+func (idx Index) scanLeafMembers(
+	scopes map[string]map[string]string, memberName string, want uint8,
+) (string, bool) {
 	var match string
-	ambig := false
-	for _, scopeBucket := range fileBucket {
+	for _, scopeBucket := range scopes {
 		id, ok := scopeBucket[memberName]
 		if !ok {
 			continue
 		}
+		if id != "" && !idx.inFamily(id, want) {
+			continue
+		}
 		if id == "" {
-			// Blank sentinel within this scope = ambiguous member for this scope.
-			// Two different overloads in the same class — can't resolve.
-			ambig = true
-			break
+			// Blank sentinel within this scope = ambiguous member for this
+			// scope. Two different overloads in the same class — can't
+			// resolve, and the kind filter cannot see through it either.
+			return "", false
 		}
 		if match != "" && match != id {
 			// Two different scopes each have a member named memberName —
 			// ambiguous across scopes; do not pick one.
-			ambig = true
-			break
+			return "", false
 		}
 		match = id
 	}
-	if ambig || match == "" {
+	if match == "" {
 		return "", false
 	}
 	return match, true
@@ -2749,7 +2919,12 @@ func (idx Index) lookupMemberByLeafName(filePath, memberName string) (string, bo
 //
 // Issue #778 — package-level fallback after the same-file scan misses
 // (e.g. when the callee is defined in a sibling file of the same package).
-func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string) (string, bool) {
+// Issue #6141 — `prefer` is a kind-family mask given a first pass of its
+// own; see scanLeafMembersPreferring for why it is a preference rather than
+// a filter. The CALLS call sites pass famOperation. The #667 Java
+// inherited-field hint site passes 0: its stub is field-shaped by
+// construction, so an operation preference there would be actively wrong.
+func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string, prefer uint8) (string, bool) {
 	if pkgDir == "" || memberName == "" {
 		return "", false
 	}
@@ -2757,27 +2932,7 @@ func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string) (strin
 	if pkgBucket == nil {
 		return "", false
 	}
-	var match string
-	ambig := false
-	for _, scopeBucket := range pkgBucket {
-		id, ok := scopeBucket[memberName]
-		if !ok {
-			continue
-		}
-		if id == "" {
-			ambig = true
-			break
-		}
-		if match != "" && match != id {
-			ambig = true
-			break
-		}
-		match = id
-	}
-	if ambig || match == "" {
-		return "", false
-	}
-	return match, true
+	return idx.scanLeafMembersPreferring(pkgBucket, memberName, prefer)
 }
 
 // isComponentTargetKind reports whether the relationship-kind's natural
@@ -2965,12 +3120,12 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 			// we cannot pick without additional type information and leave the
 			// stub unresolved (correct: ambiguous, not a false bind).
 			if callerFile != "" {
-				if id, ok := idx.lookupMemberByLeafName(callerFile, name); ok {
+				if id, ok := idx.lookupMemberByLeafName(callerFile, name, famOperation); ok {
 					return id, true
 				}
 			}
 			if callerPkgDir != "" {
-				if id, ok := idx.lookupPackageMemberByLeafName(callerPkgDir, name); ok {
+				if id, ok := idx.lookupPackageMemberByLeafName(callerPkgDir, name, famOperation); ok {
 					return id, true
 				}
 			}

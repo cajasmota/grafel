@@ -132,6 +132,20 @@ type memberIndexes struct {
 	leafByFile      map[string]map[string]string            // [file][member]
 	leafByPkg       map[string]map[string]string            // [dir][member]
 
+	// #6141 — operation-only twins of the two leaf indexes, probed FIRST.
+	// The leaf tiers do not know the scope they are binding into, so an
+	// unrelated same-leaf-named FIELD used to enter the candidate set and
+	// trip the ambiguity guard, destroying a correct binding to a real
+	// operation. Preferring operations removes the field from that
+	// contest. They are a PREFERENCE, not a filter: the kind-blind twins
+	// above are still consulted when no operation matches, because Ruby
+	// (attr_accessor) and JS/TS (`handler = function(){}`) model genuinely
+	// invocable members as SCOPE.Schema fields and the leaf tier is their
+	// only binding route. See scanLeafMembersPreferring in
+	// internal/resolve/refs.go for the measurement that established this.
+	leafByFileOp map[string]map[string]string // [file][member], operations only
+	leafByPkgOp  map[string]map[string]string // [dir][member],  operations only
+
 	// callerLoc maps an entity ID to its location. It is probed with the
 	// edge's RESOLVED FromID, which is why ResolveScoped must rewrite the
 	// from-side of an edge before the to-side: the Go extractor emits the
@@ -162,6 +176,25 @@ type callerLocation struct {
 // indexed under its dotted form. Left divergent rather than aligned so the
 // gate keeps stating the condition this code actually depends on, but the
 // coupling is written down here.
+// isOperationKind reports whether an entity Kind is call-target shaped —
+// the scoped port of internal/resolve/refs.go's operationKindFamily
+// (issue #6141). Both the raw kind and its SCOPE.-trimmed form are
+// consulted, mirroring the dual-indexing the corpus-wide resolver applies,
+// so a hypothetical "SCOPE.Method" still classifies as an operation.
+//
+// Kept as a literal list rather than importing internal/resolve because
+// that package depends on the extractor types and importing it here would
+// close a cycle. The list is pinned against drift by
+// TestResolveScoped_LeafTier_OperationKindsStillBind_6141, which walks the
+// same four kinds the resolve-side test walks.
+func isOperationKind(kind string) bool {
+	switch strings.TrimPrefix(kind, "SCOPE.") {
+	case "Operation", "Function", "Method":
+		return true
+	}
+	return false
+}
+
 func relWantsMemberTier(r *graph.Relationship) bool {
 	if r.ToID == "" || isHexID(r.ToID) || strings.IndexByte(r.ToID, ':') >= 0 {
 		return false
@@ -189,6 +222,8 @@ func buildMemberIndexes(newEntities, existingEntities []graph.Entity) *memberInd
 		byPackageMember: map[string]map[string]map[string]string{},
 		leafByFile:      map[string]map[string]string{},
 		leafByPkg:       map[string]map[string]string{},
+		leafByFileOp:    map[string]map[string]string{},
+		leafByPkgOp:     map[string]map[string]string{},
 		callerLoc:       map[string]callerLocation{},
 	}
 
@@ -243,6 +278,26 @@ func buildMemberIndexes(newEntities, existingEntities []graph.Entity) *memberInd
 				idx.leafByPkg[dir] = pkgLeaf
 			}
 			put(pkgLeaf, member, e.ID)
+
+			// #6141 — operation-only twins, probed ahead of the two above.
+			// A field never enters these, so it can no longer trip the
+			// ambiguity guard against a real operation.
+			if !isOperationKind(e.Kind) {
+				continue
+			}
+			fileOp := idx.leafByFileOp[file]
+			if fileOp == nil {
+				fileOp = map[string]string{}
+				idx.leafByFileOp[file] = fileOp
+			}
+			put(fileOp, member, e.ID)
+
+			pkgOp := idx.leafByPkgOp[dir]
+			if pkgOp == nil {
+				pkgOp = map[string]string{}
+				idx.leafByPkgOp[dir] = pkgOp
+			}
+			put(pkgOp, member, e.ID)
 		}
 	}
 	scan(existingEntities)
@@ -396,14 +451,50 @@ func (idx *memberIndexes) lookupLeaf(r *graph.Relationship, callerEndpoint strin
 	if !strings.EqualFold(r.Kind, "CALLS") {
 		return "", false
 	}
-	// Tier 2 — same file, any scope.
+	// #6141 — the operation preference is applied WITHIN each tier, never
+	// ACROSS them: (fileOp, fileAny) and only then (pkgOp, pkgAny).
+	//
+	// The distinction is load-bearing and was got wrong first time round.
+	// Probing both operation indexes up front — fileOp, pkgOp, fileAny,
+	// pkgAny — reaches into a SIBLING FILE for an operation instead of
+	// binding a same-leaf-named member in the caller's own file, which is
+	// the opposite of what internal/resolve does and of what every
+	// surrounding tier does (locality first). Measured on a randomized
+	// differential: the across-tiers order changed 6,616 of ~200,000
+	// bindings; the within-tier order changes 0 and keeps all the gains.
+	//
+	// This resolver exists to agree with internal/resolve on the same
+	// source — divergence here means a full rebuild and an incremental
+	// build produce different graphs, reachable in ordinary code (a Ruby
+	// `attr_accessor :owner` beside a sibling class's `def owner`).
+	// Pinned by TestResolveScoped_LeafTier_PreferenceIsWithinTierNotAcrossTiers_6141
+	// and its twin in internal/resolve.
+	//
+	// An ambiguous operation hit still refuses (returns handled) rather
+	// than falling through to the kind-blind twin: two real operations
+	// contesting the name is not made resolvable by adding fields to the
+	// contest.
+
+	// Tier 2 — same file: operations first, then any scope.
+	if id, ok := idx.leafByFileOp[loc.file][member]; ok {
+		if id == ambiguous {
+			return "", true
+		}
+		return id, true
+	}
 	if id, ok := idx.leafByFile[loc.file][member]; ok {
 		if id == ambiguous {
 			return "", true
 		}
 		return id, true
 	}
-	// Tier 3 — same package directory, any scope. The #6090-residual tier.
+	// Tier 3 — same package directory. The #6090-residual tier.
+	if id, ok := idx.leafByPkgOp[loc.dir][member]; ok {
+		if id == ambiguous {
+			return "", true
+		}
+		return id, true
+	}
 	if id, ok := idx.leafByPkg[loc.dir][member]; ok {
 		if id == ambiguous {
 			return "", true

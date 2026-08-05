@@ -135,6 +135,7 @@ func indexParityDiff(a, b Index) []string {
 	cmp("byQualifiedName", a.byQualifiedName, b.byQualifiedName)
 	cmp("byMember", a.byMember, b.byMember)
 	cmp("byPackageMember", a.byPackageMember, b.byPackageMember)
+	cmp("memberFamily", a.memberFamily, b.memberFamily)
 	cmp("byPackageOperation", a.byPackageOperation, b.byPackageOperation)
 	cmp("byPackageComponent", a.byPackageComponent, b.byPackageComponent)
 	cmp("byNamespaceMember", a.byNamespaceMember, b.byNamespaceMember)
