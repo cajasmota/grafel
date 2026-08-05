@@ -88,7 +88,43 @@
 // re-keyed rather than deleted because the fix moved its bound target without
 // closing it. A fix's own tests could not have drawn that boundary.
 //
-// Refs #6129, #6037, #6094, #6123, #6083, #6128.
+// WHAT THIS GATE CANNOT SEE
+// ─────────────────────────
+// It is relied on as though it were total. It is not, and the list below is
+// concrete rather than a disclaimer — each item has been demonstrated, not
+// supposed. Read it before concluding "the gate is green, therefore the two
+// paths agree".
+//
+//   - ENTITY IDS. Keying on CONTENT is the design (see above) and it means two
+//     graphs whose entities carry DIFFERENT ids compare equal. That is not
+//     hypothetical: the incremental path emitted an endpoint whose id was the
+//     literal string "http:GET:/cpthings" where a full rebuild had a hex, and
+//     this gate reported nothing. It surfaced only because the flow pass
+//     embeds the id as TEXT in entry_id / chain / branches_dag, i.e. by
+//     accident. Fixed in #6150 — but the blind spot is structural and remains.
+//
+//   - CANONICAL SORTEDNESS of the entity slice. parity.Compare is multiset-
+//     based, so ORDER is invisible to it — while graph.fb's `(key)` binary
+//     search behind LookupEntityByID requires ids in canonical order (#5974).
+//     A producer that emits a correct set in the wrong order passes here and
+//     silently breaks lookup. No gate covers this today.
+//
+//   - RelationshipID. Never compared; `relKey` is (endpoints, kind). Two graphs
+//     whose edges carry different relationship ids compare equal.
+//
+//   - EVERYTHING ABOVE THE ENTITY/EDGE LEVEL. Document.Stats, SurpriseEdges,
+//     AlgorithmStats, IndexerVersion, CoverageStatus and IndexedRef/SHA are not
+//     compared at all. Community labels are checked only for entities present
+//     on BOTH sides.
+//
+// Demonstrated, and the reason this section exists: a mutant that split the
+// Pass-2.5 stub index key on its first colon — the #6105/#6123 mis-bind shape —
+// PASSED this gate with an identical tolerated-divergence list. It was caught
+// only by a unit test in internal/extractors. A content-keyed multiset over
+// entities and edges is a strong instrument for one class of defect and blind
+// to several others; pair it with unit tests at the seam being changed.
+//
+// Refs #6129, #6037, #6094, #6123, #6083, #6128, #6150, #5974.
 package main
 
 import (
@@ -375,6 +411,48 @@ CP_OTHER = 12
     def cp_owner(self):
         return 1
 `)
+	// #6150 — the CROSS-FILE handler half of the endpoint shape. The route is
+	// registered in cproutes_delta.js (the delta); the handler it names lives
+	// HERE. Every framework in the corpus that dispatches from a different
+	// module than it implements in — Express + imported controller, Flask
+	// add_url_rule + imported function, DRF router + ViewSet — has this shape,
+	// and the Falcon delta cannot reach it because a Falcon responder is a
+	// method on the class the route registers.
+	//
+	// It is the shape that separates "unresolved" from "DELETED". Per-file
+	// Pass 2.5 stamps `source_handler="Controller:cpListUsers"` on the
+	// synthetic; engine.ResolveHTTPEndpointHandlers DROPS a synthetic whose
+	// source_handler resolves to nothing in the slice it is handed
+	// (`stats.HandlerDropped++`), and a file-scoped call makes "no candidate in
+	// the corpus" and "no candidate in this file" the same condition. Running
+	// that pass file-scoped without a keep guard therefore destroys every
+	// cross-file endpoint on the incremental path — strictly worse than not
+	// running it at all, and invisible to a Falcon-only fixture.
+	dvWriteFile(t, repo, "cpctl_static.js", `function cpListUsers(req, res) {
+  return res.json({ ok: 1 });
+}
+
+module.exports = { cpListUsers };
+`)
+	// #6150 — the CROSS-FILE REBIND shape, and the one that separates the two
+	// wrong answers to an unresolvable endpoint synthetic.
+	//
+	// cpwsgi_delta.py registers `/cpview` against a view IMPORTED from here. A
+	// full rebuild resolves that handler corpus-wide and `bridgeEndpointToHandler`
+	// REBINDS the endpoint's source_file onto the handler's body — so the
+	// endpoint ends up anchored HERE, in an unchanged file, and survives the
+	// delta untouched. The re-extracted registration file then contributes a
+	// SECOND, unresolved copy at its own coordinates unless something notices.
+	//
+	// Measured: full rebuild ONE endpoint at cpview_static.py; incremental TWO.
+	// That duplicate predates #6150 — it reproduces identically with the
+	// endpoint-resolve pass disabled — and it is what
+	// pruneSupersededEndpointSynthetics closes. Nothing in this corpus reached
+	// it before, because Falcon responders are methods on the class the route
+	// registers and Express handlers here resolve to a local binding.
+	dvWriteFile(t, repo, "cpview_static.py", `def cp_view_handler(req):
+    return {"ok": 1}
+`)
 }
 
 // cpDelta writes the SINGLE file that differs between the baseline pass
@@ -406,9 +484,32 @@ CP_OTHER = 12
 //     internal/extractors/incremental.go (see engine.FoldFrameworkClassKinds).
 //     No class had ever appeared in this file's delta, which is the whole reason
 //     the gate stayed green through it.
+//
+//   - `import falcon` + `cp_app = falcon.App()` + `cp_app.add_route(...)` +
+//     the `on_get` responder — #6150. This is the FULL Falcon registration
+//     shape, and every part of it is load-bearing; the fixture reached a
+//     weaker version of it and the gate went quiet on six entities.
+//
+//     `on_get` (not some inert method name) is what makes the responder a
+//     ROUTE and gives the endpoint a verb. `add_route` is what fires falcon's
+//     YAML `relationship_rules` — the ONLY thing in this corpus that produces
+//     a Pass-2.5 STANDALONE relationship, which is a different producer from
+//     the record-embedded edges everything else here exercises. Together they
+//     are what make Pass 2.5 emit an `http_endpoint_definition`, which is what
+//     the flow pass needs to build the `SCOPE.Process` node and its four
+//     dependent edges. `import falcon` reaches the third-party-import path
+//     (#6156).
+//
+//     Before #6150 this shape diverged TWELVE ways from a full rebuild with at
+//     least six distinct causes, and the previous fixture could not see any of
+//     them: naming the probe method something inert and omitting the app
+//     object is functionally an allow-list entry with no filed issue, and the
+//     stale-entry ratchet below structurally CANNOT detect that dodge. Do not
+//     weaken any of these four lines.
 func cpDelta(t *testing.T, repo string, pass int) {
 	t.Helper()
-	dvWriteFile(t, repo, "cphandler_delta.py", fmt.Sprintf(`import cperrs_static
+	dvWriteFile(t, repo, "cphandler_delta.py", fmt.Sprintf(`import falcon
+import cperrs_static
 import cpprod_static
 from cpprod_static import CpProducer
 from cpcfg_static import CP_SETTING
@@ -432,6 +533,7 @@ class CpPlainProbe:
 
 
 cp_app = falcon.App()
+cp_app.add_route("/cpthings", CpPlainProbe())
 
 
 class CpLeafBag:
@@ -440,6 +542,73 @@ class CpLeafBag:
 
 def cp_leaf_call():
     return cp_owner()
+`, pass))
+
+	// The SECOND delta file (#6150). Express router whose handler is
+	// `require`d from cpctl_static.js — see the cpctl_static.js block in
+	// cpStatic for why this shape has to be in the DELTA (a construct in a
+	// static file is carried forward from the baseline full rebuild and
+	// compares equal no matter what re-extraction would have made of it).
+	//
+	// Two changed files still runs incremental: the too-many-changed guard's
+	// limit is far above 2, and dvIncremental fails the test if the run falls
+	// back regardless, so this cannot silently turn the gate vacuous.
+	// THIRD delta file (#6150) — the cross-file REBIND shape. See the
+	// cpview_static.py block in cpStatic for what it separates and why the
+	// registration has to be in the delta.
+	dvWriteFile(t, repo, "cpwsgi_delta.py", fmt.Sprintf(`from flask import Flask
+from cpview_static import cp_view_handler
+
+cp_wsgi = Flask(__name__)
+cp_wsgi.add_url_rule("/cpview", "cp_view_handler", cp_view_handler)
+
+CP_WSGI_PASS = %d
+`, pass))
+
+	// FOURTH and FIFTH delta files (#6150) — the NO-SURVIVOR case, and the only
+	// shape in this corpus that separates the two candidate answers to an
+	// unresolvable endpoint synthetic end-to-end.
+	//
+	// cpapi2_delta.py registers `/cpview2` against a view imported from
+	// cpview2_delta.py, and BOTH are in the delta. A full rebuild resolves the
+	// handler corpus-wide and rebinds the endpoint onto the VIEW's file — but
+	// that file is re-extracted too, so Step 5 evicts the previous graph's copy
+	// and NOTHING survives carrying this endpoint. That is the state in which
+	// the three possible verdicts finally diverge in the persisted graph:
+	//
+	//	DROP        (engine's corpus entry point) — the endpoint is DELETED.
+	//	KEEP+PRUNE  (what ships) — kept at the registration file: ENTITY-LOST
+	//	            for the full rebuild's anchor plus ENTITY-INVENTED for this
+	//	            one, i.e. the route still exists and still names its handler.
+	//	KEEP always — same as above here, but duplicates the endpoint in the
+	//	            cpwsgi_delta.py/cpview_static.py pair above.
+	//
+	// Every other endpoint shape in this corpus is blind to that difference:
+	// /cpusers resolves in-file (the destructured require creates a local
+	// binding), and /cpview has a survivor at cpview_static.py that carries it
+	// whichever way the verdict goes. Without this pair the gate cannot tell
+	// the shipped behaviour from the one the review rejected.
+	dvWriteFile(t, repo, "cpview2_delta.py", fmt.Sprintf(`def cp_view2_handler(req):
+    return {"ok": %d}
+`, pass))
+	dvWriteFile(t, repo, "cpapi2_delta.py", fmt.Sprintf(`from flask import Flask
+from cpview2_delta import cp_view2_handler
+
+cp_api2 = Flask(__name__)
+cp_api2.add_url_rule("/cpview2", "cp_view2_handler", cp_view2_handler)
+
+CP_API2_PASS = %d
+`, pass))
+
+	dvWriteFile(t, repo, "cproutes_delta.js", fmt.Sprintf(`const express = require("express");
+const { cpListUsers } = require("./cpctl_static");
+
+const cpRouter = express.Router();
+cpRouter.get("/cpusers", cpListUsers);
+
+const cpPass = %d;
+
+module.exports = { cpRouter, cpPass };
 `, pass))
 }
 
@@ -576,13 +745,20 @@ var cpKnownPathA = []cpKnown{
 		Contains:       []string{"SCOPE.ExceptionType|exception:CpNotFound"},
 		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
 	},
-	{
-		Issue:          "#6129 (duplicate-row class of #6094 / #6037)",
-		Why:            "The CONTAINS edge to the duplicated entity, duplicated with it.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"→SCOPE.ExceptionType/exception:CpNotFound@<exception>:CONTAINS"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
+	// The CONTAINS edge to that duplicated entity used to be duplicated WITH it,
+	// and had its own entry here. FIXED — the entry went STALE and was removed
+	// by the ratchet.
+	//
+	// It was collateral of the record→graph seam honouring EntityRecord.ID
+	// instead of deriving one (the #6150 fix in entityRecordToGraphEntity): the
+	// two copies of the exception record carried different ids, so their
+	// CONTAINS edges had different RelationshipIDs and the seenRel guard could
+	// not collapse them. Deriving the id makes both edges the same edge and one
+	// of them is dropped, matching the full rebuild exactly.
+	//
+	// The ENTITY-MULTIPLICITY entry above still reproduces: the duplicate
+	// exception ROW is a separate defect from the id it carried, and only the
+	// second one is closed.
 	// Re-keyed (not deleted) when the fixture grew for #6141/#6148/#6150: the
 	// divergence still reproduces and is still the same one — the unassigned
 	// community carries exactly ONE extra member, the duplicate row above — but
@@ -591,7 +767,7 @@ var cpKnownPathA = []cpKnown{
 	// moves whenever a fixture file is added. Anything other than +1 is a
 	// different divergence and must fail.
 	//
-	// This entry has now been re-keyed three times for fixture growth and zero
+	// This entry has now been re-keyed six times for fixture growth and zero
 	// times for a change in the defect, which is a smell in the KEY, not in the
 	// entry: it is the only allow entry keyed on an absolute count rather than on
 	// a shape. Keying it on the DELTA would end the churn and would still fail on
@@ -603,7 +779,184 @@ var cpKnownPathA = []cpKnown{
 		Issue:    "#6129 (duplicate-row class of #6094 / #6037)",
 		Why:      "Downstream of the duplicated entity: the unassigned community carries one extra member.",
 		Bucket:   cpCommunitySet,
-		Contains: []string{"community ∅: 35 member(s) in A, 36 in B"},
+		Contains: []string{"community ∅: 67 member(s) in A, 68 in B"},
+	},
+
+	// ── #6156: the full rebuild orphans a THIRD-PARTY import's IMPORTS edge ──
+	//
+	// The only divergence the #6150 fixture reaches where the INCREMENTAL answer
+	// is the correct one, which is why it is allow-listed rather than "fixed":
+	// closing it on this side would mean teaching Path A to dangle.
+	//
+	// `import falcon` names a package with no in-repo definition. BOTH graphs
+	// contain the `SCOPE.External|falcon` entity (measured — `external.Synthesize`
+	// runs on both paths). The FULL rebuild's IMPORTS edge points at the hex id
+	// of the import PLACEHOLDER that PruneImportPlaceholders has already removed,
+	// so it dangles; Path A binds the same edge to the live `ext:falcon` node.
+	//
+	// #6131's repoint does not cover it: it re-points at the entity the pipeline
+	// already resolved that import to, and for a third-party module there is
+	// nothing resolved at prune time — the SCOPE.External node is synthesised
+	// afterwards. See #6156 for the log line (`rels_orphaned=2`) and the fix
+	// direction.
+	{
+		Issue:    "#6156",
+		Why:      "Path A binds the third-party import to the live SCOPE.External node; the FULL rebuild dangles on the pruned placeholder. Incremental is the correct side. Unfixed, and not fixable from the incremental path.",
+		Bucket:   cpEdgeInvented,
+		Contains: []string{"→SCOPE.External/falcon@", ":IMPORTS"},
+	},
+	{
+		Issue:    "#6156",
+		Why:      "The LOST half of the same orphan: the full rebuild's dangling endpoint on the pruned import placeholder.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"SCOPE.Component/cphandler_delta.py@cphandler_delta.py→«unbound»", ":IMPORTS"},
+	},
+	{
+		// A CONSEQUENCE of the row above, not a second defect: module
+		// aggregation skips any edge whose endpoint resolves to no entity, so
+		// the full rebuild's orphaned IMPORTS edge is not counted and Path A's
+		// bound one is. Recorded as such because #6129 filed the same shape as
+		// "an extra DEPENDS_ON row" and it was a consequence then too.
+		// NET OF TWO FILED CAUSES, and it is kept keyed on the exact numbers
+		// so that fixing either one moves it and forces a re-derivation rather
+		// than silently continuing to match:
+		//   #6156 pushes B UP by 2 — module aggregation cannot count the full
+		//         rebuild's two orphaned third-party IMPORTS edges (falcon,
+		//         express), but counts Path A's bound ones;
+		//   #6159 pushes B DOWN by 1 — Path A has no ENTRY_POINT_OF edge from
+		//         the /cpview2 endpoint to its process node, because it never
+		//         resolved the handler and the flow was never built.
+		// Net +1 for B.
+		Issue:          "#6156 + #6159 (net; see the comment)",
+		Why:            "Module-aggregation weight is the net of the orphaned third-party imports (#6156, +2) and the flow edges the incremental graph lacks (#6159, -1).",
+		Bucket:         cpEdgeProps,
+		Contains:       []string{"Module/test-repo@→Module/_external@:DEPENDS_ON"},
+		DetailContains: []string{`weight "6"≠"7"`},
+	},
+	// ── #6159, the NO-SURVIVOR case: kept, but at the registration file ──
+	//
+	// `cpapi2_delta.py` registers /cpview2 against a view in `cpview2_delta.py`
+	// and BOTH are in the delta, so nothing survives carrying the endpoint. The
+	// full rebuild resolves the handler corpus-wide and rebinds the endpoint
+	// onto the VIEW's file; Path A cannot resolve it from one file's records and
+	// keeps it, unenriched, at the REGISTRATION file.
+	//
+	// This block is where the shipped verdict is visible end-to-end. Under the
+	// rejected DROP behaviour — and under a prune that dropped the last copy —
+	// the ENTITY-INVENTED row below simply is not there, and its entry goes
+	// stale. Every other row in the block is downstream of the same single
+	// cause: no bind ⇒ no IMPLEMENTS ⇒ no process flow ⇒ none of its edges.
+	{
+		Issue:    "#6159",
+		Why:      "The kept copy: Path A anchors the unresolvable endpoint at the registration file. This row is the difference between keeping the route and deleting it.",
+		Bucket:   cpEntityInvented,
+		Contains: []string{"http_endpoint_definition|http:GET:/cpview2", "cpapi2_delta.py"},
+	},
+	{
+		Issue:    "#6159",
+		Why:      "The full rebuild's anchor for the same endpoint, on the handler's file after the #2678 rebind.",
+		Bucket:   cpEntityLost,
+		Contains: []string{"http_endpoint_definition|http:GET:/cpview2", "cpview2_delta.py"},
+	},
+	{
+		Issue:    "#6159",
+		Why:      "Module CONTAINS for the kept copy.",
+		Bucket:   cpEdgeInvented,
+		Contains: []string{"→http_endpoint_definition/http:GET:/cpview2@cpapi2_delta.py:CONTAINS"},
+	},
+	{
+		Issue:    "#6159",
+		Why:      "Module CONTAINS for the full rebuild's copy.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"→http_endpoint_definition/http:GET:/cpview2@cpview2_delta.py:CONTAINS"},
+	},
+	{
+		Issue:    "#6159",
+		Why:      "No bind ⇒ no IMPLEMENTS bridge from the handler to the endpoint.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"SCOPE.Operation/cp_view2_handler@cpview2_delta.py→http_endpoint_definition/", ":IMPLEMENTS"},
+	},
+	{
+		Issue:    "#6159",
+		Why:      "No IMPLEMENTS ⇒ the flow pass never builds the process node for this endpoint.",
+		Bucket:   cpEntityLost,
+		Contains: []string{"SCOPE.Process|http:GET:/cpview2 → cp_view2_handler"},
+	},
+	{
+		Issue:    "#6159",
+		Why:      "The absent process node's containment edge.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"→SCOPE.Process/http:GET:/cpview2 → cp_view2_handler@cpview2_delta.py:CONTAINS"},
+	},
+	{
+		Issue:    "#6159",
+		Why:      "The absent process node's STEP_IN_PROCESS edge to the handler.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"SCOPE.Process/http:GET:/cpview2 → cp_view2_handler@cpview2_delta.py→SCOPE.Operation/"},
+	},
+	{
+		Issue:    "#6159",
+		Why:      "The absent process node's STEP_IN_PROCESS edge to the endpoint.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"SCOPE.Process/http:GET:/cpview2 → cp_view2_handler@cpview2_delta.py→http_endpoint_definition/"},
+	},
+	{
+		Issue:    "#6159",
+		Why:      "The absent process node's ENTRY_POINT_OF edge.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"http_endpoint_definition/http:GET:/cpview2@cpview2_delta.py→SCOPE.Process/"},
+	},
+	{
+		// Single-cause, unlike its test-repo→_external twin above: B is lower
+		// by exactly the two STEP_IN_PROCESS edges the missing process node
+		// would have contributed from _external into test-repo.
+		Issue:          "#6159",
+		Why:            "Module-aggregation weight, short by the two STEP_IN_PROCESS edges of the process node Path A never built.",
+		Bucket:         cpEdgeProps,
+		Contains:       []string{"Module/_external@→Module/test-repo@:DEPENDS_ON"},
+		DetailContains: []string{`weight "11"≠"9"`},
+	},
+	// The SAME #6156 defect on the second third-party import in the corpus.
+	// Listed separately rather than folded into a looser key on the entries
+	// above: one entry matching both would go on matching if only one of them
+	// stopped reproducing, which is precisely the blindness the ratchet exists
+	// to prevent.
+	{
+		Issue:    "#6156",
+		Why:      "Second instance, JS: Path A binds the express require to the live SCOPE.External node; the FULL rebuild dangles on the pruned placeholder.",
+		Bucket:   cpEdgeInvented,
+		Contains: []string{"→SCOPE.External/express@", ":IMPORTS"},
+	},
+	{
+		Issue:    "#6156",
+		Why:      "The LOST half of the express orphan.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"SCOPE.Component/cproutes_delta.js@cproutes_delta.js→«unbound»", ":IMPORTS"},
+	},
+
+	// ── #6159: a cross-file handler leaves its endpoint unenriched ──
+	//
+	// The residual of #6150's file-scoped enrichment, and NOT a regression:
+	// before #6150 this path ran neither enrichment pass, so the endpoint
+	// carried none of these properties either. What changed is that the gate
+	// can now see it.
+	//
+	// `cpRouter.get("/cpusers", cpListUsers)` names a handler defined in
+	// cpctl_static.js. engine.ApplyResponseShapesCorpus needs the HANDLER'S
+	// BODY to extract the response shape, and the reader this path supplies
+	// serves only the file being re-extracted — so the endpoint survives
+	// (#6150's keep guard) but without response_keys / status_codes /
+	// response_keys_known.
+	//
+	// The endpoint itself is present and correctly identified on both sides:
+	// this is a property gap, not a loss, and it is listed as ENTITY-FIELDS
+	// rather than ENTITY-LOST for exactly that reason.
+	{
+		Issue:          "#6159",
+		Why:            "File-scoped response-shape extraction cannot read a handler body in another file. Unfixed; needs the previous graph's entities as candidates.",
+		Bucket:         cpEntityFields,
+		Contains:       []string{"http_endpoint_definition|http:GET:/cpusers"},
+		DetailContains: []string{"response_keys_known"},
 	},
 
 	// ── #6129 / #6098 family: over-counted DEPENDS_ON weight ──
@@ -696,6 +1049,120 @@ var cpKnownPathB = []cpKnown{
 		Why:      "The LOST half of the same missed bind: the file component the full rebuild binds.",
 		Bucket:   cpEdgeLost,
 		Contains: []string{"→SCOPE.Component/cpcfg_static.py@cpcfg_static.py", ":IMPORTS"},
+	},
+
+	// ── #6129, more instances of the SAME duplicated file→external row ──
+	//
+	// The entry above this block pins the shape on cphandler_delta.py. The
+	// #6150 fixture growth added two more registration files, and each
+	// reproduces it against its own imports. Same defect, more instances — so
+	// they carry the same issue number, but they are separate ENTRIES rather
+	// than one loosened key, because a fix that repaired only one of the three
+	// must fail the ratchet on the other two.
+	{
+		Issue:          "#6129",
+		Why:            "Same duplicated file→external DEPENDS_ON, from the JS registration file.",
+		Bucket:         cpEdgeMult,
+		Contains:       []string{"«unbound»scope:component:file:cproutes_delta.js→"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
+	},
+	{
+		Issue:          "#6129",
+		Why:            "Same duplicated file→external DEPENDS_ON, from the Flask registration file.",
+		Bucket:         cpEdgeMult,
+		Contains:       []string{"«unbound»scope:component:file:cpwsgi_delta.py→"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
+	},
+	{
+		Issue:          "#6129",
+		Why:            "Same duplicated file→external DEPENDS_ON, from the second Flask registration file (the no-survivor pair).",
+		Bucket:         cpEdgeMult,
+		Contains:       []string{"«unbound»scope:component:file:cpapi2_delta.py→"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
+	},
+	{
+		Issue:          "#6129",
+		Why:            "Same duplication reaching a framework-typed importer rather than a file component.",
+		Bucket:         cpEdgeMult,
+		Contains:       []string{"«unbound»Model:Flask→SCOPE.External/Flask@:DEPENDS_ON"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
+	},
+
+	// ── #6160: a REBOUND endpoint and its whole flow subtree, twice ──
+	//
+	// engine.bridgeEndpointToHandler rebinds a resolved synthetic's source_file
+	// onto the handler's BODY (#2678). An endpoint registered in a CHANGED file
+	// but resolved to a handler in an UNCHANGED one therefore ends up anchored
+	// in the unchanged file — and is both carried forward from the previous
+	// graph AND re-produced by this run. Both copies derive the same id, so it
+	// is one entity emitted twice, and the flow pass builds a second
+	// SCOPE.Process on top of it.
+	//
+	// Path A is clean on the identical fixture (it dedupes by reEmittedIDs and
+	// seenNewRel), which is why this is on Path B's list alone. Reproduced
+	// byte-identically at 617aeba6c — #6150 made the fixture reach it, it did
+	// not cause it.
+	{
+		Issue:          "#6160",
+		Why:            "Path B emits the rebound endpoint's IMPLEMENTS bridge twice — once in its synthesis-time form, once resolved. Unfixed.",
+		Bucket:         cpEdgeMult,
+		Contains:       []string{"→http_endpoint_definition/http:GET:/cpview@cpview_static.py:IMPLEMENTS"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
+	},
+	{
+		Issue:          "#6160",
+		Why:            "The property evidence for the row above: the duplicate pair is the same bridge at two pipeline stages (synthesis_time_bridge + synthesis_resolved).",
+		Bucket:         cpEdgeProps,
+		Contains:       []string{"→http_endpoint_definition/http:GET:/cpview@cpview_static.py:IMPLEMENTS"},
+		DetailContains: []string{"http_endpoint_synthesis_time_bridge"},
+	},
+	{
+		Issue:          "#6160",
+		Why:            "The process-flow node built on the duplicated endpoint, duplicated with it.",
+		Bucket:         cpEntityMult,
+		Contains:       []string{"SCOPE.Process|http:GET:/cpview → cp_view_handler"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
+	},
+	{
+		Issue:          "#6160",
+		Why:            "Its STEP_IN_PROCESS edge to the handler operation.",
+		Bucket:         cpEdgeMult,
+		Contains:       []string{"SCOPE.Process/http:GET:/cpview → cp_view_handler@cpview_static.py→SCOPE.Operation/cp_view_handler@cpview_static.py:STEP_IN_PROCESS"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
+	},
+	{
+		Issue:          "#6160",
+		Why:            "Its STEP_IN_PROCESS edge to the endpoint.",
+		Bucket:         cpEdgeMult,
+		Contains:       []string{"SCOPE.Process/http:GET:/cpview → cp_view_handler@cpview_static.py→http_endpoint_definition/"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
+	},
+	{
+		Issue:          "#6160",
+		Why:            "Its ENTRY_POINT_OF edge.",
+		Bucket:         cpEdgeMult,
+		Contains:       []string{":ENTRY_POINT_OF"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
+	},
+	{
+		Issue:    "#6160",
+		Why:      "Downstream of the duplicated Process entity: the unassigned community carries one extra member. Keyed on the absolute pair, so it moves with fixture size — see the same note on Path A's copy.",
+		Bucket:   cpCommunitySet,
+		Contains: []string{"community ∅: 69 member(s) in A, 70 in B"},
+	},
+
+	// ── #6159, shared with Path A: cross-file handler, unenriched endpoint ──
+	//
+	// Listed separately from Path A's entry because the two paths are different
+	// code: if one is fixed and the other is not, the stale-entry check must
+	// fail on exactly the path that was fixed. Reproduced at 617aeba6c, so it
+	// is a residual of file-scoped enrichment on BOTH paths, not a regression.
+	{
+		Issue:          "#6159",
+		Why:            "Response-shape extraction does not reach a handler body in another file. Unfixed.",
+		Bucket:         cpEntityFields,
+		Contains:       []string{"http_endpoint_definition|http:GET:/cpusers"},
+		DetailContains: []string{"response_keys_known"},
 	},
 }
 

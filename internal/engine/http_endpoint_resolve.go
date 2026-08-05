@@ -81,12 +81,19 @@ var resolverKindEquivalents = map[string][]string{
 // Exposed so cmd/grafel can log a stats line analogous to the
 // import-aware resolver line.
 type ResolveHTTPEndpointStats struct {
-	Synthetics       int // total http_endpoint* records seen
-	HandlerResolved  int // source_handler resolved → IMPLEMENTS edge emitted
-	HandlerDropped   int // synthetics dropped because source_handler unresolved
-	NoHandlerProp    int // synthetics with no source_handler property (kept as-is)
-	CallerResolved   int // #754: source_caller resolved → FETCHES edge emitted
-	CallerUnresolved int // #754: source_caller present but not found in-file
+	Synthetics      int // total http_endpoint* records seen
+	HandlerResolved int // source_handler resolved → IMPLEMENTS edge emitted
+	HandlerDropped  int // synthetics dropped because source_handler unresolved
+	NoHandlerProp   int // synthetics with no source_handler property (kept as-is)
+	// #6150 — synthetics a FILE-SCOPED caller could not resolve and therefore
+	// KEPT rather than dropped, source_handler intact. Always 0 on the
+	// corpus-scoped entry point. A non-zero value on the incremental path is
+	// the normal, expected count of cross-file handlers in the delta; it is
+	// surfaced so that "the endpoint survived unenriched" stays distinguishable
+	// from "the endpoint resolved" in the run log.
+	HandlerUnresolvedKept int
+	CallerResolved        int // #754: source_caller resolved → FETCHES edge emitted
+	CallerUnresolved      int // #754: source_caller present but not found in-file
 	// #1217 migration counters.
 	DefinitionsMigrated int // entities that were http_endpoint (legacy) → definition
 	CallsMigrated       int // entities that were http_endpoint (legacy) → call
@@ -173,6 +180,47 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 // caller retains the pre-call view, the compaction will be visible to them as
 // scrambled contents. If you need the input intact, hand over a copy.
 func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag string) ([]types.EntityRecord, ResolveHTTPEndpointStats) {
+	return resolveHTTPEndpointHandlers(merged, repoTag, false)
+}
+
+// ResolveHTTPEndpointHandlersFileScoped is ResolveHTTPEndpointHandlersWithRepo
+// for a caller whose `merged` is NOT the whole corpus — today, the incremental
+// path's one re-extracted file (#6150).
+//
+// It differs in exactly one verdict. The corpus-scoped pass DROPS a synthetic
+// whose `source_handler` matches no record in `merged`, and on a corpus-wide
+// slice that is right: the endpoint names a handler that does not exist
+// anywhere, and keeping it would leave an orphan http_endpoint node. On a
+// ONE-FILE slice the same test means something completely different — "the
+// handler is not in THIS file" — and a handler in another file is the ordinary
+// arrangement, not a defect: Express router + imported controller, Flask
+// `add_url_rule` + imported function, DRF router + ViewSet. Dropping there
+// DESTROYS live endpoints, which is strictly worse than not running the pass.
+//
+// So this entry point KEEPS such a synthetic, with `source_handler` intact, and
+// counts it in HandlerUnresolvedKept. That is not new policy: the same function
+// already refuses to drop in the two other situations where its evidence is
+// admittedly partial — #2851 (a `handler_file` hint matched nothing in that
+// file) and #3426 (every global candidate is a non-app/tooling file) — and both
+// give the same reason, that the handler IS attributed via the property and the
+// route must be preserved rather than destroyed for want of a cross-link.
+//
+// The MALFORMED-reference drop (a `source_handler` that does not parse as
+// `Kind:Name`) and the Spring `Route:<path>` placeholder drop are NOT relaxed:
+// neither verdict depends on how much of the corpus the caller could see.
+//
+// Every ownership rule of ResolveHTTPEndpointHandlersWithRepo applies unchanged
+// — it consumes `merged`, edits in place and compacts over the same backing
+// array. Read only the returned slice.
+func ResolveHTTPEndpointHandlersFileScoped(merged []types.EntityRecord, repoTag string) ([]types.EntityRecord, ResolveHTTPEndpointStats) {
+	return resolveHTTPEndpointHandlers(merged, repoTag, true)
+}
+
+// resolveHTTPEndpointHandlers is the shared implementation. keepUnresolved
+// selects the file-scoped verdict on the one drop branch whose meaning depends
+// on how much of the corpus `merged` contains; see
+// ResolveHTTPEndpointHandlersFileScoped.
+func resolveHTTPEndpointHandlers(merged []types.EntityRecord, repoTag string, keepUnresolved bool) ([]types.EntityRecord, ResolveHTTPEndpointStats) {
 	var stats ResolveHTTPEndpointStats
 
 	// (kind, name, sourceFile) → index into `merged`.
@@ -620,6 +668,15 @@ func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag st
 				// handler_file-hint miss path (#2851).
 				if hasGlobalCandidate(globalMulti, knKey{hk, hn}, resolverKindEquivalents[hk]) {
 					stats.NoHandlerProp++
+					continue
+				}
+				// #6150 — THE scope-dependent verdict. "No candidate at all" is
+				// a genuine orphan only when `merged` is the whole corpus. A
+				// file-scoped caller cannot tell that apart from "the handler
+				// is in another file", so it keeps the endpoint (unenriched,
+				// source_handler intact) instead of destroying it.
+				if keepUnresolved {
+					stats.HandlerUnresolvedKept++
 					continue
 				}
 				stats.HandlerDropped++

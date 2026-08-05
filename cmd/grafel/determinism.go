@@ -30,29 +30,15 @@ func sortClassifiedFiles(cs []classifiedFile) {
 // sortEntityRecords orders an EntityRecord slice by the tuple
 // (Kind, Name, SourceFile, StartLine, EndLine, Signature). This is the same
 // tuple BuildIndex uses to disambiguate, so first-writer-wins is now
-// deterministic. We use sort.SliceStable so records that compare equal keep
-// their relative arrival order (defence in depth — should be rare in
-// practice).
+// deterministic.
+//
+// #6150 — the comparator itself moved to types.SortEntityRecordsCanonical so
+// the incremental producer in internal/extractors sorts by the SAME order this
+// path does instead of carrying a third copy that can drift. Same precedent as
+// #5974 for the emission sort. Behaviour here is unchanged; this is a
+// delegation, not a re-ordering.
 func sortEntityRecords(rs []types.EntityRecord) {
-	sort.SliceStable(rs, func(i, j int) bool {
-		a, b := &rs[i], &rs[j]
-		if a.Kind != b.Kind {
-			return a.Kind < b.Kind
-		}
-		if a.Name != b.Name {
-			return a.Name < b.Name
-		}
-		if a.SourceFile != b.SourceFile {
-			return a.SourceFile < b.SourceFile
-		}
-		if a.StartLine != b.StartLine {
-			return a.StartLine < b.StartLine
-		}
-		if a.EndLine != b.EndLine {
-			return a.EndLine < b.EndLine
-		}
-		return a.Signature < b.Signature
-	})
+	types.SortEntityRecordsCanonical(rs)
 }
 
 // sortRelationshipRecords orders Pass 2.5 standalone relationships by
