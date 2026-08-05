@@ -102,7 +102,34 @@ func main() {
 	// Silent on success; prints one-line warning to stderr on drift.
 	// Skipped when the user is explicitly running `grafel doctor` (which
 	// runs its own full check) and when GRAFEL_SKIP_QUICK_DOCTOR=1.
-	if len(os.Args) < 2 || os.Args[1] != "doctor" {
+	//
+	// Also skipped for `watch` (#6179 F2). Two reasons, both about the
+	// supervised watcher path:
+	//
+	//  1. It is dead weight there. `grafel watch` is launched by launchd/
+	//     systemd, not by a human at a prompt, so a drift warning on its
+	//     stderr goes to watcher.err.log where nobody reads it — and at 140
+	//     repos it is 140 daemon /healthz probes fired simultaneously at
+	//     login, against a daemon that is itself still starting.
+	//  2. It is roughly half of the watcher's signal-handling blind spot.
+	//     runWatch installs the SIGTERM handler that converts a stop request
+	//     into a clean exit 0; until it is installed, a SIGTERM kills the
+	//     process by default action, which both launchd and systemd read as
+	//     an unsuccessful exit and respawn.
+	//
+	//     Measured (5 runs per delay, counting exit-0): before this change the
+	//     window was ~130-150ms; after it, ~60-80ms. So this probe was about
+	//     half of it, NOT essentially all of it — the residual ~70ms is Go
+	//     runtime init, cobra command-tree construction and flag parsing, all
+	//     of which happen before runWatch is entered and cannot be moved
+	//     behind an earlier signal.Notify without arming signals in main().
+	//
+	//     That residual is deliberately left alone. The daemon's reaper only
+	//     targets processes it enumerated via `ps`, so it can never signal a
+	//     70ms-old process, and this was never the reported failure. Arming
+	//     signals in main() to close it would trade a real, global complexity
+	//     cost against a window nothing is known to reach.
+	if len(os.Args) < 2 || (os.Args[1] != "doctor" && os.Args[1] != "watch") {
 		runQuickDoctorHook()
 	}
 	cli.Execute(cli.Hooks{

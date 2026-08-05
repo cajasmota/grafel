@@ -15,6 +15,74 @@ import (
 	"strings"
 )
 
+// ThrottleIntervalSeconds is the minimum number of seconds launchd must let
+// elapse between two launches of the same watcher label (issue #6179).
+//
+// Why a value at all: with the key absent, launchd applies its own 10-second
+// default. On a 140-repo machine that is 140 labels each eligible to relaunch
+// every 10s — a ceiling of ~14 process launches per second, sustained forever,
+// which is what produced the unbroken stream of macOS Background Activity
+// notifications.
+//
+// Why 60: it has to clear three bars.
+//   - It must exceed launchd's 10s default, or it buys nothing.
+//   - It must be at least the watcher's own default poll interval (30s, see
+//     newWatchCmd's --interval): relaunching a watcher faster than one duty
+//     cycle cannot make progress, it only pays process-startup cost.
+//   - It must still recover a genuinely crashed watcher promptly. 60s is one
+//     minute of lost reactivity on a poll loop that already tolerates 30s.
+//
+// 60s also lowers the worst-case fleet-wide launch ceiling from ~14/s to
+// ~2.3/s at 140 repos.
+//
+// ThrottleInterval is a flat floor, NOT a backoff, and launchd never abandons a
+// KeepAlive job. On its own it therefore reduces the AMPLITUDE of a genuine
+// crash loop (panic, OOM, a BinPath that a package manager moved) but not its
+// DURATION: 140 crash-looping labels would relaunch at ~2.3/s indefinitely.
+// That remaining unbounded-duration case is closed on the watcher side instead,
+// by the rapid-restart detector in internal/cli/watch.go (watchExitFlapping),
+// which gives up and exits 0 — launchd has no equivalent of systemd's
+// StartLimitBurst, so the give-up has to live in the process.
+const ThrottleIntervalSeconds = 60
+
+// RestartSecSeconds and the StartLimit* values below are the systemd
+// counterparts of ThrottleIntervalSeconds (#6179 F4).
+//
+// The unit already said Restart=on-failure, so the exit-status half of the fix
+// (deliberate give-ups now exit 0) lands on Linux for free. The rate-limit half
+// did not: RestartSec=5 with 140 units is ~28 restarts/second, worse than
+// unfixed macOS. RestartSec moves to the same 60s floor for the same reasons.
+//
+// Raising RestartSec alone would have REMOVED Linux's only give-up, though.
+// systemd's defaults (StartLimitBurst=5 within StartLimitIntervalSec=10s)
+// eventually push a crash-looping unit into a failed state — but five restarts
+// 60s apart span 300s, so the 10s window can never trip and the unit would
+// restart forever. The limit window is therefore set explicitly to an hour, so
+// StartLimitBurst still means something at the new interval.
+const (
+	RestartSecSeconds         = 60
+	StartLimitIntervalSeconds = 3600
+	StartLimitBurst           = 5
+)
+
+// xmlEsc escapes s for inclusion in XML character data or an XML attribute.
+//
+// #6179 F5: Group names and repo paths are user-supplied, and the plist/task
+// bodies below are assembled by string concatenation. A group named `R&D`, or
+// any path containing `&`, `<` or `>`, previously produced a body that fails
+// `plutil -lint` ("unknown ampersand-escape sequence") — launchd then silently
+// rejects the job, so the watcher never runs and nothing says why.
+//
+// Note this escapes the RENDERED body only. Unit.Label() is deliberately left
+// alone: the label is also the plist FILENAME and launchd's job identity, so
+// changing how it is derived would orphan every already-installed unit.
+func xmlEsc(s string) string {
+	var b strings.Builder
+	// EscapeText writes to an io.Writer and never fails on a strings.Builder.
+	_ = xml.EscapeText(&b, []byte(s))
+	return b.String()
+}
+
 // Unit describes a single watcher unit to install.
 type Unit struct {
 	Group   string
@@ -30,16 +98,9 @@ func (u Unit) Label() string {
 
 // LaunchdPlist returns the macOS launchd .plist body for a watcher.
 func LaunchdPlist(u Unit) string {
-	type pl struct {
-		XMLName     xml.Name `xml:"dict"`
-		Label       string
-		ProgramArgs []string
-		WorkingDir  string
-		RunAtLoad   bool
-		KeepAlive   bool
-		StdOutPath  string
-		StdErrPath  string
-	}
+	// (An unused `pl` struct used to sit here describing the plist keys; it was
+	// never marshalled and drifted out of sync with the hand-built body below,
+	// claiming an unconditional KeepAlive bool. Removed with #6179.)
 	logDir := filepath.Join(u.Repo, ".grafel", "logs")
 	body := strings.Builder{}
 	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
@@ -47,45 +108,74 @@ func LaunchdPlist(u Unit) string {
 	body.WriteString(`<plist version="1.0">` + "\n")
 	body.WriteString("<dict>\n")
 	body.WriteString("  <key>Label</key>\n")
-	body.WriteString(fmt.Sprintf("  <string>%s</string>\n", u.Label()))
+	body.WriteString(fmt.Sprintf("  <string>%s</string>\n", xmlEsc(u.Label())))
 	body.WriteString("  <key>ProgramArguments</key>\n")
 	body.WriteString("  <array>\n")
-	body.WriteString(fmt.Sprintf("    <string>%s</string>\n", u.BinPath))
+	body.WriteString(fmt.Sprintf("    <string>%s</string>\n", xmlEsc(u.BinPath)))
 	body.WriteString("    <string>watch</string>\n")
-	body.WriteString(fmt.Sprintf("    <string>%s</string>\n", u.Repo))
+	body.WriteString(fmt.Sprintf("    <string>%s</string>\n", xmlEsc(u.Repo)))
 	body.WriteString("  </array>\n")
 	body.WriteString("  <key>RunAtLoad</key><true/>\n")
-	body.WriteString("  <key>KeepAlive</key><true/>\n")
+	// KeepAlive is CONDITIONAL, not unconditional (#6179). `grafel watch` has
+	// deliberate exit paths — the repo path no longer stats, and the
+	// consecutive-index-failure ceiling from #5140 — and it exits 0 on those
+	// (see internal/cli/watch.go's watchExitRespawn table). SuccessfulExit=false
+	// means "respawn only when the last exit was NOT successful", so those
+	// give-ups stay dead and a genuine crash (panic, OOM, signal death) still
+	// comes back. Under the previous <true/> launchd respawned everything
+	// including the give-ups, which is how a single diagnosable failure became a
+	// permanent relaunch loop.
+	body.WriteString("  <key>KeepAlive</key>\n")
+	body.WriteString("  <dict>\n")
+	body.WriteString("    <key>SuccessfulExit</key><false/>\n")
+	body.WriteString("  </dict>\n")
+	// Bound the relaunch rate. Absent this key launchd uses a 10s default; see
+	// ThrottleIntervalSeconds for why 60.
+	body.WriteString("  <key>ThrottleInterval</key>\n")
+	body.WriteString(fmt.Sprintf("  <integer>%d</integer>\n", ThrottleIntervalSeconds))
 	body.WriteString("  <key>WorkingDirectory</key>\n")
-	body.WriteString(fmt.Sprintf("  <string>%s</string>\n", u.Repo))
+	body.WriteString(fmt.Sprintf("  <string>%s</string>\n", xmlEsc(u.Repo)))
 	body.WriteString("  <key>StandardOutPath</key>\n")
-	body.WriteString(fmt.Sprintf("  <string>%s/watcher.out.log</string>\n", logDir))
+	body.WriteString(fmt.Sprintf("  <string>%s/watcher.out.log</string>\n", xmlEsc(logDir)))
 	body.WriteString("  <key>StandardErrorPath</key>\n")
-	body.WriteString(fmt.Sprintf("  <string>%s/watcher.err.log</string>\n", logDir))
+	body.WriteString(fmt.Sprintf("  <string>%s/watcher.err.log</string>\n", xmlEsc(logDir)))
 	body.WriteString("</dict>\n")
 	body.WriteString("</plist>\n")
 	return body.String()
 }
 
 // SystemdUnit returns the Linux systemd-user .service body.
+//
+// Restart=on-failure is the systemd analogue of the plist's
+// KeepAlive={SuccessfulExit:false}: the deliberate give-ups in
+// internal/cli/watch.go now exit 0, so systemd leaves them stopped. RestartSec
+// and the StartLimit* pair are the rate-limit and give-up halves — see the
+// constants for why 60/3600/5.
 func SystemdUnit(u Unit) string {
 	return fmt.Sprintf(`[Unit]
 Description=grafel watcher (%s/%s)
 After=default.target
+StartLimitIntervalSec=%d
+StartLimitBurst=%d
 
 [Service]
 Type=simple
 ExecStart=%q watch %q
 WorkingDirectory=%s
 Restart=on-failure
-RestartSec=5
+RestartSec=%d
 
 [Install]
 WantedBy=default.target
-`, u.Group, filepath.Base(u.Repo), u.BinPath, u.Repo, u.Repo)
+`, u.Group, filepath.Base(u.Repo), StartLimitIntervalSeconds, StartLimitBurst,
+		u.BinPath, u.Repo, u.Repo, RestartSecSeconds)
 }
 
 // SchtasksXML returns a Windows Task Scheduler XML definition.
+//
+// Every interpolated field is XML-escaped for the same reason as the plist
+// (#6179 F5): group names and repo paths are user-supplied, and an unescaped
+// `&` produces a task definition schtasks /create refuses to parse.
 func SchtasksXML(u Unit) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -109,7 +199,7 @@ func SchtasksXML(u Unit) string {
     </Exec>
   </Actions>
 </Task>
-`, u.Group, filepath.Base(u.Repo), u.BinPath, u.Repo, u.Repo)
+`, xmlEsc(u.Group), xmlEsc(filepath.Base(u.Repo)), xmlEsc(u.BinPath), xmlEsc(u.Repo), xmlEsc(u.Repo))
 }
 
 // PlistDir returns the user-level launchd directory.

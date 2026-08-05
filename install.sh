@@ -321,8 +321,21 @@ restart_daemon() {
 #
 # Best-effort, like every other post-download step: a failure here prints
 # nothing fatal and never aborts the installer.
+#
+# The output is no longer blanket-discarded (issue #6179 F1-b). --refresh-state
+# also repairs stale per-repo watcher units, and on a machine where they are all
+# stale that re-registers every one of them — hundreds of launchctl invocations
+# and a wave of macOS "Background Items" notifications, right after the user
+# upgrades. Silently is the worst way for that to happen: the only available
+# reading is that the upgrade caused the storm. So the watcher summary is
+# surfaced and everything else (install-state bookkeeping, errors) is still
+# suppressed, keeping the installer quiet in the steady state.
 record_install_state() {
-  "$BIN_DIR/grafel" install --refresh-state >/dev/null 2>&1 || true
+  _rs_out="$("$BIN_DIR/grafel" install --refresh-state 2>/dev/null || true)"
+  if [ -n "$_rs_out" ]; then
+    printf '%s\n' "$_rs_out" | grep -E 'watcher units|Background Items' || true
+  fi
+  unset _rs_out
 }
 
 configure_path() {

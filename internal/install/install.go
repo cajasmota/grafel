@@ -277,6 +277,15 @@ func Apply(opts Options) (*Result, error) {
 				}
 				res.WatcherUnits = append(res.WatcherUnits, path)
 
+				// Clear any crash-loop give-up history for this repo (#6179
+				// F4-a). Registering a unit is an explicit "I want this
+				// watcher running", and it is the remedy the detector's own
+				// message points at — but the bootstrap below is itself a
+				// counted start, so without this reset a watcher that gave up
+				// would immediately give up again and the instruction would be
+				// false.
+				_ = watchers.ResetWatchStarts(repo)
+
 				// Activate the watcher unit through the OS-native loader
 				// (launchctl on macOS, systemctl on Linux, schtasks on Windows).
 				// A watcher that fails to activate is a NON-FATAL warning: the

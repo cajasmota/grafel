@@ -22,7 +22,9 @@ func TestLaunchdPlist(t *testing.T) {
 		`<string>watch</string>`,
 		`<string>/tmp/test/core</string>`,
 		`<key>RunAtLoad</key><true/>`,
-		`<key>KeepAlive</key><true/>`,
+		// #6179: KeepAlive is now a conditional dict, asserted structurally in
+		// plist_respawn_6179_test.go.
+		`<key>KeepAlive</key>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("plist missing %q\n%s", want, body)
