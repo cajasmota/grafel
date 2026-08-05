@@ -199,11 +199,16 @@ const (
 // — you cannot reliably starve a machine into a fork failure, and the bug it
 // guards (#6181) is precisely the load-correlated case. Unexported and
 // test-only; production always uses runGitReal.
+//
+// NOT SYNCHRONISED. Both this and gitCallTimeout are plain globals that tests
+// write mid-run, which is only safe because no test in this package calls
+// t.Parallel(). If you add one, these need a mutex or a per-call injection
+// point first — `go test -race` is green today by that accident, not by design.
 var runGitFn = runGitReal
 
 // gitCallTimeout is RunGit's deadline. A var, not a const, only so a test can
 // shrink it and exercise the timeout branch in milliseconds rather than
-// seconds. Production never changes it.
+// seconds. Production never changes it. See runGitFn on synchronisation.
 var gitCallTimeout = 2 * time.Second
 
 // runGitStatus runs git and reports both stdout and why it failed, if it did.
@@ -221,14 +226,31 @@ func runGitReal(dir string, args ...string) (string, gitStatus) {
 	if err == nil {
 		return strings.TrimSpace(string(out)), gitOK
 	}
-	// Deadline first: CommandContext kills the child on timeout, which surfaces
-	// as an *exec.ExitError (signal: killed) and would otherwise be misread as
-	// "git answered".
+	// Deadline first: CommandContext kills the child on timeout. Strictly
+	// redundant with the signal check below — a killed child is a signalled
+	// child — but it is cheaper and it documents the intent at the point where
+	// the timeout is set.
 	if ctx.Err() != nil {
 		return "", gitUnavailable
 	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
+		// *exec.ExitError collapses two different meanings, and the axis that
+		// separates them is signalled-vs-exited — NOT deadline-vs-not, which is
+		// only a subset of it. A git killed by the OOM killer, macOS jetsam, or a
+		// SIGTERM propagated to the daemon's process group never got to answer,
+		// and arrives here with ctx.Err() == nil. Classifying that as a durable
+		// fact about the repository is #6181 verbatim, and it is MORE
+		// load-correlated than the timeout: the OOM killer fires under exactly
+		// the memory pressure that makes forks fail.
+		//
+		// ExitCode() returns -1 when the process was terminated by a signal, on
+		// every platform — no syscall import, correct on Windows.
+		if ee.ExitCode() < 0 {
+			return "", gitUnavailable
+		}
+		// A real non-zero exit (128 "not a git repository", 1 "no such ref") is a
+		// reproducible answer about the repo and stays cacheable.
 		return "", gitAnswered
 	}
 	// Everything else — exec.ErrNotFound, EAGAIN on fork, ENOMEM, pipe errors —

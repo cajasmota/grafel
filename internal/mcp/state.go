@@ -1418,15 +1418,30 @@ func skeletonizeDocRows(doc *graph.Document) {
 // Callers MUST pass lr.Path, not any other spelling of the repo path: the memo
 // has one slot, so two callers feeding it different paths would invalidate each
 // other on every call and reinstate the per-call fork this exists to remove.
+// DO NOT SEAL AN "_unknown" RESOLUTION (#6181). The HEAD token is an os.Stat
+// that succeeds regardless of system load, so it cannot see the difference
+// between "git says this repo has no ref" and "git could not be run just now".
+// gitmeta no longer memoizes the latter, but this memo holds the DERIVED value
+// and would keep serving the sentinel long after gitmeta recovered — until HEAD
+// next moves. That is not cosmetic: applyFlowOverlay feeds this directory
+// straight into flows.Read, so a stuck "_unknown" silently drops the
+// process-flow overlay from every State.Group call, with no error raised.
+//
+// Re-resolving an "_unknown" repo costs a gitmeta.CaptureCached, which for a
+// genuinely ref-less repo (detached HEAD, non-git path) is a memo hit on a
+// trusted capture — a map lookup and a stat, not a fork. The per-call fork
+// #6060 removed stays removed.
 func (lr *LoadedRepo) currentRefDirLocked(repoPath string) string {
 	tok, _ := gitmeta.HeadToken(repoPath)
 	if lr.curRefKnown && tok == lr.curRefHeadTok {
 		return lr.curRefDir
 	}
-	lr.curRefDir = daemon.StateDirForRepo(repoPath)
+	dir := daemon.StateDirForRepo(repoPath)
+	lr.curRefDir = dir
 	lr.curRefHeadTok = tok
-	lr.curRefKnown = true
-	return lr.curRefDir
+	// Seal the memo only for a resolution that named a real ref.
+	lr.curRefKnown = dir != "" && dir != daemon.StateDirForRepoRef(repoPath, "")
+	return dir
 }
 
 // reloadAllLocked is the reload body; the caller MUST already hold s.mu. Split

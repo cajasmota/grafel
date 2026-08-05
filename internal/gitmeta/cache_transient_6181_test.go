@@ -118,6 +118,80 @@ func TestCaptureCached_DoesNotMemoizeAMidCaptureFailure(t *testing.T) {
 	}
 }
 
+// TestCapture_DistrustIsPerCall_EverySubcommand closes the gap that the
+// mid-capture test alone leaves open (F3).
+//
+// captureStatus claims trust is a property of the WHOLE capture, but only the
+// --show-toplevel and symbolic-ref calls were actually pinned. The remaining
+// three feed .SHA and .IsWorktree, which CaptureCachedFresh serves to
+// grafel_whoami and ResolveCWD — so a narrowing of the distrust rule would
+// memoize SHA=""/IsWorktree=false from a moment and no test would notice.
+//
+// One case per git invocation Capture makes after the top-level probe.
+func TestCapture_DistrustIsPerCall_EverySubcommand(t *testing.T) {
+	matches := func(args, want []string) bool {
+		if len(args) < len(want) {
+			return false
+		}
+		for i, w := range want {
+			if args[i] != w {
+				return false
+			}
+		}
+		return true
+	}
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"sha", []string{"rev-parse", "--short=12", "HEAD"}},
+		{"symbolic-ref", []string{"symbolic-ref", "--short", "HEAD"}},
+		{"git-dir", []string{"rev-parse", "--git-dir"}},
+		{"git-common-dir", []string{"rev-parse", "--git-common-dir"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetCaptureCacheForTest()
+			dir := initGitRepo(t)
+
+			prev := runGitFn
+			hit := false
+			runGitFn = func(d string, args ...string) (string, gitStatus) {
+				if matches(args, tc.args) {
+					hit = true
+					return "", gitUnavailable
+				}
+				return prev(d, args...)
+			}
+			t.Cleanup(func() { runGitFn = prev })
+
+			_, trusted := captureStatus(dir)
+			if !hit {
+				t.Fatalf("fixture never intercepted %v — Capture no longer makes this "+
+					"call, so this case proves nothing", tc.args)
+			}
+			if trusted {
+				t.Fatalf("capture marked trusted despite %v being un-runnable: a "+
+					"moment's failure would be memoized", tc.args)
+			}
+
+			// And end-to-end: nothing may have been memoized by either variant.
+			_ = CaptureCached(dir)
+			_ = CaptureCachedFresh(dir)
+			runGitFn = prev
+
+			if got := CaptureCached(dir); got.Ref != "main" || got.TopLevel == "" {
+				t.Fatalf("CaptureCached stuck on a memoized failure: %+v", got)
+			}
+			if got := CaptureCachedFresh(dir); got.Ref != "main" || got.SHA == "" {
+				t.Fatalf("CaptureCachedFresh stuck on a memoized failure: %+v", got)
+			}
+		})
+	}
+}
+
 // TestCaptureCached_StillCachesAGenuineNonRepo pins the other half of the
 // distinction. A path where git RAN and reported "not a git repository" is a
 // durable fact, and caching it is a real optimisation (the daemon walks such
@@ -217,6 +291,85 @@ func TestCaptureCached_DoesNotMemoizeATimeout(t *testing.T) {
 	gitCallTimeout = prev
 	if got := CaptureCached(dir); got.Ref != "main" {
 		t.Fatalf("repo stuck on a memoized timeout: Ref=%q want \"main\"", got.Ref)
+	}
+}
+
+// stubGit installs a fake `git` on PATH with the given shell body and returns
+// the real PATH so a test can restore it.
+func stubGit(t *testing.T, body string) (realPath string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("stub git script is POSIX-shell only")
+	}
+	binDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(binDir, "git"), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	realPath = os.Getenv("PATH")
+	t.Setenv("PATH", binDir)
+	return realPath
+}
+
+// TestRunGitStatus_SignalDeathIsUnavailableNotAnAnswer covers the general case
+// that the deadline check is only a subset of.
+//
+// A git killed by the OOM killer, macOS jetsam, or a SIGTERM propagated to the
+// daemon's process group surfaces as an *exec.ExitError with ctx.Err() == nil —
+// so a deadline-only check classifies it as a durable answer about the repo and
+// caches the zero Info. That is #6181 verbatim, and it is MORE load-correlated
+// than the timeout case, not less: the OOM killer fires under exactly the memory
+// pressure that makes forks fail.
+//
+// The correct axis is signalled-vs-exited, not deadline-vs-not. ExitCode()
+// returns -1 when the process was terminated by a signal, on every platform.
+func TestRunGitStatus_SignalDeathIsUnavailableNotAnAnswer(t *testing.T) {
+	stubGit(t, "kill -9 $$")
+
+	// Deadline is generous and deliberately never fires: this must be caught by
+	// signal detection, not by ctx.Err().
+	prev := gitCallTimeout
+	gitCallTimeout = 30 * time.Second
+	t.Cleanup(func() { gitCallTimeout = prev })
+
+	out, st := runGitStatus(t.TempDir(), "rev-parse", "--show-toplevel")
+	if st != gitUnavailable || out != "" {
+		t.Fatalf("a SIGKILLed git was classified as (%q, %v), want (\"\", gitUnavailable) — "+
+			"a signalled process is an *exec.ExitError with ctx.Err()==nil, so a "+
+			"deadline-only check reads it as a durable answer and caches it (#6181)", out, st)
+	}
+}
+
+// TestCaptureCached_DoesNotMemoizeASignalledGit is the end-to-end form: an
+// OOM-killed git must not pin the repo to refs/_unknown.
+func TestCaptureCached_DoesNotMemoizeASignalledGit(t *testing.T) {
+	resetCaptureCacheForTest()
+	dir := initGitRepo(t)
+
+	realPath := stubGit(t, "kill -9 $$")
+	prev := gitCallTimeout
+	gitCallTimeout = 30 * time.Second
+	t.Cleanup(func() { gitCallTimeout = prev })
+
+	if got := CaptureCached(dir); got != (Info{}) {
+		t.Fatalf("expected zero Info from a killed git, got %+v", got)
+	}
+
+	// git is healthy again; HEAD never moved.
+	t.Setenv("PATH", realPath)
+	if got := CaptureCached(dir); got.Ref != "main" {
+		t.Fatalf("repo pinned to _unknown by an OOM-killed git: Ref=%q want \"main\"", got.Ref)
+	}
+}
+
+// TestRunGitStatus_NormalNonZeroExitStaysAnAnswer guards the other side of F1:
+// splitting on signalled-vs-exited must not sweep git's ordinary non-zero exits
+// (128 for "not a git repository") into gitUnavailable and throw the caching
+// optimisation away.
+func TestRunGitStatus_NormalNonZeroExitStaysAnAnswer(t *testing.T) {
+	stubGit(t, "exit 128")
+
+	if out, st := runGitStatus(t.TempDir(), "rev-parse", "--show-toplevel"); st != gitAnswered || out != "" {
+		t.Fatalf("exit 128: got (%q, %v), want (\"\", gitAnswered)", out, st)
 	}
 }
 
