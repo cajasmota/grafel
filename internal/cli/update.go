@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -75,11 +77,24 @@ version the command exits 0 without downloading anything.`,
 						}
 					}
 				}
-				// Re-run install to refresh watcher units + MCP entries.
+				// Re-run install to refresh MCP entries.
+				//
+				// SkipWatchers (#6179 F1): this loop runs BEFORE runSelfUpdate
+				// swaps the binary, so `bin` here is the OLD grafel and Apply
+				// would render the OLD unit template — writing and re-registering
+				// every watcher with exactly the settings we are trying to
+				// replace, and then having the post-swap reconcile rewrite and
+				// re-register all of them again. At 140 repos that is 280
+				// launchctl bootout+bootstrap cycles — two rounds of the macOS
+				// Background Items notification burst — to reach a state one
+				// round reaches. Watcher units are owned by the post-swap
+				// reconcile in runSelfUpdate, which renders the NEW template and
+				// touches only the units whose content actually changed.
 				_, _ = install.Apply(install.Options{
-					Group:   g.Name,
-					Config:  cfg,
-					BinPath: bin,
+					Group:        g.Name,
+					Config:       cfg,
+					BinPath:      bin,
+					SkipWatchers: true,
 				})
 			}
 			// MCP entries should always reflect the live binary path.
@@ -99,6 +114,68 @@ version the command exits 0 without downloading anything.`,
 	return cmd
 }
 
+// refreshWatcherUnitsWithNewBinary re-invokes the just-installed binary as
+// `grafel install --refresh-state`, whose handler reconciles stale watcher unit
+// files (#6179 F1).
+//
+// Why a subprocess: after RunUpdate's atomic rename the file at os.Executable()
+// is the NEW grafel, but this process is still running the OLD code, including
+// the OLD unit template. Rendering the fixed template requires executing the
+// new binary. `install --refresh-state` is reused rather than a new subcommand
+// because it is the same narrow, non-mutating entrypoint the curl installer
+// already calls for exactly this "make on-disk state agree with the binary I
+// just placed" purpose.
+//
+// Best-effort and silent on success: an update must not fail because a watcher
+// plist could not be rewritten. A package var so tests can assert the wiring
+// without spawning anything.
+var refreshWatcherUnitsWithNewBinary = func(out io.Writer) {
+	bin, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(bin, "install", "--refresh-state")
+	// GRAFEL_SKIP_QUICK_DOCTOR: the child would otherwise run the quick-doctor
+	// preflight against a daemon that RunCopy may still be restarting, and
+	// print a spurious drift warning in the middle of update's own output.
+	// refreshStateQuietEnv drops the child's install-state bookkeeping lines so
+	// only the watcher summary is forwarded.
+	cmd.Env = append(os.Environ(),
+		"GRAFEL_SKIP_QUICK_DOCTOR=1",
+		refreshStateQuietEnv+"=1")
+	b, err := cmd.CombinedOutput()
+	reportWatcherRefresh(out, b, err)
+}
+
+// reportWatcherRefresh forwards the watcher-reconcile child's output.
+//
+// #6179 F1-b: this previously printed only when the child FAILED, so on the
+// success path — the normal path, and the one that produces the burst — the
+// summary was swallowed. On a machine where all 140 units are stale the
+// reconcile re-registers all of them, and loader_darwin.go retries bootstrap up
+// to 3x serially, so the user can see hundreds of launchctl invocations and a
+// wave of macOS Background Items notifications immediately after upgrading.
+// With no output the only available reading is "the fix made it worse".
+//
+// Silence is preserved when the child had nothing to say, which is the steady
+// state once a machine is current.
+func reportWatcherRefresh(out io.Writer, combined []byte, err error) {
+	text := strings.TrimSpace(string(combined))
+	if err != nil {
+		fmt.Fprintf(out, "  watchers: could not refresh watcher units: %v\n", err)
+		if text != "" {
+			fmt.Fprintf(out, "            %s\n", text)
+		}
+		return
+	}
+	if text == "" {
+		return
+	}
+	for _, line := range strings.Split(text, "\n") {
+		fmt.Fprintf(out, "  %s\n", strings.TrimSpace(line))
+	}
+}
+
 // runSelfUpdate executes the new atomic self-update path (#2213) and prints a
 // summary to out.
 func runSelfUpdate(out io.Writer, opts install.UpdateOptions) error {
@@ -111,6 +188,18 @@ func runSelfUpdate(out io.Writer, opts install.UpdateOptions) error {
 		fmt.Fprintln(out, "The previous binary has been restored.")
 		return err
 	}
+
+	// ── watcher-unit reconcile (#6179 F1) ──────────────────────────────────
+	// The binary at this path has just been replaced, so THIS process is still
+	// the old code and cannot render the new unit template. The new binary has
+	// to do it, which is why this re-invokes it rather than calling
+	// install.ReconcileWatcherUnits in-process.
+	//
+	// It runs on the skipped path too: "already at the latest version" only
+	// says the binary matches, not that the units on disk do — a machine that
+	// updated before this fix existed is exactly that case, and it is the one
+	// the #6179 reporter is in.
+	refreshWatcherUnitsWithNewBinary(out)
 
 	if result.Skipped {
 		fmt.Fprintf(out, "✓ grafel is already at the latest version (%s)\n", result.Tag)

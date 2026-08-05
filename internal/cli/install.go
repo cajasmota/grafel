@@ -339,18 +339,88 @@ func runRefreshState(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	switch {
-	case !res.HadState:
-		// Nothing installed yet: quick-doctor is already silent in this state,
-		// and fabricating an install.json here would make `grafel doctor`
-		// report skills/MCP drift that does not exist.
-		fmt.Fprintln(out, "no ~/.grafel/install.json to refresh — run 'grafel install' to install grafel")
-	case !res.Changed:
-		fmt.Fprintf(out, "install state already current (%s)\n", res.Path)
-	default:
-		fmt.Fprintf(out, "✓ install state refreshed: %s (sha256 %s…)\n", res.Path, res.SHA256[:12])
+	// GRAFEL_REFRESH_STATE_QUIET: `grafel update` re-invokes this command as a
+	// child purely to reach the watcher reconcile below (#6179 F1) and forwards
+	// its output. The install-state bookkeeping lines are noise in that context
+	// — update prints its own version summary — but the watcher summary is the
+	// whole reason the child exists, so quiet mode suppresses only the former.
+	if os.Getenv(refreshStateQuietEnv) == "" {
+		switch {
+		case !res.HadState:
+			// Nothing installed yet: quick-doctor is already silent in this
+			// state, and fabricating an install.json here would make `grafel
+			// doctor` report skills/MCP drift that does not exist.
+			fmt.Fprintln(out, "no ~/.grafel/install.json to refresh — run 'grafel install' to install grafel")
+		case !res.Changed:
+			fmt.Fprintf(out, "install state already current (%s)\n", res.Path)
+		default:
+			fmt.Fprintf(out, "✓ install state refreshed: %s (sha256 %s…)\n", res.Path, res.SHA256[:12])
+		}
 	}
+
+	// ── watcher-unit reconcile (#6179 F1) ──────────────────────────────────
+	// This is the ONE hook the curl installer already calls with the NEWLY
+	// placed binary (install.sh's record_install_state → `grafel install
+	// --refresh-state`), which makes it the only place a template fix can
+	// reach an existing install automatically. Without it, an upgrade leaves
+	// every already-written watcher unit carrying the old settings —
+	// unconditional KeepAlive, no ThrottleInterval — and the storm #6179
+	// reports continues after the "fix" ships.
+	//
+	// It stays inside RefreshState's spirit rather than violating it: the
+	// argument in internal/install/refreshstate.go is that the installer must
+	// not mutate a repository the user never mentioned, restart the daemon, or
+	// rewrite .claude.json. This touches none of those — only grafel's OWN
+	// already-registered watcher units, only the ones whose rendered content
+	// actually differs, and it is a pure read (no writes, no launchctl) on a
+	// machine that is already current.
+	reconcileWatcherUnits(out, bin)
 	return nil
+}
+
+// reconcileWatcherUnits repairs stale watcher unit files and reports what it
+// did. Best-effort by design: this is a repair bolted onto an unrelated
+// command, so it must never turn a successful --refresh-state into a failure.
+// It is a package var so tests can observe the wiring without a real registry.
+var reconcileWatcherUnits = func(out io.Writer, bin string) {
+	res, err := install.ReconcileWatcherUnits(install.ReconcileWatcherOptions{BinPath: bin})
+	if err != nil {
+		fmt.Fprintf(out, "watcher units: could not reconcile: %v\n", err)
+		return
+	}
+	printReconcileSummary(out, res)
+}
+
+// refreshStateQuietEnv suppresses --refresh-state's install-state bookkeeping
+// lines while keeping the watcher-unit summary. Set by `grafel update` on the
+// child it spawns; not a user-facing knob.
+const refreshStateQuietEnv = "GRAFEL_REFRESH_STATE_QUIET"
+
+// printReconcileSummary reports what the watcher reconcile did.
+//
+// It says the notification burst is coming (#6179 F1-b). On a machine where
+// every unit is stale — precisely the machine #6179 was reported from — the
+// one-time repair re-registers all of them, and each re-registration is a
+// launchctl bootout+bootstrap that macOS posts a Background Items notification
+// for. Silence there would look exactly like the bug recurring the moment the
+// user upgrades, so the burst has to be announced rather than merely tolerated.
+//
+// Silent when nothing was stale: that is the steady state and it deserves no
+// output at all.
+func printReconcileSummary(out io.Writer, res *install.ReconcileWatcherResult) {
+	if res == nil || len(res.Rewritten) == 0 {
+		return
+	}
+	fmt.Fprintf(out, "✓ watcher units refreshed: %d rewritten, %d re-registered, %d already current\n",
+		len(res.Rewritten), len(res.Reloaded), res.Current)
+	if len(res.Reloaded) > 0 {
+		fmt.Fprintf(out, "  macOS may show up to %d Background Items notifications while these "+
+			"re-register — this is the one-time repair for issue #6179, not a recurrence\n",
+			len(res.Reloaded))
+	}
+	for _, w := range res.Warnings {
+		fmt.Fprintf(out, "  warning: %s\n", w)
+	}
 }
 
 // resolveToolSelection decides the per-tool selection for `grafel install`.

@@ -73,6 +73,112 @@ func (c watchBackoffConfig) shouldDie(failures int) bool {
 	return c.maxConsecutive > 0 && failures >= c.maxConsecutive
 }
 
+// watchExitReason names one way `grafel watch` can terminate.
+//
+// #6179: the launchd unit's respawn contract is expressed as
+// KeepAlive={SuccessfulExit:false}, i.e. launchd reads the decision "should
+// this come back?" off the process EXIT STATUS and nothing else. So every exit
+// path here has to be classified deliberately, and the classification has to be
+// converted into the right status. Getting this wrong in either direction is
+// bad: respawning a deliberate give-up turns one diagnosable failure into a
+// permanent 10s respawn loop (the reported storm), while suppressing a real
+// crash leaves a repo silently unwatched.
+type watchExitReason string
+
+const (
+	// watchExitSignal — SIGINT/SIGTERM. An operator, `grafel watcher stop`, or
+	// the daemon's reaper asked this process to go away.
+	watchExitSignal watchExitReason = "signal"
+	// watchExitRepoGone — the repo path no longer stats at startup.
+	watchExitRepoGone watchExitReason = "repo-missing"
+	// watchExitGaveUp — the consecutive-index-failure ceiling (#5140).
+	watchExitGaveUp watchExitReason = "index-failures"
+	// watchExitFlapping — the rapid-restart detector in watch_flap.go tripped.
+	watchExitFlapping watchExitReason = "crash-loop"
+	// watchExitUsage — argv did not name exactly one repo.
+	watchExitUsage watchExitReason = "usage"
+)
+
+// watchExitRespawn maps each exit reason to whether the supervisor (launchd's
+// KeepAlive, systemd's Restart=on-failure) should bring the watcher back.
+//
+// true  → return a non-nil error; cli.Execute exits 1; the supervisor respawns.
+// false → return nil; the process exits 0; the supervisor leaves it dead.
+//
+// Rationale per entry:
+//
+//   - signal: false. Someone asked us to stop. Respawning fights the requester
+//     — notably the daemon's reaper, which SIGTERMs foreign/duplicate watchers
+//     on its sweep; under the old unconditional KeepAlive that was a reap↔
+//     respawn oscillation.
+//   - repo-missing: false. Relaunching cannot make a deleted path exist. The
+//     tradeoff is deliberate: a repo on a volume that mounts late will not be
+//     retried until the next login or `grafel install`, and that is preferred
+//     over an unbounded respawn loop. The stderr line says so.
+//   - index-failures: false. #5140 made the watcher exit here precisely so an
+//     orphaned watcher reaps itself; a supervisor that immediately undoes that
+//     defeats the whole mechanism.
+//   - crash-loop: false. See watch_flap.go — this IS the give-up, so respawning
+//     it would be a contradiction.
+//   - usage: true. A malformed argv is a genuine non-zero failure and a human
+//     running `grafel watch` by hand must see it. launchd never produces this
+//     case — the generated plist always passes exactly one repo — so
+//     classifying it as respawnable costs nothing in the supervised path.
+//
+// Note that a panic, a SIGKILL/OOM, or any other abnormal termination bypasses
+// this table entirely and yields a non-zero status, so a genuinely crashed
+// watcher still comes back. That is the intent.
+//
+// ── What "do not respawn" now costs, honestly (#6179 F3) ─────────────────────
+//
+// These exits used to be non-zero, so an unconditional KeepAlive respawned them
+// — loudly and wastefully, but the repo did keep getting a watcher. Exiting 0
+// removes that accidental self-healing, which means any OTHER bug that kills
+// watchers now produces silence instead of noise. One such bug exists today and
+// is NOT fixed here:
+//
+//	internal/daemon/watchscan/watchscan.go's sameExe compares the reaper's
+//	os.Executable() against the plist's BinPath with filepath.Clean and no
+//	EvalSymlinks. When those differ only by a symlink — a brew shim, a BinPath
+//	recorded from a different install prefix — every launchd watcher for a
+//	managed repo is classified Foreign and SIGTERMed on the 5-minute sweep.
+//
+// Before this change that was a visible reap↔respawn oscillation. After it,
+// the first reap is final: the watcher exits 0, launchd leaves it stopped, and
+// the only trace is one line in that repo's watcher.err.log. The reaper is out
+// of scope for #6179 (it is filed separately, together with whether per-repo
+// LaunchAgents should exist at all), but the interaction is real and this is
+// where someone debugging "my watchers all silently stopped" should land.
+// A coherent fix there would resolve symlinks in sameExe AND have the reaper
+// bootout the launchd unit when it reaps a launchd-owned watcher, so the
+// on-disk state stops claiming a job that is not running.
+var watchExitRespawn = map[watchExitReason]bool{
+	watchExitSignal:   false,
+	watchExitRepoGone: false,
+	watchExitGaveUp:   false,
+	watchExitFlapping: false,
+	watchExitUsage:    true,
+}
+
+// watchExit renders the termination of `grafel watch` for reason, always
+// logging the cause to stderr (so the condition stays diagnosable in
+// watcher.err.log even when the process exits 0) and returning nil or an error
+// according to watchExitRespawn.
+//
+// An unclassified reason is treated as respawnable — fail safe toward "come
+// back" rather than silently going dark.
+func watchExit(reason watchExitReason, format string, args ...any) error {
+	msg := fmt.Sprintf(format, args...)
+	respawn, known := watchExitRespawn[reason]
+	if !known || respawn {
+		return fmt.Errorf("grafel watch: %s", msg)
+	}
+	fmt.Fprintf(os.Stderr,
+		"grafel watch: %s — exiting 0 (%s); the supervisor will not respawn this watcher\n",
+		msg, reason)
+	return nil
+}
+
 // indexRPCFunc issues the daemon's Index RPC. It is a var (not a direct
 // client.Dial + c.Index call) so tests can stub it and assert on the
 // IndexArgs the watcher builds (e.g. Async) without a live daemon
@@ -195,7 +301,11 @@ func newWatchCmd() *cobra.Command {
 		Short: "Long-lived watcher process (used by launchd/systemd units)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
-				return errors.New("watch expects exactly one repo path")
+				// Classified respawnable (#6179): a malformed argv is a real
+				// failure a human must see as a non-zero status. The generated
+				// unit always passes exactly one repo, so launchd never
+				// reaches this path.
+				return watchExit(watchExitUsage, "expects exactly one repo path, got %d", len(args))
 			}
 			return runWatch(args[0], group, interval)
 		},
@@ -206,11 +316,38 @@ func newWatchCmd() *cobra.Command {
 }
 
 func runWatch(repo, group string, interval time.Duration) error {
-	if _, err := os.Stat(repo); err != nil {
-		return fmt.Errorf("repo: %w", err)
-	}
+	// Arm the signal handler FIRST (#6179 F2), before any work that can block
+	// or fail. Until signal.Notify runs, a SIGTERM kills this process by
+	// default action — which is death BY a signal, and both launchd
+	// (KeepAlive={SuccessfulExit:false}) and systemd (Restart=on-failure) read
+	// that as an unsuccessful exit and respawn. The whole "a stop request
+	// makes the watcher exit 0 and stay stopped" contract depends on the
+	// handler being installed, so it must not sit behind a filesystem stat.
+	// See also cmd/grafel/main.go, which skips the quick-doctor preflight for
+	// `watch` for the same reason.
+	//
+	// This narrows the window, it does not close it: ~70ms of Go runtime init,
+	// cobra tree construction and flag parsing still precede this line, and
+	// nothing here can cover that. Measured ~130-150ms before these two
+	// changes, ~60-80ms after. The residual is knowingly accepted — the
+	// daemon's reaper only signals processes it enumerated via `ps`, so it
+	// cannot reach a process this young.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	if _, err := os.Stat(repo); err != nil {
+		// Deliberate give-up, not a crash (#6179): relaunching cannot make a
+		// path that does not stat start existing. Exit 0 so the supervisor
+		// leaves this watcher dead instead of relaunching it every
+		// ThrottleInterval forever. Re-registering the repo (`grafel install`)
+		// or the next login rewrites and reloads the unit.
+		return watchExit(watchExitRepoGone, "repo %s: %v", repo, err)
+	}
+	// Crash-loop give-up (#6179 F4). Branch on stop, not on err: a deliberate
+	// give-up carries a nil err by design, because it must exit 0.
+	if stop, err := recordWatchStart(repo); stop {
+		return err
+	}
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	fmt.Fprintf(os.Stderr, "grafel watch: %s (every %s)\n", repo, interval)
@@ -257,7 +394,10 @@ func runWatch(repo, group string, interval time.Duration) error {
 	for {
 		select {
 		case <-stop:
-			return nil
+			// SIGINT/SIGTERM — an operator, `grafel watcher stop`, or the
+			// daemon's reaper asked us to go away. Exit 0 (#6179) so the
+			// supervisor does not respawn what someone just told us to stop.
+			return watchExit(watchExitSignal, "stopping %s on signal", repo)
 		case <-tick.C:
 			// 1. Reindex the watched repo first. Per ADR-0017 the
 			// indexer runs inside the daemon — `watch` becomes a thin
@@ -280,13 +420,19 @@ func runWatch(repo, group string, interval time.Duration) error {
 				// and spam its err log forever. Exit after N consecutive
 				// failures so an orphaned watcher reaps itself.
 				if backoff.shouldDie(consecutiveFailures) {
-					return fmt.Errorf("grafel watch: giving up after %d consecutive index failures (last: %w)",
+					// Deliberate give-up (#6179). #5140 introduced this exit so
+					// an orphaned watcher reaps itself; under the old
+					// unconditional KeepAlive the supervisor immediately undid
+					// it, which is the sustained-storm mechanism. Exit 0.
+					return watchExit(watchExitGaveUp,
+						"giving up after %d consecutive index failures (last: %v)",
 						consecutiveFailures, err)
 				}
 				sleep := backoff.backoffSleep(consecutiveFailures)
 				select {
 				case <-stop:
-					return nil
+					// Same signal path as above, reached mid-backoff.
+					return watchExit(watchExitSignal, "stopping %s on signal", repo)
 				case <-time.After(sleep):
 				}
 				continue

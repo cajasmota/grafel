@@ -199,6 +199,11 @@ func TestWatchBackoff_ShouldDie(t *testing.T) {
 // check that runWatch returns (exits) after the consecutive-failure
 // ceiling instead of looping forever when the daemon is not running
 // (issue #5140). No live daemon is started; Dial fails fast.
+//
+// #6179 changed the STATUS of that exit, not the fact of it: giving up is
+// deliberate, so it must exit 0 or launchd's KeepAlive respawns it every
+// ThrottleInterval forever. This test now only asserts that it exits;
+// TestRunWatch_GiveUpAfterIndexFailuresExitsSuccessfully asserts the status.
 func TestRunWatch_BacksOffAndDiesWhenDaemonUnreachable(t *testing.T) {
 	home := withSandboxHome(t)
 	repo := filepath.Join(home, "repos", "solo")
@@ -220,10 +225,8 @@ func TestRunWatch_BacksOffAndDiesWhenDaemonUnreachable(t *testing.T) {
 	}()
 
 	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("expected runWatch to return a give-up error, got nil")
-		}
+	case <-done:
+		// Exited — that is the #5140 property under test here.
 	case <-time.After(30 * time.Second):
 		t.Fatal("runWatch did not exit after repeated daemon-unreachable failures (issue #5140 regression)")
 	}
