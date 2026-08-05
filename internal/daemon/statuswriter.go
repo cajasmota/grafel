@@ -144,6 +144,12 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 		// and a stale one never storms — see stale_reindex.go.
 		fp := staleFingerprint(f.GraphFBMtime, f.ReindexReason)
 		defaultStaleReindexGuard.maybeEnqueue(repoPath, f.ReindexRequired, fp, logger)
+		// #6167 review finding 2: publish the migration's GIVE-UP decision.
+		// An abandoned repo still reports ReindexRequired=true, so without this
+		// flag `grafel status` would count it as "in progress" forever and the
+		// drop would be silent — the repo would serve a stale graph with
+		// nothing anywhere telling the user to run `grafel index` on it.
+		f.ReindexMigrationFailed = defaultStaleReindexGuard.migrationFailed(repoPath)
 	}
 
 	// Split the single "indexing" signal into indexing (extraction, graph not
