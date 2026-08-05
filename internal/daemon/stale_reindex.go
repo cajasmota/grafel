@@ -255,6 +255,15 @@ type staleReindexGuard struct {
 	// they were admitted. It is the whole basis of the round-4 distinction:
 	// !active[repo] means "stalled" only if we ever saw it active, and
 	// "never enqueued" otherwise — and only the first deserves a penalty.
+	//
+	// Its lifetime is ONE ADMISSION, so it must be cleared on every path that
+	// ends one: success (releaseSlotLocked), stall (forfeitLocked) and
+	// never-dispatched (abandonLocked). Clearing it only on the last made it a
+	// per-PROCESS memory: a linked worktree indexed once in an early generation
+	// (before its primary existed, so the enqueue gate let it through) kept
+	// observedActive=true forever, so every later generation the gate dropped
+	// was routed to the STALLED branch and penalised to a durable Failed — the
+	// scheduler-declines-by-design case, blamed on the user.
 	observedActive map[string]bool
 	// reconciled guards the one-time startup rebuild of inflight/admittedInBatch
 	// from the durable requests dirs. Without it a restart re-admits repos whose
@@ -545,6 +554,10 @@ func (g *staleReindexGuard) abandonLocked(repo string, held time.Duration, logge
 // at which point writeRepoStatusFile publishes that to the status plane.
 func (g *staleReindexGuard) forfeitLocked(repo string, held, deadline time.Duration, logger *slog.Logger) {
 	delete(g.inflight, repo)
+	// This admission is over: the next one must judge dispatch afresh, or a
+	// repo that stalled once is charged for later attempts that the scheduler
+	// never accepted.
+	delete(g.observedActive, repo)
 	g.attempts[repo]++
 
 	if g.attempts[repo] >= g.maxAttempts {
@@ -677,6 +690,7 @@ func (g *staleReindexGuard) releaseSlotLocked(repoPath string) {
 	hadState := g.attempts[repoPath] > 0
 	delete(g.attempts, repoPath)
 	delete(g.retryAfter, repoPath)
+	delete(g.observedActive, repoPath)
 
 	_, held := g.inflight[repoPath]
 	if held || hadState {

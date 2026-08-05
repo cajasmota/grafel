@@ -1182,3 +1182,137 @@ func TestStaleReindexGuard_AttemptsSurviveRestartWithoutInflating(t *testing.T) 
 		t.Errorf("durable marker Attempts = %d, want 1", st.Attempts)
 	}
 }
+
+// TestStaleReindexGuard_ObservedActiveClearedOnSuccess is round-5's blocker.
+// observedActive documents itself as "since they were admitted", but it was
+// deleted only in abandonLocked — never on success and never on forfeit — so it
+// was really a per-PROCESS memory. Once a repo had been dispatched even once,
+// every later generation was routed to the STALLED branch and penalised, even
+// when the scheduler never accepted it.
+func TestStaleReindexGuard_ObservedActiveClearedOnSuccess(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	repo := realRepoDirs(t, "wt")[0]
+	repos := []string{repo}
+	stale := map[string]bool{repo: true}
+
+	g := newTestGuard(clk, 1, 45*time.Second, 15*time.Minute)
+	g.stalledGrace = 90 * time.Second
+	g.activeFn = func() map[string]bool { return map[string]bool{repo: true, "/repo/unrelated": true} }
+
+	heartbeat(g, repos, stale)
+	clk.advance(30 * time.Second)
+	heartbeat(g, repos, stale) // observed active
+
+	g.mu.Lock()
+	seenActive := g.observedActive[repo]
+	g.mu.Unlock()
+	if !seenActive {
+		t.Fatal("precondition: the repo should have been observed active")
+	}
+
+	// It completes successfully.
+	stale[repo] = false
+	heartbeat(g, repos, stale)
+
+	g.mu.Lock()
+	left := len(g.observedActive)
+	g.mu.Unlock()
+	if left != 0 {
+		t.Errorf("observedActive still holds %d entr(ies) after a successful release — it must be per-admission, not per-process", left)
+	}
+}
+
+// TestStaleReindexGuard_ObservedActiveClearedOnForfeit is the same lifecycle
+// requirement on the forfeit path: a repo that stalled once must not be charged
+// for later attempts that were never dispatched at all.
+func TestStaleReindexGuard_ObservedActiveClearedOnForfeit(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	repo := realRepoDirs(t, "stally")[0]
+	repos := []string{repo}
+	stale := map[string]bool{repo: true}
+
+	dispatched := true
+	g := newTestGuard(clk, 1, 45*time.Second, 15*time.Minute)
+	g.stalledGrace = 90 * time.Second
+	g.retryJitter = 0
+	g.activeFn = func() map[string]bool {
+		if dispatched {
+			return map[string]bool{repo: true, "/repo/unrelated": true}
+		}
+		return activeElsewhere()
+	}
+
+	heartbeat(g, repos, stale)
+	clk.advance(30 * time.Second)
+	heartbeat(g, repos, stale) // observed active
+	dispatched = false
+	clk.advance(2 * time.Minute)
+	heartbeat(g, repos, stale) // stalls out -> forfeit
+
+	g.mu.Lock()
+	left := len(g.observedActive)
+	g.mu.Unlock()
+	if left != 0 {
+		t.Errorf("observedActive still holds %d entr(ies) after a forfeit — the next admission must judge dispatch afresh", left)
+	}
+}
+
+// TestStaleReindexGuard_WorktreeNotPenalisedAfterEarlierSuccess is the
+// production sequence the blocker describes, end to end. A linked worktree is
+// indexed in generation 1 (its primary is not indexed yet, so SkipEnqueue lets
+// it through), completes, and then the primary is indexed — after which
+// makeWorktreeEnqueueGate drops every enqueue for it. The later stale
+// generation is never dispatched and must be abandoned without blame, not
+// penalised to a permanent Failed on the strength of a memory from generation 1.
+func TestStaleReindexGuard_WorktreeNotPenalisedAfterEarlierSuccess(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	wt := realRepoDirs(t, "worktree")[0]
+	repos := []string{wt}
+	stale := map[string]bool{wt: true}
+
+	accepted := true // generation 1: the primary is not indexed yet
+	g := newTestGuard(clk, 1, 45*time.Second, 15*time.Minute)
+	g.stalledGrace = 90 * time.Second
+	g.retryJitter = 0
+	g.activeFn = func() map[string]bool {
+		if accepted {
+			return map[string]bool{wt: true, "/repo/unrelated": true}
+		}
+		return activeElsewhere() // the enqueue gate now drops it
+	}
+
+	// Generation 1: dispatched and completed.
+	heartbeat(g, repos, stale)
+	clk.advance(30 * time.Second)
+	heartbeat(g, repos, stale)
+	stale[wt] = false
+	heartbeat(g, repos, stale)
+
+	// The primary gets indexed; every later enqueue for the worktree is dropped.
+	accepted = false
+	stale[wt] = true // a new stale generation arrives
+
+	for i := 0; i < 400; i++ {
+		clk.advance(30 * time.Second)
+		heartbeat(g, repos, stale)
+	}
+
+	if g.migrationFailed(wt) {
+		t.Error("a linked worktree the scheduler declines to index was marked permanently unmigratable")
+	}
+	if n := g.attemptsFor(wt); n != 0 {
+		t.Errorf("never-dispatched generation burned %d attempts, want 0", n)
+	}
+	if st, ok := readMigrationStateAt(migrationStatePath(wt)); ok && st.Failed {
+		t.Errorf("durable marker records Failed for a worktree the indexer declines by design: %+v", st)
+	}
+}
