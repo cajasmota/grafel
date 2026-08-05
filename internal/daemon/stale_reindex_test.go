@@ -531,3 +531,44 @@ func TestStaleReindexGuard_FailedRepoIsRetriedThenReported(t *testing.T) {
 		t.Errorf("failed repo re-admitted after giving up: %d -> %d", before, got)
 	}
 }
+
+// TestStaleReindexGuard_RestartWithPartialBatchDoesNotDuplicate closes the gap
+// mutation testing exposed in TestStaleReindexGuard_RestartDoesNotDuplicateRequests:
+// that test restarts with a FULL batch pending, so the batch bound alone is
+// enough to refuse re-admission and the inflight check is never exercised.
+// With only ONE request pending and batchSize 2, the recovered batch still has
+// a free slot — so the repo that already has a queued reindex must be refused
+// by identity, and the free slot must go to a DIFFERENT repo.
+func TestStaleReindexGuard_RestartWithPartialBatchDoesNotDuplicate(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	repos := []string{"/repo/a", "/repo/b"}
+	stale := map[string]bool{"/repo/a": true, "/repo/b": true}
+	dirs := []string{requestsDirForRepo("/repo/a"), requestsDirForRepo("/repo/b")}
+
+	// Pre-restart: batch size 1, so exactly one request lands for /repo/a.
+	g1 := restartGuard(clk, 1, 45*time.Second, 15*time.Minute, dirs)
+	if got := heartbeat(g1, repos, stale); len(got) != 1 || got[0] != "/repo/a" {
+		t.Fatalf("pre-restart admits = %v, want [/repo/a]", got)
+	}
+
+	// Restart with batch size 2: the recovered batch holds /repo/a and has one
+	// slot free.
+	clk.advance(5 * time.Second)
+	g2 := restartGuard(clk, 2, 45*time.Second, 15*time.Minute, dirs)
+	got := heartbeat(g2, repos, stale)
+
+	for _, r := range got {
+		if r == "/repo/a" {
+			t.Errorf("re-admitted /repo/a, which already has a queued reindex — duplicate full reindex")
+		}
+	}
+	if n := countPendingReindex(t, "/repo/a"); n != 1 {
+		t.Fatalf("/repo/a pending requests = %d, want 1 (no duplicate across restart)", n)
+	}
+	if n := countPendingReindex(t, "/repo/b"); n != 1 {
+		t.Fatalf("/repo/b pending requests = %d, want 1 (the free slot must still be usable)", n)
+	}
+}
