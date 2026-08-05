@@ -63,6 +63,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/classifier"
@@ -160,6 +161,75 @@ func StampFile(absPath string) (FileStamp, error) {
 		ContentHash: hex.EncodeToString(h.Sum(nil)),
 		Mtime:       info.ModTime().UnixNano(),
 	}, nil
+}
+
+// frameworkDetectorOnce guards the one-time load of the embedded YAML rule sets
+// Pass 2.5 applies to every re-extracted file (#6148, #6150).
+//
+// The rules are compiled into the binary (engine.LoadAllRules reads an embedded
+// FS) and are not repo-scoped, so one Detector serves every incremental run in
+// the process; engine.Detector is documented safe for concurrent use.
+//
+// COST, measured here (go test -bench, GOMAXPROCS=4, 40-declaration file):
+//
+//	LoadAllRules + New   15.6 ms, 11.6 MiB   ONCE per process
+//	Detect, python file   8.7 ms,  0.7 MiB   per CHANGED file
+//
+// The per-file number is the real one and it is not small next to the language
+// extractor. Three things bound it, and none of them is a guard that could be
+// added later:
+//
+//   - It is NOT avoidable by pre-checking "does this file declare a class".
+//     Detect's output is also consumed for framework entities that pair with no
+//     extractor record at all, and `app = falcon.App()` alone — a line with no
+//     class anywhere near it — yields BOTH a Service and a Config record. A file
+//     with no class-like declaration is therefore precisely a file whose Detect
+//     output such a guard would silently drop again (#6150).
+//   - "Only run Detect for languages that have rules" is not a missing
+//     mitigation: Detector.Detect already early-outs on an unknown language
+//     before it touches the content (detector.go, the `sets, ok :=
+//     d.compiled[file.Language]` branch). Those languages pay ~0, not 8.7 ms.
+//   - The worst case is a fixed number, not a repo-sized one. This runs per
+//     CHANGED file, and the changed set is hard-capped by the trigger limits
+//     below — defaultIncrementalFiles=20, mainBranchIncrementalFiles=50 — so the
+//     ceiling is 50 × 8.7 ms ≈ 435 ms per run. Above the cap the path falls back
+//     to a full rebuild, which pays the same 8.7 ms for every file in the repo.
+//
+// Content-hash caching across runs would buy nothing: Step 3's AST-hash gate has
+// already established that every file reaching here has changed content.
+//
+// The once is deliberately not retried. The rules are embedded, so a load
+// failure is a build-level defect with no transient component, and retrying
+// would re-pay 15.6 ms per file to fail identically. It is logged with its
+// consequence spelled out, because the graph is otherwise silently the
+// pre-#6148 shape until the process restarts.
+var (
+	frameworkDetectorOnce sync.Once
+	frameworkDetectorInst *engine.Detector
+)
+
+// frameworkDetector returns the shared Detector, or nil if the embedded rules
+// failed to load. A nil return degrades this path to its pre-#6148 behaviour
+// (classes keep their generic kind, framework-only entities are not emitted)
+// rather than failing the incremental run: the rules are an enrichment input,
+// not a correctness precondition for re-extraction.
+//
+// It is a var so a test can drive that degraded path. Nothing else assigns it —
+// the #6129 parity gate catches the rules being IGNORED, but nothing else
+// asserted that LOSING them degrades instead of panicking.
+var frameworkDetector = func() *engine.Detector {
+	frameworkDetectorOnce.Do(func() {
+		rules, err := engine.LoadAllRules()
+		if err != nil {
+			log.Printf("incremental: FRAMEWORK RULES UNAVAILABLE: %v — "+
+				"every incremental run in this process will leave class entities at their "+
+				"generic kind and drop framework-only entities, diverging from a full rebuild "+
+				"until the process is restarted", err)
+			return
+		}
+		frameworkDetectorInst = engine.New(rules)
+	})
+	return frameworkDetectorInst
 }
 
 // TryIncremental attempts a file-level incremental reindex for repoPath.
@@ -471,6 +541,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	var newEntities []graph.Entity
 	var newRels []graph.Relationship
+	// #6148 — count of generic class records re-typed from the YAML rule sets,
+	// logged with the run so a silent regression to zero is visible.
+	classKindFolds := 0
 	// #6094 — one identity per (FromID, ToID, Kind), shared across every file in
 	// this re-extraction batch. See convertExtractedRecords for why the triple is
 	// a safe identity here and how this scope differs from buildDocument's.
@@ -498,16 +571,81 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			continue
 		}
 
-		records, extErr := ext.Extract(ctx, extractor.FileInput{
+		input := extractor.FileInput{
 			Path:     rel,
 			Content:  content,
 			Language: cr.Language,
-			TSTree:   nil, // re-parse inline
+			// #6151 — "re-parse inline" is what this was MEANT to do and is not
+			// what happens: nothing between here and the extractor parses.
+			//
+			// Audited across all 69 Extract implementations: 14 return nil, nil
+			// unconditionally on a nil tree (csharp, dockerfile, elixir, groovy,
+			// java, javascript/typescript, kotlin, lua, php, proto, ruby, rust,
+			// scala, swift), 7 self-parse from Content, 35 are pure source
+			// scanners that never wanted a tree, and 0 panic. Step 5 has already
+			// evicted the file's entities ~65 lines above, and no fallback() site
+			// is record-count driven, so an incremental pass over one of those 14
+			// languages DELETES that file's entities and re-adds nothing — with
+			// Done=true and no fallback. Measured on Kotlin, JS, Java and Ruby.
+			//
+			// The reason no fixture catches it is NOT that they are Python: they
+			// are mostly Go. It is that Python AND Go both self-parse from Content
+			// (golang/extractor.go), so both are blind to this by construction.
+			// A fixture in any of the 14 languages above would fail immediately —
+			// which is the thing to know before adding one.
+			TSTree:   nil,
 			RepoRoot: absRepo,
-		})
+		}
+		records, extErr := ext.Extract(ctx, input)
 		if extErr != nil {
 			logger.Printf("incremental: extract %s: %v", rel, extErr)
 			// Non-fatal: use partial results.
+		}
+
+		// #6148 / #6150 — run Pass 2.5 over this file and reconcile it with the
+		// extractor's records.
+		//
+		// The per-language extractor emits every class as a generic
+		// SCOPE.Component, and emits nothing at all for a framework construct
+		// that is not a language declaration. On the full path Pass 2.5
+		// (engine.Detector over the YAML rule sets) supplies both: a
+		// framework-typed record — Controller / Model / View / Service / … — for
+		// each class symbol a rule matches, which the #1613 fold collapses the
+		// generic node into, plus standalone records for the constructs that have
+		// no declaration behind them (a Route from a responder method, a Service
+		// from an app object).
+		//
+		// This path ran the extractor alone. A class in a CHANGED file therefore
+		// kept the generic kind while the identical class in an unchanged file
+		// kept the typed kind it was carried forward with — the same tree, two
+		// answers, decided only by which files the delta touched — and the
+		// framework-only records were dropped outright. Entity ids hash the kind,
+		// so the class divergence moved every edge incident on it too.
+		//
+		// The fold is keyed by (source_file, name) and never pairs records across
+		// files, so applying it per re-extracted file is the whole of it.
+		//
+		// Detect's standalone RELATIONSHIPS are deliberately NOT consumed here.
+		// Measured: they arrive as structural name refs the full path binds in a
+		// resolver pass this path does not run, so emitting them landed unbound
+		// endpoints and duplicate DEPENDS_ON rows — strictly worse than the gap.
+		//
+		// That exclusion is a RESIDUAL, and it is untested: the committed parity
+		// fixture produces zero standalone framework relationships, so the gate is
+		// blind to this either way. Reaching it needs a relationship_rule match in
+		// the delta (falcon's REGISTERED_ON fires on `app.add_route(...)`), and
+		// that same line drags in the flow/endpoint-enrichment divergences that
+		// are the rest of #6150's scope — which is why it is recorded here rather
+		// than half-covered by a fixture that would need allow entries for four
+		// other defects to stay green.
+		if det := frameworkDetector(); det != nil {
+			if fwRes, dErr := det.Detect(ctx, input); dErr != nil {
+				logger.Printf("incremental: framework detect %s: %v", rel, dErr)
+			} else if fwRes != nil {
+				var n int
+				records, n = engine.FoldFrameworkClassKinds(records, fwRes.Entities)
+				classKindFolds += n
+			}
 		}
 
 		// Convert types.EntityRecord → graph.Entity (same logic as buildDocument).
@@ -769,8 +907,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	dur := time.Since(t0)
-	logger.Printf("incremental: done changed=%d entities=%d rels=%d flows_recomputed=%t took=%s",
-		len(reallyChanged), len(newEntities), len(newRels), flowsRecomputed, dur.Truncate(time.Millisecond))
+	logger.Printf("incremental: done changed=%d entities=%d rels=%d class_kind_folds=%d flows_recomputed=%t took=%s",
+		len(reallyChanged), len(newEntities), len(newRels), classKindFolds, flowsRecomputed, dur.Truncate(time.Millisecond))
 
 	return Result{
 		Done:         true,

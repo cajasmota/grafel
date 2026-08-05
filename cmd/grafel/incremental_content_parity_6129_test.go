@@ -354,11 +354,58 @@ class CpProducer:
 	dvWriteFile(t, repo, "cpcfg_static.py", `CP_SETTING = "abc"
 CP_OTHER = 12
 `)
+	// #6141 — the leaf-name tier shape. `CpSibling.cp_owner` is an OPERATION
+	// in a SIBLING file of the same package directory (pkgDirOf returns "."
+	// for every repo-root file, so the package-scoped tier is live here).
+	// The delta file below declares a same-leaf-named FIELD in the CALLER's
+	// OWN file (CpLeafBag.cp_owner) plus a bare `cp_owner()` call.
+	//
+	// That triple is what separates the two possible tier orderings, and
+	// nothing in this corpus reached it before: every other fixture puts the
+	// competing member in a different file from the caller.
+	//
+	//	within-tier  (fileOp, fileAny, pkgOp, pkgAny) -> the caller-file FIELD
+	//	across-tiers (fileOp, pkgOp, fileAny, pkgAny) -> the sibling OPERATION
+	//
+	// internal/resolve does the former. When internal/extractors/sresolver
+	// did the latter, a full rebuild and an incremental run bound this call
+	// to DIFFERENT entities — and this gate passed anyway, because the shape
+	// was absent. It is here so it cannot pass blind again.
+	dvWriteFile(t, repo, "cpleaf_static.py", `class CpSibling:
+    def cp_owner(self):
+        return 1
+`)
 }
 
 // cpDelta writes the SINGLE file that differs between the baseline pass
 // (pass 0) and the end state (pass 1). Its imports reach into every static file
 // above, so the delta's blast radius genuinely crosses file boundaries.
+//
+// Two of its declarations exist only to reach a shape this gate was blind to.
+// Both are in the DELTA file on purpose — the incremental path re-extracts only
+// these, so a construct placed in a static file is carried forward from the
+// baseline full rebuild and compares equal no matter what the re-extraction
+// would have made of it. That is precisely why both defects below hid here:
+//
+//   - CpLeafBag.cp_owner + cp_leaf_call — the #6141 leaf-name tier triple. See
+//     the cpleaf_static.py block in cpStatic for what it separates. The field
+//     must be a CLASS-LEVEL annotated attribute: `self.cp_owner = 1` in
+//     __init__ emits no field entity at all, so the competing member would be
+//     absent and the shape only apparently reached.
+//
+//   - CpPlainProbe — #6148. A class with no decorator, no base class, no route
+//     annotation and no naming convention: nothing classification-worthy. The
+//     full rebuild still TYPES it, because Pass 2.5 runs the YAML rule sets
+//     (falcon/cherrypy match a bare `class X:` with no framework gate at all —
+//     #6152) and the #1613 fold collapses the
+//     AST's generic SCOPE.Component node into that typed record. The incremental
+//     path ran the language extractor alone and left the generic kind, so the
+//     same class was `Controller` after a full rebuild and `SCOPE.Component`
+//     after an incremental one — a one-entity divergence that dragged four
+//     CONTAINS edges with it, since entity ids hash the kind. Fixed in
+//     internal/extractors/incremental.go (see engine.FoldFrameworkClassKinds).
+//     No class had ever appeared in this file's delta, which is the whole reason
+//     the gate stayed green through it.
 func cpDelta(t *testing.T, repo string, pass int) {
 	t.Helper()
 	dvWriteFile(t, repo, "cphandler_delta.py", fmt.Sprintf(`import cperrs_static
@@ -377,6 +424,22 @@ def cp_handle(x):
 def cp_use_class(y):
     c = CpProducer()
     return c.cp_method(y) + len(CP_SETTING)
+
+
+class CpPlainProbe:
+    def on_get(self, req, resp):
+        return 1
+
+
+cp_app = falcon.App()
+
+
+class CpLeafBag:
+    cp_owner: int = 1
+
+
+def cp_leaf_call():
+    return cp_owner()
 `, pass))
 }
 
@@ -520,11 +583,27 @@ var cpKnownPathA = []cpKnown{
 		Contains:       []string{"→SCOPE.ExceptionType/exception:CpNotFound@<exception>:CONTAINS"},
 		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
 	},
+	// Re-keyed (not deleted) when the fixture grew for #6141/#6148/#6150: the
+	// divergence still reproduces and is still the same one — the unassigned
+	// community carries exactly ONE extra member, the duplicate row above — but
+	// the key spells out ABSOLUTE membership counts, and those track the size of
+	// the corpus. The load-bearing part of the key is the +1; the absolute pair
+	// moves whenever a fixture file is added. Anything other than +1 is a
+	// different divergence and must fail.
+	//
+	// This entry has now been re-keyed three times for fixture growth and zero
+	// times for a change in the defect, which is a smell in the KEY, not in the
+	// entry: it is the only allow entry keyed on an absolute count rather than on
+	// a shape. Keying it on the DELTA would end the churn and would still fail on
+	// a magnitude change — but the delta is not in the divergence string today
+	// (parity.Report renders "N member(s) in A, M in B"), so it needs a
+	// comparator change to reach, not an allow-list edit. Worth doing the next
+	// time this file is opened for anything else.
 	{
 		Issue:    "#6129 (duplicate-row class of #6094 / #6037)",
 		Why:      "Downstream of the duplicated entity: the unassigned community carries one extra member.",
 		Bucket:   cpCommunitySet,
-		Contains: []string{"community ∅: 23 member(s) in A, 24 in B"},
+		Contains: []string{"community ∅: 35 member(s) in A, 36 in B"},
 	},
 
 	// ── #6129 / #6098 family: over-counted DEPENDS_ON weight ──
