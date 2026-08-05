@@ -162,6 +162,25 @@ type callerLocation struct {
 // indexed under its dotted form. Left divergent rather than aligned so the
 // gate keeps stating the condition this code actually depends on, but the
 // coupling is written down here.
+// isOperationKind reports whether an entity Kind is call-target shaped —
+// the scoped port of internal/resolve/refs.go's operationKindFamily
+// (issue #6141). Both the raw kind and its SCOPE.-trimmed form are
+// consulted, mirroring the dual-indexing the corpus-wide resolver applies,
+// so a hypothetical "SCOPE.Method" still classifies as an operation.
+//
+// Kept as a literal list rather than importing internal/resolve because
+// that package depends on the extractor types and importing it here would
+// close a cycle. The list is pinned against drift by
+// TestResolveScoped_LeafTier_OperationKindsStillBind_6141, which walks the
+// same four kinds the resolve-side test walks.
+func isOperationKind(kind string) bool {
+	switch strings.TrimPrefix(kind, "SCOPE.") {
+	case "Operation", "Function", "Method":
+		return true
+	}
+	return false
+}
+
 func relWantsMemberTier(r *graph.Relationship) bool {
 	if r.ToID == "" || isHexID(r.ToID) || strings.IndexByte(r.ToID, ':') >= 0 {
 		return false
@@ -229,6 +248,32 @@ func buildMemberIndexes(newEntities, existingEntities []graph.Entity) *memberInd
 				pkgBucket[scope] = scopeBucket
 			}
 			put(scopeBucket, member, e.ID)
+
+			// Issue #6141 — the leaf tiers, unlike tier 1, do NOT know the
+			// scope: they bind a bare name to a member of ANY scope. That
+			// makes a kind filter load-bearing in BOTH directions. Without
+			// it a bare `owner()` binds to a sibling type's FIELD `owner`
+			// (precision), AND a correct binding to a real `owner()` method
+			// is LOST because the unrelated field enters the candidate set
+			// and trips the ambiguity guard (recall). The two symptoms move
+			// a dangling count in opposite directions, so neither is
+			// visible in aggregate — see the binding-content assertions in
+			// leafname_kind_filter_6141_test.go.
+			//
+			// Filtered at BUILD time rather than at lookup because these
+			// two indexes have exactly one consumer (lookupLeaf, gated to
+			// CALLS), so an excluded entity has no other reader. Tier 1's
+			// byPackageMember above is deliberately NOT filtered: its key
+			// names the scope, so it is precise by construction, and it is
+			// also probed for field-shaped edges.
+			//
+			// Mirrors internal/resolve/refs.go's famOperation filter on
+			// lookupMemberByLeafName / lookupPackageMemberByLeafName. The
+			// two resolvers must agree here or an incremental build and a
+			// full rebuild disagree on the same source.
+			if !isOperationKind(e.Kind) {
+				continue
+			}
 
 			fileBucket := idx.leafByFile[file]
 			if fileBucket == nil {

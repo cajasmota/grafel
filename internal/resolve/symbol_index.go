@@ -271,6 +271,7 @@ func MergeModuleBatch(si *SymbolIndex, offset, batchSize int) (Index, int) {
 		byLocationKind:     make(LocationKindIndex, total/2+1),
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
+		memberFamily:       make(map[string]uint8),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
@@ -521,6 +522,7 @@ func accumulatorIndex(totalEntities int) Index {
 		byLocationKind:     make(LocationKindIndex, cap2),
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
+		memberFamily:       make(map[string]uint8),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
@@ -544,6 +546,7 @@ func emptyIndex() Index {
 		byLocationKind:     make(LocationKindIndex),
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
+		memberFamily:       make(map[string]uint8),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
@@ -692,6 +695,10 @@ func insertModuleEntry(
 			dot := strings.LastIndexByte(me.name, dottedNameSep)
 			if dot > 0 {
 				scope, member := me.name[:dot], me.name[dot+1:]
+				// #6141 — mirrors BuildIndex; see Index.memberFamily.
+				if m := memberFamilyMask(me.kind); m != 0 {
+					idx.memberFamily[me.id] = m
+				}
 				fileBucket := idx.byMember[sf]
 				if fileBucket == nil {
 					fileBucket = make(map[string]map[string]string)

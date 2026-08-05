@@ -472,6 +472,22 @@ type Index struct {
 	// silently picking a wrong overload.
 	byPackageMember map[string]map[string]map[string]string
 
+	// memberFamily[entity_id] = kind-family bitmask, populated ONLY for the
+	// dotted-name entities that land in byMember / byPackageMember. Issue
+	// #6141: those two indexes are keyed on (scope, member) and carry no
+	// kind, so the leaf-name tiers that scan them for a bare CALLS target
+	// bound a call to whatever shared the leaf name — including a FIELD.
+	// This side-table is what lets those tiers filter by kind family the way
+	// lookupByKindHint already does, without changing the member indexes'
+	// value type (they are shared with Format B structural resolution, which
+	// legitimately addresses fields).
+	//
+	// Memory: one map entry per dotted-name entity whose kind falls in a
+	// known family — a uint8 value, and entries are OMITTED when the mask is
+	// zero, so unclassifiable kinds cost nothing. byMember and
+	// byPackageMember already hold one string entry each per such entity.
+	memberFamily map[string]uint8
+
 	// byPackageOperation[pkg_dir][name] = entity_id. Used by the
 	// Refs #44 Go bare-call structural-ref path: the extractor rewrites
 	// identifier-form CALLS edges (e.g. `helper()` from `main`) to
@@ -898,6 +914,7 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		byLocationKind:     make(LocationKindIndex),
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
+		memberFamily:       make(map[string]uint8),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
@@ -1178,6 +1195,11 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			// scope="Foo", member="bar" — unchanged from issue #45.
 			if dot := strings.LastIndexByte(e.Name, dottedNameSep); dot > 0 {
 				scope, member := e.Name[:dot], e.Name[dot+1:]
+				// #6141 — kind-family side-table for the leaf-name tiers.
+				// Zero masks are omitted: absent == "no known family".
+				if m := memberFamilyMask(e.Kind); m != 0 {
+					idx.memberFamily[e.ID] = m
+				}
 				fileBucket := idx.byMember[sourceFile]
 				if fileBucket == nil {
 					fileBucket = make(map[string]map[string]string)
@@ -1794,6 +1816,65 @@ func hintKinds(relKind string) []string {
 	return nil
 }
 
+// Kind-family bitmask (issue #6141). The leaf-name tiers scan member
+// indexes whose values are bare entity IDs, so they need a per-ID kind
+// classification to filter candidates. A 3-bit mask is enough and keeps the
+// side-table one byte per entry.
+const (
+	famOperation uint8 = 1 << iota
+	famComponent
+	famSchema
+)
+
+// familyMaskByKind maps every entity Kind named in the three kind families
+// to its mask bit. Derived from the family slices themselves rather than
+// re-listed, so it cannot drift out of agreement with hintKinds /
+// structuralKindFamilies — the same invariant issue #49 centralised the
+// slices for.
+var familyMaskByKind = func() map[string]uint8 {
+	m := make(map[string]uint8, 16)
+	for _, spec := range []struct {
+		kinds []string
+		bit   uint8
+	}{
+		{operationKindFamily, famOperation},
+		{componentKindFamily, famComponent},
+		{schemaKindFamily, famSchema},
+	} {
+		for _, k := range spec.kinds {
+			m[k] |= spec.bit
+		}
+	}
+	return m
+}()
+
+// memberFamilyMask classifies one entity Kind into the kind-family mask.
+// Both the raw kind and its SCOPE.-trimmed form are consulted, mirroring
+// the dual-indexing BuildIndex applies to byKind — so a hypothetical
+// "SCOPE.Method" classifies as an operation via its trimmed form.
+// Returns 0 for kinds in no family; such an entity is never a candidate
+// for a family-filtered leaf-name lookup.
+func memberFamilyMask(kind string) uint8 {
+	if kind == "" {
+		return 0
+	}
+	mask := familyMaskByKind[kind]
+	if trimmed := strings.TrimPrefix(kind, scopeKindPrefix); trimmed != kind && trimmed != "" {
+		mask |= familyMaskByKind[trimmed]
+	}
+	return mask
+}
+
+// inFamily reports whether the member-indexed entity id belongs to the
+// requested kind family. want == 0 disables the filter (every candidate
+// passes), which is what the field-shaped call sites pass.
+func (idx Index) inFamily(id string, want uint8) bool {
+	if want == 0 {
+		return true
+	}
+	return idx.memberFamily[id]&want != 0
+}
+
 // lookupByKindHint disambiguates a name using the relKind hint. Returns
 // (id, true) only when the hinted family yields exactly one entity for
 // this name; otherwise ("", false).
@@ -2260,7 +2341,7 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 					// package's member index for any class that declares
 					// this field name. The ChildClass may differ from
 					// the ParentClass that owns the field.
-					if id, ok := idx.lookupPackageMemberByLeafName(pkgDir, fieldName); ok {
+					if id, ok := idx.lookupPackageMemberByLeafName(pkgDir, fieldName, 0); ok {
 						return id, statusRewritten, true
 					}
 				}
@@ -2706,7 +2787,14 @@ func (idx Index) lookupPackageMember(pkgDir, receiverType, member string) (strin
 // names). Scanning byMember for the leaf name is the correct fallback:
 // a caller inside InventoryService calling `merge()` should bind to
 // byMember[callerFile]["InventoryService"]["merge"].
-func (idx Index) lookupMemberByLeafName(filePath, memberName string) (string, bool) {
+//
+// Issue #6141 — `want` is the kind-family mask a candidate must belong to
+// (0 = no filter). The member indexes are kind-blind, so without it a bare
+// CALLS target binds to a same-leaf-named FIELD. Note the filter SKIPS a
+// rejected candidate rather than aborting: that is what recovers the
+// correct operation binding when an unrelated field of the same leaf name
+// would otherwise have tripped the cross-scope ambiguity guard.
+func (idx Index) lookupMemberByLeafName(filePath, memberName string, want uint8) (string, bool) {
 	if filePath == "" || memberName == "" {
 		return "", false
 	}
@@ -2719,6 +2807,9 @@ func (idx Index) lookupMemberByLeafName(filePath, memberName string) (string, bo
 	for _, scopeBucket := range fileBucket {
 		id, ok := scopeBucket[memberName]
 		if !ok {
+			continue
+		}
+		if id != "" && !idx.inFamily(id, want) {
 			continue
 		}
 		if id == "" {
@@ -2749,7 +2840,12 @@ func (idx Index) lookupMemberByLeafName(filePath, memberName string) (string, bo
 //
 // Issue #778 — package-level fallback after the same-file scan misses
 // (e.g. when the callee is defined in a sibling file of the same package).
-func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string) (string, bool) {
+// Issue #6141 — `want` is the kind-family mask, as in lookupMemberByLeafName.
+// The CALLS call sites pass famOperation; the #667 Java inherited-field hint
+// site passes 0 (unfiltered) because its stub is field-shaped by
+// construction and a schema filter there would be a separate, unassessed
+// behaviour change.
+func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string, want uint8) (string, bool) {
 	if pkgDir == "" || memberName == "" {
 		return "", false
 	}
@@ -2762,6 +2858,9 @@ func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string) (strin
 	for _, scopeBucket := range pkgBucket {
 		id, ok := scopeBucket[memberName]
 		if !ok {
+			continue
+		}
+		if id != "" && !idx.inFamily(id, want) {
 			continue
 		}
 		if id == "" {
@@ -2965,12 +3064,12 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 			// we cannot pick without additional type information and leave the
 			// stub unresolved (correct: ambiguous, not a false bind).
 			if callerFile != "" {
-				if id, ok := idx.lookupMemberByLeafName(callerFile, name); ok {
+				if id, ok := idx.lookupMemberByLeafName(callerFile, name, famOperation); ok {
 					return id, true
 				}
 			}
 			if callerPkgDir != "" {
-				if id, ok := idx.lookupPackageMemberByLeafName(callerPkgDir, name); ok {
+				if id, ok := idx.lookupPackageMemberByLeafName(callerPkgDir, name, famOperation); ok {
 					return id, true
 				}
 			}
