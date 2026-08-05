@@ -213,14 +213,17 @@ func TestPrintStatusSummary_DoesNotClaimProgressWhenEngineIsGone(t *testing.T) {
 // visible. A repo the engine has abandoned still has ReindexRequired=true, so
 // without this it would be counted as "in progress" forever.
 func TestPrintStatusSummary_ReportsGivenUpRepos(t *testing.T) {
+	// Three stale repos, two of them given up on: one is genuinely still in
+	// progress, so both lines are expected and the counts must not overlap.
 	s := &StatusSummary{
 		GroupName:       "grp",
-		ReindexRequired: 2,
+		ReindexRequired: 3,
 		MigrationFailed: 2,
 		MigrationLive:   true,
 		RepoStats: map[string]*RepoStatus{
 			"a": {Slug: "a", Path: "/repo/a", LastIndexedAge: "1m ago", ReindexRequired: true, MigrationFailed: true},
 			"b": {Slug: "b", Path: "/repo/b", LastIndexedAge: "1m ago", ReindexRequired: true, MigrationFailed: true},
+			"c": {Slug: "c", Path: "/repo/c", LastIndexedAge: "1m ago", ReindexRequired: true},
 		},
 	}
 	var buf bytes.Buffer
@@ -232,6 +235,73 @@ func TestPrintStatusSummary_ReportsGivenUpRepos(t *testing.T) {
 	}
 	if !strings.Contains(out, "grafel index") {
 		t.Errorf("must name the manual fix:\n%s", out)
+	}
+	// The in-progress count must EXCLUDE the given-up repos: 3 stale - 2 failed
+	// = 1 actually migrating. The docstring claimed this; nothing asserted it.
+	if !strings.Contains(out, "1 of 3 repo(s)") {
+		t.Errorf("in-progress line must count only the 1 repo still being migrated, not all 3:\n%s", out)
+	}
+}
+
+// TestPrintStatusSummary_AllGivenUpIsNotAlsoInProgress is review round-3 LOW 5.
+// When every remaining stale repo has been given up on, `active` is 0 but the
+// gate still fired, printing "0 of 3 repo(s) ... awaiting reindex — grafel is
+// migrating them automatically ... No action needed" directly above a warning
+// that 3 repos could not be migrated. The two lines contradicted each other,
+// and the round-2 fixture used ReindexRequired == MigrationFailed so it
+// RENDERED that pair and passed anyway.
+func TestPrintStatusSummary_AllGivenUpIsNotAlsoInProgress(t *testing.T) {
+	s := &StatusSummary{
+		GroupName:       "grp",
+		ReindexRequired: 3,
+		MigrationFailed: 3,
+		MigrationLive:   true,
+		RepoStats: map[string]*RepoStatus{
+			"a": {Slug: "a", Path: "/repo/a", LastIndexedAge: "1m ago", ReindexRequired: true, MigrationFailed: true},
+			"b": {Slug: "b", Path: "/repo/b", LastIndexedAge: "1m ago", ReindexRequired: true, MigrationFailed: true},
+			"c": {Slug: "c", Path: "/repo/c", LastIndexedAge: "1m ago", ReindexRequired: true, MigrationFailed: true},
+		},
+	}
+	var buf bytes.Buffer
+	PrintStatusSummary(&buf, s)
+	out := strings.ToLower(buf.String())
+
+	if strings.Contains(out, "in progress") {
+		t.Errorf("nothing is in progress — every stale repo was given up on:\n%s", out)
+	}
+	if strings.Contains(out, "no action needed") {
+		t.Errorf("action IS needed — every remaining repo needs a manual reindex:\n%s", out)
+	}
+	if !strings.Contains(out, "could not be migrated") {
+		t.Errorf("must still report the given-up repos:\n%s", out)
+	}
+}
+
+// TestPrintStatusSummary_LivenessBoundary pins the freshness window edges.
+func TestPrintStatusSummary_LivenessBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		age  time.Duration
+		live bool
+	}{
+		{"59s is live", 59 * time.Second, true},
+		{"exactly 60s is live", 60 * time.Second, true},
+		{"61s is not live", 61 * time.Second, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv(daemon.EnvRoot, root)
+			t.Setenv("GRAFEL_HOME", t.TempDir())
+			ref := time.Now()
+			orig := statusNow
+			statusNow = func() time.Time { return ref }
+			t.Cleanup(func() { statusNow = orig })
+			repo := seedRepoWithStatusfileAt(t, root, "r", true, ref.Add(-tc.age))
+			got := ComputeStatusSummary("grp", []registry.Repo{repo})
+			if got.MigrationLive != tc.live {
+				t.Errorf("heartbeat %v old: MigrationLive = %v, want %v", tc.age, got.MigrationLive, tc.live)
+			}
+		})
 	}
 }
 

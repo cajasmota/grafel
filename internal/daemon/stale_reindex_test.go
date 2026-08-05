@@ -7,6 +7,7 @@ package daemon
 // and the guard self-clears once the graph is current again.
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -148,6 +149,10 @@ func newTestGuard(clk *fakeClock, batch int, cooldown, ttl time.Duration) *stale
 	g.batchSize = batch
 	g.cooldown = cooldown
 	g.slotTTL = ttl
+	// Deterministic by default: no jitter, and no scheduler signal (so the
+	// hard ceiling governs) unless a test injects one.
+	g.retryJitter = 0
+	g.activeFn = func() map[string]bool { return nil }
 	return g
 }
 
@@ -397,10 +402,10 @@ func TestStaleReindexGuard_140RepoUpgrade_Simulation(t *testing.T) {
 // restartGuard builds a guard that shares nothing in-memory with a previous
 // one — the exact state a daemon restart produces — but sees the SAME durable
 // requests dirs. Used to prove the migration resumes rather than restarts.
-func restartGuard(clk *fakeClock, batch int, cooldown, ttl time.Duration, dirs []string) *staleReindexGuard {
-	g := newTestGuard(clk, batch, cooldown, ttl)
-	g.reconcileDirsFn = func() ([]string, error) { return dirs, nil }
-	return g
+func restartGuard(clk *fakeClock, batch int, cooldown, ttl time.Duration, _ []string) *staleReindexGuard {
+	// No injection: the recovery path under test is the real one, reading the
+	// durable migration markers out of the sandboxed store.
+	return newTestGuard(clk, batch, cooldown, ttl)
 }
 
 // TestStaleReindexGuard_RestartDoesNotDuplicateRequests is review finding 1.
@@ -458,7 +463,10 @@ func TestStaleReindexGuard_LaggardDoesNotStallWholeMigration(t *testing.T) {
 	t.Setenv(EnvRoot, t.TempDir())
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	g := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
-	g.laggardGrace = 5 * time.Minute
+	g.stalledGrace = 90 * time.Second
+	// /repo/fast is genuinely indexing; /repo/wedged never reaches the
+	// scheduler at all, which is what makes it forfeitable early.
+	g.activeFn = func() map[string]bool { return map[string]bool{"/repo/fast": true} }
 
 	repos := []string{"/repo/fast", "/repo/wedged", "/repo/next", "/repo/next2"}
 	stale := map[string]bool{}
@@ -499,7 +507,7 @@ func TestStaleReindexGuard_FailedRepoIsRetriedThenReported(t *testing.T) {
 	t.Setenv(EnvRoot, t.TempDir())
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	g := newTestGuard(clk, 1, 45*time.Second, 10*time.Minute)
-	g.laggardGrace = 5 * time.Minute
+	g.stalledGrace = 90 * time.Second
 	g.maxAttempts = 3
 
 	repos := []string{"/repo/broken"}
@@ -570,5 +578,210 @@ func TestStaleReindexGuard_RestartWithPartialBatchDoesNotDuplicate(t *testing.T)
 	}
 	if n := countPendingReindex(t, "/repo/b"); n != 1 {
 		t.Fatalf("/repo/b pending requests = %d, want 1 (the free slot must still be usable)", n)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #6167 review round 3. Round 2's remedies each closed a narrower window than
+// the defect occupied; these model the real timeline instead.
+// ---------------------------------------------------------------------------
+
+// drainAndAck models what the engine's drain loop actually does within ~2s of a
+// request being written: apply it and remove the request file. After this,
+// requests.ListPending reports NOTHING for the repo, which is precisely why a
+// ListPending-based reconcile could not see an in-progress migration.
+func drainAndAck(t *testing.T, repoPath string) {
+	t.Helper()
+	dir := requestsDirForRepo(repoPath)
+	recs, err := requests.ListPending(dir)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	for _, r := range recs {
+		if err := requests.WriteAck(dir, r.ID, requests.Ack{ID: r.ID, Status: requests.StatusOK, AppliedAt: time.Now()}); err != nil {
+			t.Fatalf("WriteAck: %v", err)
+		}
+	}
+	// ListPending removes an acked request as catch-up cleanup.
+	if _, err := requests.ListPending(dir); err != nil {
+		t.Fatalf("ListPending after ack: %v", err)
+	}
+}
+
+// TestStaleReindexGuard_RestartMidIndexDoesNotDuplicate is review round-3
+// blocker 1. The user restarts BECAUSE the daemon is busy indexing — 42s–4m53s
+// after admission — by which time the 2s drain has long since acked and removed
+// the request. A ListPending-based reconcile sees an empty queue and re-admits
+// everything: measured 12 duplicate reindexes across 6 mid-index restarts, the
+// same magnitude as before any fix. The outstanding set must survive DISPATCH,
+// not just the 2-second window before it.
+func TestStaleReindexGuard_RestartMidIndexDoesNotDuplicate(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	repos := []string{"/repo/a", "/repo/b", "/repo/c", "/repo/d"}
+	stale := map[string]bool{}
+	for _, r := range repos {
+		stale[r] = true
+	}
+
+	g := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+	if got := heartbeat(g, repos, stale); len(got) != 2 {
+		t.Fatalf("initial admits = %v, want 2", got)
+	}
+	// The drain applies and acks both within ~2s. The indexes themselves are
+	// still running — nothing has gone current.
+	clk.advance(2 * time.Second)
+	drainAndAck(t, "/repo/a")
+	drainAndAck(t, "/repo/b")
+
+	// Now the user restarts, repeatedly, mid-index.
+	for restart := 1; restart <= 6; restart++ {
+		clk.advance(60 * time.Second) // mid-index, well past the drain
+		g = newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+		if got := heartbeat(g, repos, stale); len(got) != 0 {
+			t.Fatalf("mid-index restart %d re-admitted %v — the migration must resume, not restart", restart, got)
+		}
+	}
+
+	total := 0
+	for _, r := range repos {
+		total += countPendingReindex(t, r)
+	}
+	if total != 0 {
+		t.Fatalf("duplicate reindex requests after 6 mid-index restarts = %d, want 0", total)
+	}
+}
+
+// TestStaleReindexGuard_TwoWedgedReposDoNotStall is review round-3 blocker 2.
+// Round 2 applied the short laggard grace only when len(inflight) <
+// admittedInBatch — never true when BOTH slot-holders are wedged, so the hard
+// 15m TTL governed again and the measured stall was 15m45s, marginally WORSE
+// than before the fix. The forfeit decision has to be per-repo.
+func TestStaleReindexGuard_TwoWedgedReposDoNotStall(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	repos := []string{"/repo/wedged1", "/repo/wedged2", "/repo/ok1", "/repo/ok2"}
+	stale := map[string]bool{}
+	for _, r := range repos {
+		stale[r] = true
+	}
+
+	g := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+	// Neither wedged repo ever reaches the scheduler — no indexstate entry at
+	// all, which is exactly what a dropped request or a failed dispatch looks
+	// like. A non-empty snapshot for OTHER repos is what makes "absent" mean
+	// "not running" rather than "scheduler hasn't published yet".
+	g.activeFn = func() map[string]bool { return map[string]bool{"/repo/other": true} }
+
+	if got := heartbeat(g, repos, stale); len(got) != 2 {
+		t.Fatalf("first batch = %v, want 2", got)
+	}
+
+	// Both slot-holders are wedged. The migration must resume well inside the
+	// hard TTL — the stalled grace plus a cooldown, not 15m45s.
+	deadline := clk.now().Add(5 * time.Minute)
+	var resumed bool
+	for clk.now().Before(deadline) {
+		clk.advance(5 * time.Second)
+		if got := heartbeat(g, repos, stale); len(got) > 0 {
+			resumed = true
+			break
+		}
+	}
+	if !resumed {
+		t.Fatal("two concurrently wedged repos stalled the whole migration for over 5 minutes")
+	}
+}
+
+// TestStaleReindexGuard_ActivelyIndexingRepoIsNotForfeited is the other side of
+// blocker 2 and of MEDIUM 3: a repo that really is indexing must be protected
+// for as long as it keeps working, however slow it is. Round 2's 5m laggard
+// grace left 7 seconds of margin against the documented 4m53s worst case, on a
+// machine that is MORE loaded during a migration than during the capture.
+func TestStaleReindexGuard_ActivelyIndexingRepoIsNotForfeited(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	repos := []string{"/repo/slow", "/repo/next"}
+	stale := map[string]bool{"/repo/slow": true, "/repo/next": true}
+
+	g := newTestGuard(clk, 1, 45*time.Second, 15*time.Minute)
+	g.activeFn = func() map[string]bool { return map[string]bool{"/repo/slow": true} }
+
+	if got := heartbeat(g, repos, stale); len(got) != 1 || got[0] != "/repo/slow" {
+		t.Fatalf("first batch = %v, want [/repo/slow]", got)
+	}
+	// Ten minutes of genuine indexing — twice the observed worst case.
+	for i := 0; i < 120; i++ {
+		clk.advance(5 * time.Second)
+		heartbeat(g, repos, stale)
+	}
+	if g.attemptsFor("/repo/slow") != 0 {
+		t.Errorf("a repo that is actively indexing was forfeited: attempts = %d, want 0", g.attemptsFor("/repo/slow"))
+	}
+	if g.migrationFailed("/repo/slow") {
+		t.Error("an actively-indexing repo must never be reported as unmigratable")
+	}
+}
+
+// TestStaleReindexGuard_AttemptsResetOnSuccess is review round-3 MEDIUM 3.
+// attempts was never cleared, so a repo forfeited once per generation but
+// always eventually SUCCEEDING accumulated attempts across generations and was
+// eventually reported to the user as unmigratable.
+func TestStaleReindexGuard_AttemptsResetOnSuccess(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	const repo = "/repo/slow-but-fine"
+	g := newTestGuard(clk, 1, 45*time.Second, 15*time.Minute)
+	g.activeFn = func() map[string]bool { return nil }
+
+	for gen := 0; gen < 4; gen++ {
+		fp := staleFingerprint(int64(gen+1), "stale")
+		// Admitted, forfeited (looks stalled), then the index lands anyway.
+		g.maybeEnqueue(repo, true, fp, nil)
+		clk.advance(20 * time.Minute)
+		g.maybeEnqueue(repo, true, fp, nil) // sweep forfeits here
+		g.maybeEnqueue(repo, false, "", nil)
+		clk.advance(20 * time.Minute)
+
+		if g.migrationFailed(repo) {
+			t.Fatalf("generation %d: an always-succeeding repo was reported unmigratable", gen)
+		}
+		if n := g.attemptsFor(repo); n != 0 {
+			t.Fatalf("generation %d: attempts = %d after success, want 0 (must reset)", gen, n)
+		}
+	}
+}
+
+// TestStaleReindexGuard_ReconcileRetriesAfterTransientError is review round-3
+// MEDIUM 4: `reconciled` was set BEFORE the fallible call, so one transient
+// glob failure silently disabled the restart remedy for the whole process.
+func TestStaleReindexGuard_ReconcileRetriesAfterTransientError(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	g := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+	calls := 0
+	g.reconcileStatesFn = func() ([]migrationState, error) {
+		calls++
+		if calls == 1 {
+			return nil, errors.New("transient: store busy")
+		}
+		return nil, nil
+	}
+
+	g.maybeEnqueue("/repo/a", true, staleFingerprint(1, "stale"), nil)
+	g.maybeEnqueue("/repo/b", true, staleFingerprint(1, "stale"), nil)
+
+	if calls < 2 {
+		t.Fatalf("reconcile was attempted %d time(s) — a transient error must not disable it permanently", calls)
 	}
 }

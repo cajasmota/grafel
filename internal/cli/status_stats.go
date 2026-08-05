@@ -25,6 +25,12 @@ import (
 // stopped daemon looking alive.
 const migrationLiveWindow = 60 * time.Second
 
+// statusNow is the clock ComputeStatusSummary measures heartbeat freshness
+// against. A package var purely so the liveness boundary is testable at exact
+// offsets — a wall-clock test can never observe "exactly migrationLiveWindow
+// old" as live, because time passes between seeding the file and reading it.
+var statusNow = time.Now
+
 // StatusSummary aggregates per-repo and per-group statistics for the status
 // command. Computed client-side by reading the graph-stats.json sidecars.
 type StatusSummary struct {
@@ -172,7 +178,7 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 			// Liveness: a heartbeat within migrationLiveWindow means an engine
 			// is writing these files right now. Any one repo suffices — the
 			// writer walks them all on a single loop.
-			if !sf.HeartbeatAt.IsZero() && time.Since(sf.HeartbeatAt) <= migrationLiveWindow {
+			if !sf.HeartbeatAt.IsZero() && statusNow().Sub(sf.HeartbeatAt) <= migrationLiveWindow {
 				s.MigrationLive = true
 			}
 		}
@@ -641,7 +647,16 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	// showing the fraction converts that into visible progress. Printed only
 	// while a migration is actually outstanding, so it adds no steady-state
 	// noise (and leaves the #5995 byte-for-byte golden untouched).
-	if s.ReindexRequired > 0 {
+	active := s.ReindexRequired - s.MigrationFailed
+	if active < 0 {
+		active = 0
+	}
+	// Round-3 LOW 5: gate on `active`, not on ReindexRequired. When every
+	// remaining stale repo has been given up on, the old gate still fired and
+	// printed "0 of N ... migrating them automatically ... No action needed"
+	// directly above the warning that N repos could NOT be migrated — two
+	// contradictory lines, with the reassuring one first.
+	if active > 0 {
 		total := len(s.RepoStats)
 		// The denominator is this GROUP's repo count, and the wording says so
 		// — a multi-group store has more repos than this, and claiming
@@ -653,7 +668,6 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 			fmt.Fprintf(w, "  Format upgrade STALLED: %d of %d repo(s) in this group need a reindex, but the daemon is not running — start it with `grafel start` (or reindex manually with `grafel index <repo>`).\n",
 				s.ReindexRequired, total)
 		default:
-			active := s.ReindexRequired - s.MigrationFailed
 			fmt.Fprintf(w, "  Format upgrade in progress: %d of %d repo(s) in this group awaiting reindex — grafel is migrating them automatically, a few at a time. No action needed.\n",
 				active, total)
 		}
