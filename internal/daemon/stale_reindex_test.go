@@ -315,7 +315,7 @@ func TestStaleReindexGuard_140RepoUpgrade_Simulation(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	const batch = 2
-	g := newTestGuard(clk, batch, 30*time.Second, 15*time.Minute)
+	g := newTestGuard(clk, batch, 45*time.Second, 15*time.Minute)
 
 	repos := make([]string, 140)
 	stale := map[string]bool{}
@@ -326,6 +326,11 @@ func TestStaleReindexGuard_140RepoUpgrade_Simulation(t *testing.T) {
 
 	admittedCount := map[string]int{}
 	idleWindows := 0
+	consecutiveIdle := 0
+	// The window must be at least as long as the cooldown to be usable by a
+	// stage gate that retries every stageGateRetryDefault (15s).
+	const tickSeconds = 5
+	idleTicksNeeded := int((45 * time.Second) / (tickSeconds * time.Second))
 	// 5s heartbeats. Each admitted repo takes 60s of simulated indexing.
 	finishAt := map[string]time.Time{}
 	for tick := 0; tick < 20000; tick++ {
@@ -340,8 +345,19 @@ func TestStaleReindexGuard_140RepoUpgrade_Simulation(t *testing.T) {
 		if outstanding > batch {
 			t.Fatalf("tick %d: %d reindexes outstanding, want <= %d", tick, outstanding, batch)
 		}
+		// Review finding 4: counting BARE idle ticks was satisfied by the
+		// single batch-drain transition tick, so a plain size-2 semaphore
+		// passed this test — the very design the batch policy exists to
+		// reject. What the stage gate actually needs is a RUN of idle ticks
+		// at least as long as the cooldown, so measure consecutive runs and
+		// only count one that is long enough to be a usable window.
 		if outstanding == 0 {
-			idleWindows++
+			consecutiveIdle++
+			if consecutiveIdle == idleTicksNeeded {
+				idleWindows++
+			}
+		} else {
+			consecutiveIdle = 0
 		}
 		for _, r := range heartbeat(g, repos, stale) {
 			admittedCount[r]++
@@ -365,7 +381,153 @@ func TestStaleReindexGuard_140RepoUpgrade_Simulation(t *testing.T) {
 			t.Fatalf("repo %s admitted %d times, want exactly 1 (migration must complete, exactly once per repo)", r, admittedCount[r])
 		}
 	}
-	if idleWindows < 70 {
-		t.Fatalf("only %d idle heartbeats across the migration, want >= 70 (one per batch) — the stage gate needs them", idleWindows)
+	// 140 repos / batch 2 = 70 batches, but the loop exits the moment the last
+	// repo goes current, so the final batch's window is never observed — 69 is
+	// the exact expected count, not a fudge factor.
+	if idleWindows < 69 {
+		t.Fatalf("only %d usable idle windows (>= %d consecutive idle ticks) across the migration, want >= 69 — one per batch, each long enough for the stage gate to retry into", idleWindows, idleTicksNeeded)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #6167 review round 2. Three blocking findings from adversarial review, each
+// measured against the real production maybeEnqueue.
+// ---------------------------------------------------------------------------
+
+// restartGuard builds a guard that shares nothing in-memory with a previous
+// one — the exact state a daemon restart produces — but sees the SAME durable
+// requests dirs. Used to prove the migration resumes rather than restarts.
+func restartGuard(clk *fakeClock, batch int, cooldown, ttl time.Duration, dirs []string) *staleReindexGuard {
+	g := newTestGuard(clk, batch, cooldown, ttl)
+	g.reconcileDirsFn = func() ([]string, error) { return dirs, nil }
+	return g
+}
+
+// TestStaleReindexGuard_RestartDoesNotDuplicateRequests is review finding 1.
+// seen/inflight are in-memory, so a fresh guard used to re-admit every repo
+// whose reindex was still pending — graph.fb has not been rewritten, so
+// ReindexRequired is still true — writing a duplicate full reindex (42s–4m53s
+// each) per repo per restart, unbounded across restarts. The migration must
+// RESUME from the durable queue, not restart.
+func TestStaleReindexGuard_RestartDoesNotDuplicateRequests(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	repos := []string{"/repo/a", "/repo/b", "/repo/c", "/repo/d"}
+	stale := map[string]bool{}
+	for _, r := range repos {
+		stale[r] = true
+	}
+	dirs := make([]string, 0, len(repos))
+	for _, r := range repos {
+		dirs = append(dirs, requestsDirForRepo(r))
+	}
+
+	g1 := restartGuard(clk, 2, 45*time.Second, 15*time.Minute, dirs)
+	pre := heartbeat(g1, repos, stale)
+	if len(pre) != 2 {
+		t.Fatalf("pre-restart admits = %v, want 2", pre)
+	}
+
+	// Restart: brand-new guard, same durable store. Nothing has completed, so
+	// every repo is still stale.
+	for restart := 1; restart <= 6; restart++ {
+		g := restartGuard(clk, 2, 45*time.Second, 15*time.Minute, dirs)
+		clk.advance(5 * time.Second)
+		if got := heartbeat(g, repos, stale); len(got) != 0 {
+			t.Fatalf("restart %d re-admitted %v — the two pending requests already saturate the batch", restart, got)
+		}
+	}
+
+	total := 0
+	for _, r := range repos {
+		total += countPendingReindex(t, r)
+	}
+	if total != 2 {
+		t.Fatalf("durable requests after 6 restarts = %d, want 2 (progress must survive restart, not reset)", total)
+	}
+}
+
+// TestStaleReindexGuard_LaggardDoesNotStallWholeMigration is review finding 2.
+// Once the rest of the batch drains, a wedged repo must forfeit its slot at the
+// SHORT laggard grace, not the full hard TTL. Measured before this fix: 15m25s
+// with nothing admitted at all.
+func TestStaleReindexGuard_LaggardDoesNotStallWholeMigration(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	g := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+	g.laggardGrace = 5 * time.Minute
+
+	repos := []string{"/repo/fast", "/repo/wedged", "/repo/next", "/repo/next2"}
+	stale := map[string]bool{}
+	for _, r := range repos {
+		stale[r] = true
+	}
+
+	if got := heartbeat(g, repos, stale); len(got) != 2 {
+		t.Fatalf("first batch = %v, want 2", got)
+	}
+	// /repo/fast completes quickly; /repo/wedged never does.
+	stale["/repo/fast"] = false
+	clk.advance(60 * time.Second)
+	heartbeat(g, repos, stale)
+
+	// The laggard must forfeit within laggardGrace + cooldown of its batch-mate
+	// finishing — NOT the 15m hard TTL.
+	deadline := clk.now().Add(5*time.Minute + 45*time.Second + 10*time.Second)
+	var resumedAt time.Time
+	for clk.now().Before(deadline) {
+		clk.advance(5 * time.Second)
+		if got := heartbeat(g, repos, stale); len(got) > 0 {
+			resumedAt = clk.now()
+			break
+		}
+	}
+	if resumedAt.IsZero() {
+		t.Fatalf("migration still stalled after %v — a wedged repo must not hold the batch for the full TTL", 5*time.Minute+45*time.Second)
+	}
+}
+
+// TestStaleReindexGuard_FailedRepoIsRetriedThenReported is the other half of
+// finding 2: a forfeited slot used to leave the repo in `seen` forever, a
+// silent permanent drop. It must get a bounded number of retries and then be
+// explicitly reported.
+func TestStaleReindexGuard_FailedRepoIsRetriedThenReported(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	g := newTestGuard(clk, 1, 45*time.Second, 10*time.Minute)
+	g.laggardGrace = 5 * time.Minute
+	g.maxAttempts = 3
+
+	repos := []string{"/repo/broken"}
+	stale := map[string]bool{"/repo/broken": true}
+
+	admits := 0
+	for tick := 0; tick < 4000; tick++ {
+		if got := heartbeat(g, repos, stale); len(got) > 0 {
+			admits++
+		}
+		if g.migrationFailed("/repo/broken") {
+			break
+		}
+		clk.advance(5 * time.Second)
+	}
+	if admits != 3 {
+		t.Errorf("broken repo admitted %d times, want exactly maxAttempts=3 (bounded retry, not one-shot drop)", admits)
+	}
+	if !g.migrationFailed("/repo/broken") {
+		t.Fatal("broken repo must be reported as migration-failed, not silently dropped")
+	}
+	// And once failed it must never be admitted again.
+	before := countPendingReindex(t, "/repo/broken")
+	for i := 0; i < 50; i++ {
+		clk.advance(time.Minute)
+		heartbeat(g, repos, stale)
+	}
+	if got := countPendingReindex(t, "/repo/broken"); got != before {
+		t.Errorf("failed repo re-admitted after giving up: %d -> %d", before, got)
 	}
 }

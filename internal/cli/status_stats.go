@@ -17,6 +17,14 @@ import (
 	"github.com/cajasmota/grafel/internal/statusfile"
 )
 
+// migrationLiveWindow is how recent a statusfile heartbeat must be for the
+// status command to believe an engine is actually running the format
+// migration. The engine rewrites every repo's statusfile on a 5s heartbeat
+// (internal/daemon/statuswriter.go:45), so 60s is a dozen missed ticks —
+// comfortably past a slow tick or a busy machine, well short of leaving a
+// stopped daemon looking alive.
+const migrationLiveWindow = 60 * time.Second
+
 // StatusSummary aggregates per-repo and per-group statistics for the status
 // command. Computed client-side by reading the graph-stats.json sidecars.
 type StatusSummary struct {
@@ -42,6 +50,22 @@ type StatusSummary struct {
 	// load, no daemon dial. Zero on the overwhelming majority of runs, and
 	// PrintStatusSummary prints nothing when it is zero.
 	ReindexRequired int
+
+	// MigrationFailed is how many repos the engine has GIVEN UP migrating
+	// (#6167 review finding 2). These still count in ReindexRequired — the
+	// graph really is stale — but nothing is coming to fix them automatically,
+	// so they are reported separately with the manual command.
+	MigrationFailed int
+
+	// MigrationLive is true when at least one repo's statusfile was
+	// heartbeated recently enough to believe an engine is actually running and
+	// working the migration. Review finding 3: statusfile.Read is a plain
+	// unmarshal with no freshness gate, so a stopped daemon leaves
+	// ReindexRequired=true on disk indefinitely — and the status line then
+	// reassured the user that an automatic migration was under way when
+	// nothing at all was running. Derived from statusfile.HeartbeatAt, so it
+	// still needs no daemon dial.
+	MigrationLive bool
 }
 
 // RepoStatus contains per-repo statistics.
@@ -80,6 +104,10 @@ type RepoStatus struct {
 	// statusfile, which the engine recomputes from the graph.fb header on every
 	// heartbeat (internal/daemon/statuswriter.go:135).
 	ReindexRequired bool
+
+	// MigrationFailed mirrors statusfile.ReindexMigrationFailed: the engine
+	// tried staleReindexMaxAttempts times and gave up on this repo.
+	MigrationFailed bool
 
 	// GraphLoadError is non-empty when this repo HAS a graph artefact on disk
 	// but it could not be read: a truncated/garbage graph.fb (the flatbuffers
@@ -134,8 +162,18 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 			// graph.fb header every heartbeat, so it is the freshest answer
 			// available without loading a graph.
 			rs.ReindexRequired = sf.ReindexRequired
+			rs.MigrationFailed = sf.ReindexMigrationFailed
 			if sf.ReindexRequired {
 				s.ReindexRequired++
+			}
+			if sf.ReindexMigrationFailed {
+				s.MigrationFailed++
+			}
+			// Liveness: a heartbeat within migrationLiveWindow means an engine
+			// is writing these files right now. Any one repo suffices — the
+			// writer walks them all on a single loop.
+			if !sf.HeartbeatAt.IsZero() && time.Since(sf.HeartbeatAt) <= migrationLiveWindow {
+				s.MigrationLive = true
 			}
 		}
 
@@ -605,8 +643,24 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	// noise (and leaves the #5995 byte-for-byte golden untouched).
 	if s.ReindexRequired > 0 {
 		total := len(s.RepoStats)
-		fmt.Fprintf(w, "  Format upgrade in progress: %d of %d repo(s) awaiting reindex — grafel is migrating them automatically, a few at a time. No action needed.\n",
-			s.ReindexRequired, total)
+		// The denominator is this GROUP's repo count, and the wording says so
+		// — a multi-group store has more repos than this, and claiming
+		// otherwise would understate the migration (review finding 3).
+		switch {
+		case !s.MigrationLive:
+			// No recent heartbeat: nothing is migrating anything. Telling the
+			// user "no action needed" here is precisely backwards.
+			fmt.Fprintf(w, "  Format upgrade STALLED: %d of %d repo(s) in this group need a reindex, but the daemon is not running — start it with `grafel start` (or reindex manually with `grafel index <repo>`).\n",
+				s.ReindexRequired, total)
+		default:
+			active := s.ReindexRequired - s.MigrationFailed
+			fmt.Fprintf(w, "  Format upgrade in progress: %d of %d repo(s) in this group awaiting reindex — grafel is migrating them automatically, a few at a time. No action needed.\n",
+				active, total)
+		}
+	}
+	if s.MigrationFailed > 0 {
+		fmt.Fprintf(w, "  ⚠ %d repo(s) could not be migrated automatically after repeated attempts — reindex them manually with `grafel index <repo>`.\n",
+			s.MigrationFailed)
 	}
 
 	if s.EnrichmentCandidates > 0 || s.RepairCandidates > 0 {

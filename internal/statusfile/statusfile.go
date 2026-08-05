@@ -110,6 +110,15 @@ type File struct {
 	// format versions and points at the fix (`grafel index <repo>`). Empty
 	// when ReindexRequired is false.
 	ReindexReason string `json:"reindex_reason,omitempty"`
+	// ReindexMigrationFailed is true when the engine's automatic format
+	// migration (#6167) gave up on this repo: its auto-reindex was admitted
+	// staleReindexMaxAttempts times and never produced a current graph.fb.
+	// The repo is then dropped from the migration permanently, so this flag is
+	// the ONLY signal that it needs a manual `grafel index <repo>` — without it
+	// the drop is silent and the repo serves nothing forever. Distinct from
+	// ReindexRequired, which stays true alongside it (the graph really is still
+	// stale); this says "and nobody is coming to fix it automatically".
+	ReindexMigrationFailed bool `json:"reindex_migration_failed,omitempty"`
 
 	// LastRebuildFailure records the most recent FAILED `grafel rebuild` for
 	// this repo — e.g. the per-repo watchdog SIGKILL (#5143's
