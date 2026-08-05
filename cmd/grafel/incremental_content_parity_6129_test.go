@@ -406,9 +406,32 @@ CP_OTHER = 12
 //     internal/extractors/incremental.go (see engine.FoldFrameworkClassKinds).
 //     No class had ever appeared in this file's delta, which is the whole reason
 //     the gate stayed green through it.
+//
+//   - `import falcon` + `cp_app = falcon.App()` + `cp_app.add_route(...)` +
+//     the `on_get` responder — #6150. This is the FULL Falcon registration
+//     shape, and every part of it is load-bearing; the fixture reached a
+//     weaker version of it and the gate went quiet on six entities.
+//
+//     `on_get` (not some inert method name) is what makes the responder a
+//     ROUTE and gives the endpoint a verb. `add_route` is what fires falcon's
+//     YAML `relationship_rules` — the ONLY thing in this corpus that produces
+//     a Pass-2.5 STANDALONE relationship, which is a different producer from
+//     the record-embedded edges everything else here exercises. Together they
+//     are what make Pass 2.5 emit an `http_endpoint_definition`, which is what
+//     the flow pass needs to build the `SCOPE.Process` node and its four
+//     dependent edges. `import falcon` reaches the third-party-import path
+//     (#6156).
+//
+//     Before #6150 this shape diverged TWELVE ways from a full rebuild with at
+//     least six distinct causes, and the previous fixture could not see any of
+//     them: naming the probe method something inert and omitting the app
+//     object is functionally an allow-list entry with no filed issue, and the
+//     stale-entry ratchet below structurally CANNOT detect that dodge. Do not
+//     weaken any of these four lines.
 func cpDelta(t *testing.T, repo string, pass int) {
 	t.Helper()
-	dvWriteFile(t, repo, "cphandler_delta.py", fmt.Sprintf(`import cperrs_static
+	dvWriteFile(t, repo, "cphandler_delta.py", fmt.Sprintf(`import falcon
+import cperrs_static
 import cpprod_static
 from cpprod_static import CpProducer
 from cpcfg_static import CP_SETTING
@@ -432,6 +455,7 @@ class CpPlainProbe:
 
 
 cp_app = falcon.App()
+cp_app.add_route("/cpthings", CpPlainProbe())
 
 
 class CpLeafBag:
@@ -576,13 +600,20 @@ var cpKnownPathA = []cpKnown{
 		Contains:       []string{"SCOPE.ExceptionType|exception:CpNotFound"},
 		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
 	},
-	{
-		Issue:          "#6129 (duplicate-row class of #6094 / #6037)",
-		Why:            "The CONTAINS edge to the duplicated entity, duplicated with it.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"→SCOPE.ExceptionType/exception:CpNotFound@<exception>:CONTAINS"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
+	// The CONTAINS edge to that duplicated entity used to be duplicated WITH it,
+	// and had its own entry here. FIXED — the entry went STALE and was removed
+	// by the ratchet.
+	//
+	// It was collateral of the record→graph seam honouring EntityRecord.ID
+	// instead of deriving one (the #6150 fix in entityRecordToGraphEntity): the
+	// two copies of the exception record carried different ids, so their
+	// CONTAINS edges had different RelationshipIDs and the seenRel guard could
+	// not collapse them. Deriving the id makes both edges the same edge and one
+	// of them is dropped, matching the full rebuild exactly.
+	//
+	// The ENTITY-MULTIPLICITY entry above still reproduces: the duplicate
+	// exception ROW is a separate defect from the id it carried, and only the
+	// second one is closed.
 	// Re-keyed (not deleted) when the fixture grew for #6141/#6148/#6150: the
 	// divergence still reproduces and is still the same one — the unassigned
 	// community carries exactly ONE extra member, the duplicate row above — but
@@ -591,7 +622,7 @@ var cpKnownPathA = []cpKnown{
 	// moves whenever a fixture file is added. Anything other than +1 is a
 	// different divergence and must fail.
 	//
-	// This entry has now been re-keyed three times for fixture growth and zero
+	// This entry has now been re-keyed four times for fixture growth and zero
 	// times for a change in the defect, which is a smell in the KEY, not in the
 	// entry: it is the only allow entry keyed on an absolute count rather than on
 	// a shape. Keying it on the DELTA would end the churn and would still fail on
@@ -603,7 +634,49 @@ var cpKnownPathA = []cpKnown{
 		Issue:    "#6129 (duplicate-row class of #6094 / #6037)",
 		Why:      "Downstream of the duplicated entity: the unassigned community carries one extra member.",
 		Bucket:   cpCommunitySet,
-		Contains: []string{"community ∅: 35 member(s) in A, 36 in B"},
+		Contains: []string{"community ∅: 39 member(s) in A, 40 in B"},
+	},
+
+	// ── #6156: the full rebuild orphans a THIRD-PARTY import's IMPORTS edge ──
+	//
+	// The only divergence the #6150 fixture reaches where the INCREMENTAL answer
+	// is the correct one, which is why it is allow-listed rather than "fixed":
+	// closing it on this side would mean teaching Path A to dangle.
+	//
+	// `import falcon` names a package with no in-repo definition. BOTH graphs
+	// contain the `SCOPE.External|falcon` entity (measured — `external.Synthesize`
+	// runs on both paths). The FULL rebuild's IMPORTS edge points at the hex id
+	// of the import PLACEHOLDER that PruneImportPlaceholders has already removed,
+	// so it dangles; Path A binds the same edge to the live `ext:falcon` node.
+	//
+	// #6131's repoint does not cover it: it re-points at the entity the pipeline
+	// already resolved that import to, and for a third-party module there is
+	// nothing resolved at prune time — the SCOPE.External node is synthesised
+	// afterwards. See #6156 for the log line (`rels_orphaned=2`) and the fix
+	// direction.
+	{
+		Issue:    "#6156",
+		Why:      "Path A binds the third-party import to the live SCOPE.External node; the FULL rebuild dangles on the pruned placeholder. Incremental is the correct side. Unfixed, and not fixable from the incremental path.",
+		Bucket:   cpEdgeInvented,
+		Contains: []string{"→SCOPE.External/falcon@", ":IMPORTS"},
+	},
+	{
+		Issue:    "#6156",
+		Why:      "The LOST half of the same orphan: the full rebuild's dangling endpoint on the pruned import placeholder.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"SCOPE.Component/cphandler_delta.py@cphandler_delta.py→«unbound»", ":IMPORTS"},
+	},
+	{
+		// A CONSEQUENCE of the row above, not a second defect: module
+		// aggregation skips any edge whose endpoint resolves to no entity, so
+		// the full rebuild's orphaned IMPORTS edge is not counted and Path A's
+		// bound one is. Recorded as such because #6129 filed the same shape as
+		// "an extra DEPENDS_ON row" and it was a consequence then too.
+		Issue:          "#6156",
+		Why:            "Downstream of the orphaned IMPORTS edge: module aggregation cannot count an edge with a dangling endpoint, so the full rebuild's weight is one lower.",
+		Bucket:         cpEdgeProps,
+		Contains:       []string{"Module/test-repo@→Module/_external@:DEPENDS_ON"},
+		DetailContains: []string{`weight "2"≠"3"`},
 	},
 
 	// ── #6129 / #6098 family: over-counted DEPENDS_ON weight ──
