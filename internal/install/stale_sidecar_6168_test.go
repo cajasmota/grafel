@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -315,5 +316,50 @@ func TestStaleSidecar_NoSidecarSurvivesAStep4Failure(t *testing.T) {
 	}
 	if _, err := os.Stat(sidecar); err == nil {
 		t.Errorf("sidecar %s survived a committed install", sidecar)
+	}
+}
+
+// TestRollback_SurfacesAFailedRestore (#6168 S4): when a mid-loop step-3 abort
+// cannot restore an already-written target, the returned error must say so.
+// Reporting only "MCP register <bad> failed" would leave the user with a
+// partially-modified multi-host state and no signal that the other host needs
+// attention.
+//
+// The restore is made to fail without touching production code by occupying
+// the sidecar path with a non-empty DIRECTORY: ClearBackup's os.Remove cannot
+// unlink it, backupOnce's os.Stat sees "a backup already exists" and no-ops,
+// and RestoreSnapshot's os.ReadFile then fails with EISDIR — a real error that
+// is neither nil nor ErrNoSnapshot.
+func TestRollback_SurfacesAFailedRestore(t *testing.T) {
+	env := newTestEnv(t)
+
+	good := env.claudeJSON
+	writeConfigWithForeignServer(t, good)
+
+	occupied := good + ".grafel.bak"
+	if err := os.MkdirAll(filepath.Join(occupied, "sub"), 0o755); err != nil {
+		t.Fatalf("occupy sidecar path: %v", err)
+	}
+
+	bad := malformedTarget(t, filepath.Dir(good))
+
+	opts := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{good, bad},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: true,
+	}
+
+	_, err := install.RunCopy(opts)
+	if err == nil {
+		t.Fatal("expected RunCopy to fail on the malformed target")
+	}
+	if !strings.Contains(err.Error(), "ROLLBACK INCOMPLETE") {
+		t.Errorf("error does not surface the failed restore: %v", err)
+	}
+	if !strings.Contains(err.Error(), good) {
+		t.Errorf("error does not name the unrestored path %s: %v", good, err)
 	}
 }
