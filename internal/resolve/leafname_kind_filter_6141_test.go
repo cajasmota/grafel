@@ -432,3 +432,44 @@ func TestLeafNameTier_FieldStubMustNotPreferOperation_6141(t *testing.T) {
 			got.kind, got.file)
 	}
 }
+
+// TestLeafNameTier_PreferenceIsWithinTierNotAcrossTiers_6141 pins the tier
+// ORDER itself, which nothing else in this file could distinguish.
+//
+// The operation preference is applied INSIDE each tier — (fileOp, fileAny)
+// then (pkgOp, pkgAny) — so locality beats kind. The alternative structure,
+// applying it ACROSS tiers (fileOp, pkgOp, fileAny, pkgAny), reaches into a
+// sibling file for an operation rather than binding the caller's own file.
+// Every other fixture here puts the competing member in a different file
+// from the caller, so the two orderings are indistinguishable to them: a
+// mutant swapping refs.go to the across-tiers order passed the entire
+// internal/resolve, ruby and javascript suites.
+//
+//	caller  Vault.deposit  contracts/Vault.sol
+//	field   Other.owner    contracts/Vault.sol   <- caller's OWN file
+//	op      Owned.owner    contracts/Owned.sol
+//
+// Locality wins: the caller's own file is the better evidence about what a
+// bare name means, and it is the rule the surrounding tiers already follow
+// (lookupBareWithLocality tries byLocation[callerFile] before any
+// package-scoped bucket). internal/extractors/sresolver.lookupLeaf MUST
+// order its four passes the same way — see the twin test there. If these
+// two drift apart, a full rebuild and an incremental build bind the same
+// source differently.
+func TestLeafNameTier_PreferenceIsWithinTierNotAcrossTiers_6141(t *testing.T) {
+	records := []types.EntityRecord{
+		callerWithCall("1111111111111111", "SCOPE.Operation", "Vault.deposit", "contracts/Vault.sol", "owner"),
+		entAt("2222222222222222", "SCOPE.Schema", "Other.owner", "contracts/Vault.sol"),
+		entAt("3333333333333333", "SCOPE.Operation", "Owned.owner", "contracts/Owned.sol"),
+	}
+	got, stub := resolveEdge(t, records, 0)
+	if stub != "" {
+		t.Fatalf("bare CALLS `owner` left as stub %q; want the caller's own file to win", stub)
+	}
+	if got.id != "2222222222222222" {
+		t.Fatalf("the operation preference must apply WITHIN a tier, not ACROSS tiers: bound to "+
+			"id=%s kind=%s name=%s file=%s; want the caller-file member Other.owner "+
+			"(2222222222222222), not the sibling-file operation Owned.owner",
+			got.id, got.kind, got.name, got.file)
+	}
+}

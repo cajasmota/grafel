@@ -149,3 +149,42 @@ func TestResolveScoped_LeafTier_TwoOperationsStillAmbiguous_6141(t *testing.T) {
 			"got a confident binding ToID=%q", got.ToID)
 	}
 }
+
+// TestResolveScoped_LeafTier_PreferenceIsWithinTierNotAcrossTiers_6141 is the
+// tier-ORDER guard, and it is the shape every other fixture in this file
+// misses: they all put the competing member in a DIFFERENT file from the
+// caller, so file-scope and package-scope never actually contend.
+//
+//	caller  Local07      svc/a.go
+//	field   Other.owner  svc/a.go   SCOPE.Schema  <- caller's OWN file
+//	op      Owned.owner  svc/b.go   SCOPE.Operation
+//
+// internal/resolve applies the operation preference INSIDE each tier —
+// (fileOp, fileAny) then (pkgOp, pkgAny) — so the caller's own file wins and
+// it binds the FIELD. An implementation that applies the preference ACROSS
+// tiers — fileOp, pkgOp, fileAny, pkgAny — reaches into the sibling file and
+// binds the OPERATION instead.
+//
+// Both are defensible in isolation; what is not defensible is the two
+// resolvers choosing differently, because then a full rebuild and an
+// incremental build disagree on the same source. That is reachable in
+// ordinary code: a Ruby `attr_accessor :owner` beside a sibling class's
+// `def owner`. Locality wins, matching refs.go.
+func TestResolveScoped_LeafTier_PreferenceIsWithinTierNotAcrossTiers_6141(t *testing.T) {
+	existing := []graph.Entity{lfEnt(lfOp, "Owned.owner", "svc/b.go", "SCOPE.Operation")}
+	fresh := []graph.Entity{
+		lfEnt(lfCaller, "Local07", "svc/a.go", "SCOPE.Operation"),
+		lfEnt(lfField, "Other.owner", "svc/a.go", "SCOPE.Schema"),
+	}
+	newRels := []graph.Relationship{mtCallRel(lfCaller, "owner", "")}
+
+	res := sresolver.ResolveScoped(fresh, existing, newRels, nil, nil)
+	got := mtOnlyCall(t, res.ResolvedNewRelationships, lfCaller)
+	if got.ToID != lfField {
+		t.Errorf("the operation preference must apply WITHIN a tier, not ACROSS tiers: the "+
+			"caller's own file declares `owner` (%s) and must win over the sibling-file "+
+			"operation (%s); got ToID=%q. internal/resolve binds the caller-file member here, "+
+			"so this ordering is what keeps a full rebuild and an incremental build agreeing",
+			lfField, lfOp, got.ToID)
+	}
+}

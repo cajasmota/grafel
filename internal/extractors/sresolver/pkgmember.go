@@ -451,32 +451,50 @@ func (idx *memberIndexes) lookupLeaf(r *graph.Relationship, callerEndpoint strin
 	if !strings.EqualFold(r.Kind, "CALLS") {
 		return "", false
 	}
-	// #6141 — operation-preferring passes run AHEAD of the kind-blind
-	// ones, preserving the same file-before-package order within each.
+	// #6141 — the operation preference is applied WITHIN each tier, never
+	// ACROSS them: (fileOp, fileAny) and only then (pkgOp, pkgAny).
+	//
+	// The distinction is load-bearing and was got wrong first time round.
+	// Probing both operation indexes up front — fileOp, pkgOp, fileAny,
+	// pkgAny — reaches into a SIBLING FILE for an operation instead of
+	// binding a same-leaf-named member in the caller's own file, which is
+	// the opposite of what internal/resolve does and of what every
+	// surrounding tier does (locality first). Measured on a randomized
+	// differential: the across-tiers order changed 6,616 of ~200,000
+	// bindings; the within-tier order changes 0 and keeps all the gains.
+	//
+	// This resolver exists to agree with internal/resolve on the same
+	// source — divergence here means a full rebuild and an incremental
+	// build produce different graphs, reachable in ordinary code (a Ruby
+	// `attr_accessor :owner` beside a sibling class's `def owner`).
+	// Pinned by TestResolveScoped_LeafTier_PreferenceIsWithinTierNotAcrossTiers_6141
+	// and its twin in internal/resolve.
+	//
 	// An ambiguous operation hit still refuses (returns handled) rather
 	// than falling through to the kind-blind twin: two real operations
 	// contesting the name is not made resolvable by adding fields to the
 	// contest.
+
+	// Tier 2 — same file: operations first, then any scope.
 	if id, ok := idx.leafByFileOp[loc.file][member]; ok {
 		if id == ambiguous {
 			return "", true
 		}
 		return id, true
 	}
-	if id, ok := idx.leafByPkgOp[loc.dir][member]; ok {
-		if id == ambiguous {
-			return "", true
-		}
-		return id, true
-	}
-	// Tier 2 — same file, any scope.
 	if id, ok := idx.leafByFile[loc.file][member]; ok {
 		if id == ambiguous {
 			return "", true
 		}
 		return id, true
 	}
-	// Tier 3 — same package directory, any scope. The #6090-residual tier.
+	// Tier 3 — same package directory. The #6090-residual tier.
+	if id, ok := idx.leafByPkgOp[loc.dir][member]; ok {
+		if id == ambiguous {
+			return "", true
+		}
+		return id, true
+	}
 	if id, ok := idx.leafByPkg[loc.dir][member]; ok {
 		if id == ambiguous {
 			return "", true

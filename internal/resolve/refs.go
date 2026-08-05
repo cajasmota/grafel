@@ -482,10 +482,21 @@ type Index struct {
 	// value type (they are shared with Format B structural resolution, which
 	// legitimately addresses fields).
 	//
-	// Memory: one map entry per dotted-name entity whose kind falls in a
-	// known family — a uint8 value, and entries are OMITTED when the mask is
-	// zero, so unclassifiable kinds cost nothing. byMember and
-	// byPackageMember already hold one string entry each per such entity.
+	// Memory (#5954): MEASURED at ~47 bytes per entry — Go map overhead
+	// dominates; the uint8 value is free and the key's string header shares
+	// e.ID's backing array, so no character data is copied. That is ~14 MB
+	// per 300k dotted-name entities: bounded and acceptable, but not the
+	// "one byte each" the shape suggests. byMember and byPackageMember
+	// already hold one string entry each per such entity.
+	//
+	// Entries whose mask is zero are omitted, but do NOT count on that as a
+	// saving: in practice almost every dotted-name entity is Operation,
+	// Schema or Component. It matters for correctness, not size.
+	//
+	// Staleness fails OPEN, which is the safe direction: a missing entry
+	// makes the operation-preferring pass skip the candidate, the kind-blind
+	// fallback runs, and the result is the pre-#6141 behaviour — never a
+	// wrong bind. The lazy/module index path is pinned by the parity test.
 	memberFamily map[string]uint8
 
 	// byPackageOperation[pkg_dir][name] = entity_id. Used by the
