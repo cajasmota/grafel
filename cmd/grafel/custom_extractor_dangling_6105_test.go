@@ -53,12 +53,13 @@ import (
 //  3. DEPENDS_ON_SERVICE — the target does not exist AND the ref shape could
 //     never have addressed it. FIXED in #6123, which corrected the #6105
 //     description: passes DO create `service:` entities
-//     (extractor.ExternalServiceName, internal/extractor/external_service.go:87)
+//     (extractor.ExternalServiceName, internal/extractor/external_service.go:82-90)
 //     — what no pass creates is one for a Testcontainers image. The ref was a
 //     colon-bearing NAME, i.e. defect (2)'s class, so it could only dangle or
 //     mis-bind; on this fixture it mis-bound. The producer now mints the
-//     canonical `scope:externalservice:<name>` ref, which cannot mis-bind, and
-//     no service node is fabricated. See
+//     canonical `scope:externalservice:<name>` ref, colon-bounded so it stays
+//     below the six-segment structural form where it WOULD mis-bind, and no
+//     service node is fabricated. See
 //     TestCustomExtractorDependsOnServiceDoesNotMisbind6123.
 //
 // WHY BEHAVIOURAL. A source scan ("every ref literal contains a language
@@ -665,7 +666,7 @@ func TestCustomExtractorSchemaFieldRefsStayInTheirOwnFile6105(t *testing.T) {
 //
 // WHAT WAS ACTUALLY WRONG (#6105 defect (3) restated after grounding). The
 // issue text says "no pass anywhere creates a `service:` entity". That premise
-// is false: internal/extractor/external_service.go:87 (ExternalServiceName)
+// is false: internal/extractor/external_service.go:82-90 (ExternalServiceName)
 // mints entities whose Name is exactly `service:<svc>` — `service:stripe`,
 // `service:aws-s3` — and they are the canonical DEPENDS_ON_SERVICE target
 // (internal/types/kinds.go:1239). What no pass creates is a service node for a
@@ -687,14 +688,24 @@ func TestCustomExtractorSchemaFieldRefsStayInTheirOwnFile6105(t *testing.T) {
 // THE FIX. test_doubles.go now mints the canonical target ref rather than the
 // unaddressable Name. Where a matching service node exists the edge binds to it
 // via the byQualifiedName tier; where none exists — the Testcontainers case,
-// always, since nothing normalises a docker image to a canonical service name —
-// the ref is `scope:`-prefixed and therefore handled by lookupStructural, which
-// rejects any stub that is not six segments (refs.go:2037-2039) and returns
-// statusUnmatched WITHOUT falling through to byName. The edge dangles honestly
-// and cannot mis-bind.
+// always — the ref is `scope:`-prefixed and therefore handled by
+// lookupStructural, which rejects any stub that is not six segments
+// (refs.go:2037-2039) and returns statusUnmatched WITHOUT falling through to
+// byName. The edge dangles honestly.
 //
-// NOT FIXED, DELIBERATELY: no service entity is fabricated. See the argument in
-// internal/custom/csharp/test_doubles.go's emitContainer comment.
+// "CANNOT MIS-BIND" IS CONDITIONAL, and an earlier revision of this comment
+// stated it unconditionally, which was false. The guarantee holds only while the
+// stub stays under six segments; a legal docker reference with a registry port,
+// a tag AND a digest reaches six and is parsed as Format A. The producer bounds
+// the colon count (containerServiceRef) and the boundary itself is pinned in
+// internal/resolve.TestExternalServiceRefBindsOrDanglesWhenColonSafe6123.
+//
+// NOT FIXED, DELIBERATELY: no service entity is fabricated. Note that
+// normalising the name would not have removed the dangle anyway —
+// `PostgreSqlContainer` -> `postgres` still has no node, because the curated
+// dictionary (external_service.go:52-79) is Stripe/Twilio/AWS/SaaS SDKs and
+// contains no databases at all. The real choice was fabricate-or-dangle. See the
+// argument in internal/custom/csharp/test_doubles.go's emitContainer comment.
 //
 // A dangling-count check cannot see any of this: the count IMPROVES when the
 // edge silently mis-binds and WORSENS under this fix. That is why every

@@ -147,6 +147,94 @@ public class DbFixture
 	}
 }
 
+// TestTestDoubles_ContainerServiceRefIsColonBounded6123 covers the defect that
+// adversarial review found IN THE #6123 FIX ITSELF: the repaired ref shape could
+// still mis-bind, on the very class of input the repair was about.
+//
+// ExternalServiceTargetID prefixes two colon-delimited segments, so
+// `scope:externalservice:<name>` hits the resolver's six-segment structural-ref
+// threshold (internal/resolve/refs.go:2037-2039) once <name> carries THREE
+// colons. At six segments the stub stops being rejected and enters Format A,
+// with parts[4] read as a FILE PATH and parts[5] as an entity NAME. Measured
+// against a live index: `scope:externalservice:registry.io:5000/app/pg:15@sha256:deadbeef`
+// resolves to an entity named "deadbeef" in a file named "15@sha256". A registry
+// port + tag + digest is a legal docker reference, and reTcWithImage
+// (test_doubles.go:96) captures an arbitrary unvalidated string literal.
+//
+// Both halves of the guard are asserted here, because they fail differently:
+// the digest strip covers every LEGAL reference, and the colon ceiling covers
+// input that is not a well-formed reference at all.
+func TestTestDoubles_ContainerServiceRefIsColonBounded6123(t *testing.T) {
+	src := `
+using DotNet.Testcontainers.Builders;
+
+public class RegistryFixture
+{
+    public RegistryFixture()
+    {
+        var pinned = new ContainerBuilder()
+            .WithImage("registry.io:5000/app/pg:15@sha256:deadbeef")
+            .Build();
+        var junk = new ContainerBuilder()
+            .WithImage("a:b:c:d")
+            .Build();
+    }
+}
+`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("RegistryFixture.cs", "csharp", src))
+
+	// (1) Digest stripped: a build pin is not a service identity, and it is the
+	// third colon in every legal reference. The surviving ref is five segments,
+	// so lookupStructural still rejects it and the edge dangles honestly.
+	const stripped = "scope:externalservice:registry.io:5000/app/pg:15"
+	if e := relOf(recs, "DEPENDS_ON_SERVICE", stripped); e == nil {
+		t.Errorf("expected the digest-stripped ref %q", stripped)
+	} else if got := e.Properties.Get("image"); got != "registry.io:5000/app/pg:15@sha256:deadbeef" {
+		// The RAW reference is still recorded on the edge/node, so stripping the
+		// digest from the REF loses nothing a caller could act on.
+		t.Errorf("raw image reference was lost from the edge properties: %q", got)
+	}
+	// The six-segment form must never be minted — this is the mis-bind.
+	const hazard = "scope:externalservice:registry.io:5000/app/pg:15@sha256:deadbeef"
+	if relOf(recs, "DEPENDS_ON_SERVICE", hazard) != nil {
+		t.Errorf("minted the six-segment ref %q — it parses as Format A and binds to "+
+			"entity parts[5] in file parts[4] (#6123 review)", hazard)
+	}
+
+	// (2) Colon ceiling: `a:b:c:d` is not a well-formed reference and survives the
+	// digest strip at three colons, so NO ref can be minted for it. Refusing the
+	// edge is deliberate and narrow — the alternative is a ref that parses, which
+	// is the exact defect this file was repaired for.
+	for _, r := range recs {
+		for i := range r.Relationships {
+			rel := &r.Relationships[i]
+			if rel.Kind != "DEPENDS_ON_SERVICE" {
+				continue
+			}
+			if strings.Count(rel.ToID, ":") >= 6 {
+				t.Errorf("DEPENDS_ON_SERVICE ToID %q reaches the six-segment structural "+
+					"threshold and can mis-bind", rel.ToID)
+			}
+			if strings.Contains(rel.ToID, "a:b:c:d") {
+				t.Errorf("minted a ref for the malformed image `a:b:c:d`: %q", rel.ToID)
+			}
+		}
+	}
+
+	// NON-VACUITY: the malformed container node itself must still be emitted, so
+	// "no edge" means "declined to name the service", not "dropped the container".
+	found := false
+	for _, r := range recs {
+		if r.Name == "container:a:b:c:d" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the malformed-image container node was dropped entirely; only the " +
+			"unnameable service REF should be refused")
+	}
+}
+
 func TestTestDoubles_SpecFlowStepDefinitions(t *testing.T) {
 	src := `
 using TechTalk.SpecFlow;

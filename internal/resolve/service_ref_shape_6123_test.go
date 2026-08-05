@@ -11,7 +11,7 @@ import (
 // #6123 was filed as "DEPENDS_ON_SERVICE targets a `service:` node no pass
 // creates". Grounding it showed the premise is only half right, and the wrong
 // half is the important one: passes DO create `service:<svc>` entities
-// (internal/extractor/external_service.go:87, ExternalServiceName). What no
+// (internal/extractor/external_service.go:82-90, ExternalServiceName). What no
 // pass creates is one for a Testcontainers image — and, separately, a
 // `service:<X>` ref could never have addressed a service node even where one
 // existed, because LookupStatusHint reaches byName through splitStub
@@ -59,27 +59,40 @@ func TestServiceNameRefCannotAddressAServiceNodeAndMisbinds6123(t *testing.T) {
 	}
 }
 
-// TestExternalServiceRefBindsOrDanglesButNeverMisbinds6123 is the property the
-// fix relies on: the canonical ref binds to the service node when one exists,
-// and when none exists it is left VERBATIM rather than falling through to the
-// byName / kind-hint tiers that produced the mis-bind above. The collider is
-// present in both arms, so "dangles" here means "declined a wrong answer that
+// TestExternalServiceRefBindsOrDanglesWhenColonSafe6123 is the property the fix
+// relies on: a COLON-SAFE canonical ref binds to the service node when one
+// exists, and when none exists it is left VERBATIM rather than falling through
+// to the byName / kind-hint tiers that produced the mis-bind above. The collider
+// is present in both arms, so "dangles" here means "declined a wrong answer that
 // was available", not "had nothing to bind to".
 //
-// TWO INDEPENDENT MECHANISMS make that true, and BOTH are asserted below — an
-// earlier draft of this test claimed only the first and a mutation that disabled
-// it survived, because the second silently covered for it:
+// THE NAME IS DELIBERATELY CONDITIONAL. An earlier revision called this
+// "…ButNeverMisbinds", which was unconditional and FALSE: the guarantee holds
+// only while the stub stays under six segments, and adversarial review produced
+// a legal docker reference that breaks it. That case is now the last subtest
+// here, and the producer-side bound that keeps real refs out of it lives in
+// containerServiceRef (internal/custom/csharp/test_doubles.go).
+//
+// TWO MECHANISMS make the safe case true, and BOTH are asserted, because an
+// earlier draft claimed only the first and a mutation disabling it survived:
 //
 //  1. lookupStructural consumes ANY `scope:`-prefixed stub (handled=true) and
 //     returns statusUnmatched for one that is not six segments
 //     (internal/resolve/refs.go:2037-2039), so the byName tiers are never
 //     reached. Asserted directly in the "structural tier consumes it" subtest,
-//     because the end-to-end assertion cannot see this one on its own.
-//  2. Even with (1) removed, splitStub cuts at the FIRST colon, so the byName
-//     probe would be "externalservice:<name>" — a string no entity Name carries.
-//     The old `service:<X>` ref had NEITHER protection: not `scope:`-prefixed,
-//     and its byName probe is the bare leaf `X`, which real entities do carry.
-func TestExternalServiceRefBindsOrDanglesButNeverMisbinds6123(t *testing.T) {
+//     because the end-to-end assertion cannot see this one on its own. This is
+//     the LOAD-BEARING one — an inverse mutant changing splitStub to cut at the
+//     LAST colon leaves every #6123 assertion passing.
+//  2. Redundantly, and only accidentally so: splitStub cuts at the FIRST colon,
+//     so the byName probe would be "externalservice:<name>" — a string no entity
+//     Name carries. The old `service:<X>` ref had NEITHER protection: not
+//     `scope:`-prefixed, and its byName probe is the bare leaf `X`, which real
+//     entities do carry.
+//
+// Mechanism (1) cannot block a LEGITIMATE bind, because the byQualifiedName tier
+// runs BEFORE lookupStructural (refs.go:1615) — the "service node present"
+// subtest is what pins that ordering.
+func TestExternalServiceRefBindsOrDanglesWhenColonSafe6123(t *testing.T) {
 	collider := entAt("6666000066660000", "SCOPE.Operation", "postgres", "cs/OrderTests.cs")
 
 	t.Run("structural tier consumes it and declines", func(t *testing.T) {
@@ -120,6 +133,28 @@ func TestExternalServiceRefBindsOrDanglesButNeverMisbinds6123(t *testing.T) {
 				"dangles honestly. lookupStructural (refs.go:2037-2039) is supposed to consume "+
 				"any `scope:` stub that is not six segments and return statusUnmatched without "+
 				"consulting byName", rels[0].ToID)
+		}
+	})
+
+	// THE BOUNDARY. Three colons in the name pushes `scope:externalservice:<name>`
+	// to six segments, where lookupStructural stops rejecting it and parses it as
+	// Format A — parts[4] as a file path, parts[5] as an entity name. This subtest
+	// asserts the resolver DOES mis-bind there, which is what makes the
+	// producer-side ceiling in containerServiceRef load-bearing rather than
+	// defensive decoration. If the resolver is ever taught to distrust an
+	// `externalservice` scope-kind, this fails and the producer bound can be
+	// revisited.
+	t.Run("six segments: the resolver DOES mis-bind, hence the producer bound", func(t *testing.T) {
+		// The shape a legal `registry:port/repo:tag@sha256:digest` reference makes.
+		const hazard = "scope:externalservice:registry.io:5000/app/pg:15@sha256:deadbeef"
+		victim := entAt("8888000088880000", "Class", "deadbeef", "15@sha256")
+		idx := BuildIndex([]types.EntityRecord{victim, collider})
+		id, status, handled := idx.lookupStructural(hazard)
+		if !handled || status != statusRewritten || id != "8888000088880000" {
+			t.Fatalf("six-segment external-service stub resolved to (%q, status=%d, handled=%v); "+
+				"this test documents that it MIS-BINDS to the entity named parts[5] in the file "+
+				"named parts[4]. If the resolver now declines it, containerServiceRef's colon "+
+				"ceiling may be relaxed — re-measure before doing so", id, status, handled)
 		}
 	})
 }
