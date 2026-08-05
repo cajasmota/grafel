@@ -35,6 +35,13 @@ type StatusSummary struct {
 	// Flows and endpoints are derived from entity kinds during graph reading.
 	HTTPEndpoints int
 	ProcessFlows  int
+
+	// ReindexRequired is how many repos in this group are still waiting to be
+	// reindexed after a graph-format version bump (#6167). Read straight from
+	// the per-repo statusfile the engine refreshes every heartbeat — no graph
+	// load, no daemon dial. Zero on the overwhelming majority of runs, and
+	// PrintStatusSummary prints nothing when it is zero.
+	ReindexRequired int
 }
 
 // RepoStatus contains per-repo statistics.
@@ -66,6 +73,13 @@ type RepoStatus struct {
 	// run, and this marker sits alongside it as an additional warning. Cleared
 	// (nil again) once a subsequent rebuild of this repo succeeds.
 	RebuildFailure *statusfile.RebuildFailure
+
+	// ReindexRequired is true when this repo's on-disk graph.fb was written by
+	// an older grafel than this binary accepts, so it is queued for (or
+	// undergoing) an automatic format migration (#6167). Sourced from the
+	// statusfile, which the engine recomputes from the graph.fb header on every
+	// heartbeat (internal/daemon/statuswriter.go:135).
+	ReindexRequired bool
 
 	// GraphLoadError is non-empty when this repo HAS a graph artefact on disk
 	// but it could not be read: a truncated/garbage graph.fb (the flatbuffers
@@ -116,6 +130,13 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 		// error worth surfacing here.
 		if sf, sfErr := statusfile.Read(r.Path); sfErr == nil && sf != nil {
 			rs.RebuildFailure = sf.LastRebuildFailure
+			// #6167: same free read — the engine recomputes this from the
+			// graph.fb header every heartbeat, so it is the freshest answer
+			// available without loading a graph.
+			rs.ReindexRequired = sf.ReindexRequired
+			if sf.ReindexRequired {
+				s.ReindexRequired++
+			}
 		}
 
 		stateDir := daemon.StateDirForRepo(r.Path)
@@ -575,6 +596,19 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	// from the current graph — not a live daemon queue. Nothing auto-drains
 	// them (they cost tokens; the user runs enrichment to apply). The wording
 	// deliberately avoids "Pending", which reads as a stuck/blocked queue.
+	// #6167: a graph-format migration is the one background activity that can
+	// legitimately keep the daemon busy for hours, and until now it was
+	// completely silent — the user in the originating report read "silent and
+	// busy" as "hung", restarted, and re-entered the queue. Naming the cause and
+	// showing the fraction converts that into visible progress. Printed only
+	// while a migration is actually outstanding, so it adds no steady-state
+	// noise (and leaves the #5995 byte-for-byte golden untouched).
+	if s.ReindexRequired > 0 {
+		total := len(s.RepoStats)
+		fmt.Fprintf(w, "  Format upgrade in progress: %d of %d repo(s) awaiting reindex — grafel is migrating them automatically, a few at a time. No action needed.\n",
+			s.ReindexRequired, total)
+	}
+
 	if s.EnrichmentCandidates > 0 || s.RepairCandidates > 0 {
 		fmt.Fprintf(w, "  Available (optional; run enrichment to apply — nothing auto-drains): %s enrichment opportunities · %s repair candidates\n",
 			fmtInt(s.EnrichmentCandidates),
