@@ -12,6 +12,17 @@ var (
 	Date    = "unknown"
 )
 
+// DevVersion is the Version value of a binary built without ldflags
+// injection, i.e. a local `go build` / `go run` rather than a release
+// artifact.
+const DevVersion = "0.0.0-dev"
+
+// IsDev reports whether v is the un-injected dev-build version string.
+// Callers that treat release binaries differently from scratch builds
+// (e.g. install-state drift reporting) use this rather than hard-coding
+// the sentinel.
+func IsDev(v string) bool { return v == DevVersion }
+
 // String returns a human-readable build descriptor. Pure function — no
 // package-state mutation. When the binary was built without ldflags
 // injection (typical `go build` with no Makefile), it falls back to
@@ -21,7 +32,7 @@ func String() string {
 	commit := Commit
 	date := Date
 
-	if v == "0.0.0-dev" {
+	if IsDev(v) {
 		if info, ok := debug.ReadBuildInfo(); ok {
 			for _, s := range info.Settings {
 				switch s.Key {

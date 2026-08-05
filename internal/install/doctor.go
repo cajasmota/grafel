@@ -41,6 +41,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install/skilllink"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/statusfile"
+	"github.com/cajasmota/grafel/internal/version"
 )
 
 // DoctorSchemaVersion is the JSON schema version for DoctorReport.
@@ -338,6 +339,30 @@ func checkCLI(state *State) CheckResult {
 		cr.Drift = []string{fmt.Sprintf("sha256 mismatch: binary=%s install=%s (daemon still usable; re-run 'grafel install' to refresh)", actual[:16], state.CLI.SHA256[:16])}
 	}
 	return cr
+}
+
+// sameBinaryPath reports whether two binary paths denote the same file.
+//
+// The fast path is a plain string comparison, which is what matches on every
+// normal install. Only when that fails do we pay for symlink resolution — a
+// couple of lstat(2) calls, microseconds — because the two common ways to end
+// up with textually different paths for one binary are a symlinked bin dir
+// (/usr/local/bin -> /opt/homebrew/bin) and macOS's /tmp -> /private/tmp. If
+// either side cannot be resolved (the recorded binary was deleted, say) we fall
+// back to the textual answer rather than guessing.
+//
+// Deliberately NOT hashing both files: quick-doctor's budget is <50ms and it
+// runs before every command, so one SHA of one binary is the ceiling.
+func sameBinaryPath(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return ra == rb
 }
 
 // isInGitWorktree reports whether the current process is running from inside
@@ -1110,6 +1135,18 @@ type QuickOptions struct {
 	// StatePath is the path of install.json.  Defaults to DefaultStatePath().
 	StatePath string
 
+	// Version is this binary's version string. Defaults to version.Version.
+	// Only used to suppress the running-vs-recorded path warning for dev
+	// builds — see the check-1 comment in RunQuickDoctor.
+	Version string
+
+	// SelfPath is the path of the binary this process is running from.
+	// Defaults to os.Executable(); an empty value that cannot be resolved
+	// simply disables the running-vs-recorded comparison. Overridable so
+	// tests can exercise both the "same binary, new bytes" and "different
+	// binary entirely" cases without re-execing.
+	SelfPath string
+
 	// DaemonPort is the HTTP port for the daemon's /healthz endpoint.
 	// Defaults to 47274.
 	DaemonPort int
@@ -1129,6 +1166,17 @@ func (o *QuickOptions) applyDefaults() error {
 			return err
 		}
 		o.StatePath = p
+	}
+	if o.SelfPath == "" {
+		// os.Executable() is a single syscall on every supported platform —
+		// no filesystem walk, no stat — so this stays inside the <50ms budget.
+		// A failure just leaves SelfPath empty and disables the comparison.
+		if self, err := os.Executable(); err == nil {
+			o.SelfPath = self
+		}
+	}
+	if o.Version == "" {
+		o.Version = version.Version
 	}
 	if o.DaemonPort == 0 {
 		o.DaemonPort = 47274
@@ -1166,11 +1214,46 @@ func RunQuickDoctor(opts QuickOptions) error {
 
 	var warnings []string
 
-	// Check 1: CLI SHA (skip if in a git worktree).
+	// Check 1: CLI identity (skip if in a git worktree).
+	//
+	// Two distinct conditions hide behind the old single SHA comparison, and
+	// they need different words because they need different mental models:
+	//
+	//  (a) same path, different bytes — the binary was replaced in place. This
+	//      is what the curl installer does on every upgrade, so it is by far
+	//      the common case and it is entirely benign; all that is stale is the
+	//      recorded hash.
+	//  (b) the process is running a DIFFERENT binary than install.json records.
+	//      Hashing the recorded path then says nothing at all about the process
+	//      you are in: a match is a false all-clear (you can be running a
+	//      second, older install picked up from PATH while the recorded one
+	//      sits untouched), and a mismatch gets misreported as "your binary was
+	//      updated" when the real story is two installs on the machine.
+	//
+	// Both are resolved by the same narrow command, which is what the message
+	// now says. The previous wording prescribed `grafel doctor` — which just
+	// reprints this line — leaving the user with a permanent warning and no way
+	// out short of guessing.
+	//
+	// Case (b) is reported for RELEASE builds only. isInGitWorktree() already
+	// exempts worktree development, but a contributor running a `go build`
+	// output from the MAIN checkout has .git as a directory and is not
+	// exempted — and for them the advice would be actively wrong: recording a
+	// scratch build as THE install would overwrite the record of their real
+	// one. A dev binary is by definition not the installed release, so the
+	// path difference carries no information about the install's health.
 	if state.CLI.Path != "" && state.CLI.SHA256 != "" && !isInGitWorktree() {
-		actual, shaErr := sha256File(state.CLI.Path)
-		if shaErr == nil && actual != state.CLI.SHA256 {
-			warnings = append(warnings, "binary updated since last install (daemon still usable)")
+		switch {
+		case !version.IsDev(opts.Version) && opts.SelfPath != "" && !sameBinaryPath(opts.SelfPath, state.CLI.Path):
+			warnings = append(warnings, fmt.Sprintf(
+				"running %s but install.json records %s — run 'grafel install --refresh-state'",
+				opts.SelfPath, state.CLI.Path))
+		default:
+			actual, shaErr := sha256File(state.CLI.Path)
+			if shaErr == nil && actual != state.CLI.SHA256 {
+				warnings = append(warnings,
+					"binary updated since last install (daemon still usable) — run 'grafel install --refresh-state'")
+			}
 		}
 	}
 
@@ -1178,18 +1261,24 @@ func RunQuickDoctor(opts QuickOptions) error {
 	url := fmt.Sprintf("http://127.0.0.1:%d/healthz", opts.DaemonPort)
 	client := &http.Client{Timeout: opts.DaemonTimeout}
 	resp, daemonErr := client.Get(url)
+	// The daemon branch is the one case where `grafel doctor` genuinely has
+	// more to say (it probes the RPC socket and the service unit), so it — and
+	// only it — keeps that pointer. Every warning now carries its own remedy
+	// instead of a single trailing "run 'grafel doctor'" that was a closed loop
+	// for the CLI checks above.
 	if daemonErr != nil {
-		warnings = append(warnings, fmt.Sprintf("daemon unreachable at :%d", opts.DaemonPort))
+		warnings = append(warnings, fmt.Sprintf(
+			"daemon unreachable at :%d — run 'grafel doctor' for details", opts.DaemonPort))
 	} else {
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			warnings = append(warnings, fmt.Sprintf("daemon /healthz returned %d", resp.StatusCode))
+			warnings = append(warnings, fmt.Sprintf(
+				"daemon /healthz returned %d — run 'grafel doctor' for details", resp.StatusCode))
 		}
 	}
 
 	if len(warnings) > 0 {
-		fmt.Fprintf(opts.Out, "grafel doctor: %s — run 'grafel doctor' for details\n",
-			strings.Join(warnings, "; "))
+		fmt.Fprintf(opts.Out, "grafel doctor: %s\n", strings.Join(warnings, "; "))
 	}
 
 	return nil
