@@ -4189,138 +4189,25 @@ type foldShadowStats struct {
 	ShadowsStillLine0 int
 }
 
-// frameworkClassKindPriority ranks framework-typed node kinds by how strongly
-// they represent a class/type *declaration* (vs a nested artifact that merely
-// shares the class name, e.g. a Django Meta `Constraint`). These are the only
-// kinds eligible to be a fold *survivor*. When several share a fold source's
-// source_file+name, the highest-priority kind wins. Higher value = stronger
-// class signal. SCOPE.Component is intentionally absent: it is the generic AST
-// node we fold AWAY into a framework-typed survivor (so a class with a View
-// resolves to ONE node), and it is itself the survivor only when no
-// framework-typed node exists (handled separately, never as a candidate here).
+// The class-fold vocabulary (kind priority, canonical rank, class-like
+// subtypes) and the two predicates below MOVED to internal/engine (#6148).
 //
-// Both bare kind names (emitted by Java/Django custom extractors) AND their
-// "SCOPE."-prefixed forms (emitted by Kotlin, TypeScript, proto, and pattern
-// extractors) must appear so that frameworkClassKindPriority[r.Kind] matches
-// regardless of which extractor emitted the survivor. Issue #1700.
-var frameworkClassKindPriority = map[string]int{
-	// Bare names (Java/Django/Spring-boot custom extractors)
-	"Model":          100,
-	"View":           100,
-	"Controller":     100,
-	"Service":        100,
-	"Middleware":     100,
-	"Repository":     100,
-	"Worker":         100,
-	"Job":            100,
-	"Topic":          100,
-	"TestClass":      90,
-	"Schema":         80,
-	"Plugin":         80,
-	"Implementation": 80,
-	"Interface":      80,
-	"Task":           70,
+// They were private to this file while the full rebuild was the only path that
+// folded. The incremental path now has to resolve the SAME framework-typed kind
+// for a class it re-extracts — a class arriving in a changed file was typed by
+// a full rebuild and left as a generic SCOPE.Component by the incremental one —
+// and a second copy of these tables would be free to drift from this one. The
+// aliases keep every existing reference (including this package's tests)
+// pointing at the single definition.
+var (
+	frameworkClassKindPriority  = engine.FrameworkClassKindPriority
+	frameworkClassKindCanonRank = engine.FrameworkClassKindCanonRank
+	classLikeComponentSubtypes  = engine.ClassLikeComponentSubtypes
+)
 
-	// SCOPE.-prefixed equivalents (Kotlin extractor, proto extractor, NestJS
-	// service_detector, and any other extractor that emits the canonical
-	// "SCOPE.<Kind>" form for a class-like entity). Priorities mirror the bare
-	// form so that the highest-fidelity named node always beats a generic shadow.
-	// Issue #1700.
-	"SCOPE.Service":     100,
-	"SCOPE.View":        100, // #1727: View+Component fold (SCOPE-prefixed form)
-	"SCOPE.Model":       100,
-	"SCOPE.UIComponent": 100,
-	"SCOPE.GrpcService": 90,
-	"SCOPE.Schema":      80,
-}
+func isShadowRecord(r *types.EntityRecord) bool { return engine.IsClassHierarchyShadow(r) }
 
-// frameworkClassKindCanonRank is the deterministic tiebreaker used when two or
-// more framework-typed nodes share the SAME (source_file, name) AND the SAME
-// frameworkClassKindPriority — i.e. one class symbol was double-emitted under
-// two equally-strong kinds (the #3172/#3195 DRF/Django family: a Django
-// `models.Model` class surfacing as BOTH "Model" AND "Controller"). Both are
-// survivor candidates of priority 100, so without a tiebreaker the fold leaves
-// two nodes for one class, violating the #1613 "every class → ONE node"
-// invariant (TestClassShadowFold_NoLine0Shadows).
-//
-// Higher value = stronger canonical signal. The ranking prefers a kind that
-// names what the class structurally *is* (its declaration role: a data Model, a
-// rendered View, a Service, a Repository, a Schema) over a kind that names how
-// the class is *dispatched/routed* ("Controller"). A Controller is the role
-// most prone to spurious co-emission from route/endpoint synthesis on a class
-// that is really a Model/View, so it is deliberately ranked below the structural
-// declaration kinds. Kinds absent from this map rank as 0 (only consulted to
-// break an exact-priority tie; the priority map remains the primary order).
-var frameworkClassKindCanonRank = map[string]int{
-	"Model": 5, "SCOPE.Model": 5,
-	"View": 5, "SCOPE.View": 5,
-	"Repository": 4,
-	"Service":    4, "SCOPE.Service": 4,
-	"Schema": 3, "SCOPE.Schema": 3,
-	"Worker": 2, "Job": 2, "Topic": 2,
-	"Middleware": 1,
-	"Controller": 0,
-}
-
-func isShadowRecord(r *types.EntityRecord) bool {
-	return r.Properties["provenance"] == "INFERRED_FROM_CLASS_HIERARCHY"
-}
-
-// classLikeComponentSubtypes are the SCOPE.Component subtypes that denote a
-// class/type declaration (as opposed to subtype="file"/"import"/"module").
-// Language AST subtypes ("class", "struct", …) are the primary set. Framework-
-// injected subtypes from NestJS, Angular, Spring-boot, Quarkus, and similar
-// extractors are included so that an inferential SCOPE.Component(subtype="service")
-// node emitted alongside a real SCOPE.Service node for the same class symbol is
-// recognised as a fold source and collapsed into the typed survivor. Issue #1700.
-//
-// "view" is included so that SCOPE.Component(subtype="view") nodes emitted
-// alongside a real SCOPE.View (or bare "View") node for the same class symbol
-// are recognised as fold sources. Issue #1727.
-var classLikeComponentSubtypes = map[string]bool{
-	// Language AST subtypes
-	"class": true, "struct": true, "interface": true,
-	"protocol": true, "trait": true, "behaviour": true,
-	// Framework-injected subtypes (NestJS, Angular, Spring, Quarkus, …)
-	"service": true, "controller": true, "repository": true,
-	"guard": true, "interceptor": true, "pipe": true,
-	"middleware": true, "resolver": true, "gateway": true,
-	"worker": true, "job": true, "task": true,
-	// View-type subtypes (Django CBV, MVC view layers, …) — #1727
-	"view": true,
-}
-
-// isFoldSource reports whether r is a class-representation node that should be
-// folded into a framework-typed node when one exists for the same symbol:
-//   - the INFERRED_FROM_CLASS_HIERARCHY shadow emitted by the hierarchy pass, OR
-//   - the generic SCOPE.Component class node emitted by the per-language AST
-//     extractor (these two share an EntityID and pre-merge at assembly), OR
-//   - a SCOPE.Component carrying Properties["role"]="class" (hierarchy pass
-//     annotations on nodes where the language AST subtype is not yet in
-//     classLikeComponentSubtypes — e.g. TypeScript/React class components
-//     with a framework-injected role tag). Issue #1727.
-//
-// When NO framework-typed node exists, a fold source is kept as the single
-// node for that class (it already carries a real line from its extractor).
-func isFoldSource(r *types.EntityRecord) bool {
-	if r.Name == "" {
-		return false
-	}
-	if isShadowRecord(r) {
-		return true
-	}
-	if r.Kind != "SCOPE.Component" {
-		return false
-	}
-	// Subtype-based recognition: language AST and framework-injected subtypes.
-	if classLikeComponentSubtypes[r.Subtype] {
-		return true
-	}
-	// Role-property recognition: hierarchy pass sets role="class" on SCOPE.Component
-	// nodes whose subtype is not yet in the allowlist (e.g. component, vue_component,
-	// empty subtype from certain extractors). Issue #1727.
-	return r.Properties["role"] == "class"
-}
+func isFoldSource(r *types.EntityRecord) bool { return engine.IsClassFoldSource(r) }
 
 // foldClassHierarchyShadows folds line-less / generic class nodes into the real
 // framework-typed node (View/Model/Controller/…) for the same source_file +

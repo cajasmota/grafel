@@ -63,6 +63,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/classifier"
@@ -160,6 +161,35 @@ func StampFile(absPath string) (FileStamp, error) {
 		ContentHash: hex.EncodeToString(h.Sum(nil)),
 		Mtime:       info.ModTime().UnixNano(),
 	}, nil
+}
+
+// frameworkDetectorOnce guards the one-time load of the embedded YAML rule sets
+// used to type class records on re-extraction (#6148).
+//
+// The rules are compiled into the binary (engine.LoadAllRules reads an embedded
+// FS) and are not repo-scoped, so one Detector serves every incremental run in
+// the process; engine.Detector is documented safe for concurrent use. Loading
+// per call would repeat a whole-tree YAML parse on the daemon's hot path for a
+// result that cannot differ between calls.
+var (
+	frameworkDetectorOnce sync.Once
+	frameworkDetectorInst *engine.Detector
+)
+
+// frameworkDetector returns the shared Detector, or nil if the embedded rules
+// failed to load. A nil return degrades this path to its pre-#6148 behaviour
+// (classes stay generic) rather than failing the incremental run: the rules are
+// an enrichment input, not a correctness precondition for re-extraction.
+func frameworkDetector() *engine.Detector {
+	frameworkDetectorOnce.Do(func() {
+		rules, err := engine.LoadAllRules()
+		if err != nil {
+			log.Printf("incremental: load engine rules: %v — class records will keep their generic kind", err)
+			return
+		}
+		frameworkDetectorInst = engine.New(rules)
+	})
+	return frameworkDetectorInst
 }
 
 // TryIncremental attempts a file-level incremental reindex for repoPath.
@@ -471,6 +501,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	var newEntities []graph.Entity
 	var newRels []graph.Relationship
+	// #6148 — count of generic class records re-typed from the YAML rule sets,
+	// logged with the run so a silent regression to zero is visible.
+	classKindFolds := 0
 	// #6094 — one identity per (FromID, ToID, Kind), shared across every file in
 	// this re-extraction batch. See convertExtractedRecords for why the triple is
 	// a safe identity here and how this scope differs from buildDocument's.
@@ -498,16 +531,43 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			continue
 		}
 
-		records, extErr := ext.Extract(ctx, extractor.FileInput{
+		input := extractor.FileInput{
 			Path:     rel,
 			Content:  content,
 			Language: cr.Language,
 			TSTree:   nil, // re-parse inline
 			RepoRoot: absRepo,
-		})
+		}
+		records, extErr := ext.Extract(ctx, input)
 		if extErr != nil {
 			logger.Printf("incremental: extract %s: %v", rel, extErr)
 			// Non-fatal: use partial results.
+		}
+
+		// #6148 — type the class records this file declares.
+		//
+		// The per-language extractor emits every class as a generic
+		// SCOPE.Component. On the full path Pass 2.5 (engine.Detector over the
+		// YAML rule sets) emits a framework-typed record — Controller / Model /
+		// View / Service / … — for the same symbol, and the #1613 fold collapses
+		// the generic node into it, so a full rebuild's graph carries ONE typed
+		// node per class. This path ran the extractor alone, so a class in a
+		// CHANGED file kept the generic kind while the identical class in an
+		// unchanged file kept the typed kind it was carried forward with — the
+		// same tree, two answers, depending only on which files the delta
+		// touched. Entity IDs hash the kind, so the divergence also moved every
+		// edge incident on the class.
+		//
+		// The fold is keyed by (source_file, name) and so never pairs records
+		// across files; applying it per re-extracted file is the whole of it.
+		if det := frameworkDetector(); det != nil {
+			if fwRes, dErr := det.Detect(ctx, input); dErr != nil {
+				logger.Printf("incremental: framework detect %s: %v", rel, dErr)
+			} else if fwRes != nil {
+				if n := engine.FoldFrameworkClassKinds(records, fwRes.Entities); n > 0 {
+					classKindFolds += n
+				}
+			}
 		}
 
 		// Convert types.EntityRecord → graph.Entity (same logic as buildDocument).
@@ -769,8 +829,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	dur := time.Since(t0)
-	logger.Printf("incremental: done changed=%d entities=%d rels=%d flows_recomputed=%t took=%s",
-		len(reallyChanged), len(newEntities), len(newRels), flowsRecomputed, dur.Truncate(time.Millisecond))
+	logger.Printf("incremental: done changed=%d entities=%d rels=%d class_kind_folds=%d flows_recomputed=%t took=%s",
+		len(reallyChanged), len(newEntities), len(newRels), classKindFolds, flowsRecomputed, dur.Truncate(time.Millisecond))
 
 	return Result{
 		Done:         true,
