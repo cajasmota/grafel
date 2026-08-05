@@ -156,3 +156,65 @@ func TestResolveHTTPEndpointHandlersFileScoped_StillDropsMalformedRef(t *testing
 		t.Errorf("HandlerDropped = %d, want 1", stats.HandlerDropped)
 	}
 }
+
+// TestResolveHTTPEndpointHandlersFileScoped_CanonicalOrderMakesTheBindStable
+// is the Sev-2 evidence: the resolver's answer DEPENDS on the order of the
+// slice it is handed, so "`merged` MUST already be sorted in canonical order
+// (#481)" is a real precondition and not documentation hygiene.
+//
+// Measured on the orderings below, WITHOUT the sort: the pass binds the handler
+// at line 10 when that record comes first and the one at line 50 when it does,
+// then rebinds the endpoint's coordinates onto whichever won — so the two
+// answers differ in the graph, not just in the edge. The index behind that
+// choice (globalIdx / globalMulti / sameFileBareIdx) is first-writer-wins over
+// slice order.
+//
+// What is asserted is the INVARIANT that makes the caller safe rather than the
+// order-dependence itself: sort-then-resolve gives the same answer for any
+// input permutation. That is the property the incremental path relies on when
+// it hands over FoldFrameworkClassKinds' output, which is explicitly "the
+// extractor's records first, then Detect's" — not canonical order.
+func TestResolveHTTPEndpointHandlersFileScoped_CanonicalOrderMakesTheBindStable(t *testing.T) {
+	handler := func(line int) types.EntityRecord {
+		return types.EntityRecord{
+			Kind: "SCOPE.Operation", Name: "cpDup", SourceFile: "routes.js",
+			Language: "javascript", StartLine: line, EndLine: line + 2,
+		}
+	}
+	endpoint := func() types.EntityRecord {
+		r := fsEndpoint("http:GET:/dup", "routes.js", "SCOPE.Operation:cpDup")
+		r.StartLine = 1
+		return r
+	}
+
+	orders := map[string][]types.EntityRecord{
+		"canonical":      {handler(10), handler(50), endpoint()},
+		"reversed":       {handler(50), handler(10), endpoint()},
+		"endpoint_first": {endpoint(), handler(50), handler(10)},
+	}
+
+	var first string
+	for _, name := range []string{"canonical", "reversed", "endpoint_first"} {
+		recs := append([]types.EntityRecord(nil), orders[name]...)
+		types.SortEntityRecordsCanonical(recs)
+		out, _ := ResolveHTTPEndpointHandlersFileScoped(recs, "test-repo")
+
+		var got string
+		for _, r := range out {
+			if r.Name == "http:GET:/dup" {
+				got = r.SourceFile + ":" + itoaSmall(r.StartLine)
+			}
+		}
+		if got == "" {
+			t.Fatalf("%s: endpoint vanished", name)
+		}
+		if first == "" {
+			first = got
+			continue
+		}
+		if got != first {
+			t.Errorf("%s: endpoint rebound to %s, but the canonical ordering gives %s — "+
+				"sort-then-resolve must be permutation-independent", name, got, first)
+		}
+	}
+}
