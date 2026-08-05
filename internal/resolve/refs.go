@@ -2788,13 +2788,11 @@ func (idx Index) lookupPackageMember(pkgDir, receiverType, member string) (strin
 // a caller inside InventoryService calling `merge()` should bind to
 // byMember[callerFile]["InventoryService"]["merge"].
 //
-// Issue #6141 — `want` is the kind-family mask a candidate must belong to
-// (0 = no filter). The member indexes are kind-blind, so without it a bare
-// CALLS target binds to a same-leaf-named FIELD. Note the filter SKIPS a
-// rejected candidate rather than aborting: that is what recovers the
-// correct operation binding when an unrelated field of the same leaf name
-// would otherwise have tripped the cross-scope ambiguity guard.
-func (idx Index) lookupMemberByLeafName(filePath, memberName string, want uint8) (string, bool) {
+// Issue #6141 — `prefer` is a kind-family mask that gets a FIRST pass of
+// its own. See scanLeafMembers for why this is a preference and not a
+// filter; the short version is that a hard filter was measured to destroy
+// real Ruby and JS/TS bindings.
+func (idx Index) lookupMemberByLeafName(filePath, memberName string, prefer uint8) (string, bool) {
 	if filePath == "" || memberName == "" {
 		return "", false
 	}
@@ -2802,9 +2800,80 @@ func (idx Index) lookupMemberByLeafName(filePath, memberName string, want uint8)
 	if fileBucket == nil {
 		return "", false
 	}
+	return idx.scanLeafMembersPreferring(fileBucket, memberName, prefer)
+}
+
+// scanLeafMembersPreferring runs scanLeafMembers twice: once restricted to
+// the preferred kind family, then — only if that pass found nothing at all
+// — unrestricted, which is the pre-#6141 behaviour.
+//
+// # Why a PREFERENCE and not a filter
+//
+// Issue #6141 prescribes kind-filtering these tiers to operationKindFamily,
+// on the reasoning that a call target must be an operation. That is true of
+// the LANGUAGE but not of the GRAPH: several extractors deliberately model
+// an invocable member as a field.
+//
+//	ruby   internal/extractors/ruby/field_members.go — every attr_accessor /
+//	       attr_reader / attr_writer symbol becomes `Class.attr` with Kind
+//	       SCOPE.Schema. Those ARE generated methods, Ruby's real methods
+//	       carry BARE names, and ruby.go's rubyCallTarget discards the
+//	       receiver, so a bare `owner` CALLS edge has NO other binding route.
+//	js/ts  internal/extractors/javascript/extractor.go — a class field is
+//	       emitted as an Operation only when its initialiser is an
+//	       `arrow_function`; `handler = function(){}` falls through to
+//	       `Class.handler` / SCOPE.Schema. Interface `method_signature`
+//	       members are emitted as SCOPE.Schema by design.
+//
+// MEASURED on the unfixed tree, not projected: a Ruby method reading its own
+// `attr_accessor :owner` binds to `Account.owner [SCOPE.Schema]`. Under a
+// hard operation-filter that edge DANGLES. The regression test is
+// TestRubyAttrAccessorCallStillBinds_6141 in internal/extractors/ruby.
+//
+// So this two-pass shape takes the half of #6141 that is unconditionally
+// safe and leaves the other half alone:
+//
+//	RECALL  (fixed, every language): an unrelated same-leaf-named FIELD can
+//	        no longer trip the cross-scope ambiguity guard and destroy a
+//	        correct binding to a real operation — the operation pass never
+//	        sees the field.
+//	PRECISION (NOT fixed): when NO operation of that leaf name exists, the
+//	        second pass still binds the call to a field, which is right for
+//	        Ruby/JS and wrong for Solidity/Java/Go. Fixing it needs the
+//	        extractors to distinguish "field" from "invocable member modelled
+//	        as a field"; doing it in the resolver means guessing per
+//	        language. Tracked separately — do NOT "finish the job" by
+//	        deleting the fallback without that upstream signal.
+//
+// The pass order is strictly additive: every binding the unrestricted scan
+// produced before still happens, and the preferred pass only ever converts
+// a previously-AMBIGUOUS stub into a binding.
+func (idx Index) scanLeafMembersPreferring(
+	scopes map[string]map[string]string, memberName string, prefer uint8,
+) (string, bool) {
+	if prefer != 0 {
+		if id, ok := idx.scanLeafMembers(scopes, memberName, prefer); ok {
+			return id, true
+		}
+	}
+	return idx.scanLeafMembers(scopes, memberName, 0)
+}
+
+// scanLeafMembers walks every scope bucket for memberName and returns the
+// single matching entity ID. want != 0 restricts candidates to that kind
+// family; a rejected candidate is SKIPPED rather than aborting the scan,
+// which is what keeps a field from tripping the ambiguity guard.
+//
+// Returns ("", false) when the name is missing from all scopes, when two or
+// more scopes share a member of that leaf name, or when a scope's bucket
+// holds the blank ambiguity sentinel (two overloads in one class — the
+// sentinel has erased both IDs, so no kind information survives for the
+// filter to use).
+func (idx Index) scanLeafMembers(
+	scopes map[string]map[string]string, memberName string, want uint8,
+) (string, bool) {
 	var match string
-	ambig := false
-	for _, scopeBucket := range fileBucket {
+	for _, scopeBucket := range scopes {
 		id, ok := scopeBucket[memberName]
 		if !ok {
 			continue
@@ -2813,20 +2882,19 @@ func (idx Index) lookupMemberByLeafName(filePath, memberName string, want uint8)
 			continue
 		}
 		if id == "" {
-			// Blank sentinel within this scope = ambiguous member for this scope.
-			// Two different overloads in the same class — can't resolve.
-			ambig = true
-			break
+			// Blank sentinel within this scope = ambiguous member for this
+			// scope. Two different overloads in the same class — can't
+			// resolve, and the kind filter cannot see through it either.
+			return "", false
 		}
 		if match != "" && match != id {
 			// Two different scopes each have a member named memberName —
 			// ambiguous across scopes; do not pick one.
-			ambig = true
-			break
+			return "", false
 		}
 		match = id
 	}
-	if ambig || match == "" {
+	if match == "" {
 		return "", false
 	}
 	return match, true
@@ -2840,12 +2908,12 @@ func (idx Index) lookupMemberByLeafName(filePath, memberName string, want uint8)
 //
 // Issue #778 — package-level fallback after the same-file scan misses
 // (e.g. when the callee is defined in a sibling file of the same package).
-// Issue #6141 — `want` is the kind-family mask, as in lookupMemberByLeafName.
-// The CALLS call sites pass famOperation; the #667 Java inherited-field hint
-// site passes 0 (unfiltered) because its stub is field-shaped by
-// construction and a schema filter there would be a separate, unassessed
-// behaviour change.
-func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string, want uint8) (string, bool) {
+// Issue #6141 — `prefer` is a kind-family mask given a first pass of its
+// own; see scanLeafMembersPreferring for why it is a preference rather than
+// a filter. The CALLS call sites pass famOperation. The #667 Java
+// inherited-field hint site passes 0: its stub is field-shaped by
+// construction, so an operation preference there would be actively wrong.
+func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string, prefer uint8) (string, bool) {
 	if pkgDir == "" || memberName == "" {
 		return "", false
 	}
@@ -2853,30 +2921,7 @@ func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string, want u
 	if pkgBucket == nil {
 		return "", false
 	}
-	var match string
-	ambig := false
-	for _, scopeBucket := range pkgBucket {
-		id, ok := scopeBucket[memberName]
-		if !ok {
-			continue
-		}
-		if id != "" && !idx.inFamily(id, want) {
-			continue
-		}
-		if id == "" {
-			ambig = true
-			break
-		}
-		if match != "" && match != id {
-			ambig = true
-			break
-		}
-		match = id
-	}
-	if ambig || match == "" {
-		return "", false
-	}
-	return match, true
+	return idx.scanLeafMembersPreferring(pkgBucket, memberName, prefer)
 }
 
 // isComponentTargetKind reports whether the relationship-kind's natural

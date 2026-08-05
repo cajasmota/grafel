@@ -132,6 +132,20 @@ type memberIndexes struct {
 	leafByFile      map[string]map[string]string            // [file][member]
 	leafByPkg       map[string]map[string]string            // [dir][member]
 
+	// #6141 — operation-only twins of the two leaf indexes, probed FIRST.
+	// The leaf tiers do not know the scope they are binding into, so an
+	// unrelated same-leaf-named FIELD used to enter the candidate set and
+	// trip the ambiguity guard, destroying a correct binding to a real
+	// operation. Preferring operations removes the field from that
+	// contest. They are a PREFERENCE, not a filter: the kind-blind twins
+	// above are still consulted when no operation matches, because Ruby
+	// (attr_accessor) and JS/TS (`handler = function(){}`) model genuinely
+	// invocable members as SCOPE.Schema fields and the leaf tier is their
+	// only binding route. See scanLeafMembersPreferring in
+	// internal/resolve/refs.go for the measurement that established this.
+	leafByFileOp map[string]map[string]string // [file][member], operations only
+	leafByPkgOp  map[string]map[string]string // [dir][member],  operations only
+
 	// callerLoc maps an entity ID to its location. It is probed with the
 	// edge's RESOLVED FromID, which is why ResolveScoped must rewrite the
 	// from-side of an edge before the to-side: the Go extractor emits the
@@ -208,6 +222,8 @@ func buildMemberIndexes(newEntities, existingEntities []graph.Entity) *memberInd
 		byPackageMember: map[string]map[string]map[string]string{},
 		leafByFile:      map[string]map[string]string{},
 		leafByPkg:       map[string]map[string]string{},
+		leafByFileOp:    map[string]map[string]string{},
+		leafByPkgOp:     map[string]map[string]string{},
 		callerLoc:       map[string]callerLocation{},
 	}
 
@@ -249,32 +265,6 @@ func buildMemberIndexes(newEntities, existingEntities []graph.Entity) *memberInd
 			}
 			put(scopeBucket, member, e.ID)
 
-			// Issue #6141 — the leaf tiers, unlike tier 1, do NOT know the
-			// scope: they bind a bare name to a member of ANY scope. That
-			// makes a kind filter load-bearing in BOTH directions. Without
-			// it a bare `owner()` binds to a sibling type's FIELD `owner`
-			// (precision), AND a correct binding to a real `owner()` method
-			// is LOST because the unrelated field enters the candidate set
-			// and trips the ambiguity guard (recall). The two symptoms move
-			// a dangling count in opposite directions, so neither is
-			// visible in aggregate — see the binding-content assertions in
-			// leafname_kind_filter_6141_test.go.
-			//
-			// Filtered at BUILD time rather than at lookup because these
-			// two indexes have exactly one consumer (lookupLeaf, gated to
-			// CALLS), so an excluded entity has no other reader. Tier 1's
-			// byPackageMember above is deliberately NOT filtered: its key
-			// names the scope, so it is precise by construction, and it is
-			// also probed for field-shaped edges.
-			//
-			// Mirrors internal/resolve/refs.go's famOperation filter on
-			// lookupMemberByLeafName / lookupPackageMemberByLeafName. The
-			// two resolvers must agree here or an incremental build and a
-			// full rebuild disagree on the same source.
-			if !isOperationKind(e.Kind) {
-				continue
-			}
-
 			fileBucket := idx.leafByFile[file]
 			if fileBucket == nil {
 				fileBucket = map[string]string{}
@@ -288,6 +278,26 @@ func buildMemberIndexes(newEntities, existingEntities []graph.Entity) *memberInd
 				idx.leafByPkg[dir] = pkgLeaf
 			}
 			put(pkgLeaf, member, e.ID)
+
+			// #6141 — operation-only twins, probed ahead of the two above.
+			// A field never enters these, so it can no longer trip the
+			// ambiguity guard against a real operation.
+			if !isOperationKind(e.Kind) {
+				continue
+			}
+			fileOp := idx.leafByFileOp[file]
+			if fileOp == nil {
+				fileOp = map[string]string{}
+				idx.leafByFileOp[file] = fileOp
+			}
+			put(fileOp, member, e.ID)
+
+			pkgOp := idx.leafByPkgOp[dir]
+			if pkgOp == nil {
+				pkgOp = map[string]string{}
+				idx.leafByPkgOp[dir] = pkgOp
+			}
+			put(pkgOp, member, e.ID)
 		}
 	}
 	scan(existingEntities)
@@ -440,6 +450,24 @@ func (idx *memberIndexes) lookupLeaf(r *graph.Relationship, callerEndpoint strin
 	// same gate is what stops a DEPENDS_ON from catching a same-named method.
 	if !strings.EqualFold(r.Kind, "CALLS") {
 		return "", false
+	}
+	// #6141 — operation-preferring passes run AHEAD of the kind-blind
+	// ones, preserving the same file-before-package order within each.
+	// An ambiguous operation hit still refuses (returns handled) rather
+	// than falling through to the kind-blind twin: two real operations
+	// contesting the name is not made resolvable by adding fields to the
+	// contest.
+	if id, ok := idx.leafByFileOp[loc.file][member]; ok {
+		if id == ambiguous {
+			return "", true
+		}
+		return id, true
+	}
+	if id, ok := idx.leafByPkgOp[loc.dir][member]; ok {
+		if id == ambiguous {
+			return "", true
+		}
+		return id, true
 	}
 	// Tier 2 — same file, any scope.
 	if id, ok := idx.leafByFile[loc.file][member]; ok {

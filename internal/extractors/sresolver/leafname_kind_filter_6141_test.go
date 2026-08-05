@@ -16,6 +16,11 @@ import (
 // bare CALLS stub binds to a FIELD, and a legitimate operation binding is
 // LOST when an unrelated same-leaf-named field trips the ambiguity guard.
 //
+// Only the RECALL half is fixed, matching internal/resolve: a hard kind
+// filter was implemented, then measured to destroy real Ruby and JS/TS
+// bindings and reduced to an operation PREFERENCE. The precision half is
+// pinned as a known gap below rather than left untested.
+//
 // These are separate tests rather than a note on the refs.go fix because
 // the two resolvers are separate code with separate indexes: fixing only
 // refs.go would make an incremental build disagree with a full rebuild on
@@ -37,19 +42,32 @@ func lfEnt(id, name, sourceFile, kind string) graph.Entity {
 	}
 }
 
-// TestResolveScoped_LeafTier_MustNotBindCallToField_6141 — precision. The
-// only `owner` in the caller's package is a state variable / struct field.
-// A bare call must stay unresolved rather than bind cross-scope to data.
-func TestResolveScoped_LeafTier_MustNotBindCallToField_6141(t *testing.T) {
+// TestResolveScoped_LeafTier_PrecisionGap_StillBindsToField_6141 is the
+// scoped mirror of internal/resolve's
+// TestLeafNameTier_PrecisionGap_CallStillBindsToField_6141 — a
+// CHARACTERISATION test on behaviour that is still wrong for
+// Solidity/Java/Go and deliberately left that way.
+//
+// The only `owner` in the caller's package is a field, so the
+// operation-preferring pass finds nothing and the kind-blind pass binds the
+// call to it. Refusing instead was measured to destroy real Ruby
+// attr_accessor and JS function-field bindings; see the note on
+// memberIndexes.leafByFileOp.
+//
+// The two resolvers MUST agree here. If you change one, change the other,
+// or an incremental build and a full rebuild will disagree on the same
+// source — the divergence class this file's header warns about.
+func TestResolveScoped_LeafTier_PrecisionGap_StillBindsToField_6141(t *testing.T) {
 	existing := []graph.Entity{lfEnt(lfField, "Other.owner", "svc/c.go", "SCOPE.Schema")}
 	fresh := []graph.Entity{lfEnt(lfCaller, "Local07", "svc/a.go", "SCOPE.Operation")}
 	newRels := []graph.Relationship{mtCallRel(lfCaller, "owner", "")}
 
 	res := sresolver.ResolveScoped(fresh, existing, newRels, nil, nil)
 	got := mtOnlyCall(t, res.ResolvedNewRelationships, lfCaller)
-	if got.ToID != "owner" {
-		t.Errorf("bare CALLS `owner` bound to the FIELD Other.owner [SCOPE.Schema] @ svc/c.go "+
-			"(ToID=%q); a call target must be an operation, so the stub must stay verbatim", got.ToID)
+	if got.ToID != lfField {
+		t.Errorf("known precision gap changed shape: bare CALLS `owner` gave ToID=%q, want the "+
+			"field %s. If a refusal was intended, make internal/resolve refuse too and check the "+
+			"Ruby attr_accessor end-to-end test", got.ToID, lfField)
 	}
 }
 

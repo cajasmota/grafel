@@ -20,6 +20,21 @@ import (
 //     same-leaf-named field joins the candidate set and trips the
 //     ambiguity guard.
 //
+// ONLY THE RECALL HALF IS FIXED, and deliberately so. The issue prescribes
+// hard-filtering these tiers to operationKindFamily. That was implemented,
+// then MEASURED against the real extractors and reverted: Ruby models every
+// attr_accessor as `Class.attr` / SCOPE.Schema and JS/TS models
+// `handler = function(){}` the same way, while both languages emit their
+// real methods under BARE names — so for those languages the leaf tier is
+// the ONLY binding route to what is genuinely a method. A hard filter turns
+// those correct edges into dangles. See scanLeafMembersPreferring in refs.go
+// and TestRubyAttrAccessorCallStillBinds_6141 in internal/extractors/ruby,
+// which measures it end-to-end through the actual Ruby extractor.
+//
+// The tiers therefore PREFER operations rather than requiring them. The
+// precision half is pinned below as a known gap rather than silently left
+// untested.
+//
 // Every assertion below is on what the edge binds TO, by content
 // (kind / name / source_file) — never on an aggregate dangling count,
 // which is blind here because the two symptoms cancel.
@@ -58,39 +73,59 @@ func resolveEdge(t *testing.T, records []types.EntityRecord, callerIdx int) (got
 	return boundTo{}, to
 }
 
-// --- PRECISION: the wrong bind --------------------------------------------
+// --- PRECISION: the wrong bind, PINNED AS A KNOWN GAP ----------------------
 
-// TestLeafNameTier_PackageScope_MustNotBindCallToField_6141 is the wrong-bind
-// half, package-scoped. contracts/Vault.sol calls bare `owner()`; a SIBLING
-// FILE declares the state variable `Registry.owner`. Nothing in the package
-// declares an OPERATION named `owner`, so the correct outcome is an
-// unresolved stub — not a cross-contract, cross-file bind to a field.
-func TestLeafNameTier_PackageScope_MustNotBindCallToField_6141(t *testing.T) {
+// TestLeafNameTier_PrecisionGap_CallStillBindsToField_6141 is a
+// CHARACTERISATION test: it asserts behaviour that is still WRONG for
+// Solidity/Java/Go, so that the tradeoff is visible rather than forgotten.
+//
+// contracts/Vault.sol calls bare `owner()`; a SIBLING FILE declares the
+// state variable `Registry.owner`. No operation of that leaf name exists,
+// so the operation-preferring pass finds nothing and the unrestricted pass
+// binds the call cross-contract, cross-file to the FIELD — exactly the
+// mis-bind issue #6141 reports.
+//
+// It is left unfixed because the only resolver-side remedy (refuse
+// non-operation candidates outright) was measured to destroy real Ruby and
+// JS/TS bindings; see the file header. Closing it properly needs the
+// extractors to distinguish a data field from an invocable member modelled
+// as a field.
+//
+// If a future change makes this bind correctly refuse, this test SHOULD
+// fail — update it, and check TestRubyAttrAccessorCallStillBinds_6141 still
+// passes, because that is the constraint that put the gap here.
+func TestLeafNameTier_PrecisionGap_CallStillBindsToField_6141(t *testing.T) {
 	records := []types.EntityRecord{
 		callerWithCall("1111111111111111", "SCOPE.Operation", "Vault.deposit", "contracts/Vault.sol", "owner"),
 		entAt("2222222222222222", "SCOPE.Schema", "Registry.owner", "contracts/Registry.sol"),
 	}
 	got, stub := resolveEdge(t, records, 0)
-	if stub != "owner" {
-		t.Fatalf("bare CALLS `owner` bound to a non-operation: id=%s kind=%s name=%s file=%s; "+
-			"want the stub %q left verbatim (no operation named `owner` exists in the package)",
-			got.id, got.kind, got.name, got.file, "owner")
+	if stub != "" {
+		t.Fatalf("bare CALLS `owner` now refuses to bind (stub %q). If that was intentional, "+
+			"confirm the Ruby attr_accessor end-to-end test still passes before updating this test", stub)
+	}
+	if got.id != "2222222222222222" || got.kind != "SCOPE.Schema" || got.name != "Registry.owner" {
+		t.Fatalf("known precision gap changed shape: bound to id=%s kind=%s name=%s file=%s",
+			got.id, got.kind, got.name, got.file)
 	}
 }
 
-// TestLeafNameTier_FileScope_MustNotBindCallToField_6141 is the wrong-bind
-// half, file-scoped (lookupMemberByLeafName). Same file, different scope:
-// `Vault.deposit` calls bare `owner()` and only `Other.owner` — a field —
-// declares that leaf name.
-func TestLeafNameTier_FileScope_MustNotBindCallToField_6141(t *testing.T) {
+// TestLeafNameTier_PrecisionGap_FileScope_6141 is the same known gap on the
+// file-scoped tier. Same file, different scope: `Vault.deposit` calls bare
+// `owner()` and only the field `Other.owner` declares that leaf name.
+func TestLeafNameTier_PrecisionGap_FileScope_6141(t *testing.T) {
 	records := []types.EntityRecord{
 		callerWithCall("1111111111111111", "SCOPE.Operation", "Vault.deposit", "contracts/Vault.sol", "owner"),
 		entAt("3333333333333333", "SCOPE.Schema", "Other.owner", "contracts/Vault.sol"),
 	}
 	got, stub := resolveEdge(t, records, 0)
-	if stub != "owner" {
-		t.Fatalf("same-file bare CALLS `owner` bound to a non-operation: id=%s kind=%s name=%s file=%s; "+
-			"want the stub %q left verbatim", got.id, got.kind, got.name, got.file, "owner")
+	if stub != "" {
+		t.Fatalf("same-file bare CALLS `owner` now refuses to bind (stub %q); see the sibling "+
+			"package-scoped gap test before updating", stub)
+	}
+	if got.id != "3333333333333333" || got.kind != "SCOPE.Schema" {
+		t.Fatalf("known precision gap changed shape: bound to id=%s kind=%s name=%s",
+			got.id, got.kind, got.name)
 	}
 }
 
