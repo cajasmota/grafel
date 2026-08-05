@@ -6,8 +6,10 @@ package csharp_test
 // ---------------------------------------------------------------------------
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -100,21 +102,48 @@ public class DbFixture
 `
 	recs := extractFull(t, "custom_csharp_test_doubles", fi("DbFixture.cs", "csharp", src))
 
-	// Typed container -> DEPENDS_ON_SERVICE service:PostgreSqlContainer
-	if e := relOf(recs, "DEPENDS_ON_SERVICE", "service:PostgreSqlContainer"); e == nil {
-		t.Error("expected new PostgreSqlContainer() -> DEPENDS_ON_SERVICE service:PostgreSqlContainer")
+	// #6123 — the target is the CANONICAL external-service ref
+	// (extractor.ExternalServiceTargetID), not the entity Name `service:<X>`.
+	// A Name containing a colon is unaddressable: the resolver's splitStub cuts
+	// at the first colon and probes byName with the remainder, so the old shape
+	// could only dangle or bind to some unrelated entity called <X>. Asserted
+	// through the helper so a change to the ref convention fails here rather
+	// than silently rewiring the graph downstream.
+	//
+	// Typed container -> DEPENDS_ON_SERVICE scope:externalservice:PostgreSqlContainer
+	if e := relOf(recs, "DEPENDS_ON_SERVICE", extractor.ExternalServiceTargetID("PostgreSqlContainer")); e == nil {
+		t.Error("expected new PostgreSqlContainer() -> DEPENDS_ON_SERVICE scope:externalservice:PostgreSqlContainer")
 	} else if e.Properties.Get("container_type") != "PostgreSqlContainer" {
 		t.Errorf("expected container_type prop, got %v", e.Properties)
 	}
-	// Image binding -> DEPENDS_ON_SERVICE service:redis:7
-	if e := relOf(recs, "DEPENDS_ON_SERVICE", "service:redis:7"); e == nil {
-		t.Error("expected .WithImage(\"redis:7\") -> DEPENDS_ON_SERVICE service:redis:7")
+	// Image binding -> DEPENDS_ON_SERVICE scope:externalservice:redis:7
+	if e := relOf(recs, "DEPENDS_ON_SERVICE", extractor.ExternalServiceTargetID("redis:7")); e == nil {
+		t.Error("expected .WithImage(\"redis:7\") -> DEPENDS_ON_SERVICE scope:externalservice:redis:7")
 	} else if e.Properties.Get("image") != "redis:7" {
 		t.Errorf("expected image=redis:7, got %v", e.Properties)
 	}
-	// ContainerBuilder itself must NOT emit a service node.
-	if relOf(recs, "DEPENDS_ON_SERVICE", "service:ContainerBuilder") != nil {
-		t.Error("ContainerBuilder should be excluded from container topology")
+	// The unaddressable old shape must be gone on BOTH containers.
+	for _, stale := range []string{"service:PostgreSqlContainer", "service:redis:7"} {
+		if relOf(recs, "DEPENDS_ON_SERVICE", stale) != nil {
+			t.Errorf("DEPENDS_ON_SERVICE still emits the unaddressable Name ref %q (#6123)", stale)
+		}
+	}
+	// ContainerBuilder itself must NOT emit a service edge, under either shape.
+	for _, excluded := range []string{
+		extractor.ExternalServiceTargetID("ContainerBuilder"),
+		"service:ContainerBuilder",
+	} {
+		if relOf(recs, "DEPENDS_ON_SERVICE", excluded) != nil {
+			t.Errorf("ContainerBuilder should be excluded from container topology (saw %q)", excluded)
+		}
+	}
+	// No service ENTITY is fabricated for a container — the external-service
+	// namespace is a corpus-wide convergence node gated on a curated SDK
+	// dictionary, and a docker image is not a canonical service name (#6123).
+	for _, r := range recs {
+		if strings.HasPrefix(r.Name, "service:") || r.Kind == "SCOPE.ExternalService" {
+			t.Errorf("test-doubles extractor fabricated a service entity: %s %s", r.Kind, r.Name)
+		}
 	}
 }
 

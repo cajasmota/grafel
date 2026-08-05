@@ -13,7 +13,9 @@
 //	Container topology (Testcontainers):
 //	  new XxxContainer()       /  new ContainerBuilder().WithImage("img")
 //	  -> SCOPE.Pattern/container_topology; the test DEPENDS_ON_SERVICE the
-//	  container'd service (service:<image-or-container>). The node carries
+//	  container'd service, addressed by the canonical external-service ref
+//	  (scope:externalservice:<image-or-container>, #6123 — no service node is
+//	  fabricated, so the edge dangles honestly unless one already exists). The node carries
 //	  image=<docker-image> when expressed via .WithImage("…") and
 //	  container_type=<XxxContainer> for the typed-builder forms.
 //
@@ -227,6 +229,43 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 	// -------------------------------------------------------------------------
 	// Container topology — Testcontainers. The test DEPENDS_ON_SERVICE the
 	// container'd service.
+	//
+	// #6123 — the target ref. This edge used to carry `service:<name>`, which
+	// LOOKS like the Name of an external-service node (extractor.ExternalServiceName
+	// mints exactly that shape) but can never address one: LookupStatusHint runs
+	// splitStub (internal/resolve/refs.go:2658), which cuts at the first colon
+	// and probes byName with the REMAINDER, so `service:X` probes byName["X"].
+	// Real service nodes are addressed by QualifiedName — the
+	// `scope:externalservice:<svc>` ref that ExternalServiceTargetID mints
+	// (internal/extractor/external_service.go:102) — never by Name. The old ref
+	// therefore had exactly two outcomes: dangle, or bind to some unrelated
+	// entity that happened to be called X. On the #6105 fixture it took the
+	// second: it bound to the base extractor's SCOPE.Operation for the
+	// `new PostgreSqlContainer()` call site, via the DEPENDS_ON_SERVICE
+	// operation-family hint (refs.go:1782). A mis-bind IMPROVES a dangling
+	// count, so no count-based gate could see it.
+	//
+	// WHY NOT FABRICATE THE SERVICE NODE. Emitting an ExternalServiceEntity here
+	// would make the edge resolve, and was rejected. The external-service node is
+	// a corpus-wide CONVERGENCE node whose inbound DEPENDS_ON_SERVICE set is
+	// documented as "the codebase's full <vendor> footprint"
+	// (external_service.go:20-30), and the namespace is deliberately gated on a
+	// curated SDK dictionary. The names available here are a .NET type
+	// (`PostgreSqlContainer`) or a raw docker image (`postgres:15` — itself
+	// colon-bearing), neither of which is a canonical service name; normalising
+	// them would mean inventing a second, competing service dictionary. Nor does
+	// the #6131 "repair the edge rather than accept a dangle" precedent transfer:
+	// there a correct binding already existed in the record set, and here the
+	// only candidates are the container node itself (a self-edge) and the
+	// constructor call site (the mis-bind we are removing).
+	//
+	// So the ref is the canonical one and the edge dangles honestly wherever no
+	// service node matches. That is deliberate: `scope:`-prefixed stubs are
+	// consumed by lookupStructural, which rejects anything that is not six
+	// segments (refs.go:2037-2039) and returns statusUnmatched WITHOUT falling
+	// through to the byName / kind-hint tiers — so this ref is structurally
+	// incapable of mis-binding, while still binding correctly if a genuine
+	// service node with that name is ever present.
 	// -------------------------------------------------------------------------
 	emitContainer := func(name, image, ctype string, line int) {
 		ent := makeEntity("container:"+name, "SCOPE.Pattern", "container_topology",
@@ -241,7 +280,7 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 		}
 		setProps(&ent, props...)
 		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
-			ToID: "service:" + name,
+			ToID: extractor.ExternalServiceTargetID(name),
 			Kind: string(types.RelationshipKindDependsOnService),
 			Properties: types.Props{
 				{K: "container_type", V: ctype},

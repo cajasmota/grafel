@@ -50,12 +50,16 @@ import (
 //     colon and an edge addresses it by that Name is structurally unresolvable.
 //     NOT fixed here: see TestCustomExtractorColonNameRefsRemainUnresolved6105.
 //
-//  3. DEPENDS_ON_SERVICE — failure mode 1, and the only one of the three where
-//     the target does not exist. internal/custom/csharp/test_doubles.go:244
-//     points the edge at `service:<Name>` and no pass anywhere creates a
-//     `service:` entity; the only node it emits is `container:<Name>`. Also not
-//     fixed here — inventing the missing node is exactly the placeholder
-//     fabrication this work is not allowed to do.
+//  3. DEPENDS_ON_SERVICE — the target does not exist AND the ref shape could
+//     never have addressed it. FIXED in #6123, which corrected the #6105
+//     description: passes DO create `service:` entities
+//     (extractor.ExternalServiceName, internal/extractor/external_service.go:87)
+//     — what no pass creates is one for a Testcontainers image. The ref was a
+//     colon-bearing NAME, i.e. defect (2)'s class, so it could only dangle or
+//     mis-bind; on this fixture it mis-bound. The producer now mints the
+//     canonical `scope:externalservice:<name>` ref, which cannot mis-bind, and
+//     no service node is fabricated. See
+//     TestCustomExtractorDependsOnServiceDoesNotMisbind6123.
 //
 // WHY BEHAVIOURAL. A source scan ("every ref literal contains a language
 // segment") is satisfied by any string that happens to contain one, and three
@@ -430,6 +434,17 @@ func TestCustomExtractorGateStructuralRefResidueIsRecorded6105(t *testing.T) {
 		"OWNS TO scope:pattern:advice:java:java/AuditAspect.java:AuditAspect.auditBefore":        1,
 		"OWNS TO scope:pattern:pointcut:java:java/AuditAspect.java:AuditAspect.anyApiCall":       1,
 		"REFERENCES TO scope:pattern:pointcut:java:java/AuditAspect.java:AuditAspect.anyApiCall": 1,
+		// #6123 — the Testcontainers container-topology edge. Now minted as the
+		// canonical external-service ref (extractor.ExternalServiceTargetID)
+		// instead of the unaddressable Name `service:PostgreSqlContainer`. It is
+		// three segments, so lookupStructural rejects it at refs.go:2037-2039 and
+		// returns statusUnmatched WITHOUT falling through to byName — which is the
+		// point: the previous ref bound to the base extractor's SCOPE.Operation for
+		// the `new PostgreSqlContainer()` call site. This entry is an INTENDED
+		// dangle, not a defect: no pass creates a service node for a docker image,
+		// and fabricating one would poison the corpus-wide external-service
+		// convergence namespace. See TestCustomExtractorDependsOnServiceDoesNotMisbind6123.
+		"DEPENDS_ON_SERVICE TO scope:externalservice:PostgreSqlContainer": 1,
 		// findRefForType (types.go:120) fallback: `Address` is declared in
 		// dto/Address.java, but the ref is minted with the REFERENCING file's
 		// path, so byLocation[dto/OrderRequest.java]["Address"] can only miss.
@@ -458,24 +473,28 @@ func TestCustomExtractorGateStructuralRefResidueIsRecorded6105(t *testing.T) {
 	}
 }
 
-// TestCustomExtractorColonNameRefsRemainUnresolved6105 pins defects (2) and (3)
-// as KNOWN AND UNFIXED rather than letting them rot unrecorded.
+// TestCustomExtractorColonNameRefsRemainUnresolved6105 pins defect (2) as KNOWN
+// AND UNFIXED rather than letting it rot unrecorded.
 //
-// WHY THEY ARE NOT FIXED HERE. Both need a resolver-side index — either byName
+// #6123 UPDATE: defect (3) — DEPENDS_ON_SERVICE — used to be covered here too.
+// It was the same colon-name class (an entity Name containing a colon can never
+// be addressed by that Name, because splitStub cuts at the first colon), but it
+// is now fixed at its producer: the ref is the canonical
+// `scope:externalservice:<name>` and its residue is recorded in
+// TestCustomExtractorGateStructuralRefResidueIsRecorded6105 instead. The kind
+// switch below no longer collects it.
+//
+// WHY IT IS NOT FIXED HERE. It needs a resolver-side index — either byName
 // keyed on the FULL colon-bearing stub, or Properties["ref"] indexed under
 // byQualifiedName the way `scope:endpoint:` / `scope:testcoverage:` /
 // `scope:component:interface:<lang>:` already are (internal/resolve/refs.go:992,
 // :1006, :1029, :1045). internal/resolve is being changed concurrently by
-// another work item, so this change stays out of it. Neither can be fixed from
-// the extractor side without harm:
-//
-//   - Setting the cache-region entity's QualifiedName to the ref would make it
-//     resolvable, but cache regions converge ACROSS files by design and
-//     duplicate QualifiedNames are blanked to a collision sentinel — the same
-//     region cached in two files would resolve to nothing again, only now
-//     "ambiguous" instead of "unmatched".
-//   - `service:<Name>` has no target at all. Fabricating one is the placeholder
-//     invention this work explicitly must not do.
+// another work item, so this change stays out of it. It cannot be fixed from
+// the extractor side without harm: setting the cache-region entity's
+// QualifiedName to the ref would make it resolvable, but cache regions converge
+// ACROSS files by design and duplicate QualifiedNames are blanked to a collision
+// sentinel — the same region cached in two files would resolve to nothing again,
+// only now "ambiguous" instead of "unmatched".
 //
 // Deleting the edges is not an option either: an edge pointing at nothing is
 // bad, silently dropping a relationship the extractor meant to express is
@@ -488,7 +507,7 @@ func TestCustomExtractorColonNameRefsRemainUnresolved6105(t *testing.T) {
 	got := map[string]int{}
 	for d, n := range added {
 		switch d.kind {
-		case "CACHES", "INVALIDATES", "READS_FROM", "WRITES_TO", "DEPENDS_ON_SERVICE":
+		case "CACHES", "INVALIDATES", "READS_FROM", "WRITES_TO":
 			got[d.String()] = n
 		}
 	}
@@ -641,36 +660,89 @@ func TestCustomExtractorSchemaFieldRefsStayInTheirOwnFile6105(t *testing.T) {
 	}
 }
 
-// TestCustomExtractorDependsOnServiceTargetIsNeverCreated6105 pins defect (3)
-// at its source rather than through the dangling count, because on this fixture
-// the endpoint does not dangle — it binds to the WRONG entity.
+// TestCustomExtractorDependsOnServiceDoesNotMisbind6123 replaces the #6105
+// ratchet that PINNED the mis-binding. Issue #6123 is the fix.
 //
-// internal/custom/csharp/test_doubles.go:244 emits
-// `DEPENDS_ON_SERVICE -> service:PostgreSqlContainer`. splitStub strips
-// "service:" and probes byName["PostgreSqlContainer"], which here finds the
+// WHAT WAS ACTUALLY WRONG (#6105 defect (3) restated after grounding). The
+// issue text says "no pass anywhere creates a `service:` entity". That premise
+// is false: internal/extractor/external_service.go:87 (ExternalServiceName)
+// mints entities whose Name is exactly `service:<svc>` — `service:stripe`,
+// `service:aws-s3` — and they are the canonical DEPENDS_ON_SERVICE target
+// (internal/types/kinds.go:1239). What no pass creates is a service node for a
+// Testcontainers image/type.
+//
+// The defect is therefore the SAME CLASS as #6105 defect (2), the colon-name
+// refs: an entity whose Name contains a colon can never be addressed by that
+// Name. LookupStatusHint runs splitStub (internal/resolve/refs.go:2658), which
+// cuts at the FIRST colon and probes byName with the REMAINDER — so a
+// `service:X` ref probes byName["X"], never byName["service:X"]. Real service
+// nodes are reached by QualifiedName (`scope:externalservice:<svc>`,
+// ExternalServiceTargetID at external_service.go:102), not by Name. So
+// `service:X` could never bind to a service node even where one existed, and
+// on a leaf-name collision it binds to whatever else is called X — here the
 // SCOPE.Operation the base C# extractor made for the `new PostgreSqlContainer()`
-// call site. So the edge reads "the container topology node depends on a
-// constructor call", which is not the relationship the extractor meant. On the
-// corpus, where no same-named entity exists, the same edge dangles instead.
+// call site, reached through the DEPENDS_ON_SERVICE operation-family hint
+// (refs.go:1782).
 //
-// A dangling-count check cannot see this: the count IMPROVES when the edge
-// silently mis-binds. That is why it is asserted on content.
-func TestCustomExtractorDependsOnServiceTargetIsNeverCreated6105(t *testing.T) {
+// THE FIX. test_doubles.go now mints the canonical target ref rather than the
+// unaddressable Name. Where a matching service node exists the edge binds to it
+// via the byQualifiedName tier; where none exists — the Testcontainers case,
+// always, since nothing normalises a docker image to a canonical service name —
+// the ref is `scope:`-prefixed and therefore handled by lookupStructural, which
+// rejects any stub that is not six segments (refs.go:2037-2039) and returns
+// statusUnmatched WITHOUT falling through to byName. The edge dangles honestly
+// and cannot mis-bind.
+//
+// NOT FIXED, DELIBERATELY: no service entity is fabricated. See the argument in
+// internal/custom/csharp/test_doubles.go's emitContainer comment.
+//
+// A dangling-count check cannot see any of this: the count IMPROVES when the
+// edge silently mis-binds and WORSENS under this fix. That is why every
+// assertion here is on content.
+func TestCustomExtractorDependsOnServiceDoesNotMisbind6123(t *testing.T) {
 	_, on := gateArms6105(t)
 
-	// No pass creates a service node for the container.
+	// (a) No service entity is fabricated for the container.
 	for i := range on.Entities {
 		e := &on.Entities[i]
 		if strings.HasPrefix(e.Name, "service:") {
-			t.Fatalf("a `service:` entity now exists (%s %s in %s) — defect (3) has changed shape "+
-				"and this test must be revisited", e.Kind, e.Name, e.SourceFile)
+			t.Errorf("a `service:` entity now exists (%s %s in %s) — the fix must not "+
+				"fabricate a service node for a Testcontainers image", e.Kind, e.Name, e.SourceFile)
 		}
 	}
 
+	// (b) NON-VACUITY. The collision the old code fell into must still be
+	// present in the graph, or this test could not detect a mis-bind at all.
+	collision := false
+	for i := range on.Entities {
+		if on.Entities[i].Kind == "SCOPE.Operation" && on.Entities[i].Name == "PostgreSqlContainer" {
+			collision = true
+			break
+		}
+	}
+	if !collision {
+		t.Fatalf("fixture no longer contains the SCOPE.Operation:PostgreSqlContainer " +
+			"collision target — a mis-bind would now be undetectable here")
+	}
+
+	// (c) The edge exists, joins the container node to the canonical
+	// external-service ref, and binds to NOTHING (honest dangle).
 	got := edgeSet6105(on, "DEPENDS_ON_SERVICE")
-	const misbound = "DEPENDS_ON_SERVICE: SCOPE.Pattern:container:PostgreSqlContainer -> SCOPE.Operation:PostgreSqlContainer"
-	if got[misbound] == 0 {
-		t.Errorf("the recorded DEPENDS_ON_SERVICE mis-binding is gone; got %v.\n"+
-			"If it now binds to a real service node, delete this test and close that part of #6105.", got)
+	want := map[string]int{
+		"DEPENDS_ON_SERVICE: SCOPE.Pattern:container:PostgreSqlContainer -> " +
+			"DANGLING(scope:externalservice:PostgreSqlContainer)": 1,
+	}
+	if len(got) != len(want) {
+		t.Errorf("DEPENDS_ON_SERVICE edge set changed size: got %v, want %v", got, want)
+	}
+	for k, n := range want {
+		if got[k] != n {
+			t.Errorf("DEPENDS_ON_SERVICE %q: got %d, want %d (full set %v)", k, got[k], n, got)
+		}
+	}
+	for k, n := range got {
+		if _, ok := want[k]; !ok {
+			t.Errorf("unexpected DEPENDS_ON_SERVICE edge %q (%d) — full set %v", k, n, got)
+		}
 	}
 }
