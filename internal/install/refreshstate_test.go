@@ -87,6 +87,101 @@ func TestRefreshState_RecordsOnDiskBinary(t *testing.T) {
 	}
 }
 
+// TestRefreshState_CorrectsAWrongPath is the mutant a reviewer found surviving:
+// every other test here seeds a state whose CLI.Path ALREADY equals the binary,
+// so nothing proved RefreshState rewrites the PATH rather than just the SHA.
+//
+// That correction is load-bearing. It is the sole remedy for quick-doctor's
+// "install.json records <path>, which no longer exists" warning — if it
+// regressed, that warning would become permanent and unfixable, since running
+// the prescribed command would leave the wrong path in place.
+func TestRefreshState_CorrectsAWrongPath(t *testing.T) {
+	tmp := t.TempDir()
+	statePath := filepath.Join(tmp, ".grafel", "install.json")
+
+	oldPath := filepath.Join(tmp, "old-prefix", "grafel")
+	newBin := writeFakeBinary(t, tmp, "grafel", "relocated binary bytes")
+
+	// State recorded at a prefix that no longer exists.
+	st := install.NewState(install.ModeCopy)
+	st.CLI = install.CLIRecord{Path: oldPath, SHA256: "1111111111111111111111111111111111111111111111111111111111111111"}
+	if err := install.WriteState(statePath, st); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	res, err := install.RefreshState(install.RefreshOptions{BinPath: newBin, StatePath: statePath})
+	if err != nil {
+		t.Fatalf("RefreshState: %v", err)
+	}
+	if !res.Changed {
+		t.Error("Changed must be true when the recorded PATH was wrong")
+	}
+
+	got, err := install.ReadState(statePath)
+	if err != nil || got == nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if got.CLI.Path != newBin {
+		t.Errorf("CLI.Path = %q, want %q — RefreshState must rewrite the recorded PATH, not only the SHA", got.CLI.Path, newBin)
+	}
+	if got.CLI.Path == oldPath {
+		t.Errorf("CLI.Path is still the stale %q", oldPath)
+	}
+}
+
+// TestRefreshState_PreservesInstalledAt: no install happened, so stamping the
+// timestamp with "now" would make the field assert something false.
+func TestRefreshState_PreservesInstalledAt(t *testing.T) {
+	tmp := t.TempDir()
+	statePath := filepath.Join(tmp, ".grafel", "install.json")
+	bin := writeFakeBinary(t, tmp, "grafel", "new bytes")
+
+	const originalInstall = "2020-01-02T03:04:05Z"
+	st := install.NewState(install.ModeCopy)
+	st.InstalledAt = originalInstall
+	st.CLI = install.CLIRecord{Path: bin, SHA256: "2222222222222222222222222222222222222222222222222222222222222222"}
+	if err := install.WriteState(statePath, st); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	if _, err := install.RefreshState(install.RefreshOptions{BinPath: bin, StatePath: statePath}); err != nil {
+		t.Fatalf("RefreshState: %v", err)
+	}
+
+	got, err := install.ReadState(statePath)
+	if err != nil || got == nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if got.InstalledAt != originalInstall {
+		t.Errorf("InstalledAt = %q, want it preserved as %q — no install happened here", got.InstalledAt, originalInstall)
+	}
+}
+
+// TestRefreshState_ClearsTheInvalidatedDaemonVersion: DaemonVersion is the one
+// field an in-place binary swap definitely invalidates. install.sh replaces the
+// binary and then restarts the daemon, so the recorded version describes a
+// process that no longer exists and checkDaemon would report a version mismatch
+// on every `grafel doctor`. checkDaemon early-returns on "", so dropping a
+// known-wrong value is strictly better than preserving it.
+func TestRefreshState_ClearsTheInvalidatedDaemonVersion(t *testing.T) {
+	tmp := t.TempDir()
+	statePath := filepath.Join(tmp, ".grafel", "install.json")
+	bin := writeFakeBinary(t, tmp, "grafel", "upgraded bytes")
+	seedState(t, statePath, bin) // seeds DaemonVersion = v0.1.7
+
+	if _, err := install.RefreshState(install.RefreshOptions{BinPath: bin, StatePath: statePath}); err != nil {
+		t.Fatalf("RefreshState: %v", err)
+	}
+
+	got, err := install.ReadState(statePath)
+	if err != nil || got == nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if got.DaemonVersion != "" {
+		t.Errorf("DaemonVersion = %q, want it cleared — the recorded value describes the pre-upgrade daemon", got.DaemonVersion)
+	}
+}
+
 // TestRefreshState_PreservesEverythingElse is the blast-radius pin: refreshing
 // the CLI record must NOT clobber the rest of the install transaction's record.
 // If this ever regresses, `grafel doctor` would start reporting a fully
@@ -120,9 +215,11 @@ func TestRefreshState_PreservesEverythingElse(t *testing.T) {
 	if len(after.Gitignore.Repos) != 1 || after.Gitignore.Repos[0] != "/home/u/repo" {
 		t.Errorf("Gitignore record changed: %+v", after.Gitignore)
 	}
-	if after.DaemonVersion != before.DaemonVersion {
-		t.Errorf("DaemonVersion changed: %q -> %q", before.DaemonVersion, after.DaemonVersion)
+	if after.InstalledAt != before.InstalledAt {
+		t.Errorf("InstalledAt changed: %q -> %q", before.InstalledAt, after.InstalledAt)
 	}
+	// DaemonVersion is the deliberate exception — see
+	// TestRefreshState_ClearsTheInvalidatedDaemonVersion.
 	if after.SchemaVersion != install.StateSchemaVersion {
 		t.Errorf("SchemaVersion = %d, want %d", after.SchemaVersion, install.StateSchemaVersion)
 	}

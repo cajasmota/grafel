@@ -127,13 +127,19 @@ func TestQuickDoctor_SilentWhenBinaryMatches(t *testing.T) {
 	}
 }
 
-// TestQuickDoctor_DifferentBinaryOnPathIsItsOwnCase: install.json records
-// /a/grafel, but the process actually running is /b/grafel. Hashing /a/grafel
-// says nothing about this process — a match there is a FALSE all-clear (you can
-// be running a stale second install with a perfectly intact recorded SHA), and
-// a mismatch is misdiagnosed as "your binary was updated". Report the real
-// condition instead.
-func TestQuickDoctor_DifferentBinaryOnPathIsItsOwnCase(t *testing.T) {
+// TestQuickDoctor_TwoInstallsMustNotBeOfferedTheRefresh is the review finding
+// this test exists for. install.json records /a/grafel and both /a/grafel and
+// /b/grafel exist — two installs on the machine.
+//
+// Prescribing `--refresh-state` here is worse than saying nothing. It merely
+// re-points install.json at whichever binary was invoked, so the advice
+// ping-pongs; and a user who curl-upgraded to ~/.grafel/bin/grafel but whose
+// PATH still finds a stale /usr/local/bin/grafel would follow it FROM THE STALE
+// BINARY, recording the old one as THE install while the skills/MCP manifest
+// describes the new one. `grafel doctor` would then call the stale binary
+// healthy — manufacturing exactly the false all-clear this check exists to
+// catch. Name the duplicate instead.
+func TestQuickDoctor_TwoInstallsMustNotBeOfferedTheRefresh(t *testing.T) {
 	statePath, recorded := quickEnv(t)
 
 	other := filepath.Join(t.TempDir(), "grafel")
@@ -143,17 +149,75 @@ func TestQuickDoctor_DifferentBinaryOnPathIsItsOwnCase(t *testing.T) {
 
 	out := runQuick(t, statePath, other)
 
-	if !strings.Contains(out, "grafel install --refresh-state") {
-		t.Errorf("path-mismatch warning must name the command that resolves it, got: %q", out)
+	if strings.Contains(out, "refresh-state") {
+		t.Errorf("two coexisting installs must NOT be prescribed --refresh-state "+
+			"(it just re-points install.json at whichever binary was invoked), got: %q", out)
+	}
+	if !strings.Contains(out, "which -a grafel") {
+		t.Errorf("two-installs warning must tell the user how to find the duplicate, got: %q", out)
 	}
 	if strings.Contains(out, "binary updated since last install") {
-		t.Errorf("a path mismatch must not be misreported as an in-place binary update, got: %q", out)
+		t.Errorf("a second install must not be misreported as an in-place binary update, got: %q", out)
 	}
 	if !strings.Contains(out, other) || !strings.Contains(out, recorded) {
-		t.Errorf("path-mismatch warning must name both paths (running=%s recorded=%s), got: %q", other, recorded, out)
+		t.Errorf("two-installs warning must name both paths (running=%s recorded=%s), got: %q", other, recorded, out)
 	}
 	if n := countNonEmptyLines(out); n != 1 {
 		t.Errorf("quick-doctor printed %d lines, want 1: %q", n, out)
+	}
+}
+
+// TestQuickDoctor_RelocatedInstallSaysTheRecordedBinaryIsGone: the recorded
+// path no longer exists and we are running a different one — an install that
+// moved prefix. Here re-recording IS correct and cannot ping-pong (only one
+// binary remains), but the message has to state the useful fact: the recorded
+// binary is gone. The old code was silent in this state (sha256File errored),
+// so the user got no signal at all.
+func TestQuickDoctor_RelocatedInstallSaysTheRecordedBinaryIsGone(t *testing.T) {
+	statePath, recorded := quickEnv(t)
+	if err := os.Remove(recorded); err != nil {
+		t.Fatalf("remove recorded binary: %v", err)
+	}
+
+	moved := filepath.Join(t.TempDir(), "grafel")
+	if err := os.WriteFile(moved, []byte("#!/bin/sh\necho relocated\n"), 0o755); err != nil {
+		t.Fatalf("write moved bin: %v", err)
+	}
+
+	out := runQuick(t, statePath, moved)
+
+	if !strings.Contains(out, "no longer exists") {
+		t.Errorf("a relocated install must say the RECORDED binary is gone (that is the useful fact), got: %q", out)
+	}
+	if !strings.Contains(out, "grafel install --refresh-state") {
+		t.Errorf("a relocated install has one binary left, so it must be offered the refresh, got: %q", out)
+	}
+	if strings.Contains(out, "which -a grafel") {
+		t.Errorf("a relocated install is not a duplicate-install situation, got: %q", out)
+	}
+	if !strings.Contains(out, "still usable") {
+		t.Errorf("relocated-install wording must not read as corruption, got: %q", out)
+	}
+	if n := countNonEmptyLines(out); n != 1 {
+		t.Errorf("quick-doctor printed %d lines, want 1: %q", n, out)
+	}
+}
+
+// TestQuickDoctor_SymlinkedBinDirStaysSilent: reaching one binary under two
+// names (a symlinked bin dir, a version-stamped prefix behind a stable
+// symlink — Nix store, Linuxbrew Cellar, asdf/mise shims) is not a second
+// install and must not be reported as one.
+func TestQuickDoctor_SymlinkedBinDirStaysSilent(t *testing.T) {
+	statePath, recorded := quickEnv(t)
+
+	link := filepath.Join(t.TempDir(), "grafel")
+	if err := os.Symlink(recorded, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	out := runQuick(t, statePath, link)
+	if strings.Contains(out, "two grafel installs") || strings.Contains(out, "no longer exists") {
+		t.Errorf("a symlink to the recorded binary is the same install, got: %q", out)
 	}
 }
 
@@ -162,9 +226,9 @@ func TestQuickDoctor_DifferentBinaryOnPathIsItsOwnCase(t *testing.T) {
 // isInGitWorktree() does not exempt them) must not be told to record that
 // scratch build as their install — doing so would overwrite the record of
 // their real one. Release builds still get the warning; see
-// TestQuickDoctor_DifferentBinaryOnPathIsItsOwnCase.
+// TestQuickDoctor_TwoInstallsMustNotBeOfferedTheRefresh.
 func TestQuickDoctor_DevBuildDoesNotGetThePathWarning(t *testing.T) {
-	statePath, _ := quickEnv(t)
+	statePath, recorded := quickEnv(t)
 
 	scratch := filepath.Join(t.TempDir(), "grafel")
 	if err := os.WriteFile(scratch, []byte("#!/bin/sh\necho scratch build\n"), 0o755); err != nil {
@@ -174,6 +238,19 @@ func TestQuickDoctor_DevBuildDoesNotGetThePathWarning(t *testing.T) {
 	out := runQuickAs(t, statePath, scratch, "0.0.0-dev")
 	if strings.Contains(out, "refresh-state") {
 		t.Errorf("a dev build must not be told to re-record itself as the install, got: %q", out)
+	}
+	if strings.Contains(out, "two grafel installs") {
+		t.Errorf("a dev build's path says nothing about the install; no duplicate-install claim, got: %q", out)
+	}
+
+	// Same for the relocated shape: a dev build must not be told to record
+	// itself just because the recorded binary is gone.
+	if err := os.Remove(recorded); err != nil {
+		t.Fatalf("remove recorded binary: %v", err)
+	}
+	out = runQuickAs(t, statePath, scratch, "0.0.0-dev")
+	if strings.Contains(out, "refresh-state") || strings.Contains(out, "no longer exists") {
+		t.Errorf("a dev build must stay silent on the relocated-install case too, got: %q", out)
 	}
 }
 

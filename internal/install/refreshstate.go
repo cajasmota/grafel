@@ -41,7 +41,6 @@ package install
 import (
 	"fmt"
 	"os"
-	"time"
 )
 
 // RefreshOptions configures RefreshState.
@@ -95,9 +94,10 @@ func (o *RefreshOptions) applyDefaults() error {
 // manifest and no MCP registration would make `grafel doctor` start reporting
 // drift that does not exist.
 //
-// Every other field of the state — install mode, skills manifest, MCP
-// registration, gitignore record, daemon version, partial-install flags — is
-// preserved exactly as read.
+// Every other field of the state — install mode, InstalledAt, skills manifest,
+// MCP registration, gitignore record, partial-install flags — is preserved
+// exactly as read. The sole exception is DaemonVersion, which an in-place
+// binary swap definitely invalidates; see the comment at the write below.
 func RefreshState(opts RefreshOptions) (*RefreshResult, error) {
 	if err := opts.applyDefaults(); err != nil {
 		return nil, err
@@ -125,14 +125,29 @@ func RefreshState(opts RefreshOptions) (*RefreshResult, error) {
 	res.Path = opts.BinPath
 	res.SHA256 = sha
 
-	if state.CLI.Path == opts.BinPath && state.CLI.SHA256 == sha {
+	if state.CLI.Path == opts.BinPath && state.CLI.SHA256 == sha && state.DaemonVersion == "" {
 		// Already current — do not rewrite the file, so the operation is
 		// genuinely idempotent and the installer can call it unconditionally.
 		return res, nil
 	}
 
+	// Path as well as SHA: the recorded path can be wrong on its own (an
+	// install that moved prefix), and correcting it is the sole remedy for
+	// quick-doctor's "install.json records <gone path>" warning.
 	state.CLI = CLIRecord{Path: opts.BinPath, SHA256: sha}
-	state.InstalledAt = time.Now().UTC().Format(time.RFC3339)
+
+	// InstalledAt is deliberately NOT touched: no install happened here, and
+	// stamping "now" would make the field assert something false.
+
+	// DaemonVersion IS cleared, and it is the one field an in-place binary
+	// swap definitely invalidates: install.sh replaces the binary and then
+	// restarts the daemon, so the recorded version describes a process that no
+	// longer exists and checkDaemon would report a version mismatch on every
+	// `grafel doctor`. checkDaemon early-returns on "", so dropping a
+	// known-wrong value is strictly better than preserving it; the next real
+	// `grafel install` / `grafel update` repopulates it from the live probe.
+	state.DaemonVersion = ""
+
 	if err := WriteState(opts.StatePath, state); err != nil {
 		return nil, err
 	}
