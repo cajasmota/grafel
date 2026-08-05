@@ -299,6 +299,32 @@ restart_daemon() {
   return 0
 }
 
+# record_install_state makes ~/.grafel/install.json agree with the binary we
+# just placed in $BIN_DIR.
+#
+# Without this the installer ships a bug it then reports: `install -m 0755`
+# replaces the binary but nothing rewrites install.json, whose CLI checksum is
+# only ever written by `grafel install`. So the recorded SHA stays the PREVIOUS
+# binary's, and grafel's quick-doctor preflight prefixes
+#   "grafel doctor: binary updated since last install …"
+# onto EVERY subsequent grafel command, forever — including the `grafel doctor`
+# call a few lines below in main().
+#
+# We deliberately do NOT run a bare `grafel install` here. That is a seven-step
+# transaction which, among other things, appends /.grafel/ to the .gitignore of
+# whatever repository the user's shell happened to be in when they piped this
+# script to bash, installs four git hooks into that same repository, rewrites
+# every detected .claude.json, and restarts the daemon with a 60s budget that
+# would duplicate and race restart_daemon below. A one-line installer must not
+# mutate a repo the user never mentioned. `--refresh-state` is the narrow
+# operation that only re-records the binary's path and checksum.
+#
+# Best-effort, like every other post-download step: a failure here prints
+# nothing fatal and never aborts the installer.
+record_install_state() {
+  "$BIN_DIR/grafel" install --refresh-state >/dev/null 2>&1 || true
+}
+
 configure_path() {
   shell_name=""
   if [ -n "${SHELL:-}" ]; then
@@ -365,6 +391,10 @@ main() {
     cp "$TMP_DIR/grafel" "$BIN_DIR/grafel"
     chmod +x "$BIN_DIR/grafel"
   }
+
+  # Record the binary we just placed BEFORE reporting doctor output, so the
+  # installer stops printing the stale-checksum warning it caused itself.
+  record_install_state
 
   configure_path
 

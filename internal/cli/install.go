@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -91,6 +92,7 @@ func newInstallCmd() *cobra.Command {
 	var toolsCSV string
 	var noWizard bool
 	var assumeYes bool
+	var refreshState bool
 
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -125,6 +127,26 @@ Install also copies or symlinks the grafel skills into every detected
 Claude Code config directory's skills/ subdirectory.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
+
+			// ── --refresh-state: record the on-disk binary, nothing else ───
+			// Handled FIRST, before the tool-selection wizard and before any
+			// of the install transaction: this path exists precisely so the
+			// curl installer can make ~/.grafel/install.json agree with the
+			// binary it just placed WITHOUT restarting the daemon, rewriting
+			// .claude.json, appending to the caller's .gitignore, installing
+			// git hooks in the caller's repo, or blocking on a TTY prompt.
+			// See internal/install/refreshstate.go for the full argument.
+			if refreshState {
+				// Silently ignoring the rest would be its own trap: every
+				// other install flag asks for work --refresh-state explicitly
+				// does not do, so a user combining them would get a state
+				// rewrite and believe they got an install.
+				if conflicts := conflictingRefreshStateFlags(cmd); len(conflicts) > 0 {
+					return fmt.Errorf("--refresh-state only re-records this binary in install.json; it cannot be combined with %s "+
+						"(run 'grafel install' on its own for a full install)", strings.Join(conflicts, ", "))
+				}
+				return runRefreshState(out)
+			}
 
 			// ── per-tool selection (#5256) ─────────────────────────────────
 			// Resolve the desired tool set and persist it to every registered
@@ -283,7 +305,52 @@ Claude Code config directory's skills/ subdirectory.`,
 		"skip the interactive tool-selection wizard even on a TTY (keep the current/default tool set)")
 	cmd.Flags().BoolVar(&assumeYes, "yes", false,
 		"assume defaults for all prompts (alias for --no-wizard for tool selection); never blocks automation")
+	// Curl-installer support: record the running binary in install.json and do
+	// nothing else. Not a full install — see internal/install/refreshstate.go.
+	cmd.Flags().BoolVar(&refreshState, "refresh-state", false,
+		"only re-record this binary's path and checksum in ~/.grafel/install.json (no daemon restart, no skills, no MCP, no git changes); used by the curl installer after an in-place upgrade")
 	return cmd
+}
+
+// conflictingRefreshStateFlags returns the names of any explicitly-set install
+// flags that --refresh-state cannot honour. Only flags the user actually typed
+// count (Changed), so the --copy default of true is not a conflict.
+func conflictingRefreshStateFlags(cmd *cobra.Command) []string {
+	var conflicts []string
+	for _, name := range []string{
+		"foreground", "claude-config-dirs", "skills-source-dir", "skip-skill-link",
+		"mode", "copy", "dev", "force", "no-hooks", "tools", "no-wizard", "yes",
+	} {
+		if f := cmd.Flags().Lookup(name); f != nil && f.Changed {
+			conflicts = append(conflicts, "--"+name)
+		}
+	}
+	return conflicts
+}
+
+// runRefreshState executes the narrow install.json CLI-record refresh and
+// prints a one-line summary. It never mutates anything outside install.json.
+func runRefreshState(out io.Writer) error {
+	bin, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve binary path: %w", err)
+	}
+	res, err := install.RefreshState(install.RefreshOptions{BinPath: bin})
+	if err != nil {
+		return err
+	}
+	switch {
+	case !res.HadState:
+		// Nothing installed yet: quick-doctor is already silent in this state,
+		// and fabricating an install.json here would make `grafel doctor`
+		// report skills/MCP drift that does not exist.
+		fmt.Fprintln(out, "no ~/.grafel/install.json to refresh — run 'grafel install' to install grafel")
+	case !res.Changed:
+		fmt.Fprintf(out, "install state already current (%s)\n", res.Path)
+	default:
+		fmt.Fprintf(out, "✓ install state refreshed: %s (sha256 %s…)\n", res.Path, res.SHA256[:12])
+	}
+	return nil
 }
 
 // resolveToolSelection decides the per-tool selection for `grafel install`.

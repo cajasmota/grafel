@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -41,6 +42,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install/skilllink"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/statusfile"
+	"github.com/cajasmota/grafel/internal/version"
 )
 
 // DoctorSchemaVersion is the JSON schema version for DoctorReport.
@@ -100,6 +102,12 @@ type DoctorOptions struct {
 	// ClaudeConfigDirs overrides .claude.json auto-detection (same flag as install).
 	ClaudeConfigDirs []string
 
+	// SelfPath / Version describe the binary this process is running as, and
+	// feed checkCLI's identity comparison. They default to os.Executable() and
+	// version.Version; see the matching fields on QuickOptions.
+	SelfPath string
+	Version  string
+
 	// DaemonPort is the daemon's dashboard HTTP port. Defaults to 47274.
 	//
 	// #6072: the daemon version check no longer uses it — it reads the RPC
@@ -145,6 +153,14 @@ func (o *DoctorOptions) applyDefaults() error {
 			return err
 		}
 		o.StatePath = p
+	}
+	if o.SelfPath == "" {
+		if self, err := os.Executable(); err == nil {
+			o.SelfPath = self
+		}
+	}
+	if o.Version == "" {
+		o.Version = version.Version
 	}
 	if o.DaemonPort == 0 {
 		o.DaemonPort = 47274
@@ -208,7 +224,7 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 	}
 
 	// ── Check 1: CLI binary SHA ─────────────────────────────────────────────
-	report.Checks = append(report.Checks, checkCLI(state))
+	report.Checks = append(report.Checks, checkCLI(state, opts.SelfPath, opts.Version))
 
 	// ── Check 2: Daemon version via the RPC socket (#6072) ──────────────────
 	report.Checks = append(report.Checks, checkDaemon(state, opts.ProbeDaemonVersion))
@@ -297,7 +313,20 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 // checkCLI compares the running binary SHA against install.json.
 // Skips the check if running from a git worktree (which may have a different
 // binary path), and emits an INFO-level hint instead.
-func checkCLI(state *State) CheckResult {
+// checkCLI mirrors RunQuickDoctor's check 1 — deliberately, and it must keep
+// mirroring it. Before this was aligned, the two surfaces disagreed and the
+// MORE authoritative one gave the WORSE advice: quick-doctor had already
+// learned to distinguish "running a different binary" and to name a narrow
+// remedy, while `grafel doctor` still had no path check at all (so it handed
+// out the same false all-clear quick-doctor now catches) and prescribed
+// `re-run 'grafel install'` — a seven-step transaction that appends to the
+// .gitignore and installs four git hooks in whatever repo the user happens to
+// be standing in. See internal/install/refreshstate.go for that argument.
+//
+// selfPath is the binary this process is running as ("" disables the identity
+// comparison); ver is its version string (a dev build disables it too, for the
+// reason given in RunQuickDoctor).
+func checkCLI(state *State, selfPath, ver string) CheckResult {
 	cr := CheckResult{Surface: "cli", OK: true}
 
 	if state.CLI.Path == "" || state.CLI.SHA256 == "" {
@@ -318,6 +347,33 @@ func checkCLI(state *State) CheckResult {
 		return cr
 	}
 
+	identity := binarySame
+	if !version.IsDev(ver) {
+		identity = classifyBinaryIdentity(selfPath, state.CLI.Path)
+	}
+	switch identity {
+	case binaryDiffers:
+		// Two installs. Neither hashing nor re-recording helps — re-recording
+		// would just re-point install.json at whichever binary was invoked.
+		cr.OK = false
+		cr.Severity = SeverityWarning
+		cr.Drift = []string{fmt.Sprintf(
+			"running %s but install.json records %s — two grafel installs on this machine (daemon still usable); "+
+				"run 'which -a grafel' and remove the one you do not want", selfPath, state.CLI.Path)}
+		return cr
+	case binaryRecordedMissing:
+		cr.OK = false
+		cr.Severity = SeverityWarning
+		cr.Drift = []string{fmt.Sprintf(
+			"install.json records %s, which no longer exists; running %s (daemon still usable) — "+
+				"run 'grafel install --refresh-state' to record it", state.CLI.Path, selfPath)}
+		return cr
+	case binaryUnknown:
+		return cr
+	case binarySame:
+		// Fall through to the SHA comparison below.
+	}
+
 	// Compute current SHA.
 	actual, err := sha256File(state.CLI.Path)
 	if err != nil {
@@ -335,9 +391,73 @@ func checkCLI(state *State) CheckResult {
 		// Critical for unreadable/missing install.json and unhashable binaries.
 		cr.OK = false
 		cr.Severity = SeverityWarning
-		cr.Drift = []string{fmt.Sprintf("sha256 mismatch: binary=%s install=%s (daemon still usable; re-run 'grafel install' to refresh)", actual[:16], state.CLI.SHA256[:16])}
+		cr.Drift = []string{fmt.Sprintf("sha256 mismatch: binary=%s install=%s (daemon still usable; run 'grafel install --refresh-state' to refresh)", actual[:16], state.CLI.SHA256[:16])}
 	}
 	return cr
+}
+
+// binaryIdentity classifies the relationship between the binary this process
+// is running as and the binary install.json records. The three actionable
+// outcomes need three different messages because they need three different
+// remedies — see the check-1 comment in RunQuickDoctor.
+type binaryIdentity int
+
+const (
+	// binaryUnknown: we cannot tell. Always stay silent — a warning derived
+	// from a comparison we could not make is noise by construction.
+	binaryUnknown binaryIdentity = iota
+	// binarySame: this process IS the recorded install (possibly reached via
+	// a different path: a symlinked bin dir, a hard link, /tmp vs /private/tmp).
+	binarySame
+	// binaryDiffers: a genuinely different binary that also exists on disk —
+	// i.e. two grafel installs on this machine.
+	binaryDiffers
+	// binaryRecordedMissing: install.json points at a binary that is gone,
+	// and we are running a different one.
+	binaryRecordedMissing
+)
+
+// classifyBinaryIdentity compares the running binary against the recorded one.
+//
+// Identity is decided by os.SameFile (device+inode), not by path string or
+// EvalSymlinks. That is the same cost — two stat(2) calls, microseconds, well
+// inside quick-doctor's <50ms budget — and it is correct for every way one
+// binary ends up under two names: a symlinked bin dir (/usr/local/bin ->
+// /opt/homebrew/bin), a version-stamped prefix reached through a stable symlink
+// (Nix store paths, Linuxbrew's Cellar, asdf/mise shims), macOS's
+// /tmp -> /private/tmp, and hard links — which EvalSymlinks gets wrong.
+//
+// The textual fast path is load-bearing, not an optimisation: when the recorded
+// path IS the path we are running, a stat failure must NOT be reported. That
+// happens transiently during an in-place upgrade (the rename window) and the
+// old code was correctly silent there; only the SHA check applies to that case.
+//
+// Deliberately NOT hashing both files: one SHA of one binary is the ceiling for
+// a check that runs before every command.
+func classifyBinaryIdentity(self, recorded string) binaryIdentity {
+	if self == "" || recorded == "" {
+		return binaryUnknown
+	}
+	if self == recorded {
+		return binarySame
+	}
+	ri, rerr := os.Stat(recorded)
+	if rerr != nil {
+		if errors.Is(rerr, fs.ErrNotExist) {
+			return binaryRecordedMissing
+		}
+		// Unreadable for some other reason (permissions, a dead mount): we
+		// learned nothing.
+		return binaryUnknown
+	}
+	si, serr := os.Stat(self)
+	if serr != nil {
+		return binaryUnknown
+	}
+	if os.SameFile(si, ri) {
+		return binarySame
+	}
+	return binaryDiffers
 }
 
 // isInGitWorktree reports whether the current process is running from inside
@@ -1110,6 +1230,18 @@ type QuickOptions struct {
 	// StatePath is the path of install.json.  Defaults to DefaultStatePath().
 	StatePath string
 
+	// Version is this binary's version string. Defaults to version.Version.
+	// Only used to suppress the running-vs-recorded path warning for dev
+	// builds — see the check-1 comment in RunQuickDoctor.
+	Version string
+
+	// SelfPath is the path of the binary this process is running from.
+	// Defaults to os.Executable(); an empty value that cannot be resolved
+	// simply disables the running-vs-recorded comparison. Overridable so
+	// tests can exercise both the "same binary, new bytes" and "different
+	// binary entirely" cases without re-execing.
+	SelfPath string
+
 	// DaemonPort is the HTTP port for the daemon's /healthz endpoint.
 	// Defaults to 47274.
 	DaemonPort int
@@ -1129,6 +1261,17 @@ func (o *QuickOptions) applyDefaults() error {
 			return err
 		}
 		o.StatePath = p
+	}
+	if o.SelfPath == "" {
+		// os.Executable() is a single syscall on every supported platform —
+		// no filesystem walk, no stat — so this stays inside the <50ms budget.
+		// A failure just leaves SelfPath empty and disables the comparison.
+		if self, err := os.Executable(); err == nil {
+			o.SelfPath = self
+		}
+	}
+	if o.Version == "" {
+		o.Version = version.Version
 	}
 	if o.DaemonPort == 0 {
 		o.DaemonPort = 47274
@@ -1166,11 +1309,64 @@ func RunQuickDoctor(opts QuickOptions) error {
 
 	var warnings []string
 
-	// Check 1: CLI SHA (skip if in a git worktree).
+	// Check 1: CLI identity (skip if in a git worktree).
+	//
+	// THREE distinct conditions hide behind the old single SHA comparison, and
+	// each needs its own words because each needs a DIFFERENT remedy. Giving
+	// them one shared remedy is how the original bug got its teeth.
+	//
+	//  (a) same binary, different bytes — replaced in place. This is what the
+	//      curl installer does on every upgrade: benign, only the recorded hash
+	//      is stale. Remedy: re-record it.
+	//  (b) a genuinely DIFFERENT binary that also exists — two grafel installs
+	//      on the machine. Hashing the recorded path says nothing about the
+	//      process you are in: a match is a false all-clear (you can be running
+	//      a second, older install found earlier on PATH while the recorded one
+	//      sits untouched). Remedy: find and remove the duplicate — NOT
+	//      re-recording, which merely re-points install.json at whichever
+	//      binary you happened to invoke. Prescribing the refresh here would
+	//      let a user standing in a stale /usr/local/bin/grafel record the OLD
+	//      binary as THE install while the skills/MCP manifest describes the
+	//      new one — manufacturing exactly the false all-clear this check
+	//      exists to catch.
+	//  (c) the recorded binary is GONE and we are running a different one — a
+	//      relocated install (new prefix, package manager migration). Nothing
+	//      is ambiguous and nothing can ping-pong: there is only one binary
+	//      left, so re-recording it is right.
+	//
+	// The previous wording prescribed `grafel doctor` for all of it — which
+	// just reprints this line — leaving the user a permanent warning and no way
+	// out short of guessing.
+	//
+	// Cases (b) and (c) are reported for RELEASE builds only. isInGitWorktree()
+	// already exempts worktree development, but a contributor running a
+	// `go build` output from the MAIN checkout has .git as a directory and is
+	// not exempted — and for them the (c) advice would be actively wrong:
+	// recording a scratch build as THE install would overwrite the record of
+	// their real one. A dev binary is by definition not the installed release,
+	// so its path carries no information about the install's health.
 	if state.CLI.Path != "" && state.CLI.SHA256 != "" && !isInGitWorktree() {
-		actual, shaErr := sha256File(state.CLI.Path)
-		if shaErr == nil && actual != state.CLI.SHA256 {
-			warnings = append(warnings, "binary updated since last install (daemon still usable)")
+		identity := binarySame
+		if !version.IsDev(opts.Version) {
+			identity = classifyBinaryIdentity(opts.SelfPath, state.CLI.Path)
+		}
+		switch identity {
+		case binaryDiffers:
+			warnings = append(warnings, fmt.Sprintf(
+				"running %s but install.json records %s — two grafel installs; 'which -a grafel' to find the extra one",
+				opts.SelfPath, state.CLI.Path))
+		case binaryRecordedMissing:
+			warnings = append(warnings, fmt.Sprintf(
+				"install.json records %s, which no longer exists (daemon still usable) — run 'grafel install --refresh-state' to record %s",
+				state.CLI.Path, opts.SelfPath))
+		case binarySame:
+			actual, shaErr := sha256File(state.CLI.Path)
+			if shaErr == nil && actual != state.CLI.SHA256 {
+				warnings = append(warnings,
+					"binary updated since last install (daemon still usable) — run 'grafel install --refresh-state'")
+			}
+		case binaryUnknown:
+			// Nothing learned — say nothing.
 		}
 	}
 
@@ -1178,18 +1374,24 @@ func RunQuickDoctor(opts QuickOptions) error {
 	url := fmt.Sprintf("http://127.0.0.1:%d/healthz", opts.DaemonPort)
 	client := &http.Client{Timeout: opts.DaemonTimeout}
 	resp, daemonErr := client.Get(url)
+	// The daemon branch is the one case where `grafel doctor` genuinely has
+	// more to say (it probes the RPC socket and the service unit), so it — and
+	// only it — keeps that pointer. Every warning now carries its own remedy
+	// instead of a single trailing "run 'grafel doctor'" that was a closed loop
+	// for the CLI checks above.
 	if daemonErr != nil {
-		warnings = append(warnings, fmt.Sprintf("daemon unreachable at :%d", opts.DaemonPort))
+		warnings = append(warnings, fmt.Sprintf(
+			"daemon unreachable at :%d — run 'grafel doctor' for details", opts.DaemonPort))
 	} else {
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			warnings = append(warnings, fmt.Sprintf("daemon /healthz returned %d", resp.StatusCode))
+			warnings = append(warnings, fmt.Sprintf(
+				"daemon /healthz returned %d — run 'grafel doctor' for details", resp.StatusCode))
 		}
 	}
 
 	if len(warnings) > 0 {
-		fmt.Fprintf(opts.Out, "grafel doctor: %s — run 'grafel doctor' for details\n",
-			strings.Join(warnings, "; "))
+		fmt.Fprintf(opts.Out, "grafel doctor: %s\n", strings.Join(warnings, "; "))
 	}
 
 	return nil

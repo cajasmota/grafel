@@ -569,7 +569,15 @@ func TestDoctorQuickMode_Tampered(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := install.QuickOptions{
-		StatePath:     env.statePath,
+		StatePath: env.statePath,
+		// This test exercises the "same binary, new bytes" case (an in-place
+		// upgrade), as a RELEASE build. Both pins are load-bearing: without
+		// Version the dev-build guard would skip the identity comparison
+		// entirely (making SelfPath dead), and without SelfPath the comparison
+		// would run against os.Executable() — the go test binary — and report
+		// the two-installs case instead. See doctor_quick_remedy_test.go.
+		SelfPath:      env.fakeBin,
+		Version:       "0.2.0",
 		DaemonPort:    1,
 		DaemonTimeout: 100 * time.Millisecond,
 		Out:           &buf,
