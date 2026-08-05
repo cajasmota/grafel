@@ -283,6 +283,15 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 	// Container topology — Testcontainers. The test DEPENDS_ON_SERVICE the
 	// container'd service.
 	//
+	// #6144 — that sentence describes the FROM endpoint the extractor MEANT, not
+	// the one it emits. The relationship is appended to `ent` below, so the edge
+	// runs container:X -> service X: both endpoints derive from one token and the
+	// test appears nowhere. The `image` / `container_type` payload is also already
+	// duplicated as properties on the container node, so the edge carries nothing
+	// a caller could not read off the node. Filed separately rather than folded in
+	// here — #6123 is about the TARGET, and repointing the source needs an
+	// enclosing-scope lookup this closure does not do.
+	//
 	// #6123 — the target ref. This edge used to carry `service:<name>`, which
 	// LOOKS like the Name of an external-service node (extractor.ExternalServiceName
 	// mints exactly that shape) but can never address one: LookupStatusHint runs
