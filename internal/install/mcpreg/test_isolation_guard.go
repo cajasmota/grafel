@@ -19,7 +19,7 @@ package mcpreg
 // Why guard the writers and not homeDir()/SettingsPath(): a read-only path
 // resolution is harmless and extremely common (used to detect whether a tool
 // is installed); only a WRITE clobbers the developer's live editor config.
-// Guarding RegisterPath/UnregisterPath/RestorePath — BEFORE backupOnce, which
+// Guarding RegisterPath/UnregisterPath/RestoreSnapshot — BEFORE backupOnce, which
 // itself writes a `.grafel.bak` sidecar and an audit copy under
 // ~/.grafel/backups/mcpreg/ — catches every mutating entry point in this
 // package.

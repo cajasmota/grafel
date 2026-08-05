@@ -722,8 +722,11 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 			// targets is known. rollback(3) cannot do it: it fires before
 			// `completedSteps` contains 3, and state.MCP.RegisteredPaths is
 			// still empty because it is assigned only after this loop (#6168).
-			rollbackMCPRegistration(append(append([]string(nil), registeredPaths...), cfgPath))
+			rbErr := rollbackMCPRegistration(append(append([]string(nil), registeredPaths...), cfgPath))
 			rollback(3)
+			if rbErr != nil {
+				return nil, fmt.Errorf("step 3 – MCP register %s: %w; ROLLBACK INCOMPLETE: %v", cfgPath, err, rbErr)
+			}
 			return nil, fmt.Errorf("step 3 – MCP register %s: %w", cfgPath, err)
 		}
 		registeredPaths = append(registeredPaths, cfgPath)
@@ -820,7 +823,7 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 	// Only now are the pristine MCP sidecar backups discarded, so the next
 	// install snapshots fresh and a later restore never resurrects stale
 	// grafel-containing content. Clearing them at step 3 (as this used to)
-	// meant a later rollback found no snapshot and RestorePath silently
+	// meant a later rollback found no snapshot and RestoreSnapshot silently
 	// degraded to UnregisterPath — a "restore" that deleted (#6168).
 	if !opts.DryRun {
 		commitMCPBackups(registeredPaths)
@@ -1164,11 +1167,16 @@ func rollbackSkillsCopy(opts CopyOptions, state *State) {
 // state.MCP.RegisteredPaths, because the only caller is the mid-loop failure
 // site where that field has not been assigned yet (#6168).
 //
-// It calls RestoreSnapshot, not RestorePath: with no snapshot there is nothing
-// this function is entitled to undo, and RestorePath's documented fallback
-// would delete the entry instead. A missing snapshot is reported, never acted
-// on.
-func rollbackMCPRegistration(touchedPaths []string) {
+// It calls RestoreSnapshot: with no snapshot there is nothing this function is
+// entitled to undo, so a missing snapshot is skipped rather than guessed at.
+//
+// It returns a non-nil error listing the paths whose restore FAILED. Those
+// files are left partially modified, which the caller must surface: on a
+// multi-host install, a failure to restore host A while reporting only "step 3
+// – MCP register B failed" would leave the user with a silently inconsistent
+// multi-host state and no signal that A needs attention (#6168 S4).
+func rollbackMCPRegistration(touchedPaths []string) error {
+	var failed []string
 	for _, cfgPath := range touchedPaths {
 		err := mcpreg.RestoreSnapshot(cfgPath)
 		switch {
@@ -1179,8 +1187,14 @@ func rollbackMCPRegistration(touchedPaths []string) {
 		default:
 			fmt.Fprintf(os.Stderr,
 				"grafel install: rollback warning – restore %s: %v\n", cfgPath, err)
+			failed = append(failed, fmt.Sprintf("%s (%v)", cfgPath, err))
 		}
 	}
+	if len(failed) > 0 {
+		return fmt.Errorf("could not restore %d config file(s), left partially modified: %s",
+			len(failed), strings.Join(failed, "; "))
+	}
+	return nil
 }
 
 // commitMCPBackups discards the pristine sidecar snapshots once the install

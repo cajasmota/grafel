@@ -190,6 +190,101 @@ func TestStaleSidecar_DoesNotResurrectAnOldSnapshotOverLiveContent(t *testing.T)
 	}
 }
 
+// TestStaleSidecar_DevModeAlsoDiscardsStaleSnapshots covers the dev.go mirror.
+// An unguarded copy of this hole is exactly how the class of bug survives a
+// fix, so the mirror gets its own probe rather than relying on inspection.
+func TestStaleSidecar_DevModeAlsoDiscardsStaleSnapshots(t *testing.T) {
+	env := newTestEnv(t)
+	if err := os.Remove(env.claudeJSON); err != nil {
+		t.Fatalf("remove seed config: %v", err)
+	}
+
+	run1 := install.DevOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: false,
+		NoHooks:           true,
+		RestartDaemon:     failingRestart,
+	}
+	if _, err := install.RunDev(run1); err == nil {
+		t.Fatal("run 1: expected a step-4 failure")
+	}
+
+	live := `{
+  "mcpServers": {
+    "playwright": {
+      "command": "/bin/playwright",
+      "type": "stdio"
+    }
+  },
+  "userIDOverride": "keep-me"
+}`
+	if err := os.WriteFile(env.claudeJSON, []byte(live), 0o644); err != nil {
+		t.Fatalf("write live config: %v", err)
+	}
+
+	run2 := run1
+	run2.Force = true
+	run2.SkipDaemonRestart = true
+	run2.RestartDaemon = nil
+	run2.ClaudeConfigDirs = []string{env.claudeJSON, malformedTarget(t, filepath.Dir(env.claudeJSON))}
+	if _, err := install.RunDev(run2); err == nil {
+		t.Fatal("run 2: expected a step-3 failure")
+	}
+
+	raw, err := os.ReadFile(env.claudeJSON)
+	if err != nil {
+		t.Fatalf("DEV mode: the user's .claude.json was DELETED by a stale absent-sentinel snapshot: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("parse: %v (content: %s)", err, raw)
+	}
+	if got["userIDOverride"] != "keep-me" {
+		t.Errorf("DEV mode: unrelated state lost (content: %s)", raw)
+	}
+}
+
+// TestStaleSidecar_UninstallSweepsOrphanedSidecars (#6168 S2): a failed install
+// leaves a `<config>.grafel.bak` in the user's home. Nothing else removes it —
+// the install clears sidecars only on paths a failed run never reaches, and the
+// uninstall MCP loop is surgical and never consults them — so without an
+// explicit sweep the file survives `grafel uninstall` forever.
+func TestStaleSidecar_UninstallSweepsOrphanedSidecars(t *testing.T) {
+	env := newTestEnv(t)
+	sidecar := env.claudeJSON + ".grafel.bak"
+
+	failed := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: false,
+		RestartDaemon:     failingRestart,
+	}
+	if _, err := install.RunCopy(failed); err == nil {
+		t.Fatal("expected a step-4 failure")
+	}
+	if _, err := os.Stat(sidecar); err != nil {
+		t.Fatalf("precondition: expected an orphaned sidecar at %s: %v", sidecar, err)
+	}
+
+	if _, err := install.RunUninstall(install.UninstallOptions{
+		StatePath:      env.statePath,
+		SkipDaemonStop: true,
+	}); err != nil {
+		t.Fatalf("RunUninstall: %v", err)
+	}
+
+	if _, err := os.Stat(sidecar); err == nil {
+		t.Errorf("orphaned sidecar %s survived grafel uninstall", sidecar)
+	}
+}
+
 // TestStaleSidecar_NoSidecarSurvivesAStep4Failure states the invariant
 // directly: no run may leave a sidecar behind for the next run to inherit.
 func TestStaleSidecar_NoSidecarSurvivesAStep4Failure(t *testing.T) {

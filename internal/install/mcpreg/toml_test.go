@@ -207,7 +207,7 @@ func TestTOML_RestoreRollsBackToOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Rollback restores the byte-exact original (backup is format-agnostic).
-	if err := RestorePath(path); err != nil {
+	if err := RestoreSnapshot(path); err != nil {
 		t.Fatal(err)
 	}
 	s, _ := os.ReadFile(path)
@@ -223,7 +223,7 @@ func TestTOML_RestoreDeletesCreatedFile(t *testing.T) {
 	if _, err := Register(Codex, "/bin/grafel", "/r.json"); err != nil {
 		t.Fatal(err)
 	}
-	if err := RestorePath(path); err != nil {
+	if err := RestoreSnapshot(path); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {

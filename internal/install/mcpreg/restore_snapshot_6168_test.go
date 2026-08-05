@@ -8,36 +8,19 @@ import (
 	"testing"
 )
 
-// #6168: RestorePath's no-snapshot fallback is a trap for any caller whose
-// intent is "undo a registration that DID run". Once the pristine sidecar has
-// been discarded, the "restore" silently becomes a "delete" — which is exactly
-// how an install that got as far as registering MCP, then tripped over an
-// unrelated later step, ended up removing the user's MCP server.
+// #6168: a "restore" that silently becomes a "delete" once its snapshot has
+// been discarded is how an install that got as far as registering MCP, then
+// tripped over an unrelated later step, ended up removing the user's MCP
+// server. The old RestorePath had exactly that fallback; it has been deleted
+// rather than documented around, because an exported name whose contract is
+// "may delete instead" is what the next author reaches for by mistake.
 //
-// RestoreSnapshot exists so that intent is expressible: no snapshot means
-// nothing to restore, reported as ErrNoSnapshot, never acted on.
+// RestoreSnapshot makes the intent explicit: no snapshot means nothing to
+// restore, reported as ErrNoSnapshot, never acted on. Callers that want removal
+// call UnregisterPath, which says so.
 
-// TestRestorePath_DegradesToDeleteWithoutSnapshot pins the documented (and
-// dangerous) behaviour of RestorePath so the difference below is not
-// theoretical.
-func TestRestorePath_DegradesToDeleteWithoutSnapshot(t *testing.T) {
-	home := withHome(t)
-	path := filepath.Join(home, ".claude.json")
-	if _, err := RegisterPath(path, "/bin/grafel"); err != nil {
-		t.Fatalf("RegisterPath: %v", err)
-	}
-	ClearBackup(path) // the discarded-too-early snapshot
-
-	if err := RestorePath(path); err != nil {
-		t.Fatalf("RestorePath: %v", err)
-	}
-	if hasGrafel(t, path) {
-		t.Fatal("RestorePath kept the entry — this test pins the DELETE behaviour it is documented to have")
-	}
-}
-
-// TestRestoreSnapshot_ReportsInsteadOfDeleting is the guard: the same setup
-// must NOT remove the entry.
+// TestRestoreSnapshot_ReportsInsteadOfDeleting: a snapshot discarded mid-flight
+// must NOT cause the entry to be removed.
 func TestRestoreSnapshot_ReportsInsteadOfDeleting(t *testing.T) {
 	home := withHome(t)
 	path := filepath.Join(home, ".claude.json")

@@ -162,7 +162,7 @@ func TestRunCopy_Step4VerifyFailure_KeepsMCPRegistration(t *testing.T) {
 // This test separates the two defects that combine to produce that outcome.
 // With the sidecar backup still alive, a rollback would have RESTORED the
 // pre-existing entry (present, old command) — bad but survivable. With the
-// backup already discarded at step 3, RestorePath degraded to UnregisterPath
+// backup already discarded at step 3, RestoreSnapshot degraded to UnregisterPath
 // and the entry was DELETED outright. Asserting the entry is present at all
 // therefore fails only under the full original code.
 func TestRunCopy_Step4Failure_KeepsAPreexistingGrafelEntry(t *testing.T) {

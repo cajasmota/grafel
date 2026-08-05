@@ -246,8 +246,11 @@ func RunDev(opts DevOptions) (*DevResult, error) {
 		}
 		if _, err := mcpreg.RegisterPath(cfgPath, opts.BinPath); err != nil {
 			// Mid-loop abort: undo only the targets this loop touched (#6168).
-			rollbackMCPRegistration(append(append([]string(nil), registeredPaths...), cfgPath))
+			rbErr := rollbackMCPRegistration(append(append([]string(nil), registeredPaths...), cfgPath))
 			rollback(3)
+			if rbErr != nil {
+				return nil, fmt.Errorf("step 3 – MCP register %s: %w; ROLLBACK INCOMPLETE: %v", cfgPath, err, rbErr)
+			}
 			return nil, fmt.Errorf("step 3 – MCP register %s: %w", cfgPath, err)
 		}
 		registeredPaths = append(registeredPaths, cfgPath)

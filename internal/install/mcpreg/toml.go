@@ -17,7 +17,7 @@ import (
 // [mcp_servers.grafel] block. Every other table — including foreign MCP
 // servers such as [mcp_servers.other] and unrelated top-level keys — is
 // preserved byte-for-byte. The same backup/sidecar machinery used for the
-// JSON hosts snapshots the original first, so rollback (RestorePath) is
+// JSON hosts snapshots the original first, so rollback (RestoreSnapshot) is
 // format-agnostic.
 
 // codexServerTable is the TOML table header grafel owns in Codex config.

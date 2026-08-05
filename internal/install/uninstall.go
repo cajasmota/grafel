@@ -268,6 +268,12 @@ func RunUninstall(opts UninstallOptions) (*UninstallResult, error) {
 		} else {
 			result.MCPPaths = append(result.MCPPaths, cfgPath)
 		}
+		// Sweep any pristine sidecar left by a FAILED install (#6168 S2).
+		// Nothing else ever removes these: the install clears them only on a
+		// path that a failed run never reaches, and this loop is surgical and
+		// never consults them. Without this, `<config>.grafel.bak` sits in the
+		// user's home permanently and survives `grafel uninstall`.
+		mcpreg.ClearBackup(cfgPath)
 	}
 
 	// ── Step 2b: Sweep every enabled tool's own MCP config (#5258) ────────────

@@ -432,7 +432,7 @@ func backupOnce(path string) error {
 //
 // Before its FIRST modification of a given file, RegisterPath snapshots the
 // original (via backupOnce) so a later rollback can restore it exactly — see
-// RestorePath. The merge is surgical: only mcpServers.grafel is added or
+// RestoreSnapshot. The merge is surgical: only mcpServers.grafel is added or
 // updated; every other key and sibling server is preserved.
 func RegisterPath(path, binPath string) (string, error) {
 	guardResolvedConfigPath(path, "MCP host config")
@@ -444,7 +444,7 @@ func RegisterPath(path, binPath string) (string, error) {
 	}
 	if isTOML(path) {
 		// Codex-style TOML host. The same backup/sidecar machinery above
-		// already snapshotted the original, so rollback (RestorePath) is
+		// already snapshotted the original, so rollback (RestoreSnapshot) is
 		// format-agnostic — it restores or deletes the raw bytes.
 		return path, registerTOML(path, binPath)
 	}
@@ -508,43 +508,31 @@ func UnregisterPath(path string) error {
 	return writeSettings(path, doc)
 }
 
-// RestorePath reverses a RegisterPath using the pristine backup taken by
-// backupOnce. This is the rollback/de-register entry point that MUST be used
-// instead of writing `{}`:
+// ErrNoSnapshot reports that no pristine sidecar backup exists for a config
+// path, so there is nothing to restore.
+//
+// There used to be a RestoreSnapshot that swallowed this condition and fell
+// through to the surgical UnregisterPath instead. That fallback is what turned
+// a rollback into a deletion of the user's MCP entry once the snapshot had been
+// cleared early (#6168), so it was removed rather than documented around: an
+// exported function whose contract is "silently converts a restore into a
+// delete" is a trap for the next author who reaches for the obvious-looking
+// name. Callers that genuinely want removal call UnregisterPath, which says so.
+var ErrNoSnapshot = errors.New("mcpreg: no pristine snapshot for config path")
+
+// RestoreSnapshot reverses a RegisterPath using the pristine backup taken by
+// backupOnce. It is the rollback entry point, and MUST be used instead of
+// writing `{}`:
 //
 //   - If grafel CREATED the file (sentinel backup), the file is DELETED so
 //     no orphan `{}` / `{"mcpServers":{}}` is left behind.
 //   - If a real original was backed up, the file is restored byte-for-byte,
 //     bringing back every foreign server and unrelated key exactly.
-//   - If no backup exists (e.g. registration never ran), fall back to the
-//     surgical UnregisterPath so we still only remove grafel's own entry.
+//   - If no backup exists, ErrNoSnapshot is returned and NOTHING is written.
+//     There is nothing this function is entitled to undo, and guessing is how
+//     #6168 deleted registrations it had no snapshot for.
 //
 // The sidecar backup is removed after a successful restore.
-func RestorePath(path string) error {
-	err := RestoreSnapshot(path)
-	if errors.Is(err, ErrNoSnapshot) {
-		// No snapshot — fall back to surgical removal so we never
-		// clobber foreign servers.
-		return UnregisterPath(path)
-	}
-	return err
-}
-
-// ErrNoSnapshot reports that no pristine sidecar backup exists for a config
-// path, so there is nothing to restore.
-//
-// It exists so callers can distinguish "restore" from "delete". RestorePath
-// deliberately degrades to UnregisterPath in this case, which is right for its
-// documented "registration never ran" caller but catastrophic for a caller
-// that KNOWS a registration ran and merely wants it undone: it silently turns
-// a restore into a removal (#6168). Rollback paths therefore call
-// RestoreSnapshot and surface this error rather than deleting blind.
-var ErrNoSnapshot = errors.New("mcpreg: no pristine snapshot for config path")
-
-// RestoreSnapshot is RestorePath WITHOUT the delete-if-no-snapshot fallback:
-// it restores the pristine sidecar (or removes a file grafel created, per the
-// absent-sentinel) and returns ErrNoSnapshot when there is no snapshot to
-// restore from. It never removes an entry it has no snapshot for.
 func RestoreSnapshot(path string) error {
 	guardResolvedConfigPath(path, "MCP host config")
 	sidecar := sidecarBackupPath(path)
