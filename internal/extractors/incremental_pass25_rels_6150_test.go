@@ -236,3 +236,133 @@ func TestEntityRecordToGraphEntity_DerivesIDIgnoringRecordID(t *testing.T) {
 		t.Errorf("ID is the record's stamped routable form %q; buildDocument never emits that", rec.ID)
 	}
 }
+
+// TestBindPass25StubEndpoints_AmbiguousSourceIsRefused is the SOURCE-side twin
+// of TestBindPass25StubEndpoints_AmbiguousStubIsRefused, and it closes an
+// asymmetry the first version of this function had: the target lookup refused
+// ambiguity, but the source lookup took the FIRST record matching the stub
+// anywhere in the slice — and the file of whichever record won then decided
+// where the TARGET was looked up. Two guesses stacked on one coin flip.
+//
+// Latent today (the caller passes one file's records), which is exactly why it
+// is pinned: the guard has to survive a caller that stops being careful, and
+// this function is the one place on the path that could silently choose.
+func TestBindPass25StubEndpoints_AmbiguousSourceIsRefused(t *testing.T) {
+	recs := []types.EntityRecord{
+		p25rec("Controller", "Probe", "a.py"),
+		p25rec("Service", "app", "a.py"),
+		p25rec("Controller", "Probe", "b.py"), // same Kind:Name, other file
+		p25rec("Service", "app", "b.py"),
+	}
+	rels := []types.RelationshipRecord{{
+		FromID: "Controller:Probe", ToID: "Service:app", Kind: "REGISTERED_ON",
+	}}
+	out, bound, dropped := bindPass25StubEndpoints(recs, rels, "test-repo")
+	if bound != 0 || dropped != 1 {
+		t.Fatalf("bound=%d dropped=%d; want 0/1 — the source stub names two records in two files", bound, dropped)
+	}
+	for i := range out {
+		if len(out[i].Relationships) != 0 {
+			t.Fatalf("record %s|%s@%s received an edge from an ambiguous source stub",
+				out[i].Kind, out[i].Name, out[i].SourceFile)
+		}
+	}
+}
+
+// ── superseded-synthetic prune (#6150 / #6159) ────────────────────────────
+
+// p25endpoint builds an http_endpoint_definition synthetic. A non-empty
+// handlerRef means UNRESOLVED: engine.ResolveHTTPEndpointHandlers clears
+// source_handler when it binds, so the property's presence IS the "this
+// endpoint never found its handler" signal.
+func p25endpoint(name, file, handlerRef string) types.EntityRecord {
+	r := types.EntityRecord{Kind: "http_endpoint_definition", Name: name, SourceFile: file}
+	if handlerRef != "" {
+		r.Properties = map[string]string{"source_handler": handlerRef}
+	}
+	return r
+}
+
+// TestPruneSupersededEndpointSynthetics_DropsWhenSurvivorExists is the second
+// half of the file-scoping answer, and it exists because BOTH obvious verdicts
+// on an unresolvable endpoint synthetic are wrong:
+//
+//	DROP it   — deletes a live endpoint when nothing else in the graph carries
+//	            it (the Express-router / imported-controller shape).
+//	KEEP it   — INVENTS a duplicate when the full rebuild resolved the same
+//	            endpoint cross-file and REBOUND it onto the handler's file: the
+//	            correctly-anchored copy is carried forward from the previous
+//	            graph, and the re-extracted router file adds a second,
+//	            unresolved one at its own coordinates. Measured on a Flask
+//	            `add_url_rule` + imported view: full has ONE endpoint at the
+//	            view's file; incremental had TWO. That duplicate PREDATES this
+//	            work — it reproduces identically with the resolve pass disabled.
+//
+// The path is not actually short of evidence: it holds the surviving graph. An
+// unresolved synthetic whose (kind, name) is ALREADY carried by a survivor is
+// the same endpoint, already correctly anchored, so the new copy is dropped.
+func TestPruneSupersededEndpointSynthetics_DropsWhenSurvivorExists(t *testing.T) {
+	recs := []types.EntityRecord{
+		p25rec("SCOPE.Operation", "zz_setup", "app.py"),
+		p25endpoint("http:GET:/zzc", "app.py", "Controller:zz_list_c"),
+	}
+	survivors := map[string]bool{"http_endpoint_definition|http:GET:/zzc": true}
+
+	out, pruned := pruneSupersededEndpointSynthetics(recs, survivors)
+	if pruned != 1 {
+		t.Fatalf("pruned = %d, want 1", pruned)
+	}
+	for _, r := range out {
+		if r.Kind == "http_endpoint_definition" {
+			t.Errorf("superseded synthetic survived: %s@%s", r.Name, r.SourceFile)
+		}
+	}
+	if len(out) != 1 || out[0].Name != "zz_setup" {
+		t.Errorf("prune disturbed the non-endpoint records: %+v", out)
+	}
+}
+
+// TestPruneSupersededEndpointSynthetics_KeepsWhenNoSurvivor is the Sev-1 half:
+// with nothing in the surviving graph carrying this endpoint, dropping it
+// destroys the only copy. The graph must keep it, unenriched.
+func TestPruneSupersededEndpointSynthetics_KeepsWhenNoSurvivor(t *testing.T) {
+	recs := []types.EntityRecord{p25endpoint("http:GET:/zzc", "app.py", "Controller:zz_list_c")}
+	out, pruned := pruneSupersededEndpointSynthetics(recs, map[string]bool{
+		"http_endpoint_definition|http:GET:/other": true,
+	})
+	if pruned != 0 || len(out) != 1 {
+		t.Fatalf("pruned=%d len(out)=%d; want 0/1 — this is the only copy of the endpoint", pruned, len(out))
+	}
+}
+
+// TestPruneSupersededEndpointSynthetics_KeepsResolvedSynthetic: a synthetic the
+// resolve pass BOUND (source_handler cleared) is never pruned. It is the fresh,
+// correct record for its handler, and the survivor with the same name is the
+// previous graph's copy of the same entity — which has the same id and merges,
+// rather than duplicating.
+func TestPruneSupersededEndpointSynthetics_KeepsResolvedSynthetic(t *testing.T) {
+	recs := []types.EntityRecord{p25endpoint("http:GET:/zzc", "views.py", "")}
+	out, pruned := pruneSupersededEndpointSynthetics(recs, map[string]bool{
+		"http_endpoint_definition|http:GET:/zzc": true,
+	})
+	if pruned != 0 || len(out) != 1 {
+		t.Fatalf("pruned=%d len(out)=%d; want 0/1 — a resolved synthetic is never superseded", pruned, len(out))
+	}
+}
+
+// TestPruneSupersededEndpointSynthetics_IgnoresNonEndpointRecords: the prune is
+// scoped to endpoint synthetics. A same-named record of any other kind is not
+// its business, and a `source_handler` property on a non-endpoint record does
+// not make it one.
+func TestPruneSupersededEndpointSynthetics_IgnoresNonEndpointRecords(t *testing.T) {
+	odd := p25rec("Controller", "http:GET:/zzc", "app.py")
+	odd.Properties = map[string]string{"source_handler": "Controller:x"}
+	recs := []types.EntityRecord{odd}
+	out, pruned := pruneSupersededEndpointSynthetics(recs, map[string]bool{
+		"Controller|http:GET:/zzc":               true,
+		"http_endpoint_definition|http:GET:/zzc": true,
+	})
+	if pruned != 0 || len(out) != 1 {
+		t.Fatalf("pruned=%d len(out)=%d; want 0/1", pruned, len(out))
+	}
+}

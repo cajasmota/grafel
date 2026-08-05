@@ -586,6 +586,25 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// signature of a rule set whose endpoints stopped naming in-file records,
 	// which is silent in the graph (the rows simply are not there).
 	pass25RelsBound, pass25RelsDropped := 0, 0
+	// #6150 — endpoint→handler outcomes for the re-extracted files.
+	// `kept_unresolved` is the cross-file-handler count (#6159): those endpoints
+	// survive with source_handler intact but without the IMPLEMENTS bridge, the
+	// attribution or the response shape a full rebuild gives them. It is logged
+	// because the alternative reading of the same situation — the endpoint being
+	// DELETED — is invisible in a graph and was exactly the hazard the
+	// file-scoped entry point exists to prevent.
+	endpointsResolved, endpointsKeptUnresolved, endpointsSuperseded := 0, 0, 0
+	// Endpoint synthetics already carried by the graph that SURVIVED Step 5's
+	// eviction, keyed Kind|Name. Built once, from doc.Entities, which at this
+	// point holds exactly the entities of the files NOT being re-extracted —
+	// so a hit means "another file already owns this endpoint", which is the
+	// evidence pruneSupersededEndpointSynthetics needs.
+	survivingEndpoints := make(map[string]bool)
+	for k := range doc.Entities {
+		if e := &doc.Entities[k]; e.Kind == endpointSyntheticKind {
+			survivingEndpoints[e.Kind+"|"+e.Name] = true
+		}
+	}
 	// #6094 — one identity per (FromID, ToID, Kind), shared across every file in
 	// this re-extraction batch. See convertExtractedRecords for why the triple is
 	// a safe identity here and how this scope differs from buildDocument's.
@@ -766,24 +785,50 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		// the full path's, in the full path's order:
 		//
 		//	Pass 2.7  engine.ApplyResponseShapesCorpus — reads the handler body
-		//	          to stamp response_keys_known / response shape onto the
-		//	          endpoint. MUST run before the handler resolve below, which
-		//	          clears the `source_handler` property it navigates by.
-		//	Pass 2.8  engine.ResolveHTTPEndpointHandlersWithRepo — binds an
+		//	          to stamp response_keys / status_codes / response_keys_known
+		//	          onto the endpoint. MUST run before the handler resolve
+		//	          below, which clears the `source_handler` property it
+		//	          navigates by.
+		//	Pass 2.8  engine.ResolveHTTPEndpointHandlersFileScoped — binds an
 		//	          http_endpoint_definition to its handler: emits the
 		//	          IMPLEMENTS bridge, rebinds the endpoint's coordinates onto
 		//	          the handler body and stamps attribution="handler_resolved".
-		//	          buildDocument runs this on `merged`; the whole of it that
-		//	          concerns one file's endpoints is reachable from one file's
-		//	          records.
 		//
-		// Both are corpus-wide on the full path and file-scoped here. The
-		// difference is not cosmetic and is a REMAINING DIVERGENCE, not a fixed
-		// one: an endpoint whose handler lives in ANOTHER file resolves on the
-		// full path and does not resolve here, leaving the same property gap
-		// this closes for the co-located case. Scoping wider needs the previous
-		// graph's entities as candidates, which is a different (and much larger)
-		// change than reconciling one re-extracted file with itself.
+		// FILE-SCOPED, and the distinction is not a nicety. The corpus entry
+		// point (ResolveHTTPEndpointHandlersWithRepo, what buildDocument calls)
+		// DROPS a synthetic whose source_handler matches nothing in the slice —
+		// correct when the slice is the whole corpus, catastrophic when it is
+		// one file, because then "no candidate anywhere" and "the handler is in
+		// another file" become the same condition and every Express-router /
+		// Flask-add_url_rule / DRF-router endpoint in the delta is DELETED
+		// rather than left unenriched. The file-scoped entry point keeps them,
+		// source_handler intact, and counts them in HandlerUnresolvedKept. See
+		// its doc comment for why that is the same verdict #2851 and #3426
+		// already reach inside the same function.
+		//
+		// THE REMAINING DIVERGENCE, precisely. A cross-file handler is KEPT but
+		// not ENRICHED: no IMPLEMENTS bridge, no attribution, and no response
+		// shape (the reader below serves only the file being re-extracted, and
+		// the shape pass needs the handler's body). A full rebuild resolves it.
+		// That gap is #6159, allow-listed on the parity gate — it is a smaller
+		// gap than the deletion above, and unlike the deletion it is not a
+		// regression: before this change the endpoint carried none of those
+		// properties either. Closing it needs the previous graph's entities as
+		// resolution candidates, which is a materially larger change than
+		// reconciling one re-extracted file with itself.
+		//
+		// CANONICAL ORDER FIRST. Both passes disambiguate by FIRST-WRITER-WINS
+		// over the slice they are handed (ApplyResponseShapesCorpus' handler
+		// index; the resolver's globalIdx / globalMulti / sameFileBareIdx), and
+		// the resolver's doc makes it a documented precondition: "`merged` MUST
+		// already be sorted in canonical order (#481)". buildDocument satisfies
+		// it with sortEntityRecords; the fold's output does NOT — it is
+		// deliberately "the extractor's records first, then Detect's". Without
+		// this sort the precondition is simply unmet, and with two same-file
+		// candidates the two paths can bind different handlers. Sorting AFTER
+		// the fold is deliberate: the fold's own last-resort tiebreak reads that
+		// emission order, so sorting before it would change which record wins a
+		// three-way tie.
 		if det := frameworkDetector(); det != nil {
 			if fwRes, dErr := det.Detect(ctx, input); dErr != nil {
 				logger.Printf("incremental: framework detect %s: %v", rel, dErr)
@@ -791,6 +836,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 				var n int
 				records, n = engine.FoldFrameworkClassKinds(records, fwRes.Entities)
 				classKindFolds += n
+
+				types.SortEntityRecordsCanonical(records)
 
 				fileContent := content
 				engine.ApplyResponseShapesCorpus(records, fwRes.Relationships,
@@ -803,7 +850,14 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 				// OWNERSHIP: this pass consumes `records` and compacts over its
 				// backing array — read only the returned slice (see its doc).
-				records, _ = engine.ResolveHTTPEndpointHandlersWithRepo(records, doc.Repo)
+				var hStats engine.ResolveHTTPEndpointStats
+				records, hStats = engine.ResolveHTTPEndpointHandlersFileScoped(records, doc.Repo)
+				endpointsResolved += hStats.HandlerResolved
+				endpointsKeptUnresolved += hStats.HandlerUnresolvedKept
+
+				var superseded int
+				records, superseded = pruneSupersededEndpointSynthetics(records, survivingEndpoints)
+				endpointsSuperseded += superseded
 
 				var bound, unbindable int
 				records, bound, unbindable = bindPass25StubEndpoints(records, fwRes.Relationships, doc.Repo)
@@ -1071,9 +1125,10 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	dur := time.Since(t0)
-	logger.Printf("incremental: done changed=%d entities=%d rels=%d class_kind_folds=%d pass25_rels_bound=%d pass25_rels_dropped=%d flows_recomputed=%t took=%s",
+	logger.Printf("incremental: done changed=%d entities=%d rels=%d class_kind_folds=%d pass25_rels_bound=%d pass25_rels_dropped=%d endpoints_resolved=%d endpoints_kept_unresolved=%d endpoints_superseded=%d flows_recomputed=%t took=%s",
 		len(reallyChanged), len(newEntities), len(newRels), classKindFolds,
-		pass25RelsBound, pass25RelsDropped, flowsRecomputed, dur.Truncate(time.Millisecond))
+		pass25RelsBound, pass25RelsDropped, endpointsResolved, endpointsKeptUnresolved, endpointsSuperseded,
+		flowsRecomputed, dur.Truncate(time.Millisecond))
 
 	return Result{
 		Done:         true,
@@ -1384,6 +1439,73 @@ func convertExtractedRecords(records []types.EntityRecord, repoTag string, seenR
 	return ents, rels
 }
 
+// endpointSyntheticKind is the kind engine's http_endpoint synthesis settles on
+// for a route DEFINITION after the #1217 migration inside the resolve pass.
+const endpointSyntheticKind = "http_endpoint_definition"
+
+// pruneSupersededEndpointSynthetics drops an UNRESOLVED endpoint synthetic that
+// the surviving graph already carries under the same (kind, name) (#6150).
+//
+// It exists because both obvious verdicts on an endpoint whose handler is not
+// in the re-extracted file are wrong, and the two failure modes are opposites:
+//
+//	DROPPING it destroys a live endpoint whenever nothing else in the graph
+//	carries it — the Express-router-plus-imported-controller shape, where the
+//	full rebuild leaves the endpoint anchored at the router file and the
+//	incremental run is the only producer of it. That is why the pass is called
+//	through engine.ResolveHTTPEndpointHandlersFileScoped rather than the corpus
+//	entry point, which drops.
+//
+//	KEEPING it invents a DUPLICATE whenever the full rebuild resolved the same
+//	endpoint cross-file: bridgeEndpointToHandler REBINDS the synthetic's
+//	source_file onto the handler's body, so the previous graph's copy is
+//	anchored at the HANDLER's file, survives the delta untouched, and the
+//	re-extracted router file contributes a second, unresolved copy at its own
+//	coordinates. Measured on Flask `add_url_rule` + an imported view: the full
+//	rebuild has one endpoint at the view's file; the incremental run had two.
+//
+// The second failure mode PREDATES this work — it reproduces byte-identically
+// with the endpoint-resolve pass disabled entirely, because before #6150 this
+// path emitted Detect's synthetic unconditionally. It is not a regression
+// introduced by the keep guard; the keep guard simply must not perpetuate it.
+//
+// The path is not short of evidence, which is what makes a third verdict
+// possible: it holds the SURVIVING graph. `survivors` is keyed
+// `Kind + "|" + Name` over the entities that outlived Step 5's eviction — so an
+// unresolved synthetic already carried by one of them is the same endpoint,
+// already correctly anchored, and the new copy is redundant. An unresolved
+// synthetic with no survivor is the only copy there is, and is kept.
+//
+// A RESOLVED synthetic is never pruned: it is the fresh, correct record for its
+// handler, and the survivor sharing its name is the previous graph's copy of
+// the same entity, which has the same derived id and merges rather than
+// duplicating.
+//
+// Returns the filtered slice (compacted in place over the caller's backing
+// array, like the resolve pass it follows) and the number pruned.
+func pruneSupersededEndpointSynthetics(records []types.EntityRecord, survivors map[string]bool) ([]types.EntityRecord, int) {
+	if len(records) == 0 || len(survivors) == 0 {
+		return records, 0
+	}
+	pruned := 0
+	out := records[:0]
+	for i := range records {
+		r := &records[i]
+		// source_handler's PRESENCE is the unresolved signal: the resolve pass
+		// deletes the property the moment it binds (bridgeEndpointToHandler).
+		if r.Kind == endpointSyntheticKind && r.Properties["source_handler"] != "" &&
+			survivors[r.Kind+"|"+r.Name] {
+			pruned++
+			continue
+		}
+		out = append(out, records[i])
+	}
+	for i := len(out); i < len(records); i++ {
+		records[i] = types.EntityRecord{}
+	}
+	return out, pruned
+}
+
 // bindPass25StubEndpoints binds the `Kind:Name` structural endpoint refs that
 // Pass 2.5 produces against ONE re-extracted file's own records (#6150).
 //
@@ -1483,34 +1605,40 @@ func bindPass25StubEndpoints(
 		}
 	}
 
+	// SOURCE index: `Kind:Name` → the single record carrying it, ACROSS FILES.
+	// The source end is looked up without a file to key on (a standalone
+	// relationship carries no owner), and whichever record wins then decides
+	// which file the TARGET is looked up in — so an ambiguous source is two
+	// guesses stacked on one coin flip, and it is refused for the same reason
+	// the target lookup refuses one. A first-wins source was the asymmetry in
+	// this function's first version.
+	srcIdxByRef := make(map[string]int, len(records))
+	for i := range records {
+		r := &records[i]
+		if r.Kind == "" || r.Name == "" || r.SourceFile == "" {
+			continue
+		}
+		ref := r.Kind + ":" + r.Name
+		if _, dup := srcIdxByRef[ref]; dup {
+			srcIdxByRef[ref] = ambiguousStubIdx
+			continue
+		}
+		srcIdxByRef[ref] = i
+	}
+
 	// Standalone relationships: bind both ends or drop.
 	bound, dropped := 0, 0
 	for _, sr := range standalone {
 		// The SOURCE end decides which file's records the target is looked up
 		// in, so a relationship rule that fired in file X can only ever bind
 		// within X — which is the only file this call has evidence about.
-		srcIdx := -1
-		for i := range records {
-			r := &records[i]
-			if r.SourceFile == "" || r.Kind == "" || r.Name == "" {
-				continue
-			}
-			if r.Kind+":"+r.Name != sr.FromID {
-				continue
-			}
-			if got, ok := idx[stubKey{r.SourceFile, sr.FromID}]; !ok || got == ambiguousStubIdx {
-				srcIdx = -1
-				break
-			}
-			srcIdx = i
-			break
-		}
-		if srcIdx < 0 {
+		srcIdx, ok := srcIdxByRef[sr.FromID]
+		if !ok || srcIdx == ambiguousStubIdx {
 			dropped++
 			continue
 		}
-		toID, ok := resolve(records[srcIdx].SourceFile, sr.ToID)
-		if !ok {
+		toID, tok := resolve(records[srcIdx].SourceFile, sr.ToID)
+		if !tok {
 			dropped++
 			continue
 		}
