@@ -9,10 +9,13 @@ package daemon
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/requests"
+	"github.com/cajasmota/grafel/internal/indexstate"
 )
 
 // countPendingReindex returns how many KindReindex requests are queued for
@@ -399,6 +402,24 @@ func TestStaleReindexGuard_140RepoUpgrade_Simulation(t *testing.T) {
 // measured against the real production maybeEnqueue.
 // ---------------------------------------------------------------------------
 
+// realRepoDirs creates n real on-disk repo directories and returns their paths.
+// Registered repos exist on disk, and the guard drops durable markers for repos
+// that do not — so any test that exercises the reconcile path must use real
+// paths or it passes for the wrong reason.
+func realRepoDirs(t *testing.T, names ...string) []string {
+	t.Helper()
+	base := t.TempDir()
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		p := filepath.Join(base, n)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", p, err)
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 // restartGuard builds a guard that shares nothing in-memory with a previous
 // one — the exact state a daemon restart produces — but sees the SAME durable
 // requests dirs. Used to prove the migration resumes rather than restarts.
@@ -419,7 +440,7 @@ func TestStaleReindexGuard_RestartDoesNotDuplicateRequests(t *testing.T) {
 	t.Setenv(EnvRoot, t.TempDir())
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 
-	repos := []string{"/repo/a", "/repo/b", "/repo/c", "/repo/d"}
+	repos := realRepoDirs(t, "a", "b", "c", "d")
 	stale := map[string]bool{}
 	for _, r := range repos {
 		stale[r] = true
@@ -552,14 +573,15 @@ func TestStaleReindexGuard_RestartWithPartialBatchDoesNotDuplicate(t *testing.T)
 	t.Setenv(EnvRoot, t.TempDir())
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 
-	repos := []string{"/repo/a", "/repo/b"}
-	stale := map[string]bool{"/repo/a": true, "/repo/b": true}
-	dirs := []string{requestsDirForRepo("/repo/a"), requestsDirForRepo("/repo/b")}
+	repos := realRepoDirs(t, "a", "b")
+	repoA, repoB := repos[0], repos[1]
+	stale := map[string]bool{repoA: true, repoB: true}
+	dirs := []string{requestsDirForRepo(repoA), requestsDirForRepo(repoB)}
 
-	// Pre-restart: batch size 1, so exactly one request lands for /repo/a.
+	// Pre-restart: batch size 1, so exactly one request lands for repo A.
 	g1 := restartGuard(clk, 1, 45*time.Second, 15*time.Minute, dirs)
-	if got := heartbeat(g1, repos, stale); len(got) != 1 || got[0] != "/repo/a" {
-		t.Fatalf("pre-restart admits = %v, want [/repo/a]", got)
+	if got := heartbeat(g1, repos, stale); len(got) != 1 || got[0] != repoA {
+		t.Fatalf("pre-restart admits = %v, want [%s]", got, repoA)
 	}
 
 	// Restart with batch size 2: the recovered batch holds /repo/a and has one
@@ -569,15 +591,15 @@ func TestStaleReindexGuard_RestartWithPartialBatchDoesNotDuplicate(t *testing.T)
 	got := heartbeat(g2, repos, stale)
 
 	for _, r := range got {
-		if r == "/repo/a" {
-			t.Errorf("re-admitted /repo/a, which already has a queued reindex — duplicate full reindex")
+		if r == repoA {
+			t.Errorf("re-admitted %s, which already has a queued reindex — duplicate full reindex", repoA)
 		}
 	}
-	if n := countPendingReindex(t, "/repo/a"); n != 1 {
-		t.Fatalf("/repo/a pending requests = %d, want 1 (no duplicate across restart)", n)
+	if n := countPendingReindex(t, repoA); n != 1 {
+		t.Fatalf("repo A pending requests = %d, want 1 (no duplicate across restart)", n)
 	}
-	if n := countPendingReindex(t, "/repo/b"); n != 1 {
-		t.Fatalf("/repo/b pending requests = %d, want 1 (the free slot must still be usable)", n)
+	if n := countPendingReindex(t, repoB); n != 1 {
+		t.Fatalf("repo B pending requests = %d, want 1 (the free slot must still be usable)", n)
 	}
 }
 
@@ -620,7 +642,7 @@ func TestStaleReindexGuard_RestartMidIndexDoesNotDuplicate(t *testing.T) {
 	t.Setenv(EnvRoot, t.TempDir())
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 
-	repos := []string{"/repo/a", "/repo/b", "/repo/c", "/repo/d"}
+	repos := realRepoDirs(t, "a", "b", "c", "d")
 	stale := map[string]bool{}
 	for _, r := range repos {
 		stale[r] = true
@@ -633,8 +655,8 @@ func TestStaleReindexGuard_RestartMidIndexDoesNotDuplicate(t *testing.T) {
 	// The drain applies and acks both within ~2s. The indexes themselves are
 	// still running — nothing has gone current.
 	clk.advance(2 * time.Second)
-	drainAndAck(t, "/repo/a")
-	drainAndAck(t, "/repo/b")
+	drainAndAck(t, repos[0])
+	drainAndAck(t, repos[1])
 
 	// Now the user restarts, repeatedly, mid-index.
 	for restart := 1; restart <= 6; restart++ {
@@ -645,12 +667,16 @@ func TestStaleReindexGuard_RestartMidIndexDoesNotDuplicate(t *testing.T) {
 		}
 	}
 
+	// Exactly one resume request per orphaned repo — the scheduler forgot them
+	// when the daemon died, so they must be re-told, but only once however many
+	// restarts happen. Zero would mean the repos are orphaned forever; more
+	// than two would mean the recovery path rebuilt the backlog.
 	total := 0
 	for _, r := range repos {
 		total += countPendingReindex(t, r)
 	}
-	if total != 0 {
-		t.Fatalf("duplicate reindex requests after 6 mid-index restarts = %d, want 0", total)
+	if total != 2 {
+		t.Fatalf("reindex requests after 6 mid-index restarts = %d, want exactly 2 (one resume per orphaned repo)", total)
 	}
 }
 
@@ -830,5 +856,263 @@ func TestStaleReindexGuard_RetryBackoffIsJittered(t *testing.T) {
 	}
 	if spread > 5*time.Minute {
 		t.Errorf("jitter spread %v exceeds the declared %v window", spread, 5*time.Minute)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #6167 review round 4. The durable marker restored the GUARD's slot but not
+// the SCHEDULER's queue, so a restart left the guard holding a slot for a repo
+// the scheduler had never heard of — and !active[repo] then read as "stalled"
+// and burned an attempt. The axis that matters:
+//
+//     !active[repo] conflates "stalled" with "never enqueued",
+//     and only the first deserves an attempt penalty.
+// ---------------------------------------------------------------------------
+
+// activeAlways models a scheduler that has indexed something (so the snapshot
+// is permanently non-empty, per publishRepoStatesLocked unioning in
+// indexedRepos) but has never heard of the repos under test.
+func activeElsewhere() map[string]bool { return map[string]bool{"/repo/unrelated": true} }
+
+// TestStaleReindexGuard_RestartDoesNotBurnAttempts is round-4 blocker 1. A
+// mid-index restart orphans the repo: the request was acked and removed ~2s
+// after admission, so nothing re-enqueues it and the scheduler will never index
+// it. Measured before this fix: 2 attempts burned per restart (an off-by-one
+// double count), so TWO restarts marked a never-broken repo Failed forever —
+// and Failed is durable and blocks admission permanently.
+func TestStaleReindexGuard_RestartDoesNotBurnAttempts(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	const repo = "/repo/healthy"
+	repos := []string{repo}
+	stale := map[string]bool{repo: true}
+
+	for restart := 0; restart < 4; restart++ {
+		g := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+		g.stalledGrace = 90 * time.Second
+		g.activeFn = activeElsewhere // never dispatched, snapshot non-empty
+		heartbeat(g, repos, stale)
+
+		// Sit through several stalled-grace windows, then "restart".
+		for i := 0; i < 60; i++ {
+			clk.advance(30 * time.Second)
+			heartbeat(g, repos, stale)
+		}
+		if g.migrationFailed(repo) {
+			t.Fatalf("restart cycle %d: a never-broken repo was marked permanently unmigratable", restart)
+		}
+		if n := g.attemptsFor(repo); n != 0 {
+			t.Fatalf("restart cycle %d: attempts = %d, want 0 — a repo the scheduler was never told about must not burn an attempt", restart, n)
+		}
+	}
+
+	st, ok := readMigrationStateAt(migrationStatePath(repo))
+	if ok && st.Failed {
+		t.Fatalf("durable marker records Failed for a healthy repo: %+v", st)
+	}
+}
+
+// TestStaleReindexGuard_ReconcileReEnqueuesRecoveredRepos is the other half of
+// blocker 1: restoring the guard's slot without restoring the scheduler's queue
+// leaves the repo orphaned forever. The recovered marker must produce a fresh
+// request so the scheduler is actually told to do the work.
+func TestStaleReindexGuard_ReconcileReEnqueuesRecoveredRepos(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	const repo = "/repo/orphaned"
+	repos := []string{repo}
+	stale := map[string]bool{repo: true}
+
+	g := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+	if got := heartbeat(g, repos, stale); len(got) != 1 {
+		t.Fatalf("initial admit = %v, want 1", got)
+	}
+	// The drain applies and removes the request; the index dies with the daemon.
+	clk.advance(2 * time.Second)
+	drainAndAck(t, repo)
+	if n := countPendingReindex(t, repo); n != 0 {
+		t.Fatalf("precondition: pending = %d, want 0 after the drain acked", n)
+	}
+
+	clk.advance(60 * time.Second)
+	g2 := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+	heartbeat(g2, repos, stale)
+
+	if n := countPendingReindex(t, repo); n != 1 {
+		t.Fatalf("pending requests after restart = %d, want 1 — a recovered slot must re-tell the scheduler", n)
+	}
+}
+
+// TestStaleReindexGuard_NeverEnqueuedRepoIsNotMarkedFailed is round-4 blocker 2.
+// EnqueueRefCommit drops linked worktrees of indexed primaries by design
+// (sched/scheduler.go:976, #3680) without ever touching indexstate. Such a repo
+// is never `active`, so the old rule forfeited it three times and published
+// Failed in ~23 minutes — advising a manual reindex for a repo the scheduler
+// declines to index on purpose.
+func TestStaleReindexGuard_NeverEnqueuedRepoIsNotMarkedFailed(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	repos := []string{"/repo/worktree", "/repo/ok"}
+	stale := map[string]bool{"/repo/worktree": true, "/repo/ok": true}
+
+	g := newTestGuard(clk, 1, 45*time.Second, 15*time.Minute)
+	g.stalledGrace = 90 * time.Second
+	// The scheduler is busy with other work but silently drops /repo/worktree.
+	g.activeFn = activeElsewhere
+
+	migrated := false
+	for i := 0; i < 400; i++ {
+		clk.advance(30 * time.Second)
+		for _, r := range heartbeat(g, repos, stale) {
+			if r == "/repo/ok" {
+				migrated = true
+			}
+		}
+	}
+	if g.migrationFailed("/repo/worktree") {
+		t.Error("a repo the scheduler declines to index BY DESIGN must not be reported as unmigratable")
+	}
+	if n := g.attemptsFor("/repo/worktree"); n != 0 {
+		t.Errorf("never-enqueued repo burned %d attempts, want 0", n)
+	}
+	if !migrated {
+		t.Error("the undroppable repo must not block the rest of the migration")
+	}
+}
+
+// TestStaleReindexGuard_StalledRepoStillBurnsAttempts is the control for the
+// two tests above: the genuine stall path — the repo WAS dispatched and then
+// stopped without completing — must still burn attempts and still end in a
+// reported give-up. Otherwise the never-enqueued fix would silently disable
+// failure detection altogether.
+func TestStaleReindexGuard_StalledRepoStillBurnsAttempts(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	const repo = "/repo/crashy"
+	repos := []string{repo}
+	stale := map[string]bool{repo: true}
+
+	g := newTestGuard(clk, 1, 45*time.Second, 15*time.Minute)
+	g.stalledGrace = 90 * time.Second
+	g.retryJitter = 0
+	// Dispatched and running for a while, then it disappears mid-index.
+	dispatched := true
+	g.activeFn = func() map[string]bool {
+		if dispatched {
+			return map[string]bool{repo: true, "/repo/unrelated": true}
+		}
+		return activeElsewhere()
+	}
+
+	for i := 0; i < 600 && !g.migrationFailed(repo); i++ {
+		clk.advance(30 * time.Second)
+		heartbeat(g, repos, stale)
+		// Each time it is admitted it runs briefly, then dies.
+		dispatched = !dispatched
+	}
+	if !g.migrationFailed(repo) {
+		t.Fatal("a repo that IS dispatched and then repeatedly dies mid-index must still be reported as unmigratable")
+	}
+	if n := g.attemptsFor(repo); n < 3 {
+		t.Errorf("stalled repo attempts = %d, want >= 3", n)
+	}
+}
+
+// TestStaleReindexGuard_RetryJitterSpansItsDeclaredWindow is round-4 MEDIUM 3.
+// The previous implementation computed `Sum32() % retryJitter`, and Sum32 maxes
+// at 4.29e9 while retryJitter is 3e11 ns — so the modulo was a no-op and the
+// real spread was 0-4.295s, not 0-5m. The old test asserted only a != b and
+// spread <= window, which a ONE-NANOSECOND spread satisfies. Assert the SCALE.
+func TestStaleReindexGuard_RetryJitterSpansItsDeclaredWindow(t *testing.T) {
+	g := newStaleReindexGuard()
+	g.retryBackoff = 10 * time.Minute
+	g.retryJitter = 5 * time.Minute
+
+	var min, max time.Duration = 1<<62 - 1, 0
+	buckets := map[int]bool{}
+	const n = 500
+	for i := 0; i < n; i++ {
+		d := g.retryDelayFor(fmt.Sprintf("/repo/%04d", i))
+		if d < min {
+			min = d
+		}
+		if d > max {
+			max = d
+		}
+		if d < g.retryBackoff || d >= g.retryBackoff+g.retryJitter {
+			t.Fatalf("delay %v outside [%v, %v)", d, g.retryBackoff, g.retryBackoff+g.retryJitter)
+		}
+		buckets[int((d-g.retryBackoff)/(30*time.Second))] = true
+	}
+
+	spread := max - min
+	// The whole point is to separate repos across HEARTBEATS (5s), so the
+	// spread must be a real fraction of the declared window, not nanoseconds.
+	if spread < 4*time.Minute {
+		t.Errorf("jitter spread across %d repos = %v, want >= 4m of the declared 5m window (min=%v max=%v)", n, spread, min, max)
+	}
+	// And it must actually be spread out, not clustered at the extremes.
+	if len(buckets) < 8 {
+		t.Errorf("jitter occupied only %d of 10 30s buckets — not usefully distributed", len(buckets))
+	}
+}
+
+// TestSchedulerActiveRepos_ReadsIndexstate covers the production activeFn,
+// which every guard test stubs out — round-4 LOW 4 noted it was the one
+// coupling with no end-to-end coverage.
+func TestSchedulerActiveRepos_ReadsIndexstate(t *testing.T) {
+	t.Cleanup(func() { indexstate.SetRepoStates(nil) })
+
+	indexstate.SetRepoStates(nil)
+	if got := schedulerActiveRepos(); got != nil {
+		t.Errorf("empty snapshot must report nil (UNKNOWN), got %v", got)
+	}
+
+	indexstate.SetRepoStates([]indexstate.RepoState{
+		{Path: "/repo/queued", State: indexstate.StateQueued},
+		{Path: "/repo/indexing", State: indexstate.StateIndexing},
+		{Path: "/repo/dirty", State: indexstate.StateDirty},
+		{Path: "/repo/current", State: indexstate.StateCurrent},
+	})
+	got := schedulerActiveRepos()
+	for _, want := range []string{"/repo/queued", "/repo/indexing", "/repo/dirty"} {
+		if !got[want] {
+			t.Errorf("%s should count as active", want)
+		}
+	}
+	if got["/repo/current"] {
+		t.Error("a current repo is not active work")
+	}
+}
+
+// TestStaleReindexGuard_MarkerForDeletedRepoIsDropped is round-4 LOW 5: a repo
+// unregistered after admission never reaches maybeEnqueue(required=false), so
+// its marker leaked and a later re-registration resurrected stale attempts.
+func TestStaleReindexGuard_MarkerForDeletedRepoIsDropped(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	gone := filepath.Join(t.TempDir(), "removed-repo")
+	if err := writeMigrationState(gone, migrationState{Attempts: 2}); err != nil {
+		t.Fatalf("seed marker: %v", err)
+	}
+
+	g := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+	g.maybeEnqueue("/repo/other", true, staleFingerprint(1, "stale"), nil)
+
+	if _, ok := readMigrationStateAt(migrationStatePath(gone)); ok {
+		t.Error("marker for a repo that no longer exists on disk must be dropped, not carried forward")
+	}
+	if n := g.attemptsFor(gone); n != 0 {
+		t.Errorf("stale attempts resurrected for a deleted repo: %d", n)
 	}
 }

@@ -79,14 +79,32 @@ import (
 // genuinely broken repo was never marked failed and never surfaced.
 //
 // Forfeit decisions are PER-REPO and keyed off indexstate.RepoStates(), the
-// scheduler's own progress signal, not off what the other slots are doing.
-// Keying it off the other slots meant two concurrently wedged repos never
-// satisfied the short-deadline condition and the migration stalled for the full
-// hard ceiling (measured 15m45s). A repo the scheduler is actively working on
-// is protected to the hard ceiling; a repo absent from a non-empty snapshot is
-// forfeited at the stalled grace. An EMPTY snapshot means "unknown" — right
-// after a restart the scheduler has not published yet — and never triggers a
-// forfeit.
+// scheduler's own progress signal — but the load-bearing distinction is not
+// active/inactive, it is DISPATCHED/NEVER-DISPATCHED:
+//
+//	!active[repo] conflates "stalled" with "never enqueued",
+//	and only the first deserves an attempt penalty.
+//
+// A repo the scheduler is working on is protected to the hard ceiling. A repo
+// we have SEEN active that has since stopped is genuinely stalled: it forfeits
+// at the stalled grace and is charged an attempt, ending in a reported give-up.
+// A repo we have NEVER seen active was never dispatched — orphaned by a restart
+// (the drain acked and removed its request ~2s after admission, and the index
+// died with the daemon) or dropped by design (EnqueueRefCommit skips linked
+// worktrees of indexed primaries, sched/scheduler.go:976) — and is abandoned
+// with NO penalty and NO failure record. Charging those cost a healthy repo two
+// attempts per restart against a cap of three, so two restarts of an
+// unresponsive daemon — the exact behaviour this whole issue documents — marked
+// it permanently unmigratable.
+//
+// Recovered slots are also RE-ENQUEUED (idempotently, only when nothing is
+// already queued): restoring the guard's slot without restoring the scheduler's
+// queue leaves the repo orphaned forever.
+//
+// An EMPTY indexstate snapshot means "unknown" and never triggers a forfeit,
+// but note this is a narrow protection: once anything has been indexed the
+// snapshot is permanently non-empty (publishRepoStatesLocked unions in
+// indexedRepos), so the observedActive split above does the real work.
 //
 // Two limits this mechanism does NOT address, named here so they are not
 // mistaken for solved:
@@ -169,6 +187,15 @@ const (
 	// staleReindexRetryJitter is the width of the per-repo backoff spread.
 	staleReindexRetryJitter = 5 * time.Minute
 
+	// defaultStaleReindexUndispatchedBackoff is how long a repo the scheduler
+	// never accepted stands aside before the guard offers it again. Round-4:
+	// such a repo must NOT be treated as a failure — it may have been dropped
+	// by design (EnqueueRefCommit skips linked worktrees of indexed primaries,
+	// sched/scheduler.go:976) or orphaned by a restart. Retrying occasionally
+	// costs one request write; marking it Failed would tell the user to fix a
+	// repo that is not broken.
+	defaultStaleReindexUndispatchedBackoff = 30 * time.Minute
+
 	// EnvStaleReindexBatch overrides defaultStaleReindexBatchSize. Escape
 	// hatch for an operator who wants a large store to migrate faster (or
 	// slower) than the default. Values <= 0 fall back to the default.
@@ -224,19 +251,25 @@ type staleReindexGuard struct {
 	// another slot. Keeps a retry from immediately re-taking the slot it just
 	// lost and starving the repos behind it.
 	retryAfter map[string]time.Time
+	// observedActive records repos the scheduler has been seen working on since
+	// they were admitted. It is the whole basis of the round-4 distinction:
+	// !active[repo] means "stalled" only if we ever saw it active, and
+	// "never enqueued" otherwise — and only the first deserves a penalty.
+	observedActive map[string]bool
 	// reconciled guards the one-time startup rebuild of inflight/admittedInBatch
 	// from the durable requests dirs. Without it a restart re-admits repos whose
 	// requests are still pending, writing duplicate reindexes without bound.
 	reconciled bool
 
-	batchSize    int
-	cooldown     time.Duration
-	slotTTL      time.Duration
-	stalledGrace time.Duration
-	retryBackoff time.Duration
-	maxAttempts  int
-	retryJitter  time.Duration
-	now          func() time.Time
+	batchSize           int
+	cooldown            time.Duration
+	slotTTL             time.Duration
+	stalledGrace        time.Duration
+	retryBackoff        time.Duration
+	maxAttempts         int
+	retryJitter         time.Duration
+	undispatchedBackoff time.Duration
+	now                 func() time.Time
 	// pendingFn lists already-queued requests for a repo's control-plane dir.
 	// Injectable so the reconcile path is testable without a real store.
 	pendingFn func(dir string) ([]requests.Record, error)
@@ -256,20 +289,22 @@ type staleReindexGuard struct {
 
 func newStaleReindexGuard() *staleReindexGuard {
 	return &staleReindexGuard{
-		seen:         map[string]string{},
-		inflight:     map[string]time.Time{},
-		attempts:     map[string]int{},
-		failed:       map[string]bool{},
-		retryAfter:   map[string]time.Time{},
-		retryBackoff: defaultStaleReindexRetryBackoff,
-		retryJitter:  staleReindexRetryJitter,
-		batchSize:    staleReindexBatchSize(),
-		cooldown:     defaultStaleReindexCooldown,
-		slotTTL:      defaultStaleReindexSlotTTL,
-		stalledGrace: defaultStaleReindexStalledGrace,
-		maxAttempts:  staleReindexMaxAttempts,
-		now:          time.Now,
-		pendingFn:    requests.ListPending,
+		seen:                map[string]string{},
+		inflight:            map[string]time.Time{},
+		attempts:            map[string]int{},
+		failed:              map[string]bool{},
+		retryAfter:          map[string]time.Time{},
+		observedActive:      map[string]bool{},
+		retryBackoff:        defaultStaleReindexRetryBackoff,
+		retryJitter:         staleReindexRetryJitter,
+		undispatchedBackoff: defaultStaleReindexUndispatchedBackoff,
+		batchSize:           staleReindexBatchSize(),
+		cooldown:            defaultStaleReindexCooldown,
+		slotTTL:             defaultStaleReindexSlotTTL,
+		stalledGrace:        defaultStaleReindexStalledGrace,
+		maxAttempts:         staleReindexMaxAttempts,
+		now:                 time.Now,
+		pendingFn:           requests.ListPending,
 		reconcileDirsFn: func() ([]string, error) {
 			return discoverRequestsDirs(requestsRoot())
 		},
@@ -353,14 +388,37 @@ func (g *staleReindexGuard) maybeEnqueue(repoPath string, required bool, fingerp
 	g.admittedInBatch++
 	// Durable marker: this is what lets a mid-index restart RESUME rather than
 	// re-admit. Its lifetime is the migration's, not the request's.
+	// Attempts records PAST failures only. Round 4: writing attempts+1 here and
+	// then loading it back in reconcileLocked, where the next forfeit
+	// incremented again, cost TWO attempts per restart cycle against a cap of
+	// three — so two restarts marked a healthy repo permanently unmigratable.
 	if err := writeMigrationState(repoPath, migrationState{
 		AdmittedAt: g.now(),
-		Attempts:   g.attempts[repoPath] + 1,
+		Attempts:   g.attempts[repoPath],
 	}); err != nil && logger != nil {
 		logger.Warn("statusfile: could not persist auto-reindex marker — a restart may re-admit this repo",
 			"repo", repoPath, "err", err)
 	}
 	return true
+}
+
+// hasPendingReindexLocked reports whether repoPath already has an unapplied
+// reindex request queued. MUST be called with g.mu held.
+func (g *staleReindexGuard) hasPendingReindexLocked(repoPath string) bool {
+	if g.pendingFn == nil {
+		return false
+	}
+	recs, err := g.pendingFn(requestsDirForRepo(repoPath))
+	if err != nil {
+		// Unknown: assume something is queued rather than risk piling on.
+		return true
+	}
+	for _, r := range recs {
+		if r.Kind == requests.KindReindex && r.RepoPath == repoPath {
+			return true
+		}
+	}
+	return false
 }
 
 // migrationFailed reports whether the automatic format migration has given up
@@ -406,29 +464,74 @@ func (g *staleReindexGuard) admitLocked(logger *slog.Logger) bool {
 func (g *staleReindexGuard) sweepLocked(logger *slog.Logger) {
 	now := g.now()
 
-	// The progress signal, sampled once per sweep. nil means the scheduler has
-	// published nothing yet (e.g. immediately after a restart) — UNKNOWN, not
-	// idle — in which case every repo gets the hard ceiling and nothing is
-	// forfeited early.
+	// The progress signal, sampled once per sweep. An EMPTY snapshot means the
+	// scheduler has published nothing at all — UNKNOWN, not idle — and nothing
+	// is forfeited on that basis. Note this is a narrow protection: once
+	// anything has ever been indexed the snapshot is permanently non-empty
+	// (publishRepoStatesLocked unions in indexedRepos), so the real work is
+	// done by the observedActive split below.
 	var active map[string]bool
 	if g.activeFn != nil {
 		active = g.activeFn()
 	}
+	known := len(active) > 0
 
 	for repo, at := range g.inflight {
+		if known && active[repo] {
+			g.observedActive[repo] = true
+		}
+
 		held := now.Sub(at)
-		// Round-3 blocker 2: the deadline is PER-REPO and keyed off whether the
-		// scheduler is actually working on THIS repo, not off what the other
-		// slots happen to be doing. Two concurrently wedged repos therefore
-		// both forfeit at the stalled grace instead of both waiting out the
-		// hard ceiling.
 		deadline := g.slotTTL
-		if len(active) > 0 && !active[repo] && g.stalledGrace > 0 && g.stalledGrace < deadline {
+		penalise := true
+
+		switch {
+		case !known || active[repo]:
+			// No signal, or the scheduler is demonstrably working on it. Only
+			// the hard ceiling applies.
+		case g.observedActive[repo]:
+			// It WAS dispatched and has now stopped without completing — a
+			// genuine stall. This is the case that earns an attempt.
 			deadline = g.stalledGrace
+		default:
+			// The scheduler was never told about this repo: orphaned by a
+			// restart, or dropped by SkipEnqueue by design. Reclaim the slot so
+			// the migration continues, but charge nothing — it is not broken.
+			deadline = g.stalledGrace
+			penalise = false
 		}
+		if deadline > g.slotTTL {
+			deadline = g.slotTTL
+		}
+
 		if held >= deadline {
-			g.forfeitLocked(repo, held, deadline, logger)
+			if penalise {
+				g.forfeitLocked(repo, held, deadline, logger)
+			} else {
+				g.abandonLocked(repo, held, logger)
+			}
 		}
+	}
+}
+
+// abandonLocked reclaims the slot of a repo the scheduler never accepted. No
+// attempt is charged and the repo is never marked failed — round-4 blockers 1
+// and 2 both reduce to charging a penalty for work that was never dispatched.
+// MUST be called with g.mu held.
+func (g *staleReindexGuard) abandonLocked(repo string, held time.Duration, logger *slog.Logger) {
+	delete(g.inflight, repo)
+	delete(g.seen, repo)
+	delete(g.observedActive, repo)
+	g.retryAfter[repo] = g.now().Add(g.undispatchedDelayFor(repo))
+	// No durable history: nothing failed, so nothing to remember.
+	clearMigrationState(repo)
+	if logger != nil {
+		logger.Info("statusfile: auto-reindex was never picked up by the scheduler — releasing the slot without counting a failure",
+			"repo", repo, "waited", held.Truncate(time.Second),
+			"retry_after", g.undispatchedDelayFor(repo))
+	}
+	if len(g.inflight) == 0 {
+		g.batchDrainedAt = g.now()
 	}
 }
 
@@ -505,6 +608,14 @@ func (g *staleReindexGuard) reconcileLocked(logger *slog.Logger) {
 		if st.RepoPath == "" {
 			continue
 		}
+		// Round-4 LOW 5: a repo unregistered after admission never reaches
+		// maybeEnqueue(required=false), so its marker leaked and a later
+		// re-registration resurrected stale attempts. Drop markers whose repo
+		// is no longer on disk.
+		if _, statErr := os.Stat(st.RepoPath); os.IsNotExist(statErr) {
+			clearMigrationState(st.RepoPath)
+			continue
+		}
 		if st.Failed {
 			g.failed[st.RepoPath] = true
 			g.attempts[st.RepoPath] = st.Attempts
@@ -518,10 +629,33 @@ func (g *staleReindexGuard) reconcileLocked(logger *slog.Logger) {
 		}
 		// The deadline clock restarts from process start rather than from the
 		// persisted AdmittedAt: a daemon that was down for hours would
-		// otherwise forfeit every recovered slot instantly and burn an attempt
-		// for a repo that never got a chance to run.
+		// otherwise forfeit every recovered slot instantly.
 		g.inflight[st.RepoPath] = now
+
+		// Round-4 blocker 1: restoring the guard's slot is not enough. The
+		// drain acked and REMOVED the request ~2s after admission, and the
+		// index died with the daemon, so the scheduler has no memory of this
+		// repo and will never index it. Without re-telling it, the slot is held
+		// for work that will never happen. The previous index certainly did not
+		// finish (the process died), so re-enqueueing is the correct resume,
+		// not a duplicate.
+		// Idempotent: if the previous run's request is still queued (the daemon
+		// died before the drain reached it) there is nothing to resume, and
+		// writing another would build a fresh backlog one request per restart —
+		// the very stampede this issue is about, re-entered through the
+		// recovery path.
+		if g.hasPendingReindexLocked(st.RepoPath) {
+			continue
+		}
+		if _, err := requests.Write(requestsDirForRepo(st.RepoPath), requests.Record{
+			Kind:     requests.KindReindex,
+			RepoPath: st.RepoPath,
+		}); err != nil && logger != nil {
+			logger.Warn("statusfile: could not re-enqueue a recovered format migration",
+				"repo", st.RepoPath, "err", err)
+		}
 	}
+
 	// Treat the recovered set as the current batch, so a restart does not open
 	// a fresh batch on top of work that is already in progress.
 	g.admittedInBatch = len(g.inflight)
@@ -587,10 +721,31 @@ func (g *staleReindexGuard) attemptsFor(repoPath string) int {
 // retryDelayFor spreads the retry backoff per repo so two repos that forfeit
 // together do not wait together and re-pair on the next batch.
 func (g *staleReindexGuard) retryDelayFor(repoPath string) time.Duration {
-	if g.retryJitter <= 0 {
-		return g.retryBackoff
+	return g.retryBackoff + spreadFor(repoPath, g.retryJitter)
+}
+
+// undispatchedDelayFor is the stand-aside delay for a repo the scheduler never
+// accepted, jittered on the same basis.
+func (g *staleReindexGuard) undispatchedDelayFor(repoPath string) time.Duration {
+	if g.undispatchedBackoff <= 0 {
+		return g.retryBackoff + spreadFor(repoPath, g.retryJitter)
 	}
-	h := fnv.New32a()
+	return g.undispatchedBackoff + spreadFor(repoPath, g.retryJitter)
+}
+
+// spreadFor maps repoPath deterministically into [0, window).
+//
+// Round-4 MEDIUM 3: this used a 32-bit FNV hash modulo the window in
+// NANOSECONDS. Sum32 maxes at 4.29e9 while a 5m window is 3e11ns, so the
+// modulo never wrapped and the real spread was 0-4.295s — measured min
+// 10m0.02s / max 10m3.63s across 500 repos, against a declared 0-5m. Two repos
+// still landed in the same 5s heartbeat, so the stated purpose was not
+// achieved. A 64-bit hash makes the modulo meaningful.
+func spreadFor(repoPath string, window time.Duration) time.Duration {
+	if window <= 0 {
+		return 0
+	}
+	h := fnv.New64a()
 	_, _ = h.Write([]byte(repoPath))
-	return g.retryBackoff + time.Duration(uint64(h.Sum32())%uint64(g.retryJitter))
+	return time.Duration(h.Sum64() % uint64(window))
 }
