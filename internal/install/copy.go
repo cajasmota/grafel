@@ -820,11 +820,14 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 	completedSteps = append(completedSteps, 6)
 
 	// ── COMMIT: the transaction can no longer roll back ─────────────────────
-	// Only now are the pristine MCP sidecar backups discarded, so the next
-	// install snapshots fresh and a later restore never resurrects stale
-	// grafel-containing content. Clearing them at step 3 (as this used to)
-	// meant a later rollback found no snapshot and RestoreSnapshot silently
-	// degraded to UnregisterPath — a "restore" that deleted (#6168).
+	// THIS run's snapshots are discarded only here, so a rollback anywhere
+	// above still had a real snapshot to restore from. Discarding them on
+	// step-3 SUCCESS (as this used to) put the clear before rollback(4), so a
+	// later rollback found no snapshot and the since-deleted RestorePath
+	// silently degraded to UnregisterPath — a "restore" that deleted (#6168).
+	//
+	// Distinct from the clear at the START of step 3, which discards the
+	// PREVIOUS run's leftovers so this run snapshots the config as it is now.
 	if !opts.DryRun {
 		commitMCPBackups(registeredPaths)
 	}

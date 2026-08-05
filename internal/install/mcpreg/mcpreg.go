@@ -511,7 +511,7 @@ func UnregisterPath(path string) error {
 // ErrNoSnapshot reports that no pristine sidecar backup exists for a config
 // path, so there is nothing to restore.
 //
-// There used to be a RestoreSnapshot that swallowed this condition and fell
+// There used to be a RestorePath that swallowed this condition and fell
 // through to the surgical UnregisterPath instead. That fallback is what turned
 // a rollback into a deletion of the user's MCP entry once the snapshot had been
 // cleared early (#6168), so it was removed rather than documented around: an
@@ -565,8 +565,20 @@ func RestoreSnapshot(path string) error {
 // a SUCCESSFUL install so the next install can take a fresh snapshot (and so a
 // future uninstall does not "restore" stale grafel-containing content).
 // Idempotent: missing backups are ignored.
+//
+// A remove that fails for any other reason is NON-FATAL but warned about: the
+// caller's invariant quietly degrades from "this run snapshots fresh" to "this
+// run inherits whatever was already there", and silence would defer discovery
+// of that to rollback time, when it is expensive (#6168). Callers that need the
+// clear to have worked must check the sidecar themselves.
 func ClearBackup(path string) {
-	_ = os.Remove(sidecarBackupPath(path))
+	sidecar := sidecarBackupPath(path)
+	if err := os.Remove(sidecar); err != nil && !errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(os.Stderr,
+			"grafel: warning – could not discard stale MCP backup %s: %v\n"+
+				"  a rollback may restore outdated content; remove it by hand\n",
+			sidecar, err)
+	}
 }
 
 func readSettings(path string) (map[string]any, error) {
