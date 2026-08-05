@@ -204,6 +204,12 @@ func betterFrameworkClassCandidate(c, best *types.EntityRecord) bool {
 // nodes on this path, breaking the #1613 "one class → one node" invariant the
 // fold exists to enforce. Both sets are candidates here.
 //
+// The kinds this assigns are the rule sets' business, not this function's: a
+// bare Python class comes back "Controller" because falcon.yaml and
+// cherrypy.yaml match `class X:` with no framework gate (#6152). Matching that
+// is the point — the two paths must agree on the answer before it is worth
+// arguing about the answer.
+//
 // Detect's records that fold with nothing are EMITTED, not discarded (#6150):
 // a Route from a responder method, a Service from an app object and a Config
 // from its constructor have no extractor counterpart at all, and a full rebuild

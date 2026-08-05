@@ -396,7 +396,8 @@ CP_OTHER = 12
 //   - CpPlainProbe — #6148. A class with no decorator, no base class, no route
 //     annotation and no naming convention: nothing classification-worthy. The
 //     full rebuild still TYPES it, because Pass 2.5 runs the YAML rule sets
-//     (falcon/cherrypy match a bare `class X:`) and the #1613 fold collapses the
+//     (falcon/cherrypy match a bare `class X:` with no framework gate at all —
+//     #6152) and the #1613 fold collapses the
 //     AST's generic SCOPE.Component node into that typed record. The incremental
 //     path ran the language extractor alone and left the generic kind, so the
 //     same class was `Controller` after a full rebuild and `SCOPE.Component`

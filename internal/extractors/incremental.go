@@ -562,7 +562,14 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			Path:     rel,
 			Content:  content,
 			Language: cr.Language,
-			TSTree:   nil, // re-parse inline
+			// #6151 — "re-parse inline" is what this was MEANT to do and is not
+			// what happens: nothing between here and the extractor parses, and 17
+			// extractors (kotlin, java, javascript, ruby, rust, php, swift, …)
+			// return no records at all on a nil tree. Step 5 has already evicted
+			// the file's entities by then, so an incremental pass over one of
+			// those languages DELETES them. Python is unaffected, which is why
+			// every fixture in this package and in the #6129 gate is green.
+			TSTree:   nil,
 			RepoRoot: absRepo,
 		}
 		records, extErr := ext.Extract(ctx, input)
