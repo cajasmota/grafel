@@ -159,7 +159,7 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 			if label == "" {
 				continue
 			}
-			n := makeEntity("node:"+label, "SCOPE.Schema", "", file.Path, file.Language, line)
+			n := makeEntity(extractor.Neo4jNodeName(label), "SCOPE.Schema", "", file.Path, file.Language, line)
 			setProps(&n, "framework", "neo4j", "provenance", "INFERRED_FROM_NEO4J_CYPHER",
 				"node_label", label)
 			before := len(entities)
@@ -167,7 +167,7 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 			// Record the node entity's index the first time it is emitted.
 			// add() dedupes, so only register when it was actually appended.
 			if len(entities) == before+1 {
-				nodeIdx["node:"+label] = before
+				nodeIdx[extractor.Neo4jNodeName(label)] = before
 			}
 		}
 
@@ -198,7 +198,9 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		//   (a:A)<-[:R]-(b:B)   →  B ─GRAPH_RELATES(R, OUTGOING)→ node:A
 		//
 		// The resolver fills FromID from the owning node entity and resolves
-		// ToID ("node:<label>") to the target node entity by name. Only emitted
+		// ToID (`scope:schema:<file>#node:<label>`, #6122) to the target node
+		// entity by LOCATION — addressing it by its colon-bearing Name could
+		// not work, see internal/extractor/neo4j_node.go. Only emitted
 		// when BOTH endpoints carry a static label AND the relation a static
 		// type; dynamic / parameterised relations don't match and stay
 		// label/type-only — honest-partial.
@@ -224,14 +226,25 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 				direction = "UNDIRECTED"
 			}
 
-			ownerIdx, ok := nodeIdx["node:"+srcLabel]
+			// #6122 — address the target node entity by LOCATION, not by its
+			// colon-bearing Name. `"node:"+dstLabel` reached byName through
+			// splitStub, which cuts at the first colon, so it probed the BARE
+			// label and bound to any code symbol of that name. "" means the
+			// helper refused a colon-bearing path/label: emit NO edge, because
+			// the alternative is not an honest dangle but a ref that PARSES as
+			// Format A. See internal/extractor/neo4j_node.go.
+			toID := extractor.Neo4jNodeTargetID(file.Path, dstLabel)
+			if toID == "" {
+				continue
+			}
+			ownerIdx, ok := nodeIdx[extractor.Neo4jNodeName(srcLabel)]
 			if !ok {
 				continue
 			}
 			entities[ownerIdx].Relationships = append(
 				entities[ownerIdx].Relationships,
 				types.RelationshipRecord{
-					ToID: "node:" + dstLabel,
+					ToID: toID,
 					Kind: string(types.RelationshipKindGraphRelates),
 					Properties: types.Props{
 						{K: "direction", V: direction},

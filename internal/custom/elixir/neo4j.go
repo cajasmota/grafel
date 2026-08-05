@@ -166,14 +166,14 @@ func (e *neo4jElixirExtractor) Extract(ctx context.Context, file extractor.FileI
 			if label == "" {
 				continue
 			}
-			n := makeEntity("node:"+label, "SCOPE.Schema", "", file.Path, "elixir", line)
+			n := makeEntity(extractor.Neo4jNodeName(label), "SCOPE.Schema", "", file.Path, "elixir", line)
 			setProps(&n, "framework", "neo4j", "provenance", "INFERRED_FROM_NEO4J_CYPHER",
 				"node_label", label)
 			before := len(entities)
 			add(n)
 			// add() dedupes; only register the index when actually appended.
 			if len(entities) == before+1 {
-				nodeIdx["node:"+label] = before
+				nodeIdx[extractor.Neo4jNodeName(label)] = before
 			}
 		}
 
@@ -227,14 +227,25 @@ func (e *neo4jElixirExtractor) Extract(ctx context.Context, file extractor.FileI
 				direction = "UNDIRECTED"
 			}
 
-			ownerIdx, ok := nodeIdx["node:"+srcLabel]
+			// #6122 — address the target node entity by LOCATION, not by its
+			// colon-bearing Name. `"node:"+dstLabel` reached byName through
+			// splitStub, which cuts at the first colon, so it probed the BARE
+			// label and bound to any code symbol of that name. "" means the
+			// helper refused a colon-bearing path/label: emit NO edge, because
+			// the alternative is not an honest dangle but a ref that PARSES as
+			// Format A. See internal/extractor/neo4j_node.go.
+			toID := extractor.Neo4jNodeTargetID(file.Path, dstLabel)
+			if toID == "" {
+				continue
+			}
+			ownerIdx, ok := nodeIdx[extractor.Neo4jNodeName(srcLabel)]
 			if !ok {
 				continue
 			}
 			entities[ownerIdx].Relationships = append(
 				entities[ownerIdx].Relationships,
 				types.RelationshipRecord{
-					ToID: "node:" + dstLabel,
+					ToID: toID,
 					Kind: string(types.RelationshipKindGraphRelates),
 					Properties: types.Props{
 						{K: "direction", V: direction},
