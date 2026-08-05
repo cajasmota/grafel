@@ -13,7 +13,11 @@
 //	Container topology (Testcontainers):
 //	  new XxxContainer()       /  new ContainerBuilder().WithImage("img")
 //	  -> SCOPE.Pattern/container_topology; the test DEPENDS_ON_SERVICE the
-//	  container'd service (service:<image-or-container>). The node carries
+//	  container'd service, addressed by the canonical external-service ref
+//	  (scope:externalservice:<image-or-container>, #6123 — no service node is
+//	  fabricated, so the edge dangles honestly unless one already exists, and the
+//	  ref is colon-bounded by containerServiceRef so it can never reach the
+//	  resolver's six-segment structural form). The node carries
 //	  image=<docker-image> when expressed via .WithImage("…") and
 //	  container_type=<XxxContainer> for the typed-builder forms.
 //
@@ -51,6 +55,7 @@ package csharp
 import (
 	"context"
 	"regexp"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -136,6 +141,56 @@ func leafCSharpType(t string) string {
 		return m[1]
 	}
 	return t
+}
+
+// containerServiceRefMaxColons is the most colons a container name may carry
+// before `scope:externalservice:<name>` reaches the resolver's six-segment
+// structural-ref threshold (stubScopeSegments, internal/resolve/refs.go:2037-2039).
+// The prefix contributes two segments, so three colons in the name is the point
+// where the stub stops being REJECTED and starts being PARSED as Format A.
+const containerServiceRefMaxColons = 2
+
+// containerServiceRef returns the external-service ref for a container name, or
+// "" when no ref can be minted without risking a mis-bind.
+//
+// WHY THIS EXISTS. #6123 repaired this extractor's DEPENDS_ON_SERVICE target by
+// switching it from the unaddressable Name `service:<X>` to the canonical
+// `scope:externalservice:<X>` ref, whose safety rests on lookupStructural
+// rejecting any `scope:` stub that is not six segments. Adversarial review found
+// that the repaired shape reintroduces the same defect class at three colons:
+// once the stub IS six segments it is no longer rejected, and Format A reads
+// parts[4] as a FILE PATH and parts[5] as an entity NAME. Measured against a live
+// index, `scope:externalservice:registry.io:5000/app/pg:15@sha256:deadbeef` binds
+// to an entity named "deadbeef" in a file named "15@sha256". A registry port plus
+// tag plus digest is a legal docker reference, and reTcWithImage (:96) captures an
+// arbitrary unvalidated string literal, so the token cannot be assumed safe.
+//
+// Two steps, which fail on different inputs:
+//
+//  1. Drop the content digest (`@sha256:…`). A digest pins a BUILD, not a service
+//     identity, so it has no place in a convergence ref — and it is the third
+//     colon in every legal reference (registry port + tag + digest is the maximum;
+//     tags and repository paths cannot themselves contain colons). After this
+//     step every well-formed reference is at most two colons, i.e. safe. The raw
+//     reference is still recorded verbatim in the `image` property on both the
+//     container node and the edge, so nothing a caller could act on is lost.
+//
+//  2. Refuse anything still above the ceiling. Unreachable from a well-formed
+//     reference; it exists because the capture is unvalidated. Refusing means NO
+//     DEPENDS_ON_SERVICE edge for that container — deliberately, and narrowly.
+//     The general principle that dropping an extractor-intended relationship is
+//     worse than a dangle does not apply here, because the alternative is not a
+//     dangle: it is a ref that PARSES, and therefore mis-binds. The container
+//     node and its properties are still emitted; only the unnameable service
+//     reference is withheld.
+func containerServiceRef(name string) string {
+	if at := strings.IndexByte(name, '@'); at > 0 {
+		name = name[:at]
+	}
+	if strings.Count(name, ":") > containerServiceRefMaxColons {
+		return ""
+	}
+	return extractor.ExternalServiceTargetID(name)
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +282,78 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 	// -------------------------------------------------------------------------
 	// Container topology — Testcontainers. The test DEPENDS_ON_SERVICE the
 	// container'd service.
+	//
+	// #6144 — that sentence describes the FROM endpoint the extractor MEANT, not
+	// the one it emits. The relationship is appended to `ent` below, so the edge
+	// runs container:X -> service X: both endpoints derive from one token and the
+	// test appears nowhere. The `image` / `container_type` payload is also already
+	// duplicated as properties on the container node, so the edge carries nothing
+	// a caller could not read off the node. Filed separately rather than folded in
+	// here — #6123 is about the TARGET, and repointing the source needs an
+	// enclosing-scope lookup this closure does not do.
+	//
+	// #6123 — the target ref. This edge used to carry `service:<name>`, which
+	// LOOKS like the Name of an external-service node (extractor.ExternalServiceName
+	// mints exactly that shape) but can never address one: LookupStatusHint runs
+	// splitStub (internal/resolve/refs.go:2658), which cuts at the first colon
+	// and probes byName with the REMAINDER, so `service:X` probes byName["X"].
+	// Real service nodes are addressed by QualifiedName — the
+	// `scope:externalservice:<svc>` ref that ExternalServiceTargetID mints
+	// (internal/extractor/external_service.go:102) — never by Name. The old ref
+	// therefore had exactly two outcomes: dangle, or bind to some unrelated
+	// entity that happened to be called X. On the #6105 fixture it took the
+	// second: it bound to the base extractor's SCOPE.Operation for the
+	// `new PostgreSqlContainer()` call site, via the DEPENDS_ON_SERVICE
+	// operation-family hint (refs.go:1782). A mis-bind IMPROVES a dangling
+	// count, so no count-based gate could see it.
+	//
+	// WHY NOT FABRICATE THE SERVICE NODE. Emitting an ExternalServiceEntity here
+	// would make the edge resolve, and was rejected. The external-service node is
+	// a corpus-wide CONVERGENCE node whose inbound DEPENDS_ON_SERVICE set is
+	// documented as "the codebase's full <vendor> footprint"
+	// (external_service.go:20-30), and the namespace is deliberately gated on a
+	// curated SDK dictionary. The names available here are a .NET type
+	// (`PostgreSqlContainer`) or a raw docker image (`postgres:15` — itself
+	// colon-bearing), neither of which is a canonical service name.
+	//
+	// AND NORMALISING WOULD NOT HAVE HELPED. This is the decisive point, not the
+	// "competing dictionary" one: even a perfect `PostgreSqlContainer` ->
+	// `postgres` normalisation leaves the edge dangling, because the curated
+	// dictionary (external_service.go:52-79) is Stripe / Twilio / SendGrid / AWS /
+	// SaaS SDKs and contains NO DATABASES AT ALL. There is no `postgres` node to
+	// bind to under any spelling. So the choice was never normalise-or-dangle; it
+	// was fabricate-or-dangle, and an honest dangle wins.
+	//
+	// Nor does the #6131 "repair the edge rather than accept a dangle" precedent
+	// transfer: there a correct binding already existed in the record set, and
+	// here the only candidates are the container node itself (a self-edge) and
+	// the constructor call site (the mis-bind we are removing).
+	//
+	// So the ref is the canonical one and the edge dangles honestly wherever no
+	// service node matches. That is deliberate, and it is safe for TWO
+	// independent reasons — both pinned in
+	// internal/resolve/service_ref_shape_6123_test.go, because a mutation that
+	// disabled the first alone was covered for by the second:
+	//
+	//  1. `scope:`-prefixed stubs are consumed by lookupStructural, which
+	//     rejects anything that is not six segments (refs.go:2037-2039) and
+	//     returns statusUnmatched WITHOUT reaching the byName / kind-hint tiers.
+	//     This is the load-bearing one: an inverse mutant that changed splitStub
+	//     to cut at the LAST colon left every #6123 assertion passing, so (1)
+	//     alone is sufficient and the fix survives a splitStub change.
+	//  2. Redundantly — and only accidentally so — splitStub cuts at the FIRST
+	//     colon, so the byName probe would be "externalservice:<name>", a string
+	//     no entity Name carries. The old ref's probe was the bare leaf `<name>`,
+	//     which real entities do carry; that is the whole difference.
+	//
+	// (1) cannot block a LEGITIMATE bind, because the byQualifiedName tier runs
+	// BEFORE lookupStructural (refs.go:1615): a genuine service node whose
+	// QualifiedName equals this ref is matched and returned before the structural
+	// tier is ever consulted. That ordering is why the guard is safe.
+	//
+	// The colon ceiling below is the third part, and it exists because the first
+	// two are conditional on the ref NOT reaching six segments. See
+	// containerServiceRef.
 	// -------------------------------------------------------------------------
 	emitContainer := func(name, image, ctype string, line int) {
 		ent := makeEntity("container:"+name, "SCOPE.Pattern", "container_topology",
@@ -240,17 +367,19 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 			props = append(props, "container_type", ctype)
 		}
 		setProps(&ent, props...)
-		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
-			ToID: "service:" + name,
-			Kind: string(types.RelationshipKindDependsOnService),
-			Properties: types.Props{
-				{K: "container_type", V: ctype},
-				{K: "framework", V: "test_doubles"},
-				{K: "image", V: image},
-				{K: "line", V: itoa(line)},
-				{K: "role", V: "container_topology"},
-			},
-		})
+		if ref := containerServiceRef(name); ref != "" {
+			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+				ToID: ref,
+				Kind: string(types.RelationshipKindDependsOnService),
+				Properties: types.Props{
+					{K: "container_type", V: ctype},
+					{K: "framework", V: "test_doubles"},
+					{K: "image", V: image},
+					{K: "line", V: itoa(line)},
+					{K: "role", V: "container_topology"},
+				},
+			})
+		}
 		add(ent)
 	}
 
