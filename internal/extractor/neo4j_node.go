@@ -94,6 +94,15 @@ func Neo4jNodeName(label string) string {
 // [A-Za-z_]\w* and is colon-free by construction, so the label arm is
 // unreachable from live extraction and exists to keep it that way; the file-path
 // arm is reachable in principle (':' is legal in a POSIX filename).
+//
+// ':' IS THE ONLY REFUSED CHARACTER, and '#' specifically is NOT — which the
+// "recompute the ceiling" reason above does not explain on its own. '#' is the
+// short-form's member delimiter (stubMemberDelim), so a path containing one
+// truncates filePath at the FIRST '#' and mis-reads the remainder as the member.
+// That is a miss, not a mis-bind: it adds no colons, so the stub cannot reach six
+// segments, misses byLocation, and is left verbatim to dangle honestly. Only ':'
+// can turn a miss into a Format A parse, so only ':' is refused. If the ceiling
+// or the delimiter ever changes, this is the sentence to revisit.
 func Neo4jNodeTargetID(filePath, label string) string {
 	if filePath == "" || label == "" {
 		return ""
