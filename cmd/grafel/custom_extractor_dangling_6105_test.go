@@ -366,18 +366,25 @@ func TestCustomExtractorJavaStructuralRefEdgesBindToRealEntities6105(t *testing.
 		// deliberately exist in three classes in one package directory: a field
 		// bound to the wrong class fails here rather than passing a count.
 		//
-		// The class-owner form appears only for OrderRequest: the #4367 edge's
-		// FromID is `Class:<Owner>` and only OrderRequest has a SCOPE.Class node
-		// (synthesised as the nested-@Valid carrier, bean_validation.go:356).
-		// Customer and Address have no class node, so their membership lands on
-		// the file component. Both forms are the same repair — the ToID
-		// resolving — so both are pinned.
+		// The SCOPE.Class owner form appears only for OrderRequest: the #4367
+		// edge's FromID is `Class:<Owner>` and only OrderRequest has a
+		// SCOPE.Class node (synthesised as the nested-@Valid carrier,
+		// bean_validation.go:356). Customer and Address have no SCOPE.Class
+		// node, so their membership lands on the SCOPE.Component the Java AST
+		// extractor emitted for the class. Both forms are the same repair — the
+		// ToID resolving — so both are pinned.
+		//
+		// Until #6138 those last three named the FILE component instead
+		// (`SCOPE.Component:dto/Customer.java`), because foldFileComponent-
+		// Duplicates deleted the stem-named class component and re-pointed its
+		// edges onto the file. A field belongs to its class, not to the file the
+		// class happens to live in, so the owner asserted here is the class.
 		"CONTAINS: SCOPE.Class:OrderRequest -> SCOPE.Schema:OrderRequest.id",
 		"CONTAINS: SCOPE.Class:OrderRequest -> SCOPE.Schema:OrderRequest.reference",
 		"CONTAINS: SCOPE.Class:OrderRequest -> SCOPE.Schema:OrderRequest.address",
-		"CONTAINS: SCOPE.Component:dto/Customer.java -> SCOPE.Schema:Customer.id",
-		"CONTAINS: SCOPE.Component:dto/Customer.java -> SCOPE.Schema:Customer.reference",
-		"CONTAINS: SCOPE.Component:dto/Address.java -> SCOPE.Schema:Address.id",
+		"CONTAINS: SCOPE.Component:Customer -> SCOPE.Schema:Customer.id",
+		"CONTAINS: SCOPE.Component:Customer -> SCOPE.Schema:Customer.reference",
+		"CONTAINS: SCOPE.Component:Address -> SCOPE.Schema:Address.id",
 	}
 	var missing []string
 	for _, w := range want {
@@ -750,14 +757,18 @@ func TestCustomExtractorDependsOnServiceDoesNotMisbind6123(t *testing.T) {
 	// has always documented as the dependent — nowhere in it. That assertion was
 	// pinning the tautology.
 	//
-	// The extractor now attaches the edge to the enclosing test type (OrderTests)
-	// as a #6104 Tier A merge facet. Two later passes then act on it, and their
-	// combined effect is what this string records: the facet merges onto the base
-	// C# extractor's SCOPE.Component:OrderTests, and foldFileComponentDuplicates
-	// folds that class component into the FILE component for cs/OrderTests.cs,
-	// repointing the edge (`edges_repointed` in its log line). So the surviving
-	// shape is file-granular rather than class-granular — still the test, still
-	// non-tautological.
+	// The extractor attaches the edge to the enclosing test type (OrderTests) as
+	// a #6104 Tier A merge facet, which merges onto the base C# extractor's
+	// SCOPE.Component:OrderTests. Before #6138, foldFileComponentDuplicates then
+	// folded that class component into the FILE component for cs/OrderTests.cs
+	// unconditionally, so the edge was repointed one hop further than the merge
+	// left it (`edges_repointed` in its log line) and the surviving shape was
+	// file-granular. #6138 gated that fold on the file being the same entity as
+	// its declaration — true for a React/Vue/Svelte module, false for a C# file,
+	// which is a container holding a class, not a second name for it — so a C#
+	// class no longer folds into its file and the edge stays on the class
+	// component the merge actually produced. Still the test, still
+	// non-tautological, just class-granular now.
 	//
 	// WHAT THIS TEST DOES NOT PROVE. An earlier revision of this comment claimed
 	// the expectation also demonstrates the Tier A merge, on the grounds that an
@@ -773,7 +784,7 @@ func TestCustomExtractorDependsOnServiceDoesNotMisbind6123(t *testing.T) {
 	// the container node.
 	got := edgeSet6105(on, "DEPENDS_ON_SERVICE")
 	want := map[string]int{
-		"DEPENDS_ON_SERVICE: SCOPE.Component:cs/OrderTests.cs -> " +
+		"DEPENDS_ON_SERVICE: SCOPE.Component:OrderTests -> " +
 			"DANGLING(scope:externalservice:PostgreSqlContainer)": 1,
 	}
 	if len(got) != len(want) {

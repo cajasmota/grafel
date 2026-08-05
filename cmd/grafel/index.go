@@ -4529,6 +4529,27 @@ func filePathStem(path string) string {
 	return strings.ToLower(stem)
 }
 
+// fileIsDeclarationExtensions are the source-file extensions whose ecosystems
+// treat a module file and the declaration it exports as the same thing: the
+// module system addresses the file, importers name the file, and the framework
+// resolves the component through its path. `LoginPage` in `LoginPage.tsx` is a
+// second name for that module, so a File+Component pair there is a true
+// duplicate and folding it removes a duplicate.
+//
+// EVERY OTHER ECOSYSTEM TREATS A FILE AS A CONTAINER, even when it holds
+// exactly one declaration. `interface IERC4626` in `IERC4626.sol` is a
+// declaration in its own right — it has a signature, an inheritance clause and
+// its own importable name — and the file is where it happens to live. Folding
+// there does not remove a duplicate, it deletes the declaration: on
+// @openzeppelin/contracts@5.2.0 the name==stem rule dropped 42 of 61
+// interfaces while leaving all 71 contracts, purely because "contract" is not
+// in classLikeComponentSubtypes and "interface" is. Issue #6138.
+var fileIsDeclarationExtensions = map[string]bool{
+	".js": true, ".jsx": true, ".mjs": true, ".cjs": true,
+	".ts": true, ".tsx": true, ".mts": true, ".cts": true,
+	".vue": true, ".svelte": true, ".astro": true,
+}
+
 // foldFileComponentDuplicates collapses SCOPE.Component class-like nodes into
 // their co-located SCOPE.Component(subtype="file") sibling when the class
 // entity's name matches the file stem and there is no other distinguishing
@@ -4548,6 +4569,10 @@ func filePathStem(path string) string {
 //     AND whose SourceFile matches the survivor's SourceFile.
 //  3. Anti-over-fold guard: if the class entity's name does NOT match the file
 //     stem — meaning it's a *different* class inside the same file — keep both.
+//  4. Convention guard: the file must be one whose ecosystem makes a module and
+//     its exported declaration the same entity (fileIsDeclarationExtensions).
+//     Elsewhere a file is a container and the declaration is not a duplicate of
+//     it, so folding would delete a real declaration. Issue #6138.
 //
 // Runs AFTER foldClassHierarchyShadows (so shadows are already resolved) and
 // AFTER stampEntityIDs (so r.ID is populated).
@@ -4609,6 +4634,11 @@ func (i *Indexer) foldFileComponentDuplicates(
 		if strings.ToLower(r.Name) != fe.stem {
 			continue
 		}
+		// Only fold where the file IS the declaration; elsewhere the file is a
+		// container and folding deletes a real declaration. Issue #6138.
+		if !fileIsDeclarationExtensions[strings.ToLower(filepath.Ext(r.SourceFile))] {
+			continue
+		}
 		if fe.id == r.ID {
 			// Degenerate: same ID — already the same entity.
 			continue
@@ -4641,6 +4671,12 @@ func (i *Indexer) foldFileComponentDuplicates(
 		}
 		if sv.QualifiedName == "" && r.QualifiedName != "" {
 			sv.QualifiedName = r.QualifiedName
+		}
+		// Without this the declaration text — `class LoginPage extends
+		// React.Component<Props>` and its heritage clause — is unrecoverable
+		// once the source record is dropped. Issue #6138.
+		if sv.Signature == "" && r.Signature != "" {
+			sv.Signature = r.Signature
 		}
 		// Re-home edges the class entity owns onto the file entity.
 		for ri := range r.Relationships {
