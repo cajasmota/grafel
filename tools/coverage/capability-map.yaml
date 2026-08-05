@@ -14173,18 +14173,22 @@ records:
         # byte length and newline positions; findContracts walks the
         # declarations; declSignature scans past the member regex match with
         # paren depth so Signature is complete; lineOf derives reported lines,
-        # with members anchored on the contract's opening brace.
+        # with members anchored on the contract's opening brace;
+        # findStateVariables splits the contract body on ';' at brace depth zero
+        # so state variables separate from locals and struct members structurally.
         status: full
         symbols:
           - file: internal/extractors/solidity/extractor.go
-            functions: [findContracts, declSignature, extractBracedBody, stripCommentsAndStrings, buildImportEntities, lineOf]
+            functions: [findContracts, declSignature, extractBracedBody, stripCommentsAndStrings, buildImportEntities, lineOf, findStateVariables, parseStateVar, solInitializerPos]
         tests:
           - file: internal/extractors/solidity/extractor_test.go
             functions: [TestSolidity_ContractDeclaration, TestSolidity_LibraryDeclaration, TestSolidity_InterfaceDeclaration, TestSolidity_Functions, TestSolidity_Events, TestSolidity_Modifiers, TestSolidity_ContainsEdges, TestSolidity_FunctionSignatures, TestSolidity_EventAndModifierSignatures, TestSolidity_SignatureIgnoresDelimitersInCommentsAndStrings]
           - file: internal/extractors/solidity/line_attribution_test.go
             functions: [TestSolidity_LineAttribution]
-        issues_implemented: [6028, 6040]
-        verified_at: "2026-07-29"
+          - file: internal/extractors/solidity/issue6135_state_variables_test.go
+            functions: [TestSolidity_StateVariables, TestSolidity_StateVariableConstantWithStringLiteral, TestSolidity_StateVariableMultiLineDeclaration, TestSolidity_StateVariableContainsEdge, TestSolidity_StateVariablesExcludeNonDeclarations, TestSolidity_StateVariablesLeaveOperationsUntouched, TestSolidity_StateVariableFunctionTypeNotEmitted, TestSolidity_StateVariableCallTargets]
+        issues_implemented: [6028, 6040, 6135]
+        verified_at: "2026-08-04"
 
   lang.c-cpp.framework.crow:
     capabilities:

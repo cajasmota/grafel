@@ -5,10 +5,11 @@
 //   - `function name(…) …` → SCOPE.Operation (subtype="function")
 //   - `event Name(…);`    → SCOPE.Operation (subtype="event")
 //   - `modifier name(…){…}` → SCOPE.Operation (subtype="modifier")
+//   - `uint256 public cap;` → SCOPE.Schema (subtype="field") for contract-level state variables
 //   - `import "./Foo.sol"` / `import "…"` → IMPORTS relationship
 //   - `contract Foo is Bar, Baz` → EXTENDS edges (on the contract component)
 //   - Function-call expressions → CALLS edges
-//   - CONTAINS edges (contract → its functions/events/modifiers)
+//   - CONTAINS edges (contract → its functions/events/modifiers/state variables)
 //
 // No tree-sitter grammar for Solidity is bundled in smacker/go-tree-sitter, so
 // this extractor uses regular expressions.
@@ -373,6 +374,28 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 				Kind: "CONTAINS",
 			})
 		}
+
+		// State variables.
+		for _, sv := range findStateVariables(body) {
+			qualName := name + "." + sv.name
+
+			out = append(out, types.EntityRecord{
+				Name:       qualName,
+				Kind:       "SCOPE.Schema",
+				Subtype:    "field",
+				SourceFile: filePath,
+				Language:   "solidity",
+				StartLine:  braceLine + strings.Count(body[:sv.start], "\n"),
+				EndLine:    braceLine + strings.Count(body[:sv.end], "\n"),
+				Signature:  declSignature(body, sv.start, sv.end),
+			})
+
+			toID := extractor.BuildSchemaFieldStructuralRef("solidity", filePath, qualName)
+			out[contractIdx].Relationships = append(out[contractIdx].Relationships, types.RelationshipRecord{
+				ToID: toID,
+				Kind: "CONTAINS",
+			})
+		}
 	}
 
 	return out
@@ -571,6 +594,133 @@ func declSignature(src string, declStart, fallbackEnd int) string {
 		}
 	}
 	return strings.Join(strings.Fields(src[declStart:fallbackEnd]), " ")
+}
+
+// stateVarDecl locates one state variable inside a contract body.
+type stateVarDecl struct {
+	name  string
+	start int // offset of the declaration's first token
+	end   int // offset of the terminating ';'
+}
+
+// stateVarNonDeclKeywords holds the leading keywords of the other constructs
+// that end with ';' at depth zero: bodiless members of an interface or abstract
+// contract (`function f() external view returns (address);`, `modifier m()
+// virtual;`), signature-only declarations (`event E(uint a);`, `error E();`),
+// and directives (`using SafeERC20 for IERC20;`, `type Price is uint128;`).
+var stateVarNonDeclKeywords = map[string]bool{
+	"function": true, "modifier": true, "receive": true, "fallback": true,
+	"event": true, "error": true,
+	"using": true, "type": true,
+}
+
+// findStateVariables returns the state variables declared directly in a
+// contract body: the statements terminated by ';' at bracket depth zero. body
+// is the inside of the contract's own braces, so depth zero is the contract
+// scope by construction and a function local or a struct or enum member, which
+// sits inside further braces, can never qualify.
+func findStateVariables(body string) []stateVarDecl {
+	var out []stateVarDecl
+	depth, stmt := 0, 0
+	for i := 0; i < len(body); i++ {
+		switch body[i] {
+		case '{', '(', '[':
+			depth++
+		case ')', ']':
+			depth--
+		case '}':
+			// A '}' back at depth zero closed a block, which ends the statement
+			// without a ';'. A ')' back at depth zero does not: it is still
+			// inside the declaration that opened it.
+			depth--
+			if depth == 0 {
+				stmt = i + 1
+			}
+		case ';':
+			if depth == 0 {
+				if d, ok := parseStateVar(body, stmt, i); ok {
+					out = append(out, d)
+				}
+				stmt = i + 1
+			}
+		}
+	}
+	return out
+}
+
+// parseStateVar reads body[stmt:end] as a state variable declaration. The name
+// is the last identifier before the initializer, which lands on the variable
+// whatever order the type, visibility and mutability keywords come in.
+func parseStateVar(body string, stmt, end int) (stateVarDecl, bool) {
+	decl := strings.TrimLeft(body[stmt:end], " \t\r\n")
+	if head := solIdentAt(decl, 0); head == "" || stateVarNonDeclKeywords[head] {
+		return stateVarDecl{}, false
+	}
+	name := lastSolIdent(decl[:solInitializerPos(decl)])
+	if name == "" {
+		return stateVarDecl{}, false
+	}
+	return stateVarDecl{name: name, start: end - len(decl), end: end}, true
+}
+
+// solInitializerPos returns the offset of the initializer '=' in decl, or
+// len(decl) when the declaration has none. A mapping arrow or a comparison
+// operator is not an initializer, and neither is an '=' nested in a mapping's
+// parentheses or in a struct-literal initializer.
+func solInitializerPos(decl string) int {
+	depth := 0
+	for i := 0; i < len(decl); i++ {
+		switch decl[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case '=':
+			if depth != 0 || (i+1 < len(decl) && (decl[i+1] == '=' || decl[i+1] == '>')) {
+				continue
+			}
+			if i > 0 && strings.IndexByte("=!<>", decl[i-1]) >= 0 {
+				continue
+			}
+			return i
+		}
+	}
+	return len(decl)
+}
+
+// solIdentAt returns the identifier starting at offset i in s, or "".
+func solIdentAt(s string, i int) string {
+	if i >= len(s) || !isSolIdentStart(s[i]) {
+		return ""
+	}
+	j := i + 1
+	for j < len(s) && isSolIdentPart(s[j]) {
+		j++
+	}
+	return s[i:j]
+}
+
+// lastSolIdent returns the final identifier in s, or "".
+func lastSolIdent(s string) string {
+	var last string
+	for i := 0; i < len(s); {
+		ident := solIdentAt(s, i)
+		if ident == "" {
+			i++
+			continue
+		}
+		last = ident
+		i += len(ident)
+	}
+	return last
+}
+
+func isSolIdentStart(c byte) bool {
+	return c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+func isSolIdentPart(c byte) bool {
+	return isSolIdentStart(c) || (c >= '0' && c <= '9')
 }
 
 // lineOf returns the 1-based line number of the byte at offset in src.
