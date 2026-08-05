@@ -392,3 +392,43 @@ func TestLeafNameTier_SameScopeDuplicateStaysAmbiguous_6141(t *testing.T) {
 			"both IDs before the kind filter can see them, so this must stay unresolved", stub)
 	}
 }
+
+// TestLeafNameTier_FieldStubMustNotPreferOperation_6141 is the guard that
+// makes the `0` mask at the #667 Java inherited-field call site actually
+// load-bearing.
+//
+// It exists because the obvious guard is NOT one. With the two-pass design,
+// passing famOperation at a field-shaped call site is invisible whenever
+// only ONE candidate exists: the operation pass misses and the kind-blind
+// fallback binds the field anyway. Mutating 0 -> famOperation there
+// survived the whole suite. The mutation only becomes observable when the
+// package holds BOTH a field and an operation of that leaf name — then an
+// operation preference actively picks the wrong one.
+//
+// So: a field-shaped REFERENCES stub must never bind to Helper.parentField
+// [SCOPE.Operation]. Leaving it unresolved is fine; binding to the
+// operation is the failure.
+func TestLeafNameTier_FieldStubMustNotPreferOperation_6141(t *testing.T) {
+	records := []types.EntityRecord{
+		{
+			ID: "1111111111111111", Kind: "Operation", Name: "Child.use", SourceFile: "src/Child.java",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "1111111111111111",
+				ToID:   "scope:schema:ref:java:src/Child.java:Child.parentField",
+				Kind:   "REFERENCES",
+			}},
+		},
+		entAt("cccccccccccccccc", "SCOPE.Schema", "Parent.parentField", "src/Parent.java"),
+		// An OPERATION sharing the leaf name, in the same package.
+		entAt("eeeeeeeeeeeeeeee", "SCOPE.Operation", "Helper.parentField", "src/Helper.java"),
+		// Cross-package decoy — defeats lookupUniqueSchemaFieldByName so the
+		// package leaf tier is the only thing that could bind.
+		entAt("dddddddddddddddd", "SCOPE.Schema", "Elsewhere.parentField", "other/Elsewhere.java"),
+	}
+	got, stub := resolveEdge(t, records, 0)
+	if stub == "" && got.id == "eeeeeeeeeeeeeeee" {
+		t.Fatalf("a field-shaped REFERENCES stub bound to the OPERATION Helper.parentField "+
+			"[%s] @ %s — the #667 call site must pass mask 0, never famOperation",
+			got.kind, got.file)
+	}
+}
