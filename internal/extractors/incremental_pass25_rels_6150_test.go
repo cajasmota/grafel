@@ -366,3 +366,27 @@ func TestPruneSupersededEndpointSynthetics_IgnoresNonEndpointRecords(t *testing.
 		t.Fatalf("pruned=%d len(out)=%d; want 0/1", pruned, len(out))
 	}
 }
+
+// TestPruneSupersededEndpointSynthetics_SameRouteInTwoFilesCollapses pins the
+// documented LIMIT of the `Kind|Name` key rather than a desirable behaviour.
+//
+// The key is unqualified by path — deliberately, because the case the prune
+// exists for is precisely one where the survivor's path DIFFERS (an endpoint
+// rebound onto its handler's file by #2678). The cost is that two files
+// legitimately registering the SAME route collapse onto whichever copy the
+// graph already had: the re-extracted one is treated as superseded even though
+// a full rebuild would carry both rows.
+//
+// Pinned so the trade-off is a decision with a test on it rather than an
+// accident, and so that a future path- or repo-qualified key fails here loudly
+// instead of silently changing which routes survive an edit.
+func TestPruneSupersededEndpointSynthetics_SameRouteInTwoFilesCollapses(t *testing.T) {
+	recs := []types.EntityRecord{p25endpoint("http:GET:/dup", "second_registration.py", "Controller:h")}
+	out, pruned := pruneSupersededEndpointSynthetics(recs, map[string]bool{
+		// survivor lives in a DIFFERENT file, registering the same route
+		"http_endpoint_definition|http:GET:/dup": true,
+	})
+	if pruned != 1 || len(out) != 0 {
+		t.Fatalf("pruned=%d len(out)=%d; want 1/0 — the key is Kind|Name, unqualified by path", pruned, len(out))
+	}
+}

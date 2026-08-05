@@ -829,6 +829,25 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		// the fold is deliberate: the fold's own last-resort tiebreak reads that
 		// emission order, so sorting before it would change which record wins a
 		// three-way tie.
+		//
+		// NOT COVERED END-TO-END, and it was attempted. Deleting this line
+		// passes both ./internal/extractors/... and ./cmd/grafel/ — including a
+		// fixture built specifically to break it (two same-named `def`s plus a
+		// registration naming them, in one re-extracted file: identical
+		// divergence sets with and without the sort). The reason is structural:
+		// the competing records here come from a per-language extractor, which
+		// emits in FILE order, and file order already coincides with canonical
+		// order for records sharing (Kind, Name, SourceFile) — StartLine is the
+		// tiebreak. Reaching a difference needs a producer that emits two
+		// same-key records out of line order, which nothing on this path does
+		// today. The guarantee is pinned at unit level instead, as a
+		// permutation invariant over the resolve
+		// (TestResolveHTTPEndpointHandlersFileScoped_CanonicalOrderMakesTheBindStable),
+		// where the order-dependence IS demonstrated: line 10 vs line 50.
+		//
+		// That probe also found a real defect and it is filed as #6161 — this
+		// path has no entity-identity gate, so the two same-named records
+		// became two graph rows with one id where a full rebuild emits one.
 		if det := frameworkDetector(); det != nil {
 			if fwRes, dErr := det.Detect(ctx, input); dErr != nil {
 				logger.Printf("incremental: framework detect %s: %v", rel, dErr)
@@ -855,6 +874,15 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 				endpointsResolved += hStats.HandlerResolved
 				endpointsKeptUnresolved += hStats.HandlerUnresolvedKept
 
+				// Ordering note: this runs BEFORE the stub bind below, so a
+				// standalone Pass-2.5 relationship whose target is a synthetic
+				// pruned here can no longer bind and is counted in
+				// pass25_rels_dropped rather than in endpoints_superseded. That
+				// is the right net behaviour — the edge would otherwise point
+				// at a record that is not being emitted — but the two counters
+				// do not add up to a partition of the work, and reading
+				// pass25_rels_dropped as "rule sets stopped naming in-file
+				// records" is wrong by exactly that amount.
 				var superseded int
 				records, superseded = pruneSupersededEndpointSynthetics(records, survivingEndpoints)
 				endpointsSuperseded += superseded
@@ -1476,10 +1504,27 @@ const endpointSyntheticKind = "http_endpoint_definition"
 // already correctly anchored, and the new copy is redundant. An unresolved
 // synthetic with no survivor is the only copy there is, and is kept.
 //
-// A RESOLVED synthetic is never pruned: it is the fresh, correct record for its
-// handler, and the survivor sharing its name is the previous graph's copy of
-// the same entity, which has the same derived id and merges rather than
-// duplicating.
+// A RESOLVED synthetic is never pruned, and the reason is NOT that it merges
+// with the survivor. It does not: entityRecordToGraphEntity derives
+// EntityID(repoTag, Kind, Name, SourceFile), and a survivor is by construction
+// anchored in a file that was NOT re-extracted, so the SourceFile differs and
+// so does the id. The real reason is that a same-named endpoint in a DIFFERENT
+// file is a DIFFERENT ROUTE — one a full rebuild also carries, as two rows —
+// so pruning the resolved one would delete a route on the strength of a name
+// collision.
+//
+// TWO LIMITS OF THE KEY, both deliberate and both untested by any fixture:
+//
+//   - It is `Kind|Name`, unqualified by path or repo. Two files legitimately
+//     registering the SAME route therefore collapse onto whichever the graph
+//     already had. That is the correct answer for the case this exists for (a
+//     rebound endpoint IS the same route under a different anchor) and the
+//     wrong one for a genuine same-route-twice corpus. Qualifying by path
+//     cannot work — the whole point is that the survivor's path differs.
+//
+//   - It sees only doc.Entities, i.e. files NOT in this delta. An endpoint
+//     carried by a file that IS in the delta is not a survivor, which is what
+//     makes the no-survivor case reach the keep branch at all.
 //
 // Returns the filtered slice (compacted in place over the caller's backing
 // array, like the resolve pass it follows) and the number pruned.
