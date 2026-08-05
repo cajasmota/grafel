@@ -14176,10 +14176,15 @@ records:
         # with members anchored on the contract's opening brace;
         # findStateVariables splits the contract body on ';' at brace depth zero
         # so state variables separate from locals and struct members structurally.
+        # foldFileComponentDuplicates is cited because what the extractor emits
+        # was not what reached the graph: it deleted stem-named interfaces until
+        # #6138 gated it on the ecosystems where a file IS the declaration.
         status: full
         symbols:
           - file: internal/extractors/solidity/extractor.go
             functions: [findContracts, declSignature, extractBracedBody, stripCommentsAndStrings, buildImportEntities, lineOf, findStateVariables, parseStateVar, solInitializerPos]
+          - file: cmd/grafel/index.go
+            functions: [foldFileComponentDuplicates, filePathStem]
         tests:
           - file: internal/extractors/solidity/extractor_test.go
             functions: [TestSolidity_ContractDeclaration, TestSolidity_LibraryDeclaration, TestSolidity_InterfaceDeclaration, TestSolidity_Functions, TestSolidity_Events, TestSolidity_Modifiers, TestSolidity_ContainsEdges, TestSolidity_FunctionSignatures, TestSolidity_EventAndModifierSignatures, TestSolidity_SignatureIgnoresDelimitersInCommentsAndStrings]
@@ -14187,8 +14192,10 @@ records:
             functions: [TestSolidity_LineAttribution]
           - file: internal/extractors/solidity/issue6135_state_variables_test.go
             functions: [TestSolidity_StateVariables, TestSolidity_StateVariableConstantWithStringLiteral, TestSolidity_StateVariableMultiLineDeclaration, TestSolidity_StateVariableContainsEdge, TestSolidity_StateVariablesExcludeNonDeclarations, TestSolidity_StateVariablesLeaveOperationsUntouched, TestSolidity_StateVariableFunctionTypeNotEmitted, TestSolidity_StateVariableCallTargets]
-        issues_implemented: [6028, 6040, 6135]
-        verified_at: "2026-08-04"
+          - file: cmd/grafel/issue6138_interface_fold_test.go
+            functions: [TestIssue6138_ContainerFileLanguagesKeepStemNamedDeclarations, TestIssue6138_FileIsTheDeclarationEcosystemsStillFold, TestIssue6138_SolidityInterfaceSurvivesFullIndex, TestIssue6138_RoleClassRecordsAreGatedByExtension, TestIssue6138_RoleClassStillFoldsWhereTheFileIsTheDeclaration]
+        issues_implemented: [6028, 6040, 6135, 6138]
+        verified_at: "2026-08-05"
 
   lang.c-cpp.framework.crow:
     capabilities:

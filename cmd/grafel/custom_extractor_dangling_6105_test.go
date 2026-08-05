@@ -366,18 +366,25 @@ func TestCustomExtractorJavaStructuralRefEdgesBindToRealEntities6105(t *testing.
 		// deliberately exist in three classes in one package directory: a field
 		// bound to the wrong class fails here rather than passing a count.
 		//
-		// The class-owner form appears only for OrderRequest: the #4367 edge's
-		// FromID is `Class:<Owner>` and only OrderRequest has a SCOPE.Class node
-		// (synthesised as the nested-@Valid carrier, bean_validation.go:356).
-		// Customer and Address have no class node, so their membership lands on
-		// the file component. Both forms are the same repair — the ToID
-		// resolving — so both are pinned.
+		// The SCOPE.Class owner form appears only for OrderRequest: the #4367
+		// edge's FromID is `Class:<Owner>` and only OrderRequest has a
+		// SCOPE.Class node (synthesised as the nested-@Valid carrier,
+		// bean_validation.go:356). Customer and Address have no SCOPE.Class
+		// node, so their membership lands on the SCOPE.Component the Java AST
+		// extractor emitted for the class. Both forms are the same repair — the
+		// ToID resolving — so both are pinned.
+		//
+		// Until #6138 those last three named the FILE component instead
+		// (`SCOPE.Component:dto/Customer.java`), because foldFileComponent-
+		// Duplicates deleted the stem-named class component and re-pointed its
+		// edges onto the file. A field belongs to its class, not to the file the
+		// class happens to live in, so the owner asserted here is the class.
 		"CONTAINS: SCOPE.Class:OrderRequest -> SCOPE.Schema:OrderRequest.id",
 		"CONTAINS: SCOPE.Class:OrderRequest -> SCOPE.Schema:OrderRequest.reference",
 		"CONTAINS: SCOPE.Class:OrderRequest -> SCOPE.Schema:OrderRequest.address",
-		"CONTAINS: SCOPE.Component:dto/Customer.java -> SCOPE.Schema:Customer.id",
-		"CONTAINS: SCOPE.Component:dto/Customer.java -> SCOPE.Schema:Customer.reference",
-		"CONTAINS: SCOPE.Component:dto/Address.java -> SCOPE.Schema:Address.id",
+		"CONTAINS: SCOPE.Component:Customer -> SCOPE.Schema:Customer.id",
+		"CONTAINS: SCOPE.Component:Customer -> SCOPE.Schema:Customer.reference",
+		"CONTAINS: SCOPE.Component:Address -> SCOPE.Schema:Address.id",
 	}
 	var missing []string
 	for _, w := range want {
