@@ -2011,12 +2011,18 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 	}
 	// PLT #537 — react_props short-form: scope:schema:<file>#<name>.
 	// internal/extractors/cross/react_props/extractor.go's propsSchemaRef
-	// emits this 3-segment shape on USES_PROPS edge ToIDs targeting the
-	// component's Props interface / type-alias. The base JS/TS extractor
-	// indexes interfaces / type aliases under byLocation[file][name]; this
-	// short-form bypasses the 6-segment Format A path and binds directly.
-	// Without it every USES_PROPS edge on tsx components lands in
-	// bug-extractor (cfc 2.09% pre-fix — `AdditionalInfoFieldsProps` etc.).
+	// emits this 3-segment shape on HAS_PROPS edge ToIDs targeting the
+	// component's Props interface / type-alias. (The edge kind is
+	// types.RelationshipKindHasProps = "HAS_PROPS"; this comment said
+	// "USES_PROPS" until #6146 — no such kind exists.) The base JS/TS
+	// extractor indexes interfaces / type aliases under
+	// byLocation[file][name]; this short-form bypasses the 6-segment Format
+	// A path and binds directly. Without it every HAS_PROPS edge on tsx
+	// components lands in bug-extractor (cfc 2.09% pre-fix —
+	// `AdditionalInfoFieldsProps` etc.).
+	//
+	// Coverage: internal/resolve/react_props_short_form_6146_test.go pins
+	// this tier directly (it had none in this package before #6146).
 	if strings.HasPrefix(stub, "scope:schema:") && strings.IndexByte(stub, stubMemberDelim) > 0 {
 		rest := stub[len("scope:schema:"):]
 		if hash := strings.IndexByte(rest, stubMemberDelim); hash > 0 {
@@ -5828,6 +5834,9 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 					// `chi.Mux` (struct of type Mux in pkg chi, or any
 					// package whose dir name happens to match) still wins.
 					resolved := false
+					// Issue #6125 — refusal TERMINATES the ladder. See the
+					// long note below the loop.
+					ambiguousReceiver := false
 					tryTypes := []string{recvType}
 					if dot := strings.LastIndexByte(recvType, '.'); dot >= 0 && dot < len(recvType)-1 {
 						tryTypes = append(tryTypes, recvType[dot+1:])
@@ -5842,12 +5851,54 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 								resolved = true
 								break
 							}
-							// Ambiguous within (pkg, recv, member) — fall through
-							// to record as unmatched (preserve the stub).
+							ambiguousReceiver = true
 							break
 						}
 					}
 					if resolved {
+						continue
+					}
+					// Issue #6125 — ambiguous within (pkg, recv, member).
+					// Leave the stub verbatim and stop the ladder here.
+					//
+					// The old code merely set resolved=false and fell through
+					// to rewriteOneWithCaller → the global byName index, which
+					// binds. The inline comment claimed it "preserved the
+					// stub"; it did not. lookupPackageMember's own contract
+					// (refs.go:2757-2762, 2779-2781) states the opposite of
+					// what the call site did: ("", true) exists precisely "so
+					// the caller can leave the stub alone instead of falling
+					// back to global bare-name lookup".
+					//
+					// Why this fall-through was unsound rather than merely
+					// lossy, measured not assumed: byPackageMember keys are
+					// derived by splitting an entity Name at its LAST dot
+					// (refs.go:1208-1228), so every candidate the receiver
+					// tier declined between is named "<Recv>.<member>". byName
+					// is keyed on the WHOLE Name (refs.go:1474, 1497). A
+					// declined candidate therefore can NEVER appear under
+					// byName[member]. The downstream tier is not choosing
+					// better between the candidates — it is structurally
+					// incapable of returning any of them, so it can only ever
+					// return a DIFFERENT entity, typically in a foreign
+					// package. An honest dangle beats a confident wrong bind.
+					//
+					// Contrast the byPackageComponent tier below, whose
+					// fall-through is retained and whose comment is accurate:
+					// that index is keyed on the dot-free bare Name
+					// (refs.go:1419-1427), so its ambiguous candidates are the
+					// same strings byName sees, and byName is necessarily
+					// ambiguous too. That fall-through provably cannot mis-bind.
+					//
+					// This also brings the full-rebuild path into line with
+					// internal/extractors/sresolver, where the same
+					// misconception was fixed for #6098 with a three-outcome
+					// contract. Before this change the two paths disagreed on
+					// the identical input.
+					if ambiguousReceiver {
+						applyEndpointStats(&stats, statusAmbiguous, false)
+						d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
+						stats.recordDisposition(d, orig)
 						continue
 					}
 				}
