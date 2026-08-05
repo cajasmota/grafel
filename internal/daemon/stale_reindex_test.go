@@ -785,3 +785,50 @@ func TestStaleReindexGuard_ReconcileRetriesAfterTransientError(t *testing.T) {
 		t.Fatalf("reconcile was attempted %d time(s) — a transient error must not disable it permanently", calls)
 	}
 }
+
+// TestStaleReindexGuard_RetryBackoffIsJittered closes the gap mutation testing
+// exposed: every other test disables jitter for determinism, so a uniform
+// backoff survived. Round-3 blocker 2 noted that a uniform backoff makes two
+// repos that forfeit together wait together and re-pair on the next batch,
+// reproducing the stall each cycle. Their retry times must diverge.
+func TestStaleReindexGuard_RetryBackoffIsJittered(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	g := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
+	g.retryBackoff = 10 * time.Minute
+	g.retryJitter = 5 * time.Minute
+	g.stalledGrace = 90 * time.Second
+	g.activeFn = func() map[string]bool { return map[string]bool{"/repo/other": true} }
+
+	repos := []string{"/repo/wedged1", "/repo/wedged2"}
+	stale := map[string]bool{"/repo/wedged1": true, "/repo/wedged2": true}
+
+	// Both admitted together, both wedged, so both forfeit on the same sweep.
+	if got := heartbeat(g, repos, stale); len(got) != 2 {
+		t.Fatalf("first batch = %v, want 2", got)
+	}
+	clk.advance(2 * time.Minute)
+	heartbeat(g, repos, stale)
+
+	g.mu.Lock()
+	a, okA := g.retryAfter["/repo/wedged1"]
+	b, okB := g.retryAfter["/repo/wedged2"]
+	g.mu.Unlock()
+	if !okA || !okB {
+		t.Fatalf("both wedged repos should be in backoff (a=%v b=%v)", okA, okB)
+	}
+	if a.Equal(b) {
+		t.Fatalf("both repos retry at the same instant (%v) — they will re-pair every cycle; backoff must be jittered per repo", a)
+	}
+
+	// And the spread must stay inside the declared window.
+	spread := a.Sub(b)
+	if spread < 0 {
+		spread = -spread
+	}
+	if spread > 5*time.Minute {
+		t.Errorf("jitter spread %v exceeds the declared %v window", spread, 5*time.Minute)
+	}
+}
