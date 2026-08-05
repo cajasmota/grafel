@@ -371,20 +371,82 @@ func bodyCallsSelector(fn *ast.FuncDecl, pkg, name string) bool {
 
 // TestDaemonParseCapDocumentsWhyNotGOMAXPROCS is a cheap guard against the
 // regression returning by copy-paste: the daemon must not derive its parse cap
-// from runtime.GOMAXPROCS again. Checked on the resolved value, using the real
-// host, so it fails on any machine where the two differ.
+// from runtime.GOMAXPROCS again.
+//
+// #6143 — HOW THIS IS ASSERTED, AND WHY IT CHANGED. The original form compared
+// the resolved cap against the AMBIENT runtime.GOMAXPROCS(0):
+//
+//	if got >= runtime.GOMAXPROCS(0) { fail }
+//
+// That is a proxy for the real invariant, and it is only a valid proxy while
+// GOMAXPROCS happens to equal NumCPU. Running the suite as this project asks
+// contributors to run it on a shared machine — `GOMAXPROCS=3 go test ...`, the
+// documented alternative to CPU spinners — makes the comparison
+// `3 >= 3` and produces a red in a package the contributor never touched. Two
+// independent reviewers hit exactly that, hours apart.
+//
+// The alternative reading was that daemonParseCap SHOULD respect a lowered
+// GOMAXPROCS, i.e. that the product was at fault. It is not, on three grounds:
+//
+//  1. GOMAXPROCS CANNOT BOUND THIS WORK. Tree-sitter parsing is cgo; a
+//     goroutine inside a cgo call parks in _Gsyscall and hands its P to another
+//     goroutine, so N concurrent parses occupy N OS threads whatever GOMAXPROCS
+//     says. Deriving the gate from it would restore the illusory ceiling #5970
+//     was filed to remove. See daemonParseCap's own doc.
+//  2. THE OPERATOR SURFACE ALREADY EXISTS, and daemonParseCap honours it
+//     UNCLAMPED in both directions: GRAFEL_DAEMON_GOMAXPROCS and cpu.json's
+//     daemon GOMAXPROCS field. An operator asking this daemon for less
+//     parallelism has a knob that works; that chain is pinned by
+//     TestDaemonParseCapPrecedence/TestDaemonParseCapFileVal above.
+//  3. IN THE DAEMON, GOMAXPROCS IS DERIVED, NOT DECLARED. runDaemonMode SETS
+//     runtime.GOMAXPROCS from resolveDaemonGOMAXPROCSWith, so sizing the parse
+//     cap off it would make one resolved value the input to the other. To be
+//     precise — an earlier revision of this comment called that "a loop", which
+//     over-claims: resolveDaemonGOMAXPROCSWith settles on a fixed value, so it
+//     is circular COUPLING, not an unbounded loop, and it would merely make the
+//     cap track a knob that means something else. The conclusion rests on (1)
+//     and (2), which are sufficient on their own; this is a supporting reason,
+//     not a proof.
+//
+// So the invariant is not "the cap is below the ambient GOMAXPROCS"; it is
+// "the cap does not depend on GOMAXPROCS at all". That is now asserted
+// DIRECTLY and differentially — the resolved value must be identical across a
+// swept range of GOMAXPROCS settings, including ones below the cap — which is
+// both stronger than the old proxy (it would catch a cap that tracked
+// GOMAXPROCS while staying strictly under it) and independent of how the
+// contributor pinned their machine.
 func TestDaemonParseCapDocumentsWhyNotGOMAXPROCS(t *testing.T) {
 	t.Setenv("GRAFEL_DAEMON_GOMAXPROCS", "")
-	if runtime.NumCPU() < 8 {
-		t.Skipf("host has %d cores; budget and GOMAXPROCS can legitimately coincide", runtime.NumCPU())
-	}
-	got := daemonParseCap(runtime.NumCPU(), 0)
-	if got >= runtime.GOMAXPROCS(0) {
-		t.Fatalf("daemonParseCap(%d) = %d >= GOMAXPROCS %d: the cap is GOMAXPROCS-shaped again (#5970)",
-			runtime.NumCPU(), got, runtime.GOMAXPROCS(0))
-	}
-	if got != process.IndexCoreBudget() {
+
+	want := process.IndexCoreBudget()
+	if want != daemonParseCap(runtime.NumCPU(), 0) {
 		t.Fatalf("daemonParseCap(NumCPU) = %d, want process.IndexCoreBudget() = %d",
-			got, process.IndexCoreBudget())
+			daemonParseCap(runtime.NumCPU(), 0), want)
+	}
+
+	// Sweep GOMAXPROCS across values below, at, and above the resolved cap. If
+	// the cap were GOMAXPROCS-shaped in any way — floor, ceiling, or a
+	// proportion — at least one of these would move it.
+	//
+	// THIS MUTATES PROCESS-GLOBAL STATE. runtime.GOMAXPROCS is per-process, not
+	// per-test, so for the duration of this test every other goroutine in the
+	// binary sees the swept value; it is restored via t.Cleanup. That is safe
+	// today only because no test in cmd/grafel calls t.Parallel(), so nothing
+	// else is running concurrently — an undeclared assumption in the first
+	// version of this test, stated here so that adding t.Parallel() anywhere in
+	// this package is a decision made with this in view rather than a silent
+	// source of flakiness.
+	restore := runtime.GOMAXPROCS(0)
+	t.Cleanup(func() { runtime.GOMAXPROCS(restore) })
+	for _, procs := range []int{1, 2, 3, want, want + 1, runtime.NumCPU()} {
+		if procs < 1 {
+			continue
+		}
+		runtime.GOMAXPROCS(procs)
+		if got := daemonParseCap(runtime.NumCPU(), 0); got != want {
+			t.Fatalf("GOMAXPROCS=%d: daemonParseCap(%d) = %d, want %d — the cap moved with "+
+				"GOMAXPROCS, i.e. it is GOMAXPROCS-shaped again (#5970)",
+				procs, runtime.NumCPU(), got, want)
+		}
 	}
 }

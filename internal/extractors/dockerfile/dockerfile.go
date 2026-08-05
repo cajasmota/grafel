@@ -19,8 +19,10 @@ package dockerfile
 import (
 	"context"
 	"encoding/json"
-	"github.com/cajasmota/grafel/internal/indexstate"
+	"fmt"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/indexstate"
 
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"go.opentelemetry.io/otel"
@@ -42,7 +44,9 @@ type Extractor struct{}
 func (e *Extractor) Language() string { return "dockerfile" }
 
 // Extract walks the tree-sitter CST and returns a single EntityRecord for the
-// Dockerfile file. On nil tree or empty src, returns empty slice with nil error.
+// Dockerfile file. On empty src, returns an empty slice with nil error; on a nil
+// tree with non-empty src it parses the content itself (under the daemon-wide
+// parse gate) rather than bailing — see the #6154 note on the guard below.
 func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("extractor.dockerfile")
 	ctx, span := tracer.Start(ctx, "indexer.extract.dockerfile",
@@ -50,7 +54,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	)
 	defer span.End()
 
-	if file.TSTree == nil || len(file.Content) == 0 {
+	// #6154 — this guard used to also bail on `file.TSTree == nil`, which made
+	// the self-parse fallback at the `if tree == nil` block below UNREACHABLE:
+	// the only way to reach it was with a nil tree, and a nil tree returned here
+	// first. The other six AcquireParseSlot self-parse extractors (python,
+	// golang, html, hcl, cpp, yaml) guard on empty content ONLY, so their
+	// fallbacks are live; dockerfile was the sole outlier, and the dead block
+	// read as coverage in two contradictory audits at once. Guard on content
+	// alone, matching the other six, so the fallback the comment below describes
+	// can actually run.
+	if len(file.Content) == 0 {
 		span.SetAttributes(
 			attribute.Int("file_line_count", 0),
 			attribute.Int("entity_count", 0),
@@ -60,6 +73,22 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	}
 
 	// Reuse pre-parsed tree or parse inline.
+	//
+	// #6154 — WHAT A NIL TSTree ACTUALLY MEANS AT THE PRODUCTION CALL SITE, and
+	// the one place this fallback is in tension with the rest of the pipeline.
+	// index.go:3447 leaves TSTree nil whenever the factory's Parse returned an
+	// error, and ErrHighSyntaxErrorRate is exactly that case — a file the
+	// syntax-error gate deliberately rejected. Re-parsing here does not consult
+	// that gate, so a rejected Dockerfile is extracted rather than skipped.
+	//
+	// This is currently harmless and is left deliberately: the re-parse produces
+	// the same mostly-ERROR tree the gate saw, and buildDockerfileEntity walks it
+	// to the same (empty or near-empty) result, so both paths agree — the parity
+	// asserted in dockerfile_test.go. But it does narrow the claim at
+	// incremental.go:565-568 that "both paths emit nothing and neither is
+	// lying": here the fallback path emits nothing because the tree is bad, not
+	// because it declined to look. If the gate ever grows a policy the extractor
+	// must honour, this is the site that has to consult it.
 	tree := file.TSTree
 	if tree == nil {
 		parser, perr := dockerfileAdapter.NewParser(dockerfileGrammar())
@@ -85,6 +114,24 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		if err != nil {
 			return nil, err
 		}
+		// #6154 — NIL TREE WITH A NIL ERROR IS REACHABLE, and making this
+		// fallback live is what makes it reachable HERE. official.Parse returns
+		// (nil, nil) when the parse watchdog is disabled (timeout == 0,
+		// ts/official/official.go:155) — it only converts a nil tree into
+		// ErrParseDeadlineExceeded while the watchdog is armed. Without this
+		// guard the tree.RootNode() below is a nil dereference on a path that
+		// did not exist before this change. python (extractor.go:142) and golang
+		// (:108) both guard exactly here; dockerfile now matches them.
+		if tree == nil {
+			return nil, fmt.Errorf("dockerfile extractor: parse produced nil tree")
+		}
+		// Close ONLY the tree we parsed ourselves — file.TSTree belongs to the
+		// caller and is closed by the indexer. Without this the CST leaks for the
+		// daemon's lifetime: #5963 (see treesitter/parser.go) measures a
+		// tree-sitter CST at ~19.7 bytes of C heap per source byte, and v0.24
+		// attaches no finalizer, so nothing reclaims it. Scoped to the function,
+		// not the parse closure, because the node walk below still needs the tree.
+		defer tree.Close()
 	}
 
 	lineCount := strings.Count(string(file.Content), "\n") + 1

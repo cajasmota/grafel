@@ -83,19 +83,139 @@ func TestDockerfileExtractor_EmptyContent(t *testing.T) {
 	}
 }
 
-func TestDockerfileExtractor_NilTree(t *testing.T) {
+// TestDockerfileExtractor_NilTreeSelfParses6154 replaces the old
+// TestDockerfileExtractor_NilTree, which asserted "nil tree -> 0 entities".
+//
+// #6154 — THAT ASSERTION WAS PINNING DEAD CODE. Extract's guard bailed on
+// `file.TSTree == nil || len(Content) == 0`, so the `if tree == nil { …
+// AcquireParseSlot … parser.Parse … }` fallback below it could never run: the
+// only input that reaches it is a nil tree, and a nil tree returned first. The
+// block was unreachable while READING as coverage — it made dockerfile appear
+// simultaneously in the audit list of extractors that bail on a nil tree and in
+// the list that already self-parse. Both were literally true; the second was
+// dead, and the ambiguity cost real time in #6151, where the extractor set was
+// miscounted three times.
+//
+// The other six AcquireParseSlot self-parse extractors (python, golang, html,
+// hcl, cpp, yaml) guard on empty content ONLY, so their fallbacks are live.
+// dockerfile now matches them, which makes the fallback reachable rather than
+// deleting it — the option the issue preferred, since the incremental path can
+// legitimately hand over content without a tree.
+//
+// Asserted by EQUIVALENCE, not by a count: self-parsing must produce the same
+// entity content as the pre-parsed path. A count-only assertion would pass on a
+// fallback that parsed garbage.
+//
+// WHAT THIS EQUIVALENCE DOES AND DOES NOT COVER. parseForTest builds the same
+// adapter and grammar the fallback does (tsofficial + tsdockerfile), so the two
+// sides run the SAME parser — this pins that the fallback WIRES the parser
+// correctly and walks the resulting tree the same way, not that the official
+// binding agrees with the production ParserFactory path. The factory adds the
+// parse watchdog and the shared gate; the fallback's use of the gate is asserted
+// separately by the AcquireParseSlot wiring, and its nil-tree contract by
+// nil_tree_6154_internal_test.go.
+//
+// The property comparison is over the WHOLE map rather than a named subset. An
+// earlier revision listed three keys, one of which (`base_image`) the extractor
+// never emits — a comparison of "" against "" that looked like coverage and was
+// not. Comparing every key cannot go vacuous that way, and the non-vacuity check
+// below pins that the map is non-trivial in the first place.
+func TestDockerfileExtractor_NilTreeSelfParses6154(t *testing.T) {
+	// Exercises every instruction family the entity folds into properties
+	// (#2063): multi-stage FROM, RUN, COPY --from, EXPOSE, ENV, ARG, ENTRYPOINT.
+	const src = `FROM golang:1.22 AS build
+ARG VERSION=1.0
+RUN go build -o /app ./...
+FROM ubuntu:22.04
+COPY --from=build /app /usr/bin/app
+ENV MODE=prod
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/app"]
+`
+
+	selfParsed := extractEntities(t, "Dockerfile", src, nil)
+	if len(selfParsed) == 0 {
+		t.Fatal("nil tree + non-empty content produced no entities — the self-parse fallback is " +
+			"still unreachable (#6154)")
+	}
+
+	preParsed := extractEntities(t, "Dockerfile", src, parseForTest(t, src))
+	if len(preParsed) != len(selfParsed) {
+		t.Fatalf("self-parse produced %d entities, pre-parsed path produced %d — the fallback is "+
+			"reachable but not equivalent", len(selfParsed), len(preParsed))
+	}
+
+	for i := range preParsed {
+		got, want := selfParsed[i], preParsed[i]
+		if got.Name != want.Name || got.Kind != want.Kind || got.Subtype != want.Subtype {
+			t.Errorf("entity %d: self-parse gave %s/%s/%s, pre-parsed gave %s/%s/%s",
+				i, got.Kind, got.Subtype, got.Name, want.Kind, want.Subtype, want.Name)
+		}
+		if got.SourceFile != want.SourceFile {
+			t.Errorf("entity %d: SourceFile %q vs %q", i, got.SourceFile, want.SourceFile)
+		}
+		// The instruction detail is folded into properties (#2063), so this is
+		// where a wrongly-parsed tree would actually show up. Compare the whole
+		// map in both directions — a one-sided loop misses keys the self-parse
+		// path failed to emit at all.
+		if len(got.Properties) != len(want.Properties) {
+			t.Errorf("entity %d: %d properties self-parsed vs %d pre-parsed (%v vs %v)",
+				i, len(got.Properties), len(want.Properties), got.Properties, want.Properties)
+		}
+		for k, wv := range want.Properties {
+			if gv, ok := got.Properties[k]; !ok {
+				t.Errorf("entity %d: property %q missing on the self-parse path (want %q)", i, k, wv)
+			} else if gv != wv {
+				t.Errorf("entity %d: property %q = %q self-parsed, %q pre-parsed", i, k, gv, wv)
+			}
+		}
+		for k := range got.Properties {
+			if _, ok := want.Properties[k]; !ok {
+				t.Errorf("entity %d: property %q only on the self-parse path", i, k)
+			}
+		}
+		// NON-VACUITY: the instruction-derived properties must actually be
+		// populated, or the whole comparison above comes down to two identical
+		// near-empty maps.
+		for _, key := range []string{"stages", "exposed_ports", "env_vars", "build_args", "entrypoint"} {
+			if want.Properties[key] == "" {
+				t.Errorf("fixture no longer populates %q — the property equivalence above is "+
+					"comparing empty against empty for that key", key)
+			}
+		}
+		if len(got.Relationships) != len(want.Relationships) {
+			t.Errorf("entity %d: %d relationships self-parsed vs %d pre-parsed",
+				i, len(got.Relationships), len(want.Relationships))
+			continue
+		}
+		for j := range want.Relationships {
+			if got.Relationships[j].ToID != want.Relationships[j].ToID ||
+				got.Relationships[j].Kind != want.Relationships[j].Kind {
+				t.Errorf("entity %d rel %d: %s->%s self-parsed, %s->%s pre-parsed", i, j,
+					got.Relationships[j].Kind, got.Relationships[j].ToID,
+					want.Relationships[j].Kind, want.Relationships[j].ToID)
+			}
+		}
+	}
+}
+
+// TestDockerfileExtractor_NilTreeEmptyContent6154 keeps the other half of the
+// old guard: content is still the thing that decides whether there is anything
+// to do, and a nil tree with no content must stay a no-op rather than parsing
+// an empty buffer.
+func TestDockerfileExtractor_NilTreeEmptyContent6154(t *testing.T) {
 	ext, _ := extractor.Get("dockerfile")
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:     "Dockerfile",
-		Content:  []byte("FROM ubuntu:22.04\n"),
+		Content:  nil,
 		Language: "dockerfile",
-		TSTree:   nil, // nil tree → empty result per spec
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(entities) != 0 {
-		t.Errorf("expected 0 entities for nil tree, got %d", len(entities))
+		t.Errorf("expected 0 entities for nil tree + no content, got %d", len(entities))
 	}
 }
 

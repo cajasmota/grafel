@@ -1508,9 +1508,16 @@ func daemonSchedulerGroupAlgo(ctx context.Context, group string) error {
 // GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL=1ns is accepted and the heartbeat spins a
 // core logging — a diagnostic knob that becomes its own CPU incident. 10ms is
 // low enough for a test to drive and high enough to cost nothing.
+//
+// groupAlgoStopBarrier (#6134) is the ceiling on how long stop() will wait for
+// the heartbeat goroutine to exit. Generous relative to the goroutine's actual
+// work (one CPU read plus one log line) so it never trips in normal operation,
+// and short relative to a group-algo pass so a stalled log sink cannot wedge
+// one. See the barrier note in startGroupAlgoProgress.
 const (
 	groupAlgoProgressInterval = time.Minute
 	groupAlgoProgressMin      = 10 * time.Millisecond
+	groupAlgoStopBarrier      = 2 * time.Second
 )
 
 func groupAlgoProgressEvery() time.Duration {
@@ -1572,8 +1579,10 @@ func startGroupAlgoProgress(ctx context.Context, group, mode string) func() {
 	}
 
 	done := make(chan struct{})
+	exited := make(chan struct{})
 	var once sync.Once
 	go func() {
+		defer close(exited)
 		t := time.NewTicker(every)
 		defer t.Stop()
 		for {
@@ -1583,6 +1592,28 @@ func startGroupAlgoProgress(ctx context.Context, group, mode string) func() {
 			case <-ctx.Done():
 				return
 			case now := <-t.C:
+				// #6134 — RE-CHECK THE STOP SIGNAL AFTER A TICK WINS.
+				//
+				// A Go select chooses UNIFORMLY AT RANDOM among the cases that
+				// are ready. Once the ticker has a pending tick, an
+				// already-closed `done` therefore wins only about half the
+				// time — so the loop above would emit one more line after the
+				// pass had ended, reporting elapsed time and a phase for work
+				// that was already over. Measured: 3/3 runs, deterministic
+				// enough to fail on a cycle-0 iteration, not a load artifact.
+				//
+				// That is the #6047 class (progress reported after the work it
+				// describes has finished), which is why #6134 was NOT closed by
+				// loosening the test: the test was right and the heartbeat was
+				// wrong. The non-blocking re-check below makes the stop signal
+				// win unconditionally once it is set.
+				select {
+				case <-done:
+					return
+				case <-ctx.Done():
+					return
+				default:
+				}
 				attrs := []any{
 					"group", group,
 					"mode", mode,
@@ -1604,7 +1635,42 @@ func startGroupAlgoProgress(ctx context.Context, group, mode string) func() {
 			}
 		}
 	}()
-	return func() { once.Do(func() { close(done) }) }
+	// #6134 — stop() IS A BARRIER, NOT A REQUEST.
+	//
+	// Closing `done` only makes the goroutine eligible to exit; it says nothing
+	// about whether it has observed the close, or whether it is mid-log. Callers
+	// (and the wizard) treat the return of stop() as "this pass no longer
+	// reports", so waiting for the goroutine to actually exit is what makes that
+	// true. Combined with the re-check inside the loop, the guarantee is exact:
+	// once stop() has returned, no further progress line for this pass can be
+	// emitted, ever.
+	//
+	// THE WAIT IS BOUNDED, and an earlier revision of this comment argued it
+	// did not need to be ("the goroutine's only blocking operation is the log
+	// write"). That argument is only as good as the sink. Both call sites are
+	// `defer startGroupAlgoProgress(...)()`, so an unbounded wait here blocks the
+	// group-algo pass itself: a slog sink that stalls — tty flow control under
+	// the wizard, a full pipe, a stuck filesystem — would convert what used to be
+	// a benign leaked ticker goroutine into a wedged pass. That is a strictly
+	// worse failure than the one being fixed, so the barrier takes a ceiling.
+	//
+	// Timing out only forfeits the barrier, never correctness: the in-loop
+	// re-check above has already made a post-stop line impossible independently
+	// of this wait, because it returns whenever `done`/ctx is closed and cannot
+	// drop a legitimate line. The wait exists to make "stop() returned" mean
+	// "the goroutine is gone", and a stalled sink is exactly the case where that
+	// promise is not worth blocking a pass for.
+	//
+	// `exited` is closed by a defer, so a panic in the body releases the wait
+	// too. Idempotent: the second call sees the once already fired and receives
+	// from an already-closed channel.
+	return func() {
+		once.Do(func() { close(done) })
+		select {
+		case <-exited:
+		case <-time.After(groupAlgoStopBarrier):
+		}
+	}
 }
 
 // daemonIndexFunc is the IndexFunc handed to daemon.Run. It bridges the

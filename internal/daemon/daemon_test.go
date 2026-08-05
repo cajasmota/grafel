@@ -110,6 +110,25 @@ func isolateDaemonEnv(t *testing.T) string {
 		}
 	}
 	t.Setenv(daemon.EnvRoot, root)
+	// #6134 — GRAFEL_DAEMON_ROOT ALONE DOES NOT ISOLATE THIS DAEMON.
+	//
+	// EnvRoot is read by DefaultLayout, so it moves the socket, pidfile and log
+	// dir into the sandbox. It is NOT read by StoreDir(), which resolves
+	// homeDir()/store, i.e. $GRAFEL_HOME or ~/.grafel — and Run()'s startup tail
+	// calls MigrateToRefStore(StoreDir()) AND PruneStaleGenerations(StoreDir())
+	// (server.go), with startEnginePlane doing the same. Every test that starts a
+	// daemon in-process was therefore migrating the layout of, and DELETING
+	// generations from, the developer's live store — while their real daemon was
+	// serving MCP out of it. StoreDir's own doc already claims it is the store
+	// root "when no isolated GRAFEL_DAEMON_ROOT is in effect"; nothing enforced
+	// that, so the enforcement is here, at the isolation boundary.
+	//
+	// isolateSupervisorEnv (supervise_test.go) already sets both for exactly this
+	// reason. This is the same pin, applied to the harness the rest of the
+	// package's daemon tests go through.
+	//
+	// Pinned by TestIsolateDaemonEnvAlsoIsolatesTheStore.
+	t.Setenv("GRAFEL_HOME", root)
 	t.Setenv(daemon.EnvDisableSelfDefense, "1")
 	return root
 }
