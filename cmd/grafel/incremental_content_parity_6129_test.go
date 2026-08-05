@@ -426,8 +426,11 @@ def cp_use_class(y):
 
 
 class CpPlainProbe:
-    def cp_probe_noop(self):
+    def on_get(self, req, resp):
         return 1
+
+
+cp_app = falcon.App()
 
 
 class CpLeafBag:
@@ -590,7 +593,7 @@ var cpKnownPathA = []cpKnown{
 		Issue:    "#6129 (duplicate-row class of #6094 / #6037)",
 		Why:      "Downstream of the duplicated entity: the unassigned community carries one extra member.",
 		Bucket:   cpCommunitySet,
-		Contains: []string{"community ∅: 32 member(s) in A, 33 in B"},
+		Contains: []string{"community ∅: 35 member(s) in A, 36 in B"},
 	},
 
 	// ── #6129 / #6098 family: over-counted DEPENDS_ON weight ──

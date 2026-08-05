@@ -4199,6 +4199,12 @@ type foldShadowStats struct {
 // and a second copy of these tables would be free to drift from this one. The
 // aliases keep every existing reference (including this package's tests)
 // pointing at the single definition.
+//
+// They are ALIASES, not copies: `var x = engine.Y` on a map copies the header,
+// so both names address one backing map. Writing through either — a test poking
+// an entry, say — mutates engine's state for the whole process. Nothing writes
+// to them today, and nothing should; if one ever needs a local override, copy
+// it explicitly at the point of use.
 var (
 	frameworkClassKindPriority  = engine.FrameworkClassKindPriority
 	frameworkClassKindCanonRank = engine.FrameworkClassKindCanonRank

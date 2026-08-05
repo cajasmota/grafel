@@ -28,25 +28,32 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
-// ckProbeSource is the minimum case from #6148: a class with no decorator, no
-// base class, no route annotation and no naming convention — nothing that
-// should attract any particular classification on either path. What it gets is
-// beside the point; the two paths must agree on it.
+// ckProbeSource carries both halves of what Pass 2.5 produces for one file:
+//
+//   - CkPlainProbe — a class with no decorator and no base class. What kind it
+//     gets is beside the point; the two paths must agree on it (#6148).
+//   - the `on_get` responder and `ck_app = falcon.App()` — framework records
+//     that pair with NO extractor record, so nothing folds them and the class
+//     fold alone would still leave them dropped (#6150).
 const ckProbeSource = `def ck_handle(x):
     return x + 1
 
 
 class CkPlainProbe:
-    def ck_probe_noop(self):
+    def on_get(self, req, resp):
         return 1
+
+
+ck_app = falcon.App()
 `
 
-// ckExpectedClassKind asks the SAME oracle the full rebuild's Pass 2.5 asks —
-// engine.Detector over the embedded YAML rules — what kind this class symbol
-// carries. Hard-coding the answer would pin today's rule set rather than the
-// invariant under test (the two paths agree), and would go stale the moment a
-// rule changes.
-func ckExpectedClassKind(t *testing.T, path, src string) string {
+// ckDetect is the ORACLE: the same engine.Detector over the same embedded YAML
+// rules that the full rebuild's Pass 2.5 runs. Every expectation below is
+// derived from it rather than hard-coded, so this file pins the invariant (the
+// two paths agree) instead of pinning today's rule set — which would go stale
+// the moment a rule changes, in a test that would then be asserting the wrong
+// thing while still passing.
+func ckDetect(t *testing.T, path, src string) *engine.DetectResult {
 	t.Helper()
 	rules, err := engine.LoadAllRules()
 	if err != nil {
@@ -60,6 +67,13 @@ func ckExpectedClassKind(t *testing.T, path, src string) string {
 	if err != nil || res == nil {
 		t.Fatalf("detect: %v", err)
 	}
+	return res
+}
+
+// ckExpectedClassKind asks the oracle what kind this class symbol carries.
+func ckExpectedClassKind(t *testing.T, path, src string) string {
+	t.Helper()
+	res := ckDetect(t, path, src)
 	var best string
 	for i := range res.Entities {
 		e := &res.Entities[i]
@@ -146,4 +160,69 @@ func TestIncremental_ClassInChangedFile_CarriesFrameworkKind_6148(t *testing.T) 
 			"rules) and folds the generic AST node into it; the incremental path must reach "+
 			"the same kind for the class it re-extracted.", want, got)
 	}
+
+	// #6150 — the other half of Pass 2.5's output. `ck_app = falcon.App()` and
+	// the `on_get` responder produce framework records that pair with NO
+	// extractor record at all, so the class fold alone would leave them dropped:
+	// a full rebuild carries them and this path did not. Asserted as a SET, both
+	// directions, against the same oracle rather than a hard-coded kind list.
+	wantFW := ckFrameworkOnlyRows(t, "ckhandler.py", ckProbeSource)
+	if len(wantFW) == 0 {
+		t.Fatal("fixture no longer reaches any framework-only record — the rules that matched " +
+			"the app object / responder changed, and this assertion has gone vacuous")
+	}
+	gotFW := ckRowsFor(t, stateDir, "ckhandler.py", wantFW)
+	if strings.Join(gotFW, ",") != strings.Join(wantFW, ",") {
+		t.Errorf("framework-only rows after incremental re-extraction:\n  want %v\n  got  %v\n"+
+			"Pass 2.5 emits these on a full rebuild; the incremental path must emit them too.",
+			wantFW, gotFW)
+	}
+}
+
+// ckFrameworkOnlyRows asks the oracle which Detect records for this file pair
+// with no extractor record — the ones whose only source is Pass 2.5.
+func ckFrameworkOnlyRows(t *testing.T, path, src string) []string {
+	t.Helper()
+	res := ckDetect(t, path, src)
+	var out []string
+	for i := range res.Entities {
+		e := &res.Entities[i]
+		// The class itself is covered by the fold assertion above; here we want
+		// only the records that have no counterpart in the extractor's output.
+		if e.Name == "CkPlainProbe" {
+			continue
+		}
+		out = append(out, e.Kind+"|"+e.Name+"|"+path)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ckRowsFor returns the graph's rows for path whose KIND is one the oracle
+// emitted — not merely the rows the oracle predicted. Keying on the kind
+// vocabulary rather than on the wanted rows themselves is what makes the
+// comparison bidirectional: a row INVENTED under one of those kinds shows up as
+// an extra element, where a containment check would miss it. It is bounded, and
+// deliberately so: an invention under an unrelated kind is the #6129 parity
+// gate's job, not this test's.
+func ckRowsFor(t *testing.T, stateDir, path string, oracle []string) []string {
+	t.Helper()
+	kinds := make(map[string]bool, len(oracle))
+	for _, row := range oracle {
+		kinds[strings.SplitN(row, "|", 2)[0]] = true
+	}
+	doc, err := graph.LoadGraphFromDir(stateDir)
+	if err != nil {
+		t.Fatalf("load graph: %v", err)
+	}
+	var out []string
+	for i := range doc.Entities {
+		e := &doc.Entities[i]
+		if e.SourceFile != path || !kinds[e.Kind] || e.Name == "CkPlainProbe" {
+			continue
+		}
+		out = append(out, e.Kind+"|"+e.Name+"|"+e.SourceFile)
+	}
+	sort.Strings(out)
+	return out
 }

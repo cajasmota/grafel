@@ -164,13 +164,32 @@ func StampFile(absPath string) (FileStamp, error) {
 }
 
 // frameworkDetectorOnce guards the one-time load of the embedded YAML rule sets
-// used to type class records on re-extraction (#6148).
+// Pass 2.5 applies to every re-extracted file (#6148, #6150).
 //
 // The rules are compiled into the binary (engine.LoadAllRules reads an embedded
 // FS) and are not repo-scoped, so one Detector serves every incremental run in
-// the process; engine.Detector is documented safe for concurrent use. Loading
-// per call would repeat a whole-tree YAML parse on the daemon's hot path for a
-// result that cannot differ between calls.
+// the process; engine.Detector is documented safe for concurrent use.
+//
+// COST, measured here (go test -bench, GOMAXPROCS=4, 40-declaration file):
+//
+//	LoadAllRules + New   15.6 ms, 11.6 MiB   ONCE per process
+//	Detect, python file   8.7 ms,  0.7 MiB   per CHANGED file
+//
+// The per-file number is the real one and it is not small next to the language
+// extractor. It is NOT avoidable by guarding on "does this file declare a
+// class": Detect's output is also consumed for the framework entities that pair
+// with no extractor record at all — a Route from a responder method, a Service
+// from an app object — so a file with no class-like declaration is precisely a
+// file whose Detect output would be silently dropped again (#6150). What bounds
+// it instead is that this runs per CHANGED file, not per repo file, and the
+// changed set is already capped by the incremental trigger limit; a full rebuild
+// pays the same 8.7 ms for every file in the repo.
+//
+// The once is deliberately not retried. The rules are embedded, so a load
+// failure is a build-level defect with no transient component, and retrying
+// would re-pay 15.6 ms per file to fail identically. It is logged with its
+// consequence spelled out, because the graph is otherwise silently the
+// pre-#6148 shape until the process restarts.
 var (
 	frameworkDetectorOnce sync.Once
 	frameworkDetectorInst *engine.Detector
@@ -178,13 +197,21 @@ var (
 
 // frameworkDetector returns the shared Detector, or nil if the embedded rules
 // failed to load. A nil return degrades this path to its pre-#6148 behaviour
-// (classes stay generic) rather than failing the incremental run: the rules are
-// an enrichment input, not a correctness precondition for re-extraction.
-func frameworkDetector() *engine.Detector {
+// (classes keep their generic kind, framework-only entities are not emitted)
+// rather than failing the incremental run: the rules are an enrichment input,
+// not a correctness precondition for re-extraction.
+//
+// It is a var so a test can drive that degraded path. Nothing else assigns it —
+// the #6129 parity gate catches the rules being IGNORED, but nothing else
+// asserted that LOSING them degrades instead of panicking.
+var frameworkDetector = func() *engine.Detector {
 	frameworkDetectorOnce.Do(func() {
 		rules, err := engine.LoadAllRules()
 		if err != nil {
-			log.Printf("incremental: load engine rules: %v — class records will keep their generic kind", err)
+			log.Printf("incremental: FRAMEWORK RULES UNAVAILABLE: %v — "+
+				"every incremental run in this process will leave class entities at their "+
+				"generic kind and drop framework-only entities, diverging from a full rebuild "+
+				"until the process is restarted", err)
 			return
 		}
 		frameworkDetectorInst = engine.New(rules)
@@ -544,29 +571,40 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			// Non-fatal: use partial results.
 		}
 
-		// #6148 — type the class records this file declares.
+		// #6148 / #6150 — run Pass 2.5 over this file and reconcile it with the
+		// extractor's records.
 		//
 		// The per-language extractor emits every class as a generic
-		// SCOPE.Component. On the full path Pass 2.5 (engine.Detector over the
-		// YAML rule sets) emits a framework-typed record — Controller / Model /
-		// View / Service / … — for the same symbol, and the #1613 fold collapses
-		// the generic node into it, so a full rebuild's graph carries ONE typed
-		// node per class. This path ran the extractor alone, so a class in a
-		// CHANGED file kept the generic kind while the identical class in an
-		// unchanged file kept the typed kind it was carried forward with — the
-		// same tree, two answers, depending only on which files the delta
-		// touched. Entity IDs hash the kind, so the divergence also moved every
-		// edge incident on the class.
+		// SCOPE.Component, and emits nothing at all for a framework construct
+		// that is not a language declaration. On the full path Pass 2.5
+		// (engine.Detector over the YAML rule sets) supplies both: a
+		// framework-typed record — Controller / Model / View / Service / … — for
+		// each class symbol a rule matches, which the #1613 fold collapses the
+		// generic node into, plus standalone records for the constructs that have
+		// no declaration behind them (a Route from a responder method, a Service
+		// from an app object).
 		//
-		// The fold is keyed by (source_file, name) and so never pairs records
-		// across files; applying it per re-extracted file is the whole of it.
+		// This path ran the extractor alone. A class in a CHANGED file therefore
+		// kept the generic kind while the identical class in an unchanged file
+		// kept the typed kind it was carried forward with — the same tree, two
+		// answers, decided only by which files the delta touched — and the
+		// framework-only records were dropped outright. Entity ids hash the kind,
+		// so the class divergence moved every edge incident on it too.
+		//
+		// The fold is keyed by (source_file, name) and never pairs records across
+		// files, so applying it per re-extracted file is the whole of it.
+		//
+		// Detect's standalone RELATIONSHIPS are deliberately NOT consumed here.
+		// Measured: they arrive as structural name refs the full path binds in a
+		// resolver pass this path does not run, so emitting them landed unbound
+		// endpoints and duplicate DEPENDS_ON rows — strictly worse than the gap.
 		if det := frameworkDetector(); det != nil {
 			if fwRes, dErr := det.Detect(ctx, input); dErr != nil {
 				logger.Printf("incremental: framework detect %s: %v", rel, dErr)
 			} else if fwRes != nil {
-				if n := engine.FoldFrameworkClassKinds(records, fwRes.Entities); n > 0 {
-					classKindFolds += n
-				}
+				var n int
+				records, n = engine.FoldFrameworkClassKinds(records, fwRes.Entities)
+				classKindFolds += n
 			}
 		}
 

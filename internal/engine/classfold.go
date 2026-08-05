@@ -186,84 +186,155 @@ func betterFrameworkClassCandidate(c, best *types.EntityRecord) bool {
 	return false
 }
 
-// FoldFrameworkClassKinds folds the generic class records in recs into the
-// framework-typed records in fw for the same (source_file, name), IN PLACE, and
-// returns the number of records folded.
+// FoldFrameworkClassKinds is the incremental path's port of the full rebuild's
+// Pass 2.5 + #1613 fold, for ONE file. recs is the per-language extractor's
+// output for that file; fw is engine.Detector's. It returns the record set to
+// emit and the number of class-representation records folded.
 //
-// This is the incremental path's equivalent of the full rebuild's Pass 2.5 +
-// #1613 fold, restricted to ONE file's records — which loses nothing, because
-// that fold is keyed by (SourceFile, Name) and so never pairs records from
-// different files.
+// What "one file" costs, precisely. The full path's fold indexes survivor
+// candidates from the WHOLE corpus but keys them by (SourceFile, Name), so no
+// pair of records from different files can ever fold together — restricting the
+// candidate set to one file's records is therefore lossless ON THE FILE AXIS.
+// It is not lossless in general, and an earlier version of this comment claimed
+// otherwise: the full path also indexes candidates emitted by the LANGUAGE
+// EXTRACTOR itself, not just by Detect. Several extractors emit a
+// framework-typed kind directly for a class they also emit a generic node for —
+// kotlin (SCOPE.Service for a Spring stereotype, the #1700 case), proto, razor,
+// cobol, fsharp, elm. Indexing only Detect's output left those classes with TWO
+// nodes on this path, breaking the #1613 "one class → one node" invariant the
+// fold exists to enforce. Both sets are candidates here.
+//
+// Detect's records that fold with nothing are EMITTED, not discarded (#6150):
+// a Route from a responder method, a Service from an app object and a Config
+// from its constructor have no extractor counterpart at all, and a full rebuild
+// carries every one of them. Running the classifier and keeping only the class
+// half would pay its whole cost for a seventh of its output.
+//
+// The two loops mirror the full path's, in its order:
+//
+//  1. SIBLING-SURVIVOR FOLD. All eligible framework-typed candidates for one
+//     (file, name) collapse into the best one; the losers are dropped after
+//     donating their properties and owned edges. Without it, a symbol emitted
+//     under two equally-strong kinds resolves to >1 node (#3172/#3195).
+//  2. FOLD-SOURCE LOOP. Each class-representation record (see IsClassFoldSource)
+//     folds into the survivor for its symbol, if one exists.
 //
 // The framework-typed record is the SURVIVOR, exactly as in the full path: it
 // carries the kind, subtype, qualified name, language and line span the fold
-// keeps, and the fold source contributes only the properties the survivor lacks
-// (minus "provenance"/"ref", which describe the source and would mislead on the
-// survivor) plus the edges it owns. Doing it the other way round — keeping the
-// source record and merely re-kinding it — would reproduce the KIND but not the
-// subtype or the property set, and the content-keyed parity gate compares those.
+// keeps, and the folded-away record contributes only the properties the survivor
+// lacks (minus "provenance"/"ref") plus the edges it owns. Doing it the other
+// way round — keeping the source record and merely re-kinding it — reproduces
+// the KIND but neither the subtype nor the property set, and the content-keyed
+// parity gate compares both (measured: that mutant is killed by the gate AND by
+// this package's tests).
 //
-// Records in recs that are not fold sources, and fold sources with no
-// framework-typed counterpart, are left untouched: a class no rule matches must
-// stay the generic node, which is exactly what the full path does with it.
-func FoldFrameworkClassKinds(recs []types.EntityRecord, fw []types.EntityRecord) int {
-	if len(recs) == 0 || len(fw) == 0 {
-		return 0
+// A fold source with no framework-typed candidate is returned unchanged: a class
+// no rule matches must stay the generic node, which is what the full path does
+// with it. Records that are neither candidates nor fold sources pass through
+// untouched and in order.
+func FoldFrameworkClassKinds(recs []types.EntityRecord, fw []types.EntityRecord) ([]types.EntityRecord, int) {
+	if len(recs) == 0 && len(fw) == 0 {
+		return recs, 0
 	}
 
-	// Index the canonical framework-typed survivor per (source_file, name).
-	type key struct{ file, name string }
-	best := make(map[key]*types.EntityRecord)
-	for i := range fw {
-		c := &fw[i]
-		if c.Name == "" {
-			continue
-		}
-		if _, eligible := FrameworkClassKindPriority[c.Kind]; !eligible {
-			continue
-		}
-		k := key{c.SourceFile, c.Name}
-		if cur, seen := best[k]; !seen || betterFrameworkClassCandidate(c, cur) {
-			best[k] = c
-		}
-	}
-	if len(best) == 0 {
-		return 0
-	}
-
-	folded := 0
+	// all is the candidate/emission universe in the full path's order: the
+	// extractor's records first, then Detect's. Order is load-bearing only as the
+	// last tiebreak (see betterFrameworkClassCandidate), where the full path uses
+	// the smallest stamped id — not available here, ids are stamped downstream.
+	all := make([]*types.EntityRecord, 0, len(recs)+len(fw))
 	for i := range recs {
-		src := &recs[i]
-		if !IsClassFoldSource(src) {
-			continue
-		}
-		// The framework records are emitted against the file being extracted, so
-		// an empty SourceFile on either side is never a legitimate match.
-		sv, ok := best[key{src.SourceFile, src.Name}]
-		if !ok || sv.Kind == src.Kind {
-			continue
-		}
+		all = append(all, &recs[i])
+	}
+	for i := range fw {
+		all = append(all, &fw[i])
+	}
 
-		merged := *sv
-		merged.Properties = make(map[string]string, len(sv.Properties)+len(src.Properties))
-		for pk, pv := range sv.Properties {
-			merged.Properties[pk] = pv
+	type key struct{ file, name string }
+	// eligible reports whether r can be a fold SURVIVOR. The blank checks are
+	// enforcement, not decoration: without them every file-less or nameless
+	// record would key onto {"",""} and fold with the others.
+	eligible := func(r *types.EntityRecord) bool {
+		if r.Name == "" || r.SourceFile == "" {
+			return false
+		}
+		_, ok := FrameworkClassKindPriority[r.Kind]
+		return ok
+	}
+
+	// ── Loop 1: sibling-survivor fold ──
+	best := make(map[key]*types.EntityRecord)
+	for _, r := range all {
+		if !eligible(r) {
+			continue
+		}
+		k := key{r.SourceFile, r.Name}
+		if cur, seen := best[k]; !seen || betterFrameworkClassCandidate(r, cur) {
+			best[k] = r
+		}
+	}
+	dropped := make(map[*types.EntityRecord]bool)
+	for _, r := range all {
+		if !eligible(r) {
+			continue
+		}
+		if sv := best[key{r.SourceFile, r.Name}]; sv != r {
+			donate(sv, r)
+			dropped[r] = true
+		}
+	}
+
+	// ── Loop 2: fold-source loop ──
+	folded := 0
+	for _, r := range all {
+		if dropped[r] || !IsClassFoldSource(r) {
+			continue
+		}
+		// sv == r is reachable: a class-hierarchy SHADOW carrying an eligible
+		// framework kind is BOTH a survivor candidate and a fold source, and
+		// without this it would donate its own edges to itself.
+		sv, ok := best[key{r.SourceFile, r.Name}]
+		if !ok || sv == r {
+			continue
+		}
+		donate(sv, r)
+		dropped[r] = true
+		folded++
+	}
+
+	out := make([]types.EntityRecord, 0, len(all))
+	for _, r := range all {
+		if !dropped[r] {
+			out = append(out, *r)
+		}
+	}
+	return out, folded
+}
+
+// donate folds src away into sv: sv keeps every field of its own and gains the
+// properties src carried that it lacks, plus the edges src owns.
+//
+// "provenance" and "ref" describe the record being folded AWAY — provenance
+// records that a node was INFERRED_FROM_CLASS_HIERARCHY, which is false of the
+// survivor — so they are the two the full path refuses to donate.
+//
+// An owned edge carries either an empty FromID (meaning "my owner") or its
+// owner's id, and the record→graph seam substitutes the OWNING record's id for
+// the empty form. Appending them to the survivor is therefore what re-homes
+// them; rewriting FromID here would bind them to an id that no longer exists.
+func donate(sv, src *types.EntityRecord) {
+	if len(src.Properties) > 0 {
+		if sv.Properties == nil {
+			sv.Properties = make(map[string]string, len(src.Properties))
 		}
 		for pk, pv := range src.Properties {
 			if pk == "provenance" || pk == "ref" {
 				continue
 			}
-			if _, exists := merged.Properties[pk]; !exists {
-				merged.Properties[pk] = pv
+			if _, exists := sv.Properties[pk]; !exists {
+				sv.Properties[pk] = pv
 			}
 		}
-		// Edges the fold source OWNS move onto the survivor. Their FromID is
-		// either empty (meaning "the owning record") or the source's own id; in
-		// both cases the owner is re-derived from the survivor downstream, so
-		// carrying them across unchanged is what re-homes them.
-		merged.Relationships = append(append([]types.RelationshipRecord(nil), sv.Relationships...), src.Relationships...)
-		*src = merged
-		folded++
 	}
-	return folded
+	sv.Relationships = append(sv.Relationships, src.Relationships...)
+	src.Relationships = nil
 }
