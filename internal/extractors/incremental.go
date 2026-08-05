@@ -614,11 +614,26 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			RepoRoot: absRepo,
 		}
 
-		// #6151 — supply a real tree. Mirrors cmd/grafel/index.go:3441-3456,
-		// including the PLT #537 tsx override: the plain `typescript` grammar
-		// treats JSX tags as syntax errors, so .tsx/.jsx must be parsed with the
-		// tsx grammar or every React file trips ErrHighSyntaxErrorRate and comes
-		// back with a nil tree — reintroducing this very bug for that extension.
+		// #6151 — supply a real tree. Mirrors cmd/grafel/index.go:3441-3456.
+		//
+		// THIS BLOCK AND THE FULL PATH'S ARE HAND-COPIED, NOT A SHARED HELPER,
+		// and they are already NOT identical: the full path additionally sets
+		// `Config: &extractorCfg` (#2320, Config-first/env-fallback precedence)
+		// and folds pr.ErrorRatio into the #5414 parse canary. Both omissions
+		// are pre-existing and outside #6151, but nothing structural stops the
+		// two from drifting further. If you touch either, touch both — or lift
+		// them into one helper and delete this paragraph.
+		//
+		// The PLT #537 tsx override below is carried for PARITY, which is the
+		// whole correctness argument of this fix. It is NOT load-bearing against
+		// #6151, and an earlier version of this comment claiming otherwise was
+		// wrong: measured, a one-line JSX sample parses at a 0.0400 error ratio
+		// under the plain `typescript` grammar and a realistic React file at
+		// 0.0465 with a usable 452-node tree — nowhere near the 10% ceiling that
+		// would produce a nil tree. Removing the override does not reintroduce
+		// the bug. Keep it because it improves tree fidelity and because the two
+		// paths must agree, not because a .tsx file would otherwise be silently
+		// emptied.
 		parseLang := cr.Language
 		if parseLang == "typescript" || parseLang == "javascript" {
 			low := strings.ToLower(rel)
@@ -626,10 +641,22 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 				parseLang = "tsx"
 			}
 		}
-		// treeRequired: this language HAS a tree-sitter grammar, so an extractor
-		// is entitled to assume a tree. ErrUnsupportedLanguage means the opposite
-		// — a pure source-scanner language that never wanted one, where a nil
-		// tree is the normal, correct input and must not raise an alarm.
+		// treeRequired: this language HAS a tree-sitter grammar. That is all it
+		// means, and the name overstates it — read it as treeAvailable.
+		// ErrUnsupportedLanguage is the reliable half: a language with no grammar
+		// is a pure source scanner that never wanted a tree, where nil is the
+		// normal, correct input and must not raise an alarm.
+		//
+		// The converse does NOT hold, and the over-approximation is deliberate.
+		// Having a grammar does not imply the extractor consumes one:
+		// internal/extractors/sql/sql.go never references TSTree at all, yet
+		// "sql" is in treesitter's migratedLanguages. So a .sql file whose
+		// content happens not to parse falls back to a full reindex that
+		// computes the same empty answer — measured, and ocaml has the same
+		// shape. That is a wasted reindex, not a wrong graph, and the
+		// alternative (a hand-maintained list of extractors that truly need a
+		// tree) is exactly the per-extractor bookkeeping this fix exists to
+		// avoid getting wrong.
 		treeRequired := true
 		pr, perr := parser.Parse(ctx, content, parseLang)
 		if perr != nil && errors.Is(perr, treesitter.ErrUnsupportedLanguage) {
@@ -678,9 +705,18 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			// of the fourteen returns (nil, nil) in exactly that state.
 			//
 			// A full reindex would also emit nothing for such a file, so this
-			// costs a redundant reindex in the malformed-file case — the price of
-			// never again silently deleting a file's entities on a parse the
-			// extractor could not consume.
+			// costs a redundant reindex in the malformed-file case. THAT COST WAS
+			// MEASURED AND IS NEAR ZERO — do not "optimise" this guard away on a
+			// hunch that mid-edit files trip it:
+			//   - across grafel's own checked-in corpus, 0 of 5863 files in 15
+			//     languages produced an unusable tree (0.00%);
+			//   - five realistic mid-edit Kotlin states — unclosed brace,
+			//     half-typed `fun`, dangling `.`, a `clas` typo, and unresolved
+			//     git conflict markers — ALL parsed and returned done=true with no
+			//     fallback. Tree-sitter's error recovery is why.
+			// The fixture that exercises this branch needs hand-made dense
+			// garbage measured at a 12.8% error ratio. Real editing does not
+			// reach here.
 			logger.Printf("incremental: %s — no records and no usable parse tree (lang=%s): %v",
 				rel, parseLang, perr)
 			return fallback(t0, fmt.Sprintf("no-tree-no-records file=%s lang=%s", rel, parseLang))

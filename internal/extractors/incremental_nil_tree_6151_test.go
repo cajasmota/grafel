@@ -21,6 +21,15 @@
 // they are BIDIRECTIONAL. A count-based assertion cannot distinguish
 // "re-extracted correctly" from "deleted and never re-added" — that is exactly
 // how this defect survived.
+//
+// WHAT THIS FILE DOES NOT COVER. #6151 has a second half: Step 6a prunes every
+// INBOUND cross-file edge to the evicted entities as "truly removed". That half
+// is fixed only CONSEQUENTIALLY — the entities come back with the same
+// deterministic IDs, so Step 6a stops classifying them as removed and the
+// inbound edges survive for free. Nothing here asserts it: every fixture below
+// is single-file, so no inbound cross-file edge exists to lose. A multi-file
+// fixture (a Kotlin caller in an unchanged file, the callee edited) would pin
+// it, and is worth adding.
 package extractors
 
 import (
@@ -178,8 +187,15 @@ func TestIncremental_KotlinFile_EntitiesSurviveReExtraction_6151(t *testing.T) {
 		"SCOPE.Operation|voidEntry",
 	}
 
-	// Bidirectional, by content. Missing entries are the #6151 data loss;
-	// extra entries are a duplication regression.
+	// Bidirectional, by content. The MISSING arm is the #6151 data loss and is
+	// the arm that carries the weight.
+	//
+	// The UNEXPECTED arm is weaker than it looks, so do not lean on it: it
+	// catches a spurious DISTINCT entity, but NOT duplication. Appending
+	// `records` to itself survives this assertion, because entity IDs are
+	// deterministic over (kind, name, source_file) and the duplicates are
+	// deduped downstream before the graph is written. Duplication is
+	// incremental_dupe_test.go's job.
 	wantSet := map[string]bool{}
 	for _, w := range want {
 		wantSet[w] = true
@@ -323,5 +339,78 @@ func TestIncremental_EmptyFileDoesNotFallBack_6151(t *testing.T) {
 	}
 	if got := ntIdentities(doc, ntKotlinFile); len(got) != 0 {
 		t.Errorf("emptied file must leave no entities behind, got %v", got)
+	}
+}
+
+// ntSeedCSS builds a baseline for a stylesheet: file on disk, matching
+// manifest, one seeded entity.
+func ntSeedCSS(t *testing.T, rel, content string) (repo, stateDir string) {
+	t.Helper()
+	repo = t.TempDir()
+	stateDir = t.TempDir()
+	ntWrite(t, repo, rel, content)
+	ntSeed(t, repo, stateDir, []graph.Entity{{
+		ID:         graph.EntityID("test-repo", "SCOPE.Component", "nt-card", rel),
+		Name:       "nt-card",
+		Kind:       "SCOPE.Component",
+		SourceFile: rel,
+		Language:   "css",
+	}})
+	return repo, stateDir
+}
+
+// TestIncremental_ZeroEntitiesWithAGoodTreeDoesNotFallBack_6151 pins the
+// !gotTree conjunct of the no-tree-no-records guard, which nothing else covers:
+// drop it and the whole existing suite still passes, while these two cases
+// start forcing a full reindex on every save.
+//
+// Both inputs parse perfectly and legitimately contain zero entities. The
+// guard must distinguish "the extractor was given a tree and found nothing"
+// (fine, persist the empty answer) from "the extractor was given no tree and
+// therefore returned nothing" (#6151, fall back). Only the parse outcome
+// separates them — len(records)==0 is identical in both.
+//
+// CSS is the vehicle on purpose. Plain `.css` is the FIFTEENTH extractor with
+// the #6151 nil-tree bail (css.go, the `default:` branch of the extension
+// switch — .scss and .less self-parse, plain .css does not), so these files
+// exercise the guard on an affected language rather than a bystander. Both
+// classify as language "css", so treeRequired is true for each.
+func TestIncremental_ZeroEntitiesWithAGoodTreeDoesNotFallBack_6151(t *testing.T) {
+	cases := []struct {
+		name  string
+		rel   string
+		after string
+	}{
+		{
+			// Plain .css, stripped to a comment. Parses cleanly; no rules left.
+			name:  "comment-only css",
+			rel:   "nt_theme.css",
+			after: "/* nt: rules moved to tokens.css */\n",
+		},
+		{
+			// .scss emptied of every entity-bearing construct.
+			name:  "scss with no entities",
+			rel:   "nt_theme.scss",
+			after: "// nt: nothing left here\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, stateDir := ntSeedCSS(t, tc.rel, ".nt-card {\n  color: red;\n}\n")
+			ntWrite(t, repo, tc.rel, tc.after)
+
+			res := TryIncremental(context.Background(), repo, stateDir, nil, nil)
+			if !res.Done {
+				t.Fatalf("a file that parses fine and legitimately has no entities "+
+					"must not force a full reindex: fallback=%q", res.FallbackReason)
+			}
+			doc, err := graph.LoadGraphFromDir(stateDir)
+			if err != nil {
+				t.Fatalf("load graph: %v", err)
+			}
+			if got := ntIdentities(doc, tc.rel); len(got) != 0 {
+				t.Errorf("stale entities survived the edit: %v", got)
+			}
+		})
 	}
 }
