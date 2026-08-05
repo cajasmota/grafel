@@ -154,6 +154,54 @@ func TestRunCopy_Step4VerifyFailure_KeepsMCPRegistration(t *testing.T) {
 	assertForeignServerIntact(t, env.claudeJSON, "after a step-4 version-verify failure")
 }
 
+// TestRunCopy_Step4Failure_KeepsAPreexistingGrafelEntry is the reporter's own
+// situation: grafel was ALREADY registered, they re-ran `grafel install` on the
+// advice of install.sh, the daemon did not come back, and their MCP server was
+// gone afterwards.
+//
+// This test separates the two defects that combine to produce that outcome.
+// With the sidecar backup still alive, a rollback would have RESTORED the
+// pre-existing entry (present, old command) — bad but survivable. With the
+// backup already discarded at step 3, RestorePath degraded to UnregisterPath
+// and the entry was DELETED outright. Asserting the entry is present at all
+// therefore fails only under the full original code.
+func TestRunCopy_Step4Failure_KeepsAPreexistingGrafelEntry(t *testing.T) {
+	env := newTestEnv(t)
+	doc := map[string]any{
+		"mcpServers": map[string]any{
+			"grafel": map[string]any{"command": "/old/path/grafel", "args": []any{"mcp-bridge"}, "type": "stdio"},
+		},
+	}
+	b, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal seed: %v", err)
+	}
+	if err := os.WriteFile(env.claudeJSON, b, 0o644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+
+	opts := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: false,
+		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
+			return "", fmt.Errorf("injected daemon restart failure (#6168)")
+		},
+	}
+
+	if _, err := install.RunCopy(opts); err == nil {
+		t.Fatal("expected RunCopy to fail when the daemon restart fails")
+	}
+
+	assertGrafelPresent(t, env.claudeJSON, "after a step-4 failure over a pre-existing registration")
+	// The registration must also point at the binary the install just wrote,
+	// not be silently reverted to the stale one.
+	assertMCPRegistered(t, env.claudeJSON, env.fakeBin)
+}
+
 // TestRunDev_Step4Failure_KeepsMCPRegistration mirrors the above for DEV mode,
 // which carries a byte-identical copy of the same defect.
 func TestRunDev_Step4Failure_KeepsMCPRegistration(t *testing.T) {
