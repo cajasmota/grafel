@@ -6,10 +6,14 @@ package solidity_test
 // component had no CONTAINS edge naming them.
 
 import (
+	"fmt"
+	"maps"
 	"slices"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -243,5 +247,161 @@ contract Callbacks {
 	}
 	if ent := solFindSubtype(ents, "Callbacks.counter", "SCOPE.Schema", "field"); ent == nil {
 		t.Errorf("the declaration after it must still be found; got %v", solFields(ents))
+	}
+}
+
+// ── CALLS binding ────────────────────────────────────────────────────────────
+
+func solFactoryFieldSrc(contract string) string {
+	return fmt.Sprintf(`// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract %s {
+    address public factory;
+}
+`, contract)
+}
+
+const solConsumerSrc = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract Consumer {
+    function poke() external {
+        pool.factory();
+    }
+}
+`
+
+// solResolve runs the production resolver pipeline over the supplied files in
+// the order cmd/grafel/index.go uses — import table, import-aware CALLS
+// rewrite, entity index, embedded-reference rewrite — and returns the rewritten
+// records.
+func solResolve(t *testing.T, files map[string]string) []types.EntityRecord {
+	t.Helper()
+	var recs []types.EntityRecord
+	for _, path := range slices.Sorted(maps.Keys(files)) {
+		recs = append(recs, runSolidity(t, files[path], path)...)
+	}
+	for i := range recs {
+		if recs[i].Name == "" {
+			continue
+		}
+		recs[i].ID = graph.EntityID("issue6135", recs[i].Kind, recs[i].Name, recs[i].SourceFile)
+	}
+	resolve.ResolveImports(recs, resolve.BuildImportTable(recs))
+	resolve.ReferencesEmbedded(recs, resolve.BuildIndex(recs))
+	return recs
+}
+
+// solCallTargets describes what every CALLS edge of the named caller bound to:
+// "<Name> [<Kind>/<Subtype>] @ <SourceFile>" for a bound edge, and
+// "<dangling: stub>" for one the resolver left alone. Sorted for comparison.
+func solCallTargets(recs []types.EntityRecord, caller string) []string {
+	byID := make(map[string]*types.EntityRecord, len(recs))
+	for i := range recs {
+		byID[recs[i].ID] = &recs[i]
+	}
+	var out []string
+	for i := range recs {
+		if recs[i].Name != caller {
+			continue
+		}
+		for _, rel := range recs[i].Relationships {
+			if rel.Kind != "CALLS" {
+				continue
+			}
+			if ent := byID[rel.ToID]; ent != nil {
+				out = append(out, fmt.Sprintf("%s [%s/%s] @ %s", ent.Name, ent.Kind, ent.Subtype, ent.SourceFile))
+				continue
+			}
+			out = append(out, "<dangling: "+rel.ToID+">")
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// TestSolidity_StateVariableCallTargets (#6135) pins what the CALLS edges out
+// of a caller BIND TO once state variables have entities, not how many of them
+// dangle. `pool.factory()` yields two stubs: the dotted "pool.factory", which
+// only ever matches an entity of that exact name, and the bare leaf "factory",
+// which reaches the same-directory leaf-name tier (refs.go
+// lookupPackageMemberByLeafName). That tier is what the new field entities
+// become eligible for, so a bind that moved to another contract's field, or to
+// a field in another directory, fails here even though the dangling count would
+// improve.
+func TestSolidity_StateVariableCallTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		files map[string]string
+		want  []string
+	}{
+		{
+			// One contract in the directory declares `factory`, so the leaf
+			// tier has a single candidate and binds the bare stub to it.
+			name: "sole declarer in the directory",
+			files: map[string]string{
+				"contracts/Pool.sol":     solFactoryFieldSrc("Pool"),
+				"contracts/Consumer.sol": solConsumerSrc,
+			},
+			want: []string{
+				"<dangling: pool.factory>",
+				"Pool.factory [SCOPE.Schema/field] @ contracts/Pool.sol",
+			},
+		},
+		{
+			// Two contracts declare `factory`. The resolver must decline
+			// rather than pick one — a bind to either is a wrong edge.
+			name: "two declarers leave the call unbound",
+			files: map[string]string{
+				"contracts/Pool.sol":     solFactoryFieldSrc("Pool"),
+				"contracts/Registry.sol": solFactoryFieldSrc("Registry"),
+				"contracts/Consumer.sol": solConsumerSrc,
+			},
+			want: []string{
+				"<dangling: factory>",
+				"<dangling: pool.factory>",
+			},
+		},
+		{
+			// The leaf tier is package-scoped, so a field one directory over
+			// must not capture the call.
+			name: "declarer in another directory does not capture",
+			files: map[string]string{
+				"pool/Pool.sol":    solFactoryFieldSrc("Pool"),
+				"app/Consumer.sol": solConsumerSrc,
+			},
+			want: []string{
+				"<dangling: factory>",
+				"<dangling: pool.factory>",
+			},
+		},
+		{
+			// Nothing declares the name: both stubs stay dangling.
+			name: "undeclared target still dangles",
+			files: map[string]string{
+				"contracts/Pool.sol": solFactoryFieldSrc("Pool"),
+				"contracts/Consumer.sol": `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract Consumer {
+    function poke() external {
+        y.somethingNoOneDeclares();
+    }
+}
+`,
+			},
+			want: []string{
+				"<dangling: somethingNoOneDeclares>",
+				"<dangling: y.somethingNoOneDeclares>",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := solCallTargets(solResolve(t, tc.files), "Consumer.poke")
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("Consumer.poke CALLS targets =\n  %v\nwant\n  %v", got, tc.want)
+			}
+		})
 	}
 }
