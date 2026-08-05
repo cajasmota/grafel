@@ -521,14 +521,37 @@ func UnregisterPath(path string) error {
 //
 // The sidecar backup is removed after a successful restore.
 func RestorePath(path string) error {
+	err := RestoreSnapshot(path)
+	if errors.Is(err, ErrNoSnapshot) {
+		// No snapshot — fall back to surgical removal so we never
+		// clobber foreign servers.
+		return UnregisterPath(path)
+	}
+	return err
+}
+
+// ErrNoSnapshot reports that no pristine sidecar backup exists for a config
+// path, so there is nothing to restore.
+//
+// It exists so callers can distinguish "restore" from "delete". RestorePath
+// deliberately degrades to UnregisterPath in this case, which is right for its
+// documented "registration never ran" caller but catastrophic for a caller
+// that KNOWS a registration ran and merely wants it undone: it silently turns
+// a restore into a removal (#6168). Rollback paths therefore call
+// RestoreSnapshot and surface this error rather than deleting blind.
+var ErrNoSnapshot = errors.New("mcpreg: no pristine snapshot for config path")
+
+// RestoreSnapshot is RestorePath WITHOUT the delete-if-no-snapshot fallback:
+// it restores the pristine sidecar (or removes a file grafel created, per the
+// absent-sentinel) and returns ErrNoSnapshot when there is no snapshot to
+// restore from. It never removes an entry it has no snapshot for.
+func RestoreSnapshot(path string) error {
 	guardResolvedConfigPath(path, "MCP host config")
 	sidecar := sidecarBackupPath(path)
 	b, err := os.ReadFile(sidecar)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// No snapshot — fall back to surgical removal so we never
-			// clobber foreign servers.
-			return UnregisterPath(path)
+			return ErrNoSnapshot
 		}
 		return err
 	}

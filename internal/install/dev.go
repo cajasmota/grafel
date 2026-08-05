@@ -147,8 +147,9 @@ func RunDev(opts DevOptions) (*DevResult, error) {
 			switch s {
 			case 2:
 				rollbackSkillsSymlinks(opts, state)
-			case 3:
-				rollbackMCPRegistration(CopyOptions{ClaudeConfigDirs: opts.ClaudeConfigDirs}, state)
+				// Step 3 is deliberately absent — see the matching comment in
+				// RunCopy: a completed MCP registration is not undone by a
+				// later step's failure (#6168).
 			}
 		}
 		if !opts.DryRun {
@@ -239,6 +240,8 @@ func RunDev(opts DevOptions) (*DevResult, error) {
 			continue
 		}
 		if _, err := mcpreg.RegisterPath(cfgPath, opts.BinPath); err != nil {
+			// Mid-loop abort: undo only the targets this loop touched (#6168).
+			rollbackMCPRegistration(append(append([]string(nil), registeredPaths...), cfgPath))
 			rollback(3)
 			return nil, fmt.Errorf("step 3 – MCP register %s: %w", cfgPath, err)
 		}
@@ -249,12 +252,6 @@ func RunDev(opts DevOptions) (*DevResult, error) {
 		RegisteredPaths: registeredPaths,
 	}
 	result.MCPPaths = registeredPaths
-	// Step 3 succeeded: discard pristine backups (see copy.go rationale).
-	if !opts.DryRun {
-		for _, cfgPath := range registeredPaths {
-			mcpreg.ClearBackup(cfgPath)
-		}
-	}
 	completedSteps = append(completedSteps, 3)
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -304,6 +301,11 @@ func RunDev(opts DevOptions) (*DevResult, error) {
 	}
 	result.StatePath = opts.StatePath
 	completedSteps = append(completedSteps, 6)
+
+	// ── COMMIT: discard the pristine MCP snapshots (see RunCopy, #6168) ─────
+	if !opts.DryRun {
+		commitMCPBackups(registeredPaths)
+	}
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// Step 7: Git hook installation (post-checkout, post-merge, post-rewrite,
