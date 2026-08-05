@@ -693,6 +693,22 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 	copy(allMCPTargets, claudeDirs)
 	allMCPTargets = append(allMCPTargets, mcpreg.DetectWindsurfPaths()...)
 
+	// Discard any sidecar left behind by an EARLIER run before taking this
+	// run's snapshots. backupOnce refuses to overwrite an existing sidecar, so
+	// without this a snapshot from a previous run — one that ended at a failed
+	// step 4 and so never reached the commit-time clear — would be treated as
+	// this run's pristine original. A later rollback would then write weeks-old
+	// content over the user's live config, or, if that stale snapshot is the
+	// absent-sentinel from a first-ever install, DELETE the config file
+	// outright along with every foreign server in it.
+	//
+	// This is safe at the start of step 3 precisely because no in-flight
+	// transaction can need a previous run's snapshot: rollback only ever
+	// restores what the CURRENT run wrote.
+	if !opts.DryRun {
+		discardStaleMCPBackups(allMCPTargets)
+	}
+
 	for _, cfgPath := range allMCPTargets {
 		if opts.DryRun {
 			registeredPaths = append(registeredPaths, cfgPath)
@@ -1168,11 +1184,24 @@ func rollbackMCPRegistration(touchedPaths []string) {
 }
 
 // commitMCPBackups discards the pristine sidecar snapshots once the install
-// transaction has committed. It is the ONLY place backups are cleared: keeping
-// the snapshot alive for the whole transaction is what makes a rollback a real
-// restore rather than a silent delete (#6168).
+// transaction has committed. Keeping the snapshot alive for the whole
+// transaction is what makes a rollback a real restore rather than a silent
+// delete (#6168).
 func commitMCPBackups(registeredPaths []string) {
 	for _, cfgPath := range registeredPaths {
+		mcpreg.ClearBackup(cfgPath)
+	}
+}
+
+// discardStaleMCPBackups drops sidecars inherited from an EARLIER run, so this
+// run's backupOnce takes a snapshot of the config as it is NOW.
+//
+// commitMCPBackups alone is not enough: it is unreachable on any failure after
+// step 3, and a failed daemon restart is the common ending for exactly the
+// users this fix targets. Without this second clear, a stale snapshot survives
+// indefinitely and the next run's rollback restores it over live content.
+func discardStaleMCPBackups(targets []string) {
+	for _, cfgPath := range targets {
 		mcpreg.ClearBackup(cfgPath)
 	}
 }

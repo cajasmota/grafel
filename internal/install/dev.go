@@ -234,6 +234,11 @@ func RunDev(opts DevOptions) (*DevResult, error) {
 	// Step 3: MCP registration
 	// ─────────────────────────────────────────────────────────────────────────
 	var registeredPaths []string
+	// Drop sidecars inherited from an earlier run before snapshotting fresh —
+	// see the matching comment in RunCopy (#6168).
+	if !opts.DryRun {
+		discardStaleMCPBackups(claudeDirs)
+	}
 	for _, cfgPath := range claudeDirs {
 		if opts.DryRun {
 			registeredPaths = append(registeredPaths, cfgPath)
