@@ -399,9 +399,14 @@ func bodyCallsSelector(fn *ast.FuncDecl, pkg, name string) bool {
 //     parallelism has a knob that works; that chain is pinned by
 //     TestDaemonParseCapPrecedence/TestDaemonParseCapFileVal above.
 //  3. IN THE DAEMON, GOMAXPROCS IS DERIVED, NOT DECLARED. runDaemonMode SETS
-//     runtime.GOMAXPROCS from resolveDaemonGOMAXPROCSWith. Sizing the parse cap
-//     off it would make one resolved value the input to the other — a loop, and
-//     literally the #5970 shape.
+//     runtime.GOMAXPROCS from resolveDaemonGOMAXPROCSWith, so sizing the parse
+//     cap off it would make one resolved value the input to the other. To be
+//     precise — an earlier revision of this comment called that "a loop", which
+//     over-claims: resolveDaemonGOMAXPROCSWith settles on a fixed value, so it
+//     is circular COUPLING, not an unbounded loop, and it would merely make the
+//     cap track a knob that means something else. The conclusion rests on (1)
+//     and (2), which are sufficient on their own; this is a supporting reason,
+//     not a proof.
 //
 // So the invariant is not "the cap is below the ambient GOMAXPROCS"; it is
 // "the cap does not depend on GOMAXPROCS at all". That is now asserted
@@ -422,6 +427,15 @@ func TestDaemonParseCapDocumentsWhyNotGOMAXPROCS(t *testing.T) {
 	// Sweep GOMAXPROCS across values below, at, and above the resolved cap. If
 	// the cap were GOMAXPROCS-shaped in any way — floor, ceiling, or a
 	// proportion — at least one of these would move it.
+	//
+	// THIS MUTATES PROCESS-GLOBAL STATE. runtime.GOMAXPROCS is per-process, not
+	// per-test, so for the duration of this test every other goroutine in the
+	// binary sees the swept value; it is restored via t.Cleanup. That is safe
+	// today only because no test in cmd/grafel calls t.Parallel(), so nothing
+	// else is running concurrently — an undeclared assumption in the first
+	// version of this test, stated here so that adding t.Parallel() anywhere in
+	// this package is a decision made with this in view rather than a silent
+	// source of flakiness.
 	restore := runtime.GOMAXPROCS(0)
 	t.Cleanup(func() { runtime.GOMAXPROCS(restore) })
 	for _, procs := range []int{1, 2, 3, want, want + 1, runtime.NumCPU()} {

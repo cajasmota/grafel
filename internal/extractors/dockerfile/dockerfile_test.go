@@ -105,8 +105,33 @@ func TestDockerfileExtractor_EmptyContent(t *testing.T) {
 // Asserted by EQUIVALENCE, not by a count: self-parsing must produce the same
 // entity content as the pre-parsed path. A count-only assertion would pass on a
 // fallback that parsed garbage.
+//
+// WHAT THIS EQUIVALENCE DOES AND DOES NOT COVER. parseForTest builds the same
+// adapter and grammar the fallback does (tsofficial + tsdockerfile), so the two
+// sides run the SAME parser — this pins that the fallback WIRES the parser
+// correctly and walks the resulting tree the same way, not that the official
+// binding agrees with the production ParserFactory path. The factory adds the
+// parse watchdog and the shared gate; the fallback's use of the gate is asserted
+// separately by the AcquireParseSlot wiring, and its nil-tree contract by
+// nil_tree_6154_internal_test.go.
+//
+// The property comparison is over the WHOLE map rather than a named subset. An
+// earlier revision listed three keys, one of which (`base_image`) the extractor
+// never emits — a comparison of "" against "" that looked like coverage and was
+// not. Comparing every key cannot go vacuous that way, and the non-vacuity check
+// below pins that the map is non-trivial in the first place.
 func TestDockerfileExtractor_NilTreeSelfParses6154(t *testing.T) {
-	const src = "FROM ubuntu:22.04\nRUN apt-get update\nEXPOSE 8080\n"
+	// Exercises every instruction family the entity folds into properties
+	// (#2063): multi-stage FROM, RUN, COPY --from, EXPOSE, ENV, ARG, ENTRYPOINT.
+	const src = `FROM golang:1.22 AS build
+ARG VERSION=1.0
+RUN go build -o /app ./...
+FROM ubuntu:22.04
+COPY --from=build /app /usr/bin/app
+ENV MODE=prod
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/app"]
+`
 
 	selfParsed := extractEntities(t, "Dockerfile", src, nil)
 	if len(selfParsed) == 0 {
@@ -130,11 +155,32 @@ func TestDockerfileExtractor_NilTreeSelfParses6154(t *testing.T) {
 			t.Errorf("entity %d: SourceFile %q vs %q", i, got.SourceFile, want.SourceFile)
 		}
 		// The instruction detail is folded into properties (#2063), so this is
-		// where a wrongly-parsed tree would actually show up.
-		for _, key := range []string{"base_image", "stages", "exposed_ports"} {
-			if got.Properties[key] != want.Properties[key] {
-				t.Errorf("entity %d: property %q = %q on the self-parse path, %q on the pre-parsed path",
-					i, key, got.Properties[key], want.Properties[key])
+		// where a wrongly-parsed tree would actually show up. Compare the whole
+		// map in both directions — a one-sided loop misses keys the self-parse
+		// path failed to emit at all.
+		if len(got.Properties) != len(want.Properties) {
+			t.Errorf("entity %d: %d properties self-parsed vs %d pre-parsed (%v vs %v)",
+				i, len(got.Properties), len(want.Properties), got.Properties, want.Properties)
+		}
+		for k, wv := range want.Properties {
+			if gv, ok := got.Properties[k]; !ok {
+				t.Errorf("entity %d: property %q missing on the self-parse path (want %q)", i, k, wv)
+			} else if gv != wv {
+				t.Errorf("entity %d: property %q = %q self-parsed, %q pre-parsed", i, k, gv, wv)
+			}
+		}
+		for k := range got.Properties {
+			if _, ok := want.Properties[k]; !ok {
+				t.Errorf("entity %d: property %q only on the self-parse path", i, k)
+			}
+		}
+		// NON-VACUITY: the instruction-derived properties must actually be
+		// populated, or the whole comparison above comes down to two identical
+		// near-empty maps.
+		for _, key := range []string{"stages", "exposed_ports", "env_vars", "build_args", "entrypoint"} {
+			if want.Properties[key] == "" {
+				t.Errorf("fixture no longer populates %q — the property equivalence above is "+
+					"comparing empty against empty for that key", key)
 			}
 		}
 		if len(got.Relationships) != len(want.Relationships) {

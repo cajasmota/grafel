@@ -135,18 +135,42 @@ var (
 	// back to the interface they double.
 	reMoqVarBinding = regexp.MustCompile(`\b(\w+)\s*=\s*new\s+Mock\s*<\s*([\w.]+)\s*>`)
 
-	// #6144 — enclosing type declaration, used to attach the container's
-	// DEPENDS_ON_SERVICE edge to the TEST CLASS rather than to the container
-	// node. Deliberately matches the same four declaration forms the BASE csharp
-	// extractor turns into SCOPE.Component entities (csharp.go:153:
-	// class/interface/struct/record_declaration), because the whole point is to
-	// land on the identity the base extractor already emits — see
-	// enclosingCSharpType.
-	reCSharpTypeDecl = regexp.MustCompile(`(?m)^[\t ]*(?:\[[^\]]*\][\t ]*)*(?:(?:public|internal|private|protected|static|sealed|abstract|partial|file)\s+)*(?:class|record|struct|interface)\s+(\w+)`)
+	// #6144 — enclosing CLASS declaration, used to attach the container's
+	// DEPENDS_ON_SERVICE edge to the test class rather than to the container node.
+	//
+	// PLAIN `class` ONLY, DELIBERATELY. An earlier revision matched the four
+	// declaration forms the base extractor turns into SCOPE.Component entities
+	// (csharp.go:153 — class/interface/struct/record_declaration). That was wrong
+	// twice over, and adversarial review caught the first:
+	//
+	//  1. KEYWORD ORDER. A `(?:class|record|struct|interface)` alternation matches
+	//     `record` FIRST in `record struct Row(int Id)`, capturing the NEXT word —
+	//     "struct" — as the type name. Positional records beside a test class are
+	//     ordinary modern C#, and the consequence is severe: SCOPE.Component/
+	//     class/"struct" matches no base entity, survives the #6104 merge as a
+	//     standalone Tier C node, and carries the edge. That is exactly the node
+	//     fabrication this function's contract promises never happens.
+	//
+	//  2. SUBTYPE. Reordering the alternation fixes the capture but not the
+	//     identity. The facet claims Subtype "class"; the base extractor maps
+	//     record_declaration to "type" and struct_declaration to "struct". Tier A
+	//     keys on (SourceFile, Kind, Name) and lets the CUSTOM value win on
+	//     conflict, so a facet for a record would silently displace the base
+	//     node's Subtype — corrupting an entity to attach an edge to it.
+	//
+	// Matching plain `class` alone removes both. A Testcontainers fixture is
+	// constructed in a class, never in a record or an interface; `class` is the
+	// one form whose base Subtype is unambiguously "class", so the facet can
+	// never displace anything; and a `record struct` declared INSIDE a test class
+	// no longer shadows it, because the nearest preceding `class` is still the
+	// test class — which is the correct attribution anyway. `record class X` is
+	// deliberately NOT matched (its base Subtype is "type"): that falls back to
+	// the container node, which is honest rather than corrupting.
+	reCSharpClassDecl = regexp.MustCompile(`(?m)^[\t ]*(?:\[[^\]]*\][\t ]*)*(?:(?:public|internal|private|protected|static|sealed|abstract|partial|file)\s+)*class\s+(\w+)`)
 )
 
-// enclosingCSharpType returns the name of the nearest type declaration that
-// starts at or before offset, or "" when there is none.
+// enclosingCSharpClass returns the name of the nearest plain `class`
+// declaration that starts at or before offset, or "" when there is none.
 //
 // #6144 — WHY THIS EXISTS AND WHAT IT IS FOR. The container's
 // DEPENDS_ON_SERVICE edge used to hang off the container node itself, so the
@@ -171,24 +195,28 @@ var (
 // union (min non-zero start, max end) cannot narrow the base class's span.
 //
 // HONEST-PARTIAL, AND WHERE IT STOPS. The scan is lexical and takes the NEAREST
-// PRECEDING declaration; it does not track braces, so a container constructed
-// inside a nested type is attributed to that nested type (correct) but one
-// constructed after a nested type has closed is attributed to the nested type
-// too (wrong). Both are still a type IN THE SAME FILE, so the edge remains
-// vastly more informative than the tautology it replaces, and when no
-// declaration precedes the match at all the caller keeps the edge on the
+// PRECEDING class declaration; it does not track braces, so a container
+// constructed inside a nested class is attributed to that nested class (correct)
+// but one constructed after a nested class has closed is attributed to the
+// nested class too (wrong). Both are still a class IN THE SAME FILE, so the edge
+// remains vastly more informative than the tautology it replaces, and when no
+// class declaration precedes the match at all the caller keeps the edge on the
 // container node rather than dropping it — a relationship the extractor meant
-// to express is never silently lost (#6123).
+// to express is never silently lost (#6123). Restricting to `class` also means
+// a record/struct/interface declared INSIDE a test class cannot shadow it; see
+// reCSharpClassDecl for why that restriction is load-bearing and not merely
+// convenient.
+//
 // Returns the declaration's byte offset alongside the name so the merge facet
 // can be stamped with the class's own declaration line rather than the
 // container's — a facet line inside the class body would drag the Tier A span
 // union's StartLine down below the real declaration.
-func enclosingCSharpType(src string, offset int) (string, int) {
+func enclosingCSharpClass(src string, offset int) (string, int) {
 	if offset <= 0 || offset > len(src) {
 		return "", 0
 	}
 	name, at := "", 0
-	for _, m := range reCSharpTypeDecl.FindAllStringSubmatchIndex(src[:offset], -1) {
+	for _, m := range reCSharpClassDecl.FindAllStringSubmatchIndex(src[:offset], -1) {
 		name, at = src[m[2]:m[3]], m[2]
 	}
 	return name, at
@@ -355,7 +383,7 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 	// MCP caller could not already read off the node — a tautology, not a
 	// relationship.
 	//
-	// The FROM endpoint is now the enclosing test type (enclosingCSharpType +
+	// The FROM endpoint is now the enclosing test type (enclosingCSharpClass +
 	// the #6104 Tier A identity merge, both documented there). Of the three
 	// options #6144 laid out, this is (1). (2) "drop the edge" was rejected: the
 	// edge is the only thing that would state a test's infrastructure dependency
@@ -469,7 +497,7 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 		// behaviour rather than dropping the relationship.
 		owner, declAt := "", 0
 		if ref != "" {
-			owner, declAt = enclosingCSharpType(src, offset)
+			owner, declAt = enclosingCSharpClass(src, offset)
 		}
 		if owner != "" {
 			// Set, not append: types.Props is binary-searched (find/Get) and must

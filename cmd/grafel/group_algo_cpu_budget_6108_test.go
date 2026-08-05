@@ -408,3 +408,119 @@ func TestGroupAlgoProgressEvery_OverrideParsing(t *testing.T) {
 		})
 	}
 }
+
+// TestGroupAlgoProgress_NoLineIsCommittedInsideTheStopWindow is the test that
+// pins the IN-LOOP RE-CHECK, as opposed to the barrier.
+//
+// #6134 — WHY THE OTHER TWO TESTS ARE NOT ENOUGH. Both of them sample at or
+// after stop() RETURNS, so neither can observe a line committed *during* stop().
+// Mutation-tested: removing the `<-exited` barrier kills them, but removing the
+// re-check leaves them fully green — the extra line is written while stop() is
+// still waiting, and by the time stop() returns the goroutine is gone and the
+// count is stable. So the half of the fix that actually prevents a finished pass
+// from reporting was, until this test, unpinned.
+//
+// HOW THE RACE IS MADE DETERMINISTIC RATHER THAN SAMPLED. A rate-based check
+// ("count writes inside the stop window") has an irreducible false positive: a
+// tick body that was already in flight when the stop signal was set is a
+// legitimate line, and no external observer can distinguish it. This test
+// removes the ambiguity by driving the goroutine into a known position instead:
+//
+//  1. A gated sink blocks the goroutine INSIDE its first log write.
+//  2. The test then sleeps past the interval, so the ticker has a tick queued
+//     (time.Ticker buffers exactly one).
+//  3. stop() is called from another goroutine; it closes `done` and blocks on
+//     the barrier. `done` is now closed BEFORE the goroutine re-enters select.
+//  4. The sink is released. The goroutine finishes write #1 and loops into a
+//     select where BOTH `done` and the pending tick are ready — the exact
+//     coin-flip the re-check exists for.
+//
+// With the re-check, no second line is possible, by construction. Without it,
+// select picks the tick about half the time and emits one. Repeated cycles make
+// a surviving mutant vanishingly unlikely while keeping false positives at
+// exactly zero — the legitimate in-flight line is write #1, which is expected
+// and counted.
+func TestGroupAlgoProgress_NoLineIsCommittedInsideTheStopWindow(t *testing.T) {
+	t.Setenv("GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL", "10ms")
+
+	const cycles = 24
+	for i := range cycles {
+		sink := &gatedWriter{
+			entered: make(chan struct{}),
+			release: make(chan struct{}),
+		}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(sink, nil)))
+
+		stop := startGroupAlgoProgress(context.Background(), "gWindow", "child")
+
+		// (1) Park the goroutine inside its first write.
+		select {
+		case <-sink.entered:
+		case <-time.After(5 * time.Second):
+			slog.SetDefault(prev)
+			close(sink.release)
+			stop()
+			t.Fatalf("cycle %d: heartbeat never emitted a first line — the fixture cannot "+
+				"position the goroutine and the assertion below would be vacuous", i)
+		}
+
+		// (2) Queue a tick behind it.
+		time.Sleep(30 * time.Millisecond)
+
+		// (3) Close `done` while the goroutine is still parked in the write.
+		stopReturned := make(chan struct{})
+		go func() {
+			stop()
+			close(stopReturned)
+		}()
+		time.Sleep(20 * time.Millisecond) // let stop() reach close(done)
+
+		// (4) Release: the goroutine now re-enters select with both ready.
+		close(sink.release)
+
+		select {
+		case <-stopReturned:
+		case <-time.After(5 * time.Second):
+			slog.SetDefault(prev)
+			t.Fatalf("cycle %d: stop() did not return after the sink was released", i)
+		}
+		slog.SetDefault(prev)
+
+		if got := sink.count(); got != 1 {
+			t.Fatalf("cycle %d: %d lines written, want exactly 1 — a progress line was committed "+
+				"AFTER the stop signal was set and while stop() was still running. The pass is "+
+				"over and the heartbeat reported on it anyway (#6134/#6047); the in-loop re-check "+
+				"is what prevents this, and the barrier alone does not.", i, got)
+		}
+	}
+}
+
+// gatedWriter blocks the FIRST write until release is closed, so a test can pin
+// the heartbeat goroutine at a known point in its loop. Later writes pass
+// straight through and are counted — they are the ones that must not happen.
+type gatedWriter struct {
+	mu      sync.Mutex
+	writes  int
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (w *gatedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	w.writes++
+	first := w.writes == 1
+	w.mu.Unlock()
+	if first {
+		w.once.Do(func() { close(w.entered) })
+		<-w.release
+	}
+	return len(p), nil
+}
+
+func (w *gatedWriter) count() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.writes
+}

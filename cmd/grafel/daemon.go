@@ -1508,9 +1508,16 @@ func daemonSchedulerGroupAlgo(ctx context.Context, group string) error {
 // GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL=1ns is accepted and the heartbeat spins a
 // core logging — a diagnostic knob that becomes its own CPU incident. 10ms is
 // low enough for a test to drive and high enough to cost nothing.
+//
+// groupAlgoStopBarrier (#6134) is the ceiling on how long stop() will wait for
+// the heartbeat goroutine to exit. Generous relative to the goroutine's actual
+// work (one CPU read plus one log line) so it never trips in normal operation,
+// and short relative to a group-algo pass so a stalled log sink cannot wedge
+// one. See the barrier note in startGroupAlgoProgress.
 const (
 	groupAlgoProgressInterval = time.Minute
 	groupAlgoProgressMin      = 10 * time.Millisecond
+	groupAlgoStopBarrier      = 2 * time.Second
 )
 
 func groupAlgoProgressEvery() time.Duration {
@@ -1638,15 +1645,31 @@ func startGroupAlgoProgress(ctx context.Context, group, mode string) func() {
 	// once stop() has returned, no further progress line for this pass can be
 	// emitted, ever.
 	//
-	// It cannot deadlock. The goroutine's only blocking operation is the log
-	// write, which every other logging site in this file already performs
-	// synchronously; both the `done` close and ctx cancellation drive it to
-	// close `exited`, and `exited` is closed by a defer, so a panic in the body
-	// still releases the wait. Idempotent: the second call sees the once already
-	// fired and receives from an already-closed channel.
+	// THE WAIT IS BOUNDED, and an earlier revision of this comment argued it
+	// did not need to be ("the goroutine's only blocking operation is the log
+	// write"). That argument is only as good as the sink. Both call sites are
+	// `defer startGroupAlgoProgress(...)()`, so an unbounded wait here blocks the
+	// group-algo pass itself: a slog sink that stalls — tty flow control under
+	// the wizard, a full pipe, a stuck filesystem — would convert what used to be
+	// a benign leaked ticker goroutine into a wedged pass. That is a strictly
+	// worse failure than the one being fixed, so the barrier takes a ceiling.
+	//
+	// Timing out only forfeits the barrier, never correctness: the in-loop
+	// re-check above has already made a post-stop line impossible independently
+	// of this wait, because it returns whenever `done`/ctx is closed and cannot
+	// drop a legitimate line. The wait exists to make "stop() returned" mean
+	// "the goroutine is gone", and a stalled sink is exactly the case where that
+	// promise is not worth blocking a pass for.
+	//
+	// `exited` is closed by a defer, so a panic in the body releases the wait
+	// too. Idempotent: the second call sees the once already fired and receives
+	// from an already-closed channel.
 	return func() {
 		once.Do(func() { close(done) })
-		<-exited
+		select {
+		case <-exited:
+		case <-time.After(groupAlgoStopBarrier):
+		}
 	}
 }
 

@@ -81,9 +81,20 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 	corpus := filepath.Join(root, "testdata", "fixtures", "sources")
 
 	// Per ADR-0017, indexing happens inside the daemon. Point the daemon
-	// at an isolated tempdir (so this test never touches ~/.grafel)
-	// and start it in the background; the test calls Index via RPC and
-	// stops the daemon on cleanup.
+	// at an isolated tempdir and start it in the background; the test calls
+	// Index via RPC and stops the daemon on cleanup.
+	//
+	// #6134 — THE OLD VERSION OF THIS COMMENT CLAIMED "so this test never
+	// touches ~/.grafel", AND THAT WAS FALSE. GRAFEL_DAEMON_ROOT is read by
+	// daemon.DefaultLayout (socket/pid/log) but NOT by daemon.StoreDir(), which
+	// resolves $GRAFEL_HOME (else ~/.grafel) + "/store". The daemon spawned
+	// below inherits the developer's real HOME through os.Environ(), and its
+	// startup tail runs MigrateToRefStore AND PruneStaleGenerations against that
+	// real store — relocating its layout and deleting generations from it, while
+	// the developer's own daemon may be serving MCP out of it. A false isolation
+	// claim is worse than none, because it stops the next reader checking.
+	// GRAFEL_HOME is now pinned to the same sandbox on both this process and the
+	// child, which is what makes the claim true.
 	//
 	// macOS limits AF_UNIX sun_path to ~103 bytes — t.TempDir() can
 	// easily exceed that, so we mint a short dir under os.TempDir() instead.
@@ -97,13 +108,16 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 	// Derive the layout to get the correct socket path (named pipe on Windows,
 	// Unix domain socket on other platforms).
 	t.Setenv(daemon.EnvRoot, daemonRoot)
+	t.Setenv("GRAFEL_HOME", daemonRoot)
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		t.Fatalf("daemon layout: %v", err)
 	}
 
 	dcmd := exec.Command(bin, "daemon")
-	dcmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot)
+	// #6134 — GRAFEL_HOME too, or the child inherits the real one via os.Environ()
+	// and prunes the developer's live store on startup. See the note above.
+	dcmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot, "GRAFEL_HOME="+daemonRoot)
 	var daemonOut bytes.Buffer
 	dcmd.Stdout = &daemonOut
 	dcmd.Stderr = &daemonOut

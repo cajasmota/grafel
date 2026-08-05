@@ -148,7 +148,19 @@ func TestSelfDefenseCheck_RunRefusesWhenCalledFromTmpBinary(t *testing.T) {
 
 	var stderrBuf strings.Builder
 	cmd := exec.CommandContext(ctx, helperBin, "daemon")
-	cmd.Env = append(os.Environ(), "GRAFEL_DAEMON_ROOT="+daemonRoot)
+	// #6134 — GRAFEL_HOME must be pinned alongside the daemon root, and via the
+	// daemon.EnvRoot CONSTANT rather than a raw literal.
+	//
+	// The root only isolates DefaultLayout (socket/pid/log); daemon.StoreDir()
+	// resolves $GRAFEL_HOME (else ~/.grafel) + "/store", which this child would
+	// otherwise inherit from the developer's real environment via os.Environ() —
+	// and its startup tail runs MigrateToRefStore and PruneStaleGenerations
+	// against it, mutating and pruning the live store.
+	//
+	// The raw string literal is also why the original #6134 sweep missed this
+	// site: it greps for daemon.EnvRoot, and a literal does not match. Using the
+	// constant keeps this line discoverable by the next audit.
+	cmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot, "GRAFEL_HOME="+daemonRoot)
 	cmd.Stderr = &stderrBuf
 
 	waitErr := cmd.Run()

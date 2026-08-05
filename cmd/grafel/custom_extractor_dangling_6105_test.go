@@ -757,10 +757,20 @@ func TestCustomExtractorDependsOnServiceDoesNotMisbind6123(t *testing.T) {
 	// folds that class component into the FILE component for cs/OrderTests.cs,
 	// repointing the edge (`edges_repointed` in its log line). So the surviving
 	// shape is file-granular rather than class-granular — still the test, still
-	// non-tautological, and it confirms the facet really did land on a node the
-	// rest of the pipeline recognises rather than creating a stray parallel one.
-	// If it had NOT merged, a second SCOPE.Component:OrderTests would survive the
-	// fold and show up here as an extra edge.
+	// non-tautological.
+	//
+	// WHAT THIS TEST DOES NOT PROVE. An earlier revision of this comment claimed
+	// the expectation also demonstrates the Tier A merge, on the grounds that an
+	// unmerged duplicate would show up as an extra edge. That is false HERE: the
+	// fixture's class (OrderTests) has the same name as its file stem
+	// (OrderTests.cs), so a merged facet and an unmerged duplicate both fold into
+	// the SAME file component and the edge set is byte-identical either way. The
+	// merge is real, but it is pinned where it can actually be observed —
+	// TestTestDoubles_ContainerServiceEdgeHangsOffTheTestType6144 asserts the
+	// facet's identity (SourceFile, Kind, Name, Subtype) directly at the
+	// extractor boundary, before any folding pass can hide a duplicate. What
+	// THIS test proves is the end-to-end one: the edge no longer originates at
+	// the container node.
 	got := edgeSet6105(on, "DEPENDS_ON_SERVICE")
 	want := map[string]int{
 		"DEPENDS_ON_SERVICE: SCOPE.Component:cs/OrderTests.cs -> " +
