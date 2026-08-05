@@ -530,6 +530,12 @@ func (g *staleReindexGuard) sweepLocked(logger *slog.Logger) {
 func (g *staleReindexGuard) abandonLocked(repo string, held time.Duration, logger *slog.Logger) {
 	delete(g.inflight, repo)
 	delete(g.seen, repo)
+	// No-op today: this path is reached only from the default branch of
+	// sweepLocked, i.e. exactly when the repo was NEVER observed active, so the
+	// key is absent. Kept so that "every admission-ending path clears
+	// observedActive" holds structurally if those branch conditions change —
+	// the round-5 blocker was one such path silently not clearing it. Mutation
+	// testing correctly reports removing this line as a survivor.
 	delete(g.observedActive, repo)
 	g.retryAfter[repo] = g.now().Add(g.undispatchedDelayFor(repo))
 	// No durable history: nothing failed, so nothing to remember.
