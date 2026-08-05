@@ -237,3 +237,123 @@ func TestLeafNameTier_JavaFieldHintStubStillBinds_6141(t *testing.T) {
 			got.id, got.kind, got.name)
 	}
 }
+
+// --- DIRECT unit tests of the new mechanism -------------------------------
+//
+// These exist because the end-to-end tests above cannot reach every arm.
+// memberFamilyMask's SCOPE.-trim branch in particular has no fixture: no
+// extractor emits "SCOPE.Method" today, so the branch would survive
+// mutation while only being protected by a language nobody ships. Testing
+// the helper directly is what makes it a guard rather than decoration.
+
+func TestMemberFamilyMask_6141(t *testing.T) {
+	cases := []struct {
+		kind string
+		want uint8
+	}{
+		// Operation family, raw.
+		{"Operation", famOperation},
+		{"Function", famOperation},
+		{"Method", famOperation},
+		{"SCOPE.Operation", famOperation},
+		// Operation family reached ONLY via the SCOPE.-trim branch.
+		{"SCOPE.Method", famOperation},
+		{"SCOPE.Function", famOperation},
+		// Schema family — the kinds a call must never bind to.
+		{"Schema", famSchema},
+		{"Field", famSchema},
+		{"Property", famSchema},
+		{"SCOPE.Schema", famSchema},
+		// Component family.
+		{"Component", famComponent},
+		{"Class", famComponent},
+		{"SCOPE.Component", famComponent},
+		// Outside every family — must classify as 0 so a family-filtered
+		// lookup rejects it. These are real kinds seen on dotted-name
+		// entities (SCOPE.Pattern from internal/custom, Module from the
+		// python package-module emitter, SCOPE.Datastore from dbt sources).
+		{"SCOPE.Pattern", 0},
+		{"Module", 0},
+		{"SCOPE.Datastore", 0},
+		{"Handler", 0},
+		{"", 0},
+	}
+	for _, c := range cases {
+		if got := memberFamilyMask(c.kind); got != c.want {
+			t.Errorf("memberFamilyMask(%q) = %d, want %d", c.kind, got, c.want)
+		}
+	}
+}
+
+// TestMemberFamilyMask_FamiliesAreDisjoint_6141 pins the assumption the
+// bitmask encoding rests on: no entity kind sits in two families at once.
+// If a future kind is added to two of the slices the mask silently becomes
+// a union and a call could bind to a field again.
+func TestMemberFamilyMask_FamiliesAreDisjoint_6141(t *testing.T) {
+	for kind, mask := range familyMaskByKind {
+		if mask&(mask-1) != 0 {
+			t.Errorf("kind %q belongs to more than one kind family (mask=%b); the "+
+				"leaf-name filter assumes the families are disjoint", kind, mask)
+		}
+	}
+}
+
+// TestInFamily_ZeroMaskDisablesFilter_6141 pins the escape hatch the #667
+// Java field call site depends on.
+func TestInFamily_ZeroMaskDisablesFilter_6141(t *testing.T) {
+	idx := BuildIndex([]types.EntityRecord{
+		entAt("1111111111111111", "SCOPE.Schema", "Parent.field", "src/Parent.java"),
+	})
+	if !idx.inFamily("1111111111111111", 0) {
+		t.Error("want == 0 must disable the filter entirely")
+	}
+	if idx.inFamily("1111111111111111", famOperation) {
+		t.Error("a SCOPE.Schema member must not pass the operation filter")
+	}
+	if !idx.inFamily("1111111111111111", famSchema) {
+		t.Error("a SCOPE.Schema member must pass the schema filter")
+	}
+	if idx.inFamily("no-such-id", famOperation) {
+		t.Error("an id absent from memberFamily must not pass a non-zero filter")
+	}
+}
+
+// TestMemberFamily_OnlyDottedNamesIndexed_6141 pins the side-table's size
+// contract: it exists to serve the member indexes, so an entity that never
+// reaches byMember must not occupy a slot in it.
+func TestMemberFamily_OnlyDottedNamesIndexed_6141(t *testing.T) {
+	idx := BuildIndex([]types.EntityRecord{
+		entAt("1111111111111111", "SCOPE.Operation", "Bare", "pkg/a.go"),          // undotted
+		entAt("2222222222222222", "SCOPE.Operation", "Scoped.member", "pkg/b.go"), // dotted
+		entAt("3333333333333333", "SCOPE.Pattern", "Other.member", "pkg/c.go"),    // dotted, no family
+	})
+	if _, ok := idx.memberFamily["1111111111111111"]; ok {
+		t.Error("undotted entity must not enter memberFamily — it never reaches byMember")
+	}
+	if idx.memberFamily["2222222222222222"] != famOperation {
+		t.Errorf("dotted operation missing from memberFamily: %d", idx.memberFamily["2222222222222222"])
+	}
+	if _, ok := idx.memberFamily["3333333333333333"]; ok {
+		t.Error("zero-mask kind must be OMITTED, not stored — the entry would cost memory for nothing")
+	}
+}
+
+// TestLeafNameTier_SameScopeDuplicateStaysAmbiguous_6141 documents the
+// mechanism's blind spot, so the limitation is pinned rather than assumed.
+// When a field and an operation collide inside ONE scope — the Java
+// `Cell.borderTop` field + setter shape, and the internal/custom pattern of
+// re-emitting `Class.method` under SCOPE.Pattern — byMember stores a BLANK
+// sentinel and both entity IDs are erased. The kind filter cannot see
+// through that, so the edge is ambiguous before AND after the fix.
+func TestLeafNameTier_SameScopeDuplicateStaysAmbiguous_6141(t *testing.T) {
+	records := []types.EntityRecord{
+		callerWithCall("1111111111111111", "Operation", "Caller.run", "src/pkg/Caller.java", "borderTop"),
+		entAt("2222222222222222", "SCOPE.Operation", "Cell.borderTop", "src/pkg/Cell.java"),
+		entAt("3333333333333333", "SCOPE.Schema", "Cell.borderTop", "src/pkg/Cell.java"),
+	}
+	_, stub := resolveEdge(t, records, 0)
+	if stub != "borderTop" {
+		t.Fatalf("same-scope field/operation collision resolved to %q; the blank sentinel erases "+
+			"both IDs before the kind filter can see them, so this must stay unresolved", stub)
+	}
+}
