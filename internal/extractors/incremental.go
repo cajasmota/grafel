@@ -176,14 +176,27 @@ func StampFile(absPath string) (FileStamp, error) {
 //	Detect, python file   8.7 ms,  0.7 MiB   per CHANGED file
 //
 // The per-file number is the real one and it is not small next to the language
-// extractor. It is NOT avoidable by guarding on "does this file declare a
-// class": Detect's output is also consumed for the framework entities that pair
-// with no extractor record at all — a Route from a responder method, a Service
-// from an app object — so a file with no class-like declaration is precisely a
-// file whose Detect output would be silently dropped again (#6150). What bounds
-// it instead is that this runs per CHANGED file, not per repo file, and the
-// changed set is already capped by the incremental trigger limit; a full rebuild
-// pays the same 8.7 ms for every file in the repo.
+// extractor. Three things bound it, and none of them is a guard that could be
+// added later:
+//
+//   - It is NOT avoidable by pre-checking "does this file declare a class".
+//     Detect's output is also consumed for framework entities that pair with no
+//     extractor record at all, and `app = falcon.App()` alone — a line with no
+//     class anywhere near it — yields BOTH a Service and a Config record. A file
+//     with no class-like declaration is therefore precisely a file whose Detect
+//     output such a guard would silently drop again (#6150).
+//   - "Only run Detect for languages that have rules" is not a missing
+//     mitigation: Detector.Detect already early-outs on an unknown language
+//     before it touches the content (detector.go, the `sets, ok :=
+//     d.compiled[file.Language]` branch). Those languages pay ~0, not 8.7 ms.
+//   - The worst case is a fixed number, not a repo-sized one. This runs per
+//     CHANGED file, and the changed set is hard-capped by the trigger limits
+//     below — defaultIncrementalFiles=20, mainBranchIncrementalFiles=50 — so the
+//     ceiling is 50 × 8.7 ms ≈ 435 ms per run. Above the cap the path falls back
+//     to a full rebuild, which pays the same 8.7 ms for every file in the repo.
+//
+// Content-hash caching across runs would buy nothing: Step 3's AST-hash gate has
+// already established that every file reaching here has changed content.
 //
 // The once is deliberately not retried. The rules are embedded, so a load
 // failure is a build-level defect with no transient component, and retrying
@@ -563,12 +576,23 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			Content:  content,
 			Language: cr.Language,
 			// #6151 — "re-parse inline" is what this was MEANT to do and is not
-			// what happens: nothing between here and the extractor parses, and 17
-			// extractors (kotlin, java, javascript, ruby, rust, php, swift, …)
-			// return no records at all on a nil tree. Step 5 has already evicted
-			// the file's entities by then, so an incremental pass over one of
-			// those languages DELETES them. Python is unaffected, which is why
-			// every fixture in this package and in the #6129 gate is green.
+			// what happens: nothing between here and the extractor parses.
+			//
+			// Audited across all 69 Extract implementations: 14 return nil, nil
+			// unconditionally on a nil tree (csharp, dockerfile, elixir, groovy,
+			// java, javascript/typescript, kotlin, lua, php, proto, ruby, rust,
+			// scala, swift), 7 self-parse from Content, 35 are pure source
+			// scanners that never wanted a tree, and 0 panic. Step 5 has already
+			// evicted the file's entities ~65 lines above, and no fallback() site
+			// is record-count driven, so an incremental pass over one of those 14
+			// languages DELETES that file's entities and re-adds nothing — with
+			// Done=true and no fallback. Measured on Kotlin, JS, Java and Ruby.
+			//
+			// The reason no fixture catches it is NOT that they are Python: they
+			// are mostly Go. It is that Python AND Go both self-parse from Content
+			// (golang/extractor.go), so both are blind to this by construction.
+			// A fixture in any of the 14 languages above would fail immediately —
+			// which is the thing to know before adding one.
 			TSTree:   nil,
 			RepoRoot: absRepo,
 		}
@@ -605,6 +629,15 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		// Measured: they arrive as structural name refs the full path binds in a
 		// resolver pass this path does not run, so emitting them landed unbound
 		// endpoints and duplicate DEPENDS_ON rows — strictly worse than the gap.
+		//
+		// That exclusion is a RESIDUAL, and it is untested: the committed parity
+		// fixture produces zero standalone framework relationships, so the gate is
+		// blind to this either way. Reaching it needs a relationship_rule match in
+		// the delta (falcon's REGISTERED_ON fires on `app.add_route(...)`), and
+		// that same line drags in the flow/endpoint-enrichment divergences that
+		// are the rest of #6150's scope — which is why it is recorded here rather
+		// than half-covered by a fixture that would need allow entries for four
+		// other defects to stay green.
 		if det := frameworkDetector(); det != nil {
 			if fwRes, dErr := det.Detect(ctx, input); dErr != nil {
 				logger.Printf("incremental: framework detect %s: %v", rel, dErr)

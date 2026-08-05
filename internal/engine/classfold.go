@@ -238,6 +238,26 @@ func betterFrameworkClassCandidate(c, best *types.EntityRecord) bool {
 // no rule matches must stay the generic node, which is what the full path does
 // with it. Records that are neither candidates nor fold sources pass through
 // untouched and in order.
+//
+// TWO PARTS OF THE FULL PATH ARE DELIBERATELY ABSENT, and both are sound only
+// because of where this runs:
+//
+//   - The SHADOW branch — index.go's nonShadowByID lookup, the ShadowsBackfilled
+//     / ShadowsStillLine0 stats and the provenance strip on a shadow that
+//     survives with real coordinates. The only producer of
+//     INFERRED_FROM_CLASS_HIERARCHY is the cross/hierarchy extractor, and
+//     TryIncremental runs no cross extractors at all, so no shadow can reach
+//     this function from that path. IsClassFoldSource still recognises one (a
+//     caller passing records from elsewhere gets the right answer), but the
+//     branch that only makes sense once shadows exist is not ported.
+//   - The ID REMAP. index.go rewrites edge endpoints from a folded record's
+//     stamped id onto the survivor's. Records here are pre-stamp — ids are
+//     derived downstream from kind/name/source_file — so there is no id to
+//     remap; donate() re-homes owned edges instead, and the endpoint rewrite
+//     happens for free because the survivor's id is what gets derived.
+//
+// If either premise changes — a shadow producer on this path, or ids stamped
+// before this point — both omissions become defects.
 func FoldFrameworkClassKinds(recs []types.EntityRecord, fw []types.EntityRecord) ([]types.EntityRecord, int) {
 	if len(recs) == 0 && len(fw) == 0 {
 		return recs, 0
@@ -259,6 +279,14 @@ func FoldFrameworkClassKinds(recs []types.EntityRecord, fw []types.EntityRecord)
 	// eligible reports whether r can be a fold SURVIVOR. The blank checks are
 	// enforcement, not decoration: without them every file-less or nameless
 	// record would key onto {"",""} and fold with the others.
+	//
+	// DIVERGENCE FROM THE FULL PATH, deliberate: index.go's candidate loop
+	// screens only `r.Name == ""`, not the source file. It can afford to —
+	// its records are all post-assembly and carry a SourceFile — whereas this
+	// runs on raw extractor and Detect output where a file-less record is
+	// reachable. Hardening, not a behaviour change on any record either loop
+	// would actually pair; called out because this function is otherwise a
+	// faithful port and the next reader will diff them.
 	eligible := func(r *types.EntityRecord) bool {
 		if r.Name == "" || r.SourceFile == "" {
 			return false

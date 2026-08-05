@@ -583,13 +583,22 @@ var cpKnownPathA = []cpKnown{
 		Contains:       []string{"→SCOPE.ExceptionType/exception:CpNotFound@<exception>:CONTAINS"},
 		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
 	},
-	// Re-keyed (not deleted) when the fixture grew for #6141/#6148: the
+	// Re-keyed (not deleted) when the fixture grew for #6141/#6148/#6150: the
 	// divergence still reproduces and is still the same one — the unassigned
 	// community carries exactly ONE extra member, the duplicate row above — but
 	// the key spells out ABSOLUTE membership counts, and those track the size of
 	// the corpus. The load-bearing part of the key is the +1; the absolute pair
 	// moves whenever a fixture file is added. Anything other than +1 is a
 	// different divergence and must fail.
+	//
+	// This entry has now been re-keyed three times for fixture growth and zero
+	// times for a change in the defect, which is a smell in the KEY, not in the
+	// entry: it is the only allow entry keyed on an absolute count rather than on
+	// a shape. Keying it on the DELTA would end the churn and would still fail on
+	// a magnitude change — but the delta is not in the divergence string today
+	// (parity.Report renders "N member(s) in A, M in B"), so it needs a
+	// comparator change to reach, not an allow-list edit. Worth doing the next
+	// time this file is opened for anything else.
 	{
 		Issue:    "#6129 (duplicate-row class of #6094 / #6037)",
 		Why:      "Downstream of the duplicated entity: the unassigned community carries one extra member.",
