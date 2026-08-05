@@ -58,11 +58,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,6 +80,7 @@ import (
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/module"
+	"github.com/cajasmota/grafel/internal/treesitter"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -539,6 +542,39 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		return fallback(t0, "classifier: "+clsErr.Error())
 	}
 
+	// #6151 — the re-extraction below MUST parse, exactly as the full path does.
+	//
+	// This factory is the same one cmd/grafel/index.go:654 builds for the full
+	// index, and the parse call below is a deliberate mirror of the full path's
+	// (index.go:3441-3456). Before #6151 this loop passed TSTree: nil, and the
+	// fourteen tree-sitter-backed extractors that `return nil, nil`
+	// unconditionally on a nil tree (csharp, dockerfile, elixir, groovy, java,
+	// javascript/typescript, kotlin, lua, php, proto, ruby, rust, scala, swift)
+	// re-added nothing after Step 5 had already evicted the file's entities.
+	// Total, silent data loss for the edited file, Done=true, no fallback.
+	//
+	// WHY PARSE HERE rather than teach those fourteen extractors to self-parse:
+	//   - One site, not fourteen, and it closes the hole for the 15th extractor
+	//     nobody has written yet. A per-extractor fallback only ever covers the
+	//     extractors somebody remembered to change.
+	//   - PARITY IS THE POINT. The correctness property incremental owes the
+	//     caller is "same graph as a full reindex". Reusing the full path's own
+	//     parse — same factory, same tsx override, same
+	//     `perr == nil && pr != nil` acceptance test — makes the two paths agree
+	//     BY CONSTRUCTION, including on the degenerate cases
+	//     (ErrHighSyntaxErrorRate returns a nil tree; the full path passes nil
+	//     there too, so both paths emit nothing and neither is lying).
+	//     Fourteen bespoke self-parses would each be free to disagree.
+	//   - Cost. A re-parse is not free (epic #5954), but it is bounded: this
+	//     loop runs over reallyChanged, capped at defaultIncrementalFiles=20 /
+	//     mainBranchIncrementalFiles=50, and ParserFactory.Parse goes through
+	//     indexstate.AcquireParseSlot, so it cannot widen the daemon-wide parse
+	//     ceiling. Peak RSS is bounded by ONE live tree at a time: the tree is
+	//     Closed at the end of each iteration, not deferred to the end of the
+	//     loop. The alternative — a full reindex — parses every file in the
+	//     repo, so this is strictly cheaper than the path it prevents.
+	parser := treesitter.NewParserFactory(nil)
+
 	var newEntities []graph.Entity
 	var newRels []graph.Relationship
 	// #6148 — count of generic class records re-typed from the YAML rule sets,
@@ -575,31 +611,79 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			Path:     rel,
 			Content:  content,
 			Language: cr.Language,
-			// #6151 — "re-parse inline" is what this was MEANT to do and is not
-			// what happens: nothing between here and the extractor parses.
-			//
-			// Audited across all 69 Extract implementations: 14 return nil, nil
-			// unconditionally on a nil tree (csharp, dockerfile, elixir, groovy,
-			// java, javascript/typescript, kotlin, lua, php, proto, ruby, rust,
-			// scala, swift), 7 self-parse from Content, 35 are pure source
-			// scanners that never wanted a tree, and 0 panic. Step 5 has already
-			// evicted the file's entities ~65 lines above, and no fallback() site
-			// is record-count driven, so an incremental pass over one of those 14
-			// languages DELETES that file's entities and re-adds nothing — with
-			// Done=true and no fallback. Measured on Kotlin, JS, Java and Ruby.
-			//
-			// The reason no fixture catches it is NOT that they are Python: they
-			// are mostly Go. It is that Python AND Go both self-parse from Content
-			// (golang/extractor.go), so both are blind to this by construction.
-			// A fixture in any of the 14 languages above would fail immediately —
-			// which is the thing to know before adding one.
-			TSTree:   nil,
 			RepoRoot: absRepo,
 		}
-		records, extErr := ext.Extract(ctx, input)
+
+		// #6151 — supply a real tree. Mirrors cmd/grafel/index.go:3441-3456,
+		// including the PLT #537 tsx override: the plain `typescript` grammar
+		// treats JSX tags as syntax errors, so .tsx/.jsx must be parsed with the
+		// tsx grammar or every React file trips ErrHighSyntaxErrorRate and comes
+		// back with a nil tree — reintroducing this very bug for that extension.
+		parseLang := cr.Language
+		if parseLang == "typescript" || parseLang == "javascript" {
+			low := strings.ToLower(rel)
+			if strings.HasSuffix(low, ".tsx") || strings.HasSuffix(low, ".jsx") {
+				parseLang = "tsx"
+			}
+		}
+		// treeRequired: this language HAS a tree-sitter grammar, so an extractor
+		// is entitled to assume a tree. ErrUnsupportedLanguage means the opposite
+		// — a pure source-scanner language that never wanted one, where a nil
+		// tree is the normal, correct input and must not raise an alarm.
+		treeRequired := true
+		pr, perr := parser.Parse(ctx, content, parseLang)
+		if perr != nil && errors.Is(perr, treesitter.ErrUnsupportedLanguage) {
+			treeRequired = false
+		}
+		if perr == nil && pr != nil {
+			input.TSTree = pr.TSTree
+		}
+		gotTree := input.TSTree != nil
+
+		// #6151 — safeExtract, not ext.Extract. TryIncremental was the only
+		// Extract call site in the tree that bypassed the recover() in
+		// registry.go:103-109. No extractor panics on a nil tree today, but the
+		// daemon runs this on a watcher tick, and a panic here would take down a
+		// path whose whole job is to not lose the user's graph.
+		records, extErr := safeExtract(ctx, ext, input)
+		if input.TSTree != nil {
+			// Release the CGo allocation now rather than deferring to the end of
+			// the loop: peak RSS must stay at one live tree, not len(reallyChanged).
+			input.TSTree.Close()
+			input.TSTree = nil
+		}
 		if extErr != nil {
+			// #6151 — NOT non-fatal, and no longer swallowed. Step 5 has already
+			// evicted this file's entities ~65 lines above. "Use partial results"
+			// on an error meant persisting a graph with the file's entities
+			// deleted and its replacements missing, and still reporting Done=true.
+			// A failed extraction is exactly what fallback() exists for: the full
+			// reindex reconciles the file from scratch, and the reason is logged.
 			logger.Printf("incremental: extract %s: %v", rel, extErr)
-			// Non-fatal: use partial results.
+			return fallback(t0, fmt.Sprintf("extract-error file=%s: %v", rel, extErr))
+		}
+		// An empty file is excluded deliberately: Parse returns a zero-node
+		// result with a nil tree and NO error for empty input, which is the
+		// full path's behaviour too. Truncating a file to zero bytes is a real
+		// edit with a real (empty) answer, not a failed parse.
+		if len(records) == 0 && treeRequired && !gotTree && len(content) > 0 {
+			// #6151 — the two failure modes land in the same place, so neither
+			// half of this guard is sufficient alone.
+			//
+			// len(records)==0 on its own cannot distinguish a file that
+			// legitimately has no entities from an extractor that bailed, which is
+			// why it is paired with the PARSE OUTCOME: we asked for a tree for a
+			// language that has a grammar, and did not get one (a malformed file
+			// over the #5963 error-ratio ceiling, or a grammar failure). Every one
+			// of the fourteen returns (nil, nil) in exactly that state.
+			//
+			// A full reindex would also emit nothing for such a file, so this
+			// costs a redundant reindex in the malformed-file case — the price of
+			// never again silently deleting a file's entities on a parse the
+			// extractor could not consume.
+			logger.Printf("incremental: %s — no records and no usable parse tree (lang=%s): %v",
+				rel, parseLang, perr)
+			return fallback(t0, fmt.Sprintf("no-tree-no-records file=%s lang=%s", rel, parseLang))
 		}
 
 		// #6148 / #6150 — run Pass 2.5 over this file and reconcile it with the
