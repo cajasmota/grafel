@@ -247,3 +247,68 @@ func TestNeo4jGoImportGate(t *testing.T) {
 		t.Errorf("neo4j extractor must not fire without the driver import, got %+v", ents)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #6122 — the producer-side refusal arm.
+// ---------------------------------------------------------------------------
+
+// TestNeo4jGoGraphRelatesDroppedForColonBearingPath6122 covers the `continue`
+// in the GRAPH_RELATES pass that fires when extractor.Neo4jNodeTargetID refuses
+// to build a ref. Without this test that arm is unreachable from any fixture —
+// every other path in the repo is colon-free — and a mutant deleting it would
+// survive.
+//
+// WHY DROPPING THE EDGE IS RIGHT HERE, and why the usual "an honest dangle beats
+// nothing" rule does not apply: at two colons in the path the stub reaches
+// stubScopeSegments = 6, where lookupStructural stops rejecting and parses it as
+// Format A with parts[4] as a file path and parts[5] as an entity name
+// (internal/resolve/refs.go:2037). The alternative to dropping is not a dangle —
+// it is a ref that PARSES, and therefore mis-binds. The resolver half of this is
+// the "six segments" subtest of
+// internal/resolve.TestNeo4jNodeLocationRefBindsTheNodeEntity6122.
+//
+// The node-label ENTITIES are still emitted; only the edge is withheld.
+func TestNeo4jGoGraphRelatesDroppedForColonBearingPath6122(t *testing.T) {
+	e, ok := extreg.Get("custom_go_neo4j")
+	if !ok {
+		t.Fatal("custom_go_neo4j not registered")
+	}
+	src := "package store\n\nimport (\n" + neo4jImport + ")\n\n" +
+		"func q(session neo4j.Session) {\n" +
+		"\tsession.Run(`MATCH (p:Person)-[:ACTED_IN]->(m:Movie) RETURN p, m`, nil)\n" +
+		"}\n"
+	ents, err := e.Extract(context.Background(), extreg.FileInput{
+		Path:     "a:b:c/store.go", // ':' is legal in a POSIX filename
+		Language: "go",
+		Content:  []byte(src),
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	// NON-VACUITY: the same source through a colon-free path DOES produce the
+	// edge, so "no edge" below means "refused", not "nothing was extracted".
+	if findGoGraphRelates(extractNeo4jRaw(t, src), "Person", "Movie") == nil {
+		t.Fatal("the control fixture emits no GRAPH_RELATES edge — this test could " +
+			"not tell a refusal from a parse failure")
+	}
+
+	var nodes int
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Schema" && ents[i].Name == extreg.Neo4jNodeName("Movie") {
+			nodes++
+		}
+		for j := range ents[i].Relationships {
+			if r := &ents[i].Relationships[j]; r.Kind == string(types.RelationshipKindGraphRelates) {
+				t.Errorf("GRAPH_RELATES emitted with ToID %q from a file path containing "+
+					"':' — Neo4jNodeTargetID must refuse it and the caller must emit no "+
+					"edge, because a six-segment stub PARSES as Format A instead of "+
+					"dangling", r.ToID)
+			}
+		}
+	}
+	if nodes != 1 {
+		t.Errorf("node-label entity for `Movie` emitted %d times, want 1 — the refusal "+
+			"withholds the EDGE only, never the entities", nodes)
+	}
+}
