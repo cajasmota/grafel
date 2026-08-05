@@ -1572,8 +1572,10 @@ func startGroupAlgoProgress(ctx context.Context, group, mode string) func() {
 	}
 
 	done := make(chan struct{})
+	exited := make(chan struct{})
 	var once sync.Once
 	go func() {
+		defer close(exited)
 		t := time.NewTicker(every)
 		defer t.Stop()
 		for {
@@ -1583,6 +1585,28 @@ func startGroupAlgoProgress(ctx context.Context, group, mode string) func() {
 			case <-ctx.Done():
 				return
 			case now := <-t.C:
+				// #6134 — RE-CHECK THE STOP SIGNAL AFTER A TICK WINS.
+				//
+				// A Go select chooses UNIFORMLY AT RANDOM among the cases that
+				// are ready. Once the ticker has a pending tick, an
+				// already-closed `done` therefore wins only about half the
+				// time — so the loop above would emit one more line after the
+				// pass had ended, reporting elapsed time and a phase for work
+				// that was already over. Measured: 3/3 runs, deterministic
+				// enough to fail on a cycle-0 iteration, not a load artifact.
+				//
+				// That is the #6047 class (progress reported after the work it
+				// describes has finished), which is why #6134 was NOT closed by
+				// loosening the test: the test was right and the heartbeat was
+				// wrong. The non-blocking re-check below makes the stop signal
+				// win unconditionally once it is set.
+				select {
+				case <-done:
+					return
+				case <-ctx.Done():
+					return
+				default:
+				}
 				attrs := []any{
 					"group", group,
 					"mode", mode,
@@ -1604,7 +1628,26 @@ func startGroupAlgoProgress(ctx context.Context, group, mode string) func() {
 			}
 		}
 	}()
-	return func() { once.Do(func() { close(done) }) }
+	// #6134 — stop() IS A BARRIER, NOT A REQUEST.
+	//
+	// Closing `done` only makes the goroutine eligible to exit; it says nothing
+	// about whether it has observed the close, or whether it is mid-log. Callers
+	// (and the wizard) treat the return of stop() as "this pass no longer
+	// reports", so waiting for the goroutine to actually exit is what makes that
+	// true. Combined with the re-check inside the loop, the guarantee is exact:
+	// once stop() has returned, no further progress line for this pass can be
+	// emitted, ever.
+	//
+	// It cannot deadlock. The goroutine's only blocking operation is the log
+	// write, which every other logging site in this file already performs
+	// synchronously; both the `done` close and ctx cancellation drive it to
+	// close `exited`, and `exited` is closed by a defer, so a panic in the body
+	// still releases the wait. Idempotent: the second call sees the once already
+	// fired and receives from an already-closed channel.
+	return func() {
+		once.Do(func() { close(done) })
+		<-exited
+	}
 }
 
 // daemonIndexFunc is the IndexFunc handed to daemon.Run. It bridges the

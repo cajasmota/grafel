@@ -83,19 +83,93 @@ func TestDockerfileExtractor_EmptyContent(t *testing.T) {
 	}
 }
 
-func TestDockerfileExtractor_NilTree(t *testing.T) {
+// TestDockerfileExtractor_NilTreeSelfParses6154 replaces the old
+// TestDockerfileExtractor_NilTree, which asserted "nil tree -> 0 entities".
+//
+// #6154 — THAT ASSERTION WAS PINNING DEAD CODE. Extract's guard bailed on
+// `file.TSTree == nil || len(Content) == 0`, so the `if tree == nil { …
+// AcquireParseSlot … parser.Parse … }` fallback below it could never run: the
+// only input that reaches it is a nil tree, and a nil tree returned first. The
+// block was unreachable while READING as coverage — it made dockerfile appear
+// simultaneously in the audit list of extractors that bail on a nil tree and in
+// the list that already self-parse. Both were literally true; the second was
+// dead, and the ambiguity cost real time in #6151, where the extractor set was
+// miscounted three times.
+//
+// The other six AcquireParseSlot self-parse extractors (python, golang, html,
+// hcl, cpp, yaml) guard on empty content ONLY, so their fallbacks are live.
+// dockerfile now matches them, which makes the fallback reachable rather than
+// deleting it — the option the issue preferred, since the incremental path can
+// legitimately hand over content without a tree.
+//
+// Asserted by EQUIVALENCE, not by a count: self-parsing must produce the same
+// entity content as the pre-parsed path. A count-only assertion would pass on a
+// fallback that parsed garbage.
+func TestDockerfileExtractor_NilTreeSelfParses6154(t *testing.T) {
+	const src = "FROM ubuntu:22.04\nRUN apt-get update\nEXPOSE 8080\n"
+
+	selfParsed := extractEntities(t, "Dockerfile", src, nil)
+	if len(selfParsed) == 0 {
+		t.Fatal("nil tree + non-empty content produced no entities — the self-parse fallback is " +
+			"still unreachable (#6154)")
+	}
+
+	preParsed := extractEntities(t, "Dockerfile", src, parseForTest(t, src))
+	if len(preParsed) != len(selfParsed) {
+		t.Fatalf("self-parse produced %d entities, pre-parsed path produced %d — the fallback is "+
+			"reachable but not equivalent", len(selfParsed), len(preParsed))
+	}
+
+	for i := range preParsed {
+		got, want := selfParsed[i], preParsed[i]
+		if got.Name != want.Name || got.Kind != want.Kind || got.Subtype != want.Subtype {
+			t.Errorf("entity %d: self-parse gave %s/%s/%s, pre-parsed gave %s/%s/%s",
+				i, got.Kind, got.Subtype, got.Name, want.Kind, want.Subtype, want.Name)
+		}
+		if got.SourceFile != want.SourceFile {
+			t.Errorf("entity %d: SourceFile %q vs %q", i, got.SourceFile, want.SourceFile)
+		}
+		// The instruction detail is folded into properties (#2063), so this is
+		// where a wrongly-parsed tree would actually show up.
+		for _, key := range []string{"base_image", "stages", "exposed_ports"} {
+			if got.Properties[key] != want.Properties[key] {
+				t.Errorf("entity %d: property %q = %q on the self-parse path, %q on the pre-parsed path",
+					i, key, got.Properties[key], want.Properties[key])
+			}
+		}
+		if len(got.Relationships) != len(want.Relationships) {
+			t.Errorf("entity %d: %d relationships self-parsed vs %d pre-parsed",
+				i, len(got.Relationships), len(want.Relationships))
+			continue
+		}
+		for j := range want.Relationships {
+			if got.Relationships[j].ToID != want.Relationships[j].ToID ||
+				got.Relationships[j].Kind != want.Relationships[j].Kind {
+				t.Errorf("entity %d rel %d: %s->%s self-parsed, %s->%s pre-parsed", i, j,
+					got.Relationships[j].Kind, got.Relationships[j].ToID,
+					want.Relationships[j].Kind, want.Relationships[j].ToID)
+			}
+		}
+	}
+}
+
+// TestDockerfileExtractor_NilTreeEmptyContent6154 keeps the other half of the
+// old guard: content is still the thing that decides whether there is anything
+// to do, and a nil tree with no content must stay a no-op rather than parsing
+// an empty buffer.
+func TestDockerfileExtractor_NilTreeEmptyContent6154(t *testing.T) {
 	ext, _ := extractor.Get("dockerfile")
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:     "Dockerfile",
-		Content:  []byte("FROM ubuntu:22.04\n"),
+		Content:  nil,
 		Language: "dockerfile",
-		TSTree:   nil, // nil tree → empty result per spec
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(entities) != 0 {
-		t.Errorf("expected 0 entities for nil tree, got %d", len(entities))
+		t.Errorf("expected 0 entities for nil tree + no content, got %d", len(entities))
 	}
 }
 

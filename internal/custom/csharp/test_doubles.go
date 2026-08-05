@@ -12,8 +12,13 @@
 //
 //	Container topology (Testcontainers):
 //	  new XxxContainer()       /  new ContainerBuilder().WithImage("img")
-//	  -> SCOPE.Pattern/container_topology; the test DEPENDS_ON_SERVICE the
-//	  container'd service, addressed by the canonical external-service ref
+//	  -> SCOPE.Pattern/container_topology; the ENCLOSING TEST TYPE
+//	  DEPENDS_ON_SERVICE the container'd service (#6144 — until then the edge
+//	  hung off the container node, so it ran container:X -> service X with both
+//	  endpoints from one token and the test nowhere in it; the edge now lands on
+//	  the base extractor's class node via the #6104 Tier A identity merge, and
+//	  falls back to the container node only when no enclosing type is found),
+//	  addressed by the canonical external-service ref
 //	  (scope:externalservice:<image-or-container>, #6123 — no service node is
 //	  fabricated, so the edge dangles honestly unless one already exists, and the
 //	  ref is colon-bounded by containerServiceRef so it can never reach the
@@ -129,7 +134,65 @@ var (
 	// Group 1 = variable, group 2 = mocked type. Used to resolve .Object uses
 	// back to the interface they double.
 	reMoqVarBinding = regexp.MustCompile(`\b(\w+)\s*=\s*new\s+Mock\s*<\s*([\w.]+)\s*>`)
+
+	// #6144 — enclosing type declaration, used to attach the container's
+	// DEPENDS_ON_SERVICE edge to the TEST CLASS rather than to the container
+	// node. Deliberately matches the same four declaration forms the BASE csharp
+	// extractor turns into SCOPE.Component entities (csharp.go:153:
+	// class/interface/struct/record_declaration), because the whole point is to
+	// land on the identity the base extractor already emits — see
+	// enclosingCSharpType.
+	reCSharpTypeDecl = regexp.MustCompile(`(?m)^[\t ]*(?:\[[^\]]*\][\t ]*)*(?:(?:public|internal|private|protected|static|sealed|abstract|partial|file)\s+)*(?:class|record|struct|interface)\s+(\w+)`)
 )
+
+// enclosingCSharpType returns the name of the nearest type declaration that
+// starts at or before offset, or "" when there is none.
+//
+// #6144 — WHY THIS EXISTS AND WHAT IT IS FOR. The container's
+// DEPENDS_ON_SERVICE edge used to hang off the container node itself, so the
+// emitted edge was `container:PostgreSqlContainer -> service PostgreSqlContainer`:
+// both endpoints derived from a single token, and the TEST — the thing this
+// file's package doc says depends on the service — appeared nowhere in it.
+// Attaching the edge to the enclosing test type instead makes it say something
+// a caller cannot already read off the container node's properties: "this test
+// suite needs a Postgres".
+//
+// HOW THE EDGE REACHES THE TEST CLASS WITHOUT FABRICATING A NODE. The FROM
+// endpoint of a relationship is whichever EntityRecord carries it, and this
+// extractor does not emit test classes. It does not need to: MergeWithCustom's
+// Tier A (issue #6104, extractors/custom_dispatch.go) COMBINES a custom record
+// with a base record of the same identity — (SourceFile, Kind, Name) — into one
+// survivor, carrying the custom record's relationships onto it. The base csharp
+// extractor emits every class as Kind="SCOPE.Component", Subtype="class", Name=
+// the class name, in this same file. So emitting a minimal facet with exactly
+// that identity lands the edge on the real class node rather than creating a
+// second one. The facet sets no field the base does not already set to the same
+// value, and its span is a single line at the declaration, so the Tier A span
+// union (min non-zero start, max end) cannot narrow the base class's span.
+//
+// HONEST-PARTIAL, AND WHERE IT STOPS. The scan is lexical and takes the NEAREST
+// PRECEDING declaration; it does not track braces, so a container constructed
+// inside a nested type is attributed to that nested type (correct) but one
+// constructed after a nested type has closed is attributed to the nested type
+// too (wrong). Both are still a type IN THE SAME FILE, so the edge remains
+// vastly more informative than the tautology it replaces, and when no
+// declaration precedes the match at all the caller keeps the edge on the
+// container node rather than dropping it — a relationship the extractor meant
+// to express is never silently lost (#6123).
+// Returns the declaration's byte offset alongside the name so the merge facet
+// can be stamped with the class's own declaration line rather than the
+// container's — a facet line inside the class body would drag the Tier A span
+// union's StartLine down below the real declaration.
+func enclosingCSharpType(src string, offset int) (string, int) {
+	if offset <= 0 || offset > len(src) {
+		return "", 0
+	}
+	name, at := "", 0
+	for _, m := range reCSharpTypeDecl.FindAllStringSubmatchIndex(src[:offset], -1) {
+		name, at = src[m[2]:m[3]], m[2]
+	}
+	return name, at
+}
 
 // reLeafType strips a dotted/namespaced C# type to its leaf token, e.g.
 // "Acme.Domain.IFoo" -> "IFoo". Used so mock targets match the type entities
@@ -283,14 +346,26 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 	// Container topology — Testcontainers. The test DEPENDS_ON_SERVICE the
 	// container'd service.
 	//
-	// #6144 — that sentence describes the FROM endpoint the extractor MEANT, not
-	// the one it emits. The relationship is appended to `ent` below, so the edge
-	// runs container:X -> service X: both endpoints derive from one token and the
-	// test appears nowhere. The `image` / `container_type` payload is also already
-	// duplicated as properties on the container node, so the edge carries nothing
-	// a caller could not read off the node. Filed separately rather than folded in
-	// here — #6123 is about the TARGET, and repointing the source needs an
-	// enclosing-scope lookup this closure does not do.
+	// #6144 — FIXED: that sentence now describes what is emitted. It previously
+	// described the FROM endpoint the extractor MEANT, not the one it produced:
+	// the relationship was appended to `ent`, so the edge ran
+	// container:X -> service X, both endpoints derived from one token, with the
+	// test nowhere in it. Since the `image` / `container_type` payload is ALSO
+	// duplicated as properties on the container node, the edge carried nothing an
+	// MCP caller could not already read off the node — a tautology, not a
+	// relationship.
+	//
+	// The FROM endpoint is now the enclosing test type (enclosingCSharpType +
+	// the #6104 Tier A identity merge, both documented there). Of the three
+	// options #6144 laid out, this is (1). (2) "drop the edge" was rejected: the
+	// edge is the only thing that would state a test's infrastructure dependency
+	// at all, and #6123's principle — a silently dropped relationship is worse
+	// than an honest dangle, and unmeasurable afterwards — applies once the edge
+	// is no longer vacuous. (3) "keep it and fix the doc" was rejected as
+	// documenting a tautology rather than removing one. The blocker #6144 cited
+	// for (1) — "needs an enclosing-scope lookup this closure does not do" — was
+	// real but small: the lookup is lexical, and the merge mechanism for landing
+	// an edge on an entity another extractor owns already existed.
 	//
 	// #6123 — the target ref. This edge used to carry `service:<name>`, which
 	// LOOKS like the Name of an external-service node (extractor.ExternalServiceName
@@ -355,7 +430,12 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 	// two are conditional on the ref NOT reaching six segments. See
 	// containerServiceRef.
 	// -------------------------------------------------------------------------
-	emitContainer := func(name, image, ctype string, line int) {
+	// testTypeFacets indexes the #6144 merge facet emitted per enclosing test
+	// type, so several containers in one class accumulate their edges on ONE
+	// facet instead of colliding in `add`'s dedup and losing all but the first.
+	testTypeFacets := make(map[string]int) // type name -> index in entities
+
+	emitContainer := func(name, image, ctype string, offset, line int) {
 		ent := makeEntity("container:"+name, "SCOPE.Pattern", "container_topology",
 			file.Path, "csharp", line)
 		props := []string{"framework", "test_doubles",
@@ -367,18 +447,63 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 			props = append(props, "container_type", ctype)
 		}
 		setProps(&ent, props...)
-		if ref := containerServiceRef(name); ref != "" {
-			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
-				ToID: ref,
-				Kind: string(types.RelationshipKindDependsOnService),
-				Properties: types.Props{
-					{K: "container_type", V: ctype},
-					{K: "framework", V: "test_doubles"},
-					{K: "image", V: image},
-					{K: "line", V: itoa(line)},
-					{K: "role", V: "container_topology"},
-				},
-			})
+
+		ref := containerServiceRef(name)
+		rel := types.RelationshipRecord{
+			ToID: ref,
+			Kind: string(types.RelationshipKindDependsOnService),
+			Properties: types.Props{
+				{K: "container_type", V: ctype},
+				{K: "framework", V: "test_doubles"},
+				{K: "image", V: image},
+				{K: "line", V: itoa(line)},
+				{K: "role", V: "container_topology"},
+			},
+		}
+
+		// #6144 — the FROM endpoint. Prefer the enclosing test type: the edge
+		// then reads "MyIntegrationTests DEPENDS_ON_SERVICE postgres", which is
+		// what the package doc has always claimed and what an MCP caller cannot
+		// reconstruct from the container node alone. Falling back to the
+		// container node when no enclosing type is found keeps the pre-#6144
+		// behaviour rather than dropping the relationship.
+		owner, declAt := "", 0
+		if ref != "" {
+			owner, declAt = enclosingCSharpType(src, offset)
+		}
+		if owner != "" {
+			// Set, not append: types.Props is binary-searched (find/Get) and must
+			// stay key-sorted, so "container" has to be inserted in position.
+			rel.Properties.Set("container", "container:"+name)
+			idx, ok := testTypeFacets[owner]
+			if !ok {
+				// Identity-matched facet for the base extractor's class node —
+				// Kind/Subtype/Name/SourceFile all equal to what csharp.go emits,
+				// so MergeWithCustom Tier A combines rather than duplicating.
+				facet := makeEntity(owner, "SCOPE.Component", "class",
+					file.Path, "csharp", lineOf(src, declAt))
+				setProps(&facet, "framework", "test_doubles",
+					"provenance", "INFERRED_FROM_TESTCONTAINER")
+				before := len(entities)
+				add(facet)
+				if len(entities) == before {
+					// Deduped against an earlier facet for the same type that is
+					// not in the map (cannot happen today, but never silently
+					// drop the edge if it ever does).
+					ent.Relationships = append(ent.Relationships, rel)
+					add(ent)
+					return
+				}
+				idx = len(entities) - 1
+				testTypeFacets[owner] = idx
+			}
+			entities[idx].Relationships = append(entities[idx].Relationships, rel)
+			add(ent)
+			return
+		}
+
+		if ref != "" {
+			ent.Relationships = append(ent.Relationships, rel)
 		}
 		add(ent)
 	}
@@ -389,11 +514,11 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 		if ctype == "ContainerBuilder" {
 			continue
 		}
-		emitContainer(ctype, "", ctype, lineOf(src, m[0]))
+		emitContainer(ctype, "", ctype, m[0], lineOf(src, m[0]))
 	}
 	for _, m := range reTcWithImage.FindAllStringSubmatchIndex(src, -1) {
 		image := src[m[2]:m[3]]
-		emitContainer(image, image, "", lineOf(src, m[0]))
+		emitContainer(image, image, "", m[0], lineOf(src, m[0]))
 	}
 
 	// -------------------------------------------------------------------------

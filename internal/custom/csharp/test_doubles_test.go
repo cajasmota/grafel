@@ -26,6 +26,34 @@ func relOf(recs []types.EntityRecord, kind, toID string) *types.RelationshipReco
 	return nil
 }
 
+// relOwnersOf returns every entity carrying a relationship of the given kind to
+// toID — i.e. the FROM endpoints. relOf deliberately searches all records and
+// therefore cannot see which node an edge hangs off; #6144 is entirely about
+// that endpoint, so it needs its own helper.
+func relOwnersOf(recs []types.EntityRecord, kind, toID string) []types.EntityRecord {
+	var out []types.EntityRecord
+	for i := range recs {
+		for j := range recs[i].Relationships {
+			r := &recs[i].Relationships[j]
+			if r.Kind == kind && r.ToID == toID {
+				out = append(out, recs[i])
+				break
+			}
+		}
+	}
+	return out
+}
+
+// recByKindName finds an entity by (Kind, Name).
+func recByKindName(recs []types.EntityRecord, kind, name string) *types.EntityRecord {
+	for i := range recs {
+		if recs[i].Kind == kind && recs[i].Name == name {
+			return &recs[i]
+		}
+	}
+	return nil
+}
+
 func TestTestDoubles_MoqMockBinding(t *testing.T) {
 	src := `
 using Moq;
@@ -482,4 +510,164 @@ public class NotSteps
 			t.Error("step_definition should not fire without [Binding]")
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// #6144 — the DEPENDS_ON_SERVICE **FROM** endpoint.
+// ---------------------------------------------------------------------------
+//
+// #6123 fixed this edge's TARGET. Its SOURCE was a separate defect: the
+// relationship hung off the container node, so the edge ran
+// `container:PostgreSqlContainer -> service PostgreSqlContainer` — both
+// endpoints derived from one token, the test nowhere in it, and the whole
+// payload (image, container_type) already duplicated as properties on the
+// container node. It told an MCP caller nothing grafel_inspect on that node
+// would not.
+//
+// The edge now hangs off the ENCLOSING TEST TYPE, emitted as a merge facet with
+// the identity the base csharp extractor gives that class (SourceFile, Kind
+// SCOPE.Component, Name) so #6104's Tier A combines the two rather than
+// creating a second node.
+//
+// Asserted bidirectionally on CONTENT, not counts: the class must own the edge
+// AND the container node must not, because "the class owns it" alone would also
+// be satisfied by emitting the edge twice.
+
+func TestTestDoubles_ContainerServiceEdgeHangsOffTheTestType6144(t *testing.T) {
+	src := `
+using Testcontainers.PostgreSql;
+using DotNet.Testcontainers.Builders;
+using Xunit;
+
+public class OrderIntegrationTests
+{
+    public OrderIntegrationTests()
+    {
+        var pg = new PostgreSqlContainer();
+        var cache = new ContainerBuilder()
+            .WithImage("redis:7")
+            .Build();
+    }
+}
+`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("OrderIntegrationTests.cs", "csharp", src))
+
+	pgRef := extractor.ExternalServiceTargetID("PostgreSqlContainer")
+	redisRef := extractor.ExternalServiceTargetID("redis:7")
+
+	for _, tc := range []struct{ what, ref, container string }{
+		{"typed container", pgRef, "container:PostgreSqlContainer"},
+		{"image binding", redisRef, "container:redis:7"},
+	} {
+		owners := relOwnersOf(recs, "DEPENDS_ON_SERVICE", tc.ref)
+		if len(owners) != 1 {
+			t.Fatalf("%s: expected exactly 1 entity to own the DEPENDS_ON_SERVICE edge to %s, got %d (%v)",
+				tc.what, tc.ref, len(owners), ownerNames(owners))
+		}
+		owner := owners[0]
+
+		// FORWARD: the owner is the test type, with the identity the base
+		// extractor gives it — anything else creates a second node instead of
+		// merging onto the class (#6104 Tier A keys on SourceFile+Kind+Name).
+		if owner.Name != "OrderIntegrationTests" {
+			t.Errorf("%s: DEPENDS_ON_SERVICE hangs off %q, want the enclosing test type "+
+				"%q — the edge is tautological when it hangs off the container (#6144)",
+				tc.what, owner.Name, "OrderIntegrationTests")
+		}
+		if owner.Kind != "SCOPE.Component" || owner.Subtype != "class" {
+			t.Errorf("%s: owner is %s/%s, want SCOPE.Component/class so #6104 Tier A merges it "+
+				"onto the base extractor's class node instead of adding a duplicate",
+				tc.what, owner.Kind, owner.Subtype)
+		}
+		if owner.SourceFile != "OrderIntegrationTests.cs" {
+			t.Errorf("%s: owner SourceFile = %q, want the file under extraction — identity must "+
+				"match the base class node exactly", tc.what, owner.SourceFile)
+		}
+
+		// REVERSE: the container node must NOT also carry it.
+		if c := recByKindName(recs, "SCOPE.Pattern", tc.container); c == nil {
+			t.Errorf("%s: container node %q was not emitted at all", tc.what, tc.container)
+		} else {
+			for _, r := range c.Relationships {
+				if r.Kind == "DEPENDS_ON_SERVICE" {
+					t.Errorf("%s: the container node %q still carries a DEPENDS_ON_SERVICE edge to %q — "+
+						"the tautological edge was duplicated, not moved (#6144)", tc.what, tc.container, r.ToID)
+				}
+			}
+		}
+
+		// The edge must still name the container it came from, or moving the
+		// FROM endpoint would LOSE the association the old shape encoded.
+		e := relOf(recs, "DEPENDS_ON_SERVICE", tc.ref)
+		if got := e.Properties.Get("container"); got != tc.container {
+			t.Errorf("%s: edge property container = %q, want %q — the class-level edge must still "+
+				"say which container produced it", tc.what, got, tc.container)
+		}
+	}
+
+	// The container nodes keep their own payload: moving the edge must not
+	// strip the properties an MCP caller reads off the node.
+	if c := recByKindName(recs, "SCOPE.Pattern", "container:PostgreSqlContainer"); c == nil {
+		t.Fatal("container:PostgreSqlContainer node missing")
+	} else if c.Properties["container_type"] != "PostgreSqlContainer" {
+		t.Errorf("container node lost its container_type property: %v", c.Properties)
+	}
+	if c := recByKindName(recs, "SCOPE.Pattern", "container:redis:7"); c == nil {
+		t.Fatal("container:redis:7 node missing")
+	} else if c.Properties["image"] != "redis:7" {
+		t.Errorf("container node lost its image property: %v", c.Properties)
+	}
+
+	// Exactly ONE facet for the test type, however many containers it holds —
+	// otherwise `add`'s dedup silently drops all but the first edge.
+	facets := 0
+	for _, r := range recs {
+		if r.Kind == "SCOPE.Component" && r.Name == "OrderIntegrationTests" {
+			facets++
+		}
+	}
+	if facets != 1 {
+		t.Errorf("emitted %d SCOPE.Component/OrderIntegrationTests records, want exactly 1 "+
+			"(two containers in one class must share one merge facet)", facets)
+	}
+}
+
+// TestTestDoubles_ContainerEdgeFallsBackToTheContainerNode6144 pins the
+// fallback: with no enclosing type there is nothing to re-point at, and the
+// edge must stay on the container node rather than being dropped — #6123's
+// principle that a silently dropped relationship is worse than an honest
+// dangle, and unmeasurable afterwards.
+func TestTestDoubles_ContainerEdgeFallsBackToTheContainerNode6144(t *testing.T) {
+	// Top-level statements: no class declaration anywhere in the file.
+	src := `
+using Testcontainers.PostgreSql;
+
+var pg = new PostgreSqlContainer();
+`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("Program.cs", "csharp", src))
+
+	ref := extractor.ExternalServiceTargetID("PostgreSqlContainer")
+	owners := relOwnersOf(recs, "DEPENDS_ON_SERVICE", ref)
+	if len(owners) != 1 {
+		t.Fatalf("expected the edge to survive with no enclosing type, got %d owners (%v)",
+			len(owners), ownerNames(owners))
+	}
+	if owners[0].Name != "container:PostgreSqlContainer" {
+		t.Errorf("fallback owner = %q, want the container node — with no test type to attribute "+
+			"the dependency to, the pre-#6144 shape is the honest one", owners[0].Name)
+	}
+	// And no phantom class facet may be invented for a file that has no class.
+	for _, r := range recs {
+		if r.Kind == "SCOPE.Component" {
+			t.Errorf("invented a SCOPE.Component %q for a file with no type declaration", r.Name)
+		}
+	}
+}
+
+func ownerNames(recs []types.EntityRecord) []string {
+	out := make([]string, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, r.Kind+"/"+r.Name)
+	}
+	return out
 }

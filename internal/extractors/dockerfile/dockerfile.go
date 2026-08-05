@@ -42,7 +42,9 @@ type Extractor struct{}
 func (e *Extractor) Language() string { return "dockerfile" }
 
 // Extract walks the tree-sitter CST and returns a single EntityRecord for the
-// Dockerfile file. On nil tree or empty src, returns empty slice with nil error.
+// Dockerfile file. On empty src, returns an empty slice with nil error; on a nil
+// tree with non-empty src it parses the content itself (under the daemon-wide
+// parse gate) rather than bailing — see the #6154 note on the guard below.
 func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("extractor.dockerfile")
 	ctx, span := tracer.Start(ctx, "indexer.extract.dockerfile",
@@ -50,7 +52,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	)
 	defer span.End()
 
-	if file.TSTree == nil || len(file.Content) == 0 {
+	// #6154 — this guard used to also bail on `file.TSTree == nil`, which made
+	// the self-parse fallback at the `if tree == nil` block below UNREACHABLE:
+	// the only way to reach it was with a nil tree, and a nil tree returned here
+	// first. The other six AcquireParseSlot self-parse extractors (python,
+	// golang, html, hcl, cpp, yaml) guard on empty content ONLY, so their
+	// fallbacks are live; dockerfile was the sole outlier, and the dead block
+	// read as coverage in two contradictory audits at once. Guard on content
+	// alone, matching the other six, so the fallback the comment below describes
+	// can actually run.
+	if len(file.Content) == 0 {
 		span.SetAttributes(
 			attribute.Int("file_line_count", 0),
 			attribute.Int("entity_count", 0),

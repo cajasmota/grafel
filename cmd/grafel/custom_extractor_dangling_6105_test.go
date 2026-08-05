@@ -710,6 +710,9 @@ func TestCustomExtractorSchemaFieldRefsStayInTheirOwnFile6105(t *testing.T) {
 // A dangling-count check cannot see any of this: the count IMPROVES when the
 // edge silently mis-binds and WORSENS under this fix. That is why every
 // assertion here is on content.
+//
+// #6144 EXTENDED THIS TEST'S REACH to the edge's SOURCE endpoint, which #6123
+// deliberately left alone — see the note on the (c) expectation below.
 func TestCustomExtractorDependsOnServiceDoesNotMisbind6123(t *testing.T) {
 	_, on := gateArms6105(t)
 
@@ -736,11 +739,31 @@ func TestCustomExtractorDependsOnServiceDoesNotMisbind6123(t *testing.T) {
 			"collision target — a mis-bind would now be undetectable here")
 	}
 
-	// (c) The edge exists, joins the container node to the canonical
-	// external-service ref, and binds to NOTHING (honest dangle).
+	// (c) The edge exists, joins THE TEST to the canonical external-service ref,
+	// and binds to NOTHING (honest dangle).
+	//
+	// #6144 — THE FROM ENDPOINT MOVED, AND THIS IS THE END-TO-END PROOF. This
+	// expectation used to be `SCOPE.Pattern:container:PostgreSqlContainer -> …`,
+	// i.e. the edge hung off the container node, so it ran
+	// container:PostgreSqlContainer -> service PostgreSqlContainer: both
+	// endpoints derived from one token, with the test — the thing test_doubles.go
+	// has always documented as the dependent — nowhere in it. That assertion was
+	// pinning the tautology.
+	//
+	// The extractor now attaches the edge to the enclosing test type (OrderTests)
+	// as a #6104 Tier A merge facet. Two later passes then act on it, and their
+	// combined effect is what this string records: the facet merges onto the base
+	// C# extractor's SCOPE.Component:OrderTests, and foldFileComponentDuplicates
+	// folds that class component into the FILE component for cs/OrderTests.cs,
+	// repointing the edge (`edges_repointed` in its log line). So the surviving
+	// shape is file-granular rather than class-granular — still the test, still
+	// non-tautological, and it confirms the facet really did land on a node the
+	// rest of the pipeline recognises rather than creating a stray parallel one.
+	// If it had NOT merged, a second SCOPE.Component:OrderTests would survive the
+	// fold and show up here as an extra edge.
 	got := edgeSet6105(on, "DEPENDS_ON_SERVICE")
 	want := map[string]int{
-		"DEPENDS_ON_SERVICE: SCOPE.Pattern:container:PostgreSqlContainer -> " +
+		"DEPENDS_ON_SERVICE: SCOPE.Component:cs/OrderTests.cs -> " +
 			"DANGLING(scope:externalservice:PostgreSqlContainer)": 1,
 	}
 	if len(got) != len(want) {

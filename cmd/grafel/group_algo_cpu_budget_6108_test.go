@@ -226,6 +226,29 @@ func TestGroupAlgoProgress_EmitsPhaseAndCPU(t *testing.T) {
 
 // TestGroupAlgoProgress_StopsWithThePass: the heartbeat must not outlive the
 // pass, or a daemon accumulates one ticker goroutine per group-algo run.
+//
+// #6134 — WHY THIS IS ASSERTED WITHOUT A SETTLING SLEEP, AND WHY THE PRODUCT
+// CHANGED. This test used to sleep 30ms after stop() before taking its
+// baseline count, and compared that baseline against a count 80ms later. It
+// failed under host load (1 -> 2 lines) and passed in isolation, which reads
+// like a tight test. It was not: the 30ms sleep was hiding a genuine race, and
+// on a loaded machine the race simply outlived the sleep.
+//
+// stop() closed a channel and returned. The heartbeat goroutine selected over
+// {done, ctx.Done(), ticker}. A Go select chooses UNIFORMLY AT RANDOM among
+// ready cases, so once a tick was pending, a closed `done` won only half the
+// time — and the goroutine had no obligation to have reached the select at all.
+// A line could therefore be emitted AFTER stop() returned, reporting elapsed
+// time and a phase for a pass that had already ended. That is the #6047 class
+// (progress reported after the work it describes has finished), not a test
+// artifact: the wizard could print a heartbeat for a finished pass.
+//
+// startGroupAlgoProgress now makes stop() a real barrier — it re-checks the
+// stop signal after a tick wins the select, and waits for the goroutine to
+// exit before returning. So the guarantee is exact and needs no settling
+// window: once stop() has RETURNED, the line count is final forever. Sampling
+// immediately after stop() is what actually tests that guarantee; sleeping
+// first tests a weaker one and is what made this load-sensitive.
 func TestGroupAlgoProgress_StopsWithThePass(t *testing.T) {
 	t.Setenv("GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL", "10ms")
 
@@ -238,19 +261,94 @@ func TestGroupAlgoProgress_StopsWithThePass(t *testing.T) {
 	stop := startGroupAlgoProgress(context.Background(), "gStop", "child")
 	time.Sleep(60 * time.Millisecond)
 	stop()
-	time.Sleep(30 * time.Millisecond)
+
+	// No settling sleep: the count is taken the instant stop() returns.
 	mu.Lock()
 	settled := strings.Count(buf.String(), "group-algo: progress")
 	mu.Unlock()
-	time.Sleep(80 * time.Millisecond)
+
+	// Fixture validity: if the heartbeat never emitted anything, "no further
+	// lines" is vacuously true and this test proves nothing.
+	if settled == 0 {
+		t.Fatalf("heartbeat emitted no progress line in 60ms at a 10ms interval — "+
+			"the no-further-lines assertion below would be vacuous:\n%s", buf.String())
+	}
+
+	// Several more intervals must produce nothing.
+	time.Sleep(120 * time.Millisecond)
 	mu.Lock()
 	after := strings.Count(buf.String(), "group-algo: progress")
 	mu.Unlock()
 	if after != settled {
-		t.Errorf("progress heartbeat kept ticking after the pass ended (%d -> %d lines) — one leaked goroutine per pass", settled, after)
+		t.Errorf("progress heartbeat kept ticking after stop() RETURNED (%d -> %d lines) — "+
+			"the pass is over and the heartbeat is still reporting on it (#6134/#6047)", settled, after)
 	}
-	// Calling stop twice must not panic on a double close.
+	// Calling stop twice must not panic on a double close, and must still return.
 	stop()
+}
+
+// TestGroupAlgoProgress_StopIsABarrier is the direct, load-independent pin on
+// the #6134 guarantee, separate from the line-count test above: stop() must not
+// return until the heartbeat goroutine has actually exited. Asserted by having
+// the log sink record whether any write happens after stop() returns, over many
+// stop/start cycles — the race is probabilistic per cycle (a select coin-flip),
+// so a single cycle is not evidence either way.
+func TestGroupAlgoProgress_StopIsABarrier(t *testing.T) {
+	t.Setenv("GRAFEL_GROUP_ALGO_PROGRESS_INTERVAL", "1ms")
+
+	for i := range 40 {
+		var mu sync.Mutex
+		buf := &bytes.Buffer{}
+		var stopped bool
+		var lateWrite bool
+		sink := &lateDetectWriter{mu: &mu, w: buf, stopped: &stopped, late: &lateWrite}
+
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(sink, nil)))
+
+		stop := startGroupAlgoProgress(context.Background(), "gBarrier", "child")
+		// Long enough at the 1ms floor for the ticker to be firing steadily, so
+		// stop() genuinely races a pending tick rather than arriving before the
+		// first one.
+		time.Sleep(20 * time.Millisecond)
+		stop()
+		mu.Lock()
+		stopped = true
+		mu.Unlock()
+
+		// Give any goroutine that survived stop() ample room to emit.
+		time.Sleep(10 * time.Millisecond)
+
+		mu.Lock()
+		late := lateWrite
+		out := buf.String()
+		mu.Unlock()
+		slog.SetDefault(prev)
+
+		if late {
+			t.Fatalf("cycle %d: the heartbeat wrote a line AFTER stop() returned — stop() is not a "+
+				"barrier, so a finished pass can still report progress (#6134):\n%s", i, out)
+		}
+	}
+}
+
+// lateDetectWriter flags any write that lands after the test marked the pass
+// stopped. Unlike a count comparison it cannot be satisfied by a write that
+// merely happens to arrive between two samples.
+type lateDetectWriter struct {
+	mu      *sync.Mutex
+	w       *bytes.Buffer
+	stopped *bool
+	late    *bool
+}
+
+func (s *lateDetectWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if *s.stopped {
+		*s.late = true
+	}
+	return s.w.Write(p)
 }
 
 // TestGroupAlgoProgress_Disabled: "0" turns the heartbeat off entirely.
