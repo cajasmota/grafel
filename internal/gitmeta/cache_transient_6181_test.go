@@ -24,6 +24,24 @@ func withGitUnavailable(t *testing.T) *int {
 	return &calls
 }
 
+// generousDeadline removes the production 2s deadline for the duration of a
+// test that needs a git invocation to actually COMPLETE.
+//
+// This is not belt-and-braces. It was added after a real failure: under load
+// average 8.2 on a shared machine, forking a stub `git` that does nothing but
+// `exit 128` took longer than 2s, the deadline fired, and the classifier
+// correctly reported gitUnavailable to a test asserting gitAnswered. That is the
+// #6181 production trigger reproducing spontaneously in the test suite — which
+// is a fine thing to have observed and a terrible thing to leave in a test whose
+// subject is the OTHER branch. Tests that assert on the timeout branch set their
+// own short deadline instead.
+func generousDeadline(t *testing.T) {
+	t.Helper()
+	prev := gitCallTimeout
+	gitCallTimeout = 2 * time.Minute
+	t.Cleanup(func() { gitCallTimeout = prev })
+}
+
 // countingRealGit installs a seam that forwards to real git while counting
 // invocations, so a test can prove a second CaptureCached did (or did not) fork.
 func countingRealGit(t *testing.T) *int {
@@ -50,6 +68,7 @@ func countingRealGit(t *testing.T) *int {
 //
 // The trigger is transient; the consequence must not be sticky.
 func TestCaptureCached_DoesNotMemoizeUnrunnableGit(t *testing.T) {
+	generousDeadline(t)
 	resetCaptureCacheForTest()
 	dir := initGitRepo(t)
 
@@ -74,6 +93,7 @@ func TestCaptureCached_DoesNotMemoizeUnrunnableGit(t *testing.T) {
 // commit-fresh variant (ResolveCWD / grafel_whoami), which memoizes on the same
 // unconditional write.
 func TestCaptureCachedFresh_DoesNotMemoizeUnrunnableGit(t *testing.T) {
+	generousDeadline(t)
 	resetCaptureCacheForTest()
 	dir := initGitRepo(t)
 
@@ -96,6 +116,7 @@ func TestCaptureCachedFresh_DoesNotMemoizeUnrunnableGit(t *testing.T) {
 // poisonous as a total failure and must not be memoized either. Trust is a
 // property of the whole capture, not of its first call.
 func TestCaptureCached_DoesNotMemoizeAMidCaptureFailure(t *testing.T) {
+	generousDeadline(t)
 	resetCaptureCacheForTest()
 	dir := initGitRepo(t)
 
@@ -153,6 +174,7 @@ func TestCapture_DistrustIsPerCall_EverySubcommand(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			generousDeadline(t)
 			resetCaptureCacheForTest()
 			dir := initGitRepo(t)
 
@@ -202,6 +224,7 @@ func TestCapture_DistrustIsPerCall_EverySubcommand(t *testing.T) {
 // (so the :330 escape does NOT fire and the cache write is reached), while git
 // exits non-zero with "not a git repository".
 func TestCaptureCached_StillCachesAGenuineNonRepo(t *testing.T) {
+	generousDeadline(t)
 	resetCaptureCacheForTest()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
@@ -324,12 +347,9 @@ func stubGit(t *testing.T, body string) (realPath string) {
 // returns -1 when the process was terminated by a signal, on every platform.
 func TestRunGitStatus_SignalDeathIsUnavailableNotAnAnswer(t *testing.T) {
 	stubGit(t, "kill -9 $$")
-
-	// Deadline is generous and deliberately never fires: this must be caught by
-	// signal detection, not by ctx.Err().
-	prev := gitCallTimeout
-	gitCallTimeout = 30 * time.Second
-	t.Cleanup(func() { gitCallTimeout = prev })
+	// The deadline deliberately never fires: this must be caught by signal
+	// detection, not by ctx.Err().
+	generousDeadline(t)
 
 	out, st := runGitStatus(t.TempDir(), "rev-parse", "--show-toplevel")
 	if st != gitUnavailable || out != "" {
@@ -346,9 +366,7 @@ func TestCaptureCached_DoesNotMemoizeASignalledGit(t *testing.T) {
 	dir := initGitRepo(t)
 
 	realPath := stubGit(t, "kill -9 $$")
-	prev := gitCallTimeout
-	gitCallTimeout = 30 * time.Second
-	t.Cleanup(func() { gitCallTimeout = prev })
+	generousDeadline(t)
 
 	if got := CaptureCached(dir); got != (Info{}) {
 		t.Fatalf("expected zero Info from a killed git, got %+v", got)
@@ -367,6 +385,7 @@ func TestCaptureCached_DoesNotMemoizeASignalledGit(t *testing.T) {
 // optimisation away.
 func TestRunGitStatus_NormalNonZeroExitStaysAnAnswer(t *testing.T) {
 	stubGit(t, "exit 128")
+	generousDeadline(t)
 
 	if out, st := runGitStatus(t.TempDir(), "rev-parse", "--show-toplevel"); st != gitAnswered || out != "" {
 		t.Fatalf("exit 128: got (%q, %v), want (\"\", gitAnswered)", out, st)
@@ -377,6 +396,7 @@ func TestRunGitStatus_NormalNonZeroExitStaysAnAnswer(t *testing.T) {
 // itself against real git: a non-zero exit is an ANSWER (reproducible, about
 // the repo), while a missing binary means git never spoke.
 func TestRunGitStatus_ClassifiesAnsweredVsUnavailable(t *testing.T) {
+	generousDeadline(t)
 	dir := t.TempDir() // no .git anywhere under TempDir
 
 	if out, st := runGitStatus(dir, "rev-parse", "--show-toplevel"); st != gitAnswered || out != "" {
