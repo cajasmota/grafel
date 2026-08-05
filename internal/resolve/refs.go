@@ -5859,46 +5859,116 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 						continue
 					}
 					// Issue #6125 — ambiguous within (pkg, recv, member).
-					// Leave the stub verbatim and stop the ladder here.
 					//
-					// The old code merely set resolved=false and fell through
-					// to rewriteOneWithCaller → the global byName index, which
-					// binds. The inline comment claimed it "preserved the
-					// stub"; it did not. lookupPackageMember's own contract
-					// (refs.go:2757-2762, 2779-2781) states the opposite of
-					// what the call site did: ("", true) exists precisely "so
-					// the caller can leave the stub alone instead of falling
-					// back to global bare-name lookup".
+					// The old code set resolved=false and fell straight
+					// through, while its comment claimed it "preserved the
+					// stub". It did not: the ladder below binds. But the
+					// ladder is NOT just the global byName index, and the
+					// distinction is what this whole block turns on.
 					//
-					// Why this fall-through was unsound rather than merely
-					// lossy, measured not assumed: byPackageMember keys are
-					// derived by splitting an entity Name at its LAST dot
-					// (refs.go:1208-1228), so every candidate the receiver
-					// tier declined between is named "<Recv>.<member>". byName
-					// is keyed on the WHOLE Name (refs.go:1474, 1497). A
-					// declined candidate therefore can NEVER appear under
-					// byName[member]. The downstream tier is not choosing
-					// better between the candidates — it is structurally
-					// incapable of returning any of them, so it can only ever
-					// return a DIFFERENT entity, typically in a foreign
-					// package. An honest dangle beats a confident wrong bind.
+					// What the refusal used to reach, in order:
+					//   1. rewriteOneWithCaller → LookupStatusHint → byName
+					//      (refs.go:1474, 1497), keyed on the WHOLE entity
+					//      Name. byPackageMember keys come from splitting a
+					//      Name at its LAST dot (refs.go:1207-1233), so every
+					//      declined candidate is named "<Recv>.<member>" and
+					//      can never appear under byName[member]. Anything
+					//      this tier returns is a non-candidate — typically a
+					//      foreign-package function of the bare name.
+					//   2. refs.go:3036-3041 → lookupBareWithLocality, whose
+					//      CALLS arm probes lookupMemberByLeafName over
+					//      byMember[callerFile] (refs.go:3129) and then
+					//      lookupPackageMemberByLeafName over
+					//      byPackageMember[pkgDir] (refs.go:3134). byMember is
+					//      built by the SAME last-dot split, in the same loop
+					//      ten lines above byPackageMember — so a declined
+					//      candidate is not merely reachable here, byMember is
+					//      the canonical place it lives.
+					//
+					// So a blanket "refusal terminates" is wrong, and was
+					// measured wrong: with two `T11.Do11` in package svc and
+					// the CALLER ITSELF IN svc/a.go, tier 2's same-file probe
+					// binds svc/a.go's method — the correct answer, and one a
+					// blanket refusal turns into a dangle. Go build-tag
+					// variants produce exactly this shape and are legal and
+					// common.
+					//
+					// What we do instead: hoist the SAME-FILE probe above the
+					// refusal, then terminate. The locality argument is the
+					// real one — the ambiguity that triggered the refusal is
+					// package-wide, and the caller's own file is strictly
+					// narrower than the package. Under build tags exactly one
+					// of the colliding files compiles, and a caller inside
+					// a.go means a.go's method. lookupMemberByLeafName itself
+					// declines when two scopes in that one file share the leaf
+					// (refs.go:2794-2801), so this never guesses either.
+					//
+					// What is cut off is the global byName tier, which per the
+					// keying above can only ever return a non-candidate.
+					// Measured: with a foreign `Do11` in another package, base
+					// bound it and this does not.
+					//
+					// The PACKAGE-wide leaf tier at refs.go:3134 is also no
+					// longer reached, but that is a NO-OP rather than a second
+					// win, and the distinction is worth stating because the
+					// obvious guess is wrong. scanLeafMembers returns
+					// ("", false) the moment it meets a blank ambiguity
+					// sentinel (refs.go:2884-2888, 2901-2906), and the refusal
+					// path is DEFINED by byPackageMember[pkg][recv][member]
+					// being exactly that blank. The leaf scan walks that same
+					// pkgBucket, so it always meets the sentinel and always
+					// declines. Confirmed by measurement: a sibling
+					// `T22.Do11` in the package is NOT bound by base either.
+					// The same-file scan is unaffected because the sentinel
+					// lives in byPackageMember, not in byMember.
+					//
+					// An honest dangle beats a confident wrong bind; it does
+					// not beat a correct one.
 					//
 					// Contrast the byPackageComponent tier below, whose
-					// fall-through is retained and whose comment is accurate:
-					// that index is keyed on the dot-free bare Name
-					// (refs.go:1419-1427), so its ambiguous candidates are the
-					// same strings byName sees, and byName is necessarily
-					// ambiguous too. That fall-through provably cannot mis-bind.
+					// fall-through is retained. Not for the keying reason —
+					// for a sharper one: lookupBareWithLocality's switch
+					// (refs.go:3111-3144) has NO leaf-name tier on the
+					// EXTENDS/IMPLEMENTS arm, and DEPENDS_ON is not in the
+					// switch at all. That tier's refusals therefore reach only
+					// byName, where its candidates — indexed under the
+					// dot-free bare Name (refs.go:1419-1427) — are the same
+					// strings that made byName ambiguous. It provably cannot
+					// mis-bind, and its inline comment is accurate.
 					//
 					// This also brings the full-rebuild path into line with
-					// internal/extractors/sresolver, where the same
-					// misconception was fixed for #6098 with a three-outcome
-					// contract. Before this change the two paths disagreed on
-					// the identical input.
+					// internal/extractors/sresolver, fixed for #6098.
+					if ambiguousReceiver && parentSourceFile != "" {
+						if id, ok := idx.lookupMemberByLeafName(parentSourceFile, r.ToID, famOperation); ok && id != "" {
+							r.ToID = id
+							applyEndpointStats(&stats, statusRewritten, false)
+							d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
+							stats.recordDisposition(d, orig)
+							continue
+						}
+					}
 					if ambiguousReceiver {
+						// Counted Ambiguous (the honest structural counter,
+						// which does not feed BugRate) and dispositioned
+						// Dynamic.
+						//
+						// Disposition choice, deliberate: classifyDispositionLang
+						// would call this bug-resolver — "the resolver couldn't
+						// disambiguate" — which is literally true of the words
+						// and wrong about the meaning. bug-resolver feeds
+						// Stats.BugRate (refs.go:817-818), so a refusal that is
+						// working as designed would RAISE the headline quality
+						// metric precisely when this fix does its job. Dynamic
+						// is documented as "not a bug; the call cannot be
+						// resolved statically by design" (refs.go:163-166),
+						// which is what a build-tag-variant collision is from an
+						// indexer that does not evaluate build constraints. The
+						// framework-DSL receiver gate below (#514 / #517) sets
+						// the same precedent in this same function: a deliberate
+						// tier-level decline recorded as Dynamic. If a dedicated
+						// refusal bucket is ever added, this belongs there.
 						applyEndpointStats(&stats, statusAmbiguous, false)
-						d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
-						stats.recordDisposition(d, orig)
+						stats.recordDisposition(DispositionDynamic, orig)
 						continue
 					}
 				}

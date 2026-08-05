@@ -252,4 +252,20 @@ func TestSchemaShortFormColonGuardKeepsFormatBIntact6146(t *testing.T) {
 	assertBinding6146(t, bindingOf6146(t, all, id),
 		"SCOPE.Schema", "Pet.name", sqlFile,
 		"SQL column Format B ref")
+
+	// The mechanism, pinned separately from the outcome. What actually keeps
+	// six-segment consumers working is that the three-segment branch does not
+	// RETURN on a byLocation miss — it falls out of the block and lets the
+	// SplitN below run. Nothing else in the suite pins that: a refactor adding
+	// `return "", statusUnmatched, true` to the miss path would break every
+	// six-segment `scope:schema:` consumer with an otherwise-green suite.
+	//
+	// A `scope:schema:` ref whose FIRST '#' sits in a colon-free tail is what
+	// the three-segment branch would claim; here it must still reach Format B.
+	// Probing byLocation under the raw pre-split key proves the three-segment
+	// branch could not have been what resolved it.
+	if bucket, ok := idx.byLocation["column:sql:"+sqlFile+":Pet"]; ok {
+		t.Fatalf("byLocation has an entry under the three-segment branch's parse of "+
+			"this ref (%v) — the fixture no longer isolates the Format B path", bucket)
+	}
 }
