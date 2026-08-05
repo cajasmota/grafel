@@ -65,8 +65,36 @@ func TestServiceNameRefCannotAddressAServiceNodeAndMisbinds6123(t *testing.T) {
 // byName / kind-hint tiers that produced the mis-bind above. The collider is
 // present in both arms, so "dangles" here means "declined a wrong answer that
 // was available", not "had nothing to bind to".
+//
+// TWO INDEPENDENT MECHANISMS make that true, and BOTH are asserted below — an
+// earlier draft of this test claimed only the first and a mutation that disabled
+// it survived, because the second silently covered for it:
+//
+//  1. lookupStructural consumes ANY `scope:`-prefixed stub (handled=true) and
+//     returns statusUnmatched for one that is not six segments
+//     (internal/resolve/refs.go:2037-2039), so the byName tiers are never
+//     reached. Asserted directly in the "structural tier consumes it" subtest,
+//     because the end-to-end assertion cannot see this one on its own.
+//  2. Even with (1) removed, splitStub cuts at the FIRST colon, so the byName
+//     probe would be "externalservice:<name>" — a string no entity Name carries.
+//     The old `service:<X>` ref had NEITHER protection: not `scope:`-prefixed,
+//     and its byName probe is the bare leaf `X`, which real entities do carry.
 func TestExternalServiceRefBindsOrDanglesButNeverMisbinds6123(t *testing.T) {
 	collider := entAt("6666000066660000", "SCOPE.Operation", "postgres", "cs/OrderTests.cs")
+
+	t.Run("structural tier consumes it and declines", func(t *testing.T) {
+		idx := BuildIndex([]types.EntityRecord{collider})
+		id, status, handled := idx.lookupStructural("scope:externalservice:postgres")
+		if !handled {
+			t.Fatalf("lookupStructural did not claim `scope:externalservice:postgres` "+
+				"(handled=%v) — a non-six-segment `scope:` stub must be consumed there, "+
+				"not passed down to the byName / kind-hint tiers", handled)
+		}
+		if status != statusUnmatched || id != "" {
+			t.Fatalf("lookupStructural returned (%q, status=%d), want (\"\", statusUnmatched=%d)",
+				id, status, statusUnmatched)
+		}
+	})
 
 	t.Run("service node present: binds to it", func(t *testing.T) {
 		svc := entAt("5555000055550000", "SCOPE.ExternalService", "service:postgres", "<external-service>")

@@ -260,12 +260,21 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 	// constructor call site (the mis-bind we are removing).
 	//
 	// So the ref is the canonical one and the edge dangles honestly wherever no
-	// service node matches. That is deliberate: `scope:`-prefixed stubs are
-	// consumed by lookupStructural, which rejects anything that is not six
-	// segments (refs.go:2037-2039) and returns statusUnmatched WITHOUT falling
-	// through to the byName / kind-hint tiers — so this ref is structurally
-	// incapable of mis-binding, while still binding correctly if a genuine
-	// service node with that name is ever present.
+	// service node matches. That is deliberate, and it is safe for TWO
+	// independent reasons — both pinned in
+	// internal/resolve/service_ref_shape_6123_test.go, because a mutation that
+	// disabled the first alone was covered for by the second:
+	//
+	//  1. `scope:`-prefixed stubs are consumed by lookupStructural, which
+	//     rejects anything that is not six segments (refs.go:2037-2039) and
+	//     returns statusUnmatched WITHOUT reaching the byName / kind-hint tiers.
+	//  2. Even without (1), splitStub cuts at the FIRST colon, so the byName
+	//     probe would be "externalservice:<name>" — a string no entity Name
+	//     carries. The old ref's probe was the bare leaf `<name>`, which real
+	//     entities do carry; that is the whole difference.
+	//
+	// The ref still binds correctly, via byQualifiedName, if a genuine service
+	// node with that name is ever present.
 	// -------------------------------------------------------------------------
 	emitContainer := func(name, image, ctype string, line int) {
 		ent := makeEntity("container:"+name, "SCOPE.Pattern", "container_topology",
