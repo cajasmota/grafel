@@ -26,6 +26,7 @@ import (
 // ValidateGroupName, called ahead of SaveGroupConfig), not just at AddGroup.
 func TestCreateGroup_RejectsTraversalBeforeWritingConfig(t *testing.T) {
 	home := t.TempDir()
+	t.Setenv("HOME", home)
 	t.Setenv("GRAFEL_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
 

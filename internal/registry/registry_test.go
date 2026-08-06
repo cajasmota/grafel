@@ -11,6 +11,12 @@ import (
 func withHome(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	// HOME is redundant with GRAFEL_HOME today (registry.HomeDir() checks
+	// GRAFEL_HOME first and never falls through to os.UserHomeDir() when it's
+	// set), but per the hard isolation gate (round-2 review of #6184/#6185/
+	// #6186), isolate all three so this helper stays safe if that check order
+	// ever changes.
+	t.Setenv("HOME", dir)
 	t.Setenv("GRAFEL_HOME", dir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
 	return dir
