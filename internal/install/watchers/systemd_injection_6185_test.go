@@ -138,8 +138,22 @@ func parseSystemdUnit(body string) (*parsedUnit, error) {
 			return nil, fmt.Errorf("line %d: key %q set more than once in [%s] "+
 				"(possible injected duplicate directive)", i+1, key, cur)
 		}
-		if err := checkBalancedQuotes(val); err != nil {
-			return nil, fmt.Errorf("line %d: %s=%s: %w", i+1, key, val, err)
+		// #6185 R4 (found on round-2 review): checkBalancedQuotes used to run
+		// on every value, including Description= and WorkingDirectory=. Those
+		// two are NOT word-split/shell-quoted by systemd — only ExecStart=
+		// is, via systemd's C-style command-line word extractor — so a
+		// legitimate quote character in, say, a group name ("app\"co")
+		// false-positived as "unbalanced double quote" on a value where an
+		// unbalanced quote is actually harmless. Scoping the check to
+		// ExecStart (the one key where an unbalanced quote is a real defect)
+		// removes that false positive without losing real detection: an
+		// unbalanced quote can only reach ExecStart today via Go's %q, which
+		// always emits a balanced, escaped string, so this check would only
+		// ever fire if that guarantee broke.
+		if key == "ExecStart" {
+			if err := checkBalancedQuotes(val); err != nil {
+				return nil, fmt.Errorf("line %d: %s=%s: %w", i+1, key, val, err)
+			}
 		}
 		p.sections[cur][key] = val
 	}
@@ -178,19 +192,34 @@ var systemdExpectedKeys = map[string][]string{
 	"Install": {"WantedBy"},
 }
 
-func (p *parsedUnit) assertNoInjection(t *testing.T) {
-	t.Helper()
+// findInjections returns a human-readable description of every
+// section/key the parsed unit contains that is not on systemdExpectedKeys'
+// allow-list. Empty means the unit is exactly what SystemdUnit's template
+// ever legitimately produces. A plain function (not a *testing.T-taking
+// assertion) so it can be exercised as a yes/no check in a test that wants
+// to assert "detected" without wanting the failure to be reported against
+// the wrong test name.
+func (p *parsedUnit) findInjections() []string {
+	var problems []string
 	for section, keys := range p.sections {
 		allowed, ok := systemdExpectedKeys[section]
 		if !ok {
-			t.Errorf("unexpected section [%s] (possible injected section)", section)
+			problems = append(problems, fmt.Sprintf("unexpected section [%s] (possible injected section)", section))
 			continue
 		}
 		for k := range keys {
 			if !contains(allowed, k) {
-				t.Errorf("unexpected key %q in [%s] (possible injected directive): %v", k, section, keys)
+				problems = append(problems, fmt.Sprintf("unexpected key %q in [%s] (possible injected directive): %v", k, section, keys))
 			}
 		}
+	}
+	return problems
+}
+
+func (p *parsedUnit) assertNoInjection(t *testing.T) {
+	t.Helper()
+	for _, msg := range p.findInjections() {
+		t.Error(msg)
 	}
 }
 
@@ -241,4 +270,99 @@ func TestSystemdUnit_OracleDetectsTheInjection(t *testing.T) {
 		}
 	}
 	t.Errorf("oracle failed to detect the ExecStartPost injection in a raw (unescaped) render:\n%s", body)
+}
+
+// #6185 R4 (found on round-2 review): the oracle was only ever fed sample
+// (legitimate) and hostileControl — both control-character cases already
+// blocked upstream by validateUnitFields, so no test exercised the oracle
+// against the non-control attack surface it actually exists to cover.
+// Reviewer probe against inputs validateUnitFields ACCEPTS:
+//
+//	quote-in-repo             oracle: "line 2: unbalanced double quote"  (false
+//	                          positive — that's the Description= line, which
+//	                          systemd does not word-split)
+//	trailing-backslash-repo   oracle: <nil>  (blind spot, fixed by R3)
+//
+// These three tests point the oracle at exactly those non-control cases.
+
+// TestSystemdUnit_OracleAcceptsLegitimateQuoteOutsideExecStart pins the fix
+// for the false positive: a literal '"' in a group name is real, legitimate
+// input (nothing in validateUnitFields or ValidateGroupName forbids it) and
+// only ever lands on Description=, which systemd does not word-split — it
+// must not be flagged.
+func TestSystemdUnit_OracleAcceptsLegitimateQuoteOutsideExecStart(t *testing.T) {
+	u := Unit{Group: `app"co`, Repo: "/tmp/repo", BinPath: "/usr/local/bin/grafel"}
+	body := SystemdUnit(u)
+	p, err := parseSystemdUnit(body)
+	if err != nil {
+		t.Fatalf("a legitimate quote in a group name must not be rejected by the parser "+
+			"(it only ever reaches Description=, which systemd does not word-split): %v\n%s", err, body)
+	}
+	if got := p.findInjections(); len(got) != 0 {
+		t.Errorf("false positive: %v\n%s", got, body)
+	}
+}
+
+// TestCheckBalancedQuotes_DetectsUnbalancedExecStart is a direct unit test
+// of the oracle's quote check, independent of whether Unit's fields can
+// currently produce an unbalanced ExecStart (they cannot: Go's %q always
+// emits a properly escaped, balanced string — see the comment in
+// parseSystemdUnit). This pins that the check itself is a real detector,
+// not dead code, so it still catches a future renderer that stops using %q.
+func TestCheckBalancedQuotes_DetectsUnbalancedExecStart(t *testing.T) {
+	if err := checkBalancedQuotes(`"/usr/local/bin/grafel" watch "/tmp/quote"repo"`); err == nil {
+		t.Error("expected an unbalanced-quote value to be rejected")
+	}
+	if err := checkBalancedQuotes(`"/usr/local/bin/grafel" watch "/tmp/quote\"repo"`); err != nil {
+		t.Errorf("a properly backslash-escaped quote (what %%q always produces) must not be "+
+			"flagged as unbalanced: %v", err)
+	}
+}
+
+// TestSystemdUnit_OracleDetectsInjectedKeyWithoutDuplication closes the
+// "load-bearing coincidence" gap: hostileControl's injected content happens
+// to re-declare "[Service]" and "ExecStart=", both of which the legitimate
+// template already emits, so parseSystemdUnit's duplicate-key check alone
+// is enough to reject it — independent of whether the allow-list
+// (findInjections/assertNoInjection) is ever exercised. This constructs a
+// structurally well-formed unit where the injected key (ExecStartPost) has
+// no duplicate anywhere, so only the allow-list can catch it, proving that
+// detection generalizes rather than depending on the specific fixture.
+func TestSystemdUnit_OracleDetectsInjectedKeyWithoutDuplication(t *testing.T) {
+	body := "[Unit]\n" +
+		"Description=grafel watcher (demo/repo)\n" +
+		"After=default.target\n" +
+		"StartLimitIntervalSec=3600\n" +
+		"StartLimitBurst=5\n" +
+		"\n" +
+		"[Service]\n" +
+		"Type=simple\n" +
+		`ExecStart="/bin/grafel" watch "/tmp/r"` + "\n" +
+		"WorkingDirectory=/tmp/r\n" +
+		"Restart=on-failure\n" +
+		"RestartSec=60\n" +
+		"ExecStartPost=/bin/sh\n" + // genuinely new key: no duplicate anywhere in this body
+		"\n" +
+		"[Install]\n" +
+		"WantedBy=default.target\n"
+
+	p, err := parseSystemdUnit(body)
+	if err != nil {
+		t.Fatalf("parser rejected a structurally well-formed (if hostile) unit — this test needs "+
+			"a body the parser accepts so findInjections is what does the catching: %v\n%s", err, body)
+	}
+	got := p.findInjections()
+	if len(got) == 0 {
+		t.Fatal("findInjections failed to flag ExecStartPost — a key with no legitimate " +
+			"counterpart anywhere in the template and no duplicate to trigger on instead (#6185 R4)")
+	}
+	found := false
+	for _, msg := range got {
+		if strings.Contains(msg, "ExecStartPost") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("findInjections flagged something, but not ExecStartPost specifically: %v", got)
+	}
 }
