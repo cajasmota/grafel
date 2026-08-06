@@ -21,6 +21,13 @@ import (
 // to what's being pinned — reuses the readSource/funcBody helpers already
 // established in watchersync_wiring_6179_test.go for exactly this kind of
 // "call X before call Y" invariant.
+//
+// #6186 R1 (found on round-2 review): after the R1 fix these two sites now
+// call registry.ConfigPathForNew (which validates internally) instead of a
+// separate registry.ValidateGroupName + registry.ConfigPathFor pair, so the
+// check accepts either shape — what matters is that SOME validated
+// derivation runs before SaveGroupConfig, not the literal spelling of the
+// call.
 func TestApplyGroupConfig_ValidatesBeforeSaving(t *testing.T) {
 	src := readSource(t, "wizard.go")
 	fn := funcBody(t, src, "applyGroupConfig")
@@ -33,18 +40,34 @@ func TestRunOnboard_ValidatesBeforeSaving(t *testing.T) {
 	assertValidatesBeforeSave(t, fn, "runOnboard (onboard.go)")
 }
 
+// firstIndexOfAny returns the earliest index at which any of needles occurs
+// in s, or -1 if none occur.
+func firstIndexOfAny(s string, needles ...string) int {
+	best := -1
+	for _, n := range needles {
+		if i := strings.Index(s, n); i >= 0 && (best < 0 || i < best) {
+			best = i
+		}
+	}
+	return best
+}
+
 func assertValidatesBeforeSave(t *testing.T, fn, where string) {
 	t.Helper()
-	iValidate := strings.Index(fn, "registry.ValidateGroupName")
+	// Either an explicit registry.ValidateGroupName call, or a validated
+	// write-side derivation (registry.ConfigPathForNew) that performs the
+	// same check internally, counts as "validated before saving".
+	iValidate := firstIndexOfAny(fn, "registry.ValidateGroupName", "registry.ConfigPathForNew")
 	iSave := strings.Index(fn, "registry.SaveGroupConfig")
 	if iValidate < 0 {
-		t.Fatalf("%s does not call registry.ValidateGroupName at all (#6186 F6)", where)
+		t.Fatalf("%s calls neither registry.ValidateGroupName nor registry.ConfigPathForNew "+
+			"(#6186 F6/R1)", where)
 	}
 	if iSave < 0 {
 		t.Fatalf("%s does not call registry.SaveGroupConfig (test assumption broke)", where)
 	}
 	if iValidate > iSave {
-		t.Errorf("%s calls registry.SaveGroupConfig before registry.ValidateGroupName; an "+
+		t.Errorf("%s calls registry.SaveGroupConfig before validating the group name; an "+
 			"unvalidated name (e.g. \"../../pwned\") can write a config file outside the config "+
 			"directory before the name is ever rejected (#6186 F6)", where)
 	}

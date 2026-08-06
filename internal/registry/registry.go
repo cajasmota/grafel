@@ -230,12 +230,48 @@ func ConfigDir() (string, error) {
 }
 
 // ConfigPathFor returns the standard config-path for a group name.
+//
+// This is a READ-safe derivation: it is also used to resolve the config path
+// of an already-registered group (docgen, doctor, export, the CLI group
+// list, ...), including one written before ValidateGroupName existed or
+// whose name is otherwise grandfathered-invalid. It intentionally does NOT
+// validate name — see ValidateGroupName's doc comment for why gating reads
+// would be worse than the bug it prevents. Callers about to CREATE or
+// OVERWRITE a config file for a name that is not yet known-registered MUST
+// use ConfigPathForNew instead.
 func ConfigPathFor(name string) (string, error) {
 	d, err := ConfigDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(d, name+".fleet.json"), nil
+}
+
+// ConfigPathForNew is the write-side counterpart of ConfigPathFor: it
+// validates name before deriving the path.
+//
+// #6186 R1 (found on review): the F6 fix added a ValidateGroupName call
+// ahead of SaveGroupConfig at AddGroup's four known callers, enumerated by
+// hand. A fifth writer — the archive-import handler in
+// internal/dashboard/handlers_v2_graph_export.go, which takes its group name
+// from an uploaded ZIP's manifest.json or a request query parameter — used
+// ConfigPathFor + SaveGroupConfig with no validation anywhere on that path,
+// because it was never on the enumerated list. filepath.Join collapses
+// "..", so a manifest group of "../../../../tmp/pwn" made SaveGroupConfig
+// write a file outside the config directory before AddGroup's (too-late)
+// rejection ever ran.
+//
+// The fix to that shape, not just that site: a validated derivation that is
+// structurally distinct from the read path, so a NEW writer reaches into
+// this function by construction rather than by remembering to call
+// ValidateGroupName itself. Use this (not ConfigPathFor) at any call site
+// that is about to create or overwrite a group's config file for a name
+// that is not already a trusted, registered group.
+func ConfigPathForNew(name string) (string, error) {
+	if err := ValidateGroupName(name); err != nil {
+		return "", err
+	}
+	return ConfigPathFor(name)
 }
 
 // StateDirFor returns the per-group state directory under HomeDir.
