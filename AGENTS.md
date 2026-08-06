@@ -8,6 +8,7 @@ not from this file.
 ## Repo conventions
 - Branches: feature branches only, never push to main
 - Worktrees: `grafel-worktrees/<branch-name>` per concurrent stream
+- GitHub identity: all `gh` / GitHub operations MUST use the repo owner's **personal** account (`cajasmota`) — never any other or secondary (work) account that may be authenticated on the machine. Verify the active account (`gh auth status`) before any write; if a non-personal account is active, switch back first. (Spawned worker agents are local-only and must not run `gh` at all — the coordinator owns all GitHub writes.)
 - ADRs in `docs/adrs/`, numbered sequentially
 - Quality fixtures in `internal/quality/golden/`; must hold 100% must-have recall on every PR
 
