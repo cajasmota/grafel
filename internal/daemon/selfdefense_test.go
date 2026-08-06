@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/install/watchers"
 )
 
 // TestSelfDefenseCheck_AllowsCanonicalBinary verifies that SelfDefenseCheck
@@ -160,7 +161,14 @@ func TestSelfDefenseCheck_RunRefusesWhenCalledFromTmpBinary(t *testing.T) {
 	// The raw string literal is also why the original #6134 sweep missed this
 	// site: it greps for daemon.EnvRoot, and a literal does not match. Using the
 	// constant keeps this line discoverable by the next audit.
-	cmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot, "GRAFEL_HOME="+daemonRoot)
+	cmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot, "GRAFEL_HOME="+daemonRoot,
+		// Guard belt (#stop-fleet): testing.Testing() is false in this
+		// go-built child, so the watchers package's service-manager guard
+		// cannot see that it is under test. Export the belt so a child that
+		// ever reaches `grafel stop`/`install`/`update` refuses to mutate the
+		// developer's real launchd/systemd state instead of doing it silently.
+		watchers.NoServiceMutationEnv+"=1",
+	)
 	cmd.Stderr = &stderrBuf
 
 	waitErr := cmd.Run()

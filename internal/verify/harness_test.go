@@ -21,6 +21,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/client"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
+	"github.com/cajasmota/grafel/internal/install/watchers"
 )
 
 // jsonStats mirrors the cmd/grafel JSONStats shape. Re-declared here
@@ -117,7 +118,14 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 	dcmd := exec.Command(bin, "daemon")
 	// #6134 — GRAFEL_HOME too, or the child inherits the real one via os.Environ()
 	// and prunes the developer's live store on startup. See the note above.
-	dcmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot, "GRAFEL_HOME="+daemonRoot)
+	dcmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot, "GRAFEL_HOME="+daemonRoot,
+		// Guard belt (#stop-fleet): testing.Testing() is false in this
+		// go-built child, so the watchers package's service-manager guard
+		// cannot see that it is under test. Export the belt so a child that
+		// ever reaches `grafel stop`/`install`/`update` refuses to mutate the
+		// developer's real launchd/systemd state instead of doing it silently.
+		watchers.NoServiceMutationEnv+"=1",
+	)
 	var daemonOut bytes.Buffer
 	dcmd.Stdout = &daemonOut
 	dcmd.Stderr = &daemonOut

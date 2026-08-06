@@ -36,6 +36,12 @@ import (
 func setupRefTestEnv(t *testing.T, refs ...string) (home, repoPath string) {
 	t.Helper()
 	home = t.TempDir()
+	// HOME too, not just GRAFEL_HOME: runStatus now reports the per-repo
+	// watcher fleet, and the unit directory is resolved from HOME
+	// (~/Library/LaunchAgents). With only GRAFEL_HOME redirected this test
+	// globbed the developer's REAL 140 watcher plists and ran a `launchctl
+	// list` per unit — read-only, but machine-variable and 140 process spawns.
+	t.Setenv("HOME", home)
 	t.Setenv("GRAFEL_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 

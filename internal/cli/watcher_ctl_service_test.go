@@ -130,6 +130,10 @@ func TestRunDaemonRestart_RoutesToServiceRestart_WhenInstalled_NoManualForkOrPid
 // stubServiceSeams but for the stop path.
 func stubStopSeam(t *testing.T, installed bool) (stopCalls *int) {
 	t.Helper()
+	// `stop` now also sweeps the per-repo watcher fleet, which resolves the
+	// unit directory from HOME. Without this, these tests reach the
+	// developer's real ~/Library/LaunchAgents. See isolateWatcherFleet.
+	isolateWatcherFleet(t)
 	stopCalls = new(int)
 
 	origInstalled := serviceInstalledForThisRoot

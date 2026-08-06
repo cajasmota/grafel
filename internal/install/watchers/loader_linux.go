@@ -24,6 +24,9 @@ import (
 // WaitDelay is the load-bearing half — CommandContext's kill reaches only the
 // direct child while CombinedOutput waits on every pipe writer.
 var systemctlRunner = func(args ...string) ([]byte, error) {
+	if serviceCallsAreStubbed() {
+		return nil, nil
+	}
 	guardServiceCall("systemctl", args)
 	ctx, cancel := context.WithTimeout(context.Background(), systemctlTimeout)
 	defer cancel()

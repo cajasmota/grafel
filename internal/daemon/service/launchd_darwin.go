@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/transport"
+	"github.com/cajasmota/grafel/internal/install/watchers"
 )
 
 const (
@@ -170,18 +171,22 @@ func (m *launchdManager) WriteUnit() error {
 // with no seam to observe them at all, so deleting either line outright left
 // the whole suite green.
 var launchctlBootout = func(uid string) error {
+	watchers.GuardServiceCall("launchctl", []string{"bootout", "gui/" + uid + "/" + launchLabel})
 	return exec.Command("launchctl", "bootout", "gui/"+uid+"/"+launchLabel).Run()
 }
 
 var launchctlBootstrap = func(uid, plistPath string) ([]byte, error) {
+	watchers.GuardServiceCall("launchctl", []string{"bootstrap", "gui/" + uid, plistPath})
 	return exec.Command("launchctl", "bootstrap", "gui/"+uid, plistPath).CombinedOutput()
 }
 
 var launchctlDisable = func(uid string) error {
+	watchers.GuardServiceCall("launchctl", []string{"disable", "gui/" + uid + "/" + launchLabel})
 	return exec.Command("launchctl", "disable", "gui/"+uid+"/"+launchLabel).Run()
 }
 
 var launchctlEnable = func(uid string) error {
+	watchers.GuardServiceCall("launchctl", []string{"enable", "gui/" + uid + "/" + launchLabel})
 	return exec.Command("launchctl", "enable", "gui/"+uid+"/"+launchLabel).Run()
 }
 

@@ -181,6 +181,55 @@ func TestStopFleetWatchers_NamesUnitsStartWillNotRestore(t *testing.T) {
 	}
 }
 
+// R5b: the remedy printed for a TRUE orphan was wrong. `grafel install` only
+// writes units for REGISTERED repos, so telling the owner of a unit whose group
+// is not in the registry to run `grafel install` sends them somewhere that
+// cannot help — in exactly the case the message was added to cover.
+func TestStopFleetWatchers_OrphanRemedyIsNotGrafelInstall(t *testing.T) {
+	seedFleet(t, "grp", true, []fleetRepo{{path: "alpha", unitOnDsk: true}})
+	dir, _ := watchers.UnitDir()
+	orphanLabel := "com.grafel.watcher.deletedgroup.orphan"
+	if err := os.WriteFile(filepath.Join(dir, orphanLabel+unitExtForTest(t)), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write orphan: %v", err)
+	}
+	installFleetLoader(t, &fakeFleetLoader{})
+
+	var buf bytes.Buffer
+	stopFleetWatchers(&buf)
+	out := buf.String()
+
+	// The orphan must be named...
+	oi := strings.Index(out, orphanLabel)
+	if oi < 0 {
+		t.Fatalf("orphan not named in stop output:\n%s", out)
+	}
+	// ...and the line that names it must not be under a "run grafel install"
+	// heading. Split the output at the orphan section and check its remedy.
+	orphanSection := out[oi:]
+	if strings.Contains(orphanSection, "grafel install") {
+		t.Fatalf("orphan remedy points at 'grafel install', which cannot restore an "+
+			"unregistered unit:\n%s", out)
+	}
+	if !strings.Contains(out, "no registered group owns") {
+		t.Fatalf("stop does not explain that the orphan has no owning group:\n%s", out)
+	}
+}
+
+// R5c: the watchers=false case keeps the `grafel install` remedy, which IS
+// correct there — the repo is registered, install re-writes and re-loads it.
+func TestStopFleetWatchers_DisabledGroupRemedyIsGrafelInstall(t *testing.T) {
+	paths := seedFleet(t, "grp", false, []fleetRepo{{path: "alpha", unitOnDsk: true}})
+	installFleetLoader(t, &fakeFleetLoader{})
+
+	var buf bytes.Buffer
+	stopFleetWatchers(&buf)
+	out := buf.String()
+	if !strings.Contains(out, paths[0]) || !strings.Contains(out, "grafel install") {
+		t.Fatalf("a registered repo whose group has watchers off must still be pointed at "+
+			"'grafel install':\n%s", out)
+	}
+}
+
 // R6: the sweep must be bounded. `launchctl bootout` blocks until the job
 // exits and `grafel watch` drains on SIGTERM, so a wedged watcher could hang
 // `grafel stop` forever with no output.

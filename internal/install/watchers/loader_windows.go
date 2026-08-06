@@ -3,12 +3,14 @@
 package watchers
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/executil"
 )
@@ -18,11 +20,46 @@ type windowsLoader struct{}
 
 // schtasksCmd returns an exec.Cmd for schtasks.exe with CREATE_NO_WINDOW set
 // so that the subprocess never flashes a visible console window.
+//
+// It is bounded by a deadline AND a WaitDelay for the same reason the launchctl
+// and systemctl runners are: `schtasks /end` waits on the task actually
+// stopping and `grafel watch` drains on shutdown, so an unbounded call turns a
+// 140-unit fleet stop into a hang. CommandContext's kill reaches only the
+// direct child while CombinedOutput waits on every pipe writer, so the
+// WaitDelay is the half that actually guarantees a return.
+//
+// It also routes through guardServiceCall. Before this, Windows was the one
+// platform with no guard at all — while test_isolation_guard.go listed
+// /create, /delete, /run, /end and /change in its verb table with nothing ever
+// calling it for schtasks. Those entries were dead and actively misleading: a
+// reader concluded Windows was covered, and on a Windows dev box
+// `go test ./internal/install/watchers/` really did run `schtasks /create` and
+// `/delete` against the developer's Task Scheduler. Same incident, one platform
+// behind.
 func schtasksCmd(args ...string) *exec.Cmd {
-	cmd := exec.Command("schtasks", args...)
+	if serviceCallsAreStubbed() {
+		// A command that always succeeds and prints nothing, so Run/Output/
+		// CombinedOutput all behave like a benign schtasks call.
+		return exec.Command("cmd", "/c", "exit", "0")
+	}
+	guardServiceCall("schtasks", args)
+	ctx, cancel := context.WithTimeout(context.Background(), schtasksTimeout)
+	cmd := exec.CommandContext(ctx, "schtasks", args...)
+	cmd.WaitDelay = schtasksWaitDelay
+	// The context must outlive this function; Cancel runs on Wait, and the
+	// deadline goroutine is released when the process exits.
+	cmd.Cancel = func() error {
+		defer cancel()
+		return cmd.Process.Kill()
+	}
 	executil.NoWindow(cmd)
 	return cmd
 }
+
+var (
+	schtasksTimeout   = 15 * time.Second
+	schtasksWaitDelay = 3 * time.Second
+)
 
 // NewLoader returns the Windows schtasks-based Loader.
 func NewLoader() Loader { return windowsLoader{} }

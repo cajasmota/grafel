@@ -310,18 +310,41 @@ func stopFleetWatchers(out io.Writer) fleetWatcherResult {
 	// from `grafel start`. Saying nothing would make the stop/start pair look
 	// symmetric when it is not, and a comment claiming a property the code does
 	// not have is exactly the failure that hid the original bug.
-	var oneWay []string
+	// The two one-way-door cases need DIFFERENT remedies, because
+	// `grafel install` only writes units for REGISTERED repos.
+	//
+	//   - a registered repo whose group has features.watchers off: install
+	//     re-writes and re-loads its unit, so pointing there is correct.
+	//   - a true orphan, whose group is not in the registry at all: install
+	//     will never touch it, so that advice sends the user somewhere that
+	//     cannot help — in exactly the case this notice was added to cover.
+	var disabledGroup, orphans []string
 	for _, fu := range units {
-		if !fu.restorable {
-			oneWay = append(oneWay, fu.display)
+		if fu.restorable {
+			continue
+		}
+		if fu.unit.RawLabel != "" {
+			orphans = append(orphans, fu.display)
+		} else {
+			disabledGroup = append(disabledGroup, fu.display)
 		}
 	}
-	if len(oneWay) > 0 {
-		sort.Strings(oneWay)
+	if len(disabledGroup) > 0 {
+		sort.Strings(disabledGroup)
 		fmt.Fprintf(out, "  note: %d of these will NOT be restored by 'grafel start' "+
-			"(their group has watchers disabled, or no group owns them). "+
-			"Run 'grafel install' to re-enable:\n", len(oneWay))
-		for _, d := range oneWay {
+			"(their group has watchers disabled). Run 'grafel install' to re-enable:\n",
+			len(disabledGroup))
+		for _, d := range disabledGroup {
+			fmt.Fprintf(out, "     %s\n", d)
+		}
+	}
+	if len(orphans) > 0 {
+		sort.Strings(orphans)
+		fmt.Fprintf(out, "  note: %d of these will NOT be restored by 'grafel start' — "+
+			"no registered group owns them, so re-installing will not bring them back "+
+			"either. Delete the unit file to be rid of them, or re-enable one by hand:\n",
+			len(orphans))
+		for _, d := range orphans {
 			fmt.Fprintf(out, "     %s\n", d)
 		}
 	}

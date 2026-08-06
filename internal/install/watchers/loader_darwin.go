@@ -23,6 +23,9 @@ func NewLoader() Loader { return darwinLoader{} }
 // and error. It is a package var so tests can inject a fake launchctl (e.g. to
 // simulate the flaky err-5 bootstrap) without shelling out.
 var launchctlRunner = func(args ...string) ([]byte, error) {
+	if serviceCallsAreStubbed() {
+		return nil, nil
+	}
 	guardServiceCall("launchctl", args)
 	return runBoundedServiceCmd("launchctl", args...)
 }
@@ -174,29 +177,44 @@ func (darwinLoader) Unload(u Unit) error {
 	uid := strconv.Itoa(os.Getuid())
 	label := u.Label()
 
-	// The not-loaded probe comes FIRST, and nothing mutating may precede it.
+	// ── The disable is gated on the PLIST, not on the job being loaded ───────
 	//
-	// `launchctl list <label>` exits non-zero when the label is not loaded —
-	// the locale-invariant signal that the desired absent state already holds.
-	// Returning here keeps Unload a genuine no-op for a label that was never
-	// loaded, which is what makes watchers.Cleanup safe to call from tests and
-	// from group-delete on machines that never activated a watcher.
+	// This gate has been wrong in both directions and the middle is the only
+	// correct place for it.
 	//
-	// The first cut of this fix put the `disable` above this probe, reasoning
-	// that a not-loaded job with a plist still needs suppressing. That is true
-	// in the abstract and wrong in practice: it made every unseamed test that
-	// touches Cleanup write real entries into the developer's launchd override
-	// database (see test_isolation_guard.go for the incident). It also buys
-	// nothing for `grafel stop`, whose entire purpose is stopping watchers that
-	// ARE loaded — a not-loaded job is not indexing. If a plist is on disk and
-	// unloaded, the next login loads it and the next stop disables it.
-	if _, err := launchctlRunner("list", label); err != nil {
-		return nil // not loaded — already gone, and nothing to persist
+	// Unconditional (round 1) was persistent but made Unload mutate real
+	// launchd state for a label that was never installed, so every unseamed
+	// test touching Cleanup wrote entries into the developer's override
+	// database (see test_isolation_guard.go).
+	//
+	// After the not-loaded probe (round 2) was clean but threw the guarantee
+	// away. `KeepAlive={SuccessfulExit:false}` (#6179) means any watcher that
+	// exits deliberately stays unloaded until next login, the daemon's reaper
+	// SIGTERMs foreign and duplicate watchers, and the flap detector stops
+	// others — so across 140 units some subset is unloaded at any instant.
+	// For those, stop issued no disable at all: the plist stayed on disk with
+	// RunAtLoad=true, launchd loaded it at the next login, and indexing
+	// resumed — under a message that had just promised "even across reboot".
+	// That is the original bug recurring in narrower form with a false
+	// assurance attached.
+	//
+	// Gating on the unit file is what both requirements actually want. A plist
+	// on disk is a thing that WILL run again, loaded or not, so it must be
+	// suppressed; a unit that was never installed has nothing to suppress and
+	// so touches nothing. Test hygiene no longer depends on this ordering
+	// either way — the structural guard and the newWatcherLoader seam fixes
+	// cover it, which is what makes restoring the guarantee safe.
+	if path, perr := UnitPath(u); perr == nil {
+		if _, serr := os.Stat(path); serr == nil {
+			_, _ = launchctlRunner("disable", "gui/"+uid+"/"+label)
+		}
 	}
 
-	// Persist the stop. See the comment above for why this is a disable and not
-	// just a bootout.
-	_, _ = launchctlRunner("disable", "gui/"+uid+"/"+label)
+	// `launchctl list <label>` exits non-zero when the label is not loaded —
+	// the locale-invariant signal that there is no running job to boot out.
+	if _, err := launchctlRunner("list", label); err != nil {
+		return nil // not loaded — nothing to boot out (already disabled above)
+	}
 
 	if out, err := launchctlRunner("bootout", "gui/"+uid+"/"+label); err != nil {
 		// Race: the service was listed above but disappeared before bootout.
