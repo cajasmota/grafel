@@ -399,6 +399,18 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		x.emitTranslationKeyEdges(root)
 	}()
 
+	// Issue #6202 — stamp the module's default-export name on the file entity.
+	// foldFileComponentDuplicates needs to tell a component module (`export
+	// default LoginPage`, where the module and the declaration are one entity)
+	// from a domain module (`export class UserRepository`, where the file is a
+	// container); `.ts` and `.js` are the extension for both, so the extension
+	// gate #6138 added cannot carry that distinction on its own. Runs after
+	// walk so the file entity exists.
+	func() {
+		defer func() { _ = recover() }()
+		x.stampDefaultExport(root)
+	}()
+
 	// Third pass (#713): platform-variant and test-file relationship emission.
 	// Detects React Native platform-specific file naming (.ios.tsx,
 	// .android.tsx, .tablet.tsx, …) and emits PLATFORM_VARIANT_OF edges.

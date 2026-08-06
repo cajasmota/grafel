@@ -467,7 +467,9 @@ func semanticDigest6118(doc *graph.Document) string {
 //
 // #6138 MOVED IT A SECOND TIME, and the delta is again a pure gain. The file
 // fold now only fires where the ecosystem makes a module and its exported
-// declaration the same entity (fileIsDeclarationExtensions), so eight
+// declaration the same entity (fileIsItsDeclaration — named
+// fileIsDeclarationExtensions until #6202 split the extension allow-list into a
+// component-extension set and a default-export test), so eight
 // declarations this fixture used to delete come back, each with the span and
 // signature the extractor read:
 //
