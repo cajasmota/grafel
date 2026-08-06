@@ -30,11 +30,27 @@ import (
 // This test imports an archive whose manifest.Group is a traversal string
 // and asserts nothing was written outside the config/docs roots, using the
 // exact escaped paths the reviewer's probe used.
+//
+// L2 (found on round-3 review): the ORIGINAL sandbox (XDG_CONFIG_HOME =
+// <home>/xdg, one level under home) is exactly deep enough that a four-level
+// "../../../../" traversal escapes past t.TempDir() entirely, landing in the
+// shared /var/folders/.../T/ root that no test cleans up. That is harmless
+// TODAY only because the fix rejects the write before it happens — on a
+// regression (the thing this test exists to catch) the write would succeed
+// and the artifact would escape the test's own sandbox, which is precisely
+// the failure class R1 is about. deepenSandbox nests XDG_CONFIG_HOME (and
+// GRAFEL_HOME, for the docs-dir sibling test) five levels under home so a
+// four-level traversal still lands inside t.TempDir() and gets cleaned up
+// automatically even if this test is red.
 func TestGraphImport_RejectsGroupNameEscapingConfigDir(t *testing.T) {
 	srv, _, _ := buildGraphExportTestServer(t)
 
 	// Export "alpha" (kind=graph is enough: the config-path escape does not
-	// require docs).
+	// require docs). Export first, deepen after: the "alpha" group and its
+	// exported archive both already exist under the original (shallow)
+	// sandbox paths set up by buildGraphExportTestServer, so deepening only
+	// changes where the IMPORT under test — the thing that might escape —
+	// resolves paths.
 	er := httptest.NewRequest("GET", "/api/v2/groups/alpha/export?format=zip&kind=graph", nil)
 	ew := httptest.NewRecorder()
 	srv.routes().ServeHTTP(ew, er)
@@ -42,6 +58,8 @@ func TestGraphImport_RejectsGroupNameEscapingConfigDir(t *testing.T) {
 		t.Fatalf("export: expected 200, got %d: %s", ew.Code, ew.Body.String())
 	}
 	archive := ew.Body.Bytes()
+
+	deepenSandbox(t)
 
 	escapedConfigPath, err := registry.ConfigPathFor("../../../../tmp/pwn")
 	if err != nil {
@@ -83,6 +101,8 @@ func TestGraphImport_RejectsGroupNameEscapingDocsDir(t *testing.T) {
 		t.Fatalf("export: expected 200, got %d: %s", ew.Code, ew.Body.String())
 	}
 	archive := ew.Body.Bytes()
+
+	deepenSandbox(t)
 
 	escapedRepoDocs := daemon.RepoDocsDir("../../../../tmp/pwn", "alpha-repo")
 	escapedBizDocs := daemon.BusinessDocsDir("../../../../tmp/pwn")
@@ -130,4 +150,26 @@ func TestGraphImport_RejectsControlCharacterGroupName(t *testing.T) {
 		_ = json.Unmarshal(iw.Body.Bytes(), &env)
 		t.Fatalf("import with a control-character group name succeeded (200): %s", iw.Body.String())
 	}
+}
+
+// deepenSandbox re-nests GRAFEL_HOME and XDG_CONFIG_HOME five levels under
+// the sandbox home buildGraphExportTestServer already isolated (still inside
+// the SAME t.TempDir(), so t.Cleanup still reaps it) so that a four-level
+// "../../../../" traversal — the shape used throughout this file — lands
+// back inside t.TempDir() instead of escaping into the shared /var/folders/
+// .../T/ root (#6186 L2, found on round-3 review).
+//
+// Call this AFTER any setup/export that must happen under the original
+// (shallow) paths, and BEFORE computing an escaped-path assertion or issuing
+// the import request under test — only the import path's resolution needs
+// to see the deepened env.
+func deepenSandbox(t *testing.T) {
+	t.Helper()
+	home := os.Getenv("GRAFEL_HOME")
+	if home == "" {
+		t.Fatal("deepenSandbox: GRAFEL_HOME not set — call after buildGraphExportTestServer")
+	}
+	deep := filepath.Join(home, "a", "b", "c", "d", "e")
+	t.Setenv("GRAFEL_HOME", deep)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(deep, "xdg"))
 }
