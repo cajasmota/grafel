@@ -208,7 +208,7 @@ func (p *parsedUnit) findInjections() []string {
 			continue
 		}
 		for k := range keys {
-			if !contains(allowed, k) {
+			if !containsString(allowed, k) {
 				problems = append(problems, fmt.Sprintf("unexpected key %q in [%s] (possible injected directive): %v", k, section, keys))
 			}
 		}
@@ -221,15 +221,6 @@ func (p *parsedUnit) assertNoInjection(t *testing.T) {
 	for _, msg := range p.findInjections() {
 		t.Error(msg)
 	}
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // TestSystemdUnit_ParsesCleanly is the sanity check for the oracle itself:
