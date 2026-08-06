@@ -53,13 +53,23 @@ Use 'grafel dashboard' to open the dashboard in your browser.`,
 func newStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
-		Short: "Stop the daemon and all managed services",
-		Long: `Stop the grafel daemon.
+		Short: "Stop everything grafel is running",
+		Long: `Stop grafel.
 
 Stopping the daemon also stops all services it manages:
   - MCP server
   - Indexer + file-watcher
   - Dashboard HTTP server
+
+It ALSO deactivates the per-repo watchers ('grafel watch <repo>') that
+'grafel install' registers with the OS service manager, one per repo. Those
+are NOT children of the daemon — they run on their own schedule and enqueue
+index work — so stopping the daemon alone used to leave them indexing. Stop
+now names any watcher it could not deactivate; 'grafel status' reports how
+many are still running.
+
+'grafel install' and 'grafel update' re-activate watchers, because asking to
+(re)install them is asking for them to run.
 
 When the daemon is registered as an OS service (launchd on macOS, systemd on
 Linux, Task Scheduler on Windows — i.e. it was set up via 'grafel install'),
@@ -238,6 +248,26 @@ func runDaemonStartWithBudget(out io.Writer, maxRSSBudgetMB int64) error {
 // short ping poll. If the daemon is already running, start is a no-op
 // (the call is idempotent — important for service-managed restarts).
 func runDaemonStartOpts(out io.Writer, maxRSSBudgetMB int64, noAutoCleanup bool) error {
+	err := startDaemonOnly(out, maxRSSBudgetMB, noAutoCleanup)
+	// Restore the per-repo watcher fleet that `grafel stop` deactivated, on
+	// EVERY start path — including the "daemon already running" fast path,
+	// which is exactly the state a user lands in after `stop` + a manual
+	// daemon launch, and the one where forgetting to restore would leave
+	// watchers permanently off with nothing saying why.
+	//
+	// This runs after the daemon so restored watchers have something live to
+	// enqueue into, and it runs even when the daemon start FAILED: leaving the
+	// fleet deactivated because of a daemon problem would silently extend a
+	// temporary stop into a permanent one. Only groups with features.watchers
+	// enabled are restored — see watcher_fleet.go.
+	startFleetWatchers(out)
+	return err
+}
+
+// startDaemonOnly is the daemon half of start: the pidfile/socket/service
+// bookkeeping, with no watcher-fleet involvement. Split out of
+// runDaemonStartOpts so the fleet restore above happens on every return path.
+func startDaemonOnly(out io.Writer, maxRSSBudgetMB int64, noAutoCleanup bool) error {
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		return err
@@ -526,6 +556,22 @@ func defaultServiceStopForThisRoot(out io.Writer) error {
 }
 
 func runDaemonStop(out io.Writer) error {
+	// Stop the PER-REPO watcher fleet FIRST, before the daemon.
+	//
+	// This is the half of "stop" that was missing entirely. The per-repo
+	// `com.grafel.watcher.<group>.<slug>` units installed by `grafel install`
+	// are owned by launchd/systemd/schtasks, not by the daemon: each runs
+	// `grafel watch <repo>` and enqueues index work on its own schedule, and on
+	// macOS KeepAlive respawns any that exit. Stopping only the daemon left
+	// them running — which is how a user could run `grafel stop`, be told
+	// "daemon stopped", and watch indexing continue across 140 repos.
+	//
+	// Watchers go first because they are the SOURCE of work: with them down the
+	// daemon drains rather than being fed while it shuts down. It also means a
+	// failure in the daemon stop below cannot leave the fleet running silently.
+	// See watcher_fleet.go for the full contract.
+	stopFleetWatchers(out)
+
 	// #6044: `start` is service-aware (it routes through the OS service
 	// manager when one is installed for this root, via
 	// serviceRestartForThisRoot); `stop` was not — it only asked the daemon
