@@ -142,11 +142,33 @@ version the command exits 0 without downloading anything.`,
 // worst case instead of inheriting it.
 var watcherRefreshTimeout = 3 * time.Minute
 
+// watcherRefreshWaitDelay caps how long CombinedOutput will wait, AFTER the
+// context deadline fires and the direct child is signalled, before os/exec
+// force-closes the child's I/O pipes and returns.
+//
+// #6184 F1 (found on review): exec.CommandContext only SIGKILLs the DIRECT
+// child. CombinedOutput backs stdout/stderr with an os.Pipe, and Wait()
+// blocks on that pipe's read side until every WRITER closes it — including
+// any grandchild that inherited the fd. install --refresh-state's own child
+// is exactly launchctl, which is what #6184 says can be wedged: killing the
+// direct child leaves a wedged launchctl grandchild holding the pipe open,
+// so watcherRefreshTimeout alone does not bound wall-clock time at all.
+// Measured: a 1s deadline against a process with a surviving grandchild
+// returned in 20.55s, not ~1s.
+//
+// This is the same failure mode fixed for git children in
+// internal/gitmeta/gitmeta.go (applyWaitDelay / waitDelayGrace, #5286);
+// WaitDelay (Go 1.20+) is the precedented fix, reused here rather than
+// invented fresh. 3s matches gitmeta's value: enough for a clean process to
+// flush and exit, short enough not to reintroduce the original hang.
+const watcherRefreshWaitDelay = 3 * time.Second
+
 // runWatcherRefreshCmd runs the `install --refresh-state` child and returns
 // its combined output. A package var so tests can substitute a child that
 // blocks past the deadline without needing a real wedged launchd.
 var runWatcherRefreshCmd = func(ctx context.Context, bin string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, bin, "install", "--refresh-state")
+	cmd.WaitDelay = watcherRefreshWaitDelay
 	// GRAFEL_SKIP_QUICK_DOCTOR: the child would otherwise run the quick-doctor
 	// preflight against a daemon that RunCopy may still be restarting, and
 	// print a spurious drift warning in the middle of update's own output.
