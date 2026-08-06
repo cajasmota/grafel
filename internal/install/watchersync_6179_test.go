@@ -14,7 +14,13 @@ import (
 // fakeLoader records Load calls instead of shelling out to launchctl.
 type fakeLoader struct {
 	loaded []string
-	fail   map[string]error
+	// unloaded records deregistrations by LABEL — #6183's migration is only
+	// correct if it boots out the OLD label, which the repo path cannot show.
+	unloaded []string
+	// statused counts Status queries — Apply asks for one on the SAME loader it
+	// activated with, so a second construction would be another escape hatch.
+	statused int
+	fail     map[string]error
 }
 
 func (f *fakeLoader) Load(u watchers.Unit) error {
@@ -24,8 +30,12 @@ func (f *fakeLoader) Load(u watchers.Unit) error {
 	f.loaded = append(f.loaded, u.Repo)
 	return nil
 }
-func (f *fakeLoader) Unload(watchers.Unit) error { return nil }
+func (f *fakeLoader) Unload(u watchers.Unit) error {
+	f.unloaded = append(f.unloaded, u.Label())
+	return nil
+}
 func (f *fakeLoader) Status(u watchers.Unit) (watchers.WatcherStatus, error) {
+	f.statused++
 	return watchers.WatcherStatus{TaskName: u.Label()}, nil
 }
 

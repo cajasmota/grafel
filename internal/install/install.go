@@ -271,6 +271,21 @@ func Apply(opts Options) (*Result, error) {
 		if !opts.SkipWatchers && opts.Config.Features.Watchers {
 			u := watchers.Unit{Group: opts.Group, Repo: repo, BinPath: opts.BinPath}
 			if !opts.DryRun {
+				// Retire any pre-#6183 unit for this repo FIRST (#6183). The
+				// label now carries a path digest, so a repo installed by an
+				// older binary has its unit under a different name — and that
+				// unit is still loaded. Writing the new one without booting the
+				// old one out would leave two watchers running for one repo.
+				// No-op (one stat) once the machine has been migrated.
+				// newWatcherLoader (watchersync.go) is watchers.NewLoader with
+				// a test seam; the migration goes through it so the bootout can
+				// be observed without a real launchd session. The darwin Unload
+				// probes `launchctl list` before booting out, so a stubbed
+				// runner alone cannot show whether the OLD label was named.
+				if _, merr := watchers.MigrateLegacyUnit(u, newWatcherLoader); merr != nil {
+					res.WatcherWarnings = append(res.WatcherWarnings,
+						fmt.Sprintf("could not retire the previous watcher unit for %s: %v", repo, merr))
+				}
 				path, err := watchers.Write(u)
 				if err != nil {
 					return nil, fmt.Errorf("watcher for %s: %w", repo, err)
@@ -489,6 +504,11 @@ func Uninstall(group string, purge bool) error {
 			// that the OS does not attempt to launch a missing binary.
 			_ = loader.Unload(u)
 			_ = watchers.Remove(u)
+			// And any unit installed under the pre-#6183 label (#6183). Once
+			// the group leaves the registry there is nothing left to derive
+			// that name from, so it has to happen here or never.
+			_ = loader.Unload(watchers.LegacyOf(u))
+			_ = watchers.Remove(watchers.LegacyOf(u))
 		}
 	}
 	if err := registry.RemoveGroup(group); err != nil {

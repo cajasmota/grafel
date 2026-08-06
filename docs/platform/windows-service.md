@@ -195,7 +195,32 @@ Get-Content "$env:APPDATA\grafel\logs\daemon.log" -Tail 50
 The watcher is a separate scheduled task — one per watched repository — and
 follows the same install/uninstall/status lifecycle as the daemon service.
 Each task name uses the reverse-DNS convention
-`com.grafel.watcher.<group>.<repo-slug>`.
+`com.grafel.watcher.<group>.<repo-slug>-<hash>`.
+
+> **Changed in #6183.** `<repo-slug>` used to be the repo's directory name
+> alone, so two repos in one group with the same directory name — `api`, `web`,
+> `docs` across different orgs — produced **one** task name for two repos, and
+> only one of them was ever actually watched. The slug now carries `-<hash>`,
+> eight hex characters derived from the repo's full path, e.g.
+> `com.grafel.watcher.mygroup.myrepo-3f9c1e07`.
+>
+> The literal task names in the commands below are therefore **examples, not
+> values you can copy**. Get the real one from the staged XML directory:
+>
+> ```powershell
+> ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.watcher.mygroup.*.xml"
+> ```
+>
+> Upgrading renames existing tasks. `grafel install` and `grafel update`
+> deregister the old task name and delete its staged XML before creating the new
+> one, so a repo ends up with exactly one task — not two. **Downgrading does
+> not:** an older binary derives the un-hashed name, does not find it, and
+> creates it alongside the hashed task that is still registered. If you roll
+> back, delete the hashed tasks by hand:
+>
+> ```powershell
+> schtasks /delete /tn com.grafel.watcher.mygroup.myrepo-3f9c1e07 /f
+> ```
 
 ### W1. Install a watcher for a repo
 
@@ -206,27 +231,27 @@ Each task name uses the reverse-DNS convention
 
 Expected output (approximate):
 ```
-watcher installed: com.grafel.watcher.mygroup.myrepo  running=true
+watcher installed: com.grafel.watcher.mygroup.myrepo-3f9c1e07  running=true
 ```
 
 ### W2. Verify the watcher task exists
 
 ```powershell
-schtasks /query /tn com.grafel.watcher.mygroup.myrepo /fo list /v
+schtasks /query /tn com.grafel.watcher.mygroup.myrepo-3f9c1e07 /fo list /v
 ```
 
 Key fields:
 
 | Field | Expected value |
 |---|---|
-| `Task Name` | `\com.grafel.watcher.mygroup.myrepo` |
+| `Task Name` | `\com.grafel.watcher.mygroup.myrepo-3f9c1e07` |
 | `Status` | `Running` |
 | `Logon Mode` | `Interactive/Background` |
 
 ### W3. Verify the task XML was staged to disk
 
 ```powershell
-ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.watcher.mygroup.myrepo.xml"
+ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.watcher.mygroup.myrepo-3f9c1e07.xml"
 # Expected: file exists
 ```
 
@@ -246,19 +271,28 @@ ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.watcher.mygroup.myrepo.xml"
 After uninstall:
 
 ```powershell
-schtasks /query /tn com.grafel.watcher.mygroup.myrepo
+schtasks /query /tn com.grafel.watcher.mygroup.myrepo-3f9c1e07
 # Expected: ERROR: The system cannot find the file specified.
 
-ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.watcher.mygroup.myrepo.xml"
+ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.watcher.mygroup.myrepo-3f9c1e07.xml"
 # Expected: file not found
+
+# Uninstall also removes any task left over from a pre-#6183 install, i.e. the
+# un-hashed name. It is the last moment at which that name can be derived.
+schtasks /query /tn com.grafel.watcher.mygroup.myrepo
+# Expected: ERROR: The system cannot find the file specified.
 ```
 
 ### W6. Expected file paths (per-repo watcher)
 
 | Artifact | Path |
 |---|---|
-| Task XML (staged) | `%LOCALAPPDATA%\grafel\tasks\com.grafel.watcher.<group>.<slug>.xml` |
-| Task name | `com.grafel.watcher.<group>.<slug>` |
+| Task XML (staged) | `%LOCALAPPDATA%\grafel\tasks\com.grafel.watcher.<group>.<slug>-<hash>.xml` |
+| Task name | `com.grafel.watcher.<group>.<slug>-<hash>` |
+
+`<hash>` is the first 8 hex characters of SHA-256 over the repo's cleaned
+absolute path (#6183). It makes the task name unique per repo PATH rather than
+per directory name.
 
 ---
 

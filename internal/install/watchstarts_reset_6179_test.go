@@ -104,6 +104,13 @@ func TestApply_ResetsWatchStartsWhenRegisteringUnit(t *testing.T) {
 	})
 	recPath := seedWatchStarts(t, repo)
 
+	// Belt AND braces. Swapping newWatcherLoader is what keeps Apply away from
+	// launchctl; stubbing the runner is what keeps a future refactor that
+	// reintroduces a direct watchers.NewLoader() call from silently leaking a
+	// launchd job again. This test issued a real bootout+bootstrap into the
+	// developer's session on every run until #6183 (see stubLaunchctlRunner).
+	stubLaunchctlRunner(t)
+
 	fake := &fakeLoader{}
 	prev := newWatcherLoader
 	newWatcherLoader = func() watchers.Loader { return fake }
