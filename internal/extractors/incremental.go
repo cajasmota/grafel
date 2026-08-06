@@ -586,6 +586,20 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	// --- Step 3: AST-hash gate ---
 	// Skip files where the content hash matches the last stamp (whitespace edits).
+	//
+	// #6209 — diff.RetryDue IS PART OF THIS GATE, not an optimisation on top of
+	// it. This comparison is the SAME hex SHA-256 over the SAME raw bytes that
+	// diff.isChanged already made (FileStamp.ContentHash and FileEntry.SHA256
+	// are the same value), so it is a second, independent chance to drop a file
+	// the change-detector let through. A file whose EXTRACTION failed has
+	// unchanged bytes by construction — the failure does not edit it — so
+	// without this clause the retry-due union in diff.FilterWithGit puts the
+	// file into changedFiles and this gate immediately takes it back out,
+	// reallyChanged empties, the pass returns Done=true without writing a
+	// manifest, and the scheduler does not fall back. The failure count is then
+	// pinned at its current value for the life of the file: the budget never
+	// spends, the file is never retried, and #6209 is unfixed on the one path
+	// the daemon actually runs.
 	var reallyChanged []string
 	for _, rel := range changedFiles {
 		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
@@ -595,7 +609,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			continue
 		}
 		prev, ok := manifest.Files[rel]
-		if !ok || prev.SHA256 != stamp.ContentHash {
+		if !ok || prev.SHA256 != stamp.ContentHash || diff.RetryDue(prev) {
 			reallyChanged = append(reallyChanged, rel)
 		}
 		// else: hash unchanged (whitespace-only) — skip silently
@@ -1366,7 +1380,20 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// Also O(delta) instead of O(repo): the files this pass did not re-extract
 	// keep the stamps they already had, which is exactly what established them
 	// as unchanged in the first place (#6201, #6206).
-	diff.ApplyStamps(walkStamps, allFiles, manifest)
+	// The failed-extraction set is EXPLICITLY EMPTY here, and that is a property
+	// of this function, not an omission (#6209). The extraction loop above does
+	// not tolerate an extractor error at all: it returns fallback() the moment
+	// one occurs (see "#6151 — NOT non-fatal"), because Step 5 has already
+	// evicted that file's entities and persisting the graph would drop them.
+	// Reaching Step 9 therefore means every file in reallyChanged extracted
+	// cleanly, and the full reindex the fallback triggers is what records the
+	// failure — on the cmd/grafel path, which does mark it.
+	//
+	// Routed through ApplyStampsAndFailures rather than ApplyStamps anyway, so
+	// that if this path ever learns to tolerate a partial failure, the call site
+	// is already the one that records it instead of silently stamping it as
+	// indexed. A nil set makes this identical to ApplyStamps.
+	_ = diff.ApplyStampsAndFailures(walkStamps, allFiles, nil, manifest)
 	if saveErr := diff.SaveManifest(stateDir, absRepo, manifest); saveErr != nil {
 		logger.Printf("incremental: save manifest: %v (non-fatal)", saveErr)
 	}
