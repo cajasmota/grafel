@@ -272,14 +272,14 @@ type Paths struct {
 // doc comment for why "route everything through one function" replaced
 // "grep for the bug shape and patch each site."
 func PathsFor(grafelHome, group string) (Paths, error) {
-	dir, err := groupsDir(grafelHome, group)
-	if err != nil {
-		return Paths{}, err
+	if group == "" {
+		return Paths{}, errors.New("group name required")
 	}
 	home, err := GroupHome(grafelHome)
 	if err != nil {
 		return Paths{}, err
 	}
+	dir := filepath.Join(home, "groups")
 	cacheDir := filepath.Join(home+"-cache", group, "string-scan")
 	if !strings.HasSuffix(home, ".grafel") {
 		// Use sibling cache dir under grafelHome for tests.

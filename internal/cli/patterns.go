@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/grafel/internal/agentpatterns"
+	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -86,11 +87,19 @@ func resolvePatternsDir(groupName string) (string, error) {
 		}
 	}
 
-	home, err := registry.HomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, "groups", groupName+"-patterns"), nil
+	// #6178 round 4 (L1): was a hand-rolled filepath.Join(registry.HomeDir(),
+	// "groups", groupName+"-patterns") — correctly GRAFEL_HOME-aware (it
+	// calls registry.HomeDir()), but a fourth independent derivation of the
+	// "-patterns" layout, agreeing with links.PatternsDir today only
+	// because nobody has changed the layout since. That's not a live bug,
+	// it's the drift precondition for the next one: change PatternsDir's
+	// join and this writer silently keeps writing to the old location,
+	// which the GRAFEL_HOME-unawareness guard (internal/registry/
+	// home_sweep_guard_6178_test.go) cannot catch, by design — it detects
+	// missing GRAFEL_HOME resolution, not derivation duplication. Routing
+	// through links.PatternsDir directly makes "exactly one function per
+	// sidecar family" true rather than nearly true.
+	return links.PatternsDir("", groupName)
 }
 
 func addGroupFlag(cmd *cobra.Command, target *string) {

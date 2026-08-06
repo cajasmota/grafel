@@ -35,7 +35,28 @@ package registry_test
 //     class this guard exists to catch before merge, not after a fourth
 //     review round.
 //
-// # What this does NOT catch — read this before trusting it
+// # What this catches vs. what it catches
+//
+// This guard detects GRAFEL_HOME-*unawareness* — a function that resolves
+// the OS home directly and never looks at GRAFEL_HOME. It does NOT detect
+// derivation *duplication* — a function that resolves GRAFEL_HOME
+// correctly (via registry.HomeDir(), links.PathsFor, or any of its
+// siblings) and then re-derives the REST of the path by hand instead of
+// calling the shared PassSidecarPath/MemoryDir/PatternsDir. That second
+// shape has no os.UserHomeDir()/os.Getenv("HOME") call at all, so it is
+// structurally invisible to an AST search keyed on those — see #6178
+// round 4 finding L1 (internal/cli/patterns.go's resolvePatternsDir,
+// fixed in that round): it called registry.HomeDir() correctly and then
+// hand-joined "groups/<group>-patterns" itself, agreeing with
+// links.PatternsDir today by coincidence, not by sharing code — a future
+// change to PatternsDir's layout would have silently left it behind, and
+// this guard would stay green throughout. Keeping "exactly one function
+// per sidecar family" true is a property this test cannot enforce by
+// itself; it takes review noticing a hand-rolled JOIN even when the HOME
+// half is correct.
+//
+// # What this does NOT catch, within the shape it DOES target — read
+// this before trusting it
 //
 // The scan is per-function-body: a resolver split across two functions in
 // the same file (a `homeDir()` helper called by a sibling that builds the
@@ -57,6 +78,52 @@ package registry_test
 // test ever being able to tell they're unrelated. The allow-list reason is
 // the human check; the guard only proves the shape recurs somewhere in that
 // function, not that it's the SAME somewhere as declared.
+//
+// Five more evasions of the SAME "OS-home lookup + .grafel literal, same
+// function" shape, each confirmed empirically against the live detector
+// (findHandRolledHomePaths) by TestGuardDetectsTheShape below — every one
+// of them returns 0 offenders on source where the bug shape is plainly
+// present:
+//
+//   - A named constant referenced by identifier:
+//     `const grafelDir = ".grafel"` used later as `filepath.Join(h,
+//     grafelDir)`. The joining call site has an *ast.Ident, not an
+//     *ast.BasicLit — the detector only resolves file-local string
+//     consts when matching os.Getenv's ARGUMENT (see constStringValue in
+//     guard_6018_test.go's sibling detector for that pattern), not when
+//     matching the ".grafel" half of THIS detector.
+//   - Literal concatenation: `filepath.Join(h, ".gra"+"fel", ...)`. Two
+//     separate *ast.BasicLits, neither containing ".grafel" on its own —
+//     Go the LANGUAGE constant-folds this at compile time; go/ast the
+//     PARSER does not fold it before this detector ever sees the tree.
+//   - An indirected env-var name: `os.Getenv(homeEnv)` where `homeEnv` is
+//     a const equal to "HOME". The os.Getenv argument-type assertion to
+//     *ast.BasicLit fails on an *ast.Ident, so hasHomeCall never becomes
+//     true, regardless of what the identifier resolves to.
+//   - A top-level closure: `var f = func() { ...os.UserHomeDir()...
+//     ...".grafel"... }`. This is an *ast.GenDecl (a var spec whose value
+//     happens to be a function literal), not an *ast.FuncDecl — the
+//     per-file scan only inspects top-level FuncDecls, so it never
+//     descends into a var-bound closure's body at all. (A closure
+//     declared and called INSIDE an already-scanned FuncDecl's body IS
+//     caught — ast.Inspect walks the whole subtree of a matched
+//     FuncDecl's Body, closures included.)
+//   - An aliased import: `import osx "os"` then `osx.UserHomeDir()`. The
+//     detector checks `pkg.Name != "os"` on the SelectorExpr's package
+//     identifier — an aliased import's identifier is the alias, not the
+//     package's real name, so the comparison never matches.
+//
+// None of these is a reason to abandon the guard — it is a cost/benefit
+// AST heuristic, not a type-checker, and a determined evader is not the
+// threat model this exists for. The threat is the ACCIDENTAL twelfth
+// sidecar, written the same unremarkable way as the first eleven, which
+// is exactly the shape TestGuardDetectsTheShape's seven positive/negative
+// cases already cover. Also uncaught by construction, not listed as a
+// "finding" because they're outside what an os/os.Getenv-keyed detector
+// could ever claim to cover: a path assembled from a struct field or a
+// loaded config value, a third-party or vendored home-directory helper,
+// and anything inside a _test.go file (excluded from the scan entirely —
+// see scanHandRolledHomePaths).
 
 import (
 	"go/ast"
@@ -136,7 +203,7 @@ var knownDeferred = map[string]string{
 	"internal/cli/feedback_timeline.go:runFeedbackTimeline": "RELOCATABLE — feedback timeline events/out dirs key off $HOME only, never GRAFEL_HOME. Reported in the wider-pattern sweep.",
 	"internal/mcp/activity_log.go:DefaultActivityLogPath":   "UNCLEAR in the wider-pattern sweep: may be deliberate (user-level telemetry, not group data) or should follow GRAFEL_HOME like the sidecar family — needs a maintainer decision, not a mechanical fix.",
 	"internal/mcp/persona_telemetry.go:personaEventsDir":    "UNCLEAR in the wider-pattern sweep, same open question as activity_log.go's DefaultActivityLogPath.",
-	"internal/mcp/docgen.go:canonicalDocsPath":              "RELOCATABLE — real bug, no GRAFEL_HOME check at all (os.Getenv(\"HOME\") then os.UserHomeDir(), full stop). Feeds handleDocgenPromote's ~/.grafel/docs path — the same feature area as issue #6075 (\"related and not duplicate\" per #6178's own text), so left for that issue rather than folded into this one.",
+	"internal/mcp/docgen.go:canonicalDocsPath":              "LIVE SPLIT-BRAIN TODAY, not merely latent — no GRAFEL_HOME check at all (os.Getenv(\"HOME\") then os.UserHomeDir(), full stop) while every other docs writer IS GRAFEL_HOME-aware (internal/daemon/docs_path.go, internal/docgen/tier0.go through tier4.go, internal/cli/docgen.go's promote path) — so an isolated GRAFEL_HOME run promotes docs today at the wrong location relative to everything else that reads/writes them. Feeds handleDocgenPromote's ~/.grafel/docs path — the same feature area as issue #6075 (\"related and not duplicate\" per #6178's own text), so left for that issue rather than folded into this one; flagged here as live, not latent, so whoever reads this ledger prioritises it correctly.",
 	"internal/mcp/server.go:NewServer":                      "RELOCATABLE, low severity — the metrics dir (~/.grafel/metrics/) is a best-effort diagnostic path, plain os.UserHomeDir() only. Reported in the wider-pattern sweep as low severity.",
 }
 
@@ -258,6 +325,72 @@ import "os"
 func f() string { h, _ := os.UserHomeDir(); return h + "/.grafel/a" }
 func g() string { h, _ := os.UserHomeDir(); return h + "/.grafel/b" }`,
 			want: 2,
+		},
+
+		// --- CONFIRMED EVASIONS (documented in the file doc's "Five more
+		// evasions" section) — asserted at want:0 so this file states its
+		// real reach rather than implying total coverage. If a future
+		// change to the detector starts catching one of these, flip its
+		// want to 1 (or the offending count) and delete the corresponding
+		// bullet from the file doc — do not delete the row.
+		{
+			name: "MISS: .grafel behind a named constant",
+			src: `package p
+import "os"
+import "path/filepath"
+const grafelDir = ".grafel"
+func f() string { h, _ := os.UserHomeDir(); return filepath.Join(h, grafelDir) }`,
+			want: 0,
+		},
+		{
+			name: "MISS: .grafel built from concatenated literals",
+			src: `package p
+import "os"
+import "path/filepath"
+func f() string { h, _ := os.UserHomeDir(); return filepath.Join(h, ".gra"+"fel") }`,
+			want: 0,
+		},
+		{
+			name: "MISS: Getenv key behind an identifier, not a literal",
+			src: `package p
+import "os"
+const homeEnv = "HOME"
+func f() string { return os.Getenv(homeEnv) + "/.grafel/groups" }`,
+			want: 0,
+		},
+		{
+			name: "MISS: var-bound top-level closure, not a FuncDecl",
+			src: `package p
+import "os"
+var f = func() string { h, _ := os.UserHomeDir(); return h + "/.grafel/groups" }`,
+			want: 0,
+		},
+		{
+			name: "MISS: aliased os import",
+			src: `package p
+import osx "os"
+func f() string { h, _ := osx.UserHomeDir(); return h + "/.grafel/groups" }`,
+			want: 0,
+		},
+
+		// Closures declared AND invoked inside an already-scanned
+		// FuncDecl's body ARE caught — ast.Inspect walks the whole
+		// FuncDecl subtree, closures included. This is the positive
+		// counterpart to the "var-bound top-level closure" miss above:
+		// the miss is specifically about a closure that IS the top-level
+		// declaration, not any closure anywhere.
+		{
+			name: "caught: closure INSIDE a scanned FuncDecl's body",
+			src: `package p
+import "os"
+func f() string {
+	inner := func() string {
+		h, _ := os.UserHomeDir()
+		return h + "/.grafel/nested"
+	}
+	return inner()
+}`,
+			want: 1,
 		},
 	}
 	for _, tc := range cases {
