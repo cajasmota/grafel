@@ -110,6 +110,15 @@ func Apply(opts Options) (*Result, error) {
 	if opts.Group == "" {
 		return nil, errors.New("group is required")
 	}
+	// #6186 F6: validate BEFORE ConfigPathFor/StateDirFor are used below.
+	// Both filepath.Join the raw name, which collapses "..", so an unchecked
+	// name can compute (and, via SaveGroupConfig/os.MkdirAll further down,
+	// write to) a path outside the intended config/state directory;
+	// validating only at AddGroup runs after those writes have already
+	// happened.
+	if err := registry.ValidateGroupName(opts.Group); err != nil {
+		return nil, err
+	}
 	if opts.Config == nil {
 		return nil, errors.New("config is required")
 	}

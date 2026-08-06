@@ -305,8 +305,18 @@ func saveTo(path string, r *Registry) error {
 	return atomicfile.WriteFile(path, b, 0o644)
 }
 
-// validateGroupName rejects group names that are unsafe as a filesystem path
-// segment (#6186).
+// maxGroupNameBytes bounds how long a group name may be.
+//
+// ConfigPathFor appends ".fleet.json" (11 bytes) to the name to form a
+// filename; StateDirFor uses the name as a bare directory component. Most
+// filesystems this ships on (APFS, ext4, NTFS's practical limit) cap a single
+// path component at 255 bytes. 100 leaves generous headroom for the
+// ".fleet.json" suffix and any future per-name derived filenames, without
+// being so tight it constrains a real (if unusually long) project name.
+const maxGroupNameBytes = 100
+
+// ValidateGroupName rejects group names that are unsafe as a filesystem path
+// segment (#6186, widened by #6186 F5).
 //
 // Group is interpolated raw into Unit.Label(), which is both the watcher
 // plist's filename and launchd's job identity (internal/install/watchers).
@@ -317,22 +327,37 @@ func saveTo(path string, r *Registry) error {
 // is silently never registered. A name like "../escape" or "." escapes (or
 // collides with) that directory entirely.
 //
-// This intentionally validates only the two concrete failure modes above
-// (path separators and "."/".." path segments) rather than reusing
-// slugify's full alnum-only character class: group names are commonly
-// derived from a directory basename (defaultGroupName in internal/cli/
-// wizard.go), which routinely contains spaces, dots, and underscores — none
-// of those are unsafe as a single path segment, and rejecting them would be
-// a regression for existing onboarding flows. Only characters that can
-// actually create or traverse a directory are blocked.
+// Also rejected, per review of the first cut of this fix:
+//   - control characters / NUL: "g\n[Service]\nExecStart=evil" reaches
+//     Description= in the rendered systemd unit (see
+//     internal/install/watchers' validateUnitFields, which independently
+//     guards the write path — this is defense at the earlier, more visible
+//     boundary) and "g\x00h" makes every later ConfigPathFor/StateDirFor/
+//     plist path operation fail EINVAL, leaving a registry entry that can
+//     never be materialised.
+//   - all-whitespace: produces a Label launchd will not accept — the exact
+//     silent-non-registration failure mode #6186 exists to prevent.
+//   - over-length: risks exceeding NAME_MAX on the derived path.
 //
-// This check runs at AddGroup (registration) only, not at Load/Groups() —
-// registries that already contain an invalid name (written before this fix,
-// or edited by hand) must keep loading normally. Rejecting on load would
-// turn a silently-broken watcher into a hard failure to even read the
-// registry, which is worse than the bug being fixed.
-func validateGroupName(name string) error {
-	if name == "" {
+// This intentionally does NOT reuse slugify's full alnum-only character
+// class: group names are commonly derived from a directory basename
+// (defaultGroupName in internal/cli/wizard.go), which routinely contains
+// spaces, dots, and underscores — none of those are unsafe as a single path
+// segment, and rejecting them would be a regression for existing onboarding
+// flows. Only characters/shapes that can actually create/traverse a
+// directory, corrupt a derived path, or break the watcher formats are
+// blocked.
+//
+// This check runs at group-creation time (AddGroup, and — per #6186 F6,
+// callers must invoke it before ever calling SaveGroupConfig — see
+// internal/cli/wizard.go, internal/cli/onboard.go, internal/install/
+// install.go, internal/dashboard/store.go), not at Load/Groups(): registries
+// that already contain an invalid name (written before this fix, or edited
+// by hand) must keep loading normally. Rejecting on load would turn a
+// silently-broken watcher into a hard failure to even read the registry,
+// which is worse than the bug being fixed.
+func ValidateGroupName(name string) error {
+	if strings.TrimSpace(name) == "" {
 		return errors.New("group name required")
 	}
 	if strings.ContainsAny(name, "/\\") {
@@ -341,14 +366,35 @@ func validateGroupName(name string) error {
 	if name == "." || name == ".." {
 		return fmt.Errorf("group name %q is not a valid path segment", name)
 	}
+	if hasControlByte(name) {
+		return fmt.Errorf("group name %q must not contain a control character", name)
+	}
+	if len(name) > maxGroupNameBytes {
+		return fmt.Errorf("group name %q is %d bytes, want at most %d", name, len(name), maxGroupNameBytes)
+	}
 	return nil
+}
+
+// hasControlByte reports whether s contains an ASCII control byte (0x00-0x1F
+// or 0x7F), including NUL, CR and LF. Mirrors
+// internal/install/watchers.hasControlByte; kept as an independent,
+// unexported copy rather than a shared dependency between the two packages
+// for what is a five-line check with different callers and different
+// rationale (path-segment safety here vs. unit-format injection there).
+func hasControlByte(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 // AddGroup adds a group to the registry and persists. Idempotent: if the
 // group already exists it is updated in place. The config file must exist
 // at the target path; otherwise an error is returned.
 func AddGroup(name, configPath string) error {
-	if err := validateGroupName(name); err != nil {
+	if err := ValidateGroupName(name); err != nil {
 		return err
 	}
 	// Validate that the config file exists.

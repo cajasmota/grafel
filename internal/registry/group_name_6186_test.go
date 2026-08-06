@@ -50,6 +50,48 @@ func TestAddGroup_AcceptsOrdinaryNames(t *testing.T) {
 	}
 }
 
+// TestAddGroup_RejectsControlWhitespaceAndOverlength pins #6186 F5 (found on
+// review): the first cut of validateGroupName only blocked path separators
+// and "."/"..", so all of these were accepted and persisted:
+//
+//	AddGroup("g\n[Service]\nExecStart=evil", ...) -> nil  (reaches Description=
+//	                                                        in the systemd unit)
+//	AddGroup("g\rh", ...)      -> nil  (breaks the Label launchd/systemd expect)
+//	AddGroup("   ", ...)       -> nil  (whitespace-only Label)
+//	AddGroup("\x00", ...)      -> nil  (later ConfigPathFor/StateDirFor/plist
+//	                                     ops fail EINVAL forever)
+//	AddGroup("g\x00h", ...)    -> nil  (same)
+//	AddGroup(<300 bytes>, ...) -> nil  (pushes ConfigPathFor past NAME_MAX=255
+//	                                     on APFS)
+func TestAddGroup_RejectsControlWhitespaceAndOverlength(t *testing.T) {
+	home := withHome(t)
+	cfgPath := filepath.Join(home, "xdg", "grafel", "g.fleet.json")
+	writeFleetFixture(t, cfgPath)
+
+	long := make([]byte, 300)
+	for i := range long {
+		long[i] = 'a'
+	}
+
+	for _, bad := range []string{
+		"g\n[Service]\nExecStart=evil",
+		"g\rh",
+		"   ",
+		"\x00",
+		"g\x00h",
+		string(long),
+	} {
+		if err := AddGroup(bad, cfgPath); err == nil {
+			t.Errorf("AddGroup(%q) succeeded; want rejection (#6186 F5)", bad)
+		}
+	}
+
+	groups, _ := Groups()
+	if len(groups) != 0 {
+		t.Fatalf("expected no groups registered after rejected names, got %d: %+v", len(groups), groups)
+	}
+}
+
 func writeFleetFixture(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

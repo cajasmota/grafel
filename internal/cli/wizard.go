@@ -437,6 +437,13 @@ func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOpt
 		}
 	}
 
+	// #6186 F6: validate BEFORE computing/using the config path. ConfigPathFor
+	// filepath.Joins the raw name, which collapses "..", so a name like
+	// "../../pwned" resolves outside the config directory; validating only at
+	// AddGroup (after SaveGroupConfig already wrote the file) is too late.
+	if err := registry.ValidateGroupName(cfg.Name); err != nil {
+		return nil, err
+	}
 	cfgPath, err := registry.ConfigPathFor(cfg.Name)
 	if err != nil {
 		return nil, err
