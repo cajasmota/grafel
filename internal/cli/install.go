@@ -408,11 +408,32 @@ const refreshStateQuietEnv = "GRAFEL_REFRESH_STATE_QUIET"
 // Silent when nothing was stale: that is the steady state and it deserves no
 // output at all.
 func printReconcileSummary(out io.Writer, res *install.ReconcileWatcherResult) {
-	if res == nil || len(res.Rewritten) == 0 {
+	if res == nil || (len(res.Rewritten) == 0 && len(res.Migrated) == 0 && res.Absent == 0) {
 		return
 	}
-	fmt.Fprintf(out, "✓ watcher units refreshed: %d rewritten, %d re-registered, %d already current\n",
-		len(res.Rewritten), len(res.Reloaded), res.Current)
+	if len(res.Rewritten) > 0 || len(res.Migrated) > 0 {
+		fmt.Fprintf(out, "✓ watcher units refreshed: %d rewritten, %d re-registered, %d already current\n",
+			len(res.Rewritten), len(res.Reloaded), res.Current)
+	}
+	if res.Absent > 0 {
+		// #6183 F2: a repo that is registered with watchers on but has no unit
+		// under either label used to be counted here and never mentioned. That
+		// silence is what made an interrupted migration unrecoverable in
+		// practice — the operator had no signal at all that a repo was
+		// unwatched. Reconcile still will not create these (that is Apply's
+		// job), so the remedy has to be said out loud.
+		fmt.Fprintf(out, "  %d registered repo(s) have watchers enabled but no watcher unit "+
+			"installed; run `grafel install` for their group to add one\n", res.Absent)
+	}
+	if len(res.Migrated) > 0 {
+		// #6183: the label now includes a path digest, so these repos' units
+		// moved to a new filename. Say so — a user who greps LaunchAgents for
+		// the old name after upgrading would otherwise conclude their watchers
+		// had been deleted.
+		fmt.Fprintf(out, "  %d watcher unit(s) were renamed to make repos with identical directory "+
+			"names distinguishable (issue #6183); the previous units were deregistered and removed\n",
+			len(res.Migrated))
+	}
 	if len(res.Reloaded) > 0 {
 		fmt.Fprintf(out, "  macOS may show up to %d Background Items notifications while these "+
 			"re-register — this is the one-time repair for issue #6179, not a recurrence\n",

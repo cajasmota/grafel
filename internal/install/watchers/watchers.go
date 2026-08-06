@@ -7,6 +7,8 @@
 package watchers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"os"
@@ -88,12 +90,115 @@ type Unit struct {
 	Group   string
 	Repo    string
 	BinPath string // absolute path to the grafel binary
+
+	// legacy selects the PRE-#6183 label derivation (basename only, no path
+	// digest). It exists for exactly one purpose: naming the already-installed
+	// unit that a migration has to boot out and delete. Set it only via
+	// LegacyOf — the zero value is always the current derivation, so nothing
+	// can accidentally install a legacy-labelled unit.
+	legacy bool
 }
 
 // Label returns the platform-agnostic label for a unit.
+//
+// The label is also the unit FILENAME and the OS scheduler's job identity, so
+// two units that share a label share a file and a job. Before #6183 the slug
+// was filepath.Base(repo) alone, which meant two repos in one group with equal
+// basenames — `api`, `web`, `docs`, `infra` across different orgs, near-certain
+// on a large fleet — produced one label for two repos. The consequences were
+// that only one of the pair was ever actually watched, and that
+// ReconcileWatcherUnits never converged: each pass rewrote the shared file to
+// repo A's body, found it stale for repo B, rewrote it again, and re-registered
+// both, forever.
+//
+// Label depends on nothing but this unit's own fields. That matters: a
+// derivation that disambiguated only "where needed" would have to consult the
+// rest of the fleet, and then adding an unrelated repo would silently rename an
+// existing unit — the orphaning problem below, repeated on every fleet edit
+// rather than once.
 func (u Unit) Label() string {
 	slug := slugify(u.Repo)
+	if u.legacy {
+		slug = legacySlugify(u.Repo)
+	}
 	return fmt.Sprintf("com.grafel.watcher.%s.%s", u.Group, slug)
+}
+
+// LegacyOf returns a copy of u whose Label() is the pre-#6183 label.
+//
+// Migration needs to name the old unit EXACTLY. The alternative — globbing
+// com.grafel.watcher.* in the unit directory and guessing which entries are
+// stale — cannot distinguish a genuinely orphaned unit from one belonging to a
+// group this binary has no config for, and would boot out the latter. Deriving
+// the old label from the same (group, repo) the new one comes from names a unit
+// that belongs to this repo.
+//
+// Not STRICTLY so, and the caveat is worth writing down: the legacy and current
+// label spaces are not disjoint. A repo literally named `api-3f9c1e07` has the
+// legacy label `…watcher.g.api-3f9c1e07`, which is also the current label of a
+// repo named `api` whose path digests to 3f9c1e07. The MigrateLegacyUnit guard
+// below only catches the case where those two are the SAME unit. Cross-repo it
+// is ~2^-32 per pair within a group and requires an adversarially named repo;
+// the alternative (a separator no path component may contain) does not exist,
+// since the slug maps every non-alphanumeric byte to '-'.
+func LegacyOf(u Unit) Unit {
+	u.legacy = true
+	return u
+}
+
+// LegacyUnitPath returns the path a pre-#6183 unit for u occupies on this OS.
+func LegacyUnitPath(u Unit) (string, error) {
+	return UnitPath(LegacyOf(u))
+}
+
+// MigrateLegacyUnit removes the pre-#6183 unit for u, if one is installed.
+//
+// Changing the label orphans every unit already on disk: the old file stays
+// there and stays LOADED under the old identity, while the new label registers
+// alongside it. Without this the fix would leave a user with two watchers per
+// repo — strictly worse than the collision it repairs. So the old job is booted
+// out of the scheduler first (while the file it was bootstrapped from still
+// exists — on launchd the file is what a bootout names) and only then deleted.
+//
+// newLoader is called ONLY when there is actually a legacy unit to remove. That
+// preserves ReconcileWatcherUnits' property that an up-to-date machine
+// constructs no Loader and issues no launchctl at all (#6179).
+//
+// Idempotent: with no legacy file present it stats one path and returns ("",
+// nil) — no loader, no writes. It returns the removed path when it did work.
+func MigrateLegacyUnit(u Unit, newLoader func() Loader) (string, error) {
+	legacy := LegacyOf(u)
+	legacyPath, err := UnitPath(legacy)
+	if err != nil {
+		return "", err
+	}
+	currentPath, err := UnitPath(u)
+	if err != nil {
+		return "", err
+	}
+	// Defensive: if the derivations ever coincide, removing the "legacy" file
+	// would delete the live unit.
+	if legacyPath == currentPath {
+		return "", nil
+	}
+	if _, err := os.Stat(legacyPath); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	if newLoader != nil {
+		if l := newLoader(); l != nil {
+			// Tolerate errors: "not loaded" already satisfies the desired
+			// absent state, and a scheduler that refuses must not stop the
+			// stale file from being deleted.
+			_ = l.Unload(legacy)
+		}
+	}
+	if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	return legacyPath, nil
 }
 
 // LaunchdPlist returns the macOS launchd .plist body for a watcher.
@@ -300,13 +405,27 @@ func Write(u Unit) (string, error) {
 // launchd jobs / plists from lingering and fighting a later recreate (#5338).
 func Cleanup(group, repoPath, binPath string) {
 	u := Unit{Group: group, Repo: repoPath, BinPath: binPath}
-	loader := NewLoader()
+	loader := newLoader()
 	// Deregister from the OS scheduler before deleting the file so the OS does
 	// not try to relaunch a missing binary. Errors are tolerated: "not loaded"
 	// already satisfies the desired absent state.
 	_ = loader.Unload(u)
 	_ = Remove(u)
+	// Also clear any pre-#6183 unit for this repo. Cleanup is the only place
+	// that runs when a repo stops being registered, so if it ignored the legacy
+	// label an old-scheme plist would survive the group's removal, stay loaded,
+	// and keep relaunching a watcher for a repo grafel no longer knows about —
+	// with nothing left in the registry to derive its name from later.
+	_ = loader.Unload(LegacyOf(u))
+	_ = Remove(LegacyOf(u))
 }
+
+// newLoader is the Loader constructor Cleanup uses. It is a package var so
+// tests can observe deregistrations without a real launchd/systemd session:
+// darwin's Unload probes `launchctl list` before booting out and short-circuits
+// when the label is not loaded, which it never is under a sandboxed HOME, so a
+// stubbed command runner cannot show which label was named.
+var newLoader = NewLoader
 
 // Remove deletes the unit file if it exists.
 func Remove(u Unit) error {
@@ -321,8 +440,55 @@ func Remove(u Unit) error {
 	return err
 }
 
-// slugify produces a label-safe slug from a path.
+// pathDigestLen is how many hex characters of the path digest go into a slug.
+//
+// 8 hex chars is 32 bits. Against the birthday bound that is a ~1-in-2.7-million
+// chance of one accidental collision across a 140-repo group, and it keeps the
+// label short enough that the basename in front of it is still what the eye
+// reads: com.grafel.watcher.g.api-3f9c1e07.
+const pathDigestLen = 8
+
+// slugify produces a label-safe, path-unique slug.
+//
+// basename + short digest of the full path, not the digest alone: the label is
+// the plist filename a user greps for and the identity `launchctl list` prints,
+// and a fleet of bare hashes would be a real usability regression. The digest
+// is over filepath.Clean of the whole path, so /x/api and /y/api differ.
 func slugify(s string) string {
+	return legacySlugify(s) + "-" + pathDigest(s)
+}
+
+// pathDigest returns the first pathDigestLen hex chars of SHA-256 over the
+// cleaned path.
+//
+// It is a function of the STRING the registry holds, not of the directory that
+// string names. filepath.Clean normalises separators and . / .. — `/x/api/`,
+// `/x/./api`, `/x/y/../api` and `/x/api//` all collapse to one label — but it
+// does not touch the filesystem, so two spellings that resolve to the same
+// directory still produce two labels:
+//
+//   - Case variants on a case-insensitive volume: on APFS `/X/Api` and `/x/api`
+//     are one directory and now two labels. The pre-#6183 slug lowercased the
+//     basename and collided them into one, so this is a behaviour change, in the
+//     direction of more units rather than fewer.
+//   - Symlinked aliases: no EvalSymlinks, deliberately — resolving would make
+//     the label depend on filesystem state at derivation time, so a moved or
+//     broken symlink would silently rename an installed unit, which is the
+//     orphaning problem this whole change exists to avoid paying twice.
+//
+// In both cases a repo registered twice under different spellings gets two
+// watcher units rather than one. That is wasteful, not incorrect, and it is
+// what registering the same repo twice already meant elsewhere in grafel.
+func pathDigest(s string) string {
+	sum := sha256.Sum256([]byte(filepath.Clean(s)))
+	return hex.EncodeToString(sum[:])[:pathDigestLen]
+}
+
+// legacySlugify is the pre-#6183 slug: filepath.Base, lowercased, with every
+// other byte mapped to '-'. It is retained ONLY so MigrateLegacyUnit can name
+// the units this scheme installed. Do not use it for new units — it is the
+// collision described on Label.
+func legacySlugify(s string) string {
 	s = filepath.Base(s)
 	out := make([]byte, 0, len(s))
 	for i := 0; i < len(s); i++ {

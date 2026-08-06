@@ -7,9 +7,15 @@ import (
 
 var sample = Unit{Group: "demo", Repo: "/tmp/test/core", BinPath: "/usr/local/bin/grafel"}
 
+// TestLabelStable pins the exact label bytes. The digest suffix landed with
+// #6183 (see Label); this test exists so any further change to the derivation
+// is a deliberate edit here, because changing it renames every installed unit.
 func TestLabelStable(t *testing.T) {
-	if got := sample.Label(); got != "com.grafel.watcher.demo.core" {
+	if got := sample.Label(); got != "com.grafel.watcher.demo.core-96d54b5d" {
 		t.Fatalf("label: %q", got)
+	}
+	if got := LegacyOf(sample).Label(); got != "com.grafel.watcher.demo.core" {
+		t.Fatalf("legacy label: %q", got)
 	}
 }
 
@@ -17,7 +23,7 @@ func TestLaunchdPlist(t *testing.T) {
 	body := LaunchdPlist(sample)
 	for _, want := range []string{
 		`<key>Label</key>`,
-		`<string>com.grafel.watcher.demo.core</string>`,
+		`<string>com.grafel.watcher.demo.core-96d54b5d</string>`,
 		`<string>/usr/local/bin/grafel</string>`,
 		`<string>watch</string>`,
 		`<string>/tmp/test/core</string>`,
