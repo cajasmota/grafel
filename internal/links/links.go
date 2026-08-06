@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -252,18 +253,29 @@ type Paths struct {
 	LinkPassStats string
 }
 
-// PathsFor returns the canonical paths under grafelHome ("" → ~/.grafel)
-// for the given group.
+// PathsFor returns the canonical paths under grafelHome ("" → the
+// GRAFEL_HOME-aware default resolved by registry.HomeDir(), normally
+// ~/.grafel) for the given group.
+//
+// #6178: the empty-string fallback used to call os.UserHomeDir() directly,
+// bypassing GRAFEL_HOME entirely. That made every caller that passes ""
+// (there are several outside internal/cli, e.g. the MCP payload-drift
+// reader) silently target the real home even when the caller's other I/O
+// — the store, the registry, the group config — was correctly isolated
+// under an overridden GRAFEL_HOME. Routing the fallback through
+// registry.HomeDir() closes that hole at the source: an explicit "" now
+// means "the grafel home the user actually selected", not "the OS
+// default, unconditionally".
 func PathsFor(grafelHome, group string) (Paths, error) {
 	if group == "" {
 		return Paths{}, errors.New("group name required")
 	}
 	if grafelHome == "" {
-		home, err := os.UserHomeDir()
+		home, err := registry.HomeDir()
 		if err != nil {
 			return Paths{}, err
 		}
-		grafelHome = filepath.Join(home, ".grafel")
+		grafelHome = home
 	}
 	groupsDir := filepath.Join(grafelHome, "groups")
 	cacheDir := filepath.Join(grafelHome+"-cache", group, "string-scan")
