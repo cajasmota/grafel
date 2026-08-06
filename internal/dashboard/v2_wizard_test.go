@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/proto"
+	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/testsupport"
 )
@@ -367,6 +368,95 @@ func TestV2DetectMCPTools(t *testing.T) {
 	}
 	if !claude.DefaultSelected {
 		t.Errorf("claude (recent config) should be default-selected: %+v", *claude)
+	}
+}
+
+// detectClaudeDefaultSelected GETs /api/v2/mcp-tools/detect and returns
+// (defaultSelected, found) for the claude row.
+func detectClaudeDefaultSelected(t *testing.T, ts *httptest.Server) (bool, bool) {
+	t.Helper()
+	resp, err := http.Get(ts.URL + "/api/v2/mcp-tools/detect")
+	if err != nil {
+		t.Fatalf("GET mcp-tools/detect: %v", err)
+	}
+	defer resp.Body.Close()
+	var env struct {
+		OK   bool                  `json:"ok"`
+		Data v2MCPToolsDetectReply `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !env.OK {
+		t.Fatalf("not ok: %+v", env)
+	}
+	for _, tool := range env.Data.Tools {
+		if tool.ID == "claude" {
+			return tool.DefaultSelected, true
+		}
+	}
+	return false, false
+}
+
+// staleClaudeConfigNoGrafel writes ~/.claude.json with NO grafel entry and an
+// mtime well past mcptools.RecentWindow — the state a lost registration leaves
+// behind (#6170). Returns its path.
+func staleClaudeConfigNoGrafel(t *testing.T, home string) string {
+	t.Helper()
+	path := filepath.Join(home, ".claude.json")
+	if err := os.WriteFile(path, []byte(`{"mcpServers":{"other":{"command":"x"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-90 * 24 * time.Hour)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestV2DetectMCPTools_RatchetWithoutRecord pins the ratchet at the wire: with
+// the grafel entry gone, a stale config and nothing recorded in install.json,
+// claude arrives UNCHECKED — the state a press-enter run turns into a
+// permanent opt-out (#6170).
+func TestV2DetectMCPTools_RatchetWithoutRecord(t *testing.T) {
+	home := testsupport.IsolateHome(t)
+	staleClaudeConfigNoGrafel(t, home)
+
+	ts, _ := newWizardTestServer(t, func(proto.RebuildArgs) (proto.RebuildReply, error) {
+		return proto.RebuildReply{}, nil
+	})
+	sel, found := detectClaudeDefaultSelected(t, ts)
+	if !found {
+		t.Fatal("claude not detected")
+	}
+	if sel {
+		t.Error("without an install.json record claude is expected unchecked here (that IS the ratchet)")
+	}
+}
+
+// TestV2DetectMCPTools_PreviouslyRegisteredIsChecked is the fix end-to-end:
+// install.json still records that grafel registered itself at ~/.claude.json,
+// so the wizard arrives CHECKED despite the entry being gone and the config
+// being stale.
+func TestV2DetectMCPTools_PreviouslyRegisteredIsChecked(t *testing.T) {
+	home := testsupport.IsolateHome(t)
+	claudeJSON := staleClaudeConfigNoGrafel(t, home)
+
+	st := install.NewState(install.ModeCopy)
+	st.MCP = install.MCPRecord{Name: mcpreg.ServerName, RegisteredPaths: []string{claudeJSON}}
+	if err := install.WriteState(filepath.Join(home, ".grafel", "install.json"), st); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+
+	ts, _ := newWizardTestServer(t, func(proto.RebuildArgs) (proto.RebuildReply, error) {
+		return proto.RebuildReply{}, nil
+	})
+	sel, found := detectClaudeDefaultSelected(t, ts)
+	if !found {
+		t.Fatal("claude not detected")
+	}
+	if !sel {
+		t.Error("claude must be default-selected: install.json records grafel was registered at ~/.claude.json")
 	}
 }
 

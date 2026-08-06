@@ -41,6 +41,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/proto"
+	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/mcptools"
@@ -269,7 +270,12 @@ func (s *Server) groupExists(name string) bool {
 // "Configure MCP for which tools?" step can render its checkboxes (#5344). It
 // performs NO writes.
 func (s *Server) handleV2DetectMCPTools(w http.ResponseWriter, _ *http.Request) {
-	detected := mcptools.Detect()
+	// The (B2) durable signal (#6170): install.json still records the config
+	// paths a previous install registered grafel in, even after the entry
+	// itself was deleted. Without it a lost registration + a config older than
+	// RecentWindow arrives here unchecked, and the wizard remembers the
+	// accident as a choice.
+	detected := mcptools.DetectWithPrevious(install.PreviouslyRegisteredMCPPaths())
 	tools := make([]v2MCPToolStatus, 0, len(detected))
 	for _, t := range detected {
 		tools = append(tools, v2MCPToolStatus{

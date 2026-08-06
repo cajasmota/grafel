@@ -13,8 +13,17 @@
 //
 //   - (B) smart default: a tool is checked when its config was modified
 //     recently (within RecentWindow) OR it already contains a grafel entry
-//     (previously configured). Clearly-stale tools are unchecked but stay
-//     visible so the user can re-check them.
+//     (previously configured) OR a previous install RECORDED registering
+//     grafel at that config path (B2, #6170 — see DetectWithPrevious).
+//     Clearly-stale tools are unchecked but stay visible so the user can
+//     re-check them.
+//
+//     B2 exists because both other terms are erased by the very accident it
+//     guards: something deletes the grafel entry (the #6168 rollback being the
+//     demonstrated way), so hasGrafel goes false, and if the file is also
+//     older than RecentWindow the tool arrives UNCHECKED — from which a
+//     press-enter run persists the accident as the user's preference.
+//
 //   - (C) remember last choice: the user's selection is persisted to
 //     ~/.grafel/mcp-tools.json and, on subsequent runs, becomes the default
 //     (C overrides B once a choice has been made).
@@ -96,14 +105,34 @@ var nowFunc = time.Now
 // Detect never errors on individual tools — an unreadable config simply yields
 // HasGrafel=false / a zero mtime.
 func Detect() []Tool {
+	return DetectWithPrevious(nil)
+}
+
+// DetectWithPrevious is Detect plus the durable (B2) "grafel was registered
+// here before" signal: prev is a set of MCP host config PATHS a previous
+// grafel install recorded (install.json's state.MCP.RegisteredPaths).
+//
+// The set is INJECTED rather than read here on purpose. install.json is
+// internal/install's file and reading it needs internal/install (and, for the
+// deliberate-opt-out subtraction, internal/registry); mcptools deliberately
+// depends only on mcpreg + tooladapter so it stays cheap and trivially
+// testable. Callers use install.PreviouslyRegisteredMCPPaths().
+func DetectWithPrevious(prev map[string]bool) []Tool {
 	last, _ := ReadLastChoice() // best-effort; nil when no prior choice
-	return detectWith(last)
+	return detectWith(last, prev)
 }
 
 // detectWith is the testable core of Detect: lastChoice (possibly nil) is the
-// remembered selection set.
-func detectWith(lastChoice map[string]bool) []Tool {
+// remembered selection set; prevRegistered (possibly nil) is the set of config
+// paths a previous install recorded a grafel registration at.
+//
+// Precedence is deliberate: B2 composes UNDER (C), never over it. A user who
+// deliberately opted a tool out is named in lastChoice and stays unchecked no
+// matter what install.json remembers — only the ACCIDENTAL unchecking is
+// repaired.
+func detectWith(lastChoice, prevRegistered map[string]bool) []Tool {
 	now := nowFunc()
+	prev := cleanPathSet(prevRegistered)
 	var out []Tool
 	for _, a := range mcpAdapters() {
 		path, err := mcpreg.SettingsPath(a.tool)
@@ -117,9 +146,13 @@ func detectWith(lastChoice map[string]bool) []Tool {
 		}
 		hasGrafel := mcpreg.HasGrafelEntry(path)
 		recent := fileExists && now.Sub(mtime) <= RecentWindow
+		// (B2) grafel registered itself at this exact config path on a previous
+		// install, per install.json. Unlike hasGrafel this SURVIVES the entry
+		// being deleted, which is the whole point (#6170).
+		previouslyRegistered := prev[filepath.Clean(path)]
 
 		// (B) smart default.
-		def := recent || hasGrafel
+		def := recent || hasGrafel || previouslyRegistered
 		// (C) remembered choice overrides B for tools it names.
 		if lastChoice != nil {
 			if sel, ok := lastChoice[a.id]; ok {
@@ -136,6 +169,23 @@ func detectWith(lastChoice map[string]bool) []Tool {
 			LastModified:    mtime,
 			DefaultSelected: def,
 		})
+	}
+	return out
+}
+
+// cleanPathSet normalises a set of file paths so lookups are not defeated by a
+// trailing separator or an unnormalised "." component in what install.json
+// happens to record. Returns nil for a nil/empty input (lookups on a nil map
+// are legal and always false).
+func cleanPathSet(in map[string]bool) map[string]bool {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(in))
+	for p, v := range in {
+		if v && p != "" {
+			out[filepath.Clean(p)] = true
+		}
 	}
 	return out
 }

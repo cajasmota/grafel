@@ -17,6 +17,10 @@ func setupHome(t *testing.T) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	// GRAFEL_HOME too: nothing in this package resolves it today, but leaving
+	// it pointed at the developer's real ~/.grafel is exactly how the two
+	// sandbox escapes this cycle happened.
+	t.Setenv("GRAFEL_HOME", filepath.Join(home, ".grafel"))
 	now := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
 	nowFunc = func() time.Time { return now }
 	t.Cleanup(func() { nowFunc = time.Now })
@@ -84,7 +88,7 @@ func TestSmartDefault_B(t *testing.T) {
 	// windsurf: stale, no grafel → unchecked.
 	writeConfig(t, mcpreg.Windsurf, false, now.Add(-90*24*time.Hour))
 
-	tools := detectWith(nil)
+	tools := detectWith(nil, nil)
 
 	if c := find(t, tools, "claude"); !c.DefaultSelected {
 		t.Error("claude (recent) should be default-checked")
@@ -109,7 +113,7 @@ func TestRememberedChoice_C(t *testing.T) {
 
 	// Remembered choice: cursor IN, claude OUT — the inverse of B.
 	last := map[string]bool{"cursor": true, "claude": false}
-	tools := detectWith(last)
+	tools := detectWith(last, nil)
 
 	if c := find(t, tools, "claude"); c.DefaultSelected {
 		t.Error("claude should be UNchecked: remembered choice (C) overrides recent (B)")
@@ -126,7 +130,7 @@ func TestDetect_OnlyDetectedTools(t *testing.T) {
 	writeConfig(t, mcpreg.ClaudeCode, false, nowFunc())
 	// Nothing for cursor/windsurf/etc.
 
-	tools := detectWith(nil)
+	tools := detectWith(nil, nil)
 	if got := ids(tools); len(got) != 1 || got[0] != "claude" {
 		t.Errorf("detected = %v, want only [claude]", got)
 	}
@@ -167,6 +171,116 @@ func TestLastChoice_RoundTrip(t *testing.T) {
 	}
 	if set == nil || len(set) != 0 {
 		t.Errorf("empty choice round-trip = %v, want non-nil empty set", set)
+	}
+}
+
+// ── (#6170) the durable previously-registered signal ────────────────────────
+
+// staleClaudeNoEntry lays down the ratchet fixture: a Claude config that is
+// OLDER than RecentWindow and carries NO grafel entry — i.e. the entry was
+// removed (the #6168 rollback being the demonstrated way) and the file has not
+// been touched since. Returns its path.
+func staleClaudeNoEntry(t *testing.T) string {
+	t.Helper()
+	return writeConfig(t, mcpreg.ClaudeCode, false, nowFunc().Add(-90*24*time.Hour))
+}
+
+// TestRatchet_StaleConfigWithLostEntryIsUnchecked pins the BUG: with the entry
+// gone, a stale config and no remembered choice, Claude Code arrives in the
+// wizard UNCHECKED — the state from which a press-enter run persists the
+// removal as the user's preference (#6170). This is the "before" half; the
+// repair is TestPreviouslyRegistered_RepairsRatchet.
+func TestRatchet_StaleConfigWithLostEntryIsUnchecked(t *testing.T) {
+	setupHome(t)
+	staleClaudeNoEntry(t)
+
+	if c := find(t, detectWith(nil, nil), "claude"); c.DefaultSelected {
+		t.Error("without the previously-registered signal, claude is expected to be unchecked here (that IS the ratchet)")
+	}
+}
+
+// TestPreviouslyRegistered_RepairsRatchet is the fix: install.json still
+// records that grafel registered itself at that exact config path, so the
+// wizard must arrive CHECKED even though the entry is gone and the file is
+// stale.
+func TestPreviouslyRegistered_RepairsRatchet(t *testing.T) {
+	setupHome(t)
+	path := staleClaudeNoEntry(t)
+
+	tools := detectWith(nil, map[string]bool{path: true})
+	if c := find(t, tools, "claude"); !c.DefaultSelected {
+		t.Errorf("claude must be default-checked: install.json records grafel was registered at %s; got %+v", path, c)
+	}
+}
+
+// TestPreviouslyRegistered_UnrelatedPathDoesNotCheck verifies the signal is
+// keyed on the tool's OWN config path — a recorded path belonging to some
+// other host must not check this tool.
+func TestPreviouslyRegistered_UnrelatedPathDoesNotCheck(t *testing.T) {
+	setupHome(t)
+	staleClaudeNoEntry(t)
+	// A stale cursor config too, so cursor is detected but unchecked by B.
+	writeConfig(t, mcpreg.Cursor, false, nowFunc().Add(-90*24*time.Hour))
+
+	claudePath, _ := mcpreg.SettingsPath(mcpreg.ClaudeCode)
+	tools := detectWith(nil, map[string]bool{claudePath: true})
+
+	if c := find(t, tools, "cursor"); c.DefaultSelected {
+		t.Errorf("cursor must stay unchecked: only claude's path is recorded; got %+v", c)
+	}
+}
+
+// TestPreviouslyRegistered_EmptyOrNilIsInert verifies an absent/empty recorded
+// set changes nothing — the (B) default stands on its own.
+func TestPreviouslyRegistered_EmptyOrNilIsInert(t *testing.T) {
+	setupHome(t)
+	staleClaudeNoEntry(t)
+
+	for name, prev := range map[string]map[string]bool{
+		"nil":   nil,
+		"empty": {},
+	} {
+		if c := find(t, detectWith(nil, prev), "claude"); c.DefaultSelected {
+			t.Errorf("prev=%s: claude should be unchecked (B alone); got %+v", name, c)
+		}
+	}
+}
+
+// TestPreviouslyRegistered_DeliberateOptOutStillWins is THE safety property:
+// the (C) remembered choice overrides the new (B2) term exactly as it
+// overrides (B). A user who genuinely wants grafel's MCP off must not be
+// re-checked by the durable registration record.
+func TestPreviouslyRegistered_DeliberateOptOutStillWins(t *testing.T) {
+	setupHome(t)
+	path := staleClaudeNoEntry(t)
+
+	// Deliberate opt-out for claude, and a RECENT cursor config so the same
+	// override is exercised against (B) too.
+	writeConfig(t, mcpreg.Cursor, false, nowFunc())
+	last := map[string]bool{"claude": false, "cursor": false}
+
+	tools := detectWith(last, map[string]bool{path: true})
+	if c := find(t, tools, "claude"); c.DefaultSelected {
+		t.Errorf("claude opted out (C) must stay UNCHECKED despite the previously-registered record; got %+v", c)
+	}
+	if c := find(t, tools, "cursor"); c.DefaultSelected {
+		t.Errorf("cursor opted out (C) must stay UNCHECKED despite a recent config (B); got %+v", c)
+	}
+}
+
+// TestDetectWithPrevious_ReadsLastChoice verifies the exported wrapper still
+// consults the on-disk (C) choice, so the override is not bypassed by callers
+// that supply a previously-registered set.
+func TestDetectWithPrevious_ReadsLastChoice(t *testing.T) {
+	setupHome(t)
+	// Stale cursor, no grafel entry → B unchecks it; the saved choice checks it.
+	writeConfig(t, mcpreg.Cursor, false, nowFunc().Add(-365*24*time.Hour))
+	if err := SaveLastChoice([]string{"cursor"}); err != nil {
+		t.Fatalf("SaveLastChoice: %v", err)
+	}
+
+	if c := find(t, DetectWithPrevious(nil), "cursor"); !c.DefaultSelected {
+		t.Errorf("DetectWithPrevious must honour the saved (C) choice; got %+v", c)
 	}
 }
 
