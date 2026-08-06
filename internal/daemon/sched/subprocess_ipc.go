@@ -179,4 +179,35 @@ type SubprocessIndexOptions struct {
 	// IncrementalStateDir, when non-empty, enables diff-aware re-indexing in the
 	// child (--incremental=<dir>), matching the in-process WithIncremental path.
 	IncrementalStateDir string
+
+	// PersistManifest tells the child to record what it indexed — a complete
+	// diff manifest (--persist-manifest) — without enabling diff-aware
+	// re-indexing (#6207). It is the half of IncrementalStateDir that records
+	// ground truth, separated from the half that consumes it.
+	//
+	// The scheduler's FALLBACK full index sets this and never
+	// IncrementalStateDir: the reason it fell back is that the delta was too
+	// large (or the prior graph unusable) to trust incrementally, so making the
+	// "full" reindex diff-aware would defeat the fallback. But the full index
+	// has just established ground truth for every file, which is exactly what a
+	// manifest records — and before #6207 it recorded nothing, so the manifest
+	// on the scheduler path advanced only via TryIncremental.
+	//
+	// IT CARRIES NO DIRECTORY. The child writes the manifest beside the graph
+	// it produced, resolving that path itself. The parent must not name the
+	// destination: the parent only has the ref captured at ENQUEUE time, while
+	// the child resolves HEAD at INDEX time, so a checkout in between would
+	// separate the manifest from the graph it describes.
+	//
+	// The CHILD writes it, not the parent: the child owns the walk (ignore
+	// rules, extension filters, per-pass exclusions) and therefore is the only
+	// side that knows the file set that was actually indexed. A parent-side
+	// write would need a second walk that reproduces those filters exactly and
+	// would drift the moment either changes, and it would decouple the manifest
+	// from the graph generation the child wrote — a manifest claiming files the
+	// graph does not contain is worse than no manifest. Writing it in the child
+	// also makes failure handling free: a child that dies before the manifest
+	// write leaves the previous manifest intact, and the child is the only side
+	// that can order the write after its own graph write.
+	PersistManifest bool
 }

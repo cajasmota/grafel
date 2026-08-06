@@ -35,18 +35,19 @@ func runIndexInternal(argv []string) int {
 	fs.SetOutput(os.Stderr)
 
 	var (
-		repo         = fs.String("repo", "", "absolute path of the repository to index (required)")
-		ref          = fs.String("ref", "", "git ref captured at enqueue time; passed as hint only (may be empty)")
-		out          = fs.String("out", "", "output directory for graph.fb; defaults to daemon store layout")
-		repoTag      = fs.String("repo-tag", "", "slug written into every graph entity (defaults to dir basename)")
-		skipPasses   = fs.String("skip-pass", "", "comma-separated list of pass names to skip")
-		exportJSON   = fs.Bool("export-json", false, "also emit graph.json alongside graph.fb")
-		ingestDocs   = fs.Bool("ingest-docs", false, "opt-in: deterministically ingest in-repo *.md and *.pdf files as Document/Section nodes + exact-mention links (no LLM, no network)")
-		emitProgress = fs.Bool("emit-progress", false, "stream per-module progress.Event JSON lines on stdout for the parent to republish (rebuild / wizard first-index)")
-		groupSlug    = fs.String("group-slug", "", "group slug stamped on progress events when --emit-progress is set")
-		runToken     = fs.String("run-token", "", "per-run identity (RebuildArgs.ProgressToken) stamped on progress events when --emit-progress is set (#5937)")
-		interactive  = fs.Bool("interactive", false, "run at the foreground GRAFEL_REBUILD_GOMAXPROCS extract cap (human-awaited rebuild) instead of the background cap")
-		incremental  = fs.String("incremental", "", "state dir enabling diff-aware re-indexing (matches WithIncremental); empty = full index")
+		repo            = fs.String("repo", "", "absolute path of the repository to index (required)")
+		ref             = fs.String("ref", "", "git ref captured at enqueue time; passed as hint only (may be empty)")
+		out             = fs.String("out", "", "output directory for graph.fb; defaults to daemon store layout")
+		repoTag         = fs.String("repo-tag", "", "slug written into every graph entity (defaults to dir basename)")
+		skipPasses      = fs.String("skip-pass", "", "comma-separated list of pass names to skip")
+		exportJSON      = fs.Bool("export-json", false, "also emit graph.json alongside graph.fb")
+		ingestDocs      = fs.Bool("ingest-docs", false, "opt-in: deterministically ingest in-repo *.md and *.pdf files as Document/Section nodes + exact-mention links (no LLM, no network)")
+		emitProgress    = fs.Bool("emit-progress", false, "stream per-module progress.Event JSON lines on stdout for the parent to republish (rebuild / wizard first-index)")
+		groupSlug       = fs.String("group-slug", "", "group slug stamped on progress events when --emit-progress is set")
+		runToken        = fs.String("run-token", "", "per-run identity (RebuildArgs.ProgressToken) stamped on progress events when --emit-progress is set (#5937)")
+		interactive     = fs.Bool("interactive", false, "run at the foreground GRAFEL_REBUILD_GOMAXPROCS extract cap (human-awaited rebuild) instead of the background cap")
+		incremental     = fs.String("incremental", "", "state dir enabling diff-aware re-indexing (matches WithIncremental); empty = full index")
+		persistManifest = fs.Bool("persist-manifest", false, "record what this run indexed as a diff manifest beside the graph, without enabling diff-aware re-indexing (matches WithManifestPersist, #6207)")
 	)
 
 	if err := fs.Parse(argv); err != nil {
@@ -94,6 +95,12 @@ func runIndexInternal(argv []string) int {
 	// and stay at the throttled GRAFEL_EXTRACT_GOMAXPROCS default.
 	if *interactive {
 		opts = append(opts, WithInteractive(true))
+	}
+	// #6207: manifest persistence without diff-aware behaviour — the
+	// scheduler's fallback full index. Applied BEFORE --incremental so that if
+	// both are somehow set the superset (behaviour + persistence) wins.
+	if *persistManifest {
+		opts = append(opts, WithManifestPersist())
 	}
 	// Diff-aware re-indexing when the rebuild path requested it.
 	if *incremental != "" {

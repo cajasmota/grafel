@@ -1350,22 +1350,60 @@ func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) erro
 				"state_dir", stateDir, "err", cerr)
 		}
 	}()
+	// #6207 — POST-INDEX RECONCILE. This is a FULL index, and it must stay one:
+	// it is reached when the incremental pass declined, i.e. precisely when the
+	// delta could not be trusted, so it is never given --incremental /
+	// WithIncremental. But a full index establishes ground truth for every file
+	// in the repo, which is exactly what the manifest records — so it now
+	// records it.
+	//
+	// Before this, neither branch below asked for a manifest, i.incremental
+	// stayed false and index.go skipped the write entirely. The manifest on the
+	// scheduler path was therefore advanced only by TryIncremental, which is
+	// why its reject path has to carry loop guards (#5667, #5668) to stop the
+	// identical changed set re-presenting on every subsequent pass.
+	//
+	// NEITHER BRANCH NAMES A DESTINATION, and `stateDir` above deliberately is
+	// not one. stateDir is resolved from `ref`, the ref captured at ENQUEUE
+	// time; the graph is written wherever gitmeta resolves HEAD at INDEX time
+	// (the `_ = ref` comment below has always said so). A checkout landing in
+	// that window would put the manifest and the graph it describes under
+	// different refs — one branch left with no baseline, the other with a
+	// manifest stamped from the wrong branch. The indexer writes the manifest
+	// beside its own graph instead, so the two cannot diverge by construction.
+	//
+	// The sweep is O(repo) hashing on a path that has just spent seconds
+	// parsing that same repo — noise here, as opposed to ~30% of a 738 ms
+	// no-op, which is where the equivalent sweep currently lands (#6206).
 	if sched.SubprocessIndexEnabled() {
 		// S5 path: fork-exec `grafel index-internal` for memory isolation.
-		var opts *sched.SubprocessIndexOptions
+		//
+		// THE CHILD WRITES THE MANIFEST, not the parent. The child owns the walk
+		// — the gitignore-aware traversal, the extension filters, the skipped
+		// files — so it is the only side that knows the set that was actually
+		// indexed. Re-deriving that set in the parent means a second walk that
+		// has to reproduce every one of those filters and will drift the first
+		// time one of them changes, and it would decouple the manifest from the
+		// graph generation the child wrote: a manifest claiming files the graph
+		// does not contain is worse than no manifest at all. The child is also
+		// the only side that can ORDER the manifest write after its own graph
+		// write, which is what stops a failed graph write from publishing a
+		// manifest for a graph that never landed.
+		opts := &sched.SubprocessIndexOptions{PersistManifest: true}
 		if repoTag != "" {
 			// RepoSlug is forwarded to the child as --repo-tag. No publisher is
 			// set, so no other subprocess flag changes.
-			opts = &sched.SubprocessIndexOptions{RepoSlug: repoTag}
+			opts.RepoSlug = repoTag
 		}
-		err = sched.RunSubprocessIndex(ctx, repoPath, ref, []string{"graph-algo"}, opts, slog.Default())
+		err = subprocessIndexRunner(ctx, repoPath, ref, []string{"graph-algo"}, opts, slog.Default())
 	} else {
 		// In-process path (opt-out via GRAFEL_SUBPROCESS_INDEXER=0).
 		// ADR-0016 flip-day (#808): graph.fb is always written by default now.
 		// ref is stored via StateDirForRepo → StateDirForRepoRef at write time;
 		// the indexer itself resolves the correct path via gitmeta at index time.
 		_ = ref
-		err = Index(repoPath, "", repoTag, []string{"graph-algo"}, false, false)
+		err = Index(repoPath, "", repoTag, []string{"graph-algo"}, false, false,
+			WithManifestPersist())
 	}
 	// Drop the cached mmap so the next MCP query reopens against the
 	// freshly written graph.fb. Done on both success and failure paths
@@ -1375,6 +1413,13 @@ func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) erro
 	tierAfterIndex(repoPath, ref)
 	return err
 }
+
+// subprocessIndexRunner is the fork-exec used by daemonSchedulerIndex. A var
+// solely so a test can drive the child's real entrypoint with the parent's real
+// argv (see sched.SubprocessIndexArgs) instead of forking a binary a test
+// binary does not contain — which is the only way to assert on what the child
+// WRITES rather than on which flags it was handed.
+var subprocessIndexRunner = sched.RunSubprocessIndex
 
 // subprocessLinksRunner is the fork-exec used by daemonSchedulerLinks. A var
 // solely so a test can observe that the scheduler path forks (and that the
