@@ -135,6 +135,14 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 		fmt.Fprintf(w, "Daemon: error: %v\n", err)
 	}
 
+	// Per-repo watcher fleet. This section exists so a stop is VERIFIABLE.
+	// The `com.grafel.watcher.<group>.<slug>` units are owned by
+	// launchd/systemd/schtasks and index independently of the daemon, so
+	// "Daemon: not running" on its own says nothing about whether grafel is
+	// still doing work. If watchers survived a `grafel stop`, this line is what
+	// says so out loud instead of leaving the user to infer it from CPU load.
+	printWatcherFleetStatus(w)
+
 	// Registry / per-repo view stays — useful even when the daemon is
 	// down so users can see what would be indexed once they `start`.
 	groups, err := registry.Groups()
@@ -172,6 +180,26 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 		}
 	}
 	return nil
+}
+
+// printWatcherFleetStatus prints the per-repo watcher fleet line. It is
+// deliberately quiet when no watcher units are installed at all (the common
+// dev/foreground case) and never fails the status command: an enumeration
+// error is reported inline, because "I could not tell you" is itself
+// information a user checking whether grafel really stopped needs.
+func printWatcherFleetStatus(w io.Writer) {
+	sum, err := summarizeFleetWatchers()
+	if err != nil {
+		fmt.Fprintf(w, "Watchers: unknown (%v)\n", err)
+		return
+	}
+	if sum.Installed == 0 {
+		return
+	}
+	fmt.Fprintf(w, "Watchers: %d installed, %d running\n", sum.Installed, sum.Running)
+	if sum.Running > 0 {
+		fmt.Fprintf(w, "  these index independently of the daemon; 'grafel stop' stops them too\n")
+	}
 }
 
 // printWorktreeChildren prints the ephemeral worktree-child entries for the

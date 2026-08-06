@@ -53,6 +53,9 @@ func (s *stopStub) Stop(_ proto.StopArgs, _ *proto.StopReply) error {
 // exposing only Stop, and returns the stub for assertions.
 func serveStopStub(t *testing.T, closeAfter time.Duration) *stopStub {
 	t.Helper()
+	// `stop` now also sweeps the per-repo watcher fleet; isolate the home so it
+	// sees an empty fleet rather than the developer's real LaunchAgents.
+	isolateWatcherFleet(t)
 	root, err := os.MkdirTemp("", "ag-stop-")
 	if err != nil {
 		t.Fatalf("mkdirtemp: %v", err)

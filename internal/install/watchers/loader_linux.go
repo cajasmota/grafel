@@ -3,9 +3,43 @@
 package watchers
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
+)
+
+// systemctlRunner runs `systemctl <args...>` bounded by both a deadline and a
+// WaitDelay, and returns its combined output.
+//
+// It is a package var for the same two reasons the darwin loader has one: tests
+// must be able to observe the call without mutating the developer's real
+// systemd user session, and the guard in test_isolation_guard.go must be able
+// to catch any that slip through unseamed.
+//
+// The bound matters as much here as on macOS: `systemctl --user disable --now`
+// blocks on the unit actually stopping, and `grafel watch` drains on SIGTERM,
+// so a fleet-wide stop across 140 units could otherwise hang indefinitely.
+// WaitDelay is the load-bearing half — CommandContext's kill reaches only the
+// direct child while CombinedOutput waits on every pipe writer.
+var systemctlRunner = func(args ...string) ([]byte, error) {
+	if serviceCallsAreStubbed() {
+		return nil, nil
+	}
+	if err := guardServiceCall("systemctl", args); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), systemctlTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "systemctl", args...)
+	cmd.WaitDelay = systemctlWaitDelay
+	return cmd.CombinedOutput()
+}
+
+var (
+	systemctlTimeout   = 15 * time.Second
+	systemctlWaitDelay = 3 * time.Second
 )
 
 // linuxLoader implements Loader using systemctl --user for Linux systemd units.
@@ -27,12 +61,12 @@ func (linuxLoader) Load(u Unit) error {
 	}
 
 	// Reload the unit manager so it picks up the new file.
-	if out, err := exec.Command("systemctl", "--user", "daemon-reload").CombinedOutput(); err != nil {
+	if out, err := systemctlRunner("--user", "daemon-reload"); err != nil {
 		return fmt.Errorf("systemctl --user daemon-reload: %w\n%s", err, out)
 	}
 
 	// Enable + start atomically.
-	out, err := exec.Command("systemctl", "--user", "enable", "--now", u.Label()+".service").CombinedOutput()
+	out, err := systemctlRunner("--user", "enable", "--now", u.Label()+".service")
 	if err != nil {
 		return fmt.Errorf("systemctl --user enable --now %s: %w\n%s", u.Label(), err, out)
 	}
@@ -55,7 +89,7 @@ func (linuxLoader) Unload(u Unit) error {
 		return nil // no unit file — already gone
 	}
 	// --now stops the unit in addition to disabling it.
-	out, derr := exec.Command("systemctl", "--user", "disable", "--now", u.Label()+".service").CombinedOutput()
+	out, derr := systemctlRunner("--user", "disable", "--now", u.Label()+".service")
 	if derr != nil {
 		// Race: the unit file vanished between the stat above and disable.
 		// Re-stat; if it is gone now, the desired absent state is reached.
@@ -82,7 +116,7 @@ func (linuxLoader) Status(u Unit) (WatcherStatus, error) {
 	}
 
 	// is-active exits 0 when the unit is active.
-	if err := exec.Command("systemctl", "--user", "is-active", "--quiet", u.Label()+".service").Run(); err == nil {
+	if _, err := systemctlRunner("--user", "is-active", "--quiet", u.Label()+".service"); err == nil {
 		ws.Running = true
 	}
 	return ws, nil

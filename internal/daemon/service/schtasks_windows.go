@@ -17,6 +17,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon/transport"
 	"github.com/cajasmota/grafel/internal/executil"
+	"github.com/cajasmota/grafel/internal/install/watchers"
 )
 
 const (
@@ -116,6 +117,9 @@ func currentUserSID() string {
 // launched from a GUI context (e.g., Task Scheduler running grafel install,
 // or the daemon task itself restarting on logon).
 func schtasksCmd(args ...string) *exec.Cmd {
+	if watchers.GuardServiceCall("schtasks", args) != nil {
+		return exec.Command("cmd", "/c", "exit", "1")
+	}
 	cmd := exec.Command("schtasks", args...)
 	executil.NoWindow(cmd)
 	return cmd

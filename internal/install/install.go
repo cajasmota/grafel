@@ -326,7 +326,14 @@ func Apply(opts Options) (*Result, error) {
 				// group config is already persisted (above), so the group is
 				// registered and will index regardless. Aborting here used to
 				// fail the whole wizard on a flaky launchctl error (#5338).
-				loader := watchers.NewLoader()
+				// newWatcherLoader, not watchers.NewLoader() directly: this
+				// call site bypassed the package's own test seam, so
+				// TestApply_ResetsWatchStartsWhenRegisteringUnit — which DOES
+				// stub newWatcherLoader and believed itself isolated — was in
+				// fact driving a real `launchctl bootout`/`bootstrap` against
+				// gui/<uid>/com.grafel.watcher.g.app on the developer's
+				// machine every time the suite ran.
+				loader := newWatcherLoader()
 				if lerr := loader.Load(u); lerr != nil && !watchers.IsNonFatal(lerr) {
 					res.WatcherWarnings = append(res.WatcherWarnings,
 						fmt.Sprintf("watcher for %s not activated: %v; the group is still registered and will index", repo, lerr))
@@ -501,7 +508,9 @@ func Uninstall(group string, purge bool) error {
 	}
 	bin, _ := os.Executable()
 	if cfg != nil {
-		loader := watchers.NewLoader()
+		// Through the test seam, like the Apply path above — an unseamed
+		// uninstall would boot out real launchd jobs from a test run.
+		loader := newWatcherLoader()
 		for _, r := range cfg.Repos {
 			_ = hooks.Uninstall(r.Path)
 			_ = agenthooks.Uninstall(r.Path)

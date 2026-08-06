@@ -6,10 +6,26 @@ import (
 	"testing"
 )
 
+// seamLaunchctl installs a no-op fake service-manager runner for the duration
+// of the test.
+//
+// Cleanup -> Loader.Unload issues real OS service-manager calls. `gui/<uid>/
+// <label>` is a system database that no environment variable sandboxes, so
+// redirecting $HOME (as these tests do) does NOT isolate them: without this
+// seam the suite writes launchd override entries for the `demo` fixtures onto
+// the developer's machine, permanently and with no cleanup. The fail-closed
+// guard in test_isolation_guard.go now panics rather than letting that happen;
+// this seam is how the test does what it actually means to do.
+func seamLaunchctl(t *testing.T) {
+	t.Helper()
+	t.Cleanup(StubServiceCallsForTest())
+}
+
 // TestCleanup_RemovesUnitFile verifies the #5338 group-delete fix: Cleanup
 // removes the on-disk watcher unit/plist for a repo so a later recreate does
 // not fight stale state.
 func TestCleanup_RemovesUnitFile(t *testing.T) {
+	seamLaunchctl(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), ".config"))
 
@@ -35,6 +51,7 @@ func TestCleanup_RemovesUnitFile(t *testing.T) {
 // TestCleanup_Idempotent verifies Cleanup tolerates a never-installed unit
 // (no file on disk, not loaded) without panicking or erroring.
 func TestCleanup_Idempotent(t *testing.T) {
+	seamLaunchctl(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), ".config"))
 

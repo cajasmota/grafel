@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/transport"
+	"github.com/cajasmota/grafel/internal/install/watchers"
 )
 
 const (
@@ -117,6 +118,9 @@ func (m *systemdManager) WriteUnit() error {
 	}
 	// Reload so systemd picks up the (re)written unit file. Non-fatal if the
 	// user systemd manager isn't reachable yet — Load surfaces real failures.
+	if err := guardSystemctl("daemon-reload"); err != nil {
+		return err
+	}
 	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
 	return nil
 }
@@ -138,13 +142,25 @@ func (m *systemdManager) Unload() error {
 	stopRunningDaemon(m.opts.SocketPath)
 	// disable --now stops + disables. systemctl exits non-zero when the unit is
 	// not loaded; treat that as success-to-proceed (desired state reached).
+	if err := guardSystemctl("disable"); err != nil {
+		return err
+	}
 	_ = exec.Command("systemctl", "--user", "disable", "--now", m.unitID).Run()
+	if err := guardSystemctl("reset-failed"); err != nil {
+		return err
+	}
 	_ = exec.Command("systemctl", "--user", "reset-failed", m.unitID).Run()
+	if err := guardSystemctl("daemon-reload"); err != nil {
+		return err
+	}
 	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
 	return nil
 }
 
 func (m *systemdManager) Load() error {
+	if err := guardSystemctl("enable"); err != nil {
+		return err
+	}
 	if out, err := exec.Command("systemctl", "--user", "enable", "--now", m.unitID).CombinedOutput(); err != nil {
 		return fmt.Errorf("systemctl enable --now: %w\n%s", err, out)
 	}
@@ -154,6 +170,9 @@ func (m *systemdManager) Load() error {
 func (m *systemdManager) RemoveArtifacts() error {
 	if err := os.Remove(m.unitPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove unit %s: %w", m.unitPath, err)
+	}
+	if err := guardSystemctl("daemon-reload"); err != nil {
+		return err
 	}
 	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
 	return nil
@@ -287,4 +306,11 @@ func status(opts Options) (StatusInfo, error) {
 		}
 	}
 	return info, nil
+}
+
+// guardSystemctl refuses a real, mutating systemctl call from a test process.
+// See watchers.GuardServiceCall: these units manage com.grafel.daemon, the
+// label serving the user's live session.
+func guardSystemctl(verb string) error {
+	return watchers.GuardServiceCall("systemctl", []string{"--user", verb})
 }
