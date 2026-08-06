@@ -276,10 +276,14 @@ func LastChoicePath() (string, error) {
 
 // ReadLastChoice loads the remembered selection as a set of tool IDs.
 //
-// nil is returned ONLY when no choice has been saved — the file does not
-// exist. That distinction is load-bearing: detectWith keys the B2 bound on it,
-// so every other outcome (an empty selection, a corrupt document) must return
-// a non-nil map, and a read error must be surfaced so the caller can do the
+// nil WITH NO ERROR is returned ONLY when no choice has been saved — the file
+// does not exist. nil WITH an error is a different thing entirely: the file
+// could not be read, and DetectWithPrevious substitutes an empty non-nil set
+// there.
+//
+// That distinction is load-bearing: detectWith keys the B2 bound on it, so
+// every other outcome (an empty selection, a corrupt document) must return a
+// non-nil map, and a read error must be surfaced so the caller can do the
 // same. Do not collapse any of those to nil.
 func ReadLastChoice() (map[string]bool, error) {
 	path, err := LastChoicePath()
