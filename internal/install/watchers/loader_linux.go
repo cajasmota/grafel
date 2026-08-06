@@ -27,7 +27,9 @@ var systemctlRunner = func(args ...string) ([]byte, error) {
 	if serviceCallsAreStubbed() {
 		return nil, nil
 	}
-	guardServiceCall("systemctl", args)
+	if err := guardServiceCall("systemctl", args); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), systemctlTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "systemctl", args...)

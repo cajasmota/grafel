@@ -42,7 +42,13 @@ func schtasksCmd(args ...string) *exec.Cmd {
 		// CombinedOutput all behave like a benign schtasks call.
 		return exec.Command("cmd", "/c", "exit", "0")
 	}
-	guardServiceCall("schtasks", args)
+	if err := guardServiceCall("schtasks", args); err != nil {
+		// schtasksCmd returns a *exec.Cmd and cannot surface an error directly.
+		// A command that exits non-zero is the faithful equivalent: every call
+		// site treats a failing schtasks as "did not happen", which is exactly
+		// what the guard is asserting.
+		return exec.Command("cmd", "/c", "exit", "1")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), schtasksTimeout)
 	cmd := exec.CommandContext(ctx, "schtasks", args...)
 	cmd.WaitDelay = schtasksWaitDelay

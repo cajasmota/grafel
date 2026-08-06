@@ -23,10 +23,10 @@ import (
 // was a constant for a given (group, basename), so repeated runs reused one job;
 // the digest is over os.MkdirTemp's unique path, so every run mints a new label
 // and leaks a new job. 23 were found accumulated on one machine.
+// It delegates to watchers.StubServiceCallsForTest, the single cross-platform
+// stub mechanism, rather than swapping launchctlRunner directly — see
+// watchers/stub_6183_darwin_test.go for why there is only one.
 func stubLaunchctlRunner(t *testing.T) {
 	t.Helper()
-	restore := watchers.SetLaunchctlRunnerForTest(func(args ...string) ([]byte, error) {
-		return nil, nil
-	})
-	t.Cleanup(restore)
+	t.Cleanup(watchers.StubServiceCallsForTest())
 }

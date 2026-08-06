@@ -26,7 +26,9 @@ var launchctlRunner = func(args ...string) ([]byte, error) {
 	if serviceCallsAreStubbed() {
 		return nil, nil
 	}
-	guardServiceCall("launchctl", args)
+	if err := guardServiceCall("launchctl", args); err != nil {
+		return nil, err
+	}
 	return runBoundedServiceCmd("launchctl", args...)
 }
 
@@ -169,10 +171,10 @@ func (darwinLoader) Load(u Unit) error {
 // — the disable only matters for a caller that stops WITHOUT a following Load,
 // i.e. `grafel stop`.
 //
-// Every launchctl invocation goes through launchctlRunner rather than a bare
-// exec.Command so this whole path is testable without booting out a real
-// watcher on the developer's own machine. Before this, only Load was seamed:
-// deleting the bootout outright left the suite green.
+// Every launchctl invocation in this file goes through launchctlRunner rather
+// than a bare exec.Command, so the whole path — Load, Unload AND Status — is
+// both testable and guarded without booting out a real watcher on the
+// developer's own machine.
 func (darwinLoader) Unload(u Unit) error {
 	uid := strconv.Itoa(os.Getuid())
 	label := u.Label()

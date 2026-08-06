@@ -189,6 +189,31 @@ func installedFleetWatcherUnits(onlyEnabled bool) ([]fleetWatcherUnit, []string,
 	// `grafel watch` process. Enumerating only from the registry answers
 	// "which units should exist?" — and taking that for an answer to "what is
 	// running?" is the exact reasoning error that produced the original bug.
+	//
+	// ── Interaction with #6183's label migration ─────────────────────────────
+	//
+	// #6183 changed the label derivation (basename → basename+path digest) and
+	// added its own orphan handling, whose LegacyOf comment argues AGAINST
+	// globbing: it cannot tell a genuinely orphaned unit from one belonging to
+	// a group this binary has no config for, "and would boot out the latter".
+	//
+	// That argument is right for MIGRATION and does not transfer to stop.
+	// Migration runs unasked, as a side effect of install/update, and DELETES
+	// units — so a wrong guess destroys state the user never mentioned. It
+	// therefore derives the old label from the same (group, repo) as the new
+	// one and touches nothing else. Stop is the opposite on every axis: the
+	// user asked for it by name, it only DEACTIVATES (no unit file is created
+	// or deleted, so it is reversible), and stopping a unit the registry cannot
+	// account for is the entire point — that unit is a running process the user
+	// just asked to stop.
+	//
+	// The overlap is real, and mid-migration is when it bites: a machine
+	// part-way through #6183 carries old-slug plists the registry can no longer
+	// name, and stop will disable them. That is the correct outcome — they are
+	// running watchers — but `grafel start` will NOT restore them, so stop
+	// names every such unit. See the orphan branch of stopFleetWatchers, which
+	// deliberately does not point orphan owners at `grafel install`: for an
+	// unregistered unit it would not help.
 	if !onlyEnabled {
 		disk, derr := watchers.InstalledUnits()
 		if derr != nil {

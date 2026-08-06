@@ -117,7 +117,9 @@ func currentUserSID() string {
 // launched from a GUI context (e.g., Task Scheduler running grafel install,
 // or the daemon task itself restarting on logon).
 func schtasksCmd(args ...string) *exec.Cmd {
-	watchers.GuardServiceCall("schtasks", args)
+	if watchers.GuardServiceCall("schtasks", args) != nil {
+		return exec.Command("cmd", "/c", "exit", "1")
+	}
 	cmd := exec.Command("schtasks", args...)
 	executil.NoWindow(cmd)
 	return cmd

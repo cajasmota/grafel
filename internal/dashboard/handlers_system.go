@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/version"
 )
 
@@ -379,11 +380,25 @@ func classifySeverity(line string) string {
 // platform's native service manager. On macOS this is launchctl; on Linux
 // it is systemctl. Falls back to a direct exec if neither is available.
 // This is called by handleSystemRestart after the response is flushed.
+// Both calls are guarded. This force-restarts com.grafel.daemon — the label
+// serving the user's live MCP session — so reaching it from a test kills the
+// daemon rather than a watcher. No test reaches it today (a PATH-shim run of
+// ./internal/dashboard/ observes zero calls here), but "no test reaches it
+// today" is precisely the argument this guard exists to stop relying on: it is
+// a statement about the current suite, not a property of the code.
 func restartViaBinary() {
 	switch runtime.GOOS {
 	case "darwin":
-		_ = exec.Command("launchctl", "kickstart", "-k", "gui/"+strconv.Itoa(os.Getuid())+"/com.grafel.daemon").Run()
+		args := []string{"kickstart", "-k", "gui/" + strconv.Itoa(os.Getuid()) + "/com.grafel.daemon"}
+		if watchers.GuardServiceCall("launchctl", args) != nil {
+			return
+		}
+		_ = exec.Command("launchctl", args...).Run()
 	case "linux":
-		_ = exec.Command("systemctl", "--user", "restart", "grafel").Run()
+		args := []string{"--user", "restart", "grafel"}
+		if watchers.GuardServiceCall("systemctl", args) != nil {
+			return
+		}
+		_ = exec.Command("systemctl", args...).Run()
 	}
 }

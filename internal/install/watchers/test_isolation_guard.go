@@ -23,12 +23,16 @@ package watchers
 //
 // ── Why a guard and not just a fixed ordering ────────────────────────────────
 //
-// The ordering IS fixed (see loader_darwin.go: disable now runs only after the
-// not-loaded early return). But that fix is one line away from being undone by
-// anyone who does not know why the line is where it is, and the failure is
+// The ordering was then "fixed" by moving the disable AFTER the not-loaded
+// probe — which silently dropped the persistence guarantee for any unit that
+// happened to be unloaded, and had to be reversed again. It now gates on the
+// PLIST existing (see loader_darwin.go), which satisfies both requirements at
+// once. That two-round detour is the argument for this file: an ordering
+// constraint held in place by a comment is one line from being undone by
+// someone who does not know why the line is where it is, and the failure is
 // SILENT — the suite stays green while the damage accrues on the developer's
-// machine. So the invariant is enforced structurally instead: under `go test`,
-// any MUTATING service-manager verb that reaches a real exec is a panic.
+// machine. So the invariant is enforced structurally instead: any MUTATING
+// service-manager verb that reaches a real exec from a test is refused.
 // Read-only verbs (list/print) are allowed through: they are common, harmless,
 // and several tests legitimately probe them.
 //
@@ -64,8 +68,22 @@ const NoServiceMutationEnv = "GRAFEL_NO_SERVICE_MUTATION"
 // should be refused: under `go test`, or whenever a parent test process has
 // exported NoServiceMutationEnv into this one.
 func serviceMutationGuardActive() bool {
-	return guardActiveFor(testing.Testing(), os.Getenv(NoServiceMutationEnv))
+	return guardActiveFor(guardUnderGoTest, getenvForGuard(NoServiceMutationEnv))
 }
+
+// guardUnderGoTest and getenvForGuard are the guard's two inputs, as seams.
+//
+// They are seams because the interesting case — a process where
+// testing.Testing() is FALSE — is one a test in this package can never be in,
+// and both halves of it need pinning: that a shipped binary with the belt set
+// gets an ERROR rather than a panic, and that the env var is actually READ
+// rather than called and discarded. A mutant doing the latter left every suite
+// green while the belt was silently dead, which matters because the belt is the
+// only thing standing between a `go build` child and real launchd mutation.
+var (
+	guardUnderGoTest = testing.Testing()
+	getenvForGuard   = os.Getenv
+)
 
 // guardActiveFor is the decision, split out from its two inputs so the env
 // belt is observable on its own.
@@ -134,17 +152,39 @@ func serviceVerb(args []string) string {
 	return ""
 }
 
-// guardServiceCall panics if, while running under `go test` (or with the env
-// belt set), a command that is not a known read-only probe is about to be
-// executed for real against the OS service manager. See the file comment for
-// the incident this prevents.
-func guardServiceCall(tool string, args []string) {
+// guardServiceCall refuses a command that is not a known read-only probe when
+// the guard is active. See the file comment for the incident it prevents.
+//
+// It PANICS under `go test` and returns an ERROR otherwise. That split is not
+// cosmetic:
+//
+//   - Under `go test`, a leak must be impossible to ignore. Every call site in
+//     this package is best-effort — watchers.Cleanup is documented idempotent
+//     and does `_ = loader.Unload(u)` — so an error would be discarded and the
+//     guard would report nothing. A panic is the only signal those call sites
+//     cannot swallow.
+//
+//   - Outside `go test` the guard is reachable in a SHIPPED binary, because the
+//     env belt is just an environment variable and internal/verify and
+//     internal/daemon export it to a spawned `grafel daemon` — which serves
+//     group-delete RPCs that reach Cleanup. Panicking there would abort
+//     best-effort code, and it would do so inside a goroutine spawned by
+//     sweepFleetWatchers, where no recover() can reach it and the whole process
+//     dies. The runners return ([]byte, error) and every call site absorbs an
+//     error correctly, so an error is both survivable and honest.
+func guardServiceCall(tool string, args []string) error {
 	if !serviceMutationGuardActive() {
-		return
+		return nil
 	}
 	verb := serviceVerb(args)
 	if readOnlyServiceVerbs[verb] {
-		return
+		return nil
+	}
+	if !guardUnderGoTest {
+		return fmt.Errorf(
+			"refusing a mutating service-manager call because %s is set: %s %v "+
+				"(this process was told not to change launchd/systemd/Task Scheduler state)",
+			NoServiceMutationEnv, tool, args)
 	}
 	panic(fmt.Sprintf(
 		"watchers: test attempted a REAL service-manager call that is not a known "+
@@ -171,7 +211,13 @@ var serviceCallsStubbed atomic.Bool
 
 // StubServiceCallsForTest makes every launchctl/systemctl/schtasks invocation
 // in this package a no-op that reports success, and returns a restore func.
-// Test-only; production code never sets it.
+//
+// TEST-ONLY. It is exported, and therefore present in the shipping binary, for
+// one reason: the seam has to be reachable from OTHER packages' tests, so
+// export_test.go cannot provide it. Nothing in production ever calls it, and
+// with it unset the only cost is one atomic load per service-manager
+// invocation — of which there are at most a few hundred in the life of a
+// process. Do not call it from non-test code.
 func StubServiceCallsForTest() (restore func()) {
 	prev := serviceCallsStubbed.Swap(true)
 	return func() { serviceCallsStubbed.Store(prev) }
@@ -196,4 +242,4 @@ func serviceCallsAreStubbed() bool { return serviceCallsStubbed.Load() }
 // only that the path was not reached under that launchd state — not that it
 // cannot be. Guarding the call site is what makes the property hold regardless
 // of what happens to be loaded.
-func GuardServiceCall(tool string, args []string) { guardServiceCall(tool, args) }
+func GuardServiceCall(tool string, args []string) error { return guardServiceCall(tool, args) }
