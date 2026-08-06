@@ -394,11 +394,50 @@ func Render(u Unit) string {
 	return ""
 }
 
+// hasControlByte reports whether s contains an ASCII control byte (0x00-0x1F
+// or 0x7F), including NUL, CR and LF.
+//
+// #6185 F3 (found on review): iniEsc only escapes '%', which is the only
+// character systemd's INI-format unit gives a per-value escape for. A
+// newline has no such escape — WorkingDirectory=, Description=, etc. take
+// the rest of the physical line literally, so an embedded '\n' always starts
+// a new line that systemd's line-oriented parser reads as a new directive
+// (e.g. a repo path of ".../r\nExecStartPost=/bin/sh" injects a directive
+// that runs at login). The plist/schtasks XML formats are not vulnerable to
+// this — XML escaping keeps an embedded newline inside character data, it
+// does not create new structure — so this check is scoped to what actually
+// needs it: the fields that reach the systemd render.
+func hasControlByte(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// validateUnitFields rejects Group/Repo/BinPath values that could break the
+// line-oriented systemd unit format. There is no per-value escape for a
+// control character the way there is for '%', so the only correct fix is to
+// refuse to render/persist the unit at all.
+func validateUnitFields(u Unit) error {
+	for name, v := range map[string]string{"Group": u.Group, "Repo": u.Repo, "BinPath": u.BinPath} {
+		if hasControlByte(v) {
+			return fmt.Errorf("watcher unit field %s contains a control character, refusing to write "+
+				"(it could inject a directive into a line-oriented unit format)", name)
+		}
+	}
+	return nil
+}
+
 // Write writes the unit file to its canonical path. Caller is
 // responsible for invoking the OS-native loader (`launchctl load`,
 // `systemctl --user daemon-reload`, or `schtasks /create /xml`) — we
 // keep this package free of side effects beyond the file.
 func Write(u Unit) (string, error) {
+	if err := validateUnitFields(u); err != nil {
+		return "", err
+	}
 	path, err := UnitPath(u)
 	if err != nil {
 		return "", err
