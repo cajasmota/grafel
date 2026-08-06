@@ -48,6 +48,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/gitmeta"
@@ -258,13 +259,42 @@ func UpdateManifestScoped(absRepo string, hashPaths, keepPaths []string, m *Mani
 	}
 	wg.Wait()
 
-	// Reconcile (#5667): drop entries for files no longer in the walked set so
-	// the manifest cannot retain stale records — e.g. a file that became
-	// gitignored (build artifacts now excluded by walk.WalkRepo). All callers
-	// pass the complete current walk as keepPaths, so membership in it is
-	// authoritative. Without this prune an entry, once added, is immortal: a
-	// now-ignored file is reported as "deleted" on every pass, perpetually
-	// tripping the too-many-changed full-reindex fallback and pinning the daemon.
+	reconcileMembership(keepPaths, m)
+}
+
+// ApplyStamps records stamps that were computed ELSEWHERE — at walk time, from
+// the bytes the extraction pipeline actually read — and then reconciles
+// membership against keepPaths exactly as UpdateManifestScoped does.
+//
+// It performs NO file I/O. That is the whole point (#6212): the manifest's
+// contract is "these bytes are what the graph was built from", and a re-hash at
+// commit time cannot honour it, because the document was built from the bytes
+// the walk read and the working tree may have moved on since. Hashing at the
+// point of reading makes the contract true BY CONSTRUCTION rather than true
+// whenever no write happened to land in a multi-second window. It also deletes
+// the O(repo) SHA-256 sweep the commit used to pay (#6206).
+//
+// Files in keepPaths with no stamp keep whatever entry they already had — the
+// same rule UpdateManifestScoped applies to its unhashed keepPaths, and correct
+// for the same reason: the caller has established they did not change.
+func ApplyStamps(stamps map[string]FileEntry, keepPaths []string, m *Manifest) {
+	if m.Files == nil {
+		m.Files = make(map[string]FileEntry, len(stamps))
+	}
+	for rel, e := range stamps {
+		m.Files[rel] = e
+	}
+	reconcileMembership(keepPaths, m)
+}
+
+// reconcileMembership drops entries for files no longer in the walked set (#5667)
+// so the manifest cannot retain stale records — e.g. a file that became
+// gitignored (build artifacts now excluded by walk.WalkRepo). All callers pass
+// the complete current walk as keepPaths, so membership in it is authoritative.
+// Without this prune an entry, once added, is immortal: a now-ignored file is
+// reported as "deleted" on every pass, perpetually tripping the
+// too-many-changed full-reindex fallback and pinning the daemon.
+func reconcileMembership(keepPaths []string, m *Manifest) {
 	want := make(map[string]struct{}, len(keepPaths))
 	for _, r := range keepPaths {
 		want[r] = struct{}{}
@@ -491,8 +521,56 @@ func isChanged(absPath, relPath string, manifest *Manifest) bool {
 	return newEntry.SHA256 != entry.SHA256
 }
 
+// hashCalls counts every hashFile invocation in the process.
+//
+// It exists so a test can assert that a code path performs NO file hashing at
+// all — the #6212 acceptance criterion for commitManifest, and the shape #6206
+// asks for in general ("assert on observable work — a hash counter, a seam —
+// never on elapsed time"). A wall-clock budget is the test-that-cannot-fail
+// shape; a counter that must read zero cannot pass for the wrong reason.
+//
+// Monotonic and process-wide: callers compare two samples, never the absolute.
+var hashCalls atomic.Int64
+
+// HashCallCount returns the number of files hashed by this package so far.
+// See hashCalls for why it is exported.
+func HashCallCount() int64 { return hashCalls.Load() }
+
+// HashFile is hashFile, exported for the callers that must produce a manifest
+// stamp for a file the extraction pipeline never reads — a binary, an oversized
+// file, an unsupported extension (#6212). Everything the pipeline DOES read is
+// stamped with StampBytes, from the bytes in hand, without reopening the file.
+func HashFile(path string) (FileEntry, error) { return hashFile(path) }
+
+// StampBytes builds the manifest entry for content a caller already holds.
+//
+// This is the #6212 primitive: the hash is over the bytes PASSED IN — the ones
+// the graph is being built from — never over a re-read of the path. Re-reading
+// is the whole defect, because "the same file" at two different moments is not
+// the same bytes, and the manifest that results claims content the graph does
+// not contain.
+//
+// statSize/statMtime must come from a stat taken BEFORE the read. They feed
+// isChanged's fast path only. A stat taken after the read can pair post-write
+// metadata with pre-write content, and the next pass then takes the fast path
+// and calls the file unchanged; a pre-read stat can only be staler than the
+// bytes, which routes the next pass to the hash instead. statSize < 0 means the
+// stat failed, and len(content) stands in.
+func StampBytes(content []byte, statSize, statMtime int64) FileEntry {
+	sum := sha256.Sum256(content)
+	if statSize < 0 {
+		statSize = int64(len(content))
+	}
+	return FileEntry{
+		SHA256: hex.EncodeToString(sum[:]),
+		Size:   statSize,
+		Mtime:  statMtime,
+	}
+}
+
 // hashFile computes the SHA-256 of the file at path and returns a FileEntry.
 func hashFile(path string) (FileEntry, error) {
+	hashCalls.Add(1)
 	f, err := os.Open(path)
 	if err != nil {
 		return FileEntry{}, err
