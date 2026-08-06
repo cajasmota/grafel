@@ -30,6 +30,7 @@ import (
 	bazelextract "github.com/cajasmota/grafel/internal/extractors/bazel"
 	configextract "github.com/cajasmota/grafel/internal/extractors/config"
 	"github.com/cajasmota/grafel/internal/extractors/cross"
+	jsextract "github.com/cajasmota/grafel/internal/extractors/javascript"
 	mageextract "github.com/cajasmota/grafel/internal/extractors/mage"
 	pyextr "github.com/cajasmota/grafel/internal/extractors/python"
 	taskextract "github.com/cajasmota/grafel/internal/extractors/task"
@@ -4682,12 +4683,13 @@ func filePathStem(path string) string {
 	return strings.ToLower(stem)
 }
 
-// fileIsDeclarationExtensions are the source-file extensions whose ecosystems
-// treat a module file and the declaration it exports as the same thing: the
-// module system addresses the file, importers name the file, and the framework
-// resolves the component through its path. `LoginPage` in `LoginPage.tsx` is a
-// second name for that module, so a File+Component pair there is a true
-// duplicate and folding it removes a duplicate.
+// componentFileExtensions are the source-file extensions that NAME the
+// convention on their own: the ecosystem treats a module file and the
+// declaration it exports as the same thing, and the extension exists for
+// nothing else. The module system addresses the file, importers name the file,
+// and the framework resolves the component through its path. `LoginPage` in
+// `LoginPage.tsx` is a second name for that module, so a File+Component pair
+// there is a true duplicate and folding it removes a duplicate. Issue #1727.
 //
 // EVERY OTHER ECOSYSTEM TREATS A FILE AS A CONTAINER, even when it holds
 // exactly one declaration. `interface IERC4626` in `IERC4626.sol` is a
@@ -4697,10 +4699,72 @@ func filePathStem(path string) string {
 // @openzeppelin/contracts@5.2.0 the name==stem rule dropped 42 of 61
 // interfaces while leaving all 71 contracts, purely because "contract" is not
 // in classLikeComponentSubtypes and "interface" is. Issue #6138.
-var fileIsDeclarationExtensions = map[string]bool{
-	".js": true, ".jsx": true, ".mjs": true, ".cjs": true,
-	".ts": true, ".tsx": true, ".mts": true, ".cts": true,
+var componentFileExtensions = map[string]bool{
+	".jsx": true, ".tsx": true,
 	".vue": true, ".svelte": true, ".astro": true,
+}
+
+// moduleFileExtensions are the extensions that carry the component convention
+// AND every other kind of module. `.ts` is the extension for
+// `src/components/LoginPage.ts` and for `src/domain/IUserRepository.ts` alike,
+// so membership says nothing about whether the file IS its declaration and
+// allow-listing it wholesale left #6138 live inside TypeScript and JavaScript:
+// `class UserRepository` in `UserRepository.ts` was deleted exactly like a
+// React component. Issue #6202.
+//
+// These need a per-file signal instead — see fileIsItsDeclaration.
+var moduleFileExtensions = map[string]bool{
+	".js": true, ".mjs": true, ".cjs": true,
+	".ts": true, ".mts": true, ".cts": true,
+}
+
+// fileIsItsDeclaration reports whether the module in sourceFile exists to
+// export the single declaration declName, which is what makes the File +
+// Component pair a duplicate rather than a container and its contents.
+//
+// For componentFileExtensions the extension answers it. For
+// moduleFileExtensions the answer is the module's DEFAULT EXPORT — the actual
+// mechanic behind the React/Vue convention, where a component module is
+// `export default LoginPage` while a backend module is `export class
+// UserRepository` / `export interface IUserRepository`, a named export
+// addressed by its own name. defaultExport is the file entity's
+// jsextract.DefaultExportProp, empty when the module has no default export
+// naming one of its own declarations.
+//
+// The absence of the signal denies the fold, so an unresolvable default export
+// (`export default connect(...)(LoginPage)`) keeps the declaration's entity.
+// That is the direction that loses nothing: an un-folded pair is a duplicate
+// the MCP layer can still see, a folded one is a declaration nobody can
+// (internal/mcp/denoise.go classifies a subtype="file" component as a
+// noiseContainer unconditionally). Issue #6202.
+//
+// THE NAME COMPARISON IS CASE-SENSITIVE, AND MUST STAY THAT WAY. These are two
+// identifiers read out of the SAME source file, where case is the language's
+// identity rule and `logger` and `Logger` are two different bindings. The
+// singleton-instance convention is ubiquitous:
+//
+//	export class Logger { … }
+//	const logger = new Logger();
+//	export default logger;
+//
+// Under a case-insensitive comparison that module reads as "default-exports its
+// class" and `class Logger` is deleted — the exact deletion this change exists
+// to stop, on the shape #6202's second row names. The default export there is
+// the INSTANCE; the module is a container holding both.
+//
+// The separate stem-vs-name comparison at the fold decision stays
+// case-insensitive, because a filename is not an identifier: `loginPage.ts`
+// holding `class LoginPage` is one declaration under two spellings of one name,
+// so that fold is still correct and nothing legitimate is lost here.
+func fileIsItsDeclaration(sourceFile, declName, defaultExport string) bool {
+	ext := strings.ToLower(filepath.Ext(sourceFile))
+	if componentFileExtensions[ext] {
+		return true
+	}
+	if !moduleFileExtensions[ext] {
+		return false
+	}
+	return defaultExport != "" && defaultExport == declName
 }
 
 // foldFileComponentDuplicates collapses SCOPE.Component class-like nodes into
@@ -4722,10 +4786,12 @@ var fileIsDeclarationExtensions = map[string]bool{
 //     AND whose SourceFile matches the survivor's SourceFile.
 //  3. Anti-over-fold guard: if the class entity's name does NOT match the file
 //     stem — meaning it's a *different* class inside the same file — keep both.
-//  4. Convention guard: the file must be one whose ecosystem makes a module and
-//     its exported declaration the same entity (fileIsDeclarationExtensions).
-//     Elsewhere a file is a container and the declaration is not a duplicate of
-//     it, so folding would delete a real declaration. Issue #6138.
+//  4. Convention guard: the file must be one that exists to export this one
+//     declaration (fileIsItsDeclaration) — either because its extension names
+//     the component convention (#6138) or because the module default-exports
+//     the declaration by name (#6202). Elsewhere a file is a container and the
+//     declaration is not a duplicate of it, so folding would delete a real
+//     declaration.
 //
 // Runs AFTER foldClassHierarchyShadows (so shadows are already resolved) and
 // AFTER stampEntityIDs (so r.ID is populated).
@@ -4741,15 +4807,22 @@ func (i *Indexer) foldFileComponentDuplicates(
 		idx  int
 		id   string
 		stem string // lower-cased filename without extension
+		// defaultExport is the name this module default-exports, stamped by
+		// the JS/TS extractor (jsextract.DefaultExportProp). Read here rather
+		// than at the fold decision so it is the extractor's answer and never
+		// a property this pass copied onto the survivor from an earlier fold.
+		// Issue #6202.
+		defaultExport string
 	}
 	fileBySourceFile := make(map[string]fileEnt)
 	for k := range merged {
 		r := &merged[k]
 		if r.Kind == "SCOPE.Component" && r.Subtype == "file" && r.ID != "" {
 			fileBySourceFile[r.SourceFile] = fileEnt{
-				idx:  k,
-				id:   r.ID,
-				stem: filePathStem(r.SourceFile),
+				idx:           k,
+				id:            r.ID,
+				stem:          filePathStem(r.SourceFile),
+				defaultExport: r.Properties[jsextract.DefaultExportProp],
 			}
 		}
 	}
@@ -4788,8 +4861,8 @@ func (i *Indexer) foldFileComponentDuplicates(
 			continue
 		}
 		// Only fold where the file IS the declaration; elsewhere the file is a
-		// container and folding deletes a real declaration. Issue #6138.
-		if !fileIsDeclarationExtensions[strings.ToLower(filepath.Ext(r.SourceFile))] {
+		// container and folding deletes a real declaration. Issues #6138, #6202.
+		if !fileIsItsDeclaration(r.SourceFile, r.Name, fe.defaultExport) {
 			continue
 		}
 		if fe.id == r.ID {

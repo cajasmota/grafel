@@ -183,15 +183,23 @@ func TestIssue6138_ContainerFileLanguagesKeepStemNamedDeclarations(t *testing.T)
 func TestIssue6138_FileIsTheDeclarationEcosystemsStillFold(t *testing.T) {
 	const classSig = "class LoginPage extends React.Component<Props>"
 
-	for _, tc := range []struct{ name, path, decl string }{
-		{"tsx", "src/components/LoginPage.tsx", "LoginPage"},
-		{"js", "src/components/LoginPage.js", "LoginPage"},
-		{"vue", "src/components/LoginPage.vue", "LoginPage"},
-		{"svelte", "src/components/LoginPage.svelte", "LoginPage"},
+	// defaultExport carries the file entity's javascript.DefaultExportProp.
+	// `.tsx`, `.vue` and `.svelte` name the component convention in the
+	// extension itself and fold without it. `.js` does not — it is the
+	// extension for a component module AND for every other kind of module — so
+	// #6202 made its fold conditional on the module actually default-exporting
+	// the declaration. This row therefore had to say which `.js` file it is;
+	// the un-defaulted `.js` module is now pinned as a SURVIVOR in
+	// TestIssue6202_NamedExportModulesKeepTheirDeclarations.
+	for _, tc := range []struct{ name, path, decl, defaultExport string }{
+		{"tsx", "src/components/LoginPage.tsx", "LoginPage", ""},
+		{"js", "src/components/LoginPage.js", "LoginPage", "LoginPage"},
+		{"vue", "src/components/LoginPage.vue", "LoginPage", ""},
+		{"svelte", "src/components/LoginPage.svelte", "LoginPage", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			records := []types.EntityRecord{
-				fileEnt6138("f000000000000010", tc.path),
+				fileEnt6202("f000000000000010", tc.path, tc.defaultExport),
 				{
 					ID:         "c000000000000010",
 					Kind:       "SCOPE.Component",

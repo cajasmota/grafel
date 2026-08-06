@@ -379,12 +379,30 @@ records:
     capabilities:
       Structure:
         component_extraction:
+          # foldFileComponentDuplicates decides whether a component module keeps
+          # one entity or two: it collapses a stem-named declaration into its
+          # subtype="file" sibling, which is right for a React component module
+          # (#1727) and destructive anywhere a file is a container (#6138). The
+          # extension gate #6138 added could not carry that for `.ts`/`.js`,
+          # which are the extension for both, so #6202 made the fold read the
+          # module's DEFAULT EXPORT — surfaced by stampDefaultExport — and a
+          # backend `export class UserRepository` stopped being deleted while
+          # `export default LoginPage` still folds.
           status: partial
           symbols:
             - file: internal/extractors/javascript/extractor.go
               functions: [extractJSXRendersRelationships]
-          issues_implemented: ["2735"]
-          verified_at: "2026-05-28"
+            - file: internal/extractors/javascript/default_export.go
+              functions: [stampDefaultExport, defaultExportName, exportStatementIsDefault]
+            - file: cmd/grafel/index.go
+              functions: [foldFileComponentDuplicates, fileIsItsDeclaration]
+          tests:
+            - file: internal/extractors/javascript/issue6202_default_export_test.go
+              functions: [TestIssue6202_FileEntityCarriesDefaultExportName, TestIssue6202_DefaultExportStampedForJavaScriptToo]
+            - file: cmd/grafel/issue6202_ts_module_fold_test.go
+              functions: [TestIssue6202_NamedExportModulesKeepTheirDeclarations, TestIssue6202_DefaultExportModulesStillFold, TestIssue6202_DefaultExportOfADifferentSymbolDoesNotFold, TestIssue6202_ComponentExtensionsFoldWithoutADefaultExport, TestIssue6202_BackendTypeScriptSurvivesFullIndex]
+          issues_implemented: ["2735", "6202"]
+          verified_at: "2026-08-06"
         context_extraction:
           status: full
           symbols:
