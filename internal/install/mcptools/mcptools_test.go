@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // setupHome points HOME at a temp dir so detection reads only files we create,
@@ -16,7 +17,17 @@ func setupHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// USERPROFILE too: os.UserHomeDir reads it on Windows, and mcpreg's
+	// SettingsPath falls back to os.UserHomeDir when HOME is unset.
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	// GRAFEL_HOME too: nothing in this package resolves it today, but leaving
+	// it pointed at the developer's real ~/.grafel is exactly how the two
+	// sandbox escapes this cycle happened.
+	t.Setenv("GRAFEL_HOME", filepath.Join(home, ".grafel"))
+	// Fail fast if any of that failed to take effect: these tests WRITE
+	// ~/.grafel/mcp-tools.json via SaveLastChoice.
+	testsupport.GuardRealHome(t)
 	now := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
 	nowFunc = func() time.Time { return now }
 	t.Cleanup(func() { nowFunc = time.Now })
@@ -84,7 +95,7 @@ func TestSmartDefault_B(t *testing.T) {
 	// windsurf: stale, no grafel → unchecked.
 	writeConfig(t, mcpreg.Windsurf, false, now.Add(-90*24*time.Hour))
 
-	tools := detectWith(nil)
+	tools := detectWith(nil, nil)
 
 	if c := find(t, tools, "claude"); !c.DefaultSelected {
 		t.Error("claude (recent) should be default-checked")
@@ -109,7 +120,7 @@ func TestRememberedChoice_C(t *testing.T) {
 
 	// Remembered choice: cursor IN, claude OUT — the inverse of B.
 	last := map[string]bool{"cursor": true, "claude": false}
-	tools := detectWith(last)
+	tools := detectWith(last, nil)
 
 	if c := find(t, tools, "claude"); c.DefaultSelected {
 		t.Error("claude should be UNchecked: remembered choice (C) overrides recent (B)")
@@ -126,7 +137,7 @@ func TestDetect_OnlyDetectedTools(t *testing.T) {
 	writeConfig(t, mcpreg.ClaudeCode, false, nowFunc())
 	// Nothing for cursor/windsurf/etc.
 
-	tools := detectWith(nil)
+	tools := detectWith(nil, nil)
 	if got := ids(tools); len(got) != 1 || got[0] != "claude" {
 		t.Errorf("detected = %v, want only [claude]", got)
 	}
@@ -167,6 +178,213 @@ func TestLastChoice_RoundTrip(t *testing.T) {
 	}
 	if set == nil || len(set) != 0 {
 		t.Errorf("empty choice round-trip = %v, want non-nil empty set", set)
+	}
+}
+
+// ── (#6170) the durable previously-registered signal ────────────────────────
+
+// staleClaudeNoEntry lays down the ratchet fixture: a Claude config that is
+// OLDER than RecentWindow and carries NO grafel entry — i.e. the entry was
+// removed (the #6168 rollback being the demonstrated way) and the file has not
+// been touched since. Returns its path.
+func staleClaudeNoEntry(t *testing.T) string {
+	t.Helper()
+	return writeConfig(t, mcpreg.ClaudeCode, false, nowFunc().Add(-90*24*time.Hour))
+}
+
+// TestRatchet_StaleConfigWithLostEntryIsUnchecked pins the BUG: with the entry
+// gone, a stale config and no remembered choice, Claude Code arrives in the
+// wizard UNCHECKED — the state from which a press-enter run persists the
+// removal as the user's preference (#6170). This is the "before" half; the
+// repair is TestPreviouslyRegistered_RepairsRatchet.
+func TestRatchet_StaleConfigWithLostEntryIsUnchecked(t *testing.T) {
+	setupHome(t)
+	staleClaudeNoEntry(t)
+
+	if c := find(t, detectWith(nil, nil), "claude"); c.DefaultSelected {
+		t.Error("without the previously-registered signal, claude is expected to be unchecked here (that IS the ratchet)")
+	}
+}
+
+// TestPreviouslyRegistered_RepairsRatchet is the fix: install.json still
+// records that grafel registered itself at that exact config path, so the
+// wizard must arrive CHECKED even though the entry is gone and the file is
+// stale.
+func TestPreviouslyRegistered_RepairsRatchet(t *testing.T) {
+	setupHome(t)
+	path := staleClaudeNoEntry(t)
+
+	tools := detectWith(nil, map[string]bool{path: true})
+	if c := find(t, tools, "claude"); !c.DefaultSelected {
+		t.Errorf("claude must be default-checked: install.json records grafel was registered at %s; got %+v", path, c)
+	}
+}
+
+// TestPreviouslyRegistered_UnrelatedPathDoesNotCheck verifies the signal is
+// keyed on the tool's OWN config path — a recorded path belonging to some
+// other host must not check this tool.
+func TestPreviouslyRegistered_UnrelatedPathDoesNotCheck(t *testing.T) {
+	setupHome(t)
+	staleClaudeNoEntry(t)
+	// A stale cursor config too, so cursor is detected but unchecked by B.
+	writeConfig(t, mcpreg.Cursor, false, nowFunc().Add(-90*24*time.Hour))
+
+	claudePath, _ := mcpreg.SettingsPath(mcpreg.ClaudeCode)
+	tools := detectWith(nil, map[string]bool{claudePath: true})
+
+	if c := find(t, tools, "cursor"); c.DefaultSelected {
+		t.Errorf("cursor must stay unchecked: only claude's path is recorded; got %+v", c)
+	}
+}
+
+// TestPreviouslyRegistered_EmptyOrNilIsInert verifies an absent/empty recorded
+// set changes nothing — the (B) default stands on its own.
+func TestPreviouslyRegistered_EmptyOrNilIsInert(t *testing.T) {
+	setupHome(t)
+	staleClaudeNoEntry(t)
+
+	for name, prev := range map[string]map[string]bool{
+		"nil":   nil,
+		"empty": {},
+	} {
+		if c := find(t, detectWith(nil, prev), "claude"); c.DefaultSelected {
+			t.Errorf("prev=%s: claude should be unchecked (B alone); got %+v", name, c)
+		}
+	}
+}
+
+// TestPreviouslyRegistered_OptOutViaRealRoundTrip is THE safety property, and
+// it is asserted through the ONLY API that can record an opt-out in
+// production: SaveLastChoice writes the file, DetectWithPrevious reads it back.
+//
+// A hand-built map{"claude": false} would certify nothing — ReadLastChoice
+// builds its set only from `selected`, so every value it yields is true and an
+// opted-out tool is merely ABSENT. The recorded decision has to be honoured on
+// the strength of that absence alone.
+func TestPreviouslyRegistered_OptOutViaRealRoundTrip(t *testing.T) {
+	setupHome(t)
+	path := staleClaudeNoEntry(t)
+	writeConfig(t, mcpreg.Cursor, false, nowFunc())
+
+	// The user unchecked claude and kept cursor. This is exactly what the
+	// dashboard wizard persists via registerWizardMCP → SaveLastChoice.
+	if err := SaveLastChoice([]string{"cursor"}); err != nil {
+		t.Fatalf("SaveLastChoice: %v", err)
+	}
+
+	tools := DetectWithPrevious(map[string]bool{path: true})
+	if c := find(t, tools, "claude"); c.DefaultSelected {
+		t.Errorf("claude was deliberately unchecked and the choice was SAVED; the install.json record must not re-check it. got %+v", c)
+	}
+	if c := find(t, tools, "cursor"); !c.DefaultSelected {
+		t.Errorf("cursor was chosen and saved; it must stay checked. got %+v", c)
+	}
+}
+
+// TestPreviouslyRegistered_SuppressedByAnyRecordedChoice pins the bound on B2:
+// it repairs an accident only while NO choice has been recorded. Once a
+// last-choice file exists — even one that says "none" — the recorded decision
+// owns the default and the durable registration record is inert.
+func TestPreviouslyRegistered_SuppressedByAnyRecordedChoice(t *testing.T) {
+	setupHome(t)
+	path := staleClaudeNoEntry(t)
+	prev := map[string]bool{path: true}
+
+	// No file yet → B2 repairs.
+	if c := find(t, DetectWithPrevious(prev), "claude"); !c.DefaultSelected {
+		t.Fatalf("precondition: with no recorded choice B2 must check claude; got %+v", c)
+	}
+
+	// The user chose "none" — an explicit decision, not an accident.
+	if err := SaveLastChoice([]string{}); err != nil {
+		t.Fatalf("SaveLastChoice(none): %v", err)
+	}
+	if c := find(t, DetectWithPrevious(prev), "claude"); c.DefaultSelected {
+		t.Errorf("a recorded choice of NONE must suppress B2; got %+v", c)
+	}
+}
+
+// writeRawLastChoice writes arbitrary bytes to ~/.grafel/mcp-tools.json,
+// bypassing SaveLastChoice, so a malformed document can be staged.
+func writeRawLastChoice(t *testing.T, content []byte, mode os.FileMode) string {
+	t.Helper()
+	path, err := LastChoicePath()
+	if err != nil {
+		t.Fatalf("LastChoicePath: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, mode); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) }) // so TempDir cleanup can unlink
+	return path
+}
+
+// TestPreviouslyRegistered_MalformedChoiceFileSuppressesB2 closes the bound's
+// fail-open leak: B2's whole premise is that a nil lastChoice faithfully means
+// "no choice was ever recorded". A file that EXISTS but cannot be parsed or
+// read is evidence a choice WAS recorded — the same rule mcpprev.go already
+// applies to an unreadable group config. Treating it as first-run would let B2
+// re-check a box the user cleared, which is the very regression the bound was
+// introduced to prevent.
+func TestPreviouslyRegistered_MalformedChoiceFileSuppressesB2(t *testing.T) {
+	cases := map[string]struct {
+		content []byte
+		mode    os.FileMode
+	}{
+		"truncated JSON": {[]byte(`{"selected":["curs`), 0o600},
+		"zero bytes":     {[]byte(``), 0o600},
+		"unreadable":     {[]byte(`{"selected":["cursor"]}`), 0o000},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setupHome(t)
+			path := staleClaudeNoEntry(t)
+			writeRawLastChoice(t, tc.content, tc.mode)
+
+			tools := DetectWithPrevious(map[string]bool{path: true})
+			if c := find(t, tools, "claude"); c.DefaultSelected {
+				t.Errorf("a %s choice file must suppress B2 — the file existing is evidence a choice was recorded; got %+v", name, c)
+			}
+		})
+	}
+}
+
+// TestReadLastChoice_CorruptIsARecordedChoice pins the representation the bound
+// depends on: a corrupt document yields a NON-NIL empty set, so it is
+// distinguishable from the genuine no-file case (nil). Both still leave the
+// (C) override naming nothing, so the (B) default is unchanged.
+func TestReadLastChoice_CorruptIsARecordedChoice(t *testing.T) {
+	setupHome(t)
+	writeRawLastChoice(t, []byte(`{not json`), 0o600)
+
+	set, err := ReadLastChoice()
+	if err != nil {
+		t.Fatalf("a corrupt file must not error out of the wizard: %v", err)
+	}
+	if set == nil {
+		t.Error("corrupt file must yield a NON-NIL empty set (a choice exists but is unreadable), not nil (no choice)")
+	}
+	if len(set) != 0 {
+		t.Errorf("corrupt file must name no tools; got %v", set)
+	}
+}
+
+// TestDetectWithPrevious_ReadsLastChoice verifies the exported wrapper still
+// consults the on-disk (C) choice, so the override is not bypassed by callers
+// that supply a previously-registered set.
+func TestDetectWithPrevious_ReadsLastChoice(t *testing.T) {
+	setupHome(t)
+	// Stale cursor, no grafel entry → B unchecks it; the saved choice checks it.
+	writeConfig(t, mcpreg.Cursor, false, nowFunc().Add(-365*24*time.Hour))
+	if err := SaveLastChoice([]string{"cursor"}); err != nil {
+		t.Fatalf("SaveLastChoice: %v", err)
+	}
+
+	if c := find(t, DetectWithPrevious(nil), "cursor"); !c.DefaultSelected {
+		t.Errorf("DetectWithPrevious must honour the saved (C) choice; got %+v", c)
 	}
 }
 

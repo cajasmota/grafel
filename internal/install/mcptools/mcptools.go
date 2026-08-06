@@ -15,9 +15,30 @@
 //     recently (within RecentWindow) OR it already contains a grafel entry
 //     (previously configured). Clearly-stale tools are unchecked but stay
 //     visible so the user can re-check them.
+//
+//   - (B2) previously registered (#6170): also checked when a previous install
+//     RECORDED registering grafel at that config path — but ONLY while no
+//     choice has been recorded at all. See DetectWithPrevious / detectWith.
+//
+//     B2 exists because both (B) terms are erased by the same accident:
+//     something deletes the grafel entry (the #6168 rollback being the
+//     demonstrated way) so hasGrafel goes false, and if the file is then left
+//     untouched past RecentWindow the tool arrives UNCHECKED — so that run
+//     silently fails to (re-)register grafel's MCP for a tool the user has.
+//
+//     Its coverage is PARTIAL, inherently: only RunCopy/RunDev record into
+//     state.MCP.RegisteredPaths, and only the Claude and Windsurf config
+//     paths. install.Apply registers MCP for every enabled adapter but
+//     persists nothing, so for Cursor, Codex, Kiro and Antigravity B2 is a
+//     permanent no-op and the (B) default stands alone.
+//
 //   - (C) remember last choice: the user's selection is persisted to
-//     ~/.grafel/mcp-tools.json and, on subsequent runs, becomes the default
-//     (C overrides B once a choice has been made).
+//     ~/.grafel/mcp-tools.json and, on subsequent runs, becomes the default.
+//
+//     NOTE the asymmetry, which detectWith depends on: the file stores only
+//     the SELECTED ids, so (C) can force a tool ON but never OFF — a tool the
+//     user unchecked is simply ABSENT from it, and (B) re-decides. "C
+//     overrides B" holds in one direction only.
 package mcptools
 
 import (
@@ -96,14 +117,61 @@ var nowFunc = time.Now
 // Detect never errors on individual tools — an unreadable config simply yields
 // HasGrafel=false / a zero mtime.
 func Detect() []Tool {
-	last, _ := ReadLastChoice() // best-effort; nil when no prior choice
-	return detectWith(last)
+	return DetectWithPrevious(nil)
 }
 
-// detectWith is the testable core of Detect: lastChoice (possibly nil) is the
-// remembered selection set.
-func detectWith(lastChoice map[string]bool) []Tool {
+// DetectWithPrevious is Detect plus the durable (B2) "grafel was registered
+// here before" signal: prev is a set of MCP host config PATHS a previous
+// grafel install recorded (install.json's state.MCP.RegisteredPaths). It is
+// consulted ONLY when no last choice has been recorded — see detectWith.
+//
+// The set is INJECTED rather than read here for layering, not for a cycle:
+// internal/install does not import mcptools, so reading install.json here
+// would compile. It is still the wrong shape — mcptools' tests need nothing
+// but a temp $HOME, and reading the state would drag internal/install and
+// internal/registry into that. Callers use install.PreviouslyRegisteredMCPPaths().
+func DetectWithPrevious(prev map[string]bool) []Tool {
+	last, err := ReadLastChoice()
+	if err != nil {
+		// The file could not be READ (permissions, I/O). It may well record an
+		// opt-out, so it must not be mistaken for "no choice was ever made" —
+		// that is the one input the B2 bound trusts. Substitute an empty
+		// non-nil set: B2 is suppressed and (C) names nothing, so the (B)
+		// default decides, exactly as before #6170. Same rule as
+		// install.PreviouslyRegisteredMCPPaths: an unreadable config is not
+		// evidence of absence.
+		last = map[string]bool{}
+	}
+	return detectWith(last, prev)
+}
+
+// detectWith is the testable core of Detect: lastChoice is the remembered
+// selection set, nil ONLY when no choice has ever been recorded; prevRegistered
+// (possibly nil) is the set of config paths a previous install recorded a
+// grafel registration at.
+//
+// B2 is bounded to the case where lastChoice is nil, and that bound is THE
+// carrier of the safety property for this fix (install.PreviouslyRegisteredMCPPaths'
+// opt-out subtraction is a second, narrower layer beneath it).
+//
+// The bound cannot be carried by precedence within the expression,
+// because (C) cannot express "off": ReadLastChoice builds its set only from
+// the file's `selected` list, so every value it can yield is true and an
+// opted-out tool is merely ABSENT from the map — the `def = sel` branch below
+// can only ever set def=true. Composing B2 under a (C) that can only say "on"
+// would let the install.json record re-check a box the user cleared, which is
+// a REGRESSION on today's behaviour, not a repair.
+//
+// So: a recorded choice — any recorded choice, including "none" — owns the
+// default, and B2 applies only while none exists. It repairs a fresh accident
+// and never overrules a decision.
+func detectWith(lastChoice, prevRegistered map[string]bool) []Tool {
 	now := nowFunc()
+	// A recorded choice suppresses B2 entirely (see above).
+	var prev map[string]bool
+	if lastChoice == nil {
+		prev = cleanPathSet(prevRegistered)
+	}
 	var out []Tool
 	for _, a := range mcpAdapters() {
 		path, err := mcpreg.SettingsPath(a.tool)
@@ -117,9 +185,14 @@ func detectWith(lastChoice map[string]bool) []Tool {
 		}
 		hasGrafel := mcpreg.HasGrafelEntry(path)
 		recent := fileExists && now.Sub(mtime) <= RecentWindow
+		// (B2) grafel registered itself at this exact config path on a previous
+		// install, per install.json. Unlike hasGrafel this SURVIVES the entry
+		// being deleted, which is the whole point (#6170). prev is nil whenever
+		// a choice has been recorded, so this is false there.
+		previouslyRegistered := prev[filepath.Clean(path)]
 
 		// (B) smart default.
-		def := recent || hasGrafel
+		def := recent || hasGrafel || previouslyRegistered
 		// (C) remembered choice overrides B for tools it names.
 		if lastChoice != nil {
 			if sel, ok := lastChoice[a.id]; ok {
@@ -136,6 +209,23 @@ func detectWith(lastChoice map[string]bool) []Tool {
 			LastModified:    mtime,
 			DefaultSelected: def,
 		})
+	}
+	return out
+}
+
+// cleanPathSet normalises a set of file paths so lookups are not defeated by a
+// trailing separator or an unnormalised "." component in what install.json
+// happens to record. Returns nil for a nil/empty input (lookups on a nil map
+// are legal and always false).
+func cleanPathSet(in map[string]bool) map[string]bool {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(in))
+	for p, v := range in {
+		if v && p != "" {
+			out[filepath.Clean(p)] = true
+		}
 	}
 	return out
 }
@@ -184,8 +274,17 @@ func LastChoicePath() (string, error) {
 	return filepath.Join(home, ".grafel", "mcp-tools.json"), nil
 }
 
-// ReadLastChoice loads the remembered selection as a set of tool IDs. Returns
-// (nil, nil) when no choice has been saved yet (the common first-run case).
+// ReadLastChoice loads the remembered selection as a set of tool IDs.
+//
+// nil WITH NO ERROR is returned ONLY when no choice has been saved — the file
+// does not exist. nil WITH an error is a different thing entirely: the file
+// could not be read, and DetectWithPrevious substitutes an empty non-nil set
+// there.
+//
+// That distinction is load-bearing: detectWith keys the B2 bound on it, so
+// every other outcome (an empty selection, a corrupt document) must return a
+// non-nil map, and a read error must be surfaced so the caller can do the
+// same. Do not collapse any of those to nil.
 func ReadLastChoice() (map[string]bool, error) {
 	path, err := LastChoicePath()
 	if err != nil {
@@ -200,8 +299,13 @@ func ReadLastChoice() (map[string]bool, error) {
 	}
 	var doc lastChoiceFile
 	if err := json.Unmarshal(b, &doc); err != nil {
-		// A corrupt file must not break the wizard — treat as "no choice".
-		return nil, nil
+		// A corrupt file must not break the wizard, but it is NOT "no choice":
+		// the file exists, so a choice was recorded — we just cannot read which
+		// tools it named. Yield a NON-NIL empty set, keeping it distinguishable
+		// from the genuine no-file case (nil) that the B2 bound keys on. Named
+		// nothing means the (C) override does nothing, so the (B) default
+		// decides — unchanged behaviour, minus the fail-open.
+		return map[string]bool{}, nil
 	}
 	set := make(map[string]bool, len(doc.Selected))
 	for _, id := range doc.Selected {
