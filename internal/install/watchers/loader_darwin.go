@@ -3,6 +3,7 @@
 package watchers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -22,7 +23,44 @@ func NewLoader() Loader { return darwinLoader{} }
 // and error. It is a package var so tests can inject a fake launchctl (e.g. to
 // simulate the flaky err-5 bootstrap) without shelling out.
 var launchctlRunner = func(args ...string) ([]byte, error) {
-	return exec.Command("launchctl", args...).CombinedOutput()
+	guardServiceCall("launchctl", args)
+	return runBoundedServiceCmd("launchctl", args...)
+}
+
+// launchctlTimeout bounds a single launchctl invocation.
+//
+// `launchctl bootout` does not return until the job has actually exited, and
+// `grafel watch` installs a SIGTERM handler that drains in-flight work — so a
+// watcher caught mid-index can hold a bootout open. Unbounded, that turns a
+// fleet-wide `grafel stop` into a hang with no output, which is a worse failure
+// than the one being fixed. The daemon stop path already bounds itself
+// (stopConfirmTimeout); the fleet needs the same.
+//
+// Vars, not consts, so tests can shrink them.
+var (
+	launchctlTimeout = 15 * time.Second
+
+	// launchctlWaitDelay is the grace period AFTER the deadline fires and the
+	// child is signalled, before os/exec force-closes its I/O pipes.
+	//
+	// This is the load-bearing half, and it is not optional:
+	// exec.CommandContext's cancel kills only the DIRECT child, while
+	// CombinedOutput blocks until every writer to the pipe closes. launchctl
+	// can leave a grandchild holding that pipe, so a bare deadline does not
+	// unblock the read — measured elsewhere in this tree at 20.5s past a 1s
+	// deadline. WaitDelay caps it unconditionally. Precedent:
+	// internal/gitmeta/gitmeta.go waitDelayGrace (#5286).
+	launchctlWaitDelay = 3 * time.Second
+)
+
+// runBoundedServiceCmd runs a service-manager command under both a context
+// deadline and a WaitDelay, so it always returns.
+func runBoundedServiceCmd(tool string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), launchctlTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, tool, args...)
+	cmd.WaitDelay = launchctlWaitDelay
+	return cmd.CombinedOutput()
 }
 
 // SetLaunchctlRunnerForTest swaps the launchctl command runner and returns a
@@ -136,15 +174,30 @@ func (darwinLoader) Unload(u Unit) error {
 	uid := strconv.Itoa(os.Getuid())
 	label := u.Label()
 
-	// Persist the stop first, so it holds even if bootout races or the process
-	// is already gone. disable is idempotent and independent of load state.
+	// The not-loaded probe comes FIRST, and nothing mutating may precede it.
+	//
+	// `launchctl list <label>` exits non-zero when the label is not loaded —
+	// the locale-invariant signal that the desired absent state already holds.
+	// Returning here keeps Unload a genuine no-op for a label that was never
+	// loaded, which is what makes watchers.Cleanup safe to call from tests and
+	// from group-delete on machines that never activated a watcher.
+	//
+	// The first cut of this fix put the `disable` above this probe, reasoning
+	// that a not-loaded job with a plist still needs suppressing. That is true
+	// in the abstract and wrong in practice: it made every unseamed test that
+	// touches Cleanup write real entries into the developer's launchd override
+	// database (see test_isolation_guard.go for the incident). It also buys
+	// nothing for `grafel stop`, whose entire purpose is stopping watchers that
+	// ARE loaded — a not-loaded job is not indexing. If a plist is on disk and
+	// unloaded, the next login loads it and the next stop disables it.
+	if _, err := launchctlRunner("list", label); err != nil {
+		return nil // not loaded — already gone, and nothing to persist
+	}
+
+	// Persist the stop. See the comment above for why this is a disable and not
+	// just a bootout.
 	_, _ = launchctlRunner("disable", "gui/"+uid+"/"+label)
 
-	// launchctl list <label> exits non-zero when the label is not loaded; that
-	// is the locale-invariant signal that the desired absent state already holds.
-	if _, err := launchctlRunner("list", label); err != nil {
-		return nil // not loaded — already gone
-	}
 	if out, err := launchctlRunner("bootout", "gui/"+uid+"/"+label); err != nil {
 		// Race: the service was listed above but disappeared before bootout.
 		// Re-check via the exit code of `launchctl list`; if it is now gone,
@@ -171,7 +224,11 @@ func (darwinLoader) Status(u Unit) (WatcherStatus, error) {
 	}
 
 	// launchctl list <label> prints: <pid | -> <exit> <label>
-	out, err := exec.Command("launchctl", "list", u.Label()).Output()
+	// Routed through launchctlRunner like every other invocation, so the status
+	// path is seamed and bounded too — `grafel status` is now the surface a
+	// user checks to confirm a stop worked, and it must not be the one call
+	// that can hang or that no test can observe.
+	out, err := launchctlRunner("list", u.Label())
 	if err != nil {
 		return ws, nil // not loaded — not running
 	}

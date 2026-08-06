@@ -435,6 +435,14 @@ func printReconcileSummary(out io.Writer, res *install.ReconcileWatcherResult) {
 			len(res.Migrated))
 	}
 	if len(res.Reloaded) > 0 {
+		// Re-registering a unit RE-ACTIVATES it, including one a previous
+		// `grafel stop` deactivated (Loader.Load clears the persisted
+		// disable). Saying so is the difference between an acceptable
+		// side effect and a silent one: `grafel update` is run to get a new
+		// binary, not to restart watchers, so a user who stopped grafel a week
+		// ago must be told that some of it is running again.
+		fmt.Fprintf(out, "  note: re-activated %d repo watcher(s) — if you had run 'grafel stop', "+
+			"run it again to stop them\n", len(res.Reloaded))
 		fmt.Fprintf(out, "  macOS may show up to %d Background Items notifications while these "+
 			"re-register — this is the one-time repair for issue #6179, not a recurrence\n",
 			len(res.Reloaded))

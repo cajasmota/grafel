@@ -39,11 +39,19 @@ type fakeFleetLoader struct {
 	unloaded []string
 	failOn   map[string]error // keyed by repo path
 	running  map[string]bool  // keyed by repo path
+	labels   []string         // every label acted on, incl. orphans
+	// block, when non-nil, makes every Load/Unload wait on it. Used to
+	// simulate a wedged `launchctl bootout` for the sweep-deadline test.
+	block chan struct{}
 }
 
 func (f *fakeFleetLoader) Load(u watchers.Unit) error {
+	if f.block != nil {
+		<-f.block
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.labels = append(f.labels, u.Label())
 	if err := f.failOn[u.Repo]; err != nil {
 		return err
 	}
@@ -52,8 +60,12 @@ func (f *fakeFleetLoader) Load(u watchers.Unit) error {
 }
 
 func (f *fakeFleetLoader) Unload(u watchers.Unit) error {
+	if f.block != nil {
+		<-f.block
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.labels = append(f.labels, u.Label())
 	if err := f.failOn[u.Repo]; err != nil {
 		return err
 	}
@@ -69,6 +81,19 @@ func (f *fakeFleetLoader) Status(u watchers.Unit) (watchers.WatcherStatus, error
 		Installed: true,
 		Running:   f.running[u.Repo],
 	}, nil
+}
+
+// sawLabel reports whether the loader ever acted on the given label. Orphan
+// units have no repo path, so the label is the only handle on them.
+func (f *fakeFleetLoader) sawLabel(label string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, l := range f.labels {
+		if l == label {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeFleetLoader) sortedUnloaded() []string {

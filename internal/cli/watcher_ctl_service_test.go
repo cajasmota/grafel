@@ -28,6 +28,10 @@ import (
 // and restores them on cleanup. It returns pointers to call counters.
 func stubServiceSeams(t *testing.T, installed bool) (restartCalls, forkCalls *int) {
 	t.Helper()
+	// `start`/`restart` now also restore the per-repo watcher fleet, so without
+	// an isolated home these tests would Load the DEVELOPER's real watcher
+	// units. See isolateWatcherFleet in watcher_fleet_review_test.go.
+	isolateWatcherFleet(t)
 	restartCalls = new(int)
 	forkCalls = new(int)
 

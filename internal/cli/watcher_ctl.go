@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -19,10 +20,19 @@ import (
 	"github.com/cajasmota/grafel/internal/process"
 )
 
-// start/stop/restart now drive the per-machine daemon (ADR-0017). The
-// old per-repo watcher fanout under launchd/systemd is gone — the
-// daemon owns all watchers in Phase B and a single OS service unit
-// keeps the daemon alive (Phase C).
+// start/stop/restart drive the per-machine daemon (ADR-0017): a single OS
+// service unit keeps the daemon alive (Phase C).
+//
+// This comment used to continue "the old per-repo watcher fanout under
+// launchd/systemd is gone — the daemon owns all watchers in Phase B". That was
+// false, and expensively so. `grafel install` still writes one
+// `com.grafel.watcher.<group>.<slug>` unit PER REPO
+// (internal/install/install.go), each running `grafel watch <repo>` under
+// launchd/systemd/schtasks, entirely outside the daemon's lifecycle. Anyone
+// reading `stop` and believing this header had no reason to look for the 140
+// processes it was not stopping. The fanout is handled explicitly now — see
+// watcher_fleet.go — and the ADR-0017 Phase B migration this described is not
+// finished.
 
 func newStartCmd() *cobra.Command {
 	var maxRSSBudget int64
@@ -131,7 +141,16 @@ func runDaemonRestart(out io.Writer) error {
 	// owns the correct unload→load→wait-ready dance internally, so none of
 	// the pidfile bookkeeping below is needed (or safe) on this path.
 	if serviceInstalledForThisRoot() {
-		return serviceRestartForThisRoot(out)
+		err := serviceRestartForThisRoot(out)
+		// Restore the watcher fleet on this branch too. It is an EARLY RETURN
+		// that never reaches the stop/start sequence below, and on any machine
+		// that ran `grafel install` — i.e. the machine in the bug report — it is
+		// the branch that gets taken. Without this, `grafel stop` followed by
+		// `grafel restart` left every watcher persistently disabled with the
+		// daemon back up, and nothing on screen hinting that `grafel start` was
+		// the way out.
+		startFleetWatchers(out)
+		return err
 	}
 
 	layout, err := daemon.DefaultLayout()
@@ -143,9 +162,14 @@ func runDaemonRestart(out io.Writer) error {
 	// exact process exits (rather than racing a freshly-spawned one).
 	oldPID := daemon.ReadPIDFile(layout.PIDPath)
 
+	// errWatchersNotStopped is tolerated for the same reason as
+	// errStopNotConfirmed: runDaemonStart below re-activates the fleet anyway,
+	// so a watcher that resisted deactivation is not a reason to abort a
+	// restart. `grafel stop` still surfaces it as a failure.
 	if err := runDaemonStop(out); err != nil &&
 		!errors.Is(err, client.ErrDaemonNotRunning) &&
-		!errors.Is(err, errStopNotConfirmed) {
+		!errors.Is(err, errStopNotConfirmed) &&
+		!errors.Is(err, errWatchersNotStopped) {
 		return err
 	}
 
@@ -570,8 +594,34 @@ func runDaemonStop(out io.Writer) error {
 	// daemon drains rather than being fed while it shuts down. It also means a
 	// failure in the daemon stop below cannot leave the fleet running silently.
 	// See watcher_fleet.go for the full contract.
-	stopFleetWatchers(out)
+	//
+	// The fleet's OUTPUT, however, is buffered and flushed after the daemon
+	// line. On 140 repos the warnings would otherwise scroll far above
+	// "daemon stopped", leaving an unqualified success message as the last
+	// thing the user sees while watchers are still running. Action order and
+	// report order are deliberately opposite here.
+	var fleetOut bytes.Buffer
+	fleetRes := stopFleetWatchers(&fleetOut)
 
+	daemonErr := stopDaemonOnly(out)
+	if fleetOut.Len() > 0 {
+		_, _ = out.Write(fleetOut.Bytes())
+	}
+	if daemonErr != nil {
+		return daemonErr
+	}
+	// A stop that left watchers running did not do what it says. Report a
+	// non-zero exit so scripts and `&&` chains cannot read it as success.
+	if len(fleetRes.Failures) > 0 {
+		return fmt.Errorf("%w: %d still running (see above)", errWatchersNotStopped, len(fleetRes.Failures))
+	}
+	return nil
+}
+
+// stopDaemonOnly is the daemon half of stop, with no watcher-fleet
+// involvement. Split out of runDaemonStop so the fleet's report can be
+// ordered after the daemon's while the fleet's ACTION stays before it.
+func stopDaemonOnly(out io.Writer) error {
 	// #6044: `start` is service-aware (it routes through the OS service
 	// manager when one is installed for this root, via
 	// serviceRestartForThisRoot); `stop` was not — it only asked the daemon

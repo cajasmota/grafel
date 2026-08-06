@@ -101,6 +101,11 @@ func iniEsc(s string) string {
 	return strings.ReplaceAll(s, "%", "%%")
 }
 
+// LabelPrefix is the common prefix of every watcher unit label. It is the only
+// thing that identifies a unit file on disk as ours, which is what lets
+// InstalledUnits find units the registry cannot account for.
+const LabelPrefix = "com.grafel.watcher."
+
 // Unit describes a single watcher unit to install.
 type Unit struct {
 	Group   string
@@ -113,6 +118,22 @@ type Unit struct {
 	// LegacyOf — the zero value is always the current derivation, so nothing
 	// can accidentally install a legacy-labelled unit.
 	legacy bool
+
+	// RawLabel, when non-empty, IS the unit's label — Group/Repo are not
+	// consulted to derive one. It exists for units discovered by scanning the
+	// unit directory (InstalledUnits), where the label is all we have: slugify
+	// is lossy, so a label cannot be turned back into a Group/Repo pair. Such a
+	// unit is enough to address the OS job (Load/Unload/Status all key off
+	// Label()) and enough to address the file (UnitPath appends the extension
+	// to Label()), which is all a stop needs. It must never be used to Write or
+	// Render a unit — those need a real Repo.
+	//
+	// RawLabel and legacy are orthogonal and never both meaningful: legacy
+	// DERIVES an old label from (group, repo), RawLabel SUPPLIES one that was
+	// read off disk. RawLabel wins in Label() because a unit that came from the
+	// unit directory already knows its own name — re-deriving it, by either
+	// rule, would rename it.
+	RawLabel string
 }
 
 // Label returns the platform-agnostic label for a unit.
@@ -133,11 +154,14 @@ type Unit struct {
 // existing unit — the orphaning problem below, repeated on every fleet edit
 // rather than once.
 func (u Unit) Label() string {
+	if u.RawLabel != "" {
+		return u.RawLabel
+	}
 	slug := slugify(u.Repo)
 	if u.legacy {
 		slug = legacySlugify(u.Repo)
 	}
-	return fmt.Sprintf("com.grafel.watcher.%s.%s", u.Group, slug)
+	return fmt.Sprintf("%s%s.%s", LabelPrefix, u.Group, slug)
 }
 
 // LegacyOf returns a copy of u whose Label() is the pre-#6183 label.
@@ -379,6 +403,63 @@ func UnitPath(u Unit) (string, error) {
 		return filepath.Join(dir, u.Label()+".xml"), nil
 	}
 	return "", fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+}
+
+// unitExt returns the unit-file extension for the current OS, or "" if this OS
+// has no watcher units.
+func unitExt() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return ".plist"
+	case "linux":
+		return ".service"
+	case "windows":
+		return ".xml"
+	}
+	return ""
+}
+
+// InstalledUnits enumerates every watcher unit file present in UnitDir(),
+// returning one Unit per file addressed by its RawLabel.
+//
+// This answers "what is actually installed?", which is a DIFFERENT question
+// from the registry's "what should be installed?" — and the difference is
+// exactly where a stop leaks. A unit is on disk but absent from the registry
+// whenever Cleanup failed partway (it is best-effort: `_ = loader.Unload(u); _
+// = Remove(u)`), whenever a group config is unreadable, whenever a group left
+// registry.json without cleanup, and after any change to how a label's slug is
+// derived. In every one of those cases a `grafel watch` process is running that
+// a registry-derived sweep would walk straight past.
+//
+// A missing unit directory is not an error — it means nothing is installed.
+func InstalledUnits() ([]Unit, error) {
+	dir, err := UnitDir()
+	if err != nil {
+		return nil, err
+	}
+	ext := unitExt()
+	if ext == "" {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var units []Unit
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasPrefix(name, LabelPrefix) || !strings.HasSuffix(name, ext) {
+			continue
+		}
+		units = append(units, Unit{RawLabel: strings.TrimSuffix(name, ext)})
+	}
+	return units, nil
 }
 
 // Render returns the unit body for the current OS.
