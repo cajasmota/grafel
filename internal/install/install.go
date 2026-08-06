@@ -297,7 +297,17 @@ func Apply(opts Options) (*Result, error) {
 				}
 				path, err := watchers.Write(u)
 				if err != nil {
-					return nil, fmt.Errorf("watcher for %s: %w", repo, err)
+					// #6185/#6186 R3: a per-repo watchers.Write failure (e.g.
+					// validateUnitFields rejecting a corrupted repo path) is
+					// NON-FATAL, matching watchersync.go's reconcile loop and
+					// the same reasoning WatcherWarnings already documents
+					// for activation failures — the group config is already
+					// persisted, so it is registered and will index
+					// regardless. One bad repo must not deny watchers to
+					// every other repo in this Apply call.
+					res.WatcherWarnings = append(res.WatcherWarnings,
+						fmt.Sprintf("watcher for %s not written: %v; the group is still registered and will index", repo, err))
+					continue
 				}
 				res.WatcherUnits = append(res.WatcherUnits, path)
 

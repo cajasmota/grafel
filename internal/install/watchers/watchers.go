@@ -427,6 +427,23 @@ func validateUnitFields(u Unit) error {
 				"(it could inject a directive into a line-oriented unit format)", name)
 		}
 	}
+	// #6185 R3 (found on review): '\' is not a control byte, but
+	// systemd.syntax(7) treats a line ending in '\' as continuing onto the
+	// next physical line — the two lines are concatenated as if the newline
+	// between them were absent. SystemdUnit's WorkingDirectory=%s is the
+	// only line in the template where a raw (non-%q-quoted) field is the
+	// last thing before the newline: ExecStart's fields go through Go's %q,
+	// which always closes with an actual '"' (a trailing backslash inside
+	// the value is escaped as "\\", never left bare at the line end), and
+	// every other line ends in a literal supplied by the format string
+	// itself. A Repo ending in '\' therefore silently deletes the directive
+	// on the following line (Restart=on-failure) and leaves
+	// WorkingDirectory pointing at the wrong text — '\' is a legal character
+	// in a Linux filename, so this is reachable in practice.
+	if strings.HasSuffix(u.Repo, `\`) {
+		return fmt.Errorf("watcher unit field Repo ends in a backslash, refusing to write " +
+			"(systemd would treat it as a line continuation and delete the next directive)")
+	}
 	return nil
 }
 
