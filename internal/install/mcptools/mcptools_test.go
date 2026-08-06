@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // setupHome points HOME at a temp dir so detection reads only files we create,
@@ -16,11 +17,17 @@ func setupHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// USERPROFILE too: os.UserHomeDir reads it on Windows, and mcpreg's
+	// SettingsPath falls back to os.UserHomeDir when HOME is unset.
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	// GRAFEL_HOME too: nothing in this package resolves it today, but leaving
 	// it pointed at the developer's real ~/.grafel is exactly how the two
 	// sandbox escapes this cycle happened.
 	t.Setenv("GRAFEL_HOME", filepath.Join(home, ".grafel"))
+	// Fail fast if any of that failed to take effect: these tests WRITE
+	// ~/.grafel/mcp-tools.json via SaveLastChoice.
+	testsupport.GuardRealHome(t)
 	now := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
 	nowFunc = func() time.Time { return now }
 	t.Cleanup(func() { nowFunc = time.Now })
@@ -246,25 +253,54 @@ func TestPreviouslyRegistered_EmptyOrNilIsInert(t *testing.T) {
 	}
 }
 
-// TestPreviouslyRegistered_DeliberateOptOutStillWins is THE safety property:
-// the (C) remembered choice overrides the new (B2) term exactly as it
-// overrides (B). A user who genuinely wants grafel's MCP off must not be
-// re-checked by the durable registration record.
-func TestPreviouslyRegistered_DeliberateOptOutStillWins(t *testing.T) {
+// TestPreviouslyRegistered_OptOutViaRealRoundTrip is THE safety property, and
+// it is asserted through the ONLY API that can record an opt-out in
+// production: SaveLastChoice writes the file, DetectWithPrevious reads it back.
+//
+// A hand-built map{"claude": false} would certify nothing — ReadLastChoice
+// builds its set only from `selected`, so every value it yields is true and an
+// opted-out tool is merely ABSENT. The recorded decision has to be honoured on
+// the strength of that absence alone.
+func TestPreviouslyRegistered_OptOutViaRealRoundTrip(t *testing.T) {
 	setupHome(t)
 	path := staleClaudeNoEntry(t)
-
-	// Deliberate opt-out for claude, and a RECENT cursor config so the same
-	// override is exercised against (B) too.
 	writeConfig(t, mcpreg.Cursor, false, nowFunc())
-	last := map[string]bool{"claude": false, "cursor": false}
 
-	tools := detectWith(last, map[string]bool{path: true})
-	if c := find(t, tools, "claude"); c.DefaultSelected {
-		t.Errorf("claude opted out (C) must stay UNCHECKED despite the previously-registered record; got %+v", c)
+	// The user unchecked claude and kept cursor. This is exactly what the
+	// dashboard wizard persists via registerWizardMCP → SaveLastChoice.
+	if err := SaveLastChoice([]string{"cursor"}); err != nil {
+		t.Fatalf("SaveLastChoice: %v", err)
 	}
-	if c := find(t, tools, "cursor"); c.DefaultSelected {
-		t.Errorf("cursor opted out (C) must stay UNCHECKED despite a recent config (B); got %+v", c)
+
+	tools := DetectWithPrevious(map[string]bool{path: true})
+	if c := find(t, tools, "claude"); c.DefaultSelected {
+		t.Errorf("claude was deliberately unchecked and the choice was SAVED; the install.json record must not re-check it. got %+v", c)
+	}
+	if c := find(t, tools, "cursor"); !c.DefaultSelected {
+		t.Errorf("cursor was chosen and saved; it must stay checked. got %+v", c)
+	}
+}
+
+// TestPreviouslyRegistered_SuppressedByAnyRecordedChoice pins the bound on B2:
+// it repairs an accident only while NO choice has been recorded. Once a
+// last-choice file exists — even one that says "none" — the recorded decision
+// owns the default and the durable registration record is inert.
+func TestPreviouslyRegistered_SuppressedByAnyRecordedChoice(t *testing.T) {
+	setupHome(t)
+	path := staleClaudeNoEntry(t)
+	prev := map[string]bool{path: true}
+
+	// No file yet → B2 repairs.
+	if c := find(t, DetectWithPrevious(prev), "claude"); !c.DefaultSelected {
+		t.Fatalf("precondition: with no recorded choice B2 must check claude; got %+v", c)
+	}
+
+	// The user chose "none" — an explicit decision, not an accident.
+	if err := SaveLastChoice([]string{}); err != nil {
+		t.Fatalf("SaveLastChoice(none): %v", err)
+	}
+	if c := find(t, DetectWithPrevious(prev), "claude"); c.DefaultSelected {
+		t.Errorf("a recorded choice of NONE must suppress B2; got %+v", c)
 	}
 }
 

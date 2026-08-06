@@ -13,6 +13,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
+	"github.com/cajasmota/grafel/internal/install/mcptools"
 	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
@@ -457,6 +458,45 @@ func TestV2DetectMCPTools_PreviouslyRegisteredIsChecked(t *testing.T) {
 	}
 	if !sel {
 		t.Error("claude must be default-selected: install.json records grafel was registered at ~/.claude.json")
+	}
+}
+
+// TestV2DetectMCPTools_SavedOptOutSurvivesTheRecord is the wire-level safety
+// property (#6170): the user unchecked Claude Code in a previous wizard run,
+// which registerWizardMCP persisted via mcptools.SaveLastChoice. install.json
+// still records the old registration — and must NOT be allowed to re-check the
+// box the user cleared.
+func TestV2DetectMCPTools_SavedOptOutSurvivesTheRecord(t *testing.T) {
+	home := testsupport.IsolateHome(t)
+	claudeJSON := staleClaudeConfigNoGrafel(t, home)
+	// A cursor config so the saved choice has something to keep.
+	cursorPath := filepath.Join(home, ".cursor", "mcp.json")
+	if err := os.MkdirAll(filepath.Dir(cursorPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cursorPath, []byte(`{"mcpServers":{}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	st := install.NewState(install.ModeCopy)
+	st.MCP = install.MCPRecord{Name: mcpreg.ServerName, RegisteredPaths: []string{claudeJSON}}
+	if err := install.WriteState(filepath.Join(home, ".grafel", "install.json"), st); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+	// The recorded decision, written the way production writes it.
+	if err := mcptools.SaveLastChoice([]string{"cursor"}); err != nil {
+		t.Fatalf("SaveLastChoice: %v", err)
+	}
+
+	ts, _ := newWizardTestServer(t, func(proto.RebuildArgs) (proto.RebuildReply, error) {
+		return proto.RebuildReply{}, nil
+	})
+	sel, found := detectClaudeDefaultSelected(t, ts)
+	if !found {
+		t.Fatal("claude not detected")
+	}
+	if sel {
+		t.Error("claude was deliberately unchecked and saved; the install.json record must not re-check it")
 	}
 }
 

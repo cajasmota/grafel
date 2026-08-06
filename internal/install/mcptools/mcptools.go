@@ -13,20 +13,32 @@
 //
 //   - (B) smart default: a tool is checked when its config was modified
 //     recently (within RecentWindow) OR it already contains a grafel entry
-//     (previously configured) OR a previous install RECORDED registering
-//     grafel at that config path (B2, #6170 — see DetectWithPrevious).
-//     Clearly-stale tools are unchecked but stay visible so the user can
-//     re-check them.
+//     (previously configured). Clearly-stale tools are unchecked but stay
+//     visible so the user can re-check them.
 //
-//     B2 exists because both other terms are erased by the very accident it
-//     guards: something deletes the grafel entry (the #6168 rollback being the
-//     demonstrated way), so hasGrafel goes false, and if the file is also
-//     older than RecentWindow the tool arrives UNCHECKED — from which a
-//     press-enter run persists the accident as the user's preference.
+//   - (B2) previously registered (#6170): also checked when a previous install
+//     RECORDED registering grafel at that config path — but ONLY while no
+//     choice has been recorded at all. See DetectWithPrevious / detectWith.
+//
+//     B2 exists because both (B) terms are erased by the same accident:
+//     something deletes the grafel entry (the #6168 rollback being the
+//     demonstrated way) so hasGrafel goes false, and if the file is then left
+//     untouched past RecentWindow the tool arrives UNCHECKED — so that run
+//     silently fails to (re-)register grafel's MCP for a tool the user has.
+//
+//     Its coverage is PARTIAL, inherently: only RunCopy/RunDev record into
+//     state.MCP.RegisteredPaths, and only the Claude and Windsurf config
+//     paths. install.Apply registers MCP for every enabled adapter but
+//     persists nothing, so for Cursor, Codex, Kiro and Antigravity B2 is a
+//     permanent no-op and the (B) default stands alone.
 //
 //   - (C) remember last choice: the user's selection is persisted to
-//     ~/.grafel/mcp-tools.json and, on subsequent runs, becomes the default
-//     (C overrides B once a choice has been made).
+//     ~/.grafel/mcp-tools.json and, on subsequent runs, becomes the default.
+//
+//     NOTE the asymmetry, which detectWith depends on: the file stores only
+//     the SELECTED ids, so (C) can force a tool ON but never OFF — a tool the
+//     user unchecked is simply ABSENT from it, and (B) re-decides. "C
+//     overrides B" holds in one direction only.
 package mcptools
 
 import (
@@ -110,29 +122,43 @@ func Detect() []Tool {
 
 // DetectWithPrevious is Detect plus the durable (B2) "grafel was registered
 // here before" signal: prev is a set of MCP host config PATHS a previous
-// grafel install recorded (install.json's state.MCP.RegisteredPaths).
+// grafel install recorded (install.json's state.MCP.RegisteredPaths). It is
+// consulted ONLY when no last choice has been recorded — see detectWith.
 //
-// The set is INJECTED rather than read here on purpose. install.json is
-// internal/install's file and reading it needs internal/install (and, for the
-// deliberate-opt-out subtraction, internal/registry); mcptools deliberately
-// depends only on mcpreg + tooladapter so it stays cheap and trivially
-// testable. Callers use install.PreviouslyRegisteredMCPPaths().
+// The set is INJECTED rather than read here for layering, not for a cycle:
+// internal/install does not import mcptools, so reading install.json here
+// would compile. It is still the wrong shape — mcptools' tests need nothing
+// but a temp $HOME, and reading the state would drag internal/install and
+// internal/registry into that. Callers use install.PreviouslyRegisteredMCPPaths().
 func DetectWithPrevious(prev map[string]bool) []Tool {
 	last, _ := ReadLastChoice() // best-effort; nil when no prior choice
 	return detectWith(last, prev)
 }
 
-// detectWith is the testable core of Detect: lastChoice (possibly nil) is the
-// remembered selection set; prevRegistered (possibly nil) is the set of config
-// paths a previous install recorded a grafel registration at.
+// detectWith is the testable core of Detect: lastChoice is the remembered
+// selection set, nil ONLY when no choice has ever been recorded; prevRegistered
+// (possibly nil) is the set of config paths a previous install recorded a
+// grafel registration at.
 //
-// Precedence is deliberate: B2 composes UNDER (C), never over it. A user who
-// deliberately opted a tool out is named in lastChoice and stays unchecked no
-// matter what install.json remembers — only the ACCIDENTAL unchecking is
-// repaired.
+// B2 is bounded to the case where lastChoice is nil, and that bound is the
+// safety property. It cannot be carried by precedence within the expression,
+// because (C) cannot express "off": ReadLastChoice builds its set only from
+// the file's `selected` list, so every value it can yield is true and an
+// opted-out tool is merely ABSENT from the map — the `def = sel` branch below
+// can only ever set def=true. Composing B2 under a (C) that can only say "on"
+// would let the install.json record re-check a box the user cleared, which is
+// a REGRESSION on today's behaviour, not a repair.
+//
+// So: a recorded choice — any recorded choice, including "none" — owns the
+// default, and B2 applies only while none exists. It repairs a fresh accident
+// and never overrules a decision.
 func detectWith(lastChoice, prevRegistered map[string]bool) []Tool {
 	now := nowFunc()
-	prev := cleanPathSet(prevRegistered)
+	// A recorded choice suppresses B2 entirely (see above).
+	var prev map[string]bool
+	if lastChoice == nil {
+		prev = cleanPathSet(prevRegistered)
+	}
 	var out []Tool
 	for _, a := range mcpAdapters() {
 		path, err := mcpreg.SettingsPath(a.tool)
@@ -148,7 +174,8 @@ func detectWith(lastChoice, prevRegistered map[string]bool) []Tool {
 		recent := fileExists && now.Sub(mtime) <= RecentWindow
 		// (B2) grafel registered itself at this exact config path on a previous
 		// install, per install.json. Unlike hasGrafel this SURVIVES the entry
-		// being deleted, which is the whole point (#6170).
+		// being deleted, which is the whole point (#6170). prev is nil whenever
+		// a choice has been recorded, so this is false there.
 		previouslyRegistered := prev[filepath.Clean(path)]
 
 		// (B) smart default.

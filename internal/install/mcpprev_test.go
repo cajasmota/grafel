@@ -7,6 +7,7 @@ package install
 // reach the developer's real ~/.claude.json, ~/.grafel or launchd.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -156,12 +157,49 @@ func TestPreviouslyRegisteredMCPPaths_EmptyToolsIsNotAnOptOut(t *testing.T) {
 	}
 }
 
+// TestPreviouslyRegisteredMCPPaths_UnreadableGroupFailsClosed verifies the
+// safety-critical direction of an error: if a group config cannot be loaded we
+// cannot know whether a tool was deliberately disabled, so NO paths are
+// offered. Fail-open here would silently re-check a tool the user turned off
+// on nothing more than a transient permission error.
+func TestPreviouslyRegisteredMCPPaths_UnreadableGroupFailsClosed(t *testing.T) {
+	home := isolatePrevHome(t)
+	claudeJSON := filepath.Join(home, ".claude.json")
+	statePathFn := writePrevState(t, home, []string{claudeJSON})
+
+	groupsFn := func() ([]registry.GroupRef, error) {
+		return []registry.GroupRef{{Name: "g", ConfigPath: "/fake/g.json"}}, nil
+	}
+	loadFn := func(string) (*registry.GroupConfig, error) {
+		return nil, errors.New("permission denied")
+	}
+
+	if got := previouslyRegisteredMCPPaths(statePathFn, groupsFn, loadFn); got != nil {
+		t.Errorf("an unreadable group config must yield NO paths (fail closed); got %v", got)
+	}
+}
+
+// TestPreviouslyRegisteredMCPPaths_RegistryErrorFailsClosed is the same
+// property one level up: an unreadable registry is not evidence that nothing
+// is disabled.
+func TestPreviouslyRegisteredMCPPaths_RegistryErrorFailsClosed(t *testing.T) {
+	home := isolatePrevHome(t)
+	statePathFn := writePrevState(t, home, []string{filepath.Join(home, ".claude.json")})
+
+	groupsFn := func() ([]registry.GroupRef, error) { return nil, errors.New("registry unreadable") }
+	loadFn := func(string) (*registry.GroupConfig, error) { return nil, nil }
+
+	if got := previouslyRegisteredMCPPaths(statePathFn, groupsFn, loadFn); got != nil {
+		t.Errorf("an unreadable registry must yield NO paths (fail closed); got %v", got)
+	}
+}
+
 // TestDeliberatelyDisabledMCPTools_NoGroupsIsNoSignal verifies absence of
 // evidence is not an opt-out: with no groups registered nothing is reported
 // disabled, so a fresh machine's recorded paths are never subtracted away.
 func TestDeliberatelyDisabledMCPTools_NoGroupsIsNoSignal(t *testing.T) {
 	groupsFn, loadFn := noGroups()
-	if got := deliberatelyDisabledMCPTools(groupsFn, loadFn); len(got) != 0 {
-		t.Errorf("no groups must yield no disabled tools; got %v", got)
+	if got, ok := deliberatelyDisabledMCPTools(groupsFn, loadFn); !ok || len(got) != 0 {
+		t.Errorf("no groups must yield no disabled tools and a READABLE verdict; got %v ok=%v", got, ok)
 	}
 }

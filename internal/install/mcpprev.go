@@ -66,7 +66,16 @@ func previouslyRegisteredMCPPaths(
 		return nil
 	}
 
-	for _, tool := range deliberatelyDisabledMCPTools(groupsFn, loadFn) {
+	disabled, ok := deliberatelyDisabledMCPTools(groupsFn, loadFn)
+	if !ok {
+		// We could not read the tool selection, so we cannot know whether a
+		// tool was deliberately disabled. Offer nothing rather than risk
+		// re-checking a box the user cleared: the cost of failing closed is
+		// the pre-#6170 default, the cost of failing open is a silent
+		// override of the user's decision on a transient read error.
+		return nil
+	}
+	for _, tool := range disabled {
 		for _, p := range mcpConfigPathsFor(tool) {
 			delete(out, filepath.Clean(p))
 		}
@@ -79,24 +88,52 @@ func previouslyRegisteredMCPPaths(
 
 // deliberatelyDisabledMCPTools returns the MCP-capable tools that NO registered
 // group enables — i.e. the user made an explicit tool selection and left these
-// out.
+// out — and whether the selection could be read at all.
 //
-// With no groups registered (or an unreadable registry) there is no explicit
-// selection to read, so nothing is reported disabled: absence of evidence is
-// not an opt-out. A group with an empty Tools list means "all tools"
-// (tooladapter.EnabledAdapters), so it too disables nothing.
+// ok=false means "unknown": the registry or a group config would not load, so
+// the caller MUST fail closed. It is deliberately distinguished from the two
+// legitimately-empty answers — no groups registered (nothing to disable
+// anything) and a group with an empty Tools list, which means "all tools"
+// (tooladapter.EnabledAdapters). Absence of evidence is not an opt-out; an
+// unreadable config is not evidence of absence.
+//
+// This walks the registry directly rather than through
+// resolveEnabledToolBindings because that helper collapses a load failure into
+// a shorter list — fine for doctor's advisory sweep, wrong here, where the
+// difference between "nothing disabled" and "cannot tell" is the whole point.
 func deliberatelyDisabledMCPTools(
 	groupsFn func() ([]registry.GroupRef, error),
 	loadFn func(path string) (*registry.GroupConfig, error),
-) []mcpreg.Tool {
-	bindings := resolveEnabledToolBindings(groupsFn, loadFn)
-	if len(bindings) == 0 {
-		return nil
+) ([]mcpreg.Tool, bool) {
+	if groupsFn == nil {
+		groupsFn = registry.Groups
 	}
+	if loadFn == nil {
+		loadFn = registry.LoadGroupConfig
+	}
+	groups, err := groupsFn()
+	if err != nil {
+		return nil, false
+	}
+	if len(groups) == 0 {
+		return nil, true // no explicit selection exists anywhere
+	}
+
 	enabled := make(map[mcpreg.Tool]bool)
-	for _, t := range mcpToolsFromBindings(bindings) {
-		enabled[t] = true
+	for _, g := range groups {
+		cfg, err := loadFn(g.ConfigPath)
+		if err != nil || cfg == nil {
+			return nil, false
+		}
+		for _, a := range tooladapter.EnabledAdapters(cfg) {
+			if a.SupportsMCP() {
+				if t := a.MCPTool(); t != "" {
+					enabled[t] = true
+				}
+			}
+		}
 	}
+
 	var out []mcpreg.Tool
 	for _, a := range tooladapter.All() {
 		if !a.SupportsMCP() {
@@ -108,7 +145,7 @@ func deliberatelyDisabledMCPTools(
 		}
 		out = append(out, t)
 	}
-	return out
+	return out, true
 }
 
 // mcpConfigPathsFor returns every host config path grafel's installer may have
@@ -124,7 +161,11 @@ func mcpConfigPathsFor(tool mcpreg.Tool) []string {
 	switch tool {
 	case mcpreg.ClaudeCode:
 		out = append(out, mcpreg.DetectClaudeConfigDirs(nil)...)
-	case mcpreg.Windsurf, mcpreg.WindsurfJetBrains:
+	case mcpreg.Windsurf:
+		// DetectWindsurfPaths covers BOTH the desktop and the JetBrains config
+		// files, which is what step 3 registers. There is deliberately no
+		// WindsurfJetBrains arm: no adapter returns that tool from MCPTool(),
+		// so it can never reach this function.
 		out = append(out, mcpreg.DetectWindsurfPaths()...)
 	}
 	return out
