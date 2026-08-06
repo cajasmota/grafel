@@ -98,6 +98,7 @@ func TestRunCopy_Step4Failure_KeepsMCPRegistration(t *testing.T) {
 	writeConfigWithForeignServer(t, env.claudeJSON)
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -127,6 +128,7 @@ func TestRunCopy_Step4VerifyFailure_KeepsMCPRegistration(t *testing.T) {
 	writeConfigWithForeignServer(t, env.claudeJSON)
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -181,6 +183,7 @@ func TestRunCopy_Step4Failure_KeepsAPreexistingGrafelEntry(t *testing.T) {
 	}
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -263,6 +266,7 @@ func TestRunCopy_Step3PartialFailure_RestoresAlreadyWrittenTargets(t *testing.T)
 	}
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{good, bad},
@@ -300,6 +304,7 @@ func TestRunCopy_SidecarBackupSurvivesUntilCommit(t *testing.T) {
 	sidecar := env.claudeJSON + ".grafel.bak"
 
 	failing := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},

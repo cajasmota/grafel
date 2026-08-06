@@ -64,6 +64,7 @@ func TestStaleSidecar_AbsentSentinelDoesNotDeleteTheUsersConfig(t *testing.T) {
 	}
 
 	run1 := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -143,6 +144,7 @@ func TestStaleSidecar_DoesNotResurrectAnOldSnapshotOverLiveContent(t *testing.T)
 	}
 
 	run1 := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -259,6 +261,7 @@ func TestStaleSidecar_UninstallSweepsOrphanedSidecars(t *testing.T) {
 	sidecar := env.claudeJSON + ".grafel.bak"
 
 	failed := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -293,6 +296,7 @@ func TestStaleSidecar_NoSidecarSurvivesAStep4Failure(t *testing.T) {
 	sidecar := env.claudeJSON + ".grafel.bak"
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -344,6 +348,7 @@ func TestRollback_SurfacesAFailedRestore(t *testing.T) {
 	bad := malformedTarget(t, filepath.Dir(good))
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{good, bad},
