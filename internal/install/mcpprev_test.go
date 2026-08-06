@@ -179,6 +179,38 @@ func TestPreviouslyRegisteredMCPPaths_UnreadableGroupFailsClosed(t *testing.T) {
 	}
 }
 
+// TestPreviouslyRegisteredMCPPaths_PartialGroupReadFailsClosed is the test that
+// actually discriminates. In the single-group case above, skipping the
+// unreadable config and failing closed both end at nil (an empty enabled set
+// marks every tool disabled, subtracting everything anyway) — so that test
+// alone does NOT pin the contract.
+//
+// Here one group loads and enables claude while a second will not load.
+// Skipping the failure would leave claude's path in play on a partial read;
+// failing closed offers nothing until the picture is complete.
+func TestPreviouslyRegisteredMCPPaths_PartialGroupReadFailsClosed(t *testing.T) {
+	home := isolatePrevHome(t)
+	claudeJSON := filepath.Join(home, ".claude.json")
+	statePathFn := writePrevState(t, home, []string{claudeJSON})
+
+	groupsFn := func() ([]registry.GroupRef, error) {
+		return []registry.GroupRef{
+			{Name: "ok", ConfigPath: "/fake/ok.json"},
+			{Name: "broken", ConfigPath: "/fake/broken.json"},
+		}, nil
+	}
+	loadFn := func(path string) (*registry.GroupConfig, error) {
+		if path == "/fake/ok.json" {
+			return &registry.GroupConfig{Name: "ok", Tools: []string{"claude"}}, nil
+		}
+		return nil, errors.New("permission denied")
+	}
+
+	if got := previouslyRegisteredMCPPaths(statePathFn, groupsFn, loadFn); got != nil {
+		t.Errorf("one unreadable group among several must yield NO paths (fail closed), not a verdict from the readable subset; got %v", got)
+	}
+}
+
 // TestPreviouslyRegisteredMCPPaths_RegistryErrorFailsClosed is the same
 // property one level up: an unreadable registry is not evidence that nothing
 // is disabled.
