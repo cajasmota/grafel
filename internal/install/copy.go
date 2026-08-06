@@ -431,9 +431,53 @@ func versionsEquivalent(a, b string) bool {
 	return releaseIdentity(a) == releaseIdentity(b)
 }
 
-// CopyOptions is the input to RunCopy. All fields have sensible defaults;
-// callers only need to set overrides.
+// CopyIntent says WHY RunCopy is running. It is the difference between "the
+// user deliberately ran `grafel install` in this directory" and "the user
+// asked for a newer binary" — a difference that decides whether the
+// transaction may touch the git repository around opts.WorkingDir (#6162).
+type CopyIntent string
+
+const (
+	// IntentInstall is a first-class install the user invoked in a specific
+	// directory (`grafel install`). Its cwd-scoped steps — the .gitignore
+	// entry (step 5) and the four git hooks (step 7) — are the point of
+	// running it there, so they RUN.
+	IntentInstall CopyIntent = "install"
+
+	// IntentUpgrade is a binary replacement (`grafel update`). It runs from
+	// wherever the user's shell happens to be, which names no repository and
+	// grants no consent to modify one, so the cwd-scoped steps are SKIPPED and
+	// install.json is merged rather than replaced (#6162).
+	IntentUpgrade CopyIntent = "upgrade"
+)
+
+// repoScoped reports whether this intent may mutate the git repository around
+// opts.WorkingDir. Only a deliberate install may.
+//
+// COUPLING: the `!= IntentUpgrade` form is fail-OPEN by construction — any
+// value that is not exactly IntentUpgrade, including a hypothetical third
+// intent, is treated as permitted to write the user's .gitignore and hooks.
+// That is only safe because applyDefaults rejects both an empty and an
+// unrecognised Intent before any step runs. Loosen that validation and this
+// predicate silently starts granting repo access to whatever comes next.
+func (i CopyIntent) repoScoped() bool { return i != IntentUpgrade }
+
+// CopyOptions is the input to RunCopy. Most fields have sensible defaults and
+// callers only need to set overrides — the exception is Intent, which is
+// REQUIRED.
 type CopyOptions struct {
+	// Intent selects the install-vs-upgrade step set (#6162). It is REQUIRED
+	// and has NO DEFAULT: applyDefaults returns an error when it is empty or
+	// unrecognised, so omitting it fails the call rather than picking a
+	// meaning for you. A caller that has not declared whether it may modify
+	// the user's git repository has not thought about it, and the wrong guess
+	// here is silent — it appends to a stranger's tracked .gitignore and
+	// writes four hooks `git status` does not show.
+	//
+	// `grafel install` passes IntentInstall; `grafel update` passes
+	// IntentUpgrade.
+	Intent CopyIntent
+
 	// BinPath is the running grafel binary.  Defaults to os.Executable().
 	BinPath string
 
@@ -549,7 +593,7 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 	}
 
 	result := &CopyResult{}
-	state := NewState(ModeCopy)
+	state := newTransactionState(opts)
 
 	// We track which steps succeeded so rollback is precise.
 	var completedSteps []int
@@ -788,8 +832,21 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// Step 5: .gitignore integration
+	//
+	// INSTALL ONLY (#6162). This step is scoped to opts.WorkingDir, which on a
+	// `grafel update` is nothing but the directory the user's shell was sitting
+	// in — appending to that repository's TRACKED .gitignore is a modification
+	// to a project the user never named, and one they then have to explain in
+	// a diff. `grafel install` keeps it: running install inside a repo IS the
+	// user pointing at that repo. The previously-recorded state.Gitignore
+	// survives an upgrade untouched (see newTransactionState).
 	// ─────────────────────────────────────────────────────────────────────────
-	if repoRoot, ok := DetectGitRepo(opts.WorkingDir); ok {
+	if !opts.Intent.repoScoped() {
+		// No git subprocess, no detection, no write: an upgrade has no repo in
+		// scope at all.
+		fmt.Fprintf(os.Stderr,
+			"grafel update: step 5 – skipped; an upgrade does not modify .gitignore in the current directory\n")
+	} else if repoRoot, ok := DetectGitRepo(opts.WorkingDir); ok {
 		if !opts.DryRun {
 			if _, err := EnsureGitignore(repoRoot); err != nil {
 				// .gitignore failure is non-fatal; warn but continue.
@@ -837,8 +894,18 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 	//         pre-push). Non-fatal: a hook install failure warns but does not
 	//         roll back the rest of the install.  Can be opted-out with
 	//         --no-hooks.
+	//
+	//         INSTALL ONLY (#6162). Same reasoning as step 5, and worse in one
+	//         respect: `git status` does not show .git/hooks, so hooks written
+	//         into a bystander repo are invisible until one of them fires. The
+	//         hook scripts are version-agnostic shims that shell out to
+	//         `grafel`, so replacing the binary in place does not make an
+	//         already-installed hook stale — an upgrade has nothing to refresh
+	//         here. Repos the user actually registered keep getting their hooks
+	//         from the registry-driven path in internal/cli/update.go, which
+	//         iterates cfg.Repos and honours cfg.Features.GitHooks.
 	// ─────────────────────────────────────────────────────────────────────────
-	if !opts.NoHooks {
+	if !opts.NoHooks && opts.Intent.repoScoped() {
 		hookOpts := HookInstallOptions{
 			RepoPath: opts.WorkingDir,
 			DryRun:   opts.DryRun,
@@ -853,6 +920,62 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+// newTransactionState returns the State this RunCopy run will fill in.
+//
+// An INSTALL starts from a blank State: every field it does not set is
+// genuinely unknown, and a fresh install is entitled to forget what a previous
+// one recorded.
+//
+// An UPGRADE does not (#6162). `grafel update` replaces a binary; it does not
+// re-decide anything the user settled at install time, and it deliberately
+// SKIPS steps 5 and 7. Starting from NewState(ModeCopy) would therefore write
+// an install.json whose gitignore record is empty — not because the entry was
+// removed from the user's .gitignore, but because this run never looked. That
+// is a lie the file then tells `grafel doctor`, which iterates
+// state.Gitignore.Repos (doctor.go:263) and would silently stop checking the
+// repo it had been checking the day before.
+//
+// So an upgrade MERGES: it starts from the recorded state and resets only the
+// fields this transaction genuinely recomputes. Everything else — including
+// fields added by future schema versions — is carried through untouched. A
+// missing or unreadable install.json degrades to a blank state, since an
+// upgrade must never fail on bookkeeping.
+func newTransactionState(opts CopyOptions) *State {
+	fresh := NewState(ModeCopy)
+	if opts.Intent != IntentUpgrade {
+		return fresh
+	}
+	prev, err := ReadState(opts.StatePath)
+	if err != nil || prev == nil {
+		return fresh
+	}
+
+	merged := *prev
+	// ASSUMPTION (#6162 review F5): relabelling prev's schema as current is
+	// only honest while State evolves ADDITIVELY — an older file's fields all
+	// still mean what this build thinks they mean. The first time a field
+	// CHANGES SHAPE, this line starts stamping "current" on old-shaped data
+	// and must become a real migration keyed on prev.SchemaVersion.
+	merged.SchemaVersion = StateSchemaVersion
+	// An upgrade IS an install event, so the timestamp is honestly refreshed.
+	merged.InstalledAt = fresh.InstalledAt
+	// RunCopy copies skills; whatever the previous mode was, this run's
+	// skills are copies.
+	merged.InstallMode = ModeCopy
+	// Step 2 rebuilds the manifest wholesale and only sets SkillsSkipped in
+	// its skip branches, so both must start clean or a stale skip flag / a
+	// removed skill would survive forever.
+	merged.Skills = make(map[string]SkillRecord)
+	merged.SkillsSkipped = false
+	// This transaction has not failed yet; a previous run's rollback markers
+	// must not be inherited as if they described this one.
+	merged.PartialInstall = false
+	merged.RollbackFromStep = 0
+	// CLI, MCP and DaemonVersion are unconditionally overwritten by steps 1,
+	// 3 and 4. Gitignore is NOT — that is the field this merge exists for.
+	return &merged
+}
 
 func (o *CopyOptions) applyDefaults() error {
 	if o.BinPath == "" {
@@ -869,7 +992,37 @@ func (o *CopyOptions) applyDefaults() error {
 		}
 		o.StatePath = p
 	}
-	if o.WorkingDir == "" {
+	// Intent has NO default (#6162). A caller that has not said whether it may
+	// modify the user's git repository has not thought about it, and the two
+	// possible defaults are not symmetric: defaulting to install means a
+	// forgetful caller silently appends to a stranger's tracked .gitignore and
+	// writes four hooks `git status` does not show — nothing fails, and the
+	// user finds out in a diff or never. Defaulting to upgrade means a
+	// forgetful caller merely produces no /.grafel/ line, which is loud,
+	// immediate, and already covered by a test. Rather than pick the
+	// less-bad silent failure, require the declaration.
+	if o.Intent == "" {
+		return fmt.Errorf("CopyOptions.Intent is required: pass IntentInstall " +
+			"(may modify the repo in WorkingDir) or IntentUpgrade (must not)")
+	}
+	if o.Intent != IntentInstall && o.Intent != IntentUpgrade {
+		return fmt.Errorf("CopyOptions.Intent %q is not a known intent", o.Intent)
+	}
+	// An upgrade has NO repository in scope, so a WorkingDir is not merely
+	// unused — it is a caller misunderstanding, and one worth failing on. The
+	// alternative (accept and ignore it) reads as a second layer of defence
+	// and is not one: DetectGitRepo("") shells out to `git -C "" rev-parse`,
+	// whose empty -C is a no-op, and InstallGitHooks falls back to os.Getwd()
+	// on an empty RepoPath (hooks_install.go:132). Dropping WorkingDir on the
+	// floor would therefore still hit a repo — the process cwd, i.e. the very
+	// repo #6162 is about. The gates on steps 5 and 7 are the whole defence;
+	// this check exists so nobody believes otherwise.
+	if o.Intent == IntentUpgrade && o.WorkingDir != "" {
+		return fmt.Errorf("CopyOptions.WorkingDir %q set under IntentUpgrade: "+
+			"an upgrade has no repository in scope (#6162)", o.WorkingDir)
+	}
+	// WorkingDir feeds ONLY the repo-scoped steps (5 and 7).
+	if o.WorkingDir == "" && o.Intent.repoScoped() {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("resolve working dir: %w", err)

@@ -73,6 +73,7 @@ func TestRunCopy_EmbeddedSkillsLandAndUninstallRemoves(t *testing.T) {
 	}
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           fakeBin,
 		SkillsSourceDir:   "", // force discovery → embedded fallback
 		ClaudeConfigDirs:  []string{claudeJSON},

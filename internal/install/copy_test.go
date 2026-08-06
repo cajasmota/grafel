@@ -32,6 +32,7 @@ func TestRunCopy_HappyPath(t *testing.T) {
 	env := newTestEnv(t)
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -111,6 +112,7 @@ func TestRunCopy_Idempotent(t *testing.T) {
 	env := newTestEnv(t)
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -165,6 +167,7 @@ func TestRunCopy_RollbackOnStep4Failure(t *testing.T) {
 	env := newTestEnv(t)
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -219,6 +222,7 @@ func TestRunCopy_PartialInstallAutoRecovers(t *testing.T) {
 	}
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -258,6 +262,7 @@ func TestRunCopy_UnreadableStateStillBlocks(t *testing.T) {
 	}
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -471,6 +476,7 @@ func TestRunCopy_NoOnDiskSkills_EmbeddedFallbackInstalls(t *testing.T) {
 	restartCalled := false
 
 	opts := install.CopyOptions{
+		Intent:           install.IntentInstall,
 		BinPath:          isoBin,
 		SkillsSourceDir:  "/nonexistent/skills",
 		ClaudeConfigDirs: []string{env.claudeJSON},
@@ -563,6 +569,7 @@ func TestRunCopy_DaemonVersionMatch_NoEscalation(t *testing.T) {
 
 	escalateCalled := false
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -608,6 +615,7 @@ func TestRunCopy_DaemonVersionMismatch_EscalatesThenSucceeds(t *testing.T) {
 	probeCalls := 0
 	escalateCalled := false
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -662,6 +670,7 @@ func TestRunCopy_DaemonStillStaleAfterEscalation_ReturnsError(t *testing.T) {
 
 	escalateCalled := false
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -725,6 +734,7 @@ func TestRunCopy_DaemonVersionProbeHTML_TreatedAsUnknown_TriggersEscalation(t *t
 	probeCalls := 0
 	escalateCalled := false
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},

@@ -276,6 +276,7 @@ func TestIntegration_RunCopy_GitignoreIdempotent(t *testing.T) {
 	env := newTestEnv(t)
 
 	opts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},

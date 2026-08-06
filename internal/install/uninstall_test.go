@@ -20,6 +20,7 @@ func TestRunUninstall_HappyPath(t *testing.T) {
 
 	// First run a full install so there is a valid install.json.
 	_, err := install.RunCopy(install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -91,6 +92,7 @@ func TestRunUninstall_Idempotent(t *testing.T) {
 
 	// First install.
 	if _, err := install.RunCopy(install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -126,6 +128,7 @@ func TestRunUninstall_Purge(t *testing.T) {
 
 	// First install.
 	if _, err := install.RunCopy(install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -200,6 +203,7 @@ func TestRunUninstall_PurgePreservesForeignRoot(t *testing.T) {
 	env := newTestEnv(t)
 
 	if _, err := install.RunCopy(install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -254,6 +258,7 @@ func TestRunUninstall_NoBinary(t *testing.T) {
 
 	// Install, then remove the binary manually.
 	if _, err := install.RunCopy(install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -285,6 +290,7 @@ func TestRunUninstall_ConfirmNo(t *testing.T) {
 	env := newTestEnv(t)
 
 	if _, err := install.RunCopy(install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -326,6 +332,7 @@ func TestRunUninstall_NonTTYAutoYes(t *testing.T) {
 	env := newTestEnv(t)
 
 	if _, err := install.RunCopy(install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -390,6 +397,7 @@ func TestRunUninstall_KeepsBinaryByDefault(t *testing.T) {
 	}
 
 	if _, err := install.RunCopy(install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -445,6 +453,7 @@ func TestRunUninstall_RemoveBinaryFlag(t *testing.T) {
 	env := newTestEnv(t)
 
 	if _, err := install.RunCopy(install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},
@@ -482,6 +491,7 @@ func TestRunUninstall_ReinstallAfterUninstall(t *testing.T) {
 	env := newTestEnv(t)
 
 	copyOpts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},

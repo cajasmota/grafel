@@ -217,6 +217,7 @@ func TestRunDev_ModeSwitchFromCopy(t *testing.T) {
 
 	// First install in COPY mode.
 	copyOpts := install.CopyOptions{
+		Intent:            install.IntentInstall,
 		BinPath:           env.fakeBin,
 		SkillsSourceDir:   env.skillsSourceDir,
 		ClaudeConfigDirs:  []string{env.claudeJSON},

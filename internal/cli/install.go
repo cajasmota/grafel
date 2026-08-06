@@ -202,6 +202,14 @@ Claude Code config directory's skills/ subdirectory.`,
 			// performed (via service.Install inside RunCopy's step 4).
 			if copyMode {
 				return runInstallCopy(out, install.CopyOptions{
+					// #6162: `grafel install` is the ONE entrypoint that may
+					// touch the repo it is run in (.gitignore + the four git
+					// hooks) — running it here is the user asking for exactly
+					// that. `grafel update` passes IntentUpgrade and gets
+					// neither. RunCopy rejects an unset Intent, so this is
+					// stated at the construction site rather than patched in
+					// downstream where a future second caller would miss it.
+					Intent:           install.IntentInstall,
 					BinPath:          bin,
 					SkillsSourceDir:  skillsSourceDir,
 					ClaudeConfigDirs: claudeConfigDirs,
@@ -623,6 +631,10 @@ func runInstallDev(out io.Writer, opts install.DevOptions) error {
 // runInstallCopy runs the COPY-mode install transaction (issue #2210) and
 // prints a structured summary. Called from newInstallCmd when --copy is set.
 func runInstallCopy(out io.Writer, opts install.CopyOptions) error {
+	// opts.Intent is deliberately NOT forced here: it is the caller's
+	// declaration, and RunCopy rejects it unset (#6162). Setting it in this
+	// helper would silently launder any future caller that had not thought
+	// about whether it may modify the user's repository.
 	result, err := install.RunCopy(opts)
 	if err != nil {
 		fmt.Fprintf(out, "✗ install (copy mode) failed: %v\n", err)

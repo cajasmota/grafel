@@ -36,6 +36,10 @@ replaces the current binary, and re-runs the install transaction
 On success the previous binary is removed. On failure the previous
 binary is restored automatically (rollback).
 
+Update never modifies the git repository you happen to be standing in:
+the .gitignore entry and the git hooks belong to 'grafel install', which
+you run inside a repo on purpose.
+
   grafel update                # latest stable release
   grafel update --pre          # latest pre-release
   grafel update --tag v1.2.3   # pin to a specific version

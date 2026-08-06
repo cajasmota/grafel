@@ -59,8 +59,19 @@ type UpdateOptions struct {
 	// Defaults to DefaultStatePath().
 	StatePath string
 
-	// WorkingDir is used for git repo detection when re-running install.
-	// Defaults to os.Getwd().
+	// WorkingDir is retained for API compatibility and is NO LONGER READ
+	// (#6162). It used to be forwarded to RunCopy, where it selected the
+	// repository whose .gitignore was appended to and whose .git/hooks were
+	// written — i.e. it made `grafel update` mutate whatever checkout the
+	// user's shell was sitting in. An upgrade has no repository in scope.
+	//
+	// Not forwarding it is NOT a safety measure and must not be read as one:
+	// with the step-5/7 gates removed, an empty WorkingDir resolves straight
+	// back to the process cwd (DetectGitRepo's `git -C "" rev-parse` no-ops
+	// the -C; InstallGitHooks defaults RepoPath to os.Getwd()), which is the
+	// same repository. The gates are the defence. RunCopy additionally
+	// REJECTS a non-empty WorkingDir under IntentUpgrade, so this field being
+	// ignored here is enforced rather than assumed.
 	WorkingDir string
 
 	// SkillsSourceDir overrides skills discovery during re-install.
@@ -149,13 +160,9 @@ func (o *UpdateOptions) applyDefaults() error {
 		}
 		o.StatePath = p
 	}
-	if o.WorkingDir == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("resolve working dir: %w", err)
-		}
-		o.WorkingDir = cwd
-	}
+	// WorkingDir is intentionally not defaulted: nothing consumes it (#6162),
+	// and resolving a cwd an upgrade will never use is one more way for an
+	// upgrade to fail for a reason that has nothing to do with upgrading.
 	if o.HTTPClient == nil {
 		o.HTTPClient = &http.Client{Timeout: defaultUpdateTimeout}
 	}
@@ -256,11 +263,20 @@ func RunUpdate(opts UpdateOptions) (*UpdateResult, error) {
 
 	// ── re-run install ────────────────────────────────────────────────────────
 	installOpts := CopyOptions{
+		// #6162: an upgrade is NOT a re-install. IntentUpgrade runs steps
+		// 1-4 and 6 (new binary recorded, skills and MCP kept consistent with
+		// it, daemon restarted onto it, state persisted) and skips the two
+		// cwd-scoped steps — 5's .gitignore append and 7's four git hooks —
+		// which would otherwise modify whatever repository the user's shell
+		// happened to be in. Those gates are the ENTIRE defence; WorkingDir is
+		// not forwarded because RunCopy rejects it under IntentUpgrade, not
+		// because omitting it would protect anything (it would not — see the
+		// note on UpdateOptions.WorkingDir).
+		Intent:            IntentUpgrade,
 		BinPath:           opts.BinPath,
 		SkillsSourceDir:   opts.SkillsSourceDir,
 		ClaudeConfigDirs:  opts.ClaudeConfigDirs,
 		StatePath:         opts.StatePath,
-		WorkingDir:        opts.WorkingDir,
 		Force:             true, // update always re-installs
 		DryRun:            opts.DryRun,
 		SkipDaemonRestart: opts.SkipDaemonRestart,
