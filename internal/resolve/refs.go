@@ -2006,7 +2006,7 @@ var publicKeywordRE = regexp.MustCompile(`\bpublic\b`)
 // `public` inside a comment cannot reach it.
 //
 // An EMPTY Signature fails OPEN. Graphs written before #4881 dropped the field
-// on load (internal/graph/load.go:596), and reading "no declaration text" as
+// on load (internal/graph/load.go:601), and reading "no declaration text" as
 // "not public" would dangle every Solidity field call in one. Same safe
 // direction as memberFamily staleness.
 func uncallableSolidityField(language, kind, signature string) bool {
