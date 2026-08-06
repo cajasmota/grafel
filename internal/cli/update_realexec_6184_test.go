@@ -25,33 +25,88 @@ import (
 // which honours the context by construction and could never observe this
 // bug).
 //
-// The spawned shell backgrounds a grandchild that inherits stdout/stderr and
-// outlives the direct child, then the direct child itself prints "partial"
-// and sleeps 20s. Measured against the unfixed code: 1s deadline, 20.55s
-// elapsed. WaitDelay must bound that to a few seconds.
+// The spawned shell backgrounds a grandchild that inherits stdout/stderr,
+// then signals readiness (touches a file) before sleeping 20s itself. The
+// grandchild also sleeps 20s, holding the pipe open after the direct child
+// is killed. WaitDelay must bound the wait for that grandchild to a few
+// seconds instead of the full 20s.
+//
+// #6184 R2 (found on round-2 review): the first cut of this test raced a
+// fixed context deadline (300ms, later 1s) against how long /bin/sh takes to
+// fork+exec the grandchild and print "partial". On a loaded machine that
+// fork/exec cost is not bounded tightly enough for any fixed short deadline
+// to be reliable — measured 6 of 8 mutant runs vacuous at 300ms, and even at
+// 1s this machine still produced occasional vacuous runs (deadline fired
+// before the child had backgrounded anything, so nothing was ever holding
+// the pipe and the elapsed-time assertion proved nothing about WaitDelay).
+//
+// Fix: remove the race instead of tuning it. The script signals readiness
+// (touches readyFile) only AFTER backgrounding its grandchild and printing
+// "partial", so the test polls for that file — deterministically, not on a
+// clock — before ever cancelling the context. Cancellation and the bounded-
+// return assertion now measure only the thing #6184 F1 is about: how long
+// CombinedOutput takes to return once a grandchild is confirmed to be
+// holding the pipe open, not how fast a shell can fork.
 func TestRunWatcherRefreshCmd_BoundedEvenWithSurvivingGrandchild(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("posix shell only")
 	}
-	script := filepath.Join(t.TempDir(), "wedged.sh")
-	body := "#!/bin/sh\n(sleep 20) &\necho partial\nsleep 20\n"
+	dir := t.TempDir()
+	script := filepath.Join(dir, "wedged.sh")
+	readyFile := filepath.Join(dir, "ready")
+	body := "#!/bin/sh\n(sleep 20) &\necho partial\ntouch " + readyFile + "\nsleep 20\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	type result struct {
+		out []byte
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		out, err := runWatcherRefreshCmd(ctx, script)
+		done <- result{out, err}
+	}()
+
+	// Wait, deterministically (not on a clock), until the grandchild has
+	// actually been backgrounded before cancelling — this is the fix for
+	// R2's flake, not a longer timeout.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, statErr := os.Stat(readyFile); statErr == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("child never signalled readiness within 10s; test infrastructure issue, " +
+				"not the thing under test")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	start := time.Now()
-	out, err := runWatcherRefreshCmd(ctx, script)
+	cancel()
+	var res result
+	select {
+	case res = <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("runWatcherRefreshCmd did not return within 10s of cancellation " +
+			"(#6184 F1: WaitDelay is not bounding the wait for the surviving grandchild)")
+	}
 	elapsed := time.Since(start)
 
 	if elapsed > 5*time.Second {
-		t.Fatalf("runWatcherRefreshCmd did not return promptly with a surviving grandchild "+
-			"holding the output pipe open (#6184 F1): took %s, want well under the 20s the "+
-			"grandchild sleeps\nerr=%v out=%q", elapsed, err, out)
+		t.Fatalf("runWatcherRefreshCmd did not return promptly after the surviving grandchild "+
+			"was confirmed to be holding the output pipe open (#6184 F1): took %s, want well "+
+			"under the 20s the grandchild sleeps\nerr=%v out=%q", elapsed, res.err, res.out)
 	}
-	if err == nil {
-		t.Errorf("expected an error from the killed child, got nil (out=%q)", out)
+	if res.err == nil {
+		t.Errorf("expected an error from the killed child, got nil (out=%q)", res.out)
+	}
+	if string(res.out) != "partial\n" {
+		t.Fatalf("runWatcherRefreshCmd output = %q, want \"partial\\n\"", res.out)
 	}
 }
