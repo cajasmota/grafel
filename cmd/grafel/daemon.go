@@ -1876,6 +1876,15 @@ type rebuildSubprocessParams struct {
 	ProgressPub         progress.Publisher
 	Interactive         bool
 	IncrementalStateDir string
+	// PersistManifest — #6208: forwarded to the child as --persist-manifest
+	// whenever this repo's rebuild is NOT diff-aware (IncrementalStateDir ==
+	// ""), i.e. a plain `grafel rebuild` or any `--wipe` rebuild. Those runs
+	// walk and index every file but, before this, asked the child for neither
+	// WithIncremental (which self-persists) nor WithManifestPersist, so they
+	// left no baseline for the next incremental pass to diff against — the
+	// same class of gap #6207 closed for the scheduler's fallback. See the
+	// indexOneInner call site for the incremental-vs-persist decision.
+	PersistManifest bool
 }
 
 // runRebuildSubprocess indexes one repo for a rebuild via the subprocess indexer
@@ -1887,14 +1896,21 @@ type rebuildSubprocessParams struct {
 // rebuild produces the full graph (including the graph-algo pass) exactly as the
 // in-process rebuild path does, and forwards ref="" so the child resolves HEAD
 // via gitmeta just like the in-process indexer.
+// Routed through subprocessIndexRunner (the same seam daemonSchedulerIndex
+// uses) rather than calling sched.RunSubprocessIndex directly, so a test can
+// intercept ONE level below this function's own opts-mapping and observe the
+// real *sched.SubprocessIndexOptions this closure built — including
+// PersistManifest (#6208) — instead of having to replace this whole function
+// and reconstruct that mapping itself.
 var runRebuildSubprocess = func(ctx context.Context, p rebuildSubprocessParams) error {
-	return sched.RunSubprocessIndex(ctx, p.RepoPath, "", nil, &sched.SubprocessIndexOptions{
+	return subprocessIndexRunner(ctx, p.RepoPath, "", nil, &sched.SubprocessIndexOptions{
 		ProgressPub:         p.ProgressPub,
 		GroupSlug:           p.GroupSlug,
 		RepoSlug:            p.RepoSlug,
 		RunToken:            p.RunToken,
 		Interactive:         p.Interactive,
 		IncrementalStateDir: p.IncrementalStateDir,
+		PersistManifest:     p.PersistManifest,
 	}, slog.Default())
 }
 
@@ -2100,6 +2116,39 @@ func daemonRebuildFuncCore(
 			if args.Incremental && !args.Wipe {
 				incrementalStateDir = daemon.StateDirForRepo(rw.r.Path)
 			}
+			// #6208 — a rebuild that is NOT diff-aware (plain `grafel rebuild`, or
+			// ANY `--wipe` rebuild — args.Wipe forces incrementalStateDir empty
+			// above regardless of args.Incremental) still walks and indexes every
+			// file, and that is exactly what a manifest records. Before this it
+			// asked for neither WithIncremental (which self-persists via
+			// i.persistManifest, see index.go) nor WithManifestPersist, so the
+			// original daemon.go:2090-2092 gap left the next incremental pass with
+			// no baseline to diff against — the same conflation-shaped hole #6207
+			// closed on the scheduler's fallback path, left out of that change's
+			// scope and filed as #6208.
+			//
+			// --wipe DECISION (#6208, argued, not defaulted): a manifest is state,
+			// and --wipe exists to discard state — so does a wiped rebuild want a
+			// fresh manifest or none at all? Fresh wins. The manifest's job is to
+			// describe "what got indexed just now" so the NEXT incremental pass has
+			// a baseline; it does not describe or preserve anything about the wipe
+			// itself, and a wipe that leaves no manifest behind just forces the
+			// very next pass (incremental or not) to fall back to a full walk
+			// anyway — paying wipe's cost twice for no benefit. Refusing to write
+			// one here would not make the wipe "more thorough"; it would only make
+			// the next incremental pass redo the walk --wipe already paid for. So
+			// persistManifest below is unconditional on incrementalStateDir == "",
+			// not narrowed to !args.Wipe.
+			//
+			// ORDERING (verified, not assumed): commitManifest (index.go) is called
+			// ONLY from the success branch of writeGraphGen inside Index /
+			// runIndexInternal — i.e. after wipe already ran (wipe is the very
+			// first thing this closure does, above) and after the fresh graph is
+			// durably on disk. There is no path from here through
+			// WithManifestPersist/PersistManifest that reaches commitManifest
+			// before either the wipe or the graph write, so the manifest always
+			// describes the POST-wipe index, never one carried across it.
+			persistManifest := incrementalStateDir == ""
 			// Cross-path mutual exclusion (#5729 concurrency bug): this rebuild
 			// indexes the repo DIRECTLY (in-process OR via the subprocess child)
 			// and never touches the engine scheduler, so the scheduler's per-repo
@@ -2151,6 +2200,7 @@ func daemonRebuildFuncCore(
 					ProgressPub:         progressPub,
 					Interactive:         foreground,
 					IncrementalStateDir: incrementalStateDir,
+					PersistManifest:     persistManifest,
 				})
 				return
 			}
@@ -2158,6 +2208,15 @@ func daemonRebuildFuncCore(
 			var opts []IndexOption
 			if incrementalStateDir != "" {
 				opts = append(opts, WithIncremental(incrementalStateDir))
+			} else if persistManifest {
+				// #6208: not diff-aware, but still record what got indexed —
+				// WithIncremental above already does this internally
+				// (i.persistManifest = true), so this is the branch that needs
+				// the explicit ask. Gated on the SAME persistManifest variable
+				// the subprocess branch above uses (rather than re-deriving
+				// incrementalStateDir == "" here) so the two branches cannot
+				// silently diverge on the --wipe decision.
+				opts = append(opts, WithManifestPersist())
 			}
 			// Publish granular per-repo progress into the shared broker so the
 			// WebUI Index step renders live rows + file counters (#1531).
