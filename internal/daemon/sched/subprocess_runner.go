@@ -429,12 +429,16 @@ type ipcEvent struct {
 // It is NOT a SIGTERM: an earlier version of this comment said so and was
 // simply wrong, and nothing on this path may depend on the child getting a
 // chance to run deferred cleanup.
-func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []string, opts *SubprocessIndexOptions, logger *slog.Logger) error {
-	binary, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("subprocess-indexer: resolve binary: %w", err)
-	}
-
+// SubprocessIndexArgs renders the complete argv (argv[0] == "index-internal")
+// that RunSubprocessIndex fork-execs for the given job. It is a separate,
+// exported function purely so the child's contract can be exercised without a
+// fork: a test can hand this argv straight to the child entrypoint and observe
+// what the child actually does with it, instead of asserting on flag strings —
+// which proves only that a string was built, never that it was honoured.
+//
+// A nil opts (the scheduler background reindex before #6207) yields exactly
+// argv{index-internal, --repo, --ref, --skip-pass}.
+func SubprocessIndexArgs(repoPath, ref string, skipPasses []string, opts *SubprocessIndexOptions) []string {
 	args := []string{
 		"index-internal",
 		"--repo=" + repoPath,
@@ -447,11 +451,8 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 	// supplies a Publisher the child is told to STREAM per-module progress on
 	// stdout (--emit-progress) and to stamp events with the rebuild's group/repo
 	// slugs so republished rows key the same (group, repo, module) identity the
-	// in-process path emits. A nil opts (the scheduler background reindex) adds
-	// none of these flags, so its child args are byte-identical to before.
-	var progressPub progress.Publisher
+	// in-process path emits.
 	if opts != nil {
-		progressPub = opts.ProgressPub
 		if opts.RepoSlug != "" {
 			args = append(args, "--repo-tag="+opts.RepoSlug)
 		}
@@ -472,9 +473,30 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 		if opts.IncrementalStateDir != "" {
 			args = append(args, "--incremental="+opts.IncrementalStateDir)
 		}
+		// #6207: manifest persistence WITHOUT diff-aware behaviour, and with no
+		// destination — the child writes it beside the graph it produces.
+		// --incremental already implies persistence, so setting both is
+		// harmless and redundant rather than contradictory.
+		if opts.PersistManifest {
+			args = append(args, "--persist-manifest")
+		}
 		if opts.Interactive {
 			args = append(args, "--interactive")
 		}
+	}
+	return args
+}
+
+func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []string, opts *SubprocessIndexOptions, logger *slog.Logger) error {
+	binary, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("subprocess-indexer: resolve binary: %w", err)
+	}
+
+	args := SubprocessIndexArgs(repoPath, ref, skipPasses, opts)
+	var progressPub progress.Publisher
+	if opts != nil {
+		progressPub = opts.ProgressPub
 	}
 
 	cmd := exec.CommandContext(ctx, binary, args...)

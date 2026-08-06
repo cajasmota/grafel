@@ -277,13 +277,33 @@ type Indexer struct {
 	// trust-model rules in docs/specs/repair-trust-model.md.
 	enableRepairApply bool
 
-	// incremental enables diff-aware re-indexing (issue #1339). When true the
-	// indexer loads the per-repo file-hash manifest from incrementalStateDir,
-	// filters the walk result down to only changed files, and updates the
-	// manifest after a successful write. Full rebuild still runs when the
-	// manifest is absent or stale.
+	// BEHAVIOUR AND PERSISTENCE ARE DELIBERATELY SEPARATE FIELDS (#6207). Until
+	// #6207 a single pair set together by WithIncremental gated BOTH halves at
+	// once, and the conflation was the defect: there was no way to say "record
+	// what this run indexed" without also saying "index only the delta".
+	//
+	// incremental + incrementalStateDir gate diff-aware BEHAVIOUR (issue
+	// #1339): load the manifest from incrementalStateDir, filter the walk down
+	// to changed files, stream in the previous graph from the same dir and
+	// carry forward the unchanged-file entities. Both are needed; neither is
+	// meaningful alone. Set only by WithIncremental.
+	//
+	// persistManifest gates manifest PERSISTENCE on its own, with no state dir
+	// of its own — see WithManifestPersist for why it takes no directory.
+	// persistManifest && !incremental is the scheduler's fallback full index:
+	// index EVERYTHING, then record ground truth for every file. That is not a
+	// contradiction — it is what a full reindex has just earned the right to
+	// write.
 	incremental         bool
-	incrementalStateDir string // directory that holds file-index.json
+	incrementalStateDir string // directory that holds file-index.json + graph.fb
+	persistManifest     bool
+
+	// walkedFiles + diffManifest are handed from Run to commitManifest. They
+	// exist because the manifest can only be written once graph.fb is durably
+	// on disk, and that write happens in Index AFTER Run has returned — see
+	// commitManifest for the failure mode that ordering prevents.
+	walkedFiles  []string
+	diffManifest *idiff.Manifest
 
 	// incrementalCarryForwardEntities holds the previous-graph entities sourced
 	// from UNCHANGED files during an incremental reindex. buildDocument seeds the
@@ -526,6 +546,40 @@ func WithIncremental(stateDir string) IndexOption {
 	return func(i *Indexer) {
 		i.incremental = true
 		i.incrementalStateDir = stateDir
+		i.persistManifest = true
+	}
+}
+
+// WithManifestPersist makes this run record what it indexed — a complete
+// file-hash manifest — WITHOUT enabling diff-aware re-indexing (#6207). Every
+// file is walked, parsed and indexed exactly as on any full index; the only
+// thing that changes is that the next incremental pass is left a baseline.
+//
+// IT TAKES NO DIRECTORY, ON PURPOSE. The manifest is written beside the graph
+// this run produced — filepath.Dir(outPath), the same expression Index uses for
+// every other artifact — and a caller cannot point it somewhere else. An
+// earlier version of this option took a state dir and the scheduler passed it
+// the ref captured at ENQUEUE time, while the graph landed under whatever HEAD
+// resolved to at INDEX time; a `git checkout` in that window put the manifest
+// and the graph it describes in different ref directories, leaving one branch
+// with no baseline and the other with a manifest stamped from the wrong branch.
+// The manifest describes the graph; it is not separately addressable.
+//
+// This option exists because WithIncremental used to be the only way to get a
+// manifest written at all, and it buys persistence at the price of behaviour.
+// The scheduler's fallback full index needs exactly the opposite trade: it fell
+// back BECAUSE the delta could not be trusted incrementally, so it must not be
+// diff-aware — but it is precisely the run whose output the manifest should
+// describe, because it has just re-established ground truth for the whole repo.
+//
+// Before this option existed, daemonSchedulerIndex set nothing, so the fallback
+// wrote no manifest and the manifest on the scheduler path was advanced only by
+// TryIncremental — including on the passes where it declined to do any work,
+// which is why the reject path had to carry loop guards (#5667, #5668) to
+// compensate.
+func WithManifestPersist() IndexOption {
+	return func(i *Indexer) {
+		i.persistManifest = true
 	}
 }
 
@@ -746,8 +800,8 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	// emitted RENAMED_FROM edges are included in graph.fb / graph.json.
 	// The pass is append-only and safe to skip with --skip-pass=rename-detect.
 	if !skipSet[PassRenameDetect] {
-		stateDir := filepath.Dir(outPath)
-		if prevDoc, err := graph.LoadGraphFromDir(stateDir); err == nil {
+		graphDir := filepath.Dir(outPath)
+		if prevDoc, err := graph.LoadGraphFromDir(graphDir); err == nil {
 			renameStats = algorithms.DetectRenamesBounded(prevDoc, doc, renameWorkBudget())
 			if renameStats.Renames > 0 {
 				fmt.Fprintf(os.Stderr,
@@ -790,8 +844,8 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	// un-annotated until the next full algo pass runs — never worse than the
 	// pre-fix behaviour where ALL entities lost their community.
 	if skipSet[PassGraphAlgo] {
-		stateDir := filepath.Dir(outPath)
-		if prevDoc, perr := graph.LoadGraphFromDir(stateDir); perr == nil && prevDoc != nil {
+		graphDir := filepath.Dir(outPath)
+		if prevDoc, perr := graph.LoadGraphFromDir(graphDir); perr == nil && prevDoc != nil {
 			carryForwardAlgoAttrs(doc, prevDoc)
 		}
 	}
@@ -808,7 +862,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// #5891 gen layout: write a NEW graph.<gen>.fb + flip the `current`
 		// pointer instead of overwriting a fixed graph.fb. fbPath is the gen
 		// file actually written (used below for the identical-mtime stamp).
-		fbPath, fbErr := fbwriter.WriteGraphGen(filepath.Dir(outPath), doc)
+		fbPath, fbErr := writeGraphGen(filepath.Dir(outPath), doc)
 		if fbErr != nil {
 			fmt.Fprintf(os.Stderr, "grafel: graph.fb write failed: %v\n", fbErr)
 			// Non-fatal — we still try to write graph.json so the system
@@ -816,6 +870,11 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			// propagates below.
 		} else {
 			fmt.Fprintf(os.Stderr, "grafel: wrote %s\n", fbPath)
+			// #6207 — the manifest is committed HERE, and only here: the graph
+			// it describes is now durably on disk and the `current` pointer has
+			// been flipped to it. Everything above this line is best-effort
+			// work that can still be thrown away.
+			idx.commitManifest(absRepo, filepath.Dir(outPath))
 		}
 
 		// #5720 — the graph is now loadable/queryable (graph.fb is on disk),
@@ -939,6 +998,99 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 // either thread the buffer through explicitly or move stats capture
 // into Indexer state. For Phase A the single-writer assumption holds.
 var capturedStats io.Writer
+
+// writeGraphGen is fbwriter.WriteGraphGen behind a var so a test can make the
+// graph write FAIL — the failure this file's manifest ordering exists to
+// survive (#6207). The write is non-fatal by design, so there is no error
+// return to inject through and no other way to reach that branch.
+var writeGraphGen = fbwriter.WriteGraphGen
+
+// commitManifest persists the file-hash manifest describing THIS run: every
+// walked file, re-stamped, with entries for anything no longer in the walk
+// pruned. Best-effort — a write failure is logged and never fails the index.
+//
+// ORDERING IS THE POINT (#6207 review). Index calls this only on the success
+// branch of fbwriter.WriteGraphGen, never from Run. Run returns before the
+// graph is written, and that write is explicitly non-fatal — it can fail on a
+// full disk, on EPERM, on a #5891 generation-pointer flip, or simply not happen
+// because the index-internal child was SIGKILLed by a ctx cancel (which
+// subprocess_runner is emphatic gives the child no chance to clean up).
+//
+// Writing the manifest before that point creates a PERMANENT stuck state on the
+// daemon's automatic healing path. The manifest would say every file is
+// indexed; the graph would still be the previous generation. The next
+// scheduler pass computes totalChanged == 0, and the #5710 absent-graph guard
+// fires on ABSENCE only — the previous generation's graph.fb is still there and
+// `current` still points at it — so TryIncremental reports Done over a
+// permanently stale graph. Before #6207 the manifest was simply untouched on
+// that path, the same changed set re-presented on the next pass, and it healed
+// itself.
+//
+// The residual window has TWO axes and they point in opposite directions. Do
+// not read the first as covering the second.
+//
+// GENERATION: killed between the graph write and this call, the graph is newer
+// than the manifest. That is the safe direction, and the same one #6201's
+// scoped reject leaves behind — the files re-read as changed and are
+// re-extracted. Over-reporting, never staleness.
+//
+// CONTENT: per file, the manifest can be newer than the graph, and here the
+// hazard is real. UpdateManifest hashes each file AT THIS MOMENT, whereas the
+// document was built from the bytes Run's walk read. A working-tree write
+// landing in between is stamped into the manifest but is not in the graph, so
+// the next pass hash-matches it, classifies it UNCHANGED (diff.go:411-413) and
+// the edit stays invisible until the file is touched again or HEAD advances.
+// Measured, not theorised: a probe injecting a working-tree write inside the
+// writeGraphGen seam confirmed the manifest stamps post-walk content. The
+// realistic trigger is exactly the watcher-driven fallback — it fires BECAUSE
+// files are changing.
+//
+// This is pre-existing on the WithIncremental path but NEW on the fallback,
+// which previously wrote no manifest at all, so the old stamp caught the edit.
+// The window also got wider on both: it now spans rename-detect, algo
+// carry-forward, sortDocumentForEmission and the whole of WriteGraphGen —
+// seconds on a real repo, where it used to be immediately post-extraction.
+//
+// It is nevertheless the RIGHT TRADE and must not be reverted: losing one edit
+// until its next touch is self-recovering, while the permanent stuck state
+// above is not. The real fix — stamping from the hashes the walk already
+// computed, so the manifest describes the same bytes the graph was built from —
+// is filed separately.
+//
+// graphDir is filepath.Dir(outPath) — the directory the graph was just written
+// to. It is the destination whenever the run did not read a manifest from
+// somewhere else, so a manifest can never describe a graph in another
+// directory. See WithManifestPersist for the ref-divergence that motivates it.
+//
+// KNOWN, PRE-EXISTING (#6207 review, to be filed): walkedFiles is the raw walk,
+// so a file whose EXTRACTION failed is still stamped as indexed and will not be
+// re-extracted until its bytes change. The consequence is a missing entity set,
+// not a stuck loop. This was already true on the WithIncremental path; #6207
+// makes it reachable from the fallback too.
+func (i *Indexer) commitManifest(absRepo, graphDir string) {
+	if !i.persistManifest {
+		return
+	}
+	dest := i.incrementalStateDir
+	if dest == "" {
+		dest = graphDir
+	}
+	if dest == "" {
+		return
+	}
+	m := i.diffManifest
+	if m == nil {
+		// A full index never loaded one. Start from whatever is on disk — the
+		// UpdateManifest below re-stamps every walked file and prunes
+		// everything else, so the result is the walk either way; loading only
+		// keeps the manifest's own metadata continuous.
+		m = idiff.LoadManifest(dest)
+	}
+	idiff.UpdateManifest(absRepo, i.walkedFiles, m)
+	if err := idiff.SaveManifest(dest, absRepo, m); err != nil {
+		fmt.Fprintf(os.Stderr, "grafel: save incremental manifest: %v (non-fatal)\n", err)
+	}
+}
 
 func setCapturedStats(w io.Writer) (restore func()) {
 	prev := capturedStats
@@ -1196,6 +1348,11 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// The stream owns an mmap for the lifetime of the run; release it on every
 	// exit path. Nil-safe, so this is correct on the full-index path too.
 	defer func() { _ = incrementalPrev.Close() }()
+	// This block is the diff-aware BEHAVIOUR half, and #6207 left its condition
+	// exactly as it was: reading a manifest to filter the walk genuinely needs
+	// both the flag and a dir to read from. What #6207 changed is the other
+	// half — persistence no longer requires passing through here (see
+	// commitManifest), so a full index can record what it indexed.
 	if i.incremental && i.incrementalStateDir != "" {
 		diffManifest = idiff.LoadManifest(i.incrementalStateDir)
 		changed, unchanged := idiff.FilterWithGit(absRepo, files, diffManifest)
@@ -2385,17 +2542,13 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		printRelBreakdown(os.Stderr, i.stats.pass3RelsByExt, "pass3")
 	}
 
-	// Incremental mode (issue #1339): persist the updated file-hash manifest
-	// so the next incremental run can skip unchanged files. We update all
-	// files (changed + unchanged) so the manifest stays complete even when
-	// only a subset was re-extracted this run. Best-effort: a write failure
-	// is logged but never fails the index.
-	if i.incremental && diffManifest != nil {
-		idiff.UpdateManifest(absRepo, allFiles, diffManifest)
-		if err := idiff.SaveManifest(i.incrementalStateDir, absRepo, diffManifest); err != nil {
-			fmt.Fprintf(os.Stderr, "grafel: save incremental manifest: %v (non-fatal)\n", err)
-		}
-	}
+	// THE MANIFEST IS NOT WRITTEN HERE. Run does not write it at all — it only
+	// hands the walk and the loaded manifest to commitManifest, which Index
+	// calls after graph.fb is durably on disk. Run returns BEFORE the graph is
+	// written, so writing here would publish a manifest describing a graph that
+	// might never land. See commitManifest for the stuck state that causes.
+	i.walkedFiles = allFiles
+	i.diffManifest = diffManifest
 
 	// Issue #2341 — sanity-check: warn when entities with a recognized source
 	// extension have an empty Language tag. A non-zero count here means the
