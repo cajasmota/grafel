@@ -206,12 +206,41 @@ func Filter(absRepo string, relPaths []string, manifest *Manifest) (changed, unc
 // UpdateManifest records the current on-disk state for every file in
 // relPaths into m. Call this after a successful index write so the next
 // incremental run has accurate baseline hashes.
+//
+// This is the O(repo) form: it opens and SHA-256s every path it is given. Use
+// it where the caller has just processed the whole repo anyway. A caller that
+// already knows which files changed — and is about to discard the graph work,
+// not commit it — wants UpdateManifestScoped instead (#6201).
 func UpdateManifest(absRepo string, relPaths []string, m *Manifest) {
+	UpdateManifestScoped(absRepo, relPaths, relPaths, m)
+}
+
+// UpdateManifestScoped re-stamps only hashPaths, while reconciling manifest
+// MEMBERSHIP against keepPaths.
+//
+// The split exists because the two halves of UpdateManifest have wildly
+// different costs and only one of them is always needed (#6201):
+//
+//   - Re-stamping is O(files hashed) and requires reading each file. On a
+//     3003-file fixture the full-repo sweep measured ~220 ms of the 696 ms that
+//     the too-many-changed reject path used to burn and then throw away.
+//   - The membership prune is a pair of map walks — effectively free — and it
+//     is the half that #5667 needs: an entry for a file no longer in the
+//     gitignore-aware walk is otherwise immortal, is reported as "deleted" on
+//     every pass, perpetually trips the too-many-changed fallback, and pins the
+//     daemon in a reindex loop.
+//
+// Passing the changed-file set as hashPaths and the full walk as keepPaths
+// therefore keeps both loop guards (#5667's prune and #5668's stamp refresh for
+// the files that actually moved) at O(delta) instead of O(repo). Files in
+// keepPaths but not hashPaths keep whatever stamp they already had, which is
+// correct precisely because the caller has established they did not change.
+func UpdateManifestScoped(absRepo string, hashPaths, keepPaths []string, m *Manifest) {
 	var mu sync.Mutex
 	// Best-effort parallel hash for large repos.
 	sem := make(chan struct{}, 16)
 	var wg sync.WaitGroup
-	for _, rel := range relPaths {
+	for _, rel := range hashPaths {
 		wg.Add(1)
 		go func(r string) {
 			defer wg.Done()
@@ -232,12 +261,12 @@ func UpdateManifest(absRepo string, relPaths []string, m *Manifest) {
 	// Reconcile (#5667): drop entries for files no longer in the walked set so
 	// the manifest cannot retain stale records — e.g. a file that became
 	// gitignored (build artifacts now excluded by walk.WalkRepo). All callers
-	// pass the complete current walk, so membership in relPaths is
+	// pass the complete current walk as keepPaths, so membership in it is
 	// authoritative. Without this prune an entry, once added, is immortal: a
 	// now-ignored file is reported as "deleted" on every pass, perpetually
 	// tripping the too-many-changed full-reindex fallback and pinning the daemon.
-	want := make(map[string]struct{}, len(relPaths))
-	for _, r := range relPaths {
+	want := make(map[string]struct{}, len(keepPaths))
+	for _, r := range keepPaths {
 		want[r] = struct{}{}
 	}
 	for k := range m.Files {

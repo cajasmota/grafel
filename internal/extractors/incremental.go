@@ -4,9 +4,25 @@
 // # Conservative v1 design (S3 #2167) + follow-up (S3 #2170)
 //
 // The full-reindex pipeline rewrites graph.fb from scratch on every daemon
-// watcher tick. For a 60 k-entity repo that takes ~5 s. When only one file
-// changed, we want ~200 ms: parse that file, swap its entities in the graph,
-// and atomically re-emit graph.fb without touching anything else.
+// watcher tick. This path instead parses only the changed files, swaps their
+// entities in the graph, and atomically re-emits graph.fb.
+//
+// MEASURED, not aspirational (#6199/#6201). Fixture: a synthetic 3003-file /
+// 58.5k-entity Go+Python tree, GOMAXPROCS=4, N=14, medians:
+//
+//	full reindex                    9,540 ms
+//	incremental,   1 changed file   1,576 ms   (6.0x faster)
+//	incremental,  50 changed files  1,920 ms   (4.9x)
+//	incremental, 200 changed files  2,947 ms   (3.2x)
+//	incremental, 500 changed files  5,276 ms   (1.8x)
+//
+// The header of this file previously claimed ~5 s for the full reindex and
+// ~200 ms for a one-file edit. Both were unmeasured and both were wrong by
+// roughly a factor of 8; the ~25x speedup claimed at
+// internal/extractor/extractor.go was wrong by a factor of 4. The reason the
+// numbers are so much flatter than "re-parse one file" suggests is that only
+// two phases are O(delta) — see #6199 for the per-phase breakdown of the
+// O(repo)/O(graph) fixed tail that dominates every pass.
 //
 // Correctness guarantee: the opt-in flag (GRAFEL_INCREMENTAL_REINDEX=1)
 // is NOT set by default. Four safety valves are applied before attempting a
@@ -14,11 +30,14 @@
 //
 //  1. Trigger limit: if more than the effective limit files changed in the
 //     debounced batch we fall back to full reindex. The effective limit is:
-//     - GRAFEL_INCREMENTAL_MAX_FILES env var (if set to a valid int)
-//     - 50 when the active ref is the repo's default (main) branch
-//     - 20 otherwise (feature branches)
-//     The #2167 conservative default of 5 is still the hard floor when the
-//     env override is absent; 20 is the raised default for feature branches.
+//     - cfg.IncrementalMaxFiles / GRAFEL_INCREMENTAL_MAX_FILES, honoured
+//     verbatim when set (including values below the floors), or
+//     - max(floor, walkedFiles/4), floor = 50 on the repo's default branch
+//     and 20 on a feature branch (#6201).
+//     There is no hard floor of 5: no such clamp exists in effectiveLimit or
+//     in ExtractorConfig.EffectiveIncrementalMaxFiles, and
+//     GRAFEL_INCREMENTAL_MAX_FILES=1 is honoured as 1. The header claimed one
+//     until #6201 deleted the claim rather than the behaviour.
 //
 //  2. AST-hash gate: files whose content hash (SHA-256) is unchanged since
 //     the last manifest stamp are skipped entirely (whitespace-only edits).
@@ -84,32 +103,134 @@ import (
 	"github.com/cajasmota/grafel/internal/types"
 )
 
-// defaultIncrementalFiles is the raised default trigger limit for feature
-// branches (S3 #2170). The S3 #2167 conservative value of 5 still acts as the
-// minimum; 20 is the new default for non-main branches.
+// defaultIncrementalFiles is the FLOOR trigger limit for feature branches
+// (S3 #2170). It is a floor, not the limit: see incrementalFilesDivisor.
 const defaultIncrementalFiles = 20
 
-// mainBranchIncrementalFiles is the hot-path limit for the default (main)
-// branch. Commits to main tend to be small focused changes; we allow up to 50
-// files before falling back to a full reindex.
+// mainBranchIncrementalFiles is the FLOOR trigger limit for the default (main)
+// branch. Commits to main tend to be small focused changes.
 const mainBranchIncrementalFiles = 50
 
-// effectiveLimit returns the trigger-limit for the given repoPath and optional
-// ExtractorConfig.
+// incrementalFilesDivisor derives the trigger limit from the size of the repo
+// being indexed: limit = max(floor, walkedFiles/incrementalFilesDivisor).
 //
-// Priority (issue #2320):
+// WHY A RATIO AT ALL, and why this one (#6201, measured under #6199).
+//
+// The point of the trigger limit is to fall back to a full reindex once
+// incremental stops being cheaper. That crossover is not a constant: it is
+// where (fixed tail + per-file cost x delta) meets the full-reindex cost, and
+// BOTH sides scale with the repo. A flat constant can only be right at one repo
+// size, and the shipped flat 20/50 was wrong by ~25x.
+//
+// Measured cost model — fixture: a synthetic 3003-file / 58.5k-entity Go+Python
+// tree, GOMAXPROCS=4, N=14, medians (issue #6199's per-phase matrix; the same
+// four columns tabulated in this file's header):
+//
+//	full reindex = 9540 ms
+//	incremental  = 1536 ms fixed + 7.42 ms per changed file
+//	=> crossover at (9540 - 1536) / 7.42 = ~1078 changed files
+//	=> ~0.36 x the walked file count on that fixture
+//
+// That is an ordinary least-squares fit over all four measured points
+// (1/50/200/500 changed files → 1576/1920/2947/5276 ms). Residuals
+// +33/+13/-74/+28 ms, worst 2.5%. A two-point fit over the extremes alone
+// agrees closely: 7.41 ms/file, intercept 1569 ms, crossover ~1075 files
+// (0.358x) — so the number is not an artifact of the fitting method.
+//
+// #6201's issue body stated 1451 ms + 6.26 ms/file → crossover ~1292 (0.43x),
+// and this comment repeated it. It does NOT reproduce the table it was drawn
+// from: it under-predicts every measured point, by +119/+156/+244/+695 ms, the
+// error growing with the delta — i.e. the slope is ~16% too shallow, which
+// inflates the crossover by ~20%. Corrected here rather than propagated,
+// because shipping an unreconcilable performance claim inside the fix for
+// unreconcilable performance claims would be self-defeating.
+//
+// Corroborating points from the same matrix, all of which the flat ceiling
+// rejected: 50 changed files = 20% of a full reindex; 200 = 31%; 500 = 55%.
+//
+// The divisor is 4 (limit = 0.25 x repo), NOT the measured 0.36. The margin is
+// deliberate and is the honest part of this number:
+//
+//   - The crossover is one fixture. The fixed tail scales with GRAPH size and
+//     the per-file term with FILE size, so a repo with denser entities per file
+//     crosses over sooner. 0.25 sits 30% below the measured 0.359, which covers
+//     a fixture up to ~1.44x denser in entities per file before the ratio
+//     starts losing. (Against the issue's overstated 0.43 the same divisor
+//     looked like a 42% margin and 1.7x of headroom; the real figures are 30%
+//     and 1.44x. The divisor is unchanged because it is below both crossovers —
+//     but the margin is the entire justification for it, so it has to be the
+//     real one.)
+//   - Peak memory, not just throughput, is a reason the ceiling exists — a
+//     large delta can mean a large peak, and that is an independent reason to
+//     bound it. Re-checked AT the new ceiling rather than assumed: on a
+//     1200-file fixture (ceiling 300) the Go heap is flat across the whole
+//     range — HeapSys 93.1 / 94.3 / 93.3 MB and HeapInuse 58.6 / 42.5 / 65.6 MB
+//     at 1 / 50 / 300 changed files, with total allocation growing only ~1.6x
+//     over a 300x delta increase. That matches #6199's own matrix
+//     (257-289 MB from 1 to 500 changed files, vs 465 MB RSS for a full
+//     reindex). Memory therefore does not argue for a low ceiling on either
+//     fixture — but it is still two fixtures, and the margin buys room for it.
+//     RSS was deliberately NOT used: the measuring machine was swapping, which
+//     makes RSS an upper bound rather than a footprint.
+//
+// If you re-measure on a different fixture, change the divisor here and say
+// which fixture, rather than re-deriving this from scratch.
+const incrementalFilesDivisor = 4
+
+// effectiveLimit returns the trigger-limit for the given repoPath, optional
+// ExtractorConfig, and the number of files the repo walk produced.
+//
+// Priority (issue #2320, ratio added in #6201):
 //  1. cfg.IncrementalMaxFiles (when cfg is non-nil and > 0) — Config channel.
 //  2. GRAFEL_INCREMENTAL_MAX_FILES env var (backward-compat fallback).
-//  3. mainBranchIncrementalFiles when the active ref is the repo's default branch.
-//  4. defaultIncrementalFiles (20) for feature branches.
-func effectiveLimit(repoPath string, cfg *extractor.ExtractorConfig) int {
+//     Both overrides are honoured verbatim — the ratio is NOT maxed against
+//     them. An operator pinning a small number on a large repo (e.g. 5 during
+//     an incident, to bound the pass) means 5, and must not silently receive
+//     walkedFiles/4 instead. Pinned by
+//     TestIncremental_LowOverrideIsHonouredOnLargeRepo, which places the
+//     override below the ratio so the two are distinguishable — the earlier
+//     override tests all ran on repos small enough that the ratio could not
+//     have won anyway, and a reordering of this expression survived them.
+//  3. Otherwise max(branch floor, walkedFiles/incrementalFilesDivisor). The
+//     floor keeps small repos at their previous behaviour — a 40-file repo
+//     would otherwise get a ceiling of 10, which is strictly worse than the
+//     20/50 it has today.
+//
+// THE BRANCH DISTINCTION IS NOW DEAD ABOVE ~200 FILES, deliberately.
+// walkedFiles/4 overtakes the feature-branch floor of 20 at 84 walked files and
+// the default-branch floor of 50 at 204, so from ~204 files up both branches
+// get the identical ceiling and gitmeta.IsDefaultBranch stops affecting the
+// outcome. That is not an oversight — it retires a proxy:
+//
+//   - The trigger limit is a COST gate, not a risk gate. What guards
+//     CORRECTNESS on this path is branch-independent: the AST-hash gate, the
+//     scoped resolver's unresolved-relationship safety net, and the
+//     fall-through to a full reindex on any precondition failure (safety
+//     valves 2-4 in this file's header). A 300-file delta is not less safe to
+//     patch on main than on a feature branch — it is only more expensive, and
+//     the ratio prices exactly that.
+//   - The 20/50 split was a stand-in for "how big is a typical delta here",
+//     which scales with the repo. Keying that guess to the branch could only
+//     ever be right at one repo size — the same mistake as the flat ceiling
+//     itself, one level down.
+//
+// The floors survive only where the ratio is uselessly small, i.e. repos under
+// ~200 files, which is precisely the regime where the branch heuristic was
+// cheap and harmless to keep. If a future measurement shows feature branches
+// genuinely need a tighter bound at scale, express it as a second divisor, not
+// as a constant.
+func effectiveLimit(repoPath string, cfg *extractor.ExtractorConfig, walkedFiles int) int {
 	if n := cfg.EffectiveIncrementalMaxFiles(); n > 0 {
 		return n
 	}
+	floor := defaultIncrementalFiles
 	if gitmeta.IsDefaultBranch(repoPath) {
-		return mainBranchIncrementalFiles
+		floor = mainBranchIncrementalFiles
 	}
-	return defaultIncrementalFiles
+	if scaled := walkedFiles / incrementalFilesDivisor; scaled > floor {
+		return scaled
+	}
+	return floor
 }
 
 // IncrementalEnabled reports whether S3 incremental reindex is opt-in active.
@@ -192,11 +313,14 @@ func StampFile(absPath string) (FileStamp, error) {
 //     mitigation: Detector.Detect already early-outs on an unknown language
 //     before it touches the content (detector.go, the `sets, ok :=
 //     d.compiled[file.Language]` branch). Those languages pay ~0, not 8.7 ms.
-//   - The worst case is a fixed number, not a repo-sized one. This runs per
-//     CHANGED file, and the changed set is hard-capped by the trigger limits
-//     below — defaultIncrementalFiles=20, mainBranchIncrementalFiles=50 — so the
-//     ceiling is 50 × 8.7 ms ≈ 435 ms per run. Above the cap the path falls back
-//     to a full rebuild, which pays the same 8.7 ms for every file in the repo.
+//   - It is bounded by the trigger limit, which since #6201 is
+//     max(20|50, walkedFiles/4) rather than a flat 20/50 — so this is now a
+//     repo-sized worst case, not a fixed one (a 3000-file repo caps at 750
+//     changed files ≈ 6.5 s of Detect). That is accounted for: the 6.26 ms per
+//     changed file in #6201's cost model was measured on code that already runs
+//     Detect, so the ~0.43x-of-repo crossover the divisor is derived from
+//     already carries this term. Above the cap the path falls back to a full
+//     rebuild, which pays the same 8.7 ms for EVERY file in the repo.
 //
 // Content-hash caching across runs would buy nothing: Step 3's AST-hash gate has
 // already established that every file reaching here has changed content.
@@ -363,17 +487,32 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// --- Step 2: trigger limit (#2170 raised limits + main-branch hot-path) ---
 	// Issue #2396: cfg is now threaded through from the caller so programmatic
 	// config overrides the env-var / gitmeta path when non-nil.
-	limit := effectiveLimit(absRepo, cfg)
+	// Issue #6201: the limit is now derived from the walked file count, because
+	// the crossover it approximates scales with the repo — see
+	// incrementalFilesDivisor for the measurement.
+	limit := effectiveLimit(absRepo, cfg, len(allFiles))
 	if totalChanged > limit {
-		// Fully reconcile + persist the manifest BEFORE falling back. Saving only
-		// the GC'd map (#5667) left file STAMPS stale and skipped the absent-entry
-		// prune, so the same files re-surfaced as changed/deleted on the next pass
-		// and re-tripped this fallback, looping the reindex even without a manual
-		// clean-manifest rebuild. UpdateManifest refreshes stamps AND prunes
-		// entries absent from the gitignore-aware walk, making the fallback path's
-		// manifest as clean as the success path's (#5668). Log a path SAMPLE so a
-		// recurrence is diagnosable, not just a bare count (#5668).
-		diff.UpdateManifest(absRepo, allFiles, manifest)
+		// Reconcile + persist the manifest BEFORE falling back, but at O(delta),
+		// not O(repo) (#6201).
+		//
+		// Both loop guards this path carries are preserved, and neither needs a
+		// full-repo sweep:
+		//   #5667 — prune entries absent from the gitignore-aware walk, or a
+		//           now-ignored file is reported "deleted" forever and re-trips
+		//           this fallback on every pass. That is a map walk: free.
+		//   #5668 — refresh the STAMPS of the files that actually changed, or
+		//           they re-surface as changed next pass and re-trip it too.
+		//           That is O(changed), and changedFiles is exactly that set.
+		// What is NOT needed is re-hashing the files the change-detector just
+		// established are CLEAN. That sweep measured ~220 ms of the 696 ms a
+		// reject burned on a 3003-file fixture, and every byte of it was thrown
+		// away: the caller's full reindex re-walks and re-hashes the repo
+		// immediately afterwards. A rejected attempt cost 7% MORE than never
+		// having attempted one (#6201).
+		//
+		// Log a path SAMPLE so a recurrence is diagnosable, not just a bare
+		// count (#5668).
+		diff.UpdateManifestScoped(absRepo, changedFiles, allFiles, manifest)
 		_ = diff.SaveManifest(stateDir, absRepo, manifest)
 		logger.Printf("incremental: too-many-changed files=%d limit=%d (changed=%d deleted=%d) changed=%v deleted=%v",
 			totalChanged, limit, len(changedFiles), len(deletedFiles),
@@ -417,6 +556,21 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		}
 		// Nothing to do — manifest is already up-to-date and the graph is a
 		// genuine reflection of the (possibly empty / codeless) tree.
+		//
+		// READ THIS BEFORE DELETING THIS CALL (#6201). #6199 lists the sweep on
+		// a zero-change pass as pure waste and the cheapest remaining win, and
+		// on its own that is true. But since #6201 made the too-many-changed
+		// rejects re-stamp only the CHANGED files, this full-repo
+		// UpdateManifest is also the path that HEALS what a scoped reject left
+		// behind: a file that was stale or absent in the manifest but not in
+		// the reject's changed set keeps its old stamp until some pass sweeps
+		// the whole repo, and this is the only remaining pass that does. The
+		// consequence of never healing is over-reporting (those files read as
+		// changed and are re-extracted), not a stale graph — so this is a
+		// latent cost, not a correctness bug, and it is why the deletion is
+		// still worth doing. Just replace the healing when you do: sweep here
+		// but skip the SaveManifest, or move the reconcile onto the fallback
+		// full index. Deleting it naively makes those entries permanent.
 		diff.UpdateManifest(absRepo, allFiles, manifest)
 		_ = diff.SaveManifest(stateDir, absRepo, manifest)
 		return Result{Done: true, Duration: time.Since(t0)}
@@ -452,9 +606,27 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	// Re-check trigger limit after whitespace filtering.
+	//
+	// THIS BRANCH IS UNREACHABLE. Predates #6201; flagged during its review and
+	// left in place only so the deletion can be filed on its own.
+	//
+	// Proof: the gate above established totalChanged <= limit, where
+	// totalChanged = len(changedFiles) + len(deletedFiles). The AST-hash loop
+	// ranges over changedFiles and appends each element at most once, so after
+	// it len(reallyChanged) <= len(changedFiles); the deletedFiles append then
+	// makes len(reallyChanged) <= totalChanged. Between the two gates nothing
+	// reassigns limit, changedFiles, deletedFiles or totalChanged — the only
+	// writes are those appends. Hence len(reallyChanged) <= limit always, and
+	// this condition cannot hold. Confirmed empirically too: a panic at this
+	// branch head survives internal/extractors/..., internal/indexer/diff/...
+	// and the cmd/grafel integration suite (which drives TryIncremental
+	// end-to-end) with every package still green.
+	//
+	// The call below is therefore dead code, NOT a live #5667/#5668 guard —
+	// this comment previously claimed it was, which would have told the next
+	// reader it runs. The live guard is the reachable branch above.
 	if len(reallyChanged) > limit {
-		// Fully reconcile + persist before falling back (see #5667, #5668).
-		diff.UpdateManifest(absRepo, allFiles, manifest)
+		diff.UpdateManifestScoped(absRepo, changedFiles, allFiles, manifest)
 		_ = diff.SaveManifest(stateDir, absRepo, manifest)
 		logger.Printf("incremental: too-many-changed after-hash-gate files=%d limit=%d really=%v",
 			len(reallyChanged), limit, samplePaths(reallyChanged))
