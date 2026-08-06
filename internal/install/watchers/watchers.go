@@ -85,6 +85,22 @@ func xmlEsc(s string) string {
 	return b.String()
 }
 
+// iniEsc escapes s for inclusion in a systemd unit (INI-format) value.
+//
+// #6185: systemd treats '%' as a specifier escape (e.g. %h for the user's
+// home) and requires '%%' for a literal percent. Group names and repo paths
+// are user-supplied, so a repo path containing '%' previously produced an
+// ExecStart line systemd silently rejects — the unit fails to register and
+// nothing says why, the INI counterpart of the XML bug xmlEsc fixed in #6179.
+//
+// This is deliberately its own function, not shared with xmlEsc: the two
+// escape rules are unrelated (xmlEsc is wrong for INI, '%%' is wrong for
+// XML), so a shared "escape for output format" helper would be the wrong
+// abstraction.
+func iniEsc(s string) string {
+	return strings.ReplaceAll(s, "%", "%%")
+}
+
 // Unit describes a single watcher unit to install.
 type Unit struct {
 	Group   string
@@ -272,8 +288,8 @@ RestartSec=%d
 
 [Install]
 WantedBy=default.target
-`, u.Group, filepath.Base(u.Repo), StartLimitIntervalSeconds, StartLimitBurst,
-		u.BinPath, u.Repo, u.Repo, RestartSecSeconds)
+`, iniEsc(u.Group), iniEsc(filepath.Base(u.Repo)), StartLimitIntervalSeconds, StartLimitBurst,
+		iniEsc(u.BinPath), iniEsc(u.Repo), iniEsc(u.Repo), RestartSecSeconds)
 }
 
 // SchtasksXML returns a Windows Task Scheduler XML definition.
