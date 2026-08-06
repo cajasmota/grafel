@@ -335,6 +335,14 @@ var (
 	frameworkDetectorInst *engine.Detector
 )
 
+// writeGraphGen is fbwriter.WriteGraphGen behind a var so a test can land a
+// working-tree write at the one point that matters for #6212: after this pass
+// read the bytes it extracted, before Step 9 records what it indexed. That is
+// the same seam, for the same reason, as cmd/grafel/index.go's — and this is the
+// path that actually runs, since TryIncremental's only non-test caller is the
+// daemon scheduler.
+var writeGraphGen = fbwriter.WriteGraphGen
+
 // frameworkDetector returns the shared Detector, or nil if the embedded rules
 // failed to load. A nil return degrades this path to its pre-#6148 behaviour
 // (classes keep their generic kind, framework-only entities are not emitted)
@@ -749,6 +757,17 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	var newEntities []graph.Entity
 	var newRels []graph.Relationship
+	// walkStamps is the manifest entry for each re-extracted file, computed from
+	// the bytes THIS loop reads (#6212). Step 9 stamps from these instead of
+	// re-hashing the repo off disk.
+	//
+	// This is the daemon's primary path — TryIncremental's only non-test caller
+	// is the scheduler — so it is where the defect actually bites: the window
+	// from the read below to Step 9 spans the re-extraction, the scoped resolve,
+	// the merge, the flow recompute, the canonical sort and all of
+	// WriteGraphGen. A developer saving a file inside it had that save stamped
+	// as indexed and then hash-matched away on the next pass.
+	walkStamps := make(map[string]diff.FileEntry, len(reallyChanged))
 	// #6148 — count of generic class records re-typed from the YAML rule sets,
 	// logged with the run so a silent regression to zero is visible.
 	classKindFolds := 0
@@ -784,12 +803,31 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	for _, rel := range reallyChanged {
 		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
+		// Stat BEFORE the read — see diff.StampBytes for why that ordering is
+		// load-bearing rather than incidental.
+		statSize, statMtime := int64(-1), int64(0)
+		if st, sErr := os.Stat(abs); sErr == nil {
+			statSize = st.Size()
+			statMtime = st.ModTime().UnixNano()
+		}
 		content, readErr := os.ReadFile(abs)
 		if readErr != nil {
 			// File deleted → nothing to extract; entities were already removed.
+			// Deliberately UNSTAMPED: with no bytes there is no evidence of what
+			// was indexed. A deleted file leaves allFiles and is pruned by
+			// ApplyStamps; a transiently unreadable one keeps its old stamp and
+			// re-presents as changed. Over-reporting, never staleness.
 			logger.Printf("incremental: %s deleted or unreadable — entities removed", rel)
 			continue
 		}
+
+		// Stamp HERE, on the successful read, and not at any of the `continue`s
+		// below (#6212). These are the bytes this pass saw, whatever the
+		// pipeline went on to do with them — and every skip below is a file that
+		// genuinely CHANGED, so it still needs a refreshed stamp or it
+		// re-presents as changed on every pass, counts against the
+		// too-many-changed limit and pins the daemon in a reindex loop (#5668).
+		walkStamps[rel] = diff.StampBytes(content, statSize, statMtime)
 
 		// Classify to get language.
 		cr := cls.ClassifyWithSize(ctx, rel, int64(len(content)))
@@ -1288,7 +1326,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// instead of overwriting graph.fb. This never renames over a possibly-
 	// mapped graph.fb (Windows ERROR_USER_MAPPED_FILE). fbPath is the gen
 	// file written, passed to the directory-keyed sidecar writer below.
-	fbPath, writeErr := fbwriter.WriteGraphGen(stateDir, doc)
+	fbPath, writeErr := writeGraphGen(stateDir, doc)
 	if writeErr != nil {
 		return fallback(t0, "write-graph-fb: "+writeErr.Error())
 	}
@@ -1319,7 +1357,16 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	// --- Step 9: update manifest ---
-	diff.UpdateManifest(absRepo, allFiles, manifest)
+	//
+	// Stamped from the bytes the re-extraction loop read, NOT re-hashed off disk
+	// (#6212). The graph fbwriter.WriteGraphGen just wrote was built from those
+	// bytes; anything the working tree has done since belongs to the next pass,
+	// and re-hashing here would stamp it as indexed and then hash-match it away.
+	//
+	// Also O(delta) instead of O(repo): the files this pass did not re-extract
+	// keep the stamps they already had, which is exactly what established them
+	// as unchanged in the first place (#6201, #6206).
+	diff.ApplyStamps(walkStamps, allFiles, manifest)
 	if saveErr := diff.SaveManifest(stateDir, absRepo, manifest); saveErr != nil {
 		logger.Printf("incremental: save manifest: %v (non-fatal)", saveErr)
 	}

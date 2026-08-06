@@ -306,6 +306,16 @@ type Indexer struct {
 	walkedFiles  []string
 	diffManifest *idiff.Manifest
 
+	// walkStamps is the manifest entry for every file this run examined,
+	// captured AT THE MOMENT the walk looked at it (#6212). It is what
+	// commitManifest stamps from, and the reason commitManifest hashes nothing.
+	//
+	// Written by the extraction workers (classifyAndReadWithProgress) and by the
+	// subprocess-extract branch, both in Run; read once, single-threaded, in
+	// commitManifest. The mutex covers the concurrent writers only.
+	walkStampMu sync.Mutex
+	walkStamps  map[string]idiff.FileEntry
+
 	// incrementalCarryForwardEntities holds the previous-graph entities sourced
 	// from UNCHANGED files during an incremental reindex. buildDocument seeds the
 	// resolver index with their (name, kind) → stable-ID identity so that
@@ -1006,9 +1016,95 @@ var capturedStats io.Writer
 // return to inject through and no other way to reach that branch.
 var writeGraphGen = fbwriter.WriteGraphGen
 
+// osStat and osReadFile are the extraction worker's stat and read behind vars,
+// so a test can make a working-tree write land at a precise point INSIDE the
+// per-file sequence (#6212). One indirect call each per file.
+//
+// They exist because the two properties the stamp rests on are both about
+// ORDER, and order is unobservable from outside the loop:
+//
+//   - the stat is taken BEFORE the read, so the stamp's mtime can only be
+//     staler than its content, never fresher. A test hooks osStat to rewrite
+//     the file as a side effect; the read then sees post-write bytes and the
+//     stamp must pair them with the PRE-write mtime.
+//   - the hash is over the bytes the pipeline RECEIVED, not a re-read of the
+//     path. A test hooks osReadFile to return bytes that are not on disk; a
+//     re-reading implementation stamps the disk's bytes and dies.
+//
+// Without these, replacing `content` with a fresh os.ReadFile of the same path
+// — same value, different moment — passes the whole suite.
+var (
+	osStat     = os.Stat
+	osReadFile = os.ReadFile
+)
+
+// recordWalkStamp records the manifest entry for one walked file, computed at
+// the moment the pipeline examined it. Safe to call from the extraction workers.
+//
+// FIRST WRITE WINS, and that is a correctness rule, not an optimisation. A .py
+// file is read TWICE per run — once by the cross-file registry pre-pass in
+// runPass1ExtractWithProgress, once by the worker below — and both reads feed
+// the graph (the registry drives extractBaseClasses' cross-file INHERITS and the
+// DRF bare-Route suppression). If a write lands between them the two halves of
+// the graph disagree, and the only stamp that cannot LEAD the graph is the
+// EARLIEST one: stamping the first read means a later divergence re-presents the
+// file as changed and it is re-extracted, where stamping the second would
+// hash-match the disk and freeze the registry's wrong contribution in place
+// (#6212).
+func (i *Indexer) recordWalkStamp(rel string, e idiff.FileEntry) {
+	i.walkStampMu.Lock()
+	if i.walkStamps == nil {
+		i.walkStamps = make(map[string]idiff.FileEntry)
+	}
+	if _, seen := i.walkStamps[rel]; !seen {
+		i.walkStamps[rel] = e
+	}
+	i.walkStampMu.Unlock()
+}
+
+// stampReadFile records the walk stamp for a file whose bytes the pipeline has
+// in hand. The SHA-256 is over exactly THOSE bytes — the ones the document is
+// built from — and never over a re-read of the path, which is the whole defect:
+// the same path at two moments is not the same bytes (#6212). See
+// diff.StampBytes for the stat-before-read requirement.
+func (i *Indexer) stampReadFile(rel string, content []byte, statSize int64, statMtime int64) {
+	i.recordWalkStamp(rel, idiff.StampBytes(content, statSize, statMtime))
+}
+
+// stampUnreadFiles records walk stamps for files whose bytes this process never
+// sees at all: the GRAFEL_SUBPROC_EXTRACT path, where the children do the
+// reading. Files the classifier SKIPS are hashed inline in the worker instead,
+// at the moment of the skip decision — see there for why the timing matters.
+//
+// The manifest must carry an entry for every walked file or the prune's absence
+// re-presents it as new on every pass, which is #5667's immortal-entry loop in
+// the other direction. go.mod in the #6207 fixture is exactly this case.
+func (i *Indexer) stampUnreadFiles(absRepo string, rels []string) {
+	sem := make(chan struct{}, 16)
+	var wg sync.WaitGroup
+	for _, rel := range rels {
+		wg.Add(1)
+		go func(r string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			entry, err := idiff.HashFile(filepath.Join(absRepo, filepath.FromSlash(r)))
+			if err != nil {
+				// Unreadable or vanished. Leaving it unstamped matches what
+				// UpdateManifest did on a hash error: no entry, so the next
+				// pass treats it as new. Over-reporting, never staleness.
+				return
+			}
+			i.recordWalkStamp(r, entry)
+		}(rel)
+	}
+	wg.Wait()
+}
+
 // commitManifest persists the file-hash manifest describing THIS run: every
-// walked file, re-stamped, with entries for anything no longer in the walk
-// pruned. Best-effort — a write failure is logged and never fails the index.
+// walked file, stamped with the hash the WALK computed, with entries for
+// anything no longer in the walk pruned. Best-effort — a write failure is
+// logged and never fails the index.
 //
 // ORDERING IS THE POINT (#6207 review). Index calls this only on the success
 // branch of fbwriter.WriteGraphGen, never from Run. Run returns before the
@@ -1035,28 +1131,23 @@ var writeGraphGen = fbwriter.WriteGraphGen
 // scoped reject leaves behind — the files re-read as changed and are
 // re-extracted. Over-reporting, never staleness.
 //
-// CONTENT: per file, the manifest can be newer than the graph, and here the
-// hazard is real. UpdateManifest hashes each file AT THIS MOMENT, whereas the
-// document was built from the bytes Run's walk read. A working-tree write
-// landing in between is stamped into the manifest but is not in the graph, so
-// the next pass hash-matches it, classifies it UNCHANGED (diff.go:411-413) and
-// the edit stays invisible until the file is touched again or HEAD advances.
-// Measured, not theorised: a probe injecting a working-tree write inside the
-// writeGraphGen seam confirmed the manifest stamps post-walk content. The
-// realistic trigger is exactly the watcher-driven fallback — it fires BECAUSE
-// files are changing.
+// CONTENT: on every path that BUILDS a graph, the manifest can only ever be
+// older than that graph, never newer (#6212). Nothing is hashed here. Every
+// stamp was computed at the moment the pipeline read the file, so it describes
+// exactly the bytes the document was built from, whatever the working tree has
+// done since. A write landing inside this window re-presents as changed on the
+// next pass and is picked up, instead of being stamped as indexed and
+// hash-matched away. internal/extractors.TryIncremental's Step 9 holds the same
+// invariant by the same means.
 //
-// This is pre-existing on the WithIncremental path but NEW on the fallback,
-// which previously wrote no manifest at all, so the old stamp caught the edit.
-// The window also got wider on both: it now spans rename-detect, algo
-// carry-forward, sortDocumentForEmission and the whole of WriteGraphGen —
-// seconds on a real repo, where it used to be immediately post-extraction.
-//
-// It is nevertheless the RIGHT TRADE and must not be reverted: losing one edit
-// until its next touch is self-recovering, while the permanent stuck state
-// above is not. The real fix — stamping from the hashes the walk already
-// computed, so the manifest describes the same bytes the graph was built from —
-// is filed separately.
+// ONE SITE IS STILL EXEMPT, and it is not this one: the zero-change pass in
+// internal/extractors/incremental.go is the last caller of diff.UpdateManifest
+// and still sweeps the whole repo. That pass extracts nothing, so it has no
+// bytes to stamp from;
+// the sweep is there to HEAL the residuals a #6201 scoped reject leaves behind,
+// and deleting it is #6206's job, not this one. Until then a write landing
+// inside that pass is stamped without being indexed. Do not read the paragraph
+// above as covering it.
 //
 // graphDir is filepath.Dir(outPath) — the directory the graph was just written
 // to. It is the destination whenever the run did not read a manifest from
@@ -1081,13 +1172,15 @@ func (i *Indexer) commitManifest(absRepo, graphDir string) {
 	}
 	m := i.diffManifest
 	if m == nil {
-		// A full index never loaded one. Start from whatever is on disk — the
-		// UpdateManifest below re-stamps every walked file and prunes
-		// everything else, so the result is the walk either way; loading only
-		// keeps the manifest's own metadata continuous.
+		// A full index never loaded one. Start from whatever is on disk — a
+		// full walk stamps every file and the prune drops everything else, so
+		// the result is the walk either way; loading only keeps the manifest's
+		// own metadata continuous. On a DELTA run the loaded manifest carries
+		// the stamps for the files this run did not walk, which is why
+		// ApplyStamps overlays rather than replaces.
 		m = idiff.LoadManifest(dest)
 	}
-	idiff.UpdateManifest(absRepo, i.walkedFiles, m)
+	idiff.ApplyStamps(i.walkStamps, i.walkedFiles, m)
 	if err := idiff.SaveManifest(dest, absRepo, m); err != nil {
 		fmt.Fprintf(os.Stderr, "grafel: save incremental manifest: %v (non-fatal)\n", err)
 	}
@@ -1459,6 +1552,17 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 
 	trk.PhaseStart(progress.PhaseExtractAST, 0, 0)
 	if subprocExtract() {
+		// #6212 — the children read the bytes in another process, so this side
+		// has no hash to thread out. Take them HERE, before the coordinator
+		// starts, rather than at commit time. A write racing the children then
+		// leaves the manifest stamping the PRE-write bytes while the graph got
+		// the post-write ones: the file re-presents as changed next pass and is
+		// re-extracted. Over-reporting, which is the safe direction — the
+		// commit-time hash had it the other way round and lost the edit.
+		// Threading the real hashes back out of extract.Coordinate would remove
+		// even that; it needs an IPC field and this path is off by default
+		// (GRAFEL_SUBPROC_EXTRACT).
+		i.stampUnreadFiles(absRepo, files)
 		res, cerr := extract.Coordinate(ctx, absRepo, files, extract.CoordinatorConfig{
 			Concurrency: subprocConcurrency(),
 			BatchSize:   subprocBatchSize(),
@@ -3436,7 +3540,24 @@ func (i *Indexer) runPass1ExtractWithProgress(ctx context.Context, absRepo strin
 		if !strings.HasSuffix(strings.ToLower(rel), ".py") {
 			continue
 		}
-		if content, err := os.ReadFile(abs); err == nil {
+		// #6212 — this is the FIRST of two reads of every .py file, and its
+		// output reaches the graph (cross-file INHERITS via extractBaseClasses,
+		// and DRF bare-Route suppression). So it is a point the graph is built
+		// from, and it must be stamped like one.
+		//
+		// recordWalkStamp is first-wins, so this stamp beats the worker's later
+		// read of the same file. That is the correct direction: if a write lands
+		// between the two reads, the registry holds pre-write bytes and the
+		// entities post-write, and only the EARLIER stamp re-presents the file
+		// as changed next pass. Stamping the later read would hash-match the
+		// disk and freeze a wrong INHERITS edge in place.
+		statSize, statMtime := int64(-1), int64(0)
+		if st, serr := osStat(abs); serr == nil {
+			statSize = st.Size()
+			statMtime = st.ModTime().UnixNano()
+		}
+		if content, err := osReadFile(abs); err == nil {
+			i.stampReadFile(rel, content, statSize, statMtime)
 			pyextr.ScanPythonClassRegistry(rel, string(content))
 			engine.ScanDRFRegisterNames(content)
 		}
@@ -3536,12 +3657,29 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 		go func() {
 			defer wg.Done()
 			for t := range tasks {
+				// #6212 — this stat is also the manifest stamp's size/mtime, and
+				// it is taken BEFORE the read on purpose. See diff.StampBytes.
 				size := int64(-1)
-				if st, err := os.Stat(t.absPath); err == nil {
+				statMtime := int64(0)
+				if st, err := osStat(t.absPath); err == nil {
 					size = st.Size()
+					statMtime = st.ModTime().UnixNano()
 				}
+				statSize := size
 				cr := i.classifier.ClassifyWithSize(ctx, t.relPath, size)
 				if cr.Skip || cr.Language == "" {
+					// Hashed INLINE, here, rather than batched after the worker
+					// pool joins (#6212). The classifier decided on the size
+					// this stat reported, so the stamp has to be taken against
+					// the same observation: deferring it to the end of
+					// extraction let an oversized file be truncated in between
+					// and stamped at its new, small content — which then
+					// hash-matches on the next pass and is never extracted even
+					// though it is now indexable. Serialising a big hash into a
+					// worker is a throughput cost; that was a correctness one.
+					if entry, herr := idiff.HashFile(t.absPath); herr == nil {
+						i.recordWalkStamp(t.relPath, entry)
+					}
 					mu.Lock()
 					i.stats.skipped++
 					mu.Unlock()
@@ -3550,8 +3688,14 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					continue
 				}
 
-				content, err := os.ReadFile(t.absPath)
+				content, err := osReadFile(t.absPath)
 				if err != nil {
+					// Deliberately UNSTAMPED. With no bytes there is no evidence
+					// of what was indexed, and stamping a transient failure from
+					// a later successful hash would claim content nothing ever
+					// extracted. Unstamped means the file reads as new next pass
+					// — over-reporting, never staleness, which is the same rule
+					// the hash-error branch in stampUnreadFiles follows.
 					mu.Lock()
 					i.stats.failed++
 					mu.Unlock()
@@ -3559,6 +3703,12 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					recordAndMaybeTick(atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
+
+				// The graph is built from THESE bytes, so this is the hash the
+				// manifest must carry (#6212). Recorded here rather than
+				// re-derived at commit time, which is what made the manifest
+				// able to describe content the walk never saw.
+				i.stampReadFile(t.relPath, content, statSize, statMtime)
 
 				if size < 0 {
 					size = int64(len(content))
