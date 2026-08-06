@@ -47,7 +47,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,6 +55,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/links"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,18 +188,35 @@ type taintSidecarDoc struct {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // dataFlowSidecarPath mirrors mcp.sidecarPath(group, "data-flow").
+//
+// #6178 round 3: was a plain os.UserHomeDir() join, ignoring GRAFEL_HOME —
+// one function apart from taintSidecarPath below, which already followed
+// GRAFEL_HOME via defaultLinksFile (fixed in #6178 round 2). links.
+// PassSidecarPath is the shared derivation both now use, so this file can
+// no longer disagree with itself about which grafel home a sibling sidecar
+// lives under.
 func dataFlowSidecarPath(group string) string {
-	home, err := os.UserHomeDir()
+	p, err := links.PassSidecarPath("", group, "data-flow")
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".grafel", "groups", group+"-links-data-flow.json")
+	return p
 }
 
 // taintSidecarPath mirrors the MCP taint sidecar path: the group links file with
 // ".json" replaced by "-taint.json".
+//
+// #6178 round 3: rewired from strings.TrimSuffix(defaultLinksFile(group),
+// ".json")+"-taint.json" to links.PassSidecarPath directly — behaviorally
+// identical (both ultimately derive from links.PathsFor), but this removes
+// the last hand-rolled sidecar-suffix join in this file so every sidecar
+// path here goes through the one shared function.
 func taintSidecarPath(group string) string {
-	return strings.TrimSuffix(defaultLinksFile(group), ".json") + "-taint.json"
+	p, err := links.PassSidecarPath("", group, "taint")
+	if err != nil {
+		return ""
+	}
+	return p
 }
 
 // loadJSONSidecar reads + decodes a JSON sidecar; ok=false on any I/O or decode

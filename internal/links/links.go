@@ -252,30 +252,44 @@ type Paths struct {
 	LinkPassStats string
 }
 
-// PathsFor returns the canonical paths under grafelHome ("" → ~/.grafel)
-// for the given group.
+// PathsFor returns the canonical paths under grafelHome ("" → the
+// GRAFEL_HOME-aware default resolved by registry.HomeDir(), normally
+// ~/.grafel) for the given group.
+//
+// #6178: the empty-string fallback used to call os.UserHomeDir() directly,
+// bypassing GRAFEL_HOME entirely. That made every caller that passes ""
+// (there are several outside internal/cli, e.g. the MCP payload-drift
+// reader) silently target the real home even when the caller's other I/O
+// — the store, the registry, the group config — was correctly isolated
+// under an overridden GRAFEL_HOME. Routing the fallback through
+// registry.HomeDir() closes that hole at the source: an explicit "" now
+// means "the grafel home the user actually selected", not "the OS
+// default, unconditionally".
+//
+// #6178 round 3: this now builds on groupsDir/GroupHome (group_paths.go),
+// the single derivation every group-scoped sidecar path in grafel — not
+// just links.json's own three siblings — must go through. See that file's
+// doc comment for why "route everything through one function" replaced
+// "grep for the bug shape and patch each site."
 func PathsFor(grafelHome, group string) (Paths, error) {
 	if group == "" {
 		return Paths{}, errors.New("group name required")
 	}
-	if grafelHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return Paths{}, err
-		}
-		grafelHome = filepath.Join(home, ".grafel")
+	home, err := GroupHome(grafelHome)
+	if err != nil {
+		return Paths{}, err
 	}
-	groupsDir := filepath.Join(grafelHome, "groups")
-	cacheDir := filepath.Join(grafelHome+"-cache", group, "string-scan")
-	if !strings.HasSuffix(grafelHome, ".grafel") {
+	dir := filepath.Join(home, "groups")
+	cacheDir := filepath.Join(home+"-cache", group, "string-scan")
+	if !strings.HasSuffix(home, ".grafel") {
 		// Use sibling cache dir under grafelHome for tests.
-		cacheDir = filepath.Join(grafelHome, "cache", group, "string-scan")
+		cacheDir = filepath.Join(home, "cache", group, "string-scan")
 	}
 	return Paths{
-		Links:         filepath.Join(groupsDir, group+"-links.json"),
-		Candidates:    filepath.Join(groupsDir, group+"-link-candidates.json"),
-		Rejections:    filepath.Join(groupsDir, group+"-link-rejections.json"),
-		LinkPassStats: filepath.Join(groupsDir, group+"-link-pass-stats.json"),
+		Links:         filepath.Join(dir, group+"-links.json"),
+		Candidates:    filepath.Join(dir, group+"-link-candidates.json"),
+		Rejections:    filepath.Join(dir, group+"-link-rejections.json"),
+		LinkPassStats: filepath.Join(dir, group+"-link-pass-stats.json"),
 		ScanCache:     cacheDir,
 	}, nil
 }

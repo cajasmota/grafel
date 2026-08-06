@@ -109,7 +109,18 @@ func RunLinksForGroupCtx(ctx context.Context, group string) error {
 	// into each affected repo's graph-stats.json sidecar (link_ms) for
 	// index-timing observability. Pure measurement — no behaviour change.
 	linkStart := time.Now()
-	res, err := links.RunAllPasses(group, graphsDir, "")
+	// #6178: resolve the grafel home explicitly through registry.HomeDir()
+	// (GRAFEL_HOME-aware) instead of passing "". PathsFor's own empty-string
+	// fallback calls os.UserHomeDir() directly and does NOT consult
+	// GRAFEL_HOME, so passing "" here silently wrote <group>-links.json to
+	// the real ~/.grafel/groups/ even when the rest of this run (StoreDir,
+	// stageGraphsDir's state lookups, registry.Groups() above) was correctly
+	// isolated under an overridden GRAFEL_HOME.
+	grafelHome, err := registry.HomeDir()
+	if err != nil {
+		return err
+	}
+	res, err := links.RunAllPasses(group, graphsDir, grafelHome)
 	if err != nil {
 		return err
 	}
@@ -198,7 +209,14 @@ func runLinksForGroup(cmd *cobra.Command, group string) error {
 	}
 	links.SetRepoSourcePaths(srcPaths)
 
-	res, err := links.RunAllPasses(group, graphsDir, "")
+	// #6178: see the matching comment in RunLinksForGroupCtx — resolve the
+	// grafel home explicitly rather than passing "" and relying on
+	// PathsFor's HOME-only fallback.
+	grafelHome, err := registry.HomeDir()
+	if err != nil {
+		return err
+	}
+	res, err := links.RunAllPasses(group, graphsDir, grafelHome)
 	if err != nil {
 		return err
 	}

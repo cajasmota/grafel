@@ -67,19 +67,18 @@ type effectsSidecarDoc struct {
 // effectsSidecarPath is the conventional path for the
 // <group>-links-effects.json sidecar written by
 // internal/links/effect_propagation.go. Mirrors reachabilitySidecarPath.
+//
+// #6178 round 3: was a hand-rolled os.Getenv("HOME")-then-os.UserHomeDir()
+// join, ignoring GRAFEL_HOME. links.PassSidecarPath is the shared
+// derivation this, reachabilitySidecarPath, and the writing pass all use
+// now — also fixes stub_detector_tool.go, which calls loadEffectsSidecar
+// (below) rather than deriving its own path.
 func effectsSidecarPath(group string) string {
-	// Prefer $HOME so tests using t.Setenv("HOME", tmpDir) resolve the same
-	// sidecar location on every OS — on Windows os.UserHomeDir() reads
-	// USERPROFILE and ignores HOME.
-	home := os.Getenv("HOME")
-	if home == "" {
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
+	p, err := links.PassSidecarPath("", group, "effects")
+	if err != nil {
+		return ""
 	}
-	return filepath.Join(home, ".grafel", "groups", group+"-links-effects.json")
+	return p
 }
 
 // loadEffectsSidecar reads + parses the sidecar into a map keyed by the

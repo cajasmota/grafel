@@ -41,6 +41,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -428,13 +429,21 @@ type groupCrossRepoLink struct {
 
 // loadGroupCrossRepoLinks loads the cross-repo links for a group (best-effort).
 // Missing file → empty slice, nil error (not all groups have cross-repo links yet).
+//
+// #6178: was os.UserHomeDir()+".grafel", ignoring GRAFEL_HOME even though
+// this file's own defaultTier4OutDir (below) correctly resolves the grafel
+// home via tier1HomeDir() — exactly the "GRAFEL_HOME honored in one
+// function, hand-rolled in another" split within a single file the issue
+// warned a mechanical grep sweep would miss.
+// #6178 round 3: now derives from links.PathsFor directly (the shared
+// derivation, internal/links/group_paths.go) instead of re-joining
+// "groups"/"<group>-links.json" via registry.HomeDir() by hand.
 func loadGroupCrossRepoLinks(group string) ([]groupCrossRepoLink, error) {
-	home, err := os.UserHomeDir()
+	paths, err := links.PathsFor("", group)
 	if err != nil {
 		return nil, nil
 	}
-	linksPath := filepath.Join(home, ".grafel", "groups", group+"-links.json")
-	data, err := os.ReadFile(linksPath)
+	data, err := os.ReadFile(paths.Links)
 	if err != nil {
 		// File absent is normal for groups without cross-repo wiring.
 		return nil, nil
@@ -449,7 +458,7 @@ func loadGroupCrossRepoLinks(group string) ([]groupCrossRepoLink, error) {
 		Links []groupCrossRepoLink `json:"links"`
 	}
 	if err := json.Unmarshal(data, &asObj); err != nil {
-		return nil, fmt.Errorf("parse group links %s: %w", linksPath, err)
+		return nil, fmt.Errorf("parse group links %s: %w", paths.Links, err)
 	}
 	return asObj.Links, nil
 }

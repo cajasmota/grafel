@@ -48,11 +48,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -658,19 +658,24 @@ const dagDocMaxChars = 140
 // `effects` MCP tool reads. Returns a map keyed by prefixed entity ID
 // ("<slug>::<localID>") → effect names. nil on any failure (a missing sidecar
 // is the common, non-error case → addNode falls back to entity properties).
-// Decoded structurally so the dashboard does not import internal/links.
+//
+// #6178 round 3: was a hand-rolled os.Getenv("HOME")-then-os.UserHomeDir()
+// join, ignoring GRAFEL_HOME — one function apart from handlers_dataflow.go's
+// taintSidecarPath, which (via defaultLinksFile) already followed it, the
+// exact "one file, one function apart, two different homes" shape the round
+// 3 review called out. links.PassSidecarPath is the shared derivation this,
+// the MCP `effects` tool, and the writing pass all use now; the dashboard
+// package already imports internal/links elsewhere (handlers_graphql.go),
+// so the "decoded structurally to avoid the dependency" rationale no longer
+// held even before this fix.
 func loadDAGEffectsSidecar(group string) map[string][]string {
 	if group == "" {
 		return nil
 	}
-	home := os.Getenv("HOME")
-	if home == "" {
-		var err error
-		if home, err = os.UserHomeDir(); err != nil {
-			return nil
-		}
+	path, err := links.PassSidecarPath("", group, "effects")
+	if err != nil || path == "" {
+		return nil
 	}
-	path := filepath.Join(home, ".grafel", "groups", group+"-links-effects.json")
 	buf, err := os.ReadFile(path)
 	if err != nil {
 		return nil

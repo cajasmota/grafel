@@ -24,11 +24,11 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/links"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -139,14 +139,18 @@ func (s *Server) handleDeadCode(_ context.Context, req mcpapi.CallToolRequest) (
 }
 
 // reachabilitySidecarPath is the conventional path for the
-// <group>-reachability.json sidecar written by
+// <group>-links-reachability.json sidecar written by
 // internal/links/reachability.go.
+//
+// #6178 round 3: was a plain os.UserHomeDir() join, ignoring GRAFEL_HOME.
+// links.PassSidecarPath is the shared derivation this and the writing pass
+// both use now.
 func reachabilitySidecarPath(group string) string {
-	home, err := os.UserHomeDir()
+	p, err := links.PassSidecarPath("", group, "reachability")
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".grafel", "groups", group+"-links-reachability.json")
+	return p
 }
 
 // loadReachabilitySidecar reads + parses the sidecar; ok=false on any

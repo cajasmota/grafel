@@ -36,6 +36,7 @@ import (
 	"unicode"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/registry"
 )
 
 // MermaidBudgetPerSection is the maximum mermaid blocks allowed in a single
@@ -553,17 +554,16 @@ func defaultTier1OutDir(group string) (string, error) {
 	return filepath.Join(home, "docs", group, ".tier1-"+ts), nil
 }
 
-// tier1HomeDir returns the grafel home directory honouring
-// GRAFEL_HOME override exactly as registry.HomeDir does.
-// We replicate the tiny logic here to keep tier1 self-contained; registry is
-// already imported by tier0.go in the same compilation unit.
+// tier1HomeDir returns the grafel home directory, honouring the
+// GRAFEL_HOME override.
+//
+// #6178 round 3: this used to reimplement registry.HomeDir()'s logic
+// in-file rather than calling it, on the theory that duplicating three
+// lines kept the package self-contained. That duplication is exactly the
+// shape this issue is about: a second implementation of "resolve the
+// grafel home" that can (and, per the #6178 round-2 sweep, several
+// elsewhere in the tree did) silently drift from the original. Delegating
+// removes the duplicate outright rather than fixing it a second time.
 func tier1HomeDir() (string, error) {
-	if h := os.Getenv("GRAFEL_HOME"); h != "" {
-		return h, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("home dir: %w", err)
-	}
-	return filepath.Join(home, ".grafel"), nil
+	return registry.HomeDir()
 }
