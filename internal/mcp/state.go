@@ -38,6 +38,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
+	"github.com/cajasmota/grafel/internal/registry"
 )
 
 // Registry is the on-disk registry.json describing groups and their repos.
@@ -3635,37 +3636,49 @@ func buildDescTableFromDoc(doc *graph.Document, sc *descriptions.Sidecar) map[in
 }
 
 // defaultLinksFile is the conventional path for cross-repo links.
+//
+// #6178: was os.UserHomeDir()+".grafel", which never consulted GRAFEL_HOME.
+// This is the fallback used when a group has no explicit links_file in
+// registry.json, so under an isolated GRAFEL_HOME an MCP server would read
+// the real home's (possibly stale, possibly unrelated) links file even
+// though the link pass that just ran wrote its output under GRAFEL_HOME.
+// registry.HomeDir() is the same resolver links.PathsFor and the
+// internal/cli link-pass call sites now use, so this stays in sync with
+// whatever actually got written.
 func defaultLinksFile(group string) string {
-	home, err := os.UserHomeDir()
+	home, err := registry.HomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".grafel", "groups", group+"-links.json")
+	return filepath.Join(home, "groups", group+"-links.json")
 }
 
 // defaultMemoryDir is the conventional path for save_finding outputs.
+// #6178: same GRAFEL_HOME fix as defaultLinksFile above.
 func defaultMemoryDir(group string) string {
-	home, err := os.UserHomeDir()
+	home, err := registry.HomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".grafel", "groups", group+"-memory")
+	return filepath.Join(home, "groups", group+"-memory")
 }
 
 // defaultLinkCandidatesFile is the on-disk file for pending link candidates.
+// #6178: same GRAFEL_HOME fix as defaultLinksFile above.
 func defaultLinkCandidatesFile(group string) string {
-	home, err := os.UserHomeDir()
+	home, err := registry.HomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".grafel", "groups", group+"-link-candidates.json")
+	return filepath.Join(home, "groups", group+"-link-candidates.json")
 }
 
-// defaultRegistryPath is "~/.grafel/registry.json".
+// defaultRegistryPath is "$GRAFEL_HOME (or ~/.grafel)/registry.json".
+// #6178: same GRAFEL_HOME fix as defaultLinksFile above.
 func defaultRegistryPath() string {
-	home, err := os.UserHomeDir()
+	home, err := registry.HomeDir()
 	if err != nil {
 		return "registry.json"
 	}
-	return filepath.Join(home, ".grafel", "registry.json")
+	return filepath.Join(home, "registry.json")
 }

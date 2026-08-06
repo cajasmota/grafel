@@ -428,12 +428,19 @@ type groupCrossRepoLink struct {
 
 // loadGroupCrossRepoLinks loads the cross-repo links for a group (best-effort).
 // Missing file → empty slice, nil error (not all groups have cross-repo links yet).
+//
+// #6178: was os.UserHomeDir()+".grafel", ignoring GRAFEL_HOME even though
+// this file's own defaultTier4OutDir (below) correctly resolves the grafel
+// home via tier1HomeDir() — exactly the "GRAFEL_HOME honored in one
+// function, hand-rolled in another" split within a single file the issue
+// warned a mechanical grep sweep would miss. Switched to registry.HomeDir()
+// (already imported by this file) for parity with the shared resolver.
 func loadGroupCrossRepoLinks(group string) ([]groupCrossRepoLink, error) {
-	home, err := os.UserHomeDir()
+	home, err := registry.HomeDir()
 	if err != nil {
 		return nil, nil
 	}
-	linksPath := filepath.Join(home, ".grafel", "groups", group+"-links.json")
+	linksPath := filepath.Join(home, "groups", group+"-links.json")
 	data, err := os.ReadFile(linksPath)
 	if err != nil {
 		// File absent is normal for groups without cross-repo wiring.

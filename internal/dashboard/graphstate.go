@@ -1390,9 +1390,18 @@ func persistAlgoResults(stateDir string, fbMtime time.Time, res *graph.Algorithm
 }
 
 // defaultLinksFile mirrors mcp.defaultLinksFile.
+//
+// #6178: was os.UserHomeDir()+".grafel", ignoring GRAFEL_HOME — the same
+// split-brain bug as mcp.defaultLinksFile, just on the dashboard side.
+// registry.HomeDir() is the shared resolver every other consumer of
+// <group>-links.json now uses (links.PathsFor, the internal/cli link-pass
+// call sites, mcp.defaultLinksFile, groupalgo.OverlayPath).
 func defaultLinksFile(group string) string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".grafel", "groups", group+"-links.json")
+	home, err := registry.HomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "groups", group+"-links.json")
 }
 
 // readCrossRepoLinks parses cross-repo links from raw JSON.

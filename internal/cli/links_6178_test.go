@@ -30,8 +30,10 @@ import (
 // the links file lands under the sandboxed HOME's .grafel instead of
 // GRAFEL_HOME, which this test catches.
 //
-// It also asserts (read-only, via os.Stat — never a write) that nothing
-// landed at the process's REAL home, captured before any env override.
+// It also asserts, read-only via os.Stat (never a write), that nothing
+// landed at the process's REAL home, captured before any env override —
+// belt-and-braces documentation of the invariant, not the assertion that
+// actually detects the bug (see the comment at that check below for why).
 func TestRunLinksForGroup_HonorsGRAFELHomeEnv_6178(t *testing.T) {
 	realHome, err := os.UserHomeDir()
 	if err != nil {
@@ -41,6 +43,12 @@ func TestRunLinksForGroup_HonorsGRAFELHomeEnv_6178(t *testing.T) {
 	sandboxHome := t.TempDir()
 	grafelHome := t.TempDir()
 	t.Setenv("HOME", sandboxHome)
+	// #6178 code-review finding #3: os.UserHomeDir() reads USERPROFILE on
+	// Windows, not HOME. internal/daemon/paths_windows.go exists, so
+	// Windows is a supported target; without this, a regressed build on a
+	// Windows dev box would fall through the (unoverridden) real
+	// %USERPROFILE% here instead of the sandbox.
+	t.Setenv("USERPROFILE", sandboxHome)
 	t.Setenv("GRAFEL_HOME", grafelHome)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(sandboxHome, ".config"))
 
@@ -84,9 +92,14 @@ func TestRunLinksForGroup_HonorsGRAFELHomeEnv_6178(t *testing.T) {
 		t.Fatalf("expected links file under GRAFEL_HOME at %s: %v\noutput:\n%s", wantLinks, err, out.String())
 	}
 
-	// The defect this guards against: nothing may land under the REAL
-	// home, regardless of what this test's own sandboxing did.
-	// os.Stat is read-only — this can never itself create anything.
+	// Belt-and-braces, not the load-bearing assertion: since this test
+	// overrides HOME/USERPROFILE before any code under test runs, a fully
+	// reverted build writes into the SANDBOXED home, never the real one —
+	// so this os.Stat cannot actually observe a regression on its own; the
+	// sandboxFallback check below is what proves the bug is caught.
+	// os.Stat is read-only regardless, so keeping it costs nothing and
+	// documents the invariant this whole test exists to protect: no run
+	// of this suite may ever touch the operator's real ~/.grafel.
 	realLinks := filepath.Join(realHome, ".grafel", "groups", group+"-links.json")
 	if _, statErr := os.Stat(realLinks); statErr == nil {
 		t.Fatalf("regression: links file leaked into the REAL home at %s", realLinks)
@@ -94,9 +107,10 @@ func TestRunLinksForGroup_HonorsGRAFELHomeEnv_6178(t *testing.T) {
 		t.Fatalf("unexpected error statting real home path %s: %v", realLinks, statErr)
 	}
 
-	// Also must not have landed under the sandboxed HOME's .grafel —
-	// that would mean the fallback used os.UserHomeDir() (HOME) instead
-	// of consulting GRAFEL_HOME, which happens to be a different dir here.
+	// This is the assertion that actually catches the #6178 regression:
+	// nothing may have landed under the sandboxed HOME's .grafel — that
+	// would mean the fallback used os.UserHomeDir() (HOME) instead of
+	// consulting GRAFEL_HOME, which is a different dir in this test.
 	sandboxFallback := filepath.Join(sandboxHome, ".grafel", "groups", group+"-links.json")
 	if _, statErr := os.Stat(sandboxFallback); statErr == nil {
 		t.Fatalf("regression: links file landed at HOME-derived fallback %s instead of GRAFEL_HOME %s", sandboxFallback, grafelHome)
