@@ -133,9 +133,16 @@ func (c *ExtractorConfig) EmitDestructureDetail() bool {
 // Config (when IncrementalReindexSet=true) wins; env var is the fallback.
 //
 // Default flipped to ON (#5231, the reindex-storm fix): the incremental
-// file-level patch is ~25× faster than a full reindex for single-file edits
-// and has a proven safe fall-through to the full IndexFn on any precondition
-// failure. Operators can still force the legacy full-reindex-every-time
+// file-level patch is measurably faster than a full reindex and has a proven
+// safe fall-through to the full IndexFn on any precondition failure.
+//
+// "~25× faster" stood here until #6201 and had no in-tree backing. Measured
+// (#6199, synthetic 3003-file / 58.5k-entity fixture, GOMAXPROCS=4, N=14,
+// medians): 6.0× at one changed file, 4.9× at fifty, 3.2× at two hundred. The
+// speedup is bounded by an O(repo)/O(graph) fixed tail every pass pays
+// regardless of delta size — see internal/extractors/incremental.go and #6199.
+//
+// Operators can still force the legacy full-reindex-every-time
 // behaviour with GRAFEL_INCREMENTAL_REINDEX=0 (or =false), which boolFromEnv
 // reports as an explicitly-set falsy value.
 func (c *ExtractorConfig) IsIncrementalEnabled() bool {
