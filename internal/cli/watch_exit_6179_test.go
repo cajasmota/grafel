@@ -2,9 +2,7 @@ package cli
 
 import (
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -105,51 +103,11 @@ func TestRunWatch_GiveUpAfterIndexFailuresExitsSuccessfully(t *testing.T) {
 	}
 }
 
-// TestRunWatch_SignalExitsSuccessfully covers the SIGTERM path end-to-end.
-//
-// This one matters specifically for the reaper interaction noted in #6179: the
-// daemon's sweep SIGTERMs foreign/duplicate `grafel watch` processes, and under
-// the old unconditional KeepAlive launchd relaunched them immediately — a
-// reap↔respawn oscillation. Exiting 0 on signal is what makes the reap stick.
-// (launchd treats death BY an unhandled signal as an unsuccessful exit, so the
-// handler returning normally, rather than the process being signal-killed, is
-// load-bearing.)
-func TestRunWatch_SignalExitsSuccessfully(t *testing.T) {
-	home := withSandboxHome(t)
-	repo := filepath.Join(home, "repos", "signalled")
-	if err := os.MkdirAll(repo, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Register a test-owned handler FIRST so the SIGTERM below can never take
-	// the default action and kill the test binary, whatever runWatch is doing.
-	guard := make(chan os.Signal, 1)
-	signal.Notify(guard, syscall.SIGTERM)
-	t.Cleanup(func() { signal.Stop(guard) })
-
-	prevTrigger := indexTriggerFunc
-	indexTriggerFunc = func(string) error { return nil }
-	t.Cleanup(func() { indexTriggerFunc = prevTrigger })
-
-	done := make(chan error, 1)
-	go func() { done <- runWatch(repo, "", time.Hour) }()
-
-	// Let runWatch reach its own signal.Notify before signalling.
-	time.Sleep(250 * time.Millisecond)
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-		t.Fatalf("raise SIGTERM: %v", err)
-	}
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("runWatch returned %v on SIGTERM; a stop request is deliberate and must "+
-				"exit 0 so launchd does not respawn what the reaper just killed (#6179)", err)
-		}
-	case <-time.After(30 * time.Second):
-		t.Fatal("runWatch did not exit on SIGTERM")
-	}
-}
+// TestRunWatch_SignalExitsSuccessfully lives in
+// watch_exit_signal_6179_unix_test.go — it raises a real SIGTERM at itself,
+// which Windows cannot express (see that file's header for why a portable
+// rewrite would assert the opposite of #6179's contract). Everything else in
+// this file builds and runs on all three platforms.
 
 // TestWatchCmd_BadArgvStillFails is the counterweight: making deliberate exits
 // succeed must not make EVERY exit succeed. A human typing `grafel watch` with

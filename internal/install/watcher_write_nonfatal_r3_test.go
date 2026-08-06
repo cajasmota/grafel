@@ -1,14 +1,13 @@
 package install_test
 
 import (
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // TestApply_WatcherWriteFailureIsNonFatal pins the #6185/#6186 R3 decision
@@ -30,19 +29,29 @@ import (
 // every other repo in the same Apply call. This aligns Apply with
 // watchersync.go's existing warn-and-continue behavior instead of leaving
 // the two callers to disagree.
+// Nothing in this test is macOS-specific: the property is Apply's per-repo
+// warn-and-continue, and watchers.Write rejects a control byte in Unit.Repo on
+// every platform (validateUnitFields, not the plist renderer). It nevertheless
+// used the darwin-only watchers.SetLaunchctlRunnerForTest seam and a bare
+// t.Setenv("HOME", ...), so it did not COMPILE on linux or windows —
+// `GOOS=linux go vet ./internal/install/...` failed on origin/main too. That was
+// noted verbatim in #6197's PR body as "pre-existing and unrelated" and left in
+// place; it is fixed here rather than tagged, because tagging would concede
+// coverage the test never needed to give up.
+//
+// The two portable spellings both already exist in this package:
+//   - testsupport.IsolateHome sets HOME *and* %USERPROFILE% (os.UserHomeDir
+//     reads the latter on Windows, which watchers.UnitDir goes through) and
+//     asserts the redirect took effect. See guidance_test.go for the same call.
+//   - watchers.StubServiceCallsForTest is the documented single cross-platform
+//     stub — it short-circuits launchctl, systemctl AND schtasks. The darwin
+//     helper in launchctl_stub_darwin_test.go delegates to it for that reason.
 func TestApply_WatcherWriteFailureIsNonFatal(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("GRAFEL_HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(home, ".grafel"))
+	testsupport.IsolateHome(t)
 
-	// Never let a real launchctl run even if activation is reached for the
-	// good repo.
-	restore := watchers.SetLaunchctlRunnerForTest(func(args ...string) ([]byte, error) {
-		return []byte(""), exec.Command("true").Run()
-	})
-	defer restore()
+	// Never let a real service manager run even if activation is reached for
+	// the good repo.
+	t.Cleanup(watchers.StubServiceCallsForTest())
 
 	goodRepo := t.TempDir()
 	badRepo := "/tmp/bad\x00repo" // control byte -> watchers.Write rejects it
