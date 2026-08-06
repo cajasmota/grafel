@@ -21,7 +21,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -361,52 +360,7 @@ func TestStatusReportsRunningWatchers(t *testing.T) {
 	}
 }
 
-// TestDarwinWatcherUnloadIsPersistent: on macOS, `launchctl bootout` only
-// clears the CURRENT login session — the plist stays in ~/Library/LaunchAgents
-// and RunAtLoad fires again at next login. The daemon's own service already
-// pairs bootout with `launchctl disable` for exactly this reason (#6044,
-// internal/daemon/service/launchd_darwin.go Unload). The per-repo watcher
-// loader must do the same, and Load must re-enable.
-func TestDarwinWatcherUnloadIsPersistent(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("darwin-only: launchctl disable/enable semantics")
-	}
-	var calls []string
-	restore := watchers.SetLaunchctlRunnerForTest(func(args ...string) ([]byte, error) {
-		calls = append(calls, strings.Join(args, " "))
-		return nil, nil
-	})
-	t.Cleanup(restore)
-
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	u := watchers.Unit{Group: "grp", Repo: filepath.Join(home, "alpha"), BinPath: "/usr/local/bin/grafel"}
-	if _, err := watchers.Write(u); err != nil {
-		t.Fatalf("write unit: %v", err)
-	}
-
-	if err := watchers.NewLoader().Unload(u); err != nil {
-		t.Fatalf("Unload: %v", err)
-	}
-	joined := strings.Join(calls, "\n")
-	if !strings.Contains(joined, "bootout") {
-		t.Fatalf("Unload did not bootout:\n%s", joined)
-	}
-	if !strings.Contains(joined, "disable") {
-		t.Fatalf("Unload did not persist the stop (no `launchctl disable`):\n%s", joined)
-	}
-
-	calls = nil
-	if err := watchers.NewLoader().Load(u); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	joined = strings.Join(calls, "\n")
-	if !strings.Contains(joined, "enable") {
-		t.Fatalf("Load did not clear a persisted disable (no `launchctl enable`):\n%s", joined)
-	}
-	ei := strings.Index(joined, "enable")
-	bi := strings.Index(joined, "bootstrap")
-	if bi >= 0 && ei > bi {
-		t.Fatalf("`launchctl enable` must precede bootstrap:\n%s", joined)
-	}
-}
+// TestDarwinWatcherUnloadIsPersistent lives in
+// watcher_persist_6180_darwin_test.go — it drives the darwin-only
+// watchers.SetLaunchctlRunnerForTest seam, so it has to be excluded from the
+// linux/windows BUILD, not just skipped at run time.
