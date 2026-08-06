@@ -64,7 +64,21 @@ const NoServiceMutationEnv = "GRAFEL_NO_SERVICE_MUTATION"
 // should be refused: under `go test`, or whenever a parent test process has
 // exported NoServiceMutationEnv into this one.
 func serviceMutationGuardActive() bool {
-	return testing.Testing() || os.Getenv(NoServiceMutationEnv) == "1"
+	return guardActiveFor(testing.Testing(), os.Getenv(NoServiceMutationEnv))
+}
+
+// guardActiveFor is the decision, split out from its two inputs so the env
+// belt is observable on its own.
+//
+// Testing serviceMutationGuardActive directly cannot distinguish the belt from
+// testing.Testing(): under `go test` the latter is always true, so the belt
+// contributes nothing an assertion can see and a mutant deleting it survives
+// (it did, in the first cut). The belt exists precisely for the case
+// testing.Testing() is FALSE — a `go build` binary that a harness execs —
+// which a test in this package can never itself be in. Passing both inputs
+// explicitly is the only way to pin it.
+func guardActiveFor(underGoTest bool, envValue string) bool {
+	return underGoTest || envValue == "1"
 }
 
 // readOnlyServiceVerbs is an ALLOWLIST of sub-commands known not to change

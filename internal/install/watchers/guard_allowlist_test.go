@@ -94,12 +94,23 @@ func TestGuard_MutatingVerbsPanicForEveryTool(t *testing.T) {
 // `grafel stop`/`install`/`update` the guard is bypassed completely and
 // silently. The env belt is what those harnesses export.
 func TestGuard_EnvBeltActivatesOutsideGoTest(t *testing.T) {
-	t.Setenv(NoServiceMutationEnv, "1")
-	if !serviceMutationGuardActive() {
-		t.Fatal("guard must be active when the env belt is set")
+	// The interesting case is underGoTest=false — which this test process can
+	// never itself be in, hence the explicit inputs.
+	if !guardActiveFor(false, "1") {
+		t.Fatal("the env belt alone must activate the guard in a go-built binary")
 	}
+	if guardActiveFor(false, "") {
+		t.Fatal("outside go test with no belt the guard must be inert (production)")
+	}
+	if guardActiveFor(false, "0") {
+		t.Fatal("only \"1\" activates the belt")
+	}
+	if !guardActiveFor(true, "") {
+		t.Fatal("under go test the guard must be active regardless of the belt")
+	}
+	// And the wiring: the real predicate must be true here (we ARE under test).
 	t.Setenv(NoServiceMutationEnv, "")
 	if !serviceMutationGuardActive() {
-		t.Fatal("guard must still be active under `go test` with the env unset")
+		t.Fatal("serviceMutationGuardActive must be true under go test")
 	}
 }
