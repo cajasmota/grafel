@@ -305,12 +305,51 @@ func saveTo(path string, r *Registry) error {
 	return atomicfile.WriteFile(path, b, 0o644)
 }
 
+// validateGroupName rejects group names that are unsafe as a filesystem path
+// segment (#6186).
+//
+// Group is interpolated raw into Unit.Label(), which is both the watcher
+// plist's filename and launchd's job identity (internal/install/watchers).
+// A group containing a path separator — e.g. "g/h" — turns
+// "com.grafel.watcher.g/h.<repo>.plist" into a path with an intermediate
+// directory component; watchers.Write then os.MkdirAll's that directory
+// inside ~/Library/LaunchAgents, which launchd does not scan, so the watcher
+// is silently never registered. A name like "../escape" or "." escapes (or
+// collides with) that directory entirely.
+//
+// This intentionally validates only the two concrete failure modes above
+// (path separators and "."/".." path segments) rather than reusing
+// slugify's full alnum-only character class: group names are commonly
+// derived from a directory basename (defaultGroupName in internal/cli/
+// wizard.go), which routinely contains spaces, dots, and underscores — none
+// of those are unsafe as a single path segment, and rejecting them would be
+// a regression for existing onboarding flows. Only characters that can
+// actually create or traverse a directory are blocked.
+//
+// This check runs at AddGroup (registration) only, not at Load/Groups() —
+// registries that already contain an invalid name (written before this fix,
+// or edited by hand) must keep loading normally. Rejecting on load would
+// turn a silently-broken watcher into a hard failure to even read the
+// registry, which is worse than the bug being fixed.
+func validateGroupName(name string) error {
+	if name == "" {
+		return errors.New("group name required")
+	}
+	if strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("group name %q must not contain a path separator", name)
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("group name %q is not a valid path segment", name)
+	}
+	return nil
+}
+
 // AddGroup adds a group to the registry and persists. Idempotent: if the
 // group already exists it is updated in place. The config file must exist
 // at the target path; otherwise an error is returned.
 func AddGroup(name, configPath string) error {
-	if name == "" {
-		return errors.New("group name required")
+	if err := validateGroupName(name); err != nil {
+		return err
 	}
 	// Validate that the config file exists.
 	if _, err := os.Stat(configPath); err == os.ErrNotExist {
