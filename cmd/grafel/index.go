@@ -316,6 +316,29 @@ type Indexer struct {
 	walkStampMu sync.Mutex
 	walkStamps  map[string]idiff.FileEntry
 
+	// failedExtractions names the walked files whose Pass-1 extraction returned
+	// an error this run (#6209). i.stats.failed counts them; only a NAME can be
+	// acted on, because the manifest entry that has to be qualified is per-file.
+	//
+	// Written by the extraction workers, read once in commitManifest, which
+	// hands it to diff.ApplyStampsAndFailures so those files' stamps carry a
+	// consecutive-failure count instead of passing for successfully indexed.
+	//
+	// TWO FAILURE CLASSES ARE DELIBERATELY NOT IN HERE.
+	//
+	// A file that could not be READ is never stamped in the first place (see the
+	// osReadFile branch in classifyAndReadWithProgress), so it already
+	// re-presents as new on every pass — over-reporting, never staleness — and
+	// marking it would be no improvement. It also could not be bounded: with no
+	// bytes there is no stamp to hang a count on.
+	//
+	// The GRAFEL_SUBPROC_EXTRACT path reports only extract.Result.Failed, a
+	// COUNT — the children never send the paths back. Naming them needs an IPC
+	// field, exactly as the hash-return note on stampUnreadFiles says, and that
+	// path is off by default.
+	failedMu          sync.Mutex
+	failedExtractions map[string]bool
+
 	// incrementalCarryForwardEntities holds the previous-graph entities sourced
 	// from UNCHANGED files during an incremental reindex. buildDocument seeds the
 	// resolver index with their (name, kind) → stable-ID identity so that
@@ -1101,6 +1124,26 @@ func (i *Indexer) stampUnreadFiles(absRepo string, rels []string) {
 	wg.Wait()
 }
 
+// recordFailedExtraction names one file whose Pass-1 extraction failed. Safe to
+// call from the extraction workers. See failedExtractions for what is and is
+// not routed here.
+func (i *Indexer) recordFailedExtraction(rel string) {
+	i.failedMu.Lock()
+	if i.failedExtractions == nil {
+		i.failedExtractions = make(map[string]bool)
+	}
+	i.failedExtractions[rel] = true
+	i.failedMu.Unlock()
+}
+
+// extractPass1 is the Pass-1 extraction entry point, indirected through a
+// package var for the same reason writeGraphGen and osReadFile are: the
+// failure it can return is the thing under test, and there is no fixture source
+// file that makes extractors.Extract fail on demand and keeps failing
+// deterministically pass after pass. Production always holds
+// extractors.Extract; only #6209's bounded-retry test replaces it.
+var extractPass1 = extractors.Extract
+
 // commitManifest persists the file-hash manifest describing THIS run: every
 // walked file, stamped with the hash the WALK computed, with entries for
 // anything no longer in the walk pruned. Best-effort — a write failure is
@@ -1154,11 +1197,20 @@ func (i *Indexer) stampUnreadFiles(absRepo string, rels []string) {
 // somewhere else, so a manifest can never describe a graph in another
 // directory. See WithManifestPersist for the ref-divergence that motivates it.
 //
-// KNOWN, PRE-EXISTING (#6207 review, to be filed): walkedFiles is the raw walk,
-// so a file whose EXTRACTION failed is still stamped as indexed and will not be
-// re-extracted until its bytes change. The consequence is a missing entity set,
-// not a stuck loop. This was already true on the WithIncremental path; #6207
-// makes it reachable from the fallback too.
+// FAILED EXTRACTIONS ARE STAMPED BUT NOT SILENT (#6209, was the KNOWN issue
+// noted here by the #6207 review). walkedFiles is the raw WALK, so a file whose
+// extraction failed is in it just like one that succeeded, and it is stamped at
+// the bytes the walk read. On its own that stamp is a lie the next pass cannot
+// see through: the hash matches, the file is classified unchanged, and its
+// entities are missing from the graph forever with no signal — strictly worse
+// than a file that was never stamped, which re-presents every pass and heals.
+//
+// The stamp still happens, because dropping it is what turns a
+// deterministically unparseable file into a re-parse on every pass for the life
+// of the repo. Instead the entry carries a consecutive-failure count and the
+// file is forced back into the changed set for the next diff.MaxExtractRetries
+// passes. Transient failures heal; deterministic ones cost a bounded number of
+// retries and then go quiet until their bytes change.
 func (i *Indexer) commitManifest(absRepo, graphDir string) {
 	if !i.persistManifest {
 		return
@@ -1180,7 +1232,20 @@ func (i *Indexer) commitManifest(absRepo, graphDir string) {
 		// ApplyStamps overlays rather than replaces.
 		m = idiff.LoadManifest(dest)
 	}
-	idiff.ApplyStamps(i.walkStamps, i.walkedFiles, m)
+	i.failedMu.Lock()
+	failed := i.failedExtractions
+	i.failedMu.Unlock()
+	exhausted := idiff.ApplyStampsAndFailures(i.walkStamps, i.walkedFiles, failed, m)
+	// The one moment worth a line: this file has now failed on every attempt it
+	// is going to get, so its entities are missing from the graph and will stay
+	// missing until someone edits it. Silence here is what #6209 was about —
+	// the count in the manifest is durable but nothing reads it, so without this
+	// the file goes dark with no signal at the exact instant it goes dark.
+	for _, rel := range exhausted {
+		fmt.Fprintf(os.Stderr, "grafel: %s failed extraction %d time(s); no longer retrying — its "+
+			"entities are absent from the graph until the file changes (#6209)\n",
+			rel, idiff.MaxExtractRetries+1)
+	}
 	if err := idiff.SaveManifest(dest, absRepo, m); err != nil {
 		fmt.Fprintf(os.Stderr, "grafel: save incremental manifest: %v (non-fatal)\n", err)
 	}
@@ -3774,7 +3839,7 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					continue
 				}
 
-				ents, extractErr := extractors.Extract(ctx, file)
+				ents, extractErr := extractPass1(ctx, file)
 
 				// #5989 — dispatch the custom/framework extractors registered
 				// under internal/custom/** (Django/DRF/Celery/Flask/FastAPI/
@@ -3898,6 +3963,13 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 						i.stats.skipped++
 					} else {
 						i.stats.failed++
+						// #6209 — the bytes were read and stamped, but nothing
+						// came out of them. Name the file so commitManifest can
+						// qualify its stamp instead of recording it as indexed.
+						// Kept OUT of the ErrNoExtractorForLanguage branch on
+						// purpose: an unsupported language is a permanent,
+						// correct classification, not a failure to retry.
+						i.recordFailedExtraction(t.relPath)
 					}
 				} else {
 					i.stats.extracted++

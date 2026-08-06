@@ -2140,6 +2140,17 @@ func daemonRebuildFuncCore(
 			// persistManifest below is unconditional on incrementalStateDir == "",
 			// not narrowed to !args.Wipe.
 			//
+			// RETRY BUDGETS GO WITH IT (#6209). The manifest a wiped rebuild
+			// writes is fresh, so every per-file consecutive-extraction-failure
+			// count starts again at whatever THIS run produced. That is the same
+			// answer as above for the same reason: the count is state describing
+			// previous passes, --wipe exists to discard exactly that, and the run
+			// doing the discarding has just re-extracted every file itself, so
+			// its own result is better evidence than the history it replaces. The
+			// cost of being wrong is bounded — a file that still fails
+			// deterministically spends its budget again over the next few passes
+			// and goes quiet — and --wipe is user-initiated, never a daemon tick.
+			//
 			// ORDERING (verified, not assumed): commitManifest (index.go) is called
 			// ONLY from the success branch of writeGraphGen inside Index /
 			// runIndexInternal — i.e. after wipe already ran (wipe is the very

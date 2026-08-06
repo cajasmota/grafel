@@ -46,6 +46,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,11 +73,43 @@ const manifestFile = "file-index.json"
 // already re-spelled once, in internal/daemon/state_migrate.go).
 const ManifestFileName = manifestFile
 
+// MaxExtractRetries bounds how many EXTRA passes a file whose extraction failed
+// is forced back into the changed set before the manifest is allowed to treat it
+// as settled (#6209).
+//
+// Two is a deliberate middle: enough to ride out a transient failure (an
+// oversubscribed machine, a partially-written file, a cancelled child) without
+// making a genuinely unparseable file — an unsupported dialect, a vendored
+// minified blob, a generated file the grammar chokes on — cost a re-read and a
+// re-parse on every pass for the life of the repo. Once the budget is spent the
+// file goes quiet until its BYTES change, which is the only new information
+// that could plausibly change the outcome.
+const MaxExtractRetries = 2
+
 // FileEntry holds the hash + metadata for one indexed source file.
 type FileEntry struct {
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
 	Mtime  int64  `json:"mtime"` // UnixNano
+
+	// Failures counts CONSECUTIVE passes on which this file was read and
+	// stamped but its EXTRACTION failed, so the graph does not contain its
+	// entities even though the stamp says the bytes were indexed (#6209).
+	//
+	// It exists because those two facts are otherwise indistinguishable on
+	// disk. A stamp means "the graph was built from these bytes"; for a failed
+	// file that claim is false, and it is self-concealing — the next pass
+	// hash-matches the stamp, calls the file unchanged, and the missing entity
+	// set is never noticed, let alone healed.
+	//
+	// Non-zero and within MaxExtractRetries forces the file back into the
+	// changed set (see RetryDue). Reset to zero by any successful extraction —
+	// ApplyStamps overwrites the whole entry — and reset to one when the file's
+	// content changes, because different bytes earn a fresh budget.
+	//
+	// omitempty: the overwhelmingly common value is 0, and a manifest is
+	// written once per pass per repo.
+	Failures int `json:"failures,omitempty"`
 }
 
 // Manifest is the on-disk representation of the per-repo file index.
@@ -253,6 +286,20 @@ func UpdateManifestScoped(absRepo string, hashPaths, keepPaths []string, m *Mani
 				return
 			}
 			mu.Lock()
+			// #6209 — a re-hash must not silently clear the retry budget. This
+			// writes a fresh FileEntry, whose Failures is zero, over an entry
+			// that may be carrying a count; the too-many-changed reject at
+			// incremental.go passes exactly the changed set, and a retry-due
+			// file is IN it by construction. Zeroing there restarts the budget
+			// on every reject, which is the unbounded retry this design
+			// rejected, reached by accident.
+			//
+			// Same rule as ApplyStampsAndFailures: identical bytes keep the
+			// count, different bytes earn a fresh budget (here, zero — the file
+			// changed, so it is being re-extracted on its own merits anyway).
+			if prev, ok := m.Files[r]; ok && prev.SHA256 == entry.SHA256 {
+				entry.Failures = prev.Failures
+			}
 			m.Files[r] = entry
 			mu.Unlock()
 		}(rel)
@@ -285,6 +332,87 @@ func ApplyStamps(stamps map[string]FileEntry, keepPaths []string, m *Manifest) {
 		m.Files[rel] = e
 	}
 	reconcileMembership(keepPaths, m)
+}
+
+// ApplyStampsAndFailures is ApplyStamps plus the record of which of those
+// stamped files FAILED to extract on this pass (#6209).
+//
+// A stamp asserts "the graph was built from these bytes". For a file whose
+// extractor returned an error that assertion is false — the pipeline read the
+// bytes and produced nothing from them — and it is self-concealing: the next
+// pass hash-matches the stamp, classifies the file unchanged, and the missing
+// entity set is never noticed. Dropping the stamp instead would heal that, but
+// only by making a DETERMINISTICALLY unparseable file re-read and re-parse on
+// every pass forever. So the entry stays and carries a consecutive-failure
+// count, and retryDue spends it over the next MaxExtractRetries passes.
+//
+// The count must survive ApplyStamps, which overwrites whole entries, so the
+// prior counts are snapshotted first. Two resets are deliberate:
+//
+//   - A file that is NOT in failed keeps whatever ApplyStamps wrote, i.e. a
+//     zero count. One successful extraction clears the history; the count is
+//     "consecutive", not "lifetime".
+//   - A file that failed again but at DIFFERENT bytes restarts at one. New
+//     content is the only new information that could change the outcome, so it
+//     earns a fresh budget rather than inheriting a spent one.
+//
+// failed holds repo-relative paths, the same key space as stamps. Paths absent
+// from the manifest after the stamp+prune — never stamped at all, or pruned out
+// of the walk — are skipped: an absent entry already re-presents as new, which
+// is the stronger signal.
+//
+// It returns the paths whose count CROSSED MaxExtractRetries on this call —
+// the moment each file stops being retried and its missing entities become
+// permanent until someone edits it. That crossing is the one event in this
+// mechanism a human should hear about, and it happens exactly once per file, so
+// the caller logs it rather than the manifest quietly absorbing it.
+func ApplyStampsAndFailures(stamps map[string]FileEntry, keepPaths []string, failed map[string]bool, m *Manifest) (exhausted []string) {
+	prior := make(map[string]FileEntry, len(failed))
+	for rel := range failed {
+		if e, ok := m.Files[rel]; ok {
+			prior[rel] = e
+		}
+	}
+
+	ApplyStamps(stamps, keepPaths, m)
+
+	for rel := range failed {
+		e, ok := m.Files[rel]
+		if !ok {
+			continue
+		}
+		if p, had := prior[rel]; had && p.SHA256 == e.SHA256 {
+			e.Failures = p.Failures + 1
+		} else {
+			e.Failures = 1
+		}
+		m.Files[rel] = e
+		if e.Failures == MaxExtractRetries+1 {
+			exhausted = append(exhausted, rel)
+		}
+	}
+	sort.Strings(exhausted)
+	return exhausted
+}
+
+// RetryDue reports whether an entry's extraction failure is still within its
+// retry budget, and must therefore be forced back into the changed set even
+// though its bytes are unchanged (#6209).
+//
+// Both bounds matter. Failures == 0 is the ordinary case and must not be
+// disturbed. Failures > MaxExtractRetries is the file that has had its chances:
+// leaving it dirty forever would re-read and re-parse it on every pass for the
+// life of the repo, which is a worse trade than the gap it was fixing.
+//
+// EXPORTED BECAUSE ONE UNION IS NOT ENOUGH. internal/extractors.TryIncremental —
+// the daemon's per-tick path — re-checks content hashes of its own in the Step-3
+// AST-hash gate, downstream of everything this package decides. That gate
+// compares the same SHA-256 over the same bytes, so a failed file (whose bytes
+// are unchanged by construction) is dropped straight back out unless the caller
+// consults this predicate too. Any future gate that asks "did the bytes change?"
+// has to ask this as well, or the retry dies there silently.
+func RetryDue(e FileEntry) bool {
+	return e.Failures > 0 && e.Failures <= MaxExtractRetries
 }
 
 // reconcileMembership drops entries for files no longer in the walked set (#5667)
@@ -438,6 +566,26 @@ func FilterWithGit(absRepo string, relPaths []string, manifest *Manifest) (chang
 		}
 	}
 
+	// FAILED-EXTRACTION UNION (#6209).
+	//
+	// The isChanged gate alone is not enough on this path, because this path
+	// does not consult isChanged for everything: a file git does not report is
+	// trusted as unchanged and never hashed. A file whose extraction failed has
+	// unchanged BYTES by construction — that is the whole problem — so git is
+	// silent about it and the retry would never fire on the git-aware path,
+	// which is the one the daemon and Index()+WithIncremental both take.
+	//
+	// Union it in here so it reaches isChanged, which then applies the same
+	// budget. Costs one map walk over the manifest and, in the overwhelmingly
+	// common case of no failures, adds nothing to the changed set.
+	if manifest != nil {
+		for rel, e := range manifest.Files {
+			if RetryDue(e) {
+				gitChanged[rel] = true
+			}
+		}
+	}
+
 	// git-aware path: files reported by git go through hash-based check;
 	// files NOT reported by git are trusted as unchanged.
 	var gitDirty, gitClean []string
@@ -505,6 +653,12 @@ func isChanged(absPath, relPath string, manifest *Manifest) bool {
 	entry, ok := manifest.Files[relPath]
 	if !ok {
 		return true // new file
+	}
+	// #6209: the bytes may be identical and the file still not be in the graph,
+	// because the extractor that ran on them failed. Retry it, within budget,
+	// before the hash gets a chance to say "unchanged" and hide the gap.
+	if RetryDue(entry) {
+		return true
 	}
 	info, err := os.Lstat(absPath)
 	if err != nil {
