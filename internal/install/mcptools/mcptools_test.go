@@ -304,6 +304,74 @@ func TestPreviouslyRegistered_SuppressedByAnyRecordedChoice(t *testing.T) {
 	}
 }
 
+// writeRawLastChoice writes arbitrary bytes to ~/.grafel/mcp-tools.json,
+// bypassing SaveLastChoice, so a malformed document can be staged.
+func writeRawLastChoice(t *testing.T, content []byte, mode os.FileMode) string {
+	t.Helper()
+	path, err := LastChoicePath()
+	if err != nil {
+		t.Fatalf("LastChoicePath: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, mode); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) }) // so TempDir cleanup can unlink
+	return path
+}
+
+// TestPreviouslyRegistered_MalformedChoiceFileSuppressesB2 closes the bound's
+// fail-open leak: B2's whole premise is that a nil lastChoice faithfully means
+// "no choice was ever recorded". A file that EXISTS but cannot be parsed or
+// read is evidence a choice WAS recorded — the same rule mcpprev.go already
+// applies to an unreadable group config. Treating it as first-run would let B2
+// re-check a box the user cleared, which is the very regression the bound was
+// introduced to prevent.
+func TestPreviouslyRegistered_MalformedChoiceFileSuppressesB2(t *testing.T) {
+	cases := map[string]struct {
+		content []byte
+		mode    os.FileMode
+	}{
+		"truncated JSON": {[]byte(`{"selected":["curs`), 0o600},
+		"zero bytes":     {[]byte(``), 0o600},
+		"unreadable":     {[]byte(`{"selected":["cursor"]}`), 0o000},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setupHome(t)
+			path := staleClaudeNoEntry(t)
+			writeRawLastChoice(t, tc.content, tc.mode)
+
+			tools := DetectWithPrevious(map[string]bool{path: true})
+			if c := find(t, tools, "claude"); c.DefaultSelected {
+				t.Errorf("a %s choice file must suppress B2 — the file existing is evidence a choice was recorded; got %+v", name, c)
+			}
+		})
+	}
+}
+
+// TestReadLastChoice_CorruptIsARecordedChoice pins the representation the bound
+// depends on: a corrupt document yields a NON-NIL empty set, so it is
+// distinguishable from the genuine no-file case (nil). Both still leave the
+// (C) override naming nothing, so the (B) default is unchanged.
+func TestReadLastChoice_CorruptIsARecordedChoice(t *testing.T) {
+	setupHome(t)
+	writeRawLastChoice(t, []byte(`{not json`), 0o600)
+
+	set, err := ReadLastChoice()
+	if err != nil {
+		t.Fatalf("a corrupt file must not error out of the wizard: %v", err)
+	}
+	if set == nil {
+		t.Error("corrupt file must yield a NON-NIL empty set (a choice exists but is unreadable), not nil (no choice)")
+	}
+	if len(set) != 0 {
+		t.Errorf("corrupt file must name no tools; got %v", set)
+	}
+}
+
 // TestDetectWithPrevious_ReadsLastChoice verifies the exported wrapper still
 // consults the on-disk (C) choice, so the override is not bypassed by callers
 // that supply a previously-registered set.

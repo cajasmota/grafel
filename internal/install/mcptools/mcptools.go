@@ -131,7 +131,17 @@ func Detect() []Tool {
 // but a temp $HOME, and reading the state would drag internal/install and
 // internal/registry into that. Callers use install.PreviouslyRegisteredMCPPaths().
 func DetectWithPrevious(prev map[string]bool) []Tool {
-	last, _ := ReadLastChoice() // best-effort; nil when no prior choice
+	last, err := ReadLastChoice()
+	if err != nil {
+		// The file could not be READ (permissions, I/O). It may well record an
+		// opt-out, so it must not be mistaken for "no choice was ever made" —
+		// that is the one input the B2 bound trusts. Substitute an empty
+		// non-nil set: B2 is suppressed and (C) names nothing, so the (B)
+		// default decides, exactly as before #6170. Same rule as
+		// install.PreviouslyRegisteredMCPPaths: an unreadable config is not
+		// evidence of absence.
+		last = map[string]bool{}
+	}
 	return detectWith(last, prev)
 }
 
@@ -140,8 +150,11 @@ func DetectWithPrevious(prev map[string]bool) []Tool {
 // (possibly nil) is the set of config paths a previous install recorded a
 // grafel registration at.
 //
-// B2 is bounded to the case where lastChoice is nil, and that bound is the
-// safety property. It cannot be carried by precedence within the expression,
+// B2 is bounded to the case where lastChoice is nil, and that bound is THE
+// carrier of the safety property for this fix (install.PreviouslyRegisteredMCPPaths'
+// opt-out subtraction is a second, narrower layer beneath it).
+//
+// The bound cannot be carried by precedence within the expression,
 // because (C) cannot express "off": ReadLastChoice builds its set only from
 // the file's `selected` list, so every value it can yield is true and an
 // opted-out tool is merely ABSENT from the map — the `def = sel` branch below
@@ -261,8 +274,13 @@ func LastChoicePath() (string, error) {
 	return filepath.Join(home, ".grafel", "mcp-tools.json"), nil
 }
 
-// ReadLastChoice loads the remembered selection as a set of tool IDs. Returns
-// (nil, nil) when no choice has been saved yet (the common first-run case).
+// ReadLastChoice loads the remembered selection as a set of tool IDs.
+//
+// nil is returned ONLY when no choice has been saved — the file does not
+// exist. That distinction is load-bearing: detectWith keys the B2 bound on it,
+// so every other outcome (an empty selection, a corrupt document) must return
+// a non-nil map, and a read error must be surfaced so the caller can do the
+// same. Do not collapse any of those to nil.
 func ReadLastChoice() (map[string]bool, error) {
 	path, err := LastChoicePath()
 	if err != nil {
@@ -277,8 +295,13 @@ func ReadLastChoice() (map[string]bool, error) {
 	}
 	var doc lastChoiceFile
 	if err := json.Unmarshal(b, &doc); err != nil {
-		// A corrupt file must not break the wizard — treat as "no choice".
-		return nil, nil
+		// A corrupt file must not break the wizard, but it is NOT "no choice":
+		// the file exists, so a choice was recorded — we just cannot read which
+		// tools it named. Yield a NON-NIL empty set, keeping it distinguishable
+		// from the genuine no-file case (nil) that the B2 bound keys on. Named
+		// nothing means the (C) override does nothing, so the (B) default
+		// decides — unchanged behaviour, minus the fail-open.
+		return map[string]bool{}, nil
 	}
 	set := make(map[string]bool, len(doc.Selected))
 	for _, id := range doc.Selected {

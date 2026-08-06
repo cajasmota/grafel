@@ -26,11 +26,18 @@ import (
 // mcptools.DetectWithPrevious.
 //
 // Paths belonging to a tool the user has DELIBERATELY turned off are removed
-// first. That subtraction is the safety property: the recorded registration
-// must only repair an accidental unchecking, never re-check a box the user
-// went out of their way to clear. The durable record of "off" is the group
-// configs' explicit tool selection (registry.GroupConfig.Tools, resolved via
-// tooladapter.EnabledAdapters) — the same set `uninstall` and `doctor` sweep.
+// first, using the group configs' explicit tool selection
+// (registry.GroupConfig.Tools via tooladapter.EnabledAdapters) — the same set
+// `uninstall` and `doctor` sweep.
+//
+// This subtraction is DEFENCE IN DEPTH, not the safety property. The property
+// — "a recorded decision is never overridden" — is carried by the bound in
+// mcptools.detectWith, which suppresses B2 entirely once any choice has been
+// recorded; strengthen that if it ever needs strengthening. This layer catches
+// only the residual cross-path case: a user who set an explicit tool list via
+// the CLI (`grafel install`, `--tools`) AND has no ~/.grafel/mcp-tools.json,
+// so the bound has nothing to key on. Narrow by construction — the dashboard
+// wizard, the sole consumer, creates groups without writing cfg.Tools.
 //
 // Everything here is best-effort: an unreadable install.json or registry
 // yields nil, which simply restores the pre-#6170 default. It never errors and
