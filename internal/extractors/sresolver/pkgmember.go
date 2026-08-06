@@ -1,16 +1,17 @@
 package sresolver
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // receiverTypeProp is the extractor-supplied property that names the receiver
-// a method-dispatch CALLS edge was invoked on. Stamped by the Go extractor
-// only (internal/resolve/refs.go:1206), and dropped by
-// golang/extractor.go:509 when the extractor is unsure — so an absent stamp
-// means "no receiver information", never "no receiver".
+// a method-dispatch CALLS edge was invoked on. Stamped by six extractors at the
+// nine sites enumerated in buildMemberIndexes below, and dropped when the
+// extractor is unsure, as the Go one does at golang/extractor.go:509 — so an
+// absent stamp means "no receiver information", never "no receiver".
 const receiverTypeProp = "receiver_type"
 
 // pkgDirOf returns the directory portion of a slash-normalised source file
@@ -195,6 +196,31 @@ func isOperationKind(kind string) bool {
 	return false
 }
 
+// Whole word, so `publicKey` or a type named `PublicFoo` is not the keyword.
+var publicKeywordRE = regexp.MustCompile(`\bpublic\b`)
+
+// uncallableSolidityField is the scoped port of
+// internal/resolve/refs.go:uncallableSolidityField (issue #6177): Solidity
+// synthesises a getter for a state variable IF AND ONLY IF it is declared
+// `public`, so a CALLS edge to a non-public one describes no call in the
+// source. See that function for why the verdict is read out of Signature text,
+// why ("solidity", "SCOPE.Schema") names the state variable exactly, and why an
+// empty Signature must fail OPEN.
+//
+// Duplicated rather than imported for the same reason pkgDirOf is: internal/
+// resolve's own in-package tests import internal/extractors, so an import here
+// closes a cycle in that package's test binary (`go build` alone stays happy —
+// `go vet ./internal/resolve/...` is what reports it). Pinned against drift by
+// the cross-resolver agreement gate in resolver_agreement_6141_test.go, which
+// drives BOTH resolvers over one entity set and fails when they bind the same
+// stub differently.
+func uncallableSolidityField(e *graph.Entity) bool {
+	if e.Language != "solidity" || e.Kind != "SCOPE.Schema" || e.Signature == "" {
+		return false
+	}
+	return !publicKeywordRE.MatchString(e.Signature)
+}
+
 func relWantsMemberTier(r *graph.Relationship) bool {
 	if r.ToID == "" || isHexID(r.ToID) || strings.IndexByte(r.ToID, ':') >= 0 {
 		return false
@@ -264,6 +290,30 @@ func buildMemberIndexes(newEntities, existingEntities []graph.Entity) *memberInd
 				pkgBucket[scope] = scopeBucket
 			}
 			put(scopeBucket, member, e.ID)
+
+			// #6177 — a member no call can reach is withheld from BOTH leaf
+			// indexes rather than merely losing the operation preference,
+			// because a preference falls through (see leafByFileOp) and
+			// eligibility must not. Withholding is the STRONGER form of the
+			// per-candidate skip in internal/resolve's scanLeafMembers: the
+			// member cannot bind, and it cannot make an eligible sibling
+			// ambiguous via put's sentinel either. internal/resolve pays for the
+			// sentinel it does build with Index.eligibleMember, which is what
+			// keeps the two paths' answers identical (#6177's own divergence:
+			// two sibling files declaring the same contract name).
+			//
+			// Scoping to CALLS comes for free: leafByFile and leafByPkg are
+			// read ONLY by lookupLeaf, which is CALLS-gated. The receiver
+			// tier's byPackageMember above keeps the entity, and that is safe
+			// because NO Solidity extractor stamps receiver_type: all 9 sites
+			// that stamp it on a relationship are golang/extractor.go:1437,
+			// :1440, :1469, :1472, crystal/extractor.go:498, php/php.go:827,
+			// scala/scala.go:532, swift/swift.go:423 and groovy/groovy.go:801,
+			// so a Solidity CALLS edge never reaches that tier and its
+			// precision comes from the receiver anyway.
+			if uncallableSolidityField(e) {
+				continue
+			}
 
 			fileBucket := idx.leafByFile[file]
 			if fileBucket == nil {

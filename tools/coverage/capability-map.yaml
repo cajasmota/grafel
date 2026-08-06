@@ -14187,8 +14187,10 @@ records:
             functions: [TestSolidity_LineAttribution]
           - file: internal/extractors/solidity/issue6135_state_variables_test.go
             functions: [TestSolidity_StateVariables, TestSolidity_StateVariableConstantWithStringLiteral, TestSolidity_StateVariableMultiLineDeclaration, TestSolidity_StateVariableContainsEdge, TestSolidity_StateVariablesExcludeNonDeclarations, TestSolidity_StateVariablesLeaveOperationsUntouched, TestSolidity_StateVariableFunctionTypeNotEmitted, TestSolidity_StateVariableCallTargets]
-        issues_implemented: [6028, 6040, 6135]
-        verified_at: "2026-08-04"
+          - file: internal/extractors/solidity/issue6177_nonpublic_field_calls_test.go
+            functions: [TestSolidity_NonPublicStateVariableCallDangles_6177]
+        issues_implemented: [6028, 6040, 6135, 6177]
+        verified_at: "2026-08-05"
 
   lang.c-cpp.framework.crow:
     capabilities:

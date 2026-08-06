@@ -96,7 +96,11 @@ type moduleEntry struct {
 	qualifiedName string
 	refProp       string // Properties["ref"] value, if indexable
 	dotName       bool   // name contains a '.'
-	properties    map[string]string
+	// uncallable is uncallableSolidityField's verdict (#6177), precomputed
+	// because moduleEntry carries neither Language nor Signature and this is
+	// the only place the source record is still in hand.
+	uncallable bool
+	properties map[string]string
 
 	// globalPos is the entity's position in the caller's ORIGINAL (flat)
 	// entity slice — the order BuildIndex consumes. M5 builds its symbol
@@ -186,6 +190,7 @@ func BuildModuleSymbols(key ModuleKey, entities []types.EntityRecord) *ModuleSym
 			qualifiedName: e.QualifiedName,
 			refProp:       refProp,
 			dotName:       strings.IndexByte(e.Name, dottedNameSep) >= 0,
+			uncallable:    uncallableSolidityField(e.Language, e.Kind, e.Signature),
 			properties:    e.Properties,
 		}
 		ms.entries = append(ms.entries, me)
@@ -272,6 +277,7 @@ func MergeModuleBatch(si *SymbolIndex, offset, batchSize int) (Index, int) {
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		memberFamily:       make(map[string]uint8),
+		uncallableMember:   make(map[string]bool),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
@@ -279,6 +285,9 @@ func MergeModuleBatch(si *SymbolIndex, offset, batchSize int) (Index, int) {
 		byKotlinPkgFunc:    make(map[string]map[string]string),
 		byQualifiedName:    make(map[string]string, total/4+1),
 		PlatformVariants:   make(map[string][]string),
+
+		eligibleMember:        make(map[string]map[string]map[string]eligibleLeaf),
+		eligiblePackageMember: make(map[string]map[string]map[string]eligibleLeaf),
 	}
 
 	// Build-tag side-tables (mirrors BuildIndex local vars).
@@ -418,6 +427,7 @@ func buildModuleSymbolsOrderedPos(key ModuleKey, entities []types.EntityRecord, 
 			qualifiedName: e.QualifiedName,
 			refProp:       extractIndexableRef(e),
 			dotName:       strings.IndexByte(e.Name, dottedNameSep) >= 0,
+			uncallable:    uncallableSolidityField(e.Language, e.Kind, e.Signature),
 			properties:    e.Properties,
 			globalPos:     pos,
 		}
@@ -523,6 +533,7 @@ func accumulatorIndex(totalEntities int) Index {
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		memberFamily:       make(map[string]uint8),
+		uncallableMember:   make(map[string]bool),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
@@ -530,6 +541,9 @@ func accumulatorIndex(totalEntities int) Index {
 		byKotlinPkgFunc:    make(map[string]map[string]string),
 		byQualifiedName:    make(map[string]string, cap4),
 		PlatformVariants:   make(map[string][]string),
+
+		eligibleMember:        make(map[string]map[string]map[string]eligibleLeaf),
+		eligiblePackageMember: make(map[string]map[string]map[string]eligibleLeaf),
 	}
 }
 
@@ -547,6 +561,7 @@ func emptyIndex() Index {
 		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		memberFamily:       make(map[string]uint8),
+		uncallableMember:   make(map[string]bool),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
@@ -554,6 +569,9 @@ func emptyIndex() Index {
 		byKotlinPkgFunc:    make(map[string]map[string]string),
 		byQualifiedName:    make(map[string]string),
 		PlatformVariants:   make(map[string][]string),
+
+		eligibleMember:        make(map[string]map[string]map[string]eligibleLeaf),
+		eligiblePackageMember: make(map[string]map[string]map[string]eligibleLeaf),
 	}
 }
 
@@ -699,6 +717,10 @@ func insertModuleEntry(
 				if m := memberFamilyMask(me.kind); m != 0 {
 					idx.memberFamily[me.id] = m
 				}
+				// #6177 — mirrors BuildIndex; see Index.uncallableMember.
+				if me.uncallable {
+					idx.uncallableMember[me.id] = true
+				}
 				fileBucket := idx.byMember[sf]
 				if fileBucket == nil {
 					fileBucket = make(map[string]map[string]string)
@@ -710,6 +732,9 @@ func insertModuleEntry(
 					fileBucket[scope] = scopeBucket
 				}
 				if existing, ok := scopeBucket[member]; ok && existing != me.id {
+					// #6177 — mirrors BuildIndex; see Index.eligibleMember.
+					foldEligibleLeaf(idx.eligibleMember, idx.uncallableMember,
+						sf, scope, member, existing, me.id)
 					scopeBucket[member] = ""
 				} else {
 					scopeBucket[member] = me.id
@@ -728,6 +753,9 @@ func insertModuleEntry(
 						pkgBucket[scope] = pkgScopeBucket
 					}
 					if existing, ok := pkgScopeBucket[member]; ok && existing != me.id {
+						// #6177 — mirrors BuildIndex.
+						foldEligibleLeaf(idx.eligiblePackageMember, idx.uncallableMember,
+							pkgDir, scope, member, existing, me.id)
 						pkgScopeBucket[member] = ""
 					} else {
 						pkgScopeBucket[member] = me.id
