@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -129,12 +131,22 @@ version the command exits 0 without downloading anything.`,
 // Best-effort and silent on success: an update must not fail because a watcher
 // plist could not be rewritten. A package var so tests can assert the wiring
 // without spawning anything.
-var refreshWatcherUnitsWithNewBinary = func(out io.Writer) {
-	bin, err := os.Executable()
-	if err != nil {
-		return
-	}
-	cmd := exec.Command(bin, "install", "--refresh-state")
+// watcherRefreshTimeout bounds how long refreshWatcherUnitsWithNewBinary will
+// wait for the child before giving up (#6184).
+//
+// At 140 repos the child makes hundreds of serial launchctl calls
+// (loader_darwin.go:64-100 retries bootstrap up to 3x on exit-5 with a 200ms
+// backoff). With a wedged launchd — a documented failure mode — the child
+// itself can hang indefinitely. 3 minutes is generous for 140 units' worth of
+// launchctl round-trips under normal conditions while still bounding the
+// worst case instead of inheriting it.
+var watcherRefreshTimeout = 3 * time.Minute
+
+// runWatcherRefreshCmd runs the `install --refresh-state` child and returns
+// its combined output. A package var so tests can substitute a child that
+// blocks past the deadline without needing a real wedged launchd.
+var runWatcherRefreshCmd = func(ctx context.Context, bin string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, bin, "install", "--refresh-state")
 	// GRAFEL_SKIP_QUICK_DOCTOR: the child would otherwise run the quick-doctor
 	// preflight against a daemon that RunCopy may still be restarting, and
 	// print a spurious drift warning in the middle of update's own output.
@@ -143,7 +155,28 @@ var refreshWatcherUnitsWithNewBinary = func(out io.Writer) {
 	cmd.Env = append(os.Environ(),
 		"GRAFEL_SKIP_QUICK_DOCTOR=1",
 		refreshStateQuietEnv+"=1")
-	b, err := cmd.CombinedOutput()
+	return cmd.CombinedOutput()
+}
+
+var refreshWatcherUnitsWithNewBinary = func(out io.Writer) {
+	bin, err := os.Executable()
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), watcherRefreshTimeout)
+	defer cancel()
+	b, err := runWatcherRefreshCmd(ctx, bin)
+	if ctx.Err() == context.DeadlineExceeded {
+		// #6184: CombinedOutput used to buffer until exit with no deadline at
+		// all, so a wedged launchd meant `grafel update` hung forever with no
+		// indication of what it was doing. Report the timeout explicitly
+		// instead of inheriting that silence.
+		reportWatcherRefresh(out, b, fmt.Errorf(
+			"timed out after %s waiting for watcher unit refresh (launchd may be wedged); "+
+				"the update itself already completed, only watcher-unit reconcile was skipped",
+			watcherRefreshTimeout))
+		return
+	}
 	reportWatcherRefresh(out, b, err)
 }
 
