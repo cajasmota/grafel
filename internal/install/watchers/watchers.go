@@ -85,6 +85,22 @@ func xmlEsc(s string) string {
 	return b.String()
 }
 
+// iniEsc escapes s for inclusion in a systemd unit (INI-format) value.
+//
+// #6185: systemd treats '%' as a specifier escape (e.g. %h for the user's
+// home) and requires '%%' for a literal percent. Group names and repo paths
+// are user-supplied, so a repo path containing '%' previously produced an
+// ExecStart line systemd silently rejects — the unit fails to register and
+// nothing says why, the INI counterpart of the XML bug xmlEsc fixed in #6179.
+//
+// This is deliberately its own function, not shared with xmlEsc: the two
+// escape rules are unrelated (xmlEsc is wrong for INI, '%%' is wrong for
+// XML), so a shared "escape for output format" helper would be the wrong
+// abstraction.
+func iniEsc(s string) string {
+	return strings.ReplaceAll(s, "%", "%%")
+}
+
 // Unit describes a single watcher unit to install.
 type Unit struct {
 	Group   string
@@ -272,8 +288,8 @@ RestartSec=%d
 
 [Install]
 WantedBy=default.target
-`, u.Group, filepath.Base(u.Repo), StartLimitIntervalSeconds, StartLimitBurst,
-		u.BinPath, u.Repo, u.Repo, RestartSecSeconds)
+`, iniEsc(u.Group), iniEsc(filepath.Base(u.Repo)), StartLimitIntervalSeconds, StartLimitBurst,
+		iniEsc(u.BinPath), iniEsc(u.Repo), iniEsc(u.Repo), RestartSecSeconds)
 }
 
 // SchtasksXML returns a Windows Task Scheduler XML definition.
@@ -378,11 +394,67 @@ func Render(u Unit) string {
 	return ""
 }
 
+// hasControlByte reports whether s contains an ASCII control byte (0x00-0x1F
+// or 0x7F), including NUL, CR and LF.
+//
+// #6185 F3 (found on review): iniEsc only escapes '%', which is the only
+// character systemd's INI-format unit gives a per-value escape for. A
+// newline has no such escape — WorkingDirectory=, Description=, etc. take
+// the rest of the physical line literally, so an embedded '\n' always starts
+// a new line that systemd's line-oriented parser reads as a new directive
+// (e.g. a repo path of ".../r\nExecStartPost=/bin/sh" injects a directive
+// that runs at login). The plist/schtasks XML formats are not vulnerable to
+// this — XML escaping keeps an embedded newline inside character data, it
+// does not create new structure — so this check is scoped to what actually
+// needs it: the fields that reach the systemd render.
+func hasControlByte(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// validateUnitFields rejects Group/Repo/BinPath values that could break the
+// line-oriented systemd unit format. There is no per-value escape for a
+// control character the way there is for '%', so the only correct fix is to
+// refuse to render/persist the unit at all.
+func validateUnitFields(u Unit) error {
+	for name, v := range map[string]string{"Group": u.Group, "Repo": u.Repo, "BinPath": u.BinPath} {
+		if hasControlByte(v) {
+			return fmt.Errorf("watcher unit field %s contains a control character, refusing to write "+
+				"(it could inject a directive into a line-oriented unit format)", name)
+		}
+	}
+	// #6185 R3 (found on review): '\' is not a control byte, but
+	// systemd.syntax(7) treats a line ending in '\' as continuing onto the
+	// next physical line — the two lines are concatenated as if the newline
+	// between them were absent. SystemdUnit's WorkingDirectory=%s is the
+	// only line in the template where a raw (non-%q-quoted) field is the
+	// last thing before the newline: ExecStart's fields go through Go's %q,
+	// which always closes with an actual '"' (a trailing backslash inside
+	// the value is escaped as "\\", never left bare at the line end), and
+	// every other line ends in a literal supplied by the format string
+	// itself. A Repo ending in '\' therefore silently deletes the directive
+	// on the following line (Restart=on-failure) and leaves
+	// WorkingDirectory pointing at the wrong text — '\' is a legal character
+	// in a Linux filename, so this is reachable in practice.
+	if strings.HasSuffix(u.Repo, `\`) {
+		return fmt.Errorf("watcher unit field Repo ends in a backslash, refusing to write " +
+			"(systemd would treat it as a line continuation and delete the next directive)")
+	}
+	return nil
+}
+
 // Write writes the unit file to its canonical path. Caller is
 // responsible for invoking the OS-native loader (`launchctl load`,
 // `systemctl --user daemon-reload`, or `schtasks /create /xml`) — we
 // keep this package free of side effects beyond the file.
 func Write(u Unit) (string, error) {
+	if err := validateUnitFields(u); err != nil {
+		return "", err
+	}
 	path, err := UnitPath(u)
 	if err != nil {
 		return "", err

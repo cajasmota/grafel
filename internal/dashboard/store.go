@@ -392,10 +392,12 @@ func graphSourceModTime(desc graph.GraphDescriptor) (time.Time, bool) {
 }
 
 func (liveStore) CreateGroup(name string) (GroupSummary, error) {
-	if name == "" {
-		return GroupSummary{}, errors.New("group name required")
-	}
-	configPath, err := registry.ConfigPathFor(name)
+	// #6186 F6/R1: ConfigPathForNew validates before deriving the path, not
+	// after — ConfigPathFor filepath.Joins the raw name, which collapses
+	// "..", so a name like "../../pwned" resolves outside the config
+	// directory; validating only at AddGroup (after SaveGroupConfig already
+	// wrote the file) is too late.
+	configPath, err := registry.ConfigPathForNew(name)
 	if err != nil {
 		return GroupSummary{}, err
 	}

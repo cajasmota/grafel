@@ -18,8 +18,11 @@
 package daemon
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/cajasmota/grafel/internal/registry"
 )
 
 // DocsDir returns the root of the daemon's external docs store —
@@ -56,6 +59,50 @@ func BusinessDocsDir(group string) string {
 		return ""
 	}
 	return filepath.Join(DocsDir(), group, "business")
+}
+
+// RepoDocsDir/BusinessDocsDir are READ-safe derivations: they are also used
+// to resolve the docs location of an already-registered group (docgen, the
+// docs handlers, export), including one whose name predates
+// registry.ValidateGroupName or is otherwise grandfathered-invalid. They
+// intentionally do NOT validate group — see registry.ValidateGroupName's doc
+// comment for why gating reads would be worse than the bug it prevents.
+//
+// RepoDocsDirForNew and BusinessDocsDirForNew are the write-side
+// counterparts: they validate group before deriving the path.
+//
+// #6186 R1 (found on review): the import/restore handler in
+// internal/dashboard/handlers_v2_graph_export.go derives a destination
+// directory from RepoDocsDir/BusinessDocsDir using a group name taken from
+// an uploaded archive's manifest.json (or a request query override) and then
+// os.MkdirAll + unzips into it — with no validation anywhere on that path,
+// because it was never on the hand-enumerated list of AddGroup callers the
+// F6 fix walked. filepath.Join collapses "..", so an archive whose manifest
+// group is "../../../../tmp/pwn" wrote into that directory before the
+// (too-late) registry.AddGroup rejection at the end of the handler ever ran.
+//
+// Use the ForNew variants (not RepoDocsDir/BusinessDocsDir) at any call site
+// that is about to CREATE or POPULATE a docs directory for a name that is
+// not already a trusted, registered group — the validated path is
+// structurally distinct from the read path, rather than relying on the
+// caller to remember a check.
+func RepoDocsDirForNew(group, repoSlug string) (string, error) {
+	if err := registry.ValidateGroupName(group); err != nil {
+		return "", err
+	}
+	if repoSlug == "" {
+		return "", fmt.Errorf("repo slug required")
+	}
+	return RepoDocsDir(group, repoSlug), nil
+}
+
+// BusinessDocsDirForNew is RepoDocsDirForNew's counterpart for the group-level
+// business docs directory. See RepoDocsDirForNew for the rationale.
+func BusinessDocsDirForNew(group string) (string, error) {
+	if err := registry.ValidateGroupName(group); err != nil {
+		return "", err
+	}
+	return BusinessDocsDir(group), nil
 }
 
 // LegacyInRepoDocsDir returns the historical `<repo>/docs/` location.

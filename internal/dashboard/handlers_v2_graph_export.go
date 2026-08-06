@@ -300,6 +300,21 @@ func (s *Server) handleV2GraphImport(w http.ResponseWriter, r *http.Request) {
 		writeV2Err(w, http.StatusBadRequest, "bad_request", "manifest is missing group name")
 		return
 	}
+	// #6186 R1: validate the group name as soon as it is decided, before it
+	// is used to derive ANY filesystem path below (conflict check, docs
+	// restore, config write). finalGroup is untrusted input — it comes from
+	// an uploaded archive's manifest.json or a caller-supplied query
+	// parameter — and registry.ConfigPathFor / daemon.RepoDocsDir /
+	// daemon.BusinessDocsDir all filepath.Join it raw, which collapses "..".
+	// This is a fail-fast, defense-in-depth check ahead of the ForNew
+	// derivations used at each individual write below; it exists so the
+	// handler rejects a hostile archive before doing any work (including the
+	// conflict-check registry read), not after MkdirAll/unzip has already
+	// run.
+	if err := registry.ValidateGroupName(finalGroup); err != nil {
+		writeV2Err(w, http.StatusBadRequest, "bad_request", "invalid group name: "+err.Error())
+		return
+	}
 
 	// Conflict check.
 	existingPath, _ := groupConfigPath(finalGroup)
@@ -349,8 +364,19 @@ func (s *Server) handleV2GraphImport(w http.ResponseWriter, r *http.Request) {
 	if manifest.Kind == "all" {
 		for _, rp := range cfg.Repos {
 			archivePrefix := archiveGroup + "/docs/" + rp.Slug + "/"
-			destDocsDir := daemon.RepoDocsDir(finalGroup, rp.Slug)
-			if destDocsDir == "" || !zipPrefixExists(zr, archivePrefix) {
+			if !zipPrefixExists(zr, archivePrefix) {
+				continue
+			}
+			// #6186 R1: RepoDocsDirForNew validates finalGroup before
+			// deriving the path (defense-in-depth alongside the early
+			// ValidateGroupName check above — this is the write, so it gets
+			// its own gate).
+			destDocsDir, err := daemon.RepoDocsDirForNew(finalGroup, rp.Slug)
+			if err != nil {
+				writeV2Err(w, http.StatusBadRequest, "bad_request", "invalid group name: "+err.Error())
+				return
+			}
+			if destDocsDir == "" {
 				continue
 			}
 			if err := os.MkdirAll(destDocsDir, 0o755); err != nil {
@@ -366,7 +392,13 @@ func (s *Server) handleV2GraphImport(w http.ResponseWriter, r *http.Request) {
 		}
 		bizPrefix := archiveGroup + "/docs/business/"
 		if zipPrefixExists(zr, bizPrefix) {
-			destBiz := daemon.BusinessDocsDir(finalGroup)
+			// #6186 R1: BusinessDocsDirForNew validates finalGroup before
+			// deriving the path.
+			destBiz, err := daemon.BusinessDocsDirForNew(finalGroup)
+			if err != nil {
+				writeV2Err(w, http.StatusBadRequest, "bad_request", "invalid group name: "+err.Error())
+				return
+			}
 			if destBiz != "" {
 				_ = os.MkdirAll(destBiz, 0o755)
 				if err := extractZipPrefix(zr, bizPrefix, destBiz); err != nil {
@@ -379,10 +411,12 @@ func (s *Server) handleV2GraphImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Persist the fleet config + register the group.
-	finalConfigPath, err := registry.ConfigPathFor(finalGroup)
+	// #6186 R1: ConfigPathForNew validates finalGroup before deriving the
+	// path (defense-in-depth alongside the early ValidateGroupName check
+	// above).
+	finalConfigPath, err := registry.ConfigPathForNew(finalGroup)
 	if err != nil {
-		writeV2Err(w, http.StatusInternalServerError, "internal_error",
-			"resolve config path: "+err.Error())
+		writeV2Err(w, http.StatusBadRequest, "bad_request", "invalid group name: "+err.Error())
 		return
 	}
 	if err := registry.SaveGroupConfig(finalConfigPath, cfg); err != nil {

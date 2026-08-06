@@ -34,6 +34,7 @@ func buildGraphExportTestServer(t *testing.T) (*Server, *registry.GroupConfig, s
 	t.Helper()
 
 	home := t.TempDir()
+	t.Setenv("HOME", home)
 	t.Setenv("GRAFEL_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
 

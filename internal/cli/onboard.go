@@ -94,7 +94,12 @@ func runOnboard(out io.Writer, start, parentDir string, nonInteractive bool) err
 		})
 	}
 
-	cfgPath, err := registry.ConfigPathFor(cfg.Name)
+	// #6186 F6/R1: ConfigPathForNew validates before deriving the path, not
+	// after — ConfigPathFor filepath.Joins the raw name, which collapses
+	// "..", so a name like "../../pwned" resolves outside the config
+	// directory; validating only at AddGroup (after SaveGroupConfig already
+	// wrote the file) is too late.
+	cfgPath, err := registry.ConfigPathForNew(cfg.Name)
 	if err != nil {
 		return err
 	}

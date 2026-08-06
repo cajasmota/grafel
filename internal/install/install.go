@@ -110,6 +110,15 @@ func Apply(opts Options) (*Result, error) {
 	if opts.Group == "" {
 		return nil, errors.New("group is required")
 	}
+	// #6186 F6: validate BEFORE ConfigPathFor/StateDirFor are used below.
+	// Both filepath.Join the raw name, which collapses "..", so an unchecked
+	// name can compute (and, via SaveGroupConfig/os.MkdirAll further down,
+	// write to) a path outside the intended config/state directory;
+	// validating only at AddGroup runs after those writes have already
+	// happened.
+	if err := registry.ValidateGroupName(opts.Group); err != nil {
+		return nil, err
+	}
 	if opts.Config == nil {
 		return nil, errors.New("config is required")
 	}
@@ -288,7 +297,17 @@ func Apply(opts Options) (*Result, error) {
 				}
 				path, err := watchers.Write(u)
 				if err != nil {
-					return nil, fmt.Errorf("watcher for %s: %w", repo, err)
+					// #6185/#6186 R3: a per-repo watchers.Write failure (e.g.
+					// validateUnitFields rejecting a corrupted repo path) is
+					// NON-FATAL, matching watchersync.go's reconcile loop and
+					// the same reasoning WatcherWarnings already documents
+					// for activation failures — the group config is already
+					// persisted, so it is registered and will index
+					// regardless. One bad repo must not deny watchers to
+					// every other repo in this Apply call.
+					res.WatcherWarnings = append(res.WatcherWarnings,
+						fmt.Sprintf("watcher for %s not written: %v; the group is still registered and will index", repo, err))
+					continue
 				}
 				res.WatcherUnits = append(res.WatcherUnits, path)
 
