@@ -2524,21 +2524,26 @@ var daemonNotRunningErr = errors.New(
 // so the pattern decay scheduler can find each group's patterns.json.
 //
 // Directory convention mirrors internal/mcp/patterns.go defaultPatternsDir:
-// ~/.grafel/groups/<group>-patterns/. Groups whose patterns are stored in
-// a custom MemoryDir (MCP registry config) will be found there by the MCP
-// server; the daemon uses the default path which covers production deployments.
+// $GRAFEL_HOME (or ~/.grafel)/groups/<group>-patterns/. Groups whose
+// patterns are stored in a custom MemoryDir (MCP registry config) will be
+// found there by the MCP server; the daemon uses the default path which
+// covers production deployments.
+//
+// #6178 round 3: was a plain os.UserHomeDir() join, ignoring GRAFEL_HOME —
+// the same shape internal/mcp/patterns.go and
+// internal/dashboard/handlers_patterns.go independently hand-rolled too.
+// links.PatternsDir is the shared derivation all three use now.
 func daemonPatternGroupDirs() map[string]string {
 	groups, err := registry.Groups()
 	if err != nil {
 		return nil
 	}
-	home, _ := os.UserHomeDir()
-	if home == "" {
-		return nil
-	}
 	out := make(map[string]string, len(groups))
 	for _, g := range groups {
-		dir := filepath.Join(home, ".grafel", "groups", g.Name+"-patterns")
+		dir, derr := links.PatternsDir("", g.Name)
+		if derr != nil {
+			continue
+		}
 		out[g.Name] = dir
 	}
 	return out

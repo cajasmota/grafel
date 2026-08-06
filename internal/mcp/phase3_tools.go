@@ -21,11 +21,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
@@ -33,21 +33,18 @@ import (
 // sidecarPath returns the canonical on-disk path for a Phase 3 sidecar
 // of the given suffix (e.g. "pure-functions"). Mirrors
 // reachabilitySidecarPath in dead_code.go.
+//
+// #6178 round 3: was a hand-rolled os.Getenv("HOME")-then-os.UserHomeDir()
+// join that never consulted GRAFEL_HOME. links.PassSidecarPath is the
+// single derivation every reader of this sidecar family now shares with
+// the pass that writes it (internal/links), so this and the writer can
+// never disagree about which grafel home the file lives under.
 func sidecarPath(group, suffix string) string {
-	// Prefer $HOME so tests using t.Setenv("HOME", tmpDir) resolve the same
-	// sidecar location on every OS — on Windows os.UserHomeDir() reads
-	// USERPROFILE and ignores HOME, so a HOME-only test would write to a dir
-	// the tool never reads, making the sidecar look "missing" (which then
-	// cascades into the nil interface-conversion panic downstream).
-	home := os.Getenv("HOME")
-	if home == "" {
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
+	p, err := links.PassSidecarPath("", group, suffix)
+	if err != nil {
+		return ""
 	}
-	return filepath.Join(home, ".grafel", "groups", group+"-links-"+suffix+".json")
+	return p
 }
 
 // loadSidecar reads + json-decodes the sidecar at path into v; ok=false

@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"github.com/cajasmota/grafel/internal/agentpatterns"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 	"math"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -102,19 +102,20 @@ func patternsDir(groupName string, lg *LoadedGroup) string {
 	return defaultPatternsDir(groupName)
 }
 
-// defaultPatternsDir returns ~/.grafel/groups/<group>-patterns/.
+// defaultPatternsDir returns the canonical "<group>-patterns" directory
+// under $GRAFEL_HOME (or ~/.grafel).
+//
+// #6178 round 3: was a hand-rolled os.Getenv("HOME")-then-os.UserHomeDir()
+// join, ignoring GRAFEL_HOME — the same shape internal/dashboard's
+// groupPatternsDir and cmd/grafel's daemonPatternGroupDirs independently
+// hand-rolled too. links.PatternsDir is the shared derivation all three
+// now use.
 func defaultPatternsDir(group string) string {
-	// Prefer $HOME so tests using t.Setenv("HOME", tmpDir) work on Windows
-	// where os.UserHomeDir() reads USERPROFILE and ignores HOME.
-	home := os.Getenv("HOME")
-	if home == "" {
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
+	dir, err := links.PatternsDir("", group)
+	if err != nil {
+		return ""
 	}
-	return filepath.Join(home, ".grafel", "groups", group+"-patterns")
+	return dir
 }
 
 // ---------------------------------------------------------------------------

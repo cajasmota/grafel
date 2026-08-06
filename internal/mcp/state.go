@@ -38,6 +38,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
+	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -1891,6 +1892,20 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 			grp.Links = nil
 		}
 
+		// #6178 round 3: <group>-links.json can hold user-accepted cross-repo
+		// link candidates appended directly by candidates.go's appendLink, not
+		// just pass-derived entries replaceByMethod regenerates — so, unlike
+		// every downstream-pass sidecar, re-running the link pass under a
+		// corrected GRAFEL_HOME does NOT necessarily recover them. Warn once
+		// per reload when this group is using the default path (no explicit
+		// links_file override) and it reads empty while pre-#6178 data exists
+		// at the real home, so this is a signal instead of silent "0 links".
+		if gEntry.LinksFile == "" && len(grp.Links) == 0 {
+			if warn := links.RealHomeOrphanWarning("cross-repo links", lf, gName+"-links.json"); warn != "" {
+				fmt.Fprintf(os.Stderr, "%s\n", warn)
+			}
+		}
+
 		// Apply the group-algo overlay (A2, #5354). Absence-tolerant: when the
 		// <group>-algo.json overlay is missing or stale the entities keep
 		// whatever graph.fb carried (today's per-repo algo values / sentinels) —
@@ -3642,43 +3657,59 @@ func buildDescTableFromDoc(doc *graph.Document, sc *descriptions.Sidecar) map[in
 // registry.json, so under an isolated GRAFEL_HOME an MCP server would read
 // the real home's (possibly stale, possibly unrelated) links file even
 // though the link pass that just ran wrote its output under GRAFEL_HOME.
-// registry.HomeDir() is the same resolver links.PathsFor and the
-// internal/cli link-pass call sites now use, so this stays in sync with
-// whatever actually got written.
+//
+// #6178 round 3: now derives from links.PathsFor directly rather than
+// re-joining "groups"/"<group>-links.json" by hand — the single derivation
+// every writer and reader of this file shares (internal/links itself, the
+// internal/cli link-pass call sites, this function). This is also the file
+// appendLink (candidates.go) appends user-accepted cross-repo links into,
+// so fixing this one function closes both the auto-derived and the
+// hand-accepted half of the split.
 func defaultLinksFile(group string) string {
-	home, err := registry.HomeDir()
+	paths, err := links.PathsFor("", group)
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, "groups", group+"-links.json")
+	return paths.Links
 }
 
 // defaultMemoryDir is the conventional path for save_finding outputs.
 // #6178: same GRAFEL_HOME fix as defaultLinksFile above.
+// #6178 round 3: now derives from links.MemoryDir, the shared derivation.
 func defaultMemoryDir(group string) string {
-	home, err := registry.HomeDir()
+	dir, err := links.MemoryDir("", group)
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, "groups", group+"-memory")
+	return dir
 }
 
 // defaultLinkCandidatesFile is the on-disk file for pending link candidates.
 // #6178: same GRAFEL_HOME fix as defaultLinksFile above.
+// #6178 round 3: now derives from links.PathsFor, the shared derivation.
 func defaultLinkCandidatesFile(group string) string {
-	home, err := registry.HomeDir()
+	paths, err := links.PathsFor("", group)
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, "groups", group+"-link-candidates.json")
+	return paths.Candidates
 }
 
 // defaultRegistryPath is "$GRAFEL_HOME (or ~/.grafel)/registry.json".
 // #6178: same GRAFEL_HOME fix as defaultLinksFile above.
+// #6178 round 3: delegates to registry.RegistryPath() directly instead of
+// re-deriving it — registry.RegistryPath() has always been the canonical,
+// GRAFEL_HOME-aware resolver for this exact path (internal/registry never
+// had this bug); this removes a divergent second implementation rather
+// than just fixing this one to happen to match. Scope creep relative to
+// the reported <group>-links.json defect, kept anyway because it removes
+// exactly the kind of divergence #6178 is about: an MCP server running
+// under GRAFEL_HOME with a stale real-home registry.json would previously
+// see two different "the registry" depending on which code path asked.
 func defaultRegistryPath() string {
-	home, err := registry.HomeDir()
+	p, err := registry.RegistryPath()
 	if err != nil {
 		return "registry.json"
 	}
-	return filepath.Join(home, "registry.json")
+	return p
 }

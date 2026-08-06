@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/agentpatterns"
+	"github.com/cajasmota/grafel/internal/links"
 )
 
 // ---------------------------------------------------------------------------
@@ -26,9 +27,17 @@ import (
 // ---------------------------------------------------------------------------
 
 // groupPatternsDir returns the directory where patterns.json is stored for a group.
+//
+// #6178 round 3: was a plain os.UserHomeDir() join, ignoring GRAFEL_HOME —
+// the same shape internal/mcp/patterns.go's defaultPatternsDir and
+// cmd/grafel's daemonPatternGroupDirs independently hand-rolled too.
+// links.PatternsDir is the shared derivation all three use now.
 func groupPatternsDir(groupName string) string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".grafel", "groups", groupName+"-patterns")
+	dir, err := links.PatternsDir("", groupName)
+	if err != nil {
+		return ""
+	}
+	return dir
 }
 
 // loadAgentPatterns reads the strongly-typed Pattern slice via the

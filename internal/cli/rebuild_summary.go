@@ -20,7 +20,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
-	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/links"
 )
 
 // RebuildSummary is the aggregated post-rebuild statistics across all repos
@@ -285,17 +285,22 @@ func loadCandidateCounts(stateDir string) (enrichSubjects, enrichActions int, en
 // links.go) write <group>-links.json under registry.HomeDir() (GRAFEL_HOME),
 // same as links.PathsFor, mcp.defaultLinksFile, dashboard.defaultLinksFile,
 // and groupalgo.OverlayPath. This reader now uses the same resolver so the
-// post-rebuild summary reads back exactly what the link pass in the same
-// `grafel rebuild` invocation just wrote, instead of silently disagreeing
-// under an isolated GRAFEL_HOME.
+// post-rebuild summary reads back exactly what the link pass this rebuild
+// triggered just wrote, instead of silently disagreeing under an isolated
+// GRAFEL_HOME. (That pass runs in the daemon, not this client process —
+// cmd/grafel/main.go's runLinksHook — but it inherits os.Environ()
+// verbatim (internal/daemon/supervise.go), so the same GRAFEL_HOME applies
+// to both; the two processes just aren't the same process.)
+//
+// #6178 round 3: now derives from links.PathsFor directly (the shared
+// derivation, internal/links/group_paths.go) instead of re-joining
+// "groups"/"<group>-links.json" via registry.HomeDir() by hand.
 func loadCrossRepoEdgeCount(group string) int {
-	home, err := registry.HomeDir()
+	paths, err := links.PathsFor("", group)
 	if err != nil {
 		return 0
 	}
-	// Links files live at <home>/groups/<group>-links.json.
-	linksPath := filepath.Join(home, "groups", group+"-links.json")
-	return countLinksFile(linksPath)
+	return countLinksFile(paths.Links)
 }
 
 // countLinksFile reads a links.json and returns the number of link entries.

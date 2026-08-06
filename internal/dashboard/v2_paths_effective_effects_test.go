@@ -68,6 +68,7 @@ func writeEffectsSidecar(t *testing.T, group string, entries map[string][]string
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // #6178: os.UserHomeDir() reads this on Windows
 	dir := filepath.Join(home, ".grafel", "groups")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir sidecar dir: %v", err)

@@ -31,6 +31,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
+	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/types"
@@ -1393,15 +1394,17 @@ func persistAlgoResults(stateDir string, fbMtime time.Time, res *graph.Algorithm
 //
 // #6178: was os.UserHomeDir()+".grafel", ignoring GRAFEL_HOME — the same
 // split-brain bug as mcp.defaultLinksFile, just on the dashboard side.
-// registry.HomeDir() is the shared resolver every other consumer of
-// <group>-links.json now uses (links.PathsFor, the internal/cli link-pass
-// call sites, mcp.defaultLinksFile, groupalgo.OverlayPath).
+// #6178 round 3: now derives from links.PathsFor directly (the shared
+// derivation, see internal/links/group_paths.go) rather than re-joining
+// "groups"/"<group>-links.json" by hand via registry.HomeDir() — round 2's
+// fix was correct but was still a second hand-rolled join agreeing with
+// PathsFor by construction, not by sharing code with it.
 func defaultLinksFile(group string) string {
-	home, err := registry.HomeDir()
+	paths, err := links.PathsFor("", group)
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, "groups", group+"-links.json")
+	return paths.Links
 }
 
 // readCrossRepoLinks parses cross-repo links from raw JSON.
