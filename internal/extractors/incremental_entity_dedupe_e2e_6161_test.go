@@ -146,6 +146,20 @@ func TestIncremental_JavaOverloads_OneEntityRowBothEdges(t *testing.T) {
 // #6161, the UNBOUNDED half: a placeholder-sourced synthetic entity
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Both files raise/catch the SAME exception, so each contributes a copy of the
+// "<exception>"-sourced entity.
+//
+// WHY "<exception>" AND NOT "<config>". There are seven synthetic-source
+// sentinels ("<config>", "<exception>", "<external-service>",
+// "<translation-key>", "<template>", "<package>", "<panache-dsl-runtime>") and
+// mergeEntitiesDeduped is kind-agnostic across all of them, but only some are
+// reachable from a live extractor. "<exception>" is; "<config>" is NOT —
+// extractor.ConfigKeyEntity has zero production callers today (the language
+// extractors emit DEPENDS_ON_CONFIG edges, not config-key entities, and
+// internal/enrichers/config_consumer_extractor.go is an unwired port). Driving a
+// "<config>" row through this fixture would therefore assert nothing.
+// Kind-agnosticism is pinned directly instead, on seeded rows, in
+// TestIncremental_LegacyDuplicateRows_RepairedOnNextPass below.
 const excErrs = `class CpNotFound(Exception):
     pass
 
@@ -234,7 +248,9 @@ func TestIncremental_SyntheticEntity_MultiplicityStableAcrossPasses(t *testing.T
 					"per pass (#6161)", pass, e.ID, counts[e.ID], e.Kind, e.Name, e.SourceFile)
 			}
 		}
-		// The synthetic must still BE there — a fold is not permission to drop it.
+		// The synthetic must still BE there — a fold is not permission to drop a
+		// row. Checked every pass so the test fails loudly if a fixture edit
+		// stops reaching the sentinel, rather than passing vacuously.
 		var haveExc bool
 		for _, e := range doc.Entities {
 			if e.Kind == "SCOPE.ExceptionType" && e.Name == "exception:CpNotFound" {
@@ -250,5 +266,144 @@ func TestIncremental_SyntheticEntity_MultiplicityStableAcrossPasses(t *testing.T
 				pass, prevTotal, len(doc.Entities))
 		}
 		prevTotal = len(doc.Entities)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #6161 — repair on load: the surviving set is folded too
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestIncremental_LegacyDuplicateRows_RepairedOnNextPass pins the one behaviour
+// in this change that MUTATES DATA IN AN EXISTING USER GRAPH on upgrade.
+//
+// mergeEntitiesDeduped folds the SURVIVING entity set, not only the incoming
+// one. Without that, the accumulation stops but the damage stays: a graph
+// written by any earlier build still carries its duplicate rows, and the
+// uniqueness invariant SortDocumentForEmission and LookupEntityByID depend on is
+// still false on the very next write. Every pre-fix graph in the wild is in
+// exactly that state — this is not a hypothetical input.
+//
+// WHY DELETING A PERSISTED ROW IS SAFE HERE. Two rows sharing one EntityID is a
+// state a full rebuild can never produce (buildDocument has gated on the id
+// since #4406), so collapsing them strictly converges the incremental graph
+// toward full-rebuild output rather than inventing a third behaviour. And no
+// edge can be orphaned by the collapse, because the two rows share the id that
+// every edge endpoint refers to.
+//
+// The assertions therefore cover BOTH halves. A test that only counted rows
+// would pass a fold that dropped the loser's edges or its base-only fields,
+// which is the failure mode that would actually cost a user data.
+//
+// The seeded rows are "<config>"-sourced on purpose. Sentinel-sourced entities
+// are where duplicates accumulate, and this is the only place "<config>" can be
+// exercised: extractor.ConfigKeyEntity has no production callers, so no live
+// extractor can produce one. Seeding it directly pins that the fold is
+// kind-agnostic across the seven sentinels rather than special-cased to the
+// "<exception>" shape the fixtures above happen to reach.
+func TestIncremental_LegacyDuplicateRows_RepairedOnNextPass(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	writeFile(t, repo, "legacy.py", "def t1():\n    pass\n\n\ndef t2():\n    pass\n")
+	writeFile(t, repo, "churn.py", "def churn0():\n    pass\n")
+
+	// The colliding pair: same kind/name/source-file, hence one EntityID. The
+	// first row is the impoverished one, the second carries the base-only state
+	// — so a fold that keeps the first and discards the second WITHOUT
+	// gap-filling loses QualifiedName and Signature.
+	dupID := graph.EntityID("test-repo", "SCOPE.Config", "config:APP_TIMEOUT", "<config>")
+	dupPoor := graph.Entity{
+		ID: dupID, Name: "config:APP_TIMEOUT", Kind: "SCOPE.Config",
+		SourceFile: "<config>", Language: "python",
+	}
+	dupRich := graph.Entity{
+		ID: dupID, Name: "config:APP_TIMEOUT", Kind: "SCOPE.Config",
+		SourceFile: "<config>", Language: "python",
+		QualifiedName: "config:APP_TIMEOUT", Signature: "config:APP_TIMEOUT",
+	}
+	t1 := graph.Entity{
+		ID:   graph.EntityID("test-repo", "SCOPE.Operation", "t1", "legacy.py"),
+		Name: "t1", Kind: "SCOPE.Operation", SourceFile: "legacy.py", Language: "python",
+	}
+	t2 := graph.Entity{
+		ID:   graph.EntityID("test-repo", "SCOPE.Operation", "t2", "legacy.py"),
+		Name: "t2", Kind: "SCOPE.Operation", SourceFile: "legacy.py", Language: "python",
+	}
+
+	// Three edges touching the duplicated id: two outbound (one per notional
+	// "side" of the pair) and one inbound, which also proves the collapse does
+	// not trip the inbound-dangling prune into treating the id as removed.
+	out1 := graph.Relationship{
+		ID:     graph.RelationshipID(dupID, t1.ID, "REFERENCES"),
+		FromID: dupID, ToID: t1.ID, Kind: "REFERENCES",
+	}
+	out2 := graph.Relationship{
+		ID:     graph.RelationshipID(dupID, t2.ID, "REFERENCES"),
+		FromID: dupID, ToID: t2.ID, Kind: "REFERENCES",
+	}
+	in1 := graph.Relationship{
+		ID:     graph.RelationshipID(t1.ID, dupID, "DEPENDS_ON_CONFIG"),
+		FromID: t1.ID, ToID: dupID, Kind: "DEPENDS_ON_CONFIG",
+	}
+
+	buildMinimalGraph(t, stateDir,
+		[]graph.Entity{dupPoor, dupRich, t1, t2},
+		[]graph.Relationship{out1, out2, in1})
+	seedManifest(t, repo, stateDir)
+
+	// Touch a file that has nothing to do with the duplicated rows. The repair
+	// must happen anyway — it is a property of the merge, not of the delta.
+	writeFile(t, repo, "churn.py", "def churn1():\n    pass\n")
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
+	if !res.Done {
+		t.Fatalf("TryIncremental fell back (%s) — the merge under test never ran", res.FallbackReason)
+	}
+
+	doc, err := graph.LoadGraphFromDir(stateDir)
+	if err != nil {
+		t.Fatalf("load graph: %v", err)
+	}
+
+	var rows []graph.Entity
+	for _, e := range doc.Entities {
+		if e.ID == dupID {
+			rows = append(rows, e)
+		}
+	}
+	if len(rows) != 1 {
+		t.Fatalf("the pre-existing duplicate pair survived as %d rows, want 1 — the fold must cover "+
+			"the SURVIVING set, or every graph written before #6161 keeps its duplicates and stays "+
+			"in a state a full rebuild can never produce", len(rows))
+	}
+
+	// Gap-fill across the two legacy rows: the survivor was the impoverished one.
+	surv := rows[0]
+	if surv.QualifiedName != "config:APP_TIMEOUT" {
+		t.Errorf("QualifiedName = %q, want %q carried over from the dropped legacy row — collapsing "+
+			"the pair must MERGE it, not pick one and delete the other's state",
+			surv.QualifiedName, "config:APP_TIMEOUT")
+	}
+	if surv.Signature != "config:APP_TIMEOUT" {
+		t.Errorf("Signature = %q, want %q carried over from the dropped legacy row",
+			surv.Signature, "config:APP_TIMEOUT")
+	}
+
+	// The union of both rows' edges must still be reachable from the survivor.
+	// This is the half a row count cannot see, and the half that would cost a
+	// user real data.
+	for _, want := range []graph.Relationship{out1, out2, in1} {
+		var found bool
+		for _, r := range doc.Relationships {
+			if r.FromID == want.FromID && r.ToID == want.ToID && r.Kind == want.Kind {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("edge %s→%s:%s was lost when the duplicate rows were collapsed — the two rows "+
+				"share the id every edge endpoint refers to, so folding them cannot orphan an edge",
+				want.FromID, want.ToID, want.Kind)
+		}
 	}
 }

@@ -1812,19 +1812,27 @@ func convertExtractedRecords(records []types.EntityRecord, repoTag string, seenR
 // WHY THE SEAM-LEVEL FOLD IN convertExtractedRecords IS NOT ENOUGH. That one is
 // per-file, and two of the three ways this invariant breaks reach across files:
 //
-//	PLACEHOLDER SOURCE FILES. Synthesised entities are not anchored in a real
-//	file — a SCOPE.ExceptionType is written with SourceFile "<exception>". Since
-//	graph.EntityID hashes (repo, kind, name, source_file), the SAME id is derived
-//	for every file that raises `CpNotFound`, so two changed files in ONE batch
-//	each contribute a copy that no per-file fold can see.
+//	PLACEHOLDER SOURCE FILES. A synthesised entity is not anchored in a real file.
+//	It is stamped with a SENTINEL, and there are SEVEN of them in the tree, not
+//	one: "<config>", "<exception>", "<external-service>", "<translation-key>" and
+//	"<template>" (internal/extractor/synthetic_source.go), plus "<package>"
+//	(cross/manifest/extractor.go) and "<panache-dsl-runtime>" (java/panache.go).
+//	Since graph.EntityID hashes (repo, kind, name, source_file), every file that
+//	names the same config key / exception / package derives the SAME id, so two
+//	changed files in ONE batch each contribute a copy that no per-file fold can
+//	see. This function is kind-agnostic and covers all seven; "<config>" is the
+//	highest-volume of them in a real corpus, and "<exception>" is merely the one
+//	the parity fixture happens to reach.
 //
 //	THE PREVIOUS GRAPH'S COPY. Worse, and the reason this is a merge-side fold
 //	rather than a batch-side one: Step 5 evicts entities sourced from a CHANGED
-//	file, and "<exception>" is not a file, so the prior copy always survives and
-//	the new one was appended beside it. Every pass added one more — CpNotFound
-//	measured x2, x3, x4 … across successive edits to one handler. That is #6094's
-//	unbounded accumulation, on entities instead of edges, cleared only by a full
-//	reindex.
+//	file, and no sentinel is a file, so the prior copy always survives and the new
+//	one was appended beside it. Every pass added one more — measured x2, x3, x4,
+//	x5 across successive edits to one handler, with the graph's total entity count
+//	climbing in step (13 → 16 over three passes on a five-file fixture), so this
+//	leaked a ROW per pass into the written graph rather than merely multiplying
+//	one node. That is #6094's unbounded accumulation, on entities instead of
+//	edges, cleared only by a full reindex.
 //
 // SURVIVOR WINS, AND THAT IS THE CORRECT WAY ROUND. A colliding pair means the
 // two records agree on (repo, kind, name, source_file), i.e. they ARE the same
@@ -1841,8 +1849,19 @@ func convertExtractedRecords(records []types.EntityRecord, repoTag string, seenR
 // stops but the damage stays until a full reindex, and the uniqueness invariant
 // SortDocumentForEmission and LookupEntityByID depend on would still be false on
 // the very next write.
+//
+// AND THAT IS WHY THERE IS NO `len(incoming) == 0` EARLY RETURN. It looks free —
+// a deletion-only pass extracts nothing — but it is exactly the pass on which a
+// legacy graph would silently keep its accumulated rows. The scan is one map
+// build over the entity set; the repair is the point.
+//
+// The size hint is len(existing), not len(existing)+len(incoming): incoming is
+// the re-extracted delta and is small next to the corpus, and hinting the sum
+// roughly doubles the bucket count for no benefit. At 500k entities this map is
+// ~16MB, transient, and sits beside an entity slice an order of magnitude
+// larger — it is not a walk-back of #5954's peak-RSS work.
 func mergeEntitiesDeduped(existing, incoming []graph.Entity) []graph.Entity {
-	pos := make(map[string]int, len(existing)+len(incoming))
+	pos := make(map[string]int, len(existing))
 	out := existing[:0]
 	fold := func(e graph.Entity) {
 		if p, dup := pos[e.ID]; dup {

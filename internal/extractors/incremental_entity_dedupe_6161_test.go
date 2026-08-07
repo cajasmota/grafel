@@ -223,6 +223,104 @@ func TestConvertExtractedRecords_GapFillsSurvivor(t *testing.T) {
 	}
 }
 
+// TestConvertExtractedRecords_GapFillNeverOverrides is the other half of the
+// gap-fill contract, and it is a SEPARATE test from _GapFillsSurvivor because
+// the two failure modes are opposites: one fold does too little, the other does
+// too much, and a single test that mixed them could not tell you which.
+//
+// Every field is its own SUBTEST on purpose. Each `if surv.X == "" ` clause in
+// foldDuplicateEntity is an independent mutation site — flipping any one of them
+// to an unconditional assignment is a separate defect — so each gets a named
+// case that dies alone. A single flat test here would report the same name for
+// every one of those mutants and tell you nothing about which clause broke.
+//
+// QualifiedName is the one that matters most, and it was the one previously
+// unpinned: foldDuplicateEntity's own comment calls it load-bearing for
+// byQualifiedName resolution and cross-repo joins (#4402/#4406). Overriding a
+// survivor's module-qualified name with a duplicate's is precisely the join-key
+// corruption that fix existed to prevent.
+func TestConvertExtractedRecords_GapFillNeverOverrides(t *testing.T) {
+	const repo = "r"
+
+	// fold runs one survivor/duplicate pair through the seam and returns the
+	// surviving row. Both records derive the same EntityID by construction.
+	fold := func(t *testing.T, survivor, duplicate types.EntityRecord) graph.Entity {
+		t.Helper()
+		survivor.Kind, survivor.Name, survivor.SourceFile = "SCOPE.Operation", "go", "Over.java"
+		duplicate.Kind, duplicate.Name, duplicate.SourceFile = "SCOPE.Operation", "go", "Over.java"
+		ents, _ := convertExtractedRecords(
+			[]types.EntityRecord{survivor, duplicate}, repo, map[string]bool{})
+		if len(ents) != 1 {
+			t.Fatalf("expected the pair to fold to one row, got %d", len(ents))
+		}
+		return ents[0]
+	}
+
+	t.Run("qualified_name", func(t *testing.T) {
+		surv := fold(t,
+			types.EntityRecord{QualifiedName: "com.example.Over.go"},
+			types.EntityRecord{QualifiedName: "wrong.Over.go"})
+		if surv.QualifiedName != "com.example.Over.go" {
+			t.Fatalf("QualifiedName = %q, want the SURVIVOR's %q. Gap-fill must never override: "+
+				"QualifiedName is the byQualifiedName join key, and overwriting it with a "+
+				"duplicate's is the cross-repo-join corruption #4402/#4406 exists to prevent.",
+				surv.QualifiedName, "com.example.Over.go")
+		}
+	})
+
+	t.Run("signature", func(t *testing.T) {
+		surv := fold(t,
+			types.EntityRecord{Signature: "void go(int)"},
+			types.EntityRecord{Signature: "void go(String)"})
+		if surv.Signature != "void go(int)" {
+			t.Fatalf("Signature = %q, want the SURVIVOR's %q — the other overload's signature "+
+				"describes a different declaration, not a better version of this one",
+				surv.Signature, "void go(int)")
+		}
+	})
+
+	t.Run("language", func(t *testing.T) {
+		surv := fold(t,
+			types.EntityRecord{Language: "java"},
+			types.EntityRecord{Language: "kotlin"})
+		if surv.Language != "java" {
+			t.Fatalf("Language = %q, want the SURVIVOR's %q", surv.Language, "java")
+		}
+	})
+
+	t.Run("line_span", func(t *testing.T) {
+		surv := fold(t,
+			types.EntityRecord{StartLine: 10, EndLine: 12},
+			types.EntityRecord{StartLine: 14, EndLine: 16})
+		if surv.StartLine != 10 || surv.EndLine != 12 {
+			t.Fatalf("line span = %d-%d, want the SURVIVOR's 10-12. Only a ZERO span may be filled: "+
+				"taking the duplicate's, or unioning the two, is the invented third span "+
+				"custom_dispatch.go:507 warns about.", surv.StartLine, surv.EndLine)
+		}
+	})
+
+	t.Run("properties", func(t *testing.T) {
+		// Two keys, one shared and one duplicate-only, so this case pins BOTH
+		// directions of the property merge in one place: the existence check
+		// must block the shared key and must not block the missing one.
+		surv := fold(t,
+			types.EntityRecord{Properties: map[string]string{"module": "core", "shared": "survivor"}},
+			types.EntityRecord{Properties: map[string]string{"shared": "duplicate", "extra": "filled"}})
+		if got := surv.PropGet("shared"); got != "survivor" {
+			t.Errorf("Properties[shared] = %q, want the SURVIVOR's %q — dropping the PropLookup "+
+				"existence check makes every duplicate silently rewrite the survivor's properties, "+
+				"including the \"module\" key the whole module layer is built from", got, "survivor")
+		}
+		if got := surv.PropGet("module"); got != "core" {
+			t.Errorf("Properties[module] = %q, want %q", got, "core")
+		}
+		if got := surv.PropGet("extra"); got != "filled" {
+			t.Errorf("Properties[extra] = %q, want %q gap-filled from the duplicate — the existence "+
+				"check must block only keys the survivor ALREADY has", got, "filled")
+		}
+	})
+}
+
 // TestConvertExtractedRecords_DistinctIDsAllSurvive is the over-collapse guard.
 // It fails if the fold is keyed on anything COARSER than the full EntityID
 // tuple — e.g. on (Name) alone, which would merge same-name methods living on
