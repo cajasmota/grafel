@@ -108,14 +108,29 @@ func TestStatus_Ref_Named(t *testing.T) {
 	}
 }
 
+// TestStatus_Ref_All: `--ref @all` is REFUSED (#5822 C).
+//
+// This test used to assert the opposite — that status printed
+// "Note: --ref @all shows per-ref graph state for all known refs." and carried
+// on. It did carry on: straight into the ordinary current-HEAD view. The note
+// was the entire implementation, so the command announced a per-ref breakdown
+// and then showed one ref's numbers under that heading. The breakdown is a real
+// feature and is out of scope here; until it exists, refusing is the only
+// honest answer, and this test now pins that. Nothing may be printed first — a
+// note that precedes the refusal is the same misleading claim, just shorter.
 func TestStatus_Ref_All(t *testing.T) {
 	setupRefTestEnv(t, "main", "feat/x")
 	var buf bytes.Buffer
-	if err := runStatus(&buf, "", "", true); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	err := runStatus(&buf, "", "", true)
+	if err == nil {
+		t.Fatal("--ref @all returned no error: status still advertises a per-ref " +
+			"breakdown it does not implement")
 	}
-	if !strings.Contains(buf.String(), "@all") {
-		t.Errorf("expected @all note, got: %s", buf.String())
+	if !strings.Contains(err.Error(), "@all") {
+		t.Errorf("error does not name the flag value: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("output written before refusing:\n%s", buf.String())
 	}
 }
 

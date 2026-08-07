@@ -428,11 +428,31 @@ func StateDirForRepoRef(repoPath, ref string) string {
 // AnyRef fallback still finds the newest indexed graph — "tried the wrong dir
 // first", not "found nothing".
 func StateDirForRepo(repoPath string) string {
+	dir, _ := StateDirForRepoResolved(repoPath)
+	return dir
+}
+
+// StateDirForRepoResolved is StateDirForRepo plus the answer to "could the ref
+// be determined at all?" (#5822 D).
+//
+// ok == false means git could not be RUN — a fired 2s deadline, a fork EAGAIN
+// under load, a signalled child. The capture's Ref is then "" purely because of
+// the moment, and RefSafeEncode maps "" to the "refs/_unknown/" sentinel, a
+// directory no indexer ever writes a graph into. The returned path is still the
+// sentinel (so StateDirForRepo's behaviour is bit-for-bit what it was, for the
+// many callers that have no way to act on the difference), but a caller that
+// CAN distinguish "this repo has no graph" from "I could not find out" must
+// check ok and say so rather than reporting a confident zero.
+//
+// ok == true with an empty ref is a real, durable state — a detached HEAD, or a
+// path that is not a git repository at all — and the sentinel is genuinely
+// where that repo's graph lives. Trust, not emptiness, is the axis.
+func StateDirForRepoResolved(repoPath string) (string, bool) {
 	if repoPath == "" {
-		return ""
+		return "", false
 	}
-	meta := gitmeta.CaptureCached(repoPath)
-	return StateDirForRepoRef(repoPath, meta.Ref)
+	meta, trusted := gitmeta.CaptureCachedTrusted(repoPath)
+	return StateDirForRepoRef(repoPath, meta.Ref), trusted
 }
 
 // ResolveIncrementalStateDir resolves the per-ref state directory to use for

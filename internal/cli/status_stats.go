@@ -94,6 +94,33 @@ type RepoStatus struct {
 	// are not the currently active (hot) ref. Nil when none exist.
 	ColdRefs []string
 
+	// RefUnknown is true when this repo's per-ref state directory could NOT be
+	// resolved because git could not be run (#5822 D): a fired 2s deadline, a
+	// fork EAGAIN under load, an OOM-killed child. `status` is a fresh process
+	// on every invocation, so its git cache is always cold and it forks ~5 git
+	// processes per run — which is exactly the population that loses this race
+	// on a loaded machine.
+	//
+	// It is a FOURTH state, alongside the three RepoStatus already models:
+	//
+	//   - healthy       → counts are real;
+	//   - no graph yet  → LastIndexedAge "(never)", counts genuinely zero;
+	//   - GraphLoadError → a graph exists but could not be read;
+	//   - RefUnknown    → we do not know WHICH graph to look at.
+	//
+	// When it is set, every count on this repo is MISSING, not zero, and the
+	// repo contributes nothing to the group totals. That is the whole point of
+	// the flag: the old code resolved the empty ref to the "_unknown" sentinel
+	// directory, found no graph there (none ever exists there), and rendered
+	// "0 entities · 0 rels · indexed (never)" — a healthy-looking zero that a
+	// user cannot tell apart from a repo that was never indexed. On the next
+	// run git succeeded and the numbers came back, which is the "counts swing
+	// between runs on an unchanged repo" report.
+	//
+	// Never set when a ref was requested explicitly with --ref: that path needs
+	// no git capture at all.
+	RefUnknown bool
+
 	// RebuildFailure is the "last rebuild FAILED" marker read from the
 	// status-plane sidecar (internal/statusfile), if any (#5822 sub-ask 3).
 	// Non-nil means the most recent rebuild attempt for this repo hard-failed
@@ -144,6 +171,26 @@ type RepoStatus struct {
 // Errors reading individual files are silently skipped so a partial result
 // does not prevent summary generation.
 func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
+	return ComputeStatusSummaryForRef(group, repos, "")
+}
+
+// ComputeStatusSummaryForRef is ComputeStatusSummary for a CALLER-CHOSEN ref
+// (#5822 C).
+//
+// ref == "" keeps the historical behaviour: each repo's state directory is
+// derived from its current HEAD. A non-empty ref selects that ref's stored
+// graph directly, for every repo in the group.
+//
+// Threading the ref this far down is the whole of defect C. `grafel status
+// --ref main` used to resolve the flag, validate it, print "Note: showing state
+// for ref …" — and then hand ComputeStatusSummary no ref at all, so every repo
+// went through daemon.StateDirForRepo → gitmeta capture → whatever HEAD pointed
+// at right then. The note described one thing and the numbers underneath it
+// described another.
+//
+// A requested ref also needs NO git subprocess, which is why it is immune to
+// defect D below.
+func ComputeStatusSummaryForRef(group string, repos []registry.Repo, ref string) *StatusSummary {
 	s := &StatusSummary{
 		GroupName: group,
 		RepoStats: make(map[string]*RepoStatus),
@@ -183,7 +230,28 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 			}
 		}
 
-		stateDir := daemon.StateDirForRepo(r.Path)
+		// Resolve which per-ref slot to read.
+		//
+		// An explicitly requested ref is used verbatim — no git, so nothing can
+		// fail here. Otherwise the repo's CURRENT ref has to be discovered, and
+		// that can fail transiently (#5822 D): when it does, the resolver says
+		// so instead of quietly handing back the "_unknown" sentinel, and this
+		// repo is recorded as unknown rather than as an indexed-never zero.
+		// Everything below would otherwise read a directory that never holds a
+		// graph and report confident zeros for a repo that may be fully indexed.
+		var stateDir string
+		if ref != "" {
+			stateDir = daemon.StateDirForRepoRef(r.Path, ref)
+		} else {
+			resolved, refKnown := daemon.StateDirForRepoResolved(r.Path)
+			if !refKnown {
+				rs.RefUnknown = true
+				rs.LastIndexedAge = "(unknown)"
+				s.RepoStats[r.Slug] = rs
+				continue
+			}
+			stateDir = resolved
+		}
 
 		// Load graph-stats.json sidecar for basic counts.
 		sidecarPath := filepath.Join(stateDir, "graph-stats.json")
@@ -578,6 +646,19 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	// Print each repo on one line.
 	for _, slug := range slugs {
 		rs := s.RepoStats[slug]
+		// #5822 D: a repo whose ref could not be determined has NO numbers to
+		// print. Printing the zero-valued line would render it as a healthy,
+		// never-indexed repo — the exact confusion this replaces. The rebuild
+		// -failure marker below is ref-independent and still shown.
+		if rs.RefUnknown {
+			fmt.Fprintf(w, "  %-*s  state UNKNOWN — git could not be run to resolve this repo's current ref; counts are UNAVAILABLE (not zero). Retry, or name the ref with `grafel status --ref <branch>`.\n",
+				maxSlugLen, slug)
+			if rf := rs.RebuildFailure; rf != nil {
+				fmt.Fprintf(w, "  %-*s  ⚠ last rebuild FAILED: %s%s — see daemon.err; raise GRAFEL_REBUILD_REPO_TIMEOUT (or `grafel rebuild --timeout <dur>`) or rebuild again\n",
+					maxSlugLen, "", rf.Reason, formatRebuildFailureRef(rf))
+			}
+			continue
+		}
 		gitSuffix := formatGitRef(rs.IndexedRef, rs.IndexedSHA, rs.IsWorktree)
 		coldSuffix := formatColdRefs(rs.ColdRefs)
 		fmt.Fprintf(w, "  %-*s  %5s files  %6s entities  %6s rels  indexed %s%s%s\n",
@@ -612,9 +693,14 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	// flow/endpoint/orphan aggregates, so this headline under-reports. Marking
 	// only the per-repo lines would leave the number most people actually read
 	// silently wrong.
+	//
+	// #5822 D adds the second way a repo can contribute nothing: its ref could
+	// not be resolved, so we never even learned which graph to read. Same
+	// consequence for this headline — an under-report that reads as a fact —
+	// so it is disclosed the same way.
 	incomplete := 0
 	for _, rs := range s.RepoStats {
-		if rs.GraphLoadError != "" {
+		if rs.GraphLoadError != "" || rs.RefUnknown {
 			incomplete++
 		}
 	}
