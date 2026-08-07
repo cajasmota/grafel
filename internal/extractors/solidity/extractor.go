@@ -283,10 +283,10 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			fnName := body[fm[2]:fm[3]]
 			qualName := name + "." + fnName
 			fnStartLine := braceLine + strings.Count(body[:fm[0]], "\n")
-			fnBody, fnEndLine := extractBracedBody(body, fm[1])
-			_ = fnBody
-			if fnEndLine == 0 {
-				fnEndLine = fnStartLine
+			fnBody, fnEnd := declBody(body, fm[1])
+			fnEndLine := fnStartLine
+			if fnEnd >= 0 {
+				fnEndLine = braceLine + strings.Count(body[:fnEnd], "\n")
 			}
 			rawFnSig := declSignature(body, fm[0], fm[1])
 
@@ -298,7 +298,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 				SourceFile:    filePath,
 				Language:      "solidity",
 				StartLine:     fnStartLine,
-				EndLine:       fnStartLine + strings.Count(fnBody, "\n"),
+				EndLine:       fnEndLine,
 				Signature:     rawFnSig,
 				Relationships: callRels,
 			}
@@ -323,6 +323,11 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			qualName := name + "." + evName
 			evStartLine := braceLine + strings.Count(body[:em[0]], "\n")
 			rawEvSig := declSignature(body, em[0], em[1])
+			// An event is always bodiless, so declBody yields the ';' offset.
+			evEndLine := evStartLine
+			if _, evEnd := declBody(body, em[1]); evEnd >= 0 {
+				evEndLine = braceLine + strings.Count(body[:evEnd], "\n")
+			}
 
 			evRec := types.EntityRecord{
 				Name:       qualName,
@@ -331,7 +336,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 				SourceFile: filePath,
 				Language:   "solidity",
 				StartLine:  evStartLine,
-				EndLine:    evStartLine,
+				EndLine:    evEndLine,
 				Signature:  rawEvSig,
 			}
 			out = append(out, evRec)
@@ -352,7 +357,11 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 			qualName := name + "." + modName
 			modStartLine := braceLine + strings.Count(body[:mm[0]], "\n")
 			rawModSig := declSignature(body, mm[0], mm[1])
-			modBody, _ := extractBracedBody(body, mm[1])
+			modBody, modEnd := declBody(body, mm[1])
+			modEndLine := modStartLine
+			if modEnd >= 0 {
+				modEndLine = braceLine + strings.Count(body[:modEnd], "\n")
+			}
 
 			callRels := collectCallsFromBody(modBody, qualName)
 			modRec := types.EntityRecord{
@@ -362,7 +371,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 				SourceFile:    filePath,
 				Language:      "solidity",
 				StartLine:     modStartLine,
-				EndLine:       modStartLine + strings.Count(modBody, "\n"),
+				EndLine:       modEndLine,
 				Signature:     rawModSig,
 				Relationships: callRels,
 			}
@@ -572,6 +581,48 @@ func extractBracedBody(src string, openPos int) (string, int) {
 		i++
 	}
 	return "", 0
+}
+
+// declBody returns the braced body of the member declaration whose regex match
+// ended at matchEnd, together with the offset of the token that ends the
+// declaration: the closing '}' of the body, or the ';' of a bodiless one. It
+// returns "" and -1 when the declaration is unterminated.
+//
+// The ';' bound is the whole point. extractBracedBody on its own scans forward
+// to the next '{' it can find anywhere, so on a bodiless declaration — an
+// interface method, or `virtual` in an abstract contract — it runs past the
+// ';' and returns the FOLLOWING member's body. That body then supplies the
+// bodiless declaration's line span and, through collectCallsFromBody, its
+// CALLS edges.
+//
+// src is scrubbed (see stripCommentsAndStrings), so a delimiter inside a
+// comment or a string literal cannot end the declaration early. matchEnd sits
+// just past the '(' opening the parameter list, so the paren scan starts one
+// level deep.
+func declBody(src string, matchEnd int) (string, int) {
+	depth := 1
+	for i := matchEnd; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ';':
+			if depth == 0 {
+				return "", i
+			}
+		case '{':
+			if depth == 0 {
+				body, endLine := extractBracedBody(src, i)
+				if endLine == 0 {
+					return "", -1
+				}
+				// body is src[i+1:close], so close sits len(body)+1 past i.
+				return body, i + len(body) + 1
+			}
+		}
+	}
+	return "", -1
 }
 
 // declSignature returns the declaration starting at declStart up to the first
