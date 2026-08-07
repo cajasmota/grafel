@@ -732,55 +732,35 @@ var cpKnownPathA = []cpKnown{
 		Contains: []string{"SCOPE.Operation/cp_use_class@cphandler_delta.py→«unbound»:CALLS"},
 	},
 
-	// ── #6094 family: a duplicated row persisted into graph.fb ──
+	// ── #6094 family: a duplicated row persisted into graph.fb ── ALL FIXED ──
 	//
-	// The exception-type entity synthesised for `CpNotFound` is written TWICE by
-	// the incremental run, and its CONTAINS edge with it. This is the exact
-	// class #6037 taught the comparator to see (a set comparison cannot); it is
-	// pinned here with its magnitude so a 3rd copy would fail.
-	{
-		Issue:          "#6129 (duplicate-row class of #6094 / #6037)",
-		Why:            "Incremental persists a second copy of the synthesised exception-type entity. Unfixed.",
-		Bucket:         cpEntityMult,
-		Contains:       []string{"SCOPE.ExceptionType|exception:CpNotFound"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-	// The CONTAINS edge to that duplicated entity used to be duplicated WITH it,
-	// and had its own entry here. FIXED — the entry went STALE and was removed
-	// by the ratchet.
+	// This block held three entries and now holds none. They came off the
+	// ratchet one at a time, which is worth recording because each fell to a
+	// different fix:
 	//
-	// It was collateral of the record→graph seam honouring EntityRecord.ID
-	// instead of deriving one (the #6150 fix in entityRecordToGraphEntity): the
-	// two copies of the exception record carried different ids, so their
-	// CONTAINS edges had different RelationshipIDs and the seenRel guard could
-	// not collapse them. Deriving the id makes both edges the same edge and one
-	// of them is dropped, matching the full rebuild exactly.
+	//	The duplicated CONTAINS edge went first, as collateral of the
+	//	record→graph seam honouring EntityRecord.ID instead of deriving one (the
+	//	#6150 fix in entityRecordToGraphEntity). The two copies of the exception
+	//	record carried different ids, so their CONTAINS edges had different
+	//	RelationshipIDs and the seenRel guard could not collapse them; deriving
+	//	the id makes both edges the same edge and one is dropped.
 	//
-	// The ENTITY-MULTIPLICITY entry above still reproduces: the duplicate
-	// exception ROW is a separate defect from the id it carried, and only the
-	// second one is closed.
-	// Re-keyed (not deleted) when the fixture grew for #6141/#6148/#6150: the
-	// divergence still reproduces and is still the same one — the unassigned
-	// community carries exactly ONE extra member, the duplicate row above — but
-	// the key spells out ABSOLUTE membership counts, and those track the size of
-	// the corpus. The load-bearing part of the key is the +1; the absolute pair
-	// moves whenever a fixture file is added. Anything other than +1 is a
-	// different divergence and must fail.
+	//	The duplicated ENTITY ROW itself (SCOPE.ExceptionType|exception:CpNotFound,
+	//	"row count 1 in A ≠ 2 in B") went with #6161, and it was never really a
+	//	x2: SCOPE.ExceptionType is synthesised with the PLACEHOLDER source file
+	//	"<exception>", so it is never evicted as "sourced from a changed file"
+	//	and the incremental path appended a fresh copy beside the survivor on
+	//	EVERY pass — x2, x3, x4 … The fixture runs one pass, so the ratchet only
+	//	ever saw the first step of an unbounded accumulation. Fixed by the
+	//	survivor-aware fold in extractors.mergeEntitiesDeduped.
 	//
-	// This entry has now been re-keyed six times for fixture growth and zero
-	// times for a change in the defect, which is a smell in the KEY, not in the
-	// entry: it is the only allow entry keyed on an absolute count rather than on
-	// a shape. Keying it on the DELTA would end the churn and would still fail on
-	// a magnitude change — but the delta is not in the divergence string today
-	// (parity.Report renders "N member(s) in A, M in B"), so it needs a
-	// comparator change to reach, not an allow-list edit. Worth doing the next
-	// time this file is opened for anything else.
-	{
-		Issue:    "#6129 (duplicate-row class of #6094 / #6037)",
-		Why:      "Downstream of the duplicated entity: the unassigned community carries one extra member.",
-		Bucket:   cpCommunitySet,
-		Contains: []string{"community ∅: 67 member(s) in A, 68 in B"},
-	},
+	//	The COMMUNITY-MEMBERSHIP entry ("community ∅: N member(s) in A, N+1 in B")
+	//	was pure downstream of that row and went with it. It had been re-keyed six
+	//	times for fixture growth and zero times for a change in the defect,
+	//	because it was the only allow entry keyed on an absolute count rather than
+	//	on a shape. If a community divergence is ever allow-listed again, key it
+	//	on the DELTA — that needs a comparator change, since parity.Report renders
+	//	only "N member(s) in A, M in B" today.
 
 	// ── #6156: the full rebuild orphans a THIRD-PARTY import's IMPORTS edge ──
 	//
