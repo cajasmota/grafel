@@ -1267,7 +1267,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	stampModuleOnEntities(newEntities, doc, absRepo, allFiles)
 
 	// --- Step 8: merge + sort + write ---
-	doc.Entities = append(doc.Entities, newEntities...)
+	// #6161 — fold, do not append. See mergeEntitiesDeduped.
+	doc.Entities = mergeEntitiesDeduped(doc.Entities, newEntities)
 	doc.Relationships = append(doc.Relationships, newRels...)
 
 	// --- Step 8·flows: incremental per-repo flow passes (#5309 layer 3) ───────
@@ -1734,12 +1735,65 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 // inbound from an UNCHANGED file, and inbound rows are not re-emitted here at
 // all. Seeding from the survivors would additionally risk suppressing a
 // legitimately re-emitted edge, so it is deliberately not done.
+//
+// THE ENTITY FOLD (#6161). Entities were appended unconditionally here while
+// the relationship guard three lines below already existed, so two records
+// deriving the same graph.EntityID became two rows. That breaks the invariant
+// internal/graph/emission_order.go:32 states verbatim — "Entity IDs are unique,
+// so ID alone is a total order — no secondary keys" — which SortDocumentForEmission
+// relies on and which LookupEntityByID's bare FlatBuffers binary search relies
+// on harder: where it is false, one row is returned arbitrarily and the other is
+// permanently unreachable while still occupying a slot and a count.
+//
+// The collision is EXPECTED, not erroneous. graph.EntityID is
+// sha256(repo, kind, name, source_file) and excludes StartLine, so every
+// construct declaring one name twice in one file collides by construction: Java
+// method overloads (custom_dispatch.go:507 documents exactly this), C#/VB
+// partial classes and methods, C++/TypeScript overload declarations, Python
+// @overload / @singledispatch / `def` under `if TYPE_CHECKING`, Ruby reopened
+// classes and attr_accessor-generated methods. A bare `if seen { continue }`
+// would therefore DISCARD the second overload's whole edge set — strictly worse
+// than the duplication, which is at least visible in a count. Hence a fold: gate
+// the row, gap-fill via foldDuplicateEntity, and let the relationship loop run
+// for every record so the duplicate's edges anchor to the survivor's id.
+//
+// FOLD SCOPE — THIS ONE IS PER-FILE AND THAT IS NOT SUFFICIENT ON ITS OWN.
+// entityPos is per-call, whereas seenRel spans the whole batch, and unlike
+// seenRel's scope the difference here is NOT harmless. An entity id can collide
+// across files, because synthesised entities carry a PLACEHOLDER source file
+// ("<exception>") rather than a real one, and it can collide with the previous
+// graph, because such an entity is never evicted by Step 5. Both of those are
+// folded at the Step 8 merge instead — see mergeEntitiesDeduped, which is
+// survivor-aware and is what actually guarantees the invariant on the written
+// graph.
+//
+// What this fold buys, given that: the duplicate never enters newEntities at
+// all, so the scoped resolver, the signature-change scan, the module stamp and
+// the flow blast-radius all see one row rather than two. It is also the fold
+// that keeps the OVERLOAD case honest, since that one is same-file by
+// definition.
+//
+// buildDocument's equivalent gate is corpus-wide because ITS input genuinely is
+// (merged spans every file), so it needs no second fold downstream.
 func convertExtractedRecords(records []types.EntityRecord, repoTag string, seenRel map[string]bool) ([]graph.Entity, []graph.Relationship) {
 	ents := make([]graph.Entity, 0, len(records))
 	var rels []graph.Relationship
+	// #6161 — entityPos maps a derived graph.EntityID → its index in `ents`, so a
+	// later record deriving the SAME id gap-fills onto the already-emitted
+	// survivor instead of appending a second row. See the ENTITY FOLD note above.
+	entityPos := make(map[string]int, len(records))
 	for _, rec := range records {
 		e := entityRecordToGraphEntity(rec, repoTag)
-		ents = append(ents, e)
+		if pos, dup := entityPos[e.ID]; dup {
+			foldDuplicateEntity(&ents[pos], e)
+		} else {
+			ents = append(ents, e)
+			entityPos[e.ID] = len(ents) - 1
+		}
+		// NOT inside the else. The relationship loop runs for EVERY record,
+		// survivor or duplicate, exactly as buildDocument's does — e.ID is the
+		// derived id and is identical for both, so a duplicate's owned edges
+		// anchor to the survivor and nothing is orphaned by the fold.
 		for _, relRec := range rec.Relationships {
 			r := relRecordToGraphRel(relRec, e.ID)
 			if seenRel[r.ID] {
@@ -1750,6 +1804,135 @@ func convertExtractedRecords(records []types.EntityRecord, repoTag string, seenR
 		}
 	}
 	return ents, rels
+}
+
+// mergeEntitiesDeduped merges the freshly extracted entities into the surviving
+// ones under a single-row-per-graph.EntityID rule (#6161).
+//
+// WHY THE SEAM-LEVEL FOLD IN convertExtractedRecords IS NOT ENOUGH. That one is
+// per-file, and two of the three ways this invariant breaks reach across files:
+//
+//	PLACEHOLDER SOURCE FILES. Synthesised entities are not anchored in a real
+//	file — a SCOPE.ExceptionType is written with SourceFile "<exception>". Since
+//	graph.EntityID hashes (repo, kind, name, source_file), the SAME id is derived
+//	for every file that raises `CpNotFound`, so two changed files in ONE batch
+//	each contribute a copy that no per-file fold can see.
+//
+//	THE PREVIOUS GRAPH'S COPY. Worse, and the reason this is a merge-side fold
+//	rather than a batch-side one: Step 5 evicts entities sourced from a CHANGED
+//	file, and "<exception>" is not a file, so the prior copy always survives and
+//	the new one was appended beside it. Every pass added one more — CpNotFound
+//	measured x2, x3, x4 … across successive edits to one handler. That is #6094's
+//	unbounded accumulation, on entities instead of edges, cleared only by a full
+//	reindex.
+//
+// SURVIVOR WINS, AND THAT IS THE CORRECT WAY ROUND. A colliding pair means the
+// two records agree on (repo, kind, name, source_file), i.e. they ARE the same
+// entity. If that source file had changed, Step 5 would have evicted the
+// survivor and there would be no collision; so a collision implies the survivor
+// comes from an unchanged file (or from nowhere), which makes it the
+// authoritative row. The incoming copy only gap-fills, exactly as
+// buildDocument's dedup branch does. No edge is orphaned either way, because
+// both rows carry the same id and every edge endpoint is that id.
+//
+// THE SURVIVING SET IS FOLDED TOO, in place via the `existing[:0]` filter idiom
+// already used for the inbound-dangling prune above. A graph written by an
+// earlier build already contains accumulated copies; without this the growth
+// stops but the damage stays until a full reindex, and the uniqueness invariant
+// SortDocumentForEmission and LookupEntityByID depend on would still be false on
+// the very next write.
+func mergeEntitiesDeduped(existing, incoming []graph.Entity) []graph.Entity {
+	pos := make(map[string]int, len(existing)+len(incoming))
+	out := existing[:0]
+	fold := func(e graph.Entity) {
+		if p, dup := pos[e.ID]; dup {
+			foldDuplicateEntity(&out[p], e)
+			return
+		}
+		out = append(out, e)
+		pos[e.ID] = len(out) - 1
+	}
+	// Safe to write into existing's backing array while reading it: the write
+	// index never runs ahead of the read index.
+	for _, e := range existing {
+		fold(e)
+	}
+	for _, e := range incoming {
+		fold(e)
+	}
+	return out
+}
+
+// foldDuplicateEntity merges a duplicate record's entity into the survivor that
+// already occupies its graph.EntityID (#6161).
+//
+// It is a port of buildDocument's dedup branch (cmd/grafel/index.go, issue
+// #4406) and the two must stay in step: where they disagree, the full path and
+// the incremental path disagree about what an entity IS, which is a worse
+// defect than the duplication this fold removes.
+//
+// GAP-FILL, NEVER OVERRIDE. The survivor's own values always stand; the
+// duplicate only supplies fields the survivor left empty. The dropped record is
+// frequently the carrier of base-only state the survivor lacks — most
+// critically the module-qualified QualifiedName that drives byQualifiedName
+// resolution and cross-repo joins (the live-graph half of #4402, the same shape
+// #4405 fixed at the MergeWithCustom boundary).
+//
+// LINE SPANS ARE FILLED, NOT UNIONED. Only a ZERO span is filled. Extending the
+// survivor's span to cover the duplicate's is what custom_dispatch.go:507
+// warns about: "Java method overloads give two declarations the same (Kind,
+// Name, SourceFile) at different lines", and a blind span union there invented a
+// third span covering neither declaration.
+//
+// METADATA IS DELIBERATELY NOT FOLDED, even though buildDocument folds it.
+// entityRecordToGraphEntity does not carry EntityRecord.Metadata onto the
+// entity at all on this path (buildDocument does — a pre-existing divergence,
+// outside #6161). Folding it here would make an entity that HAPPENS to have a
+// duplicate carry the duplicate's metadata while carrying none of its own,
+// which is stranger than carrying none at all. Fix the first-seen omission and
+// this fold should gain a Metadata clause in the same change.
+func foldDuplicateEntity(surv *graph.Entity, dup graph.Entity) {
+	if surv.QualifiedName == "" && dup.QualifiedName != "" {
+		surv.QualifiedName = dup.QualifiedName
+	}
+	if surv.Subtype == "" && dup.Subtype != "" {
+		surv.Subtype = dup.Subtype
+	}
+	if surv.Signature == "" && dup.Signature != "" {
+		surv.Signature = dup.Signature
+	}
+	if surv.Language == "" && dup.Language != "" {
+		surv.Language = dup.Language
+	}
+	if surv.StartLine == 0 && dup.StartLine != 0 {
+		surv.StartLine = dup.StartLine
+	}
+	if surv.EndLine == 0 && dup.EndLine != 0 {
+		surv.EndLine = dup.EndLine
+	}
+	if len(dup.Tags) > 0 {
+		seenTag := make(map[string]bool, len(surv.Tags)+len(dup.Tags))
+		for _, t := range surv.Tags {
+			seenTag[t] = true
+		}
+		for _, t := range dup.Tags {
+			if !seenTag[t] {
+				seenTag[t] = true
+				surv.Tags = append(surv.Tags, t)
+			}
+		}
+	}
+	if dup.PropLen() > 0 {
+		if surv.PropLen() == 0 {
+			surv.PropsReplace(make(map[string]string, dup.PropLen()))
+		}
+		dup.PropRange(func(k, v string) bool {
+			if _, exists := surv.PropLookup(k); !exists {
+				surv.PropSet(k, v)
+			}
+			return true
+		})
+	}
 }
 
 // endpointSyntheticKind is the kind engine's http_endpoint synthesis settles on
