@@ -964,6 +964,20 @@ func TestContentParity_PathA_6129(t *testing.T) {
 var cpKnownPathB = []cpKnown{
 	// ── #6129, headline Path-B defect: a DEPENDS_ON SELF-EDGE ──
 	//
+	// FIXED by #6160's merge identity gate — the entry that stood here went
+	// STALE and was removed by the ratchet below. So did all five entries of
+	// the "duplicated file→external DEPENDS_ON" family that followed it.
+	//
+	// The whole class had ONE cause, and it was not module-aggregation: the
+	// merge's dedupe key included the sorted property payload, so a carried
+	// forward edge and the fresh pass's copy of the SAME edge — same FromID,
+	// ToID, Kind and same relationship ID — hashed to different keys whenever
+	// the two passes stamped different properties on it, and both rows
+	// persisted. mergeIncrementalPrevSource now gates on the relationship ID
+	// itself for prev edges that carry one. The historical description of the
+	// self-edge is kept below because it records what the row LOOKED like and
+	// why counts alone could not see it.
+	//
 	// The incremental run emits `CpProducer → CpProducer` — a module-aggregation
 	// dependency from an entity onto itself, which is meaningless as a
 	// dependency. (#6129 records the same shape as `ProdClassU → ProdClassU` on
@@ -981,27 +995,17 @@ var cpKnownPathB = []cpKnown{
 	// multiplicity: 1 in A, 2 in B. Entity and relationship totals for the full
 	// rebuild are unchanged across #6152 (69 / 145 either way) — nothing was
 	// added or destroyed, an endpoint that used to dangle now resolves.
-	{
-		Issue:          "#6129",
-		Why:            "Path B emits one DEPENDS_ON self-edge more than a full rebuild. Unfixed.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"SCOPE.Component/CpProducer@cpprod_static.py→SCOPE.Component/CpProducer@cpprod_static.py:DEPENDS_ON"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-
 	// ── #6129, second Path-B defect: duplicated file→external DEPENDS_ON ──
 	//
-	// The `scope:component:file:* → *[SCOPE.External]` rows #6129 names are not
-	// merely present — they are present TWICE where the full rebuild has one.
+	// FIXED by #6160's merge identity gate — see the note at the head of this
+	// list. The `scope:component:file:* → *[SCOPE.External]` rows #6129 names
+	// were not merely present, they were present TWICE where the full rebuild
+	// has one; five entries pinned that (one per importer, so a fix repairing
+	// only some would still fail the ratchet). All five went stale together,
+	// which is the evidence that they were one defect and not five.
+	//
 	// A set comparison cannot see this at all (#6037); a count comparison sees
-	// "more edges" and cannot say which. Magnitude pinned.
-	{
-		Issue:          "#6129",
-		Why:            "Path B duplicates the file→SCOPE.External DEPENDS_ON rows. Unfixed.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"«unbound»scope:component:file:cphandler_delta.py→SCOPE.External/", ":DEPENDS_ON"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
+	// "more edges" and cannot say which.
 
 	// ── Shared with Path A: the from-import left as a verbatim stub ──
 	//
@@ -1022,104 +1026,52 @@ var cpKnownPathB = []cpKnown{
 		Contains: []string{"→SCOPE.Component/cpcfg_static.py@cpcfg_static.py", ":IMPORTS"},
 	},
 
-	// ── #6129, more instances of the SAME duplicated file→external row ──
+	// ── #6160: the IMPLEMENTS bridge and the whole flow subtree, twice ──
 	//
-	// The entry above this block pins the shape on cphandler_delta.py. The
-	// #6150 fixture growth added two more registration files, and each
-	// reproduces it against its own imports. Same defect, more instances — so
-	// they carry the same issue number, but they are separate ENTRIES rather
-	// than one loosened key, because a fix that repaired only one of the three
-	// must fail the ratchet on the other two.
-	{
-		Issue:          "#6129",
-		Why:            "Same duplicated file→external DEPENDS_ON, from the JS registration file.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"«unbound»scope:component:file:cproutes_delta.js→"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-	{
-		Issue:          "#6129",
-		Why:            "Same duplicated file→external DEPENDS_ON, from the Flask registration file.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"«unbound»scope:component:file:cpwsgi_delta.py→"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-	{
-		Issue:          "#6129",
-		Why:            "Same duplicated file→external DEPENDS_ON, from the second Flask registration file (the no-survivor pair).",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"«unbound»scope:component:file:cpapi2_delta.py→"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-	{
-		Issue:          "#6129",
-		Why:            "Same duplication reaching a framework-typed importer rather than a file component.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"«unbound»Model:Flask→SCOPE.External/Flask@:DEPENDS_ON"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-
-	// ── #6160: a REBOUND endpoint and its whole flow subtree, twice ──
+	// FIXED, except for the residual EDGE-PROPS row kept below. Six entries
+	// stood here and went stale: the duplicated IMPLEMENTS bridge, the
+	// duplicated SCOPE.Process, its two STEP_IN_PROCESS edges, its
+	// ENTRY_POINT_OF edge, and the extra unassigned-community member that
+	// followed from the duplicated Process.
 	//
-	// engine.bridgeEndpointToHandler rebinds a resolved synthetic's source_file
-	// onto the handler's BODY (#2678). An endpoint registered in a CHANGED file
-	// but resolved to a handler in an UNCHANGED one therefore ends up anchored
-	// in the unchanged file — and is both carried forward from the previous
-	// graph AND re-produced by this run. Both copies derive the same id, so it
-	// is one entity emitted twice, and the flow pass builds a second
-	// SCOPE.Process on top of it.
+	// The issue's title said Path B duplicated the rebound ENDPOINT and that
+	// everything else followed. It did not: the endpoint is multiplicity 1 on
+	// both sides — the fresh run does not even emit an endpoint entity for
+	// /cpview, it resolves its bridge onto the carried-forward one. Two
+	// independent causes both duplicated a DERIVATION on top of a single
+	// endpoint:
 	//
-	// Path A is clean on the identical fixture (it dedupes by reEmittedIDs and
-	// seenNewRel), which is why this is on Path B's list alone. Reproduced
-	// byte-identically at 617aeba6c — #6150 made the fixture reach it, it did
-	// not cause it.
+	//  1. The IMPLEMENTS bridge. The merge's dedupe key included the property
+	//     payload, so the carried-forward post-rebind form
+	//     ({framework, pattern_type=http_endpoint_synthesis_resolved}) and this
+	//     run's synthesis-time form ({framework, path, pattern_type=
+	//     http_endpoint_synthesis_time_bridge, verb}) — the same edge, the same
+	//     relationship ID 831aad876ae63d6d — never collided. Closed by the
+	//     identity gate in mergeIncrementalPrevSource.
+	//
+	//  2. The flow subtree. Pass 7 runs over the MERGED graph and nothing
+	//     removed the prior run's flow entities first, so a SCOPE.Process
+	//     anchored in an unchanged file was carried forward AND re-derived —
+	//     under the SAME id, because computeProcessID hashes the chain and the
+	//     chain had not changed. Closed by the engine.StripFlows call at the
+	//     merge site, the capability Path A has had via RunFlowsIncremental
+	//     since #5309 layer 3.
+	//
+	// Path A is clean on the identical fixture (reEmittedIDs / seenNewRel),
+	// which is why this was on Path B's list alone.
 	{
-		Issue:          "#6160",
-		Why:            "Path B emits the rebound endpoint's IMPLEMENTS bridge twice — once in its synthesis-time form, once resolved. Unfixed.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"→http_endpoint_definition/http:GET:/cpview@cpview_static.py:IMPLEMENTS"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-	{
-		Issue:          "#6160",
-		Why:            "The property evidence for the row above: the duplicate pair is the same bridge at two pipeline stages (synthesis_time_bridge + synthesis_resolved).",
+		Issue: "#6160",
+		Why: "RESIDUAL, and a smaller defect than the duplicate row it used to accompany. " +
+			"With the duplicate gone, the ONE surviving bridge is this run's provisional " +
+			"synthesis-time form, where a full rebuild has the post-resolve form. Path B " +
+			"cannot re-derive the resolved form here: the handler's file was not re-extracted, " +
+			"so the resolve pass never ran for it and only the previous graph holds that " +
+			"provenance. The merge keeps the FRESH row on an identity collision, per its " +
+			"documented precedence — deciding that the older row's payload should win instead " +
+			"is a separate question about merge precedence, not about duplication.",
 		Bucket:         cpEdgeProps,
 		Contains:       []string{"→http_endpoint_definition/http:GET:/cpview@cpview_static.py:IMPLEMENTS"},
 		DetailContains: []string{"http_endpoint_synthesis_time_bridge"},
-	},
-	{
-		Issue:          "#6160",
-		Why:            "The process-flow node built on the duplicated endpoint, duplicated with it.",
-		Bucket:         cpEntityMult,
-		Contains:       []string{"SCOPE.Process|http:GET:/cpview → cp_view_handler"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-	{
-		Issue:          "#6160",
-		Why:            "Its STEP_IN_PROCESS edge to the handler operation.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"SCOPE.Process/http:GET:/cpview → cp_view_handler@cpview_static.py→SCOPE.Operation/cp_view_handler@cpview_static.py:STEP_IN_PROCESS"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-	{
-		Issue:          "#6160",
-		Why:            "Its STEP_IN_PROCESS edge to the endpoint.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{"SCOPE.Process/http:GET:/cpview → cp_view_handler@cpview_static.py→http_endpoint_definition/"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-	{
-		Issue:          "#6160",
-		Why:            "Its ENTRY_POINT_OF edge.",
-		Bucket:         cpEdgeMult,
-		Contains:       []string{":ENTRY_POINT_OF"},
-		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
-	},
-	{
-		Issue:    "#6160",
-		Why:      "Downstream of the duplicated Process entity: the unassigned community carries one extra member. Keyed on the absolute pair, so it moves with fixture size — see the same note on Path A's copy.",
-		Bucket:   cpCommunitySet,
-		Contains: []string{"community ∅: 69 member(s) in A, 70 in B"},
 	},
 
 	// ── #6159, shared with Path A: cross-file handler, unenriched endpoint ──

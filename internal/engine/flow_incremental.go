@@ -48,14 +48,26 @@ var flowEntityKinds = map[string]bool{
 	EntityKindEventFlow: true,
 }
 
-// flowEdgeKinds are the relationship kinds emitted by the flow walkers. They are
-// stripped before a re-run (the walkers regenerate them) and do not themselves
-// count as a flow-input change.
-var flowEdgeKinds = map[string]bool{
-	RelationshipKindEntryPointOf:    true,
-	RelationshipKindStepInProcess:   true,
-	RelationshipKindSeedOfEventFlow: true,
-	RelationshipKindStepInEventFlow: true,
+// walkerProcess / walkerEventFlow name the two flow walkers.
+const (
+	walkerProcess   = "process-flow"
+	walkerEventFlow = "event-flow"
+)
+
+// flowWalkerOf maps every walker-EMITTED entity kind and relationship kind to
+// the walker that emits it. It is the single source of truth for what a strip
+// removes: an artefact may only be deleted when the walker that owns it is
+// about to run again (#6160), so the strip needs the ownership, not just
+// membership. Kinds absent from this table are never walker output and are
+// never stripped. These kinds also do not themselves count as a flow-input
+// change — the walkers regenerate them.
+var flowWalkerOf = map[string]string{
+	EntityKindProcess:               walkerProcess,
+	RelationshipKindEntryPointOf:    walkerProcess,
+	RelationshipKindStepInProcess:   walkerProcess,
+	EntityKindEventFlow:             walkerEventFlow,
+	RelationshipKindSeedOfEventFlow: walkerEventFlow,
+	RelationshipKindStepInEventFlow: walkerEventFlow,
 }
 
 // flowInputEdgeKinds are the relationship kinds the flow walkers consume.
@@ -128,17 +140,44 @@ func FlowsAffectedByDelta(
 // RunEventFlow re-run does not double-emit. Returns the number of entities and
 // relationships removed. Edges are stripped both by kind AND by endpoint: a
 // flow entity's id can appear on either side of an edge whose kind is not in
-// flowEdgeKinds only via the walker, but the kind filter is exhaustive for the
+// flowWalkerOf only via the walker, but the kind filter is exhaustive for the
 // walker's output; the endpoint filter is a belt-and-suspenders sweep for any
 // stray edge touching a stripped flow node.
 func stripFlows(doc *graph.Document) (entsRemoved, relsRemoved int) {
-	if doc == nil {
+	return StripFlows(doc, true, true)
+}
+
+// StripFlows is stripFlows with the two walkers selectable, for callers that
+// re-run only one of them.
+//
+// A strip is a DELETION from the graph, and it is only safe for a walker that
+// is about to run again: `--skip-pass=process-flow` / `--skip-pass=event-flow`
+// leave the corresponding walker out, and stripping its artefacts anyway would
+// destroy carried-forward rows nothing regenerates. So the caller states which
+// walkers it is about to run and only those artefacts are removed (#6160).
+//
+// The two walkers' outputs are disjoint by kind — Process / EventFlow
+// entities, {ENTRY_POINT_OF, STEP_IN_PROCESS} / {SEED_OF_EVENT_FLOW,
+// STEP_IN_EVENT_FLOW} edges — so selecting one never touches the other's rows.
+// The endpoint sweep is likewise scoped to the ids actually stripped.
+func StripFlows(doc *graph.Document, process, eventFlow bool) (entsRemoved, relsRemoved int) {
+	if doc == nil || (!process && !eventFlow) {
 		return 0, 0
 	}
+	selected := func(kind string) bool {
+		switch flowWalkerOf[kind] {
+		case walkerProcess:
+			return process
+		case walkerEventFlow:
+			return eventFlow
+		}
+		return false
+	}
+
 	flowIDs := make(map[string]bool)
 	keptEnts := doc.Entities[:0]
 	for _, e := range doc.Entities {
-		if flowEntityKinds[e.Kind] {
+		if selected(e.Kind) {
 			flowIDs[e.ID] = true
 			entsRemoved++
 			continue
@@ -149,7 +188,7 @@ func stripFlows(doc *graph.Document) (entsRemoved, relsRemoved int) {
 
 	keptRels := doc.Relationships[:0]
 	for _, r := range doc.Relationships {
-		if flowEdgeKinds[r.Kind] || flowIDs[r.FromID] || flowIDs[r.ToID] {
+		if selected(r.Kind) || flowIDs[r.FromID] || flowIDs[r.ToID] {
 			relsRemoved++
 			continue
 		}

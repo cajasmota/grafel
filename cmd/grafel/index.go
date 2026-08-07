@@ -2087,6 +2087,40 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		fmt.Fprintf(os.Stderr,
 			"grafel: incremental — carried forward %d entities and %d relationships from previous graph (dropped %d stale edges)\n",
 			mergeStats.entitiesAdded, mergeStats.relsAdded, mergeStats.relsDropped)
+
+		// #6160 — strip the PREVIOUS run's flow artefacts out of the merged
+		// graph, so the flow walkers below re-derive them exactly once.
+		//
+		// The merge carries forward every prev entity whose SourceFile was not
+		// re-extracted. A SCOPE.Process / SCOPE.EventFlow anchored in an
+		// unchanged file therefore survives — and then Pass 7 / 7.5 run over
+		// the merged graph and re-derive it, producing a SECOND row under the
+		// same id (the walkers' ids are content hashes over the chain, so an
+		// unchanged chain re-derives the identical id). Measured on the #6129
+		// corpus: SCOPE.Process "http:GET:/cpview → cp_view_handler" twice,
+		// and its ENTRY_POINT_OF / STEP_IN_PROCESS edges with it.
+		//
+		// Stripping here rather than immediately before Pass 7 is deliberate:
+		// a full rebuild holds NO flow entity at any point between
+		// buildDocument and Pass 7, so this reproduces the full path's state
+		// for every pass in between (graph algorithms, external synthesis) and
+		// not just for the walkers.
+		//
+		// It is a DELETION, so it is scoped to the walkers that are actually
+		// about to run: with --skip-pass=process-flow / event-flow the
+		// corresponding walker never re-emits, and stripping its artefacts
+		// would destroy carried-forward rows for good. StripFlows removes
+		// exactly the selected walkers' output kinds (#5309 layer 3 encodes
+		// that set; Path A has used it via RunFlowsIncremental since).
+		runProcessFlow := !i.skipPasses[PassProcessFlow]
+		runEventFlow := !i.skipPasses[PassEventFlow]
+		if stripEnts, stripRels := engine.StripFlows(doc, runProcessFlow, runEventFlow); stripEnts > 0 || stripRels > 0 {
+			doc.Stats.Entities = len(doc.Entities)
+			doc.Stats.Relationships = len(doc.Relationships)
+			fmt.Fprintf(os.Stderr,
+				"grafel: incremental — stripped %d stale flow entities and %d flow edges carried forward from the previous graph (the flow passes re-derive them)\n",
+				stripEnts, stripRels)
+		}
 	}
 
 	// #2706 — belt-and-suspenders prune of Django migration entities.
@@ -6025,6 +6059,11 @@ type incrementalMergeStats struct {
 //     already emitted (the run-to-run count drift). fbwriter now persists the
 //     ID; the key includes it because (from, to, kind) is NOT unique — see
 //     graph.RelationshipIDProperty for the producers that rely on that.
+//   - Drops a carried edge outright when its relationship ID is one THIS RUN
+//     emitted, whatever the two payloads say (#6160). The multiplicity key
+//     above is payload-sensitive and so could not see the same edge captured
+//     at two different pipeline stages; the fresh row supersedes the carried
+//     one, per this function's precedence everywhere else.
 //
 // The function is intentionally separate from internal/extractors.TryIncremental:
 // TryIncremental owns the daemon's fast in-place reindex (Path A), while this
@@ -6180,8 +6219,36 @@ func mergeIncrementalPrevSource(doc *graph.Document, prev prevGraphSource, chang
 		return b.String()
 	}
 	docRelKeys := make(map[string]bool, len(doc.Relationships))
+	// #6160 — the supersession gate, keyed on the relationship ID alone, and
+	// scoped to THIS RUN's output. docRelIDs holds only the IDs the fresh
+	// extraction emitted; prev rows are never added to it.
+	//
+	// The property-sensitive key above cannot see a prev edge that is the SAME
+	// edge as a fresh one but was captured at a different pipeline stage: the
+	// resolved IMPLEMENTS bridge (post-#2678 rebind,
+	// pattern_type=http_endpoint_synthesis_resolved) and the synthesis-time one
+	// (pattern_type=http_endpoint_synthesis_time_bridge) carry the same
+	// FromID/ToID/Kind and the SAME ID, and differ only in payload — so the
+	// dedupe below never fired and both rows persisted under one identity.
+	//
+	// The scoping is what keeps the property-sensitivity's protection intact,
+	// and it matters: a graph.fb written before #6085 persisted no
+	// relationship identity, and LoadGraphFromDir normalizes an absent ID to
+	// the DERIVED one — so a legacy graph's deliberately salted siblings
+	// (process/event steps salted per step index, migration ops salted per
+	// operation, see graph.RelationshipIDProperty) arrive here all carrying
+	// one shared, explicit ID and are separable only by payload. Gating them
+	// against each other would silently delete graph rows on the upgrade path
+	// (TestMergeIncrementalPrevSource_DedupeKeepsNearIdenticalEdges pins that).
+	// Gating them against the fresh pass's IDs cannot: an ID this run emitted
+	// is an edge this run re-produced, and the merge's whole contract is that
+	// the fresh row supersedes the carried-forward one.
+	docRelIDs := make(map[string]bool, len(doc.Relationships))
 	for k := range doc.Relationships {
 		docRelKeys[relKey(&doc.Relationships[k])] = true
+		if id := doc.Relationships[k].ID; id != "" {
+			docRelIDs[id] = true
+		}
 	}
 	referenced := make(map[string]bool)
 	prev.EachRelationship(func(r graph.Relationship) bool {
@@ -6200,6 +6267,11 @@ func mergeIncrementalPrevSource(doc *graph.Document, prev prevGraphSource, chang
 		// node it points at must be carried forward for THAT edge's sake.
 		referenced[r.FromID] = true
 		referenced[r.ToID] = true
+		if r.ID != "" && docRelIDs[r.ID] {
+			// Same identity as an edge THIS RUN emitted — the same edge,
+			// whatever the two payloads say, and the fresh row wins (#6160).
+			return true
+		}
 		key := relKey(&r)
 		if docRelKeys[key] {
 			// Already in the merged graph — either emitted by this run's
