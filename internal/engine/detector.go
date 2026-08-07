@@ -25,6 +25,9 @@ type compiledSourcePattern struct {
 	nameGroup  int
 	scope      string
 	framework  string
+	// requiresFramework mirrors SourcePattern.RequiresFramework: fire only when
+	// the owning rule set's import markers are present in the file (#6152).
+	requiresFramework bool
 }
 
 // compiledRelationshipRule is a RelationshipRule with its regex pre-compiled.
@@ -73,6 +76,26 @@ type compiledRuleSet struct {
 	sourcePatterns    []compiledSourcePattern
 	relationshipRules []compiledRelationshipRule
 	fileConventions   []compiledFileConvention
+	// importMarkers is the rule file's frameworks.detection.import_markers —
+	// literal substrings whose presence means the framework is in play in this
+	// file. Consumed by frameworkPresent for requires_framework patterns.
+	importMarkers []string
+}
+
+// frameworkPresent reports whether this rule set's framework is detectable in
+// content, by literal import-marker substring (#6152).
+//
+// A rule set with NO declared markers returns false: a requires_framework
+// pattern in a marker-less file has no way to establish presence, so the safe
+// reading is "not present". compile() logs that combination, and
+// TestGatedPatternsAreLoaded_6152 fails on it, so it cannot land silently.
+func (c compiledRuleSet) frameworkPresent(content string) bool {
+	for _, m := range c.importMarkers {
+		if m != "" && strings.Contains(content, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // dormantBucketAliases maps a flavor-named rule bucket (the directory key the
@@ -123,7 +146,7 @@ func (d *Detector) compile() {
 	for lang, frameworkRules := range d.rules {
 		var sets []compiledRuleSet
 		for _, fr := range frameworkRules {
-			cs := compiledRuleSet{}
+			cs := compiledRuleSet{importMarkers: fr.Frameworks.Detection.ImportMarkers}
 
 			for _, sp := range fr.SourcePatterns {
 				re, err := regexp.Compile(sp.Pattern)
@@ -131,12 +154,18 @@ func (d *Detector) compile() {
 					log.Printf("engine: invalid source_pattern regex in %s: %q: %v", lang, sp.Pattern, err)
 					continue
 				}
+				if sp.RequiresFramework && len(cs.importMarkers) == 0 {
+					log.Printf("engine: source_pattern in %s is marked requires_framework but its "+
+						"rule file declares no frameworks.detection.import_markers; it can never "+
+						"fire: %q", lang, sp.Pattern)
+				}
 				cs.sourcePatterns = append(cs.sourcePatterns, compiledSourcePattern{
-					regex:      re,
-					entityType: sp.EntityType,
-					nameGroup:  sp.NameGroup,
-					scope:      sp.Scope,
-					framework:  lang,
+					regex:             re,
+					entityType:        sp.EntityType,
+					nameGroup:         sp.NameGroup,
+					scope:             sp.Scope,
+					framework:         lang,
+					requiresFramework: sp.RequiresFramework,
 				})
 			}
 
@@ -296,10 +325,35 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		}
 		conventionAnnotation := strings.Join(matchedConventionGlobs, ",")
 
+		// Framework-presence gate (#6152). Evaluated once per (ruleset, file)
+		// and only when some pattern in the set actually asks for it, so the
+		// overwhelming majority of rule sets pay nothing.
+		//
+		// Rules exist whose regex matches plain language syntax — falcon.yaml
+		// and cherrypy.yaml both type a bare `class Foo:` as Controller. Those
+		// patterns are correct WHEN the framework is present and pure noise
+		// otherwise, and Detect resolves rule sets by file.Language alone, so
+		// before this gate every bare Python class in every indexed repo came
+		// out `Controller`.
+		frameworkGateNeeded := false
+		for _, sp := range cs.sourcePatterns {
+			if sp.requiresFramework {
+				frameworkGateNeeded = true
+				break
+			}
+		}
+		frameworkSeen := false
+		if frameworkGateNeeded {
+			frameworkSeen = cs.frameworkPresent(content)
+		}
+
 		// Extract entities from source patterns.
 		// Issue #1413 — use FindAllStringSubmatchIndex so we have byte offsets
 		// for computing StartLine. Also derives QualifiedName for Python entities.
 		for _, sp := range cs.sourcePatterns {
+			if sp.requiresFramework && !frameworkSeen {
+				continue
+			}
 			idxMatches := sp.regex.FindAllStringSubmatchIndex(content, -1)
 			for _, idxMatch := range idxMatches {
 				if len(idxMatch) < 2 {

@@ -489,10 +489,29 @@ func semanticDigest6118(doc *graph.Document) string {
 // the position the span donation gives it. The one entity that changes in place
 // is the java/OrdersController.java file component, which hands qualified_name
 // `api.OrdersController` back to the class it belongs to.
+// #6152 MOVED IT A THIRD TIME, and the delta is again characterised rather than
+// absorbed. Two Python rule sets (falcon, cherrypy) carried a source_pattern
+// matching a BARE `class X:` and typing it `Controller`; Detect resolved rule
+// sets by file.Language alone, so both fired on every Python file whether or not
+// the framework was present. Gating them on the rule file's own
+// frameworks.detection.import_markers changes exactly two things in this
+// fixture, both in myapp/serializers.py:
+//
+//	Controller/OrderSerializer  ->  SCOPE.Component/OrderSerializer   (re-kinded)
+//	Controller/Meta             ->  (deleted)
+//
+// `class Meta:` is a nested DRF options class. The Python extractor already
+// emits it, correctly named `OrderSerializer.Meta`; the ungated bare-class
+// pattern emitted a SECOND, differently-named node for the same declaration.
+// Removing it takes the counts 149/292 -> 148/291: one phantom node and the one
+// Module->Meta CONTAINS edge that carried it. No real declaration is lost —
+// TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain still finds
+// every file component and every donated span.
 const (
 	gateOffDigest6118Base = "a0a6ede910d8d0465d901153f483b27b8a57a565bdd79dd0104bef53786d9ca1"
 	gateOffDigest6118     = "387a9c36cb585b4d73828afc997744dbe02e6df347e0860054adf69431996d46"
 	gateOffDigest6138     = "8726464ce66a815e8b8a69bf8a9ee272368903f623c161fba81235237e235025"
+	gateOffDigest6152     = "774eaec1d5ad5d9731d2c043a6207fdb7b3882b9fdf0f37e4a6b9dbdc555662f"
 )
 
 func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
@@ -500,8 +519,12 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 	got := semanticDigest6118(off)
-	if got == gateOffDigest6138 {
+	if got == gateOffDigest6152 {
 		return
+	}
+	if got == gateOffDigest6138 {
+		t.Fatalf("gate-OFF graph reverted to the pre-#6152 baseline — the falcon/cherrypy " +
+			"bare-class patterns are typing plain Python classes `Controller` again")
 	}
 	if got == gateOffDigest6118 {
 		t.Fatalf("gate-OFF graph reverted to the pre-#6138 baseline — the file fold is " +
@@ -511,9 +534,9 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 		t.Fatalf("gate-OFF graph reverted to the pre-fix 2f0175dfc baseline — the #6118 " +
 			"span donation is no longer reaching the default path")
 	}
-	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
-		"(entities=%d relationships=%d)", got, gateOffDigest6138, gateOffDigest6118,
-		gateOffDigest6118Base, len(off.Entities), len(off.Relationships))
+	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
+		"(entities=%d relationships=%d)", got, gateOffDigest6152, gateOffDigest6138,
+		gateOffDigest6118, gateOffDigest6118Base, len(off.Entities), len(off.Relationships))
 }
 
 // TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain pins the shape
@@ -528,10 +551,13 @@ func TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain(t *testing.T)
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 
 	// 141/284 at 2f0175dfc, plus the eight declarations #6138 stopped deleting
-	// and the eight Module->declaration CONTAINS edges that carry them.
+	// and the eight Module->declaration CONTAINS edges that carry them (149/292),
+	// minus the one phantom `Controller/Meta` node the ungated falcon/cherrypy
+	// bare-class patterns emitted for the nested DRF `class Meta:` and the
+	// Module->Meta CONTAINS edge that carried it (#6152).
 	const (
-		wantEntities = 149
-		wantRels     = 292
+		wantEntities = 148
+		wantRels     = 291
 	)
 	if len(off.Entities) != wantEntities || len(off.Relationships) != wantRels {
 		t.Fatalf("gate-OFF graph size moved: entities=%d (want %d) relationships=%d (want %d) — "+
