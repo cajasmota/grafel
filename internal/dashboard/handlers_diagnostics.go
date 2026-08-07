@@ -358,7 +358,7 @@ func convertGroupHealth(gh *cli.DoctorGroupHealth) GroupDiagnostics {
 		OrphanRate:           gh.OrphanRate,
 		BugRate:              gh.BugRate,
 		PendingRepairs:       gh.RepairCandidates,
-		PendingEnrichments:   gh.EnrichmentOpportunities,
+		PendingEnrichments:   gh.EnrichmentCandidates,
 		WatcherRepoCount:     gh.WatcherRepoCount,
 		WatcherDirCount:      gh.WatcherDirCount,
 		WatcherEventsDropped: gh.WatcherEventsDropped,

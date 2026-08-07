@@ -63,14 +63,14 @@ type DoctorGroupHealth struct {
 	Repos []*DoctorRepoHealth
 
 	// Aggregated quality metrics
-	TotalEntities           int
-	TotalRelationships      int
-	TotalCrossRepoEdges     int
-	BugRate                 float64 // unresolved-edges percentage
-	OrphanEntities          int
-	OrphanRate              float64
-	RepairCandidates        int
-	EnrichmentOpportunities int
+	TotalEntities        int
+	TotalRelationships   int
+	TotalCrossRepoEdges  int
+	BugRate              float64 // unresolved-edges percentage
+	OrphanEntities       int
+	OrphanRate           float64
+	RepairCandidates     int
+	EnrichmentCandidates int
 
 	// Issues found
 	IssuesFound []string // human-readable issue descriptions
@@ -288,7 +288,7 @@ func computeQualityMetrics(health *DoctorGroupHealth) {
 		stateDir := daemon.StateDirForRepo(r.Path)
 		// Load candidate counts (enrichSubjects = unique entities needing enrichment).
 		enrichSubjects, _, _, repairCount := loadCandidateCounts(stateDir)
-		health.EnrichmentOpportunities += enrichSubjects
+		health.EnrichmentCandidates += enrichSubjects
 		health.RepairCandidates += repairCount
 	}
 
@@ -356,7 +356,7 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 		fmt.Fprintf(w, "    Orphan entities: %s (%.1f%%)\n",
 			fmtInt(g.OrphanEntities), g.OrphanRate)
 		fmt.Fprintf(w, "    Repair candidates: %s\n", fmtInt(g.RepairCandidates))
-		fmt.Fprintf(w, "    Enrichment opportunities: %s\n", fmtInt(g.EnrichmentOpportunities))
+		fmt.Fprintf(w, "    Enrichment opportunities: %s\n", fmtInt(g.EnrichmentCandidates))
 
 		// Issues section
 		if len(g.IssuesFound) > 0 {

@@ -93,15 +93,15 @@ func TestPrintDoctorHealth(t *testing.T) {
 				CrossRepoEdges: 5,
 			},
 		},
-		TotalEntities:           100,
-		TotalRelationships:      50,
-		TotalCrossRepoEdges:     5,
-		BugRate:                 0.0,
-		OrphanEntities:          10,
-		OrphanRate:              10.0,
-		RepairCandidates:        2,
-		EnrichmentOpportunities: 3,
-		IssuesFound:             []string{},
+		TotalEntities:        100,
+		TotalRelationships:   50,
+		TotalCrossRepoEdges:  5,
+		BugRate:              0.0,
+		OrphanEntities:       10,
+		OrphanRate:           10.0,
+		RepairCandidates:     2,
+		EnrichmentCandidates: 3,
+		IssuesFound:          []string{},
 	}
 
 	var buf bytes.Buffer
@@ -149,13 +149,13 @@ func TestPrintDoctorHealthWithIssues(t *testing.T) {
 // TestComputeQualityMetrics verifies aggregation of quality metrics.
 func TestComputeQualityMetrics(t *testing.T) {
 	health := &DoctorGroupHealth{
-		GroupName:               "test-group",
-		Repos:                   []*DoctorRepoHealth{},
-		TotalEntities:           100,
-		TotalRelationships:      50,
-		OrphanEntities:          10,
-		RepairCandidates:        5,
-		EnrichmentOpportunities: 8,
+		GroupName:            "test-group",
+		Repos:                []*DoctorRepoHealth{},
+		TotalEntities:        100,
+		TotalRelationships:   50,
+		OrphanEntities:       10,
+		RepairCandidates:     5,
+		EnrichmentCandidates: 8,
 	}
 
 	computeQualityMetrics(health)
