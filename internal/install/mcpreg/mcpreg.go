@@ -596,6 +596,17 @@ func readSettings(path string) (map[string]any, error) {
 	if err := json.Unmarshal(b, &doc); err != nil {
 		return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
 	}
+	// The literal `null` is the one non-object that unmarshals into a map
+	// WITHOUT an error: encoding/json's documented behaviour is to set the map
+	// to nil and return nil. Every caller then does doc[k] = v and panics with
+	// "assignment to entry in nil map" — a Go stack trace in the middle of a
+	// `curl … | bash`. A null document carries no user data, so it is treated
+	// exactly like a zero-byte file above. Every OTHER non-object (array,
+	// string, number, bool) is a real config whose replacement would destroy
+	// something, and those still fail on the type error two lines up.
+	if doc == nil {
+		doc = map[string]any{}
+	}
 	return doc, nil
 }
 

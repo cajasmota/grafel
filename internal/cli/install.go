@@ -93,6 +93,7 @@ func newInstallCmd() *cobra.Command {
 	var noWizard bool
 	var assumeYes bool
 	var refreshState bool
+	var registerMCPOnly bool
 
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -146,6 +147,27 @@ Claude Code config directory's skills/ subdirectory.`,
 						"(run 'grafel install' on its own for a full install)", strings.Join(conflicts, ", "))
 				}
 				return runRefreshState(out)
+			}
+
+			// ── --register-mcp: write the MCP entry, nothing else (#6169) ──
+			// Handled in the same position and for the same reason as
+			// --refresh-state, one flag above: AHEAD of resolveToolSelection
+			// (whose TTY branch opens an interactive wizard that would block a
+			// `curl … | bash` install mid-run) and ahead of RunCopy (which
+			// restarts the daemon, appends /.grafel/ to the caller's
+			// .gitignore, and writes four git hooks into a repository the
+			// installer was never told about).
+			//
+			// This is the step install.sh was missing entirely: it placed the
+			// binary and never registered the MCP server, so a first-ever curl
+			// install produced a grafel that Claude Code could not see at all.
+			// See internal/install/registermcp.go for the full argument.
+			if registerMCPOnly {
+				if conflicts := conflictingRegisterMCPFlags(cmd); len(conflicts) > 0 {
+					return fmt.Errorf("--register-mcp only writes the grafel MCP entry into the detected host configs; it cannot be combined with %s "+
+						"(run 'grafel install' on its own for a full install)", strings.Join(conflicts, ", "))
+				}
+				return runRegisterMCP(out, claudeConfigDirs)
 			}
 
 			// ── per-tool selection (#5256) ─────────────────────────────────
@@ -317,23 +339,100 @@ Claude Code config directory's skills/ subdirectory.`,
 	// nothing else. Not a full install — see internal/install/refreshstate.go.
 	cmd.Flags().BoolVar(&refreshState, "refresh-state", false,
 		"only re-record this binary's path and checksum in ~/.grafel/install.json (no daemon restart, no skills, no MCP, no git changes); used by the curl installer after an in-place upgrade")
+	// Curl-installer support (#6169): register the MCP server and do nothing
+	// else. Not a full install — see internal/install/registermcp.go.
+	cmd.Flags().BoolVar(&registerMCPOnly, "register-mcp", false,
+		"only register this binary as the grafel MCP server in the detected host configs, recording it in ~/.grafel/install.json and a timestamped pre-change copy of each config under ~/.grafel/backups/mcpreg/ (no daemon restart, no skills, no git changes); used by the installers to finish a first-ever install")
 	return cmd
 }
 
-// conflictingRefreshStateFlags returns the names of any explicitly-set install
-// flags that --refresh-state cannot honour. Only flags the user actually typed
-// count (Changed), so the --copy default of true is not a conflict.
-func conflictingRefreshStateFlags(cmd *cobra.Command) []string {
+// refreshStateOnlyFlags is the set of install flags that ask for work neither
+// --refresh-state nor --register-mcp performs. Shared so the two narrow modes
+// cannot drift apart as flags are added.
+var refreshStateOnlyFlags = []string{
+	"foreground", "claude-config-dirs", "skills-source-dir", "skip-skill-link",
+	"mode", "copy", "dev", "force", "no-hooks", "tools", "no-wizard", "yes",
+}
+
+// conflictingFlags returns the names of the given flags the user explicitly
+// typed. Only flags with Changed set count, so the --copy default of true is
+// not a conflict.
+func conflictingFlags(cmd *cobra.Command, names []string) []string {
 	var conflicts []string
-	for _, name := range []string{
-		"foreground", "claude-config-dirs", "skills-source-dir", "skip-skill-link",
-		"mode", "copy", "dev", "force", "no-hooks", "tools", "no-wizard", "yes",
-	} {
+	for _, name := range names {
 		if f := cmd.Flags().Lookup(name); f != nil && f.Changed {
 			conflicts = append(conflicts, "--"+name)
 		}
 	}
 	return conflicts
+}
+
+// conflictingRefreshStateFlags returns the names of any explicitly-set install
+// flags that --refresh-state cannot honour.
+//
+// --register-mcp is included: --refresh-state records a checksum and registers
+// nothing, so honouring only the former for a user who asked for both would
+// report an install that did not happen.
+func conflictingRefreshStateFlags(cmd *cobra.Command) []string {
+	return conflictingFlags(cmd, append(append([]string(nil), refreshStateOnlyFlags...), "register-mcp"))
+}
+
+// conflictingRegisterMCPFlags returns the names of any explicitly-set install
+// flags that --register-mcp cannot honour.
+//
+// --claude-config-dirs is the one exception and is deliberately absent from the
+// list: it names the host configs to write, which is precisely what this mode
+// does.
+//
+// --refresh-state is NOT listed, and that is not an oversight: the
+// --refresh-state branch is evaluated first in RunE, so `--register-mcp
+// --refresh-state` never reaches this function — conflictingRefreshStateFlags
+// rejects it, and that rejection is what TestInstallRefreshState_RejectsRegisterMCP
+// pins. Listing it here would be unreachable code that reads like a guard.
+func conflictingRegisterMCPFlags(cmd *cobra.Command) []string {
+	var names []string
+	for _, n := range refreshStateOnlyFlags {
+		if n == "claude-config-dirs" {
+			continue
+		}
+		names = append(names, n)
+	}
+	return conflictingFlags(cmd, names)
+}
+
+// runRegisterMCP executes the narrow MCP registration and prints a summary.
+//
+// A host that could not be written is reported and the command still succeeds:
+// the installer calls this best-effort, and one unwritable config is not a
+// reason to fail an install whose other hosts are now working. An error is
+// returned only when nothing could be done at all.
+func runRegisterMCP(out io.Writer, claudeConfigDirs []string) error {
+	bin, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve binary path: %w", err)
+	}
+	res, err := install.RegisterMCP(install.RegisterMCPOptions{
+		BinPath:          bin,
+		ClaudeConfigDirs: claudeConfigDirs,
+	})
+	if err != nil {
+		return err
+	}
+	for _, f := range res.Failed {
+		fmt.Fprintf(out, "  ⚠ MCP register %s: %v\n", f.Path, f.Err)
+	}
+	if len(res.Registered) == 0 {
+		// Not an error: a machine with no MCP host installed is a legitimate
+		// state (server, CI runner). Say so plainly instead of claiming success.
+		fmt.Fprintln(out, "no MCP host configs detected — nothing to register")
+		return nil
+	}
+	fmt.Fprintf(out, "✓ grafel MCP registered in:\n")
+	for _, p := range res.Registered {
+		fmt.Fprintf(out, "    %s\n", p)
+	}
+	fmt.Fprintln(out, "  Restart Claude Code to load the grafel MCP tools.")
+	return nil
 }
 
 // runRefreshState executes the narrow install.json CLI-record refresh and

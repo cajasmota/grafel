@@ -85,9 +85,17 @@ type State struct {
 
 	// SkillsSkipped is true when step 2 (skills copy) was intentionally
 	// skipped because no skills source directory could be discovered (e.g. a
-	// brand-new binary-only install with no repo checkout). The install still
-	// succeeds and the daemon is installed; doctor reports this as advisory,
-	// not as a broken install.
+	// brand-new binary-only install with no repo checkout), or because the
+	// caller copies no skills at all (RegisterMCP). The install still succeeds
+	// and the daemon is installed.
+	//
+	// NOTE: this field is currently WRITE-ONLY. It is set by RunCopy step 2 and
+	// by RegisterMCP, cleared by the state merge, and read by nothing outside
+	// tests — no doctor check consults it. The previous comment here claimed
+	// "doctor reports this as advisory, not as a broken install", which was
+	// never true of any code in this repository. It is retained because it is
+	// the honest record of a real condition and the schema is persisted to
+	// disk, but do not write code that assumes it changes any behaviour today.
 	SkillsSkipped bool `json:"skills_skipped,omitempty"`
 
 	// MCP holds the MCP registration state.
