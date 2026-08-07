@@ -1,9 +1,12 @@
 package gitmeta
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -267,33 +270,116 @@ func TestCaptureCached_StillCachesAGenuineNonRepo(t *testing.T) {
 	}
 }
 
+// stubProbeArg / stubProbeExit let a test ask the stub `git` to identify itself
+// and exit immediately, so "is the stub what `git` resolves to?" can be answered
+// without waiting on — or interfering with — the blocking invocation under test.
+const (
+	stubProbeArg  = "--grafel-stub-probe"
+	stubProbeExit = 42
+)
+
+// wedgedStubDeadline is the deadline the two timeout tests run under.
+//
+// It is deliberately NOT a few milliseconds. A millisecond deadline kills the
+// stub during fork/exec, before /bin/sh ever reaches the line that blocks — so
+// the test would exercise killed-at-startup rather than a wedged git, which is
+// half of #6223. The stub proves it got past startup by touching a marker, and
+// that proof needs a deadline comfortably longer than a fork+exec. 2s is the
+// production default and ~12× the measured p99.9 fork latency under load.
+const wedgedStubDeadline = 2 * time.Second
+
+// wedgedGit installs a stub `git` that blocks until something kills it, and
+// returns the real PATH plus a marker path the stub touches immediately before
+// it starts blocking.
+//
+// The obvious body — "sleep 30" — was the #6223 fixture defect. stubGit points
+// PATH at a directory containing nothing but the stub, so `sleep` is not
+// resolvable and /bin/sh exits 127. 127 is a genuine non-zero exit, so
+// runGitReal classifies it gitAnswered, the deadline branch is never reached,
+// and the tests reported ("", 1) on Linux and macOS CI. They looked green
+// locally only because a 50ms deadline killed the shell during process startup,
+// before it reached the `sleep` line at all — i.e. they exercised
+// killed-at-startup on one platform and exit-127 on the others, and never the
+// deadline check they claim to pin. Removing that check left them green.
+//
+// So the body must not depend on PATH resolution — the same reason #5822's
+// stubs use the `kill -9 $$` builtin — and must not depend on losing a race
+// with its own startup. A blocking BUILTIN would be ideal, and POSIX sh has
+// none: `read` is the obvious candidate, but exec.Cmd leaves Stdin nil, which
+// the child receives as /dev/null, so `read` returns at EOF immediately and
+// rebuilds exactly the same bug in a new costume. Hence an absolute-path sleep
+// (execed, so no lookup and no lingering grandchild holding the stdout pipe
+// that Output() waits on), with a builtin-only spin as a last resort so the
+// stub blocks even on a runner that has neither path.
+func wedgedGit(t *testing.T) (realPath, marker string) {
+	t.Helper()
+	marker = filepath.Join(t.TempDir(), "reached-the-blocking-line")
+	body := "[ \"$1\" = " + stubProbeArg + " ] && exit " + strconv.Itoa(stubProbeExit) + "\n" +
+		": > '" + marker + "'\n" +
+		"[ -x /bin/sleep ] && exec /bin/sleep 30\n" +
+		"[ -x /usr/bin/sleep ] && exec /usr/bin/sleep 30\n" +
+		"while : ; do : ; done"
+	realPath = stubGit(t, body)
+	assertStubGitOnPath(t)
+	return realPath, marker
+}
+
+// assertStubGitOnPath proves `git` resolves to the stub before anything is timed.
+// Running it here rather than inferring it from the result under test is the
+// point: a stub that silently fails to take effect — wrong PATH, non-executable,
+// no shell — produces the same ("", gitUnavailable) that a real timeout does, so
+// asserting on the return value alone proves nothing about which branch ran.
+// It also warms the page cache for /bin/sh and the stub, so the timed invocation
+// below is not paying first-exec cost against its own deadline.
+func assertStubGitOnPath(t *testing.T) {
+	t.Helper()
+	err := exec.Command("git", stubProbeArg).Run()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != stubProbeExit {
+		t.Fatalf("`git` on PATH did not identify itself as the stub (err=%v) — the "+
+			"fixture is not in effect, so whatever this test observes is not the "+
+			"branch it claims to pin (#6223)", err)
+	}
+}
+
+// assertWedged fails unless the stub reached its blocking line and the call
+// outlived its own deadline. Both halves are load-bearing: the marker rules out
+// a stub that exited early (#6223's exit 127) or was killed during startup, and
+// the elapsed check rules out a stub that answered promptly for some other
+// reason. Call it before restoring gitCallTimeout.
+func assertWedged(t *testing.T, marker string, elapsed time.Duration) {
+	t.Helper()
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub git never reached its blocking line (%v) — it exited or was "+
+			"killed during startup, so the call under test did not observe a wedged "+
+			"git and the deadline check was not what classified it (#6223)", err)
+	}
+	if elapsed < gitCallTimeout {
+		t.Fatalf("git returned after %v, inside its own %v deadline — the stub did not "+
+			"block, so the deadline never fired (#6223)", elapsed, gitCallTimeout)
+	}
+}
+
 // TestRunGitStatus_TimeoutIsUnavailableNotAnAnswer pins the branch that the
 // production incident actually took: the 2s deadline firing.
 //
 // CommandContext kills the child when the deadline fires, and a killed child
 // surfaces as an *exec.ExitError — indistinguishable, by error type alone, from
-// git exiting 128 with "not a git repository". Only the ctx.Err() check
-// separates them. Without it a timeout is classified as a durable answer and
-// the zero Info gets memoized again, which is #6181 verbatim.
-//
-// A real 2s wait is not needed to exercise it: gitCallTimeout is shrunk and a
-// stub `git` that sleeps stands in for a wedged one.
+// git exiting 128 with "not a git repository". Only the ctx.Err() check (or the
+// ExitCode() < 0 check behind it) separates them. Without either, a timeout is
+// classified as a durable answer and the zero Info gets memoized again, which is
+// #6181 verbatim.
 func TestRunGitStatus_TimeoutIsUnavailableNotAnAnswer(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("stub git script is POSIX-shell only")
-	}
-	binDir := t.TempDir()
-	stub := filepath.Join(binDir, "git")
-	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", binDir)
+	_, marker := wedgedGit(t)
 
 	prev := gitCallTimeout
-	gitCallTimeout = 50 * time.Millisecond
+	gitCallTimeout = wedgedStubDeadline
 	t.Cleanup(func() { gitCallTimeout = prev })
 
+	start := time.Now()
 	out, st := runGitStatus(t.TempDir(), "rev-parse", "--show-toplevel")
+	assertWedged(t, marker, time.Since(start))
+
 	if st != gitUnavailable || out != "" {
 		t.Fatalf("a timed-out git was classified as (%q, %v), want (\"\", gitUnavailable) — "+
 			"a killed child is an *exec.ExitError, so without the deadline check it "+
@@ -304,23 +390,18 @@ func TestRunGitStatus_TimeoutIsUnavailableNotAnAnswer(t *testing.T) {
 // TestCaptureCached_DoesNotMemoizeATimeout is the end-to-end form of the above:
 // a timing-out git must leave no memo behind.
 func TestCaptureCached_DoesNotMemoizeATimeout(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("stub git script is POSIX-shell only")
-	}
 	resetCaptureCacheForTest()
 	dir := initGitRepo(t)
 
-	binDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(binDir, "git"), []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	realPath := os.Getenv("PATH")
-	t.Setenv("PATH", binDir)
+	realPath, marker := wedgedGit(t)
 	prev := gitCallTimeout
-	gitCallTimeout = 50 * time.Millisecond
+	gitCallTimeout = wedgedStubDeadline
 	t.Cleanup(func() { gitCallTimeout = prev })
 
-	if got := CaptureCached(dir); got != (Info{}) {
+	start := time.Now()
+	got := CaptureCached(dir)
+	assertWedged(t, marker, time.Since(start))
+	if got != (Info{}) {
 		t.Fatalf("expected zero Info from a timing-out git, got %+v", got)
 	}
 
