@@ -213,7 +213,12 @@ wait_for_daemon_version() {
 restart_daemon() {
   os=$1
   want_version=$2
-  hint="re-run 'grafel install' or restart the daemon to finish the update"
+  # `grafel restart`, NOT `grafel install`. This hint is printed exactly when
+  # the daemon is known not to be healthy, which is the condition in which
+  # RunCopy's step-4 restart is most likely to fail — and its failure rolls step
+  # 3 back, restoring MCP host configs from snapshots (#6168). restart is the
+  # stop→verify-dead→clear-stale-socket→start sequence and touches no config.
+  hint="run 'grafel restart' to finish the update"
 
   case "$os" in
     macos)
@@ -338,6 +343,69 @@ record_install_state() {
   unset _rs_out
 }
 
+# register_mcp makes the binary we just placed reachable as an MCP server.
+#
+# This is the step the installer used to omit entirely (issue #6169). Download,
+# checksum, place, record state, doctor, restart — not one of those writes a
+# grafel entry into ~/.claude.json. The only two registration sites in the whole
+# tree are RunCopy step 3 and ApplyToolDelta, and this script reached neither.
+# On a first-ever install that left a binary on PATH that Claude Code could not
+# see at all, i.e. no product: grafel's entire interface IS the MCP server.
+#
+# The script does it rather than telling the user to run `grafel install`
+# afterwards, because it cannot establish that that command is safe at the
+# moment it would print it. `grafel install` is the seven-step RunCopy
+# transaction: step 4 restarts the daemon on a 60s budget, and its failure path
+# rolls step 3 back by restoring MCP host configs from snapshots — which on a
+# first-ever install is the absent-sentinel, i.e. DELETING the config file and
+# every foreign MCP server in it (#6168). The moments right after a binary swap
+# are exactly when that restart is most likely to fail. Steps 5 and 7 would also
+# append /.grafel/ to the .gitignore of whatever repository the user's shell
+# happened to be in and write four git hooks there (#6162).
+#
+# `--register-mcp` depends on no daemon, no network and no repository. It is a
+# surgical JSON merge that preserves every foreign server, plus the install.json
+# record without which `grafel uninstall` could never remove what we wrote. It
+# has no rollback, so it cannot be the thing that deletes a config, and it is
+# idempotent, so running it on every upgrade is free (and repairs an entry whose
+# recorded command points at a binary that moved prefix).
+#
+# Best-effort, like every other post-download step: a failure prints what it can
+# and never aborts the installer.
+register_mcp() {
+  _mcp_out="$("$BIN_DIR/grafel" install --register-mcp 2>&1 || true)"
+  if [ -n "$_mcp_out" ]; then
+    printf '%s\n' "$_mcp_out"
+  fi
+  unset _mcp_out
+}
+
+# final_message prints the closing advice for a given restart_daemon result.
+#
+# Split out of main() so it can be exercised directly — the messages here are
+# the installer's only interface once it has finished, and the previous `stale`
+# text prescribed bare `grafel install`, the one command the comment above
+# explains is unsafe. It was prescribed in precisely the branch where the daemon
+# is KNOWN not to be healthy, which is the branch where RunCopy's step-4 restart
+# is most likely to fail and take the MCP rollback with it.
+#
+# `grafel restart` is the safe equivalent: stop, verify dead, clear a stale
+# pidfile/socket, start. It touches no MCP config and no repository.
+final_message() {
+  case "$1" in
+    restarted)
+      info "grafel updated and daemon restarted (confirmed running $2)."
+      ;;
+    stale)
+      info "grafel installed, but the daemon is still running the old version — run 'grafel restart' to finish."
+      ;;
+    *)
+      info "grafel installed and registered with your AI coding tools."
+      info "Restart Claude Code to load the grafel MCP tools, then run \"grafel wizard\" to set up your first group."
+      ;;
+  esac
+}
+
 configure_path() {
   shell_name=""
   if [ -n "${SHELL:-}" ]; then
@@ -409,6 +477,10 @@ main() {
   # installer stops printing the stale-checksum warning it caused itself.
   record_install_state
 
+  # Finish the install: without this the binary is on PATH and invisible to
+  # every AI coding tool on the machine (#6169).
+  register_mcp
+
   configure_path
 
   info ""
@@ -426,17 +498,7 @@ main() {
   daemon_restarted=$(restart_daemon "$os" "$version_no_v" || true)
 
   info ""
-  case "$daemon_restarted" in
-    restarted)
-      info "grafel updated and daemon restarted (confirmed running $version_no_v)."
-      ;;
-    stale)
-      info "grafel installed, but the daemon still running the old version — run 'grafel install' to finish."
-      ;;
-    *)
-      info "grafel installed. Run \"grafel wizard\" to set up your first group."
-      ;;
-  esac
+  final_message "$daemon_restarted" "$version_no_v"
   info "(restart your shell or 'source' your rc file so PATH picks up $BIN_DIR)"
 }
 

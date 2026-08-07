@@ -316,17 +316,48 @@ REM make grafel.exe resolvable in THIS session for the install step below.
 set "PATH=%PATH%;%BINDIR%"
 
 echo.
-REM --- register MCP / hooks / watchers (does NOT touch PATH) ---
-"%BINDIR%\grafel.exe" install
-REM `grafel install` may exit non-zero before any group exists; don't abort the
-REM whole installer on that — the binary is on disk and on PATH.
+REM --- finish the install: record state, then register MCP (issue #6163) ---
+REM
+REM This used to be a bare `"%BINDIR%\grafel.exe" install`, and that was the
+REM most damaging line in any of the three installers. `grafel install` is the
+REM seven-step RunCopy transaction, and a .bat is run from whatever directory
+REM the console happened to be in — which names no repository and grants no
+REM consent to modify one. It therefore:
+REM
+REM   * appended /.grafel/ to THAT directory's .gitignore (RunCopy step 5) and
+REM     wrote four git hooks — post-checkout, post-merge, post-rewrite,
+REM     pre-push — into THAT repository (step 7);
+REM   * restarted the daemon on a 60-second readiness budget (step 4), whose
+REM     failure path rolls step 3 back and restores the MCP host configs from
+REM     snapshots — on a first-ever install that is the absent-sentinel, i.e.
+REM     DELETING .claude.json and every foreign MCP server in it (#6168);
+REM   * and, because a .bat runs interactively from a console, stdin IS a TTY,
+REM     so resolveToolSelection opened the tool-selection wizard and the
+REM     install BLOCKED there waiting for input that an unattended run never
+REM     provides.
+REM
+REM #6162 gated the repo-scoped steps on an explicit CopyIntent, but that does
+REM not rescue this line: IntentInstall — which `grafel install` passes — still
+REM runs them, correctly, because running `grafel install` inside a repo on
+REM purpose is the case that wants them. This is not that case.
+REM
+REM The two narrow commands below are the parts an installer is entitled to do.
+REM --refresh-state records the .exe we just copied so grafel stops printing
+REM "binary updated since last install" on every command; --register-mcp writes
+REM the grafel entry into the detected host configs so the product is actually
+REM reachable (#6169). Neither restarts a daemon, prompts, or touches any
+REM repository. Both are idempotent and best-effort: a non-zero exit must not
+REM abort an installer whose binary is already on disk and on PATH.
+"%BINDIR%\grafel.exe" install --refresh-state
+"%BINDIR%\grafel.exe" install --register-mcp
 
 echo.
 "%BINDIR%\grafel.exe" --version 2>nul
 
 echo.
 echo Done. grafel is installed at %BINDIR%\grafel.exe
-echo Restart your shell ^(or open a new terminal^) so PATH picks up %BINDIR%, then run:
+echo Restart your shell ^(or open a new terminal^) so PATH picks up %BINDIR%.
+echo Restart Claude Code to load the grafel MCP tools, then run:
 echo   grafel --version
 echo   grafel wizard
 call :cleanup

@@ -155,7 +155,15 @@ function Stop-Daemon {
 # grafel install registers a Task Scheduler task named 'com.grafel.daemon'.
 function Restart-Daemon {
     $taskName = 'com.grafel.daemon'
-    $hint = "re-run 'grafel install' or restart the daemon to finish the update"
+    # `grafel restart`, NOT `grafel install` (#6163). This hint is printed
+    # exactly when the daemon is known not to be healthy, which is the
+    # condition in which RunCopy's step-4 restart is most likely to fail — and
+    # its failure rolls step 3 back, restoring the MCP host configs from
+    # snapshots, which on a first-ever install deletes .claude.json and every
+    # foreign server in it (#6168). Bare `grafel install` from a console also
+    # writes .gitignore + four git hooks into whatever directory the user is
+    # standing in (#6162) and blocks on the TTY tool-selection wizard.
+    $hint = "run 'grafel restart' to finish the update"
 
     if (-not (Get-Command schtasks.exe -ErrorAction SilentlyContinue)) {
         return $false
@@ -228,6 +236,35 @@ try {
 
     Copy-Item -Path $binSrc.FullName -Destination $existing -Force
 
+    # Record the .exe we just placed, BEFORE reporting doctor output (#6163).
+    #
+    # Without this the script shipped a bug it then printed. Copy-Item replaces
+    # the binary but nothing rewrites ~/.grafel/install.json, whose CLI record
+    # is only ever written by `grafel install`. RunQuickDoctor compares
+    # state.CLI.SHA256 against the binary at state.CLI.Path, so after every
+    # upgrade the recorded SHA is the PREVIOUS binary's and
+    #   "grafel doctor: binary updated since last install …"
+    # is prefixed onto EVERY subsequent grafel command, permanently — including
+    # the `doctor` call three lines below. This is the same defect install.sh
+    # already fixed with record_install_state, and the same remedy.
+    #
+    # Then register the MCP server (#6169). The script placed a binary and
+    # registered nothing, so a first-ever Windows install produced a grafel no
+    # AI coding tool could see — grafel's entire interface is the MCP server.
+    #
+    # Both are narrow by construction: they write install.json and the MCP host
+    # configs and nothing else. Running bare `grafel install` here instead
+    # would restart the daemon on a 60s budget (duplicating and racing
+    # Restart-Daemon below), append /.grafel/ to the .gitignore of whatever
+    # directory the user launched this from and write four git hooks there
+    # (#6162), and — on an interactive console, where stdin is a TTY — block on
+    # the tool-selection wizard mid-install.
+    #
+    # Best-effort, like every other post-download step: neither may abort an
+    # installer whose binary is already on disk.
+    try { & $existing install --refresh-state } catch { }
+    try { & $existing install --register-mcp } catch { }
+
     Add-ToUserPath -Dir $BinDir
 
     Write-Info ""
@@ -245,7 +282,8 @@ try {
     if ($daemonRestarted) {
         Write-Info "grafel updated and daemon restarted."
     } else {
-        Write-Info "grafel installed. Run `"grafel wizard`" to set up your first group."
+        Write-Info "grafel installed and registered with your AI coding tools."
+        Write-Info "Restart Claude Code to load the grafel MCP tools, then run `"grafel wizard`" to set up your first group."
     }
     Write-Info "(open a new terminal so PATH picks up $BinDir)"
 }

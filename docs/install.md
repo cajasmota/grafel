@@ -29,7 +29,7 @@ The script respects `GRAFEL_VERSION` (pin a release tag), `GRAFEL_PREFIX` (insta
 
 ## Windows — three ways to install
 
-All three paths install the same release binary into `%USERPROFILE%\.grafel\bin`, add that folder to your **user** PATH, and run `grafel install`. **None require administrator rights** — everything lives under your user profile. There is no native `windows_arm64` build; on Windows on ARM the x86_64 binary runs under x64 emulation, and the installers select it automatically.
+The scripted paths install the same release binary into `%USERPROFILE%\.grafel\bin`, add that folder to your **user** PATH, record the binary in `install.json`, and register grafel as an MCP server in your AI coding tools. They deliberately do **not** run bare `grafel install` (issue #6163): that command is scoped to the directory you run it from — it appends `/.grafel/` to that repo's `.gitignore` and installs four git hooks there — and an installer is run from wherever your console happens to be, not from a repository you chose. Run `grafel install` yourself, inside the repo you want it to configure. **None require administrator rights** — everything lives under your user profile. There is no native `windows_arm64` build; on Windows on ARM the x86_64 binary runs under x64 emulation, and the installers select it automatically.
 
 ### PowerShell (recommended)
 
