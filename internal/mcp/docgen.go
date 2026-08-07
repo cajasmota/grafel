@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/gitmeta"
+	"github.com/cajasmota/grafel/internal/registry"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -95,22 +96,46 @@ func projectRootFromCWD(cwd string, noGit bool) (string, error) {
 // Helper: staging directory path
 // ---------------------------------------------------------------------------
 
-// stagingDirPath returns <project_root>/.grafel/staging/<run_id>.
-func stagingDirPath(projectRoot, runID string) string {
-	return filepath.Join(projectRoot, ".grafel", "staging", runID)
+// stagingRootPath returns <project_root>/.grafel/staging — the directory every
+// run's staging dir must live inside.
+func stagingRootPath(projectRoot string) string {
+	return filepath.Join(projectRoot, ".grafel", "staging")
 }
 
-// canonicalDocsPath returns ~/.grafel/docs/<group>.
+// stagingDirPath returns <project_root>/.grafel/staging/<run_id>.
+//
+// This is the READ-side derivation and does not gate run_id; callers that are
+// about to rename or delete the result must go through resolveStagingPath,
+// which asserts containment. See its doc comment.
+func stagingDirPath(projectRoot, runID string) string {
+	return filepath.Join(stagingRootPath(projectRoot), runID)
+}
+
+// canonicalDocsPath returns <docs root>/<group>, asserting the result is
+// genuinely inside the docs root before returning it (#6075).
+//
+// The containment assertion is not decoration. In handleDocgenPromote's
+// disk-lookup branch group comes straight off the wire
+// (argString(req, "group", "")), filepath.Join collapses "..", and the value
+// is then handed to os.Rename twice — once to rotate the existing directory
+// away and once to move staging on top of it. Without this, an agent-supplied
+// group of "../.." renames a directory that has nothing to do with docs.
+//
+// Equality with the root is refused too, so an empty group cannot resolve to
+// the docs root itself and rotate every group's docs in one call.
+//
+// See docsroot.go for why the root is injectable rather than merely guarded.
 func canonicalDocsPath(group string) (string, error) {
-	home := os.Getenv("HOME")
-	if home == "" {
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("cannot determine home directory: %w", err)
-		}
+	root, err := docsRoot()
+	if err != nil {
+		return "", err
 	}
-	return filepath.Join(home, ".grafel", "docs", group), nil
+	p := filepath.Join(root, group)
+	if !registry.PathContainedUnder(root, p) {
+		return "", fmt.Errorf("group %q resolves to docs path %q, which is outside the docs root %q; "+
+			"refusing to derive a path that promote would rename (#6075)", group, filepath.Clean(p), root)
+	}
+	return p, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -324,7 +349,20 @@ func resolveStagingPath(s *Server, req mcpapi.CallToolRequest, runID string) (st
 	if err != nil {
 		return "", fmt.Errorf("run_id %q not found in active runs and cannot determine project root: %w", runID, err)
 	}
+	stagingRoot := stagingRootPath(projectRoot)
 	candidate := stagingDirPath(projectRoot, runID)
+	// Found while sweeping the delete side for #6194. runID is the raw,
+	// unvalidated run_id MCP argument and filepath.Join collapses "..", so the
+	// only gate on this fallback was the os.Stat below — which ANY existing
+	// directory satisfies. The resolved path is then os.Rename()d by
+	// handleDocgenPromote and os.RemoveAll()d by handleDocgenAbort, so a
+	// caller-supplied run_id of "../../.." reached two destructive operations
+	// on a directory of its choosing. Assert containment before the stat, so
+	// the refusal does not depend on what happens to exist on disk.
+	if !registry.PathContainedUnder(stagingRoot, candidate) {
+		return "", fmt.Errorf("run_id %q resolves to %q, which is outside the staging root %q; refusing",
+			runID, filepath.Clean(candidate), stagingRoot)
+	}
 	if _, statErr := os.Stat(candidate); statErr != nil {
 		return "", fmt.Errorf("run_id %q not found (checked %s)", runID, candidate)
 	}

@@ -552,10 +552,22 @@ func Uninstall(group string, purge bool) error {
 		return err
 	}
 	if purge {
-		stateDir, err := registry.StateDirFor(group)
-		if err == nil {
-			_ = os.RemoveAll(stateDir)
+		// #6194: StateDirForExisting, not StateDirFor. group comes straight
+		// from registry.json, filepath.Join collapses "..", and a
+		// grandfathered entry written before ValidateGroupName existed can
+		// therefore resolve outside the state root — which os.RemoveAll
+		// follows. The gate is on the derived path, not on the name, so a
+		// weird-but-contained legacy name still purges normally.
+		//
+		// The refusal is returned rather than swallowed: --purge reporting
+		// success while silently leaving state behind is its own defect, and
+		// a refused derivation means something is wrong with the registry
+		// that the operator needs to see.
+		stateDir, err := registry.StateDirForExisting(group)
+		if err != nil {
+			return err
 		}
+		_ = os.RemoveAll(stateDir)
 		_ = os.Remove(ref.ConfigPath)
 	}
 	return nil

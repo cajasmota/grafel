@@ -1327,10 +1327,18 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 	_ = os.Remove(ref.ConfigPath)
 
 	// Delete per-group state directory.
-	stateDir, err := registry.StateDirFor(args.Group)
-	if err == nil {
-		_ = os.RemoveAll(stateDir)
+	//
+	// #6194: StateDirForExisting asserts the derived path is genuinely inside
+	// the state root before returning it. args.Group is matched against
+	// registry.json above, but a registry entry written before
+	// ValidateGroupName existed may still contain "..", and filepath.Join
+	// collapses it — so without this the RPC deletes an arbitrary directory.
+	// Surfaced, not swallowed: a delete that silently keeps state is a defect.
+	stateDir, err := registry.StateDirForExisting(args.Group)
+	if err != nil {
+		return fmt.Errorf("resolve group state directory: %w", err)
 	}
+	_ = os.RemoveAll(stateDir)
 
 	// Remove the GROUP-LEVEL artifacts keyed by the deleted group name. These
 	// are always safe to remove (they belong to this group alone, never shared
@@ -1416,7 +1424,19 @@ func removeGroupArtifacts(group string) int64 {
 	}
 
 	var freed int64
-	remove := func(m string) {
+	// removeUnder is the same containment discipline as #6194's
+	// StateDirForExisting, applied to the glob-derived sidecar paths. group is
+	// interpolated raw into the glob pattern below, and filepath.Join collapses
+	// "..", so a grandfathered registry name can point the pattern at a
+	// directory outside the intended root. Today ownerIsDeleted happens to
+	// reject such a match (the escaped basename never prefix-matches the "../"
+	// name), but that is an accident of string shape, not a guarantee — one
+	// change to the attribution rule and it becomes a delete outside the root
+	// again. Assert on the path.
+	removeUnder := func(root, m string) {
+		if !registry.PathContainedUnder(root, m) {
+			return
+		}
 		if sz, err := dirSize(m); err == nil {
 			freed += sz
 		}
@@ -1424,20 +1444,21 @@ func removeGroupArtifacts(group string) int64 {
 	}
 
 	// groups/<group>-*.json — subject is the basename (e.g. "api-v2-links.json").
-	if home, err := registry.HomeDir(); err == nil {
-		matches, _ := filepath.Glob(filepath.Join(home, "groups", group+"-*.json"))
+	if root, err := registry.StateRootDir(); err == nil {
+		matches, _ := filepath.Glob(filepath.Join(root, group+"-*.json"))
 		for _, m := range matches {
 			if ownerIsDeleted(filepath.Base(m)) {
-				remove(m)
+				removeUnder(root, m)
 			}
 		}
 	}
 	// store/group-<group>-* — subject is the basename with the "group-" prefix
 	// stripped (e.g. "api-v2-<hash>").
-	matches, _ := filepath.Glob(filepath.Join(StoreDir(), "group-"+group+"-*"))
+	storeRoot := StoreDir()
+	matches, _ := filepath.Glob(filepath.Join(storeRoot, "group-"+group+"-*"))
 	for _, m := range matches {
 		if ownerIsDeleted(strings.TrimPrefix(filepath.Base(m), "group-")) {
-			remove(m)
+			removeUnder(storeRoot, m)
 		}
 	}
 	return freed
