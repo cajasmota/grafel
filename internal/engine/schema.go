@@ -11,12 +11,39 @@ package engine
 // FrameworkRule is the top-level schema for a single framework YAML file.
 // Each file describes detection patterns for one framework (e.g. gin.yaml).
 type FrameworkRule struct {
+	// Frameworks carries the file's detection metadata (framework identity and
+	// the markers that say "this framework is actually present"). Every rule
+	// file already declares it; before #6152 nothing in Go read it, so Detect
+	// resolved rule sets by file.Language ALONE and every rule fired on every
+	// file of that language regardless of whether the framework was there.
+	Frameworks FrameworkMeta `yaml:"frameworks"`
 	// FileConventions lists file naming conventions for this framework.
 	FileConventions []FileConvention `yaml:"file_conventions"`
 	// SourcePatterns maps regex patterns to entity types.
 	SourcePatterns []SourcePattern `yaml:"source_patterns"`
 	// RelationshipRules maps regex patterns to relationship edges.
 	RelationshipRules []RelationshipRule `yaml:"relationship_rules"`
+}
+
+// FrameworkMeta is the `frameworks:` block of a rule file: who the framework
+// is and how to tell it is present. Only the fields the engine consumes are
+// modelled; the rest of the block (category, github_stars_2025, notes, …) is
+// descriptive and deliberately unmapped.
+type FrameworkMeta struct {
+	// Name is the human framework name (e.g. "Falcon").
+	Name string `yaml:"name"`
+	// Detection holds the presence signals for this framework.
+	Detection FrameworkDetection `yaml:"detection"`
+}
+
+// FrameworkDetection lists the signals that say a framework is in play.
+type FrameworkDetection struct {
+	// ImportMarkers are literal source substrings that only appear when the
+	// framework is imported or used (e.g. "import falcon", "from falcon
+	// import"). This is the signal source_patterns marked requires_framework
+	// are gated on — it is the only detection signal available from the file
+	// content Detect is handed.
+	ImportMarkers []string `yaml:"import_markers"`
 }
 
 // FileConvention describes a file naming pattern for a framework.
@@ -54,6 +81,18 @@ type SourcePattern struct {
 	// Scope controls matching: "file" scans the entire file content,
 	// "line" scans line-by-line.
 	Scope string `yaml:"scope"`
+	// RequiresFramework opts this pattern into the framework-presence gate
+	// (#6152). When true the pattern only fires on files that carry at least
+	// one of the owning rule file's frameworks.detection.import_markers.
+	//
+	// Opt-IN, not opt-out, and deliberately so: most patterns are already
+	// self-gating because their regex names the framework ("cherrypy.expose",
+	// ".add_route("). The flag is for patterns whose regex is broad enough to
+	// match plain language syntax — a bare `class Foo:` — where the framework
+	// is what makes the match meaningful and nothing in the regex checks for
+	// it. Defaulting every pattern to gated would suppress cross-file recall
+	// for the self-gating majority.
+	RequiresFramework bool `yaml:"requires_framework"`
 }
 
 // RelationshipRule maps a regex pattern to a directed relationship edge.

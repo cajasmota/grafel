@@ -39,11 +39,16 @@ source_patterns:
     entity_type: Route
     name_group: 1
     scope: file
-  # CherryPy application class inheriting from object
+  # CherryPy application class inheriting from object. `(object)` is optional
+  # in the regex, so this matches ANY class declaration and carries no
+  # CherryPy-specific token; it is gated on the detection markers above.
+  # Without the gate it typed every bare Python class in every repo as a
+  # Controller (#6152).
   - pattern: "class\\s+(\\w+)\\s*(?:\\(object\\))?\\s*:"
     entity_type: Controller
     name_group: 1
     scope: class
+    requires_framework: true
   # cherrypy.quickstart(Root()) — application entry point
   - pattern: "cherrypy\\.quickstart\\s*\\(\\s*(\\w+)"
     entity_type: Service

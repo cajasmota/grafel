@@ -50,11 +50,15 @@ source_patterns:
     entity_type: Service
     name_group: 1
     scope: file
-  # Resource class (any class with on_get/on_post etc.)
+  # Resource class. The regex matches ANY class declaration — it carries no
+  # Falcon-specific token at all — so it is gated on the detection markers
+  # above. Without the gate it typed every bare Python class in every repo as
+  # a Controller (#6152).
   - pattern: "class\\s+(\\w+)\\s*(?:\\([^)]*\\))?\\s*:"
     entity_type: Controller
     name_group: 1
     scope: class
+    requires_framework: true
 
 # relationship_rules: edges between entities.
 relationship_rules:

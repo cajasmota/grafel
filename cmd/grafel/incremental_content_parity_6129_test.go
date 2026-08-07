@@ -985,15 +985,28 @@ var cpKnownPathB = []cpKnown{
 	// ── #6129, headline Path-B defect: a DEPENDS_ON SELF-EDGE ──
 	//
 	// The incremental run emits `CpProducer → CpProducer` — a module-aggregation
-	// dependency from an entity onto itself, which a full rebuild never
-	// produces and which is meaningless as a dependency. (#6129 records the same
-	// shape as `ProdClassU → ProdClassU` on the #6119 fixture.) Edge counts move
-	// by one in a direction that reads as "more resolved".
+	// dependency from an entity onto itself, which is meaningless as a
+	// dependency. (#6129 records the same shape as `ProdClassU → ProdClassU` on
+	// the #6119 fixture.) Edge counts move by one in a direction that reads as
+	// "more resolved".
+	//
+	// #6152 changed how this row PRESENTS, not whether it is a defect. Before
+	// the framework-presence gate, `class CpProducer:` was typed `Controller` by
+	// the ungated falcon/cherrypy bare-class patterns, and the full rebuild's
+	// own copy of this self-edge dangled on the unresolved placeholder endpoint
+	// `Model:CpProducer` — so the content-keyed comparator saw zero rows in A
+	// and one in B, i.e. EDGE-INVENTED. With the gate the class is
+	// SCOPE.Component, the full rebuild's self-edge binds to the real entity,
+	// and the divergence is the same one row of Path-B excess expressed as
+	// multiplicity: 1 in A, 2 in B. Entity and relationship totals for the full
+	// rebuild are unchanged across #6152 (69 / 145 either way) — nothing was
+	// added or destroyed, an endpoint that used to dangle now resolves.
 	{
-		Issue:    "#6129",
-		Why:      "Path B emits a spurious DEPENDS_ON self-edge a full rebuild does not. Unfixed.",
-		Bucket:   cpEdgeInvented,
-		Contains: []string{"Controller/CpProducer@cpprod_static.py→Controller/CpProducer@cpprod_static.py:DEPENDS_ON"},
+		Issue:          "#6129",
+		Why:            "Path B emits one DEPENDS_ON self-edge more than a full rebuild. Unfixed.",
+		Bucket:         cpEdgeMult,
+		Contains:       []string{"SCOPE.Component/CpProducer@cpprod_static.py→SCOPE.Component/CpProducer@cpprod_static.py:DEPENDS_ON"},
+		DetailContains: []string{"row count 1 in A (full rebuild) ≠ 2 in B (incremental)"},
 	},
 
 	// ── #6129, second Path-B defect: duplicated file→external DEPENDS_ON ──
