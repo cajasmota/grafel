@@ -1842,13 +1842,21 @@ func TestPruneImportPlaceholdersWithLiveIDs_AcceptsCarryForwardTarget(t *testing
 	}
 }
 
-// TestPruneImportPlaceholders_LeavesUnresolvableIncomingEdgesAlone pins the
+// TestPruneImportPlaceholders_InventsNoBindingForUnresolvableImport pins the
 // boundary of the #6131 repair: the re-point fires ONLY when the pipeline has
 // already resolved the same (importer file, module) pair to a real entity. A
 // genuinely third-party import has no such resolution, so there is nothing to
-// propagate and the edge is left exactly as the full rebuild leaves it today.
-// Without this, the repair would be free to invent a binding.
-func TestPruneImportPlaceholders_LeavesUnresolvableIncomingEdgesAlone(t *testing.T) {
+// propagate. Without this, the repair would be free to invent a binding.
+//
+// This case used to assert the edge was left "exactly as the full rebuild
+// leaves it today" — i.e. dangling on the pruned placeholder's id. That WAS the
+// full rebuild's behaviour and it was the #6156 defect, filed after this test
+// was written: every third-party import in every repo lost its file→package
+// edge on the default path. The #6131 half of the assertion is unchanged (no
+// in-repo target is invented); what the endpoint becomes is now #6156's
+// business — the raw module string, which external.Synthesize classifies into
+// `ext:requests`.
+func TestPruneImportPlaceholders_InventsNoBindingForUnresolvableImport(t *testing.T) {
 	const (
 		f     = "app.py"
 		fileC = "3333333333333333"
@@ -1873,8 +1881,16 @@ func TestPruneImportPlaceholders_LeavesUnresolvableIncomingEdgesAlone(t *testing
 		if e.ID != fn {
 			continue
 		}
-		if len(e.Relationships) != 1 || e.Relationships[0].ToID != ph {
-			t.Errorf("REFERENCES edge was altered: %+v, want ToID %q untouched", e.Relationships, ph)
+		if len(e.Relationships) != 1 {
+			t.Fatalf("REFERENCES = %+v, want exactly one edge", e.Relationships)
+		}
+		got := e.Relationships[0].ToID
+		if got == ph {
+			t.Errorf("#6156: REFERENCES ToID left at the pruned placeholder %q — a dangling endpoint", ph)
+		}
+		if got != "requests" {
+			t.Errorf("REFERENCES ToID = %q, want the raw module string \"requests\"; anything "+
+				"else means an in-repo binding was invented for a module the repo does not define", got)
 		}
 	}
 }
@@ -2828,6 +2844,320 @@ func TestResolveGoInTreeImports_UnknownPkgDirSkipped(t *testing.T) {
 			r := &records[k].Relationships[j]
 			if r.Kind == importRelKind && r.ToID != rawToID {
 				t.Errorf("IMPORTS ToID rewritten to %q; expected it unchanged (%q)", r.ToID, rawToID)
+			}
+		}
+	}
+}
+
+// TestPruneImportPlaceholders_RestoresModuleStringForThirdPartyImport is the
+// #6156 unit half of the fix whose end-to-end gate lives in
+// cmd/grafel/external_import_orphan_6156_test.go.
+//
+// #6131 repairs an incoming edge by re-pointing it at the entity the pipeline
+// had ALREADY resolved the same (importer file, source_module) import to. For a
+// THIRD-PARTY module nothing is resolved at prune time — the `SCOPE.External`
+// node is synthesised by external.Synthesize afterwards — so that block finds
+// no candidate and the endpoint is orphaned.
+//
+// The repair: restore the endpoint to the raw module string, which is the
+// pre-resolution form external.Synthesize classifies. The edge then binds to
+// `ext:<module>` exactly as it does on the incremental path (which never
+// rewrote the endpoint to the placeholder in the first place).
+//
+// The record set below carries BOTH arms deliberately. With only the falcon
+// arm, an implementation that restored the module string unconditionally —
+// clobbering #6131's in-repo bind — would pass.
+func TestPruneImportPlaceholders_RestoresModuleStringForThirdPartyImport(t *testing.T) {
+	const (
+		mainFile    = "oi_main.py"
+		modLibID    = "1111111111111111" // Module oi_lib_static (real, in-repo)
+		fileCarrier = "3333333333333333" // SCOPE.Component file for the importer
+		phFalconID  = "4444444444444444" // import placeholder for falcon (third-party)
+		phLibID     = "5555555555555555" // import placeholder for oi_lib_static (in-repo)
+		handlerFn   = "6666666666666666" // the function holding the REFERENCES
+	)
+	records := []types.EntityRecord{
+		{ID: modLibID, Name: "oi_lib_static", Kind: "Module", Subtype: "package", SourceFile: "oi_lib_static.py"},
+		{
+			ID: fileCarrier, Name: mainFile, Kind: "SCOPE.Component", Subtype: "file", SourceFile: mainFile,
+			Relationships: []types.RelationshipRecord{
+				// Third-party: the dotted-import resolver found no in-repo target
+				// and left the endpoint on the placeholder's stamped id. This is
+				// the edge #6156 orphans.
+				{FromID: fileCarrier, ToID: phFalconID, Kind: "IMPORTS", Properties: types.PropsFromMap(map[string]string{"source_module": "falcon", "imported_name": "falcon", "local_name": "falcon"})},
+				// In-repo: already bound. #6131's case, and the control here.
+				{FromID: fileCarrier, ToID: modLibID, Kind: "IMPORTS", Properties: types.PropsFromMap(map[string]string{"source_module": "oi_lib_static", "imported_name": "oi_lib_static", "local_name": "oi_lib_static"})},
+			},
+		},
+		{ID: phFalconID, Name: "falcon", Kind: "SCOPE.Component", Subtype: "import", SourceFile: mainFile},
+		{ID: phLibID, Name: "oi_lib_static", Kind: "SCOPE.Component", Subtype: "import", SourceFile: mainFile},
+		{
+			ID: handlerFn, Name: "oi_handle", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: mainFile,
+			Relationships: []types.RelationshipRecord{
+				// `falcon.App()` — a reference bound to the third-party placeholder.
+				{FromID: handlerFn, ToID: phFalconID, Kind: "REFERENCES"},
+				// `oi_lib_static.oi_target(x)` — the #6131 shape.
+				{FromID: handlerFn, ToID: phLibID, Kind: "REFERENCES"},
+			},
+		},
+	}
+
+	out, _, stats := PruneImportPlaceholders(records)
+
+	// Premise: both placeholders were genuinely removed. If either survived,
+	// its incoming edges would bind trivially and this test would measure
+	// nothing.
+	if stats.Pruned != 2 {
+		t.Fatalf("expected both placeholders pruned, got %d", stats.Pruned)
+	}
+	for _, e := range out {
+		if e.Kind == "SCOPE.Component" && e.Subtype == "import" {
+			t.Fatalf("import placeholder %s@%s survived the prune", e.Name, e.SourceFile)
+		}
+	}
+	if stats.PlaceholderRefRepoints != 1 {
+		t.Errorf("PlaceholderRefRepoints = %d, want 1 (the in-repo oi_lib_static reference only)", stats.PlaceholderRefRepoints)
+	}
+	if stats.PlaceholderModuleRestores != 2 {
+		t.Errorf("PlaceholderModuleRestores = %d, want 2 (the falcon IMPORTS edge and the falcon REFERENCES edge)", stats.PlaceholderModuleRestores)
+	}
+
+	live := make(map[string]bool, len(out))
+	for _, e := range out {
+		live[e.ID] = true
+	}
+	got := map[string]int{}
+	for _, e := range out {
+		for _, rel := range e.Relationships {
+			got[rel.Kind+"|"+rel.FromID+"->"+rel.ToID]++
+		}
+	}
+	want := map[string]int{
+		// Restored to the raw module string, which is what external.Synthesize
+		// classifies into ext:falcon.
+		"IMPORTS|" + fileCarrier + "->falcon":       1,
+		"REFERENCES|" + handlerFn + "->falcon":      1,
+		"IMPORTS|" + fileCarrier + "->" + modLibID:  1,
+		"REFERENCES|" + handlerFn + "->" + modLibID: 1,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("edge multiset = %v, want %v", got, want)
+	}
+	for k, n := range want {
+		if got[k] != n {
+			t.Errorf("edge %s occurs %d time(s), want %d (full multiset: %v)", k, got[k], n, got)
+		}
+	}
+	// Nothing may be left pointing at a hex id no entity carries — that is the
+	// orphan #6156 is about.
+	for _, e := range out {
+		for _, rel := range e.Relationships {
+			if isHexLikeID(rel.ToID) && !live[rel.ToID] {
+				t.Errorf("edge %s from %s left dangling at hex id %q after prune", rel.Kind, e.ID, rel.ToID)
+			}
+		}
+	}
+}
+
+// isHexLikeID reports whether s looks like a stamped 16-hex-digit entity id.
+// Used by the #6156 test to tell a dangling id endpoint from a legitimately
+// unresolved module string.
+func isHexLikeID(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// TestPruneImportPlaceholders_DoesNotRestoreIDSharedWithSurvivor pins the
+// fourth guard on the #6156 restore, and it is the one that was found the hard
+// way rather than reasoned to.
+//
+// graph.EntityID hashes repo/kind/name/sourceFile and NOT Subtype, so a pruned
+// `SCOPE.Component` placeholder named M in file F carries the SAME id as any
+// other `SCOPE.Component` named M in F. The #6131 block records this collision
+// and says no reachable instance is known. There is one: Go's extractor emits
+// import entities with an EMPTY Subtype — never pruned, so they stay live —
+// while the cross-language imports extractor emits a Subtype="import"
+// placeholder for the same import in the same file.
+//
+// The pinned-digest test in cmd/grafel/custom_extractor_spans_6118_test.go
+// caught it: on `svc/handler.go` importing net/http, an unguarded restore took
+// `Handler.ServeHTTP -REFERENCES-> SCOPE.Component/net/http` — a perfectly bound
+// edge — and un-resolved it to the raw module string, which
+// external.Synthesize then folded into `ext:net`. An id a survivor carries is
+// not a would-be-dangling endpoint.
+//
+// Remove the survivor check in buildPlaceholderModuleRestores and this fails.
+func TestPruneImportPlaceholders_DoesNotRestoreIDSharedWithSurvivor(t *testing.T) {
+	const (
+		f      = "svc/handler.go"
+		shared = "4444444444444444" // BOTH import entities hash to this id
+		fn     = "6666666666666666"
+	)
+	records := []types.EntityRecord{
+		// The Go extractor's import entity: Subtype empty, so never pruned.
+		{ID: shared, Name: "net/http", Kind: "SCOPE.Component", Subtype: "", SourceFile: f},
+		// The cross-language extractor's placeholder for the SAME import in the
+		// SAME file: same id, Subtype="import", pruned.
+		{ID: shared, Name: "net/http", Kind: "SCOPE.Component", Subtype: "import", SourceFile: f},
+		{
+			ID: fn, Name: "Handler.ServeHTTP", Kind: "SCOPE.Operation", Subtype: "method", SourceFile: f,
+			Relationships: []types.RelationshipRecord{{FromID: fn, ToID: shared, Kind: "REFERENCES"}},
+		},
+	}
+
+	out, _, stats := PruneImportPlaceholders(records)
+
+	// Premise: the placeholder was pruned AND the colliding entity survived.
+	// Without both halves the collision is not reached.
+	if stats.Pruned != 1 {
+		t.Fatalf("premise broken: pruned=%d, want 1 (the Subtype=\"import\" record only)", stats.Pruned)
+	}
+	survived := false
+	for _, e := range out {
+		if e.ID == shared && e.Subtype == "" {
+			survived = true
+		}
+		if e.Subtype == "import" {
+			t.Fatalf("premise broken: the placeholder survived the prune")
+		}
+	}
+	if !survived {
+		t.Fatalf("premise broken: the colliding Go import entity did not survive, so the id is dead")
+	}
+
+	if stats.PlaceholderModuleRestores != 0 {
+		t.Errorf("PlaceholderModuleRestores = %d, want 0 — a live entity carries that id, so the "+
+			"endpoint is bound, not dangling", stats.PlaceholderModuleRestores)
+	}
+	for _, e := range out {
+		if e.ID != fn {
+			continue
+		}
+		if len(e.Relationships) != 1 || e.Relationships[0].ToID != shared {
+			t.Errorf("REFERENCES = %+v, want ToID %q left bound to the surviving entity",
+				e.Relationships, shared)
+		}
+	}
+}
+
+// TestPruneImportPlaceholders_DoesNotRestoreOntoKeptPlaceholder pins the third
+// guard on the #6156 restore: it applies only to placeholders actually being
+// PRUNED.
+//
+// A KEPT placeholder (one whose embedded rels could not be safely migrated —
+// see canMigrate) still carries a live id, so an incoming edge bound to it is
+// bound to a real entity in the final graph. Restoring that endpoint to a raw
+// module string would take a working binding and un-resolve it, which is a
+// strictly worse graph than the one #6156 set out to repair.
+//
+// Remove the `prunable[i]` gate in buildPlaceholderModuleRestores and this test
+// must fail.
+func TestPruneImportPlaceholders_DoesNotRestoreOntoKeptPlaceholder(t *testing.T) {
+	const (
+		f  = "app.py"
+		ph = "4444444444444444"
+		fn = "6666666666666666"
+	)
+	records := []types.EntityRecord{
+		// No file-level carrier for app.py, AND the placeholder carries a rel
+		// with an EMPTY FromID — canMigrate refuses, so the prune keeps it.
+		{
+			ID: ph, Name: "requests", Kind: "SCOPE.Component", Subtype: "import", SourceFile: f,
+			Relationships: []types.RelationshipRecord{
+				{FromID: "", ToID: "requests", Kind: "IMPORTS"},
+			},
+		},
+		{
+			ID: fn, Name: "handle", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: f,
+			Relationships: []types.RelationshipRecord{{FromID: fn, ToID: ph, Kind: "REFERENCES"}},
+		},
+	}
+
+	out, _, stats := PruneImportPlaceholders(records)
+
+	// Premise: the placeholder really was KEPT. If it were pruned this test
+	// would be asserting the opposite behaviour to the one it names.
+	if stats.PlaceholderKept != 1 || stats.Pruned != 0 {
+		t.Fatalf("premise broken: kept=%d pruned=%d, want kept=1 pruned=0", stats.PlaceholderKept, stats.Pruned)
+	}
+	live := false
+	for _, e := range out {
+		if e.ID == ph {
+			live = true
+		}
+	}
+	if !live {
+		t.Fatalf("premise broken: the kept placeholder is not in the survivor slice")
+	}
+
+	if stats.PlaceholderModuleRestores != 0 {
+		t.Errorf("PlaceholderModuleRestores = %d, want 0 — the placeholder survives, so the "+
+			"incoming edge binds to a real entity and needs no repair", stats.PlaceholderModuleRestores)
+	}
+	for _, e := range out {
+		if e.ID != fn {
+			continue
+		}
+		if len(e.Relationships) != 1 || e.Relationships[0].ToID != ph {
+			t.Errorf("REFERENCES = %+v, want ToID %q (the surviving placeholder) left bound",
+				e.Relationships, ph)
+		}
+	}
+}
+
+// TestPruneImportPlaceholders_LeavesRelativeImportPlaceholderAlone pins the
+// gate on the #6156 restore: it applies to NON-RELATIVE module strings only.
+//
+// A relative specifier (`./missing`) that failed to resolve is a fidelity bug
+// in the resolver, not a third-party dependency. external.Synthesize will never
+// classify `./missing` as an external package, so restoring the string buys
+// nothing and would merely swap one unresolved endpoint shape for another while
+// widening the blast radius of the repair onto the #642 path.
+//
+// Remove the relative-prefix guard and this test must fail.
+func TestPruneImportPlaceholders_LeavesRelativeImportPlaceholderAlone(t *testing.T) {
+	const (
+		appFile     = "src/app.ts"
+		fileCarrier = "3333333333333333"
+		phRelID     = "4444444444444444"
+	)
+	records := []types.EntityRecord{
+		{
+			ID: fileCarrier, Name: appFile, Kind: "SCOPE.Component", Subtype: "file", SourceFile: appFile,
+			Relationships: []types.RelationshipRecord{
+				{FromID: fileCarrier, ToID: phRelID, Kind: "IMPORTS", Properties: types.PropsFromMap(map[string]string{"source_module": "./missing", "imported_name": "./missing"})},
+			},
+		},
+		// No carrier exists for src/missing.* — the relative import is
+		// genuinely unresolvable in this record set, which is the premise.
+		{ID: phRelID, Name: "./missing", Kind: "SCOPE.Component", Subtype: "import", SourceFile: appFile},
+	}
+
+	out, _, stats := PruneImportPlaceholders(records)
+
+	if stats.Pruned != 1 {
+		t.Fatalf("expected the relative placeholder pruned, got %d", stats.Pruned)
+	}
+	if stats.EdgeToIDRewrites != 0 {
+		t.Fatalf("premise broken: the #642 rewrite resolved ./missing (%d rewrite(s)), so this "+
+			"test is not exercising the unresolvable case", stats.EdgeToIDRewrites)
+	}
+	if stats.PlaceholderModuleRestores != 0 {
+		t.Errorf("PlaceholderModuleRestores = %d, want 0 — a relative specifier is not a "+
+			"third-party package", stats.PlaceholderModuleRestores)
+	}
+	for _, e := range out {
+		for _, rel := range e.Relationships {
+			if rel.ToID != phRelID {
+				t.Errorf("IMPORTS ToID = %q; want it left at %q (unchanged)", rel.ToID, phRelID)
 			}
 		}
 	}

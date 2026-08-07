@@ -784,55 +784,28 @@ var cpKnownPathA = []cpKnown{
 
 	// ── #6156: the full rebuild orphans a THIRD-PARTY import's IMPORTS edge ──
 	//
-	// The only divergence the #6150 fixture reaches where the INCREMENTAL answer
-	// is the correct one, which is why it is allow-listed rather than "fixed":
-	// closing it on this side would mean teaching Path A to dangle.
+	// FIXED — the FOUR entries that stood here went STALE and were removed by
+	// the ratchet: the INVENTED/LOST pair for `import falcon` (Python) and the
+	// INVENTED/LOST pair for `require("express")` (JS), listed separately so
+	// that one of them going quiet could never be absorbed by the other.
 	//
-	// `import falcon` names a package with no in-repo definition. BOTH graphs
-	// contain the `SCOPE.External|falcon` entity (measured — `external.Synthesize`
-	// runs on both paths). The FULL rebuild's IMPORTS edge points at the hex id
-	// of the import PLACEHOLDER that PruneImportPlaceholders has already removed,
-	// so it dangles; Path A binds the same edge to the live `ext:falcon` node.
+	// It was the second case in this file where the INCREMENTAL answer was the
+	// better one, and the history is worth keeping. `import falcon` names a
+	// package with no in-repo definition. BOTH graphs contained the
+	// `SCOPE.External|falcon` entity — external.Synthesize runs on both paths —
+	// but the FULL rebuild's IMPORTS edge pointed at the hex id of the import
+	// PLACEHOLDER that PruneImportPlaceholders had already removed, so it
+	// dangled, while Path A bound the same edge to the live `ext:falcon` node.
+	// Every third-party import in every repo, on the default path.
 	//
-	// #6131's repoint does not cover it: it re-points at the entity the pipeline
-	// already resolved that import to, and for a third-party module there is
-	// nothing resolved at prune time — the SCOPE.External node is synthesised
-	// afterwards. See #6156 for the log line (`rels_orphaned=2`) and the fix
-	// direction.
-	{
-		Issue:    "#6156",
-		Why:      "Path A binds the third-party import to the live SCOPE.External node; the FULL rebuild dangles on the pruned placeholder. Incremental is the correct side. Unfixed, and not fixable from the incremental path.",
-		Bucket:   cpEdgeInvented,
-		Contains: []string{"→SCOPE.External/falcon@", ":IMPORTS"},
-	},
-	{
-		Issue:    "#6156",
-		Why:      "The LOST half of the same orphan: the full rebuild's dangling endpoint on the pruned import placeholder.",
-		Bucket:   cpEdgeLost,
-		Contains: []string{"SCOPE.Component/cphandler_delta.py@cphandler_delta.py→«unbound»", ":IMPORTS"},
-	},
-	{
-		// A CONSEQUENCE of the row above, not a second defect: module
-		// aggregation skips any edge whose endpoint resolves to no entity, so
-		// the full rebuild's orphaned IMPORTS edge is not counted and Path A's
-		// bound one is. Recorded as such because #6129 filed the same shape as
-		// "an extra DEPENDS_ON row" and it was a consequence then too.
-		// NET OF TWO FILED CAUSES, and it is kept keyed on the exact numbers
-		// so that fixing either one moves it and forces a re-derivation rather
-		// than silently continuing to match:
-		//   #6156 pushes B UP by 2 — module aggregation cannot count the full
-		//         rebuild's two orphaned third-party IMPORTS edges (falcon,
-		//         express), but counts Path A's bound ones;
-		//   #6159 pushes B DOWN by 1 — Path A has no ENTRY_POINT_OF edge from
-		//         the /cpview2 endpoint to its process node, because it never
-		//         resolved the handler and the flow was never built.
-		// Net +1 for B.
-		Issue:          "#6156 + #6159 (net; see the comment)",
-		Why:            "Module-aggregation weight is the net of the orphaned third-party imports (#6156, +2) and the flow edges the incremental graph lacks (#6159, -1).",
-		Bucket:         cpEdgeProps,
-		Contains:       []string{"Module/test-repo@→Module/_external@:DEPENDS_ON"},
-		DetailContains: []string{`weight "6"≠"7"`},
-	},
+	// #6131's repoint could not cover it: it re-points at the entity the
+	// pipeline ALREADY resolved that import to, and for a third-party module
+	// nothing is resolved at prune time. The answer, following #642 and #6131
+	// for the third time, was to carry the endpoint across to something durable
+	// rather than accept the dangle — here by RESTORING it to the raw module
+	// string, the pre-resolution form external.Synthesize classifies, which is
+	// exactly the endpoint Path A was already handing it. See the #6156 block in
+	// internal/resolve/imports.go and `module_restores` in the prune's log line.
 	// ── #6159, the NO-SURVIVOR case: kept, but at the registration file ──
 	//
 	// `cpapi2_delta.py` registers /cpview2 against a view in `cpview2_delta.py`
@@ -907,7 +880,7 @@ var cpKnownPathA = []cpKnown{
 		Contains: []string{"http_endpoint_definition/http:GET:/cpview2@cpview2_delta.py→SCOPE.Process/"},
 	},
 	{
-		// Single-cause, unlike its test-repo→_external twin above: B is lower
+		// Single-cause, like its test-repo→_external twin below: B is lower
 		// by exactly the two STEP_IN_PROCESS edges the missing process node
 		// would have contributed from _external into test-repo.
 		Issue:          "#6159",
@@ -916,22 +889,27 @@ var cpKnownPathA = []cpKnown{
 		Contains:       []string{"Module/_external@→Module/test-repo@:DEPENDS_ON"},
 		DetailContains: []string{`weight "11"≠"9"`},
 	},
-	// The SAME #6156 defect on the second third-party import in the corpus.
-	// Listed separately rather than folded into a looser key on the entries
-	// above: one entry matching both would go on matching if only one of them
-	// stopped reproducing, which is precisely the blindness the ratchet exists
-	// to prevent.
 	{
-		Issue:    "#6156",
-		Why:      "Second instance, JS: Path A binds the express require to the live SCOPE.External node; the FULL rebuild dangles on the pruned placeholder.",
-		Bucket:   cpEdgeInvented,
-		Contains: []string{"→SCOPE.External/express@", ":IMPORTS"},
-	},
-	{
-		Issue:    "#6156",
-		Why:      "The LOST half of the express orphan.",
-		Bucket:   cpEdgeLost,
-		Contains: []string{"SCOPE.Component/cproutes_delta.js@cproutes_delta.js→«unbound»", ":IMPORTS"},
+		// RE-KEYED, not deleted, when #6156 was fixed — the divergence still
+		// reproduces, with one of its two causes removed.
+		//
+		// It was `weight "6"≠"7"`, the NET of two filed causes: #6156 pushed B
+		// UP by 2 (module aggregation skips an edge whose endpoint resolves to
+		// no entity, so the full rebuild's two orphaned third-party IMPORTS
+		// edges — falcon, express — went uncounted while Path A's bound ones
+		// did not), and #6159 pushed B DOWN by 1. Fixing #6156 moved the FULL
+		// side up by exactly 2, to 8, with no change to the aggregation code —
+		// which is the evidence that the under-count was a consequence of the
+		// orphan and not a second defect.
+		//
+		// What remains is single-cause: Path A has no ENTRY_POINT_OF edge from
+		// the /cpview2 endpoint to its process node, because it never resolved
+		// the handler and the flow was never built.
+		Issue:          "#6159",
+		Why:            "Module-aggregation weight, over by the one ENTRY_POINT_OF edge of the process node Path A never built.",
+		Bucket:         cpEdgeProps,
+		Contains:       []string{"Module/test-repo@→Module/_external@:DEPENDS_ON"},
+		DetailContains: []string{`weight "8"≠"7"`},
 	},
 
 	// ── #6159: a cross-file handler leaves its endpoint unenriched ──

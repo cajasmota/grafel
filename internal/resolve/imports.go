@@ -2765,6 +2765,14 @@ type PruneImportPlaceholderStats struct {
 	// that silently stops re-pointing — and therefore starts orphaning
 	// those edges again — is visible in the indexer log.
 	PlaceholderRefRepoints int
+	// PlaceholderModuleRestores is the number of INCOMING edges pointing at a
+	// pruned import placeholder for a NON-RELATIVE module that the pipeline
+	// resolved to nothing, whose endpoint was restored to the raw module
+	// string so external.Synthesize can classify it (issue #6156). See the
+	// #6156 block in the function body. Surfaced so a regression that silently
+	// stops restoring — and therefore starts orphaning every third-party
+	// import edge again — is visible in the indexer log.
+	PlaceholderModuleRestores int
 }
 
 // PruneImportPlaceholders removes import-placeholder entities (kind =
@@ -3043,7 +3051,69 @@ func PruneImportPlaceholdersWithLiveIDs(records []types.EntityRecord, extraLive 
 	// other extractor emitting both halves. ONLY PYTHON IS EXERCISED, by the
 	// tests here and by the parity gate; the sibling languages are reachable
 	// and unmeasured.
-	if repoints := buildPlaceholderRepoints(records, prunable, extraLive); len(repoints) > 0 {
+	//
+	// Pre-prune INCOMING-edge MODULE-STRING RESTORE (issue #6156).
+	//
+	// The block above repairs an incoming edge by re-pointing it at the entity
+	// the pipeline HAD ALREADY RESOLVED the same (importer file, source_module)
+	// import to. For a THIRD-PARTY import there is nothing resolved at prune
+	// time: `import falcon` names no in-repo module, so no IMPORTS edge in that
+	// file carries a surviving target, the repoint finds no candidate, and the
+	// endpoint is orphaned. Measured on the #6129 content-parity corpus as
+	// `rels_orphaned=2` with the IMPORTS edge left on a hex id no entity
+	// carries — while `SCOPE.External|falcon` sits in the very same graph.
+	//
+	// The durable entity DOES exist; it just does not exist YET. external.Synthesize
+	// runs after resolution and after this prune (cmd/grafel/index.go), creates
+	// `ext:<module>`, and adopts an endpoint by CLASSIFYING IT — it skips any
+	// ToID that already looks like a hex id (internal/external/synth.go, the
+	// `isHexID` guard at the top of its relationship loop). So the endpoint it
+	// can adopt is the raw module string, which is precisely the form this edge
+	// carried before the dotted-import resolver rewrote it to the placeholder.
+	//
+	// Hence the repair: RESTORE, rather than defer the prune or teach Synthesize
+	// about placeholders it can no longer see.
+	//
+	//   - Deferring the placeholder (keeping it live so Synthesize can adopt the
+	//     dangle) reinstates exactly the orphan-entity bucket this prune exists
+	//     to remove, and leaves the edge bound to a structural carrier instead of
+	//     the package — which is the wrong target: `grafel_expand`, lib-boundary
+	//     and module aggregation all read file→package, not file→placeholder.
+	//   - Teaching Synthesize to re-point endpoints dangling on pruned
+	//     placeholders means plumbing a pruned-id→module map across four pipeline
+	//     stages so a later pass can undo an earlier one's damage. The module
+	//     string is the only thing that map would carry, and it is already here.
+	//
+	// The restored endpoint is the SAME endpoint the incremental path carries,
+	// which is why this closes a full-vs-incremental divergence rather than
+	// moving it: Path A never rewrites the ToID to the placeholder, so its edge
+	// arrives at Synthesize as `falcon` and binds to `ext:falcon`.
+	//
+	// Two guards:
+	//   - only when the module resolved to an in-repo entity NOWHERE in the
+	//     record set. An import that resolved keeps its resolution; one that
+	//     resolved AMBIGUOUSLY, or resolved in a sibling file but not this one,
+	//     keeps today's behaviour rather than being reclassified as third-party.
+	//     Note this membership test is corpus-wide where the #6131 repoint key
+	//     is file-scoped, and deliberately so — see buildPlaceholderRepoints'
+	//     second return value for why the two questions scope differently.
+	//   - only NON-RELATIVE module strings. A `./x` that failed to resolve is a
+	//     resolver fidelity bug, not a dependency; Synthesize will never classify
+	//     it as an external package, so restoring it swaps one unresolved shape
+	//     for another and widens this repair onto the #642 path for nothing.
+	//
+	// What happens to a module with NO durable home — neither in-repo nor ever
+	// synthesised as external (e.g. a same-repo Python root that failed to
+	// resolve, which classifyExternal deliberately REFUSES to launder into an
+	// `ext:` node)? Its edge keeps the raw module string as its endpoint:
+	// unresolved, but not dangling, and identical to what an edge the resolver
+	// never touched looks like. It stays visible to unresolved-endpoint
+	// reporting as the fidelity bug it is. That is the third behaviour, and it
+	// is chosen over silently dropping the edge — no edge is created or removed
+	// by this block either.
+	repoints, resolvedModules := buildPlaceholderRepoints(records, prunable, extraLive)
+	restores := buildPlaceholderModuleRestores(records, prunable, resolvedModules)
+	if len(repoints) > 0 || len(restores) > 0 {
 		for i := range records {
 			r := &records[i]
 			for j := range r.Relationships {
@@ -3051,6 +3121,11 @@ func PruneImportPlaceholdersWithLiveIDs(records []types.EntityRecord, extraLive 
 				if id, ok := repoints[rel.ToID]; ok {
 					rel.ToID = id
 					stats.PlaceholderRefRepoints++
+					continue
+				}
+				if module, ok := restores[rel.ToID]; ok {
+					rel.ToID = module
+					stats.PlaceholderModuleRestores++
 				}
 			}
 		}
@@ -3117,7 +3192,20 @@ func PruneImportPlaceholdersWithLiveIDs(records []types.EntityRecord, extraLive 
 // the dangle.
 //
 // Returns nil when there is nothing to repair, which is the common case.
-func buildPlaceholderRepoints(records []types.EntityRecord, prunable []bool, extraLive map[string]bool) map[string]string {
+//
+// The second return value is the set of MODULE STRINGS that resolved to a
+// surviving in-repo entity ANYWHERE in the record set — including ones the
+// ambiguity guard then refused a target for. #6156's module-string restore
+// consults it to decide whether a module is third-party.
+//
+// That question is deliberately NOT file-scoped, unlike the repoint key above.
+// The file scoping exists because borrowing a resolved TARGET ID across files
+// invents a specific cross-file reference nobody wrote. "Is this module
+// third-party?" is not a per-file fact: if any file in the corpus resolved
+// `shared` to an in-repo entity then `shared` is in-repo, and a file whose
+// import of it merely failed to resolve has a resolver fidelity bug, not a
+// dependency on a package of the same name.
+func buildPlaceholderRepoints(records []types.EntityRecord, prunable []bool, extraLive map[string]bool) (map[string]string, map[string]bool) {
 	// ambiguous marks a (file, module) pair with conflicting resolutions. It
 	// cannot collide with a real id because ids are hex.
 	const ambiguous = "\x00ambiguous"
@@ -3168,7 +3256,7 @@ func buildPlaceholderRepoints(records []types.EntityRecord, prunable []bool, ext
 		phIDs[k] = append(phIDs[k], r.ID)
 	}
 	if len(phIDs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Resolved whole-module IMPORTS edges, keyed the same way.
@@ -3212,9 +3300,14 @@ func buildPlaceholderRepoints(records []types.EntityRecord, prunable []bool, ext
 	}
 
 	out := make(map[string]string, len(phIDs))
+	resolvedModules := make(map[string]bool, len(phIDs))
 	for k, ids := range phIDs {
 		target, ok := resolved[k]
-		if !ok || target == ambiguous {
+		if !ok {
+			continue
+		}
+		resolvedModules[k.module] = true
+		if target == ambiguous {
 			continue
 		}
 		for _, id := range ids {
@@ -3223,6 +3316,90 @@ func buildPlaceholderRepoints(records []types.EntityRecord, prunable []bool, ext
 			}
 			out[id] = target
 		}
+	}
+	if len(out) == 0 {
+		out = nil
+	}
+	if len(resolvedModules) == 0 {
+		resolvedModules = nil
+	}
+	return out, resolvedModules
+}
+
+// buildPlaceholderModuleRestores maps the stamped id of each import placeholder
+// that is about to be PRUNED, and whose import the pipeline resolved to
+// nothing, onto the raw module string it stands for (issue #6156).
+//
+// PruneImportPlaceholders uses it to restore incoming endpoints to the
+// pre-resolution form external.Synthesize can classify, so a third-party
+// import's edge binds to `ext:<module>` instead of dangling on an id no entity
+// carries. See the #6156 block in the function body for why restoring is
+// preferred to deferring the prune or re-pointing from Synthesize.
+//
+// prunable is indexed in parallel with records and must already be decided; a
+// placeholder being KEPT still has a live id and its incoming edges need no
+// repair. resolvedModules is buildPlaceholderRepoints' second return value —
+// the modules that resolved to a surviving in-repo entity somewhere in the
+// record set, whether unambiguously (the #6131 repoint took the target) or
+// ambiguously (nothing took it, and it keeps today's behaviour rather than
+// being laundered into a third-party dependency).
+//
+// Relative specifiers are excluded — see the second guard in the #6156 block.
+//
+// Returns nil when there is nothing to restore.
+func buildPlaceholderModuleRestores(records []types.EntityRecord, prunable []bool, resolvedModules map[string]bool) map[string]string {
+	// Ids that a SURVIVING record also carries. graph.EntityID hashes
+	// repo/kind/name/sourceFile and NOT Subtype (internal/graph/graph.go), so a
+	// pruned `SCOPE.Component` placeholder named M in file F has the SAME id as
+	// any other `SCOPE.Component` named M in F — and an edge bound to the
+	// survivor is indistinguishable, by id, from one bound to the placeholder.
+	//
+	// The #6131 block above notes this collision and records that no reachable
+	// instance was known. There IS one, found by the pinned-digest test in
+	// cmd/grafel/custom_extractor_spans_6118_test.go while #6156 was being
+	// measured: Go's extractor emits `SCOPE.Component` import entities with an
+	// EMPTY Subtype (so they are never pruned and stay live), while the
+	// cross-language imports extractor emits a Subtype="import" placeholder for
+	// the same import in the same file. On `svc/handler.go` importing net/http
+	// both exist, the placeholder is pruned, the live one is not — and rewriting
+	// that id would take `Handler.ServeHTTP -REFERENCES-> SCOPE.Component/net/http`,
+	// a perfectly bound edge, and un-resolve it into `ext:net`.
+	//
+	// So: an id a survivor carries is not a would-be-dangling endpoint and is
+	// never touched. (The #6131 repoint has the same hole and is left as it is
+	// here — it is pre-existing, out of #6156's scope, and would need its own
+	// measurement.)
+	survivor := make(map[string]bool, len(records))
+	for i := range records {
+		if id := records[i].ID; id != "" && !prunable[i] {
+			survivor[id] = true
+		}
+	}
+	out := make(map[string]string)
+	for i := range records {
+		r := &records[i]
+		if !prunable[i] || r.ID == "" {
+			continue
+		}
+		if !(r.Kind == "SCOPE.Component" && r.Subtype == "import") {
+			continue
+		}
+		module := r.Name
+		if r.Properties != nil {
+			if m := r.Properties["module"]; m != "" {
+				module = m
+			}
+		}
+		if module == "" || module == r.ID || survivor[r.ID] {
+			continue
+		}
+		if resolvedModules[module] {
+			continue
+		}
+		if strings.HasPrefix(module, "./") || strings.HasPrefix(module, "../") {
+			continue
+		}
+		out[r.ID] = module
 	}
 	if len(out) == 0 {
 		return nil
