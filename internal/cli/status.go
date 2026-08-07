@@ -30,9 +30,9 @@ func newStatusCmd() *cobra.Command {
 		Short: "Show daemon + index status",
 		Long: `Show daemon health and per-repo index state.
 
-When --ref is supplied the registry view is filtered to repos that have a
-graph stored for that ref.  Use --ref @all to show state across every known
-ref (implies a per-ref breakdown in the output).
+When --ref is supplied every repo's line reports the graph stored for THAT ref
+rather than for the repo's current HEAD; a repo with no graph for the ref shows
+as never indexed.  --ref @all is not implemented and is rejected.
 
 --json switches to the poll-safe status-plane read (#5725/#5729-W1): it
 resolves the current directory to its registered repo and prints the
@@ -73,12 +73,23 @@ when no engine has ever written a status file for this repo.`,
 //
 //	narrows the view to that ref's graph state.
 //
-// showAll   — true when --ref @all was passed; shows a per-ref breakdown.
+// showAll   — true when --ref @all was passed; rejected, see below.
 func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
+	// #5822 C: @all advertised a per-ref breakdown that has never existed. It
+	// printed that note and then rendered the ordinary current-HEAD view, so
+	// the output was a claim about all refs and a picture of one. The breakdown
+	// is a real feature (a per-ref line per repo, its own summary shape) and is
+	// deliberately NOT in scope here; refusing is the honest interim. A command
+	// that lies about what it is showing is worse than one that says it cannot.
 	if showAll {
-		fmt.Fprintln(w, "Note: --ref @all shows per-ref graph state for all known refs.")
-		fmt.Fprintln(w)
-	} else if ref != "" {
+		return fmt.Errorf(
+			"--ref @all is not implemented by `grafel status`: it promises a per-ref " +
+				"breakdown this command does not produce, and printing the current-HEAD " +
+				"view under that heading would misreport it. Use `grafel status --ref " +
+				"<branch>` for one ref, or `grafel status` for the current HEAD",
+		)
+	}
+	if ref != "" {
 		fmt.Fprintf(w, "Note: showing state for ref %q.\n\n", ref)
 	}
 	// Daemon section first — gives the operator a fast-glance view.
@@ -171,7 +182,9 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 		}
 
 		// Compute rich statistics for this group.
-		summary := ComputeStatusSummary(g.Name, cfg.Repos)
+		// #5822 C: the resolved ref goes all the way to the resolver now, so
+		// the note printed above and the numbers below describe the same thing.
+		summary := ComputeStatusSummaryForRef(g.Name, cfg.Repos, ref)
 		PrintStatusSummary(w, summary)
 
 		// PH3 (#2091): show linked worktree children indented under their parent.

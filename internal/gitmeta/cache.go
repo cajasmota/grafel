@@ -327,21 +327,55 @@ func indexOf(s, sub string) int {
 // When HEAD cannot be located (non-git directory) it runs a live Capture and
 // does not cache — identical observable behaviour to Capture for those inputs.
 func CaptureCached(repoPath string) Info {
+	info, _ := CaptureCachedTrusted(repoPath)
+	return info
+}
+
+// CaptureCachedTrusted is CaptureCached plus the trust flag captureStatus
+// already computes but which CaptureCached had no way to report (#5822 D).
+//
+// ok == false means one thing only: git could not be RUN to completion — the 2s
+// deadline fired, fork returned EAGAIN under load, or the child was signalled
+// (OOM killer, jetsam, a propagated SIGTERM). The returned Info then describes
+// the MOMENT, not the repository.
+//
+// A path git ran against and answered about — including "not a git repository"
+// and a detached HEAD's empty symbolic-ref — is ok == true with a possibly-empty
+// Ref, because that empty Ref is a durable fact about the repo.
+//
+// Why the distinction has to escape this package: an empty Ref is turned into
+// the "_unknown" state directory by daemon.RefSafeEncode, and no graph ever
+// lives there. For a detached HEAD that is correct — it is where the graph
+// really goes. For a fork failure it is a fabrication, and it made `grafel
+// status` render the repo as "0 entities · indexed (never)", which is
+// indistinguishable from a repo that has genuinely never been indexed. #6181
+// stopped MEMOIZING that value; callers were still handed it.
+//
+// LAST-KNOWN FALLBACK. When the capture cannot be run but this process has
+// already captured this repo before, the previous Info is served (ok == true)
+// even though the HEAD-pointer key has moved on. The memo is keyed on HEAD's
+// (path, mtime, size), so a HEAD rewrite invalidates it — and a rewrite
+// coinciding with an un-runnable git is precisely when the caller would
+// otherwise be handed the sentinel. The stale ref MAY be wrong (HEAD may have
+// just moved to another branch); the sentinel is wrong by construction. The
+// stale entry is served, never re-memoized, so the next successful capture
+// replaces it.
+func CaptureCachedTrusted(repoPath string) (Info, bool) {
 	if repoPath == "" {
-		return Capture(repoPath)
+		return captureStatus(repoPath)
 	}
 	key, ok := headPointerKey(repoPath)
 	if !ok {
 		// Not a resolvable git checkout: behave exactly like Capture.
-		return Capture(repoPath)
+		return captureStatus(repoPath)
 	}
 
 	captureMu.Lock()
-	if ent, hit := captureCache[repoPath]; hit && ent.headStat == key {
-		captureMu.Unlock()
-		return ent.info
-	}
+	prev, hasPrev := captureCache[repoPath]
 	captureMu.Unlock()
+	if hasPrev && prev.headStat == key {
+		return prev.info, true
+	}
 
 	info, trusted := captureStatus(repoPath)
 	if !trusted {
@@ -357,13 +391,19 @@ func CaptureCached(repoPath string) Info {
 		// This is deliberately narrower than "don't cache empty results": a path
 		// git ran against and reported "not a git repository" for is a durable
 		// answer and still caches, which is where the optimisation lives.
-		return info
+		if hasPrev {
+			// A stale-but-real ref for this repo beats a sentinel that is wrong
+			// by construction. Not re-memoized: the entry keeps its old key so
+			// the next runnable git still refreshes it.
+			return prev.info, true
+		}
+		return info, false
 	}
 
 	captureMu.Lock()
 	captureCache[repoPath] = captureEntry{info: info, headStat: key}
 	captureMu.Unlock()
-	return info
+	return info, true
 }
 
 // HeadToken returns an opaque token identifying the CURRENT state of repoPath's
