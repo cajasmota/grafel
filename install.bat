@@ -8,6 +8,13 @@ REM
 REM Environment variables:
 REM   GRAFEL_VERSION   Release tag to install (default: latest, e.g. v0.1.0)
 REM   GRAFEL_PREFIX    Install prefix (default: %USERPROFILE%\.grafel)
+REM   GRAFEL_ARCHIVE   Path to a LOCAL release .zip to install from, instead of
+REM                    downloading one. Skips version resolution, download and
+REM                    checksum verification -- you are asserting you trust the
+REM                    file you just pointed at. Exists so CI can execute this
+REM                    script end-to-end against a freshly built binary (see
+REM                    .github\workflows\windows-installers.yml); also usable
+REM                    for an offline install from a hand-downloaded asset.
 REM
 REM This mirrors install.ps1: same prefix (%USERPROFILE%\.grafel\bin), same
 REM release asset names, same checksums.txt verification, and the same
@@ -61,6 +68,35 @@ if defined GRAFEL_VERSION (
     if /I not "%GRAFEL_VERSION%"=="latest" (
         set "VERSION=%GRAFEL_VERSION%"
     )
+)
+
+REM GRAFEL_ARCHIVE short-circuits version resolution entirely: there is no tag
+REM to resolve when the archive is already on disk. It is applied AFTER the
+REM GRAFEL_VERSION block so that, if both are set, the archive wins -- the file
+REM you handed us is more specific than a tag we would then not download.
+REM
+REM The version label is cosmetic here (banner text plus the asset filename we
+REM never fetch), but it still has to survive the tag sanity-guard further down,
+REM which requires a leading "v", at least one digit and no "/". "v0.0.0-local"
+REM satisfies all three, so that guard keeps working unmodified.
+REM Normalize forward slashes to backslashes FIRST, on its own top-level line.
+REM Two reasons it is here and not inside the block below:
+REM   - A caller can legitimately hand us either separator. CI did exactly that
+REM     ("D:\a\_temp/archive/...") because the path was assembled from a GitHub
+REM     Actions expression, and cmd's `copy` treats a bare "/" as the start of a
+REM     switch, so the local-archive install failed before it ever began.
+REM   - Doing it at top level uses ordinary %VAR% expansion. The delayed-
+REM     expansion form this would need inside a parenthesised block ends in
+REM     "=\!", and a backslash immediately before the closing "!" is exactly the
+REM     kind of cmd.exe quoting edge that is invisible until it runs.
+if defined GRAFEL_ARCHIVE set "GRAFEL_ARCHIVE=%GRAFEL_ARCHIVE:/=\%"
+
+if defined GRAFEL_ARCHIVE (
+    if not exist "%GRAFEL_ARCHIVE%" (
+        echo error: GRAFEL_ARCHIVE is set to "%GRAFEL_ARCHIVE%" but that is not an existing file.
+        goto :fail
+    )
+    set "VERSION=v0.0.0-local"
 )
 
 REM Prefer the GitHub releases API: it returns the tag in a single JSON field
@@ -158,6 +194,13 @@ if exist "%BINDIR%\grafel.exe" echo   upgrading existing install at %BINDIR%
 if not exist "%BINDIR%" mkdir "%BINDIR%"
 
 REM --- download archive (curl, 3 retries) ---
+REM The local-archive path jumps OVER the download and checksum blocks rather
+REM than wrapping them in an else-branch. Wrapping would mean re-indenting ~50
+REM lines that contain parentheses, REM lines and delayed-expansion for-loops
+REM inside a parenthesised block -- three of cmd.exe's sharpest edges, on a
+REM script we cannot execute locally. A goto changes two lines and leaves the
+REM download path byte-for-byte as it was.
+if defined GRAFEL_ARCHIVE goto :use_local_archive
 echo downloading %ARCHIVE_URL%
 curl -fL --retry 3 -o "%TMPZIP%" "%ARCHIVE_URL%"
 if errorlevel 1 (
@@ -208,6 +251,35 @@ if /I not "%EXPECTED%"=="%ACTUAL%" (
     echo   actual:   %ACTUAL%
     goto :fail
 )
+
+goto :have_archive
+
+:use_local_archive
+REM No download, and therefore nothing to verify a checksum AGAINST: the
+REM published checksums.txt describes released assets, and this archive is by
+REM definition not one. Copying into %TMPZIP% rather than extracting in place
+REM keeps the extract step and the :cleanup handler identical to the download
+REM path, so the two paths diverge here and nowhere else.
+echo using local archive %GRAFEL_ARCHIVE%
+echo   ^(GRAFEL_ARCHIVE is set: skipping download and checksum verification^)
+REM stderr is NOT sent to nul: if copy has something to say about why it failed,
+REM that sentence is the whole diagnosis. Only stdout ("1 file(s) copied") is
+REM suppressed.
+copy /y "%GRAFEL_ARCHIVE%" "%TMPZIP%" >nul
+if errorlevel 1 (
+    echo error: failed to copy %GRAFEL_ARCHIVE% to %TMPZIP%
+    goto :fail
+)
+REM Belt and braces: `copy` does not always set a non-zero errorlevel on every
+REM failure mode, so confirm the destination actually exists rather than
+REM inferring it. Without this the script sails on to `tar -xf` a file that is
+REM not there and reports the confusing downstream error instead of this one.
+if not exist "%TMPZIP%" (
+    echo error: copy reported success but %TMPZIP% does not exist
+    goto :fail
+)
+
+:have_archive
 
 REM --- extract (tar ships with Windows 10 1803+) ---
 echo extracting

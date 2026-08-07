@@ -1,0 +1,206 @@
+name: cross-platform compile
+
+# Closes #6219 — the always-on compile-only gate.
+#
+# THE GAP THIS FILLS
+# A darwin-only test-file build break sat on `main` for two weeks. It was even
+# written down, in the "known limits" section of #6197's PR body, and CI still
+# could not see it: it surfaced only when a release tag finally ran test.yml's
+# 3-OS matrix, where it was a release blocker.
+#
+# Why nothing caught it:
+#   - pre-merge.yml           → workflow_dispatch only, and Linux only.
+#   - test.yml (3-OS matrix)  → gated on a `v*` tag or the `ci:full` label.
+#   - windows.yml             → workflow_dispatch only.
+#   - quality.yml             → workflow_dispatch only.
+# i.e. NOTHING compiled this repo off-Linux without a human first asking for it.
+# This workflow is that missing always-on leg, and nothing else.
+#
+# SCOPE: compile only. No test EXECUTION happens here — that stays in test.yml.
+# Red here means "this tree does not build on some platform", which is a fact,
+# not a flake. Keep it that way: do not add a step that can fail for any other
+# reason.
+#
+# WHY REAL RUNNERS AND NOT CROSS-`GOOS` VET FROM LINUX
+# The obvious cheap design is `GOOS=windows CGO_ENABLED=0 go vet ./...` on one
+# ubuntu runner. It does not work here, and the failure mode is the dangerous
+# kind — it is quiet.
+#
+# This repo's tree-sitter bindings are cgo. With CGO_ENABLED=0 the ~25 grammar
+# binding packages reduce to "build constraints exclude all Go files", and
+# internal/treesitter/ts/official then fails to type-check outright on
+# `undefined: tsofficial.Language` and six siblings. Measured on this tree.
+#
+# The quiet part: internal/daemon, internal/cli, internal/dashboard and
+# internal/mcp all sit downstream of that package. When a DEPENDENCY fails to
+# type-check, `go vet` reports the dependency and then says NOTHING AT ALL about
+# its dependents — they are never analyzed, and their absence from the output is
+# indistinguishable from their being clean. Reduced to a two-package module and
+# confirmed directly: a package whose dependency is broken AND which has its own
+# independent test-file break produces exactly one diagnostic, for the
+# dependency. The dependent's own break is invisible.
+#
+# So a cross-`GOOS` leg would have printed a wall of cgo noise while silently
+# declining to check the four largest packages in the repo — including
+# internal/cli and internal/mcp. That is worse than no gate: it is a gate that
+# reports green-adjacent output over an unexamined cone.
+#
+# A real windows-latest / macos-latest / ubuntu-latest runner with CGO_ENABLED=1
+# compiles the grammar bindings for real, so the cone is fully in scope and
+# every package downstream of it is actually type-checked. That is why this
+# workflow spends three runners instead of one. CI here is free and unlimited
+# (public repo, standard runners); a trustworthy gate is worth more than a leg.
+#
+# WHY `go vet` AND NOT `go build`
+# The defect class is a TEST FILE that does not compile off-macOS. `go build
+# ./...` does not look at _test.go files at all and would have shipped every one
+# of the three breaks the #6219 sweep found. `go vet` type-checks the test files
+# too, which is the entire point. (`go vet` also runs its analyzers, which is a
+# bonus, not the reason.)
+#
+# NOTE ON `runtime.GOOS != "..."` + `t.Skip`
+# That idiom guards EXECUTION, not COMPILATION. A test file that skips itself on
+# non-darwin still has to type-check on windows and linux, so a darwin-only
+# symbol in such a file is a build break everywhere else even though the test
+# would never have run. That idiom produced one of the three #6219 breaks. Only
+# a `//go:build` constraint excludes a file from compilation. This workflow is
+# what makes that mistake visible on the PR that introduces it.
+
+on:
+  # ALWAYS ON. This is the whole point of the file — see the header. Do not add
+  # a label gate, a path filter or a dispatch-only restriction here without
+  # replacing the coverage somewhere else; #6219 is precisely what an opt-in
+  # cross-platform check fails to catch.
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Supersede in-flight runs for the same ref. This is a compile check, so only
+  # the newest commit's answer is interesting.
+  group: cross-platform-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    name: compile (${{ matrix.os }})
+    strategy:
+      # Every platform reports independently. A windows break must not hide a
+      # darwin break — enumerating ALL of them in one run is the goal.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    # Generous relative to the ~5-10 min steady-state cost, because a COLD cache
+    # has to compile ~25 cgo grammar bindings from source, and that is slow on
+    # the Windows runner in particular. Well under GitHub's 6h default so a hung
+    # step still fails rather than idling.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # MinGW provides the C toolchain the tree-sitter bindings need. Without
+      # it, CGO_ENABLED=1 cannot link on Windows and we would be back to the
+      # CGO_ENABLED=0 blind spot this workflow exists to avoid.
+      - name: Setup MSYS2 + MinGW (Windows only)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2.31.1
+        with:
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+          update: false
+
+      # CGO_ENABLED=1 is set EXPLICITLY on all three platforms rather than left
+      # to the default. The default is 1 only when a C compiler is discoverable,
+      # so a runner image change that dropped cc would silently downgrade this
+      # job into the exact CGO_ENABLED=0 blind spot described in the header —
+      # and it would still report green. Setting it explicitly turns that into a
+      # hard failure instead.
+      - name: Pin CGO on
+        shell: bash
+        run: |
+          echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            echo "CC=x86_64-w64-mingw32-gcc" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - run: go mod download
+
+      # Assert the cone this workflow exists to cover is actually reachable
+      # BEFORE we draw any conclusion from a green vet. If cgo is off, the
+      # grammar bindings vanish behind build constraints, the packages
+      # downstream of internal/treesitter/ts/official are never type-checked,
+      # and `go vet` still exits 0 over the wreckage. Fail loudly instead.
+      - name: Assert cgo is live (guards against a silent CGO_ENABLED=0 downgrade)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cgo=$(go env CGO_ENABLED)
+          echo "CGO_ENABLED=${cgo}  CC=$(go env CC)"
+          if [ "${cgo}" != "1" ]; then
+            echo "::error::CGO_ENABLED=${cgo}; the tree-sitter cone would be excluded and this gate would be meaningless (#6219)"
+            exit 1
+          fi
+          # A direct type-check of the package that goes undefined without cgo.
+          # If this compiles, the whole grammar cone compiled.
+          go build ./internal/treesitter/ts/official/
+
+      # THE GATE. `go vet` type-checks _test.go files, which `go build ./...`
+      # does not — and the #6219 defect class is a test file that does not
+      # compile off-macOS.
+      #
+      # Reporting ALL failures, not just the first, matters here: the #6219
+      # sweep found a third instance that CI could never have surfaced. Measured
+      # on Go 1.26, `go vet ./...` does report every INDEPENDENTLY broken
+      # package (verified with 18 deliberately broken packages: 18 reported).
+      # What it does NOT report is a package whose DEPENDENCY failed to
+      # type-check — those are dropped silently. So on failure we re-run
+      # per-package, which forces a diagnostic for every package the sweep can
+      # still analyze on its own, and prints one explicit list at the end.
+      #
+      # The happy path is a single `go vet ./...`, so the per-package sweep
+      # costs nothing when the tree is clean.
+      - name: go vet (compiles test files too)
+        shell: bash
+        run: |
+          set -uo pipefail
+          if go vet ./...; then
+            echo "OK: all packages type-check on ${{ matrix.os }} (test files included)"
+            exit 0
+          fi
+
+          echo "::group::enumerating every failing package"
+          # go vet stopped short somewhere. Re-check each package on its own so
+          # a break masked behind a broken dependency still gets named.
+          failed=""
+          while read -r pkg; do
+            if ! go vet "$pkg" 2>&1; then
+              failed="${failed}${pkg}"$'\n'
+            fi
+          done < <(go list ./...)
+          echo "::endgroup::"
+
+          echo "::error::packages that do not compile on ${{ matrix.os }} (#6219):"
+          printf '%s' "$failed"
+          exit 1
+
+      # Same compile-guard as pre-merge.yml and test.yml, but on ALL THREE
+      # platforms and always on. perf-tagged tests are excluded from the normal
+      # build, so an undefined symbol in one is invisible to the step above and
+      # rots until the weekly perf workflow runs. A perf-tagged file can carry
+      # the darwin-only-symbol defect just as easily as an untagged one, and
+      # this is the workflow whose job is to notice.
+      - name: go vet (perf-tagged tests still compile)
+        shell: bash
+        run: go vet -tags perf ./...

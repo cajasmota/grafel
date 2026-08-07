@@ -31,17 +31,28 @@ ladder. Run it on real hardware for each release.
 - [ ] `acceptance.yml` has a **green** `workflow_dispatch` run on the release
       commit across **all three** OSes (ubuntu-latest, windows-latest,
       macos-14). Re-dispatch if the last run predates the commit.
-- [ ] `test.yml` has a **green** `workflow_dispatch` run **with the `race`
-      input left ON (the default)** on the release commit, across all three
-      OSes. Re-dispatch if the last run predates the commit.
+- [ ] *(optional since #6064 — a rehearsal, no longer a gate)* `test.yml` has a
+      **green** `workflow_dispatch` run **with the `race` input left ON (the
+      default)** on the release commit, across all three OSes.
 
-      **This is the only thing that makes the race detector a release gate.**
-      `test.yml` does run with `-race` on a `v*` tag push, but `release.yml`
-      fires on that *same* tag and does not depend on it: the two start
-      concurrently, and `release.yml` typically publishes the Release before
-      the slowest `test.yml` leg finishes. A race caught by the tag run lands
-      on a tag that has already shipped. Dispatching **before** tagging is what
-      converts `-race` from a post-mortem into a gate (#6056).
+      **This used to be the only thing that made the race detector a release
+      gate, and it is not any more.** It is now enforced: `release.yml` invokes
+      `test.yml` through `workflow_call` and its publish job carries
+      `needs: [build, tests]`, so a red matrix on any platform SKIPS the
+      publish. `test.yml`'s own `push: tags` trigger was removed in the same
+      change, so the matrix runs exactly once per tag — as a dependency.
+
+      Previously both workflows fired on the same `v*` tag, started
+      concurrently, and neither could fail the other: `release.yml` typically
+      published the Release before the slowest `test.yml` leg finished, so a
+      race caught by the tag run landed on a tag that had already shipped
+      (#6056). Dispatching by hand before tagging was the workaround, and it
+      was exactly that — a human remembering, with nothing to catch them if
+      they forgot.
+
+      Still worth dispatching when you want the answer BEFORE you cut the tag,
+      rather than watching the tag run block. Forgetting it no longer downgrades
+      the release to no gate at all.
 
       Expect this to take substantially longer than a non-race run — `-race`
       costs roughly 5-10x wall time, and `internal/mcp` alone is ~9-10 min.

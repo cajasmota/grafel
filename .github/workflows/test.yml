@@ -8,25 +8,44 @@ name: test
 # treat a tag run as multiples of 195 billed min, not 195. NOT re-measured on
 # GitHub runners — do that before relying on any number here (#6056).
 # Default: NO auto-CI on routine pushes/PRs. Local `go test -race` is the routine backstop.
-# Milestone gate: full 3-platform matrix runs on version tags (push: tags 'v*') + manual workflow_dispatch.
+#   (cross-platform-compile.yml IS always-on, but it is compile-only — it never
+#   runs a test. It cannot substitute for this workflow; see #6219.)
+# Milestone gate: full 3-platform matrix runs on version tags + manual workflow_dispatch.
 #   → batch the platform checks before shipping a milestone.
 # Opt-in: add label `ci:full` to force full 3-platform testing on a specific PR.
-# Race detector: ON for tag pushes and (by default) workflow_dispatch — see the
+# Race detector: ON for tag runs and (by default) workflow_dispatch — see the
 # "Race detector policy" comment on the Test step for exactly what each trigger
-# delivers, and for why a tag push is NOT a release gate. There is deliberately
-# NO push-to-main trigger; the comment used to claim post-merge race sanity on
-# main that the triggers never provided (#6056).
+# delivers. There is deliberately NO push-to-main trigger; the comment used to
+# claim post-merge race sanity on main that the triggers never provided (#6056).
+#
+# ON A TAG, THIS WORKFLOW IS CALLED BY release.yml — IT IS NOT TRIGGERED DIRECTLY.
+# It used to subscribe to `push: tags ['v*']`, the same trigger as release.yml,
+# so the two started CONCURRENTLY and neither could fail the other: a red matrix
+# did not stop a publish (#6064). The tag trigger is gone and release.yml now
+# invokes this workflow through `workflow_call` and hangs its publish job off it
+# with `needs:`, which is a real dependency. Same matrix, same -race, same
+# platforms, on every tag as before — the only change is that it now BLOCKS.
+# Do not re-add `push: tags` here: it would restore the parallel run this file
+# spent #6056 documenting and #6064 removing, and would double every tag run.
 
 on:
+  # Invoked by release.yml on a version tag. The `race` input is declared for
+  # both entry points so the `${{ inputs.race }}` expression on the Test step
+  # resolves under either; on the tag path the first branch of that condition
+  # already matches, so -race is on regardless of what is passed.
+  workflow_call:
+    inputs:
+      race:
+        description: 'Run the suite under the Go race detector (-race).'
+        type: boolean
+        default: true
+
   workflow_dispatch:
     inputs:
       race:
         description: 'Run the suite under the Go race detector (-race). ON by default so a pre-release dispatch matches the tag run exactly; turn it off for a quick platform-only check.'
         type: boolean
         default: true
-
-  push:
-    tags: ['v*']
 
   pull_request_target:
     types: [labeled]
@@ -38,7 +57,12 @@ jobs:
   test:
     # Gate: run when —
     #   (a) workflow_dispatch, OR
-    #   (b) a `v*` tag push (the only `push` this workflow subscribes to), OR
+    #   (b) a `push` — which now only reaches this job via release.yml's
+    #       `workflow_call` on a `v*` tag. A called workflow sees the CALLER's
+    #       event, so `github.event_name` is `push` and `github.ref` is
+    #       `refs/tags/v*`, exactly as when this workflow subscribed to the tag
+    #       itself. That is what keeps both this gate and the -race branch below
+    #       working unchanged, OR
     #   (c) pull_request_target with the `ci:full` label.
     if: |
       github.event_name == 'workflow_dispatch' ||
@@ -205,28 +229,40 @@ jobs:
       # condition here without adding the matching trigger above.
       #
       # What the triggers actually deliver now:
-      #   - push of a `v*` tag  → race, on all three platforms.
+      #   - `v*` tag, via release.yml's workflow_call → race, all three
+      #     platforms. A called workflow reports the caller's event, so this
+      #     arrives as event_name=push / ref=refs/tags/v*.
       #   - workflow_dispatch   → race when the `race` input is true (default).
       #   - PR with `ci:full`   → race (platform-sensitive opt-in).
       #   - anything else       → no race (there is nothing else today; the
       #     branch exists so adding a cheap trigger later stays cheap).
       #
-      # A TAG PUSH IS NOT A RELEASE GATE. Say what the trigger delivers and no
-      # more — claiming otherwise is the #6056 defect all over again.
-      # release.yml is `on: push: tags: ['v*']`, the SAME trigger, and its job
-      # graph (dashboard → build → release) has no `needs:` on this workflow, no
-      # `workflow_run`, and no environment approval. The two workflows start
-      # concurrently and neither can fail the other: release.yml can publish the
-      # Release at ~14 min while this workflow is still running, and a race
-      # tripped by the windows leg at ~22 min lands on an already-shipped tag.
-      # On the tag path -race is a POST-MORTEM.
-      # The only mechanism by which -race actually blocks a release today is the
-      # manual `workflow_dispatch` on the release commit BEFORE tagging — which
-      # is why the `race` input exists and why it defaults to true, and it is a
-      # required §0 checkbox in docs/runbooks/release-signoff.md.
-      # Recommended follow-up (NOT done here — it changes how releases work and
-      # is the user's call): make release.yml's first job `needs:` a green test
-      # run, or gate the publish step on a `workflow_run` of this workflow.
+      # A TAG RUN IS NOW A RELEASE GATE (#6064). This paragraph used to say the
+      # opposite, and it was right at the time: release.yml was `on: push: tags:
+      # ['v*']` and so was this workflow, the SAME trigger, with no `needs:`, no
+      # `workflow_run` and no approval between them. They started concurrently
+      # and neither could fail the other — release.yml published at ~14 min
+      # while this workflow was still running, so a race tripped by the windows
+      # leg at ~22 min landed on an already-shipped tag. On the tag path -race
+      # was a POST-MORTEM.
+      #
+      # That is fixed. This workflow's own tag trigger is gone; release.yml
+      # calls it via `workflow_call` and its publish job carries
+      # `needs: [build, tests]`. A red matrix on ANY of the three platforms now
+      # fails the `tests` job, which skips `release`, which means no GitHub
+      # Release is created. The binaries still build (that job runs in parallel
+      # and is not gated) — they simply are not published.
+      #
+      # This also retires the manual step that stood in for the gate: v0.2.1 was
+      # protected by dispatching this workflow on `main` by hand BEFORE tagging.
+      # That worked, but it was a human remembering, written down nowhere except
+      # a §0 checkbox in docs/runbooks/release-signoff.md. Forgetting it was a
+      # silent downgrade to no gate at all. The dispatch is now redundant, not
+      # merely documented — which was the point.
+      #
+      # The `race` input and its `true` default still matter for the standalone
+      # dispatch path (a pre-release rehearsal, or checking a platform without
+      # cutting a tag).
       #
       # -timeout is PER TEST BINARY, and the two branches need different values.
       #
