@@ -5677,10 +5677,10 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 	merged = prunedMerged
 	if pruneStats.Considered > 0 {
 		fmt.Fprintf(os.Stderr,
-			"import-placeholder-prune: considered=%d pruned=%d rels_hoisted=%d rels_orphaned=%d kept=%d edge_toid_rewrites=%d ref_repoints=%d\n",
+			"import-placeholder-prune: considered=%d pruned=%d rels_hoisted=%d rels_orphaned=%d kept=%d edge_toid_rewrites=%d ref_repoints=%d module_restores=%d\n",
 			pruneStats.Considered, pruneStats.Pruned, pruneStats.RelsHoisted,
 			pruneStats.RelsOrphaned, pruneStats.PlaceholderKept, pruneStats.EdgeToIDRewrites,
-			pruneStats.PlaceholderRefRepoints)
+			pruneStats.PlaceholderRefRepoints, pruneStats.PlaceholderModuleRestores)
 	}
 	if len(pruneOrphanRels) > 0 {
 		// Migrate to the standalone pass2Rels stream so the
