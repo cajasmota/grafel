@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // ServerName is the canonical key used in mcpServers maps.
@@ -335,6 +337,77 @@ func DetectClaudeConfigDirs(dirs []string) []string {
 	return out
 }
 
+// guardWriteTarget applies the test-isolation guard to a RESOLVED path — the
+// file an operation is actually about to touch, after following symlinks.
+//
+// This is not redundant with the guardResolvedConfigPath(path) the exported
+// entry points already do. The guard decides by looking at the path STRING, so
+// once this package follows symlinks a link inside a properly-isolated
+// t.TempDir() pointing at the real ~/.claude.json makes the named path look
+// safe while the operation is anything but.
+//
+// There are exactly TWO call sites, one per operation that can touch a resolved
+// path: writeThrough (every write) and RestoreSnapshot's absent-sentinel branch
+// (the one delete, which never goes through writeThrough). Each is pinned by
+// its own test — TestRegisterPath_SymlinkTargetIsGuarded and
+// TestRestoreSnapshot_SentinelRemovalIsGuarded — because an earlier revision
+// had the same check in two overlapping places and deleting EITHER left the
+// suite green.
+func guardWriteTarget(target string) {
+	guardResolvedConfigPath(target, "MCP host config (symlink target)")
+}
+
+// mcpServersOf returns the mcpServers map to merge into, or an error when the
+// key holds something that is not an object.
+//
+// The code this replaces was `servers, _ := doc["mcpServers"].(map[string]any)`.
+// The blank swallows a FAILED assertion: for `{"mcpServers": [...]}` servers
+// became a fresh empty map and the write then put that empty object back,
+// destroying whatever the user had there — silently, with an exit code of 0.
+//
+// This mirrors, one level down, the contract readSettings already enforces for
+// the top-level document (see the null-document comment there): `null` carries
+// nothing and is indistinguishable from absent, so it is tolerated; every other
+// non-object is a real value whose replacement destroys something, so it fails
+// and the file is left byte-identical.
+//
+// The error wraps ErrMalformedConfig so a caller CAN tell "the user's config is
+// broken" from "the write failed". No caller distinguishes them today and that
+// is deliberate — see the comment on ErrMalformedConfig's use in install.RunCopy
+// step 3.
+func mcpServersOf(doc map[string]any, path string) (map[string]any, error) {
+	raw, present := doc["mcpServers"]
+	if !present || raw == nil {
+		return map[string]any{}, nil
+	}
+	servers, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s: %w: mcpServers is a JSON %s, not an object",
+			filepath.Base(path), ErrMalformedConfig, jsonTypeName(raw))
+	}
+	return servers, nil
+}
+
+// jsonTypeName names the JSON type of a value decoded into `any`, for error
+// messages that tell the user what is actually in their file.
+func jsonTypeName(v any) string {
+	switch v.(type) {
+	case nil:
+		return "null"
+	case bool:
+		return "boolean"
+	case float64, json.Number:
+		return "number"
+	case string:
+		return "string"
+	case []any:
+		return "array"
+	case map[string]any:
+		return "object"
+	}
+	return fmt.Sprintf("%T", v)
+}
+
 // Register writes (or updates) the grafel entry in the given tool's
 // settings file. Other entries in `mcpServers` are preserved.
 //
@@ -452,9 +525,9 @@ func RegisterPath(path, binPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	servers, _ := doc["mcpServers"].(map[string]any)
-	if servers == nil {
-		servers = map[string]any{}
+	servers, err := mcpServersOf(doc, path)
+	if err != nil {
+		return "", err
 	}
 	servers[ServerName] = Entry{
 		Command: binPath,
@@ -520,6 +593,11 @@ func UnregisterPath(path string) error {
 // name. Callers that genuinely want removal call UnregisterPath, which says so.
 var ErrNoSnapshot = errors.New("mcpreg: no pristine snapshot for config path")
 
+// ErrMalformedConfig reports that the USER's host config is structurally
+// unusable, as opposed to grafel having failed to write it. See the comment on
+// mcpServersOf.
+var ErrMalformedConfig = errors.New("mcpreg: malformed host config")
+
 // RestoreSnapshot reverses a RegisterPath using the pristine backup taken by
 // backupOnce. It is the rollback entry point, and MUST be used instead of
 // writing `{}`:
@@ -545,8 +623,21 @@ func RestoreSnapshot(path string) error {
 	}
 
 	if string(b) == backupSentinelAbsent {
-		// Original did not exist; remove grafel's file entirely.
-		if rmErr := os.Remove(path); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+		// Original did not exist; remove the file grafel created.
+		//
+		// resolveWriteTarget, not path: when path is a DANGLING symlink the
+		// absent-sentinel is exactly what backupOnce recorded, and the file
+		// grafel created is the link's TARGET. Removing the link instead would
+		// destroy the user's symlink and leave grafel's file orphaned behind
+		// it — the opposite of a restore in both halves.
+		target, resErr := resolveWriteTarget(path)
+		if resErr != nil {
+			return resErr
+		}
+		// This delete never passes through writeThrough, so it needs its own
+		// resolved-path guard — see guardWriteTarget.
+		guardWriteTarget(target)
+		if rmErr := os.Remove(target); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
 			return rmErr
 		}
 		_ = os.Remove(sidecar)
@@ -554,7 +645,14 @@ func RestoreSnapshot(path string) error {
 	}
 
 	// Restore the original content verbatim.
-	if err := os.WriteFile(path, b, 0o644); err != nil {
+	//
+	// Via writeThrough, not os.WriteFile(path, b, 0o644): the hardcoded 0644
+	// re-introduced #6240's mode widening on the rollback path, so a fixed
+	// install followed by a rollback still handed a 0600 config back at 0644.
+	// writeThrough also survives a read-only (0444) destination, which
+	// os.WriteFile cannot open at all — and which the fixed write path now
+	// leaves in place instead of widening away.
+	if err := writeThrough(path, b); err != nil {
 		return err
 	}
 	_ = os.Remove(sidecar)
@@ -594,7 +692,11 @@ func readSettings(path string) (map[string]any, error) {
 	}
 	doc := map[string]any{}
 	if err := json.Unmarshal(b, &doc); err != nil {
-		return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
+		// Wrapped with ErrMalformedConfig for the same reason mcpServersOf is:
+		// unparseable JSON and a wrong-typed mcpServers are one class — the
+		// USER's file is broken — and a sentinel that covered only one of them
+		// would be a classification callers cannot rely on.
+		return nil, fmt.Errorf("%s: %w: %v", filepath.Base(path), ErrMalformedConfig, err)
 	}
 	// The literal `null` is the one non-object that unmarshals into a map
 	// WITHOUT an error: encoding/json's documented behaviour is to set the map
@@ -615,11 +717,127 @@ func writeSettings(path string, doc map[string]any) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	return writeThrough(path, b)
+}
+
+// newConfigPerm is the mode for a host config grafel CREATES.
+//
+// It is 0600, not the 0644 the old temp file leaked in. These files carry
+// credentials — ~/.claude.json holds the OAuth token and the full per-project
+// history — and at minimum they enumerate every project on the machine. There
+// is no reason for another local account to be able to read a file grafel
+// invented. Configs that ALREADY exist keep whatever mode their owner chose;
+// this applies only when there was nothing there before.
+const newConfigPerm os.FileMode = 0o600
+
+// maxSymlinkHops bounds resolveWriteTarget's walk.
+//
+// 40 matches Linux's MAXSYMLINKS, deliberately the most permissive of the
+// kernel limits: anything the OS itself would follow must resolve here too. An
+// earlier 32 (macOS's limit) meant a 33-39 link chain resolved fine for the
+// kernel but ran out of budget here — and the old code answered that by
+// returning the last hop reached, which is itself a symlink. See the error
+// below for why that mattered.
+const maxSymlinkHops = 40
+
+// resolveWriteTarget follows a symlink chain at path and returns the real file
+// a write must land on.
+//
+// Why this exists: writing via temp-file + rename replaces the LINK INODE, so a
+// ~/.claude.json symlinked into a dotfiles repo silently DETACHES from that repo
+// on the first `grafel install` — the user keeps editing the repo copy and
+// Claude Code keeps reading a regular file that no longer tracks it (#6240).
+// Resolving here means the temp file is created in the TARGET's directory, so
+// the rename stays intra-filesystem and therefore atomic.
+//
+// A path that is not a symlink, a dangling symlink (the final target is
+// returned even though it does not exist yet, which is what a create must use),
+// and an unreadable link all resolve to a usable answer.
+//
+// An UNRESOLVABLE chain — a cycle, or one longer than any kernel would
+// follow — is an ERROR, not a best-effort answer. Returning the last hop
+// reached looks harmless and is not: that path is a symlink, so the caller
+// renames over it and flattens one of the user's links into a regular file
+// while reporting success. That is this issue's own damage class, and on
+// RestoreSnapshot (which reaches the writer with no prior read to fail first)
+// it was live.
+func resolveWriteTarget(path string) (string, error) {
+	cur := path
+	for i := 0; i < maxSymlinkHops; i++ {
+		fi, err := os.Lstat(cur)
+		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			return cur, nil
+		}
+		dest, err := os.Readlink(cur)
+		if err != nil {
+			return cur, nil
+		}
+		if !filepath.IsAbs(dest) {
+			dest = filepath.Join(filepath.Dir(cur), dest)
+		}
+		cur = filepath.Clean(dest)
+	}
+	return "", fmt.Errorf("%s: %w: symlink chain still unresolved after %d hops "+
+		"(a cycle, or longer than any kernel will follow)",
+		filepath.Base(path), ErrMalformedConfig, maxSymlinkHops)
+}
+
+// destPerm returns the mode a write to target must produce: the mode target
+// already has, or newConfigPerm when it does not exist.
+//
+// os.Stat, not os.Lstat, is deliberate — target is already resolved, and on the
+// unresolved path Lstat would report the LINK's mode (0777 on Linux), which is
+// not the mode any content is stored at.
+func destPerm(target string) os.FileMode {
+	if fi, err := os.Stat(target); err == nil {
+		return fi.Mode().Perm()
+	}
+	return newConfigPerm
+}
+
+// writeThrough replaces the contents of path atomically, writing THROUGH any
+// symlink and preserving the destination's existing mode.
+//
+// It deliberately does NOT use atomicfile.WriteFile: that helper documents both
+// of those behaviours as inverted on purpose ("a SYMLINK at path is REPLACED by
+// a regular file"; perm applied verbatim from the caller), so
+// atomicfile.WriteFile(path, b, 0o644) reproduces #6240 exactly. Only the
+// rename half is shared, because the Windows recovery in it is non-obvious and
+// already has five hand-rolled copies in this tree.
+func writeThrough(path string, b []byte) (err error) {
+	target, err := resolveWriteTarget(path)
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	// Trap: the entry-point guards see the UNRESOLVED path, so a symlink
+	// pointing out of a t.TempDir() into the real $HOME would walk straight
+	// past them. Guard what we are actually about to write.
+	guardWriteTarget(target)
+
+	perm := destPerm(target)
+	f, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() {
+		if err != nil {
+			_ = os.Remove(tmp)
+		}
+	}()
+	if _, err = f.Write(b); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	// os.CreateTemp always creates 0600; restore the destination's own mode.
+	if err = os.Chmod(tmp, perm); err != nil {
+		return err
+	}
+	err = atomicfile.Rename(tmp, target)
+	return err
 }
 
 // HasGrafelEntry reports whether the config file at path already contains a

@@ -145,15 +145,14 @@ func unregisterTOML(path string) error {
 	return writeRaw(path, strings.TrimRight(stripped, "\n")+"\n")
 }
 
-// writeRaw writes content atomically (temp file + rename), matching the JSON
-// writer's durability behaviour.
+// writeRaw writes content atomically, matching the JSON writer's behaviour in
+// every respect — including, since #6240, writing THROUGH a symlinked
+// ~/.codex/config.toml and preserving that file's existing mode. Codex's config
+// is as likely to be symlinked into a dotfiles repo as Claude Code's, and this
+// writer had the identical three-line defect.
 func writeRaw(path, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return writeThrough(path, []byte(content))
 }

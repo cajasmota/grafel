@@ -81,6 +81,12 @@ import (
 //     []byte. Same follow-up as WriteAtomic.
 //   - internal/install/*, internal/cli/register.go, internal/agentpatterns/* are
 //     install-time / interactive single-writer paths.
+//     (internal/install/mcpreg/{mcpreg,toml}.go came OFF this list in #6240 —
+//     not by converting to atomicfile.WriteFile, which reproduces that bug
+//     exactly, but by growing a local writeThrough that keeps the unique
+//     CreateTemp name and shares only atomicfile.Rename. Converting a file is
+//     not the only way to leave the ledger; ceasing to build a deterministic
+//     temp name is.)
 //   - internal/enrichment/*, internal/dashboard/*, internal/embed,
 //     internal/indexer/diff, internal/agents and internal/graph/manifest are
 //     plausible follow-ups but were left out to keep the first commit
@@ -105,8 +111,6 @@ var notYetConverted = map[string]bool{
 	"internal/graph/manifest.go":                          true,
 	"internal/indexer/diff/diff.go":                       true,
 	"internal/install/agenthooks/claudecode.go":           true,
-	"internal/install/mcpreg/mcpreg.go":                   true,
-	"internal/install/mcpreg/toml.go":                     true,
 	"internal/install/mcptools/mcptools.go":               true,
 	"internal/install/rulesfiles/rulesfiles.go":           true,
 	"internal/install/state.go":                           true,
