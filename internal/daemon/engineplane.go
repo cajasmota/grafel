@@ -390,6 +390,13 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 				// matched (cleaned-absolute) against this set so unrelated
 				// processes are never touched.
 				ManagedRepo: makeManagedRepoPredicate(trackedRepos),
+				// #6187: a SIGTERM is only half a reap. When a foreign reap
+				// leaves a managed repo with no watcher at all, deregister
+				// its OS unit so on-disk state stops claiming a loaded job
+				// that is not running — since #6179 the watcher exits 0 and
+				// launchd will never relaunch it, so without this the repo
+				// is silently and permanently unwatched.
+				UnloadWatcherUnit: makeWatcherUnitUnloader(logger),
 				// #5933: this reaper runs inside the ENGINE process, not the
 				// daemon/serve process that stamps watcher entries'
 				// OwnerDaemonPID (internal/cli/watch.go's liveDaemonPID), so

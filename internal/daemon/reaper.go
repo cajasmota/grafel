@@ -32,6 +32,8 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/watchreg"
@@ -98,6 +100,27 @@ type ReaperConfig struct {
 	// sweep). Injectable for tests so the sweep can be exercised without
 	// touching real processes.
 	KillWatchProc func(pid int) error
+
+	// UnloadWatcherUnit, when non-nil, deregisters the OS watcher unit for a
+	// repo path from the scheduler (launchctl bootout / systemctl disable /
+	// schtasks delete), leaving the unit FILE in place. The foreign-watcher
+	// sweep calls it for every managed repo where it reaped a foreign watcher
+	// and left NO watcher running (#6187).
+	//
+	// Killing the process is only half of a reap. The unit stays registered, so
+	// on-disk state claims a loaded job with nothing behind it — and since
+	// #6179 the watcher exits 0 on SIGTERM, so launchd will never relaunch it.
+	// Booting it out makes the two views agree: the repo now visibly HAS no
+	// watcher, which `grafel doctor` reports and `grafel start` / `grafel
+	// install` can put right, instead of a phantom that every tool believes is
+	// running.
+	//
+	// The "no watcher left" condition is what makes this safe. A foreign
+	// hand-started watcher alongside a healthy launchd-owned one is reaped
+	// without touching the unit, because nothing about that repo's state is
+	// incoherent. nil disables the deregistration entirely; the reap itself is
+	// unaffected.
+	UnloadWatcherUnit func(repoPath string)
 
 	// LiveDaemonPID returns the PID of the currently-live daemon/serve process,
 	// used to detect orphaned watchers (their OwnerDaemonPID is stamped from
@@ -361,6 +384,11 @@ func (r *Reaper) sweepForeignWatchers() int {
 		kill = sigtermPID
 	}
 
+	// repoOf remembers each PID's repo so the sweep can decide, after the kills,
+	// which repos were left with no watcher at all (see UnloadWatcherUnit).
+	// Populated from the same enumeration the plan is computed from, so the two
+	// cannot drift.
+	repoOf := map[int]string{}
 	plan := watchscan.Compute(watchscan.Deps{
 		SelfExe: selfExe,
 		Managed: r.cfg.ManagedRepo,
@@ -371,6 +399,9 @@ func (r *Reaper) sweepForeignWatchers() int {
 			}
 			out := make([]watchscan.Proc, 0, len(procs))
 			for _, p := range procs {
+				if p.PID > 0 && p.Repo != "" {
+					repoOf[p.PID] = filepath.Clean(p.Repo)
+				}
 				out = append(out, watchscan.Proc{PID: p.PID, Exe: p.Exe, Repo: p.Repo})
 			}
 			return out, nil
@@ -378,6 +409,18 @@ func (r *Reaper) sweepForeignWatchers() int {
 	})
 
 	pids := plan.PIDs()
+	// killedRepos are the repos this sweep actually terminated a watcher for,
+	// and deadPID the PIDs it terminated. Together they answer the only
+	// question the unload step asks: did the sweep leave a repo with NO watcher
+	// at all? A repo is entered here on ANY successful kill, foreign or
+	// duplicate — the two need not be distinguished, because a duplicate
+	// collapse always keeps a survivor by construction (pickSurvivor's choice
+	// is never in the plan) and so can never satisfy the no-watcher-left
+	// condition. Making that an explicit second condition would add a branch no
+	// test could falsify.
+	killedRepos := map[string]bool{}
+	deadPID := map[int]bool{}
+
 	reaped := 0
 	for _, pid := range pids {
 		if pid == os.Getpid() {
@@ -388,12 +431,52 @@ func (r *Reaper) sweepForeignWatchers() int {
 			continue
 		}
 		reaped++
+		deadPID[pid] = true
+		if repo := repoOf[pid]; repo != "" {
+			killedRepos[repo] = true
+		}
 	}
 	if reaped > 0 {
 		r.logger.Info("reaper: reaped foreign/duplicate grafel-watch processes",
 			"reaped", reaped, "foreign", len(plan.Foreign), "duplicate", len(plan.Duplicate))
 	}
+	r.unloadOrphanedWatcherUnits(killedRepos, deadPID, repoOf)
 	return reaped
+}
+
+// unloadOrphanedWatcherUnits deregisters the OS unit of every repo in
+// killedRepos that has NO surviving watcher process (#6187). A repo where some
+// watcher is still alive — including one whose SIGTERM failed, and including
+// the survivor a duplicate collapse deliberately keeps — is left alone: its
+// unit is not lying about anything, and booting it out would take a healthy
+// watcher down. That single condition is what keeps this safe against the
+// awkward case, a hand-started stale-binary watcher reaped alongside a healthy
+// launchd-owned one.
+//
+// Repos are visited in sorted order so a sweep's side effects and its log lines
+// are reproducible.
+func (r *Reaper) unloadOrphanedWatcherUnits(killedRepos map[string]bool, deadPID map[int]bool, repoOf map[int]string) {
+	if r.cfg.UnloadWatcherUnit == nil || len(killedRepos) == 0 {
+		return
+	}
+	survives := map[string]bool{}
+	for pid, repo := range repoOf {
+		if !deadPID[pid] {
+			survives[repo] = true
+		}
+	}
+	orphaned := make([]string, 0, len(killedRepos))
+	for repo := range killedRepos {
+		if !survives[repo] {
+			orphaned = append(orphaned, repo)
+		}
+	}
+	sort.Strings(orphaned)
+	for _, repo := range orphaned {
+		r.logger.Info("reaper: deregistering watcher unit for a repo left with no watcher after a foreign reap (#6187)",
+			"repo", repo)
+		r.cfg.UnloadWatcherUnit(repo)
+	}
 }
 
 // sigtermPID sends SIGTERM to pid via the process package's portable Kill.

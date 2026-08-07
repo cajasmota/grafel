@@ -22,8 +22,12 @@
 // the decision logic is unit-testable with no real processes), and for each one
 // targeting a repo the daemon MANAGES it decides whether to reap it:
 //
-//   - a watcher whose executable path differs from the daemon's own
-//     os.Executable() is a stale/foreign-version watcher → reap; and
+//   - a watcher whose executable is PROVABLY a different binary from the
+//     daemon's own os.Executable() is a stale/foreign-version watcher → reap.
+//     "Provably" is load-bearing: the comparison resolves symlinks and treats
+//     any path it cannot resolve as unknown rather than as skew, because a
+//     false foreign verdict silently and permanently kills the user's watchers
+//     (#6187, and see #6179 for why it stopped being self-healing); and
 //   - among watchers for the SAME managed repo, keep exactly one (the
 //     daemon's-own-exe one if present, else the lowest PID) and reap the rest.
 //
@@ -56,8 +60,11 @@ type Deps struct {
 	// List, or one that errors, makes Plan return an empty plan (best-effort).
 	List func() ([]Proc, error)
 	// SelfExe is the daemon's own executable path (os.Executable() in
-	// production). A watcher whose Exe differs from this — when both are known —
-	// is treated as a stale/foreign-version watcher.
+	// production). A watcher whose Exe is PROVABLY a different binary from this
+	// — both paths known, both resolving on disk, resolving to different files
+	// — is treated as a stale/foreign-version watcher. Symlinks are resolved,
+	// so a shim invocation is not skew; an unresolvable path on either side is
+	// not skew either. See sameExe (#6187).
 	SelfExe string
 	// Managed reports whether repoPath is a repo the daemon manages. Only
 	// watchers for managed repos are ever reaped. Required; a nil Managed makes
@@ -96,14 +103,103 @@ func (p Plan) PIDs() []int {
 	return out
 }
 
-// sameExe reports whether two executable paths refer to the same binary. Both
-// must be non-empty to compare; an unknown path (empty) is never declared a
-// mismatch, so we don't reap a watcher merely because we couldn't read its exe.
+// sameExe reports whether two executable paths MIGHT refer to the same binary
+// — i.e. whether reaping is forbidden. It is deliberately asymmetric: it
+// returns false (→ reap as foreign) only when the two paths are PROVABLY
+// different binaries, and true in every case where the answer cannot be
+// established.
+//
+// # Why a lexical comparison was wrong (#6187)
+//
+// This used to be filepath.Clean(a) == filepath.Clean(b). SelfExe is the
+// engine's os.Executable() and the watcher's exe is its plist's BinPath, and
+// those two spellings routinely differ while naming ONE binary: grafel invoked
+// through a Homebrew shim, through any symlink on PATH, or with a BinPath
+// recorded from an install prefix that is now a symlink to the real one. Every
+// such install had EVERY launchd watcher for EVERY managed repo classified
+// foreign and SIGTERMed on the 5-minute sweep. Before #6179 that was a loud
+// reap↔respawn oscillation; after it the watcher exits 0, launchd leaves it
+// dead forever, and the only trace is one line in the repo's watcher.err.log.
+// Resolving symlinks is what stops a shim from looking like version skew.
+//
+// # Why an unresolvable path means "not foreign"
+//
+// filepath.EvalSymlinks fails outright on a path that does not exist, and "the
+// recorded exe no longer exists" is an ORDINARY state here — a stale plist
+// whose BinPath pointed into a prefix since removed, an upgrade that replaced
+// the tree rather than the file, a binary deleted out from under a running
+// process. resolveDeepestExisting (internal/registry, #6194) is the sibling
+// answer to the same EvalSymlinks trap, but it does not fit: it resolves the
+// deepest existing ANCESTOR and re-appends the missing tail so a path that does
+// not exist yet stays comparable. The missing tail here IS the binary, and two
+// prefixes that resolve identically tell us nothing about whether the two
+// binaries were the same file. Re-appending would manufacture a verdict from
+// directory names alone — including a FOREIGN verdict, which is the one that
+// costs the user their watchers.
+//
+// So the two verdicts are not symmetric in consequence, and the code follows
+// the consequence:
+//
+//   - a wrong "foreign" is permanent and silent: the watcher is killed, launchd
+//     does not bring it back, and nothing tells the user;
+//   - a wrong "same" leaves a stale-version watcher running, which is
+//     recoverable, visible in `grafel doctor`, and — for the case that actually
+//     matters, two watchers on one repo — still collapsed by the duplicate
+//     rule below, which prefers the watcher we can vouch for.
+//
+// Hence: unknown (empty), or either side unresolvable, or resolving to the same
+// file → same. Only two paths that BOTH resolve, to different files, are skew.
 func sameExe(a, b string) bool {
 	if a == "" || b == "" {
 		return true
 	}
-	return filepath.Clean(a) == filepath.Clean(b)
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ra, okA := resolveExe(a)
+	if !okA {
+		return true // unresolvable → unknowable → never reap on this basis.
+	}
+	rb, okB := resolveExe(b)
+	if !okB {
+		return true
+	}
+	return ra == rb
+}
+
+// definitelySameExe is sameExe's strict converse: it reports whether the two
+// paths are PROVABLY the same binary. Where sameExe answers "may I reap this?",
+// this answers "can I vouch for this one?" — and an unknown must not count as a
+// vouch, or the duplicate rule would keep a watcher whose executable it could
+// not read in preference to one it could.
+func definitelySameExe(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ra, okA := resolveExe(a)
+	if !okA {
+		return false
+	}
+	rb, okB := resolveExe(b)
+	if !okB {
+		return false
+	}
+	return ra == rb
+}
+
+// resolveExe returns p's symlink-resolved, cleaned form, and whether it
+// resolved at all. A path that does not exist does not resolve, and that is
+// reported rather than papered over so both callers above can apply their own
+// fail-safe direction to it.
+func resolveExe(p string) (string, bool) {
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return "", false
+	}
+	return filepath.Clean(r), true
 }
 
 // Compute computes which managed-repo watchers to reap. It is pure (no process
@@ -179,9 +275,14 @@ func Compute(deps Deps) Plan {
 // the one whose exe matches the daemon's own if present, else the lowest PID.
 // survivors is assumed PID-sorted ascending.
 func pickSurvivor(survivors []Proc, selfExe string) int {
+	// definitelySameExe, not a Clean comparison: when the daemon was invoked
+	// through a shim the own-exe watcher spells its path differently, and a
+	// lexical check would fail to recognise it and fall through to the lowest
+	// PID — keeping an arbitrary watcher and reaping the one we can vouch for
+	// (#6187).
 	if selfExe != "" {
 		for _, p := range survivors {
-			if p.Exe != "" && filepath.Clean(p.Exe) == filepath.Clean(selfExe) {
+			if definitelySameExe(p.Exe, selfExe) {
 				return p.PID
 			}
 		}

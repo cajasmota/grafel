@@ -28,21 +28,29 @@ func managedClean(repos ...string) func(string) bool {
 // for a MANAGED repo is SIGTERM'd, while a same-exe watcher and a watcher for an
 // UNMANAGED repo are left alone. Kills are observed via the injected
 // KillWatchProc so no real process is touched.
+// The exe fixtures are REAL, DISTINCT FILES. With the string literals this test
+// originally used, #6187's fix makes both paths unresolvable, so neither is
+// provable skew, PID 100 lands in the survivor set and is reaped as a
+// DUPLICATE instead — same killed list, entirely different code path, and the
+// test's name becomes a lie. The unload hook is wired to a recorder rather than
+// left nil so this also pins that the SIGTERM alone is not the whole reap.
 func TestReaper_sweepForeignWatchers(t *testing.T) {
-	const self = "/home/u/.grafel/bin/grafel"
+	self, foreign := twoRealExes(t)
 
 	var killed []int
+	var unloaded []string
 	r := NewReaper(ReaperConfig{
 		SelfExe:     func() (string, error) { return self, nil },
 		ManagedRepo: managedClean("/work/repo-a"),
 		ListWatchProcs: func() ([]process.WatchProc, error) {
 			return []process.WatchProc{
-				{PID: 100, Exe: "/home/u/go/bin/grafel", Repo: "/work/repo-a"},  // foreign, managed → reap
-				{PID: 101, Exe: self, Repo: "/work/repo-a"},                     // own, managed → keep
-				{PID: 102, Exe: "/home/u/go/bin/grafel", Repo: "/other/repo-z"}, // foreign, UNMANAGED → keep
+				{PID: 100, Exe: foreign, Repo: "/work/repo-a"},  // foreign, managed → reap
+				{PID: 101, Exe: self, Repo: "/work/repo-a"},     // own, managed → keep
+				{PID: 102, Exe: foreign, Repo: "/other/repo-z"}, // foreign, UNMANAGED → keep
 			}, nil
 		},
-		KillWatchProc: func(pid int) error { killed = append(killed, pid); return nil },
+		KillWatchProc:     func(pid int) error { killed = append(killed, pid); return nil },
+		UnloadWatcherUnit: func(repo string) { unloaded = append(unloaded, repo) },
 	})
 
 	res := r.Sweep()
@@ -51,6 +59,11 @@ func TestReaper_sweepForeignWatchers(t *testing.T) {
 	}
 	if !reflect.DeepEqual(killed, []int{100}) {
 		t.Fatalf("killed = %v, want [100] (only the foreign managed-repo watcher)", killed)
+	}
+	// repo-a keeps a live watcher (101) and repo-z was never touched, so no
+	// unit is left claiming a job that is not running.
+	if len(unloaded) != 0 {
+		t.Fatalf("unloaded = %v, want none (every repo still has a watcher)", unloaded)
 	}
 }
 

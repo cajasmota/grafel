@@ -134,24 +134,26 @@ const (
 // These exits used to be non-zero, so an unconditional KeepAlive respawned them
 // — loudly and wastefully, but the repo did keep getting a watcher. Exiting 0
 // removes that accidental self-healing, which means any OTHER bug that kills
-// watchers now produces silence instead of noise. One such bug exists today and
-// is NOT fixed here:
+// watchers now produces silence instead of noise. One such bug existed when
+// #6179 landed and was FIXED in #6187:
 //
-//	internal/daemon/watchscan/watchscan.go's sameExe compares the reaper's
+//	internal/daemon/watchscan/watchscan.go's sameExe compared the reaper's
 //	os.Executable() against the plist's BinPath with filepath.Clean and no
-//	EvalSymlinks. When those differ only by a symlink — a brew shim, a BinPath
-//	recorded from a different install prefix — every launchd watcher for a
-//	managed repo is classified Foreign and SIGTERMed on the 5-minute sweep.
+//	EvalSymlinks. When those differed only by a symlink — a brew shim, a
+//	BinPath recorded from a different install prefix — every launchd watcher
+//	for a managed repo was classified Foreign and SIGTERMed on the 5-minute
+//	sweep.
 //
-// Before this change that was a visible reap↔respawn oscillation. After it,
-// the first reap is final: the watcher exits 0, launchd leaves it stopped, and
-// the only trace is one line in that repo's watcher.err.log. The reaper is out
-// of scope for #6179 (it is filed separately, together with whether per-repo
-// LaunchAgents should exist at all), but the interaction is real and this is
-// where someone debugging "my watchers all silently stopped" should land.
-// A coherent fix there would resolve symlinks in sameExe AND have the reaper
-// bootout the launchd unit when it reaps a launchd-owned watcher, so the
-// on-disk state stops claiming a job that is not running.
+// Before #6179 that was a visible reap↔respawn oscillation. After it, the first
+// reap was final: the watcher exits 0, launchd leaves it stopped, and the only
+// trace is one line in that repo's watcher.err.log. #6187 resolved symlinks in
+// sameExe (and made an unresolvable path mean "not skew", never "foreign"), and
+// gave the reaper an UnloadWatcherUnit hook so a repo it leaves with no watcher
+// has its unit deregistered instead of staying registered-but-dead.
+//
+// The general hazard remains and this is still where someone debugging "my
+// watchers all silently stopped" should land: exiting 0 means nothing retries,
+// so any future path that kills a watcher must also make that visible.
 var watchExitRespawn = map[watchExitReason]bool{
 	watchExitSignal:   false,
 	watchExitRepoGone: false,
