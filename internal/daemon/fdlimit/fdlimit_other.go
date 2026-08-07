@@ -8,3 +8,10 @@ package fdlimit
 func Raise(target uint64) (old, updated uint64, err error) {
 	return 0, 0, nil
 }
+
+// Current reports zero limits on platforms without POSIX RLIMIT_NOFILE
+// semantics. Callers must treat a zero soft limit as "unknown" rather than as
+// "no descriptors available".
+func Current() (soft, hard uint64, err error) {
+	return 0, 0, nil
+}

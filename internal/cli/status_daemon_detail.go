@@ -31,6 +31,14 @@ func printDaemonDetail(w io.Writer, st proto.StatusReply) {
 		}
 		fmt.Fprintln(w)
 	}
+	// #6180: a repo the watcher refused for want of file descriptors is not
+	// being watched at all. Printed on its own line and NOT gated on the
+	// condition above — the worst case is exactly the one where WatcherRepos
+	// is zero because every repo was refused.
+	if st.WatcherUnwatched > 0 {
+		fmt.Fprintf(w, "  watcher: %d repo(s) NOT WATCHED — file-descriptor budget full (%d/%d used); edits there will not re-index\n",
+			st.WatcherUnwatched, st.WatcherFDUsed, st.WatcherFDLimit)
+	}
 	if st.QueueLen > 0 || len(st.IndexInFlight) > 0 ||
 		len(st.PendingAlgo) > 0 || len(st.PendingLinks) > 0 {
 		fmt.Fprintf(w, "  scheduler: queue=%d in_flight=%d pending_algo=%d pending_links=%d\n",

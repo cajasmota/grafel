@@ -79,16 +79,24 @@ type StatusReply struct {
 
 	// Phase B additions — watcher + scheduler observability. Fields
 	// are optional; older clients ignore them.
-	WatcherRepos   int                `json:"watcher_repos,omitempty"`
-	WatcherDirs    int                `json:"watcher_dirs,omitempty"`
-	WatcherEvents  uint64             `json:"watcher_events,omitempty"`
-	WatcherDropped uint64             `json:"watcher_dropped,omitempty"`
-	QueueLen       int                `json:"queue_len,omitempty"`
-	IndexInFlight  []string           `json:"index_in_flight,omitempty"`
-	PendingAlgo    []string           `json:"pending_algo,omitempty"`
-	PendingLinks   []string           `json:"pending_links,omitempty"`
-	IndexedRepos   []IndexedRepoState `json:"indexed_repos,omitempty"`
-	RecentLog      []SchedLogEntry    `json:"recent_log,omitempty"`
+	WatcherRepos   int    `json:"watcher_repos,omitempty"`
+	WatcherDirs    int    `json:"watcher_dirs,omitempty"`
+	WatcherEvents  uint64 `json:"watcher_events,omitempty"`
+	WatcherDropped uint64 `json:"watcher_dropped,omitempty"`
+
+	// WatcherUnwatched counts repos the watcher REFUSED because the
+	// file-descriptor budget was full, and WatcherFDUsed/WatcherFDLimit are
+	// the ledger behind that decision (#6180). A non-zero WatcherUnwatched
+	// means edits in those repos are not being picked up at all.
+	WatcherUnwatched int                `json:"watcher_unwatched,omitempty"`
+	WatcherFDUsed    int                `json:"watcher_fd_used,omitempty"`
+	WatcherFDLimit   int                `json:"watcher_fd_limit,omitempty"`
+	QueueLen         int                `json:"queue_len,omitempty"`
+	IndexInFlight    []string           `json:"index_in_flight,omitempty"`
+	PendingAlgo      []string           `json:"pending_algo,omitempty"`
+	PendingLinks     []string           `json:"pending_links,omitempty"`
+	IndexedRepos     []IndexedRepoState `json:"indexed_repos,omitempty"`
+	RecentLog        []SchedLogEntry    `json:"recent_log,omitempty"`
 
 	// GroupAlgoRunning names the groups whose ANNOTATION (group-algo) pass is
 	// executing right now, and GroupAlgoInFlight counts them. The pass produces

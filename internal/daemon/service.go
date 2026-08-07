@@ -396,11 +396,17 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	reply.DaemonMode = s.daemonMode
 
 	if s.watcher != nil {
-		repos, dirs, events, dropped := s.watcher.Stats()
+		repos, dirs, events, dropped, unwatched := s.watcher.Stats()
 		reply.WatcherRepos = repos
 		reply.WatcherDirs = dirs
 		reply.WatcherEvents = events
 		reply.WatcherDropped = dropped
+		// #6180: surface repos that are NOT watched for want of file
+		// descriptors, plus the ledger, so `grafel status` says so out loud.
+		reply.WatcherUnwatched = unwatched
+		fdUsed, fdLimit, _, _ := s.watcher.FDBudgetStats()
+		reply.WatcherFDUsed = fdUsed
+		reply.WatcherFDLimit = fdLimit
 	}
 	// PH2a (#2096): report pause/resume slot counts.
 	if s.watcherMgrStats != nil {
