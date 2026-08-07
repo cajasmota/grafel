@@ -12,6 +12,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -191,6 +192,43 @@ func LegacyUnitPath(u Unit) (string, error) {
 	return UnitPath(LegacyOf(u))
 }
 
+// NativeDigestOf returns a copy of u whose Label() is the one this repo was
+// installed under BEFORE pathDigest normalised separators — the digest over
+// filepath.Clean's OS-native output.
+//
+// On unix that derivation and the current one coincide and this returns a unit
+// with the same label, which every caller then treats as "nothing to migrate".
+// On Windows they differ — `/tmp/test/core` cleaned to `\tmp\test\core` digests
+// to e419b067 where the slash form digests to 96d54b5d — and the difference is
+// a machine upgrading across that change: nothing else in the tree can derive
+// e419b067, so ReconcileWatcherUnits (which stats only the current and
+// pre-#6183 labels) sees no unit under any name it knows, counts the repo
+// Absent, and leaves the old `.xml` AND its registered scheduled task in place.
+// `grafel install` then writes the new label beside it: two live watchers per
+// repo, the failure mode MigrateLegacyUnit's own doc calls "strictly worse than
+// the collision it repairs".
+//
+// The label is supplied via RawLabel rather than re-derived from a flag, so the
+// unit is usable for exactly what a migration needs (UnitPath, Unload — both
+// key off Label()) and is refused by Write/Render, which need a real Repo.
+func NativeDigestOf(u Unit) Unit {
+	if u.RawLabel != "" || u.legacy {
+		return u
+	}
+	return Unit{
+		Group:    u.Group,
+		Repo:     u.Repo,
+		BinPath:  u.BinPath,
+		RawLabel: fmt.Sprintf("%s%s.%s-%s", LabelPrefix, u.Group, legacySlugify(u.Repo), nativePathDigest(u.Repo)),
+	}
+}
+
+// NativeDigestUnitPath returns the path a pre-slash-normalisation unit for u
+// occupies on this OS.
+func NativeDigestUnitPath(u Unit) (string, error) {
+	return UnitPath(NativeDigestOf(u))
+}
+
 // MigrateLegacyUnit removes the pre-#6183 unit for u, if one is installed.
 //
 // Changing the label orphans every unit already on disk: the old file stays
@@ -207,7 +245,31 @@ func LegacyUnitPath(u Unit) (string, error) {
 // Idempotent: with no legacy file present it stats one path and returns ("",
 // nil) — no loader, no writes. It returns the removed path when it did work.
 func MigrateLegacyUnit(u Unit, newLoader func() Loader) (string, error) {
-	legacy := LegacyOf(u)
+	return MigrateSupersededUnit(u, LegacyOf(u), newLoader)
+}
+
+// MigrateNativeDigestUnit removes the pre-slash-normalisation unit for u, if
+// one is installed. See NativeDigestOf for what that label is and why it must
+// still be derivable.
+//
+// A no-op off Windows: the superseded and current derivations coincide there,
+// which MigrateSupersededUnit's same-path guard turns into a single stat-free
+// return.
+func MigrateNativeDigestUnit(u Unit, newLoader func() Loader) (string, error) {
+	return MigrateSupersededUnit(u, NativeDigestOf(u), newLoader)
+}
+
+// MigrateSupersededUnit removes the unit u used to be installed under, named
+// by old, if one is on disk.
+//
+// One function for both retired derivations because the ORDER is the whole
+// contract and it must not be re-implemented per derivation: boot the old job
+// out of the scheduler while the file it was bootstrapped from still exists,
+// then delete the file. On Windows the bootout is what removes the registered
+// scheduled task, which lives in Task Scheduler independently of the `.xml` and
+// would otherwise keep spawning `grafel watch` after the file was gone.
+func MigrateSupersededUnit(u, old Unit, newLoader func() Loader) (string, error) {
+	legacy := old
 	legacyPath, err := UnitPath(legacy)
 	if err != nil {
 		return "", err
@@ -246,7 +308,12 @@ func LaunchdPlist(u Unit) string {
 	// (An unused `pl` struct used to sit here describing the plist keys; it was
 	// never marshalled and drifted out of sync with the hand-built body below,
 	// claiming an unconditional KeepAlive bool. Removed with #6179.)
-	logDir := filepath.Join(u.Repo, ".grafel", "logs")
+	// path.Join, not filepath.Join: a launchd plist is a Darwin artifact whose
+	// paths are always POSIX, but this renderer compiles and is tested on every
+	// OS, so filepath.Join emitted `\tmp\repo\.grafel\logs/watcher.out.log` when
+	// the test ran on Windows. On Darwin the two are identical, so nothing the
+	// real platform sees changes.
+	logDir := path.Join(u.Repo, ".grafel", "logs")
 	body := strings.Builder{}
 	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	body.WriteString(`<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">` + "\n")
@@ -571,6 +638,14 @@ func Cleanup(group, repoPath, binPath string) {
 	// with nothing left in the registry to derive its name from later.
 	_ = loader.Unload(LegacyOf(u))
 	_ = Remove(LegacyOf(u))
+	// And the pre-slash-normalisation label, for the identical reason one
+	// derivation later (NativeDigestOf). Off Windows this repeats the Unload
+	// and Remove already done for the current label — both are idempotent and
+	// "not loaded"/"not present" are the states being asked for anyway.
+	if old := NativeDigestOf(u); old.Label() != u.Label() {
+		_ = loader.Unload(old)
+		_ = Remove(old)
+	}
 }
 
 // newLoader is the Loader constructor Cleanup uses. It is a package var so
@@ -632,8 +707,75 @@ func slugify(s string) string {
 // In both cases a repo registered twice under different spellings gets two
 // watcher units rather than one. That is wasteful, not incorrect, and it is
 // what registering the same repo twice already meant elsewhere in grafel.
+// The digest is taken over the SLASH-normalised form of the cleaned path, not
+// over filepath.Clean's OS-native output. filepath.Clean rewrites separators to
+// the host's, so `/x/api` digests one way on unix and another on Windows (where
+// Clean returns `\x\api`) — the same repo string, two labels, depending only on
+// which OS derived it. Label is documented as platform-agnostic and is asserted
+// against pinned bytes in watchers_test.go, which runs on all three; ToSlash is
+// what makes both true. It preserves the dedup property Clean provides, since
+// `C:\r\api` and `C:/r/api` still land on one string.
+//
+// ToSlash is a NO-OP on unix, so this rename lands on Windows alone — and a
+// rename is exactly the orphaning MigrateLegacyUnit exists to prevent. See
+// NativeDigestOf for the superseded derivation and the migration that retires
+// it.
 func pathDigest(s string) string {
-	sum := sha256.Sum256([]byte(filepath.Clean(s)))
+	return digestOf(filepath.ToSlash(filepath.Clean(s)))
+}
+
+// nativePathDigest is the SUPERSEDED digest: SHA-256 over filepath.Clean's
+// OS-native output, with no slash normalisation.
+//
+// It is retained for exactly the reason legacySlugify is — a label that is no
+// longer derived is a unit that can no longer be found, and on Windows a unit
+// that cannot be found is a REGISTERED SCHEDULED TASK that keeps spawning
+// `grafel watch` forever (loader_windows.go keys /tn off Label()). Off Windows
+// this is byte-identical to pathDigest, so the migration built on it is a
+// self-cancelling no-op there rather than dead code that only one platform's CI
+// ever exercises.
+//
+// Do not use it for new units.
+func nativePathDigest(s string) string {
+	return digestOf(cleanForNativeDigest(s))
+}
+
+// cleanForNativeDigest is filepath.Clean, as a seam.
+//
+// The superseded derivation is host-native BY DEFINITION — that is the whole
+// defect — so off Windows it coincides with the current one, and every test of
+// the migration built on it would be vacuous on the only platforms this repo's
+// developers and two of its three CI legs can run. The seam lets a darwin or
+// linux test spell the Windows form and drive the real migration and its real
+// wiring, so deleting either fails a test HERE instead of orphaning a watcher
+// on a machine nobody has. Production never replaces it.
+var cleanForNativeDigest = filepath.Clean
+
+// SetNativeCleanForTest replaces the path-cleaning step of the SUPERSEDED
+// digest derivation and returns a restore func.
+//
+// TEST-ONLY, and exported for the same reason StubServiceCallsForTest is: the
+// caller that has to be exercised is in ANOTHER package
+// (internal/install.ReconcileWatcherUnits), so export_test.go cannot reach it.
+// Do not call it from non-test code.
+func SetNativeCleanForTest(clean func(string) string) (restore func()) {
+	prev := cleanForNativeDigest
+	cleanForNativeDigest = clean
+	return func() { cleanForNativeDigest = prev }
+}
+
+// digestOf is the raw digest — pathDigestLen hex chars of SHA-256 over the
+// bytes given, with no cleaning and no separator rewriting.
+//
+// Split out from pathDigest so both derivations are one normalisation step over
+// a shared primitive, and so watchers_test.go can pin each of them against a
+// LITERAL string on every platform. That matters: TestLabelStable's pinned
+// constant is the canary for "any change to the derivation is a deliberate edit
+// here", and a canary expressed only through a host-dependent normalisation is
+// structurally blind on the host it is not running on. It was: the ToSlash
+// change left the unix bytes identical and the test never moved.
+func digestOf(s string) string {
+	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])[:pathDigestLen]
 }
 

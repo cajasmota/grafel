@@ -22,7 +22,7 @@ import (
 // docs. Mirrors stubTwoGroupServer but wires the on-disk Path.
 func stubFieldServer(t *testing.T, dir string, v3, oracle *graph.Document) *Server {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	sandboxGrafelHome(t)
 	reg := &Registry{Groups: map[string]RegistryGroup{
 		"v3":     {Repos: map[string]RegistryRepo{"r": {Path: dir}}},
 		"oracle": {Repos: map[string]RegistryRepo{"r": {Path: dir}}},

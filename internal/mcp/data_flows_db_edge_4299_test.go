@@ -27,7 +27,7 @@ func docWithJoinEdge(repo, kind string) *graph.Document {
 // data_flows(sink_kind=db). Before the fix handleDataFlows read only the taint
 // sidecar, so this returned 0.
 func TestDataFlows_JoinsCollectionProjectedAsDBSink(t *testing.T) {
-	t.Setenv("HOME", t.TempDir()) // no sidecar — pure graph-edge projection
+	sandboxGrafelHome(t) // no sidecar — pure graph-edge projection
 	srv := newTestServer(t, docWithJoinEdge("repo-a", "JOINS_COLLECTION"))
 
 	out := callFlowTool(t, srv.handleDataFlows, map[string]any{"sink_kind": "db"})
@@ -77,7 +77,7 @@ func TestDataFlows_DBEdgeSiblingsProjected(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.kind, func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
+			sandboxGrafelHome(t)
 			srv := newTestServer(t, docWithJoinEdge("repo-a", c.kind))
 			out := callFlowTool(t, srv.handleDataFlows, map[string]any{"sink_kind": "db"})
 			flows, _ := out["data_flows"].([]any)
@@ -94,7 +94,7 @@ func TestDataFlows_DBEdgeSiblingsProjected(t *testing.T) {
 // TestDataFlows_NonDBEdgeNotProjected is the negative: a non-DB semantic edge of
 // the same node shape (THROWS) must NOT be projected as a db sink.
 func TestDataFlows_NonDBEdgeNotProjected(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	sandboxGrafelHome(t)
 	srv := newTestServer(t, docWithJoinEdge("repo-a", "THROWS"))
 	out := callFlowTool(t, srv.handleDataFlows, map[string]any{"sink_kind": "db"})
 	flows, _ := out["data_flows"].([]any)
@@ -111,7 +111,7 @@ func TestDataFlows_NonDBEdgeNotProjected(t *testing.T) {
 // TestDataFlows_NonDBSinkKindFilterExcludesGraphEdges asserts a non-db sink_kind
 // filter (http) excludes the graph-edge DB projection entirely.
 func TestDataFlows_NonDBSinkKindFilterExcludesGraphEdges(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	sandboxGrafelHome(t)
 	srv := newTestServer(t, docWithJoinEdge("repo-a", "JOINS_COLLECTION"))
 	out := callFlowTool(t, srv.handleDataFlows, map[string]any{"sink_kind": "http"})
 	flows, _ := out["data_flows"].([]any)
@@ -124,7 +124,7 @@ func TestDataFlows_NonDBSinkKindFilterExcludesGraphEdges(t *testing.T) {
 // filter db_read selects the JOINS_COLLECTION projection (which maps to db_read)
 // and db_write excludes it.
 func TestDataFlows_DBReadFilterMatchesProjectedKind(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	sandboxGrafelHome(t)
 	srv := newTestServer(t, docWithJoinEdge("repo-a", "JOINS_COLLECTION"))
 
 	got := callFlowTool(t, srv.handleDataFlows, map[string]any{"sink_kind": "db_read"})

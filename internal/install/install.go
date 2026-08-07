@@ -295,6 +295,15 @@ func Apply(opts Options) (*Result, error) {
 					res.WatcherWarnings = append(res.WatcherWarnings,
 						fmt.Sprintf("could not retire the previous watcher unit for %s: %v", repo, merr))
 				}
+				// And the pre-slash-normalisation label (NativeDigestOf): a
+				// Windows install written before pathDigest normalised
+				// separators sits under a name neither the current nor the
+				// pre-#6183 derivation produces. A no-op off Windows and once
+				// migrated — one stat either way.
+				if _, merr := watchers.MigrateNativeDigestUnit(u, newWatcherLoader); merr != nil {
+					res.WatcherWarnings = append(res.WatcherWarnings,
+						fmt.Sprintf("could not retire the superseded watcher unit for %s: %v", repo, merr))
+				}
 				path, err := watchers.Write(u)
 				if err != nil {
 					// #6185/#6186 R3: a per-repo watchers.Write failure (e.g.

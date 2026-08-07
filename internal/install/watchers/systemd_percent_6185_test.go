@@ -51,6 +51,17 @@ func TestSystemdUnit_EscapesPercent(t *testing.T) {
 // TestSystemdUnit_SystemdAnalyzeVerify runs systemd-analyze verify over a
 // generated unit where available — the systemd-side equivalent of the
 // plutil -lint test that pins the macOS half of #6179.
+//
+// The units are built over paths this test CREATES rather than over the
+// package's `sample` / `percentHostile` fixtures. systemd-analyze does not stop
+// at syntax: it stats ExecStart and fails the whole run with "Command
+// /usr/local/bin/grafel is not executable: No such file or directory" on any
+// machine where that fixture path does not happen to exist — which is every CI
+// runner, and is why this test had never passed on Linux. Verifying against a
+// real binary keeps the assertion (verify must ACCEPT the unit) intact and adds
+// one: because systemd resolves `%%` back to a literal `%`, verify finding the
+// file proves the #6185 escaping round-trips through systemd itself, not just
+// through strings.Contains.
 func TestSystemdUnit_SystemdAnalyzeVerify(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("systemd-analyze is Linux-only")
@@ -59,13 +70,36 @@ func TestSystemdUnit_SystemdAnalyzeVerify(t *testing.T) {
 	if err != nil {
 		t.Skip("systemd-analyze not on PATH")
 	}
-	for name, u := range map[string]Unit{"plain": sample, "hostile": percentHostile} {
+
+	// realUnit returns a Unit whose BinPath is an executable that exists and
+	// whose Repo is a directory that exists, both named as caller asks so the
+	// hostile case still carries '%' through the generated INI.
+	realUnit := func(t *testing.T, group, repoName, binName string) Unit {
+		t.Helper()
+		dir := t.TempDir()
+		repo := filepath.Join(dir, repoName)
+		if err := os.MkdirAll(repo, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		binPath := filepath.Join(dir, binName)
+		if err := os.WriteFile(binPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return Unit{Group: group, Repo: repo, BinPath: binPath}
+	}
+
+	units := map[string]Unit{
+		"plain":   realUnit(t, "demo", "core", "grafel"),
+		"hostile": realUnit(t, "R%D", "100%done", "graf%el"),
+	}
+	for name, u := range units {
+		body := SystemdUnit(u)
 		path := filepath.Join(t.TempDir(), name+".service")
-		if err := os.WriteFile(path, []byte(SystemdUnit(u)), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if out, err := exec.Command(bin, "verify", "--no-pager", path).CombinedOutput(); err != nil {
-			t.Errorf("systemd-analyze verify rejected the %s unit: %v\n%s\n%s", name, err, out, SystemdUnit(u))
+			t.Errorf("systemd-analyze verify rejected the %s unit: %v\n%s\n%s", name, err, out, body)
 		}
 	}
 }

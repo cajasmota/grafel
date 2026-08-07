@@ -3,6 +3,7 @@ package watchers
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -256,5 +257,104 @@ func TestMigrateLegacyUnit_DeregistersBeforeDeleting(t *testing.T) {
 	}
 	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
 		t.Fatalf("legacy unit file survived: %v", err)
+	}
+}
+
+// ── The pre-slash-normalisation label ────────────────────────────────────────
+
+// windowsClean is filepath.Clean's Windows behaviour, spelled for a host that
+// is not Windows: it is what makes the superseded derivation reachable — and
+// therefore testable — from darwin and linux.
+func windowsClean(s string) string {
+	return strings.ReplaceAll(filepath.Clean(s), "/", `\`)
+}
+
+// TestMigrateNativeDigestUnit_BootsOutThenRemoves is the migration half of the
+// slash normalisation, and it is the same defect as #6183 one derivation later.
+//
+// pathDigest now hashes the SLASH-NORMALISED path, so a Windows machine's units
+// — hashed over filepath.Clean's backslash form — are all renamed by an
+// upgrade. Nothing else in the tree can derive the old name: reconcile stats
+// the current and pre-#6183 labels only, finds neither, counts the repo Absent
+// and does nothing, while the old `.xml` and (worse) its REGISTERED SCHEDULED
+// TASK stay put and keep spawning `grafel watch`. Then install writes the new
+// label beside it. Two watchers per repo.
+func TestMigrateNativeDigestUnit_BootsOutThenRemoves(t *testing.T) {
+	migrateSandbox(t)
+	restore := SetNativeCleanForTest(windowsClean)
+	t.Cleanup(restore)
+
+	u := Unit{Group: "g", Repo: filepath.Join(t.TempDir(), "api"), BinPath: "/bin/grafel"}
+	old := NativeDigestOf(u)
+	if old.Label() == u.Label() {
+		t.Fatalf("precondition: the superseded label must differ from the current one (%q)", u.Label())
+	}
+	oldPath, err := NativeDigestUnitPath(u)
+	if err != nil {
+		t.Skipf("unsupported OS: %v", err)
+	}
+	writeRawUnit(t, oldPath)
+
+	rec := &recordingLoader{}
+	removed, err := MigrateNativeDigestUnit(u, rec.ctor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != oldPath {
+		t.Fatalf("removed = %q, want %q", removed, oldPath)
+	}
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Fatalf("the superseded unit file survived: %v", err)
+	}
+	// Deleting the file is NOT enough: on Windows the scheduled task is
+	// registered under the label, independently of the .xml, and only Unload
+	// (schtasks /delete /tn <label>) removes it.
+	if len(rec.unloaded) != 1 || rec.unloaded[0] != old.Label() {
+		t.Fatalf("unloaded = %v, want exactly [%s] — the scheduled task outlives the file",
+			rec.unloaded, old.Label())
+	}
+}
+
+// TestMigrateNativeDigestUnit_IsANoOpWhereTheDerivationsCoincide: off Windows
+// the superseded and current derivations are the same string, and a migration
+// that did not notice would boot out and delete the LIVE unit on every install.
+func TestMigrateNativeDigestUnit_IsANoOpWhereTheDerivationsCoincide(t *testing.T) {
+	migrateSandbox(t)
+	u := Unit{Group: "g", Repo: filepath.Join(t.TempDir(), "api"), BinPath: "/bin/grafel"}
+	path, err := Write(u)
+	if err != nil {
+		t.Skipf("unsupported OS: %v", err)
+	}
+	if NativeDigestOf(u).Label() != u.Label() {
+		t.Skip("this host's native clean differs from the slash form; covered by the migration test")
+	}
+
+	rec := &recordingLoader{}
+	removed, err := MigrateNativeDigestUnit(u, rec.ctor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != "" {
+		t.Fatalf("removed %q — that is the repo's LIVE unit", removed)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the live unit was deleted: %v", err)
+	}
+	if rec.made != 0 || len(rec.unloaded) != 0 {
+		t.Fatalf("constructed %d loaders and unloaded %v; a coincident derivation must cost nothing",
+			rec.made, rec.unloaded)
+	}
+}
+
+// writeRawUnit writes a placeholder unit file at path. The superseded unit is
+// addressed by RawLabel, which Unit documents as unusable for Write/Render, so
+// the file is created directly rather than through Write.
+func writeRawUnit(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("superseded unit\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

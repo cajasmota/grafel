@@ -9,10 +9,44 @@ package mcp
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
 )
+
+// sandboxGrafelHome points every grafel-home derivation at a fresh temp dir
+// and returns it, so a test that writes a sidecar can be sure the tool reads
+// THAT one — and a test that writes none can be sure the tool reads nothing.
+//
+// t.Setenv("HOME", …) alone does neither on Windows, which is what failed the
+// four internal/mcp tests in run 31132076151. The grafel-home derivation
+// bottoms out in registry.HomeDir() → os.UserHomeDir(), and os.UserHomeDir()
+// reads %USERPROFILE% on Windows and ignores HOME (#6178). A HOME-only sandbox
+// there resolves to the runner's REAL profile, so the sidecar the test wrote
+// under HOME was invisible and the tool fell back to the entity-property
+// effects — the exact "v3 resolved=false, oracle resolved=true" the stub
+// detector reported. For the isolation-only callers the same gap points the
+// tool at whatever happens to sit in the developer's real ~/.grafel.
+//
+// Both vars are set on every platform: the one that is not consulted is inert,
+// and a per-GOOS switch here would be a second thing to keep correct.
+//
+// GRAFEL_HOME is set too, and it is not redundant — registry.HomeDir() checks
+// it FIRST and returns it verbatim, so a developer who exports it (plausible in
+// this repo) would otherwise have every one of these tests reading and writing
+// their real grafel home no matter what HOME said. CI does not set it, so this
+// is a developer-machine hazard rather than a CI one. The value mirrors what
+// the HOME path resolves to, so the sidecar writers' <home>/.grafel/groups join
+// and the readers' registry.HomeDir() land on the same directory either way.
+func sandboxGrafelHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("GRAFEL_HOME", filepath.Join(home, ".grafel"))
+	return home
+}
 
 // newTestServer builds a minimal Server with one group ("test") loaded from
 // the supplied documents.
