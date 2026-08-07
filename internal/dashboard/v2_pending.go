@@ -1,4 +1,4 @@
-// v2_pending.go — Pending screen endpoints for WebUI v2 (#1442).
+// v2_pending.go — Enrichment screen endpoints for WebUI v2 (#1442).
 //
 // GET /api/v2/groups/{group}/candidates?tab=repairs|enrichments
 //

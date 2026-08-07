@@ -537,7 +537,7 @@ export interface OrphanSubscriberEntry {
   reason?: string;
 }
 // =============================================================
-// Pending screen types — v2_pending.go wire shapes (#1442)
+// Enrichment screen types — v2_pending.go wire shapes (#1442)
 // =============================================================
 
 export type EntityKind =

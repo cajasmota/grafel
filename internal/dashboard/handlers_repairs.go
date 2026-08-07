@@ -1,6 +1,6 @@
 package dashboard
 
-// handlers_repairs.go — Pending queue endpoints for the dashboard (#987).
+// handlers_repairs.go — Enrichment queue endpoints for the dashboard (#987).
 //
 //	GET  /api/repairs/{group}           — repair_edge + dynamic_baseurl_endpoint candidates
 //	GET  /api/enrichments/{group}       — all other enrichment candidates (describe_entity, classify_domain, …)

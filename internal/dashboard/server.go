@@ -577,7 +577,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/patterns/{group}/gc", s.handlePatternGC)
 	mux.HandleFunc("POST /api/patterns/{group}/export", s.handlePatternExport)
 
-	// Pending queue — repair candidates + enrichment candidates (#987)
+	// Enrichment queue — repair candidates + enrichment candidates (#987)
 	mux.HandleFunc("GET /api/repairs/{group}", s.handleRepairs)
 	mux.HandleFunc("GET /api/enrichments/{group}", s.handleEnrichments)
 	// Community-naming queue — separated from entity enrichment (#1301)
@@ -593,7 +593,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/enrichments/{group}/jobs/{jobId}/cancel", s.handleEnrichmentJobCancel)
 	// Batched enrichment (#1285) — N candidates → N jobs in one round-trip
 	mux.HandleFunc("POST /api/enrichments/{group}/batch-enrich", s.handleEnrichmentBatch)
-	// Per-tier enrichment progress — polled every 3 s by the /pending surface (#1286)
+	// Per-tier enrichment progress — polled every 3 s by the Enrichment surface (at /pending) (#1286)
 	mux.HandleFunc("GET /api/enrichments/{group}/progress", s.handleEnrichmentProgress)
 	// Agent description write-back — persists generated descriptions to graph + frontmatter (#1304)
 	mux.HandleFunc("POST /api/enrichments/{group}/write", s.handleEnrichmentWriteback)
@@ -867,7 +867,7 @@ func (s *Server) routes() http.Handler {
 	// nested containment zones + tier lanes + typed/aggregatable edges, for a
 	// `group_by` lens (infra|modules|tier).
 	mux.HandleFunc("GET /api/v2/topology/{group}/compound", s.handleV2TopologyCompound)
-	// --- v2 Pending screen (#1442) ---
+	// --- v2 Enrichment screen (#1442) ---
 	mux.HandleFunc("GET /api/v2/groups/{group}/candidates", s.handleV2Candidates)
 	mux.HandleFunc("PUT /api/v2/groups/{group}/candidates/{cid}/hint", s.handleV2CandidateHint)
 	// Flows (Process Flow Explorer) — v2 envelope wrappers (#1441).

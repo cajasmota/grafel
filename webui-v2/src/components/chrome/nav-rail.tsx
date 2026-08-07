@@ -4,10 +4,10 @@
 
    This is the PRIMARY navigation: it navigates the screens of the
    CURRENT project (Graph · Topology · Paths · Flows · Docs ·
-   Operations · Pending · Settings). The active screen is the
+   Operations · Enrichment · Settings). The active screen is the
    highlighted row. Screens come from the chrome/screens.ts registry.
 
-   Brand mark at top, screen nav in the middle, divider + Pending,
+   Brand mark at top, screen nav in the middle, divider + Enrichment,
    then theme toggle / All-groups / Settings at the foot.
    Active row = filled surface card (no left accent bar).
 
@@ -20,8 +20,8 @@ import { Sun, Moon, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui";
 import { useAppStore } from "@/store/use-app-store";
-import { usePendingCount } from "@/hooks/use-pending";
-import { SCREENS, PENDING_SCREEN, SETTINGS_SCREEN } from "./screens";
+import { useEnrichmentCount } from "@/hooks/use-pending";
+import { SCREENS, ENRICHMENT_SCREEN, SETTINGS_SCREEN } from "./screens";
 import { WorktreeList } from "./worktree-list";
 
 function rowClass(active: boolean) {
@@ -38,9 +38,9 @@ export function NavRail() {
   const toggleTheme = useAppStore((s) => s.toggleTheme);
   const base = `/g/${groupId}`;
 
-  const { Icon: PendingIcon } = PENDING_SCREEN;
+  const { Icon: EnrichmentIcon } = ENRICHMENT_SCREEN;
   const { Icon: SettingsIcon } = SETTINGS_SCREEN;
-  const pendingCount = usePendingCount(groupId);
+  const enrichmentCount = useEnrichmentCount(groupId);
 
   return (
     <aside
@@ -77,14 +77,14 @@ export function NavRail() {
 
         <div className="my-1.5 mx-3 border-t border-border" />
 
-        <NavLink to={`${base}/${PENDING_SCREEN.to}`} className={({ isActive }) => rowClass(isActive)} title="Pending suggestions">
-          <PendingIcon size={18} className="shrink-0" />
+        <NavLink to={`${base}/${ENRICHMENT_SCREEN.to}`} className={({ isActive }) => rowClass(isActive)} title="Enrichment suggestions">
+          <EnrichmentIcon size={18} className="shrink-0" />
           <span className="flex-1 whitespace-nowrap text-md opacity-0 group-hover/rail:opacity-100 transition-opacity">
-            {PENDING_SCREEN.label}
+            {ENRICHMENT_SCREEN.label}
           </span>
-          {pendingCount > 0 && (
+          {enrichmentCount > 0 && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-accent-text text-[10px] tabular-nums">
-              {pendingCount}
+              {enrichmentCount}
             </span>
           )}
         </NavLink>

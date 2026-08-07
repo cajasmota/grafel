@@ -1,12 +1,13 @@
 /* ============================================================
-   routes/pending.tsx — Repair + enrichment inbox (#1442, EPIC #1432).
+   routes/pending.tsx — Enrichment screen: repair + enrichment inbox
+   (#1442, EPIC #1432).
 
    Layout (three horizontal strips):
    1. Stat bar (unresolved pill) — 40px
    2. Tab bar (44px): tabs left · filter + groupBy right
    3. Split pane: left list (440px) + right detail (flex-1)
 
-   The AppShell TopBar handles the outer breadcrumb (grafel › group › Pending).
+   The AppShell TopBar handles the outer breadcrumb (grafel › group › Enrichment).
    ============================================================ */
 
 import { useState, useMemo, useRef, useEffect } from "react";
@@ -15,7 +16,7 @@ import { Wrench, Sparkles, ChevronRight, Copy, ExternalLink } from "lucide-react
 import { toast } from "sonner";
 
 import { useCandidates, useSaveHint } from "@/hooks/use-pending";
-import { usePendingStore } from "@/store/use-pending-store";
+import { useEnrichmentStore } from "@/store/use-pending-store";
 import {
   Badge,
   Button,
@@ -564,7 +565,7 @@ function DetailPane({
 // Loading skeleton
 // ---------------------------------------------------------------------------
 
-function PendingSkeleton() {
+function EnrichmentSkeleton() {
   return (
     <div className="flex flex-1 min-h-0">
       <aside className="w-[440px] shrink-0 flex flex-col gap-0 bg-bg-soft border-r border-border overflow-y-auto">
@@ -591,11 +592,11 @@ function PendingSkeleton() {
 
 // Screen insight (#4655) — registered with the breadcrumb Insights button via
 // useSetInsight. Module-level constant for stable identity across renders.
-const PENDING_INSIGHT: InsightValue = {
+const ENRICHMENT_INSIGHT: InsightValue = {
   storageKey: "pending",
   human: (
     <>
-      Pending candidates — edits grafel has queued but not yet
+      Enrichment candidates — edits grafel has queued but not yet
       applied to the graph: repairs (resolving an unresolved reference)
       and enrichments (adding inferred metadata). Review each, then
       accept or dismiss it.
@@ -608,8 +609,8 @@ const PENDING_INSIGHT: InsightValue = {
   },
 };
 
-export default function PendingScreen() {
-  useSetInsight(PENDING_INSIGHT);
+export default function EnrichmentScreen() {
+  useSetInsight(ENRICHMENT_INSIGHT);
   const { groupId = "demo" } = useParams();
   const { data, isLoading, isError } = useCandidates(groupId);
   const saveHintMutation = useSaveHint(groupId);
@@ -630,7 +631,7 @@ export default function PendingScreen() {
     setDraft,
     confirmSave,
     seedServerHints,
-  } = usePendingStore();
+  } = useEnrichmentStore();
 
   // All items for the current tab.
   const allItems: Candidate[] = useMemo(() => {
@@ -814,7 +815,7 @@ export default function PendingScreen() {
 
       {/* Split pane */}
       {isLoading ? (
-        <PendingSkeleton />
+        <EnrichmentSkeleton />
       ) : (
         <div className="flex flex-1 min-h-0">
           {/* Left list */}

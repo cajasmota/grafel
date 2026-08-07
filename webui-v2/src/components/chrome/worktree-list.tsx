@@ -1,7 +1,7 @@
 /* ============================================================
    chrome/worktree-list.tsx — worktree subtree in the nav-rail (PH4 / #2092).
 
-   Renders after the main screen-nav entries and before the Pending
+   Renders after the main screen-nav entries and before the Enrichment
    divider. Shows repos that have at least one worktree ref, indented
    under the repo slug. Each worktree child row has:
      - 🌿 (Sprout) icon

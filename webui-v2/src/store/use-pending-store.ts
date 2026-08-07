@@ -1,5 +1,5 @@
 /* ============================================================
-   store/use-pending-store.ts — Pending screen UI state (#1442).
+   store/use-pending-store.ts — Enrichment screen UI state (#1442).
 
    Separate from use-app-store.ts (appearance/command palette).
    Holds: tab, filter, groupBy, focusedId, openMap (group collapse),
@@ -8,14 +8,14 @@
 
 import { create } from "zustand";
 
-export type PendingTab = "repairs" | "enrichments";
-export type PendingFilter = "all" | "high" | "stale";
-export type PendingGroupBy = "type" | "severity" | "repo" | "none";
+export type EnrichmentTab = "repairs" | "enrichments";
+export type EnrichmentFilter = "all" | "high" | "stale";
+export type EnrichmentGroupBy = "type" | "severity" | "repo" | "none";
 
-interface PendingState {
-  tab: PendingTab;
-  filter: PendingFilter;
-  groupBy: PendingGroupBy;
+interface EnrichmentState {
+  tab: EnrichmentTab;
+  filter: EnrichmentFilter;
+  groupBy: EnrichmentGroupBy;
   /** ID of the currently focused candidate row, or null. */
   focusedId: string | null;
   /** Map of groupKey → collapsed (false means collapsed; absent/true means open). */
@@ -32,9 +32,9 @@ interface PendingState {
    */
   savedHints: Record<string, string>;
 
-  setTab: (tab: PendingTab) => void;
-  setFilter: (filter: PendingFilter) => void;
-  setGroupBy: (groupBy: PendingGroupBy) => void;
+  setTab: (tab: EnrichmentTab) => void;
+  setFilter: (filter: EnrichmentFilter) => void;
+  setGroupBy: (groupBy: EnrichmentGroupBy) => void;
   setFocusedId: (id: string | null) => void;
   toggleGroup: (key: string) => void;
   /** Set draft hint text for an entity. Pass candidate.entityId as key. */
@@ -45,7 +45,7 @@ interface PendingState {
   seedServerHints: (hints: Record<string, string>) => void;
 }
 
-export const usePendingStore = create<PendingState>((set) => ({
+export const useEnrichmentStore = create<EnrichmentState>((set) => ({
   tab: "repairs",
   filter: "all",
   groupBy: "type",
