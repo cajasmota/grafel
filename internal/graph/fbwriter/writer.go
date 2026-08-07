@@ -225,6 +225,11 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	if hasSig {
 		fb.EntityAddSignature(b, sigOff)
 	}
+	// Issue #6236 — emit end_line only when set, gated like the optional
+	// scalars above.
+	if e.EndLine != 0 {
+		fb.EntityAddEndLine(b, int32(e.EndLine))
+	}
 	return fb.EntityEnd(b)
 }
 

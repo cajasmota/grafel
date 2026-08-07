@@ -75,6 +75,17 @@ table Entity {
   // and old graph.fb files read back with an empty signature (prior
   // behavior). FormatVersion is bumped to force a clean reindex.
   signature: string;
+
+  // Issue #6236 — dedicated slot for the entity's end line. graph.json has
+  // always carried EndLine, but the Entity table had only source_line, so the
+  // binary path dropped the span's second half for every entity that had one,
+  // in every language. internal/coverage/attribute.go picks between an
+  // entity's own span and a whole-file roll-up on EndLine > 0, so an FB-loaded
+  // entity could only ever get the roll-up: a full index and an incremental
+  // one disagreed about the same entity. Appended after `signature` so
+  // existing field IDs are unchanged. FormatVersion is bumped to force a
+  // clean reindex.
+  end_line: int;
 }
 
 // Community is one Louvain modularity community summarised for the

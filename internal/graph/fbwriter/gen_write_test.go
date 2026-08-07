@@ -139,7 +139,7 @@ func TestNoReindexLoop_GenOnlyDir(t *testing.T) {
 // hard-coded (not read from fbversion) precisely so a bump cannot pass silently
 // — whoever bumps must come here, update the number, and say why.
 //
-// Currently pinned at 5. History:
+// Currently pinned at 6. History:
 //   - 4 (#4881) schema change: added the Entity `signature` slot.
 //   - 5 (#6033) DATA-REPAIR bump, payload format unchanged: v4 graphs can hold
 //     2/4/8/16 duplicate copies of every relationship (every incremental pass
@@ -147,13 +147,14 @@ func TestNoReindexLoop_GenOnlyDir(t *testing.T) {
 //     repair existing files, and dedupe is not an option — see the fbversion
 //     doc comment. Rejecting v4 is what makes existing users self-heal via the
 //     daemon's auto-reindex arm.
+//   - 6 (#6236) schema change: added the Entity `end_line` slot.
 //
 // It was previously named TestNoFbversionBump and asserted the gen-layout work
 // introduced no bump; the invariant it actually protects is "no UNINTENTIONAL
 // bump", which survives a deliberate one.
 func TestFbversionPinned(t *testing.T) {
-	if fbversion.Version != 5 {
-		t.Fatalf("fbversion.Version = %d, want 5 (a bump force-reindexes the whole corpus — deliberate only)", fbversion.Version)
+	if fbversion.Version != 6 {
+		t.Fatalf("fbversion.Version = %d, want 6 (a bump force-reindexes the whole corpus — deliberate only)", fbversion.Version)
 	}
 	dir := t.TempDir()
 	genPath, err := fbwriter.WriteGraphGen(dir, smallDoc("gen-mini"))
@@ -165,8 +166,8 @@ func TestFbversionPinned(t *testing.T) {
 		t.Fatalf("open gen file: %v", err)
 	}
 	defer r.Close()
-	if v := r.Version(); v != 5 {
-		t.Fatalf("gen file header version = %d, want 5", v)
+	if v := r.Version(); v != 6 {
+		t.Fatalf("gen file header version = %d, want 6", v)
 	}
 }
 

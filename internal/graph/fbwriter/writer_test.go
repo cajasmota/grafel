@@ -525,3 +525,87 @@ func TestRoundtripSignature(t *testing.T) {
 		t.Errorf("empty signature should stay empty: got %q", sigByID["ent0000000000000c"])
 	}
 }
+
+// TestRoundtripEndLine (#6236): the Entity table had source_line and no end
+// line, so every entity loaded from graph.fb came back with EndLine 0 while
+// graph.json carried the real value. internal/coverage/attribute.go reads a
+// zero EndLine as "no usable span", which is how the loss stayed quiet.
+func TestRoundtripEndLine(t *testing.T) {
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Date(2026, 8, 7, 0, 0, 0, 0, time.UTC),
+		Repo:        "fixture-endline",
+		Entities: []graph.Entity{
+			{ID: "ent0000000000000a", Name: "Vault.deposit", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: "Vault.sol", StartLine: 27, EndLine: 33},
+			// A one-line entity.
+			{ID: "ent0000000000000b", Name: "IVault.deposit", Kind: "SCOPE.Operation", Subtype: "function", SourceFile: "IVault.sol", StartLine: 5, EndLine: 5},
+			// No end line — must read back as 0, not as a fabricated span.
+			{ID: "ent0000000000000c", Name: "bare", Kind: "function", SourceFile: "b.ts", StartLine: 3},
+		},
+	}
+	doc.Stats.Entities = len(doc.Entities)
+
+	out := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out, doc); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := graph.LoadGraphFromDir(filepath.Dir(out))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	spanByID := map[string][2]int{}
+	for i := range got.Entities {
+		spanByID[got.Entities[i].ID] = [2]int{got.Entities[i].StartLine, got.Entities[i].EndLine}
+	}
+	for id, want := range map[string][2]int{
+		"ent0000000000000a": {27, 33},
+		"ent0000000000000b": {5, 5},
+		"ent0000000000000c": {3, 0},
+	} {
+		if spanByID[id] != want {
+			t.Errorf("entity %s span: got %v want %v", id, spanByID[id], want)
+		}
+	}
+}
+
+// TestEndLineSlotInRawFB (#6236) asserts the value reaches the dedicated slot
+// in the bytes, not just that the loader agrees with the writer.
+func TestEndLineSlotInRawFB(t *testing.T) {
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Date(2026, 8, 7, 0, 0, 0, 0, time.UTC),
+		Repo:        "fixture-endline-slot",
+		Entities: []graph.Entity{
+			{ID: "ent0000000000000a", Name: "Foo", Kind: "class", SourceFile: "foo.py", StartLine: 10, EndLine: 42},
+			// No end line — slot must be absent, reading back as 0.
+			{ID: "ent0000000000000b", Name: "Baz", Kind: "external", SourceFile: ""},
+		},
+	}
+	doc.Stats.Entities = len(doc.Entities)
+
+	out := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out, doc); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	r, err := fbreader.Open(out)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer r.Close()
+
+	want := map[string]int32{
+		"ent0000000000000a": 42,
+		"ent0000000000000b": 0,
+	}
+	for i := 0; i < r.EntityCount(); i++ {
+		ent := r.EntityAt(i)
+		if ent == nil {
+			t.Fatalf("entity %d: nil", i)
+		}
+		id := string(ent.Id())
+		if got := ent.EndLine(); got != want[id] {
+			t.Errorf("entity %s EndLine(): got %d want %d", id, got, want[id])
+		}
+	}
+}

@@ -87,8 +87,8 @@ func ReindexRequiredReason(dir string) (required bool, reason string) {
 	// single-file/legacy graph (byte-identical — same version read, absent →
 	// (false,"")) and a *MultiReader for a segment-set, whose Version() is segment
 	// 0's version. The same v < minSupportedFBFormatVersion comparison +
-	// FormatVersionReason then applies uniformly. (fbversion is still 4, so a
-	// current v4 segment-set correctly returns false — a no-op today.)
+	// FormatVersionReason then applies uniformly. (#6236 took fbversion to 6, so
+	// a v5 segment-set now returns true here: no longer a no-op.)
 	r, err := ReaderForDir(dir)
 	if err != nil {
 		return false, ""
@@ -563,6 +563,7 @@ func fbEntityToGraphEntity(e *fb.Entity, si *stringInterner) Entity {
 		Subtype:       si.intern(e.Subtype()),
 		SourceFile:    si.intern(e.SourceFile()),
 		StartLine:     int(e.SourceLine()),
+		EndLine:       int(e.EndLine()),
 	}
 	ent.properties = props
 	// #5915 J2 slice-3 (discovered while testing cleanup.go's embedding-GC

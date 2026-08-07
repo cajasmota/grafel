@@ -35,7 +35,7 @@ func streamFixtureDoc() *graph.Document {
 	ents := []graph.Entity{
 		graph.Entity{
 			ID: "e0000000000001", Name: "Alpha", QualifiedName: "pkg.Alpha",
-			Kind: "FUNCTION", SourceFile: "a.go", StartLine: 3, Language: "go",
+			Kind: "FUNCTION", SourceFile: "a.go", StartLine: 3, EndLine: 11, Language: "go",
 			Signature: "func Alpha()",
 		}.WithProperties(map[string]string{"module": "m1", "visibility": "public"}),
 		graph.Entity{
@@ -122,9 +122,9 @@ func entityKeyForTest(e graph.Entity) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	s := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%d|%s|%s",
+	s := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%d|%d|%s|%s",
 		e.ID, e.Name, e.QualifiedName, e.Kind, e.Subtype, e.SourceFile,
-		e.StartLine, e.Language, e.Signature)
+		e.StartLine, e.EndLine, e.Language, e.Signature)
 	for _, k := range keys {
 		s += "|" + k + "=" + props[k]
 	}

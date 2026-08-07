@@ -9,6 +9,6 @@ Group: parity
   truncated         0 files       6 entities       2 rels  indexed 1h30m ago
                 ⚠ graph FAILED to load: panic while reading the graph: runtime error: slice bounds out of range [888:500] — file/endpoint/flow counts above are INCOMPLETE; run `grafel reset parity` to rebuild from scratch
   unreadable        0 files       0 entities       0 rels  indexed 1h30m ago
-                ⚠ graph FAILED to load: graph.loadFBDocument: graph.fb format version 2 is older than required version 5 — please reindex (run: grafel index <repo>) — file/endpoint/flow counts above are INCOMPLETE; run `grafel reset parity` to rebuild from scratch
+                ⚠ graph FAILED to load: graph.loadFBDocument: graph.fb format version 2 is older than required version 6 — please reindex (run: grafel index <repo>) — file/endpoint/flow counts above are INCOMPLETE; run `grafel reset parity` to rebuild from scratch
 
   TOTAL: 36 entities · 12 relationships · 0 cross-repo edges · 10 flows · 15 endpoints  ⚠ INCOMPLETE — 2 repos could not be read (see above)

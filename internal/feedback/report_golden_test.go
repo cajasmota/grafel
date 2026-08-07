@@ -16,8 +16,15 @@ import (
 // The fixture (testdata/golden/graph.fb) is a genuine graph.fb: it was produced
 // by round-tripping an indexed multi-language golden graph through the real
 // fbwriter, so it speaks the production dialect the unit fixtures used to lie
-// about — canonical SCOPE.* / bare kinds, StartLine-only (EndLine == 0 for every
-// entity), no Properties["resolution"] tag, and ToID-shaped resolution.
+// about — canonical SCOPE.* / bare kinds, no Properties["resolution"] tag, and
+// ToID-shaped resolution.
+//
+// Every entity in it also carries EndLine == 0. That was once a property of the
+// FB path itself: the Entity table had no end-line slot, so the value could not
+// survive. #6236 added the slot, so it is no longer true of graph.fb in general
+// — it is now just the shape of THIS fixture, which was captured before the
+// slot existed. That shape is what keeps D1 honest, since the StartLine anchor
+// is the only thing left to count, so the sanity check below still pins it.
 //
 // Against the pre-#5683 collector this test FAILS on all three axes:
 //   - D1: source-window completeness == 0.0% (EndLine > StartLine never holds).
@@ -32,12 +39,12 @@ func TestGenerate_GoldenFB(t *testing.T) {
 		t.Fatalf("golden graph.fb empty: %d entities, %d rels", len(doc.Entities), len(doc.Relationships))
 	}
 
-	// Sanity: confirm the fixture really is FB-dialect — no entity carries an
+	// Sanity: confirm the fixture is still span-less — no entity carries an
 	// EndLine, and the class/model kinds are canonical (not lowercase). This is
 	// what makes the assertions below meaningful regressions.
 	for i := range doc.Entities {
 		if doc.Entities[i].EndLine != 0 {
-			t.Fatalf("fixture is not FB-dialect: entity %s has EndLine=%d (expected 0)",
+			t.Fatalf("fixture is no longer span-less: entity %s has EndLine=%d (expected 0)",
 				doc.Entities[i].ID, doc.Entities[i].EndLine)
 		}
 	}
