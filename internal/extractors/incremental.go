@@ -520,8 +520,43 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		//
 		// Log a path SAMPLE so a recurrence is diagnosable, not just a bare
 		// count (#5668).
+		// THE COMMIT LABEL MUST NOT ADVANCE HERE (#5822 ②).
+		//
+		// This pass changed no entity: it reconciles the manifest and asks the
+		// caller for a full reindex. The persisted graph is therefore still the
+		// graph built at manifest.GitCommit, and that is the only value of
+		// git_commit that is TRUE. SaveManifest stamps LIVE HEAD, which made
+		// the manifest claim "indexed at HEAD" for a pass that indexed nothing;
+		// daemon.indexedCommitShortNoGit and daemon.IndexedCommitForRepo both
+		// prefer this field over the graph.fb header, so the statusline, the
+		// dashboard and grafel_index_status all reported a commit the graph had
+		// never contained — and IndexedCommitForRepo reported AtHead=true over
+		// it. If the full reindex we are requesting is cancelled,
+		// watchdog-killed, or merely queued behind other work, that label stays
+		// advanced over the older graph indefinitely.
+		//
+		// It is also self-concealing, which is the worse half. The #5710
+		// head-advance detector above re-surfaces this delta on every later
+		// pass precisely BECAUSE manifest.GitCommit trails HEAD. Advancing it
+		// here disarms that detector: the next pass sees HEAD == manifest,
+		// stamps that match disk, zero changes, and returns Done=true over a
+		// graph that was never rebuilt. The reindex is then never requested
+		// again by anything.
+		//
+		// PRESERVING the previous value is the choice, not blanking it. Blank
+		// would be the honest answer to "we do not know", but we DO know — the
+		// graph is at manifest.GitCommit — and blanking additionally breaks the
+		// `manifest.GitCommit != ""` guard the head-advance detector is gated
+		// on, silently disabling the same detector by the other route.
+		//
+		// NOT saving at all would also fix the label, and is wrong: #6201/#5668
+		// established that this path MUST persist a reconciled manifest, or the
+		// changed files re-surface next pass and re-trip this very reject
+		// forever, and #5667's prune of entries absent from the gitignore-aware
+		// walk stops happening too. The write stays; only the commit stamp is
+		// corrected.
 		diff.UpdateManifestScoped(absRepo, changedFiles, allFiles, manifest)
-		_ = diff.SaveManifest(stateDir, absRepo, manifest)
+		_ = diff.SaveManifestAtCommit(stateDir, manifest, manifest.GitCommit, manifest.GitCommitFull)
 		logger.Printf("incremental: too-many-changed files=%d limit=%d (changed=%d deleted=%d) changed=%v deleted=%v",
 			totalChanged, limit, len(changedFiles), len(deletedFiles),
 			samplePaths(changedFiles), samplePaths(deletedFiles))
@@ -648,8 +683,12 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// this comment previously claimed it was, which would have told the next
 	// reader it runs. The live guard is the reachable branch above.
 	if len(reallyChanged) > limit {
+		// Same reasoning as the reachable reject above (#5822 ②) — kept in step
+		// with it deliberately, so that if the proof of unreachability ever
+		// stops holding this branch does not resurrect the defect. No test can
+		// pin this, because no input reaches it.
 		diff.UpdateManifestScoped(absRepo, changedFiles, allFiles, manifest)
-		_ = diff.SaveManifest(stateDir, absRepo, manifest)
+		_ = diff.SaveManifestAtCommit(stateDir, manifest, manifest.GitCommit, manifest.GitCommitFull)
 		logger.Printf("incremental: too-many-changed after-hash-gate files=%d limit=%d really=%v",
 			len(reallyChanged), limit, samplePaths(reallyChanged))
 		return fallback(t0, fmt.Sprintf("too-many-changed after-hash-gate files=%d limit=%d",

@@ -146,12 +146,40 @@ func LoadManifest(stateDir string) *Manifest {
 	return &m
 }
 
-// SaveManifest atomically writes m to stateDir. It sets IndexedAt and captures
-// the current HEAD commit (best-effort). Returns nil on success.
+// SaveManifest atomically writes m to stateDir, stamping GitCommit /
+// GitCommitFull from repoPath's LIVE HEAD at save time (best-effort; empty when
+// not a git repo). Returns nil on success.
+//
+// Live HEAD is the right stamp only for a caller whose pass actually built the
+// graph from the tree at that commit. A caller that indexed NOTHING — or that
+// knows which commit it read, because it captured it before doing the work —
+// must use SaveManifestAtCommit instead. See #5822 ②.
 func SaveManifest(stateDir, repoPath string, m *Manifest) error {
+	return SaveManifestAtCommit(stateDir, m, headCommit(repoPath), headCommitFull(repoPath))
+}
+
+// SaveManifestAtCommit atomically writes m to stateDir, stamping GitCommit /
+// GitCommitFull from the caller-supplied commit rather than from live HEAD.
+//
+// WHY THE COMMIT IS A PARAMETER (#5822 ②). GitCommit answers exactly one
+// question — "which commit is the persisted graph built from?" — and only the
+// caller knows the answer. SaveManifest's live-HEAD read answers a DIFFERENT
+// question, "which commit is checked out at this instant", and the two diverge
+// on every path that writes a manifest without building a graph from HEAD. The
+// too-many-changed reject in internal/extractors is the load-bearing one: it
+// re-stamps files and returns a full-reindex REQUEST, having changed no entity,
+// so live HEAD there records a commit the graph has never contained. This is
+// the same correction #6212 made for the per-FILE stamps, which likewise moved
+// from "hash the path at commit time" to "record what the pass actually read".
+//
+// short and full must describe the SAME commit; pass both or neither. Empty
+// strings are written through as empty (the non-git case), NOT treated as
+// "leave whatever m already holds" — a save must never leave the two fields
+// disagreeing with what the caller asked for.
+func SaveManifestAtCommit(stateDir string, m *Manifest, short, full string) error {
 	m.IndexedAt = time.Now().UTC()
-	m.GitCommit = headCommit(repoPath)
-	m.GitCommitFull = headCommitFull(repoPath)
+	m.GitCommit = short
+	m.GitCommitFull = full
 
 	data, err := json.Marshal(m)
 	if err != nil {
