@@ -200,6 +200,12 @@ func (s *GraphStream) Header() fbreader.GraphMeta {
 // and only the graph.json fallback carries a real value. This method reproduces
 // that exactly rather than papering over it — a caller that wants the true
 // indexed-file count should read graph-stats.json's TotalFiles instead.
+//
+// Treat a zero Files here as UNKNOWN, never as "this repo has no files": it is
+// the value the .fb layouts are structurally incapable of carrying, not a
+// measurement. `grafel status` assigned it over a real sidecar count and
+// printed "0 files" for every repo in the shipping format (#6115); it now takes
+// this field only when it is non-zero.
 func (s *GraphStream) DocStats() Stats {
 	if s == nil {
 		return Stats{}

@@ -12,6 +12,15 @@ package cli
 // Regenerate deliberately (and only when a reported value is MEANT to change):
 //
 //	GRAFEL_UPDATE_GOLDEN=1 go test ./internal/cli/ -run StatusOutputParity
+//
+// Regenerated once since capture, for #6115: the golden pinned "0 files" on the
+// three .fb-backed fixtures that HAVE a graph-stats.json (healthy, segmentset,
+// coldrefs), because status assigned the .fb layout's structurally-zero file
+// count over the sidecar's real one. Those three cells moved 0 → 7 and NOTHING
+// else did — jsononly still reports its document's 7, the sidecar-less and
+// failed-load fixtures still report 0, and the TOTAL line is byte-identical.
+// That is the whole of the intended change; a wider diff on a future
+// regeneration is a regression, not a rebase.
 
 import (
 	"bytes"
