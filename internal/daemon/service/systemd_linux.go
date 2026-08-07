@@ -118,6 +118,26 @@ func (m *systemdManager) WriteUnit() error {
 	}
 	// Reload so systemd picks up the (re)written unit file. Non-fatal if the
 	// user systemd manager isn't reachable yet — Load surfaces real failures.
+	return daemonReload()
+}
+
+// daemonReload runs the post-write `systemctl --user daemon-reload`.
+//
+// It is a package var so a test can exercise WriteUnit — a pure file-rendering
+// contract — without the reload. There is no way to write that test otherwise:
+// the reload is unconditional inside WriteUnit, and watchers.GuardServiceCall
+// (correctly) PANICS on any mutating verb reaching a real service manager from
+// a test process, so TestWriteUnit_RewritesLegacyDaemonUnitToServe died on
+// Linux the moment CI got far enough to run it. Substituting the reload is the
+// fix the guard's own message asks for ("install a fake runner"); adding
+// daemon-reload to the read-only allowlist would NOT be, because the allowlist
+// only stops the panic — the real exec.Command below would still run against
+// the developer's live user manager.
+//
+// Substituting it is unsynchronised, so a test that swaps it must not be
+// parallel. Nothing in this package calls t.Parallel(), and the var is never
+// written in production.
+var daemonReload = func() error {
 	if err := guardSystemctl("daemon-reload"); err != nil {
 		return err
 	}

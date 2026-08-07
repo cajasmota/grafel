@@ -85,7 +85,7 @@ func callsEdge(from, to string) graph.Relationship {
 func stubTwoGroupServer(t *testing.T, v3 *graph.Document, oracle *graph.Document) *Server {
 	t.Helper()
 	// Isolate the effects-sidecar lookup directory per test.
-	t.Setenv("HOME", t.TempDir())
+	sandboxGrafelHome(t)
 	reg := &Registry{Groups: map[string]RegistryGroup{
 		"v3":     {Repos: map[string]RegistryRepo{"r": {Path: t.TempDir()}}},
 		"oracle": {Repos: map[string]RegistryRepo{"r": {Path: t.TempDir()}}},

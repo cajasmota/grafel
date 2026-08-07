@@ -13,8 +13,7 @@ import (
 // temp HOME so handleDataFlows (which resolves via os.UserHomeDir) reads it.
 func writeDataFlowSidecar(t *testing.T, doc dataFlowSidecarDoc) {
 	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := sandboxGrafelHome(t)
 	dir := filepath.Join(home, ".grafel", "groups")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -104,7 +103,7 @@ func TestDataFlowsTool_SinkKindFilter(t *testing.T) {
 
 // TestDataFlowsTool_MissingSidecar asserts the honest empty/missing contract.
 func TestDataFlowsTool_MissingSidecar(t *testing.T) {
-	t.Setenv("HOME", t.TempDir()) // no sidecar written
+	sandboxGrafelHome(t) // no sidecar written
 	srv := newTestServer(t, &graph.Document{Repo: "repo-a"})
 	out := callFlowTool(t, srv.handleDataFlows, map[string]any{})
 	if src, _ := out["source"].(string); src != "missing" {

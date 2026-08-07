@@ -59,6 +59,16 @@ func TestWriteUnit_RewritesLegacyDaemonUnitToServe(t *testing.T) {
 		t.Fatalf("newServiceManager: %v", err)
 	}
 
+	// WriteUnit ends in `systemctl --user daemon-reload`, which is a REAL
+	// mutating call against whatever user manager the process can reach —
+	// watchers.GuardServiceCall panics on it, and rightly so. Substitute the
+	// reload and count it, so what is under test stays the rendering contract
+	// while the "WriteUnit asks systemd to re-read" half is still asserted.
+	reloads := 0
+	prevReload := daemonReload
+	daemonReload = func() error { reloads++; return nil }
+	t.Cleanup(func() { daemonReload = prevReload })
+
 	if err := sm.WriteUnit(); err != nil {
 		t.Fatalf("WriteUnit (rewrite pass): %v", err)
 	}
@@ -84,5 +94,8 @@ func TestWriteUnit_RewritesLegacyDaemonUnitToServe(t *testing.T) {
 	}
 	if string(again) != string(rewritten) {
 		t.Errorf("WriteUnit is not idempotent:\nfirst:\n%s\nsecond:\n%s", rewritten, again)
+	}
+	if reloads != 2 {
+		t.Errorf("daemon-reload ran %d times, want one per WriteUnit (2)", reloads)
 	}
 }

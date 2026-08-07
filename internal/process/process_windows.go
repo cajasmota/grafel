@@ -87,12 +87,48 @@ func CPUPercent(_ int) (float64, error) {
 	return 0, fmt.Errorf("process.CPUPercent: unsupported platform windows")
 }
 
-// CPUTimeSeconds is not implemented on Windows. A caller (e.g. the
-// engine-liveness heartbeat's CPU-delta sampler) treats the error as "CPU%
-// unavailable" and simply omits the CPU portion of its readout — RSS is still
-// reported via RSSBytes.
-func CPUTimeSeconds(_ int) (float64, error) {
-	return 0, fmt.Errorf("process.CPUTimeSeconds: unsupported platform windows")
+// CPUTimeSeconds returns the total CPU time (kernel + user) the process with
+// the given pid has consumed, via kernel32!GetProcessTimes.
+//
+// This used to return "unsupported platform windows", and callers duly degraded:
+// the engine-liveness heartbeat and the group-algo progress line both omit their
+// CPU field when the sampler errors. That was a silent hole exactly where the
+// number matters most — the group-algo heartbeat exists so a wedged pass is
+// distinguishable from a slow one (#6108), and on Windows it shipped without the
+// draw beside the cap, which is the comparison the line is for.
+// TestGroupAlgoProgress_EmitsPhaseAndCPU asserts the field unconditionally and
+// so could never pass on Windows.
+//
+// GetProcessTimes needs only PROCESS_QUERY_LIMITED_INFORMATION — the same
+// low-privilege, cross-session handle RSSBytes and IsAlive already open — and
+// reports FILETIMEs in 100-nanosecond units.
+func CPUTimeSeconds(pid int) (float64, error) {
+	if pid <= 0 {
+		return 0, fmt.Errorf("process.CPUTimeSeconds: invalid pid %d", pid)
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return 0, fmt.Errorf("OpenProcess(%d): %w", pid, err)
+	}
+	defer windows.CloseHandle(h)
+
+	var creation, exit, kernel, user windows.Filetime
+	if err := windows.GetProcessTimes(h, &creation, &exit, &kernel, &user); err != nil {
+		return 0, fmt.Errorf("GetProcessTimes(%d): %w", pid, err)
+	}
+	// NOT Filetime.Nanoseconds(): that helper subtracts the 1601→1970 epoch
+	// offset, which is correct for a wall-clock FILETIME and nonsense for a
+	// DURATION one — kernel and user here are elapsed CPU, not timestamps.
+	// Combine the halves and scale the raw 100ns ticks directly.
+	const ticksPerSecond = 1e7
+	ticks := float64(filetimeTicks(kernel) + filetimeTicks(user))
+	return ticks / ticksPerSecond, nil
+}
+
+// filetimeTicks joins a FILETIME's two 32-bit halves into its raw count of
+// 100-nanosecond intervals, with no epoch adjustment.
+func filetimeTicks(ft windows.Filetime) int64 {
+	return int64(ft.HighDateTime)<<32 | int64(ft.LowDateTime)
 }
 
 // processMemoryCounters mirrors the Win32 PROCESS_MEMORY_COUNTERS struct

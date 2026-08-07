@@ -200,11 +200,23 @@ func TestGroupAlgoProgress_EmitsPhaseAndCPU(t *testing.T) {
 	stop := startGroupAlgoProgress(context.Background(), "gProg", "in-process")
 	deadline := time.Now().Add(5 * time.Second)
 	var out string
+	// Wait for the cpu_pct-bearing line, not merely for the first progress
+	// line.
+	//
+	// This is belt, not the fix, and the distinction matters because an earlier
+	// revision of this comment got it wrong. cpu_pct is a delta, but
+	// startGroupAlgoProgress SEEDS lastCPU/cpuOK from a CPUTimeSeconds call
+	// before the ticker goroutine starts, so the very first tick already carries
+	// the field: there was no race on unix. The Windows failure was
+	// process.CPUTimeSeconds erroring unconditionally, which left cpuOK false
+	// forever — fixed in internal/process, not here. What this loop now buys is
+	// that a single failed sample (the seeding call losing a race with process
+	// start, say) shifts the field one tick later instead of failing the test.
 	for time.Now().Before(deadline) {
 		mu.Lock()
 		out = buf.String()
 		mu.Unlock()
-		if strings.Contains(out, "group-algo: progress") {
+		if strings.Contains(out, "group-algo: progress") && strings.Contains(out, "cpu_pct=") {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)

@@ -120,11 +120,16 @@ type ReconcileWatcherResult struct {
 // writes and constructs no Loader, which is what keeps an up-to-date machine a
 // pure read (#6179).
 type watcherPlan struct {
-	unit         watchers.Unit
-	path         string // unit path under the current label
-	legacyPath   string // unit path under the pre-#6183 label
+	unit       watchers.Unit
+	path       string // unit path under the current label
+	legacyPath string // unit path under the pre-#6183 label
+	// nativePath is the unit path under the pre-slash-normalisation label —
+	// the digest over filepath.Clean's OS-native output. Empty off Windows,
+	// where that derivation coincides with the current one.
+	nativePath   string
 	exists       bool   // a unit file exists at path
 	legacyExists bool   // a unit file exists at legacyPath
+	nativeExists bool   // a unit file exists at nativePath
 	body         []byte // contents of path, when it exists
 	statErr      error  // the ReadFile error (may be os.ErrNotExist)
 	readErr      error  // a REAL read failure, worth warning about
@@ -155,6 +160,19 @@ func planWatcherUnits(group string, cfg *registry.GroupConfig, binPath string, r
 			pl.legacyPath = legacyPath
 			if _, serr := os.Stat(legacyPath); serr == nil {
 				pl.legacyExists = true
+			}
+		}
+
+		// The pre-slash-normalisation label, probed in the same phase-1 pass
+		// and for the same reason: a derivation nothing stats is a unit that
+		// stays installed and loaded under a name this binary can no longer
+		// utter. The `!= path` guard is what makes this cost one stat and find
+		// nothing off Windows, where the two derivations coincide.
+		nativePath, nerr := watchers.NativeDigestUnitPath(u)
+		if nerr == nil && nativePath != path && nativePath != legacyPath {
+			pl.nativePath = nativePath
+			if _, serr := os.Stat(nativePath); serr == nil {
+				pl.nativeExists = true
 			}
 		}
 
@@ -263,10 +281,18 @@ func ReconcileWatcherUnits(opts ReconcileWatcherOptions) (*ReconcileWatcherResul
 						res.Migrated = append(res.Migrated, removed)
 					}
 				}
+				if pl.nativeExists {
+					if removed, merr := watchers.MigrateNativeDigestUnit(u, lazyLoader); merr != nil {
+						res.Warnings = append(res.Warnings,
+							fmt.Sprintf("retire superseded unit %s: %v", pl.nativePath, merr))
+					} else if removed != "" {
+						res.Migrated = append(res.Migrated, removed)
+					}
+				}
 				continue
 			}
 
-			if !pl.exists && !pl.legacyExists {
+			if !pl.exists && !pl.legacyExists && !pl.nativeExists {
 				// No unit under either label, and no colliding sibling that
 				// proves one used to cover this repo — not stale, not storming,
 				// and not something to create: installing missing units is
@@ -293,6 +319,23 @@ func ReconcileWatcherUnits(opts ReconcileWatcherOptions) (*ReconcileWatcherResul
 				if merr != nil {
 					res.Warnings = append(res.Warnings,
 						fmt.Sprintf("retire legacy unit %s: %v", legacyPath, merr))
+					continue
+				}
+				if removed != "" {
+					res.Migrated = append(res.Migrated, removed)
+				}
+			}
+
+			// Same, for the pre-slash-normalisation label. Separate because
+			// the two superseded derivations are independent: a Windows
+			// machine that upgraded through #6183 and then through the
+			// normalisation has a unit under BOTH, and retiring only one
+			// leaves the other registered.
+			if pl.nativeExists {
+				removed, merr := watchers.MigrateNativeDigestUnit(u, lazyLoader)
+				if merr != nil {
+					res.Warnings = append(res.Warnings,
+						fmt.Sprintf("retire superseded unit %s: %v", pl.nativePath, merr))
 					continue
 				}
 				if removed != "" {
