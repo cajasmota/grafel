@@ -30,4 +30,12 @@ package fbversion
 // load.go's min-version gate fire, which the daemon turns into an automatic
 // full reindex (internal/daemon/stale_reindex.go) — every existing user is
 // repaired on upgrade with no manual `grafel index` and no `grafel reset`.
-const Version = 5
+//
+// Version 6 (#6236) — added the `end_line` slot to the Entity table. The
+// binary path had only source_line, so every entity loaded from graph.fb came
+// back with EndLine 0 even though graph.json has always carried the value.
+// internal/coverage/attribute.go reads a zero EndLine as "no usable span" and
+// answers with whole-file coverage, so a v5 graph.fb makes an incremental
+// index disagree with a full one about the same entity. Rejecting v5 forces
+// the clean reindex that repopulates spans.
+const Version = 6

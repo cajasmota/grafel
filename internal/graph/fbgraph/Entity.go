@@ -270,8 +270,20 @@ func (rcv *Entity) Signature() []byte {
 	return nil
 }
 
+func (rcv *Entity) EndLine() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(42))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *Entity) MutateEndLine(n int32) bool {
+	return rcv._tab.MutateInt32Slot(42, n)
+}
+
 func EntityStart(builder *flatbuffers.Builder) {
-	builder.StartObject(19)
+	builder.StartObject(20)
 }
 func EntityAddId(builder *flatbuffers.Builder, id flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(id), 0)
@@ -332,6 +344,9 @@ func EntityAddLanguage(builder *flatbuffers.Builder, language flatbuffers.UOffse
 }
 func EntityAddSignature(builder *flatbuffers.Builder, signature flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(18, flatbuffers.UOffsetT(signature), 0)
+}
+func EntityAddEndLine(builder *flatbuffers.Builder, endLine int32) {
+	builder.PrependInt32Slot(19, endLine, 0)
 }
 func EntityEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
