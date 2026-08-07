@@ -8,6 +8,48 @@ permissions:
   contents: write
 
 jobs:
+  # Closes #6064 — the tests are now a RELEASE GATE, not a parallel bystander.
+  #
+  # Before this, test.yml was also `on: push: tags: ['v*']`. Same trigger, same
+  # moment, two independent workflows: this one published at ~14 min while the
+  # 3-OS matrix was still running, so a failure on the windows leg at ~22 min
+  # landed on an already-published Release. test.yml's own comment said so in as
+  # many words — "A TAG PUSH IS NOT A RELEASE GATE".
+  #
+  # In practice v0.2.1 was gated by dispatching test.yml on `main` BY HAND
+  # before tagging. That works, and it is a human remembering: nothing enforced
+  # it, and forgetting it downgraded the release to no gate at all silently.
+  # The goal here was to make that manual step UNNECESSARY, not documented.
+  #
+  # WHY workflow_call AND NOT AN ENVIRONMENT
+  # #6064 suggests an environment approval gate. That would work, but a GitHub
+  # environment must be created by hand in repo Settings before the workflow
+  # references it — and a workflow naming an environment that does not exist
+  # yet fails. So an environment-based fix cannot land as a pull request alone;
+  # it needs an out-of-band admin action, and until that action happens the
+  # gate is worse than none. `workflow_call` + `needs:` needs no repo setting,
+  # no admin step and no token: it is an ordinary job dependency, live the
+  # moment this file merges.
+  #
+  # WHY NOT `workflow_run`
+  # `workflow_run` fires AFTER the other workflow finishes and cannot fail it
+  # retroactively; it is also awkward on tag refs. It would let this workflow
+  # observe the tests, not depend on them. `needs:` is a dependency.
+  #
+  # test.yml's `push: tags` trigger was REMOVED in the same change, so this is
+  # the only thing that starts the matrix on a tag — it runs once, not twice.
+  # Everything about the run is otherwise identical: same 3-OS matrix, same
+  # -race (a called workflow sees the caller's event, so test.yml still reads
+  # event_name=push / ref=refs/tags/v*, which is exactly what its -race branch
+  # keys on).
+  #
+  # Deliberately NOT a dependency of `dashboard` or `build`: those run in
+  # parallel with the tests, so a green tag still finishes in about
+  # max(tests, build) rather than their sum. Only the PUBLISH waits, which is
+  # the only step that is irreversible.
+  tests:
+    uses: ./.github/workflows/test.yml
+
   # Build the dashboard SPA exactly ONCE and publish it as an artifact. Every
   # OS/arch leg of the build matrix below downloads this same bundle into
   # internal/dashboard/dist/ before `go build`, so the //go:embed picks up the
@@ -220,7 +262,12 @@ jobs:
           retention-days: 7
 
   release:
-    needs: build
+    # `tests` is what makes a red matrix stop a publish (#6064). If any of the
+    # three platforms fails, `tests` fails, this job is SKIPPED, and no GitHub
+    # Release is created. The archives still get built and uploaded as workflow
+    # artifacts by `build` — they are just not published, which is the only part
+    # that cannot be taken back.
+    needs: [build, tests]
     runs-on: ubuntu-latest
     steps:
       # Pull ONLY the per-OS/arch binary archives — exclude the dashboard-dist

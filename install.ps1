@@ -7,6 +7,13 @@
 #   GRAFEL_VERSION   Release tag to install (default: latest, e.g. v0.1.0)
 #   GRAFEL_FORCE     If "1", overwrite an existing install without warning.
 #   GRAFEL_PREFIX    Install prefix (default: $env:USERPROFILE\.grafel)
+#   GRAFEL_ARCHIVE   Path to a LOCAL release .zip to install from, instead of
+#                    downloading one. Skips version resolution, download and
+#                    checksum verification — you are asserting you trust the
+#                    file you just pointed at. Exists so CI can execute this
+#                    script end-to-end against a freshly built binary (see
+#                    .github/workflows/windows-installers.yml); also usable for
+#                    an offline install from a hand-downloaded release asset.
 
 #Requires -Version 5.1
 
@@ -133,6 +140,61 @@ function Add-ToUserPath($Dir) {
     $env:Path = $env:Path.TrimEnd(';') + ';' + $Dir
 }
 
+# Invoke-Native runs an external executable and returns its exit code, without
+# letting anything the executable writes to stderr abort this script.
+#
+# THIS IS NOT A STYLE PREFERENCE — it is the fix for a defect that made a
+# first-ever Windows install impossible (found by the first real CI run of this
+# script; see .github/workflows/windows-installers.yml).
+#
+# The script sets `$ErrorActionPreference = 'Stop'` at the top, which is right
+# for cmdlets. But when a NATIVE command's stderr is REDIRECTED — `2>$null`,
+# `2>&1` — PowerShell wraps each stderr line in an ErrorRecord, and under
+# 'Stop' that ErrorRecord is TERMINATING. So this:
+#
+#     & schtasks.exe /query /tn com.grafel.daemon 2>$null | Out-Null
+#
+# does not quietly discard the error, which is plainly what it was written to
+# do. `schtasks /query` for a task that does not exist yet prints
+# "ERROR: The system cannot find the file specified." to stderr, and the script
+# dies right there with a NativeCommandError. The `2>$null` is not a mitigation,
+# it is the TRIGGER: without a redirect, native stderr goes straight to the
+# console and never becomes an ErrorRecord at all.
+#
+# The task does not exist on a first-ever install, by definition. Every
+# Stop-Daemon / Restart-Daemon probe here is a "does this exist?" question asked
+# of a tool that answers "no" on stderr, so all four call sites were fatal.
+#
+# Restoring 'Continue' around just the invocation keeps the strict default
+# everywhere else. `2>&1 | Out-Null` then merges and discards the stderr text
+# the caller never wanted. Works identically on Windows PowerShell 5.1 (the
+# `#Requires` floor, and what `irm | iex` actually runs) and on PowerShell 7.
+#
+# Be clear about WHICH mechanism does the work here, because it is not the one
+# it looks like: a FUNCTION creates a new scope, so `$ErrorActionPreference =
+# 'Continue'` below makes a function-local SHADOW that wins for the duration of
+# the call and dies with the scope. The save/restore in the `finally` is
+# therefore a no-op — it restores a shadow that is about to be discarded. It is
+# kept only so this function stays correct if its body is ever inlined into a
+# caller's scope. Contrast the `doctor` block near the end of the script, where
+# the same pattern IS load-bearing: `try` is not a scope in PowerShell, so that
+# assignment lands at SCRIPT scope and would leak to every later statement if
+# the `finally` did not put it back.
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [string[]]$Arguments = @()
+    )
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $FilePath @Arguments 2>&1 | Out-Null
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+}
+
 # Stop-Daemon stops a running grafel daemon BEFORE the new binary is copied.
 # Windows cannot overwrite an .exe that is open in a running process, so on an
 # upgrade the Copy-Item would otherwise fail ("being used by another process")
@@ -141,7 +203,10 @@ function Add-ToUserPath($Dir) {
 function Stop-Daemon {
     $taskName = 'com.grafel.daemon'
     if (Get-Command schtasks.exe -ErrorAction SilentlyContinue) {
-        & schtasks.exe /end /tn $taskName 2>$null | Out-Null
+        # `/end` on a task that is registered but NOT running also answers on
+        # stderr, so this was fatal on the upgrade path even when the task
+        # existed. Exit code ignored on purpose: not-running is a success here.
+        Invoke-Native -FilePath 'schtasks.exe' -Arguments @('/end', '/tn', $taskName) | Out-Null
     }
     # Kill any lingering process holding the exe (ignore "not found").
     try {
@@ -170,15 +235,18 @@ function Restart-Daemon {
     }
 
     # Detect a registered task (schtasks /query exits non-zero when absent).
-    & schtasks.exe /query /tn $taskName 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    # On a first-ever install it is absent and schtasks says so on stderr —
+    # which, before Invoke-Native, killed the installer here on EVERY new
+    # Windows machine. See the Invoke-Native header.
+    if ((Invoke-Native -FilePath 'schtasks.exe' -Arguments @('/query', '/tn', $taskName)) -ne 0) {
         return $false
     }
 
-    # Stop then start the task so it re-launches the new binary.
-    & schtasks.exe /end /tn $taskName 2>$null | Out-Null
-    & schtasks.exe /run /tn $taskName 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    # Stop then start the task so it re-launches the new binary. Only /run's
+    # exit code decides the outcome: /end on an already-stopped task is not a
+    # failure, it is the state we want.
+    Invoke-Native -FilePath 'schtasks.exe' -Arguments @('/end', '/tn', $taskName) | Out-Null
+    if ((Invoke-Native -FilePath 'schtasks.exe' -Arguments @('/run', '/tn', $taskName)) -ne 0) {
         Write-Info "warning: failed to restart the grafel daemon; $hint"
         return $false
     }
@@ -188,7 +256,24 @@ function Restart-Daemon {
 # --- main ---
 
 $arch    = Get-Arch
-$version = Resolve-Version
+
+# GRAFEL_ARCHIVE short-circuits version resolution entirely: there is no tag to
+# resolve when the archive is already on disk. Resolve to a full path NOW, while
+# the caller's working directory is still current — everything below runs after
+# several directory-independent steps, and a relative path resolved late is a
+# silent "file not found" on a machine we cannot debug.
+$localArchive = $null
+if ($env:GRAFEL_ARCHIVE) {
+    if (-not (Test-Path -LiteralPath $env:GRAFEL_ARCHIVE -PathType Leaf)) {
+        Fail "GRAFEL_ARCHIVE is set to '$($env:GRAFEL_ARCHIVE)' but that is not an existing file."
+    }
+    $localArchive = (Resolve-Path -LiteralPath $env:GRAFEL_ARCHIVE).ProviderPath
+}
+
+# The version label is cosmetic in the local-archive case — it names a scratch
+# file in $TmpDir and prints in the banner. It is still shaped like a real tag so
+# nothing downstream has to special-case it.
+$version = if ($localArchive) { 'v0.0.0-local' } else { Resolve-Version }
 $verNoV  = $version.TrimStart('v')
 
 $archiveName  = "grafel_${verNoV}_windows_${arch}.zip"
@@ -212,14 +297,25 @@ try {
     $archivePath   = Join-Path $TmpDir $archiveName
     $checksumsPath = Join-Path $TmpDir 'checksums.txt'
 
-    Write-Info "downloading $archiveUrl"
-    Get-FileWithRetry -Uri $archiveUrl -OutFile $archivePath
+    if ($localArchive) {
+        # No download, and therefore nothing to verify a checksum AGAINST: the
+        # published checksums.txt describes released assets, and this archive is
+        # by definition not one. Copying into $TmpDir rather than reading in
+        # place keeps the extract step and the `finally` cleanup identical to
+        # the download path, so the two paths diverge here and nowhere else.
+        Write-Info "using local archive $localArchive"
+        Write-Info "  (GRAFEL_ARCHIVE is set: skipping download and checksum verification)"
+        Copy-Item -LiteralPath $localArchive -Destination $archivePath -Force
+    } else {
+        Write-Info "downloading $archiveUrl"
+        Get-FileWithRetry -Uri $archiveUrl -OutFile $archivePath
 
-    Write-Info "downloading checksums.txt"
-    Get-FileWithRetry -Uri $checksumsUrl -OutFile $checksumsPath
+        Write-Info "downloading checksums.txt"
+        Get-FileWithRetry -Uri $checksumsUrl -OutFile $checksumsPath
 
-    Write-Info "verifying SHA256"
-    Verify-Checksum -ArchivePath $archivePath -ArchiveName $archiveName -ChecksumsPath $checksumsPath
+        Write-Info "verifying SHA256"
+        Verify-Checksum -ArchivePath $archivePath -ArchiveName $archiveName -ChecksumsPath $checksumsPath
+    }
 
     Write-Info "extracting"
     $extractDir = Join-Path $TmpDir 'extract'
@@ -232,7 +328,19 @@ try {
     # On an upgrade, stop the running daemon BEFORE overwriting the binary —
     # Windows cannot replace an .exe that is open in a running process. The
     # daemon is re-registered/restarted by Restart-Daemon further down.
-    if (Test-Path $existing) { Stop-Daemon }
+    # Best-effort by contract (see Stop-Daemon's header): a missing task or no
+    # running process must never abort an upgrade. Wrapped here as well as
+    # inside, so a future native call added to Stop-Daemon cannot re-break the
+    # upgrade path the way the schtasks probes broke the first-install path.
+    if (Test-Path $existing) {
+        # Speaks for the same reason the Restart-Daemon catch does: if this
+        # throws, the very next statement is a Copy-Item over an .exe that may
+        # still be running, and "file in use" is a lot easier to act on when the
+        # reason the stop failed was not swallowed one line earlier.
+        try { Stop-Daemon } catch {
+            Write-Info "warning: could not stop the running grafel daemon ($($_.Exception.Message)); continuing"
+        }
+    }
 
     Copy-Item -Path $binSrc.FullName -Destination $existing -Force
 
@@ -268,15 +376,44 @@ try {
     Add-ToUserPath -Dir $BinDir
 
     Write-Info ""
+    # The point of this call is to SHOW the user doctor's output, so unlike the
+    # probes above it must not swallow stdout. The `2>$null` that used to be
+    # here did two bad things: under $ErrorActionPreference='Stop' it turned any
+    # doctor warning on stderr into a terminating error (see Invoke-Native), and
+    # the catch then silently downgraded the whole report to `--version`. So the
+    # more grafel had to say, the less the user saw. Drop the redirect, relax
+    # the preference around the call, and decide on the EXIT CODE instead.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
-        & $existing doctor 2>$null
+        & $existing doctor
+        if ($LASTEXITCODE -ne 0) { & $existing --version }
     } catch {
         try { & $existing --version } catch { }
+    } finally {
+        $ErrorActionPreference = $prevEAP
     }
 
     # If a daemon is already registered, restart it so it picks up the new
-    # binary. Best-effort: Restart-Daemon never aborts the installer.
-    $daemonRestarted = Restart-Daemon
+    # binary. Best-effort: Restart-Daemon never aborts the installer — a promise
+    # the code did not keep until Invoke-Native landed, and which this try/catch
+    # now enforces at the call site too rather than trusting the callee.
+    #
+    # The catch MUST speak. Restart-Daemon warns on its own only for the one
+    # failure it anticipates (a non-zero `schtasks /run`); anything else —
+    # schtasks.exe off PATH raising CommandNotFoundException, which propagates
+    # straight through Invoke-Native's try/FINALLY since that has no catch —
+    # unwinds past that warning entirely. A silent catch here would then let the
+    # installer exit 0 on an UPGRADE where Stop-Daemon already killed the
+    # daemon, and fall through to the first-install epilogue that tells the user
+    # to go run `grafel wizard`. Dead daemon, cheerful success message, wrong
+    # instructions. Best-effort means "does not abort", never "says nothing".
+    $daemonRestarted = $false
+    try {
+        $daemonRestarted = Restart-Daemon
+    } catch {
+        Write-Info "warning: could not restart the grafel daemon ($($_.Exception.Message)); run 'grafel restart' to finish the update"
+    }
 
     Write-Info ""
     if ($daemonRestarted) {

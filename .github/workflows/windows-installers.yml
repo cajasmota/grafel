@@ -1,0 +1,669 @@
+name: windows installers
+
+# Refs #6163, #6169 — EXECUTE the Windows installers, do not read them.
+#
+# THE GAP THIS FILLS
+# install.ps1 and install.bat have never been run. Not in CI, not anywhere.
+# 4febe1e5a fixed both of them and could only assert on the scripts' TEXT
+# (internal/install/installwindows_6163_test.go greps the .bat and .ps1 for the
+# strings it expects); its own commit body says so, because no Windows host was
+# available locally. GitHub Actions has windows-latest runners. This was
+# testable the whole time and simply was not tested.
+#
+# A text assertion cannot distinguish "the script calls `install --register-mcp`"
+# from "the MCP entry ends up in the config". Both halves of #6163 and all of
+# #6169 lived in that gap:
+#   - install.ps1 placed a binary and wrote no install.json, so every later
+#     grafel command printed a stale-binary doctor warning forever.
+#   - install.bat ran bare `grafel install`, which appended /.grafel/ to the
+#     .gitignore of whatever directory the user launched it from and wrote four
+#     git hooks into that repo's .git/hooks (#6162) — and, on a real console
+#     where stdin is a TTY, blocked mid-install on the tool-selection wizard.
+#   - neither registered the MCP server (#6169), so a first-ever Windows install
+#     produced a grafel that no AI coding tool could see. grafel's entire
+#     interface is the MCP server, so that install was worth nothing.
+# Those are OUTCOMES, and this workflow asserts outcomes rather than script
+# text — with one honest exception, stated here so nobody has to re-derive it:
+#
+# THE TTY WIZARD HANG IS NOT REPRODUCIBLE ON A RUNNER, AND THIS JOB DOES NOT
+# COVER IT. The wizard is gated on `stdinIsTTY()` —
+# `term.IsTerminal(int(os.Stdin.Fd()))`, internal/cli/install.go — and stdin on
+# a GitHub runner is never a terminal. That branch is unreachable here no matter
+# what the script does, doubly so now that neither script calls bare
+# `grafel install` at all. Claiming otherwise would be exactly the defect this
+# PR exists to stop shipping: an assertion advertised as covering a path
+# production never takes. A comment is worse than a test for this, because the
+# next person trusts it instead of checking.
+#
+# What the per-step `timeout-minutes` DOES pin is the generic hang: a stalled
+# curl (neither script sets a network timeout), a wedged tar, a child process
+# that never returns. That is worth having on its own merits — keep it — but it
+# is not evidence about the wizard.
+#
+# The rest of #6163 IS covered by execution: the repo-untouched assertions fail
+# against the pre-fix install.bat, and the install.json assertions fail against
+# the pre-fix install.ps1.
+#
+# WHAT IT PINS, IN ORDER OF HOW BADLY WE WANT IT
+#   1. The repo the installer ran in is UNTOUCHED. This is the property most
+#      worth pinning and the one hardest to notice by hand: a stray git hook in
+#      .git/hooks does not show up in `git status` at all. It is invisible until
+#      it fires on someone's next `git pull`.
+#   2. The script terminates, and a hang is a FAILURE rather than a timeout at
+#      the workflow's outer bound — hence the per-step timeout-minutes well
+#      under the job's. This covers stalled downloads and wedged child
+#      processes. It does NOT cover the #6163 TTY wizard hang; see above.
+#   3. install.json exists and records this binary (the install.ps1 half of
+#      #6163).
+#   4. The MCP entry exists in the host config (#6169).
+#
+# SANDBOXING
+# HOME and USERPROFILE both point at a scratch dir under RUNNER_TEMP. Both are
+# needed and they are not redundant: the .bat/.ps1 read %USERPROFILE%, while the
+# Go binary's install.userHomeDir() and mcpreg.homeDir() prefer $HOME when it is
+# non-empty. Miss either and the job writes to the real profile — or, worse,
+# asserts against a path the installer never wrote. GRAFEL_PREFIX moves the
+# binary; note that it does NOT move install.json or the MCP configs, which is
+# exactly why HOME is set separately rather than relying on the prefix.
+#
+# The script runs with its working directory inside a scratch git repo, NOT the
+# grafel checkout. That is deliberate. The .gitignore/hooks damage class is
+# "whatever repo you were standing in", so the assertion needs a real repo to
+# observe — and it must not be this one, because a run that dirtied the checkout
+# would be indistinguishable from a run that dirtied nothing if we then only
+# looked at the checkout. We assert on BOTH: the scratch repo is unchanged AND
+# the grafel checkout is unchanged.
+#
+# DETERMINISM: TWO SOURCES, DELIBERATELY
+# The scripts install a release binary, so "which binary" has to be pinned
+# somehow. Neither choice covers everything, so this workflow does both:
+#
+#   source=local  — build grafel.exe from THIS commit, zip it, and feed it in
+#                   via GRAFEL_ARCHIVE (added to both scripts alongside this
+#                   workflow). No network, no rate limit, fully deterministic.
+#                   This is the leg that can assert install.json and the MCP
+#                   entry, because it runs the CURRENT binary. It necessarily
+#                   skips the download/checksum half of the script.
+#
+#   source=pinned — GRAFEL_VERSION=v0.2.1, the real published release. This is
+#                   the ONLY leg that exercises download, checksum verification
+#                   and extraction — but it is NOT only a download test, and the
+#                   first real run proved it: install.ps1 (pinned) failed deep
+#                   in Restart-Daemon, i.e. it had already resolved the tag,
+#                   downloaded, verified the checksum, extracted, placed the
+#                   binary, run `install --refresh-state`, added to PATH and run
+#                   `doctor`. This leg walks the whole script.
+#
+#                   It asserts less only where it must: v0.2.1 predates #6169,
+#                   so its binary has no `install --register-mcp` flag at all,
+#                   and its `--refresh-state` returns early when install.json is
+#                   absent — "Never installed — nothing to refresh, and nothing
+#                   to invent" (internal/install/refreshstate.go at that tag),
+#                   which is exactly the state of a clean runner. So this leg
+#                   cannot assert install.json or MCP registration, and pinning
+#                   harder would not help: no published tag can, today. It tests
+#                   the INSTALLER, not the current binary.
+#                   When a release ships #6169, promote this pin and the
+#                   assertions below it.
+#
+# Pinning a tag rather than tracking `latest` also keeps the job honest in a
+# second way: `latest` would make this workflow's result depend on what was
+# released this morning, so a red run would not mean "this PR is broken".
+
+on:
+  # Always on. Both scripts are shipped, user-facing, and were until now covered
+  # only by grep. Windows minutes bill at 2x, which is why this kind of job kept
+  # getting deferred; CI on this repo is free and unlimited (public, standard
+  # runners), so that is not a reason.
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-installers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Build the archive the source=local legs install from. Same shape as
+  # release.yml's windows leg (CGO + MinGW + -tags osusergo) so we are
+  # installing something that resembles a real asset, minus the dashboard embed
+  # — no assertion here looks at the UI.
+  build-archive:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2 + MinGW
+        uses: msys2/setup-msys2@v2.31.1
+        with:
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+          update: false
+
+      - name: Enable CGO
+        shell: bash
+        run: |
+          echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
+          echo "CC=x86_64-w64-mingw32-gcc" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Build grafel.exe
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          go build -trimpath -tags osusergo -o staging/grafel.exe ./cmd/grafel
+          ls -l staging/grafel.exe
+
+      # The filename mirrors a real release asset for readability only — the
+      # local-archive path in both scripts copies whatever file GRAFEL_ARCHIVE
+      # names and never parses its name.
+      - name: Package archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path staging\grafel.exe `
+            -DestinationPath grafel_0.0.0-local_windows_x86_64.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grafel-local-archive
+          path: grafel_0.0.0-local_windows_x86_64.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  install:
+    name: ${{ matrix.script }} (${{ matrix.source }})
+    # The source=pinned legs do not need the archive and could start ~20 minutes
+    # sooner in their own job. They wait anyway, so that both sources run the
+    # SAME assertion steps below rather than a forked copy that can drift. On a
+    # free, unlimited runner pool, one set of assertions is worth more than
+    # twenty minutes.
+    needs: build-archive
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        script: [install.ps1, install.bat]
+        source: [local, pinned]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download OUTSIDE the workspace. Anything landing in the checkout would
+      # show up in the "grafel checkout is untouched" assertion below and make
+      # it useless.
+      - uses: actions/download-artifact@v4
+        if: matrix.source == 'local'
+        with:
+          name: grafel-local-archive
+          path: ${{ runner.temp }}/archive
+
+      - name: Build the sandbox
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sand = Join-Path $env:RUNNER_TEMP 'sandbox'
+          if (Test-Path $sand) { Remove-Item -Recurse -Force $sand }
+
+          $sandHome   = Join-Path $sand 'home'
+          $sandPrefix = Join-Path $sand 'prefix'
+          $scratch    = Join-Path $sand 'scratch-repo'
+          New-Item -ItemType Directory -Force -Path $sandHome, $sandPrefix, $scratch | Out-Null
+
+          # A REAL git repo, so "did the installer touch the repo it ran in" has
+          # something to observe. Nothing is committed on purpose: we compare
+          # file content and hook-directory contents directly rather than
+          # leaning on `git status`, because the git-hooks half of the damage
+          # does not appear in `git status` at ALL — .git/ is not tracked. A
+          # status-only assertion would have shipped green through #6162.
+          git init --quiet $scratch
+          $gitignore = Join-Path $scratch '.gitignore'
+          Set-Content -LiteralPath $gitignore -Value "node_modules/`nbuild/`n" -NoNewline
+
+          # Baselines, recorded BEFORE the installer runs.
+          $giHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $gitignore).Hash
+          $hooks  = Get-ChildItem (Join-Path $scratch '.git\hooks') -File |
+                      Where-Object { $_.Name -notlike '*.sample' }
+
+          if ($hooks) {
+            Write-Host '::error::scratch repo already had non-sample hooks before the installer ran; the assertion below would be meaningless'
+            exit 1
+          }
+
+          "SANDBOX=$sand"                 | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "SAND_HOME=$sandHome"           | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "SAND_PREFIX=$sandPrefix"       | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "SCRATCH_REPO=$scratch"         | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "GITIGNORE_SHA=$giHash"         | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Host "sandbox ready at $sand (gitignore sha256 $giHash)"
+
+      # THE RUN.
+      #
+      # timeout-minutes is 8 against the job's 25, and that gap is the point: a
+      # hang must fail THIS step, loudly and attributably, rather than being
+      # absorbed by the job bound where it reads as "something was slow". The
+      # TTY tool-selection wizard blocking mid-install was half of #6163 and a
+      # hang is its exact signature. Neither script sets any network timeout
+      # either (no curl --max-time, no -TimeoutSec), so a stalled download lands
+      # here too.
+      #
+      # working-directory puts CWD inside the scratch repo, which is what makes
+      # the .gitignore/hooks assertions meaningful.
+      #
+      # HOME and USERPROFILE are both set: the shell scripts read %USERPROFILE%,
+      # the Go binary prefers $HOME. See the header.
+      - name: Run ${{ matrix.script }}
+        timeout-minutes: 8
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/sandbox/scratch-repo
+        env:
+          HOME: ${{ runner.temp }}/sandbox/home
+          USERPROFILE: ${{ runner.temp }}/sandbox/home
+          GRAFEL_PREFIX: ${{ runner.temp }}/sandbox/prefix
+          # Exactly one of these is non-empty per matrix leg. An empty value is
+          # correctly treated as "unset" by both scripts: PowerShell's
+          # `if ($env:X)` is false for '', and cmd's `if defined X` is false for
+          # an empty variable.
+          #
+          # BACKSLASHES, deliberately. This was `{0}/archive/...` and it made
+          # install.bat fail on its first real run while install.ps1 sailed past
+          # the same value: runner.temp is `D:\a\_temp`, so the path came out
+          # mixed as `D:\a\_temp/archive/...`. PowerShell resolves that fine;
+          # cmd's `copy` reads a bare `/` as the start of a switch. install.bat
+          # now also normalizes separators itself, so this is belt AND braces —
+          # a native path is simply what a Windows script should be handed.
+          GRAFEL_ARCHIVE: ${{ matrix.source == 'local' && format('{0}\archive\grafel_0.0.0-local_windows_x86_64.zip', runner.temp) || '' }}
+          GRAFEL_VERSION: ${{ matrix.source == 'pinned' && 'v0.2.1' || '' }}
+        run: |
+          $script = Join-Path $env:GITHUB_WORKSPACE '${{ matrix.script }}'
+          Write-Host "running $script"
+          Write-Host "  cwd            : $((Get-Location).Path)"
+          Write-Host "  HOME           : $env:HOME"
+          Write-Host "  GRAFEL_PREFIX  : $env:GRAFEL_PREFIX"
+          Write-Host "  GRAFEL_ARCHIVE : $env:GRAFEL_ARCHIVE"
+          Write-Host "  GRAFEL_VERSION : $env:GRAFEL_VERSION"
+
+          # GitHub sets $ErrorActionPreference='Stop' for every pwsh step. With
+          # the `2>&1` merge below, that would turn the FIRST line the installer
+          # writes to stderr into a terminating error in THIS step — the exact
+          # trap that broke install.ps1 (see its Invoke-Native header). We want
+          # the installer's own exit code to be the verdict, not PowerShell's
+          # opinion of its stderr, so relax it here and judge on $LASTEXITCODE.
+          $ErrorActionPreference = 'Continue'
+
+          # Tee everything to a file. The job's own logs are only downloadable
+          # with repo ADMIN rights, so on the first real run the failure was
+          # visible as "install.bat exited 1" and nothing else — no way to tell
+          # WHICH of the script's error paths fired. Replaying the output as
+          # ::error:: annotations below makes that readable by anyone who can
+          # see the check, which is the difference between a gate that reports a
+          # defect and a gate that merely reports a colour.
+          $log = Join-Path $env:RUNNER_TEMP 'installer-run.log'
+
+          if ('${{ matrix.script }}' -eq 'install.ps1') {
+            # -File (not -Command) so the script's own exit code is the process
+            # exit code. -NoProfile keeps a runner profile from changing
+            # behaviour. Windows PowerShell 5.1 explicitly, because that is the
+            # `#Requires -Version 5.1` interpreter a real user gets from
+            # `irm ... | iex`; running it under pwsh 7 would test an
+            # interpreter almost nobody installs with — and 5.1 is where the
+            # native-stderr trap actually bites.
+            powershell -NoProfile -ExecutionPolicy Bypass -File $script 2>&1 |
+              Tee-Object -FilePath $log
+          } else {
+            cmd /c "`"$script`"" 2>&1 | Tee-Object -FilePath $log
+          }
+          $code = $LASTEXITCODE
+
+          if ($code -ne 0) {
+            Write-Host "::group::full installer output"
+            if (Test-Path $log) { Get-Content $log | Write-Host }
+            Write-Host "::endgroup::"
+            # The tail is what names the failing branch. Annotations are capped,
+            # so take the last few lines rather than the whole transcript.
+            if (Test-Path $log) {
+              Get-Content $log -Tail 12 | ForEach-Object {
+                if ("$_".Trim()) { Write-Host "::error::${{ matrix.script }}: $_" }
+              }
+            }
+            Write-Host "::error::${{ matrix.script }} exited $code"
+            exit $code
+          }
+          Write-Host "${{ matrix.script }} completed"
+
+      # ── assertions ────────────────────────────────────────────────────────
+      #
+      # These run even when the script exited non-zero, because "it failed AND
+      # it dirtied your repo" is a strictly more useful report than "it failed".
+      # The step still fails on its own findings.
+      #
+      # `!cancelled()`, NOT `always()`. always() runs THROUGH cancellation, and
+      # this job sets cancel-in-progress: true — so pushing twice in quick
+      # succession would cancel the first run mid-install and these steps would
+      # then fire against a half-populated sandbox, emitting
+      # "::error::the installed grafel.exe does not run" on a PR whose only
+      # crime was a second push. Same cascade if "Build the sandbox" itself
+      # fails: SAND_PREFIX would be unset, `Join-Path $null` throws under the
+      # EAP=Stop that GitHub forces on pwsh steps, and five steps go red naming
+      # nothing real. Annotations that describe defects which do not exist are
+      # how a gate stops being believed.
+
+      - name: Assert the binary landed under GRAFEL_PREFIX
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:SAND_PREFIX 'bin\grafel.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            Write-Host "::error::no grafel.exe at $exe"
+            Get-ChildItem -Recurse $env:SAND_PREFIX -ErrorAction SilentlyContinue | Out-String | Write-Host
+            exit 1
+          }
+          Write-Host "OK: $exe ($((Get-Item $exe).Length) bytes)"
+
+      # The installed binary must actually RUN. This applies to BOTH legs and
+      # was added after the first real run showed the pinned leg reaches the end
+      # of the script — it is not merely a download test. A binary that is
+      # present but will not execute (wrong arch, truncated download, a zip that
+      # extracted the wrong entry) passes the existence check above and fails
+      # here, which is the whole point of running installers instead of reading
+      # them. Bounded, because a hang is a defect and not a reason to sit for 25
+      # minutes.
+      - name: Assert the installed binary executes
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $exe = Join-Path $env:SAND_PREFIX 'bin\grafel.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            Write-Host "::error::no binary to execute at $exe"
+            exit 1
+          }
+          $out = & $exe --version 2>&1
+          $code = $LASTEXITCODE
+          Write-Host "grafel --version -> exit $code"
+          $out | Write-Host
+          if ($code -ne 0) {
+            Write-Host "::error::the installed grafel.exe does not run (--version exited $code)"
+            exit 1
+          }
+
+      # THE ONE MOST WORTH PINNING. See the header: a git hook is invisible to
+      # `git status`, so this class of damage is silent until it fires on
+      # someone else's machine.
+      - name: Assert the repo it ran in is untouched
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $failed = $false
+
+          $gitignore = Join-Path $env:SCRATCH_REPO '.gitignore'
+          $now = (Get-FileHash -Algorithm SHA256 -LiteralPath $gitignore).Hash
+          if ($now -ne $env:GITIGNORE_SHA) {
+            Write-Host "::error::.gitignore of the repo the installer ran in was MODIFIED (#6162/#6163)"
+            Write-Host "  before sha256: $env:GITIGNORE_SHA"
+            Write-Host "  after  sha256: $now"
+            Get-Content -LiteralPath $gitignore | Out-String | Write-Host
+            $failed = $true
+          } else {
+            Write-Host "OK: .gitignore unchanged"
+          }
+
+          # Belt and braces: name the exact line #6162 appended, so a failure
+          # report says what happened instead of just "hash differs".
+          if (Select-String -LiteralPath $gitignore -SimpleMatch -Pattern '/.grafel/' -Quiet) {
+            Write-Host "::error::installer appended a /.grafel/ line to the repo's .gitignore (#6162)"
+            $failed = $true
+          }
+
+          $hooks = Get-ChildItem (Join-Path $env:SCRATCH_REPO '.git\hooks') -File |
+                     Where-Object { $_.Name -notlike '*.sample' }
+          if ($hooks) {
+            Write-Host "::error::installer wrote git hooks into the repo it ran in (#6162). This is invisible to 'git status'."
+            $hooks | ForEach-Object { Write-Host "  $($_.Name)" }
+            $failed = $true
+          } else {
+            Write-Host "OK: no git hooks installed (only the git-init .sample files remain)"
+          }
+
+          # And the grafel checkout itself must be pristine — the installer was
+          # never pointed at it, and nothing may have leaked back.
+          $porcelain = & git -C $env:GITHUB_WORKSPACE status --porcelain
+          if ($porcelain) {
+            Write-Host "::error::the grafel checkout is dirty after the installer run"
+            $porcelain | Out-String | Write-Host
+            $failed = $true
+          } else {
+            Write-Host "OK: grafel checkout clean"
+          }
+
+          if ($failed) { exit 1 }
+
+      # Only the local leg runs a binary new enough to do either of these. See
+      # the DETERMINISM note in the header: v0.2.1 has no --register-mcp flag,
+      # and its --refresh-state is a no-op when install.json is absent.
+      - name: Assert install.json was written (#6163)
+        if: ${{ !cancelled() && matrix.source == 'local' }}
+        shell: pwsh
+        run: |
+          $state = Join-Path $env:SAND_HOME '.grafel\install.json'
+          if (-not (Test-Path -LiteralPath $state -PathType Leaf)) {
+            Write-Host "::error::no install.json at $state — the installer placed a binary and recorded nothing (#6163)"
+            Get-ChildItem -Recurse $env:SAND_HOME -Force -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName | Out-String | Write-Host
+            exit 1
+          }
+
+          $json = Get-Content -Raw -LiteralPath $state | ConvertFrom-Json
+          $exe  = Join-Path $env:SAND_PREFIX 'bin\grafel.exe'
+
+          if (-not $json.cli.path) {
+            Write-Host "::error::install.json has no .cli.path"
+            exit 1
+          }
+          # The recorded SHA must be THIS binary's. A stale one is precisely the
+          # #6163 defect: RunQuickDoctor compares state.cli.sha256 against the
+          # binary at state.cli.path and, on a mismatch, prefixes
+          # "binary updated since last install" onto every later grafel command,
+          # permanently. Recording the wrong hash is as bad as recording none.
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLower()
+          if ($json.cli.sha256.ToLower() -ne $actual) {
+            Write-Host "::error::install.json records a DIFFERENT binary than the one on disk (#6163)"
+            Write-Host "  recorded: $($json.cli.sha256)"
+            Write-Host "  on disk : $actual"
+            exit 1
+          }
+          Write-Host "OK: install.json records the installed binary ($($json.cli.path))"
+
+      - name: Assert the MCP server was registered (#6169)
+        if: ${{ !cancelled() && matrix.source == 'local' }}
+        shell: pwsh
+        run: |
+          $cfg = Join-Path $env:SAND_HOME '.claude.json'
+          if (-not (Test-Path -LiteralPath $cfg -PathType Leaf)) {
+            Write-Host "::error::no $cfg — the install registered no MCP server, so no AI coding tool can see grafel (#6169)"
+            exit 1
+          }
+
+          $json = Get-Content -Raw -LiteralPath $cfg | ConvertFrom-Json
+          $entry = $json.mcpServers.grafel
+          if (-not $entry) {
+            Write-Host "::error::.mcpServers.grafel missing from $cfg (#6169)"
+            Get-Content -Raw -LiteralPath $cfg | Write-Host
+            exit 1
+          }
+
+          $exe = Join-Path $env:SAND_PREFIX 'bin\grafel.exe'
+          if ($entry.command -ne $exe) {
+            Write-Host "::error::.mcpServers.grafel.command points at '$($entry.command)', expected '$exe'"
+            exit 1
+          }
+          if ($entry.args -notcontains 'mcp-bridge') {
+            Write-Host "::error::.mcpServers.grafel.args is '$($entry.args -join ' ')', expected to contain 'mcp-bridge'"
+            exit 1
+          }
+
+          # #6168: RegisterPath writes a <cfg>.grafel.bak and ClearBackup must
+          # delete it again. A surviving sentinel is a rollback file that will
+          # one day restore a config that never existed.
+          if (Test-Path -LiteralPath "$cfg.grafel.bak") {
+            Write-Host "::error::$cfg.grafel.bak survived the install (#6168)"
+            exit 1
+          }
+
+          Write-Host "OK: MCP entry registered -> $($entry.command) $($entry.args -join ' ')"
+
+      # ── upgrade path ──────────────────────────────────────────────────────
+      #
+      # Everything above is a FIRST-EVER install: the sandbox is wiped and
+      # rebuilt each leg, so `if (Test-Path $existing)` in install.ps1 is always
+      # false and Stop-Daemon, the taskkill, and Copy-Item-over-an-existing-exe
+      # never execute. This PR ships a real fix to that branch — the schtasks
+      # `/end`-on-a-registered-but-stopped-task defect at install.ps1's
+      # Stop-Daemon, which was fatal on upgrades — and shipping it with no
+      # execution behind it would be precisely the "never ran on Windows" hole
+      # that made this whole PR necessary.
+      #
+      # The remedy is cheap: run the installer a second time into the SAME
+      # sandbox. The binary is now present, so the upgrade branch is taken for
+      # real. This also puts the second run somewhere strictly more interesting
+      # than the first for `--refresh-state`, which is a no-op only while
+      # install.json is absent.
+      #
+      # `if: success()` — an upgrade over an install that already failed proves
+      # nothing and would only add noise to an already-red job.
+      - name: Run ${{ matrix.script }} again (upgrade path)
+        id: upgrade
+        if: success()
+        timeout-minutes: 8
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/sandbox/scratch-repo
+        env:
+          HOME: ${{ runner.temp }}/sandbox/home
+          USERPROFILE: ${{ runner.temp }}/sandbox/home
+          GRAFEL_PREFIX: ${{ runner.temp }}/sandbox/prefix
+          GRAFEL_ARCHIVE: ${{ matrix.source == 'local' && format('{0}\archive\grafel_0.0.0-local_windows_x86_64.zip', runner.temp) || '' }}
+          GRAFEL_VERSION: ${{ matrix.source == 'pinned' && 'v0.2.1' || '' }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $script = Join-Path $env:GITHUB_WORKSPACE '${{ matrix.script }}'
+          $log = Join-Path $env:RUNNER_TEMP 'installer-upgrade.log'
+          Write-Host "re-running $script over the existing install (upgrade path)"
+
+          if ('${{ matrix.script }}' -eq 'install.ps1') {
+            powershell -NoProfile -ExecutionPolicy Bypass -File $script 2>&1 |
+              Tee-Object -FilePath $log
+          } else {
+            cmd /c "`"$script`"" 2>&1 | Tee-Object -FilePath $log
+          }
+          $code = $LASTEXITCODE
+
+          if ($code -ne 0) {
+            Write-Host "::group::full upgrade output"
+            if (Test-Path $log) { Get-Content $log | Write-Host }
+            Write-Host "::endgroup::"
+            if (Test-Path $log) {
+              Get-Content $log -Tail 12 | ForEach-Object {
+                if ("$_".Trim()) { Write-Host "::error::${{ matrix.script }} (upgrade): $_" }
+              }
+            }
+            Write-Host "::error::${{ matrix.script }} failed on the UPGRADE path (exit $code) — a first install succeeded, so this is the Stop-Daemon/existing-binary branch"
+            exit $code
+          }
+          Write-Host "${{ matrix.script }} upgrade completed"
+
+      - name: Assert the upgrade left a working install
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          # Self-skip rather than invent a failure: if the upgrade step never
+          # ran (first install was already red), there is nothing to judge and
+          # an ::error:: here would name a defect that does not exist.
+          $log = Join-Path $env:RUNNER_TEMP 'installer-upgrade.log'
+          if (-not (Test-Path -LiteralPath $log)) {
+            Write-Host "upgrade run did not execute; nothing to assert"
+            exit 0
+          }
+
+          $failed = $false
+          $exe = Join-Path $env:SAND_PREFIX 'bin\grafel.exe'
+
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            Write-Host "::error::the upgrade removed the binary at $exe"
+            $failed = $true
+          } else {
+            & $exe --version 2>&1 | Write-Host
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::grafel.exe does not run after the upgrade (--version exited $LASTEXITCODE)"
+              $failed = $true
+            }
+          }
+
+          # The upgrade runs `install --refresh-state` against an install.json
+          # that now EXISTS, so unlike the first pass it does real work. A stale
+          # SHA here is #6163 reappearing on the path that actually triggers it.
+          if ('${{ matrix.source }}' -eq 'local') {
+            $state = Join-Path $env:SAND_HOME '.grafel\install.json'
+            if (-not (Test-Path -LiteralPath $state -PathType Leaf)) {
+              Write-Host "::error::install.json is gone after the upgrade"
+              $failed = $true
+            } elseif (Test-Path -LiteralPath $exe) {
+              $json = Get-Content -Raw -LiteralPath $state | ConvertFrom-Json
+              $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLower()
+              if ($json.cli.sha256.ToLower() -ne $actual) {
+                Write-Host "::error::after the upgrade install.json records a stale SHA (#6163)"
+                Write-Host "  recorded: $($json.cli.sha256)"
+                Write-Host "  on disk : $actual"
+                $failed = $true
+              }
+            }
+          }
+
+          # The upgrade touches the repo exactly as much as a fresh install
+          # should: not at all.
+          $hooks = Get-ChildItem (Join-Path $env:SCRATCH_REPO '.git\hooks') -File |
+                     Where-Object { $_.Name -notlike '*.sample' }
+          if ($hooks) {
+            Write-Host "::error::the upgrade wrote git hooks into the repo it ran in (#6162)"
+            $hooks | ForEach-Object { Write-Host "  $($_.Name)" }
+            $failed = $true
+          }
+          $gitignore = Join-Path $env:SCRATCH_REPO '.gitignore'
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $gitignore).Hash -ne $env:GITIGNORE_SHA) {
+            Write-Host "::error::the upgrade modified the repo's .gitignore (#6162)"
+            $failed = $true
+          }
+
+          if ($failed) { exit 1 }
+          Write-Host "OK: upgrade path left a working install and an untouched repo"
+
+      - name: Dump sandbox on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host "--- sandbox tree ---"
+          Get-ChildItem -Recurse -Force $env:SANDBOX -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty FullName | Out-String | Write-Host
+          foreach ($f in @((Join-Path $env:SAND_HOME '.claude.json'),
+                           (Join-Path $env:SAND_HOME '.grafel\install.json'))) {
+            if (Test-Path -LiteralPath $f) {
+              Write-Host "--- $f ---"
+              Get-Content -Raw -LiteralPath $f | Write-Host
+            }
+          }
