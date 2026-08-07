@@ -27,14 +27,22 @@ import (
 //
 // # Is anything security-sensitive weakened by this?
 //
-// No. The narrowest mode any atomicfile call site passes is 0o600, and those
-// destinations are daemon operational state (internal/daemon/mode/mode.go,
-// pins.go, sched/rss.go) — no credential, token or key is written through this
-// path anywhere in the tree. The runtime perm argument is unchanged on every
-// platform; only the test's expectation is adapted. On Windows those files are
-// protected by the ACL on the user profile directory they live in rather than
-// by mode bits, which is the platform's normal mechanism and is not something
-// a chmod could improve.
+// No — but the reason is narrower than it was, and the original wording ("no
+// credential, token or key is written through this path anywhere in the tree")
+// stopped being true in #6240. internal/install/mcpreg now asserts perms on
+// ~/.claude.json, which DOES hold an auth token, and creates such files 0600.
+//
+// What is unweakened is the thing that matters: the runtime perm argument is
+// identical on every platform; only the TEST's expectation is adapted. On
+// Windows those files are protected by the ACL on the user profile directory
+// they live in rather than by mode bits, which is the platform's normal
+// mechanism and is not something a chmod could improve — so there is no mode
+// this helper could assert there that would protect a token better.
+//
+// The practical consequence for a caller: on Windows this assertion cannot
+// distinguish 0600 from 0644, so a test that only ever seeds writable modes has
+// no signal there at all. Include a 0444 row — the one mode Windows can
+// represent — whenever the property under test is "the mode was applied".
 func AssertPerm(t *testing.T, path string, want os.FileMode) {
 	t.Helper()
 	fi, err := os.Stat(path)

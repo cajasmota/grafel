@@ -337,20 +337,24 @@ func DetectClaudeConfigDirs(dirs []string) []string {
 	return out
 }
 
-// guardConfigPath applies the test-isolation guard to BOTH the path the caller
-// named and the file a write to it would actually land on.
+// guardWriteTarget applies the test-isolation guard to a RESOLVED path — the
+// file an operation is actually about to touch, after following symlinks.
 //
-// The second call is not redundant. The guard's whole job is to stop a test
-// that forgot to isolate $HOME from rewriting the developer's live editor
-// config, and it decides that by looking at the path string. Once this package
-// follows symlinks, a link inside a properly-isolated t.TempDir() pointing at
-// the real ~/.claude.json makes the named path look safe while the write is
-// anything but.
-func guardConfigPath(path string) {
-	guardResolvedConfigPath(path, "MCP host config")
-	if target := resolveWriteTarget(path); target != path {
-		guardResolvedConfigPath(target, "MCP host config (symlink target)")
-	}
+// This is not redundant with the guardResolvedConfigPath(path) the exported
+// entry points already do. The guard decides by looking at the path STRING, so
+// once this package follows symlinks a link inside a properly-isolated
+// t.TempDir() pointing at the real ~/.claude.json makes the named path look
+// safe while the operation is anything but.
+//
+// There are exactly TWO call sites, one per operation that can touch a resolved
+// path: writeThrough (every write) and RestoreSnapshot's absent-sentinel branch
+// (the one delete, which never goes through writeThrough). Each is pinned by
+// its own test — TestRegisterPath_SymlinkTargetIsGuarded and
+// TestRestoreSnapshot_SentinelRemovalIsGuarded — because an earlier revision
+// had the same check in two overlapping places and deleting EITHER left the
+// suite green.
+func guardWriteTarget(target string) {
+	guardResolvedConfigPath(target, "MCP host config (symlink target)")
 }
 
 // mcpServersOf returns the mcpServers map to merge into, or an error when the
@@ -504,7 +508,7 @@ func backupOnce(path string) error {
 // RestoreSnapshot. The merge is surgical: only mcpServers.grafel is added or
 // updated; every other key and sibling server is preserved.
 func RegisterPath(path, binPath string) (string, error) {
-	guardConfigPath(path)
+	guardResolvedConfigPath(path, "MCP host config")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
 	}
@@ -551,7 +555,7 @@ func Unregister(tool Tool) error {
 // `{"mcpServers":{}}`. Returns nil if the file or entry doesn't exist
 // (idempotent). It NEVER overwrites foreign servers or resets the file to `{}`.
 func UnregisterPath(path string) error {
-	guardConfigPath(path)
+	guardResolvedConfigPath(path, "MCP host config")
 	if isTOML(path) {
 		return unregisterTOML(path)
 	}
@@ -608,7 +612,7 @@ var ErrMalformedConfig = errors.New("mcpreg: malformed host config")
 //
 // The sidecar backup is removed after a successful restore.
 func RestoreSnapshot(path string) error {
-	guardConfigPath(path)
+	guardResolvedConfigPath(path, "MCP host config")
 	sidecar := sidecarBackupPath(path)
 	b, err := os.ReadFile(sidecar)
 	if err != nil {
@@ -626,7 +630,14 @@ func RestoreSnapshot(path string) error {
 		// grafel created is the link's TARGET. Removing the link instead would
 		// destroy the user's symlink and leave grafel's file orphaned behind
 		// it — the opposite of a restore in both halves.
-		if rmErr := os.Remove(resolveWriteTarget(path)); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+		target, resErr := resolveWriteTarget(path)
+		if resErr != nil {
+			return resErr
+		}
+		// This delete never passes through writeThrough, so it needs its own
+		// resolved-path guard — see guardWriteTarget.
+		guardWriteTarget(target)
+		if rmErr := os.Remove(target); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
 			return rmErr
 		}
 		_ = os.Remove(sidecar)
@@ -719,6 +730,16 @@ func writeSettings(path string, doc map[string]any) error {
 // this applies only when there was nothing there before.
 const newConfigPerm os.FileMode = 0o600
 
+// maxSymlinkHops bounds resolveWriteTarget's walk.
+//
+// 40 matches Linux's MAXSYMLINKS, deliberately the most permissive of the
+// kernel limits: anything the OS itself would follow must resolve here too. An
+// earlier 32 (macOS's limit) meant a 33-39 link chain resolved fine for the
+// kernel but ran out of budget here — and the old code answered that by
+// returning the last hop reached, which is itself a symlink. See the error
+// below for why that mattered.
+const maxSymlinkHops = 40
+
 // resolveWriteTarget follows a symlink chain at path and returns the real file
 // a write must land on.
 //
@@ -731,27 +752,34 @@ const newConfigPerm os.FileMode = 0o600
 //
 // A path that is not a symlink, a dangling symlink (the final target is
 // returned even though it does not exist yet, which is what a create must use),
-// and an unreadable link all return sensibly. A link CYCLE exhausts the hop
-// budget and returns the last hop; the write then fails loudly on its own,
-// which is the correct outcome for a config the user has broken.
-func resolveWriteTarget(path string) string {
-	const maxHops = 32
+// and an unreadable link all resolve to a usable answer.
+//
+// An UNRESOLVABLE chain — a cycle, or one longer than any kernel would
+// follow — is an ERROR, not a best-effort answer. Returning the last hop
+// reached looks harmless and is not: that path is a symlink, so the caller
+// renames over it and flattens one of the user's links into a regular file
+// while reporting success. That is this issue's own damage class, and on
+// RestoreSnapshot (which reaches the writer with no prior read to fail first)
+// it was live.
+func resolveWriteTarget(path string) (string, error) {
 	cur := path
-	for i := 0; i < maxHops; i++ {
+	for i := 0; i < maxSymlinkHops; i++ {
 		fi, err := os.Lstat(cur)
 		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
-			return cur
+			return cur, nil
 		}
 		dest, err := os.Readlink(cur)
 		if err != nil {
-			return cur
+			return cur, nil
 		}
 		if !filepath.IsAbs(dest) {
 			dest = filepath.Join(filepath.Dir(cur), dest)
 		}
 		cur = filepath.Clean(dest)
 	}
-	return cur
+	return "", fmt.Errorf("%s: %w: symlink chain still unresolved after %d hops "+
+		"(a cycle, or longer than any kernel will follow)",
+		filepath.Base(path), ErrMalformedConfig, maxSymlinkHops)
 }
 
 // destPerm returns the mode a write to target must produce: the mode target
@@ -777,11 +805,14 @@ func destPerm(target string) os.FileMode {
 // rename half is shared, because the Windows recovery in it is non-obvious and
 // already has five hand-rolled copies in this tree.
 func writeThrough(path string, b []byte) (err error) {
-	target := resolveWriteTarget(path)
+	target, err := resolveWriteTarget(path)
+	if err != nil {
+		return err
+	}
 	// Trap: the entry-point guards see the UNRESOLVED path, so a symlink
 	// pointing out of a t.TempDir() into the real $HOME would walk straight
 	// past them. Guard what we are actually about to write.
-	guardResolvedConfigPath(target, "MCP host config (symlink target)")
+	guardWriteTarget(target)
 
 	perm := destPerm(target)
 	f, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-*")

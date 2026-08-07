@@ -25,6 +25,7 @@ package mcpreg
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -255,6 +256,223 @@ func TestRegisterPath_SymlinkTargetIsGuarded(t *testing.T) {
 		}
 	}()
 	_, _ = RegisterPath(cfg, testBin)
+}
+
+// ── Unresolvable link chains must fail, not flatten ──────────────────────────
+
+// seedSnapshotThroughLink registers through a symlink so a pristine sidecar
+// exists, then rewires cfg into whatever pathological link shape the caller
+// wants. It returns the pristine bytes.
+//
+// The sidecar keys on cfg (the caller's path, see
+// TestBackupSidecar_KeysOnTheUnresolvedPath), so it survives the rewiring —
+// which is what lets these tests drive RestoreSnapshot down its write path.
+func seedSnapshotThroughLink(t *testing.T, dir, cfg string) {
+	t.Helper()
+	real := filepath.Join(dir, "dotfiles", "claude.json")
+	seedConfig(t, real, 0o600)
+	if err := os.Symlink(real, cfg); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if _, err := RegisterPath(cfg, testBin); err != nil {
+		t.Fatalf("RegisterPath: %v", err)
+	}
+	if err := os.Remove(cfg); err != nil {
+		t.Fatalf("unlink cfg: %v", err)
+	}
+}
+
+// TestRestoreSnapshot_SymlinkCycleFailsLoudly is the review finding on the
+// first #6240 fix: resolveWriteTarget's comment CLAIMED a link cycle "exhausts
+// the hop budget and returns the last hop; the write then fails loudly on its
+// own". It did not. It returned a mid-cycle path that is ITSELF a symlink, and
+// writeThrough renamed over it — flattening the user's link into a regular file
+// and returning nil.
+//
+// RegisterPath and UnregisterPath are saved from this by accident: backupOnce's
+// os.ReadFile hits ELOOP first. RestoreSnapshot reaches the writer with no
+// prior read, so it was the one live path — the exact damage this issue is
+// about, inside the fix for it.
+func TestRestoreSnapshot_SymlinkCycleFailsLoudly(t *testing.T) {
+	requireSymlinks(t)
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	cfg := filepath.Join(dir, ".claude.json")
+	seedSnapshotThroughLink(t, dir, cfg)
+
+	// a -> b -> a
+	other := filepath.Join(dir, "loop-b.json")
+	if err := os.Symlink(other, cfg); err != nil {
+		t.Fatalf("symlink a->b: %v", err)
+	}
+	if err := os.Symlink(cfg, other); err != nil {
+		t.Fatalf("symlink b->a: %v", err)
+	}
+
+	if err := RestoreSnapshot(cfg); err == nil {
+		t.Error("RestoreSnapshot silently resolved a symlink CYCLE and wrote through it")
+	}
+	fi, err := os.Lstat(cfg)
+	if err != nil {
+		t.Fatalf("lstat: %v", err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("%s was flattened from a symlink into a regular file by a write "+
+			"that could not resolve it", cfg)
+	}
+}
+
+// TestRestoreSnapshot_OverlongSymlinkChainFailsLoudly is the Linux-only sibling
+// the reviewer found: a chain longer than the hop budget is not a cycle, and
+// returning the last hop reached is returning a SYMLINK, which the writer then
+// replaces. Linux's MAXSYMLINKS is 40, so a 33-39 link chain the kernel
+// resolves happily used to exhaust the old 32-hop budget; macOS stops at 32 and
+// so answered ELOOP instead, hiding it. The budget now matches the most
+// permissive kernel limit AND exhausting it is an error rather than a silent
+// mid-chain write.
+func TestRestoreSnapshot_OverlongSymlinkChainFailsLoudly(t *testing.T) {
+	requireSymlinks(t)
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	cfg := filepath.Join(dir, ".claude.json")
+	seedSnapshotThroughLink(t, dir, cfg)
+
+	linkChain(t, dir, cfg, filepath.Join(dir, "dotfiles", "claude.json"), 44)
+
+	if err := RestoreSnapshot(cfg); err == nil {
+		t.Error("RestoreSnapshot wrote through a link chain it could not fully resolve")
+	}
+	fi, err := os.Lstat(cfg)
+	if err != nil {
+		t.Fatalf("lstat: %v", err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("%s was flattened into a regular file mid-chain", cfg)
+	}
+}
+
+// linkChain builds cfg -> hop(n-1) -> ... -> hop0 -> final and returns nothing;
+// cfg must not already exist.
+func linkChain(t *testing.T, dir, cfg, final string, n int) {
+	t.Helper()
+	prev := final
+	for i := 0; i < n; i++ {
+		hop := filepath.Join(dir, fmt.Sprintf("hop%03d", i))
+		if err := os.Symlink(prev, hop); err != nil {
+			t.Fatalf("symlink hop %d: %v", i, err)
+		}
+		prev = hop
+	}
+	if err := os.Symlink(prev, cfg); err != nil {
+		t.Fatalf("symlink cfg: %v", err)
+	}
+}
+
+// TestRestoreSnapshot_ChainWithinTheKernelLimitStillResolves pins the hop
+// BUDGET, which the failure tests above cannot: a 44-link chain exhausts 32 and
+// 40 alike, so they would stay green if the budget were narrowed back.
+//
+// 35 links is inside Linux's MAXSYMLINKS (40) and outside macOS's (32). The
+// resolution here is grafel's own walk, not the kernel's, so this must succeed
+// on BOTH — and it is exactly the band where the original 32-hop budget
+// returned a mid-chain symlink and the writer flattened it.
+func TestRestoreSnapshot_ChainWithinTheKernelLimitStillResolves(t *testing.T) {
+	requireSymlinks(t)
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	cfg := filepath.Join(dir, ".claude.json")
+	seedSnapshotThroughLink(t, dir, cfg)
+
+	final := filepath.Join(dir, "dotfiles", "claude.json")
+	linkChain(t, dir, cfg, final, 35)
+
+	if err := RestoreSnapshot(cfg); err != nil {
+		t.Fatalf("RestoreSnapshot over a 35-link chain: %v", err)
+	}
+	if fi, err := os.Lstat(cfg); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("%s was flattened rather than written through", cfg)
+	}
+	// The restore must have landed on the END of the chain, not on some hop.
+	for i := 0; i < 35; i++ {
+		hop := filepath.Join(dir, fmt.Sprintf("hop%03d", i))
+		fi, err := os.Lstat(hop)
+		if err != nil {
+			t.Fatalf("lstat hop %d: %v", i, err)
+		}
+		if fi.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("hop %d was replaced by a regular file: the write landed "+
+				"mid-chain instead of on the real target", i)
+		}
+	}
+	if _, err := os.Stat(final); err != nil {
+		t.Errorf("chain target %s missing: %v", final, err)
+	}
+}
+
+// TestRegisterPath_SymlinkCycleFailsLoudly pins the same invariant on the
+// install path, which reaches it only because backupOnce's read ELOOPs first.
+// That is an accident of ordering, so it is stated as a requirement here rather
+// than left to whichever read happens to come first next year.
+func TestRegisterPath_SymlinkCycleFailsLoudly(t *testing.T) {
+	requireSymlinks(t)
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	cfg := filepath.Join(dir, ".claude.json")
+	other := filepath.Join(dir, "loop-b.json")
+	if err := os.Symlink(other, cfg); err != nil {
+		t.Fatalf("symlink a->b: %v", err)
+	}
+	if err := os.Symlink(cfg, other); err != nil {
+		t.Fatalf("symlink b->a: %v", err)
+	}
+
+	if _, err := RegisterPath(cfg, testBin); err == nil {
+		t.Error("RegisterPath silently wrote through a symlink cycle")
+	}
+	fi, err := os.Lstat(cfg)
+	if err != nil {
+		t.Fatalf("lstat: %v", err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("%s was flattened from a symlink into a regular file", cfg)
+	}
+}
+
+// TestRestoreSnapshot_SentinelRemovalIsGuarded pins the SECOND resolved-path
+// guard, the one on RestoreSnapshot's absent-sentinel branch.
+//
+// That branch os.Removes the resolved target without going anywhere near
+// writeThrough, so writeThrough's guard does not cover it: a dangling link out
+// of a t.TempDir() into the real $HOME would let a badly-isolated test DELETE a
+// file there. Reviewer finding LOW-2 was that the resolved-path guard existed
+// in two places and no test pinned either individually; there are now two
+// guards covering two distinct operations, and one test each.
+func TestRestoreSnapshot_SentinelRemovalIsGuarded(t *testing.T) {
+	requireSymlinks(t)
+	if realUserHomeAtInit == "" {
+		t.Skip("no real home to guard against")
+	}
+	canaryDir := filepath.Join(realUserHomeAtInit, ".grafel-6240-sentinel-canary")
+	t.Cleanup(func() { _ = os.RemoveAll(canaryDir) })
+
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	cfg := filepath.Join(dir, ".claude.json")
+	// A sentinel sidecar: the original file did not exist.
+	if err := os.WriteFile(sidecarBackupPath(cfg), []byte(backupSentinelAbsent), 0o600); err != nil {
+		t.Fatalf("seed sidecar: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(canaryDir, "claude.json"), cfg); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("RestoreSnapshot's sentinel branch followed a symlink out of the "+
+				"test sandbox and would have deleted inside the REAL user home (%s)", canaryDir)
+		}
+	}()
+	_ = RestoreSnapshot(cfg)
 }
 
 // ── Defect 3: a wrong-typed mcpServers must not be discarded ─────────────────
