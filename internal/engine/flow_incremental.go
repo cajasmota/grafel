@@ -154,12 +154,20 @@ func stripFlows(doc *graph.Document) (entsRemoved, relsRemoved int) {
 // is about to run again: `--skip-pass=process-flow` / `--skip-pass=event-flow`
 // leave the corresponding walker out, and stripping its artefacts anyway would
 // destroy carried-forward rows nothing regenerates. So the caller states which
-// walkers it is about to run and only those artefacts are removed (#6160).
+// walkers it is about to run (#6160).
 //
 // The two walkers' outputs are disjoint by kind — Process / EventFlow
 // entities, {ENTRY_POINT_OF, STEP_IN_PROCESS} / {SEED_OF_EVENT_FLOW,
-// STEP_IN_EVENT_FLOW} edges — so selecting one never touches the other's rows.
-// The endpoint sweep is likewise scoped to the ids actually stripped.
+// STEP_IN_EVENT_FLOW} edges — so selecting one never touches the other's
+// artefacts, and the endpoint sweep is scoped to the ids actually stripped.
+//
+// The sweep is NOT limited to walker output, though, and the selection does not
+// narrow it: it removes EVERY edge incident on a stripped flow node whatever
+// its kind, which in practice includes the module-aggregation CONTAINS edge
+// (Module → SCOPE.Process). Pass 8 re-derives that one, so on a normal run it
+// comes straight back — but with module-aggregation skipped it does not, and
+// the edge is gone for good. Pre-existing behaviour, inherited unchanged from
+// Path A's stripFlows; recorded here rather than silently relied on.
 func StripFlows(doc *graph.Document, process, eventFlow bool) (entsRemoved, relsRemoved int) {
 	if doc == nil || (!process && !eventFlow) {
 		return 0, 0

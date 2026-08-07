@@ -167,6 +167,165 @@ func TestMergeIncrementalPrevSource_6160_ExplicitIDCollisionDeduped(t *testing.T
 	}
 }
 
+// mig6160 builds the pre-#6085 salted-family probe: `prevOps` MIGRATES rows
+// that all share ONE explicit derived id (which is what fbRelToGraphRel
+// produces for a legacy graph.fb — the salted identities are unrecoverable and
+// collapse onto the derived one) and are separable only by their `op` payload,
+// against a fresh doc holding `docOps` rows under that same id. It returns the
+// `op` values present after the merge.
+func mig6160(t *testing.T, prevOps, docOps []string) map[string]int {
+	t.Helper()
+	derived := graph.RelationshipID("P", "O", "MIGRATES")
+	prev := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "P", Kind: "SCOPE.Component", Name: "p", SourceFile: "a.py"},
+			{ID: "O", Kind: "SCOPE.Component", Name: "o", SourceFile: "a.py"},
+		},
+	}
+	for _, op := range prevOps {
+		prev.Relationships = append(prev.Relationships,
+			rel6160(derived, "P", "O", "MIGRATES", map[string]string{"op": op}))
+	}
+	doc := &graph.Document{}
+	for _, op := range docOps {
+		doc.Relationships = append(doc.Relationships,
+			rel6160(derived, "P", "O", "MIGRATES", map[string]string{"op": op}))
+	}
+
+	mergeIncrementalPrevDoc(doc, prev, map[string]bool{"reg.py": true})
+
+	got := map[string]int{}
+	for _, r := range doc.Relationships {
+		if r.Kind == "MIGRATES" {
+			got[r.PropsSnapshot()["op"]]++
+		}
+	}
+	return got
+}
+
+// TestMergeIncrementalPrevSource_6160_FreshRowDoesNotEraseSaltedFamily is the
+// COLLISION case, and the one the empty-doc guard below cannot reach: the gate
+// only fires when the fresh pass emitted a row under the colliding id, so a
+// test whose doc holds nothing says nothing about how the gate is written.
+//
+// A key-PRESENCE gate ("this run emitted this id, so drop every prev row that
+// carries it") deletes a whole salted family the moment the fresh pass emits
+// ANY one of its members: 3 rows in, 1 row out, two rows of real graph data
+// silently gone. Supersession is per-ROW, so the gate is MULTIPLICITY-aware —
+// one fresh row supersedes at most one carried row — which is also exactly
+// what internal/graph/load.go's decode comment promises of this merge.
+func TestMergeIncrementalPrevSource_6160_FreshRowDoesNotEraseSaltedFamily(t *testing.T) {
+	got := mig6160(t,
+		[]string{"create_table", "add_column", "drop_column"},
+		[]string{"create_table"})
+
+	want := map[string]int{"create_table": 1, "add_column": 1, "drop_column": 1}
+	for op, n := range want {
+		if got[op] != n {
+			t.Errorf("op=%s present %d time(s) after the merge, want %d — one fresh row "+
+				"must supersede at most one carried row, never the whole family", op, got[op], n)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("got %d distinct rows after the merge, want %d: %v", len(got), len(want), got)
+	}
+}
+
+// TestMergeIncrementalPrevSource_6160_FamilySurvivalIsOrderIndependent pins
+// that the budget is spent on the row the fresh pass ACTUALLY duplicates, not
+// on whichever colliding row the prev stream happens to yield first.
+//
+// A greedy single-pass gate gets the COUNT right and the CONTENT wrong here:
+// it spends the one unit of budget on `add_column` (first in the stream),
+// then drops `create_table` again as an exact payload duplicate, and `add_column`
+// — a row the fresh pass never emitted — is the one that vanishes.
+func TestMergeIncrementalPrevSource_6160_FamilySurvivalIsOrderIndependent(t *testing.T) {
+	got := mig6160(t,
+		[]string{"add_column", "drop_column", "create_table"}, // exact match LAST
+		[]string{"create_table"})
+
+	want := map[string]int{"create_table": 1, "add_column": 1, "drop_column": 1}
+	for op, n := range want {
+		if got[op] != n {
+			t.Errorf("op=%s present %d time(s) after the merge, want %d — which row "+
+				"survives must not depend on prev's stream order", op, got[op], n)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("got %d distinct rows after the merge, want %d: %v", len(got), len(want), got)
+	}
+}
+
+// TestMergeIncrementalPrevSource_6160_BudgetScalesWithFreshRows pins the
+// multiplicity arithmetic in both directions: two fresh rows supersede two
+// carried rows and no more, and a fresh row with no carried counterpart
+// consumes nothing.
+func TestMergeIncrementalPrevSource_6160_BudgetScalesWithFreshRows(t *testing.T) {
+	// 3 carried, 2 fresh (neither an exact payload match) → 2 superseded, 1 kept.
+	got := mig6160(t,
+		[]string{"create_table", "add_column", "drop_column"},
+		[]string{"rename_table", "add_index"})
+	if total := got["create_table"] + got["add_column"] + got["drop_column"]; total != 1 {
+		t.Errorf("2 fresh rows superseded %d carried rows, want 2 of 3 (1 survivor): %v",
+			3-total, got)
+	}
+	if got["rename_table"] != 1 || got["add_index"] != 1 {
+		t.Errorf("a fresh row was lost: %v", got)
+	}
+
+	// 1 carried, 3 fresh → the carried row is superseded, the fresh rows all stand.
+	got = mig6160(t, []string{"create_table"}, []string{"add_column", "drop_column", "add_index"})
+	if got["create_table"] != 0 {
+		t.Errorf("carried row survived 3 fresh rows under its id: %v", got)
+	}
+	if len(got) != 3 {
+		t.Errorf("got %d fresh rows after the merge, want 3: %v", len(got), got)
+	}
+}
+
+// TestMergeIncrementalPrevSource_6160_IDLessPrevRowIsKeyedLikeAnyOther pins
+// that the gate and the multiplicity key agree on what a row's identity is.
+//
+// relKey normalises an absent ID to the derived one, so an ID-less prev row is
+// KEYED as though it carried the derived ID. If the gate tests the raw field
+// instead, that row is keyed one way and gated another: it bypasses
+// supersession entirely and duplicates an edge the fresh pass emitted. Not
+// reachable from the on-disk decoder, which normalises before the merge ever
+// sees a row — but mergeIncrementalPrevDoc takes a hand-built Document, which
+// is what every test here and the graph.json fallback hand it.
+func TestMergeIncrementalPrevSource_6160_IDLessPrevRowIsKeyedLikeAnyOther(t *testing.T) {
+	derived := graph.RelationshipID("H", "E", "IMPLEMENTS")
+	prev := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "H", Kind: "SCOPE.Operation", Name: "handler", SourceFile: "handler.py"},
+			{ID: "E", Kind: "http_endpoint_definition", Name: "http:GET:/x", SourceFile: "handler.py"},
+		},
+		Relationships: []graph.Relationship{
+			rel6160("", "H", "E", "IMPLEMENTS", map[string]string{"pattern_type": "resolved"}),
+		},
+	}
+	doc := &graph.Document{
+		Relationships: []graph.Relationship{
+			rel6160(derived, "H", "E", "IMPLEMENTS", map[string]string{"pattern_type": "time_bridge"}),
+		},
+	}
+
+	mergeIncrementalPrevDoc(doc, prev, map[string]bool{"reg.py": true})
+
+	n := 0
+	for _, r := range doc.Relationships {
+		if r.ID == derived {
+			n++
+		}
+	}
+	if n != 1 {
+		for _, r := range doc.Relationships {
+			t.Logf("  id=%s %s→%s %s props=%v", r.ID, r.FromID, r.ToID, r.Kind, r.PropsSnapshot())
+		}
+		t.Fatalf("#6160: an ID-less prev row bypassed supersession — %d rows under %s, want 1", n, derived)
+	}
+}
+
 // TestMergeIncrementalPrevSource_6160_LegacySiblingsSharingOneIDSurvive is the
 // guard on what the property-sensitive key was PROTECTING, and the reason the
 // gate above is scoped to the IDs THIS RUN emitted rather than applied among

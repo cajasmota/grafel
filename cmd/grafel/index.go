@@ -6059,11 +6059,14 @@ type incrementalMergeStats struct {
 //     already emitted (the run-to-run count drift). fbwriter now persists the
 //     ID; the key includes it because (from, to, kind) is NOT unique — see
 //     graph.RelationshipIDProperty for the producers that rely on that.
-//   - Drops a carried edge outright when its relationship ID is one THIS RUN
-//     emitted, whatever the two payloads say (#6160). The multiplicity key
-//     above is payload-sensitive and so could not see the same edge captured
-//     at two different pipeline stages; the fresh row supersedes the carried
-//     one, per this function's precedence everywhere else.
+//   - Supersedes a carried edge whose relationship ID is one THIS RUN emitted,
+//     whatever the two payloads say (#6160). The multiplicity key above is
+//     payload-sensitive and so could not see the same edge captured at two
+//     different pipeline stages; the fresh row wins, per this function's
+//     precedence everywhere else. Supersession is per-ROW and budgeted by how
+//     many rows the fresh pass emitted under that ID — one fresh row can never
+//     erase a whole family of carried rows sharing it, which is what a
+//     pre-#6085 file's unrecoverable salted edges decode to.
 //
 // The function is intentionally separate from internal/extractors.TryIncremental:
 // TryIncremental owns the daemon's fast in-place reindex (Path A), while this
@@ -6218,10 +6221,21 @@ func mergeIncrementalPrevSource(doc *graph.Document, prev prevGraphSource, chang
 		}
 		return b.String()
 	}
+	// relID is relKey's identity half on its own, with the same normalization
+	// of an absent ID to the derived one. The gate below and the key above MUST
+	// agree on what a row's identity is; two identity rules in one loop is how
+	// the next bug gets in.
+	relID := func(r *graph.Relationship) string {
+		if r.ID != "" {
+			return r.ID
+		}
+		return graph.RelationshipID(r.FromID, r.ToID, r.Kind)
+	}
+
 	docRelKeys := make(map[string]bool, len(doc.Relationships))
-	// #6160 — the supersession gate, keyed on the relationship ID alone, and
-	// scoped to THIS RUN's output. docRelIDs holds only the IDs the fresh
-	// extraction emitted; prev rows are never added to it.
+	// #6160 — the supersession gate, keyed on the relationship ID and scoped
+	// to THIS RUN's output. supersedeBudget counts the rows the fresh
+	// extraction emitted per ID; prev rows never add to it.
 	//
 	// The property-sensitive key above cannot see a prev edge that is the SAME
 	// edge as a fresh one but was captured at a different pipeline stage: the
@@ -6231,25 +6245,39 @@ func mergeIncrementalPrevSource(doc *graph.Document, prev prevGraphSource, chang
 	// FromID/ToID/Kind and the SAME ID, and differ only in payload — so the
 	// dedupe below never fired and both rows persisted under one identity.
 	//
-	// The scoping is what keeps the property-sensitivity's protection intact,
-	// and it matters: a graph.fb written before #6085 persisted no
-	// relationship identity, and LoadGraphFromDir normalizes an absent ID to
-	// the DERIVED one — so a legacy graph's deliberately salted siblings
-	// (process/event steps salted per step index, migration ops salted per
-	// operation, see graph.RelationshipIDProperty) arrive here all carrying
-	// one shared, explicit ID and are separable only by payload. Gating them
-	// against each other would silently delete graph rows on the upgrade path
-	// (TestMergeIncrementalPrevSource_DedupeKeepsNearIdenticalEdges pins that).
-	// Gating them against the fresh pass's IDs cannot: an ID this run emitted
-	// is an edge this run re-produced, and the merge's whole contract is that
-	// the fresh row supersedes the carried-forward one.
-	docRelIDs := make(map[string]bool, len(doc.Relationships))
+	// It is a BUDGET and not a set membership test, and that is load-bearing.
+	// A graph.fb written before #6085 persisted no relationship identity, and
+	// the decoder normalizes an absent ID to the DERIVED one — so a legacy
+	// graph's deliberately salted siblings (process/event steps salted per step
+	// index, migration ops salted per operation, see
+	// graph.RelationshipIDProperty) arrive here as a FAMILY of rows all
+	// carrying one shared, explicit ID, separable only by payload. Against a
+	// key-presence gate, one fresh row emitted under that ID would delete the
+	// whole family. Supersession is per-ROW: one fresh row supersedes at most
+	// one carried row. internal/graph/load.go's decode comment states exactly
+	// this property of this merge, and it is the reason a legacy file's
+	// unrecoverable salted rows survive a reindex.
+	supersedeBudget := make(map[string]int, len(doc.Relationships))
 	for k := range doc.Relationships {
 		docRelKeys[relKey(&doc.Relationships[k])] = true
-		if id := doc.Relationships[k].ID; id != "" {
-			docRelIDs[id] = true
-		}
+		supersedeBudget[relID(&doc.Relationships[k])]++
 	}
+	// Carried rows that collide with a fresh ID are held back rather than
+	// decided on sight: the budget must be spent on the row the fresh pass
+	// ACTUALLY duplicates, and that row can arrive anywhere in the stream. A
+	// greedy decision gets the count right and the content wrong — it spends
+	// the budget on whichever colliding row comes first and then drops the real
+	// duplicate as an exact payload match, deleting a row the fresh pass never
+	// emitted.
+	//
+	// This holds rows, which the streaming source (#5954 item 16) otherwise
+	// avoids — but only rows whose ID the fresh pass ALSO emitted. For a salted
+	// family that requires the owning file to have been re-extracted, and
+	// predicate (a) below has already dropped those rows before they get here.
+	// In practice the buffer holds a handful of rows or none.
+	deferred := make(map[string][]graph.Relationship)
+	var deferredOrder []string
+
 	referenced := make(map[string]bool)
 	prev.EachRelationship(func(r graph.Relationship) bool {
 		// (a) the edge's owning file was re-extracted this run.
@@ -6267,25 +6295,50 @@ func mergeIncrementalPrevSource(doc *graph.Document, prev prevGraphSource, chang
 		// node it points at must be carried forward for THAT edge's sake.
 		referenced[r.FromID] = true
 		referenced[r.ToID] = true
-		if r.ID != "" && docRelIDs[r.ID] {
-			// Same identity as an edge THIS RUN emitted — the same edge,
-			// whatever the two payloads say, and the fresh row wins (#6160).
-			return true
-		}
+		r.ID = relID(&r)
 		key := relKey(&r)
 		if docRelKeys[key] {
 			// Already in the merged graph — either emitted by this run's
-			// extraction, or an exact duplicate row earlier in prev.
+			// extraction, or an exact duplicate row earlier in prev. When the
+			// budget is still open this is the fresh row's true duplicate, so
+			// spend it here in preference to any deferred sibling.
+			if supersedeBudget[r.ID] > 0 {
+				supersedeBudget[r.ID]--
+			}
+			return true
+		}
+		if supersedeBudget[r.ID] > 0 {
+			if _, seen := deferred[r.ID]; !seen {
+				deferredOrder = append(deferredOrder, r.ID)
+			}
+			deferred[r.ID] = append(deferred[r.ID], r)
 			return true
 		}
 		docRelKeys[key] = true
-		if r.ID == "" {
-			r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
-		}
 		doc.Relationships = append(doc.Relationships, r)
 		stats.relsAdded++
 		return true
 	})
+
+	// Spend whatever budget the exact-duplicate branch left, then carry the
+	// rest of each colliding family forward. deferredOrder keeps this
+	// deterministic — map iteration order must not decide which row survives.
+	for _, id := range deferredOrder {
+		rows := deferred[id]
+		superseded := supersedeBudget[id]
+		if superseded > len(rows) {
+			superseded = len(rows)
+		}
+		for i := superseded; i < len(rows); i++ {
+			key := relKey(&rows[i])
+			if docRelKeys[key] {
+				continue
+			}
+			docRelKeys[key] = true
+			doc.Relationships = append(doc.Relationships, rows[i])
+			stats.relsAdded++
+		}
+	}
 
 	// Third pass: re-attach the source-less synthetic endpoints that surviving
 	// edges still point at, so no carried edge dangles. Synthetics nothing
