@@ -1,5 +1,5 @@
 /* ============================================================
-   hooks/use-pending.ts — data hooks for the Pending screen (#1442).
+   hooks/use-pending.ts — data hooks for the Enrichment screen (#1442).
    ============================================================ */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -20,10 +20,10 @@ export function useCandidates(groupId: string) {
 /**
  * Returns the total number of pending items (repairs + enrichments) for use
  * in the NavRail badge.  Shares the same React Query cache key as
- * useCandidates so no extra network request is ever issued when the Pending
- * screen is also mounted.
+ * useCandidates so no extra network request is ever issued when the
+ * Enrichment screen is also mounted.
  */
-export function usePendingCount(groupId: string): number {
+export function useEnrichmentCount(groupId: string): number {
   const { data } = useQuery({
     queryKey: ["candidates", groupId],
     queryFn: () => api.listCandidates(groupId),

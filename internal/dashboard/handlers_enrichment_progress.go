@@ -7,7 +7,7 @@ package dashboard
 // Returns a live snapshot of enrichment job progress bucketed into the four
 // criticality bands (critical / high / medium / low). The frontend polls this
 // endpoint every 3 s while any tier has running or queued jobs and renders
-// animated progress bars in the /pending surface.
+// animated progress bars in the Enrichment surface (at /pending).
 //
 // ETA estimation uses a rolling window of the last 30 completed jobs. When
 // fewer than 2 jobs have finished the eta_seconds field is omitted so the UI

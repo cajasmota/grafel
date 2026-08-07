@@ -118,7 +118,7 @@ The topbar in the dashboard contains a **ref selector** (labelled with the
 currently-active ref name). Click it to open a dropdown listing every indexed
 ref for the current group. Selecting a ref appends `?ref=<name>` to the URL
 and updates all dashboard surfaces (Graph, Paths, Topology, Flows, Quality,
-Pending) to show data for that ref.
+Enrichment) to show data for that ref.
 
 The selected ref persists across navigation within the group — navigate from
 Graph to Paths and back, the ref stays the same.

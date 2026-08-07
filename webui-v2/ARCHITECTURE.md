@@ -89,7 +89,7 @@ typed API client      src/lib/api.ts           the ONLY place that talks to the 
 | `/g/:groupId/paths` | Paths | AppShell |
 | `/g/:groupId/docs` | Docs | AppShell |
 | `/g/:groupId/settings` | Group settings | AppShell |
-| `/g/:groupId/pending` | Pending | AppShell |
+| `/g/:groupId/pending` | Enrichment | AppShell |
 | `/g/:groupId/operations` | Operations | AppShell |
 | `*` | NotFound / error shell | none |
 

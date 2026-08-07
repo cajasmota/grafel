@@ -29,7 +29,7 @@ import DIScreen from "./di";
 import ErrorFlowScreen from "./errorflow";
 import QualityScreen from "./quality";
 import SettingsScreen from "./settings";
-import PendingScreen from "./pending";
+import EnrichmentScreen from "./pending";
 import OperationsScreen from "./operations";
 // PH5 (#2093): graph diff compare view
 import CompareScreen from "./compare";
@@ -67,7 +67,7 @@ export const router = createBrowserRouter([
           { path: "errorflow", element: <ErrorFlowScreen />, handle: { surfaceLabel: "Error flow" } },
           { path: "quality", element: <QualityScreen />, handle: { surfaceLabel: "Quality" } },
           { path: "settings", element: <SettingsScreen />, handle: { surfaceLabel: "Group settings" } },
-          { path: "pending", element: <PendingScreen />, handle: { surfaceLabel: "Pending" } },
+          { path: "pending", element: <EnrichmentScreen />, handle: { surfaceLabel: "Enrichment" } },
           { path: "operations", element: <OperationsScreen />, handle: { surfaceLabel: "Operations" } },
           // PH5 (#2093): graph diff compare view
           { path: "compare", element: <CompareScreen />, handle: { surfaceLabel: "Compare" } },

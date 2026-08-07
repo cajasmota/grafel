@@ -68,7 +68,7 @@ Beyond residual edges, the enrichment queue holds three types of candidates:
 - **Cross-repo link candidates** — edges where the target might be in a sibling repo (`grafel_cross_links`)
 - **Enrichment candidates** — `http_endpoint`, `process_flow`, and `message_topic` entities that the indexer flagged for LLM annotation (`grafel_docgen_apply` with `kind=enrichments`)
 
-The dashboard **Pending** surface (`/g/:groupId/pending`) shows the full queue tiered by priority (Critical / High / Medium / Low).
+The dashboard **Enrichment** surface (`/g/:groupId/pending`) shows the full queue tiered by priority (Critical / High / Medium / Low).
 
 The `/grafel-graph-enrich` skill emits YAML frontmatter for HTTP endpoints, flows, and topics — this makes the **Paths**, **Flows**, and **Topology** dashboard panels display data.
 
@@ -105,7 +105,10 @@ See [ADR-0018](adrs/0018-agent-learned-patterns.md) for the full design.
 
 The dashboard is embedded in the daemon at `http://127.0.0.1:47274`. After
 selecting a group, every surface is nested under `/g/:groupId/` — so the
-Pending view, for example, is `/g/:groupId/pending`, not a bare `/pending`.
+Enrichment view, for example, is `/g/:groupId/pending`, not a bare `/pending`.
+The surface is named **Enrichment**, but its URL segment stays `pending` —
+the label was renamed (#5949) without touching the route, so the two no
+longer match by name.
 The available surfaces (routes defined in `webui-v2/src/routes/router.tsx`):
 
 | Surface | Path | Shows |
@@ -125,7 +128,7 @@ The available surfaces (routes defined in `webui-v2/src/routes/router.tsx`):
 | Error-flow | `/g/:groupId/errorflow` | Error / exception propagation |
 | Quality | `/g/:groupId/quality` | Extraction-quality metrics |
 | Settings | `/g/:groupId/settings` | Per-group daemon settings |
-| Pending | `/g/:groupId/pending` | Residual / repair / enrichment queue |
+| Enrichment | `/g/:groupId/pending` | Residual / repair / enrichment queue |
 | Operations | `/g/:groupId/operations` | Index/rebuild operation log |
 | Compare | `/g/:groupId/compare` | Structural ref-to-ref diff |
 | Missing | `/g/:groupId/missing` | Unresolved / missing targets |

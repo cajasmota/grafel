@@ -53,7 +53,7 @@ The graph lives entirely on your machine — local-first by design, as called ou
 - **Cross-repo dependency graph** — index a folder of repos as one group; edges span repo boundaries with confidence scores; diff graph state between any two indexed refs.
 - **Cross-repo group-level intelligence** — communities and importance (PageRank/centrality) are computed once over the assembled group graph, not per repo, so they reflect cross-repo structure: a community can span repos when cross-repo links connect them, and a backend entity called from the frontend or mobile gets the importance that wiring earns. Surfaced in `grafel_orient` (`view=clusters`, with `repos[]`/`cross_repo`; `view=overview`) and `grafel_inspect`.
 - **Documentation and analysis skills** — a 15-skill family (tech docs, business docs, security audit, consultant panel, patterns) all driven off the graph, invokable from Claude Code as slash commands.
-- **Real-time dashboard** — 19 surfaces (Graph, Flows, Event-flows, Topology, Paths, Links, GraphQL, IaC, Docs, Security, Taint, DI, Error-flow, Quality, Settings, Pending, Operations, Compare, Missing) embedded in the daemon, no separate server, at `http://127.0.0.1:47274`.
+- **Real-time dashboard** — 19 surfaces (Graph, Flows, Event-flows, Topology, Paths, Links, GraphQL, IaC, Docs, Security, Taint, DI, Error-flow, Quality, Settings, Enrichment, Operations, Compare, Missing) embedded in the daemon, no separate server, at `http://127.0.0.1:47274`.
 
 ---
 
@@ -132,7 +132,7 @@ The left rail switches between per-project screens:
 - **Security** / **Taint** / **DI** / **Error flow** — security findings, taint paths, dependency-injection wiring, and error/exception flow.
 - **Quality** — graph-health surface: orphan audit and recall measurement.
 - **Operations** — daemon control, logs, learned-patterns store, and update checks.
-- **Pending** — residual-edge and repair suggestions awaiting review.
+- **Enrichment** — residual-edge and repair suggestions awaiting review.
 - **Settings** — per-group management (repos, watchers/git-hooks, docs path, health check) and the **AI coding tools** panel: a checklist to pick which tools grafel installs its MCP entry and rules files into. Changes apply instantly, daemon-up, across every repo in the group.
 
 ---

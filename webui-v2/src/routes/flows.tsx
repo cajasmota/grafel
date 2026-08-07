@@ -1298,14 +1298,14 @@ function DeadEndDetail({ de, onClose }: { de: FlowDeadEnd; onClose: () => void }
         <Section title="Suggested fix">
           <p className="text-sm text-text-2 leading-relaxed m-0">
             Review the entry chain and add explicit sink calls, or mark the flow as expected
-            dead-end in your grafel config. You can also triage this in the Pending queue.
+            dead-end in your grafel config. You can also triage this in the Enrichment queue.
           </p>
           <button
             type="button"
-            onClick={() => toast.info("Open in Pending — not wired yet.")}
+            onClick={() => toast.info("Open in Enrichment — not wired yet.")}
             className="self-start inline-flex items-center gap-1.5 h-7 px-2.5 rounded-sm text-sm border border-border bg-surface text-text-2 hover:bg-surface-2 hover:text-text"
           >
-            Open in Pending
+            Open in Enrichment
           </button>
         </Section>
       </div>

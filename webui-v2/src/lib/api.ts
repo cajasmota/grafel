@@ -510,7 +510,7 @@ export const api = {
       body: JSON.stringify({ tools }),
     }),
 
-  // --- v2 Pending screen (#1442) ---
+  // --- v2 Enrichment screen (#1442) ---
   /** Fetch repair + enrichment candidates for a group. */
   listCandidates: (groupId: string, tab?: "repairs" | "enrichments") =>
     requestV2<V2CandidatesResponse>(

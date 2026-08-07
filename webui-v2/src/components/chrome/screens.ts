@@ -55,10 +55,10 @@ export const SCREENS: ScreenDef[] = [
   { to: "operations", label: "Operations", Icon: Wrench, shortcut: "O" },
 ];
 
-/** Pending lives below the divider in the rail (carries a badge). */
-export const PENDING_SCREEN: ScreenDef = {
+/** Enrichment lives below the divider in the rail (carries a badge). */
+export const ENRICHMENT_SCREEN: ScreenDef = {
   to: "pending",
-  label: "Pending",
+  label: "Enrichment",
   Icon: Inbox,
   shortcut: "I",
 };
@@ -73,5 +73,5 @@ export const SETTINGS_SCREEN: ScreenDef = {
 
 /** Set of route segments that a project switch can preserve. */
 export const SCREEN_SEGMENTS = new Set(
-  [...SCREENS, PENDING_SCREEN, SETTINGS_SCREEN].map((s) => s.to),
+  [...SCREENS, ENRICHMENT_SCREEN, SETTINGS_SCREEN].map((s) => s.to),
 );
