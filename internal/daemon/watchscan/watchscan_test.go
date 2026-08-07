@@ -22,19 +22,29 @@ func managedSet(repos ...string) func(string) bool {
 
 // A foreign-exe watcher for a MANAGED repo is selected; a same-exe watcher and
 // an UNRELATED-repo watcher are skipped.
+//
+// The exe fixtures are REAL FILES (#6187): skew is now only declared when both
+// paths resolve on disk, so string literals naming nothing would take the
+// unresolvable escape hatch and the "foreign is selected" assertion would be
+// testing nothing.
 func TestCompute_ForeignWatcherSelected_UnrelatedSkipped(t *testing.T) {
-	self := "/home/u/.grafel/bin/grafel"
+	root := t.TempDir()
+	self := writeExe(t, filepath.Join(root, "grafel-bin"), "grafel")
+	stale := writeExe(t, filepath.Join(root, "gopath-bin"), "grafel")
+	mustDifferTextually(t, self, stale)
+	mustBeDifferentFiles(t, self, stale)
+
 	plan := Compute(Deps{
 		SelfExe: self,
 		Managed: managedSet("/work/repo-a"),
 		List: func() ([]Proc, error) {
 			return []Proc{
 				// foreign-version watcher for a managed repo → reap.
-				{PID: 100, Exe: "/home/u/go/bin/grafel", Repo: "/work/repo-a"},
+				{PID: 100, Exe: stale, Repo: "/work/repo-a"},
 				// same-exe watcher for a managed repo → keep.
 				{PID: 101, Exe: self, Repo: "/work/repo-a"},
 				// foreign watcher for an UNMANAGED repo → never touched.
-				{PID: 102, Exe: "/home/u/go/bin/grafel", Repo: "/other/repo-z"},
+				{PID: 102, Exe: stale, Repo: "/other/repo-z"},
 			}, nil
 		},
 	})
@@ -69,20 +79,33 @@ func TestCompute_DuplicateCollapse_KeepsOne(t *testing.T) {
 
 // A foreign watcher is preferred for reaping; the own-exe survivor is kept even
 // if it has a higher PID than the foreign one.
+//
+// Real files again, and the Foreign classification is asserted directly: with
+// literal paths PID 10 would come out unresolvable, land in the survivor set,
+// and be reaped as a DUPLICATE — identical PIDs(), nothing to do with the
+// property this test is named for.
 func TestCompute_PrefersOwnExeSurvivor(t *testing.T) {
-	self := "/opt/grafel"
+	root := t.TempDir()
+	self := writeExe(t, filepath.Join(root, "opt"), "grafel")
+	stale := writeExe(t, filepath.Join(root, "stale"), "grafel")
+	mustDifferTextually(t, self, stale)
+	mustBeDifferentFiles(t, self, stale)
+
 	plan := Compute(Deps{
 		SelfExe: self,
 		Managed: managedSet("/work/repo-a"),
 		List: func() ([]Proc, error) {
 			return []Proc{
-				{PID: 10, Exe: "/stale/grafel", Repo: "/work/repo-a"}, // foreign
-				{PID: 20, Exe: self, Repo: "/work/repo-a"},            // own → keep
+				{PID: 10, Exe: stale, Repo: "/work/repo-a"}, // foreign
+				{PID: 20, Exe: self, Repo: "/work/repo-a"},  // own → keep
 			}, nil
 		},
 	})
 	if got, want := plan.PIDs(), []int{10}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("PIDs() = %v, want %v (foreign reaped, own kept)", got, want)
+	}
+	if got, want := plan.Foreign, []int{10}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Foreign = %v, want %v — 10 must be reaped as SKEW, not as a duplicate", got, want)
 	}
 }
 
