@@ -1904,12 +1904,20 @@ func mergeEntitiesDeduped(existing, incoming []graph.Entity) []graph.Entity {
 // third span covering neither declaration.
 //
 // METADATA IS DELIBERATELY NOT FOLDED, even though buildDocument folds it.
-// entityRecordToGraphEntity does not carry EntityRecord.Metadata onto the
-// entity at all on this path (buildDocument does — a pre-existing divergence,
-// outside #6161). Folding it here would make an entity that HAPPENS to have a
-// duplicate carry the duplicate's metadata while carrying none of its own,
-// which is stranger than carrying none at all. Fix the first-seen omission and
-// this fold should gain a Metadata clause in the same change.
+// entityRecordToGraphEntity does not carry EntityRecord.Metadata onto the entity
+// at all on this path (buildDocument does — a pre-existing divergence, outside
+// #6161, tracked as #6251). Folding it here would make an entity that HAPPENS to
+// have a duplicate carry the duplicate's metadata while carrying none of its
+// own, which is stranger than carrying none at all.
+//
+// BEFORE YOU FIX #6251, KNOW THAT IT IS STACKED WITH #6245 AND THE TWO MASK EACH
+// OTHER. Metadata also has no FlatBuffers slot (#6245), so even on Path B the
+// value dies at the storage boundary. Fixing the Path A drop alone changes
+// nothing observable; fixing the slot alone EXPOSES the Path A drop as a new
+// full-vs-incremental divergence (layer_confidence present after a full index,
+// gone after an incremental one). They have to land together, and this fold
+// gains its Metadata clause in that same change — not before, or it would fill
+// gaps in a field nothing else on this path populates.
 func foldDuplicateEntity(surv *graph.Entity, dup graph.Entity) {
 	if surv.QualifiedName == "" && dup.QualifiedName != "" {
 		surv.QualifiedName = dup.QualifiedName
