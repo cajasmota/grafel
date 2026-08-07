@@ -54,6 +54,21 @@ func Raise(target uint64) (old, updated uint64, err error) {
 	return old, old, err
 }
 
+// Current returns the process's EFFECTIVE RLIMIT_NOFILE soft and hard limits,
+// read back from the kernel. This is the post-clamp truth, not what anyone
+// asked for: on Darwin a launchd plist may request NumberOfFiles 65536 while
+// kern.maxfilesperproc caps the process at 61440, and the excess is dropped
+// silently. Any budget computed from a requested figure over-commits by
+// exactly the amount the kernel refused, so callers that need to divide the
+// descriptor supply must read it from here.
+func Current() (soft, hard uint64, err error) {
+	var lim syscall.Rlimit
+	if err = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &lim); err != nil {
+		return 0, 0, err
+	}
+	return lim.Cur, lim.Max, nil
+}
+
 // candidates returns a descending, de-duplicated list of soft-limit targets to
 // attempt, each clamped to the hard max. hardMax==0 is treated as "unknown"
 // and applies no clamp.

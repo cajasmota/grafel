@@ -148,8 +148,13 @@ type applyToolDeltaFunc func(cfg *registry.GroupConfig, group, binPath string, p
 // direct import of internal/daemon/watch.
 type watcherForceRescan interface {
 	ForceRescan()
-	// Stats returns (repos, dirs, totalEvents, dropped).
-	Stats() (int, int, uint64, uint64)
+	// Stats returns (repos, dirs, totalEvents, dropped, unwatched). unwatched
+	// counts repos refused for want of file descriptors (#6180).
+	Stats() (int, int, uint64, uint64, int)
+	// FDBudgetStats returns (used, limit, unwatched, unwatchedRepos) for the
+	// watcher's descriptor ledger (#6180). limit == 0 means the platform does
+	// not do descriptor accounting.
+	FDBudgetStats() (int, int, int, []string)
 }
 
 // webhookDispatcherIface is the subset of notifications.Dispatcher used by the

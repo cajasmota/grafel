@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,6 +48,19 @@ type Config struct {
 	// SkipDirs) that this watcher instance will not subscribe to.
 	// Useful for per-group custom exclusions.
 	ExcludeDirs []string
+
+	// FDBudget caps the total number of OS file descriptors this watcher may
+	// commit to fs watches, across every subscription (#6180). Zero uses the
+	// process-wide default, which is derived from the effective RLIMIT_NOFILE
+	// on macOS and disabled elsewhere; a negative value disables the budget
+	// for this watcher. Tests inject a small value so the arithmetic is
+	// deterministic and never depends on the host's real descriptor limit.
+	FDBudget int
+
+	// fdCost overrides the platform descriptor cost model. Unexported: it
+	// exists so in-package tests can exercise the macOS (kqueue) arithmetic on
+	// every platform. The zero value selects defaultCostModel().
+	fdCost fdCostModel
 }
 
 func (c *Config) debounce() time.Duration {
@@ -113,14 +127,25 @@ type Watcher struct {
 	// observes per-directory churn at the event boundary and drops events
 	// under directories it has quarantined. nil disables the feature.
 	quarantine *QuarantineTracker
-	mu         sync.Mutex
-	fs         *fsnotify.Watcher
-	repos      map[string]*repoState // key: absolute repo path
-	dirToRepo  map[string]string     // key: absolute dir path → repo path
-	stopOnce   sync.Once
-	stopCh     chan struct{}
-	stoppedCh  chan struct{}
-	restartCh  chan struct{} // signals heartbeat loop to recreate fsnotify
+	// fdb is the descriptor ledger (#6180) and fdCost the platform arithmetic
+	// it charges with. fdb is shared process-wide unless Config.FDBudget
+	// overrides it, because the kernel's ceiling is per process.
+	fdb       *fdBudget
+	fdCost    fdCostModel
+	mu        sync.Mutex
+	fs        *fsnotify.Watcher
+	repos     map[string]*repoState // key: absolute repo path
+	dirToRepo map[string]string     // key: absolute dir path → repo path
+	// fdReserved records how many descriptors each subscribed repo holds, so
+	// RemoveRepo can hand them back.
+	fdReserved map[string]int
+	// fdUnwatched names repos refused because the budget was full. These are
+	// NOT in repos: they receive no events, and this is how they say so.
+	fdUnwatched map[string]struct{}
+	stopOnce    sync.Once
+	stopCh      chan struct{}
+	stoppedCh   chan struct{}
+	restartCh   chan struct{} // signals heartbeat loop to recreate fsnotify
 	// counters — accessed atomically outside mu where latency matters
 	totalEvents   uint64
 	droppedSkips  uint64
@@ -174,18 +199,33 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		extraSkip[d] = struct{}{}
 	}
 
+	// Descriptor budget (#6180). A zero Config.FDBudget shares the
+	// process-wide ledger; any explicit value gets a private one.
+	fdb := sharedFDBudget()
+	if cfg.FDBudget != 0 {
+		fdb = newFDBudget(cfg.FDBudget)
+	}
+	fdCost := cfg.fdCost
+	if fdCost == (fdCostModel{}) {
+		fdCost = defaultCostModel()
+	}
+
 	w := &Watcher{
-		logger:    logger,
-		cfg:       cfg,
-		sink:      sink,
-		extraSkip: extraSkip,
-		clk:       realClock{},
-		fs:        fw,
-		repos:     map[string]*repoState{},
-		dirToRepo: map[string]string{},
-		stopCh:    make(chan struct{}),
-		stoppedCh: make(chan struct{}),
-		restartCh: make(chan struct{}, 1),
+		logger:      logger,
+		cfg:         cfg,
+		sink:        sink,
+		extraSkip:   extraSkip,
+		clk:         realClock{},
+		fdb:         fdb,
+		fdCost:      fdCost,
+		fs:          fw,
+		repos:       map[string]*repoState{},
+		dirToRepo:   map[string]string{},
+		fdReserved:  map[string]int{},
+		fdUnwatched: map[string]struct{}{},
+		stopCh:      make(chan struct{}),
+		stoppedCh:   make(chan struct{}),
+		restartCh:   make(chan struct{}, 1),
 	}
 	// Adaptive index-trash quarantine (#5394). The tracker observes
 	// per-directory churn at the event boundary and quarantines dirs that
@@ -267,6 +307,22 @@ func (w *Watcher) AddRepo(repoPath string) (int, error) {
 
 	added, err := w.subscribeRepo(abs)
 	if err != nil {
+		if isFDBudgetError(err) {
+			// The subscription was refused and fully unwound. Drop the repo
+			// from the watched set as well — leaving it there would make it
+			// LOOK watched in Repos()/Stats() while receiving no events, which
+			// is precisely the silent half-failure this guard exists to stop.
+			// subscribeRepo has already recorded it in fdUnwatched.
+			w.mu.Lock()
+			if rs, ok := w.repos[abs]; ok {
+				if rs.timer != nil {
+					rs.timer.Stop()
+				}
+				delete(w.repos, abs)
+			}
+			w.mu.Unlock()
+			return 0, err
+		}
 		return added, err
 	}
 	w.logger.Info("watcher: registered", "repo", abs, "dirs", added, "debounce", w.cfg.debounce())
@@ -281,15 +337,42 @@ func (w *Watcher) AddRepo(repoPath string) (int, error) {
 //  1. Hard-coded SkipDirs / walk.IsHardcodedSkip (ShouldSkipDir)
 //  2. Per-instance ExcludeDirs (extraSkip)
 //  3. .gitignore + .grafel/watch.json (ShouldSkipDirGitignore)
+//
+// Descriptor budget (#6180): the walk is also the estimator. Every directory
+// costs fdCost.perDir descriptors and every file inside a directory we
+// subscribed costs fdCost.perFile — which is exactly what fsnotify's kqueue
+// backend opens (addWatch on the dir, then watchDirectoryFiles on its
+// contents). Charging incrementally as the existing walk streams entries
+// avoids a second pass over the tree and, unlike a pre-flight estimate, can
+// never open more descriptors than the budget allows before it notices.
 func (w *Watcher) subscribeRepo(abs string) (int, error) {
 	added := 0
 	dirCap := walk.WatchDirCap()
 	capWarned := false
+
+	reserved := 0
+	budgetHit := false
+	// Dirs this walk actually subscribed. A file is only charged if the
+	// directory holding it is one we opened — files under a skipped or
+	// failed-to-add directory cost fsnotify nothing.
+	subscribed := map[string]struct{}{}
+
 	walkErr := filepath.WalkDir(abs, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if !d.IsDir() {
+			if w.fdCost.perFile <= 0 {
+				return nil
+			}
+			if _, ok := subscribed[filepath.Dir(p)]; !ok {
+				return nil
+			}
+			if !w.fdb.reserve(w.fdCost.perFile) {
+				budgetHit = true
+				return errFDBudget
+			}
+			reserved += w.fdCost.perFile
 			return nil
 		}
 		// TCC guard (#5296): never subscribe to protected macOS media folders
@@ -326,16 +409,55 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 				}
 			}
 		}
+		if !w.fdb.reserve(w.fdCost.perDir) {
+			budgetHit = true
+			return errFDBudget
+		}
 		if err := w.fs.Add(p); err != nil {
+			w.fdb.release(w.fdCost.perDir)
 			w.logger.Warn("watcher: add failed", "path", p, "err", err)
 			return nil
 		}
+		reserved += w.fdCost.perDir
+		subscribed[p] = struct{}{}
 		w.mu.Lock()
 		w.dirToRepo[p] = abs
 		w.mu.Unlock()
 		added++
 		return nil
 	})
+
+	if budgetHit {
+		// Refuse, do not half-watch. Every descriptor this attempt opened is
+		// handed back so a refusal cannot slowly poison the ledger.
+		for p := range subscribed {
+			_ = w.fs.Remove(p)
+		}
+		w.mu.Lock()
+		for p := range subscribed {
+			delete(w.dirToRepo, p)
+		}
+		delete(w.fdReserved, abs)
+		w.fdUnwatched[abs] = struct{}{}
+		w.mu.Unlock()
+		w.fdb.release(reserved)
+
+		used, limit := w.fdb.snapshot()
+		w.logger.Warn("watcher: NOT WATCHING repo — file-descriptor budget exhausted; "+
+			"edits under this repo will not trigger a re-index until budget frees up",
+			"repo", abs,
+			"dirs_reached", added,
+			"fd_used", used,
+			"fd_limit", limit,
+			"override_env", fdBudgetEnv)
+		return 0, fmt.Errorf("%w: %s does not fit in the remaining watch budget (used %d of %d descriptors); "+
+			"raise %s or unregister repos", errFDBudget, abs, used, limit, fdBudgetEnv)
+	}
+
+	w.mu.Lock()
+	w.fdReserved[abs] = reserved
+	delete(w.fdUnwatched, abs)
+	w.mu.Unlock()
 	return added, walkErr
 }
 
@@ -360,6 +482,13 @@ func (w *Watcher) RemoveRepo(repoPath string) {
 			delete(w.dirToRepo, d)
 		}
 	}
+	// Hand the descriptors back (#6180). Without this a store that churns
+	// repos would exhaust the budget permanently while holding nothing.
+	if n := w.fdReserved[abs]; n > 0 {
+		w.fdb.release(n)
+	}
+	delete(w.fdReserved, abs)
+	delete(w.fdUnwatched, abs)
 	// Evict gitignore cache so a re-add picks up any .gitignore changes.
 	evictRepoIgnoreState(abs)
 }
@@ -375,15 +504,34 @@ func (w *Watcher) Repos() []string {
 	return out
 }
 
-// Stats returns coarse counters for /status output. Signature is
-// intentionally identical to the pre-#1270 version so service.go
-// doesn't need changes.
-func (w *Watcher) Stats() (repos int, dirs int, events uint64, dropped uint64) {
+// Stats returns coarse counters for /status output.
+//
+// unwatched (#6180) is the number of repos that are NOT being watched because
+// the file-descriptor budget was full when they were offered. It is reported
+// alongside the healthy counters on purpose: a repo that is registered with
+// the daemon but receiving no fs events is the exact failure this codebase
+// keeps shipping silently, and /status is where an operator looks first.
+func (w *Watcher) Stats() (repos int, dirs int, events uint64, dropped uint64, unwatched int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return len(w.repos), len(w.dirToRepo),
 		atomic.LoadUint64(&w.totalEvents),
-		atomic.LoadUint64(&w.droppedSkips) + atomic.LoadUint64(&w.droppedReplay)
+		atomic.LoadUint64(&w.droppedSkips) + atomic.LoadUint64(&w.droppedReplay),
+		len(w.fdUnwatched)
+}
+
+// FDBudgetStats reports the descriptor ledger for /diagnostics (#6180): how
+// many descriptors the watch set has committed, the ceiling (0 == accounting
+// disabled on this platform), and the repos refused for want of budget.
+func (w *Watcher) FDBudgetStats() (used, limit, unwatched int, unwatchedRepos []string) {
+	used, limit = w.fdb.snapshot()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for p := range w.fdUnwatched {
+		unwatchedRepos = append(unwatchedRepos, p)
+	}
+	sort.Strings(unwatchedRepos)
+	return used, limit, len(w.fdUnwatched), unwatchedRepos
 }
 
 // RepoStat holds per-repo watcher statistics for the /diagnostics endpoint.
@@ -441,6 +589,13 @@ func (w *Watcher) Stop() {
 				rs.timer.Stop()
 			}
 		}
+		// fs.Close() released every descriptor this watcher held; give the
+		// budget back so a later Watcher in the same process can use it
+		// (#6180 — the ledger is process-wide, not per-Watcher).
+		for repo, n := range w.fdReserved {
+			w.fdb.release(n)
+			delete(w.fdReserved, repo)
+		}
 		w.mu.Unlock()
 	})
 }
@@ -473,6 +628,13 @@ func (w *Watcher) heartbeat() {
 			w.fs = fw
 			// Clear stale dirToRepo — will be repopulated by subscribeRepo.
 			w.dirToRepo = make(map[string]string, len(w.dirToRepo))
+			// The old fsnotify instance is gone, so its descriptors are gone
+			// too (#6180). Return them to the ledger before re-subscribing, or
+			// the restart double-charges and every repo is refused.
+			for repo, n := range w.fdReserved {
+				w.fdb.release(n)
+				delete(w.fdReserved, repo)
+			}
 			repos := make([]string, 0, len(w.repos))
 			for p := range w.repos {
 				repos = append(repos, p)
@@ -644,11 +806,28 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 	if repo == "" {
 		return
 	}
+	reserved := 0
+	budgetHit := false
+	subscribed := map[string]struct{}{}
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if !d.IsDir() {
+			// Same per-file descriptor cost as the initial subscription
+			// (#6180): a directory created by `git checkout` brings its files
+			// with it, and kqueue opens one descriptor for each.
+			if w.fdCost.perFile <= 0 {
+				return nil
+			}
+			if _, ok := subscribed[filepath.Dir(p)]; !ok {
+				return nil
+			}
+			if !w.fdb.reserve(w.fdCost.perFile) {
+				budgetHit = true
+				return errFDBudget
+			}
+			reserved += w.fdCost.perFile
 			return nil
 		}
 		// TCC guard (#5296): never recurse into protected media folders/bundles.
@@ -659,14 +838,35 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		if p != root && w.shouldSkipDir(base) {
 			return filepath.SkipDir
 		}
+		if !w.fdb.reserve(w.fdCost.perDir) {
+			budgetHit = true
+			return errFDBudget
+		}
 		if err := w.fs.Add(p); err != nil {
+			w.fdb.release(w.fdCost.perDir)
 			return nil
 		}
+		reserved += w.fdCost.perDir
+		subscribed[p] = struct{}{}
 		w.mu.Lock()
 		w.dirToRepo[p] = repo
 		w.mu.Unlock()
 		return nil
 	})
+
+	// Whatever we did manage to subscribe stays (the repo as a whole is
+	// already watched; this is an incremental extension, so a partial
+	// extension is strictly better than none). Charge it to the owning repo
+	// so RemoveRepo returns it, and say loudly when we ran out.
+	w.mu.Lock()
+	w.fdReserved[repo] += reserved
+	w.mu.Unlock()
+	if budgetHit {
+		used, limit := w.fdb.snapshot()
+		w.logger.Warn("watcher: new subtree only partially watched — file-descriptor budget exhausted",
+			"repo", repo, "dir", root, "fd_used", used, "fd_limit", limit,
+			"override_env", fdBudgetEnv)
+	}
 }
 
 // recordAndArm updates per-repo event counters and (re)starts the

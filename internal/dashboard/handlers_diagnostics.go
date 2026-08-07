@@ -66,11 +66,18 @@ type DaemonDiagnostics struct {
 	GroupCount   int    `json:"group_count"`
 
 	// Watcher stats (#1270) — non-zero when the watcher is running.
-	WatcherRepos         int    `json:"watcher_repos,omitempty"`
-	WatcherDirs          int    `json:"watcher_dirs,omitempty"`
-	WatcherTotalEvents   uint64 `json:"watcher_total_events,omitempty"`
-	WatcherDropped       uint64 `json:"watcher_dropped,omitempty"`
-	WatcherForceRescanOK bool   `json:"watcher_force_rescan_available"`
+	WatcherRepos       int    `json:"watcher_repos,omitempty"`
+	WatcherDirs        int    `json:"watcher_dirs,omitempty"`
+	WatcherTotalEvents uint64 `json:"watcher_total_events,omitempty"`
+	WatcherDropped     uint64 `json:"watcher_dropped,omitempty"`
+
+	// Descriptor budget (#6180). WatcherUnwatchedRepos are registered repos
+	// that are NOT being watched because the budget was full.
+	WatcherUnwatched      int      `json:"watcher_unwatched,omitempty"`
+	WatcherUnwatchedRepos []string `json:"watcher_unwatched_repos,omitempty"`
+	WatcherFDUsed         int      `json:"watcher_fd_used,omitempty"`
+	WatcherFDLimit        int      `json:"watcher_fd_limit,omitempty"`
+	WatcherForceRescanOK  bool     `json:"watcher_force_rescan_available"`
 }
 
 // GroupDiagnostics covers one group's health.
@@ -320,12 +327,20 @@ func (s *Server) buildDaemonDiagnostics() DaemonDiagnostics {
 
 	// Watcher stats (#1270)
 	if s.watcher != nil {
-		repos, dirs, events, dropped := s.watcher.Stats()
+		repos, dirs, events, dropped, unwatched := s.watcher.Stats()
 		d.WatcherRepos = repos
 		d.WatcherDirs = dirs
 		d.WatcherTotalEvents = events
 		d.WatcherDropped = dropped
 		d.WatcherForceRescanOK = true
+		// #6180: a repo refused for want of file descriptors receives no
+		// events at all. Name the repos, not just the count — "watching 12 of
+		// 14" is only actionable if you know which two.
+		fdUsed, fdLimit, _, unwatchedRepos := s.watcher.FDBudgetStats()
+		d.WatcherUnwatched = unwatched
+		d.WatcherUnwatchedRepos = unwatchedRepos
+		d.WatcherFDUsed = fdUsed
+		d.WatcherFDLimit = fdLimit
 	}
 
 	return d

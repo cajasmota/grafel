@@ -185,12 +185,12 @@ func waitForEvents5392(t *testing.T, w *Watcher, n uint64, d time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
-		if _, _, ev, _ := w.Stats(); ev >= n {
+		if _, _, ev, _, _ := w.Stats(); ev >= n {
 			return
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if _, _, ev, _ := w.Stats(); ev < n {
+	if _, _, ev, _, _ := w.Stats(); ev < n {
 		t.Fatalf("watcher observed %d events, want ≥ %d within %s", ev, n, d)
 	}
 }
