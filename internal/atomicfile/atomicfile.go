@@ -118,3 +118,20 @@ func WriteFile(path string, b []byte, perm os.FileMode) (err error) {
 	err = renameAtomic(tmp, path)
 	return err
 }
+
+// Rename renames tmp over path, recovering from the two Windows-only failures
+// described in rename.go: a read-only destination MoveFileEx refuses to replace,
+// and a transient sharing violation. On unix it is exactly one os.Rename.
+//
+// This is the second half of WriteFile exposed on its own, for the writers that
+// cannot use WriteFile because they need the two behaviours WriteFile
+// deliberately does NOT have (see the package doc's "Other ways this differs"):
+// writing THROUGH a symlink at the destination rather than replacing the link,
+// and carrying the destination's EXISTING mode rather than a caller-chosen one.
+// internal/install/mcpreg needs both — it rewrites user-owned dotfiles that are
+// routinely symlinked into a dotfiles repo and are routinely 0600 because they
+// hold credentials (#6240).
+//
+// Nothing about WriteFile's documented contract changes; this only stops that
+// call site from hand-rolling a seventh copy of the Windows rename loop.
+func Rename(tmp, path string) error { return renameAtomic(tmp, path) }
