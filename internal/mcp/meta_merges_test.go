@@ -19,13 +19,21 @@ import (
 
 // 1. grafel_docgen action= → start/status/list/promote/abort/validate.
 func TestWorkflowDocgenDispatch(t *testing.T) {
+	// #6075: isolate the home resolvers and pin the project root into a temp
+	// dir. action=start below really does create a staging run, and with
+	// neither of these the run landed in <repo>/.grafel/staging/<date>-* in
+	// whatever working tree the suite happened to run from — the same
+	// "a test resolves to a real user path" root cause as the promote defect.
+	sandboxGrafelHome(t)
+	project := t.TempDir()
+
 	srv := coreTestServer(t)
 	runID := "2026-05-26-testid01"
-	start := map[string]any{"group": "g", "no_git": true}
-	status := map[string]any{"run_id": runID, "no_git": true}
-	validate := map[string]any{"run_id": runID, "no_git": true}
-	promote := map[string]any{"run_id": runID, "group": "g", "no_git": true}
-	abort := map[string]any{"run_id": runID, "group": "g", "no_git": true}
+	start := map[string]any{"group": "g", "no_git": true, "cwd": project}
+	status := map[string]any{"run_id": runID, "no_git": true, "cwd": project}
+	validate := map[string]any{"run_id": runID, "no_git": true, "cwd": project}
+	promote := map[string]any{"run_id": runID, "group": "g", "no_git": true, "cwd": project}
+	abort := map[string]any{"run_id": runID, "group": "g", "no_git": true, "cwd": project}
 	list := map[string]any{"group": "g"}
 
 	with := func(base map[string]any, action string) map[string]any {
@@ -48,6 +56,14 @@ func TestWorkflowDocgenDispatch(t *testing.T) {
 	// default action=status.
 	assertSameDispatch(t, "action=default", srv.handleWorkflowDocgen, status, srv.handleDocgenStatus, status)
 	assertSameDispatch(t, "action=list", srv.handleWorkflowDocgen, with(list, "list"), srv.handleDocgenList, list)
+	// NOTE (#6075): runID above is deliberately unresolvable, so promote/abort
+	// compare two identical "run_id not found" errors. That is a routing
+	// assertion only — it says nothing about promote's behaviour, and it is
+	// the reason this test never reached the rotate branch. Do NOT "improve"
+	// it by making the run ID resolvable here; that would turn a dispatch test
+	// into a destructive one. The behavioural coverage for promote/rotate
+	// lives in docgen_promote_containment_6075_test.go, against an injected
+	// docs root.
 	assertSameDispatch(t, "action=promote", srv.handleWorkflowDocgen, with(promote, "promote"), srv.handleDocgenPromote, promote)
 	assertSameDispatch(t, "action=abort", srv.handleWorkflowDocgen, with(abort, "abort"), srv.handleDocgenAbort, abort)
 	assertSameDispatch(t, "action=validate", srv.handleWorkflowDocgen, with(validate, "validate"), srv.handleDocgenValidate, validate)

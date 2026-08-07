@@ -275,12 +275,146 @@ func ConfigPathForNew(name string) (string, error) {
 }
 
 // StateDirFor returns the per-group state directory under HomeDir.
+//
+// Like ConfigPathFor this is a READ-safe derivation and intentionally does NOT
+// validate name, so a grandfathered-invalid registry entry stays resolvable.
+// Callers that are about to DELETE the returned path must use
+// StateDirForExisting instead — see #6194 and its doc comment.
 func StateDirFor(name string) (string, error) {
 	h, err := HomeDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(h, "groups", name), nil
+}
+
+// StateRootDir is the single directory that contains every per-group state
+// directory. It exists so the delete-side containment assertion has one named
+// root instead of each call site re-deriving its own idea of "inside".
+func StateRootDir() (string, error) {
+	h, err := HomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(h, "groups"), nil
+}
+
+// StateDirForExisting is the delete-side counterpart of StateDirFor: it
+// derives the same path and then asserts that the result is genuinely inside
+// the state root before handing it back (#6194).
+//
+// Why a containment assertion and not ValidateGroupName. The two purge sites
+// (install.Uninstall and the daemon's DeleteGroup) ran
+// os.RemoveAll(StateDirFor(group)) on a name taken straight from registry.json.
+// filepath.Join collapses "..", so a name like "../../../work" resolves outside
+// the state root and RemoveAll follows it. Reachability is narrow and is the
+// direct, accepted consequence of the read/write split above: no NEW invalid
+// name can be created because every write path validates, but entries that
+// predate ValidateGroupName exist by design and must keep loading. Rejecting
+// such a name here would resurrect exactly the "registry becomes unusable"
+// problem that split was written to avoid — a grandfathered group would become
+// un-uninstallable. So the gate is on the derived PATH, not on the name: a
+// weird-but-contained name like "my/group" still purges; only an escape is
+// refused.
+//
+// It returns no path alongside its error, so a caller that ignores the error
+// still cannot delete anything.
+func StateDirForExisting(name string) (string, error) {
+	root, err := StateRootDir()
+	if err != nil {
+		return "", err
+	}
+	dir, err := StateDirFor(name)
+	if err != nil {
+		return "", err
+	}
+	if !PathContainedUnder(root, dir) {
+		return "", fmt.Errorf("group %q resolves to state directory %q, which is outside the state root %q; "+
+			"refusing to derive a deletable path (#6194)", name, filepath.Clean(dir), root)
+	}
+	return dir, nil
+}
+
+// PathContainedUnder reports whether p is a strict descendant of root.
+//
+// Three things this deliberately does NOT do, each of which is a real trap:
+//
+//   - It does not use strings.HasPrefix. "/home/u/.grafel-evil" has
+//     "/home/u/.grafel" as a literal prefix but is a sibling, not a child.
+//     filepath.Rel gives "../.grafel-evil" for that pair, which is rejected on
+//     the ".." boundary, so the separator boundary is enforced by construction.
+//
+//   - It does not compare unresolved strings. If the state root is reached
+//     through a symlink (~/.grafel on another volume is a supported layout) or
+//     an intermediate component inside it is a symlink pointing back out, a
+//     lexical comparison is meaningless in both directions: it rejects the
+//     legitimate symlinked root, and it accepts "esc/x" where <root>/esc links
+//     elsewhere — which os.RemoveAll happily follows. This is the same trap as
+//     #6187 in the watcher reaper. Both sides are therefore resolved through
+//     the deepest existing ancestor before comparing.
+//
+//   - It does not resolve p's own final component. os.RemoveAll does not
+//     follow a symlink at the leaf — it unlinks the link itself — so a state
+//     directory that is a symlink to another volume is not an escape, and
+//     refusing it would break that layout for no safety gain. Only the
+//     traversed part (p's parent chain) is resolved.
+//
+// Equality is not containment: p == root returns false, so an empty group name
+// cannot resolve to the state root itself and take every group with it.
+func PathContainedUnder(root, p string) bool {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	pAbs, err := filepath.Abs(p)
+	if err != nil {
+		return false
+	}
+	rootReal := resolveDeepestExisting(rootAbs)
+	pReal := filepath.Join(resolveDeepestExisting(filepath.Dir(pAbs)), filepath.Base(pAbs))
+
+	rel, err := filepath.Rel(rootReal, pReal)
+	if err != nil {
+		// Different volumes on Windows, or otherwise incomparable. Not
+		// contained, and unknowable is the same as unsafe here.
+		return false
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
+// resolveDeepestExisting returns p with its longest existing ancestor replaced
+// by that ancestor's symlink-resolved form, leaving the not-yet-existing tail
+// appended.
+//
+// filepath.EvalSymlinks fails outright if any component is missing, but a
+// state directory legitimately may not exist yet (or any more) at the moment
+// containment is checked. Walking up until something resolves keeps the
+// comparison meaningful in that case instead of silently falling back to a
+// lexical check on one side only — which would make the two sides
+// incomparable and produce false verdicts in both directions.
+//
+// If nothing at all resolves, p is returned unchanged; both sides then get the
+// same lexical treatment, which is still enough to catch a "..".
+func resolveDeepestExisting(p string) string {
+	cur := p
+	var tail []string
+	for {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return p
+		}
+		tail = append(tail, filepath.Base(cur))
+		cur = parent
+	}
 }
 
 // Load reads the registry from disk. A missing file returns an empty

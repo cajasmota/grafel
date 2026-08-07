@@ -203,8 +203,12 @@ var knownDeferred = map[string]string{
 	"internal/cli/feedback_timeline.go:runFeedbackTimeline": "RELOCATABLE — feedback timeline events/out dirs key off $HOME only, never GRAFEL_HOME. Reported in the wider-pattern sweep.",
 	"internal/mcp/activity_log.go:DefaultActivityLogPath":   "UNCLEAR in the wider-pattern sweep: may be deliberate (user-level telemetry, not group data) or should follow GRAFEL_HOME like the sidecar family — needs a maintainer decision, not a mechanical fix.",
 	"internal/mcp/persona_telemetry.go:personaEventsDir":    "UNCLEAR in the wider-pattern sweep, same open question as activity_log.go's DefaultActivityLogPath.",
-	"internal/mcp/docgen.go:canonicalDocsPath":              "LIVE SPLIT-BRAIN TODAY, not merely latent — no GRAFEL_HOME check at all (os.Getenv(\"HOME\") then os.UserHomeDir(), full stop) while every other docs writer IS GRAFEL_HOME-aware (internal/daemon/docs_path.go, internal/docgen/tier0.go through tier4.go, internal/cli/docgen.go's promote path) — so an isolated GRAFEL_HOME run promotes docs today at the wrong location relative to everything else that reads/writes them. Feeds handleDocgenPromote's ~/.grafel/docs path — the same feature area as issue #6075 (\"related and not duplicate\" per #6178's own text), so left for that issue rather than folded into this one; flagged here as live, not latent, so whoever reads this ledger prioritises it correctly.",
-	"internal/mcp/server.go:NewServer":                      "RELOCATABLE, low severity — the metrics dir (~/.grafel/metrics/) is a best-effort diagnostic path, plain os.UserHomeDir() only. Reported in the wider-pattern sweep as low severity.",
+	// internal/mcp/docgen.go:canonicalDocsPath was here, flagged as a LIVE
+	// split-brain and deferred to #6075. Paid off there: the docs root now
+	// comes from mcp.docsRoot(), which resolves registry.HomeDir() (and is
+	// injectable for tests), so the function no longer hand-rolls a home path
+	// and the scan no longer reports it. This ledger only shrinks.
+	"internal/mcp/server.go:NewServer": "RELOCATABLE, low severity — the metrics dir (~/.grafel/metrics/) is a best-effort diagnostic path, plain os.UserHomeDir() only. Reported in the wider-pattern sweep as low severity.",
 }
 
 func TestNoHandRolledGrafelHomePaths(t *testing.T) {
