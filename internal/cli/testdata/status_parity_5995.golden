@@ -1,11 +1,11 @@
 
 Group: parity
-  coldrefs          0 files       6 entities       2 rels  indexed 1d ago @ main (c01dc01dc01d) [+ develop cold]
-  healthy           0 files       6 entities       2 rels  indexed 3m ago @ main (abc123def456)
+  coldrefs          7 files       6 entities       2 rels  indexed 1d ago @ main (c01dc01dc01d) [+ develop cold]
+  healthy           7 files       6 entities       2 rels  indexed 3m ago @ main (abc123def456)
   jsononly          7 files       6 entities       2 rels  indexed 1h ago @ main (111122223333)
   neverindexed      0 files       0 entities       0 rels  indexed (never)
   nosidecar         0 files       6 entities       2 rels  indexed 1h30m ago @ feat/x (0badc0ffee11) [worktree]
-  segmentset        0 files       6 entities       2 rels  indexed 10m ago @ main (5e65e75e7000)
+  segmentset        7 files       6 entities       2 rels  indexed 10m ago @ main (5e65e75e7000)
   truncated         0 files       6 entities       2 rels  indexed 1h30m ago
                 ⚠ graph FAILED to load: panic while reading the graph: runtime error: slice bounds out of range [888:500] — file/endpoint/flow counts above are INCOMPLETE; run `grafel reset parity` to rebuild from scratch
   unreadable        0 files       0 entities       0 rels  indexed 1h30m ago

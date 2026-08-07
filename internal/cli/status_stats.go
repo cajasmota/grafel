@@ -379,7 +379,14 @@ func ComputeStatusSummaryForRef(group string, repos []registry.Repo, ref string)
 				//
 				// Stats.Files is zero for every .fb-backed graph (the format
 				// encodes no file count) and real only for the graph.json
-				// fallback — see GraphStream.DocStats. Preserved verbatim.
+				// fallback — see GraphStream.DocStats.
+				//
+				// #6115: that zero used to be assigned over rs.Files
+				// unconditionally, a few lines below, destroying the real
+				// TotalFiles this function had already read out of
+				// graph-stats.json — so `status` printed "0 files" for every
+				// repo in the shipping format. The graph's count is now taken
+				// only when it HAS one; see the commit at rs.Files below.
 				files := stream.DocStats().Files
 				// Phase 0 git metadata (#2088), straight off the header.
 				meta := stream.Header()
@@ -395,7 +402,25 @@ func ComputeStatusSummaryForRef(group string, repos []registry.Repo, ref string)
 					}
 					return true
 				})
-				rs.Files = files
+				// #6115: a graph-derived file count is authoritative only when
+				// the graph actually carries one. No .fb layout does — the
+				// Graph root table in internal/graph/schema/graph.fbs has no
+				// file-count field, so `files` is STRUCTURALLY zero there, not
+				// measured-as-zero — while graph.json does. graph-stats.json is
+				// the carrier of the real number and was already read into
+				// rs.Files above; overwriting it with a structural zero threw
+				// the only true answer away.
+				//
+				// Guarding on `> 0` rather than on layout keeps both directions
+				// honest: a graph.json repo still reports its document count
+				// (unchanged), a .fb repo keeps its sidecar count, and a repo
+				// with neither still reports 0 — which for a .fb repo without a
+				// sidecar is the truthful "not known", the same 0 it printed
+				// before. Nothing here can invent a number that was not
+				// measured somewhere.
+				if files > 0 {
+					rs.Files = files
+				}
 				rs.IndexedRef = meta.IndexedRef
 				rs.IndexedSHA = meta.IndexedSHA
 				rs.IsWorktree = meta.IsWorktree
