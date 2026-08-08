@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/install"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -319,8 +320,7 @@ type devDoctorEnv struct {
 
 func newDevDoctorEnv(t *testing.T) *devDoctorEnv {
 	t.Helper()
-	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	tmp := testsupport.IsolateHome(t)
 
 	// Fake binary.
 	fakeBin := filepath.Join(tmp, "grafel-fake")

@@ -16,6 +16,7 @@ package install
 
 import (
 	"encoding/json"
+	"github.com/cajasmota/grafel/internal/testsupport"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,8 +72,7 @@ func grafelCommandIn(t *testing.T, path string) string {
 // record that path — otherwise `grafel uninstall` (which deregisters strictly
 // from state.MCP.RegisteredPaths) can never remove what we just wrote.
 func TestRegisterMCP_FirstEverInstallRegistersAndRecords(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 
 	bin := seedFakeBinary(t)
 	cfg := filepath.Join(home, ".claude.json")
@@ -125,8 +125,7 @@ func TestRegisterMCP_FirstEverInstallRegistersAndRecords(t *testing.T) {
 // the user, not to us. A curl installer that clobbered a hand-written MCP
 // server list would be a worse bug than the one being fixed.
 func TestRegisterMCP_PreservesForeignServersAndKeys(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 
 	bin := seedFakeBinary(t)
 	cfg := filepath.Join(home, ".claude.json")
@@ -174,8 +173,7 @@ func TestRegisterMCP_PreservesForeignServersAndKeys(t *testing.T) {
 // already exists and describes a real install — skills manifest, install
 // timestamp, gitignore record. Re-registering MCP must not blank any of it.
 func TestRegisterMCP_PreservesAnExistingInstallRecord(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 
 	bin := seedFakeBinary(t)
 	cfg := filepath.Join(home, ".claude.json")
@@ -243,8 +241,7 @@ func TestRegisterMCP_PreservesAnExistingInstallRecord(t *testing.T) {
 // RegisterMCP is not a transaction — the hosts are independent — so a failure
 // on one must leave the others registered and must restore nothing.
 func TestRegisterMCP_OneBadTargetDoesNotAbortTheRestAndRollsBackNothing(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 
 	bin := seedFakeBinary(t)
 
@@ -283,8 +280,7 @@ func TestRegisterMCP_OneBadTargetDoesNotAbortTheRestAndRollsBackNothing(t *testi
 // every upgrade. A second run must not duplicate the recorded paths nor change
 // the config's meaning.
 func TestRegisterMCP_IsIdempotent(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 
 	bin := seedFakeBinary(t)
 	cfg := filepath.Join(home, ".claude.json")
@@ -320,8 +316,7 @@ func TestRegisterMCP_IsIdempotent(t *testing.T) {
 // recorded `command` points at a binary that is gone and the MCP server simply
 // fails to start. Re-registering is the repair, so it must actually overwrite.
 func TestRegisterMCP_RepointsAMovedBinary(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 
 	bin := seedFakeBinary(t)
 	cfg := filepath.Join(home, ".claude.json")
@@ -346,8 +341,7 @@ func TestRegisterMCP_RepointsAMovedBinary(t *testing.T) {
 // checksum, and there is no honest checksum for a binary that is not there.
 // Failing loudly beats recording a grafel entry that points at nothing.
 func TestRegisterMCP_MissingBinaryIsAnError(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 
 	cfg := filepath.Join(home, ".claude.json")
 	_, err := RegisterMCP(RegisterMCPOptions{
@@ -386,8 +380,7 @@ func TestRegisterMCP_LeavesNoRollbackSnapshotBehind(t *testing.T) {
 		{"upgrade snapshots real content", `{"mcpServers":{"other":{"command":"/x"}}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			home := t.TempDir()
-			t.Setenv("HOME", home)
+			home := testsupport.IsolateHome(t)
 
 			bin := seedFakeBinary(t)
 			cfg := filepath.Join(home, ".claude.json")
@@ -427,8 +420,7 @@ func TestRegisterMCP_LeavesNoRollbackSnapshotBehind(t *testing.T) {
 // per-target, so one host failing must not leave a live sentinel on the hosts
 // that succeeded.
 func TestRegisterMCP_ClearsTheSnapshotItPlantedEvenForAFailedPeer(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 
 	bin := seedFakeBinary(t)
 	bad := filepath.Join(home, "bad", ".claude.json")

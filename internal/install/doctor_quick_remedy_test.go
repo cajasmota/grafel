@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/install"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // hashFile returns the hex SHA-256 of path's contents (the same value
@@ -40,8 +41,7 @@ func hashFile(t *testing.T, path string) string {
 // SHA of its current contents.
 func quickEnv(t *testing.T) (statePath, binPath string) {
 	t.Helper()
-	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	tmp := testsupport.IsolateHome(t)
 	statePath = filepath.Join(tmp, ".grafel", "install.json")
 	binPath = filepath.Join(tmp, "bin", "grafel")
 	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {

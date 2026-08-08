@@ -9,6 +9,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // TestApply_RetiresLegacyWatcherUnit covers the #6183 migration on the install
@@ -22,10 +23,7 @@ import (
 //
 // launchctl is stubbed — no test may mutate the developer's launchd session.
 func TestApply_RetiresLegacyWatcherUnit(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(home, ".grafel"))
+	home := testsupport.IsolateHome(t)
 
 	// No test may mutate the developer's launchd session.
 	stubLaunchctlRunner(t)

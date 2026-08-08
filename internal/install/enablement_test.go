@@ -10,6 +10,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/rulesfiles"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // applyDryRun runs install.Apply in DryRun mode under an isolated HOME and
@@ -18,10 +19,7 @@ import (
 // enablement wiring.
 func applyDryRun(t *testing.T, tools []string) *install.Result {
 	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(home, ".grafel"))
+	testsupport.IsolateHome(t)
 
 	repo := t.TempDir()
 	cfg := &registry.GroupConfig{
@@ -45,10 +43,7 @@ func applyDryRun(t *testing.T, tools []string) *install.Result {
 // all tools enabled in the group, but MCP registration filtered to mcpSel.
 func applyDryRunMCP(t *testing.T, mcpSel *[]string) *install.Result {
 	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(home, ".grafel"))
+	testsupport.IsolateHome(t)
 
 	repo := t.TempDir()
 	cfg := &registry.GroupConfig{
