@@ -5,7 +5,13 @@
 #
 # Inputs:
 #   FIXTURE_REPO    repo to index (default: testdata/fixtures/real-world/go)
-#   BIN             grafel binary (default: build/grafel)
+#   BIN             an already-built grafel binary to bench. It is used as
+#                   given and never rebuilt, so it benches whatever source it
+#                   came from, and it is an error if it is not executable —
+#                   set it only when that is what you want. Unset (the
+#                   default), the working tree is rebuilt into build/grafel on
+#                   every run and that is what is benched (#6283), which is
+#                   what makes the "rerun after a code change" note below true.
 #
 # Outputs:
 #   /tmp/bench-mcp-latency/<run>/  — go test bench output (text + json)
@@ -23,14 +29,27 @@
 #   ReadEntity_JSONReparse:  baseline (no target — informational)
 set -euo pipefail
 
-BIN="${BIN:-./build/grafel}"
 FIXTURE_REPO="${FIXTURE_REPO:-testdata/fixtures/real-world/go}"
 
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 OUT="/tmp/bench-mcp-latency/$RUN_ID"
 mkdir -p "$OUT"
 
-if [ ! -x "$BIN" ]; then
+# Build every time the default path is used. `if [ ! -x "$BIN" ]` was the same
+# defect fixed in scripts/quality/run.sh for #6283: build/ is gitignored and
+# long-lived, so an existing binary was benched whatever source it came from.
+# That directly defeated the header note above — "rerun after a code change and compare
+# the two newest run dirs" — because the second run re-benched the first run's
+# binary. A caller-supplied $BIN is used as given and never overwritten.
+if [ -n "${BIN:-}" ]; then
+  if [ ! -x "$BIN" ]; then
+    echo "error: BIN=$BIN is not an executable file" >&2
+    exit 1
+  fi
+  echo "benching caller-supplied binary: $BIN (not rebuilt)"
+else
+  BIN="./build/grafel"
+  mkdir -p "$(dirname "$BIN")"
   echo "building $BIN"
   go build -o "$BIN" ./cmd/grafel
 fi

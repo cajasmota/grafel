@@ -50,12 +50,21 @@ scripts/quality/run.sh
 # writes one JSON report per fixture to reports/quality/
 ```
 
+The runner rebuilds `build/grafel` from the working tree on every run and grades
+that (#6283). It previously built only when the path was absent, so an existing
+binary was graded however old it was — which made mutation testing against this
+benchmark meaningless, since a mutant that is not in the graded binary always
+looks dead. Setting `GRAFEL_BIN` opts out: that path is used as given and never
+rebuilt, so it grades whatever source it came from.
+
 Exit codes:
 
 | Code | Meaning |
 |---|---|
 | 0 | All must-have entities + relationships found, 0 forbidden hits |
+| 1 | Runner setup or build error (bad flag, unusable `GRAFEL_BIN`, failed `go build`) |
 | 2 | At least one must-have miss OR at least one forbidden hit |
+| 3 | At least one fixture directory produced no measurement at all (#6273) |
 
 ## Adding a fixture
 

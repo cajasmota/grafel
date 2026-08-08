@@ -55,7 +55,11 @@
 #              fixtures).
 #
 # Env vars:
-#   GRAFEL_BIN   path to grafel binary (default: auto-built)
+#   GRAFEL_BIN   path to an already-built grafel binary to grade. It is used
+#                as given and never rebuilt, so it grades whatever source that
+#                binary came from — set it only when that is what you want.
+#                Unset (the default), the working tree is rebuilt into
+#                build/grafel on every run and that is what is graded (#6283).
 #   QUALITY_OUT_DIR  directory to write per-fixture JSON reports into
 #                    (default: reports/quality relative to repo root)
 set -euo pipefail
@@ -109,11 +113,71 @@ if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
   exit 1
 fi
 
-BIN="${GRAFEL_BIN:-$ROOT/build/grafel}"
-if [[ ! -x "$BIN" ]]; then
-  echo "build/grafel not found — building..." >&2
-  mkdir -p build
-  go build -o build/grafel ./cmd/grafel
+# ---------------------------------------------------------------------------
+# Resolve the binary to grade (Refs #6283).
+#
+# This used to be one `if [[ ! -x "$BIN" ]]` around the build, so a binary
+# already sitting at build/grafel was graded as-is however old it was. build/ is
+# gitignored and long-lived on a developer machine, which is the only place this
+# gate runs (.github/workflows/quality.yml is workflow_dispatch-only, and when
+# dispatched it builds explicitly and passes GRAFEL_BIN), so the stale-binary
+# window was a developer-machine window and nothing else.
+#
+# The cost was not just wrong figures. This repo leans on mutation testing to
+# find vacuous tests, and a surviving mutant is only evidence of "no test covers
+# this" if the graded artifact contains the mutation. #6283 was reported from
+# exactly that: a benchmark run at HEAD and a run with
+# internal/quality/diff.go's isPlaceholderAnchor mutated produced byte-identical
+# reports, and the mutant was read as dead. (The report is the source for that
+# episode; what is verified here is the mechanism — the old branch could not
+# rebuild, so no source edit of any size could reach the graded binary.)
+#
+# Rebuild rather than detect-and-refuse. `go build` is the only staleness test
+# that cannot be wrong or go out of date: it already knows every input, and this
+# binary has a lot of them. `go list -deps -json ./cmd/grafel` on this tree
+# reports 225 first-party packages contributing 1856 .go files, 875 embedded
+# non-Go files (internal/engine/rules, internal/dashboard/dist,
+# cmd/grafel/selftestdata, and skills/ via the module-root package in
+# embedassets.go), 6 cgo and 10 C files — plus go.mod/go.sum for dependency
+# versions. A hand-maintained mtime comparison over "*.go under cmd/ and
+# internal/" misses every one of the non-.go inputs, and the next embed added
+# would silently reopen this bug.
+#
+# Being exact is also close to free. A staleness check that did not rot would
+# have to ask `go list -deps` what the inputs are, and a no-op `go build` is
+# within a small constant factor of that same query on a warm cache — both are
+# seconds, against a run that indexes 20 fixtures. Deliberately no figure here:
+# two machines measured this and disagreed on the ratio (~1.2x vs ~2x) while
+# agreeing the absolute cost is negligible, so a precise number in this comment
+# would only be something for a third machine to contradict. Measure it yourself
+# if you are re-litigating the choice; the argument does not rest on the margin.
+#
+# It is also what the sibling runners already do: scripts/verify2/run.sh and
+# scripts/verify2/run-extended.sh both build unconditionally when GRAFEL_BIN is
+# unset (verified by reading their binary-resolution blocks), and this script
+# was the odd one out.
+#
+# GRAFEL_BIN is left alone: it names a binary the caller owns and built —
+# quality.yml sets it to a path its own build step produced — and overwriting
+# somebody else's path is not this script's business. It is validated instead,
+# which the old single `if` did not do: an unexecutable GRAFEL_BIN used to build
+# build/grafel and then exec the unusable $BIN regardless.
+# ---------------------------------------------------------------------------
+if [[ -n "${GRAFEL_BIN:-}" ]]; then
+  BIN="$GRAFEL_BIN"
+  if [[ ! -x "$BIN" ]]; then
+    echo "error: GRAFEL_BIN=$BIN is not an executable file" >&2
+    echo "  Unset GRAFEL_BIN to have this script build and grade the working tree." >&2
+    exit 1
+  fi
+  echo "==> grading caller-supplied binary: $BIN" >&2
+  echo "    (GRAFEL_BIN is set, so this script does not rebuild it — the numbers" >&2
+  echo "     below describe whatever source that binary was built from.)" >&2
+else
+  BIN="$ROOT/build/grafel"
+  mkdir -p "$(dirname "$BIN")"
+  echo "==> building grafel -> $BIN" >&2
+  go build -o "$BIN" ./cmd/grafel
 fi
 
 OUT="${QUALITY_OUT_DIR:-$ROOT/reports/quality}"
