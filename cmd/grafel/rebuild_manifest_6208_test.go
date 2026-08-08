@@ -44,22 +44,37 @@ import (
 // fallbackManifestRepo, but OWNS its root directory outside t.TempDir with a
 // best-effort retrying cleanup instead.
 //
-// WORKAROUND FOR #6188, not a defect in this test: a rebuild that reaches the
-// daemon's install/watcher-adjacent filesystem machinery creates state under
-// GRAFEL_DAEMON_ROOT asynchronously — after the call that appears to have
-// written it has already returned (measured in #6188 as 1-13 poll iterations
-// post-return for install.Apply's <repo>/.grafel/logs; the same class of
-// after-return write). A t.TempDir-owned root therefore races t.TempDir's
-// RemoveAll at cleanup and intermittently fails with
-// "TempDir RemoveAll cleanup: ... directory not empty" — reproduced here as a
-// flake in TestRebuild_WritesExactManifest_* only under full-package
-// scheduling pressure, never in isolation, exactly #6188's documented
-// signature ("Any future test that calls Apply with watchers enabled against
-// a t.TempDir repo will hit it" — this rebuild path is that future test).
+// THE WORKAROUND IS REAL, BUT IT IS NOT #6188's (corrected under #6188).
 //
-// #6188 has been decided: Apply must not return before its owned side effects
-// are durable, and the #6179 workaround (same shape as this one) is reverted
-// when that lands. Revert this to t.TempDir() at the same time.
+// This comment used to attribute the flake to install.Apply writing
+// <repo>/.grafel/logs asynchronously, citing "1-13 poll iterations". That
+// attribution was wrong and has been retired: Apply starts no goroutine, and
+// nothing in Go creates <repo>/.grafel/logs — on darwin launchd does, when it
+// spawns the bootstrapped job (see install.Apply's doc comment). This test
+// never calls Apply at all.
+//
+// The real asynchronous writer is in the rebuild path itself:
+// daemonRebuildFuncCore ends with an unawaited `go func()` that appends a
+// quality snapshot to <GRAFEL_DAEMON_ROOT>/health-history.jsonl (daemon.go,
+// "#1329", just before the final return). It is deliberately fire-and-forget —
+// "best-effort: failure is logged but never blocks the caller" — so the write
+// lands after daemonRebuildFuncCore has returned, and the test's root still
+// gains a file while cleanup is running.
+//
+// Measured under #6188 with an instrumented cleanup: RemoveAll's first attempt
+// failed on exactly `<root>/daemonroot: directory not empty`, and the leftover
+// was always `daemonroot/health-history.jsonl`, mtime ~3ms before the attempt.
+// One 20ms retry always sufficed. Reproduced on 8 of 8 probed runs under
+// `-run TestRebuild_ -count=8`, and never once in isolation
+// (`-run TestRebuild_WritesExactManifest_InProcess -count=3`) — the
+// scheduling-pressure signature the original comment described is accurate.
+//
+// So: KEEP the owned root and the retry. Do NOT "revert this to t.TempDir()"
+// (the instruction the previous comment left) — that was predicated on #6188
+// adding synchronisation to Apply, which was rejected because Apply has no such
+// race. This one does. Removing the workaround reintroduces a real flake.
+// The principled fix is for daemonRebuildFuncCore to expose a way to await that
+// goroutine; until then this stays.
 func rebuildManifestFixtureRoot(t *testing.T, name, branch string) (repo string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -78,10 +93,10 @@ func rebuildManifestFixtureRoot(t *testing.T, name, branch string) (repo string)
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
-		// #6188 scopes this retry to the TRANSIENT race (Apply-adjacent
-		// machinery still writing under root when cleanup starts) — five
-		// attempts at 20ms is comfortably past the 1-13 poll iterations #6188
-		// measured. A PERMANENT failure (e.g. a future change leaks a live
+		// Scoped to the TRANSIENT race documented above (the health-history
+		// goroutine still writing under root when cleanup starts) — five
+		// attempts at 20ms is comfortably past the single retry that was
+		// ever observed to be needed. A PERMANENT failure (e.g. a future change leaks a live
 		// child holding an fd under root) must not go silent just because this
 		// workaround exists: t.TempDir's own cleanup would have logged
 		// "TempDir RemoveAll cleanup: ..." in that case, so this does too,
@@ -113,7 +128,7 @@ func rebuildManifestFixtureRoot(t *testing.T, name, branch string) (repo string)
 }
 
 // rebuildManifestGroup builds the #6208 git fixture (rebuildManifestFixtureRoot,
-// above — a #6188 workaround over #6207's fallbackManifestRepo shape) and
+// above — an owned-root variant of #6207's fallbackManifestRepo shape) and
 // registers it as a one-repo fleet group so daemonRebuildFuncCore has a real
 // group to rebuild. Returns the group name and the repo path.
 func rebuildManifestGroup(t *testing.T, name, branch string) (group, repo string) {

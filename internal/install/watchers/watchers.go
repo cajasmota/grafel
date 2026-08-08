@@ -313,6 +313,16 @@ func LaunchdPlist(u Unit) string {
 	// OS, so filepath.Join emitted `\tmp\repo\.grafel\logs/watcher.out.log` when
 	// the test ran on Windows. On Darwin the two are identical, so nothing the
 	// real platform sees changes.
+	//
+	// grafel never creates this directory (#6188): this is the only place in
+	// PRODUCTION code the path is formed (tests form it too — see
+	// install/watchstarts_reset_6179_test.go and daemon/watch/s4_test.go), and
+	// here it is only ever interpolated into the two keys below. launchd
+	// materialises the parents of
+	// StandardOutPath/StandardErrorPath when it spawns the job, which is after
+	// `launchctl bootstrap` returned and therefore after install.Apply returned.
+	// Darwin only — SystemdUnit and SchtasksXML below declare no log paths at
+	// all, so no <repo>/.grafel/logs ever appears on Linux or Windows.
 	logDir := path.Join(u.Repo, ".grafel", "logs")
 	body := strings.Builder{}
 	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")

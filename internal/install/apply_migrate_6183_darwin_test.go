@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/registry"
@@ -40,25 +39,17 @@ func TestApply_RetiresLegacyWatcherUnit(t *testing.T) {
 	newWatcherLoader = func() watchers.Loader { return fake }
 	t.Cleanup(func() { newWatcherLoader = prevLoader })
 
-	// The repo lives outside t.TempDir: install.Apply creates <repo>/.grafel/
-	// logs asynchronously after returning, which races t.TempDir cleanup
-	// (#6188). Owning the directory keeps that flake out of this test.
-	repoRoot, err := os.MkdirTemp("", "grafel-6183-apply-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	repo := filepath.Join(repoRoot, "app")
+	// Plain t.TempDir (#6188). This carried the same os.MkdirTemp root and
+	// retrying cleanup as the #6179 test, justified by the same claim that
+	// "Apply creates <repo>/.grafel/logs asynchronously after returning". Apply
+	// does not: only watchers.LaunchdPlist forms that path, and only as the
+	// StandardOutPath/StandardErrorPath strings launchd materialises when it
+	// spawns the job. Both seams above are stubbed, so no launchd is reached.
+	// TestApply_DoesNotCreateRepoLogDir pins that directly.
+	repo := filepath.Join(t.TempDir(), "app")
 	if err := os.MkdirAll(repo, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		for i := 0; i < 3; i++ {
-			if err := os.RemoveAll(repoRoot); err == nil {
-				return
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-	})
 
 	bin := filepath.Join(home, "bin", "grafel")
 	u := watchers.Unit{Group: "g", Repo: repo, BinPath: bin}
