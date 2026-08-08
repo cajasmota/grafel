@@ -382,7 +382,6 @@ func (g *staleReindexGuard) maybeEnqueue(repoPath string, required bool, fingerp
 	g.sweepLocked(logger)
 
 	if !required {
-		delete(g.seen, repoPath)
 		g.releaseSlotLocked(repoPath)
 		return false
 	}
@@ -392,9 +391,13 @@ func (g *staleReindexGuard) maybeEnqueue(repoPath string, required bool, fingerp
 	// #6175: the scheduler will drop any enqueue for this repo, so writing one
 	// buys nothing and costs a batch slot for the whole stalled grace. Give back
 	// any slot it already holds (the gate can start declining a repo that was
-	// admitted while it was still accepted) and report the state instead —
-	// releaseSlotLocked also drops every durable trace, which is what keeps this
-	// reversible the moment the gate opens again.
+	// admitted while it was still accepted) and report the state instead.
+	//
+	// releaseSlotLocked is what makes this REVERSIBLE, and the `seen` entry is
+	// the load-bearing part of that: the fingerprint is the graph.fb mtime, and
+	// a repo the indexer never accepts never changes it, so a retained `seen`
+	// entry would suppress every admission after the gate reopened — for the
+	// life of the process.
 	if g.declinedLocked(repoPath) {
 		g.releaseSlotLocked(repoPath)
 		return false
@@ -475,11 +478,21 @@ func (g *staleReindexGuard) migrationFailed(repoPath string) bool {
 }
 
 // declinedLocked reports whether the scheduler's enqueue gate would drop this
-// repo. MUST be called with g.mu held. The gate performs cheap filesystem reads
-// only (worktree.ClassifyRoot is one Lstat plus at most one small ReadFile), and
-// it is consulted only for repos that are already stale-format, so holding the
-// mutex across it costs no more than the requests.Write this function already
-// performs under the same lock.
+// repo. MUST be called with g.mu held.
+//
+// Cost, stated honestly because this runs under the mutex. The common path is
+// cheap: worktree.ClassifyRoot is one Lstat, and for a normal repo (`.git` is a
+// directory) it returns immediately. But on the branch that matters — the path
+// IS a linked worktree — the gate goes on to call reposToWatch(), which in the
+// daemon is cmd/grafel.daemonReposToWatch: registry.Groups(), one
+// LoadGroupConfig per group, then ResolveFleetRepoPaths, which does one os.Stat
+// per fleet repo (fleet_hygiene.go:61). IsLinkedWorktreeOf then re-runs
+// ClassifyRoot on the candidate.
+//
+// That is O(fleet size) filesystem work per stale linked worktree per heartbeat,
+// and it happens twice — once here under the lock, once via notAcceptedByIndexer
+// outside it. Bounded and rare (only stale-format linked worktrees reach it, on
+// a 5s tick) so it is not worth caching, but it is not "one Lstat" either.
 func (g *staleReindexGuard) declinedLocked(repoPath string) bool {
 	return g.declinedFn != nil && g.declinedFn(repoPath)
 }
@@ -757,9 +770,18 @@ func (g *staleReindexGuard) reconcileLocked(logger *slog.Logger) {
 	}
 }
 
-// releaseSlotLocked frees repoPath's batch slot once its graph is current
-// again, recording when the batch fully drained so the cooldown can start.
-// MUST be called with g.mu held.
+// releaseSlotLocked ends repoPath's admission WITHOUT charging it anything:
+// either its graph went current (the migration succeeded) or the scheduler
+// stopped accepting it (#6175). It records when the batch fully drained so the
+// cooldown can start. MUST be called with g.mu held.
+//
+// It is the single clearing point for every piece of per-admission state,
+// `seen` included. That last one is not bookkeeping: `seen` is keyed on a
+// fingerprint of the graph.fb mtime, so for a repo that never gets indexed the
+// fingerprint never changes, and an entry left behind here blocks re-admission
+// permanently. forfeitLocked and abandonLocked each clear it on their own paths;
+// having this one do it too is what makes "no path ends an admission while
+// leaving `seen` set" a property of the type rather than of three call sites.
 func (g *staleReindexGuard) releaseSlotLocked(repoPath string) {
 	// The repo is current: the migration succeeded for it. Round-3 MEDIUM 3 —
 	// attempts was never cleared, so a repo that was forfeited once per
@@ -767,6 +789,7 @@ func (g *staleReindexGuard) releaseSlotLocked(repoPath string) {
 	// generations and was ultimately reported to the user as unmigratable.
 	// Success resets the history, durable record included.
 	hadState := g.attempts[repoPath] > 0
+	delete(g.seen, repoPath)
 	delete(g.attempts, repoPath)
 	delete(g.retryAfter, repoPath)
 	delete(g.observedActive, repoPath)

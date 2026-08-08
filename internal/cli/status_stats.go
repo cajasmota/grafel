@@ -813,13 +813,21 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 		fmt.Fprintf(w, "  ⚠ %d repo(s) could not be migrated automatically after repeated attempts — reindex them manually with `grafel index <repo>`.\n",
 			s.MigrationFailed)
 	}
-	// #6175: the third state. Deliberately not a warning and deliberately
-	// without a command: these repos are declined by the indexer on purpose
-	// (linked worktrees share their primary's graph, #3680), and a manual
-	// `grafel index` on one is dropped by the very same gate — so naming a fix
-	// here would be naming one that cannot work. The point of the line is only
-	// that the in-progress count above can now legitimately reach zero while
-	// these repos remain.
+	// #6175: the third state. Deliberately not a warning: these repos are
+	// declined by the indexer on purpose (a linked worktree shares its primary's
+	// graph, #3680), so nothing is broken and nothing is owed.
+	//
+	// Deliberately without a command, for a reason worth stating precisely.
+	// `grafel index <repo>` is SYNCHRONOUS by default (--async and --no-wait
+	// both default false, internal/cli/index.go:73) and the synchronous branch
+	// of daemon.Service.Index calls s.index directly, never consulting the
+	// scheduler's SkipEnqueue gate. So the command would not be dropped — it
+	// would succeed at cold-indexing the worktree as an independent root repo,
+	// which is precisely the outcome #3680's gate exists to prevent. Naming it
+	// here would route the user around the guard rather than help them.
+	//
+	// The point of the line is only that the in-progress count above can now
+	// legitimately reach zero while these repos remain.
 	if s.MigrationNotAccepted > 0 {
 		fmt.Fprintf(w, "  %d repo(s) not accepted by the indexer (linked worktrees share their primary repo's graph) — they stay on the older format by design, nothing to do.\n",
 			s.MigrationNotAccepted)

@@ -14,6 +14,9 @@ package daemon
 // it is reported under its own state instead of as in-progress (visibility).
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -148,6 +151,63 @@ func TestStaleReindexGuard_DeclinedSlotHolderIsReleased(t *testing.T) {
 	}
 }
 
+// TestStaleReindexGuard_DeclinedThenReacceptedRepoIsReadmitted is the
+// COMPOSITION the other two decline tests each miss half of: admitted while the
+// gate was open, declined, then accepted again.
+//
+// `seen` is keyed on a fingerprint of the graph.fb mtime, and a repo that is
+// never indexed never changes it — so a `seen` entry left behind by the
+// admission that preceded the decline suppresses every future admission for the
+// life of the process. That is not hypothetical: reposToWatch() is re-read on
+// every gate call, so registering a primary and then unregistering it walks
+// exactly this path.
+func TestStaleReindexGuard_DeclinedThenReacceptedRepoIsReadmitted(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
+	const repo = "/repo/round-trip"
+	repos := []string{repo}
+	stale := map[string]bool{repo: true}
+
+	g := newTestGuard(clk, 1, 45*time.Second, 15*time.Minute)
+	g.stalledGrace = 90 * time.Second
+	g.activeFn = activeElsewhere
+	declining := false
+	g.declinedFn = func(string) bool { return declining }
+
+	// 1) Accepted: admitted normally, recording a fingerprint in `seen`.
+	clk.advance(30 * time.Second)
+	if got := heartbeat(g, repos, stale); len(got) != 1 {
+		t.Fatalf("setup: expected an admission while the gate was open, got %v", got)
+	}
+
+	// 2) The primary is registered: the gate closes on this repo.
+	declining = true
+	for i := 0; i < 10; i++ {
+		clk.advance(30 * time.Second)
+		if got := heartbeat(g, repos, stale); len(got) != 0 {
+			t.Fatalf("admitted a declined repo: %v", got)
+		}
+	}
+
+	// 3) The primary is unregistered: the gate opens again. The repo's graph.fb
+	//    never changed, so its fingerprint is identical to the one step 1
+	//    recorded — nothing about the repo distinguishes it from an in-flight
+	//    admission except the guard having let go of it.
+	declining = false
+	readmitted := false
+	for i := 0; i < 200 && !readmitted; i++ {
+		clk.advance(30 * time.Second)
+		if len(heartbeat(g, repos, stale)) == 1 {
+			readmitted = true
+		}
+	}
+	if !readmitted {
+		t.Error("a repo that was admitted, then declined, then accepted again was never re-admitted — it is stranded until the daemon restarts")
+	}
+}
+
 // TestStaleReindexGuard_FailedRepoIsNotAlsoReportedNotAccepted keeps the three
 // states mutually exclusive. A repo that WAS dispatched and died repeatedly is
 // Failed and needs a manual reindex; if it were also reported as not-accepted,
@@ -234,6 +294,46 @@ func TestInstallWorktreeEnqueueGate_FeedsTheMigrationGuard(t *testing.T) {
 	}
 	if defaultStaleReindexGuard.notAcceptedByIndexer(primary) {
 		t.Error("the primary is indexed normally; it must not be reported as not-accepted")
+	}
+}
+
+// TestStartEnginePlane_InstallsTheDeclineGate grades the PRODUCTION call site.
+//
+// The two tests above call installWorktreeEnqueueGate themselves, so they pin
+// the helper and not its use: reverting engineplane.go to
+// `SkipEnqueue: makeWorktreeEnqueueGate(cfg.ReposToWatch)` removes the whole fix
+// from the shipping binary and leaves them both green. This one starts the
+// engine plane the way the daemon does and asserts the guard came out of it
+// holding the scheduler's gate.
+func TestStartEnginePlane_InstallsTheDeclineGate(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(EnvRoot, root)
+	t.Setenv("GRAFEL_HOME", root)
+	t.Setenv(EnvDisableSelfDefense, "1")
+
+	primary, wt := makeLinkedWorktreeFixture(t)
+
+	// Start from a guard that has NO gate, so a pass cannot come from one an
+	// earlier test left behind.
+	restoreDeclineGate(t)
+	defaultStaleReindexGuard.setDeclineGate(nil)
+	if defaultStaleReindexGuard.notAcceptedByIndexer(wt) {
+		t.Fatal("setup: expected no decline gate installed before startEnginePlane")
+	}
+
+	cfg := Config{
+		Layout:         Layout{Root: root},
+		ReposToWatch:   func() []string { return []string{primary} },
+		SchedulerIndex: func(context.Context, string, string) error { return nil },
+	}
+	ep := startEnginePlane(context.Background(), cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(ep.shutdown)
+
+	if !defaultStaleReindexGuard.notAcceptedByIndexer(wt) {
+		t.Error("startEnginePlane did not give the migration guard the scheduler's enqueue gate — the guard will keep re-admitting repos the scheduler drops")
+	}
+	if defaultStaleReindexGuard.notAcceptedByIndexer(primary) {
+		t.Error("the watched primary is indexed normally; it must not be reported as not-accepted")
 	}
 }
 

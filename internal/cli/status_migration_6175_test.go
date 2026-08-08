@@ -53,10 +53,14 @@ func TestPrintStatusSummary_ReportsNotAcceptedRepos(t *testing.T) {
 
 // TestPrintStatusSummary_NotAcceptedLineIsNotBlaming pins the wording contract
 // from the issue: nothing is wrong with these repos, so the line must not read
-// as an error and must not hand the user a command to run. `grafel index` on a
-// linked worktree of a watched primary is dropped by the very same gate
-// (internal/daemon/sched/scheduler.go EnqueueRefCommit → SkipEnqueue), so
-// advising it would be advice that cannot work.
+// as an error and must not hand the user a command to run.
+//
+// Specifically NOT because `grafel index` would be dropped — it would not. That
+// command is synchronous by default (internal/cli/index.go:73) and the
+// synchronous branch of Service.Index bypasses the scheduler's SkipEnqueue gate
+// entirely, so it would succeed at cold-indexing the worktree as an independent
+// root repo: the exact outcome #3680's gate exists to prevent. The command is
+// omitted because following it would be harmful, not because it would fail.
 func TestPrintStatusSummary_NotAcceptedLineIsNotBlaming(t *testing.T) {
 	s := &StatusSummary{
 		GroupName:            "grp",
