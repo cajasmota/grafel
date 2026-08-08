@@ -149,7 +149,21 @@ func (e *rqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 		for _, idx := range allMatchesIndex(rqWorkerRe, source) {
 			queues := source[idx[2]:idx[3]]
 			line := lineOf(source, idx[0])
-			out = append(out, entity("Worker("+queues+")", "SCOPE.Service", "worker", file.Path, line,
+			// rqWorkerRe captures the text INSIDE the brackets, so the name
+			// re-adds `[` and `]` alongside the `Worker(` / `)` this line
+			// already re-adds — reproducing the source construct documented
+			// on this type at the top of this file ("Worker([queue, ...])").
+			//
+			// It reproduces it only for the shapes the regex can see. The
+			// capture is `[^\]]*`, which stops at the FIRST `]`, so a nested
+			// subscript yields an unbalanced name — `Worker([queues[0]])`
+			// becomes `Worker([queues[0])` — and a multi-line call embeds the
+			// newlines, since `[^\]]` matches them. Both predate this line
+			// (the same text was already the `queues` property); what changed
+			// is that it is now also the entity Name, i.e. the graph's
+			// identity key. Fixing it needs a bracket-balancing scan, not a
+			// wider character class.
+			out = append(out, entity("Worker(["+queues+"])", "SCOPE.Service", "worker", file.Path, line,
 				map[string]string{
 					"framework":    "rq",
 					"pattern_type": "worker",
