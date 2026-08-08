@@ -576,6 +576,30 @@ func (w *Watcher) ForceRescan() {
 	}
 }
 
+// RescanRepo asks the sink to reconcile a single repo with bulk=true, the same
+// request ForceRescan makes for every registered repo. It exists for the
+// catch-up case (#6269): a repo that was NOT subscribed for a while received no
+// events for the edits made during that window, so re-subscribing alone leaves
+// the graph stale.
+//
+// The sink call runs on its own goroutine because RescanRepo's caller is
+// DefaultManager.Resume, which the tier cold-wake path invokes inline on the
+// MCP request goroutine (Cache.GetForRepoRef → fireAccessHook →
+// tier.Manager.Touch → Manager.Resume are all direct calls, none of them
+// deferred to a goroutine and none of them carrying a timeout). Waiting here
+// would put a user's query behind whatever the sink does.
+//
+// repoPath is absolutised the way AddRepo absolutises it, so the sink is handed
+// the same key the watcher registered.
+func (w *Watcher) RescanRepo(repoPath string) {
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		return
+	}
+	w.logger.Info("watcher: catch-up rescan after re-subscribe", "repo", abs)
+	go w.sink(abs, true)
+}
+
 // Stop halts the watcher and frees the fsnotify handles. Safe to call
 // multiple times.
 func (w *Watcher) Stop() {
