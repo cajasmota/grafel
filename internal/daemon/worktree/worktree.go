@@ -583,6 +583,12 @@ func defaultFDLedger() fdLedger {
 	}
 }
 
+// gitDirsDebounce is how long the .git/worktrees watch coalesces events before
+// reconciling. Package-level so a test can wait out an in-flight debounced poll
+// against the same figure the watch uses. NOTE: the timer it arms is not
+// tracked by the watch's stop func, so a poll can begin after stop() returns.
+const gitDirsDebounce = 750 * time.Millisecond
+
 // defaultPollInterval is the default reconciliation interval.
 const defaultPollInterval = 60 * time.Second
 
@@ -685,13 +691,30 @@ func (w *Watcher) startGitDirsWatch(ctx context.Context) func() {
 		// watch (#6233). This watcher and the subscription watcher in
 		// internal/daemon/watch spend the same per-process descriptors, so the
 		// budget only bounds the process if both consumers charge it.
+		//
+		// The charge is a SNAPSHOT taken at Add time and is never revised.
+		// kqueue keeps spending: every `git worktree add` after this point
+		// creates a new entry in the watched directory and fsnotify opens a
+		// descriptor for it (dirChange → internalWatch) that the ledger never
+		// sees. On a fresh daemon .git/worktrees is usually empty, so what is
+		// reserved is 1 and the entire per-worktree term accrues unaccounted.
+		// The ledger is therefore accurate at Add and drifts optimistic after —
+		// which is better than the zero it charged before, but is not the same
+		// as true. Re-charging as the directory grows needs a per-event hook
+		// this watch does not have; it belongs with #6180's accounting work.
 		cost := w.fdb.cost(gitWorktreesEntries(dir))
 		if !w.fdb.reserve(cost) {
-			// Refusal here is cheap and bounded: the reconciliation poll
-			// (Start's ticker) still discovers this parent's worktrees, so the
-			// cost is added latency, not a feature that stops working. That is
-			// why the watch yields rather than taking descriptors the
-			// subscription watcher needs for actual file events.
+			// Refusal is cheap here: the reconciliation poll (Start's ticker)
+			// re-resolves parents and runs `git worktree list` regardless of
+			// this watch, so a refusal costs promptness, not discovery.
+			//
+			// Note this is NOT a yield in favour of subscriptions — the ledger
+			// has no priority and no eviction, it is first-come-first-served.
+			// The boot order in fact runs the other way: subscriptions are lazy
+			// (engineplane.go — the daemon boots with zero AddRepo calls and
+			// repos subscribe on first MCP query) while this watch starts at
+			// boot, so it is normally first in line and rarely the party that
+			// finds the budget full.
 			w.logger.Warn("worktree: not watching .git/worktrees — descriptor budget exhausted; "+
 				"worktree add/remove for this repo is picked up by the reconciliation poll instead",
 				"dir", dir, "descriptors", cost, "poll_interval", w.interval.String())
@@ -716,7 +739,7 @@ func (w *Watcher) startGitDirsWatch(ctx context.Context) func() {
 	go func() {
 		defer close(done)
 		var timer *time.Timer
-		const debounce = 750 * time.Millisecond
+		const debounce = gitDirsDebounce
 		fire := func() { w.poll() }
 		for {
 			select {
@@ -738,13 +761,22 @@ func (w *Watcher) startGitDirsWatch(ctx context.Context) func() {
 		}
 	}()
 
+	// stopOnce guards the ledger release, not fw.Close(): a double release
+	// does not leak descriptors, it invents them. The ledger clamps at zero,
+	// so a second call drives `used` below the truth and the difference is
+	// handed to the next subscription, which opens descriptors the budget
+	// should have refused. watch.Watcher.Stop is sync.Once-guarded for the
+	// same reason.
+	var stopOnce sync.Once
 	return func() {
 		_ = fw.Close()
 		<-done
-		// fw.Close() gave every descriptor back to the kernel; give them back
-		// to the ledger too, or a daemon that restarts this watch bleeds
-		// budget away from repo subscriptions (#6233).
-		w.fdb.release(reserved)
+		stopOnce.Do(func() {
+			// fw.Close() gave every descriptor back to the kernel; give them
+			// back to the ledger too, or a daemon that restarts this watch
+			// bleeds budget away from repo subscriptions (#6233).
+			w.fdb.release(reserved)
+		})
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +19,12 @@ type fakeLedger struct {
 	capacity int // -1 == unlimited
 	used     int
 	reserves int
+	// releasedTotal is the sum of every n passed to Release, NOT the running
+	// balance. used alone cannot see a double release: the real ledger clamps
+	// at zero, so releasing 5 twice looks identical to releasing 5 once — while
+	// in the process-wide ledger it silently hands 5 descriptors to the next
+	// caller that should not have fit.
+	releasedTotal int
 }
 
 func (l *fakeLedger) Reserve(n int) bool {
@@ -34,6 +41,7 @@ func (l *fakeLedger) Reserve(n int) bool {
 func (l *fakeLedger) Release(n int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.releasedTotal += n
 	l.used -= n
 	if l.used < 0 {
 		l.used = 0
@@ -49,6 +57,12 @@ func (l *fakeLedger) snapshot() (used, reserves int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.used, l.reserves
+}
+
+func (l *fakeLedger) released() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.releasedTotal
 }
 
 // gitDirsParent creates a directory that looks enough like a main checkout for
@@ -114,19 +128,54 @@ func TestGitDirsWatch_ReleasesDescriptorsOnStop(t *testing.T) {
 	}
 }
 
+// TestGitDirsWatch_StopReleasesOnlyOnce guards the shape of the bug a
+// double-release causes: it does not leak descriptors, it INVENTS them. The
+// process-wide ledger clamps at zero, so a second stop() drives `used` below
+// the truth and hands the difference to the next subscription, which then
+// opens descriptors the budget was supposed to refuse. watch.Watcher.Stop is
+// sync.Once-guarded for the same reason; this is the sibling.
+func TestGitDirsWatch_StopReleasesOnlyOnce(t *testing.T) {
+	l := &fakeLedger{capacity: -1}
+	w := testWatcher(t, l, gitDirsParent(t, 2))
+
+	stop := w.startGitDirsWatch(context.Background())
+	charged, _ := l.snapshot()
+	if charged == 0 {
+		t.Fatal("nothing was charged, so this test cannot prove anything about release")
+	}
+	stop()
+	stop()
+
+	if got := l.released(); got != charged {
+		t.Fatalf("two stop() calls released %d descriptors in total, want %d (the amount charged)",
+			got, charged)
+	}
+}
+
 // TestGitDirsWatch_ReleasesReservationWhenAddFails covers the error path: a
 // reservation made for a watch that fsnotify then refuses must be given back,
 // or a daemon on a repo it cannot open bleeds budget away from subscriptions.
 func TestGitDirsWatch_ReleasesReservationWhenAddFails(t *testing.T) {
+	// The stimulus is a directory fsnotify cannot open. On Unix a 0000 mode
+	// achieves that for a non-root user. It does NOT on Windows, where Chmod
+	// only sets FILE_ATTRIBUTE_READONLY — which does not block directory
+	// traversal — and Geteuid() returns -1 so a euid guard would not skip.
+	// Rather than assert the platform's chmod semantics, verify the stimulus
+	// actually took and skip when it did not.
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: a 0000 directory is still openable")
 	}
 	p := gitDirsParent(t, 0)
 	dir := filepath.Join(p.Path, ".git", "worktrees")
 	if err := os.Chmod(dir, 0o000); err != nil {
-		t.Fatal(err)
+		t.Skipf("cannot make %s unopenable on this platform: %v", dir, err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	if f, err := os.Open(dir); err == nil {
+		_ = f.Close()
+		t.Skipf("this platform still opens a 0000 directory (GOOS=%s); "+
+			"the failed-Add path cannot be provoked this way", runtime.GOOS)
+	}
 
 	l := &fakeLedger{capacity: -1}
 	w := testWatcher(t, l, p)
@@ -193,7 +242,20 @@ func gitDirsWatchPollProbe(t *testing.T, l *fakeLedger, window time.Duration) in
 
 	ctx, cancel := context.WithCancel(context.Background())
 	stop := w.startGitDirsWatch(ctx)
-	defer func() { cancel(); stop() }()
+	defer func() {
+		cancel()
+		stop()
+		// stop() joins the fsnotify reader, but NOT a debounced poll: the
+		// watch arms a time.AfterFunc that nothing tracks, so a poll can still
+		// be running (or about to run) here. Wait past the debounce, then take
+		// pollMu — poll() holds it for its whole body — so no poll outlives
+		// this test. Without the barrier the in-flight poll reaches
+		// Store.save() while a later test in this package swaps the
+		// writeStoreFile var, which -race reports as a data race in THAT test.
+		time.Sleep(gitDirsDebounce + 250*time.Millisecond)
+		w.pollMu.Lock()
+		w.pollMu.Unlock() //nolint:staticcheck // barrier, not a critical section
+	}()
 
 	mu.Lock()
 	base := calls
