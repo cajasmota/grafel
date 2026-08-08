@@ -15,6 +15,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/rulesfiles"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // fakeGroups returns a groupsFn/loadGroupFn pair backed by an in-memory config.
@@ -62,9 +63,7 @@ func writeJSONMCP(t *testing.T, path string, withGrafel bool) {
 // present, missing when the MCP entry is absent, and "not wired" when the
 // tool's config file does not exist.
 func TestCheckEnabledTools_PerToolStatus(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	home := testsupport.IsolateHome(t)
 
 	repo := filepath.Join(home, "repo")
 	if err := os.MkdirAll(repo, 0o755); err != nil {
@@ -126,8 +125,7 @@ func TestCheckEnabledTools_PerToolStatus(t *testing.T) {
 // TestCheckEnabledTools_RulesDrift verifies a missing rules file for an enabled
 // tool is reported on that tool's row.
 func TestCheckEnabledTools_RulesDrift(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 	repo := filepath.Join(home, "repo")
 	if err := os.MkdirAll(repo, 0o755); err != nil {
 		t.Fatal(err)
@@ -169,8 +167,7 @@ func TestCheckEnabledTools_NoGroups(t *testing.T) {
 // MCP entry from EVERY enabled tool's own config (JSON: cursor/windsurf/kiro;
 // TOML: codex) while preserving each foreign entry, and leaves no grafel entry.
 func TestUninstall_SweepsAllEnabledToolsMCP(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 
 	binPath := filepath.Join(home, "grafel")
 	if err := os.WriteFile(binPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -269,8 +266,7 @@ func TestUninstall_SweepsAllEnabledToolsMCP(t *testing.T) {
 // TestUninstall_NoEnabledMCPTools verifies the sweep is a no-op (and does not
 // error) when no enabled tool supports MCP.
 func TestUninstall_NoEnabledMCPTools(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 	statePath := filepath.Join(home, ".grafel", "install.json")
 	if err := WriteState(statePath, NewState(ModeCopy)); err != nil {
 		t.Fatal(err)

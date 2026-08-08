@@ -18,6 +18,7 @@ import (
 	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // writeOldFormatGraphFBAt mirrors internal/graph/reindex_required_test.go's
@@ -55,9 +56,7 @@ func writeOldFormatGraphFBAt(t *testing.T, dir string, oldVersion int) {
 // repo's format mismatch, naming the repo path and both format versions, and
 // that the summary line names the affected repo count.
 func TestCheckReindexRequired_StaleFormat_Reports(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	home := testsupport.IsolateHome(t)
 
 	repo := filepath.Join(home, "repo")
 	if err := os.MkdirAll(repo, 0o755); err != nil {
@@ -115,9 +114,7 @@ func mustReindexReason(t *testing.T, stateDir string) string {
 // TestCheckReindexRequired_CurrentFormat_NoReport is the regression guard: a
 // repo on the current graph.fb format version must never be reported.
 func TestCheckReindexRequired_CurrentFormat_NoReport(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	home := testsupport.IsolateHome(t)
 
 	repo := filepath.Join(home, "repo")
 	if err := os.MkdirAll(repo, 0o755); err != nil {

@@ -19,9 +19,22 @@ import (
 // GRAFEL_TEST_REQUIRE_ISOLATED_HOME=1 it refuses to run if HOME is the real
 // user home. These tests install/uninstall and (de)register MCP, so they must
 // never operate against the developer's live config.
+//
+// It then reports any test in this package that redirects HOME without pinning
+// GRAFEL_HOME (#6171). That report has to happen HERE, before m.Run(), because
+// the failure it names is a panic out of internal/registry's write-path guard,
+// and a panic aborts the binary — a report emitted from an ordinary test would
+// be truncated in exactly the case it was written for. See
+// home_isolation_guard_6171_test.go. The suite still runs; only the exit code
+// changes, so one missing isolation call does not blank the package.
 func TestMain(m *testing.M) {
 	testsupport.GuardRealHomeMain()
-	os.Exit(m.Run())
+	unisolated := ReportUnisolatedHomeTests(os.Stderr)
+	code := m.Run()
+	if code == 0 && unisolated > 0 {
+		code = 1
+	}
+	os.Exit(code)
 }
 
 // TestRunCopy_HappyPath verifies the complete COPY-mode install transaction:

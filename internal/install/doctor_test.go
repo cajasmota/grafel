@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/install"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -43,8 +44,7 @@ type doctorTestEnv struct {
 
 func newDoctorTestEnv(t *testing.T) *doctorTestEnv {
 	t.Helper()
-	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	tmp := testsupport.IsolateHome(t)
 
 	// Fake binary.
 	fakeBin := filepath.Join(tmp, "grafel-fake")
@@ -481,8 +481,7 @@ func TestDoctorStaleStagingDirs(t *testing.T) {
 
 // TestDoctorMissingInstallJSON: no install.json → single critical check returned.
 func TestDoctorMissingInstallJSON(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	tmp := testsupport.IsolateHome(t)
 
 	opts := install.DoctorOptions{
 		StatePath:     filepath.Join(tmp, ".grafel", "install.json"),
@@ -615,8 +614,7 @@ func TestDoctorQuickMode_Tampered(t *testing.T) {
 // TestDoctorQuickMode_Clean: quick-doctor with matching state prints nothing
 // and returns nil (daemon unreachable is noted but still returns nil).
 func TestDoctorQuickMode_NoInstall(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	tmp := testsupport.IsolateHome(t)
 
 	var buf bytes.Buffer
 	opts := install.QuickOptions{
