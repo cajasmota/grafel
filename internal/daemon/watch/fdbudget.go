@@ -141,6 +141,46 @@ func sharedFDBudget() *fdBudget {
 	return sharedFDBudgetVal
 }
 
+// ---------------------------------------------------------------------------
+// Exported ledger, for the daemon's OTHER fsnotify consumers (#6233)
+// ---------------------------------------------------------------------------
+//
+// The kernel descriptor limit is per PROCESS. internal/daemon/worktree opens a
+// second fsnotify.Watcher for the .git/worktrees directories, drawing from the
+// same limit as the subscription watcher; before #6233 it charged nothing, so
+// FDBudgetStats reported headroom that a second consumer had already spent.
+// These three entry points let that consumer charge the one ledger.
+//
+// Not accounted here: the fsnotify backend handle itself. A measurement on
+// darwin (fsnotify v1.10.1, kqueue backend) showed fsnotify.NewWatcher costing
+// 3 descriptors — the kqueue plus a close-notification pipe pair — before any
+// Add. Neither watcher charges that: it is a fixed per-Watcher constant, not a
+// term that grows with repos or worktrees, and the budget exists to bound the
+// growing terms. The two watchers together spend 6 such descriptors, against a
+// limit in the tens of thousands.
+
+// ReserveWatchFDs commits n descriptors on the process-wide watch ledger,
+// returning false if they do not fit. It is all-or-nothing: a refused
+// reservation consumes nothing. Every successful reservation must be paired
+// with a ReleaseWatchFDs when the watch is closed.
+func ReserveWatchFDs(n int) bool { return sharedFDBudget().reserve(n) }
+
+// ReleaseWatchFDs returns n descriptors previously committed by
+// ReserveWatchFDs.
+func ReleaseWatchFDs(n int) { sharedFDBudget().release(n) }
+
+// DirWatchFDCost returns the descriptor cost, under this platform's cost
+// model, of a single fsnotify watch on one directory that contains entries
+// entries. On macOS fsnotify's kqueue backend opens a descriptor for the
+// directory and one more for every entry inside it (watchDirectoryFiles);
+// elsewhere the per-entry term is zero.
+func DirWatchFDCost(entries int) int {
+	if entries < 0 {
+		entries = 0
+	}
+	return defaultCostModel().cost(1, entries)
+}
+
 // fdBudgetEnv is the operator override. A value <= 0 disables the budget.
 const fdBudgetEnv = "GRAFEL_WATCH_FD_BUDGET"
 
