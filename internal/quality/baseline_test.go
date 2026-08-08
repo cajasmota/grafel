@@ -282,9 +282,21 @@ func TestKnownRegressionsAgreeWithRecordedFloor(t *testing.T) {
 // survives, because known_regressions entries legitimately come and go.)
 //
 // Recorded 2026-08-08 while enabling the custom extractors for the golden
-// benchmark (#6260). Both entries are kind-collision artefacts of that pass,
+// benchmark (#6260). Those entries are kind-collision artefacts of that pass,
 // not lost extraction; see the notes in baseline.json.
+//
+// The three entity_found pairs were added by #6277, which stopped ormlink's
+// MAPS_TO anchor from satisfying an entity expectation. Extraction did not
+// change: each of those figures was already this low and the benchmark could
+// not see it, because the matcher resolved on Kind+Name and an anchor carries
+// the same Kind and Name as the model it stands in for. They are annotated
+// rather than left as bare floors for exactly the reason the block exists
+// (scripts/quality/ratchet.py:33-40): a reader who sees java-spring-mini stop
+// being a 25/25 fixture needs to know the point was never earned, and which
+// issue owns the extraction defect that is now visible.
 var mustAnnotate = []struct{ fixture, metric string }{
+	{"elixir-phoenix-mini", "entity_found"},
+	{"java-spring-mini", "entity_found"},
 	{"java-spring-mini", "relationship_found"},
 	{"python-django-mini", "entity_found"},
 	{"python-django-mini", "relationship_found"},
