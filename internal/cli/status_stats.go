@@ -63,6 +63,14 @@ type StatusSummary struct {
 	// so they are reported separately with the manual command.
 	MigrationFailed int
 
+	// MigrationNotAccepted is how many repos the engine's scheduler declines to
+	// accept an enqueue for at all (#6175) — today, linked worktrees of watched
+	// primaries (#3680). Like MigrationFailed these still count in
+	// ReindexRequired, and like MigrationFailed they are NOT in progress; unlike
+	// MigrationFailed nothing is wrong with them and there is no command to run,
+	// so they are reported separately and without blame.
+	MigrationNotAccepted int
+
 	// MigrationLive is true when at least one repo's statusfile was
 	// heartbeated recently enough to believe an engine is actually running and
 	// working the migration. Review finding 3: statusfile.Read is a plain
@@ -142,6 +150,11 @@ type RepoStatus struct {
 	// tried staleReindexMaxAttempts times and gave up on this repo.
 	MigrationFailed bool
 
+	// MigrationNotAccepted mirrors statusfile.ReindexNotAccepted: the engine's
+	// scheduler drops any enqueue for this repo, so the automatic format
+	// migration will never reach it and nothing is expected to change.
+	MigrationNotAccepted bool
+
 	// GraphLoadError is non-empty when this repo HAS a graph artefact on disk
 	// but it could not be read: a truncated/garbage graph.fb (the flatbuffers
 	// accessors PANIC on those), an unreadable segment-set manifest, an
@@ -216,11 +229,20 @@ func ComputeStatusSummaryForRef(group string, repos []registry.Repo, ref string)
 			// available without loading a graph.
 			rs.ReindexRequired = sf.ReindexRequired
 			rs.MigrationFailed = sf.ReindexMigrationFailed
+			rs.MigrationNotAccepted = sf.ReindexNotAccepted
 			if sf.ReindexRequired {
 				s.ReindexRequired++
 			}
 			if sf.ReindexMigrationFailed {
 				s.MigrationFailed++
+			}
+			// #6175: the engine never sets both flags (the guard reports the
+			// actionable verdict in preference — see
+			// staleReindexGuard.notAcceptedByIndexer). Counting the pair here
+			// anyway would subtract the same repo from the in-progress figure
+			// twice, so a sidecar that somehow carries both is counted once.
+			if sf.ReindexNotAccepted && !sf.ReindexMigrationFailed {
+				s.MigrationNotAccepted++
 			}
 			// Liveness: a heartbeat within migrationLiveWindow means an engine
 			// is writing these files right now. Any one repo suffices — the
@@ -758,7 +780,11 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	// showing the fraction converts that into visible progress. Printed only
 	// while a migration is actually outstanding, so it adds no steady-state
 	// noise (and leaves the #5995 byte-for-byte golden untouched).
-	active := s.ReindexRequired - s.MigrationFailed
+	// #6175: subtract the third category too. A repo the indexer declines to
+	// accept is stale-format forever by design; leaving it in `active` meant the
+	// in-progress count never reached zero and the "migrating them
+	// automatically" line never went away.
+	active := s.ReindexRequired - s.MigrationFailed - s.MigrationNotAccepted
 	if active < 0 {
 		active = 0
 	}
@@ -786,6 +812,17 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	if s.MigrationFailed > 0 {
 		fmt.Fprintf(w, "  ⚠ %d repo(s) could not be migrated automatically after repeated attempts — reindex them manually with `grafel index <repo>`.\n",
 			s.MigrationFailed)
+	}
+	// #6175: the third state. Deliberately not a warning and deliberately
+	// without a command: these repos are declined by the indexer on purpose
+	// (linked worktrees share their primary's graph, #3680), and a manual
+	// `grafel index` on one is dropped by the very same gate — so naming a fix
+	// here would be naming one that cannot work. The point of the line is only
+	// that the in-progress count above can now legitimately reach zero while
+	// these repos remain.
+	if s.MigrationNotAccepted > 0 {
+		fmt.Fprintf(w, "  %d repo(s) not accepted by the indexer (linked worktrees share their primary repo's graph) — they stay on the older format by design, nothing to do.\n",
+			s.MigrationNotAccepted)
 	}
 
 	if s.EnrichmentCandidates > 0 || s.RepairCandidates > 0 {

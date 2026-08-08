@@ -90,12 +90,20 @@ import (
 // at the stalled grace and is charged an attempt, ending in a reported give-up.
 // A repo we have NEVER seen active was never dispatched — orphaned by a restart
 // (the drain acked and removed its request ~2s after admission, and the index
-// died with the daemon) or dropped by design (EnqueueRefCommit skips linked
-// worktrees of indexed primaries, sched/scheduler.go:976) — and is abandoned
-// with NO penalty and NO failure record. Charging those cost a healthy repo two
-// attempts per restart against a cap of three, so two restarts of an
-// unresponsive daemon — the exact behaviour this whole issue documents — marked
-// it permanently unmigratable.
+// died with the daemon) — and is abandoned with NO penalty and NO failure
+// record. Charging those cost a healthy repo two attempts per restart against a
+// cap of three, so two restarts of an unresponsive daemon — the exact behaviour
+// this whole issue documents — marked it permanently unmigratable.
+//
+// #6175 removed the OTHER population from this branch. A repo the scheduler
+// declines by design (EnqueueRefCommit drops linked worktrees of watched
+// primaries, sched/scheduler.go:976) also never became active, so it landed here
+// too — abandoned, stood aside for undispatchedBackoff, offered again, forever,
+// with `grafel status` counting it as in-progress the whole time. Abandonment
+// cannot tell those two apart from the outside; the ENQUEUE GATE can, and is
+// asked directly (declinedFn), so a declined repo is now never admitted and is
+// reported under its own state. What remains on this branch is the genuinely
+// transient case, which is exactly what deserves a retry.
 //
 // Recovered slots are also RE-ENQUEUED (idempotently, only when nothing is
 // already queued): restoring the guard's slot without restoring the scheduler's
@@ -187,13 +195,16 @@ const (
 	// staleReindexRetryJitter is the width of the per-repo backoff spread.
 	staleReindexRetryJitter = 5 * time.Minute
 
-	// defaultStaleReindexUndispatchedBackoff is how long a repo the scheduler
-	// never accepted stands aside before the guard offers it again. Round-4:
-	// such a repo must NOT be treated as a failure — it may have been dropped
-	// by design (EnqueueRefCommit skips linked worktrees of indexed primaries,
-	// sched/scheduler.go:976) or orphaned by a restart. Retrying occasionally
-	// costs one request write; marking it Failed would tell the user to fix a
-	// repo that is not broken.
+	// defaultStaleReindexUndispatchedBackoff is how long a repo that was
+	// admitted but never picked up stands aside before the guard offers it
+	// again. Round-4: such a repo must NOT be treated as a failure — it was
+	// most likely orphaned by a restart. Retrying occasionally costs one request
+	// write; marking it Failed would tell the user to fix a repo that is not
+	// broken.
+	//
+	// #6175: the repos for which retrying could NEVER succeed — the ones the
+	// enqueue gate drops by design — no longer reach this path at all, so this
+	// backoff now applies only where another turn can actually help.
 	defaultStaleReindexUndispatchedBackoff = 30 * time.Minute
 
 	// EnvStaleReindexBatch overrides defaultStaleReindexBatchSize. Escape
@@ -288,6 +299,20 @@ type staleReindexGuard struct {
 	reconcileDirsFn func() ([]string, error)
 	// reconcileStatesFn loads every durable migration marker in the store.
 	reconcileStatesFn func() ([]migrationState, error)
+	// declinedFn reports whether the SCHEDULER would drop an enqueue for this
+	// repo before it ever reached the admission queue — it is the very same
+	// predicate the scheduler is configured with as sched.Config.SkipEnqueue
+	// (installWorktreeEnqueueGate hands one function to both). nil means "no
+	// gate installed", which is read as "nothing is declined".
+	//
+	// #6175: without it the guard could see only that a repo never became
+	// active, which is also what a restart-orphaned repo looks like — so
+	// abandonLocked treated the two identically and re-offered the declined repo
+	// every undispatchedBackoff, forever, while `grafel status` counted it as
+	// in-progress. Asking the gate answers the question exactly instead of
+	// inferring it from a count of abandonments, and it stays correct in both
+	// directions because the gate is re-evaluated on every heartbeat.
+	declinedFn func(repoPath string) bool
 	// activeFn reports which repos the scheduler is currently working on
 	// (queued / indexing / dirty). A nil or empty result means "no usable
 	// signal", which is treated as UNKNOWN rather than as "nothing running" —
@@ -364,6 +389,16 @@ func (g *staleReindexGuard) maybeEnqueue(repoPath string, required bool, fingerp
 	if g.failed[repoPath] {
 		return false // gave up on this repo; reported via the statusfile instead
 	}
+	// #6175: the scheduler will drop any enqueue for this repo, so writing one
+	// buys nothing and costs a batch slot for the whole stalled grace. Give back
+	// any slot it already holds (the gate can start declining a repo that was
+	// admitted while it was still accepted) and report the state instead —
+	// releaseSlotLocked also drops every durable trace, which is what keeps this
+	// reversible the moment the gate opens again.
+	if g.declinedLocked(repoPath) {
+		g.releaseSlotLocked(repoPath)
+		return false
+	}
 	// An outstanding request for this repo is authoritative regardless of what
 	// `seen` remembers — and after a restart, `seen` remembers nothing while
 	// the durable request is still queued (review finding 1). Checking inflight
@@ -439,6 +474,43 @@ func (g *staleReindexGuard) migrationFailed(repoPath string) bool {
 	return g.failed[repoPath]
 }
 
+// declinedLocked reports whether the scheduler's enqueue gate would drop this
+// repo. MUST be called with g.mu held. The gate performs cheap filesystem reads
+// only (worktree.ClassifyRoot is one Lstat plus at most one small ReadFile), and
+// it is consulted only for repos that are already stale-format, so holding the
+// mutex across it costs no more than the requests.Write this function already
+// performs under the same lock.
+func (g *staleReindexGuard) declinedLocked(repoPath string) bool {
+	return g.declinedFn != nil && g.declinedFn(repoPath)
+}
+
+// notAcceptedByIndexer reports whether repoPath is one the scheduler declines to
+// accept — the third migration state (#6175). Consumed by writeRepoStatusFile so
+// `grafel status` can report it as neither in-progress nor failed.
+//
+// A repo already marked Failed is NOT reported here: that verdict is the
+// actionable one (it really was dispatched, and it really did die), and the two
+// states must stay mutually exclusive so the in-progress count is not reduced
+// twice for the same repo.
+func (g *staleReindexGuard) notAcceptedByIndexer(repoPath string) bool {
+	g.mu.Lock()
+	fn := g.declinedFn
+	failed := g.failed[repoPath]
+	g.mu.Unlock()
+	if fn == nil || failed {
+		return false
+	}
+	return fn(repoPath)
+}
+
+// setDeclineGate installs the scheduler's enqueue-drop predicate. Called once
+// during engine-plane start-up, with the same function the scheduler receives.
+func (g *staleReindexGuard) setDeclineGate(fn func(repoPath string) bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.declinedFn = fn
+}
+
 // admitLocked applies the #6167 batch policy. MUST be called with g.mu held.
 //
 // The rule, in one sentence: admit up to batchSize repos, then admit nothing
@@ -503,8 +575,9 @@ func (g *staleReindexGuard) sweepLocked(logger *slog.Logger) {
 			// genuine stall. This is the case that earns an attempt.
 			deadline = g.stalledGrace
 		default:
-			// The scheduler was never told about this repo: orphaned by a
-			// restart, or dropped by SkipEnqueue by design. Reclaim the slot so
+			// The scheduler was never told about this repo — orphaned by a
+			// restart. (A repo the enqueue gate declines by design never gets
+			// here: #6175 refuses it admission up front.) Reclaim the slot so
 			// the migration continues, but charge nothing — it is not broken.
 			deadline = g.stalledGrace
 			penalise = false

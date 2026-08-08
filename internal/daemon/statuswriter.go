@@ -150,6 +150,14 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 		// drop would be silent — the repo would serve a stale graph with
 		// nothing anywhere telling the user to run `grafel index` on it.
 		f.ReindexMigrationFailed = defaultStaleReindexGuard.migrationFailed(repoPath)
+		// #6175: publish the migration's THIRD outcome. A repo whose enqueue
+		// the scheduler drops by design (a linked worktree of a watched
+		// primary, #3680) also reports ReindexRequired=true and is never
+		// failed, so without this flag it sat in the in-progress count forever
+		// and that count never reached zero. Recomputed from the live gate on
+		// every heartbeat, never latched, so it clears by itself the moment the
+		// repo stops being declined.
+		f.ReindexNotAccepted = defaultStaleReindexGuard.notAcceptedByIndexer(repoPath)
 	}
 
 	// Split the single "indexing" signal into indexing (extraction, graph not

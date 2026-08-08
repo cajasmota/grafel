@@ -41,6 +41,22 @@ func makeWorktreeEnqueueGate(reposToWatch func() []string) func(repoPath string)
 	}
 }
 
+// installWorktreeEnqueueGate builds the #3680 gate ONCE and gives it to both
+// consumers before returning it for the scheduler's sched.Config.SkipEnqueue:
+//
+//   - the scheduler, which drops the enqueue;
+//   - the stale-format migration guard, which must REPORT that drop (#6175)
+//     rather than keep re-admitting a repo the drop guarantees will never be
+//     indexed, and keep counting it as a migration in progress forever.
+//
+// One function, both consumers, so the two can never disagree about which repos
+// the indexer accepts. A nil gate (reposToWatch == nil) disables both halves.
+func installWorktreeEnqueueGate(reposToWatch func() []string) func(repoPath string) bool {
+	gate := makeWorktreeEnqueueGate(reposToWatch)
+	defaultStaleReindexGuard.setDeclineGate(gate)
+	return gate
+}
+
 // makeReaperTrackedRepos returns the reaper's TrackedRepos provider: the union
 // of the registered repos (reposToWatch) and the active worktree children, so
 // the reaper GCs stores for any of them that vanish from disk. Either input may
