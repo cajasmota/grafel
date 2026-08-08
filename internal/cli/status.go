@@ -213,6 +213,27 @@ func printWatcherFleetStatus(w io.Writer) {
 	if sum.Running > 0 {
 		fmt.Fprintf(w, "  these index independently of the daemon; 'grafel stop' stops them too\n")
 	}
+
+	// #6192: a group with features.watchers off can still have a live watcher.
+	// The flag gates creating, rewriting and starting units; it never
+	// deregisters one that is already installed and loaded, so flipping it off
+	// leaves any existing watcher running. That is a disagreement between what
+	// the config says and what the machine is doing, and until now the only
+	// place it showed was `launchctl list`.
+	if len(sum.DisabledRunning) > 0 {
+		fmt.Fprintf(w, "  ⚠️ %d of these belong to a group with watchers disabled and are running anyway:\n",
+			len(sum.DisabledRunning))
+		for _, d := range sum.DisabledRunning {
+			fmt.Fprintf(w, "     %s\n", d)
+		}
+		// The remedy is the stop/start pair, and only that pair: stop
+		// deactivates every installed unit whatever the flag says, and start
+		// restores only the groups whose flag is on. See the contract at the
+		// head of internal/cli/watcher_fleet.go, which both halves implement.
+		fmt.Fprintf(w, "     features.watchers only gates creating and starting watchers — it does not\n")
+		fmt.Fprintf(w, "     deregister one already installed. Run 'grafel stop' then 'grafel start' to\n")
+		fmt.Fprintf(w, "     clear them ('grafel start' does not restore a watchers-off group).\n")
+	}
 }
 
 // printWorktreeChildren prints the ephemeral worktree-child entries for the

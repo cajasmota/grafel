@@ -125,6 +125,28 @@ type GroupConfig struct {
 	GroupDocs string `json:"group_docs,omitempty"`
 	Repos     []Repo `json:"repos"`
 	Features  struct {
+		// Watchers controls the per-repo watcher UNIT — the launchd
+		// LaunchAgent / systemd --user service / scheduled task that runs
+		// `grafel watch <repo>` (internal/install/watchers).
+		//
+		// It is NOT retroactive, and that is the whole of its contract
+		// (#6192). Three places read it, and every one of them is a gate on
+		// doing something, never on undoing it:
+		//
+		//   - internal/install/install.go: `grafel install` writes a unit only
+		//     when this is true.
+		//   - internal/install/watchersync.go: ReconcileWatcherUnits rewrites
+		//     and re-registers a unit only when this is true. For a group with
+		//     it false it retires superseded-label units and installs nothing.
+		//   - internal/cli/watcher_fleet.go: `grafel start` re-activates only
+		//     the units of groups with it true. `grafel stop` is deliberately
+		//     ungated — a unit on disk is running whatever the config says.
+		//
+		// So setting it to false while a unit is installed and loaded leaves
+		// that watcher running: the unit belongs to the OS service manager and
+		// no grafel process is involved in keeping it alive. `grafel status`
+		// names any such unit it finds running, and the group doctor reports
+		// units still installed for a group with the flag off.
 		Watchers bool `json:"watchers"`
 		GitHooks bool `json:"git_hooks"`
 		// AutoInjectAgentsMD, when true, causes grafel to append (or

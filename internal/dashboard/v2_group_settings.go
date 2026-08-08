@@ -641,6 +641,28 @@ func (s *Server) handleV2Doctor(w http.ResponseWriter, r *http.Request) {
 	writeV2JSON(w, http.StatusOK, v2OK(checks))
 }
 
+// installedWatcherUnitCount counts the group's repos whose per-repo watcher
+// unit file exists on disk.
+//
+// It is a pure stat sweep: no service manager is invoked, so it reports what is
+// INSTALLED and says nothing about what is running. A repo whose unit path
+// cannot be derived is skipped rather than counted — the check exists to
+// contradict an over-confident claim, and inventing units to do it would just
+// be a different over-confident claim.
+func installedWatcherUnitCount(cfg *registry.GroupConfig) int {
+	n := 0
+	for _, r := range cfg.Repos {
+		p, err := watchers.UnitPath(watchers.Unit{Group: cfg.Name, Repo: r.Path})
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			n++
+		}
+	}
+	return n
+}
+
 // buildDoctorChecks derives the per-group DoctorCheck list from the fleet config.
 func buildDoctorChecks(cfg *registry.GroupConfig) []v2DoctorCheck {
 	checks := []v2DoctorCheck{}
@@ -661,6 +683,30 @@ func buildDoctorChecks(cfg *registry.GroupConfig) []v2DoctorCheck {
 			Label:  "Filesystem watchers",
 			Status: "ok",
 			Detail: fmt.Sprintf("Enabled across %d repos", len(cfg.Repos)),
+		})
+	} else if n := installedWatcherUnitCount(cfg); n > 0 {
+		// #6192: the flag is not retroactive. It gates whether a unit is
+		// WRITTEN (internal/install/install.go), whether ReconcileWatcherUnits
+		// rewrites and re-registers one (internal/install/watchersync.go), and
+		// whether `grafel start` re-activates one
+		// (internal/cli/watcher_fleet.go). None of those is a teardown, so a
+		// unit installed while the flag was on survives it going off — and the
+		// unconditional "changes won't trigger auto-reindex" below was then a
+		// claim about behaviour that the machine contradicted.
+		checks = append(checks, v2DoctorCheck{
+			ID:    "watchers",
+			Label: "Filesystem watchers",
+			// "warning", not "warn": the DoctorCheck.status union in
+			// webui-v2/src/data/types.ts is "ok" | "warning" | "info" | "error",
+			// and the cache check below already uses "warning".
+			Status: "warning",
+			// Says only what was checked: unit FILES exist. Whether the OS is
+			// currently running them is a per-unit service-manager query this
+			// check does not make, and `grafel status` does — so the detail
+			// points there rather than asserting a liveness it did not observe.
+			Detail: fmt.Sprintf("Disabled in config, but %d watcher unit(s) are still installed — "+
+				"turning the flag off does not deregister them. Run 'grafel status' to see "+
+				"which are still running.", n),
 		})
 	} else {
 		checks = append(checks, v2DoctorCheck{

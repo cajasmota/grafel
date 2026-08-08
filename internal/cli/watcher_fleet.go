@@ -417,6 +417,23 @@ func startFleetWatchers(out io.Writer) fleetWatcherResult {
 type fleetWatcherSummary struct {
 	Installed int
 	Running   int
+	// DisabledRunning names the repos whose group has features.watchers OFF and
+	// whose unit the OS reports as RUNNING anyway (#6192).
+	//
+	// That combination is not a corruption; it is what the flag means. It gates
+	// three things — whether `grafel install` writes a unit
+	// (internal/install/install.go), whether ReconcileWatcherUnits rewrites and
+	// re-registers one (internal/install/watchersync.go), and whether
+	// `grafel start` re-activates one (startFleetWatchers above) — and none of
+	// them is a teardown. A unit installed while the flag was on outlives the
+	// flag going off, because the unit belongs to launchd/systemd/schtasks and
+	// no grafel process is involved in keeping it alive.
+	//
+	// Only RUNNING units are listed, and only registered ones. An installed unit
+	// the OS is not running is not the state the user is being warned about, and
+	// an orphan has no group whose flag could disagree with it — stop already
+	// names those separately.
+	DisabledRunning []string
 }
 
 // summarizeFleetWatchers reports how many per-repo watcher units are installed
@@ -455,9 +472,18 @@ func summarizeFleetWatchers() (fleetWatcherSummary, error) {
 			}
 			mu.Lock()
 			sum.Running++
+			// restorable is false for two different reasons: a registered repo
+			// whose group has watchers off, and an orphan no group owns. Only
+			// the first is a disagreement with the flag, and RawLabel is what
+			// tells them apart (it is set only by the disk scan, which is the
+			// only producer of units with no owning group).
+			if !fu.restorable && fu.unit.RawLabel == "" {
+				sum.DisabledRunning = append(sum.DisabledRunning, fu.display)
+			}
 			mu.Unlock()
 		}(fu)
 	}
 	wg.Wait()
+	sort.Strings(sum.DisabledRunning) // goroutine completion order is arbitrary
 	return sum, nil
 }
