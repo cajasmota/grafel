@@ -16,6 +16,9 @@ import (
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/install/mcptools"
 	"github.com/cajasmota/grafel/internal/install/tooladapter"
+	// Aliased: newWizardCmd below declares a local `watchers bool` flag
+	// variable, which would shadow the package name inside that function.
+	watcherunits "github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -461,6 +464,7 @@ func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOpt
 	if !ga.RunInstall {
 		return nil, nil
 	}
+
 	bin, _ := os.Executable()
 	res, err := install.Apply(install.Options{
 		Group:           cfg.Name,
@@ -476,6 +480,42 @@ func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOpt
 	if err != nil {
 		return nil, err
 	}
+
+	// #6192: honour features.watchers OFF, do not merely record it.
+	//
+	// `features.watchers` is otherwise not retroactive — install writes a unit
+	// only when it is true, ReconcileWatcherUnits rewrites one only when it is
+	// true, `grafel start` re-activates one only when it is true — so a group
+	// re-registered with the flag off kept whatever unit an earlier run had
+	// installed, and it went on running. Making the flag retroactive in general
+	// was rejected (a fleet.json edit runs no grafel code, so the teardown could
+	// only ever fire at some later unrelated command), but this is the opposite
+	// case: `group add`, `init` and the wizard are synchronous, user-initiated
+	// statements about how this group is to be set up.
+	//
+	// Gated on cfg.Features.Watchers, NEVER on ga.SkipWatchers. They mean
+	// different things: `grafel update` passes SkipWatchers to install.Apply for
+	// a group whose flag is TRUE, meaning "do not touch watchers in this pass"
+	// (#6179 F1), and reading that as "remove them" would make a self-update
+	// deregister the fleet. update.go calls install.Apply directly and does not
+	// reach this function at all, which is what keeps the two apart.
+	//
+	// AFTER Apply, not before. Apply writes a unit for every repo when the flag
+	// is on, so a teardown placed ahead of it describes an intermediate state
+	// that Apply immediately overwrites — a mutant dropping the flag gate
+	// survived there, because deleting a unit Apply is about to re-create
+	// changes nothing observable except an extra unload/bootstrap cycle per
+	// repo. Here the teardown is the last word on the units, so what it does is
+	// what the machine is left with.
+	//
+	// Cleanup is best-effort and idempotent: on a group that never had watchers
+	// it finds no unit and does nothing.
+	if !cfg.Features.Watchers {
+		for _, r := range cfg.Repos {
+			watcherunits.Cleanup(cfg.Name, r.Path, "")
+		}
+	}
+
 	// Remember the chosen MCP tools so a later wizard run defaults to them (C,
 	// #5344). Only persist when a concrete selection was made (non-nil); a nil
 	// selection means "no explicit choice" and must not clobber a prior one.

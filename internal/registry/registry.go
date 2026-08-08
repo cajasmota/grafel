@@ -129,24 +129,40 @@ type GroupConfig struct {
 		// LaunchAgent / systemd --user service / scheduled task that runs
 		// `grafel watch <repo>` (internal/install/watchers).
 		//
-		// It is NOT retroactive, and that is the whole of its contract
-		// (#6192). Three places read it, and every one of them is a gate on
-		// doing something, never on undoing it:
+		// Setting it to false does NOT, by itself, stop a watcher that is
+		// already installed (#6192). The unit belongs to the OS service
+		// manager; no grafel process keeps it alive, so nothing about writing
+		// a new value here reaches it. What each reader does with it:
 		//
 		//   - internal/install/install.go: `grafel install` writes a unit only
-		//     when this is true.
+		//     when true.
 		//   - internal/install/watchersync.go: ReconcileWatcherUnits rewrites
-		//     and re-registers a unit only when this is true. For a group with
-		//     it false it retires superseded-label units and installs nothing.
+		//     and re-registers a unit only when true. For a group with it false
+		//     it installs nothing — but it does still retire units under the
+		//     superseded pre-#6183 and pre-normalisation labels, unloading and
+		//     removing them.
 		//   - internal/cli/watcher_fleet.go: `grafel start` re-activates only
 		//     the units of groups with it true. `grafel stop` is deliberately
 		//     ungated — a unit on disk is running whatever the config says.
+		//   - internal/cli/wizard.go (applyGroupConfig) and
+		//     internal/dashboard/v2_group_settings.go (PATCH .../features):
+		//     these DO tear the units down when the resulting value is false.
+		//     Both are synchronous, user-initiated statements about how the
+		//     group should be set up, which a fleet.json edit — the path that
+		//     runs no grafel code at all — is not.
+		//   - cmd/grafel/daemon.go (daemonWorktreeParents): a group opts into
+		//     linked-worktree tracking when track_worktrees OR this is true.
+		//     That read IS retroactive: it is re-evaluated on every call, so
+		//     for a group with track_worktrees off, turning this off also stops
+		//     worktree discovery. Nothing to do with units.
+		//   - internal/dashboard/v2_group_settings.go also reports the value on
+		//     GET/PATCH, and derives the group doctor's watcher check from the
+		//     machine rather than from this field.
 		//
-		// So setting it to false while a unit is installed and loaded leaves
-		// that watcher running: the unit belongs to the OS service manager and
-		// no grafel process is involved in keeping it alive. `grafel status`
-		// names any such unit it finds running, and the group doctor reports
-		// units still installed for a group with the flag off.
+		// So a unit installed under an earlier `true` outlives the flag going
+		// false through any path other than the two teardown call sites above.
+		// `grafel status` names any such unit it finds RUNNING, and the group
+		// doctor reports the same thing keyed on the same predicate.
 		Watchers bool `json:"watchers"`
 		GitHooks bool `json:"git_hooks"`
 		// AutoInjectAgentsMD, when true, causes grafel to append (or

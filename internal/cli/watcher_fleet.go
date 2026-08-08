@@ -420,14 +420,17 @@ type fleetWatcherSummary struct {
 	// DisabledRunning names the repos whose group has features.watchers OFF and
 	// whose unit the OS reports as RUNNING anyway (#6192).
 	//
-	// That combination is not a corruption; it is what the flag means. It gates
-	// three things — whether `grafel install` writes a unit
-	// (internal/install/install.go), whether ReconcileWatcherUnits rewrites and
-	// re-registers one (internal/install/watchersync.go), and whether
-	// `grafel start` re-activates one (startFleetWatchers above) — and none of
-	// them is a teardown. A unit installed while the flag was on outlives the
-	// flag going off, because the unit belongs to launchd/systemd/schtasks and
-	// no grafel process is involved in keeping it alive.
+	// That combination is not a corruption; it is what writing the flag does and
+	// does not do. Two paths tear the units down when the flag ends up false —
+	// applyGroupConfig (`group add`, `init`, the wizard) and the dashboard's
+	// features PATCH — but a fleet.json edit runs no grafel code at all, so
+	// there is nothing to notice it. The remaining readers only gate: whether
+	// `grafel install` writes a unit (internal/install/install.go), whether
+	// ReconcileWatcherUnits rewrites and re-registers one
+	// (internal/install/watchersync.go), and whether `grafel start` re-activates
+	// one (startFleetWatchers above). So a unit installed while the flag was on
+	// outlives the flag going off by that route, because it belongs to
+	// launchd/systemd/schtasks and no grafel process keeps it alive.
 	//
 	// Only RUNNING units are listed, and only registered ones. An installed unit
 	// the OS is not running is not the state the user is being warned about, and
@@ -475,8 +478,11 @@ func summarizeFleetWatchers() (fleetWatcherSummary, error) {
 			// restorable is false for two different reasons: a registered repo
 			// whose group has watchers off, and an orphan no group owns. Only
 			// the first is a disagreement with the flag, and RawLabel is what
-			// tells them apart (it is set only by the disk scan, which is the
-			// only producer of units with no owning group).
+			// tells them apart HERE: of the two passes that fill this map, only
+			// the disk scan (watchers.InstalledUnits) sets RawLabel, and the
+			// registry pass never does. Other producers exist elsewhere in that
+			// package — NativeDigestOf sets it too — but none of them reaches
+			// this map.
 			if !fu.restorable && fu.unit.RawLabel == "" {
 				sum.DisabledRunning = append(sum.DisabledRunning, fu.display)
 			}
