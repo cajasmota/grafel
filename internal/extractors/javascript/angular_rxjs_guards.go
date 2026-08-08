@@ -371,11 +371,15 @@ func (x *extractor) angularClassGuardSubtype(class ts.Node) (string, string) {
 // angularGuardClassRels returns the normalised role ("guard"|"interceptor"),
 // the implemented interface, and the IMPLEMENTS edge for an Angular class that
 // is also a guard / interceptor. It is folded into the component entity emitted
-// by handleAngularClass (the class is already an @Injectable, so it surfaces as
-// angular_service; the guard role is recorded as an extra property + an
-// IMPLEMENTS edge to the guard interface). The role vocabulary matches the
-// functional form (angularFunctionalGuards) so guard/interceptor queries are
-// uniform across class and functional shapes.
+// by handleAngularClass: the class is already an @Injectable, so it carries
+// whatever subtype that decorator resolves to — angular_service for Angular,
+// "service" for NestJS (#6213), since `@Injectable() class RolesGuard implements
+// CanActivate` is the standard NestJS guard shape and this function is called
+// unconditionally for both frameworks. Either way the guard role is recorded as
+// an extra property + an IMPLEMENTS edge to the guard interface rather than as
+// the subtype. The role vocabulary matches the functional form
+// (angularFunctionalGuards) so guard/interceptor queries are uniform across
+// class and functional shapes.
 func (x *extractor) angularGuardClassRels(class ts.Node, className string) (role, iface string, rels []types.RelationshipRecord) {
 	subtype, iface := x.angularClassGuardSubtype(class)
 	if subtype == "" {
