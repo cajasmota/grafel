@@ -35,10 +35,15 @@
 //   - (C) remember last choice: the user's selection is persisted to
 //     ~/.grafel/mcp-tools.json and, on subsequent runs, becomes the default.
 //
-//     NOTE the asymmetry, which detectWith depends on: the file stores only
-//     the SELECTED ids, so (C) can force a tool ON but never OFF — a tool the
-//     user unchecked is simply ABSENT from it, and (B) re-decides. "C
-//     overrides B" holds in one direction only.
+//     The file records BOTH halves of the decision (#6191): the tools that
+//     were chosen AND the tools that were offered alongside them and left
+//     unchecked. (C) therefore overrides (B) in both directions. It used to
+//     store only the selected ids, which made an opt-out indistinguishable
+//     from "never offered" — see SaveLastChoice.
+//
+//     A tool in NEITHER list was not part of the decision (not installed when
+//     it was made), so (B) decides for it: nothing is stranded off by having
+//     been absent.
 package mcptools
 
 import (
@@ -154,13 +159,11 @@ func DetectWithPrevious(prev map[string]bool) []Tool {
 // carrier of the safety property for this fix (install.PreviouslyRegisteredMCPPaths'
 // opt-out subtraction is a second, narrower layer beneath it).
 //
-// The bound cannot be carried by precedence within the expression,
-// because (C) cannot express "off": ReadLastChoice builds its set only from
-// the file's `selected` list, so every value it can yield is true and an
-// opted-out tool is merely ABSENT from the map — the `def = sel` branch below
-// can only ever set def=true. Composing B2 under a (C) that can only say "on"
-// would let the install.json record re-check a box the user cleared, which is
-// a REGRESSION on today's behaviour, not a repair.
+// Since #6191 the (C) map is genuinely tri-state — present-true, present-false,
+// absent — so the `def = sel` branch below can now set def either way for a
+// tool the recorded choice names. The nil bound is still what keeps B2 from
+// re-checking a box the user cleared in the residual case the map says nothing
+// about: a tool that was never offered when the choice was made.
 //
 // So: a recorded choice — any recorded choice, including "none" — owns the
 // default, and B2 applies only while none exists. It repairs a fresh accident
@@ -173,16 +176,8 @@ func detectWith(lastChoice, prevRegistered map[string]bool) []Tool {
 		prev = cleanPathSet(prevRegistered)
 	}
 	var out []Tool
-	for _, a := range mcpAdapters() {
-		path, err := mcpreg.SettingsPath(a.tool)
-		if err != nil {
-			continue
-		}
-		mtime, fileExists := mcpreg.ConfigModTime(path)
-		detected := fileExists || parentDirExists(path)
-		if !detected {
-			continue
-		}
+	for _, d := range detectedTools() {
+		a, path, mtime, fileExists := d.adapter, d.path, d.mtime, d.fileExists
 		hasGrafel := mcpreg.HasGrafelEntry(path)
 		recent := fileExists && now.Sub(mtime) <= RecentWindow
 		// (B2) grafel registered itself at this exact config path on a previous
@@ -209,6 +204,40 @@ func detectWith(lastChoice, prevRegistered map[string]bool) []Tool {
 			LastModified:    mtime,
 			DefaultSelected: def,
 		})
+	}
+	return out
+}
+
+// detectedTool is one MCP-capable adapter that is present on this machine,
+// with the filesystem facts detectWith needs already gathered.
+type detectedTool struct {
+	adapter    mcpAdapter
+	path       string
+	mtime      time.Time
+	fileExists bool
+}
+
+// detectedTools returns the MCP-capable tools that are DETECTED here — config
+// file present, or its parent directory present — in registry order. It is the
+// single definition of "detected" in this package: detectWith turns it into the
+// wizard rows, and SaveLastChoice uses it as the set of tools that were on
+// offer when a choice was made.
+//
+// It reads only the tools' own config paths. In particular it does NOT consult
+// the last-choice file, so SaveLastChoice can call it without any ordering
+// dependency on the file it is about to write.
+func detectedTools() []detectedTool {
+	var out []detectedTool
+	for _, a := range mcpAdapters() {
+		path, err := mcpreg.SettingsPath(a.tool)
+		if err != nil {
+			continue
+		}
+		mtime, fileExists := mcpreg.ConfigModTime(path)
+		if !fileExists && !parentDirExists(path) {
+			continue
+		}
+		out = append(out, detectedTool{adapter: a, path: path, mtime: mtime, fileExists: fileExists})
 	}
 	return out
 }
@@ -256,6 +285,9 @@ func DefaultSelection(tools []Tool) []string {
 type lastChoiceFile struct {
 	// Selected is the list of tool IDs the user last chose to register.
 	Selected []string `json:"selected"`
+	// Deselected is the list of tool IDs that were OFFERED alongside Selected
+	// and left unchecked.
+	Deselected []string `json:"deselected,omitempty"`
 	// SavedAt is an RFC3339 timestamp, informational only.
 	SavedAt string `json:"savedAt,omitempty"`
 }
@@ -307,7 +339,15 @@ func ReadLastChoice() (map[string]bool, error) {
 		// decides — unchanged behaviour, minus the fail-open.
 		return map[string]bool{}, nil
 	}
-	set := make(map[string]bool, len(doc.Selected))
+	set := make(map[string]bool, len(doc.Selected)+len(doc.Deselected))
+	// Deselections FIRST, so that a contradictory document naming a tool in
+	// both lists resolves to selected rather than to whichever loop ran last.
+	// A file written by a pre-#6191 binary has no `deselected` key at all:
+	// json.Unmarshal leaves the field nil, this loop does nothing, and the set
+	// is exactly what it used to be — absence still means "(B) decides".
+	for _, id := range doc.Deselected {
+		set[id] = false
+	}
 	for _, id := range doc.Selected {
 		set[id] = true
 	}
@@ -317,6 +357,19 @@ func ReadLastChoice() (map[string]bool, error) {
 // SaveLastChoice persists the chosen tool IDs to ~/.grafel/mcp-tools.json so a
 // later wizard run defaults to them (C). The IDs are sorted for a stable file.
 // An empty slice is persisted faithfully (the user chose "none").
+//
+// It ALSO records the opposite half of the decision (#6191): every tool that
+// was on offer — detected on this machine right now, which is the same set the
+// wizard rendered — and is NOT in ids goes into `deselected`. Without it an
+// unchecked tool is merely absent from the document, ReadLastChoice can only
+// ever yield true, and detectWith's override can force a box on but never off:
+// unchecking Claude Code then had no effect at all, because ~/.claude.json is
+// rewritten constantly so the (B) `recent` term re-checked it every run.
+//
+// Only the OFFERED tools are recorded, never the whole adapter registry. A tool
+// the user does not have installed was not part of the decision, so it stays
+// out of both lists and (B) decides for it if it later appears — the opt-out
+// records what was declined, not what happened to be absent.
 func SaveLastChoice(ids []string) error {
 	path, err := LastChoicePath()
 	if err != nil {
@@ -327,7 +380,22 @@ func SaveLastChoice(ids []string) error {
 	}
 	sorted := append([]string(nil), ids...)
 	sort.Strings(sorted)
-	doc := lastChoiceFile{Selected: sorted, SavedAt: nowFunc().UTC().Format(time.RFC3339)}
+	chosen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		chosen[id] = true
+	}
+	var deselected []string
+	for _, d := range detectedTools() {
+		if !chosen[d.adapter.id] {
+			deselected = append(deselected, d.adapter.id)
+		}
+	}
+	sort.Strings(deselected)
+	doc := lastChoiceFile{
+		Selected:   sorted,
+		Deselected: deselected,
+		SavedAt:    nowFunc().UTC().Format(time.RFC3339),
+	}
 	b, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
