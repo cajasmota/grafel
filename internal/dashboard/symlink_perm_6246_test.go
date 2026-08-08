@@ -23,6 +23,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -43,7 +44,10 @@ func requireSymlinks6246(t *testing.T) {
 	}
 }
 
-func seedMCPConfig6246(t *testing.T, path string, perm os.FileMode) {
+// seedMCPConfig6246 writes a host config at mode perm and returns the exact
+// bytes written, so a caller can assert what the backup captured rather than
+// only what mode it captured it at.
+func seedMCPConfig6246(t *testing.T, path string, perm os.FileMode) []byte {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -58,6 +62,7 @@ func seedMCPConfig6246(t *testing.T, path string, perm os.FileMode) {
 		t.Fatalf("chmod seed: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(path, 0o666) })
+	return body
 }
 
 func grafelCfg6246() map[string]any {
@@ -95,7 +100,7 @@ func TestWriteMCPConfig_WritesThroughSymlink(t *testing.T) {
 	target := filepath.Join(dotfiles, "mcp.json")
 	link := filepath.Join(home, "mcp.json")
 
-	seedMCPConfig6246(t, target, 0o600)
+	_ = seedMCPConfig6246(t, target, 0o600)
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
@@ -148,7 +153,7 @@ func TestWriteMCPConfig_PreservesDestinationMode(t *testing.T) {
 	for _, perm := range []os.FileMode{0o600, 0o444} {
 		t.Run(perm.String(), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "mcp.json")
-			seedMCPConfig6246(t, path, perm)
+			_ = seedMCPConfig6246(t, path, perm)
 
 			if err := writeMCPConfig(path, grafelCfg6246()); err != nil {
 				t.Fatalf("writeMCPConfig: %v", err)
@@ -174,7 +179,7 @@ func TestWriteMCPConfig_SymlinkPreservesTargetMode(t *testing.T) {
 
 	target := filepath.Join(t.TempDir(), "mcp.json")
 	link := filepath.Join(t.TempDir(), "mcp.json")
-	seedMCPConfig6246(t, target, 0o600)
+	_ = seedMCPConfig6246(t, target, 0o600)
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
@@ -229,15 +234,46 @@ func TestWriteMCPConfig_SymlinkCycleFailsLoudly(t *testing.T) {
 	}
 }
 
+// TestWriteMCPConfig_BackupIsAVerbatimCopy asserts the thing the `<path>.bak`
+// sidecar exists to do, which nothing in the tree asserted before: that it holds
+// the bytes it is a backup OF.
+//
+// This is not hypothetical rigour. Deleting the io.Copy outright — leaving a
+// zero-byte `.bak` with a flawless 0600 — left the ENTIRE internal/dashboard
+// suite green, mode assertions included. copyFile now carries a deferred Close
+// plus an explicit Close, a Remove and a Chmod: four things a later edit can
+// reorder into a silently truncated backup. This sidecar is the only rollback
+// material the wizard path leaves behind, for a file that holds an OAuth token.
+// A mode without content is a backup that restores nothing.
+func TestWriteMCPConfig_BackupIsAVerbatimCopy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	want := seedMCPConfig6246(t, path, 0o600)
+
+	if err := writeMCPConfig(path, grafelCfg6246()); err != nil {
+		t.Fatalf("writeMCPConfig: %v", err)
+	}
+	got, err := os.ReadFile(path + ".bak")
+	if err != nil {
+		t.Fatalf("read backup: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("backup is not a verbatim copy of the original\n got  (%d bytes) %q\n want (%d bytes) %q",
+			len(got), got, len(want), want)
+	}
+}
+
 // TestWriteMCPConfig_BackupPreservesMode: the `<path>.bak` copy is a verbatim
 // copy of a file that may hold an OAuth token. os.Create made it 0666&^umask,
 // so backing up a 0600 config published its contents to every local account —
 // the same widening defect one line above the one this issue names.
+//
+// Content is asserted separately, by TestWriteMCPConfig_BackupIsAVerbatimCopy —
+// see there for why the two properties need two tests.
 func TestWriteMCPConfig_BackupPreservesMode(t *testing.T) {
 	for _, perm := range []os.FileMode{0o600, 0o444} {
 		t.Run(perm.String(), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "mcp.json")
-			seedMCPConfig6246(t, path, perm)
+			_ = seedMCPConfig6246(t, path, perm)
 
 			if err := writeMCPConfig(path, grafelCfg6246()); err != nil {
 				t.Fatalf("writeMCPConfig: %v", err)

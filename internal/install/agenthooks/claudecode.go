@@ -314,6 +314,12 @@ const newSettingsPerm os.FileMode = 0o644
 // and the hook would then be installed, referenced from settings.json, and
 // silently never able to run. Mode PRESERVATION is the right answer only for a
 // file whose mode its owner chose.
+//
+// The trade, stated so it is not rediscovered as a bug: this DOES re-widen a
+// user who deliberately ran `chmod 700` on the script, on the next install. That
+// is accepted because the content is grafel-generated and carries no secret —
+// the file is a copy of NudgeScript, identical for every user — so the mode is
+// protecting nothing, whereas the other direction breaks the feature silently.
 const nudgeScriptPerm os.FileMode = 0o755
 
 // writeSettings replaces settings.json atomically, writing THROUGH a symlink at

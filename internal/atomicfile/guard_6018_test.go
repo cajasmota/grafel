@@ -83,10 +83,11 @@ import (
 //     install-time / interactive single-writer paths.
 //     (internal/install/mcpreg/{mcpreg,toml}.go came OFF this list in #6240 —
 //     not by converting to atomicfile.WriteFile, which reproduces that bug
-//     exactly, but by growing a local writeThrough that keeps the unique
-//     CreateTemp name and shares only atomicfile.Rename. Converting a file is
-//     not the only way to leave the ledger; ceasing to build a deterministic
-//     temp name is.
+//     exactly, but by growing a local writeThrough on a unique CreateTemp name.
+//     Converting a file is not the only way to leave the ledger; ceasing to
+//     build a deterministic temp name is. That local helper is now
+//     atomicfile.WriteThrough (#6246), which resolves the destination first and
+//     then calls plain WriteFile against it.
 //     internal/install/agenthooks/claudecode.go and
 //     internal/dashboard/handlers_mcp_setup.go came off in #6246, onto the
 //     atomicfile.WriteThrough that generalises #6240's local helper. Note what

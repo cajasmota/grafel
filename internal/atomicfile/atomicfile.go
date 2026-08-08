@@ -119,19 +119,17 @@ func WriteFile(path string, b []byte, perm os.FileMode) (err error) {
 	return err
 }
 
-// Rename renames tmp over path, recovering from the two Windows-only failures
-// described in rename.go: a read-only destination MoveFileEx refuses to replace,
-// and a transient sharing violation. On unix it is exactly one os.Rename.
+// There was an exported Rename here, added in #6240 as "the second half of
+// WriteFile, for the writers that cannot use WriteFile" — meaning
+// internal/install/mcpreg, which needed to write THROUGH a symlink and carry the
+// destination's EXISTING mode, the two behaviours WriteFile deliberately does
+// not have.
 //
-// This is the second half of WriteFile exposed on its own, for the writers that
-// cannot use WriteFile because they need the two behaviours WriteFile
-// deliberately does NOT have (see the package doc's "Other ways this differs"):
-// writing THROUGH a symlink at the destination rather than replacing the link,
-// and carrying the destination's EXISTING mode rather than a caller-chosen one.
-// internal/install/mcpreg needs both — it rewrites user-owned dotfiles that are
-// routinely symlinked into a dotfiles repo and are routinely 0600 because they
-// hold credentials (#6240).
-//
-// Nothing about WriteFile's documented contract changes; this only stops that
-// call site from hand-rolling a seventh copy of the Windows rename loop.
-func Rename(tmp, path string) error { return renameAtomic(tmp, path) }
+// #6246 found five more writers in the same position and answered them properly,
+// with WriteThrough in writethrough.go. That resolves the destination FIRST, so
+// what lands on it is an ordinary WriteFile against an ordinary path — which
+// left Rename with zero callers and a doc comment describing an arrangement that
+// no longer existed. Deleted rather than re-worded: renameAtomic is still there
+// for a caller that genuinely needs only the rename, and reviving one line is
+// cheaper than carrying an exported symbol whose comment has to be maintained
+// against code that does not use it.
