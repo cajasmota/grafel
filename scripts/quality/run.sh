@@ -11,6 +11,16 @@
 # Intended to wire into the verify2 channel as a separate gate. Quality is
 # orthogonal to bug-rate: we report both, and either can block a release.
 #
+# Two gates live here (Refs #6231):
+#   default (strict)  — every fixture must hit 100% must-have recall. This has
+#                       never been green across the full fixture set; it is the
+#                       aspiration, kept so the real gap stays visible.
+#   --ratchet         — each fixture must hold the recall recorded in
+#                       internal/quality/golden/baseline.json. Drops fail as
+#                       regressions; rises fail too, demanding the new figure be
+#                       recorded. This is the gate that can actually be enforced.
+#   --update-baseline — re-record baseline.json from this run.
+#
 # Flag:
 #   --runs N   Run each fixture N times and take the median entity_recall,
 #              relationship_recall, and forbidden_hits before deciding pass/fail.
@@ -33,9 +43,18 @@ cd "$ROOT"
 # Parse --runs flag; leave remaining positional args untouched.
 # ---------------------------------------------------------------------------
 RUNS=5
+MODE=strict
 args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --ratchet)
+      MODE=ratchet
+      shift
+      ;;
+    --update-baseline)
+      MODE=update
+      shift
+      ;;
     --runs)
       RUNS="${2:?--runs requires an integer value}"
       shift 2
@@ -196,11 +215,26 @@ PY
   trap - EXIT
   cleanup_tmpdir
 
-  if [[ $fixture_exit -ne 0 ]]; then
+  # In ratchet/update mode a per-fixture miss is not by itself fatal — the
+  # ratchet decides, by comparing against the recorded baseline. In strict mode
+  # any miss fails the run.
+  if [[ $fixture_exit -ne 0 && "$MODE" == "strict" ]]; then
     EXIT=2
   fi
 done
 
 echo
 echo "quality reports written to: $OUT"
+
+BASELINE="$ROOT/internal/quality/golden/baseline.json"
+GOLDEN="$ROOT/internal/quality/golden"
+case "$MODE" in
+  ratchet)
+    python3 "$ROOT/scripts/quality/ratchet.py" check "$OUT" "$GOLDEN" "$BASELINE" || EXIT=$?
+    ;;
+  update)
+    python3 "$ROOT/scripts/quality/ratchet.py" update "$OUT" "$GOLDEN" "$BASELINE" || EXIT=$?
+    ;;
+esac
+
 exit "$EXIT"

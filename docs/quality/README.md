@@ -119,3 +119,69 @@ path rather than a corpus-level trend.
 - CI wiring: `.github/workflows/quality.yml` + `scripts/verify2/run-quality.sh`
   make quality a per-PR gate; per-fixture JSON artifacts are uploaded on every run
 - All five fixtures achieve 100% must-have recall + 0 forbidden hits on `main`
+
+> **Both bullets above have since gone stale — they describe PR #607, not `main`.**
+> `quality.yml` is `workflow_dispatch` only (as is every workflow in this repo),
+> so quality is not a per-PR gate; and the fixture set grew from 5 to 20 without
+> the new fifteen ever reaching 100%. See "Where the gate actually stands" below.
+
+## Where the gate actually stands (Refs #6231)
+
+Measured on `72c7848ca` (2026-08-08) with `scripts/quality/run.sh --runs 1`:
+
+| | count |
+|---|---|
+| fixtures at 100% must-have recall | 6 |
+| fixtures below 100% | 12 |
+| fixtures with no `expected.json` (never graded) | 2 |
+| forbidden-relationship hits, anywhere | 0 |
+
+The twelve shortfalls are not twelve independent gaps. They cluster:
+
+1. **Background-job frameworks not extracted** (`csharp-hangfire-mini` 0/5,
+   `csharp-quartz-net-mini` 0/5, `java-quartz-mini` 2/7, `python-dramatiq-mini`
+   0/4, `python-rq-mini` 0/3) — job classes are not emitted as `SCOPE.Service`
+   and enqueue/schedule sites are not emitted as `SCOPE.Operation`. One
+   capability, 22 of the 26 missing must-have entities.
+2. **Controller/view class not emitted as a container**, so its `CONTAINS`
+   edges dangle (`csharp-aspnet-core-mini`, `kotlin-spring-mini`,
+   `python-django-mini`).
+3. **`CONTAINS` missing from a class that *was* extracted** (`scala-play-mini`,
+   remainder of `python-django-mini`).
+4. **`CALLS` into library/external symbols not recorded**
+   (`typescript-react-mini` `ext:useState`/`ext:fetch`/`ext:useNavigate`,
+   `elixir-phoenix-mini`, `python-django-mini`).
+5. **Swift `Package.swift` target dependencies not emitted as `DEPENDS_ON`**
+   (`swift-package-mini` 0/7).
+
+The two ungraded fixtures are not an indexing failure: `groovy-grails-mini` and
+`swift-swiftui-mini` have a `src/` tree but **no `expected.json`**, so
+`grafel quality` exits before it indexes anything. They were added as resolver
+test corpora (#1030, #1008) and landed under `golden/` without expectations.
+
+## The ratchet
+
+```bash
+scripts/quality/run.sh --runs 1 --ratchet          # enforce the recorded floor
+scripts/quality/run.sh --runs 1 --update-baseline  # re-record after a change
+```
+
+`internal/quality/golden/baseline.json` records per-fixture
+`entity_found/expected` and `relationship_found/expected`. `--ratchet` fails when:
+
+- a fixture's recall **drops** below the recorded figure (a regression);
+- a fixture's recall **rises** above it (unrecorded progress — record it so the
+  new, higher figure becomes the floor);
+- a fixture's declared expectations change without the baseline being re-recorded;
+- any forbidden-relationship hit appears;
+- a fixture directory has no baseline entry, or vice versa;
+- an `expected.json` appears or disappears without the baseline agreeing.
+
+That last set is also enforced cheaply, without indexing anything, by
+`go test ./internal/quality -run TestBaseline` — so a new fixture cannot be
+added and quietly escape the gate, and a red fixture cannot be made green by
+deleting its `expected.json`.
+
+Running the strict gate (no flags) still demands 100% on every fixture. It is
+kept, and kept failing, so the real gap stays visible rather than being defined
+away.

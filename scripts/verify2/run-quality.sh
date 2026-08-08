@@ -12,6 +12,12 @@
 # forbidden-relationship hit, will cause this script to exit 2 with a clear
 # per-fixture miss report on stderr.
 #
+# NOTE (Refs #6231): the default gate demands 100% must-have recall from every
+# fixture and has not been green since the fixture set grew past the original
+# five. Pass --ratchet (or QUALITY_MODE=ratchet) for the gate that is actually
+# enforceable: hold the per-fixture floor recorded in
+# internal/quality/golden/baseline.json.
+#
 # New fixtures are picked up automatically: scripts/quality/run.sh iterates
 # over internal/quality/golden/*/ — no explicit registration required.
 #
@@ -45,18 +51,26 @@ RUNS_ARG=""
 if [[ -n "${QUALITY_RUNS:-}" ]]; then
   RUNS_ARG="--runs $QUALITY_RUNS"
 fi
-# Allow the flag to be passed directly to this wrapper too.
+# Gate selection (Refs #6231): --ratchet / --update-baseline pass straight
+# through. Default is the strict 100%-recall gate, which does NOT pass on the
+# full fixture set today — callers wanting an enforceable gate want --ratchet.
+MODE_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --runs)    RUNS_ARG="--runs ${2:?--runs requires a value}"; shift 2 ;;
-    --runs=*)  RUNS_ARG="--runs ${1#--runs=}"; shift ;;
-    *)         shift ;;
+    --runs)             RUNS_ARG="--runs ${2:?--runs requires a value}"; shift 2 ;;
+    --runs=*)           RUNS_ARG="--runs ${1#--runs=}"; shift ;;
+    --ratchet)          MODE_ARG="--ratchet"; shift ;;
+    --update-baseline)  MODE_ARG="--update-baseline"; shift ;;
+    *)                  shift ;;
   esac
 done
+if [[ -z "$MODE_ARG" && -n "${QUALITY_MODE:-}" ]]; then
+  MODE_ARG="--${QUALITY_MODE}"
+fi
 
 echo "==> verify2/quality: running extraction-quality gate"
 echo "==> artifacts: $QUALITY_OUT_DIR"
 
 # Delegate — inherits exit code 0 (all fixtures pass) or 2 (regression).
 # shellcheck disable=SC2086
-exec "$REPO_ROOT/scripts/quality/run.sh" $RUNS_ARG
+exec "$REPO_ROOT/scripts/quality/run.sh" $RUNS_ARG $MODE_ARG
