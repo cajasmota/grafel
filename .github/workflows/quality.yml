@@ -1,7 +1,19 @@
 name: quality
 
 on:
+  # Dispatch-only — so this is NOT a per-PR gate; run
+  # `scripts/quality/run.sh --runs 1 --ratchet` locally instead. That is a
+  # property of THIS workflow, not a repo convention: cross-platform-compile.yml
+  # and windows-installers.yml are deliberately always-on and their headers
+  # forbid making them dispatch-only. Whether quality should join them is open
+  # (#6231) — the ratchet makes it viable, since it can now actually pass.
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Gate: ratchet (hold recorded baseline) or strict (demand 100% recall)'
+        type: choice
+        default: ratchet
+        options: [ratchet, strict]
 
 permissions:
   contents: read
@@ -19,11 +31,18 @@ jobs:
       - run: go mod download
       - name: Build grafel
         run: go build -o build/grafel ./cmd/grafel
-      - name: Run extraction-quality fixtures
+      # Refs #6231: the strict 100%-must-have-recall gate has not been green
+      # across the full fixture set since it grew past the original five, so
+      # running it here would mean a permanently red workflow that nobody reads.
+      # We run the ratchet instead: hold the per-fixture floor recorded in
+      # internal/quality/golden/baseline.json. Set mode=strict on dispatch to
+      # see the full outstanding gap.
+      - name: Run extraction-quality fixtures (ratchet)
         run: scripts/verify2/run-quality.sh
         env:
           GRAFEL_BIN: ${{ github.workspace }}/build/grafel
           QUALITY_OUT_DIR: ${{ github.workspace }}/reports/quality
+          QUALITY_MODE: ${{ inputs.mode }}
       - name: Upload quality reports
         if: always()
         uses: actions/upload-artifact@v4

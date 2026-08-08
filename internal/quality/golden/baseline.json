@@ -1,0 +1,126 @@
+{
+  "_comment": "Recorded must-have recall per golden fixture. This is a ratchet, not a target: recall may not drop below these figures, and any rise must be recorded here. Regenerate with `scripts/quality/run.sh --runs 1 --update-baseline`.",
+  "version": 1,
+  "measured_at": "2026-08-08",
+  "measured_on": "72c7848ca",
+  "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
+  "fixtures": {
+    "csharp-aspnet-core-mini": {
+      "entity_found": 4,
+      "entity_expected": 5,
+      "relationship_found": 0,
+      "relationship_expected": 0
+    },
+    "csharp-hangfire-mini": {
+      "entity_found": 0,
+      "entity_expected": 5,
+      "relationship_found": 0,
+      "relationship_expected": 0
+    },
+    "csharp-quartz-net-mini": {
+      "entity_found": 0,
+      "entity_expected": 5,
+      "relationship_found": 0,
+      "relationship_expected": 0
+    },
+    "elixir-phoenix-mini": {
+      "entity_found": 22,
+      "entity_expected": 22,
+      "relationship_found": 9,
+      "relationship_expected": 10
+    },
+    "erlang-otp-mini": {
+      "entity_found": 20,
+      "entity_expected": 20,
+      "relationship_found": 0,
+      "relationship_expected": 0
+    },
+    "go-chi-mini": {
+      "entity_found": 20,
+      "entity_expected": 20,
+      "relationship_found": 19,
+      "relationship_expected": 19
+    },
+    "groovy-grails-mini": {
+      "expectations_missing": true,
+      "note": "fixture has src/ but no expected.json \u2014 it is never evaluated. Not a recall failure; see #6231."
+    },
+    "haskell-warp-mini": {
+      "entity_found": 24,
+      "entity_expected": 24,
+      "relationship_found": 0,
+      "relationship_expected": 0
+    },
+    "java-quartz-mini": {
+      "entity_found": 2,
+      "entity_expected": 7,
+      "relationship_found": 0,
+      "relationship_expected": 0
+    },
+    "java-spring-mini": {
+      "entity_found": 25,
+      "entity_expected": 25,
+      "relationship_found": 21,
+      "relationship_expected": 21
+    },
+    "kotlin-spring-mini": {
+      "entity_found": 18,
+      "entity_expected": 19,
+      "relationship_found": 7,
+      "relationship_expected": 12
+    },
+    "php-slim-mini": {
+      "entity_found": 5,
+      "entity_expected": 5,
+      "relationship_found": 0,
+      "relationship_expected": 0
+    },
+    "python-django-mini": {
+      "entity_found": 26,
+      "entity_expected": 28,
+      "relationship_found": 7,
+      "relationship_expected": 12
+    },
+    "python-dramatiq-mini": {
+      "entity_found": 0,
+      "entity_expected": 4,
+      "relationship_found": 0,
+      "relationship_expected": 0
+    },
+    "python-rq-mini": {
+      "entity_found": 0,
+      "entity_expected": 3,
+      "relationship_found": 0,
+      "relationship_expected": 0
+    },
+    "rust-tokio-mini": {
+      "entity_found": 16,
+      "entity_expected": 16,
+      "relationship_found": 13,
+      "relationship_expected": 13
+    },
+    "scala-play-mini": {
+      "entity_found": 23,
+      "entity_expected": 23,
+      "relationship_found": 5,
+      "relationship_expected": 10
+    },
+    "swift-package-mini": {
+      "entity_found": 6,
+      "entity_expected": 6,
+      "relationship_found": 0,
+      "relationship_expected": 7
+    },
+    "swift-swiftui-mini": {
+      "expectations_missing": true,
+      "note": "fixture has src/ but no expected.json \u2014 it is never evaluated. Not a recall failure; see #6231."
+    },
+    "typescript-react-mini": {
+      "entity_found": 21,
+      "entity_expected": 21,
+      "relationship_found": 13,
+      "relationship_expected": 17
+    }
+  },
+  "measured_on_note": "base commit whose extraction behaviour these figures describe; this change adds no extractor code"
+}

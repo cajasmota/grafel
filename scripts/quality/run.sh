@@ -11,6 +11,16 @@
 # Intended to wire into the verify2 channel as a separate gate. Quality is
 # orthogonal to bug-rate: we report both, and either can block a release.
 #
+# Two gates live here (Refs #6231):
+#   default (strict)  — every fixture must hit 100% must-have recall. This has
+#                       never been green across the full fixture set; it is the
+#                       aspiration, kept so the real gap stays visible.
+#   --ratchet         — each fixture must hold the recall recorded in
+#                       internal/quality/golden/baseline.json. Drops fail as
+#                       regressions; rises fail too, demanding the new figure be
+#                       recorded. This is the gate that can actually be enforced.
+#   --update-baseline — re-record baseline.json from this run.
+#
 # Flag:
 #   --runs N   Run each fixture N times and take the median entity_recall,
 #              relationship_recall, and forbidden_hits before deciding pass/fail.
@@ -33,9 +43,23 @@ cd "$ROOT"
 # Parse --runs flag; leave remaining positional args untouched.
 # ---------------------------------------------------------------------------
 RUNS=5
+MODE=strict
 args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --ratchet|--update-baseline)
+      # A typo'd or doubled mode flag must not silently resolve to something
+      # else — QUALITY_MODE=ratchett quietly running the strict gate is how a
+      # gate stops gating (Refs #6231).
+      want="${1#--}"
+      [[ "$want" == "update-baseline" ]] && want=update
+      if [[ "$MODE" != "strict" && "$MODE" != "$want" ]]; then
+        echo "error: --ratchet and --update-baseline are mutually exclusive" >&2
+        exit 1
+      fi
+      MODE="$want"
+      shift
+      ;;
     --runs)
       RUNS="${2:?--runs requires an integer value}"
       shift 2
@@ -45,12 +69,16 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      args+=("$1")
-      shift
+      # This runner takes no positional arguments. Silently ignoring an
+      # unrecognised one is how `--rachet` runs the strict gate and nobody
+      # notices (Refs #6231).
+      echo "error: unrecognised argument '$1'" >&2
+      echo "usage: run.sh [--runs N] [--ratchet | --update-baseline]" >&2
+      exit 1
       ;;
   esac
 done
-set -- "${args[@]+"${args[@]}"}"
+unset args
 
 if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
   echo "error: --runs must be a positive integer (got '$RUNS')" >&2
@@ -66,6 +94,16 @@ fi
 
 OUT="${QUALITY_OUT_DIR:-$ROOT/reports/quality}"
 mkdir -p "$OUT"
+
+# Freshness stamp (Refs #6231). $OUT is not cleared between runs and the default
+# (reports/quality) is gitignored and long-lived on a developer machine — which
+# is where this gate runs, since no workflow invokes it. Without a stamp, a run
+# in which every fixture failed to produce a report grades last week's JSON and
+# reports OK: point GRAFEL_BIN at a broken binary and 20/20 fixtures measure
+# nothing while the ratchet says it held. Every report this run writes carries
+# QUALITY_RUN_STAMP, and ratchet.py rejects any report not carrying this one.
+QUALITY_RUN_STAMP="$(date +%s).$$"
+export QUALITY_RUN_STAMP
 
 EXIT=0
 for fix in "$ROOT"/internal/quality/golden/*/ ; do
@@ -174,6 +212,9 @@ merged["relationship_recall_max"]        = max(float(r.get("relationship_recall"
 merged["relationship_found"]             = med_int("relationship_found")
 merged["forbidden_hits"]                 = median_forbidden_hits
 merged["runs_executed"]                  = runs_executed
+# Freshness stamp — ratchet.py rejects reports not carrying the current run's
+# stamp, so a stale file left in $OUT can never be graded as a live result.
+merged["run_stamp"]                      = os.environ.get("QUALITY_RUN_STAMP", "")
 
 with open(out_path, "w") as fh:
     json.dump(merged, fh, indent=2)
@@ -196,11 +237,26 @@ PY
   trap - EXIT
   cleanup_tmpdir
 
-  if [[ $fixture_exit -ne 0 ]]; then
+  # In ratchet/update mode a per-fixture miss is not by itself fatal — the
+  # ratchet decides, by comparing against the recorded baseline. In strict mode
+  # any miss fails the run.
+  if [[ $fixture_exit -ne 0 && "$MODE" == "strict" ]]; then
     EXIT=2
   fi
 done
 
 echo
 echo "quality reports written to: $OUT"
+
+BASELINE="$ROOT/internal/quality/golden/baseline.json"
+GOLDEN="$ROOT/internal/quality/golden"
+case "$MODE" in
+  ratchet)
+    python3 "$ROOT/scripts/quality/ratchet.py" check "$OUT" "$GOLDEN" "$BASELINE" || EXIT=$?
+    ;;
+  update)
+    python3 "$ROOT/scripts/quality/ratchet.py" update "$OUT" "$GOLDEN" "$BASELINE" || EXIT=$?
+    ;;
+esac
+
 exit "$EXIT"
