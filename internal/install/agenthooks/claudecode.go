@@ -42,6 +42,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // claudeCodeHost is the Claude Code implementation of Host. Its pre-tool
@@ -290,35 +292,61 @@ func readSettings(path string) (map[string]any, error) {
 	return doc, nil
 }
 
+// newSettingsPerm is the mode a settings.json this package INVENTS is created
+// with. Files that already exist keep whatever mode their owner chose.
+//
+// 0644, not the 0600 mcpreg chose for the MCP host configs in #6240, and the
+// difference is deliberate. Those live under $HOME and carry an OAuth token;
+// this one is <repoRoot>/.claude/settings.json — project-scoped, routinely
+// committed, read by every collaborator's checkout — and it carries hook
+// commands, not credentials. Narrowing it would be a behaviour change with no
+// security argument behind it, and would look wrong next to every other file in
+// the repository.
+const newSettingsPerm os.FileMode = 0o644
+
+// nudgeScriptPerm is the mode the nudge script is ALWAYS written with.
+//
+// Not preserved from the destination, unlike settings.json, and that asymmetry
+// is the point. The script is a grafel-owned, grafel-generated artefact that
+// grafel rewrites on every install; its mode is grafel's to state. Preserving
+// the destination's mode here would let a stale non-executable file — an earlier
+// version, a stray chmod, a checkout without the exec bit — survive the rewrite,
+// and the hook would then be installed, referenced from settings.json, and
+// silently never able to run. Mode PRESERVATION is the right answer only for a
+// file whose mode its owner chose.
+const nudgeScriptPerm os.FileMode = 0o755
+
+// writeSettings replaces settings.json atomically, writing THROUGH a symlink at
+// path and preserving the destination's existing mode (#6246).
+//
+// The three lines this replaces — write `path + ".tmp"` at 0644, rename over the
+// destination — were a verbatim copy of the function #6240 fixed in
+// internal/install/mcpreg, down to the name, and carried both of that issue's
+// defects. The rename replaced the LINK INODE, so a settings.json symlinked at a
+// shared copy detached on the first install. And the destination inherited the
+// temp file's 0644, so a 0600 settings.json came back world-readable.
 func writeSettings(path string, doc map[string]any) error {
 	b, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
 	}
 	b = append(b, '\n')
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteThrough(path, b, newSettingsPerm)
 }
 
 // writeNudgeScript writes the advisory nudge script to disk (executable).
+//
+// Symlink-safe for the same reason writeSettings is, but NOT mode-preserving —
+// see nudgeScriptPerm. Resolving explicitly and calling atomicfile.WriteFile
+// rather than atomicfile.WriteThrough keeps that decision visible here instead
+// of hiding it in an argument that reads like a fallback.
 func writeNudgeScript(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(NudgeScript), 0o755); err != nil {
-		return err
+	target, err := atomicfile.ResolveWriteTarget(path)
+	if err != nil {
+		return fmt.Errorf("agenthooks: %s: %w", filepath.Base(path), err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteFile(target, []byte(NudgeScript), nudgeScriptPerm)
 }

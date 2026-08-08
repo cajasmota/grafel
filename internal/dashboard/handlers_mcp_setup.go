@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -173,13 +175,43 @@ func readMCPConfig(path string) (map[string]any, error) {
 	return out, nil
 }
 
+// newHostConfigPerm is the mode an MCP host config the WIZARD invents is created
+// with. Configs that already exist keep whatever mode their owner chose.
+//
+// 0600 — these are the same files internal/install/mcpreg writes, and #6240
+// settled the question there: ~/.claude.json holds an OAuth token and the full
+// per-project history, and the Cursor/Windsurf configs at minimum enumerate
+// every project on the machine. There is no reason for another local account to
+// read a file grafel invented. Two writers aimed at one file that disagreed
+// about its create mode would make the pair incoherent — whichever ran first
+// would decide.
+const newHostConfigPerm os.FileMode = 0o600
+
 // writeMCPConfig atomically writes cfg to path, creating parent directories.
 // The original file is backed up to <path>.bak before overwriting.
+//
+// The write goes THROUGH a symlink at path and reproduces the destination's
+// existing mode (#6246). The three lines this replaces — write `path + ".tmp"`
+// at 0644, rename over the destination — were an independent second
+// implementation of the write #6240 fixed in internal/install/mcpreg, aimed at
+// the SAME files, so that fix was bypassed entirely by anyone who used the
+// wizard: a user could have the symlink-safe writer and the destructive one both
+// live against one config. The rename replaced the LINK INODE (detaching a
+// config symlinked into a dotfiles repo) and the destination inherited the temp
+// file's 0644 (widening a 0600 file holding a token).
+//
+// The `<path>.bak` sidecar is NOT redundant with mcpreg's `<path>.grafel.bak`:
+// different name, different producer, and nothing in the tree consults or sweeps
+// this one — it is the only rollback material this path leaves behind, and also
+// permanent litter next to the user's config. Left in place; consolidating the
+// two backup schemes is a separate change from fixing the write.
 func writeMCPConfig(path string, cfg map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	// Backup original.
+	// Backup original. os.Stat, not Lstat: for a symlinked config we want to
+	// copy the CONTENT the link points at, which is what the write is about to
+	// replace.
 	if _, err := os.Stat(path); err == nil {
 		if err2 := copyFile(path, path+".bak"); err2 != nil {
 			return fmt.Errorf("backup: %w", err2)
@@ -189,26 +221,46 @@ func writeMCPConfig(path string, cfg map[string]any) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteThrough(path, b, newHostConfigPerm)
 }
 
+// copyFile copies src to dst, reproducing src's mode.
+//
+// The mode is load-bearing and was the same widening defect one line above the
+// one #6246 names: os.Create made dst 0666&^umask, so backing up a 0600
+// ~/.claude.json published an verbatim copy of an OAuth token to every local
+// account — under a name (`.bak`) nothing ever sweeps.
+//
+// dst is removed before being recreated so that a read-only (0444) backup from a
+// previous run can be replaced; O_TRUNC on it would fail with EACCES, which
+// would newly break the second wizard install against a read-only config.
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
-	out, err := os.Create(dst)
+
+	perm := newHostConfigPerm
+	if fi, serr := in.Stat(); serr == nil {
+		perm = fi.Mode().Perm()
+	}
+
+	_ = os.Remove(dst)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
+	if _, err = io.Copy(out, in); err != nil {
+		return err
+	}
+	if err = out.Close(); err != nil {
+		return err
+	}
+	// Not OpenFile's perm argument: that is umask-masked, and does not apply to
+	// a file that already exists.
+	return os.Chmod(dst, perm)
 }
 
 // mcpServersMap extracts or creates the mcpServers sub-object from a config
