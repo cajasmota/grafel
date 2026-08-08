@@ -128,7 +128,12 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 			// and pressuring the RSS admission budget). The worktree subsystem
 			// still tracks such paths as ephemeral children with aggressive
 			// TTLs. The indexed-primary set is the boot-time ReposToWatch list.
-			SkipEnqueue: makeWorktreeEnqueueGate(cfg.ReposToWatch),
+			//
+			// #6175: installWorktreeEnqueueGate also hands this same predicate
+			// to the stale-format migration guard, so a repo dropped here is
+			// reported as "not accepted by the indexer" instead of being
+			// re-admitted every half hour and counted as migrating forever.
+			SkipEnqueue: installWorktreeEnqueueGate(cfg.ReposToWatch),
 			// S3 incremental file-level reindex (issue #2153). When nil
 			// the scheduler falls through to full reindex on every tick.
 			Incremental: cfg.SchedulerIncremental,

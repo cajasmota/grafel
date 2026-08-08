@@ -119,6 +119,23 @@ type File struct {
 	// ReindexRequired, which stays true alongside it (the graph really is still
 	// stale); this says "and nobody is coming to fix it automatically".
 	ReindexMigrationFailed bool `json:"reindex_migration_failed,omitempty"`
+	// ReindexNotAccepted is true when this repo is stale-format AND the engine's
+	// scheduler declines to accept an enqueue for it at all (#6175) — today the
+	// only such case is a linked git worktree of an already-watched primary,
+	// which sched.EnqueueRefCommit drops by design (#3680). It is the THIRD
+	// migration state, and it is not a fault: the repo will never be migrated
+	// and there is nothing to do about it, so a reader must present it as
+	// neither in-progress nor failed.
+	//
+	// It is recomputed from the live gate on every heartbeat exactly like
+	// ReindexRequired, never latched: a worktree whose primary is unregistered
+	// stops being declined and rejoins the migration on the next tick.
+	//
+	// Mutually exclusive with ReindexMigrationFailed (the guard reports Failed
+	// in preference, since that one IS actionable). Like ReindexMigrationFailed
+	// it sits alongside ReindexRequired, which stays true — the graph really is
+	// still on the old format.
+	ReindexNotAccepted bool `json:"reindex_not_accepted,omitempty"`
 
 	// LastRebuildFailure records the most recent FAILED `grafel rebuild` for
 	// this repo — e.g. the per-repo watchdog SIGKILL (#5143's
