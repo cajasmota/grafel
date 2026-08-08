@@ -87,6 +87,48 @@ var nestClassDecorators = map[string]bool{
 	"WebSocketGateway": true,
 }
 
+// nestClassSubtypes overrides the angularClassDecorators subtype for the
+// decorators Angular and NestJS SHARE, when the class has been resolved to
+// NestJS (#6213).
+//
+// angularClassDecorators is keyed by decorator name alone, which is enough for
+// every decorator only one of the two frameworks defines: the NestJS-only ones
+// already carry framework-neutral subtypes (controller/resolver/gateway) because
+// #3970 needed them to fold and dedup against the NestJS custom extractor's
+// same-named entity. @Injectable is the one decorator both frameworks spell the
+// same way, so the name alone cannot decide it and it kept the Angular subtype
+// for every framework — including a NestJS provider in a tree with no Angular in
+// it. frameworkForClass (#4503) already resolves that by import origin; this
+// table is what makes the SUBTYPE use the answer.
+//
+// Why "service" and not a new name. It is the value the NestJS custom extractor
+// already emits for the same class (nestjs.go, @Injectable → SCOPE.Component
+// subtype="service"), and those two records share an entity id — id is
+// f(org, project, source_file, kind, name), so SCOPE.Component/UsersService from
+// either pass is one id. Two subtypes on one id means the graph's answer is
+// decided by the same-id assembly dedup order. It is also the member
+// engine.ClassLikeComponentSubtypes already carries, so the class folds
+// recognise the provider as a class representation. Both properties come from
+// agreeing with what exists rather than from adding a string anywhere.
+//
+// Angular is untouched: an @Injectable resolved to Angular still stamps
+// angular_service, which is what the Angular coverage cells record.
+var nestClassSubtypes = map[string]string{
+	"Injectable": "service",
+}
+
+// classSubtypeFor returns the SCOPE.Component subtype for a recognised class
+// decorator, given the framework the class was resolved to. Unknown decorators
+// return "" so callers can reject them exactly as the bare map lookup did.
+func classSubtypeFor(decorator, framework string) string {
+	if framework == "nestjs" {
+		if sub, ok := nestClassSubtypes[decorator]; ok {
+			return sub
+		}
+	}
+	return angularClassDecorators[decorator]
+}
+
 // frameworkForDecorator returns the framework label for a recognised class
 // decorator from the decorator name alone: "nestjs" for the NestJS-only DI
 // decorators, else "angular". This is the name-only fallback used when no
@@ -252,8 +294,7 @@ func (x *extractor) decoratorIdent(dec ts.Node) (string, ts.Node) {
 // was Angular-decorated and fully handled (the generic class path should be
 // skipped). The decorator name + call node come from angularDecoratorFor.
 func (x *extractor) handleAngularClass(n ts.Node, decorator string, call ts.Node) bool {
-	subtype, ok := angularClassDecorators[decorator]
-	if !ok {
+	if _, ok := angularClassDecorators[decorator]; !ok {
 		return false
 	}
 	nameNode := n.ChildByFieldName("name")
@@ -262,7 +303,10 @@ func (x *extractor) handleAngularClass(n ts.Node, decorator string, call ts.Node
 		return false
 	}
 
+	// The framework decides the subtype for the decorators the two frameworks
+	// share (#6213), so it has to be resolved before the stamp, not after it.
 	framework := x.frameworkForClass(decorator)
+	subtype := classSubtypeFor(decorator, framework)
 	props := map[string]string{
 		"framework":          framework,
 		"angular_decorator":  decorator,
