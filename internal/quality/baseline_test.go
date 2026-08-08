@@ -3,16 +3,36 @@ package quality
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 // baselineDoc mirrors internal/quality/golden/baseline.json. Only the fields
 // this test gates are modelled; unknown keys are ignored.
 type baselineDoc struct {
-	Version    int                        `json:"version"`
-	Regenerate string                     `json:"regenerate"`
-	Fixtures   map[string]baselineFixture `json:"fixtures"`
+	Version          int                        `json:"version"`
+	Regenerate       string                     `json:"regenerate"`
+	MeasuredOn       string                     `json:"measured_on"`
+	MeasuredOnNote   string                     `json:"measured_on_note"`
+	Fixtures         map[string]baselineFixture `json:"fixtures"`
+	KnownRegressions []knownRegression          `json:"known_regressions"`
+}
+
+// knownRegression annotates one recorded figure that is LOWER than it used to
+// be. The ratchet cannot distinguish "this floor was always this low" from
+// "this floor was lowered deliberately and is tracked" — both are just numbers
+// in fixtures{} — so the drop is spelled out here alongside the issue that
+// owns it. scripts/quality/ratchet.py carries this list across
+// --update-baseline and prints it on every check.
+type knownRegression struct {
+	Fixture string `json:"fixture"`
+	Metric  string `json:"metric"`
+	Was     int    `json:"was"`
+	Now     int    `json:"now"`
+	Issue   string `json:"issue"`
+	Note    string `json:"note"`
 }
 
 type baselineFixture struct {
@@ -183,5 +203,163 @@ func TestBaselineRecordedCountsAreSane(t *testing.T) {
 			t.Errorf("fixture %q declares no must-have entities or relationships — "+
 				"it cannot fail, so it is not a gate", name)
 		}
+	}
+}
+
+// TestBaselineMeasuredOnIsReachable guards the one field whose entire job is to
+// name the commit these figures describe.
+//
+// `git_sha()` in scripts/quality/ratchet.py records HEAD at measurement time.
+// Run --update-baseline on an unpushed commit, then amend or rebase it, and the
+// recorded sha is a dangling sibling: it still resolves in the author's object
+// store and resolves nowhere else. That happened on this very file — it recorded
+// 01705c852, a pre-amend sibling that was never an ancestor of anything pushed.
+//
+// The check is ancestry, not existence, because existence is exactly what is
+// misleading locally. On a shallow clone (actions/checkout defaults to
+// fetch-depth 1) history is absent and ancestry is unanswerable, so the test
+// degrades to a shape check rather than skipping outright. That is the honest
+// coverage: --update-baseline only ever runs on a developer machine — no
+// workflow invokes it, per the comment in scripts/quality/run.sh — which is
+// where a full clone is, and where the mistake gets made.
+func TestBaselineMeasuredOnIsReachable(t *testing.T) {
+	doc := loadBaseline(t)
+	sha := strings.TrimSpace(doc.MeasuredOn)
+	if sha == "" {
+		t.Fatal("baseline.json: measured_on is empty — the figures name no commit")
+	}
+	if doc.MeasuredOnNote == "" {
+		t.Error("baseline.json: measured_on_note is empty — measured_on is a BASE " +
+			"commit, which is not self-evident and has been misread before")
+	}
+	for _, r := range sha {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			t.Fatalf("baseline.json: measured_on %q is not a hex sha", sha)
+		}
+	}
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	if out, err := exec.Command("git", "rev-parse", "--is-shallow-repository").Output(); err == nil &&
+		strings.TrimSpace(string(out)) == "true" {
+		t.Skip("shallow clone: history absent, ancestry unanswerable; shape checked above")
+	}
+	if err := exec.Command("git", "cat-file", "-e", sha+"^{commit}").Run(); err != nil {
+		t.Fatalf("baseline.json: measured_on %q is not a commit in this repository", sha)
+	}
+	if err := exec.Command("git", "merge-base", "--is-ancestor", sha, "HEAD").Run(); err != nil {
+		t.Fatalf("baseline.json: measured_on %q is not an ancestor of HEAD — it is most "+
+			"likely a pre-amend or pre-rebase sibling that resolves only in this working "+
+			"copy; re-record it as the base commit the figures were measured against", sha)
+	}
+}
+
+// metricField maps a known_regressions metric name onto the recorded figure it
+// annotates. Only the two "found" metrics can regress; the "expected" figures
+// are properties of expected.json, not of extraction.
+func metricField(b baselineFixture, metric string) (int, bool) {
+	switch metric {
+	case "entity_found":
+		return b.EntityFound, true
+	case "relationship_found":
+		return b.RelFound, true
+	}
+	return 0, false
+}
+
+// TestKnownRegressionsAgreeWithRecordedFloor is what makes the annotation
+// self-clearing rather than a comment that rots.
+//
+// A known_regressions entry claims "this figure used to be Was and is now Now".
+// If the recorded floor no longer equals Now, one of two things happened: the
+// defect was fixed and the entry is stale, or the figure moved again and the
+// entry understates the damage. Either way the entry is lying and must be
+// re-stated or deleted. Without this check the block would be prose — it could
+// disagree with the numbers three lines above it and nothing would notice.
+func TestKnownRegressionsAgreeWithRecordedFloor(t *testing.T) {
+	doc := loadBaseline(t)
+	for _, kr := range doc.KnownRegressions {
+		base, ok := doc.Fixtures[kr.Fixture]
+		if !ok {
+			t.Errorf("known_regressions names fixture %q, which has no baseline entry", kr.Fixture)
+			continue
+		}
+		got, known := metricField(base, kr.Metric)
+		if !known {
+			t.Errorf("known_regressions[%s]: metric %q is not one of entity_found, relationship_found",
+				kr.Fixture, kr.Metric)
+			continue
+		}
+		if kr.Was <= kr.Now {
+			t.Errorf("known_regressions[%s.%s]: was=%d now=%d is not a regression",
+				kr.Fixture, kr.Metric, kr.Was, kr.Now)
+		}
+		if got != kr.Now {
+			t.Errorf("known_regressions[%s.%s]: records now=%d but the baseline floor is %d — "+
+				"the figure moved; re-state the entry, or delete it if the regression is fixed",
+				kr.Fixture, kr.Metric, kr.Now, got)
+		}
+		if kr.Issue == "" {
+			t.Errorf("known_regressions[%s.%s]: no issue — an untracked regression is "+
+				"indistinguishable from an accepted one", kr.Fixture, kr.Metric)
+		}
+		if kr.Note == "" {
+			t.Errorf("known_regressions[%s.%s]: no note — the next reader needs the mechanism, "+
+				"not just the delta", kr.Fixture, kr.Metric)
+		}
+	}
+}
+
+// mustAnnotate is the closed set of recorded figures that are known to sit
+// BELOW a level extraction previously reached, and therefore may not appear in
+// baseline.json as a bare number.
+//
+// It is deliberately in Go rather than derived from baseline.json, for the same
+// reason ungradedFixtures above is: otherwise the annotation and the thing it
+// annotates can be removed in one edit — delete the known_regressions entry and
+// the drop becomes an ordinary-looking floor, with the ratchet still green and
+// every test in this file still passing. Adding or removing a pair here is the
+// reviewable act.
+//
+// Recorded 2026-08-08 while enabling the custom extractors for the golden
+// benchmark (#6260). Both entries are kind-collision artefacts of that pass,
+// not lost extraction; see the notes in baseline.json.
+var mustAnnotate = []struct{ fixture, metric string }{
+	{"java-spring-mini", "relationship_found"},
+	{"python-django-mini", "entity_found"},
+	{"python-django-mini", "relationship_found"},
+}
+
+// TestEveryKnownRegressionIsAnnotated fails if a tracked drop loses its
+// annotation, so the known_regressions block cannot be quietly emptied.
+func TestEveryKnownRegressionIsAnnotated(t *testing.T) {
+	doc := loadBaseline(t)
+	have := map[string]bool{}
+	for _, kr := range doc.KnownRegressions {
+		have[kr.Fixture+"\x00"+kr.Metric] = true
+	}
+	for _, want := range mustAnnotate {
+		if !have[want.fixture+"\x00"+want.metric] {
+			t.Errorf("baseline.json records %s.%s below a level extraction once reached, "+
+				"but known_regressions does not explain it — restore the entry, or drop "+
+				"the pair from mustAnnotate if the figure has recovered",
+				want.fixture, want.metric)
+		}
+	}
+}
+
+// TestKnownRegressionsHaveNoDuplicates keeps two entries from claiming
+// different histories for the same figure, which would make the block
+// unreadable and let a later drop hide behind an earlier one.
+func TestKnownRegressionsHaveNoDuplicates(t *testing.T) {
+	doc := loadBaseline(t)
+	seen := map[string]bool{}
+	for _, kr := range doc.KnownRegressions {
+		key := kr.Fixture + "\x00" + kr.Metric
+		if seen[key] {
+			t.Errorf("known_regressions has two entries for %s.%s", kr.Fixture, kr.Metric)
+		}
+		seen[key] = true
 	}
 }

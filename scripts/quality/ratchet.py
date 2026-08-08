@@ -22,6 +22,15 @@ exports QUALITY_RUN_STAMP and stamps every report with it; a report carrying a
 different stamp, or none, is treated as absent. Without this a run in which the
 indexer produced nothing at all grades the previous run's JSON and passes.
 
+Known regressions: a recorded floor is a bare number, so the gate cannot tell
+one that was always this low from one that was lowered deliberately because a
+change traded it for a larger gain elsewhere. The `known_regressions` list in
+the baseline records those trades — fixture, metric, the figure before and
+after, and the owning issue — and is carried across --update-baseline, restated
+when the figure moves, and dropped once the figure recovers. It is printed on
+every check, including passing ones. internal/quality/baseline_test.go holds
+the matching Go-side set so the annotation cannot be deleted without review.
+
 Known limitation: the ratchet compares must-have *counts*, not identities. An
 extractor that stops emitting must-have A while starting to emit must-have B
 holds the count and passes. Every report already carries `missing_entities` /
@@ -105,9 +114,71 @@ def git_sha():
         return "unknown"
 
 
-def build(golden_dir, reports_dir):
+def load_baseline(baseline_path):
+    """The baseline currently on disk, or {} if it is absent or unreadable."""
+    try:
+        with open(baseline_path) as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def carry_known_regressions(prior, fixtures):
+    """Carry the known_regressions annotations across a re-record.
+
+    The ratchet stores each floor as a bare number, so it cannot tell a figure
+    that was always this low from one that was lowered deliberately and is
+    tracked. known_regressions is where that difference is written down, and it
+    has to survive --update-baseline or the drop it explains turns back into an
+    ordinary-looking floor on the next run.
+
+    Two rules keep the block from rotting into stale prose:
+      * an entry whose figure has climbed back to its recorded high is DROPPED
+        — the regression is over and nothing is left to explain;
+      * an entry whose figure moved is restated with the observed value, so the
+        block can never disagree with the numbers it annotates. `was` (the
+        historic high) is preserved, because that is the fact the bare floor
+        loses.
+    """
+    out = []
+    for entry in prior.get("known_regressions", []) or []:
+        name, metric = entry.get("fixture"), entry.get("metric")
+        base = fixtures.get(name)
+        if not isinstance(base, dict) or metric not in base:
+            # Fixture deleted, un-gated, or the entry names a metric this
+            # baseline does not record: nothing left to annotate.
+            continue
+        observed_now, was = base[metric], int(entry.get("was", 0))
+        if observed_now >= was:
+            continue
+        out.append({**entry, "now": observed_now})
+    return out
+
+
+def format_known_regressions(entries):
+    """Render the known_regressions block for the human-facing gate output."""
+    if not entries:
+        return []
+    lines = [
+        "",
+        f"  {len(entries)} recorded floor(s) sit BELOW a level extraction once reached:",
+    ]
+    for e in entries:
+        lines.append(
+            f"    - {e.get('fixture')}.{e.get('metric')}: "
+            f"{e.get('was')} -> {e.get('now')}  [{e.get('issue') or 'UNTRACKED'}]"
+        )
+    lines.append(
+        "  These are tracked regressions, not the natural floor. See "
+        "known_regressions in the baseline."
+    )
+    return lines
+
+
+def build(golden_dir, reports_dir, baseline_path):
     """Build a fresh baseline document from the reports on disk."""
     stamp = run_stamp()
+    prior = load_baseline(baseline_path)
     fixtures = {}
     for name in fixture_names(golden_dir):
         if not has_expectations(golden_dir, name):
@@ -124,7 +195,7 @@ def build(golden_dir, reports_dir):
                 f"{reports_dir} — cannot record a baseline from an incomplete run"
             )
         fixtures[name] = observed(rep)
-    return {
+    doc = {
         "_comment": (
             "Recorded must-have recall per golden fixture. This is a ratchet, "
             "not a target: recall may not drop below these figures, and any "
@@ -136,7 +207,16 @@ def build(golden_dir, reports_dir):
         "measured_on": git_sha(),
         "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
         "fixtures": fixtures,
+        "known_regressions": carry_known_regressions(prior, fixtures),
     }
+    # measured_on_note explains what measured_on is (a BASE commit, not the
+    # commit this file lands in). It is prose the generator cannot re-derive, so
+    # it is carried rather than rebuilt. This rebuild-from-a-fixed-key-set is
+    # what silently deleted the note the first time; carrying it is the fix.
+    note = prior.get("measured_on_note")
+    if note:
+        doc["measured_on_note"] = note
+    return doc
 
 
 def check(golden_dir, reports_dir, baseline_path):
@@ -149,6 +229,7 @@ def check(golden_dir, reports_dir, baseline_path):
         return 1
 
     recorded = baseline.get("fixtures", {})
+    known_regressions = baseline.get("known_regressions", []) or []
     present = fixture_names(golden_dir)
     failures = []
 
@@ -222,6 +303,8 @@ def check(golden_dir, reports_dir, baseline_path):
         print("\n==> quality ratchet FAILED\n", file=sys.stderr)
         for f in failures:
             print(f"  - {f}", file=sys.stderr)
+        for line in format_known_regressions(known_regressions):
+            print(line, file=sys.stderr)
         print(
             f"\n  baseline: {baseline_path}\n"
             f"  regenerate: {baseline.get('regenerate', 'scripts/quality/run.sh --runs 1 --update-baseline')}\n",
@@ -240,6 +323,11 @@ def check(golden_dir, reports_dir, baseline_path):
         f"==> quality ratchet OK — {gated} gated fixtures held their baseline "
         f"({perfect} at 100% must-have recall)"
     )
+    # Printed on SUCCESS too, and deliberately so: a tracked regression that is
+    # only visible when the gate goes red is invisible exactly when someone is
+    # in a position to act on it.
+    for line in format_known_regressions(known_regressions):
+        print(line)
     return 0
 
 
@@ -249,7 +337,7 @@ def main(argv):
         return 1
     mode, reports_dir, golden_dir, baseline_path = argv[1:5]
     if mode == "update":
-        doc = build(golden_dir, reports_dir)
+        doc = build(golden_dir, reports_dir, baseline_path)
         with open(baseline_path, "w") as fh:
             json.dump(doc, fh, indent=2)
             fh.write("\n")

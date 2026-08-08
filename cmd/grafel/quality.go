@@ -15,13 +15,45 @@ import (
 	"github.com/cajasmota/grafel/internal/quality"
 )
 
+// qualityIndexOptions is the IndexOption list `grafel quality <fixture-dir>`
+// indexes a golden fixture with. It is a named function, not an inline
+// argument list, so the Go tests that assert absolute per-fixture recall
+// index through exactly the same configuration the CLI uses.
+//
+//   - WithExportJSON(true): runQuality reads the result back with
+//     loadDocument(graph.json), and ADR-0016 made graph.fb the only default
+//     output.
+//   - WithCustomExtractors(true): without it the internal/custom/**
+//     framework extractors never run. extractors.Extract dispatches via an
+//     exact-key Get(file.Language) lookup ("python"), which cannot match the
+//     prefixed keys those extractors register under ("python_rq",
+//     "python_dramatiq", …); only RunCustomExtractors selects them, through
+//     CustomExtractorsFor(file.Language), and its sole default-path call
+//     site is the gate in classifyAndReadWithProgress. The golden set has
+//     five background-job fixtures (csharp-hangfire, csharp-quartz-net,
+//     java-quartz, python-dramatiq, python-rq) whose must-have entities come
+//     wholly or mostly from those extractors, so with the gate off the
+//     benchmark measured a surface the fixtures were written against but the
+//     run never exercised.
+//
+// This changes what the BENCHMARK measures, not what users get: the
+// production default is still off, per inProcCustomExtractors in
+// inproc_custom.go. Refs #6260.
+func qualityIndexOptions() []IndexOption {
+	return []IndexOption{
+		WithExportJSON(true),
+		WithCustomExtractors(true),
+	}
+}
+
 // runQuality handles `grafel quality <fixture-dir>`.
 //
 // Flow:
 //  1. Load <fixture-dir>/expected.json
 //  2. Run the production indexer over <fixture-dir>/src/ into a tempdir
-//     (ADR-0016: graph.fb is primary; WithExportJSON ensures graph.json
-//     is also written so loadDocument and --keep-graph continue to work)
+//     (ADR-0016: graph.fb is primary; qualityIndexOptions' WithExportJSON
+//     ensures graph.json is also written so loadDocument and --keep-graph
+//     continue to work)
 //  3. Load the resulting graph.json
 //  4. Diff with internal/quality.Evaluate, emit a human + (optional) JSON report
 //
@@ -86,7 +118,7 @@ func runQuality(argv []string) error {
 	// readability when humans inspect graph.json by hand. We pass an
 	// explicit out path so nothing is written under the fixture.
 	if err := Index(srcDir, graphPath, fix.Name, nil /*skip*/, false /*pretty*/, false, /*jsonStats*/
-		WithExportJSON(true)); err != nil {
+		qualityIndexOptions()...); err != nil {
 		return fmt.Errorf("index fixture src: %w", err)
 	}
 	if *keepGraph {

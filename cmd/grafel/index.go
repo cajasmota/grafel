@@ -366,6 +366,14 @@ type Indexer struct {
 	// Pass --export-json to also emit graph.json (useful for FB validation).
 	exportJSON bool
 
+	// customExtractors, when true, dispatches the internal/custom/**
+	// framework extractors on the in-process extract path for THIS Indexer
+	// only — the same body the GRAFEL_INPROC_CUSTOM_EXTRACTORS env gate
+	// controls process-wide (see inproc_custom.go and the call site in
+	// classifyAndReadWithProgress). Either switch enables it; neither
+	// disables the other. Set by WithCustomExtractors.
+	customExtractors bool
+
 	// printSkipped, when true, emits one [skip] line to stderr for each
 	// directory that was skipped at walk-time (issue #805). Shows which
 	// rule caused the skip (.gitignore, hardcoded, .grafelignore).
@@ -481,6 +489,23 @@ func WithExportFB(enabled bool) IndexOption {
 // Default is false (FB-only to save ~7 MB per repo).
 func WithExportJSON(export bool) IndexOption {
 	return func(i *Indexer) { i.exportJSON = export }
+}
+
+// WithCustomExtractors dispatches the internal/custom/** framework
+// extractors on the in-process extract path for this Index call only.
+//
+// It is the per-call equivalent of setting GRAFEL_INPROC_CUSTOM_EXTRACTORS;
+// the call site in classifyAndReadWithProgress ORs the two, so an in-process
+// caller can opt in without mutating process environment shared with other
+// tests running in the same binary.
+//
+// The default stays OFF. inProcCustomExtractors in inproc_custom.go gives the
+// qualitative rationale; the cost figures are at the gate itself, index.go:3944-3945
+// (+17.5% wall, +18.2% TotalAlloc, never measured at corpus scale). The one
+// caller that opts in is `grafel quality` over a golden fixture — see
+// qualityIndexOptions in quality.go.
+func WithCustomExtractors(enabled bool) IndexOption {
+	return func(i *Indexer) { i.customExtractors = enabled }
 }
 
 // WithPrintSkipped enables the --print-skipped flag. When true each
@@ -3928,7 +3953,7 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				// the guard a file that FAILED to parse would still produce
 				// custom entities. See
 				// TestInProcCustomExtractorsNilTreeGuardIsLoadBearing.
-				if inProcCustomExtractors() && file.TSTree != nil {
+				if (i.customExtractors || inProcCustomExtractors()) && file.TSTree != nil {
 					customEnts, customErrs := extractors.RunCustomExtractors(ctx, file)
 					if len(customErrs) > 0 && verbose() {
 						for _, ce := range customErrs {
