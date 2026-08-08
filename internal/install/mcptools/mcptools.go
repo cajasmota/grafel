@@ -41,9 +41,13 @@
 //     store only the selected ids, which made an opt-out indistinguishable
 //     from "never offered" — see SaveLastChoice.
 //
-//     A tool in NEITHER list was not part of the decision (not installed when
-//     it was made), so (B) decides for it: nothing is stranded off by having
-//     been absent.
+//     A tool in NEITHER list was not part of the LAST decision, so (B) decides
+//     for it and nothing is stranded off by having been absent. Two different
+//     things put a tool there: it was not installed when that decision was
+//     made, or it was declined earlier and then uninstalled before some later
+//     save — SaveLastChoice rewrites the whole document rather than merging, so
+//     a decline is forgotten once the tool stops being detected. Reinstalling
+//     it then arrives at (B) again.
 package mcptools
 
 import (
@@ -161,9 +165,13 @@ func DetectWithPrevious(prev map[string]bool) []Tool {
 //
 // Since #6191 the (C) map is genuinely tri-state — present-true, present-false,
 // absent — so the `def = sel` branch below can now set def either way for a
-// tool the recorded choice names. The nil bound is still what keeps B2 from
-// re-checking a box the user cleared in the residual case the map says nothing
-// about: a tool that was never offered when the choice was made.
+// tool the recorded choice names, and for those tools (C) alone settles it.
+//
+// The nil bound governs what is left: a tool the map says NOTHING about, which
+// means it was not part of the last decision at all. No box was cleared for it,
+// so there is nothing to protect; the bound's job there is simply that a
+// recorded choice, whatever it named, retires B2 for the whole run and leaves
+// (B) to decide. B2 is a repair for a first run, not a standing input.
 //
 // So: a recorded choice — any recorded choice, including "none" — owns the
 // default, and B2 applies only while none exists. It repairs a fresh accident
@@ -358,18 +366,38 @@ func ReadLastChoice() (map[string]bool, error) {
 // later wizard run defaults to them (C). The IDs are sorted for a stable file.
 // An empty slice is persisted faithfully (the user chose "none").
 //
-// It ALSO records the opposite half of the decision (#6191): every tool that
-// was on offer — detected on this machine right now, which is the same set the
-// wizard rendered — and is NOT in ids goes into `deselected`. Without it an
-// unchecked tool is merely absent from the document, ReadLastChoice can only
-// ever yield true, and detectWith's override can force a box on but never off:
-// unchecking Claude Code then had no effect at all, because ~/.claude.json is
-// rewritten constantly so the (B) `recent` term re-checked it every run.
+// It ALSO records the opposite half of the decision (#6191): every tool that is
+// detected on this machine AT THE MOMENT OF THE SAVE and is not in ids goes
+// into `deselected`. Without it an unchecked tool is merely absent from the
+// document, ReadLastChoice can only ever yield true, and detectWith's override
+// can force a box on but never off: unchecking Claude Code then had no effect
+// at all, because ~/.claude.json is rewritten constantly so the (B) `recent`
+// term re-checked it every run.
 //
-// Only the OFFERED tools are recorded, never the whole adapter registry. A tool
+// "Detected at the moment of the save" is deliberately NOT described as "what
+// the wizard rendered", because that is true of neither caller:
+//
+//   - internal/dashboard.registerWizardMCP saves AFTER it has registered the
+//     chosen tools, so detection runs later than the screen the user answered.
+//     Benign but worth naming: registration is gated on the selection, so a
+//     tool it configures is in ids and cannot land in `deselected`, and
+//     registering can only make a tool MORE detected, never less.
+//
+//   - internal/cli's `--mcp-tools` path renders nothing at all. Recording
+//     declines there is a decision, not an accident: the flag documents itself
+//     as skipping the interactive picker, so it IS the picker's answer, and a
+//     detected tool the user left out of an explicit list is one they declined.
+//     It already minted a durable cross-surface "on" for the tools it named;
+//     recording the matching "off" is what makes that record honest rather than
+//     one-directional. Pinned by TestWizard_MCPToolsFlagRecordsDeclines.
+//
+// Only DETECTED tools are recorded, never the whole adapter registry. A tool
 // the user does not have installed was not part of the decision, so it stays
 // out of both lists and (B) decides for it if it later appears — the opt-out
 // records what was declined, not what happened to be absent.
+//
+// The document is rewritten whole, not merged: a decline survives only while
+// the tool stays detected. See the (C) note in the package comment.
 func SaveLastChoice(ids []string) error {
 	path, err := LastChoicePath()
 	if err != nil {

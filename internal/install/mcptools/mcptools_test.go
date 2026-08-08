@@ -590,6 +590,57 @@ func TestOptOut_DoesNotStrandAnUnofferedTool(t *testing.T) {
 	}
 }
 
+// TestOptOut_RewriteForgetsADeclineForAnUninstalledTool documents a KNOWN
+// limit of the whole-document rewrite, so the package comment's claim about it
+// is checked rather than asserted. SaveLastChoice records the tools detected at
+// the moment of the save; it does not merge with what the file already held. So
+// a decline survives only while its tool stays detected:
+//
+//	decline cursor -> uninstall cursor -> any later save -> reinstall cursor
+//
+// leaves cursor back on the (B) default. Whether a merge would be better is a
+// separate call; this pins what the code actually does today.
+func TestOptOut_RewriteForgetsADeclineForAnUninstalledTool(t *testing.T) {
+	setupHome(t)
+	now := nowFunc()
+	writeConfig(t, mcpreg.ClaudeCode, false, now)
+	cursorPath := writeConfig(t, mcpreg.Cursor, false, now)
+
+	// 1. Cursor is declined, and the decline sticks.
+	if err := SaveLastChoice([]string{"claude"}); err != nil {
+		t.Fatalf("save (decline cursor): %v", err)
+	}
+	if c := find(t, DetectWithPrevious(nil), "cursor"); c.DefaultSelected {
+		t.Fatal("precondition: the decline must hold while cursor is installed")
+	}
+
+	// 2. Cursor is uninstalled — config AND its parent dir go away.
+	if err := os.RemoveAll(filepath.Dir(cursorPath)); err != nil {
+		t.Fatal(err)
+	}
+	if mcpAdapterDetected(t, "cursor") {
+		t.Fatal("precondition: cursor must be undetected after removal")
+	}
+
+	// 3. Any later save rewrites the document without it.
+	if err := SaveLastChoice([]string{"claude"}); err != nil {
+		t.Fatalf("save (cursor gone): %v", err)
+	}
+	set, err := ReadLastChoice()
+	if err != nil {
+		t.Fatalf("ReadLastChoice: %v", err)
+	}
+	if _, ok := set["cursor"]; ok {
+		t.Errorf("the rewrite drops a tool that is no longer detected; got %v", set)
+	}
+
+	// 4. Reinstalled, cursor is back on the (B) default.
+	writeConfig(t, mcpreg.Cursor, false, now)
+	if c := find(t, DetectWithPrevious(nil), "cursor"); !c.DefaultSelected {
+		t.Errorf("after the rewrite forgot the decline, (B) decides again and checks a fresh config; got %+v", c)
+	}
+}
+
 // mcpAdapterDetected reports whether the given tool ID is currently detected.
 func mcpAdapterDetected(t *testing.T, id string) bool {
 	t.Helper()
