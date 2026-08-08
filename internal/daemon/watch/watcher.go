@@ -15,6 +15,12 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// fdPreChargedCap bounds Watcher.fdPreCharged. Its entries are paths charged
+// from a directory listing that fsnotify may still report a Create for; most
+// never will, so without a ceiling the set would grow with every new directory
+// a repo ever gains. See subscribeDirRecursive.
+const fdPreChargedCap = 8192
+
 // EventSink is the per-repo callback invoked once a repo settles
 // (i.e. no new fs events for the debounce window). When bulk is true
 // the caller received 50+ events within a 1-second window and should
@@ -60,6 +66,13 @@ type Config struct {
 	// fdCost overrides the platform descriptor cost model. Unexported: it
 	// exists so in-package tests can exercise the macOS (kqueue) arithmetic on
 	// every platform. The zero value selects defaultCostModel().
+	//
+	// It is only legal together with a non-zero FDBudget. A cost model is a
+	// property of the LEDGER, not of a Watcher (#6268 (D)): FDBudget == 0
+	// selects the process-wide sharedFDBudget, and letting one Watcher charge
+	// that shared ledger with kqueue arithmetic while another charges it with
+	// inotify arithmetic makes `used` meaningless. NewWatcherConfig rejects the
+	// combination instead of silently picking one.
 	fdCost fdCostModel
 }
 
@@ -127,11 +140,11 @@ type Watcher struct {
 	// observes per-directory churn at the event boundary and drops events
 	// under directories it has quarantined. nil disables the feature.
 	quarantine *QuarantineTracker
-	// fdb is the descriptor ledger (#6180) and fdCost the platform arithmetic
-	// it charges with. fdb is shared process-wide unless Config.FDBudget
-	// overrides it, because the kernel's ceiling is per process.
+	// fdb is the descriptor ledger (#6180). It is shared process-wide unless
+	// Config.FDBudget overrides it, because the kernel's ceiling is per
+	// process. The platform arithmetic lives on the ledger (fdb.model()), so
+	// every consumer of a given ledger charges it identically (#6268 (D)).
 	fdb       *fdBudget
-	fdCost    fdCostModel
 	mu        sync.Mutex
 	fs        *fsnotify.Watcher
 	repos     map[string]*repoState // key: absolute repo path
@@ -142,10 +155,14 @@ type Watcher struct {
 	// fdUnwatched names repos refused because the budget was full. These are
 	// NOT in repos: they receive no events, and this is how they say so.
 	fdUnwatched map[string]struct{}
-	stopOnce    sync.Once
-	stopCh      chan struct{}
-	stoppedCh   chan struct{}
-	restartCh   chan struct{} // signals heartbeat loop to recreate fsnotify
+	// fdPreCharged holds entry paths that subscribeDirRecursive already charged
+	// from its own listing and for which fsnotify may STILL deliver a Create.
+	// See the note on subscribeDirRecursive; chargeEventOpen consumes it.
+	fdPreCharged map[string]struct{}
+	stopOnce     sync.Once
+	stopCh       chan struct{}
+	stoppedCh    chan struct{}
+	restartCh    chan struct{} // signals heartbeat loop to recreate fsnotify
 	// counters — accessed atomically outside mu where latency matters
 	totalEvents   uint64
 	droppedSkips  uint64
@@ -186,6 +203,15 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 	if sink == nil {
 		return nil, errors.New("watch: sink is required")
 	}
+	// Descriptor budget (#6180) + cost-model ownership (#6268 (D)). A zero
+	// Config.FDBudget shares the process-wide ledger, whose arithmetic is fixed
+	// by build tag; any explicit budget gets a private ledger that may carry an
+	// injected model. Validated before fsnotify.NewWatcher so a rejected config
+	// does not leak a watcher handle.
+	if cfg.FDBudget == 0 && cfg.fdCost != (fdCostModel{}) {
+		return nil, errors.New("watch: Config.fdCost requires a non-zero Config.FDBudget — " +
+			"the cost model belongs to the ledger, and FDBudget 0 selects the process-wide one")
+	}
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "watch")
 	}
@@ -199,33 +225,27 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		extraSkip[d] = struct{}{}
 	}
 
-	// Descriptor budget (#6180). A zero Config.FDBudget shares the
-	// process-wide ledger; any explicit value gets a private one.
 	fdb := sharedFDBudget()
 	if cfg.FDBudget != 0 {
-		fdb = newFDBudget(cfg.FDBudget)
-	}
-	fdCost := cfg.fdCost
-	if fdCost == (fdCostModel{}) {
-		fdCost = defaultCostModel()
+		fdb = newFDBudgetCost(cfg.FDBudget, cfg.fdCost)
 	}
 
 	w := &Watcher{
-		logger:      logger,
-		cfg:         cfg,
-		sink:        sink,
-		extraSkip:   extraSkip,
-		clk:         realClock{},
-		fdb:         fdb,
-		fdCost:      fdCost,
-		fs:          fw,
-		repos:       map[string]*repoState{},
-		dirToRepo:   map[string]string{},
-		fdReserved:  map[string]int{},
-		fdUnwatched: map[string]struct{}{},
-		stopCh:      make(chan struct{}),
-		stoppedCh:   make(chan struct{}),
-		restartCh:   make(chan struct{}, 1),
+		logger:       logger,
+		cfg:          cfg,
+		sink:         sink,
+		extraSkip:    extraSkip,
+		clk:          realClock{},
+		fdb:          fdb,
+		fs:           fw,
+		repos:        map[string]*repoState{},
+		dirToRepo:    map[string]string{},
+		fdReserved:   map[string]int{},
+		fdUnwatched:  map[string]struct{}{},
+		fdPreCharged: map[string]struct{}{},
+		stopCh:       make(chan struct{}),
+		stoppedCh:    make(chan struct{}),
+		restartCh:    make(chan struct{}, 1),
 	}
 	// Adaptive index-trash quarantine (#5394). The tracker observes
 	// per-directory churn at the event boundary and quarantines dirs that
@@ -338,17 +358,28 @@ func (w *Watcher) AddRepo(repoPath string) (int, error) {
 //  2. Per-instance ExcludeDirs (extraSkip)
 //  3. .gitignore + .grafel/watch.json (ShouldSkipDirGitignore)
 //
-// Descriptor budget (#6180): the walk is also the estimator. Every directory
-// costs fdCost.perDir descriptors and every file inside a directory we
-// subscribed costs fdCost.perFile — which is exactly what fsnotify's kqueue
-// backend opens (addWatch on the dir, then watchDirectoryFiles on its
-// contents). Charging incrementally as the existing walk streams entries
-// avoids a second pass over the tree and, unlike a pre-flight estimate, can
-// never open more descriptors than the budget allows before it notices.
+// Descriptor budget (#6180): the walk is also the estimator. Each directory is
+// charged, at the moment it is subscribed, for what that one w.fs.Add opens —
+// the directory itself plus its file entries (chargeDir). Charging as the walk
+// reaches each directory, rather than from a pre-flight estimate, means the
+// budget can never be overshot by more than one directory's worth before it
+// notices.
+//
+// Pruned directories still cost (#6268 (C)). fsnotify v1.10.1
+// backend_kqueue.go:582-616 (watchDirectoryFiles) opens one descriptor for
+// EVERY entry of a directory grafel Add()ed — subdirectories included, via
+// internalWatch at :672-681. That happens when the PARENT is Add()ed, i.e.
+// before this walk reaches the child and decides to prune it. Pruning saves a
+// directory's entries; it never saves the directory's own descriptor. The
+// entries are genuinely free, because watchDirectoryFiles does not recurse:
+// internalWatch passes info.dirFlags|NOTE_DELETE|NOTE_RENAME for a subdirectory
+// (:677) and the watchDir predicate at :419 requires NOTE_WRITE, which only
+// Add()/AddWith supplies (noteAllEvents, :345).
 func (w *Watcher) subscribeRepo(abs string) (int, error) {
 	added := 0
 	dirCap := walk.WatchDirCap()
 	capWarned := false
+	cost := w.fdb.model()
 
 	reserved := 0
 	budgetHit := false
@@ -357,22 +388,32 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 	// failed-to-add directory cost fsnotify nothing.
 	subscribed := map[string]struct{}{}
 
+	// prune charges the descriptor fsnotify already opened for a directory we
+	// are about to skip, then returns filepath.SkipDir. Nothing is charged for
+	// a directory whose parent we did not subscribe: watchDirectoryFiles only
+	// ran for parents grafel Add()ed, so no descriptor exists for the child.
+	prune := func(p string) error {
+		if cost.perEntry() <= 0 {
+			return filepath.SkipDir
+		}
+		if _, parentSubscribed := subscribed[filepath.Dir(p)]; !parentSubscribed {
+			return filepath.SkipDir
+		}
+		if !w.fdb.reserve(cost.perEntry()) {
+			budgetHit = true
+			return errFDBudget
+		}
+		reserved += cost.perEntry()
+		return filepath.SkipDir
+	}
+
 	walkErr := filepath.WalkDir(abs, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if !d.IsDir() {
-			if w.fdCost.perFile <= 0 {
-				return nil
-			}
-			if _, ok := subscribed[filepath.Dir(p)]; !ok {
-				return nil
-			}
-			if !w.fdb.reserve(w.fdCost.perFile) {
-				budgetHit = true
-				return errFDBudget
-			}
-			reserved += w.fdCost.perFile
+			// Files are charged with their directory, from the listing taken
+			// just before w.fs.Add — see chargeDir.
 			return nil
 		}
 		// TCC guard (#5296): never subscribe to protected macOS media folders
@@ -380,7 +421,7 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 		// prompt. Checked even at the root as defence-in-depth.
 		if protected, reason := walk.IsProtectedPath(p); protected {
 			w.logger.Warn("watcher: skip protected", "path", p, "reason", reason)
-			return filepath.SkipDir
+			return prune(p)
 		}
 		// Watch-dir cap (#5296): the live failure subscribed 875 dirs on a
 		// non-code tree. Once we exceed the cap, WARN once and stop walking
@@ -391,13 +432,13 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 				w.logger.Warn("watcher: watch-dir cap exceeded — may not be a real code repo; skipping remaining subtrees",
 					"repo", abs, "cap", dirCap)
 			}
-			return filepath.SkipDir
+			return prune(p)
 		}
 		if p != abs {
 			base := filepath.Base(p)
 			// Layer 1 + 2: hard-coded + per-instance excludes.
 			if w.shouldSkipDir(base) {
-				return filepath.SkipDir
+				return prune(p)
 			}
 			// Layer 3: .gitignore + per-repo watch.json.
 			relPath, relErr := filepath.Rel(abs, p)
@@ -405,20 +446,21 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 				relPath = filepath.ToSlash(relPath)
 				if skip, reason := ShouldSkipDirGitignore(abs, p, relPath); skip {
 					w.logger.Info("watcher: skip", "path", p, "reason", reason)
-					return filepath.SkipDir
+					return prune(p)
 				}
 			}
 		}
-		if !w.fdb.reserve(w.fdCost.perDir) {
+		n := chargeDir(p, cost)
+		if !w.fdb.reserve(n) {
 			budgetHit = true
 			return errFDBudget
 		}
 		if err := w.fs.Add(p); err != nil {
-			w.fdb.release(w.fdCost.perDir)
+			w.fdb.release(n)
 			w.logger.Warn("watcher: add failed", "path", p, "err", err)
 			return nil
 		}
-		reserved += w.fdCost.perDir
+		reserved += n
 		subscribed[p] = struct{}{}
 		w.mu.Lock()
 		w.dirToRepo[p] = abs
@@ -437,10 +479,21 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 		for p := range subscribed {
 			delete(w.dirToRepo, p)
 		}
+		// Hand back the event-time charges as well as the walk's own (#6268).
+		// AddRepo drops w.mu before calling this, so the loop goroutine runs
+		// concurrently with the walk: as soon as the first directory is
+		// published into dirToRepo above, a Create under it reaches
+		// chargeEventOpen and lands in fdReserved[abs]. Those descriptors are
+		// closed by the fs.Remove unwind above — remove(name, true) also drops
+		// every internal watch inside the directory
+		// (backend_kqueue.go:325-333) — so releasing only `reserved` would
+		// leave them charged forever on a refused subscription, which is
+		// exactly the poisoning this branch exists to prevent.
+		unwind := reserved + w.fdReserved[abs]
 		delete(w.fdReserved, abs)
 		w.fdUnwatched[abs] = struct{}{}
 		w.mu.Unlock()
-		w.fdb.release(reserved)
+		w.fdb.release(unwind)
 
 		used, limit := w.fdb.snapshot()
 		w.logger.Warn("watcher: NOT WATCHING repo — file-descriptor budget exhausted; "+
@@ -455,10 +508,74 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 	}
 
 	w.mu.Lock()
-	w.fdReserved[abs] = reserved
+	// += and not =: chargeEventOpen may have attributed event-time descriptors
+	// to this repo while the walk was still running (see the refusal branch
+	// above for why the walk and the loop goroutine overlap). Assigning here
+	// would discard them from the per-repo tally while leaving them on the
+	// global ledger, so RemoveRepo and Stop would hand back less than the repo
+	// holds — failure mode (B), on the AddRepo path.
+	w.fdReserved[abs] += reserved
 	delete(w.fdUnwatched, abs)
 	w.mu.Unlock()
 	return added, walkErr
+}
+
+// chargeDir returns the descriptor cost of taking an fsnotify watch on the
+// directory dir: the directory's own descriptor plus one per NON-directory
+// entry it holds.
+//
+// Subdirectory entries are deliberately excluded. Their descriptor is opened
+// once — by whichever of the parent's watchDirectoryFiles or grafel's own
+// Add() gets there first, since addWatch short-circuits on alreadyWatching
+// (backend_kqueue.go:358) — and it is charged where that subdirectory is
+// itself handled: as perDir when grafel subscribes it, or by prune when grafel
+// skips it. Counting it here as well would charge one descriptor twice.
+//
+// WHEN the listing is taken relative to the caller's w.fs.Add matters, and the
+// two callers choose differently on purpose. Add runs watchDirectoryFiles
+// synchronously (backend_kqueue.go:430), and every entry it opens it also
+// markSeen (:612), which stops sendCreateIfNew from ever reporting that entry
+// as a Create (:657).
+//
+//   - Listing BEFORE the Add under-counts: a file that appears in between is
+//     opened and silently absorbed by watchDirectoryFiles, and no later event
+//     will charge it. subscribeRepo has no choice: it is the path that can
+//     still REFUSE a subscription, and a refusal is only meaningful before the
+//     descriptors exist — reserve must precede Add, so the count reserve needs
+//     must precede it too. That it is also the path least likely to race a
+//     writer is a consolation, not the reason; no test pins it, because
+//     nothing in the suite races a writer against an initial subscribe.
+//   - Listing AFTER the Add over-counts unless duplicates are suppressed: the
+//     listing sees files that watchDirectoryFiles did not open, fsnotify opens
+//     them later and DOES report Create for them, and both charges land.
+//     subscribeDirRecursive takes this option together with the record
+//     parameter, because it runs while a writer is by definition active.
+func chargeDir(dir string, cost fdCostModel) int {
+	return chargeDirRecording(dir, cost, nil)
+}
+
+// chargeDirRecording is chargeDir, additionally recording every entry path it
+// charged into record (when record is non-nil) so a duplicate Create for the
+// same path can be recognised. See subscribeDirRecursive.
+func chargeDirRecording(dir string, cost fdCostModel, record map[string]struct{}) int {
+	n := cost.perDir
+	if cost.perEntry() <= 0 {
+		return n
+	}
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return n
+	}
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		n += cost.perEntry()
+		if record != nil {
+			record[filepath.Join(dir, e.Name())] = struct{}{}
+		}
+	}
+	return n
 }
 
 // RemoveRepo unsubscribes every directory associated with a repo. Any
@@ -659,6 +776,10 @@ func (w *Watcher) heartbeat() {
 				w.fdb.release(n)
 				delete(w.fdReserved, repo)
 			}
+			// Those descriptors are gone too, so the pending pre-charge
+			// markers that stood for them are stale; a Create seen after the
+			// restart is a fresh open and must be charged (#6268).
+			w.fdPreCharged = map[string]struct{}{}
 			repos := make([]string, 0, len(w.repos))
 			for p := range w.repos {
 				repos = append(repos, p)
@@ -754,6 +875,55 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 	if ev.Op == fsnotify.Chmod {
 		return
 	}
+
+	// -----------------------------------------------------------------------
+	// Descriptor accounting (#6268 (A) and (B)) runs BEFORE every filter below,
+	// because the filters decide whether to REINDEX, not whether the kernel
+	// opened or closed a descriptor. fsnotify v1.10.1's kqueue backend has
+	// already done both by the time the event arrives:
+	//
+	//   Create — readEvents -> dirChange -> sendCreateIfNew -> internalWatch
+	//     (backend_kqueue.go:505-506, 622-670) opens one descriptor for the new
+	//     entry of a watched directory, file or subdirectory alike, and only
+	//     emits Create when the path was not seenBefore (:657).
+	//   Remove/Rename — readEvents calls w.remove, which closes the descriptor
+	//     (:500-503, :320) and tells nobody. unwatchFiles is false there, so
+	//     exactly one descriptor is closed even for a directory.
+	//
+	// The Create correspondence is one-to-one in the common case but NOT
+	// guaranteed, and it can fail in the over-count direction:
+	// sendCreateIfNew sends the event first (:658) and only then calls
+	// internalWatch (:664). If internalWatch fails — addWatch's os.Lstat
+	// returning ENOENT for a build temp file already unlinked, or EACCES
+	// (:360-362) — no descriptor is opened, markSeen (:668) is never reached,
+	// and grafel has still been told Create and charged one. Nothing releases
+	// it, because the path is unwatched and will never produce a Remove; and
+	// because markSeen was skipped, the same path recreated later charges
+	// again. That is an unbounded upward drift on churny build output, and it
+	// is a known residual of this change, not something it fixes.
+	// watchDirectoryFiles tolerates exactly these errors when IT lists a
+	// directory (:603-609); sendCreateIfNew has no such handling.
+	//
+	// In the other direction, readEvents discards dirChange's error (:506), so
+	// one such failure abandons the rest of that listing and the remaining new
+	// entries are neither reported nor charged — an under-count.
+	//
+	// Charging after the filters would leave precisely the churn-heavy paths
+	// (build output, *.log) unaccounted, which is the shape of the original
+	// defect. createdDir is computed here and reused below so the Create path
+	// stats the path once.
+	// -----------------------------------------------------------------------
+	createdDir := false
+	if ev.Op.Has(fsnotify.Create) {
+		if fi, err := os.Stat(ev.Name); err == nil && fi.IsDir() {
+			createdDir = true
+		}
+		w.chargeEventOpen(ev.Name)
+	}
+	if ev.Op.Has(fsnotify.Remove) || ev.Op.Has(fsnotify.Rename) {
+		w.releaseEventClose(ev.Name)
+	}
+
 	// Cheap static filter first (no I/O, no repo lookup): SkipDirs /
 	// SkipExts / generated-file globs.
 	if ShouldSkipPath(ev.Name) {
@@ -790,17 +960,89 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 		return
 	}
 
-	// Track newly-created directories so events under them surface.
-	if ev.Op.Has(fsnotify.Create) {
-		if fi, err := os.Stat(ev.Name); err == nil && fi.IsDir() {
-			base := filepath.Base(ev.Name)
-			if !w.shouldSkipDir(base) {
-				w.subscribeDirRecursive(ev.Name)
-			}
-		}
+	// Track newly-created directories so events under them surface. The
+	// directory's own descriptor was charged above; subscribeDirRecursive
+	// charges only what its Add() additionally opens.
+	if createdDir && !w.shouldSkipDir(filepath.Base(ev.Name)) {
+		w.subscribeDirRecursive(ev.Name)
 	}
 
 	w.recordAndArm(repo)
+}
+
+// chargeEventOpen records the descriptor fsnotify opened for a path it has just
+// reported Create for. The open has already happened inside fsnotify
+// (sendCreateIfNew -> internalWatch), so this cannot be a reserve: there is
+// nothing left to refuse. It is charged unconditionally, which lets the ledger
+// go over limit — that overdraft is the true state of the process and is what
+// makes the NEXT subscription refuse instead of walking on toward EMFILE.
+//
+// The charge is attributed to the owning repo so RemoveRepo hands it back. An
+// event under no watched directory is not charged: fsnotify only opens
+// descriptors for entries of directories grafel Add()ed, so a path with no
+// owning repo has no descriptor of ours behind it.
+func (w *Watcher) chargeEventOpen(path string) {
+	n := w.fdb.model().perEntry()
+	if n <= 0 {
+		return
+	}
+	w.mu.Lock()
+	if _, pre := w.fdPreCharged[path]; pre {
+		// Already paid for by subscribeDirRecursive's listing. fsnotify still
+		// reported Create because it opened the descriptor between the register
+		// and the watchDirectoryFiles inside one Add — see the note there.
+		delete(w.fdPreCharged, path)
+		w.mu.Unlock()
+		return
+	}
+	repo := w.repoForLocked(path)
+	if repo == "" {
+		w.mu.Unlock()
+		return
+	}
+	w.fdReserved[repo] += n
+	w.mu.Unlock()
+	w.fdb.charge(n)
+}
+
+// releaseEventClose returns the descriptor fsnotify closed when it saw a
+// Rename or Remove for path (backend_kqueue.go:500-503 -> remove -> :320).
+// Without this the charge outlives the descriptor and a long-lived daemon in a
+// churny repo overstates usage monotonically, refusing repos it could afford.
+//
+// A watched directory is also unmapped here: remove() closed its descriptor, so
+// leaving it in dirToRepo would keep routing events for a path fsnotify no
+// longer watches. The dirToRepo lookup doubles as the file/directory
+// discriminator, since the path is typically gone by now and cannot be stat'd.
+func (w *Watcher) releaseEventClose(path string) {
+	cost := w.fdb.model()
+	w.mu.Lock()
+	// A pre-charge marker for this path is spent: fsnotify has closed the
+	// descriptor it stood for, so a later re-creation must be charged afresh
+	// rather than suppressed as a duplicate.
+	delete(w.fdPreCharged, path)
+	repo, isWatchedDir := w.dirToRepo[path]
+	n := cost.perEntry()
+	if isWatchedDir {
+		n = cost.perDir
+		delete(w.dirToRepo, path)
+	}
+	if n <= 0 {
+		w.mu.Unlock()
+		return
+	}
+	if !isWatchedDir {
+		repo = w.repoForLocked(path)
+	}
+	if repo == "" {
+		w.mu.Unlock()
+		return
+	}
+	if w.fdReserved[repo] -= n; w.fdReserved[repo] < 0 {
+		w.fdReserved[repo] = 0
+	}
+	w.mu.Unlock()
+	w.fdb.release(n)
 }
 
 // repoFor finds which registered repo a path belongs to. We walk up
@@ -809,6 +1051,11 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 func (w *Watcher) repoFor(p string) string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	return w.repoForLocked(p)
+}
+
+// repoForLocked is repoFor for callers that already hold w.mu.
+func (w *Watcher) repoForLocked(p string) string {
 	dir := filepath.Dir(p)
 	for {
 		if repo, ok := w.dirToRepo[dir]; ok {
@@ -825,52 +1072,125 @@ func (w *Watcher) repoFor(p string) string {
 // subscribeDirRecursive adds a newly-created directory (and its
 // contents) to the fsnotify subscription. Used so a `git checkout`
 // that creates new subtrees does not require a daemon restart.
+//
+// Descriptor accounting (#6268). Whatever handleEvent's chargeEventOpen already
+// put on the ledger for root is deducted below: on kqueue that is the one
+// descriptor sendCreateIfNew opened for it (backend_kqueue.go:656-670), and
+// charging again would double-count it. grafel's Add() on root finds it alreadyWatching (:358) and opens
+// nothing new — what the Add() does buy is watchDirectoryFiles on root's
+// contents (:418-433, reached because Add supplies NOTE_WRITE while
+// internalWatch did not), and those entries ARE charged below. Deeper
+// subdirectories are charged perDir for the same reason the initial walk
+// charges them: each is opened once, by whichever of the two paths reaches it
+// first, and grafel Add()s each exactly once.
 func (w *Watcher) subscribeDirRecursive(root string) {
 	repo := w.repoFor(filepath.Join(root, "_"))
 	if repo == "" {
 		return
 	}
+	cost := w.fdb.model()
 	reserved := 0
 	budgetHit := false
 	subscribed := map[string]struct{}{}
+
+	// Entries charged from a listing here may ALSO arrive as Create events, and
+	// would then be charged twice for one descriptor. fsnotify's Add registers
+	// the directory's new flags — now including NOTE_WRITE — at
+	// backend_kqueue.go:406 and only then runs watchDirectoryFiles at :430; in
+	// between, its readEvents goroutine can already see a NOTE_WRITE for that
+	// directory, run dirChange, and open + report an entry that this listing has
+	// just counted. Recording those paths lets chargeEventOpen recognise and
+	// drop the duplicate.
+	//
+	// The set is MERGED into the watcher's, not assigned over it. The loop
+	// goroutine is FIFO across every repo, so a Create for an unrelated
+	// directory can be queued ahead of the ones pending here and trigger a
+	// second subscribeDirRecursive; replacing the set would discard the still
+	// pending paths and let their Creates be charged a second time — the very
+	// over-count this mechanism exists to stop. Entries drain in
+	// chargeEventOpen when their Create arrives and in releaseEventClose when
+	// the path is deleted, so a path that is removed and recreated is charged
+	// again, correctly. Entries that drain by neither route — the common case,
+	// files watchDirectoryFiles absorbed silently and will never report — are
+	// bounded by fdPreChargedCap: past it the set is reset and the oldest
+	// pending paths lose their protection, trading an unbounded map for a
+	// bounded chance of one duplicate charge.
+	//
+	// handleEvent runs on the single loop goroutine, which is also the
+	// goroutine inside this function, so a Create emitted during the Add below
+	// is only processed after this returns — after the path has been recorded.
+	preCharged := map[string]struct{}{}
+
+	// prune charges the descriptor fsnotify already opened for a directory we
+	// are about to skip — see the long note on subscribeRepo's prune.
+	prune := func(p string) error {
+		if cost.perEntry() <= 0 {
+			return filepath.SkipDir
+		}
+		if _, parentSubscribed := subscribed[filepath.Dir(p)]; !parentSubscribed {
+			return filepath.SkipDir
+		}
+		if !w.fdb.reserve(cost.perEntry()) {
+			budgetHit = true
+			return errFDBudget
+		}
+		reserved += cost.perEntry()
+		return filepath.SkipDir
+	}
+
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if !d.IsDir() {
-			// Same per-file descriptor cost as the initial subscription
-			// (#6180): a directory created by `git checkout` brings its files
-			// with it, and kqueue opens one descriptor for each.
-			if w.fdCost.perFile <= 0 {
-				return nil
-			}
-			if _, ok := subscribed[filepath.Dir(p)]; !ok {
-				return nil
-			}
-			if !w.fdb.reserve(w.fdCost.perFile) {
-				budgetHit = true
-				return errFDBudget
-			}
-			reserved += w.fdCost.perFile
+			// Charged with the directory, from the listing chargeDirRecording
+			// takes just after w.fs.Add.
 			return nil
 		}
 		// TCC guard (#5296): never recurse into protected media folders/bundles.
 		if protected, _ := walk.IsProtectedPath(p); protected {
-			return filepath.SkipDir
+			return prune(p)
 		}
 		base := filepath.Base(p)
 		if p != root && w.shouldSkipDir(base) {
-			return filepath.SkipDir
-		}
-		if !w.fdb.reserve(w.fdCost.perDir) {
-			budgetHit = true
-			return errFDBudget
+			return prune(p)
 		}
 		if err := w.fs.Add(p); err != nil {
-			w.fdb.release(w.fdCost.perDir)
 			return nil
 		}
-		reserved += w.fdCost.perDir
+		// Listed AFTER the Add here, the opposite of subscribeRepo, and paired
+		// with the preCharged set. Post-Add the listing is a superset of what
+		// watchDirectoryFiles opened: it also holds entries that appeared just
+		// after it, which fsnotify has not opened yet but will, reporting a
+		// Create that preCharged then suppresses. Charging them now is early,
+		// never double. Listing before the Add would instead miss exactly the
+		// entries watchDirectoryFiles absorbed silently (markSeen at
+		// backend_kqueue.go:612 stops sendCreateIfNew from ever reporting them,
+		// :657), and nothing would come along later to charge them.
+		charge := chargeDirRecording(p, cost, preCharged)
+		if p == root {
+			// Deduct exactly what handleEvent's chargeEventOpen already put on
+			// the ledger for this path — perEntry(), because that is what it
+			// charges — rather than perDir. The two are equal under the kqueue
+			// model and are NOT equal under a per-watch model, where
+			// chargeEventOpen charges nothing (a new directory costs that
+			// backend no descriptor until grafel takes a watch on it) and
+			// deducting perDir would make a newly created directory free.
+			charge -= cost.perEntry()
+		}
+		if charge > 0 {
+			// The Add above has already happened, so these descriptors exist
+			// whether or not they fit; charge records them rather than
+			// pretending otherwise. Walking stops here so the next directory
+			// does not open more on top of an already-exhausted budget.
+			if !w.fdb.reserve(charge) {
+				w.fdb.charge(charge)
+				budgetHit = true
+				reserved += charge
+				return errFDBudget
+			}
+			reserved += charge
+		}
 		subscribed[p] = struct{}{}
 		w.mu.Lock()
 		w.dirToRepo[p] = repo
@@ -884,6 +1204,13 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 	// so RemoveRepo returns it, and say loudly when we ran out.
 	w.mu.Lock()
 	w.fdReserved[repo] += reserved
+	if len(w.fdPreCharged)+len(preCharged) > fdPreChargedCap {
+		w.fdPreCharged = preCharged
+	} else {
+		for p := range preCharged {
+			w.fdPreCharged[p] = struct{}{}
+		}
+	}
 	w.mu.Unlock()
 	if budgetHit {
 		used, limit := w.fdb.snapshot()

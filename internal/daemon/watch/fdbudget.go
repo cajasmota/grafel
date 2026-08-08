@@ -46,6 +46,15 @@ func (m fdCostModel) cost(dirs, files int) int {
 	return dirs*m.perDir + files*m.perFile
 }
 
+// perEntry is the cost of ONE entry of a directory the backend has taken a
+// watch on, whether that entry is a file or a subdirectory. On kqueue the two
+// are indistinguishable: watchDirectoryFiles (backend_kqueue.go:582-616) calls
+// internalWatch for every entry, and internalWatch opens a descriptor for a
+// subdirectory (:677) exactly as it does for a file (:681). On a per-watch
+// backend the term is zero, which is why the pruned-directory and event-time
+// charges built on it vanish there rather than being GOOS-gated by hand.
+func (m fdCostModel) perEntry() int { return m.perFile }
+
 // kqueueCostModel is the macOS/BSD reality: one descriptor for the directory
 // plus one for each file inside it.
 var kqueueCostModel = fdCostModel{perDir: 1, perFile: 1}
@@ -69,18 +78,41 @@ func isFDBudgetError(err error) bool { return errors.Is(err, errFDBudget) }
 // fdBudget is a ledger of descriptors committed to fs watches. A limit <= 0
 // disables accounting entirely (reservations always succeed), which is what
 // non-macOS platforms get.
+//
+// The cost model lives HERE, not on the consumer (#6268 (D)). The ledger is
+// process-wide — sharedFDBudget below — while Config.fdCost used to be
+// per-Watcher, so two Watchers sharing one ledger could charge it with two
+// different arithmetics and neither `used` nor `limit` would mean anything.
+// Binding the model to the ledger makes that combination unrepresentable:
+// everyone charging a given ledger charges it the same way.
 type fdBudget struct {
+	// costs is set at construction and never mutated, so model() needs no
+	// lock.
+	costs fdCostModel
+
 	mu    sync.Mutex
 	limit int
 	used  int
 }
 
 func newFDBudget(limit int) *fdBudget {
+	return newFDBudgetCost(limit, defaultCostModel())
+}
+
+// newFDBudgetCost builds a ledger with an explicit cost model. Only callers
+// that own a PRIVATE ledger may pick the model — see NewWatcherConfig.
+func newFDBudgetCost(limit int, costs fdCostModel) *fdBudget {
 	if limit < 0 {
 		limit = 0
 	}
-	return &fdBudget{limit: limit}
+	if costs == (fdCostModel{}) {
+		costs = defaultCostModel()
+	}
+	return &fdBudget{limit: limit, costs: costs}
 }
+
+// model returns the arithmetic every charge against this ledger must use.
+func (b *fdBudget) model() fdCostModel { return b.costs }
 
 // reserve commits n descriptors if they fit. It is all-or-nothing: a refused
 // reservation consumes nothing.
@@ -99,6 +131,22 @@ func (b *fdBudget) reserve(n int) bool {
 	}
 	b.used += n
 	return true
+}
+
+// charge records n descriptors that the kernel has ALREADY opened, whether or
+// not they fit. It is the counterpart of reserve for opens grafel did not
+// initiate and therefore cannot refuse: fsnotify's kqueue backend opens a
+// descriptor inside sendCreateIfNew (backend_kqueue.go:656-670) before the
+// Create event reaches us, so by then the only honest options are to record it
+// or to lie. Recording it lets `used` exceed `limit`, which is the true state
+// of the process, and makes the next reserve refuse.
+func (b *fdBudget) charge(n int) {
+	if n <= 0 {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.used += n
 }
 
 // release returns n descriptors to the ledger.
@@ -178,7 +226,9 @@ func DirWatchFDCost(entries int) int {
 	if entries < 0 {
 		entries = 0
 	}
-	return defaultCostModel().cost(1, entries)
+	// The model comes from the ledger ReserveWatchFDs charges, not from
+	// defaultCostModel() independently: one ledger, one arithmetic (#6268 (D)).
+	return sharedFDBudget().model().cost(1, entries)
 }
 
 // fdBudgetEnv is the operator override. A value <= 0 disables the budget.
