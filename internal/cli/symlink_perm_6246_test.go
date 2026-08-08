@@ -178,13 +178,18 @@ func TestUpsertAgentsMDFile_IsIdempotentThroughSymlink(t *testing.T) {
 
 // TestUpsertAgentsMDFile_DanglingSymlinkCreatesTheTarget: a link at a shared
 // AGENTS.md that does not exist yet must be filled in, not severed.
+//
+// `shared/` is deliberately NOT pre-created, and this is the point of the test.
+// The first cut of it did pre-create the directory, which meant it could not
+// observe that this call site had no MkdirAll while its twin in the same
+// commit — rulesfiles.atomicWrite — did: `grafel register --write-agents-md`
+// hard-failed with an opaque error naming a temp file. The two writers landed
+// together and must not diverge silently, so the fixture matches its twin in
+// internal/install/rulesfiles.
 func TestUpsertAgentsMDFile_DanglingSymlinkCreatesTheTarget(t *testing.T) {
 	requireSymlinks6246(t)
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "shared"), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	real := filepath.Join(dir, "shared", "AGENTS.md")
+	real := filepath.Join(dir, "shared", "AGENTS.md") // shared/ does not exist
 	link := filepath.Join(dir, "AGENTS.md")
 	if err := os.Symlink(real, link); err != nil {
 		t.Fatalf("symlink: %v", err)

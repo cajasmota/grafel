@@ -687,6 +687,16 @@ func lineMentionsPredecessor(line string) bool {
 //
 // An EXISTING destination keeps its own mode — see atomicWrite. The create mode
 // only decides what a brand-new file looks like.
+//
+// Note this OVERRIDES the user's umask, and is a change from the os.WriteFile
+// this replaced: that passed perm through open(2), so under `umask 077` a fresh
+// CLAUDE.md came out 0600. atomicfile.WriteFile Chmods to exactly the mode
+// requested (see its package doc — a deliberate, tree-wide decision), so it now
+// comes out 0644 on any umask. Accepted for a committed documentation file, and
+// the same trade slice 1 made for agenthooks' settings.json, but it does mean
+// this slice WIDENS the create mode on a umask-077 machine — on the very axis
+// #6246 is about. It does not touch an existing file's mode, which is the defect
+// itself.
 const newRulesFilePerm os.FileMode = 0o644
 
 // atomicWrite writes data to path, following any symlink at path through to its

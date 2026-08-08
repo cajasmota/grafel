@@ -125,6 +125,16 @@ is delivered automatically in the MCP %%instructions%% handshake.
 //
 // An EXISTING AGENTS.md keeps its own mode; this only decides what a brand-new
 // one looks like.
+//
+// Note this OVERRIDES the user's umask, and is a change from the os.WriteFile
+// this replaced: that passed perm through open(2), so under `umask 077` a fresh
+// AGENTS.md came out 0600. atomicfile.WriteFile Chmods to exactly the mode
+// requested (see its package doc — a deliberate, tree-wide decision), so it now
+// comes out 0644 on any umask. Accepted for a committed documentation file, and
+// the same trade slice 1 made for agenthooks' settings.json, but it does mean
+// this slice WIDENS the create mode on a umask-077 machine — on the very axis
+// #6246 is about. It does not touch an existing file's mode, which is the defect
+// itself.
 const newAgentsMDPerm os.FileMode = 0o644
 
 // upsertAgentsMDFile reads the target AGENTS.md (if it exists), updates or
@@ -182,5 +192,14 @@ func upsertAgentsMDFile(path, block string) error {
 	}
 
 	// Atomic write onto the SAME resolved path the read above used.
+	//
+	// MkdirAll on the RESOLVED directory, matching rulesfiles.atomicWrite: the
+	// link's own directory necessarily exists (we just read a link out of it),
+	// the target's need not. atomicfile.WriteFile does not create it, so without
+	// this a link at a shared AGENTS.md that does not exist yet fails with an
+	// opaque error naming a temp file the user never asked for.
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(target), err)
+	}
 	return atomicfile.WriteFile(target, out, atomicfile.ExistingPerm(target, newAgentsMDPerm))
 }
