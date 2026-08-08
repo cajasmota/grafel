@@ -291,6 +291,17 @@ func FoldFrameworkClassKinds(recs []types.EntityRecord, fw []types.EntityRecord)
 		if r.Name == "" || r.SourceFile == "" {
 			return false
 		}
+		// Issue #6275 — mirrors cmd/grafel/index.go's foldClassHierarchyShadows:
+		// a #6104 merge-facet TWIN (grafel.twin_of naming a DIFFERENT entity)
+		// is never an eligible fold survivor. See that function's comment for
+		// the full rationale — folding a base class node into its own twin
+		// undoes the #6104 "both survive" contract instead of the legitimate
+		// generic-node-replaced-by-a-real-typed-node case this table exists
+		// for. The two paths must agree (#6148), so the exclusion belongs here
+		// too, not only in the full-rebuild path.
+		if r.IsMergeTwinAlias() {
+			return false
+		}
 		_, ok := FrameworkClassKindPriority[r.Kind]
 		return ok
 	}

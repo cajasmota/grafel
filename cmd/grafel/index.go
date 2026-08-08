@@ -30,6 +30,7 @@ import (
 	bazelextract "github.com/cajasmota/grafel/internal/extractors/bazel"
 	configextract "github.com/cajasmota/grafel/internal/extractors/config"
 	"github.com/cajasmota/grafel/internal/extractors/cross"
+	"github.com/cajasmota/grafel/internal/extractors/cross/ormlink"
 	jsextract "github.com/cajasmota/grafel/internal/extractors/javascript"
 	mageextract "github.com/cajasmota/grafel/internal/extractors/mage"
 	pyextr "github.com/cajasmota/grafel/internal/extractors/python"
@@ -4513,14 +4514,94 @@ func runFilterSetMetaModelEdges(classified []classifiedFile) []types.Relationshi
 // stampEntityIDs computes the deterministic graph entity ID for every
 // EntityRecord in the merged slice and writes it into EntityRecord.ID. The
 // resolver consumes EntityRecord.ID, so this must run before BuildIndex.
+//
+// Issue #6275 — also repoints any grafel.twin_of (#6104 merge-facet anchor)
+// property that still names a record's PRE-STAMP id. A facet's twin_of is
+// written at merge time (internal/extractors/custom_dispatch.go's
+// enrichFromTwin, via effectiveID) BEFORE this function ever runs, so when
+// the anchor record's ID has not been stamped yet, effectiveID falls back to
+// EntityRecord.ComputeID() — a different hash than graph.EntityID computes
+// here. Unlike a RelationshipRecord endpoint (which every fold/merge/resolve
+// pass downstream already knows how to rekey — see the #4406 dedup-by-ID gap
+// fill and the #1613 class-shadow fold's remap maps), a twin_of value is an
+// opaque Properties string: nothing else in the pipeline ever looks at it or
+// rewrites it. Left alone, it permanently names an id that will never appear
+// in the graph, so internal/resolve/symbol_index.go's facet-alias rule
+// (#6104, mergeFacetAnchor) can never match the facet to its anchor and the
+// anchor's name falls to the ambiguous-name path meant for a genuine
+// same-name collision, not an orphaned facet.
+//
+// Every producer that pre-computes r.ID via ComputeID() (see the many
+// `e.ID = e.ComputeID()` call sites across internal/custom and
+// internal/extractors) has that value UNCONDITIONALLY overwritten by the loop
+// below anyway, so ComputeID() is exactly the right "pre-stamp identity" to
+// build the remap from — it is what every record's id looked like at the
+// moment any earlier pass (like enrichFromTwin) could have captured it.
+//
+// PERFORMANCE: a second sha256 (ComputeID()) per record, purely to build a
+// remap map, would run on every entity in every corpus even though twin_of is
+// rare (only #6104 custom-extractor facets carry it). recordsHaveTwinOf below
+// is a single Properties-map lookup per record — no hashing, no allocation —
+// so the plain single-hash stamping loop is untouched on the overwhelmingly
+// common path where nothing in the batch has a twin_of at all.
 func (i *Indexer) stampEntityIDs(records []types.EntityRecord) {
+	if !recordsHaveTwinOf(records) {
+		for k := range records {
+			r := &records[k]
+			if r.Name == "" {
+				continue
+			}
+			r.ID = graph.EntityID(i.repoTag, r.Kind, r.Name, r.SourceFile)
+		}
+		return
+	}
+
+	// preStampToFinal maps a record's pre-stamp ComputeID() to the final
+	// graph.EntityID() this function assigns it, but only when they differ.
+	preStampToFinal := make(map[string]string)
 	for k := range records {
 		r := &records[k]
 		if r.Name == "" {
 			continue
 		}
-		r.ID = graph.EntityID(i.repoTag, r.Kind, r.Name, r.SourceFile)
+		preStampID := r.ComputeID()
+		finalID := graph.EntityID(i.repoTag, r.Kind, r.Name, r.SourceFile)
+		if preStampID != finalID {
+			preStampToFinal[preStampID] = finalID
+		}
+		r.ID = finalID
 	}
+	if len(preStampToFinal) == 0 {
+		return
+	}
+	for k := range records {
+		r := &records[k]
+		if r.Properties == nil {
+			continue
+		}
+		twin, ok := r.Properties[types.EntityTwinOfProperty]
+		if !ok || twin == "" {
+			continue
+		}
+		if final, remapped := preStampToFinal[twin]; remapped {
+			r.Properties[types.EntityTwinOfProperty] = final
+		}
+	}
+}
+
+// recordsHaveTwinOf reports whether ANY record in the batch carries a
+// grafel.twin_of property — the gate for stampEntityIDs's slow (remap-
+// building) path. A cheap map-lookup scan, no hashing.
+func recordsHaveTwinOf(records []types.EntityRecord) bool {
+	for k := range records {
+		if records[k].Properties == nil {
+			continue
+		}
+		if v := records[k].Properties[types.EntityTwinOfProperty]; v != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // buildPatternContainsRels emits one CONTAINS edge per SCOPE.Pattern entity,
@@ -4697,6 +4778,23 @@ func (i *Indexer) foldClassHierarchyShadows(
 	for k := range merged {
 		r := &merged[k]
 		if r.Name == "" {
+			continue
+		}
+		// Issue #6275 — a #6104 merge-facet TWIN (grafel.twin_of set to a
+		// DIFFERENT entity's id) is never an eligible fold SURVIVOR, even
+		// when its Kind carries a FrameworkClassKindPriority (e.g. the
+		// Hibernate custom extractor's SCOPE.Schema twin of a base
+		// SCOPE.Component class, priority 80). A twin is a second
+		// representation of the SAME source construct that the #6104 merge
+		// boundary (internal/extractors/custom_dispatch.go's Tier B)
+		// deliberately keeps BOTH nodes for — "both survive" is the whole
+		// point. Treating it as a fold survivor here folds the twin's own
+		// anchor INTO it, which is the opposite of that contract: the base
+		// class node (and every edge it owns) disappears, leaving the twin
+		// holding content under the wrong Kind. #6275's java-spring-mini
+		// regression is precisely this — SCOPE.Component User's 8
+		// CONTAINS/IMPORTS edges end up stranded on SCOPE.Schema User.
+		if r.IsMergeTwinAlias() {
 			continue
 		}
 		pri, ok := frameworkClassKindPriority[r.Kind]
@@ -5876,6 +5974,40 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 			// anchors empty-FromID edges to this same id), so no edge is
 			// orphaned by the dedup.
 			surv := &entities[pos]
+			// Issue #6275 — an ormlink.SubtypeSentinel must never win identity
+			// fields over a real (non-sentinel) collision partner. ormlink's own
+			// doc comment (internal/extractors/cross/ormlink/extractor.go:46-49)
+			// says the sentinel is "intentionally low-quality... so it doesn't
+			// compete with the real class entity", but nothing enforced that:
+			// #4406's first-writer-wins picks whichever record sorts first
+			// (sortEntityRecords orders by StartLine ascending among equal
+			// Kind/Name/SourceFile, and the sentinel's StartLine is always 0 —
+			// see extractor.go:626 — so it deterministically sorts BEFORE the
+			// real class node's real line and becomes the survivor). The
+			// sentinel's Subtype and QualifiedName are both NON-empty synthetic
+			// values (see extractor.go's SubtypeSentinel / MAPS_TO anchor
+			// construction), so the ordinary "only fill empty fields" gap-fill
+			// below would keep them forever, permanently mislabeling the
+			// now-content-ful survivor as a sentinel. Blanking them here lets
+			// the existing gap-fill machinery promote the real record's values,
+			// exactly as if the sentinel had arrived second.
+			//
+			// QualifiedName is blanked ONLY when r actually carries a
+			// replacement (r.QualifiedName != ""): QualifiedName drives
+			// byQualifiedName resolution and cross-repo joins (#4406's own
+			// comment above), so if r has none, blanking survivor's here would
+			// leave the gap-fill below with nothing to restore it from — the
+			// survivor would end up with NO QualifiedName at all, strictly
+			// worse than keeping the sentinel's synthetic one. Subtype has no
+			// such asymmetry: this branch's own condition already requires
+			// r.Subtype != "", so the gap-fill below always has a real value
+			// to promote.
+			if surv.Subtype == ormlink.SubtypeSentinel && r.Subtype != "" && r.Subtype != ormlink.SubtypeSentinel {
+				surv.Subtype = ""
+				if r.QualifiedName != "" {
+					surv.QualifiedName = ""
+				}
+			}
 			if surv.QualifiedName == "" && r.QualifiedName != "" {
 				surv.QualifiedName = r.QualifiedName
 			}

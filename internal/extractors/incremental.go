@@ -1674,6 +1674,18 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 	// with the wrong id, so nothing downstream of it dangles. It surfaced only
 	// because a flow property happens to embed the id as text.
 	id := graph.EntityID(repoTag, r.Kind, r.Name, r.SourceFile)
+	// #6275 — r.Properties (and therefore any grafel.twin_of a #6104 merge
+	// facet carries) is copied VERBATIM here, with no equivalent of
+	// cmd/grafel/index.go's stampEntityIDs remap (old ComputeID() -> this
+	// freshly computed `id`). That is harmless TODAY only because the sole
+	// twin_of writer, internal/extractors/custom_dispatch.go's
+	// enrichFromTwin, is reachable exclusively from the full-index path
+	// (MergeWithCustom has no caller on this incremental path — see
+	// classfold.go's FoldFrameworkClassKinds doc comment, "TryIncremental
+	// runs no cross extractors at all"). If anything ever starts stamping
+	// twin_of from code reachable here, the #6275 orphaned-anchor bug comes
+	// back silently: this function would need the same pre-stamp-id ->
+	// final-id remap stampEntityIDs performs.
 	return graph.Entity{
 		ID:            id,
 		Name:          r.Name,
