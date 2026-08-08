@@ -213,6 +213,33 @@ func printWatcherFleetStatus(w io.Writer) {
 	if sum.Running > 0 {
 		fmt.Fprintf(w, "  these index independently of the daemon; 'grafel stop' stops them too\n")
 	}
+
+	// #6192: a group with features.watchers off can still have a live watcher.
+	// Turning the flag off deregisters the units when it is done through
+	// `group add`/the wizard or the dashboard's features PATCH, but a fleet.json
+	// edit runs no grafel code, so a watcher installed under an earlier `true`
+	// goes on running. That is a disagreement between what the config says and
+	// what the machine is doing. `grafel stop` already names such units, but
+	// only in the act of stopping them; nothing reported the state on its own.
+	//
+	// NOT covered here, and pre-existing: a RUNNING ORPHAN — a unit on disk that
+	// no registered group owns — is counted in the totals above and named by
+	// nothing on this surface. It is excluded from this notice deliberately (no
+	// group flag disagrees with it), which leaves it in no bucket at all.
+	if len(sum.DisabledRunning) > 0 {
+		fmt.Fprintf(w, "  ⚠️ %d of these belong to a group with watchers disabled and are running anyway:\n",
+			len(sum.DisabledRunning))
+		for _, d := range sum.DisabledRunning {
+			fmt.Fprintf(w, "     %s\n", d)
+		}
+		// The remedy is the stop/start pair, and only that pair: stop
+		// deactivates every installed unit whatever the flag says, and start
+		// restores only the groups whose flag is on. See the contract at the
+		// head of internal/cli/watcher_fleet.go, which both halves implement.
+		fmt.Fprintf(w, "     a watcher installed under an earlier setting keeps running until it is\n")
+		fmt.Fprintf(w, "     deregistered. Run 'grafel stop' then 'grafel start' to clear them\n")
+		fmt.Fprintf(w, "     ('grafel start' does not restore a watchers-off group).\n")
+	}
 }
 
 // printWorktreeChildren prints the ephemeral worktree-child entries for the

@@ -395,6 +395,29 @@ func (s *Server) handleV2PatchFeatures(w http.ResponseWriter, r *http.Request) {
 		writeV2Err(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
+
+	// #6192: honour watchers-off here, do not merely record it.
+	//
+	// The flag is otherwise not retroactive — nothing deregisters a unit that is
+	// already installed and loaded — and making it retroactive in GENERAL was
+	// rejected, because the dominant way it changes is a fleet.json edit that
+	// runs no grafel code at all, so a teardown could only fire at some later
+	// unrelated command. This handler is the opposite case on every axis:
+	// synchronous, user-initiated, explicitly intentional, and grafel code by
+	// definition. handleV2DeleteGroup below already calls the same primitive.
+	//
+	// Keyed on the resulting STATE, not on a change of value: a group whose flag
+	// was already false carries exactly the residue this issue is about, and
+	// saving the form is the user's one in-UI way to clear it. Cleanup is
+	// best-effort and idempotent, so a group that never had units does nothing.
+	//
+	// It runs AFTER the save so a failure to persist cannot leave the units torn
+	// down and the flag still on.
+	if !cfg.Features.Watchers {
+		for _, rep := range cfg.Repos {
+			watchers.Cleanup(groupName, rep.Path, "")
+		}
+	}
 	writeV2JSON(w, http.StatusOK, v2OK(v2GroupFeatures{
 		Watchers: cfg.Features.Watchers,
 		GitHooks: cfg.Features.GitHooks,
@@ -641,6 +664,74 @@ func (s *Server) handleV2Doctor(w http.ResponseWriter, r *http.Request) {
 	writeV2JSON(w, http.StatusOK, v2OK(checks))
 }
 
+// installedWatcherUnitCount counts the group's repos whose per-repo watcher
+// unit file exists on disk.
+//
+// It is a pure stat sweep: no service manager is invoked, so it reports what is
+// INSTALLED and says nothing about what is running. A repo whose unit path
+// cannot be derived is skipped rather than counted — the check exists to
+// contradict an over-confident claim, and inventing units to do it would just
+// be a different over-confident claim.
+func installedWatcherUnitCount(cfg *registry.GroupConfig) int {
+	n := 0
+	for _, r := range cfg.Repos {
+		p, err := watchers.UnitPath(watchers.Unit{Group: cfg.Name, Repo: r.Path})
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			n++
+		}
+	}
+	return n
+}
+
+// newDoctorWatcherLoader constructs the Loader the doctor queries. A package
+// var so tests can substitute a fake and never shell out to a real
+// launchctl/systemctl/schtasks.
+var newDoctorWatcherLoader = watchers.NewLoader
+
+// runningWatcherUnitCount counts the group's repos whose watcher unit the OS
+// reports as RUNNING.
+//
+// It asks the same question `grafel status` asks (see summarizeFleetWatchers in
+// internal/cli/watcher_fleet.go), and that is the point: the doctor and status
+// must not be able to disagree about one machine. A check keyed on the unit
+// FILE instead would keep warning after the user followed status's remedy —
+// `grafel stop` deactivates units but does not delete them — leaving two
+// surfaces permanently contradicting each other.
+//
+// The service manager is only consulted for repos whose unit file exists, so a
+// group with no units costs no subprocesses at all. A unit whose status cannot
+// be read is not counted: an unreadable status is not evidence of a running
+// watcher, and this count only ever raises a warning.
+func runningWatcherUnitCount(cfg *registry.GroupConfig) int {
+	var units []watchers.Unit
+	for _, r := range cfg.Repos {
+		u := watchers.Unit{Group: cfg.Name, Repo: r.Path}
+		p, err := watchers.UnitPath(u)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		units = append(units, u)
+	}
+	if len(units) == 0 {
+		return 0
+	}
+	loader := newDoctorWatcherLoader()
+	n := 0
+	for _, u := range units {
+		st, err := loader.Status(u)
+		if err == nil && st.Running {
+			n++
+		}
+	}
+	return n
+}
+
 // buildDoctorChecks derives the per-group DoctorCheck list from the fleet config.
 func buildDoctorChecks(cfg *registry.GroupConfig) []v2DoctorCheck {
 	checks := []v2DoctorCheck{}
@@ -654,21 +745,56 @@ func buildDoctorChecks(cfg *registry.GroupConfig) []v2DoctorCheck {
 		Detail: "Running",
 	})
 
-	// Check 2: watcher configured.
-	if cfg.Features.Watchers {
+	// Check 2: watchers — reported from the MACHINE, not from the flag (#6192).
+	//
+	// Both directions used to answer straight out of cfg.Features.Watchers:
+	// "Enabled across N repos" whether or not a single unit had ever been
+	// written, and "Disabled — changes won't trigger auto-reindex" while a
+	// watcher installed under an earlier setting was still running. The flag
+	// gates creating, rewriting and starting units; it is not, on its own,
+	// evidence of what the machine is doing.
+	//
+	// "warning", not "warn": the DoctorCheck.status union in
+	// webui-v2/src/data/types.ts is "ok" | "warning" | "info" | "error", and the
+	// cache check below already uses "warning".
+	switch installed := installedWatcherUnitCount(cfg); {
+	case cfg.Features.Watchers && installed < len(cfg.Repos):
+		checks = append(checks, v2DoctorCheck{
+			ID:     "watchers",
+			Label:  "Filesystem watchers",
+			Status: "warning",
+			Detail: fmt.Sprintf("Enabled, but only %d of %d repos have a watcher unit installed — "+
+				"run 'grafel install' to write the missing ones.", installed, len(cfg.Repos)),
+		})
+	case cfg.Features.Watchers:
 		checks = append(checks, v2DoctorCheck{
 			ID:     "watchers",
 			Label:  "Filesystem watchers",
 			Status: "ok",
 			Detail: fmt.Sprintf("Enabled across %d repos", len(cfg.Repos)),
 		})
-	} else {
-		checks = append(checks, v2DoctorCheck{
-			ID:     "watchers",
-			Label:  "Filesystem watchers",
-			Status: "info",
-			Detail: "Disabled — changes won't trigger auto-reindex",
-		})
+	default:
+		// Disabled. Keyed on RUNNING, the same predicate `grafel status` uses,
+		// so the two surfaces cannot disagree — and so the warning clears once
+		// the user acts on it, which a file-existence check would not.
+		if running := runningWatcherUnitCount(cfg); running > 0 {
+			checks = append(checks, v2DoctorCheck{
+				ID:     "watchers",
+				Label:  "Filesystem watchers",
+				Status: "warning",
+				Detail: fmt.Sprintf("Disabled in config, but %d watcher(s) are still running — "+
+					"turning the flag off does not deregister a watcher that is already "+
+					"installed. Save these settings again to remove them, or run "+
+					"'grafel stop' then 'grafel start'.", running),
+			})
+		} else {
+			checks = append(checks, v2DoctorCheck{
+				ID:     "watchers",
+				Label:  "Filesystem watchers",
+				Status: "info",
+				Detail: "Disabled — changes won't trigger auto-reindex",
+			})
+		}
 	}
 
 	// Check 3: git hooks.
