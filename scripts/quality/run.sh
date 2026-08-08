@@ -7,6 +7,30 @@
 #   0 — every fixture met its must-have recall + 0 forbidden hits
 #   1 — runner setup / build error
 #   2 — at least one fixture regressed (must-have miss or forbidden hit)
+#   3 — at least one fixture directory produced NO measurement at all, so the
+#       run is incomplete and no verdict is available for it (Refs #6273)
+#
+# 3 is separate from 2 on purpose. "this fixture ran and missed" and "this
+# fixture never ran" are different facts and demand different work, and before
+# #6273 the second was not a fact anyone was told. groovy-grails-mini and
+# swift-swiftui-mini carried a src/ tree and no expected.json; `grafel quality`
+# rejects such a directory before indexing (LoadFixture in
+# internal/quality/expected.go reads expected.json and errors when it is
+# absent), the `|| true` below swallowed that, and only the strict branch
+# looked at the resulting per-fixture exit — the branch this same header
+# records as never green, i.e. never run. Under --ratchet the two directories
+# were skipped in silence and ratchet.py recorded them as an approved
+# `expectations_missing` entry, so the benchmark's denominator was 18 while
+# every figure quoted from it said 20.
+#
+# What exit 3 does NOT see: an expected.json that parses but declares zero
+# must-haves. That fixture produces a report, so it is measured — it just cannot
+# fail, which is the same silence wearing a different hat. The runner has no
+# view on it; TestBaselineRecordedCountsAreSane and TestGoldenSetIsFullyGraded_6273
+# in internal/quality/baseline_test.go and
+# internal/quality/ungraded_fixture_6273_test.go both reject a gated fixture
+# whose entity_expected and relationship_expected are BOTH zero. Verified by
+# reading those two tests, not assumed.
 #
 # Intended to wire into the verify2 channel as a separate gate. Quality is
 # orthogonal to bug-rate: we report both, and either can block a release.
@@ -106,8 +130,28 @@ QUALITY_RUN_STAMP="$(date +%s).$$"
 export QUALITY_RUN_STAMP
 
 EXIT=0
+# Fixture directories that yielded no measurement this run. Collected rather
+# than failed on immediately so one run reports every one of them (Refs #6273).
+# A newline-delimited string plus a counter, not an array: `set -u` is on and
+# ${#arr[@]} on an empty array is an unbound-variable error under bash 3.2,
+# which is the /bin/bash macOS still ships.
+UNMEASURED=""
+UNMEASURED_N=0
 for fix in "$ROOT"/internal/quality/golden/*/ ; do
   name="$(basename "$fix")"
+
+  # A directory with no expected.json cannot be graded by anything. Say so and
+  # move on: `grafel quality` would refuse it anyway (LoadFixture), so indexing
+  # it buys nothing but wall-clock, and skipping the index keeps this check
+  # answerable without a working binary.
+  if [[ ! -f "$fix/expected.json" ]]; then
+    echo "  UNMEASURED: $name has src/ but no expected.json — nothing graded it" >&2
+    UNMEASURED="$UNMEASURED  - $name
+"
+    UNMEASURED_N=$((UNMEASURED_N + 1))
+    continue
+  fi
+
   echo "==> quality: $name  (runs=$RUNS)"
 
   # ------------------------------------------------------------------
@@ -237,6 +281,18 @@ PY
   trap - EXIT
   cleanup_tmpdir
 
+  # The aggregator above exits 1 for "no JSON reports produced" / "all JSON
+  # reports unreadable" and 2 for "ran and missed". Only the second is a recall
+  # verdict; the first means the fixture was not measured, which is fatal in
+  # every mode — a ratchet cannot say a figure held when no figure was taken.
+  if [[ $fixture_exit -eq 1 ]]; then
+    echo "  UNMEASURED: $name produced no readable report — nothing was measured" >&2
+    UNMEASURED="$UNMEASURED  - $name
+"
+    UNMEASURED_N=$((UNMEASURED_N + 1))
+    continue
+  fi
+
   # In ratchet/update mode a per-fixture miss is not by itself fatal — the
   # ratchet decides, by comparing against the recorded baseline. In strict mode
   # any miss fails the run.
@@ -247,6 +303,23 @@ done
 
 echo
 echo "quality reports written to: $OUT"
+
+# An incomplete run is not a run whose verdict is worth having. Bail before the
+# ratchet rather than after: `check` would grade the fixtures that did report
+# and print "N gated fixtures held their baseline" — a true sentence that reads
+# as an all-clear — and `update` would re-record the gap as the new normal,
+# which is exactly how the two ungraded directories survived every re-record
+# since they were added.
+if [[ $UNMEASURED_N -gt 0 ]]; then
+  echo >&2
+  echo "==> quality FAILED — $UNMEASURED_N fixture directory/ies produced no measurement:" >&2
+  printf '%s' "$UNMEASURED" >&2
+  echo >&2
+  echo "  A fixture that was never graded is not a fixture that passed. Give it an" >&2
+  echo "  expected.json, or move the directory out of internal/quality/golden/ —" >&2
+  echo "  everything under golden/ is gated, there is no ungraded category." >&2
+  exit 3
+fi
 
 BASELINE="$ROOT/internal/quality/golden/baseline.json"
 GOLDEN="$ROOT/internal/quality/golden"

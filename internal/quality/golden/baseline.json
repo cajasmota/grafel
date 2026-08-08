@@ -2,7 +2,7 @@
   "_comment": "Recorded must-have recall per golden fixture. This is a ratchet, not a target: recall may not drop below these figures, and any rise must be recorded here. Regenerate with `scripts/quality/run.sh --runs 1 --update-baseline`.",
   "version": 1,
   "measured_at": "2026-08-08",
-  "measured_on": "206d88a1d",
+  "measured_on": "316ecada6",
   "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
   "fixtures": {
     "csharp-aspnet-core-mini": {
@@ -42,8 +42,10 @@
       "relationship_expected": 19
     },
     "groovy-grails-mini": {
-      "expectations_missing": true,
-      "note": "fixture has src/ but no expected.json \u2014 it is never evaluated. Not a recall failure; see #6231."
+      "entity_found": 12,
+      "entity_expected": 16,
+      "relationship_found": 14,
+      "relationship_expected": 18
     },
     "haskell-warp-mini": {
       "entity_found": 24,
@@ -112,8 +114,10 @@
       "relationship_expected": 7
     },
     "swift-swiftui-mini": {
-      "expectations_missing": true,
-      "note": "fixture has src/ but no expected.json \u2014 it is never evaluated. Not a recall failure; see #6231."
+      "entity_found": 36,
+      "entity_expected": 42,
+      "relationship_found": 38,
+      "relationship_expected": 43
     },
     "typescript-react-mini": {
       "entity_found": 21,
@@ -148,5 +152,5 @@
       "note": "Downstream of the same ActiveUserManager reclassification, and only that: the two edges lost are ActiveUserManager CONTAINS ActiveUserManager.by_email and .get_queryset, both now from_resolved=false in the per-fixture report because no SCOPE.Component of that name exists to anchor them. The other five relationship misses on this fixture are unchanged from before."
     }
   ],
-  "measured_on_note": "BASE commit whose tree these figures were measured against, NOT the commit this file lands in. Here the figures describe 206d88a1d WITH the #6260 custom-extractor gate applied - 206d88a1d alone produces the pre-#6260 numbers. `git_sha()` in scripts/quality/ratchet.py records HEAD at measurement time, so re-recording on an unpushed commit that is later amended or rebased leaves an unreachable sha behind; TestBaselineMeasuredOnIsReachable checks for that."
+  "measured_on_note": "BASE commit whose tree these figures were measured against, NOT the commit this file lands in. Here the figures describe 316ecada6 plus the two expected.json files added by #6273 (groovy-grails-mini, swift-swiftui-mini) \u2014 316ecada6 alone has no expectations for those two directories and therefore no figures for them at all. The other eighteen are unchanged from the previous recording. This field is PINNED to the merge-base by hand, not left as whatever `--update-baseline` recorded. `git_sha()` in scripts/quality/ratchet.py writes HEAD at measurement time, and HEAD on a feature branch is not durable: amend or rebase the commit and the recorded sha becomes a sibling that no ref reaches, and a squash-merge kills it for certain. That is not hypothetical here \u2014 this file recorded 73cdd3b72, the pre-amend commit of this very change, and TestBaselineMeasuredOnIsReachable caught it. The merge-base is on main, so it stays an ancestor of HEAD before and after the merge. Re-record with --update-baseline if you like, but re-pin this field afterwards."
 }

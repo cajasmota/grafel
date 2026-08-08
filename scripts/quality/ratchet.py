@@ -13,8 +13,16 @@ number moves in either direction:
     higher figure becomes the floor and the improvement gets credit.
 
 It also fails on structural drift: a fixture directory with no baseline entry,
-a baseline entry with no fixture directory, and a fixture that carries no
-expected.json without being explicitly recorded as such.
+a baseline entry with no fixture directory, and a fixture directory carrying no
+expected.json.
+
+That last one used to be tolerated when the baseline recorded it as
+`expectations_missing` (Refs #6273). Two directories — groovy-grails-mini and
+swift-swiftui-mini — sat in that state from the day they were added: never
+measured, never mentioned, and re-recorded as fine by every --update-baseline.
+Every recall figure quoted from this benchmark had a denominator of 18 while
+naming 20. Everything under golden/ is now gated; a corpus that is not meant to
+be graded does not belong under golden/.
 
 Freshness: the reports directory is not cleared between runs, so this script
 refuses to grade a report that was not written by the current run. run.sh
@@ -182,12 +190,15 @@ def build(golden_dir, reports_dir, baseline_path):
     fixtures = {}
     for name in fixture_names(golden_dir):
         if not has_expectations(golden_dir, name):
-            fixtures[name] = {
-                "expectations_missing": True,
-                "note": "fixture has src/ but no expected.json — it is never "
-                        "evaluated. Not a recall failure; see #6231.",
-            }
-            continue
+            # Refs #6273. This used to record {"expectations_missing": True} and
+            # carry on, which is how two directories stayed ungraded across every
+            # re-record: the flag documented the gap and then check() below
+            # accepted the flag as an answer, so the gap justified itself.
+            raise SystemExit(
+                f"ratchet: fixture {name!r} has no expected.json — refusing to "
+                f"record a baseline that excuses it. Give it expectations, or "
+                f"move the directory out of internal/quality/golden/."
+            )
         rep = load_report(reports_dir, name, stamp)
         if rep is None:
             raise SystemExit(
@@ -248,18 +259,24 @@ def check(golden_dir, reports_dir, baseline_path):
             )
             continue
 
+        # Everything under golden/ is gated. There is no ungraded category, so
+        # neither half of the old two-state dance survives: a missing
+        # expected.json is a failure whether or not the baseline expected it to
+        # be missing, and `expectations_missing` in the baseline is itself a
+        # failure because it is the flag that used to make this pass (#6273).
         if not has_expectations(golden_dir, name):
-            if not base.get("expectations_missing"):
-                failures.append(
-                    f"{name}: has no expected.json but the baseline expects it to — "
-                    f"the expectations file was deleted"
-                )
+            failures.append(
+                f"{name}: has no expected.json — it produces no report and is "
+                f"graded by nothing. Give it expectations, or move the directory "
+                f"out of internal/quality/golden/"
+            )
             continue
 
         if base.get("expectations_missing"):
             failures.append(
-                f"{name}: now HAS an expected.json but the baseline records it as "
-                f"missing — run --update-baseline to start gating it"
+                f"{name}: baseline records it as having no expectations, but "
+                f"expected.json is on disk — re-record with --update-baseline so "
+                f"it is gated"
             )
             continue
 
