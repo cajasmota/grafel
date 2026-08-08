@@ -106,6 +106,30 @@ type Result struct {
 
 // Apply registers the group, writes its config, then installs hooks +
 // watchers + MCP entries as configured.
+//
+// Apply is synchronous: it starts no goroutine, and every path it touches
+// itself has been written by the time it returns. What is NOT settled on return
+// is the state of the watcher jobs it activated. Watcher activation ends at
+// loader.Load — on darwin, `launchctl bootstrap` (loader_darwin.go). launchctl
+// accepting a bootstrap means launchd has taken ownership of the job, not that
+// the job has run; the spawn happens afterwards, in launchd. Two consequences,
+// both darwin-only:
+//
+//   - Nothing in Result is a completion signal. WatcherUnits lists unit files
+//     Apply wrote. WatcherStatuses comes from loader.Status, which is part
+//     filesystem state and part job state: Installed is a stat of the unit file
+//     — the plist Apply itself just wrote synchronously, so it says nothing
+//     about the job — while Running and PID are parsed from `launchctl list`.
+//     A job launchd has accepted but not yet spawned reports Installed=true,
+//     Running=false, which is indistinguishable from one that never starts.
+//   - The plist's StandardOutPath/StandardErrorPath name <repo>/.grafel/logs
+//     (watchers.LaunchdPlist). Apply never creates that directory; launchd
+//     materialises it when it spawns the job, so it may appear after Apply has
+//     returned. The systemd and schtasks renderings declare no log paths, so
+//     nothing analogous happens on Linux or Windows.
+//
+// Callers that need the watcher to be live must observe it themselves — no
+// current caller does. See #6188.
 func Apply(opts Options) (*Result, error) {
 	if opts.Group == "" {
 		return nil, errors.New("group is required")

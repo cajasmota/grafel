@@ -2,9 +2,10 @@ package install
 
 import (
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/registry"
@@ -76,32 +77,19 @@ func TestApply_ResetsWatchStartsWhenRegisteringUnit(t *testing.T) {
 	home := reconcileSandbox(t)
 	bin := filepath.Join(home, "bin", "grafel")
 
-	// The repo deliberately does NOT live under a t.TempDir. Apply creates
-	// <repo>/.grafel/logs shortly AFTER it returns — observed 1-13 poll
-	// iterations later, so something in that path writes asynchronously — and
-	// t.TempDir's own RemoveAll then races it and fails the test with
-	// "directory not empty" roughly one run in three. That async write is
-	// pre-existing and outside #6179's scope; owning the directory here keeps
-	// this test measuring what it claims to measure instead of inheriting an
-	// unrelated flake.
-	repoRoot, err := os.MkdirTemp("", "grafel-6179-apply-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	repo := filepath.Join(repoRoot, "app")
+	// Plain t.TempDir (#6188). This test used to own its repo directory via
+	// os.MkdirTemp plus a retrying cleanup, on the stated grounds that "Apply
+	// creates <repo>/.grafel/logs shortly AFTER it returns". It does not: no Go
+	// code in this tree creates that path at all. The only occurrence is the
+	// string interpolated into the launchd plist's StandardOutPath /
+	// StandardErrorPath (watchers.LaunchdPlist), which launchd itself
+	// materialises when it spawns the job — and this test stubs both
+	// newWatcherLoader and the launchctl runner, so no launchd is reached. The
+	// TestApply_DoesNotCreateRepoLogDir case below pins that directly.
+	repo := filepath.Join(t.TempDir(), "app")
 	if err := os.MkdirAll(repo, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		// Best-effort, and retried: the same async writer can lose us a race
-		// here too, and a cleanup failure must not fail a passing test.
-		for i := 0; i < 3; i++ {
-			if err := os.RemoveAll(repoRoot); err == nil {
-				return
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-	})
 	recPath := seedWatchStarts(t, repo)
 
 	// Belt AND braces. Swapping newWatcherLoader is what keeps Apply away from
@@ -130,5 +118,81 @@ func TestApply_ResetsWatchStartsWhenRegisteringUnit(t *testing.T) {
 		t.Errorf("`grafel install` did not clear the watcher start history (stat err = %v). "+
 			"The crash-loop detector tells the user to re-run install; if install does not "+
 			"reset the count, that instruction is false (#6179 F4-a)", err)
+	}
+}
+
+// TestApply_DoesNotCreateRepoLogDir refutes #6188's premise deterministically.
+//
+// #6188 claimed Apply creates <repo>/.grafel/logs asynchronously, some poll
+// iterations after it returns. Apply is fully synchronous — it starts no
+// goroutine — and no Go code in this tree creates that directory. The path
+// exists only as the StandardOutPath/StandardErrorPath strings in the launchd
+// plist (watchers.LaunchdPlist), so on darwin it is launchd, a separate
+// process, that materialises the parents when it spawns the bootstrapped job.
+// With newWatcherLoader and the service-call runner both stubbed, no launchd is
+// reached, so nothing can create it — before OR after Apply returns.
+//
+// The assertion is a single stat taken the instant Apply returns, which is
+// deterministic where polling for an absence never can be. It is guarded
+// against vacuity two ways: the checked path is taken from the plist the
+// production renderer emits for this very unit (not hand-written here), and the
+// parent <repo>/.grafel is asserted to exist, so a miss cannot be explained by
+// stat-ing into a tree that was never there.
+func TestApply_DoesNotCreateRepoLogDir(t *testing.T) {
+	home := reconcileSandbox(t)
+	bin := filepath.Join(home, "bin", "grafel")
+
+	repo := filepath.Join(t.TempDir(), "app")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedWatchStarts(t, repo) // creates <repo>/.grafel
+
+	stubLaunchctlRunner(t)
+	fake := &fakeLoader{}
+	prev := newWatcherLoader
+	newWatcherLoader = func() watchers.Loader { return fake }
+	t.Cleanup(func() { newWatcherLoader = prev })
+
+	// Take the log directory from the renderer, so this test cannot drift onto
+	// a path production stopped using.
+	unit := watchers.Unit{Group: "g", Repo: repo, BinPath: bin}
+	logDir := path.Join(repo, ".grafel", "logs")
+	plist := watchers.LaunchdPlist(unit)
+	if !strings.Contains(plist, "<string>"+logDir+"/watcher.out.log</string>") {
+		t.Fatalf("the plist no longer names %s; this test is watching the wrong path.\nplist:\n%s", logDir, plist)
+	}
+
+	cfg := &registry.GroupConfig{Name: "g", Repos: []registry.Repo{{Slug: "app", Path: repo}}}
+	cfg.Features.Watchers = true
+
+	res, err := Apply(Options{
+		Group: "g", Config: cfg, BinPath: bin,
+		SkipHooks: true, SkipMCP: true,
+	})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	// Non-vacuity: the watcher block must actually have RUN. A watchers.Write
+	// failure inside Apply is non-fatal — it appends a WatcherWarning and
+	// `continue`s, still returning a nil error — so without this the block
+	// could be skipped entirely, nothing would ever have created the log
+	// directory, and the assertion below would pass having observed nothing.
+	if len(res.WatcherUnits) != 1 {
+		t.Fatalf("the watcher block did not run: WatcherUnits = %v, warnings = %v; "+
+			"the log-directory assertion below would be vacuous", res.WatcherUnits, res.WatcherWarnings)
+	}
+
+	// Non-vacuity: the parent must be there, so "logs is absent" is a real
+	// observation about a live directory and not about a missing ancestor.
+	if st, err := os.Stat(filepath.Join(repo, ".grafel")); err != nil || !st.IsDir() {
+		t.Fatalf("<repo>/.grafel should exist (seedWatchStarts made it): stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.FromSlash(logDir)); !os.IsNotExist(err) {
+		t.Errorf("Apply created %s (stat err = %v). It is not supposed to create this "+
+			"directory at all: no Go code in this tree does, the path is only a string in "+
+			"the launchd plist, and both the loader and the service-call runner are stubbed "+
+			"here. If this fires, #6188's async-writer premise deserves a fresh look", logDir, err)
 	}
 }
