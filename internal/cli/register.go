@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // agentsMDMarkers for the grafel discovery stub.
@@ -112,12 +114,52 @@ is delivered automatically in the MCP %%instructions%% handshake.
 `, agentsMDStartMarker, groupName, agentsMDEndMarker)
 }
 
+// newAgentsMDPerm is the mode AGENTS.md is CREATED at when it does not exist
+// yet.
+//
+// 0644, and NOT the 0600 the dashboard's MCP host configs use — that reasoning
+// does not transfer. AGENTS.md is an ordinary tracked file in the user's git
+// repository: it is committed, every collaborator's checkout reads it, and the
+// block written into it is public documentation carrying no credential. The same
+// call slice 1 made for agenthooks' project-scoped settings.json.
+//
+// An EXISTING AGENTS.md keeps its own mode; this only decides what a brand-new
+// one looks like.
+const newAgentsMDPerm os.FileMode = 0o644
+
 // upsertAgentsMDFile reads the target AGENTS.md (if it exists), updates or
 // appends the marker-wrapped block, and writes it back. Idempotent.
+//
+// # #6246: one resolved path for BOTH halves
+//
+// The destination is resolved through any symlink ONCE, up front, and both the
+// read and the write then operate on that resolved path.
+//
+// Doing it in one place is the point. os.ReadFile FOLLOWS a symlink; the
+// temp-file + rename this used to end with does NOT — it replaces the LINK
+// INODE. So the old code spliced the block into content taken from the link's
+// target and then deposited the result somewhere else entirely: the shared copy
+// never received the block, the link stopped being a link, and a second run
+// found no block at the target and could append another. AGENTS.md is a TRACKED
+// FILE, so the user's next commit silently stopped containing the link they
+// wrote, with nothing in the diff to say so.
+//
+// The mode is read from the destination and re-applied, so a 0600 or read-only
+// AGENTS.md is no longer widened to the temp file's 0644.
+//
+// An UNRESOLVABLE chain is an error wrapping atomicfile.ErrSymlinkChain rather
+// than a best-effort write at the last hop reached — that hop is itself a
+// symlink, so renaming over it flattens one of the user's links and reports
+// success.
 func upsertAgentsMDFile(path, block string) error {
-	existing, err := os.ReadFile(path)
+	target, err := atomicfile.ResolveWriteTarget(path)
+	if err != nil {
+		return err
+	}
+
+	existing, err := os.ReadFile(target)
 	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read %s: %w", path, err)
+		return fmt.Errorf("read %s: %w", target, err)
 	}
 
 	var out []byte
@@ -139,14 +181,6 @@ func upsertAgentsMDFile(path, block string) error {
 		out = []byte(buf.String())
 	}
 
-	// Atomic write via temp file.
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, out, 0o644); err != nil {
-		return fmt.Errorf("write temp file: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("rename temp file: %w", err)
-	}
-	return nil
+	// Atomic write onto the SAME resolved path the read above used.
+	return atomicfile.WriteFile(target, out, atomicfile.ExistingPerm(target, newAgentsMDPerm))
 }

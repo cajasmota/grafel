@@ -79,8 +79,8 @@ import (
 //   - internal/graph/fbwriter/* genuinely stream: they build the flatbuffer
 //     incrementally against an open handle and never hold the payload as one
 //     []byte. Same follow-up as WriteAtomic.
-//   - internal/install/*, internal/cli/register.go, internal/agentpatterns/* are
-//     install-time / interactive single-writer paths.
+//   - internal/install/*, internal/agentpatterns/* are install-time /
+//     interactive single-writer paths.
 //     (internal/install/mcpreg/{mcpreg,toml}.go came OFF this list in #6240 —
 //     not by converting to atomicfile.WriteFile, which reproduces that bug
 //     exactly, but by growing a local writeThrough on a unique CreateTemp name.
@@ -97,7 +97,15 @@ import (
 //     internal/install/* entries to atomicfile.WriteFile would close their
 //     ledger lines while PRESERVING both of those defects, because WriteFile
 //     documents both as deliberate. Check which of the two helpers a
-//     destination wants before converting it.)
+//     destination wants before converting it.
+//     internal/install/rulesfiles/rulesfiles.go and internal/cli/register.go
+//     came off in #6246 slice 2, for destinations that are TRACKED FILES IN THE
+//     USER'S GIT REPO — CLAUDE.md, AGENTS.md, .cursorrules. Same two defects,
+//     larger blast radius: a detached symlink there means the user's next commit
+//     silently does not contain what they think it does. Both resolve first and
+//     then call WriteFile against the resolved path, and both PRESERVE an
+//     existing mode while creating at 0644 — the project-file answer, not the
+//     dashboard's 0600 one.)
 //   - internal/enrichment/*, internal/dashboard/*, internal/embed,
 //     internal/indexer/diff, internal/agents and internal/graph/manifest are
 //     plausible follow-ups but were left out to keep the first commit
@@ -108,7 +116,6 @@ var notYetConverted = map[string]bool{
 	"internal/agentpatterns/sync.go":                      true,
 	"internal/agents/inject_map.go":                       true,
 	"internal/cli/pendingtools.go":                        true,
-	"internal/cli/register.go":                            true,
 	"internal/dashboard/handlers_enrichment_writeback.go": true,
 	"internal/dashboard/handlers_settings.go":             true,
 	"internal/embed/store.go":                             true,
@@ -121,7 +128,6 @@ var notYetConverted = map[string]bool{
 	"internal/graph/manifest.go":                          true,
 	"internal/indexer/diff/diff.go":                       true,
 	"internal/install/mcptools/mcptools.go":               true,
-	"internal/install/rulesfiles/rulesfiles.go":           true,
 	"internal/install/state.go":                           true,
 }
 
