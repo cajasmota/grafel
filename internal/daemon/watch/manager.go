@@ -133,6 +133,14 @@ func (m *DefaultManager) Register(repoPath, ref string) {
 // can report how many groups have live fsnotify subscriptions.
 //
 // Returns the number of repos newly subscribed (dirs added to fsnotify).
+//
+// NOTE (#6269): this is a first-subscribe path just like Resume's wasZero
+// branch, and it does NOT fire the catch-up rescan that branch fires — a repo
+// subscribed here still misses whatever was edited before it was subscribed.
+// That is currently harmless only because SubscribeGroupWatcher in
+// cmd/grafel/daemon_tier.go, the sole production entry point to this method,
+// has no callers; the live subscribe path is Resume. Re-wire it and #6269
+// comes back here.
 func (m *DefaultManager) SubscribeGroup(groupName string, repoPaths []string) int {
 	if len(repoPaths) == 0 {
 		return 0
@@ -275,11 +283,41 @@ func (m *DefaultManager) Resume(repoPath, ref string) time.Duration {
 		n, err := m.watcher.AddRepo(repoPath)
 		elapsed := time.Since(start)
 		if err != nil {
+			// Nothing got subscribed, so undo this call's bookkeeping: the
+			// increment above and the un-pause. SubscribeGroup already does
+			// exactly this on its own AddRepo failure (see its decrement and
+			// paused=true above); Resume did not, and the asymmetry is a leak.
+			//
+			// Without the undo, refCounts stays at 1 while the watcher holds no
+			// entry for the repo (AddRepo removes it again on the FD-budget
+			// path). Every later Resume then reads wasZero == false, takes the
+			// "subscription already active" path, and never retries AddRepo —
+			// so the repo is permanently unwatched AND permanently reported as
+			// watched by ActiveCount/IsPaused. Restoring both fields makes the
+			// next Resume retry the subscription.
+			m.mu.Lock()
+			if m.refCounts[repoPath] > 0 {
+				m.refCounts[repoPath]--
+			}
+			st.paused = true
+			m.mu.Unlock()
 			m.logger.Error("watcher-mgr: resume AddRepo failed",
 				"repo", repoPath, "ref", ref, "err", err, "elapsed", elapsed.Round(time.Microsecond))
 		} else {
 			m.logger.Info("watcher-mgr: resumed",
 				"repo", repoPath, "ref", ref, "dirs", n, "elapsed", elapsed.Round(time.Microsecond))
+			// #6269: the subscription was absent until this call, so no event
+			// was delivered for anything edited in the meantime — AddRepo
+			// starts the stream, it does not replay it. Ask for a full
+			// reconciliation of the repo so those edits are picked up.
+			//
+			// Only on this branch: the refcount-bump path below did not
+			// re-subscribe, so its subscription never lapsed and there is
+			// nothing to catch up on.
+			//
+			// RescanRepo dispatches the sink on its own goroutine — see the
+			// latency note on its declaration.
+			m.watcher.RescanRepo(repoPath)
 		}
 		return elapsed
 	}

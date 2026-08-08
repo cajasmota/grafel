@@ -484,8 +484,16 @@ func (m *Manager) Touch(key SlotKey) error {
 	m.mu.Unlock()
 
 	if wasCold {
-		// PH2a: resume watcher subscription before reloading the graph so that
-		// any file changes that arrived while the slot was COLD are captured.
+		// PH2a: resume the watcher subscription on cold-wake, so events start
+		// flowing again for a repo that was unsubscribed while COLD.
+		//
+		// Resume also REQUESTS reconciliation of whatever changed during the
+		// cold window (#6269) — but that request is asynchronous: it enqueues a
+		// reindex on the scheduler, which is serialised and runs later. The
+		// m.reload below therefore still serves whatever artifact is on disk
+		// NOW, so the query that triggered this wake may read a stale graph;
+		// the catch-up lands on a subsequent read. Ordering the resume first
+		// buys event coverage from this moment on, not freshness for this call.
 		m.mu.Lock()
 		wh := m.watcher
 		m.mu.Unlock()
