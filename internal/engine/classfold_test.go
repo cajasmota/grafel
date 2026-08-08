@@ -314,3 +314,29 @@ func TestFoldFrameworkClassKinds_CandidateThatIsAlsoAFoldSourceKeepsItself(t *te
 		t.Errorf("owned edges duplicated by a self-fold: %+v", out)
 	}
 }
+
+// TestFoldFrameworkClassKinds_TwinFacetNeverEligibleAsSurvivor — issue #6275,
+// mirrors cmd/grafel/index.go's foldClassHierarchyShadows fix on the
+// incremental path. A record carrying grafel.twin_of (a #6104 merge-facet
+// TWIN of a DIFFERENT entity) must never be picked as a fold survivor, even
+// though its Kind has a FrameworkClassKindPriority entry (e.g. "SCOPE.Schema",
+// priority 80). Folding the base class node into its own twin would erase the
+// base node — the opposite of #6104's "both survive" contract for a facet
+// pair — and is exactly the java-spring-mini regression #6275 fixed.
+func TestFoldFrameworkClassKinds_TwinFacetNeverEligibleAsSurvivor(t *testing.T) {
+	base := cfSource("User", "User.java")
+	twin := types.EntityRecord{
+		Kind: "SCOPE.Schema", Name: "User", SourceFile: "User.java",
+		QualifiedName: "m.User", Language: "java", StartLine: 3, EndLine: 9,
+		Properties: map[string]string{"framework": "hibernate", types.EntityTwinOfProperty: "some-other-entity-id"},
+	}
+
+	out, n := FoldFrameworkClassKinds([]types.EntityRecord{base, twin}, nil)
+	if n != 0 {
+		t.Errorf("folded %d records; want 0 — the base class node must not fold into its own #6104 twin", n)
+	}
+	cfAssertRows(t, cfRows(out), []string{
+		"SCOPE.Component|User|class|User.java",
+		"SCOPE.Schema|User||User.java",
+	})
+}

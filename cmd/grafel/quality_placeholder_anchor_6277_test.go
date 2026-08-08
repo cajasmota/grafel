@@ -4,17 +4,32 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/extractors/cross/ormlink"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/quality"
 )
 
-// End-to-end proof that the golden benchmark now SEES the ORM-anchor
-// substitution, over the real indexer rather than a hand-built document
-// (Refs #6277).
+// End-to-end proof, over the real indexer rather than a hand-built document,
+// that #6275's dedup-by-ID fix (cmd/grafel/index.go's "an ormlink sentinel
+// must never win identity fields over a real collision partner") restores
+// the must-have entity these three fixtures previously scored as satisfied
+// only by ormlink's thin MAPS_TO anchor (Refs #6277, #6275).
 //
-// The hermetic half lives in internal/quality/placeholder_anchor_6277_test.go
-// and pins the matcher. This half pins the consequence: three fixtures score
-// one must-have lower because the entity that was satisfying it is ormlink's
-// anchor, not the declaration the fixture names.
+// java-spring-mini and elixir-phoenix-mini are FULLY FIXED by #6275: the
+// must-have now binds to a real, content-ful entity (not the sentinel), and
+// entity_found/relationship_found are back at their historic highs.
+// python-django-mini's OWN "SCOPE.Component User" must-have is NOT fixed by
+// #6275 — it is a separate defect (#6276): the Django custom pass folds the
+// base class node into a bare "Model"-kind record (see
+// internal/engine/classfold.go's FrameworkClassKindPriority, which ranks
+// bare "Model" as a legitimate framework-typed survivor, not a #6104 twin),
+// so no non-sentinel record ever collides with the ormlink sentinel for
+// (SCOPE.Component, User, users/models.py) and there is nothing for #6275's
+// dedup fix to promote. python-django-mini's entity_found/relationship_found
+// DO move here (+1/+2) — an unrelated, legitimate side effect of #6275's
+// twin_of anchor-id fix (cmd/grafel/index.go's stampEntityIDs) repairing a
+// DIFFERENT symbol's resolution in the same fixture — verified by the
+// unchanged Found=false/MatchedID="" assertion on the User case below.
 //
 // WHY ABSOLUTE NUMBERS AND NAMED ENTITIES, and not "the ratchet is green":
 // scripts/quality/ratchet.py grades against
@@ -34,26 +49,38 @@ func TestPlaceholderAnchorIsNotCountedAsRecall_6277(t *testing.T) {
 
 	cases := []struct {
 		fixture string
-		// anchoredKind/anchoredName is the must-have that ormlink's anchor was
-		// satisfying before this change.
+		// anchoredKind/anchoredName is the must-have ormlink's anchor used to
+		// mask before #6275; wantFound/wantRealMatch report the POST-#6275 state.
 		anchoredKind, anchoredName string
-		wantEntityFound            int
-		wantEntityExpected         int
-		// Relationship recall must NOT move: the placeholder check is scoped to
-		// entity expectations, and edge endpoints still resolve to anchors.
-		wantRelFound    int
-		wantRelExpected int
+		// wantFound is whether the must-have is now satisfied by a real
+		// (non-placeholder) entity. false only for python-django-mini, whose
+		// own kind-mismatch defect (#6276) is untouched by this fix.
+		wantFound          bool
+		wantEntityFound    int
+		wantEntityExpected int
+		wantRelFound       int
+		wantRelExpected    int
 	}{
-		// The anchor here carries StartLine 0 and collides with the real class
-		// on Kind+Name+SourceFile.
-		{"java-spring-mini", "SCOPE.Component", "User", 24, 25, 15, 21},
-		// The anchor here carries StartLine 1 / EndLine 24 — a source span. It
-		// is caught by the producer's subtype tag and would be missed by any
-		// "reject entities with no span" rule.
-		{"elixir-phoenix-mini", "SCOPE.Component", "Demo.Schemas.User", 21, 22, 9, 10},
-		// Already below its historic high for an unrelated reason (#6276,
-		// ActiveUserManager); this drops it one further.
-		{"python-django-mini", "SCOPE.Component", "User", 24, 28, 5, 12},
+		// #6275 FIXED: the real class node no longer folds into its own
+		// #6104 Hibernate twin (SCOPE.Schema facet) and no longer loses the
+		// #4406 dedup-by-ID identity race to ormlink's sentinel, so the
+		// must-have binds to the real, content-ful entity. Both figures are
+		// back at their historic highs (25/25, 21/21).
+		{"java-spring-mini", "SCOPE.Component", "User", true, 25, 25, 21, 21},
+		// #6275 FIXED via the SAME dedup-by-ID mechanism as java-spring-mini
+		// — no #6104 twin/facet is involved here (Ecto's SCOPE.Schema "users"
+		// table record has a DIFFERENT Name than "Demo.Schemas.User", so it
+		// never becomes a fold candidate for the module node); it is purely
+		// the base AST module node losing identity to the ormlink sentinel on
+		// first-writer-wins, same as java-spring-mini's base class node did.
+		{"elixir-phoenix-mini", "SCOPE.Component", "Demo.Schemas.User", true, 22, 22, 9, 10},
+		// #6276, NOT #6275 — untouched. No non-sentinel record ever collides
+		// with ormlink's sentinel for SCOPE.Component/User/users/models.py
+		// (the base class folds into bare "Model" instead; see comment
+		// above), so nothing here for #6275's fix to promote. The +1/+2
+		// entity/relationship bump is an unrelated side effect of the
+		// twin_of anchor-id fix elsewhere in this fixture.
+		{"python-django-mini", "SCOPE.Component", "User", false, 25, 28, 7, 12},
 	}
 
 	goldenDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "quality", "golden"))
@@ -81,22 +108,50 @@ func TestPlaceholderAnchorIsNotCountedAsRecall_6277(t *testing.T) {
 			}
 			rep := quality.Evaluate(fix, doc)
 
-			// The named expectation, not just a count. Reverting
-			// isPlaceholderAnchor flips exactly this to Found=true.
+			// entityByID for the wantFound branch below — verifies the match
+			// is a REAL entity (not merely that isPlaceholderAnchor got
+			// bypassed some other way).
+			entityByID := make(map[string]graph.Entity, len(doc.Entities))
+			for _, e := range doc.Entities {
+				entityByID[e.ID] = e
+			}
+
+			// The named expectation, not just a count.
 			var seen bool
 			for _, r := range rep.EntityResults {
 				if r.Expected.Kind != tc.anchoredKind || r.Expected.Name != tc.anchoredName {
 					continue
 				}
 				seen = true
-				if r.Found {
-					t.Errorf("must-have %s %s is reported FOUND, bound to %q — the only "+
-						"entity in this fixture's graph carrying that kind and name is "+
-						"ormlink's MAPS_TO anchor, which holds none of the model's members",
+				if r.Found != tc.wantFound {
+					t.Errorf("must-have %s %s Found = %v, want %v (MatchedID=%q)",
+						r.Expected.Kind, r.Expected.Name, r.Found, tc.wantFound, r.MatchedID)
+				}
+				if !tc.wantFound {
+					// #6275 did not reach this fixture's case (python-django-mini,
+					// #6276): only ormlink's placeholder anchor carries this
+					// (Kind, Name), and isPlaceholderAnchor correctly rejects it.
+					if r.MatchedID != "" {
+						t.Errorf("must-have %s %s bound MatchedID=%q, want empty",
+							r.Expected.Kind, r.Expected.Name, r.MatchedID)
+					}
+					continue
+				}
+				// #6275 FIXED: the match must be a real entity, never the
+				// content-free ormlink sentinel it used to fall back to.
+				if r.MatchedID == "" {
+					t.Fatalf("must-have %s %s Found=true but MatchedID is empty", r.Expected.Kind, r.Expected.Name)
+				}
+				matched, ok := entityByID[r.MatchedID]
+				if !ok {
+					t.Fatalf("must-have %s %s MatchedID=%q not present in doc.Entities", r.Expected.Kind, r.Expected.Name, r.MatchedID)
+				}
+				if matched.Subtype == ormlink.SubtypeSentinel {
+					t.Errorf("must-have %s %s matched ormlink's placeholder sentinel (id=%q) — #6275 should have promoted the real class record's identity over it",
 						r.Expected.Kind, r.Expected.Name, r.MatchedID)
 				}
-				if r.MatchedID != "" {
-					t.Errorf("must-have %s %s bound MatchedID=%q, want empty",
+				if matched.StartLine == 0 {
+					t.Errorf("must-have %s %s matched an entity with StartLine 0 (id=%q) — want the real class's span",
 						r.Expected.Kind, r.Expected.Name, r.MatchedID)
 				}
 			}
@@ -116,9 +171,7 @@ func TestPlaceholderAnchorIsNotCountedAsRecall_6277(t *testing.T) {
 				t.Fatalf("relationship_expected = %d, want %d", rep.RelExpected, tc.wantRelExpected)
 			}
 			if rep.RelFound != tc.wantRelFound {
-				t.Errorf("relationship_found = %d, want %d — this figure must not move; "+
-					"the placeholder check is scoped to entity expectations",
-					rep.RelFound, tc.wantRelFound)
+				t.Errorf("relationship_found = %d, want %d", rep.RelFound, tc.wantRelFound)
 			}
 		})
 	}

@@ -294,12 +294,24 @@ func TestKnownRegressionsAgreeWithRecordedFloor(t *testing.T) {
 // (scripts/quality/ratchet.py:33-40): a reader who sees java-spring-mini stop
 // being a 25/25 fixture needs to know the point was never earned, and which
 // issue owns the extraction defect that is now visible.
+//
+// #6275 (the fold-into-twin + dedup-by-ID + twin_of anchor-id fixes at
+// cmd/grafel/index.go and internal/engine/classfold.go) closed FOUR of the
+// five pairs above: java-spring-mini.entity_found, java-spring-mini.
+// relationship_found, elixir-phoenix-mini.entity_found, and python-django-
+// mini.relationship_found all returned to their recorded `was` figure, and
+// ratchet.py self-cleared their known_regressions entries on --update-
+// baseline. Removing them from this list is that same reviewable act the
+// comment above describes — done deliberately here, not as a side effect of
+// touching baseline.json. python-django-mini.entity_found remains: its
+// residual miss (SCOPE.Component User) is #6276, a DIFFERENT mechanism than
+// #6275 (the base class node there folds into a bare "Model"-kind record,
+// never colliding with any #6104 twin or ormlink sentinel at all) — see the
+// note on that known_regressions entry in baseline.json for the full
+// re-diagnosis, including python-django-mini's ActiveUserManager, which WAS
+// #6275's mechanism and is fixed.
 var mustAnnotate = []struct{ fixture, metric string }{
-	{"elixir-phoenix-mini", "entity_found"},
-	{"java-spring-mini", "entity_found"},
-	{"java-spring-mini", "relationship_found"},
 	{"python-django-mini", "entity_found"},
-	{"python-django-mini", "relationship_found"},
 }
 
 // TestEveryKnownRegressionIsAnnotated fails if a tracked drop loses its
