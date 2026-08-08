@@ -48,23 +48,6 @@ const (
 	baselinePath = "golden/baseline.json"
 )
 
-// ungradedFixtures is the closed set of fixtures allowed to carry no
-// expected.json. Both arrived as resolver test corpora (#1030, #1008) and
-// landed under golden/ without expectations, so they are never evaluated.
-//
-// This list is deliberately in Go rather than derived from baseline.json.
-// Without it, a graded fixture can be demoted out of the gate in a single
-// commit — delete its expected.json AND flip its baseline entry to
-// {"expectations_missing": true} — and both the ratchet and the other tests
-// here pass, because each half of the edit justifies the other. That is the
-// cheapest possible way to make csharp-hangfire-mini's 0/5 disappear. Adding a
-// third name now requires editing this file, which is the point: it makes
-// demotion a reviewable act rather than a bookkeeping side effect.
-var ungradedFixtures = map[string]bool{
-	"groovy-grails-mini": true,
-	"swift-swiftui-mini": true,
-}
-
 func loadBaseline(t *testing.T) baselineDoc {
 	t.Helper()
 	raw, err := os.ReadFile(baselinePath)
@@ -149,35 +132,6 @@ func TestBaselineExpectationsPresenceMatchesDisk(t *testing.T) {
 		if !onDisk && !base.ExpectationsMissing {
 			t.Errorf("fixture %q has no expected.json but the baseline expects one — "+
 				"the expectations file was deleted", name)
-		}
-	}
-}
-
-// TestUngradedFixturesAreTheKnownTwo closes the demotion escape: a fixture may
-// only be ungraded if it is named in ungradedFixtures above. Deleting an
-// expected.json and flipping the matching baseline entry in the same commit is
-// otherwise self-consistent and passes everything else here.
-func TestUngradedFixturesAreTheKnownTwo(t *testing.T) {
-	doc := loadBaseline(t)
-
-	for name, base := range doc.Fixtures {
-		if base.ExpectationsMissing && !ungradedFixtures[name] {
-			t.Errorf("fixture %q is recorded as having no expectations, but it is "+
-				"not one of the known ungraded fixtures. A graded fixture cannot be "+
-				"demoted out of the recall gate as a bookkeeping change — either "+
-				"restore its expected.json, or add it to ungradedFixtures in this "+
-				"file and justify that in review", name)
-		}
-	}
-
-	for name := range ungradedFixtures {
-		base, ok := doc.Fixtures[name]
-		if !ok {
-			continue // reported by TestBaselineCoversEveryFixture
-		}
-		if !base.ExpectationsMissing {
-			t.Errorf("fixture %q now carries expectations — good; drop it from "+
-				"ungradedFixtures in this file so it can never silently go back", name)
 		}
 	}
 }
@@ -315,12 +269,17 @@ func TestKnownRegressionsAgreeWithRecordedFloor(t *testing.T) {
 // BELOW a level extraction previously reached, and therefore may not appear in
 // baseline.json as a bare number.
 //
-// It is deliberately in Go rather than derived from baseline.json, for the same
-// reason ungradedFixtures above is: otherwise the annotation and the thing it
-// annotates can be removed in one edit — delete the known_regressions entry and
-// the drop becomes an ordinary-looking floor, with the ratchet still green and
-// every test in this file still passing. Adding or removing a pair here is the
-// reviewable act.
+// It is deliberately in Go rather than derived from baseline.json: otherwise the
+// annotation and the thing it annotates can be removed in one edit — delete the
+// known_regressions entry and the drop becomes an ordinary-looking floor, with
+// the ratchet still green and every test in this file still passing. Adding or
+// removing a pair here is the reviewable act.
+//
+// (#6260 introduced a second such set, ungradedFixtures, on the same reasoning.
+// #6273 deleted it: once every fixture is gated there is no legitimate value the
+// set can hold, so no configuration of it changes any outcome — verified by
+// mutation, see TestGoldenSetIsFullyGraded_6273. mustAnnotate is different, and
+// survives, because known_regressions entries legitimately come and go.)
 //
 // Recorded 2026-08-08 while enabling the custom extractors for the golden
 // benchmark (#6260). Both entries are kind-collision artefacts of that pass,
