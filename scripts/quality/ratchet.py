@@ -16,6 +16,17 @@ It also fails on structural drift: a fixture directory with no baseline entry,
 a baseline entry with no fixture directory, and a fixture that carries no
 expected.json without being explicitly recorded as such.
 
+Freshness: the reports directory is not cleared between runs, so this script
+refuses to grade a report that was not written by the current run. run.sh
+exports QUALITY_RUN_STAMP and stamps every report with it; a report carrying a
+different stamp, or none, is treated as absent. Without this a run in which the
+indexer produced nothing at all grades the previous run's JSON and passes.
+
+Known limitation: the ratchet compares must-have *counts*, not identities. An
+extractor that stops emitting must-have A while starting to emit must-have B
+holds the count and passes. Every report already carries `missing_entities` /
+`missing_relationships`; the gate does not yet consult them.
+
 Usage (normally via scripts/quality/run.sh --ratchet / --update-baseline):
 
     ratchet.py check  <reports-dir> <golden-dir> <baseline.json>
@@ -44,15 +55,36 @@ def has_expectations(golden_dir, name):
     return os.path.exists(os.path.join(golden_dir, name, "expected.json"))
 
 
-def load_report(reports_dir, name):
+def run_stamp():
+    """The current run's freshness stamp. Absent means the caller did not go
+    through run.sh, and we refuse to grade rather than grade something stale."""
+    stamp = os.environ.get("QUALITY_RUN_STAMP", "")
+    if not stamp:
+        raise SystemExit(
+            "ratchet: QUALITY_RUN_STAMP is not set — reports cannot be proved "
+            "fresh. Invoke via scripts/quality/run.sh (--ratchet / "
+            "--update-baseline), not by calling ratchet.py directly."
+        )
+    return stamp
+
+
+def load_report(reports_dir, name, stamp):
+    """Load a fixture's report, or None if it is absent OR stale.
+
+    Stale is deliberately indistinguishable from absent to callers: a report
+    left over from an earlier run must never be graded as a live result.
+    """
     path = os.path.join(reports_dir, name + ".json")
     if not os.path.exists(path):
         return None
     try:
         with open(path) as fh:
-            return json.load(fh)
+            rep = json.load(fh)
     except Exception:
         return None
+    if str(rep.get("run_stamp", "")) != stamp:
+        return None
+    return rep
 
 
 def observed(rep):
@@ -75,6 +107,7 @@ def git_sha():
 
 def build(golden_dir, reports_dir):
     """Build a fresh baseline document from the reports on disk."""
+    stamp = run_stamp()
     fixtures = {}
     for name in fixture_names(golden_dir):
         if not has_expectations(golden_dir, name):
@@ -84,11 +117,11 @@ def build(golden_dir, reports_dir):
                         "evaluated. Not a recall failure; see #6231.",
             }
             continue
-        rep = load_report(reports_dir, name)
+        rep = load_report(reports_dir, name, stamp)
         if rep is None:
             raise SystemExit(
-                f"ratchet: no quality report for fixture {name!r} in {reports_dir} — "
-                "cannot record a baseline from an incomplete run"
+                f"ratchet: no fresh quality report for fixture {name!r} in "
+                f"{reports_dir} — cannot record a baseline from an incomplete run"
             )
         fixtures[name] = observed(rep)
     return {
@@ -107,6 +140,7 @@ def build(golden_dir, reports_dir):
 
 
 def check(golden_dir, reports_dir, baseline_path):
+    stamp = run_stamp()
     try:
         with open(baseline_path) as fh:
             baseline = json.load(fh)
@@ -148,10 +182,12 @@ def check(golden_dir, reports_dir, baseline_path):
             )
             continue
 
-        rep = load_report(reports_dir, name)
+        rep = load_report(reports_dir, name, stamp)
         if rep is None:
             failures.append(
-                f"{name}: no quality report produced (indexer or harness failure)"
+                f"{name}: no report from THIS run (indexer or harness failure, or "
+                f"only a stale report from an earlier run is present) — nothing "
+                f"was measured, so nothing can be said to have held"
             )
             continue
 

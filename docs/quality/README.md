@@ -121,9 +121,11 @@ path rather than a corpus-level trend.
 - All five fixtures achieve 100% must-have recall + 0 forbidden hits on `main`
 
 > **Both bullets above have since gone stale — they describe PR #607, not `main`.**
-> `quality.yml` is `workflow_dispatch` only (as is every workflow in this repo),
-> so quality is not a per-PR gate; and the fixture set grew from 5 to 20 without
-> the new fifteen ever reaching 100%. See "Where the gate actually stands" below.
+> `quality.yml` is `workflow_dispatch` only, so quality is not a per-PR gate; and
+> the fixture set grew from 5 to 20 without the new fifteen ever reaching 100%.
+> (Dispatch-only is specific to this workflow, not a repo-wide convention —
+> `cross-platform-compile.yml` and `windows-installers.yml` are deliberately
+> always-on, and their headers say so.) See "Where the gate actually stands".
 
 ## Where the gate actually stands (Refs #6231)
 
@@ -143,9 +145,11 @@ The twelve shortfalls are not twelve independent gaps. They cluster:
    0/4, `python-rq-mini` 0/3) — job classes are not emitted as `SCOPE.Service`
    and enqueue/schedule sites are not emitted as `SCOPE.Operation`. One
    capability, 22 of the 26 missing must-have entities.
-2. **Controller/view class not emitted as a container**, so its `CONTAINS`
-   edges dangle (`csharp-aspnet-core-mini`, `kotlin-spring-mini`,
-   `python-django-mini`).
+2. **Controller/view class not emitted as an entity at all**
+   (`csharp-aspnet-core-mini` — `UsersController`, its only miss, and the
+   fixture declares no relationships; `kotlin-spring-mini` and
+   `python-django-mini`, where the missing class additionally drags its
+   `CONTAINS` edges down with it).
 3. **`CONTAINS` missing from a class that *was* extracted** (`scala-play-mini`,
    remainder of `python-django-mini`).
 4. **`CALLS` into library/external symbols not recorded**
@@ -177,10 +181,28 @@ scripts/quality/run.sh --runs 1 --update-baseline  # re-record after a change
 - a fixture directory has no baseline entry, or vice versa;
 - an `expected.json` appears or disappears without the baseline agreeing.
 
+A report is only graded if it carries the current run's `run_stamp`. The
+reports directory is never cleared, and the default (`reports/quality`) is
+gitignored and long-lived, so without this a run that measured nothing —
+a broken `GRAFEL_BIN`, say — would grade the previous run's JSON and report OK.
+
 That last set is also enforced cheaply, without indexing anything, by
-`go test ./internal/quality -run TestBaseline` — so a new fixture cannot be
-added and quietly escape the gate, and a red fixture cannot be made green by
-deleting its `expected.json`.
+`go test ./internal/quality -run 'TestBaseline|TestUngraded'` — so a new fixture
+cannot be added and quietly escape the gate, and a red fixture cannot be made
+green by deleting its `expected.json`, nor demoted to ungraded by deleting it
+and flipping the baseline entry in the same commit (`ungradedFixtures` in
+`baseline_test.go` is a closed list of two).
+
+### What the ratchet does *not* do
+
+- **It is review-gated, not self-defending.** `--update-baseline` will happily
+  record a regression as the new floor. Nothing stops that but a reviewer
+  reading the `baseline.json` diff, which is why the numbers are one per line.
+  That is a normal property of a ratchet; it is not a tamper-proof gate.
+- **It compares counts, not identities.** If an extractor stops emitting
+  must-have A and starts emitting must-have B, the count holds and the ratchet
+  passes. Every report already carries `missing_entities` and
+  `missing_relationships`; the gate does not yet consult them.
 
 Running the strict gate (no flags) still demands 100% on every fixture. It is
 kept, and kept failing, so the real gap stays visible rather than being defined

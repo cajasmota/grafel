@@ -47,12 +47,17 @@ MODE=strict
 args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --ratchet)
-      MODE=ratchet
-      shift
-      ;;
-    --update-baseline)
-      MODE=update
+    --ratchet|--update-baseline)
+      # A typo'd or doubled mode flag must not silently resolve to something
+      # else — QUALITY_MODE=ratchett quietly running the strict gate is how a
+      # gate stops gating (Refs #6231).
+      want="${1#--}"
+      [[ "$want" == "update-baseline" ]] && want=update
+      if [[ "$MODE" != "strict" && "$MODE" != "$want" ]]; then
+        echo "error: --ratchet and --update-baseline are mutually exclusive" >&2
+        exit 1
+      fi
+      MODE="$want"
       shift
       ;;
     --runs)
@@ -64,12 +69,16 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      args+=("$1")
-      shift
+      # This runner takes no positional arguments. Silently ignoring an
+      # unrecognised one is how `--rachet` runs the strict gate and nobody
+      # notices (Refs #6231).
+      echo "error: unrecognised argument '$1'" >&2
+      echo "usage: run.sh [--runs N] [--ratchet | --update-baseline]" >&2
+      exit 1
       ;;
   esac
 done
-set -- "${args[@]+"${args[@]}"}"
+unset args
 
 if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
   echo "error: --runs must be a positive integer (got '$RUNS')" >&2
@@ -85,6 +94,16 @@ fi
 
 OUT="${QUALITY_OUT_DIR:-$ROOT/reports/quality}"
 mkdir -p "$OUT"
+
+# Freshness stamp (Refs #6231). $OUT is not cleared between runs and the default
+# (reports/quality) is gitignored and long-lived on a developer machine — which
+# is where this gate runs, since no workflow invokes it. Without a stamp, a run
+# in which every fixture failed to produce a report grades last week's JSON and
+# reports OK: point GRAFEL_BIN at a broken binary and 20/20 fixtures measure
+# nothing while the ratchet says it held. Every report this run writes carries
+# QUALITY_RUN_STAMP, and ratchet.py rejects any report not carrying this one.
+QUALITY_RUN_STAMP="$(date +%s).$$"
+export QUALITY_RUN_STAMP
 
 EXIT=0
 for fix in "$ROOT"/internal/quality/golden/*/ ; do
@@ -193,6 +212,9 @@ merged["relationship_recall_max"]        = max(float(r.get("relationship_recall"
 merged["relationship_found"]             = med_int("relationship_found")
 merged["forbidden_hits"]                 = median_forbidden_hits
 merged["runs_executed"]                  = runs_executed
+# Freshness stamp — ratchet.py rejects reports not carrying the current run's
+# stamp, so a stale file left in $OUT can never be graded as a live result.
+merged["run_stamp"]                      = os.environ.get("QUALITY_RUN_STAMP", "")
 
 with open(out_path, "w") as fh:
     json.dump(merged, fh, indent=2)

@@ -121,5 +121,6 @@
       "relationship_found": 13,
       "relationship_expected": 17
     }
-  }
+  },
+  "measured_on_note": "base commit whose extraction behaviour these figures describe; this change adds no extractor code"
 }

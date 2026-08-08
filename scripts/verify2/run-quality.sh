@@ -64,8 +64,18 @@ while [[ $# -gt 0 ]]; do
     *)                  shift ;;
   esac
 done
+# QUALITY_MODE is validated, not pasted through: a typo must fail loudly rather
+# than quietly select a different gate (Refs #6231).
 if [[ -z "$MODE_ARG" && -n "${QUALITY_MODE:-}" ]]; then
-  MODE_ARG="--${QUALITY_MODE}"
+  case "$QUALITY_MODE" in
+    strict)           MODE_ARG="" ;;
+    ratchet)          MODE_ARG="--ratchet" ;;
+    update-baseline)  MODE_ARG="--update-baseline" ;;
+    *)
+      echo "error: QUALITY_MODE must be strict, ratchet or update-baseline (got '$QUALITY_MODE')" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 echo "==> verify2/quality: running extraction-quality gate"

@@ -28,6 +28,23 @@ const (
 	baselinePath = "golden/baseline.json"
 )
 
+// ungradedFixtures is the closed set of fixtures allowed to carry no
+// expected.json. Both arrived as resolver test corpora (#1030, #1008) and
+// landed under golden/ without expectations, so they are never evaluated.
+//
+// This list is deliberately in Go rather than derived from baseline.json.
+// Without it, a graded fixture can be demoted out of the gate in a single
+// commit — delete its expected.json AND flip its baseline entry to
+// {"expectations_missing": true} — and both the ratchet and the other tests
+// here pass, because each half of the edit justifies the other. That is the
+// cheapest possible way to make csharp-hangfire-mini's 0/5 disappear. Adding a
+// third name now requires editing this file, which is the point: it makes
+// demotion a reviewable act rather than a bookkeeping side effect.
+var ungradedFixtures = map[string]bool{
+	"groovy-grails-mini": true,
+	"swift-swiftui-mini": true,
+}
+
 func loadBaseline(t *testing.T) baselineDoc {
 	t.Helper()
 	raw, err := os.ReadFile(baselinePath)
@@ -112,6 +129,35 @@ func TestBaselineExpectationsPresenceMatchesDisk(t *testing.T) {
 		if !onDisk && !base.ExpectationsMissing {
 			t.Errorf("fixture %q has no expected.json but the baseline expects one — "+
 				"the expectations file was deleted", name)
+		}
+	}
+}
+
+// TestUngradedFixturesAreTheKnownTwo closes the demotion escape: a fixture may
+// only be ungraded if it is named in ungradedFixtures above. Deleting an
+// expected.json and flipping the matching baseline entry in the same commit is
+// otherwise self-consistent and passes everything else here.
+func TestUngradedFixturesAreTheKnownTwo(t *testing.T) {
+	doc := loadBaseline(t)
+
+	for name, base := range doc.Fixtures {
+		if base.ExpectationsMissing && !ungradedFixtures[name] {
+			t.Errorf("fixture %q is recorded as having no expectations, but it is "+
+				"not one of the known ungraded fixtures. A graded fixture cannot be "+
+				"demoted out of the recall gate as a bookkeeping change — either "+
+				"restore its expected.json, or add it to ungradedFixtures in this "+
+				"file and justify that in review", name)
+		}
+	}
+
+	for name := range ungradedFixtures {
+		base, ok := doc.Fixtures[name]
+		if !ok {
+			continue // reported by TestBaselineCoversEveryFixture
+		}
+		if !base.ExpectationsMissing {
+			t.Errorf("fixture %q now carries expectations — good; drop it from "+
+				"ungradedFixtures in this file so it can never silently go back", name)
 		}
 	}
 }

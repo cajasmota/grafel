@@ -1,9 +1,12 @@
 name: quality
 
 on:
-  # Dispatch-only, in line with every other workflow in this repo (free-tier
-  # minute budget — see .github/workflows/test.yml). This is NOT a per-PR gate;
-  # run `scripts/quality/run.sh --runs 1 --ratchet` locally instead.
+  # Dispatch-only — so this is NOT a per-PR gate; run
+  # `scripts/quality/run.sh --runs 1 --ratchet` locally instead. That is a
+  # property of THIS workflow, not a repo convention: cross-platform-compile.yml
+  # and windows-installers.yml are deliberately always-on and their headers
+  # forbid making them dispatch-only. Whether quality should join them is open
+  # (#6231) — the ratchet makes it viable, since it can now actually pass.
   workflow_dispatch:
     inputs:
       mode:
