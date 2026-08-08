@@ -60,6 +60,82 @@ func TestWizard_ToolsFlagRestrictsSelection(t *testing.T) {
 	}
 }
 
+// TestWizard_MCPToolsFlagRecordsDeclines pins the CROSS-SURFACE consequence of
+// --mcp-tools (#6191). This path renders no picker at all, yet it writes the
+// last-choice file that the dashboard wizard later reads, so the semantics of
+// the flag have to be stated deliberately rather than inherited.
+//
+// They are: --mcp-tools IS the picker's answer (its own help text says it skips
+// the interactive picker), so a DETECTED tool the user left out of an explicit
+// list is one they declined, and the decline is recorded. The flag already
+// minted a durable "on" for the tools it named; recording the matching "off" is
+// what stops that record being one-directional.
+//
+// Asserted both on disk and through the surface that consumes it: cursor's
+// config is fresh here, so the (B) default would otherwise check it.
+func TestWizard_MCPToolsFlagRecordsDeclines(t *testing.T) {
+	home := withSandboxHome(t)
+	repoA := filepath.Join(home, "repos", "alpha")
+	makeRepo(t, repoA)
+
+	// A cursor config that EXISTS and is fresh → (B) alone would check it.
+	cursorPath, err := mcpreg.SettingsPath(mcpreg.Cursor)
+	if err != nil {
+		t.Fatalf("SettingsPath(cursor): %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cursorPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cursorPath, []byte(`{"mcpServers":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sel := []string{"claude"}
+	out := &bytes.Buffer{}
+	if err := runWizard(out, wizardOptions{
+		NonInteractive: true,
+		GroupName:      "demo",
+		ReposCSV:       repoA,
+		Watchers:       false,
+		GitHooks:       true,
+		RunInstall:     true,
+		MCPTools:       &sel,
+	}); err != nil {
+		t.Fatalf("wizard: %v\n%s", err, out.String())
+	}
+
+	// On disk: the flag's omission of cursor is recorded as a decline.
+	set, err := mcptools.ReadLastChoice()
+	if err != nil {
+		t.Fatalf("ReadLastChoice: %v", err)
+	}
+	if !set["claude"] {
+		t.Errorf("--mcp-tools=claude must record claude as chosen; got %v", set)
+	}
+	chosen, ok := set["cursor"]
+	if !ok {
+		t.Fatalf("cursor was detected and left out of the explicit list; it must be recorded as declined, not merely absent. got %v", set)
+	}
+	if chosen {
+		t.Errorf(`set["cursor"] = true, want false`)
+	}
+
+	// Through the surface that reads it: the dashboard wizard's default.
+	var sawCursor bool
+	for _, tool := range mcptools.Detect() {
+		if tool.ID != "cursor" {
+			continue
+		}
+		sawCursor = true
+		if tool.DefaultSelected {
+			t.Errorf("cursor must arrive UNCHECKED in the wizard: it was declined via --mcp-tools, and that must beat a fresh mtime. got %+v", tool)
+		}
+	}
+	if !sawCursor {
+		t.Fatal("test premise broken: cursor not detected at all")
+	}
+}
+
 // TestWizard_NoToolsFlagPreservesDefaultAll documents the non-interactive
 // default: with no --tools the historical empty-means-all contract is kept
 // (Tools stays empty; EnabledTools falls back to every adapter).

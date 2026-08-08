@@ -168,7 +168,10 @@ func TestLastChoice_RoundTrip(t *testing.T) {
 		t.Errorf("read set = %v, want {claude, cursor}", set)
 	}
 
-	// An empty selection ("chose none") must round-trip as a non-nil empty set.
+	// An empty selection ("chose none") must round-trip as a non-nil set in
+	// which every offered tool is explicitly FALSE (#6191). Claude's config
+	// path is $HOME/.claude.json, so its parent dir — the temp HOME — always
+	// exists and claude is always among the offered tools here.
 	if err := SaveLastChoice([]string{}); err != nil {
 		t.Fatalf("SaveLastChoice(empty): %v", err)
 	}
@@ -176,8 +179,16 @@ func TestLastChoice_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadLastChoice after empty: %v", err)
 	}
-	if set == nil || len(set) != 0 {
-		t.Errorf("empty choice round-trip = %v, want non-nil empty set", set)
+	if set == nil {
+		t.Fatal("empty choice round-trip = nil, want a non-nil set")
+	}
+	for id, sel := range set {
+		if sel {
+			t.Errorf("empty choice round-trip has %q selected; want every entry false", id)
+		}
+	}
+	if sel, ok := set["claude"]; !ok || sel {
+		t.Errorf(`empty choice round-trip: set["claude"] = (%v, ok=%v), want (false, ok=true)`, sel, ok)
 	}
 }
 
@@ -257,10 +268,11 @@ func TestPreviouslyRegistered_EmptyOrNilIsInert(t *testing.T) {
 // it is asserted through the ONLY API that can record an opt-out in
 // production: SaveLastChoice writes the file, DetectWithPrevious reads it back.
 //
-// A hand-built map{"claude": false} would certify nothing — ReadLastChoice
-// builds its set only from `selected`, so every value it yields is true and an
-// opted-out tool is merely ABSENT. The recorded decision has to be honoured on
-// the strength of that absence alone.
+// A hand-built map{"claude": false} would certify nothing about the file: it
+// asserts a map shape rather than anything SaveLastChoice produces. Going
+// through the real writer is what makes the assertion about production
+// behaviour. (Before #6191 that map shape was not even reachable — the file
+// stored only `selected` — which is the sharper form of the same objection.)
 func TestPreviouslyRegistered_OptOutViaRealRoundTrip(t *testing.T) {
 	setupHome(t)
 	path := staleClaudeNoEntry(t)
@@ -301,6 +313,37 @@ func TestPreviouslyRegistered_SuppressedByAnyRecordedChoice(t *testing.T) {
 	}
 	if c := find(t, DetectWithPrevious(prev), "claude"); c.DefaultSelected {
 		t.Errorf("a recorded choice of NONE must suppress B2; got %+v", c)
+	}
+}
+
+// TestPreviouslyRegistered_SuppressedForAToolTheChoiceDoesNotName is the bound
+// on its own. Since #6191 a saved choice NAMES the tools it declined, so the
+// sibling above would now hold on the strength of the (C) override alone even
+// if the bound were deleted. The bound's remaining job is the residual case
+// (C) says nothing about: a tool that was not installed when the choice was
+// made, and so appears in neither list.
+func TestPreviouslyRegistered_SuppressedForAToolTheChoiceDoesNotName(t *testing.T) {
+	setupHome(t)
+	writeConfig(t, mcpreg.ClaudeCode, false, nowFunc())
+
+	// The choice is made while cursor is NOT installed, so it names neither.
+	if err := SaveLastChoice([]string{"claude"}); err != nil {
+		t.Fatalf("SaveLastChoice: %v", err)
+	}
+	set, err := ReadLastChoice()
+	if err != nil {
+		t.Fatalf("ReadLastChoice: %v", err)
+	}
+	if _, ok := set["cursor"]; ok {
+		t.Fatalf("precondition: the saved choice must not name cursor; got %v", set)
+	}
+
+	// Cursor turns up later: stale, entry gone, but recorded in install.json.
+	cursorPath := writeConfig(t, mcpreg.Cursor, false, nowFunc().Add(-90*24*time.Hour))
+
+	tools := DetectWithPrevious(map[string]bool{cursorPath: true})
+	if c := find(t, tools, "cursor"); c.DefaultSelected {
+		t.Errorf("a choice has been recorded, so B2 is suppressed even for a tool that choice does not name; got %+v", c)
 	}
 }
 
@@ -385,6 +428,289 @@ func TestDetectWithPrevious_ReadsLastChoice(t *testing.T) {
 
 	if c := find(t, DetectWithPrevious(nil), "cursor"); !c.DefaultSelected {
 		t.Errorf("DetectWithPrevious must honour the saved (C) choice; got %+v", c)
+	}
+}
+
+// ── (#6191) the last-choice file must be able to say "off" ──────────────────
+
+// readRawLastChoice decodes ~/.grafel/mcp-tools.json as the on-disk document,
+// so a test can assert what was actually written rather than what the reader
+// makes of it.
+func readRawLastChoice(t *testing.T) lastChoiceFile {
+	t.Helper()
+	path, err := LastChoicePath()
+	if err != nil {
+		t.Fatalf("LastChoicePath: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var doc lastChoiceFile
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("unmarshal %s: %v", path, err)
+	}
+	return doc
+}
+
+// has reports whether ids contains id.
+func has(ids []string, id string) bool {
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
+	}
+	return false
+}
+
+// TestOptOut_SurvivesRecentConfig is THE reported defect (#6191), routed
+// through the only API that records a choice in production. Claude Code's
+// config is rewritten constantly, so `recent` — and with it the (B) default —
+// is essentially always true for it. Unchecking it and saving therefore has to
+// beat a live (B) signal, which is exactly what the old file shape could not
+// express: an unchecked tool was merely ABSENT, and detectWith's `ok` guard
+// never fired.
+func TestOptOut_SurvivesRecentConfig(t *testing.T) {
+	setupHome(t)
+	now := nowFunc()
+
+	// Both recent → (B) would check BOTH.
+	writeConfig(t, mcpreg.ClaudeCode, false, now)
+	writeConfig(t, mcpreg.Cursor, false, now)
+
+	// The user unchecked claude and kept cursor.
+	if err := SaveLastChoice([]string{"cursor"}); err != nil {
+		t.Fatalf("SaveLastChoice: %v", err)
+	}
+
+	tools := DetectWithPrevious(nil)
+	if c := find(t, tools, "claude"); c.DefaultSelected {
+		t.Errorf("claude was deliberately unchecked and saved; a recent mtime must not re-check it. got %+v", c)
+	}
+	if c := find(t, tools, "cursor"); !c.DefaultSelected {
+		t.Errorf("cursor was chosen and saved; it must stay checked. got %+v", c)
+	}
+}
+
+// TestOptOut_RecordedOnDisk pins the WRITE half independently: SaveLastChoice
+// must persist the tools that were on offer and left unchecked, not only the
+// chosen ones. Asserted against the file, so it dies if the writer stops
+// recording deselections even when the reader still understands them.
+func TestOptOut_RecordedOnDisk(t *testing.T) {
+	setupHome(t)
+	now := nowFunc()
+	writeConfig(t, mcpreg.ClaudeCode, false, now)
+	writeConfig(t, mcpreg.Cursor, false, now)
+
+	if err := SaveLastChoice([]string{"cursor"}); err != nil {
+		t.Fatalf("SaveLastChoice: %v", err)
+	}
+
+	doc := readRawLastChoice(t)
+	if !has(doc.Selected, "cursor") {
+		t.Errorf("selected = %v, want it to contain cursor", doc.Selected)
+	}
+	if !has(doc.Deselected, "claude") {
+		t.Errorf("deselected = %v, want it to contain claude (offered and left unchecked)", doc.Deselected)
+	}
+	if has(doc.Deselected, "cursor") {
+		t.Errorf("deselected = %v, must not contain the CHOSEN tool", doc.Deselected)
+	}
+}
+
+// TestReadLastChoice_DeselectedYieldsFalse pins the READ half independently,
+// from a hand-written document, so it dies if the reader stops honouring the
+// deselected list even while the writer still emits it.
+func TestReadLastChoice_DeselectedYieldsFalse(t *testing.T) {
+	setupHome(t)
+	writeRawLastChoice(t, []byte(`{"selected":["cursor"],"deselected":["claude"]}`), 0o600)
+
+	set, err := ReadLastChoice()
+	if err != nil {
+		t.Fatalf("ReadLastChoice: %v", err)
+	}
+	sel, ok := set["claude"]
+	if !ok {
+		t.Fatal(`set["claude"] missing: a deselected tool must be PRESENT and false, not absent`)
+	}
+	if sel {
+		t.Error(`set["claude"] = true, want false`)
+	}
+	if !set["cursor"] {
+		t.Errorf("set = %v, want cursor true", set)
+	}
+}
+
+// TestReadLastChoice_SelectedWinsOverDeselected pins the ORDER in which the two
+// lists are applied. A document naming a tool in both is contradictory and
+// should not depend on map-iteration luck: the affirmative wins, so a reader
+// that applies `selected` first and lets `deselected` overwrite it is caught.
+func TestReadLastChoice_SelectedWinsOverDeselected(t *testing.T) {
+	setupHome(t)
+	writeRawLastChoice(t, []byte(`{"selected":["claude"],"deselected":["claude"]}`), 0o600)
+
+	set, err := ReadLastChoice()
+	if err != nil {
+		t.Fatalf("ReadLastChoice: %v", err)
+	}
+	if !set["claude"] {
+		t.Errorf(`set["claude"] = %v; a tool named in BOTH lists must read as selected`, set["claude"])
+	}
+}
+
+// TestOptOut_DoesNotStrandAnUnofferedTool is the counter-ratchet the issue
+// warned about. A deselection records only what was actually OFFERED at the
+// time — a tool not installed then is in neither list, so when it appears
+// later the (B) default decides and it is checked, exactly as on a first run.
+//
+// Only that half is asserted here, so this test dies for one reason: the
+// deselected set being computed over every registered adapter instead of the
+// detected ones.
+func TestOptOut_DoesNotStrandAnUnofferedTool(t *testing.T) {
+	setupHome(t)
+	now := nowFunc()
+
+	// Offered at save time: claude (chosen) and windsurf (left unchecked).
+	// Cursor is NOT installed — ~/.cursor does not exist.
+	writeConfig(t, mcpreg.ClaudeCode, false, now)
+	writeConfig(t, mcpreg.Windsurf, false, now)
+	if c := mcpAdapterDetected(t, "cursor"); c {
+		t.Fatal("precondition: cursor must be undetected at save time")
+	}
+
+	if err := SaveLastChoice([]string{"claude"}); err != nil {
+		t.Fatalf("SaveLastChoice: %v", err)
+	}
+
+	// Cursor is installed afterwards.
+	writeConfig(t, mcpreg.Cursor, false, now)
+
+	if c := find(t, DetectWithPrevious(nil), "cursor"); !c.DefaultSelected {
+		t.Errorf("cursor was never offered, so it cannot have been opted out of; (B) must decide and check it. got %+v", c)
+	}
+}
+
+// TestOptOut_RewriteForgetsADeclineForAnUninstalledTool documents a KNOWN
+// limit of the whole-document rewrite, so the package comment's claim about it
+// is checked rather than asserted. SaveLastChoice records the tools detected at
+// the moment of the save; it does not merge with what the file already held. So
+// a decline survives only while its tool stays detected:
+//
+//	decline cursor -> uninstall cursor -> any later save -> reinstall cursor
+//
+// leaves cursor back on the (B) default. Whether a merge would be better is a
+// separate call; this pins what the code actually does today.
+func TestOptOut_RewriteForgetsADeclineForAnUninstalledTool(t *testing.T) {
+	setupHome(t)
+	now := nowFunc()
+	writeConfig(t, mcpreg.ClaudeCode, false, now)
+	cursorPath := writeConfig(t, mcpreg.Cursor, false, now)
+
+	// 1. Cursor is declined, and the decline sticks.
+	if err := SaveLastChoice([]string{"claude"}); err != nil {
+		t.Fatalf("save (decline cursor): %v", err)
+	}
+	if c := find(t, DetectWithPrevious(nil), "cursor"); c.DefaultSelected {
+		t.Fatal("precondition: the decline must hold while cursor is installed")
+	}
+
+	// 2. Cursor is uninstalled — config AND its parent dir go away.
+	if err := os.RemoveAll(filepath.Dir(cursorPath)); err != nil {
+		t.Fatal(err)
+	}
+	if mcpAdapterDetected(t, "cursor") {
+		t.Fatal("precondition: cursor must be undetected after removal")
+	}
+
+	// 3. Any later save rewrites the document without it.
+	if err := SaveLastChoice([]string{"claude"}); err != nil {
+		t.Fatalf("save (cursor gone): %v", err)
+	}
+	set, err := ReadLastChoice()
+	if err != nil {
+		t.Fatalf("ReadLastChoice: %v", err)
+	}
+	if _, ok := set["cursor"]; ok {
+		t.Errorf("the rewrite drops a tool that is no longer detected; got %v", set)
+	}
+
+	// 4. Reinstalled, cursor is back on the (B) default.
+	writeConfig(t, mcpreg.Cursor, false, now)
+	if c := find(t, DetectWithPrevious(nil), "cursor"); !c.DefaultSelected {
+		t.Errorf("after the rewrite forgot the decline, (B) decides again and checks a fresh config; got %+v", c)
+	}
+}
+
+// mcpAdapterDetected reports whether the given tool ID is currently detected.
+func mcpAdapterDetected(t *testing.T, id string) bool {
+	t.Helper()
+	for _, tl := range detectWith(map[string]bool{}, nil) {
+		if tl.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// TestOptOut_ChooseOptOutChooseAgain walks the whole TRANSITION, not its halves:
+// chosen → opted out → chosen again, each step through SaveLastChoice and read
+// back through DetectWithPrevious, with (B) saying "checked" the entire time so
+// every observation is attributable to the recorded choice alone.
+func TestOptOut_ChooseOptOutChooseAgain(t *testing.T) {
+	setupHome(t)
+	now := nowFunc()
+	writeConfig(t, mcpreg.ClaudeCode, false, now)
+	writeConfig(t, mcpreg.Cursor, false, now)
+
+	claudeChecked := func() bool {
+		t.Helper()
+		return find(t, DetectWithPrevious(nil), "claude").DefaultSelected
+	}
+
+	// 1. chosen.
+	if err := SaveLastChoice([]string{"claude", "cursor"}); err != nil {
+		t.Fatalf("save (chosen): %v", err)
+	}
+	if !claudeChecked() {
+		t.Fatal("step 1: claude was chosen and saved; it must be checked")
+	}
+
+	// 2. opted out — the step the old shape could not express.
+	if err := SaveLastChoice([]string{"cursor"}); err != nil {
+		t.Fatalf("save (opt out): %v", err)
+	}
+	if claudeChecked() {
+		t.Fatal("step 2: claude was unchecked and saved; it must NOT be checked")
+	}
+
+	// 3. chosen again — the opt-out must not be sticky either.
+	if err := SaveLastChoice([]string{"claude", "cursor"}); err != nil {
+		t.Fatalf("save (re-chosen): %v", err)
+	}
+	if !claudeChecked() {
+		t.Fatal("step 3: claude was re-checked and saved; the earlier opt-out must not persist")
+	}
+}
+
+// TestReadLastChoice_LegacyFileHasNoDeselections is the backward-compatibility
+// direction: a file written by an older binary carries no `deselected` key, and
+// must keep meaning exactly what it meant then — the named tools ON, everything
+// else left to (B). Absence must NOT be reinterpreted as "off".
+func TestReadLastChoice_LegacyFileHasNoDeselections(t *testing.T) {
+	setupHome(t)
+	now := nowFunc()
+	writeConfig(t, mcpreg.ClaudeCode, false, now) // recent → (B) checks it
+	writeRawLastChoice(t, []byte(`{"selected":["cursor"],"savedAt":"2026-01-01T00:00:00Z"}`), 0o600)
+
+	set, err := ReadLastChoice()
+	if err != nil {
+		t.Fatalf("ReadLastChoice: %v", err)
+	}
+	if _, ok := set["claude"]; ok {
+		t.Errorf("legacy file: claude must be ABSENT from the set, not %v — absence is not an opt-out", set)
+	}
+	if c := find(t, DetectWithPrevious(nil), "claude"); !c.DefaultSelected {
+		t.Errorf("legacy file: claude is recent, so (B) must still check it. got %+v", c)
 	}
 }
 
