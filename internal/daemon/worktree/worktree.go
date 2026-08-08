@@ -61,6 +61,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/atomicfile"
+	"github.com/cajasmota/grafel/internal/daemon/watch"
 	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/fsnotify/fsnotify"
 )
@@ -546,7 +547,47 @@ type Watcher struct {
 	// disabledLogOnce ensures the "indexing disabled" line (cap==0) is logged
 	// at most once per process, not on every ~60s tick / debounced Sync.
 	disabledLogOnce sync.Once
+
+	// fdb is the descriptor accounting the .git/worktrees fsnotify watch
+	// charges against (#6233). Defaults to the process-wide watch ledger;
+	// tests substitute a ledger with a deterministic capacity.
+	fdb fdLedger
 }
+
+// fdLedger is the descriptor accounting for the .git/worktrees watch (#6233).
+//
+// That watch opens a SECOND fsnotify.Watcher, separate from the subscription
+// watcher in internal/daemon/watch, and both draw on the same per-process
+// kernel descriptor limit. Charging one ledger is what makes the daemon's
+// reported watch headroom true rather than true-of-one-consumer. Function
+// fields rather than an interface so the default is a direct reference to the
+// watch package's entry points and a test can replace one part at a time.
+type fdLedger struct {
+	// reserve commits n descriptors, reporting false if they do not fit.
+	reserve func(n int) bool
+	// release returns n previously committed descriptors.
+	release func(n int)
+	// cost prices one directory watch given how many entries the directory
+	// holds — the per-entry term is real on macOS and zero elsewhere.
+	cost func(entries int) int
+}
+
+// defaultFDLedger charges the process-wide ledger in internal/daemon/watch —
+// the same one Watcher.FDBudgetStats reads, which the daemon reports as
+// WatcherFDUsed/WatcherFDLimit in the status RPC.
+func defaultFDLedger() fdLedger {
+	return fdLedger{
+		reserve: watch.ReserveWatchFDs,
+		release: watch.ReleaseWatchFDs,
+		cost:    watch.DirWatchFDCost,
+	}
+}
+
+// gitDirsDebounce is how long the .git/worktrees watch coalesces events before
+// reconciling. Package-level so a test can wait out an in-flight debounced poll
+// against the same figure the watch uses. NOTE: the timer it arms is not
+// tracked by the watch's stop func, so a poll can begin after stop() returns.
+const gitDirsDebounce = 750 * time.Millisecond
 
 // defaultPollInterval is the default reconciliation interval.
 const defaultPollInterval = 60 * time.Second
@@ -585,6 +626,7 @@ func NewWatcher(store *Store, parents func() []ParentRepo, logger *slog.Logger) 
 		parents:  parents,
 		interval: pollInterval(),
 		logger:   logger,
+		fdb:      defaultFDLedger(),
 	}
 }
 
@@ -634,6 +676,7 @@ func (w *Watcher) startGitDirsWatch(ctx context.Context) func() {
 	}
 
 	added := 0
+	reserved := 0
 	for _, p := range w.parents() {
 		dir := gitWorktreesDir(p.Path)
 		if dir == "" {
@@ -644,14 +687,50 @@ func (w *Watcher) startGitDirsWatch(ctx context.Context) func() {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			continue
 		}
+		// Charge the process-wide watch descriptor ledger BEFORE opening the
+		// watch (#6233). This watcher and the subscription watcher in
+		// internal/daemon/watch spend the same per-process descriptors, so the
+		// budget only bounds the process if both consumers charge it.
+		//
+		// The charge is a SNAPSHOT taken at Add time and is never revised.
+		// kqueue keeps spending: every `git worktree add` after this point
+		// creates a new entry in the watched directory and fsnotify opens a
+		// descriptor for it (dirChange → internalWatch) that the ledger never
+		// sees. On a fresh daemon .git/worktrees is usually empty, so what is
+		// reserved is 1 and the entire per-worktree term accrues unaccounted.
+		// The ledger is therefore accurate at Add and drifts optimistic after —
+		// which is better than the zero it charged before, but is not the same
+		// as true. Re-charging as the directory grows needs a per-event hook
+		// this watch does not have; it belongs with #6180's accounting work.
+		cost := w.fdb.cost(gitWorktreesEntries(dir))
+		if !w.fdb.reserve(cost) {
+			// Refusal is cheap here: the reconciliation poll (Start's ticker)
+			// re-resolves parents and runs `git worktree list` regardless of
+			// this watch, so a refusal costs promptness, not discovery.
+			//
+			// Note this is NOT a yield in favour of subscriptions — the ledger
+			// has no priority and no eviction, it is first-come-first-served.
+			// The boot order in fact runs the other way: subscriptions are lazy
+			// (engineplane.go — the daemon boots with zero AddRepo calls and
+			// repos subscribe on first MCP query) while this watch starts at
+			// boot, so it is normally first in line and rarely the party that
+			// finds the budget full.
+			w.logger.Warn("worktree: not watching .git/worktrees — descriptor budget exhausted; "+
+				"worktree add/remove for this repo is picked up by the reconciliation poll instead",
+				"dir", dir, "descriptors", cost, "poll_interval", w.interval.String())
+			continue
+		}
 		if err := fw.Add(dir); err != nil {
+			w.fdb.release(cost)
 			w.logger.Warn("worktree: failed to watch .git/worktrees", "dir", dir, "err", err)
 			continue
 		}
+		reserved += cost
 		added++
 	}
 	if added == 0 {
 		_ = fw.Close()
+		w.fdb.release(reserved) // reserved is 0 here; released for symmetry
 		return func() {}
 	}
 	w.logger.Info("worktree: event-driven onboarding active", "git_worktrees_dirs", added)
@@ -660,7 +739,7 @@ func (w *Watcher) startGitDirsWatch(ctx context.Context) func() {
 	go func() {
 		defer close(done)
 		var timer *time.Timer
-		const debounce = 750 * time.Millisecond
+		const debounce = gitDirsDebounce
 		fire := func() { w.poll() }
 		for {
 			select {
@@ -682,10 +761,36 @@ func (w *Watcher) startGitDirsWatch(ctx context.Context) func() {
 		}
 	}()
 
+	// stopOnce guards the ledger release, not fw.Close(): a double release
+	// does not leak descriptors, it invents them. The ledger clamps at zero,
+	// so a second call drives `used` below the truth and the difference is
+	// handed to the next subscription, which opens descriptors the budget
+	// should have refused. watch.Watcher.Stop is sync.Once-guarded for the
+	// same reason.
+	var stopOnce sync.Once
 	return func() {
 		_ = fw.Close()
 		<-done
+		stopOnce.Do(func() {
+			// fw.Close() gave every descriptor back to the kernel; give them
+			// back to the ledger too, or a daemon that restarts this watch
+			// bleeds budget away from repo subscriptions (#6233).
+			w.fdb.release(reserved)
+		})
 	}
+}
+
+// gitWorktreesEntries counts the entries in a .git/worktrees directory — one
+// per linked worktree. It is the per-entry term of the descriptor cost on
+// macOS, where fsnotify's kqueue backend opens a descriptor for every entry of
+// a watched directory. An unreadable directory reports 0; the watch is about
+// to fail anyway and the reservation is released on that path.
+func gitWorktreesEntries(dir string) int {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	return len(ents)
 }
 
 // gitWorktreesDir returns the absolute path to the common
