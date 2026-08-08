@@ -41,6 +41,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // BlockVersion is the version embedded in the start marker. Bumping the
@@ -670,20 +672,66 @@ func lineMentionsPredecessor(line string) bool {
 	return false
 }
 
-// atomicWrite writes data to path via a tmp-file + rename. Parent dirs
-// are created as needed so .codeium/ and .github/ are handled
-// transparently.
+// newRulesFilePerm is the mode a rules file is CREATED at when nothing exists
+// at the destination yet.
+//
+// 0644, and NOT the 0600 the dashboard's host configs use — the reasoning that
+// settled that question does not transfer here. These destinations are ordinary
+// project files inside the user's git repository (CLAUDE.md, AGENTS.md,
+// .cursorrules, .github/copilot-instructions.md): they are committed, every
+// collaborator's checkout reads them, and their content is a public block of
+// documentation that carries no credential. 0600 would be a behaviour change
+// with no security argument behind it, and one that produces a file whose mode
+// disagrees with every other tracked file next to it. This is the same call
+// slice 1 made for agenthooks' project-scoped settings.json.
+//
+// An EXISTING destination keeps its own mode — see atomicWrite. The create mode
+// only decides what a brand-new file looks like.
+//
+// Note this OVERRIDES the user's umask, and is a change from the os.WriteFile
+// this replaced: that passed perm through open(2), so under `umask 077` a fresh
+// CLAUDE.md came out 0600. atomicfile.WriteFile Chmods to exactly the mode
+// requested (see its package doc — a deliberate, tree-wide decision), so it now
+// comes out 0644 on any umask. Accepted for a committed documentation file, and
+// the same trade slice 1 made for agenthooks' settings.json, but it does mean
+// this slice WIDENS the create mode on a umask-077 machine — on the very axis
+// #6246 is about. It does not touch an existing file's mode, which is the defect
+// itself.
+const newRulesFilePerm os.FileMode = 0o644
+
+// atomicWrite writes data to path, following any symlink at path through to its
+// target and reproducing that target's existing mode (#6246). Parent dirs of the
+// RESOLVED destination are created as needed so .codeium/ and .github/ are
+// handled transparently.
+//
+// The three lines this replaces — write `path + ".tmp"` at a hardcoded 0644,
+// rename it over the destination — were the same shape #6240 fixed in
+// internal/install/mcpreg, with both of its defects, but aimed at a different
+// blast radius: these are TRACKED FILES IN THE USER'S REPO.
+//
+//   - The rename replaced the LINK INODE. A repo that symlinks CLAUDE.md at one
+//     canonical copy (a monorepo, or shared docs) had that link silently turned
+//     into a regular file on the first `grafel install`. The damage is not just
+//     divergence: the user's next commit no longer contains the link they wrote,
+//     and nothing in the diff says the file stopped tracking its source.
+//   - The destination inherited the temp file's 0644, so a deliberately narrowed
+//     rules file was widened and a read-only one became writable.
+//
+// An UNRESOLVABLE chain (a cycle, or longer than any kernel follows) is an error
+// wrapping atomicfile.ErrSymlinkChain, never a best-effort write at the last hop
+// reached — that hop is ITSELF a symlink, so renaming over it flattens one of
+// the user's links while reporting success.
+//
+// The MkdirAll moved onto the resolved directory deliberately: the link's own
+// directory necessarily exists (we just read a link out of it), the target's
+// need not.
 func atomicWrite(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+	target, err := atomicfile.ResolveWriteTarget(path)
+	if err != nil {
+		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("write tmp: %w", err)
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(target), err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("rename: %w", err)
-	}
-	return nil
+	return atomicfile.WriteFile(target, data, atomicfile.ExistingPerm(target, newRulesFilePerm))
 }

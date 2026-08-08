@@ -24,6 +24,24 @@ package registry
 // It is inert outside tests (`testing.Testing()` is false in the shipping
 // binary) and inert inside tests that DID isolate (the write target no longer
 // lands under the real home, so the panic condition is never met).
+//
+// # Why this is still a local copy and not internal/homeguard
+//
+// #6246 lifted internal/install/mcpreg's near-identical guard into
+// internal/homeguard, shared with internal/dashboard. THIS copy was deliberately
+// left behind, and the difference is one line: isUnsafeTestWritePath below
+// EXEMPTS os.TempDir(), because on Windows t.TempDir() lives under the user
+// profile directory and a raw "inside the real home" prefix check rejects
+// correctly-isolated tests there. homeguard reproduces mcpreg's semantics
+// exactly, and mcpreg has NO such exemption.
+//
+// So unifying the third caller is not a move — it is a decision about which of
+// the two behaviours is right on Windows, taken with mcpreg's untouched #6240
+// suite as the thing at risk. See the homeguard package doc for the evidence
+// (mcpreg appears to survive Windows CI only because Go reports TEMP under its
+// 8.3 short name, which neither filepath.Abs nor filepath.Clean normalises to
+// long form). Until that is settled on purpose, the divergence is documented
+// from both sides rather than papered over from one.
 
 import (
 	"fmt"

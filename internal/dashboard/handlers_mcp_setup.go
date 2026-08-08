@@ -213,7 +213,15 @@ func writeMCPConfig(path string, cfg map[string]any) error {
 	// copy the CONTENT the link points at, which is what the write is about to
 	// replace.
 	if _, err := os.Stat(path); err == nil {
-		if err2 := copyFile(path, path+".bak"); err2 != nil {
+		backup := path + ".bak"
+		// The FIRST of this function's two writes, and the one a guard only on
+		// the config write would miss: it runs before that write and would
+		// deposit a verbatim copy of an OAuth token in the developer's home
+		// before anything panicked. `backup` is not symlink-resolved because
+		// copyFile removes it before recreating it, so it can never be written
+		// THROUGH; the literal path is the path.
+		guardWriteTarget(backup, "MCP host config backup")
+		if err2 := copyFile(path, backup); err2 != nil {
 			return fmt.Errorf("backup: %w", err2)
 		}
 	}
@@ -221,7 +229,19 @@ func writeMCPConfig(path string, cfg map[string]any) error {
 	if err != nil {
 		return err
 	}
-	return atomicfile.WriteThrough(path, b, newHostConfigPerm)
+
+	// Resolved here rather than inside atomicfile.WriteThrough (of which these
+	// three lines are otherwise a copy) because the isolation guard has to sit
+	// BETWEEN resolution and the write — inspecting the path resolution produced
+	// is the whole point of it. Same trade internal/install/mcpreg makes, and
+	// the same reason: a test-only concern of one package does not belong in a
+	// helper used tree-wide.
+	target, err := atomicfile.ResolveWriteTarget(path)
+	if err != nil {
+		return err
+	}
+	guardWriteTarget(target, "MCP host config (symlink target)")
+	return atomicfile.WriteFile(target, b, atomicfile.ExistingPerm(target, newHostConfigPerm))
 }
 
 // copyFile copies src to dst, reproducing src's mode.
