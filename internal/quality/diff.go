@@ -3,8 +3,92 @@ package quality
 import (
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/extractors/cross/ormlink"
 	"github.com/cajasmota/grafel/internal/graph"
 )
+
+// isPlaceholderAnchor reports whether e is a stand-in that its own producer
+// declares is not the entity it is named after, and which therefore cannot
+// satisfy an ExpectedEntity (Refs #6277).
+//
+// A must-have entity expectation asserts that the indexer EXTRACTED a given
+// declaration. Matching on (Kind, Name) — even narrowed by SourceFile — cannot
+// tell that apart from an entity that merely carries those strings.
+//
+// This check covers ONE producer: internal/extractors/cross/ormlink. Its
+// package doc (extractor.go:43-49) says it emits no entity kind of its own, and
+// that the SCOPE.Component it does emit is a "thin sentinel" tagged with
+// SubtypeSentinel whose only job is to give the resolver's
+// embedded-relationship rewrite loop an anchor for the MAPS_TO edge. It holds
+// none of the model's members.
+//
+// It is NOT the only stand-in in the graph, and this predicate is knowingly
+// incomplete. internal/extractors/cross/hierarchy synthesises nodes for
+// supertypes it has only seen referenced — seventeen sites set
+// Properties["provenance"]="INFERRED_FROM_CLASS_HIERARCHY" — and those wear
+// REAL subtypes ("class", "interface", "trait") plus the REFERENCING file as
+// SourceFile, so no subtype-keyed rule can see them; their marker is the
+// provenance property, for which a predicate already exists at
+// internal/engine/classfold.go:124 (IsClassHierarchyShadow). One is live in the
+// corpus today: java-quartz-mini emits SCOPE.Component Job, subtype "interface",
+// SourceFile jobs/SendEmailJob.java, StartLine 0 — an inferred stand-in for the
+// Quartz interface, which has no source in the fixture. It satisfies no
+// expectation java-quartz-mini declares, so nothing is mis-scored by it today.
+// Extending to that producer is a separate change: classfold.go:138-139 says a
+// hierarchy shadow that folds into nothing is KEPT as the single node for its
+// class, so rejecting them wholesale would deny real classes, and picking the
+// stand-ins out of the survivors needs its own reasoning and blast radius.
+//
+// This is checked against the producer's own subtype tag rather than against
+// the shape of the entity. A "no source span" rule looks equivalent — two of
+// the three anchors in the golden corpus carry StartLine 0 — but measured over
+// the graphs the twenty golden fixtures produce it would additionally reject 17
+// must-haves that are synthesised by design and legitimately carry no span,
+// across five fixtures: php-slim-mini's five http_endpoint_definition entities,
+// rust-tokio-mini's five file modules, swift-package-mini's three SwiftPM
+// products, kotlin-spring-mini's three REST SCOPE.Operations, and
+// java-spring-mini's own Route /users — the fixture this check exists for. It
+// would also MISS the anchor in elixir-phoenix-mini, which is stamped StartLine
+// 1 / EndLine 24. See TestZeroSpanEntitiesStillSatisfyMustHaves.
+//
+// Deliberately scoped to entity expectations. resolveExpectedEdge still binds
+// these entities, because the anchor is what a MAPS_TO edge hangs off and
+// refusing it there would make that edge unassertable.
+func isPlaceholderAnchor(e *graph.Entity) bool {
+	return e.Subtype == ormlink.SubtypeSentinel
+}
+
+// firstExtracted returns the FIRST candidate that is a real extracted entity,
+// skipping placeholder anchors. nil when every candidate is a placeholder (or
+// there are none).
+//
+// First, not last, and that is load-bearing when two REAL entities share a
+// (Kind, Name, SourceFile) key: candidates are appended in doc.Entities order,
+// so this returns the earliest-emitted one. It makes the file-narrowed lookup
+// agree with the unnarrowed byKindName path in resolveEntity, which has always
+// taken es[0]. The pre-#6277 single-value map disagreed with that path — it
+// kept whichever entity was written LAST — so picking first is a deliberate
+// choice to have one rule rather than two. See
+// TestFileNarrowedLookupPrefersTheEarliestOfTwoRealCandidates.
+func firstExtracted(cands []*graph.Entity) *graph.Entity {
+	for _, e := range cands {
+		if !isPlaceholderAnchor(e) {
+			return e
+		}
+	}
+	return nil
+}
+
+// lastOf narrows a candidate bucket to its final element, or none. It exists so
+// the relationship path keeps the exact pre-#6277 semantics of byKindNameFile
+// when that index was a single map value written once per entity: last write
+// wins. See the call sites in resolveExpectedEdge.
+func lastOf(cands []*graph.Entity) []*graph.Entity {
+	if len(cands) == 0 {
+		return nil
+	}
+	return cands[len(cands)-1:]
+}
 
 // EntityResult records the outcome of evaluating one ExpectedEntity.
 type EntityResult struct {
@@ -93,20 +177,32 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 
 	// Build entity lookup tables once. We index by:
 	//   - (kind, name)              -> []*Entity (case-sensitive)
-	//   - (kind, name, sourceFile)  -> *Entity (file-narrowed lookup)
+	//   - (kind, name, sourceFile)  -> []*Entity (file-narrowed lookup)
 	//   - qualified_name            -> *Entity
 	//
 	// Slice values rather than scalars because nothing in graph.Document
 	// guarantees name+kind uniqueness for small fixtures (e.g. two `Meta`
 	// inner classes).
+	//
+	// byKindNameFile is a slice for the same reason, which it was not before
+	// #6277: adding SourceFile to the key narrows collisions but does not
+	// remove them — ormlink's anchor collides with the real class on all three
+	// fields — and a single map value silently kept whichever entity was
+	// emitted LAST, so the file-narrowed lookup could not reach the real entity
+	// past an anchor emitted after it. On its own that is masked by the
+	// unnarrowed (Kind, Name) fallback below, which still holds the real
+	// entity; it becomes observable once a same-named entity exists in another
+	// file, because then the fallback answers with the wrong file's entity. See
+	// TestFileNarrowedLookupSurvivesAnAnchorInTheSameFile.
 	byKindName := make(map[string][]*graph.Entity)
-	byKindNameFile := make(map[string]*graph.Entity)
+	byKindNameFile := make(map[string][]*graph.Entity)
 	byQName := make(map[string]*graph.Entity)
 	for k := range doc.Entities {
 		e := &doc.Entities[k]
 		kn := e.Kind + "\x00" + e.Name
+		knf := kn + "\x00" + e.SourceFile
 		byKindName[kn] = append(byKindName[kn], e)
-		byKindNameFile[kn+"\x00"+e.SourceFile] = e
+		byKindNameFile[knf] = append(byKindNameFile[knf], e)
 		if e.QualifiedName != "" {
 			byQName[e.QualifiedName] = e
 		}
@@ -115,19 +211,23 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// Resolve each expected entity. We accept a hit when ANY extracted
 	// entity matches — small fixtures with collisions can disambiguate
 	// via the MatchBy / SourceFile fields.
+	// Placeholder anchors are skipped on every path (#6277) — see
+	// isPlaceholderAnchor. When the only candidate is an anchor the
+	// expectation is reported as a MISS, which is the true state: nothing in
+	// the graph is the declaration the fixture names.
 	resolveEntity := func(ee ExpectedEntity) *graph.Entity {
 		if ee.MatchBy == "qualified_name" && ee.QualifiedName != "" {
-			return byQName[ee.QualifiedName]
+			if e, ok := byQName[ee.QualifiedName]; ok && !isPlaceholderAnchor(e) {
+				return e
+			}
+			return nil
 		}
 		if ee.SourceFile != "" {
-			if e, ok := byKindNameFile[ee.Kind+"\x00"+ee.Name+"\x00"+ee.SourceFile]; ok {
+			if e := firstExtracted(byKindNameFile[ee.Kind+"\x00"+ee.Name+"\x00"+ee.SourceFile]); e != nil {
 				return e
 			}
 		}
-		if es := byKindName[ee.Kind+"\x00"+ee.Name]; len(es) > 0 {
-			return es[0]
-		}
-		return nil
+		return firstExtracted(byKindName[ee.Kind+"\x00"+ee.Name])
 	}
 
 	for _, ee := range fix.ExpectedEntities {
@@ -172,9 +272,17 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 		// Candidate "from" entities.
 		var fromCands []*graph.Entity
 		if er.FromFile != "" {
-			if e, ok := byKindNameFile[er.FromKind+"\x00"+er.FromName+"\x00"+er.FromFile]; ok {
-				fromCands = []*graph.Entity{e}
-			}
+			// lastOf, not the whole bucket. byKindNameFile became a slice for
+			// the entity path (#6277); before that it was a single map value,
+			// so a colliding key resolved to whichever entity was written LAST.
+			// Handing the full slice here would let an edge match on a
+			// candidate this lookup could never previously return — a widening,
+			// in a change whose whole claim is that only entity scoring moves.
+			// Declined deliberately: nothing in #6277 needs it, and whether the
+			// edge path should consider every colliding candidate (as the
+			// unnarrowed byKindName path below already does) is a real question
+			// with its own blast radius, not a side effect of a re-keying.
+			fromCands = lastOf(byKindNameFile[er.FromKind+"\x00"+er.FromName+"\x00"+er.FromFile])
 		}
 		if len(fromCands) == 0 {
 			fromCands = byKindName[er.FromKind+"\x00"+er.FromName]
@@ -193,9 +301,7 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 		// Candidate "to" entities OR bare-name target.
 		var toCands []*graph.Entity
 		if er.ToFile != "" {
-			if e, ok := byKindNameFile[er.ToKind+"\x00"+er.ToName+"\x00"+er.ToFile]; ok {
-				toCands = []*graph.Entity{e}
-			}
+			toCands = lastOf(byKindNameFile[er.ToKind+"\x00"+er.ToName+"\x00"+er.ToFile])
 		}
 		if len(toCands) == 0 && er.ToName != "" {
 			toCands = byKindName[er.ToKind+"\x00"+er.ToName]

@@ -2,7 +2,7 @@
   "_comment": "Recorded must-have recall per golden fixture. This is a ratchet, not a target: recall may not drop below these figures, and any rise must be recorded here. Regenerate with `scripts/quality/run.sh --runs 1 --update-baseline`.",
   "version": 1,
   "measured_at": "2026-08-08",
-  "measured_on": "316ecada6",
+  "measured_on": "137fbb405",
   "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
   "fixtures": {
     "csharp-aspnet-core-mini": {
@@ -24,7 +24,7 @@
       "relationship_expected": 0
     },
     "elixir-phoenix-mini": {
-      "entity_found": 22,
+      "entity_found": 21,
       "entity_expected": 22,
       "relationship_found": 9,
       "relationship_expected": 10
@@ -60,7 +60,7 @@
       "relationship_expected": 0
     },
     "java-spring-mini": {
-      "entity_found": 25,
+      "entity_found": 24,
       "entity_expected": 25,
       "relationship_found": 15,
       "relationship_expected": 21
@@ -78,7 +78,7 @@
       "relationship_expected": 0
     },
     "python-django-mini": {
-      "entity_found": 25,
+      "entity_found": 24,
       "entity_expected": 28,
       "relationship_found": 5,
       "relationship_expected": 12
@@ -129,6 +129,14 @@
   "known_regressions": [
     {
       "fixture": "java-spring-mini",
+      "metric": "entity_found",
+      "was": 25,
+      "now": 24,
+      "issue": "#6275",
+      "note": "One entity, SCOPE.Component User. The 25/25 this fixture recorded was never real: internal/quality/diff.go resolved that must-have on Kind+Name, and the only SCOPE.Component named User in the extracted graph is ormlink's MAPS_TO anchor (subtype orm_model_sentinel, start_line 0, no members), documented as a thin sentinel at internal/extractors/cross/ormlink/extractor.go:43-49. The real class is emitted as SCOPE.Schema User at com/example/demo/model/User.java:7-20 and carries all eight of the class's CONTAINS edges. #6277 made the matcher skip producer-declared anchors, so the miss is now visible; the kind mismatch that causes it is #6275, the same defect the relationship_found entry below already tracks."
+    },
+    {
+      "fixture": "java-spring-mini",
       "metric": "relationship_found",
       "was": 21,
       "now": 15,
@@ -136,12 +144,20 @@
       "note": "Enabling the custom extractors for the benchmark (#6260) made the Java custom pass emit SCOPE.Schema User for com/example/demo/model/User.java. That node now carries the real class span (line 7) and the five User.* CONTAINS edges plus the UserRepository IMPORTS edge. The SCOPE.Component User the fixture expects survives only as ormlink's orm_model_sentinel (internal/extractors/cross/ormlink/extractor.go:46-49), which fell back to start_line 0 and holds no members - so entity_found stays 25/25 on a content-free stub while its edges are recorded here as lost."
     },
     {
+      "fixture": "elixir-phoenix-mini",
+      "metric": "entity_found",
+      "was": 22,
+      "now": 21,
+      "issue": "#6275",
+      "note": "One entity, SCOPE.Component Demo.Schemas.User, newly visible via #6277. It shares the MASKING mechanism with the java-spring-mini entry above \u2014 ormlink's anchor was the entity satisfying the must-have \u2014 but NOT the underlying defect, and the two should not be conflated. #6275 is a displacement: a real class node exists and the Hibernate facet took its kind. Here nothing is displaced, because no entity of ANY kind carries the name Demo.Schemas.User at all; the Ecto schema module surfaces only as SCOPE.Schema users, subtype schema, at lib/demo/schemas/user.ex:5 \u2014 the table, not the module. It is filed against #6275 as the nearest owner of anchor-masking, and plausibly warrants its own issue; re-point this entry if one is opened. This anchor is also why the discriminator keys on the producer's subtype tag rather than a missing source span: it is stamped start_line 1 / end_line 24."
+    },
+    {
       "fixture": "python-django-mini",
       "metric": "entity_found",
       "was": 26,
-      "now": 25,
+      "now": 24,
       "issue": "#6276",
-      "note": "One entity, ActiveUserManager. The Django custom pass emits every `class X(models.Manager)` as SCOPE.Schema with a blank subtype (internal/custom/python/django.go:637-641) instead of the SCOPE.Component the fixture expects, and internal/quality/diff.go:107-127 matches exactly on Kind\\x00Name, so a kind change reads as a miss. UserListView and UserDetailView are also absent as SCOPE.Component, but they were absent before this change too - a pre-existing residual, not part of this drop."
+      "note": "One entity, ActiveUserManager. The Django custom pass emits every `class X(models.Manager)` as SCOPE.Schema with a blank subtype (internal/custom/python/django.go:637-641) instead of the SCOPE.Component the fixture expects, and internal/quality/diff.go:107-127 matches exactly on Kind\\x00Name, so a kind change reads as a miss. UserListView and UserDetailView are also absent as SCOPE.Component, but they were absent before this change too - a pre-existing residual, not part of this drop. RESTATED for #6277 (26 -> 24): a second, independent entity is now also counted missing, SCOPE.Component User. As in java-spring-mini the only SCOPE.Component of that name is ormlink's anchor (subtype orm_model_sentinel, start_line 0); the Django model itself is emitted with Kind \"Model\" at users/models.py:15. That one is #6275's kind-collision family, not ActiveUserManager's."
     },
     {
       "fixture": "python-django-mini",
@@ -152,5 +168,5 @@
       "note": "Downstream of the same ActiveUserManager reclassification, and only that: the two edges lost are ActiveUserManager CONTAINS ActiveUserManager.by_email and .get_queryset, both now from_resolved=false in the per-fixture report because no SCOPE.Component of that name exists to anchor them. The other five relationship misses on this fixture are unchanged from before."
     }
   ],
-  "measured_on_note": "BASE commit whose tree these figures were measured against, NOT the commit this file lands in. Here the figures describe 316ecada6 plus the two expected.json files added by #6273 (groovy-grails-mini, swift-swiftui-mini) \u2014 316ecada6 alone has no expectations for those two directories and therefore no figures for them at all. The other eighteen are unchanged from the previous recording. This field is PINNED to the merge-base by hand, not left as whatever `--update-baseline` recorded. `git_sha()` in scripts/quality/ratchet.py writes HEAD at measurement time, and HEAD on a feature branch is not durable: amend or rebase the commit and the recorded sha becomes a sibling that no ref reaches, and a squash-merge kills it for certain. That is not hypothetical here \u2014 this file recorded 73cdd3b72, the pre-amend commit of this very change, and TestBaselineMeasuredOnIsReachable caught it. The merge-base is on main, so it stays an ancestor of HEAD before and after the merge. Re-record with --update-baseline if you like, but re-pin this field afterwards."
+  "measured_on_note": "BASE commit whose tree these figures were measured against, NOT the commit this file lands in. Here the figures describe 137fbb405 \u2014 the merge-base of the #6277 branch, and the last commit on main before it \u2014 plus that branch's one behavioural change: internal/quality/diff.go no longer lets a producer-declared placeholder anchor satisfy an entity expectation. Three entity_found figures move as a result (elixir-phoenix-mini 22->21, java-spring-mini 25->24, python-django-mini 25->24); every other figure in this file is byte-for-byte what 137fbb405 produces. No relationship figure moves, because the check is scoped to entity expectations. This field is PINNED to the merge-base by hand, not left as whatever `--update-baseline` recorded. `git_sha()` in scripts/quality/ratchet.py writes HEAD at measurement time, and HEAD on a feature branch is not durable: amend or rebase the commit and the recorded sha becomes a sibling that no ref reaches, and a squash-merge kills it for certain. That is not hypothetical \u2014 this file has twice recorded a pre-amend commit of the very change editing it (01705c852, then 73cdd3b72) and TestBaselineMeasuredOnIsReachable caught it both times. The merge-base is on main, so it stays an ancestor of HEAD before and after the merge. Re-record with --update-baseline if you like, but re-pin this field afterwards."
 }
