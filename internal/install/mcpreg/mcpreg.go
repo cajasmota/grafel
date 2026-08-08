@@ -730,81 +730,50 @@ func writeSettings(path string, doc map[string]any) error {
 // this applies only when there was nothing there before.
 const newConfigPerm os.FileMode = 0o600
 
-// maxSymlinkHops bounds resolveWriteTarget's walk.
-//
-// 40 matches Linux's MAXSYMLINKS, deliberately the most permissive of the
-// kernel limits: anything the OS itself would follow must resolve here too. An
-// earlier 32 (macOS's limit) meant a 33-39 link chain resolved fine for the
-// kernel but ran out of budget here — and the old code answered that by
-// returning the last hop reached, which is itself a symlink. See the error
-// below for why that mattered.
-const maxSymlinkHops = 40
-
 // resolveWriteTarget follows a symlink chain at path and returns the real file
 // a write must land on.
 //
-// Why this exists: writing via temp-file + rename replaces the LINK INODE, so a
-// ~/.claude.json symlinked into a dotfiles repo silently DETACHES from that repo
-// on the first `grafel install` — the user keeps editing the repo copy and
-// Claude Code keeps reading a regular file that no longer tracks it (#6240).
-// Resolving here means the temp file is created in the TARGET's directory, so
-// the rename stays intra-filesystem and therefore atomic.
+// The walk itself — the hop budget, its kernel rationale, and the refusal to
+// answer with a best-effort last hop — moved to atomicfile in #6246, where five
+// more writers with this same defect needed it. What stays here is the
+// CLASSIFICATION: an unresolvable chain means the user's file is broken, which
+// in this package is ErrMalformedConfig, and RunCopy step 3 treats that as
+// grounds for a partial rollback. atomicfile has no business knowing that.
 //
-// A path that is not a symlink, a dangling symlink (the final target is
-// returned even though it does not exist yet, which is what a create must use),
-// and an unreadable link all resolve to a usable answer.
-//
-// An UNRESOLVABLE chain — a cycle, or one longer than any kernel would
-// follow — is an ERROR, not a best-effort answer. Returning the last hop
-// reached looks harmless and is not: that path is a symlink, so the caller
-// renames over it and flattens one of the user's links into a regular file
-// while reporting success. That is this issue's own damage class, and on
-// RestoreSnapshot (which reaches the writer with no prior read to fail first)
-// it was live.
+// See atomicfile.ResolveWriteTarget for why a cycle is an error rather than a
+// best-effort answer, and why the budget is 40 rather than 32.
 func resolveWriteTarget(path string) (string, error) {
-	cur := path
-	for i := 0; i < maxSymlinkHops; i++ {
-		fi, err := os.Lstat(cur)
-		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
-			return cur, nil
-		}
-		dest, err := os.Readlink(cur)
-		if err != nil {
-			return cur, nil
-		}
-		if !filepath.IsAbs(dest) {
-			dest = filepath.Join(filepath.Dir(cur), dest)
-		}
-		cur = filepath.Clean(dest)
+	target, err := atomicfile.ResolveWriteTarget(path)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w: symlink chain still unresolved after %d hops "+
+			"(a cycle, or longer than any kernel will follow)",
+			filepath.Base(path), ErrMalformedConfig, atomicfile.MaxSymlinkHops)
 	}
-	return "", fmt.Errorf("%s: %w: symlink chain still unresolved after %d hops "+
-		"(a cycle, or longer than any kernel will follow)",
-		filepath.Base(path), ErrMalformedConfig, maxSymlinkHops)
+	return target, nil
 }
 
 // destPerm returns the mode a write to target must produce: the mode target
 // already has, or newConfigPerm when it does not exist.
-//
-// os.Stat, not os.Lstat, is deliberate — target is already resolved, and on the
-// unresolved path Lstat would report the LINK's mode (0777 on Linux), which is
-// not the mode any content is stored at.
 func destPerm(target string) os.FileMode {
-	if fi, err := os.Stat(target); err == nil {
-		return fi.Mode().Perm()
-	}
-	return newConfigPerm
+	return atomicfile.ExistingPerm(target, newConfigPerm)
 }
 
 // writeThrough replaces the contents of path atomically, writing THROUGH any
 // symlink and preserving the destination's existing mode.
 //
-// It deliberately does NOT use atomicfile.WriteFile: that helper documents both
-// of those behaviours as inverted on purpose ("a SYMLINK at path is REPLACED by
-// a regular file"; perm applied verbatim from the caller), so
-// atomicfile.WriteFile(path, b, 0o644) reproduces #6240 exactly. Only the
-// rename half is shared, because the Windows recovery in it is non-obvious and
-// already has five hand-rolled copies in this tree.
-func writeThrough(path string, b []byte) (err error) {
+// It deliberately does NOT use atomicfile.WriteFile ON THE NAMED PATH: that
+// helper documents both of those behaviours as inverted on purpose ("a SYMLINK
+// at path is REPLACED by a regular file"; perm applied verbatim from the
+// caller), so atomicfile.WriteFile(path, b, 0o644) reproduces #6240 exactly. It
+// is called here on the RESOLVED target with the destination's OWN mode, which
+// is a different thing entirely.
+//
+// Nor is this just atomicfile.WriteThrough, which is otherwise exactly these
+// three lines: the isolation guard has to sit BETWEEN resolution and the write,
+// because the whole point of it is to inspect the path resolution produced.
+// Folding the guard into atomicfile would put a test-only concern of one package
+// into a helper used tree-wide.
+func writeThrough(path string, b []byte) error {
 	target, err := resolveWriteTarget(path)
 	if err != nil {
 		return err
@@ -814,30 +783,7 @@ func writeThrough(path string, b []byte) (err error) {
 	// past them. Guard what we are actually about to write.
 	guardWriteTarget(target)
 
-	perm := destPerm(target)
-	f, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer func() {
-		if err != nil {
-			_ = os.Remove(tmp)
-		}
-	}()
-	if _, err = f.Write(b); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err = f.Close(); err != nil {
-		return err
-	}
-	// os.CreateTemp always creates 0600; restore the destination's own mode.
-	if err = os.Chmod(tmp, perm); err != nil {
-		return err
-	}
-	err = atomicfile.Rename(tmp, target)
-	return err
+	return atomicfile.WriteFile(target, b, destPerm(target))
 }
 
 // HasGrafelEntry reports whether the config file at path already contains a

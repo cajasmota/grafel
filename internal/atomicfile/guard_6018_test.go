@@ -83,10 +83,21 @@ import (
 //     install-time / interactive single-writer paths.
 //     (internal/install/mcpreg/{mcpreg,toml}.go came OFF this list in #6240 —
 //     not by converting to atomicfile.WriteFile, which reproduces that bug
-//     exactly, but by growing a local writeThrough that keeps the unique
-//     CreateTemp name and shares only atomicfile.Rename. Converting a file is
-//     not the only way to leave the ledger; ceasing to build a deterministic
-//     temp name is.)
+//     exactly, but by growing a local writeThrough on a unique CreateTemp name.
+//     Converting a file is not the only way to leave the ledger; ceasing to
+//     build a deterministic temp name is. That local helper is now
+//     atomicfile.WriteThrough (#6246), which resolves the destination first and
+//     then calls plain WriteFile against it.
+//     internal/install/agenthooks/claudecode.go and
+//     internal/dashboard/handlers_mcp_setup.go came off in #6246, onto the
+//     atomicfile.WriteThrough that generalises #6240's local helper. Note what
+//     the "single-writer" deferral above did NOT cover: it is a CONCURRENCY
+//     argument, and these files were also destroying symlinks and widening 0600
+//     to 0644 on user-owned dotfiles the whole time. Converting the remaining
+//     internal/install/* entries to atomicfile.WriteFile would close their
+//     ledger lines while PRESERVING both of those defects, because WriteFile
+//     documents both as deliberate. Check which of the two helpers a
+//     destination wants before converting it.)
 //   - internal/enrichment/*, internal/dashboard/*, internal/embed,
 //     internal/indexer/diff, internal/agents and internal/graph/manifest are
 //     plausible follow-ups but were left out to keep the first commit
@@ -99,7 +110,6 @@ var notYetConverted = map[string]bool{
 	"internal/cli/pendingtools.go":                        true,
 	"internal/cli/register.go":                            true,
 	"internal/dashboard/handlers_enrichment_writeback.go": true,
-	"internal/dashboard/handlers_mcp_setup.go":            true,
 	"internal/dashboard/handlers_settings.go":             true,
 	"internal/embed/store.go":                             true,
 	"internal/enrichment/candidates.go":                   true,
@@ -110,7 +120,6 @@ var notYetConverted = map[string]bool{
 	"internal/graph/graph.go":                             true,
 	"internal/graph/manifest.go":                          true,
 	"internal/indexer/diff/diff.go":                       true,
-	"internal/install/agenthooks/claudecode.go":           true,
 	"internal/install/mcptools/mcptools.go":               true,
 	"internal/install/rulesfiles/rulesfiles.go":           true,
 	"internal/install/state.go":                           true,
