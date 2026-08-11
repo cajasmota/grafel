@@ -49,6 +49,8 @@ func TestFeedbackEventValidation(t *testing.T) {
 func TestFeedbackEventMilestoneAccepted(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+	t.Setenv("USERPROFILE", tmpHome)                           // #6288: os.UserHomeDir() reads this on Windows
+	t.Setenv("GRAFEL_HOME", filepath.Join(tmpHome, ".grafel")) // #6288: an inherited GRAFEL_HOME would win over both
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpHome, ".config"))
 
 	srv := newFeedbackTestServer(t)
@@ -68,6 +70,8 @@ func TestFeedbackEventMilestoneAccepted(t *testing.T) {
 func TestFeedbackEventJSONLAppend(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+	t.Setenv("USERPROFILE", tmpHome)                           // #6288: os.UserHomeDir() reads this on Windows
+	t.Setenv("GRAFEL_HOME", filepath.Join(tmpHome, ".grafel")) // #6288: an inherited GRAFEL_HOME would win over both
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpHome, ".config"))
 
 	srv := newFeedbackTestServer(t)

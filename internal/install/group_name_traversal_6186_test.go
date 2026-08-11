@@ -20,6 +20,7 @@ import (
 func TestApply_RejectsTraversalBeforeWritingConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // #6288: os.UserHomeDir() reads this on Windows
 	t.Setenv("GRAFEL_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 

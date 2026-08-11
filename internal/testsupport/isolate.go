@@ -20,8 +20,9 @@ package testsupport
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/homeguard"
 )
 
 // Environment variables that steer grafel config/state/socket resolution.
@@ -116,6 +117,23 @@ func GuardRealHome(t *testing.T) {
 // AssertUnderHome FAILS the test if path is not inside the (already-isolated)
 // home tempdir. Use it as a belt-and-braces check after a test writes a config
 // file, to prove nothing escaped the sandbox.
+//
+// #6290: the containment decision is homeguard.Escapes, not a local copy. This
+// held a byte-for-byte duplicate of the construction homeguard was carrying —
+// `strings.HasPrefix(abs+sep, home+sep)` — and inherited every defect that
+// construction had: case-sensitive on Windows and darwin (so an escape spelled
+// with different case read as contained), and broken for a ROOT home, where
+// home+sep is "//" or "C:\\" and nothing matches at all.
+//
+// That mattered here specifically because #6288 added AssertUnderHome calls to
+// internal/mcp's docgen tests as the assertion that a promote cannot escape the
+// sandbox. Implementing that assertion with the comparison #6288 exists to
+// replace would have made it pass for reasons unrelated to the property — it
+// only worked because IsolateHome sets both sides from the same string.
+//
+// homeguard is importable from here: it depends on nothing but the standard
+// library, and it is production code precisely so it can be called from write
+// paths. The dependency runs testsupport → homeguard, never the reverse.
 func AssertUnderHome(t *testing.T, path string) {
 	t.Helper()
 	home := effectiveHome()
@@ -124,10 +142,10 @@ func AssertUnderHome(t *testing.T, path string) {
 		t.Fatalf("testsupport: abs(%q): %v", path, err)
 	}
 	abs = filepath.Clean(abs)
-	if home == "" || !strings.HasPrefix(abs+string(filepath.Separator), filepath.Clean(home)+string(filepath.Separator)) {
+	if home == "" || !homeguard.Escapes(abs, home) {
 		t.Fatalf("testsupport: path %q escapes the isolated home %q", abs, home)
 	}
-	if realUserHome != "" && strings.HasPrefix(abs+string(filepath.Separator), realUserHome+string(filepath.Separator)) {
+	if realUserHome != "" && homeguard.Escapes(abs, realUserHome) {
 		t.Fatalf("testsupport: path %q is under the REAL user home %q — refusing", abs, realUserHome)
 	}
 }

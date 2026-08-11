@@ -205,18 +205,50 @@ func TestExistingPerm(t *testing.T) {
 // mode is 0777 on Linux and is not the mode any content is stored at, so an
 // Lstat here would widen every symlinked destination to 0777 — a worse version
 // of the bug being fixed.
+//
+// #6288: the target was seeded 0600 and 0600 asserted, which cannot hold on
+// Windows — Go's os.Stat there reports exactly two permission values, 0444 for a
+// file carrying FILE_ATTRIBUTE_READONLY and 0666 for one without (see
+// rename_windows.go's destIsReadOnly), so the run got 0666 and failed.
+//
+// The assertion is NOT relaxed and NOT skipped. The seed moves to 0444, which
+// every platform can express and which is the one mode that still discriminates
+// on all three: a symlink's own mode is 0755 on darwin, 0777 on linux and 0666
+// on Windows, and none of those is 0444. An Lstat regression therefore still
+// fails this test everywhere. The mode being asserted is now a stronger choice
+// than 0600 was, not a weaker one — 0600 and a Linux link's 0777 differ, but so
+// did 0600 and Windows' 0666, and it was the SEED that Windows could not hold.
+//
+// The vacuity check below is what makes that claim binding rather than assumed.
 func TestExistingPerm_ReportsTheTargetNotTheLink(t *testing.T) {
 	requireSymlinks(t)
 
+	const targetPerm = os.FileMode(0o444)
+
 	dir := t.TempDir()
 	target := filepath.Join(dir, "real")
-	seed(t, target, 0o600)
+	seed(t, target, targetPerm)
 	link := filepath.Join(dir, "link")
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
-	if got := atomicfile.ExistingPerm(link, 0o644); got != 0o600 {
-		t.Errorf("got %04o, want the target's 0600", got)
+
+	// Vacuity guard: if this platform happens to report the LINK's own mode as
+	// the target's mode too, the assertion below proves nothing and must say so
+	// rather than pass.
+	li, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("lstat link: %v", err)
+	}
+	if li.Mode().Perm() == targetPerm {
+		t.Fatalf("the link's own mode is %04o, the same as the target's — this test cannot "+
+			"distinguish Stat from Lstat on this platform; pick a seed mode that differs",
+			li.Mode().Perm())
+	}
+
+	if got := atomicfile.ExistingPerm(link, 0o644); got != targetPerm {
+		t.Errorf("got %04o, want the target's %04o (the link's own mode is %04o — an Lstat "+
+			"implementation would have reported that)", got, targetPerm, li.Mode().Perm())
 	}
 }
 

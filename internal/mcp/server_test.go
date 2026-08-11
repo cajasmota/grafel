@@ -1598,6 +1598,8 @@ func makePatternsServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)                           // #6288: os.UserHomeDir() reads this on Windows
+	t.Setenv("GRAFEL_HOME", filepath.Join(dir, ".grafel")) // #6288: an inherited GRAFEL_HOME would win over both
 	repo := filepath.Join(dir, "myrepo")
 	_ = os.MkdirAll(repo, 0o755)
 	writeGraph(t, repo, fixtureDoc("myrepo"))

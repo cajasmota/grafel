@@ -57,15 +57,31 @@ package install_test
 // XDG_RUNTIME_DIR, GRAFEL_DAEMON_ROOT and GRAFEL_HOME together — see
 // internal/testsupport/isolate.go) or set GRAFEL_HOME itself.
 //
+// #6288 added USERPROFILE to that list. On Windows os.UserHomeDir() reads
+// %USERPROFILE% and ignores $HOME, so pinning GRAFEL_HOME alone still leaves
+// every path that resolves through os.UserHomeDir() rather than
+// registry.HomeDir() pointing at the developer's real profile.
+//
 // # Reach, stated rather than implied
 //
 // go/parser applies no build constraints, so this scan reads
 // //go:build darwin files on every platform. #6171 lived in a darwin-only file
 // and Linux CI could never have surfaced it by running the test; this guard
-// surfaces it by reading it. TestHomeIsolationGuardDetectsTheShape below pins
-// what the detector does and does not see.
+// surfaces it by reading it.
+//
+// What it does NOT read is any directory but this one. That was a deliberate
+// choice in #6171 — "sibling packages guard themselves" — and #6288 is the bill
+// for it: no sibling ever did, so when internal/mcp's newDocgenServer grew the
+// identical defect there was no scan anywhere that could see it, and
+// TestDocgenPromote_Atomic promoted docs into the Windows runner's real
+// C:\Users\runneradmin\.grafel. The detector therefore moved to
+// internal/testsupport (homescan.go), which is importable; this file is now the
+// wiring, and internal/mcp has its own copy of the wiring. Its table test moved
+// with it and pins what the detector does and does not see.
 //
 // # The blind spot — read this before trusting a green result
+//
+// (Restated in internal/testsupport/homescan.go, which now owns the detector.)
 //
 // This detector recognises exactly ONE shape: a function that sets HOME
 // literally and pins neither GRAFEL_HOME nor IsolateHome. It is keyed on the
@@ -110,68 +126,30 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"os"
 	"path/filepath"
-	"runtime"
-	"sort"
-	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
-// unisolatedHomeTest is one function that redirects HOME without also pinning
-// the grafel home.
-type unisolatedHomeTest struct {
-	file string // repo-relative, slash-separated
-	fn   string
-	line int
-}
-
-func (u unisolatedHomeTest) String() string {
-	return u.file + ":" + strconv.Itoa(u.line) + " " + u.fn
-}
-
-// ReportUnisolatedHomeTests scans this package's _test.go files and writes a
-// report naming every function that redirects HOME without isolating the grafel
-// home. It returns the number of offenders; 0 means nothing was written.
+// ReportUnisolatedHomeTests scans THIS package's _test.go files and writes a
+// report naming every function that redirects HOME without isolating the rest.
+// It returns the number of offenders; 0 means nothing was written.
 //
 // It is called from TestMain BEFORE m.Run(), so it must not depend on any
-// *testing.T. Scan errors are reported as offenders in their own right rather
-// than swallowed: a walk that silently reads nothing is the vacuous-gate
-// failure this file is trying to prevent, not a clean bill of health.
+// *testing.T.
+//
+// #6288 moved the detector itself into internal/testsupport so other packages
+// can run it too; this stays as the wiring, because the placement (TestMain,
+// this package) is what the two tests below pin and what #6171 was about.
 func ReportUnisolatedHomeTests(w io.Writer) int {
-	dir, err := packageDirForHomeGuard()
+	dir, err := testsupport.PackageDirOfCaller(0)
 	if err != nil {
 		fmt.Fprintf(w, "install: home-isolation guard could not locate its own package directory: %v\n", err)
 		return 1
 	}
-	offenders, scanned, err := scanUnisolatedHomeTests(dir)
-	if err != nil {
-		fmt.Fprintf(w, "install: home-isolation guard failed to scan %s: %v\n", dir, err)
-		return 1
-	}
-	if scanned == 0 {
-		fmt.Fprintf(w, "install: home-isolation guard parsed 0 _test.go files under %s — "+
-			"the scan is not binding and proves nothing\n", dir)
-		return 1
-	}
-	if len(offenders) == 0 {
-		return 0
-	}
-	var names []string
-	for _, o := range offenders {
-		names = append(names, o.String())
-	}
-	sort.Strings(names)
-	fmt.Fprintf(w,
-		"\ninstall: HOME-ISOLATION DEFECT (#6171) — %d function(s) redirect $HOME without pinning\n"+
-			"$GRAFEL_HOME, so registry.HomeDir() resolves an inherited GRAFEL_HOME instead and\n"+
-			"registry.saveTo's sandbox guard PANICS, aborting this whole test binary and reporting\n"+
-			"nothing for every test ordered after it:\n\n  %s\n\n"+
-			"Fix: replace the t.Setenv(\"HOME\", …) block with `home := testsupport.IsolateHome(t)`.\n"+
-			"This report is printed from TestMain, before any test runs, so it survives the panic.\n\n",
-		len(offenders), strings.Join(names, "\n  "))
-	return len(offenders)
+	return testsupport.ReportUnisolatedHomeTests(w, dir, "internal/install/")
 }
 
 // TestHomeIsolationGuardIsClean restates the TestMain report as an ordinary
@@ -180,9 +158,10 @@ func ReportUnisolatedHomeTests(w io.Writer) int {
 // when the package is already broken this test may never run, which is exactly
 // why the TestMain call exists and why this one cannot replace it.
 //
-// "Clean" here means only "no function sets HOME without pinning GRAFEL_HOME".
-// It does NOT mean every test in this package is isolated — a test that
-// isolates nothing at all passes this. See the file doc's "blind spot".
+// "Clean" here means only "no function sets HOME without pinning GRAFEL_HOME
+// and USERPROFILE". It does NOT mean every test in this package is isolated — a
+// test that isolates nothing at all passes this. See the blind spot recorded in
+// internal/testsupport/homescan.go.
 func TestHomeIsolationGuardIsClean(t *testing.T) {
 	var sb strings.Builder
 	if n := ReportUnisolatedHomeTests(&sb); n > 0 {
@@ -195,20 +174,28 @@ func TestHomeIsolationGuardIsClean(t *testing.T) {
 // invisible to every other test here: with an offender present, the panic
 // aborts the binary before TestHomeIsolationGuardIsClean runs, so removing the
 // call and reintroducing the #6171 shape together produce a run in which
-// nothing names the cause. Measured by mutation, both singly and together.
+// nothing names the cause.
 //
 // "The #6171 shape" is load-bearing there, and narrower than it sounds: it
-// means a function that still sets HOME literally while dropping the
-// GRAFEL_HOME pin. A mutant that simply deletes an IsolateHome call and leaves
-// no Setenv behind is invisible to the detector in the first place, so nothing
-// downstream of it — including this test — has anything to report. See the file
-// doc's "blind spot" section.
+// means a function that still sets HOME literally while dropping the pins. A
+// mutant that simply deletes an IsolateHome call and leaves no Setenv behind is
+// invisible to the detector in the first place, so nothing downstream of it —
+// including this test — has anything to report. See the blind spot in
+// internal/testsupport/homescan.go.
 //
-// This test reads copy_test.go's TestMain and asserts the call is there. It can
-// only run when the package is otherwise healthy, which is precisely when the
-// TestMain call looks removable, so the two cover disjoint cases.
+// #6290: this asserts a CALL, positioned BEFORE m.Run(). It previously walked
+// for an *ast.Ident of the right name anywhere in the body, which was measurably
+// dead: it survived replacing the call with `_ = ReportUnisolatedHomeTests`, and
+// it survived moving the report to AFTER m.Run(). Both leave this package in
+// exactly the #6171 state — panicking out of registry.saveTo with nothing in the
+// output naming the cause — which is the failure the test exists to prevent. Its
+// old failure string also claimed "TestMain no longer calls…", something an
+// identifier walk cannot establish. Ported from the equivalent in
+// internal/mcp/home_isolation_guard_6288_test.go, where it was written correctly
+// first; this file is the one #6288 rewrote, so leaving the weaker copy in place
+// would have been the same "reach was one directory" argument turned inward.
 func TestHomeIsolationGuardIsWiredIntoTestMain(t *testing.T) {
-	dir, err := packageDirForHomeGuard()
+	dir, err := testsupport.PackageDirOfCaller(0)
 	if err != nil {
 		t.Fatalf("locate package dir: %v", err)
 	}
@@ -227,250 +214,36 @@ func TestHomeIsolationGuardIsWiredIntoTestMain(t *testing.T) {
 		t.Fatal("copy_test.go no longer declares TestMain — the #6171 report has nowhere to run " +
 			"before the tests; move it to whichever file declares TestMain now")
 	}
-	called := false
+
+	reportPos, runPos := token.NoPos, token.NoPos
 	ast.Inspect(main.Body, func(n ast.Node) bool {
-		if id, ok := n.(*ast.Ident); ok && id.Name == "ReportUnisolatedHomeTests" {
-			called = true
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		switch fn := call.Fun.(type) {
+		case *ast.Ident:
+			if fn.Name == "ReportUnisolatedHomeTests" && !reportPos.IsValid() {
+				reportPos = call.Pos()
+			}
+		case *ast.SelectorExpr:
+			if fn.Sel.Name == "Run" && !runPos.IsValid() {
+				runPos = call.Pos()
+			}
 		}
 		return true
 	})
-	if !called {
-		t.Fatal("TestMain no longer calls ReportUnisolatedHomeTests. Without it, a test that " +
+	if !reportPos.IsValid() {
+		t.Fatal("TestMain no longer CALLS ReportUnisolatedHomeTests. Without it, a test that " +
 			"forgets testsupport.IsolateHome panics out of internal/registry's write guard and " +
 			"aborts this binary with nothing in the output naming the cause — the #6171 defect.")
 	}
-}
-
-// TestHomeIsolationGuardDetectsTheShape is the guard's own guard. The scan
-// above is vacuously green the moment the detector stops binding, so the
-// detector is exercised against synthetic source with known answers.
-//
-// The MISS rows assert what the detector does NOT see. They are not aspirations
-// — they are the stated edge of its reach, confirmed by running it. If a change
-// makes one of them caught, flip its want and delete the matching sentence in
-// the file doc; do not delete the row.
-func TestHomeIsolationGuardDetectsTheShape(t *testing.T) {
-	cases := []struct {
-		name string
-		src  string
-		want int
-	}{
-		{
-			name: "HOME redirected with no grafel home pinned",
-			src: `package p
-import "testing"
-func TestX(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", home+"/.config")
-}`,
-			want: 1,
-		},
-		{
-			name: "HOME plus GRAFEL_HOME is isolated",
-			src: `package p
-import "testing"
-func TestX(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("GRAFEL_HOME", home+"/.grafel")
-}`,
-			want: 0,
-		},
-		{
-			name: "IsolateHome is isolated even alongside a HOME redirect",
-			src: `package p
-import "testing"
-func TestX(t *testing.T) {
-	home := testsupport.IsolateHome(t)
-	t.Setenv("HOME", home)
-}`,
-			want: 0,
-		},
-		{
-			name: "GRAFEL_DAEMON_ROOT alone does NOT count (see #6134)",
-			src: `package p
-import "testing"
-func TestX(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("GRAFEL_DAEMON_ROOT", home+"/.grafel")
-}`,
-			want: 1,
-		},
-		{
-			name: "a non-test helper that redirects HOME is caught too",
-			src: `package p
-import "testing"
-func newEnv(t *testing.T) string {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	return home
-}`,
-			want: 1,
-		},
-		{
-			name: "os.Setenv is caught, not just t.Setenv",
-			src: `package p
-import "os"
-func setup() { os.Setenv("HOME", "/tmp/x") }`,
-			want: 1,
-		},
-		{
-			name: "a function that touches neither is clean",
-			src: `package p
-import "testing"
-func TestX(t *testing.T) { _ = t.TempDir() }`,
-			want: 0,
-		},
-		{
-			name: "two offenders in one file are both named",
-			src: `package p
-import "testing"
-func TestA(t *testing.T) { t.Setenv("HOME", "/tmp/a") }
-func TestB(t *testing.T) { t.Setenv("HOME", "/tmp/b") }`,
-			want: 2,
-		},
-
-		// --- CONFIRMED MISSES ---
-		{
-			name: "MISS: the env-var name behind an identifier, not a literal",
-			src: `package p
-import "testing"
-const homeEnv = "HOME"
-func TestX(t *testing.T) { t.Setenv(homeEnv, "/tmp/x") }`,
-			want: 0,
-		},
-		{
-			name: "MISS: HOME set in one function, GRAFEL_HOME in its caller",
-			src: `package p
-import "testing"
-func setHome(t *testing.T) { t.Setenv("HOME", "/tmp/x") }
-func TestX(t *testing.T) { t.Setenv("GRAFEL_HOME", "/tmp/x/.grafel"); setHome(t) }`,
-			want: 1,
-		},
-		{
-			// THE important miss, not a curiosity: this is what "someone
-			// deletes an IsolateHome call" actually looks like, and it is the
-			// likeliest future regression now that the 24 historical offenders
-			// are fixed. Reproduced against the real tree on pertool_test.go —
-			// the detector reported 0 and TestHomeIsolationGuardIsClean passed.
-			// See the file doc's "blind spot" section for the consequence.
-			name: "MISS: IsolateHome deleted with no replacement Setenv",
-			src: `package p
-import "testing"
-func TestX(t *testing.T) {
-	home := t.TempDir()
-	_ = home
-}`,
-			want: 0,
-		},
-		{
-			name: "MISS: a var-bound top-level closure is not a FuncDecl",
-			src: `package p
-import "testing"
-var f = func(t *testing.T) { t.Setenv("HOME", "/tmp/x") }`,
-			want: 0,
-		},
+	if !runPos.IsValid() {
+		t.Fatal("TestMain no longer calls m.Run() — the suite does not run")
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			fset := token.NewFileSet()
-			f, err := parser.ParseFile(fset, "x_test.go", tc.src, parser.SkipObjectResolution)
-			if err != nil {
-				t.Fatalf("parse: %v", err)
-			}
-			if got := len(findUnisolatedHomeTests(fset, f, "x_test.go")); got != tc.want {
-				t.Fatalf("detector found %d offender(s), want %d", got, tc.want)
-			}
-		})
+	if reportPos > runPos {
+		t.Fatal("TestMain reports AFTER m.Run(). internal/registry's write guard panics out of " +
+			"the binary on a sandbox escape, so a report ordered after the suite is exactly the " +
+			"one a panic truncates. Move it before m.Run().")
 	}
-}
-
-// findUnisolatedHomeTests reports every top-level func in f whose body sets
-// HOME but neither sets GRAFEL_HOME nor calls IsolateHome.
-func findUnisolatedHomeTests(fset *token.FileSet, f *ast.File, rel string) []unisolatedHomeTest {
-	var out []unisolatedHomeTest
-	for _, decl := range f.Decls {
-		fd, ok := decl.(*ast.FuncDecl)
-		if !ok || fd.Body == nil {
-			continue
-		}
-		setsHome, pinsGrafelHome, isolates := false, false, false
-		ast.Inspect(fd.Body, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			switch sel.Sel.Name {
-			case "IsolateHome":
-				isolates = true
-			case "Setenv":
-				if len(call.Args) == 0 {
-					return true
-				}
-				lit, ok := call.Args[0].(*ast.BasicLit)
-				if !ok || lit.Kind != token.STRING {
-					return true
-				}
-				s, err := strconv.Unquote(lit.Value)
-				if err != nil {
-					return true
-				}
-				switch s {
-				case "HOME":
-					setsHome = true
-				case "GRAFEL_HOME":
-					pinsGrafelHome = true
-				}
-			}
-			return true
-		})
-		if setsHome && !pinsGrafelHome && !isolates {
-			out = append(out, unisolatedHomeTest{file: rel, fn: fd.Name.Name, line: fset.Position(fd.Pos()).Line})
-		}
-	}
-	return out
-}
-
-// scanUnisolatedHomeTests parses every _test.go file directly under dir (not
-// subdirectories — sibling packages guard themselves) and returns the offenders
-// plus the number of files actually parsed.
-func scanUnisolatedHomeTests(dir string) ([]unisolatedHomeTest, int, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, 0, err
-	}
-	var out []unisolatedHomeTest
-	scanned := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		fset := token.NewFileSet()
-		f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if perr != nil {
-			return nil, scanned, fmt.Errorf("parse %s: %w", e.Name(), perr)
-		}
-		scanned++
-		out = append(out, findUnisolatedHomeTests(fset, f, "internal/install/"+e.Name())...)
-	}
-	return out, scanned, nil
-}
-
-// packageDirForHomeGuard returns the directory holding this source file.
-// runtime.Caller is used rather than os.Getwd because TestMain may run before
-// anything has established a working directory convention, and because the
-// answer must not change if a test chdirs.
-func packageDirForHomeGuard() (string, error) {
-	_, here, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", fmt.Errorf("runtime.Caller(0) failed")
-	}
-	return filepath.Dir(here), nil
 }
