@@ -824,10 +824,31 @@ walked:
 // The second half deletes and recreates every file: a marker consumed by a
 // Remove must not go on suppressing the charge for a path that later comes
 // back, or the ledger drifts down instead.
+//
+// The quarantine tracker is detached for the duration (#6287). Unlike
+// TestChurnReturnsTheLedgerToItsSubscriptionBaseline, this test CANNOT stay
+// under defaultChurnThreshold: 12 files created, deleted and recreated is 40+
+// reindex-arming events in a single directory by construction, which is the
+// churn threshold. Tripping it makes the tracker persist its decision by
+// creating <repo>/.grafel (quarantine.go:652) — a real new entry of a watched
+// directory, for which fsnotify opens a real descriptor and the ledger
+// correctly grows by one PER REPO. That charge is honest; it is simply not
+// predictable from this test's arithmetic, because WHEN the 40th event lands
+// depends on how the backend batches, and the product is mutating the fixture
+// it is being measured against. On Linux the 40th event landed in the recreate
+// phase and the final assertion read 662 against a want of 660 — two repos,
+// two .grafel directories — while macOS never reached the threshold inside the
+// test's ~0.5s of churn and stayed green. The premise assertion at the end
+// fails loudly if the tracker ever gets back in.
+//
+// Disabled at CONSTRUCTION rather than assigned over afterwards: the loop
+// goroutine reads w.quarantine on every event, so a later write to it would be
+// an unsynchronised one — and a disabled tracker is a configuration production
+// actually has (GRAFEL_QUARANTINE_DISABLE), which nil is not.
 func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 	repoA := makePrunedTree(t)
 	repoB := makePrunedTree(t)
-	w := newBudgetedWatcher(t, 1_000_000)
+	w := newBudgetedWatcherCfg(t, Config{FDBudget: 1_000_000, disableQuarantine: true})
 	for _, r := range []string{repoA, repoB} {
 		if _, err := w.AddRepo(r); err != nil {
 			t.Fatalf("premise broken: AddRepo(%s): %v", r, err)
@@ -884,4 +905,15 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 		}
 	}
 	waitLedger(t, w, filled, "every file recreated in place")
+
+	// Premise, checked last so a failure above is not blamed on it: nothing in
+	// this test may have written into the repos it is measuring. The same guard
+	// as TestChurnReturnsTheLedgerToItsSubscriptionBaseline, and the reason the
+	// tracker is detached above (#6287).
+	for _, r := range []string{repoA, repoB} {
+		if _, err := os.Stat(filepath.Join(r, ".grafel")); err == nil {
+			t.Fatalf("premise broken: %s/.grafel exists — something persisted state into the repo "+
+				"under measurement, and the ledger reading now includes a charge this test cannot predict", r)
+		}
+	}
 }
