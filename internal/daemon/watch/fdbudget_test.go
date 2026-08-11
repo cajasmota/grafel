@@ -160,13 +160,19 @@ func TestFDBudgetZeroLimitIsUnlimited(t *testing.T) {
 
 func newBudgetedWatcher(t *testing.T, budget int) *Watcher {
 	t.Helper()
-	w, err := NewWatcherConfig(Config{
-		Debounce:          time.Hour,
-		BulkThreshold:     10000,
-		HeartbeatInterval: time.Hour,
-		FDBudget:          budget,
-		fdCost:            kqueueCostModel, // test the macOS arithmetic everywhere
-	}, func(string, bool) {}, nil)
+	return newBudgetedWatcherCfg(t, Config{FDBudget: budget})
+}
+
+// newBudgetedWatcherCfg is newBudgetedWatcher with extra Config fields. Only
+// FDBudget and the fields the caller sets differ; the ledger arithmetic and the
+// timings are the same in both.
+func newBudgetedWatcherCfg(t *testing.T, cfg Config) *Watcher {
+	t.Helper()
+	cfg.Debounce = time.Hour
+	cfg.BulkThreshold = 10000
+	cfg.HeartbeatInterval = time.Hour
+	cfg.fdCost = kqueueCostModel // test the macOS arithmetic everywhere
+	w, err := NewWatcherConfig(cfg, func(string, bool) {}, nil)
 	if err != nil {
 		t.Fatalf("NewWatcherConfig: %v", err)
 	}

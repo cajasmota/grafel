@@ -74,6 +74,25 @@ type Config struct {
 	// inotify arithmetic makes `used` meaningless. NewWatcherConfig rejects the
 	// combination instead of silently picking one.
 	fdCost fdCostModel
+
+	// testEvents / testErrors replace the backend's own channels as the ones
+	// the loop goroutine drains. Unexported, and only useful together with
+	// Watcher.closeBackend: a test standing in for a backend must OWN the
+	// channels it sends on, because fsnotify's readEvents goroutine both sends
+	// on and close()s its own (backend_kqueue.go:441-443), and a second sender
+	// racing that close is a data race, not a simulation (#6287). Nil selects
+	// the real backend's channels, which is what production always gets. Both
+	// must be supplied together — see NewWatcherConfig.
+	testEvents chan fsnotify.Event
+	testErrors chan error
+
+	// disableQuarantine builds the Watcher with no quarantine tracker at all.
+	// It exists so a ledger test can remove the tracker's side effects — it
+	// persists its decisions by creating <repo>/.grafel, inside the repo the
+	// ledger is measuring (#6287) — at CONSTRUCTION, before the loop goroutine
+	// starts. Assigning w.quarantine afterwards would be an unsynchronised
+	// write to a field that goroutine reads on every event.
+	disableQuarantine bool
 }
 
 func (c *Config) debounce() time.Duration {
@@ -144,9 +163,19 @@ type Watcher struct {
 	// Config.FDBudget overrides it, because the kernel's ceiling is per
 	// process. The platform arithmetic lives on the ledger (fdb.model()), so
 	// every consumer of a given ledger charges it identically (#6268 (D)).
-	fdb       *fdBudget
-	mu        sync.Mutex
-	fs        *fsnotify.Watcher
+	fdb *fdBudget
+	mu  sync.Mutex
+	fs  *fsnotify.Watcher
+	// closeBackend closes the fsnotify instance. It is a field rather than a
+	// direct w.fs.Close() call so a test can stand in for a backend that, like
+	// fsnotify's Windows one, SENDS on Events/Errors from inside Close (#6287).
+	// Defaults to w.fs.Close.
+	closeBackend func() error
+	// events/errs are the channels the loop goroutine drains. They are the
+	// backend's own unless Config.testEvents overrides them, and they are
+	// re-pointed together with w.fs when the heartbeat recreates the backend.
+	events    <-chan fsnotify.Event
+	errs      <-chan error
 	repos     map[string]*repoState // key: absolute repo path
 	dirToRepo map[string]string     // key: absolute dir path → repo path
 	// fdReserved records how many descriptors each subscribed repo holds, so
@@ -161,8 +190,16 @@ type Watcher struct {
 	fdPreCharged map[string]struct{}
 	stopOnce     sync.Once
 	stopCh       chan struct{}
-	stoppedCh    chan struct{}
 	restartCh    chan struct{} // signals heartbeat loop to recreate fsnotify
+	// loopWG counts LIVE loop goroutines, which is not always one: the
+	// heartbeat can retire a loop and start another against a fresh backend.
+	// Stop waits on this rather than on a one-shot "stopped" channel, because a
+	// one-shot channel cannot express "the generation that exited was replaced"
+	// — the loop that exits via the unexpected-close arm does not close it, so
+	// a Stop landing during a restart waited out its whole timeout (#6287).
+	// Every Add is performed under w.mu strictly before close(w.stopCh), which
+	// is also taken under w.mu, so Add can never race the Wait.
+	loopWG sync.WaitGroup
 	// counters — accessed atomically outside mu where latency matters
 	totalEvents   uint64
 	droppedSkips  uint64
@@ -212,6 +249,12 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		return nil, errors.New("watch: Config.fdCost requires a non-zero Config.FDBudget — " +
 			"the cost model belongs to the ledger, and FDBudget 0 selects the process-wide one")
 	}
+	// Both or neither. One alone leaves the loop draining a real channel and a
+	// nil one — the nil arm of a select never fires, so the errors (or events)
+	// half of the loop would be silently dead for the Watcher's whole life.
+	if (cfg.testEvents == nil) != (cfg.testErrors == nil) {
+		return nil, errors.New("watch: Config.testEvents and Config.testErrors must be set together")
+	}
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "watch")
 	}
@@ -244,8 +287,21 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		fdUnwatched:  map[string]struct{}{},
 		fdPreCharged: map[string]struct{}{},
 		stopCh:       make(chan struct{}),
-		stoppedCh:    make(chan struct{}),
 		restartCh:    make(chan struct{}, 1),
+	}
+	// Read w.fs under the lock: the heartbeat can swap it for a fresh backend
+	// concurrently, and closing the one this Watcher no longer owns would
+	// orphan the live one — a descriptor leak on the shutdown path, in the
+	// package whose whole job is not leaking descriptors (#6287).
+	w.closeBackend = func() error {
+		w.mu.Lock()
+		fs := w.fs
+		w.mu.Unlock()
+		return fs.Close()
+	}
+	w.events, w.errs = fw.Events, fw.Errors
+	if cfg.testEvents != nil {
+		w.events, w.errs = cfg.testEvents, cfg.testErrors
 	}
 	// Adaptive index-trash quarantine (#5394). The tracker observes
 	// per-directory churn at the event boundary and quarantines dirs that
@@ -255,8 +311,11 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 	logfn := func(event, repo, rel, detail string) {
 		w.logger.Info("watcher: quarantine", "event", event, "repo", repo, "dir", rel, "detail", detail)
 	}
-	w.quarantine = NewQuarantineTracker(logfn)
+	if !cfg.disableQuarantine {
+		w.quarantine = NewQuarantineTracker(logfn)
+	}
 
+	w.loopWG.Add(1)
 	go w.loop()
 	go w.heartbeat()
 	go w.quarantineSweep()
@@ -717,13 +776,83 @@ func (w *Watcher) RescanRepo(repoPath string) {
 	go w.sink(abs, true)
 }
 
+// watcherStopTimeout bounds each of the two waits in Stop. A var, not a const,
+// so the test that pins the bound can shorten it.
+//
+// Nothing in a healthy shutdown takes anywhere near this long: it exists only
+// so a wedged backend degrades into a loud, bounded failure instead of an
+// unbounded hang that takes a whole test binary — or a daemon shutdown — with
+// it (#6287).
+var watcherStopTimeout = 10 * time.Second
+
+// stopping reports whether Stop has been requested. The loop goroutine uses it
+// to switch to drain-only mode: see Stop.
+func (w *Watcher) stopping() bool {
+	select {
+	case <-w.stopCh:
+		return true
+	default:
+		return false
+	}
+}
+
 // Stop halts the watcher and frees the fsnotify handles. Safe to call
 // multiple times.
+//
+// The ORDER here is load-bearing, and getting it wrong deadlocked the whole
+// package on Windows (#6287). close(w.stopCh) only marks the shutdown as
+// intentional — it must NOT stop the loop goroutine draining w.fs.Events and
+// w.fs.Errors, because fsnotify's Windows backend finishes Close() by walking
+// its watch set through deleteWatch and startRead, and BOTH of those SEND on
+// those channels (backend_windows.go:453/457 and :465/475) before Close's
+// acknowledgement is delivered. With the drain already gone, that send blocks
+// forever, Close() never returns, and Stop() never returns either. The
+// observed goroutine dump was exactly that: the test goroutine parked in
+// readDirChangesW.Close and the I/O thread parked in sendError, with no loop
+// goroutine left in the process.
+//
+// So: request the stop, close the backend WHILE the loop is still draining,
+// and only then wait for the loop to observe the channel close. Both waits are
+// bounded — a hang here blanks every remaining test in the package, which is a
+// strictly worse failure than a loud one.
+//
+// close(w.stopCh) is taken under w.mu, and the heartbeat's restart branch
+// checks stopping() and does its loopWG.Add under the same lock. That pairing
+// is what makes the two shutdown properties hold at once: a restart either
+// completes before the stop is published — in which case closeBackend reads the
+// NEW backend and its loop generation is counted — or it is abandoned. Without
+// it, a Stop landing while the heartbeat was mid-restart waited out its whole
+// timeout, because the loop that exits via the unexpected-close arm signals
+// nothing to Stop.
 func (w *Watcher) Stop() {
 	w.stopOnce.Do(func() {
+		w.mu.Lock()
 		close(w.stopCh)
-		_ = w.fs.Close()
-		<-w.stoppedCh
+		w.mu.Unlock()
+
+		closed := make(chan struct{})
+		go func() {
+			defer close(closed)
+			_ = w.closeBackend()
+		}()
+		select {
+		case <-closed:
+		case <-time.After(watcherStopTimeout):
+			w.logger.Error("watcher: fsnotify Close did not return; abandoning the backend",
+				"timeout", watcherStopTimeout)
+		}
+		drained := make(chan struct{})
+		go func() {
+			defer close(drained)
+			w.loopWG.Wait()
+		}()
+		select {
+		case <-drained:
+		case <-time.After(watcherStopTimeout):
+			w.logger.Error("watcher: event loop did not finish draining after Close; abandoning it",
+				"timeout", watcherStopTimeout)
+		}
+
 		w.mu.Lock()
 		for _, rs := range w.repos {
 			if rs.timer != nil {
@@ -755,113 +884,158 @@ func (w *Watcher) heartbeat() {
 		case <-ticker.C:
 			// still healthy — nothing to do
 		case <-w.restartCh:
-			// loop goroutine detected unexpected channel closure.
-			w.logger.Warn("watcher: fsnotify closed unexpectedly — restarting")
-			atomic.AddUint64(&w.droppedReplay, 1)
-
-			// Recreate fsnotify.
-			fw, err := fsnotify.NewWatcher()
-			if err != nil {
-				w.logger.Error("watcher: restart failed", "err", err)
-				continue
+			if !w.restartBackend() {
+				return
 			}
-			w.mu.Lock()
-			w.fs = fw
-			// Clear stale dirToRepo — will be repopulated by subscribeRepo.
-			w.dirToRepo = make(map[string]string, len(w.dirToRepo))
-			// The old fsnotify instance is gone, so its descriptors are gone
-			// too (#6180). Return them to the ledger before re-subscribing, or
-			// the restart double-charges and every repo is refused.
-			for repo, n := range w.fdReserved {
-				w.fdb.release(n)
-				delete(w.fdReserved, repo)
-			}
-			// Those descriptors are gone too, so the pending pre-charge
-			// markers that stood for them are stale; a Create seen after the
-			// restart is a fresh open and must be charged (#6268).
-			w.fdPreCharged = map[string]struct{}{}
-			repos := make([]string, 0, len(w.repos))
-			for p := range w.repos {
-				repos = append(repos, p)
-			}
-			w.mu.Unlock()
-
-			// Re-subscribe.
-			for _, abs := range repos {
-				if n, err := w.subscribeRepo(abs); err != nil {
-					w.logger.Error("watcher: restart re-subscribe failed", "repo", abs, "err", err)
-				} else {
-					w.logger.Info("watcher: restart re-subscribed", "repo", abs, "dirs", n)
-				}
-			}
-
-			// Restart the loop goroutine against the new fsnotify instance.
-			go w.loop()
-
-			// Trigger full diff reconciliation for every repo.
-			w.ForceRescan()
 		}
 	}
+}
+
+// restartBackend replaces a backend that closed underneath the loop goroutine
+// and starts a fresh loop generation against it. It reports whether the
+// heartbeat should keep running: false means a stop was published while the
+// replacement was being prepared, and the heartbeat is done.
+//
+// Split out of heartbeat so the stop check below is reachable from a test
+// without racing a live heartbeat against a live Stop (#6287). The window it
+// guards is only a few instructions wide, which is precisely why it cannot be
+// pinned by interleaving alone.
+func (w *Watcher) restartBackend() bool {
+	// loop goroutine detected unexpected channel closure.
+	w.logger.Warn("watcher: fsnotify closed unexpectedly — restarting")
+	atomic.AddUint64(&w.droppedReplay, 1)
+
+	// Recreate fsnotify.
+	fw, err := fsnotify.NewWatcher()
+	if err != nil {
+		w.logger.Error("watcher: restart failed", "err", err)
+		return true
+	}
+	w.mu.Lock()
+	// A stop published while this restart was being prepared wins: a new
+	// backend installed now can be one that Stop's closeBackend has already
+	// read PAST, and then nothing ever closes the channels its loop generation
+	// drains — an orphaned fsnotify backend plus a loop goroutine with no exit,
+	// which is a descriptor leak on the shutdown path of the package whose job
+	// is not leaking descriptors (#6287). Checked under the same lock Stop
+	// closes stopCh under, so only two orderings exist: the replacement is
+	// fully installed before the stop is published, or it is abandoned here.
+	if w.stopping() {
+		w.mu.Unlock()
+		_ = fw.Close()
+		w.logger.Info("watcher: restart abandoned — watcher is stopping")
+		return false
+	}
+	{
+		w.fs = fw
+		// The loop goroutine started below drains the NEW backend's
+		// channels; the old ones are closed and would return !ok forever.
+		w.events, w.errs = fw.Events, fw.Errors
+		// Clear stale dirToRepo — will be repopulated by subscribeRepo.
+		w.dirToRepo = make(map[string]string, len(w.dirToRepo))
+		// The old fsnotify instance is gone, so its descriptors are gone
+		// too (#6180). Return them to the ledger before re-subscribing, or
+		// the restart double-charges and every repo is refused.
+		for repo, n := range w.fdReserved {
+			w.fdb.release(n)
+			delete(w.fdReserved, repo)
+		}
+		// Those descriptors are gone too, so the pending pre-charge
+		// markers that stood for them are stale; a Create seen after the
+		// restart is a fresh open and must be charged (#6268).
+		w.fdPreCharged = map[string]struct{}{}
+		repos := make([]string, 0, len(w.repos))
+		for p := range w.repos {
+			repos = append(repos, p)
+		}
+		// Counted here, under the lock, and not next to the `go` below:
+		// Stop's loopWG.Wait may start the moment the lock is released, and
+		// a WaitGroup.Add that races a Wait is a documented misuse.
+		w.loopWG.Add(1)
+		w.mu.Unlock()
+
+		// Re-subscribe.
+		for _, abs := range repos {
+			if n, err := w.subscribeRepo(abs); err != nil {
+				w.logger.Error("watcher: restart re-subscribe failed", "repo", abs, "err", err)
+			} else {
+				w.logger.Info("watcher: restart re-subscribed", "repo", abs, "dirs", n)
+			}
+		}
+
+		// Restart the loop goroutine against the new fsnotify instance.
+		go w.loop()
+
+		// Trigger full diff reconciliation for every repo.
+		w.ForceRescan()
+	}
+	return true
 }
 
 // loop drains the fsnotify channels until the watcher is closed. We
 // route every event through the per-repo debounce timer; the timer's
 // callback runs the sink on its own goroutine.
+//
+// The ONLY exit is the backend closing one of its channels (#6287). There is
+// deliberately no `case <-w.stopCh: return` arm: returning on the stop signal
+// would kill the drain while fsnotify's Close is still pushing its teardown
+// events and errors through it, which is a deadlock on the Windows backend —
+// see Stop. Once a stop has been requested the loop keeps draining but stops
+// ACTING on what it drains: handleEvent can call back into w.fs (Add, via
+// subscribeDirRecursive) and can arm a reindex, neither of which is wanted
+// while the backend is being torn down underneath it.
+//
+// The guard NARROWS that window, it does not close it: a handleEvent already
+// in flight when close(w.stopCh) runs is unaffected and may still be inside
+// w.fs.Add when Close begins. That call is safe rather than merely unlikely —
+// every backend checks isClosed() and returns ErrClosed — so the residue is a
+// wasted Add, not a hang. Closing the window entirely would mean holding a
+// lock across handleEvent, which would serialise the event path against every
+// AddRepo; that trade has not been made.
 func (w *Watcher) loop() {
+	defer w.loopWG.Done()
+	// Captured once. A backend restart starts a FRESH loop goroutine against
+	// the channels the heartbeat has already re-pointed, so re-reading the
+	// fields per iteration would buy nothing and would race the swap.
+	w.mu.Lock()
+	events, errs := w.events, w.errs
+	w.mu.Unlock()
 	for {
 		select {
-		case ev, ok := <-w.fs.Events:
+		case ev, ok := <-events:
 			if !ok {
-				// Channel closed — either Stop() was called or fsnotify
-				// crashed. If it wasn't us, signal the heartbeat to restart.
-				select {
-				case <-w.stopCh:
-					// intentional stop — close stoppedCh once
-					select {
-					case <-w.stoppedCh: // already closed
-					default:
-						close(w.stoppedCh)
-					}
-				default:
-					// unexpected — ask heartbeat to restart
-					select {
-					case w.restartCh <- struct{}{}:
-					default:
-					}
-				}
+				w.backendClosed()
 				return
+			}
+			if w.stopping() {
+				continue // drain only — see the note above
 			}
 			w.handleEvent(ev)
-		case err, ok := <-w.fs.Errors:
+		case err, ok := <-errs:
 			if !ok {
-				select {
-				case <-w.stopCh:
-					select {
-					case <-w.stoppedCh:
-					default:
-						close(w.stoppedCh)
-					}
-				default:
-					select {
-					case w.restartCh <- struct{}{}:
-					default:
-					}
-				}
+				w.backendClosed()
 				return
 			}
-			if err != nil {
+			if err != nil && !w.stopping() {
 				w.logger.Error("watcher: error", "err", err)
 			}
-		case <-w.stopCh:
-			// Stop() was called while we were blocked waiting; drain
-			// the channel close from fsnotify.Close() which happens next.
-			select {
-			case <-w.stoppedCh:
-			default:
-				close(w.stoppedCh)
-			}
-			return
 		}
+	}
+}
+
+// backendClosed handles the loop's only exit: the backend closed a channel. If
+// grafel asked for that, the loop's deferred loopWG.Done is all Stop is waiting
+// for. If it did NOT, the backend failed underneath us and the heartbeat is
+// asked to build a new one — and the retiring generation's Done is what lets a
+// concurrent Stop proceed without waiting out its timeout, whether or not a
+// replacement generation is ever started (#6287).
+func (w *Watcher) backendClosed() {
+	if w.stopping() {
+		return
+	}
+	select {
+	case w.restartCh <- struct{}{}:
+	default:
 	}
 }
 
