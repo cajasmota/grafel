@@ -46,6 +46,7 @@ func reconcileSandbox(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir) // #6288: os.UserHomeDir() reads this on Windows
 	t.Setenv("GRAFEL_HOME", filepath.Join(dir, ".grafel"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
 	return dir

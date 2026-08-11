@@ -219,7 +219,8 @@ func TestNeighbors_BaseMethod_SurfacesInheritingStub(t *testing.T) {
 func TestDefUse_InheritedStub_ReturnsBaseChains(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home) // #6178: os.UserHomeDir() reads this on Windows
+	t.Setenv("USERPROFILE", home)                           // #6178: os.UserHomeDir() reads this on Windows
+	t.Setenv("GRAFEL_HOME", filepath.Join(home, ".grafel")) // #6288: an inherited GRAFEL_HOME would win over both
 	// Write a def-use sidecar with a chain for the BASE member only (the stub
 	// has none — it is bodyless).
 	doc := defUseSidecarDoc{

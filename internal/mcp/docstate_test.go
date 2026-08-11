@@ -24,6 +24,7 @@ import (
 func setTestHome(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir) // #6288: os.UserHomeDir() reads this on Windows
 	t.Setenv("GRAFEL_HOME", filepath.Join(dir, ".grafel"))
 }
 

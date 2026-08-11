@@ -127,7 +127,8 @@ func writeTemplatePatternSidecar(t *testing.T, group string, doc templatePattern
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home) // #6178: os.UserHomeDir() reads this on Windows
+	t.Setenv("USERPROFILE", home)                           // #6178: os.UserHomeDir() reads this on Windows
+	t.Setenv("GRAFEL_HOME", filepath.Join(home, ".grafel")) // #6288: an inherited GRAFEL_HOME would win over both
 	dir := filepath.Join(home, ".grafel", "groups")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir sidecar dir: %v", err)

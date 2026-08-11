@@ -28,6 +28,8 @@ import (
 	"time"
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // ---------------------------------------------------------------------------
@@ -37,19 +39,32 @@ import (
 // newDocgenServer creates a minimal MCP server for docgen tests. It does NOT
 // need a real registry or loaded repos; the docgen tools are independent of
 // graph state.
+//
+// It returns the server and a scratch dir used as the tools' cwd. The isolated
+// home is readable as $HOME (IsolateHome sets HOME and USERPROFILE to the same
+// value, so os.Getenv("HOME") is the right answer on every platform).
+//
+// #6288: this used to call t.Setenv("HOME", …) and nothing else. That was
+// already the #6171 shape, and #6246 made it dangerous: docsRoot() moved from
+// reading $HOME directly to registry.HomeDir(), which prefers $GRAFEL_HOME and
+// otherwise falls back to os.UserHomeDir(). On unix os.UserHomeDir() reads
+// $HOME, so the sandbox held by luck. On Windows it reads %USERPROFILE% and
+// IGNORES $HOME — so TestDocgenPromote_Atomic rotated and installed docs into
+// the CI user's REAL C:\Users\runneradmin\.grafel\docs, and TestDocgenList then
+// enumerated that real directory and found the file the previous test had left
+// behind instead of its own three. Two reported failures, one sandbox escape.
+//
+// testsupport.IsolateHome pins HOME, USERPROFILE and GRAFEL_HOME together (plus
+// GRAFEL_DAEMON_ROOT and both XDG vars) and asserts the redirect took effect, so
+// there is no variable left for a platform to disagree about.
 func newDocgenServer(t *testing.T) (*Server, string) {
 	t.Helper()
+
+	testsupport.IsolateHome(t)
 
 	// Isolated temp dirs.
 	tmpDir := t.TempDir()
 	registryPath := filepath.Join(tmpDir, "registry.json")
-	homeDir := filepath.Join(tmpDir, "home")
-	if err := os.MkdirAll(homeDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Override HOME so canonical paths land in tmpDir.
-	t.Setenv("HOME", homeDir)
 
 	// Write an empty registry so NewServer doesn't fail.
 	if err := os.WriteFile(registryPath, []byte(`{"groups":{}}`), 0o644); err != nil {
@@ -488,6 +503,13 @@ func TestDocgenPromote_Atomic(t *testing.T) {
 		"force":  true,
 	}, tmpDir))
 
+	// #6288: assert containment BEFORE equality. When promote resolved the real
+	// %USERPROFILE% on Windows, the equality check reported a "mismatch" — a
+	// cosmetic-sounding message for a run that had just rotated and replaced a
+	// directory in the CI user's actual profile. This says what went wrong.
+	if got, ok := res["canonical_path"].(string); ok {
+		testsupport.AssertUnderHome(t, got)
+	}
 	if res["canonical_path"] != canonicalPath {
 		t.Errorf("canonical_path mismatch: got %v, want %v", res["canonical_path"], canonicalPath)
 	}
@@ -588,6 +610,12 @@ func TestDocgenList(t *testing.T) {
 		"group": "mygroup",
 	})
 
+	// #6288: containment first. "expected 3 files, got 1" was what a read of the
+	// real C:\Users\runneradmin\.grafel\docs\mygroup looked like from here —
+	// the 1 file being what the previous test had left in it.
+	if got, ok := res["canonical_path"].(string); ok {
+		testsupport.AssertUnderHome(t, got)
+	}
 	count, _ := res["file_count"].(float64)
 	if count != 3 {
 		t.Errorf("expected 3 files, got %v", count)

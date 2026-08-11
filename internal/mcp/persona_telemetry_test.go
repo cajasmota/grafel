@@ -86,6 +86,8 @@ func TestPersonaEventJSONLAppend(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	// Also override on macOS (os.UserHomeDir can read $HOME or Getpw; set both).
+	t.Setenv("USERPROFILE", tmpHome)                           // #6288: os.UserHomeDir() reads this on Windows
+	t.Setenv("GRAFEL_HOME", filepath.Join(tmpHome, ".grafel")) // #6288: an inherited GRAFEL_HOME would win over both
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpHome, ".config"))
 
 	dir := t.TempDir()
