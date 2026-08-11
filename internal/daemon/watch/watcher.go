@@ -188,9 +188,34 @@ type Watcher struct {
 	// from its own listing and for which fsnotify may STILL deliver a Create.
 	// See the note on subscribeDirRecursive; chargeEventOpen consumes it.
 	fdPreCharged map[string]struct{}
-	stopOnce     sync.Once
-	stopCh       chan struct{}
-	restartCh    chan struct{} // signals heartbeat loop to recreate fsnotify
+	// fdReleasedDirs holds watched-directory paths whose descriptor has already
+	// been handed back, so a SECOND removal report for the same path releases
+	// nothing. fsnotify's Windows backend delivers two Remove events for one
+	// closed directory handle — the parent's FILE_ACTION_REMOVED and the
+	// directory's own DELETE_SELF (#6293) — and by the time the second arrives
+	// the dirToRepo entry that identifies it as a directory is gone, so without
+	// this it is mistaken for a file entry of the parent and released a second
+	// time.
+	//
+	// A marker that OUTLIVES the descriptor it stands for would swallow a real
+	// release, which is the same under-count arriving by another road, so every
+	// marker must die the moment a descriptor for its path could exist again.
+	// There are exactly two ways that happens, and the map is keyed to make
+	// both an O(1) deletion:
+	//
+	//	a Create for the path       -> chargeEventOpen forgets that ONE path;
+	//	a (re)listing of its parent -> the parent's whole set goes, because
+	//	                               chargeDir has just charged every entry of
+	//	                               that directory afresh.
+	//
+	// Hence parent directory -> set of released child paths, rather than a flat
+	// set of paths: the listing case has no per-path event to hang a deletion
+	// on, and scanning a flat set for children on every subscribed directory
+	// would be O(dirs x markers) over a whole-repo walk.
+	fdReleasedDirs map[string]map[string]struct{}
+	stopOnce       sync.Once
+	stopCh         chan struct{}
+	restartCh      chan struct{} // signals heartbeat loop to recreate fsnotify
 	// loopWG counts LIVE loop goroutines, which is not always one: the
 	// heartbeat can retire a loop and start another against a fresh backend.
 	// Stop waits on this rather than on a one-shot "stopped" channel, because a
@@ -286,8 +311,10 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		fdReserved:   map[string]int{},
 		fdUnwatched:  map[string]struct{}{},
 		fdPreCharged: map[string]struct{}{},
-		stopCh:       make(chan struct{}),
-		restartCh:    make(chan struct{}, 1),
+
+		fdReleasedDirs: map[string]map[string]struct{}{},
+		stopCh:         make(chan struct{}),
+		restartCh:      make(chan struct{}, 1),
 	}
 	// Read w.fs under the lock: the heartbeat can swap it for a fresh backend
 	// concurrently, and closing the one this Watcher no longer owns would
@@ -523,6 +550,9 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 		subscribed[p] = struct{}{}
 		w.mu.Lock()
 		w.dirToRepo[p] = abs
+		// chargeDir has just charged every entry of p, so no released-dir
+		// marker under it can still stand for a live descriptor (#6293).
+		w.forgetReleasedEntriesLocked(p)
 		w.mu.Unlock()
 		added++
 		return nil
@@ -656,6 +686,11 @@ func (w *Watcher) RemoveRepo(repoPath string) {
 		if owner == abs {
 			_ = w.fs.Remove(d)
 			delete(w.dirToRepo, d)
+			// This watcher holds nothing under d any more, so a marker saying
+			// "d's child descriptor is already released" stands for nothing and
+			// must not survive into a re-add (#6293).
+			w.forgetReleasedEntriesLocked(d)
+			w.forgetReleasedDirLocked(d)
 		}
 	}
 	// Hand the descriptors back (#6180). Without this a store that churns
@@ -944,6 +979,13 @@ func (w *Watcher) restartBackend() bool {
 		// markers that stood for them are stale; a Create seen after the
 		// restart is a fresh open and must be charged (#6268).
 		w.fdPreCharged = map[string]struct{}{}
+		// Likewise the duplicate-removal markers: every descriptor they
+		// suppress a second release of is already gone with the old backend,
+		// and the re-subscription below charges fresh ones (#6293). A removal
+		// pair straddling this reset — report 1 drained by the retiring loop,
+		// report 2 by the new one — degrades to the pre-fix behaviour for that
+		// one path, the same window fdPreCharged above already has.
+		w.fdReleasedDirs = map[string]map[string]struct{}{}
 		repos := make([]string, 0, len(w.repos))
 		for p := range w.repos {
 			repos = append(repos, p)
@@ -1157,10 +1199,18 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 // owning repo has no descriptor of ours behind it.
 func (w *Watcher) chargeEventOpen(path string) {
 	n := w.fdb.model().perEntry()
+	w.mu.Lock()
+	// Whatever the cost model, the path exists again, so any record of having
+	// released its previous descriptor is spent: its next removal must release
+	// afresh. Before the n <= 0 return, not after: on a per-watch platform this
+	// is the ONLY moment a name that comes back as a FILE is ever seen, and a
+	// marker left behind there would be write-only until the cap reset it
+	// (#6293).
+	w.forgetReleasedDirLocked(path)
 	if n <= 0 {
+		w.mu.Unlock()
 		return
 	}
-	w.mu.Lock()
 	if _, pre := w.fdPreCharged[path]; pre {
 		// Already paid for by subscribeDirRecursive's listing. fsnotify still
 		// reported Create because it opened the descriptor between the register
@@ -1200,6 +1250,27 @@ func (w *Watcher) releaseEventClose(path string) {
 	if isWatchedDir {
 		n = cost.perDir
 		delete(w.dirToRepo, path)
+		w.recordReleasedDirLocked(path)
+	} else if w.releasedDirLocked(path) {
+		// A duplicate report of a directory removal grafel has already paid
+		// out (#6293). One handle was closed, so one descriptor is released:
+		// releasing per REPORT rather than per close takes a descriptor off the
+		// ledger that was never charged, and an understated ledger is the #6268
+		// defect itself.
+		//
+		// Where that bites today: nowhere in production. The duplicate is a
+		// Windows fact, and Windows draws inotifyCostModel, whose perEntry() is
+		// 0 — the second release computes nothing to release even without this
+		// branch, and the budget is off there by default besides. What is
+		// broken is the ledger's cost-model-generic contract, which the whole
+		// package is written against and which the Windows job asserts.
+		//
+		// The marker is HELD, not consumed: the invariant is one release per
+		// close, not per report, and a spent marker would release on any later
+		// report. It dies as soon as a descriptor for the path could exist
+		// again — see the field.
+		w.mu.Unlock()
+		return
 	}
 	if n <= 0 {
 		w.mu.Unlock()
@@ -1217,6 +1288,67 @@ func (w *Watcher) releaseEventClose(path string) {
 	}
 	w.mu.Unlock()
 	w.fdb.release(n)
+}
+
+// recordReleasedDirLocked remembers that path's directory descriptor has been
+// handed back, so a duplicate removal report for it releases nothing. Caller
+// holds w.mu.
+//
+// Bounded exactly as fdPreCharged is, and for the same reason: on a backend
+// that reports each close once — kqueue, inotify — no marker is ever consumed
+// by a duplicate, so the map would otherwise grow with every directory a repo
+// ever loses. Past the cap it is reset, and that reset can land in the middle
+// of the one burst it matters for: an `rm -rf` of a tree with more than
+// fdPreChargedCap directories, where the two Windows reports come from
+// different completion paths (the parent's buffered batch, the child's
+// ERROR_ACCESS_DENIED) and are NOT guaranteed adjacent. Dropping a marker costs
+// exactly the pre-fix behaviour for that one path — one descriptor understated
+// — not a new failure mode, and the alternative is an unbounded map.
+func (w *Watcher) recordReleasedDirLocked(path string) {
+	parent := filepath.Dir(path)
+	set := w.fdReleasedDirs[parent]
+	if set == nil {
+		if len(w.fdReleasedDirs) >= fdPreChargedCap {
+			w.fdReleasedDirs = map[string]map[string]struct{}{}
+		}
+		set = map[string]struct{}{}
+		w.fdReleasedDirs[parent] = set
+	} else if len(set) >= fdPreChargedCap {
+		// One directory that has held more than a cap's worth of deleted
+		// subdirectories. Same trade, same cost.
+		set = map[string]struct{}{}
+		w.fdReleasedDirs[parent] = set
+	}
+	set[path] = struct{}{}
+}
+
+// releasedDirLocked reports whether path's directory descriptor has already
+// been handed back with no charge for it since. Caller holds w.mu.
+func (w *Watcher) releasedDirLocked(path string) bool {
+	_, ok := w.fdReleasedDirs[filepath.Dir(path)][path]
+	return ok
+}
+
+// forgetReleasedDirLocked drops the marker for ONE path, because a descriptor
+// for it has just been charged. Caller holds w.mu.
+func (w *Watcher) forgetReleasedDirLocked(path string) {
+	parent := filepath.Dir(path)
+	set := w.fdReleasedDirs[parent]
+	delete(set, path)
+	if len(set) == 0 {
+		delete(w.fdReleasedDirs, parent)
+	}
+}
+
+// forgetReleasedEntriesLocked drops the markers for every child of dir, because
+// dir has just been (re)subscribed and the listing that went with it charged
+// every entry dir holds. Without this a marker outlives the descriptor it
+// stands for and swallows a REAL release: a repo removed and re-added, or a
+// parent directory deleted and recreated, charges the path by LISTING, which
+// reaches no Create event and therefore no chargeEventOpen (#6293). Caller
+// holds w.mu.
+func (w *Watcher) forgetReleasedEntriesLocked(dir string) {
+	delete(w.fdReleasedDirs, dir)
 }
 
 // repoFor finds which registered repo a path belongs to. We walk up
@@ -1368,6 +1500,8 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		subscribed[p] = struct{}{}
 		w.mu.Lock()
 		w.dirToRepo[p] = repo
+		// See subscribeRepo: the listing above re-charged p's entries (#6293).
+		w.forgetReleasedEntriesLocked(p)
 		w.mu.Unlock()
 		return nil
 	})
