@@ -591,9 +591,14 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 		lastEvent = parseSubprocessStdout(stdoutPipe, progressPub, pid, logger)
 	}()
 
-	// Wait for both pipe goroutines and the process itself.
+	// Wait for both pipe goroutines and the process itself. The drain ends at
+	// EOF, which needs EVERY holder of the inherited descriptors gone; a
+	// descriptor that escaped the killed process group would otherwise block
+	// this runner forever. See boundPostCancelDrain.
+	stopDrainBound := boundPostCancelDrain(ctx, stdoutPipe, stderrPipe)
 	<-stdoutDone
 	<-stderrDone
+	stopDrainBound()
 	waitErr := cmd.Wait()
 
 	// #6107 / epic #5954: the index heap lives entirely in this child, so its
@@ -741,8 +746,13 @@ func RunSubprocessGroupAlgo(ctx context.Context, group string, logger *slog.Logg
 	go drain(stdoutPipe, "[group-algo]", stdoutDone)
 	go drain(stderrPipe, "[group-algo]", stderrDone)
 
+	// A descriptor that escaped the killed process group would otherwise hold
+	// this drain — and the heavy write-stage token — open forever. See
+	// boundPostCancelDrain.
+	stopDrainBound := boundPostCancelDrain(ctx, stdoutPipe, stderrPipe)
 	<-stdoutDone
 	<-stderrDone
+	stopDrainBound()
 	waitErr := cmd.Wait()
 
 	if waitErr != nil {
@@ -924,8 +934,13 @@ func RunSubprocessLinks(ctx context.Context, group string, logger *slog.Logger) 
 	go drain(stdoutPipe, "[links]", stdoutDone)
 	go drain(stderrPipe, "[links]", stderrDone)
 
+	// A descriptor that escaped the killed process group would otherwise hold
+	// this drain — and the heavy write-stage token — open forever. See
+	// boundPostCancelDrain.
+	stopDrainBound := boundPostCancelDrain(ctx, stdoutPipe, stderrPipe)
 	<-stdoutDone
 	<-stderrDone
+	stopDrainBound()
 	waitErr := cmd.Wait()
 
 	if waitErr != nil {

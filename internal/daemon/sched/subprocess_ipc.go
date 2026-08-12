@@ -22,8 +22,10 @@ package sched
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"sync"
 
 	"github.com/cajasmota/grafel/internal/progress"
@@ -127,6 +129,19 @@ func parseSubprocessStdout(r io.Reader, progressPub progress.Publisher, pid int,
 	// draining the pipe to EOF with io.Copy(io.Discard): a pathological oversized
 	// line degrades to dropped progress, not a deadlock.
 	if err := sc.Err(); err != nil {
+		// A CLOSED pipe is not that hazard and must not be reported as it. The
+		// runner force-closes this read end when the context is cancelled and a
+		// descriptor outlived the child's process group (boundPostCancelDrain),
+		// so this is an expected step on the cancellation path: there is no
+		// child left waiting to write to us, and the io.Copy below would fail
+		// on the closed file anyway. Logging the ErrTooLong text here would put
+		// a misattributed WARN in front of an operator on every bounded cancel.
+		if errors.Is(err, os.ErrClosed) {
+			if logger != nil {
+				logger.Info("subprocess-indexer: stdout drain closed after cancellation", "pid", pid)
+			}
+			return last
+		}
 		if logger != nil {
 			logger.Warn("subprocess-indexer: stdout scan aborted; draining remainder to avoid child stall",
 				"err", err, "pid", pid)
