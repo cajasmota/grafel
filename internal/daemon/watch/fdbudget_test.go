@@ -168,15 +168,32 @@ func newBudgetedWatcher(t *testing.T, budget int) *Watcher {
 // timings are the same in both.
 func newBudgetedWatcherCfg(t *testing.T, cfg Config) *Watcher {
 	t.Helper()
+	w := newBudgetedWatcherCfgNoCleanup(t, cfg)
+	t.Cleanup(w.Stop)
+	return w
+}
+
+// newBudgetedWatcherCfgNoCleanup is newBudgetedWatcherCfg without the automatic
+// Stop, for a test that calls Stop itself and would otherwise park on stopOnce.
+func newBudgetedWatcherCfgNoCleanup(t *testing.T, cfg Config) *Watcher {
+	t.Helper()
 	cfg.Debounce = time.Hour
 	cfg.BulkThreshold = 10000
 	cfg.HeartbeatInterval = time.Hour
+	// The reconcile sweep is deliberately NOT pinned. Debounce, bulk and
+	// heartbeat are, because those three feed the SINK and a test asserting
+	// ledger arithmetic does not want reindex signalling in the way. The sweep
+	// touches the LEDGER, which is exactly what these tests measure — so every
+	// one of them runs it, at its production cadence, and any pass where the
+	// sweep is not ledger-neutral is a failure this suite is entitled to catch
+	// (#6304). Tests that drive it on demand call reconcileOnce directly, and
+	// those switch the automatic one off so the two do not race — see
+	// withheldEventsWatcher.
 	cfg.fdCost = kqueueCostModel // test the macOS arithmetic everywhere
 	w, err := NewWatcherConfig(cfg, func(string, bool) {}, nil)
 	if err != nil {
 		t.Fatalf("NewWatcherConfig: %v", err)
 	}
-	t.Cleanup(w.Stop)
 	return w
 }
 

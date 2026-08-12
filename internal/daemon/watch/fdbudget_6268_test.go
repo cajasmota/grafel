@@ -1139,7 +1139,21 @@ walked:
 func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 	repoA := makePrunedTree(t)
 	repoB := makePrunedTree(t)
-	w := newBudgetedWatcherCfg(t, Config{FDBudget: 1_000_000, disableQuarantine: true})
+	// This test's arithmetic is the only one in this file that a real macOS run
+	// has been observed to miss: fsnotify's dirChange abandoned two directories'
+	// listings mid-burst, so 24 of the 660 descriptors were never opened, never
+	// charged and — the part that matters off CI — never watched again. Nothing
+	// re-listed a subscribed directory, so the reading stayed 24 short for the
+	// whole 10-second deadline (`held 0 of 30 polls`).
+	//
+	// The assertion is unchanged and still an exact equality: 660, not "at
+	// least". What changed is that the product now has a way to get there, at
+	// the production sweep cadence — this test sets no interval, exactly like
+	// every other test in the file (#6304).
+	w := newBudgetedWatcherCfg(t, Config{
+		FDBudget:          1_000_000,
+		disableQuarantine: true,
+	})
 	for _, r := range []string{repoA, repoB} {
 		if _, err := w.AddRepo(r); err != nil {
 			t.Fatalf("premise broken: AddRepo(%s): %v", r, err)
