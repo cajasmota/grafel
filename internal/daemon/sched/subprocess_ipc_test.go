@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/progress"
+	"os"
+	"sync"
 )
 
 // TestStdoutProgressPublisher_RoundTrip is the make-or-break fidelity test for
@@ -150,5 +152,57 @@ func TestParseSubprocessStdout_NilPublisherDropsProgress(t *testing.T) {
 	last := parseSubprocessStdout(&buf, nil, 0, nil)
 	if last.Event != "index_done" {
 		t.Errorf("lastEvent = %+v, want index_done", last)
+	}
+}
+
+// TestParseSubprocessStdout_ForceClosedPipeIsNotReportedAsAStall pins the
+// distinction the drain bound introduced. When boundPostCancelDrain force-closes
+// this read end on a cancelled run, Scan() fails with os.ErrClosed — a normal
+// step on the cancellation path, not the child-stall hazard the WARN above
+// describes. Reporting it with that text ("scan aborted; draining remainder to
+// avoid child stall", written for bufio.ErrTooLong) puts a misattributed
+// warning in front of an operator on every bounded cancel, and the io.Copy that
+// follows it cannot run on a closed file anyway.
+func TestParseSubprocessStdout_ForceClosedPipeIsNotReportedAsAStall(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	defer w.Close()
+
+	var logBuf bytes.Buffer
+	var mu sync.Mutex
+	logger := slog.New(slog.NewTextHandler(&lockedWriter{w: &logBuf, mu: &mu}, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = parseSubprocessStdout(r, nil, 1234, logger)
+	}()
+
+	// One good line, then block the drain on an open pipe and force-close it,
+	// exactly as the bound does.
+	if _, err := w.WriteString(`{"event":"index_start","repo":"/r"}` + "\n"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if err := r.Close(); err != nil {
+		t.Fatalf("close read end: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("parseSubprocessStdout did not return after the read end was force-closed")
+	}
+
+	mu.Lock()
+	logged := logBuf.String()
+	mu.Unlock()
+	if strings.Contains(logged, "scan aborted") || strings.Contains(logged, "child stall") {
+		t.Errorf("a force-closed pipe was reported as a child stall:\n%s", logged)
+	}
+	if !strings.Contains(logged, "closed after cancellation") {
+		t.Errorf("the close was not reported at all; the drain ended silently:\n%s", logged)
 	}
 }
