@@ -136,8 +136,54 @@ func activityBufferSize() int {
 	return activityDefaultBuffer
 }
 
+// activitySub holds one SSE subscriber's channel plus the guard that orders a
+// fan-out send against the close performed by that subscriber's cancel func.
+//
+// #6299 — Publish snapshots the subscriber slice under the read lock and sends
+// OUTSIDE it, so one stalled SSE client cannot stall MCP tool handlers for
+// everyone else. That left the send unordered with respect to removeLocked's
+// close: a data race, and a live `panic: send on closed channel` inside the
+// daemon's HTTP server whenever a browser tab closed mid-publish. mu restores
+// the ordering per subscriber rather than per broker; the guarded region is a
+// bool check plus one non-blocking send, so a slow client still cannot hold up
+// a publisher.
 type activitySub struct {
-	ch chan MCPActivityEvent
+	mu     sync.RWMutex
+	closed bool
+	ch     chan MCPActivityEvent
+}
+
+// send delivers e unless the subscriber has been cancelled or its buffer is
+// full. It never blocks.
+func (s *activitySub) send(e MCPActivityEvent) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		// Cancelled — the consumer has gone away. Dropping is correct: activity
+		// SSE delivery is best-effort (Publish already drops on a full buffer),
+		// and where disk logging is enabled the ActivityLog keeps the durable
+		// record. b.log may be nil, so that is a mitigation, not a guarantee —
+		// the event is only ever dropped for a subscriber whose channel is
+		// already closed and whose consumer is gone.
+		return
+	}
+	select {
+	case s.ch <- e:
+	default:
+		// subscriber buffer full — drop.
+	}
+}
+
+// close closes the subscriber's channel so a ranging consumer terminates. It is
+// idempotent and excludes any concurrent send.
+func (s *activitySub) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	s.closed = true
+	close(s.ch)
 }
 
 // MCPActivityBroker is a fan-out pub/sub bus for MCP tool call events.
@@ -195,11 +241,7 @@ func (b *MCPActivityBroker) Publish(e MCPActivityEvent) {
 	b.mu.RUnlock()
 
 	for _, s := range targets {
-		select {
-		case s.ch <- e:
-		default:
-			// subscriber buffer full — drop.
-		}
+		s.send(e)
 	}
 
 	// Disk log — best-effort, no lock needed (ActivityLog is goroutine-safe).
@@ -246,7 +288,9 @@ func (b *MCPActivityBroker) removeLocked(sub *activitySub) {
 	if len(b.subs[activityWildcard]) == 0 {
 		delete(b.subs, activityWildcard)
 	}
-	close(sub.ch)
+	// Delegated so the close is ordered against any in-flight fan-out send
+	// (#6299). Lock order is b.mu -> activitySub.mu, never the reverse.
+	sub.close()
 }
 
 // SubscriberCount returns the number of active SSE subscribers. Intended for
