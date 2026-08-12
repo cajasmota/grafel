@@ -249,9 +249,8 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 		// inheritance edge itself records the library binding.
 		for _, parent := range extends {
 			edge := types.RelationshipRecord{
-				FromID: filePath,
-				ToID:   parent,
-				Kind:   "EXTENDS",
+				ToID: parent,
+				Kind: "EXTENDS",
 			}
 			if isOpenZeppelinBase(parent) {
 				usesOZ = true

@@ -212,6 +212,46 @@ contract TokenMint is Ownable, IERC20 {
 	}
 }
 
+// An empty FromID means "the record that owns this relationship", which is the
+// only way the edge reaches the contract: a file path resolves to the file
+// component instead, and solHasRel above never reads FromID.
+func TestSolidity_ExtendsSourcedOnTheContract(t *testing.T) {
+	src := `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "./Ownable.sol";
+
+contract Vault is Ownable {
+    uint256 private _total;
+}
+
+contract Registry is Ownable {
+    uint256 private _count;
+}
+`
+	ents := runSolidity(t, src, "src/Vault.sol")
+
+	for _, name := range []string{"Vault", "Registry"} {
+		rec := solFindSubtype(ents, name, "SCOPE.Component", "contract")
+		if rec == nil {
+			t.Fatalf("no contract entity for %s", name)
+		}
+		bases := []string{}
+		for _, r := range rec.Relationships {
+			if r.Kind != "EXTENDS" {
+				continue
+			}
+			if r.FromID != "" {
+				t.Errorf("%s EXTENDS %s: FromID = %q, want \"\"", name, r.ToID, r.FromID)
+			}
+			bases = append(bases, r.ToID)
+		}
+		if len(bases) != 1 || bases[0] != "Ownable" {
+			t.Errorf("%s bases = %v, want [Ownable]", name, bases)
+		}
+	}
+}
+
 // ── Function extraction ───────────────────────────────────────────────────────
 
 func TestSolidity_Functions(t *testing.T) {
