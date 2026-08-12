@@ -69,18 +69,70 @@ type actionJob struct {
 	FinishedAt    *int64 `json:"finished_at,omitempty"`
 }
 
+// jobSub holds one SSE subscriber's channel plus the guard that orders a
+// fan-out send against the close performed by that subscriber's cancel func.
+//
+// #6299 — this registry is the fourth copy of the progress broker's fan-out
+// shape, and it was the worst of them: update snapshotted the subscriber
+// channels under r.mu, released it, and sent outside it, while cancel closed the
+// channel entirely OUTSIDE r.mu (the three brokers at least closed under the
+// write lock). A tab closing on GET /api/v2/jobs/{id}/stream while runRebuildJob
+// pushes a status transition therefore raced, and could raise
+// `panic: send on closed channel` on a net/http goroutine — a daemon crash.
+//
+// mu restores the ordering per subscriber rather than per registry: publishers
+// take it for reading, the single cancel path takes it for writing. The guarded
+// region contains nothing that can block — a bool test and one non-blocking
+// send — so a slow SSE client still cannot hold up a worker.
+type jobSub struct {
+	mu     sync.RWMutex
+	closed bool
+	ch     chan actionJob
+}
+
+// send delivers j unless the subscriber has been cancelled or its buffer is
+// full. It never blocks: dropping on a slow consumer is deliberate, so a stalled
+// SSE client cannot stall the rebuild worker.
+func (s *jobSub) send(j actionJob) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		// Cancelled — the consumer has gone away. Dropping is correct; the job
+		// state itself lives in the registry and is readable via GET /jobs/{id}.
+		return
+	}
+	select {
+	case s.ch <- j:
+	default:
+	}
+}
+
+// close closes the subscriber's channel so handleV2JobStream's `j, open := <-ch`
+// arm fires. It is idempotent — unlike the pre-#6299 cancel, which had neither a
+// sync.Once nor a closed guard and panicked with `close of closed channel` on a
+// second call — and it excludes any concurrent send.
+func (s *jobSub) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	s.closed = true
+	close(s.ch)
+}
+
 // actionJobRegistry is a concurrent, TTL-pruned store of action jobs plus a
 // per-job subscriber set for SSE streaming.
 type actionJobRegistry struct {
 	mu   sync.RWMutex
 	jobs map[string]*actionJob
-	subs map[string]map[chan actionJob]struct{}
+	subs map[string]map[*jobSub]struct{}
 }
 
 func newActionJobRegistry() *actionJobRegistry {
 	return &actionJobRegistry{
 		jobs: make(map[string]*actionJob),
-		subs: make(map[string]map[chan actionJob]struct{}),
+		subs: make(map[string]map[*jobSub]struct{}),
 	}
 }
 
@@ -115,18 +167,17 @@ func (r *actionJobRegistry) update(id string, mutate func(*actionJob)) {
 	mutate(j)
 	snapshot := *j
 	subs := r.subs[id]
-	chans := make([]chan actionJob, 0, len(subs))
-	for ch := range subs {
-		chans = append(chans, ch)
+	targets := make([]*jobSub, 0, len(subs))
+	for s := range subs {
+		targets = append(targets, s)
 	}
 	r.mu.Unlock()
 
-	for _, ch := range chans {
-		// Non-blocking send: drop on a slow consumer rather than stall the worker.
-		select {
-		case ch <- snapshot:
-		default:
-		}
+	// The registry lock is released before the fan-out so a slow subscriber never
+	// delays the worker; each send takes only that subscriber's own guard, held
+	// for a non-blocking operation (see jobSub.send, #6299).
+	for _, s := range targets {
+		s.send(snapshot)
 	}
 }
 
@@ -142,7 +193,8 @@ func (r *actionJobRegistry) get(id string) (actionJob, bool) {
 }
 
 // subscribe registers a channel for job updates. The returned cancel func
-// removes and closes it. The current snapshot is delivered immediately.
+// removes and closes it, and is safe to call more than once. The current
+// snapshot is delivered immediately.
 func (r *actionJobRegistry) subscribe(id string) (<-chan actionJob, func(), bool) {
 	r.mu.Lock()
 	j, ok := r.jobs[id]
@@ -150,29 +202,34 @@ func (r *actionJobRegistry) subscribe(id string) (<-chan actionJob, func(), bool
 		r.mu.Unlock()
 		return nil, nil, false
 	}
-	ch := make(chan actionJob, 8)
+	s := &jobSub{ch: make(chan actionJob, 8)}
 	if r.subs[id] == nil {
-		r.subs[id] = make(map[chan actionJob]struct{})
+		r.subs[id] = make(map[*jobSub]struct{})
 	}
-	r.subs[id][ch] = struct{}{}
+	r.subs[id][s] = struct{}{}
 	snapshot := *j
 	r.mu.Unlock()
 
-	// Deliver the current state first so a late subscriber is not stuck.
-	ch <- snapshot
+	// Deliver the current state first so a late subscriber is not stuck. Routed
+	// through the guard for uniformity; the channel is freshly made with capacity
+	// 8 and no one else holds it yet, so this always lands.
+	s.send(snapshot)
 
 	cancel := func() {
 		r.mu.Lock()
 		if set, ok := r.subs[id]; ok {
-			delete(set, ch)
+			delete(set, s)
 			if len(set) == 0 {
 				delete(r.subs, id)
 			}
 		}
 		r.mu.Unlock()
-		close(ch)
+		// Ordered against any in-flight fan-out send, and idempotent (#6299).
+		// Lock order is r.mu -> jobSub.mu and never the reverse; the close is
+		// outside r.mu, which is safe now that jobSub.mu is what orders it.
+		s.close()
 	}
-	return ch, cancel, true
+	return s.ch, cancel, true
 }
 
 // pruneLocked drops finished jobs older than the TTL. Caller holds r.mu.

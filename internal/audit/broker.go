@@ -4,8 +4,53 @@ import "sync"
 
 const brokerBuffer = 64
 
+// sub holds one SSE subscriber's channel plus the guard that orders a fan-out
+// send against the close performed by that subscriber's cancel func.
+//
+// #6299 — Publish snapshots the subscriber slice under the read lock and sends
+// OUTSIDE it, so one stalled SSE client cannot stall the audit writer for
+// everyone else. That left the send unordered with respect to cancel's close: a
+// data race, and a live `panic: send on closed channel` inside the daemon's HTTP
+// server whenever a browser tab closed mid-publish. mu restores the ordering per
+// subscriber rather than per broker; the guarded region is a bool check plus one
+// non-blocking send, so a slow client still cannot hold up a publisher.
 type sub struct {
-	ch chan Entry
+	mu     sync.RWMutex
+	closed bool
+	ch     chan Entry
+}
+
+// send delivers e unless the subscriber has been cancelled or its buffer is
+// full. It never blocks.
+func (s *sub) send(e Entry) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		// Cancelled — the consumer has gone away. Dropping is correct: audit SSE
+		// delivery is best-effort (Publish already drops on a full buffer), and
+		// where an audit log is configured it keeps the durable record. Writer's
+		// log may be nil, so that is a mitigation, not a guarantee — the entry is
+		// only ever dropped for a subscriber whose channel is already closed and
+		// whose consumer is gone.
+		return
+	}
+	select {
+	case s.ch <- e:
+	default:
+		// subscriber buffer full — drop
+	}
+}
+
+// close closes the subscriber's channel so a ranging consumer terminates. It is
+// idempotent and excludes any concurrent send.
+func (s *sub) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	s.closed = true
+	close(s.ch)
 }
 
 // Broker fans out audit entries to SSE subscribers in real time.
@@ -32,11 +77,7 @@ func (b *Broker) Publish(e Entry) {
 	b.mu.RUnlock()
 
 	for _, s := range targets {
-		select {
-		case s.ch <- e:
-		default:
-			// subscriber buffer full — drop
-		}
+		s.send(e)
 	}
 }
 
@@ -63,7 +104,9 @@ func (b *Broker) Subscribe() (<-chan Entry, func()) {
 					break
 				}
 			}
-			close(s.ch)
+			// Delegated so the close is ordered against any in-flight fan-out
+			// send (#6299). Lock order is b.mu -> sub.mu, never the reverse.
+			s.close()
 		})
 	}
 	return s.ch, cancel

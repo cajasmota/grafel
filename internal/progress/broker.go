@@ -25,9 +25,55 @@ func bufferSize() int {
 	return defaultBufferSize
 }
 
-// subscriber holds one consumer's channel and its position in the group slice.
+// subscriber holds one consumer's channel and the guard that keeps a fan-out
+// send ordered against the close performed by that consumer's cancel func.
+//
+// #6299 — Publish and BroadcastAll deliberately snapshot the subscriber set
+// under the broker's read lock and then send OUTSIDE it, so one stalled SSE
+// client cannot stall progress for everyone else. That left the send unordered
+// with respect to removeLocked's close: a data race, and worse, a live
+// `panic: send on closed channel` inside the daemon's HTTP server whenever a
+// browser tab closed mid-publish. mu restores the ordering per subscriber
+// rather than per broker: publishers take it for reading (so they still fan out
+// concurrently with each other), and only the single cancel path takes it for
+// writing. The guarded region contains nothing that can block — a non-blocking
+// select send and a bool — so a slow client still cannot hold up a publisher.
 type subscriber struct {
-	ch chan Event
+	mu     sync.RWMutex
+	closed bool
+	ch     chan Event
+}
+
+// send delivers e to the subscriber unless it has already been cancelled or its
+// buffer is full. It never blocks: the critical section is a bool check plus one
+// non-blocking channel send.
+func (s *subscriber) send(e Event) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		// Cancelled: the channel is closed and sending would panic. Dropping the
+		// event is correct — the consumer has gone away, and progress delivery is
+		// best-effort by design (see Publish).
+		return
+	}
+	select {
+	case s.ch <- e:
+	default:
+		// Subscriber buffer full — drop this event. Progress is best-effort.
+	}
+}
+
+// close closes the subscriber's channel, so a consumer ranging over it (or
+// testing `e, ok := <-ch`) terminates. It is idempotent, and excludes any
+// concurrent send.
+func (s *subscriber) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	s.closed = true
+	close(s.ch)
 }
 
 // Broker is a fan-out pub/sub bus keyed by group slug. One Broker instance lives
@@ -103,8 +149,10 @@ const wildcardGroup = "\x00wildcard"
 // Publish fans an event out to every subscriber registered for e.GroupSlug,
 // plus any wildcard subscribers registered via SubscribeAll. Each send is
 // attempted with a non-blocking select; if the subscriber's channel is full the
-// event is discarded for that subscriber (drop-on-full, not drop-oldest). This
-// keeps the publisher lock-free on the hot path.
+// event is discarded for that subscriber (drop-on-full, not drop-oldest). The
+// broker lock is released before the fan-out, so a slow subscriber never delays
+// another publisher; each send takes only that subscriber's own guard, held for
+// a non-blocking operation (see subscriber.send, #6299).
 //
 // Publish implements the Publisher interface so the indexer can use the broker
 // without importing a concrete type.
@@ -127,11 +175,7 @@ func (b *Broker) Publish(e Event) {
 	b.mu.RUnlock()
 
 	for _, s := range targets {
-		select {
-		case s.ch <- e:
-		default:
-			// Subscriber buffer full — drop this event. Progress is best-effort.
-		}
+		s.send(e)
 	}
 }
 
@@ -148,10 +192,7 @@ func (b *Broker) BroadcastAll(e Event) {
 	b.mu.RUnlock()
 
 	for _, s := range targets {
-		select {
-		case s.ch <- e:
-		default:
-		}
+		s.send(e)
 	}
 }
 
@@ -194,6 +235,11 @@ func (b *Broker) Subscribe(group string) (<-chan Event, func()) {
 
 // removeLocked removes sub from the group slice and closes its channel.
 // Must be called with b.mu held for writing.
+//
+// The close is delegated to subscriber.close so it is ordered against any
+// in-flight fan-out send (#6299). Lock order is b.mu -> subscriber.mu and never
+// the reverse — publishers take subscriber.mu without holding b.mu — so this
+// cannot deadlock, and the wait is bounded by a non-blocking send.
 func (b *Broker) removeLocked(group string, sub *subscriber) {
 	subs := b.subs[group]
 	for i, s := range subs {
@@ -208,7 +254,7 @@ func (b *Broker) removeLocked(group string, sub *subscriber) {
 	if len(b.subs[group]) == 0 {
 		delete(b.subs, group)
 	}
-	close(sub.ch)
+	sub.close()
 }
 
 // Stats returns a snapshot of the number of active subscribers per group. It is
