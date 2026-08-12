@@ -1225,8 +1225,21 @@ func (w *Watcher) chargeEventOpen(path string) {
 		return
 	}
 	w.fdReserved[repo] += n
-	w.mu.Unlock()
+	// Under w.mu, not after it. The per-repo tally and the global ledger are
+	// one fact recorded twice, and every OTHER site that moves them —
+	// RemoveRepo, Stop, restartBackend, the refusal unwind — already moves
+	// both under this lock. Charging after the unlock leaves a window in
+	// which the pair disagree, and the refusal unwind reads exactly that
+	// pair: it takes `reserved + w.fdReserved[abs]`, releases it, and drops
+	// the repo. A charge that has updated fdReserved but not yet reached the
+	// ledger is therefore released by the unwind and THEN applied, stranding
+	// one descriptor on a global ledger no repo can be asked to hand back —
+	// failure mode (B), reached from the refusal branch that exists to
+	// prevent it. fdBudget takes only its own mutex and never calls back
+	// into the watcher, so nesting the two is deadlock-free; no site holds
+	// fdb.mu across an acquisition of w.mu.
 	w.fdb.charge(n)
+	w.mu.Unlock()
 }
 
 // releaseEventClose returns the descriptor fsnotify closed when it saw a
@@ -1286,8 +1299,14 @@ func (w *Watcher) releaseEventClose(path string) {
 	if w.fdReserved[repo] -= n; w.fdReserved[repo] < 0 {
 		w.fdReserved[repo] = 0
 	}
-	w.mu.Unlock()
+	// Under w.mu for the same reason as chargeEventOpen, in the opposite
+	// direction: a release that has already come off fdReserved but not yet
+	// off the ledger is invisible to the refusal unwind's `reserved +
+	// w.fdReserved[abs]`, so the unwind hands back a total that this release
+	// then hands back a second time — the ledger understated, which is the
+	// #6268 defect itself.
 	w.fdb.release(n)
+	w.mu.Unlock()
 }
 
 // recordReleasedDirLocked remembers that path's directory descriptor has been
