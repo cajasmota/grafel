@@ -7,16 +7,54 @@ name: test
 # Locally the -race suite is ~30 min of package wall time vs ~5 min without, so
 # treat a tag run as multiples of 195 billed min, not 195. NOT re-measured on
 # GitHub runners — do that before relying on any number here (#6056).
-# Default: NO auto-CI on routine pushes/PRs. Local `go test -race` is the routine backstop.
-#   (cross-platform-compile.yml IS always-on, but it is compile-only — it never
-#   runs a test. It cannot substitute for this workflow; see #6219.)
-# Milestone gate: full 3-platform matrix runs on version tags + manual workflow_dispatch.
+# Refs #6291: every PR used to be fully green while every test in the repo
+# failed. This workflow only ran on a version tag or a manual dispatch, so 24
+# merges landed between v0.2.1 and fb4c6fd4b without the suite running once —
+# and when it was finally dispatched by hand, main was red on Linux AND
+# Windows with five distinct defects, two user-affecting (an FD-ledger
+# over-count on Linux; a home-containment guard that failed open on Windows).
+# One Windows test hung 40 minutes under -race and then panicked, blanking
+# every test after it in its package. cross-platform-compile.yml (always-on)
+# is compile-only — go vet/go build never execute a single test body — so it
+# could not and did not catch any of this; see #6219.
+#
+# PER-PR AUTO GATE (this is the fix): `pull_request` now runs Ubuntu +
+# Windows automatically, WITHOUT -race, `go test -timeout 15m` per package.
+#   - Ubuntu: fast, and is exactly what would have caught the FD-ledger defect.
+#   - Windows: slow (~45m under the full -race matrix) but is where the two
+#     worst, user-affecting defects hid, including the 40-minute hang — so it
+#     stays IN the automatic PR gate rather than being pushed behind a label.
+#   - macOS is deliberately EXCLUDED from the automatic PR leg: it was the one
+#     platform that came back green when the suite was finally dispatched, and
+#     it is the platform contributors here already verify locally before
+#     opening a PR — the least informative of the three on a PR, and the most
+#     expensive to run automatically (10x billing). It is still covered by the
+#     tag gate, workflow_dispatch, and the `ci:full` label below.
+#   - No -race on the automatic PR leg: none of the three `if:` branches on
+#     the Test step match a plain `pull_request` event, so it falls through to
+#     the `-timeout 15m` no-race branch that already existed for
+#     workflow_dispatch with race=false. -race adds 5-10x wall time, which
+#     would make the auto-PR gate the same order of magnitude as the 45-minute
+#     full matrix — unusable as a per-PR gate. Concurrency defects are instead
+#     caught by the -race legs below (tag, dispatch, `ci:full` label), not by
+#     the default PR run.
+#   - Hang behavior: `go test -timeout` panics the whole binary when it fires,
+#     which blanks every not-yet-finished test in that package — that is what
+#     turned the 40-minute race-branch hang into "no result for 200 tests".
+#     15m (not 40m) bounds how long a hung PR run stays silent before it does
+#     that; it is a strictly tighter bound than the incident, not a cure for
+#     the panic-blanks-package mechanism itself, which is inherent to `go
+#     test -timeout` and unrelated to this change.
+# Milestone gate: full 3-platform -race matrix runs on version tags + manual
+#   workflow_dispatch (race=true by default).
 #   → batch the platform checks before shipping a milestone.
-# Opt-in: add label `ci:full` to force full 3-platform testing on a specific PR.
-# Race detector: ON for tag runs and (by default) workflow_dispatch — see the
-# "Race detector policy" comment on the Test step for exactly what each trigger
-# delivers. There is deliberately NO push-to-main trigger; the comment used to
-# claim post-merge race sanity on main that the triggers never provided (#6056).
+# Opt-in: add label `ci:full` to force the full 3-platform -race matrix
+#   (including macOS) on a specific PR — unchanged by this commit.
+# Race detector: ON for tag runs and (by default) workflow_dispatch, and for
+#   `ci:full`-labelled PRs — see the "Race detector policy" comment on the
+#   Test step for exactly what each trigger delivers. There is deliberately NO
+#   push-to-main trigger; the comment used to claim post-merge race sanity on
+#   main that the triggers never provided (#6056).
 #
 # ON A TAG, THIS WORKFLOW IS CALLED BY release.yml — IT IS NOT TRIGGERED DIRECTLY.
 # It used to subscribe to `push: tags ['v*']`, the same trigger as release.yml,
@@ -50,6 +88,16 @@ on:
   pull_request_target:
     types: [labeled]
 
+  # Refs #6291. Plain `pull_request` (not `pull_request_target`): this runs
+  # with the default read-only GITHUB_TOKEN (see `permissions:` below) and
+  # GitHub already checks out the PR's HEAD for this event by default, so it
+  # needs none of the elevated-permission caveats the `pull_request_target`
+  # trigger above carries — see the SECURITY NOTE on the checkout step. No
+  # `types:` filter: runs on open, sync (new pushes) and reopen, i.e. every PR
+  # update, which is the point (#6291 — 24 merges landed with the suite never
+  # running once).
+  pull_request:
+
 permissions:
   contents: read
 
@@ -63,11 +111,27 @@ jobs:
     #       `refs/tags/v*`, exactly as when this workflow subscribed to the tag
     #       itself. That is what keeps both this gate and the -race branch below
     #       working unchanged, OR
-    #   (c) pull_request_target with the `ci:full` label.
+    #   (c) pull_request_target with the `ci:full` label, OR
+    #   (d) plain pull_request (#6291).
+    #
+    # UNCHANGED by this commit: (a)-(c) are the same sub-expressions, so the
+    # tag and workflow_dispatch paths are byte-identical in effect — the OR
+    # with (d) can only make the whole condition MORE true for OTHER event
+    # types, and a plain `pull_request` event can never simultaneously be
+    # `push`, `workflow_dispatch` or `pull_request_target`, so (a)-(c) are
+    # unaffected by the addition.
+    #
+    # NOTE: `matrix.*` is deliberately NOT referenced here. GitHub Actions
+    # only exposes the `matrix` context to `jobs.<job_id>.strategy` and
+    # `jobs.<job_id>.steps.<step_id>.if` — NOT to the job-level `if:` (a
+    # job-level `if:` is evaluated once, before the matrix is expanded, so
+    # `matrix` isn't defined yet at that point). The macOS-on-PR exclusion
+    # therefore lives in the `strategy.matrix.os` expression below, not here.
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
-      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'ci:full'))
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'ci:full')) ||
+      github.event_name == 'pull_request'
 
     # Bound the whole matrix leg. GitHub's default is 6 HOURS, billed at 10x on
     # macOS — so a genuine deadlock, which is exactly what -race exists to
@@ -80,17 +144,33 @@ jobs:
 
     strategy:
       fail-fast: false
+      # Refs #6291. `github` (unlike `matrix`) IS available to
+      # `jobs.<job_id>.strategy`, so the OS list itself can be conditioned on
+      # the triggering event: the automatic `pull_request` path gets
+      # ubuntu-latest + windows-latest only; every other trigger
+      # (workflow_dispatch, tag push via workflow_call, and a
+      # `ci:full`-labelled pull_request_target) gets the full three-OS list,
+      # unchanged from before this commit. macOS is the leg excluded from the
+      # automatic PR run — see the header comment: it was the one platform
+      # that came back green when the suite was finally dispatched at
+      # fb4c6fd4b, it's the platform contributors here already verify
+      # locally, and it's the most expensive of the three to bill
+      # automatically on every PR (10x).
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest","windows-latest"]') || fromJSON('["ubuntu-latest","macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       # SECURITY NOTE: pull_request_target runs with write permissions but defaults
       # to checking out the BASE branch (main), not the PR's HEAD. This means CI
       # would test main's code, not the PR's changes — a silent correctness failure.
       # We explicitly ref the PR HEAD here. This is safe because the workflow is
-      # gated by the `ci:full` label (line 28 above), which only collaborators with
-      # write access can apply — making this functionally equivalent to pull_request.
-      # The `|| github.sha` fallback handles workflow_dispatch and tag pushes.
+      # gated by the `ci:full` label (see the `pull_request_target:` trigger
+      # above), which only collaborators with write access can apply — making
+      # this functionally equivalent to pull_request.
+      # The `|| github.sha` fallback handles workflow_dispatch, tag pushes, and the
+      # plain `pull_request` trigger (#6291) — which GitHub already checks out at
+      # HEAD by default, so the explicit ref there is redundant but harmless, and
+      # keeps this one checkout step correct for every trigger this workflow has.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
