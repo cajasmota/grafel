@@ -86,6 +86,18 @@ type Config struct {
 	testEvents chan fsnotify.Event
 	testErrors chan error
 
+	// reconcileInterval is how often the watch reconciler sweeps a batch of
+	// subscribed directories looking for entries fsnotify silently stopped
+	// watching (#6304). Zero selects defaultReconcileInterval; a negative value
+	// disables the sweep entirely.
+	//
+	// Unexported deliberately. It is a repair-of-last-resort cadence, not a
+	// behaviour any caller outside this package has a reason to choose, and the
+	// exported Config surface is the daemon's API. In-package tests set it: the
+	// ledger tests pin every other timing knob to an hour so their arithmetic is
+	// pure event accounting, and this one is pinned with them.
+	reconcileInterval time.Duration
+
 	// disableQuarantine builds the Watcher with no quarantine tracker at all.
 	// It exists so a ledger test can remove the tracker's side effects — it
 	// persists its decisions by creating <repo>/.grafel, inside the repo the
@@ -166,6 +178,25 @@ type Watcher struct {
 	fdb *fdBudget
 	mu  sync.Mutex
 	fs  *fsnotify.Watcher
+	// fsAdd / fsRemove are the backend's Add and Remove. They are fields for the
+	// same reason closeBackend is (#6287): a test must be able to stand in for a
+	// backend that, like fsnotify's Windows one, cannot complete these calls
+	// unless grafel is concurrently draining Events/Errors.
+	//
+	// THE INVARIANT THEY EXIST TO PIN, which is a deadlock and not a style rule:
+	// neither may be called while holding w.mu, and neither may be called FROM
+	// the loop goroutine. fsnotify's Windows backend serialises Add and Remove
+	// through its single I/O goroutine — `w.input <- in; return <-in.reply`
+	// (backend_windows.go:141-146, :162-167) — and that same goroutine is the
+	// only sender on Events and Errors, via a sendEvent/sendError that blocks
+	// until grafel receives (:69-91). So an Add or Remove completes only if the
+	// loop goroutine is free to drain. Holding w.mu across one deadlocks against
+	// a loop parked in chargeEventOpen; making one FROM the loop deadlocks
+	// against itself. The kqueue and inotify backends do this work in the
+	// caller's goroutine and depend on nothing, which is why the hazard is
+	// invisible off Windows — it took a 15-minute CI timeout to surface.
+	fsAdd    func(string) error
+	fsRemove func(string) error
 	// closeBackend closes the fsnotify instance. It is a field rather than a
 	// direct w.fs.Close() call so a test can stand in for a backend that, like
 	// fsnotify's Windows one, SENDS on Events/Errors from inside Close (#6287).
@@ -178,6 +209,44 @@ type Watcher struct {
 	errs      <-chan error
 	repos     map[string]*repoState // key: absolute repo path
 	dirToRepo map[string]string     // key: absolute dir path → repo path
+	// dirEntries is, per subscribed directory, how many chargeable (non-dir)
+	// entries grafel believes fsnotify is watching inside it — the count the
+	// listing charged, plus every entry Create charged since, minus every entry
+	// Remove released. It is the SECOND recording of a fact fdReserved already
+	// holds in aggregate, exactly as fdReserved is a second recording of the
+	// ledger's, and it is moved in the same critical section as both (#6306).
+	//
+	// It exists so reconcileDir can answer the one question no event can:
+	// "does this directory hold entries fsnotify never started watching?".
+	// fsnotify's kqueue dirChange abandons the remainder of a directory listing
+	// on the first f.Info() or sendCreateIfNew error and returns nil, and
+	// readEvents discards even the errors it does return — so the abandoned
+	// entries produce no Create, no Errors entry and no log line, and nothing
+	// ever re-lists that directory (#6304). Comparing a listing against this
+	// count is the only signal grafel has.
+	//
+	// THE INVARIANT, which every site that opens or closes an entry descriptor
+	// must maintain: for a subscribed directory d, dirEntries[d] is the number of
+	// d's non-directory entries grafel has charged the ledger for. It is moved by
+	// exactly five places — chargeDir's listing at both subscribe sites,
+	// chargeEventOpen, releaseEventClose and repairDir — and dropped by
+	// RemoveRepo, the refusal unwind, restartBackend and the watched-directory
+	// arm of releaseEventClose. A site that charges a descriptor without raising
+	// it does not merely under-report: scanDir reads the difference between this
+	// and a fresh listing as "entries fsnotify never started watching" and charges
+	// them AGAIN, so a missed increment costs a whole directory rather than one
+	// descriptor. Nothing in the tree does this today; the mutant that removes
+	// chargeEventOpen's increment takes the #6268 gate from 660 to 1260.
+	dirEntries map[string]int
+	// dirUserEntries records, per directory, the entry paths reconcileDir has
+	// Add()ed explicitly (#6304). fsnotify marks a path passed to Add as
+	// "added by the user", and its remove(dir, unwatchFiles) deliberately leaves
+	// user-added paths alone (backend_kqueue.go:75-84, :325-333) — so an
+	// fs.Remove of the containing directory, which is how every teardown path in
+	// this file closes a subscription, would silently leave these open. They are
+	// closed by name instead. Only directories a repair has touched appear here,
+	// which is the rare case by construction.
+	dirUserEntries map[string]map[string]struct{}
 	// fdReserved records how many descriptors each subscribed repo holds, so
 	// RemoveRepo can hand them back.
 	fdReserved map[string]int
@@ -213,9 +282,28 @@ type Watcher struct {
 	// on, and scanning a flat set for children on every subscribed directory
 	// would be O(dirs x markers) over a whole-repo walk.
 	fdReleasedDirs map[string]map[string]struct{}
-	stopOnce       sync.Once
-	stopCh         chan struct{}
-	restartCh      chan struct{} // signals heartbeat loop to recreate fsnotify
+	// reconcileQueue is the remainder of the current reconcile CYCLE: a snapshot
+	// of dirToRepo's keys taken once per cycle and drained a batch at a time, so
+	// a watcher holding tens of thousands of directories costs one slice per
+	// cycle rather than one per pass. Entries are re-validated against
+	// dirToRepo when they come up, so a directory unsubscribed mid-cycle is
+	// skipped rather than resurrected (#6304).
+	reconcileQueue []string
+	// dirDeficit remembers the directories the PREVIOUS sweep found short. A
+	// deficit is only acted on when a second visit still sees it: an abandoned
+	// listing is permanent, while a directory whose Create events are merely
+	// still in the channel looks identical for as long as the queue takes to
+	// drain. Confirming costs one sweep interval and removes every repair that
+	// would otherwise race the event stream (#6304).
+	// Bounded by dirDeficitCap, and pruned wherever a directory stops being
+	// watched — scanDir, removeDirWatchLocked, and the watched-directory arm of
+	// releaseEventClose. Every other map keyed by path in this file carries the
+	// same obligation, for the same reason: a daemon that churns repos would
+	// otherwise accumulate one dead key per directory it ever lost.
+	dirDeficit map[string]struct{}
+	stopOnce   sync.Once
+	stopCh     chan struct{}
+	restartCh  chan struct{} // signals heartbeat loop to recreate fsnotify
 	// loopWG counts LIVE loop goroutines, which is not always one: the
 	// heartbeat can retire a loop and start another against a fresh backend.
 	// Stop waits on this rather than on a one-shot "stopped" channel, because a
@@ -299,18 +387,22 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 	}
 
 	w := &Watcher{
-		logger:       logger,
-		cfg:          cfg,
-		sink:         sink,
-		extraSkip:    extraSkip,
-		clk:          realClock{},
-		fdb:          fdb,
-		fs:           fw,
-		repos:        map[string]*repoState{},
-		dirToRepo:    map[string]string{},
-		fdReserved:   map[string]int{},
-		fdUnwatched:  map[string]struct{}{},
-		fdPreCharged: map[string]struct{}{},
+		logger:     logger,
+		cfg:        cfg,
+		sink:       sink,
+		extraSkip:  extraSkip,
+		clk:        realClock{},
+		fdb:        fdb,
+		fs:         fw,
+		repos:      map[string]*repoState{},
+		dirToRepo:  map[string]string{},
+		dirEntries: map[string]int{},
+
+		dirUserEntries: map[string]map[string]struct{}{},
+		dirDeficit:     map[string]struct{}{},
+		fdReserved:     map[string]int{},
+		fdUnwatched:    map[string]struct{}{},
+		fdPreCharged:   map[string]struct{}{},
 
 		fdReleasedDirs: map[string]map[string]struct{}{},
 		stopCh:         make(chan struct{}),
@@ -326,6 +418,13 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		w.mu.Unlock()
 		return fs.Close()
 	}
+	// Bound to THIS backend rather than reading w.fs per call: the field is
+	// swapped by restartBackend, which re-binds these alongside it under w.mu,
+	// so a seam never straddles two generations. Taking w.mu here instead would
+	// put a lock acquisition on every Add of a whole-repo walk — and would make
+	// a caller that holds w.mu self-deadlock rather than fail the assertion the
+	// seam exists to make.
+	w.fsAdd, w.fsRemove = fw.Add, fw.Remove
 	w.events, w.errs = fw.Events, fw.Errors
 	if cfg.testEvents != nil {
 		w.events, w.errs = cfg.testEvents, cfg.testErrors
@@ -346,6 +445,11 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 	go w.loop()
 	go w.heartbeat()
 	go w.quarantineSweep()
+	// Counted in loopWG so Stop does not return while a sweep is still inside a
+	// directory read or a repair handoff. Both of its blocking points select on
+	// stopCh, so it retires promptly rather than holding Stop to its timeout.
+	w.loopWG.Add(1)
+	go w.reconcileLoop()
 	return w, nil
 }
 
@@ -536,12 +640,12 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 				}
 			}
 		}
-		n := chargeDir(p, cost)
+		n, entries := chargeDir(p, cost)
 		if !w.fdb.reserve(n) {
 			budgetHit = true
 			return errFDBudget
 		}
-		if err := w.fs.Add(p); err != nil {
+		if err := w.fsAdd(p); err != nil {
 			w.fdb.release(n)
 			w.logger.Warn("watcher: add failed", "path", p, "err", err)
 			return nil
@@ -550,6 +654,10 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 		subscribed[p] = struct{}{}
 		w.mu.Lock()
 		w.dirToRepo[p] = abs
+		// What this listing charged p for, so reconcileDir can later tell a
+		// directory whose entries fsnotify silently stopped watching from one
+		// that is fully covered (#6304).
+		w.dirEntries[p] = entries
 		// chargeDir has just charged every entry of p, so no released-dir
 		// marker under it can still stand for a live descriptor (#6293).
 		w.forgetReleasedEntriesLocked(p)
@@ -561,12 +669,12 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 	if budgetHit {
 		// Refuse, do not half-watch. Every descriptor this attempt opened is
 		// handed back so a refusal cannot slowly poison the ledger.
-		for p := range subscribed {
-			_ = w.fs.Remove(p)
-		}
 		w.mu.Lock()
+		detached := make([]string, 0, len(subscribed))
 		for p := range subscribed {
+			detached = append(detached, w.detachDirLocked(p)...)
 			delete(w.dirToRepo, p)
+			delete(w.dirEntries, p)
 		}
 		// Hand back the event-time charges as well as the walk's own (#6268).
 		// AddRepo drops w.mu before calling this, so the loop goroutine runs
@@ -582,6 +690,13 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 		delete(w.fdReserved, abs)
 		w.fdUnwatched[abs] = struct{}{}
 		w.mu.Unlock()
+		// Outside the lock, and this is the whole point of detachDirLocked: the
+		// pre-#6304 code called fs.Remove here, unlocked, and folding it into the
+		// critical section deadlocked Windows CI for the full 15-minute test
+		// timeout. The maps are already consistent; the backend catching up a few
+		// microseconds later costs nothing, because a directory absent from
+		// dirToRepo routes no events whether or not fsnotify still watches it.
+		w.unwatchAll(detached)
 		w.fdb.release(unwind)
 
 		used, limit := w.fdb.snapshot()
@@ -639,32 +754,40 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 //     them later and DOES report Create for them, and both charges land.
 //     subscribeDirRecursive takes this option together with the record
 //     parameter, because it runs while a writer is by definition active.
-func chargeDir(dir string, cost fdCostModel) int {
+func chargeDir(dir string, cost fdCostModel) (int, int) {
 	return chargeDirRecording(dir, cost, nil)
 }
 
 // chargeDirRecording is chargeDir, additionally recording every entry path it
 // charged into record (when record is non-nil) so a duplicate Create for the
 // same path can be recognised. See subscribeDirRecursive.
-func chargeDirRecording(dir string, cost fdCostModel, record map[string]struct{}) int {
+//
+// It returns the descriptor cost AND the number of chargeable entries the
+// listing found. The two are not derivable from one another once a caller has
+// adjusted the cost (subscribeDirRecursive deducts the root's event charge), and
+// the count is the quantity Watcher.dirEntries records so reconcileDir can spot
+// a listing fsnotify abandoned (#6304).
+func chargeDirRecording(dir string, cost fdCostModel, record map[string]struct{}) (int, int) {
 	n := cost.perDir
 	if cost.perEntry() <= 0 {
-		return n
+		return n, 0
 	}
 	ents, err := os.ReadDir(dir)
 	if err != nil {
-		return n
+		return n, 0
 	}
+	entries := 0
 	for _, e := range ents {
 		if e.IsDir() {
 			continue
 		}
+		entries++
 		n += cost.perEntry()
 		if record != nil {
 			record[filepath.Join(dir, e.Name())] = struct{}{}
 		}
 	}
-	return n
+	return n, entries
 }
 
 // RemoveRepo unsubscribes every directory associated with a repo. Any
@@ -675,17 +798,18 @@ func (w *Watcher) RemoveRepo(repoPath string) {
 		return
 	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	if rs, ok := w.repos[abs]; ok {
 		if rs.timer != nil {
 			rs.timer.Stop()
 		}
 		delete(w.repos, abs)
 	}
+	detached := []string{}
 	for d, owner := range w.dirToRepo {
 		if owner == abs {
-			_ = w.fs.Remove(d)
+			detached = append(detached, w.detachDirLocked(d)...)
 			delete(w.dirToRepo, d)
+			delete(w.dirEntries, d)
 			// This watcher holds nothing under d any more, so a marker saying
 			// "d's child descriptor is already released" stands for nothing and
 			// must not survive into a re-add (#6293).
@@ -702,6 +826,53 @@ func (w *Watcher) RemoveRepo(repoPath string) {
 	delete(w.fdUnwatched, abs)
 	// Evict gitignore cache so a re-add picks up any .gitignore changes.
 	evictRepoIgnoreState(abs)
+	w.mu.Unlock()
+	// The backend calls go last, with the lock released — see
+	// Watcher.fsRemove. This body used to hold w.mu across them, which is a
+	// deadlock on Windows the moment the loop goroutine is waiting on the same
+	// mutex; grafel's own maps no longer name these directories, so nothing
+	// routes to them in the interval.
+	w.unwatchAll(detached)
+}
+
+// detachDirLocked drops grafel's record of a subscribed directory and returns
+// the paths whose fsnotify watches the caller must then drop — the directory
+// itself plus the individual entry watches repairDir took inside it, which
+// fs.Remove(dir) does NOT reach: they are user-added, and fsnotify skips
+// user-added paths when it unwatches a directory's contents (#6304).
+//
+// It returns those paths rather than unwatching them because fs.Remove may not
+// be called under w.mu. On Windows that is a deadlock, not a preference — see
+// the note on Watcher.fsRemove. Caller holds w.mu and must call unwatchAll on
+// the result AFTER releasing it.
+func (w *Watcher) detachDirLocked(dir string) []string {
+	out := make([]string, 0, 1+len(w.dirUserEntries[dir]))
+	out = append(out, dir)
+	for p := range w.dirUserEntries[dir] {
+		out = append(out, p)
+	}
+	delete(w.dirUserEntries, dir)
+	delete(w.dirDeficit, dir)
+	return out
+}
+
+// unwatchAll drops fsnotify watches. Caller must NOT hold w.mu.
+func (w *Watcher) unwatchAll(paths []string) {
+	for _, p := range paths {
+		_ = w.fsRemove(p)
+	}
+}
+
+// recordDeficitLocked remembers that dir looked short on this visit, bounded.
+// Past the cap the record is dropped wholesale rather than allowed to grow: the
+// only cost of forgetting is that the directories in flight need one more
+// confirming visit, and a reconcile hint is not worth unbounded memory in a
+// daemon that may watch tens of thousands of directories. Caller holds w.mu.
+func (w *Watcher) recordDeficitLocked(dir string) {
+	if len(w.dirDeficit) >= dirDeficitCap {
+		w.dirDeficit = make(map[string]struct{}, 1)
+	}
+	w.dirDeficit[dir] = struct{}{}
 }
 
 // Repos returns a snapshot of the currently watched repos.
@@ -966,8 +1137,21 @@ func (w *Watcher) restartBackend() bool {
 		// The loop goroutine started below drains the NEW backend's
 		// channels; the old ones are closed and would return !ok forever.
 		w.events, w.errs = fw.Events, fw.Errors
+		// Re-bound with them, under the same lock — see NewWatcherConfig.
+		w.fsAdd, w.fsRemove = fw.Add, fw.Remove
 		// Clear stale dirToRepo — will be repopulated by subscribeRepo.
 		w.dirToRepo = make(map[string]string, len(w.dirToRepo))
+		// And with it the per-directory entry tallies: they describe what the
+		// OLD backend was watching, and the re-subscription below re-lists every
+		// directory from scratch (#6304). Carrying them over would make every
+		// directory look fully covered to reconcileDir even where the fresh
+		// backend's own listing was abandoned.
+		w.dirEntries = make(map[string]int, len(w.dirEntries))
+		// The old backend held those entry watches and it is gone, so there is
+		// nothing left to close by name.
+		w.dirUserEntries = map[string]map[string]struct{}{}
+		w.reconcileQueue = nil
+		w.dirDeficit = map[string]struct{}{}
 		// The old fsnotify instance is gone, so its descriptors are gone
 		// too (#6180). Return them to the ledger before re-subscribing, or
 		// the restart double-charges and every repo is refused.
@@ -1134,7 +1318,7 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 		if fi, err := os.Stat(ev.Name); err == nil && fi.IsDir() {
 			createdDir = true
 		}
-		w.chargeEventOpen(ev.Name)
+		w.chargeEventOpen(ev.Name, createdDir)
 	}
 	if ev.Op.Has(fsnotify.Remove) || ev.Op.Has(fsnotify.Rename) {
 		w.releaseEventClose(ev.Name)
@@ -1197,7 +1381,12 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 // event under no watched directory is not charged: fsnotify only opens
 // descriptors for entries of directories grafel Add()ed, so a path with no
 // owning repo has no descriptor of ours behind it.
-func (w *Watcher) chargeEventOpen(path string) {
+// isDir says whether the created path is a directory. Only NON-directory
+// creates move the parent's dirEntries tally, because only those are what
+// chargeDir counts: a subdirectory's descriptor is charged where the
+// subdirectory itself is handled — perDir when grafel subscribes it, or by
+// prune when grafel skips it — never as an entry of its parent (#6304).
+func (w *Watcher) chargeEventOpen(path string, isDir bool) {
 	n := w.fdb.model().perEntry()
 	w.mu.Lock()
 	// Whatever the cost model, the path exists again, so any record of having
@@ -1225,6 +1414,17 @@ func (w *Watcher) chargeEventOpen(path string) {
 		return
 	}
 	w.fdReserved[repo] += n
+	// The parent's entry tally moves with the charge, in the same critical
+	// section, for the same reason fdReserved does (#6306): reconcileDir reads
+	// the pair `dirEntries[dir]` against a fresh listing and charges the
+	// difference, so a charge visible in one and not the other is a charge
+	// reconcileDir would apply a second time. The pre-charged arm above returns
+	// WITHOUT this: the listing that set the marker already counted that entry.
+	if !isDir {
+		if dir := filepath.Dir(path); w.dirToRepo[dir] != "" {
+			w.dirEntries[dir]++
+		}
+	}
 	// Under w.mu, not after it. The per-repo tally and the global ledger are
 	// one fact recorded twice, and every OTHER site that moves them —
 	// RemoveRepo, Stop, restartBackend, the refusal unwind — already moves
@@ -1263,6 +1463,16 @@ func (w *Watcher) releaseEventClose(path string) {
 	if isWatchedDir {
 		n = cost.perDir
 		delete(w.dirToRepo, path)
+		// The directory is gone, and so is every entry tally that described it.
+		// Its own entries are not released here — fsnotify's remove closes
+		// exactly one descriptor (unwatchFiles is false) — so this is a forget,
+		// not a release (#6304).
+		delete(w.dirEntries, path)
+		// The directory is gone from disk, so every entry watch reconcileDir
+		// took inside it is gone with it; each one reports its own Remove and
+		// releases its own charge. Only the record is dropped here (#6304).
+		delete(w.dirUserEntries, path)
+		delete(w.dirDeficit, path)
 		w.recordReleasedDirLocked(path)
 	} else if w.releasedDirLocked(path) {
 		// A duplicate report of a directory removal grafel has already paid
@@ -1298,6 +1508,17 @@ func (w *Watcher) releaseEventClose(path string) {
 	}
 	if w.fdReserved[repo] -= n; w.fdReserved[repo] < 0 {
 		w.fdReserved[repo] = 0
+	}
+	// The parent's entry tally moves with the release, in the same critical
+	// section — see chargeEventOpen. Only for an entry: a watched directory's
+	// own tally was dropped above, and its removal is not an entry of its
+	// parent's listing (#6304). Floored at zero for the same reason fdReserved
+	// is: a tally that went negative would make reconcileDir charge for entries
+	// that do not exist.
+	if !isWatchedDir {
+		if dir := filepath.Dir(path); w.dirToRepo[dir] != "" && w.dirEntries[dir] > 0 {
+			w.dirEntries[dir]--
+		}
 	}
 	// Under w.mu for the same reason as chargeEventOpen, in the opposite
 	// direction: a release that has already come off fdReserved but not yet
@@ -1480,7 +1701,7 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		if p != root && w.shouldSkipDir(base) {
 			return prune(p)
 		}
-		if err := w.fs.Add(p); err != nil {
+		if err := w.fsAdd(p); err != nil {
 			return nil
 		}
 		// Listed AFTER the Add here, the opposite of subscribeRepo, and paired
@@ -1492,7 +1713,7 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		// entries watchDirectoryFiles absorbed silently (markSeen at
 		// backend_kqueue.go:612 stops sendCreateIfNew from ever reporting them,
 		// :657), and nothing would come along later to charge them.
-		charge := chargeDirRecording(p, cost, preCharged)
+		charge, entries := chargeDirRecording(p, cost, preCharged)
 		if p == root {
 			// Deduct exactly what handleEvent's chargeEventOpen already put on
 			// the ledger for this path — perEntry(), because that is what it
@@ -1519,6 +1740,8 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		subscribed[p] = struct{}{}
 		w.mu.Lock()
 		w.dirToRepo[p] = repo
+		// See subscribeRepo: what the listing charged p for (#6304).
+		w.dirEntries[p] = entries
 		// See subscribeRepo: the listing above re-charged p's entries (#6293).
 		w.forgetReleasedEntriesLocked(p)
 		w.mu.Unlock()
