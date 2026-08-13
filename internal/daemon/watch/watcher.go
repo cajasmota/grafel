@@ -166,6 +166,25 @@ type Watcher struct {
 	fdb *fdBudget
 	mu  sync.Mutex
 	fs  *fsnotify.Watcher
+	// fsAdd / fsRemove are the backend's Add and Remove. They are fields for the
+	// same reason closeBackend is (#6287): a test must be able to stand in for a
+	// backend that, like fsnotify's Windows one, cannot complete these calls
+	// unless grafel is concurrently draining Events/Errors.
+	//
+	// THE INVARIANT THEY EXIST TO PIN, which is a deadlock and not a style rule:
+	// neither may be called while holding w.mu, and neither may be called FROM
+	// the loop goroutine. fsnotify's Windows backend serialises Add and Remove
+	// through its single I/O goroutine — `w.input <- in; return <-in.reply`
+	// (backend_windows.go:141-146, :162-167) — and that same goroutine is the
+	// only sender on Events and Errors, via a sendEvent/sendError that blocks
+	// until grafel receives (:69-91). So an Add or Remove completes only if the
+	// loop goroutine is free to drain. Holding w.mu across one deadlocks against
+	// a loop parked in chargeEventOpen; making one FROM the loop deadlocks
+	// against itself. The kqueue and inotify backends do this work in the
+	// caller's goroutine and depend on nothing, which is why the hazard is
+	// invisible off Windows — it took a 15-minute CI timeout to surface (#6309).
+	fsAdd    func(string) error
+	fsRemove func(string) error
 	// closeBackend closes the fsnotify instance. It is a field rather than a
 	// direct w.fs.Close() call so a test can stand in for a backend that, like
 	// fsnotify's Windows one, SENDS on Events/Errors from inside Close (#6287).
@@ -326,6 +345,13 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		w.mu.Unlock()
 		return fs.Close()
 	}
+	// Bound to THIS backend rather than reading w.fs per call: the field is
+	// swapped by restartBackend, which re-binds these alongside it under w.mu,
+	// so a seam never straddles two generations. Taking w.mu here instead would
+	// put a lock acquisition on every Add of a whole-repo walk — and would make
+	// a caller that holds w.mu self-deadlock rather than fail the assertion the
+	// seam exists to make.
+	w.fsAdd, w.fsRemove = fw.Add, fw.Remove
 	w.events, w.errs = fw.Events, fw.Errors
 	if cfg.testEvents != nil {
 		w.events, w.errs = cfg.testEvents, cfg.testErrors
@@ -541,7 +567,7 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 			budgetHit = true
 			return errFDBudget
 		}
-		if err := w.fs.Add(p); err != nil {
+		if err := w.fsAdd(p); err != nil {
 			w.fdb.release(n)
 			w.logger.Warn("watcher: add failed", "path", p, "err", err)
 			return nil
@@ -562,7 +588,7 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 		// Refuse, do not half-watch. Every descriptor this attempt opened is
 		// handed back so a refusal cannot slowly poison the ledger.
 		for p := range subscribed {
-			_ = w.fs.Remove(p)
+			_ = w.fsRemove(p)
 		}
 		w.mu.Lock()
 		for p := range subscribed {
@@ -675,16 +701,18 @@ func (w *Watcher) RemoveRepo(repoPath string) {
 		return
 	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	if rs, ok := w.repos[abs]; ok {
 		if rs.timer != nil {
 			rs.timer.Stop()
 		}
 		delete(w.repos, abs)
 	}
+	var detached []string
 	for d, owner := range w.dirToRepo {
 		if owner == abs {
-			_ = w.fs.Remove(d)
+			// Collected, not unwatched: the backend call may not be made under
+			// w.mu — see Watcher.fsRemove. It happens after the unlock below.
+			detached = append(detached, d)
 			delete(w.dirToRepo, d)
 			// This watcher holds nothing under d any more, so a marker saying
 			// "d's child descriptor is already released" stands for nothing and
@@ -702,6 +730,21 @@ func (w *Watcher) RemoveRepo(repoPath string) {
 	delete(w.fdUnwatched, abs)
 	// Evict gitignore cache so a re-add picks up any .gitignore changes.
 	evictRepoIgnoreState(abs)
+	w.mu.Unlock()
+	// The backend calls go last, with the lock released — see
+	// Watcher.fsRemove. This body used to hold w.mu across them, which is a
+	// deadlock on Windows the moment the loop goroutine is waiting on the same
+	// mutex; grafel's own maps no longer name these directories, so nothing
+	// routes to them in the interval, and a directory absent from dirToRepo
+	// routes no events whether or not fsnotify still watches it.
+	w.unwatchAll(detached)
+}
+
+// unwatchAll drops fsnotify watches. Caller must NOT hold w.mu.
+func (w *Watcher) unwatchAll(paths []string) {
+	for _, p := range paths {
+		_ = w.fsRemove(p)
+	}
 }
 
 // Repos returns a snapshot of the currently watched repos.
@@ -966,6 +1009,8 @@ func (w *Watcher) restartBackend() bool {
 		// The loop goroutine started below drains the NEW backend's
 		// channels; the old ones are closed and would return !ok forever.
 		w.events, w.errs = fw.Events, fw.Errors
+		// Re-bound with them, under the same lock — see NewWatcherConfig.
+		w.fsAdd, w.fsRemove = fw.Add, fw.Remove
 		// Clear stale dirToRepo — will be repopulated by subscribeRepo.
 		w.dirToRepo = make(map[string]string, len(w.dirToRepo))
 		// The old fsnotify instance is gone, so its descriptors are gone
@@ -1480,7 +1525,7 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		if p != root && w.shouldSkipDir(base) {
 			return prune(p)
 		}
-		if err := w.fs.Add(p); err != nil {
+		if err := w.fsAdd(p); err != nil {
 			return nil
 		}
 		// Listed AFTER the Add here, the opposite of subscribeRepo, and paired
