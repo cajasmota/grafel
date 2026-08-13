@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -144,10 +145,18 @@ func TestSkippedDirectoryPushesASubscriptionOverBudget(t *testing.T) {
 //
 // These drive the REAL sequence: a live fsnotify watcher over a real tree, real
 // filesystem mutations, and the watcher's own loop goroutine delivering the
-// events. Nothing calls handleEvent directly — a synthetic event would be
-// double-counted alongside the genuine one the loop is already processing, and
-// asserting a release helper in isolation would not show that the charge and
-// the release ever meet.
+// events. Nothing calls handleEvent directly for an event the filesystem can
+// produce — a synthetic one would be double-counted alongside the genuine one
+// the loop is already processing, and asserting a release helper in isolation
+// would not show that the charge and the release ever meet.
+//
+// ONE exemption, at the end of
+// TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged: the DUPLICATE
+// report of a close. No filesystem can be asked for a second report of one
+// close on demand — how many a backend emits is a property of the host — so
+// that one is synthesised, against a path the test has finished measuring, and
+// asserted as a delta rather than against the ledger's absolute value. The rule
+// above still holds for everything a real mutation can produce.
 //
 // The ledger arithmetic is the injected kqueue model (newBudgetedWatcher), so
 // the numbers are the macOS ones on every platform; the events themselves come
@@ -188,18 +197,81 @@ func waitLedger(t *testing.T, w *Watcher, want int, what string) {
 // longer than the gap between two events of one filesystem burst.
 const ledgerStableReads = 30
 
-// ledgerDrainedReads is ledgerStableReads for a reading that is NOT being
-// compared against a known target — ~1.5s at the 5ms poll interval.
+// The hold a drained reading must survive, for a reading that is NOT being
+// compared against a known target.
 //
-// It has to be that much longer because it is the only evidence the burst has
-// drained. waitLedger knows the value it is waiting for, so a plateau at some
-// other value cannot satisfy it; waitLedgerAtMost accepts a RANGE, and a
-// mid-drain plateau inside that range would end the wait with events still in
-// flight — after which the next phase's filesystem work interleaves with the
-// last of this phase's and the test measures a shape it did not build.
-// Measured at 4833026a4 over this test's four bursts, the longest plateau
-// before the ledger moved again was 580ms; 1.5s is ~2.6x that.
-const ledgerDrainedReads = 300
+// It has to be long because it is the only evidence the burst has drained.
+// waitLedger knows the value it is waiting for, so a plateau at some other
+// value cannot satisfy it; waitLedgerAtMost accepts a RANGE, and a mid-drain
+// plateau inside that range would end the wait with events still in flight —
+// after which the next phase's filesystem work interleaves with the last of
+// this phase's and the test measures a shape it did not build.
+//
+// The hold is SELF-SCALING, and that is the point. A fixed hold sets a
+// wall-clock floor while the thing it has to beat — the longest gap between two
+// events of one burst — is CPU- and IO-anchored and grows with runner slowness.
+// A constant that clears the gap 2.6x here would clear it barely 1x on a runner
+// 3x slower, silently, with no test change in between; the hosted runners are
+// routinely 2-4x slower than this box for a filesystem-plus-event workload. So
+// instead of guessing a constant, the wait MEASURES the longest gap it has
+// already seen in this same call and demands a multiple of it. A slow runner
+// stretches the gaps and stretches the required hold with them, in proportion.
+//
+// Measured at b55736417 on this box, the longest gap before the ledger moved
+// again was 785ms across the test's four bursts (345ms, 785ms, 680ms, 270ms in
+// one representative run), so the demanded hold is ~3.1s and the margin ~4x by
+// construction on any runner rather than only on this one.
+//
+// The floor covers the phases that produce no gaps worth measuring — the two
+// removal bursts drain with a longest gap of one poll — where there is nothing
+// to scale from.
+const (
+	ledgerHoldFloor  = 1500 * time.Millisecond
+	ledgerHoldFactor = 4
+	ledgerPollEvery  = 5 * time.Millisecond
+)
+
+// drainLedger polls until the ledger has held one value for the self-scaling
+// hold described above, and returns that value. gapOK, when non-nil, is
+// consulted on every reading: a reading it rejects resets the hold instead of
+// counting toward it, which is how waitLedgerAtMost keeps a plateau above its
+// ceiling from ever being mistaken for a drained one.
+//
+// Returns the last reading and whether it drained before the deadline.
+func drainLedger(t *testing.T, w *Watcher, accept func(int) bool) (int, bool) {
+	t.Helper()
+	deadline := time.Now().Add(90 * time.Second)
+	last, longestGap := -1, time.Duration(0)
+	runStart := time.Now()
+	for time.Now().Before(deadline) {
+		used, _ := w.fdb.snapshot()
+		switch {
+		case accept != nil && !accept(used):
+			// Not a candidate for "drained" at all: restart the hold, and do
+			// NOT let this run widen longestGap — an over-ceiling plateau is
+			// the failure being looked for, not evidence about event timing.
+			last, runStart = used, time.Now()
+		case used != last:
+			// A change ends the current run. Only a run that ENDS is a gap
+			// between two events; the trailing run is the drain itself and
+			// must never inflate the bar it has to clear.
+			if gap := time.Since(runStart); last != -1 && gap > longestGap {
+				longestGap = gap
+			}
+			last, runStart = used, time.Now()
+		default:
+			hold := ledgerHoldFloor
+			if scaled := time.Duration(ledgerHoldFactor) * longestGap; scaled > hold {
+				hold = scaled
+			}
+			if time.Since(runStart) >= hold {
+				return used, true
+			}
+		}
+		time.Sleep(ledgerPollEvery)
+	}
+	return last, false
+}
 
 // waitLedgerAtMost waits for the ledger to drain to a value at or below
 // ceiling and HOLD it, or fails with the last reading.
@@ -218,27 +290,42 @@ const ledgerDrainedReads = 300
 // A plateau above the ceiling is treated as "still draining", not as a
 // failure, so an over-charge is reported by the deadline rather than by a
 // lucky poll — and a burst that is merely slow is never mistaken for one.
+// backendPairsEveryOpenWithAClose reports whether the host's backend can be
+// relied on to report the close of every descriptor whose open it reported.
+// Only on such a backend is the ABSOLUTE ledger value a function of the
+// filesystem operations a test performed, and only there can a test assert one.
+//
+// kqueue and inotify lose a whole path's lifetime or nothing of it: #6304's
+// abandoned listing means the entry is never reported, so it is never charged
+// AND never released, and it cancels out of both sides of any count.
+//
+// fsnotify's Windows backend loses INDIVIDUAL events, silently and in either
+// direction, which does not cancel:
+//
+//   - backend_windows.go:556-563, ERROR_MORE_DATA — "the i/o succeeded but the
+//     buffer is full. In theory we should be building up a full packet. In
+//     practice we can get away with just carrying on." The tail of that packet
+//     is discarded with no error raised at all.
+//   - backend_windows.go:565-570, ERROR_ACCESS_DENIED — a watched directory was
+//     removed, so the backend sends DELETE_SELF and calls deleteWatch. Anything
+//     still buffered for that directory dies with the watch.
+//
+// A lost Remove strands a charge and reads ABOVE the truth; a lost Create loses
+// one and reads BELOW it. Neither is a grafel defect and neither is
+// distinguishable, from the ledger alone, from the defects this test exists to
+// catch. Observed on CI run 31750096959: this test's teardown read 35 against a
+// base of 10 — 25 charges stranded, in a package otherwise green on that runner
+// and fully green on Ubuntu. See the note on the test itself.
+func backendPairsEveryOpenWithAClose() bool { return runtime.GOOS != "windows" }
+
 func waitLedgerAtMost(t *testing.T, w *Watcher, ceiling int, what string) {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
-	last, held := -1, 0
-	for time.Now().Before(deadline) {
-		used, _ := w.fdb.snapshot()
-		switch {
-		case used > ceiling:
-			last, held = used, 0
-		case used == last:
-			if held++; held >= ledgerDrainedReads {
-				return
-			}
-		default:
-			last, held = used, 1
-		}
-		time.Sleep(5 * time.Millisecond)
+	used, drained := drainLedger(t, w, func(v int) bool { return v <= ceiling })
+	if !drained {
+		t.Fatalf("%s: ledger read %d, want it drained to at most %d — "+
+			"a reading above that charges descriptors fsnotify never opened",
+			what, used, ceiling)
 	}
-	t.Fatalf("%s: ledger read %d (held %d of %d polls), want it drained to at most %d — "+
-		"a reading above that charges descriptors fsnotify never opened",
-		what, last, held, ledgerDrainedReads, ceiling)
 }
 
 // subscribedWatcher builds a watcher over makePrunedTree with a budget far
@@ -961,6 +1048,26 @@ walked:
 //   - a charge suppressed by a marker that outlived its descriptor is released
 //     anyway on the teardown, which lands BELOW base.
 //
+// TWO further things it does not guarantee, both of which make the ledger read
+// ABOVE the truth and neither of which is distinguishable from a double charge:
+//
+//  1. On a backend that loses INDIVIDUAL events rather than whole paths, a lost
+//     Remove strands a charge forever. This is not hypothetical: CI run
+//     31750096959 read 35 against a base of 10 on Windows — 25 stranded — with
+//     the rest of the package green there and everything green on Ubuntu. The
+//     absolute-value assertions are therefore scoped to backends that pair
+//     their opens with their closes; see backendPairsEveryOpenWithAClose. The
+//     assertions that run everywhere are the ones exact in DELTAS.
+//  2. Even on those backends, subscribeDirRecursive pre-charges every entry its
+//     own os.ReadDir sees, while fsnotify's watchDirectoryFiles may abandon its
+//     listing of that same directory partway. Entries in the difference are
+//     charged by grafel, never opened by fsnotify, and so never produce a
+//     Remove: they leak upward exactly as a double charge does. Exposure here
+//     is narrow — only entries already present when a churned directory is
+//     subscribed, and these directories are created EMPTY — and modelled at +1,
+//     but it is a real hole in the teardown's exactness rather than a bound
+//     this test enforces.
+//
 // The over-RELEASE (#6293) is reached twice over. The teardown deletes 50
 // watched directories, and — contrary to the "kqueue closes and reports once"
 // reading in fdbudget_6293_test.go — the duplicate close report is NOT only a
@@ -1050,10 +1157,25 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 			}
 		}
 	}
+	// From here on every phase follows a burst of REMOVALS, so a backend that
+	// loses individual events can strand a charge and read above the truth. The
+	// readings are still taken — the drain is what separates the phases — but
+	// they are only ASSERTED where the absolute value means something.
+	atMostWhereMeaningful := func(ceiling int, what string) {
+		t.Helper()
+		if backendPairsEveryOpenWithAClose() {
+			waitLedgerAtMost(t, w, ceiling, what)
+			return
+		}
+		if used, drained := drainLedger(t, w, nil); !drained {
+			t.Fatalf("%s: ledger never stopped moving, last reading %d", what, used)
+		}
+	}
+
 	removeFiles("first")
 	// Only the directories can still be charged, and only those whose own
 	// Create was delivered.
-	waitLedgerAtMost(t, w, base+len(dirs), "every file deleted again, directories kept")
+	atMostWhereMeaningful(base+len(dirs), "every file deleted again, directories kept")
 
 	for _, d := range dirs {
 		for i := 0; i < filesPerDir; i++ {
@@ -1063,24 +1185,40 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 			}
 		}
 	}
-	waitLedgerAtMost(t, w, filled, "every file recreated in place")
+	atMostWhereMeaningful(filled, "every file recreated in place")
 
-	// The load-bearing assertion, and the only exact one: tear the whole churn
-	// back down — every file, then every directory — and the ledger must return
-	// to the subscription baseline to the descriptor.
+	// Tear the whole churn back down — every file, then every directory — and on
+	// a backend that pairs its opens with its closes the ledger must return to
+	// the subscription baseline to the descriptor.
 	//
-	// Exact, and safe to be exact, because it counts CLOSES against CHARGES
-	// rather than files against expectations. A Create fsnotify never delivered
-	// (#6304) also produced no descriptor and so produces no Remove: it drops
-	// out of both sides. A Create delivered twice, a Remove honoured twice, or a
-	// charge for a path this test never created (#6287) does not.
+	// Exact where it runs, because it counts CLOSES against CHARGES rather than
+	// files against expectations: a Create fsnotify never delivered (#6304)
+	// produced no descriptor and so produces no Remove, and drops out of both
+	// sides. A Create delivered twice, or a charge for a path this test never
+	// created (#6287), does not.
+	//
+	// The removals are DRAINED before the directories go: a directory's removal
+	// tears down its watch, and on Windows anything still buffered for it dies
+	// there (backend_windows.go:565-570). Draining first means there is nothing
+	// buffered to lose. This costs one extra wait and removes a whole class of
+	// ordering-dependent residue on every platform.
 	removeFiles("teardown")
+	atMostWhereMeaningful(base+len(dirs), "every file deleted for the last time")
 	for i := len(dirs) - 1; i >= 0; i-- {
 		if err := os.Remove(dirs[i]); err != nil {
 			t.Fatalf("teardown rmdir: %v", err)
 		}
 	}
-	waitLedger(t, w, base, "every created file and directory removed again")
+	if backendPairsEveryOpenWithAClose() {
+		waitLedger(t, w, base, "every created file and directory removed again")
+	} else if used, drained := drainLedger(t, w, nil); !drained {
+		t.Fatalf("teardown: ledger never stopped moving, last reading %d", used)
+	}
+
+	// Every descriptor still on the ledger is attributed to a repo. Holds on
+	// every backend: it compares two records of the SAME events, so an event
+	// that was never delivered is missing from both.
+	assertLedgerMatchesPerRepo(t, w, "after the teardown")
 
 	// The over-release half of "exactly once", pinned deterministically: ONE
 	// closed directory handle reported TWICE must release ONE descriptor
@@ -1091,10 +1229,15 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 	// invariant is not.
 	//
 	// Driven against a directory this test never deleted, and the premise check
-	// that follows proves it: if the target were one of the churned directories,
-	// a dropped Create (#6304) would leave it out of dirToRepo and the FIRST report would
-	// take the file branch, which is not the shape being measured. Done last
-	// because it unmaps the directory.
+	// below proves it: if the target were one of the churned directories, a
+	// dropped Create (#6304) would leave it out of dirToRepo and the FIRST
+	// report would take the file branch, which is not the shape being measured.
+	// Done late because it unmaps the directory.
+	//
+	// Asserted as DELTAS from whatever the ledger happens to read now, never
+	// against base. The absolute value is not knowable on a backend that loses
+	// events, and it does not need to be: "the second report moved the ledger by
+	// zero" is the whole invariant.
 	dup := filepath.Join(repoA, "src")
 	w.mu.Lock()
 	_, watched := w.dirToRepo[dup]
@@ -1103,17 +1246,48 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 		t.Fatalf("premise broken: %s is not a watched directory, so two Remove reports for it "+
 			"do not stand for one closed directory handle", dup)
 	}
+	// Premise: a release of perDir has to be observable at all. Both cost models
+	// carry perDir 1 today (fdbudget.go:60,64), but a model with perDir 0 would
+	// make BOTH assertions below pass against a release path that does nothing.
 	perDir := w.fdb.model().perDir
+	if perDir <= 0 {
+		t.Fatalf("premise broken: the ledger's cost model charges %d per directory, so a "+
+			"directory release moves nothing and neither assertion below can fail", perDir)
+	}
+	// The first report is the PREMISE — a real close, really released — and only
+	// the second is the assertion. Split that way round because an over-release
+	// earlier in this test drives the ledger to its clamp at zero, and "want -1"
+	// is a much worse diagnosis of that than saying so.
+	beforeDup, _ := w.fdb.snapshot()
+	if beforeDup < perDir {
+		t.Fatalf("premise broken: the ledger holds %d before the duplicate-report check, fewer than "+
+			"the %d a directory release hands back — there is nothing left to release, which is itself "+
+			"what an over-release earlier in this test looks like once the ledger clamps at zero",
+			beforeDup, perDir)
+	}
 	w.handleEvent(fsnotify.Event{Name: dup, Op: fsnotify.Remove})
 	closed, _ := w.fdb.snapshot()
-	if closed != base-perDir {
-		t.Fatalf("one Remove report for a watched directory moved the ledger to %d, want %d",
-			closed, base-perDir)
+	if closed != beforeDup-perDir {
+		t.Fatalf("premise broken: one Remove report for a watched directory moved the ledger from "+
+			"%d to %d, want %d — the first report has to be a real release for the second to be a duplicate",
+			beforeDup, closed, beforeDup-perDir)
 	}
 	w.handleEvent(fsnotify.Event{Name: dup, Op: fsnotify.Remove})
 	if used, _ := w.fdb.snapshot(); used != closed {
 		t.Fatalf("a second Remove report for the same closed handle moved the ledger to %d, want %d: "+
 			"the duplicate released a descriptor that was never charged", used, closed)
+	}
+
+	// Exact on every backend, for the same reason: unregistering every repo must
+	// empty the ledger completely. RemoveRepo hands back the per-repo tally
+	// however that tally was arrived at, so a lost event cannot make this fail —
+	// while a descriptor on the global ledger that no repo owns can never be
+	// handed back at all, which is failure mode (B).
+	for _, r := range []string{repoA, repoB} {
+		w.RemoveRepo(r)
+	}
+	if used, _ := w.fdb.snapshot(); used != 0 {
+		t.Fatalf("unregistering both repos left %d descriptors on the ledger, want 0", used)
 	}
 
 	// Premise, checked last so a failure above is not blamed on it: nothing in
