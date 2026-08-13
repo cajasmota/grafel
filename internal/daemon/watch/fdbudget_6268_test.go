@@ -533,6 +533,18 @@ func TestEventReleaseIsDeductedFromTheOwningRepo(t *testing.T) {
 	}
 
 	// Churn only the first repo: charge, then release, the same descriptors.
+	//
+	// n is kept under defaultChurnThreshold/2 for the same reason
+	// TestChurnReturnsTheLedgerToItsSubscriptionBaseline keeps it there
+	// (quarantine.go:68): 2n reindex-arming events in one directory would trip
+	// the quarantine tracker, which persists its decision by creating
+	// <repo>/.grafel (quarantine.go:652) — a real new entry of a watched
+	// directory, for which fsnotify opens a real descriptor and the ledger
+	// correctly grows by one PER REPO. That charge is honest; it is simply not
+	// predictable from this test's arithmetic. Measured at 8768e5c42 the cycle
+	// produces 24 events against a threshold of 40, so the margin is 1.7x and
+	// not the 3.3x the /2 suggests. The premise assertion at the end says so
+	// out loud if it ever stops holding (#6287, #6308).
 	const n = 12
 	paths := make([]string, 0, n)
 	for i := 0; i < n; i++ {
@@ -558,6 +570,22 @@ func TestEventReleaseIsDeductedFromTheOwningRepo(t *testing.T) {
 		t.Fatalf("after removing the churny repo the ledger reads %d, want %d "+
 			"(the other repo's subscription) — the per-repo tally still held the released churn",
 			used, prunedTreeKqueueOpens)
+	}
+
+	// Premise, checked last so a failure above is not blamed on it, and the
+	// same guard the two sibling tests with this shape already carry: nothing
+	// in this test may have written into the repos it is measuring. If the
+	// churn tripped the quarantine tracker, <repo>/.grafel exists, fsnotify
+	// opened a descriptor for it, and every reading above includes a charge
+	// this test's arithmetic does not predict (#6287, #6308). This changes no
+	// assertion — it names the confounder instead of leaving it to be
+	// rediscovered from an unexplained ledger value.
+	for _, r := range []string{root, quiet} {
+		if _, err := os.Stat(filepath.Join(r, ".grafel")); err == nil {
+			t.Fatalf("premise broken: %s/.grafel exists — the churn tripped the quarantine tracker, "+
+				"which persisted state into the repo under measurement, and the ledger readings "+
+				"above include a charge this test cannot predict", r)
+		}
 	}
 }
 
@@ -691,10 +719,33 @@ func TestPerWatchPlatformDoesNotChargeEventOpens(t *testing.T) {
 // Stop correct: every descriptor on the global ledger is attributed to exactly
 // one repo. A charge that reaches `used` but not fdReserved can never be handed
 // back, which is failure mode (B) by another route.
+//
+// BOTH halves are read under ONE acquisition of w.mu, and that is load-bearing
+// rather than tidiness (#6308). The global ledger and the per-repo tally are
+// one fact recorded twice, and every site that moves them — chargeEventOpen,
+// releaseEventClose, RemoveRepo, the refusal unwind — moves both inside this
+// lock precisely so no observer can see them disagree. Reading `used` outside
+// the lock and `fdReserved` inside it samples two different instants: any
+// charge that lands in between is counted by the second read and not the
+// first, and the helper reports a mismatch for a ledger that was never
+// inconsistent. The gap is nanoseconds on an idle machine and milliseconds on
+// a loaded one — long enough for thousands of charges — which is why this
+// failed a few percent of the time on CI and not at all locally.
+//
+// Measured at 8768e5c42 on the shape TestEventChargesDuringTheWalkSurvives...
+// drives, sampling continuously while events were still being delivered: the
+// split read disagreed 5,968 times against 6,511 events delivered (worst
+// divergence: one descriptor), while this single-acquisition read disagreed 0
+// times in ~300 million samples across twelve runs. The assertion itself is
+// unchanged — still exact equality, still fatal — only the reading is taken at
+// one instant instead of two.
+//
+// w.mu then fdb.mu is the ordering chargeEventOpen already uses, so nesting
+// them here introduces no new lock order.
 func assertLedgerMatchesPerRepo(t *testing.T, w *Watcher, what string) {
 	t.Helper()
-	used, _ := w.fdb.snapshot()
 	w.mu.Lock()
+	used, _ := w.fdb.snapshot()
 	sum := 0
 	for _, n := range w.fdReserved {
 		sum += n
