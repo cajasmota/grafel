@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 // ---------------------------------------------------------------------------
@@ -185,6 +187,59 @@ func waitLedger(t *testing.T, w *Watcher, want int, what string) {
 // reading counts as settled — ~150ms at the 5ms poll interval, comfortably
 // longer than the gap between two events of one filesystem burst.
 const ledgerStableReads = 30
+
+// ledgerDrainedReads is ledgerStableReads for a reading that is NOT being
+// compared against a known target — ~1.5s at the 5ms poll interval.
+//
+// It has to be that much longer because it is the only evidence the burst has
+// drained. waitLedger knows the value it is waiting for, so a plateau at some
+// other value cannot satisfy it; waitLedgerAtMost accepts a RANGE, and a
+// mid-drain plateau inside that range would end the wait with events still in
+// flight — after which the next phase's filesystem work interleaves with the
+// last of this phase's and the test measures a shape it did not build.
+// Measured at 4833026a4 over this test's four bursts, the longest plateau
+// before the ledger moved again was 580ms; 1.5s is ~2.6x that.
+const ledgerDrainedReads = 300
+
+// waitLedgerAtMost waits for the ledger to drain to a value at or below
+// ceiling and HOLD it, or fails with the last reading.
+//
+// One-sided, and that is the point (#6304). fsnotify's backends abandon a
+// directory listing at the first entry they cannot stat or open, and
+// readEvents discards that error (backend_kqueue.go:506), so an arbitrary tail
+// of a burst's Creates is never reported and never charged. Those events do
+// not arrive late — they never arrive — so a wait for the exact count of files
+// WRITTEN can only time out, which is how this test reddened the gate at
+// 636/660 and 606/660 (`held 0 of 30 polls`). Under-running the ceiling is
+// therefore accepted. Exceeding it is not: the ceiling is what fsnotify opens
+// when it drops NOTHING, so a reading above it charges a descriptor that was
+// never opened.
+//
+// A plateau above the ceiling is treated as "still draining", not as a
+// failure, so an over-charge is reported by the deadline rather than by a
+// lucky poll — and a burst that is merely slow is never mistaken for one.
+func waitLedgerAtMost(t *testing.T, w *Watcher, ceiling int, what string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	last, held := -1, 0
+	for time.Now().Before(deadline) {
+		used, _ := w.fdb.snapshot()
+		switch {
+		case used > ceiling:
+			last, held = used, 0
+		case used == last:
+			if held++; held >= ledgerDrainedReads {
+				return
+			}
+		default:
+			last, held = used, 1
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("%s: ledger read %d (held %d of %d polls), want it drained to at most %d — "+
+		"a reading above that charges descriptors fsnotify never opened",
+		what, last, held, ledgerDrainedReads, ceiling)
+}
 
 // subscribedWatcher builds a watcher over makePrunedTree with a budget far
 // larger than the tree, subscribes it, and returns the watcher, the root, and
@@ -876,6 +931,54 @@ walked:
 // Remove must not go on suppressing the charge for a path that later comes
 // back, or the ledger drifts down instead.
 //
+// WHAT THIS TEST DOES NOT GUARANTEE (#6304). It does not prove that every file
+// it created was seen, or that the ledger reached any particular figure while
+// the churn was in flight. fsnotify's backends abandon a directory listing at
+// the first entry they cannot stat or open, and readEvents discards that error
+// (backend_kqueue.go:506), so an arbitrary tail of one burst's Creates is never
+// reported and never charged. That loss is a real product defect, deferred as
+// #6304 and measured at up to ~89% of Creates in a hot directory; it is not
+// this test's subject and this test cannot be made to fail for it without
+// failing for the platform instead. It used to try: the mid-flight assertions
+// named an exact figure that counted every file WRITTEN rather than every event
+// DELIVERED, so a drop reddened the gate (636/660 and 606/660 with `held 0 of
+// 30 polls` — never arriving, not arriving late) for a reason that had nothing
+// to do with double-charging.
+//
+// What it does guarantee is the property it was built for, stated so that a
+// missing event cannot break it: EVERY DESCRIPTOR IS CHARGED ONCE AND RELEASED
+// ONCE. The teardown deletes every file AND every directory this test created,
+// so whatever fsnotify did open it has now closed, and the ledger must come
+// back to EXACTLY the subscription baseline. That equality is untouched by
+// drops — an entry that was never opened is neither charged nor released, so it
+// cancels — and it is broken in the right direction by each defect that matters:
+//
+//   - a path charged twice (the fdPreCharged suppression ignored, #6268) is
+//     released once, so the teardown lands ABOVE base;
+//   - a charge for something fsnotify never opened (#6287's .grafel, which the
+//     teardown does not delete because the test does not know it is there)
+//     lands ABOVE base;
+//   - a charge suppressed by a marker that outlived its descriptor is released
+//     anyway on the teardown, which lands BELOW base.
+//
+// The over-RELEASE (#6293) is reached twice over. The teardown deletes 50
+// watched directories, and — contrary to the "kqueue closes and reports once"
+// reading in fdbudget_6293_test.go — the duplicate close report is NOT only a
+// Windows fact: instrumenting the suppression branch at 4833026a4 counted 48
+// duplicate reports across those 50 removals on macOS, so with the suppression
+// gone the teardown lands at 0 against a base of 10. That is a strong kill but
+// a measured one, and the count is a property of the host. So the same
+// invariant is ALSO pinned synthetically at the end — two Remove reports for
+// one watched directory, one release — against a ledger the teardown has just
+// settled to a known value. That half holds on any platform and does not
+// depend on how the backend batches.
+//
+// The mid-flight readings are kept but made one-sided: drain, then assert the
+// ledger is at most what fsnotify could have opened. Under-running that ceiling
+// is #6304; exceeding it is a double charge, and on a host that drops nothing
+// the ceiling is still exact — measured at 4833026a4 the fill and the refill
+// both land on it to the descriptor.
+//
 // The quarantine tracker is detached for the duration (#6287). Unlike
 // TestChurnReturnsTheLedgerToItsSubscriptionBaseline, this test CANNOT stay
 // under defaultChurnThreshold: 12 files created, deleted and recreated is 40+
@@ -933,19 +1036,24 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 		}
 	}
 	filled := base + len(dirs)*perDirectory
-	waitLedger(t, w, filled, fmt.Sprintf("%d interleaved directory fills across two repos", len(dirs)))
+	waitLedgerAtMost(t, w, filled, fmt.Sprintf("%d interleaved directory fills across two repos", len(dirs)))
 	assertLedgerMatchesPerRepo(t, w, "after interleaved directory fills")
 
-	// Delete every file, then put it back. Net zero, and only if a marker
-	// spent by a Remove stops suppressing that path's next Create.
-	for _, d := range dirs {
-		for i := 0; i < filesPerDir; i++ {
-			if err := os.Remove(filepath.Join(d, fmt.Sprintf("z%02d.go", i))); err != nil {
-				t.Fatalf("remove: %v", err)
+	// Delete every file, then put it back. Only a marker spent by a Remove
+	// lets that path's next Create be charged again.
+	removeFiles := func(stage string) {
+		for _, d := range dirs {
+			for i := 0; i < filesPerDir; i++ {
+				if err := os.Remove(filepath.Join(d, fmt.Sprintf("z%02d.go", i))); err != nil {
+					t.Fatalf("%s remove: %v", stage, err)
+				}
 			}
 		}
 	}
-	waitLedger(t, w, base+len(dirs), "every file deleted again, directories kept")
+	removeFiles("first")
+	// Only the directories can still be charged, and only those whose own
+	// Create was delivered.
+	waitLedgerAtMost(t, w, base+len(dirs), "every file deleted again, directories kept")
 
 	for _, d := range dirs {
 		for i := 0; i < filesPerDir; i++ {
@@ -955,7 +1063,58 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 			}
 		}
 	}
-	waitLedger(t, w, filled, "every file recreated in place")
+	waitLedgerAtMost(t, w, filled, "every file recreated in place")
+
+	// The load-bearing assertion, and the only exact one: tear the whole churn
+	// back down — every file, then every directory — and the ledger must return
+	// to the subscription baseline to the descriptor.
+	//
+	// Exact, and safe to be exact, because it counts CLOSES against CHARGES
+	// rather than files against expectations. A Create fsnotify never delivered
+	// (#6304) also produced no descriptor and so produces no Remove: it drops
+	// out of both sides. A Create delivered twice, a Remove honoured twice, or a
+	// charge for a path this test never created (#6287) does not.
+	removeFiles("teardown")
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if err := os.Remove(dirs[i]); err != nil {
+			t.Fatalf("teardown rmdir: %v", err)
+		}
+	}
+	waitLedger(t, w, base, "every created file and directory removed again")
+
+	// The over-release half of "exactly once", pinned deterministically: ONE
+	// closed directory handle reported TWICE must release ONE descriptor
+	// (#6293; fdbudget_6293_test.go names the two Windows completion paths the
+	// duplicate comes from, and the teardown above shows kqueue produces it as
+	// well). Synthesised rather than provoked, because how many duplicates a
+	// backend emits for 50 removals is a property of the host, and this
+	// invariant is not.
+	//
+	// Driven against a directory this test never deleted, and the premise check
+	// that follows proves it: if the target were one of the churned directories,
+	// a dropped Create (#6304) would leave it out of dirToRepo and the FIRST report would
+	// take the file branch, which is not the shape being measured. Done last
+	// because it unmaps the directory.
+	dup := filepath.Join(repoA, "src")
+	w.mu.Lock()
+	_, watched := w.dirToRepo[dup]
+	w.mu.Unlock()
+	if !watched {
+		t.Fatalf("premise broken: %s is not a watched directory, so two Remove reports for it "+
+			"do not stand for one closed directory handle", dup)
+	}
+	perDir := w.fdb.model().perDir
+	w.handleEvent(fsnotify.Event{Name: dup, Op: fsnotify.Remove})
+	closed, _ := w.fdb.snapshot()
+	if closed != base-perDir {
+		t.Fatalf("one Remove report for a watched directory moved the ledger to %d, want %d",
+			closed, base-perDir)
+	}
+	w.handleEvent(fsnotify.Event{Name: dup, Op: fsnotify.Remove})
+	if used, _ := w.fdb.snapshot(); used != closed {
+		t.Fatalf("a second Remove report for the same closed handle moved the ledger to %d, want %d: "+
+			"the duplicate released a descriptor that was never charged", used, closed)
+	}
 
 	// Premise, checked last so a failure above is not blamed on it: nothing in
 	// this test may have written into the repos it is measuring. The same guard
