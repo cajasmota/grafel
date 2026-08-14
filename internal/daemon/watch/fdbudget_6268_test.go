@@ -226,9 +226,10 @@ const ledgerStableReads = 30
 // removal bursts drain with a longest gap of one poll — where there is nothing
 // to scale from.
 const (
-	ledgerHoldFloor  = 1500 * time.Millisecond
-	ledgerHoldFactor = 4
-	ledgerPollEvery  = 5 * time.Millisecond
+	ledgerHoldFloor     = 1500 * time.Millisecond
+	ledgerHoldFactor    = 4
+	ledgerPollEvery     = 5 * time.Millisecond
+	ledgerDrainDeadline = 90 * time.Second
 )
 
 // drainLedger polls until the ledger has held one value for the self-scaling
@@ -240,7 +241,7 @@ const (
 // Returns the last reading and whether it drained before the deadline.
 func drainLedger(t *testing.T, w *Watcher, accept func(int) bool) (int, bool) {
 	t.Helper()
-	deadline := time.Now().Add(90 * time.Second)
+	deadline := time.Now().Add(ledgerDrainDeadline)
 	last, longestGap := -1, time.Duration(0)
 	runStart := time.Now()
 	for time.Now().Before(deadline) {
@@ -263,6 +264,16 @@ func drainLedger(t *testing.T, w *Watcher, accept func(int) bool) (int, bool) {
 			hold := ledgerHoldFloor
 			if scaled := time.Duration(ledgerHoldFactor) * longestGap; scaled > hold {
 				hold = scaled
+			}
+			// Clamped, or the scaling turns a slow run into a GUARANTEED
+			// failure instead of a longer one: past a single measured gap of
+			// ledgerDrainDeadline/ledgerHoldFactor there is not enough time
+			// left on the deadline to satisfy the hold at all, and the wait
+			// fails however healthy the ledger is. A run that slow has already
+			// lost the drain-vs-plateau argument; failing it for the reason it
+			// is actually failing beats failing it on arithmetic.
+			if hold > ledgerDrainDeadline/3 {
+				hold = ledgerDrainDeadline / 3
 			}
 			if time.Since(runStart) >= hold {
 				return used, true
@@ -316,9 +327,27 @@ func drainLedger(t *testing.T, w *Watcher, accept func(int) bool) (int, bool) {
 // catch. Observed on CI run 31750096959: this test's teardown read 35 against a
 // base of 10 — 25 charges stranded, in a package otherwise green on that runner
 // and fully green on Ubuntu. See the note on the test itself.
-func backendPairsEveryOpenWithAClose() bool { return runtime.GOOS != "windows" }
+// An ALLOW-LIST, not "not Windows". The property is a claim about a specific
+// backend and there are five: inotify, kqueue, ReadDirectoryChangesW, fen
+// (Solaris/illumos, backend_fen.go) and the stub in backend_other.go. Only the
+// first two have been read for it. Naming the platforms that were reasoned
+// about, rather than the one that was ruled out, means a port to a backend
+// nobody has looked at inherits "assume nothing" instead of silently inheriting
+// a guarantee: the absolute-value assertions switch off there, the DELTA ones
+// stay on, and the test still fails for every defect it exists to catch.
+func backendPairsEveryOpenWithAClose() bool {
+	switch runtime.GOOS {
+	case "linux", "darwin", "freebsd", "netbsd", "openbsd", "dragonfly":
+		return true // inotify and kqueue: read, and reasoned about above
+	default:
+		return false // windows, solaris, illumos, and anything new
+	}
+}
 
-func waitLedgerAtMost(t *testing.T, w *Watcher, ceiling int, what string) {
+// waitLedgerAtMost returns the drained reading, so a caller can also hold it
+// against the phase BEFORE it — see the delta bounds in the interleaved test,
+// which are the half of this that survives a backend losing events.
+func waitLedgerAtMost(t *testing.T, w *Watcher, ceiling int, what string) int {
 	t.Helper()
 	used, drained := drainLedger(t, w, func(v int) bool { return v <= ceiling })
 	if !drained {
@@ -326,6 +355,7 @@ func waitLedgerAtMost(t *testing.T, w *Watcher, ceiling int, what string) {
 			"a reading above that charges descriptors fsnotify never opened",
 			what, used, ceiling)
 	}
+	return used
 }
 
 // subscribedWatcher builds a watcher over makePrunedTree with a budget far
@@ -1143,7 +1173,7 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 		}
 	}
 	filled := base + len(dirs)*perDirectory
-	waitLedgerAtMost(t, w, filled, fmt.Sprintf("%d interleaved directory fills across two repos", len(dirs)))
+	filledUsed := waitLedgerAtMost(t, w, filled, fmt.Sprintf("%d interleaved directory fills across two repos", len(dirs)))
 	assertLedgerMatchesPerRepo(t, w, "after interleaved directory fills")
 
 	// Delete every file, then put it back. Only a marker spent by a Remove
@@ -1159,23 +1189,47 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 	}
 	// From here on every phase follows a burst of REMOVALS, so a backend that
 	// loses individual events can strand a charge and read above the truth. The
-	// readings are still taken — the drain is what separates the phases — but
-	// they are only ASSERTED where the absolute value means something.
-	atMostWhereMeaningful := func(ceiling int, what string) {
+	// readings are still taken — the drain is what separates the phases, and the
+	// DELTAS between them are asserted everywhere — but the ABSOLUTE value is
+	// only asserted where it means something.
+	atMostWhereMeaningful := func(ceiling int, what string) int {
 		t.Helper()
 		if backendPairsEveryOpenWithAClose() {
-			waitLedgerAtMost(t, w, ceiling, what)
-			return
+			return waitLedgerAtMost(t, w, ceiling, what)
 		}
-		if used, drained := drainLedger(t, w, nil); !drained {
+		used, drained := drainLedger(t, w, nil)
+		if !drained {
 			t.Fatalf("%s: ledger never stopped moving, last reading %d", what, used)
 		}
+		return used
 	}
+
+	// The bounds that survive a backend losing events, because they compare two
+	// readings taken around ONE burst instead of one reading against a count of
+	// files. Anything stranded or lost BEFORE the burst sits in both readings and
+	// cancels; only what the burst itself did is left.
+	//
+	// This is what keeps the recreate phase — the marker-suppression family, and
+	// the only package-wide guard for it — alive on a backend where the absolute
+	// ceilings are switched off. Without it, a charge that is right on first
+	// sight and doubled on RE-creation passes the whole package there.
+	//
+	// One-sided, in the direction each burst can honestly move:
+	//   - a removal burst can release at most one descriptor per file removed. A
+	//     lost Remove releases fewer, which passes; releasing MORE means a
+	//     descriptor came off the ledger that no close paid for.
+	//   - a creation burst can charge at most one per file created. A lost Create
+	//     charges fewer, which passes; charging MORE is the double charge.
+	totalFiles := len(dirs) * filesPerDir
 
 	removeFiles("first")
 	// Only the directories can still be charged, and only those whose own
 	// Create was delivered.
-	atMostWhereMeaningful(base+len(dirs), "every file deleted again, directories kept")
+	afterRemovals := atMostWhereMeaningful(base+len(dirs), "every file deleted again, directories kept")
+	if released := filledUsed - afterRemovals; released > totalFiles {
+		t.Fatalf("removing %d files released %d descriptors (%d -> %d): the excess came off the "+
+			"ledger without a close behind it", totalFiles, released, filledUsed, afterRemovals)
+	}
 
 	for _, d := range dirs {
 		for i := 0; i < filesPerDir; i++ {
@@ -1185,7 +1239,12 @@ func TestInterleavedDirectoryFillsAcrossReposAreNotDoubleCharged(t *testing.T) {
 			}
 		}
 	}
-	atMostWhereMeaningful(filled, "every file recreated in place")
+	afterRecreate := atMostWhereMeaningful(filled, "every file recreated in place")
+	if charged := afterRecreate - afterRemovals; charged > totalFiles {
+		t.Fatalf("recreating %d files charged %d descriptors (%d -> %d): a path that came back "+
+			"after a release was charged more than once for it",
+			totalFiles, charged, afterRemovals, afterRecreate)
+	}
 
 	// Tear the whole churn back down — every file, then every directory — and on
 	// a backend that pairs its opens with its closes the ledger must return to
