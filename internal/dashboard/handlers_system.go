@@ -285,8 +285,9 @@ func (s *Server) buildSystemReply() SystemReply {
 		reply.SocketPath = layout.SocketPath
 	}
 
-	// RSS budget from env (mirrors daemon startup logic)
-	budgetMB := int64(500)
+	// RSS budget from the same persisted/default source used at daemon startup.
+	// An explicit environment override still has precedence.
+	budgetMB := daemon.RSSBudgetMB()
 	if v := os.Getenv("GRAFEL_MAX_RSS_BUDGET_MB"); v != "" {
 		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil && parsed >= 0 {
 			budgetMB = parsed

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -42,6 +43,26 @@ func ConfiguredRSSBudgetMB() int64 {
 		return 0
 	}
 	return raw.DaemonRSSBudgetMB
+}
+
+// RSSBudgetMB returns the configured RSS admission budget, or the same
+// memory-based default used when the daemon starts without an override.
+func RSSBudgetMB() int64 {
+	if configured := ConfiguredRSSBudgetMB(); configured > 0 {
+		return configured
+	}
+	return rssBudgetMB(process.TotalMemoryMB())
+}
+
+func rssBudgetMB(totalMemoryMB int64) int64 {
+	if totalMemoryMB <= 0 {
+		return 500
+	}
+	budget := totalMemoryMB / 8
+	if budget > 2048 {
+		return 2048
+	}
+	return budget
 }
 
 // ConfiguredGoMemoryLimitMB reads daemon_go_memory_limit_mb from settings.json.
