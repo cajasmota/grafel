@@ -65,11 +65,24 @@ func TestWriteUnit_RewritesLegacyDaemonUnitToServe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read rewritten task XML: %v", err)
 	}
-	if !strings.Contains(string(rewritten), "<Arguments>serve</Arguments>") {
-		t.Errorf("rewritten task XML missing 'serve' argument:\n%s", rewritten)
+	if !strings.Contains(string(rewritten), "wscript.exe</Command>") {
+		t.Errorf("rewritten task XML missing hidden WScript host:\n%s", rewritten)
 	}
 	if strings.Contains(string(rewritten), "<Arguments>daemon</Arguments>") {
 		t.Errorf("rewritten task XML still contains legacy 'daemon' argument:\n%s", rewritten)
+	}
+	wrapperPath := filepath.Join(taskDir, taskName+".vbs")
+	wrapper, err := os.ReadFile(wrapperPath)
+	if err != nil {
+		t.Fatalf("read generated wrapper: %v", err)
+	}
+	wrapperText := string(wrapper)
+	if !strings.Contains(wrapperText, `""C:\Program Files\grafel\grafel.exe"" serve`) {
+		t.Errorf("wrapper does not invoke grafel serve with a quoted path:\n%s", wrapper)
+	}
+	if !strings.Contains(wrapperText, ", 0, True") ||
+		!strings.Contains(wrapperText, "WScript.Quit exitCode") {
+		t.Errorf("wrapper must hide, wait, and propagate grafel's exit code:\n%s", wrapper)
 	}
 
 	// Idempotency: a second WriteUnit pass must produce byte-identical output.
@@ -82,5 +95,14 @@ func TestWriteUnit_RewritesLegacyDaemonUnitToServe(t *testing.T) {
 	}
 	if string(again) != string(rewritten) {
 		t.Errorf("WriteUnit is not idempotent:\nfirst:\n%s\nsecond:\n%s", rewritten, again)
+	}
+
+	if err := sm.RemoveArtifacts(); err != nil {
+		t.Fatalf("RemoveArtifacts: %v", err)
+	}
+	for _, artifact := range []string{path, wrapperPath} {
+		if _, err := os.Stat(artifact); !os.IsNotExist(err) {
+			t.Errorf("RemoveArtifacts left %s behind (stat error: %v)", artifact, err)
+		}
 	}
 }

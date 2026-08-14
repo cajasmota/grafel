@@ -14,15 +14,16 @@ import (
 // (package service) so it can reach the unexported template + vars type.
 func renderTaskXML(t *testing.T, sid string) string {
 	t.Helper()
-	tmpl, err := template.New("task").Parse(daemonTaskXMLTemplate)
+	tmpl, err := template.New("task").Funcs(template.FuncMap{"xml": xmlText}).Parse(daemonTaskXMLTemplate)
 	if err != nil {
 		t.Fatalf("parse template: %v", err)
 	}
 	var buf strings.Builder
 	if err := tmpl.Execute(&buf, daemonTaskVars{
-		TaskName: "com.grafel.daemon",
-		UserSID:  sid,
-		BinPath:  `C:\Program Files\grafel\grafel.exe`,
+		TaskName:    "com.grafel.daemon",
+		UserSID:     sid,
+		WrapperHost: `C:\Windows\System32\wscript.exe`,
+		WrapperPath: `C:\Users\testuser\wrapper.vbs`,
 	}); err != nil {
 		t.Fatalf("execute template: %v", err)
 	}
