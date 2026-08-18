@@ -7,7 +7,6 @@ build_tools: build_tools.yaml
 test_frameworks: test_patterns.yaml
 orm_database: extras.yaml
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_roots: extras.yaml
 vera_scope_mapping: extras.yaml
 mapping_justification: extras.yaml

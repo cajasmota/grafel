@@ -87,7 +87,7 @@ testing:
     output_patterns:
     - '*.mocks.dart'
     notes: 'Dart port of Mockito. Requires build_runner for code generation (@GenerateMocks
-      annotation). *.mocks.dart generated files must be in skip_patterns. Null-safety
+      annotation). *.mocks.dart files are generated. Null-safety
       aware version requires Dart 2.12+.
 
       '

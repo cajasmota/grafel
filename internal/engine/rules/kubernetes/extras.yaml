@@ -131,7 +131,7 @@ detection:
     confidence: high
     notes: 'Standard Helm charts directory. When found at repo root, signals a Helm
       charts repository. When found inside a chart directory, contains vendored sub-chart
-      dependencies — SKIP this nested charts/ directory (see skip_patterns).
+      dependencies — SKIP this nested charts/ directory.
 
       '
   - pattern: base/

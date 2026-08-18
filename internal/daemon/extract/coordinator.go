@@ -650,10 +650,7 @@ type batchSpec struct {
 // marks Skip (or with empty language) are dropped here so subprocesses
 // never see them.
 func bucketByLanguage(ctx context.Context, repoRoot string, files []string) (map[string][]string, error) {
-	cls, err := classifier.New("", nil)
-	if err != nil {
-		return nil, fmt.Errorf("init classifier: %w", err)
-	}
+	cls := classifier.New(nil)
 	out := map[string][]string{}
 	for _, rel := range files {
 		abs := filepath.Join(repoRoot, rel)

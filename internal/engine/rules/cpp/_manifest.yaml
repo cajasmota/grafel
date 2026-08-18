@@ -4,5 +4,4 @@ build_tools: build_tools.yaml
 testing_frameworks: test_patterns.yaml
 orm_db: orms/ [sqlite_direct_c_api, sqlitecpp, soci, odb, nanodbc, libpqxx]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_roots: extras.yaml

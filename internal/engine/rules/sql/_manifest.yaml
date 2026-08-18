@@ -4,5 +4,4 @@ migration_tools: test_patterns.yaml
 testing_frameworks: test_patterns.yaml
 schema_definition_patterns: extras.yaml
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_root_conventions: extras.yaml

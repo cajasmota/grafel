@@ -31,10 +31,7 @@ func newTestIndexer(t *testing.T, repoTag string, skipPasses []string, stateDir 
 	// indexer runs (a) don't pollute the source tree fixtures with state
 	// and (b) don't load stale state across runs.
 	t.Setenv("GRAFEL_DAEMON_ROOT", stateDir)
-	cls, err := classifier.New("", nil)
-	if err != nil {
-		t.Fatalf("classifier: %v", err)
-	}
+	cls := classifier.New(nil)
 	parser := treesitter.NewParserFactory(nil)
 	rules, err := engine.LoadAllRules()
 	if err != nil {
@@ -73,7 +70,7 @@ func runIndexerOn(t *testing.T, repoPath, repoTag string, skipPasses []string) *
 }
 
 // TestEngineYAMLRulesLoadAndCompile asserts the YAML rule engine sees the
-// expected number of files (751 across all language sub-directories).
+// expected number of files across all language sub-directories.
 func TestEngineYAMLRulesLoadAndCompile(t *testing.T) {
 	rules, err := engine.LoadAllRules()
 	if err != nil {
@@ -81,7 +78,7 @@ func TestEngineYAMLRulesLoadAndCompile(t *testing.T) {
 	}
 	det := engine.New(rules)
 	if got := det.RuleCount(); got < 100 {
-		// 751 .yaml files, but not every YAML is a rule (some are
+		// Not every YAML is a rule (some are
 		// _manifest.yaml etc. and skipped). 100 is a safe floor.
 		t.Fatalf("rule count too low: got %d, want >= 100", got)
 	}

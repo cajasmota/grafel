@@ -4,5 +4,4 @@ build_tools: build_tools.yaml
 testing: test_patterns.yaml
 orms: orms/ [eloquent_laravel_orm, doctrine_orm, propel, redbeanphp]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_roots: extras.yaml

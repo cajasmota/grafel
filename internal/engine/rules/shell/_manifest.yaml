@@ -5,5 +5,4 @@ build_tools: build_tools.yaml
 testing: test_patterns.yaml
 data_cli_tools: extras.yaml
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_roots: extras.yaml

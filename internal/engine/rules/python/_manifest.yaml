@@ -5,5 +5,4 @@ testing_frameworks: test_patterns.yaml
 orms_database: orms/ [sqlalchemy, sqlmodel, django_orm, tortoise_orm, peewee, pony_orm,
   mongoengine, beanie, alembic, neo4j]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_root_conventions: extras.yaml

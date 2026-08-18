@@ -5,5 +5,4 @@ helm: extras.yaml
 kustomize: extras.yaml
 entity_extraction: extras.yaml
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_roots: extras.yaml
