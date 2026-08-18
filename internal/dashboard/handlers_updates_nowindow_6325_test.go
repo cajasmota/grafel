@@ -17,19 +17,14 @@ import (
 // dashboard pops a console window. Every other daemon-resident spawn in the
 // tree already calls executil.NoWindow; this was the lone gap.
 //
-// The behavioural assertion (CREATE_NO_WINDOW actually set on the CreationFlags)
-// lives in handlers_updates_nowindow_windows_test.go — executil.NoWindow is a
-// no-op on every other GOOS (internal/executil/nowindow_other.go), so a runtime
-// assertion here would pass vacuously on macOS/Linux and would keep passing
-// with the fix deleted. This source-level guard is the honest portable half:
-// it fails on any platform the moment the call is removed.
-func TestNewUpdateCmd_AppliesNoWindow_SourceGuard(t *testing.T) {
-	body := funcBodySource6325(t, "handlers_updates.go", "newUpdateCmd")
-	if !strings.Contains(body, "executil.NoWindow(") {
-		t.Fatalf("newUpdateCmd does not call executil.NoWindow — the daemon-spawned "+
-			"`grafel update` child pops a console window on Windows (#6325 F1)\n%s", body)
-	}
-}
+// The guard that the treatment is actually applied is behavioural and lives in
+// handlers_updates_nowindow_seam_6325_test.go (it swaps the applyNoWindow seam
+// for a recorder, so it runs on every GOOS). The Windows-only test in
+// handlers_updates_nowindow_windows_test.go pins the resulting CreationFlags
+// bit. What remains here is the WIRING: the seam is worthless if the runner
+// the SSE handlers actually reach builds its own exec.Cmd on the side. This
+// one is deliberately source-text based — there is no cheap behavioural form,
+// because exercising defaultUpdateRunner would re-execute the test binary.
 
 // TestDefaultUpdateRunner_UsesNewUpdateCmd pins the wiring: the no-window
 // treatment is worthless if the runner that the SSE handlers actually reach

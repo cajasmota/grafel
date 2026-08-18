@@ -58,8 +58,20 @@ func hasControlByte(s string) bool {
 //     to CreateProcess — a second, independent quoting context in which the
 //     embedded quote leaves the argument unbalanced. Rather than claim to
 //     handle two escaping layers with one escape (the pre-#6325 comment did),
-//     refuse. Neither a control byte nor '"' is legal in a Win32 path
-//     component, so nothing reachable via os.Executable() is being rejected.
+//     refuse.
+//   - Trailing backslash: this one is NOT an injection, and the mirror is
+//     honest about the difference. validateUnitFields refuses it because
+//     systemd.syntax(7) makes a line ending in '\' swallow the next directive.
+//     Here, WScript.Shell.Run calls CreateProcess with lpApplicationName ==
+//     NULL, and CreateProcess's first-token parse consumes everything up to
+//     the terminating quote with no backslash-escape rules, so
+//     `"C:\grafel\" serve` merely fails to resolve — no breakout. It is
+//     refused for the same reason as '"': BinPath comes from os.Executable()
+//     and always ends in `.exe`, so the check costs nothing and a renderer
+//     that refuses one impossible-but-broken input should refuse the other.
+//
+// None of the three is legal in — or reachable as — a path from
+// os.Executable(), so nothing real is being rejected.
 //
 // The XML layer needs no equivalent guard: xml.EscapeText keeps a control
 // character inside character data instead of creating new structure.
@@ -71,6 +83,10 @@ func validateWrapperFields(opts Options) error {
 	if strings.Contains(opts.BinPath, `"`) {
 		return fmt.Errorf("daemon wrapper field BinPath contains a double quote, refusing to render " +
 			"(the VBScript escape cannot also balance the CreateProcess command line)")
+	}
+	if strings.HasSuffix(opts.BinPath, `\`) {
+		return fmt.Errorf("daemon wrapper field BinPath ends in a backslash, refusing to render " +
+			"(CreateProcess would take the closing quote as part of the executable path)")
 	}
 	return nil
 }
@@ -94,10 +110,12 @@ func utf16LEWithBOM(s string) []byte {
 	return out
 }
 
-// GenerateDaemonWrapper renders the .vbs launcher that the scheduled task
-// executes, as UTF-16LE-with-BOM bytes ready to write to disk.
-// Exported for testing; production code calls WriteUnit.
-func GenerateDaemonWrapper(opts Options) ([]byte, error) {
+// generateDaemonWrapper renders the .vbs launcher that the scheduled task
+// executes, as UTF-16LE-with-BOM bytes ready to write to disk. Its only
+// caller is WriteUnit; schtasks_wrapper_6325_test.go is an in-package test,
+// so this needs no exported surface. (GenerateTaskXML is exported because its
+// test file really is package service_test.)
+func generateDaemonWrapper(opts Options) ([]byte, error) {
 	if err := validateWrapperFields(opts); err != nil {
 		return nil, err
 	}

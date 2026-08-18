@@ -212,6 +212,16 @@ func (s *Server) handleUpdatesRefreshRules(w http.ResponseWriter, r *http.Reques
 // its combined stdout+stderr output and exit error. Overridable in tests.
 type updateRunFunc func(ctx context.Context, args []string) ([]byte, error)
 
+// applyNoWindow is the seam that makes the Windows console-hiding treatment
+// observable from a test on any GOOS. executil.NoWindow is a no-op off
+// Windows, so asserting on cmd.SysProcAttr can only work on windows-latest —
+// and a source-text guard cannot tell `executil.NoWindow(cmd)` from
+// `if false { executil.NoWindow(cmd) }`. Indirecting through a package-level
+// var lets a test substitute a recorder and assert the call really happened,
+// on the real *exec.Cmd, everywhere. Same device, and same reason, as
+// internal/atomicfile/rename.go's renameOps.
+var applyNoWindow = executil.NoWindow
+
 // newUpdateCmd builds the `<self> [args...]` subprocess command.
 //
 // executil.NoWindow is mandatory here: this spawn happens inside the DAEMON
@@ -227,7 +237,7 @@ func newUpdateCmd(ctx context.Context, args []string) (*exec.Cmd, error) {
 		return nil, fmt.Errorf("cannot resolve executable: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, selfExe, args...)
-	executil.NoWindow(cmd)
+	applyNoWindow(cmd)
 	return cmd, nil
 }
 

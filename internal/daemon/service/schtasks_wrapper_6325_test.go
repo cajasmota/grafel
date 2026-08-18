@@ -40,9 +40,9 @@ func TestGenerateDaemonWrapper_UTF16LEWithBOM(t *testing.T) {
 		{"astral_plane", `C:\Users\𝕵ose\.grafel\bin\grafel.exe`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := GenerateDaemonWrapper(Options{BinPath: tc.bin})
+			got, err := generateDaemonWrapper(Options{BinPath: tc.bin})
 			if err != nil {
-				t.Fatalf("GenerateDaemonWrapper: %v", err)
+				t.Fatalf("generateDaemonWrapper: %v", err)
 			}
 			// 1. BOM present and little-endian.
 			if len(got) < 2 || got[0] != 0xFF || got[1] != 0xFE {
@@ -85,16 +85,16 @@ func TestGenerateDaemonWrapper_RejectsControlBytes(t *testing.T) {
 		{"del", "C:\\g\x7f.exe"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := GenerateDaemonWrapper(Options{BinPath: tc.bin})
+			got, err := generateDaemonWrapper(Options{BinPath: tc.bin})
 			if err == nil {
-				t.Fatalf("GenerateDaemonWrapper accepted a BinPath containing a control byte "+
+				t.Fatalf("generateDaemonWrapper accepted a BinPath containing a control byte "+
 					"and rendered:\n%q\nIt must refuse (#6325 F4, mirroring #6185)", got)
 			}
 			if !strings.Contains(err.Error(), "control character") {
 				t.Errorf("error does not name the cause: %v", err)
 			}
 			if got != nil {
-				t.Errorf("GenerateDaemonWrapper returned %d bytes alongside its error; it must render nothing", len(got))
+				t.Errorf("generateDaemonWrapper returned %d bytes alongside its error; it must render nothing", len(got))
 			}
 		})
 	}
@@ -106,12 +106,35 @@ func TestGenerateDaemonWrapper_RejectsControlBytes(t *testing.T) {
 // CreateProcess. `"` is illegal in a Win32 path, so refusing costs nothing and
 // keeps the renderer honest about what it can escape.
 func TestGenerateDaemonWrapper_RejectsDoubleQuote(t *testing.T) {
-	got, err := GenerateDaemonWrapper(Options{BinPath: `C:\a"b\grafel.exe`})
+	got, err := generateDaemonWrapper(Options{BinPath: `C:\a"b\grafel.exe`})
 	if err == nil {
-		t.Fatalf("GenerateDaemonWrapper accepted a BinPath containing a double quote:\n%q", got)
+		t.Fatalf("generateDaemonWrapper accepted a BinPath containing a double quote:\n%q", got)
 	}
 	if !strings.Contains(err.Error(), "double quote") {
 		t.Errorf("error does not name the cause: %v", err)
+	}
+}
+
+// TestGenerateDaemonWrapper_RejectsTrailingBackslash — #6325 F4, review R2.
+// This is NOT an injection: WScript.Shell.Run calls CreateProcess with
+// lpApplicationName == NULL, and CreateProcess's first-token parse takes
+// everything up to the terminating quote with no backslash-escape rules, so
+// `"C:\grafel\" serve` merely fails to resolve. The rule exists for
+// consistency with the double-quote refusal one line above it: BinPath comes
+// from os.Executable() and always ends in `.exe`, so refusing costs nothing
+// and keeps validateWrapperFields a real mirror of validateUnitFields (#6185)
+// rather than a partial one.
+func TestGenerateDaemonWrapper_RejectsTrailingBackslash(t *testing.T) {
+	got, err := generateDaemonWrapper(Options{BinPath: `C:\Users\me\.grafel\bin\`})
+	if err == nil {
+		t.Fatalf("generateDaemonWrapper accepted a BinPath ending in a backslash:\n%q", got)
+	}
+	if !strings.Contains(err.Error(), "backslash") {
+		t.Errorf("error does not name the cause: %v", err)
+	}
+	// A backslash anywhere else is ordinary and must still render.
+	if _, err := generateDaemonWrapper(Options{BinPath: `C:\Users\me\.grafel\bin\grafel.exe`}); err != nil {
+		t.Errorf("a normal Windows path was rejected: %v", err)
 	}
 }
 
@@ -119,15 +142,15 @@ func TestGenerateDaemonWrapper_RejectsDoubleQuote(t *testing.T) {
 // depends on the renderer being a pure function of Options.
 func TestGenerateDaemonWrapper_Deterministic(t *testing.T) {
 	opts := Options{BinPath: `C:\Users\José\.grafel\bin\grafel.exe`}
-	a, err := GenerateDaemonWrapper(opts)
+	a, err := generateDaemonWrapper(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := GenerateDaemonWrapper(opts)
+	b, err := generateDaemonWrapper(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(a) != string(b) {
-		t.Error("GenerateDaemonWrapper is not deterministic")
+		t.Error("generateDaemonWrapper is not deterministic")
 	}
 }

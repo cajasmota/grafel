@@ -210,7 +210,7 @@ func (m *schtasksManager) WriteUnit() error {
 	if err != nil {
 		return fmt.Errorf("generate task XML: %w", err)
 	}
-	wrapper, err := GenerateDaemonWrapper(m.opts)
+	wrapper, err := generateDaemonWrapper(m.opts)
 	if err != nil {
 		return fmt.Errorf("generate daemon wrapper: %w", err)
 	}

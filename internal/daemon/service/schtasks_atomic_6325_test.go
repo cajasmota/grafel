@@ -35,9 +35,31 @@ func TestWriteServiceArtifact_ReplacesRatherThanTruncates(t *testing.T) {
 	}
 
 	// Hold a handle open across the write, the way a scheduler-launched
-	// wscript.exe would. Skipped on Windows, where holding a read handle over
-	// a ReplaceFile is its own (already covered) concurrency test in
-	// internal/atomicfile.
+	// wscript.exe would — on unix only, and the reason is worth stating
+	// plainly because it bounds what F3 actually buys on the platform this
+	// code runs on.
+	//
+	// "A handle opened before the write still reads the complete previous
+	// content" is a POSIX property. rename(2) leaves the old inode alive for
+	// anyone already holding it. Windows has no equivalent: atomicfile goes
+	// renameAtomic -> os.Rename -> syscall.Rename ->
+	// MoveFileEx(MOVEFILE_REPLACE_EXISTING), which needs DELETE access on the
+	// destination, and Go's syscall.Open opens with a sharemode of
+	// FILE_SHARE_READ|FILE_SHARE_WRITE and no FILE_SHARE_DELETE
+	// (go1.26 src/syscall/syscall_windows.go:395, unconditional). So this
+	// exact scenario does not merely behave differently on Windows — it
+	// deterministically fails the rename, burns the ~40x5ms retry budget and
+	// surfaces as an install error. It is skipped because the property is
+	// false there, not because it is flaky.
+	//
+	// What F3 buys on Windows is therefore the weaker but still real
+	// guarantee: the destination is never OBSERVABLE half-written. The
+	// failure mode for a scheduler launch racing an install changes from a
+	// silently truncated .vbs (a dead daemon with no console and no log) to a
+	// loud, retried, reported install error. That is the whole point.
+	//
+	// The inode-identity assertion below is the platform-independent half and
+	// runs everywhere.
 	var f *os.File
 	if runtime.GOOS != "windows" {
 		f, err = os.Open(path)
@@ -62,7 +84,8 @@ func TestWriteServiceArtifact_ReplacesRatherThanTruncates(t *testing.T) {
 			"a half-written wrapper (#6325 F3)")
 	}
 
-	// The pre-existing handle must still see the complete old file.
+	// The pre-existing handle must still see the complete old file (unix only,
+	// per the note above).
 	if f != nil {
 		buf := make([]byte, len(oldContent)+len(newContent))
 		n, _ := f.ReadAt(buf, 0)
