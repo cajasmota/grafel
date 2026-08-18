@@ -6,6 +6,8 @@
 //   - member function definitions → Kind="SCOPE.Operation", Subtype="member"
 //   - type declarations (record, discriminated union, class, interface, struct, alias)
 //     → Kind="SCOPE.Component"
+//   - `inherit Base()` → EXTENDS edge, `interface IFoo with` → IMPLEMENTS edge,
+//     both embedded on the owning TYPE record (#6326)
 //   - open statements → IMPORTS edges
 //   - function applications → CALLS edges. Captured call forms: paren `name(`,
 //     pipe `|> name`, compose `>> name`, and space-applied `head arg`
@@ -81,6 +83,55 @@ var (
 		`(?m)^[ \t]*open\s+([\w.]+)`,
 	)
 
+	// #6326 — a single-quoted CHAR literal holding a brace: `'{'` / `'}'`.
+	// stripStringsAndComments has no case for char literals and cannot naively
+	// grow one, because F# generic parameters (`'T`, `<'K,'V>`) open with the
+	// same byte and never close. Matching only the two brace-bearing literals
+	// sidesteps that entirely: `'{'` and `'}'` are unambiguous three-byte
+	// sequences, and a generic parameter can never look like one. Braces are
+	// the only characters insideBraces counts, so nothing else needs blanking.
+	charBraceRE = regexp.MustCompile(`'[{}]'`)
+
+	// #6326 — inheritance: `inherit Base()`, `inherit Base(args)`, `inherit Base`,
+	// `inherit Ns.Generic<'T>()`. The base name is captured WITHOUT its generic
+	// arguments or constructor call so the ToID is the bare type name the
+	// resolver indexes. `inherit` is a keyword-led, line-anchored clause, so an
+	// anchored scan over the owning type's body is exact.
+	inheritRE = regexp.MustCompile(
+		`(?m)^[ \t]*inherit[ \t]+([A-Za-z_][A-Za-z0-9_'.]*)`,
+	)
+
+	// #6326 — interface implementation: `interface IFoo with`. Three guards keep
+	// a type DECLARATION from emitting a bogus self-IMPLEMENTS. NONE of them is
+	// independently bound by a test; the accounting is stated here rather than
+	// implied, because the redundancy is easy to mistake for coverage:
+	//
+	//   (a) the name must sit on the SAME line as the keyword ([ \t]+, never
+	//       \s+). The F# grammar puts it there, and \s+ would let a bare
+	//       `interface` line reach down and capture the next line's token.
+	//   (b) the clause must end in `with`, which is what marks an
+	//       implementation rather than a mention.
+	//   (c) fsharpKeywords in the emitter below. Every valid F# continuation of
+	//       a bare `interface` line (`abstract`, `inherit`, `member`, `end`) is
+	//       a keyword.
+	//
+	// Each masks the others on every fixture that could tell them apart. Mutation
+	// measured, not assumed: dropping any ONE survives the suite, dropping any
+	// TWO survives it as well, and only dropping all THREE is caught — by
+	// TestFSharp_InterfaceDeclarationIsNotImplements, which then reports
+	// `IGreeter IMPLEMENTS = [abstract]`.
+	//
+	// (b) was briefly bound by a `.fsi` fixture — signature files declare
+	// `interface IDisposable` with no `with` and no members — but `.fsi` no
+	// longer reaches this scanner at all (see collectHierarchyEdges), so that
+	// binding is gone and the signature form is unreachable. The guards are
+	// kept because they encode the grammar, not because anything proves they
+	// earn their place. Said plainly so nobody reads the belt-and-braces as
+	// verified.
+	interfaceImplRE = regexp.MustCompile(
+		`(?m)^[ \t]*interface[ \t]+([A-Za-z_][A-Za-z0-9_'.]*)[ \t]*(?:<[^>]*>)?[ \t]+with\b`,
+	)
+
 	// function application call: identifier( or Module.function(
 	// Also detects pipe targets: |> identifier or |> Module.name
 	callRE = regexp.MustCompile(
@@ -122,6 +173,12 @@ var (
 )
 
 // fsharpKeywords are tokens the call regex picks up but are not real calls.
+//
+// #6326: `inherit` and `interface` stay in this set. It gates addCall only —
+// i.e. it suppresses the KEYWORD ITSELF from becoming a CALLS target. The
+// hierarchy scanner below is a separate, line-anchored pass that reads the
+// keyword's OPERAND, so suppression as a call target and recognition as an
+// edge keyword do not compete.
 var fsharpKeywords = map[string]bool{
 	"if": true, "elif": true, "else": true, "then": true,
 	"while": true, "for": true, "do": true, "done": true,
@@ -155,6 +212,12 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 
 func extractFSharp(src, filePath string) []types.EntityRecord {
 	var entities []types.EntityRecord
+
+	// #6326: a `.fsi` signature file emits no hierarchy edges — see
+	// collectHierarchyEdges. Passed as a bool rather than the path so the
+	// emitter cannot reach a file path at all, which is what keeps a filePath
+	// from ever finding its way into FromID (#6295).
+	signatureFile := strings.HasSuffix(strings.ToLower(filePath), ".fsi")
 
 	imports := collectOpenStatements(src)
 	importEntities := buildImportEntities(filePath, imports)
@@ -387,6 +450,11 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 			})
 		}
 
+		// #6326: inheritance topology — `inherit Base()` → EXTENDS,
+		// `interface IFoo with` → IMPLEMENTS. Emitted EMBEDDED on this type's
+		// record so the edge anchors on the TYPE, never on the file.
+		rels = append(rels, collectHierarchyEdges(body, startLine, signatureFile)...)
+
 		// #4942: emit DU cases / record fields as SCOPE.Schema sub-entities,
 		// with a type→member CONTAINS edge each.
 		memberEnts, memberRels := extractTypeMembers(name, subtype, body, filePath, startLine)
@@ -600,6 +668,157 @@ func countIndent(line string) int {
 	return n
 }
 
+// insideBraces reports whether off sits inside an unclosed `{ ... }` region of
+// scrubbed.
+//
+// An F# OBJECT EXPRESSION carries its own inheritance clauses:
+//
+//	member _.Enumerate () =
+//	    { new IEnumerator<int> with
+//	          member _.Current = 0
+//	      interface IEnumerator with     ← the anonymous object's, not the type's
+//	      interface IDisposable with     ← likewise
+//	          member _.Dispose () = () }
+//
+// Those `interface X with` lines are line-anchored exactly like a real one, so
+// a flat scan of the type body attributes them to the enclosing type and
+// fabricates edges it does not have. That is the custom-sequence /
+// IDisposable-wrapper idiom, not a contrived shape, and when it is mixed with a
+// genuine clause the true and the fabricated edge are indistinguishable in the
+// output. #6326's premise is that a false-positive edge is worse than a missing
+// one, so the whole braced region is skipped.
+//
+// Depth, not a `{ new` sniff: a type's own clauses always sit at brace depth 0
+// of its body (F# class members are indentation-delimited, not braced), while
+// everything a `{ ... }` encloses — object expression or record literal — is at
+// depth ≥ 1 and is never the type's own. Counting is balanced rather than
+// sticky, so a record literal in one member does not swallow a real clause in
+// the next.
+//
+// The count needs every brace that is not real code to be gone, which is a
+// STRICTER requirement than the one stripStringsAndComments was built for. That
+// scrubber suppresses call TOKENS, where a surviving brace was harmless; here a
+// single stray brace flips the depth for the rest of the body. Two gaps
+// therefore have to be closed rather than assumed away:
+//
+//   - Char literals. The scrubber has no case for `'x'` and cannot naively grow
+//     one (`'T` generic parameters open the same way and never close), so an
+//     unmatched `'}'` used to cancel an object expression's `{` and re-admit
+//     its clauses at apparent depth 0 — re-opening the exact false positive
+//     this gate exists to close — while a lone `'{'` suppressed every real
+//     clause below it. charBraceRE blanks the two brace-bearing literals here.
+//     A balanced `match c with | '{' -> ... | '}' -> ...` was always fine, which
+//     is why this is narrow, but `c = '}'` on its own is ordinary F#.
+//   - Nested block comments, handled at the source in stripStringsAndComments.
+//
+// The caller passes the SCRUBBED body; this function closes the char-literal
+// gap on top of it.
+func insideBraces(scrubbed string, off int) bool {
+	if off > len(scrubbed) {
+		off = len(scrubbed)
+	}
+	prefix := charBraceRE.ReplaceAllString(scrubbed[:off], "   ")
+	return strings.Count(prefix, "{") > strings.Count(prefix, "}")
+}
+
+// collectHierarchyEdges scans a TYPE body for F#'s two inheritance clauses and
+// returns the corresponding edges (#6326):
+//
+//	type Derived() =
+//	    inherit Base()                  → EXTENDS  Base
+//	    interface IDisposable with      → IMPLEMENTS IDisposable
+//	        member _.Dispose () = ()
+//
+// The returned records are meant to be EMBEDDED on the owning type's
+// EntityRecord, not appended to a standalone relationship slice: only
+// resolve.ReferencesEmbedded supplies the parent's file and package dir, which
+// is what the six locality tiers rank on. resolve.References, which the
+// standalone slice goes through, has no caller context at all.
+//
+// FromID is deliberately left EMPTY. The assembly loop stamps the owning
+// record's own entity id, which is the only value that anchors the edge on the
+// TYPE. Passing filePath here would be non-empty and non-hex, so
+// ReferencesEmbedded would rewrite it — and the file entity carries that same
+// path, so every type in a multi-type file would merge its bases onto the one
+// file component. That is the defect fixed in #6295 (Solidity) and #6298
+// (Verilog, Astro); this is the same contract, stated once.
+//
+// The bare type name is used as the ToID (the Solidity/Crystal convention) so
+// the resolver can bind the base across files by name; a file-pinned structural
+// ref would be wrong, since a base type is usually declared elsewhere.
+//
+// A `.fsi` SIGNATURE file emits nothing. `.fsi` routes to this extractor
+// (classifier.go:454, substrate.go:193), and F# requires every signature file
+// to be paired with the `.fs` it describes, which carries the same clauses. But
+// graph.EntityID hashes SourceFile, so the `.fsi` and `.fs` components get
+// different ids and the (from, to, kind) dedup triple differs — the edge lands
+// twice, inheritance queries return the type twice, and centrality and
+// impact-radius double-weight it. That is the same "one logical thing, two
+// nodes" shape as #6295/#6298, so the `.fs` is the single source of truth. The
+// gate keys on `.fsi` specifically, not on "not `.fs`": a `.fsx` script is
+// standalone and keeps its edges.
+//
+// Two known upstream vectors that limit this scan, noted for the record and
+// deliberately NOT fixed here (each needs its own issue and its own tests):
+//
+//   - extractIndentBody has a dead band. A line indented at exactly
+//     baseIndentLen+1 is neither appended nor treated as a terminator, so the
+//     scan silently skips it and keeps going. An off-by-one-indented sibling
+//     type can therefore fall inside the PREVIOUS type's body and have its
+//     `inherit` clause attributed to the wrong owner. Low frequency, and
+//     invisible to this suite.
+//   - typeRE does not admit the self-identifier form `type X() as this =`, so
+//     those types produce no entity at all — and hence no hierarchy edge. That
+//     form is common precisely on the inheriting classes this scan targets.
+func collectHierarchyEdges(body string, typeStartLine int, signatureFile bool) []types.RelationshipRecord {
+	if body == "" || signatureFile {
+		return nil
+	}
+	// Comments and string literals must not look like inheritance clauses.
+	// stripStringsAndComments preserves byte offsets, so line stamping is exact.
+	scrubbed := stripStringsAndComments(body)
+
+	var out []types.RelationshipRecord
+	seen := make(map[string]bool)
+
+	add := func(kind, target string, off int) {
+		target = strings.TrimSuffix(target, ".")
+		if target == "" || fsharpKeywords[target] {
+			return
+		}
+		key := kind + ":" + target
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, types.RelationshipRecord{
+			// FromID intentionally empty — see the doc comment above.
+			ToID: target,
+			Kind: kind,
+			Properties: types.Props{
+				// Count newlines in the ORIGINAL body, not in the scrub:
+				// stripStringsAndComments blanks the newlines inside block
+				// comments and triple-quoted strings, so a scrub-based count
+				// under-reports every line below one. Byte offsets are
+				// preserved by the scrub, so `body[:off]` is the exact prefix.
+				{K: "line", V: strconv.Itoa(typeStartLine + strings.Count(body[:off], "\n"))},
+			},
+		})
+	}
+
+	for _, m := range inheritRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) >= 4 && m[2] >= 0 && !insideBraces(scrubbed, m[0]) {
+			add("EXTENDS", scrubbed[m[2]:m[3]], m[2])
+		}
+	}
+	for _, m := range interfaceImplRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) >= 4 && m[2] >= 0 && !insideBraces(scrubbed, m[0]) {
+			add("IMPLEMENTS", scrubbed[m[2]:m[3]], m[2])
+		}
+	}
+	return out
+}
+
 // collectCalls extracts CALLS edges from a function body.
 //
 // bodyStartLine is the 1-based FILE line at which the body's first line sits
@@ -763,17 +982,42 @@ func stripStringsAndComments(src string) string {
 			out[i] = ch
 			i++
 		case '(':
-			// F# block comment: (* ... *)
-			if i+1 < len(src) && src[i+1] == '*' {
+			// F# block comment: (* ... *). F# block comments NEST, so this
+			// tracks depth instead of stopping at the first `*)` — otherwise
+			// the tail of an outer comment stays visible and its tokens (and,
+			// for insideBraces, its braces) are read as code. `(*)` is the
+			// multiplication operator passed as a function value, not a comment
+			// opener, so it is excluded — without that, `List.fold (*) 1 xs`
+			// opens a runaway comment that eats the clauses below it.
+			//
+			// The exclusion is deliberately at the OPENING check only, not
+			// inside the nesting loop, so `(* fold with the (*) operator *)`
+			// DOES still run away. That is not a defect to fix: F# nests block
+			// comments, so the inner `(*` opens a nested comment that the lone
+			// `*)` closes and leaves the outer one unbalanced, and fsc rejects
+			// such a file outright. Matching the compiler beats out-guessing it.
+			// Both halves are pinned by tests — see
+			// TestFSharp_MultiplicationOperatorIsNotACommentOpener and
+			// TestFSharp_OperatorInsideBlockCommentRunsAway_MatchesCompiler.
+			if i+1 < len(src) && src[i+1] == '*' && !(i+2 < len(src) && src[i+2] == ')') {
+				depth := 1
 				out[i] = ' '
 				out[i+1] = ' '
 				i += 2
-				for i < len(src) {
-					if i+1 < len(src) && src[i] == '*' && src[i+1] == ')' {
+				for i < len(src) && depth > 0 {
+					if i+1 < len(src) && src[i] == '(' && src[i+1] == '*' {
+						depth++
 						out[i] = ' '
 						out[i+1] = ' '
 						i += 2
-						break
+						continue
+					}
+					if i+1 < len(src) && src[i] == '*' && src[i+1] == ')' {
+						depth--
+						out[i] = ' '
+						out[i+1] = ' '
+						i += 2
+						continue
 					}
 					out[i] = ' '
 					i++
