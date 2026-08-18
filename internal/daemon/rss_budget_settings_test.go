@@ -83,3 +83,22 @@ func TestPersistConfiguredRSSBudgetMBRejectsOutOfRange(t *testing.T) {
 		}
 	}
 }
+func TestRSSBudgetMBDefault(t *testing.T) {
+	tests := []struct {
+		name          string
+		totalMemoryMB int64
+		want          int64
+	}{
+		{name: "unknown memory", totalMemoryMB: 0, want: 500},
+		{name: "four GiB machine", totalMemoryMB: 4096, want: 512},
+		{name: "eight GiB machine", totalMemoryMB: 8192, want: 1024},
+		{name: "large machine is capped", totalMemoryMB: 32768, want: 2048},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := rssBudgetMB(tt.totalMemoryMB); got != tt.want {
+				t.Fatalf("rssBudgetMB(%d) = %d, want %d", tt.totalMemoryMB, got, tt.want)
+			}
+		})
+	}
+}
