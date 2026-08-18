@@ -18,9 +18,9 @@ import (
 // arbitrary times. A LogonTrigger firing or a RestartOnFailure retry landing
 // mid-write hands wscript.exe a truncated .vbs.
 //
-// This asserts the property that distinguishes temp+rename from truncate:
-// the destination gets a NEW inode, so any handle already resolved to the old
-// file keeps seeing complete, valid old content.
+// This asserts the property that distinguishes temp+rename from truncate: the
+// destination ends up being a DIFFERENT file, not the same file with new bytes
+// in it.
 func TestWriteServiceArtifact_ReplacesRatherThanTruncates(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "com.grafel.daemon.vbs")
@@ -29,10 +29,7 @@ func TestWriteServiceArtifact_ReplacesRatherThanTruncates(t *testing.T) {
 	if err := os.WriteFile(path, []byte(oldContent), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := fileIdentity6325(t, path)
 
 	// Hold a handle open across the write, the way a scheduler-launched
 	// wscript.exe would — on unix only, and the reason is worth stating
@@ -58,10 +55,11 @@ func TestWriteServiceArtifact_ReplacesRatherThanTruncates(t *testing.T) {
 	// silently truncated .vbs (a dead daemon with no console and no log) to a
 	// loud, retried, reported install error. That is the whole point.
 	//
-	// The inode-identity assertion below is the platform-independent half and
+	// The file-identity assertion below is the platform-independent half and
 	// runs everywhere.
 	var f *os.File
 	if runtime.GOOS != "windows" {
+		var err error
 		f, err = os.Open(path)
 		if err != nil {
 			t.Fatal(err)
@@ -74,10 +72,7 @@ func TestWriteServiceArtifact_ReplacesRatherThanTruncates(t *testing.T) {
 		t.Fatalf("writeServiceArtifact: %v", err)
 	}
 
-	after, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	after := fileIdentity6325(t, path)
 	if os.SameFile(before, after) {
 		t.Error("writeServiceArtifact wrote through the SAME file identity — it truncated the " +
 			"live file in place instead of temp+rename; a concurrent scheduler launch can read " +
@@ -93,6 +88,27 @@ func TestWriteServiceArtifact_ReplacesRatherThanTruncates(t *testing.T) {
 			t.Errorf("a handle opened before the write now reads %q; with temp+rename it must still "+
 				"read the complete previous content %q (#6325 F3)", string(buf[:n]), oldContent)
 		}
+	}
+
+	// CONTROL. The assertion above is only meaningful if os.SameFile can
+	// actually tell "replaced" from "rewritten in place" on THIS platform, and
+	// on Windows that depends on how the FileInfos were obtained (see
+	// fileIdentity6325). So prove the instrument discriminates, on the same
+	// runner, in the same test: an in-place os.WriteFile must come back SAME.
+	// If this control ever fails, the negative assertion above is not evidence
+	// of anything and must not be trusted.
+	ctlPath := filepath.Join(t.TempDir(), "control.vbs")
+	if err := os.WriteFile(ctlPath, []byte("first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctlBefore := fileIdentity6325(t, ctlPath)
+	if err := os.WriteFile(ctlPath, []byte("second\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(ctlBefore, fileIdentity6325(t, ctlPath)) {
+		t.Error("CONTROL FAILED: an in-place os.WriteFile changed the observed file identity, so " +
+			"os.SameFile cannot distinguish replace from rewrite here and the assertion above " +
+			"proves nothing. Fix the instrument, do not weaken the assertion (#6325 F3)")
 	}
 
 	// And the destination really holds the new bytes.
@@ -140,6 +156,46 @@ func TestWriteUnit_UsesAtomicArtifactWrites(t *testing.T) {
 			"is a pure function of the fixed taskName, so the path is stable and the old write " +
 			"destroyed the live action's script rather than preserving it (#6325 F3)")
 	}
+}
+
+// fileIdentity6325 captures path's file identity NOW, in a form os.SameFile can
+// compare later.
+//
+// It must not be os.Stat. On Windows os.Stat takes the GetFileAttributesEx
+// fast path and calls saveInfoFromPath, which stores the PATH STRING and
+// leaves vol/idxhi/idxlo unset; the identity is then resolved lazily inside
+// os.SameFile by loadFileId, which does CreateFile(fs.path) at COMPARISON
+// time (go1.26 src/os/types_windows.go:287-334, 353-362). Two os.Stat results
+// for the same path therefore both resolve to whatever lives at that path when
+// os.SameFile runs — i.e. after the write — and os.SameFile returns true
+// unconditionally. That is a tautology, not a measurement, and it is what
+// turned this test red on windows-latest (run 32176843868) while the
+// production code was correct.
+//
+// (*os.File).Stat goes through statHandle ->
+// newFileStatFromGetFileInformationByHandle, which fills vol/idxhi/idxlo
+// EAGERLY from the open handle and deliberately clears fs.path — the stdlib
+// comment there says "these are already set, so set fileStat.path to ” to
+// prevent os.SameFile doing it again". The returned FileInfo is a plain value,
+// so it stays valid after the handle is closed.
+//
+// The handle is closed before returning, which matters on Windows: holding it
+// across the replace would deny MoveFileEx the DELETE access it needs, because
+// Go's syscall.Open passes no FILE_SHARE_DELETE.
+//
+// On unix this is just the inode, captured at open time either way.
+func fileIdentity6325(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open %s: %v", path, err)
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	return fi
 }
 
 func readSourceFile6325(t *testing.T, file string) string {
