@@ -22,13 +22,14 @@
 //  1. TestNew_HasNoConfigurationParameter — compile-time: the production
 //     constructor takes a tracer and nothing else. Re-adding a directory
 //     parameter breaks the build here.
-//  2. TestClassifierSourceHasNoGlobSkipMachinery — source-level: no
-//     glob-matching or YAML-decoding machinery exists in the package at all,
-//     reachable or not. This is the assertion that catches a REINTRODUCED BUT
-//     UNWIRED loader, which no behavioural test can see.
+//  2. TestClassifierSourceIsPureAndConfigFree — source-level, and the only
+//     assertion that can see a REINTRODUCED BUT UNWIRED loader, which by
+//     definition changes no behaviour. See its own doc comment for exactly
+//     what it does and does not bind — it is narrower than it looks.
 //  3. TestGeneratedAndTestFileNames_AreNotSkipped — behavioural: the exact
 //     filenames the old config would have eaten still classify normally. This
 //     catches a loader that is reintroduced AND wired up.
+//  4. TestNoSkipPatternsYAMLInTree — the deleted data has not come back.
 package classifier_test
 
 import (
@@ -60,26 +61,79 @@ func TestNew_HasNoConfigurationParameter(t *testing.T) {
 	}
 }
 
-// forbiddenInClassifierSource are tokens whose presence in non-test package
-// source means a file-glob skip mechanism or a YAML config loader has come
-// back. Each maps to the reason it is banned.
+// forbiddenInClassifierSource are tokens banned from the package's production
+// source, each mapped to the reason.
+//
+// The first group is the load-bearing one. The classifier is a pure function of
+// (path, size): it opens nothing, walks nothing, and embeds nothing. Every
+// configuration loader must read its configuration from somewhere, so banning
+// I/O outright catches a loader regardless of which YAML, glob or regexp
+// library it is built from — which a list of library names cannot do.
+//
+// The second and third groups are narrower: they make the literal-revert case
+// (the likely regression) fail loudly and immediately.
 var forbiddenInClassifierSource = map[string]string{
-	"filepath.Match": "glob matching against file paths — the deleted skip mechanism's matcher",
-	"path.Match":     "glob matching against file paths — the deleted skip mechanism's matcher",
-	"yaml.Unmarshal": "YAML decoding — the classifier has no configuration file",
-	"skip_patterns":  "the deleted skip_patterns.yaml config",
-	"globSkip":       "the deleted glob-skip list",
-	"yamlDataDir":    "the deleted config-directory constructor parameter",
+	// Group 1 — no I/O and no embedded data. A config loader cannot exist
+	// without one of these.
+	"os.ReadFile":   "file I/O — the classifier is a pure function of (path, size) and loads no configuration",
+	"os.ReadDir":    "directory I/O — the classifier loads no configuration",
+	"os.Open":       "file I/O — the classifier loads no configuration",
+	"os.Stat":       "filesystem access — the classifier loads no configuration",
+	"ioutil":        "file I/O — the classifier loads no configuration",
+	"WalkDir":       "directory walking — the deleted loader's discovery mechanism",
+	"filepath.Walk": "directory walking — the deleted loader's discovery mechanism",
+	"go:embed":      "embedded data — the classifier carries no rule corpus",
+	`"embed"`:       "embedded data — the classifier carries no rule corpus",
+	// Group 2 — no config decoding.
+	"gopkg.in/yaml": "YAML decoding — the classifier has no configuration file",
+	"encoding/json": "JSON decoding — the classifier has no configuration file",
+	"BurntSushi":    "TOML decoding — the classifier has no configuration file",
+	// Group 3 — no glob machinery, and no verbatim resurrection of the
+	// deleted identifiers. `.Match(` covers filepath.Match and path.Match in
+	// one token without double-reporting (regexp uses .MatchString, which the
+	// package legitimately calls).
+	".Match(":       "glob matching against file paths — the deleted skip mechanism's matcher",
+	"doublestar":    "glob library — see #6329 before adding pattern matching here",
+	"gobwas/glob":   "glob library — see #6329 before adding pattern matching here",
+	"skip_patterns": "the deleted skip_patterns.yaml config",
+	"globSkip":      "the deleted glob-skip list",
+	"yamlDataDir":   "the deleted config-directory constructor parameter",
 }
 
-// TestClassifierSourceHasNoGlobSkipMachinery asserts the package contains no
-// glob-skip or YAML-config machinery in its production source.
+// TestClassifierSourceIsPureAndConfigFree asserts that the classifier package's
+// production source does no I/O, decodes no configuration format, and contains
+// none of the deleted machinery's identifiers.
 //
-// A behavioural test cannot express this: a reintroduced loader that nothing
-// calls changes no observable behaviour, yet is exactly the hazard #6330
-// removed — unvalidated config sitting one line away from being switched on.
-// So this test reads the source.
-func TestClassifierSourceHasNoGlobSkipMachinery(t *testing.T) {
+// Why a source scan at all: a reintroduced loader that nothing calls changes no
+// observable behaviour, yet is exactly the hazard #6330 removed — unvalidated
+// config sitting one line away from being switched on. No behavioural test can
+// see it.
+//
+// WHAT THIS BINDS, precisely, so nobody trusts it for more than it delivers:
+//
+//   - Within THIS package's non-test .go files: no file or directory I/O, no
+//     embedded data, no YAML/JSON/TOML decoder, no glob matcher, and no
+//     verbatim reuse of the deleted names. Since any configuration loader must
+//     read its configuration from somewhere, the I/O ban is the part that
+//     generalises beyond the specific libraries listed.
+//
+// WHAT THIS DOES NOT BIND — known, accepted gaps:
+//
+//   - A loader in a SIBLING PACKAGE. The scan is deliberately non-recursive
+//     (os.ReadDir(".")); recursing would drag in unrelated packages that
+//     legitimately read files and generate false positives. A dead classifier
+//     config living elsewhere is out of scope here.
+//   - A pattern list held entirely IN MEMORY — a []string of suffixes matched
+//     with strings.HasSuffix needs no I/O and no glob library, and would pass.
+//     That is a smaller hazard than the deleted one (it is visible in review,
+//     has no config directory that looks authoritative, and cannot silently
+//     diverge from the code), but it is not zero, and this test will not catch
+//     it. Behavioural coverage below is what guards that case.
+//   - regexp, which the package legitimately uses.
+//
+// In short: this makes the literal-revert case expensive and any I/O-based
+// loader impossible. It is not a proof of absence.
+func TestClassifierSourceIsPureAndConfigFree(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatalf("read package dir: %v", err)
@@ -106,7 +160,9 @@ func TestClassifierSourceHasNoGlobSkipMachinery(t *testing.T) {
 			}
 		}
 	}
-	// Guard against the scan silently covering nothing.
+	// Belt-and-braces: unreachable today (the package cannot compile with zero
+	// production .go files), but it becomes load-bearing the moment anyone
+	// narrows the loop above with a filename filter.
 	if scanned == 0 {
 		t.Fatal("scanned 0 production .go files — the source scan is vacuous")
 	}
