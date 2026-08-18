@@ -85,13 +85,6 @@ type daemonTaskVars struct {
 	WrapperPath string
 }
 
-const daemonWrapperTemplate = `Option Explicit
-Dim shell, exitCode
-Set shell = CreateObject("WScript.Shell")
-exitCode = shell.Run("{{.Command}}", 0, True)
-WScript.Quit exitCode
-`
-
 // taskXMLPath returns the path where the task XML is staged before being
 // imported by schtasks. We use %LOCALAPPDATA%\grafel\tasks\ which is
 // user-private and does not require elevation.
@@ -128,25 +121,6 @@ func xmlText(value string) string {
 	return buf.String()
 }
 
-func vbsString(value string) string {
-	return strings.ReplaceAll(value, `"`, `""`)
-}
-
-func generateDaemonWrapper(opts Options) ([]byte, error) {
-	// WScript.Shell.Run receives one command-line string. Quote the executable
-	// path for spaces and double embedded quotes for VBScript string syntax.
-	command := `"` + opts.BinPath + `" serve`
-	tmpl, err := template.New("wrapper").Parse(daemonWrapperTemplate)
-	if err != nil {
-		return nil, err
-	}
-	var buf strings.Builder
-	if err := tmpl.Execute(&buf, struct{ Command string }{Command: vbsString(command)}); err != nil {
-		return nil, err
-	}
-	return []byte(buf.String()), nil
-}
-
 // currentUserSID returns the SID string for the running user.
 // On failure it returns an empty string — the task template degrades a missing
 // UserId to "fire on any logon" rather than emitting invalid XML.
@@ -176,14 +150,15 @@ func schtasksCmd(args ...string) *exec.Cmd {
 	return cmd
 }
 
-// GenerateTaskXML renders the Task Scheduler XML for the given options.
-// Exported for testing; production code calls install() which calls this.
-func GenerateTaskXML(opts Options) ([]byte, error) {
-	xmlPath, err := taskXMLPath()
-	if err != nil {
-		return nil, err
-	}
-	return generateTaskXML(opts, taskWrapperPath(xmlPath))
+// GenerateTaskXML renders the Task Scheduler XML for the given options and
+// wrapper path. Exported for testing; production code calls WriteUnit, which
+// calls generateTaskXML with the path the manager already resolved.
+//
+// wrapperPath is a parameter rather than a taskXMLPath() call (#6325 F5): the
+// renderer is otherwise pure, and re-deriving the path here coupled it to
+// %LOCALAPPDATA% with an os.UserHomeDir() fallback for no reason.
+func GenerateTaskXML(opts Options, wrapperPath string) ([]byte, error) {
+	return generateTaskXML(opts, wrapperPath)
 }
 
 func generateTaskXML(opts Options, wrapperPath string) ([]byte, error) {
@@ -235,20 +210,30 @@ func (m *schtasksManager) WriteUnit() error {
 	if err != nil {
 		return fmt.Errorf("generate task XML: %w", err)
 	}
-	wrapper, err := generateDaemonWrapper(m.opts)
+	wrapper, err := GenerateDaemonWrapper(m.opts)
 	if err != nil {
 		return fmt.Errorf("generate daemon wrapper: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(m.xmlPath), 0o755); err != nil {
 		return fmt.Errorf("create task XML dir: %w", err)
 	}
-	// Publish the wrapper first. If the subsequent XML write fails, the
-	// scheduler still points at its previous valid action; the reverse order
-	// could leave a newly written task definition referring to no wrapper.
-	if err := os.WriteFile(m.wrapperPath, wrapper, 0o600); err != nil {
+	// Both artifacts are published by temp+rename (writeServiceArtifact), so
+	// neither destination is ever observable half-written — which matters
+	// because both paths are FIXED: taskWrapperPath and taskXMLPath are pure
+	// functions of the constant taskName, so every re-render targets exactly
+	// the file the already-registered task is pointing at. (The pre-#6325
+	// comment here claimed writing the wrapper first left the scheduler on
+	// "its previous valid action"; that was wrong — the in-place truncate
+	// destroyed the live action's script.)
+	//
+	// Wrapper before XML is retained for the one case where order still says
+	// anything: on a FIRST install a partial run leaves a wrapper with no task
+	// definition (inert) rather than a task definition pointing at a file that
+	// does not exist (a launch failure at next logon).
+	if err := writeServiceArtifact(m.wrapperPath, wrapper, 0o600); err != nil {
 		return fmt.Errorf("write daemon wrapper %s: %w", m.wrapperPath, err)
 	}
-	if err := os.WriteFile(m.xmlPath, xml, 0o644); err != nil {
+	if err := writeServiceArtifact(m.xmlPath, xml, 0o644); err != nil {
 		return fmt.Errorf("write task XML %s: %w", m.xmlPath, err)
 	}
 	return nil

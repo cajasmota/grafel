@@ -76,7 +76,12 @@ func TestWriteUnit_RewritesLegacyDaemonUnitToServe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read generated wrapper: %v", err)
 	}
-	wrapperText := string(wrapper)
+	// The wrapper is UTF-16LE-with-BOM on disk (#6325 F2) — decode before
+	// asserting on its text.
+	if len(wrapper) < 2 || wrapper[0] != 0xFF || wrapper[1] != 0xFE {
+		t.Fatalf("wrapper on disk is not UTF-16LE-with-BOM; WSH would decode it as ANSI (#6325 F2)")
+	}
+	wrapperText := decodeUTF16LEBOM(t, wrapper)
 	if !strings.Contains(wrapperText, `""C:\Program Files\grafel\grafel.exe"" serve`) {
 		t.Errorf("wrapper does not invoke grafel serve with a quoted path:\n%s", wrapper)
 	}

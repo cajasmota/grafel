@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/cajasmota/grafel/internal/version"
 )
 
@@ -211,13 +212,31 @@ func (s *Server) handleUpdatesRefreshRules(w http.ResponseWriter, r *http.Reques
 // its combined stdout+stderr output and exit error. Overridable in tests.
 type updateRunFunc func(ctx context.Context, args []string) ([]byte, error)
 
-// defaultUpdateRunner runs `<self> update [args...]` as a subprocess.
-func defaultUpdateRunner(ctx context.Context, args []string) ([]byte, error) {
+// newUpdateCmd builds the `<self> [args...]` subprocess command.
+//
+// executil.NoWindow is mandatory here: this spawn happens inside the DAEMON
+// process (POST /api/updates/apply and /api/updates/refresh-rules), and since
+// #6320 the daemon runs with no console of its own. Windows therefore
+// allocates a fresh console for any console-subsystem child — grafel.exe is
+// one — and clicking "update" in the dashboard would pop a terminal window.
+// CLI-invoked spawns (internal/cli/update.go) correctly do NOT do this: they
+// already run attached to the user's real console. See #6325.
+func newUpdateCmd(ctx context.Context, args []string) (*exec.Cmd, error) {
 	selfExe, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("cannot resolve executable: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, selfExe, args...)
+	executil.NoWindow(cmd)
+	return cmd, nil
+}
+
+// defaultUpdateRunner runs `<self> update [args...]` as a subprocess.
+func defaultUpdateRunner(ctx context.Context, args []string) ([]byte, error) {
+	cmd, err := newUpdateCmd(ctx, args)
+	if err != nil {
+		return nil, err
+	}
 	return cmd.CombinedOutput()
 }
 
