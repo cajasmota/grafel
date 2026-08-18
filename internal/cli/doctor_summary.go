@@ -37,6 +37,12 @@ type DoctorRepoHealth struct {
 	// issue AND a per-repo warning line, additively alongside (never
 	// replacing) the STALE/OK/MISSING status above.
 	RebuildFailure *statusfile.RebuildFailure
+
+	// UnsupportedExt counts the files this repo's last index pass dropped for
+	// having no extractor, keyed by extension (#6338). Read straight from the
+	// graph-stats.json sidecar; nil when the sidecar is absent, predates the
+	// field, or the repo has full extractor coverage.
+	UnsupportedExt map[string]int
 }
 
 // loadGraphFromDir is an indirection over graph.LoadGraphFromDir so tests can
@@ -71,6 +77,11 @@ type DoctorGroupHealth struct {
 	OrphanRate           float64
 	RepairCandidates     int
 	EnrichmentCandidates int
+
+	// UnsupportedExt is the per-extension count of files skipped for having no
+	// extractor, SUMMED across every repo in the group (#6338). A monorepo
+	// split into five repos is one gap, not five.
+	UnsupportedExt map[string]int
 
 	// Issues found
 	IssuesFound []string // human-readable issue descriptions
@@ -146,6 +157,7 @@ func ComputeDoctorHealth(groups []registry.GroupRef, deep bool) []*DoctorGroupHe
 
 		// Compute aggregated quality metrics
 		computeQualityMetrics(health)
+		aggregateUnsupported(health)
 
 		// Determine overall status
 		if !health.Healthy {
@@ -196,6 +208,11 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 		if json.Unmarshal(data, &side) == nil {
 			rh.Entities = side.TotalEntities
 			rh.Relationships = side.TotalRelationships
+			// #6338 — the ONLY source for this; there is nowhere else to fall
+			// back to. A file with no extractor produces no entity, no edge
+			// and no error, so nothing in the graph itself records that it was
+			// ever seen.
+			rh.UnsupportedExt = side.UnsupportedExtensions
 			if !side.ComputedAt.IsZero() {
 				rh.LastIndexed = side.ComputedAt
 				rh.LastIndexedAge = formatTimeSince(side.ComputedAt)
@@ -302,6 +319,25 @@ func computeQualityMetrics(health *DoctorGroupHealth) {
 	health.BugRate = 0.0
 }
 
+// aggregateUnsupported sums every repo's unsupported-extension counts into the
+// group total (#6338). Left nil when nothing was skipped anywhere, so the
+// renderer prints nothing at all rather than an empty section.
+func aggregateUnsupported(health *DoctorGroupHealth) {
+	var total map[string]int
+	for _, rh := range health.Repos {
+		for ext, n := range rh.UnsupportedExt {
+			if n <= 0 {
+				continue
+			}
+			if total == nil {
+				total = make(map[string]int)
+			}
+			total[ext] += n
+		}
+	}
+	health.UnsupportedExt = total
+}
+
 // PrintDoctorHealth writes the enriched health report to w in human-readable format.
 func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 	for _, g := range groups {
@@ -357,6 +393,16 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 			fmtInt(g.OrphanEntities), g.OrphanRate)
 		fmt.Fprintf(w, "    Repair candidates: %s\n", fmtInt(g.RepairCandidates))
 		fmt.Fprintf(w, "    Enrichment opportunities: %s\n", fmtInt(g.EnrichmentCandidates))
+
+		// #6338 — files grafel SAW and silently indexed nothing for. Printed
+		// only when there are any: on a repo with full extractor coverage the
+		// output below is byte-identical to what it was before this section
+		// existed. doctor is the diagnostic surface, so it shows the full
+		// table (min 1 file); `status` applies a floor.
+		if rows := UnsupportedRows(g.UnsupportedExt, DoctorUnsupportedMinFiles); len(rows) > 0 {
+			fmt.Fprintf(w, "\n")
+			PrintUnsupportedLanguages(w, "  ", rows)
+		}
 
 		// Issues section
 		if len(g.IssuesFound) > 0 {

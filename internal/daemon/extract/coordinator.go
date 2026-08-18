@@ -354,6 +354,13 @@ type Result struct {
 	// repos. Use TrueCount / (TrueCount + FalseCount) as the health ratio.
 	Pass1PlumbedTrueCount  int
 	Pass1PlumbedFalseCount int
+
+	// UnsupportedExt counts the files bucketByLanguage dropped because no
+	// extractor claims their extension, keyed by lowercased extension (#6338).
+	// Collected in the coordinator because that is where this path makes the
+	// decision — these files are never written into a batch, so no subprocess
+	// ever sees them and none can report them.
+	UnsupportedExt map[string]int
 }
 
 // Coordinate is the daemon-side entrypoint that replaces the in-process
@@ -404,10 +411,7 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 
 	// Pre-classify so we can partition by language. Classification is
 	// cheap (filename + size); it does not parse the file.
-	buckets, err := bucketByLanguage(ctx, repoRoot, files)
-	if err != nil {
-		return nil, err
-	}
+	buckets, unsupportedExt := bucketByLanguage(ctx, repoRoot, files)
 
 	tmpDir := cfg.TmpDir
 	if tmpDir == "" {
@@ -471,9 +475,10 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 	stderr = newSyncWriter(stderr)
 
 	res := &Result{
-		ByLang:      map[string]int{},
-		ByCrossExt:  map[string]int{},
-		ParseErrors: map[string]treesitter.LangErrorStats{},
+		ByLang:         map[string]int{},
+		ByCrossExt:     map[string]int{},
+		ParseErrors:    map[string]treesitter.LangErrorStats{},
+		UnsupportedExt: unsupportedExt,
 	}
 	var mu sync.Mutex
 
@@ -649,8 +654,15 @@ type batchSpec struct {
 // classifier language tag to repo-relative paths. Files the classifier
 // marks Skip (or with empty language) are dropped here so subprocesses
 // never see them.
-func bucketByLanguage(ctx context.Context, repoRoot string, files []string) (map[string][]string, error) {
+// It returns no error: since #6340 removed the skip_patterns.yaml loader,
+// classifier.New is infallible and nothing else in this loop can fail. A
+// permanently-nil error return survived that change; rather than extend it to
+// a third always-nil value it is dropped here.
+func bucketByLanguage(ctx context.Context, repoRoot string, files []string) (map[string][]string, map[string]int) {
 	cls := classifier.New(nil)
+	// #6338 — a file with no extractor is dropped RIGHT HERE and never reaches
+	// a subprocess, so this loop is the only place it can be counted.
+	unsupported := classifier.NewUnsupportedTally()
 	out := map[string][]string{}
 	for _, rel := range files {
 		abs := filepath.Join(repoRoot, rel)
@@ -659,12 +671,13 @@ func bucketByLanguage(ctx context.Context, repoRoot string, files []string) (map
 			size = st.Size()
 		}
 		cr := cls.ClassifyWithSize(ctx, rel, size)
+		unsupported.Observe(rel, cr)
 		if cr.Skip || cr.Language == "" {
 			continue
 		}
 		out[cr.Language] = append(out[cr.Language], rel)
 	}
-	return out, nil
+	return out, unsupported.Counts()
 }
 
 // writeBatches partitions each language bucket into batches of size

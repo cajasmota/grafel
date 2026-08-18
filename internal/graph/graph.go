@@ -606,6 +606,22 @@ type GraphStatsSidecar struct {
 	// entities would have contributed. Only meaningful when
 	// RenameDetectTruncated is true.
 	RenameDetectPairsSkipped int `json:"rename_detect_pairs_skipped,omitempty"`
+
+	// UnsupportedExtensions counts the files this index pass SAW and dropped
+	// because no extractor claims their extension, keyed by lowercased
+	// extension (#6338).
+	//
+	// This is the one skip reason that means grafel silently indexed nothing:
+	// the file is not vendored, not ignored, not binary, not quarantined and
+	// did not error — no extractor was ever reached, so `doctor` had nothing
+	// to report and a 670-file VB.NET codebase looked exactly like a healthy
+	// index. Aggregated by extension, never per file: the originating report
+	// was 672 files.
+	//
+	// omitempty, and never written with zero-valued entries, so a repo with
+	// full extractor coverage carries no key at all and its consumers print
+	// nothing.
+	UnsupportedExtensions map[string]int `json:"unsupported_extensions,omitempty"`
 }
 
 // WriteSidecar emits the graph-stats.json sidecar next to the main document.

@@ -703,6 +703,13 @@ type indexerStats struct {
 	// on any multi-language repository and does NOT indicate a plumbing bug.
 	pass1PlumbedTrue  int
 	pass1PlumbedFalse int
+
+	// unsupportedExt aggregates, by extension, the files the classifier
+	// dropped because no extractor claims them (#6338). Counted at the point
+	// the walk makes that decision — nothing downstream ever sees these files,
+	// so there is nowhere else it could be counted. Aggregated, never a file
+	// list: the originating report was 672 .vb files.
+	unsupportedExt *classifier.UnsupportedTally
 }
 
 // Index walks repoPath, runs the orchestrated passes, and writes the
@@ -781,6 +788,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			pass1RelsByLang: make(map[string]int),
 			pass3RelsByExt:  make(map[string]int),
 			parseCanary:     treesitter.NewParseErrorCanary(),
+			unsupportedExt:  classifier.NewUnsupportedTally(),
 		},
 	}
 	for _, opt := range opts {
@@ -1024,7 +1032,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// never zero out real algorithm data that a previous full build
 		// computed.
 		prior, _ := graph.LoadSidecar(filepath.Dir(outPath))
-		side := buildStatsSidecar(doc, extractMS, canaryRaw, canarySpiked, prior, deterministicGeneratedAt(), renameStats)
+		side := buildStatsSidecar(doc, extractMS, canaryRaw, canarySpiked, prior, deterministicGeneratedAt(), renameStats, idx.stats.unsupportedExt.Counts())
 		if err := graph.WriteSidecar(outPath, side, pretty); err != nil {
 			fmt.Fprintf(os.Stderr, "grafel: sidecar write failed: %v\n", err)
 		}
@@ -1689,6 +1697,9 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		// Issue #2447: propagate Pass1Plumbed counters from subprocess path.
 		i.stats.pass1PlumbedTrue += res.Pass1PlumbedTrueCount
 		i.stats.pass1PlumbedFalse += res.Pass1PlumbedFalseCount
+		// #6338 — the coordinator does the classification on this path, so the
+		// tally comes back with the rest of its stats.
+		i.stats.unsupportedExt.Merge(res.UnsupportedExt)
 		fmt.Fprintf(os.Stderr,
 			"grafel: subproc-extract subprocs=%d peak_rss=%.1fMB entities=%d rels=%d\n",
 			res.Subprocesses,
@@ -3789,6 +3800,11 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				}
 				statSize := size
 				cr := i.classifier.ClassifyWithSize(ctx, t.relPath, size)
+				// #6338 — record the "no extractor claimed this extension"
+				// skips before the file is dropped. The tally filters on the
+				// skip REASON, so vendored/binary/oversized files below are
+				// not folded in.
+				i.stats.unsupportedExt.Observe(t.relPath, cr)
 				if cr.Skip || cr.Language == "" {
 					// Hashed INLINE, here, rather than batched after the worker
 					// pool joins (#6212). The classifier decided on the size

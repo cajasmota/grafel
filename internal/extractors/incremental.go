@@ -1403,6 +1403,15 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		TotalRelationships: doc.Stats.Relationships,
 		ExtractMS:          time.Since(t0).Milliseconds(),
 	}
+	// #6338 — CARRIED FORWARD, not recomputed. This pass only ever looks at
+	// the files that CHANGED, so it cannot know the repo-wide unsupported
+	// tally; writing a fresh struct would zero the full index's count and make
+	// `doctor` go silent again after the first incremental reindex — exactly
+	// the blind spot this field exists to close. The count goes stale rather
+	// than wrong, and the next full index refreshes it.
+	if priorSide, sErr := graph.LoadSidecar(filepath.Dir(fbPath)); sErr == nil && priorSide != nil {
+		side.UnsupportedExtensions = priorSide.UnsupportedExtensions
+	}
 	if serr := graph.WriteSidecar(fbPath, side, false); serr != nil {
 		logger.Printf("incremental: sidecar write failed: %v (non-fatal)", serr)
 	}

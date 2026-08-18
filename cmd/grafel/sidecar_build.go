@@ -34,6 +34,7 @@ func buildStatsSidecar(
 	prior *graph.GraphStatsSidecar,
 	computedAt time.Time,
 	renameStats algorithms.RenameStats,
+	unsupportedExt map[string]int,
 ) *graph.GraphStatsSidecar {
 	side := &graph.GraphStatsSidecar{
 		Version:            1,
@@ -54,6 +55,14 @@ func buildStatsSidecar(
 		RenameDetectAddedSkipped: renameStats.AddedSkipped,
 		RenameDetectPairsSkipped: renameStats.PairsSkipped,
 	}
+
+	// #6338 — always from THIS run, never carried forward from prior: it
+	// describes the files this walk saw. Assigned unconditionally; an empty
+	// tally is dropped from the JSON by the field's omitempty tag, which is
+	// what makes a fully-supported repo carry no key at all. (A len()>0 guard
+	// here was measured to be dead — omitempty already elides an empty map —
+	// and removed.)
+	side.UnsupportedExtensions = unsupportedExt
 
 	if doc.AlgorithmStats != nil {
 		side.Communities = doc.AlgorithmStats.NumCommunities
