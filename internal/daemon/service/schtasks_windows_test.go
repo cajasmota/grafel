@@ -73,33 +73,33 @@ func TestGenerateTaskXML_RestartOnFailure(t *testing.T) {
 	}
 }
 
-// TestGenerateTaskXML_BinPath verifies the binary path appears in the
-// Command element.
-func TestGenerateTaskXML_BinPath(t *testing.T) {
+// TestGenerateTaskXML_HiddenWrapper verifies the scheduled action uses the
+// GUI-subsystem WScript host rather than launching grafel.exe directly.
+func TestGenerateTaskXML_HiddenWrapper(t *testing.T) {
 	xml, err := service.GenerateTaskXML(windowsOpts())
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
 	s := string(xml)
-	wantBin := `C:\Program Files\grafel\grafel.exe`
-	if !strings.Contains(s, wantBin) {
-		t.Errorf("task XML missing BinPath %q:\n%s", wantBin, s)
+	if !strings.Contains(strings.ToLower(s), `\system32\wscript.exe</command>`) {
+		t.Errorf("task XML does not use the hidden WScript host:\n%s", s)
+	}
+	if strings.Contains(s, `<Command>C:\Program Files\grafel\grafel.exe</Command>`) {
+		t.Errorf("task XML launches grafel.exe directly and would show a console:\n%s", s)
 	}
 }
 
-// TestGenerateTaskXML_ServeArgument verifies the task passes "serve" as
-// the argument to the binary — not "daemon", "start", or "run". PR5
-// (ADR-0024, epic #5729) retargets the OS unit from the back-compat `daemon`
-// shim to `serve` directly. Task Scheduler owns the process lifecycle so we
-// invoke grafel serve directly.
+// TestGenerateTaskXML_WrapperArgument verifies the scheduled action invokes
+// the generated wrapper in batch mode. The wrapper itself owns the `serve`
+// argument and waits for grafel so Task Scheduler retains lifecycle ownership.
 func TestGenerateTaskXML_ServeArgument(t *testing.T) {
 	xml, err := service.GenerateTaskXML(windowsOpts())
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
 	s := string(xml)
-	if !strings.Contains(s, "<Arguments>serve</Arguments>") {
-		t.Errorf("task XML missing <Arguments>serve</Arguments>:\n%s", s)
+	if !strings.Contains(s, `<Arguments>//B //NoLogo &quot;`) || !strings.Contains(s, `.vbs&quot;</Arguments>`) {
+		t.Errorf("task XML missing batch-mode wrapper arguments:\n%s", s)
 	}
 	// Must NOT contain "daemon" or "start" as an argument — "daemon" is the
 	// legacy back-compat shim entrypoint, and "start" would fork a separate

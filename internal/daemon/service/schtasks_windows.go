@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/csv"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"os/exec"
@@ -33,7 +34,9 @@ const (
 // Key semantics that mirror the macOS LaunchAgent and Linux systemd unit:
 //   - LogonTrigger — starts at user login (equivalent to RunAtLoad + KeepAlive)
 //   - RestartOnFailure — crash-restart (equivalent to KeepAlive)
-//   - Hidden — keeps the UI tidy; the task is managed via grafel commands
+//   - Hidden — keeps the Task Scheduler UI tidy
+//   - wscript wrapper — launches grafel without a console, waits for it, and
+//     propagates its exit code so Task Scheduler remains the process supervisor
 //   - RunLevel LeastPrivilege — no UAC elevation required (user-level service)
 const daemonTaskXMLTemplate = `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -68,18 +71,26 @@ const daemonTaskXMLTemplate = `<?xml version="1.0" encoding="UTF-16"?>
   </Settings>
   <Actions>
     <Exec>
-      <Command>{{.BinPath}}</Command>
-      <Arguments>serve</Arguments>
+      <Command>{{xml .WrapperHost}}</Command>
+      <Arguments>//B //NoLogo &quot;{{xml .WrapperPath}}&quot;</Arguments>
     </Exec>
   </Actions>
 </Task>
 `
 
 type daemonTaskVars struct {
-	TaskName string
-	UserSID  string
-	BinPath  string
+	TaskName    string
+	UserSID     string
+	WrapperHost string
+	WrapperPath string
 }
+
+const daemonWrapperTemplate = `Option Explicit
+Dim shell, exitCode
+Set shell = CreateObject("WScript.Shell")
+exitCode = shell.Run("{{.Command}}", 0, True)
+WScript.Quit exitCode
+`
 
 // taskXMLPath returns the path where the task XML is staged before being
 // imported by schtasks. We use %LOCALAPPDATA%\grafel\tasks\ which is
@@ -94,6 +105,46 @@ func taskXMLPath() (string, error) {
 		localAppData = filepath.Join(home, "AppData", "Local")
 	}
 	return filepath.Join(localAppData, "grafel", "tasks", taskName+".xml"), nil
+}
+
+func taskWrapperPath(xmlPath string) string {
+	return strings.TrimSuffix(xmlPath, filepath.Ext(xmlPath)) + ".vbs"
+}
+
+func wscriptPath() string {
+	systemRoot := os.Getenv("SystemRoot")
+	if systemRoot == "" {
+		systemRoot = os.Getenv("WINDIR")
+	}
+	if systemRoot == "" {
+		systemRoot = `C:\Windows`
+	}
+	return filepath.Join(systemRoot, "System32", "wscript.exe")
+}
+
+func xmlText(value string) string {
+	var buf strings.Builder
+	_ = xml.EscapeText(&buf, []byte(value))
+	return buf.String()
+}
+
+func vbsString(value string) string {
+	return strings.ReplaceAll(value, `"`, `""`)
+}
+
+func generateDaemonWrapper(opts Options) ([]byte, error) {
+	// WScript.Shell.Run receives one command-line string. Quote the executable
+	// path for spaces and double embedded quotes for VBScript string syntax.
+	command := `"` + opts.BinPath + `" serve`
+	tmpl, err := template.New("wrapper").Parse(daemonWrapperTemplate)
+	if err != nil {
+		return nil, err
+	}
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, struct{ Command string }{Command: vbsString(command)}); err != nil {
+		return nil, err
+	}
+	return []byte(buf.String()), nil
 }
 
 // currentUserSID returns the SID string for the running user.
@@ -128,16 +179,25 @@ func schtasksCmd(args ...string) *exec.Cmd {
 // GenerateTaskXML renders the Task Scheduler XML for the given options.
 // Exported for testing; production code calls install() which calls this.
 func GenerateTaskXML(opts Options) ([]byte, error) {
+	xmlPath, err := taskXMLPath()
+	if err != nil {
+		return nil, err
+	}
+	return generateTaskXML(opts, taskWrapperPath(xmlPath))
+}
+
+func generateTaskXML(opts Options, wrapperPath string) ([]byte, error) {
 	sid := currentUserSID()
-	tmpl, err := template.New("task").Parse(daemonTaskXMLTemplate)
+	tmpl, err := template.New("task").Funcs(template.FuncMap{"xml": xmlText}).Parse(daemonTaskXMLTemplate)
 	if err != nil {
 		return nil, err
 	}
 	var buf strings.Builder
 	if err := tmpl.Execute(&buf, daemonTaskVars{
-		TaskName: taskName,
-		UserSID:  sid,
-		BinPath:  opts.BinPath,
+		TaskName:    taskName,
+		UserSID:     sid,
+		WrapperHost: wscriptPath(),
+		WrapperPath: wrapperPath,
 	}); err != nil {
 		return nil, err
 	}
@@ -154,8 +214,9 @@ func GenerateTaskXML(opts Options) ([]byte, error) {
 // schtasksManager is the Windows ServiceManager implementation. It is a thin
 // adapter over schtasks / Task Scheduler; all orchestration lives in manager.go.
 type schtasksManager struct {
-	opts    Options
-	xmlPath string
+	opts        Options
+	xmlPath     string
+	wrapperPath string
 }
 
 func newServiceManager(opts Options) (ServiceManager, error) {
@@ -163,19 +224,29 @@ func newServiceManager(opts Options) (ServiceManager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &schtasksManager{opts: opts, xmlPath: path}, nil
+	return &schtasksManager{opts: opts, xmlPath: path, wrapperPath: taskWrapperPath(path)}, nil
 }
 
 func (m *schtasksManager) WriteUnit() error {
 	if err := os.MkdirAll(m.opts.LogDir, 0o700); err != nil {
 		return fmt.Errorf("create log dir %s: %w", m.opts.LogDir, err)
 	}
-	xml, err := GenerateTaskXML(m.opts)
+	xml, err := generateTaskXML(m.opts, m.wrapperPath)
 	if err != nil {
 		return fmt.Errorf("generate task XML: %w", err)
 	}
+	wrapper, err := generateDaemonWrapper(m.opts)
+	if err != nil {
+		return fmt.Errorf("generate daemon wrapper: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Dir(m.xmlPath), 0o755); err != nil {
 		return fmt.Errorf("create task XML dir: %w", err)
+	}
+	// Publish the wrapper first. If the subsequent XML write fails, the
+	// scheduler still points at its previous valid action; the reverse order
+	// could leave a newly written task definition referring to no wrapper.
+	if err := os.WriteFile(m.wrapperPath, wrapper, 0o600); err != nil {
+		return fmt.Errorf("write daemon wrapper %s: %w", m.wrapperPath, err)
 	}
 	if err := os.WriteFile(m.xmlPath, xml, 0o644); err != nil {
 		return fmt.Errorf("write task XML %s: %w", m.xmlPath, err)
@@ -237,6 +308,9 @@ func (m *schtasksManager) Load() error {
 func (m *schtasksManager) RemoveArtifacts() error {
 	if err := os.Remove(m.xmlPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove task XML %s: %w", m.xmlPath, err)
+	}
+	if err := os.Remove(m.wrapperPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove daemon wrapper %s: %w", m.wrapperPath, err)
 	}
 	return nil
 }

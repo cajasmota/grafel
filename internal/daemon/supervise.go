@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/statusfile"
 )
@@ -107,6 +108,7 @@ func defaultEngineChildCommand(selfExe, root string) *exec.Cmd {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = engineChildSysProcAttr()
+	executil.NoWindow(cmd)
 	return cmd
 }
 
