@@ -9,6 +9,11 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/service"
 )
 
+// testWrapperPath is the wrapper path the manager would resolve under
+// %LOCALAPPDATA%. Passing it explicitly keeps GenerateTaskXML a pure renderer
+// (#6325 F5) — it no longer reads the ambient environment.
+const testWrapperPath = `C:\Users\testuser\AppData\Local\grafel\tasks\com.grafel.daemon.vbs`
+
 // windowsOpts returns Options with all fields explicit so that
 // GenerateTaskXML does not depend on os.Executable or the real
 // user home directory.
@@ -23,7 +28,7 @@ func windowsOpts() service.Options {
 // TestGenerateTaskXML_XMLDeclaration verifies the output begins with a valid
 // XML declaration (required by Task Scheduler XML format).
 func TestGenerateTaskXML_XMLDeclaration(t *testing.T) {
-	xml, err := service.GenerateTaskXML(windowsOpts())
+	xml, err := service.GenerateTaskXML(windowsOpts(), testWrapperPath)
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
@@ -36,7 +41,7 @@ func TestGenerateTaskXML_XMLDeclaration(t *testing.T) {
 // TestGenerateTaskXML_TaskNamespace verifies the Task element uses the
 // canonical Windows Task Scheduler namespace.
 func TestGenerateTaskXML_TaskNamespace(t *testing.T) {
-	xml, err := service.GenerateTaskXML(windowsOpts())
+	xml, err := service.GenerateTaskXML(windowsOpts(), testWrapperPath)
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
@@ -49,7 +54,7 @@ func TestGenerateTaskXML_TaskNamespace(t *testing.T) {
 // TestGenerateTaskXML_LogonTrigger verifies the task uses a LogonTrigger so it
 // starts at user login (equivalent to launchd RunAtLoad / systemd WantedBy).
 func TestGenerateTaskXML_LogonTrigger(t *testing.T) {
-	xml, err := service.GenerateTaskXML(windowsOpts())
+	xml, err := service.GenerateTaskXML(windowsOpts(), testWrapperPath)
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
@@ -63,7 +68,7 @@ func TestGenerateTaskXML_LogonTrigger(t *testing.T) {
 // daemon restarts after crashes (equivalent to launchd KeepAlive / systemd
 // Restart=on-failure).
 func TestGenerateTaskXML_RestartOnFailure(t *testing.T) {
-	xml, err := service.GenerateTaskXML(windowsOpts())
+	xml, err := service.GenerateTaskXML(windowsOpts(), testWrapperPath)
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
@@ -76,7 +81,7 @@ func TestGenerateTaskXML_RestartOnFailure(t *testing.T) {
 // TestGenerateTaskXML_HiddenWrapper verifies the scheduled action uses the
 // GUI-subsystem WScript host rather than launching grafel.exe directly.
 func TestGenerateTaskXML_HiddenWrapper(t *testing.T) {
-	xml, err := service.GenerateTaskXML(windowsOpts())
+	xml, err := service.GenerateTaskXML(windowsOpts(), testWrapperPath)
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
@@ -92,8 +97,10 @@ func TestGenerateTaskXML_HiddenWrapper(t *testing.T) {
 // TestGenerateTaskXML_WrapperArgument verifies the scheduled action invokes
 // the generated wrapper in batch mode. The wrapper itself owns the `serve`
 // argument and waits for grafel so Task Scheduler retains lifecycle ownership.
-func TestGenerateTaskXML_ServeArgument(t *testing.T) {
-	xml, err := service.GenerateTaskXML(windowsOpts())
+// (Renamed from TestGenerateTaskXML_ServeArgument in #6325 F5: since #6320 it
+// asserts nothing about `serve`, which now lives in the .vbs.)
+func TestGenerateTaskXML_WrapperArgument(t *testing.T) {
+	xml, err := service.GenerateTaskXML(windowsOpts(), testWrapperPath)
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
@@ -115,7 +122,7 @@ func TestGenerateTaskXML_ServeArgument(t *testing.T) {
 // TestGenerateTaskXML_LeastPrivilege verifies the task runs at LeastPrivilege
 // (no UAC elevation required — user-level service, mirroring macOS/Linux).
 func TestGenerateTaskXML_LeastPrivilege(t *testing.T) {
-	xml, err := service.GenerateTaskXML(windowsOpts())
+	xml, err := service.GenerateTaskXML(windowsOpts(), testWrapperPath)
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
@@ -128,7 +135,7 @@ func TestGenerateTaskXML_LeastPrivilege(t *testing.T) {
 // TestGenerateTaskXML_TaskName verifies the task is registered under the
 // canonical reverse-DNS name com.grafel.daemon.
 func TestGenerateTaskXML_TaskName(t *testing.T) {
-	xml, err := service.GenerateTaskXML(windowsOpts())
+	xml, err := service.GenerateTaskXML(windowsOpts(), testWrapperPath)
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
