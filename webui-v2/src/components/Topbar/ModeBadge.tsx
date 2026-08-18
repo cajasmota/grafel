@@ -36,13 +36,11 @@ export function ModeBadge() {
   const colors        = modeColors(effectiveMode);
 
   return (
-    <ModeMenu open={menuOpen} onOpenChange={setMenuOpen}>
-      <Tooltip>
+    <Tooltip>
+      <ModeMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <TooltipTrigger asChild>
-          {/* The ModeMenu passes a trigger ref through here */}
           <button
             aria-label={`Daemon mode: ${effectiveMode}. Click to switch.`}
-            onClick={() => setMenuOpen(true)}
             className={[
               "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full",
               "text-xs font-medium select-none cursor-pointer transition-opacity",
@@ -59,11 +57,11 @@ export function ModeBadge() {
             {effectiveMode}
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-[220px]">
-          <p className="text-xs leading-snug">{description || `Daemon running in ${effectiveMode} mode.`}</p>
-          <p className="text-xs text-text-3 mt-0.5">Click to switch mode</p>
-        </TooltipContent>
-      </Tooltip>
-    </ModeMenu>
+      </ModeMenu>
+      <TooltipContent side="bottom" className="max-w-[220px]">
+        <p className="text-xs leading-snug">{description || `Daemon running in ${effectiveMode} mode.`}</p>
+        <p className="text-xs text-text-3 mt-0.5">Click to switch mode</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
