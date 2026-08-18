@@ -770,10 +770,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	priorOutboundRels := removedRels[:len(removedRels):len(removedRels)]
 
 	// --- Step 6: re-extract each changed file ---
-	cls, clsErr := classifier.New("", nil)
-	if clsErr != nil {
-		return fallback(t0, "classifier: "+clsErr.Error())
-	}
+	cls := classifier.New(nil)
 
 	// #6151 — the re-extraction below MUST parse, exactly as the full path does.
 	//

@@ -2,8 +2,6 @@ package classifier_test
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,69 +11,11 @@ import (
 	"github.com/cajasmota/grafel/internal/extractors"
 )
 
-// newTestClassifier creates a Classifier backed by the in-repo hermetic YAML
-// fixture under testdata/yaml. The fixture contains the minimal set of
-// skip_patterns.yaml files needed to exercise the classifier's full code path
-// without depending on any external path (e.g. a local clone of the Python
-// indexer under /tmp). Tests run identically on CI and dev machines.
+// newTestClassifier creates a Classifier. The classifier has no configuration
+// surface (#6330), so this is just a named constructor for readability.
 func newTestClassifier(t *testing.T) *classifier.Classifier {
 	t.Helper()
-
-	dir := filepath.Join("testdata", "yaml")
-	if _, err := os.Stat(dir); err != nil {
-		t.Fatalf("hermetic YAML fixture missing at %q: %v", dir, err)
-	}
-	c, err := classifier.New(dir, noop.NewTracerProvider().Tracer("test"))
-	if err != nil {
-		t.Fatalf("New(%q): %v", dir, err)
-	}
-	return c
-}
-
-// ---------------------------------------------------------------------------
-// New() — constructor error paths
-// ---------------------------------------------------------------------------
-
-func TestNew_MissingDir(t *testing.T) {
-	_, err := classifier.New("/nonexistent/path/that/does/not/exist", noop.NewTracerProvider().Tracer("test"))
-	if err == nil {
-		t.Fatal("expected error for missing yamlDataDir, got nil")
-	}
-}
-
-func TestNew_FileNotDir(t *testing.T) {
-	f, err := os.CreateTemp(t.TempDir(), "notadir*.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = classifier.New(f.Name(), noop.NewTracerProvider().Tracer("test"))
-	if err == nil {
-		t.Fatalf("expected error when yamlDataDir is a file, got nil")
-	}
-}
-
-func TestNew_MalformedYAML_DoesNotAbort(t *testing.T) {
-	tmp := t.TempDir()
-	langDir := filepath.Join(tmp, "go")
-	if err := os.MkdirAll(langDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// Write garbage YAML — should produce a warning but not abort.
-	if err := os.WriteFile(filepath.Join(langDir, "skip_patterns.yaml"), []byte(":::bad yaml:::["), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	c, err := classifier.New(tmp, noop.NewTracerProvider().Tracer("test"))
-	if err != nil {
-		t.Fatalf("New should not fail on malformed YAML, got: %v", err)
-	}
-	if c == nil {
-		t.Fatal("expected non-nil classifier")
-	}
+	return classifier.New(noop.NewTracerProvider().Tracer("test"))
 }
 
 // ---------------------------------------------------------------------------
@@ -327,45 +267,6 @@ func TestClassify_EmptyFilename_HandledGracefully(t *testing.T) {
 	// Must not panic. Skip should be true.
 	if !r.Skip {
 		t.Error("empty filename should be skipped")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// YAML-sourced glob skip patterns (requires reference clone)
-// ---------------------------------------------------------------------------
-
-// hermeticYAMLDir returns the path to the in-repo YAML fixture shipped under
-// testdata/yaml. It is the hermetic replacement for the Python reference clone
-// at /tmp/grafel-ref and contains the minimal skip_patterns.yaml
-// files needed to exercise glob-skip behaviour.
-func hermeticYAMLDir(t *testing.T) string {
-	t.Helper()
-	dir := filepath.Join("testdata", "yaml")
-	if _, err := os.Stat(dir); err != nil {
-		t.Fatalf("hermetic YAML fixture missing at %q: %v", dir, err)
-	}
-	return dir
-}
-
-func TestClassify_PbGoGenerated_Skipped(t *testing.T) {
-	c, err := classifier.New(hermeticYAMLDir(t), noop.NewTracerProvider().Tracer("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := c.Classify(context.Background(), "internal/proto/service.pb.go")
-	if !r.Skip {
-		t.Fatal("*.pb.go should be skipped as generated")
-	}
-}
-
-func TestClassify_WireGenGo_Skipped(t *testing.T) {
-	c, err := classifier.New(hermeticYAMLDir(t), noop.NewTracerProvider().Tracer("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := c.Classify(context.Background(), "internal/di/wire_gen.go")
-	if !r.Skip {
-		t.Fatal("wire_gen.go should be skipped as generated")
 	}
 }
 

@@ -5,5 +5,4 @@ testing_frameworks: test_patterns.yaml
 database_libraries: orms/ [next_jdbc, honeysql, datomic, datascript, clojure_java_jdbc_legacy,
   korma_legacy]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_roots: extras.yaml

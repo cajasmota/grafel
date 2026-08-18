@@ -4,5 +4,4 @@ build_tools: build_tools.yaml
 testing: test_patterns.yaml
 database: orms/ [pgmoon, lua_resty_mysql, lsqlite3, lua_resty_redis]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_roots: extras.yaml

@@ -84,7 +84,7 @@ build_tools:
     - '*.freezed.dart'
     - '*.config.dart'
     notes: 'Code generation tool. Presence in dev_dependencies with *.g.dart or *.freezed.dart
-      output files confirms active use. Generated files must be in skip_patterns for
+      output files confirms active use. Generated files should be treated as generated for
       indexing.
 
       '

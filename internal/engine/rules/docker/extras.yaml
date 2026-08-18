@@ -39,7 +39,7 @@ detection:
       (presence of FROM). Variant suffixes (Dockerfile.prod, Dockerfile.test) signal
       environment-specific build targets — index all variants but tag each with its
       detected suffix for scope filtering. Files named Dockerfile.dev or Dockerfile.test
-      are dev-only variants (see skip_patterns for indexing guidance).
+      are dev-only variants.
 
       '
   compose:
@@ -70,8 +70,8 @@ detection:
     notes: 'The Compose Specification (compose-spec.io) supersedes the legacy docker-compose
       v2/v3 schema. The `version:` key is now optional and ignored by current compose
       implementations. Detection should not require `version:` — its absence does
-      not disqualify a file. docker-compose.override.yml is always a dev-only override
-      (see skip_patterns). compose.yml / compose.yaml are the canonical names per
+      not disqualify a file. docker-compose.override.yml is always a dev-only
+      override. compose.yml / compose.yaml are the canonical names per
       the Compose Spec; docker-compose.yml is the legacy name, both are equally valid.
 
       '

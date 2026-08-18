@@ -5,5 +5,4 @@ build_tools: build_tools.yaml
 testing: test_patterns.yaml
 orms: orms/ [entity_framework_core, dapper, nhibernate, linqpad_linq_to_sql]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_roots: extras.yaml

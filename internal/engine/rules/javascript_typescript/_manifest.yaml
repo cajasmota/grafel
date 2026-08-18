@@ -6,5 +6,4 @@ testing_frameworks: test_patterns.yaml
 orms_and_database: orms/ [prisma, typeorm, drizzle, sequelize, knex, mongoose, mikro_orm,
   prisma_client_js, supabase_js]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_root_conventions: extras.yaml

@@ -5,5 +5,4 @@ build_tools: build_tools.yaml
 testing: test_patterns.yaml
 orm_database: orms/ [drift_formerly_moor, floor, isar, hive, sqflite]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_root_conventions: extras.yaml

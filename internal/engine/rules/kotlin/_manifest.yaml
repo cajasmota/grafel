@@ -6,5 +6,4 @@ testing: test_patterns.yaml
 orms_databases: orms/ [exposed, ktorm, hibernate_kotlin, room_android, sqldelight,
   spring_data_kotlin]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_root_conventions: extras.yaml

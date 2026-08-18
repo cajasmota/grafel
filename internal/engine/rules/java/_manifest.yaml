@@ -7,5 +7,4 @@ testing: test_patterns.yaml
 orms_database: orms/ [hibernate_core, jpa_jakarta_persistence_api, spring_data_jpa,
   mybatis, jooq, spring_data_mongodb, spring_data_redis]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_root_conventions: extras.yaml

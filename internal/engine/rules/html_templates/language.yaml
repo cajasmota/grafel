@@ -27,6 +27,6 @@ meta:
     type. A component is a named, reusable UI unit. Angular components (.component.html),
     Vue SFCs (.vue), Svelte files (.svelte), Astro components (.astro), and Blade/ERB/Jinja
     partial files that define a named template block are all Component entities. Static
-    HTML without template logic is not indexed (see skip_patterns section).
+    HTML without template logic is not indexed.
 
     '

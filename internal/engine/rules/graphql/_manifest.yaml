@@ -4,5 +4,4 @@ server_frameworks: frameworks/ [apollo_server, hasura, aws_appsync, strawberry_p
   gqlgen_go, absinthe_elixir, graphql_yoga, relay_server]
 client_tools: frameworks/ [apollo_client, urql, graphql_request, relay_compiler_client]
 complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
 domain_roots: extras.yaml

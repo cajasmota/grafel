@@ -761,10 +761,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		return err
 	}
 
-	cls, err := classifier.New("", nil)
-	if err != nil {
-		return fmt.Errorf("init classifier: %w", err)
-	}
+	cls := classifier.New(nil)
 	parser := treesitter.NewParserFactory(nil)
 
 	rules, err := engine.LoadAllRules()
