@@ -54,7 +54,7 @@ func realisticInventory() []string {
 		"Dockerfile.native", "schema/graph.fbs",
 	)
 	// The silent gap that matters.
-	add(672, "legacy/Form%d.vb")
+	add(672, "legacy/Form%d.vbs")
 	add(14, "legacy/unit%d.pas")
 	return files
 }
@@ -77,15 +77,15 @@ func TestReport_RealisticInventory_OnlyNamedLanguages(t *testing.T) {
 
 	rows := UnsupportedRows(counts, DoctorUnsupportedMinFiles)
 	if len(rows) != 2 {
-		t.Fatalf("want exactly 2 rows (.vb, .pas), got %d: %+v", len(rows), rows)
+		t.Fatalf("want exactly 2 rows (.vbs, .pas), got %d: %+v", len(rows), rows)
 	}
 	for _, r := range rows {
 		if r.Language == "" {
 			t.Fatalf("row %q carries no language name — this is the F1 defect", r.Ext)
 		}
 	}
-	if rows[0].Ext != ".vb" || rows[0].Count != 672 {
-		t.Fatalf("headline row = %+v, want .vb 672", rows[0])
+	if rows[0].Ext != ".vbs" || rows[0].Count != 672 {
+		t.Fatalf("headline row = %+v, want .vbs 672", rows[0])
 	}
 	if rows[1].Ext != ".pas" || rows[1].Count != 14 {
 		t.Fatalf("second row = %+v, want .pas 14", rows[1])
@@ -110,7 +110,7 @@ func TestReport_RealisticInventory_RenderedOutput(t *testing.T) {
 	PrintUnsupportedLanguages(&buf, "  ", UnsupportedRows(counts, DoctorUnsupportedMinFiles))
 
 	want := "  Unsupported languages (no extractor):\n" +
-		"    .vb   672 files  (VB.NET — not supported, see #6327)\n" +
+		"    .vbs  672 files  (VBScript — not supported)\n" +
 		"    .pas   14 files  (Pascal — not supported)\n"
 	if buf.String() != want {
 		t.Fatalf("rendered report:\n--- got ---\n%s\n--- want ---\n%s", buf.String(), want)
@@ -153,12 +153,12 @@ func TestReport_NonExtensionSegmentsNotReported(t *testing.T) {
 func TestReport_CapsRowsWithRemainderSummary(t *testing.T) {
 	counts := map[string]int{}
 	for _, ext := range []string{
-		".vb", ".pas", ".f90", ".ada", ".jl", ".tcl", ".hx", ".coffee",
+		".vbs", ".pas", ".f90", ".ada", ".jl", ".tcl", ".hx", ".coffee",
 		".abap", ".rpg", ".ps1", ".bat",
 	} {
 		counts[ext] = 100
 	}
-	counts[".vb"] = 9000 // the headline must survive the cap
+	counts[".vbs"] = 9000 // the headline must survive the cap
 
 	var buf bytes.Buffer
 	rows := UnsupportedRows(counts, DoctorUnsupportedMinFiles)
@@ -181,12 +181,12 @@ func TestReport_CapsRowsWithRemainderSummary(t *testing.T) {
 
 // F5: the report's self-correction guarantee must not depend on HOW an
 // extractor is wired up. This invariant makes a landed extractor force the
-// registry entry out, so a stale `.vb` row cannot survive #6327 S4 by any route.
+// registry entry out, so a stale `.vbs` row cannot survive #6327 S4 by any route.
 //
 // It asks extractors.Get, not SupportedExtension. Keyed on SupportedExtension
 // it tested ROUTING, which is a different fact: it went green for `.proto`,
 // `.prisma` and `.toml` (routed, extractor-less), and after #6327 S2 routed
-// `.vb` it could not have fired for VB.NET until the very entry it exists to
+// `.vbs` it could not have fired for VBScript until the very entry it exists to
 // force out had already been deleted by hand (#6327 S2 review).
 func TestUnsupportedLanguageRegistryHasNoRegisteredExtractor(t *testing.T) {
 	for _, ext := range classifier.UnsupportedLanguageExtensionsForTest() {
@@ -209,12 +209,12 @@ func TestUnsupportedLanguageRegistryHasNoRegisteredExtractor(t *testing.T) {
 func TestReport_OversizedFileNotCountedOnEitherPath(t *testing.T) {
 	cls := classifier.New(nil)
 	const huge = 64 * 1024 * 1024
-	cr := cls.ClassifyWithSize(context.Background(), "legacy/Big.vb", huge)
+	cr := cls.ClassifyWithSize(context.Background(), "legacy/Big.vbs", huge)
 	if cr.SkipReason != "too_large" {
-		t.Fatalf("oversized .vb: SkipReason = %q, want too_large", cr.SkipReason)
+		t.Fatalf("oversized .vbs: SkipReason = %q, want too_large", cr.SkipReason)
 	}
 	tal := classifier.NewUnsupportedTally()
-	tal.Observe("legacy/Big.vb", cr)
+	tal.Observe("legacy/Big.vbs", cr)
 	if n := len(tal.Counts()); n != 0 {
 		t.Fatalf("oversized file must not be tallied, got %v", tal.Counts())
 	}

@@ -76,7 +76,7 @@ func renderStatus6338(t *testing.T, repos []registry.Repo) string {
 func TestDoctorReportsUnsupportedExtensions(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv(daemon.EnvRoot, tmp)
-	repo := seed6338(t, tmp, "legacy", map[string]int{".vb": 672, ".pas": 14, ".go": 12045})
+	repo := seed6338(t, tmp, "legacy", map[string]int{".vbs": 672, ".pas": 14, ".go": 12045})
 
 	out := renderDoctor6338(t, []registry.Repo{repo})
 
@@ -84,9 +84,9 @@ func TestDoctorReportsUnsupportedExtensions(t *testing.T) {
 		t.Fatalf("doctor is still silent about skipped files:\n%s", out)
 	}
 	if !strings.Contains(out, "672 files") {
-		t.Fatalf("doctor must report the .vb file count @dcastro-imp had to count by hand:\n%s", out)
+		t.Fatalf("doctor must report the .vbs file count @dcastro-imp had to count by hand:\n%s", out)
 	}
-	if !strings.Contains(out, "VB.NET") {
+	if !strings.Contains(out, "VBScript") {
 		t.Fatalf("doctor must name the language:\n%s", out)
 	}
 	if !strings.Contains(out, ".pas") {
@@ -115,7 +115,7 @@ func TestDoctorSilentWhenNothingSkipped(t *testing.T) {
 func TestDoctorDropsNowSupportedExtension(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv(daemon.EnvRoot, tmp)
-	// `.go` stands in for `.vb` after #6327 lands: an extension with a large
+	// `.go` stands in for `.vbs` after #6327 lands: an extension with a large
 	// stale count that an extractor now claims.
 	repo := seed6338(t, tmp, "stale", map[string]int{".go": 672})
 
@@ -129,16 +129,16 @@ func TestDoctorDropsNowSupportedExtension(t *testing.T) {
 }
 
 // Counts aggregate ACROSS repos in the group — a monorepo split into five
-// repos with 140 .vb files each is one 700-file gap, not five separate ones.
+// repos with 140 .vbs files each is one 700-file gap, not five separate ones.
 func TestDoctorAggregatesUnsupportedAcrossRepos(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv(daemon.EnvRoot, tmp)
-	a := seed6338(t, tmp, "alpha", map[string]int{".vb": 400})
-	b := seed6338(t, tmp, "beta", map[string]int{".vb": 272})
+	a := seed6338(t, tmp, "alpha", map[string]int{".vbs": 400})
+	b := seed6338(t, tmp, "beta", map[string]int{".vbs": 272})
 
 	out := renderDoctor6338(t, []registry.Repo{a, b})
 	if !strings.Contains(out, "672 files") {
-		t.Fatalf("doctor must sum .vb across repos to 672:\n%s", out)
+		t.Fatalf("doctor must sum .vbs across repos to 672:\n%s", out)
 	}
 	if strings.Contains(out, "400 files") || strings.Contains(out, "272 files") {
 		t.Fatalf("doctor must aggregate, not list per repo:\n%s", out)
@@ -149,14 +149,14 @@ func TestDoctorAggregatesUnsupportedAcrossRepos(t *testing.T) {
 func TestStatusReportsUnsupportedAboveFloorOnly(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv(daemon.EnvRoot, tmp)
-	repo := seed6338(t, tmp, "legacy", map[string]int{".vb": 672, ".pas": 3})
+	repo := seed6338(t, tmp, "legacy", map[string]int{".vbs": 672, ".pas": 3})
 
 	out := renderStatus6338(t, []registry.Repo{repo})
 	if !strings.Contains(out, "Unsupported languages (no extractor):") {
 		t.Fatalf("status is still silent about skipped files:\n%s", out)
 	}
-	if !strings.Contains(out, "672 files") || !strings.Contains(out, "VB.NET") {
-		t.Fatalf("status must name .vb and its count:\n%s", out)
+	if !strings.Contains(out, "672 files") || !strings.Contains(out, "VBScript") {
+		t.Fatalf("status must name .vbs and its count:\n%s", out)
 	}
 	if strings.Contains(out, ".pas") {
 		t.Fatalf("status must suppress the 3-file stray below the floor:\n%s", out)

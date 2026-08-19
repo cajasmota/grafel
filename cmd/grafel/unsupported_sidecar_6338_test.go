@@ -51,10 +51,20 @@ func TestIndexRecordsUnsupportedExtensions(t *testing.T) {
 	write6338(t, repo, "cmd/main.go", "package main\n\nfunc main() {}\n")
 	write6338(t, repo, "internal/a.go", "package internal\n\nfunc A() {}\n")
 	write6338(t, repo, "internal/b.go", "package internal\n\nfunc B() {}\n")
-	// Unsupported — the whole point.
-	write6338(t, repo, "legacy/Form1.vb", "Public Class Form1\nEnd Class\n")
-	write6338(t, repo, "legacy/Form2.vb", "Public Class Form2\nEnd Class\n")
-	write6338(t, repo, "legacy/sub/Mod1.vb", "Module Mod1\nEnd Module\n")
+	// Unsupported — the whole point. Two DISTINCT extensions, one of them at a
+	// count > 1: that pair is what proves the tally aggregates per-extension
+	// rather than just reporting "some file was skipped".
+	//
+	// NOTE: both extensions MUST stay absent from
+	// classifier.extensionLanguageMap (internal/classifier/classifier.go:313).
+	// These fixtures were ".vb" until #6327 S5 registered a VB.NET extractor
+	// and .vb correctly stopped being tallied. If you ship a Fortran or Pascal
+	// extractor, do NOT just drop the expectation — swap in another
+	// still-unsupported extension and keep a 3-count plus a second key, or
+	// this test goes green while testing nothing.
+	write6338(t, repo, "legacy/solver1.f90", "program Solver1\nend program\n")
+	write6338(t, repo, "legacy/solver2.f90", "program Solver2\nend program\n")
+	write6338(t, repo, "legacy/sub/kernel.f90", "module Kernel\nend module\n")
 	write6338(t, repo, "legacy/unit1.pas", "unit Unit1;\nend.\n")
 	// Skipped for reasons that are NOT extractor coverage. NOTE: at THIS layer
 	// these two are weak evidence — measured with a mutant that made the tally
@@ -64,12 +74,12 @@ func TestIndexRecordsUnsupportedExtensions(t *testing.T) {
 	// classifier.TestUnsupportedTally_OtherSkipReasonsNotCounted and
 	// extract.TestBucketByLanguage_TalliesUnsupportedExtensions, both of which
 	// that mutant does kill. They stay here as a end-to-end sanity check only.
-	write6338(t, repo, "vendor/github.com/x/y/z.vb", "Public Class Z\nEnd Class\n")
+	write6338(t, repo, "vendor/github.com/x/y/z.f90", "program Z\nend program\n")
 	write6338(t, repo, "assets/logo.png", "\x89PNG\r\n\x1a\n")
 
 	side := index6338(t, repo)
 
-	want := map[string]int{".vb": 3, ".pas": 1}
+	want := map[string]int{".f90": 3, ".pas": 1}
 	if !reflect.DeepEqual(side.UnsupportedExtensions, want) {
 		t.Fatalf("sidecar unsupported_extensions:\n got  %v\n want %v",
 			side.UnsupportedExtensions, want)

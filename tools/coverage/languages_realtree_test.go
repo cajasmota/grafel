@@ -108,6 +108,7 @@ var languageRoster = map[string]string{
 	"sml":      "Standard ML",
 	"solidity": "Solidity",
 	"swift":    "Swift",
+	"vbnet":    "VB.NET",
 	"verilog":  "Verilog",
 	"vhdl":     "VHDL",
 	"zig":      "Zig",

@@ -79,6 +79,14 @@ func TestUnsupportedRows_KeepsRoutedLanguageWithNoExtractor(t *testing.T) {
 // simulated in-process against the real one without leaking into every other
 // test in this package.
 func TestUnsupportedRows_DropsRowOnceAnExtractorIsRegistered(t *testing.T) {
+	// #6327 S5 removed `.vb` from unsupportedLanguageNames — the INVARIANT on
+	// that map forbids an entry whose language is extractable — and it was the
+	// only extension that was BOTH routed and named, which is what this test
+	// needs to tell the derived filter apart from the registry filter. Seeding
+	// it back for the duration keeps the test about the seam it was written for
+	// instead of degenerating into an absence two filters already guarantee.
+	t.Cleanup(classifier.SeedUnsupportedLanguageNameForTest(".vb", "VB.NET", "#6327"))
+
 	counts := map[string]int{".vb": 672, ".pas": 14}
 
 	before := unsupportedRows(counts, DoctorUnsupportedMinFiles, func(string) bool { return false })

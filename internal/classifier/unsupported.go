@@ -74,8 +74,9 @@ const (
 // dropped from the report — and it could never have fired for `.vb` at all
 // (#6327 S2 review).
 var unsupportedLanguageNames = map[string]string{
-	// Visual Basic family — the report that prompted #6338.
-	".vb":  "VB.NET",
+	// Visual Basic family — the report that prompted #6338. `.vb` itself is
+	// GONE from this table: #6327 S5 registered internal/extractors/vbnet, and
+	// the invariant above forbids an entry whose language has an extractor.
 	".vbs": "VBScript",
 	".vba": "VBA",
 	".bas": "BASIC",
@@ -182,11 +183,12 @@ var unsupportedLanguageNames = map[string]string{
 // Both are keyed on extractors.Get, so both fire on the S4 commit itself
 // rather than after the entry a developer was supposed to remember to delete
 // has been deleted (#6327 S2 review).
-var languagesAwaitingExtractor = map[string]bool{
-	// #6327 — S2 (classification) has landed; S3–S5 (pre-pass, entities,
-	// edges) have not. internal/extractors/vbnet/ does not exist yet.
-	"vbnet": true,
-}
+// It is EMPTY today, and that is the correct state rather than a reason to
+// delete the mechanism: `vbnet` was its only entry, removed by #6327 S5 when
+// internal/extractors/vbnet landed. The next language to be classified ahead
+// of its extractor goes here, and the removal protocol above is what unwinds
+// it again.
+var languagesAwaitingExtractor = map[string]bool{}
 
 // awaitingExtractorResult returns the ClassifyResult for a language in
 // languagesAwaitingExtractor, and ok=false when the language is not in it.
@@ -209,9 +211,9 @@ func awaitingExtractorResult(lang string) (ClassifyResult, bool) {
 // unsupportedTrackingIssues names the grafel issue tracking support for an
 // extension, so the report can point at it instead of leaving the reader to
 // search. Only populated where an issue actually exists.
-var unsupportedTrackingIssues = map[string]string{
-	".vb": "#6327",
-}
+// Empty since #6327 S5: `.vb` was its only entry and VB.NET now has an
+// extractor, so there is nothing left to point a reader at.
+var unsupportedTrackingIssues = map[string]string{}
 
 // UnsupportedTally aggregates, by lowercased file extension, the files the
 // classifier dropped for SkipReasonUnsupportedLanguage.
@@ -390,6 +392,32 @@ func TrackingIssue(ext string) string {
 // and — since internal/classifier cannot import internal/extractors — the only
 // place the classifier↔extractor invariants can be checked at all.
 func ReportableExtensionForTest(filePath string) string { return reportableExtension(filePath) }
+
+// SeedUnsupportedLanguageNameForTest temporarily gives ext a display name and
+// a tracking issue, and returns the restore func.
+//
+// It exists because #6327 S5 emptied the only pairing the derived-filter test
+// in internal/cli could use. That test — TestUnsupportedRows_DropsRowOnceAnExtractorIsRegistered
+// — proves the row disappears the moment an extractor registers for the
+// extension's language, which needs an extension that is BOTH routed and
+// named. `.vb` was the only one, and the INVARIANT above forbids it staying
+// named now that vbnet is extractable. Without a seed the test degenerates to
+// asserting an absence that two independent filters already guarantee, i.e.
+// nothing.
+//
+// It mutates package state, so it is not safe for parallel tests. That is the
+// same contract the rest of the *ForTest helpers carry.
+func SeedUnsupportedLanguageNameForTest(ext, name, issue string) func() {
+	ext = strings.ToLower(ext)
+	unsupportedLanguageNames[ext] = name
+	if issue != "" {
+		unsupportedTrackingIssues[ext] = issue
+	}
+	return func() {
+		delete(unsupportedLanguageNames, ext)
+		delete(unsupportedTrackingIssues, ext)
+	}
+}
 
 // LanguagesAwaitingExtractorForTest returns the sorted keys of
 // languagesAwaitingExtractor so internal/cli can assert none of them is

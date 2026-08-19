@@ -90320,6 +90320,34 @@
       }
     },
     {
+      "id": "lang.vbnet.core",
+      "category": "language",
+      "language": "vbnet",
+      "label": "VB.NET",
+      "capabilities": {
+        "call_line_precision": {
+          "status": "full",
+          "cites": ["internal/extractors/vbnet/extractor.go","internal/extractors/vbnet/extractor_6327_test.go","internal/vbnet/parenrefs.go","internal/vbnet/symbols.go"],
+          "notes": "#6327 S5: every CALLS edge carries a 1-based FILE-ABSOLUTE line Property taken from the use site itself (vbnet.Ref.Line), not from the enclosing member, so it is directly clickable to source; CONTAINS and IMPORTS are line-stamped too. Call-vs-not is decided ONLY by vbnet.Ref.IsCall(), which composes the per-file declaration table's ParenKind verdict with the New prefix and the statement-head rule — VB reuses parentheses for array indexing and default properties, so a 'looks like a call' regex is exactly the phantom-CALLS failure this epic exists to prevent; intrinsics (CType, CInt, GetType) are call-SHAPED but resolve to no declaration and are excluded, which matters because one WinForms designer file in the corpus contains hundreds of CType. callTarget independently refuses a Ref that is Qualified with an empty Qualifier (a With-block target or an expression result — real but unnameable per-file; 1,624 of 41,748 use sites measured) so the invariant does not rest on IsCall composition holding, strips Me/MyClass/MyBase (which denote the current instance and would guarantee a dangling edge), and calls are de-duplicated per owning declaration. MEASURED on the 302-file corpus: CALLS 5,059 total, 3,386 resolved (67%); the residue is BCL/WinForms members with no in-tree declaration. Honest caveat on the sibling edges: EXTENDS/IMPLEMENTS carry the TYPE's declaration line rather than the Inherits/Implements clause line, because vbnet.Node records those clauses as a []string with no positions.",
+          "verified_at": "2026-08-19"
+        },
+        "core_extraction": {
+          "status": "partial",
+          "cites": ["internal/extractors/vbnet/corpus_6327_test.go","internal/extractors/vbnet/extractor.go","internal/extractors/vbnet/extractor_6327_test.go","internal/vbnet/parse.go","internal/vbnet/symbols.go"],
+          "issue": "6327",
+          "notes": "#6327 S4 (#6381 parser) + S5 (extractor). internal/vbnet is a hand-written recursive-descent line scanner (no tree-sitter VB grammar exists) with a per-file declaration/symbol table; internal/extractors/vbnet projects its containment tree onto entities and the four edge kinds the epic names. Kind mapping follows the C# extractor so a mixed .NET repo indexes uniformly: Class/Module/Structure/Interface/Delegate to SCOPE.Component (subtype = the VB keyword), Enum and data members to SCOPE.Schema, callable members to SCOPE.Operation; Namespace is NOT an entity (stamped as the vbnet_namespace property, mirroring csharp.go) because a node per file would duplicate once per file sharing the namespace (92 files for StaxRip.UI alone). CONTAINS is emitted from the nearest entity-bearing ancestor, with the file carrier owning top-level declarations. EXTENDS/IMPLEMENTS are emitted EMBEDDED on the owning type with FromID EMPTY so assembly substitutes the owner id — a path-valued FromID would be rewritten by ReferencesEmbedded onto the file carrier and merge every type's bases onto one node (#6295/#6298/#6365/#6367). MEASURED on a 302-file real corpus (WakeOnLAN, StaxRip, display-drivers-uninstaller; 13,479 records) after the real Path-B resolution chain: CONTAINS 13,205/13,205 resolved, EXTENDS 153/289, IMPLEMENTS 15/72 — the unresolved hierarchy targets are .NET Framework base types, classified as external-known rather than excused in-tree (internal/resolve/refs.go isVBExternalBaseType + vbnet_basetypes_6327_test.go). PARTIAL, honestly: partial-class merge across .vb/.Designer.vb is NOT implemented, so one partial class surfaces as two Components; Handles clauses and AddressOf produce no edge (AddressOf carries no parentheses so the reference pass never sees it); method-level Implements IFoo.Bar is parsed onto Node.Implements but deliberately not emitted (it would compete with the type-level edge); hierarchy edges are stamped with the type's declaration line, not the Inherits/Implements clause line. All deferred to S7.",
+          "verified_at": "2026-08-19"
+        },
+        "import_resolution_quality": {
+          "status": "partial",
+          "cites": ["internal/extractors/vbnet/corpus_6327_test.go","internal/extractors/vbnet/extractor.go","internal/extractors/vbnet/extractor_6327_test.go","internal/resolve/imports.go"],
+          "issue": "6327",
+          "notes": "#6327 S5: Imports statements (plain and aliased) emit one IMPORTS edge per distinct (local_name, module) pair, hung on the per-file SCOPE.Component carrier with FromID = the importing file's path — the ONE place a path-valued FromID is correct, because BuildImportTable (internal/resolve/imports.go) keys the per-file binding on it. No per-import placeholder entity is emitted (the #742/#681/#693 pattern solidity moved to in #6371): a placeholder named after the import's leaf segment collides by graph.EntityID with a same-named declaration in the same file (#6368/#6369). Each edge carries imported_name/local_name/source_module/line, written in ascending key order because types.Props is a sorted slice binary-searched by Props.Get. PARTIAL, and the number is the point: MEASURED on the 302-file corpus only 1 of 763 IMPORTS edges resolves to an in-tree node. That is not a parsing defect — VB.NET files import .NET Framework namespaces (System.Windows.Forms, Microsoft.Win32, ...) that have no source in the indexed tree, so the correct disposition is external, not resolved. Project-internal namespace imports do resolve. Raising the ratio needs namespace-level target synthesis / assembly-reference awareness, deferred to S7.",
+          "verified_at": "2026-08-19"
+        }
+      }
+    },
+    {
       "id": "lang.verilog.core",
       "category": "language",
       "language": "verilog",

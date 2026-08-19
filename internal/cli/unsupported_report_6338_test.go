@@ -12,12 +12,12 @@ func TestPrintUnsupportedLanguages_CleanRepoPrintsNothing(t *testing.T) {
 	for name, counts := range map[string]map[string]int{
 		"nil":            nil,
 		"empty":          {},
-		"all-zero":       {".vb": 0},
+		"all-zero":       {".vbs": 0},
 		"all-supported":  {".go": 400, ".py": 90},
-		"below-min":      {".vb": 3},
+		"below-min":      {".vbs": 3},
 		"not-a-language": {".json": 1938, ".log": 67},
 		"zero-and-supp":  {".go": 12, ".ts": 0},
-		"negative-count": {".vb": -5},
+		"negative-count": {".vbs": -5},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
@@ -41,15 +41,15 @@ func TestUnsupportedRows_MixedRepoOnlyUnsupported(t *testing.T) {
 		".ts":   3300,  // supported
 		".json": 1938,  // not a language — the F1 noise
 		".zzq":  300,   // not a language either, however many there are
-		".vb":   672,
+		".vbs":  672,
 		".pas":  14,
 	}, DoctorUnsupportedMinFiles)
 
 	if len(rows) != 2 {
 		t.Fatalf("want 2 unsupported rows, got %d: %+v", len(rows), rows)
 	}
-	// Ordered by count descending — 672 .vb files is the headline.
-	wantExt := []string{".vb", ".pas"}
+	// Ordered by count descending — 672 .vbs files is the headline.
+	wantExt := []string{".vbs", ".pas"}
 	wantCount := []int{672, 14}
 	for i, r := range rows {
 		if r.Ext != wantExt[i] || r.Count != wantCount[i] {
@@ -76,10 +76,10 @@ func TestUnsupportedRows_UnnamedExtensionsNeverRendered(t *testing.T) {
 		".tmpl": 388, ".properties": 164, ".txt": 149, ".sum": 132,
 		".mod": 95, ".log": 67, ".csv": 46, ".ds_store": 11,
 		".1": 8, ".835": 6,
-		".vb": 672, // the one real row in there
+		".vbs": 672, // the one real row in there
 	}
 	rows := UnsupportedRows(stalePreFixSidecar, DoctorUnsupportedMinFiles)
-	if len(rows) != 1 || rows[0].Ext != ".vb" {
+	if len(rows) != 1 || rows[0].Ext != ".vbs" {
 		t.Fatalf("a stale pre-fix sidecar must render only its language rows, got %+v", rows)
 	}
 	var buf bytes.Buffer
@@ -93,10 +93,10 @@ func TestUnsupportedRows_UnnamedExtensionsNeverRendered(t *testing.T) {
 
 // Requirement 3 — the regression that matters. An extension that BECOMES
 // supported must disappear from the report even when a stale on-disk sidecar
-// still carries a count for it. `.go` stands in for `.vb` after #6327 lands.
+// still carries a count for it. `.go` stands in for `.vbs` after #6327 lands.
 //
 // This is also the vacuity guard: a report that listed every extension would
-// satisfy "contains .vb" and fail here.
+// satisfy "contains .vbs" and fail here.
 func TestUnsupportedRows_NowSupportedExtensionDisappears(t *testing.T) {
 	// A sidecar written before the extractor existed still says 672.
 	stale := map[string]int{".go": 672}
@@ -114,19 +114,29 @@ func TestUnsupportedRows_NowSupportedExtensionDisappears(t *testing.T) {
 // The rendered block: aggregated one row per extension, named where we can.
 func TestPrintUnsupportedLanguages_Rendering(t *testing.T) {
 	var buf bytes.Buffer
-	rows := UnsupportedRows(map[string]int{".vb": 672, ".pas": 14, ".f90": 9}, DoctorUnsupportedMinFiles)
+	rows := UnsupportedRows(map[string]int{".vbs": 672, ".pas": 14, ".f90": 9}, DoctorUnsupportedMinFiles)
 	PrintUnsupportedLanguages(&buf, "  ", rows)
 	out := buf.String()
 
 	if !strings.Contains(out, "Unsupported languages (no extractor):") {
 		t.Fatalf("missing section header:\n%s", out)
 	}
-	// Named where we can — ".vb" alone is not actionable.
-	if !strings.Contains(out, "VB.NET") {
-		t.Fatalf("row for .vb must name the language:\n%s", out)
+	// Named where we can — ".vbs" alone is not actionable.
+	if !strings.Contains(out, "VBScript") {
+		t.Fatalf("row for .vbs must name the language:\n%s", out)
 	}
-	if !strings.Contains(out, "#6327") {
-		t.Fatalf("row for .vb must point at the tracking issue:\n%s", out)
+	// The tracking-issue SUFFIX has no in-tree example any more: `.vb` was the
+	// only entry in unsupportedTrackingIssues and #6327 S5 shipped its
+	// extractor. Rendered from a constructed row so the suffix stays covered.
+	var issued bytes.Buffer
+	PrintUnsupportedLanguages(&issued, "  ", []UnsupportedRow{
+		{Ext: ".zzq", Count: 12, Language: "Zed", Issue: "#1234"},
+	})
+	if !strings.Contains(issued.String(), "#1234") {
+		t.Fatalf("a row carrying an Issue must render it:\n%s", issued.String())
+	}
+	if strings.Contains(out, "#") {
+		t.Fatalf("no row here has a tracking issue, so none may render one:\n%s", out)
 	}
 	if !strings.Contains(out, "Pascal") {
 		t.Fatalf("row for .pas must name the language:\n%s", out)
@@ -137,18 +147,18 @@ func TestPrintUnsupportedLanguages_Rendering(t *testing.T) {
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	vbLines := 0
 	for _, l := range lines {
-		if strings.Contains(l, ".vb") {
+		if strings.Contains(l, ".vbs") {
 			vbLines++
 		}
 	}
 	if vbLines != 1 {
-		t.Fatalf("want exactly 1 aggregated line for .vb, got %d:\n%s", vbLines, out)
+		t.Fatalf("want exactly 1 aggregated line for .vbs, got %d:\n%s", vbLines, out)
 	}
 	if len(lines) != 4 { // header + 3 rows
 		t.Fatalf("want header + 3 rows = 4 lines, got %d:\n%s", len(lines), out)
 	}
 	if !strings.Contains(out, "672 files") {
-		t.Fatalf("the .vb row must carry the aggregate count 672:\n%s", out)
+		t.Fatalf("the .vbs row must carry the aggregate count 672:\n%s", out)
 	}
 
 	// Every rendered row names a language — that is now structural, not
@@ -162,13 +172,13 @@ func TestPrintUnsupportedLanguages_Rendering(t *testing.T) {
 }
 
 // The `status` floor: a handful of stray files is noise on the everyday
-// command, 672 .vb files are the headline. `doctor` sees more, but is also
+// command, 672 .vbs files are the headline. `doctor` sees more, but is also
 // floored above 1 (F1: a floor of 1 maximised the row count).
 func TestUnsupportedRows_StatusFloorVsDoctorFullTable(t *testing.T) {
-	counts := map[string]int{".vb": 672, ".pas": 9, ".f90": 2}
+	counts := map[string]int{".vbs": 672, ".pas": 9, ".f90": 2}
 
 	statusRows := UnsupportedRows(counts, StatusUnsupportedMinFiles)
-	if len(statusRows) != 1 || statusRows[0].Ext != ".vb" {
+	if len(statusRows) != 1 || statusRows[0].Ext != ".vbs" {
 		t.Fatalf("status must show only the extensions above its floor, got %+v", statusRows)
 	}
 
@@ -190,8 +200,8 @@ func TestUnsupportedRows_StatusFloorVsDoctorFullTable(t *testing.T) {
 // Ties break on extension name so the output is stable across runs (map
 // iteration order is randomised).
 func TestUnsupportedRows_DeterministicTieBreak(t *testing.T) {
-	counts := map[string]int{".vb": 5, ".pas": 5, ".jl": 5}
-	want := []string{".jl", ".pas", ".vb"}
+	counts := map[string]int{".vbs": 5, ".pas": 5, ".jl": 5}
+	want := []string{".jl", ".pas", ".vbs"}
 	for i := 0; i < 20; i++ {
 		rows := UnsupportedRows(counts, DoctorUnsupportedMinFiles)
 		for j, r := range rows {

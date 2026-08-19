@@ -3842,6 +3842,30 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if lang == "rust" && isRustExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
+	// VB.NET (#6327) — EXTENDS / IMPLEMENTS targets in a WinForms /
+	// .NET Framework codebase are dominated by BCL types the graph has
+	// no in-tree entity for: `System.Windows.Forms.Form`,
+	// `System.Configuration.ApplicationSettingsBase`, and the bare
+	// leaves the source spells after an `Imports` (`UserControl`,
+	// `Control`, `Component`, `IDisposable`, `INotifyPropertyChanged`).
+	// Without this arm every one of them classifies as bug-extractor,
+	// which understates our own quality numbers rather than the graph's
+	// (#6327's second silent-failure trap). Gated to lang=="vbnet" per
+	// the #94 safer-bias rule.
+	//
+	// The nameExists guard is the load-bearing half, and the first version
+	// of this arm did not have it. UNRESOLVED IS NOT ABSENT: an endpoint
+	// reaches here having failed to bind, and the commonest VB.NET reason
+	// for that is not "the type is external" but "two records carry the
+	// name" — a partial class split across `Foo.vb` and `Foo.Designer.vb`,
+	// or a duplicate declaration. Without the guard a WinForms app that
+	// declares its own `Panel`, `Label` or `Form` as a partial class has
+	// that ambiguity classified external-known, which HIDES the very
+	// partial-class defect #6327 S7 exists to fix. Same shape and same
+	// remedy as the two Python arms above (`Class:` and `View:`).
+	if lang == "vbnet" && !idx.nameExists(name) && isVBExternalBaseType(name) {
+		return DispositionExternalKnown
+	}
 	// Wave-7 — Python CALLS where the stub leaf is `<Class>.<method>`
 	// and the method is a well-known framework-inherited method (DRF
 	// GenericAPIView / GenericViewSet pagination + serializer + lookup
@@ -5581,6 +5605,161 @@ func isRustExternalBaseType(s string) bool {
 	}
 	_, ok := rustExternalBaseTypes[base]
 	return ok
+}
+
+// isVBExternalBaseType reports whether s is a VB.NET EXTENDS / IMPLEMENTS
+// target that names a .NET Framework type rather than an in-tree declaration
+// (#6327).
+//
+// It answers ONLY "does this spelling name a BCL type". It does NOT answer
+// "is this type absent from the graph", and the caller must not treat it as
+// though it did: the lang=="vbnet" arm in classifyDispositionLang pairs it
+// with idx.nameExists precisely because an unresolved endpoint is very often
+// an AMBIGUOUS in-tree one. See that call site.
+//
+// Two rules:
+//
+//  1. DERIVED — a dotted name whose ROOT segment is a .NET framework root
+//     namespace. `System.Windows.Forms.Form`,
+//     `System.Configuration.ApplicationSettingsBase`,
+//     `Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid`. This
+//     needs no per-type curation: it keys on the root namespace, a set fixed
+//     by the platform. The vbnet extractor strips a `Global.` escape prefix
+//     before emitting, so `Global.System.X` arrives here as `System.X`.
+//
+//  2. HAND LIST — a bare leaf, because VB.NET source writes
+//     `Inherits UserControl` after `Imports System.Windows.Forms` and the
+//     namespace is simply not present at the use site. There is no derivation
+//     available for this half: recovering the namespace needs the file's
+//     Imports set plus the full BCL type index, neither of which the resolver
+//     has. The list is therefore made load-bearing instead — see
+//     TestVBExternalBaseTypesAreLoadBearing in
+//     internal/resolve/vbnet_basetypes_6327_test.go, which fails in BOTH
+//     directions against a checked-in VB.NET fixture and therefore runs
+//     unconditionally, with no corpus and no environment variable.
+func isVBExternalBaseType(s string) bool {
+	base := strings.TrimSpace(s)
+	// Generic type arguments are stripped by the extractor
+	// (internal/extractors/vbnet.baseTypeName), but a stub reaching here from
+	// another producer may still carry them.
+	if p := strings.IndexByte(base, '('); p > 0 {
+		base = strings.TrimSpace(base[:p])
+	}
+	if base == "" {
+		return false
+	}
+	if dot := strings.IndexByte(base, dottedNameSep); dot > 0 {
+		_, ok := vbFrameworkRootNamespaces[base[:dot]]
+		return ok
+	}
+	_, ok := vbExternalBaseTypes[base]
+	return ok
+}
+
+// vbFrameworkRootNamespaces is the set of root namespaces owned by the .NET
+// Framework. A dotted EXTENDS / IMPLEMENTS target rooted at one of these
+// almost always names a platform type: user code that rooted its own
+// namespace at `System` would be shadowing the BCL, which the compiler
+// permits and nobody does.
+//
+// "almost always", not "by construction", and the difference matters for
+// `Windows`. `System` and `Microsoft` are safe on their own; `Windows` is an
+// ordinary identifier that an application may legally use as its own root
+// namespace, and it is in the set only because `Windows.Forms.TextBox` is a
+// real measured target in the corpus. That residual is what the nameExists
+// guard at the call site covers — a dotted target that some in-tree entity
+// carries verbatim as its Name is not routed here at all.
+//
+// `Accessibility` and `Mono` were in the first version of this set and are
+// GONE: neither appears as a dotted target anywhere in the 302-file corpus,
+// so each was an unmeasured guess whose only possible effect was to excuse an
+// in-tree namespace of the same name.
+var vbFrameworkRootNamespaces = map[string]struct{}{
+	"System":    {},
+	"Microsoft": {},
+	"Windows":   {},
+}
+
+// vbExternalBaseTypes is the bare-leaf half of isVBExternalBaseType. Every
+// entry is a .NET Framework type, and every entry was observed as an
+// UNRESOLVED EXTENDS / IMPLEMENTS target when the vbnet extractor was driven
+// over the 302 .vb files of WakeOnLAN + StaxRip + display-drivers-uninstaller.
+//
+// The list is pinned in both directions by TestVBExternalBaseTypesAreLoadBearing
+// (internal/resolve/vbnet_basetypes_6327_test.go) against a checked-in
+// fixture, so the pin holds in CI with no corpus present. A second,
+// corpus-gated test re-checks the same property against the real tree when
+// GRAFEL_VBNET_CORPUS is set.
+var vbExternalBaseTypes = map[string]struct{}{
+	// System.Windows.Forms — the WinForms surface #6321 is about.
+	"Button":                  {},
+	"CheckBox":                {},
+	"ComboBox":                {},
+	"CommonDialog":            {},
+	"ContextMenuStrip":        {},
+	"Control":                 {},
+	"DataGridView":            {},
+	"FlowLayoutPanel":         {},
+	"Form":                    {},
+	"GroupBox":                {},
+	"Label":                   {},
+	"ListBox":                 {},
+	"ListView":                {},
+	"Panel":                   {},
+	"PropertyGrid":            {},
+	"RichTextBox":             {},
+	"TabControl":              {},
+	"TabPage":                 {},
+	"TableLayoutPanel":        {},
+	"TextBox":                 {},
+	"ToolStrip":               {},
+	"ToolStripButton":         {},
+	"ToolStripMenuItem":       {},
+	"ToolStripSystemRenderer": {},
+	"TrackBar":                {},
+	"TreeView":                {},
+	"UserControl":             {},
+	"VScrollBar":              {},
+	"IWin32Window":            {},
+
+	// System / System.ComponentModel — object model and design-time.
+	"ApplicationException":   {},
+	"Attribute":              {},
+	"CategoryAttribute":      {},
+	"Component":              {},
+	"DisplayNameAttribute":   {},
+	"EventArgs":              {},
+	"Exception":              {},
+	"ICustomTypeDescriptor":  {},
+	"IExtenderProvider":      {},
+	"INotifyPropertyChanged": {},
+	"PropertyDescriptor":     {},
+	"StringConverter":        {},
+	"TypeConverter":          {},
+
+	// System.Collections / System.Collections.Generic — the generic tail is
+	// stripped by the extractor, so `Inherits List(Of Machine)` arrives as
+	// `List` and `Implements IComparable(Of Profile)` as `IComparable`.
+	"CollectionBase": {},
+	"IComparable":    {},
+	"IComparer":      {},
+	"IDisposable":    {},
+	"IEnumerable":    {},
+	"IEquatable":     {},
+	"List":           {},
+
+	// System.Drawing.Design / System.Windows / System.Globalization.
+	"CultureInfo":      {},
+	"DependencyObject": {},
+	"IValueConverter":  {},
+	"UITypeEditor":     {},
+
+	// System.Runtime.InteropServices / .Serialization / System.ServiceProcess.
+	"IDeserializationCallback":    {},
+	"SafeHandle":                  {},
+	"SafeHandleMinusOneIsInvalid": {},
+	"SerializationBinder":         {},
+	"ServiceBase":                 {},
 }
 
 // rustExternalBaseTypes is the Rust-language-gated allowlist of
