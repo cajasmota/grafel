@@ -60,10 +60,19 @@ const (
 // .d (D / DTrace / make depfile), .st (Smalltalk / Stata). A confidently wrong
 // language name is worse than no row.
 //
-// INVARIANT: no key here may be an extension grafel supports. Enforced by
-// TestUnsupportedLanguageRegistryHasNoSupportedExtension — when an extractor
-// lands for one of these (VB.NET, #6327), that test fails until the entry is
-// removed, which is what guarantees the row stops being printed.
+// INVARIANT: no key here may be an extension whose language has a REGISTERED
+// EXTRACTOR. Enforced by TestUnsupportedLanguageRegistryHasNoRegisteredExtractor
+// (internal/cli/unsupported_realrepo_6338_test.go), which lives in internal/cli
+// because that is the lowest package that can import both internal/classifier
+// and internal/extractors. When an extractor lands for one of these (VB.NET,
+// #6327 S4) that test fails until the entry is removed, which is what
+// guarantees the row stops being printed.
+//
+// It says EXTRACTOR and not "supported extension" on purpose. Keyed on
+// SupportedExtension it could only fire on routing, so it went green for
+// `.proto`, `.prisma` and `.toml` — routed, extractor-less, and silently
+// dropped from the report — and it could never have fired for `.vb` at all
+// (#6327 S2 review).
 var unsupportedLanguageNames = map[string]string{
 	// Visual Basic family — the report that prompted #6338.
 	".vb":  "VB.NET",
@@ -129,6 +138,72 @@ var unsupportedLanguageNames = map[string]string{
 	".p6":          "Raku",
 	".ahk":         "AutoHotkey",
 	".au3":         "AutoIt",
+}
+
+// languagesAwaitingExtractor names languages the extension table in
+// classifier.go recognises but which NO extractor is registered for yet.
+//
+// This exists because #6327 S2 opens a gap between two facts that used to be
+// the same fact: "grafel knows what language this file is" and "grafel can
+// extract it". Adding `.vb` → "vbnet" to the extension map settles the first
+// and changes nothing about the second — after S2 a `.vb` file still yields
+// ZERO entities; S3–S5 are what change that.
+//
+// Without this set, closing the first gap would silently REOPEN the second,
+// one layer deeper than #6338 found it:
+//
+//   - Classify would return Skip=false, so UnsupportedTally.Observe (which
+//     only counts skips) would stop counting `.vb`, and the 672-file row #6338
+//     exists to print would vanish from `doctor`/`status`.
+//   - SupportedExtension asks detectLanguage, so it would start answering true
+//     for `.vb`, and LanguageDisplayName would blank the row a second time
+//     even for counts already on disk.
+//   - The files would then reach internal/daemon/extract/subproc.go:336, where
+//     a missing extractor increments stats.Skipped and emits nothing at all.
+//
+// So a language listed here is classified — ClassifyResult.Language carries
+// its slug — and simultaneously skipped as SkipReasonUnsupportedLanguage,
+// which is not a contradiction but the accurate description of the state: we
+// know the language, we have no extractor. The report keeps printing the row,
+// and the row keeps pointing at the tracking issue, until the extractor lands.
+//
+// REMOVAL PROTOCOL: delete the entry in the same change that registers the
+// extractor, and delete the matching key from unsupportedLanguageNames /
+// unsupportedTrackingIssues. Two tests in internal/cli enforce this, and they
+// enforce different halves — neither one alone is sufficient:
+//
+//   - TestLanguagesAwaitingExtractorHaveNoRegisteredExtractor fires on THIS
+//     map. Without it a registered vbnet extractor would receive zero files,
+//     because a language listed here is skipped before extraction. That is
+//     #6321 all over again, with the extractor already built.
+//   - TestUnsupportedLanguageRegistryHasNoRegisteredExtractor fires on
+//     unsupportedLanguageNames, and stops the stale "not supported" row.
+//
+// Both are keyed on extractors.Get, so both fire on the S4 commit itself
+// rather than after the entry a developer was supposed to remember to delete
+// has been deleted (#6327 S2 review).
+var languagesAwaitingExtractor = map[string]bool{
+	// #6327 — S2 (classification) has landed; S3–S5 (pre-pass, entities,
+	// edges) have not. internal/extractors/vbnet/ does not exist yet.
+	"vbnet": true,
+}
+
+// awaitingExtractorResult returns the ClassifyResult for a language in
+// languagesAwaitingExtractor, and ok=false when the language is not in it.
+//
+// The Language field is populated even though Skip is true: callers that want
+// to know what the file is (and tests pinning that `.vb` is recognised as
+// VB.NET) get the answer, while the extraction pipeline still never receives a
+// file it has no extractor for.
+func awaitingExtractorResult(lang string) (ClassifyResult, bool) {
+	if !languagesAwaitingExtractor[lang] {
+		return ClassifyResult{}, false
+	}
+	return ClassifyResult{
+		Language:   lang,
+		Skip:       true,
+		SkipReason: SkipReasonUnsupportedLanguage,
+	}, true
 }
 
 // unsupportedTrackingIssues names the grafel issue tracking support for an
@@ -254,57 +329,98 @@ func unsupportedSkipReason(filePath string) string {
 // its exact-basename rules (Dockerfile, Package.swift, ocelot.json, ...).
 const supportedProbeStem = "grafelextprobe"
 
-// SupportedExtension reports whether some extractor claims ext (which must
-// include the leading dot, e.g. ".go"). Case-insensitive.
+// LanguageForExtension returns the language slug the ROUTER produces for ext
+// (which must include the leading dot, e.g. ".go"), or "" when no rule claims
+// it. Case-insensitive.
 //
 // It asks detectLanguage rather than consulting extensionLanguageMap directly.
 // That map is only one of detectLanguage's routes — compound suffixes
 // (.scala.html, .tofu.json, .schema.json) and exact basenames route too — so a
-// map-only check would answer "unsupported" for an extension the router
-// actually claims. That matters most for the guarantee this function exists to
-// provide: the report drops a row the moment an extractor lands for it, and it
-// must do so however that extractor was wired up.
+// map-only check would answer "unknown" for an extension the router actually
+// claims.
 //
-// This is consulted again when the report is RENDERED, not only when the counts
-// are collected, because the counts live in an on-disk sidecar that can be
-// months old.
-func SupportedExtension(ext string) bool {
+// IT ANSWERS FOR THE ROUTER, NOT FOR THE EXTRACTORS. A slug coming back here
+// means grafel has a NAME for the file; it does not mean any extractor will
+// produce an entity from it. Eight of the classifier's routed languages have no
+// registered extractor at all. This package cannot tell them apart, and must
+// not pretend to: internal/extractors imports internal/classifier
+// (extractors/incremental.go), so the dependency edge only runs one way.
+//
+// The caller that needs "will this produce entities" asks extractors.Get and
+// derives it — internal/cli/unsupported_report.go does exactly that, which is
+// what drops a report row the moment an extractor lands, however that extractor
+// was wired up. Deriving it there also means the answer is right for all eight
+// languages instead of for one hand-listed carve-out (#6327 S2 review).
+func LanguageForExtension(ext string) string {
 	norm := strings.ToLower(ext)
 	if norm == "" || !strings.HasPrefix(norm, ".") {
-		return false
+		return ""
 	}
-	return detectLanguage(supportedProbeStem+norm) != ""
+	return detectLanguage(supportedProbeStem + norm)
 }
 
-// LanguageDisplayName returns the human name of the language ext belongs to,
-// or "" when ext names no language we know of — in which case it is not
-// reported at all.
+// SupportedExtension reports whether the router names a language for ext.
+// Shorthand for LanguageForExtension(ext) != "" — read that function's comment
+// for what this does and does not promise.
+func SupportedExtension(ext string) bool {
+	return LanguageForExtension(ext) != ""
+}
+
+// LanguageDisplayName returns the human name registered for ext, or "" when ext
+// names no language this registry knows of — in which case it is not reported.
 //
-// A SUPPORTED extension always returns "": this registry describes languages we
-// do not extract, and once an extractor claims an extension it has no entry to
-// give even if the map still holds one.
+// It used to also return "" for any extension SupportedExtension claimed, which
+// was the extractor-exists filter wearing a router-shaped disguise: those are
+// different facts, and once `.vb` was routed the disguise blanked a row for a
+// language nothing could extract. The filter now lives where it can be DERIVED,
+// in internal/cli/unsupported_report.go, keyed on extractors.Get. This function
+// is a lookup and nothing more (#6327 S2 review).
 func LanguageDisplayName(ext string) string {
-	norm := strings.ToLower(ext)
-	if SupportedExtension(norm) {
-		return ""
-	}
-	return unsupportedLanguageNames[norm]
+	return unsupportedLanguageNames[strings.ToLower(ext)]
 }
 
-// TrackingIssue returns the grafel issue reference tracking support for ext,
-// or "" when there is none (or the extension is already supported).
+// TrackingIssue returns the grafel issue reference tracking support for ext, or
+// "" when there is none. A lookup, for the same reason as LanguageDisplayName.
 func TrackingIssue(ext string) string {
-	norm := strings.ToLower(ext)
-	if SupportedExtension(norm) {
-		return ""
-	}
-	return unsupportedTrackingIssues[norm]
+	return unsupportedTrackingIssues[strings.ToLower(ext)]
 }
 
-// ReportableExtensionForTest and UnsupportedLanguageExtensionsForTest expose
-// package internals to the report-layer tests in internal/cli, which is where
-// the F1/F2/F5 regressions are asserted end-to-end.
+// The *ForTest helpers expose package internals to the report-layer tests in
+// internal/cli, which is where the F1/F2/F5 regressions are asserted end-to-end
+// and — since internal/classifier cannot import internal/extractors — the only
+// place the classifier↔extractor invariants can be checked at all.
 func ReportableExtensionForTest(filePath string) string { return reportableExtension(filePath) }
+
+// LanguagesAwaitingExtractorForTest returns the sorted keys of
+// languagesAwaitingExtractor so internal/cli can assert none of them is
+// extractable. See that map's REMOVAL PROTOCOL.
+func LanguagesAwaitingExtractorForTest() []string {
+	out := make([]string, 0, len(languagesAwaitingExtractor))
+	for lang := range languagesAwaitingExtractor {
+		out = append(out, lang)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// RoutedLanguagesForTest returns every distinct language slug the router can
+// produce, sorted. Tests derive "routed but not extractable" from this rather
+// than maintaining a fourth hand-written list of the same fact.
+func RoutedLanguagesForTest() []string {
+	seen := make(map[string]bool, len(extensionLanguageMap)+len(basenameLanguageMap))
+	for _, lang := range extensionLanguageMap {
+		seen[lang] = true
+	}
+	for _, lang := range basenameLanguageMap {
+		seen[lang] = true
+	}
+	out := make([]string, 0, len(seen))
+	for lang := range seen {
+		out = append(out, lang)
+	}
+	sort.Strings(out)
+	return out
+}
 
 func UnsupportedLanguageExtensionsForTest() []string {
 	out := make([]string, 0, len(unsupportedLanguageNames))

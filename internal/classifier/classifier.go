@@ -154,6 +154,11 @@ func (c *Classifier) classifyInner(_ context.Context, filePath string) ClassifyR
 		return ClassifyResult{Skip: true, SkipReason: unsupportedSkipReason(norm)}
 	}
 
+	// 5. Recognised language, no extractor registered for it yet (#6327 S2).
+	if res, ok := awaitingExtractorResult(lang); ok {
+		return res
+	}
+
 	return ClassifyResult{Language: lang, Skip: false, Tier: 1}
 }
 
@@ -186,6 +191,11 @@ func (c *Classifier) classifyWithSizeInner(filePath string, sizeBytes int64) Cla
 	// Unknown extension. See classifyInner for the #6338 two-disposition split.
 	if lang == "" {
 		return ClassifyResult{Skip: true, SkipReason: unsupportedSkipReason(norm)}
+	}
+
+	// Recognised language, no extractor yet. See classifyInner step 5.
+	if res, ok := awaitingExtractorResult(lang); ok {
+		return res
 	}
 
 	return ClassifyResult{Language: lang, Skip: false, Tier: 1}
@@ -333,6 +343,29 @@ var extensionLanguageMap = map[string]string{
 	// C#
 	".cs":    "csharp",
 	".razor": "razor",
+	// VB.NET (#6327 S2) — recognised as a language; no extractor yet, so
+	// Classify still skips it (see languagesAwaitingExtractor).
+	//
+	// `.vb` ONLY. The epic listed three more extensions; each is deliberately
+	// excluded, and internal/classifier/vbnet_6327_test.go pins the exclusion
+	// so a later story cannot add them back without reading this:
+	//
+	//   - .vbproj — an MSBuild XML project file, not VB source. The precedent
+	//     is .csproj, which is NOT in this map: it is claimed by the
+	//     cross/manifest extractor as a NuGet manifest
+	//     (internal/extractors/cross/manifest/extractor.go:238). .vbproj
+	//     belongs there too, not here; routing it to "vbnet" would hand XML to
+	//     a VB line scanner. (.fsproj → "fsharp" at the F# block below is the
+	//     odd one out, not the pattern to copy.)
+	//   - .bas — VB6/VBA standard modules, not VB.NET. VB.NET has no .bas file
+	//     form. Already reported as the honestly-vague "BASIC" in
+	//     unsupported.go; claiming it for vbnet would name it wrong.
+	//   - .cls — VB6/VBA class modules, but also Salesforce Apex and LaTeX
+	//     document classes. unsupported.go already lists .cls among the
+	//     extensions with more than one plausible owner and deliberately
+	//     reports nothing for it. Claiming it would misclassify every LaTeX
+	//     .cls in a repo. Would need content sniffing; out of scope for S2.
+	".vb": "vbnet",
 	// Swift
 	".swift": "swift",
 	// Dart
