@@ -50,6 +50,11 @@ import (
 // instead ships a standalone matrix row and a by-language page for something
 // that is not a separate language. unclassifiedSlugRemedy below is the
 // machine-readable form of this paragraph; keep the two in step.
+//
+// If the label you want IS just titleCase(slug), that is fine — but say so by
+// adding the slug to languageLabelDefaultAccepted. Writing the fallback into
+// the roster alone is rejected, because that is exactly what #6332 found here
+// for "php": indistinguishable from pasting back what the failure printed.
 var languageRoster = map[string]string{
 	"assembly": "Assembly",
 	"bicep":    "Bicep",
@@ -115,6 +120,83 @@ func unclassifiedSlugRemedy(slug string) string {
 		"  - a SHARED UTILITY package with no per-language extraction: add it to "+
 		"extractorUtilityDirs.",
 		slug, slug, titleCase(slug), slug)
+}
+
+// languageLabelDefaultAccepted names the slugs whose roster label is
+// deliberately just titleCase(slug) — "Python", "Go", "Rust". It exists so
+// that accepting the fallback is a visible act rather than the quiet path.
+//
+// Why (#6332): the roster shipped "php": "Php". There is no
+// languageDisplayOverrides["php"], so that string was verbatim the fallback
+// the failure message prints in its parenthetical. Pasting it back made the
+// gate go green and certified the wrong label as reviewed — and then made the
+// gate fail the correction. A gate whose cheapest remedy reproduces the defect
+// it prevents is worse than no gate.
+//
+// This cannot force judgement — a contributor can still add a slug here
+// without thinking. What it removes is the case where writing the fallback
+// leaves NO trace at all: the acceptance now appears as its own line in the
+// diff, next to the label, where a reviewer can ask "is 'Vbnet' really what we
+// want to publish?".
+var languageLabelDefaultAccepted = map[string]bool{
+	"assembly": true,
+	"bicep":    true,
+	"clojure":  true,
+	"crystal":  true,
+	"dart":     true,
+	"elixir":   true,
+	"elm":      true,
+	"erlang":   true,
+	"go":       true,
+	"groovy":   true,
+	"haskell":  true,
+	"idris":    true,
+	"java":     true,
+	"kotlin":   true,
+	"lisp":     true,
+	"lua":      true,
+	"nim":      true,
+	"pony":     true,
+	"python":   true,
+	"ruby":     true,
+	"rust":     true,
+	"scala":    true,
+	"solidity": true,
+	"swift":    true,
+	"verilog":  true,
+	"zig":      true,
+}
+
+// TestRosterFallbackLabelsAreDeliberate separates "a human chose this label"
+// from "a human accepted the fallback". Both are legitimate; only the second
+// used to be indistinguishable from not having looked.
+func TestRosterFallbackLabelsAreDeliberate(t *testing.T) {
+	if len(languageRoster) == 0 {
+		t.Fatal("languageRoster is empty, so this test is vacuous")
+	}
+	for _, s := range sortedKeysString(languageRoster) {
+		_, overridden := languageDisplayOverrides[s]
+		isFallback := !overridden && languageRoster[s] == titleCase(s)
+		switch {
+		case isFallback && !languageLabelDefaultAccepted[s]:
+			t.Errorf("languageRoster[%q] = %q is exactly titleCase(%q) — the fallback, "+
+				"not a chosen label, and indistinguishable from pasting back what the "+
+				"failure message printed. Decide, then record the decision: if %q is "+
+				"genuinely the label docs/coverage should publish, add %q to "+
+				"languageLabelDefaultAccepted; if it is not (php -> \"PHP\", vbnet -> "+
+				"\"VB.NET\"), add languageDisplayOverrides[%q] and put the real label "+
+				"in the roster.", s, languageRoster[s], s, languageRoster[s], s, s)
+		case !isFallback && languageLabelDefaultAccepted[s]:
+			t.Errorf("languageLabelDefaultAccepted lists %q, but its roster label %q is "+
+				"not the titleCase fallback — remove the stale acceptance", s, languageRoster[s])
+		}
+	}
+	for _, s := range sortedKeysBool(languageLabelDefaultAccepted) {
+		if _, ok := languageRoster[s]; !ok {
+			t.Errorf("languageLabelDefaultAccepted lists %q but languageRoster does not — "+
+				"dead entry, remove it", s)
+		}
+	}
 }
 
 // TestSupportedLanguagesMatchesRealTree runs SupportedLanguages against the
