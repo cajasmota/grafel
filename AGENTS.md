@@ -98,6 +98,18 @@ Two rules, one subject: what you may claim, and what the claim rests on. (Refs #
 - Numbers rot fastest, and durable comments rot silently. A design report claimed ~105 marker hits on a corpus; the strict regex found 4, the other 101 being JPA `@GeneratedValue` caught by a case-insensitive probe. #6345 carried "14 marker hits on this repo" in a package doc while its own PR body said 12 and the measured figure was 13. Write how a number was measured next to the number, or don't write it.
 - "X does not exist" needs a search you can show. The per-language external base-type allowlists were asserted absent in a research note; they are at `internal/resolve/refs.go:4342` (PHP), `:4693` (Python), `:5316` (Java).
 
+## Derive, don't list
+
+Sibling to "Evidence": that section governs whether a claim was measured, this one governs whether the *set* the claim ranges over is the whole set. The failure is a claim of totality that holds only for the subset the author happened to look at. It survives green suites, because the enumeration and the test confirming it come from the same mental model — eight instances on 2026-08-19 alone, several written by people actively hunting for the pattern. (Refs #6361)
+
+**State what you searched FOR and WHERE, separately from what you concluded EXISTS.** Put the pattern, the tree and the tool next to the finding, so a reader can see the subset the conclusion rests on. A #6365 review comment reported "exactly four path-token FromIDs outside the tree"; measured, twelve — eight missed, six of them through one hop, and five of those six sat in `internal/custom/`, the very tree whose omission that same comment had just flagged as a defect.
+
+**Derive the set from the source of truth. Where a hand list is unavoidable, make it load-bearing.** Load-bearing means a test fails in *both* directions: a listed item that no longer matches, and an unlisted item that appears. `knownInvisibleOffenders` in `internal/extractors/file_anchored_rels_guard_test.go` is the in-repo example — it cannot rot silently. Unpinned enumerations rot fast: #6349's AST proof walked `FuncDecl` bodies only and the counterexample was a package-level `var` initializer; #6357's invariant "over every emitted structural edge" filtered on a `scope:` prefix; #6345's "one chokepoint" was Pass 1 of 3.
+
+**Name the unit of analysis for any aggregate figure.** Under-searching is not the only way in. #6375's withdrawn "only 4 kinds corpus-wide have zero participation" counted kind names across a merged corpus, while the check it described fires per kind and repo; at that unit it is 10 kinds across 14 firings, and the omitted set contained `Route` — the kind that same PR promoted to its headline finding.
+
+**Mark MEASURED vs INFERRED per claim, not per document, and when totality is not available name the subset rather than dropping the qualifier.** #6365 ran the chain code -> allow-list -> prose about the allow-list -> corrected prose, and each link carried the failure forward: the allow-list blessed six real defects on a criterion that did not hold; the prose describing it called `swift` a structural ref, concealing a live defect it had certified as fine; the correction then repeated the identical mis-attribution one item to the left, on `markdown`. A per-item "INFERRED — checked for the prefix form only" stops all three.
+
 ## Language support
 
 As of 2026-05-21, ~50 languages are fully supported with custom extractors:
