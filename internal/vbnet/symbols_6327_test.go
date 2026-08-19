@@ -941,3 +941,137 @@ End Class
 		t.Errorf("buf( = %v, want %v", got, ParenIndex)
 	}
 }
+
+// TestClassifyParen_ModuleMembersAreFileVisible pins VB.NET's module-member
+// promotion. A Module's members are unqualified-visible across the file (and
+// the project), so `Log(x)` inside a class is a call to the module's Sub. Pure
+// lexical containment does not model that, and Modules are pervasive in the
+// legacy VB this story targets — so the ParenUnknown tightening would have
+// silently downgraded every unqualified module call in a file.
+func TestClassifyParen_ModuleMembersAreFileVisible(t *testing.T) {
+	src := `
+Public Module Helpers
+    Public Sub Log(msg As String)
+    End Sub
+    Public buffer(15) As Byte
+End Module
+
+Public Class C
+    Public Sub M()
+        Log("x")
+    End Sub
+End Class
+
+Namespace N
+    Public Module Deep
+        Public Sub Trace()
+        End Sub
+    End Module
+End Namespace
+`
+	tbl := BuildTable(src)
+	cases := []struct {
+		name, rule, symbol, scope string
+		want                      ParenKind
+	}{
+		{
+			name: "sub-from-another-type", rule: "an unqualified module Sub is callable file-wide",
+			symbol: "Log", scope: "C.M", want: ParenCall,
+		},
+		{
+			name: "array-field-from-another-type", rule: "a module's array field indexes file-wide too",
+			symbol: "buffer", scope: "C.M", want: ParenIndex,
+		},
+		{
+			name: "nested-module", rule: "promotion does not require the module to be at file level",
+			symbol: "Trace", scope: "C.M", want: ParenCall,
+		},
+		{
+			name: "control/class-member-is-not-promoted", rule: "only a Module promotes; a Class does not",
+			symbol: "M", scope: "Helpers", want: ParenUnknown,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tbl.ClassifyParen(tc.symbol, tc.scope, false); got != tc.want {
+				t.Errorf("rule %q: ClassifyParen(%q, %q) = %v, want %v",
+					tc.rule, tc.symbol, tc.scope, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestClassifyParen_SameFileInheritanceIsUnrecorded pins a KNOWN GAP, not a
+// desired behaviour: `Class B Inherits A` with both types in one file is an
+// ordinary VB idiom, and A's members are genuinely in scope inside B. The
+// table does not read Inherits (S5 owns that edge), so visibleFrom — pure
+// lexical containment — reports them out of scope and ClassifyParen answers
+// unknown where a human would answer call/index.
+//
+// This is the price paid for refusing Resolve's out-of-scope fallback. It is
+// the safe direction (an uncertain edge, never a confidently wrong one), and
+// recording it here is what makes it a measured cost rather than an unnoticed
+// one. The day the table learns Inherits, these wants become ParenCall and
+// ParenIndex and this test must be updated.
+func TestClassifyParen_SameFileInheritanceIsUnrecorded(t *testing.T) {
+	src := `
+Public Class A
+    Protected Sub Render()
+    End Sub
+    Protected slots(7) As Integer
+End Class
+
+Public Class B
+    Inherits A
+    Public Sub M()
+        Render()
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+	cases := []struct {
+		name, symbol string
+		wantToday    ParenKind
+		wantOneDay   ParenKind
+	}{
+		{name: "inherited-method", symbol: "Render", wantToday: ParenUnknown, wantOneDay: ParenCall},
+		{name: "inherited-array-field", symbol: "slots", wantToday: ParenUnknown, wantOneDay: ParenIndex},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tbl.ClassifyParen(tc.symbol, "B.M", false)
+			if got != tc.wantToday {
+				t.Errorf("ClassifyParen(%q, \"B.M\") = %v, want %v (pinned gap; once Inherits is read this becomes %v)",
+					tc.symbol, got, tc.wantToday, tc.wantOneDay)
+			}
+		})
+	}
+}
+
+// TestResolve_LexicalScopeShadowsPromotedModuleMember pins the ordering of the
+// two visibility passes. Module promotion must not outrank containment: a
+// class's own field wins over a same-named module member, which is why the
+// module pass runs only after the lexical one finds nothing.
+func TestResolve_LexicalScopeShadowsPromotedModuleMember(t *testing.T) {
+	tbl := BuildTable(`
+Public Module Helpers
+    Public Sub Value()
+    End Sub
+End Module
+
+Public Class C
+    Private Value(3) As Integer
+    Public Sub M()
+    End Sub
+End Class
+`)
+	if s := tbl.Resolve("Value", "C.M"); s == nil || s.Scope != "C" {
+		t.Fatalf("Resolve(Value, C.M) picked %+v, want the field in scope C", s)
+	}
+	if got := tbl.ClassifyParen("Value", "C.M", false); got != ParenIndex {
+		t.Errorf("Value( inside C.M = %v, want %v (the field shadows the module Sub)", got, ParenIndex)
+	}
+	if got := tbl.ClassifyParen("Value", "Helpers", false); got != ParenCall {
+		t.Errorf("Value( inside Helpers = %v, want %v", got, ParenCall)
+	}
+}

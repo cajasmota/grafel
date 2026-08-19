@@ -157,9 +157,43 @@ func visibleFrom(decl, use string) bool {
 		use[len(decl)] == '.'
 }
 
+// isModuleScope reports whether the innermost container of the dotted scope is
+// a VB.NET Module.
+//
+// A Module's members are promoted: they are visible unqualified across the
+// whole file (and, for a Public Module, the whole project). visibleFrom models
+// lexical containment only, so without this a `Log(msg)` call sitting in a
+// class would not see the Helpers module's Sub — and Modules are pervasive in
+// the legacy VB this package targets.
+func (t *Table) isModuleScope(scope string) bool {
+	if scope == "" {
+		return false
+	}
+	name, parent := scope, ""
+	if i := strings.LastIndexByte(scope, '.'); i >= 0 {
+		name, parent = scope[i+1:], scope[:i]
+	}
+	for _, s := range t.Lookup(name) {
+		if s.Kind == KindType && s.TypeName == "module" && strings.EqualFold(s.Scope, parent) {
+			return true
+		}
+	}
+	return false
+}
+
 // Resolve picks the declaration of name that governs a use site in scope.
 // The innermost enclosing declaration wins, which is how a local shadows a
 // same-named field.
+//
+// Two things about the answer callers must know. First, a lexically visible
+// declaration always beats a promoted Module member, so a class's own field
+// still shadows a same-named module member — which is why the module pass is
+// a second pass rather than a widened predicate. Second, when nothing is
+// visible at all Resolve falls back to ANY same-named declaration in the file.
+// That fallback is a hint, not an answer: the returned symbol's Scope will not
+// contain the use site, and acting on its Kind classifies `Items(3) = 1` in
+// class B as a call to A.Items. Check the Scope (or use ClassifyParen, which
+// does) before treating the result as authoritative.
 func (t *Table) Resolve(name, scope string) *Symbol {
 	var best *Symbol
 	for _, s := range t.Lookup(name) {
@@ -172,6 +206,11 @@ func (t *Table) Resolve(name, scope string) *Symbol {
 	}
 	if best != nil {
 		return best
+	}
+	for _, s := range t.Lookup(name) {
+		if t.isModuleScope(s.Scope) {
+			return s
+		}
 	}
 	// Out of scope but declared in this file: better than nothing, and the
 	// caller can see the Scope mismatch on the returned symbol.
@@ -229,7 +268,12 @@ func (t *Table) ClassifyParen(name, scope string, ofKeyword bool) ParenKind {
 	// assignment target reported as an invocation. S4 acts on a ParenCall
 	// confidently, so out of scope is exactly the case ParenUnknown exists
 	// for.
-	if !visibleFrom(sym.Scope, scope) {
+	//
+	// A promoted Module member is in scope even though it is not lexically
+	// contained, so it is admitted here rather than suppressed. Same-file
+	// inheritance is the shape this check still over-suppresses; see
+	// TestClassifyParen_SameFileInheritanceIsUnrecorded.
+	if !visibleFrom(sym.Scope, scope) && !t.isModuleScope(sym.Scope) {
 		return ParenUnknown
 	}
 	switch sym.Kind {
