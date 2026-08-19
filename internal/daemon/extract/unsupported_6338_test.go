@@ -17,12 +17,21 @@ func TestBucketByLanguage_TalliesUnsupportedExtensions(t *testing.T) {
 	files := []string{
 		"cmd/main.go",
 		"internal/a.go",
-		"legacy/Form1.vb",
-		"legacy/Form2.vb",
-		"legacy/sub/Mod1.vb",
+		// Two DISTINCT unsupported extensions, one at a count > 1 — that pair
+		// is what proves the tally aggregates per-extension.
+		//
+		// NOTE: both MUST stay absent from classifier.extensionLanguageMap
+		// (internal/classifier/classifier.go:313). These were ".vb" until
+		// #6327 S5 registered a VB.NET extractor and .vb correctly stopped
+		// being tallied. If Fortran or Pascal ever ships an extractor, swap in
+		// another still-unsupported extension — do not just shrink the
+		// expectation, or this test goes green while testing nothing.
+		"legacy/solver1.f90",
+		"legacy/solver2.f90",
+		"legacy/sub/kernel.f90",
 		"legacy/unit1.pas",
 		// Not extractor coverage — must not be folded in.
-		"vendor/github.com/x/y/z.vb",
+		"vendor/github.com/x/y/z.f90",
 		"assets/logo.png",
 	}
 	for _, rel := range files {
@@ -37,7 +46,7 @@ func TestBucketByLanguage_TalliesUnsupportedExtensions(t *testing.T) {
 
 	buckets, unsupported := bucketByLanguage(context.Background(), repo, files)
 
-	want := map[string]int{".vb": 3, ".pas": 1}
+	want := map[string]int{".f90": 3, ".pas": 1}
 	if !reflect.DeepEqual(unsupported, want) {
 		t.Fatalf("unsupported tally:\n got  %v\n want %v", unsupported, want)
 	}
@@ -45,8 +54,11 @@ func TestBucketByLanguage_TalliesUnsupportedExtensions(t *testing.T) {
 	if got := len(buckets["go"]); got != 2 {
 		t.Fatalf("bucketing regressed: go bucket has %d files, want 2", got)
 	}
-	if _, ok := buckets["vb"]; ok {
-		t.Fatal("unsupported files must still be dropped from the buckets")
+	// Named-key checks are vacuous here — "fortran" is not a language tag the
+	// classifier can ever emit. Assert on the bucket set instead: go is the
+	// ONLY bucket, so every unsupported file was dropped.
+	if len(buckets) != 1 {
+		t.Fatalf("unsupported files must still be dropped from the buckets, got %v", buckets)
 	}
 }
 
