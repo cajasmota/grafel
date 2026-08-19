@@ -569,6 +569,10 @@ func TestClassifyParen_OutOfScopeIsUnknown(t *testing.T) {
 Public Class A
     Public Sub Items()
     End Sub
+    Private cache(9) As Integer
+    Public Sub Deep()
+        Dim rows(4) As Integer
+    End Sub
 End Class
 
 Public Class B
@@ -578,11 +582,49 @@ Public Class B
 End Class
 `
 	tbl := BuildTable(src)
-	if got := tbl.ClassifyParen("Items", "B.M", false); got != ParenUnknown {
-		t.Errorf("Items is declared only in A; from B.M the table cannot decide, got %v", got)
+
+	cases := []struct {
+		name, rule, symbol, scope string
+		want                      ParenKind
+	}{
+		{
+			name: "method-in-another-class", rule: "Items is declared only in A; from B.M the table cannot decide",
+			symbol: "Items", scope: "B.M", want: ParenUnknown,
+		},
+		{
+			name: "array-field-in-another-class", rule: "A's array field must not make cache( an index inside B",
+			symbol: "cache", scope: "B.M", want: ParenUnknown,
+		},
+		{
+			name: "local-of-another-method", rule: "a local of A.Deep is invisible from B.M",
+			symbol: "rows", scope: "B.M", want: ParenUnknown,
+		},
+		{
+			name: "sibling-method-scope", rule: "A.Deep cannot see A.Deep's siblings' locals either",
+			symbol: "rows", scope: "A", want: ParenUnknown,
+		},
+
+		// Controls: the same names, asked from a scope that does see them.
+		{
+			name: "control/method-in-scope", rule: "from A's own scope Items( is a call",
+			symbol: "Items", scope: "A", want: ParenCall,
+		},
+		{
+			name: "control/array-field-in-scope", rule: "from A's own scope cache( is an index",
+			symbol: "cache", scope: "A", want: ParenIndex,
+		},
+		{
+			name: "control/local-in-scope", rule: "inside A.Deep rows( is an index",
+			symbol: "rows", scope: "A.Deep", want: ParenIndex,
+		},
 	}
-	if got := tbl.ClassifyParen("Items", "A", false); got != ParenCall {
-		t.Errorf("from A's own scope Items( is a call, got %v", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tbl.ClassifyParen(tc.symbol, tc.scope, false); got != tc.want {
+				t.Errorf("rule %q: ClassifyParen(%q, %q) = %v, want %v",
+					tc.rule, tc.symbol, tc.scope, got, tc.want)
+			}
+		})
 	}
 }
 
