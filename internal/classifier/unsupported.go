@@ -131,6 +131,62 @@ var unsupportedLanguageNames = map[string]string{
 	".au3":         "AutoIt",
 }
 
+// languagesAwaitingExtractor names languages the extension table in
+// classifier.go recognises but which NO extractor is registered for yet.
+//
+// This exists because #6327 S2 opens a gap between two facts that used to be
+// the same fact: "grafel knows what language this file is" and "grafel can
+// extract it". Adding `.vb` → "vbnet" to the extension map settles the first
+// and changes nothing about the second — after S2 a `.vb` file still yields
+// ZERO entities; S3–S5 are what change that.
+//
+// Without this set, closing the first gap would silently REOPEN the second,
+// one layer deeper than #6338 found it:
+//
+//   - Classify would return Skip=false, so UnsupportedTally.Observe (which
+//     only counts skips) would stop counting `.vb`, and the 672-file row #6338
+//     exists to print would vanish from `doctor`/`status`.
+//   - SupportedExtension asks detectLanguage, so it would start answering true
+//     for `.vb`, and LanguageDisplayName would blank the row a second time
+//     even for counts already on disk.
+//   - The files would then reach internal/daemon/extract/subproc.go:336, where
+//     a missing extractor increments stats.Skipped and emits nothing at all.
+//
+// So a language listed here is classified — ClassifyResult.Language carries
+// its slug — and simultaneously skipped as SkipReasonUnsupportedLanguage,
+// which is not a contradiction but the accurate description of the state: we
+// know the language, we have no extractor. The report keeps printing the row,
+// and the row keeps pointing at the tracking issue, until the extractor lands.
+//
+// REMOVAL PROTOCOL: delete the entry in the same change that registers the
+// extractor, and delete the matching key from unsupportedLanguageNames /
+// unsupportedTrackingIssues. TestUnsupportedLanguageRegistryHasNoSupportedExtension
+// (internal/cli/unsupported_realrepo_6338_test.go) then flips to enforcing the
+// removal, exactly as its INVARIANT comment above describes.
+var languagesAwaitingExtractor = map[string]bool{
+	// #6327 — S2 (classification) has landed; S3–S5 (pre-pass, entities,
+	// edges) have not. internal/extractors/vbnet/ does not exist yet.
+	"vbnet": true,
+}
+
+// awaitingExtractorResult returns the ClassifyResult for a language in
+// languagesAwaitingExtractor, and ok=false when the language is not in it.
+//
+// The Language field is populated even though Skip is true: callers that want
+// to know what the file is (and tests pinning that `.vb` is recognised as
+// VB.NET) get the answer, while the extraction pipeline still never receives a
+// file it has no extractor for.
+func awaitingExtractorResult(lang string) (ClassifyResult, bool) {
+	if !languagesAwaitingExtractor[lang] {
+		return ClassifyResult{}, false
+	}
+	return ClassifyResult{
+		Language:   lang,
+		Skip:       true,
+		SkipReason: SkipReasonUnsupportedLanguage,
+	}, true
+}
+
 // unsupportedTrackingIssues names the grafel issue tracking support for an
 // extension, so the report can point at it instead of leaving the reader to
 // search. Only populated where an issue actually exists.
@@ -268,12 +324,20 @@ const supportedProbeStem = "grafelextprobe"
 // This is consulted again when the report is RENDERED, not only when the counts
 // are collected, because the counts live in an on-disk sidecar that can be
 // months old.
+// A language in languagesAwaitingExtractor answers FALSE here even though
+// detectLanguage claims its extension: "supported" on this surface means an
+// extractor will produce entities, not merely that the router has a name for
+// the file. See that map's comment (#6327 S2).
 func SupportedExtension(ext string) bool {
 	norm := strings.ToLower(ext)
 	if norm == "" || !strings.HasPrefix(norm, ".") {
 		return false
 	}
-	return detectLanguage(supportedProbeStem+norm) != ""
+	lang := detectLanguage(supportedProbeStem + norm)
+	if lang == "" || languagesAwaitingExtractor[lang] {
+		return false
+	}
+	return true
 }
 
 // LanguageDisplayName returns the human name of the language ext belongs to,

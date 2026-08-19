@@ -163,6 +163,16 @@ func LanguageForPath(path string) string {
 		return "rust"
 	case hasSuffix(path, ".cs"):
 		return "csharp"
+	// VB.NET (#6327 S2). This is the path→slug half of the mapping only; no
+	// sniffer is registered for "vbnet" yet, so SnifferFor("vbnet") returns
+	// nil and Languages() does not list it. Callers nil-check, so the slug is
+	// inert until S3+ registers a sniffer — it is here so the extension is
+	// mapped in one place rather than two stories apart. Only `.vb`:
+	// `.vbproj` is an MSBuild XML file (`.csproj` is likewise absent here) and
+	// `.bas`/`.cls` are VB6/VBA — see the exclusion note in
+	// internal/classifier/classifier.go.
+	case hasSuffix(path, ".vb"):
+		return "vbnet"
 	case hasSuffix(path, ".kt"), hasSuffix(path, ".kts"):
 		return "kotlin"
 	case hasSuffix(path, ".ex"), hasSuffix(path, ".exs"):
