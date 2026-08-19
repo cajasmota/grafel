@@ -29,6 +29,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
+      # The AUTHORITATIVE, unconditional copy of this check now lives in
+      # test.yml, which has no path filter on `pull_request` — see #6352 for
+      # why the filter below could never fire on 76.8% of the cited paths.
+      # This copy is deliberately RETAINED rather than moved, because it is not
+      # redundant: this workflow also runs on `push: main`, a leg test.yml does
+      # not subscribe to (test.yml reaches `push` only via release.yml's
+      # workflow_call on a v* tag). Deleting it here would silently drop the
+      # post-merge validate. It costs ~11s on the minority of runs that clear
+      # the path filter.
       - name: Validate schema + cites
         run: go run ./tools/coverage validate
       - name: Guard against incomplete grouped records (#2971)
