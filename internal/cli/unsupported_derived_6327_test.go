@@ -59,6 +59,13 @@ func TestSupportedExtensionIsUniformAcrossRoutedLanguages(t *testing.T) {
 // The row for a no-extractor language survives — that is the #6338 guarantee
 // #6327 S2 must not break — and it survives by DERIVATION, not by a map entry.
 func TestUnsupportedRows_KeepsRoutedLanguageWithNoExtractor(t *testing.T) {
+	if hasRegisteredExtractor("vbnet") {
+		// S4 has landed. Dropping the row is now the CORRECT behaviour, and the
+		// two tests that must fail on that commit are the removal-protocol pair
+		// in unsupported_s4_protocol_6327_test.go. Failing here as well would
+		// point an S4 author at the wrong file.
+		t.Skip("vbnet is extractable — this pins the pre-S4 state only")
+	}
 	rows := UnsupportedRows(map[string]int{".vb": 672}, DoctorUnsupportedMinFiles)
 	if len(rows) != 1 || rows[0].Ext != ".vb" || rows[0].Language != "VB.NET" || rows[0].Issue != "#6327" {
 		t.Fatalf("rows = %+v, want one .vb/VB.NET/#6327 row — the #6321 report "+
