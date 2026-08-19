@@ -11,8 +11,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/extractors"
 )
@@ -35,14 +37,20 @@ import (
 //	    the one inside TryIncremental. Enumerated from the AST of every .go
 //	    file, not from a list.
 //	(b) inside TryIncremental, tr.emit(...) is reached UNCONDITIONALLY: it sits
-//	    at the top level of the function body, and no statement before it can
-//	    return (no ReturnStmt at any nesting depth precedes it).
+//	    at the top level of the function body — as a bare call, or inside a
+//	    deferred FuncLit whose body calls it unconditionally — and no statement
+//	    before it can return (no ReturnStmt at any nesting depth precedes it).
 //
 // (a) and (b) together mean: whichever of tryIncremental's returns fires — the
-// ten that exist today, and every one added tomorrow — control lands on the
-// single statement after the call, which is emit. No return can escape it,
-// because there is no other way into or out of tryIncremental. That is the
-// whole invariant, discharged without naming a single return.
+// ten that exist today, and every one added tomorrow — emit runs. No return can
+// escape it, because there is no other way into or out of tryIncremental. That
+// is the whole invariant, discharged without naming a single return.
+//
+// A NORMAL return is only half the exits, though, and the AST cannot see the
+// other half: a panic unwinds past a bare trailing call. So the emit is
+// deferred, and TestPhaseTrace_PanicStillEmitsAndStopsSampler drives a real
+// panic through the pass to prove the trace — and the heap sampler's shutdown —
+// survive it.
 //
 // TestPhaseTrace_EmitsOnFallbackAndSuccess then keeps the structural proof from
 // being vacuous by checking the plumbing actually produces a record on a real
@@ -112,8 +120,9 @@ func TestPhaseTrace_EveryReturnIsTraced(t *testing.T) {
 		}
 	}
 	if emitIdx < 0 {
-		t.Fatalf("TryIncremental has no UNCONDITIONAL top-level tr.emit(...) call. " +
-			"If emit moved inside an if/switch/defer, some return paths no longer " +
+		t.Fatalf("TryIncremental has no UNCONDITIONAL top-level tr.emit(...) call " +
+			"(bare, or in a deferred FuncLit that calls it unconditionally). " +
+			"If emit moved inside an if/switch/loop, some return paths no longer " +
 			"emit a trace — that is precisely the #6199 defect this test exists for.")
 	}
 	for i := 0; i < emitIdx; i++ {
@@ -131,10 +140,51 @@ func TestPhaseTrace_EveryReturnIsTraced(t *testing.T) {
 	}
 }
 
-// isEmitCall reports whether stmt is a bare top-level `X.emit(...)` call.
-// A conditional emit (wrapped in if/for/select) is deliberately NOT matched:
-// that is the mutant this test must kill.
+// isEmitCall reports whether stmt guarantees `X.emit(...)` runs on exit. Two
+// shapes qualify, and only two:
+//
+//	tr.emit(...)                        // bare top-level call
+//	defer func() { ...; tr.emit(...) }() // deferred, unconditional in its body
+//
+// The deferred shape is REQUIRED for panic-safety and was originally rejected
+// by this helper, which is how the two requirements ended up mutually
+// exclusive: emit takes the pass result, so it cannot be a bare
+// `defer tr.emit(...)` (the arguments would be evaluated before the pass runs),
+// and a `defer func(){...}()` is a DeferStmt wrapping a FuncLit, not an
+// ExprStmt. Accepting it is not a loosening: the FuncLit's body is checked to
+// call emit at ITS top level with no return before it, so the deferred form
+// carries the same "unconditional" guarantee as the bare form, plus coverage of
+// the unwinding path the bare form silently loses.
+//
+// A conditional emit (wrapped in if/for/select, at either level) is still NOT
+// matched: that is the mutant this test must kill.
 func isEmitCall(stmt ast.Stmt) bool {
+	if isBareEmitCall(stmt) {
+		return true
+	}
+	def, ok := stmt.(*ast.DeferStmt)
+	if !ok {
+		return false
+	}
+	lit, ok := def.Call.Fun.(*ast.FuncLit)
+	if !ok || lit.Body == nil {
+		return false
+	}
+	for _, inner := range lit.Body.List {
+		if isBareEmitCall(inner) {
+			return true
+		}
+		// A return inside the deferred body before the emit would skip it.
+		if _, isRet := inner.(*ast.ReturnStmt); isRet {
+			return false
+		}
+	}
+	return false
+}
+
+// isBareEmitCall reports whether stmt is a plain `X.emit(...)` expression
+// statement.
+func isBareEmitCall(stmt ast.Stmt) bool {
 	es, ok := stmt.(*ast.ExprStmt)
 	if !ok {
 		return false
@@ -378,5 +428,98 @@ func TestPhaseTrace_BooleanEnableLogsWithoutFile(t *testing.T) {
 		_ = os.Remove("1")
 		t.Fatalf(`GRAFEL_PHASE_TRACE=1 wrote a JSONL file literally named "1"; ` +
 			"boolean tokens must not be treated as paths")
+	}
+}
+
+// panicLogWriter panics the first time the pass logs anything that is not the
+// phase-trace summary line, and writes normally after that.
+//
+// This is the seam the panic test needs and it needs no product-code hook:
+// tryIncremental logs through the *log.Logger the caller hands it, and
+// log.Logger.output writes to l.out with the mutex released via defer, so a
+// panicking Writer unwinds cleanly out of tryIncremental exactly as a panic in
+// any other part of the pass would. Letting the phases line through afterwards
+// is what makes "did emit still run?" observable.
+type panicLogWriter struct {
+	buf   bytes.Buffer
+	armed bool
+}
+
+func (w *panicLogWriter) Write(p []byte) (int, error) {
+	if w.armed && !bytes.Contains(p, []byte("incremental: phases")) {
+		w.armed = false
+		panic("6199: injected panic from the pass's logger")
+	}
+	return w.buf.Write(p)
+}
+
+// TestPhaseTrace_PanicStillEmitsAndStopsSampler pins the half of the invariant
+// the AST proof cannot see: control reaching the statement after the call is
+// only guaranteed for a NORMAL return. A panic unwinds straight past a
+// non-deferred emit — and past the stopHeapSampler that only emit calls.
+//
+// This is not hypothetical on this codebase. internal/daemon/sched/scheduler.go
+// wraps the incremental call in a recover() precisely because "an index can
+// panic for reasons the fbwriter fail-soft doesn't catch". So the daemon
+// survives the panic, and with a non-deferred emit the 5 ms heap sampler
+// survives with it — permanently. Each recovered panic while GRAFEL_PHASE_TRACE
+// is set strands one goroutine calling runtime.ReadMemStats, which is
+// stop-the-world, in a harness whose entire purpose is trustworthy timings.
+func TestPhaseTrace_PanicStillEmitsAndStopsSampler(t *testing.T) {
+	t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "1")
+	t.Setenv("GRAFEL_INCREMENTAL_MAX_FILES", "1")
+	tracePath := filepath.Join(t.TempDir(), "phases.jsonl")
+	t.Setenv("GRAFEL_PHASE_TRACE", tracePath)
+
+	repo := t.TempDir()
+	for _, name := range []string{"a.go", "b.go"} {
+		if err := os.WriteFile(filepath.Join(repo, name),
+			[]byte("package p\n\nfunc F() {}\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	runtime.GC()
+	baseline := runtime.NumGoroutine()
+
+	w := &panicLogWriter{armed: true}
+	logger := log.New(w, "", 0)
+
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		extractors.TryIncremental(context.Background(), repo, t.TempDir(), logger, nil)
+	}()
+	if recovered == nil {
+		t.Fatalf("the injected logger panic did not fire; this test proves nothing. log was:\n%s", w.buf.String())
+	}
+
+	// (i) emit must still have run on the panic path.
+	recs := readTrace(t, tracePath)
+	if len(recs) != 1 {
+		t.Fatalf("a panicking pass wrote %d trace records, want 1: the panic unwound past "+
+			"tr.emit, so the pass is untraced AND the heap sampler was never stopped", len(recs))
+	}
+	if !strings.Contains(w.buf.String(), "incremental: phases outcome=") {
+		t.Fatalf("no summary line on the panic path; log was:\n%s", w.buf.String())
+	}
+
+	// (ii) and the heap sampler goroutine must be gone.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		runtime.GC()
+		n := runtime.NumGoroutine()
+		if n <= baseline {
+			break
+		}
+		if time.Now().After(deadline) {
+			buf := make([]byte, 1<<16)
+			buf = buf[:runtime.Stack(buf, true)]
+			t.Fatalf("goroutine count did not return to baseline after a recovered panic "+
+				"(baseline=%d now=%d): the GRAFEL_PHASE_TRACE heap sampler leaked, and it "+
+				"calls the stop-the-world runtime.ReadMemStats every 5 ms forever.\n%s",
+				baseline, n, buf)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

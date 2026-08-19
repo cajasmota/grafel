@@ -396,12 +396,36 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		logger = log.New(os.Stderr, "incremental: ", log.LstdFlags)
 	}
 	tr := newPhaseTrace(t0)
-	res := tryIncremental(ctx, repoPath, stateDir, logger, cfg, t0, tr)
-	changed := res.ChangedFiles
-	if changed == 0 {
-		changed = tr.changedFiles
-	}
-	tr.emit(logger.Printf, repoPath, res.Done, res.FallbackReason, changed, tr.walkedFiles, tr.entities, tr.rels)
+	var res Result
+	var returned bool
+	// The emit is DEFERRED, not a plain trailing call, and that is load-bearing.
+	// A plain call is only reached on a normal return; a panic unwinds straight
+	// past it — and past the stopHeapSampler that only emit performs, stranding
+	// the 5 ms runtime.ReadMemStats (stop-the-world) sampler goroutine for the
+	// life of the process. That is not hypothetical here: sched.scheduler wraps
+	// this call in a recover() precisely because an index can panic for reasons
+	// the fbwriter fail-soft does not catch, so the daemon survives the panic
+	// and would accumulate one stranded sampler per recovered panic.
+	//
+	// TestPhaseTrace_EveryReturnIsTraced accepts this shape (a deferred FuncLit
+	// whose body calls emit unconditionally) as satisfying the "emit dominates
+	// every exit" invariant, and TestPhaseTrace_PanicStillEmitsAndStopsSampler
+	// drives a real panic through it.
+	defer func() {
+		changed := res.ChangedFiles
+		if changed == 0 {
+			changed = tr.changedFiles
+		}
+		reason := res.FallbackReason
+		if !returned {
+			// Unwinding: res is the zero Result, so say so rather than
+			// reporting an empty fallback reason that reads like a bug here.
+			reason = "panic (unwound past tryIncremental)"
+		}
+		tr.emit(logger.Printf, repoPath, res.Done, reason, changed, tr.walkedFiles, tr.entities, tr.rels)
+	}()
+	res = tryIncremental(ctx, repoPath, stateDir, logger, cfg, t0, tr)
+	returned = true
 	return res
 }
 
