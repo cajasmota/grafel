@@ -84,6 +84,11 @@ func newRoot() *cobra.Command {
 
 	// Trim default help to the primary surface.
 	root.SetHelpTemplate(primaryHelpTemplate)
+
+	// #6331: refuse to run under a PARTIALLY isolated environment (exactly one
+	// of GRAFEL_HOME / GRAFEL_DAEMON_ROOT set). See internal/envguard.
+	installIsolationGuard(root)
+
 	return root
 }
 

@@ -152,7 +152,7 @@ Users on any prior binary reinstall via `grafel install`. There is no compat shi
 
 ## Amendment (2026-05-20) — Per-repo state isolation under `GRAFEL_DAEMON_ROOT` (issue #745)
 
-When parallel coding agents each run an isolated daemon (different `GRAFEL_DAEMON_ROOT`s) against a shared fixture corpus, the socket and registry are isolated but the per-repo state directory — `<repo>/.grafel/` per ADR-0007 — is shared. Two daemons indexing the same fixture race on `graph.json` and corrupt each other's outputs.
+When parallel coding agents each run an isolated daemon (different `GRAFEL_DAEMON_ROOT`s) against a shared fixture corpus, the socket is isolated (this amendment originally said "the socket and registry" — that was wrong; see the 2026-08-19 amendment below) but the per-repo state directory — `<repo>/.grafel/` per ADR-0007 — is shared. Two daemons indexing the same fixture race on `graph.json` and corrupt each other's outputs.
 
 This amendment narrows the daemon's reach into the repo working tree:
 
@@ -167,6 +167,38 @@ This amendment narrows the daemon's reach into the repo working tree:
 - **The repo's own `.grafel/` is never created or modified by the daemon under this mode.** Pristine read-only fixture corpora stay pristine, no matter how many parallel agents index them.
 - **Group-level metadata that lives co-located by design** (`<repo>/.grafel/group.json`, written by the wizard for repo-to-group discovery via CWD walk) is NOT routed through the helper. That file is a configuration marker, not state, and must be discoverable regardless of which daemon is running.
 
-The helper is `internal/daemon.StateDirForRepo(repoPath)` (and the convenience wrapper `GraphPathForRepo`). All indexer write paths, reader paths (audit, dashboard, MCP, doctor, status, watch, links), and enrichment/repair persistence go through it. The variable name `GRAFEL_DAEMON_ROOT` becomes the single switch for the full three-dimensional isolation (socket + registry + per-repo state).
+The helper is `internal/daemon.StateDirForRepo(repoPath)` (and the convenience wrapper `GraphPathForRepo`). All indexer write paths, reader paths (audit, dashboard, MCP, doctor, status, watch, links), and enrichment/repair persistence go through it. The variable name `GRAFEL_DAEMON_ROOT` becomes the switch for socket + per-repo state isolation. (This sentence originally claimed "the full three-dimensional isolation (socket + registry + per-repo state)". It never isolated the registry — corrected in the 2026-08-19 amendment below.)
 
 This is a deliberate, env-gated exception to ADR-0007. ADR-0007's co-located default remains the right model for the single-user installation it was written for; the daemon-root override exists solely for the parallel-agent development workflow.
+
+## Amendment (2026-08-19) — `GRAFEL_DAEMON_ROOT` never isolated the registry (issue #6331)
+
+The 2026-05-20 amendment above states twice that `GRAFEL_DAEMON_ROOT` isolates the registry: "the socket and registry are isolated", and "the single switch for the full three-dimensional isolation (socket + registry + per-repo state)". **Both statements were wrong from the day they were written**, and `AGENTS.md` repeated the second one.
+
+The registry has never consulted `GRAFEL_DAEMON_ROOT`. `registry.HomeDir` reads `GRAFEL_HOME`, and falls back to `~/.grafel` otherwise:
+
+```go
+func HomeDir() (string, error) {
+    if override := os.Getenv("GRAFEL_HOME"); override != "" {
+        return override, nil
+    }
+    home, err := os.UserHomeDir()
+    ...
+    return filepath.Join(home, ".grafel"), nil
+}
+```
+
+So `GRAFEL_DAEMON_ROOT` alone moves the socket, the pidfile, the logs and per-repo state, while `registry.json`, the group overlays, the embeddings cache and the progress sidecars all stay under the **real** home. That is not isolation, it is a private daemon pointed at the live store — and the daemon's startup tail runs `MigrateToRefStore` and `PruneStaleGenerations` against exactly that store (#6134). An agent following the old text got a daemon it believed was sandboxed and let it relocate and prune the developer's real data.
+
+Consequently:
+
+- **`GRAFEL_DAEMON_ROOT` alone is refused** by the CLI's isolation guard (`internal/envguard`, #6331), as is `GRAFEL_HOME` alone. Neither variable on its own is isolation.
+- **Full isolation is all three together**: `HOME`, `GRAFEL_HOME` and `GRAFEL_DAEMON_ROOT` — which is what `testsupport.IsolateHome` sets.
+
+  ```sh
+  export HOME=$(mktemp -d)
+  export GRAFEL_HOME=$HOME/.grafel
+  export GRAFEL_DAEMON_ROOT=$HOME/.grafel
+  ```
+- Everything the 2026-05-20 amendment says about **per-repo state** (`$GRAFEL_DAEMON_ROOT/state/<sha256(abs_repo_path)[:16]>/`, `StateDirForRepo`, pristine fixtures) is unaffected and still correct. Only the registry claim was false.
+- The fact is pinned by `TestHomeDirIgnoresDaemonRoot` (`internal/registry/home_ignores_daemon_root_6331_test.go`), so this text and the code cannot drift apart again silently. If that test ever fails because the daemon root DOES move the registry, this amendment and the guard's daemon-root leg must be revisited together.

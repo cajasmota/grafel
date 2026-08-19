@@ -12,6 +12,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
+	"github.com/cajasmota/grafel/internal/envguard"
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/install"
@@ -26,6 +27,24 @@ const (
 	statusWarn = "[warn]"
 	statusFail = "[FAIL]"
 )
+
+// reportIsolationFinding writes the partial-isolation state, if any, as a
+// doctor finding and reports whether it wrote anything.
+//
+// The wording deliberately is NOT the guard's refusal text: nothing is being
+// refused here, and "refusing to run" inside a doctor report would be a lie.
+// It carries the same two facts — what is inconsistent, and what that does —
+// from envguard.Result's verdict-neutral fields.
+func reportIsolationFinding(w io.Writer) bool {
+	res := envguard.Check(os.LookupEnv, envguard.RealUserHome())
+	if res.Verdict == envguard.VerdictOK || res.Summary == "" {
+		return false
+	}
+	fmt.Fprintf(w, "%s isolation: %s\n", statusWarn, res.Summary)
+	fmt.Fprintf(w, "       %s\n", res.Detail)
+	fmt.Fprintf(w, "       Everything below this line is reported against THAT environment.\n\n")
+	return true
+}
 
 func newDoctorCmd() *cobra.Command {
 	var killStale bool
@@ -61,6 +80,18 @@ health report. Exits non-zero when any Critical check fails.
 --ref @all   Check health across every known ref.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			w := cmd.OutOrStdout()
+
+			// ── Isolation state (#6331) ───────────────────────────────────
+			// doctor is exempt from the isolation guard's refusal (see
+			// internal/cli/isolation_guard.go) because it is the command you
+			// run to diagnose this very state. Exempt means "report it", not
+			// "ignore it" — so it goes out as a finding, on stderr so --json
+			// stdout stays a clean document.
+			if jsonOut {
+				reportIsolationFinding(cmd.ErrOrStderr())
+			} else {
+				reportIsolationFinding(w)
+			}
 
 			// ── Quick mode ────────────────────────────────────────────────
 			// Only runs the two cheap checks and exits.

@@ -61,7 +61,13 @@ jobs:
       - name: smoke test — start daemon, hit healthz, stop
         shell: powershell
         run: |
+          # GRAFEL_DAEMON_ROOT *and* GRAFEL_HOME (#6331). GRAFEL_DAEMON_ROOT
+          # alone moves the socket/pid/log but leaves the store on the real
+          # home, and the daemon's startup tail relocates and prunes that store
+          # (#6134). internal/envguard refuses that shape, so this step would
+          # not start a daemon at all with only one of the two set.
           $env:GRAFEL_DAEMON_ROOT = "$env:RUNNER_TEMP\grafel-test"
+          $env:GRAFEL_HOME = "$env:RUNNER_TEMP\grafel-test"
           New-Item -ItemType Directory -Path $env:GRAFEL_DAEMON_ROOT -Force | Out-Null
           $proc = Start-Process -FilePath ".\grafel.exe" -ArgumentList "daemon" -PassThru -RedirectStandardOutput "daemon.log" -RedirectStandardError "daemon.err"
           Start-Sleep -Seconds 5
