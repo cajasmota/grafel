@@ -24,10 +24,12 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -42,7 +44,12 @@ import (
 // you want, and add a languageDisplayOverrides entry if the titleCase fallback
 // (e.g. "Vbnet") is not the label you want. Adding a NON-language format
 // extractor: add it to extractorNonLanguageFormats instead — do NOT add it
-// here.
+// here. Adding a dialect, framework or single-file-component directory that
+// belongs under a language already listed here (typescript, vue, svelte,
+// astro -> jsts): add it to extractorDirAliases instead — adding it here
+// instead ships a standalone matrix row and a by-language page for something
+// that is not a separate language. unclassifiedSlugRemedy below is the
+// machine-readable form of this paragraph; keep the two in step.
 var languageRoster = map[string]string{
 	"assembly": "Assembly",
 	"bicep":    "Bicep",
@@ -84,6 +91,32 @@ var languageRoster = map[string]string{
 	"zig":      "Zig",
 }
 
+// unclassifiedSlugRemedy is the failure text for an extractor directory that
+// reached the derivation without being classified. It enumerates ALL FOUR
+// tables a contributor may need, because a remedy that omits the applicable
+// table is worse than no remedy: following it faithfully then reproduces the
+// defect the gate exists to catch. See
+// TestUnclassifiedSlugRemedyNamesEveryTable.
+func unclassifiedSlugRemedy(slug string) string {
+	return fmt.Sprintf("extractor slug %q is derived from internal/extractors/ but is not in "+
+		"languageRoster: it would reach the coverage matrix unreviewed. Pick the "+
+		"table that fits what %q actually is:\n"+
+		"  - a genuinely new LANGUAGE: add it to languageRoster, and add a "+
+		"languageDisplayOverrides entry if %q (the titleCase fallback) is not the "+
+		"label you want — do not just paste that fallback into the roster;\n"+
+		"  - a DIALECT, FRAMEWORK or single-file-component format that belongs "+
+		"under a language already in the roster (typescript, vue, svelte and astro "+
+		"all fold into jsts this way): add it to extractorDirAliases as "+
+		"%q -> \"<existing slug>\". Do NOT add it to languageRoster; that ships a "+
+		"standalone matrix row and its own by-language page, which is exactly what "+
+		"the alias exists to prevent;\n"+
+		"  - a NON-LANGUAGE format (build files, config, markup): add it to "+
+		"extractorNonLanguageFormats;\n"+
+		"  - a SHARED UTILITY package with no per-language extraction: add it to "+
+		"extractorUtilityDirs.",
+		slug, slug, titleCase(slug), slug)
+}
+
 // TestSupportedLanguagesMatchesRealTree runs SupportedLanguages against the
 // actual repository root — not a fixture — and pins the result to the roster
 // above in both directions.
@@ -102,13 +135,7 @@ func TestSupportedLanguagesMatchesRealTree(t *testing.T) {
 
 	for _, s := range got {
 		if _, ok := languageRoster[s]; !ok {
-			t.Errorf("extractor slug %q is derived from internal/extractors/ but is "+
-				"not in languageRoster: it would reach the coverage matrix unreviewed. "+
-				"If it is a language, add it to languageRoster (and to "+
-				"languageDisplayOverrides if %q is not the label you want). If it is "+
-				"a non-language format, add it to extractorNonLanguageFormats. If it "+
-				"is a shared utility package, add it to extractorUtilityDirs.",
-				s, languageDisplayName(s))
+			t.Errorf("%s", unclassifiedSlugRemedy(s))
 		}
 	}
 	for s := range languageRoster {
@@ -160,9 +187,15 @@ func TestRealTreeExtractorDirForSlugResolves(t *testing.T) {
 // packages, and extractorDirAliases kept a "typescript" key for a directory
 // that does not exist (the javascript/ extractor handles .ts).
 //
-// Reintroducing any of those directories is safe: it would fail
-// TestSupportedLanguagesMatchesRealTree, which names the table to put it back
-// into.
+// Reintroducing any of those directories fails
+// TestSupportedLanguagesMatchesRealTree. Note what that does and does not buy
+// you: the failure names the four candidate tables, but it cannot know which
+// one is right. For internal/extractors/typescript/ the correct answer is
+// extractorDirAliases (-> jsts); putting it in languageRoster instead compiles,
+// passes, and ships the standalone Typescript row this PR deleted. The remedy
+// text spells that trade-off out — see unclassifiedSlugRemedy and
+// TestUnclassifiedSlugRemedyNamesEveryTable — but the judgement is still the
+// contributor's.
 func TestExtractorClassificationTablesAreLive(t *testing.T) {
 	root := repoRoot(t)
 	onDisk := map[string]bool{}
@@ -304,4 +337,52 @@ func sortedCandIDs(m map[string]*Candidate) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// TestUnclassifiedSlugRemedyNamesEveryTable guards the gate's own guidance.
+//
+// A gate is only as good as the remedy it hands you: if the message omits the
+// table that is actually correct for the case in hand, following it faithfully
+// reintroduces the defect. That is not hypothetical — the first version of this
+// message offered languageRoster, extractorNonLanguageFormats and
+// extractorUtilityDirs but not extractorDirAliases, so recreating
+// internal/extractors/typescript/ (whose alias to "jsts" #6332 removed as dead)
+// and doing exactly what the failure said produced a standalone "Typescript"
+// row plus a by-language/typescript.md page: precisely what the alias existed
+// to prevent, and what any future SFC/framework directory would hit.
+//
+// Synthetic tree on purpose — the real tree cannot host a deliberately
+// unclassified directory without failing every other test in this file.
+func TestUnclassifiedSlugRemedyNamesEveryTable(t *testing.T) {
+	root := t.TempDir()
+	extractorsRoot := filepath.Join(root, "internal", "extractors")
+	for _, d := range []string{"golang", "typescript"} {
+		if err := os.MkdirAll(filepath.Join(extractorsRoot, d), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+
+	var unclassified []string
+	for _, s := range SupportedLanguages(root) {
+		if _, ok := languageRoster[s]; !ok {
+			unclassified = append(unclassified, s)
+		}
+	}
+	if !reflect.DeepEqual(unclassified, []string{"typescript"}) {
+		t.Fatalf("setup: want exactly [typescript] unclassified, got %v", unclassified)
+	}
+
+	msg := unclassifiedSlugRemedy("typescript")
+	for _, table := range []string{
+		"languageRoster",
+		"languageDisplayOverrides",
+		"extractorNonLanguageFormats",
+		"extractorUtilityDirs",
+		"extractorDirAliases",
+	} {
+		if !strings.Contains(msg, table) {
+			t.Errorf("the remedy for an unclassified extractor directory never names %s;\n"+
+				"a contributor following this message cannot reach that table:\n%s", table, msg)
+		}
+	}
 }
