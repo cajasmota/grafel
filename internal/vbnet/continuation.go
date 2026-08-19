@@ -244,10 +244,44 @@ func precedingWord(masked string, i int) string {
 // splits one statement in two, whereas joining wrongly deletes the next
 // declaration outright, and `0&` / `&H…&` constants are pervasive in the
 // Declare/Win32-interop code this package targets.
+//
+// Two glued cases are nevertheless decidable, because VB.NET forbids the type
+// character there: a Char literal (`"x"c&`) and a fractional literal (`1.5&`)
+// cannot be typed Long, so the '&' can only be concatenation. Being glued is
+// therefore necessary but not sufficient, and both are excluded below.
 func typeCharacterAmpersand(masked string) bool {
-	return len(masked) >= 2 &&
-		masked[len(masked)-1] == '&' &&
-		isIdentByte(masked[len(masked)-2])
+	if len(masked) < 2 || masked[len(masked)-1] != '&' || !isIdentByte(masked[len(masked)-2]) {
+		return false
+	}
+	body := masked[:len(masked)-1]
+	// `"x"c` is a Char literal; '&' does not type a Char.
+	if n := len(body); n >= 2 && (body[n-1] == 'c' || body[n-1] == 'C') && body[n-2] == '"' {
+		return false
+	}
+	// `1.5` is a fractional literal; '&' types a Long. The walk spans '.' so
+	// that `obj.Count&` is read as a member access (mixed bytes, so a type
+	// character) rather than as a number.
+	i := len(body)
+	for i > 0 && (isIdentByte(body[i-1]) || body[i-1] == '.') {
+		i--
+	}
+	return !isFractionalLiteral(body[i:])
+}
+
+// isFractionalLiteral reports whether s is digits with at least one decimal
+// point and nothing else.
+func isFractionalLiteral(s string) bool {
+	dot := false
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '.':
+			dot = true
+		case s[i] >= '0' && s[i] <= '9':
+		default:
+			return false
+		}
+	}
+	return dot && len(s) > 1
 }
 
 // isAttributesOnly reports whether everything joined so far is attribute

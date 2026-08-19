@@ -290,3 +290,64 @@ func TestLogicalLineMetadata(t *testing.T) {
 		t.Errorf("End Sub inherited a docstring: %q", got[1].Doc)
 	}
 }
+
+// TestTypeCharacterAmpersand_LiteralsThatCannotCarryOne pins the two shapes
+// where the glued-'&' heuristic was provably wrong. VB.NET forbids the '&'
+// (Long) type character on a Char literal and on a fractional literal, so a
+// '&' glued there MUST be concatenation and the line MUST join. isIdentByte
+// alone saw the 'c' of `"x"c` and the '5' of `1.5` and split both.
+func TestTypeCharacterAmpersand_LiteralsThatCannotCarryOne(t *testing.T) {
+	cases := []struct {
+		name, rule, src string
+		want            []string
+	}{
+		{
+			name: "char-literal", rule: `a Char literal cannot carry a type character, so "x"c& concatenates`,
+			src:  "Dim s = \"x\"c &\nother",
+			want: []string{`Dim s = "x"c & other`},
+		},
+		{
+			name: "char-literal-glued", rule: "the same with no space before the '&'",
+			src:  "Dim s = \"x\"c&\nother",
+			want: []string{`Dim s = "x"c& other`},
+		},
+		{
+			name: "fractional-literal", rule: "'&' types a Long; 1.5 is not one, so the '&' concatenates",
+			src:  "Dim s = 1.5&\nother",
+			want: []string{"Dim s = 1.5& other"},
+		},
+		{
+			name: "control/integer-literal", rule: "32& IS a Long literal and a complete statement",
+			src:  "Dim n = 32&\nDim m = 1",
+			want: []string{"Dim n = 32&", "Dim m = 1"},
+		},
+		{
+			name: "control/hex-literal", rule: "&H80000000& is a Long literal, not a dangling concatenation",
+			src:  "Dim n = &H80000000&\nDim m = 1",
+			want: []string{"Dim n = &H80000000&", "Dim m = 1"},
+		},
+		{
+			name: "control/member-access", rule: "obj.Count& types a Long; the dot walk must not mistake it for a fraction",
+			src:  "Dim n = obj.Count&\nDim m = 1",
+			want: []string{"Dim n = obj.Count&", "Dim m = 1"},
+		},
+		{
+			name: "control/identifier", rule: "count& is a Long-typed identifier and a complete statement",
+			src:  "Dim n = count&\nDim m = 1",
+			want: []string{"Dim n = count&", "Dim m = 1"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := texts(JoinContinuations(tc.src))
+			if len(got) != len(tc.want) {
+				t.Fatalf("rule %q: got %d lines %q, want %d %q", tc.rule, len(got), got, len(tc.want), tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("rule %q: line %d = %q, want %q", tc.rule, i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
