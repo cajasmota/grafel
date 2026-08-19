@@ -92,6 +92,9 @@ func scanLine(line string) scanResult {
 	for i < len(line) {
 		c := line[i]
 		switch {
+		case c == '"' && i > 0 && line[i-1] == '$':
+			i = scanInterpolated(line, i, &res)
+			atStmt = false
 		case c == '"':
 			i++
 			contentStart := i
@@ -143,6 +146,75 @@ func scanLine(line string) scanResult {
 		}
 	}
 	return res
+}
+
+// scanInterpolated walks a $"..." interpolated string starting at the opening
+// quote line[start] and returns the index just past its closing quote.
+//
+// An interpolated string is text with holes: `$"a {f(x)} b"` is two literal
+// chunks and one expression. The chunks are recorded as string spans — and,
+// unlike an ordinary literal, the recorded span INCLUDES its delimiters, so
+// masking removes the quote and the brace too. That is what keeps a later
+// literal-skipping scan from pairing the interpolation's opening quote with a
+// nested literal's quote: after masking there is no quote left to pair.
+//
+// The hole itself is left as code, which is both correct and useful — a call
+// inside a hole is a real call, and `$"{f("x")}"` only balances its
+// parentheses if the hole is counted rather than skipped over as text.
+//
+// `{{` and `}}` are escaped braces and stay inside the chunk; `""` is the
+// escaped quote, as everywhere else in VB.NET.
+func scanInterpolated(line string, start int, res *scanResult) int {
+	i := start + 1
+	chunkStart := start // includes the delimiter
+	depth := 0
+	for i < len(line) {
+		c := line[i]
+		if depth == 0 {
+			switch {
+			case c == '"' && i+1 < len(line) && line[i+1] == '"':
+				i += 2
+			case c == '"':
+				res.strings = append(res.strings, span{chunkStart, i + 1})
+				return i + 1
+			case c == '{' && i+1 < len(line) && line[i+1] == '{':
+				i += 2
+			case c == '{':
+				res.strings = append(res.strings, span{chunkStart, i + 1})
+				depth = 1
+				i++
+			case c == '}' && i+1 < len(line) && line[i+1] == '}':
+				i += 2
+			default:
+				i++
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			// A nested literal inside a hole: mask its content only, so its
+			// own quotes stay paired for any later scan.
+			end := literalEnd(line, i)
+			if end > i+1 {
+				res.strings = append(res.strings, span{i + 1, end - 1})
+			}
+			i = end
+		case '{':
+			depth++
+			i++
+		case '}':
+			depth--
+			i++
+			if depth == 0 {
+				chunkStart = i - 1 // the '}' opens the next chunk
+			}
+		default:
+			i++
+		}
+	}
+	// Unterminated: mask what is left rather than dropping the span.
+	res.strings = append(res.strings, span{chunkStart, len(line)})
+	return len(line)
 }
 
 // isREMAt reports whether a REM comment keyword starts at line[i]. The caller

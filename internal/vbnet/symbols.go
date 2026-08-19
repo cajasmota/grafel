@@ -454,6 +454,20 @@ func walkStatement(
 		return // S5 owns these edges; the table only needs not to choke.
 	}
 
+	// Enum members are recognised before modifiers are peeled, because an
+	// Enum body holds bare names and several of those names are also
+	// modifiers: three corpus files declare a member called `Custom`, which
+	// opens a Custom Event everywhere else. Peeling first consumed the name
+	// and recorded no symbol at all, so a later `Custom` use site resolved to
+	// nothing (#6363).
+	if enclosingIsEnum(*stack) {
+		if name, tail := takeIdent(stmt); name != "" &&
+			(tail == "" || strings.HasPrefix(tail, "=")) {
+			t.add(&Symbol{Name: name, Kind: KindEnumMember, Scope: scopeOf(), Line: line})
+		}
+		return
+	}
+
 	// Peel modifiers.
 	mods := map[string]bool{}
 	body := stmt
@@ -553,14 +567,6 @@ func walkStatement(
 				}
 				*stack = (*stack)[:len(*stack)-1]
 			}
-		}
-		return
-	}
-
-	// Enum members: a bare name inside an Enum body.
-	if innerKind() == KindType && enclosingIsEnum(*stack) && !sawModifier {
-		if name, tail := takeIdent(body); name != "" && (tail == "" || strings.HasPrefix(tail, "=")) {
-			t.add(&Symbol{Name: name, Kind: KindEnumMember, Scope: scope, Line: line})
 		}
 		return
 	}

@@ -21,6 +21,32 @@ type LogicalLine struct {
 	// Line and EndLine are 1-based physical line numbers, inclusive.
 	Line    int
 	EndLine int
+	// Pieces records, for each physical-line fragment joined into Text, the
+	// byte offset in Text at which it starts and the physical line it came
+	// from. Without it a use site on the third physical line of a continued
+	// statement would be reported at the statement's first line, which is the
+	// span accuracy S4 needs and the 46 corpus files carrying ' _' would lose.
+	Pieces []LinePiece
+}
+
+// LinePiece maps one offset in LogicalLine.Text back to a physical line.
+type LinePiece struct {
+	// Offset is the byte offset in Text where the fragment starts.
+	Offset int
+	// Line is the 1-based physical line the fragment came from.
+	Line int
+}
+
+// LineAt returns the 1-based physical line holding the byte at offset in Text.
+func (l LogicalLine) LineAt(offset int) int {
+	line := l.Line
+	for _, p := range l.Pieces {
+		if p.Offset > offset {
+			break
+		}
+		line = p.Line
+	}
+	return line
 }
 
 // continuationKeywords are the keywords after which VB.NET 10+ permits an
@@ -59,10 +85,17 @@ const continuationTrailingBytes = ",({.&=+-*/\\^<"
 // comment or a literal can never drive joining), explicit '_' continuation,
 // implicit continuation, and attribute splitting.
 func JoinContinuations(src string) []LogicalLine {
+	// A UTF-8 byte-order mark is not whitespace, so leaving it in place makes
+	// the first statement of the file start with three bytes that are neither
+	// an identifier nor a keyword: `Public Class Crash` is never recognised
+	// and every member of the file lands at file scope. 12 of the 302 corpus
+	// files start with one, most of them .Designer.vb (#6363).
+	src = strings.TrimPrefix(src, "\ufeff")
 	raw := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
 
 	var out []LogicalLine
 	var buf []string
+	var pieces []LinePiece
 	var doc, comments []string
 	var pendingDoc []string
 	depth := 0
@@ -84,10 +117,11 @@ func JoinContinuations(src string) []LogicalLine {
 				Comments:   append([]string{}, comments...),
 				Line:       startLine,
 				EndLine:    endLine,
+				Pieces:     append([]LinePiece{}, pieces...),
 			})
 			pendingDoc = nil
 		}
-		buf, doc, comments = nil, nil, nil
+		buf, pieces, doc, comments = nil, nil, nil, nil
 		depth = 0
 		pending = false
 	}
@@ -128,6 +162,13 @@ func JoinContinuations(src string) []LogicalLine {
 			depth = 0
 		}
 		if s := strings.TrimSpace(trimmed); s != "" {
+			// Text joins the fragments with a single space, so the offset of
+			// the next one is the running length plus one separator per gap.
+			off := 0
+			for _, b := range buf {
+				off += len(b) + 1
+			}
+			pieces = append(pieces, LinePiece{Offset: off, Line: lineNo})
 			buf = append(buf, s)
 		}
 		switch kind {
