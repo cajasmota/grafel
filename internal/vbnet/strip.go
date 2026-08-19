@@ -25,12 +25,29 @@
 //
 // # Verification status
 //
-// UNVERIFIED against real VB.NET source. No .vb file exists anywhere on the
-// machine this was written on (checked during #6327 S2). Every fixture here is
-// constructed from the VB.NET language reference and from the shapes reported
-// in #6321 (WinForms .Designer.vb, Inherits clauses, Handles wiring, file-top
-// Imports). Per AGENTS.md "Evidence", that gap is stated rather than papered
-// over: the mechanism is pinned by tests, the distribution is not.
+// VERIFIED against real VB.NET source as of #6327 S4. The corpus that did not
+// exist when S1-S3 were written is now on disk: 302 .vb files, 148,308 lines,
+// 88 of them .Designer.vb, across WakeOnLAN, staxrip and
+// display-drivers-uninstaller (#6363). 300 of the 302 parse with no
+// diagnostic; see TestCorpusParseRate, which is a gate rather than a report.
+//
+// Running S4's parser over that corpus corrected this pre-pass in four places
+// that no constructed fixture had reached. Each is priced by how many files
+// lose a clean parse when the fix is removed and the corpus re-parsed:
+//
+//	a UTF-8 byte-order mark ahead of the first declaration   22 files
+//	$"..." interpolation scanned inverted, hole as text       0 files
+//	an enum member named `Custom` eaten by the modifier peel   3 files
+//	multi-line lambdas leaving the container stack open      45 files
+//
+// The interpolation row is 0 by that measure and was still worth fixing: 106
+// of the 302 files contain a $"..." literal, and scanning it inverted exposed
+// its text as code and hid its holes, so it corrupted masking wherever it
+// appeared rather than failing loudly anywhere. The lambda row also recorded
+// method-body locals as type-scope FIELDS, which no parse rate can see.
+//
+// Still unverified: the distribution in the reporter's own ~670-file tree
+// (#6321). Nothing here claims a recall or precision figure for CALLS.
 package vbnet
 
 import "strings"
@@ -92,6 +109,9 @@ func scanLine(line string) scanResult {
 	for i < len(line) {
 		c := line[i]
 		switch {
+		case c == '"' && i > 0 && line[i-1] == '$':
+			i = scanInterpolated(line, i, &res)
+			atStmt = false
 		case c == '"':
 			i++
 			contentStart := i
@@ -143,6 +163,75 @@ func scanLine(line string) scanResult {
 		}
 	}
 	return res
+}
+
+// scanInterpolated walks a $"..." interpolated string starting at the opening
+// quote line[start] and returns the index just past its closing quote.
+//
+// An interpolated string is text with holes: `$"a {f(x)} b"` is two literal
+// chunks and one expression. The chunks are recorded as string spans — and,
+// unlike an ordinary literal, the recorded span INCLUDES its delimiters, so
+// masking removes the quote and the brace too. That is what keeps a later
+// literal-skipping scan from pairing the interpolation's opening quote with a
+// nested literal's quote: after masking there is no quote left to pair.
+//
+// The hole itself is left as code, which is both correct and useful — a call
+// inside a hole is a real call, and `$"{f("x")}"` only balances its
+// parentheses if the hole is counted rather than skipped over as text.
+//
+// `{{` and `}}` are escaped braces and stay inside the chunk; `""` is the
+// escaped quote, as everywhere else in VB.NET.
+func scanInterpolated(line string, start int, res *scanResult) int {
+	i := start + 1
+	chunkStart := start // includes the delimiter
+	depth := 0
+	for i < len(line) {
+		c := line[i]
+		if depth == 0 {
+			switch {
+			case c == '"' && i+1 < len(line) && line[i+1] == '"':
+				i += 2
+			case c == '"':
+				res.strings = append(res.strings, span{chunkStart, i + 1})
+				return i + 1
+			case c == '{' && i+1 < len(line) && line[i+1] == '{':
+				i += 2
+			case c == '{':
+				res.strings = append(res.strings, span{chunkStart, i + 1})
+				depth = 1
+				i++
+			case c == '}' && i+1 < len(line) && line[i+1] == '}':
+				i += 2
+			default:
+				i++
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			// A nested literal inside a hole: mask its content only, so its
+			// own quotes stay paired for any later scan.
+			end := literalEnd(line, i)
+			if end > i+1 {
+				res.strings = append(res.strings, span{i + 1, end - 1})
+			}
+			i = end
+		case '{':
+			depth++
+			i++
+		case '}':
+			depth--
+			i++
+			if depth == 0 {
+				chunkStart = i - 1 // the '}' opens the next chunk
+			}
+		default:
+			i++
+		}
+	}
+	// Unterminated: mask what is left rather than dropping the span.
+	res.strings = append(res.strings, span{chunkStart, len(line)})
+	return len(line)
 }
 
 // isREMAt reports whether a REM comment keyword starts at line[i]. The caller

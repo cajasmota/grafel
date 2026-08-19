@@ -327,6 +327,12 @@ type container struct {
 	name  string
 	ender string
 	kind  SymbolKind
+	// lambda marks a block opened by a multi-line lambda. It contributes no
+	// segment to the scope path — a lambda has no name — but it must be on
+	// the stack, or its `End Sub` closes the enclosing method and every later
+	// Dim in that method is recorded as a FIELD at type scope. Measured on
+	// CodeEditor.vb:617 before this existed.
+	lambda bool
 }
 
 // BuildTable runs the pre-pass over src and records every declaration it
@@ -339,6 +345,9 @@ func BuildTable(src string) *Table {
 	scopeOf := func() string {
 		parts := make([]string, 0, len(stack))
 		for _, c := range stack {
+			if c.lambda {
+				continue
+			}
 			parts = append(parts, c.name)
 		}
 		return strings.Join(parts, ".")
@@ -366,6 +375,11 @@ func BuildTable(src string) *Table {
 		code := MaskStringLiterals(ll.Code)
 		for _, stmt := range splitStatements(code) {
 			walkStatement(t, stmt, ll.Line, scopeOf, push, pop, innerKind, &stack)
+			// Lambda blocks are tracked here and in the tree walk from the
+			// same helper, so the two cannot disagree about what is open.
+			if kw := lambdaEnder(strings.TrimSpace(stmt)); kw != "" {
+				stack = append(stack, container{ender: kw, kind: innerKind(), lambda: true})
+			}
 		}
 	}
 	return t
@@ -452,6 +466,20 @@ func walkStatement(
 		return
 	case "inherits", "implements":
 		return // S5 owns these edges; the table only needs not to choke.
+	}
+
+	// Enum members are recognised before modifiers are peeled, because an
+	// Enum body holds bare names and several of those names are also
+	// modifiers: three corpus files declare a member called `Custom`, which
+	// opens a Custom Event everywhere else. Peeling first consumed the name
+	// and recorded no symbol at all, so a later `Custom` use site resolved to
+	// nothing (#6363).
+	if enclosingIsEnum(*stack) {
+		if name, tail := takeIdent(stmt); name != "" &&
+			(tail == "" || strings.HasPrefix(tail, "=")) {
+			t.add(&Symbol{Name: name, Kind: KindEnumMember, Scope: scopeOf(), Line: line})
+		}
+		return
 	}
 
 	// Peel modifiers.
@@ -553,14 +581,6 @@ func walkStatement(
 				}
 				*stack = (*stack)[:len(*stack)-1]
 			}
-		}
-		return
-	}
-
-	// Enum members: a bare name inside an Enum body.
-	if innerKind() == KindType && enclosingIsEnum(*stack) && !sawModifier {
-		if name, tail := takeIdent(body); name != "" && (tail == "" || strings.HasPrefix(tail, "=")) {
-			t.add(&Symbol{Name: name, Kind: KindEnumMember, Scope: scope, Line: line})
 		}
 		return
 	}

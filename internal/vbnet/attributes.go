@@ -16,7 +16,55 @@ import "strings"
 // contain string literals holding '>' — both are tracked, so the terminating
 // '>' is the one at paren depth zero outside a literal.
 func SplitAttributes(code string) (attrs []string, rest string) {
+	ranges := attributeRanges(code)
+	if len(ranges) == 0 {
+		return nil, strings.TrimSpace(code)
+	}
 	var out strings.Builder
+	prev := 0
+	for _, r := range ranges {
+		attrs = append(attrs, strings.TrimSpace(code[r.start+1:r.end]))
+		seg := code[prev:r.start]
+		// Drop the whitespace an inline group was separated from its '(' or
+		// ',' by, so removing `<Out>` from `F(a, <Out> ByRef n)` leaves one
+		// space rather than two. The space AFTER the group is kept, which is
+		// what stops the removal from ever joining two tokens.
+		if t := strings.TrimRight(seg, " \t"); t != seg &&
+			(strings.HasSuffix(t, "(") || strings.HasSuffix(t, ",")) {
+			seg = t
+		}
+		out.WriteString(seg)
+		prev = r.end + 1
+	}
+	out.WriteString(code[prev:])
+	return attrs, strings.TrimSpace(out.String())
+}
+
+// BlankAttributes replaces every attribute group with spaces, preserving byte
+// length so offsets into the result still index the input.
+//
+// SplitAttributes removes the groups, which shifts every later offset; the
+// parser needs them gone *and* needs a use site's offset to still map back to
+// the physical line it came from, which is what this preserves.
+func BlankAttributes(code string) string {
+	ranges := attributeRanges(code)
+	if len(ranges) == 0 {
+		return code
+	}
+	b := []byte(code)
+	for _, r := range ranges {
+		for i := r.start; i <= r.end && i < len(b); i++ {
+			b[i] = ' '
+		}
+	}
+	return string(b)
+}
+
+// attributeRanges returns the inclusive [start,end] byte ranges of every
+// attribute group in code, in source order. start indexes the '<' and end the
+// matching '>'.
+func attributeRanges(code string) []span {
+	var ranges []span
 	i := 0
 
 	// Leading groups: skip whitespace, then consume every adjacent <...>.
@@ -32,7 +80,7 @@ func SplitAttributes(code string) (attrs []string, rest string) {
 		if !ok {
 			break
 		}
-		attrs = append(attrs, strings.TrimSpace(code[j+1:end]))
+		ranges = append(ranges, span{j, end})
 		i = end + 1
 	}
 
@@ -40,14 +88,11 @@ func SplitAttributes(code string) (attrs []string, rest string) {
 	for i < len(code) {
 		c := code[i]
 		if c == '"' {
-			// Copy the literal verbatim; '<' inside it is data.
-			end := literalEnd(code, i)
-			out.WriteString(code[i:end])
-			i = end
+			// '<' inside a literal is data.
+			i = literalEnd(code, i)
 			continue
 		}
 		if c == '(' || c == ',' {
-			out.WriteByte(c)
 			i++
 			j := i
 			for j < len(code) && (code[j] == ' ' || code[j] == '\t') {
@@ -58,9 +103,7 @@ func SplitAttributes(code string) (attrs []string, rest string) {
 				if !ok {
 					break
 				}
-				attrs = append(attrs, strings.TrimSpace(code[j+1:end]))
-				// Consume the group but not the whitespace around it, so that
-				// removing an attribute never joins two tokens together.
+				ranges = append(ranges, span{j, end})
 				i = end + 1
 				j = i
 				for j < len(code) && (code[j] == ' ' || code[j] == '\t') {
@@ -69,10 +112,9 @@ func SplitAttributes(code string) (attrs []string, rest string) {
 			}
 			continue
 		}
-		out.WriteByte(c)
 		i++
 	}
-	return attrs, strings.TrimSpace(out.String())
+	return ranges
 }
 
 // attributeEnd returns the index of the '>' closing the attribute group that
