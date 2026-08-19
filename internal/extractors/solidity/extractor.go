@@ -20,6 +20,7 @@ package solidity
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/extractor"
@@ -127,8 +128,11 @@ func extractSolidity(src, filePath string) []types.EntityRecord {
 	}))
 
 	// ── 1. Import edges ──────────────────────────────────────────────────
-	importEntities := buildImportEntities(filePath, src)
-	entities = append(entities, importEntities...)
+	// Hung on the file entity (entities[0]) rather than on a per-import
+	// SCOPE.Component placeholder — see buildImportRelationships for why
+	// (issue #6368; the #742 / #681 / #693 pattern).
+	entities[0].Relationships = append(entities[0].Relationships,
+		buildImportRelationships(filePath, src)...)
 
 	// Framework/tool signals from import paths (OpenZeppelin/Foundry/Hardhat).
 	signals := scanImportFrameworks(collectImportPaths(src))
@@ -409,10 +413,86 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 	return out
 }
 
-// buildImportEntities parses import statements and returns IMPORTS entities.
-func buildImportEntities(filePath, src string) []types.EntityRecord {
+// buildImportRelationships parses import statements and returns the IMPORTS
+// relationships, one per distinct import path, for the caller to hang on the
+// per-file SCOPE.Component (subtype="file") carrier.
+//
+// # Why there is no entity here (issue #6368)
+//
+// This used to be buildImportEntities, emitting one SCOPE.Component per
+// distinct import path named after the path basename minus ".sol". That
+// entity was a pure carrier — nothing referenced it — and it was actively
+// harmful, because the loop dedupes by PATH while naming by BASENAME and
+// graph.EntityID hashes repo|kind|name|sourceFile with neither Subtype nor the
+// line span in it. Two records could therefore share one id:
+//
+//   - a file declaring `interface IERC20` that also imports another
+//     IERC20.sol: the placeholder (the import line) and the interface;
+//   - `./a/Token.sol` and `./b/Token.sol` imported by one file: two
+//     placeholders, two paths, one id.
+//
+// Both were silent, and both resolved differently on the two indexing paths.
+// On the CLI full rebuild (Path B) resolve.PruneImportPlaceholders would drop
+// a placeholder marked Subtype:"import"; on the daemon's incremental reindex
+// (internal/extractors.TryIncremental, Path A — the DEFAULT, #5231) nothing
+// prunes, and convertExtractedRecords folds the colliding records with
+// foldDuplicateEntity's gap-fill-never-override rule. Since extractSolidity
+// appends imports before contracts, the placeholder always won the survivor
+// slot: an unmarked placeholder took the declaration's Subtype but kept the
+// import statement's one-line span, and a marked one made a real
+// `interface IERC20` read as subtype="import".
+//
+// Not emitting the record is the fix that holds on both paths, because the
+// colliding row is never created. It is also the established in-repo answer
+// for this exact shape — JS/TS #742 (see
+// internal/extractors/javascript/prune_import_placeholders.go), Java #681/#694
+// and Python #693/#715 all moved their IMPORTS edges onto the file carrier.
+// #742's correctness invariants were re-verified for solidity:
+//
+//  1. The file entity exists and is entities[0] — extractSolidity appends
+//     extractor.FileEntity unconditionally before anything else.
+//  2. The IMPORTS FromID is still the file path — unchanged below.
+//  3. resolve.BuildImportTable walks EVERY record's Relationships and keys on
+//     rel.FromID falling back to r.SourceFile (imports.go:216-226); it never
+//     requires an import-placeholder host. Both values are the file path here.
+//  4. The cross-repo linker (#566/#570) matches file-level SCOPE.Component
+//     entities, which is now the host rather than a sibling of the host.
+//  5. Real contract/interface/library components and the file entity are
+//     untouched.
+//  6. Solidity has no extractor-side import binding table to invalidate (the
+//     substrate's is built from source text in internal/substrate/solidity.go,
+//     not from these records).
+//
+// # The edge is carried over UNCHANGED, including its ToID
+//
+// ToID stays the raw import specifier, exactly as the placeholder's edge
+// always carried it. #742 is explicit that the IMPORTS edge and its
+// Properties are preserved and only the wrapper entity is dropped, and that
+// restraint is load-bearing here.
+//
+// Resolving the specifier to a repo-relative path (`./a/Token.sol` in
+// `src/Main.sol` -> `src/a/Token.sol`, which is the Name of that file's own
+// carrier) was tried and MEASURED, because it would have let the byName tier
+// bind these edges and so kept the import-hygiene and cycle-detection numbers
+// the marker approach had produced. It binds two of the fixtures correctly and
+// MIS-BINDS a third: on a two-file import cycle, `./B.sol` from `src/A.sol`
+// resolved to `src/B.sol` and ReferencesEmbedded bound it to
+// `SCOPE.Operation/B.pong` — a function, not the file or the contract. A wrong
+// bind is worse than an unresolved endpoint, and it is the same failure class
+// (#6296) this issue exists to remove, so the resolution was dropped. Making
+// those name tiers handle solidity import paths is resolver work and belongs
+// to #6369.
+//
+// Consequence, stated plainly: the #642 pre-prune ToID rewrite
+// (imports.go:2887) and the #6156 `ext:` restore (imports.go:3384) are BOTH
+// gated on a live `Kind=="SCOPE.Component" && Subtype=="import"` record, so
+// neither fires for solidity once the placeholder is gone. Solidity IMPORTS
+// ToIDs remain raw path strings — unchanged from before this issue, not a
+// regression, but not an improvement either. What this change fixes is the
+// EntityID collision, on both indexing paths.
+func buildImportRelationships(filePath, src string) []types.RelationshipRecord {
 	seen := make(map[string]bool)
-	var out []types.EntityRecord
+	var out []types.RelationshipRecord
 
 	for _, m := range importRE.FindAllStringSubmatchIndex(src, -1) {
 		if len(m) < 4 {
@@ -425,33 +505,33 @@ func buildImportEntities(filePath, src string) []types.EntityRecord {
 		seen[importPath] = true
 		startLine := lineOf(src, m[0])
 
-		// Display name: last path segment without extension.
+		// Local name: last path segment without extension. Unchanged — it is
+		// what the import table binds on, and internal/substrate/solidity.go
+		// computes the identical value independently at :61-66.
 		displayName := importPath
 		if slash := strings.LastIndexByte(importPath, '/'); slash >= 0 {
 			displayName = importPath[slash+1:]
 		}
 		displayName = strings.TrimSuffix(displayName, ".sol")
 
-		props := types.Props{
-			{K: "imported_name", V: displayName},
-			{K: "local_name", V: displayName},
-			{K: "source_module", V: importPath},
-		}
-
-		out = append(out, types.EntityRecord{
-			Name:       displayName,
-			Kind:       "SCOPE.Component",
-			SourceFile: filePath,
-			Language:   "solidity",
-			StartLine:  startLine,
-			EndLine:    startLine,
-			Relationships: []types.RelationshipRecord{
-				{
-					FromID:     filePath,
-					ToID:       importPath,
-					Kind:       "IMPORTS",
-					Properties: props,
-				},
+		out = append(out, types.RelationshipRecord{
+			FromID: filePath,
+			ToID:   importPath,
+			Kind:   "IMPORTS",
+			// types.Props is a SORTED slice and Props.Get binary-searches it
+			// (types/props.go:67 -> find); a literal in the wrong key order
+			// silently reads back as absent. Keep these ascending by key.
+			Properties: types.Props{
+				{K: "imported_name", V: displayName},
+				// The import statement's line. It used to live on the
+				// placeholder's StartLine — TestSolidity_LineAttribution was
+				// written for the defect where "imports were emitted with no
+				// line at all" — so dropping the entity must not drop the
+				// line with it. `line` is the repo-wide relationship
+				// convention (ocaml:509, zig:376, nim:450, svelte:708, …).
+				{K: "line", V: strconv.Itoa(startLine)},
+				{K: "local_name", V: displayName},
+				{K: "source_module", V: importPath},
 			},
 		})
 	}

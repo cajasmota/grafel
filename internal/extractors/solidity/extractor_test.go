@@ -112,18 +112,49 @@ import {SafeMath} from "./SafeMath.sol";
 contract TokenMint {
 }
 `
-	ents := runSolidity(t, src, "TokenMint.sol")
+	ents := runSolidity(t, src, "src/TokenMint.sol")
 
-	// Three distinct import paths.
-	if !solHasRel(ents, "IERC20", "SCOPE.Component", "IMPORTS", "./IERC20.sol") {
-		t.Error("expected IMPORTS edge for ./IERC20.sol")
+	// Three distinct import paths, all hosted on the per-file
+	// SCOPE.Component/file carrier (#6368 moved them off the per-import
+	// placeholder that used to host them — the #742 pattern). The edge itself
+	// is carried over unchanged: same ToID, same properties.
+	for _, tc := range []struct{ sourceModule, toID string }{
+		{"./IERC20.sol", "./IERC20.sol"},
+		{"@openzeppelin/contracts/access/Ownable.sol", "@openzeppelin/contracts/access/Ownable.sol"},
+		{"./SafeMath.sol", "./SafeMath.sol"},
+	} {
+		if !solHasRel(ents, "src/TokenMint.sol", "SCOPE.Component", "IMPORTS", tc.toID) {
+			t.Errorf("expected IMPORTS edge to %q on the src/TokenMint.sol file carrier", tc.toID)
+			continue
+		}
+		if !solHasImportWithModule(ents, tc.sourceModule, tc.toID) {
+			t.Errorf("IMPORTS edge to %q does not carry source_module=%q", tc.toID, tc.sourceModule)
+		}
 	}
-	if !solHasRel(ents, "Ownable", "SCOPE.Component", "IMPORTS", "@openzeppelin/contracts/access/Ownable.sol") {
-		t.Error("expected IMPORTS edge for @openzeppelin/contracts/access/Ownable.sol")
+
+	// The placeholder entities are gone: no SCOPE.Component may be named after
+	// an import basename in the importing file (#6368).
+	for _, gone := range []string{"IERC20", "Ownable", "SafeMath"} {
+		if e := solFind(ents, gone, "SCOPE.Component"); e != nil {
+			t.Errorf("import placeholder %q still emitted (subtype=%q lines=%d-%d) — "+
+				"it collides by graph.EntityID with any same-named declaration in "+
+				"the same file (#6368)", gone, e.Subtype, e.StartLine, e.EndLine)
+		}
 	}
-	if !solHasRel(ents, "SafeMath", "SCOPE.Component", "IMPORTS", "./SafeMath.sol") {
-		t.Error("expected IMPORTS edge for ./SafeMath.sol")
+}
+
+// solHasImportWithModule reports whether some IMPORTS edge with the given ToID
+// carries source_module == wantModule.
+func solHasImportWithModule(ents []types.EntityRecord, wantModule, toID string) bool {
+	for i := range ents {
+		for _, r := range ents[i].Relationships {
+			if r.Kind == "IMPORTS" && r.ToID == toID &&
+				r.Properties.Get("source_module") == wantModule {
+				return true
+			}
+		}
 	}
+	return false
 }
 
 // ── Contract / library / interface declaration ────────────────────────────────
