@@ -175,8 +175,16 @@ func isEmitCall(stmt ast.Stmt) bool {
 		if isBareEmitCall(inner) {
 			return true
 		}
-		// A return inside the deferred body before the emit would skip it.
-		if _, isRet := inner.(*ast.ReturnStmt); isRet {
+		// A return inside the deferred body before the emit would skip it — at
+		// ANY nesting depth, which is why this is countReturns and not a
+		// type-assertion to *ast.ReturnStmt. Asserting on the top level only was
+		// the bug: `if !returned { return }` is a *ast.IfStmt, so the emit-less
+		// panic path sailed straight past this check and
+		// TestPhaseTrace_EveryReturnIsTraced passed on a mutant that emitted
+		// nothing when the pass panicked. countReturns is also what the BARE
+		// branch has always used, so the two shapes now really do carry the same
+		// "unconditional" guarantee this comment claims for them.
+		if countReturns(inner) > 0 {
 			return false
 		}
 	}
@@ -683,20 +691,63 @@ func auditSpans(fset *token.FileSet, file *ast.File) (spans int, problems []stri
 						phase, fset.Position(st.Pos()), endName))
 					continue
 				}
-				var bad []ast.Stmt
-				scanForUnclosedReturns(list[i+1:close], endName, &bad)
-				for _, r := range bad {
+				var esc []spanEscape
+				var shadows []ast.Stmt
+				scanForSpanEscapes(list[i+1:close], endName, spanScope{}, &esc, &shadows)
+				for _, e := range esc {
 					problems = append(problems, fmt.Sprintf(
-						"span %q (%s) is still open at the return on %s: that path reports no "+
+						"span %q (%s) is still open at the %s on %s: that path reports no "+
 							"%q phase at all, and accounted_ms underreports total_ms by it",
-						phase, endName, fset.Position(r.Pos()), phase))
+						phase, endName, e.kind, fset.Position(e.node.Pos()), phase))
+				}
+				for _, s := range shadows {
+					problems = append(problems, fmt.Sprintf(
+						"span %q (%s) is re-declared at %s while the outer span is still open: "+
+							"every %s() after that point closes the INNER span, so this audit "+
+							"cannot tell whether the outer one is ever closed — rename it",
+						phase, endName, fset.Position(s.Pos()), endName))
 				}
 			}
 		}
 		return true
 	})
 
+	// A span opening the audit did NOT recognise is not a span the audit can
+	// vouch for, and silently skipping it is how MUTANT-A survived: a bare
+	// `tr.span("x")` expression statement compiles (unlike `end := tr.span("x")`,
+	// which "declared and not used" rejects), drops the end func on the floor so
+	// the phase never closes, and was not even counted here. The PR body claimed
+	// the compiler covered the never-closed case; it covers exactly one spelling
+	// of it. So: every X.span(...) call in the file must be the RHS of a
+	// single-identifier assignment, and anything else is reported rather than
+	// ignored.
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "span" || recognised[call.Pos()] {
+			return true
+		}
+		problems = append(problems, fmt.Sprintf(
+			"the %s(...) call at %s is not bound to a single identifier "+
+				"(`end := tr.span(\"phase\")`), so this audit cannot check that it is ever "+
+				"closed; if the end func is discarded the phase never closes at all",
+			exprString(sel), fset.Position(call.Pos())))
+		return true
+	})
+
 	return spans, problems
+}
+
+// exprString renders `tr.span` for the message above without pulling in
+// go/printer for a two-node selector.
+func exprString(sel *ast.SelectorExpr) string {
+	if id, ok := sel.X.(*ast.Ident); ok {
+		return id.Name + "." + sel.Sel.Name
+	}
+	return sel.Sel.Name
 }
 
 // spanOpen matches `endX := tr.span("phase")` and returns endX and the phase.
@@ -706,7 +757,10 @@ func spanOpen(st ast.Stmt) (endName, phase string, ok bool) {
 		return "", "", false
 	}
 	id, isIdent := as.Lhs[0].(*ast.Ident)
-	if !isIdent {
+	if !isIdent || id.Name == "_" {
+		// `_ = tr.span("x")` throws the end func away. It is not an opening this
+		// audit can follow, so it falls through to the unrecognised-call check
+		// in auditSpans and is reported there.
 		return "", "", false
 	}
 	call, isCall := as.Rhs[0].(*ast.CallExpr)
@@ -738,75 +792,558 @@ func isCallToIdent(st ast.Stmt, name string) bool {
 	return ok && id.Name == name
 }
 
-// scanForUnclosedReturns collects every ReturnStmt reachable from stmts while
-// the span named endName is still open. Reaching `endName()` closes the span
-// for the remainder of THAT statement list (and only that list — statements
+// spanEscape is one statement that leaves the span's region while the span is
+// still open, and the kind of jump it is.
+type spanEscape struct {
+	node ast.Stmt
+	kind string // "return", "break", "continue" or "goto"
+}
+
+// spanScope records what the scan has descended THROUGH since the span was
+// opened, which is what decides whether a break/continue escapes the span at
+// all. A `continue` inside a loop that is itself inside the span region jumps to
+// that loop's next iteration and eventually falls out to the close, so it is
+// harmless; a `continue` in a span opened INSIDE the loop body jumps straight
+// past the close. The difference is exactly "has a loop been crossed", so that
+// is what is tracked.
+type spanScope struct {
+	inLoop   bool            // a for/range inside the span region encloses us
+	inSwitch bool            // a switch/select inside the span region encloses us
+	labels   map[string]bool // labels of loop/switch statements inside the region
+}
+
+func (sc spanScope) withLabel(name string) spanScope {
+	labels := make(map[string]bool, len(sc.labels)+1)
+	for k := range sc.labels {
+		labels[k] = true
+	}
+	labels[name] = true
+	sc.labels = labels
+	return sc
+}
+
+// scanForSpanEscapes collects every statement reachable from stmts that leaves
+// the region while the span named endName is still open — a return, and also a
+// break/continue/goto that jumps past the close. Reaching `endName()` closes the
+// span for the remainder of THAT statement list (and only that list — statements
 // after a close inside a nested block are outside the span, while the enclosing
 // list is unaffected).
 //
+// It also reports SHADOWING. Matching on the name alone was not enough: a
+// `endGraphLoad := tr.span(...)` re-declared in a nested block rebinds the name,
+// so the `endGraphLoad()` that follows closes the inner span and the outer one
+// is still open at the return — and the scan, which stopped at the first
+// matching name it met, called that closed. Rather than model the two bindings,
+// the shadowing itself is reported: it defeats the audit, and no phase needs it.
+//
 // Function literals are not descended into: their returns exit the closure, not
 // the pass, and they cannot escape a span.
-func scanForUnclosedReturns(stmts []ast.Stmt, endName string, bad *[]ast.Stmt) {
+func scanForSpanEscapes(stmts []ast.Stmt, endName string, sc spanScope, esc *[]spanEscape, shadows *[]ast.Stmt) {
 	for _, st := range stmts {
 		if isCallToIdent(st, endName) {
 			return
 		}
-		if r, ok := st.(*ast.ReturnStmt); ok {
-			*bad = append(*bad, r)
+		if redeclaresIdent(st, endName) {
+			*shadows = append(*shadows, st)
+			return
+		}
+		switch s := st.(type) {
+		case *ast.ReturnStmt:
+			*esc = append(*esc, spanEscape{node: s, kind: "return"})
+			continue
+		case *ast.BranchStmt:
+			if kind, escapes := branchEscapes(s, sc); escapes {
+				*esc = append(*esc, spanEscape{node: s, kind: kind})
+			}
 			continue
 		}
-		for _, sub := range stmtLists(st) {
-			scanForUnclosedReturns(sub, endName, bad)
+		for _, sub := range childScopes(st, sc) {
+			scanForSpanEscapes(sub.stmts, endName, sub.scope, esc, shadows)
 		}
 	}
 }
 
-// stmtLists returns the statement lists nested directly in n, skipping function
-// literals (a FuncLit is reached through an expression, never through one of
-// these fields, so it is excluded by construction).
-func stmtLists(n ast.Node) [][]ast.Stmt {
+// branchEscapes reports whether a break/continue/goto jumps out of the span's
+// region, given what the scan has descended through to reach it.
+func branchEscapes(b *ast.BranchStmt, sc spanScope) (kind string, escapes bool) {
+	switch b.Tok {
+	case token.GOTO:
+		// A goto can land anywhere, including past the close. There are none in
+		// this package; if one appears, it is worth a human look.
+		return "goto", true
+	case token.FALLTHROUGH:
+		return "", false
+	}
+	kind = strings.ToLower(b.Tok.String())
+	if b.Label != nil {
+		// A labelled jump targets an outer construct unless that construct is
+		// itself inside the span's region.
+		return kind, !sc.labels[b.Label.Name]
+	}
+	if b.Tok == token.CONTINUE {
+		return kind, !sc.inLoop
+	}
+	return kind, !(sc.inLoop || sc.inSwitch)
+}
+
+// redeclaresIdent reports whether st re-declares name — `name := ...` or
+// `var name = ...` — which shadows an outer span's end func.
+func redeclaresIdent(st ast.Stmt, name string) bool {
+	switch s := st.(type) {
+	case *ast.AssignStmt:
+		if s.Tok != token.DEFINE {
+			return false
+		}
+		for _, lhs := range s.Lhs {
+			if id, ok := lhs.(*ast.Ident); ok && id.Name == name {
+				return true
+			}
+		}
+	case *ast.DeclStmt:
+		gd, ok := s.Decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.VAR {
+			return false
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, id := range vs.Names {
+				if id.Name == name {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// scopedStmts is a nested statement list plus the scope it is reached through.
+type scopedStmts struct {
+	stmts []ast.Stmt
+	scope spanScope
+}
+
+// childScopes returns the statement lists nested directly in st, each tagged
+// with the scope it is reached through, skipping function literals (a FuncLit is
+// reached through an expression, never through one of these fields, so it is
+// excluded by construction).
+func childScopes(n ast.Node, sc spanScope) []scopedStmts {
+	loop := sc
+	loop.inLoop = true
+	sw := sc
+	sw.inSwitch = true
+
 	switch s := n.(type) {
 	case *ast.BlockStmt:
-		return [][]ast.Stmt{s.List}
+		return []scopedStmts{{s.List, sc}}
 	case *ast.IfStmt:
-		var out [][]ast.Stmt
+		var out []scopedStmts
 		if s.Body != nil {
-			out = append(out, s.Body.List)
+			out = append(out, scopedStmts{s.Body.List, sc})
 		}
 		if s.Else != nil {
-			out = append(out, stmtLists(s.Else)...)
+			out = append(out, childScopes(s.Else, sc)...)
 		}
 		return out
 	case *ast.ForStmt:
 		if s.Body != nil {
-			return [][]ast.Stmt{s.Body.List}
+			return []scopedStmts{{s.Body.List, loop}}
 		}
 	case *ast.RangeStmt:
 		if s.Body != nil {
-			return [][]ast.Stmt{s.Body.List}
+			return []scopedStmts{{s.Body.List, loop}}
 		}
 	case *ast.SwitchStmt:
 		if s.Body != nil {
-			return [][]ast.Stmt{s.Body.List}
+			return []scopedStmts{{s.Body.List, sw}}
 		}
 	case *ast.TypeSwitchStmt:
 		if s.Body != nil {
-			return [][]ast.Stmt{s.Body.List}
+			return []scopedStmts{{s.Body.List, sw}}
 		}
 	case *ast.SelectStmt:
 		if s.Body != nil {
-			return [][]ast.Stmt{s.Body.List}
+			return []scopedStmts{{s.Body.List, sw}}
 		}
 	case *ast.CaseClause:
-		return [][]ast.Stmt{s.Body}
+		return []scopedStmts{{s.Body, sc}}
 	case *ast.CommClause:
-		return [][]ast.Stmt{s.Body}
+		return []scopedStmts{{s.Body, sc}}
 	case *ast.LabeledStmt:
-		return stmtLists(s.Stmt)
+		return childScopes(s.Stmt, sc.withLabel(s.Label.Name))
 	case *ast.FuncDecl:
 		if s.Body != nil {
-			return [][]ast.Stmt{s.Body.List}
+			return []scopedStmts{{s.Body.List, sc}}
 		}
 	}
 	return nil
+}
+
+// --- the audit's own mutants -----------------------------------------------
+//
+// The two structural proofs above are checkers, and a checker that cannot be
+// shown to REJECT anything is worth as little as a test that cannot fail. Each
+// case below is a mutant that compiled against the real incremental.go and left
+// the audit PASSING before the fix that accompanies it; they are kept here,
+// against synthetic sources, so the checkers stay able to reject them without
+// anybody having to hand-mutate a 117KB production file again.
+
+// parseSnippet parses a self-contained source string for the audit helpers.
+func parseSnippet(t *testing.T, src string) (*token.FileSet, *ast.File) {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "mutant.go", src, 0)
+	if err != nil {
+		t.Fatalf("snippet does not parse (the mutant must be valid Go, or it "+
+			"proves nothing the compiler would not have caught): %v\n%s", err, src)
+	}
+	return fset, f
+}
+
+func TestPhaseTrace_SpanAuditCatchesMutants(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string // substring of the expected problem; "" means "must be clean"
+	}{{
+		// FINDING 2. `end := tr.span(...)` is protected by "declared and not
+		// used", and `_ = tr.span(...)` was already caught here — but a bare
+		// call statement escapes BOTH. It compiles, the end func is dropped on
+		// the floor, and the audit did not even count the span.
+		name: "MUTANT-A: span opened as a discarded expression statement",
+		src: `package p
+func f() {
+	tr.span("MUTANT-A-discarded")
+	work()
+}`,
+		want: "not bound to a single identifier",
+	}, {
+		name: "MUTANT-A': span assigned to the blank identifier",
+		src: `package p
+func f() {
+	_ = tr.span("MUTANT-A-blank")
+	work()
+}`,
+		want: "not bound to a single identifier",
+	}, {
+		name: "MUTANT-A'': a span the audit cannot verify is rejected, not skipped",
+		src: `package p
+func f() {
+	defer tr.span("MUTANT-A-nested")()
+	work()
+}`,
+		want: "not bound to a single identifier",
+	}, {
+		// FINDING 3. The scan matched on the NAME only and stopped at the first
+		// end() it met, so an inner span shadowing the outer one laundered the
+		// escape: the close belongs to the inner span and the outer one is
+		// still open at the return.
+		name: "MUTANT-B: an inner span shadows the outer one and closes it instead",
+		src: `package p
+func f() {
+	endGraphLoad := tr.span("graph-materialise")
+	doc, loadErr := load()
+	if loadErr != nil {
+		endGraphLoad := tr.span("MUTANT-B-shadow")
+		endGraphLoad()
+		return fallback(doc)
+	}
+	endGraphLoad()
+}`,
+		want: "re-declared",
+	}, {
+		name: "MUTANT-B': var re-declaration shadows the outer span",
+		src: `package p
+func f() {
+	endGraphLoad := tr.span("graph-materialise")
+	if bad() {
+		var endGraphLoad = tr.span("MUTANT-B-var-shadow")
+		endGraphLoad()
+		return
+	}
+	endGraphLoad()
+}`,
+		want: "re-declared",
+	}, {
+		// FINDING 4. Only ReturnStmt was collected, so a BranchStmt jumping
+		// past the close was invisible. Latent today — the one loop-adjacent
+		// span is opened outside its loop — but a per-file span is exactly the
+		// span someone would add next.
+		name: "MUTANT-D: continue skips the close of a span opened in the loop body",
+		src: `package p
+func f() {
+	for _, mrel := range reallyChanged {
+		endPerFile := tr.span("MUTANT-D-perfile")
+		if mrel == "" {
+			continue
+		}
+		endPerFile()
+	}
+}`,
+		want: "continue",
+	}, {
+		name: "MUTANT-D': break skips the close of a span opened in the loop body",
+		src: `package p
+func f() {
+	for _, mrel := range reallyChanged {
+		endPerFile := tr.span("MUTANT-D-break")
+		if mrel == "" {
+			break
+		}
+		endPerFile()
+	}
+}`,
+		want: "break",
+	}, {
+		name: "MUTANT-D'': labelled continue jumps out of the loop the span lives in",
+		src: `package p
+func f() {
+outer:
+	for range a {
+		end := tr.span("MUTANT-D-labelled")
+		for range b {
+			continue outer
+		}
+		end()
+	}
+}`,
+		want: "continue",
+	}, {
+		name: "MUTANT-D''': goto jumps past the close",
+		src: `package p
+func f() {
+	end := tr.span("MUTANT-D-goto")
+	if bad() {
+		goto done
+	}
+	end()
+done:
+	return
+}`,
+		want: "goto",
+	}, {
+		// The original defect, kept as a regression case.
+		name: "return inside an open span",
+		src: `package p
+func f() {
+	endExtract := tr.span("extract-changed-files")
+	if err != nil {
+		return fallback(err)
+	}
+	endExtract()
+}`,
+		want: "return",
+	}, {
+		name: "a span never closed at all",
+		src: `package p
+func f() {
+	endExtract := tr.span("extract-changed-files")
+	work()
+}`,
+		want: "never closed",
+	},
+		// --- negative controls: the shapes the real code actually uses -----
+		// A checker that flags these would be unusable, so they are pinned too.
+		{
+			name: "clean: open, work, close",
+			src: `package p
+func f() {
+	end := tr.span("clean")
+	work()
+	end()
+}`,
+		}, {
+			name: "clean: continue inside a loop that is itself inside the span",
+			src: `package p
+func f() {
+	end := tr.span("extract-changed-files")
+	for _, x := range files {
+		if x == "" {
+			continue
+		}
+		work(x)
+	}
+	end()
+}`,
+		}, {
+			name: "clean: break inside a switch inside the span",
+			src: `package p
+func f() {
+	end := tr.span("clean-switch")
+	switch kind {
+	case 1:
+		break
+	default:
+		work()
+	}
+	end()
+}`,
+		}, {
+			name: "clean: the span is closed before the early return",
+			src: `package p
+func f() {
+	end := tr.span("clean-early-return")
+	if bad() {
+		end()
+		return
+	}
+	end()
+}`,
+		}, {
+			name: "clean: labelled continue to a loop that is itself inside the span",
+			src: `package p
+func f() {
+	end := tr.span("clean-labelled")
+outer:
+	for range a {
+		for range b {
+			continue outer
+		}
+	}
+	end()
+}`,
+		}, {
+			name: "clean: a return inside a func literal does not exit the pass",
+			src: `package p
+func f() {
+	end := tr.span("clean-funclit")
+	g(func() error {
+		return nil
+	})
+	end()
+}`,
+		}}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fset, file := parseSnippet(t, tc.src)
+			_, problems := auditSpans(fset, file)
+			joined := strings.Join(problems, "\n  ")
+			if tc.want == "" {
+				if len(problems) > 0 {
+					t.Fatalf("this is a shape the real code uses and the audit must accept it, "+
+						"but it reported %d problem(s):\n  %s", len(problems), joined)
+				}
+				return
+			}
+			if len(problems) == 0 {
+				t.Fatalf("the audit found NOTHING wrong with this mutant; it compiles, it "+
+					"breaks the phase accounting, and the audit passes — which is the whole "+
+					"defect. Want a problem mentioning %q. Source:\n%s", tc.want, tc.src)
+			}
+			if !strings.Contains(joined, tc.want) {
+				t.Fatalf("the audit complained, but not about the right thing: want a problem "+
+					"mentioning %q, got:\n  %s", tc.want, joined)
+			}
+		})
+	}
+}
+
+// TestPhaseTrace_EmitAuditCatchesMutants pins FINDING 1: the deferred branch of
+// isEmitCall rejected only a TOP-LEVEL ReturnStmt before the emit, so a return
+// nested one level down — `if !returned { return }` — was invisible to it and
+// TestPhaseTrace_EveryReturnIsTraced passed with a panic path that emitted
+// nothing. The bare branch has always used countReturns, which does descend, so
+// this was also an asymmetry between the two shapes the doc comment claims are
+// equivalent.
+func TestPhaseTrace_EmitAuditCatchesMutants(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want bool // whether the single statement in f's body must count as the emit
+	}{{
+		name: "MUTANT-C: a nested return in the deferred body skips the emit",
+		src: `package p
+func f() {
+	defer func() {
+		if !returned {
+			return
+		}
+		tr.emit(res)
+	}()
+}`,
+		want: false,
+	}, {
+		name: "a top-level return in the deferred body skips the emit",
+		src: `package p
+func f() {
+	defer func() {
+		return
+		tr.emit(res)
+	}()
+}`,
+		want: false,
+	}, {
+		name: "a return nested two levels down still skips the emit",
+		src: `package p
+func f() {
+	defer func() {
+		for _, x := range xs {
+			if x == nil {
+				return
+			}
+		}
+		tr.emit(res)
+	}()
+}`,
+		want: false,
+	}, {
+		name: "the shipped shape: deferred and unconditional",
+		src: `package p
+func f() {
+	defer func() {
+		changed := res.ChangedFiles
+		tr.emit(changed)
+	}()
+}`,
+		want: true,
+	}, {
+		name: "the bare shape",
+		src: `package p
+func f() {
+	tr.emit(res)
+}`,
+		want: true,
+	}, {
+		name: "a conditional emit is not an emit",
+		src: `package p
+func f() {
+	if traced {
+		tr.emit(res)
+	}
+}`,
+		want: false,
+	}, {
+		name: "a return in a func literal INSIDE the deferred body is not an escape",
+		src: `package p
+func f() {
+	defer func() {
+		g(func() error { return nil })
+		tr.emit(res)
+	}()
+}`,
+		want: true,
+	}}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, file := parseSnippet(t, tc.src)
+			var fn *ast.FuncDecl
+			for _, d := range file.Decls {
+				if d, ok := d.(*ast.FuncDecl); ok && d.Name.Name == "f" {
+					fn = d
+				}
+			}
+			if fn == nil || len(fn.Body.List) != 1 {
+				t.Fatalf("snippet must contain exactly one statement in f")
+			}
+			if got := isEmitCall(fn.Body.List[0]); got != tc.want {
+				t.Fatalf("isEmitCall = %v, want %v — a %q that the checker gets wrong means "+
+					"TestPhaseTrace_EveryReturnIsTraced is not proving what it says. Source:\n%s",
+					got, tc.want, tc.name, tc.src)
+			}
+		})
+	}
 }
