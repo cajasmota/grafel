@@ -42,6 +42,18 @@ func TestSplitAttributes(t *testing.T) {
 			attrs: []string{`A("a>b")`}, rest: `Public Class X`,
 		},
 		{
+			name:  "leading/positive-angle-inside-parens",
+			rule:  "a '>' inside the attribute's own parentheses does not close it",
+			code:  `<MyAttr(2 > 1)> Public Class X`,
+			attrs: []string{`MyAttr(2 > 1)`}, rest: `Public Class X`,
+		},
+		{
+			name:  "leading/positive-angle-inside-nested-parens",
+			rule:  "paren depth is tracked, not merely non-zero",
+			code:  `<MyAttr(F(a > b), 2)> Public Class X`,
+			attrs: []string{`MyAttr(F(a > b), 2)`}, rest: `Public Class X`,
+		},
+		{
 			name: "leading/positive-assembly-level", rule: "a file-level attribute leaves nothing behind",
 			code:  `<Assembly: AssemblyTitle("Acme")>`,
 			attrs: []string{`Assembly: AssemblyTitle("Acme")`}, rest: ``,

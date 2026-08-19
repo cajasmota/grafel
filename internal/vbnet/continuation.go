@@ -49,6 +49,8 @@ var continuationKeywords = map[string]bool{
 // comparison than an open attribute, and the attribute case is handled
 // precisely instead — a logical line that is nothing but attribute groups
 // continues onto the declaration it decorates.
+//
+// '&' is present but qualified: see typeCharacterAmpersand.
 const continuationTrailingBytes = ",({.&=+-*/\\^<"
 
 // JoinContinuations turns VB.NET source into logical lines.
@@ -173,7 +175,7 @@ func endsWithContinuation(code string) bool {
 		return false
 	}
 	if strings.IndexByte(continuationTrailingBytes, masked[len(masked)-1]) >= 0 {
-		return true
+		return !typeCharacterAmpersand(masked)
 	}
 	// Trailing keyword.
 	i := len(masked)
@@ -188,7 +190,64 @@ func endsWithContinuation(code string) bool {
 		// obj.Where is a member access, not the query operator.
 		return false
 	}
-	return continuationKeywords[word]
+	if !continuationKeywords[word] {
+		return false
+	}
+	// An `Option` header is a complete statement whatever it ends on.
+	// `Option Strict On`, `Option Explicit On` and `Option Infer On` all end a
+	// line with On, which LINQ's `Join … On` puts in the keyword set — and
+	// these headers are the first line of a large fraction of legacy VB files,
+	// so joining there swallows the first Class or Imports of the file and
+	// drops every later member to file scope. A blank line after the header
+	// hides it, which is why only real source shows it.
+	if head, _ := takeWord(masked); head == "option" {
+		return false
+	}
+	// A line ending `End <keyword>` closes a block; it never continues one.
+	// `End With` and `End Select` both end on a continuation keyword, and
+	// joining there merges the statement that follows the block — which, when
+	// that statement is the `End Sub`, leaves the container stack open and
+	// misscopes every declaration in the rest of the file.
+	if prev := precedingWord(masked, i); prev == "end" {
+		return false
+	}
+	return true
+}
+
+// precedingWord returns the identifier word ending just before index i in
+// masked, folded to lower case, or "" when there is none.
+func precedingWord(masked string, i int) string {
+	j := i
+	for j > 0 && (masked[j-1] == ' ' || masked[j-1] == '\t') {
+		j--
+	}
+	if j == i || j == 0 {
+		return ""
+	}
+	k := j
+	for k > 0 && isIdentByte(masked[k-1]) {
+		k--
+	}
+	return FoldName(masked[k:j])
+}
+
+// typeCharacterAmpersand reports whether a trailing '&' is VB.NET's Long type
+// character rather than the concatenation operator.
+//
+// `&` is one of six type-character suffixes (`&%!@#$`) and the only one that
+// is also an operator. `32&`, `&HFFFF&` and `count&` are Long literals and
+// complete statements; `Dim s = a &` is a dangling concatenation. The two are
+// told apart by what precedes the '&': a type character is glued directly to
+// the literal or identifier it types, while the operator is separated from its
+// left operand by whitespace, a ')' or a closing quote. Choosing the glued
+// case as "not a continuation" is the conservative direction — failing to join
+// splits one statement in two, whereas joining wrongly deletes the next
+// declaration outright, and `0&` / `&H…&` constants are pervasive in the
+// Declare/Win32-interop code this package targets.
+func typeCharacterAmpersand(masked string) bool {
+	return len(masked) >= 2 &&
+		masked[len(masked)-1] == '&' &&
+		isIdentByte(masked[len(masked)-2])
 }
 
 // isAttributesOnly reports whether everything joined so far is attribute
@@ -223,12 +282,28 @@ type ImplicitRule struct {
 
 // ImplicitRuleCoverage is the measured coverage of implicit continuation.
 //
-// Positions honoured: 16 of 21. The five that are not are all bare contextual
-// keywords from LINQ query syntax which are also ordinary identifiers, so
-// honouring them costs more than it buys: `Dim n = q.Take` would silently
-// swallow the next statement. All five appear only inside method bodies, so
-// none of them can split a *declaration* — the cost falls on CALLS recall in
-// S5, not on the declaration table this story exists to build.
+// Positions honoured: 16 of 24. Seven of the eight that are not are bare
+// contextual keywords from LINQ query syntax which are also ordinary
+// identifiers, so honouring them costs more than it buys: `Dim n = q.Take`
+// would silently swallow the next statement. The eighth is a line ending in
+// '>', which is a comparison far more often than an open attribute list; the
+// attribute case is handled precisely instead (see isAttributesOnly).
+//
+// What the unhonoured positions cost. The premise that they "appear only
+// inside method bodies" is false: a field or Const initialiser is a
+// declaration and may hold a query — `Private ReadOnly top As Object = From a
+// In b Take` / `5` does split. What actually holds, and is what justifies
+// shipping the gap, is weaker but sufficient for this story: the head line
+// still carries the declarator and its As clause, so the name, kind and type
+// are recorded correctly; the orphaned tail is an expression fragment that
+// declares nothing, so it adds no phantom symbol to the table. The cost is
+// therefore borne by expression-level recall in S5, not by the declaration
+// table — the table under-reads a value, it never mis-declares a name.
+//
+// Every unhonoured position gets a row here rather than only the ones that
+// seemed worth arguing about, so the table is derive-shaped: the count is a
+// count of rows, and TestImplicitRuleCoverage fails the day a row's behaviour
+// changes in either direction (#6361).
 //
 // UNVERIFIED: the frequency of these positions in real VB.NET is unknown to
 // this package; no VB.NET corpus was available. The count below is a count of
@@ -273,6 +348,21 @@ var ImplicitRuleCoverage = []ImplicitRule{
 	{
 		Name: "after a bare Select", Sample: "Dim q = From a In b Select\na",
 		Honoured: false,
-		Why:      "`End Select` ends a line with Select; honouring it would merge the statement after every Select Case block",
+		Why:      "Select ends three different constructs — the query operator, `End Select` and a `Select Case` header — and the query form is the rarest of the three",
+	},
+	{
+		Name: "after a bare Ascending", Sample: "Dim q = From a In b Order By c Ascending\nSelect c",
+		Honoured: false,
+		Why:      "Ascending is a bare contextual keyword and an ordinary identifier; `Dim x = e.Ascending` on its own line is a complete statement",
+	},
+	{
+		Name: "after a bare Descending", Sample: "Dim q = From a In b Order By c Descending\nSelect c",
+		Honoured: false,
+		Why:      "Descending is a bare contextual keyword and an ordinary identifier, exactly as Ascending is",
+	},
+	{
+		Name: "after a '>' comparison operator", Sample: "Dim b = a >\nc",
+		Honoured: false,
+		Why:      "'>' also closes an attribute list; joining after it would swallow the declaration under every attribute on its own line, so the attribute case is handled precisely (isAttributesOnly) and the operator case is left split",
 	},
 }

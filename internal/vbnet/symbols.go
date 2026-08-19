@@ -223,6 +223,15 @@ func (t *Table) ClassifyParen(name, scope string, ofKeyword bool) ParenKind {
 	if sym == nil {
 		return ParenUnknown
 	}
+	// Resolve falls back to any same-named declaration in the file when none
+	// is in scope. That fallback is a hint, not an answer: `Items(3) = 1` in
+	// class B would otherwise be classified as a call to A.Items — an
+	// assignment target reported as an invocation. S4 acts on a ParenCall
+	// confidently, so out of scope is exactly the case ParenUnknown exists
+	// for.
+	if !visibleFrom(sym.Scope, scope) {
+		return ParenUnknown
+	}
 	switch sym.Kind {
 	case KindMethod, KindEvent, KindProperty:
 		return ParenCall
@@ -320,6 +329,11 @@ func BuildTable(src string) *Table {
 
 // splitStatements splits a logical line on top-level ':' separators. A label
 // (`Cleanup:`) yields an empty tail, which the walker ignores.
+//
+// The ContainsRune guard is a fast path only, and deliberately not covered by
+// a test: with no ':' anywhere, splitTopLevel returns the whole string as its
+// single element and walkStatement trims it, so removing the guard cannot
+// change any answer. A mutation that deletes it is an equivalent mutant.
 func splitStatements(code string) []string {
 	if !strings.ContainsRune(code, ':') {
 		return []string{code}
@@ -383,7 +397,13 @@ func walkStatement(
 	case "for":
 		parseForHeader(t, rest, scopeOf(), line)
 		return
-	case "using", "catch":
+	case "using":
+		// `Using a As New X, b As New Y` declares one local per resource.
+		for _, res := range splitTopLevel(rest, ',') {
+			parseAsClauseLocal(t, res, scopeOf(), line)
+		}
+		return
+	case "catch":
 		parseAsClauseLocal(t, rest, scopeOf(), line)
 		return
 	case "inherits", "implements":
@@ -606,10 +626,19 @@ func parseMethod(
 	}
 	t.add(&Symbol{Name: name, Kind: KindMethod, TypeName: ret, Generic: generic, Scope: scope, Line: line})
 
+	// A bodyless member opens no container, so scopeOf() would put its
+	// parameters in the enclosing type. They belong to the method either way:
+	// leaving them at type scope makes an interface's parameter names visible
+	// to every other member of the type.
+	paramScope := scope + "." + name
+	if scope == "" {
+		paramScope = name
+	}
 	if !bodyless {
 		push(name, kw, KindMethod)
+		paramScope = scopeOf()
 	}
-	for _, p := range parseParams(params, scopeOf(), line) {
+	for _, p := range parseParams(params, paramScope, line) {
 		t.add(p)
 	}
 }
@@ -739,7 +768,9 @@ func parseDeclarators(body string, kind SymbolKind, scope string, line int) []*S
 // but commas.
 func readType(s string) (typeName string, isArray bool) {
 	s = strings.TrimSpace(s)
+	sawNew := false
 	if w, tail := takeWord(s); w == "new" {
+		sawNew = true
 		s = strings.TrimSpace(tail)
 	}
 	if before, _, ok := cutKeyword(s, "With"); ok {
@@ -771,6 +802,13 @@ func readType(s string) (typeName string, isArray bool) {
 		}
 		inner := strings.TrimSpace(s[open+1 : end])
 		if inner != "" && strings.Trim(inner, ", ") != "" {
+			// (Of T) is part of the type name and stays. A constructor's
+			// argument list is not: `As New StreamReader(path)` names the type
+			// StreamReader.
+			if w, _ := takeWord(inner); sawNew && w != "of" {
+				s = strings.TrimSpace(s[:open])
+				continue
+			}
 			break // (Of T) or (bounds) — not an array suffix.
 		}
 		isArray = true

@@ -94,6 +94,24 @@ func TestSplitComment(t *testing.T) {
 			code: `Dim remaining = 1`, comment: "", kind: CommentNone,
 		},
 		{
+			name: "rem/negative-prefix-at-statement-boundary",
+			rule: "REMOTE_HOST starts a statement with REM but is an identifier",
+			line: `REMOTE_HOST = "acme"`,
+			code: `REMOTE_HOST = "acme"`, comment: "", kind: CommentNone,
+		},
+		{
+			name: "rem/negative-prefix-declaration",
+			rule: "a declaration whose name begins with REM is not a comment",
+			line: `Dim x = 1 : Remainder = 2`,
+			code: `Dim x = 1 : Remainder = 2`, comment: "", kind: CommentNone,
+		},
+		{
+			name: "rem/positive-tab-separated",
+			rule: "REM followed by a tab is still a comment",
+			line: "REM\tlegacy",
+			code: ``, comment: "REM\tlegacy", kind: CommentREM,
+		},
+		{
 			name: "rem/negative-member", rule: "obj.Rem is a member access, not a comment",
 			line: `Dim x = obj.Rem`,
 			code: `Dim x = obj.Rem`, comment: "", kind: CommentNone,

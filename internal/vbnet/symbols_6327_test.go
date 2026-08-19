@@ -456,3 +456,358 @@ func TestBuildTable_CaseInsensitiveKeywords(t *testing.T) {
 		})
 	}
 }
+
+// TestBuildTable_OptionHeaderIsNotAContinuation is the scope-level half of the
+// joiner's Option/On bug. `Option Strict On` ends a line with `On`, which the
+// LINQ `Join … On` position otherwise treats as an implicit continuation — so
+// the header swallowed the first declaration of the file and every member
+// below it landed at file scope. A blank line after the header masks it, which
+// is why a hand-written fixture never caught it and a real legacy file would.
+func TestBuildTable_OptionHeaderIsNotAContinuation(t *testing.T) {
+	headers := []string{"Option Strict On", "Option Explicit On", "Option Infer On"}
+	for _, header := range headers {
+		t.Run(header, func(t *testing.T) {
+			src := header + "\nPublic Class C\nPublic Sub M()\nEnd Sub\nEnd Class"
+			tbl := BuildTable(src)
+			if s := lookupIn(t, tbl, "C", ""); s.Kind != KindType {
+				t.Errorf("C should be a type, got %v", s.Kind)
+			}
+			if s := lookupIn(t, tbl, "M", "C"); s.Kind != KindMethod {
+				t.Errorf("M should be a method in C, got %v", s.Kind)
+			}
+		})
+	}
+	t.Run("Option header above an Imports alias", func(t *testing.T) {
+		src := "Option Strict On\nImports SB = System.Text.StringBuilder\nPublic Class C\nEnd Class"
+		tbl := BuildTable(src)
+		if s := lookupIn(t, tbl, "SB", ""); s.Kind != KindImportAlias {
+			t.Errorf("SB should be an import alias, got %v", s.Kind)
+		}
+		lookupIn(t, tbl, "C", "")
+	})
+}
+
+// TestBuildTable_EndWithDoesNotDesynchroniseScopes pins the `End With`
+// analogue of the `End Select` negative. `With` is an implicit-continuation
+// keyword, so `End With` joined the statement below it: the `End Sub` that
+// followed was consumed and the container stack stayed open for the rest of
+// the file, nesting every later member inside the previous method.
+func TestBuildTable_EndWithDoesNotDesynchroniseScopes(t *testing.T) {
+	t.Run("End With directly above End Sub", func(t *testing.T) {
+		src := `
+Public Class Form1
+    Public Sub Save()
+        With obj
+            .A = 1
+        End With
+    End Sub
+    Public Sub Load2()
+        Dim n As Integer
+    End Sub
+End Class
+`
+		tbl := BuildTable(src)
+		if s := lookupIn(t, tbl, "Save", "Form1"); s.Kind != KindMethod {
+			t.Errorf("Save should be a method on Form1, got %v", s.Kind)
+		}
+		if s := lookupIn(t, tbl, "Load2", "Form1"); s.Kind != KindMethod {
+			t.Errorf("Load2 belongs to Form1, not to Form1.Save; got %v", s.Kind)
+		}
+		lookupIn(t, tbl, "n", "Form1.Load2")
+	})
+
+	t.Run("declaration on the line after End With", func(t *testing.T) {
+		src := `
+Public Class Form1
+    Private data(9) As Integer
+    Public Sub Save()
+        With obj
+            .A = 1
+        End With
+        Dim data As Integer = 0
+    End Sub
+End Class
+`
+		tbl := BuildTable(src)
+		lookupIn(t, tbl, "data", "Form1.Save")
+		if got := tbl.ClassifyParen("data", "Form1.Save", false); got != ParenUnknown {
+			t.Errorf("the local shadows the array field, so data( is undecidable; got %v", got)
+		}
+		if got := tbl.ClassifyParen("data", "Form1", false); got != ParenIndex {
+			t.Errorf("at class scope data( is an array index; got %v", got)
+		}
+	})
+}
+
+// TestBuildTable_LongTypeCharacter is the declaration-level half of the '&'
+// fix: `32&` and `&HFFFF&` are Long literals, and treating the suffix as a
+// dangling concatenation operator deletes the declaration below them. These
+// shapes are pervasive in the Declare/Win32-interop code this package targets.
+func TestBuildTable_LongTypeCharacter(t *testing.T) {
+	src := `
+Public Module Win32
+    Public Const MAX_PATH = 260&
+    Public Const GENERIC_READ = &H80000000&
+    Public Const FILE_SHARE_READ = 1
+End Module
+`
+	tbl := BuildTable(src)
+	for _, name := range []string{"MAX_PATH", "GENERIC_READ", "FILE_SHARE_READ"} {
+		if s := lookupIn(t, tbl, name, "Win32"); s.Kind != KindConst {
+			t.Errorf("%s should be a const, got %v", name, s.Kind)
+		}
+	}
+}
+
+// TestClassifyParen_OutOfScopeIsUnknown pins the honesty rule ParenUnknown was
+// invented for. Resolve falls back to any same-named declaration in the file
+// when none is in scope; acting on that fallback classifies an assignment
+// target in one class as a call to an unrelated method in another. S4 acts on
+// a ParenCall confidently, so a wrong answer costs more than an honest unknown.
+func TestClassifyParen_OutOfScopeIsUnknown(t *testing.T) {
+	src := `
+Public Class A
+    Public Sub Items()
+    End Sub
+End Class
+
+Public Class B
+    Public Sub M()
+        Items(3) = 1
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+	if got := tbl.ClassifyParen("Items", "B.M", false); got != ParenUnknown {
+		t.Errorf("Items is declared only in A; from B.M the table cannot decide, got %v", got)
+	}
+	if got := tbl.ClassifyParen("Items", "A", false); got != ParenCall {
+		t.Errorf("from A's own scope Items( is a call, got %v", got)
+	}
+}
+
+// TestResolve_ScopeVisibility exercises scope resolution directly rather than
+// only through ClassifyParen: both the visibility filter and the
+// innermost-wins tiebreak decide answers that a single subtest cannot pin.
+func TestResolve_ScopeVisibility(t *testing.T) {
+	src := `
+Public Class A
+    Public Sub Deep()
+        Dim v(3) As Integer
+    End Sub
+End Class
+
+Public Class B
+    Private v As Integer
+    Public Sub N()
+        Dim w As Integer = 0
+    End Sub
+    Public Sub P()
+        Dim v As String = ""
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+
+	cases := []struct {
+		name, rule, symbol, scope, wantScope string
+	}{
+		{
+			name:   "unrelated-deeper-scope-is-not-visible",
+			rule:   "A.Deep's local is deeper than B's field but invisible from B.N",
+			symbol: "v", scope: "B.N", wantScope: "B",
+		},
+		{
+			name:   "innermost-enclosing-wins",
+			rule:   "inside P the local shadows B's field",
+			symbol: "v", scope: "B.P", wantScope: "B.P",
+		},
+		{
+			name:   "declaring-scope-resolves-to-itself",
+			rule:   "a use site in A.Deep sees A.Deep's local",
+			symbol: "v", scope: "A.Deep", wantScope: "A.Deep",
+		},
+		{
+			name:   "file-level-is-visible-everywhere",
+			rule:   "a file-scope type is in scope from any method",
+			symbol: "A", scope: "B.N", wantScope: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := tbl.Resolve(tc.symbol, tc.scope)
+			if s == nil {
+				t.Fatalf("rule %q: Resolve(%q, %q) = nil", tc.rule, tc.symbol, tc.scope)
+			}
+			if s.Scope != tc.wantScope {
+				t.Errorf("rule %q: Resolve(%q, %q) resolved to scope %q, want %q",
+					tc.rule, tc.symbol, tc.scope, s.Scope, tc.wantScope)
+			}
+		})
+	}
+
+	// The same two rules, observed through the answer S4 consumes.
+	if got := tbl.ClassifyParen("v", "B.N", false); got != ParenUnknown {
+		t.Errorf("B's scalar field makes v( undecidable from B.N, got %v", got)
+	}
+	if got := tbl.ClassifyParen("v", "A.Deep", false); got != ParenIndex {
+		t.Errorf("A.Deep's array local makes v( an index, got %v", got)
+	}
+}
+
+// TestBuildTable_BracketEscapedIdentifier pins the unwrapping of VB.NET's
+// bracket escape. Without it `Dim [Class] As Integer` records nothing at all —
+// the declaration disappears silently rather than being recorded under the
+// wrong name, which no other assertion in the suite would notice.
+func TestBuildTable_BracketEscapedIdentifier(t *testing.T) {
+	src := `
+Public Class C
+    Private [Error] As String
+    Public Sub M()
+        Dim [Class] As Integer
+        Dim [Select](4) As Integer
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+	if s := lookupIn(t, tbl, "Class", "C.M"); s.Kind != KindLocal || s.TypeName != "Integer" {
+		t.Errorf("[Class] should be an Integer local, got kind %v type %q", s.Kind, s.TypeName)
+	}
+	if s := lookupIn(t, tbl, "Error", "C"); s.Kind != KindField || s.TypeName != "String" {
+		t.Errorf("[Error] should be a String field, got kind %v type %q", s.Kind, s.TypeName)
+	}
+	if got := tbl.ClassifyParen("Select", "C.M", false); got != ParenIndex {
+		t.Errorf("[Select](4) is an array local, so Select( is an index; got %v", got)
+	}
+}
+
+// TestBuildTable_InterfaceMembersAreBodyless pins why a member declared in an
+// Interface must not push a container: it has no `End Sub`, so pushing one
+// leaves the stack open and every later member of the interface is scoped
+// inside its predecessor. The single-member interface in winFormsFixture
+// cannot see this — the tolerant pop at `End Interface` repairs it.
+func TestBuildTable_InterfaceMembersAreBodyless(t *testing.T) {
+	src := `
+Public Interface ILogger
+    Sub Write(msg As String)
+    Function Read(id As Integer) As String
+    Sub Flush()
+End Interface
+`
+	tbl := BuildTable(src)
+	for _, name := range []string{"Write", "Read", "Flush"} {
+		if s := lookupIn(t, tbl, name, "ILogger"); s.Kind != KindMethod {
+			t.Errorf("%s belongs directly to ILogger, got kind %v", name, s.Kind)
+		}
+	}
+	lookupIn(t, tbl, "id", "ILogger.Read")
+}
+
+// TestBuildTable_MustOverrideMembersAreBodyless is the same rule for the other
+// bodyless form, so the two halves of the condition are pinned separately.
+func TestBuildTable_MustOverrideMembersAreBodyless(t *testing.T) {
+	src := `
+Public MustInherit Class Base
+    Public MustOverride Sub Render()
+    Public MustOverride Function Name() As String
+    Public Sub Ready()
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+	for _, name := range []string{"Render", "Name", "Ready"} {
+		if s := lookupIn(t, tbl, name, "Base"); s.Kind != KindMethod {
+			t.Errorf("%s belongs directly to Base, got kind %v", name, s.Kind)
+		}
+	}
+}
+
+// TestBuildTable_UsingDeclaresEveryResource pins the multi-resource Using
+// header. `Using a As New X, b As New Y` declares two locals; recording only
+// the first, with the rest of the header swallowed into its type name, means
+// the second is missing from the table and its '(' is undecidable.
+func TestBuildTable_UsingDeclaresEveryResource(t *testing.T) {
+	src := `
+Public Class C
+    Public Sub M()
+        Using a As New StreamReader("x"), b As New StreamWriter("y")
+        End Using
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+	if s := lookupIn(t, tbl, "a", "C.M"); s.TypeName != "StreamReader" {
+		t.Errorf("a should be a StreamReader, got %q", s.TypeName)
+	}
+	if s := lookupIn(t, tbl, "b", "C.M"); s.TypeName != "StreamWriter" {
+		t.Errorf("b should be a StreamWriter, got %q", s.TypeName)
+	}
+}
+
+// TestBuildTable_AttributeWithAngleInParens is the declaration-level half of
+// the attribute paren-depth rule: closing the attribute on the first '>'
+// leaves the tail of the attribute body in front of the declaration, and the
+// declaration it decorates is never recorded.
+func TestBuildTable_AttributeWithAngleInParens(t *testing.T) {
+	tbl := BuildTable("<MyAttr(2 > 1)> Public Class X\nEnd Class")
+	if s := lookupIn(t, tbl, "X", ""); s.Kind != KindType {
+		t.Errorf("X should be a type, got %v", s.Kind)
+	}
+}
+
+// TestBuildTable_NewTypeNames pins what `As New T(...)` records. A
+// constructor's argument list is not part of the type name, but a generic
+// argument list is — and the difference decides whether the recorded type is
+// ever matchable against a declared type in S5.
+func TestBuildTable_NewTypeNames(t *testing.T) {
+	src := `
+Public Class C
+    Public Sub M()
+        Dim r As New StreamReader(path)
+        Dim l As New List(Of String)
+        Dim d As New Dictionary(Of String, Integer)(cmp)
+        Dim p As New Point
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+	cases := []struct{ name, want string }{
+		{"r", "StreamReader"},
+		{"l", "List(Of String)"},
+		{"d", "Dictionary(Of String, Integer)"},
+		{"p", "Point"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if s := lookupIn(t, tbl, tc.name, "C.M"); s.TypeName != tc.want {
+				t.Errorf("%s: TypeName = %q, want %q", tc.name, s.TypeName, tc.want)
+			}
+		})
+	}
+}
+
+// TestBuildTable_BodylessMemberParameterScope pins where a bodyless member's
+// parameters land. The member opens no container, so without an explicit scope
+// its parameters would be recorded in the enclosing type and become visible to
+// every other member of it.
+func TestBuildTable_BodylessMemberParameterScope(t *testing.T) {
+	src := `
+Public Interface ILogger
+    Sub Write(msg As String)
+End Interface
+
+Public MustInherit Class Base
+    Public MustOverride Sub Render(target As Object)
+End Class
+`
+	tbl := BuildTable(src)
+	if s := lookupIn(t, tbl, "msg", "ILogger.Write"); s.Kind != KindParameter {
+		t.Errorf("msg should be a parameter of ILogger.Write, got %v", s.Kind)
+	}
+	if s := lookupIn(t, tbl, "target", "Base.Render"); s.Kind != KindParameter {
+		t.Errorf("target should be a parameter of Base.Render, got %v", s.Kind)
+	}
+	if got := tbl.ClassifyParen("msg", "ILogger", false); got != ParenUnknown {
+		t.Errorf("a parameter of one member is not in scope for the type, got %v", got)
+	}
+}

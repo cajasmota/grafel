@@ -125,6 +125,54 @@ func TestJoinContinuations(t *testing.T) {
 			want: []string{"End Select", "Dim y = 1"},
 		},
 		{
+			name: "implicit/negative-end-with",
+			rule: "`End With` closes a block, it does not continue a statement",
+			src:  "With obj\n.A = 1\nEnd With\nEnd Sub",
+			want: []string{"With obj", ".A = 1", "End With", "End Sub"},
+		},
+		{
+			name: "implicit/negative-end-block-generally",
+			rule: "no `End <keyword>` continues, whatever keyword follows End",
+			src:  "End Group\nDim y = 1",
+			want: []string{"End Group", "Dim y = 1"},
+		},
+		{
+			name: "implicit/negative-option-strict-on",
+			rule: "`Option Strict On` is a file header, not a LINQ `Join … On`",
+			src:  "Option Strict On\nPublic Class C",
+			want: []string{"Option Strict On", "Public Class C"},
+		},
+		{
+			name: "implicit/negative-option-explicit-on",
+			rule: "every Option header ends the line, whatever word it ends on",
+			src:  "Option Explicit On\nImports SB = System.Text.StringBuilder",
+			want: []string{"Option Explicit On", "Imports SB = System.Text.StringBuilder"},
+		},
+		{
+			name: "implicit/positive-join-on-still-continues",
+			rule: "the LINQ position '&' On was added for still joins",
+			src:  "Dim q = From a In b Join c In d On\na.K Equals c.K",
+			want: []string{"Dim q = From a In b Join c In d On a.K Equals c.K"},
+		},
+		{
+			name: "implicit/negative-long-type-character",
+			rule: "`32&` is a Long literal, not a dangling concatenation operator",
+			src:  "Public Const MAX = 32&\nPublic Const MIN = 1",
+			want: []string{"Public Const MAX = 32&", "Public Const MIN = 1"},
+		},
+		{
+			name: "implicit/negative-hex-long-type-character",
+			rule: "`&HFFFF&` is a hex Long literal, pervasive in Win32 interop",
+			src:  "Public Const MASK = &HFFFF&\nPublic Const NEXT_ = 1",
+			want: []string{"Public Const MASK = &HFFFF&", "Public Const NEXT_ = 1"},
+		},
+		{
+			name: "implicit/positive-concatenation-after-literal",
+			rule: "a '&' that is not glued to an identifier is still the concatenation operator",
+			src:  "Dim s = \"a\" &\nb",
+			want: []string{"Dim s = \"a\" & b"},
+		},
+		{
 			name: "implicit/negative-plain-statement",
 			rule: "an ordinary statement does not continue",
 			src:  "Dim x = 1\nDim y = 2",
@@ -198,8 +246,8 @@ func TestImplicitRuleCoverage(t *testing.T) {
 	}
 	// Pin the measured figure quoted in the package documentation so the two
 	// cannot drift apart.
-	if honoured != 16 || len(ImplicitRuleCoverage) != 21 {
-		t.Errorf("coverage is %d/%d; the doc comment on ImplicitRuleCoverage says 16/21",
+	if honoured != 16 || len(ImplicitRuleCoverage) != 24 {
+		t.Errorf("coverage is %d/%d; the doc comment on ImplicitRuleCoverage says 16/24",
 			honoured, len(ImplicitRuleCoverage))
 	}
 }
