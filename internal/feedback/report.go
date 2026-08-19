@@ -82,10 +82,12 @@ type Report struct {
 
 	// Section 2 — Orphan Rate
 	OrphanByKind map[string]KindStats // kind → DEFECT orphan stats (kinds with N < 10 suppressed)
-	// OrphanTerminalByKind holds the same shape for orphans classified as
-	// expected/terminal by construction (container Components, field leaves
-	// anchored by an inbound CONTAINS edge) — see classifyOrphan. These are
-	// NOT defects and are reported separately so the raw signal survives
+	// OrphanTerminalByKind holds the same shape for orphans of kinds with ZERO
+	// observed semantic participation anywhere in the group — i.e. the graph
+	// gives no evidence the kind ever carries a semantic edge in either
+	// direction, so it is terminal by construction as far as we can tell.
+	// Derived from the graph, not from a list of kind names (#6346). These are
+	// reported separately from the defect count so the raw signal survives
 	// instead of being silently dropped.
 	OrphanTerminalByKind map[string]KindStats
 
@@ -135,11 +137,25 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 	kindOrphans := make(map[string]int)               // kind → orphan count
 	kindLangCounts := make(map[string]map[string]int) // kind → lang → count
 
-	// To detect orphans: an entity is orphan when its only outgoing edges are
-	// CONTAINS / DECLARES, or it has no outgoing edges at all.
-	// We track outgoing semantic edges per entity ID.
+	// To detect orphans: an entity is orphan when it has NO semantic edge in
+	// EITHER direction — its only edges are CONTAINS / DECLARES, or it has
+	// none at all. Direction matters (#6313): several kinds are sinks by
+	// construction and source nothing. `http_endpoint_definition` is the
+	// worked example — internal/engine/http_endpoint_resolve.go
+	// bridgeEndpointToHandler emits `FromID: handler, ToID: definition`, so a
+	// CORRECTLY-wired endpoint has zero outgoing semantic edges. Counting
+	// outgoing edges only reported 33.4% of endpoints orphaned across 10
+	// corpus repos while 0.00% were actually isolated, and degenerated toward
+	// 100% at group scale because the one outgoing kind a definition sources
+	// (ENTRY_POINT_OF) is gated behind the 300-process cap in
+	// internal/engine/process_flow.go. It was also framework-unfair: per
+	// internal/graph/coverage.go the handler<->definition edge points
+	// definition->handler in Spring/Express and handler->definition in
+	// NestJS/Django/Flask, so two graphs of identical quality scored 0% and
+	// ~100%. Tracking both directions removes all three effects at once.
 	type edgeSummary struct {
-		semanticOut int // edges that are not CONTAINS/DECLARES
+		semanticOut int // non-CONTAINS/DECLARES edges sourced by this entity
+		semanticIn  int // non-CONTAINS/DECLARES edges targeting this entity
 	}
 	entityEdges := make(map[string]*edgeSummary)
 
@@ -257,12 +273,11 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		r.FrameworkFilesDetected += len(frameworkFilesSeen)
 	}
 
-	// Pass 2: relationships. fieldChildCount and hasInboundStructural are
-	// built here (over ALL docs) before any orphan/field-extraction
-	// classification happens, so it doesn't matter which doc emitted the
-	// child entity vs. the structural edge pointing at it.
-	fieldChildCount := make(map[string]int)       // parent entity ID → count of field children
-	hasInboundStructural := make(map[string]bool) // entity ID → has an inbound CONTAINS/DECLARES edge
+	// Pass 2: relationships. fieldChildCount is built here (over ALL docs)
+	// before any orphan/field-extraction classification happens, so it doesn't
+	// matter which doc emitted the child entity vs. the structural edge
+	// pointing at it.
+	fieldChildCount := make(map[string]int) // parent entity ID → count of field children
 
 	for _, doc := range docs {
 		if doc == nil {
@@ -280,14 +295,19 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 				// children so the field-extraction metric reflects the graph
 				// instead of reading a property the dominant extractors never
 				// write.
-				hasInboundStructural[rel.ToID] = true
 				if entitySubtype[rel.ToID] == "field" {
 					fieldChildCount[rel.FromID]++
 				}
-			} else if es, ok := entityEdges[rel.FromID]; ok {
-				// Semantic edge tracking for orphan detection. CONTAINS/
-				// DECLARES edges do NOT reduce orphan count (handled above).
-				es.semanticOut++
+			} else {
+				// Semantic edge tracking for orphan detection, in BOTH
+				// directions (#6313). CONTAINS/DECLARES edges do NOT reduce
+				// the orphan count (handled above).
+				if es, ok := entityEdges[rel.FromID]; ok {
+					es.semanticOut++
+				}
+				if es, ok := entityEdges[rel.ToID]; ok {
+					es.semanticIn++
+				}
 			}
 
 			// Resolution disposition, derived STRUCTURALLY from the edge ToID shape
@@ -331,31 +351,44 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		}
 	}
 
+	// Derive which kinds are TERMINAL BY CONSTRUCTION from the graph itself,
+	// rather than from a hand-maintained list of kind/subtype names (#6346;
+	// a name list is the #6361 failure class). The question a name list was
+	// answering is "can this kind carry a semantic edge at all?", and the
+	// group's own graph answers it: count how many entities of each kind
+	// participate in ANY semantic edge, in either direction. A kind with zero
+	// observed participation gives us no evidence it ever carries semantics,
+	// so its unwired entities are reported in the expected/terminal bucket
+	// instead of the defect count. One participating entity is enough to
+	// prove the kind CAN be wired, at which point every unwired sibling is a
+	// genuine gap and belongs in the defect bucket.
+	//
+	// Known limitation, stated rather than hidden: a resolver regression that
+	// wipes out EVERY semantic edge of a kind is indistinguishable, from the
+	// graph alone, from a kind that is terminal by design. Both look like
+	// zero participation. render.go labels the terminal bucket accordingly,
+	// and the entities stay counted and visible there — they are never
+	// dropped. This is the same ambiguity the previous `OrphanPct < 100.0`
+	// gate resolved by always assuming "regression" (15 false failures on one
+	// corpus repo); we resolve it the other way and say so.
+	kindSemanticParticipation := make(map[string]int)
+	for id, es := range entityEdges {
+		if es.semanticOut > 0 || es.semanticIn > 0 {
+			kindSemanticParticipation[entityKind[id]]++
+		}
+	}
+
 	// Compute orphan counts per kind, split into DEFECT vs expected/terminal.
 	kindTerminalOrphans := make(map[string]int)
 	for id, es := range entityEdges {
-		if es.semanticOut != 0 {
+		// Direction-aware: an entity pointed AT by a semantic edge is attached
+		// to the graph even when it sources nothing (#6313).
+		if es.semanticOut != 0 || es.semanticIn != 0 {
 			continue
 		}
 		kind := entityKind[id]
-		subtype := entitySubtype[id]
 
-		// Fix 2: a field LEAF's semantic anchor is its inbound CONTAINS edge
-		// from the parent, not an outbound edge — it never sources
-		// REFERENCES/CALLS/etc. by construction. Not a defect.
-		if subtype == "field" && hasInboundStructural[id] {
-			continue
-		}
-
-		// Fix 3: pure-container SCOPE.Component terminals (one per source file,
-		// module/import stubs, pattern-detector terminals — see
-		// terminalComponentSubtypes) never source an outbound semantic edge, so
-		// being orphan is expected, not an extractor/resolver bug. Route these
-		// to a separate bucket instead of the defect count. Note the exemption
-		// deliberately EXCLUDES class/struct/interface/view/service subtypes:
-		// those DO source EXTENDS/DEPENDS_ON in real graphs, so a zero-edge one
-		// is a genuine defect and stays in kindOrphans below.
-		if isComponentKind(kind) && terminalComponentSubtypes[subtype] {
+		if kindSemanticParticipation[kind] == 0 {
 			kindTerminalOrphans[kind]++
 			continue
 		}
@@ -503,57 +536,6 @@ var classLikeKindTails = map[string]bool{
 // kind, matched case-insensitively on the namespace-stripped tail.
 func isClassLikeKind(kind string) bool {
 	return classLikeKindTails[kindTail(kind)]
-}
-
-// isComponentKind reports whether kind is the generic AST container/target
-// kind (SCOPE.Component — internal/types/kinds.go), matched
-// case-insensitively on the namespace-stripped tail.
-func isComponentKind(kind string) bool {
-	return kindTail(kind) == "component"
-}
-
-// terminalComponentSubtypes lists SCOPE.Component subtypes that are genuine
-// pure containers / terminal nodes: a single per-source-file node ("file"),
-// module containers, import stubs, and the pattern-detector terminal nodes
-// (column_schema/middleware/…). No pass ever emits an outbound
-// REFERENCES/CALLS/DEPENDS_ON/EXTENDS edge FROM one of these, so a zero-edge
-// "orphan" verdict reflects intended graph shape rather than an extractor or
-// resolver defect — they are reported in the separate expected/terminal
-// bucket instead of the defect orphan count.
-//
-// This list is feedback-local policy: it is deliberately NOT the audit
-// taxonomy. internal/quality/audit/heuristics.go takes the OPPOSITE stance on
-// construct kinds — it buckets class/struct/interface as CauseRealConstructBug
-// (genuine defects) — so we do not mirror it and must not claim to. We also do
-// not import it (that would pull the internal/quality/audit → internal/daemon
-// dependency chain into this lean package for a taxonomy that does not map
-// onto "terminal vs defect").
-//
-// Crucially, class/struct/interface/view/service subtypes are EXCLUDED here.
-// Those Components DO source outbound semantic edges in real graphs — Python
-// classes emit EXTENDS (internal/extractors/python/crossfile.go
-// extractBaseClasses; classes are SCOPE.Component/class per
-// python/references.go), and framework class/view/service/controller/
-// repository Components source DEPENDS_ON (internal/docgen/tier0.go). A
-// class-subtype Component only reaches the zero-outbound-edge state when those
-// edges FAILED to resolve — i.e. exactly the extractor/resolver regression the
-// orphan-rate sanity gate exists to catch. Exempting them would silently
-// reclassify a real defect as "expected/terminal", so they MUST stay in the
-// defect OrphanByKind bucket.
-var terminalComponentSubtypes = map[string]bool{
-	// Pure containers / stubs: one per source file, module containers, import
-	// placeholders. These never source an outbound semantic edge.
-	"file":   true,
-	"module": true,
-	"import": true,
-	// Pattern-detector terminal subtypes.
-	"column_schema":     true,
-	"middleware":        true,
-	"type_alias":        true,
-	"database_index":    true,
-	"orm":               true,
-	"cross_cutting":     true,
-	"schema_validation": true,
 }
 
 // bucketCount maps a raw count to a privacy-preserving range bucket.

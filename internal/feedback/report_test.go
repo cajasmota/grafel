@@ -105,7 +105,11 @@ func TestGenerate_LanguageCountsSuppressed(t *testing.T) {
 }
 
 func TestGenerate_OrphanRateComputed(t *testing.T) {
-	// 20 function entities, no outgoing semantic edges → all orphan.
+	// 20 function entities, no semantic edge anywhere in the group. Since
+	// #6346 terminality is DERIVED: with zero observed semantic participation
+	// the graph gives no evidence SCOPE.Function ever carries a semantic edge
+	// here, so these route to the expected/terminal bucket rather than being
+	// asserted as 20 resolver defects. The count is still reported in full.
 	entities := repeat(makeEntity("f1", "DoWork", "SCOPE.Function", "go", "a.go", 1), 20)
 	doc := makeDoc(entities, nil)
 
@@ -117,17 +121,24 @@ func TestGenerate_OrphanRateComputed(t *testing.T) {
 	if !ok {
 		t.Fatal("expected OrphanByKind[SCOPE.Function]")
 	}
-	if ks.OrphanCount != 20 {
-		t.Errorf("expected 20 orphans, got %d", ks.OrphanCount)
+	if ks.Total != 20 {
+		t.Errorf("expected Total 20, got %d", ks.Total)
 	}
-	if ks.OrphanPct != 100.0 {
-		t.Errorf("expected 100%% orphan rate, got %.1f%%", ks.OrphanPct)
+	if ks.OrphanCount != 0 {
+		t.Errorf("expected 0 DEFECT orphans for a zero-participation kind, got %d", ks.OrphanCount)
+	}
+	tks, ok := r.OrphanTerminalByKind["SCOPE.Function"]
+	if !ok {
+		t.Fatal("expected OrphanTerminalByKind[SCOPE.Function]")
+	}
+	if tks.OrphanCount != 20 || tks.OrphanPct != 100.0 {
+		t.Errorf("expected 20 terminal orphans at 100%%, got %d at %.1f%%", tks.OrphanCount, tks.OrphanPct)
 	}
 }
 
 func TestGenerate_SemanticEdgeReducesOrphanRate(t *testing.T) {
 	entities := repeat(makeEntity("f1", "Caller", "SCOPE.Function", "go", "a.go", 1), 20)
-	// Give the first entity a semantic CALLS edge.
+	// One semantic CALLS edge between two of them.
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "f1a", ToID: "f1b", Kind: "CALLS"},
 	}
@@ -141,18 +152,28 @@ func TestGenerate_SemanticEdgeReducesOrphanRate(t *testing.T) {
 	if !ok {
 		t.Fatal("expected OrphanByKind[SCOPE.Function]")
 	}
-	// f1a has a CALLS edge so it is not an orphan; 19 are orphans.
-	if ks.OrphanCount != 19 {
-		t.Errorf("expected 19 orphans (1 has CALLS edge), got %d", ks.OrphanCount)
+	// Since #6313 the metric is direction-aware: a CALLS edge attaches BOTH
+	// endpoints, the caller (f1a) and the callee (f1b). 18 are orphans.
+	if ks.OrphanCount != 18 {
+		t.Errorf("expected 18 orphans (CALLS attaches both endpoints), got %d", ks.OrphanCount)
+	}
+	// The kind now demonstrably participates, so these are DEFECTS, not
+	// terminals.
+	if tks, ok := r.OrphanTerminalByKind["SCOPE.Function"]; ok && tks.OrphanCount != 0 {
+		t.Errorf("kind with observed participation wrongly bucketed as terminal: %d", tks.OrphanCount)
 	}
 }
 
 func TestGenerate_ContainsDeclaresDontReduceOrphan(t *testing.T) {
 	entities := repeat(makeEntity("e1", "Thing", "SCOPE.Class", "java", "A.java", 1), 15)
-	// CONTAINS and DECLARES edges should NOT count as semantic.
+	// CONTAINS and DECLARES edges should NOT count as semantic — in EITHER
+	// direction. The REFERENCES edge is what gives the kind observed semantic
+	// participation, so the rest land in the defect bucket rather than the
+	// terminal one.
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "e1a", ToID: "e1b", Kind: "CONTAINS"},
 		{ID: "r2", FromID: "e1c", ToID: "e1d", Kind: "DECLARES"},
+		{ID: "r3", FromID: "e1e", ToID: "e1f", Kind: "REFERENCES"},
 	}
 	doc := makeDoc(entities, rels)
 
@@ -161,9 +182,10 @@ func TestGenerate_ContainsDeclaresDontReduceOrphan(t *testing.T) {
 		t.Fatalf("Generate: %v", err)
 	}
 	ks := r.OrphanByKind["SCOPE.Class"]
-	// All 15 are still orphans (CONTAINS/DECLARES don't reduce orphan count).
-	if ks.OrphanCount != 15 {
-		t.Errorf("expected 15 orphans (CONTAINS/DECLARES excluded), got %d", ks.OrphanCount)
+	// 15 total, only e1e/e1f are attached (by REFERENCES) → 13 orphans. The
+	// four CONTAINS/DECLARES endpoints stay orphaned.
+	if ks.OrphanCount != 13 {
+		t.Errorf("expected 13 orphans (CONTAINS/DECLARES excluded in both directions), got %d", ks.OrphanCount)
 	}
 }
 
@@ -342,11 +364,12 @@ func TestRender_FullReport(t *testing.T) {
 // never source outbound semantic edges. Those were miscounted as defects
 // (100% zero-fields, 100% orphan) before the fix.
 //
-// It ALSO guards the opposite direction: a class-subtype SCOPE.Component with
-// zero outbound edges is NOT exempt — classes DO source EXTENDS/DEPENDS_ON in
-// real graphs (python/crossfile.go, docgen/tier0.go), so a zero-edge class is
-// a genuine resolver/extractor defect and must stay in the DEFECT OrphanByKind
-// bucket where the sanity gate can catch it.
+// It ALSO guards the opposite direction: once a kind demonstrably carries
+// semantic edges somewhere in the group, its zero-edge members are NOT exempt
+// — they are genuine resolver/extractor defects and must stay in the DEFECT
+// OrphanByKind bucket where the sanity gate can catch them. Since #6346 that
+// exemption is derived from observed semantic participation instead of the
+// old hand-maintained subtype name list.
 func TestGenerate_FieldChildrenAndContainerTerminalsClassifiedCorrectly(t *testing.T) {
 	widget := makeEntity("widget", "Widget", "SCOPE.Class", "go", "widget.go", 10)
 	field1 := withSubtype(makeEntity("widget.name", "Widget.name", "SCOPE.Schema", "go", "widget.go", 11), "field")
@@ -355,8 +378,12 @@ func TestGenerate_FieldChildrenAndContainerTerminalsClassifiedCorrectly(t *testi
 	// A class-subtype Component with zero outbound edges — the masking-regression
 	// canary. It must land in the DEFECT bucket, never the terminal bucket.
 	classComp := withSubtype(makeEntity("class1", "OrderPlaced", "SCOPE.Component", "python", "order.py", 1), "class")
+	// One Component that DOES carry a semantic edge. Its existence is what
+	// proves SCOPE.Component can be wired in this group, which is what makes
+	// classComp above a defect rather than a terminal (#6346).
+	wiredComp := withSubtype(makeEntity("class2", "OrderService", "SCOPE.Component", "python", "svc.py", 1), "class")
 
-	entities := []graph.Entity{widget, field1, field2, fileComp, classComp}
+	entities := []graph.Entity{widget, field1, field2, fileComp, classComp, wiredComp}
 	// Pad past the 50-entity / 10-per-kind reporting floors with orphan
 	// SCOPE.Function entities that carry no structural or semantic edges —
 	// they must NOT be affected by the field/container classification.
@@ -365,6 +392,7 @@ func TestGenerate_FieldChildrenAndContainerTerminalsClassifiedCorrectly(t *testi
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "widget", ToID: "widget.name", Kind: "CONTAINS"},
 		{ID: "r2", FromID: "widget", ToID: "widget.price", Kind: "CONTAINS"},
+		{ID: "r3", FromID: "class2", ToID: "widget", Kind: "DEPENDS_ON"},
 	}
 	// Pad SCOPE.Class, SCOPE.Component (file subtype), and SCOPE.Schema past
 	// the N>=10 suppression floor with additional non-orphan instances so the
@@ -395,34 +423,33 @@ func TestGenerate_FieldChildrenAndContainerTerminalsClassifiedCorrectly(t *testi
 		t.Errorf("ZeroFieldsPct = %.1f%%, want 0.0%% (every class has >=1 real field child)", r.FieldExtractionRate.ZeroFieldsPct)
 	}
 
-	// --- Fix 2: field-leaf terminals (Subtype=="field") anchored by an
-	// inbound CONTAINS edge are not orphans, even though they have zero
-	// outbound edges.
+	// --- Fix 2: field leaves carry no semantic edge in either direction and
+	// no SCOPE.Schema entity in this group does either, so the kind has zero
+	// observed semantic participation: they are reported in the terminal
+	// bucket, never as defects.
 	if ks, ok := r.OrphanByKind["SCOPE.Schema"]; ok && ks.OrphanCount != 0 {
-		t.Errorf("SCOPE.Schema defect orphans = %d, want 0 (field leaves anchored by inbound CONTAINS)", ks.OrphanCount)
+		t.Errorf("SCOPE.Schema defect orphans = %d, want 0 (zero-participation kind → terminal bucket)", ks.OrphanCount)
+	}
+	// widget.name + widget.price + 10 padding field leaves = 12.
+	if tks, ok := r.OrphanTerminalByKind["SCOPE.Schema"]; !ok || tks.OrphanCount != 12 {
+		t.Errorf("SCOPE.Schema terminal orphans = %v, want 12", tks.OrphanCount)
 	}
 
-	// --- Fix 3: only PURE-container SCOPE.Component subtypes (file/module/
-	// import + pattern terminals) route to the expected/terminal bucket.
-	// file1 + 10 padding file-subtype Components = 11 terminal orphans.
-	tks, ok := r.OrphanTerminalByKind["SCOPE.Component"]
-	if !ok {
-		t.Fatal("expected OrphanTerminalByKind[SCOPE.Component] to be populated")
+	// --- Fix 3 / masking guard: SCOPE.Component DOES carry a semantic edge in
+	// this group (class2 --DEPENDS_ON--> widget), so the kind is not terminal
+	// and NONE of its zero-edge members may be swallowed by the terminal
+	// bucket — including the pure-container file-subtype ones. All 12 unwired
+	// Components (file1, class1, fc0..fc9) are DEFECT orphans, which is where
+	// the sanity gate can see them.
+	if tks, ok := r.OrphanTerminalByKind["SCOPE.Component"]; ok && tks.OrphanCount != 0 {
+		t.Errorf("SCOPE.Component terminal orphans = %d, want 0 — a kind with observed semantic participation is never terminal", tks.OrphanCount)
 	}
-	if tks.OrphanCount != 11 {
-		t.Errorf("SCOPE.Component terminal orphans = %d, want 11 (file-subtype only)", tks.OrphanCount)
-	}
-
-	// --- Masking guard: the class-subtype Component with zero outbound edges
-	// MUST be a DEFECT orphan (classes source EXTENDS/DEPENDS_ON in real
-	// graphs; a zero-edge class is a resolver/extractor regression). It must
-	// NOT be swallowed by the terminal bucket.
 	cks, ok := r.OrphanByKind["SCOPE.Component"]
 	if !ok {
 		t.Fatal("expected OrphanByKind[SCOPE.Component] to be populated")
 	}
-	if cks.OrphanCount != 1 {
-		t.Errorf("SCOPE.Component defect orphans = %d, want 1 (the zero-edge class-subtype Component)", cks.OrphanCount)
+	if cks.OrphanCount != 12 {
+		t.Errorf("SCOPE.Component defect orphans = %d, want 12 (every zero-edge Component)", cks.OrphanCount)
 	}
 }
 

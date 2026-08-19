@@ -123,11 +123,13 @@ func Render(w io.Writer, r *Report) error {
 		}
 		fmt.Fprintf(w, "\n")
 
-		// Expected/terminal orphans: container-terminal Components and
-		// field-leaf terminals are not defects — routed here instead of the
-		// defect table above so the raw signal is not silently dropped.
+		// Expected/terminal orphans: kinds with zero observed semantic
+		// participation anywhere in the group. Routed here instead of the
+		// defect table above so the raw signal is not silently dropped, and
+		// labelled with the ambiguity rather than asserted as healthy — see
+		// the derivation comment in report.go (#6346).
 		if len(r.OrphanTerminalByKind) > 0 {
-			fmt.Fprintf(w, "**Expected/terminal orphans** (container-terminal by design, not defects):\n\n")
+			fmt.Fprintf(w, "**Expected/terminal orphans** — no entity of these kinds carries a semantic edge in either direction anywhere in the group, so they are terminal by construction as far as the graph can show. Not counted as defects. (A total resolver regression on a kind would look identical; if one of these used to be wired, treat it as a defect.)\n\n")
 			fmt.Fprintf(w, "| Kind | Total | Terminal orphan | Terminal orphan %% |\n|---|---|---|---|\n")
 			for _, kind := range sortedKindStatsKeys(r.OrphanTerminalByKind) {
 				tks := r.OrphanTerminalByKind[kind]

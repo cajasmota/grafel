@@ -64,7 +64,7 @@ func TestRunSanityChecks_SuppressedByCount(t *testing.T) {
 	}
 }
 
-func TestRunSanityChecks_OrphanRate100Pct(t *testing.T) {
+func TestRunSanityChecks_OrphanRateAtCeiling(t *testing.T) {
 	r := &Report{
 		TotalEntities:      200,
 		EntitiesByLanguage: map[string]int{"java": 200},
@@ -78,7 +78,7 @@ func TestRunSanityChecks_OrphanRate100Pct(t *testing.T) {
 	results, _ := runSanityChecks(r)
 	found := false
 	for _, res := range results {
-		if res.Name == "orphan-rate-not-100pct[endpoint]" {
+		if res.Name == orphanCheckName("endpoint") {
 			if res.Passed {
 				t.Error("orphan-rate check should FAIL for 100% orphan rate")
 			}
@@ -86,7 +86,7 @@ func TestRunSanityChecks_OrphanRate100Pct(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("orphan-rate-not-100pct[endpoint] not found in results")
+		t.Errorf("%s not found in results", orphanCheckName("endpoint"))
 	}
 }
 
@@ -148,12 +148,11 @@ func TestRunSanityChecks_FrameworkFilesNoHits(t *testing.T) {
 }
 
 // TestRunSanityChecks_ContainerTerminalKindNoFalseFailure is the sanity-check
-// parity guard for Fix 4: the orphan-rate-not-100pct check must be evaluated
-// against the POST-classification DEFECT orphan set (r.OrphanByKind), not the
-// raw pre-classification orphan count. A SCOPE.Component kind that is 100%
-// container-terminal (every instance routed to OrphanTerminalByKind by report.go's
-// Fix 3 classification) reports 0% in OrphanByKind and must NOT trip
-// orphan-rate-not-100pct.
+// parity guard for Fix 4: the orphan-rate check must be evaluated against the
+// POST-classification DEFECT orphan set (r.OrphanByKind), not the raw
+// pre-classification orphan count. A kind with zero observed semantic
+// participation (every instance routed to OrphanTerminalByKind by report.go's
+// derived terminality) reports 0% in OrphanByKind and must NOT trip the gate.
 func TestRunSanityChecks_ContainerTerminalKindNoFalseFailure(t *testing.T) {
 	r := &Report{
 		TotalEntities:      200,
@@ -172,10 +171,19 @@ func TestRunSanityChecks_ContainerTerminalKindNoFalseFailure(t *testing.T) {
 	}
 
 	results, _ := runSanityChecks(r)
+	found := false
 	for _, res := range results {
-		if res.Name == "orphan-rate-not-100pct[SCOPE.Component]" && !res.Passed {
-			t.Errorf("orphan-rate-not-100pct[SCOPE.Component] should PASS for a 100%%-container-terminal kind (defect pct is 0%%), note: %s", res.Note)
+		if res.Name != orphanCheckName("SCOPE.Component") {
+			continue
 		}
+		found = true
+		if !res.Passed {
+			t.Errorf("%s should PASS for a zero-participation kind (defect pct is 0%%), note: %s",
+				res.Name, res.Note)
+		}
+	}
+	if !found {
+		t.Fatalf("%s not emitted — the guard would be vacuous", orphanCheckName("SCOPE.Component"))
 	}
 }
 
