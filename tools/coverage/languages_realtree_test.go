@@ -34,8 +34,25 @@ import (
 )
 
 // languageRoster maps every canonical language slug the real
-// internal/extractors/ tree is expected to derive to the human label the
-// coverage matrix renders for it. Both directions are enforced:
+// internal/extractors/ tree is expected to derive to its reviewed human label.
+//
+// That label is NOT uniformly "what the matrix renders", and the header used
+// to claim it was (#6332). Two functions consume it and they disagree:
+//
+//	languageDisplayName(slug) — placeholder by-language pages and the
+//	  summary's placeholder table — falls back to titleCase(slug).
+//	languageDisplay(slug) — every summary pivot row built from registry
+//	  records (generate.go) — falls back to the RAW slug.
+//
+// For the 12 slugs carrying a languageDisplayOverrides entry the two agree and
+// the roster label is literally what ships. For the other 26 the shipped pivot
+// renders the bare slug — docs/coverage/summary.md reads "[python]", "[go]",
+// "[rust]" — and the roster label is what the placeholder path would render.
+// Both are asserted: TestRealTreeLanguageDisplayNamesAreReviewed pins the
+// first function, TestRealTreeSummaryPivotLabelsAreReviewed the second, so
+// neither renderer can drift from the reviewed label unnoticed.
+//
+// Both directions of membership are enforced:
 //
 //	slug on disk but not here  -> a language is reaching the matrix unreviewed
 //	here but not on disk       -> dead roster entry
@@ -233,7 +250,12 @@ func TestSupportedLanguagesMatchesRealTree(t *testing.T) {
 // the matrix "unnamed": either it already renders the reviewed label, or a
 // human has to write the label down here to make this test pass.
 func TestRealTreeLanguageDisplayNamesAreReviewed(t *testing.T) {
-	for _, s := range SupportedLanguages(repoRoot(t)) {
+	langs := SupportedLanguages(repoRoot(t))
+	if len(langs) == 0 {
+		t.Fatal("SupportedLanguages returned nothing: the real internal/extractors/ " +
+			"tree was not read, so this test is vacuous")
+	}
+	for _, s := range langs {
 		want, ok := languageRoster[s]
 		if !ok {
 			continue // reported by TestSupportedLanguagesMatchesRealTree
@@ -245,13 +267,59 @@ func TestRealTreeLanguageDisplayNamesAreReviewed(t *testing.T) {
 	}
 }
 
+// TestRealTreeSummaryPivotLabelsAreReviewed pins the OTHER renderer.
+//
+// languageDisplayName, guarded above, is reached only from the placeholder
+// paths in generate.go — extractor-supported languages with zero registry
+// records, today just {bicep}. Every other row of the shipped matrix goes
+// through languageDisplay, whose fallback is the raw slug rather than
+// titleCase. Guarding only the first function left 37 of 38 slugs' rendered
+// labels unasserted, while the roster header claimed to describe them.
+//
+// The expectation therefore forks on the override table, which is the one
+// thing both functions consult: with an override, both render the roster
+// label; without one, the pivot renders the bare slug. Fixing a label means
+// adding a languageDisplayOverrides entry — which is what makes the label
+// reach BOTH renderers, and what the php fix in this series did.
+func TestRealTreeSummaryPivotLabelsAreReviewed(t *testing.T) {
+	langs := SupportedLanguages(repoRoot(t))
+	if len(langs) == 0 {
+		t.Fatal("SupportedLanguages returned nothing: the real internal/extractors/ " +
+			"tree was not read, so this test is vacuous")
+	}
+	for _, s := range langs {
+		want, ok := languageRoster[s]
+		if !ok {
+			continue // reported by TestSupportedLanguagesMatchesRealTree
+		}
+		if _, overridden := languageDisplayOverrides[s]; !overridden {
+			want = s // languageDisplay falls back to the raw slug, not titleCase
+			if got := languageDisplay(s); got != want {
+				t.Errorf("languageDisplay(%q) = %q, want the bare slug %q — the summary "+
+					"pivot's fallback changed, so 26 rows now render a label this "+
+					"roster never reviewed", s, got, want)
+			}
+			continue
+		}
+		if got := languageDisplay(s); got != want {
+			t.Errorf("languageDisplay(%q) = %q, roster says %q — the summary pivot "+
+				"would render a label nobody signed off on", s, got, want)
+		}
+	}
+}
+
 // TestRealTreeExtractorDirForSlugResolves asserts the on-disk citation each
 // placeholder by-language page prints actually exists. extractorDirForSlug has
 // its own hand-written switch, so an alias added without a matching case makes
 // the generated page cite a directory that is not there.
 func TestRealTreeExtractorDirForSlugResolves(t *testing.T) {
 	root := repoRoot(t)
-	for _, s := range SupportedLanguages(root) {
+	langs := SupportedLanguages(root)
+	if len(langs) == 0 {
+		t.Fatal("SupportedLanguages returned nothing: the real internal/extractors/ " +
+			"tree was not read, so this test is vacuous")
+	}
+	for _, s := range langs {
 		dir := extractorDirForSlug(s)
 		full := filepath.Join(root, "internal", "extractors", dir)
 		if fi, err := os.Stat(full); err != nil || !fi.IsDir() {
