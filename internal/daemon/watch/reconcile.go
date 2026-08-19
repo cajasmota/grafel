@@ -85,11 +85,14 @@ import (
 // abandonment is permanent, so waiting one sweep to confirm costs the repair
 // that matters nothing at all.
 //
-// WHY THE REPAIR RUNS ON THE LOOP GOROUTINE. The scan is cheap and side-effect
-// free, so it stays on the sweep goroutine; the repair is handed to the loop
-// over Watcher.repairCh. See the field for why. Empirically: with the repair on
-// the sweep goroutine the same interleaved-fill test misreads the ledger about
-// one run in eight, in both directions.
+// WHY THE REPAIR RUNS ON THE SWEEP GOROUTINE. Scan and repair both run on the
+// sweep goroutine — reconcileLoop calls reconcileOnce, which calls scanDir,
+// which calls repairDir inline. Keeping the repair off the loop goroutine is a
+// hard requirement, not a preference: it issues one fsAdd per entry, and on
+// Windows an Add only completes while the loop goroutine is draining Events, so
+// an Add issued FROM that goroutine never gets its reply. See the invariant on
+// Watcher.fsAdd, and the note on repairDir for what running off the loop costs
+// (a Create can land mid-repair) and how that is handled.
 //
 // WHY IT DOES NOT FIGHT THE QUARANTINE. A quarantined directory is skipped
 // outright. A directory that churns pathologically is one the tracker is
@@ -202,10 +205,11 @@ func (w *Watcher) reconcileOnce() (repaired int) {
 			return repaired
 		}
 		if acted >= maxRepairEntriesPerPass {
-			// Scanning is cheap and would finish the batch; ACTING is what puts
-			// work on the loop goroutine, so acting is what is bounded. The
-			// directories left over keep their confirmed deficit and are acted
-			// on next pass.
+			// Scanning is cheap and would finish the batch; ACTING is what
+			// issues the fsAdd calls, so acting is what is bounded. The
+			// directories left over keep their confirmed deficit; this batch is
+			// already popped, so they are acted on in a later cycle, once the
+			// rotation comes back round to them.
 			break
 		}
 		out := w.scanDir(dir, cost)
@@ -241,13 +245,13 @@ func (w *Watcher) nextReconcileBatch() []string {
 }
 
 // scanDir looks for a directory short of watched entries and, on a CONFIRMED
-// deficit, hands the repair to the loop goroutine. It reports whether entries
-// were actually recovered.
+// deficit, calls repairDir. It reports whether entries were actually recovered.
 //
-// This is the half that runs on the SWEEP goroutine, and it is deliberately the
-// half that does the reading: one os.ReadDir, two short critical sections, no
-// ledger mutation and no fsnotify call. The entry list it builds travels with
-// the request, so the loop goroutine never performs a directory read.
+// This is the reading half, and it does no more than read: one os.ReadDir, two
+// short critical sections, no ledger mutation and no fsnotify call. The entry
+// list it builds is handed to repairDir, which runs on this same SWEEP
+// goroutine — never on the loop goroutine, which must stay free to drain Events
+// (see repairDir).
 func (w *Watcher) scanDir(dir string, cost fdCostModel) scanOutcome {
 	w.mu.Lock()
 	repo, watched := w.dirToRepo[dir]
@@ -344,10 +348,10 @@ func (w *Watcher) scanDir(dir string, cost fdCostModel) scanOutcome {
 	return scanOutcome{repaired: res.charged > 0, entriesActed: len(entries)}
 }
 
-// maxRepairEntriesPerPass bounds the work one pass may put on the LOOP
-// goroutine, counted in the unit that work is actually done in — one fs.Add per
-// entry — rather than in directories, which says nothing about size. At 4096
-// register syscalls it is a few milliseconds of the drain per pass, against a
+// maxRepairEntriesPerPass bounds the work one pass does on the SWEEP goroutine,
+// counted in the unit that work is actually done in — one fs.Add per entry —
+// rather than in directories, which says nothing about size. At 4096
+// register syscalls it is a few milliseconds of the sweep per pass, against a
 // subscribeDirRecursive that the event path already runs inline with no bound at
 // all. Scanning is bounded separately by reconcileBatch; this bounds acting.
 //
@@ -513,12 +517,11 @@ func (w *Watcher) repairDir(dir string, cost fdCostModel, entries []string) repa
 		}
 		return repairResult{failed: failed}
 	}
-	// `have` is still current: this runs on the loop goroutine, so no Create can
-	// have been processed since it was read. Guarded rather than assumed — if
-	// this is ever moved off that goroutine the repair skips instead of charging
-	// against a stale tally, which is a missed repair the next sweep retries
-	// rather than a ledger drift nothing corrects. Free where it belongs: the
-	// branch is unreachable while the placement is correct.
+	// `have` may have moved: this runs on the SWEEP goroutine, so the loop can
+	// have processed a Create under dir while the Adds above were in flight. A
+	// charge computed against a stale tally is a ledger drift nothing corrects,
+	// so the repair abandons itself instead — a missed repair, which the next
+	// sweep retries. This branch is live, not defensive.
 	if now := w.dirEntries[dir]; now != have {
 		w.mu.Unlock()
 		unreserve()
@@ -567,12 +570,12 @@ func (w *Watcher) repairDir(dir string, cost fdCostModel, entries []string) repa
 	// Settle the reservation against what was actually opened — inside the same
 	// critical section that holds the attribution, so the pair is never observed
 	// disagreeing.
-	if charged > est {
-		// Already open: the descriptors exist whether or not they fit, exactly
-		// as on the event path.
-		w.fdReserved[repo] += charged - est
-		w.fdb.charge(charged - est)
-	} else if charged < est {
+	//
+	// It can only ever be an over-reservation: est is (len(entries)-have) and
+	// charged is (len(added)-have) against the SAME `have`, re-checked unchanged
+	// just above, and `added` is a subset of `entries`. So charged <= est
+	// always, and there is no branch for the other direction.
+	if charged < est {
 		if w.fdReserved[repo] -= est - charged; w.fdReserved[repo] < 0 {
 			w.fdReserved[repo] = 0
 		}
