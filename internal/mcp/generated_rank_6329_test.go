@@ -1,7 +1,8 @@
 package mcp
 
 import (
-	"sort"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
@@ -51,17 +52,14 @@ func authoredEntity(name string, line int, score float64) scored {
 	return scored{hit: Hit{Entity: e, Score: score}}
 }
 
-// rerank mirrors the production sort in tools.go so the golden below exercises
-// the real comparator rather than a paraphrase of it.
+// rerank calls the PRODUCTION comparator. It used to be a copy of the
+// anonymous sort closure in handleQueryGraph, which meant the golden below was
+// pinning a paraphrase — the two could diverge and both stay green. The
+// closure has been extracted to rerankScored precisely so this test drives the
+// real thing.
 func rerank(all []scored) []scored {
 	out := append([]scored(nil), all...)
-	sort.SliceStable(out, func(i, j int) bool {
-		ti, tj := rankTier(out[i].hit.Entity), rankTier(out[j].hit.Entity)
-		if ti != tj {
-			return ti < tj
-		}
-		return out[i].hit.Score > out[j].hit.Score
-	})
+	rerankScored(out)
 	return out
 }
 
@@ -104,24 +102,37 @@ func TestRankTier_GeneratedSitsBelowAuthored(t *testing.T) {
 	}
 }
 
-// TestRerank_AuthoredOutranksGeneratedRegardlessOfScore is the ordering golden.
-// It is deliberately built so BM25 alone would put the generated hit FIRST:
-// user.pb.go's file stem contributes at weight 1.5 to a "user" query, which is
-// exactly @manuel1358000's #6314 complaint.
+// TestRerank_AuthoredOutranksGeneratedRegardlessOfScore is the ordering
+// golden. It is deliberately built so BM25 alone would fill the whole top of
+// the list with generated hits: user.pb.go's file stem contributes at weight
+// 1.5 to a "user" query, which is exactly @manuel1358000's #6314 complaint.
+//
+// THE ASSERTION IS NO LONGER A TOTAL ORDER, and that is deliberate — see
+// rerankScored for why an absolute partition was unsafe in the default output
+// paths. What survives is the thing #6314 actually asked for: the authored
+// answer must not be buried under a crowd of generated declarations. One
+// generated hit — the single strongest match in the set — may precede it. The
+// other three must not.
 //
 // MUTATION TARGET: set the generated tier equal to tier 0 and this must fail.
 func TestRerank_AuthoredOutranksGeneratedRegardlessOfScore(t *testing.T) {
 	in := []scored{
 		genEntity("User", 17, 9.9),           // wins on BM25
-		authoredEntity("UserService", 42, 1), // loses on BM25
+		genEntity("UserRequest", 30, 9.8),    // …and so do these
+		genEntity("UserReply", 44, 9.7),      //
+		authoredEntity("UserService", 42, 1), // loses on BM25 to all of them
 	}
 	got := rerank(in)
-	if got[0].hit.Entity.Name != "UserService" {
-		t.Fatalf("first hit = %q (score %.1f), want the authored entity despite its lower score",
-			got[0].hit.Entity.Name, got[0].hit.Score)
+	names := make([]string, len(got))
+	for i, s := range got {
+		names[i] = s.hit.Entity.Name
 	}
-	if got[1].hit.Entity.Name != "User" {
-		t.Fatalf("second hit = %q, want the generated entity", got[1].hit.Entity.Name)
+	want := []string{"User", "UserService", "UserRequest", "UserReply"}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("order = %v, want %v: the authored entity must sort above every "+
+				"generated hit except the single strongest match", names, want)
+		}
 	}
 }
 
@@ -163,14 +174,24 @@ func TestRerank_IsAPurePartition(t *testing.T) {
 			t.Fatalf("generated order = %v, want %v (score order must be untouched)", gen, wantGen)
 		}
 	}
-	// And the partition itself: every authored hit precedes every generated one.
+	// And the partition itself. It is no longer a TOTAL order — the single
+	// strongest match in the set is exempt (here GenHigh at 8, which outscores
+	// AuthHigh at 7) — so the invariant is stated over the remainder: after
+	// the exempt hit, every authored entity precedes every generated one.
+	//
+	// This is the shape the review asked for: still an assertion about the
+	// demotion, no longer an assertion that the demotion is unconditional.
+	if got[0].hit.Entity.Name != "GenHigh" {
+		t.Fatalf("first = %q, want the exempt strongest match GenHigh", got[0].hit.Entity.Name)
+	}
 	seenGen := false
-	for _, s := range got {
+	for _, s := range got[1:] {
 		isGen := s.hit.Entity.PropGet(types.EntityGeneratedProperty) == "true"
 		if isGen {
 			seenGen = true
 		} else if seenGen {
-			t.Fatalf("authored entity %q sorted after a generated one; not a clean partition", s.hit.Entity.Name)
+			t.Fatalf("authored entity %q sorted after a generated one; the demotion "+
+				"must still partition everything below the exempt hit", s.hit.Entity.Name)
 		}
 	}
 }
@@ -221,5 +242,205 @@ func TestSerializeHits_ExposesGenerated(t *testing.T) {
 	}
 	if _, present := v[1]["generated_by"]; present {
 		t.Errorf("authored verbose row carries generated_by: %v", v[1])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #6329 review round 2 — the demotion must not bury the strongest match, and
+// the default views must not truncate in silence.
+// ---------------------------------------------------------------------------
+
+// TestRerank_StrongestGeneratedMatchSurvivesTheDemotion is the adversarial
+// shape the partition failed on: a protobuf message name that exists ONLY in
+// user.pb.go. weightFileStem = 1.5 puts it top on BM25, and an absolute
+// partition drops it below every weak authored match — in a group, below the
+// per-repo top 3, i.e. out of the default view entirely and with no signal.
+//
+// MUTATION TARGET: delete the strongestGeneratedHit exemption from
+// rerankScored and this must fail.
+func TestRerank_StrongestGeneratedMatchSurvivesTheDemotion(t *testing.T) {
+	in := []scored{
+		genEntity("UserProfileRequest", 17, 9.9), // the only real answer
+		authoredEntity("userHandler", 42, 0.4),
+		authoredEntity("userStore", 12, 0.3),
+		authoredEntity("userCache", 8, 0.2),
+	}
+	got := rerank(in)
+	if got[0].hit.Entity.Name != "UserProfileRequest" {
+		names := make([]string, len(got))
+		for i, s := range got {
+			names[i] = s.hit.Entity.Name
+		}
+		t.Fatalf("order = %v; the generated entity outscores every authored hit "+
+			"and is the only answer to the query, so it must not be demoted out "+
+			"of the default view", names)
+	}
+}
+
+// TestRerank_ExemptionIsOnlyTheSingleBestHit states the trade-off as a test.
+// Exempting EVERY generated hit that outscores the best authored one would
+// restore #6314 wholesale — that issue is exactly the case where a crowd of
+// generated declarations outranks the authored answer. Only the top one is
+// spared; the rest stay demoted, so authored results still surface from row 2.
+//
+// MUTATION TARGET: make strongestGeneratedHit return every out-scoring
+// generated entity instead of the best one, and this must fail.
+func TestRerank_ExemptionIsOnlyTheSingleBestHit(t *testing.T) {
+	in := []scored{
+		genEntity("GenA", 1, 9.9),
+		genEntity("GenB", 2, 9.8),
+		genEntity("GenC", 3, 9.7),
+		authoredEntity("AuthOnly", 42, 0.5),
+	}
+	got := rerank(in)
+	if got[0].hit.Entity.Name != "GenA" {
+		t.Fatalf("first = %q, want the single strongest generated hit", got[0].hit.Entity.Name)
+	}
+	if got[1].hit.Entity.Name != "AuthOnly" {
+		t.Fatalf("second = %q, want the authored hit; only ONE generated entity "+
+			"is exempt from the demotion", got[1].hit.Entity.Name)
+	}
+}
+
+// TestRerank_TiesGoToTheAuthoredHit — the exemption requires a STRICTLY higher
+// score, so an equal-scoring pair still partitions in the authored entity's
+// favour.
+func TestRerank_TiesGoToTheAuthoredHit(t *testing.T) {
+	in := []scored{
+		genEntity("Gen", 1, 5),
+		authoredEntity("Auth", 42, 5),
+	}
+	got := rerank(in)
+	if got[0].hit.Entity.Name != "Auth" {
+		t.Fatalf("first = %q, want the authored hit on a score tie", got[0].hit.Entity.Name)
+	}
+}
+
+// TestRerank_ExemptionDoesNotRescueNoise — a generated entity that is also a
+// shadow stays in its noise tier even when it is the top scorer. The exemption
+// restores the AUTHORED tier the entity would otherwise have had; it is not a
+// blanket promotion.
+func TestRerank_ExemptionDoesNotRescueNoise(t *testing.T) {
+	shadow := &graph.Entity{Name: "Shadow", Kind: string(types.EntityKindClass), Subtype: "shadow"}
+	shadow.PropSet(types.EntityGeneratedProperty, "true")
+	in := []scored{
+		{hit: Hit{Entity: shadow, Score: 9.9}},
+		authoredEntity("Auth", 42, 0.1),
+	}
+	got := rerank(in)
+	if got[0].hit.Entity.Name != "Auth" {
+		t.Fatalf("first = %q, want the authored hit; a generated SHADOW must not "+
+			"be exempted out of the noise tiers", got[0].hit.Entity.Name)
+	}
+}
+
+// TestTruncationNote_SaysWhatWasCut pins the shared formatter. Both default
+// views cut rows; before #6329 review round 2 neither said so.
+func TestTruncationNote_SaysWhatWasCut(t *testing.T) {
+	if n := truncationNote(3, 3, "what", "how"); n != "" {
+		t.Errorf("note emitted when nothing was cut: %q", n)
+	}
+	if n := truncationNote(5, 3, "what", "how"); n != "" {
+		t.Errorf("note emitted when shown exceeds total: %q", n)
+	}
+	n := truncationNote(3, 11, "per-repo view shows the top 3 hits in each repo", "pass full=true")
+	for _, want := range []string{"8 of 11 ranked hits omitted", "top 3", "pass full=true"} {
+		if !strings.Contains(n, want) {
+			t.Errorf("note %q is missing %q", n, want)
+		}
+	}
+}
+
+// truncFixture builds one repo with n entities that all match the query token,
+// so every ranked-view cut in the tool is exercised with a known total.
+func truncFixture(repo string, n int) *graph.Document {
+	doc := &graph.Document{Repo: repo}
+	for i := 0; i < n; i++ {
+		doc.Entities = append(doc.Entities, graph.Entity{
+			ID:         fmt.Sprintf("%s_inspection_%d", repo, i),
+			Name:       fmt.Sprintf("inspectionHandler%d", i),
+			Kind:       "SCOPE.Function",
+			SourceFile: fmt.Sprintf("%s/inspection_%d.go", repo, i),
+			StartLine:  i + 1,
+		})
+	}
+	return doc
+}
+
+// TestFind_MultiRepoDefaultViewAnnouncesItsTruncation is BLOCKER 3 end to end.
+//
+// A grafel group with more than one repo is the NORMAL case, and its default
+// view keeps the top 3 hits per repo. That cut was SILENT: every hit past the
+// third simply did not exist as far as the caller — or a test — could tell.
+// Once ranking carries a demotion tier that is not a cosmetic gap, it is the
+// mechanism by which a wrongly flagged file disappears instead of dropping a
+// few positions, which is the #6338 failure mode this work exists to avoid.
+//
+// This drives the real tool, not renderPerRepoSummary in isolation, so a
+// mutant that deletes the CALL is caught as well as one that empties the note.
+//
+// MUTATION TARGET: drop perRepoTruncationSuffix from renderPerRepoSummary and
+// this must fail.
+func TestFind_MultiRepoDefaultViewAnnouncesItsTruncation(t *testing.T) {
+	srv := newTestServer(t, truncFixture("alpha", 6), truncFixture("beta", 6))
+	out := callEndpointToolText(t, srv.handleQueryGraph, map[string]any{
+		"group":      "test",
+		"query":      "inspection handler",
+		"cross_repo": true,
+		// The fixture names are near-identical by construction, so BM25 IDF
+		// puts every hit at ~0; the default min_score=0.15 would cull the set
+		// down to the always-1 fallback and nothing would be truncated at all.
+		"min_score": 0.0,
+	})
+	if !strings.Contains(out, "truncation_note") {
+		t.Fatalf("multi-repo default view truncated to the per-repo top 3 with no "+
+			"truncation_note; the cut must never be silent. Output:\n%s", out)
+	}
+	if !strings.Contains(out, "ranked hits omitted") {
+		t.Errorf("truncation note does not say how many hits were omitted:\n%s", out)
+	}
+}
+
+// TestFind_MultiRepoViewIsSilentWhenNothingWasCut — the note must be evidence,
+// not decoration. With 2 hits per repo nothing is truncated and nothing is
+// claimed.
+func TestFind_MultiRepoViewIsSilentWhenNothingWasCut(t *testing.T) {
+	srv := newTestServer(t, truncFixture("alpha", 2), truncFixture("beta", 2))
+	out := callEndpointToolText(t, srv.handleQueryGraph, map[string]any{
+		"group":      "test",
+		"query":      "inspection handler",
+		"cross_repo": true,
+		// The fixture names are near-identical by construction, so BM25 IDF
+		// puts every hit at ~0; the default min_score=0.15 would cull the set
+		// down to the always-1 fallback and nothing would be truncated at all.
+		"min_score": 0.0,
+	})
+	if strings.Contains(out, "truncation_note") {
+		t.Fatalf("truncation_note emitted when nothing was cut:\n%s", out)
+	}
+}
+
+// TestFind_CompactViewAnnouncesItsSeedTruncation is the single-repo half of
+// the same defect: the compact path keeps the first 10 ranked hits and said
+// nothing about the rest.
+//
+// MUTATION TARGET: remove the keepNote case from the TruncatedNote switch and
+// this must fail.
+func TestFind_CompactViewAnnouncesItsSeedTruncation(t *testing.T) {
+	srv := newTestServer(t, truncFixture("solo", 25))
+	out := callEndpointToolText(t, srv.handleQueryGraph, map[string]any{
+		"group": "test",
+		"query": "inspection handler",
+		// kind_filter is not incidental. Plain BM25 is capped at 10 hits per
+		// repo at the source, so on a single repo the compact seed cut can
+		// never fire from text ranking alone — it is reachable only through
+		// enumerateByKind, which folds in every in-scope entity of the kind
+		// and disables the min_score cull. That is the path this pins.
+		"kind_filter": "SCOPE.Function",
+		"min_score":   0.0,
+	})
+	if !strings.Contains(out, "ranked hits omitted") {
+		t.Fatalf("compact view kept the top %d of 25 hits with no truncation note. Output:\n%s",
+			compactSeedLimit, out)
 	}
 }

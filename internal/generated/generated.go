@@ -41,13 +41,34 @@
 // # Fail-safe direction
 //
 // Detection can only ever mark a file GENERATED. It never marks a file
-// skipped, and nothing in this package removes a file from the index. A missed
-// detection is the status quo (the file is treated as hand-written); a wrong
-// detection costs the file some ranking position, not its entities. That
-// asymmetry is why the marker alone is sufficient to flip a file (#6329,
-// second comment) — and why a filename rule that only fires WITH a marker
-// would be dead weight, since the marker already flipped the file. PR1's table
-// therefore contains unambiguous rules only.
+// skipped, and nothing in this package removes a file from the index or from
+// the graph. A missed detection is the status quo: the file is treated as
+// hand-written.
+//
+// A WRONG DETECTION COSTS RANKING POSITIONS. This comment used to say it costs
+// "some ranking position, not its entities", and in the default MCP output
+// path that was FALSE. internal/mcp made the demotion an absolute partition,
+// and the two default views keep only the first few rows — per-repo top 3 in a
+// group, the first 10 in single-repo compact mode — so three weak authored
+// matches were enough to remove a generated hit from the default view
+// entirely, silently. A wrongly flagged hand-written file did not slip down
+// the list, it VANISHED.
+//
+// Two changes in internal/mcp make the sentence true rather than aspirational,
+// and neither lives here, so this comment is a pointer to them rather than a
+// promise on their behalf:
+//
+//   - rerankScored exempts the single generated hit that outscores every
+//     authored hit in the result set, so the demotion can never bury the
+//     strongest match for a query.
+//   - both truncating default views now emit a truncation_note, so a row that
+//     was dropped is distinguishable from a row that does not exist.
+//
+// The entities themselves are never touched either way. That asymmetry is why
+// the marker alone is sufficient to flip a file (#6329, second comment) — and
+// why a filename rule that only fires WITH a marker would be dead weight,
+// since the marker already flipped the file. PR1's table therefore contains
+// unambiguous rules only.
 package generated
 
 import (

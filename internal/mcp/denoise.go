@@ -25,6 +25,7 @@
 package mcp
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/graph"
@@ -201,13 +202,14 @@ func splitProcessBuiltin(label string) (string, bool) {
 // isNoise reports whether the entity is in any noise bucket.
 func isNoise(e *graph.Entity) bool { return classifyNoise(e) != noiseNone }
 
-// rankTier returns a coarse ranking tier for an entity; LOWER is better. Real
-// lined+qualified entities are tier 0, real lined entities tier 1, structural
-// lineless (endpoints/resources) tier 2, and every noise bucket tier 3+. The
+// rankTier returns a coarse ranking tier for an entity; LOWER is better. The
 // caller combines tier with BM25 score so that within a tier the BM25 order is
 // preserved, but a real entity always outranks a shadow/container/pattern.
 //
-// Tier map (ascending = worse rank):
+// THE PROSE HERE USED TO CONTRADICT THE MAP BELOW IT — it said "structural
+// lineless ... tier 2" and "every noise bucket tier 3+" while the map has
+// lineless at 1, generated at 2 and the first noise bucket at 4. The map is
+// authoritative and is the only description kept:
 //
 //	0 — real lined entity (start_line > 0)
 //	1 — lineless but legitimate (endpoint/resource)
@@ -217,7 +219,16 @@ func isNoise(e *graph.Entity) bool { return classifyNoise(e) != noiseNone }
 //	6 — noiseProcess (array/string built-in Process node)
 //	7 — noiseSchemaField (SCOPE.Schema subtype=field member, #1712)
 //	8 — noisePattern (SCOPE.Pattern structural node, #1733)
-func rankTier(e *graph.Entity) int {
+func rankTier(e *graph.Entity) int { return tierFor(e, true) }
+
+// generatedTier is the tier assigned to machine-generated source. Named
+// because rerankScored has to be able to ask "is this hit demoted?" without
+// re-deriving the number.
+const generatedTier = 2
+
+// tierFor computes the tier. demoteGenerated is false only for the single
+// strongest-match exemption in rerankScored — see there for the argument.
+func tierFor(e *graph.Entity, demoteGenerated bool) int {
 	switch classifyNoise(e) {
 	case noiseContainer:
 		return 5
@@ -262,12 +273,99 @@ func rankTier(e *graph.Entity) int {
 	// reciprocals, so any multiplicative penalty inside Search is erased on
 	// every repository that has an embeddings sidecar — correct-looking, green
 	// on repos without embeddings, and inert on the ones that matter.
-	if e.PropGet(types.EntityGeneratedProperty) == "true" {
-		return 2
+	if demoteGenerated && e.PropGet(types.EntityGeneratedProperty) == "true" {
+		return generatedTier
 	}
 
 	if e.StartLine > 0 {
 		return 0
 	}
 	return 1 // lineless but legitimate (endpoint/resource)
+}
+
+// rerankScored applies the tier ordering to a ranked result set in place.
+//
+// THIS IS THE PRODUCTION COMPARATOR AND TESTS CALL IT DIRECTLY. It used to be
+// an anonymous sort.SliceStable closure inside handleQueryGraph, with the
+// #6329 tests carrying their own copy of it — so a change to one could pass
+// while the other stayed green on a paraphrase.
+//
+// # The strongest-match exemption
+//
+// The demotion is a partition: every authored hit sorts before every generated
+// one, whatever the scores. The package doc for internal/generated claimed
+// that a wrong detection therefore "costs the file some ranking position, not
+// its entities". IN THE DEFAULT OUTPUT PATH THAT WAS FALSE. Downstream of this
+// sort the default views keep only the first few rows — per-repo top 3 in a
+// group, the first 10 in single-repo compact mode — so an absolute partition
+// means three weak authored matches silently delete a generated hit from the
+// default view entirely. Combined with a false positive, a wrongly-flagged
+// hand-written file does not get demoted, it DISAPPEARS. That is the #6338
+// failure mode this change set out to avoid.
+//
+// So the partition is relaxed in exactly one place: the single generated hit
+// that outscores EVERY authored hit in the result set keeps its authored tier.
+// The adversarial shape it answers is a protobuf message name that exists only
+// in user.pb.go — weightFileStem = 1.5 puts it top on BM25, and the partition
+// would drop it below every weak authored match for a query that has no other
+// answer.
+//
+// THE TRADE-OFF, STATED. Exempting every generated hit that outscores the best
+// authored one would restore #6314 wholesale: that issue IS the case where a
+// crowd of generated declarations outranks the authored answer. Exempting only
+// the single best hit gives up one row and keeps the other N demoted, so a
+// query with 50 generated matches still surfaces the authored ones from row 2.
+// The rule is "the demotion may cost a generated entity ranking positions, but
+// it may never cost the best match in the set its place".
+//
+// Ties go to the authored hit: the exemption requires a STRICTLY higher score.
+func rerankScored(all []scored) {
+	tiers := make(map[*graph.Entity]int, len(all))
+	for i := range all {
+		tiers[all[i].hit.Entity] = rankTier(all[i].hit.Entity)
+	}
+	if e := strongestGeneratedHit(all, tiers); e != nil {
+		tiers[e] = tierFor(e, false)
+	}
+	sort.SliceStable(all, func(i, j int) bool {
+		ti, tj := tiers[all[i].hit.Entity], tiers[all[j].hit.Entity]
+		if ti != tj {
+			return ti < tj
+		}
+		return all[i].hit.Score > all[j].hit.Score
+	})
+}
+
+// strongestGeneratedHit returns the one generated entity whose score is
+// strictly greater than every authored hit's, or nil.
+//
+// "Authored" means any hit that is not in generatedTier and is not noise — a
+// shadow must not be able to hold the exemption open, and a generated hit that
+// is ALSO noise (tier >= 4) is not a candidate for it either.
+func strongestGeneratedHit(all []scored, tiers map[*graph.Entity]int) *graph.Entity {
+	var best *graph.Entity
+	bestScore := 0.0
+	bestAuthored := 0.0
+	haveAuthored := false
+	for i := range all {
+		e := all[i].hit.Entity
+		sc := all[i].hit.Score
+		switch t := tiers[e]; {
+		case t == generatedTier:
+			if best == nil || sc > bestScore {
+				best, bestScore = e, sc
+			}
+		case t < generatedTier:
+			if !haveAuthored || sc > bestAuthored {
+				bestAuthored, haveAuthored = sc, true
+			}
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	if haveAuthored && bestScore <= bestAuthored {
+		return nil
+	}
+	return best
 }

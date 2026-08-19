@@ -730,13 +730,11 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	// Re-rank (#1614): real, lined, qualified entities sort above
 	// shadows/containers/patterns. Within a tier, BM25 score order is preserved.
 	// (When include_noise is set, this still floats real hits above the noise.)
-	sort.SliceStable(all, func(i, j int) bool {
-		ti, tj := rankTier(all[i].hit.Entity), rankTier(all[j].hit.Entity)
-		if ti != tj {
-			return ti < tj
-		}
-		return all[i].hit.Score > all[j].hit.Score
-	})
+	//
+	// The comparator lives in denoise.go so the #6329 tests can drive the
+	// REAL one rather than a copy of it — see rerankScored, which also carries
+	// the strongest-match exemption to the generated demotion.
+	rerankScored(all)
 
 	// min_score cutoff (#1747 / #5289): drop ranked hits below the threshold
 	// after re-ranking so the tail is clean. Applied honestly: when minScore > 0,
@@ -841,7 +839,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 		// own per-repo top-3 selection.
 		perRepoShown := map[string]int{}
 		for _, sc := range all {
-			if perRepoShown[sc.repo.Repo] >= 3 {
+			if perRepoShown[sc.repo.Repo] >= perRepoSummaryLimit {
 				continue
 			}
 			perRepoShown[sc.repo.Repo]++
@@ -853,9 +851,18 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	// Otherwise BFS-expand from each top hit and render compact.
 	matched := len(all)
 	keep := all
-	if len(keep) > 10 {
-		keep = keep[:10]
+	if len(keep) > compactSeedLimit {
+		keep = keep[:compactSeedLimit]
 	}
+	// #6329 — this cut used to be SILENT. The hard cap above at max_results
+	// emits a truncation_note; this one and the per-repo top-3 one did not, so
+	// in the two DEFAULT output paths a hit could vanish with no signal at all.
+	// That matters much more once ranking has a demotion tier: a wrongly
+	// flagged hand-written file does not merely lose position, it drops off the
+	// end of a 10-row window, and neither the agent nor a test can tell that
+	// from "no such entity". Silent truncation is the defect; the note is the fix.
+	keepNote := truncationNote(len(keep), matched, "compact view shows the top "+
+		strconv.Itoa(compactSeedLimit)+" hits", "pass full=true for the complete ranked list")
 	visibleNodes := []nodeWithRepo{}
 	visibleEdges := []renderEdge{}
 	seen := map[string]bool{} // prefixed id
@@ -957,6 +964,12 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 			"expansion capped (>%d nodes / %d edges) — broad query; tighten `query=` or use grafel_neighbors/grafel_topology for full structure",
 			findMaxVisibleNodes, findMaxVisibleEdges,
 		)
+	case keepNote != "":
+		// #6329 — the seed cut, which was previously invisible. It is last
+		// because the two notes above describe a stronger constraint on the
+		// same result; when neither applies this is the only thing that
+		// silently removed rows.
+		rr.TruncatedNote = keepNote
 	}
 	// Record the prefixed ids of every visible node so the MCP-activity glow
 	// highlights the compact result set (the rendered markdown has no ids).
@@ -1215,18 +1228,24 @@ func renderPerRepoSummary(all []scored, lg *LoadedGroup) string {
 	// Legacy markdown fallback (MCP_FIND_FORMAT=markdown).
 	if findFormatMarkdown() {
 		var b strings.Builder
+		shown := 0
 		b.WriteString(fmt.Sprintf("# group: %s — per-repo top hits\n", lg.Name))
 		for _, rn := range names {
 			hits := perRepo[rn]
 			sort.SliceStable(hits, func(i, j int) bool { return hits[i].hit.Score > hits[j].hit.Score })
-			if len(hits) > 3 {
-				hits = hits[:3]
+			if len(hits) > perRepoSummaryLimit {
+				hits = hits[:perRepoSummaryLimit]
 			}
 			b.WriteString("\n## " + rn + "\n")
 			for _, sc := range hits {
+				shown++
 				b.WriteString(fmt.Sprintf("%s  %s:%d\n", sc.hit.Entity.Name, sc.hit.Entity.SourceFile, sc.hit.Entity.StartLine))
 			}
 		}
+		// The legacy markdown fallback truncates identically and must say so
+		// identically — a note only the TOON path carries is a note that is
+		// missing for whoever set MCP_FIND_FORMAT=markdown.
+		b.WriteString(perRepoTruncationSuffix(shown, len(all)))
 		return b.String()
 	}
 
@@ -1237,8 +1256,8 @@ func renderPerRepoSummary(all []scored, lg *LoadedGroup) string {
 	for _, rn := range names {
 		hits := perRepo[rn]
 		sort.SliceStable(hits, func(i, j int) bool { return hits[i].hit.Score > hits[j].hit.Score })
-		if len(hits) > 3 {
-			hits = hits[:3]
+		if len(hits) > perRepoSummaryLimit {
+			hits = hits[:perRepoSummaryLimit]
 		}
 		for _, sc := range hits {
 			nodes = append(nodes, nodeWithRepo{
@@ -1249,7 +1268,42 @@ func renderPerRepoSummary(all []scored, lg *LoadedGroup) string {
 		}
 	}
 	header := fmt.Sprintf("# group: %s — per-repo top hits\n\n", lg.Name)
-	return header + hitsToTOON(nodes, false /* multi-repo: include repo column */)
+	return header + hitsToTOON(nodes, false /* multi-repo: include repo column */) +
+		perRepoTruncationSuffix(len(nodes), len(all))
+}
+
+// perRepoSummaryLimit is how many hits per repo the multi-repo default view
+// keeps. A grafel group with more than one repo is the NORMAL case, so this is
+// the most-travelled output path in the tool.
+const perRepoSummaryLimit = 3
+
+// compactSeedLimit is how many ranked hits the single-repo compact view seeds
+// its BFS from, and therefore how many it shows.
+const compactSeedLimit = 10
+
+// perRepoTruncationSuffix renders the note for the per-repo top-N cut, or "".
+func perRepoTruncationSuffix(shown, total int) string {
+	n := truncationNote(shown, total,
+		fmt.Sprintf("per-repo view shows the top %d hits in each repo", perRepoSummaryLimit),
+		"pass repo_filter=<repo> to rank one repo in full, or full=true for the complete ranked list")
+	if n == "" {
+		return ""
+	}
+	return "\n\ntruncation_note: " + n + "\n"
+}
+
+// truncationNote formats "N of M hits omitted" plus how to see the rest, or ""
+// when nothing was cut.
+//
+// It exists so the three places that drop rows say the same thing in the same
+// shape. Two of them said NOTHING before #6329 — see the comment at the
+// compact seed cut for why that was the actual defect rather than a cosmetic
+// one.
+func truncationNote(shown, total int, what, how string) string {
+	if total <= shown {
+		return ""
+	}
+	return fmt.Sprintf("%s; %d of %d ranked hits omitted (%s)", what, total-shown, total, how)
 }
 
 // ---------------------------------------------------------------------------
