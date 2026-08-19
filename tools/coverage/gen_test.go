@@ -195,7 +195,7 @@ func TestGenSummaryIncludesExtractorSupportedLanguages(t *testing.T) {
 	}
 	root := t.TempDir()
 	// Synthetic extractor tree: zig (untracked) + python (tracked by fixture).
-	for _, d := range []string{"zig", "python", "complexity", "yaml"} {
+	for _, d := range []string{"zig", "python", "sresolver", "yaml"} {
 		if err := os.MkdirAll(filepath.Join(root, "internal", "extractors", d), 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", d, err)
 		}
@@ -228,8 +228,8 @@ func TestGenSummaryIncludesExtractorSupportedLanguages(t *testing.T) {
 		t.Errorf("placeholder missing extractor dir cite")
 	}
 	// Utility + non-language dirs must NOT produce placeholder pages.
-	if _, err := os.Stat(filepath.Join(root, "docs", "coverage", "by-language", "complexity.md")); !os.IsNotExist(err) {
-		t.Errorf("complexity.md should not exist: %v", err)
+	if _, err := os.Stat(filepath.Join(root, "docs", "coverage", "by-language", "sresolver.md")); !os.IsNotExist(err) {
+		t.Errorf("sresolver.md should not exist: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "docs", "coverage", "by-language", "yaml.md")); !os.IsNotExist(err) {
 		t.Errorf("yaml.md should not exist: %v", err)

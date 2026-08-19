@@ -28,7 +28,7 @@ one is a separate detail page.
 | [`lang.elixir.orm.ecto-sqlite3`](./lang.elixir.orm.ecto-sqlite3.md) | elixir | orm | 6 full, 1 partial, 3 missing, 1 n/a |
 | [`lang.go.driver.sqlite`](./lang.go.driver.sqlite.md) | go | driver | 1 full, 3 partial, 3 missing, 4 n/a |
 | [`lang.jsts.driver.sqlite`](./lang.jsts.driver.sqlite.md) | JS/TS | driver | 1 full, 3 missing, 7 n/a |
-| [`lang.php.driver.sqlite`](./lang.php.driver.sqlite.md) | php | driver | 1 full, 1 partial, 3 missing, 6 n/a |
+| [`lang.php.driver.sqlite`](./lang.php.driver.sqlite.md) | PHP | driver | 1 full, 1 partial, 3 missing, 6 n/a |
 | [`lang.python.driver.sqlite`](./lang.python.driver.sqlite.md) | python | driver | 1 full, 1 partial, 3 missing, 6 n/a |
 | [`lang.ruby.driver.sqlite`](./lang.ruby.driver.sqlite.md) | ruby | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.rust.driver.sqlite`](./lang.rust.driver.sqlite.md) | rust | driver | 1 full, 3 missing, 7 n/a |

@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# php
+# PHP
 
 **Frameworks**: 16 · **Tools**: 6 · **ORMs**: 14 · **Other**: 1
 

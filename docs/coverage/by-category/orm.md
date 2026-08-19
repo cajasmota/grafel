@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 186 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 5 · **C#**: 16 · **dart**: 6 · **elixir**: 10 · **go**: 17 · **groovy**: 1 · **haskell**: 1 · **java**: 15 · **JS/TS**: 20 · **kotlin**: 7 · **nim**: 4 · **OCaml**: 1 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
+**Total**: 186 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 5 · **C#**: 16 · **dart**: 6 · **elixir**: 10 · **go**: 17 · **groovy**: 1 · **haskell**: 1 · **java**: 15 · **JS/TS**: 20 · **kotlin**: 7 · **nim**: 4 · **OCaml**: 1 · **PHP**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
@@ -129,20 +129,20 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [nim](../by-language/nim.md) | [Norm (Nim ORM)](../detail/lang.nim.orm.norm.md) | 🟢 8/8 | |
 | [nim](../by-language/nim.md) | [ormin (Nim compile-time ORM)](../detail/lang.nim.orm.ormin.md) | 🟡 5/8 | |
 | [OCaml](../by-language/ocaml.md) | [Caqti (OCaml DB)](../detail/lang.ocaml.orm.caqti.md) | 🟡 1/11 | |
-| [php](../by-language/php.md) | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟡 1/4 | |
-| [php](../by-language/php.md) | [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟡 8/11 | |
-| [php](../by-language/php.md) | [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | 🟡 8/11 | |
-| [php](../by-language/php.md) | [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | 🟡 8/11 | |
-| [php](../by-language/php.md) | [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | 🟡 2/5 | |
-| [php](../by-language/php.md) | [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | 🟡 2/5 | |
-| [php](../by-language/php.md) | [PDO SQLite](../detail/lang.php.driver.sqlite.md) | 🟡 2/5 | |
-| [php](../by-language/php.md) | [Propel](../detail/lang.php.orm.propel.md) | 🟡 8/11 | |
-| [php](../by-language/php.md) | [RedBeanPHP](../detail/lang.php.orm.redbeanphp.md) | 🟡 5/8 | |
-| [php](../by-language/php.md) | [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | 🟡 1/4 | |
-| [php](../by-language/php.md) | [elasticsearch-php](../detail/lang.php.driver.elastic.md) | 🟡 1/4 | |
-| [php](../by-language/php.md) | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🟡 2/5 | |
-| [php](../by-language/php.md) | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟡 3/6 | |
-| [php](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🟡 1/4 | |
+| [PHP](../by-language/php.md) | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟡 1/4 | |
+| [PHP](../by-language/php.md) | [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟡 8/11 | |
+| [PHP](../by-language/php.md) | [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | 🟡 8/11 | |
+| [PHP](../by-language/php.md) | [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | 🟡 8/11 | |
+| [PHP](../by-language/php.md) | [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | 🟡 2/5 | |
+| [PHP](../by-language/php.md) | [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | 🟡 2/5 | |
+| [PHP](../by-language/php.md) | [PDO SQLite](../detail/lang.php.driver.sqlite.md) | 🟡 2/5 | |
+| [PHP](../by-language/php.md) | [Propel](../detail/lang.php.orm.propel.md) | 🟡 8/11 | |
+| [PHP](../by-language/php.md) | [RedBeanPHP](../detail/lang.php.orm.redbeanphp.md) | 🟡 5/8 | |
+| [PHP](../by-language/php.md) | [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | 🟡 1/4 | |
+| [PHP](../by-language/php.md) | [elasticsearch-php](../detail/lang.php.driver.elastic.md) | 🟡 1/4 | |
+| [PHP](../by-language/php.md) | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🟡 2/5 | |
+| [PHP](../by-language/php.md) | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟡 3/6 | |
+| [PHP](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🟡 1/4 | |
 | [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 2/5 | |
 | [python](../by-language/python.md) | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 6/9 | |
 | [python](../by-language/python.md) | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 11/11 | |

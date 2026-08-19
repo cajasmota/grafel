@@ -27,7 +27,7 @@ one is a separate detail page.
 | [`lang.elixir.driver.myxql`](./lang.elixir.driver.myxql.md) | elixir | driver | 4 missing, 7 n/a |
 | [`lang.go.driver.mysql`](./lang.go.driver.mysql.md) | go | driver | 1 full, 1 partial, 3 missing, 6 n/a |
 | [`lang.jsts.driver.mysql`](./lang.jsts.driver.mysql.md) | JS/TS | driver | 1 full, 3 missing, 7 n/a |
-| [`lang.php.driver.mysql`](./lang.php.driver.mysql.md) | php | driver | 1 full, 1 partial, 3 missing, 6 n/a |
+| [`lang.php.driver.mysql`](./lang.php.driver.mysql.md) | PHP | driver | 1 full, 1 partial, 3 missing, 6 n/a |
 | [`lang.python.driver.mysql`](./lang.python.driver.mysql.md) | python | driver | 1 full, 1 partial, 3 missing, 6 n/a |
 | [`lang.ruby.driver.mysql`](./lang.ruby.driver.mysql.md) | ruby | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.rust.driver.mysql`](./lang.rust.driver.mysql.md) | rust | driver | 1 full, 3 missing, 7 n/a |

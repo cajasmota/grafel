@@ -27,7 +27,7 @@ one is a separate detail page.
 | [`lang.go.driver.dynamodb`](./lang.go.driver.dynamodb.md) | go | driver | 3 partial, 3 missing, 5 n/a |
 | [`lang.java.orm.dynamodb`](./lang.java.orm.dynamodb.md) | java | orm | 1 full, 1 partial, 4 missing, 5 n/a |
 | [`lang.jsts.driver.dynamodb`](./lang.jsts.driver.dynamodb.md) | JS/TS | driver | 1 full, 3 missing, 7 n/a |
-| [`lang.php.driver.dynamodb`](./lang.php.driver.dynamodb.md) | php | driver | 1 full, 3 missing, 7 n/a |
+| [`lang.php.driver.dynamodb`](./lang.php.driver.dynamodb.md) | PHP | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.python.driver.dynamodb`](./lang.python.driver.dynamodb.md) | python | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.ruby.driver.dynamodb`](./lang.ruby.driver.dynamodb.md) | ruby | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.rust.driver.dynamodb`](./lang.rust.driver.dynamodb.md) | rust | driver | 1 full, 3 missing, 7 n/a |

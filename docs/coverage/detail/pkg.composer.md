@@ -3,7 +3,7 @@
 
 Auto-generated. Back to [summary](../summary.md).
 
-- **Language:** [php](../by-language/php.md)
+- **Language:** [PHP](../by-language/php.md)
 - **Category:** [package_manager](../by-category/package_manager.md)
 - **Capability cells:** 2
 

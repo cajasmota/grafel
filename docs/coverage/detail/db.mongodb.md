@@ -31,7 +31,7 @@ one is a separate detail page.
 | [`lang.jsts.driver.mongodb`](./lang.jsts.driver.mongodb.md) | JS/TS | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.jsts.orm.mongoose`](./lang.jsts.orm.mongoose.md) | JS/TS | orm | 7 full, 3 missing, 3 n/a |
 | [`lang.kotlin.orm.mongodb`](./lang.kotlin.orm.mongodb.md) | kotlin | orm | 2 full, 3 missing, 6 n/a |
-| [`lang.php.driver.mongodb`](./lang.php.driver.mongodb.md) | php | driver | 1 full, 1 partial, 3 missing, 6 n/a |
+| [`lang.php.driver.mongodb`](./lang.php.driver.mongodb.md) | PHP | driver | 1 full, 1 partial, 3 missing, 6 n/a |
 | [`lang.python.driver.mongodb`](./lang.python.driver.mongodb.md) | python | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.python.orm.beanie`](./lang.python.orm.beanie.md) | python | orm | 1 full, 5 partial, 3 missing, 2 n/a |
 | [`lang.python.orm.mongoengine`](./lang.python.orm.mongoengine.md) | python | orm | 1 full, 5 partial, 3 missing, 2 n/a |

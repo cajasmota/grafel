@@ -27,7 +27,7 @@ one is a separate detail page.
 | [`lang.go.driver.cassandra`](./lang.go.driver.cassandra.md) | go | driver | 2 partial, 3 missing, 6 n/a |
 | [`lang.java.orm.spring-data-cassandra`](./lang.java.orm.spring-data-cassandra.md) | java | orm | 2 full, 4 missing, 5 n/a |
 | [`lang.jsts.driver.cassandra`](./lang.jsts.driver.cassandra.md) | JS/TS | driver | 1 full, 3 missing, 7 n/a |
-| [`lang.php.driver.cassandra`](./lang.php.driver.cassandra.md) | php | driver | 1 full, 3 missing, 7 n/a |
+| [`lang.php.driver.cassandra`](./lang.php.driver.cassandra.md) | PHP | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.python.driver.cassandra`](./lang.python.driver.cassandra.md) | python | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.ruby.driver.cassandra`](./lang.ruby.driver.cassandra.md) | ruby | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.rust.driver.cassandra`](./lang.rust.driver.cassandra.md) | rust | driver | 1 full, 3 missing, 7 n/a |

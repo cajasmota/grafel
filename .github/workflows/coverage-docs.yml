@@ -4,11 +4,23 @@ on:
     paths:
       - 'docs/coverage/**'
       - 'tools/coverage/**'
+      # The supported-language list is derived from internal/extractors/<lang>/
+      # at run time (tools/coverage/languages.go SupportedLanguages), so adding
+      # or removing an extractor directory changes the generated matrix. Without
+      # this path the one job that catches a stale matrix cannot run on the only
+      # change that makes it stale (#6332).
+      - 'internal/extractors/**'
   push:
     branches: [main]
     paths:
       - 'docs/coverage/**'
       - 'tools/coverage/**'
+      # The supported-language list is derived from internal/extractors/<lang>/
+      # at run time (tools/coverage/languages.go SupportedLanguages), so adding
+      # or removing an extractor directory changes the generated matrix. Without
+      # this path the one job that catches a stale matrix cannot run on the only
+      # change that makes it stale (#6332).
+      - 'internal/extractors/**'
 jobs:
   verify:
     runs-on: ubuntu-latest

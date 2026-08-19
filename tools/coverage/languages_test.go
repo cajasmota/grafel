@@ -23,8 +23,8 @@ func TestSupportedLanguagesEmptyRepo(t *testing.T) {
 
 // TestSupportedLanguagesAliasingAndExcludes builds a synthetic
 // internal/extractors/ tree containing language dirs, utility dirs,
-// non-language formats, and aliased dirs (javascript+typescript collapse
-// to jsts, golang→go). Verifies the returned list is sorted, unique,
+// non-language formats, and aliased dirs (javascript collapses to jsts —
+// it handles .ts too — golang→go). Verifies the returned list is sorted, unique,
 // excludes utility/non-language formats, and applies aliases.
 func TestSupportedLanguagesAliasingAndExcludes(t *testing.T) {
 	root := t.TempDir()
@@ -33,14 +33,11 @@ func TestSupportedLanguagesAliasingAndExcludes(t *testing.T) {
 		"python",
 		"ruby",
 		"javascript",
-		"typescript",
 		"golang",
 		"haskell",
 		"cpp",
-		"complexity",
 		"config",
 		"cross",
-		"references",
 		"sresolver",
 		"yaml",
 		"bazel",
