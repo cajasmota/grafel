@@ -1,7 +1,10 @@
 package feedback
 
 import (
+	"context"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // TestRunSanityChecks_OrphanGateFiresBelowTotalFailure is the regression test
@@ -70,38 +73,78 @@ func TestRunSanityChecks_OrphanGateThresholdBoundary(t *testing.T) {
 			FrameworkHits: map[string]int{},
 		}
 		results, _ := runSanityChecks(r)
+		found := false
 		for _, res := range results {
 			if res.Name != orphanCheckName("SCOPE.Route") {
 				continue
 			}
+			found = true
 			if res.Passed != tc.wantPassed {
 				t.Errorf("orphan %.2f%%: Passed=%v, want %v (note=%q)", tc.pct, res.Passed, tc.wantPassed, res.Note)
 			}
+		}
+		if !found {
+			t.Fatalf("orphan %.2f%%: %s not emitted — the case would be vacuous", tc.pct, orphanCheckName("SCOPE.Route"))
 		}
 	}
 }
 
 // TestRunSanityChecks_OrphanGateKeeps6374Visible asserts the #6374 signal —
-// 23–40% of http_endpoint_definition entities with no IMPLEMENTS edge — is
-// still REPORTED (a non-zero orphan count in the table) while not tripping the
-// gate. The metric fix must not hide the genuine defect along with the
-// direction artifact.
+// http_endpoint_definition entities whose handler was never bound — is still
+// REPORTED (a non-zero orphan count in the table) while not tripping the gate.
+// The metric fix must not hide the genuine defect along with the direction
+// artifact.
+//
+// Driven through Generate rather than a hand-built Report: the counts under
+// test must be PRODUCED by the classification code, not asserted against a map
+// literal the test itself wrote.
 func TestRunSanityChecks_OrphanGateKeeps6374Visible(t *testing.T) {
-	// Measured aggregate over 12 corpus repos: 85/369 (23.04%).
-	ks := KindStats{Total: 369, OrphanCount: 85, OrphanPct: 23.04}
-	r := &Report{
-		TotalEntities:      5000,
-		EntitiesByLanguage: map[string]int{"python": 5000},
-		OrphanByKind:       map[string]KindStats{"http_endpoint_definition": ks},
-		FrameworkHits:      map[string]int{},
-	}
-	results, _ := runSanityChecks(r)
-	for _, res := range results {
-		if res.Name == orphanCheckName("http_endpoint_definition") && !res.Passed {
-			t.Errorf("23%% orphan should not FAIL the gate (that is a per-instance gap, reported in the table): %s", res.Note)
+	// The django shape measured in #6374, scaled down: roughly a quarter of
+	// definitions have no IMPLEMENTS edge and no process participation.
+	const total, unbound = 24, 6
+	var ents []graph.Entity
+	var rels []graph.Relationship
+	ents = append(ents, makeEntity("file1", "urls.py", "SCOPE.Component", "python", "urls.py", 1))
+	for i := 0; i < total; i++ {
+		id := "d" + string(rune('a'+i))
+		hid := "h" + string(rune('a'+i))
+		ents = append(ents,
+			makeEntity(id, "GET /x", "http_endpoint_definition", "python", "urls.py", 10+i),
+			makeEntity(hid, "view", "SCOPE.Operation", "python", "views.py", 10+i))
+		rels = append(rels, rel6346("c"+id, "file1", id, "CONTAINS"))
+		if i >= unbound {
+			rels = append(rels, rel6346("i"+id, hid, id, "IMPLEMENTS"))
 		}
 	}
-	if r.OrphanByKind["http_endpoint_definition"].OrphanCount == 0 {
-		t.Error("#6374 signal erased from the orphan table")
+	pe, pr := pad6346()
+	ents = append(ents, pe...)
+	rels = append(rels, pr...)
+
+	r, err := Generate(context.Background(), []*graph.Document{makeDoc(ents, rels)}, Opts{GroupName: "g", Version: "t"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	ks := r.OrphanByKind["http_endpoint_definition"]
+	if ks.OrphanCount != unbound {
+		t.Errorf("#6374 signal: OrphanCount = %d, want %d (unbound-handler endpoints must stay counted)", ks.OrphanCount, unbound)
+	}
+	found := false
+	for _, res := range r.SanityResults {
+		if res.Name != orphanCheckName("http_endpoint_definition") {
+			continue
+		}
+		found = true
+		if !res.Passed {
+			t.Errorf("%.1f%% orphan should not FAIL the gate (a per-instance gap belongs in the table): %s", ks.OrphanPct, res.Note)
+		}
+	}
+	if !found {
+		t.Fatalf("%s not emitted — the guard would be vacuous", orphanCheckName("http_endpoint_definition"))
+	}
+	// And it must NOT be swallowed by the terminal bucket: the kind clearly
+	// participates (18 of 24 are bound).
+	if tks, ok := r.OrphanTerminalByKind["http_endpoint_definition"]; ok && tks.OrphanCount != 0 {
+		t.Errorf("#6374 signal routed to the terminal bucket (%d)", tks.OrphanCount)
 	}
 }

@@ -363,14 +363,28 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 	// prove the kind CAN be wired, at which point every unwired sibling is a
 	// genuine gap and belongs in the defect bucket.
 	//
-	// Known limitation, stated rather than hidden: a resolver regression that
-	// wipes out EVERY semantic edge of a kind is indistinguishable, from the
-	// graph alone, from a kind that is terminal by design. Both look like
-	// zero participation. render.go labels the terminal bucket accordingly,
-	// and the entities stay counted and visible there — they are never
-	// dropped. This is the same ambiguity the previous `OrphanPct < 100.0`
-	// gate resolved by always assuming "regression" (15 false failures on one
-	// corpus repo); we resolve it the other way and say so.
+	// Two known limitations, stated rather than hidden.
+	//
+	// (1) A resolver regression that wipes out EVERY semantic edge of a kind
+	// is indistinguishable, from the graph alone, from a kind that is terminal
+	// by design. Both look like zero participation. We resolve the ambiguity
+	// toward "terminal" HERE — but not silently: sanity.go check 2b raises a
+	// `kind-carries-semantic-edges` failure for every such kind, so a total
+	// regression still costs confidence and still gets named. render.go labels
+	// the bucket accordingly and the entities stay counted and visible.
+	//
+	// (2) This derivation is per-KIND, which is strictly coarser than the two
+	// per-entity rules it replaced (a field leaf was exempted individually by
+	// Subtype; a container Component by a subtype name list). One participating
+	// non-field member of a kind therefore flips every unwired field leaf of
+	// that kind into the defect bucket. That is the deliberate trade — the
+	// per-subtype exemption is exactly the hand-maintained name list #6346
+	// asked us to delete, and the #6361 failure class — but it is a real cost,
+	// measured: of the 9 kinds that newly fail the orphan-rate gate across 12
+	// corpus repos, 2 (express-realworld and laravel-routing SCOPE.Schema) are
+	// this effect rather than new signal, dominated by field leaves (43/60 and
+	// 109/112 of their unwired entities). TestGenerate_MixedParticipation-
+	// SchemaFlipsFieldLeaves pins both sides of it.
 	kindSemanticParticipation := make(map[string]int)
 	for id, es := range entityEdges {
 		if es.semanticOut > 0 || es.semanticIn > 0 {

@@ -177,3 +177,159 @@ func TestOrphan_TerminalDerivedFromParticipation(t *testing.T) {
 		t.Errorf("kind with observed participation wrongly exempted as terminal: %d", tks.OrphanCount)
 	}
 }
+
+// TestGenerate_TotalRegressionOnOneKindFailsTheGate closes the hole the
+// participation derivation opened (#6346 review C2).
+//
+// Zero-participation kinds are routed to OrphanTerminalByKind and never reach
+// OrphanByKind, so the per-kind orphan-rate gate — which iterates OrphanByKind
+// — cannot see them. Without a second check, a kind that loses EVERY semantic
+// edge reports 0% defect orphan and 100% confidence, while the previous
+// `OrphanPct < 100.0` rule (which fired exactly and only at 100%) DID catch it.
+// That is the one case the direction fix must not give away: it is the shape of
+// a new language extractor emitting entities before its resolver lands.
+func TestGenerate_TotalRegressionOnOneKindFailsTheGate(t *testing.T) {
+	var ents []graph.Entity
+	var rels []graph.Relationship
+	ents = append(ents, makeEntity("file1", "routes.py", "SCOPE.Component", "python", "routes.py", 1))
+
+	// 12 endpoint definitions that lost every IMPLEMENTS edge: contained by
+	// their file, semantically wired to nothing.
+	for i := 0; i < 12; i++ {
+		id := string(rune('a'+i)) + "def"
+		ents = append(ents, makeEntity(id, "GET /x", "http_endpoint_definition", "python", "routes.py", 10+i))
+		rels = append(rels, rel6346("c"+id, "file1", id, "CONTAINS"))
+	}
+	// The rest of the group is healthy.
+	pe, pr := pad6346()
+	ents = append(ents, pe...)
+	rels = append(rels, pr...)
+
+	r, err := Generate(context.Background(), []*graph.Document{makeDoc(ents, rels)}, Opts{GroupName: "g", Version: "t"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	found, failed := false, false
+	for _, res := range r.SanityResults {
+		if res.Name != participationCheckName("http_endpoint_definition") {
+			continue
+		}
+		found = true
+		if !res.Passed {
+			failed = true
+			if res.Note == "" {
+				t.Error("failing participation check must carry a note naming the problem")
+			}
+		}
+	}
+	if !found {
+		var names []string
+		for _, res := range r.SanityResults {
+			names = append(names, res.Name)
+		}
+		t.Fatalf("no participation check emitted for a 100%%-unwired kind; checks were %v", names)
+	}
+	if !failed {
+		t.Error("a kind that lost EVERY semantic edge PASSED every sanity check — the 100% end of the gate is blind (#6346 review C2)")
+	}
+	if r.Confidence == 100 {
+		t.Errorf("confidence = 100%% for a group with a totally unwired kind")
+	}
+}
+
+// TestGenerate_WhollyUnwiredGroupIsNotReportedHealthy is the extractor-without-
+// resolver shape (VB.NET is on this milestone): every entity carries CONTAINS
+// and nothing else. The report must not call that healthy.
+func TestGenerate_WhollyUnwiredGroupIsNotReportedHealthy(t *testing.T) {
+	var ents []graph.Entity
+	var rels []graph.Relationship
+	ents = append(ents, makeEntity("file1", "Mod.vb", "SCOPE.Component", "vbnet", "Mod.vb", 1))
+	for i := 0; i < 60; i++ {
+		id := "e" + string(rune('A'+i%26)) + string(rune('a'+i/26))
+		ents = append(ents, makeEntity(id, "Sub", "SCOPE.Operation", "vbnet", "Mod.vb", 10+i))
+		rels = append(rels, rel6346("c"+id, "file1", id, "CONTAINS"))
+	}
+
+	r, err := Generate(context.Background(), []*graph.Document{makeDoc(ents, rels)}, Opts{GroupName: "g", Version: "t"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if r.Confidence == 100 {
+		t.Errorf("a group with no semantic edge anywhere reports confidence 100%% — the report would tell a maintainer their unlanded resolver is perfect")
+	}
+	failing := 0
+	for _, res := range r.SanityResults {
+		if !res.Passed {
+			failing++
+		}
+	}
+	if failing == 0 {
+		t.Error("no sanity check failed for a wholly unwired group")
+	}
+}
+
+// TestGenerate_MixedParticipationSchemaFlipsFieldLeaves pins the granularity
+// limitation the review (C3) identified, so it is a documented, tested property
+// rather than an accident of the other fixtures.
+//
+// Terminality is derived per KIND, which is strictly coarser than the two
+// per-entity rules it replaced (field leaves were exempt individually by
+// Subtype). One participating non-field member of SCOPE.Schema is therefore
+// enough to make the whole kind non-terminal, which moves every unwired field
+// leaf in the group into the DEFECT bucket. This is the intended trade — the
+// old per-subtype exemption is exactly the name list #6346 asked us to remove —
+// but it must be visible, not discovered later.
+func TestGenerate_MixedParticipationSchemaFlipsFieldLeaves(t *testing.T) {
+	build := func(wireOne bool) *Report {
+		t.Helper()
+		var ents []graph.Entity
+		var rels []graph.Relationship
+		parent := makeEntity("parent", "Widget", "SCOPE.Class", "go", "w.go", 1)
+		ents = append(ents, parent)
+		for i := 0; i < 12; i++ {
+			id := "f" + string(rune('a'+i))
+			ents = append(ents, withSubtype(makeEntity(id, "field", "SCOPE.Schema", "go", "w.go", 10+i), "field"))
+			rels = append(rels, rel6346("c"+id, "parent", id, "CONTAINS"))
+		}
+		// A non-field SCOPE.Schema member. Only in the wireOne case does it
+		// carry a semantic edge.
+		ents = append(ents, makeEntity("schemaDoc", "WidgetSchema", "SCOPE.Schema", "go", "w.go", 40))
+		rels = append(rels, rel6346("cdoc", "parent", "schemaDoc", "CONTAINS"))
+		if wireOne {
+			rels = append(rels, rel6346("refdoc", "schemaDoc", "parent", "REFERENCES"))
+		}
+		pe, pr := pad6346()
+		ents = append(ents, pe...)
+		rels = append(rels, pr...)
+		r, err := Generate(context.Background(), []*graph.Document{makeDoc(ents, rels)}, Opts{GroupName: "g", Version: "t"})
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		return r
+	}
+
+	// No participation anywhere in the kind → every field leaf is terminal.
+	unwired := build(false)
+	if got := unwired.OrphanByKind["SCOPE.Schema"].OrphanCount; got != 0 {
+		t.Errorf("zero-participation SCOPE.Schema: defect orphans = %d, want 0", got)
+	}
+	if got := unwired.OrphanTerminalByKind["SCOPE.Schema"].OrphanCount; got != 13 {
+		t.Errorf("zero-participation SCOPE.Schema: terminal orphans = %d, want 13", got)
+	}
+
+	// One participating member → the kind is no longer terminal, so all 12
+	// unwired field leaves become defect orphans. Documented limitation.
+	mixed := build(true)
+	if got := mixed.OrphanByKind["SCOPE.Schema"].OrphanCount; got != 12 {
+		t.Errorf("mixed-participation SCOPE.Schema: defect orphans = %d, want 12 (per-kind granularity flips every field leaf)", got)
+	}
+	if got := mixed.OrphanTerminalByKind["SCOPE.Schema"].OrphanCount; got != 0 {
+		t.Errorf("mixed-participation SCOPE.Schema: terminal orphans = %d, want 0", got)
+	}
+	// 12/13 = 92.3% is above orphanRateFailThreshold, so the granularity loss
+	// is not silent: it surfaces as a gate failure a human can triage.
+	if got := mixed.OrphanByKind["SCOPE.Schema"].OrphanPct; got <= orphanRateFailThreshold {
+		t.Errorf("mixed-participation SCOPE.Schema orphan pct = %.1f%%, expected above the %.0f%% gate", got, orphanRateFailThreshold)
+	}
+}

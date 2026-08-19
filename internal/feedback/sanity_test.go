@@ -152,7 +152,14 @@ func TestRunSanityChecks_FrameworkFilesNoHits(t *testing.T) {
 // POST-classification DEFECT orphan set (r.OrphanByKind), not the raw
 // pre-classification orphan count. A kind with zero observed semantic
 // participation (every instance routed to OrphanTerminalByKind by report.go's
-// derived terminality) reports 0% in OrphanByKind and must NOT trip the gate.
+// derived terminality) reports 0% in OrphanByKind and must NOT trip the
+// ORPHAN-RATE check.
+//
+// It must, however, trip the PARTICIPATION check. Asserting only the first half
+// would pin the blind spot as intended behaviour: a kind that lost every
+// semantic edge lands in exactly this shape, and a report that passes it
+// everywhere is a report that calls a broken extractor healthy. Both halves are
+// asserted here so neither can be silently dropped.
 func TestRunSanityChecks_ContainerTerminalKindNoFalseFailure(t *testing.T) {
 	r := &Report{
 		TotalEntities:      200,
@@ -184,6 +191,29 @@ func TestRunSanityChecks_ContainerTerminalKindNoFalseFailure(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("%s not emitted — the guard would be vacuous", orphanCheckName("SCOPE.Component"))
+	}
+
+	// The other half: the same input MUST fail the participation check, and
+	// must cost confidence. On base 83f3c898a this input failed the old
+	// `OrphanPct < 100.0` rule; that coverage may not be given away.
+	foundPart, failedPart := false, false
+	for _, res := range results {
+		if res.Name != participationCheckName("SCOPE.Component") {
+			continue
+		}
+		foundPart = true
+		if !res.Passed {
+			failedPart = true
+			if res.Note == "" {
+				t.Error("failing participation check must carry a note naming the problem")
+			}
+		}
+	}
+	if !foundPart {
+		t.Fatalf("%s not emitted — a 100%%-unwired kind is invisible to the gate", participationCheckName("SCOPE.Component"))
+	}
+	if !failedPart {
+		t.Error("a kind with zero semantic participation PASSED the participation check — the 100% end of the gate is blind again (#6346 review C2)")
 	}
 }
 

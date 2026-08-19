@@ -96,7 +96,7 @@ func Render(w io.Writer, r *Report) error {
 
 	// Section 2 — Orphan Rate
 	fmt.Fprintf(w, "## 2. Orphan Rate\n\n")
-	fmt.Fprintf(w, "An entity is orphan when it has no outgoing semantic edges (CONTAINS/DECLARES excluded).\n\n")
+	fmt.Fprintf(w, "An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions).\n\n")
 	if len(r.OrphanByKind) == 0 {
 		fmt.Fprintf(w, "_No entity kind with >= 10 entities found._\n\n")
 	} else {
@@ -129,7 +129,7 @@ func Render(w io.Writer, r *Report) error {
 		// labelled with the ambiguity rather than asserted as healthy — see
 		// the derivation comment in report.go (#6346).
 		if len(r.OrphanTerminalByKind) > 0 {
-			fmt.Fprintf(w, "**Expected/terminal orphans** — no entity of these kinds carries a semantic edge in either direction anywhere in the group, so they are terminal by construction as far as the graph can show. Not counted as defects. (A total resolver regression on a kind would look identical; if one of these used to be wired, treat it as a defect.)\n\n")
+			fmt.Fprintf(w, "**Expected/terminal orphans** — no entity of these kinds carries a semantic edge in either direction anywhere in the group, so they are terminal by construction as far as the graph can show. Excluded from the orphan defect count above, but each one raises a `kind-carries-semantic-edges` sanity check for triage: a total resolver regression looks identical from the graph alone, so if one of these used to be wired, it is a defect.\n\n")
 			fmt.Fprintf(w, "| Kind | Total | Terminal orphan | Terminal orphan %% |\n|---|---|---|---|\n")
 			for _, kind := range sortedKindStatsKeys(r.OrphanTerminalByKind) {
 				tks := r.OrphanTerminalByKind[kind]
