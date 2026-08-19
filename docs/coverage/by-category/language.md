@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # language
 
-**Total**: 28 records · **assembly**: 5 · **clojure**: 1 · **COBOL**: 5 · **crystal**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 2 · **F#**: 1 · **groovy**: 1 · **JCL**: 1 · **lua**: 1 · **nim**: 1 · **pony**: 1 · **scala**: 1 · **solidity**: 2 · **swift**: 1 · **verilog**: 1 · **VHDL**: 1
+**Total**: 29 records · **assembly**: 5 · **clojure**: 1 · **COBOL**: 5 · **crystal**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 2 · **F#**: 1 · **groovy**: 1 · **JCL**: 1 · **lua**: 1 · **nim**: 1 · **pony**: 1 · **scala**: 1 · **solidity**: 2 · **swift**: 1 · **VB.NET**: 1 · **verilog**: 1 · **VHDL**: 1
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -33,5 +33,6 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [solidity](../by-language/solidity.md) | [OpenZeppelin Contracts](../detail/lang.solidity.framework.openzeppelin.md) | — | — | — | ✅ | — | — | ✅ | — | ✅ | |
 | [solidity](../by-language/solidity.md) | [Solidity](../detail/lang.solidity.core.md) | 🟢 | ✅ | — | — | — | — | 🟢 | — | 🟢 | |
 | [swift](../by-language/swift.md) | [Swift (base language)](../detail/lang.swift.base.md) | ✅ | ✅ | — | — | — | — | ✅ | — | ✅ | |
+| [VB.NET](../by-language/vbnet.md) | [VB.NET](../detail/lang.vbnet.core.md) | ✅ | 🟢 | — | — | — | — | 🟢 | — | 🟢 | |
 | [verilog](../by-language/verilog.md) | [Verilog / SystemVerilog](../detail/lang.verilog.core.md) | — | 🟢 | — | — | — | — | — | — | 🟢 | |
 | [VHDL](../by-language/vhdl.md) | [VHDL](../detail/lang.vhdl.core.md) | — | 🟢 | — | — | — | — | — | — | 🟢 | |
