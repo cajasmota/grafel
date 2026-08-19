@@ -80,6 +80,11 @@ type StatusSummary struct {
 	// nothing at all was running. Derived from statusfile.HeartbeatAt, so it
 	// still needs no daemon dial.
 	MigrationLive bool
+
+	// UnsupportedExt is the per-extension count of files the group's repos saw
+	// and skipped because no extractor claims the extension (#6338), summed
+	// across repos. Nil when nothing was skipped, so status prints nothing.
+	UnsupportedExt map[string]int
 }
 
 // RepoStatus contains per-repo statistics.
@@ -289,6 +294,18 @@ func ComputeStatusSummaryForRef(group string, repos []registry.Repo, ref string)
 				}
 				s.TotalEntities += side.TotalEntities
 				s.TotalRelationships += side.TotalRelationships
+				// #6338 — files seen and silently dropped for having no
+				// extractor. The sidecar is the only record of them: they
+				// produce no entity, no edge and no error.
+				for ext, n := range side.UnsupportedExtensions {
+					if n <= 0 {
+						continue
+					}
+					if s.UnsupportedExt == nil {
+						s.UnsupportedExt = make(map[string]int)
+					}
+					s.UnsupportedExt[ext] += n
+				}
 			}
 		} else if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
 			// Sidecar not yet written (e.g. a graph produced by the daemon's
@@ -766,6 +783,15 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 		fmtInt(s.ProcessFlows),
 		fmtInt(s.HTTPEndpoints),
 		totalSuffix)
+
+	// #6338 — the silent gap: files grafel walked past because no extractor
+	// claims their extension. `status` is the everyday command, so it applies
+	// a file-count floor (one stray .pas is noise); `grafel doctor` shows the
+	// full table. Nothing is printed at all when there is nothing to say.
+	if rows := UnsupportedRows(s.UnsupportedExt, StatusUnsupportedMinFiles); len(rows) > 0 {
+		fmt.Fprintf(w, "\n")
+		PrintUnsupportedLanguages(w, "  ", rows)
+	}
 
 	// Print available optional candidates.
 	//

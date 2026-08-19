@@ -147,9 +147,11 @@ func (c *Classifier) classifyInner(_ context.Context, filePath string) ClassifyR
 	// 3. Language detection by extension
 	lang := detectLanguage(norm)
 
-	// 4. Unknown extension → skip
+	// 4. Unknown extension → skip. #6338 splits this into two dispositions:
+	// an extension that names a language we have no extractor for (reportable)
+	// versus one there is no reason to expect an extractor for (silent).
 	if lang == "" {
-		return ClassifyResult{Skip: true, SkipReason: "unsupported_extension"}
+		return ClassifyResult{Skip: true, SkipReason: unsupportedSkipReason(norm)}
 	}
 
 	return ClassifyResult{Language: lang, Skip: false, Tier: 1}
@@ -181,9 +183,9 @@ func (c *Classifier) classifyWithSizeInner(filePath string, sizeBytes int64) Cla
 	// Language detection.
 	lang := detectLanguage(norm)
 
-	// Unknown extension.
+	// Unknown extension. See classifyInner for the #6338 two-disposition split.
 	if lang == "" {
-		return ClassifyResult{Skip: true, SkipReason: "unsupported_extension"}
+		return ClassifyResult{Skip: true, SkipReason: unsupportedSkipReason(norm)}
 	}
 
 	return ClassifyResult{Language: lang, Skip: false, Tier: 1}
