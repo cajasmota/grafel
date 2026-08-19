@@ -7,6 +7,12 @@
 #
 # Uses GRAFEL_DAEMON_ROOT + GRAFEL_HOME to point at a tempdir
 # so the real ~/.grafel state is never touched.
+#
+# HOME is deliberately NOT redirected here — the bench measures the daemon's
+# RSS and wants the real user's launchd/keychain context. internal/envguard
+# (#6331) therefore prints a WARNING on every $BIN invocation below and
+# proceeds; that is the intended verdict for this shape, not a failure. Export
+# HOME=$(mktemp -d) as well if you want the warning gone.
 set -euo pipefail
 
 BIN="${BIN:-./build/grafel}"

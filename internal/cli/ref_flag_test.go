@@ -43,6 +43,10 @@ func setupRefTestEnv(t *testing.T, refs ...string) (home, repoPath string) {
 	// list` per unit — read-only, but machine-variable and 140 process spawns.
 	t.Setenv("HOME", home)
 	t.Setenv("GRAFEL_HOME", home)
+	// GRAFEL_DAEMON_ROOT too (#6331): GRAFEL_HOME alone moves the store but
+	// not the daemon plane, so these commands resolved the REAL
+	// ~/.grafel/sockets/daemon.sock. The CLI now refuses that shape outright.
+	isolateDaemonRootShort(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 
 	repoPath = t.TempDir()

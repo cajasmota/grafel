@@ -191,6 +191,12 @@ func TestMigrateInRepo_MovesDir(t *testing.T) {
 	// Override GRAFEL_HOME to a temp dir so we don't touch real user state.
 	storeRoot := filepath.Join(tmpDir, "store")
 	t.Setenv("GRAFEL_HOME", storeRoot)
+	// #6331: and GRAFEL_DAEMON_ROOT, or this is partial isolation — a private
+	// store behind the LIVE daemon socket, which the cobra root now refuses.
+	isolateDaemonRootShort(t)
+	// #6331: GRAFEL_HOME alone is partial isolation (private store, LIVE
+	// daemon socket) and the cobra root now refuses it.
+	isolateDaemonRootShort(t)
 
 	// Build the cobra command tree.
 	root := newRoot()
@@ -228,6 +234,9 @@ func TestMigrateInRepo_IdempotentSkipsExisting(t *testing.T) {
 
 	storeRoot := filepath.Join(tmpDir, "store")
 	t.Setenv("GRAFEL_HOME", storeRoot)
+	// #6331: GRAFEL_HOME alone is partial isolation (private store, LIVE
+	// daemon socket) and the cobra root now refuses it.
+	isolateDaemonRootShort(t)
 
 	// Pre-create the target so the idempotency guard triggers.
 	targetDocs := filepath.Join(storeRoot, "docs", "fixture-group", "client-fixture-a")
@@ -260,6 +269,9 @@ func TestDocgenAudit_ReportsWithoutMoving(t *testing.T) {
 
 	storeRoot := filepath.Join(tmpDir, "store")
 	t.Setenv("GRAFEL_HOME", storeRoot)
+	// #6331: GRAFEL_HOME alone is partial isolation (private store, LIVE
+	// daemon socket) and the cobra root now refuses it.
+	isolateDaemonRootShort(t)
 	seedRegistry(t, tmpDir, cfgPath)
 
 	root := newRoot()
@@ -291,6 +303,9 @@ func TestDocgenAudit_CleanGroupReturnsNil(t *testing.T) {
 
 	storeRoot := filepath.Join(tmpDir, "store")
 	t.Setenv("GRAFEL_HOME", storeRoot)
+	// #6331: GRAFEL_HOME alone is partial isolation (private store, LIVE
+	// daemon socket) and the cobra root now refuses it.
+	isolateDaemonRootShort(t)
 	seedRegistry(t, tmpDir, cfgPath)
 
 	root := newRoot()
@@ -311,6 +326,9 @@ func TestDoctorAuditDocs_ReportsOffenders(t *testing.T) {
 
 	storeRoot := filepath.Join(tmpDir, "store")
 	t.Setenv("GRAFEL_HOME", storeRoot)
+	// #6331: GRAFEL_HOME alone is partial isolation (private store, LIVE
+	// daemon socket) and the cobra root now refuses it.
+	isolateDaemonRootShort(t)
 	seedRegistry(t, tmpDir, cfgPath)
 
 	root := newRoot()
