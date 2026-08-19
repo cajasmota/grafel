@@ -78,12 +78,20 @@
 //	   a recognised path spelling. `filepath.Join(dir, base)` is not seen.
 //	F. concatenation, BOUNDED — `filePath + ""`, `filePath + ".x"`: the path must
 //	   come FIRST and every appended operand must be a string literal. A literal
-//	   PREFIX (`"scope:ormmodel:" + filePath + "#" + name` — ormlink, haskell,
-//	   abibridge, swift) builds a STRUCTURAL REF, which resolves byQualifiedName
-//	   and is a different deliberate mechanism, not this bug. Matching those would
-//	   bury the signal under five allow-list entries that are not instances of the
-//	   defect. The cost of the bound: a genuine anchor spelled `prefix + filePath`
-//	   would be missed.
+//	   PREFIX (`"scope:ormmodel:" + filePath + "#" + name` — ormlink at
+//	   internal/extractors/cross/ormlink, abibridge at cross/abibridge, haskell,
+//	   and the markdown prefix site) builds a STRUCTURAL REF, which resolves
+//	   byQualifiedName and is a different deliberate mechanism, not this bug.
+//	   Matching those would bury the signal under four allow-list entries that
+//	   are not instances of the defect.
+//	   The cost of the bound is TWO shapes, not one:
+//	     - a genuine anchor spelled `prefix + filePath` is missed;
+//	     - a genuine anchor spelled `path + literal + ident` is missed —
+//	       `filePath + "::" + d.name`. This is NOT a structural ref and it is
+//	       LIVE IN-TREE at swift/package.go:189 and :242. It was mis-attributed to
+//	       the prefix group in the first round of this disclosure; see
+//	       knownInvisibleOffenders below, which pins those two sites so the
+//	       claim cannot rot into a comment nobody checks.
 //	G. positional composite literals of a relationship-shaped type, including the
 //	   elided-type form inside `[]types.RelationshipRecord{{…}}`. No field names
 //	   exist, so ANY path-valued element reports the site and the kind stays "?" —
@@ -105,6 +113,52 @@
 //	   back; form A performed across a function boundary.
 //	   A computed Kind (`Kind: k`, k a parameter) reduces to "?" and so cannot be
 //	   IMPORTS-filtered; such a site must be allow-listed by hand.
+//
+// ── FOUR BOUNDARIES THE FIRST DISCLOSURE LEFT OUT ───────────────────────────
+//
+// An incomplete disclosure is worse than a narrow scan, because a stated
+// boundary is read as THE boundary. These four were omitted and are stated now.
+//
+//  1. THE SCAN ROOT IS `internal/extractors/` ONLY. The walk starts at ".", i.e.
+//     the package directory of this test. Every relationship producer outside
+//     that tree is entirely invisible: internal/patterns/openapi_extractor.go
+//     (7 `FromID:` sites), internal/engine/http_endpoint_synthesis.go:643,
+//     spring_routes.go:257, django_routes.go:543, feature_flag_edges.go:568,
+//     internal/resolve/bazel_overlay.go:200 and :226. NONE of them is
+//     raw-path-valued today — they carry entity names, structural refs or
+//     `Route:`/`refKind:` composites — so there is NO LIVE MISS here. But the
+//     claim above that this scan "derives its candidate set from the extractor
+//     tree itself, so a new extractor is covered the day it lands" is a
+//     completeness claim about ONE tree, not about the repo: a new relationship
+//     producer added under internal/patterns or internal/engine would NOT be
+//     covered by this guard.
+//
+//  2. FORM G'S SHAPE TEST IS A SUBSTRING MATCH ON THE TYPE'S SPELLING.
+//     relationshipShaped returns true only when exprString(t) contains
+//     "relationship" (lower-cased). So a POSITIONAL literal of a locally
+//     declared `type myRel struct{ FromID, ToID, Kind string }` is invisible —
+//     the type name carries no such substring and form G returns early. KEYED
+//     literals are unaffected: the keyed branch never consults
+//     relationshipShaped, so a keyed `myRel{FromID: filePath, …}` is still seen
+//     whatever the type is called.
+//
+//  3. A SPLIT-LITERAL `IMPORTS` EDGE LOSES ITS EXEMPTION AND IS WRONGLY FLAGGED.
+//     The IMPORTS exemption (#120) is applied only to a Kind visible IN THE SAME
+//     composite literal. Probe:
+//     `r := types.RelationshipRecord{FromID: filePath, ToID: "mod"}; r.Kind = "IMPORTS"`
+//     — the literal is reported under kind "?" and the guard fails. The
+//     already-disclosed case was a COMPUTED Kind; this is a LITERAL "IMPORTS"
+//     that merely lives in a second statement. It is a false-positive tax on the
+//     documented, deliberate #120 convention, payable by hand-listing the site.
+//
+//  4. THE COUNT PINS CARDINALITY, NOT IDENTITY. The check is `len(ss) !=
+//     entry.count`; it does not compare the FORM or the expression. Mutant:
+//     replacing a blessed form-A site with a DIFFERENT offending construction
+//     (form I, also keying "?") inside the same function left the count at 1 and
+//     the test GREEN. Corollary, currently latent: a "?" entry with count >= 2
+//     would bless ANY pair of split literals in that function. The only "?"
+//     entry today has count 1, which is why this has no live consequence — and
+//     it is exactly where the next regression would hide.
 //
 // This is a guard against the careless repetition of a known pattern, not a
 // proof. It is honest about being one.
@@ -329,6 +383,45 @@ var allowedFileAnchored = map[string]allowEntry{
 			"DispositionBugExtractor. INFERRED from the site, NOT measured."},
 }
 
+// knownInvisibleOffenders pins the file anchors that the MAIN scan cannot see
+// because of form F's trailing-literal bound: `<path> + <literal> + <ident>`.
+// They are NOT structural refs and they are NOT exempt; they are simply below
+// the main matcher's resolution, and the first round of this disclosure
+// mis-attributed them to the structural-ref prefix group.
+//
+// This list is enforced by TestKnownInvisibleFileAnchoredOffenders, which runs
+// its own narrow matcher over the same tree. That makes the entry load-bearing
+// in BOTH directions: deleting the entry fails as an unaccounted site, and
+// fixing the code fails the entry as stale. It is not a comment.
+//
+// Keyed and counted exactly like allowedFileAnchored.
+var knownInvisibleOffenders = map[string]allowEntry{
+	// swift/package.go:189 (product deps) and :242 (bare target deps) — the
+	// failure message reports 188 and 241, the lines the enclosing composite
+	// literals open on. Both are
+	// `FromID: filePath + "::" + d.name` — path FIRST, then a literal, then a
+	// non-literal ident, so isFilePathExpr's BinaryExpr case rejects them at the
+	// trailing operand. Not a structural ref:
+	//   - the owning record (swift/package.go:164-177) sets Name: d.name and NO
+	//     QualifiedName at all; the only two "::" occurrences in the package are
+	//     these two FromIDs;
+	//   - nothing in internal/resolve knows the swift_package / swiftpm "::"
+	//     spelling (grep for swiftpm|swift_package under internal/resolve is
+	//     empty), so there is no byQualifiedName scheme to land on;
+	//   - both edges are appended to rec.Relationships — the target component
+	//     itself — so FromID should simply be EMPTY.
+	// DANGLING and MISOWNED: the astro failure mode.
+	"swift:extractTargets:DEPENDS_ON": {2,
+		"KNOWN OFFENDER (#6298): dangling AND misowned. `filePath + \"::\" + d.name` on a " +
+			"record whose owner is the swiftpm target component; no node carries that " +
+			"string and internal/resolve has no swiftpm \"::\" scheme, so the raw value " +
+			"reaches the graph. INFERRED from the site + the record emission + an empty " +
+			"grep of internal/resolve, NOT measured. Invisible to the main scan (form F " +
+			"trailing-literal bound). Not fixed here for the same reason as the other six: " +
+			"each language needs its own measurement, and astro proved that assuming a " +
+			"shared shape is how this goes wrong."},
+}
+
 type fileAnchoredSite struct {
 	pkg, fn, kind, key, file string
 	line                     int
@@ -346,8 +439,23 @@ func scanFileAnchoredRels(t *testing.T, root string) []fileAnchoredSite {
 	var out []fileAnchoredSite
 
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+		if err != nil {
 			return err
+		}
+		// testdata is fixture input, not extractor source. Two Go files under
+		// this root live there (testdata/incrfixture/main.go,
+		// golang/testdata/issue4426/constants.go); a fixture carrying a
+		// `FromID:` line would be reported under a bogus package key, and a
+		// deliberately-malformed Go fixture would trip the parse-error branch
+		// and fail this guard for an unrelated reason.
+		if d.IsDir() {
+			if d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
 		}
 		f, perr := parser.ParseFile(fset, p, nil, 0)
 		if perr != nil {
@@ -529,10 +637,18 @@ func isFilePathExpr(e ast.Expr, aliases map[string]bool) bool {
 		// path comes FIRST and everything appended to it is a string literal
 		// (`filePath + ""`, `filePath + ".x"`). A literal PREFIX — the
 		// `"scope:ormmodel:" + filePath + "#" + name` spelling used by ormlink,
-		// haskell, abibridge and swift — builds a STRUCTURAL REF, which is a
-		// different, deliberate resolution scheme (byQualifiedName), not a file
-		// anchor. Flagging those would bury the real signal under five
-		// allow-list entries that are not instances of this bug at all.
+		// haskell, abibridge and the markdown prefix site — builds a STRUCTURAL
+		// REF, which is a different, deliberate resolution scheme
+		// (byQualifiedName), not a file anchor. Flagging those would bury the
+		// real signal under four allow-list entries that are not instances of
+		// this bug at all.
+		//
+		// The trailing-literal half of the bound is what hides
+		// `filePath + "::" + d.name` (swift/package.go:189,242), which is a real
+		// file anchor and NOT a structural ref. It is pinned separately by
+		// knownInvisibleOffenders / TestKnownInvisibleFileAnchoredOffenders
+		// rather than by relaxing this predicate, because the path-first rule is
+		// the only thing keeping the structural-ref schemes out.
 		ops := flattenConcat(v)
 		if len(ops) == 0 || !isFilePathExpr(ops[0], aliases) {
 			return false
@@ -715,6 +831,185 @@ func TestNoNewFileAnchoredTypeRelationships(t *testing.T) {
 		if len(observed[key]) == 0 {
 			t.Errorf("allowedFileAnchored[%q] matches no site any more — either the code "+
 				"was fixed (delete the entry) or the scanner was narrowed (fix the scanner)", key)
+		}
+	}
+}
+
+// scanPathFirstConcatFromIDs is the narrow companion matcher for
+// knownInvisibleOffenders. It finds FromID values that are a concatenation
+// STARTING with a recognised path spelling but which isFilePathExpr REJECTS,
+// i.e. at least one appended operand is not a string literal
+// (`filePath + "::" + d.name`). The path-first requirement is retained, so the
+// structural-ref schemes with a literal PREFIX — ormlink, haskell, abibridge,
+// the markdown prefix site — are excluded here exactly as they are in form F.
+//
+// It walks independently of scanFileAnchoredRels so that a narrowing of the
+// main matcher cannot silently narrow this one too.
+func scanPathFirstConcatFromIDs(t *testing.T, root string) []fileAnchoredSite {
+	t.Helper()
+	fset := token.NewFileSet()
+	var out []fileAnchoredSite
+
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		f, perr := parser.ParseFile(fset, p, nil, 0)
+		if perr != nil {
+			t.Errorf("parse %s: %v", p, perr)
+			return nil
+		}
+		rel, _ := filepath.Rel(root, p)
+		pkg := filepath.Dir(rel)
+		if pkg == "." {
+			pkg = "extractors"
+		}
+
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			aliases := collectPathAliases(fn.Body)
+			// A concat whose FIRST operand is a path but which the main
+			// matcher rejects.
+			hidden := func(e ast.Expr) bool {
+				be, ok := e.(*ast.BinaryExpr)
+				if !ok {
+					return false
+				}
+				ops := flattenConcat(be)
+				if len(ops) < 2 || !isFilePathExpr(ops[0], aliases) {
+					return false
+				}
+				return !isFilePathExpr(be, aliases)
+			}
+
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				switch v := n.(type) {
+				case *ast.AssignStmt:
+					for i, lhs := range v.Lhs {
+						sel, ok := lhs.(*ast.SelectorExpr)
+						if !ok || sel.Sel.Name != "FromID" || i >= len(v.Rhs) {
+							continue
+						}
+						if !hidden(v.Rhs[i]) {
+							continue
+						}
+						out = append(out, mkSite(fset, pkg, fn.Name.Name, "?", rel,
+							v.Pos(), exprString(v.Rhs[i]), "F-hidden:assignment"))
+					}
+				case *ast.CompositeLit:
+					var from, kind ast.Expr
+					for _, el := range v.Elts {
+						kv, ok := el.(*ast.KeyValueExpr)
+						if !ok {
+							continue
+						}
+						id, ok := kv.Key.(*ast.Ident)
+						if !ok {
+							continue
+						}
+						switch id.Name {
+						case "FromID":
+							from = kv.Value
+						case "Kind":
+							kind = kv.Value
+						}
+					}
+					if from == nil || !hidden(from) {
+						return true
+					}
+					k := "?"
+					if kind != nil {
+						k = relKindString(kind)
+					}
+					if k == "IMPORTS" {
+						return true
+					}
+					out = append(out, mkSite(fset, pkg, fn.Name.Name, k, rel,
+						v.Pos(), exprString(from), "F-hidden:keyed"))
+				}
+				return true
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
+	slices.SortFunc(out, func(a, b fileAnchoredSite) int {
+		if a.file != b.file {
+			return strings.Compare(a.file, b.file)
+		}
+		return a.line - b.line
+	})
+	return out
+}
+
+// TestKnownInvisibleFileAnchoredOffenders makes knownInvisibleOffenders
+// load-bearing rather than decorative. Every `<path> + <literal> + <non-literal>`
+// FromID in the tree must be listed with its site count; every listed key must
+// still match that many sites.
+func TestKnownInvisibleFileAnchoredOffenders(t *testing.T) {
+	sites := scanPathFirstConcatFromIDs(t, ".")
+
+	observed := map[string][]fileAnchoredSite{}
+	for _, s := range sites {
+		observed[s.key] = append(observed[s.key], s)
+	}
+
+	// Stale-entry check FIRST. swift is currently the only site of this shape in
+	// the tree, so fixing it empties the matcher; if the vacuity guard ran first
+	// it would report "the matcher has broken" for what is actually a fix. Both
+	// fire, but the accurate diagnosis leads.
+	for key := range knownInvisibleOffenders {
+		if len(observed[key]) == 0 {
+			t.Errorf("knownInvisibleOffenders[%q] matches no site any more — either the code "+
+				"was fixed (delete the entry) or the matcher was narrowed (fix the matcher)", key)
+		}
+	}
+
+	// Vacuity guard: the matcher must still match the shape it was written for.
+	if len(sites) == 0 {
+		t.Error("path-first-concat matcher found no sites at all — either every listed " +
+			"offender above was genuinely fixed, or the walk / AST match has broken and " +
+			"a guard that matches nothing passes for free")
+		return
+	}
+	keys := make([]string, 0, len(observed))
+	for k := range observed {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		ss := observed[k]
+		entry, ok := knownInvisibleOffenders[k]
+		if !ok {
+			var b []string
+			for _, s := range ss {
+				b = append(b, fmt.Sprintf("%s:%d  FromID: %s  [%s]", s.file, s.line, s.fromExpr, s.form))
+			}
+			t.Errorf("relationship FromID is a path-first concatenation the MAIN scan cannot see, "+
+				"at unaccounted key %q (%d site(s)):\n      %s\n\n"+
+				"This is the form-F trailing-literal blind spot. Either it is a real file anchor "+
+				"(leave FromID EMPTY), or it resolves — in which case add it to "+
+				"knownInvisibleOffenders with its site count and say what you MEASURED vs INFERRED.",
+				k, len(ss), strings.Join(b, "\n      "))
+			continue
+		}
+		if len(ss) != entry.count {
+			t.Errorf("knownInvisibleOffenders[%q]: expects %d site(s), found %d", k, entry.count, len(ss))
 		}
 	}
 }
