@@ -96,7 +96,7 @@ func Render(w io.Writer, r *Report) error {
 
 	// Section 2 — Orphan Rate
 	fmt.Fprintf(w, "## 2. Orphan Rate\n\n")
-	fmt.Fprintf(w, "An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions).\n\n")
+	fmt.Fprintf(w, "An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions). The table below counts only orphans of kinds that carry a semantic edge SOMEWHERE in this group; kinds where no entity does are listed separately under **Expected/terminal orphans**, so a kind reading 0 here may still be entirely unwired there.\n\n")
 	if len(r.OrphanByKind) == 0 {
 		fmt.Fprintf(w, "_No entity kind with >= 10 entities found._\n\n")
 	} else {

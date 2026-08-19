@@ -19,9 +19,12 @@ import (
 //
 //   - The gate answers "is this kind wired up AT ALL?", not "is every instance
 //     wired?". The latter is what the per-kind orphan table is for — readable,
-//     not gating. A kind where more than 9 in 10 entities carry no semantic
-//     edge in either direction is not partially degraded; it is functionally
-//     unwired.
+//     not gating. A kind where 9 in 10 or more entities carry no semantic edge
+//     in either direction is not partially degraded; it is functionally
+//     unwired. The comparison is strict (`< 90.0` passes), so 90.0 itself
+//     fails — both because the check's published name says "below 90pct" and
+//     because 90.0 is the arithmetic ceiling for a 10-entity kind, the
+//     smallest size the report publishes.
 //
 //   - It leaves headroom for genuine per-instance gaps so they stay VISIBLE in
 //     the table instead of being converted into a gate failure that swamps the
@@ -77,6 +80,30 @@ type SanityResult struct {
 	Note   string
 }
 
+// What #6346 asked for, and what is actually done here — stated because the
+// two are not the same and the gap should not be rediscovered later:
+//
+//	Direction 1 ("the threshold is exactly 100%, so it can never fire on a
+//	real regression") is FIXED. The gate fires at and above
+//	orphanRateFailThreshold, it fires on the smallest published bucket
+//	(check 2), and the total-breakage end is covered by check 2b.
+//
+//	Direction 2 ("terminal-by-design kinds fail it, correctly, forever") is
+//	NOT fixed — it is relocated. Every one of the 14 check-2b failures
+//	measured across the corpus is a kind that also failed at base under
+//	`orphan-rate-not-100pct[...]`: same repos, same kinds, new check name and
+//	an honest note. ~8 of them are markdown code fences, CSS selectors, HTML
+//	input fields and dependency manifests, which will fail every run forever
+//	with no action available to the reader. That is precisely the "trains the
+//	reader to ignore the whole section" failure #6346 direction 2 names.
+//
+//	Distinguishing a terminal-by-design kind from a dead resolver needs
+//	evidence this package does not have: the graph alone cannot do it (both
+//	are zero participation), and a hand-maintained name list is what #6346
+//	ruled out. The candidate that needs neither is longitudinal — comparing
+//	against prior reports, i.e. "this kind used to participate" — which needs
+//	report history that does not exist yet.
+//
 // runSanityChecks evaluates the loaded metrics against the defined sanity checks
 // and returns a slice of results plus a confidence score (passed/total as 0–100).
 func runSanityChecks(r *Report) ([]SanityResult, int) {
@@ -117,11 +144,17 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 		if ks.Total < 10 {
 			continue
 		}
-		passed := ks.OrphanPct <= orphanRateFailThreshold
+		// Strictly below, so the predicate matches the check's own published
+		// name. It is also the only way the smallest bucket can fire at all:
+		// kindOrphans accrues only for kinds with >= 1 participating entity,
+		// so a kind of size N cannot exceed 100*(N-1)/N, which at N == 10 —
+		// the smallest size Generate publishes — is exactly 90.0. With `<=`
+		// every 10-entity kind was unfirable no matter how broken.
+		passed := ks.OrphanPct < orphanRateFailThreshold
 		note := ""
 		if !passed {
 			note = fmt.Sprintf(
-				"kind %q: %d of %d entities (%.1f%%) have no semantic edge in either direction — above the %.0f%% threshold, this kind is functionally unwired",
+				"kind %q: %d of %d entities (%.1f%%) have no semantic edge in either direction — at or above the %.0f%% threshold, this kind is functionally unwired",
 				kind, ks.OrphanCount, ks.Total, ks.OrphanPct, orphanRateFailThreshold)
 		}
 		results = append(results, SanityResult{
@@ -147,13 +180,31 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 	//
 	// This deliberately fires on kinds that are genuinely terminal by design
 	// too, because nothing in the graph distinguishes the two — the note says
-	// so rather than asserting a defect. The asymmetry justifies it: a false
-	// failure costs one confidence point and one line of text that a human
+	// so rather than asserting a defect.
+	//
+	// Measured cost, per report (i.e. per group, which is how this actually
+	// runs), across 12 corpus repos: 14 firings over 10 distinct kinds —
+	// Config, Fixture, Route, SCOPE.CodeBlock, SCOPE.Config, SCOPE.Constraint,
+	// SCOPE.Stylesheet, SCOPE.UIComponent, Service, Test. Sampling the sources
+	// behind them, roughly 8 of the 14 are unarguably terminal by design
+	// (markdown code fences, CSS selectors, HTML input fields, dependency
+	// manifests) and will fail every run forever; 2 are unambiguous true
+	// positives (`Route` in two Flask groups — `@app.route` paths never bound
+	// to the function beneath them); the remaining ~4 are arguable. A ~14%
+	// true-positive rate is a real cost and is NOT the whole of #6346
+	// direction 2 solved — see the residual note on runSanityChecks.
+	//
+	// The asymmetry is what justifies failing rather than warning anyway: a
+	// false failure costs one confidence point and one line of text a human
 	// dismisses in seconds, while a false pass ships a broken extractor with a
-	// clean bill of health. Measured cost on 12 corpus repos: 14 firings, of
-	// which at least one (a group with 172 `Route` entities and not one
-	// semantic edge among them) is unambiguously the defect this exists to
-	// catch.
+	// clean bill of health.
+	//
+	// Do not restate this set from an aggregate measurement. An earlier
+	// revision claimed "4 kinds corpus-wide" because it read a table that had
+	// merged all 12 repos into ONE synthetic group; merging lets a kind borrow
+	// participation from another repo, which hid Route, Test, Config,
+	// SCOPE.Config, SCOPE.UIComponent and Service. The number that matters is
+	// per-group, because that is the unit a user runs the report on.
 	//
 	// The size floor is not an independent policy knob — it is the report's
 	// own visibility floor. Generate only publishes kinds with Total >= 10, so
@@ -162,17 +213,25 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 		if tks.Total < 10 {
 			continue
 		}
-		passed := tks.OrphanCount < tks.Total
-		note := ""
-		if !passed {
-			note = fmt.Sprintf(
-				"kind %q: none of its %d entities carries a semantic edge in either direction anywhere in the group — either the kind is terminal by design or its resolver never ran; the graph alone cannot tell these apart, so triage it (if this kind used to participate, it is a regression)",
-				kind, tks.Total)
-		}
+		// Unconditional failure, deliberately: membership in
+		// OrphanTerminalByKind IS the finding. report.go populates that map
+		// only for kinds where no entity participates, so there is no state in
+		// which this check could pass, and writing a comparison here would
+		// invite a reader to believe otherwise.
+		//
+		// The comparison it replaces (`tks.OrphanCount < tks.Total`) was worse
+		// than merely unreachable: Total counts entity OCCURRENCES across docs
+		// while OrphanCount counts UNIQUE ids, so a duplicate entity ID across
+		// two docs — the #6368 shape, which landed two commits before this
+		// branch — made it TRUE and silently converted the failure into a pass.
+		// TestRunSanityChecks_ParticipationCheckCannotFalsePass reproduces
+		// exactly that (OrphanCount 10, Total 20) and pins the behaviour.
 		results = append(results, SanityResult{
 			Name:   participationCheckName(kind),
-			Passed: passed,
-			Note:   note,
+			Passed: false,
+			Note: fmt.Sprintf(
+				"kind %q: none of its %d entities carries a semantic edge in either direction anywhere in the group — either the kind is terminal by design or its resolver never ran; the graph alone cannot tell these apart, so triage it (if this kind used to participate, it is a regression)",
+				kind, tks.Total),
 		})
 	}
 

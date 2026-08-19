@@ -58,8 +58,13 @@ func TestRunSanityChecks_OrphanGateThresholdBoundary(t *testing.T) {
 		wantPassed bool
 	}{
 		{89.9, true},
-		{90.0, true},  // at the bound, not over it
-		{90.1, false}, // over the bound
+		// 90.0 must FAIL. The check is named orphan-rate-BELOW-90pct and that
+		// name ships in the report, so passing must mean strictly below. It is
+		// also the only way the smallest published bucket can ever fire: a
+		// 10-entity kind cannot exceed 90.0% (see
+		// TestGenerate_TenEntityKindCanFireTheGate).
+		{90.0, false},
+		{90.1, false},
 		{99.64, false},
 		{100.0, false},
 	}
@@ -146,5 +151,112 @@ func TestRunSanityChecks_OrphanGateKeeps6374Visible(t *testing.T) {
 	// participates (18 of 24 are bound).
 	if tks, ok := r.OrphanTerminalByKind["http_endpoint_definition"]; ok && tks.OrphanCount != 0 {
 		t.Errorf("#6374 signal routed to the terminal bucket (%d)", tks.OrphanCount)
+	}
+}
+
+// TestGenerate_TenEntityKindCanFireTheGate closes a one-value blind spot at the
+// bottom of the reporting range (#6346 round-3 review, item 4).
+//
+// kindOrphans only accrues for kinds with at least one participating entity, so
+// the maximum defect rate a kind of size N can reach is 100*(N-1)/N. At N == 10
+// — the smallest size Generate publishes at all — that ceiling is exactly 90.0,
+// so a `<=` predicate made the gate unfirable for the entire smallest bucket: a
+// kind with 10 entities and 9 of them unwired raised nothing whatsoever.
+// Neither check covered it: check 2b needs zero participation, and this one let
+// the ceiling through.
+func TestGenerate_TenEntityKindCanFireTheGate(t *testing.T) {
+	var ents []graph.Entity
+	var rels []graph.Relationship
+	ents = append(ents, makeEntity("file1", "a.go", "SCOPE.Component", "go", "a.go", 1))
+	for i := 0; i < 10; i++ {
+		id := "k" + string(rune('a'+i))
+		ents = append(ents, makeEntity(id, "K", "MadeUpTenKind", "go", "a.go", 10+i))
+		rels = append(rels, rel6346("c"+id, "file1", id, "CONTAINS"))
+	}
+	// Exactly one of the ten participates — the most a 10-entity kind can have
+	// while still being 9/10 unwired.
+	rels = append(rels, rel6346("wire", "ka", "file1", "REFERENCES"))
+	pe, pr := pad6346()
+	ents = append(ents, pe...)
+	rels = append(rels, pr...)
+
+	r, err := Generate(context.Background(), []*graph.Document{makeDoc(ents, rels)}, Opts{GroupName: "g", Version: "t"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	ks := r.OrphanByKind["MadeUpTenKind"]
+	if ks.Total != 10 || ks.OrphanCount != 9 {
+		t.Fatalf("fixture drifted: Total=%d OrphanCount=%d, want 10/9", ks.Total, ks.OrphanCount)
+	}
+
+	found, failed := false, false
+	for _, res := range r.SanityResults {
+		if res.Name != orphanCheckName("MadeUpTenKind") {
+			continue
+		}
+		found = true
+		if !res.Passed {
+			failed = true
+		}
+	}
+	if !found {
+		t.Fatalf("%s not emitted", orphanCheckName("MadeUpTenKind"))
+	}
+	if !failed {
+		t.Errorf("a 10-entity kind with 9 of 10 unwired (%.1f%%) raised nothing — the ceiling for N=10 is exactly the threshold, so the whole smallest bucket is unfirable", ks.OrphanPct)
+	}
+}
+
+// TestRunSanityChecks_ParticipationCheckCannotFalsePass guards the invariant
+// behind check 2b (#6346 round-3 review, item 3).
+//
+// report.go routes a kind into OrphanTerminalByKind only when NO entity of it
+// participates, so every entity is unwired and OrphanCount == Total for every
+// report Generate produces. A comparison there is therefore unreachable-false —
+// and worse, the two fields are not counted the same way: Total counts entity
+// OCCURRENCES across docs while OrphanCount counts UNIQUE ids. A duplicate
+// entity ID across two docs (the #6368 shape, which landed two commits before
+// this branch) makes OrphanCount < Total and would silently turn the failure
+// into a pass. The check must fail on the substance, not on a comparison of two
+// differently-counted numbers.
+func TestRunSanityChecks_ParticipationCheckCannotFalsePass(t *testing.T) {
+	// Same 10 entity IDs emitted by two docs: 20 occurrences, 10 unique ids,
+	// none carrying a semantic edge.
+	build := func() *graph.Document {
+		var ents []graph.Entity
+		var rels []graph.Relationship
+		ents = append(ents, makeEntity("file1", "a.css", "SCOPE.Component", "css", "a.css", 1))
+		for i := 0; i < 10; i++ {
+			id := "s" + string(rune('a'+i))
+			ents = append(ents, makeEntity(id, "sel", "SCOPE.Stylesheet", "css", "a.css", 10+i))
+			rels = append(rels, rel6346("c"+id, "file1", id, "CONTAINS"))
+		}
+		pe, pr := pad6346()
+		ents = append(ents, pe...)
+		rels = append(rels, pr...)
+		return makeDoc(ents, rels)
+	}
+	r, err := Generate(context.Background(), []*graph.Document{build(), build()}, Opts{GroupName: "g", Version: "t"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	tks := r.OrphanTerminalByKind["SCOPE.Stylesheet"]
+	if tks.OrphanCount >= tks.Total {
+		t.Fatalf("fixture did not reproduce the occurrence/unique-id skew (OrphanCount=%d Total=%d) — rewrite it, the guard is vacuous otherwise", tks.OrphanCount, tks.Total)
+	}
+	found, failed := false, false
+	for _, res := range r.SanityResults {
+		if res.Name != participationCheckName("SCOPE.Stylesheet") {
+			continue
+		}
+		found = true
+		failed = !res.Passed
+	}
+	if !found {
+		t.Fatalf("%s not emitted", participationCheckName("SCOPE.Stylesheet"))
+	}
+	if !failed {
+		t.Errorf("duplicate entity IDs made OrphanCount(%d) < Total(%d), turning a zero-participation kind into a PASS — check 2b must not compare two differently-counted numbers",
+			tks.OrphanCount, tks.Total)
 	}
 }
