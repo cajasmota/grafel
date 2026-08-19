@@ -384,18 +384,61 @@ var frameworkDetector = func() *engine.Detector {
 //     targeting newly extracted entities.
 //  8. Merge new entities/rels into the document, sort, write graph.fb atomically.
 //  9. Update the diff manifest.
+//
+// #6199 — TryIncremental is now a thin wrapper whose only job is to own the
+// per-phase trace across EVERY return path (there are 10+ fallback returns in
+// tryIncremental, and a trace that misses the fallbacks would miss precisely the
+// passes that pay the fixed tail and then throw it away). The pass body moved
+// verbatim into tryIncremental; no phase ordering changed.
 func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.Logger, cfg *extractor.ExtractorConfig) Result {
 	t0 := time.Now()
 	if logger == nil {
 		logger = log.New(os.Stderr, "incremental: ", log.LstdFlags)
 	}
+	tr := newPhaseTrace(t0)
+	var res Result
+	var returned bool
+	// The emit is DEFERRED, not a plain trailing call, and that is load-bearing.
+	// A plain call is only reached on a normal return; a panic unwinds straight
+	// past it — and past the stopHeapSampler that only emit performs, stranding
+	// the 5 ms runtime.ReadMemStats (stop-the-world) sampler goroutine for the
+	// life of the process. That is not hypothetical here: sched.scheduler wraps
+	// this call in a recover() precisely because an index can panic for reasons
+	// the fbwriter fail-soft does not catch, so the daemon survives the panic
+	// and would accumulate one stranded sampler per recovered panic.
+	//
+	// TestPhaseTrace_EveryReturnIsTraced accepts this shape (a deferred FuncLit
+	// whose body calls emit unconditionally) as satisfying the "emit dominates
+	// every exit" invariant, and TestPhaseTrace_PanicStillEmitsAndStopsSampler
+	// drives a real panic through it.
+	defer func() {
+		changed := res.ChangedFiles
+		if changed == 0 {
+			changed = tr.changedFiles
+		}
+		reason := res.FallbackReason
+		if !returned {
+			// Unwinding: res is the zero Result, so say so rather than
+			// reporting an empty fallback reason that reads like a bug here.
+			reason = "panic (unwound past tryIncremental)"
+		}
+		tr.emit(logger.Printf, repoPath, res.Done, reason, changed, tr.walkedFiles, tr.entities, tr.rels)
+	}()
+	res = tryIncremental(ctx, repoPath, stateDir, logger, cfg, t0, tr)
+	returned = true
+	return res
+}
+
+func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.Logger, cfg *extractor.ExtractorConfig, t0 time.Time, tr *phaseTrace) Result {
 
 	// --- Step 1: load manifest + detect changed files ---
 	// Manifest robustness (#2170): LoadManifest already returns an empty
 	// manifest on corruption (json.Unmarshal error or version mismatch) and
 	// logs internally. For an incremental pass a fresh manifest means no
 	// known baseline → we cannot safely do incremental → fall back.
+	endManifestLoad := tr.span("manifest-load")
 	manifest := diff.LoadManifest(stateDir)
+	endManifestLoad()
 	if manifest == nil {
 		// Should never happen given diff.LoadManifest always returns non-nil,
 		// but guard defensively.
@@ -408,12 +451,17 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	if err != nil {
 		return fallback(t0, "abs-repo: "+err.Error())
 	}
+	endWalk := tr.span("tree-walk")
 	allFiles, walkErr := walkSourceFiles(absRepo)
+	endWalk()
+	tr.walkedFiles = len(allFiles)
 	if walkErr != nil {
 		return fallback(t0, "walk: "+walkErr.Error())
 	}
 
+	endGitDiff := tr.span("git-diff-filter")
 	changedFiles, _ := diff.FilterWithGit(absRepo, allFiles, manifest)
+	endGitDiff()
 
 	// Detect deleted files: files that were in the manifest but no longer
 	// appear in the current walk (i.e. they have been deleted from disk).
@@ -447,6 +495,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// explicit fallback so a full reindex reconciles the graph rather than
 	// silently no-op'ing.
 	headAdvanceUnconfirmed := false
+	endHeadAdv := tr.span("head-advance")
 	currentHead := diff.HeadCommit(absRepo)
 	if manifest.GitCommit != "" && currentHead != "" && manifest.GitCommit != currentHead {
 		rangeChanged, rErr := diff.GitChangedFilesSince(absRepo, manifest.GitCommit)
@@ -467,6 +516,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			}
 		}
 	}
+	endHeadAdv()
 	if headAdvanceUnconfirmed {
 		// We cannot trust the changed-file accounting when the commit-range
 		// diff itself failed to confirm what moved between manifest.GitCommit
@@ -555,8 +605,12 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		// forever, and #5667's prune of entries absent from the gitignore-aware
 		// walk stops happening too. The write stays; only the commit stamp is
 		// corrected.
+		endMS := tr.span("manifest-scoped-restamp")
 		diff.UpdateManifestScoped(absRepo, changedFiles, allFiles, manifest)
+		endMS()
+		endMSave := tr.span("manifest-save")
 		_ = diff.SaveManifestAtCommit(stateDir, manifest, manifest.GitCommit, manifest.GitCommitFull)
+		endMSave()
 		logger.Printf("incremental: too-many-changed files=%d limit=%d (changed=%d deleted=%d) changed=%v deleted=%v",
 			totalChanged, limit, len(changedFiles), len(deletedFiles),
 			samplePaths(changedFiles), samplePaths(deletedFiles))
@@ -593,7 +647,10 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		// non-empty, do NOT no-op and do NOT advance the manifest (which would
 		// self-conceal the absence on every later poll) — force a full reindex
 		// via the same fallback signal the too-many-changed path emits.
-		if _, ok := graph.PersistedStatsFromDir(stateDir); !ok && len(allFiles) > 0 {
+		endHdr := tr.span("graph-header-stat")
+		_, ok := graph.PersistedStatsFromDir(stateDir)
+		endHdr()
+		if !ok && len(allFiles) > 0 {
 			logger.Printf("incremental: absent-graph-nonempty-tree files=%d → force full reindex", len(allFiles))
 			return fallback(t0, fmt.Sprintf("absent-graph-nonempty-tree files=%d", len(allFiles)))
 		}
@@ -614,8 +671,12 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		// still worth doing. Just replace the healing when you do: sweep here
 		// but skip the SaveManifest, or move the reconcile onto the fallback
 		// full index. Deleting it naively makes those entries permanent.
+		endMS := tr.span("manifest-sha256-sweep")
 		diff.UpdateManifest(absRepo, allFiles, manifest)
+		endMS()
+		endMSave := tr.span("manifest-save")
 		_ = diff.SaveManifest(stateDir, absRepo, manifest)
+		endMSave()
 		return Result{Done: true, Duration: time.Since(t0)}
 	}
 
@@ -635,6 +696,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// pinned at its current value for the life of the file: the budget never
 	// spends, the file is never retried, and #6209 is unfixed on the one path
 	// the daemon actually runs.
+	endHashGate := tr.span("ast-hash-gate")
 	var reallyChanged []string
 	for _, rel := range changedFiles {
 		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
@@ -655,6 +717,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// Note: manifest entries for deleted files were already removed during the
 	// manifest-GC step above.
 	reallyChanged = append(reallyChanged, deletedFiles...)
+	endHashGate()
+	tr.changedFiles = len(reallyChanged)
 
 	if len(reallyChanged) == 0 {
 		// All changes were whitespace-only (or only deletions already absent).
@@ -687,8 +751,12 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		// with it deliberately, so that if the proof of unreachability ever
 		// stops holding this branch does not resurrect the defect. No test can
 		// pin this, because no input reaches it.
+		endMS := tr.span("manifest-scoped-restamp")
 		diff.UpdateManifestScoped(absRepo, changedFiles, allFiles, manifest)
+		endMS()
+		endMSave := tr.span("manifest-save")
 		_ = diff.SaveManifestAtCommit(stateDir, manifest, manifest.GitCommit, manifest.GitCommitFull)
+		endMSave()
 		logger.Printf("incremental: too-many-changed after-hash-gate files=%d limit=%d really=%v",
 			len(reallyChanged), limit, samplePaths(reallyChanged))
 		return fallback(t0, fmt.Sprintf("too-many-changed after-hash-gate files=%d limit=%d",
@@ -696,13 +764,18 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	// --- Step 4: load existing graph ---
+	endGraphLoad := tr.span("graph-materialise")
 	doc, loadErr := graph.LoadGraphFromDir(stateDir)
+	endGraphLoad()
 	if loadErr != nil {
 		// No existing graph → can't do incremental.
 		return fallback(t0, "load-graph: "+loadErr.Error())
 	}
 
 	// --- Step 5: remove old entities + outbound rels for changed files ---
+	tr.entities = len(doc.Entities)
+	tr.rels = len(doc.Relationships)
+	endPrune := tr.span("prune-scans")
 	changedSet := make(map[string]bool, len(reallyChanged))
 	for _, f := range reallyChanged {
 		changedSet[f] = true
@@ -768,6 +841,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// write into the shared backing array within this snapshot's capacity. Capping
 	// cap==len forces the append to copy, so the snapshot stays outbound-only.
 	priorOutboundRels := removedRels[:len(removedRels):len(removedRels)]
+	endPrune()
 
 	// --- Step 6: re-extract each changed file ---
 	cls := classifier.New(nil)
@@ -804,6 +878,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	//     loop. The alternative — a full reindex — parses every file in the
 	//     repo, so this is strictly cheaper than the path it prevents.
 	parser := treesitter.NewParserFactory(nil)
+	endExtract := tr.span("extract-changed-files")
 
 	var newEntities []graph.Entity
 	var newRels []graph.Relationship
@@ -972,6 +1047,12 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			// A failed extraction is exactly what fallback() exists for: the full
 			// reindex reconciles the file from scratch, and the reason is logged.
 			logger.Printf("incremental: extract %s: %v", rel, extErr)
+			// Close the span before leaving it (#6199). This fallback has paid
+			// the whole extraction and is about to throw it away, so it is one
+			// of the two passes where the extract cost most needs measuring;
+			// returning through an open span reported no extract phase at all
+			// and left accounted_ms short of total_ms by the dominant phase.
+			endExtract()
 			return fallback(t0, fmt.Sprintf("extract-error file=%s: %v", rel, extErr))
 		}
 		// An empty file is excluded deliberately: Parse returns a zero-node
@@ -1004,6 +1085,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			// reach here.
 			logger.Printf("incremental: %s — no records and no usable parse tree (lang=%s): %v",
 				rel, parseLang, perr)
+			endExtract() // #6199 — see the extract-error return above.
 			return fallback(t0, fmt.Sprintf("no-tree-no-records file=%s lang=%s", rel, parseLang))
 		}
 
@@ -1170,6 +1252,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// (entity IDs are deterministic over kind/name/source_file), which
 	// preserves the carefully-resolved cross-file CALLS / REFERENCES edges
 	// that other files asserted into the previous graph.
+	endExtract()
+	endPrune2 := tr.span("prune-scans")
 	reEmittedIDs := make(map[string]bool, len(newEntities))
 	for _, e := range newEntities {
 		reEmittedIDs[e.ID] = true
@@ -1183,6 +1267,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		prunedInbound = append(prunedInbound, r)
 	}
 	doc.Relationships = prunedInbound
+	endPrune2()
 
 	// --- Step 6b: signature-change detection (#2170) ---
 	// For each newly extracted entity, compare its properties hash against the
@@ -1208,6 +1293,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// When signature changes are detected, pass them to the resolver so it can
 	// re-resolve inbound CALLS/REFERENCES edges for those entities rather than
 	// triggering the safety-net fallback (#2170).
+	endScoped := tr.span("scoped-resolve")
 	scopedResult := sresolver.ResolveScoped(
 		newEntities,
 		doc.Entities, // existing surviving entities
@@ -1216,6 +1302,7 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		logger,
 		sresolver.WithSignatureChangedIDs(signatureChangedIDs),
 	)
+	endScoped()
 	if scopedResult.FallbackRequired {
 		logger.Printf("incremental: fallback reason=unresolved-rel target=%s", scopedResult.UnresolvedTarget)
 		return fallback(t0, "unresolved-rel target="+scopedResult.UnresolvedTarget)
@@ -1247,7 +1334,10 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	//
 	// Replay the previous graph's binding onto the fresh edge. See
 	// replayPriorResolution for why this cannot resurrect a deleted call.
-	if healed := replayPriorResolution(newRels, priorOutboundRels, doc.Entities, newEntities); healed > 0 {
+	endReplay := tr.span("prior-resolution-replay")
+	healed := replayPriorResolution(newRels, priorOutboundRels, doc.Entities, newEntities)
+	endReplay()
+	if healed > 0 {
 		logger.Printf("incremental: prior-resolution replay bound %d unresolved edge endpoint(s) (#6090)", healed)
 	}
 
@@ -1261,7 +1351,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// package-boundary markers — so the module layer rebuilt below is
 	// byte-equivalent to a full rebuild. (Surviving entities keep the label they
 	// were stamped with on the previous build.)
+	endStamp := tr.span("module-stamp")
 	stampModuleOnEntities(newEntities, doc, absRepo, allFiles)
+	endStamp()
 
 	// --- Step 8: merge + sort + write ---
 	// #6161 — fold, do not append. See mergeEntitiesDeduped.
@@ -1286,7 +1378,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// folds them into the module layer (a CONTAINS edge from the `_external`
 	// Module node for each). Capture the flow-emitted entities/edges and feed them
 	// into the affected-module set so that module layer is re-derived too.
+	endFlows := tr.span("flow-recompute")
 	flowsRecomputed, flowEntities, flowRels := engine.RunFlowsIncremental(doc, newEntities, removedEntityIDs, newRels, removedRels)
+	endFlows()
 
 	// --- Step 8a: incremental module-aggregation (#5309 layer 2) ─────────────
 	// The full path runs module.Aggregate (CONTAINS / DEPENDS_ON + Module nodes)
@@ -1316,11 +1410,13 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// doc.Relationships via UpdatedExistingRelationships, so they must never be
 	// appended to the document (that is exactly the #6033 duplication). Hence
 	// they are folded in HERE and not into `newRels`.
+	endAgg := tr.span("module-aggregate")
 	aggNewEnts := append(append([]graph.Entity(nil), newEntities...), flowEntities...)
 	aggNewRels := append(append([]graph.Relationship(nil), newRels...), flowRels...)
 	aggNewRels = append(aggNewRels, scopedResult.MutatedExistingRelationships...)
 	affectedModules := affectedModuleSet(doc, removedModuleKeys, aggNewEnts, aggNewRels)
 	module.AggregateIncremental(doc, affectedModules)
+	endAgg()
 
 	// --- Step 8a.9: lib-boundary re-stamp (#5309 layer 3) ────────────────────
 	// The full path's Pass 8.9 (engine.ApplyLibBoundary) classifies every
@@ -1333,7 +1429,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// the flow Process entities (Pass 7) introduce new `_external`→first-party
 	// DEPENDS_ON pairs. The pass is deterministic, idempotent and bounded by the
 	// DEPENDS_ON edge count (a pure function of the now-finalized edge set).
+	endLib := tr.span("lib-boundary")
 	engine.ApplyLibBoundary(doc)
+	endLib()
 
 	// --- Step 8a': structural coupling re-stamp (#5309 layer 2) ──────────────
 	// The full path's Pass 8.6 (engine.ApplyStructuralCoupling) annotates each
@@ -1344,7 +1442,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// instability/coupling_computed properties a full rebuild would — without
 	// which freshly re-emitted Module nodes would carry no coupling props and
 	// survivors could carry stale ones.
+	endCoup := tr.span("structural-coupling")
 	engine.ApplyStructuralCoupling(doc)
+	endCoup()
 
 	// --- Step 8b: static test-reachability re-stamp (#5309 layer 2) ──────────
 	// coverage.Enrich's reachability sub-pass stamps test_reachable /
@@ -1353,7 +1453,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// graph with no external dependency, so re-running it after the merge lands
 	// the same property set a full rebuild would. New entities get stamped and
 	// survivors are refreshed in case a changed edge moved their reachability.
+	endCov := tr.span("coverage-bfs")
 	coverage.Enrich(doc, absRepo, coverage.Config{})
+	endCov()
 
 	// #2706 — belt-and-suspenders prune of Django migration entities.
 	// The incremental path bypasses the per-extractor prune gates only
@@ -1363,7 +1465,10 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// entities through (e.g. before the per-extractor prune existed, or via
 	// a new emission path) they would survive here forever. The central
 	// sweep keeps the incremental and full-rebuild paths in lockstep.
-	if ePruned, rPruned := PruneMigrationEntities(doc); ePruned > 0 {
+	endMig := tr.span("migration-prune")
+	ePruned, rPruned := PruneMigrationEntities(doc)
+	endMig()
+	if ePruned > 0 {
 		logger.Printf("incremental: migration-prune dropped %d entities + %d relationships", ePruned, rPruned)
 	}
 
@@ -1371,13 +1476,19 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	doc.Stats.Relationships = len(doc.Relationships)
 	doc.GeneratedAt = time.Now().UTC()
 
+	tr.entities = len(doc.Entities)
+	tr.rels = len(doc.Relationships)
+	endSort := tr.span("canonical-sort")
 	sortGraphDocumentForEmission(doc)
+	endSort()
 
 	// #5891 gen layout: write graph.<gen>.fb + flip the `current` pointer
 	// instead of overwriting graph.fb. This never renames over a possibly-
 	// mapped graph.fb (Windows ERROR_USER_MAPPED_FILE). fbPath is the gen
 	// file written, passed to the directory-keyed sidecar writer below.
+	endWrite := tr.span("graph-remarshal-write")
 	fbPath, writeErr := writeGraphGen(stateDir, doc)
+	endWrite()
 	if writeErr != nil {
 		return fallback(t0, "write-graph-fb: "+writeErr.Error())
 	}
@@ -1412,7 +1523,10 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	if priorSide, sErr := graph.LoadSidecar(filepath.Dir(fbPath)); sErr == nil && priorSide != nil {
 		side.UnsupportedExtensions = priorSide.UnsupportedExtensions
 	}
-	if serr := graph.WriteSidecar(fbPath, side, false); serr != nil {
+	endSide := tr.span("sidecar-write")
+	serr := graph.WriteSidecar(fbPath, side, false)
+	endSide()
+	if serr != nil {
 		logger.Printf("incremental: sidecar write failed: %v (non-fatal)", serr)
 	}
 
@@ -1439,8 +1553,13 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// that if this path ever learns to tolerate a partial failure, the call site
 	// is already the one that records it instead of silently stamping it as
 	// indexed. A nil set makes this identical to ApplyStamps.
+	endMS := tr.span("manifest-apply-stamps")
 	_ = diff.ApplyStampsAndFailures(walkStamps, allFiles, nil, manifest)
-	if saveErr := diff.SaveManifest(stateDir, absRepo, manifest); saveErr != nil {
+	endMS()
+	endMSave := tr.span("manifest-save")
+	saveErr := diff.SaveManifest(stateDir, absRepo, manifest)
+	endMSave()
+	if saveErr != nil {
 		logger.Printf("incremental: save manifest: %v (non-fatal)", saveErr)
 	}
 
