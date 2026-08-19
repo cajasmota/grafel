@@ -1,6 +1,7 @@
 package watch
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -466,6 +467,24 @@ func TestReconcileVisitsEveryDirectoryAcrossPasses(t *testing.T) {
 // and a loop with no exit makes every one of these tests pay the full
 // watcherStopTimeout at cleanup. The test owns these channels, so it is the test
 // that may close them (#6287).
+//
+// WITHHOLDING FROM THE LOOP IS NOT THE SAME AS LEAVING THE BACKEND UNREAD, and
+// #6380 is what conflating the two costs. Re-pointing w.events at ev leaves the
+// REAL backend's Events/Errors with no reader anywhere in the process. On
+// Windows that is a deadlock, not a leak: fsnotify's single I/O goroutine is
+// both the only sender on those channels and the serialisation point for every
+// Add and Remove, so the moment it parks in sendEvent the next fs.Add never
+// gets its reply — AddRepo hung for the full 15-minute test timeout over a
+// 296-directory fixture, alongside "fsnotify: queue or buffer overflow". This
+// is the third way into the invariant at watcher.go:172-185, and the only one
+// that is purely a property of a harness.
+//
+// So the real channels get a discard sink for the lifetime of the test. That
+// costs these tests nothing, because what they actually require is that no
+// Create the backend reports is ever CHARGED — and charging happens on the loop
+// goroutine, which is reading ev/errs, not these. Drained rather than buffered
+// deliberately: the volume is one event per file per directory, so any fixed
+// buffer is a size that silently becomes wrong the next time a fixture grows.
 func withheldEventsWatcher(t *testing.T, cfg Config) *Watcher {
 	t.Helper()
 	ev := make(chan fsnotify.Event)
@@ -480,14 +499,62 @@ func withheldEventsWatcher(t *testing.T, cfg Config) *Watcher {
 	// difference between a test that observes the sweep and a test that races it.
 	cfg.reconcileInterval = -1
 	w := newBudgetedWatcherCfg(t, cfg)
+	// Read once, under the lock, rather than per receive: HeartbeatInterval is
+	// an hour here so restartBackend never fires, and binding the sink to THIS
+	// generation keeps it from straddling two if that ever changes.
+	w.mu.Lock()
+	fw := w.fs
+	w.mu.Unlock()
+	drained := discardBackendChannels(fw.Events, fw.Errors)
+
 	realClose := w.closeBackend
 	w.closeBackend = func() error {
 		err := realClose()
+		// A backend closes its own channels as the last act of Close, which is
+		// what ends the sink. Bounded, and an assertion rather than a wait: an
+		// unbounded receive here would trade the hang this fixes for another.
+		select {
+		case <-drained:
+		case <-time.After(5 * time.Second):
+			t.Errorf("the backend discard sink outlived Close by 5s — fsnotify did not " +
+				"close its Events/Errors, so the sink is a leaked goroutine")
+		}
 		close(ev)
 		close(errs)
 		return err
 	}
 	return w
+}
+
+// discardBackendChannels reads a backend's Events and Errors and throws both
+// away, until each is closed. It exists so withheldEventsWatcher can withhold
+// events from the WATCHER without withholding them from the process — see the
+// comment above, and the invariant at watcher.go:172-185.
+//
+// The returned channel closes when both inputs are closed and the goroutine has
+// returned, so a caller can assert the sink does not outlive the backend.
+func discardBackendChannels(ev <-chan fsnotify.Event, errs <-chan error) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Nil-out on close rather than returning: a nil channel is never ready
+		// in a select, so the sink keeps serving whichever side is still open.
+		// Windows closes these from inside Close, after teardown sends that are
+		// still arriving on the other one.
+		for ev != nil || errs != nil {
+			select {
+			case _, ok := <-ev:
+				if !ok {
+					ev = nil
+				}
+			case _, ok := <-errs:
+				if !ok {
+					errs = nil
+				}
+			}
+		}
+	}()
+	return done
 }
 
 func newReconcileWatcher(t *testing.T, sink EventSink) *Watcher {
@@ -1048,5 +1115,64 @@ func TestRepairNeverBlocksTheEventDrain(t *testing.T) {
 	w.mu.Unlock()
 	if have != n+1 {
 		t.Fatalf("dirEntries[src] = %d, want %d", have, n+1)
+	}
+}
+
+// TestDiscardBackendChannelsKeepsReceivingPastAnyBuffer is the regression guard
+// on the harness fix for #6380. withheldEventsWatcher points the LOOP goroutine
+// at channels the test owns, which leaves the real backend's own Events/Errors
+// with no reader at all. On Windows that is a deadlock and not a leak — see the
+// invariant at watcher.go:172-185 — so the harness runs a discard sink over the
+// real channels for the lifetime of the test, and this pins that the sink keeps
+// receiving without bound and then goes away.
+//
+// The channels here are UNBUFFERED on purpose: a send on an unbuffered channel
+// completes only if something actually received it, so this test cannot pass by
+// accident against a sink that has stopped.
+func TestDiscardBackendChannelsKeepsReceivingPastAnyBuffer(t *testing.T) {
+	ev := make(chan fsnotify.Event)
+	errs := make(chan error)
+	done := discardBackendChannels(ev, errs)
+
+	// reconcileBatch+40 is the directory count of
+	// TestReconcileVisitsEveryDirectoryAcrossPasses, the fixture that wedged
+	// Windows CI for the full 15-minute timeout. Nothing about the number is
+	// load-bearing except that it is larger than any buffer the harness could
+	// plausibly have picked instead of draining.
+	const n = reconcileBatch + 40
+	for i := 0; i < n; i++ {
+		select {
+		case ev <- fsnotify.Event{Name: "x.go", Op: fsnotify.Create}:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("the discard sink stopped receiving events after %d of %d; on Windows "+
+				"fsnotify's I/O goroutine parks in sendEvent right here and every later "+
+				"fs.Add deadlocks waiting for a reply it can never send", i, n)
+		}
+		select {
+		case errs <- errors.New("fsnotify: queue or buffer overflow"):
+		case <-time.After(5 * time.Second):
+			t.Fatalf("the discard sink stopped receiving errors after %d of %d", i, n)
+		}
+	}
+
+	// Closing is how a real backend ends its sends (backend_kqueue.go:441-443).
+	// One channel at a time, because the sink must survive the first close: on
+	// Windows, Close's own teardown keeps sending on one after the other is done.
+	close(ev)
+	select {
+	case <-done:
+		t.Fatal("the discard sink returned while the Errors channel was still open")
+	case <-time.After(50 * time.Millisecond):
+	}
+	select {
+	case errs <- errors.New("teardown"):
+	case <-time.After(5 * time.Second):
+		t.Fatal("the discard sink stopped receiving errors once the Events channel closed")
+	}
+	close(errs)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the discard sink outlived both of its channels — one leaked goroutine per test")
 	}
 }

@@ -189,12 +189,26 @@ type Watcher struct {
 	// through its single I/O goroutine — `w.input <- in; return <-in.reply`
 	// (backend_windows.go:141-146, :162-167) — and that same goroutine is the
 	// only sender on Events and Errors, via a sendEvent/sendError that blocks
-	// until grafel receives (:69-91). So an Add or Remove completes only if the
-	// loop goroutine is free to drain. Holding w.mu across one deadlocks against
-	// a loop parked in chargeEventOpen; making one FROM the loop deadlocks
-	// against itself. The kqueue and inotify backends do this work in the
-	// caller's goroutine and depend on nothing, which is why the hazard is
-	// invisible off Windows — it took a 15-minute CI timeout to surface (#6309).
+	// until grafel receives (:69-91). So an Add or Remove completes only if
+	// SOMETHING is free to drain that backend's channels. Three ways to take
+	// that away, and each has now cost a 15-minute CI timeout:
+	//
+	//   - hold w.mu across the call: a loop parked in chargeEventOpen waiting
+	//     for that same mutex can never drain (#6307/#6309).
+	//   - make the call FROM the loop goroutine, which then cannot drain
+	//     because it is inside the call (#6307).
+	//   - leave the backend's channels with no reader at all. This one is not
+	//     reachable in production — the loop always drains what the backend
+	//     produces — but it is reachable from a TEST, because testEvents
+	//     re-points the loop at channels the test owns and thereby unhooks the
+	//     backend's own from their only reader. A harness that does that must
+	//     drain the real channels itself; withheldEventsWatcher in
+	//     reconcile_6304_test.go is the worked example, and #6380 is the bill
+	//     for not doing it.
+	//
+	// The kqueue and inotify backends do this work in the caller's goroutine and
+	// depend on nothing, which is why none of the three is observable off
+	// Windows.
 	fsAdd    func(string) error
 	fsRemove func(string) error
 	// closeBackend closes the fsnotify instance. It is a field rather than a
