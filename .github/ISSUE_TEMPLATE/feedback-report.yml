@@ -28,10 +28,19 @@ body:
     attributes:
       label: Feedback report
       description: >
-        Paste the full contents of your `.md` file here.
-        The report was written to `~/.grafel/feedback/<group>-<timestamp>.md`.
-      render: markdown
+        **Please attach the file rather than pasting it.** Drag `~/.grafel/feedback/<group>-<timestamp>.md`
+        from your file manager and drop it into this box — GitHub will upload it and leave a link.
+        We ask for this because long pasted reports have arrived truncated, with rows and sentences
+        silently cut mid-way, and the missing half is unrecoverable for us.
+
+        If you cannot attach the file, pasting its full contents here still helps — a truncated
+        report is better than none. In that case please say so in "Additional context" so we know
+        to ask for the file.
       placeholder: |
+        Drag and drop your <group>-<timestamp>.md file here (preferred).
+
+        Or paste the report contents, e.g.:
+
         # grafel feedback report
 
         Generated: ...
