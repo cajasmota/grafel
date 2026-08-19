@@ -5,13 +5,14 @@ import (
 	"testing"
 )
 
-// Epic #6327, story S2 — classification only.
+// Epic #6327 — classification.
 //
-// WHAT S2 DOES AND DOES NOT DO. After these tests pass, a `.vb` file is
-// RECOGNISED as VB.NET and still produces ZERO entities: there is no
-// internal/extractors/vbnet/ directory, no lexer and no parser. S3–S5 build
-// those. Every assertion below is written so that reading it cannot leave the
-// impression that VB.NET support exists.
+// S2 shipped these as "recognised but deliberately still skipped": a `.vb` file
+// was classified as VB.NET and dropped before extraction, because
+// internal/extractors/vbnet did not exist. S5 registered that extractor, so the
+// half-done state is over and the assertions below are INVERTED rather than
+// deleted — the removal protocol in unsupported.go names exactly these tests as
+// the ones that unwind.
 
 // TestVBFileIsRecognisedAsVBNet is the test the epic asks for: a `.vb` file is
 // no longer *unclassified*. Both Classify entry points are covered because
@@ -34,73 +35,60 @@ func TestVBFileIsRecognisedAsVBNet(t *testing.T) {
 	}
 }
 
-// TestVBFileIsSkippedNotExtracted asserts what it can actually observe: a `.vb`
-// file is dropped at classification and never enters the pipeline.
+// TestVBFileReachesExtraction is the inverted S2 assertion. It was
+// TestVBFileIsSkippedNotExtracted, and its own failure message named the
+// condition for inverting it: "If S3-S5 have landed, delete the
+// languagesAwaitingExtractor entry".
 //
-// It was called TestVBFileStillYieldsNoEntities, which is the DESIGN statement
-// for S2 and the BUG for S4 — the same green test means "correct, no extractor
-// yet" before S4 and "the extractor exists and is being starved" after it, and
-// nothing in the name tells an S4 author which one they are looking at. The
-// half-done state is observable, but only from internal/cli, which can import
-// internal/extractors; TestLanguagesAwaitingExtractorHaveNoRegisteredExtractor
-// there is the paired assertion, and it is the one that will fail on the S4
-// commit. This one keeps its narrower job: the skip is a skip, and it does not
-// throw away the language.
-func TestVBFileIsSkippedNotExtracted(t *testing.T) {
+// This package cannot import internal/extractors, so it cannot assert that
+// entities come out — that half is
+// TestLanguagesAwaitingExtractorHaveNoRegisteredExtractor in internal/cli. What
+// it CAN assert is the half that starved the extractor: a `.vb` file must reach
+// the pipeline at all.
+func TestVBFileReachesExtraction(t *testing.T) {
 	res := New(nil).Classify(context.Background(), "legacy/Form1.vb")
 
-	if !res.Skip {
-		t.Fatalf("a .vb file must still be skipped after S2 — no extractor "+
-			"exists for vbnet. Classify = %+v. If S3-S5 have landed, delete "+
-			"the languagesAwaitingExtractor entry and replace this test with "+
-			"an entity-count assertion.", res)
+	if res.Skip {
+		t.Fatalf("a .vb file is still skipped although an extractor is registered "+
+			"for vbnet (#6327 S5). Classify = %+v — every .vb file would produce "+
+			"zero entities, which is #6321 with the extractor already built.", res)
 	}
-	if res.SkipReason != SkipReasonUnsupportedLanguage {
-		t.Fatalf("SkipReason = %q, want %q so the #6338 report keeps its row",
-			res.SkipReason, SkipReasonUnsupportedLanguage)
+	if res.SkipReason != "" {
+		t.Fatalf("SkipReason = %q, want empty", res.SkipReason)
 	}
-	if res.Tier != 0 {
-		t.Fatalf("Tier = %d, want 0 (skip) — a nonzero tier would route the "+
-			"file into extraction", res.Tier)
+	if res.Tier == 0 {
+		t.Fatalf("Tier = %d, want nonzero — tier 0 does not route into extraction", res.Tier)
 	}
-	// The two facts together, stated as one: known language, no extractor.
 	if res.Language != "vbnet" {
-		t.Fatalf("Language = %q, want %q — the skip must not throw away what "+
-			"we now know the file is", res.Language, "vbnet")
+		t.Fatalf("Language = %q, want %q", res.Language, "vbnet")
 	}
 }
 
-// TestVBNetRemainsInUnsupportedReport pins the #6338 interaction.
-//
-// Classifying `.vb` must NOT silence the "Unsupported languages (no
-// extractor)" row that #6338 shipped for dcastro-imp's 672 files. The row is
-// what tells them nothing is being extracted; it earns its place until the
-// extractor does.
-func TestVBNetRemainsInUnsupportedReport(t *testing.T) {
-	// SupportedExtension answers for the ROUTER, so after S2 it says true for
-	// `.vb` just as it does for `.proto`, `.prisma` and `.toml` — all routed,
-	// none extractable. What keeps the row alive is that the display name and
-	// the tracking issue survive, and that the tally still counts the skip; the
-	// "is it extractable" half is derived from extractors.Get in internal/cli,
-	// the only package that can ask (#6327 S2 review).
+// TestVBNetLeftTheUnsupportedReport is the other half of the inversion. The
+// "Unsupported languages (no extractor)" row #6338 shipped for dcastro-imp's
+// 672 files earned its place until the extractor landed; printing it now would
+// tell the reporter the opposite of the truth.
+func TestVBNetLeftTheUnsupportedReport(t *testing.T) {
 	if !SupportedExtension(".vb") {
-		t.Fatal("SupportedExtension(\".vb\") = false — the router names it vbnet after S2")
+		t.Fatal("SupportedExtension(\".vb\") = false — the router names it vbnet")
 	}
-	if got := LanguageDisplayName(".vb"); got != "VB.NET" {
-		t.Fatalf("LanguageDisplayName(\".vb\") = %q, want %q", got, "VB.NET")
+	if got := LanguageDisplayName(".vb"); got != "" {
+		t.Fatalf("LanguageDisplayName(\".vb\") = %q, want \"\" — an extension whose "+
+			"language has a registered extractor must not name a report row", got)
 	}
-	if got := TrackingIssue(".vb"); got != "#6327" {
-		t.Fatalf("TrackingIssue(\".vb\") = %q, want %q", got, "#6327")
+	if got := TrackingIssue(".vb"); got != "" {
+		t.Fatalf("TrackingIssue(\".vb\") = %q, want \"\" — #6327 S5 shipped the extractor", got)
 	}
 
-	// And the tally still counts it — Observe only folds in skips.
+	// Observe only folds in skips, and .vb is no longer skipped, so the tally
+	// stays empty however many .vb files it is shown.
 	tally := NewUnsupportedTally()
 	c := New(nil)
 	for i := 0; i < 672; i++ {
 		tally.Observe("legacy/Form.vb", c.Classify(context.Background(), "legacy/Form.vb"))
 	}
-	if got := tally.Counts()[".vb"]; got != 672 {
-		t.Fatalf("tally[.vb] = %d, want 672 — the report row must survive S2", got)
+	if got := tally.Counts()[".vb"]; got != 0 {
+		t.Fatalf("tally[.vb] = %d, want 0 — .vb is extracted now, not skipped", got)
 	}
 }
 
@@ -153,14 +141,17 @@ func TestVBNetExcludedExtensions(t *testing.T) {
 	}
 }
 
-// TestAwaitingExtractorDoesNotLeakToOtherLanguages guards the new skip branch:
-// it must fire for vbnet and for nothing else. A stray entry here would take a
-// working language out of the pipeline silently.
+// TestAwaitingExtractorDoesNotLeakToOtherLanguages guards the skip branch: a
+// stray entry takes a working language out of the pipeline silently.
+//
+// The map is EMPTY after #6327 S5 removed its only entry, so the assertion is
+// about vbnet's ABSENCE — the thing that would regress — while the branch
+// itself stays covered by the loop below.
 func TestAwaitingExtractorDoesNotLeakToOtherLanguages(t *testing.T) {
-	if len(languagesAwaitingExtractor) != 1 || !languagesAwaitingExtractor["vbnet"] {
-		t.Fatalf("languagesAwaitingExtractor = %v; adding a language here "+
-			"REMOVES it from extraction. Read the map's comment before "+
-			"changing this expectation.", languagesAwaitingExtractor)
+	if languagesAwaitingExtractor["vbnet"] {
+		t.Fatalf("languagesAwaitingExtractor still lists vbnet although "+
+			"internal/extractors/vbnet is registered (#6327 S5): every .vb file "+
+			"would be skipped before extraction. Map = %v", languagesAwaitingExtractor)
 	}
 
 	c := New(nil)
@@ -170,5 +161,30 @@ func TestAwaitingExtractorDoesNotLeakToOtherLanguages(t *testing.T) {
 		if res.Skip {
 			t.Errorf("Classify(%q) = %+v, want Skip=false", path, res)
 		}
+	}
+}
+
+// TestTrackingIssuePositivePath keeps TrackingIssue's lookup non-vacuous.
+//
+// unsupportedTrackingIssues went EMPTY when #6327 S5 removed its only entry
+// (`.vb` -> "#6327"), so the external test in unsupported_6338_test.go can now
+// only assert absences — and an all-absent test passes just as happily against
+// a function that returns "" unconditionally. This one seeds the map in-package
+// and restores it, so the positive branch stays covered until some other
+// language is classified ahead of its extractor.
+func TestTrackingIssuePositivePath(t *testing.T) {
+	if len(unsupportedTrackingIssues) != 0 {
+		t.Fatalf("unsupportedTrackingIssues = %v; this test seeds the map because "+
+			"it is expected to be empty. If a real entry has landed, assert THAT "+
+			"instead of a synthetic one.", unsupportedTrackingIssues)
+	}
+	unsupportedTrackingIssues[".zzsynthetic"] = "#0000"
+	t.Cleanup(func() { delete(unsupportedTrackingIssues, ".zzsynthetic") })
+
+	if got := TrackingIssue(".zzsynthetic"); got != "#0000" {
+		t.Errorf("TrackingIssue(.zzsynthetic) = %q, want %q", got, "#0000")
+	}
+	if got := TrackingIssue(".ZZSYNTHETIC"); got != "#0000" {
+		t.Errorf("TrackingIssue must case-fold, got %q", got)
 	}
 }

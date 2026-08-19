@@ -3842,6 +3842,20 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if lang == "rust" && isRustExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
+	// VB.NET (#6327) — EXTENDS / IMPLEMENTS targets in a WinForms /
+	// .NET Framework codebase are dominated by BCL types the graph has
+	// no in-tree entity for: `System.Windows.Forms.Form`,
+	// `System.Configuration.ApplicationSettingsBase`, and the bare
+	// leaves the source spells after an `Imports` (`UserControl`,
+	// `Control`, `Component`, `IDisposable`, `INotifyPropertyChanged`).
+	// Without this arm every one of them classifies as bug-extractor,
+	// which understates our own quality numbers rather than the graph's
+	// (#6327's second silent-failure trap). Gated to lang=="vbnet" per
+	// the #94 safer-bias rule, and reached ONLY for a target that failed
+	// to resolve, so an in-tree type of the same name is never shadowed.
+	if lang == "vbnet" && isVBExternalBaseType(name) {
+		return DispositionExternalKnown
+	}
 	// Wave-7 — Python CALLS where the stub leaf is `<Class>.<method>`
 	// and the method is a well-known framework-inherited method (DRF
 	// GenericAPIView / GenericViewSet pagination + serializer + lookup
@@ -5581,6 +5595,144 @@ func isRustExternalBaseType(s string) bool {
 	}
 	_, ok := rustExternalBaseTypes[base]
 	return ok
+}
+
+// isVBExternalBaseType reports whether s is a VB.NET EXTENDS / IMPLEMENTS
+// target that names a .NET Framework type rather than an in-tree declaration
+// (#6327). Called only from the lang=="vbnet" arm of classifyDispositionLang,
+// and only for a target that already failed to resolve, so an in-tree type of
+// the same bare name is never shadowed.
+//
+// Two rules, and the ORDER of preference between them is deliberate:
+//
+//  1. DERIVED — a dotted name whose ROOT segment is a .NET framework root
+//     namespace. `System.Windows.Forms.Form`,
+//     `System.Configuration.ApplicationSettingsBase`,
+//     `Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid`. This
+//     needs no per-type curation and cannot rot: it keys on the root
+//     namespace, which is a closed set fixed by the platform. The vbnet
+//     extractor strips a `Global.` escape prefix before emitting, so
+//     `Global.System.X` arrives here as `System.X`.
+//
+//  2. HAND LIST — a bare leaf, because VB.NET source writes
+//     `Inherits UserControl` after `Imports System.Windows.Forms` and the
+//     namespace is simply not present at the use site. There is no derivation
+//     available for this half: recovering the namespace needs the file's
+//     Imports set plus the full BCL type index, neither of which the resolver
+//     has. The list is therefore made load-bearing instead — see
+//     TestVBExternalBaseTypesAreLoadBearing in
+//     internal/extractors/vbnet/corpus_6327_test.go, which fails in BOTH
+//     directions against the real 302-file corpus: an entry that no longer
+//     appears as an unresolved target, and an unresolved target that is a BCL
+//     type and is not listed.
+func isVBExternalBaseType(s string) bool {
+	base := strings.TrimSpace(s)
+	// Generic type arguments are stripped by the extractor
+	// (internal/extractors/vbnet.baseTypeName), but a stub reaching here from
+	// another producer may still carry them.
+	if p := strings.IndexByte(base, '('); p > 0 {
+		base = strings.TrimSpace(base[:p])
+	}
+	if base == "" {
+		return false
+	}
+	if dot := strings.IndexByte(base, dottedNameSep); dot > 0 {
+		_, ok := vbFrameworkRootNamespaces[base[:dot]]
+		return ok
+	}
+	_, ok := vbExternalBaseTypes[base]
+	return ok
+}
+
+// vbFrameworkRootNamespaces is the closed set of root namespaces owned by the
+// .NET Framework and its first-party libraries. A dotted EXTENDS / IMPLEMENTS
+// target rooted at one of these names a platform type by construction — user
+// code that rooted its own namespace at `System` would be shadowing the BCL,
+// which the compiler permits and nobody does.
+var vbFrameworkRootNamespaces = map[string]struct{}{
+	"System":        {},
+	"Microsoft":     {},
+	"Windows":       {},
+	"Accessibility": {},
+	"Mono":          {},
+}
+
+// vbExternalBaseTypes is the bare-leaf half of isVBExternalBaseType. Every
+// entry is a .NET Framework type, and every entry was observed as an
+// UNRESOLVED EXTENDS / IMPLEMENTS target when the vbnet extractor was driven
+// over the 302 .vb files of WakeOnLAN + StaxRip + display-drivers-uninstaller;
+// see the measurement in internal/extractors/vbnet/corpus_6327_test.go, which
+// re-derives the set on every run and fails in both directions.
+var vbExternalBaseTypes = map[string]struct{}{
+	// System.Windows.Forms — the WinForms surface #6321 is about.
+	"Button":                  {},
+	"CheckBox":                {},
+	"ComboBox":                {},
+	"CommonDialog":            {},
+	"ContextMenuStrip":        {},
+	"Control":                 {},
+	"DataGridView":            {},
+	"FlowLayoutPanel":         {},
+	"Form":                    {},
+	"GroupBox":                {},
+	"Label":                   {},
+	"ListBox":                 {},
+	"ListView":                {},
+	"Panel":                   {},
+	"PropertyGrid":            {},
+	"RichTextBox":             {},
+	"TabControl":              {},
+	"TabPage":                 {},
+	"TableLayoutPanel":        {},
+	"TextBox":                 {},
+	"ToolStrip":               {},
+	"ToolStripButton":         {},
+	"ToolStripMenuItem":       {},
+	"ToolStripSystemRenderer": {},
+	"TrackBar":                {},
+	"TreeView":                {},
+	"UserControl":             {},
+	"VScrollBar":              {},
+	"IWin32Window":            {},
+
+	// System / System.ComponentModel — object model and design-time.
+	"ApplicationException":   {},
+	"Attribute":              {},
+	"CategoryAttribute":      {},
+	"Component":              {},
+	"DisplayNameAttribute":   {},
+	"EventArgs":              {},
+	"Exception":              {},
+	"ICustomTypeDescriptor":  {},
+	"IExtenderProvider":      {},
+	"INotifyPropertyChanged": {},
+	"PropertyDescriptor":     {},
+	"StringConverter":        {},
+	"TypeConverter":          {},
+
+	// System.Collections / System.Collections.Generic — the generic tail is
+	// stripped by the extractor, so `Inherits List(Of Machine)` arrives as
+	// `List` and `Implements IComparable(Of Profile)` as `IComparable`.
+	"CollectionBase": {},
+	"IComparable":    {},
+	"IComparer":      {},
+	"IDisposable":    {},
+	"IEnumerable":    {},
+	"IEquatable":     {},
+	"List":           {},
+
+	// System.Drawing.Design / System.Windows / System.Globalization.
+	"CultureInfo":      {},
+	"DependencyObject": {},
+	"IValueConverter":  {},
+	"UITypeEditor":     {},
+
+	// System.Runtime.InteropServices / .Serialization / System.ServiceProcess.
+	"IDeserializationCallback":    {},
+	"SafeHandle":                  {},
+	"SafeHandleMinusOneIsInvalid": {},
+	"SerializationBinder":         {},
+	"ServiceBase":                 {},
 }
 
 // rustExternalBaseTypes is the Rust-language-gated allowlist of

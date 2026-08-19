@@ -46,26 +46,31 @@ func TestUnsupportedTally_MixedRepo_ReportsOnlyUnsupportedAggregated(t *testing.
 		"cmd/main.go",
 		"internal/a/b.go",
 		"svc/handler.py",
-		"legacy/Form1.vb",
-		"legacy/Form2.vb",
-		"legacy/sub/Module1.vb",
+		"legacy/Form1.vbs",
+		"legacy/Form2.vbs",
+		"legacy/sub/Module1.vbs",
 		"legacy/unit1.pas",
 	)
-	want := map[string]int{".vb": 3, ".pas": 1}
+	want := map[string]int{".vbs": 3, ".pas": 1}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("mixed repo tally:\n got  %v\n want %v", got, want)
 	}
 }
 
 // Requirement 3 — the regression that matters, and the vacuity guard. An
-// extension that BECOMES supported must disappear from the tally. `.go` stands
-// in for the future state of `.vb`: it is an extension an extractor claims, and
-// it must never be tallied no matter how many files carry it.
+// extension that BECOMES supported must disappear from the tally. That is no
+// longer hypothetical: `.vb` made exactly this transition in #6327 S5, which is
+// why the examples above moved to `.vbs`. `.go` and `.vb` now both stand for it
+// — extensions an extractor claims, never tallied however many files carry them.
 //
 // A tally that simply counted every extension would pass requirement 2's
-// ".vb == 3" assertion; it cannot pass this one.
+// ".vbs == 3" assertion; it cannot pass this one.
 func TestUnsupportedTally_SupportedExtensionNeverTallied(t *testing.T) {
-	got := tallyOf(t, "a.go", "b.go", "c.go", "d.go", "e.go")
+	got := tallyOf(t, "a.go", "b.go", "c.go", "d.go", "e.go", "f.vb", "g.vb")
+	if n, ok := got[".vb"]; ok {
+		t.Fatalf(".vb gained an extractor in #6327 S5 and must never appear in "+
+			"the tally, got count %d", n)
+	}
 	if n, ok := got[".go"]; ok {
 		t.Fatalf(".go is a supported extension and must never appear in the tally, got count %d", n)
 	}
@@ -152,8 +157,8 @@ func TestUnsupportedTally_NoExtensionAndDotfilesExcluded(t *testing.T) {
 // Case folding: .VB and .vb are the same extension and must aggregate into one
 // row, not two.
 func TestUnsupportedTally_ExtensionCaseFolded(t *testing.T) {
-	got := tallyOf(t, "a.vb", "b.VB", "c.Vb")
-	want := map[string]int{".vb": 3}
+	got := tallyOf(t, "a.vbs", "b.VBS", "c.Vbs")
+	want := map[string]int{".vbs": 3}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("case-folding:\n got  %v\n want %v", got, want)
 	}
@@ -164,12 +169,12 @@ func TestUnsupportedTally_ExtensionCaseFolded(t *testing.T) {
 // corrupt the tally.
 func TestUnsupportedTally_CountsReturnsCopy(t *testing.T) {
 	tal := classifier.NewUnsupportedTally()
-	tal.Observe("a.vb", classifier.ClassifyResult{Skip: true, SkipReason: classifier.SkipReasonUnsupportedLanguage})
+	tal.Observe("a.vbs", classifier.ClassifyResult{Skip: true, SkipReason: classifier.SkipReasonUnsupportedLanguage})
 	first := tal.Counts()
-	first[".vb"] = 999
+	first[".vbs"] = 999
 	first[".injected"] = 1
 	second := tal.Counts()
-	if !reflect.DeepEqual(second, map[string]int{".vb": 1}) {
+	if !reflect.DeepEqual(second, map[string]int{".vbs": 1}) {
 		t.Fatalf("Counts() must return a copy, tally was mutated: %v", second)
 	}
 }
@@ -179,9 +184,11 @@ func TestUnsupportedTally_CountsReturnsCopy(t *testing.T) {
 // a stale or hostile map must not be able to inject a supported extension.
 func TestUnsupportedTally_MergeFiltersSupported(t *testing.T) {
 	tal := classifier.NewUnsupportedTally()
-	tal.Observe("a.vb", classifier.ClassifyResult{Skip: true, SkipReason: classifier.SkipReasonUnsupportedLanguage})
-	tal.Merge(map[string]int{".vb": 2, ".go": 500, ".PAS": 4})
-	want := map[string]int{".vb": 3, ".pas": 4}
+	tal.Observe("a.vbs", classifier.ClassifyResult{Skip: true, SkipReason: classifier.SkipReasonUnsupportedLanguage})
+	// `.vb` is in the injected map on purpose: a tally recorded before #6327 S5
+	// shipped the extractor is exactly the "stale map" this filter is for.
+	tal.Merge(map[string]int{".vbs": 2, ".go": 500, ".vb": 7, ".PAS": 4})
+	want := map[string]int{".vbs": 3, ".pas": 4}
 	if got := tal.Counts(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Merge:\n got  %v\n want %v", got, want)
 	}
@@ -191,11 +198,17 @@ func TestUnsupportedTally_MergeFiltersSupported(t *testing.T) {
 // not, "VB.NET" is. Extensions we have no name for must render bare rather
 // than guess.
 func TestLanguageDisplayName(t *testing.T) {
-	if got := classifier.LanguageDisplayName(".vb"); got != "VB.NET" {
-		t.Fatalf("LanguageDisplayName(.vb) = %q, want %q", got, "VB.NET")
+	if got := classifier.LanguageDisplayName(".vbs"); got != "VBScript" {
+		t.Fatalf("LanguageDisplayName(.vbs) = %q, want %q", got, "VBScript")
 	}
-	if got := classifier.LanguageDisplayName(".VB"); got != "VB.NET" {
+	if got := classifier.LanguageDisplayName(".VBS"); got != "VBScript" {
 		t.Fatalf("LanguageDisplayName must case-fold, got %q", got)
+	}
+	// `.vb` used to be this test's example and is now its counter-example:
+	// #6327 S5 registered an extractor for vbnet, so naming a report row for it
+	// would tell the reporter of #6321 the opposite of the truth.
+	if got := classifier.LanguageDisplayName(".vb"); got != "" {
+		t.Fatalf("LanguageDisplayName(.vb) = %q, want empty (vbnet has an extractor)", got)
 	}
 	if got := classifier.LanguageDisplayName(".pas"); got != "Pascal" {
 		t.Fatalf("LanguageDisplayName(.pas) = %q, want %q", got, "Pascal")
@@ -214,8 +227,12 @@ func TestLanguageDisplayName(t *testing.T) {
 // yet, follow this". It must be absent for extensions with no tracked work,
 // and absent for extensions that are already supported.
 func TestTrackingIssue(t *testing.T) {
-	if got := classifier.TrackingIssue(".vb"); got != "#6327" {
-		t.Fatalf("TrackingIssue(.vb) = %q, want %q", got, "#6327")
+	// unsupportedTrackingIssues is EMPTY since #6327 S5: `.vb` -> "#6327" was
+	// its only entry and VB.NET now has an extractor. The positive path is
+	// therefore not exercised from this package — TestTrackingIssuePositivePath
+	// in vbnet_6327_test.go covers it in-package by seeding the map.
+	if got := classifier.TrackingIssue(".vb"); got != "" {
+		t.Fatalf("TrackingIssue(.vb) = %q, want empty — #6327 S5 shipped the extractor", got)
 	}
 	if got := classifier.TrackingIssue(".pas"); got != "" {
 		t.Fatalf("TrackingIssue(.pas) = %q, want empty (nothing tracks Pascal)", got)

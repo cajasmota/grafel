@@ -60,6 +60,7 @@ import (
 	_ "github.com/cajasmota/grafel/internal/extractors/sql"
 	_ "github.com/cajasmota/grafel/internal/extractors/svelte"
 	_ "github.com/cajasmota/grafel/internal/extractors/swift"
+	_ "github.com/cajasmota/grafel/internal/extractors/vbnet"
 	_ "github.com/cajasmota/grafel/internal/extractors/verilog"
 	_ "github.com/cajasmota/grafel/internal/extractors/vhdl"
 	_ "github.com/cajasmota/grafel/internal/extractors/vue"

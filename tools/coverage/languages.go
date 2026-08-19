@@ -125,6 +125,7 @@ var languageDisplayOverrides = map[string]string{
 	"cobol":    "COBOL",
 	"jcl":      "JCL",
 	"php":      "PHP",
+	"vbnet":    "VB.NET",
 }
 
 // SupportedLanguages returns the canonical, sorted, deduplicated list of

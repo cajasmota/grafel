@@ -78,7 +78,7 @@ func emitJSON6338(t *testing.T) map[string]any {
 // The payload carries the ROWS, with their counts and language names — not
 // merely a field that exists.
 func TestDoctorJSONCarriesUnsupportedRows(t *testing.T) {
-	seedGroup6338(t, "acme", map[string]int{".vb": 672, ".pas": 14, ".json": 1938, ".go": 9000})
+	seedGroup6338(t, "acme", map[string]int{".vbs": 672, ".pas": 14, ".json": 1938, ".go": 9000})
 
 	doc := emitJSON6338(t)
 	groups, ok := doc["groups"].([]any)
@@ -91,20 +91,24 @@ func TestDoctorJSONCarriesUnsupportedRows(t *testing.T) {
 	}
 	rows, ok := g["unsupported_languages"].([]any)
 	if !ok || len(rows) != 2 {
-		t.Fatalf("want 2 rows (.vb, .pas), got %v", g["unsupported_languages"])
+		t.Fatalf("want 2 rows (.vbs, .pas), got %v", g["unsupported_languages"])
 	}
 	first := rows[0].(map[string]any)
-	if first["extension"] != ".vb" {
-		t.Fatalf("first row extension = %v, want .vb", first["extension"])
+	if first["extension"] != ".vbs" {
+		t.Fatalf("first row extension = %v, want .vbs", first["extension"])
 	}
 	if n, _ := first["files"].(float64); int(n) != 672 {
 		t.Fatalf("first row files = %v, want 672", first["files"])
 	}
-	if first["language"] != "VB.NET" {
-		t.Fatalf("first row language = %v, want VB.NET", first["language"])
+	if first["language"] != "VBScript" {
+		t.Fatalf("first row language = %v, want VBScript", first["language"])
 	}
-	if first["issue"] != "#6327" {
-		t.Fatalf("first row issue = %v, want #6327", first["issue"])
+	// No tracking issue: unsupportedTrackingIssues went empty when #6327 S5
+	// shipped the VB.NET extractor, and nothing tracks VBScript. The KEY must
+	// still be absent rather than present-and-empty, which is what the JSON
+	// contract promises.
+	if _, ok := first["issue"]; ok {
+		t.Fatalf("first row carries issue = %v; nothing tracks VBScript", first["issue"])
 	}
 	// The same filters the table applies, applied here.
 	for _, r := range rows {
@@ -121,7 +125,7 @@ func TestDoctorJSONCarriesUnsupportedRows(t *testing.T) {
 func TestDoctorJSONIsUncapped(t *testing.T) {
 	counts := map[string]int{}
 	for _, ext := range []string{
-		".vb", ".pas", ".f90", ".ada", ".jl", ".tcl", ".hx", ".coffee",
+		".vbs", ".pas", ".f90", ".ada", ".jl", ".tcl", ".hx", ".coffee",
 		".abap", ".rpg", ".ps1", ".cmd",
 	} {
 		counts[ext] = 50
@@ -149,7 +153,7 @@ func TestDoctorJSONIsUncapped(t *testing.T) {
 // Backward compatibility: every key the payload carried before is still there,
 // unchanged and in the same order. Only "groups" is added.
 func TestDoctorJSONRemainsBackwardCompatible(t *testing.T) {
-	seedGroup6338(t, "acme", map[string]int{".vb": 672})
+	seedGroup6338(t, "acme", map[string]int{".vbs": 672})
 
 	report := &install.DoctorReport{SchemaVersion: 1, OK: false, Remediation: "run grafel install"}
 	var withGroups bytes.Buffer
