@@ -12,17 +12,50 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
+
+// isToolReservedDir reports whether a directory name under
+// internal/extractors/ is reserved by the Go tool and therefore holds no
+// package that could ever be an extractor.
+//
+// This is deliberately NOT a fourth hand-maintained map. The other three
+// tables enumerate judgement calls — "is this a language, a format, or a
+// shared utility" — and their permissive default is correct for those, since
+// a genuinely new extractor should be classified by a human. This set is not
+// a judgement call: it is fixed by the Go toolchain, so a rule beats a list
+// and cannot go stale.
+//
+// From `go help packages`: "Directory and file names that begin with '.' or
+// '_' are ignored by the go tool, as are directories named 'testdata'."
+// "vendor" is added because a vendored dependency tree is by definition not
+// one of our extractors.
+//
+// This is not hypothetical (#6332). #6349 added
+// internal/extractors/testdata/incrfixture/main.go, which created
+// internal/extractors/testdata/ at depth 1. It matched none of the three
+// classification maps, so it took the permissive default and shipped a
+// "Testdata" language row plus a by-language/testdata.md placeholder into the
+// coverage matrix. The point generalises: any package under
+// internal/extractors/ can grow a testdata/ directory at any time, and the
+// person adding a fixture has no reason to think they are editing the
+// published language list.
+func isToolReservedDir(name string) bool {
+	if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+		return true
+	}
+	return name == "testdata" || name == "vendor"
+}
 
 // extractorUtilityDirs are subdirectories of internal/extractors/ that
 // implement shared utilities (not per-language extractors) and must be
 // excluded from the supported-languages list.
+// Entries must correspond to a directory that exists on disk — see
+// TestExtractorClassificationTablesAreLive (#6332).
 var extractorUtilityDirs = map[string]bool{
-	"complexity": true,
-	"config":     true,
-	"cross":      true,
-	"references": true,
-	"sresolver":  true,
+	"config":    true,
+	"cross":     true,
+	"sresolver": true,
 }
 
 // extractorNonLanguageFormats are subdirectories of internal/extractors/
@@ -69,7 +102,6 @@ var extractorNonLanguageFormats = map[string]bool{
 // emitted, while leaving the runtime extraction path untouched (#2821).
 var extractorDirAliases = map[string]string{
 	"javascript": "jsts",
-	"typescript": "jsts",
 	"golang":     "go",
 	"cpp":        "c-cpp",
 	"vue":        "jsts",
@@ -115,6 +147,9 @@ func SupportedLanguages(repoRoot string) []string {
 			continue
 		}
 		name := e.Name()
+		if isToolReservedDir(name) {
+			continue
+		}
 		if extractorUtilityDirs[name] {
 			continue
 		}
@@ -152,9 +187,10 @@ func languageDisplayName(slug string) string {
 // extractorDirForSlug returns the primary internal/extractors/<dir>/
 // directory that backs a canonical language slug. Used by the placeholder
 // page template to cite a concrete on-disk location. When multiple
-// extractor directories alias to the same slug (e.g. javascript + typescript
-// both map to "jsts"), this returns the canonical primary; for slugs with
-// no alias the slug itself names the directory.
+// extractor directories alias to the same slug (e.g. javascript + vue both
+// map to "jsts"), this returns the canonical primary; for slugs with
+// no alias the slug itself names the directory. Every derived slug must
+// resolve to a real directory — see TestRealTreeExtractorDirForSlugResolves.
 func extractorDirForSlug(slug string) string {
 	switch slug {
 	case "jsts":

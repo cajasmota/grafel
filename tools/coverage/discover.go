@@ -445,6 +445,12 @@ func extractorDirLister(repoRoot string, cands map[string]*Candidate) {
 		if !e.IsDir() {
 			continue
 		}
+		// Same exposure as SupportedLanguages: internal/extractors/testdata/
+		// is not a language (#6332). Without this, discover proposes a
+		// "lang.testdata" candidate.
+		if isToolReservedDir(e.Name()) {
+			continue
+		}
 		slug := normaliseLanguage(e.Name())
 		id := "lang." + slug
 		c := ensureCandidate(cands, id, "language", slug, labelize(slug))
