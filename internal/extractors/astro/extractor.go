@@ -188,7 +188,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// ── 3. Template: child components (RENDERS) and islands (IMPLEMENTS) ─────
 	body := extractBody(src)
 	if body != "" {
-		renderRels, islandRels := extractTemplateRelationships(body, file.Path, componentName)
+		renderRels, islandRels := extractTemplateRelationships(body, componentName)
 		entities[0].Relationships = append(entities[0].Relationships, renderRels...)
 		entities[0].Relationships = append(entities[0].Relationships, islandRels...)
 
@@ -488,7 +488,19 @@ func extractServerBuildEntities(fm string, fmStartLine int, filePath, subtype st
 // extractTemplateRelationships scans the HTML body for:
 //   - PascalCase component tags → RENDERS edges (deduplicated)
 //   - client:* directives on those tags → IMPLEMENTS edges
-func extractTemplateRelationships(body, filePath, componentName string) (renders []types.RelationshipRecord, islands []types.RelationshipRecord) {
+//
+// Both kinds leave FromID EMPTY so the assembly loop stamps the owning record's
+// own entity id — entities[0], the .astro component. Passing the file path is
+// strictly worse here than in the Solidity/verilog form of this defect (#6295,
+// #6297): this package emits NO FileEntity, so the path matched no entity at
+// all. Measured on three .astro files through the production resolver
+// (ResolveImports → ReferencesEmbedded): every RENDERS/IMPLEMENTS edge reached
+// the graph with FromID = "src/components/Header.astro" verbatim — a DANGLING
+// endpoint, not a misanchored one. See TestAstro_TemplateRelsAnchoredOnComponent.
+//
+// IMPORTS (extractImports) still passes the file path: that is the documented
+// cross-language convention for import edges (#120).
+func extractTemplateRelationships(body, componentName string) (renders []types.RelationshipRecord, islands []types.RelationshipRecord) {
 	seenRenders := make(map[string]struct{})
 	seenIslands := make(map[string]struct{})
 
@@ -500,9 +512,8 @@ func extractTemplateRelationships(body, filePath, componentName string) (renders
 		if _, exists := seenRenders[name]; !exists {
 			seenRenders[name] = struct{}{}
 			renders = append(renders, types.RelationshipRecord{
-				FromID: filePath,
-				ToID:   name,
-				Kind:   "RENDERS",
+				ToID: name,
+				Kind: "RENDERS",
 				Properties: types.Props{
 					{K: "from_component", V: componentName},
 					{K: "line", V: fmt.Sprintf("%d", lineIdx+1)},
@@ -524,9 +535,8 @@ func extractTemplateRelationships(body, filePath, componentName string) (renders
 				seenIslands[islandKey] = struct{}{}
 				directive := islandAttrRE.FindString(tagSrc)
 				islands = append(islands, types.RelationshipRecord{
-					FromID: filePath,
-					ToID:   name,
-					Kind:   "IMPLEMENTS",
+					ToID: name,
+					Kind: "IMPLEMENTS",
 					Properties: types.Props{
 						{K: "framework_island", V: name},
 						{K: "host_component", V: componentName},

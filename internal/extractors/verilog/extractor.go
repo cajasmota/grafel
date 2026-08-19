@@ -409,10 +409,29 @@ func findComponents(scrubbed, src, filePath, lang string) []types.EntityRecord {
 
 			// EXTENDS edges for class.
 			for _, parent := range extends {
+				// FromID stays empty: both assembly paths substitute the owning
+				// record's own entity id (cmd/grafel/index.go, and
+				// relRecordToGraphRel in internal/extractors/incremental.go), so
+				// the edge leaves the CLASS. Passing filePath instead is
+				// non-empty and non-hex, so ReferencesEmbeddedWithAllowlist
+				// rewrites it, and this package emits a FileEntity with that
+				// same path — every rewrite landed on the file component, and
+				// several classes in one file merged their base lists onto that
+				// one node. Same defect as Solidity's (#6295 / #6297).
+				//
+				// The tool USES edge above (buildToolEntities) keeps filePath
+				// on purpose, but NOT because its owning record is file-scoped
+				// — the owner there is the TOOL component. It keeps it because
+				// this package also emits an extractor.FileEntity carrying that
+				// exact path, so the rewrite lands on a node that exists and
+				// the edge reads file→tool as intended. That distinction is the
+				// whole point: "conceptually file-scoped" is not the criterion,
+				// "a node carrying that exact path string exists" is. IMPORTS
+				// keeps it too, as the documented cross-language convention
+				// (#120).
 				rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
-					FromID: filePath,
-					ToID:   parent,
-					Kind:   "EXTENDS",
+					ToID: parent,
+					Kind: "EXTENDS",
 				})
 			}
 
