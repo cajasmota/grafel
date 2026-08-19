@@ -1,9 +1,15 @@
 #!/bin/bash
 # #6199 measurement matrix driver.
 set -u
-SB=/private/tmp/claude-501/-Users-jorgecajas-Projects-archigraph
-WT=$SB/wt-incrmeasure
-export GRAFEL_HOME=$SB/gh GRAFEL_DAEMON_ROOT=$SB/gdr GOMAXPROCS=4
+# Sandbox root. Overridable so this is not pinned to one machine's scratchpad.
+SB=${SB:-${TMPDIR:-/tmp}/grafel-6199}
+WT=${WT:-$SB/wt-incrmeasure}
+mkdir -p "$SB/home" "$SB/gh" "$SB/gdr"
+# ALL THREE are required for isolation, and none of them is sufficient alone:
+# GRAFEL_DAEMON_ROOT moves the socket/pid/log, GRAFEL_HOME moves the store, and
+# HOME is what everything else falls back to. Dropping HOME here would let a
+# measurement run write into the operator's real ~/.grafel.
+export HOME=$SB/home GRAFEL_HOME=$SB/gh GRAFEL_DAEMON_ROOT=$SB/gdr GOMAXPROCS=4
 FIX=${FIX:-$SB/fixture3k}
 PRIMED=${PRIMED:-$SB/state-primed}
 WORK=$SB/state-work

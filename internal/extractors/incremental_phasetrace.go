@@ -16,17 +16,34 @@
 // two time.Now() calls and an append. There is no allocation per pass beyond a
 // slice of ~20 samples and no locking on the fast path — the heap sampler
 // goroutine (the only concurrent part) starts ONLY when GRAFEL_PHASE_TRACE is
-// set. Leaving the spans compiled in unconditionally is what makes the trace
-// usable on a live daemon; the env var only controls whether a JSONL record is
-// emitted and whether heap is sampled.
+// set. Leaving the SPANS compiled in unconditionally is what makes the trace
+// usable on a live daemon without a rebuild; the env var controls every
+// externally visible effect.
 //
-// Output
+// # Output — ALL of it is gated (deliberate)
 //
-//   - Always: a single `incremental: phases ...` log line on the pass's logger,
-//     space-separated name=ms pairs, so a daemon log is greppable.
-//   - When GRAFEL_PHASE_TRACE=<path>: one JSON object per pass appended to
-//     <path> (JSONL). This is the aggregation surface the #6199 measurement
-//     harness reads.
+// Nothing here changes what an ungated daemon logs. That is a decision, not an
+// omission, and it is worth stating because the first draft of this file wrote
+// the summary line unconditionally:
+//
+// The single most frequent incremental pass on a live daemon is the zero-change
+// no-op — the scheduler polls a quiet repo, nothing changed, the pass returns
+// Done. That path logs NOTHING today: read tryIncremental's `totalChanged == 0`
+// branch, the only Printf in it belongs to the absent-graph guard. An
+// unconditional summary line would therefore not be "one more line on an
+// already chatty path"; it would put a brand-new line into a place that is
+// currently silent, once per poll, per repo, for every user — as a side effect
+// of landing a MEASUREMENT harness. Measurement tooling does not get to change
+// default output. So:
+//
+//   - GRAFEL_PHASE_TRACE unset (the default): no log line, no JSONL, no heap
+//     sampler. The spans still run; see the cost note above.
+//   - GRAFEL_PHASE_TRACE=1|true|yes|on: the `incremental: phases ...` summary
+//     line on the pass's logger, space-separated name=ms pairs, so a daemon log
+//     is greppable. No file is written.
+//   - GRAFEL_PHASE_TRACE=<path>: the summary line AND one JSON object per pass
+//     appended to <path> (JSONL). This is the aggregation surface the #6199
+//     measurement harness reads.
 package extractors
 
 import (
@@ -59,7 +76,8 @@ type phaseTrace struct {
 	heapDone   chan struct{}
 	heapPeak   atomic.Uint64 // max HeapAlloc observed during the pass
 	sysPeak    atomic.Uint64 // max Sys observed during the pass
-	traceePath string
+	traceePath string        // JSONL sink; empty when tracing is off OR boolean-enabled
+	enabled    bool          // GRAFEL_PHASE_TRACE set to anything non-empty
 
 	// Counters the pass fills in as it learns them. They are reported even when
 	// the pass falls back part-way, which is the point: a fallback's walk and
@@ -70,14 +88,26 @@ type phaseTrace struct {
 	rels         int
 }
 
-// newPhaseTrace starts a trace. When GRAFEL_PHASE_TRACE names a file it also
-// starts a 5 ms heap sampler for the duration of the pass.
+// newPhaseTrace starts a trace. When GRAFEL_PHASE_TRACE is set it also starts a
+// 5 ms heap sampler for the duration of the pass; when the value is a path
+// rather than a boolean token, the JSONL sidecar is written too.
 func newPhaseTrace(t0 time.Time) *phaseTrace {
 	tr := &phaseTrace{t0: t0, samples: make([]phaseSample, 0, 24)}
-	tr.traceePath = os.Getenv("GRAFEL_PHASE_TRACE")
-	if tr.traceePath != "" {
-		tr.startHeapSampler()
+	raw := os.Getenv("GRAFEL_PHASE_TRACE")
+	tr.enabled = raw != ""
+	if !tr.enabled {
+		return tr
 	}
+	// A boolean-ish value means "log the summary line, write no file". Anything
+	// else is taken as the JSONL path. Without this, asking for the cheap
+	// greppable line would force the caller to invent a throwaway file.
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		tr.traceePath = ""
+	default:
+		tr.traceePath = raw
+	}
+	tr.startHeapSampler()
 	return tr
 }
 
@@ -182,10 +212,14 @@ type phaseRecord struct {
 	Order          []string           `json:"order"`
 }
 
-// emit writes the log line and, when enabled, the JSONL record. It is called
-// exactly once per TryIncremental return, including every fallback return.
+// emit writes the log line and, when a path was configured, the JSONL record.
+// It is called exactly once per TryIncremental return, including every fallback
+// return — TestPhaseTrace_EveryReturnIsTraced proves that structurally.
+//
+// Both outputs are gated on GRAFEL_PHASE_TRACE; see the "Output" section at the
+// top of this file for why the summary line is NOT unconditional.
 func (t *phaseTrace) emit(printf func(string, ...any), repo string, done bool, fallbackReason string, changedFiles, walkedFiles, entities, rels int) {
-	if t == nil {
+	if t == nil || !t.enabled {
 		return
 	}
 	t.stopHeapSampler()
