@@ -204,10 +204,16 @@ func endsWithContinuation(code string) bool {
 		return false
 	}
 	// A line ending `End <keyword>` closes a block; it never continues one.
-	// `End With` and `End Select` both end on a continuation keyword, and
-	// joining there merges the statement that follows the block — which, when
-	// that statement is the `End Sub`, leaves the container stack open and
-	// misscopes every declaration in the rest of the file.
+	// `End With` is the only form that reaches here: `with` is the one word
+	// in continuationKeywords that any `End <kw>` can end on. `End Select`
+	// does not — `select` is an Honoured:false row in ImplicitRuleCoverage, so
+	// the keyword-set check above already returned false. The guard exists
+	// because joining an `End With` merges the statement that follows the
+	// block — which, when that statement is the `End Sub`, leaves the
+	// container stack open and misscopes every declaration in the rest of the
+	// file. It is kept general rather than special-cased to `with` so that
+	// promoting any other `End` word to a continuation keyword cannot
+	// reintroduce the bug.
 	if prev := precedingWord(masked, i); prev == "end" {
 		return false
 	}

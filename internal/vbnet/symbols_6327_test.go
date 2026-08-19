@@ -1075,3 +1075,48 @@ End Class
 		t.Errorf("Value( inside Helpers = %v, want %v", got, ParenCall)
 	}
 }
+
+// TestBuildTable_MasksLiteralsBeforeDeclarationWalk pins masking at the layer
+// its own justification names. strip.go says "the declaration and reference
+// passes run over masked text so that a `(` or an identifier appearing inside
+// a literal cannot be mistaken for code", and BuildTable masks every logical
+// line to honour that — but until this test the claim was held up only by
+// MaskStringLiterals' own unit test and by JoinContinuations subtests. Nothing
+// at the BuildTable layer died when masking was removed there.
+//
+// The shape that does die is a literal carrying an '='. readType looks for the
+// initialiser with cutKeyword, which skips brackets and literals; when that
+// finds nothing it falls back to a raw IndexByte. A connection string inside a
+// constructor call — `New SqlConnection("Server=x;Db=y")` — has no top-level
+// '=' at all, so unmasked the fallback truncates the type at the first '='
+// INSIDE the literal and records `SqlConnection("Server` as the declared type.
+//
+// Note that most of the walk survives unmasking: splitTopLevel, matchBracket,
+// cutKeyword and trailingGroup are all literal-aware on their own. Masking is
+// what covers the scans that are not, and this is one of them.
+func TestBuildTable_MasksLiteralsBeforeDeclarationWalk(t *testing.T) {
+	src := `
+Public Class C
+    Public Sub M()
+        Dim conn As New SqlConnection("Server=x;Db=y")
+        Dim r As New StreamReader("a=b")
+        Using w As New StreamWriter("k=v")
+        End Using
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+	cases := []struct{ name, want string }{
+		{"conn", "SqlConnection"},
+		{"r", "StreamReader"},
+		{"w", "StreamWriter"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if s := lookupIn(t, tbl, tc.name, "C.M"); s.TypeName != tc.want {
+				t.Errorf("%s: TypeName = %q, want %q — an '=' inside the literal leaked into the type name, so the declaration walk read unmasked text",
+					tc.name, s.TypeName, tc.want)
+			}
+		})
+	}
+}
