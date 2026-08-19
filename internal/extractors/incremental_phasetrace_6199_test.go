@@ -577,14 +577,75 @@ func TestPhaseTrace_PanicStillEmitsAndStopsSampler(t *testing.T) {
 // return lexically inside an open span must be preceded, in its own block or an
 // enclosing one up to the span's block, by that span's end() call.
 func TestPhaseTrace_EverySpanClosesOnEveryPath(t *testing.T) {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, tryIncrementalSrc, nil, 0)
-	if err != nil {
-		t.Fatalf("parse %s: %v", tryIncrementalSrc, err)
+	files := spanAuditFiles(t)
+	if len(files) == 0 {
+		t.Fatalf("no non-test .go files found to audit")
 	}
 
 	spans := 0
 	var problems []string
+	for _, name := range files {
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		n, probs := auditSpans(fset, file)
+		spans += n
+		problems = append(problems, probs...)
+	}
+
+	// Vacuity guard: if the spans stop being found this test passes trivially.
+	if spans < 25 {
+		t.Fatalf("found only %d tr.span(...) openings across %d files in this package; "+
+			"this test has stopped describing the code — revisit it rather than letting "+
+			"it pass", spans, len(files))
+	}
+	t.Logf("checked %d spans for closure on every path across %d files", spans, len(files))
+	if len(problems) > 0 {
+		t.Fatalf("%d span problem(s):\n  %s", len(problems), strings.Join(problems, "\n  "))
+	}
+}
+
+// spanAuditFiles lists every non-test .go file in this package.
+//
+// The audit used to parse incremental.go and nothing else, while findCallSites
+// (the other half of the proof) walked the whole module. That asymmetry was a
+// silent coverage cliff: the day a phase moved to a helper file — which is a
+// plausible refactor for a 117KB file — its spans would stop being audited and
+// NOT ONE test would fail. Widening to the package is the stronger of the two
+// options considered (the other being "assert no tr.span( exists outside
+// incremental.go"): it does not merely detect the move, it keeps auditing the
+// spans after it. A helper file with no spans contributes nothing and costs a
+// parse.
+func spanAuditFiles(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read package dir: %v", err)
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+// auditSpans is the checker itself, factored out of the test so the mutants it
+// must catch can be run against synthetic sources in
+// TestPhaseTrace_SpanAuditCatchesMutants instead of only against the real file.
+// It returns the number of well-formed span openings it recognised and one
+// problem string per defect found.
+func auditSpans(fset *token.FileSet, file *ast.File) (spans int, problems []string) {
+	// Positions of the tr.span(...) calls that were recognised as a proper
+	// `end := tr.span("phase")` opening, used below to flag the ones that were
+	// not (see the "discarded" check at the end of this function).
+	recognised := map[token.Pos]bool{}
+
 	ast.Inspect(file, func(n ast.Node) bool {
 		// Every statement list in Go source hangs off exactly one of these three
 		// nodes, so matching only them visits each list once. Going through
@@ -608,6 +669,7 @@ func TestPhaseTrace_EverySpanClosesOnEveryPath(t *testing.T) {
 					continue
 				}
 				spans++
+				recognised[st.(*ast.AssignStmt).Rhs[0].Pos()] = true
 				close := -1
 				for j := i + 1; j < len(list); j++ {
 					if isCallToIdent(list[j], endName) {
@@ -634,16 +696,7 @@ func TestPhaseTrace_EverySpanClosesOnEveryPath(t *testing.T) {
 		return true
 	})
 
-	// Vacuity guard: if the spans stop being found this test passes trivially.
-	if spans < 25 {
-		t.Fatalf("found only %d tr.span(...) openings in %s; this test has stopped "+
-			"describing the code — revisit it rather than letting it pass", spans, tryIncrementalSrc)
-	}
-	t.Logf("checked %d spans for closure on every path", spans)
-	if len(problems) > 0 {
-		t.Fatalf("%d span(s) can be escaped by a return before their end():\n  %s",
-			len(problems), strings.Join(problems, "\n  "))
-	}
+	return spans, problems
 }
 
 // spanOpen matches `endX := tr.span("phase")` and returns endX and the phase.
