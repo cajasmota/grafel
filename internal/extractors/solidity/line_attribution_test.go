@@ -50,13 +50,42 @@ contract Vault is
 func TestSolidity_LineAttribution(t *testing.T) {
 	ents := runSolidity(t, lineFixture, "contracts/Vault.sol")
 
+	// #6368 moved the IMPORTS edges off the per-import placeholder entity onto
+	// the file carrier, so there is no longer an entity whose StartLine holds
+	// the import statement's line. The line the original defect was about is
+	// now a property on the edge itself, and is asserted here so that dropping
+	// the entity cannot silently drop the line with it.
+	for _, tc := range []struct {
+		sourceModule string
+		line         string
+	}{
+		{"@openzeppelin/contracts/token/ERC20/IERC20.sol", "4"},
+		{"./Helper.sol", "5"},
+	} {
+		t.Run("import "+tc.sourceModule, func(t *testing.T) {
+			var found bool
+			for i := range ents {
+				for _, r := range ents[i].Relationships {
+					if r.Kind != "IMPORTS" || r.Properties.Get("source_module") != tc.sourceModule {
+						continue
+					}
+					found = true
+					if got := r.Properties.Get("line"); got != tc.line {
+						t.Errorf("IMPORTS line = %q, want %q", got, tc.line)
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("no IMPORTS edge with source_module=%q", tc.sourceModule)
+			}
+		})
+	}
+
 	for _, tc := range []struct {
 		name string
 		kind string
 		line int
 	}{
-		{"IERC20", "SCOPE.Component", 4},
-		{"Helper", "SCOPE.Component", 5},
 		{"Vault", "SCOPE.Component", 12},
 		{"Vault.Deposited", "SCOPE.Operation", 16},
 		{"Vault.onlyPositive", "SCOPE.Operation", 20},

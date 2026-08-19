@@ -14200,7 +14200,7 @@ records:
         status: full
         symbols:
           - file: internal/extractors/solidity/extractor.go
-            functions: [findContracts, declSignature, extractBracedBody, stripCommentsAndStrings, buildImportEntities, lineOf, findStateVariables, parseStateVar, solInitializerPos]
+            functions: [findContracts, declSignature, extractBracedBody, stripCommentsAndStrings, buildImportRelationships, lineOf, findStateVariables, parseStateVar, solInitializerPos]
           - file: cmd/grafel/index.go
             functions: [foldFileComponentDuplicates, filePathStem]
         tests:
@@ -14216,6 +14216,45 @@ records:
             functions: [TestIssue6138_ContainerFileLanguagesKeepStemNamedDeclarations, TestIssue6138_FileIsTheDeclarationEcosystemsStillFold, TestIssue6138_SolidityInterfaceSurvivesFullIndex, TestIssue6138_RoleClassRecordsAreGatedByExtension, TestIssue6138_RoleClassStillFoldsWhereTheFileIsTheDeclaration]
         issues_implemented: [6028, 6040, 6135, 6138, 6177]
         verified_at: "2026-08-05"
+      import_resolution_quality:
+        # buildImportRelationships emits one IMPORTS edge per distinct import
+        # path onto the per-file SCOPE.Component (subtype="file") carrier.
+        # #6368 removed the per-import SCOPE.Component placeholder that used to
+        # host them — the #742 / #681 / #693 pattern. The placeholder was named
+        # by BASENAME while the loop deduped by PATH, and graph.EntityID hashes
+        # repo|kind|name|sourceFile without Subtype or the line span, so it
+        # collided by id with any same-named record in the same file. Removing
+        # the record is what makes the fix path-independent: the CLI full
+        # rebuild would prune a marked placeholder, but the daemon incremental
+        # path (convertExtractedRecords + foldDuplicateEntity) never prunes and
+        # instead FOLDS the collision — where a marker actively made things
+        # worse by blocking the gap-fill, so a real interface read as
+        # subtype="import".
+        # Still partial: the IMPORTS ToID remains the raw specifier and binds to
+        # no entity, so solidity import edges stay out of graph.FindImportCycles
+        # and still score as import-hygiene bugs. Resolving the specifier
+        # extractor-side was measured and rejected (it mis-bound ./B.sol to
+        # SCOPE.Operation/B.pong); that work is resolver-side, in #6369, with
+        # the #6296 EXTENDS false bind.
+        status: partial
+        symbols:
+          - file: internal/extractors/solidity/extractor.go
+            functions: [buildImportRelationships, extractSolidity, collectImportPaths]
+          - file: internal/extractor/extractor.go
+            functions: [FileEntity]
+          - file: internal/extractors/incremental.go
+            functions: [convertExtractedRecords, foldDuplicateEntity]
+        tests:
+          - file: internal/extractors/solidity/import_placeholder_6368_test.go
+            functions: [TestSolidity_ImportsEmitNoPlaceholderEntity, TestSolidity_ImportEdgeIsCarriedOverUnchanged, TestSolidity_Variant5_NoEntityIDCollisionWithShadowedDeclaration, TestSolidity_Variant6_NoEntityIDCollisionBetweenTwoImportsOfSameBasename, TestSolidity_ExternalImportStaysRawForExternalSynthesis]
+          - file: internal/extractors/solidity_import_placeholder_pathA_6368_test.go
+            functions: [TestSolidity6368_PathA_ImportDoesNotClobberDeclaredInterface, TestSolidity6368_PathA_TwoImportsOfSameBasenameEmitNoEntity]
+          - file: internal/extractors/solidity/extractor_test.go
+            functions: [TestSolidity_Imports]
+          - file: internal/extractors/solidity/line_attribution_test.go
+            functions: [TestSolidity_LineAttribution]
+        issues_implemented: [6368]
+        verified_at: "2026-08-20"
 
   lang.c-cpp.framework.crow:
     capabilities:
