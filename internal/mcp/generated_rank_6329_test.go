@@ -743,3 +743,27 @@ func TestRerank_ExemptionFollowsTheRankerNotTheScore(t *testing.T) {
 			"top-ranked hit in its repo", got)
 	}
 }
+
+// TestRerank_NoiseDoesNotBlockTheExemption — noise is skipped when reading the
+// run, in BOTH directions. A shadow must not be able to HOLD the exemption
+// (TestRerank_ExemptionDoesNotRescueNoise), and it must not be able to BLOCK
+// one either by occupying the top slot. With include_noise=true a shadow can
+// rank first, and treating it as an authored hit would silently switch the
+// exemption off for the whole repo.
+//
+// MUTATION TARGET: let a noise hit set haveAuthored and this must fail.
+func TestRerank_NoiseDoesNotBlockTheExemption(t *testing.T) {
+	repo := &LoadedRepo{Repo: "alpha"}
+	shadow := &graph.Entity{ID: "alpha_shadow", Name: "shadow", Kind: string(types.EntityKindClass), Subtype: "shadow"}
+	in := []scored{
+		{repo: repo, hit: Hit{Entity: shadow, Score: 9.9}},
+		atRepo(genEntity("gen", 1, 5.0), repo),
+		atRepo(authoredEntity("auth", 10, 4.0), repo),
+	}
+	rerankScored(in)
+	if got := namesOf(in); got[0] != "gen" {
+		t.Fatalf("order = %v, want the generated hit first: it is the top-ranked "+
+			"NON-NOISE hit in its repo, and a shadow above it must not switch the "+
+			"exemption off", got)
+	}
+}
