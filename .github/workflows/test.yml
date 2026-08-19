@@ -237,6 +237,36 @@ jobs:
             exit 1
           fi
 
+      # Coverage-registry cite check (#6352). `go run ./tools/coverage validate`
+      # confirms every `cites` path in docs/coverage/registry.json still exists.
+      # It used to live ONLY in coverage-docs.yml, which is path-filtered to
+      # docs/coverage/**, tools/coverage/** and internal/extractors/**. But the
+      # 23,450 cites span 22 top-level directories: only internal/extractors
+      # (14.7%) is behind a filter path, so 18,007 cites — 76.8%, including all
+      # of internal/substrate, internal/custom, internal/links and
+      # internal/engine — sat behind paths that triggered no run. Deleting or
+      # renaming a cited file under any of those merged green, and the breakage
+      # then surfaced as an unrelated red on whoever next touched
+      # docs/coverage/ (the #6332 failure shape, at four times the scale).
+      #
+      # A longer path list was rejected in #6352: 22 directories is an
+      # approximation of "the whole repo" that rots silently — #6351 deleted
+      # three dead entries and #6330 deleted 31 dead files from exactly this
+      # kind of hand-maintained list. Running it here instead makes the
+      # guarantee unconditional, because this workflow has NO path filter on
+      # `pull_request` (#6291), so it fires on the change that breaks it.
+      #
+      # It is cheap: measured at 11.2s on run 32282703633, and nearly all of
+      # that is the one-off `go run` compile plus printing ~10k pre-existing
+      # advisory warnings — the scan itself is sub-second. That is why #6352's
+      # "if validate costs seconds, the simpler option wins" clause applies.
+      #
+      # Linux only: it is a JSON scan plus file-existence stats, so it is
+      # platform-independent — same rationale as the gofmt/vet steps above.
+      - name: Validate coverage registry schema + cites (#6352)
+        if: runner.os == 'Linux'
+        run: go run ./tools/coverage validate
+
       - run: go build ./...
 
       # Purge BOTH the test-result cache AND the compiled-object cache.
