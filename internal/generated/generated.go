@@ -25,12 +25,18 @@
 //	path    — a filename pattern from a generator whose naming is unambiguous
 //	marker  — an anchored comment header emitted by the generator itself
 //
-// Measured on the two repositories available locally, the marker does almost
-// all of the work: on this repository the marker finds 14 files and the
-// filename table finds 1; on the measurement corpus the marker finds 4 and the
-// filename table finds 0. That matches the argument in #6321 — a content
-// marker catches generators nobody enumerated, and it is checkable evidence
-// about a file rather than a naming convention.
+// The marker does almost all of the work. Re-measured on this repository with
+// the shipped package AFTER the first-comment-block narrowing (see
+// FromContent): 7,728 files scanned, 13 flagged — 12 by the marker alone and 1
+// by the filename table, and that one carries a marker as well. So the
+// filename table has yet to flag a single file the marker would have missed
+// here. That matches the argument in #6321 — a content marker catches
+// generators nobody enumerated, and it is checkable evidence about a file
+// rather than a naming convention.
+//
+// EVERY NUMBER IN THIS COMMENT IS A MEASUREMENT, NOT AN ESTIMATE, and it was
+// wrong twice before: the package doc claimed 14 and the PR body claimed 12
+// while the truth was 13. Re-run internal/generated's sweep before editing it.
 //
 // # Fail-safe direction
 //
@@ -45,6 +51,7 @@
 package generated
 
 import (
+	"bytes"
 	"path"
 	"regexp"
 	"strings"
@@ -102,22 +109,42 @@ func FromPath(rel string) Detection {
 	return Detection{}
 }
 
-// FromContent scans the head of a file for a generator marker.
+// FromContent scans the header of a file for a generator marker.
 //
-// The regexes are case-SENSITIVE and anchored to the start of a line behind an
-// optional comment lead-in. Both properties are load-bearing, not stylistic:
+// Three properties are load-bearing, not stylistic:
 //
-//   - Case-insensitivity makes `@generated` match JPA's `@GeneratedValue`,
-//     which flags 101 hand-written entity classes on the measurement corpus.
-//   - Dropping the line anchor makes prose about generated code match — a
-//     hand-written file in this repository (internal/extractors/migration_prune.go)
-//     opens with a paragraph explaining that Django's generated migrations are
-//     pruned, and a detector in internal/daemon/watch carries the marker text
-//     in a string literal.
+//   - The regexes are case-SENSITIVE. Case-insensitivity makes `@generated`
+//     match JPA's `@GeneratedValue`, which flags 101 hand-written entity
+//     classes on the measurement corpus.
+//   - They are anchored to the start of a line behind a comment lead-in.
+//   - The scan is restricted to the file's FIRST CONTIGUOUS COMMENT BLOCK
+//     (headerBlock), not merely to its first few lines.
 //
-// TestFromContent_HandWrittenNearMisses pins all of those as real files.
+// THE THIRD ONE IS THE FALSE-POSITIVE FIX AND IT IS NOT OPTIONAL. This package
+// originally argued that the `(?m)^` anchor alone kept prose about generated
+// code from matching. That argument was WRONG and was measured wrong: `^` is
+// start-of-LINE, not start-of-FILE, and prose inside source almost always
+// starts a line. A sweep over ~207k files in the Go module cache flagged 8,236
+// of them, in three systematic classes of hand-written source:
+//
+//   - generator SCRIPTS carrying the banner they emit, in a heredoc or a
+//     quoted string (mksysnum_linux.pl, mkcgo.sh, mkstd.sh);
+//   - DOCUMENTATION about the marker — a PR template quoting it in a fenced
+//     code block, a README describing a sibling file;
+//   - hand-written TEST DRIVERS whose mid-function comment describes the data
+//     file being read ("This file was generated from monsterdata_test.json").
+//
+// Every one of those matched at lines 12-18; every real generator banner in
+// the corpus sat at lines 1-5. The boundary drawn here is that fact stated as
+// a rule rather than as a magic number: a generated-file banner is part of the
+// file's HEADER, so the scan stops at the first line that is not a comment,
+// blank, or a language preamble directive.
+//
+// TestFromContent_OnlyTheFirstCommentBlockIsScanned reproduces all three
+// classes synthetically; TestFromContent_HandWrittenNearMisses keeps the
+// original header-shaped near-misses pinned.
 func FromContent(content []byte) Detection {
-	head := headOf(content)
+	head := headerBlock(headOf(content))
 	if len(head) == 0 {
 		return Detection{}
 	}
@@ -150,6 +177,76 @@ func headOf(content []byte) []byte {
 	return content
 }
 
+// utf8BOM is stripped before the header block is measured. A byte-order mark
+// is invisible to a human reading line 1 but would otherwise sit in front of
+// the comment lead-in and defeat the anchor.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+// headerBlock narrows head to the file's first contiguous comment block: every
+// line up to (but not including) the first line that is not a comment, not
+// blank, and not a language preamble directive.
+//
+// This is the false-positive boundary described on FromContent. It is a
+// statement about file structure, not a tuned constant — moving it would
+// require an argument about where generator banners live, and the corpus says
+// they live in the header.
+func headerBlock(head []byte) []byte {
+	head = bytes.TrimPrefix(head, utf8BOM)
+	end := 0
+	for pos := 0; pos < len(head); {
+		nl := bytes.IndexByte(head[pos:], '\n')
+		line := head[pos:]
+		next := len(head)
+		if nl >= 0 {
+			line = head[pos : pos+nl]
+			next = pos + nl + 1
+		}
+		if !headerLine(line) {
+			break
+		}
+		end = next
+		pos = next
+	}
+	return head[:end]
+}
+
+// headerLinePrefixes are the line starts that keep the header block open.
+//
+// The comment introducers mirror commentLead exactly — a line that cannot
+// carry a marker must not be able to extend the window that looks for one.
+// `*/` and `-->` are the closers of the block-comment forms already listed.
+//
+// The three PREAMBLE directives are the exception, and each is here because
+// the language REQUIRES it to precede the banner: a shebang on a generated
+// script, `<?php` on protoc's PHP output, `<?xml` on generated XAML/resx.
+// Treating them as terminators would blind the detector to real generator
+// output — see TestFromContent_LanguagePreamblesDoNotEndTheHeaderBlock.
+var headerLinePrefixes = []string{
+	// comment introducers (must stay in sync with commentLead)
+	"//", "#", "--", "'", "*", "/*", "<!--",
+	// block-comment closers
+	"*/", "-->",
+	// language preamble directives
+	"#!", "<?php", "<?xml", "<?PHP", "<?XML", "<!DOCTYPE",
+}
+
+// headerLine reports whether line keeps the header block open. Blank lines do
+// — a licence header separated from the banner by an empty line is the normal
+// shape — but anything that is actual code closes it.
+func headerLine(line []byte) bool {
+	t := bytes.TrimLeft(line, " \t")
+	t = bytes.TrimRight(t, " \t\r")
+	if len(t) == 0 {
+		return true
+	}
+	for _, p := range headerLinePrefixes {
+		if bytes.HasPrefix(t, []byte(p)) {
+			return true
+		}
+	}
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // Markers
 // ---------------------------------------------------------------------------
@@ -157,6 +254,17 @@ func headOf(content []byte) []byte {
 // commentLead matches an optional comment introducer at the start of a line:
 // //, #, --, ', *, /*, <!--. The leading (?m)^ makes every marker line-anchored.
 const commentLead = `(?m)^[ \t]*(?://+|#+|--+|'+|\*+|/\*+|<!--)?[ \t]*`
+
+// commentLeadRequired is commentLead with the trailing `?` removed, so the
+// introducer is MANDATORY. It is used by the `tool-generated` marker alone.
+//
+// "This file was generated" is ordinary English; the other markers' text
+// ("Code generated ... DO NOT EDIT.", "<auto-generated", "@generated") is not
+// something a person writes by accident. Requiring the lead there costs
+// nothing — every real jOOQ / openapi-typescript / Microsoft banner is inside
+// a comment — and it removes the one marker that could fire on a bare prose
+// line in a markdown or plain-text header block.
+const commentLeadRequired = `(?m)^[ \t]*(?://+|#+|--+|'+|\*+|/\*+|<!--)[ \t]*`
 
 type marker struct {
 	Name string
@@ -191,7 +299,9 @@ var markers = []marker{
 		// second line of the Microsoft banner ("This code was generated by a
 		// tool"). Both real hits on the measurement corpus came through here.
 		Name: "tool-generated",
-		re:   regexp.MustCompile(commentLead + `Th(?:is|e) (?:file|code|class|content) (?:was|is) (?:auto[- ])?generated`),
+		// The lead-in is MANDATORY here, unlike every other marker — see
+		// commentLeadRequired for why this one phrase needs it.
+		re: regexp.MustCompile(commentLeadRequired + `Th(?:is|e) (?:file|code|class|content) (?:was|is) (?:auto[- ])?generated`),
 	},
 	{
 		// Meta's convention, also emitted by Relay and graphql-codegen. Must
