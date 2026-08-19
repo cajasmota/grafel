@@ -26,10 +26,17 @@ func parseForTest(t *testing.T, src string) ts.Tree {
 	return tree
 }
 
+// TestProtoExtractor_Registered asserts the registry key. #6356: it used to
+// read extractor.Get("proto"), which is the token nothing in production ever
+// asks for — the classifier emits "protobuf" — so this test passed for the
+// entire life of the package while every .proto file in production was
+// silently skipped.
 func TestProtoExtractor_Registered(t *testing.T) {
-	_, ok := extractor.Get("proto")
-	if !ok {
-		t.Fatal("proto extractor not registered")
+	if _, ok := extractor.Get("protobuf"); !ok {
+		t.Fatal("proto extractor not registered under the classifier token \"protobuf\"")
+	}
+	if _, ok := extractor.Get("proto"); ok {
+		t.Error("extractor registered under \"proto\": that token is not produced by the classifier")
 	}
 }
 
@@ -42,11 +49,11 @@ service UserService {
 }
 `
 	tree := parseForTest(t, src)
-	ext, _ := extractor.Get("proto")
+	ext, _ := extractor.Get("protobuf")
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:     "user.proto",
 		Content:  []byte(src),
-		Language: "proto",
+		Language: "protobuf",
 		TSTree:   tree,
 	})
 	if err != nil {
@@ -97,11 +104,11 @@ enum Status {
 }
 `
 	tree := parseForTest(t, src)
-	ext, _ := extractor.Get("proto")
+	ext, _ := extractor.Get("protobuf")
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:     "types.proto",
 		Content:  []byte(src),
-		Language: "proto",
+		Language: "protobuf",
 		TSTree:   tree,
 	})
 	if err != nil {
@@ -128,11 +135,11 @@ enum Status {
 }
 
 func TestProtoExtractor_EmptyInput(t *testing.T) {
-	ext, _ := extractor.Get("proto")
+	ext, _ := extractor.Get("protobuf")
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:     "empty.proto",
 		Content:  []byte{},
-		Language: "proto",
+		Language: "protobuf",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -147,19 +154,20 @@ func TestProtoExtractor_Language(t *testing.T) {
 message Foo { string id = 1; }
 `
 	tree := parseForTest(t, src)
-	ext, _ := extractor.Get("proto")
+	ext, _ := extractor.Get("protobuf")
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:     "foo.proto",
 		Content:  []byte(src),
-		Language: "proto",
+		Language: "protobuf",
 		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// Proto entities emit Language="protobuf" to match Python parity golden
-	// (fixtures/protobuf/proto__sample.json). The tree-sitter language key is
-	// "proto" but the canonical emitted language is "protobuf".
+	// (fixtures/protobuf/proto__sample.json). Since #6356 the registry key,
+	// the classifier token and this stamp are all "protobuf"; the tree-sitter
+	// grammar key remains "proto" with a "protobuf" alias in adapters.go.
 	for _, e := range entities {
 		if e.Language != "protobuf" {
 			t.Errorf("entity %q: expected Language=protobuf, got %q", e.Name, e.Language)

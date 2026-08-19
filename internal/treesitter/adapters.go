@@ -74,6 +74,12 @@ var migratedLanguages = map[string]ts.Language{
 	"toml":       tstoml.Language(),
 	"yaml":       tsyaml.Language(),
 	"proto":      tsproto.Language(),
+	// alias: the classifier names .proto files "protobuf" and the extractor
+	// registers under that token (#6356). subproc.go/incremental.go call
+	// Parse with the classifier language verbatim, so without this entry the
+	// parse returns ErrUnsupportedLanguage, FileInput.TSTree stays nil and the
+	// proto extractor returns no entities even once the registry lookup hits.
+	"protobuf":   tsproto.Language(),
 	"dockerfile": tsdockerfile.Language(),
 	"kotlin":     tskotlin.Language(),
 	"sql":        tssql.Language(),
@@ -108,6 +114,7 @@ var abiProbeSource = map[string][]byte{
 	"toml":       []byte("[table]\nkey = \"value\"\n"),
 	"yaml":       []byte("key: value\n"),
 	"proto":      []byte("syntax = \"proto3\";\nmessage M { int32 id = 1; }\n"),
+	"protobuf":   []byte("syntax = \"proto3\";\nmessage M { int32 id = 1; }\n"),
 	"dockerfile": []byte("FROM alpine:3\nRUN echo hi\n"),
 	"kotlin":     []byte("fun f(): Int { return 1 }\n"),
 	"sql":        []byte("SELECT id FROM t WHERE id = 1;\n"),

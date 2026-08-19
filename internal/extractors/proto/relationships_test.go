@@ -14,11 +14,11 @@ import (
 func extract(t *testing.T, path, src string) []types.EntityRecord {
 	t.Helper()
 	tree := parseForTest(t, src)
-	ext, _ := extractor.Get("proto")
+	ext, _ := extractor.Get("protobuf")
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:     path,
 		Content:  []byte(src),
-		Language: "proto",
+		Language: "protobuf",
 		TSTree:   tree,
 	})
 	if err != nil {

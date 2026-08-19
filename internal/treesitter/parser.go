@@ -46,8 +46,10 @@ func SupportedLanguages() []string {
 	return []string{
 		"bash",
 		"c",
-		// "shell" is an alias for bash; omitted from sorted list to avoid duplication.
-		// Callers querying SupportedLanguages() see "bash"; the factory accepts "shell".
+		// "shell" is an alias for bash and "protobuf" an alias for proto; aliases are
+		// omitted from the sorted list to avoid duplication.
+		// Callers querying SupportedLanguages() see "bash" / "proto"; the factory
+		// also accepts "shell" and "protobuf".
 		"cpp",
 		"css",
 		"csharp",
