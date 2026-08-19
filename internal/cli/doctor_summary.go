@@ -338,6 +338,41 @@ func aggregateUnsupported(health *DoctorGroupHealth) {
 	health.UnsupportedExt = total
 }
 
+// ComputeDoctorUnsupported builds the per-group unsupported-language view used
+// by `grafel doctor --json` (#6338).
+//
+// It reads ONLY each repo's graph-stats.json sidecar and reuses
+// aggregateUnsupported, so it shares its summation with the human path and the
+// two can never disagree. Deliberately NOT ComputeDoctorHealth: that loads
+// every repo's full graph to derive orphans and cross-repo edges, and `doctor
+// --json` today does no runtime work at all — paying seconds-to-minutes of
+// graph loading for a field the JSON consumer did not ask for would be a
+// straightforward regression of that command.
+//
+// The returned DoctorGroupHealth values are therefore PARTIAL: only GroupName,
+// Repos[].Slug/UnsupportedExt and UnsupportedExt are populated. Nothing else is
+// meaningful and nothing else should be read off them.
+func ComputeDoctorUnsupported(groups []registry.GroupRef) []*DoctorGroupHealth {
+	var out []*DoctorGroupHealth
+	for _, g := range groups {
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil {
+			continue
+		}
+		health := &DoctorGroupHealth{GroupName: g.Name}
+		for _, r := range cfg.Repos {
+			rh := &DoctorRepoHealth{Slug: r.Slug}
+			if side, sErr := graph.LoadSidecar(daemon.StateDirForRepo(r.Path)); sErr == nil && side != nil {
+				rh.UnsupportedExt = side.UnsupportedExtensions
+			}
+			health.Repos = append(health.Repos, rh)
+		}
+		aggregateUnsupported(health)
+		out = append(out, health)
+	}
+	return out
+}
+
 // PrintDoctorHealth writes the enriched health report to w in human-readable format.
 func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 	for _, g := range groups {

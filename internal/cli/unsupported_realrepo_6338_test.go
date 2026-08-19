@@ -187,8 +187,9 @@ func TestUnsupportedLanguageRegistryHasNoSupportedExtension(t *testing.T) {
 	for _, ext := range classifier.UnsupportedLanguageExtensionsForTest() {
 		if classifier.SupportedExtension(ext) {
 			t.Errorf("%s is now a SUPPORTED extension but is still listed as an "+
-				"unsupported language — remove the registry entry so the report "+
-				"stops printing the row (#6338)", ext)
+				"unsupported language — remove its entry from unsupportedLanguageNames "+
+				"in internal/classifier/unsupported.go so the report stops printing "+
+				"the row (#6338)", ext)
 		}
 		if classifier.LanguageDisplayName(ext) == "" {
 			t.Errorf("%s is in the registry but yields no display name", ext)

@@ -137,10 +137,56 @@ func runQuickDoctorCmd(w io.Writer) error {
 	return nil
 }
 
+// doctorJSONGroup is one group's runtime findings in the --json payload.
+type doctorJSONGroup struct {
+	Name string `json:"name"`
+	// UnsupportedLanguages is the UNCAPPED row list (#6338). The human table
+	// caps at UnsupportedMaxRows and tells the reader to come here for the
+	// rest, so this must never be capped or that instruction becomes another
+	// confidently-wrong statement.
+	UnsupportedLanguages []UnsupportedRow `json:"unsupported_languages,omitempty"`
+}
+
+// doctorJSONReport is what `grafel doctor --json` emits.
+//
+// install.DoctorReport is EMBEDDED rather than nested, so every key that
+// payload carried before keeps its name, its value and its position, and the
+// only change any existing consumer sees is one extra top-level "groups" key.
+// (A map[string]json.RawMessage merge would have worked too, but Go sorts map
+// keys on marshal and would have reordered the whole document.)
+type doctorJSONReport struct {
+	*install.DoctorReport
+	Groups []doctorJSONGroup `json:"groups,omitempty"`
+}
+
+// doctorUnsupportedGroups collects the per-group unsupported-language rows for
+// the JSON payload. Sidecar reads only — see ComputeDoctorUnsupported for why
+// this does not go through ComputeDoctorHealth. A registry that cannot be read
+// yields no groups: --json is primarily an install-drift check and must not
+// start failing because the runtime registry is missing.
+func doctorUnsupportedGroups() []doctorJSONGroup {
+	groups, err := registry.Groups()
+	if err != nil {
+		return nil
+	}
+	var out []doctorJSONGroup
+	for _, h := range ComputeDoctorUnsupported(groups) {
+		rows := UnsupportedRows(h.UnsupportedExt, DoctorUnsupportedMinFiles)
+		if len(rows) == 0 {
+			continue // print/emit nothing when clean, same policy as the table
+		}
+		out = append(out, doctorJSONGroup{Name: h.GroupName, UnsupportedLanguages: rows})
+	}
+	return out
+}
+
 // emitDoctorJSON marshals report as indented JSON to w and returns a non-nil
 // error (to trigger non-zero exit) when report.OK is false.
 func emitDoctorJSON(w io.Writer, report *install.DoctorReport) error {
-	b, err := json.MarshalIndent(report, "", "  ")
+	b, err := json.MarshalIndent(doctorJSONReport{
+		DoctorReport: report,
+		Groups:       doctorUnsupportedGroups(),
+	}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal doctor report: %w", err)
 	}

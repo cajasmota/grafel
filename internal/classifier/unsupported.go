@@ -93,11 +93,14 @@ var unsupportedLanguageNames = map[string]string{
 	".abap":  "ABAP",
 	".rpg":   "RPG",
 	".rpgle": "RPG",
-	".pli":   "PL/I",
-	".pl1":   "PL/I",
-	".rexx":  "REXX",
-	".rex":   "REXX",
-	".sas":   "SAS",
+	// .sqlrpgle is the more common modern IBM i form; having .rpgle without it
+	// is the near-miss the allow-list tradeoff produces.
+	".sqlrpgle": "RPG",
+	".pli":      "PL/I",
+	".pl1":      "PL/I",
+	".rexx":     "REXX",
+	".rex":      "REXX",
+	".sas":      "SAS",
 
 	// Web templating with no extractor.
 	".asp":  "Classic ASP",

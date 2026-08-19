@@ -33,10 +33,10 @@ const (
 // files carried it, and — where we have one — the language's name and the
 // issue tracking support for it.
 type UnsupportedRow struct {
-	Ext      string
-	Count    int
-	Language string // "" when we have no confident name
-	Issue    string // "" when nothing tracks it
+	Ext      string `json:"extension"`
+	Count    int    `json:"files"`
+	Language string `json:"language"`
+	Issue    string `json:"issue,omitempty"`
 }
 
 // UnsupportedRows turns a per-extension count map (as persisted in
@@ -138,5 +138,9 @@ func PrintUnsupportedLanguages(w io.Writer, indent string, rows []UnsupportedRow
 	if hiddenRows > 0 {
 		fmt.Fprintf(w, "%s  … and %d more (%s files) — `grafel doctor --json` for the full list\n",
 			indent, hiddenRows, fmtInt(hiddenFiles))
+		// That command really does carry them: emitDoctorJSON adds a "groups"
+		// key holding the UNCAPPED rows (doctor.go). Bound by
+		// TestDoctorJSONCarriesUnsupportedRows — the line used to point at a
+		// payload that never contained them.
 	}
 }
