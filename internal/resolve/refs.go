@@ -3851,9 +3851,19 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// Without this arm every one of them classifies as bug-extractor,
 	// which understates our own quality numbers rather than the graph's
 	// (#6327's second silent-failure trap). Gated to lang=="vbnet" per
-	// the #94 safer-bias rule, and reached ONLY for a target that failed
-	// to resolve, so an in-tree type of the same name is never shadowed.
-	if lang == "vbnet" && isVBExternalBaseType(name) {
+	// the #94 safer-bias rule.
+	//
+	// The nameExists guard is the load-bearing half, and the first version
+	// of this arm did not have it. UNRESOLVED IS NOT ABSENT: an endpoint
+	// reaches here having failed to bind, and the commonest VB.NET reason
+	// for that is not "the type is external" but "two records carry the
+	// name" — a partial class split across `Foo.vb` and `Foo.Designer.vb`,
+	// or a duplicate declaration. Without the guard a WinForms app that
+	// declares its own `Panel`, `Label` or `Form` as a partial class has
+	// that ambiguity classified external-known, which HIDES the very
+	// partial-class defect #6327 S7 exists to fix. Same shape and same
+	// remedy as the two Python arms above (`Class:` and `View:`).
+	if lang == "vbnet" && !idx.nameExists(name) && isVBExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
 	// Wave-7 — Python CALLS where the stub leaf is `<Class>.<method>`
@@ -5599,20 +5609,23 @@ func isRustExternalBaseType(s string) bool {
 
 // isVBExternalBaseType reports whether s is a VB.NET EXTENDS / IMPLEMENTS
 // target that names a .NET Framework type rather than an in-tree declaration
-// (#6327). Called only from the lang=="vbnet" arm of classifyDispositionLang,
-// and only for a target that already failed to resolve, so an in-tree type of
-// the same bare name is never shadowed.
+// (#6327).
 //
-// Two rules, and the ORDER of preference between them is deliberate:
+// It answers ONLY "does this spelling name a BCL type". It does NOT answer
+// "is this type absent from the graph", and the caller must not treat it as
+// though it did: the lang=="vbnet" arm in classifyDispositionLang pairs it
+// with idx.nameExists precisely because an unresolved endpoint is very often
+// an AMBIGUOUS in-tree one. See that call site.
+//
+// Two rules:
 //
 //  1. DERIVED — a dotted name whose ROOT segment is a .NET framework root
 //     namespace. `System.Windows.Forms.Form`,
 //     `System.Configuration.ApplicationSettingsBase`,
 //     `Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid`. This
-//     needs no per-type curation and cannot rot: it keys on the root
-//     namespace, which is a closed set fixed by the platform. The vbnet
-//     extractor strips a `Global.` escape prefix before emitting, so
-//     `Global.System.X` arrives here as `System.X`.
+//     needs no per-type curation: it keys on the root namespace, a set fixed
+//     by the platform. The vbnet extractor strips a `Global.` escape prefix
+//     before emitting, so `Global.System.X` arrives here as `System.X`.
 //
 //  2. HAND LIST — a bare leaf, because VB.NET source writes
 //     `Inherits UserControl` after `Imports System.Windows.Forms` and the
@@ -5621,10 +5634,9 @@ func isRustExternalBaseType(s string) bool {
 //     Imports set plus the full BCL type index, neither of which the resolver
 //     has. The list is therefore made load-bearing instead — see
 //     TestVBExternalBaseTypesAreLoadBearing in
-//     internal/extractors/vbnet/corpus_6327_test.go, which fails in BOTH
-//     directions against the real 302-file corpus: an entry that no longer
-//     appears as an unresolved target, and an unresolved target that is a BCL
-//     type and is not listed.
+//     internal/resolve/vbnet_basetypes_6327_test.go, which fails in BOTH
+//     directions against a checked-in VB.NET fixture and therefore runs
+//     unconditionally, with no corpus and no environment variable.
 func isVBExternalBaseType(s string) bool {
 	base := strings.TrimSpace(s)
 	// Generic type arguments are stripped by the extractor
@@ -5644,25 +5656,40 @@ func isVBExternalBaseType(s string) bool {
 	return ok
 }
 
-// vbFrameworkRootNamespaces is the closed set of root namespaces owned by the
-// .NET Framework and its first-party libraries. A dotted EXTENDS / IMPLEMENTS
-// target rooted at one of these names a platform type by construction — user
-// code that rooted its own namespace at `System` would be shadowing the BCL,
-// which the compiler permits and nobody does.
+// vbFrameworkRootNamespaces is the set of root namespaces owned by the .NET
+// Framework. A dotted EXTENDS / IMPLEMENTS target rooted at one of these
+// almost always names a platform type: user code that rooted its own
+// namespace at `System` would be shadowing the BCL, which the compiler
+// permits and nobody does.
+//
+// "almost always", not "by construction", and the difference matters for
+// `Windows`. `System` and `Microsoft` are safe on their own; `Windows` is an
+// ordinary identifier that an application may legally use as its own root
+// namespace, and it is in the set only because `Windows.Forms.TextBox` is a
+// real measured target in the corpus. That residual is what the nameExists
+// guard at the call site covers — a dotted target that some in-tree entity
+// carries verbatim as its Name is not routed here at all.
+//
+// `Accessibility` and `Mono` were in the first version of this set and are
+// GONE: neither appears as a dotted target anywhere in the 302-file corpus,
+// so each was an unmeasured guess whose only possible effect was to excuse an
+// in-tree namespace of the same name.
 var vbFrameworkRootNamespaces = map[string]struct{}{
-	"System":        {},
-	"Microsoft":     {},
-	"Windows":       {},
-	"Accessibility": {},
-	"Mono":          {},
+	"System":    {},
+	"Microsoft": {},
+	"Windows":   {},
 }
 
 // vbExternalBaseTypes is the bare-leaf half of isVBExternalBaseType. Every
 // entry is a .NET Framework type, and every entry was observed as an
 // UNRESOLVED EXTENDS / IMPLEMENTS target when the vbnet extractor was driven
-// over the 302 .vb files of WakeOnLAN + StaxRip + display-drivers-uninstaller;
-// see the measurement in internal/extractors/vbnet/corpus_6327_test.go, which
-// re-derives the set on every run and fails in both directions.
+// over the 302 .vb files of WakeOnLAN + StaxRip + display-drivers-uninstaller.
+//
+// The list is pinned in both directions by TestVBExternalBaseTypesAreLoadBearing
+// (internal/resolve/vbnet_basetypes_6327_test.go) against a checked-in
+// fixture, so the pin holds in CI with no corpus present. A second,
+// corpus-gated test re-checks the same property against the real tree when
+// GRAFEL_VBNET_CORPUS is set.
 var vbExternalBaseTypes = map[string]struct{}{
 	// System.Windows.Forms — the WinForms surface #6321 is about.
 	"Button":                  {},
