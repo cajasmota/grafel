@@ -77,21 +77,49 @@
 //	E. `filepath.Join(dir, filePath)` — seen when at least one ARGUMENT is itself
 //	   a recognised path spelling. `filepath.Join(dir, base)` is not seen.
 //	F. concatenation, BOUNDED — `filePath + ""`, `filePath + ".x"`: the path must
-//	   come FIRST and every appended operand must be a string literal. A literal
-//	   PREFIX (`"scope:ormmodel:" + filePath + "#" + name` — ormlink at
-//	   internal/extractors/cross/ormlink, abibridge at cross/abibridge, haskell,
-//	   and the markdown prefix site) builds a STRUCTURAL REF, which resolves
-//	   byQualifiedName and is a different deliberate mechanism, not this bug.
-//	   Matching those would bury the signal under four allow-list entries that
-//	   are not instances of the defect.
-//	   The cost of the bound is TWO shapes, not one:
-//	     - a genuine anchor spelled `prefix + filePath` is missed;
-//	     - a genuine anchor spelled `path + literal + ident` is missed —
-//	       `filePath + "::" + d.name`. This is NOT a structural ref and it is
-//	       LIVE IN-TREE at swift/package.go:189 and :242. It was mis-attributed to
-//	       the prefix group in the first round of this disclosure; see
-//	       knownInvisibleOffenders below, which pins those two sites so the
-//	       claim cannot rot into a comment nobody checks.
+//	   come FIRST and every appended operand must be a string literal.
+//	   A literal PREFIX (`"scope:ormmodel:" + filePath + "#" + name`) builds a
+//	   STRUCTURAL REF, which resolves byQualifiedName and is a different
+//	   deliberate mechanism, not this bug. But that spelling is only ONE of the
+//	   ways a structural-ref FromID escapes this scan, and it is not the dominant
+//	   one. MEASURED 2026-08-19 over non-test sources under internal/extractors/,
+//	   not inferred:
+//	     - the DOMINANT form is D, an opaque helper call at the FromID site: 12
+//	       direct `extractor.Build*StructuralRef(...)` FromIDs — hcl/terraform_deep.go
+//	       :88, :150, :199, :243, :354; hcl/relationships.go:241;
+//	       hcl/module_instantiation.go:99; hcl/cross_module.go:87;
+//	       graphql/graphql.go:233; sql/sql.go:275 and :318; lua/oop.go:139 — plus
+//	       cross/abibridge/extractor.go's bridgeMarkerRef (:203, read at :239 and
+//	       :294). "Exactly four prefix schemes" (first round) was wrong.
+//	     - the prefix concat itself NEVER reaches a FromID directly. All three
+//	       in-tree uses assign to a LOCAL first — cross/ormlink/extractor.go:621
+//	       (read at :638), haskell/depth.go:155 (read at :176), and
+//	       cross/abibridge/extractor.go:283 — and what hides them is NOT this
+//	       bound: collectPathAliases's type switch admits only *ast.Ident,
+//	       *ast.SelectorExpr and *ast.CallExpr, so a *ast.BinaryExpr RHS never
+//	       becomes an alias and the FromID is read as a plain unrecognised ident.
+//	   There is therefore NO cost figure to quote for the PREFIX half of the
+//	   bound: relaxing it would surface ZERO additional sites. MEASURED — every
+//	   inline concat at a FromID in this tree is four sites (config/discover.go:310
+//	   `"module:" + dir`, yaml/helm.go:879 `"helm_template:" + definer`,
+//	   swift/package.go:189 and :242), and neither `dir` (discover.go:305,
+//	   `filepath.ToSlash(filepath.Dir(rel))` — a CallExpr that is not
+//	   filepath.Join, so not an alias) nor `definer` (a closure parameter,
+//	   helm.go:873) is a recognised path spelling. No FromID in this tree is
+//	   spelled `"<literal>" + <recognised path>`.
+//	   The one REAL cost of the bound is the TRAILING half: a genuine anchor
+//	   spelled `path + literal + ident` is missed — `filePath + "::" + d.name`.
+//	   This is NOT a structural ref and it is LIVE IN-TREE at swift/package.go:189
+//	   and :242. It was mis-attributed to the prefix group in the first round of
+//	   this disclosure; see knownInvisibleOffenders below, which pins those two
+//	   sites so the claim cannot rot into a comment nobody checks.
+//	   markdown was ALSO mis-attributed to the prefix group, by the very sentence
+//	   written to correct that mistake on swift. It is not a prefix site at all:
+//	   markdown/markdown.go:171 is `qname := docQName + "::" + slug` with
+//	   `docQName := file.Path` at :136 — path first, then a literal, then a
+//	   non-literal ident, byte-for-byte the swift shape. It is invisible for a
+//	   FURTHER reason as well; see the third category under
+//	   knownInvisibleOffenders below.
 //	G. positional composite literals of a relationship-shaped type, including the
 //	   elided-type form inside `[]types.RelationshipRecord{{…}}`. No field names
 //	   exist, so ANY path-valued element reports the site and the kind stays "?" —
@@ -120,18 +148,56 @@
 // boundary is read as THE boundary. These four were omitted and are stated now.
 //
 //  1. THE SCAN ROOT IS `internal/extractors/` ONLY. The walk starts at ".", i.e.
-//     the package directory of this test. Every relationship producer outside
-//     that tree is entirely invisible: internal/patterns/openapi_extractor.go
-//     (7 `FromID:` sites), internal/engine/http_endpoint_synthesis.go:643,
-//     spring_routes.go:257, django_routes.go:543, feature_flag_edges.go:568,
-//     internal/resolve/bazel_overlay.go:200 and :226. NONE of them is
-//     raw-path-valued today — they carry entity names, structural refs or
-//     `Route:`/`refKind:` composites — so there is NO LIVE MISS here. But the
-//     claim above that this scan "derives its candidate set from the extractor
-//     tree itself, so a new extractor is covered the day it lands" is a
-//     completeness claim about ONE tree, not about the repo: a new relationship
-//     producer added under internal/patterns or internal/engine would NOT be
-//     covered by this guard.
+//     the package directory of this test. What was SEARCHED is stated below
+//     separately from what was CONCLUDED, because the first round ran the two
+//     together and got the search badly wrong — it named SIX files.
+//
+//     SEARCHED (MEASURED 2026-08-19, not inferred). Non-test `.go` files outside
+//     internal/extractors/ carrying a `FromID:` key: 125 files. 66 of them are
+//     under internal/engine/ and 31 under internal/custom/ — internal/custom is
+//     an entire parallel tree of language-specific relationship producers whose
+//     existence the first round did not mention at all. Separately, 25
+//     post-construction `.FromID =` assignments exist repo-wide, 16 of them
+//     outside this tree: cmd/grafel/index.go x8, internal/resolve/refs.go x2,
+//     internal/custom x3 (dart/flutter.go:216, java/patterns_dispatch.go:388,
+//     csharp/aspnet_request_response.go:158), internal/engine x2
+//     (workflow_edges.go:1142, precision_dedup.go:229), internal/graph/graph.go:249.
+//
+//     CONCLUDED. Of all of that, the FromID values that mention a path token are:
+//     internal/patterns/openapi_extractor.go's 7 sites (:135, :238, :259, :284,
+//     :301, :312, :323 — all entity Names, e.g. `entityName := "openapi_schema_" + name`
+//     at :118); internal/resolve/bazel_overlay.go:200 and :226
+//     (`fromID := labelToID[…]`, :187/:218 — an entity id);
+//     internal/engine/feature_flag_edges.go:568, whose buildFeatureFlagCallerID
+//     (:648-653) returns `"Function:" + caller` or the structural ref
+//     `"File:" + path`; internal/engine/plugin_system_edges.go:96
+//     (`fromID := "File:" + filePath`); internal/engine/http_endpoint_synthesis.go:643
+//     and five internal/custom sites reached through one local hop
+//     (elixir/absinthe_typegraph.go:196, javascript/graphql_codefirst_typegraph.go:193,
+//     python/graphql_codefirst_typegraph.go:198, rust/graphql_codefirst_typegraph.go:216,
+//     rust/juniper_typegraph.go:298), all `BuildOperationStructuralRef`, i.e.
+//     `"scope:operation:method:" + lang + ":" + path + ":" + name`
+//     (internal/extractor/structural_ref.go:15-17);
+//     internal/engine/spring_routes.go:257 and django_routes.go:543
+//     (`fmt.Sprintf("Route:%s", composedPath)`, where composedPath comes from
+//     joinRoutePaths / joinDjangoRoutePaths — a URL route, not a file path); and
+//     cmd/grafel/index.go:4688 plus internal/membench/fixture.go:154, both hex
+//     graph.EntityID values. NONE is raw-path-valued, so there is NO LIVE MISS.
+//
+//     HOW COMPLETE THAT CONCLUSION IS. It rests on a name-based grep of FromID
+//     value spellings plus ONE hop of same-file local assignment — the same leaf-
+//     spelling weakness this scan admits above, applied by hand.
+//     plugin_system_edges.go:96 is the in-repo proof that the direct grep misses
+//     indirection: its FromID site reads `fromID` and only the assignment says
+//     "path", so it appears in the list only because the one-hop sweep caught it.
+//     A path reaching a FromID through a struct field, or through a second
+//     function, would escape this sweep as well.
+//
+//     Independent of the miss count, the claim above that this scan "derives its
+//     candidate set from the extractor tree itself, so a new extractor is covered
+//     the day it lands" is a completeness claim about ONE tree, not about the
+//     repo: a new relationship producer added under internal/custom,
+//     internal/engine or internal/patterns would NOT be covered by this guard.
 //
 //  2. FORM G'S SHAPE TEST IS A SUBSTRING MATCH ON THE TYPE'S SPELLING.
 //     relationshipShaped returns true only when exprString(t) contains
@@ -155,10 +221,19 @@
 //     entry.count`; it does not compare the FORM or the expression. Mutant:
 //     replacing a blessed form-A site with a DIFFERENT offending construction
 //     (form I, also keying "?") inside the same function left the count at 1 and
-//     the test GREEN. Corollary, currently latent: a "?" entry with count >= 2
-//     would bless ANY pair of split literals in that function. The only "?"
-//     entry today has count 1, which is why this has no live consequence — and
-//     it is exactly where the next regression would hide.
+//     the test GREEN. The swap is NOT special to "?" keys — that framing, from
+//     the previous round, presented the narrower case as the whole exposure. ANY
+//     entry with count >= 2 already blesses any pair of sites of that kind in
+//     that function, whatever the sites actually are. MEASURED 2026-08-19: four
+//     such entries exist today — svelte:Extract:CONTAINS {2},
+//     svelte:extractReactiveStatements:USES {2},
+//     hcl:emitFileLevelRelationships:CONTAINS {2}, and
+//     knownInvisibleOffenders["swift:extractTargets:DEPENDS_ON"] {2}. What a "?"
+//     key ADDS on top of that is collapsing ACROSS FORMS: a form-A site and a
+//     form-I site key identically, so one can be replaced by the other. The only
+//     "?" entry today (yaml:extractHelmHelpers:?) has count 1, so the
+//     across-forms half has no live consequence; the same-kind half is live at
+//     four keys right now, and it is where the next regression would hide.
 //
 // This is a guard against the careless repetition of a known pattern, not a
 // proof. It is honest about being one.
@@ -271,7 +346,13 @@ var allowedFileAnchored = map[string]allowEntry{
 
 	// markdown: `docQName := file.Path` (form B alias), and the Document entity
 	// is emitted with QualifiedName: docQName in the same function, so the edge
-	// is a self-reference onto a node that exists.
+	// is a self-reference onto a node that exists. This entry covers exactly ONE
+	// site — markdown.go:296, `FromID: docQName`. It does NOT cover the heading
+	// CONTAINS edges at :243 and :290, which carry the path-first `docQName +
+	// "::" + slug` value (:171) through a struct field and are invisible to both
+	// matchers in this file; see the third category at knownInvisibleOffenders.
+	// markdown.go:486's `FromID: filePath` is a kind-IMPORTS site and is filtered
+	// by the #120 exemption, not by this entry.
 	"markdown:Extract:CONTAINS": {1,
 		"`docQName := file.Path` (form B alias) → code block; the Document entity is " +
 			"emitted with QualifiedName: docQName in this same function (markdown.go:142), " +
@@ -393,6 +474,27 @@ var allowedFileAnchored = map[string]allowEntry{
 // its own narrow matcher over the same tree. That makes the entry load-bearing
 // in BOTH directions: deleting the entry fails as an unaccounted site, and
 // fixing the code fails the entry as stale. It is not a comment.
+//
+// A THIRD CATEGORY exists and is deliberately NOT pinned here, because pinning it
+// would be a comment wearing a test's coat. markdown/markdown.go builds
+// `qname := docQName + "::" + slug` (:171) from `docQName := file.Path` (:136) —
+// byte-for-byte the swift shape, and mis-called a literal-PREFIX site by the
+// first two rounds of this disclosure. But that value never appears AT a FromID:
+// it is stored on the heading entity records and read back as `parentQName`
+// (:225, assigned from `headingEntities[i].QualifiedName`) at :243, and as
+// `headingEntities[parentIdx].QualifiedName` at :290. Both matchers in this file
+// inspect the FromID EXPRESSION only, and "QualifiedName" is not in
+// filePathFields, so neither sees it — form F's bound is not what hides it.
+// Adding a "markdown:Extract:CONTAINS" key to this map was TRIED (see the mutant
+// log on #6365) and fails instantly as stale, because scanPathFirstConcatFromIDs
+// matches zero markdown sites. A load-bearing pin would need the matcher to
+// follow a value through a struct field and back out, which is the form-D
+// limitation stated at the top of this file, not a bound that can be relaxed.
+// The site APPEARS benign — the heading entities are emitted with
+// `QualifiedName: qname` at :199, so a node carrying that exact string does
+// exist — but that is INFERRED from reading the emission site, NOT measured, and
+// "appears benign" is not the same claim as "a deliberate structural-ref
+// mechanism", which is what the first two rounds asserted about it.
 //
 // Keyed and counted exactly like allowedFileAnchored.
 var knownInvisibleOffenders = map[string]allowEntry{
@@ -636,12 +738,21 @@ func isFilePathExpr(e ast.Expr, aliases map[string]bool) bool {
 		// Form F, bounded. A concatenation is still path-SHAPED only when the
 		// path comes FIRST and everything appended to it is a string literal
 		// (`filePath + ""`, `filePath + ".x"`). A literal PREFIX — the
-		// `"scope:ormmodel:" + filePath + "#" + name` spelling used by ormlink,
-		// haskell, abibridge and the markdown prefix site — builds a STRUCTURAL
-		// REF, which is a different, deliberate resolution scheme
-		// (byQualifiedName), not a file anchor. Flagging those would bury the
-		// real signal under four allow-list entries that are not instances of
-		// this bug at all.
+		// `"scope:ormmodel:" + filePath + "#" + name` spelling used by ormlink
+		// (cross/ormlink/extractor.go:621), haskell (depth.go:155) and abibridge
+		// (cross/abibridge/extractor.go:283) — builds a STRUCTURAL REF, which is
+		// a different, deliberate resolution scheme (byQualifiedName), not a file
+		// anchor. But note what the prefix half of this bound actually buys:
+		// NOTHING. All three of those sites assign the concat to a local and are
+		// already excluded by collectPathAliases's type switch (a *ast.BinaryExpr
+		// RHS never becomes an alias), and MEASURED 2026-08-19 no FromID anywhere
+		// in this tree is spelled `"<literal>" + <recognised path>`, so relaxing
+		// the path-first rule would surface ZERO extra sites. It is kept because
+		// it is cheap and states the intent, not because it is load-bearing. See
+		// form F in the block comment at the top of this file for the site list.
+		// markdown is NOT one of these — markdown.go:171 is path-FIRST
+		// (`docQName + "::" + slug`), the swift shape; it is invisible for a
+		// different reason, documented at knownInvisibleOffenders.
 		//
 		// The trailing-literal half of the bound is what hides
 		// `filePath + "::" + d.name` (swift/package.go:189,242), which is a real
@@ -839,9 +950,14 @@ func TestNoNewFileAnchoredTypeRelationships(t *testing.T) {
 // knownInvisibleOffenders. It finds FromID values that are a concatenation
 // STARTING with a recognised path spelling but which isFilePathExpr REJECTS,
 // i.e. at least one appended operand is not a string literal
-// (`filePath + "::" + d.name`). The path-first requirement is retained, so the
-// structural-ref schemes with a literal PREFIX — ormlink, haskell, abibridge,
-// the markdown prefix site — are excluded here exactly as they are in form F.
+// (`filePath + "::" + d.name`). The path-first requirement is retained so the
+// literal-PREFIX structural-ref spellings — ormlink, haskell, abibridge — stay
+// excluded here exactly as in form F; in practice they are excluded twice over,
+// since all three reach FromID through a local that collectPathAliases refuses
+// to alias. markdown is NOT in that group: its concat IS path-first, but it
+// reaches FromID through a struct field (`…QualifiedName`), which this matcher
+// does not follow either. See knownInvisibleOffenders for why it is documented
+// rather than listed.
 //
 // It walks independently of scanFileAnchoredRels so that a narrowing of the
 // main matcher cannot silently narrow this one too.
