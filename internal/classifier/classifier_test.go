@@ -793,6 +793,9 @@ var classifierRepresentativeInputs = map[string]string{
 	// Niche research languages — fully wired extractor + classifier.
 	"pony":  "src/main.pony",
 	"idris": "src/Main.idr",
+	// Protobuf — #6356 aligned the registry key with the classifier token, so
+	// .proto is a fully-wired row rather than a knownMismatches entry.
+	"protobuf": "proto/service.proto",
 }
 
 // routedLanguagesWithoutExtractor DERIVES the classifier ↔ extractor gap set
@@ -802,7 +805,9 @@ var classifierRepresentativeInputs = map[string]string{
 // copy of one computable fact (the other two were languagesAwaitingExtractor
 // and SupportedExtension's carve-out, both dealt with in the #6327 S2 review),
 // and it was stale in both directions: it listed "haskell", which has had an
-// extractor for some time, and it omitted "nginx" and "protobuf".
+// extractor for some time, and it omitted "nginx" and "protobuf". ("protobuf"
+// has since left the gap set entirely — #6356 found the extractor had always
+// existed and was registered under a token the classifier never emits.)
 //
 // A list cannot go stale if nobody writes it. extractors.Get is the fact.
 func routedLanguagesWithoutExtractor() []string {
@@ -908,7 +913,12 @@ func TestClassifier_EveryRoutedExtensionHasRegisteredExtractor(t *testing.T) {
 			newMismatches = append(newMismatches,
 				result.Language+": classifier produces \""+result.Language+
 					"\" for \""+repInput+
-					"\" but no extractor is registered — add to knownMismatches or register an extractor")
+					"\" but no extractor is registered — register an extractor under that exact token. "+
+					"Do NOT resolve this by deleting the classifierRepresentativeInputs row: each row is the "+
+					"regression gate for one language (the \"protobuf\" row is #6356's), and removing it "+
+					"restores the silent no-extractor state this check exists to catch. If the language is a "+
+					"genuine known gap with no extractor planned, it belongs in the derived gap set, not in "+
+					"this contract table.")
 		}
 	}
 

@@ -4,7 +4,7 @@ package cpp
 //
 // Two surfaces are covered:
 //
-//  1. .proto IDL files (Language=="proto"): the message / enum / field / service
+//  1. .proto IDL files (Language=="protobuf"): the message / enum / field / service
 //     / rpc declarations are the source of truth for the DTO + service shapes.
 //
 //	    message HelloRequest {
@@ -100,6 +100,14 @@ func (e *cppProtobufExtractor) Extract(ctx context.Context, file extractor.FileI
 	}
 
 	switch {
+	// Entities from this branch are stamped Language "protobuf" — the same
+	// token internal/classifier emits for .proto and the same one
+	// internal/extractors/proto stamps. Before #6357 this file stamped "proto"
+	// while the tree-sitter extractor stamped "protobuf"; that was invisible
+	// only because the tree-sitter extractor never ran (#6356). Now that both
+	// RunCustomExtractors and extractors.Extract produce entities for the same
+	// .proto file, a split stamp would make any `language == "protobuf"`
+	// filter silently miss half of them.
 	case file.Language == "proto" || file.Language == "protobuf" || strings.HasSuffix(file.Path, ".proto"):
 		e.extractProto(src, file, add)
 	case file.Language == "cpp":
@@ -125,7 +133,7 @@ func (e *cppProtobufExtractor) extractProto(src string, file extractor.FileInput
 	for _, m := range reProtoMessage.FindAllStringSubmatchIndex(src, -1) {
 		msgName := src[m[2]:m[3]]
 		line := lineOf(src, m[0])
-		ent := makeEntity("proto_message:"+msgName, "SCOPE.Schema", "dto", file.Path, "proto", line)
+		ent := makeEntity("proto_message:"+msgName, "SCOPE.Schema", "dto", file.Path, "protobuf", line)
 		setProps(&ent, "framework", "protobuf",
 			"provenance", "INFERRED_FROM_PROTO_MESSAGE",
 			"dto_name", msgName, "message_kind", "proto_message")
@@ -145,7 +153,7 @@ func (e *cppProtobufExtractor) extractProto(src string, file extractor.FileInput
 			fname := body[fm[6]:fm[7]]
 			fnum := body[fm[8]:fm[9]]
 			// Skip 'returns'/'rpc' false-positives — proto field types are not keywords.
-			fldEnt := makeEntity(msgName+"."+fname, "SCOPE.Schema", "field", file.Path, "proto", line+lineOf(body, fm[0])-1)
+			fldEnt := makeEntity(msgName+"."+fname, "SCOPE.Schema", "field", file.Path, "protobuf", line+lineOf(body, fm[0])-1)
 			setProps(&fldEnt, "framework", "protobuf",
 				"provenance", "INFERRED_FROM_PROTO_FIELD",
 				"parent_message", msgName,
@@ -161,7 +169,7 @@ func (e *cppProtobufExtractor) extractProto(src string, file extractor.FileInput
 	// Enums.
 	for _, m := range reProtoEnum.FindAllStringSubmatchIndex(src, -1) {
 		enumName := src[m[2]:m[3]]
-		ent := makeEntity("proto_enum:"+enumName, "SCOPE.Schema", "enum", file.Path, "proto", lineOf(src, m[0]))
+		ent := makeEntity("proto_enum:"+enumName, "SCOPE.Schema", "enum", file.Path, "protobuf", lineOf(src, m[0]))
 		setProps(&ent, "framework", "protobuf",
 			"provenance", "INFERRED_FROM_PROTO_ENUM",
 			"enum_name", enumName)
@@ -172,7 +180,7 @@ func (e *cppProtobufExtractor) extractProto(src string, file extractor.FileInput
 	for _, m := range reProtoService.FindAllStringSubmatchIndex(src, -1) {
 		svcName := src[m[2]:m[3]]
 		svcLine := lineOf(src, m[0])
-		svcEnt := makeEntity("grpc_service:"+svcName, "SCOPE.Service", "grpc_service", file.Path, "proto", svcLine)
+		svcEnt := makeEntity("grpc_service:"+svcName, "SCOPE.Service", "grpc_service", file.Path, "protobuf", svcLine)
 		setProps(&svcEnt, "framework", "protobuf",
 			"provenance", "INFERRED_FROM_PROTO_SERVICE",
 			"grpc_service", svcName, "rpc_protocol", "grpc")
@@ -192,7 +200,7 @@ func (e *cppProtobufExtractor) extractProto(src string, file extractor.FileInput
 			line := svcLine + lineOf(body, rm[0]) - 1
 
 			path := "/" + svcName + "/" + method
-			ent := makeEntity("RPC "+path, "SCOPE.Operation", "endpoint", file.Path, "proto", line)
+			ent := makeEntity("RPC "+path, "SCOPE.Operation", "endpoint", file.Path, "protobuf", line)
 			setProps(&ent, "framework", "protobuf",
 				"provenance", "INFERRED_FROM_PROTO_RPC",
 				"http_method", "RPC", "verb", "RPC",
