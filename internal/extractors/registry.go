@@ -105,16 +105,25 @@ func Extract(ctx context.Context, file FileInput) (entities []types.EntityRecord
 // safeExtract calls ext.Extract, recovers from panics, and stamps the
 // generated-source flag on whatever comes back (#6329).
 //
-// THE STAMP BELONGS HERE, not in FileInput. safeExtract is the one chokepoint
-// every production extraction path funnels through — cmd/grafel/index.go via
-// extractPass1, internal/daemon/extract/subproc.go via Extract, and
-// internal/extractors/incremental.go which calls safeExtract directly (see the
-// #6151 comment at its call site for why). Threading a "this file is
-// generated" hint through FileInput instead would make it 60 independent
-// opt-ins across 22 tree-sitter and 38 line-scanner extractors, with a silent
-// failure mode: an extractor that ignored the hint would emit unstamped
-// entities and nothing downstream could tell. Here no extractor is consulted,
-// so none can forget.
+// THE STAMP DOES NOT BELONG IN FileInput. Threading a "this file is generated"
+// hint through FileInput would make it 60 independent opt-ins across 22
+// tree-sitter and 38 line-scanner extractors, with a silent failure mode: an
+// extractor that ignored the hint would emit unstamped entities and nothing
+// downstream could tell. Here no extractor is consulted, so none can forget.
+//
+// THIS IS NOT THE ONLY SEAM, AND THE COMMENT THAT SAID SO WAS WRONG.
+// safeExtract covers Pass 1. Pass 2.5 (the YAML framework rules) and Pass 3
+// (the cross-language extractors) emit EntityRecords for the same file on both
+// production paths and never come through here — which is how *.pb.gw.go could
+// carry its own pathRules entry while the grpc-gateway endpoints extracted
+// from it went unstamped. The full-index seam is mergePassRecords in
+// cmd/grafel/index.go, which every pass's records funnel into on both paths.
+//
+// What is left here is the DAEMON'S INCREMENTAL path (TryIncremental, see the
+// #6151 comment at its call site): it re-extracts a changed file alone, runs no
+// cross extractors at all, and never reaches buildDocument. The two seams
+// deliberately overlap on the full-index paths; the stamp is idempotent and
+// both write through generated.StampRecord, so they cannot disagree.
 //
 // Detection can only ever ADD the flag. Nothing on this path drops a file,
 // drops an entity, or narrows extraction — PR1 changes what the graph SAYS
@@ -136,6 +145,8 @@ func safeExtract(ctx context.Context, ext Extractor, file FileInput) (entities [
 // particular an entity that carried no Properties map does not gain an empty
 // one. Several downstream checks are written as `len(e.Properties) == 0`, so
 // allocating here would change what they see on every file in the repository.
+// generated.StampRecord is the single writer of the two property keys, shared
+// with the full-index seam.
 func stampGenerated(file FileInput, entities []types.EntityRecord) []types.EntityRecord {
 	if len(entities) == 0 {
 		return entities
@@ -145,11 +156,7 @@ func stampGenerated(file FileInput, entities []types.EntityRecord) []types.Entit
 		return entities
 	}
 	for i := range entities {
-		if entities[i].Properties == nil {
-			entities[i].Properties = make(map[string]string, 2)
-		}
-		entities[i].Properties[types.EntityGeneratedProperty] = "true"
-		entities[i].Properties[types.EntityGeneratedByProperty] = d.Rule
+		generated.StampRecord(&entities[i], d)
 	}
 	return entities
 }

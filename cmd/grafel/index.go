@@ -35,6 +35,7 @@ import (
 	mageextract "github.com/cajasmota/grafel/internal/extractors/mage"
 	pyextr "github.com/cajasmota/grafel/internal/extractors/python"
 	taskextract "github.com/cajasmota/grafel/internal/extractors/task"
+	"github.com/cajasmota/grafel/internal/generated"
 	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
@@ -316,6 +317,11 @@ type Indexer struct {
 	// commitManifest. The mutex covers the concurrent writers only.
 	walkStampMu sync.Mutex
 	walkStamps  map[string]idiff.FileEntry
+
+	// generatedSet resolves which source files are machine-generated (#6329).
+	// Created in Run once absRepo is known; see mergePassRecords, which is the
+	// one place the flag is applied to a full-index run.
+	generatedSet *generated.Set
 
 	// failedExtractions names the walked files whose Pass-1 extraction returned
 	// an error this run (#6209). i.stats.failed counts them; only a NAME can be
@@ -1409,6 +1415,11 @@ func moduleRowWorthy(mod string) bool {
 // callers (and tests) can reason about per-pass output independently.
 func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, error) {
 	start := time.Now()
+
+	// #6329 — the generated-source resolver for this run. It is created here,
+	// not lazily at the seam, because absRepo is the only thing it needs and
+	// this is the only place that has it. See mergePassRecords.
+	i.generatedSet = generated.NewSet(absRepo)
 
 	// Resolve the publisher. Default to NoOp so callers without a sink pay
 	// zero overhead (a nil check on every Publish call is more expensive than
@@ -2794,6 +2805,41 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// which would cause language-filtered queries (grafel_find --language)
 	// to silently skip them. This is non-fatal; the graph is still usable.
 	warnEmptyLanguageEntities(doc)
+
+	// #6329 — THE GENERATED-SOURCE SEAM. THIS MUST REMAIN THE LAST THING THAT
+	// TOUCHES doc.Entities IN Run; anything appended after it is unflagged.
+	//
+	// It is here, and not at the four extraction call sites, because those are
+	// call sites and this is a funnel. Run is the single function every entity
+	// in a full index exists inside by the time it finishes, on BOTH production
+	// paths — in-process, and under GRAFEL_SUBPROC_EXTRACT where the
+	// coordinator merges the children's whole envelope stream.
+	//
+	// THE PLACEMENT WAS DERIVED FROM MEASUREMENT, TWICE, NOT FROM READING THE
+	// CODE. The first cut of #6329 stamped in extractors.safeExtract and called
+	// that "the one chokepoint all three production paths funnel through"; it
+	// covered Pass 1 only, so *.pb.gw.go carried its own pathRules entry while
+	// every grpc-gateway endpoint extracted from it in Pass 3 went unstamped —
+	// the exact category the issue was filed about. Moving it to
+	// mergePassRecords covered Passes 1/2/2.5/3 and still left five entities
+	// per generated Django file unflagged, because
+	// ResolveHTTPEndpointHandlersWithRepo synthesises more inside buildDocument.
+	// Moving it to the end of buildDocument still left them, because Pass 7
+	// (process-flow) and Pass 7.5 (event-flow) append SCOPE.Process entities to
+	// doc.Entities AFTER buildDocument has returned.
+	//
+	// The invariant is "every entity attributed to a generated file", so the
+	// stamp belongs after the last producer — and only an end-to-end test over
+	// all entities could find where that is. TestGeneratedFlag_CoversEveryPass
+	// is that test; it is the deliverable, not this call.
+	//
+	// safeExtract keeps its own stamp for the daemon's incremental path, which
+	// re-extracts a single file and never reaches Run. The stamp is idempotent
+	// and both sites resolve through internal/generated, so the overlap cannot
+	// produce a disagreement.
+	i.generatedFileSet().StampEntities(len(doc.Entities), func(k int) (string, generated.PropSetter) {
+		return doc.Entities[k].SourceFile, &doc.Entities[k]
+	})
 
 	return doc, nil
 }
@@ -5492,6 +5538,7 @@ func mergePassRecords(pass1, pass2, pass3 *[]types.EntityRecord) []types.EntityR
 	merged = appendAndRelease(merged, pass1)
 	merged = appendAndRelease(merged, pass2)
 	merged = appendAndRelease(merged, pass3)
+
 	return merged
 }
 
@@ -5511,6 +5558,17 @@ func appendAndRelease(dst []types.EntityRecord, src *[]types.EntityRecord) []typ
 	dst = append(dst, *src...)
 	*src = nil
 	return dst
+}
+
+// generatedFileSet returns this run's generated-source resolver, creating an
+// inert one when buildDocument is driven directly by a unit test that never
+// went through Run. An empty root leaves the filename rules working and
+// disables the content read, which degrades rather than lying.
+func (i *Indexer) generatedFileSet() *generated.Set {
+	if i.generatedSet == nil {
+		i.generatedSet = generated.NewSet("")
+	}
+	return i.generatedSet
 }
 
 // buildDocument merges entity records from every pass, dedupes by stable
