@@ -34,17 +34,19 @@ func TestVBFileIsRecognisedAsVBNet(t *testing.T) {
 	}
 }
 
-// TestVBFileStillYieldsNoEntities is the anti-overclaim guard.
+// TestVBFileIsSkippedNotExtracted asserts what it can actually observe: a `.vb`
+// file is dropped at classification and never enters the pipeline.
 //
-// It is expressed as a classification assertion rather than an end-to-end
-// extraction assertion because "zero entities" has no observable form inside
-// this package — the extraction pipeline lives in internal/daemon/extract, and
-// importing it here would be a dependency cycle in spirit if not in fact. The
-// classifier-level equivalent is exact: the file never enters the pipeline at
-// all, so it cannot produce an entity. S3–S5 flip this by deleting the "vbnet"
-// entry from languagesAwaitingExtractor, at which point this test fails and
-// must be replaced by a real entity-count assertion against the extractor.
-func TestVBFileStillYieldsNoEntities(t *testing.T) {
+// It was called TestVBFileStillYieldsNoEntities, which is the DESIGN statement
+// for S2 and the BUG for S4 — the same green test means "correct, no extractor
+// yet" before S4 and "the extractor exists and is being starved" after it, and
+// nothing in the name tells an S4 author which one they are looking at. The
+// half-done state is observable, but only from internal/cli, which can import
+// internal/extractors; TestLanguagesAwaitingExtractorHaveNoRegisteredExtractor
+// there is the paired assertion, and it is the one that will fail on the S4
+// commit. This one keeps its narrower job: the skip is a skip, and it does not
+// throw away the language.
+func TestVBFileIsSkippedNotExtracted(t *testing.T) {
 	res := New(nil).Classify(context.Background(), "legacy/Form1.vb")
 
 	if !res.Skip {
@@ -75,10 +77,14 @@ func TestVBFileStillYieldsNoEntities(t *testing.T) {
 // what tells them nothing is being extracted; it earns its place until the
 // extractor does.
 func TestVBNetRemainsInUnsupportedReport(t *testing.T) {
-	if SupportedExtension(".vb") {
-		t.Fatal("SupportedExtension(\".vb\") = true after S2, which would " +
-			"blank the #6338 row while entity output is still zero. " +
-			"\"Supported\" on this surface means an extractor exists.")
+	// SupportedExtension answers for the ROUTER, so after S2 it says true for
+	// `.vb` just as it does for `.proto`, `.prisma` and `.toml` — all routed,
+	// none extractable. What keeps the row alive is that the display name and
+	// the tracking issue survive, and that the tally still counts the skip; the
+	// "is it extractable" half is derived from extractors.Get in internal/cli,
+	// the only package that can ask (#6327 S2 review).
+	if !SupportedExtension(".vb") {
+		t.Fatal("SupportedExtension(\".vb\") = false — the router names it vbnet after S2")
 	}
 	if got := LanguageDisplayName(".vb"); got != "VB.NET" {
 		t.Fatalf("LanguageDisplayName(\".vb\") = %q, want %q", got, "VB.NET")

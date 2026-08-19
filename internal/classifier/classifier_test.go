@@ -795,31 +795,29 @@ var classifierRepresentativeInputs = map[string]string{
 	"idris": "src/Main.idr",
 }
 
-// knownMismatches documents classifier ↔ extractor gaps that exist on the
-// current main branch and require a follow-up fix before they can be added to
-// classifierRepresentativeInputs. Each entry describes the gap so failures
-// produce actionable output.
+// routedLanguagesWithoutExtractor DERIVES the classifier ↔ extractor gap set
+// instead of listing it.
 //
-// When a gap is fixed: remove it from knownMismatches, add a row to
-// classifierRepresentativeInputs, and verify both contract tests still pass.
-var knownMismatches = map[string]string{
-	// Classifier produces "protobuf" for .proto files, but the extractor
-	// registers as "proto". Fix: align classifier token to "proto" or rename
-	// the extractor to "protobuf".
-	"protobuf": "proto/service.proto",
-	// Languages recognised by the classifier but with no extractor yet:
-	"objective_c": "src/AppDelegate.m",
-	"haskell":     "src/Main.hs",
-	"perl":        "scripts/build.pl",
-	"r":           "analysis/model.r",
-	"markdown":    "docs/README.md",
-	"prisma":      "prisma/schema.prisma",
-	"toml":        "Cargo.toml",
+// This replaces a hand-maintained `knownMismatches` map, which was the third
+// copy of one computable fact (the other two were languagesAwaitingExtractor
+// and SupportedExtension's carve-out, both dealt with in the #6327 S2 review),
+// and it was stale in both directions: it listed "haskell", which has had an
+// extractor for some time, and it omitted "nginx" and "protobuf".
+//
+// A list cannot go stale if nobody writes it. extractors.Get is the fact.
+func routedLanguagesWithoutExtractor() []string {
+	var gaps []string
+	for _, lang := range classifier.RoutedLanguagesForTest() {
+		if _, ok := extractors.Get(lang); !ok {
+			gaps = append(gaps, lang)
+		}
+	}
+	return gaps
 }
 
 // isCoreLanguageToken returns true when lang is a fully-wired core classifier
 // token (present in classifierRepresentativeInputs). Custom/framework extractor
-// tokens (custom_go_gin, python_django, etc.) and known-gap tokens are excluded.
+// tokens (custom_go_gin, python_django, etc.) are excluded.
 func isCoreLanguageToken(lang string) bool {
 	_, ok := classifierRepresentativeInputs[lang]
 	return ok
@@ -834,8 +832,8 @@ func isCoreLanguageToken(lang string) bool {
 // pipeline — files of that language will receive ErrNoExtractorForLanguage at
 // runtime. Failures name the broken extractor and the input that was tried.
 //
-// Known gaps (proto/terraform/c/etc.) are tracked in knownMismatches and do
-// not cause failures here — they are reported as t.Log entries until fixed.
+// Known gaps are DERIVED (routedLanguagesWithoutExtractor) and do not cause
+// failures here — they are reported as t.Log entries until fixed.
 func TestClassifier_EveryRegisteredExtractorHasRoutedExtension(t *testing.T) {
 	c := newTestClassifier(t)
 	ctx := context.Background()
@@ -847,11 +845,8 @@ func TestClassifier_EveryRegisteredExtractorHasRoutedExtension(t *testing.T) {
 
 	for _, lang := range allLangs {
 		if !isCoreLanguageToken(lang) {
-			// Known gap or custom/framework extractor — log, don't fail.
-			if _, isKnown := knownMismatches[lang]; isKnown {
-				t.Logf("KNOWN GAP (forward): extractor %q has no classifier routing rule — see knownMismatches", lang)
-			}
-			// else: custom_* / python_* / etc. — silently skip (not classifier-routed)
+			// custom_* / python_* / framework extractors are not classifier-routed
+			// by design; a core token missing from the table is caught below.
 			continue
 		}
 		checked++
@@ -884,8 +879,11 @@ func TestClassifier_EveryRegisteredExtractorHasRoutedExtension(t *testing.T) {
 // classifier token added without a corresponding registered extractor will
 // surface here on the next test run.
 //
-// Known gaps (protobuf, c, etc.) are tracked in knownMismatches and logged
-// without causing a test failure until a fix is committed.
+// Routed languages with no registered extractor are DERIVED and logged without
+// causing a failure here. That set is a real defect — such a file classifies
+// Skip=false, reaches internal/daemon/extract/subproc.go and dies on
+// ErrNoExtractorForLanguage, emitting nothing and reporting nothing — but it
+// predates and is wider than this contract table, so it is surfaced, not failed.
 func TestClassifier_EveryRoutedExtensionHasRegisteredExtractor(t *testing.T) {
 	c := newTestClassifier(t)
 	ctx := context.Background()
@@ -914,20 +912,11 @@ func TestClassifier_EveryRoutedExtensionHasRegisteredExtractor(t *testing.T) {
 		}
 	}
 
-	// Log known gaps without failing.
-	for lang, repInput := range knownMismatches {
-		result := c.Classify(ctx, repInput)
-		if result.Skip || result.Language == "" {
-			// Path was skipped or produced no token — gap is a missing classifier
-			// rule rather than a missing extractor.
-			t.Logf("KNOWN GAP (reverse): %q has no classifier rule producing it (input %q skipped/empty)", lang, repInput)
-			continue
-		}
-		_, ok := extractors.Get(result.Language)
-		if !ok {
-			t.Logf("KNOWN GAP (reverse): classifier produces %q for %q but no extractor registered — tracked in knownMismatches",
-				result.Language, repInput)
-		}
+	// Log the derived gap set without failing. Recomputed on every run, so it
+	// cannot drift the way the hand-written list it replaced did.
+	if gaps := routedLanguagesWithoutExtractor(); len(gaps) > 0 {
+		t.Logf("KNOWN GAP (derived): %d routed language(s) have NO registered extractor: %s",
+			len(gaps), strings.Join(gaps, ", "))
 	}
 
 	if len(newMismatches) > 0 {

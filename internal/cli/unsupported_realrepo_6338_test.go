@@ -180,16 +180,22 @@ func TestReport_CapsRowsWithRemainderSummary(t *testing.T) {
 }
 
 // F5: the report's self-correction guarantee must not depend on HOW an
-// extractor is wired up. SupportedExtension asks detectLanguage, which is the
-// router of record, and this invariant makes a landed extractor force the
-// registry entry out — so a stale `.vb` row cannot survive #6327 by any route.
-func TestUnsupportedLanguageRegistryHasNoSupportedExtension(t *testing.T) {
+// extractor is wired up. This invariant makes a landed extractor force the
+// registry entry out, so a stale `.vb` row cannot survive #6327 S4 by any route.
+//
+// It asks extractors.Get, not SupportedExtension. Keyed on SupportedExtension
+// it tested ROUTING, which is a different fact: it went green for `.proto`,
+// `.prisma` and `.toml` (routed, extractor-less), and after #6327 S2 routed
+// `.vb` it could not have fired for VB.NET until the very entry it exists to
+// force out had already been deleted by hand (#6327 S2 review).
+func TestUnsupportedLanguageRegistryHasNoRegisteredExtractor(t *testing.T) {
 	for _, ext := range classifier.UnsupportedLanguageExtensionsForTest() {
-		if classifier.SupportedExtension(ext) {
-			t.Errorf("%s is now a SUPPORTED extension but is still listed as an "+
-				"unsupported language — remove its entry from unsupportedLanguageNames "+
-				"in internal/classifier/unsupported.go so the report stops printing "+
-				"the row (#6338)", ext)
+		if lang := classifier.LanguageForExtension(ext); lang != "" && hasRegisteredExtractor(lang) {
+			t.Errorf("%s routes to %q and an extractor is now REGISTERED for it, but "+
+				"%s is still listed as an unsupported language — remove its entry from "+
+				"unsupportedLanguageNames (and unsupportedTrackingIssues) in "+
+				"internal/classifier/unsupported.go so the report stops printing the "+
+				"row (#6338)", ext, lang, ext)
 		}
 		if classifier.LanguageDisplayName(ext) == "" {
 			t.Errorf("%s is in the registry but yields no display name", ext)

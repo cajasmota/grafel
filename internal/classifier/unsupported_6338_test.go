@@ -72,8 +72,16 @@ func TestUnsupportedTally_SupportedExtensionNeverTallied(t *testing.T) {
 	if !classifier.SupportedExtension(".go") {
 		t.Fatal("SupportedExtension(.go) must be true")
 	}
-	if classifier.SupportedExtension(".vb") {
-		t.Fatal("SupportedExtension(.vb) must be false until VB.NET extraction lands (#6327)")
+	// `.vb` IS routed after #6327 S2, so SupportedExtension — which answers for
+	// the router — says true, exactly as it does for the other seven routed
+	// languages with no extractor. What keeps the .vb row printing is the tally
+	// (Observe only counts skips, and .vb still skips) plus the extractor-derived
+	// filter in internal/cli; see the S2-review tests there.
+	if !classifier.SupportedExtension(".vb") {
+		t.Fatal("SupportedExtension(.vb) must be true — the router names it vbnet (#6327 S2)")
+	}
+	if got := classifier.LanguageForExtension(".vb"); got != "vbnet" {
+		t.Fatalf("LanguageForExtension(.vb) = %q, want vbnet", got)
 	}
 }
 

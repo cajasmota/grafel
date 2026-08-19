@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/cajasmota/grafel/internal/classifier"
+	"github.com/cajasmota/grafel/internal/extractors"
 )
 
 // Thresholds for the "unsupported languages" report (#6338).
@@ -44,11 +45,11 @@ type UnsupportedRow struct {
 //
 //   - extensions with a non-positive count — "report zero as absent, not as a
 //     zero row";
-//   - extensions some extractor now claims — the counts come off a sidecar that
-//     may predate the extractor, so this is re-checked at RENDER time, not only
-//     when the counts were collected. This is what makes `.vb` disappear from
-//     the report the moment VB.NET extraction lands (#6327), whether or not the
-//     repo has been reindexed since;
+//   - extensions whose language some extractor now claims — the counts come off
+//     a sidecar that may predate the extractor, so this is re-checked at RENDER
+//     time, not only when the counts were collected. This is what makes `.vb`
+//     disappear from the report the moment VB.NET extraction lands (#6327),
+//     whether or not the repo has been reindexed since;
 //   - extensions that name no language. The collection side stopped counting
 //     these when the classifier grew its two-disposition split, but a sidecar
 //     written by a build from BEFORE that split still carries `.json 1938`,
@@ -59,6 +60,26 @@ type UnsupportedRow struct {
 // Rows are sorted by count descending, then extension ascending, so the biggest
 // silent gap is the first thing read and the output is stable across runs.
 func UnsupportedRows(counts map[string]int, minFiles int) []UnsupportedRow {
+	return unsupportedRows(counts, minFiles, func(lang string) bool {
+		_, ok := extractors.Get(lang)
+		return ok
+	})
+}
+
+// unsupportedRows is UnsupportedRows with the registry lookup injected.
+//
+// THIS PACKAGE IS WHERE THE "an extractor will produce entities" QUESTION CAN
+// BE ANSWERED. internal/classifier cannot ask it — internal/extractors imports
+// internal/classifier (extractors/incremental.go) — so before this change the
+// classifier answered it from a hand-written map with one entry in it, and was
+// therefore wrong for the other seven routed languages that have no extractor
+// (nginx, objective_c, perl, prisma, protobuf, r, toml). Here it is derived, so
+// it is right for all eight and for the ninth nobody has noticed yet.
+//
+// The seam exists because the global extractor registry has no unregister: the
+// post-S4 state ("vbnet is now extractable") cannot be simulated against the
+// real registry without leaking into every other test in this package.
+func unsupportedRows(counts map[string]int, minFiles int, hasExtractor func(string) bool) []UnsupportedRow {
 	if minFiles < 1 {
 		minFiles = 1
 	}
@@ -67,8 +88,13 @@ func UnsupportedRows(counts map[string]int, minFiles int) []UnsupportedRow {
 		if n < minFiles {
 			continue
 		}
-		// LanguageDisplayName is "" both for a supported extension and for one
-		// that names no language, so this single check covers both filters.
+		// The derived filter: the router names a language for this extension AND
+		// something can extract that language, so there is nothing to report.
+		if lang := classifier.LanguageForExtension(ext); lang != "" && hasExtractor(lang) {
+			continue
+		}
+		// And the registry filter: an extension that names no language at all
+		// (sidecar junk written by a pre-#6338 build) has no row to print.
 		name := classifier.LanguageDisplayName(ext)
 		if name == "" {
 			continue
