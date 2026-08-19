@@ -120,3 +120,38 @@ func cutKeyword(s, keyword string) (before, after string, found bool) {
 	}
 	return s, "", false
 }
+
+// trailingGroup returns the index of the bracket that opens the group closing
+// at the very last byte of s, or -1 when s does not end in a balanced group.
+//
+// This is not strings.LastIndexByte of the opener: that finds the INNERMOST
+// opener, which for `StreamReader(New FileStream(p))` is the one before `p`.
+// Callers that want "the group hanging off the tail" must match the closer,
+// so the scan runs left to right and skips over each balanced group it meets.
+func trailingGroup(s string) int {
+	if s == "" {
+		return -1
+	}
+	last := len(s) - 1
+	switch s[last] {
+	case ')', ']', '}':
+	default:
+		return -1
+	}
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '"':
+			i = literalEnd(s, i) - 1
+		case '(', '[', '{':
+			end := matchBracket(s, i)
+			if end < 0 {
+				return -1
+			}
+			if end == last {
+				return i
+			}
+			i = end
+		}
+	}
+	return -1
+}

@@ -790,21 +790,37 @@ func readType(s string) (typeName string, isArray bool) {
 	if s == "" {
 		return "", false
 	}
-	// Walk trailing bracket groups; an array suffix contains only commas.
+	// `New T(bounds) {…}` and `New T() {…}` are VB.NET's array-creation forms.
+	// The `With {…}` and `From {…}` initialiser clauses were cut above, so a
+	// brace group still glued to the tail here can only be an array
+	// initialiser — and it, not the paren group, is what says "array". The
+	// group before it is a bounds list, which the loop below then strips.
+	//
+	// IsArray is the load-bearing half: ClassifyParen answers ParenIndex off
+	// it, so losing it turns every later `buf(i)` into a phantom ParenCall.
+	if sawNew && strings.HasSuffix(s, "}") {
+		if open := trailingGroup(s); open >= 0 && s[open] == '{' {
+			s = strings.TrimSpace(s[:open])
+			isArray = true
+		}
+	}
+	// Walk trailing bracket groups.
+	//
+	// The rule this implements, stated plainly because the shapes do not
+	// announce themselves: `(Of …)` is a type-argument list and part of the
+	// type name; a group of bare commas is an array-rank specifier; and after
+	// a `New` type name anything else is constructor arguments (or array
+	// bounds) and is not part of the type. There is no syntactic property of
+	// the group itself that separates `List(Of String)` from
+	// `StreamReader(path)` — only the leading `Of` and the presence of `New`
+	// do, which is why both are tested here rather than inferred from shape.
 	for strings.HasSuffix(s, ")") {
-		open := strings.LastIndexByte(s, '(')
-		if open < 0 {
+		open := trailingGroup(s)
+		if open < 0 || s[open] != '(' {
 			break
 		}
-		end := matchBracket(s, open)
-		if end != len(s)-1 {
-			break
-		}
-		inner := strings.TrimSpace(s[open+1 : end])
+		inner := strings.TrimSpace(s[open+1 : len(s)-1])
 		if inner != "" && strings.Trim(inner, ", ") != "" {
-			// (Of T) is part of the type name and stays. A constructor's
-			// argument list is not: `As New StreamReader(path)` names the type
-			// StreamReader.
 			if w, _ := takeWord(inner); sawNew && w != "of" {
 				s = strings.TrimSpace(s[:open])
 				continue

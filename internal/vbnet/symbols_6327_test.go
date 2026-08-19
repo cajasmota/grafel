@@ -853,3 +853,91 @@ End Class
 		t.Errorf("a parameter of one member is not in scope for the type, got %v", got)
 	}
 }
+
+// TestBuildTable_NewNestedConstructorArgs pins the paren that readType must
+// match. Finding the LAST '(' in the text finds the INNERMOST one, whose
+// closer is not the end of the string, so the whole argument list survived
+// into TypeName. Nested constructor calls are ordinary VB.NET.
+func TestBuildTable_NewNestedConstructorArgs(t *testing.T) {
+	src := `
+Public Class C
+    Public Sub M()
+        Dim s As New StreamReader(New FileStream(p))
+        Dim c As New SqlConnection(GetConnString())
+        Dim t As New Timer(New TimeSpan(0, 0, 5))
+        Dim r As New StreamReader(Path.Combine(a, b))
+        Dim d As New Dictionary(Of String, Integer)(StringComparer.Create(x))
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+	cases := []struct{ name, want string }{
+		{"s", "StreamReader"},
+		{"c", "SqlConnection"},
+		{"t", "Timer"},
+		{"r", "StreamReader"},
+		{"d", "Dictionary(Of String, Integer)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := lookupIn(t, tbl, tc.name, "C.M")
+			if s.TypeName != tc.want {
+				t.Errorf("%s: TypeName = %q, want %q", tc.name, s.TypeName, tc.want)
+			}
+			if s.IsArray {
+				t.Errorf("%s: IsArray = true, want false", tc.name)
+			}
+		})
+	}
+}
+
+// TestBuildTable_NewArrayCreation pins `New T(n) {}` and `New T() {…}`, the
+// standard VB.NET array-creation forms. IsArray is the load-bearing half:
+// ClassifyParen answers ParenIndex off it, and losing it turns every later
+// `buf(i)` into a phantom ParenCall — the failure #6327 exists to prevent.
+func TestBuildTable_NewArrayCreation(t *testing.T) {
+	src := `
+Public Class C
+    Private b As New Byte(255) {}
+    Private n As New Integer() {1, 2, 3}
+    Private g As New List(Of String) From {"a"}
+    Public Sub M()
+        Dim m As New Byte(x, y) {}
+    End Sub
+End Class
+`
+	tbl := BuildTable(src)
+	cases := []struct {
+		name, scope, want string
+		array             bool
+	}{
+		{"b", "C", "Byte", true},
+		{"n", "C", "Integer", true},
+		{"g", "C", "List(Of String)", false},
+		{"m", "C.M", "Byte", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := lookupIn(t, tbl, tc.name, tc.scope)
+			if s.TypeName != tc.want {
+				t.Errorf("%s: TypeName = %q, want %q", tc.name, s.TypeName, tc.want)
+			}
+			if s.IsArray != tc.array {
+				t.Errorf("%s: IsArray = %v, want %v", tc.name, s.IsArray, tc.array)
+			}
+		})
+	}
+}
+
+// TestClassifyParen_NewArrayCreationIndexes is why the case above matters: the
+// array-creation form must reach ClassifyParen as ParenIndex.
+func TestClassifyParen_NewArrayCreationIndexes(t *testing.T) {
+	tbl := BuildTable(`
+Public Class C
+    Private buf As New Byte(255) {}
+End Class
+`)
+	if got := tbl.ClassifyParen("buf", "C", false); got != ParenIndex {
+		t.Errorf("buf( = %v, want %v", got, ParenIndex)
+	}
+}
