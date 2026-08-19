@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # package_manager
 
-**Total**: 37 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **elm**: 1 · **erlang**: 1 · **F#**: 1 · **go**: 1 · **haskell**: 1 · **idris**: 1 · **java**: 2 · **JS/TS**: 2 · **lisp**: 1 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **OCaml**: 1 · **php**: 1 · **pony**: 1 · **python**: 3 · **ReasonML**: 1 · **ReScript**: 1 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **Standard ML**: 2 · **swift**: 1 · **zig**: 1
+**Total**: 37 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **elm**: 1 · **erlang**: 1 · **F#**: 1 · **go**: 1 · **haskell**: 1 · **idris**: 1 · **java**: 2 · **JS/TS**: 2 · **lisp**: 1 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **OCaml**: 1 · **PHP**: 1 · **pony**: 1 · **python**: 3 · **ReasonML**: 1 · **ReScript**: 1 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **Standard ML**: 2 · **swift**: 1 · **zig**: 1
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -31,7 +31,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [multi](../by-language/multi.md) | [Dependency hygiene (used / unused / phantom)](../detail/analysis.dependency-hygiene.md) | ✅ | — | — | |
 | [nim](../by-language/nim.md) | [nimble (Nim package manager)](../detail/lang.nim.tool.nimble.md) | — | — | ✅ | |
 | [OCaml](../by-language/ocaml.md) | [Dune / opam (OCaml build)](../detail/lang.ocaml.tool.dune.md) | — | — | ✅ | |
-| [php](../by-language/php.md) | [composer.json](../detail/pkg.composer.md) | — | ✅ | ✅ | |
+| [PHP](../by-language/php.md) | [composer.json](../detail/pkg.composer.md) | — | ✅ | ✅ | |
 | [pony](../by-language/pony.md) | [corral (corral.json)](../detail/manifest.corral.md) | — | — | ✅ | |
 | [python](../by-language/python.md) | [Pipfile / Pipfile.lock](../detail/pkg.pipfile.md) | — | 🟢 | 🟢 | |
 | [python](../by-language/python.md) | [pyproject.toml](../detail/pkg.pyproject.md) | — | 🟢 | ✅ | |

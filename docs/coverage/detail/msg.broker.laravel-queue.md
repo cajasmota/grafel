@@ -3,7 +3,7 @@
 
 Auto-generated. Back to [summary](../summary.md).
 
-- **Language:** [php](../by-language/php.md)
+- **Language:** [PHP](../by-language/php.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Task Queues
 - **Capability cells:** 3

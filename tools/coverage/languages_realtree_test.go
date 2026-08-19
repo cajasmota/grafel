@@ -75,7 +75,7 @@ var languageRoster = map[string]string{
 	"lua":      "Lua",
 	"nim":      "Nim",
 	"ocaml":    "OCaml",
-	"php":      "Php",
+	"php":      "PHP",
 	"pony":     "Pony",
 	"python":   "Python",
 	"reasonml": "ReasonML",

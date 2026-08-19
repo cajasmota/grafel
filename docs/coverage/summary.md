@@ -15,7 +15,7 @@
 | [C#](by-language/csharp.md) | 18 | 7 | 16 | 9 |
 | [kotlin](by-language/kotlin.md) | 18 | 0 | 7 | 1 |
 | [rust](by-language/rust.md) | 17 | 10 | 15 | 5 |
-| [php](by-language/php.md) | 16 | 6 | 14 | 1 |
+| [PHP](by-language/php.md) | 16 | 6 | 14 | 1 |
 | [elixir](by-language/elixir.md) | 14 | 9 | 10 | 5 |
 | [scala](by-language/scala.md) | 14 | 3 | 7 | 1 |
 | [ruby](by-language/ruby.md) | 9 | 6 | 14 | 8 |

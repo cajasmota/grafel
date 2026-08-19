@@ -124,6 +124,7 @@ var languageDisplayOverrides = map[string]string{
 	"vhdl":     "VHDL",
 	"cobol":    "COBOL",
 	"jcl":      "JCL",
+	"php":      "PHP",
 }
 
 // SupportedLanguages returns the canonical, sorted, deduplicated list of
