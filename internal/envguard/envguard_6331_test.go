@@ -110,6 +110,47 @@ func TestCheckMatrix(t *testing.T) {
 			want: VerdictRefuse,
 		},
 		{
+			// A variable set to exactly what the consumer would resolve if it
+			// were unset redirects nothing, so the verdict must be the
+			// "unset" verdict. `export GRAFEL_HOME="$HOME/.grafel"` in a shell
+			// profile is the common shape.
+			name: "GRAFEL_HOME set to the default it would resolve anyway",
+			env:  map[string]string{homeKey(): realHome, EnvGrafelHome: defaultGrafelHomeFor(realHome)},
+			want: VerdictOK,
+		},
+		{
+			name: "GRAFEL_DAEMON_ROOT set to the default it would resolve anyway",
+			env:  map[string]string{homeKey(): realHome, EnvDaemonRoot: defaultDaemonRootFor(realHome)},
+			want: VerdictOK,
+		},
+		{
+			// Both no-ops: no warning either, because nothing moved.
+			name: "both set to the defaults they would resolve anyway",
+			env: map[string]string{
+				homeKey():     realHome,
+				EnvGrafelHome: defaultGrafelHomeFor(realHome),
+				EnvDaemonRoot: defaultDaemonRootFor(realHome),
+			},
+			want: VerdictOK,
+		},
+		{
+			// Control: a no-op on one side does not excuse a real redirection
+			// on the other — this is still the #6134 shape.
+			name: "GRAFEL_HOME at its default, GRAFEL_DAEMON_ROOT elsewhere",
+			env: map[string]string{
+				homeKey():     realHome,
+				EnvGrafelHome: defaultGrafelHomeFor(realHome),
+				EnvDaemonRoot: sandbox,
+			},
+			want: VerdictRefuse,
+		},
+		{
+			// Control: the no-op rule is about the value, not about laxness.
+			name: "GRAFEL_HOME one level above its default",
+			env:  map[string]string{homeKey(): realHome, EnvGrafelHome: realHome},
+			want: VerdictRefuse,
+		},
+		{
 			// Escape hatch downgrades refuse -> warn, never to silence.
 			name: "partial with escape hatch",
 			env: map[string]string{
@@ -242,5 +283,39 @@ func TestSetnessMatchesConsumers(t *testing.T) {
 					v, consumerSaysSet, guardSaysSet, got.Verdict)
 			}
 		})
+	}
+}
+
+// defaultGrafelHomeFor / defaultDaemonRootFor mirror what registry.HomeDir and
+// daemon.DefaultLayout resolve when the corresponding variable is unset. They
+// are spelled out here rather than imported so the test fails if the guard's
+// own idea of the default drifts from the consumers'.
+func defaultGrafelHomeFor(home string) string { return filepath.Join(home, ".grafel") }
+
+func defaultDaemonRootFor(home string) string {
+	if runtime.GOOS == "windows" {
+		// paths_windows.go: %APPDATA% (falling back to the user home) + "grafel".
+		return filepath.Join(home, "grafel")
+	}
+	return filepath.Join(home, ".grafel")
+}
+
+// TestDaemonRootIsNotANoOpUnderXDG: on Unix the default socket moves to
+// $XDG_RUNTIME_DIR/grafel/daemon.sock when that variable is set, and
+// GRAFEL_DAEMON_ROOT always puts the socket at <root>/sockets/daemon.sock. So
+// under XDG_RUNTIME_DIR, GRAFEL_DAEMON_ROOT=~/.grafel is a REAL move of the
+// daemon plane onto a store that did not move, not a no-op.
+func TestDaemonRootIsNotANoOpUnderXDG(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("XDG_RUNTIME_DIR is a Unix concern")
+	}
+	const realHome = "/Users/real"
+	got := Check(envOf(map[string]string{
+		homeKey():         realHome,
+		"XDG_RUNTIME_DIR": "/run/user/1000",
+		EnvDaemonRoot:     defaultDaemonRootFor(realHome),
+	}), realHome)
+	if got.Verdict != VerdictRefuse {
+		t.Fatalf("Check = %v, want VerdictRefuse: under XDG_RUNTIME_DIR the root moves the socket", got.Verdict)
 	}
 }

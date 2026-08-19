@@ -32,8 +32,13 @@
 // internal/install/daemon_guard.go is scoped to uninstall (#5277). Nothing sat
 // on the real binary's path. So the surface where the mistake is CHEAP (a test
 // run, easily rerun) was hardened and the surface where it is EXPENSIVE (the
-// real binary against real state) was not. This moves the check to where the
-// damage happens.
+// real binary against real state) was not. This puts the check on the real
+// binary's path, at the root command's PersistentPreRunE. One thing still runs
+// ahead of it: cmd/grafel/main.go calls runQuickDoctorHook() before
+// cli.Execute, so a partially isolated invocation does read install.json and
+// probe the live daemon's /healthz before the guard fires. That probe is
+// read-only, so a refused run still writes nothing — but the guard is the first
+// thing that can REFUSE, not literally the first thing that runs.
 //
 // # The rule
 //
@@ -52,6 +57,22 @@
 // smaller: the store and the daemon plane are both redirected, and what still
 // resolves from the real home are HOME-derived config paths (~/.claude.json,
 // ~/.codeium, the XDG-less ConfigDir fallback), not the store.
+//
+// # "Set" means what the consumers mean by set
+//
+// The table above reads the two variables VERBATIM, because every consumer
+// does: registry.HomeDir, daemon/paths_unix.go and daemon/paths_windows.go are
+// all bare `os.Getenv(...) != ""`. GRAFEL_HOME="   " therefore redirects the
+// store into a literal three-space directory, and the guard must see it as set
+// or it is reasoning about a different environment than the program runs in.
+//
+// The one normalisation applied is the opposite one: a value equal to what the
+// consumer would resolve if the variable were UNSET redirects nothing and is
+// read as unset. `export GRAFEL_HOME="$HOME/.grafel"` in a shell profile moves
+// no store, so refusing it with "the STORE is redirected" would be a false
+// diagnosis the user cannot act on. The defaults are compared against the REAL
+// user home (see defaultGrafelHome) and are platform-specific for the daemon
+// root (see defaultDaemonRoot).
 //
 // EnvAllowPartial=1 downgrades the refusal to a warning, for an operator who
 // has read the above and means it.
@@ -123,8 +144,16 @@ func Check(env Env, realHome string) Result {
 	daemonRoot := get(EnvDaemonRoot)
 	allowPartial := strings.TrimSpace(get(EnvAllowPartial)) == "1"
 
-	hasHome := grafelHome != ""
-	hasRoot := daemonRoot != ""
+	// A variable whose value is exactly what the consumer would resolve if it
+	// were unset redirects NOTHING, so it must be read as unset — otherwise a
+	// plain `export GRAFEL_HOME="$HOME/.grafel"` in a shell profile is refused
+	// with a diagnosis ("the STORE is redirected") that is simply false, and
+	// the user has no way to reason about the message. By construction this
+	// can open no hole the guard does not already have: the verdict it
+	// produces is the verdict for the same environment with the variable
+	// removed.
+	hasHome := grafelHome != "" && !sameDir(grafelHome, defaultGrafelHome(realHome))
+	hasRoot := daemonRoot != "" && !sameDir(daemonRoot, defaultDaemonRoot(env, realHome))
 
 	switch {
 	case !hasHome && !hasRoot:
@@ -231,6 +260,61 @@ func RealUserHome() string {
 		return ""
 	}
 	return filepath.Clean(u.HomeDir)
+}
+
+// defaultGrafelHome is the value registry.HomeDir resolves for the REAL user
+// when GRAFEL_HOME is unset: <real home>/.grafel.
+//
+// Deliberately the REAL home, not the effective $HOME. Comparing against a
+// redirected $HOME would neutralise GRAFEL_HOME inside a sandbox — and
+// HOME + GRAFEL_HOME=$HOME/.grafel + GRAFEL_DAEMON_ROOT=$HOME/.grafel is
+// exactly testsupport.IsolateHome, the project's canonical FULL isolation. Read
+// against the effective home, that shape decomposes into "root set, home not"
+// and the guard refuses its own sanctioned helper. Against the real home, the
+// only values neutralised are the ones that name the live user's real store,
+// which is the un-isolated baseline the guard already passes.
+//
+// Returns "" when the real home is unknown; sameDir then declines to match and
+// nothing is treated as a no-op.
+func defaultGrafelHome(realHome string) string {
+	if realHome == "" {
+		return ""
+	}
+	return filepath.Join(realHome, ".grafel")
+}
+
+// defaultDaemonRoot is the Root daemon.DefaultLayout resolves for the REAL user
+// when GRAFEL_DAEMON_ROOT is unset. It is NOT the same as defaultGrafelHome on
+// either platform, so it is spelled out separately:
+//
+//   - Windows (paths_windows.go): %APPDATA%\grafel, falling back to the user
+//     home when APPDATA is empty — never ~/.grafel. The named pipe is derived
+//     from the same root, so an equal root means an equal pipe.
+//   - Unix (paths_unix.go): ~/.grafel, BUT the socket is
+//     $XDG_RUNTIME_DIR/grafel/daemon.sock whenever XDG_RUNTIME_DIR is set,
+//     while GRAFEL_DAEMON_ROOT always puts it at <root>/sockets/daemon.sock.
+//     So under XDG_RUNTIME_DIR the root really does move the daemon plane and
+//     there is no no-op value at all: return "" and let any value count as set.
+func defaultDaemonRoot(env Env, realHome string) string {
+	if runtime.GOOS == "windows" {
+		base := strings.TrimSpace(lookup(env, "APPDATA"))
+		if base == "" {
+			base = realHome
+		}
+		if base == "" {
+			return ""
+		}
+		return filepath.Join(base, "grafel")
+	}
+	if lookup(env, "XDG_RUNTIME_DIR") != "" || realHome == "" {
+		return ""
+	}
+	return filepath.Join(realHome, ".grafel")
+}
+
+func lookup(env Env, key string) string {
+	v, _ := env(key)
+	return v
 }
 
 // sameDir compares two directory paths, case-insensitively on the platforms
