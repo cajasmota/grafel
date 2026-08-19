@@ -256,8 +256,8 @@ func TestSerializeHits_ExposesGenerated(t *testing.T) {
 // partition drops it below every weak authored match — in a group, below the
 // per-repo top 3, i.e. out of the default view entirely and with no signal.
 //
-// MUTATION TARGET: delete the strongestGeneratedHit exemption from
-// rerankScored and this must fail.
+// MUTATION TARGET: delete the exemptGeneratedHits exemption from rerankScored
+// and this must fail.
 func TestRerank_StrongestGeneratedMatchSurvivesTheDemotion(t *testing.T) {
 	in := []scored{
 		genEntity("UserProfileRequest", 17, 9.9), // the only real answer
@@ -283,8 +283,8 @@ func TestRerank_StrongestGeneratedMatchSurvivesTheDemotion(t *testing.T) {
 // generated declarations outranks the authored answer. Only the top one is
 // spared; the rest stay demoted, so authored results still surface from row 2.
 //
-// MUTATION TARGET: make strongestGeneratedHit return every out-scoring
-// generated entity instead of the best one, and this must fail.
+// MUTATION TARGET: make exemptGeneratedHits return every generated entity in
+// the run instead of the top-ranked one, and this must fail.
 func TestRerank_ExemptionIsOnlyTheSingleBestHit(t *testing.T) {
 	in := []scored{
 		genEntity("GenA", 1, 9.9),
@@ -299,20 +299,6 @@ func TestRerank_ExemptionIsOnlyTheSingleBestHit(t *testing.T) {
 	if got[1].hit.Entity.Name != "AuthOnly" {
 		t.Fatalf("second = %q, want the authored hit; only ONE generated entity "+
 			"is exempt from the demotion", got[1].hit.Entity.Name)
-	}
-}
-
-// TestRerank_TiesGoToTheAuthoredHit — the exemption requires a STRICTLY higher
-// score, so an equal-scoring pair still partitions in the authored entity's
-// favour.
-func TestRerank_TiesGoToTheAuthoredHit(t *testing.T) {
-	in := []scored{
-		genEntity("Gen", 1, 5),
-		authoredEntity("Auth", 42, 5),
-	}
-	got := rerank(in)
-	if got[0].hit.Entity.Name != "Auth" {
-		t.Fatalf("first = %q, want the authored hit on a score tie", got[0].hit.Entity.Name)
 	}
 }
 
@@ -545,5 +531,215 @@ func TestPerRepoSummary_AgreesWithTheGlowSelection(t *testing.T) {
 			t.Fatalf("glow highlights %q but the rendered view does not name it:\n%s",
 				sc.hit.Entity.Name, out)
 		}
+	}
+}
+
+// rrfFixtureDoc is one repo with a generated declaration and an authored
+// entity that both match "user". It exists so the exemption can be exercised
+// through the REAL ranker — BuildBM25 → Search → FuseRRF — rather than against
+// hand-written score literals, because the whole defect is that hand-written
+// BM25 magnitudes do not resemble what fusion produces.
+func rrfFixtureDoc(repo string) *graph.Document {
+	gen := graph.Entity{
+		ID: repo + "_gen_User", Name: "User", Kind: "SCOPE.Class",
+		SourceFile: "api/v1/user.pb.go", StartLine: 17,
+	}
+	gen.PropSet(types.EntityGeneratedProperty, "true")
+	return &graph.Document{Repo: repo, Entities: []graph.Entity{
+		gen,
+		{ID: repo + "_auth_UserService", Name: "UserService", Kind: "SCOPE.Class",
+			SourceFile: "internal/user/service.go", StartLine: 42},
+	}}
+}
+
+// scoredFrom wraps ranker output as the handler does.
+func scoredFrom(r *LoadedRepo, hits []Hit) []scored {
+	out := make([]scored, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, scored{repo: r, hit: h})
+	}
+	return out
+}
+
+// mirroredSemantic returns a semantic hit list in the REVERSE of the BM25
+// order. That is not a contrived shape: with two-list RRF the generated and
+// authored hits routinely occupy mirrored ranks, and mirrored ranks make the
+// fused scores EXACTLY equal (1/(k+1) + 1/(k+2) on both sides).
+func mirroredSemantic(bm25 []Hit) []Hit {
+	out := make([]Hit, 0, len(bm25))
+	for i := len(bm25) - 1; i >= 0; i-- {
+		out = append(out, Hit{Entity: bm25[i].Entity, Score: float64(len(bm25) - i)})
+	}
+	return out
+}
+
+func namesOf(all []scored) []string {
+	out := make([]string, len(all))
+	for i, s := range all {
+		out[i] = s.hit.Entity.Name
+	}
+	return out
+}
+
+// TestRerank_ExemptionSurvivesFuseRRF is BLOCKER B.
+//
+// The exemption compared hit.Score, and hit.Score is an RRF reciprocal on
+// every repo that has an embeddings sidecar. That is the same trap that killed
+// the score-penalty design: green without embeddings, inert with them. With
+// mirrored ranks the two fused scores are EXACTLY equal, so "strictly
+// outscores" can never hold and the exemption silently never fires — even
+// though the generated hit is the top-ranked hit in the list.
+//
+// The rule is now positional: the exemption goes to the repo's top-ranked hit
+// when that hit is generated. Position is what fusion preserves; magnitude is
+// not.
+//
+// MUTATION TARGET: make the exemption score-based again (require a strictly
+// higher Score) and the sidecar half of this must fail.
+func TestRerank_ExemptionSurvivesFuseRRF(t *testing.T) {
+	doc := rrfFixtureDoc("alpha")
+	repo := &LoadedRepo{Repo: "alpha"}
+	bm25 := BuildBM25(doc).Search("user", 10)
+	if len(bm25) != 2 || bm25[0].Entity.Name != "User" {
+		t.Fatalf("fixture precondition: BM25 order = %v, want the generated hit first", namesOf(scoredFrom(repo, bm25)))
+	}
+
+	// A — no sidecar: raw BM25 magnitudes.
+	noSidecar := scoredFrom(repo, bm25)
+	t.Logf("A (NO sidecar):   %s %f | %s %f",
+		noSidecar[0].hit.Entity.Name, noSidecar[0].hit.Score,
+		noSidecar[1].hit.Entity.Name, noSidecar[1].hit.Score)
+	rerankScored(noSidecar)
+
+	// B — with sidecar: the same two entities through FuseRRF at mirrored ranks.
+	fused := FuseRRF(bm25, mirroredSemantic(bm25))
+	withSidecar := scoredFrom(repo, fused)
+	t.Logf("B (WITH sidecar): %s %f | %s %f",
+		withSidecar[0].hit.Entity.Name, withSidecar[0].hit.Score,
+		withSidecar[1].hit.Entity.Name, withSidecar[1].hit.Score)
+	if withSidecar[0].hit.Score != withSidecar[1].hit.Score {
+		t.Fatalf("fixture precondition: fused scores %f/%f are not the exact tie this test is about",
+			withSidecar[0].hit.Score, withSidecar[1].hit.Score)
+	}
+	rerankScored(withSidecar)
+
+	gotA, gotB := namesOf(noSidecar), namesOf(withSidecar)
+	if gotA[0] != "User" {
+		t.Fatalf("no-sidecar order = %v; the top-ranked hit is generated and must keep its place", gotA)
+	}
+	if gotB[0] != "User" {
+		t.Fatalf("with-sidecar order = %v (no-sidecar was %v); the exemption must fire "+
+			"identically regardless of sidecar presence — it cannot depend on score MAGNITUDE, "+
+			"which FuseRRF replaces with rank reciprocals", gotB, gotA)
+	}
+}
+
+// TestRerank_ExemptionIsDecidedPerRepo is the mixed-group half of BLOCKER B.
+//
+// `all` mixes score scales: the handler appends raw BM25 scores for repos
+// without a sidecar and RRF reciprocals for repos with one, into ONE slice.
+// A global score comparison across that slice is a comparison of incomparable
+// numbers, and it decided the exemption both ways round:
+//
+//   - repo beta's generated hit tops beta's OWN ranking and is exactly the
+//     unreachable-declaration case the exemption exists for — but the global
+//     rule denied it, because an unrelated repo on a different scale had a
+//     bigger number;
+//   - and symmetrically, a generated hit that its own repo ranks BELOW an
+//     authored hit could win the exemption on scale alone.
+//
+// The decision is now per repo, on rank within that repo's ranked run, where
+// the scale is by construction uniform.
+//
+// MUTATION TARGET: compare scores globally again and this must fail.
+func TestRerank_ExemptionIsDecidedPerRepo(t *testing.T) {
+	alpha := &LoadedRepo{Repo: "alpha"} // no sidecar: raw BM25 magnitudes
+	beta := &LoadedRepo{Repo: "beta"}   // sidecar: RRF reciprocals
+
+	all := []scored{
+		// alpha, ranked: the authored hit tops its own repo, so alpha's
+		// generated hit is NOT the strongest match anywhere and stays demoted.
+		atRepo(authoredEntity("alpha_auth", 10, 0.95), alpha),
+		atRepo(genEntity("alpha_gen", 1, 0.92), alpha),
+		// beta, ranked: the generated hit tops its own repo. Its RRF score is
+		// two orders of magnitude below alpha's raw BM25 scores.
+		atRepo(genEntity("beta_gen", 2, 0.032787), beta),
+		atRepo(authoredEntity("beta_auth", 11, 0.032258), beta),
+	}
+	rerankScored(all)
+	got := namesOf(all)
+
+	// beta_gen tops beta's own ranking, so it keeps its place: no authored hit
+	// may precede it inside beta's run.
+	posBetaGen, posBetaAuth := rankPosOf(got, "beta_gen"), rankPosOf(got, "beta_auth")
+	if posBetaGen > posBetaAuth {
+		t.Fatalf("order = %v; beta_gen is the top-ranked hit in its own repo and must "+
+			"keep the exemption — an unrelated repo's score scale cannot decide it", got)
+	}
+	// alpha_gen ranks below an authored hit in its OWN repo, so it stays demoted
+	// behind every authored hit.
+	posAlphaGen := rankPosOf(got, "alpha_gen")
+	for _, name := range []string{"alpha_auth", "beta_auth"} {
+		if rankPosOf(got, name) > posAlphaGen {
+			t.Fatalf("order = %v; alpha_gen is outranked by an authored hit in its own repo "+
+				"and must not be exempted past authored hit %q", got, name)
+		}
+	}
+}
+
+func rankPosOf(names []string, want string) int {
+	for i, n := range names {
+		if n == want {
+			return i
+		}
+	}
+	return -1
+}
+
+// TestRerank_ExemptionTieBreakIsRankedOrder states the tie-break rule.
+//
+// Under RRF exact score ties are common, not exotic. The exempt hit is the
+// FIRST generated hit in its repo's ranked run — the position the ranker
+// assigned. Scores are never compared, so the winner is not an accident of map
+// iteration or of which hit happened to be appended first: it is the ranker's
+// own order, which is deterministic (BM25 tie-breaks on ascending doc index,
+// FuseRRF preserves insertion order through a stable sort).
+//
+// MUTATION TARGET: pick the LAST generated hit of the run instead of the first
+// and this must fail.
+func TestRerank_ExemptionTieBreakIsRankedOrder(t *testing.T) {
+	repo := &LoadedRepo{Repo: "alpha"}
+	in := []scored{
+		atRepo(genEntity("gen_first", 1, 0.032787), repo),
+		atRepo(genEntity("gen_second", 2, 0.032787), repo), // exact tie
+		atRepo(authoredEntity("auth", 10, 0.032258), repo),
+	}
+	rerankScored(in)
+	got := namesOf(in)
+	want := []string{"gen_first", "auth", "gen_second"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("order = %v, want %v: on a score tie the exemption goes to the "+
+				"earlier hit in the ranker's order, and exactly one hit is exempt", got, want)
+		}
+	}
+}
+
+// TestRerank_ExemptionFollowsTheRankerNotTheScore — the mirror image of the
+// tie-break test, and the replacement for the deleted
+// TestRerank_TiesGoToTheAuthoredHit, whose claim ("the exemption requires a
+// STRICTLY higher score") was a statement about the score comparison the rule
+// no longer performs. When the ranker puts the authored hit first, the generated
+// hit is not the repo's strongest match and is demoted, tie or no tie.
+func TestRerank_ExemptionFollowsTheRankerNotTheScore(t *testing.T) {
+	repo := &LoadedRepo{Repo: "alpha"}
+	in := []scored{
+		atRepo(authoredEntity("auth", 10, 0.032787), repo),
+		atRepo(genEntity("gen", 1, 0.032787), repo), // exact tie, ranked second
+	}
+	rerankScored(in)
+	if got := namesOf(in); got[0] != "auth" {
+		t.Fatalf("order = %v, want the authored hit first: the generated hit is not the "+
+			"top-ranked hit in its repo", got)
 	}
 }

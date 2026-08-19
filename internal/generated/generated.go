@@ -58,9 +58,11 @@
 // and neither lives here, so this comment is a pointer to them rather than a
 // promise on their behalf:
 //
-//   - rerankScored exempts the single generated hit that outscores every
-//     authored hit in the result set, so the demotion can never bury the
-//     strongest match for a query.
+//   - rerankScored exempts each repo's top-RANKED hit when that hit is
+//     generated, so the demotion can never bury the strongest match for a
+//     query. The rule is positional, not a score comparison: hit.Score is an
+//     RRF reciprocal wherever a repo has an embeddings sidecar, and a score
+//     rule was therefore green without embeddings and inert with them.
 //   - both truncating default views now emit a truncation_note, so a row that
 //     was dropped is distinguishable from a row that does not exist.
 //

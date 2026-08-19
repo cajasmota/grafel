@@ -310,21 +310,56 @@ func tierFor(e *graph.Entity, demoteGenerated bool) int {
 // would drop it below every weak authored match for a query that has no other
 // answer.
 //
-// THE TRADE-OFF, STATED. Exempting every generated hit that outscores the best
+// THE TRADE-OFF, STATED. Exempting every generated hit that outranks the best
 // authored one would restore #6314 wholesale: that issue IS the case where a
 // crowd of generated declarations outranks the authored answer. Exempting only
-// the single best hit gives up one row and keeps the other N demoted, so a
+// the top-ranked hit gives up one row and keeps the other N demoted, so a
 // query with 50 generated matches still surfaces the authored ones from row 2.
 // The rule is "the demotion may cost a generated entity ranking positions, but
-// it may never cost the best match in the set its place".
+// it may never cost a repo's best match its place".
 //
-// Ties go to the authored hit: the exemption requires a STRICTLY higher score.
+// # The exemption is POSITIONAL, and per repo
+//
+// The first version of it compared hit.Score, and that walked straight back
+// into the trap that killed the score-penalty design one paragraph above:
+// hit.Score is an RRF reciprocal on every repo that has an embeddings sidecar.
+// With two-list fusion the generated and authored hits routinely land at
+// mirrored ranks, which makes the fused scores EXACTLY equal (1/(k+1) +
+// 1/(k+2) on both sides), so "strictly outscores" never held and the exemption
+// was green without embeddings and inert with them — measured on the same
+// query, 0.281182 vs 0.215672 without a sidecar, 0.032522 vs 0.032522 with one.
+//
+// Worse, `all` mixes score SCALES: handleQueryGraph appends raw BM25 scores for
+// repos without a sidecar and RRF reciprocals for repos with one, into one
+// slice. A global score comparison over that slice compares incomparable
+// numbers, and it got the answer wrong in both directions — denying the
+// exemption to a generated hit that tops its own repo because an unrelated repo
+// was on a bigger scale, and granting it to one its own repo ranks below an
+// authored hit.
+//
+// So the decision is made on POSITION within each repo's own ranked run, where
+// the scale is uniform by construction: a generated hit is exempt exactly when
+// it is the top-ranked non-noise hit in its repo. Position is what fusion
+// preserves; magnitude is not. At most one hit per repo is exempt, so the
+// #6314 crowd is still demoted.
+//
+// TIE-BREAK, STATED. Scores are never compared, so an exact RRF tie is not
+// resolved by an accident of insertion or map iteration: the exempt hit is the
+// EARLIER of the tied hits in the ranker's own order, which is deterministic
+// (BM25 tie-breaks on ascending doc index; FuseRRF sorts stably over insertion
+// order). When the ranker puts the authored hit first, no generated hit in
+// that repo is exempt.
+//
+// Cross-repo ordering of the final list still mixes scales — two authored hits
+// from a sidecar repo and a non-sidecar repo were already sorted against each
+// other by raw magnitude before this change, and the default view sections its
+// output per repo. The exemption no longer contributes to that.
 func rerankScored(all []scored) {
 	tiers := make(map[*graph.Entity]int, len(all))
 	for i := range all {
 		tiers[all[i].hit.Entity] = rankTier(all[i].hit.Entity)
 	}
-	if e := strongestGeneratedHit(all, tiers); e != nil {
+	for e := range exemptGeneratedHits(all, tiers) {
 		tiers[e] = tierFor(e, false)
 	}
 	sort.SliceStable(all, func(i, j int) bool {
@@ -336,36 +371,51 @@ func rerankScored(all []scored) {
 	})
 }
 
-// strongestGeneratedHit returns the one generated entity whose score is
-// strictly greater than every authored hit's, or nil.
+// exemptGeneratedHits returns the generated entities that hold the
+// strongest-match exemption: at most ONE per repo — that repo's top-ranked
+// non-noise hit, when that hit is generated. See rerankScored for why the rule
+// is positional and per repo rather than a score comparison.
 //
-// "Authored" means any hit that is not in generatedTier and is not noise — a
-// shadow must not be able to hold the exemption open, and a generated hit that
-// is ALSO noise (tier >= 4) is not a candidate for it either.
-func strongestGeneratedHit(all []scored, tiers map[*graph.Entity]int) *graph.Entity {
-	var best *graph.Entity
-	bestScore := 0.0
-	bestAuthored := 0.0
-	haveAuthored := false
+// Each repo's hits arrive in `all` in that repo's own ranked order (Search and
+// FuseRRF both return highest-first, and the handler appends per repo), so
+// slice position IS rank and no re-sort is needed to read it.
+//
+// Noise (tier > generatedTier) is skipped entirely: a shadow must not be able
+// to hold the exemption, and it must not be able to BLOCK one either by
+// occupying the top slot of a run.
+func exemptGeneratedHits(all []scored, tiers map[*graph.Entity]int) map[*graph.Entity]bool {
+	type runState struct {
+		gen          *graph.Entity
+		haveAuthored bool
+	}
+	byRepo := map[*LoadedRepo]*runState{}
 	for i := range all {
 		e := all[i].hit.Entity
-		sc := all[i].hit.Score
-		switch t := tiers[e]; {
-		case t == generatedTier:
-			if best == nil || sc > bestScore {
-				best, bestScore = e, sc
-			}
-		case t < generatedTier:
-			if !haveAuthored || sc > bestAuthored {
-				bestAuthored, haveAuthored = sc, true
-			}
+		t := tiers[e]
+		if t > generatedTier {
+			continue
+		}
+		st := byRepo[all[i].repo]
+		if st == nil {
+			st = &runState{}
+			byRepo[all[i].repo] = st
+		}
+		if t < generatedTier {
+			st.haveAuthored = true
+			continue
+		}
+		// Generated. It holds the exemption only if it is the first non-noise
+		// hit seen in this repo's run — i.e. no authored hit outranks it — and
+		// only the first such hit, so a tie is decided by the ranker's order.
+		if st.gen == nil && !st.haveAuthored {
+			st.gen = e
 		}
 	}
-	if best == nil {
-		return nil
+	out := map[*graph.Entity]bool{}
+	for _, st := range byRepo {
+		if st.gen != nil {
+			out[st.gen] = true
+		}
 	}
-	if haveAuthored && bestScore <= bestAuthored {
-		return nil
-	}
-	return best
+	return out
 }
