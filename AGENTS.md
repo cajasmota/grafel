@@ -58,11 +58,17 @@ When your PR adds, modifies, or fixes a capability that's tracked in the coverag
 - Claims about numbers come from a real measurement — see "Evidence"
 
 ## Daemon discipline
-- If you spawn a daemon for testing, set `GRAFEL_DAEMON_ROOT=/tmp/arch-<task>` and stop it on exit
+- If you spawn a daemon for testing, isolate ALL THREE of `HOME`, `GRAFEL_HOME` and `GRAFEL_DAEMON_ROOT`, and stop it on exit. `GRAFEL_DAEMON_ROOT` alone is NOT isolation, and the CLI now refuses it (#6331):
+
+  ```sh
+  export HOME=$(mktemp -d)
+  export GRAFEL_HOME=$HOME/.grafel
+  export GRAFEL_DAEMON_ROOT=$HOME/.grafel
+  ```
 - Verify no PIDs survive with `ps aux | grep grafel`
 - Never `git stash` (concurrent worktree race; commit-checkpoint instead)
 - See `docs/adrs/0004-single-mcp-process-per-machine.md` for the daemon architecture
-- `GRAFEL_DAEMON_ROOT` isolates THREE things: the daemon socket, the registry, AND per-repo state (issue #745). When the env var is set, per-repo state lives at `$GRAFEL_DAEMON_ROOT/state/<sha256(abs_repo_path)[:16]>/` instead of `<repo>/.grafel/`. This means two parallel agents can index the SAME fixture without racing, and the fixture's own `.grafel/` is never touched. When the env var is unset, ADR-0007 co-located behavior is preserved. Helper: `internal/daemon.StateDirForRepo` / `GraphPathForRepo` — use it for every per-repo state read/write; never hardcode `<repo>/.grafel/<file>`.
+- `GRAFEL_DAEMON_ROOT` isolates the daemon socket (plus pidfile and logs) AND per-repo state (issue #745). It does **NOT** isolate the registry — this bullet used to claim it did, and so did ADR-0017; both were wrong. `registry.HomeDir` reads `GRAFEL_HOME` only, so `GRAFEL_DAEMON_ROOT` alone gives you a private daemon pointed at the LIVE store, whose startup tail then relocates and prunes it (#6134). See the 2026-08-19 amendment in `docs/adrs/0017-single-binary-daemon-architecture.md`. When the env var is set, per-repo state lives at `$GRAFEL_DAEMON_ROOT/state/<sha256(abs_repo_path)[:16]>/` instead of `<repo>/.grafel/`. This means two parallel agents can index the SAME fixture without racing, and the fixture's own `.grafel/` is never touched. When the env var is unset, ADR-0007 co-located behavior is preserved. Helper: `internal/daemon.StateDirForRepo` / `GraphPathForRepo` — use it for every per-repo state read/write; never hardcode `<repo>/.grafel/<file>`.
 
 ## Where things live
 - MCP server: `internal/mcp/`
