@@ -398,37 +398,66 @@ func readTrace(t *testing.T, path string) []traceRec {
 // have introduced a brand-new per-poll, per-repo log line for every user as a
 // side effect of landing measurement tooling. Gating it was the deliberate
 // choice; this test is what makes the choice hold.
+//
+// It also covers every DISABLE token end-to-end. "Unset" is not the only way an
+// operator turns this off: GRAFEL_PHASE_TRACE=0 used to mean "enabled, and
+// append JSONL to a file named 0 in the daemon's cwd".
 func TestPhaseTrace_SilentByDefault(t *testing.T) {
-	t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "1")
-	t.Setenv("GRAFEL_PHASE_TRACE", "")
+	for _, raw := range []string{"", " ", "0", "false", "FALSE", "off", "OFF", "no", " no "} {
+		t.Run("value="+raw, func(t *testing.T) {
+			t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "1")
+			t.Setenv("GRAFEL_PHASE_TRACE", raw)
 
-	var buf bytes.Buffer
-	logger := log.New(&buf, "", 0)
-	extractors.TryIncremental(context.Background(), t.TempDir(), t.TempDir(), logger, nil)
+			var buf bytes.Buffer
+			logger := log.New(&buf, "", 0)
+			extractors.TryIncremental(context.Background(), t.TempDir(), t.TempDir(), logger, nil)
 
-	if strings.Contains(buf.String(), "incremental: phases") {
-		t.Fatalf("GRAFEL_PHASE_TRACE is unset but the phases summary line was logged; "+
-			"landing #6199 must not change default daemon output. Log was:\n%s", buf.String())
+			if strings.Contains(buf.String(), "incremental: phases") {
+				t.Fatalf("GRAFEL_PHASE_TRACE=%q means DISABLED but the phases summary line "+
+					"was logged; landing #6199 must not change default daemon output. Log was:\n%s",
+					raw, buf.String())
+			}
+			assertNoStrayTraceFile(t, raw)
+		})
+	}
+}
+
+// assertNoStrayTraceFile fails if the env value was taken as a filename in the
+// process's working directory (which, for the daemon, is wherever launchd
+// started it).
+func assertNoStrayTraceFile(t *testing.T, raw string) {
+	t.Helper()
+	for _, candidate := range []string{raw, strings.TrimSpace(raw)} {
+		if candidate == "" || strings.ContainsAny(candidate, `/\`) {
+			continue
+		}
+		if _, err := os.Stat(candidate); err == nil {
+			_ = os.Remove(candidate)
+			t.Fatalf("GRAFEL_PHASE_TRACE=%q wrote a JSONL file literally named %q in the "+
+				"working directory; boolean/falsey tokens must never be treated as paths",
+				raw, candidate)
+		}
 	}
 }
 
 // TestPhaseTrace_BooleanEnableLogsWithoutFile covers the middle setting: the
 // greppable summary line on a live daemon without inventing a JSONL sink.
 func TestPhaseTrace_BooleanEnableLogsWithoutFile(t *testing.T) {
-	t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "1")
-	t.Setenv("GRAFEL_PHASE_TRACE", "1")
+	for _, raw := range []string{"1", "true", "TRUE", "yes", "on", " on "} {
+		t.Run("value="+raw, func(t *testing.T) {
+			t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "1")
+			t.Setenv("GRAFEL_PHASE_TRACE", raw)
 
-	var buf bytes.Buffer
-	logger := log.New(&buf, "", 0)
-	extractors.TryIncremental(context.Background(), t.TempDir(), t.TempDir(), logger, nil)
+			var buf bytes.Buffer
+			logger := log.New(&buf, "", 0)
+			extractors.TryIncremental(context.Background(), t.TempDir(), t.TempDir(), logger, nil)
 
-	if !strings.Contains(buf.String(), "incremental: phases outcome=") {
-		t.Fatalf("GRAFEL_PHASE_TRACE=1 should log the summary line; log was:\n%s", buf.String())
-	}
-	if _, err := os.Stat("1"); err == nil {
-		_ = os.Remove("1")
-		t.Fatalf(`GRAFEL_PHASE_TRACE=1 wrote a JSONL file literally named "1"; ` +
-			"boolean tokens must not be treated as paths")
+			if !strings.Contains(buf.String(), "incremental: phases outcome=") {
+				t.Fatalf("GRAFEL_PHASE_TRACE=%q should log the summary line; log was:\n%s",
+					raw, buf.String())
+			}
+			assertNoStrayTraceFile(t, raw)
+		})
 	}
 }
 

@@ -12,13 +12,30 @@
 //
 // # Cost when disabled
 //
-// A phaseTrace is a plain struct on the stack of TryIncremental; each span is
-// two time.Now() calls and an append. There is no allocation per pass beyond a
-// slice of ~20 samples and no locking on the fast path — the heap sampler
-// goroutine (the only concurrent part) starts ONLY when GRAFEL_PHASE_TRACE is
-// set. Leaving the SPANS compiled in unconditionally is what makes the trace
-// usable on a live daemon without a rebuild; the env var controls every
-// externally visible effect.
+// Leaving the SPANS compiled in unconditionally is what makes the trace usable
+// on a live daemon without a rebuild; the env var controls every externally
+// visible effect. There is no locking on the fast path, and the heap sampler
+// goroutine — the only concurrent part — starts only when a JSONL sink is
+// configured.
+//
+// The cost itself is MEASURED, by BenchmarkPhaseTrace_DisabledPerPass over the
+// 23 spans a full pass opens. An earlier version of this comment claimed "no
+// allocation per pass beyond a slice of ~20 samples", which was false: span
+// returns a closure that captures name and start, so the untraced path was
+// paying one heap-allocated closure PER SPAN plus the 576-byte samples backing
+// array plus the trace struct —
+//
+//	before: 1782 ns/op   2256 B/op   25 allocs/op
+//
+// Since a disabled trace never reads samples (emit returns before touching
+// them), span and add now return early and newPhaseTrace skips the slice, which
+// leaves one allocation for the trace struct itself —
+//
+//	after:    132 ns/op    144 B/op    1 alloc/op   (the os.Getenv and the struct)
+//
+// Both figures are per PASS, against a pass that costs tens to hundreds of
+// milliseconds, so neither was ever material to the timings. The point is that
+// the number in this comment is now one somebody measured.
 //
 // # Output — ALL of it is gated (deliberate)
 //
@@ -51,7 +68,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -71,7 +87,10 @@ type phaseTrace struct {
 	t0      time.Time
 	samples []phaseSample
 
-	// heap sampling (only active when tracing to a file)
+	// Heap sampling. Active ONLY when tracing to a file, because heapPeak and
+	// sysPeak are written nowhere except the JSONL record: in boolean mode
+	// there is nothing to put them in, and sampling would buy a stop-the-world
+	// runtime.ReadMemStats every 5 ms for numbers that are then discarded.
 	heapStop   chan struct{}
 	heapDone   chan struct{}
 	heapPeak   atomic.Uint64 // max HeapAlloc observed during the pass
@@ -88,26 +107,39 @@ type phaseTrace struct {
 	rels         int
 }
 
-// newPhaseTrace starts a trace. When GRAFEL_PHASE_TRACE is set it also starts a
-// 5 ms heap sampler for the duration of the pass; when the value is a path
-// rather than a boolean token, the JSONL sidecar is written too.
+// newPhaseTrace starts a trace, interpreting GRAFEL_PHASE_TRACE:
+//
+//	unset, or a falsey token   → disabled; the spans run but cost ~1 alloc/pass
+//	a truthy token             → the summary log line only, no file, no sampler
+//	anything else              → the above plus the JSONL sidecar and the 5 ms
+//	                             heap sampler that feeds its heap/sys peaks
+//
+// The falsey set is not decoration. Before it existed, GRAFEL_PHASE_TRACE=0 was
+// "anything else": an operator disabling tracing the obvious way turned it ON
+// and started appending JSONL to a file literally named "0" in the daemon's
+// working directory. Same for false/off/no in any casing. Tokens are trimmed
+// and lowercased, so " OFF " disables; a value that merely CONTAINS one (say
+// "0.jsonl") is still a path.
 func newPhaseTrace(t0 time.Time) *phaseTrace {
-	tr := &phaseTrace{t0: t0, samples: make([]phaseSample, 0, 24)}
+	tr := &phaseTrace{t0: t0}
 	raw := os.Getenv("GRAFEL_PHASE_TRACE")
-	tr.enabled = raw != ""
-	if !tr.enabled {
-		return tr
-	}
-	// A boolean-ish value means "log the summary line, write no file". Anything
-	// else is taken as the JSONL path. Without this, asking for the cheap
-	// greppable line would force the caller to invent a throwaway file.
 	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "0", "false", "no", "off":
+		return tr
 	case "1", "true", "yes", "on":
-		tr.traceePath = ""
+		// Log the summary line, write no file. Without this, asking for the
+		// cheap greppable line would force the caller to invent a throwaway
+		// file.
+		tr.enabled = true
 	default:
+		tr.enabled = true
 		tr.traceePath = raw
+		// The sampler exists to fill in the JSONL record's heap_peak_mb /
+		// sys_peak_mb, so it starts only when that record will be written.
+		tr.startHeapSampler()
 	}
-	tr.startHeapSampler()
+	// Only a trace that will actually be emitted needs anywhere to put samples.
+	tr.samples = make([]phaseSample, 0, 24)
 	return tr
 }
 
@@ -160,8 +192,11 @@ func (t *phaseTrace) stopHeapSampler() {
 // Spans may be nested or repeated; repeated names are summed by the reporter,
 // not overwritten, so a per-file phase inside a loop still totals correctly.
 func (t *phaseTrace) span(name string) func() {
-	if t == nil {
-		return func() {}
+	if t == nil || !t.enabled {
+		// noopSpanEnd is a package-level value, so the untraced path allocates
+		// no closure here; returning a fresh `func() {}` would too, but only by
+		// accident of it capturing nothing. See the cost note at the top.
+		return noopSpanEnd
 	}
 	start := time.Now()
 	return func() {
@@ -169,9 +204,12 @@ func (t *phaseTrace) span(name string) func() {
 	}
 }
 
+// noopSpanEnd ends a span on a trace that will never be emitted.
+var noopSpanEnd = func() {}
+
 // add records a phase whose duration was measured by the caller.
 func (t *phaseTrace) add(name string, d time.Duration) {
-	if t == nil {
+	if t == nil || !t.enabled {
 		return
 	}
 	t.samples = append(t.samples, phaseSample{Name: name, MS: float64(d.Microseconds()) / 1000.0})
@@ -283,13 +321,3 @@ func (t *phaseTrace) emit(printf func(string, ...any), repo string, done bool, f
 // phaseTraceWriteMu serialises appends when several repos are reindexed
 // concurrently by the daemon scheduler.
 var phaseTraceWriteMu sync.Mutex
-
-// sortedPhaseNames is a test/diagnostic helper.
-func sortedPhaseNames(p map[string]float64) []string {
-	out := make([]string, 0, len(p))
-	for k := range p {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
