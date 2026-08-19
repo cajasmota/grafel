@@ -32,12 +32,19 @@
 // diagnostic; see TestCorpusParseRate, which is a gate rather than a report.
 //
 // Running S4's parser over that corpus corrected this pre-pass in four places
-// that no constructed fixture had reached: a UTF-8 byte-order mark ahead of
-// the first declaration (12 files), $"..." interpolation scanned exactly
-// inverted — hole as text, text as code (106 files contain one), an enum
-// member named `Custom` losing its name to the modifier peel (3 files), and
-// multi-line lambdas leaving the container stack open, which recorded
-// method-body locals as type-scope FIELDS.
+// that no constructed fixture had reached. Each is priced by how many files
+// lose a clean parse when the fix is removed and the corpus re-parsed:
+//
+//	a UTF-8 byte-order mark ahead of the first declaration   22 files
+//	$"..." interpolation scanned inverted, hole as text       0 files
+//	an enum member named `Custom` eaten by the modifier peel   3 files
+//	multi-line lambdas leaving the container stack open      45 files
+//
+// The interpolation row is 0 by that measure and was still worth fixing: 106
+// of the 302 files contain a $"..." literal, and scanning it inverted exposed
+// its text as code and hid its holes, so it corrupted masking wherever it
+// appeared rather than failing loudly anywhere. The lambda row also recorded
+// method-body locals as type-scope FIELDS, which no parse rate can see.
 //
 // Still unverified: the distribution in the reporter's own ~670-file tree
 // (#6321). Nothing here claims a recall or precision figure for CALLS.

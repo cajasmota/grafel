@@ -88,8 +88,15 @@ func JoinContinuations(src string) []LogicalLine {
 	// A UTF-8 byte-order mark is not whitespace, so leaving it in place makes
 	// the first statement of the file start with three bytes that are neither
 	// an identifier nor a keyword: `Public Class Crash` is never recognised
-	// and every member of the file lands at file scope. 12 of the 302 corpus
-	// files start with one, most of them .Designer.vb (#6363).
+	// and every member of the file lands at file scope.
+	//
+	// Measured two ways, because the two numbers say different things: 232 of
+	// the 302 corpus files carry a BOM (counted by reading the first three
+	// bytes of each), and deleting this line costs 22 of them their clean
+	// parse (300/302 -> 278/302). Most files survive because their first
+	// declaration is preceded by a comment or Imports line that the BOM
+	// merely prefixes harmlessly; the ones that break are those where it
+	// lands directly on a declaration or an attribute group (#6363).
 	src = strings.TrimPrefix(src, "\ufeff")
 	raw := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
 

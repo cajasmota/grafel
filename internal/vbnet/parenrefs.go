@@ -17,21 +17,33 @@ import "strings"
 // being invoked.
 //
 // Without this set `If (x) Then` reports a call to If, `Return (n)` a call to
-// Return and `Function(x) x + 1` a call to Function. That half of the set is
-// load-bearing and cheap: deleting the operator and control-flow entries
-// (and, or, not, in, is, ...) surfaces 154 extra use sites on the 302-file
-// corpus, all of them phantoms.
+// Return and `Function(x) x + 1` a call to Function. That half is
+// load-bearing. Measured by deleting the named entries and re-parsing the
+// 302-file corpus, against a baseline of 41,748 use sites of which 8,702
+// satisfy IsCall:
+//
+//	deleted                              extra use sites   extra IsCall
+//	the 11 operator entries                        +299              +0
+//	the 31 control-flow entries                  +1,329            +264
+//	both                                         +1,628            +264
+//
+// The two halves fail differently and the difference is the point: the
+// operator entries guard against use sites that are all non-calls, while the
+// control-flow entries guard against 264 sites that would be reported as
+// CALLS — `If(…)`, `Return(…)`, `Case(…)`, `While(…)`, statement-position
+// unknowns that IsCall promotes. Deleting them does not merely add noise, it
+// adds wrong edges.
 //
 // The other half is a PRECISION TRADE, stated here because it is a recall
-// cost with no diagnostic attached. About twenty of these are VB.NET
-// CONTEXTUAL keywords — aggregate, ascending, by, descending, distinct,
-// equals, from, group, into, join, order, preserve, skip, take, until, where,
-// alias, lib, custom — which are legal identifiers, and the corpus does
-// declare members with such names. An unqualified call to one is dropped
-// silently. Measured: removing every contextual entry from this set surfaces
-// 4 additional use sites out of 41,748, exactly 1 of them a call, all spelled
-// `where`. The trade is taken deliberately at that price, not because a
-// declaration "cannot" shadow these words — it can.
+// cost with no diagnostic attached. Eighteen entries are VB.NET CONTEXTUAL
+// keywords — aggregate, ascending, by, descending, distinct, equals, from,
+// group, into, join, order, preserve, skip, take, until, where, alias, lib —
+// which are legal identifiers, and the corpus does declare members with such
+// names. An unqualified call to one is dropped silently. Measured the same
+// way: deleting all eighteen surfaces 4 additional use sites out of 41,748,
+// exactly 1 of them a call, all spelled `where`. The trade is taken
+// deliberately at that price, not because a declaration "cannot" shadow these
+// words — it can.
 //
 // A qualified use is unaffected: the check is skipped when the name has a
 // qualifier, so `q.Take(5)` is still a use site.

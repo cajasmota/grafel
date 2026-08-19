@@ -330,10 +330,12 @@ func TestParse_OptionStrictDoesNotSwallow(t *testing.T) {
 // writes a multi-line lambda into a test by accident.
 func TestParse_RealFileShapes(t *testing.T) {
 	t.Run("utf8 bom before the first declaration", func(t *testing.T) {
-		// 11 .Designer.vb files in the corpus start with a BOM and an
-		// attribute group; without BOM handling the attribute is not
-		// recognised as leading, the Partial Class is never declared, and its
-		// Inherits clause — the whole point of a designer file — is orphaned.
+		// 232 of the 302 corpus files carry a BOM and 55 of those are
+		// .Designer.vb, which is the shape below: without BOM handling the
+		// attribute group is not recognised as leading, the Partial Class is
+		// never declared, and its Inherits clause — the whole point of a
+		// designer file — is orphaned. Deleting the BOM strip costs 22 files
+		// their clean parse.
 		src := "\ufeff<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()> _\n" +
 			"Partial Class Search\n    Inherits System.Windows.Forms.Form\nEnd Class\n"
 		res := Parse(src)

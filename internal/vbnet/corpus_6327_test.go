@@ -135,11 +135,17 @@ func TestCorpusParseRate(t *testing.T) {
 //   - 2 are diagnosed, and are the entire residual of the 300/302 rate:
 //     staxrip's Audio.vb embeds an AviSynth script, Thumbnailer.vb has an
 //     interpolation hole broken across five lines.
-//   - The damage from the 7 silent ones is small and benign: at most 20 use
-//     sites land inside a mis-scanned interior, no phantom node, and no
-//     spurious call. (The one IsCall inside the measured window is real code
-//     at Thumbnailer.vb:339 - the window over-reaches to the next line
-//     carrying a quote, so 20 is an upper bound, not a count.)
+//   - The damage from the 7 silent ones is small and benign. Measured by
+//     taking, for each file, the lines from a literal-opening line to the
+//     next line carrying a quote, and counting the use sites recorded on
+//     them: across the 7 that parse clean, 5 use sites, 0 of them IsCall,
+//     and no phantom node. The window over-reaches — it runs to the next
+//     quote rather than to the true close — so 5 is an upper bound.
+//   - The same window over all 9 files gives 20 use sites and 1 IsCall, but
+//     that one is `New StringBuilder()` at Thumbnailer.vb:339, real code in
+//     one of the two DIAGNOSED files. It is evidence about the window, not
+//     about the silent seven, which is why the figure above is the
+//     restricted one.
 func TestMultiLineLiteralIsUnsupported(t *testing.T) {
 	// The interior of the literal is scanned as code, so a line inside it that
 	// happens to read as an End closes a block that is still open. staxrip's
@@ -197,8 +203,10 @@ const (
 //   - Tree -> table, not only table -> tree. S5 emits FROM the tree, so a tree
 //     that invents a method is the direction that matters, and it was the
 //     unchecked one.
-//   - Kind, not just presence. A path present under the wrong kind satisfied a
-//     bool set.
+//   - Kind, not just presence, in BOTH directions. A path present under the
+//     wrong kind satisfied a bool set. (Round 2 made only the table -> tree
+//     arm kind-aware; the tree -> table arm still checked presence alone,
+//     which the round-3 review caught.)
 //   - Every kind at a path, not the last one written. Folded paths collide
 //     (a property and a later local can share one), and keeping only the last
 //     hid the divergence at CodeEditor.vb:617 where the table recorded a
@@ -313,10 +321,20 @@ func TestCorpusTreeAgreesWithTable(t *testing.T) {
 					operators++
 				default:
 					treeNodes++
-					if len(tableAt[FoldName(c.Path())]) == 0 && len(missingInTable) < 12 {
-						missingInTable = append(missingInTable,
-							fmt.Sprintf("%s:%d tree %s %s has no table symbol",
-								base, c.Span.StartLine, c.Kind, c.Path()))
+					kinds := tableAt[FoldName(c.Path())]
+					switch {
+					case len(kinds) == 0:
+						if len(missingInTable) < 12 {
+							missingInTable = append(missingInTable,
+								fmt.Sprintf("%s:%d tree %s %s has no table symbol",
+									base, c.Span.StartLine, c.Kind, c.Path()))
+						}
+					case !anyNodeKindAgrees(c.Kind, kinds):
+						if len(wrongKind) < 12 {
+							wrongKind = append(wrongKind,
+								fmt.Sprintf("%s:%d %s: tree says %s, table says %v",
+									base, c.Span.StartLine, c.Path(), c.Kind, kinds))
+						}
 					}
 				}
 				walkErr(c)
@@ -338,6 +356,54 @@ func TestCorpusTreeAgreesWithTable(t *testing.T) {
 	t.Logf("%d table types/methods and %d tree declarations agree on path and kind "+
 		"(%d accessors and %d operators are tree-only by construction)",
 		tableDecls, treeNodes, accessors, operators)
+}
+
+// anyNodeKindAgrees is the tree -> table direction of the same question: does
+// any symbol kind recorded at this path legally render the tree's node kind.
+//
+// It is a separate function rather than an inversion of anyKindAgrees because
+// the two directions do not cover the same kinds. anyKindAgrees answers for
+// the four symbol kinds the table -> tree arm iterates; this one must answer
+// for every node kind the tree emits, including the ones the table records
+// under a broader label — a NodeField whose symbol is a KindLocal, which is
+// how a shadowed declaration inside a With or For block is stored.
+//
+// Measured before it was enforced: 16,745 tree declarations checked, 0
+// mismatches, so this needs no exception list.
+func anyNodeKindAgrees(n NodeKind, kinds map[SymbolKind]bool) bool {
+	for k := range kinds {
+		switch n {
+		case NodeClass, NodeModule, NodeStructure, NodeInterface, NodeEnum, NodeDelegate:
+			if k == KindType {
+				return true
+			}
+		case NodeMethod:
+			if k == KindMethod {
+				return true
+			}
+		case NodeProperty:
+			if k == KindProperty {
+				return true
+			}
+		case NodeEvent:
+			if k == KindEvent {
+				return true
+			}
+		case NodeNamespace:
+			if k == KindNamespace {
+				return true
+			}
+		case NodeEnumMember:
+			if k == KindEnumMember {
+				return true
+			}
+		case NodeField, NodeConst:
+			if k == KindField || k == KindConst || k == KindLocal {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // anyKindAgrees reports whether any tree kind at a path is a legal rendering

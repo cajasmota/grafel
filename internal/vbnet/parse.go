@@ -39,8 +39,10 @@ import (
 // interpolation hole, span physical lines, and this pre-pass is line-oriented.
 // That limitation reaches further than the two diagnosed files - 9 corpus
 // files contain such a literal and 7 of them parse clean with their interiors
-// scanned as code. Measured damage from the silent 7: at most 20 use sites
-// inside a mis-scanned interior, no phantom nodes, no spurious calls.
+// scanned as code. Measured damage from the silent 7, counting use sites
+// recorded on lines inside a mis-scanned interior: 5 use sites, 0 of them
+// IsCall, no phantom nodes. See TestMultiLineLiteralIsUnsupported for how the
+// window was drawn and why 5 is an upper bound.
 // TestMultiLineLiteralIsUnsupported pins the gap in the failing direction so
 // it cannot quietly change size.
 //
@@ -262,9 +264,11 @@ type Ref struct {
 	// disagreement is the dangerous case. A `With` block member access
 	// (`.OpenSubKey(k)`) and a call on an expression result
 	// (`CType(x, I).BeginInit()`) are qualified by something this per-file
-	// pass cannot name, so Qualifier is "" while Qualified is true. Measured
-	// on the 302-file corpus: 1,600 of 41,242 use sites are in exactly that
-	// state.
+	// pass cannot name, so Qualifier is "" while Qualified is true.
+	//
+	// Measured by parsing the 302-file corpus and counting Refs with
+	// Qualified true and Qualifier "": 1,624 of 41,748 use sites, 0 of which
+	// satisfy IsCall.
 	//
 	// Without this bit those sites are byte-identical to an unqualified name
 	// the table could not resolve, and an S5 author told that `Qualifier == ""`
@@ -570,9 +574,13 @@ func (p *parser) walkLine(ll LogicalLine) {
 // `x = Sub(v)` with nothing after the parameter list starts a statement lambda
 // whose `End Sub` closes the LAMBDA. Without this, that End Sub closes the
 // enclosing method instead, every later member of the file is reparented, and
-// the file's remaining `End`s cascade — 163 of the 302 corpus files' 175
-// End-mismatch diagnostics came from exactly this shape, making it the largest
-// single failure class measured.
+// the file's remaining `End`s cascade.
+//
+// It is the largest single failure class measured. Deleting the pushLambda
+// call and re-parsing the 302-file corpus takes the clean count from 300 to
+// 255 — 45 files — and the diagnostics it produces are 155 `End sub with no
+// matching block`, 8 `End function with no matching block` and 7 unclosed
+// accessors or methods.
 //
 // A single-line lambda (`Sub(x) Log(x)`) has its body on the same line and
 // therefore no End, which is why the test is "nothing follows the parameter
@@ -698,8 +706,8 @@ func (p *parser) walkStatement(stmt, raw string, off int, ll LogicalLine) {
 
 	// Conditional-compilation and region directives declare nothing. They are
 	// skipped rather than parsed: #Region appears in 58 of the 302 corpus
-	// files, and `#End Region` reaching the End handler would unwind a real
-	// container.
+	// files (counted with a case-insensitive line-anchored grep), and
+	// `#End Region` reaching the End handler would unwind a real container.
 	if stmt[0] == '#' {
 		return
 	}
