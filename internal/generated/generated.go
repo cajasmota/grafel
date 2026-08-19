@@ -143,6 +143,22 @@ func FromPath(rel string) Detection {
 // TestFromContent_OnlyTheFirstCommentBlockIsScanned reproduces all three
 // classes synthetically; TestFromContent_HandWrittenNearMisses keeps the
 // original header-shaped near-misses pinned.
+//
+// MEASURED EFFECT, same method before and after (11,740 module-cache files
+// pre-filtered with grep for any marker string, then run through this
+// package): 8,544 flagged before, 8,506 after. 38 files removed, 0 added.
+// The overwhelming majority of the 8,506 are genuinely generated (*.pb.go and
+// friends) — the sweep was never a false-positive count, and the fix was never
+// going to move it much. What matters is the CONTENT of the 38: every one is
+// hand-written source, and they are exactly the three classes above, with one
+// exception recorded below.
+//
+// ONE TRUE POSITIVE IS LOST: tetratelabs/wazero's site/static/install.sh, a
+// godownloader-generated script whose banner sits at line 17 BEHIND a bare
+// `set -e`. That is the fail-safe direction — the file is treated as
+// hand-written, which is the status quo — and buying it back would mean
+// letting an arbitrary shell statement extend the header window, which is
+// precisely what re-admits mkcgo.sh and mksysnum_linux.pl.
 func FromContent(content []byte) Detection {
 	head := headerBlock(headOf(content))
 	if len(head) == 0 {
@@ -230,6 +246,25 @@ var headerLinePrefixes = []string{
 	"#!", "<?php", "<?xml", "<?PHP", "<?XML", "<!DOCTYPE",
 }
 
+// declarationLine matches a package / module / namespace statement standing
+// alone on its line.
+//
+// It keeps the header block open for exactly one reason, and it is a measured
+// one: a first cut of this narrowing lost three genuinely generated files in
+// the module cache (xo/terminfo capvals.go, gopher-lua state.go and vm.go)
+// whose banner sits at line 3 BEHIND `package X`. Non-idiomatic for Go, which
+// puts the banner first, but real — and in Java and C# the package/namespace
+// statement is REQUIRED to precede everything else in the file, so the shape
+// is not even unusual there.
+//
+// The pattern is deliberately narrow: a keyword, whitespace, one dotted
+// identifier, an optional `;` or `{`, end of line. It does not match
+// `module.exports = {` (no space after the keyword), and it does not match an
+// import, a `use`, a `require`, or a shell assignment — all of which appear as
+// the FIRST non-comment line of a false positive in the measured set and must
+// therefore keep closing the block.
+var declarationLine = regexp.MustCompile(`^(?i:package|module|namespace|unit)[ \t]+[\w.$/-]+[ \t]*[;{]?$`)
+
 // headerLine reports whether line keeps the header block open. Blank lines do
 // — a licence header separated from the banner by an empty line is the normal
 // shape — but anything that is actual code closes it.
@@ -244,7 +279,7 @@ func headerLine(line []byte) bool {
 			return true
 		}
 	}
-	return false
+	return declarationLine.Match(t)
 }
 
 // ---------------------------------------------------------------------------
