@@ -26,9 +26,13 @@ import (
 // node. After the fix both carry FromID "" and assembly stamps each class's own
 // id (base_test's is 8f9227f6484340e6, distinct).
 //
-// Two file-anchored edges in this extractor are deliberate and stay:
-// the tool USES edge (its owning record IS file-scoped, exactly like
-// vhdl/extractor.go's) and IMPORTS (#120).
+// Two file-anchored edges in this extractor are deliberate and stay: the tool
+// USES edge and IMPORTS (#120). The tool edge is NOT kept because its owning
+// record is file-scoped — the owner is the TOOL component, exactly as in
+// vhdl/extractor.go. It is kept because this package emits an
+// extractor.FileEntity carrying that exact path, so the rewrite lands on a node
+// that exists and the edge reads file→tool. "Conceptually file-scoped" is not
+// the criterion; "a node carrying that exact path string exists" is.
 func TestVerilog_ExtendsAnchoredOnClass(t *testing.T) {
 	const path = "src/tb/tests.sv"
 	src := `package tb_pkg;

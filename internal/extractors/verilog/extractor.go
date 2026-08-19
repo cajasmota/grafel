@@ -419,9 +419,16 @@ func findComponents(scrubbed, src, filePath, lang string) []types.EntityRecord {
 				// several classes in one file merged their base lists onto that
 				// one node. Same defect as Solidity's (#6295 / #6297).
 				//
-				// The tool USES edge above (buildToolEntities) keeps filePath on
-				// purpose: its owning record IS file-scoped. So does IMPORTS,
-				// which is the documented cross-language convention (#120).
+				// The tool USES edge above (buildToolEntities) keeps filePath
+				// on purpose, but NOT because its owning record is file-scoped
+				// — the owner there is the TOOL component. It keeps it because
+				// this package also emits an extractor.FileEntity carrying that
+				// exact path, so the rewrite lands on a node that exists and
+				// the edge reads file→tool as intended. That distinction is the
+				// whole point: "conceptually file-scoped" is not the criterion,
+				// "a node carrying that exact path string exists" is. IMPORTS
+				// keeps it too, as the documented cross-language convention
+				// (#120).
 				rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
 					ToID: parent,
 					Kind: "EXTENDS",
