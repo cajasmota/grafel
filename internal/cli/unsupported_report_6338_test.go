@@ -15,6 +15,7 @@ func TestPrintUnsupportedLanguages_CleanRepoPrintsNothing(t *testing.T) {
 		"all-zero":       {".vb": 0},
 		"all-supported":  {".go": 400, ".py": 90},
 		"below-min":      {".vb": 3},
+		"not-a-language": {".json": 1938, ".log": 67},
 		"zero-and-supp":  {".go": 12, ".ts": 0},
 		"negative-count": {".vb": -5},
 	} {
@@ -30,22 +31,26 @@ func TestPrintUnsupportedLanguages_CleanRepoPrintsNothing(t *testing.T) {
 
 // Requirement 2: a mixed repo reports ONLY the unsupported extensions, with
 // correct counts, ordered so the headline is first.
+//
+// Review finding F1/F3 changed this contract: a row is emitted only when the
+// extension NAMES a language. `.json` and `.zzq` are dropped not because some
+// extractor claims them but because neither is a language anyone could act on.
 func TestUnsupportedRows_MixedRepoOnlyUnsupported(t *testing.T) {
 	rows := UnsupportedRows(map[string]int{
-		".go":  12045,
-		".ts":  3300,
-		".vb":  672,
-		".pas": 14,
-		".zzq": 3,
+		".go":   12045, // supported
+		".ts":   3300,  // supported
+		".json": 1938,  // not a language — the F1 noise
+		".zzq":  300,   // not a language either, however many there are
+		".vb":   672,
+		".pas":  14,
 	}, DoctorUnsupportedMinFiles)
 
-	if len(rows) != 3 {
-		t.Fatalf("want 3 unsupported rows, got %d: %+v", len(rows), rows)
+	if len(rows) != 2 {
+		t.Fatalf("want 2 unsupported rows, got %d: %+v", len(rows), rows)
 	}
-	// Ordered by count descending — 672 .vb files is the headline, not the
-	// 3 .zzq strays.
-	wantExt := []string{".vb", ".pas", ".zzq"}
-	wantCount := []int{672, 14, 3}
+	// Ordered by count descending — 672 .vb files is the headline.
+	wantExt := []string{".vb", ".pas"}
+	wantCount := []int{672, 14}
 	for i, r := range rows {
 		if r.Ext != wantExt[i] || r.Count != wantCount[i] {
 			t.Fatalf("row %d = %+v, want ext=%s count=%d", i, r, wantExt[i], wantCount[i])
@@ -54,6 +59,34 @@ func TestUnsupportedRows_MixedRepoOnlyUnsupported(t *testing.T) {
 	for _, r := range rows {
 		if r.Ext == ".go" || r.Ext == ".ts" {
 			t.Fatalf("supported extension %s leaked into the report", r.Ext)
+		}
+		if r.Ext == ".json" || r.Ext == ".zzq" {
+			t.Fatalf("non-language extension %s leaked into the report (F1)", r.Ext)
+		}
+	}
+}
+
+// The upgrade path. A sidecar written by a build from BEFORE the classifier's
+// two-disposition split still carries the junk counts on disk. Those must be
+// dropped at RENDER time, or every upgrading user reads the 60-row table once
+// from a stale sidecar before their next full reindex.
+func TestUnsupportedRows_UnnamedExtensionsNeverRendered(t *testing.T) {
+	stalePreFixSidecar := map[string]int{
+		".json": 1938, ".xml": 1531, ".ktr": 1107, ".jrxml": 846,
+		".tmpl": 388, ".properties": 164, ".txt": 149, ".sum": 132,
+		".mod": 95, ".log": 67, ".csv": 46, ".ds_store": 11,
+		".1": 8, ".835": 6,
+		".vb": 672, // the one real row in there
+	}
+	rows := UnsupportedRows(stalePreFixSidecar, DoctorUnsupportedMinFiles)
+	if len(rows) != 1 || rows[0].Ext != ".vb" {
+		t.Fatalf("a stale pre-fix sidecar must render only its language rows, got %+v", rows)
+	}
+	var buf bytes.Buffer
+	PrintUnsupportedLanguages(&buf, "  ", rows)
+	for _, junk := range []string{".json", ".xml", ".ktr", ".log", ".ds_store", ".835"} {
+		if strings.Contains(buf.String(), junk) {
+			t.Fatalf("junk row %s survived to the screen:\n%s", junk, buf.String())
 		}
 	}
 }
@@ -81,7 +114,7 @@ func TestUnsupportedRows_NowSupportedExtensionDisappears(t *testing.T) {
 // The rendered block: aggregated one row per extension, named where we can.
 func TestPrintUnsupportedLanguages_Rendering(t *testing.T) {
 	var buf bytes.Buffer
-	rows := UnsupportedRows(map[string]int{".vb": 672, ".pas": 14, ".zzq": 3}, DoctorUnsupportedMinFiles)
+	rows := UnsupportedRows(map[string]int{".vb": 672, ".pas": 14, ".f90": 9}, DoctorUnsupportedMinFiles)
 	PrintUnsupportedLanguages(&buf, "  ", rows)
 	out := buf.String()
 
@@ -118,41 +151,47 @@ func TestPrintUnsupportedLanguages_Rendering(t *testing.T) {
 		t.Fatalf("the .vb row must carry the aggregate count 672:\n%s", out)
 	}
 
-	// An extension we have no confident name for renders bare rather than
-	// guessing.
-	for _, l := range lines {
-		if strings.Contains(l, ".zzq") && strings.Contains(l, "not supported") {
-			t.Fatalf(".zzq has no known language and must render bare, got %q", l)
+	// Every rendered row names a language — that is now structural, not
+	// incidental: UnsupportedRows drops anything LanguageDisplayName cannot
+	// name, so there is no bare-row case left to render.
+	for _, l := range lines[1:] {
+		if !strings.Contains(l, "not supported") {
+			t.Fatalf("every row must name a language, got %q", l)
 		}
 	}
 }
 
-// The `status` floor: one stray .pas is noise on the everyday command, 672 .vb
-// files are the headline. `doctor` shows the full table.
+// The `status` floor: a handful of stray files is noise on the everyday
+// command, 672 .vb files are the headline. `doctor` sees more, but is also
+// floored above 1 (F1: a floor of 1 maximised the row count).
 func TestUnsupportedRows_StatusFloorVsDoctorFullTable(t *testing.T) {
-	counts := map[string]int{".vb": 672, ".pas": 3}
+	counts := map[string]int{".vb": 672, ".pas": 9, ".f90": 2}
 
 	statusRows := UnsupportedRows(counts, StatusUnsupportedMinFiles)
 	if len(statusRows) != 1 || statusRows[0].Ext != ".vb" {
-		t.Fatalf("status must show only the extensions above the floor, got %+v", statusRows)
+		t.Fatalf("status must show only the extensions above its floor, got %+v", statusRows)
 	}
 
 	doctorRows := UnsupportedRows(counts, DoctorUnsupportedMinFiles)
 	if len(doctorRows) != 2 {
-		t.Fatalf("doctor must show the full table, got %+v", doctorRows)
+		t.Fatalf("doctor sees more than status but is still floored, got %+v", doctorRows)
 	}
 
 	if StatusUnsupportedMinFiles <= DoctorUnsupportedMinFiles {
 		t.Fatalf("the status floor (%d) must be above doctor's (%d), or there is no floor at all",
 			StatusUnsupportedMinFiles, DoctorUnsupportedMinFiles)
 	}
+	if DoctorUnsupportedMinFiles < 2 {
+		t.Fatalf("doctor's floor is %d — a floor of 1 is what made the table 60 rows long (F1)",
+			DoctorUnsupportedMinFiles)
+	}
 }
 
 // Ties break on extension name so the output is stable across runs (map
 // iteration order is randomised).
 func TestUnsupportedRows_DeterministicTieBreak(t *testing.T) {
-	counts := map[string]int{".vb": 5, ".pas": 5, ".zzq": 5}
-	want := []string{".pas", ".vb", ".zzq"}
+	counts := map[string]int{".vb": 5, ".pas": 5, ".jl": 5}
+	want := []string{".jl", ".pas", ".vb"}
 	for i := 0; i < 20; i++ {
 		rows := UnsupportedRows(counts, DoctorUnsupportedMinFiles)
 		for j, r := range rows {

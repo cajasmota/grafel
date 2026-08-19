@@ -15,8 +15,18 @@ import (
 // `status` is the everyday command, where one `.pas` file is noise and 672
 // `.vb` files are the headline; it only shows extensions at or above the floor.
 const (
-	DoctorUnsupportedMinFiles = 1
-	StatusUnsupportedMinFiles = 10
+	// DoctorUnsupportedMinFiles is doctor's floor. It is above 1: a single
+	// stray file of some language is never the "grafel silently indexed
+	// nothing for a whole language" signal this report exists to carry, and a
+	// floor of 1 maximised the row count on exactly the repos where the table
+	// was already hardest to read.
+	DoctorUnsupportedMinFiles = 5
+	// StatusUnsupportedMinFiles is the everyday command's floor, higher again.
+	StatusUnsupportedMinFiles = 25
+	// UnsupportedMaxRows caps the rendered table; the remainder is summarised
+	// in a single trailing line. A table nobody reads to the end reports
+	// nothing, however clean each row is.
+	UnsupportedMaxRows = 8
 )
 
 // UnsupportedRow is one aggregated line of the report: an extension, how many
@@ -39,6 +49,11 @@ type UnsupportedRow struct {
 //     when the counts were collected. This is what makes `.vb` disappear from
 //     the report the moment VB.NET extraction lands (#6327), whether or not the
 //     repo has been reindexed since;
+//   - extensions that name no language. The collection side stopped counting
+//     these when the classifier grew its two-disposition split, but a sidecar
+//     written by a build from BEFORE that split still carries `.json 1938`,
+//     `.log 67`, `.ds_store 11`. Without this filter every upgrading user would
+//     read the junk table once, from disk, until their next full reindex;
 //   - extensions below minFiles.
 //
 // Rows are sorted by count descending, then extension ascending, so the biggest
@@ -52,13 +67,16 @@ func UnsupportedRows(counts map[string]int, minFiles int) []UnsupportedRow {
 		if n < minFiles {
 			continue
 		}
-		if classifier.SupportedExtension(ext) {
+		// LanguageDisplayName is "" both for a supported extension and for one
+		// that names no language, so this single check covers both filters.
+		name := classifier.LanguageDisplayName(ext)
+		if name == "" {
 			continue
 		}
 		rows = append(rows, UnsupportedRow{
 			Ext:      ext,
 			Count:    n,
-			Language: classifier.LanguageDisplayName(ext),
+			Language: name,
 			Issue:    classifier.TrackingIssue(ext),
 		})
 	}
@@ -83,8 +101,17 @@ func PrintUnsupportedLanguages(w io.Writer, indent string, rows []UnsupportedRow
 	}
 	fmt.Fprintf(w, "%sUnsupported languages (no extractor):\n", indent)
 
+	shown, hiddenRows, hiddenFiles := rows, 0, 0
+	if len(rows) > UnsupportedMaxRows {
+		shown = rows[:UnsupportedMaxRows]
+		for _, r := range rows[UnsupportedMaxRows:] {
+			hiddenRows++
+			hiddenFiles += r.Count
+		}
+	}
+
 	extWidth, countWidth := 0, 0
-	for _, r := range rows {
+	for _, r := range shown {
 		if len(r.Ext) > extWidth {
 			extWidth = len(r.Ext)
 		}
@@ -92,20 +119,24 @@ func PrintUnsupportedLanguages(w io.Writer, indent string, rows []UnsupportedRow
 			countWidth = n
 		}
 	}
-	for _, r := range rows {
+	for _, r := range shown {
 		noun := "files"
 		if r.Count == 1 {
 			noun = "file"
 		}
-		suffix := ""
-		if r.Language != "" {
-			suffix = fmt.Sprintf("  (%s — not supported", r.Language)
-			if r.Issue != "" {
-				suffix += ", see " + r.Issue
-			}
-			suffix += ")"
+		// UnsupportedRows drops every extension that names no language, so
+		// r.Language is always set here. (Measured: a mutant emitting unnamed
+		// rows is killed by TestUnsupportedRows_UnnamedExtensionsNeverRendered.)
+		suffix := fmt.Sprintf("  (%s — not supported", r.Language)
+		if r.Issue != "" {
+			suffix += ", see " + r.Issue
 		}
+		suffix += ")"
 		fmt.Fprintf(w, "%s  %-*s  %*s %s%s\n",
 			indent, extWidth, r.Ext, countWidth, fmtInt(r.Count), noun, suffix)
+	}
+	if hiddenRows > 0 {
+		fmt.Fprintf(w, "%s  … and %d more (%s files) — `grafel doctor --json` for the full list\n",
+			indent, hiddenRows, fmtInt(hiddenFiles))
 	}
 }

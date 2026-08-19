@@ -104,8 +104,8 @@ func TestUnsupportedTally_OtherSkipReasonsNotCounted(t *testing.T) {
 			if !cr.Skip {
 				t.Fatalf("precondition: %q must be skipped, got %+v", tc.path, cr)
 			}
-			if cr.SkipReason == classifier.SkipReasonUnsupportedExtension {
-				t.Fatalf("precondition: %q must be skipped for a reason OTHER than unsupported_extension, got %q", tc.path, cr.SkipReason)
+			if cr.SkipReason == classifier.SkipReasonUnsupportedLanguage {
+				t.Fatalf("precondition: %q must be skipped for a reason OTHER than unsupported_language, got %q", tc.path, cr.SkipReason)
 			}
 			tal := classifier.NewUnsupportedTally()
 			tal.Observe(tc.path, cr)
@@ -129,8 +129,13 @@ func TestUnsupportedTally_IndexedFileNotCounted(t *testing.T) {
 // Extension-less files and dotfiles have no extension to aggregate on. A
 // "(no extension)" bucket would collect every LICENSE, Makefile and .gitignore
 // in the corpus — precisely the unusable-signal failure the issue rules out.
+//
+// Review finding F2: the mixed-case entries are load-bearing. The guard
+// lowercased the extension but compared it against a RAW base, so ".gitignore"
+// was excluded and ".DS_Store" was not.
 func TestUnsupportedTally_NoExtensionAndDotfilesExcluded(t *testing.T) {
-	got := tallyOf(t, "LICENSE", "Makefile", "bin/run", ".gitignore", ".editorconfig")
+	got := tallyOf(t, "LICENSE", "Makefile", "bin/run", ".gitignore", ".editorconfig",
+		".DS_Store", ".Rprofile", ".GitIgnore")
 	if len(got) != 0 {
 		t.Fatalf("extension-less files and dotfiles must not be tallied, got %v", got)
 	}
@@ -151,7 +156,7 @@ func TestUnsupportedTally_ExtensionCaseFolded(t *testing.T) {
 // corrupt the tally.
 func TestUnsupportedTally_CountsReturnsCopy(t *testing.T) {
 	tal := classifier.NewUnsupportedTally()
-	tal.Observe("a.vb", classifier.ClassifyResult{Skip: true, SkipReason: classifier.SkipReasonUnsupportedExtension})
+	tal.Observe("a.vb", classifier.ClassifyResult{Skip: true, SkipReason: classifier.SkipReasonUnsupportedLanguage})
 	first := tal.Counts()
 	first[".vb"] = 999
 	first[".injected"] = 1
@@ -166,7 +171,7 @@ func TestUnsupportedTally_CountsReturnsCopy(t *testing.T) {
 // a stale or hostile map must not be able to inject a supported extension.
 func TestUnsupportedTally_MergeFiltersSupported(t *testing.T) {
 	tal := classifier.NewUnsupportedTally()
-	tal.Observe("a.vb", classifier.ClassifyResult{Skip: true, SkipReason: classifier.SkipReasonUnsupportedExtension})
+	tal.Observe("a.vb", classifier.ClassifyResult{Skip: true, SkipReason: classifier.SkipReasonUnsupportedLanguage})
 	tal.Merge(map[string]int{".vb": 2, ".go": 500, ".PAS": 4})
 	want := map[string]int{".vb": 3, ".pas": 4}
 	if got := tal.Counts(); !reflect.DeepEqual(got, want) {

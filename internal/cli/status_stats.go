@@ -182,11 +182,6 @@ type RepoStatus struct {
 	// failure matters: silently under-reported numbers read as a healthy,
 	// smaller repo.
 	GraphLoadError string
-
-	// UnsupportedExt counts this repo's files skipped for having no extractor,
-	// keyed by extension (#6338). Read from the graph-stats.json sidecar; nil
-	// when absent or when extractor coverage is complete.
-	UnsupportedExt map[string]int
 }
 
 // ComputeStatusSummary loads the per-repo graph-stats.json files and enrichment
@@ -302,7 +297,6 @@ func ComputeStatusSummaryForRef(group string, repos []registry.Repo, ref string)
 				// #6338 — files seen and silently dropped for having no
 				// extractor. The sidecar is the only record of them: they
 				// produce no entity, no edge and no error.
-				rs.UnsupportedExt = side.UnsupportedExtensions
 				for ext, n := range side.UnsupportedExtensions {
 					if n <= 0 {
 						continue
