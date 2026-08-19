@@ -1157,6 +1157,17 @@ func enumerateByKind(all []scored, repos []*LoadedRepo, kindFilter string, inclu
 //
 // Default (verbose=false): id, name, file, line, score, kind.
 // Verbose (verbose=true): also includes qualified_name, repo.
+//
+// #6329 — a hit from machine-generated source additionally carries
+// "generated": true, and in verbose mode "generated_by" naming the rule that
+// fired. Both are OMITTED for authored entities rather than emitted as false:
+// authored source is the overwhelming majority of every result set, and a key
+// on every row would cost tokens on every call to buy nothing.
+//
+// This is load-bearing, not cosmetic. The demotion in rankTier is otherwise
+// invisible through the MCP surface — an agent could not tell a demoted hit
+// from an absent one, and neither could a test. That is exactly the gap that
+// let #6338 ship a green suite over a report nobody could use.
 func serializeHits(all []scored, verbose bool) []map[string]any {
 	out := make([]map[string]any, 0, len(all))
 	for _, sc := range all {
@@ -1168,9 +1179,15 @@ func serializeHits(all []scored, verbose bool) []map[string]any {
 			"score": sc.hit.Score,
 			"kind":  stripScopePrefix(sc.hit.Entity.Kind),
 		}
+		if sc.hit.Entity.PropGet(types.EntityGeneratedProperty) == "true" {
+			m["generated"] = true
+		}
 		if verbose {
 			m["qualified_name"] = sc.hit.Entity.QualifiedName
 			m["repo"] = sc.repo.Repo
+			if by := sc.hit.Entity.PropGet(types.EntityGeneratedByProperty); by != "" {
+				m["generated_by"] = by
+			}
 		}
 		out = append(out, m)
 	}

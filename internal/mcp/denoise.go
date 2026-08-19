@@ -211,6 +211,7 @@ func isNoise(e *graph.Entity) bool { return classifyNoise(e) != noiseNone }
 //
 //	0 — real lined entity (start_line > 0)
 //	1 — lineless but legitimate (endpoint/resource)
+//	2 — machine-generated source (#6329)
 //	4 — noiseShadow (inferred class-hierarchy / implicit-method shadow)
 //	5 — noiseContainer (file/module CONTAINER Component)
 //	6 — noiseProcess (array/string built-in Process node)
@@ -236,6 +237,35 @@ func rankTier(e *graph.Entity) int {
 	// share the top tier so that BM25 relevance — not the mere presence of a
 	// qualified_name — orders them. Lineless-but-legitimate entities (routes /
 	// resources, e.g. endpoint definitions) sit just below.
+	// Machine-generated source (#6329) ranks below BOTH authored tiers.
+	//
+	// A lineless authored entity is still something a person wrote and may be
+	// exactly what the user was looking for; a generated declaration is
+	// derivable from something else in the repository. When both match a
+	// query, the authored one is more likely to be the answer.
+	//
+	// This is checked AFTER the noise switch above, so a generated entity that
+	// is also a shadow keeps its noise tier — the demotion must never PROMOTE
+	// a node out of a noise bucket.
+	//
+	// It is deliberately NOT a noise bucket. Noise is hidden behind
+	// include_noise, and #6329 exists precisely because generated declarations
+	// have to stay in the graph and stay findable: the WinForms case is
+	// `Handles btnSave.Click` in the authored half resolving against
+	// `Friend WithEvents btnSave As Button` in the designer half.
+	//
+	// Tier 2 leaves 3 free on the noise side and sits one clear step below the
+	// authored tiers, so a further disposition can be inserted on either side
+	// without renumbering the noise buckets.
+	//
+	// A score penalty was rejected: FuseRRF replaces BM25 magnitudes with rank
+	// reciprocals, so any multiplicative penalty inside Search is erased on
+	// every repository that has an embeddings sidecar — correct-looking, green
+	// on repos without embeddings, and inert on the ones that matter.
+	if e.PropGet(types.EntityGeneratedProperty) == "true" {
+		return 2
+	}
+
 	if e.StartLine > 0 {
 		return 0
 	}
