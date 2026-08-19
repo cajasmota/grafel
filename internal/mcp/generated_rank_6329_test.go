@@ -444,3 +444,106 @@ func TestFind_CompactViewAnnouncesItsSeedTruncation(t *testing.T) {
 			compactSeedLimit, out)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #6329 review round 3 — the demotion has to survive the DEFAULT view, and the
+// exemption has to survive FuseRRF.
+// ---------------------------------------------------------------------------
+
+// atRepo attaches a repo to a scored hit and gives the entity a unique id so
+// the TOON renderer can address it.
+func atRepo(sc scored, r *LoadedRepo) scored {
+	sc.repo = r
+	sc.hit.Entity.ID = r.Repo + "_" + sc.hit.Entity.Name
+	return sc
+}
+
+// rankedMultiRepoFixture is the reviewer's repro for the per-repo re-sort: one
+// exempt generated hit, one demoted generated hit that still outscores every
+// authored hit, and three authored hits — all in one repo.
+//
+// After rerankScored the order is [gen_top auth_a auth_b auth_c gen_2]. The
+// per-repo view keeps 3. gen_2 is tier-demoted to LAST, so it must not appear.
+func rankedMultiRepoFixture() ([]scored, *LoadedGroup) {
+	alpha := &LoadedRepo{Repo: "alpha"}
+	beta := &LoadedRepo{Repo: "beta"}
+	all := []scored{
+		atRepo(genEntity("gen_top", 1, 9.9), alpha),
+		atRepo(genEntity("gen_2", 2, 5.0), alpha),
+		atRepo(authoredEntity("auth_a", 10, 1.0), alpha),
+		atRepo(authoredEntity("auth_b", 11, 0.9), alpha),
+		atRepo(authoredEntity("auth_c", 12, 0.8), alpha),
+		atRepo(authoredEntity("beta_only", 13, 0.7), beta),
+	}
+	rerankScored(all)
+	lg := &LoadedGroup{Name: "test", Repos: map[string]*LoadedRepo{"alpha": alpha, "beta": beta}}
+	return all, lg
+}
+
+// TestPerRepoSummary_PreservesTheRankedOrder is BLOCKER A.
+//
+// renderPerRepoSummary used to re-sort each repo's hits by RAW SCORE, throwing
+// away the tier ordering rerankScored had just established. In the default
+// multi-repo view — the most-travelled output path in the tool — the generated
+// demotion therefore did nothing at all: a tier-demoted generated hit rendered
+// at position 2 and the AUTHORED hits were the ones truncated away. That is
+// #6314 verbatim, in the default view, after the fix.
+//
+// MUTATION TARGET: restore the per-repo `sort.SliceStable(hits, ... Score >)`
+// in either path and this must fail.
+func TestPerRepoSummary_PreservesTheRankedOrder(t *testing.T) {
+	all, lg := rankedMultiRepoFixture()
+	out := renderPerRepoSummary(all, lg)
+	if strings.Contains(out, "gen_2") {
+		t.Fatalf("the tier-demoted generated hit gen_2 appears in the per-repo top %d; "+
+			"the view must slice the ranked order, not re-sort by raw score:\n%s",
+			perRepoSummaryLimit, out)
+	}
+	for _, want := range []string{"gen_top", "auth_a", "auth_b"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("per-repo view is missing %q; the authored hits must not be the "+
+				"ones truncated away:\n%s", want, out)
+		}
+	}
+}
+
+// TestPerRepoSummary_MarkdownFallbackPreservesTheRankedOrder — the legacy
+// markdown path carried the identical re-sort on its own line. A fix applied to
+// only one of the two leaves the defect live for whoever sets
+// MCP_FIND_FORMAT=markdown.
+func TestPerRepoSummary_MarkdownFallbackPreservesTheRankedOrder(t *testing.T) {
+	t.Setenv("MCP_FIND_FORMAT", "markdown")
+	all, lg := rankedMultiRepoFixture()
+	out := renderPerRepoSummary(all, lg)
+	if strings.Contains(out, "gen_2") {
+		t.Fatalf("markdown fallback rendered the tier-demoted hit gen_2 in the top %d:\n%s",
+			perRepoSummaryLimit, out)
+	}
+	for _, want := range []string{"gen_top", "auth_a", "auth_b"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("markdown fallback is missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestPerRepoSummary_AgreesWithTheGlowSelection — handleQueryGraph records the
+// prefixed ids of the "shown" hits for the dashboard glow by walking `all` in
+// ARRIVAL order and keeping the first perRepoSummaryLimit per repo. While the
+// renderer re-sorted, the glow highlighted a different set of nodes than the
+// text named. Slicing in arrival order makes the two definitionally equal.
+func TestPerRepoSummary_AgreesWithTheGlowSelection(t *testing.T) {
+	all, lg := rankedMultiRepoFixture()
+	out := renderPerRepoSummary(all, lg)
+
+	shownPerRepo := map[string]int{}
+	for _, sc := range all {
+		if shownPerRepo[sc.repo.Repo] >= perRepoSummaryLimit {
+			continue
+		}
+		shownPerRepo[sc.repo.Repo]++
+		if !strings.Contains(out, sc.hit.Entity.Name) {
+			t.Fatalf("glow highlights %q but the rendered view does not name it:\n%s",
+				sc.hit.Entity.Name, out)
+		}
+	}
+}

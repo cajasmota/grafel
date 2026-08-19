@@ -1214,7 +1214,19 @@ func serializeHits(all []scored, verbose bool) []map[string]any {
 // adding a repo_filter first. Falls back to legacy markdown when
 // MCP_FIND_FORMAT=markdown is set.
 func renderPerRepoSummary(all []scored, lg *LoadedGroup) string {
-	// Compute per-repo top-3 selection (same logic in both paths).
+	// Compute per-repo top-N selection (same logic in both paths).
+	//
+	// `all` ARRIVES RANKED — rerankScored has already ordered it by tier and
+	// then by score, and bucketing by repo below preserves that order. So the
+	// per-repo cut is a SLICE of the ranked order, never a re-sort.
+	//
+	// Both paths used to re-sort each repo's hits by raw score here, which
+	// discarded the tier the ranker had just established. With the #6329
+	// generated demotion that made the feature inert in the default view: a
+	// tier-demoted generated hit rendered in the top 3 and the AUTHORED hits
+	// were the ones truncated away — #6314 verbatim, in the most-travelled
+	// output path in the tool. It also disagreed with the glow selection in
+	// handleQueryGraph, which walks `all` in arrival order.
 	perRepo := map[string][]scored{}
 	for _, sc := range all {
 		perRepo[sc.repo.Repo] = append(perRepo[sc.repo.Repo], sc)
@@ -1232,7 +1244,6 @@ func renderPerRepoSummary(all []scored, lg *LoadedGroup) string {
 		b.WriteString(fmt.Sprintf("# group: %s — per-repo top hits\n", lg.Name))
 		for _, rn := range names {
 			hits := perRepo[rn]
-			sort.SliceStable(hits, func(i, j int) bool { return hits[i].hit.Score > hits[j].hit.Score })
 			if len(hits) > perRepoSummaryLimit {
 				hits = hits[:perRepoSummaryLimit]
 			}
@@ -1255,7 +1266,6 @@ func renderPerRepoSummary(all []scored, lg *LoadedGroup) string {
 	nodes := make([]nodeWithRepo, 0, len(all))
 	for _, rn := range names {
 		hits := perRepo[rn]
-		sort.SliceStable(hits, func(i, j int) bool { return hits[i].hit.Score > hits[j].hit.Score })
 		if len(hits) > perRepoSummaryLimit {
 			hits = hits[:perRepoSummaryLimit]
 		}
