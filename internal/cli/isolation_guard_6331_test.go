@@ -150,3 +150,142 @@ func isolateDaemonRootShort(t *testing.T) string {
 	t.Setenv(envguard.EnvDaemonRoot, dir)
 	return dir
 }
+
+// partialEnv puts the process into the #6331 partial shape (store redirected,
+// daemon plane not) with the real HOME restored, which is what makes the guard
+// fire.
+func partialEnv(t *testing.T) {
+	t.Helper()
+	if envguard.RealUserHome() == "" {
+		t.Skip("user.Current() unavailable on this runner")
+	}
+	testsupport.IsolateHome(t)
+	t.Setenv("HOME", envguard.RealUserHome())
+	t.Setenv("USERPROFILE", envguard.RealUserHome())
+	t.Setenv(envguard.EnvDaemonRoot, "")
+	t.Setenv(envguard.EnvGrafelHome, t.TempDir())
+}
+
+// TestHelpIsNeverRefused: `--help` must print usage under ANY environment.
+//
+// Cobra short-circuits on the help flag BEFORE PersistentPreRunE only for
+// commands whose flags it parses. Seven commands set DisableFlagParsing (index
+// and its three subcommands, dashboard, extract, quality), so cobra's help flag
+// stays false, the short-circuit never fires and `grafel index --help` reaches
+// the guard — which refused it. A refusal instead of usage contradicts the
+// exemption list's own principle that introspection must never fail.
+func TestHelpIsNeverRefused(t *testing.T) {
+	partialEnv(t)
+
+	root := newRoot()
+	if root.PersistentPreRunE == nil {
+		t.Fatal("guard not wired")
+	}
+
+	var walk func(*cobra.Command)
+	walk = func(c *cobra.Command) {
+		for _, sub := range c.Commands() {
+			for _, args := range [][]string{{"--help"}, {"-h"}, {"somerepo", "--help"}} {
+				if err := root.PersistentPreRunE(sub, args); err != nil {
+					t.Errorf("`grafel %s %s` was refused by the isolation guard: %v",
+						sub.CommandPath(), strings.Join(args, " "), err)
+				}
+			}
+			walk(sub)
+		}
+	}
+	walk(root)
+}
+
+// TestHelpExemptionDoesNotLeakToRealInvocations is the control: the args scan
+// must not be a way to disarm the guard on a command that is actually doing
+// work.
+func TestHelpExemptionDoesNotLeakToRealInvocations(t *testing.T) {
+	partialEnv(t)
+
+	root := newRoot()
+	idx, _, err := root.Find([]string{"index"})
+	if err != nil {
+		t.Fatalf("find index: %v", err)
+	}
+	for _, args := range [][]string{{"somerepo"}, {"somerepo", "--quiet"}, {"--", "--help"}} {
+		if err := root.PersistentPreRunE(idx, args); err == nil {
+			t.Errorf("`grafel index %s` was NOT refused under partial isolation",
+				strings.Join(args, " "))
+		}
+	}
+}
+
+// TestIsolationGuardExemptSetIsExact pins the exemption list membership.
+//
+// The list is the guard's only hole, so it must not be able to grow (or shrink)
+// without a deliberate edit here. `status` in particular must NEVER be exempt:
+// it reports on the store, so under partial isolation it reports authoritative
+// numbers for the wrong one.
+func TestIsolationGuardExemptSetIsExact(t *testing.T) {
+	want := map[string]bool{
+		"help":             true,
+		"completion":       true,
+		"__complete":       true,
+		"__completeNoDesc": true,
+		"statusline":       true,
+		"doctor":           true,
+	}
+	for name := range want {
+		if !isolationGuardExempt[name] {
+			t.Errorf("%q is no longer exempt from the isolation guard", name)
+		}
+	}
+	for name := range isolationGuardExempt {
+		if !want[name] {
+			t.Errorf("%q was added to isolationGuardExempt without updating this test — "+
+				"every exemption is a hole in the #6331 guard and must be argued for", name)
+		}
+	}
+}
+
+// TestDoctorRunsAndReportsUnderPartialIsolation: doctor is the one command a
+// user runs to diagnose exactly the state the guard complains about (see
+// internal/install/copy.go, which says so in as many words). Refusing it leaves
+// them with an error and no diagnostic. It must run, and it must surface the
+// partial isolation as a finding rather than staying silent about it.
+func TestDoctorRunsAndReportsUnderPartialIsolation(t *testing.T) {
+	partialEnv(t)
+
+	root := newRoot()
+	doc, _, err := root.Find([]string{"doctor"})
+	if err != nil {
+		t.Fatalf("find doctor: %v", err)
+	}
+	if err := root.PersistentPreRunE(doc, nil); err != nil {
+		t.Fatalf("`grafel doctor` was refused under partial isolation: %v", err)
+	}
+
+	var sb strings.Builder
+	if !reportIsolationFinding(&sb) {
+		t.Fatal("doctor reported no isolation finding under partial isolation")
+	}
+	got := sb.String()
+	for _, want := range []string{statusWarn, envguard.EnvGrafelHome, envguard.EnvDaemonRoot} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("isolation finding does not mention %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "refusing to run") {
+		t.Fatalf("doctor's finding is worded as a refusal:\n%s", got)
+	}
+}
+
+// TestNoIsolationFindingWhenClean is the control: a clean environment must
+// print nothing, or every doctor run grows a line of noise.
+func TestNoIsolationFindingWhenClean(t *testing.T) {
+	if envguard.RealUserHome() == "" {
+		t.Skip("user.Current() unavailable on this runner")
+	}
+	testsupport.IsolateHome(t)
+
+	var sb strings.Builder
+	if reportIsolationFinding(&sb) || sb.Len() != 0 {
+		t.Fatalf("clean (fully isolated) environment produced a finding: %q", sb.String())
+	}
+}

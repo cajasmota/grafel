@@ -194,9 +194,6 @@ func TestMigrateInRepo_MovesDir(t *testing.T) {
 	// #6331: and GRAFEL_DAEMON_ROOT, or this is partial isolation — a private
 	// store behind the LIVE daemon socket, which the cobra root now refuses.
 	isolateDaemonRootShort(t)
-	// #6331: GRAFEL_HOME alone is partial isolation (private store, LIVE
-	// daemon socket) and the cobra root now refuses it.
-	isolateDaemonRootShort(t)
 
 	// Build the cobra command tree.
 	root := newRoot()

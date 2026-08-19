@@ -114,9 +114,17 @@ const (
 )
 
 // Result carries the verdict and the operator-facing message.
+//
+// Summary and Detail are the same facts as Message with the verdict's framing
+// removed ("refusing to run", "WARNING") — for callers that report the
+// environment rather than act on it. `grafel doctor` renders them as a [warn]
+// finding; it is exempt from the refusal precisely so it can. Both are empty on
+// VerdictOK.
 type Result struct {
 	Verdict Verdict
 	Message string
+	Summary string
+	Detail  string
 }
 
 // Env is the environment lookup Check reads. os.LookupEnv satisfies it; tests
@@ -187,6 +195,11 @@ func Check(env Env, realHome string) Result {
 		}
 		return Result{
 			Verdict: VerdictWarn,
+			Summary: fmt.Sprintf("%s=%q and %s=%q are set, but HOME is still the real user home (%q)",
+				EnvGrafelHome, grafelHome, EnvDaemonRoot, daemonRoot, realHome),
+			Detail: "the store and the daemon plane are redirected, but HOME-derived paths " +
+				"(~/.claude.json, ~/.codeium, the XDG-less config fallback) still resolve " +
+				"under the real home, so this run can still write there",
 			Message: fmt.Sprintf(
 				"grafel: WARNING — partially isolated environment.\n"+
 					"  %s=%q and %s=%q are set, but HOME is still the real user home (%q).\n"+
@@ -207,6 +220,8 @@ func refuseOrWarn(allowPartial bool, what, why string) Result {
 		// sentence that means nothing.
 		return Result{
 			Verdict: VerdictWarn,
+			Summary: what,
+			Detail:  why,
 			Message: partialMessage(
 				"grafel: WARNING — PARTIALLY ISOLATED environment, proceeding because "+
 					EnvAllowPartial+"=1.", what, why, ""),
@@ -214,6 +229,8 @@ func refuseOrWarn(allowPartial bool, what, why string) Result {
 	}
 	return Result{
 		Verdict: VerdictRefuse,
+		Summary: what,
+		Detail:  why,
 		Message: partialMessage("refusing to run: PARTIALLY ISOLATED environment.", what, why,
 			"  Set "+EnvAllowPartial+"=1 to proceed anyway (you are on your own).\n"),
 	}

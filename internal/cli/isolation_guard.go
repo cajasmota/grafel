@@ -22,7 +22,15 @@ import (
 //     "${GRAFEL_HOME:-$HOME/.grafel}/status/..." itself and reads one JSON
 //     file; a hard refusal there would break the user's shell prompt over an
 //     environment problem that prompt cannot fix.
-//   - version: pure string.
+//   - doctor: the command a user runs to diagnose exactly the state this guard
+//     complains about (internal/install/copy.go:240 says so in as many words).
+//     Refusing it hands the user an error and no diagnostic. It instead reports
+//     the partial isolation as a [warn] finding — see reportIsolationFinding —
+//     which is strictly more information than the refusal carried.
+//
+// `version` is deliberately NOT here: there is no `version` subcommand in this
+// tree, and `grafel --version` is a cobra flag handled before any hook runs, so
+// an entry would only misdescribe the command surface.
 //
 // Everything else — including the read-only commands — is guarded. A partially
 // isolated `grafel status` or `grafel list` reports on the WRONG store while
@@ -34,7 +42,35 @@ var isolationGuardExempt = map[string]bool{
 	"__complete":       true,
 	"__completeNoDesc": true,
 	"statusline":       true,
-	"version":          true,
+	"doctor":           true,
+}
+
+// isHelpInvocation reports whether this invocation is asking for usage.
+//
+// Cobra's own help short-circuit (execute() returns flag.ErrHelp before
+// preRun) only fires for commands whose flags it parses. Seven commands in this
+// tree set DisableFlagParsing — index and its three subcommands, dashboard,
+// extract, quality — so cobra never sees their help flag and `grafel index
+// --help` reached the guard and was refused. Printing a refusal where usage
+// belongs contradicts the exemption list's own principle that introspection
+// must never fail, so the guard detects the help request itself.
+//
+// For flag-parsing commands args carries no flags, so the scan is a no-op there
+// and the cobra flag is consulted instead. Scanning stops at "--": everything
+// after it is a positional payload, not a request for usage.
+func isHelpInvocation(cmd *cobra.Command, args []string) bool {
+	if f := cmd.Flags().Lookup("help"); f != nil && f.Value.String() == "true" {
+		return true
+	}
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		if a == "-h" || a == "--help" {
+			return true
+		}
+	}
+	return false
 }
 
 // isExemptFromIsolationGuard reports whether cmd (or any ancestor) is exempt.
@@ -60,7 +96,7 @@ func isExemptFromIsolationGuard(cmd *cobra.Command) bool {
 // only the CLOSEST PersistentPreRunE up the chain, and no subcommand in this
 // tree defines one (verified: `grep -rn PersistentPreRun internal/ cmd/` over
 // non-test files returns nothing at a1e9deb3e). Any subcommand that grows one
-// later must call this guard itself; guard_wiring_6331_test.go fails if one
+// later must call this guard itself; isolation_guard_6331_test.go fails if one
 // appears without doing so.
 //
 // Deliberately NOT covering the pre-cobra entrypoints in cmd/grafel/main.go
@@ -73,8 +109,8 @@ func isExemptFromIsolationGuard(cmd *cobra.Command) bool {
 // GRAFEL_DAEMON_ROOT and XDG_CONFIG_HOME itself (cmd/grafel/selftest.go:206-235)
 // before doing anything, so it is isolated by construction.
 func installIsolationGuard(root *cobra.Command) {
-	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
-		if isExemptFromIsolationGuard(cmd) {
+	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if isExemptFromIsolationGuard(cmd) || isHelpInvocation(cmd, args) {
 			return nil
 		}
 		return envguard.Assert(os.Stderr)
