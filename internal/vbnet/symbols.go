@@ -327,6 +327,12 @@ type container struct {
 	name  string
 	ender string
 	kind  SymbolKind
+	// lambda marks a block opened by a multi-line lambda. It contributes no
+	// segment to the scope path — a lambda has no name — but it must be on
+	// the stack, or its `End Sub` closes the enclosing method and every later
+	// Dim in that method is recorded as a FIELD at type scope. Measured on
+	// CodeEditor.vb:617 before this existed.
+	lambda bool
 }
 
 // BuildTable runs the pre-pass over src and records every declaration it
@@ -339,6 +345,9 @@ func BuildTable(src string) *Table {
 	scopeOf := func() string {
 		parts := make([]string, 0, len(stack))
 		for _, c := range stack {
+			if c.lambda {
+				continue
+			}
 			parts = append(parts, c.name)
 		}
 		return strings.Join(parts, ".")
@@ -366,6 +375,11 @@ func BuildTable(src string) *Table {
 		code := MaskStringLiterals(ll.Code)
 		for _, stmt := range splitStatements(code) {
 			walkStatement(t, stmt, ll.Line, scopeOf, push, pop, innerKind, &stack)
+			// Lambda blocks are tracked here and in the tree walk from the
+			// same helper, so the two cannot disagree about what is open.
+			if kw := lambdaEnder(strings.TrimSpace(stmt)); kw != "" {
+				stack = append(stack, container{ender: kw, kind: innerKind(), lambda: true})
+			}
 		}
 	}
 	return t

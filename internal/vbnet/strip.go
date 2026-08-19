@@ -25,12 +25,22 @@
 //
 // # Verification status
 //
-// UNVERIFIED against real VB.NET source. No .vb file exists anywhere on the
-// machine this was written on (checked during #6327 S2). Every fixture here is
-// constructed from the VB.NET language reference and from the shapes reported
-// in #6321 (WinForms .Designer.vb, Inherits clauses, Handles wiring, file-top
-// Imports). Per AGENTS.md "Evidence", that gap is stated rather than papered
-// over: the mechanism is pinned by tests, the distribution is not.
+// VERIFIED against real VB.NET source as of #6327 S4. The corpus that did not
+// exist when S1-S3 were written is now on disk: 302 .vb files, 148,308 lines,
+// 88 of them .Designer.vb, across WakeOnLAN, staxrip and
+// display-drivers-uninstaller (#6363). 300 of the 302 parse with no
+// diagnostic; see TestCorpusParseRate, which is a gate rather than a report.
+//
+// Running S4's parser over that corpus corrected this pre-pass in four places
+// that no constructed fixture had reached: a UTF-8 byte-order mark ahead of
+// the first declaration (12 files), $"..." interpolation scanned exactly
+// inverted — hole as text, text as code (106 files contain one), an enum
+// member named `Custom` losing its name to the modifier peel (3 files), and
+// multi-line lambdas leaving the container stack open, which recorded
+// method-body locals as type-scope FIELDS.
+//
+// Still unverified: the distribution in the reporter's own ~670-file tree
+// (#6321). Nothing here claims a recall or precision figure for CALLS.
 package vbnet
 
 import "strings"

@@ -107,6 +107,80 @@ func TestParse_ParenClassification(t *testing.T) {
 	}
 }
 
+// TestParse_QualifiedByAnUnnameableReceiver pins the distinction an S5 author
+// depends on: a name qualified by something this per-file pass cannot NAME is
+// not the same thing as an unqualified name it could not RESOLVE.
+//
+// `With` blocks and calls on expression results both produce Qualifier == "",
+// and without the Qualified bit they are byte-identical to a bare unresolved
+// name. An S5 author reading Qualifier == "" as "unqualified" would resolve
+// `.Foo(` against file-local declarations and emit a confidently wrong CALLS
+// edge — which is the failure #6327 exists to prevent. 1,600 of the 41,242
+// use sites in the corpus are in this state.
+func TestParse_QualifiedByAnUnnameableReceiver(t *testing.T) {
+	src := strings.Join([]string{
+		"Public Class C",                                    // 1
+		"    Private key As RegistryKey",                    // 2
+		"    Public Sub SetValue(ByVal n As String)",        // 3
+		"    End Sub",                                       // 4
+		"    Public Sub F()",                                // 5
+		"        With key",                                  // 6
+		"            .SetValue(\"a\", 1)",                   // 7
+		"            Dim s = .OpenSubKey(\"b\")",            // 8
+		"        End With",                                  // 9
+		"        CType(Me, ISupportInitialize).BeginInit()", // 10
+		"        Unresolved(1)",                             // 11
+		"    End Sub",                                       // 12
+		"End Class",                                         // 13
+	}, "\n")
+
+	res := Parse(src)
+	if len(res.Diagnostics) != 0 {
+		t.Fatalf("diagnostics: %v", res.Diagnostics)
+	}
+	f := findNode(res.File, "C.F")
+
+	// The load-bearing assertion, checked before anything cosmetic so that a
+	// regression reports the consequence rather than a rendering diff.
+	// `.SetValue` must NOT resolve against the same-named method declared on
+	// this class: its receiver is the With target, which this pass cannot name.
+	for _, name := range []string{"SetValue", "OpenSubKey", "BeginInit"} {
+		r, ok := findRef(f, name)
+		if !ok {
+			t.Fatalf("no ref for %s", name)
+		}
+		if !r.Qualified {
+			t.Errorf("%s: Qualified = false. S5 cannot tell this from an "+
+				"unqualified unresolved name and will resolve it against "+
+				"file-local declarations, emitting a wrong CALLS edge (#6327)", name)
+		}
+		if r.Qualifier != "" {
+			t.Errorf("%s: Qualifier = %q, want \"\" (the receiver is unnameable here)", name, r.Qualifier)
+		}
+		// Recall limit, asserted so it is a recorded fact and not a surprise:
+		// a With-block invocation is dropped rather than guessed at.
+		if r.IsCall() {
+			t.Errorf("%s: IsCall() = true; S5 would need a receiver this pass never resolved", name)
+		}
+	}
+
+	want := []string{
+		".SetValue:unknown@7", ".OpenSubKey:unknown@8",
+		"CType:unknown@10+intrinsic+head", ".BeginInit:unknown@10",
+		"Unresolved:unknown@11+head",
+	}
+	if got := refStrings(f); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("refs:\n got %v\nwant %v", got, want)
+	}
+
+	// The contrast case: a genuinely unqualified name the table could not
+	// resolve. Same Kind, different Qualified, and IsCall differs because of it.
+	u, _ := findRef(f, "Unresolved")
+	if u.Qualified || !u.IsCall() {
+		t.Errorf("unqualified unresolved ref = %+v, want Qualified=false and IsCall()=true", u)
+	}
+}
+
 // TestParse_ParenNonCalls covers the shapes that are call-SHAPED but are not
 // calls: language keywords, intrinsic conversions, grouping and literals.
 func TestParse_ParenNonCalls(t *testing.T) {

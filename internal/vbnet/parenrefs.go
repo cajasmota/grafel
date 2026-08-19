@@ -14,12 +14,27 @@ import "strings"
 // (`New X(`, `X(Of T)`) or delegated to Table.ClassifyParen.
 
 // parenKeywords are the words that may sit immediately before a '(' without
-// being invoked. They are keywords, so no declaration can shadow them and the
-// check is safe to apply before the table is consulted.
+// being invoked.
 //
 // Without this set `If (x) Then` reports a call to If, `Return (n)` a call to
-// Return and `Function(x) x + 1` a call to Function — on real source that is
-// thousands of phantom edges, not an edge case.
+// Return and `Function(x) x + 1` a call to Function. That half of the set is
+// load-bearing and cheap: deleting the operator and control-flow entries
+// (and, or, not, in, is, ...) surfaces 154 extra use sites on the 302-file
+// corpus, all of them phantoms.
+//
+// The other half is a PRECISION TRADE, stated here because it is a recall
+// cost with no diagnostic attached. About twenty of these are VB.NET
+// CONTEXTUAL keywords — aggregate, ascending, by, descending, distinct,
+// equals, from, group, into, join, order, preserve, skip, take, until, where,
+// alias, lib, custom — which are legal identifiers, and the corpus does
+// declare members with such names. An unqualified call to one is dropped
+// silently. Measured: removing every contextual entry from this set surfaces
+// 4 additional use sites out of 41,748, exactly 1 of them a call, all spelled
+// `where`. The trade is taken deliberately at that price, not because a
+// declaration "cannot" shadow these words — it can.
+//
+// A qualified use is unaffected: the check is skipped when the name has a
+// qualifier, so `q.Take(5)` is still a use site.
 var parenKeywords = map[string]bool{
 	"if": true, "elseif": true, "then": true, "else": true, "while": true,
 	"until": true, "do": true, "loop": true, "for": true, "each": true,
@@ -119,6 +134,7 @@ func (p *parser) scanRefs(text string, textOff int, ll LogicalLine, from int) {
 		ref := Ref{
 			Name:          name,
 			Qualifier:     qual,
+			Qualified:     qualified,
 			New:           prev == "new",
 			Generic:       ofKeyword,
 			Intrinsic:     !qualified && vbIntrinsics[folded],

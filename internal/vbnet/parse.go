@@ -37,7 +37,11 @@ import (
 //
 // The two residual files share one cause: VB 14 lets a string literal, and an
 // interpolation hole, span physical lines, and this pre-pass is line-oriented.
-// TestMultiLineLiteralIsUnsupported pins that gap in the failing direction so
+// That limitation reaches further than the two diagnosed files - 9 corpus
+// files contain such a literal and 7 of them parse clean with their interiors
+// scanned as code. Measured damage from the silent 7: at most 20 use sites
+// inside a mis-scanned interior, no phantom nodes, no spurious calls.
+// TestMultiLineLiteralIsUnsupported pins the gap in the failing direction so
 // it cannot quietly change size.
 //
 // Nothing here claims a recall or precision figure for CALLS. What is measured
@@ -249,8 +253,32 @@ func (n *Node) Dump() string {
 type Ref struct {
 	// Name is the identifier immediately before the '('.
 	Name string
-	// Qualifier is the dotted prefix, "" for an unqualified use.
+	// Qualifier is the dotted prefix, "" for an unqualified use — but see
+	// Qualified: "" does NOT mean unqualified.
 	Qualifier string
+	// Qualified is whether a '.' preceded the name at all.
+	//
+	// It is separate from Qualifier because the two disagree, and the
+	// disagreement is the dangerous case. A `With` block member access
+	// (`.OpenSubKey(k)`) and a call on an expression result
+	// (`CType(x, I).BeginInit()`) are qualified by something this per-file
+	// pass cannot name, so Qualifier is "" while Qualified is true. Measured
+	// on the 302-file corpus: 1,600 of 41,242 use sites are in exactly that
+	// state.
+	//
+	// Without this bit those sites are byte-identical to an unqualified name
+	// the table could not resolve, and an S5 author told that `Qualifier == ""`
+	// means unqualified would resolve `.Foo(` against file-local declarations
+	// — the confidently-wrong edge #6327 exists to prevent. Today no phantom
+	// CALLS escapes only because StatementHead happens to be false for all of
+	// them, which is an accident of the composition and not a guard.
+	//
+	// Recall cost, stated because `With` is pervasive in the WinForms code
+	// #6321 is about: every `With`-block member invocation is DROPPED.
+	// `.SetValue(k, v)` standing alone as a statement is a real call, and
+	// IsCall reports false for it, because naming its receiver needs With-target
+	// tracking this pass does not do. S5 must not infer a receiver here.
+	Qualified bool
 	// Kind is Table.ClassifyParen's answer, or ParenCall when the syntax
 	// settles it (a `New` prefix).
 	Kind ParenKind
@@ -277,8 +305,13 @@ type Ref struct {
 // String renders a Ref compactly for test failure messages.
 func (r Ref) String() string {
 	name := r.Name
-	if r.Qualifier != "" {
+	switch {
+	case r.Qualifier != "":
 		name = r.Qualifier + "." + r.Name
+	case r.Qualified:
+		// Qualified by something this pass cannot name: rendered with a bare
+		// leading dot so it can never be read as an unqualified use.
+		name = "." + r.Name
 	}
 	s := fmt.Sprintf("%s:%s@%d", name, r.Kind, r.Line)
 	if r.New {
@@ -528,7 +561,7 @@ func (p *parser) walkLine(ll LogicalLine) {
 		// same offsets slice the untouched source.
 		raw := ll.Text[off : off+len(stmt)]
 		p.walkStatement(stmt, raw, off, ll)
-		p.pushLambda(stmt, ll.LineAt(off))
+		p.pushLambda(stmt)
 	}
 }
 
@@ -544,7 +577,25 @@ func (p *parser) walkLine(ll LogicalLine) {
 // A single-line lambda (`Sub(x) Log(x)`) has its body on the same line and
 // therefore no End, which is why the test is "nothing follows the parameter
 // list" rather than "a lambda appears".
-func (p *parser) pushLambda(stmt string, line int) {
+func (p *parser) pushLambda(stmt string) {
+	if kw := lambdaEnder(stmt); kw != "" {
+		p.stack = append(p.stack, &frame{node: p.top().node, ender: kw, lambda: true})
+	}
+}
+
+// lambdaEnder returns the End keyword a multi-line lambda in stmt will be
+// closed by, or "" when the statement opens no lambda block.
+//
+// A single-line lambda (`Sub(x) Log(x)`) has its body on the same line and
+// therefore no End, which is why the test is "nothing follows the parameter
+// list" rather than "a lambda appears".
+//
+// It is shared with BuildTable rather than duplicated: the tree walk and the
+// table walk must agree about which blocks are open, or a method-body local
+// after a lambda is recorded at type scope as a field — which is exactly what
+// happened before this was shared (CodeEditor.vb:617, found by the
+// bidirectional agreement test).
+func lambdaEnder(stmt string) string {
 	for i := 0; i < len(stmt); i++ {
 		switch stmt[i] {
 		case '"':
@@ -575,9 +626,9 @@ func (p *parser) pushLambda(stmt string, line int) {
 		if rest != "" {
 			continue
 		}
-		p.stack = append(p.stack, &frame{node: p.top().node, ender: kw, lambda: true})
-		return
+		return kw
 	}
+	return ""
 }
 
 // consumeTypeExpr peels one type expression — dotted name, optional (Of ...)
@@ -701,8 +752,14 @@ func (p *parser) walkStatement(stmt, raw string, off int, ll LogicalLine) {
 			n := p.open(&Node{Kind: NodeEnumMember, Keyword: "enum_member", Name: name,
 				Attributes: ll.Attributes, Doc: ll.Doc}, line, line)
 			n.Target = strings.TrimSpace(strings.TrimPrefix(tail, "="))
-			return
 		}
+		// Returns unconditionally, matching BuildTable's enum arm. An Enum
+		// body holds nothing but members, so a statement that does not read as
+		// one is malformed rather than a declaration of some other kind, and
+		// falling through would let the declarator path invent a field inside
+		// an enum. No corpus file reaches the else branch; the parity is kept
+		// because the two walks are checked against each other.
+		return
 	}
 
 	// Peel modifiers, then dispatch on the declaring keyword.
