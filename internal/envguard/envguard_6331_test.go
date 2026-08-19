@@ -3,6 +3,7 @@ package envguard
 import (
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -92,10 +93,21 @@ func TestCheckMatrix(t *testing.T) {
 			want: VerdictOK,
 		},
 		{
-			// Whitespace-only is not "set".
+			// Whitespace-only IS "set", because that is what every consumer
+			// thinks. registry.HomeDir, paths_unix.go and paths_windows.go all
+			// test `os.Getenv(...) != ""` with no trimming, so GRAFEL_HOME="   "
+			// resolves the store into a literal three-space directory while
+			// daemon.DefaultLayout still points at the live socket — the
+			// #6331 incident shape exactly. A guard that trims here is
+			// checking a different environment than the program runs in.
 			name: "GRAFEL_HOME whitespace only",
 			env:  map[string]string{homeKey(): realHome, EnvGrafelHome: "   "},
-			want: VerdictOK,
+			want: VerdictRefuse,
+		},
+		{
+			name: "GRAFEL_DAEMON_ROOT whitespace only",
+			env:  map[string]string{homeKey(): realHome, EnvDaemonRoot: " "},
+			want: VerdictRefuse,
 		},
 		{
 			// Escape hatch downgrades refuse -> warn, never to silence.
@@ -200,5 +212,35 @@ func TestIsolateHomeProducesVerdictOK(t *testing.T) {
 	testsupport.IsolateHome(t)
 	if got := Check(lookupEnvFunc, real); got.Verdict != VerdictOK {
 		t.Fatalf("testsupport.IsolateHome yields %v (%s), want VerdictOK", got.Verdict, got.Message)
+	}
+}
+
+// TestSetnessMatchesConsumers pins the guard's notion of "set" to the
+// consumers' notion of "set".
+//
+// The consumers are all bare `!= ""` checks with no trimming:
+//
+//	internal/registry/registry.go   if override := os.Getenv("GRAFEL_HOME"); override != ""
+//	internal/daemon/paths_unix.go   if root := os.Getenv(EnvRoot); root != ""
+//	internal/daemon/paths_windows.go  same
+//
+// If the guard normalises a value the consumers do not, the two disagree about
+// whether the environment is redirected, and the guard waves through exactly
+// the state it exists to refuse.
+func TestSetnessMatchesConsumers(t *testing.T) {
+	const realHome = "/Users/real"
+	values := []string{"", " ", "   ", "\t", "\n", "/tmp/sandbox", " /tmp/sandbox "}
+
+	for _, v := range values {
+		v := v
+		t.Run("GRAFEL_HOME="+strconv.Quote(v), func(t *testing.T) {
+			consumerSaysSet := v != "" // verbatim consumer predicate
+			got := Check(envOf(map[string]string{homeKey(): realHome, EnvGrafelHome: v}), realHome)
+			guardSaysSet := got.Verdict == VerdictRefuse
+			if guardSaysSet != consumerSaysSet {
+				t.Fatalf("GRAFEL_HOME=%q: consumers treat it as set=%v, guard treats it as set=%v (verdict %v)",
+					v, consumerSaysSet, guardSaysSet, got.Verdict)
+			}
+		})
 	}
 }

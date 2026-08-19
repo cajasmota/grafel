@@ -107,13 +107,21 @@ type Env func(key string) (string, bool)
 // which case the both-set-under-a-real-HOME leg is skipped and only the
 // partial-isolation leg applies.
 func Check(env Env, realHome string) Result {
+	// Read VERBATIM. Every consumer of these two variables tests
+	// `os.Getenv(...) != ""` with no normalisation — registry.HomeDir
+	// (internal/registry/registry.go), daemon paths_unix.go, paths_windows.go
+	// — so GRAFEL_HOME="   " redirects the store into a literal three-space
+	// directory while the daemon plane stays live. Trimming here would make
+	// the guard reason about a different environment than the one the program
+	// runs in, and wave through the exact #6331 shape. Only the escape hatch,
+	// which no other code reads, is trimmed.
 	get := func(k string) string {
 		v, _ := env(k)
-		return strings.TrimSpace(v)
+		return v
 	}
 	grafelHome := get(EnvGrafelHome)
 	daemonRoot := get(EnvDaemonRoot)
-	allowPartial := get(EnvAllowPartial) == "1"
+	allowPartial := strings.TrimSpace(get(EnvAllowPartial)) == "1"
 
 	hasHome := grafelHome != ""
 	hasRoot := daemonRoot != ""
