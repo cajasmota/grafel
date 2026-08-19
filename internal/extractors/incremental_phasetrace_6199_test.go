@@ -197,27 +197,43 @@ func findCallSites(t *testing.T, name string) []callSite {
 		if perr != nil {
 			return nil // unparseable fixture: not a call site
 		}
-		for _, decl := range f.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok {
-				continue
+		// Inspect the WHOLE file, not just its FuncDecls. A call site can sit
+		// in a package-level var/const initialiser (a *ast.GenDecl), which an
+		// f.Decls loop that only descends into *ast.FuncDecl never sees — and
+		// such a call site would run the pass with tr == nil, silently swallowed
+		// by the nil guards in span/add/emit. That was a real hole in this
+		// proof: the mutant
+		//
+		//	var x = func(...) Result { return tryIncremental(..., nil) }
+		//
+		// compiled and left this test passing.
+		enclosing := func(pos token.Pos) string {
+			for _, decl := range f.Decls {
+				if pos < decl.Pos() || pos > decl.End() {
+					continue
+				}
+				if fn, ok := decl.(*ast.FuncDecl); ok {
+					return fn.Name.Name
+				}
+				return "<package-level declaration>"
 			}
-			ast.Inspect(fn, func(x ast.Node) bool {
-				call, ok := x.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				id, ok := call.Fun.(*ast.Ident)
-				if !ok || id.Name != name {
-					return true
-				}
-				sites = append(sites, callSite{
-					enclosing: fn.Name.Name,
-					pos:       fset.Position(call.Pos()).String(),
-				})
-				return true
-			})
+			return "<unknown>"
 		}
+		ast.Inspect(f, func(x ast.Node) bool {
+			call, ok := x.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			id, ok := call.Fun.(*ast.Ident)
+			if !ok || id.Name != name {
+				return true
+			}
+			sites = append(sites, callSite{
+				enclosing: enclosing(call.Pos()),
+				pos:       fset.Position(call.Pos()).String(),
+			})
+			return true
+		})
 		return nil
 	})
 	if err != nil {
