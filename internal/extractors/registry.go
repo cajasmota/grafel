@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/generated"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -101,14 +102,56 @@ func Extract(ctx context.Context, file FileInput) (entities []types.EntityRecord
 	return entities, retErr
 }
 
-// safeExtract calls ext.Extract and recovers from panics.
+// safeExtract calls ext.Extract, recovers from panics, and stamps the
+// generated-source flag on whatever comes back (#6329).
+//
+// THE STAMP BELONGS HERE, not in FileInput. safeExtract is the one chokepoint
+// every production extraction path funnels through — cmd/grafel/index.go via
+// extractPass1, internal/daemon/extract/subproc.go via Extract, and
+// internal/extractors/incremental.go which calls safeExtract directly (see the
+// #6151 comment at its call site for why). Threading a "this file is
+// generated" hint through FileInput instead would make it 60 independent
+// opt-ins across 22 tree-sitter and 38 line-scanner extractors, with a silent
+// failure mode: an extractor that ignored the hint would emit unstamped
+// entities and nothing downstream could tell. Here no extractor is consulted,
+// so none can forget.
+//
+// Detection can only ever ADD the flag. Nothing on this path drops a file,
+// drops an entity, or narrows extraction — PR1 changes what the graph SAYS
+// about a file, never what it CONTAINS. Skipping bodies (ProjectDeclarations)
+// is deliberately a separate change, because that one can lose data.
 func safeExtract(ctx context.Context, ext Extractor, file FileInput) (entities []types.EntityRecord, retErr error) {
 	defer func() {
 		if r := recover(); r != nil {
 			retErr = fmt.Errorf("extractor panicked: %v", r)
 		}
 	}()
-	return ext.Extract(ctx, file)
+	entities, retErr = ext.Extract(ctx, file)
+	return stampGenerated(file, entities), retErr
+}
+
+// stampGenerated marks every entity from a machine-generated file.
+//
+// Hand-written files — the overwhelming majority — return untouched, and in
+// particular an entity that carried no Properties map does not gain an empty
+// one. Several downstream checks are written as `len(e.Properties) == 0`, so
+// allocating here would change what they see on every file in the repository.
+func stampGenerated(file FileInput, entities []types.EntityRecord) []types.EntityRecord {
+	if len(entities) == 0 {
+		return entities
+	}
+	d := generated.Detect(file.Path, file.Content)
+	if !d.Generated {
+		return entities
+	}
+	for i := range entities {
+		if entities[i].Properties == nil {
+			entities[i].Properties = make(map[string]string, 2)
+		}
+		entities[i].Properties[types.EntityGeneratedProperty] = "true"
+		entities[i].Properties[types.EntityGeneratedByProperty] = d.Rule
+	}
+	return entities
 }
 
 // List returns a sorted slice of all registered language names.

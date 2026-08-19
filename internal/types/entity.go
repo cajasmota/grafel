@@ -99,6 +99,27 @@ const (
 	// ALIAS, not a competing definition: it must never flip a name to
 	// ambiguous and never displace its anchor in a symbol table.
 	EntityTwinOfProperty = "grafel.twin_of"
+
+	// EntityGeneratedProperty is "true" on every entity extracted from a
+	// machine-generated source file (#6329). It is stamped centrally in
+	// extractors.safeExtract, so no extractor can forget it.
+	//
+	// It is deliberately UNPREFIXED, unlike the two constants above. Those are
+	// internal bookkeeping about how a record was merged; this one is a fact
+	// about the source file that ranking, docgen, the quality benchmark and the
+	// security audit are all expected to read — the same category as the
+	// extractor-stamped "local_scope" that internal/mcp/denoise.go consumes.
+	EntityGeneratedProperty = "generated"
+
+	// EntityGeneratedByProperty names the rule that fired: "path:<pattern>" or
+	// "marker:<name>".
+	//
+	// Provenance is not decoration. Detection is a heuristic over other
+	// people's code, and the near-miss that motivated it — JPA's
+	// @GeneratedValue matching a case-insensitive @generated on 101
+	// hand-written classes — says there will eventually be a wrong flag. A
+	// wrong flag with no provenance cannot be diagnosed from a user's report.
+	EntityGeneratedByProperty = "generated_by"
 )
 
 // IsMergeTwinAlias reports whether this record is a merge facet of another
