@@ -1047,6 +1047,12 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			// A failed extraction is exactly what fallback() exists for: the full
 			// reindex reconciles the file from scratch, and the reason is logged.
 			logger.Printf("incremental: extract %s: %v", rel, extErr)
+			// Close the span before leaving it (#6199). This fallback has paid
+			// the whole extraction and is about to throw it away, so it is one
+			// of the two passes where the extract cost most needs measuring;
+			// returning through an open span reported no extract phase at all
+			// and left accounted_ms short of total_ms by the dominant phase.
+			endExtract()
 			return fallback(t0, fmt.Sprintf("extract-error file=%s: %v", rel, extErr))
 		}
 		// An empty file is excluded deliberately: Parse returns a zero-node
@@ -1079,6 +1085,7 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			// reach here.
 			logger.Printf("incremental: %s — no records and no usable parse tree (lang=%s): %v",
 				rel, parseLang, perr)
+			endExtract() // #6199 — see the extract-error return above.
 			return fallback(t0, fmt.Sprintf("no-tree-no-records file=%s lang=%s", rel, parseLang))
 		}
 

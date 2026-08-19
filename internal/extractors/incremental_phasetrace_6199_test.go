@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -522,4 +523,208 @@ func TestPhaseTrace_PanicStillEmitsAndStopsSampler(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// TestPhaseTrace_EverySpanClosesOnEveryPath is the second structural proof, and
+// it is the one that matters for the NUMBERS rather than for the record's
+// existence.
+//
+// A span is `end := tr.span("name")` … `end()`. If a return sits between those
+// two points, the span never closes: the phase is missing from the trace
+// entirely and `accounted` silently underreports `total` by however long that
+// phase ran. That is worse than a missing record, because the record still
+// shows up and still looks plausible.
+//
+// It was real: `extract-changed-files` opens the single most expensive span in
+// the pass, and two function-level fallback returns sat inside it —
+// `extract-error file=…` and `no-tree-no-records file=…`. Those are precisely
+// the fallbacks that pay the FULL extraction and then throw it away, so the two
+// passes whose extract cost most needed measuring were the two that reported no
+// extract phase at all. incremental_phasetrace.go promises the opposite: the
+// counters "are reported even when the pass falls back part-way, which is the
+// point".
+//
+// So this is checked structurally rather than by fixing the one instance: every
+// return lexically inside an open span must be preceded, in its own block or an
+// enclosing one up to the span's block, by that span's end() call.
+func TestPhaseTrace_EverySpanClosesOnEveryPath(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, tryIncrementalSrc, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", tryIncrementalSrc, err)
+	}
+
+	spans := 0
+	var problems []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		// Every statement list in Go source hangs off exactly one of these three
+		// nodes, so matching only them visits each list once. Going through
+		// stmtLists here instead would double-count (a FuncDecl and its own
+		// BlockStmt yield the same list).
+		var lists [][]ast.Stmt
+		switch s := n.(type) {
+		case *ast.BlockStmt:
+			lists = [][]ast.Stmt{s.List}
+		case *ast.CaseClause:
+			lists = [][]ast.Stmt{s.Body}
+		case *ast.CommClause:
+			lists = [][]ast.Stmt{s.Body}
+		default:
+			return true
+		}
+		for _, list := range lists {
+			for i, st := range list {
+				endName, phase, ok := spanOpen(st)
+				if !ok {
+					continue
+				}
+				spans++
+				close := -1
+				for j := i + 1; j < len(list); j++ {
+					if isCallToIdent(list[j], endName) {
+						close = j
+						break
+					}
+				}
+				if close < 0 {
+					problems = append(problems, fmt.Sprintf(
+						"span %q opened at %s as %s() is never closed in its own block",
+						phase, fset.Position(st.Pos()), endName))
+					continue
+				}
+				var bad []ast.Stmt
+				scanForUnclosedReturns(list[i+1:close], endName, &bad)
+				for _, r := range bad {
+					problems = append(problems, fmt.Sprintf(
+						"span %q (%s) is still open at the return on %s: that path reports no "+
+							"%q phase at all, and accounted_ms underreports total_ms by it",
+						phase, endName, fset.Position(r.Pos()), phase))
+				}
+			}
+		}
+		return true
+	})
+
+	// Vacuity guard: if the spans stop being found this test passes trivially.
+	if spans < 25 {
+		t.Fatalf("found only %d tr.span(...) openings in %s; this test has stopped "+
+			"describing the code — revisit it rather than letting it pass", spans, tryIncrementalSrc)
+	}
+	t.Logf("checked %d spans for closure on every path", spans)
+	if len(problems) > 0 {
+		t.Fatalf("%d span(s) can be escaped by a return before their end():\n  %s",
+			len(problems), strings.Join(problems, "\n  "))
+	}
+}
+
+// spanOpen matches `endX := tr.span("phase")` and returns endX and the phase.
+func spanOpen(st ast.Stmt) (endName, phase string, ok bool) {
+	as, isAssign := st.(*ast.AssignStmt)
+	if !isAssign || len(as.Lhs) != 1 || len(as.Rhs) != 1 {
+		return "", "", false
+	}
+	id, isIdent := as.Lhs[0].(*ast.Ident)
+	if !isIdent {
+		return "", "", false
+	}
+	call, isCall := as.Rhs[0].(*ast.CallExpr)
+	if !isCall {
+		return "", "", false
+	}
+	sel, isSel := call.Fun.(*ast.SelectorExpr)
+	if !isSel || sel.Sel.Name != "span" || len(call.Args) != 1 {
+		return "", "", false
+	}
+	lit, isLit := call.Args[0].(*ast.BasicLit)
+	if !isLit || lit.Kind != token.STRING {
+		return "", "", false
+	}
+	return id.Name, strings.Trim(lit.Value, `"`), true
+}
+
+// isCallToIdent matches a bare `name()` expression statement.
+func isCallToIdent(st ast.Stmt, name string) bool {
+	es, ok := st.(*ast.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, ok := es.X.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	id, ok := call.Fun.(*ast.Ident)
+	return ok && id.Name == name
+}
+
+// scanForUnclosedReturns collects every ReturnStmt reachable from stmts while
+// the span named endName is still open. Reaching `endName()` closes the span
+// for the remainder of THAT statement list (and only that list — statements
+// after a close inside a nested block are outside the span, while the enclosing
+// list is unaffected).
+//
+// Function literals are not descended into: their returns exit the closure, not
+// the pass, and they cannot escape a span.
+func scanForUnclosedReturns(stmts []ast.Stmt, endName string, bad *[]ast.Stmt) {
+	for _, st := range stmts {
+		if isCallToIdent(st, endName) {
+			return
+		}
+		if r, ok := st.(*ast.ReturnStmt); ok {
+			*bad = append(*bad, r)
+			continue
+		}
+		for _, sub := range stmtLists(st) {
+			scanForUnclosedReturns(sub, endName, bad)
+		}
+	}
+}
+
+// stmtLists returns the statement lists nested directly in n, skipping function
+// literals (a FuncLit is reached through an expression, never through one of
+// these fields, so it is excluded by construction).
+func stmtLists(n ast.Node) [][]ast.Stmt {
+	switch s := n.(type) {
+	case *ast.BlockStmt:
+		return [][]ast.Stmt{s.List}
+	case *ast.IfStmt:
+		var out [][]ast.Stmt
+		if s.Body != nil {
+			out = append(out, s.Body.List)
+		}
+		if s.Else != nil {
+			out = append(out, stmtLists(s.Else)...)
+		}
+		return out
+	case *ast.ForStmt:
+		if s.Body != nil {
+			return [][]ast.Stmt{s.Body.List}
+		}
+	case *ast.RangeStmt:
+		if s.Body != nil {
+			return [][]ast.Stmt{s.Body.List}
+		}
+	case *ast.SwitchStmt:
+		if s.Body != nil {
+			return [][]ast.Stmt{s.Body.List}
+		}
+	case *ast.TypeSwitchStmt:
+		if s.Body != nil {
+			return [][]ast.Stmt{s.Body.List}
+		}
+	case *ast.SelectStmt:
+		if s.Body != nil {
+			return [][]ast.Stmt{s.Body.List}
+		}
+	case *ast.CaseClause:
+		return [][]ast.Stmt{s.Body}
+	case *ast.CommClause:
+		return [][]ast.Stmt{s.Body}
+	case *ast.LabeledStmt:
+		return stmtLists(s.Stmt)
+	case *ast.FuncDecl:
+		if s.Body != nil {
+			return [][]ast.Stmt{s.Body.List}
+		}
+	}
+	return nil
 }
