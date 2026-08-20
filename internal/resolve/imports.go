@@ -2811,6 +2811,48 @@ type PruneImportPlaceholderStats struct {
 // Returns the filtered slice, any rels that couldn't be hoisted, and
 // a stats record. The input slice's element ordering among survivors
 // is preserved.
+// placeholderModuleSpecifier returns the module specifier an import
+// placeholder carries, in the one precedence order that is correct for every
+// emission site (issue #6372):
+//
+//	Properties["module"]  >  QualifiedName  >  Name
+//
+// Before #6372 only the first and last were read. Four of the sixteen
+// `Subtype:"import"` emission sites put the FULL module path in QualifiedName
+// and only a SHORT segment in Name, and set no Properties["module"]:
+//
+//	razor/extractor.go:248   Name = topSegment(ns),              QualifiedName = ns
+//	vue/extractor.go:1361    Name = moduleShortName(modulePath), QualifiedName = modulePath
+//	markdown/markdown.go:479 Name = path.Base(resolved)
+//	graphql/graphql.go:402   Name = a GraphQL type name
+//
+// so both readers were handed a basename where a specifier was expected:
+// resolveRelativeImportTarget declines a basename as non-relative and the
+// #6156 restore records the wrong module — both silently. The razor and vue
+// rows are what forbid the Name-first ordering.
+//
+// The remaining twelve sites (proto, css, scss, less, just, cross/imports,
+// kotlin, javascript, fish, cpp x2) put the full path in Name and set NO
+// QualifiedName at all, so the Name fallback still carries them unchanged.
+// javascript/extractor.go:3790 is the only site that sets
+// Properties["module"], and sets it equal to Name; keeping that key on top is
+// therefore the no-regression choice as well as the explicit, purpose-named
+// channel that module.EnsureModule / stampModuleOnEntities write into.
+//
+// Both #6372 call sites — the #642 pre-prune ToID rewrite and the #6156
+// module restore — go through here so they cannot diverge.
+func placeholderModuleSpecifier(r *types.EntityRecord) string {
+	if r.Properties != nil {
+		if m := r.Properties["module"]; m != "" {
+			return m
+		}
+	}
+	if r.QualifiedName != "" {
+		return r.QualifiedName
+	}
+	return r.Name
+}
+
 func PruneImportPlaceholders(records []types.EntityRecord) ([]types.EntityRecord, []types.RelationshipRecord, PruneImportPlaceholderStats) {
 	return PruneImportPlaceholdersWithLiveIDs(records, nil)
 }
@@ -2887,12 +2929,7 @@ func PruneImportPlaceholdersWithLiveIDs(records []types.EntityRecord, extraLive 
 		if !(r.Kind == "SCOPE.Component" && r.Subtype == "import") {
 			continue
 		}
-		module := r.Name
-		if r.Properties != nil {
-			if m := r.Properties["module"]; m != "" {
-				module = m
-			}
-		}
+		module := placeholderModuleSpecifier(r)
 		if module == "" {
 			continue
 		}
@@ -3384,12 +3421,7 @@ func buildPlaceholderModuleRestores(records []types.EntityRecord, prunable []boo
 		if !(r.Kind == "SCOPE.Component" && r.Subtype == "import") {
 			continue
 		}
-		module := r.Name
-		if r.Properties != nil {
-			if m := r.Properties["module"]; m != "" {
-				module = m
-			}
-		}
+		module := placeholderModuleSpecifier(r)
 		if module == "" || module == r.ID || survivor[r.ID] {
 			continue
 		}
