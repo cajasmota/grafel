@@ -1,0 +1,274 @@
+{
+  "fixture_name": "angular-http-mini",
+  "language": "typescript",
+  "description": "Angular HttpClient consumer-side extraction (#6433, reported by @auxmedrano; hardened after review #6446). Before this fixture nothing in the golden set graded OUTBOUND http client calls at all, so the frontend half of cross-stack linking could regress to zero in silence -- which is what had happened: SCOPE.ExternalAPI was minted only for bare-identifier `fetch` / `axios`, and the engine's receiver-style pass was gated on the literal token `httpService`, so an idiomatic Angular service (`private http = inject(HttpClient)` + `this.http.get<T>(...)`) produced no node of either kind. Argument shapes covered: a static quoted literal behind a TS generic parameter; a template literal with a static leading segment; a statically-known RELATIVE literal (assets/i18n/en.json -- resolvable, must NOT be marked dynamic); a nested generic (Record<string,string>, which matched nothing at all before #6446); and TWO non-literal call expressions in one file, which must produce TWO nodes -- the dynamic marker used to be one shared path, so N sites in a file collapsed into one and reintroduced the undercount the issue was reported for. Base-URL constant folding is deliberately NOT attempted. Three negative controls guard the token gate, which is evidence-based (DI call / type annotation / value import / NestJS receiver) over comment- and literal-stripped source, NOT a substring match: not-a-consumer.ts (no token at all), legacy-wrapper.ts (the token in a migration TODO comment -- the most common shape in a mid-migration codebase), and thing.service.spec.ts (HttpClientTestingModule carries `HttpClient` as a substring; test scaffolding must not inflate SCOPE.ExternalAPI, which is the metric the issue was measured on).",
+  "expected_entities": [
+    {
+      "name": "http:GET:/api/things",
+      "kind": "http_endpoint_call",
+      "source_file": "app/thing.service.ts",
+      "must_exist": true,
+      "note": "this.http.get<readonly Thing[]>('/api/things') \u2014 static literal behind a TS generic parameter."
+    },
+    {
+      "name": "http:POST:/api/things",
+      "kind": "http_endpoint_call",
+      "source_file": "app/thing.service.ts",
+      "must_exist": true,
+      "note": "Same URL as the GET above; the two must not collapse into one node."
+    },
+    {
+      "name": "http:GET:/api/things/{id}",
+      "kind": "http_endpoint_call",
+      "source_file": "app/thing-detail.service.ts",
+      "must_exist": true,
+      "note": "Template literal `/api/things/${id}` \u2014 the interpolation canonicalises to the route parameter {id}, so this can bind to a producer-side /api/things/{id}."
+    },
+    {
+      "name": "http:PATCH:/api/things/{id}",
+      "kind": "http_endpoint_call",
+      "source_file": "app/thing-detail.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "http:GET:/{dynamic}/base_code",
+      "kind": "http_endpoint_call",
+      "source_file": "app/dynamic.service.ts",
+      "must_exist": true,
+      "note": "this.http.get<Thing>(base(code)) -- the argument is a call expression, so no path is knowable. Emitted under the dynamic marker with runtime_dynamic=true (url_kind=dynamic_baseurl) rather than dropped: 0 nodes is why the frontend side of cross-stack linking was empty. The argument expression is slugged into the second segment so two dynamic sites in one file do not collapse into one entity (#6446)."
+    },
+    {
+      "name": "http:GET:/{dynamic}/legacyBase_code",
+      "kind": "http_endpoint_call",
+      "source_file": "app/dynamic.service.ts",
+      "must_exist": true,
+      "note": "The second dynamic site. With the old shared /{dynamic} path this and the row above were ONE entity -- makeEmit dedups on (patternType, id)."
+    },
+    {
+      "name": "/api/things",
+      "kind": "SCOPE.ExternalAPI",
+      "source_file": "app/thing.service.ts",
+      "must_exist": true,
+      "note": "The reporter's metric. SCOPE.ExternalAPI is minted by internal/extractors/cross/httpclient; every JS/TS pattern there anchored on a bare `fetch` / `axios` identifier, which a receiver call never matches."
+    },
+    {
+      "name": "/api/things/{*}",
+      "kind": "SCOPE.ExternalAPI",
+      "source_file": "app/thing-detail.service.ts",
+      "must_exist": true,
+      "note": "Template-literal URL; ${...} normalises to the {*} wildcard sentinel (#2615). The GET and the PATCH share this node \u2014 SCOPE.ExternalAPI is keyed on the URL, the verb lives on the CALLS edge."
+    },
+    {
+      "name": "ThingService",
+      "kind": "SCOPE.Component",
+      "source_file": "app/thing.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "ThingDetailService",
+      "kind": "SCOPE.Component",
+      "source_file": "app/thing-detail.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "DynamicThingService",
+      "kind": "SCOPE.Component",
+      "source_file": "app/dynamic.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "list",
+      "kind": "SCOPE.Operation",
+      "source_file": "app/thing.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "create",
+      "kind": "SCOPE.Operation",
+      "source_file": "app/thing.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "byId",
+      "kind": "SCOPE.Operation",
+      "source_file": "app/thing-detail.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "rename",
+      "kind": "SCOPE.Operation",
+      "source_file": "app/thing-detail.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "byCode",
+      "kind": "SCOPE.Operation",
+      "source_file": "app/dynamic.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "http:GET:/assets/i18n/en.json",
+      "kind": "http_endpoint_call",
+      "source_file": "app/i18n.service.ts",
+      "must_exist": true,
+      "note": "this.http.get<Record<string, string>>('assets/i18n/en.json') -- a statically-known relative URL behind a baseHref, and a nested generic. The path is in the source, so this must be a literal call site, NOT runtime_dynamic: claiming unresolvable here would also contradict the cross extractor, which mints the real path from the same call site in the same file (#6446)."
+    },
+    {
+      "name": "assets/i18n/en.json",
+      "kind": "SCOPE.ExternalAPI",
+      "source_file": "app/i18n.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "I18nService",
+      "kind": "SCOPE.Component",
+      "source_file": "app/i18n.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "strings",
+      "kind": "SCOPE.Operation",
+      "source_file": "app/i18n.service.ts",
+      "must_exist": true
+    },
+    {
+      "name": "legacyByCode",
+      "kind": "SCOPE.Operation",
+      "source_file": "app/dynamic.service.ts",
+      "must_exist": true
+    }
+  ],
+  "expected_relationships": [
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:GET:/api/things",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/thing.service.ts",
+      "must_exist": true,
+      "note": "to_name + to_kind, not to_bare_name: the target is a real node in the graph (#6441). Both endpoints resolve, so this row can genuinely fail \u2014 verified by mutation: restoring the httpService content guard drops the node and the row goes red."
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:POST:/api/things",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/thing.service.ts",
+      "must_exist": true
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:GET:/api/things/{id}",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/thing-detail.service.ts",
+      "must_exist": true
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:PATCH:/api/things/{id}",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/thing-detail.service.ts",
+      "must_exist": true
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:GET:/{dynamic}/base_code",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/dynamic.service.ts",
+      "must_exist": true,
+      "note": "Both dynamic call sites must be reachable from the module, not merely constructed -- and they must be TWO."
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:GET:/{dynamic}/legacyBase_code",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/dynamic.service.ts",
+      "must_exist": true,
+      "note": "Both dynamic call sites must be reachable from the module, not merely constructed -- and they must be TWO."
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "/api/things",
+      "to_kind": "SCOPE.ExternalAPI",
+      "to_file": "app/thing.service.ts",
+      "must_exist": true
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "/api/things/{*}",
+      "to_kind": "SCOPE.ExternalAPI",
+      "to_file": "app/thing-detail.service.ts",
+      "must_exist": true
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:GET:/assets/i18n/en.json",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/i18n.service.ts",
+      "must_exist": true
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "assets/i18n/en.json",
+      "to_kind": "SCOPE.ExternalAPI",
+      "to_file": "app/i18n.service.ts",
+      "must_exist": true
+    }
+  ],
+  "forbidden_relationships": [
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "/cache/never-extracted",
+      "to_kind": "SCOPE.ExternalAPI",
+      "must_exist": false,
+      "note": "Falsifiable, not decorative: app/not-a-consumer.ts calls this.http.get('/cache/never-extracted') on a plain object member named http, in a file carrying no HttpClient / HttpService token. Deleting the hasInjectedClientToken gate in internal/extractors/cross/httpclient mints this node and this row hits \u2014 verified by mutation."
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "/legacy/never-extracted",
+      "to_kind": "SCOPE.ExternalAPI",
+      "must_exist": false,
+      "note": "HIGH 1 of #6446. app/legacy-wrapper.ts mentions the client class ONLY in a migration TODO comment. Reverting the gate to strings.Contains over raw source mints this node and this row hits -- verified by mutation."
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "/api/spec-never-extracted",
+      "to_kind": "SCOPE.ExternalAPI",
+      "must_exist": false,
+      "note": "HIGH 2 of #6446. app/thing.service.spec.ts is test scaffolding, and HttpClientTestingModule carries `HttpClient` as a substring. Deleting the IsTestSourceFile guard in internal/extractors/cross/httpclient mints this node and this row hits -- verified by mutation. SCOPE.ExternalAPI is the metric the issue was measured on, so inflating it with stubs is the worst possible false positive here."
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:GET:/{dynamic}/api_things",
+      "to_kind": "http_endpoint_call",
+      "must_exist": false,
+      "note": "MEDIUM 6 of #6446. app/thing.service.ts's URL is a static literal the static pass already owns; the residual pass must skip it. Deleting that skip emits a bogus dynamic twin, which survived every unit test, the fixture and the baseline before this row existed -- verified by mutation."
+    }
+  ]
+}

@@ -5,6 +5,12 @@
   "measured_on": "df7ec16e2",
   "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
   "fixtures": {
+    "angular-http-mini": {
+      "entity_found": 21,
+      "entity_expected": 21,
+      "relationship_found": 10,
+      "relationship_expected": 10
+    },
     "csharp-aspnet-core-mini": {
       "entity_found": 4,
       "entity_expected": 5,

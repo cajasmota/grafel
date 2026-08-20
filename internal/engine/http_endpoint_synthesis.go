@@ -285,14 +285,14 @@ func dropTrailingSynthesisTimeBridge(rels []types.RelationshipRecord, canonicalP
 // if it imports a test library (import-based detection is deferred to the
 // testmap extractor which emits SCOPE.Pattern/test_coverage, not endpoints).
 func isTestSourceFile(filePath string) bool {
-	// Normalise to forward slashes for cross-platform consistency.
-	slashed := "/" + filepath.ToSlash(strings.ToLower(filePath))
-
-	// Directory-segment fast-path: canonical test directories.
-	for _, seg := range []string{"/__tests__/", "/test/", "/tests/", "/spec/", "/e2e/", "/fixtures/"} {
-		if strings.Contains(slashed, seg) {
-			return true
-		}
+	// #6446 — the directory-segment check and the Go / Python / JS-TS / Ruby
+	// arms live in internal/extractor so the cross HTTP-client extractor shares
+	// ONE definition with this one. They disagreed before: the engine excluded
+	// spec files and the extractor did not, so an Angular spec contributed a
+	// SCOPE.ExternalAPI and no http_endpoint_call. The arms below are the
+	// languages only endpoint synthesis cares about.
+	if extractor.IsTestSourceFile(filePath) {
+		return true
 	}
 
 	base := filepath.Base(filePath)

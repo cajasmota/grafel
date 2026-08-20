@@ -95,6 +95,58 @@ var jsAxiosBacktickRE = regexp.MustCompile(
 	"(?im)\\baxios\\.(get|post|put|patch|delete|head|options|request)\\s*\\(\\s*`([^`]{1,500})`",
 )
 
+// ---------------------------------------------------------------------------
+// #6433 — Angular / NestJS receiver-style client calls
+// ---------------------------------------------------------------------------
+//
+// Every JS/TS pattern above anchors on a BARE identifier (`fetch`, `axios`).
+// Angular's idiom is a receiver on an injected client:
+//
+//	private http = inject(HttpClient);
+//	this.http.get<readonly Thing[]>('/api/things')
+//
+// which matches under none of them. @auxmedrano measured SCOPE.ExternalAPI = 98
+// across a monorepo — all backend, zero frontend — against 42 files making
+// exactly these calls (#6433). The optional `<...>` group swallows the
+// TypeScript generic parameter; `(` / `)` are excluded from it so a call
+// expression can never be mistaken for a type argument.
+//
+// These three patterns are gated on hasInjectedClientToken: the receiver field
+// name (`http`) is far too common to key on by itself.
+//
+// jsGenericArgs matches an optional TS generic argument list with ONE level of
+// nesting. #6446 — the original `<[^<>()]*>` excluded < and >, so Array<Thing>,
+// Record<string,Thing> and HttpResponse<Thing> — routine Angular response types
+// — matched nothing at all. ( and ) stay excluded at every level so a call
+// expression can never be read as a type argument.
+const jsGenericArgs = `(?:<[^()<>]*(?:<[^()<>]*>[^()<>]*)*>)?`
+
+const jsReceiverClientHead = `(?m)\bthis\s*\.\s*(?:httpClient|httpService|http)\s*\.\s*(get|post|put|patch|delete|head|options)\s*` + jsGenericArgs + `\s*\(\s*`
+
+var jsReceiverClientDoubleRE = regexp.MustCompile(jsReceiverClientHead + `"([^"\s]{1,500})"`)
+var jsReceiverClientSingleRE = regexp.MustCompile(jsReceiverClientHead + `'([^'\s]{1,500})'`)
+var jsReceiverClientBacktickRE = regexp.MustCompile(jsReceiverClientHead + "`([^`\\n\\r]{1,500})`")
+
+// hasInjectedClientToken gates the receiver-style patterns on real evidence
+// that the file consumes an Angular / NestJS HTTP client — a DI call, a type
+// annotation, a VALUE import, or the NestJS `this.httpService.` receiver —
+// evaluated over source with comments and string literals blanked.
+//
+// #6446 — this was `strings.Contains(source, "HttpClient")`, defended as "it is
+// a class name, so it only appears where the client is used". False: a MENTION
+// opens a Contains gate. A migration TODO in a comment, an `import type`, and a
+// doc string each minted a SCOPE.ExternalAPI from a plain-object member named
+// `http` — inflating the exact metric #6433 was reported on.
+//
+// Call sites whose URL argument is NOT a literal (`base(code)`) are deliberately
+// left to the engine's consumer-side pass
+// (internal/engine/http_endpoint_jsts_client_1483.go), which has a canonical
+// placeholder path and a runtime_dynamic marker for them. A SCOPE.ExternalAPI
+// node is keyed on the URL string itself and has nowhere to put "unknown".
+func hasInjectedClientToken(source string) bool {
+	return extractor.HasInjectedHTTPClientEvidence(source)
+}
+
 // Python: requests.METHOD('url') / httpx.METHOD('url')
 var pyRequestsDoubleRE = regexp.MustCompile(
 	`(?im)\b(?:requests|httpx)\.(get|post|put|patch|delete|head|options|request)\s*\(\s*"([^"]{1,500})"`,
@@ -278,6 +330,26 @@ func extractJS(source string) []call {
 	for _, m := range jsAxiosBacktickRE.FindAllStringSubmatch(source, -1) {
 		if len(m) >= 3 {
 			out = append(out, call{url: normalizeTemplateURL(m[2]), method: strings.ToUpper(m[1])})
+		}
+	}
+
+	// #6433 — Angular / NestJS receiver-style calls, gated on the client class
+	// token so the common member name `http` is never evidence on its own.
+	if hasInjectedClientToken(source) {
+		for _, m := range jsReceiverClientDoubleRE.FindAllStringSubmatch(source, -1) {
+			if len(m) >= 3 {
+				out = append(out, call{url: m[2], method: strings.ToUpper(m[1])})
+			}
+		}
+		for _, m := range jsReceiverClientSingleRE.FindAllStringSubmatch(source, -1) {
+			if len(m) >= 3 {
+				out = append(out, call{url: m[2], method: strings.ToUpper(m[1])})
+			}
+		}
+		for _, m := range jsReceiverClientBacktickRE.FindAllStringSubmatch(source, -1) {
+			if len(m) >= 3 {
+				out = append(out, call{url: normalizeTemplateURL(m[2]), method: strings.ToUpper(m[1])})
+			}
 		}
 	}
 
@@ -472,6 +544,23 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 
 	source := string(file.Content)
 	langTag := normaliseLanguage(file.Language)
+
+	// #6446 — test scaffolding is not an outbound dependency. The engine's
+	// consumer-side pass has excluded test sources since #1217; this extractor
+	// did not, so the two disagreed: an Angular spec file yielded NO
+	// http_endpoint_call but DID yield a SCOPE.ExternalAPI. SCOPE.ExternalAPI
+	// is the metric #6433 was reported on, so the asymmetry inflated precisely
+	// the number being counted, with stubs. Both sides now share one definition
+	// (internal/extractor.IsTestSourceFile).
+	if extractor.IsTestSourceFile(file.Path) {
+		span.SetAttributes(
+			attribute.Int("calls_found", 0),
+			attribute.Int("unique_urls_found", 0),
+			attribute.Int("relationships_found", 0),
+			attribute.Bool("skipped_test_source", true),
+		)
+		return nil, nil
+	}
 
 	var calls []call
 	switch langTag {
