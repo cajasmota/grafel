@@ -23,6 +23,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -133,7 +134,8 @@ export class DynamicService {
 		}
 		switch e.Properties["verb"] {
 		case "GET":
-			if e.Properties["runtime_dynamic"] == "true" && e.ID == "http:GET:"+dynamicClientPath {
+			if e.Properties["runtime_dynamic"] == "true" &&
+				strings.HasPrefix(e.ID, "http:GET:"+dynamicClientPathPrefix) {
 				dynamicGet = true
 			}
 		case "PATCH":
@@ -187,4 +189,176 @@ func summarizeHTTPCallEntities(res *DetectResult) string {
 			",url_kind=" + e.Properties["url_kind"] + ")"
 	}
 	return out + " ]"
+}
+
+// ---------------------------------------------------------------------------
+// Review round 2 (#6446) — the token gate was a bare strings.Contains over raw
+// file text, so a MENTION of the class name opened it.
+// ---------------------------------------------------------------------------
+
+// tokenMentionCases are the three shapes that must NOT count as evidence that a
+// file consumes an HTTP client. Each carries a `this.http.<verb>('/…')` call on
+// a plain-object member named `http`; none of them injects, imports as a value,
+// or type-annotates against the real client.
+var tokenMentionCases = []struct {
+	name    string
+	file    string
+	mention string
+}{
+	{
+		// The single most common shape in a mid-migration Angular codebase.
+		name:    "comment",
+		file:    "legacy-wrapper.ts",
+		mention: "// TODO(migration): replace this wrapper with Angular's HttpClient.",
+	},
+	{
+		// Erased at compile time; a type-only import cannot be an Angular DI
+		// token, so on its own it is not evidence of consumption.
+		name:    "type-only-import",
+		file:    "type-only.ts",
+		mention: "import type { HttpClient } from '@angular/common/http';",
+	},
+	{
+		name:    "string-literal",
+		file:    "doc.ts",
+		mention: "export const DOC = 'use HttpClient instead';",
+	},
+}
+
+func TestSynth_AngularHttpClient_MentionIsNotEvidence_6433(t *testing.T) {
+	for _, tc := range tokenMentionCases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := tc.mention + `
+export class LegacyWrapper {
+  private http = { get: (_: string) => null };
+
+  probe() {
+    return this.http.get('/api/mention-only');
+  }
+}
+`
+			got, _ := runDetect(t, "typescript", tc.file, src)
+			for _, id := range got {
+				if id == "http:GET:/api/mention-only" {
+					t.Errorf("a %s mention of the client class opened the gate: emitted %q (got=%v)",
+						tc.name, id, got)
+				}
+			}
+		})
+	}
+}
+
+// TestSynth_AngularHttpClient_RelativeURLIsNotMarkedDynamic_6433 covers a
+// statically-known RELATIVE URL. normalizeRawClientPath declines it only because
+// it lacks a leading slash — the path is right there in the source. Emitting it
+// as runtime_dynamic claims "unresolvable" about a URL the pass is holding, and
+// contradicts the cross extractor, which mints the real path from the same call
+// site in the same file.
+func TestSynth_AngularHttpClient_RelativeURLIsNotMarkedDynamic_6433(t *testing.T) {
+	src := `
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+
+@Injectable({ providedIn: 'root' })
+export class I18nService {
+  private http = inject(HttpClient);
+
+  strings() {
+    return this.http.get<Record<string, string>>('assets/i18n/en.json');
+  }
+}
+`
+	got, res := runDetect(t, "typescript", "i18n.service.ts", src)
+	requireContains(t, got, []string{"http:GET:/assets/i18n/en.json"}, "angular-httpclient-relative")
+
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointCallKind && e.Properties["runtime_dynamic"] == "true" {
+			t.Errorf("relative literal URL was mislabelled runtime_dynamic: %q (entities=%s)",
+				e.ID, summarizeHTTPCallEntities(res))
+		}
+	}
+}
+
+// TestSynth_AngularHttpClient_DynamicSitesDoNotCollide_6433 pins the dedup key.
+// Every dynamic site used to land on the single id http:GET:/{dynamic}, and
+// makeEmit dedups on (patternType, id), so N dynamic GETs in one file collapsed
+// to one entity. The reporter's headline complaint was an undercount; a
+// collapsing marker reintroduces one.
+func TestSynth_AngularHttpClient_DynamicSitesDoNotCollide_6433(t *testing.T) {
+	src := `
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+
+const one = (c: string) => resolveOne(c);
+const two = (c: string) => resolveTwo(c);
+
+@Injectable({ providedIn: 'root' })
+export class TwoDynamicService {
+  private http = inject(HttpClient);
+
+  first(c: string) {
+    return this.http.get<Thing>(one(c));
+  }
+
+  second(c: string) {
+    return this.http.get<Thing>(two(c));
+  }
+}
+`
+	_, res := runDetect(t, "typescript", "two-dynamic.service.ts", src)
+
+	ids := map[string]bool{}
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointCallKind && e.Properties["runtime_dynamic"] == "true" {
+			ids[e.ID] = true
+		}
+	}
+	if len(ids) != 2 {
+		t.Errorf("two distinct dynamic GET call sites produced %d entity/entities, want 2 (entities=%s)",
+			len(ids), summarizeHTTPCallEntities(res))
+	}
+}
+
+// TestSynth_AngularHttpClient_StaticURLIsNotAlsoDynamic_6433 pins the claim the
+// residual pass makes in prose — "arguments the static / template passes DO
+// resolve are skipped here, so no call site is emitted twice". Deleting that
+// skip previously survived every test, the fixture and the baseline while the
+// graph silently grew a bogus dynamic node per static call.
+func TestSynth_AngularHttpClient_StaticURLIsNotAlsoDynamic_6433(t *testing.T) {
+	_, res := runDetect(t, "typescript", "thing.service.ts", angularServiceSrc)
+	for _, e := range res.Entities {
+		if e.Kind != httpEndpointCallKind {
+			continue
+		}
+		if e.Properties["runtime_dynamic"] == "true" {
+			t.Errorf("statically-resolved call site also emitted a dynamic twin: %q (entities=%s)",
+				e.ID, summarizeHTTPCallEntities(res))
+		}
+	}
+}
+
+// TestSynth_AngularHttpClient_NestedGeneric_6433 — Array<T>, HttpResponse<T> and
+// Record<string,T> are routine Angular response types. The generic-argument
+// group excluded < and >, so a nested generic matched NOTHING: not the static
+// pass, not even the dynamic marker.
+func TestSynth_AngularHttpClient_NestedGeneric_6433(t *testing.T) {
+	src := `
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpResponse } from '@angular/common/http';
+
+@Injectable({ providedIn: 'root' })
+export class NestedGenericService {
+  private http = inject(HttpClient);
+
+  all() {
+    return this.http.get<Array<Thing>>('/api/nested-array');
+  }
+
+  raw() {
+    return this.http.get<HttpResponse<Array<Thing>>>('/api/nested-twice');
+  }
+}
+`
+	got, _ := runDetect(t, "typescript", "nested-generic.service.ts", src)
+	requireContains(t, got, []string{"http:GET:/api/nested-array"}, "angular-httpclient-nested-generic")
 }

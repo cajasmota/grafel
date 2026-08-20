@@ -113,21 +113,30 @@ var jsAxiosBacktickRE = regexp.MustCompile(
 //
 // These three patterns are gated on hasInjectedClientToken: the receiver field
 // name (`http`) is far too common to key on by itself.
-var jsReceiverClientDoubleRE = regexp.MustCompile(
-	`(?m)\bthis\s*\.\s*(?:httpClient|httpService|http)\s*\.\s*(get|post|put|patch|delete|head|options)\s*(?:<[^<>()]*>)?\s*\(\s*"([^"\s]{1,500})"`,
-)
-var jsReceiverClientSingleRE = regexp.MustCompile(
-	`(?m)\bthis\s*\.\s*(?:httpClient|httpService|http)\s*\.\s*(get|post|put|patch|delete|head|options)\s*(?:<[^<>()]*>)?\s*\(\s*'([^'\s]{1,500})'`,
-)
-var jsReceiverClientBacktickRE = regexp.MustCompile(
-	"(?m)\\bthis\\s*\\.\\s*(?:httpClient|httpService|http)\\s*\\.\\s*(get|post|put|patch|delete|head|options)\\s*(?:<[^<>()]*>)?\\s*\\(\\s*`([^`\\n\\r]{1,500})`",
-)
+//
+// jsGenericArgs matches an optional TS generic argument list with ONE level of
+// nesting. #6446 — the original `<[^<>()]*>` excluded < and >, so Array<Thing>,
+// Record<string,Thing> and HttpResponse<Thing> — routine Angular response types
+// — matched nothing at all. ( and ) stay excluded at every level so a call
+// expression can never be read as a type argument.
+const jsGenericArgs = `(?:<[^()<>]*(?:<[^()<>]*>[^()<>]*)*>)?`
 
-// hasInjectedClientToken gates the receiver-style patterns on the presence of
-// the Angular / NestJS HTTP client class name. Those tokens only appear in
-// files that import, inject, or type-annotate against the client, so the gate
-// is tight; without it, any `this.http.get(...)` on an unrelated member named
-// `http` would mint a bogus ExternalAPI node.
+const jsReceiverClientHead = `(?m)\bthis\s*\.\s*(?:httpClient|httpService|http)\s*\.\s*(get|post|put|patch|delete|head|options)\s*` + jsGenericArgs + `\s*\(\s*`
+
+var jsReceiverClientDoubleRE = regexp.MustCompile(jsReceiverClientHead + `"([^"\s]{1,500})"`)
+var jsReceiverClientSingleRE = regexp.MustCompile(jsReceiverClientHead + `'([^'\s]{1,500})'`)
+var jsReceiverClientBacktickRE = regexp.MustCompile(jsReceiverClientHead + "`([^`\\n\\r]{1,500})`")
+
+// hasInjectedClientToken gates the receiver-style patterns on real evidence
+// that the file consumes an Angular / NestJS HTTP client — a DI call, a type
+// annotation, a VALUE import, or the NestJS `this.httpService.` receiver —
+// evaluated over source with comments and string literals blanked.
+//
+// #6446 — this was `strings.Contains(source, "HttpClient")`, defended as "it is
+// a class name, so it only appears where the client is used". False: a MENTION
+// opens a Contains gate. A migration TODO in a comment, an `import type`, and a
+// doc string each minted a SCOPE.ExternalAPI from a plain-object member named
+// `http` — inflating the exact metric #6433 was reported on.
 //
 // Call sites whose URL argument is NOT a literal (`base(code)`) are deliberately
 // left to the engine's consumer-side pass
@@ -135,9 +144,7 @@ var jsReceiverClientBacktickRE = regexp.MustCompile(
 // placeholder path and a runtime_dynamic marker for them. A SCOPE.ExternalAPI
 // node is keyed on the URL string itself and has nowhere to put "unknown".
 func hasInjectedClientToken(source string) bool {
-	return strings.Contains(source, "HttpClient") ||
-		strings.Contains(source, "HttpService") ||
-		strings.Contains(source, "httpService")
+	return extractor.HasInjectedHTTPClientEvidence(source)
 }
 
 // Python: requests.METHOD('url') / httpx.METHOD('url')
@@ -537,6 +544,23 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 
 	source := string(file.Content)
 	langTag := normaliseLanguage(file.Language)
+
+	// #6446 — test scaffolding is not an outbound dependency. The engine's
+	// consumer-side pass has excluded test sources since #1217; this extractor
+	// did not, so the two disagreed: an Angular spec file yielded NO
+	// http_endpoint_call but DID yield a SCOPE.ExternalAPI. SCOPE.ExternalAPI
+	// is the metric #6433 was reported on, so the asymmetry inflated precisely
+	// the number being counted, with stubs. Both sides now share one definition
+	// (internal/extractor.IsTestSourceFile).
+	if extractor.IsTestSourceFile(file.Path) {
+		span.SetAttributes(
+			attribute.Int("calls_found", 0),
+			attribute.Int("unique_urls_found", 0),
+			attribute.Int("relationships_found", 0),
+			attribute.Bool("skipped_test_source", true),
+		)
+		return nil, nil
+	}
 
 	var calls []call
 	switch langTag {

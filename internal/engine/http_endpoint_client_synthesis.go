@@ -1319,7 +1319,9 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 		// `private http = inject(HttpClient)` + `this.http.get<T>('/api/x')`
 		// contains none of the markers above, so this guard (not just the
 		// synthesizeNestHttpService one) had to widen for it to be reached.
-		!strings.Contains(content, "HttpClient") &&
+		// #6446 — evidence, not a substring: a migration TODO mentioning
+		// HttpClient in a comment must not open this guard either.
+		!hasInjectedHTTPClientToken(content) &&
 		!strings.Contains(content, "ApolloClient") &&
 		!strings.Contains(content, "$") {
 		return
@@ -1587,7 +1589,7 @@ func synthesizeFetchAxiosWithRuntime(content, lang string, emit jsRuntimeEmitFn)
 	// runtime_dynamic=true, and BEFORE the process.env early-exit below because
 	// an Angular service contains neither `process.env` nor `import.meta.env`.
 	if hasInjectedHTTPClientToken(content) {
-		synthesizeReceiverClientDynamicURL(
+		synthesizeReceiverClientResidualCalls(
 			content,
 			indexJSEnclosingFunctions(content),
 			buildJSConstantSymbolTable(content),

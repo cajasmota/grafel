@@ -126,3 +126,76 @@ export class NotAConsumer {
 		t.Errorf("gate is over-broad: emitted /api/definitely-not-extracted (got %v)", urls)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Review round 2 (#6446)
+// ---------------------------------------------------------------------------
+
+// TestAngularHttpClient_MentionIsNotEvidence_6433 — the gate was a bare
+// strings.Contains over raw file text, so a MENTION of the client class name
+// opened it and minted a SCOPE.ExternalAPI from a plain-object member named
+// `http`. That is the reporter's exact metric, inflated with non-calls.
+func TestAngularHttpClient_MentionIsNotEvidence_6433(t *testing.T) {
+	cases := []struct{ name, mention string }{
+		{"comment", "// TODO(migration): replace this wrapper with Angular's HttpClient."},
+		{"type-only-import", "import type { HttpClient } from '@angular/common/http';"},
+		{"string-literal", "export const DOC = 'use HttpClient instead';"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := tc.mention + `
+export class LegacyWrapper {
+  private http = { get: (_: string) => null };
+  probe() { return this.http.get('/api/mention-only'); }
+}
+`
+			urls := extractAngular(t, "src/app/legacy-wrapper.ts", src)
+			if hasURL(urls, "/api/mention-only") {
+				t.Errorf("a %s mention of the client class opened the gate (got %v)", tc.name, urls)
+			}
+		})
+	}
+}
+
+// TestAngularHttpClient_SpecFileIsExcluded_6433 — the engine's consumer pass
+// skips test sources; this extractor had no such exclusion, so the two passes
+// disagreed and only the SCOPE.ExternalAPI side (the counted one) picked up test
+// scaffolding. HttpClientTestingModule carries `HttpClient` as a substring, so
+// every Angular spec file opened the old gate.
+func TestAngularHttpClient_SpecFileIsExcluded_6433(t *testing.T) {
+	src := `
+import { TestBed } from '@angular/core/testing';
+import { HttpClientTestingModule } from '@angular/common/http/testing';
+import { HttpClient } from '@angular/common/http';
+
+describe('ThingService', () => {
+  it('stubs', () => {
+    const http = TestBed.inject(HttpClient);
+    return this.http.get('/api/spec-only');
+  });
+});
+`
+	urls := extractAngular(t, "src/app/thing.service.spec.ts", src)
+	if hasURL(urls, "/api/spec-only") {
+		t.Errorf("spec file contributed a SCOPE.ExternalAPI (got %v)", urls)
+	}
+}
+
+// TestAngularHttpClient_NestedGeneric_6433 — Array<T> / HttpResponse<T> are
+// routine; the generic-argument group excluded < and >, so they matched nothing.
+func TestAngularHttpClient_NestedGeneric_6433(t *testing.T) {
+	src := `
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+
+@Injectable({ providedIn: 'root' })
+export class NestedGenericService {
+  private http = inject(HttpClient);
+  all() { return this.http.get<Array<Thing>>('/api/nested-array'); }
+}
+`
+	urls := extractAngular(t, "src/app/nested-generic.service.ts", src)
+	if !hasURL(urls, "/api/nested-array") {
+		t.Errorf("nested generic argument matched nothing (got %v)", urls)
+	}
+}

@@ -37,6 +37,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/engine/httproutes"
+	"github.com/cajasmota/grafel/internal/extractor"
 )
 
 // ---------------------------------------------------------------------------
@@ -62,17 +63,32 @@ import (
 // are gated by hasInjectedHTTPClientToken below.
 const nestHTTPReceiverAlternation = `(?:httpService|httpClient|http)`
 
+// jsGenericArgs matches an optional TypeScript generic argument list with ONE
+// level of nesting: <Thing>, <readonly Thing[]>, <Array<Thing>>,
+// <Record<string, Thing>>, <HttpResponse<Thing>>.
+//
+// #6446 — the original group was `<[^<>()]*>`, which excluded < and >, so a
+// nested generic matched NOTHING: not the static pass, not the template pass,
+// not even the dynamic marker. Array<T> / HttpResponse<T> / Record<string,T> are
+// routine Angular response types.
+//
+// ( and ) stay excluded at every level so a call expression can never be
+// mistaken for a type argument. Two levels of nesting
+// (`Array<Record<string, T>>`) still do not match — RE2 has no recursion, and
+// each extra level is another hand-written alternation. Recorded, not fixed.
+const jsGenericArgs = `(?:<[^()<>]*(?:<[^()<>]*>[^()<>]*)*>)?`
+
 var nestHttpServiceStaticRe = regexp.MustCompile(
 	`(?:^|[^\w$])\bthis\s*\.\s*` + nestHTTPReceiverAlternation + `\s*\.\s*` +
 		`(get|post|put|patch|delete|head|options)\s*` +
-		`(?:<[^<>()]*>)?\s*\(\s*` +
+		jsGenericArgs + `\s*\(\s*` +
 		`['"]((?:https?://|/)[^'"\n\r$]+)['"]`,
 )
 
 var nestHttpServiceTemplateLiteralRe = regexp.MustCompile(
 	"(?:^|[^\\w$])\\bthis\\s*\\.\\s*" + nestHTTPReceiverAlternation + "\\s*\\.\\s*" +
 		"(get|post|put|patch|delete|head|options)\\s*" +
-		"(?:<[^<>()]*>)?\\s*\\(\\s*" +
+		jsGenericArgs + "\\s*\\(\\s*" +
 		"`([^`\\n\\r]*\\$\\{[^`\\n\\r]*)`",
 )
 
@@ -88,16 +104,18 @@ var nestHttpServiceTemplateLiteralRe = regexp.MustCompile(
 // contains neither token, so the pass returned before its regex ever ran and
 // every Angular codebase extracted zero client-side call sites.
 //
-// The replacement gate additionally accepts `HttpClient`. That is NOT
-// over-broad: the token is the Angular class name, so it only appears in files
-// that import, inject, or type-annotate against it. The gate deliberately does
-// NOT key on the receiver field name (`this.http`) — `http` is far too common a
-// member name to treat as evidence on its own, and a file carrying such a field
-// with no HttpClient/HttpService token anywhere stays unextracted.
+// #6446 — the first replacement was `strings.Contains(content, "HttpClient")`,
+// defended as "it is a class name, so it only appears where the client is
+// imported, injected or type-annotated". That is factually false: a MENTION
+// opens a Contains gate. A migration TODO in a comment, an `import type`, or a
+// doc string each produced a bogus call site from a plain-object member named
+// `http`. The gate now asks for real evidence — a DI call, a type annotation, a
+// VALUE import, or the NestJS `this.httpService.` receiver — over source with
+// comments and string literals blanked. It still deliberately does NOT key on
+// the receiver field name (`this.http`): `http` is far too common a member name
+// to be evidence on its own.
 func hasInjectedHTTPClientToken(content string) bool {
-	return strings.Contains(content, "httpService") ||
-		strings.Contains(content, "HttpService") ||
-		strings.Contains(content, "HttpClient")
+	return extractor.HasInjectedHTTPClientEvidence(content)
 }
 
 // synthesizeNestHttpService extracts consumer-side HTTP calls made via the
@@ -143,50 +161,110 @@ func synthesizeNestHttpService(content string, funcs []jsFuncSpan, syms map[stri
 }
 
 // ---------------------------------------------------------------------------
-// #6433 — receiver-style calls whose URL argument is NOT statically knowable
+// #6433 — receiver-style calls the static / template passes left behind
 // ---------------------------------------------------------------------------
 
-// dynamicClientPath is the canonical path stamped on a call site whose URL
-// argument could not be resolved statically. `hasDynamicBaseURLPath` keys on a
-// first segment that opens a placeholder, so this value classifies as
-// url_kind=dynamic_baseurl without any special-casing downstream.
-const dynamicClientPath = "/{dynamic}"
+// dynamicClientPathPrefix opens the canonical path stamped on a call site whose
+// URL argument genuinely cannot be resolved statically.
+//
+// hasDynamicBaseURLPath keys on a first segment that opens a placeholder, so any
+// path under this prefix classifies as url_kind=dynamic_baseurl with no
+// special-casing downstream.
+//
+// #6446 — the marker used to be the bare path "/{dynamic}", identical for every
+// dynamic site. makeEmit dedups on (patternType, id), so N dynamic call sites in
+// one file collapsed into ONE entity. The reporter's headline complaint was an
+// undercount; a collapsing marker reintroduces one. The argument expression is
+// now slugged into a second segment, so two sites collapse only when they call
+// the same expression — which is the right answer, not an accident.
+const dynamicClientPathPrefix = "/{dynamic}"
 
-// nestHttpServiceCallHeadRe matches only the CALL HEAD of a receiver-style
-// client call — `this.<field>.<verb><T>(` — stopping at the first character of
-// the argument list. The argument is classified in Go rather than in the
-// regex, because the interesting cases (a call expression, a template literal
-// opening with an interpolation) are exactly the ones a URL-shaped regex
-// cannot express.
-var nestHttpServiceCallHeadRe = regexp.MustCompile(
+// receiverClientCallHeadRe matches only the CALL HEAD of a receiver-style client
+// call — `this.<field>.<verb><T>(` — stopping at the first character of the
+// argument list. The argument is classified in Go rather than in the regex,
+// because the interesting cases (a call expression, a template literal opening
+// with an interpolation) are exactly the ones a URL-shaped regex cannot express.
+var receiverClientCallHeadRe = regexp.MustCompile(
 	`(?:^|[^\w$])\bthis\s*\.\s*` + nestHTTPReceiverAlternation + `\s*\.\s*` +
 		`(get|post|put|patch|delete|head|options)\s*` +
-		`(?:<[^<>()]*>)?\s*\(\s*`,
+		jsGenericArgs + `\s*\(\s*`,
 )
 
-// synthesizeReceiverClientDynamicURL emits a call site for every
-// `this.<field>.<verb>(<expr>)` whose first argument the static and
-// template-literal passes could not turn into a path.
+// dynamicSlugUnsafeRe matches every byte that may not appear in a path slug.
+var dynamicSlugUnsafeRe = regexp.MustCompile(`[^A-Za-z0-9_.$-]+`)
+
+// slugifyDynamicArg renders an unresolvable argument expression as a single
+// path segment, so two distinct dynamic call sites in one file get two distinct
+// entity IDs. `base(code)` → `base_code`. Returns "" when nothing usable is
+// left, in which case the caller falls back to the bare prefix.
+func slugifyDynamicArg(expr string) string {
+	slug := dynamicSlugUnsafeRe.ReplaceAllString(strings.TrimSpace(expr), "_")
+	slug = strings.Trim(slug, "_.-$")
+	if len(slug) > 48 {
+		slug = strings.Trim(slug[:48], "_.-$")
+	}
+	return slug
+}
+
+// firstArgExpr returns the source text of the first argument of a call whose
+// argument list starts at rest[0], stopping at the matching close paren or the
+// first top-level comma. Bounded to one line and 200 bytes so a malformed source
+// cannot make this quadratic.
+func firstArgExpr(rest string) string {
+	depth := 0
+	limit := len(rest)
+	if limit > 200 {
+		limit = 200
+	}
+	for i := 0; i < limit; i++ {
+		switch rest[i] {
+		case '\n', '\r':
+			return rest[:i]
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth == 0 {
+				return rest[:i]
+			}
+			depth--
+		case ',':
+			if depth == 0 {
+				return rest[:i]
+			}
+		}
+	}
+	return rest[:limit]
+}
+
+// synthesizeReceiverClientResidualCalls emits a call site for every
+// `this.<field>.<verb>(<expr>)` the static and template-literal passes above
+// declined, splitting them into the two cases those passes conflated:
 //
-// #6433 — the reporter's three real examples were `base(code)` (a call
-// expression) and “ `${BASE}/${id}` “ (a template literal opening with an
-// interpolation). Both were dropped outright, which is why the frontend side of
-// cross-stack linking was empty: there was no node for a link to attach to.
+//  1. A literal the passes declined only because it lacks a leading slash —
+//     `this.http.get('assets/i18n/en.json')`. The path is right there in the
+//     source. #6446: emitting it as runtime_dynamic claimed "unresolvable"
+//     about a URL this pass was holding, AND contradicted the cross extractor,
+//     which minted the real path from the same call site in the same file.
+//     These are now emitted STATIC, at the slash-prefixed path.
 //
-// Resolving those arguments to a real path would require base-URL constant
-// folding, which is deliberately NOT attempted here. Instead the call site is
-// emitted at the canonical placeholder path with runtime_dynamic=true, the same
-// marker the env-var concatenation pass (#721) uses, so the call surfaces to
-// the repair flow (#732) instead of vanishing.
+//  2. An argument that genuinely carries no knowable path — `base(code)`, a
+//     call expression (#6433's reported case). Resolving it would require
+//     base-URL constant folding, deliberately NOT attempted here. The call site
+//     is emitted under the dynamic marker with runtime_dynamic=true, the same
+//     marker the env-var concatenation pass (#721) uses, so it reaches the
+//     repair flow (#732) instead of vanishing. 0 nodes is why the frontend side
+//     of cross-stack linking was empty; a node marked dynamic is reviewable
+//     where a missing node is invisible.
 //
-// Arguments the static / template passes DO resolve are skipped here, so no
-// call site is emitted twice.
-func synthesizeReceiverClientDynamicURL(content string, funcs []jsFuncSpan, syms map[string]string, emit jsRuntimeEmitFn) {
+// Arguments the static / template passes DO resolve are skipped, so no call site
+// is emitted twice — pinned by TestSynth_AngularHttpClient_StaticURLIsNotAlsoDynamic_6433,
+// because deleting the skip is otherwise invisible to every other gate.
+func synthesizeReceiverClientResidualCalls(content string, funcs []jsFuncSpan, syms map[string]string, emit jsRuntimeEmitFn) {
 	if !hasInjectedHTTPClientToken(content) {
 		return
 	}
 
-	for _, m := range nestHttpServiceCallHeadRe.FindAllStringSubmatchIndex(content, -1) {
+	for _, m := range receiverClientCallHeadRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
 			continue
 		}
@@ -194,6 +272,13 @@ func synthesizeReceiverClientDynamicURL(content string, funcs []jsFuncSpan, syms
 		rest := content[m[1]:]
 		if rest == "" {
 			continue
+		}
+		caller := enclosingJSFuncAt(funcs, m[0])
+
+		// emitStatic emits a resolved path with runtimeDynamic=false.
+		emitStatic := func(path string) {
+			emit(verb, httproutes.Canonicalize(httproutes.FrameworkExpress, path),
+				"angular_http_client", "Function", caller, false, "", "")
 		}
 
 		switch rest[0] {
@@ -205,8 +290,14 @@ func synthesizeReceiverClientDynamicURL(content string, funcs []jsFuncSpan, syms
 			if end < 0 {
 				continue
 			}
-			if _, ok := normalizeRawClientPath(rest[1 : 1+end]); ok {
+			raw := rest[1 : 1+end]
+			if _, ok := normalizeRawClientPath(raw); ok {
 				// Owned by the static-literal pass above.
+				continue
+			}
+			// Case 1: a relative literal the static pass declined to prefix.
+			if path, ok := normalizeRawClientPath("/" + raw); ok && path != "" {
+				emitStatic(path)
 				continue
 			}
 		case '`':
@@ -222,10 +313,19 @@ func synthesizeReceiverClientDynamicURL(content string, funcs []jsFuncSpan, syms
 				// Owned by the template-literal pass above.
 				continue
 			}
+			// Case 1, template flavour: `assets/${lang}.json`.
+			if path, ok := canonicalizeTemplateLiteral("/"+tmpl, syms); ok && path != "" {
+				emitStatic(path)
+				continue
+			}
 		}
 
-		caller := enclosingJSFuncAt(funcs, m[0])
-		emit(verb, dynamicClientPath, "angular_http_client", "Function", caller, true, "", "")
+		// Case 2: genuinely unresolvable.
+		path := dynamicClientPathPrefix
+		if slug := slugifyDynamicArg(firstArgExpr(rest)); slug != "" {
+			path += "/" + slug
+		}
+		emit(verb, path, "angular_http_client", "Function", caller, true, "", "")
 	}
 }
 
