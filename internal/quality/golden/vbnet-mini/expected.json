@@ -1,0 +1,420 @@
+{
+  "fixture_name": "vbnet-mini",
+  "language": "vbnet",
+  "description": "Real VB.NET sourced from two MIT-licensed projects (see NOTICE.md): staxrip/staxrip (Criteria.vb verbatim, FrameServer.vb head excerpt) and Wagnard/display-drivers-uninstaller (Win32Native.vb excerpt). Gates the shapes S5 of #6327 actually emits: Class/Module/Structure/Interface containment, Inherits -> EXTENDS (in-tree chain AND an interface extending an external one), class-level Implements -> IMPLEMENTS (in-tree AND external), Imports -> IMPORTS (bare-name and folded SCOPE.External package), and CALLS gated on the paren disambiguator. Deliberately NOT asserted, because they are known S7 gaps: partial-class merge, Handles, AddressOf, With-block receivers, and method-level Implements (FrameServer.vb and Win32Native.vb both carry method-level Implements clauses that produce no edge).",
+  "expected_entities": [
+    {
+      "name": "Criteria",
+      "kind": "SCOPE.Component",
+      "source_file": "Criteria.vb",
+      "must_exist": true,
+      "note": "MustInherit Class inside `Namespace UI`; the namespace is a property, not an entity."
+    },
+    {
+      "name": "GenericCriteria",
+      "kind": "SCOPE.Component",
+      "source_file": "Criteria.vb",
+      "must_exist": true,
+      "note": "Generic class GenericCriteria(Of TCondition, TType) — the type-parameter list must not leak into the name."
+    },
+    {
+      "name": "IntCriteria",
+      "kind": "SCOPE.Component",
+      "source_file": "Criteria.vb",
+      "must_exist": true
+    },
+    {
+      "name": "StringCriteria",
+      "kind": "SCOPE.Component",
+      "source_file": "Criteria.vb",
+      "must_exist": true
+    },
+    {
+      "name": "BooleanCriteria",
+      "kind": "SCOPE.Component",
+      "source_file": "Criteria.vb",
+      "must_exist": true
+    },
+    {
+      "name": "IntegerCondition",
+      "kind": "SCOPE.Schema",
+      "source_file": "Criteria.vb",
+      "must_exist": true,
+      "note": "Enum — SCOPE.Schema, following the C# extractor."
+    },
+    {
+      "name": "Criteria.Create",
+      "kind": "SCOPE.Operation",
+      "source_file": "Criteria.vb",
+      "must_exist": true,
+      "note": "Shared Function; member names are owner-qualified."
+    },
+    {
+      "name": "DirectFrameServer",
+      "kind": "SCOPE.Component",
+      "source_file": "FrameServer.vb",
+      "must_exist": true
+    },
+    {
+      "name": "DirectFrameServer.CreateAndOpen",
+      "kind": "SCOPE.Operation",
+      "source_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "Attribute-decorated Sub — <HandleProcessCorruptedStateExceptions> must not swallow the declaration."
+    },
+    {
+      "name": "IFrameServer",
+      "kind": "SCOPE.Component",
+      "source_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "Interface declaration."
+    },
+    {
+      "name": "INativeFrameServer",
+      "kind": "SCOPE.Component",
+      "source_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "Interface behind three attribute lines (<Guid>, <InterfaceType>)."
+    },
+    {
+      "name": "IFrameServer.GetFrame",
+      "kind": "SCOPE.Operation",
+      "source_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "Interface member with ByRef parameters."
+    },
+    {
+      "name": "Win32Native",
+      "kind": "SCOPE.Component",
+      "source_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "Module declaration."
+    },
+    {
+      "name": "Win32Native.IntPtrAdd",
+      "kind": "SCOPE.Operation",
+      "source_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "Module-level Function; owner-qualified by the Module."
+    },
+    {
+      "name": "EvilInteger",
+      "kind": "SCOPE.Component",
+      "source_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "Structure declaration nested in a Module."
+    },
+    {
+      "name": "EvilInteger.Int32",
+      "kind": "SCOPE.Schema",
+      "source_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "Structure field behind a <FieldOffset(0)> attribute line."
+    },
+    {
+      "name": "SYSTEMTIME",
+      "kind": "SCOPE.Component",
+      "source_file": "Win32Native.vb",
+      "must_exist": true
+    },
+    {
+      "name": "StructPtr",
+      "kind": "SCOPE.Component",
+      "source_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "Class nested inside a Module."
+    },
+    {
+      "name": "StructPtr.New",
+      "kind": "SCOPE.Operation",
+      "source_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "Constructor — Sub New maps to subtype `constructor`."
+    },
+    {
+      "name": "StructPtr.ObjSize",
+      "kind": "SCOPE.Operation",
+      "source_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "ReadOnly Property — the Get accessor gets no entity of its own."
+    }
+  ],
+  "expected_relationships": [
+    {
+      "from_name": "Criteria.vb",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Criteria.vb",
+      "kind": "CONTAINS",
+      "to_name": "Criteria",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Criteria.vb",
+      "must_exist": true,
+      "note": "File carrier owns top-level declarations; the enclosing Namespace is not an entity."
+    },
+    {
+      "from_name": "Criteria",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Criteria.vb",
+      "kind": "CONTAINS",
+      "to_name": "Criteria.Create",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Criteria.vb",
+      "must_exist": true
+    },
+    {
+      "from_name": "Win32Native.vb",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Win32Native.vb",
+      "kind": "CONTAINS",
+      "to_name": "Win32Native",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Win32Native.vb",
+      "must_exist": true
+    },
+    {
+      "from_name": "Win32Native",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Win32Native.vb",
+      "kind": "CONTAINS",
+      "to_name": "StructPtr",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "Module contains Class."
+    },
+    {
+      "from_name": "Win32Native",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Win32Native.vb",
+      "kind": "CONTAINS",
+      "to_name": "EvilInteger",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "Module contains Structure."
+    },
+    {
+      "from_name": "EvilInteger",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Win32Native.vb",
+      "kind": "CONTAINS",
+      "to_name": "EvilInteger.Int32",
+      "to_kind": "SCOPE.Schema",
+      "to_file": "Win32Native.vb",
+      "must_exist": true
+    },
+    {
+      "from_name": "StructPtr",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Win32Native.vb",
+      "kind": "CONTAINS",
+      "to_name": "StructPtr.New",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Win32Native.vb",
+      "must_exist": true
+    },
+    {
+      "from_name": "IFrameServer",
+      "from_kind": "SCOPE.Component",
+      "from_file": "FrameServer.vb",
+      "kind": "CONTAINS",
+      "to_name": "IFrameServer.GetFrame",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "Interface contains its members."
+    },
+    {
+      "from_name": "IntCriteria",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Criteria.vb",
+      "kind": "EXTENDS",
+      "to_name": "GenericCriteria",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Criteria.vb",
+      "must_exist": true,
+      "note": "`Inherits GenericCriteria(Of IntegerCondition, Integer)` — generic arguments stripped before binding."
+    },
+    {
+      "from_name": "StringCriteria",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Criteria.vb",
+      "kind": "EXTENDS",
+      "to_name": "GenericCriteria",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Criteria.vb",
+      "must_exist": true
+    },
+    {
+      "from_name": "BooleanCriteria",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Criteria.vb",
+      "kind": "EXTENDS",
+      "to_name": "GenericCriteria",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Criteria.vb",
+      "must_exist": true
+    },
+    {
+      "from_name": "GenericCriteria",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Criteria.vb",
+      "kind": "EXTENDS",
+      "to_name": "Criteria",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Criteria.vb",
+      "must_exist": true,
+      "note": "Second link of the in-tree inheritance chain IntCriteria -> GenericCriteria -> Criteria."
+    },
+    {
+      "from_name": "IFrameServer",
+      "from_kind": "SCOPE.Component",
+      "from_file": "FrameServer.vb",
+      "kind": "EXTENDS",
+      "to_bare_name": "IDisposable",
+      "must_exist": true,
+      "note": "Interface Inherits an external interface; no in-tree source, so the target stays a bare name."
+    },
+    {
+      "from_name": "DirectFrameServer",
+      "from_kind": "SCOPE.Component",
+      "from_file": "FrameServer.vb",
+      "kind": "IMPLEMENTS",
+      "to_name": "IFrameServer",
+      "to_kind": "SCOPE.Component",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "Second name on a multi-target `Implements IDisposable, IFrameServer` clause, bound in-tree."
+    },
+    {
+      "from_name": "DirectFrameServer",
+      "from_kind": "SCOPE.Component",
+      "from_file": "FrameServer.vb",
+      "kind": "IMPLEMENTS",
+      "to_bare_name": "IDisposable",
+      "must_exist": true,
+      "note": "First name on the same clause; external."
+    },
+    {
+      "from_name": "StructPtr",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Win32Native.vb",
+      "kind": "IMPLEMENTS",
+      "to_bare_name": "IDisposable",
+      "must_exist": true,
+      "note": "Class-level Implements on a Module-nested class."
+    },
+    {
+      "from_name": "FrameServer.vb",
+      "from_kind": "SCOPE.Component",
+      "from_file": "FrameServer.vb",
+      "kind": "IMPORTS",
+      "to_bare_name": "StaxRip.UI",
+      "must_exist": true,
+      "note": "IMPORTS hang on the per-file carrier. StaxRip.UI is a namespace with no in-tree carrier here, so it stays a bare dotted name — the same disposition #6327 measured as IMPORTS 763 emitted / 1 resolved on the full corpus."
+    },
+    {
+      "from_name": "Criteria.vb",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Criteria.vb",
+      "kind": "IMPORTS",
+      "to_name": "System",
+      "to_kind": "SCOPE.External",
+      "must_exist": true,
+      "note": "`Imports System.Text.RegularExpressions` folds onto the System external package node."
+    },
+    {
+      "from_name": "DirectFrameServer.New",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "CALLS",
+      "to_name": "DirectFrameServer.CreateAndOpen",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "`CreateAndOpen(path)` — bare invocation with parens, resolved to the sibling method."
+    },
+    {
+      "from_name": "DirectFrameServer.CreateAndOpen",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "CALLS",
+      "to_name": "DirectFrameServer.CreateAviSynthServer",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "`NativeServer = CreateAviSynthServer()` — empty-paren call on the right of an assignment."
+    },
+    {
+      "from_name": "DirectFrameServer.CreateAndOpen",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "CALLS",
+      "to_name": "DirectFrameServer.CreateVapourSynthServer",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true
+    },
+    {
+      "from_name": "StructPtr.Finalize",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Win32Native.vb",
+      "kind": "CALLS",
+      "to_name": "StructPtr.Dispose",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "`Dispose(False)` inside Finalize. WEAKER THAN IT READS: StructPtr carries two Dispose overloads — `Dispose(disposing As Boolean)` and `Dispose()` — and both fold onto the qualified name `StructPtr.Dispose`, so this edge cannot distinguish which one Finalize reaches. It asserts that the call site produced an in-tree CALLS to a method of that name, nothing finer. Do not read it as overload-precise."
+    },
+    {
+      "from_name": "Criteria.Create",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Criteria.vb",
+      "kind": "CALLS",
+      "to_name": "Exception",
+      "to_kind": "SCOPE.External",
+      "must_exist": true,
+      "note": "`Throw New Exception(\"failed to create criteria\")` — constructor call to an external type."
+    }
+  ],
+  "forbidden_relationships": [
+    {
+      "from_name": "Criteria.Macro",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Criteria.vb",
+      "kind": "CALLS",
+      "to_bare_name": "If",
+      "must_exist": false,
+      "note": "VB's ternary `If(cond, a, b)` is an operator, not an invocation. Emitting it as CALLS is exactly the phantom-CALLS class the paren disambiguator exists to prevent."
+    },
+    {
+      "from_name": "IntCriteria.ValueString",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Criteria.vb",
+      "kind": "CALLS",
+      "to_bare_name": "ToString",
+      "must_exist": false,
+      "note": "THIS ENTRY PINS A TRADEOFF, NOT A TRUTH. `Value.ToString` (IntCriteria.ValueString, Criteria.vb) is a GENUINE invocation — VB lets you call a no-arg method without parens, and the ideal extractor would emit this CALLS edge. It is forbidden here because S5's paren disambiguator deliberately chooses precision over recall: without a member-access resolver, treating every paren-less dotted name as a call manufactures phantom edges at a rate that swamps the real ones (#6327). Contrast the sibling `PropertyValue.ToString()` in IntCriteria.PropertyString, which IS parenthesised and carries no forbidden entry — that contrast is the point, and it is what makes this guard test the disambiguator rather than the file. IF A FUTURE MEMBER-ACCESS RESOLVER CORRECTLY EMITS THIS EDGE, AMEND THIS ENTRY — do not weaken the resolver to keep the fixture green. A graded fixture that punishes a correct improvement is worse than no fixture for this shape."
+    },
+    {
+      "from_name": "BooleanCriteria.Eval",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Criteria.vb",
+      "kind": "CALLS",
+      "to_bare_name": "Case",
+      "must_exist": false,
+      "note": "`Select Case`/`Case` are keywords; no CALLS edge may be minted from control flow."
+    },
+    {
+      "from_name": "Criteria",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Criteria.vb",
+      "kind": "EXTENDS",
+      "to_name": "GenericCriteria",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Criteria.vb",
+      "must_exist": false,
+      "note": "Inheritance direction guard: Criteria is the ROOT of the chain. An inverted EXTENDS would still score full recall on the forward edges above."
+    }
+  ]
+}
