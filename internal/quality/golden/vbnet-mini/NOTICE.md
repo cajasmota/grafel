@@ -35,6 +35,30 @@ gaps:
   `forbidden_relationships` that pin the paren-less and keyword cases that must
   produce *no* edge.
 
+## Two assertions that are weaker, or more opinionated, than they look
+
+**`Value.ToString` is forbidden as a TRADEOFF, not because it would be wrong.**
+`Value.ToString` in `IntCriteria.ValueString` is a genuine invocation — VB lets
+you call a no-arg method without parens. The ideal extractor would emit that
+CALLS edge. It is forbidden here because S5's paren disambiguator deliberately
+chooses **precision over recall**: absent a member-access resolver, treating
+every paren-less dotted name as a call manufactures phantom edges that swamp the
+real ones. The contrast is the sibling `PropertyValue.ToString()` in
+`IntCriteria.PropertyString` — parenthesised, and carrying no forbidden entry.
+That pair is what makes the guard test the *disambiguator* rather than the file.
+
+So: **if a future member-access resolver correctly emits that edge, amend the
+forbidden entry — do not suppress the edge to keep this fixture green.** A
+graded fixture that punishes a correct improvement is worse than no fixture for
+that shape, and "weaken the resolver" is always the cheapest-looking fix.
+
+**The `StructPtr.Finalize` → `StructPtr.Dispose` CALLS edge is not
+overload-precise.** `StructPtr` carries two `Dispose` overloads —
+`Dispose(disposing As Boolean)` and `Dispose()` — and both fold onto the
+qualified name `StructPtr.Dispose`. The assertion says the call site produced an
+in-tree CALLS to a method of that name; it cannot say which one. Correct, but
+weaker than it reads.
+
 `expected.json` asserts nothing that depends on partial-class merge, `Handles`,
 `AddressOf`, With-block receivers, or method-level `Implements` — those are S7.
 `FrameServer.vb` and `Win32Native.vb` do contain method-level `Implements`

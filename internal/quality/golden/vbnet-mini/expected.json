@@ -364,7 +364,7 @@
       "to_kind": "SCOPE.Operation",
       "to_file": "Win32Native.vb",
       "must_exist": true,
-      "note": "`Dispose(False)` inside Finalize."
+      "note": "`Dispose(False)` inside Finalize. WEAKER THAN IT READS: StructPtr carries two Dispose overloads — `Dispose(disposing As Boolean)` and `Dispose()` — and both fold onto the qualified name `StructPtr.Dispose`, so this edge cannot distinguish which one Finalize reaches. It asserts that the call site produced an in-tree CALLS to a method of that name, nothing finer. Do not read it as overload-precise."
     },
     {
       "from_name": "Criteria.Create",
@@ -394,7 +394,7 @@
       "kind": "CALLS",
       "to_bare_name": "ToString",
       "must_exist": false,
-      "note": "`Value.ToString` is written WITHOUT parens. The disambiguator gates CALLS on parens, so a paren-less member access must produce no edge."
+      "note": "THIS ENTRY PINS A TRADEOFF, NOT A TRUTH. `Value.ToString` (IntCriteria.ValueString, Criteria.vb) is a GENUINE invocation — VB lets you call a no-arg method without parens, and the ideal extractor would emit this CALLS edge. It is forbidden here because S5's paren disambiguator deliberately chooses precision over recall: without a member-access resolver, treating every paren-less dotted name as a call manufactures phantom edges at a rate that swamps the real ones (#6327). Contrast the sibling `PropertyValue.ToString()` in IntCriteria.PropertyString, which IS parenthesised and carries no forbidden entry — that contrast is the point, and it is what makes this guard test the disambiguator rather than the file. IF A FUTURE MEMBER-ACCESS RESOLVER CORRECTLY EMITS THIS EDGE, AMEND THIS ENTRY — do not weaken the resolver to keep the fixture green. A graded fixture that punishes a correct improvement is worse than no fixture for this shape."
     },
     {
       "from_name": "BooleanCriteria.Eval",
