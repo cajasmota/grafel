@@ -268,11 +268,18 @@ func childByType(node ts.Node, types_ ...string) ts.Node {
 }
 
 func buildClass(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
-	nameNode := childByType(node, "identifier")
-	if nameNode == nil {
-		return types.EntityRecord{}, false
+	// #6370 — the declared name and the inheritance clause both come from the
+	// header text; see hierarchy.go for why the CST cannot be walked for
+	// either. The CST lookup stays as the fallback for header shapes the
+	// header regex does not recognise.
+	name, hierarchy := classHierarchy(node, file)
+	if name == "" {
+		nameNode := childByType(node, "identifier")
+		if nameNode == nil {
+			return types.EntityRecord{}, false
+		}
+		name = nodeText(nameNode, file.Content)
 	}
-	name := nodeText(nameNode, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
 	}
@@ -289,6 +296,7 @@ func buildClass(node ts.Node, file extractor.FileInput, imports []string) (types
 		Properties: map[string]string{
 			"imports": strings.Join(imports, ","),
 		},
+		Relationships: hierarchy,
 	}, true
 }
 
