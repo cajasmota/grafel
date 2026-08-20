@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -24,6 +25,42 @@ var rulesFS embed.FS
 // Malformed YAML files are logged and skipped (not fatal).
 func LoadAllRules() (map[string][]FrameworkRule, error) {
 	return LoadAllRulesFromFS(rulesFS, "rules")
+}
+
+// LoadAllRulesReport is LoadAllRules plus a RuleLoadReport describing exactly
+// which embedded rule files were seen and which of them failed to load.
+//
+// Use this when you need to assert that nothing was silently dropped; the
+// plain LoadAllRules keeps its tolerant behaviour for normal callers.
+func LoadAllRulesReport() (map[string][]FrameworkRule, RuleLoadReport, error) {
+	return LoadAllRulesFromFSReport(rulesFS, "rules")
+}
+
+// RuleLoadFailure records one rule file that was found in the tree but did not
+// make it into the engine.
+type RuleLoadFailure struct {
+	// Path is the file that was lost, relative to the FS root.
+	Path string
+	// Stage is "read" or "parse".
+	Stage string
+	// Err is the underlying failure.
+	Err error
+}
+
+func (f RuleLoadFailure) String() string {
+	return fmt.Sprintf("%s %s: %v", f.Stage, f.Path, f.Err)
+}
+
+// RuleLoadReport is the inventory of a single rule-loading pass.
+//
+// Candidates lists every rule-shaped YAML file found in the tree (that is,
+// <lang>/<subdir>/<file>.yaml for a supported subdir) and Loaded lists the
+// subset that parsed successfully. len(Candidates) != len(Loaded) means rules
+// were dropped; Failures says which and why.
+type RuleLoadReport struct {
+	Candidates []string
+	Loaded     []string
+	Failures   []RuleLoadFailure
 }
 
 // ruleSubdirs lists the subdirectory names under each language directory that
@@ -47,8 +84,21 @@ var ruleSubdirs = map[string]bool{
 // build_tools.yaml, etc.) and engine config files (_engine/, database_index/)
 // are intentionally skipped.
 func LoadAllRulesFromFS(fsys fs.FS, rootDir string) (map[string][]FrameworkRule, error) {
+	rules, _, err := LoadAllRulesFromFSReport(fsys, rootDir)
+	return rules, err
+}
+
+// LoadAllRulesFromFSReport is the implementation behind LoadAllRulesFromFS. It
+// additionally returns a RuleLoadReport so callers can tell a healthy load from
+// one that quietly dropped rule files.
+//
+// Runtime tolerance is unchanged: a malformed rule file is still skipped rather
+// than fatal, and the returned error stays nil. What changed (#6341) is that
+// the skip is no longer invisible — every failure is recorded in the report and
+// logged, instead of being collected and thrown away.
+func LoadAllRulesFromFSReport(fsys fs.FS, rootDir string) (map[string][]FrameworkRule, RuleLoadReport, error) {
 	result := make(map[string][]FrameworkRule)
-	var loadErrors []string
+	var report RuleLoadReport
 
 	err := fs.WalkDir(fsys, rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -77,29 +127,44 @@ func LoadAllRulesFromFS(fsys fs.FS, rootDir string) (map[string][]FrameworkRule,
 			return nil
 		}
 
+		// From here on this file is a rule file we are committed to loading, so
+		// it counts towards the inventory whether or not it survives.
+		report.Candidates = append(report.Candidates, path)
+
 		data, readErr := fs.ReadFile(fsys, path)
 		if readErr != nil {
-			loadErrors = append(loadErrors, fmt.Sprintf("read %s: %v", path, readErr))
+			report.Failures = append(report.Failures,
+				RuleLoadFailure{Path: path, Stage: "read", Err: readErr})
 			return nil
 		}
 
 		var rule FrameworkRule
 		if unmarshalErr := yaml.Unmarshal(data, &rule); unmarshalErr != nil {
-			loadErrors = append(loadErrors, fmt.Sprintf("parse %s: %v", path, unmarshalErr))
+			report.Failures = append(report.Failures,
+				RuleLoadFailure{Path: path, Stage: "parse", Err: unmarshalErr})
 			return nil
 		}
 
 		result[lang] = append(result[lang], rule)
+		report.Loaded = append(report.Loaded, path)
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("walking rules directory: %w", err)
+		return nil, report, fmt.Errorf("walking rules directory: %w", err)
 	}
 
-	// Load errors are non-fatal: matches Python behaviour of skipping bad files
-	// and continuing. The caller receives partial results and can decide whether
-	// to surface the skipped-file list. Log them via the caller if needed.
-	_ = loadErrors
+	// Load failures stay non-fatal — skipping a bad file and continuing is the
+	// long-standing behaviour and changing it is a separate decision. They are
+	// no longer silent, though: previously they were collected and discarded
+	// (`_ = loadErrors`), so a malformed rule file removed its rules from the
+	// engine with no error, no exit code and no log line (#6341, cf. #6330).
+	for _, f := range report.Failures {
+		log.Printf("engine: rule file skipped, its rules are NOT loaded: %s", f)
+	}
+	if len(report.Failures) > 0 {
+		log.Printf("engine: %d of %d rule files failed to load and were skipped",
+			len(report.Failures), len(report.Candidates))
+	}
 
-	return result, nil
+	return result, report, nil
 }

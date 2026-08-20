@@ -33,9 +33,13 @@ func TestLoadAllRules_Count(t *testing.T) {
 	t.Logf("LoadAllRules: loaded %d rule files across %d languages", total, len(rules))
 }
 
-// TestLoadAllRules_NoParseErrors verifies that every YAML file in the embedded
-// rules directory parses without error. Because LoadAllRulesFromFS now returns
-// an error when any file fails to parse, a non-nil error here is a test failure.
+// TestLoadAllRules_NoParseErrors verifies that LoadAllRules itself completes.
+//
+// NOTE: despite its name this does NOT prove that every YAML file parsed —
+// LoadAllRules is deliberately tolerant and returns nil even when rule files
+// were skipped, so the only thing a nil error rules out here is a hard walk
+// failure. The real per-file assertion lives in
+// TestRuleInventory_EveryEmbeddedRuleFileParses (loader_inventory_test.go).
 func TestLoadAllRules_NoParseErrors(t *testing.T) {
 	_, err := LoadAllRules()
 	if err != nil {
