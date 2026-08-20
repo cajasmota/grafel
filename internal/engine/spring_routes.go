@@ -202,6 +202,20 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 		return
 	}
 
+	// #6429 — the enclosing class name. The Java symbol extractor lands each
+	// handler method QUALIFIED (`OrderController.listOrders`, kind
+	// SCOPE.Operation); carrying the class name here is what lets the
+	// ROUTES_TO edge below target that real entity instead of a
+	// `Controller:<bareMethod>` stub nothing ever resolved, and what lets
+	// synthesizeSpringFromComposed qualify `source_handler` so the endpoint
+	// binder is unambiguous by construction rather than by file:line rescue.
+	className := nodeFieldText(class, "name", src)
+	if className == "" {
+		// Unreachable for a well-formed class_declaration (see the ROUTES_TO
+		// comment below); bail rather than emit `SCOPE.Operation:.method`.
+		return
+	}
+
 	out.claimedClassPrefixes[prefix] = true
 
 	body := class.ChildByFieldName("body")
@@ -243,6 +257,13 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 			if pathParams := extractRoutePathParams(composedPath); pathParams != "" {
 				routeProps["path_params"] = pathParams
 			}
+			// #6429 — carry the handler identity forward on the Route entity so
+			// synthesizeSpringFromComposed (which only sees the emitted Route
+			// records, not the AST) can stamp `source_handler` at the handler
+			// instead of at the route's own path. Kotlin already did this
+			// inline in spring_routes_kotlin.go; Java discarded it.
+			routeProps["handler_method"] = methodName
+			routeProps["handler_class"] = className
 			out.entities = append(out.entities, types.EntityRecord{
 				Name:               composedPath,
 				Kind:               "Route",
@@ -253,9 +274,20 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 				EnrichmentStatus:   types.StatusPending,
 				QualityScore:       0.7,
 			})
+			// #6429 — target the handler Operation the Java extractor really
+			// emits (`SCOPE.Operation:<Class>.<method>`). The old
+			// `Controller:<method>` stub matched no entity kind in the graph,
+			// so the route→handler hop dangled and refs.go accounted it as
+			// runtime-dynamic.
+			//
+			// No className=="" fallback: walkSpringClasses only descends into
+			// `class_declaration`, and a Java class_declaration always carries
+			// a `name` field (an anonymous class parses as
+			// object_creation_expression and never reaches here). A fallback
+			// branch would be unreachable and untestable.
 			out.relationships = append(out.relationships, types.RelationshipRecord{
 				FromID: fmt.Sprintf("Route:%s", composedPath),
-				ToID:   fmt.Sprintf("Controller:%s", methodName),
+				ToID:   fmt.Sprintf("SCOPE.Operation:%s.%s", className, methodName),
 				Kind:   "ROUTES_TO",
 				Properties: types.Props{
 					{K: "framework", V: "java"},

@@ -66,7 +66,21 @@ func TestPlaceholderAnchorIsNotCountedAsRecall_6277(t *testing.T) {
 		// #4406 dedup-by-ID identity race to ormlink's sentinel, so the
 		// must-have binds to the real, content-ful entity. Both figures are
 		// back at their historic highs (25/25, 21/21).
-		{"java-spring-mini", "SCOPE.Component", "User", true, 25, 25, 21, 21},
+		//
+		// #6429 moved all four figures 25/25 + 21/21 -> 29/29 + 27/27. This is
+		// a deliberate expected.json edit, not drift: Spring's route->handler
+		// hop dangled (the AST pass discarded the handler method name and the
+		// endpoint synthesizer stamped source_handler at the route's own
+		// path), and expected.json asserted that PLACEHOLDER as correct with
+		// must_exist:true (#6441). The two `to_bare_name: "Controller:<method>"`
+		// ROUTES_TO rows were amended to the resolved
+		// to_name+to_kind+to_file form, the two previously-ungraded /users
+		// routes were added, and Spring's share of #6374 — 4
+		// http_endpoint_definition entities + 4 IMPLEMENTS edges — was graded
+		// for the first time. The must-have this test actually guards
+		// (SCOPE.Component User) is untouched by #6429: it still binds to the
+		// real class record, never the ormlink sentinel.
+		{"java-spring-mini", "SCOPE.Component", "User", true, 29, 29, 27, 27},
 		// #6275 FIXED via the SAME dedup-by-ID mechanism as java-spring-mini
 		// — no #6104 twin/facet is involved here (Ecto's SCOPE.Schema "users"
 		// table record has a DIFFERENT Name than "Demo.Schemas.User", so it

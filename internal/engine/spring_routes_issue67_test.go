@@ -72,9 +72,11 @@ func TestDetect_SpringRouteComposition_Issue67(t *testing.T) {
 	// And exactly 3 ROUTES_TO edges, all composed and ast_driven.
 	type rel struct{ from, to string }
 	wantRels := map[rel]bool{
-		{"Route:/api/orders", "Controller:listOrders"}: false,
-		{"Route:/api/users", "Controller:listUsers"}:   false,
-		{"Route:/api/items", "Controller:listItems"}:   false,
+		// #6429 — ROUTES_TO targets the qualified handler Operation the
+		// Java extractor actually lands, not a `Controller:<bare>` stub.
+		{"Route:/api/orders", "SCOPE.Operation:ApiController.listOrders"}: false,
+		{"Route:/api/users", "SCOPE.Operation:ApiController.listUsers"}:   false,
+		{"Route:/api/items", "SCOPE.Operation:ApiController.listItems"}:   false,
 	}
 	routesToCount := 0
 	for _, r := range result.Relationships {
