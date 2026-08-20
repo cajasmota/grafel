@@ -205,9 +205,16 @@ func TestErrorSubtree6360_CrossLanguage(t *testing.T) {
 	}
 }
 
-// TestErrorSubtree6360_AccessorsStayConsistent checks the accessors an extractor
-// mixes freely: ChildByFieldName must never hand back a hidden node, and
-// FieldNameForChild must still name the child at the SAME index Child returns.
+// TestErrorSubtree6360_AccessorsStayConsistent sweeps a real tree and pins,
+// for every reachable node: Child never returns an ERROR, a non-empty
+// FieldNameForChild always resolves through ChildByFieldName to a non-ERROR
+// node, and Parent/PrevSibling never step into the hidden region.
+//
+// What it does NOT pin: the visible->underlying index remap in
+// FieldNameForChild. This sweep only ever reaches nodes that kept all their
+// children, so on every node it visits the two indices coincide and dropping
+// the remap changes nothing. That case is pinned separately, and deliberately,
+// by TestErrorSubtree6360_FieldNameRemapsToVisibleIndex below.
 func TestErrorSubtree6360_AccessorsStayConsistent(t *testing.T) {
 	src := "package m\n\nfunc Good() int { return 1 }\n\nfunc Bad() int { return ) }\n"
 	res, err := NewParserFactory(nil).Parse(context.Background(), []byte(src), "go")
@@ -242,4 +249,120 @@ func TestErrorSubtree6360_AccessorsStayConsistent(t *testing.T) {
 		}
 	}
 	check(res.TSTree.RootNode())
+}
+
+// TestErrorSubtree6360_FieldNameRemapsToVisibleIndex pins the subtlest line in
+// the decorator: FieldNameForChild takes an index into the FILTERED child list
+// and must answer it against the UNDERLYING one.
+//
+// The sweep above cannot fail if that remap is dropped, because it never
+// reaches a node that has BOTH lost a child to filtering AND carries grammar
+// field names. This test picks exactly that shape out of two grammars:
+//
+//	python class_definition:        [class, identifier/name, :, ERROR, block/body]
+//	javascript variable_declarator: [identifier/name, =, ERROR, unary_expression/value]
+//
+// In both, the ERROR sits BEFORE a field-bearing child, so that child's visible
+// index is one less than its underlying index. Answering the visible index
+// against the underlying tree lands on the hidden ERROR — which has no field
+// name — and the field silently becomes "". That is the failure mode pinned
+// here: a mis-pairing that returns a wrong answer rather than raising one.
+func TestErrorSubtree6360_FieldNameRemapsToVisibleIndex(t *testing.T) {
+	cases := []struct {
+		name      string
+		lang      string
+		src       string
+		nodeType  string // the node that lost a child to filtering
+		visIdx    int    // index into the FILTERED child list
+		wantField string // grammar field of that visible child
+		wantType  string // node type of that visible child
+	}{
+		{
+			name:      "python_class_body",
+			lang:      "python",
+			src:       "class C:\n    )\n    def m(self):\n        return 1\n",
+			nodeType:  "class_definition",
+			visIdx:    3,
+			wantField: "body",
+			wantType:  "block",
+		},
+		{
+			name:      "javascript_declarator_value",
+			lang:      "javascript",
+			src:       "function g(){return 1}\nconst x = ) + 1;\nfunction h(){return 2}\n",
+			nodeType:  "variable_declarator",
+			visIdx:    2,
+			wantField: "value",
+			wantType:  "unary_expression",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := NewParserFactory(nil).Parse(context.Background(), []byte(tc.src), tc.lang)
+			if err != nil {
+				t.Fatalf("fixture must sail UNDER the whole-file gate: %v", err)
+			}
+			t.Cleanup(res.TSTree.Close)
+
+			target := findNodeOfType(res.TSTree.RootNode(), tc.nodeType)
+			if target == nil {
+				t.Fatalf("fixture no longer produces a %s node", tc.nodeType)
+			}
+
+			// Guard against the test going vacuous: the node must actually have
+			// LOST a child, otherwise visible and underlying indices coincide
+			// and the remap is not exercised at all.
+			if int(target.ChildCount()) != tc.visIdx+1 {
+				t.Fatalf("%s has %d visible children, want %d: the fixture no longer puts "+
+					"an ERROR before the field-bearing child, so the remap is untested",
+					tc.nodeType, target.ChildCount(), tc.visIdx+1)
+			}
+
+			child := target.Child(tc.visIdx)
+			if child == nil {
+				t.Fatalf("%s: Child(%d) is nil", tc.nodeType, tc.visIdx)
+			}
+			if child.Type() != tc.wantType {
+				t.Fatalf("%s: visible Child(%d) type = %q, want %q",
+					tc.nodeType, tc.visIdx, child.Type(), tc.wantType)
+			}
+
+			// The killing assertion. Without the visible->underlying remap this
+			// index lands on the hidden ERROR and returns "".
+			if got := target.FieldNameForChild(tc.visIdx); got != tc.wantField {
+				t.Errorf("%s: FieldNameForChild(%d) = %q, want %q — field names are "+
+					"mis-paired with the visible child list",
+					tc.nodeType, tc.visIdx, got, tc.wantField)
+			}
+
+			// And the two accessors must agree on the same node.
+			byField := target.ChildByFieldName(tc.wantField)
+			if byField == nil {
+				t.Fatalf("%s: ChildByFieldName(%q) is nil", tc.nodeType, tc.wantField)
+			}
+			if !ts.SameNode(byField, child) {
+				t.Errorf("%s: ChildByFieldName(%q) and Child(%d) disagree: %s@%d-%d vs %s@%d-%d",
+					tc.nodeType, tc.wantField, tc.visIdx,
+					byField.Type(), byField.StartByte(), byField.EndByte(),
+					child.Type(), child.StartByte(), child.EndByte())
+			}
+		})
+	}
+}
+
+// findNodeOfType returns the first node of the given type in a pre-order walk.
+func findNodeOfType(n ts.Node, want string) ts.Node {
+	if n == nil {
+		return nil
+	}
+	if n.Type() == want {
+		return n
+	}
+	for i := range int(n.ChildCount()) {
+		if hit := findNodeOfType(n.Child(i), want); hit != nil {
+			return hit
+		}
+	}
+	return nil
 }

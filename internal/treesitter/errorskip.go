@@ -30,6 +30,19 @@ import "github.com/cajasmota/grafel/internal/treesitter/ts"
 // back completely unwrapped: same tree, same nodes, zero allocation, zero
 // behaviour change.
 //
+// Known limit: MISSING nodes are NOT hidden. tree-sitter has two recovery
+// shapes — an ERROR node wrapping tokens it could not fit, and a zero-width
+// MISSING node inserted where the grammar required a token the source did not
+// supply. Only the first is filtered here, because IsMissing is not part of the
+// ts.Node façade (see internal/treesitter/ts/ts.go — the interface mirrors only
+// the methods grafel actually calls). So a file whose sole defect is a dropped
+// terminator still parses at error_ratio 0.0 and is extracted in full: #6360's
+// third fixture variant, the missing `;`, is exactly this case, and the
+// protobuf grammar happens to recover the field correctly there. This is a
+// known limit rather than a regression — the pre-#6360 behaviour for MISSING is
+// unchanged — but it means "no ERROR reachable" is not the same claim as "the
+// tree is a faithful reading of the source".
+//
 // Cost. Each wrap of a node scans that node's direct children once, so a full
 // traversal of a wrapped tree costs O(n) extra work in total. Wrappers are
 // immutable once constructed (children are resolved eagerly in newFilteredNode
