@@ -207,7 +207,14 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			if lang != "" {
 				r.EntitiesByLanguage[lang]++
 			}
-			kindTotals[kind]++
+			// NOTE (#6378): kindTotals is deliberately NOT incremented here.
+			// This loop runs once per entity OCCURRENCE per document, while
+			// the orphan numerator (entityEdges/kindOrphans, below) is keyed
+			// by unique entity ID. Incrementing here mixed the units: emitting
+			// the same document twice doubled the denominator without moving
+			// the numerator, so an unwired kind went 11/12 (91.7%, gate FIRES)
+			// → 11/24 (45.8%, gate SILENT). kindTotals is derived from
+			// entityKind after this pass instead — see below.
 			if kindLangCounts[kind] == nil {
 				kindLangCounts[kind] = make(map[string]int)
 			}
@@ -271,6 +278,29 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			}
 		}
 		r.FrameworkFilesDetected += len(frameworkFilesSeen)
+	}
+
+	// kindTotals: unique entity IDs per kind (#6378).
+	//
+	// OrphanPct is the answer to "what share of the entities of this kind have
+	// no semantic edge in either direction" — a question about ENTITIES, not
+	// about how many times an entity was emitted. Every consumer reads it that
+	// way, and its numerator (kindOrphans, derived from entityEdges) is already
+	// keyed by unique ID, so the denominator must be too or the ratio is
+	// dimensionally mixed and dilutable by duplication.
+	//
+	// entityKind is the same index entityEdges is keyed on, so deriving from it
+	// guarantees the two sides can never drift apart again. Duplicate IDs are
+	// not hypothetical: #6368 was an EntityID collision (solidity import
+	// placeholders deduped by path, named by basename), and any group whose
+	// repos share files emits the same entity into more than one document.
+	//
+	// Blast radius: kindTotals also drives the N >= 10 publication floor below,
+	// so a kind whose entities were only ever double-counted over the floor now
+	// drops out of the report. That is correct — it never had 10 distinct
+	// entities.
+	for _, kind := range entityKind {
+		kindTotals[kind]++
 	}
 
 	// Pass 2: relationships. fieldChildCount is built here (over ALL docs)
