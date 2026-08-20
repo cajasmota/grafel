@@ -932,12 +932,24 @@ func scrubKeepingQuote(src string) string {
 // Property — under-reported by one per swallowed newline. The stamp is what a
 // consumer jumps to, so every call site below such a region pointed too high.
 //
-// The `(?m)^` anchors are NOT affected, which is worth stating because it is
-// the plausible-sounding second effect this change does not have. The newline
-// that ends a `(* ... *)` or `""" ... """` sits AFTER the closing delimiter, so
-// it was never inside the blanked span and the line start in front of the next
-// declaration survived either way. Only the newlines INTERIOR to the region
-// were lost, and those are the line-count bug above, not an anchor bug.
+// MATCHING CHANGES TOO, in both directions, wherever a delimiter closes
+// MID-LINE. This is a consequence of the change, not a verdict about it, and
+// both halves are measured by tests rather than asserted here:
+//
+//   - GAINED, for `(?m)^`-anchored patterns. Restoring an interior newline
+//     creates a line start whose remainder is blanked-delimiter spaces followed
+//     by live code, which `^[ \t]*` now reaches. `let x = 1 (* c\n c *)
+//     interface IValidatableObject with` yields no edge before and an
+//     IMPLEMENTS (and a VALIDATES) after — see
+//     TestFSharp_DeclarationAfterMidLineCommentClose.
+//   - LOST, for patterns that span `[ \t]+` between two tokens — spaceAppRE
+//     here, felizChildRE in elmish_feliz.go. That gap used to cross a blanked
+//     region and cannot cross a newline, so the space application
+//     `helper (*\n gap \n*) n` emitted CALLS before and emits none after — see
+//     TestFSharp_KnownLimitation_SpaceApplicationSplitByBlockComment.
+//
+// The trade is taken deliberately: the gain is ordinary F#, the loss needs an
+// argument separated from its head by a multi-line comment.
 //
 // The byte LENGTH is unchanged either way — `out` is allocated at len(src) and
 // every write is an in-place assignment to an existing index — so all the byte
