@@ -232,13 +232,26 @@ func TestPauseOfUnregisteredSlotLeavesSiblingSubscriptionIntact(t *testing.T) {
 	tm.SetWatcherHook(mgr)
 
 	// The production pair after an index completes: declare the slot, then
-	// subscribe it.
+	// subscribe it. TWO indexed refs, not one — with a single active ref the
+	// refcount arithmetic is only ever observed at its clamped endpoint, and a
+	// mutant that decrements for the unknown slot but clamps at 0 survives:
+	// 1→0 silently, then pausing the last real ref goes -1→0 and unsubscribes
+	// anyway, so every assertion still passes. From three refs up that mutant
+	// is the original silent-permanently-unwatched bug, so the test has to be
+	// able to see the arithmetic itself.
 	mgr.Register(repo, "main")
 	mgr.Resume(repo, "main")
+	mgr.Register(repo, "release/1.0")
+	mgr.Resume(repo, "release/1.0")
 	keyMain := tier.SlotKey{RepoPath: repo, Ref: "main"}
+	keyRel := tier.SlotKey{RepoPath: repo, Ref: "release/1.0"}
 	tm.Register(keyMain, true, tier.SlotKindBranchMain)
+	tm.Register(keyRel, false, tier.SlotKindBranchFeature)
 	if got := w.Repos(); len(got) != 1 || got[0] != repo {
 		t.Fatalf("prereq: want repo watched, got %v", got)
+	}
+	if got := mgr.ActiveCount(); got != 2 {
+		t.Fatalf("prereq: want 2 active refs, got %d", got)
 	}
 
 	// A ref that is queried but never indexed here: tier knows it, this
@@ -248,12 +261,14 @@ func TestPauseOfUnregisteredSlotLeavesSiblingSubscriptionIntact(t *testing.T) {
 		t.Fatalf("Touch feat: %v", err)
 	}
 
-	// Age feat past HOT→WARM→COLD while main keeps being queried.
+	// Age feat past HOT→WARM→COLD while the two indexed refs keep being queried.
 	clock.advance(6 * time.Minute)
 	_ = tm.Touch(keyMain)
+	_ = tm.Touch(keyRel)
 	tm.Scan()
 	clock.advance(61 * time.Minute)
 	_ = tm.Touch(keyMain)
+	_ = tm.Touch(keyRel)
 	tm.Scan()
 	if got := tm.Get(keyFeat); got != tier.TierCold {
 		t.Fatalf("prereq: want feat COLD, got %s", got)
@@ -262,23 +277,38 @@ func TestPauseOfUnregisteredSlotLeavesSiblingSubscriptionIntact(t *testing.T) {
 		t.Fatalf("prereq: main must still be live, got %s", got)
 	}
 
-	// main is still an active ref, so its subscription must survive feat's
-	// eviction.
+	// Both indexed refs are still active, so the subscription must survive
+	// feat's eviction.
 	if got := w.Repos(); len(got) != 1 || got[0] != repo {
-		t.Fatalf("pausing an unregistered ref killed the sibling's subscription: w.Repos()=%v", got)
+		t.Fatalf("pausing an unregistered ref killed the siblings' subscription: w.Repos()=%v", got)
 	}
-	if mgr.IsPaused(repo, "main") {
-		t.Fatalf("main must still be reported active")
+	if mgr.IsPaused(repo, "main") || mgr.IsPaused(repo, "release/1.0") {
+		t.Fatalf("both indexed refs must still be reported active")
+	}
+	if got := mgr.ActiveCount(); got != 2 {
+		t.Fatalf("want 2 active refs after feat's eviction, got %d", got)
 	}
 
-	// And the ledger must still be honest: main can be paused and resumed,
-	// which is impossible if its refcount was already spent by feat.
+	// The arithmetic, not just its endpoint: with two active refs, pausing ONE
+	// must leave the subscription up. A Pause that spent a refcount on the
+	// unknown slot has already taken one of these two, so this is where it
+	// shows — the repo goes dark while release/1.0 still believes it is
+	// watched, which is the original silent-permanently-unwatched bug.
 	mgr.Pause(repo, "main")
+	if got := w.Repos(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("refcount corrupted: pausing 1 of 2 active refs unsubscribed the repo (release/1.0 still active), got %v", got)
+	}
+	if got := mgr.SubscribedRepoCount(); got != 1 {
+		t.Fatalf("refcount corrupted: want the repo still subscribed with 1 active ref, SubscribedRepoCount=%d", got)
+	}
+
+	// Only when the LAST active ref pauses does the subscription go.
+	mgr.Pause(repo, "release/1.0")
 	if got := w.Repos(); len(got) != 0 {
-		t.Fatalf("refcount corrupted: pausing the last active ref did not unsubscribe, got %v", got)
+		t.Fatalf("pausing the last active ref did not unsubscribe, got %v", got)
 	}
 	mgr.Resume(repo, "main")
 	if got := w.Repos(); len(got) != 1 || got[0] != repo {
-		t.Fatalf("refcount corrupted: resume after pause did not re-subscribe, got %v", got)
+		t.Fatalf("resume after full pause did not re-subscribe, got %v", got)
 	}
 }
