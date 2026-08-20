@@ -318,4 +318,40 @@ func TestImportPlaceholderAmbiguityStillHonoured_6369(t *testing.T) {
 				"placeholder may claim it (#6369)", got)
 		}
 	})
+
+	// A placeholder and a REAL record of the same name in the same file share
+	// one EntityID by construction — EntityID is sha256(repo, kind, name,
+	// sourceFile) and does not include Subtype, so the extractors that mint a
+	// per-import SCOPE.Component emit two records on one ID (measured on the
+	// Go corpus in cmd/grafel/incremental_dup_rows_6094_test.go). The second
+	// record is a RE-INDEX of the same entity, not a collision, so it takes
+	// the same-ID path — and that path must retire the placeholder marker,
+	// because the entity holding the name is now known to be a real
+	// declaration. If the marker survives, the NEXT file's genuinely
+	// different declaration takes the "declaration displaces placeholder"
+	// branch instead of colliding: two real declarations of Animal then
+	// resolve to whichever one arrived last, with ambiguity never raised.
+	t.Run("placeholder re-indexed as a real record then a second declaration stay ambiguous",
+		func(t *testing.T) {
+			recs := []types.EntityRecord{
+				importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"),
+				{
+					ID: placeholderID6369, Kind: "SCOPE.Component", Name: "Animal",
+					Subtype: "class", SourceFile: "src/other/collide.vue", Language: "vue",
+				},
+				{
+					ID: realAnimalID6369, Kind: "SCOPE.Component", Name: "Animal",
+					Subtype: "class", SourceFile: "src/domain/base.vue", Language: "vue",
+				},
+			}
+			idx := BuildIndex(recs)
+			if !idx.ambigName["Animal"] {
+				t.Errorf("two real declarations of Animal must be ambiguous, even when a " +
+					"placeholder record preceded one of them on the same ID (#6369)")
+			}
+			if got, ok := idx.byName["Animal"]; ok {
+				t.Errorf("byName[Animal] = %q, want absent — a name owned by two real "+
+					"declarations must not resolve to an arbitrary winner (#6369)", got)
+			}
+		})
 }
