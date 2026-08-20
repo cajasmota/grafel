@@ -50,9 +50,17 @@ jobs:
           fi
       - name: Regenerate docs
         run: go run ./tools/coverage gen
+      # `git diff` alone cannot see an UNTRACKED file, so a page that `gen`
+      # newly emits under docs/coverage/ was caught only indirectly — via the
+      # summary.md delta that happened to link it. A page emitted without a
+      # summary reference was invisible to this gate (#6354). `git add -N`
+      # (intent-to-add) registers untracked paths so the very next `git diff`
+      # renders them as real additions, which both fires the exit code and
+      # prints the offending path in the diff the step already emits.
       - name: Verify docs are in sync with JSON
         run: |
+          git add -N docs/coverage/
           if ! git diff --exit-code docs/coverage/; then
-            echo "::error::docs/coverage/*.md is stale. Run 'go run ./tools/coverage gen' locally and commit."
+            echo "::error::docs/coverage/ is out of sync with registry.json (stale, orphaned, or hand-added page). Run 'go run ./tools/coverage gen' locally and commit the result, deletions included."
             exit 1
           fi

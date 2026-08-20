@@ -411,3 +411,105 @@ func TestGenSubcommandWiring(t *testing.T) {
 		t.Errorf("summary.md not created: %v", err)
 	}
 }
+
+// TestGenPrunesOrphanedByLanguagePages is the regression test for #6354.
+//
+// `gen` used to be write-only: two emit loops wrote by-language/<slug>.md
+// and nothing ever removed a page whose slug stopped being derived. Two
+// such orphans (avro.md, jsonschema.md) shipped on main for months because
+// the docs gate is a `git diff`, which cannot see an untracked file either.
+//
+// The pre-existing sresolver.md / yaml.md assertions in
+// TestGenSummaryIncludesExtractorSupportedLanguages do NOT cover this: they
+// pass because the emit loop never writes those slugs, so they stay green
+// with any prune implementation deleted. This test instead *creates* a
+// stray page and requires gen to remove it.
+//
+// Prune is scoped to files carrying doNotEditMarker so a hand-written page
+// dropped into the directory is never silently deleted.
+func TestGenPrunesOrphanedByLanguagePages(t *testing.T) {
+	reg, err := loadRegistry(fixturePath(t))
+	if err != nil {
+		t.Fatalf("load fixture: %v", err)
+	}
+	root := t.TempDir()
+	if err := generate(reg, root); err != nil {
+		t.Fatalf("generate (first pass): %v", err)
+	}
+	byLang := filepath.Join(root, docsDir, "by-language")
+
+	// A derived page that must survive the prune.
+	derived := filepath.Join(byLang, "python.md")
+	if _, err := os.Stat(derived); err != nil {
+		t.Fatalf("fixture expectation broken, python.md not emitted: %v", err)
+	}
+
+	// A generated page for a slug that is derived from nothing — the
+	// avro.md / jsonschema.md shape from the issue.
+	orphan := filepath.Join(byLang, "zzz.md")
+	if err := os.WriteFile(orphan, []byte(doNotEditMarker+"\n\n# Zzz\n"), 0o644); err != nil {
+		t.Fatalf("write orphan: %v", err)
+	}
+	// A hand-written page with no marker: must NOT be touched.
+	handwritten := filepath.Join(byLang, "NOTES.md")
+	if err := os.WriteFile(handwritten, []byte("# Hand-written notes\n"), 0o644); err != nil {
+		t.Fatalf("write handwritten: %v", err)
+	}
+	// A non-markdown generated sibling: also out of prune scope.
+	other := filepath.Join(byLang, "notes.txt")
+	if err := os.WriteFile(other, []byte(doNotEditMarker+"\n"), 0o644); err != nil {
+		t.Fatalf("write other: %v", err)
+	}
+
+	if err := generate(reg, root); err != nil {
+		t.Fatalf("generate (second pass): %v", err)
+	}
+
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Errorf("orphaned by-language/zzz.md survived gen (err=%v); gen must prune generated pages for underived slugs", err)
+	}
+	if _, err := os.Stat(handwritten); err != nil {
+		t.Errorf("hand-written by-language/NOTES.md (no marker) must not be pruned: %v", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("non-.md by-language/notes.txt must not be pruned: %v", err)
+	}
+	if _, err := os.Stat(derived); err != nil {
+		t.Errorf("derived by-language/python.md must survive prune: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(byLang, "jsts.md")); err != nil {
+		t.Errorf("derived by-language/jsts.md must survive prune: %v", err)
+	}
+}
+
+// TestGenPrunesPlaceholderPageWhenExtractorDirDisappears is the
+// "deleting a language directory makes CI red on that PR" acceptance case
+// from #6354: a placeholder page emitted for an extractor directory must
+// disappear once that directory no longer exists.
+func TestGenPrunesPlaceholderPageWhenExtractorDirDisappears(t *testing.T) {
+	reg, err := loadRegistry(fixturePath(t))
+	if err != nil {
+		t.Fatalf("load fixture: %v", err)
+	}
+	root := t.TempDir()
+	zigDir := filepath.Join(root, "internal", "extractors", "zig")
+	if err := os.MkdirAll(zigDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := generate(reg, root); err != nil {
+		t.Fatalf("generate (with zig): %v", err)
+	}
+	page := filepath.Join(root, docsDir, "by-language", "zig.md")
+	if _, err := os.Stat(page); err != nil {
+		t.Fatalf("expected zig placeholder page: %v", err)
+	}
+	if err := os.RemoveAll(zigDir); err != nil {
+		t.Fatalf("rm extractor dir: %v", err)
+	}
+	if err := generate(reg, root); err != nil {
+		t.Fatalf("generate (without zig): %v", err)
+	}
+	if _, err := os.Stat(page); !os.IsNotExist(err) {
+		t.Errorf("zig.md survived removal of internal/extractors/zig (err=%v)", err)
+	}
+}

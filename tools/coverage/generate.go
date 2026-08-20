@@ -761,6 +761,13 @@ func generate(reg *Registry, outRoot string) error {
 		return err
 	}
 
+	// Every by-language slug this run is responsible for. Both emit loops
+	// below record into it, and pruneGenerated then deletes any generated
+	// page in that directory whose slug is absent — see #6354, where
+	// avro.md and jsonschema.md survived clean runs for months because gen
+	// was write-only.
+	emittedLangPages := map[string]struct{}{}
+
 	// Emit placeholder by-language pages for each supported-but-untracked
 	// language so the summary links resolve and contributors land on a
 	// page that explains how to add records.
@@ -778,6 +785,7 @@ func generate(reg *Registry, outRoot string) error {
 			}); err != nil {
 			return err
 		}
+		emittedLangPages[s] = struct{}{}
 	}
 
 	for _, n := range langNames {
@@ -811,6 +819,15 @@ func generate(reg *Registry, outRoot string) error {
 			}); err != nil {
 			return err
 		}
+		emittedLangPages[n] = struct{}{}
+	}
+
+	// Write-then-prune: anything generated under by-language/ that this run
+	// did not (re)write no longer corresponds to a derived language, so it
+	// must go. Scoped to files carrying doNotEditMarker so a hand-written
+	// page dropped in the directory is never silently deleted (#6354).
+	if err := pruneGenerated(filepath.Join(root, "by-language"), emittedLangPages); err != nil {
+		return err
 	}
 
 	for _, n := range catNames {
@@ -1307,6 +1324,69 @@ func splitCategoryRowsBySubcategory(category string, rows []categoryRow) ([]cate
 
 // renderToFile executes the named template into a buffer and writes it
 // atomically via temp+rename so partial writes never appear on disk.
+// pruneGenerated removes every "<slug>.md" directly under dir that carries
+// doNotEditMarker and whose slug is not in keep. It is the delete half of
+// gen's write-then-prune contract (#6354): without it a page for a slug
+// that stopped being derived survives clean runs indefinitely, and the CI
+// gate — a `git diff`, which cannot see untracked files — never reports it.
+//
+// The marker scope is deliberate. Only pages this generator wrote are
+// candidates, so a hand-authored file added to the directory later is left
+// alone rather than deleted on the next unrelated `gen`. A missing dir is
+// not an error: nothing was emitted, so there is nothing to prune.
+func pruneGenerated(dir string, keep map[string]struct{}) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, ".md") {
+			continue
+		}
+		slug := strings.TrimSuffix(name, ".md")
+		if _, ok := keep[slug]; ok {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		generated, err := hasDoNotEditMarker(path)
+		if err != nil {
+			return err
+		}
+		if !generated {
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("prune %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// hasDoNotEditMarker reports whether path begins with the generated-file
+// banner. Only the leading bytes are read: renderToFile always writes the
+// marker as the first line, so a match deeper in the file would be prose
+// quoting the banner, not a generator stamp.
+func hasDoNotEditMarker(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	buf := make([]byte, len(doNotEditMarker))
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return false, err
+	}
+	return string(buf[:n]) == doNotEditMarker, nil
+}
+
 func renderToFile(tmpls *template.Template, name, path string, data any) error {
 	var buf bytes.Buffer
 	if err := tmpls.ExecuteTemplate(&buf, name, data); err != nil {
