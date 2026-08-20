@@ -219,6 +219,15 @@ func TestGenerate_TenEntityKindCanFireTheGate(t *testing.T) {
 // this branch) makes OrphanCount < Total and would silently turn the failure
 // into a pass. The check must fail on the substance, not on a comparison of two
 // differently-counted numbers.
+//
+// UPDATE (#6378): the skew this test used to construct no longer exists.
+// kindTotals is now derived from the unique-entity-ID index, so Total counts
+// unique IDs exactly as OrphanCount does, and the two docs below yield
+// OrphanCount == Total == 10 rather than 10 < 20. The precondition is inverted
+// to pin that — but the substance assertion is unchanged and still load-bearing:
+// a zero-participation kind emitted across multiple docs must FAIL check 2b.
+// Check 2b's unconditional form (#6375) remains the defense if a future change
+// reintroduces any denominator that is not unique-by-ID.
 func TestRunSanityChecks_ParticipationCheckCannotFalsePass(t *testing.T) {
 	// Same 10 entity IDs emitted by two docs: 20 occurrences, 10 unique ids,
 	// none carrying a semantic edge.
@@ -241,8 +250,8 @@ func TestRunSanityChecks_ParticipationCheckCannotFalsePass(t *testing.T) {
 		t.Fatalf("Generate: %v", err)
 	}
 	tks := r.OrphanTerminalByKind["SCOPE.Stylesheet"]
-	if tks.OrphanCount >= tks.Total {
-		t.Fatalf("fixture did not reproduce the occurrence/unique-id skew (OrphanCount=%d Total=%d) — rewrite it, the guard is vacuous otherwise", tks.OrphanCount, tks.Total)
+	if tks.Total != 10 || tks.OrphanCount != tks.Total {
+		t.Fatalf("occurrence/unique-id skew is back: want OrphanCount==Total==10 unique ids across the two docs, got OrphanCount=%d Total=%d (#6378)", tks.OrphanCount, tks.Total)
 	}
 	found, failed := false, false
 	for _, res := range r.SanityResults {
@@ -256,7 +265,7 @@ func TestRunSanityChecks_ParticipationCheckCannotFalsePass(t *testing.T) {
 		t.Fatalf("%s not emitted", participationCheckName("SCOPE.Stylesheet"))
 	}
 	if !failed {
-		t.Errorf("duplicate entity IDs made OrphanCount(%d) < Total(%d), turning a zero-participation kind into a PASS — check 2b must not compare two differently-counted numbers",
+		t.Errorf("a zero-participation kind (%d/%d) emitted across two docs PASSED check 2b — the check must fail on the substance, not on a comparison of two counts",
 			tks.OrphanCount, tks.Total)
 	}
 }
