@@ -70,10 +70,22 @@ module "vpc" {
 // relationship kind, the resolved FROM endpoint of every edge together with the
 // owner it should have landed on.
 type anchorEdge struct {
-	kind      string
+	kind string
+	// ownerName, fromLabel and wantLabel are for the FAILURE MESSAGE only.
+	// A label is Subtype+":"+Name, which is NOT unique: two records sharing
+	// both would compare equal and mask a misanchor. The assertion below
+	// therefore compares fromID against wantID — the resolved identities —
+	// and uses the labels purely to say WHICH nodes those ids are.
 	ownerName string
 	fromLabel string
 	wantLabel string
+	// fromID is the endpoint the edge actually lands on after assembly's
+	// substitution rule; wantID is the owning record's own id. resolved
+	// reports whether fromID names a record that exists at all (a false
+	// here is a DANGLING edge, not a misanchored one).
+	fromID    string
+	wantID    string
+	resolved  bool
 	rawFromID string
 }
 
@@ -122,11 +134,15 @@ func measureAnchoring(t *testing.T, path string) []anchorEdge {
 			if from == "" {
 				from = owner.ID
 			}
+			_, ok := byID[from]
 			out = append(out, anchorEdge{
 				kind:      r.Kind,
 				ownerName: owner.Name,
 				fromLabel: label(from),
 				wantLabel: label(owner.ID),
+				fromID:    from,
+				wantID:    owner.ID,
+				resolved:  ok,
 				rawFromID: r.FromID,
 			})
 		}
@@ -144,6 +160,21 @@ func measureAnchoring(t *testing.T, path string) []anchorEdge {
 // BOTH a nested and a root path, every CONTAINS and DEPENDS_ON edge must land on
 // the record that carries it, which requires FromID to be empty.
 func TestHCL_ContainsAndDependsOnAnchoredOnOwner(t *testing.T) {
+	// BOTH paths are load-bearing and neither may be dropped "to simplify":
+	//
+	//   - "infra/envs/prod/main.tf" (nested) is the ONLY path that pins
+	//     CONTAINS. For CONTAINS the owner IS the file component, so on a
+	//     root path FromID: path resolves to that very component and the
+	//     subtest is STRUCTURALLY INCAPABLE of failing — it passes with or
+	//     without the fix. Trim the list to the root path alone and the
+	//     CONTAINS pin dies silently while the suite stays green.
+	//   - "main.tf" (root) is the ONLY path that pins the DEPENDS_ON
+	//     MISANCHOR. On the nested path the bad FromID merely dangles;
+	//     only at the root does it resolve onto the file component and
+	//     land off the resource/module that owns the edge — the failure
+	//     mode a dangling-edge check alone would never see.
+	//
+	// Removing either path loses a distinct guarantee.
 	for _, path := range []string{"infra/envs/prod/main.tf", "main.tf"} {
 		t.Run(path, func(t *testing.T) {
 			edges := measureAnchoring(t, path)
@@ -153,17 +184,19 @@ func TestHCL_ContainsAndDependsOnAnchoredOnOwner(t *testing.T) {
 			total := map[string]int{}
 			for _, e := range edges {
 				total[e.kind]++
-				if e.fromLabel == e.wantLabel {
+				// IDENTITY, not label: two records could share
+				// Subtype+Name and compare equal by label.
+				if e.fromID == e.wantID {
 					continue
 				}
-				if len(e.fromLabel) > 12 && e.fromLabel[:12] == "<UNRESOLVED:" {
+				if !e.resolved {
 					dangling[e.kind]++
 				} else {
 					misanchored[e.kind]++
 				}
-				t.Errorf("%s owned by %q: FROM = %s, want %s (FromID=%q must be empty "+
-					"so assembly stamps the owning record)",
-					e.kind, e.ownerName, e.fromLabel, e.wantLabel, e.rawFromID)
+				t.Errorf("%s owned by %q: FROM = %s (id %q), want %s (id %q) "+
+					"(FromID=%q must be empty so assembly stamps the owning record)",
+					e.kind, e.ownerName, e.fromLabel, e.fromID, e.wantLabel, e.wantID, e.rawFromID)
 			}
 			for _, kind := range []string{"CONTAINS", "DEPENDS_ON"} {
 				if total[kind] == 0 {

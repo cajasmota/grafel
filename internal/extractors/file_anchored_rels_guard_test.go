@@ -232,12 +232,11 @@
 //     knownInvisibleOffenders["swift:extractTargets:DEPENDS_ON"] {2}. The two
 //     svelte entries went away with the #6366 fix and the hcl one with #6367;
 //     the only remaining count>=2 entry is swift (RE-MEASURED 2026-08-21).
-//     What a "?"
-//     key ADDS on top of that is collapsing ACROSS FORMS: a form-A site and a
-//     form-I site key identically, so one can be replaced by the other. The only
-//     "?" entry today (yaml:extractHelmHelpers:?) has count 1, so the
-//     across-forms half has no live consequence; the same-kind half is live at
-//     ONE key right now, and it is where the next regression would hide.
+//     What a "?" key ADDS on top of that is collapsing ACROSS FORMS: a form-A
+//     site and a form-I site key identically, so one can be replaced by the
+//     other. The only "?" entry today (yaml:extractHelmHelpers:?) has count 1,
+//     so the across-forms half has no live consequence; the same-kind half is
+//     live at ONE key right now, and it is where the next regression would hide.
 //
 // This is a guard against the careless repetition of a known pattern, not a
 // proof. It is honest about being one.
