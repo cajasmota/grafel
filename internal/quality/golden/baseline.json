@@ -134,8 +134,8 @@
     "vbnet-mini": {
       "entity_found": 20,
       "entity_expected": 20,
-      "relationship_found": 23,
-      "relationship_expected": 23
+      "relationship_found": 29,
+      "relationship_expected": 29
     }
   },
   "known_regressions": [
