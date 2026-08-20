@@ -358,21 +358,25 @@ func hierarchyEdges(n *vbnet.Node) []types.RelationshipRecord {
 // The prior decision (recorded in the package doc, now lifted) was that a
 // member edge to `IFoo.Bar` would COMPETE with the type edge to `IFoo`.
 // It does not, and the reason is mechanical rather than a judgement call:
-// an edge here is identified by (FromID, ToID, Kind), and the two edges
-// share NEITHER endpoint. The type edge is stamped on the TYPE record and
-// points at `IFoo`; this one is stamped on the MEMBER record — FromID stays
-// empty and assembly substitutes the owning member, the same anchor
-// appendReferences relies on — and points at `IFoo.Bar`. They cannot fold,
-// dedupe or shadow each other. The fear would be real in a graph that keyed
-// IMPLEMENTS by owning type alone; this one does not.
+// the two edges share NEITHER endpoint. The type edge is stamped on the TYPE
+// record and points at `IFoo`; this one is stamped on the MEMBER record —
+// FromID stays empty and assembly substitutes the owning member (see
+// cmd/grafel/index.go, where the relationship loop stamps the id computed for
+// THAT record, so a member record can only ever receive the member's id) —
+// and points at `IFoo.Bar`. Two edges that agree on neither endpoint cannot
+// fold into or shadow one another whatever the storage layer keys on;
+// internal/graph/graph.go states outright that (from, to, kind) is NOT a
+// unique edge key, and this argument deliberately does not rest on it being
+// one. The fear would be real in a graph that keyed IMPLEMENTS by owning
+// TYPE alone; this one does not.
 //
 // Nor is the member edge a weaker restatement of the type edge. It is the
 // only thing in the graph that says WHICH member satisfies WHICH interface
 // member — a question the type edge cannot express, and the question a
 // VB.NET codebase actually answers explicitly, because VB.NET requires the
 // clause rather than inferring satisfaction from the signature. Measured on
-// the 302-file corpus: 137 member-level clauses against 67 type-level ones,
-// so the form suppressed here was TWICE the form emitted.
+// the 302-file corpus: 137 member-level clauses against 65 type-level ones
+// (naming 73 types), so the form suppressed here was TWICE the form emitted.
 //
 // A distinct kind (IMPLEMENTS_MEMBER) was considered and rejected for the
 // reason S7b rejected HANDLES in references.go: a VB-only kind is invisible
@@ -416,13 +420,17 @@ func memberImplementsEdges(n *vbnet.Node) []types.RelationshipRecord {
 	// the signature, so it is on or just after that line in every case.
 	line := strconv.Itoa(n.Span.StartLine)
 	var out []types.RelationshipRecord
-	seen := map[string]bool{}
+	// No dedup, deliberately, and unlike hierarchyEdges. A type may name the
+	// same interface once per clause across several clauses, so type-level
+	// dedup is reachable; a MEMBER cannot implement the same interface member
+	// twice — VB.NET rejects it outright — so a `seen` set here would be a
+	// branch no legal input can enter and no test can falsify. An earlier
+	// revision carried one; it was deleted rather than left unfalsifiable.
 	for _, raw := range n.Implements {
 		target := memberTargetName(raw)
-		if target == "" || seen[target] {
+		if target == "" {
 			continue
 		}
-		seen[target] = true
 		out = append(out, types.RelationshipRecord{
 			// FromID intentionally empty: assembly stamps the owning MEMBER.
 			ToID: target,
@@ -443,6 +451,14 @@ func memberImplementsEdges(n *vbnet.Node) []types.RelationshipRecord {
 // middle: `IComparable(Of Command).CompareTo` -> `IComparable.CompareTo`.
 // Groups may nest (`IEnumerable(Of List(Of T)).GetEnumerator`), so they are
 // removed by depth rather than by index.
+//
+// It also unescapes `[...]`, which baseTypeName did not and which was a
+// permanently dud edge rather than a cosmetic flaw: scanutil.go's takeIdent
+// strips the brackets off every DECLARED name, so a target left as
+// `IFrameServer.[Error]` names nothing in the graph and can never resolve.
+// VB keyword-named members — Error, Stop, Class, Date, New — are routinely
+// escaped, and either half may be: `IFoo.[Error]` and `[IFoo].Bar` are both
+// idiomatic.
 func memberTargetName(s string) string {
 	var b strings.Builder
 	depth := 0
@@ -460,13 +476,23 @@ func memberTargetName(s string) string {
 			}
 		}
 	}
-	out := strings.TrimSpace(b.String())
+	out := stripIdentEscapes(strings.TrimSpace(b.String()))
 	// `Global.` is a root-namespace escape, not a namespace segment; VB.NET is
 	// case-insensitive, so it is matched folded. Same rule as baseTypeName.
 	if len(out) > 7 && vbnet.FoldName(out[:7]) == "global." {
 		out = out[7:]
 	}
 	return strings.TrimSpace(out)
+}
+
+// stripIdentEscapes removes VB.NET's `[...]` identifier escapes from a dotted
+// name, per segment: `[IFoo].[Error]` -> `IFoo.Error`. Brackets carry no other
+// meaning in a type or member name, so removing the bytes is the whole rule.
+func stripIdentEscapes(s string) string {
+	if !strings.ContainsAny(s, "[]") {
+		return s
+	}
+	return strings.NewReplacer("[", "", "]", "").Replace(s)
 }
 
 // baseTypeName normalises an Inherits/Implements operand.
@@ -477,7 +503,12 @@ func baseTypeName(s string) string {
 	if i := strings.IndexByte(s, '('); i >= 0 {
 		s = s[:i]
 	}
-	s = strings.TrimSpace(s)
+	// Same unescaping memberTargetName does, for the same reason: takeIdent
+	// strips `[...]` off declared names, so `Inherits [Global]` or
+	// `Implements [IFoo]` would otherwise name nothing. Less exposed than the
+	// member case — a bracket-escaped TYPE name is rarer than a bracket-escaped
+	// member — but wrong in exactly the same way.
+	s = stripIdentEscapes(strings.TrimSpace(s))
 	// `Global.` is a root-namespace escape, not a namespace segment. VB.NET is
 	// case-insensitive, so the prefix is matched folded.
 	if len(s) > 7 && vbnet.FoldName(s[:7]) == "global." {

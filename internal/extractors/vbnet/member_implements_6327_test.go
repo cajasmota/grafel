@@ -53,6 +53,15 @@ const memberImplSrc = `Namespace App
 
         Public Sub Plain()
         End Sub
+
+        Public Sub [Stop]() Implements IWorker.[Error]
+        End Sub
+
+        Public Sub Reset() Implements [IOuter].[Inner]
+        End Sub
+
+        Public Sub Enumerate() Implements IFoo(Of Dictionary(Of String, Integer), T).Bar
+        End Sub
     End Class
 End Namespace
 `
@@ -95,6 +104,17 @@ func TestMemberImplementsEmitsEdgeOnTheMember_6327(t *testing.T) {
 		{"Worker.Cmp", []string{"IComparable.CompareTo|implements-member|20"}},
 		// A member with no clause must gain nothing.
 		{"Worker.Plain", nil},
+		// Bracket escapes, MEMBER side. scanutil.go's takeIdent strips `[...]`
+		// from every DECLARED name, so a target that keeps them names nothing
+		// in the graph and can never resolve — a permanently dud edge, not a
+		// cosmetic difference. VB keyword-named members are routinely escaped.
+		{"Worker.Stop", []string{"IWorker.Error|implements-member|26"}},
+		// Bracket escapes, INTERFACE side, and both at once.
+		{"Worker.Reset", []string{"IOuter.Inner|implements-member|29"}},
+		// NESTED type-argument groups. Removing them by INDEX rather than by
+		// depth would yield `IFoo, T.Bar` here; nothing in the 302-file corpus
+		// contains a nested group, so this row is the only thing that pins it.
+		{"Worker.Enumerate", []string{"IFoo.Bar|implements-member|32"}},
 	}
 	for _, tc := range cases {
 		rec := find(t, ents, "SCOPE.Operation", tc.member)
