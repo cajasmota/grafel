@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/process"
@@ -45,13 +47,51 @@ func ConfiguredRSSBudgetMB() int64 {
 	return raw.DaemonRSSBudgetMB
 }
 
-// RSSBudgetMB returns the configured RSS admission budget, or the same
-// memory-based default used when the daemon starts without an override.
+// totalMemoryMB is a seam over process.TotalMemoryMB so tests can count how
+// often the host is probed. On darwin that call forks sysctl (#6323).
+var totalMemoryMB = process.TotalMemoryMB
+
+var (
+	rssBudgetMu     sync.Mutex
+	rssBudgetCached int64 // 0 = not resolved yet; resolveRSSBudgetMB never returns 0
+)
+
+// ResetRSSBudgetCache drops the memoised budget so the next RSSBudgetMB call
+// resolves again. Tests only: in a live daemon the budget is deliberately
+// resolved once, because changing it requires a restart.
+func ResetRSSBudgetCache() {
+	rssBudgetMu.Lock()
+	defer rssBudgetMu.Unlock()
+	rssBudgetCached = 0
+}
+
+// RSSBudgetMB returns the RSS admission budget the daemon uses for this
+// process: the GRAFEL_MAX_RSS_BUDGET_MB override, else the value configured in
+// settings.json, else the memory-based default.
+//
+// The result is resolved ONCE per process and memoised. Callers on a hot path
+// (the dashboard polls /api/system every 5s) would otherwise re-read and
+// unmarshal settings.json and fork sysctl on every call (#6323). Nothing here
+// can change without a daemon restart, so caching loses no information.
 func RSSBudgetMB() int64 {
+	rssBudgetMu.Lock()
+	defer rssBudgetMu.Unlock()
+	if rssBudgetCached == 0 {
+		rssBudgetCached = resolveRSSBudgetMB()
+	}
+	return rssBudgetCached
+}
+
+func resolveRSSBudgetMB() int64 {
+	if v := os.Getenv("GRAFEL_MAX_RSS_BUDGET_MB"); v != "" {
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
 	if configured := ConfiguredRSSBudgetMB(); configured > 0 {
 		return configured
 	}
-	return rssBudgetMB(process.TotalMemoryMB())
+	return rssBudgetMB(totalMemoryMB())
 }
 
 func rssBudgetMB(totalMemoryMB int64) int64 {
