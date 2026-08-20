@@ -2817,7 +2817,7 @@ type PruneImportPlaceholderStats struct {
 //
 //	Properties["module"]  >  QualifiedName  >  Name
 //
-// Before #6372 only the first and last were read. Four of the sixteen
+// Before #6372 only the first and last were read. Four of the fifteen
 // `Subtype:"import"` emission sites put the FULL module path in QualifiedName
 // and only a SHORT segment in Name, and set no Properties["module"]:
 //
@@ -2831,13 +2831,20 @@ type PruneImportPlaceholderStats struct {
 // #6156 restore records the wrong module — both silently. The razor and vue
 // rows are what forbid the Name-first ordering.
 //
-// The remaining twelve sites (proto, css, scss, less, just, cross/imports,
+// The remaining eleven sites (proto, css, scss, less, just, cross/imports,
 // kotlin, javascript, fish, cpp x2) put the full path in Name and set NO
 // QualifiedName at all, so the Name fallback still carries them unchanged.
 // javascript/extractor.go:3790 is the only site that sets
 // Properties["module"], and sets it equal to Name; keeping that key on top is
 // therefore the no-regression choice as well as the explicit, purpose-named
 // channel that module.EnsureModule / stampModuleOnEntities write into.
+//
+// Fifteen, not sixteen: the naive `grep -rn 'Subtype:\s*"import"' internal/`
+// returns 16 because one hit is a COMMENT, not an emission —
+// solidity/extractor.go:436, prose describing the placeholder solidity used to
+// emit. Solidity stopped emitting one in #6371 and moved to the #742 pattern,
+// hanging the IMPORTS edge on the per-file `subtype="file"` carrier. Filter the
+// grep with `| grep -vE ':[0-9]+:\s*//'` before trusting its count.
 //
 // Both #6372 call sites — the #642 pre-prune ToID rewrite and the #6156
 // module restore — go through here so they cannot diverge.
