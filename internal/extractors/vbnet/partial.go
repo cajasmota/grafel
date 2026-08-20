@@ -145,10 +145,26 @@ func designerBase(filePath string) (string, bool) {
 // file entity claims, with its span zeroed. Reading the directory costs one
 // syscall more than stat'ing it and gives the same answer everywhere.
 //
-// The listing is filtered to entries os.ReadFile can actually open — see
-// openableAsFile — and the pure choice among the surviving names is
-// pickSibling, so the tie-break is testable without a filesystem that can
-// represent the tie.
+// The listing is narrowed to the entries that could BE the sibling — the ones
+// that case-fold to the wanted name — before any of them is vetted, and only
+// those survivors are handed to pickSibling, the pure choice that makes the
+// tie-break testable without a filesystem that can represent the tie.
+//
+// Narrowing first is not just a saved syscall per unrelated symlink per partial
+// type. openableAsFile stats symlinks, and a symlink into a hung NFS or autofs
+// mount blocks that stat; vetting the whole listing would let an entry that is
+// not even a candidate hang the worker, which is the exact liveness hole
+// openableAsFile exists to close. Restricting the stat to the candidate keeps
+// the blast radius at the one entry the anchor actually depends on.
+//
+// Filtering by EqualFold here loses nothing, because pickSibling never consults
+// a name that does not case-fold to want in the first place: the entries this
+// drops are precisely the ones it would have skipped.
+//
+// Vetting still runs BEFORE the count, and that ordering is deliberate: an
+// unopenable candidate is not an alternative, so a FIFO `Widget.VB` beside a
+// regular `Widget.Vb` resolves to the regular one instead of being refused as
+// ambiguous.
 func siblingPath(repoRoot, base string) (string, bool) {
 	dir, file := path.Split(base)
 	absDir := filepath.Join(repoRoot, filepath.FromSlash(dir))
@@ -156,14 +172,20 @@ func siblingPath(repoRoot, base string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	names := make([]string, 0, len(entries))
+	want := file + ".vb"
+	// Cap 2: the exact spelling plus one case variant is the common ceiling;
+	// a longer ambiguous set only costs a regrow and is refused anyway.
+	names := make([]string, 0, 2)
 	for _, e := range entries {
+		if !strings.EqualFold(e.Name(), want) {
+			continue
+		}
 		if !openableAsFile(absDir, e) {
 			continue
 		}
 		names = append(names, e.Name())
 	}
-	name, ok := pickSibling(names, file+".vb")
+	name, ok := pickSibling(names, want)
 	if !ok {
 		return "", false
 	}
@@ -271,10 +293,10 @@ type siblingCache map[string]map[string]bool
 //
 // Reading the sibling is no more a filesystem access than stat'ing it, so it
 // costs the design nothing it was not already paying — though it is not free:
-// only the read-and-parse is memoised here. siblingPath's os.ReadDir runs
-// BEFORE this lookup (partialAnchor:285 precedes :289), so a multi-type
-// designer file parses its sibling once but lists the directory once per
-// partial type. Memoising the listing too would mean giving this cache a second
+// only the read-and-parse is memoised here. partialAnchor calls siblingPath —
+// whose os.ReadDir is unmemoised — before it reaches this lookup, so a
+// multi-type designer file parses its sibling once but lists the directory once
+// per partial type. Memoising the listing too would mean giving this cache a second
 // map and a constructor, which is not worth it for a listing the OS caches
 // anyway.
 //
