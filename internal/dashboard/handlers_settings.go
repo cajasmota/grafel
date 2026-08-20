@@ -61,13 +61,19 @@ type AppSettings struct {
 // by the user's settings.json is filled from here.
 func DefaultAppSettings() AppSettings {
 	return AppSettings{
-		Theme:               "light",
-		DefaultGroup:        "",
-		AutoCheckUpdates:    true,
-		UpdateChannel:       "stable",
-		RefreshSchedule:     "",
-		TelemetryEnabled:    false,
-		DaemonRSSBudgetMB:   512,
+		Theme:            "light",
+		DefaultGroup:     "",
+		AutoCheckUpdates: true,
+		UpdateChannel:    "stable",
+		RefreshSchedule:  "",
+		TelemetryEnabled: false,
+		// One source of truth with the Operations panel and daemon startup:
+		// resolve the budget instead of hardcoding a second, disagreeing
+		// default. A hardcoded 512 here quartered the real budget whenever the
+		// settings form was submitted, because DefaultAppSettings is the merge
+		// base loadSettings/PUT decode onto (#6322). daemon.RSSBudgetMB is
+		// memoised, so this stays free on the settings path (#6323).
+		DaemonRSSBudgetMB:   int(daemon.RSSBudgetMB()),
 		WatcherDebounceSecs: 2,
 		IndexerParallelism:  4,
 		LogLevel:            "info",

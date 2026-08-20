@@ -44,7 +44,16 @@ type SystemReply struct {
 	UptimeHuman   string  `json:"uptime_human,omitempty"`
 	PID           int     `json:"pid"`
 	RSSMb         float64 `json:"rss_mb"`
-	RSSBudgetMb   float64 `json:"rss_budget_mb,omitempty"`
+	// RSSBudgetMb is the admission budget the daemon WILL use at its next
+	// start: it is resolved once per process from settings.json / the
+	// environment, and a budget edited in Settings only takes effect after a
+	// restart. It is NOT read back from the running scheduler, so it must not
+	// be presented as a live number — RSSBudgetScope says which it is (#6323).
+	// The scheduler's live value exists (proto.StatusReply.RSSBudgetMB) but is
+	// not plumbed into the dashboard server.
+	RSSBudgetMb float64 `json:"rss_budget_mb,omitempty"`
+	// RSSBudgetScope is always "next_start" — see RSSBudgetMb.
+	RSSBudgetScope string `json:"rss_budget_scope,omitempty"`
 
 	// Paths
 	SocketPath   string `json:"socket_path,omitempty"`
@@ -285,15 +294,11 @@ func (s *Server) buildSystemReply() SystemReply {
 		reply.SocketPath = layout.SocketPath
 	}
 
-	// RSS budget from the same persisted/default source used at daemon startup.
-	// An explicit environment override still has precedence.
-	budgetMB := daemon.RSSBudgetMB()
-	if v := os.Getenv("GRAFEL_MAX_RSS_BUDGET_MB"); v != "" {
-		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil && parsed >= 0 {
-			budgetMB = parsed
-		}
-	}
-	reply.RSSBudgetMb = float64(budgetMB)
+	// RSS budget from the single resolver, which owns the environment
+	// override and memoises the result. This is the NEXT-START budget, not the
+	// running scheduler's, so it is labelled as such (#6323).
+	reply.RSSBudgetMb = float64(daemon.RSSBudgetMB())
+	reply.RSSBudgetScope = "next_start"
 
 	// Build staleness
 	if version.Date != "unknown" && version.Date != "" {

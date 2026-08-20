@@ -1219,7 +1219,11 @@ export interface SystemStatus {
   uptime_human?: string;
   pid: number;
   rss_mb: number;
+  /** Next-start admission budget (settings.json / env), NOT the running
+   *  scheduler's live value. See rss_budget_scope. */
   rss_budget_mb?: number;
+  /** Always "next_start" — qualifies rss_budget_mb (#6323). */
+  rss_budget_scope?: string;
   socket_path?: string;
   dashboard_url?: string;
   version: string;
