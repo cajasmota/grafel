@@ -3889,7 +3889,9 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// stubs. The Java method extractor emits the handler under
 	// SCOPE.Operation (not `Controller:` kind), so the kind-bucket lookup
 	// misses and the hop dangles; this hatch accounted the dangle as
-	// framework-mediated runtime dispatch rather than as an extractor bug.
+	// framework-mediated runtime dispatch rather than as an extractor bug,
+	// which is why the reported resolver-bug rate read 0.0% while the edge
+	// visibly dangled.
 	//
 	// #6429 narrowed it on two axes, because the AST-driven composed-route
 	// extractor (spring_routes.go) no longer produces either shape: it now
@@ -3897,31 +3899,47 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// synthesizeSpringFromComposed stamps `source_handler` at the handler
 	// rather than at the route's own path.
 	//
-	//  1. The `Route:` arm is GONE. `Route:<path>` reaches this classifier
-	//     only as a ROUTES_TO edge's FROM side, and that side normally binds
-	//     to the composed Route entity; when it does not, the Route entity
-	//     was suppressed out from under a surviving edge, which is a real
-	//     dangle (see #6442) and must be counted as one rather than excused
-	//     as runtime dispatch. Spring's other `Route:` producer — the
-	//     self-referential `source_handler = "Route:<path>"` on the
-	//     yaml_driven path — never reaches here: an unresolved source_handler
-	//     is consumed by internal/engine's endpoint binder, not by the ref
-	//     classifier.
-	//  2. The `Controller:` arm survives, but only for a BARE method name
-	//     (no dot). That is exactly what the YAML regex extractor
-	//     (spring_mvc.yaml relationship_rules, target_type: Controller)
-	//     emits for a controller with no class-level @RequestMapping — the
-	//     regex engine has no lexical scope, so it cannot qualify the
-	//     method, and the binding really is name-based at runtime. A
-	//     QUALIFIED `Controller:Foo.bar` is resolvable by the existing
-	//     bare<->qualified bridges and is no longer swallowed here.
+	//  1. `Controller:` is excused only for a BARE method name (no dot).
+	//     That is exactly what the spring_mvc.yaml regex rules emit for a
+	//     controller with no class-level @RequestMapping — the AST pass is
+	//     gated on hasClassMapping (since #67) so it skips those, and the
+	//     regex engine has no lexical scope with which to qualify the
+	//     method, so the binding really is name-based at runtime.
+	//     java-spring-mini's HealthController is the live case. A QUALIFIED
+	//     `Controller:Foo.bar` — the shape #6429 now emits — is resolvable
+	//     by the existing binder and is no longer swallowed here.
 	//
-	// Lang-gated to java (lang on the edge originates from the
-	// spring_routes.go Language="java" tag). Also accept lang="" because
-	// YAML-emitted edges may not propagate the source language onto the
-	// edge properties.
-	if (lang == "java" || lang == "") && strings.HasPrefix(originalStub, "Controller:") &&
-		!strings.Contains(strings.TrimPrefix(originalStub, "Controller:"), ".") {
+	//  2. `Route:` is excused only when the edge carries NO language tag.
+	//     A `lang == "java"` `Route:` stub is now a real dangle: Spring's
+	//     only Java producer of that shape was the self-referential
+	//     `source_handler = "Route:<path>"`, which #6429 removed.
+	//
+	//     The `lang == ""` case is DELIBERATELY left excused and is NOT this
+	//     PR's to move. Reviewer-confirmed by execution: the FastAPI YAML
+	//     rules (internal/engine/rules/python/frameworks/fastapi.yaml:110-116)
+	//     emit `source_type: Route` with `source_group: 1` bound to the
+	//     handler FUNCTION name, while FastAPI Route entities are named by
+	//     PATH — so `@app.get("/things") / def list_things` yields
+	//     `DECORATES Route:list_things -> Service:list_things` with
+	//     properties `[framework python, pattern_type yaml_driven]` and NO
+	//     language key, which makes relLanguage() return "". That stub is
+	//     permanently unresolvable, so every decorated FastAPI handler in a
+	//     corpus contributes one. The same `Route:`-as-source/target shape
+	//     appears in flask.yaml, django.yaml, strawberry_graphql.yaml,
+	//     axum.yaml, actix_web.yaml, symfony.yaml and vapor.yaml. Those may
+	//     well be honest rule bugs, but reclassifying them is a
+	//     cross-language disposition change that needs its own corpus-wide
+	//     delta measurement, not a side effect of a Java Spring arm.
+	//
+	// Lang gate: `lang` on the edge originates from the spring_routes.go
+	// Language="java" tag; YAML-emitted edges frequently do not propagate a
+	// source language onto the edge properties at all.
+	if strings.HasPrefix(originalStub, "Controller:") {
+		if (lang == "java" || lang == "") &&
+			!strings.Contains(strings.TrimPrefix(originalStub, "Controller:"), ".") {
+			return DispositionDynamic
+		}
+	} else if strings.HasPrefix(originalStub, "Route:") && lang == "" {
 		return DispositionDynamic
 	}
 	// Wave-4 stragglers (#529) — HTTP-client synthesiser FETCHES edges and

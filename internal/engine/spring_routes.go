@@ -206,8 +206,15 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 	// handler method QUALIFIED (`OrderController.listOrders`, kind
 	// SCOPE.Operation); carrying the class name here is what lets the
 	// ROUTES_TO edge below target that real entity instead of a
-	// `Controller:<bareMethod>` stub nothing ever resolved.
+	// `Controller:<bareMethod>` stub nothing ever resolved, and what lets
+	// synthesizeSpringFromComposed qualify `source_handler` so the endpoint
+	// binder is unambiguous by construction rather than by file:line rescue.
 	className := nodeFieldText(class, "name", src)
+	if className == "" {
+		// Unreachable for a well-formed class_declaration (see the ROUTES_TO
+		// comment below); bail rather than emit `SCOPE.Operation:.method`.
+		return
+	}
 
 	out.claimedClassPrefixes[prefix] = true
 
@@ -256,9 +263,7 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 			// instead of at the route's own path. Kotlin already did this
 			// inline in spring_routes_kotlin.go; Java discarded it.
 			routeProps["handler_method"] = methodName
-			if className != "" {
-				routeProps["handler_class"] = className
-			}
+			routeProps["handler_class"] = className
 			out.entities = append(out.entities, types.EntityRecord{
 				Name:               composedPath,
 				Kind:               "Route",
@@ -273,15 +278,16 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 			// emits (`SCOPE.Operation:<Class>.<method>`). The old
 			// `Controller:<method>` stub matched no entity kind in the graph,
 			// so the route→handler hop dangled and refs.go accounted it as
-			// runtime-dynamic. Fall back to the historic stub only when the
-			// class name is unavailable (anonymous/unnamed declaration).
-			handlerRef := fmt.Sprintf("Controller:%s", methodName)
-			if className != "" {
-				handlerRef = fmt.Sprintf("SCOPE.Operation:%s.%s", className, methodName)
-			}
+			// runtime-dynamic.
+			//
+			// No className=="" fallback: walkSpringClasses only descends into
+			// `class_declaration`, and a Java class_declaration always carries
+			// a `name` field (an anonymous class parses as
+			// object_creation_expression and never reaches here). A fallback
+			// branch would be unreachable and untestable.
 			out.relationships = append(out.relationships, types.RelationshipRecord{
 				FromID: fmt.Sprintf("Route:%s", composedPath),
-				ToID:   handlerRef,
+				ToID:   fmt.Sprintf("SCOPE.Operation:%s.%s", className, methodName),
 				Kind:   "ROUTES_TO",
 				Properties: types.Props{
 					{K: "framework", V: "java"},

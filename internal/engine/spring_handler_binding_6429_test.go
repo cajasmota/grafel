@@ -100,11 +100,11 @@ func TestSpring6429_EndpointSourceHandlerIsController(t *testing.T) {
 				verbPath[0], verbPath[1], got)
 		}
 	}
-	if got := endpointByVerbPath(ents, "GET", "/api/orders").Properties["source_handler"]; got != "Controller:listOrders" {
-		t.Errorf("#6429: GET /api/orders source_handler = %q, want %q", got, "Controller:listOrders")
+	if got := endpointByVerbPath(ents, "GET", "/api/orders").Properties["source_handler"]; got != "Controller:OrderController.listOrders" {
+		t.Errorf("#6429: GET /api/orders source_handler = %q, want %q", got, "Controller:OrderController.listOrders")
 	}
-	if got := endpointByVerbPath(ents, "POST", "/api/orders").Properties["source_handler"]; got != "Controller:createOrder" {
-		t.Errorf("#6429: POST /api/orders source_handler = %q, want %q", got, "Controller:createOrder")
+	if got := endpointByVerbPath(ents, "POST", "/api/orders").Properties["source_handler"]; got != "Controller:OrderController.createOrder" {
+		t.Errorf("#6429: POST /api/orders source_handler = %q, want %q", got, "Controller:OrderController.createOrder")
 	}
 }
 

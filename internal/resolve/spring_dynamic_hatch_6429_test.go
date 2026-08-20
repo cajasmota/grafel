@@ -9,8 +9,13 @@ import "testing"
 // while the edge visibly dangled.
 //
 // After #6429 the hatch is narrowed on two axes:
-//   - `Route:<path>` is no longer swallowed at all (its only Java producer was
-//     Spring's self-referential source_handler, which #6429 removed).
+//   - `Route:<path>` is no longer swallowed when the edge is TAGGED java (its
+//     only Java producer was Spring's self-referential source_handler, which
+//     #6429 removed). An UNTAGGED `Route:` stub stays excused: the FastAPI /
+//     Flask / Django / Strawberry / axum / actix / symfony / vapor YAML rules
+//     emit `Route:<functionName>` edges carrying no language key, and
+//     reclassifying those is a cross-language disposition change that needs
+//     its own corpus-wide measurement.
 //   - `Controller:<name>` is swallowed ONLY for a BARE method name. That is
 //     exactly the shape the spring_mvc.yaml regex rules emit for a controller
 //     with no class-level @RequestMapping (the AST composition pass skips
@@ -44,15 +49,34 @@ func TestSpringDynamicHatch6429_Narrowed(t *testing.T) {
 			want: DispositionBugExtractor,
 		},
 		{
-			name: "Route stub is no longer excused",
+			name: "java-tagged Route stub is no longer excused",
 			stub: "Route:/users",
 			lang: "java",
 			want: DispositionBugExtractor,
 		},
 		{
-			name: "Route stub with no edge language is no longer excused",
+			// Reviewer-confirmed by execution against the detector: the
+			// FastAPI YAML rules emit `DECORATES Route:list_things ->
+			// Service:list_things` with props [framework python,
+			// pattern_type yaml_driven] and NO language key, so
+			// relLanguage() returns "". Dropping this arm would raise the
+			// reported resolver-bug rate across the whole Python corpus as
+			// a side effect of a Java Spring change. Deliberately kept.
+			name: "UNTAGGED Route stub stays excused (FastAPI et al — not this PR's to move)",
+			stub: "Route:list_things",
+			lang: "",
+			want: DispositionDynamic,
+		},
+		{
+			name: "UNTAGGED path-shaped Route stub stays excused",
 			stub: "Route:/users",
 			lang: "",
+			want: DispositionDynamic,
+		},
+		{
+			name: "non-java-tagged Route stub is untouched by the java gate",
+			stub: "Route:list_things",
+			lang: "python",
 			want: DispositionBugExtractor,
 		},
 		{

@@ -1655,6 +1655,17 @@ func synthesizeSpringFromComposed(entities []types.EntityRecord, path string, em
 		// drop Java DTO response-shape extraction on the regex path. Their
 		// dangle is the one case refs.go still routes to Dynamic.
 		if hm := e.Properties["handler_method"]; hm != "" {
+			// Qualify with `handler_class` when the AST pass captured it.
+			// resolverKindEquivalents maps Controller -> SCOPE.Operation and
+			// the Java extractor lands handler methods QUALIFIED, so the
+			// qualified form hits the binder's EXACT same-file lookup instead
+			// of leaning on the #4319 bare<->qualified bridge or the file:line
+			// co-location rescue. That matters when two controllers live in
+			// one file, or when several controllers share a method name:
+			// binding is then unambiguous by construction.
+			if hc := e.Properties["handler_class"]; hc != "" {
+				hm = hc + "." + hm
+			}
 			emit(verb, canonical, "spring_mvc", "Controller", hm)
 			continue
 		}
