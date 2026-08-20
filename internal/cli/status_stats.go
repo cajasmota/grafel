@@ -13,6 +13,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/statusfile"
 )
@@ -864,4 +865,28 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 			fmtInt(s.EnrichmentCandidates),
 			fmtInt(s.RepairCandidates))
 	}
+}
+
+// engineVersionSkew is the skew detector `status` consults. A package var only
+// so tests can drive both directions without a real daemon; it points at
+// install.EngineVersionSkew, which is `grafel doctor`'s OWN check
+// (checkEngineLiveness, internal/install/doctor.go) — deliberately not a
+// second, independently driftable implementation.
+var engineVersionSkew = install.EngineVersionSkew
+
+// PrintEngineVersionSkew writes ONE conditional line when the running `serve`
+// process and its engine child are on different builds (#6339).
+//
+// Until now this condition existed only in `grafel doctor`, so a serve process
+// running a months-old build was invisible to the command users actually run.
+// Like the format-upgrade lines above it, it names the condition and the
+// remedy, and prints NOTHING when there is nothing to say: an un-skewed
+// install must see no new output at all.
+func PrintEngineVersionSkew(w io.Writer) {
+	skew := engineVersionSkew()
+	if skew == nil {
+		return
+	}
+	fmt.Fprintf(w, "  ⚠ Version skew: serve is running %s but the engine is running %s — restart both onto one build with `grafel restart`.\n",
+		skew.Serve, skew.Engine)
 }
