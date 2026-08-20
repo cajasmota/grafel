@@ -560,9 +560,15 @@ func parseDependsOnTuple(attr ts.Node, src []byte, fromPath, lang string) []type
 						// resolver binds via byLocation; sibling-file refs
 						// fall back to hclDynamicPatterns in resolve/refs.go.
 						rels = append(rels, types.RelationshipRecord{
-							FromID: fromPath,
-							ToID:   extractor.BuildOperationStructuralRef(lang, fromPath, ref),
-							Kind:   "DEPENDS_ON",
+							// Issue #6367 — FromID stays EMPTY so graph
+							// assembly stamps the owning record, which is the
+							// resource / data / module entity these records
+							// are appended to (:251, :312, :366) — NOT the
+							// file. A path-valued FromID dangled for any
+							// nested .tf (MEASURED: 2 of 2) and misanchored
+							// onto the file component for a root main.tf.
+							ToID: extractor.BuildOperationStructuralRef(lang, fromPath, ref),
+							Kind: "DEPENDS_ON",
 						})
 					}
 				}
