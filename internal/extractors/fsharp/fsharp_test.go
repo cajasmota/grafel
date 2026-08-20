@@ -1508,3 +1508,54 @@ let parse s =
 		t.Error("bare Result.* should NOT be claimed as an FsToolkit validation pipeline")
 	}
 }
+
+// TestFSharp_CallLineStampingBelowBlankedRegions pins the FILE-absolute `line`
+// Property of a CALLS edge that sits BELOW a block comment or a triple-quoted
+// string in the same body (#6336).
+//
+// stripStringsAndComments blanks every byte inside `(* ... *)` and `""" ... """`
+// — the enclosed newlines included — while collectCalls counted newlines over
+// that scrub. Every newline the scrub swallowed was a newline the count never
+// saw, so the stamp under-reported by exactly the number of swallowed newlines
+// and a consumer jumping to the call site landed above it.
+//
+// The test fails in BOTH directions on purpose: `above` is stamped with no
+// blanked region over it and must keep its already-correct line, so a "fix"
+// that adds a constant offset to every stamp fails here too.
+func TestFSharp_CallLineStampingBelowBlankedRegions(t *testing.T) {
+	src := `module App
+
+let above x = x
+let below y = y
+let tail z = z
+
+let caller n =
+    let a = above n
+    (*
+    a block comment
+    spanning three lines
+    *)
+    let b = below n
+    let doc = """
+    a triple-quoted string
+    spanning three lines
+    """
+    let c = tail n
+    a + b + c
+`
+	ents := runFSharp(t, src, "blanked.fs")
+
+	// L7 `let caller n =`, L8 `above`, L9-L12 block comment, L13 `below`,
+	// L14-L17 triple-quoted string, L18 `tail`.
+	want := map[string]string{"above": "8", "below": "13", "tail": "18"}
+	for target, wantLine := range want {
+		r := fsRel(ents, "caller", "SCOPE.Operation", "CALLS", target)
+		if r == nil {
+			t.Errorf("expected CALLS caller→%s", target)
+			continue
+		}
+		if got := r.Properties.Get("line"); got != wantLine {
+			t.Errorf("%s call line = %q, want %q (file-absolute)", target, got, wantLine)
+		}
+	}
+}

@@ -796,11 +796,11 @@ func collectHierarchyEdges(body string, typeStartLine int, signatureFile bool) [
 			ToID: target,
 			Kind: kind,
 			Properties: types.Props{
-				// Count newlines in the ORIGINAL body, not in the scrub:
-				// stripStringsAndComments blanks the newlines inside block
-				// comments and triple-quoted strings, so a scrub-based count
-				// under-reports every line below one. Byte offsets are
-				// preserved by the scrub, so `body[:off]` is the exact prefix.
+				// Count newlines in the ORIGINAL body. Since #6336 the scrub
+				// preserves newlines too, so a scrub-based count would now
+				// agree; counting the source keeps this stamp independent of
+				// that guarantee. Byte offsets are preserved by the scrub, so
+				// `body[:off]` is the exact prefix.
 				{K: "line", V: strconv.Itoa(typeStartLine + strings.Count(body[:off], "\n"))},
 			},
 		})
@@ -923,6 +923,20 @@ func scrubKeepingQuote(src string) string {
 
 // stripStringsAndComments replaces string literals and //-line comments
 // with spaces so the call scanner doesn't pick up tokens inside them.
+//
+// NEWLINES SURVIVE (#6336). Every other byte of a suppressed region becomes a
+// space, but a `'\n'` stays a `'\n'`, so the scrub has exactly the same line
+// structure as `src`. Without that, a `(* ... *)` block or a multi-line string
+// glued the lines around it together, and `strings.Count(scrubbed[:off], "\n")`
+// — how collectCalls, collectCEUsages and firstSignalLine stamp their `line`
+// Property — under-reported by one per swallowed newline. The stamp is what a
+// consumer jumps to, so every call site below such a region pointed too high.
+// It also restores the `(?m)^` anchors: a real declaration on the line after a
+// block comment previously had no line start in front of it.
+//
+// The byte LENGTH is unchanged either way — `out` is allocated at len(src) and
+// every write is an in-place assignment to an existing index — so all the byte
+// offsets the callers carry across the scrub boundary stay valid.
 func stripStringsAndComments(src string) string {
 	out := make([]byte, len(src))
 	i := 0
@@ -1029,6 +1043,15 @@ func stripStringsAndComments(src string) string {
 		default:
 			out[i] = ch
 			i++
+		}
+	}
+	// Restore every newline the suppression loops blanked. Done as a single
+	// pass rather than at each `out[i] = ' '` site so no future branch can
+	// forget it, and length-preserving by construction: it only rewrites bytes
+	// that already exist at the same index.
+	for i := range src {
+		if src[i] == '\n' {
+			out[i] = '\n'
 		}
 	}
 	return string(out)
