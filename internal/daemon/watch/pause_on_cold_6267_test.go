@@ -312,3 +312,113 @@ func TestPauseOfUnregisteredSlotLeavesSiblingSubscriptionIntact(t *testing.T) {
 		t.Fatalf("resume after full pause did not re-subscribe, got %v", got)
 	}
 }
+
+// TestPauseAndResumeAreRefcountIdempotentAcrossSiblingRefs pins the property
+// this PR's COLD→EXPIRED decision rests on: Pause and Resume are idempotent in
+// the REFCOUNT, not merely in the paused flag.
+//
+// #6267 kept the COLD→EXPIRED Pause on the grounds that a second Pause for a
+// slot already paused by WARM→COLD is a no-op. That double call is genuinely
+// reachable — a non-pinned ref takes both transitions, and this test drives it
+// through the real tier scanner rather than asserting it by hand. Nothing
+// pinned the safety of it: the pre-existing double-pause assertion in
+// manager_test.go checks PausedCount(), which a double DECREMENT does not
+// disturb, and it uses a single ref, so refCounts 1→0→-1 clamps back to 0 and
+// RemoveRepo firing twice looks harmless.
+//
+// With a sibling ref still active the same double decrement takes the repo
+// dark while that sibling still believes it is watched — the silent
+// permanently-unwatched failure this whole PR is about.
+//
+// The tail pins the mirror on Resume: a second Resume for an already-active
+// slot must not double-INCREMENT, or refCounts can never reach 0 and the
+// repo's descriptors are never returned to the budget — #6267 again, from the
+// other side.
+func TestPauseAndResumeAreRefcountIdempotentAcrossSiblingRefs(t *testing.T) {
+	repo := seedRepo(t, 2)
+
+	rec := &sinkRecorder{}
+	w, err := NewWatcherConfig(Config{
+		Debounce:          time.Hour,
+		HeartbeatInterval: time.Hour,
+	}, rec.sink, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	t.Cleanup(w.Stop)
+
+	mgr := NewDefaultManager(w, nil)
+
+	// Two indexed, subscribed refs: refCounts[repo] == 2.
+	mgr.Register(repo, "main")
+	mgr.Resume(repo, "main")
+	mgr.Register(repo, "feat/x")
+	mgr.Resume(repo, "feat/x")
+	if got := mgr.ActiveCount(); got != 2 {
+		t.Fatalf("prereq: want 2 active refs, got %d", got)
+	}
+	if got := w.Repos(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("prereq: want repo watched, got %v", got)
+	}
+
+	// A tier whose EXPIRED window is short enough to reach in-test, so the
+	// same key takes WARM→COLD and then COLD→EXPIRED — two Pause calls.
+	cfg := tier.DefaultTTLConfig()
+	cfg.ExpiredWindow = 2 * time.Minute
+	cfg.ExpiredWindowWorktree = 2 * time.Minute
+	clock := &testClock{now: time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)}
+	tm := tier.NewManagerForTestWithDiskEvict(cfg, clock.Now,
+		func(tier.SlotKey) {}, func(tier.SlotKey) error { return nil },
+		func(tier.SlotKey) (int64, error) { return 0, nil },
+	)
+	tm.SetWatcherHook(mgr)
+
+	keyMain := tier.SlotKey{RepoPath: repo, Ref: "main"}
+	keyFeat := tier.SlotKey{RepoPath: repo, Ref: "feat/x"}
+	tm.Register(keyMain, true, tier.SlotKindBranchMain)
+	// Non-pinned: only such a slot can reach EXPIRED, which is what makes the
+	// second Pause reachable at all.
+	tm.Register(keyFeat, false, tier.SlotKindBranchFeature)
+
+	// Pause #1 — WARM→COLD for feat, while main keeps being queried.
+	clock.advance(6 * time.Minute)
+	_ = tm.Touch(keyMain)
+	tm.Scan()
+	clock.advance(61 * time.Minute)
+	_ = tm.Touch(keyMain)
+	tm.Scan()
+	if got := tm.Get(keyFeat); got != tier.TierCold {
+		t.Fatalf("prereq: want feat COLD, got %s", got)
+	}
+	if got := w.Repos(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("first Pause unsubscribed the repo while main was active: %v", got)
+	}
+
+	// Pause #2 — COLD→EXPIRED for the SAME key. This is the call the design
+	// declares harmless; a non-idempotent Pause spends main's refcount here.
+	clock.advance(3 * time.Minute)
+	_ = tm.Touch(keyMain)
+	tm.Scan()
+	if got := tm.Get(keyFeat); got != tier.TierExpired {
+		t.Fatalf("prereq: want feat EXPIRED (so Pause fired twice for it), got %s", got)
+	}
+	if got := w.Repos(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("double Pause of one ref unsubscribed the repo while main was active: w.Repos()=%v", got)
+	}
+	if got := mgr.SubscribedRepoCount(); got != 1 {
+		t.Fatalf("double Pause spent the sibling's refcount: SubscribedRepoCount=%d, want 1", got)
+	}
+	if mgr.IsPaused(repo, "main") {
+		t.Fatalf("main must still be reported active after feat was paused twice")
+	}
+
+	// Mirror: a second Resume for an already-active slot must not
+	// double-increment, or the single Pause below can never reach 0 and the
+	// descriptors are never returned.
+	mgr.Resume(repo, "main")
+	mgr.Resume(repo, "main")
+	mgr.Pause(repo, "main")
+	if got := w.Repos(); len(got) != 0 {
+		t.Fatalf("double Resume double-incremented the refcount: pausing the last active ref left the repo subscribed, got %v", got)
+	}
+}
