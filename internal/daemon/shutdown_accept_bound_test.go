@@ -19,6 +19,8 @@ package daemon_test
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -47,6 +49,63 @@ func (l *unconfirmedCloseListener) Close() error {
 	return errCloseNotConfirmedStub
 }
 
+// acceptWatchdogSignal is the message Run logs from the ONLY code path that
+// makes the `<-acceptDone` step finite: the watchdog case of the select that
+// used to be a bare channel receive. It is the structural signal that hazard 2
+// is bounded — see signalHandler below for why the test asserts on it rather
+// than on elapsed wall-clock time or on which terminal path Run happened to
+// take afterwards.
+const acceptWatchdogSignal = "graceful shutdown: accept loop did not stop before the watchdog expired"
+
+// signalHandler is a slog.Handler that records whether a given message was
+// logged. It replaces the previous `exitCalled` assertion, which was a
+// scheduler race rather than a property of the code under test (#6373):
+//
+// Once the accept watchdog fires, watchdogCtx is already expired, so BOTH cases
+// of Run's final select — <-connDone and <-watchdogCtx.Done() — are ready as
+// soon as connWG.Wait() returns (this test holds no connections open, so that
+// is immediate). Go picks a ready case uniformly at random, so whether Run
+// force-exits or returns a clean nil is a coin flip decided by how fast the
+// runner schedules the connDone goroutine. Both outcomes are correct: shutdown
+// was BOUNDED either way, which is the property this test exists to pin. CI run
+// 32388710411 lost that flip and failed a working daemon.
+//
+// The accept watchdog itself is not a race: the fixture's listener can never
+// release Accept, so acceptDone can never close and the watchdog case is the
+// only reachable one. Asserting on its signal is deterministic under any load.
+type signalHandler struct {
+	slog.Handler
+	want string
+	seen *atomic.Bool
+}
+
+func (h *signalHandler) Handle(ctx context.Context, rec slog.Record) error {
+	if rec.Message == h.want {
+		h.seen.Store(true)
+	}
+	return h.Handler.Handle(ctx, rec)
+}
+
+func (h *signalHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &signalHandler{Handler: h.Handler.WithAttrs(attrs), want: h.want, seen: h.seen}
+}
+
+func (h *signalHandler) WithGroup(name string) slog.Handler {
+	return &signalHandler{Handler: h.Handler.WithGroup(name), want: h.want, seen: h.seen}
+}
+
+// newSignalLogger returns a logger that discards its output and an *atomic.Bool
+// set the moment want is logged.
+func newSignalLogger(want string) (*slog.Logger, *atomic.Bool) {
+	seen := &atomic.Bool{}
+	h := &signalHandler{
+		Handler: slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		want:    want,
+		seen:    seen,
+	}
+	return slog.New(h), seen
+}
+
 // TestDaemon_ShutdownBoundedWhenListenerCloseIsNotConfirmed is the RED/GREEN
 // test for hazard 2. With the bare `<-acceptDone` receive, Run never returns
 // and this test fails on its 8s ceiling. With the watchdog case, Run reaches
@@ -57,11 +116,12 @@ func TestDaemon_ShutdownBoundedWhenListenerCloseIsNotConfirmed(t *testing.T) {
 	const testWatchdog = 300 * time.Millisecond
 	t.Setenv("GRAFEL_SHUTDOWN_WATCHDOG", testWatchdog.String())
 
-	var exitCalled atomic.Bool
-	restoreExit := daemon.SetShutdownExitFuncForTest(func(int) {
-		exitCalled.Store(true)
-	})
+	// osExit must still be stubbed: Run force-exits on one of its two legal
+	// terminal paths, and an unstubbed os.Exit would kill the test binary.
+	restoreExit := daemon.SetShutdownExitFuncForTest(func(int) {})
 	t.Cleanup(restoreExit)
+
+	logger, acceptWatchdogFired := newSignalLogger(acceptWatchdogSignal)
 
 	var stub *unconfirmedCloseListener
 	restoreListen := daemon.SetListenFuncForTest(func(addr string) (net.Listener, error) {
@@ -89,7 +149,7 @@ func TestDaemon_ShutdownBoundedWhenListenerCloseIsNotConfirmed(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan error, 1)
 	go func() {
-		runDone <- daemon.Run(ctx, daemon.Config{Layout: layout, Rebuild: rb})
+		runDone <- daemon.Run(ctx, daemon.Config{Layout: layout, Rebuild: rb, Logger: logger})
 	}()
 
 	waitDaemonReady(t, layout.SocketPath, 10*time.Second)
@@ -99,16 +159,16 @@ func TestDaemon_ShutdownBoundedWhenListenerCloseIsNotConfirmed(t *testing.T) {
 
 	select {
 	case <-runDone:
-		elapsed := time.Since(start)
-		t.Logf("Run returned after %s (watchdog=%s), closes=%d", elapsed, testWatchdog, stub.closes.Load())
-		if elapsed > 5*time.Second {
-			t.Fatalf("Run took %s to return; want well under 5s (watchdog=%s)", elapsed, testWatchdog)
-		}
+		// Elapsed time is logged for diagnostics only. It is NOT the
+		// assertion: the 8s ceiling below is the generous non-hang guard
+		// (package norm), and boundedness proper is asserted structurally.
+		t.Logf("Run returned after %s (watchdog=%s), closes=%d", time.Since(start), testWatchdog, stub.closes.Load())
 		if stub.closes.Load() == 0 {
 			t.Fatal("Run never called listener.Close — the fixture never exercised the unconfirmed-close path")
 		}
-		if !exitCalled.Load() {
-			t.Fatal("expected the watchdog force-exit path to fire; Run returned some other way")
+		if !acceptWatchdogFired.Load() {
+			t.Fatal("Run returned without the accept-loop watchdog firing: the `<-acceptDone` step was " +
+				"not bounded by the shutdown watchdog, so it is not what made this shutdown finite")
 		}
 	case <-time.After(8 * time.Second):
 		t.Fatal("Run did not return within 8s: the `<-acceptDone` receive is not bounded by the " +
