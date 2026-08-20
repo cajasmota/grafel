@@ -1,0 +1,443 @@
+{
+  "fixture_name": "solidity-mini",
+  "language": "solidity",
+  "description": "The first graded Solidity fixture (#6424). Two files are verbatim MIT OpenZeppelin v5.0.2 (Ownable.sol, ShortStrings.sol); two are hand-written on ordinary OZ shapes (MyToken.sol, Vault.sol) because no OZ file in reach carries a base-constructor `is` clause or a Yul function. See NOTICE.md. THIS FIXTURE IS DELIBERATELY RED. expected_entities and expected_relationships record what the extractor SHOULD produce, not what it does; six of the seven defects named in #6423 and #6425 are encoded here as must-haves that currently miss, and internal/quality/golden/baseline.json records the resulting sub-100% floor, which is the mechanism the ratchet already uses for csharp-aspnet-core-mini. Do NOT delete a must-have to make the fixture green -- fix #6423/#6425 and the floor rises. The seventh defect (the phantom Yul operation, #6425) is present in the source and measured in the issue thread but is NOT encoded here: forbidden_relationships hits are unconditionally fatal in scripts/quality/ratchet.py, so a currently-violated forbidden entry would break the gate rather than record a gap. NOTICE.md carries the exact entries to add once #6425 lands.",
+  "expected_entities": [
+    {
+      "name": "Ownable",
+      "kind": "SCOPE.Component",
+      "source_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "`abstract contract Ownable is Context` -- the `abstract` prefix must not leak into the name or the subtype. WORKS today."
+    },
+    {
+      "name": "Ownable.owner",
+      "kind": "SCOPE.Operation",
+      "source_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "Members are owner-qualified. WORKS today."
+    },
+    {
+      "name": "Ownable._transferOwnership",
+      "kind": "SCOPE.Operation",
+      "source_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "Leading-underscore name. WORKS today."
+    },
+    {
+      "name": "Ownable.OwnershipTransferred",
+      "kind": "SCOPE.Operation",
+      "source_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "`event` declaration -- SCOPE.Operation subtype=event. WORKS today."
+    },
+    {
+      "name": "Ownable.onlyOwner",
+      "kind": "SCOPE.Operation",
+      "source_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "`modifier` DECLARATION. The declaration works today; its two USAGES do not -- see the relationship expectations."
+    },
+    {
+      "name": "Ownable._owner",
+      "kind": "SCOPE.Schema",
+      "source_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "Contract-level state variable. WORKS today (#6135)."
+    },
+    {
+      "name": "Ownable.constructor",
+      "kind": "SCOPE.Operation",
+      "source_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "RED (#6423). `constructor(address initialOwner)` emits nothing: functionRE requires the literal `function` keyword and `constructor` sits in the CALLS denylist. In OpenZeppelin-shaped code the constructor is where the wiring happens. THE NAME IS THIS FIXTURE'S PROPOSAL, not a pre-existing convention -- the owner-qualified `Ownable.constructor` matches how every other member here is named. If #6423 lands on a different name, AMEND THIS ENTRY; do not rename the emitted entity to keep the fixture green."
+    },
+    {
+      "name": "ShortStrings",
+      "kind": "SCOPE.Component",
+      "source_file": "ShortStrings.sol",
+      "must_exist": true,
+      "note": "`library` declaration. WORKS today."
+    },
+    {
+      "name": "ShortStrings.toString",
+      "kind": "SCOPE.Operation",
+      "source_file": "ShortStrings.sol",
+      "must_exist": true,
+      "note": "Contains an `assembly { }` block with no Yul function -- the declaration itself must survive it. WORKS today."
+    },
+    {
+      "name": "ShortStrings.FALLBACK_SENTINEL",
+      "kind": "SCOPE.Schema",
+      "source_file": "ShortStrings.sol",
+      "must_exist": true,
+      "note": "`bytes32 private constant` with a 32-byte hex initializer. WORKS today."
+    },
+    {
+      "name": "ShortStrings.StringTooLong",
+      "kind": "SCOPE.Operation",
+      "source_file": "ShortStrings.sol",
+      "must_exist": true,
+      "note": "RED (#6423). Contract-level `error StringTooLong(string str);` -- no code path emits `error` anywhere in the extractor. Modelled on `event`, which IS emitted as SCOPE.Operation, because the two share a shape: a named, parameterised, bodiless declaration that call sites reference by name."
+    },
+    {
+      "name": "ShortString",
+      "kind": "SCOPE.Schema",
+      "source_file": "ShortStrings.sol",
+      "must_exist": true,
+      "note": "RED (#6423). File-level `type ShortString is bytes32;` -- a user-defined value type, never emitted. It is a type declaration, so SCOPE.Schema, alongside struct and enum."
+    },
+    {
+      "name": "Vault",
+      "kind": "SCOPE.Component",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "Plain `is Ownable` clause. WORKS today -- the contrast against MyToken below is what isolates the base-constructor-argument defect."
+    },
+    {
+      "name": "Vault.deposit",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "Carries a modifier usage in its signature. The declaration works; the usage edge does not."
+    },
+    {
+      "name": "Vault.ceiling",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true
+    },
+    {
+      "name": "Vault.roundUp",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "Body holds the `assembly { function helper(x) -> y ... }` block. The enclosing function must survive; the Yul function inside it must NOT become an entity -- see NOTICE.md, that half is not gateable today."
+    },
+    {
+      "name": "Vault.Deposited",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true
+    },
+    {
+      "name": "Vault.whenOpen",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "Modifier declaration. WORKS today."
+    },
+    {
+      "name": "Vault.total",
+      "kind": "SCOPE.Schema",
+      "source_file": "Vault.sol",
+      "must_exist": true
+    },
+    {
+      "name": "Vault._deposits",
+      "kind": "SCOPE.Schema",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "`mapping(address => Deposit) private` -- the fat arrow must not be read as an initializer."
+    },
+    {
+      "name": "IERC20",
+      "kind": "SCOPE.Component",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "`interface` declaration following a contract in the same file."
+    },
+    {
+      "name": "IERC20.transfer",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "Bodiless interface member terminated by ';' -- it must be an Operation, not a state variable (#6135)."
+    },
+    {
+      "name": "Vault.constructor",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). Same defect as Ownable.constructor, on a contract that IS otherwise extracted -- so this one is a member-level loss, not collateral damage from a contract that vanished."
+    },
+    {
+      "name": "Vault.receive",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). `receive() external payable` -- the ether-receiving entry point of the contract, and invisible."
+    },
+    {
+      "name": "Vault.fallback",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). `fallback() external payable` -- same mechanism."
+    },
+    {
+      "name": "computeFee",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). File-level (free) function. Not owner-qualified because it has no owner; findContracts only walks matched contract bodies, so nothing outside one is ever scanned."
+    },
+    {
+      "name": "VaultState",
+      "kind": "SCOPE.Schema",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). File-level `enum`. SCOPE.Schema follows the C#/VB.NET extractors, which both emit Enum as SCOPE.Schema."
+    },
+    {
+      "name": "Deposit",
+      "kind": "SCOPE.Schema",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). File-level `struct`, and the value type of Vault._deposits."
+    },
+    {
+      "name": "VaultLocked",
+      "kind": "SCOPE.Operation",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). File-level `error`. Reverted from both fallback() and the whenOpen modifier."
+    },
+    {
+      "name": "Vault.Receipt",
+      "kind": "SCOPE.Schema",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). Contract-level `struct`, owner-qualified. Pins that the fix must cover BOTH positions -- a file-level-only fix would score on Deposit and still miss this."
+    },
+    {
+      "name": "Vault.Tier",
+      "kind": "SCOPE.Schema",
+      "source_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). Contract-level `enum`, same reasoning."
+    },
+    {
+      "name": "MyToken",
+      "kind": "SCOPE.Component",
+      "source_file": "MyToken.sol",
+      "must_exist": true,
+      "note": "RED (#6423), and the headline one. `contract MyToken is ERC20(\"My Token\", \"MTK\")` -- contractRE renders the inheritance list as [A-Za-z_][A-Za-z0-9_,\\s]* which cannot contain '(', so the declaration matches nothing and the contract is absent, not degraded."
+    },
+    {
+      "name": "MyToken.mint",
+      "kind": "SCOPE.Operation",
+      "source_file": "MyToken.sol",
+      "must_exist": true,
+      "note": "RED (#6423), collateral. An ordinary function that would be extracted anywhere else; it is lost only because findContracts walks matched contract bodies and MyToken's never matched."
+    },
+    {
+      "name": "MyToken.Minted",
+      "kind": "SCOPE.Operation",
+      "source_file": "MyToken.sol",
+      "must_exist": true,
+      "note": "RED (#6423), collateral -- an ordinary event."
+    },
+    {
+      "name": "MyToken.cap",
+      "kind": "SCOPE.Schema",
+      "source_file": "MyToken.sol",
+      "must_exist": true,
+      "note": "RED (#6423), collateral -- an ordinary public state variable."
+    },
+    {
+      "name": "MyToken.constructor",
+      "kind": "SCOPE.Operation",
+      "source_file": "MyToken.sol",
+      "must_exist": true,
+      "note": "RED twice over: lost to the vanished contract (#6423) AND to the constructor denylist (#6423). Fixing only contractRE will not score this point."
+    }
+  ],
+  "expected_relationships": [
+    {
+      "from_name": "Ownable",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Ownable.sol",
+      "kind": "CONTAINS",
+      "to_name": "Ownable.owner",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "Contract owns its functions. WORKS today."
+    },
+    {
+      "from_name": "Ownable",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Ownable.sol",
+      "kind": "CONTAINS",
+      "to_name": "Ownable._owner",
+      "to_kind": "SCOPE.Schema",
+      "to_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "Contract owns its state variables. WORKS today."
+    },
+    {
+      "from_name": "IERC20",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Vault.sol",
+      "kind": "CONTAINS",
+      "to_name": "IERC20.transfer",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Vault.sol",
+      "must_exist": true,
+      "note": "Interface owns its members. WORKS today."
+    },
+    {
+      "from_name": "Vault",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Vault.sol",
+      "kind": "EXTENDS",
+      "to_name": "Ownable",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "In-tree inheritance across files, plain `is` clause. WORKS today."
+    },
+    {
+      "from_name": "Ownable",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Ownable.sol",
+      "kind": "EXTENDS",
+      "to_name": "Context",
+      "to_kind": "SCOPE.External",
+      "must_exist": true,
+      "note": "External parent -- Context.sol is not in the fixture, so the resolver folds the bare `is Context` target onto a SCOPE.External node. (to_bare_name would be VACUOUS here: nothing in the Solidity pipeline leaves a raw string ToID by the time the graph is written -- verified by reading the emitted graph.json, every bare CALLS/EXTENDS target had become a SCOPE.External entity.)"
+    },
+    {
+      "from_name": "Ownable._checkOwner",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Ownable.sol",
+      "kind": "CALLS",
+      "to_name": "Ownable.owner",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "`owner() != _msgSender()` -- a bare parenthesised call resolved to the sibling method. WORKS today."
+    },
+    {
+      "from_name": "Ownable.renounceOwnership",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Ownable.sol",
+      "kind": "CALLS",
+      "to_name": "Ownable._transferOwnership",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Ownable.sol",
+      "must_exist": true
+    },
+    {
+      "from_name": "ShortStrings.toStringWithFallback",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "ShortStrings.sol",
+      "kind": "CALLS",
+      "to_name": "ShortStrings.toString",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "ShortStrings.sol",
+      "must_exist": true,
+      "note": "`toString(value)` inside a library. WORKS today."
+    },
+    {
+      "from_name": "Vault.deposit",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_name": "computeFee",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423), and it fails on the TARGET rather than the source: the edge `Vault.deposit -> computeFee` is emitted today as a bare unresolved name, because the free function it names is never extracted. This is the pair that shows the free-function gap costs resolution, not just an entity count."
+    },
+    {
+      "from_name": "Vault.deposit",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_name": "Vault.whenOpen",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Vault.sol",
+      "must_exist": true,
+      "note": "RED (#6423). Modifier USAGE: `function deposit(uint256 amount) public whenOpen`. declBody jumps from the parameter list's ')' straight to the body's '{', so everything between -- visibility, mutability, and every modifier invocation -- is never read. Modifiers are declared and contained, never connected to what uses them. CALLS is this fixture's proposal for the edge kind; a modifier usage is an invocation. If #6423 lands a distinct kind (USES/DECORATES), AMEND THIS ENTRY."
+    },
+    {
+      "from_name": "Vault.lock",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_name": "Ownable.onlyOwner",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Ownable.sol",
+      "must_exist": true,
+      "note": "RED (#6423). The same modifier-usage gap, but with the modifier INHERITED from a base contract in another file -- so a fix that only looks for a modifier declared in the same body will score the Vault.whenOpen point above and still miss this one."
+    },
+    {
+      "from_name": "MyToken",
+      "from_kind": "SCOPE.Component",
+      "from_file": "MyToken.sol",
+      "kind": "EXTENDS",
+      "to_name": "ERC20",
+      "to_kind": "SCOPE.External",
+      "must_exist": true,
+      "note": "RED (#6423). The base name must survive the argument list: `is ERC20(\"My Token\", \"MTK\")` extends ERC20. extractor.go:183-186 already contains the code that strips '(...)' from a parent name -- a defence that can never fire, because contractRE never matches such a contract in the first place."
+    },
+    {
+      "from_name": "MyToken",
+      "from_kind": "SCOPE.Component",
+      "from_file": "MyToken.sol",
+      "kind": "CONTAINS",
+      "to_name": "MyToken.mint",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "MyToken.sol",
+      "must_exist": true,
+      "note": "RED (#6423), collateral."
+    },
+    {
+      "from_name": "Vault.sweep",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_name": "IERC20",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Vault.sol",
+      "must_exist": false,
+      "nice_to_have": true,
+      "note": "NICE-TO-HAVE, not a must-have, and deliberately so. `IERC20(token).transfer(to, total)` names the interface at the call site, and callBareRE (#6425) requires a LOWERCASE first character, so every capitalised bare target is dropped -- the under-fire half of the same call scan that over-fires on `type` and `abi.encode`. It is nice_to_have rather than must_exist because whether an explicit type conversion IS a call is a genuine design question, not a defect this fixture is entitled to settle; #6425 should decide it. What the entry does buy is that the decision becomes visible in the nice-to-have counters instead of invisible."
+    }
+  ],
+  "forbidden_relationships": [
+    {
+      "from_name": "Ownable",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Ownable.sol",
+      "kind": "EXTENDS",
+      "to_name": "Vault",
+      "to_kind": "SCOPE.Component",
+      "to_file": "Vault.sol",
+      "must_exist": false,
+      "note": "Inheritance-direction guard. Vault extends Ownable, never the reverse; an inverted EXTENDS would still score full recall on the forward edge above."
+    },
+    {
+      "from_name": "ShortStrings.toString",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "ShortStrings.sol",
+      "kind": "CALLS",
+      "to_name": "string",
+      "to_kind": "SCOPE.External",
+      "must_exist": false,
+      "note": "`new string(32)` is a type instantiation, not an invocation of a function called `string`. Guards the denylist entry that keeps it out."
+    },
+    {
+      "from_name": "Vault.deposit",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_name": "emit",
+      "to_kind": "SCOPE.External",
+      "must_exist": false,
+      "note": "`emit Deposited(...)` -- the keyword must not be minted as a call target. The event reference itself is a separate question this fixture does not assert."
+    }
+  ]
+}
