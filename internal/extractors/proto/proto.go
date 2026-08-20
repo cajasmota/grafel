@@ -4,7 +4,8 @@
 //   - service    → Kind="SCOPE.Service",   Subtype="service"
 //   - rpc        → Kind="SCOPE.Operation", Subtype="endpoint" (Properties["type"]="rpc")
 //   - message    → Kind="SCOPE.Schema",    Subtype="message"
-//   - field      → Kind="SCOPE.Schema",    Subtype="field"
+//   - field      → Kind="SCOPE.Schema",    Subtype="field" (message fields,
+//     map fields, and oneof members alike)
 //   - enum       → Kind="SCOPE.Schema",    Subtype="enum"
 //   - enum value → Kind="SCOPE.Schema",    Subtype="enum_value"
 //
@@ -25,12 +26,16 @@
 // Issue #377 — relationship parity:
 //
 //   - IMPORTS edges are emitted from file.Path → import target for every
-//     `import "x.proto";` and `import public "x.proto";` directive.
-//     `import public` carries Properties["public"]="true".
+//     `import "x.proto";` and `import public "x.proto";` directive, and for
+//     nothing else. `import public` carries Properties["public"]="true".
+//     Until #6359 buildRPC also emitted IMPORTS, for rpc request/response
+//     types, conflating two unrelated edge families under one verb.
 //   - CONTAINS edges:
 //   - file → service / message / enum (top-level definitions),
 //   - service → rpc,
-//   - message → field,
+//   - message → field (including every member of a `oneof` block, #6358 —
+//     the oneof GROUP itself carries no entity, so mutual exclusivity is not
+//     modelled),
 //   - enum → enum value.
 //     ToIDs use BuildOperationStructuralRef("proto", file, name) for entity
 //     children (service/message/enum/rpc) and the table#column-style ref
@@ -38,9 +43,13 @@
 //     enum values, mirroring SQL Format B. Every CONTAINS target is backed by
 //     an entity this package also emits, so no edge resolves to a phantom.
 //   - REFERENCES edges: message → the message/enum type of each non-scalar
-//     field. Restricted to types defined in the SAME file — see
-//     dropUnresolvableTypeRefs for why cross-file field types carry no edge
-//     yet.
+//     field, and rpc → its request and response message types (#6359,
+//     Properties["direction"]="request"/"response"/"request,response"). Both
+//     address the target through messageTypeRef — the schema address space,
+//     kept separate from the operation one so an rpc and a message of the same
+//     name in one file do not collide. Both are restricted to types defined in
+//     the SAME file — see dropUnresolvableTypeRefs for why a cross-file type
+//     carries no edge yet.
 //
 // Uses the protobuf grammar from smacker/go-tree-sitter.
 // Registers itself via init() and is imported by registry_gen.go.
@@ -130,7 +139,7 @@ func dropUnresolvableTypeRefs(file extractor.FileInput, entities []types.EntityR
 			continue
 		}
 		if entities[i].Subtype == "message" || entities[i].Subtype == "enum" {
-			local[extractor.BuildOperationStructuralRef("proto", file.Path, entities[i].Name)] = true
+			local[messageTypeRef(file.Path, entities[i].Name)] = true
 		}
 	}
 	for i := range entities {
@@ -178,6 +187,31 @@ func childByType(node ts.Node, types_ ...string) ts.Node {
 // BuildSchemaColumnStructuralRef but tagged with the "proto" language.
 func fieldMemberRef(filePath, parent, member string) string {
 	return "scope:schema:column:proto:" + filePath + ":" + parent + "#" + member
+}
+
+// messageTypeRef returns the structural-ref used to ADDRESS a message/enum as
+// the TARGET of a type reference (an rpc's request/response type, a message
+// field's declared type). Shape:
+//
+//	scope:schema:message:proto:<file>:<Name>
+//
+// It is deliberately NOT BuildOperationStructuralRef. rpc entities are
+// SCOPE.Operation and message/enum entities are SCOPE.Schema, but the
+// operation ref addresses purely by (file, name): for
+// `service S { rpc User(User) returns (User); }` the rpc and the message
+// collide on ONE address, internal/resolve/refs.go resolves the ref through
+// operationKindFamily straight back to the rpc, assembly stamps FromID with
+// that same id, and the edge is discarded as a self-loop
+// (internal/graph/orientation.go:206) — the rpc → message link silently lost.
+//
+// The schema scope-kind gives type targets their own address space:
+// structuralKindFamilies("schema") returns schemaKindFamily
+// (internal/resolve/refs.go:1807), which contains SCOPE.Schema and NOT
+// SCOPE.Operation, so lookupLocationKind binds the message even when a
+// same-named rpc shares the file. Pinned by
+// TestRPC_RPCAndMessageOfTheSameNameDoNotSelfLoop.
+func messageTypeRef(filePath, name string) string {
+	return "scope:schema:message:proto:" + filePath + ":" + name
 }
 
 // fileContainsRel builds a CONTAINS edge from file.Path → top-level entity.
@@ -308,6 +342,76 @@ func buildRPC(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool)
 	}
 
 	sig := fmt.Sprintf("rpc %s(%s) returns (%s)", name, reqType, respType)
+
+	// #6359: request/response type edges.
+	//
+	// These were emitted as `{FromID: file.Path, ToID: <bare type name>,
+	// Kind: "IMPORTS"}` — four defects in one literal:
+	//
+	//   - WRONG VERB. An rpc's request/response type is not a file import. The
+	//     verb collided with the genuine file-level `import "x.proto"` edges
+	//     from buildImportEntities, so IMPORTS meant two unrelated things and
+	//     no consumer could tell them apart. It also mis-anchored the edge:
+	//     the #120 IMPORTS exemption in
+	//     internal/extractors/file_anchored_rels_guard_test.go is the only
+	//     reason a file-anchored FromID passed the guard at all.
+	//   - WRONG SOURCE. FromID was the FILE, not the rpc, so every rpc in a
+	//     service collapsed onto one origin and N rpcs sharing a request type
+	//     produced N indistinguishable duplicates.
+	//   - UNRESOLVABLE TARGET. ToID was the bare, unqualified type text — no
+	//     structural ref, no import path — so nothing could ever bind to it
+	//     and resolve/refs.go materialised a phantom grey node per rpc arm.
+	//   - LITERAL "?". With no guard before emission, an rpc whose types the
+	//     grammar did not yield emitted an edge to the string "?".
+	//
+	// The old comment at this site described that shape as deliberate. It is
+	// not; it is the bug, and it is replaced.
+	//
+	// New shape: REFERENCES, anchored on the rpc entity itself (empty FromID,
+	// the same convention buildService uses for its service→rpc CONTAINS
+	// edges), targeting messageTypeRef — the SAME address a message→field-type
+	// REFERENCES edge uses. That means rpc type refs flow through
+	// dropUnresolvableTypeRefs like every other type ref in this package: a
+	// type defined in this file keeps its edge, one that is not is dropped
+	// rather than dangled, pending the cross-file proto package index. One
+	// convention, applied once.
+	//
+	// The target ref is messageTypeRef and NOT BuildOperationStructuralRef
+	// because the rpc itself occupies the operation address space of this
+	// file: `rpc User(User) returns (User)` would otherwise address the rpc's
+	// own id and lose the edge to the self-loop filter. See messageTypeRef.
+	var rpcRels []types.RelationshipRecord
+	dir := make(map[string]string, 2)
+	var order []string
+	for i, raw := range msgTypes {
+		which := "request"
+		if i > 0 {
+			which = "response"
+		}
+		for _, ref := range namedTypeRefs(raw) {
+			to := messageTypeRef(file.Path, ref)
+			if prev, ok := dir[to]; ok {
+				// Same type on both arms (`rpc Ping(Empty) returns (Empty)`):
+				// one edge, both roles recorded, instead of a duplicate pair.
+				if prev != which {
+					dir[to] = prev + "," + which
+				}
+				continue
+			}
+			dir[to] = which
+			order = append(order, to)
+		}
+	}
+	for _, to := range order {
+		rpcRels = append(rpcRels, types.RelationshipRecord{
+			ToID: to,
+			Kind: "REFERENCES",
+			// types.Props is a binary-searched, KEY-SORTED slice (internal/types/props.go:40):
+			// "direction" must precede "via_rpc" or Get() cannot find either.
+			Properties: types.Props{{K: "direction", V: dir[to]}, {K: "via_rpc", V: name}},
+		})
+	}
+
 	return types.EntityRecord{
 		Name:               name,
 		Kind:               "SCOPE.Operation",
@@ -321,13 +425,11 @@ func buildRPC(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool)
 		// Set type=rpc explicitly so buildOutputDoc doesn't override with "endpoint".
 		// Python golden uses type=rpc, subtype=endpoint for RPC entities.
 		Properties: map[string]string{"type": "rpc"},
-		// rpc carries the request/response IMPORTS edges historically emitted
-		// here. File-level `import "..."` edges are emitted separately as stub
-		// entities by buildImportEntities.
-		Relationships: []types.RelationshipRecord{
-			{FromID: file.Path, ToID: reqType, Kind: "IMPORTS"},
-			{FromID: file.Path, ToID: respType, Kind: "IMPORTS"},
-		},
+		// rpc → request/response type REFERENCES edges (#6359). File-level
+		// `import "..."` IMPORTS edges are emitted separately as stub entities
+		// by buildImportEntities and are now the ONLY IMPORTS this package
+		// produces.
+		Relationships: rpcRels,
 	}, true
 }
 
@@ -351,20 +453,23 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 	rels = append(rels, fileContainsRel(file.Path, name))
 	var fieldEnts []types.EntityRecord
 	if body := childByType(node, "message_body"); body != nil {
+		// seen is keyed on the field's SIMPLE name and is deliberately scoped
+		// to the whole MESSAGE, not to the enclosing oneof (#6358). proto3
+		// requires field names to be unique across the entire message —
+		// including across separate oneof blocks — so two members sharing a
+		// name is invalid proto, not a case to support: both would mint the
+		// same Format-B member ref (…:<file>:<Msg>#<name>) and resolve/refs.go
+		// would un-bind the pair as ambiguous anyway. Keeping one dedupe per
+		// message means the address space and the dedupe agree.
 		seen := make(map[string]bool)
 		refSeen := make(map[string]bool)
-		for i := range body.ChildCount() {
-			ch := body.Child(int(i))
-			if ch == nil {
-				continue
-			}
-			isMap := ch.Type() == "map_field"
-			if ch.Type() != "field" && !isMap {
-				continue
-			}
+		// addMember runs one field-shaped node (a top-level `field`, a
+		// `map_field`, or a `oneof_field` nested inside a `oneof`) through the
+		// shared name/type/entity/REFERENCES path.
+		addMember := func(ch ts.Node, isMap bool) {
 			fname := fieldName(ch, file.Content)
 			if fname == "" || seen[fname] {
-				continue
+				return
 			}
 			seen[fname] = true
 			var ftype, label string
@@ -373,15 +478,11 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 			} else {
 				ftype, label = fieldTypeAndLabel(ch, file.Content)
 			}
+			fieldEnts = append(fieldEnts, buildField(file, name, fname, ftype, label, ch))
 			rels = append(rels, types.RelationshipRecord{
 				ToID: fieldMemberRef(file.Path, name, fname),
 				Kind: "CONTAINS",
 			})
-			// Emit a per-field SCOPE.Field entity carrying the resolved scalar
-			// or message type + repeated/optional/required label. The entity ID
-			// reuses the Format-B member ref so it lines up with the CONTAINS
-			// edge target above.
-			fieldEnts = append(fieldEnts, buildField(file, name, fname, ftype, label, ch))
 			// REFERENCES edge to a named (non-scalar) message/enum type. Scalars
 			// (string, int32, …) carry no edge. The map type's value component is
 			// also followed (map<string, Order> → Order).
@@ -391,10 +492,43 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 				}
 				refSeen[ref] = true
 				rels = append(rels, types.RelationshipRecord{
-					ToID:       extractor.BuildOperationStructuralRef("proto", file.Path, ref),
+					ToID:       messageTypeRef(file.Path, ref),
 					Kind:       "REFERENCES",
 					Properties: types.Props{{K: "type", V: ref}, {K: "via_field", V: fname}},
 				})
+			}
+		}
+		for i := range body.ChildCount() {
+			ch := body.Child(int(i))
+			if ch == nil {
+				continue
+			}
+			switch ch.Type() {
+			case "field":
+				addMember(ch, false)
+			case "map_field":
+				addMember(ch, true)
+			case "oneof":
+				// #6358: the grammar nests oneof members one level deeper as
+				// `oneof_field` children of a `oneof` node, so the flat
+				// message_body scan never reached them and every field inside
+				// every oneof was silently dropped — no entity, no edge, no
+				// warning, on files that parse at error_ratio 0.0000.
+				//
+				// Members only: the oneof GROUP itself gets no entity here, so
+				// the mutual-exclusivity semantics of the tagged union are not
+				// modelled. That is a deliberate scope line (see #6358) — the
+				// group needs a new 4-part ID form; recovering the dropped
+				// members does not.
+				for j := range ch.ChildCount() {
+					m := ch.Child(int(j))
+					if m == nil || m.Type() != "oneof_field" {
+						continue
+					}
+					// A oneof member cannot be repeated/optional and cannot be
+					// a map, so it always takes the plain field path.
+					addMember(m, false)
+				}
 			}
 		}
 	}
