@@ -1634,11 +1634,30 @@ func synthesizeSpringFromComposed(entities []types.EntityRecord, path string, em
 			verb = "ANY"
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, e.Name)
-		// Source-handler reference: spring_routes.go emits the matching
-		// edge as Route:<composed> -> Controller:<methodName>, but we
-		// don't have the method name available here without re-walking
-		// the AST. Leave handler unset — the IMPLEMENTS edge will be
-		// emitted at the Spring AST level in a follow-up if needed.
+		// #6429 — source-handler reference. spring_routes.go now stamps
+		// `handler_method` on every ast_driven Route it composes, so the
+		// method name IS available here without re-walking the AST. Emit
+		// `Controller:<methodName>`, which resolverKindEquivalents already
+		// maps to SCOPE.Operation: the endpoint then enters the existing
+		// binder (same-file cross-kind lookup, bare<->qualified bridge,
+		// file:line co-location) and gets its IMPLEMENTS edge — Spring's
+		// share of #6374.
+		//
+		// Previously this passed ("Route", e.Name), stamping
+		// `source_handler = "Route:<path>"` — the endpoint pointing at its
+		// own route path rather than at any handler. `Route` has no entry in
+		// resolverKindEquivalents, so no fallback could ever fire.
+		//
+		// yaml_driven Routes (regex rule, no AST scope) carry no
+		// handler_method. Those keep the historic ("Route", e.Name) shape
+		// UNCHANGED: response_shape.go strips the kind prefix and feeds the
+		// remainder to extractJavaShape, so blanking it there would silently
+		// drop Java DTO response-shape extraction on the regex path. Their
+		// dangle is the one case refs.go still routes to Dynamic.
+		if hm := e.Properties["handler_method"]; hm != "" {
+			emit(verb, canonical, "spring_mvc", "Controller", hm)
+			continue
+		}
 		emit(verb, canonical, "spring_mvc", "Route", e.Name)
 	}
 }

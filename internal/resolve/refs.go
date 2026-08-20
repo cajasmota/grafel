@@ -3884,21 +3884,44 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if lang == "java" && isJavaExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
-	// Issue java-spring-petclinic-wave — Spring MVC ROUTES_TO edges
-	// emit `Route:<path>` -> `Controller:<methodName>` stubs from
-	// both the AST-driven composed-route extractor (spring_routes.go)
-	// and the YAML regex-based extractor (spring_mvc.yaml). The
-	// Java method extractor emits the handler under SCOPE.Operation
-	// (not `Controller:` kind), so the kind-bucket lookup misses.
-	// Spring's HandlerMapping dispatches by method-name lookup at
-	// runtime — the binding is framework-mediated, not an extractor
-	// bug. Route to Dynamic. Lang-gated to java (lang on the edge
-	// originates from the spring_routes.go Language="java" tag).
-	// Also accept lang="" because YAML-emitted edges may not
-	// propagate the source language onto the edge properties.
-	if (lang == "java" || lang == "") &&
-		(strings.HasPrefix(originalStub, "Controller:") ||
-			strings.HasPrefix(originalStub, "Route:")) {
+	// Issue java-spring-petclinic-wave, NARROWED by #6429 — Spring MVC
+	// ROUTES_TO edges emit `Route:<path>` -> `Controller:<methodName>`
+	// stubs. The Java method extractor emits the handler under
+	// SCOPE.Operation (not `Controller:` kind), so the kind-bucket lookup
+	// misses and the hop dangles; this hatch accounted the dangle as
+	// framework-mediated runtime dispatch rather than as an extractor bug.
+	//
+	// #6429 narrowed it on two axes, because the AST-driven composed-route
+	// extractor (spring_routes.go) no longer produces either shape: it now
+	// targets `SCOPE.Operation:<Class>.<method>` directly, and
+	// synthesizeSpringFromComposed stamps `source_handler` at the handler
+	// rather than at the route's own path.
+	//
+	//  1. The `Route:` arm is GONE. `Route:<path>` reaches this classifier
+	//     only as a ROUTES_TO edge's FROM side, and that side normally binds
+	//     to the composed Route entity; when it does not, the Route entity
+	//     was suppressed out from under a surviving edge, which is a real
+	//     dangle (see #6442) and must be counted as one rather than excused
+	//     as runtime dispatch. Spring's other `Route:` producer — the
+	//     self-referential `source_handler = "Route:<path>"` on the
+	//     yaml_driven path — never reaches here: an unresolved source_handler
+	//     is consumed by internal/engine's endpoint binder, not by the ref
+	//     classifier.
+	//  2. The `Controller:` arm survives, but only for a BARE method name
+	//     (no dot). That is exactly what the YAML regex extractor
+	//     (spring_mvc.yaml relationship_rules, target_type: Controller)
+	//     emits for a controller with no class-level @RequestMapping — the
+	//     regex engine has no lexical scope, so it cannot qualify the
+	//     method, and the binding really is name-based at runtime. A
+	//     QUALIFIED `Controller:Foo.bar` is resolvable by the existing
+	//     bare<->qualified bridges and is no longer swallowed here.
+	//
+	// Lang-gated to java (lang on the edge originates from the
+	// spring_routes.go Language="java" tag). Also accept lang="" because
+	// YAML-emitted edges may not propagate the source language onto the
+	// edge properties.
+	if (lang == "java" || lang == "") && strings.HasPrefix(originalStub, "Controller:") &&
+		!strings.Contains(strings.TrimPrefix(originalStub, "Controller:"), ".") {
 		return DispositionDynamic
 	}
 	// Wave-4 stragglers (#529) — HTTP-client synthesiser FETCHES edges and

@@ -107,12 +107,14 @@ func TestDetect_SpringRoutes(t *testing.T) {
 	// Expected ROUTES_TO relationships: one per @*Mapping handler.
 	type rel struct{ from, to string }
 	expectedRels := map[rel]bool{
-		{"Route:/api/orders", "Controller:listOrders"}:       false,
-		{"Route:/api/orders", "Controller:createOrder"}:      false,
-		{"Route:/api/orders/{id}", "Controller:updateOrder"}: false,
-		{"Route:/api/orders/{id}", "Controller:deleteOrder"}: false,
-		{"Route:/api/orders/{id}", "Controller:patchOrder"}:  false,
-		{"Route:/api/legacy", "Controller:legacy"}:           false,
+		// #6429 — ROUTES_TO targets the qualified handler Operation the
+		// Java extractor actually lands, not a `Controller:<bare>` stub.
+		{"Route:/api/orders", "SCOPE.Operation:OrderController.listOrders"}:       false,
+		{"Route:/api/orders", "SCOPE.Operation:OrderController.createOrder"}:      false,
+		{"Route:/api/orders/{id}", "SCOPE.Operation:OrderController.updateOrder"}: false,
+		{"Route:/api/orders/{id}", "SCOPE.Operation:OrderController.deleteOrder"}: false,
+		{"Route:/api/orders/{id}", "SCOPE.Operation:OrderController.patchOrder"}:  false,
+		{"Route:/api/legacy", "SCOPE.Operation:OrderController.legacy"}:           false,
 	}
 	for _, r := range result.Relationships {
 		if r.Kind != "ROUTES_TO" {

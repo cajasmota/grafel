@@ -33,7 +33,13 @@
     { "name": "HealthController.health", "kind": "SCOPE.Operation", "source_file": "com/example/demo/controller/HealthController.java", "must_exist": true },
 
     { "name": "/users", "kind": "Route", "source_file": "com/example/demo/controller/UserController.java", "must_exist": true, "note": "Spring REST route surface." },
-    { "name": "/health", "kind": "Route", "source_file": "com/example/demo/controller/HealthController.java", "must_exist": true }
+    { "name": "/health", "kind": "Route", "source_file": "com/example/demo/controller/HealthController.java", "must_exist": true },
+
+    { "name": "http:GET:/users", "kind": "http_endpoint_definition", "source_file": "com/example/demo/controller/UserController.java", "must_exist": true,
+      "note": "#6374 — the synthesized producer-side endpoint. Its source_file is rebound onto the resolved handler method by bridgeEndpointToHandler." },
+    { "name": "http:POST:/users", "kind": "http_endpoint_definition", "source_file": "com/example/demo/controller/UserController.java", "must_exist": true },
+    { "name": "http:GET:/users/{email}", "kind": "http_endpoint_definition", "source_file": "com/example/demo/controller/UserController.java", "must_exist": true },
+    { "name": "http:GET:/health", "kind": "http_endpoint_definition", "source_file": "com/example/demo/controller/HealthController.java", "must_exist": true }
   ],
   "expected_relationships": [
     { "from_name": "User", "from_kind": "SCOPE.Component", "from_file": "com/example/demo/model/User.java",
@@ -98,10 +104,32 @@
       "must_exist": true },
 
     { "from_name": "/users", "from_kind": "Route", "from_file": "com/example/demo/controller/UserController.java",
-      "kind": "ROUTES_TO", "to_bare_name": "Controller:listUsers", "must_exist": true,
-      "note": "Spring framework Route-level ROUTES_TO emitted on the class-level mapping." },
+      "kind": "ROUTES_TO", "to_name": "UserController.listUsers", "to_kind": "SCOPE.Operation", "to_file": "com/example/demo/controller/UserController.java",
+      "must_exist": true,
+      "note": "#6429 — the AST-composed Spring route now BINDS to the handler Operation. This assertion previously read to_bare_name Controller:listUsers, i.e. it asserted the dangling placeholder as correct (#6441)." },
+    { "from_name": "/users", "from_kind": "Route", "from_file": "com/example/demo/controller/UserController.java",
+      "kind": "ROUTES_TO", "to_name": "UserController.createUser", "to_kind": "SCOPE.Operation", "to_file": "com/example/demo/controller/UserController.java",
+      "must_exist": true },
+    { "from_name": "/users/{email}", "from_kind": "Route", "from_file": "com/example/demo/controller/UserController.java",
+      "kind": "ROUTES_TO", "to_name": "UserController.getByEmail", "to_kind": "SCOPE.Operation", "to_file": "com/example/demo/controller/UserController.java",
+      "must_exist": true },
     { "from_name": "/health", "from_kind": "Route", "from_file": "com/example/demo/controller/HealthController.java",
-      "kind": "ROUTES_TO", "to_bare_name": "Controller:health", "must_exist": true },
+      "kind": "ROUTES_TO", "to_bare_name": "Controller:health", "must_exist": true,
+      "note": "HealthController carries NO class-level @RequestMapping, so the AST composition pass (spring_routes.go, gated on hasClassMapping since #67) skips it and this edge still comes from the spring_mvc.yaml regex rules, which have no lexical scope with which to qualify the method. This is the one Spring case refs.go still classifies DispositionDynamic after #6429." },
+
+    { "from_name": "UserController.listUsers", "from_kind": "SCOPE.Operation", "from_file": "com/example/demo/controller/UserController.java",
+      "kind": "IMPLEMENTS", "to_name": "http:GET:/users", "to_kind": "http_endpoint_definition", "to_file": "com/example/demo/controller/UserController.java",
+      "must_exist": true,
+      "note": "#6374 (Spring share) — handler → endpoint bridge. Ungraded before #6429: the fixture asserted no http_endpoint_definition entity and no IMPLEMENTS edge at all." },
+    { "from_name": "UserController.createUser", "from_kind": "SCOPE.Operation", "from_file": "com/example/demo/controller/UserController.java",
+      "kind": "IMPLEMENTS", "to_name": "http:POST:/users", "to_kind": "http_endpoint_definition", "to_file": "com/example/demo/controller/UserController.java",
+      "must_exist": true },
+    { "from_name": "UserController.getByEmail", "from_kind": "SCOPE.Operation", "from_file": "com/example/demo/controller/UserController.java",
+      "kind": "IMPLEMENTS", "to_name": "http:GET:/users/{email}", "to_kind": "http_endpoint_definition", "to_file": "com/example/demo/controller/UserController.java",
+      "must_exist": true },
+    { "from_name": "HealthController.health", "from_kind": "SCOPE.Operation", "from_file": "com/example/demo/controller/HealthController.java",
+      "kind": "IMPLEMENTS", "to_name": "http:GET:/health", "to_kind": "http_endpoint_definition", "to_file": "com/example/demo/controller/HealthController.java",
+      "must_exist": true },
 
     { "from_name": "UserRepository", "from_kind": "SCOPE.Component", "from_file": "com/example/demo/repository/UserRepository.java",
       "kind": "EXTENDS", "to_bare_name": "scope:component:interface:java:JpaRepository", "must_exist": true,
