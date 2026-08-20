@@ -19,8 +19,8 @@
 //     several types in one file merge their edges onto that one node. This is
 //     Solidity's and verilog's failure. MISANCHORED.
 //   - nothing carries that id, so the raw path reaches the graph verbatim. This
-//     is astro's and svelte's failure. DANGLING — worse, because there is no
-//     node at the other end at all.
+//     was astro's failure (#6298) and svelte's (#6366, now fixed). DANGLING —
+//     worse, because there is no node at the other end at all.
 //
 // THE RESOLUTION RULE, PRECISELY. internal/resolve/refs.go has no path→entity
 // index. A path-valued FromID resolves if and only if some emitted node carries
@@ -225,10 +225,12 @@
 //     the previous round, presented the narrower case as the whole exposure. ANY
 //     entry with count >= 2 already blesses any pair of sites of that kind in
 //     that function, whatever the sites actually are. MEASURED 2026-08-19: four
-//     such entries exist today — svelte:Extract:CONTAINS {2},
+//     such entries existed then — svelte:Extract:CONTAINS {2},
 //     svelte:extractReactiveStatements:USES {2},
 //     hcl:emitFileLevelRelationships:CONTAINS {2}, and
-//     knownInvisibleOffenders["swift:extractTargets:DEPENDS_ON"] {2}. What a "?"
+//     knownInvisibleOffenders["swift:extractTargets:DEPENDS_ON"] {2}. The two
+//     svelte entries went away with the #6366 fix; the remaining two are hcl and
+//     swift (RE-MEASURED 2026-08-21). What a "?"
 //     key ADDS on top of that is collapsing ACROSS FORMS: a form-A site and a
 //     form-I site key identically, so one can be replaced by the other. The only
 //     "?" entry today (yaml:extractHelmHelpers:?) has count 1, so the
@@ -360,55 +362,21 @@ var allowedFileAnchored = map[string]allowEntry{
 
 	// ── KNOWN OFFENDERS, deliberately NOT fixed in #6298 ─────────────────────
 	//
-	// EVIDENCE STATUS. svelte is MEASURED (one kind, end to end). Everything
-	// below svelte is INFERRED from reading the owning record against the
-	// resolution rule stated at the top of this file — no runtime measurement.
-	// #6298's own lesson is that astro was ASSUMED to match verilog and turned
-	// out to be a different, worse failure, so nothing here is claimed as a
-	// finding. Follow-up issue covers all six languages, each with its own
-	// measurement.
+	// EVIDENCE STATUS. Everything below is INFERRED from reading the owning
+	// record against the resolution rule stated at the top of this file — no
+	// runtime measurement. #6298's own lesson is that astro was ASSUMED to match
+	// verilog and turned out to be a different, worse failure, so nothing here is
+	// claimed as a finding. Follow-up issue covers all remaining languages, each
+	// with its own measurement.
 	//
-	// svelte has the astro failure, not the verilog one: no extractor.FileEntity
-	// anywhere in the package, and entities[0] is the component named from the
-	// file's basename. MEASURED through ResolveImports → ReferencesEmbedded on a
-	// two-file snippet (Card.svelte renders <Button />):
-	//
-	//	owner="Card" kind=RENDERS FROM=<UNRESOLVED:src/lib/Card.svelte> TO=Button[SCOPE.Component]
-	//
-	// The ToID bound; the FromID did not. Every other svelte site below is the
-	// same construction on the same record — all attach points are
-	// `entities[0].Relationships = append(…)` — but NOT separately measured.
-	//
-	// Left out of #6298's diff on purpose: a language with its own behavioural
-	// tests, none of which this issue reviewed. Fixing it is its own change with
-	// its own measurement.
-	"svelte:extractChildComponents:RENDERS": {1,
-		"KNOWN OFFENDER (#6298): dangling FromID, MEASURED end to end (see the block " +
-			"comment above). Out of scope here; fix separately."},
-	"svelte:Extract:CONTAINS": {2,
-		"KNOWN OFFENDER (#6298): same construction on the same entities[0] record as " +
-			"the measured RENDERS site. INFERRED, not separately measured."},
-	"svelte:extractActions:USES": {1,
-		"KNOWN OFFENDER (#6298): same construction as the measured RENDERS site. " +
-			"INFERRED, not separately measured."},
-	"svelte:extractBranchConditions:USES": {1,
-		"KNOWN OFFENDER (#6298): same construction as the measured RENDERS site. " +
-			"INFERRED, not separately measured."},
-	"svelte:extractContext:USES": {1,
-		"KNOWN OFFENDER (#6298): same construction as the measured RENDERS site. " +
-			"INFERRED, not separately measured."},
-	"svelte:extractReactiveStatements:USES": {2,
-		"KNOWN OFFENDER (#6298): same construction as the measured RENDERS site. " +
-			"INFERRED, not separately measured."},
-	"svelte:extractScriptDataFlow:USES": {1,
-		"KNOWN OFFENDER (#6298): same construction as the measured RENDERS site. " +
-			"INFERRED, not separately measured."},
-	"svelte:extractRouteDirectives:NAVIGATES_TO": {1,
-		"KNOWN OFFENDER (#6298): same construction as the measured RENDERS site. " +
-			"INFERRED, not separately measured."},
-	"svelte:extractScriptNavigation:NAVIGATES_TO": {1,
-		"KNOWN OFFENDER (#6298): same construction as the measured RENDERS site. " +
-			"INFERRED, not separately measured."},
+	// svelte USED TO BE LISTED HERE (nine entries, four relationship kinds) and
+	// is gone: #6366 measured all four — RENDERS, USES, NAVIGATES_TO and
+	// CONTAINS — through ResolveImports → ReferencesEmbedded, found every one of
+	// them dangling on the FROM side (15 of 15 on the measurement fixture), and
+	// dropped FromID at all eleven sites so assembly stamps entities[0], the
+	// component. See TestSvelte_ComponentRelsAnchoredOnComponent in
+	// internal/extractors/svelte. Do NOT re-add a svelte entry here without a
+	// fresh measurement: the scan below fails on a STALE entry too.
 
 	// graphql FEDERATES — MISANCHORED, and the site's own comment says so:
 	// graphql.go:366-368 states the edge comes "from the extending stub", but
