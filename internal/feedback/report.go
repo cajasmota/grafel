@@ -21,6 +21,13 @@ type Opts struct {
 	GroupName string
 	// Version is the grafel binary version string — used in the header.
 	Version string
+	// HistoryDir is the directory holding previously written reports
+	// (~/.grafel/feedback). Prior reports for GroupName are read from here to
+	// decide whether a kind with zero semantic participation LOST edges it
+	// used to have (a regression) or never had any (terminal by design) —
+	// see history.go and check 2b in sanity.go (#6377). Empty disables the
+	// longitudinal comparison, which is the first-run behaviour.
+	HistoryDir string
 }
 
 // KindStats holds per-entity-kind orphan metrics.
@@ -105,6 +112,12 @@ type Report struct {
 
 	// suppressed is true when TotalEntities < minEntitiesForReport.
 	suppressed bool
+
+	// priorParticipation is per-kind semantic participation observed in
+	// previously stored reports for this group: true = participated, false =
+	// observed but never participated, absent = no history for that kind.
+	// Populated from Opts.HistoryDir; consumed by check 2b (#6377).
+	priorParticipation map[string]bool
 }
 
 // Generate loads the graphs for the given repos, computes anonymized metrics,
@@ -509,6 +522,13 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 	}
 
 	// Run sanity checks.
+	// Longitudinal history (#6377). Read-only and best-effort: a failure to
+	// read prior reports degrades check 2b to its first-run behaviour rather
+	// than failing report generation.
+	if prior, err := loadKindParticipation(opts.HistoryDir, opts.GroupName); err == nil {
+		r.priorParticipation = prior
+	}
+
 	r.SanityResults, r.Confidence = runSanityChecks(r)
 
 	return r, nil

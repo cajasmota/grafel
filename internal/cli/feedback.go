@@ -97,17 +97,24 @@ func runFeedback(cmd *cobra.Command, groupName, outPath string, yes bool) error 
 	}
 
 	// 3. Resolve output path.
+	//
+	// historyDir is resolved independently of outPath: prior reports always
+	// live in <home>/feedback even when this run is written elsewhere via
+	// --out, and the longitudinal participation check (#6377) reads them from
+	// there. A home dir that cannot be resolved only disables that check.
+	var historyDir string
+	if home, err := registry.HomeDir(); err == nil {
+		historyDir = filepath.Join(home, "feedback")
+	}
 	if outPath == "" {
 		ts := time.Now().UTC().Format("20060102T150405")
-		home, err := registry.HomeDir()
-		if err != nil {
-			return fmt.Errorf("feedback: resolve home dir: %w", err)
+		if historyDir == "" {
+			return fmt.Errorf("feedback: resolve home dir")
 		}
-		outDir := filepath.Join(home, "feedback")
-		if err := os.MkdirAll(outDir, 0o755); err != nil {
+		if err := os.MkdirAll(historyDir, 0o755); err != nil {
 			return fmt.Errorf("feedback: create output dir: %w", err)
 		}
-		outPath = filepath.Join(outDir, groupName+"-"+ts+".md")
+		outPath = filepath.Join(historyDir, groupName+"-"+ts+".md")
 	}
 
 	// 4. Show confirmation prompt (skipped with --yes).
@@ -159,8 +166,9 @@ func runFeedback(cmd *cobra.Command, groupName, outPath string, yes bool) error 
 	// 6. Generate report.
 	fmt.Fprintln(w, "Generating report...")
 	report, err := feedback.Generate(context.Background(), docs, feedback.Opts{
-		GroupName: groupName,
-		Version:   version.String(),
+		GroupName:  groupName,
+		Version:    version.String(),
+		HistoryDir: historyDir,
 	})
 	if err != nil {
 		return fmt.Errorf("feedback: generate: %w", err)
