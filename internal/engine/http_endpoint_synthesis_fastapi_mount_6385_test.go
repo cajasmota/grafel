@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/types"
@@ -158,5 +159,172 @@ app.include_router(router, prefix="/network")
 		"#6385: path folding is #6414 and out of scope")
 	if _, ok := fastapiMountSynths(res)["/network"]; !ok {
 		t.Errorf("#6385: expected the /network mount synthetic alongside the unfolded route")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PR #6415 review blockers.
+// ---------------------------------------------------------------------------
+
+// TestSynth_FastAPI_MountPrefix_InnerCallPrefixNotStolen_6385 is the HIGH
+// blocker: the argument tail contains a NESTED call that itself carries a
+// `prefix=` kwarg. Taking the first `prefix=` anywhere in the tail publishes
+// the inner router's prefix as the mount prefix — a plausible-but-WRONG value
+// that reaches the linker's cross-repo mount-prefix retry union. Only the
+// TOP-LEVEL kwarg counts.
+func TestSynth_FastAPI_MountPrefix_InnerCallPrefixNotStolen_6385(t *testing.T) {
+	src := `from fastapi import FastAPI
+
+app = FastAPI()
+app.include_router(build_router(prefix="/internal"), prefix="/api/v1")
+`
+	_, res := runDetect(t, "python", "app/main.py", src)
+	mounts := fastapiMountSynths(res)
+	if _, bad := mounts["/internal"]; bad {
+		t.Errorf("#6385: published the INNER call's prefix /internal as the mount prefix: %v", mounts)
+	}
+	if _, ok := mounts["/api/v1"]; !ok {
+		t.Errorf("#6385: missing the real mount prefix /api/v1 (got %v)", mounts)
+	}
+}
+
+// TestSynth_FastAPI_MountPrefix_TwoLevelsOfNesting_6385 pins the deeper form:
+// two levels of nesting must neither abort the match nor leak the innermost
+// `prefix=`.
+func TestSynth_FastAPI_MountPrefix_TwoLevelsOfNesting_6385(t *testing.T) {
+	src := `from fastapi import FastAPI, Depends
+
+app = FastAPI()
+app.include_router(users.router, dependencies=[Depends(auth(prefix="/nope"))], prefix="/deep")
+`
+	_, res := runDetect(t, "python", "app/main.py", src)
+	mounts := fastapiMountSynths(res)
+	if _, bad := mounts["/nope"]; bad {
+		t.Errorf("#6385: leaked a doubly-nested prefix: %v", mounts)
+	}
+	if _, ok := mounts["/deep"]; !ok {
+		t.Errorf("#6385: two nesting levels aborted the match, /deep missing (got %v)", mounts)
+	}
+}
+
+// TestSynth_FastAPI_MountPrefix_TwoCallsOnOneLine_6385 pins that a second
+// mount site on the SAME line is not swallowed by a line anchor.
+func TestSynth_FastAPI_MountPrefix_TwoCallsOnOneLine_6385(t *testing.T) {
+	src := `from fastapi import FastAPI
+
+app = FastAPI()
+app.include_router(a.router, prefix="/one"); app.include_router(b.router, prefix="/two")
+`
+	_, res := runDetect(t, "python", "app/main.py", src)
+	mounts := fastapiMountSynths(res)
+	for _, want := range []string{"/one", "/two"} {
+		if _, ok := mounts[want]; !ok {
+			t.Errorf("#6385: missing %q from a two-calls-on-one-line file (got %v)", want, mounts)
+		}
+	}
+}
+
+// TestSynth_FastAPI_MountPrefix_PureWiringFileNoDecoratorMarker_6385 is the
+// load-bearing fixture for the PR's central design decision: the mount
+// emission runs BEFORE the decorator marker guard because a pure wiring file
+// may carry no decorator marker at all. Every other fixture contains
+// `FastAPI`/`APIRouter`, so it passes the guard and cannot tell the two
+// placements apart. This one carries ONLY a lowercase `fastapi` import — it
+// fails the marker guard, so it only produces a mount if the emission really
+// is ahead of that guard.
+func TestSynth_FastAPI_MountPrefix_PureWiringFileNoDecoratorMarker_6385(t *testing.T) {
+	src := `from fastapi import Depends
+from app.core import app
+from app.api import users
+
+app.include_router(users.router, prefix="/wiring", dependencies=[Depends(auth)])
+`
+	for _, marker := range []string{"FastAPI", "APIRouter", "@app.", "@router.", ".add_api_route("} {
+		if strings.Contains(src, marker) {
+			t.Fatalf("#6385: fixture is not marker-free — it contains %q, so it cannot pin the emission order", marker)
+		}
+	}
+	_, res := runDetect(t, "python", "app/main.py", src)
+	if _, ok := fastapiMountSynths(res)["/wiring"]; !ok {
+		t.Errorf("#6385: a pure wiring file with no decorator marker emitted no mount synthetic (got %v)",
+			fastapiMountSynths(res))
+	}
+}
+
+// TestSynth_FastAPI_MountPrefix_RequiresFastAPIEvidence_6385 is the other side
+// of that placement: running ahead of the marker guard must not turn
+// `include_router` alone into FastAPI evidence. A file with no FastAPI signal
+// whatsoever — a Flask module, or an `include_router` that only appears inside
+// a docstring — must emit nothing.
+func TestSynth_FastAPI_MountPrefix_RequiresFastAPIEvidence_6385(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{"flask-file", `from flask import Flask
+
+app = Flask(__name__)
+routers.include_router(x, prefix="/flaskbogus")
+`},
+		{"docstring-only", `from fastapi import FastAPI
+
+app = FastAPI()
+
+def helper():
+    """Usage:
+
+    app.include_router(other.router, prefix="/docbogus")
+    """
+    return None
+`},
+		{"triple-single-quoted-literal", `from fastapi import FastAPI
+
+app = FastAPI()
+SAMPLE = '''app.include_router(other.router, prefix="/litbogus")'''
+`},
+		{"commented-out", `from fastapi import FastAPI
+
+app = FastAPI()
+# app.include_router(other.router, prefix="/cmtbogus")
+`},
+		{"lookalike-method", `from fastapi import FastAPI
+
+app = FastAPI()
+my_include_router(other.router, prefix="/lookalike")
+`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, res := runDetect(t, "python", "app/main.py", tc.src)
+			if mounts := fastapiMountSynths(res); len(mounts) != 0 {
+				t.Errorf("#6385 %s: expected no url_mount_point synthetic, got %v", tc.name, mounts)
+			}
+		})
+	}
+}
+
+// TestSynth_FastAPI_MountPrefix_RejectsMalformedLiterals_6385 pins that a
+// prefix literal carrying an escaped quote, a backslash, or whitespace never
+// reaches an entity ID or the linker's retry-candidate list.
+func TestSynth_FastAPI_MountPrefix_RejectsMalformedLiterals_6385(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{"escaped-quote", `from fastapi import FastAPI
+
+app = FastAPI()
+app.include_router(r.router, prefix="/a\"b")
+`},
+		{"spaced", `from fastapi import FastAPI
+
+app = FastAPI()
+app.include_router(r.router, prefix=" /spaced ")
+`},
+		{"inner-space", `from fastapi import FastAPI
+
+app = FastAPI()
+app.include_router(r.router, prefix="/two words")
+`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, res := runDetect(t, "python", "app/main.py", tc.src)
+			if mounts := fastapiMountSynths(res); len(mounts) != 0 {
+				t.Errorf("#6385 %s: malformed prefix reached a mount synthetic: %v (ids %v)", tc.name, mounts, got)
+			}
+		})
 	}
 }

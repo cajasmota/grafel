@@ -2816,15 +2816,158 @@ func fastapiRouterPrefixes(content string) map[string]string {
 	return prefixes
 }
 
-// fastapiIncludeRouterRe captures the ARGUMENT TAIL of a FastAPI mount site,
-// `<recv>.include_router(<router>, prefix="/x", ...)` (#6385). One level of
-// nested parens is tolerated so kwargs like `dependencies=[Depends(x)]` or
-// `responses={404: {"model": X}}` don't abort the match early. The receiver is
-// unrestricted (`app`, `api`, `parent_router`, `settings.app`, ...) because
-// include_router is a FastAPI-only method name.
-var fastapiIncludeRouterRe = regexp.MustCompile(
-	`(?m)^[ \t]*[A-Za-z_][\w.]*\.include_router\s*\(((?:[^()]*(?:\([^()]*\)[^()]*)*))\)`,
+// fastapiIncludeRouterCallRe locates the CALL HEAD of a FastAPI mount site,
+// `<recv>.include_router(` (#6385). It matches the receiver and the opening
+// paren only — the argument list is then walked with a bracket-balanced
+// scanner (fastapiTopLevelArgs) rather than a regex, so arbitrary nesting
+// depth is handled and an inner call's `prefix=` cannot be mistaken for the
+// mount's own.
+//
+// The receiver is unrestricted (`app`, `api`, `parent_router`, `settings.app`,
+// ...) because include_router is a FastAPI-only method name, but the literal
+// `.` is required so a lookalike free function `my_include_router(...)` is not
+// a mount site. There is deliberately NO line anchor: two mount calls on one
+// line must both be seen. Comment and docstring rejection is handled instead
+// by masking (pythonMaskInertRegions), which is strictly stronger than the
+// anchor was — the anchor missed an indented docstring.
+var fastapiIncludeRouterCallRe = regexp.MustCompile(`[A-Za-z_][\w.]*\.include_router[ \t]*\(`)
+
+// fastapiFileEvidenceRe matches an INDEPENDENT FastAPI signal: an import of
+// the fastapi package, or a same-file `FastAPI(...)` / `APIRouter(...)`
+// construction. See the rule documented on fastapiMountPointSynthetics.
+var fastapiFileEvidenceRe = regexp.MustCompile(
+	`(?m)(?:^[ \t]*(?:from[ \t]+fastapi[\w.]*[ \t]+import\b|import[ \t]+fastapi\b))|(?:\bFastAPI[ \t]*\()|(?:\bAPIRouter[ \t]*\()`,
 )
+
+// fastapiBadPrefixCharRe rejects a `prefix=` literal that carries whitespace,
+// a quote or a backslash (#6385 review). Such a value is never a usable mount
+// prefix, but it WOULD flow into an entity ID (`http:ANY:/a\:mount`) and into
+// the linker's cross-repo mount-prefix retry candidate list. A missed prefix
+// is acceptable; a garbage one is not.
+var fastapiBadPrefixCharRe = regexp.MustCompile(`[\s"'\\]`)
+
+// pythonMaskInertRegions returns a copy of src of the SAME byte length, with
+// the same newline positions, in which the contents of `#` comments and of
+// triple-quoted string literals (docstrings, embedded samples) are replaced by
+// spaces. Single-line string literals are left INTACT so a `prefix="/x"` value
+// can still be read out of the masked copy, and byte offsets in the result
+// address exactly the same source positions as in the original.
+func pythonMaskInertRegions(src string) string {
+	b := []byte(src)
+	blank := func(i int) {
+		if b[i] != '\n' && b[i] != '\r' {
+			b[i] = ' '
+		}
+	}
+	for i := 0; i < len(b); {
+		c := b[i]
+		switch {
+		case c == '#':
+			for ; i < len(b) && b[i] != '\n'; i++ {
+				blank(i)
+			}
+		case c == '"' || c == '\'':
+			if i+2 < len(b) && b[i+1] == c && b[i+2] == c {
+				j := i + 3
+				for j < len(b) {
+					if b[j] == '\\' {
+						j += 2
+						continue
+					}
+					if b[j] == c && j+2 < len(b) && b[j+1] == c && b[j+2] == c {
+						j += 3
+						break
+					}
+					j++
+				}
+				if j > len(b) {
+					j = len(b)
+				}
+				for k := i; k < j; k++ {
+					blank(k)
+				}
+				i = j
+				continue
+			}
+			// Single-line literal: skipped over, not blanked.
+			j := i + 1
+			for j < len(b) {
+				if b[j] == '\\' {
+					j += 2
+					continue
+				}
+				if b[j] == c || b[j] == '\n' {
+					break
+				}
+				j++
+			}
+			if j < len(b) && b[j] == c {
+				j++
+			}
+			if j > len(b) {
+				j = len(b)
+			}
+			i = j
+		default:
+			i++
+		}
+	}
+	return string(b)
+}
+
+// fastapiTopLevelArgs walks the bracket-balanced call whose opening `(` sits
+// at index open and returns its argument list with every NESTED bracket group
+// — `(...)`, `[...]`, `{...}`, at any depth — elided to a single space. That
+// is what makes `app.include_router(build_router(prefix="/internal"),
+// prefix="/api/v1")` yield `/api/v1` and not the inner router's prefix.
+// Single-line string literals are copied through verbatim (so the prefix value
+// survives) and their bracket characters do not move the depth counter.
+// ok is false for an unterminated call.
+func fastapiTopLevelArgs(src string, open int) (string, bool) {
+	var sb strings.Builder
+	depth := 0
+	for i := open; i < len(src); i++ {
+		switch c := src[i]; c {
+		case '(', '[', '{':
+			depth++
+			if depth == 2 {
+				sb.WriteByte(' ')
+			}
+		case ')', ']', '}':
+			depth--
+			if depth == 0 {
+				return sb.String(), true
+			}
+		case '"', '\'':
+			j := i + 1
+			for j < len(src) {
+				if src[j] == '\\' {
+					j += 2
+					continue
+				}
+				if src[j] == c || src[j] == '\n' {
+					break
+				}
+				j++
+			}
+			if j < len(src) && src[j] == c {
+				j++
+			}
+			if j > len(src) {
+				j = len(src)
+			}
+			if depth == 1 {
+				sb.WriteString(src[i:j])
+			}
+			i = j - 1
+		default:
+			if depth == 1 {
+				sb.WriteByte(c)
+			}
+		}
+	}
+	return "", false
+}
 
 // fastapiMountPointSynthetics emits one ADDITIVE `url_mount_point` synthetic
 // per `include_router(..., prefix="<literal>")` mount site found in THIS file
@@ -2843,16 +2986,47 @@ var fastapiIncludeRouterRe = regexp.MustCompile(
 //
 // A prefix that is empty, `"/"`, or otherwise degenerate after trimming emits
 // nothing, as does a mount site with no `prefix=` kwarg or a non-literal one.
+//
+// THE RECOGNITION RULE (#6415 review). This pass runs BEFORE synthesizeFastAPI's
+// decorator marker guard, because a pure wiring module — a `main.py` that only
+// imports routers and mounts them — carries no decorator, no `FastAPI(`, and no
+// `APIRouter(` of its own, and would be dropped by that guard. Running ahead of
+// the guard means `include_router` alone would otherwise become the framework
+// evidence, which is too weak: a Flask module calling some unrelated
+// `routers.include_router(...)` would be published as FastAPI. The rule is
+// therefore:
+//
+//	emit only when the file carries an INDEPENDENT FastAPI signal that a pure
+//	wiring module still has — a `fastapi` import, or a same-file `FastAPI(` /
+//	`APIRouter(` construction (fastapiFileEvidenceRe) — AND the mount call is
+//	real code, not text: comments and triple-quoted regions are masked out
+//	before the scan (pythonMaskInertRegions).
+//
+// The evidence is deliberately WIDER than the decorator marker guard (it also
+// accepts a lowercase `import fastapi`) and strictly narrower than "the word
+// include_router appears".
 func fastapiMountPointSynthetics(content, relPath string) []types.EntityRecord {
 	if !strings.Contains(content, "include_router") {
 		return nil
 	}
+	// Comments and docstrings/triple-quoted literals are blanked; offsets are
+	// preserved, so line attribution below still refers to the real source.
+	masked := pythonMaskInertRegions(content)
+	if !strings.Contains(masked, "include_router") || !fastapiFileEvidenceRe.MatchString(masked) {
+		return nil
+	}
 	var out []types.EntityRecord
 	emitted := map[string]bool{}
-	for _, idx := range fastapiIncludeRouterRe.FindAllStringSubmatchIndex(content, -1) {
-		args := content[idx[2]:idx[3]]
+	for _, loc := range fastapiIncludeRouterCallRe.FindAllStringIndex(masked, -1) {
+		args, ok := fastapiTopLevelArgs(masked, loc[1]-1)
+		if !ok {
+			continue
+		}
 		pm := fastapiRouterPrefixKwargRe.FindStringSubmatch(args)
 		if len(pm) < 2 {
+			continue
+		}
+		if fastapiBadPrefixCharRe.MatchString(pm[1]) {
 			continue
 		}
 		trimmed := strings.Trim(pm[1], "/")
@@ -2873,7 +3047,7 @@ func fastapiMountPointSynthetics(content, relPath string) []types.EntityRecord {
 			Name:               mountID,
 			Kind:               httpEndpointKind,
 			SourceFile:         relPath,
-			StartLine:          1 + strings.Count(content[:idx[0]], "\n"),
+			StartLine:          1 + strings.Count(content[:loc[0]], "\n"),
 			Language:           "python",
 			EnrichmentRequired: false,
 			EnrichmentStatus:   types.StatusPending,
@@ -2892,8 +3066,15 @@ func fastapiMountPointSynthetics(content, relPath string) []types.EntityRecord {
 
 func synthesizeFastAPI(content, relPath string, emit emitDefFn, emitMount func(types.EntityRecord)) {
 	// #6385 — additive mount-point synthetics. Emitted BEFORE the decorator
-	// marker guard because a pure mount file (`main.py` that only wires
-	// routers) may carry no decorator marker of its own.
+	// marker guard below, and carrying its OWN framework-evidence gate instead
+	// (see the recognition rule on fastapiMountPointSynthetics): the guard
+	// would drop a pure wiring module, while `include_router` on its own is
+	// too weak to stand as FastAPI evidence.
+	//
+	// Concretely: a pure mount file (a `main.py` that only wires routers)
+	// may carry no decorator marker of its own, so moving this block below
+	// the guard silently drops every such mount — pinned by
+	// TestSynth_FastAPI_MountPrefix_PureWiringFileNoDecoratorMarker_6385.
 	if emitMount != nil {
 		for _, e := range fastapiMountPointSynthetics(content, relPath) {
 			emitMount(e)
