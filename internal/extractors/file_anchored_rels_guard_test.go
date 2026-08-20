@@ -34,7 +34,8 @@
 // that exact path string exists" is. The first round of this allow-list used the
 // conceptual criterion and, on the strength of it, blessed six entries across
 // five languages that are real defects — they are re-labelled KNOWN OFFENDER
-// below rather than fixed, because each needs its own measurement.
+// below rather than fixed, because each needs its own measurement. #6367's hcl
+// arm has since measured and fixed two of the six.
 //
 // WHY A SOURCE SCAN AND NOT A RUNTIME ONE. The runtime form of this check —
 // drive every registered extractor and inspect the emitted records — needs a
@@ -229,13 +230,13 @@
 //     svelte:extractReactiveStatements:USES {2},
 //     hcl:emitFileLevelRelationships:CONTAINS {2}, and
 //     knownInvisibleOffenders["swift:extractTargets:DEPENDS_ON"] {2}. The two
-//     svelte entries went away with the #6366 fix; the remaining two are hcl and
-//     swift (RE-MEASURED 2026-08-21). What a "?"
-//     key ADDS on top of that is collapsing ACROSS FORMS: a form-A site and a
-//     form-I site key identically, so one can be replaced by the other. The only
-//     "?" entry today (yaml:extractHelmHelpers:?) has count 1, so the
-//     across-forms half has no live consequence; the same-kind half is live at
-//     four keys right now, and it is where the next regression would hide.
+//     svelte entries went away with the #6366 fix and the hcl one with #6367;
+//     the only remaining count>=2 entry is swift (RE-MEASURED 2026-08-21).
+//     What a "?" key ADDS on top of that is collapsing ACROSS FORMS: a form-A
+//     site and a form-I site key identically, so one can be replaced by the
+//     other. The only "?" entry today (yaml:extractHelmHelpers:?) has count 1,
+//     so the across-forms half has no live consequence; the same-kind half is
+//     live at ONE key right now, and it is where the next regression would hide.
 //
 // This is a guard against the careless repetition of a known pattern, not a
 // proof. It is honest about being one.
@@ -401,17 +402,18 @@ var allowedFileAnchored = map[string]allowEntry{
 			"at proto.go:260 correctly leaves FromID empty. Helper is called from 3 " +
 			"sites. INFERRED from the site, NOT measured."},
 
-	// hcl — DANGLING for every non-root .tf: the HCL file component's Name is
-	// the BASENAME, not the path, so a path-valued FromID matches it only by
-	// accident when the file is a root `main.tf` whose path IS its basename.
-	"hcl:emitFileLevelRelationships:CONTAINS": {2,
-		"KNOWN OFFENDER (#6298): dangling. The HCL file component's Name is the " +
-			"BASENAME, so a path-valued FromID resolves only by accident for a root " +
-			"main.tf. INFERRED from the site, NOT measured."},
-	"hcl:parseDependsOnTuple:DEPENDS_ON": {1,
-		"KNOWN OFFENDER (#6298): dangling (basename-named file component) AND wrong " +
-			"owner — the owning record is the resource/module, so even a resolving " +
-			"FromID would move the edge off it. INFERRED from the site, NOT measured."},
+	// hcl USED TO BE LISTED HERE (emitFileLevelRelationships:CONTAINS {2} and
+	// parseDependsOnTuple:DEPENDS_ON {1}) and is gone: #6367 MEASURED both
+	// through ResolveImports -> ReferencesEmbedded on a nested and a root path.
+	// Nested "infra/envs/prod/main.tf": 5 of 5 CONTAINS and 2 of 2 DEPENDS_ON
+	// DANGLING. Root "main.tf": CONTAINS resolved onto the file component --
+	// the right node BY ACCIDENT, since the component's Name is the BASENAME --
+	// while DEPENDS_ON was MISANCHORED onto that same file component, off the
+	// resource and module records that actually carry it. All three sites now
+	// leave FromID empty so assembly stamps the owner; 0 of 7 after. See
+	// TestHCL_ContainsAndDependsOnAnchoredOnOwner in internal/extractors/hcl.
+	// Do NOT re-add an hcl entry here without a fresh measurement: the scan
+	// below fails on a STALE entry too.
 
 	// bicep — DANGLING unconditionally and misowned. Worse than the hcl pair:
 	// `.bicep` is absent from sourceFileExtensions (refs.go:2752-2767), so these

@@ -127,9 +127,15 @@ func emitFileLevelRelationships(root ts.Node, src []byte, path, lang string) *ty
 				}
 				ref := blockReferenceName("locals", nil, key)
 				rels = append(rels, types.RelationshipRecord{
-					FromID: path,
-					ToID:   extractor.BuildOperationStructuralRef(lang, path, ref),
-					Kind:   "CONTAINS",
+					// Issue #6367 — FromID stays EMPTY so graph assembly
+					// stamps the owning record's own id. The owner IS the
+					// file component returned below, whose Name is the
+					// BASENAME, so a path-valued FromID resolved to nothing
+					// for any nested .tf (MEASURED: 5 of 5 dangling) and
+					// landed on the right node only by accident for a root
+					// main.tf.
+					ToID: extractor.BuildOperationStructuralRef(lang, path, ref),
+					Kind: "CONTAINS",
 				})
 			}
 		default:
@@ -138,9 +144,10 @@ func emitFileLevelRelationships(root ts.Node, src []byte, path, lang string) *ty
 				continue
 			}
 			rels = append(rels, types.RelationshipRecord{
-				FromID: path,
-				ToID:   extractor.BuildOperationStructuralRef(lang, path, ref),
-				Kind:   "CONTAINS",
+				// Issue #6367 — see the locals branch above: empty FromID so
+				// assembly stamps this file component.
+				ToID: extractor.BuildOperationStructuralRef(lang, path, ref),
+				Kind: "CONTAINS",
 			})
 		}
 

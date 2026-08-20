@@ -134,8 +134,12 @@ provider "aws" { region = "us-east-1" }
 	// All CONTAINS edges must use BuildOperationStructuralRef("hcl", ...)
 	wantPrefix := extractor.BuildOperationStructuralRef("hcl", "main.tf", "")
 	for _, rel := range contains {
-		if rel.FromID != "main.tf" {
-			t.Errorf("CONTAINS FromID expected file path, got %q", rel.FromID)
+		// Issue #6367 — FromID must be EMPTY so graph assembly stamps the file
+		// component that owns these edges. It used to be the file PATH, which
+		// dangled for every nested .tf and matched the basename-named file
+		// component only by accident for a root main.tf.
+		if rel.FromID != "" {
+			t.Errorf("CONTAINS FromID expected empty (assembly stamps the owner), got %q", rel.FromID)
 		}
 		if len(rel.ToID) <= len(wantPrefix) || rel.ToID[:len(wantPrefix)] != wantPrefix {
 			t.Errorf("CONTAINS ToID does not match structural-ref prefix %q: got %q", wantPrefix, rel.ToID)
