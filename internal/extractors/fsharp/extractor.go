@@ -931,8 +931,13 @@ func scrubKeepingQuote(src string) string {
 // — how collectCalls, collectCEUsages and firstSignalLine stamp their `line`
 // Property — under-reported by one per swallowed newline. The stamp is what a
 // consumer jumps to, so every call site below such a region pointed too high.
-// It also restores the `(?m)^` anchors: a real declaration on the line after a
-// block comment previously had no line start in front of it.
+//
+// The `(?m)^` anchors are NOT affected, which is worth stating because it is
+// the plausible-sounding second effect this change does not have. The newline
+// that ends a `(* ... *)` or `""" ... """` sits AFTER the closing delimiter, so
+// it was never inside the blanked span and the line start in front of the next
+// declaration survived either way. Only the newlines INTERIOR to the region
+// were lost, and those are the line-count bug above, not an anchor bug.
 //
 // The byte LENGTH is unchanged either way — `out` is allocated at len(src) and
 // every write is an in-place assignment to an existing index — so all the byte
