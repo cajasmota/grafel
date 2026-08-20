@@ -138,7 +138,7 @@ Entities related to X. One tool for every adjacency query — pick the `directio
 - `direction=callers` — inbound callers, **ranked by call frequency**. If `entity_id` starts with `/` and matches no entity, it is treated as an in-app route literal (searches NAVIGATES_TO edges; response carries `resolved_as: "navigation_route"`).
 - `direction=callees` — outbound callees.
 - `direction=neighbors` — graph neighbors (both directions).
-- `direction=uses` / `direction=used_by` — NAVIGATES_TO and usage edges, with route/param filters and multi-hop flow (`mode=flow`).
+- `direction=uses` / `direction=used_by` — usage edges: `CALLS`, `USES`, `USES_HOOK`, `REFERENCES`, `RENDERS` and `NAVIGATES_TO` (outgoing for `uses`, incoming for `used_by`). Each returned edge carries its `kind`, and the response echoes the `kinds` traversed. Containment (`CONTAINS`), module dependency (`IMPORTS`/`DEPENDS_ON`) and type hierarchy (`EXTENDS`/`IMPLEMENTS`) are deliberately excluded — see #6314. Note `depth` does not apply here: this path reads `max_depth` (default 5) and only in `mode=flow`. `route`, `with_param` and `mode` reach the handler but are **not declared** in the `grafel_related` schema (#5784) — call `grafel_navigates` if you need them as a supported contract.
 
 Key params: `entity_id` (required), `direction`, `depth` (default 1), `token_budget` (default 800), `route`, `with_param`, `repo_filter[]`.
 
