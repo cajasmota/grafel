@@ -1639,7 +1639,8 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 		delete(idx.nameHolderImport, name)
 		delete(idx.aliasAnchor, nk)
 	}
-	if existing, ok := idx.byName[name]; ok && existing != id {
+	existing, held := idx.byName[name]
+	if held && existing != id {
 		// #6104 — a merge facet is an ALIAS of a co-located base entity,
 		// not a second definition. Without this, enabling the custom
 		// extractors would flip every framework-modelled class name
@@ -1684,13 +1685,37 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 		return
 	}
 	idx.byName[name] = id
-	if isImport {
+	switch {
+	case !isImport:
+		delete(idx.nameHolderImport, name)
+	case held && !idx.nameHolderImport[name]:
+		// #6369 — SAME ID, already claimed by a NON-placeholder record.
+		//
+		// EntityID is sha256(repo, kind, name, sourceFile) — it does NOT
+		// include Subtype. So a per-import SCOPE.Component placeholder shares
+		// its ID BY CONSTRUCTION with any other SCOPE.Component of the same
+		// name in the same file, including the unmarked ones the language
+		// extractors emit (measured on the Go corpus in
+		// cmd/grafel/incremental_dup_rows_6094_test.go: three records per file
+		// for `strings`, two with Subtype:"" and one with Subtype:"import",
+		// all on one ID). Those are re-indexes of ONE entity, not a collision,
+		// so they fall through to here.
+		//
+		// The holder flag describes the ENTITY sitting in byName, not the last
+		// record that mentioned it: an ID known under any real declaration is
+		// a real declaration. Letting the trailing placeholder record flip the
+		// flag back to true made the NEXT file's real record take the
+		// "declaration displaces placeholder" branch above instead of
+		// colliding — so a name carried by every file in the corpus never went
+		// ambiguous at all (ambiguous=0), the last file processed won the slot
+		// outright, and every other file's stdlib import bound to THAT file's
+		// placeholder instead of falling through to the external-library
+		// binder. Holder status is therefore AND-ed, never re-raised.
+	default:
 		if idx.nameHolderImport == nil {
 			idx.nameHolderImport = make(map[string]bool)
 		}
 		idx.nameHolderImport[name] = true
-	} else {
-		delete(idx.nameHolderImport, name)
 	}
 	if isFacet {
 		idx.setAliasAnchor(nk, facetAnchor)
