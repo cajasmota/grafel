@@ -378,7 +378,8 @@ func TestRatchetUpdateRefusesFixtureWithoutExpectations_6273(t *testing.T) {
 // the exact edit the set was built to catch — left its own test green and was
 // caught here, on all three assertions.
 func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
-	const wantFixtures = 20
+	// 21 since #6327 S6 added vbnet-mini.
+	const wantFixtures = 21
 
 	dirs := fixtureDirs(t)
 	if len(dirs) != wantFixtures {
