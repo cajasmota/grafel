@@ -146,6 +146,12 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 		fmt.Fprintf(w, "Daemon: error: %v\n", err)
 	}
 
+	// Serve/engine version skew (#6339). Printed once, right under the daemon
+	// block it describes, and ONLY when skew is actually detected — the check
+	// used to live in `grafel doctor` alone, so a serve process running a
+	// build months older than its engine child never showed up here at all.
+	PrintEngineVersionSkew(w)
+
 	// Per-repo watcher fleet. This section exists so a stop is VERIFIABLE.
 	// The `com.grafel.watcher.<group>.<slug>` units are owned by
 	// launchd/systemd/schtasks and index independently of the daemon, so

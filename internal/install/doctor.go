@@ -76,6 +76,25 @@ type CheckResult struct {
 	// Drift is the list of specific drift descriptions.
 	// Empty when OK is true.
 	Drift []string `json:"drift,omitempty"`
+
+	// Skew is the structured form of the serve/engine version-skew condition,
+	// set ONLY by checkEngineLiveness and only in the one branch that also
+	// writes the human-readable "version skew: ..." Drift string (#6339).
+	//
+	// It exists so `grafel status` can render its own conditional line from
+	// doctor's single detector instead of running a second, independently
+	// driftable skew check — two detectors that could disagree would be a new
+	// silent bug. json:"-" keeps the pinned schema_version=1 doctor JSON
+	// byte-identical; the drift string already carries this for JSON consumers.
+	Skew *VersionSkew `json:"-"`
+}
+
+// VersionSkew names both sides of a serve/engine version mismatch: Serve is
+// the version recorded in install.json for the running `serve` process, Engine
+// is the engine child's self-reported version from the liveness statusfile.
+type VersionSkew struct {
+	Serve  string
+	Engine string
 }
 
 // DoctorReport is the top-level struct written by --json.
@@ -1159,10 +1178,33 @@ func checkEngineLiveness(state *State, deps engineLivenessDeps) CheckResult {
 		cr.OK = false
 		cr.Severity = SeverityWarning
 		cr.Drift = []string{fmt.Sprintf("version skew: serve=%s engine=%s (restart the engine child to pick up the new build)", state.DaemonVersion, f.Version)}
+		cr.Skew = &VersionSkew{Serve: state.DaemonVersion, Engine: f.Version}
 		return cr
 	}
 
 	return cr
+}
+
+// EngineVersionSkew reports the serve/engine version skew for callers outside
+// `grafel doctor` — today `grafel status` (#6339), which surfaces it as a
+// conditional line so a serve process running a months-old build stops being
+// invisible outside doctor.
+//
+// It is a thin wrapper over checkEngineLiveness against the real install state
+// and the real daemon deps: the DETECTION lives in exactly one place. Returns
+// nil whenever there is no skew, including every "can't tell" case (no
+// install.json, unreadable state, monolith mode, unreadable statusfile,
+// either version unknown) — status must stay silent rather than guess.
+func EngineVersionSkew() *VersionSkew {
+	path, err := DefaultStatePath()
+	if err != nil {
+		return nil
+	}
+	state, err := ReadState(path)
+	if err != nil || state == nil {
+		return nil
+	}
+	return checkEngineLiveness(state, defaultEngineLivenessDeps()).Skew
 }
 
 // preSplitUnitTokens are the literal legacy-argument markers left behind in
