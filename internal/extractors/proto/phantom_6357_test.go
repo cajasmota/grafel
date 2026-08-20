@@ -47,8 +47,18 @@ func selfRefIDs(entities []types.EntityRecord) map[string]bool {
 				continue
 			}
 			ids["scope:schema:column:proto:"+e.SourceFile+":"+parent+"#"+member] = true
-		case "service", "message", "enum", "endpoint":
+		case "service", "endpoint":
 			ids["scope:operation:method:proto:"+e.SourceFile+":"+e.Name] = true
+		case "message", "enum":
+			// TWO address spaces, deliberately kept apart (#6419 review): the
+			// file→message CONTAINS edge addresses a message through the
+			// operation ref, while a TYPE reference to it (rpc request/response,
+			// message field type) addresses it through messageTypeRef. Folding
+			// them into one namespace is what made this invariant structurally
+			// blind to an rpc and a message of the same name resolving to the
+			// same id.
+			ids["scope:operation:method:proto:"+e.SourceFile+":"+e.Name] = true
+			ids["scope:schema:message:proto:"+e.SourceFile+":"+e.Name] = true
 		}
 	}
 	return ids
@@ -214,7 +224,7 @@ func TestProto_SameFileReferencesSurvive(t *testing.T) {
 		t.Fatal("no REFERENCES edges emitted for a same-file named field type — " +
 			"the #6357 cross-file filter is over-broad")
 	}
-	wantTo := "scope:operation:method:proto:u.proto:Order"
+	wantTo := "scope:schema:message:proto:u.proto:Order"
 	for _, r := range refs {
 		if r.ToID != wantTo {
 			t.Errorf("REFERENCES ToID=%q, want %q", r.ToID, wantTo)

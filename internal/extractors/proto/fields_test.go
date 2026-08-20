@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/proto"
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -68,7 +67,7 @@ message User {
 	if userMsg == nil {
 		t.Fatal("User message entity not found")
 	}
-	wantRef := extractor.BuildOperationStructuralRef("proto", "u.proto", "Order")
+	wantRef := msgTypeRef("u.proto", "Order")
 	found := false
 	for _, r := range userMsg.Relationships {
 		if r.Kind == "REFERENCES" && r.ToID == wantRef {
@@ -112,7 +111,7 @@ message Cart {
 }
 `
 	entities := extract(t, "c.proto", src)
-	wantRef := extractor.BuildOperationStructuralRef("proto", "c.proto", "Order")
+	wantRef := msgTypeRef("c.proto", "Order")
 	found := false
 	for _, e := range entities {
 		if e.Subtype != "message" || e.Name != "Cart" {

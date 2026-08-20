@@ -44,9 +44,12 @@
 //     an entity this package also emits, so no edge resolves to a phantom.
 //   - REFERENCES edges: message → the message/enum type of each non-scalar
 //     field, and rpc → its request and response message types (#6359,
-//     Properties["direction"]="request"/"response"). Both are restricted to
-//     types defined in the SAME file — see dropUnresolvableTypeRefs for why a
-//     cross-file type carries no edge yet.
+//     Properties["direction"]="request"/"response"/"request,response"). Both
+//     address the target through messageTypeRef — the schema address space,
+//     kept separate from the operation one so an rpc and a message of the same
+//     name in one file do not collide. Both are restricted to types defined in
+//     the SAME file — see dropUnresolvableTypeRefs for why a cross-file type
+//     carries no edge yet.
 //
 // Uses the protobuf grammar from smacker/go-tree-sitter.
 // Registers itself via init() and is imported by registry_gen.go.
@@ -136,7 +139,7 @@ func dropUnresolvableTypeRefs(file extractor.FileInput, entities []types.EntityR
 			continue
 		}
 		if entities[i].Subtype == "message" || entities[i].Subtype == "enum" {
-			local[extractor.BuildOperationStructuralRef("proto", file.Path, entities[i].Name)] = true
+			local[messageTypeRef(file.Path, entities[i].Name)] = true
 		}
 	}
 	for i := range entities {
@@ -184,6 +187,31 @@ func childByType(node ts.Node, types_ ...string) ts.Node {
 // BuildSchemaColumnStructuralRef but tagged with the "proto" language.
 func fieldMemberRef(filePath, parent, member string) string {
 	return "scope:schema:column:proto:" + filePath + ":" + parent + "#" + member
+}
+
+// messageTypeRef returns the structural-ref used to ADDRESS a message/enum as
+// the TARGET of a type reference (an rpc's request/response type, a message
+// field's declared type). Shape:
+//
+//	scope:schema:message:proto:<file>:<Name>
+//
+// It is deliberately NOT BuildOperationStructuralRef. rpc entities are
+// SCOPE.Operation and message/enum entities are SCOPE.Schema, but the
+// operation ref addresses purely by (file, name): for
+// `service S { rpc User(User) returns (User); }` the rpc and the message
+// collide on ONE address, internal/resolve/refs.go resolves the ref through
+// operationKindFamily straight back to the rpc, assembly stamps FromID with
+// that same id, and the edge is discarded as a self-loop
+// (internal/graph/orientation.go:206) — the rpc → message link silently lost.
+//
+// The schema scope-kind gives type targets their own address space:
+// structuralKindFamilies("schema") returns schemaKindFamily
+// (internal/resolve/refs.go:1807), which contains SCOPE.Schema and NOT
+// SCOPE.Operation, so lookupLocationKind binds the message even when a
+// same-named rpc shares the file. Pinned by
+// TestRPC_RPCAndMessageOfTheSameNameDoNotSelfLoop.
+func messageTypeRef(filePath, name string) string {
+	return "scope:schema:message:proto:" + filePath + ":" + name
 }
 
 // fileContainsRel builds a CONTAINS edge from file.Path → top-level entity.
@@ -341,12 +369,17 @@ func buildRPC(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool)
 	//
 	// New shape: REFERENCES, anchored on the rpc entity itself (empty FromID,
 	// the same convention buildService uses for its service→rpc CONTAINS
-	// edges), targeting BuildOperationStructuralRef — the SAME address a
-	// message→field-type REFERENCES edge uses. That means rpc type refs flow
-	// through dropUnresolvableTypeRefs like every other type ref in this
-	// package: a type defined in this file keeps its edge, one that is not is
-	// dropped rather than dangled, pending the cross-file proto package index.
-	// One convention, applied once.
+	// edges), targeting messageTypeRef — the SAME address a message→field-type
+	// REFERENCES edge uses. That means rpc type refs flow through
+	// dropUnresolvableTypeRefs like every other type ref in this package: a
+	// type defined in this file keeps its edge, one that is not is dropped
+	// rather than dangled, pending the cross-file proto package index. One
+	// convention, applied once.
+	//
+	// The target ref is messageTypeRef and NOT BuildOperationStructuralRef
+	// because the rpc itself occupies the operation address space of this
+	// file: `rpc User(User) returns (User)` would otherwise address the rpc's
+	// own id and lose the edge to the self-loop filter. See messageTypeRef.
 	var rpcRels []types.RelationshipRecord
 	dir := make(map[string]string, 2)
 	var order []string
@@ -356,7 +389,7 @@ func buildRPC(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool)
 			which = "response"
 		}
 		for _, ref := range namedTypeRefs(raw) {
-			to := extractor.BuildOperationStructuralRef("proto", file.Path, ref)
+			to := messageTypeRef(file.Path, ref)
 			if prev, ok := dir[to]; ok {
 				// Same type on both arms (`rpc Ping(Empty) returns (Empty)`):
 				// one edge, both roles recorded, instead of a duplicate pair.
@@ -445,9 +478,6 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 			} else {
 				ftype, label = fieldTypeAndLabel(ch, file.Content)
 			}
-			// Emit the per-member SCOPE.Schema/field entity FIRST, so the
-			// CONTAINS edge below never exists without the entity it targets
-			// (the #6357 phantom invariant).
 			fieldEnts = append(fieldEnts, buildField(file, name, fname, ftype, label, ch))
 			rels = append(rels, types.RelationshipRecord{
 				ToID: fieldMemberRef(file.Path, name, fname),
@@ -462,7 +492,7 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 				}
 				refSeen[ref] = true
 				rels = append(rels, types.RelationshipRecord{
-					ToID:       extractor.BuildOperationStructuralRef("proto", file.Path, ref),
+					ToID:       messageTypeRef(file.Path, ref),
 					Kind:       "REFERENCES",
 					Properties: types.Props{{K: "type", V: ref}, {K: "via_field", V: fname}},
 				})

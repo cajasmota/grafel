@@ -25,8 +25,8 @@ import (
 // to "?".
 //
 // The fix routes rpc type refs through exactly the machinery message field
-// types already use: REFERENCES + BuildOperationStructuralRef +
-// dropUnresolvableTypeRefs. One convention, not two.
+// types already use: REFERENCES + messageTypeRef + dropUnresolvableTypeRefs.
+// One convention, not two.
 // ---------------------------------------------------------------------------
 
 const rpcSrc = `syntax = "proto3";
@@ -61,8 +61,8 @@ func TestRPC_TypeEdgesAreResolvableReferences(t *testing.T) {
 	entities := extract(t, "svc.proto", rpcSrc)
 	get := rpcEntity(t, entities, "GetUser")
 
-	wantReq := extractor.BuildOperationStructuralRef("proto", "svc.proto", "GetUserRequest")
-	wantResp := extractor.BuildOperationStructuralRef("proto", "svc.proto", "User")
+	wantReq := msgTypeRef("svc.proto", "GetUserRequest")
+	wantResp := msgTypeRef("svc.proto", "User")
 
 	got := make(map[string]string)
 	for _, r := range get.Relationships {
@@ -136,7 +136,7 @@ func TestRPC_UnresolvableTypesEmitNoEdge(t *testing.T) {
 	entities := extract(t, "svc.proto", rpcSrc)
 	ext := rpcEntity(t, entities, "External")
 
-	wantResp := extractor.BuildOperationStructuralRef("proto", "svc.proto", "User")
+	wantResp := msgTypeRef("svc.proto", "User")
 	if len(ext.Relationships) != 1 {
 		t.Fatalf("rpc External emitted %d edges (%+v), want exactly 1 — the cross-file "+
 			"request type must be dropped, not dangled", len(ext.Relationships), ext.Relationships)
@@ -157,7 +157,7 @@ func TestRPC_SameTypeBothArmsIsOneEdge(t *testing.T) {
 	entities := extract(t, "svc.proto", rpcSrc)
 	ping := rpcEntity(t, entities, "Ping")
 
-	want := extractor.BuildOperationStructuralRef("proto", "svc.proto", "Empty")
+	want := msgTypeRef("svc.proto", "Empty")
 	if len(ping.Relationships) != 1 {
 		t.Fatalf("rpc Ping emitted %d edges (%+v), want 1 de-duplicated edge",
 			len(ping.Relationships), ping.Relationships)
@@ -175,8 +175,25 @@ func TestRPC_SameTypeBothArmsIsOneEdge(t *testing.T) {
 // TestRPC_NeverEmitsQuestionMarkTarget pins the missing guard. reqType and
 // respType initialise to the literal "?" and were emitted with no check, so an
 // rpc whose types the grammar did not yield shipped an edge to the string "?".
-// The fixture uses a streaming rpc plus an empty-arg rpc; whatever the grammar
-// makes of them, no "?" may reach an edge.
+//
+// Both arms assert something that can fail (#6419 review — the Weird arm used
+// to assert only "no ? escaped" over an entity with ZERO relationships, which
+// is true of any empty set):
+//
+//   - Stream: the edge set is NON-EMPTY, so the no-"?" scan runs over real
+//     edges, and the one edge points at message M.
+//   - Weird: the entity IS emitted (the rpc is not silently skipped) and its
+//     edge set is empty for a reason that was verified, not assumed. The
+//     grammar yields EMPTY request/response type text here (the Signature is
+//     "rpc Weird() returns ()", so reqType/respType never reach their "?"
+//     initialiser), and two independent guards then keep it out of the graph:
+//     namedTypeRefs returns nothing for empty/scalar type text, and
+//     dropUnresolvableTypeRefs removes any REFERENCES no local message backs.
+//     Measured: removing EITHER guard alone still leaves 0 edges; removing
+//     BOTH mints `REFERENCES → scope:schema:message:proto:q.proto:` and this
+//     arm fails. So the assertion can fail — it is not an empty-set tautology
+//     — but it is double-guarded, which is why the Stream arm above carries
+//     the load-bearing positive assertion.
 func TestRPC_NeverEmitsQuestionMarkTarget(t *testing.T) {
 	src := `syntax = "proto3";
 message M { string id = 1; }
@@ -186,12 +203,91 @@ service S {
 }
 `
 	entities := extract(t, "q.proto", src)
+
+	stream := rpcEntity(t, entities, "Stream")
+	if len(stream.Relationships) == 0 {
+		t.Fatal("rpc Stream emitted no edges — the no-\"?\" scan below would be vacuous")
+	}
+	for _, r := range stream.Relationships {
+		if r.Kind != "REFERENCES" || r.ToID != msgTypeRef("q.proto", "M") {
+			t.Errorf("rpc Stream edge = %+v, want REFERENCES → %q", r, msgTypeRef("q.proto", "M"))
+		}
+	}
+
+	weird := rpcEntity(t, entities, "Weird")
+	if len(weird.Relationships) != 0 {
+		t.Errorf("rpc Weird emitted %d edges (%+v), want 0 — its request/response types "+
+			"parse to empty text, so there is nothing resolvable to point at",
+			len(weird.Relationships), weird.Relationships)
+	}
+
+	checked := 0
 	for _, e := range entities {
 		for _, r := range e.Relationships {
+			checked++
 			if strings.Contains(r.ToID, "?") || strings.Contains(r.FromID, "?") {
 				t.Errorf("edge with an unparsed \"?\" placeholder escaped into the graph: "+
 					"%+v (from entity %q)", r, e.Name)
 			}
 		}
+	}
+	if checked == 0 {
+		t.Fatal("no edges scanned — the \"?\" assertion never ran")
+	}
+}
+
+// msgTypeRef spells out, literally, the structural ref this extractor uses to
+// ADDRESS a message/enum as the target of a type reference. Kept as a literal
+// (not a call to the production builder) so a change to the wire format has to
+// be made here too, deliberately.
+func msgTypeRef(filePath, name string) string {
+	return "scope:schema:message:proto:" + filePath + ":" + name
+}
+
+// TestRPC_RPCAndMessageOfTheSameNameDoNotSelfLoop pins the collision the
+// #6359 fix introduced.
+//
+// rpc entities are SCOPE.Operation and message entities are SCOPE.Schema, but
+// both were addressed by BuildOperationStructuralRef("proto", file, name) —
+// ONE address space per file. For `rpc User(User) returns (User)` the emitted
+// REFERENCES ToID was therefore the rpc's OWN address: assembly stamps FromID
+// with the rpc's id, FromID == ToID, and the edge is discarded as a self-loop
+// (internal/graph/orientation.go:206, algorithms.go:287, pr_impact.go:273).
+// The intended rpc → message link vanished silently.
+//
+// The message type ref now lives in the schema address space, which
+// internal/resolve/refs.go resolves through schemaKindFamily (refs.go:1807,
+// structuralKindFamilies) — so it binds to the SCOPE.Schema message and NOT to
+// the same-named SCOPE.Operation rpc. Both halves are asserted: no self-loop
+// AND the link still exists.
+func TestRPC_RPCAndMessageOfTheSameNameDoNotSelfLoop(t *testing.T) {
+	src := `syntax = "proto3";
+message User { string id = 1; }
+service S {
+  rpc User(User) returns (User);
+}
+`
+	entities := extract(t, "f.proto", src)
+	rpc := rpcEntity(t, entities, "User")
+
+	own := extractor.BuildOperationStructuralRef("proto", "f.proto", "User")
+	for _, r := range rpc.Relationships {
+		if r.ToID == own {
+			t.Errorf("rpc User emitted an edge to its OWN address %q — assembly stamps "+
+				"FromID == ToID and the edge is dropped as a self-loop, losing the "+
+				"rpc → message link: %+v", own, r)
+		}
+	}
+
+	if len(rpc.Relationships) != 1 {
+		t.Fatalf("rpc User emitted %d edges (%+v), want exactly 1 rpc → message REFERENCES",
+			len(rpc.Relationships), rpc.Relationships)
+	}
+	r := rpc.Relationships[0]
+	if r.Kind != "REFERENCES" || r.ToID != msgTypeRef("f.proto", "User") {
+		t.Errorf("rpc User edge = %+v, want REFERENCES → %q", r, msgTypeRef("f.proto", "User"))
+	}
+	if d := r.Properties.Get("direction"); d != "request,response" {
+		t.Errorf("rpc User edge direction = %q, want \"request,response\"", d)
 	}
 }

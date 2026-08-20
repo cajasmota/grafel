@@ -3,7 +3,6 @@ package proto_test
 import (
 	"testing"
 
-	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -139,8 +138,8 @@ func TestProto_Oneof_MembersAreContainedAndReferenced(t *testing.T) {
 		}
 	}
 
-	orderRef := extractor.BuildOperationStructuralRef("proto", "ev.proto", "Order")
-	statusRef := extractor.BuildOperationStructuralRef("proto", "ev.proto", "Status")
+	orderRef := msgTypeRef("ev.proto", "Order")
+	statusRef := msgTypeRef("ev.proto", "Status")
 	if via, ok := refs[orderRef]; !ok {
 		t.Errorf("missing REFERENCES edge Event → Order (%q) from a oneof member", orderRef)
 	} else if via != "order" {
