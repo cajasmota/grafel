@@ -394,11 +394,12 @@ func tierEvictCallback(key tier.SlotKey) {
 // graph was last indexed, enqueue a reactive reindex so the query is served
 // from the most up-to-date graph on the next request.
 //
-// #2645: also ensure the fsnotify subscription is live after a cold wake.
-// In the normal path the subscription is kept through WARM→COLD (the Pause
-// is now deferred to COLD→EXPIRED), but an EXPIRED slot that got re-indexed
-// will have had its subscription removed. Resume is idempotent, so this call
-// is safe even when the subscription is already active.
+// Also ensure the fsnotify subscription is live after a cold wake. Since
+// #6267 the subscription is released on WARM→COLD (that release is what
+// returns descriptors to the watch budget), and tier.Touch resumes it before
+// invoking this callback; an EXPIRED slot that got re-indexed has likewise had
+// its subscription removed. Resume is idempotent, so this call is safe — and
+// still required — whichever path got us here.
 func tierReloadCallback(key tier.SlotKey) error {
 	stateDir := daemon.StateDirForRepoRef(key.RepoPath, key.Ref)
 	// #5915 J1 FIX-3: prime the cache via the segment-aware ref entry point.
