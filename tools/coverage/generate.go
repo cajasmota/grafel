@@ -1322,8 +1322,6 @@ func splitCategoryRowsBySubcategory(category string, rows []categoryRow) ([]cate
 	return subs, flat
 }
 
-// renderToFile executes the named template into a buffer and writes it
-// atomically via temp+rename so partial writes never appear on disk.
 // pruneGenerated removes every "<slug>.md" directly under dir that carries
 // doNotEditMarker and whose slug is not in keep. It is the delete half of
 // gen's write-then-prune contract (#6354): without it a page for a slug
@@ -1334,6 +1332,23 @@ func splitCategoryRowsBySubcategory(category string, rows []categoryRow) ([]cate
 // candidates, so a hand-authored file added to the directory later is left
 // alone rather than deleted on the next unrelated `gen`. A missing dir is
 // not an error: nothing was emitted, so there is nothing to prune.
+//
+// Two further rules exist only to *narrow* what is deleted; neither can
+// ever widen it.
+//
+//   - Only regular files are candidates. os.ReadDir reports IsDir()==false
+//     for a symlink and os.Open follows it, so without this a "*.md"
+//     symlink pointing at a generated page passed the marker check and was
+//     removed, and a dangling or directory symlink aborted gen after
+//     by-language/ was written but before by-category/ and the detail
+//     pages — leaving docs/coverage/ half-regenerated.
+//   - A keep key that only differs in case still protects the file. On a
+//     case-insensitive filesystem (macOS, this repo's dev platform) an
+//     existing Python.md keeps its name through renderToFile's
+//     temp+rename, so prune would compute slug "Python", miss
+//     keep["python"], see the marker, and delete the page gen wrote
+//     seconds earlier — silently, with gen exiting 0. Ubuntu CI is
+//     case-sensitive and could never catch it.
 func pruneGenerated(dir string, keep map[string]struct{}) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -1343,7 +1358,8 @@ func pruneGenerated(dir string, keep map[string]struct{}) error {
 		return err
 	}
 	for _, e := range entries {
-		if e.IsDir() {
+		// Directories, symlinks, devices, sockets: not ours to delete.
+		if !e.Type().IsRegular() {
 			continue
 		}
 		name := e.Name()
@@ -1351,12 +1367,17 @@ func pruneGenerated(dir string, keep map[string]struct{}) error {
 			continue
 		}
 		slug := strings.TrimSuffix(name, ".md")
-		if _, ok := keep[slug]; ok {
+		if keptFold(keep, slug) {
 			continue
 		}
 		path := filepath.Join(dir, name)
 		generated, err := hasDoNotEditMarker(path)
 		if err != nil {
+			// The entry vanished between ReadDir and Open — a concurrent
+			// gen or an editor already removed it. Nothing left to prune.
+			if os.IsNotExist(err) {
+				continue
+			}
 			return err
 		}
 		if !generated {
@@ -1367,6 +1388,23 @@ func pruneGenerated(dir string, keep map[string]struct{}) error {
 		}
 	}
 	return nil
+}
+
+// keptFold reports whether keep protects slug. The exact key is checked
+// first; the case-insensitive sweep is the fallback for a page whose
+// on-disk name differs from the emitted slug only in case (see
+// pruneGenerated). Skip-only by construction — it can add protection,
+// never remove it.
+func keptFold(keep map[string]struct{}, slug string) bool {
+	if _, ok := keep[slug]; ok {
+		return true
+	}
+	for k := range keep {
+		if strings.EqualFold(k, slug) {
+			return true
+		}
+	}
+	return false
 }
 
 // hasDoNotEditMarker reports whether path begins with the generated-file
@@ -1387,6 +1425,8 @@ func hasDoNotEditMarker(path string) (bool, error) {
 	return string(buf[:n]) == doNotEditMarker, nil
 }
 
+// renderToFile executes the named template into a buffer and writes it
+// atomically via temp+rename so partial writes never appear on disk.
 func renderToFile(tmpls *template.Template, name, path string, data any) error {
 	var buf bytes.Buffer
 	if err := tmpls.ExecuteTemplate(&buf, name, data); err != nil {

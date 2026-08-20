@@ -513,3 +513,127 @@ func TestGenPrunesPlaceholderPageWhenExtractorDirDisappears(t *testing.T) {
 		t.Errorf("zig.md survived removal of internal/extractors/zig (err=%v)", err)
 	}
 }
+
+// writeMarked writes a page carrying doNotEditMarker as its first bytes.
+func writeMarked(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(doNotEditMarker+"\n"+body), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// TestPruneGeneratedKeepsCaseCollidedPage pins the #6354 review finding 1:
+// a confirmed data-loss bug on a case-insensitive filesystem (macOS, the
+// dev platform for this repo; Ubuntu CI is case-sensitive and can never
+// catch it).
+//
+// If by-language/python.md already exists on disk as Python.md, the
+// temp+rename in renderToFile lands in the *existing* directory entry and
+// the name stays Python.md. Prune then computes slug "Python", misses
+// keep["python"], sees the marker, and deletes the page gen wrote seconds
+// earlier — silently, with gen exiting 0.
+//
+// The rule is skip-only: a keep key that EqualFolds the slug protects the
+// file. It can never make prune delete more than it does today.
+func TestPruneGeneratedKeepsCaseCollidedPage(t *testing.T) {
+	dir := t.TempDir()
+	collided := filepath.Join(dir, "Python.md")
+	writeMarked(t, collided, "\n# Python\n")
+
+	if err := pruneGenerated(dir, map[string]struct{}{"python": {}}); err != nil {
+		t.Fatalf("pruneGenerated: %v", err)
+	}
+	if _, err := os.Stat(collided); err != nil {
+		t.Errorf("Python.md was deleted although keep holds \"python\": %v", err)
+	}
+}
+
+// TestPruneGeneratedIgnoresMarkerQuotedInBody pins the safety claim the
+// #6354 PR actually makes: the marker is matched as the *leading bytes* of
+// the file, not anywhere in it. Without this fixture a
+// strings.Contains-over-the-whole-file implementation survives, because no
+// other fixture carries the marker anywhere except byte 0.
+func TestPruneGeneratedIgnoresMarkerQuotedInBody(t *testing.T) {
+	dir := t.TempDir()
+	quoting := filepath.Join(dir, "quoting.md")
+	body := "# Editing generated pages\n\nEvery generated page starts with `" +
+		doNotEditMarker + "` — do not add it by hand.\n"
+	if err := os.WriteFile(quoting, []byte(body), 0o644); err != nil {
+		t.Fatalf("write quoting.md: %v", err)
+	}
+
+	if err := pruneGenerated(dir, map[string]struct{}{}); err != nil {
+		t.Fatalf("pruneGenerated: %v", err)
+	}
+	if _, err := os.Stat(quoting); err != nil {
+		t.Errorf("hand-written page quoting the marker on line 3 was pruned: %v", err)
+	}
+}
+
+// TestPruneGeneratedKeepsEmptyAndTruncatedPages pins the io.EOF /
+// io.ErrUnexpectedEOF branch of hasDoNotEditMarker. An implementation that
+// accepts any *prefix* of the marker deletes every zero-byte and truncated
+// .md in the directory; nothing tested that before.
+func TestPruneGeneratedKeepsEmptyAndTruncatedPages(t *testing.T) {
+	dir := t.TempDir()
+	empty := filepath.Join(dir, "empty.md")
+	if err := os.WriteFile(empty, nil, 0o644); err != nil {
+		t.Fatalf("write empty.md: %v", err)
+	}
+	truncated := filepath.Join(dir, "truncated.md")
+	if err := os.WriteFile(truncated, []byte(doNotEditMarker[:20]), 0o644); err != nil {
+		t.Fatalf("write truncated.md: %v", err)
+	}
+
+	if err := pruneGenerated(dir, map[string]struct{}{}); err != nil {
+		t.Fatalf("pruneGenerated: %v", err)
+	}
+	if _, err := os.Stat(empty); err != nil {
+		t.Errorf("zero-byte empty.md was pruned: %v", err)
+	}
+	if _, err := os.Stat(truncated); err != nil {
+		t.Errorf("truncated.md (a prefix of the marker) was pruned: %v", err)
+	}
+}
+
+// TestPruneGeneratedLeavesSymlinks pins review findings 4 and 5. os.ReadDir
+// reports IsDir()==false for a symlink and os.Open follows it, so a *.md
+// symlink pointing at a generated page used to pass the marker check and be
+// removed, and a dangling or directory symlink used to abort gen mid-run —
+// after by-language/ was written and before by-category/ and the detail
+// pages, leaving docs/coverage/ half-regenerated. Only regular files are
+// prune candidates.
+func TestPruneGeneratedLeavesSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "python.md")
+	writeMarked(t, target, "\n# Python\n")
+
+	link := filepath.Join(dir, "symlink.md")
+	if err := os.Symlink("python.md", link); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+	broken := filepath.Join(dir, "broken.md")
+	if err := os.Symlink("nope-does-not-exist.md", broken); err != nil {
+		t.Fatalf("symlink broken: %v", err)
+	}
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	dirlink := filepath.Join(dir, "dirlink.md")
+	if err := os.Symlink("sub", dirlink); err != nil {
+		t.Fatalf("symlink dirlink: %v", err)
+	}
+
+	if err := pruneGenerated(dir, map[string]struct{}{"python": {}}); err != nil {
+		t.Fatalf("pruneGenerated must not abort on symlinked entries: %v", err)
+	}
+	for _, p := range []string{link, broken, dirlink} {
+		if _, err := os.Lstat(p); err != nil {
+			t.Errorf("symlink %s was pruned: %v", filepath.Base(p), err)
+		}
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("symlink target python.md must be untouched: %v", err)
+	}
+}
