@@ -12,7 +12,8 @@
 // # Transitions
 //
 //	HOT  → WARM  : 5 min idle  (status change only, no memory action)
-//	WARM → COLD  : 1 h  idle   (release in-memory reference; GC eligible)
+//	WARM → COLD  : 1 h  idle   (release in-memory reference AND the fsnotify
+//	                            subscription — #6267; GC eligible)
 //	COLD → HOT   : demand wake (reload from disk; ≤ 300–500 ms typical)
 //	COLD → EXPIRED : idle past ExpiredWindow (PH6: also triggers disk delete)
 //
@@ -669,16 +670,36 @@ func (m *Manager) scan() {
 	// This runs outside the lock so it can call m.onEvict safely.
 	pressureEvicted := m.scanPressureEvict()
 
-	// PH2a: release in-memory graphs for newly-COLD slots but keep the
-	// fsnotify subscription alive so file edits during the COLD window still
-	// trigger reindex. (#2645: removing the subscription here caused TS/TSX
-	// changes to go undetected when a repo had been idle for >60 min.)
-	wh := m.watcher // read under mu already released; field is write-once after init
+	// PH2a: release in-memory graphs for newly-COLD slots, AND release the
+	// fsnotify subscription with them (#6267).
+	//
+	// #2645 removed the Pause call from this loop so that edits during the COLD
+	// window still produced events. The measured cost of keeping it removed is
+	// worse than the problem it solved: descriptors are then never returned at
+	// scale, because a repo's only slot is usually its pinned default branch,
+	// which can go COLD but never EXPIRED — and COLD→EXPIRED was the only other
+	// caller of Pause. A repo refused for want of descriptor budget therefore
+	// retried once per idle cycle and failed EVERY time, for the life of the
+	// daemon: indexed, answering queries, receiving zero fs events. A COLD repo
+	// releases ~10k descriptors; nothing else releases anything.
+	//
+	// #2645's symptom does not return in full: the cold wake resumes the
+	// subscription and asks for a catch-up rescan of everything that changed
+	// while it was gone (#6269, watch.DefaultManager.Resume). That rescan is
+	// asynchronous by design, so the edit is detected ONE QUERY LATE rather
+	// than not at all — see the note on Touch. That staleness is the accepted
+	// trade (#6267).
+	// Read under m.mu, as SetWatcherHook writes it under m.mu — the field is
+	// wired before serving in production, but nothing in the type enforces
+	// that, and the pressure path reads it the same way.
+	m.mu.Lock()
+	wh := m.watcher
+	m.mu.Unlock()
 	for _, k := range toEvict {
 		m.onEvict(k)
-		// wh.Pause intentionally NOT called here — subscription removal is
-		// deferred to the COLD→EXPIRED path below so that watcher events keep
-		// firing while the graph is cold-but-still-on-disk.
+		if wh != nil {
+			wh.Pause(k.RepoPath, k.Ref)
+		}
 	}
 	if len(toEvict) > 0 || pressureEvicted > 0 {
 		runtime.GC() // nudge GC so released graph objects are reclaimed promptly
@@ -698,8 +719,10 @@ func (m *Manager) scan() {
 	}
 
 	// PH6: perform disk eviction for newly expired slots.
-	// Only EXPIRED slots lose their fsnotify subscription — at that point the
-	// graph.fb has been deleted and there is nothing to reindex into.
+	// The Pause here is belt-and-braces since #6267 made WARM→COLD release the
+	// subscription: a slot registered COLD at boot (RegisterCold) can expire
+	// without this process ever having observed its WARM→COLD, and Pause is
+	// idempotent per (repo, ref) in watch.DefaultManager.
 	for _, k := range toExpire {
 		if wh != nil {
 			wh.Pause(k.RepoPath, k.Ref)
@@ -779,12 +802,19 @@ func (m *Manager) scanPressureEvict() int {
 	}
 	m.mu.Unlock()
 
-	// Evict in-memory graphs only; do NOT remove fsnotify subscriptions on
-	// pressure-driven WARM→COLD (same reasoning as the TTL scan: #2645).
-	// Subscriptions are only removed when a slot reaches EXPIRED and its
-	// graph.fb is deleted from disk.
+	// Evict the in-memory graphs and release their subscriptions, exactly as
+	// the TTL scan does — a COLD slot holds no graph and no watch, whichever
+	// transition made it COLD (#6267). Keeping the two paths in step matters:
+	// if pressure-COLD kept its subscription, the descriptors it holds would be
+	// unreleasable until the slot expired, which is the shape of the bug.
+	m.mu.Lock()
+	wh := m.watcher
+	m.mu.Unlock()
 	for _, k := range toEvict {
 		m.onEvict(k)
+		if wh != nil {
+			wh.Pause(k.RepoPath, k.Ref)
+		}
 	}
 	return len(toEvict)
 }

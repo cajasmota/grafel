@@ -141,6 +141,15 @@ func (m *DefaultManager) Register(repoPath, ref string) {
 // cmd/grafel/daemon_tier.go, the sole production entry point to this method,
 // has no callers; the live subscribe path is Resume. Re-wire it and #6269
 // comes back here.
+//
+// SECOND reason not to re-wire it as-is (#6267): it increments
+// refCounts[repoPath] while recording only the sentinel slotKey(rp, "") — not
+// the ref key the tier will later Pause with. Pause's unknown-slot guard would
+// therefore decline to decrement for that ref, refCounts would never reach 0,
+// RemoveRepo would never fire, and the repo's descriptors could never be
+// returned to the watch budget. That is the #6267 leak, reached by this path
+// instead. Whoever wires this must make the increment and the eventual Pause
+// agree on the key.
 func (m *DefaultManager) SubscribeGroup(groupName string, repoPaths []string) int {
 	if len(repoPaths) == 0 {
 		return 0
@@ -226,8 +235,38 @@ func (m *DefaultManager) Pause(repoPath, ref string) {
 	k := slotKey(repoPath, ref)
 	st, known := m.slots[k]
 	if !known {
-		st = &slotState{}
-		m.slots[k] = st
+		// A slot this manager has never seen contributed nothing to
+		// refCounts[repoPath]. There are exactly two increment sites: Resume,
+		// which records THIS key before incrementing, and SubscribeGroup,
+		// which increments but records only its sentinel slotKey(repo, "") —
+		// a different key from the ref tier later Pauses with. So a slot that
+		// is absent from m.slots was never counted by Resume, and cannot have
+		// been counted by SubscribeGroup either, because that path is not
+		// wired to production (see the note on SubscribeGroup). Register is
+		// not an increment site at all; it only writes slots[k].
+		//
+		// Decrementing for such a slot would take
+		// a descriptor back from a SIBLING ref that still holds a live
+		// subscription, and the sibling's own slotState.paused would stay
+		// false, so every later Resume for it would take the "already active"
+		// early return and never retry AddRepo: permanently unwatched AND
+		// permanently reported as watched — the exact leak the undo in Resume
+		// exists to prevent.
+		//
+		// This is reachable because the tier keyspace and this one are not
+		// required to agree: tier.Touch auto-registers an unknown key as HOT
+		// without calling Resume, so a (repo, ref) that was queried but never
+		// indexed in this process has a tier slot and no watch slot. Since
+		// #6267 made WARM→COLD pause, such a slot reaches this function on
+		// every idle cycle rather than only at COLD→EXPIRED.
+		//
+		// Record it as paused so the state is not invented twice, and leave
+		// the refcount alone.
+		m.slots[k] = &slotState{paused: true}
+		m.mu.Unlock()
+		m.logger.Info("watcher-mgr: pause for an unregistered slot — refcount untouched",
+			"repo", repoPath, "ref", ref)
+		return
 	}
 	if st.paused {
 		m.mu.Unlock()
