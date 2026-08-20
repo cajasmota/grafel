@@ -387,13 +387,27 @@ func findContracts(src, filePath string, signals frameworkSignals) ([]types.Enti
 		bodyStart := m[1] // position just past the opening '{' marker position
 		// The regex anchor ends at '{', so m[1] points one past the '{'.
 		body, endLine := extractBracedBody(src, bodyStart-1)
-		if endLine == 0 {
+		unterminated := endLine == 0
+		if unterminated {
 			endLine = startLine
 		}
 		// The declaration span, for the file-level mask. When the body is
-		// unterminated len(body) is 0 and the span degenerates to the header,
-		// which is the conservative direction: it masks less, never more.
-		spans = append(spans, span{start: m[0], end: bodyStart + len(body) + 1})
+		// unterminated extractBracedBody returns an empty body, so
+		// `bodyStart + len(body) + 1` degenerates to the header — and masking
+		// LESS is the dangerous direction here, not the safe one: whatever the
+		// mask leaves visible, findFileLevelDecls emits. An unterminated
+		// contract left its entire body unmasked and every member came back out
+		// as a bare, top-level entity with no CONTAINS owner — a phantom that
+		// did not exist before #6423, because the file-level scan did not
+		// exist. An unterminated contract runs to the end of the file by
+		// definition, so the span does too; the members are lost with it, which
+		// is the pre-#6423 behaviour and the honest one, since a member of an
+		// unterminated contract has no measurable span (#6423 review).
+		declEnd := bodyStart + len(body) + 1
+		if unterminated {
+			declEnd = len(src)
+		}
+		spans = append(spans, span{start: m[0], end: declEnd})
 
 		// Determine preceding contract body's end to limit function scan scope.
 		var prevBodyEnd int
@@ -471,6 +485,32 @@ func findContracts(src, filePath string, signals frameworkSignals) ([]types.Enti
 		// body starts just past '{', so a child N newlines in sits N lines below it.
 		braceLine := lineOf(src, bodyStart-1)
 
+		// Every member regex below is line-anchored (`(?m)^[ \t]*…`), not
+		// scope-aware, so it matches just as happily inside a nested function
+		// body as at contract level. `fallback();` — an ordinary statement
+		// dispatching to this contract's own fallback — sits at the start of a
+		// line and matched specialFunctionRE, minting a phantom member plus a
+		// CONTAINS edge from the contract (#6423 review). findStateVariables
+		// has tracked brace depth from the start for exactly this reason; the
+		// member scans now do too.
+		//
+		// Only the function/constructor/receive/fallback scan is REACHABLE at
+		// depth > 0 today: `fallback();` and `receive();` are ordinary
+		// statements, and a Yul `function helper(x) -> y {` inside `assembly`
+		// matches functionRE two braces deep (the #6425 phantom, which this
+		// guard also removes). No valid Solidity puts an `event`, `modifier`,
+		// `error`, `struct`, `enum` or `type X is Y` declaration inside a
+		// function body, so the guard on those three loops cannot fire on
+		// well-formed input and no test pins it. It is applied anyway, and
+		// said so here rather than left implicit, because that reachability
+		// argument rests on the LANGUAGE and not on the scanner: the scanner
+		// is line-anchored either way, and a member kind added later would
+		// otherwise inherit the bug silently.
+		depths := braceDepths(body)
+		isMemberPos := func(off int) bool {
+			return off >= 0 && off < len(depths) && depths[off] == 0
+		}
+
 		// Functions, constructors, and the receive/fallback entry points.
 		// The last three emitted nothing at all before #6423: functionRE
 		// requires the literal `function` keyword, which none of them has.
@@ -486,6 +526,9 @@ func findContracts(src, filePath string, signals frameworkSignals) ([]types.Enti
 			{specialFunctionRE, "", ""},
 		} {
 			for _, fm := range spec.re.FindAllStringSubmatchIndex(body, -1) {
+				if !isMemberPos(fm[0]) {
+					continue // a statement inside another member's body
+				}
 				fnName, subtype := spec.fixedName, spec.subtype
 				if fnName == "" {
 					if len(fm) < 4 {
@@ -531,7 +574,7 @@ func findContracts(src, filePath string, signals frameworkSignals) ([]types.Enti
 		// asserting only one position lets a half-fix look complete (#6423).
 		for _, spec := range memberDeclSpecs {
 			for _, dm := range spec.re.FindAllStringSubmatchIndex(body, -1) {
-				if len(dm) < 4 {
+				if len(dm) < 4 || !isMemberPos(dm[0]) {
 					continue
 				}
 				qualName := name + "." + body[dm[2]:dm[3]]
@@ -559,7 +602,7 @@ func findContracts(src, filePath string, signals frameworkSignals) ([]types.Enti
 
 		// Events.
 		for _, em := range eventRE.FindAllStringSubmatchIndex(body, -1) {
-			if len(em) < 4 {
+			if len(em) < 4 || !isMemberPos(em[0]) {
 				continue
 			}
 			evName := body[em[2]:em[3]]
@@ -593,7 +636,7 @@ func findContracts(src, filePath string, signals frameworkSignals) ([]types.Enti
 
 		// Modifiers.
 		for _, mm := range modifierRE.FindAllStringSubmatchIndex(body, -1) {
-			if len(mm) < 4 {
+			if len(mm) < 4 || !isMemberPos(mm[0]) {
 				continue
 			}
 			modName := body[mm[2]:mm[3]]
@@ -1122,6 +1165,33 @@ var stateVarNonDeclKeywords = map[string]bool{
 	"function": true, "modifier": true, "receive": true, "fallback": true,
 	"event": true, "error": true,
 	"using": true, "type": true,
+}
+
+// braceDepths returns, for each byte of a contract body, the brace nesting
+// depth that byte sits at: zero for a byte directly in the contract scope,
+// one or more for a byte inside a function body, a struct, an enum or an
+// assembly block. An opening '{' is reported at the OUTER depth and its
+// matching '}' likewise, so "the match starts at depth zero" is exactly "the
+// declaration is a direct member of this contract".
+//
+// The member scans need this for the same reason findStateVariables tracks
+// depth inline: the declaration regexes are line-anchored, not scope-aware.
+// body is the scrubbed source (stripCommentsAndStrings ran before
+// findContracts), so a brace inside a comment or a string literal cannot skew
+// the count. Refs #6423 review.
+func braceDepths(body string) []int {
+	depths := make([]int, len(body))
+	depth := 0
+	for i := 0; i < len(body); i++ {
+		if body[i] == '}' && depth > 0 {
+			depth--
+		}
+		depths[i] = depth
+		if body[i] == '{' {
+			depth++
+		}
+	}
+	return depths
 }
 
 // findStateVariables returns the state variables declared directly in a

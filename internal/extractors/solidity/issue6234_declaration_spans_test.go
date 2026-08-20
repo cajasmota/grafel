@@ -155,3 +155,95 @@ func solRawCallees(ent *types.EntityRecord) []string {
 	slices.Sort(out)
 	return out
 }
+
+// declKindSpanFixture (#6423 review) carries the four declaration kinds #6423
+// added — error, struct, enum and user-defined value type — at BOTH the
+// positions it emits them, file level and contract level. Every one spans more
+// than one line on purpose: #6423 shipped these four kinds with no span
+// assertion anywhere, and the golden fixture asserts only `must_exist`, so
+// declEndOffset's bodied branch was entirely unpinned. Collapsing it to
+// `return fallback` puts every struct and enum EndLine on its StartLine and
+// nothing noticed. Both call sites are asserted because they are separate code
+// paths: findFileLevelDecls calls declEndOffset against the masked file, the
+// contract member loop calls it against the contract body with a line offset
+// added.
+const declKindSpanFixture = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+error TopFailure(
+    address caller,
+    uint256 code
+);
+
+struct TopEntry {
+    address owner;
+    uint256 amount;
+}
+
+enum TopMode {
+    Open,
+    Closed
+}
+
+type TopPrice is
+    uint128;
+
+contract Holder {
+    error HeldFailure(
+        address caller
+    );
+
+    struct Receipt {
+        bytes32 id;
+        uint256 amount;
+    }
+
+    enum Tier {
+        Basic,
+        Premium
+    }
+
+    type Held is
+        uint64;
+}
+`
+
+// TestSolidity_6423_DeclarationKindSpans pins StartLine and EndLine for each
+// of the four kinds at each of the two positions.
+func TestSolidity_6423_DeclarationKindSpans(t *testing.T) {
+	ents := runSolidity(t, declKindSpanFixture, "contracts/Holder.sol")
+
+	for _, tc := range []struct {
+		name    string
+		kind    string
+		subtype string
+		start   int
+		end     int
+	}{
+		// File level. The bodiless pair (error, type) ends at its ';'; the
+		// bodied pair (struct, enum) ends at the '}' closing the brace the
+		// regex match consumed.
+		{"TopFailure", "SCOPE.Operation", "error", 4, 7},
+		{"TopEntry", "SCOPE.Schema", "struct", 9, 12},
+		{"TopMode", "SCOPE.Schema", "enum", 14, 17},
+		{"TopPrice", "SCOPE.Schema", "type", 19, 20},
+		// Contract level, through the second declEndOffset call site.
+		{"Holder.HeldFailure", "SCOPE.Operation", "error", 23, 25},
+		{"Holder.Receipt", "SCOPE.Schema", "struct", 27, 30},
+		{"Holder.Tier", "SCOPE.Schema", "enum", 32, 35},
+		{"Holder.Held", "SCOPE.Schema", "type", 37, 38},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ent := solFindSubtype(ents, tc.name, tc.kind, tc.subtype)
+			if ent == nil {
+				t.Fatalf("no %s entity named %q", tc.subtype, tc.name)
+			}
+			if ent.StartLine != tc.start {
+				t.Errorf("StartLine = %d, want %d", ent.StartLine, tc.start)
+			}
+			if ent.EndLine != tc.end {
+				t.Errorf("EndLine = %d, want %d", ent.EndLine, tc.end)
+			}
+		})
+	}
+}

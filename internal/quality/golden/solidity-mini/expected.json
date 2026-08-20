@@ -408,7 +408,7 @@
       "kind": "EXTENDS",
       "to_bare_name": "ERC20",
       "must_exist": true,
-      "note": "GREEN since #6423. The base name must survive the argument list: `is ERC20(\"My Token\", \"MTK\")` extends ERC20, and the comma inside the argument list must not split the inheritance list into `ERC20(` and `)`. AMENDED when #6423 landed, on this file's own to_bare_name rule and NOTICE.md's instruction to amend an entry whose shape the fixture was PROPOSING rather than reporting. The original entry guessed `to_name: ERC20` + `to_kind: SCOPE.External`, which could not be measured at the time because MyToken did not exist at all. It is now measured and the guess was wrong: ERC20 does NOT fold to a SCOPE.External node -- ext-synthesis minted one for `Context` because that name is allowlisted, and renaming ERC20 to an arbitrary `Fooble`, or adding an arbitrary second parent to Ownable, produced no node either. So this target legitimately cannot resolve (ERC20 is a third-party base contract with no declaration in src/) and to_bare_name is the correct and only assertion for it. It is also the STRONGER of the two here: `to_name` on a non-existent entity can never pass, while the raw ToID comparison still fails if the parent is parsed as `ERC20(` or `)`, which is exactly the defect this entry exists to catch."
+      "note": "GREEN since #6423. The base name must survive the argument list: `is ERC20(\"My Token\", \"MTK\")` extends ERC20, and the comma inside the argument list must not split the inheritance list into `ERC20(` and `)`. AMENDED when #6423 landed, on this file's own to_bare_name rule and NOTICE.md's instruction to amend an entry whose shape the fixture was PROPOSING rather than reporting. The original entry guessed `to_name: ERC20` + `to_kind: SCOPE.External`, which could not be measured at the time because MyToken did not exist at all. It is now measured and the guess was wrong: ERC20 does NOT fold to a SCOPE.External node. The mechanism is external.isKnownExternalPackage (internal/external/synth.go), which LOWERCASES the candidate and looks it up in the language-agnostic knownExternalPackages allowlist: `Context` -> `context`, which is on that list as a Go stdlib package, so it mints ext:Context with subtype `package`; `ERC20` -> `erc20` is not on it. Measured, not read: renaming the parent to `Zebra` yields no node and leaves the edge on the raw string, while renaming it to `Express` (npm) or `Fmt` (Go stdlib `fmt`, which also demonstrates the case-fold) yields ext:Express / ext:Fmt, both subtype `package`. The import-path form is NOT the mechanism -- swapping the two files' import styles (relative `../utils/Context.sol` vs `@openzeppelin/...`) changed nothing. So this target legitimately cannot resolve (ERC20 is a third-party base contract with no declaration in src/) and to_bare_name is the correct and only assertion for it. It is also the STRONGER of the two here: `to_name` on a non-existent entity can never pass, while the raw ToID comparison still fails if the parent is parsed as `ERC20(` or `)`, which is exactly the defect this entry exists to catch."
     },
     {
       "from_name": "MyToken",
@@ -465,6 +465,26 @@
       "to_kind": "SCOPE.External",
       "must_exist": false,
       "note": "`emit Deposited(...)` -- the keyword must not be minted as a call target. The event reference itself is a separate question this fixture does not assert."
+    },
+    {
+      "from_name": "Vault",
+      "from_kind": "SCOPE.Component",
+      "from_file": "Vault.sol",
+      "kind": "CONTAINS",
+      "to_name": "Vault.helper",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Vault.sol",
+      "must_exist": false,
+      "note": "`helper` is a Yul function inside `assembly {}` in Vault.roundUp, not a contract member. NOTICE.md held this entry back because it fired -- the member scan was brace-depth-blind, so functionRE matched anywhere in the contract body. The #6423 review made every member scan depth-aware (braceDepths), the phantom and its CONTAINS edge are gone, and the entry is now promoted from NOTICE.md into the graded list. Measured: the binary built at 9a13a26b4 scores this row as a hit, the fixed one does not. to_name + to_kind is the right form here (unlike the `uint256` row below): a regression re-mints Vault.helper as a real entity, so the lookup resolves exactly when the assertion needs to fail."
+    },
+    {
+      "from_name": "Vault.ceiling",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_bare_name": "uint256",
+      "must_exist": false,
+      "note": "Precision guard on #6423 defect 4, the attribute scan. `function ceiling() public pure returns (uint256)` puts `uint256` in the region between the parameter list's `)` and the body's `{` -- the exact region declAttributes reads to find modifier usages. A scan that takes every identifier there raises relationship recall AND mints a type name as a call target; before this entry the three forbidden rows all targeted other defects, so the graded `forbidden hits: 0` said nothing about defect 4 at all. The assertion is `to_bare_name`, not `to_name` + `to_kind`: a minted type name never resolves to any entity, so it stays on the edge as a raw ToID string and an entity-lookup form would match nothing and be silently vacuous. Measured with the paren-skip in modifierUsages removed: `Vault.ceiling --[CALLS]--> uint256` is emitted and the graded forbidden hits go 0 -> 1."
     }
   ]
 }
