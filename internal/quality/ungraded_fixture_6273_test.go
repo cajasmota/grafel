@@ -378,8 +378,17 @@ func TestRatchetUpdateRefusesFixtureWithoutExpectations_6273(t *testing.T) {
 // the exact edit the set was built to catch — left its own test green and was
 // caught here, on all three assertions.
 func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
-	// 21 since #6327 S6 added vbnet-mini.
-	const wantFixtures = 21
+	// 21 since #6327 S6 added vbnet-mini; 22 since #6424 added solidity-mini.
+	//
+	// solidity-mini is the first fixture that is graded and DELIBERATELY RED:
+	// its expected.json records what the extractor should produce, and the six
+	// recall defects of #6423 are encoded as must-haves that currently miss.
+	// That is not a special case for this test — the recorded floor in
+	// baseline.json is the ordinary mechanism (csharp-aspnet-core-mini has sat
+	// at 4/5 entities since before this file existed), and the assertions
+	// below are exactly the ones that stop the gap being closed by deleting
+	// the fixture instead of fixing the extractor.
+	const wantFixtures = 22
 
 	dirs := fixtureDirs(t)
 	if len(dirs) != wantFixtures {
