@@ -74,6 +74,18 @@ var navigationEdgeKinds = []string{kindNAVIGATES_TO}
 //   - INJECTED_INTO — its direction is inverted relative to usage (the
 //     provider points at its consumer), so including it would report the
 //     opposite of what the caller asked for.
+//   - INSTANTIATES — the only emitter is the HCL module_instantiation
+//     extractor, and its ToID is not an entity at all: it is the synthetic
+//     "tfmodule-def:<dir>" directory marker the resolver classifies as
+//     Dynamic. Including it would make direction=uses report marker strings
+//     as usages, and no used_by query could ever match one, so it is cost
+//     without a reachable answer.
+//
+// RENDERS IS in the set: it is the component-uses-component edge of the
+// JS/TS corpus (emitted by the javascript, angular, svelte, vue, astro,
+// rescript and fsharp-elmish extractors), so without it direction=used_by on
+// a React/Vue/Svelte component returns nothing for every parent that renders
+// it — the same silently-incomplete answer #6314 is about, one kind over.
 //
 // NAVIGATES_TO stays in the set: widening must not remove what worked.
 var usageEdgeKinds = []string{
@@ -81,6 +93,7 @@ var usageEdgeKinds = []string{
 	"USES",
 	"USES_HOOK",
 	"REFERENCES",
+	"RENDERS",
 	kindNAVIGATES_TO,
 }
 
@@ -92,6 +105,24 @@ func matchesKind(kinds []string, kind string) bool {
 		}
 	}
 	return false
+}
+
+// matchesEntityID reports whether relID (a repo-local relationship endpoint in
+// repo) is the entity the caller named.
+//
+// Two forms are accepted, and which ones are live depends on what the caller
+// supplied. A prefixed "repo::id" is unambiguous, so only the prefixed compare
+// runs: the bare compare carries no repo, and leaving it live would let a
+// foreign repo whose bare endpoint literally spells another repo's prefixed ID
+// union its edges into the answer. A bare entity_id can only be compared
+// bare — route destinations ("route:/foo") are synthetic and never prefixed,
+// which is what makes grafel_navigates direction=incoming entity_id=/route and
+// the navigation_route fallback work at all.
+func matchesEntityID(entityID, repo, relID string) bool {
+	if strings.Contains(entityID, "::") {
+		return prefixedID(repo, relID) == entityID
+	}
+	return relID == entityID
 }
 
 // navigatesEntityMeta holds the minimal entity attributes needed by navigates
@@ -250,7 +281,7 @@ func collectNavigatesEdges(
 				switch direction {
 				case "outgoing":
 					// entity_id is the FROM entity; match by local or prefixed ID.
-					if rel.FromID != entityID && prefixedID(r.Repo, rel.FromID) != entityID {
+					if !matchesEntityID(entityID, r.Repo, rel.FromID) {
 						return true
 					}
 				case "incoming":
@@ -259,7 +290,7 @@ func collectNavigatesEdges(
 					// but a usage edge points at a real entity whose ID the
 					// caller will have in prefixed form, so accept either
 					// (#6314).
-					if rel.ToID != entityID && prefixedID(r.Repo, rel.ToID) != entityID {
+					if !matchesEntityID(entityID, r.Repo, rel.ToID) {
 						return true
 					}
 				}
@@ -423,7 +454,11 @@ func collectNavigatesFlow(
 		}
 
 		for _, ne := range navAdj[curr.entityID] {
-			edgeKey := curr.entityID + "→" + ne.toID
+			// Key by kind as well as endpoints: with more than one usage kind
+			// in the set (#6314) two entities are routinely joined by parallel
+			// edges of different kinds, and an endpoints-only key would drop all
+			// but the first — reporting one kind where several apply.
+			edgeKey := curr.entityID + "→" + ne.kind + "→" + ne.toID
 			if visited[edgeKey] {
 				continue
 			}
