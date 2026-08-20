@@ -629,3 +629,82 @@ type Calc() =
 		t.Errorf("Calc IMPLEMENTS = %v, want none — the unbalanced nested comment swallows it, as fsc would", fsToIDs(got))
 	}
 }
+
+// TestFSharp_DeclarationAfterMidLineCommentClose pins the RECALL GAIN that
+// preserving interior newlines produced (#6336).
+//
+// When a block comment closes mid-line and real code follows `*)` on that same
+// physical line, blanking the interior newlines used to glue that code onto the
+// line where the comment OPENED — behind `let x = 1`, which is not whitespace,
+// so `(?m)^[ \t]*interface` had no line start to anchor on and the clause was
+// invisible. Restoring the newline gives the declaration its own line whose
+// prefix is all blanked-delimiter spaces, which `^[ \t]*` absorbs.
+//
+// Measured by diffing extractor output against the same tree with the newline
+// restoration removed: before, Person had no IMPLEMENTS and no VALIDATES; after,
+// it has both, with correct lines. This is ordinary F#, so it must not silently
+// regress back.
+func TestFSharp_DeclarationAfterMidLineCommentClose(t *testing.T) {
+	src := `namespace App
+
+open System.ComponentModel.DataAnnotations
+
+type Person() =
+    let x = 1 (* trailing
+    comment *) interface IValidatableObject with
+        member _.Validate ctx = Seq.empty
+`
+	ents := runFSharp(t, src, "midline.fs")
+
+	rels := fsRelsOfKind(t, ents, "Person", "IMPLEMENTS")
+	if len(rels) != 1 || rels[0].ToID != "IValidatableObject" {
+		t.Fatalf("Person IMPLEMENTS = %v, want [IValidatableObject]", fsToIDs(rels))
+	}
+	// `interface ...` sits on FILE line 7 (1 namespace, 3 open, 5 type, 6 let).
+	if got := rels[0].Properties.Get("line"); got != "7" {
+		t.Errorf("IMPLEMENTS line = %q, want %q", got, "7")
+	}
+	if !fsHasRel(ents, "Person", "SCOPE.Component", "VALIDATES", "validator:dataannotations") {
+		t.Error("expected VALIDATES validator:dataannotations (the IValidatableObject clause is what marks it)")
+	}
+}
+
+// TestFSharp_KnownLimitation_SpaceApplicationSplitByBlockComment records the
+// RECALL LOSS that came with #6336, so it is discoverable instead of folklore.
+//
+// spaceAppRE (extractor.go) — and felizChildRE in elmish_feliz.go — match a
+// head and its argument with `[ \t]+` between them. That character class cannot
+// cross a newline. While the scrub blanked interior newlines, a multi-line
+// block comment BETWEEN a head and its argument collapsed to plain spaces and
+// the space application still matched; now the restored newline splits it and
+// the CALLS edge is gone. Verified by diffing against the same tree with the
+// restoration removed: `user CALLS helper line=6` before, no edge after.
+//
+// The trade was taken knowingly. The gain (see
+// TestFSharp_DeclarationAfterMidLineCommentClose) is ordinary F# and the line
+// stamps this whole change fixes are on every call site in the corpus, while
+// this shape needs an argument separated from its head by a multi-line comment.
+//
+// THIS TEST ASSERTS THE LIMITATION, not the desired behaviour. If it starts
+// failing, someone has fixed the gap — that is good news: delete this test and
+// assert the CALLS edge instead. A fix would let spaceAppRE span a run of
+// whitespace that includes newlines, which needs its own issue because F#'s
+// offside rule makes "argument on a later line" genuinely ambiguous.
+func TestFSharp_KnownLimitation_SpaceApplicationSplitByBlockComment(t *testing.T) {
+	src := `module App
+
+let helper x = x
+
+let user n =
+    let a = helper (*
+    gap
+    *) n
+    a
+`
+	ents := runFSharp(t, src, "spaceapp.fs")
+
+	if fsHasRel(ents, "user", "SCOPE.Operation", "CALLS", "helper") {
+		t.Error("CALLS user→helper is now found — the spaceAppRE newline gap is FIXED; " +
+			"delete this known-limitation test and assert the edge instead")
+	}
+}
