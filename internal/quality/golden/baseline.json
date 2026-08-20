@@ -109,7 +109,7 @@
     },
     "solidity-mini": {
       "entity_found": 19,
-      "entity_expected": 36,
+      "entity_expected": 40,
       "relationship_found": 8,
       "relationship_expected": 13
     },
