@@ -145,36 +145,86 @@ func designerBase(filePath string) (string, bool) {
 // file entity claims, with its span zeroed. Reading the directory costs one
 // syscall more than stat'ing it and gives the same answer everywhere.
 //
+// The listing is filtered to entries os.ReadFile can actually open — see
+// openableAsFile — and the pure choice among the surviving names is
+// pickSibling, so the tie-break is testable without a filesystem that can
+// represent the tie.
+func siblingPath(repoRoot, base string) (string, bool) {
+	dir, file := path.Split(base)
+	absDir := filepath.Join(repoRoot, filepath.FromSlash(dir))
+	entries, err := os.ReadDir(absDir)
+	if err != nil {
+		return "", false
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !openableAsFile(absDir, e) {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	name, ok := pickSibling(names, file+".vb")
+	if !ok {
+		return "", false
+	}
+	return dir + name, true
+}
+
+// openableAsFile reports whether os.ReadFile on this entry will RETURN — with
+// content or with an error — rather than block.
+//
+// This is a liveness guard, not a tidiness one. The anchor is read by
+// typeDecls, and a FIFO named `Widget.vb` is a legitimate directory entry whose
+// open(2) blocks until a writer appears; nothing bounds that wait, so the
+// indexing worker that picked up `Widget.Designer.vb` never finishes. A
+// directory or a device node fails the read harmlessly, but a FIFO does not
+// fail — it hangs — so "it will just fail the read" is not a filter substitute.
+// This is also the only vetting the path gets: partial.go reads a path the file
+// walker never handed it.
+//
+// A SYMLINK to a regular file is deliberately ACCEPTED. The walker reports one
+// as a file and indexes it (walker.go branches only on d.IsDir()), so refusing
+// it here would deny an anchor the walker does claim a file entity for, and the
+// merge would be lost for no gain. A symlink to a directory or to a FIFO is
+// refused by the same stat, which is the shape that actually matters.
+func openableAsFile(dir string, e os.DirEntry) bool {
+	mode := e.Type()
+	if mode.IsRegular() {
+		return true
+	}
+	if mode&os.ModeSymlink == 0 {
+		return false
+	}
+	fi, err := os.Stat(filepath.Join(dir, e.Name()))
+	return err == nil && fi.Mode().IsRegular()
+}
+
+// pickSibling chooses the entry that spells `want` out of a directory listing.
+//
 // An exact match wins outright. Otherwise a single case-insensitive match is
 // taken, and an ambiguous set — possible only on a case-sensitive filesystem —
 // is refused, because picking one of them would be arbitrary.
 //
-// Directory entries are deliberately NOT filtered out here. A directory named
-// `Widget.vb` is caught one step later: typeDecls cannot read it, so it
-// declares no type and no rewrite happens. A filter would be a second, weaker
-// spelling of the same guard with no behaviour of its own to test.
-func siblingPath(repoRoot, base string) (string, bool) {
-	dir, file := path.Split(base)
-	want := file + ".vb"
-	entries, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(dir)))
-	if err != nil {
-		return "", false
-	}
+// It takes names rather than reading the directory itself so the refusal arm is
+// reachable in a test on every platform. Built against a real filesystem the
+// case is unrepresentable on macOS and Windows, where the two entries collapse
+// into one, which left the arm covered on Linux only.
+func pickSibling(names []string, want string) (string, bool) {
 	var folded string
 	n := 0
-	for _, e := range entries {
-		if e.Name() == want {
-			return dir + want, true
+	for _, name := range names {
+		if name == want {
+			return want, true
 		}
-		if strings.EqualFold(e.Name(), want) {
-			folded = e.Name()
+		if strings.EqualFold(name, want) {
+			folded = name
 			n++
 		}
 	}
 	if n != 1 {
 		return "", false
 	}
-	return dir + folded, true
+	return folded, true
 }
 
 // isPartialType reports whether n is a type declaration carrying the `partial`
@@ -219,23 +269,55 @@ type siblingCache map[string]map[string]bool
 //     and the rewrite is what destroys it. They are different types and must
 //     stay two Components.
 //
-// Reading the sibling is no less a filesystem access than stat'ing it, so it
-// costs the design nothing it was not already paying. The name and namespace
-// compare EXACTLY rather than case-insensitively: the identity triple is
-// case-sensitive, so a case-differing declaration would not fold into one id
-// anyway, and re-anchoring it would only produce the wrong-file outcome above.
+// Reading the sibling is no more a filesystem access than stat'ing it, so it
+// costs the design nothing it was not already paying — though it is not free:
+// only the read-and-parse is memoised here. siblingPath's os.ReadDir runs
+// BEFORE this lookup (partialAnchor:285 precedes :289), so a multi-type
+// designer file parses its sibling once but lists the directory once per
+// partial type. Memoising the listing too would mean giving this cache a second
+// map and a constructor, which is not worth it for a listing the OS caches
+// anyway.
+//
+// The NAMESPACE compares case-insensitively and the NAME compares exactly, and
+// the asymmetry is deliberate.
+//
+// VB.NET identifiers are case-insensitive, so `Namespace ALPHA` and
+// `Namespace Alpha` are the SAME namespace and a partial type split across the
+// two is one type. The namespace is not part of the identity triple at all —
+// graph.EntityID hashes (repo, kind, name, source_file), graph.go:259-269 —
+// so it never keeps such a pair apart on its own; comparing it exactly only
+// refuses a legitimate merge.
+//
+// The name is different precisely because it IS in that triple. `Widget` and
+// `WIDGET` derive two ids whatever file they claim, so re-anchoring one onto
+// the other's file merges nothing and costs the moved half its span — the
+// wrong-file outcome above.
 func (c siblingCache) declares(repoRoot, anchor, ns, name string) bool {
 	set, ok := c[anchor]
 	if !ok {
 		set = typeDecls(repoRoot, anchor)
 		c[anchor] = set
 	}
-	return set[ns+"\x00"+name]
+	return set[declKey(ns, name)]
+}
+
+// declKey is the lookup key typeDecls builds and declares queries. Both sides
+// must fold the namespace identically, which is why it is one function.
+func declKey(ns, name string) string {
+	return strings.ToLower(ns) + "\x00" + name
 }
 
 // typeDecls returns the (namespace, name) pairs of every type declared in the
-// file, or an empty set when it cannot be read or parsed. A directory at the
-// anchor path lands here too: it fails the read and declares nothing.
+// file, or an empty set when it cannot be read or parsed. siblingPath has
+// already vetted that this path can be opened without blocking; anything else
+// that is not VB source fails the read here and declares nothing.
+//
+// The walk recurses through Namespace blocks JOINING each segment onto the
+// enclosing path, and through types, because emit does both: a type nested in
+// `Namespace A / Namespace B` is emitted under `A.B`, and a type declared
+// inside a Class or Module is emitted under its enclosing namespace like any
+// other. Either recursion dropped and the sibling's set is keyed differently
+// from emit's, so nothing matches and every such merge is silently lost.
 func typeDecls(repoRoot, anchor string) map[string]bool {
 	set := map[string]bool{}
 	src, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(anchor)))
@@ -254,7 +336,7 @@ func typeDecls(repoRoot, anchor string) map[string]bool {
 				continue
 			}
 			if child.Kind.IsType() && child.Name != "" {
-				set[ns+"\x00"+child.Name] = true
+				set[declKey(ns, child.Name)] = true
 			}
 			walk(child, ns)
 		}

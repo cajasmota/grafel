@@ -113,7 +113,8 @@ func extractVBNet(src, filePath, repoRoot string) []types.EntityRecord {
 	appendCalls(&out[0], res.File)
 	// The sibling cache is per-extraction: it is never shared across files, so
 	// concurrent extraction needs no synchronisation, and a designer file
-	// declaring several partial types reads its sibling once.
+	// declaring several partial types PARSES its sibling once. The directory
+	// listing that finds the sibling is not cached — see siblingCache.declares.
 	emit(&out, res.File, filePath, repoRoot, 0, "", siblingCache{})
 	return out
 }
