@@ -170,6 +170,18 @@ var (
 )
 
 // Extract parses the Svelte SFC source and returns entity records.
+//
+// RELATIONSHIP ANCHORING (#6366). Every RENDERS, USES, NAVIGATES_TO and
+// CONTAINS record produced here hangs off entities[0] — the whole-file
+// SCOPE.Component — and leaves FromID EMPTY so the assembly loop stamps that
+// component's own entity id (cmd/grafel/index.go, relRecordToGraphRel in
+// internal/extractors/incremental.go substitute the owner only when FromID is
+// empty). Passing file.Path/filePath instead, as this package used to, is
+// strictly worse here than in the Solidity/verilog form of the same defect
+// (#6295, #6297): svelte emits NO extractor.FileEntity, so the path matched no
+// entity at all and reached the graph verbatim as a DANGLING endpoint — astro's
+// failure (#6298), measured on all four kinds. See
+// TestSvelte_ComponentRelsAnchoredOnComponent.
 func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("extractor.svelte")
 	ctx, span := tracer.Start(ctx, "indexer.extract.svelte",
@@ -236,9 +248,8 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		})
 		for i := range cfEnts {
 			entities[0].Relationships = append(entities[0].Relationships, types.RelationshipRecord{
-				FromID: file.Path,
-				ToID:   cfEnts[i].Name,
-				Kind:   "CONTAINS",
+				ToID: cfEnts[i].Name,
+				Kind: "CONTAINS",
 				Properties: types.Props{
 					{K: "component", V: componentName},
 					{K: "framework", V: "svelte"},
@@ -258,9 +269,8 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		setterEnts := extractStateSetters(scriptContent, scriptStartLine, file.Path, componentName)
 		for i := range setterEnts {
 			entities[0].Relationships = append(entities[0].Relationships, types.RelationshipRecord{
-				FromID: file.Path,
-				ToID:   setterEnts[i].Name,
-				Kind:   "CONTAINS",
+				ToID: setterEnts[i].Name,
+				Kind: "CONTAINS",
 			})
 		}
 		entities = append(entities, setterEnts...)
@@ -537,9 +547,8 @@ func extractContext(script string, scriptStartLine int, filePath, componentName 
 				},
 			})
 			rels = append(rels, types.RelationshipRecord{
-				FromID: filePath,
-				ToID:   name,
-				Kind:   "USES",
+				ToID: name,
+				Kind: "USES",
 				Properties: types.Props{
 					{K: "component", V: componentName},
 					{K: "context_key", V: key},
@@ -581,9 +590,8 @@ func extractScriptDataFlow(script string, scriptStartLine int, filePath, compone
 			Properties:   props,
 		})
 		rels = append(rels, types.RelationshipRecord{
-			FromID: filePath,
-			ToID:   name,
-			Kind:   "USES",
+			ToID: name,
+			Kind: "USES",
 			Properties: types.Props{
 				{K: "component", V: componentName},
 				{K: "framework", V: "svelte"},
@@ -670,9 +678,8 @@ func extractBranchConditions(template string, templateStartLine int, filePath, c
 			},
 		})
 		rels = append(rels, types.RelationshipRecord{
-			FromID: filePath,
-			ToID:   name,
-			Kind:   "USES",
+			ToID: name,
+			Kind: "USES",
 			Properties: types.Props{
 				{K: "branch_kind", V: kind},
 				{K: "component", V: componentName},
@@ -699,9 +706,8 @@ func extractScriptNavigation(script string, scriptStartLine int, filePath, compo
 		seen[via+"|"+route] = true
 		lineNum := scriptStartLine + strings.Count(script[:off], "\n")
 		rels = append(rels, types.RelationshipRecord{
-			FromID: filePath,
-			ToID:   "route:" + route,
-			Kind:   "NAVIGATES_TO",
+			ToID: "route:" + route,
+			Kind: "NAVIGATES_TO",
 			Properties: types.Props{
 				{K: "caller", V: componentName},
 				{K: "framework", V: "svelte"},
@@ -736,9 +742,8 @@ func extractRouteDirectives(template string, templateStartLine int, filePath, co
 			seen[via+"|"+route] = true
 			lineNum := templateStartLine + strings.Count(template[:m[0]], "\n")
 			rels = append(rels, types.RelationshipRecord{
-				FromID: filePath,
-				ToID:   "route:" + route,
-				Kind:   "NAVIGATES_TO",
+				ToID: "route:" + route,
+				Kind: "NAVIGATES_TO",
 				Properties: types.Props{
 					{K: "caller", V: componentName},
 					{K: "framework", V: "svelte"},
@@ -881,9 +886,8 @@ func extractReactiveStatements(script string, scriptStartLine int, filePath, com
 			}},
 		})
 		rels = append(rels, types.RelationshipRecord{
-			FromID: filePath,
-			ToID:   name,
-			Kind:   "USES",
+			ToID: name,
+			Kind: "USES",
 			Properties: types.Props{
 				{K: "component", V: componentName},
 				{K: "framework", V: "svelte"},
@@ -919,9 +923,8 @@ func extractReactiveStatements(script string, scriptStartLine int, filePath, com
 			},
 		})
 		rels = append(rels, types.RelationshipRecord{
-			FromID: filePath,
-			ToID:   name,
-			Kind:   "USES",
+			ToID: name,
+			Kind: "USES",
 			Properties: types.Props{
 				{K: "component", V: componentName},
 				{K: "framework", V: "svelte"},
@@ -968,9 +971,8 @@ func extractActions(template string, templateStartLine int, filePath, componentN
 			},
 		})
 		rels = append(rels, types.RelationshipRecord{
-			FromID: filePath,
-			ToID:   name,
-			Kind:   "USES",
+			ToID: name,
+			Kind: "USES",
 			Properties: types.Props{
 				{K: "action", V: action},
 				{K: "component", V: componentName},
@@ -1037,9 +1039,8 @@ func extractChildComponents(template string, templateStartLine int, filePath, co
 		lineNum := templateStartLine + lineIdx
 
 		rels = append(rels, types.RelationshipRecord{
-			FromID: filePath,
-			ToID:   name,
-			Kind:   "RENDERS",
+			ToID: name,
+			Kind: "RENDERS",
 			Properties: types.Props{
 				{K: "from_component", V: componentName},
 				{K: "line", V: fmt.Sprintf("%d", lineNum)},
