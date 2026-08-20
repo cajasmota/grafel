@@ -1571,7 +1571,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("direction", mcpapi.DefaultString("callers"),
 			mcpapi.Description("callers=who calls it; callees=what it calls; neighbors=both dirs (also messaging-aware: "+
 				"a SCOPE.MessageTopic or SCOPE.ChannelBinding auto-resolves to its messaging/binding neighbors); "+
-				"uses=NAVIGATES_TO out; used_by=NAVIGATES_TO in; msg (alias: messaging)=a SCOPE.MessageTopic's "+
+				"uses=what it uses (CALLS/USES/USES_HOOK/REFERENCES/NAVIGATES_TO out); used_by=same kinds in; "+
+				"msg (alias: messaging)=a SCOPE.MessageTopic's "+
 				"producers/consumers/handlers across every repo that touches it (cross-repo pub/sub).")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),

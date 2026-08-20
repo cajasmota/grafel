@@ -189,11 +189,16 @@ func TestCoreRelatedDispatch(t *testing.T) {
 	// neighbors: dispatcher rewrites the inner direction to "both".
 	assertSameDispatch(t, "direction=neighbors", srv.handleCoreRelated,
 		ent("neighbors"), srv.handleNeighbors, map[string]any{"group": "g", "entity_id": "r1::a2", "direction": "both"})
-	// uses/used_by route to navigates with outgoing/incoming inner direction.
+	// uses/used_by route to the shared navigates traversal with the USAGE kind
+	// set (#6314) and outgoing/incoming inner direction — not to
+	// handleNavigates, which is pinned to NAVIGATES_TO for its own tool.
+	usage := func(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+		return srv.handleNavigatesKinds(ctx, req, usageEdgeKinds)
+	}
 	assertSameDispatch(t, "direction=uses", srv.handleCoreRelated,
-		ent("uses"), srv.handleNavigates, map[string]any{"group": "g", "entity_id": "r1::a2", "direction": "outgoing"})
+		ent("uses"), usage, map[string]any{"group": "g", "entity_id": "r1::a2", "direction": "outgoing"})
 	assertSameDispatch(t, "direction=used_by", srv.handleCoreRelated,
-		ent("used_by"), srv.handleNavigates, map[string]any{"group": "g", "entity_id": "r1::a2", "direction": "incoming"})
+		ent("used_by"), usage, map[string]any{"group": "g", "entity_id": "r1::a2", "direction": "incoming"})
 }
 
 // 4. grafel_subgraph mode= → subgraph (hops) / get_neighbors (expand).

@@ -108,8 +108,8 @@ func (s *Server) handleCoreFind(ctx context.Context, req mcpapi.CallToolRequest)
 //	callers (default) → handleFindCallers   (inbound callers)
 //	callees           → handleFindCallees   (outbound callees)
 //	neighbors         → handleNeighbors(direction=both), messaging-aware
-//	uses              → handleNavigates(direction=outgoing)  (NAVIGATES_TO out)
-//	used_by           → handleNavigates(direction=incoming)  (NAVIGATES_TO in)
+//	uses              → usage-edge traversal, outgoing (#6314)
+//	used_by           → usage-edge traversal, incoming (#6314)
 //	messaging         → handleMessagingRelated (topic pub/sub/delivery, cross-repo)
 //
 // #5782: direction=messaging surfaces a SCOPE.MessageTopic's producers
@@ -152,9 +152,11 @@ func (s *Server) handleCoreRelated(ctx context.Context, req mcpapi.CallToolReque
 		// discriminator value "neighbors" is not a valid inner value, so rewrite.
 		return s.handleNeighbors(ctx, reqWithArgs(req, map[string]any{"direction": "both"}))
 	case "uses":
-		return s.handleNavigates(ctx, reqWithArgs(req, map[string]any{"direction": "outgoing"}))
+		// #6314: the usage kind set, not NAVIGATES_TO alone — see
+		// usageEdgeKinds in navigates_tools.go for what is in it and why.
+		return s.handleNavigatesKinds(ctx, reqWithArgs(req, map[string]any{"direction": "outgoing"}), usageEdgeKinds)
 	case "used_by":
-		return s.handleNavigates(ctx, reqWithArgs(req, map[string]any{"direction": "incoming"}))
+		return s.handleNavigatesKinds(ctx, reqWithArgs(req, map[string]any{"direction": "incoming"}), usageEdgeKinds)
 	default: // "callers"
 		return s.handleFindCallers(ctx, req)
 	}

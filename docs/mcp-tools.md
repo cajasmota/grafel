@@ -138,7 +138,7 @@ Entities related to X. One tool for every adjacency query — pick the `directio
 - `direction=callers` — inbound callers, **ranked by call frequency**. If `entity_id` starts with `/` and matches no entity, it is treated as an in-app route literal (searches NAVIGATES_TO edges; response carries `resolved_as: "navigation_route"`).
 - `direction=callees` — outbound callees.
 - `direction=neighbors` — graph neighbors (both directions).
-- `direction=uses` / `direction=used_by` — NAVIGATES_TO and usage edges, with route/param filters and multi-hop flow (`mode=flow`).
+- `direction=uses` / `direction=used_by` — usage edges: `CALLS`, `USES`, `USES_HOOK`, `REFERENCES` and `NAVIGATES_TO` (outgoing for `uses`, incoming for `used_by`), with route/param filters and multi-hop flow (`mode=flow`). Each returned edge carries its `kind`. Containment (`CONTAINS`), module dependency (`IMPORTS`/`DEPENDS_ON`) and type hierarchy (`EXTENDS`/`IMPLEMENTS`) are deliberately excluded — see #6314.
 
 Key params: `entity_id` (required), `direction`, `depth` (default 1), `token_budget` (default 800), `route`, `with_param`, `repo_filter[]`.
 
