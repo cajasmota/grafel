@@ -34,7 +34,61 @@ confined to the shapes it exists to test, so a modelling error in one cannot
 quietly move the figure for the other. The two verbatim OZ files carry the bulk
 of the expectations, including every expectation that currently passes.
 
-## THIS FIXTURE IS RED ON PURPOSE
+## STATUS: GREEN since #6423 — this section is history, not the current grade
+
+**#6423 landed and the fixture now grades 40/40 entities and 13/13
+relationships, forbidden hits 0.** Everything below describing the fixture as
+red describes the state at the commit that *added* it (#6424), and is kept
+because the per-defect cost table is the evidence that the four recall defects
+were real and measured rather than read off the regexes. `baseline.json` now
+records `entity_found: 40` and `relationship_found: 13`; the floor rose, and
+the ratchet holds it there.
+
+One entry was **amended** rather than scored, exactly as the paragraph below
+instructs: `MyToken --[EXTENDS]--> ERC20` was written as `to_name` + `"to_kind":
+"SCOPE.External"`, which was a *proposal* — MyToken did not exist at all when it
+was written, so the shape of its edge could not have been measured. Once MyToken
+was extracted the guess turned out to be wrong: `ERC20` does **not** fold to a
+`SCOPE.External` node.
+
+The mechanism, established by measurement rather than guessed: ext-synthesis
+folds a bare name through `isKnownExternalPackage`
+(`internal/external/synth.go`), which **lower-cases** the candidate and looks it
+up in `knownExternalPackages` — an allowlist with no language gate on it.
+`Context` case-folds to `context`, which sits in that list's *Go stdlib*
+section, so it mints `ext:Context` with subtype `package`. `ERC20` folds to
+`erc20`, which is not on the list, so nothing is minted and the `EXTENDS` edge
+keeps its raw target string. Measured on this fixture: renaming the parent to
+`Zebra` produces no external node; renaming it to `Express` (an npm entry) or
+to `Fmt` (the Go stdlib `fmt`, which also demonstrates the case-fold) produces
+`ext:Express` / `ext:Fmt`, both subtype `package`. The import-path *form* is not
+the mechanism — swapping the two files' import styles (relative
+`../utils/Context.sol` against `@openzeppelin/...`) changed nothing either way.
+
+So the target legitimately cannot resolve and `to_bare_name` is the correct assertion
+for it — see the `to_bare_name` section at the foot of this file, which is the
+rule the amendment follows, not an exception to it. The amendment is also the
+*stronger* of the two forms here: `to_name` against an entity that does not
+exist can never pass, while the raw-`ToID` comparison still fails if the parent
+is parsed as `ERC20(` or `)`, which is precisely the defect that entry exists to
+catch. `relationship_expected` is unchanged at 13.
+
+A fourth `forbidden_relationships` entry was added in the same review pass:
+`Vault.ceiling --[CALLS]--> uint256`. The three original rows guard the
+inheritance direction, `new string(32)` and the `emit` keyword — none of them
+touches the attribute scan that #6423's defect 4 introduced, so the graded
+`forbidden hits: 0` was silent about that defect's precision. The new row is
+written as `to_bare_name`, not `to_name` + `to_kind`: a minted type name
+resolves to no entity and stays on the edge as a raw ToID string, so an
+entity-lookup form would match nothing and be vacuous. Measured with the
+paren-skip removed from `modifierUsages`, the row fires and the grade goes to
+`forbidden hits: 1`.
+
+The single remaining gap is the `nice_to_have`
+`Vault.sweep --[CALLS]--> IERC20` (`relationships 0/1` in the nice-to-have
+counters), which is #6425's design question and deliberately not a must-have.
+
+## THIS FIXTURE WAS RED ON PURPOSE
 
 `expected.json` records **what the extractor should produce, not what it does.**
 At the commit that added it the grade was:
@@ -67,7 +121,9 @@ missing:                                21   (all 21 are asserted must-haves)
 ```
 
 (31 = the 41 entities the run reports minus 2 `Module` carriers, 4 `X.sol` file
-carriers, 3 `SCOPE.External` nodes, and the 1 phantom `Vault.helper` from #6425.)
+carriers, 3 `SCOPE.External` nodes, and the 1 phantom `Vault.helper` from #6425.
+That phantom is gone as of the #6423 review; the arithmetic above is the
+#6424 measurement and is left as recorded.)
 
 So the fixture's number tracks **the defect classes**, and the ratchet floor
 tracks **when they get fixed**; neither is a coverage statistic for Solidity. If
@@ -102,7 +158,8 @@ the extractor to match a fixture's guess.
 ## What each defect costs, measured
 
 Every line below was produced by running the extractor and reading the emitted
-graph, not by reading the regexes.
+graph, not by reading the regexes. Every row marked #6423 is **fixed** as of
+that issue; the costs are kept as the record of what each one was worth.
 
 | Shape | Issue | Measured |
 |---|---|---|
@@ -112,16 +169,29 @@ graph, not by reading the regexes.
 | file-level free function | #6423 | 1 miss (`computeFee`) — and it costs a second point on the relationship side: the edge `Vault.deposit --[CALLS]--> computeFee` **is** emitted, as an unresolved bare name, because the callee it names is never extracted. The gap costs resolution, not just an entity count. |
 | `struct` / `enum` / `error` / `type X is Y` | #6423 | 11 misses across both positions: file-level (`Deposit`, `VaultState`, `VaultLocked`, `ShortString`) and contract-level (`Vault.Receipt`, `Vault.Tier`, `ShortStrings.StringTooLong`, `ShortStrings.InvalidShortString`, `Ownable.OwnableUnauthorizedAccount`, `Ownable.OwnableInvalidOwner`, `Vault.VaultEmpty`). Both positions are asserted on purpose — a file-level-only fix scores four of the eleven and leaves the rest. **Every `error` declaration in `src/` is asserted**, all six of them, not a sample: an earlier revision asserted only `StringTooLong` and `VaultLocked`, which let a partial `error` fix look complete. |
 | modifier *usage* | #6423 | 2 edge misses. `Vault.deposit --[CALLS]--> Vault.whenOpen` (modifier declared in the same body) and `Vault.lock --[CALLS]--> Ownable.onlyOwner` (inherited from a base contract in another file). The second exists so a same-body-only fix cannot score the class. |
-| Yul `function` inside `assembly {}` | #6425 | **confirmed, not gated** — see below. |
+| Yul `function` inside `assembly {}` | #6425 | confirmed; **fixed and now gated** as of the #6423 review — see below. |
 
-## The one thing this fixture measures but cannot gate
+## The precision defects this fixture measured but could not gate
 
 `Vault.roundUp` contains `assembly { function helper(x) -> y { … } }`. The
-extractor emits a `SCOPE.Operation` named `Vault.helper` and a `CONTAINS` edge
+extractor emitted a `SCOPE.Operation` named `Vault.helper` and a `CONTAINS` edge
 to it — an entity with no counterpart in the Solidity surface. Confirmed by
 reading the emitted `graph.json`, and confirmed a second way: adding the
 matching `forbidden_relationships` entry and re-running the grader turned
-`forbidden hits: 0` into `forbidden hits: 1`. The same run confirms
+`forbidden hits: 0` into `forbidden hits: 1`.
+
+**That first entry is no longer held back — it is in `expected.json` and it
+passes.** The #6423 review made every contract member scan brace-depth aware
+(`braceDepths`), for a regression of its own: a `fallback();` *statement* at the
+start of a line inside another function's body was minting a phantom member. A
+Yul `function` sits two braces deep — inside `assembly {}` inside a function
+body — so the same guard removes it. Measured: the binary built at `9a13a26b4`
+scores that row as `forbidden hits: 1`; the fixed one scores 0, and the graph
+loses exactly one entity (`Vault.helper`) and its four edges. The residual
+`Vault.roundUp --[CALLS]--> helper` now dangles as a bare name, which is the
+honest state — it names nothing in the Solidity surface.
+
+The other two rows still fire and stay in this file. The same run confirms
 `Vault.ceiling --[CALLS]--> type` and `Vault.fingerprint --[CALLS]--> encode`,
 which appear in the graph as `SCOPE.External` nodes literally named `type` and
 `encode`.
@@ -134,17 +204,12 @@ expected-failure channel for precision the way the recorded floor is one for
 recall. Committing a currently-violated forbidden entry would therefore **break
 the gate rather than record a gap**, which is the one outcome #6424 ruled out.
 
-**When #6425 lands, add these three entries** — they are the assertion, held
-here only because the harness has nowhere else to put them yet:
+**When the rest of #6425 lands, add these two entries** — they are the
+assertion, held here only because the harness has nowhere else to put them yet.
+(The third, `Vault --[CONTAINS]--> Vault.helper`, has been moved into
+`expected.json`; it passes.)
 
 ```json
-{
-  "from_name": "Vault", "from_kind": "SCOPE.Component", "from_file": "Vault.sol",
-  "kind": "CONTAINS",
-  "to_name": "Vault.helper", "to_kind": "SCOPE.Operation", "to_file": "Vault.sol",
-  "must_exist": false,
-  "note": "#6425: `helper` is a Yul function inside assembly{}, not a contract member. Member scanning is depth-blind — functionRE looks anywhere in the contract body rather than only at brace depth 1."
-},
 {
   "from_name": "Vault.ceiling", "from_kind": "SCOPE.Operation", "from_file": "Vault.sol",
   "kind": "CALLS", "to_name": "type", "to_kind": "SCOPE.External",

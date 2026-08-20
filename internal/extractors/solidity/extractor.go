@@ -2,14 +2,26 @@
 //
 // Extracted entities:
 //   - `contract Foo {…}`  / `library Foo {…}` / `interface Foo {…}` → SCOPE.Component (subtype="contract"/"library"/"interface")
-//   - `function name(…) …` → SCOPE.Operation (subtype="function")
+//   - `function name(…) …` → SCOPE.Operation (subtype="function"), inside a
+//     contract or at file level (a free function)
+//   - `constructor(…){…}`  → SCOPE.Operation (subtype="constructor")
+//   - `receive(){…}` / `fallback(){…}` → SCOPE.Operation (subtype="receive"/"fallback")
 //   - `event Name(…);`    → SCOPE.Operation (subtype="event")
+//   - `error Name(…);`    → SCOPE.Operation (subtype="error")
 //   - `modifier name(…){…}` → SCOPE.Operation (subtype="modifier")
+//   - `struct S {…}` / `enum E {…}` → SCOPE.Schema (subtype="struct"/"enum")
+//   - `type T is uint128;` → SCOPE.Schema (subtype="type")
 //   - `uint256 public cap;` → SCOPE.Schema (subtype="field") for contract-level state variables
 //   - `import "./Foo.sol"` / `import "…"` → IMPORTS relationship
-//   - `contract Foo is Bar, Baz` → EXTENDS edges (on the contract component)
+//   - `contract Foo is Bar, Baz` → EXTENDS edges (on the contract component),
+//     including the base-constructor form `is ERC20("n","s")`
 //   - Function-call expressions → CALLS edges
-//   - CONTAINS edges (contract → its functions/events/modifiers/state variables)
+//   - Modifier usage in a declaration's attribute section → CALLS edges
+//   - CONTAINS edges (contract → its members)
+//
+// Every declaration form except `function`/`event`/`modifier`/state variables
+// was added by #6423; before it, a contract with base-constructor arguments
+// matched nothing and took its whole file's contents with it.
 //
 // No tree-sitter grammar for Solidity is bundled in smacker/go-tree-sitter, so
 // this extractor uses regular expressions.
@@ -53,14 +65,68 @@ var (
 	// Group 1: kind keyword (contract|library|interface|abstract)
 	// Group 2: name
 	// Group 3: inheritance list after "is" (may be empty string)
+	//
+	// The inheritance group is `[^{};]*`, not an identifier class, because a
+	// base-constructor call belongs there: `contract MyToken is ERC20("My
+	// Token", "MTK")` is ordinary Solidity and the canonical OpenZeppelin
+	// usage. The old class `[A-Za-z_][A-Za-z0-9_,\s]*` could not hold `(`, so
+	// the whole declaration failed to match — and since findContracts only
+	// walks matched bodies, the contract and every member inside it vanished
+	// from the graph rather than degrading (#6423). Excluding `{` is what
+	// bounds the group at the contract's own opening brace; excluding `;`
+	// keeps a malformed, brace-less declaration from swallowing the rest of
+	// the file. The list is split by parseInheritanceList, which is
+	// paren-aware — splitting the raw text on every comma yields the
+	// "parents" `ERC20(` and `)`.
 	contractRE = regexp.MustCompile(
-		`(?m)^[ \t]*(abstract\s+contract|contract|library|interface)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:is\s+([A-Za-z_][A-Za-z0-9_,\s]*))?[{]`,
+		`(?m)^[ \t]*(abstract\s+contract|contract|library|interface)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:is\s+([^{};]*))?[{]`,
 	)
 
-	// functionRE matches function declarations inside contracts.
+	// functionRE matches function declarations. Inside a contract body it
+	// finds members; run against a source whose contract bodies have been
+	// masked out (see maskRanges) it finds file-level free functions.
 	// Group 1: function name (plain identifier; does NOT match receive/fallback specials)
 	functionRE = regexp.MustCompile(
 		`(?m)^[ \t]*function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
+	)
+
+	// constructorRE matches a constructor. The keyword IS the declaration —
+	// there is no name to capture — which is why functionRE cannot find one
+	// and why nothing was emitted for the member where OpenZeppelin-style
+	// contracts do their wiring (#6423).
+	constructorRE = regexp.MustCompile(
+		`(?m)^[ \t]*constructor\s*\(`,
+	)
+
+	// specialFunctionRE matches the two nameless entry points, `receive()`
+	// and `fallback()`. Group 1 is the keyword, which is also the member name.
+	specialFunctionRE = regexp.MustCompile(
+		`(?m)^[ \t]*(receive|fallback)\s*\(`,
+	)
+
+	// errorRE matches custom error declarations (Solidity >=0.8.4). Like an
+	// event, an error is a bodiless signature terminated by ';'.
+	// Group 1: error name
+	errorRE = regexp.MustCompile(
+		`(?m)^[ \t]*error\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
+	)
+
+	// structRE matches struct declarations. Group 1: struct name.
+	structRE = regexp.MustCompile(
+		`(?m)^[ \t]*struct\s+([A-Za-z_][A-Za-z0-9_]*)\s*[{]`,
+	)
+
+	// enumRE matches enum declarations. Group 1: enum name.
+	enumRE = regexp.MustCompile(
+		`(?m)^[ \t]*enum\s+([A-Za-z_][A-Za-z0-9_]*)\s*[{]`,
+	)
+
+	// userTypeRE matches a user-defined value type, `type Price is uint128;`.
+	// Group 1: the type name. Requiring whitespace after the keyword is what
+	// separates the declaration from the `type(uint256).max` builtin, whose
+	// keyword is immediately followed by '('.
+	userTypeRE = regexp.MustCompile(
+		`(?m)^[ \t]*type\s+([A-Za-z_][A-Za-z0-9_]*)\s+is\s`,
 	)
 
 	// eventRE matches event declarations.
@@ -139,10 +205,139 @@ func extractSolidity(src, filePath string) []types.EntityRecord {
 
 	// ── 2. Contracts / libraries / interfaces ────────────────────────────
 	scrubbed := stripCommentsAndStrings(src)
-	contracts := findContracts(scrubbed, filePath, signals)
+	contracts, spans := findContracts(scrubbed, filePath, signals)
 	entities = append(entities, contracts...)
 
+	// ── 3. File-level declarations ───────────────────────────────────────
+	// Free functions, errors, structs, enums and user-defined value types can
+	// all be declared outside any contract, and none of them had a code path
+	// before #6423. The scan runs against a copy of the source with every
+	// contract's declaration and body blanked out, so a member cannot be
+	// emitted twice — once qualified by its contract and once bare — and the
+	// masking preserves byte offsets and newline positions, so an offset into
+	// the masked text still names the same line.
+	entities = append(entities, findFileLevelDecls(maskRanges(scrubbed, spans), filePath)...)
+
 	return entities
+}
+
+// span is a half-open byte range [start, end) of the scrubbed source.
+type span struct{ start, end int }
+
+// maskRanges returns src with every byte inside one of the ranges replaced by
+// a space, leaving newlines in place so offsets and line numbers are unchanged.
+func maskRanges(src string, ranges []span) string {
+	if len(ranges) == 0 {
+		return src
+	}
+	out := []byte(src)
+	for _, r := range ranges {
+		if r.start < 0 {
+			r.start = 0
+		}
+		if r.end > len(out) {
+			r.end = len(out)
+		}
+		for i := r.start; i < r.end; i++ {
+			if out[i] != '\n' {
+				out[i] = ' '
+			}
+		}
+	}
+	return string(out)
+}
+
+// findFileLevelDecls emits the declarations that live outside any contract.
+// masked is the scrubbed source with contract declarations blanked out, so a
+// match here is a file-level declaration by construction.
+func findFileLevelDecls(masked, filePath string) []types.EntityRecord {
+	var out []types.EntityRecord
+
+	// Free functions carry a body and therefore CALLS edges, exactly as a
+	// contract member does. Extracting them also un-dangles the edges that
+	// already pointed at them: before #6423 a call to a free function was
+	// emitted as an unresolved bare string because the callee was never an
+	// entity.
+	for _, fm := range functionRE.FindAllStringSubmatchIndex(masked, -1) {
+		if len(fm) < 4 {
+			continue
+		}
+		name := masked[fm[2]:fm[3]]
+		fnBody, fnEnd := declBody(masked, fm[1])
+		rec := types.EntityRecord{
+			Name:          name,
+			Kind:          "SCOPE.Operation",
+			Subtype:       "function",
+			SourceFile:    filePath,
+			Language:      "solidity",
+			StartLine:     lineOf(masked, fm[0]),
+			EndLine:       lineOf(masked, fm[0]),
+			Signature:     declSignature(masked, fm[0], fm[1]),
+			Relationships: declCalls(masked, fm[1], fnBody, name),
+		}
+		if fnEnd >= 0 {
+			rec.EndLine = lineOf(masked, fnEnd)
+		}
+		out = append(out, rec)
+	}
+
+	for _, spec := range memberDeclSpecs {
+		for _, m := range spec.re.FindAllStringSubmatchIndex(masked, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			name := masked[m[2]:m[3]]
+			out = append(out, types.EntityRecord{
+				Name:       name,
+				Kind:       spec.kind,
+				Subtype:    spec.subtype,
+				SourceFile: filePath,
+				Language:   "solidity",
+				StartLine:  lineOf(masked, m[0]),
+				EndLine:    lineOf(masked, declEndOffset(masked, m[1], spec.bodied, m[0])),
+				Signature:  declSignature(masked, m[0], m[1]),
+			})
+		}
+	}
+	return out
+}
+
+// memberDeclSpecs are the type-ish declarations that may appear at file level
+// or directly inside a contract body, and that had no code path before #6423.
+// Errors are SCOPE.Operation for the same reason events are: they are
+// bodiless, invocable signatures, and `revert E(...)` reads as a call site.
+var memberDeclSpecs = []struct {
+	re      *regexp.Regexp
+	kind    string
+	subtype string
+	bodied  bool // true when the regex match ends at '{' rather than at '('
+}{
+	{errorRE, "SCOPE.Operation", "error", false},
+	{structRE, "SCOPE.Schema", "struct", true},
+	{enumRE, "SCOPE.Schema", "enum", true},
+	{userTypeRE, "SCOPE.Schema", "type", false},
+}
+
+// declEndOffset returns the offset of the byte that ends a declaration whose
+// regex match ended at matchEnd. A bodied declaration (struct/enum) ends at
+// the '}' closing the brace the match consumed; a bodiless one ends at its
+// ';'. fallback is returned when the declaration is unterminated.
+func declEndOffset(src string, matchEnd int, bodied bool, fallback int) int {
+	if bodied {
+		body, endLine := extractBracedBody(src, matchEnd-1)
+		if endLine == 0 {
+			return fallback
+		}
+		return matchEnd + len(body)
+	}
+	// `type X is Y;` never opens a paren, so declBody's paren depth of 1 would
+	// never return to zero. Scan for the terminator directly instead.
+	for i := matchEnd; i < len(src); i++ {
+		if src[i] == ';' {
+			return i
+		}
+	}
+	return fallback
 }
 
 // collectImportPaths returns the raw import target paths in source order.
@@ -160,8 +355,12 @@ func collectImportPaths(src string) []string {
 // SCOPE.Component entities with EXTENDS and CONTAINS edges, and also emits
 // SCOPE.Operation children (functions/events/modifiers). The framework signals
 // (from import paths) let it stamp OpenZeppelin/Foundry/Hardhat attributes.
-func findContracts(src, filePath string, signals frameworkSignals) []types.EntityRecord {
+// It also returns the byte span of every contract declaration (keyword through
+// closing brace) so the caller can mask them out before scanning for
+// file-level declarations.
+func findContracts(src, filePath string, signals frameworkSignals) ([]types.EntityRecord, []span) {
 	var out []types.EntityRecord
+	var spans []span
 
 	matches := contractRE.FindAllStringSubmatchIndex(src, -1)
 	for idx, m := range matches {
@@ -179,17 +378,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 		// Inheritance list.
 		var extends []string
 		if m[6] >= 0 && m[7] > m[6] {
-			rawList := strings.TrimSpace(src[m[6]:m[7]])
-			for _, part := range strings.Split(rawList, ",") {
-				parent := strings.TrimSpace(part)
-				// Strip any generic arguments e.g. "ERC20("MyToken","MTK")" — take up to first non-ident char.
-				if paren := strings.IndexAny(parent, "(<{"); paren >= 0 {
-					parent = strings.TrimSpace(parent[:paren])
-				}
-				if parent != "" {
-					extends = append(extends, parent)
-				}
-			}
+			extends = parseInheritanceList(src[m[6]:m[7]])
 		}
 
 		startLine := lineOf(src, m[0])
@@ -198,9 +387,27 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 		bodyStart := m[1] // position just past the opening '{' marker position
 		// The regex anchor ends at '{', so m[1] points one past the '{'.
 		body, endLine := extractBracedBody(src, bodyStart-1)
-		if endLine == 0 {
+		unterminated := endLine == 0
+		if unterminated {
 			endLine = startLine
 		}
+		// The declaration span, for the file-level mask. When the body is
+		// unterminated extractBracedBody returns an empty body, so
+		// `bodyStart + len(body) + 1` degenerates to the header — and masking
+		// LESS is the dangerous direction here, not the safe one: whatever the
+		// mask leaves visible, findFileLevelDecls emits. An unterminated
+		// contract left its entire body unmasked and every member came back out
+		// as a bare, top-level entity with no CONTAINS owner — a phantom that
+		// did not exist before #6423, because the file-level scan did not
+		// exist. An unterminated contract runs to the end of the file by
+		// definition, so the span does too; the members are lost with it, which
+		// is the pre-#6423 behaviour and the honest one, since a member of an
+		// unterminated contract has no measurable span (#6423 review).
+		declEnd := bodyStart + len(body) + 1
+		if unterminated {
+			declEnd = len(src)
+		}
+		spans = append(spans, span{start: m[0], end: declEnd})
 
 		// Determine preceding contract body's end to limit function scan scope.
 		var prevBodyEnd int
@@ -278,48 +485,124 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 		// body starts just past '{', so a child N newlines in sits N lines below it.
 		braceLine := lineOf(src, bodyStart-1)
 
-		// Functions.
-		for _, fm := range functionRE.FindAllStringSubmatchIndex(body, -1) {
-			if len(fm) < 4 {
-				continue
-			}
-			fnName := body[fm[2]:fm[3]]
-			qualName := name + "." + fnName
-			fnStartLine := braceLine + strings.Count(body[:fm[0]], "\n")
-			fnBody, fnEnd := declBody(body, fm[1])
-			fnEndLine := fnStartLine
-			if fnEnd >= 0 {
-				fnEndLine = braceLine + strings.Count(body[:fnEnd], "\n")
-			}
-			rawFnSig := declSignature(body, fm[0], fm[1])
+		// Every member regex below is line-anchored (`(?m)^[ \t]*…`), not
+		// scope-aware, so it matches just as happily inside a nested function
+		// body as at contract level. `fallback();` — an ordinary statement
+		// dispatching to this contract's own fallback — sits at the start of a
+		// line and matched specialFunctionRE, minting a phantom member plus a
+		// CONTAINS edge from the contract (#6423 review). findStateVariables
+		// has tracked brace depth from the start for exactly this reason; the
+		// member scans now do too.
+		//
+		// Only the function/constructor/receive/fallback scan is REACHABLE at
+		// depth > 0 today: `fallback();` and `receive();` are ordinary
+		// statements, and a Yul `function helper(x) -> y {` inside `assembly`
+		// matches functionRE two braces deep (the #6425 phantom, which this
+		// guard also removes). No valid Solidity puts an `event`, `modifier`,
+		// `error`, `struct`, `enum` or `type X is Y` declaration inside a
+		// function body, so the guard on those three loops cannot fire on
+		// well-formed input and no test pins it. It is applied anyway, and
+		// said so here rather than left implicit, because that reachability
+		// argument rests on the LANGUAGE and not on the scanner: the scanner
+		// is line-anchored either way, and a member kind added later would
+		// otherwise inherit the bug silently.
+		depths := braceDepths(body)
+		isMemberPos := func(off int) bool {
+			return off >= 0 && off < len(depths) && depths[off] == 0
+		}
 
-			callRels := collectCallsFromBody(fnBody, qualName)
-			fnRec := types.EntityRecord{
-				Name:          qualName,
-				Kind:          "SCOPE.Operation",
-				Subtype:       "function",
-				SourceFile:    filePath,
-				Language:      "solidity",
-				StartLine:     fnStartLine,
-				EndLine:       fnEndLine,
-				Signature:     rawFnSig,
-				Relationships: callRels,
-			}
-			fnIdx := len(out)
-			out = append(out, fnRec)
-			_ = fnIdx
+		// Functions, constructors, and the receive/fallback entry points.
+		// The last three emitted nothing at all before #6423: functionRE
+		// requires the literal `function` keyword, which none of them has.
+		for _, spec := range []struct {
+			re *regexp.Regexp
+			// fixedName is the member name when the keyword is the whole
+			// declaration (a constructor); empty when group 1 holds the name.
+			fixedName string
+			subtype   string
+		}{
+			{functionRE, "", "function"},
+			{constructorRE, "constructor", "constructor"},
+			{specialFunctionRE, "", ""},
+		} {
+			for _, fm := range spec.re.FindAllStringSubmatchIndex(body, -1) {
+				if !isMemberPos(fm[0]) {
+					continue // a statement inside another member's body
+				}
+				fnName, subtype := spec.fixedName, spec.subtype
+				if fnName == "" {
+					if len(fm) < 4 {
+						continue
+					}
+					fnName = body[fm[2]:fm[3]]
+				}
+				if subtype == "" {
+					subtype = fnName
+				}
+				qualName := name + "." + fnName
+				fnStartLine := braceLine + strings.Count(body[:fm[0]], "\n")
+				fnBody, fnEnd := declBody(body, fm[1])
+				fnEndLine := fnStartLine
+				if fnEnd >= 0 {
+					fnEndLine = braceLine + strings.Count(body[:fnEnd], "\n")
+				}
 
-			// CONTAINS edge from contract.
-			toID := extractor.BuildOperationStructuralRef("solidity", filePath, qualName)
-			out[contractIdx].Relationships = append(out[contractIdx].Relationships, types.RelationshipRecord{
-				ToID: toID,
-				Kind: "CONTAINS",
-			})
+				fnRec := types.EntityRecord{
+					Name:          qualName,
+					Kind:          "SCOPE.Operation",
+					Subtype:       subtype,
+					SourceFile:    filePath,
+					Language:      "solidity",
+					StartLine:     fnStartLine,
+					EndLine:       fnEndLine,
+					Signature:     declSignature(body, fm[0], fm[1]),
+					Relationships: declCalls(body, fm[1], fnBody, qualName),
+				}
+				out = append(out, fnRec)
+
+				// CONTAINS edge from contract.
+				toID := extractor.BuildOperationStructuralRef("solidity", filePath, qualName)
+				out[contractIdx].Relationships = append(out[contractIdx].Relationships, types.RelationshipRecord{
+					ToID: toID,
+					Kind: "CONTAINS",
+				})
+			}
+		}
+
+		// Errors, structs, enums and user-defined value types. All four are
+		// legal directly inside a contract body as well as at file level, and
+		// asserting only one position lets a half-fix look complete (#6423).
+		for _, spec := range memberDeclSpecs {
+			for _, dm := range spec.re.FindAllStringSubmatchIndex(body, -1) {
+				if len(dm) < 4 || !isMemberPos(dm[0]) {
+					continue
+				}
+				qualName := name + "." + body[dm[2]:dm[3]]
+				out = append(out, types.EntityRecord{
+					Name:       qualName,
+					Kind:       spec.kind,
+					Subtype:    spec.subtype,
+					SourceFile: filePath,
+					Language:   "solidity",
+					StartLine:  braceLine + strings.Count(body[:dm[0]], "\n"),
+					EndLine:    braceLine + strings.Count(body[:declEndOffset(body, dm[1], spec.bodied, dm[0])], "\n"),
+					Signature:  declSignature(body, dm[0], dm[1]),
+				})
+
+				toID := extractor.BuildOperationStructuralRef("solidity", filePath, qualName)
+				if spec.kind == "SCOPE.Schema" {
+					toID = extractor.BuildSchemaFieldStructuralRef("solidity", filePath, qualName)
+				}
+				out[contractIdx].Relationships = append(out[contractIdx].Relationships, types.RelationshipRecord{
+					ToID: toID,
+					Kind: "CONTAINS",
+				})
+			}
 		}
 
 		// Events.
 		for _, em := range eventRE.FindAllStringSubmatchIndex(body, -1) {
-			if len(em) < 4 {
+			if len(em) < 4 || !isMemberPos(em[0]) {
 				continue
 			}
 			evName := body[em[2]:em[3]]
@@ -353,7 +636,7 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 
 		// Modifiers.
 		for _, mm := range modifierRE.FindAllStringSubmatchIndex(body, -1) {
-			if len(mm) < 4 {
+			if len(mm) < 4 || !isMemberPos(mm[0]) {
 				continue
 			}
 			modName := body[mm[2]:mm[3]]
@@ -410,6 +693,146 @@ func findContracts(src, filePath string, signals frameworkSignals) []types.Entit
 		}
 	}
 
+	return out, spans
+}
+
+// parseInheritanceList splits the text of an `is` clause into parent names.
+// It splits on commas at paren depth zero and drops any argument list, so
+// `ERC20("My Token", "MTK"), Ownable` yields [ERC20 Ownable]. Splitting on
+// every comma instead yields `ERC20(` and `)` — the second of which is not
+// even an identifier (#6423). The comma inside the base-constructor call is
+// the reason the depth tracking is needed rather than a plain suffix trim.
+func parseInheritanceList(raw string) []string {
+	var out []string
+	depth, start := 0, 0
+	flush := func(part string) {
+		if cut := strings.IndexAny(part, "(<{"); cut >= 0 {
+			part = part[:cut]
+		}
+		if parent := strings.TrimSpace(part); parent != "" {
+			out = append(out, parent)
+		}
+	}
+	for i := 0; i < len(raw); i++ {
+		switch raw[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				flush(raw[start:i])
+				start = i + 1
+			}
+		}
+	}
+	flush(raw[start:])
+	return out
+}
+
+// solDeclAttrKeywords are the tokens that may appear in a declaration's
+// attribute section without being a modifier invocation.
+var solDeclAttrKeywords = map[string]bool{
+	"public": true, "private": true, "internal": true, "external": true,
+	"pure": true, "view": true, "payable": true, "nonpayable": true,
+	"virtual": true, "override": true, "returns": true, "constant": true,
+	"immutable": true, "anonymous": true, "memory": true, "calldata": true,
+	"storage": true, "indexed": true,
+}
+
+// declAttributes returns the attribute section of a member declaration whose
+// regex match ended at matchEnd: the text between the parameter list's closing
+// ')' and the body's '{' (or the ';' of a bodiless declaration).
+//
+// This is the region declBody deliberately skips over, and skipping it is why
+// modifier *usage* produced no edge at all before #6423 — modifiers were
+// declared and contained, never connected to the functions applying them.
+// matchEnd sits just past the '(' opening the parameter list, so the scan
+// starts one level deep, exactly as declBody's does.
+func declAttributes(src string, matchEnd int) string {
+	depth, tailStart := 1, -1
+	for i := matchEnd; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 && tailStart < 0 {
+				tailStart = i + 1
+			}
+		case '{', ';':
+			if depth == 0 && tailStart >= 0 && tailStart <= i {
+				return src[tailStart:i]
+			}
+		}
+	}
+	return ""
+}
+
+// modifierUsages returns the modifier invocations named in an attribute
+// section, in source order and deduplicated. A base-constructor call —
+// `constructor(...) Ownable(initialOwner)` — sits in the same position and is
+// returned too: it is a genuine invocation of the base contract.
+//
+// Every identifier that is not a known attribute keyword counts, and any
+// parenthesised argument list is skipped whole. That skip is what keeps the
+// scan from minting `uint256` out of `returns (uint256)` and `A`/`B` out of
+// `override(A, B)`: a recall fix that took every identifier here would raise
+// the entity count and quietly fill the graph with keyword call targets.
+func modifierUsages(attrs string) []string {
+	var out []string
+	seen := make(map[string]bool)
+	for i := 0; i < len(attrs); {
+		ident := solIdentAt(attrs, i)
+		if ident == "" {
+			i++
+			continue
+		}
+		i += len(ident)
+		for i < len(attrs) && (attrs[i] == ' ' || attrs[i] == '\t' || attrs[i] == '\n' || attrs[i] == '\r') {
+			i++
+		}
+		if i < len(attrs) && attrs[i] == '(' {
+			depth := 0
+			for ; i < len(attrs); i++ {
+				if attrs[i] == '(' {
+					depth++
+				} else if attrs[i] == ')' {
+					depth--
+					if depth == 0 {
+						i++
+						break
+					}
+				}
+			}
+		}
+		if solDeclAttrKeywords[ident] || solidityKeywords[ident] || seen[ident] {
+			continue
+		}
+		seen[ident] = true
+		out = append(out, ident)
+	}
+	return out
+}
+
+// declCalls returns the CALLS edges for one member declaration: the modifier
+// invocations from its attribute section first, then the calls in its body.
+// Body targets that repeat a modifier name are dropped, so applying a modifier
+// and calling a same-named function yields one edge rather than two.
+func declCalls(src string, matchEnd int, declaredBody, qualName string) []types.RelationshipRecord {
+	var out []types.RelationshipRecord
+	seen := make(map[string]bool)
+	for _, mod := range modifierUsages(declAttributes(src, matchEnd)) {
+		seen[mod] = true
+		out = append(out, types.RelationshipRecord{ToID: mod, Kind: "CALLS"})
+	}
+	for _, rel := range collectCallsFromBody(declaredBody, qualName) {
+		if seen[rel.ToID] {
+			continue
+		}
+		seen[rel.ToID] = true
+		out = append(out, rel)
+	}
 	return out
 }
 
@@ -742,6 +1165,33 @@ var stateVarNonDeclKeywords = map[string]bool{
 	"function": true, "modifier": true, "receive": true, "fallback": true,
 	"event": true, "error": true,
 	"using": true, "type": true,
+}
+
+// braceDepths returns, for each byte of a contract body, the brace nesting
+// depth that byte sits at: zero for a byte directly in the contract scope,
+// one or more for a byte inside a function body, a struct, an enum or an
+// assembly block. An opening '{' is reported at the OUTER depth and its
+// matching '}' likewise, so "the match starts at depth zero" is exactly "the
+// declaration is a direct member of this contract".
+//
+// The member scans need this for the same reason findStateVariables tracks
+// depth inline: the declaration regexes are line-anchored, not scope-aware.
+// body is the scrubbed source (stripCommentsAndStrings ran before
+// findContracts), so a brace inside a comment or a string literal cannot skew
+// the count. Refs #6423 review.
+func braceDepths(body string) []int {
+	depths := make([]int, len(body))
+	depth := 0
+	for i := 0; i < len(body); i++ {
+		if body[i] == '}' && depth > 0 {
+			depth--
+		}
+		depths[i] = depth
+		if body[i] == '{' {
+			depth++
+		}
+	}
+	return depths
 }
 
 // findStateVariables returns the state variables declared directly in a
