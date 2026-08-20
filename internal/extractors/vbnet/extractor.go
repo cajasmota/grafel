@@ -51,10 +51,12 @@
 //   - (LIFTED by S7b, #6327.) `AddressOf Foo` carries no parentheses, so the
 //     reference pass never saw it. It is now scanned separately and emitted
 //     as REFERENCES — see references.go for why that kind and that direction.
-//   - Method-level `Implements IFoo.Bar` is parsed onto Node.Implements but is
-//     NOT emitted as an IMPLEMENTS edge: the epic scopes IMPLEMENTS to the
-//     type, and a member-level edge to `IFoo.Bar` would compete with the
-//     type-level edge to `IFoo` in the same graph.
+//   - (LIFTED by S7c, #6327.) Method/property/event-level
+//     `Implements IFoo.Bar` was parsed onto Node.Implements and deliberately
+//     not emitted, on the argument that a member-level edge to `IFoo.Bar`
+//     would COMPETE with the type-level edge to `IFoo`. That argument does
+//     not survive contact with how grafel identifies an edge. See
+//     memberImplementsEdges for the answer and for what replaced it.
 //   - Hierarchy edges are stamped with the TYPE's declaration line, not the
 //     line of the Inherits/Implements clause. vbnet.Node records those clauses
 //     as a []string with no positions, so the clause line is not available.
@@ -181,6 +183,9 @@ func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath, repoRoot string, o
 		}
 		if child.Kind.IsType() {
 			rec.Relationships = append(rec.Relationships, hierarchyEdges(child)...)
+		} else {
+			// S7c (#6327): member-level `Implements IFoo.Bar`.
+			rec.Relationships = append(rec.Relationships, memberImplementsEdges(child)...)
 		}
 		appendCalls(&rec, child)
 		// S7b (#6327): `Handles` clauses and `AddressOf` operands.
@@ -343,6 +348,125 @@ func hierarchyEdges(n *vbnet.Node) []types.RelationshipRecord {
 		add("IMPLEMENTS", raw)
 	}
 	return out
+}
+
+// memberImplementsEdges builds the IMPLEMENTS edges for ONE member —
+// the method, property or event carrying an `Implements IFoo.Bar` clause.
+//
+// # Why this is IMPLEMENTS and not a new kind, and why it does not compete
+//
+// The prior decision (recorded in the package doc, now lifted) was that a
+// member edge to `IFoo.Bar` would COMPETE with the type edge to `IFoo`.
+// It does not, and the reason is mechanical rather than a judgement call:
+// an edge here is identified by (FromID, ToID, Kind), and the two edges
+// share NEITHER endpoint. The type edge is stamped on the TYPE record and
+// points at `IFoo`; this one is stamped on the MEMBER record — FromID stays
+// empty and assembly substitutes the owning member, the same anchor
+// appendReferences relies on — and points at `IFoo.Bar`. They cannot fold,
+// dedupe or shadow each other. The fear would be real in a graph that keyed
+// IMPLEMENTS by owning type alone; this one does not.
+//
+// Nor is the member edge a weaker restatement of the type edge. It is the
+// only thing in the graph that says WHICH member satisfies WHICH interface
+// member — a question the type edge cannot express, and the question a
+// VB.NET codebase actually answers explicitly, because VB.NET requires the
+// clause rather than inferring satisfaction from the signature. Measured on
+// the 302-file corpus: 137 member-level clauses against 67 type-level ones,
+// so the form suppressed here was TWICE the form emitted.
+//
+// A distinct kind (IMPLEMENTS_MEMBER) was considered and rejected for the
+// reason S7b rejected HANDLES in references.go: a VB-only kind is invisible
+// to every existing traversal, query and quality gate, and would have to be
+// threaded through types.AllRelationshipKinds, the producer-boundary scan
+// and the dashboard for one language. GRPC_IMPLEMENTS is not a precedent
+// against that — it exists because its target is a different entity FAMILY
+// (a GrpcMethod spec node), not because its source is a member.
+//
+// What the objection does earn is a way to TELL THE TWO APART without
+// resolving either endpoint, since an unresolved stub carries no kind. That
+// is the `via` property, the same discriminator appendReferences stamps.
+// types.Props is a SORTED slice binary-searched by Props.Get
+// (types/props.go:67), so "line" must precede "via" or both read back absent.
+//
+// The ToID follows the SAME normalisation rules baseTypeName applies to the
+// type-level clause — `(Of ...)` arguments trimmed, `Global.` stripped,
+// dotted prefix KEPT — but it cannot reuse baseTypeName itself. That
+// function trims from the FIRST `(` to the end of the string, which is
+// right when the operand IS a type name and wrong here: on
+// `IComparable(Of Command).CompareTo` it would drop `.CompareTo` and
+// silently produce the TYPE-level target, i.e. exactly the duplicate the
+// old objection feared. memberTargetName removes the BALANCED argument
+// group and keeps the tail.
+//
+// # Resolution, stated rather than assumed
+//
+// A member-level ToID names an OPERATION, but internal/resolve/refs.go:2028
+// routes EXTENDS/IMPLEMENTS to componentKindFamily and refs.go:3526 keeps
+// the package-scoped fallback Component-only on purpose. Emitting the edge
+// does not change that, and this slice does not touch internal/resolve.
+// The consequence is measured, not guessed, by
+// TestCorpusMemberImplements_6327.
+func memberImplementsEdges(n *vbnet.Node) []types.RelationshipRecord {
+	if len(n.Implements) == 0 {
+		return nil
+	}
+	// Stamped with the MEMBER's declaration line, not the clause's: vbnet.Node
+	// records Implements as a []string with no positions — the same limit
+	// hierarchyEdges and appendReferences already document. The clause closes
+	// the signature, so it is on or just after that line in every case.
+	line := strconv.Itoa(n.Span.StartLine)
+	var out []types.RelationshipRecord
+	seen := map[string]bool{}
+	for _, raw := range n.Implements {
+		target := memberTargetName(raw)
+		if target == "" || seen[target] {
+			continue
+		}
+		seen[target] = true
+		out = append(out, types.RelationshipRecord{
+			// FromID intentionally empty: assembly stamps the owning MEMBER.
+			ToID: target,
+			Kind: "IMPLEMENTS",
+			Properties: types.Props{
+				{K: "line", V: line},
+				{K: "via", V: "implements-member"},
+			},
+		})
+	}
+	return out
+}
+
+// memberTargetName normalises a member-level `Implements` operand.
+//
+// Unlike baseTypeName it must survive text AFTER the type-argument list,
+// because the operand is `Interface.Member` and the arguments sit in the
+// middle: `IComparable(Of Command).CompareTo` -> `IComparable.CompareTo`.
+// Groups may nest (`IEnumerable(Of List(Of T)).GetEnumerator`), so they are
+// removed by depth rather than by index.
+func memberTargetName(s string) string {
+	var b strings.Builder
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		default:
+			if depth == 0 {
+				b.WriteByte(s[i])
+			}
+		}
+	}
+	out := strings.TrimSpace(b.String())
+	// `Global.` is a root-namespace escape, not a namespace segment; VB.NET is
+	// case-insensitive, so it is matched folded. Same rule as baseTypeName.
+	if len(out) > 7 && vbnet.FoldName(out[:7]) == "global." {
+		out = out[7:]
+	}
+	return strings.TrimSpace(out)
 }
 
 // baseTypeName normalises an Inherits/Implements operand.

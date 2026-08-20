@@ -1,7 +1,7 @@
 {
   "fixture_name": "vbnet-mini",
   "language": "vbnet",
-  "description": "Real VB.NET sourced from two MIT-licensed projects (see NOTICE.md): staxrip/staxrip (Criteria.vb verbatim, FrameServer.vb head excerpt) and Wagnard/display-drivers-uninstaller (Win32Native.vb excerpt). Gates the shapes S5 of #6327 actually emits: Class/Module/Structure/Interface containment, Inherits -> EXTENDS (in-tree chain AND an interface extending an external one), class-level Implements -> IMPLEMENTS (in-tree AND external), Imports -> IMPORTS (bare-name and folded SCOPE.External package), and CALLS gated on the paren disambiguator. Deliberately NOT asserted, because these three sources contain none of them: partial-class merge (S7a) and Handles/AddressOf -> REFERENCES (S7b) are implemented but unexercised here. Still genuine gaps: With-block receivers (S7d) and method-level Implements (S7c) -- FrameServer.vb and Win32Native.vb both carry method-level Implements clauses that produce no edge.",
+  "description": "Real VB.NET sourced from two MIT-licensed projects (see NOTICE.md): staxrip/staxrip (Criteria.vb verbatim, FrameServer.vb head excerpt) and Wagnard/display-drivers-uninstaller (Win32Native.vb excerpt). Gates the shapes S5 of #6327 actually emits: Class/Module/Structure/Interface containment, Inherits -> EXTENDS (in-tree chain AND an interface extending an external one), class-level Implements -> IMPLEMENTS (in-tree AND external), Imports -> IMPORTS (bare-name and folded SCOPE.External package), and CALLS gated on the paren disambiguator. Deliberately NOT asserted, because these three sources contain none of them: partial-class merge (S7a) and Handles/AddressOf -> REFERENCES (S7b) are implemented but unexercised here. Also gates S7c: member-level `Implements IFoo.Bar` -> IMPLEMENTS on the MEMBER, with via=implements-member, coexisting with the class-level edge rather than replacing it -- FrameServer.vb carries four clauses onto in-tree IFrameServer members and FrameServer.vb and Win32Native.vb one external `IDisposable.Dispose` each. Still a genuine gap: With-block receivers (S7d).",
   "expected_entities": [
     {
       "name": "Criteria",
@@ -375,6 +375,68 @@
       "to_kind": "SCOPE.External",
       "must_exist": true,
       "note": "`Throw New Exception(\"failed to create criteria\")` — constructor call to an external type."
+    },
+    {
+      "from_name": "DirectFrameServer.Info",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "IMPLEMENTS",
+      "to_name": "IFrameServer.Info",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "S7c: `Property Info As ServerInfo Implements IFrameServer.Info`. The edge is anchored on the PROPERTY, and its target is the INTERFACE MEMBER — neither endpoint is shared with the DirectFrameServer -> IFrameServer class-level edge above, which is why the two coexist instead of competing."
+    },
+    {
+      "from_name": "DirectFrameServer.Error",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "IMPLEMENTS",
+      "to_name": "IFrameServer.Error",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "S7c on a bracket-escaped name: `ReadOnly Property [Error] As String Implements IFrameServer.Error`. Both ends drop the brackets, so the member binds."
+    },
+    {
+      "from_name": "DirectFrameServer.FrameRate",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "IMPLEMENTS",
+      "to_name": "IFrameServer.FrameRate",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "S7c on a ReadOnly Property."
+    },
+    {
+      "from_name": "DirectFrameServer.GetFrame",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "IMPLEMENTS",
+      "to_name": "IFrameServer.GetFrame",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "S7c on a Function with a parameter list. `INativeFrameServer` declares a GetFrame of its own in the same file; the target must be the IFrameServer one, so this entry also pins that the dotted prefix is kept rather than resolved by leaf name."
+    },
+    {
+      "from_name": "DirectFrameServer.Dispose",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "IMPLEMENTS",
+      "to_bare_name": "IDisposable.Dispose",
+      "must_exist": true,
+      "note": "S7c with an EXTERNAL target: `Sub Dispose() Implements IDisposable.Dispose`. .NET's IDisposable has no in-tree declaration, so the target stays a bare dotted name — the same disposition the class-level IDisposable edge already accepts."
+    },
+    {
+      "from_name": "StructPtr.Dispose",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Win32Native.vb",
+      "kind": "IMPLEMENTS",
+      "to_bare_name": "IDisposable.Dispose",
+      "must_exist": true,
+      "note": "The same external clause on a Module-nested class, four levels deep. Pins that member-level emission does not depend on the owner being top-level."
     }
   ],
   "forbidden_relationships": [
