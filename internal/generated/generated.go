@@ -103,7 +103,32 @@ type Detection struct {
 // 40k-line designer file).
 const (
 	headScanLines = 20
-	headScanBytes = 4096
+
+	// headerSkipBudget caps how many non-comment STATEMENT lines the header
+	// block may step over before it closes. #6345 closed it on the first one,
+	// which made every banner sitting behind a leading statement invisible —
+	// `set -e` in godownloader's install.sh, `using System;`, `Imports System`,
+	// `from __future__ import ...`. See #6348.
+	//
+	// It is a budget rather than a wider headerLinePrefixes on purpose: an
+	// enumeration of per-language leading statements makes every form nobody
+	// thought to list silently undetectable, which is the #6344 failure shape.
+	// A budget names no language and so cannot be incomplete.
+	//
+	// WHAT THIS CONSTANT DOES NOT DO, because the obvious reading is wrong and
+	// was measured wrong: it is not what holds the #6345 false positives out.
+	// Raising it to 3, 4, 6 or 10 leaves every one of them dead, because
+	// skippableStatement rejects their next line before the budget is reached.
+	// The budget is the independent ceiling for the shapes NOBODY MEASURED — it
+	// bounds how far a chain of statements that all look skippable can carry the
+	// window, and that is the only claim it can support.
+	//
+	// Two is chosen from the other side, as the smallest value covering every
+	// shape #6348 lists: the deepest is Java's package plus two imports, and
+	// package is a declarationLine already. Widening it needs a corpus sweep,
+	// not an argument.
+	headerSkipBudget = 2
+	headScanBytes    = 4096
 )
 
 // Detect combines both signals for one file. rel is the repository-relative
@@ -176,18 +201,35 @@ func FromPath(rel string) Detection {
 // hand-written source, and they are exactly the three classes above, with one
 // exception recorded below.
 //
-// ONE MEASURABLE TRUE POSITIVE IS LOST — and "measurable" is doing real work
-// in that sentence. The corpus is ~all Go, and Go idiom puts the banner FIRST,
-// so a Go-only sweep cannot size this class at all. The one it does show is
-// tetratelabs/wazero's site/static/install.sh, a godownloader-generated script
-// whose banner sits at line 17 BEHIND a bare `set -e`. That is the fail-safe
-// direction — the file is treated as hand-written, which is the status quo —
-// and buying it back would mean letting an arbitrary shell statement extend
-// the header window, which is precisely what re-admits mkcgo.sh and
-// mksysnum_linux.pl.
+// ONE MEASURABLE TRUE POSITIVE WAS LOST BY #6345 — AND #6348 BOUGHT IT BACK.
+// The file is tetratelabs/wazero's site/static/install.sh, a
+// godownloader-generated script whose banner sits at line 17 BEHIND a bare
+// `set -e`. It is detected again as of #6348.
 //
-// THE SHAPES THE SWEEP IS BLIND TO, probed directly against FromContent rather
-// than inferred, all of them MISSES today:
+// The reasoning that once justified leaving it lost is kept here because it is
+// part of the record and because it is now DISPROVEN by the code below. #6345
+// argued that buying it back "would mean letting an arbitrary shell statement
+// extend the header window, which is precisely what re-admits mkcgo.sh and
+// mksysnum_linux.pl". The skip #6348 adds is not arbitrary: headerSkipBudget
+// bounds how many statements may be stepped over, and skippableStatement's
+// three refusal clauses — unbalanced quote, opening brace, prose length — are
+// what hold the #6345 false positives out. mkcgo.sh trips the quote clause on
+// its `hdr='` line before any budget is consumed; see
+// TestFromContent_SkippedStatementOpeningAStringEndsTheBlock and
+// TestFromContent_ProseAndBodyLinesAreNotSkippable.
+//
+// "Measurable" was doing real work in #6345's sentence and still is: the
+// corpus is ~all Go, and Go idiom puts the banner FIRST, so a Go-only sweep
+// CANNOT SIZE THIS CLASS AT ALL. That caveat is still true, it is why this bug
+// survived a measured narrowing, and re-sizing the class against a polyglot
+// corpus is tracked in #6396.
+//
+// THE SHAPES #6345'S SWEEP WAS BLIND TO, probed directly against FromContent
+// rather than inferred, and every one of them a MISS at that time. This list
+// is now precisely the set #6348 FIXES — each shape has a case in the
+// table-driven TestFromContent_BannerBehindLeadingStatements. It is kept
+// verbatim as the historical record of what was broken and as the enumeration
+// the fix is measured against:
 //
 //   - `sh` with `set -e` (or `set -euo pipefail`) before the banner — the
 //     wazero class, i.e. all of godownloader/goreleaser, an ecosystem and not
@@ -208,9 +250,24 @@ func FromPath(rel string) Detection {
 // a Rust inner attribute, a `#include`, and a comment-only licence header of
 // any length (comment lines keep the block open by construction).
 //
-// Widening headerLinePrefixes to cover them is deliberately NOT done here: it
-// is the same knob that re-admits the false positives this narrowing removed,
-// so it needs its own measured sweep. Filed as a follow-up.
+// POLICY ON headerLinePrefixes, reconciled with what #6348 actually changed:
+// broad widening remains deliberately NOT done, because an enumeration of
+// per-language leading statements is the same knob that re-admits the false
+// positives #6345 removed, and because anything nobody thought to list stays
+// silently undetectable — the #6344 failure shape. That is why the fix is a
+// bounded skip.
+//
+// #6348 does nonetheless make ONE addition to the slice: `"""`. Stating it
+// plainly rather than leaving the paragraph above to contradict the diff. It
+// is consistent with the policy rather than an exception to it, because the
+// Python docstring is not a statement standing BEFORE the banner that the skip
+// could step over — it is the banner's own delimiter, with the marker text
+// living INSIDE the block it opens. No budget reaches it. It is therefore also
+// listed in blockOpener's pairs, so the region it opens is terminated by the
+// matching `"""` instead of running to the end of the head window: the window
+// grows by a bounded, self-closing region, not by an open-ended prefix class.
+// Widening the slice with any prefix that lacks a closer still needs its own
+// measured sweep (#6396).
 func FromContent(content []byte) Detection {
 	head := headerBlock(headOf(content))
 	if len(head) == 0 {
@@ -268,6 +325,9 @@ func headerBlock(head []byte) []byte {
 	// banner written without a leading `*` on every line is common, and a
 	// prefix-only rule would stop reading at line 2 and miss it entirely.
 	var closer []byte
+	// skipped counts the non-comment STATEMENT lines stepped over so far; see
+	// headerSkipBudget.
+	skipped := 0
 	for pos := 0; pos < len(head); {
 		nl := bytes.IndexByte(head[pos:], '\n')
 		line := head[pos:]
@@ -280,11 +340,13 @@ func headerBlock(head []byte) []byte {
 			if bytes.Contains(line, closer) {
 				closer = nil
 			}
+		} else if headerLine(line) {
+			closer = blockOpener(line)
 		} else {
-			if !headerLine(line) {
+			if skipped == headerSkipBudget || !skippableStatement(line) {
 				break
 			}
-			closer = blockOpener(line)
+			skipped++
 		}
 		end = next
 		pos = next
@@ -301,6 +363,12 @@ func blockOpener(line []byte) []byte {
 	for _, b := range [...]struct{ open, close string }{
 		{"/*", "*/"},
 		{"<!--", "-->"},
+		// Python's triple-quoted module docstring is that language's header
+		// comment: a generated .py routinely carries its banner inside one, or
+		// below one. Neither the opener nor the interior starts with a comment
+		// introducer, so without this the block closes on line 1.
+		{`"""`, `"""`},
+		{`'''`, `'''`},
 	} {
 		if !bytes.HasPrefix(t, []byte(b.open)) {
 			continue
@@ -327,6 +395,9 @@ func blockOpener(line []byte) []byte {
 var headerLinePrefixes = []string{
 	// comment introducers (must stay in sync with commentLead)
 	"//", "#", "--", "'", "*", "/*", "<!--",
+	// Python triple-quoted docstring. The `'''` spelling is already
+	// covered by the VB `'` entry; `"""` needs its own listing.
+	`"""`,
 	// block-comment closers
 	"*/", "-->",
 	// language preamble directives
@@ -367,6 +438,61 @@ func headerLine(line []byte) bool {
 		}
 	}
 	return declarationLine.Match(t)
+}
+
+// maxStatementWords is the longest a skipped line may be, in whitespace-
+// separated fields, and still read as a STATEMENT rather than prose.
+//
+// It exists because the #6345 false-positive set is largely English: the
+// aws-sdk PULL_REQUEST_TEMPLATE and the traceviewer README both quote a
+// generator banner a few lines into ordinary paragraphs. Under a bare skip
+// budget those paragraphs are just "lines", and the banner comes back. A
+// leading statement is short by nature — `set -e`, `using System;`,
+// `import java.util.List;`, `declare(strict_types=1);` — while a sentence is
+// not, so length separates the two classes without naming a language.
+//
+// Six is comfortably above the longest statement in the #6348 set
+// (`from __future__ import annotations`, four) and comfortably below the
+// shortest measured prose line (seven).
+//
+// RESIDUAL FALSE NEGATIVES this bound leaves, probed against FromContent and
+// recorded so the next widening has a starting list rather than an argument:
+// `SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;` is seven fields
+// and so is not skipped; nor are annotations carrying seven or more arguments.
+// Two more miss on the sibling clauses rather than on length —
+// `set -e # don't stop` leaves an apostrophe unbalanced, and Rust
+// `use foo::Bar<'a>;` does the same. All four fail in the SAFE direction: the
+// header block closes early and the banner is treated as absent, which is the
+// pre-#6348 status quo for those files. Raising the bound to admit them costs
+// prose lines, so it needs a sweep (#6396), not a nudge.
+const maxStatementWords = 6
+
+// skippableStatement reports whether a non-comment line may be stepped over
+// while looking for the header banner. Three ways it can fail, each of which
+// is a measured false positive from #6345 rather than a style preference:
+//
+//   - it leaves a QUOTE UNBALANCED, so the lines after it are string data and
+//     not header. This is runtime/race/mkcgo.sh, the sharpest case #6345
+//     removed: a hand-written generator script that assigns the banner it
+//     EMITS to a shell variable, with `hdr='` alone on its own line. Skipping
+//     that line would read "Code generated by mkcgo.sh. DO NOT EDIT." out of
+//     the string and call the script generated.
+//   - it OPENS A BRACE, so the file body has started and anything below is
+//     code, not header. This is flatbuffers' JavaScriptTest.js, whose
+//     mid-function comment describes the data file it reads.
+//   - it is longer than maxStatementWords, i.e. it is PROSE.
+//
+// All three fail in the safe direction: a wrongly rejected line closes the
+// header block early, which is exactly the pre-#6348 status quo for that file.
+func skippableStatement(line []byte) bool {
+	t := bytes.TrimRight(bytes.TrimLeft(line, " \t"), " \t\r")
+	if bytes.HasSuffix(t, []byte("{")) {
+		return false
+	}
+	if bytes.Count(t, []byte("'"))%2 == 1 || bytes.Count(t, []byte(`"`))%2 == 1 {
+		return false
+	}
+	return len(bytes.Fields(t)) <= maxStatementWords
 }
 
 // ---------------------------------------------------------------------------
