@@ -73,6 +73,13 @@ func participationCheckName(kind string) string {
 	return fmt.Sprintf("kind-carries-semantic-edges[%s]", kind)
 }
 
+// participationRegressionCheckName is the sanity-result name for the
+// longitudinal check: a kind that participated in a PRIOR report for this
+// group and carries no semantic edge now (#6377).
+func participationRegressionCheckName(kind string) string {
+	return fmt.Sprintf("kind-participation-not-regressed[%s]", kind)
+}
+
 // SanityResult is the outcome of a single sanity check.
 type SanityResult struct {
 	Name   string
@@ -88,21 +95,32 @@ type SanityResult struct {
 //	orphanRateFailThreshold, it fires on the smallest published bucket
 //	(check 2), and the total-breakage end is covered by check 2b.
 //
-//	Direction 2 ("terminal-by-design kinds fail it, correctly, forever") is
-//	NOT fixed — it is relocated. Every one of the 14 check-2b failures
-//	measured across the corpus is a kind that also failed at base under
-//	`orphan-rate-not-100pct[...]`: same repos, same kinds, new check name and
-//	an honest note. ~8 of them are markdown code fences, CSS selectors, HTML
-//	input fields and dependency manifests, which will fail every run forever
-//	with no action available to the reader. That is precisely the "trains the
-//	reader to ignore the whole section" failure #6346 direction 2 names.
+//	Direction 2 ("terminal-by-design kinds fail it, correctly, forever") was
+//	relocated by #6346 and is addressed by #6377, though only from the SECOND
+//	report onward. As shipped by #6346, all 14 check-2b failures measured per
+//	group across the corpus were kinds that also failed at base under
+//	`orphan-rate-not-100pct[...]` — same repos, same kinds, new check name.
+//	~8 were markdown code fences, CSS selectors, HTML input fields and
+//	dependency manifests, which fired every run forever with no action
+//	available to the reader: the "trains the reader to ignore the whole
+//	section" failure #6346 direction 2 names.
 //
 //	Distinguishing a terminal-by-design kind from a dead resolver needs
-//	evidence this package does not have: the graph alone cannot do it (both
-//	are zero participation), and a hand-maintained name list is what #6346
-//	ruled out. The candidate that needs neither is longitudinal — comparing
-//	against prior reports, i.e. "this kind used to participate" — which needs
-//	report history that does not exist yet.
+//	evidence the graph does not have — both are zero participation — and a
+//	hand-maintained name list is what #6346 ruled out. The evidence that
+//	works is longitudinal, and #6377 established it was already on disk:
+//	`grafel feedback` writes every report to
+//	~/.grafel/feedback/<group>-<timestamp>.md, so "did this kind LOSE edges
+//	it used to have?" is answerable by reading history (history.go). Check 2b
+//	below now defers to that answer whenever history has one, and falls back
+//	to the unconditional gate only for kinds with no history at all.
+//
+//	What that does NOT fix: a kind broken on the group's FIRST report still
+//	fires 2b, because there is nothing to compare against. Those 14 corpus
+//	firings were all first reports and are unchanged; the cost they impose is
+//	now paid once per kind rather than on every run forever. Keeping that
+//	first-run gate is deliberate — it is the new-extractor case, which the
+//	longitudinal check is structurally blind to.
 //
 // runSanityChecks evaluates the loaded metrics against the defined sanity checks
 // and returns a slice of results plus a confidence score (passed/total as 0–100).
@@ -133,10 +151,14 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 	// and the fix for that would be in the report's suppression policy, not
 	// here.)
 	//
-	// "Orphan" is direction-aware since #6313: no semantic edge in EITHER
-	// direction. Kinds with zero observed semantic participation anywhere in
-	// the group are not in OrphanByKind at all — they are in
-	// OrphanTerminalByKind, and check 2b below is what gates THOSE. The two
+	// "Orphan" is direction-aware since c6e6e148c (#6346/#6375, the fix for
+	// the #6313 report): no semantic edge in EITHER
+	// direction. A kind with zero observed semantic participation anywhere in
+	// the group contributes NO orphans to OrphanByKind — every one of them is
+	// counted in OrphanTerminalByKind instead, so the kind still has a row
+	// here, reading 0 orphans, and check 2b below is what gates it. (That
+	// double listing is why history.go reads participation from table
+	// MEMBERSHIP rather than from the 0.0% figure in this table.) The two
 	// checks partition the range between them: 2b covers exactly 100%
 	// unwired, 2 covers everything above orphanRateFailThreshold and below it.
 	// Neither end may be left unwatched (see 2b).
@@ -213,6 +235,50 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 		if tks.Total < 10 {
 			continue
 		}
+
+		// #6377: prefer the longitudinal answer whenever history has one.
+		//
+		// `everParticipated, observed` is a three-state read of this group's
+		// stored reports (history.go):
+		//
+		//   observed && everParticipated — the kind HAD semantic edges in a
+		//     comparable report and has none now. That is the shape of a
+		//     resolver regression, and it is the case the unconditional check
+		//     below could only ever GUESS at. Fail, and cite the evidence.
+		//     The note stops short of ASSERTING a regression: the stop can
+		//     also be legitimate and permanent (repo removed from the group,
+		//     extractor retired, language dropped), in which case no code
+		//     change clears it and the note names the only remedy — deleting
+		//     the group's stored reports. History older than #6375 is not
+		//     comparable at all and never reaches here; history.go drops it.
+		//
+		//   observed && !everParticipated — zero participation in every report
+		//     this group has ever produced. CSS selectors, markdown code
+		//     fences, HTML input fields and dependency manifests live here.
+		//     Nothing changed, no action is available to the reader, and
+		//     firing again is what trains them to skip the section. Stay
+		//     silent — this is the ~86% of firings #6377 measured as false.
+		//
+		//   !observed — no history for this kind: a first report, or a kind a
+		//     new extractor only just started emitting. The longitudinal check
+		//     has nothing to say, so the original 100%-end gate below still
+		//     runs. That is deliberate and must not be removed: the
+		//     new-extractor case is exactly what check 2b was added to catch,
+		//     and deleting it here would trade one blind spot for another. The
+		//     two checks are complementary, not substitutes.
+		if everParticipated, observed := r.priorParticipation[kind]; observed {
+			if everParticipated {
+				results = append(results, SanityResult{
+					Name:   participationRegressionCheckName(kind),
+					Passed: false,
+					Note: fmt.Sprintf(
+						"kind %q: none of its %d entities carries a semantic edge in either direction, but a prior report for this group recorded this kind participating — most often a resolver regression rather than a terminal-by-design kind, since the terminal case does not usually acquire and then lose edges. If the stop is legitimate and permanent (the repo left the group, the extractor was retired, the language was dropped), nothing in the code can clear this: delete this group's stored reports (~/.grafel/feedback/%s-*.md) to reset it to first-run behaviour",
+						kind, tks.Total, groupNameOrGlob(r.GroupName)),
+				})
+			}
+			continue
+		}
+
 		// Unconditional failure, deliberately: membership in
 		// OrphanTerminalByKind IS the finding. report.go populates that map
 		// only for kinds where no entity participates, so there is no state in
@@ -230,7 +296,7 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 			Name:   participationCheckName(kind),
 			Passed: false,
 			Note: fmt.Sprintf(
-				"kind %q: none of its %d entities carries a semantic edge in either direction anywhere in the group — either the kind is terminal by design or its resolver never ran; the graph alone cannot tell these apart, so triage it (if this kind used to participate, it is a regression)",
+				"kind %q: none of its %d entities carries a semantic edge in either direction anywhere in the group, and no prior report for this group has ever recorded this kind — either it is terminal by design or its resolver never ran; with no history the graph alone cannot tell these apart, so triage it once (a later report answers it automatically)",
 				kind, tks.Total),
 		})
 	}
@@ -297,4 +363,15 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 		confidence = int(math.Round(100.0 * float64(passing) / float64(len(results))))
 	}
 	return results, confidence
+}
+
+// groupNameOrGlob renders the group component of the ~/.grafel/feedback path
+// in the participation-regression note. Report.GroupName is empty for reports
+// generated without one (tests, ad-hoc calls), and "-*.md" alone would read as
+// a path that matches every group.
+func groupNameOrGlob(group string) string {
+	if group == "" {
+		return "<group>"
+	}
+	return group
 }
