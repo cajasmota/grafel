@@ -151,10 +151,14 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 	// and the fix for that would be in the report's suppression policy, not
 	// here.)
 	//
-	// "Orphan" is direction-aware since #6313: no semantic edge in EITHER
-	// direction. Kinds with zero observed semantic participation anywhere in
-	// the group are not in OrphanByKind at all — they are in
-	// OrphanTerminalByKind, and check 2b below is what gates THOSE. The two
+	// "Orphan" is direction-aware since c6e6e148c (#6346/#6375, the fix for
+	// the #6313 report): no semantic edge in EITHER
+	// direction. A kind with zero observed semantic participation anywhere in
+	// the group contributes NO orphans to OrphanByKind — every one of them is
+	// counted in OrphanTerminalByKind instead, so the kind still has a row
+	// here, reading 0 orphans, and check 2b below is what gates it. (That
+	// double listing is why history.go reads participation from table
+	// MEMBERSHIP rather than from the 0.0% figure in this table.) The two
 	// checks partition the range between them: 2b covers exactly 100%
 	// unwired, 2 covers everything above orphanRateFailThreshold and below it.
 	// Neither end may be left unwatched (see 2b).
@@ -237,10 +241,16 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 		// `everParticipated, observed` is a three-state read of this group's
 		// stored reports (history.go):
 		//
-		//   observed && everParticipated — the kind HAD semantic edges and has
-		//     none now. That is a resolver regression, and it is the case the
-		//     unconditional check below could only ever GUESS at. Fail, and
-		//     cite the evidence instead of hedging.
+		//   observed && everParticipated — the kind HAD semantic edges in a
+		//     comparable report and has none now. That is the shape of a
+		//     resolver regression, and it is the case the unconditional check
+		//     below could only ever GUESS at. Fail, and cite the evidence.
+		//     The note stops short of ASSERTING a regression: the stop can
+		//     also be legitimate and permanent (repo removed from the group,
+		//     extractor retired, language dropped), in which case no code
+		//     change clears it and the note names the only remedy — deleting
+		//     the group's stored reports. History older than #6375 is not
+		//     comparable at all and never reaches here; history.go drops it.
 		//
 		//   observed && !everParticipated — zero participation in every report
 		//     this group has ever produced. CSS selectors, markdown code
@@ -262,8 +272,8 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 					Name:   participationRegressionCheckName(kind),
 					Passed: false,
 					Note: fmt.Sprintf(
-						"kind %q: none of its %d entities carries a semantic edge in either direction, but a prior report for this group recorded this kind participating — this is a resolver regression, not a terminal-by-design kind",
-						kind, tks.Total),
+						"kind %q: none of its %d entities carries a semantic edge in either direction, but a prior report for this group recorded this kind participating — most often a resolver regression rather than a terminal-by-design kind, since the terminal case does not usually acquire and then lose edges. If the stop is legitimate and permanent (the repo left the group, the extractor was retired, the language was dropped), nothing in the code can clear this: delete this group's stored reports (~/.grafel/feedback/%s-*.md) to reset it to first-run behaviour",
+						kind, tks.Total, groupNameOrGlob(r.GroupName)),
 				})
 			}
 			continue
@@ -353,4 +363,15 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 		confidence = int(math.Round(100.0 * float64(passing) / float64(len(results))))
 	}
 	return results, confidence
+}
+
+// groupNameOrGlob renders the group component of the ~/.grafel/feedback path
+// in the participation-regression note. Report.GroupName is empty for reports
+// generated without one (tests, ad-hoc calls), and "-*.md" alone would read as
+// a path that matches every group.
+func groupNameOrGlob(group string) string {
+	if group == "" {
+		return "<group>"
+	}
+	return group
 }

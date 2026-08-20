@@ -102,6 +102,8 @@ func TestLoadKindParticipation_ScopedToGroupAndOred(t *testing.T) {
 	// OR must still remember that it once participated.
 	write("mygroup-20260716T065826.md", `## 2. Orphan Rate
 
+An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions).
+
 | Kind | Total | Terminal orphan | Terminal orphan % |
 |---|---|---|---|
 | Route | 40 | 40 | 100.0% |
@@ -111,6 +113,8 @@ func TestLoadKindParticipation_ScopedToGroupAndOred(t *testing.T) {
 	// A different group must be invisible.
 	write("othergroup-20260716T065826.md", `## 2. Orphan Rate
 
+An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions).
+
 | Kind | Total | Orphan | Orphan % |
 |---|---|---|---|
 | SCOPE.Stylesheet | 50 | 1 | 2.0% |
@@ -119,6 +123,18 @@ func TestLoadKindParticipation_ScopedToGroupAndOred(t *testing.T) {
 `)
 	// Non-report noise.
 	write("mygroup-notes.txt", "ignore me")
+	// Matching is EXACT-STEM, not prefix: a different group whose name merely
+	// starts with ours must stay invisible.
+	write("mygroup-extra-20260716T065826.md", `## 2. Orphan Rate
+
+An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions).
+
+| Kind | Total | Orphan | Orphan % |
+|---|---|---|---|
+| SCOPE.PrefixDecoy | 50 | 1 | 2.0% |
+
+## 3. x
+`)
 
 	got, err := loadKindParticipation(dir, "mygroup")
 	if err != nil {
@@ -129,6 +145,9 @@ func TestLoadKindParticipation_ScopedToGroupAndOred(t *testing.T) {
 	}
 	if part, ok := got["SCOPE.Stylesheet"]; !ok || part {
 		t.Errorf("SCOPE.Stylesheet = (%v, %v), want (false, true) — othergroup must not bleed in", part, ok)
+	}
+	if _, ok := got["SCOPE.PrefixDecoy"]; ok {
+		t.Errorf("group matching is prefix-based: mygroup-extra-*.md bled into group %q history (%v)", "mygroup", got)
 	}
 }
 
