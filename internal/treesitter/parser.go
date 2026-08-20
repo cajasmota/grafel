@@ -305,8 +305,20 @@ func (f *ParserFactory) parseOfficial(span trace.Span, source []byte, language s
 		}, fmt.Errorf("%w: language=%s error_ratio=%.4f", ErrHighSyntaxErrorRate, language, errorRatio)
 	}
 
+	// #6360 — the ratio above is a whole-file AVERAGE, so a file with one
+	// localised typo passes the gate and would otherwise be handed to the
+	// extractor in full, ERROR subtree included. Hide the ERROR nodes and
+	// everything below them so the extractor sees a true subset of the file
+	// rather than tree-sitter's error recovery. Only pay for the wrapper when
+	// there is actually something to hide: a clean parse (errNodes == 0, the
+	// overwhelming majority) is returned completely untouched.
+	outTree := tree
+	if errNodes > 0 {
+		outTree = newErrorSkippingTree(tree)
+	}
+
 	return &ParseResult{
-		TSTree:     tree,
+		TSTree:     outTree,
 		Language:   language,
 		ErrorRatio: errorRatio,
 		NodeCount:  total,
