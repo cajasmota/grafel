@@ -1,6 +1,9 @@
 package proto_test
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/extractor"
@@ -193,10 +196,56 @@ func TestFileContains_RefFormIsKindAppropriate_6422(t *testing.T) {
 	}
 }
 
-// NOTE on the filepath.ToSlash alignment the issue also names. messageTypeRef
-// now applies filepath.ToSlash like every extractor.Build*StructuralRef
-// helper. There is deliberately NO test for it: filepath.ToSlash is the
-// IDENTITY function on every non-Windows GOOS, so any assertion written here
-// would pass identically with and without the change — vacuous on the only
-// platform CI runs. It is a consistency change, graded by reading, not by a
-// green test that proves nothing.
+// TestMessageTypeRef_UsesSlashSeparators_6422 pins the second half of #6422:
+// messageTypeRef omitted the filepath.ToSlash that every
+// extractor.Build*StructuralRef helper applies, so on Windows one entity had
+// two spellings of its address.
+//
+// HOW THIS IS NOT VACUOUS, and why an earlier revision of this file wrongly
+// claimed it had to be. The path is built with filepath.Join, so it is
+// "a/b.proto" on Unix and "a\\b.proto" on Windows, while the EXPECTATION is
+// the slash form on both. On Unix the assertion is identity-green; on Windows
+// it fails without the fold and passes with it. Windows CI is not
+// hypothetical: .github/workflows/test.yml:160 puts windows-latest in the
+// pull_request matrix and .github/workflows/windows.yml:37 is a dedicated
+// windows-latest job. A mutant dropping filepath.ToSlash therefore dies on
+// the Windows leg — which is exactly where the defect lives.
+//
+// It covers both producers of the schema ref in one pass: the file → message
+// CONTAINS this issue is about, and the rpc → message REFERENCES from #6419.
+func TestMessageTypeRef_UsesSlashSeparators_6422(t *testing.T) {
+	path := filepath.Join("a", "b.proto")
+	entities := extract(t, path, collisionSrc)
+
+	// The slash spelling is the ONLY spelling any schema-form ref may carry,
+	// on every GOOS. Stated as a literal, not as filepath.ToSlash(path), so
+	// the assertion cannot be satisfied by re-deriving the bug.
+	wantMsg := "scope:schema:message:proto:a/b.proto:User"
+	wantEnum := "scope:schema:message:proto:a/b.proto:Status"
+
+	seen := map[string]int{}
+	scanned := 0
+	for i := range entities {
+		for _, r := range entities[i].Relationships {
+			if !strings.HasPrefix(r.ToID, "scope:schema:message:proto:") {
+				continue
+			}
+			scanned++
+			seen[r.ToID]++
+			if strings.ContainsRune(r.ToID, os.PathSeparator) && os.PathSeparator != '/' {
+				t.Errorf("schema ref %q carries the native separator %q; every "+
+					"extractor.Build*StructuralRef helper applies filepath.ToSlash "+
+					"and messageTypeRef must too (#6422)", r.ToID, os.PathSeparator)
+			}
+		}
+	}
+	if scanned == 0 {
+		t.Fatal("no schema-form ref emitted — the separator assertion never ran")
+	}
+	if seen[wantMsg] == 0 {
+		t.Errorf("no schema ref spelled %q; got %v", wantMsg, seen)
+	}
+	if seen[wantEnum] == 0 {
+		t.Errorf("no schema ref spelled %q; got %v", wantEnum, seen)
+	}
+}

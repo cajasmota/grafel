@@ -393,14 +393,21 @@ var allowedFileAnchored = map[string]allowEntry{
 
 	// proto CONTAINS — DANGLING. fileContainsRel builds FromID: file.Path, but
 	// the proto package emits no node named for the containing file; the only
-	// path-named entity in a proto extraction is the IMPORTED path. Two lines
-	// below one of its call sites, proto.go:260's sibling service→rpc CONTAINS
-	// edge correctly leaves FromID empty — the two shapes sit side by side.
+	// path-named entity in a proto extraction is the IMPORTED path. The
+	// sibling service→rpc CONTAINS edge in buildService correctly leaves
+	// FromID empty — the two shapes sit side by side.
+	//
+	// Note the {1} below is a count of PATH-VALUED COMPOSITE LITERALS, which
+	// is not the same as a count of call sites. #6422 gave fileContainsRel a
+	// target-ref parameter and two thin wrappers, fileContainsOperationRel and
+	// fileContainsSchemaRel, so the helper now has 2 direct callers and the
+	// wrappers between them cover the same 3 emission sites — while the
+	// literal this scan actually sees is still exactly one.
 	"proto:fileContainsRel:CONTAINS": {1,
 		"KNOWN OFFENDER (#6298): dangling. No proto node carries the CONTAINING " +
-			"file's path (only the IMPORTED path is path-named), and the sibling edge " +
-			"at proto.go:260 correctly leaves FromID empty. Helper is called from 3 " +
-			"sites. INFERRED from the site, NOT measured."},
+			"file's path (only the IMPORTED path is path-named), and the sibling " +
+			"service→rpc edge in buildService correctly leaves FromID empty. " +
+			"INFERRED from the site, NOT measured."},
 
 	// hcl USED TO BE LISTED HERE (emitFileLevelRelationships:CONTAINS {2} and
 	// parseDependsOnTuple:DEPENDS_ON {1}) and is gone: #6367 MEASURED both
