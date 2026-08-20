@@ -1315,6 +1315,11 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 		!strings.Contains(content, "axios.create") &&
 		// #1483 — NestJS HttpService (RxJS) and Apollo Client URI.
 		!strings.Contains(content, "httpService") &&
+		// #6433 — Angular's injected HttpClient. An Angular service written as
+		// `private http = inject(HttpClient)` + `this.http.get<T>('/api/x')`
+		// contains none of the markers above, so this guard (not just the
+		// synthesizeNestHttpService one) had to widen for it to be reached.
+		!strings.Contains(content, "HttpClient") &&
 		!strings.Contains(content, "ApolloClient") &&
 		!strings.Contains(content, "$") {
 		return
@@ -1575,6 +1580,20 @@ func synthesizeFetchAxiosWithRuntime(content, lang string, emit jsRuntimeEmitFn)
 	// calls the AST pass could not statically resolve, which stay heuristic.
 	synthesizeFetchAxiosAST(content, lang, adapter, state)
 	synthesizeFetchAxios(content, adapter, state)
+
+	// #6433 — receiver-style client calls (`this.http.<verb><T>(<expr>)`) whose
+	// URL argument is not statically resolvable. Runs on the real
+	// jsRuntimeEmitFn (not the adapter) because it must stamp
+	// runtime_dynamic=true, and BEFORE the process.env early-exit below because
+	// an Angular service contains neither `process.env` nor `import.meta.env`.
+	if hasInjectedHTTPClientToken(content) {
+		synthesizeReceiverClientDynamicURL(
+			content,
+			indexJSEnclosingFunctions(content),
+			buildJSConstantSymbolTable(content),
+			emit,
+		)
+	}
 
 	// Env-var concatenation patterns — emit with runtimeDynamic=true.
 	if !strings.Contains(content, "process.env") && !strings.Contains(content, "import.meta.env") {

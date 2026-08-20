@@ -95,6 +95,51 @@ var jsAxiosBacktickRE = regexp.MustCompile(
 	"(?im)\\baxios\\.(get|post|put|patch|delete|head|options|request)\\s*\\(\\s*`([^`]{1,500})`",
 )
 
+// ---------------------------------------------------------------------------
+// #6433 — Angular / NestJS receiver-style client calls
+// ---------------------------------------------------------------------------
+//
+// Every JS/TS pattern above anchors on a BARE identifier (`fetch`, `axios`).
+// Angular's idiom is a receiver on an injected client:
+//
+//	private http = inject(HttpClient);
+//	this.http.get<readonly Thing[]>('/api/things')
+//
+// which matches under none of them. @auxmedrano measured SCOPE.ExternalAPI = 98
+// across a monorepo — all backend, zero frontend — against 42 files making
+// exactly these calls (#6433). The optional `<...>` group swallows the
+// TypeScript generic parameter; `(` / `)` are excluded from it so a call
+// expression can never be mistaken for a type argument.
+//
+// These three patterns are gated on hasInjectedClientToken: the receiver field
+// name (`http`) is far too common to key on by itself.
+var jsReceiverClientDoubleRE = regexp.MustCompile(
+	`(?m)\bthis\s*\.\s*(?:httpClient|httpService|http)\s*\.\s*(get|post|put|patch|delete|head|options)\s*(?:<[^<>()]*>)?\s*\(\s*"([^"\s]{1,500})"`,
+)
+var jsReceiverClientSingleRE = regexp.MustCompile(
+	`(?m)\bthis\s*\.\s*(?:httpClient|httpService|http)\s*\.\s*(get|post|put|patch|delete|head|options)\s*(?:<[^<>()]*>)?\s*\(\s*'([^'\s]{1,500})'`,
+)
+var jsReceiverClientBacktickRE = regexp.MustCompile(
+	"(?m)\\bthis\\s*\\.\\s*(?:httpClient|httpService|http)\\s*\\.\\s*(get|post|put|patch|delete|head|options)\\s*(?:<[^<>()]*>)?\\s*\\(\\s*`([^`\\n\\r]{1,500})`",
+)
+
+// hasInjectedClientToken gates the receiver-style patterns on the presence of
+// the Angular / NestJS HTTP client class name. Those tokens only appear in
+// files that import, inject, or type-annotate against the client, so the gate
+// is tight; without it, any `this.http.get(...)` on an unrelated member named
+// `http` would mint a bogus ExternalAPI node.
+//
+// Call sites whose URL argument is NOT a literal (`base(code)`) are deliberately
+// left to the engine's consumer-side pass
+// (internal/engine/http_endpoint_jsts_client_1483.go), which has a canonical
+// placeholder path and a runtime_dynamic marker for them. A SCOPE.ExternalAPI
+// node is keyed on the URL string itself and has nowhere to put "unknown".
+func hasInjectedClientToken(source string) bool {
+	return strings.Contains(source, "HttpClient") ||
+		strings.Contains(source, "HttpService") ||
+		strings.Contains(source, "httpService")
+}
+
 // Python: requests.METHOD('url') / httpx.METHOD('url')
 var pyRequestsDoubleRE = regexp.MustCompile(
 	`(?im)\b(?:requests|httpx)\.(get|post|put|patch|delete|head|options|request)\s*\(\s*"([^"]{1,500})"`,
@@ -278,6 +323,26 @@ func extractJS(source string) []call {
 	for _, m := range jsAxiosBacktickRE.FindAllStringSubmatch(source, -1) {
 		if len(m) >= 3 {
 			out = append(out, call{url: normalizeTemplateURL(m[2]), method: strings.ToUpper(m[1])})
+		}
+	}
+
+	// #6433 — Angular / NestJS receiver-style calls, gated on the client class
+	// token so the common member name `http` is never evidence on its own.
+	if hasInjectedClientToken(source) {
+		for _, m := range jsReceiverClientDoubleRE.FindAllStringSubmatch(source, -1) {
+			if len(m) >= 3 {
+				out = append(out, call{url: m[2], method: strings.ToUpper(m[1])})
+			}
+		}
+		for _, m := range jsReceiverClientSingleRE.FindAllStringSubmatch(source, -1) {
+			if len(m) >= 3 {
+				out = append(out, call{url: m[2], method: strings.ToUpper(m[1])})
+			}
+		}
+		for _, m := range jsReceiverClientBacktickRE.FindAllStringSubmatch(source, -1) {
+			if len(m) >= 3 {
+				out = append(out, call{url: normalizeTemplateURL(m[2]), method: strings.ToUpper(m[1])})
+			}
 		}
 	}
 

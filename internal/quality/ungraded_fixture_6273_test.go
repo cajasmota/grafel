@@ -388,7 +388,13 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 	// at 4/5 entities since before this file existed), and the assertions
 	// below are exactly the ones that stop the gap being closed by deleting
 	// the fixture instead of fixing the extractor.
-	const wantFixtures = 22
+	//
+	// 23 since #6433 added angular-http-mini — the first fixture that grades
+	// OUTBOUND http client calls at all. Before it, nothing in golden/ asserted
+	// a single SCOPE.ExternalAPI or consumer-side http_endpoint_call, so the
+	// frontend half of cross-stack linking could sit at zero indefinitely
+	// without any fixture noticing (it had).
+	const wantFixtures = 23
 
 	dirs := fixtureDirs(t)
 	if len(dirs) != wantFixtures {

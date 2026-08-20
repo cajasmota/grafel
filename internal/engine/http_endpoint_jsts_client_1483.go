@@ -56,26 +56,56 @@ import (
 //
 // Two separate regexes handle static vs template-literal URL args to avoid
 // the regexp alternation ambiguity with backtick quoting.
+//
+// #6433 — `httpClient` joins the receiver alternation. Angular services name
+// the injected field `http`, `httpClient`, or (rarely) `httpService`; all three
+// are gated by hasInjectedHTTPClientToken below.
+const nestHTTPReceiverAlternation = `(?:httpService|httpClient|http)`
+
 var nestHttpServiceStaticRe = regexp.MustCompile(
-	`(?:^|[^\w$])\bthis\s*\.\s*(?:httpService|http)\s*\.\s*` +
+	`(?:^|[^\w$])\bthis\s*\.\s*` + nestHTTPReceiverAlternation + `\s*\.\s*` +
 		`(get|post|put|patch|delete|head|options)\s*` +
 		`(?:<[^<>()]*>)?\s*\(\s*` +
 		`['"]((?:https?://|/)[^'"\n\r$]+)['"]`,
 )
 
 var nestHttpServiceTemplateLiteralRe = regexp.MustCompile(
-	"(?:^|[^\\w$])\\bthis\\s*\\.\\s*(?:httpService|http)\\s*\\.\\s*" +
+	"(?:^|[^\\w$])\\bthis\\s*\\.\\s*" + nestHTTPReceiverAlternation + "\\s*\\.\\s*" +
 		"(get|post|put|patch|delete|head|options)\\s*" +
 		"(?:<[^<>()]*>)?\\s*\\(\\s*" +
 		"`([^`\\n\\r]*\\$\\{[^`\\n\\r]*)`",
 )
+
+// hasInjectedHTTPClientToken is the gate for the receiver-style (`this.<field>
+// .<verb>(...)`) HTTP consumer passes.
+//
+// #6433 — it used to demand the literal token `httpService` / `HttpService`,
+// which is the NestJS @nestjs/axios class name. Idiomatic Angular
+//
+//	import { HttpClient } from '@angular/common/http';
+//	private http = inject(HttpClient);
+//
+// contains neither token, so the pass returned before its regex ever ran and
+// every Angular codebase extracted zero client-side call sites.
+//
+// The replacement gate additionally accepts `HttpClient`. That is NOT
+// over-broad: the token is the Angular class name, so it only appears in files
+// that import, inject, or type-annotate against it. The gate deliberately does
+// NOT key on the receiver field name (`this.http`) — `http` is far too common a
+// member name to treat as evidence on its own, and a file carrying such a field
+// with no HttpClient/HttpService token anywhere stays unextracted.
+func hasInjectedHTTPClientToken(content string) bool {
+	return strings.Contains(content, "httpService") ||
+		strings.Contains(content, "HttpService") ||
+		strings.Contains(content, "HttpClient")
+}
 
 // synthesizeNestHttpService extracts consumer-side HTTP calls made via the
 // NestJS @nestjs/axios HttpService. Emits one synthetic per call site with
 // framework="nestjs_http_service". The URL is host-stripped so the canonical
 // path matches the producer-side entity regardless of internal service names.
 func synthesizeNestHttpService(content string, funcs []jsFuncSpan, syms map[string]string, emit emitFn) {
-	if !strings.Contains(content, "httpService") && !strings.Contains(content, "HttpService") {
+	if !hasInjectedHTTPClientToken(content) {
 		return
 	}
 
@@ -109,6 +139,93 @@ func synthesizeNestHttpService(content string, funcs []jsFuncSpan, syms map[stri
 		caller := enclosingJSFuncAt(funcs, m[0])
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
 		emit(verb, canonical, "nestjs_http_service", "Function", caller)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #6433 — receiver-style calls whose URL argument is NOT statically knowable
+// ---------------------------------------------------------------------------
+
+// dynamicClientPath is the canonical path stamped on a call site whose URL
+// argument could not be resolved statically. `hasDynamicBaseURLPath` keys on a
+// first segment that opens a placeholder, so this value classifies as
+// url_kind=dynamic_baseurl without any special-casing downstream.
+const dynamicClientPath = "/{dynamic}"
+
+// nestHttpServiceCallHeadRe matches only the CALL HEAD of a receiver-style
+// client call — `this.<field>.<verb><T>(` — stopping at the first character of
+// the argument list. The argument is classified in Go rather than in the
+// regex, because the interesting cases (a call expression, a template literal
+// opening with an interpolation) are exactly the ones a URL-shaped regex
+// cannot express.
+var nestHttpServiceCallHeadRe = regexp.MustCompile(
+	`(?:^|[^\w$])\bthis\s*\.\s*` + nestHTTPReceiverAlternation + `\s*\.\s*` +
+		`(get|post|put|patch|delete|head|options)\s*` +
+		`(?:<[^<>()]*>)?\s*\(\s*`,
+)
+
+// synthesizeReceiverClientDynamicURL emits a call site for every
+// `this.<field>.<verb>(<expr>)` whose first argument the static and
+// template-literal passes could not turn into a path.
+//
+// #6433 — the reporter's three real examples were `base(code)` (a call
+// expression) and “ `${BASE}/${id}` “ (a template literal opening with an
+// interpolation). Both were dropped outright, which is why the frontend side of
+// cross-stack linking was empty: there was no node for a link to attach to.
+//
+// Resolving those arguments to a real path would require base-URL constant
+// folding, which is deliberately NOT attempted here. Instead the call site is
+// emitted at the canonical placeholder path with runtime_dynamic=true, the same
+// marker the env-var concatenation pass (#721) uses, so the call surfaces to
+// the repair flow (#732) instead of vanishing.
+//
+// Arguments the static / template passes DO resolve are skipped here, so no
+// call site is emitted twice.
+func synthesizeReceiverClientDynamicURL(content string, funcs []jsFuncSpan, syms map[string]string, emit jsRuntimeEmitFn) {
+	if !hasInjectedHTTPClientToken(content) {
+		return
+	}
+
+	for _, m := range nestHttpServiceCallHeadRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		verb := strings.ToUpper(content[m[2]:m[3]])
+		rest := content[m[1]:]
+		if rest == "" {
+			continue
+		}
+
+		switch rest[0] {
+		case ')':
+			// Zero-argument call — not an HTTP call site we can name.
+			continue
+		case '\'', '"':
+			end := strings.IndexByte(rest[1:], rest[0])
+			if end < 0 {
+				continue
+			}
+			if _, ok := normalizeRawClientPath(rest[1 : 1+end]); ok {
+				// Owned by the static-literal pass above.
+				continue
+			}
+		case '`':
+			end := strings.IndexByte(rest[1:], '`')
+			if end < 0 {
+				continue
+			}
+			tmpl := rest[1 : 1+end]
+			if strings.ContainsAny(tmpl, "\n\r") {
+				continue
+			}
+			if _, ok := canonicalizeTemplateLiteral(tmpl, syms); ok {
+				// Owned by the template-literal pass above.
+				continue
+			}
+		}
+
+		caller := enclosingJSFuncAt(funcs, m[0])
+		emit(verb, dynamicClientPath, "angular_http_client", "Function", caller, true, "", "")
 	}
 }
 
