@@ -446,6 +446,21 @@ type Index struct {
 	// entry, but any OTHER entity arriving after a facet is a real collision.
 	aliasAnchor map[string]string
 
+	// nameHolderImport[name] = true when the entity currently occupying
+	// byName[name] is an import placeholder (#6369). nameAmbigImport[name] =
+	// true when ambigName[name] was raised by a placeholder-vs-placeholder
+	// collision ALONE, so a real declaration arriving later can still reclaim
+	// the slot.
+	//
+	// Both are build-time bookkeeping for the byName writer — nothing outside
+	// BuildIndex / insertModuleEntry reads them, and they are deliberately
+	// excluded from the index-parity comparison for the same reason
+	// aliasAnchor is: they carry no resolution state, only the provenance of
+	// the byName entry that already encodes it. Lazily created, mirroring
+	// aliasAnchor.
+	nameHolderImport map[string]bool
+	nameAmbigImport  map[string]bool
+
 	// byQualifiedName[qualified_name] = entity_id. Direct lookup for
 	// stubs whose ToID is an entity QualifiedName verbatim (e.g. markdown
 	// CONTAINS edges where ToID = "<file>::<heading-slug>"). Issue #100.
@@ -1560,43 +1575,160 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		}
 
 		// Kind-agnostic name index. Two different entities sharing a name
-		// (even across kinds) flips the name to ambiguous.
-		if idx.ambigName[e.Name] {
-			continue
-		}
-		nk := "n:" + e.Name
-		if existing, ok := idx.byName[e.Name]; ok && existing != e.ID {
-			// #6104 — a merge facet is an ALIAS of a co-located base entity,
-			// not a second definition. Without this, enabling the custom
-			// extractors would flip every framework-modelled class name
-			// (Order, Contract, …) to ambiguous and silently un-resolve the
-			// edges that name it. Scoped to the facet/anchor PAIR: an
-			// ORPHANED facet must NOT suppress ambiguity against an unrelated
-			// same-named definition.
-			switch {
-			case isFacet && existing == facetAnchor:
-				// facet does not compete with its own anchor
-			case !isFacet && idx.aliasAnchor[nk] == e.ID:
-				// the anchor itself, arriving after its facet: take over
-				idx.byName[e.Name] = e.ID
-				delete(idx.aliasAnchor, nk)
-			default:
-				// any other pairing is a real collision
-				delete(idx.byName, e.Name)
-				delete(idx.aliasAnchor, nk)
-				idx.ambigName[e.Name] = true
-			}
-			continue
-		}
-		idx.byName[e.Name] = e.ID
-		if isFacet {
-			if idx.aliasAnchor == nil {
-				idx.aliasAnchor = make(map[string]string)
-			}
-			idx.aliasAnchor[nk] = facetAnchor
-		}
+		// (even across kinds) flips the name to ambiguous. Shared with the
+		// module-partitioned index writer (insertModuleEntry) so the two
+		// production paths cannot drift.
+		idx.indexByName(e.Name, e.ID, isFacet, facetAnchor,
+			isImportPlaceholderKind(e.Kind, e.Subtype))
 	}
 	return idx
+}
+
+// isImportPlaceholderKind reports whether an entity is a per-import
+// placeholder — the SCOPE.Component a dozen extractors mint once per import
+// statement and mark Subtype:"import" (css/scss/less, graphql, vue, kotlin,
+// razor, proto, markdown, cpp, just, fish, javascript, cross/imports). Same
+// predicate the import-table passes use (imports.go:2936, :2999, :3286,
+// :3428); kept in one place so the marker has a single meaning in this
+// package.
+func isImportPlaceholderKind(kind, subtype string) bool {
+	return kind == scopeKindPrefix+"Component" && subtype == "import"
+}
+
+// indexByName is the sole writer of byName / ambigName. Both production index
+// builders (flat BuildIndex and the module-partitioned insertModuleEntry) go
+// through it, so the two paths stay edge-set-identical by construction.
+//
+// #6369 — AN IMPORT PLACEHOLDER IS NOT A DECLARATION OF THE NAME IT CARRIES.
+// Before this rule, a placeholder was indexed exactly like a real definition,
+// so one `open Acme.Animal` / `import Foo from './Foo.vue'` whose last segment
+// matched a real type flipped that name AMBIGUOUS **globally** and dropped
+// every bare-name edge to it repo-wide — including in files that imported
+// nothing (measured on #6369: two previously-resolved cross-file EXTENDS went
+// UNRESOLVED after one unrelated file was added, reported as ambiguous=0, i.e.
+// silently).
+//
+// The rule is a precedence, NOT a blanket skip:
+//
+//   - a real declaration always outranks a placeholder — it takes the slot
+//     whether it arrives before or after, and the pairing never raises
+//     ambiguity;
+//   - a placeholder may still OCCUPY an unclaimed name. That is load-bearing:
+//     css `@import "theme.css"` and graphql `extend type User` both emit a
+//     bare-name IMPORTS / FEDERATES edge whose only target is their own
+//     placeholder, and rewriteOneWithCaller consults the locality tiers only
+//     on statusAmbiguous — so withholding placeholders from byName entirely
+//     would leave those edges permanently unresolved;
+//   - two DISTINCT placeholders still collide into ambiguity, exactly as
+//     before, so no arbitrary winner is invented for a name that has no
+//     declaration. nameAmbigImport remembers that such ambiguity is
+//     placeholder-only, so a real declaration arriving later (extraction
+//     order is not stable) still reclaims the name.
+func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string, isImport bool) {
+	if name == "" {
+		return
+	}
+	nk := "n:" + name
+	if idx.ambigName[name] {
+		// #6369 — placeholder-only ambiguity yields to a real declaration.
+		if isImport || !idx.nameAmbigImport[name] {
+			return
+		}
+		delete(idx.ambigName, name)
+		delete(idx.nameAmbigImport, name)
+		delete(idx.nameHolderImport, name)
+		delete(idx.aliasAnchor, nk)
+	}
+	existing, held := idx.byName[name]
+	if held && existing != id {
+		// #6104 — a merge facet is an ALIAS of a co-located base entity,
+		// not a second definition. Without this, enabling the custom
+		// extractors would flip every framework-modelled class name
+		// (Order, Contract, …) to ambiguous and silently un-resolve the
+		// edges that name it. Scoped to the facet/anchor PAIR: an
+		// ORPHANED facet must NOT suppress ambiguity against an unrelated
+		// same-named definition.
+		switch {
+		case isImport && !idx.nameHolderImport[name]:
+			// #6369 — a real declaration already owns the name: the
+			// placeholder neither displaces it nor blanks it.
+		case !isImport && idx.nameHolderImport[name]:
+			// #6369 — the real declaration displaces the placeholder that
+			// happened to be extracted first.
+			idx.byName[name] = id
+			delete(idx.nameHolderImport, name)
+			delete(idx.aliasAnchor, nk)
+			if isFacet {
+				idx.setAliasAnchor(nk, facetAnchor)
+			}
+		case isFacet && existing == facetAnchor:
+			// facet does not compete with its own anchor
+		case !isFacet && idx.aliasAnchor[nk] == id:
+			// the anchor itself, arriving after its facet: take over
+			idx.byName[name] = id
+			delete(idx.aliasAnchor, nk)
+		default:
+			// any other pairing is a real collision
+			delete(idx.byName, name)
+			delete(idx.aliasAnchor, nk)
+			idx.ambigName[name] = true
+			if isImport && idx.nameHolderImport[name] {
+				// both sides are placeholders — recoverable by a real
+				// declaration arriving later.
+				if idx.nameAmbigImport == nil {
+					idx.nameAmbigImport = make(map[string]bool)
+				}
+				idx.nameAmbigImport[name] = true
+			}
+			delete(idx.nameHolderImport, name)
+		}
+		return
+	}
+	idx.byName[name] = id
+	switch {
+	case !isImport:
+		delete(idx.nameHolderImport, name)
+	case held && !idx.nameHolderImport[name]:
+		// #6369 — SAME ID, already claimed by a NON-placeholder record.
+		//
+		// EntityID is sha256(repo, kind, name, sourceFile) — it does NOT
+		// include Subtype. So a per-import SCOPE.Component placeholder shares
+		// its ID BY CONSTRUCTION with any other SCOPE.Component of the same
+		// name in the same file, including the unmarked ones the language
+		// extractors emit (measured on the Go corpus in
+		// cmd/grafel/incremental_dup_rows_6094_test.go: three records per file
+		// for `strings`, two with Subtype:"" and one with Subtype:"import",
+		// all on one ID). Those are re-indexes of ONE entity, not a collision,
+		// so they fall through to here.
+		//
+		// The holder flag describes the ENTITY sitting in byName, not the last
+		// record that mentioned it: an ID known under any real declaration is
+		// a real declaration. Letting the trailing placeholder record flip the
+		// flag back to true made the NEXT file's real record take the
+		// "declaration displaces placeholder" branch above instead of
+		// colliding — so a name carried by every file in the corpus never went
+		// ambiguous at all (ambiguous=0), the last file processed won the slot
+		// outright, and every other file's stdlib import bound to THAT file's
+		// placeholder instead of falling through to the external-library
+		// binder. Holder status is therefore AND-ed, never re-raised.
+	default:
+		if idx.nameHolderImport == nil {
+			idx.nameHolderImport = make(map[string]bool)
+		}
+		idx.nameHolderImport[name] = true
+	}
+	if isFacet {
+		idx.setAliasAnchor(nk, facetAnchor)
+	}
+}
+
+// setAliasAnchor records the #6104 facet anchor owning a byName /
+// byQualifiedName entry, creating the map on first use.
+func (idx *Index) setAliasAnchor(key, anchor string) {
+	if idx.aliasAnchor == nil {
+		idx.aliasAnchor = make(map[string]string)
+	}
+	idx.aliasAnchor[key] = anchor
 }
 
 // isOperationKind reports whether the kind string is one of the Operation

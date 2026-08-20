@@ -1,0 +1,357 @@
+// Package resolve — #6369: an import placeholder must not poison the global
+// bare-name index.
+//
+// A dozen extractors mint one `SCOPE.Component` per import statement, marked
+// `Subtype:"import"` (css/scss/less, graphql, vue, kotlin, razor, proto,
+// markdown, cpp, just, fish, javascript, cross/imports). BuildIndex indexed
+// every one of them in `byName` exactly like a real declaration, so a
+// placeholder whose name collides with a real type flipped that name
+// AMBIGUOUS globally — and every bare-name edge to it, repo-wide, went
+// unresolved. Measured on #6369: adding ONE file containing `open Acme.Animal`
+// dropped both cross-file EXTENDS to `Animal` in a file that imported nothing.
+//
+// The fix is scoped, not a blanket skip: a placeholder may still OCCUPY an
+// otherwise-unclaimed name, because for css `@import` chains and graphql
+// federation stubs the placeholder is the only target the bare-name
+// IMPORTS/FEDERATES edge has (TestImportPlaceholderStillResolvesOwnEdge_6369
+// pins that). What it may never do is displace, or collide with, a real
+// declaration.
+package resolve
+
+import (
+	"testing"
+
+	"github.com/cajasmota/grafel/internal/types"
+)
+
+const (
+	realAnimalID6369   = "1860328bfaee8f13"
+	dogID6369          = "aaaa000000000001"
+	serviceID6369      = "aaaa000000000002"
+	placeholderID6369  = "eca4ea80cdd6b84d"
+	placeholder2ID6369 = "eca4ea80cdd6b84e"
+	placeholder3ID6369 = "eca4ea80cdd6b84f"
+	real2ID6369        = "1860328bfaee8f14"
+	real3ID6369        = "1860328bfaee8f15"
+)
+
+// baseFixture6369 is the #6369 reproduction, transposed onto an extractor that
+// actually stamps the marker (vue: placeholder named after the module's last
+// segment, real component named after its own file).
+//
+//	src/domain/base.vue    declares component  Animal        (the real target)
+//	src/app/impl.vue       Dog, Service        EXTENDS "Animal" by bare name
+//
+// Both EXTENDS resolve cross-file on this input. Nothing in src/app imports
+// anything; the two edges are the "innocent bystanders" of the defect.
+func baseFixture6369() []types.EntityRecord {
+	return []types.EntityRecord{
+		{
+			ID: realAnimalID6369, Kind: "SCOPE.Component", Name: "Animal",
+			Subtype: "class", SourceFile: "src/domain/base.vue", Language: "vue",
+		},
+		{
+			ID: dogID6369, Kind: "SCOPE.Component", Name: "Dog",
+			Subtype: "class", SourceFile: "src/app/impl.vue", Language: "vue",
+			Relationships: []types.RelationshipRecord{
+				{FromID: dogID6369, ToID: "Animal", Kind: "EXTENDS"},
+			},
+		},
+		{
+			ID: serviceID6369, Kind: "SCOPE.Component", Name: "Service",
+			Subtype: "class", SourceFile: "src/app/impl.vue", Language: "vue",
+			Relationships: []types.RelationshipRecord{
+				{FromID: serviceID6369, ToID: "Animal", Kind: "EXTENDS"},
+			},
+		},
+	}
+}
+
+// importPlaceholder6369 is the record shape emitted per import statement by
+// every extractor that stamps the marker — e.g. vue/extractor.go:1361,
+// css/css.go:253, graphql/graphql.go:402.
+func importPlaceholder6369(id, name, file string) types.EntityRecord {
+	return types.EntityRecord{
+		ID: id, Kind: "SCOPE.Component", Name: name, Subtype: "import",
+		SourceFile: file, Language: "vue",
+		Relationships: []types.RelationshipRecord{
+			{FromID: file, ToID: name, Kind: "IMPORTS"},
+		},
+	}
+}
+
+// resolveEdges6369 runs the production resolution path (BuildIndex →
+// ReferencesEmbedded) and returns owner-name → resolved ToID for every
+// embedded relationship of kind relKind.
+func resolveEdges6369(t *testing.T, recs []types.EntityRecord, relKind string) map[string]string {
+	t.Helper()
+	idx := BuildIndex(recs)
+	ReferencesEmbedded(recs, idx)
+	out := map[string]string{}
+	for i := range recs {
+		for _, r := range recs[i].Relationships {
+			if r.Kind == relKind {
+				out[recs[i].Name] = r.ToID
+			}
+		}
+	}
+	return out
+}
+
+// TestImportPlaceholderDoesNotDropCrossFileEdges_6369 is the assertion that
+// matters: a cross-file edge that resolves TODAY must still resolve after an
+// unrelated file adds a colliding import. Baseline is asserted first so the
+// test cannot pass vacuously on a fixture that never resolved.
+func TestImportPlaceholderDoesNotDropCrossFileEdges_6369(t *testing.T) {
+	base := resolveEdges6369(t, baseFixture6369(), "EXTENDS")
+	for _, owner := range []string{"Dog", "Service"} {
+		if base[owner] != realAnimalID6369 {
+			t.Fatalf("baseline is vacuous: %s EXTENDS = %q, want %q",
+				owner, base[owner], realAnimalID6369)
+		}
+	}
+
+	cases := []struct {
+		name string
+		recs func() []types.EntityRecord
+	}{
+		{
+			// The #6369 reproduction verbatim: the colliding import arrives
+			// AFTER the real declaration.
+			name: "placeholder after real declaration",
+			recs: func() []types.EntityRecord {
+				return append(baseFixture6369(),
+					importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"))
+			},
+		},
+		{
+			// Extraction order is not stable across runs; the placeholder
+			// winning the slot first must not change the outcome.
+			name: "placeholder before real declaration",
+			recs: func() []types.EntityRecord {
+				return append([]types.EntityRecord{
+					importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"),
+				}, baseFixture6369()...)
+			},
+		},
+		{
+			// #6369 variant R3 — two importers. Two placeholders collide with
+			// each other before the real declaration is ever seen.
+			name: "two placeholders before real declaration",
+			recs: func() []types.EntityRecord {
+				return append([]types.EntityRecord{
+					importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"),
+					importPlaceholder6369(placeholder2ID6369, "Animal", "src/other/collide2.vue"),
+				}, baseFixture6369()...)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recs := tc.recs()
+			got := resolveEdges6369(t, recs, "EXTENDS")
+			for _, owner := range []string{"Dog", "Service"} {
+				if got[owner] != realAnimalID6369 {
+					t.Errorf("%s EXTENDS Animal = %q, want the real declaration %q "+
+						"— an import placeholder in an unrelated file dropped a cross-file edge (#6369)",
+						owner, got[owner], realAnimalID6369)
+				}
+			}
+			// Both index construction paths are production-wired; the fix must
+			// land on both (BuildIndexFromModulesOrdered mirrors BuildIndex).
+			assertFullIndexParity(t, tc.recs())
+		})
+	}
+}
+
+// TestImportPlaceholderStillResolvesOwnEdge_6369 guards the load-bearing case
+// the blanket "never index placeholders by name" version of this fix breaks.
+//
+// css `@import "theme.css"` and graphql `extend type User` both emit a
+// bare-name edge (IMPORTS / FEDERATES) whose ToID is the placeholder's own
+// name; when the module is external there is NO other entity by that name in
+// the graph. rewriteOneWithCaller only consults the locality tiers on
+// statusAmbiguous, so dropping the placeholder from byName leaves these edges
+// permanently unresolved.
+func TestImportPlaceholderStillResolvesOwnEdge_6369(t *testing.T) {
+	t.Run("css @import to an external module", func(t *testing.T) {
+		recs := []types.EntityRecord{
+			{
+				ID: placeholderID6369, Kind: "SCOPE.Component", Name: "theme.css",
+				Subtype: "import", SourceFile: "src/app.css", Language: "css",
+				Relationships: []types.RelationshipRecord{
+					{FromID: "src/app.css", ToID: "theme.css", Kind: "IMPORTS"},
+				},
+			},
+		}
+		got := resolveEdges6369(t, recs, "IMPORTS")
+		if got["theme.css"] != placeholderID6369 {
+			t.Errorf("css @import edge = %q, want the placeholder %q — the placeholder is "+
+				"the only target this edge has (#6369)", got["theme.css"], placeholderID6369)
+		}
+	})
+
+	t.Run("graphql federation stub with no in-repo owner", func(t *testing.T) {
+		recs := []types.EntityRecord{
+			{
+				ID: placeholderID6369, Kind: "SCOPE.Component", Name: "User",
+				Subtype: "import", SourceFile: "subgraph/orders.graphql", Language: "graphql",
+				Relationships: []types.RelationshipRecord{
+					{FromID: "subgraph/orders.graphql", ToID: "User", Kind: "FEDERATES"},
+				},
+			},
+		}
+		got := resolveEdges6369(t, recs, "FEDERATES")
+		if got["User"] != placeholderID6369 {
+			t.Errorf("FEDERATES edge = %q, want the federation stub %q (#6369)",
+				got["User"], placeholderID6369)
+		}
+	})
+
+	t.Run("federation stub yields to the in-repo owning type", func(t *testing.T) {
+		recs := []types.EntityRecord{
+			{
+				ID: realAnimalID6369, Kind: "SCOPE.Component", Name: "User",
+				Subtype: "type", SourceFile: "subgraph/users.graphql", Language: "graphql",
+			},
+			{
+				ID: placeholderID6369, Kind: "SCOPE.Component", Name: "User",
+				Subtype: "import", SourceFile: "subgraph/orders.graphql", Language: "graphql",
+				Relationships: []types.RelationshipRecord{
+					{FromID: "subgraph/orders.graphql", ToID: "User", Kind: "FEDERATES"},
+				},
+			},
+		}
+		got := resolveEdges6369(t, recs, "FEDERATES")
+		if got["User"] != realAnimalID6369 {
+			t.Errorf("FEDERATES edge = %q, want the canonical type %q (#6369)",
+				got["User"], realAnimalID6369)
+		}
+	})
+}
+
+// TestImportPlaceholderAmbiguityStillHonoured_6369 pins the boundary: the fix
+// suppresses ambiguity between a placeholder and a real declaration, NOT
+// ambiguity between two real declarations, and not the placeholder-only case
+// where no real declaration exists at all.
+func TestImportPlaceholderAmbiguityStillHonoured_6369(t *testing.T) {
+	t.Run("two real declarations stay ambiguous", func(t *testing.T) {
+		recs := append(baseFixture6369(), types.EntityRecord{
+			ID: placeholder2ID6369, Kind: "SCOPE.Component", Name: "Animal",
+			Subtype: "class", SourceFile: "src/other/base2.vue", Language: "vue",
+		})
+		idx := BuildIndex(recs)
+		if !idx.ambigName["Animal"] {
+			t.Errorf("two real declarations of Animal must stay ambiguous (#6369)")
+		}
+		if _, ok := idx.byName["Animal"]; ok {
+			t.Errorf("byName must not hold an arbitrary winner for an ambiguous name")
+		}
+	})
+
+	t.Run("two placeholders with no real declaration stay ambiguous", func(t *testing.T) {
+		recs := []types.EntityRecord{
+			importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"),
+			importPlaceholder6369(placeholder2ID6369, "Animal", "src/other/collide2.vue"),
+		}
+		idx := BuildIndex(recs)
+		if !idx.ambigName["Animal"] {
+			t.Errorf("two distinct placeholders must not silently pick a winner (#6369)")
+		}
+	})
+
+	// The placeholder-only ambiguity is RECOVERABLE — a real declaration
+	// arriving later reclaims the name (that is what nameAmbigImport is for).
+	// The recovery must be spent exactly once: the first real declaration
+	// takes the slot, and a SECOND and THIRD real declaration then collide
+	// with it like any other pair of declarations. If the recovery marker
+	// survives the reclaim, every later real declaration keeps re-triggering
+	// it, so P,P,R1,R2,R3 ends with an arbitrary winner (R3) and ambiguity
+	// switched back OFF — three colliding real declarations silently
+	// resolving to whichever one the extractor happened to emit last.
+	t.Run("two placeholders then multiple real declarations stay ambiguous", func(t *testing.T) {
+		recs := []types.EntityRecord{
+			importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"),
+			importPlaceholder6369(placeholder2ID6369, "Animal", "src/other/collide2.vue"),
+			{
+				ID: realAnimalID6369, Kind: "SCOPE.Component", Name: "Animal",
+				Subtype: "class", SourceFile: "src/domain/base.vue", Language: "vue",
+			},
+			{
+				ID: real2ID6369, Kind: "SCOPE.Component", Name: "Animal",
+				Subtype: "class", SourceFile: "src/domain/base2.vue", Language: "vue",
+			},
+			{
+				ID: real3ID6369, Kind: "SCOPE.Component", Name: "Animal",
+				Subtype: "class", SourceFile: "src/domain/base3.vue", Language: "vue",
+			},
+		}
+		idx := BuildIndex(recs)
+		if !idx.ambigName["Animal"] {
+			t.Errorf("three colliding real declarations of Animal must be ambiguous, even when " +
+				"placeholder-only ambiguity preceded them (#6369)")
+		}
+		if got, ok := idx.byName["Animal"]; ok {
+			t.Errorf("byName[Animal] = %q, want absent — a name owned by three real "+
+				"declarations must not resolve to an arbitrary winner (#6369)", got)
+		}
+	})
+
+	// A placeholder may occupy an UNCLAIMED name, but it may never RECLAIM a
+	// name that placeholder-only ambiguity already blanked: no declaration
+	// owns that name, so there is nothing to reclaim it for. Three importers
+	// of the same bare name must stay ambiguous exactly like two, otherwise
+	// the third placeholder wins a name no declaration owns.
+	t.Run("three placeholders with no real declaration stay ambiguous", func(t *testing.T) {
+		recs := []types.EntityRecord{
+			importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"),
+			importPlaceholder6369(placeholder2ID6369, "Animal", "src/other/collide2.vue"),
+			importPlaceholder6369(placeholder3ID6369, "Animal", "src/other/collide3.vue"),
+		}
+		idx := BuildIndex(recs)
+		if !idx.ambigName["Animal"] {
+			t.Errorf("three distinct placeholders must not silently pick a winner (#6369)")
+		}
+		if got, ok := idx.byName["Animal"]; ok {
+			t.Errorf("byName[Animal] = %q, want absent — no declaration owns this name, so no "+
+				"placeholder may claim it (#6369)", got)
+		}
+	})
+
+	// A placeholder and a REAL record of the same name in the same file share
+	// one EntityID by construction — EntityID is sha256(repo, kind, name,
+	// sourceFile) and does not include Subtype, so the extractors that mint a
+	// per-import SCOPE.Component emit two records on one ID (measured on the
+	// Go corpus in cmd/grafel/incremental_dup_rows_6094_test.go). The second
+	// record is a RE-INDEX of the same entity, not a collision, so it takes
+	// the same-ID path — and that path must retire the placeholder marker,
+	// because the entity holding the name is now known to be a real
+	// declaration. If the marker survives, the NEXT file's genuinely
+	// different declaration takes the "declaration displaces placeholder"
+	// branch instead of colliding: two real declarations of Animal then
+	// resolve to whichever one arrived last, with ambiguity never raised.
+	t.Run("placeholder re-indexed as a real record then a second declaration stay ambiguous",
+		func(t *testing.T) {
+			recs := []types.EntityRecord{
+				importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"),
+				{
+					ID: placeholderID6369, Kind: "SCOPE.Component", Name: "Animal",
+					Subtype: "class", SourceFile: "src/other/collide.vue", Language: "vue",
+				},
+				{
+					ID: realAnimalID6369, Kind: "SCOPE.Component", Name: "Animal",
+					Subtype: "class", SourceFile: "src/domain/base.vue", Language: "vue",
+				},
+			}
+			idx := BuildIndex(recs)
+			if !idx.ambigName["Animal"] {
+				t.Errorf("two real declarations of Animal must be ambiguous, even when a " +
+					"placeholder record preceded one of them on the same ID (#6369)")
+			}
+			if got, ok := idx.byName["Animal"]; ok {
+				t.Errorf("byName[Animal] = %q, want absent — a name owned by two real "+
+					"declarations must not resolve to an arbitrary winner (#6369)", got)
+			}
+		})
+}

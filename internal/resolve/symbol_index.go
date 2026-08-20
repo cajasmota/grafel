@@ -101,6 +101,12 @@ type moduleEntry struct {
 	// the only place the source record is still in hand.
 	uncallable bool
 	properties map[string]string
+	// importPlaceholder is isImportPlaceholderKind's verdict (#6369),
+	// precomputed because moduleEntry carries no Subtype and this is the only
+	// place the source record is still in hand. Drives the byName precedence
+	// in indexByName: a per-import placeholder never displaces, nor collides
+	// with, a real declaration of the same name.
+	importPlaceholder bool
 
 	// globalPos is the entity's position in the caller's ORIGINAL (flat)
 	// entity slice — the order BuildIndex consumes. M5 builds its symbol
@@ -182,16 +188,17 @@ func BuildModuleSymbols(key ModuleKey, entities []types.EntityRecord) *ModuleSym
 		refProp := extractIndexableRef(e)
 
 		me := moduleEntry{
-			id:            e.ID,
-			name:          e.Name,
-			kind:          e.Kind,
-			kindTrimmed:   trimmed,
-			sourceFile:    sf,
-			qualifiedName: e.QualifiedName,
-			refProp:       refProp,
-			dotName:       strings.IndexByte(e.Name, dottedNameSep) >= 0,
-			uncallable:    uncallableSolidityField(e.Language, e.Kind, e.Signature),
-			properties:    e.Properties,
+			id:                e.ID,
+			name:              e.Name,
+			kind:              e.Kind,
+			kindTrimmed:       trimmed,
+			sourceFile:        sf,
+			qualifiedName:     e.QualifiedName,
+			refProp:           refProp,
+			dotName:           strings.IndexByte(e.Name, dottedNameSep) >= 0,
+			uncallable:        uncallableSolidityField(e.Language, e.Kind, e.Signature),
+			properties:        e.Properties,
+			importPlaceholder: isImportPlaceholderKind(e.Kind, e.Subtype),
 		}
 		ms.entries = append(ms.entries, me)
 	}
@@ -419,17 +426,18 @@ func buildModuleSymbolsOrderedPos(key ModuleKey, entities []types.EntityRecord, 
 			pos = positions[k]
 		}
 		me := moduleEntry{
-			id:            e.ID,
-			name:          e.Name,
-			kind:          e.Kind,
-			kindTrimmed:   trimmed,
-			sourceFile:    sf,
-			qualifiedName: e.QualifiedName,
-			refProp:       extractIndexableRef(e),
-			dotName:       strings.IndexByte(e.Name, dottedNameSep) >= 0,
-			uncallable:    uncallableSolidityField(e.Language, e.Kind, e.Signature),
-			properties:    e.Properties,
-			globalPos:     pos,
+			id:                e.ID,
+			name:              e.Name,
+			kind:              e.Kind,
+			kindTrimmed:       trimmed,
+			sourceFile:        sf,
+			qualifiedName:     e.QualifiedName,
+			refProp:           extractIndexableRef(e),
+			dotName:           strings.IndexByte(e.Name, dottedNameSep) >= 0,
+			uncallable:        uncallableSolidityField(e.Language, e.Kind, e.Signature),
+			properties:        e.Properties,
+			importPlaceholder: isImportPlaceholderKind(e.Kind, e.Subtype),
+			globalPos:         pos,
 		}
 		ms.entries = append(ms.entries, me)
 	}
@@ -919,37 +927,11 @@ func insertModuleEntry(
 	}
 
 	// byName — kind-agnostic; ambiguous when two entities with different IDs
-	// share the same name.
-	if idx.ambigName[me.name] {
-		return
-	}
-	nk := "n:" + me.name
+	// share the same name. Delegated to the shared writer in refs.go
+	// (indexByName) so this path and flat BuildIndex cannot drift — including
+	// the #6104 facet rule and the #6369 import-placeholder precedence.
 	nameAnchor, nameIsFacet := me.mergeFacetAnchor()
-	if existing, ok := idx.byName[me.name]; ok && existing != me.id {
-		// #6104 — mirrors flat BuildIndex: a merge facet is an alias of ITS
-		// OWN ANCHOR, not a competing definition. An orphaned facet (anchor
-		// removed downstream) still collides with an unrelated same-named
-		// definition, rather than silently handing it the name.
-		switch {
-		case nameIsFacet && existing == nameAnchor:
-			// facet does not compete with its own anchor
-		case !nameIsFacet && idx.aliasAnchor[nk] == me.id:
-			idx.byName[me.name] = me.id
-			delete(idx.aliasAnchor, nk)
-		default:
-			delete(idx.byName, me.name)
-			delete(idx.aliasAnchor, nk)
-			idx.ambigName[me.name] = true
-		}
-		return
-	}
-	idx.byName[me.name] = me.id
-	if nameIsFacet {
-		if idx.aliasAnchor == nil {
-			idx.aliasAnchor = make(map[string]string)
-		}
-		idx.aliasAnchor[nk] = nameAnchor
-	}
+	idx.indexByName(me.name, me.id, nameIsFacet, nameAnchor, me.importPlaceholder)
 }
 
 // mergeFacetAnchor reports whether this module entry is a #6104 merge facet —
