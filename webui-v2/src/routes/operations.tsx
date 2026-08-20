@@ -91,6 +91,7 @@ import { useIndexProgress } from "@/hooks/use-index-progress";
 import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { rssBudgetPresentation } from "@/lib/rss-budget-banner";
 import type { DoctorCheck, LogLine, PatternRow, SystemStatus } from "@/data/types";
 
 // ---------------------------------------------------------------------------
@@ -339,26 +340,13 @@ function DaemonStatusCard({
   const dot = STATUS_DOT[status.status] ?? "bg-text-4";
   const label = STATUS_LABEL[status.status] ?? status.status;
 
-  // Memory budget state. When RSS exceeds the configured budget the daemon is
-  // running over its intended footprint — surface a clear warning rather than a
-  // bare "987 / 500 MB" number that reads as fine.
-  const overBudget =
-    status.rss_budget_mb != null &&
-    status.rss_budget_mb > 0 &&
-    status.rss_mb > status.rss_budget_mb;
-  const memRatio =
-    status.rss_budget_mb && status.rss_budget_mb > 0
-      ? status.rss_mb / status.rss_budget_mb
-      : 0;
-  // Hard warning (red) once ~1.5× over; amber for anything above budget.
-  const memSeverity = overBudget ? (memRatio >= 1.5 ? "danger" : "warning") : null;
-  const memTooltip = overBudget
-    ? `Over memory budget — using ${status.rss_mb.toFixed(0)} MB against a ${status.rss_budget_mb!.toFixed(
-        0,
-      )} MB budget (${Math.round(memRatio * 100)}%). Consider restarting the daemon or indexing fewer repositories.`
-    : status.rss_budget_mb
-    ? `Within budget — ${status.rss_mb.toFixed(0)} MB of ${status.rss_budget_mb.toFixed(0)} MB.`
-    : undefined;
+  // Memory budget state. rss_mb is live whole-process RSS; rss_budget_mb is
+  // delta-accounted and next-start-scoped, so the two are not comparable and
+  // the card must not claim "over budget" from them. See rssBudgetPresentation
+  // (#6324) for the full reasoning.
+  const mem = rssBudgetPresentation(status);
+  const memSeverity = mem.tone;
+  const memTooltip = mem.tooltip;
 
   return (
     <Card className="p-5">
@@ -390,9 +378,7 @@ function DaemonStatusCard({
           { label: "PID", value: String(status.pid), mono: true, truncate: false },
           {
             label: "Memory",
-            value: status.rss_budget_mb
-              ? `${status.rss_mb.toFixed(0)} / ${status.rss_budget_mb.toFixed(0)} MB`
-              : `${status.rss_mb.toFixed(0)} MB`,
+            value: mem.value,
             mono: true,
             truncate: false,
             memory: true,
@@ -403,10 +389,14 @@ function DaemonStatusCard({
           <div key={label}>
             <dt className="text-xs text-text-3 flex items-center gap-1.5">
               {label}
-              {memory && memSeverity && (
+              {memory && memSeverity && mem.badgeLabel && (
                 <Badge tone={memSeverity} className="text-[10px] px-1.5 py-0" title={memTooltip}>
-                  <AlertTriangle size={9} className="mr-0.5" />
-                  Over budget
+                  {memSeverity === "info" ? (
+                    <Info size={9} className="mr-0.5" />
+                  ) : (
+                    <AlertTriangle size={9} className="mr-0.5" />
+                  )}
+                  {mem.badgeLabel}
                 </Badge>
               )}
             </dt>
