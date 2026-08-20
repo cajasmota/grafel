@@ -30,6 +30,9 @@ const (
 	serviceID6369      = "aaaa000000000002"
 	placeholderID6369  = "eca4ea80cdd6b84d"
 	placeholder2ID6369 = "eca4ea80cdd6b84e"
+	placeholder3ID6369 = "eca4ea80cdd6b84f"
+	real2ID6369        = "1860328bfaee8f14"
+	real3ID6369        = "1860328bfaee8f15"
 )
 
 // baseFixture6369 is the #6369 reproduction, transposed onto an extractor that
@@ -255,6 +258,64 @@ func TestImportPlaceholderAmbiguityStillHonoured_6369(t *testing.T) {
 		idx := BuildIndex(recs)
 		if !idx.ambigName["Animal"] {
 			t.Errorf("two distinct placeholders must not silently pick a winner (#6369)")
+		}
+	})
+
+	// The placeholder-only ambiguity is RECOVERABLE — a real declaration
+	// arriving later reclaims the name (that is what nameAmbigImport is for).
+	// The recovery must be spent exactly once: the first real declaration
+	// takes the slot, and a SECOND and THIRD real declaration then collide
+	// with it like any other pair of declarations. If the recovery marker
+	// survives the reclaim, every later real declaration keeps re-triggering
+	// it, so P,P,R1,R2,R3 ends with an arbitrary winner (R3) and ambiguity
+	// switched back OFF — three colliding real declarations silently
+	// resolving to whichever one the extractor happened to emit last.
+	t.Run("two placeholders then multiple real declarations stay ambiguous", func(t *testing.T) {
+		recs := []types.EntityRecord{
+			importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"),
+			importPlaceholder6369(placeholder2ID6369, "Animal", "src/other/collide2.vue"),
+			{
+				ID: realAnimalID6369, Kind: "SCOPE.Component", Name: "Animal",
+				Subtype: "class", SourceFile: "src/domain/base.vue", Language: "vue",
+			},
+			{
+				ID: real2ID6369, Kind: "SCOPE.Component", Name: "Animal",
+				Subtype: "class", SourceFile: "src/domain/base2.vue", Language: "vue",
+			},
+			{
+				ID: real3ID6369, Kind: "SCOPE.Component", Name: "Animal",
+				Subtype: "class", SourceFile: "src/domain/base3.vue", Language: "vue",
+			},
+		}
+		idx := BuildIndex(recs)
+		if !idx.ambigName["Animal"] {
+			t.Errorf("three colliding real declarations of Animal must be ambiguous, even when " +
+				"placeholder-only ambiguity preceded them (#6369)")
+		}
+		if got, ok := idx.byName["Animal"]; ok {
+			t.Errorf("byName[Animal] = %q, want absent — a name owned by three real "+
+				"declarations must not resolve to an arbitrary winner (#6369)", got)
+		}
+	})
+
+	// A placeholder may occupy an UNCLAIMED name, but it may never RECLAIM a
+	// name that placeholder-only ambiguity already blanked: no declaration
+	// owns that name, so there is nothing to reclaim it for. Three importers
+	// of the same bare name must stay ambiguous exactly like two, otherwise
+	// the third placeholder wins a name no declaration owns.
+	t.Run("three placeholders with no real declaration stay ambiguous", func(t *testing.T) {
+		recs := []types.EntityRecord{
+			importPlaceholder6369(placeholderID6369, "Animal", "src/other/collide.vue"),
+			importPlaceholder6369(placeholder2ID6369, "Animal", "src/other/collide2.vue"),
+			importPlaceholder6369(placeholder3ID6369, "Animal", "src/other/collide3.vue"),
+		}
+		idx := BuildIndex(recs)
+		if !idx.ambigName["Animal"] {
+			t.Errorf("three distinct placeholders must not silently pick a winner (#6369)")
+		}
+		if got, ok := idx.byName["Animal"]; ok {
+			t.Errorf("byName[Animal] = %q, want absent — no declaration owns this name, so no "+
+				"placeholder may claim it (#6369)", got)
 		}
 	})
 }
