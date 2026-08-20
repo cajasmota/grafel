@@ -4,7 +4,8 @@
 //   - service    → Kind="SCOPE.Service",   Subtype="service"
 //   - rpc        → Kind="SCOPE.Operation", Subtype="endpoint" (Properties["type"]="rpc")
 //   - message    → Kind="SCOPE.Schema",    Subtype="message"
-//   - field      → Kind="SCOPE.Schema",    Subtype="field"
+//   - field      → Kind="SCOPE.Schema",    Subtype="field" (message fields,
+//     map fields, and oneof members alike)
 //   - enum       → Kind="SCOPE.Schema",    Subtype="enum"
 //   - enum value → Kind="SCOPE.Schema",    Subtype="enum_value"
 //
@@ -30,7 +31,9 @@
 //   - CONTAINS edges:
 //   - file → service / message / enum (top-level definitions),
 //   - service → rpc,
-//   - message → field,
+//   - message → field (including every member of a `oneof` block, #6358 —
+//     the oneof GROUP itself carries no entity, so mutual exclusivity is not
+//     modelled),
 //   - enum → enum value.
 //     ToIDs use BuildOperationStructuralRef("proto", file, name) for entity
 //     children (service/message/enum/rpc) and the table#column-style ref
@@ -351,20 +354,23 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 	rels = append(rels, fileContainsRel(file.Path, name))
 	var fieldEnts []types.EntityRecord
 	if body := childByType(node, "message_body"); body != nil {
+		// seen is keyed on the field's SIMPLE name and is deliberately scoped
+		// to the whole MESSAGE, not to the enclosing oneof (#6358). proto3
+		// requires field names to be unique across the entire message —
+		// including across separate oneof blocks — so two members sharing a
+		// name is invalid proto, not a case to support: both would mint the
+		// same Format-B member ref (…:<file>:<Msg>#<name>) and resolve/refs.go
+		// would un-bind the pair as ambiguous anyway. Keeping one dedupe per
+		// message means the address space and the dedupe agree.
 		seen := make(map[string]bool)
 		refSeen := make(map[string]bool)
-		for i := range body.ChildCount() {
-			ch := body.Child(int(i))
-			if ch == nil {
-				continue
-			}
-			isMap := ch.Type() == "map_field"
-			if ch.Type() != "field" && !isMap {
-				continue
-			}
+		// addMember runs one field-shaped node (a top-level `field`, a
+		// `map_field`, or a `oneof_field` nested inside a `oneof`) through the
+		// shared name/type/entity/REFERENCES path.
+		addMember := func(ch ts.Node, isMap bool) {
 			fname := fieldName(ch, file.Content)
 			if fname == "" || seen[fname] {
-				continue
+				return
 			}
 			seen[fname] = true
 			var ftype, label string
@@ -373,15 +379,14 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 			} else {
 				ftype, label = fieldTypeAndLabel(ch, file.Content)
 			}
+			// Emit the per-member SCOPE.Schema/field entity FIRST, so the
+			// CONTAINS edge below never exists without the entity it targets
+			// (the #6357 phantom invariant).
+			fieldEnts = append(fieldEnts, buildField(file, name, fname, ftype, label, ch))
 			rels = append(rels, types.RelationshipRecord{
 				ToID: fieldMemberRef(file.Path, name, fname),
 				Kind: "CONTAINS",
 			})
-			// Emit a per-field SCOPE.Field entity carrying the resolved scalar
-			// or message type + repeated/optional/required label. The entity ID
-			// reuses the Format-B member ref so it lines up with the CONTAINS
-			// edge target above.
-			fieldEnts = append(fieldEnts, buildField(file, name, fname, ftype, label, ch))
 			// REFERENCES edge to a named (non-scalar) message/enum type. Scalars
 			// (string, int32, …) carry no edge. The map type's value component is
 			// also followed (map<string, Order> → Order).
@@ -395,6 +400,39 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 					Kind:       "REFERENCES",
 					Properties: types.Props{{K: "type", V: ref}, {K: "via_field", V: fname}},
 				})
+			}
+		}
+		for i := range body.ChildCount() {
+			ch := body.Child(int(i))
+			if ch == nil {
+				continue
+			}
+			switch ch.Type() {
+			case "field":
+				addMember(ch, false)
+			case "map_field":
+				addMember(ch, true)
+			case "oneof":
+				// #6358: the grammar nests oneof members one level deeper as
+				// `oneof_field` children of a `oneof` node, so the flat
+				// message_body scan never reached them and every field inside
+				// every oneof was silently dropped — no entity, no edge, no
+				// warning, on files that parse at error_ratio 0.0000.
+				//
+				// Members only: the oneof GROUP itself gets no entity here, so
+				// the mutual-exclusivity semantics of the tagged union are not
+				// modelled. That is a deliberate scope line (see #6358) — the
+				// group needs a new 4-part ID form; recovering the dropped
+				// members does not.
+				for j := range ch.ChildCount() {
+					m := ch.Child(int(j))
+					if m == nil || m.Type() != "oneof_field" {
+						continue
+					}
+					// A oneof member cannot be repeated/optional and cannot be
+					// a map, so it always takes the plain field path.
+					addMember(m, false)
+				}
 			}
 		}
 	}
