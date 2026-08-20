@@ -87,7 +87,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	if len(file.Content) == 0 {
 		return nil, nil
 	}
-	out := extractVBNet(string(file.Content), file.Path)
+	out := extractVBNet(string(file.Content), file.Path, file.RepoRoot)
 	// Both tags are load-bearing, not decoration: relLanguage
 	// (internal/resolve/refs.go:5893) reads Properties["language"] off each
 	// RELATIONSHIP, and that value is what selects the lang=="vbnet" arm in
@@ -99,7 +99,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 }
 
 // extractVBNet is the testable core.
-func extractVBNet(src, filePath string) []types.EntityRecord {
+func extractVBNet(src, filePath, repoRoot string) []types.EntityRecord {
 	res := vbnet.Parse(src)
 
 	out := []types.EntityRecord{extractor.FileEntity(extractor.FileInput{
@@ -111,7 +111,7 @@ func extractVBNet(src, filePath string) []types.EntityRecord {
 	// The file carrier owns anything declared outside a type, so file-level and
 	// namespace-level call sites anchor there rather than being dropped.
 	appendCalls(&out[0], res.File)
-	emit(&out, res.File, filePath, 0, "")
+	emit(&out, res.File, filePath, repoRoot, 0, "")
 	return out
 }
 
@@ -125,14 +125,14 @@ func extractVBNet(src, filePath string) []types.EntityRecord {
 // Emitting a namespace node per file would create one duplicate component per
 // file sharing a namespace, which in this corpus is 92 files for StaxRip.UI
 // alone.
-func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath string, ownerIdx int, ns string) {
+func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath, repoRoot string, ownerIdx int, ns string) {
 	for _, child := range n.Children {
 		if child.Kind == vbnet.NodeNamespace {
 			inner := child.Name
 			if ns != "" && inner != "" {
 				inner = ns + "." + inner
 			}
-			emit(out, child, filePath, ownerIdx, inner)
+			emit(out, child, filePath, repoRoot, ownerIdx, inner)
 			continue
 		}
 
@@ -142,19 +142,29 @@ func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath string, ownerIdx in
 			// entity of their own. Their call sites belong to the nearest
 			// declaration that does have one, which is what ownerIdx is.
 			appendCalls(&(*out)[ownerIdx], child)
-			emit(out, child, filePath, ownerIdx, ns)
+			emit(out, child, filePath, repoRoot, ownerIdx, ns)
 			continue
 		}
 
 		name := declName(child)
+		// S7a (#6327) — a `Partial` type declared in a designer half is
+		// emitted under its `Foo.vb` sibling so both halves derive one
+		// graph.EntityID and the existing fold merges them. See partial.go for
+		// why the anchor is per-file, why the sibling must exist, and why the
+		// rewritten half's span is dropped rather than kept.
+		recFile, rewritten := partialAnchor(filePath, repoRoot, child)
+		startLine, endLine := child.Span.StartLine, child.Span.EndLine
+		if rewritten {
+			startLine, endLine = 0, 0
+		}
 		rec := types.EntityRecord{
 			Name:       name,
 			Kind:       kind,
 			Subtype:    subtype,
-			SourceFile: filePath,
+			SourceFile: recFile,
 			Language:   lang,
-			StartLine:  child.Span.StartLine,
-			EndLine:    child.Span.EndLine,
+			StartLine:  startLine,
+			EndLine:    endLine,
 			Signature:  signatureOf(child),
 		}
 		if ns != "" {
@@ -174,14 +184,14 @@ func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath string, ownerIdx in
 		// why ownerIdx starts at 0.
 		(*out)[ownerIdx].Relationships = append((*out)[ownerIdx].Relationships,
 			types.RelationshipRecord{
-				ToID: containsRef(kind, filePath, name),
+				ToID: containsRef(kind, recFile, name),
 				Kind: "CONTAINS",
 				Properties: types.Props{
 					{K: "line", V: strconv.Itoa(child.Span.StartLine)},
 				},
 			})
 
-		emit(out, child, filePath, idx, ns)
+		emit(out, child, filePath, repoRoot, idx, ns)
 	}
 }
 
