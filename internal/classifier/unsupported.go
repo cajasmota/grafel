@@ -126,7 +126,38 @@ var unsupportedLanguageNames = map[string]string{
 	".cfm":    "ColdFusion",
 	".cfc":    "ColdFusion",
 
+	// Oracle PL/SQL package sources (#6344). These are the entries in this
+	// batch that matter most, because `.sql` IS routed and extracted: an
+	// Oracle shop currently gets SILENTLY PARTIAL coverage, which is worse
+	// than none — the graph looks populated, so nothing prompts the reader to
+	// ask what is missing, and the package specs and bodies where the actual
+	// procedural logic lives are exactly the part that vanished. `.cls` is
+	// still deliberately absent (Apex / VBA / LaTeX), but `.trigger` below has
+	// exactly one owner and is safe to name.
+	".pks": "PL/SQL", // package specification
+	".pkb": "PL/SQL", // package body
+	".plb": "PL/SQL", // wrapped package body
+
+	// Salesforce.
+	".trigger": "Apex",
+
+	// XSLT. `.xml` is (correctly) junk, but a stylesheet is a program.
+	".xsl":  "XSLT",
+	".xslt": "XSLT",
+
+	// Sketch-style C++ dialects. Split rather than merged: `.ino` is Arduino's
+	// own extension and `.pde` is Processing's, and naming each for its own
+	// tool is more useful than a joint label on both.
+	".ino": "Arduino",
+	".pde": "Processing",
+
+	// SQL Server Integration Services packages.
+	".dtsx": "SSIS package",
+
 	// Everything else with exactly one plausible owner.
+	".4gl":         "Informix 4GL",
+	".nut":         "Squirrel",
+	".moon":        "MoonScript",
 	".jl":          "Julia",
 	".tcl":         "Tcl",
 	".hx":          "Haxe",
