@@ -2,6 +2,7 @@ package vbnet
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -34,10 +35,36 @@ import (
 // pass with a one-member group and a different canonical anchor than a full
 // index computed, so the two paths would disagree about an entity's IDENTITY —
 // the exact defect class #6150 documents, and strictly worse than the
-// duplication it removes. An anchor that is a pure function of ONE file's path
-// is identical under both paths by construction.
+// duplication it removes.
 //
-// # Why the existence guard is not optional
+// # KNOWN DIVERGENCE: the anchor is not a pure function of one file's path
+//
+// The anchor is derived from one file's path AND from the state of the
+// filesystem at that path, because the sibling must be read to be verified. A
+// full index and an incremental index therefore do NOT always agree, and this
+// slice does not claim they do. Incremental re-extracts only changed and
+// deleted files (incremental.go:700-720) and evicts on
+// `changedSet[e.SourceFile]` (:800-810), so a change to one half never
+// re-extracts the other. Two concrete scenarios, both reachable today:
+//
+//   - DELETE `Form1.vb` from a merged pair. Incremental evicts the merged
+//     Component (it is anchored at the deleted path) and never re-extracts the
+//     unchanged `Form1.Designer.vb`, so `Form1` VANISHES from the graph. A full
+//     index of the same tree yields `Form1` anchored at `Form1.Designer.vb`,
+//     because the sibling is gone and no rewrite happens.
+//
+//   - ADD `Form1.vb` next to an existing lone `Form1.Designer.vb`. Incremental
+//     extracts only the new file and leaves the designer half at its old
+//     anchor, giving TWO Components. A full index gives ONE.
+//
+// The mitigation is a full re-index, which reconciles both: every file is
+// re-extracted against the tree as it then stands. Making the incremental path
+// invalidate the sibling of a changed designer pair is the real fix and is a
+// separate, larger change — it means teaching the changed-set computation about
+// a producer-defined file relationship, which nothing in the pipeline models
+// today.
+//
+// # Why the sibling guard is not optional
 //
 // MEASURED on the 302-file corpus: 88 files are `*.Designer.vb`, and only 33
 // of them have a `.vb` sibling. The other 55 are `My Project/Settings.
@@ -46,7 +73,10 @@ import (
 // STANDALONE — there is no `Settings.vb` to merge with. Stripping the infix
 // unconditionally would re-anchor 55 files' Components onto paths that do not
 // exist, breaking source retrieval for every one of them in exchange for
-// merging nothing. So the rewrite requires the sibling to be on disk.
+// merging nothing. So the rewrite requires the sibling to be on disk — and,
+// because a file merely BEING there proves nothing about what it declares, to
+// declare the same type in the same namespace. See siblingCache.declares for
+// the three shapes an existence-only check gets wrong.
 //
 // # Why the rewritten record's span is zeroed
 //
@@ -86,12 +116,11 @@ import (
 // why the base is sliced off the original path rather than lower-cased.
 const designerSuffix = ".designer.vb"
 
-// designerAnchorPath maps `Foo.Designer.vb` to its `Foo.vb` sibling.
+// designerBase strips the designer infix, mapping `Foo.Designer.vb` to `Foo`.
 //
-// The returned path is repo-relative in the same form as the input, so it is
-// directly usable as EntityRecord.SourceFile. ok is false when the path is not
-// a designer half at all.
-func designerAnchorPath(filePath string) (string, bool) {
+// The returned base is repo-relative in the same slash form as the input. ok is
+// false when the path is not a designer half at all.
+func designerBase(filePath string) (string, bool) {
 	if len(filePath) <= len(designerSuffix) {
 		return "", false
 	}
@@ -103,10 +132,49 @@ func designerAnchorPath(filePath string) (string, bool) {
 	if base == "" || strings.HasSuffix(base, "/") {
 		return "", false
 	}
-	// ".vb" rather than the sibling's own spelling: the extension the
-	// classifier keys on is case-folded (classifier.go:368) and every anchor in
-	// the corpus is lower-case.
-	return base + ".vb", true
+	return base, true
+}
+
+// siblingPath resolves `<base>.vb` against the REAL directory listing under
+// repoRoot and returns the path spelled as the file is spelled on disk.
+//
+// A hardcoded `base + ".vb"` is not portable: a sibling named `Widget.VB` makes
+// os.Stat succeed on case-insensitive macOS and Windows and fail on Linux, and
+// the macOS outcome is the worst of the three — the ids still differ by path
+// spelling so nothing merges, and the Component is left pointing at a path no
+// file entity claims, with its span zeroed. Reading the directory costs one
+// syscall more than stat'ing it and gives the same answer everywhere.
+//
+// An exact match wins outright. Otherwise a single case-insensitive match is
+// taken, and an ambiguous set — possible only on a case-sensitive filesystem —
+// is refused, because picking one of them would be arbitrary.
+//
+// Directory entries are deliberately NOT filtered out here. A directory named
+// `Widget.vb` is caught one step later: typeDecls cannot read it, so it
+// declares no type and no rewrite happens. A filter would be a second, weaker
+// spelling of the same guard with no behaviour of its own to test.
+func siblingPath(repoRoot, base string) (string, bool) {
+	dir, file := path.Split(base)
+	want := file + ".vb"
+	entries, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(dir)))
+	if err != nil {
+		return "", false
+	}
+	var folded string
+	n := 0
+	for _, e := range entries {
+		if e.Name() == want {
+			return dir + want, true
+		}
+		if strings.EqualFold(e.Name(), want) {
+			folded = e.Name()
+			n++
+		}
+	}
+	if n != 1 {
+		return "", false
+	}
+	return dir + folded, true
 }
 
 // isPartialType reports whether n is a type declaration carrying the `partial`
@@ -128,24 +196,97 @@ func isPartialType(n *vbnet.Node) bool {
 	return false
 }
 
+// siblingCache memoises the type declarations of an anchor candidate for the
+// duration of ONE file's extraction. A designer file declaring several partial
+// types would otherwise re-read and re-parse the same sibling once per type.
+type siblingCache map[string]map[string]bool
+
+// declares reports whether the file at anchor declares a type named name inside
+// namespace ns.
+//
+// Existence is not enough. Three real shapes break a rewrite that only stats
+// the path, and all three are the same missing check:
+//
+//   - `Widget.Designer.vb` declaring `Partial Class Widget` beside a
+//     `Widget.vb` that declares `Gadget`. Nothing merges, and Widget is moved
+//     onto a file that does not declare it, with its span dropped.
+//   - a designer file declaring an EXTRA type (`Widget` AND `WidgetHelper`).
+//     Only the type with a real other half may move. Multi-type designer files
+//     are common.
+//   - `Namespace Alpha / Class Widget` beside `Namespace Beta / Partial Class
+//     Widget`. `vbnet_namespace` is a PROPERTY, not part of the identity triple
+//     (extractor.go:157), so the path was the only thing keeping the two apart
+//     and the rewrite is what destroys it. They are different types and must
+//     stay two Components.
+//
+// Reading the sibling is no less a filesystem access than stat'ing it, so it
+// costs the design nothing it was not already paying. The name and namespace
+// compare EXACTLY rather than case-insensitively: the identity triple is
+// case-sensitive, so a case-differing declaration would not fold into one id
+// anyway, and re-anchoring it would only produce the wrong-file outcome above.
+func (c siblingCache) declares(repoRoot, anchor, ns, name string) bool {
+	set, ok := c[anchor]
+	if !ok {
+		set = typeDecls(repoRoot, anchor)
+		c[anchor] = set
+	}
+	return set[ns+"\x00"+name]
+}
+
+// typeDecls returns the (namespace, name) pairs of every type declared in the
+// file, or an empty set when it cannot be read or parsed. A directory at the
+// anchor path lands here too: it fails the read and declares nothing.
+func typeDecls(repoRoot, anchor string) map[string]bool {
+	set := map[string]bool{}
+	src, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(anchor)))
+	if err != nil {
+		return set
+	}
+	var walk func(n *vbnet.Node, ns string)
+	walk = func(n *vbnet.Node, ns string) {
+		for _, child := range n.Children {
+			if child.Kind == vbnet.NodeNamespace {
+				inner := child.Name
+				if ns != "" && inner != "" {
+					inner = ns + "." + inner
+				}
+				walk(child, inner)
+				continue
+			}
+			if child.Kind.IsType() && child.Name != "" {
+				set[ns+"\x00"+child.Name] = true
+			}
+			walk(child, ns)
+		}
+	}
+	walk(vbnet.Parse(string(src)).File, "")
+	return set
+}
+
 // partialAnchor returns the source file a type declaration should be emitted
 // under, and whether that differs from the file it was actually declared in.
 //
+// ns is the namespace the declaration sits in, which is part of what makes two
+// same-named halves the SAME type rather than two types that collide.
+//
 // repoRoot may be empty — every extractor entry point stamps it
 // (index.go:3579/3913, incremental.go:974) but the testable core is callable
-// without it. With no repo root the sibling cannot be verified, so no rewrite
-// happens: an unverified rewrite is the failure mode the existence guard
-// exists to prevent.
-func partialAnchor(filePath, repoRoot string, n *vbnet.Node) (string, bool) {
+// without it. With no repo root there is nothing to resolve the sibling
+// against, so no rewrite happens: an unverified rewrite is the failure mode the
+// sibling checks exist to prevent.
+func partialAnchor(filePath, repoRoot, ns string, n *vbnet.Node, cache siblingCache) (string, bool) {
 	if repoRoot == "" || !isPartialType(n) {
 		return filePath, false
 	}
-	anchor, ok := designerAnchorPath(filePath)
+	base, ok := designerBase(filePath)
 	if !ok {
 		return filePath, false
 	}
-	st, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(anchor)))
-	if err != nil || st.IsDir() {
+	anchor, ok := siblingPath(repoRoot, base)
+	if !ok {
+		return filePath, false
+	}
+	if !cache.declares(repoRoot, anchor, ns, n.Name) {
 		return filePath, false
 	}
 	return anchor, true
