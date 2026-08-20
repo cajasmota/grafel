@@ -192,6 +192,10 @@ type Node struct {
 	// Refs are the parenthesis use sites in the statements directly inside
 	// this node, in source order.
 	Refs []Ref
+	// AddressOfs are the `AddressOf <member>` operands in the statements
+	// directly inside this node, in source order. They are kept apart from
+	// Refs because a Ref is by definition a `name(` site — see addressof.go.
+	AddressOfs []MethodRef
 	// Children are the declarations directly inside this one.
 	Children []*Node
 
@@ -789,6 +793,19 @@ func (p *parser) walkStatement(stmt, raw string, off int, ll LogicalLine) {
 		return
 	case "property":
 		p.walkProperty(after, mods, line, ll)
+		// S7b (#6327). An auto-property initialiser is the one place an
+		// AddressOf operand appears that the reference pass never reaches:
+		// walkProperty neither scans refs nor pushes a frame, so nothing
+		// downstream ever sees this statement's text. MEASURED on the
+		// 302-file corpus: 142 of 585 AddressOf tokens live here, all of them
+		// in StaxRip's `Property P As New NumParam With {.ArgsFunc =
+		// AddressOf F}` encoder-parameter tables.
+		//
+		// Only the operand scan is added. Wiring scanRefs in here as well
+		// would change the CALLS set S5 measured, which is not S7b's to move.
+		if prop := p.top().property; prop != nil {
+			p.scanAddressOfOn(prop, stmt, off, ll, 0)
+		}
 		return
 	case "get", "set", "addhandler", "removehandler", "raiseevent":
 		if p.walkAccessor(kw, after, line, ll) {

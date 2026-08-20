@@ -3,7 +3,8 @@
 // It is S5 of #6327, requested in #6321. The parsing is done by internal/vbnet
 // — the hand-written recursive-descent line scanner shipped in S4 (#6381) —
 // and this package is a projection of that containment tree onto EntityRecords
-// plus the four edge kinds the epic names: EXTENDS, IMPLEMENTS, IMPORTS, CALLS.
+// plus the four edge kinds the epic names: EXTENDS, IMPLEMENTS, IMPORTS, CALLS,
+// and — since S7b — REFERENCES for `Handles` and `AddressOf` wiring.
 //
 // # The two contracts that cost five other languages a bug each
 //
@@ -47,8 +48,9 @@
 //
 //   - Every With-block member invocation is dropped. `.SetValue(k, v)` standing
 //     alone is a real call and IsCall() reports false for it.
-//   - `AddressOf Foo` is not recorded at all — it carries no parentheses, so
-//     the reference pass never sees it.
+//   - (LIFTED by S7b, #6327.) `AddressOf Foo` carries no parentheses, so the
+//     reference pass never saw it. It is now scanned separately and emitted
+//     as REFERENCES — see references.go for why that kind and that direction.
 //   - Method-level `Implements IFoo.Bar` is parsed onto Node.Implements but is
 //     NOT emitted as an IMPLEMENTS edge: the epic scopes IMPLEMENTS to the
 //     type, and a member-level edge to `IFoo.Bar` would compete with the
@@ -111,6 +113,7 @@ func extractVBNet(src, filePath, repoRoot string) []types.EntityRecord {
 	// The file carrier owns anything declared outside a type, so file-level and
 	// namespace-level call sites anchor there rather than being dropped.
 	appendCalls(&out[0], res.File)
+	appendReferences(&out[0], res.File)
 	// The sibling cache is per-extraction: it is never shared across files, so
 	// concurrent extraction needs no synchronisation, and a designer file
 	// declaring several partial types PARSES its sibling once. The directory
@@ -146,6 +149,7 @@ func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath, repoRoot string, o
 			// entity of their own. Their call sites belong to the nearest
 			// declaration that does have one, which is what ownerIdx is.
 			appendCalls(&(*out)[ownerIdx], child)
+			appendReferences(&(*out)[ownerIdx], child)
 			emit(out, child, filePath, repoRoot, ownerIdx, ns, sib)
 			continue
 		}
@@ -179,6 +183,8 @@ func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath, repoRoot string, o
 			rec.Relationships = append(rec.Relationships, hierarchyEdges(child)...)
 		}
 		appendCalls(&rec, child)
+		// S7b (#6327): `Handles` clauses and `AddressOf` operands.
+		appendReferences(&rec, child)
 
 		idx := len(*out)
 		*out = append(*out, rec)
@@ -452,9 +458,8 @@ func callTarget(r vbnet.Ref) (string, bool) {
 	if r.Qualified && strings.TrimSpace(r.Qualifier) == "" {
 		return "", false
 	}
-	switch vbnet.FoldName(r.Qualifier) {
-	case "", "me", "myclass", "mybase":
-		return r.Name, r.Name != ""
-	}
-	return r.Qualifier + "." + r.Name, r.Name != ""
+	// The Me/MyClass/MyBase fold is shared with the S7b REFERENCES edges
+	// (references.go), so the two edge kinds cannot drift apart on it.
+	target := memberTarget(r.Qualifier, r.Name)
+	return target, target != ""
 }
