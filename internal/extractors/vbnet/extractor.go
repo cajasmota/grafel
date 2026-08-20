@@ -47,7 +47,13 @@
 // # Known recall limits inherited from S4, stated so they are not rediscovered
 //
 //   - Every With-block member invocation is dropped. `.SetValue(k, v)` standing
-//     alone is a real call and IsCall() reports false for it.
+//     alone is a real call and IsCall() reports false for it. KEPT on the S7d
+//     measurement, not by omission: 50 With blocks, 281 member sites, 112 of
+//     them calls on the 302-file corpus. Building it yields 25 CALLS edges
+//     after appendCalls' dedup, of which 1 resolves — +0.5% edges, +0.03%
+//     resolved, and 24 new dangling edges. The sites are dropped cleanly, never
+//     bound to a wrong receiver. The recall actually sitting behind them is
+//     local-variable type inference (#6454), not With-block bookkeeping.
 //   - (LIFTED by S7b, #6327.) `AddressOf Foo` carries no parentheses, so the
 //     reference pass never saw it. It is now scanned separately and emitted
 //     as REFERENCES — see references.go for why that kind and that direction.

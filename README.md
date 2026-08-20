@@ -193,13 +193,13 @@ After `grafel install`, the daemon registers itself as an MCP server in your Cla
 
 ## Languages
 
-Core extractors for 50+ languages including Go, Python, TypeScript/JavaScript, Java, C#, C++, Rust, Ruby, PHP, Swift, Kotlin, Scala, Dart, Elixir, and more. Infrastructure: Terraform/HCL, Solidity, Verilog/SystemVerilog. Frontend: Vue SFC, Svelte, Astro. Cross-cutting: SQL, GraphQL, Protocol Buffers, Dockerfile.
+Core extractors for 50+ languages including Go, Python, TypeScript/JavaScript, Java, C#, VB.NET, C++, Rust, Ruby, PHP, Swift, Kotlin, Scala, Dart, Elixir, and more. Infrastructure: Terraform/HCL, Solidity, Verilog/SystemVerilog. Frontend: Vue SFC, Svelte, Astro. Cross-cutting: SQL, GraphQL, Protocol Buffers, Dockerfile.
 
 Each extractor emits language-specific edges (HTTP endpoints, ORM queries, dynamic dispatch, framework hooks).
 
 ### Coverage
 
-grafel tracks **39 languages (38 active), 263 frameworks, 186 ORMs, 161 tools, and 211 other** capabilities, plus cross-cutting infrastructure: databases, platform/k8s, message brokers, CI/CD, security, observability, protocols, and build systems.
+grafel tracks **40 languages (39 active), 263 frameworks, 186 ORMs, 161 tools, and 212 other** capabilities, plus cross-cutting infrastructure: databases, platform/k8s, message brokers, CI/CD, security, observability, protocols, and build systems.
 
 Top languages by framework support:
 
