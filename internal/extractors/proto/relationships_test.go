@@ -121,10 +121,15 @@ enum E { Z = 0; }
 	entities := extract(t, "x.proto", src)
 	contains := relsByKind(entities, "CONTAINS")
 
+	// #6422: the ref form follows the target's ENTITY KIND. The service is
+	// SCOPE.Service and takes the operation form; the message and the enum are
+	// SCOPE.Schema and take the schema form. Addressing all three as
+	// operations is what let a message that shares a name with an rpc bind to
+	// the rpc instead of to itself.
 	wantFileEdges := map[string]bool{
 		"scope:operation:method:proto:x.proto:S": false,
-		"scope:operation:method:proto:x.proto:M": false,
-		"scope:operation:method:proto:x.proto:E": false,
+		"scope:schema:message:proto:x.proto:M":   false,
+		"scope:schema:message:proto:x.proto:E":   false,
 	}
 	for _, r := range contains {
 		if r.FromID == "x.proto" {
