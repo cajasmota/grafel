@@ -108,9 +108,9 @@
       "relationship_expected": 10
     },
     "solidity-mini": {
-      "entity_found": 19,
+      "entity_found": 40,
       "entity_expected": 40,
-      "relationship_found": 8,
+      "relationship_found": 13,
       "relationship_expected": 13
     },
     "swift-package-mini": {

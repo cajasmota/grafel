@@ -34,7 +34,37 @@ confined to the shapes it exists to test, so a modelling error in one cannot
 quietly move the figure for the other. The two verbatim OZ files carry the bulk
 of the expectations, including every expectation that currently passes.
 
-## THIS FIXTURE IS RED ON PURPOSE
+## STATUS: GREEN since #6423 — this section is history, not the current grade
+
+**#6423 landed and the fixture now grades 40/40 entities and 13/13
+relationships, forbidden hits 0.** Everything below describing the fixture as
+red describes the state at the commit that *added* it (#6424), and is kept
+because the per-defect cost table is the evidence that the four recall defects
+were real and measured rather than read off the regexes. `baseline.json` now
+records `entity_found: 40` and `relationship_found: 13`; the floor rose, and
+the ratchet holds it there.
+
+One entry was **amended** rather than scored, exactly as the paragraph below
+instructs: `MyToken --[EXTENDS]--> ERC20` was written as `to_name` + `"to_kind":
+"SCOPE.External"`, which was a *proposal* — MyToken did not exist at all when it
+was written, so the shape of its edge could not have been measured. Once MyToken
+was extracted the guess turned out to be wrong: `ERC20` does **not** fold to a
+`SCOPE.External` node. `Context` folds because that name is allowlisted by
+ext-synthesis; renaming `ERC20` to an arbitrary `Fooble`, and separately adding
+an arbitrary second parent to `Ownable`, each produced no node either. So the
+target legitimately cannot resolve and `to_bare_name` is the correct assertion
+for it — see the `to_bare_name` section at the foot of this file, which is the
+rule the amendment follows, not an exception to it. The amendment is also the
+*stronger* of the two forms here: `to_name` against an entity that does not
+exist can never pass, while the raw-`ToID` comparison still fails if the parent
+is parsed as `ERC20(` or `)`, which is precisely the defect that entry exists to
+catch. `relationship_expected` is unchanged at 13.
+
+The single remaining gap is the `nice_to_have`
+`Vault.sweep --[CALLS]--> IERC20` (`relationships 0/1` in the nice-to-have
+counters), which is #6425's design question and deliberately not a must-have.
+
+## THIS FIXTURE WAS RED ON PURPOSE
 
 `expected.json` records **what the extractor should produce, not what it does.**
 At the commit that added it the grade was:
@@ -102,7 +132,8 @@ the extractor to match a fixture's guess.
 ## What each defect costs, measured
 
 Every line below was produced by running the extractor and reading the emitted
-graph, not by reading the regexes.
+graph, not by reading the regexes. Every row marked #6423 is **fixed** as of
+that issue; the costs are kept as the record of what each one was worth.
 
 | Shape | Issue | Measured |
 |---|---|---|

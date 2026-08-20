@@ -406,10 +406,9 @@
       "from_kind": "SCOPE.Component",
       "from_file": "MyToken.sol",
       "kind": "EXTENDS",
-      "to_name": "ERC20",
-      "to_kind": "SCOPE.External",
+      "to_bare_name": "ERC20",
       "must_exist": true,
-      "note": "RED (#6423). The base name must survive the argument list: `is ERC20(\"My Token\", \"MTK\")` extends ERC20. extractor.go:183-186 already contains the code that strips '(...)' from a parent name -- a defence that can never fire, because contractRE never matches such a contract in the first place."
+      "note": "GREEN since #6423. The base name must survive the argument list: `is ERC20(\"My Token\", \"MTK\")` extends ERC20, and the comma inside the argument list must not split the inheritance list into `ERC20(` and `)`. AMENDED when #6423 landed, on this file's own to_bare_name rule and NOTICE.md's instruction to amend an entry whose shape the fixture was PROPOSING rather than reporting. The original entry guessed `to_name: ERC20` + `to_kind: SCOPE.External`, which could not be measured at the time because MyToken did not exist at all. It is now measured and the guess was wrong: ERC20 does NOT fold to a SCOPE.External node -- ext-synthesis minted one for `Context` because that name is allowlisted, and renaming ERC20 to an arbitrary `Fooble`, or adding an arbitrary second parent to Ownable, produced no node either. So this target legitimately cannot resolve (ERC20 is a third-party base contract with no declaration in src/) and to_bare_name is the correct and only assertion for it. It is also the STRONGER of the two here: `to_name` on a non-existent entity can never pass, while the raw ToID comparison still fails if the parent is parsed as `ERC20(` or `)`, which is exactly the defect this entry exists to catch."
     },
     {
       "from_name": "MyToken",
