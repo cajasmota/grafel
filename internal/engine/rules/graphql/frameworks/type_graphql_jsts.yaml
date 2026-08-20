@@ -14,7 +14,7 @@ server_frameworks:
     - "@FieldResolver"
   extraction_targets:
   - "@Query / @Mutation / @Subscription decorated methods inside @Resolver classes"
-  - GraphQL field name defaults to the method name; a `{ name: '...' }` decorator option overrides it
+  - "GraphQL field name defaults to the method name; a `{ name: '...' }` decorator option overrides it"
   - "@FieldResolver methods (non-root object-type field resolvers) are intentionally skipped"
   - Each root operation -> http:GRAPHQL:/graphql/<RootType>/<field> (canonical operation-endpoint shape)
   notes: 'TypeGraphQL is a class-and-decorator code-first GraphQL library for
