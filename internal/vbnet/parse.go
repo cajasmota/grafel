@@ -192,6 +192,10 @@ type Node struct {
 	// Refs are the parenthesis use sites in the statements directly inside
 	// this node, in source order.
 	Refs []Ref
+	// AddressOfs are the `AddressOf <member>` operands in the statements
+	// directly inside this node, in source order. They are kept apart from
+	// Refs because a Ref is by definition a `name(` site — see addressof.go.
+	AddressOfs []MethodRef
 	// Children are the declarations directly inside this one.
 	Children []*Node
 
@@ -788,7 +792,27 @@ func (p *parser) walkStatement(stmt, raw string, off int, ll LogicalLine) {
 		p.walkMethod(kw, after, mods, line, ll)
 		return
 	case "property":
-		p.walkProperty(after, mods, line, ll)
+		prop := p.walkProperty(after, mods, line, ll)
+		// S7b (#6327). An auto-property initialiser is the one place an
+		// AddressOf operand appears that the reference pass never reaches:
+		// walkProperty neither scans refs nor pushes a frame, so nothing
+		// downstream ever sees this statement's text. MEASURED on the
+		// 302-file corpus: 142 of 585 AddressOf tokens live here, all of them
+		// in StaxRip's `Property P As New NumParam With {.ArgsFunc =
+		// AddressOf F}` encoder-parameter tables.
+		//
+		// Only the operand scan is added. Wiring scanRefs in here as well
+		// would change the CALLS set S5 measured, which is not S7b's to move.
+		//
+		// The owner is walkProperty's OWN return, never p.top().property: a
+		// declaration with no parsable name returns without touching the
+		// frame, so the frame still holds the PREVIOUSLY declared property and
+		// scanning through it would file this statement's operands on the
+		// wrong member. Malformed source only, but a confidently-wrong owner
+		// is worse than a missing one.
+		if prop != nil {
+			p.scanAddressOfOn(prop, stmt, off, ll, 0)
+		}
 		return
 	case "get", "set", "addhandler", "removehandler", "raiseevent":
 		if p.walkAccessor(kw, after, line, ll) {
@@ -1100,13 +1124,17 @@ func splitNames(s string) []string {
 	return out
 }
 
-func (p *parser) walkProperty(after string, mods []string, line int, ll LogicalLine) {
+// walkProperty opens the property declared by this statement and returns it,
+// or nil when the declaration has no parsable name. The caller needs the
+// return rather than p.top().property, which on the nil path still names the
+// previous declaration.
+func (p *parser) walkProperty(after string, mods []string, line int, ll LogicalLine) *Node {
 	var impls string
 	after, impls, _ = cutKeyword(after, "Implements")
 	name, rest := takeIdent(after)
 	if name == "" {
 		p.diag(line, "Property with no name")
-		return
+		return nil
 	}
 	n := &Node{Kind: NodeProperty, Keyword: "property", Name: name, Modifiers: mods,
 		Attributes: ll.Attributes, Doc: ll.Doc, Implements: splitNames(impls)}
@@ -1119,6 +1147,7 @@ func (p *parser) walkProperty(after string, mods []string, line int, ll LogicalL
 	// End Property, so the stack must not grow here. Its accessors and its End
 	// find it through the frame.
 	p.top().property = n
+	return n
 }
 
 // walkAccessor attaches a Get/Set (or Custom Event accessor) body to the

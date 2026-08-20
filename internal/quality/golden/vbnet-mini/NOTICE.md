@@ -60,6 +60,9 @@ in-tree CALLS to a method of that name; it cannot say which one. Correct, but
 weaker than it reads.
 
 `expected.json` asserts nothing that depends on partial-class merge, `Handles`,
-`AddressOf`, With-block receivers, or method-level `Implements` — those are S7.
+`AddressOf`, With-block receivers, or method-level `Implements`. The first three
+shipped in S7a/S7b of #6327; these three sources simply contain no instance of
+them, so the fixture's counts did not move. With-block receivers (S7d) and
+method-level `Implements` (S7c) remain unimplemented.
 `FrameServer.vb` and `Win32Native.vb` do contain method-level `Implements`
 clauses, which is fine precisely because no expectation reads them.

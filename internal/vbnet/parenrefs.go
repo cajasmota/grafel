@@ -103,6 +103,11 @@ func (p *parser) scanRefs(text string, textOff int, ll LogicalLine, from int) {
 	scope := p.scope()
 	typeScope := enclosingTypePath(owner)
 
+	// S7b (#6327): the AddressOf operand scan shares this entry point because
+	// it needs the identical (text, textOff, ll, from) tuple — same masking,
+	// same continuation map, same declarator-skipping offset. See addressof.go.
+	p.scanAddressOf(text, textOff, ll, from)
+
 	for i := from; i < len(text); i++ {
 		switch text[i] {
 		case '"':
