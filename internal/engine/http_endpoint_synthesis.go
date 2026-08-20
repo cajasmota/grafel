@@ -435,6 +435,16 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	// regex (e.g. Spring's @GetMapping pattern). We only want one
 	// synthetic per endpoint per file.
 	seen := map[string]bool{}
+	// emitMountPoint appends an additive `url_mount_point` synthetic (#6385).
+	// These are not routable endpoints — the linker harvests them purely for
+	// their prefix — so they are deduped on the mount ID alone.
+	emitMountPoint := func(e types.EntityRecord) {
+		if seen[e.ID] {
+			return
+		}
+		seen[e.ID] = true
+		entities = append(entities, e)
+	}
 	// lastEndpointIdx records the index, in `entities`, of the http_endpoint
 	// (definition/call) entity appended by the most recent emit() call, or -1
 	// when that call emitted nothing (canonical-path empty, non-app file, or a
@@ -946,7 +956,7 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// (Spring-style placeholder), which the resolver dropped and
 		// the response-shape extractor could not parse. #753.
 		synthesizeFlask(string(content), emitDef)
-		synthesizeFastAPI(string(content), emitDef)
+		synthesizeFastAPI(string(content), path, emitDef, emitMountPoint)
 		// #2690 — Starlette / Tornado / Pyramid endpoint synthesis.
 		// Starlette and Pyramid use emitDef because the handler def lives in
 		// the same file as the routing site in the common case; when the
@@ -2806,7 +2816,89 @@ func fastapiRouterPrefixes(content string) map[string]string {
 	return prefixes
 }
 
-func synthesizeFastAPI(content string, emit emitDefFn) {
+// fastapiIncludeRouterRe captures the ARGUMENT TAIL of a FastAPI mount site,
+// `<recv>.include_router(<router>, prefix="/x", ...)` (#6385). One level of
+// nested parens is tolerated so kwargs like `dependencies=[Depends(x)]` or
+// `responses={404: {"model": X}}` don't abort the match early. The receiver is
+// unrestricted (`app`, `api`, `parent_router`, `settings.app`, ...) because
+// include_router is a FastAPI-only method name.
+var fastapiIncludeRouterRe = regexp.MustCompile(
+	`(?m)^[ \t]*[A-Za-z_][\w.]*\.include_router\s*\(((?:[^()]*(?:\([^()]*\)[^()]*)*))\)`,
+)
+
+// fastapiMountPointSynthetics emits one ADDITIVE `url_mount_point` synthetic
+// per `include_router(..., prefix="<literal>")` mount site found in THIS file
+// (#6385, reported by @arthurgeron).
+//
+// It deliberately does NOT fold the prefix into the routes' paths: the router
+// is constructed in a different file in the canonical FastAPI layout, and a
+// cross-file read would not survive incremental indexing or the daemon fast
+// path. Folding is tracked separately as #6414.
+//
+// The emitted shape mirrors the Django nested-urlconf mount synthetic
+// (django_urlconf_nested.go) field for field, which is what the linker's #2702
+// mount-prefix retry harvests: internal/links/http_pass.go keys that harvest
+// ONLY on `pattern_type == url_mount_point`, never on `framework`, so this
+// recovers cross-service link recall with zero linker changes.
+//
+// A prefix that is empty, `"/"`, or otherwise degenerate after trimming emits
+// nothing, as does a mount site with no `prefix=` kwarg or a non-literal one.
+func fastapiMountPointSynthetics(content, relPath string) []types.EntityRecord {
+	if !strings.Contains(content, "include_router") {
+		return nil
+	}
+	var out []types.EntityRecord
+	emitted := map[string]bool{}
+	for _, idx := range fastapiIncludeRouterRe.FindAllStringSubmatchIndex(content, -1) {
+		args := content[idx[2]:idx[3]]
+		pm := fastapiRouterPrefixKwargRe.FindStringSubmatch(args)
+		if len(pm) < 2 {
+			continue
+		}
+		trimmed := strings.Trim(pm[1], "/")
+		// A degenerate prefix ("", "/", "//") trims to "" and canonicalises to
+		// the root, which the guard below rejects — no separate empty check is
+		// needed (and an added one is dead code: verified by mutation).
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, "/"+trimmed)
+		if canonical == "" || canonical == "/" {
+			continue
+		}
+		mountID := httproutes.SyntheticID("ANY", canonical) + ":mount"
+		if emitted[mountID] {
+			continue
+		}
+		emitted[mountID] = true
+		out = append(out, types.EntityRecord{
+			ID:                 mountID,
+			Name:               mountID,
+			Kind:               httpEndpointKind,
+			SourceFile:         relPath,
+			StartLine:          1 + strings.Count(content[:idx[0]], "\n"),
+			Language:           "python",
+			EnrichmentRequired: false,
+			EnrichmentStatus:   types.StatusPending,
+			QualityScore:       0.5,
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         canonical,
+				"framework":    "fastapi",
+				"pattern_type": "url_mount_point",
+				"url_prefix":   "/" + trimmed,
+			},
+		})
+	}
+	return out
+}
+
+func synthesizeFastAPI(content, relPath string, emit emitDefFn, emitMount func(types.EntityRecord)) {
+	// #6385 — additive mount-point synthetics. Emitted BEFORE the decorator
+	// marker guard because a pure mount file (`main.py` that only wires
+	// routers) may carry no decorator marker of its own.
+	if emitMount != nil {
+		for _, e := range fastapiMountPointSynthetics(content, relPath) {
+			emitMount(e)
+		}
+	}
 	if !strings.Contains(content, "FastAPI") && !strings.Contains(content, "APIRouter") &&
 		!strings.Contains(content, "@app.") && !strings.Contains(content, "@router.") &&
 		!strings.Contains(content, ".add_api_route(") {
