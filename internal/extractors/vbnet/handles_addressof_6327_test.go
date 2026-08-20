@@ -309,3 +309,57 @@ End Class
 		t.Fatalf("class must own no REFERENCES from a property initialiser, got %v", got)
 	}
 }
+
+// TestReferences_DedupKeepsDistinctEventsAndConstructs — S7b targets the
+// RECEIVER, so two events on the SAME receiver render the SAME ToID, and a
+// `Handles` edge and an `AddressOf` edge can land on the same target too.
+// Deduping on ToID alone would keep one edge and silently drop the second
+// event the source explicitly named: the `event`/`via` properties are the only
+// place those facts survive, so they belong in the dedup key. Collapsing
+// `Handles Btn.Click, Btn.MouseDown` to one Click edge is data loss, not
+// dedup.
+//
+// What the key still collapses is a genuine repeat: the same target reached
+// the same way, which is what TestAddressOf_ReferencesOnTheEnclosingMember
+// pins for `AddressOf X` plus `AddressOf Me.X`.
+func TestReferences_DedupKeepsDistinctEventsAndConstructs(t *testing.T) {
+	ents := run(t, "Form1.vb", `Public Class Form1
+    Inherits System.Windows.Forms.Form
+
+    Private WithEvents Btn As Button
+
+    Private Sub S(sender As Object, e As EventArgs) Handles Btn.Click, Btn.MouseDown
+    End Sub
+
+    Private Sub Load() Handles MyBase.Load
+        RemoveHandler Btn.Click, AddressOf Load
+    End Sub
+End Class
+`)
+	detail := func(name string) []string {
+		rec := find(t, ents, "SCOPE.Operation", name)
+		var out []string
+		for _, r := range rec.Relationships {
+			if r.Kind == "REFERENCES" {
+				out = append(out, r.ToID+"|"+r.Properties.Get("event")+"|"+r.Properties.Get("via"))
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+
+	// Two events, one receiver: two edges, each naming its own event.
+	got := detail("Form1.S")
+	want := []string{"Form1.Btn|Click|handles", "Form1.Btn|MouseDown|handles"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("multi-event Handles on one receiver\n got %v\nwant %v", got, want)
+	}
+
+	// One target, two constructs: the AddressOf site must not be hidden by the
+	// Handles edge that happens to point at the same member.
+	got = detail("Form1.Load")
+	want = []string{"Form1.Load||addressof", "Form1.Load||handles"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("Handles and AddressOf on one target\n got %v\nwant %v", got, want)
+	}
+}

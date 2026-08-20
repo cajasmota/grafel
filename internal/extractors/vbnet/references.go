@@ -62,8 +62,9 @@ package vbnet
 // so a designer-declared control and its handler share one Component — while
 // the event belongs to System.Windows.Forms.Button and can never resolve in
 // any per-file pass. Targeting the event costs 518 resolved edges and buys a
-// dangling stub. The event name is kept as the `event` property, so nothing
-// the source said is discarded, and `Handles Me.Shown` / `Handles MyBase.Load`
+// dangling stub. The event name is kept as the `event` property — and it is
+// part of the dedup key, so two events on ONE receiver stay two edges rather
+// than collapsing onto a single Click — and `Handles Me.Shown` / `Handles MyBase.Load`
 // still target the EVENT, because there the receiver is the current instance
 // and names no entity of its own.
 
@@ -75,25 +76,41 @@ import (
 	"github.com/cajasmota/grafel/internal/vbnet"
 )
 
-// appendReferences adds one REFERENCES edge per distinct target among this
-// node's `Handles` targets and `AddressOf` operands.
+// appendReferences adds one REFERENCES edge per distinct (target, event,
+// construct) among this node's `Handles` targets and `AddressOf` operands.
 //
 // As with appendCalls, descendants are NOT walked: emit recurses, and a
 // declaration with its own record owns its own wiring.
 func appendReferences(rec *types.EntityRecord, n *vbnet.Node) {
+	// The key is (target, event, via) and NOT the target alone. S7b points a
+	// `Handles` edge at the RECEIVER, so `Handles Btn.Click, Btn.MouseDown`
+	// renders one ToID twice and a ToID-only key would keep a single Click
+	// edge — discarding an event the source explicitly named, which is data
+	// loss rather than dedup, since the `event` property is the only place
+	// that fact survives. `via` is in the key for the same reason: a Handles
+	// edge and an AddressOf edge to one target are two different sites, and
+	// collapsing them would hide the AddressOf entirely.
+	//
+	// What the key still collapses is a genuine repeat — the same target
+	// reached the same way, e.g. `AddressOf X` beside `AddressOf Me.X`, which
+	// fold to one member. `line` is deliberately OUT of the key so those stay
+	// one edge.
+	key := func(target, event, via string) string {
+		return target + "\x00" + event + "\x00" + via
+	}
 	seen := map[string]bool{}
 	for _, r := range rec.Relationships {
 		if r.Kind == "REFERENCES" {
-			seen[r.ToID] = true
+			seen[key(r.ToID, r.Properties.Get("event"), r.Properties.Get("via"))] = true
 		}
 	}
 	// types.Props is a SORTED slice binary-searched by Props.Get
 	// (types/props.go:67); keys must ascend or they read back absent.
 	add := func(target, event, line, via string) {
-		if target == "" || seen[target] {
+		if target == "" || seen[key(target, event, via)] {
 			return
 		}
-		seen[target] = true
+		seen[key(target, event, via)] = true
 		props := types.Props{}
 		if event != "" {
 			props = append(props, types.PropKV{K: "event", V: event})
@@ -201,6 +218,15 @@ func enclosingTypeName(n *vbnet.Node) string {
 // callTarget makes for a qualified call site, and it is the bulk of the
 // residual: those references are real, and naming their receiver needs
 // cross-file type information no per-file pass has.
+//
+// KNOWN TRADEOFF, not fixable per-file: a BARE target is qualified even when
+// it names a member of some other scope. `AddressOf Go` inside `Form1`, where
+// `Go` is a Module member, renders `Form1.Go`. Today that is merely an edge
+// that fails to resolve — the cost is recall, and the alternative (emitting
+// the bare name) would dangle just as surely. It becomes a PRECISION problem
+// only if `Form1` ever declares its own `Go` of another kind, at which point
+// the edge resolves confidently onto the wrong member. Telling the two apart
+// needs the cross-file scope table #6327 has not built yet.
 func qualifyBare(owner, target string) string {
 	if owner == "" || target == "" || strings.Contains(target, ".") {
 		return target

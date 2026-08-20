@@ -92,12 +92,14 @@ func (p *parser) scanAddressOfOn(owner *Node, text string, textOff int, ll Logic
 	if owner == nil {
 		return
 	}
+	// No literal-skip arm. Every caller hands over text that walkLine already
+	// ran through MaskStringLiterals, so a literal's content arrives as
+	// StringFill bytes and cannot spell the keyword — an arm here would be
+	// code no reachable input can kill, the same standard that refused an arm
+	// for the bracket escape below. If masking is ever moved off this path,
+	// that arm comes back with a test that fails without it.
 	for i := from; i < len(text); i++ {
 		switch text[i] {
-		case '"':
-			// A literal cannot contain the keyword, only the letters.
-			i = literalEnd(text, i) - 1
-			continue
 		case 'a', 'A':
 		default:
 			continue

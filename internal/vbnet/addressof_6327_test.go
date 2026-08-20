@@ -91,7 +91,13 @@ func TestParse_AddressOfCaseAndBoundaries(t *testing.T) {
 		// again the trap is the word that follows.
 		{"prefix", `x = AddressOfThing And y`, nil},
 		{"suffix", `x = theAddressOf And y`, nil},
-		// Inside a string literal.
+		// Inside a string literal. This is masking's guarantee, NOT the
+		// scanner's: walkLine hands over MaskStringLiterals output, so the
+		// literal's content arrives as StringFill bytes and the scan needs no
+		// arm of its own. The case is kept because it pins the END-TO-END
+		// promise — it fails if masking ever stops covering this path — but it
+		// cannot kill a mutant inside scanAddressOfOn, and no test should
+		// pretend otherwise.
 		{"literal", `x = "AddressOf Handler"`, nil},
 		// A comment is removed before the scan reaches it.
 		{"comment", `x = 1 ' AddressOf Handler`, nil},
@@ -214,5 +220,36 @@ End Class
 	g := findNode(res.File, "Form1.G")
 	if g == nil || fmt.Sprint(g.Handles) != fmt.Sprint([]string{"Me.Shown"}) {
 		t.Fatalf("Handles after Implements: got %v", g.Handles)
+	}
+}
+
+// Auto-property OWNERSHIP — that `Property P As New T With {... AddressOf F}`
+// files its operands on P and not on the enclosing type — is pinned only in
+// internal/extractors/vbnet (TestAddressOf_AutoPropertyInitialiser). A mutant
+// that passes p.top().node instead of the property leaves THIS package green.
+// Noted rather than duplicated: the extractor test asserts the fact that
+// matters (which entity owns the edge) at the layer that publishes it.
+
+// TestParse_MalformedPropertyDoesNotStealOperands — the auto-property arm
+// scans through p.top().property, which walkProperty leaves POINTING AT THE
+// PREVIOUS property when the declaration has no parsable name. Without a
+// guard, the unparsable statement's operands are recorded on whichever
+// property was declared before it, which is a confidently-wrong owner rather
+// than a missing one. Malformed source only, but the wrong answer is worse
+// than none.
+func TestParse_MalformedPropertyDoesNotStealOperands(t *testing.T) {
+	src := `Public Class C
+    Property Good As Action = AddressOf A
+    Property = AddressOf Bad
+
+    Sub A()
+    End Sub
+End Class
+`
+	res := Parse(src)
+	got := allAddrOf(res.File)
+	want := []string{"C.Good|A@2"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("malformed property ownership\n got %v\nwant %v\n%s", got, want, res.File.Dump())
 	}
 }
