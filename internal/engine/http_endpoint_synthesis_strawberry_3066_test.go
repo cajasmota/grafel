@@ -236,9 +236,17 @@ schema = strawberry.Schema(query=Query)
 graphql_app = GraphQLRouter(schema)
 
 app = FastAPI()
+# NOTE: prefix="/graphql" below is realism only -- nothing reads it. No
+# synthesizer parses include_router(prefix=) today (see #6385). The "/graphql"
+# in the assertions below comes from a hardcoded literal in the Strawberry
+# synthesizer, not from this argument. Changing this prefix will NOT change
+# the asserted paths.
 app.include_router(graphql_app, prefix="/graphql")
 `
 	got, _ := runDetect(t, "python", "main.py", src)
+	// Real subject of this test: Strawberry emits one GRAPHQL endpoint per
+	// root-type method. The path prefix is synthesizer-hardcoded, not folded
+	// in from the FastAPI mount above.
 	want := []string{
 		"http:GRAPHQL:/graphql/Query/hello",
 		"http:GRAPHQL:/graphql/Query/products",
