@@ -689,7 +689,12 @@ func (m *Manager) scan() {
 	// asynchronous by design, so the edit is detected ONE QUERY LATE rather
 	// than not at all — see the note on Touch. That staleness is the accepted
 	// trade (#6267).
-	wh := m.watcher // read under mu already released; field is write-once after init
+	// Read under m.mu, as SetWatcherHook writes it under m.mu — the field is
+	// wired before serving in production, but nothing in the type enforces
+	// that, and the pressure path reads it the same way.
+	m.mu.Lock()
+	wh := m.watcher
+	m.mu.Unlock()
 	for _, k := range toEvict {
 		m.onEvict(k)
 		if wh != nil {

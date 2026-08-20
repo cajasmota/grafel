@@ -198,3 +198,87 @@ func TestPauseOnCold_ReturnsBudgetSoARefusedRepoCanSubscribe(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+// TestPauseOfUnregisteredSlotLeavesSiblingSubscriptionIntact guards the
+// regression that #6267's WARM→COLD Pause exposed.
+//
+// The tier keyspace and this manager's keyspace are not required to agree:
+// tier.Touch auto-registers an unknown (repo, ref) as HOT without calling
+// Resume, so a ref that was queried but never indexed in this process has a
+// tier slot and NO watch slot. Before #6267 such a slot only reached Pause via
+// COLD→EXPIRED (non-pinned refs, after the 48h window); now it reaches it every
+// idle cycle. If Pause decrements the repo-level refcount for it, the count
+// hits 0 and RemoveRepo kills the SIBLING ref's live subscription — while the
+// sibling's own paused flag stays false, so every later Resume takes the
+// "already active" early return and never retries AddRepo. Permanently
+// unwatched and permanently reported as watched: the #6267 failure mode itself.
+func TestPauseOfUnregisteredSlotLeavesSiblingSubscriptionIntact(t *testing.T) {
+	repo := seedRepo(t, 2)
+
+	rec := &sinkRecorder{}
+	w, err := NewWatcherConfig(Config{
+		Debounce:          time.Hour,
+		HeartbeatInterval: time.Hour,
+	}, rec.sink, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	t.Cleanup(w.Stop)
+
+	mgr := NewDefaultManager(w, nil)
+	clock := &testClock{now: time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)}
+	tm := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock.Now,
+		func(tier.SlotKey) {}, func(tier.SlotKey) error { return nil })
+	tm.SetWatcherHook(mgr)
+
+	// The production pair after an index completes: declare the slot, then
+	// subscribe it.
+	mgr.Register(repo, "main")
+	mgr.Resume(repo, "main")
+	keyMain := tier.SlotKey{RepoPath: repo, Ref: "main"}
+	tm.Register(keyMain, true, tier.SlotKindBranchMain)
+	if got := w.Repos(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("prereq: want repo watched, got %v", got)
+	}
+
+	// A ref that is queried but never indexed here: tier knows it, this
+	// manager does not.
+	keyFeat := tier.SlotKey{RepoPath: repo, Ref: "feat/x"}
+	if err := tm.Touch(keyFeat); err != nil {
+		t.Fatalf("Touch feat: %v", err)
+	}
+
+	// Age feat past HOT→WARM→COLD while main keeps being queried.
+	clock.advance(6 * time.Minute)
+	_ = tm.Touch(keyMain)
+	tm.Scan()
+	clock.advance(61 * time.Minute)
+	_ = tm.Touch(keyMain)
+	tm.Scan()
+	if got := tm.Get(keyFeat); got != tier.TierCold {
+		t.Fatalf("prereq: want feat COLD, got %s", got)
+	}
+	if got := tm.Get(keyMain); got == tier.TierCold {
+		t.Fatalf("prereq: main must still be live, got %s", got)
+	}
+
+	// main is still an active ref, so its subscription must survive feat's
+	// eviction.
+	if got := w.Repos(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("pausing an unregistered ref killed the sibling's subscription: w.Repos()=%v", got)
+	}
+	if mgr.IsPaused(repo, "main") {
+		t.Fatalf("main must still be reported active")
+	}
+
+	// And the ledger must still be honest: main can be paused and resumed,
+	// which is impossible if its refcount was already spent by feat.
+	mgr.Pause(repo, "main")
+	if got := w.Repos(); len(got) != 0 {
+		t.Fatalf("refcount corrupted: pausing the last active ref did not unsubscribe, got %v", got)
+	}
+	mgr.Resume(repo, "main")
+	if got := w.Repos(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("refcount corrupted: resume after pause did not re-subscribe, got %v", got)
+	}
+}

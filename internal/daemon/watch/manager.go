@@ -226,8 +226,30 @@ func (m *DefaultManager) Pause(repoPath, ref string) {
 	k := slotKey(repoPath, ref)
 	st, known := m.slots[k]
 	if !known {
-		st = &slotState{}
-		m.slots[k] = st
+		// A slot this manager has never seen contributed nothing to
+		// refCounts[repoPath] — only Resume, SubscribeGroup and Register do,
+		// and all three record the slot first. Decrementing for it would take
+		// a descriptor back from a SIBLING ref that still holds a live
+		// subscription, and the sibling's own slotState.paused would stay
+		// false, so every later Resume for it would take the "already active"
+		// early return and never retry AddRepo: permanently unwatched AND
+		// permanently reported as watched — the exact leak the undo in Resume
+		// exists to prevent.
+		//
+		// This is reachable because the tier keyspace and this one are not
+		// required to agree: tier.Touch auto-registers an unknown key as HOT
+		// without calling Resume, so a (repo, ref) that was queried but never
+		// indexed in this process has a tier slot and no watch slot. Since
+		// #6267 made WARM→COLD pause, such a slot reaches this function on
+		// every idle cycle rather than only at COLD→EXPIRED.
+		//
+		// Record it as paused so the state is not invented twice, and leave
+		// the refcount alone.
+		m.slots[k] = &slotState{paused: true}
+		m.mu.Unlock()
+		m.logger.Info("watcher-mgr: pause for an unregistered slot — refcount untouched",
+			"repo", repoPath, "ref", ref)
+		return
 	}
 	if st.paused {
 		m.mu.Unlock()
