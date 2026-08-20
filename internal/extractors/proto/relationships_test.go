@@ -49,7 +49,10 @@ message Foo { string id = 1; }
 `
 	entities := extract(t, "foo.proto", src)
 	imports := relsByKind(entities, "IMPORTS")
-	// buildRPC also emits IMPORTS; this fixture has no rpc, so all IMPORTS are file-level.
+	// Since #6359, IMPORTS means exactly one thing in this package — a
+	// file-level `import "..."` directive. buildRPC's rpc request/response
+	// edges used to share the verb, which is why this assertion needed the
+	// "this fixture has no rpc" caveat to be correct; it no longer does.
 	if len(imports) != 1 {
 		t.Fatalf("IMPORTS count = %d, want 1; got %+v", len(imports), imports)
 	}

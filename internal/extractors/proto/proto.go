@@ -26,8 +26,10 @@
 // Issue #377 — relationship parity:
 //
 //   - IMPORTS edges are emitted from file.Path → import target for every
-//     `import "x.proto";` and `import public "x.proto";` directive.
-//     `import public` carries Properties["public"]="true".
+//     `import "x.proto";` and `import public "x.proto";` directive, and for
+//     nothing else. `import public` carries Properties["public"]="true".
+//     Until #6359 buildRPC also emitted IMPORTS, for rpc request/response
+//     types, conflating two unrelated edge families under one verb.
 //   - CONTAINS edges:
 //   - file → service / message / enum (top-level definitions),
 //   - service → rpc,
@@ -41,9 +43,10 @@
 //     enum values, mirroring SQL Format B. Every CONTAINS target is backed by
 //     an entity this package also emits, so no edge resolves to a phantom.
 //   - REFERENCES edges: message → the message/enum type of each non-scalar
-//     field. Restricted to types defined in the SAME file — see
-//     dropUnresolvableTypeRefs for why cross-file field types carry no edge
-//     yet.
+//     field, and rpc → its request and response message types (#6359,
+//     Properties["direction"]="request"/"response"). Both are restricted to
+//     types defined in the SAME file — see dropUnresolvableTypeRefs for why a
+//     cross-file type carries no edge yet.
 //
 // Uses the protobuf grammar from smacker/go-tree-sitter.
 // Registers itself via init() and is imported by registry_gen.go.
@@ -311,6 +314,71 @@ func buildRPC(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool)
 	}
 
 	sig := fmt.Sprintf("rpc %s(%s) returns (%s)", name, reqType, respType)
+
+	// #6359: request/response type edges.
+	//
+	// These were emitted as `{FromID: file.Path, ToID: <bare type name>,
+	// Kind: "IMPORTS"}` — four defects in one literal:
+	//
+	//   - WRONG VERB. An rpc's request/response type is not a file import. The
+	//     verb collided with the genuine file-level `import "x.proto"` edges
+	//     from buildImportEntities, so IMPORTS meant two unrelated things and
+	//     no consumer could tell them apart. It also mis-anchored the edge:
+	//     the #120 IMPORTS exemption in
+	//     internal/extractors/file_anchored_rels_guard_test.go is the only
+	//     reason a file-anchored FromID passed the guard at all.
+	//   - WRONG SOURCE. FromID was the FILE, not the rpc, so every rpc in a
+	//     service collapsed onto one origin and N rpcs sharing a request type
+	//     produced N indistinguishable duplicates.
+	//   - UNRESOLVABLE TARGET. ToID was the bare, unqualified type text — no
+	//     structural ref, no import path — so nothing could ever bind to it
+	//     and resolve/refs.go materialised a phantom grey node per rpc arm.
+	//   - LITERAL "?". With no guard before emission, an rpc whose types the
+	//     grammar did not yield emitted an edge to the string "?".
+	//
+	// The old comment at this site described that shape as deliberate. It is
+	// not; it is the bug, and it is replaced.
+	//
+	// New shape: REFERENCES, anchored on the rpc entity itself (empty FromID,
+	// the same convention buildService uses for its service→rpc CONTAINS
+	// edges), targeting BuildOperationStructuralRef — the SAME address a
+	// message→field-type REFERENCES edge uses. That means rpc type refs flow
+	// through dropUnresolvableTypeRefs like every other type ref in this
+	// package: a type defined in this file keeps its edge, one that is not is
+	// dropped rather than dangled, pending the cross-file proto package index.
+	// One convention, applied once.
+	var rpcRels []types.RelationshipRecord
+	dir := make(map[string]string, 2)
+	var order []string
+	for i, raw := range msgTypes {
+		which := "request"
+		if i > 0 {
+			which = "response"
+		}
+		for _, ref := range namedTypeRefs(raw) {
+			to := extractor.BuildOperationStructuralRef("proto", file.Path, ref)
+			if prev, ok := dir[to]; ok {
+				// Same type on both arms (`rpc Ping(Empty) returns (Empty)`):
+				// one edge, both roles recorded, instead of a duplicate pair.
+				if prev != which {
+					dir[to] = prev + "," + which
+				}
+				continue
+			}
+			dir[to] = which
+			order = append(order, to)
+		}
+	}
+	for _, to := range order {
+		rpcRels = append(rpcRels, types.RelationshipRecord{
+			ToID: to,
+			Kind: "REFERENCES",
+			// types.Props is a binary-searched, KEY-SORTED slice (internal/types/props.go:40):
+			// "direction" must precede "via_rpc" or Get() cannot find either.
+			Properties: types.Props{{K: "direction", V: dir[to]}, {K: "via_rpc", V: name}},
+		})
+	}
+
 	return types.EntityRecord{
 		Name:               name,
 		Kind:               "SCOPE.Operation",
@@ -324,13 +392,11 @@ func buildRPC(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool)
 		// Set type=rpc explicitly so buildOutputDoc doesn't override with "endpoint".
 		// Python golden uses type=rpc, subtype=endpoint for RPC entities.
 		Properties: map[string]string{"type": "rpc"},
-		// rpc carries the request/response IMPORTS edges historically emitted
-		// here. File-level `import "..."` edges are emitted separately as stub
-		// entities by buildImportEntities.
-		Relationships: []types.RelationshipRecord{
-			{FromID: file.Path, ToID: reqType, Kind: "IMPORTS"},
-			{FromID: file.Path, ToID: respType, Kind: "IMPORTS"},
-		},
+		// rpc → request/response type REFERENCES edges (#6359). File-level
+		// `import "..."` IMPORTS edges are emitted separately as stub entities
+		// by buildImportEntities and are now the ONLY IMPORTS this package
+		// produces.
+		Relationships: rpcRels,
 	}, true
 }
 

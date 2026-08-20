@@ -108,20 +108,15 @@ func importTargetIDs(entities []types.EntityRecord) map[string]bool {
 	return ids
 }
 
-// allowedBareIMPORTS pins the ONE edge family this invariant knowingly exempts:
-// buildRPC emits `IMPORTS file → <ReqType>` / `→ <RespType>` with the bare,
-// unqualified type name — no import path, no structural ref, no backing entity
-// (#6359).
-//
-// It is an explicit allow-list rather than a `continue`, because an invariant
-// that silently covers 2 of 3 edge kinds is a claim of totality that only holds
-// for a subset. Pinned this way, any NEW bare-name edge — from any future
-// construct, including a third rpc-shaped one — fails the test instead of
-// slipping through, and the test also fails if an allow-listed target stops
-// being emitted (so the list cannot rot into a permanent blanket).
-var allowedBareIMPORTS = map[string]map[string]bool{
-	"nested_and_service": {"Outer": true, "Ack": true},
-}
+// #6359 removed this file's LAST exemption. It used to carry
+// `allowedBareIMPORTS`, pinning the one edge family the invariant knowingly
+// let through: buildRPC's `IMPORTS file → <ReqType>` / `→ <RespType>` with the
+// bare, unqualified type name — no import path, no structural ref, no backing
+// entity. Those edges now exist as rpc → type REFERENCES against
+// BuildOperationStructuralRef, so they are checked by the CONTAINS/REFERENCES
+// branch like every other type ref and need no exemption. The allow-list is
+// deleted rather than emptied: an empty map would leave the exemption
+// machinery in place for the next edge that wants to slip through.
 
 func TestProto_NoRelationshipTargetsAPhantomNode(t *testing.T) {
 	for name, src := range phantomFixtures {
@@ -133,14 +128,13 @@ func TestProto_NoRelationshipTargetsAPhantomNode(t *testing.T) {
 			}
 			ids := selfRefIDs(entities)
 			imports := importTargetIDs(entities)
-			allowed := allowedBareIMPORTS[name]
-			seenAllowed := make(map[string]bool, len(allowed))
 
 			// Every CONTAINS / REFERENCES / IMPORTS edge is checked — no
-			// prefix filter, no skip. CONTAINS/REFERENCES must land on a
-			// structural ref this extractor also emits an entity for; IMPORTS
-			// must land on an emitted import stub, or on an explicitly
-			// allow-listed bare rpc target (see allowedBareIMPORTS).
+			// prefix filter, no skip, and since #6359 no exemption.
+			// CONTAINS/REFERENCES must land on a structural ref this extractor
+			// also emits an entity for; IMPORTS must land on an emitted import
+			// stub, which after #6359 is the only thing IMPORTS ever means
+			// here.
 			checked := 0
 			for _, e := range entities {
 				for _, r := range e.Relationships {
@@ -157,29 +151,18 @@ func TestProto_NoRelationshipTargetsAPhantomNode(t *testing.T) {
 						if imports[r.ToID] {
 							continue
 						}
-						if allowed[r.ToID] {
-							seenAllowed[r.ToID] = true
-							continue
-						}
-						t.Errorf("IMPORTS edge ToID=%q from entity %q has NO backing entity "+
-							"and is not an allow-listed bare rpc target (#6359) — "+
-							"resolve/refs.go will materialise it as a phantom node",
+						t.Errorf("IMPORTS edge ToID=%q from entity %q has NO backing import "+
+							"stub — resolve/refs.go will materialise it as a phantom node",
 							r.ToID, e.Name)
 					}
-				}
-			}
-			for want := range allowed {
-				if !seenAllowed[want] {
-					t.Errorf("allow-listed bare IMPORTS target %q was never emitted — "+
-						"the exemption is stale and must be removed", want)
 				}
 			}
 			if checked == 0 {
 				t.Fatalf("fixture %s emitted no CONTAINS/REFERENCES/IMPORTS edges — "+
 					"the assertion never ran", name)
 			}
-			t.Logf("%s: %d entities, %d edges checked (%d allow-listed bare rpc targets)",
-				name, len(entities), checked, len(seenAllowed))
+			t.Logf("%s: %d entities, %d edges checked (no exemptions)",
+				name, len(entities), checked)
 		})
 	}
 }
