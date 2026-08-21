@@ -85,13 +85,24 @@ func TestScanPathTooLargeGateStaysExclusive(t *testing.T) {
 // .js — the files that actually carry >64 KB lines are precisely the ones
 // that reach scanFile.
 //
-// Two assertions, because two separate decisions are under test:
-//   - the overlong line is REPORTED (SkipLineTooLong), and
-//   - the findings scanFile collected BEFORE the overlong line survive.
+// Three decisions are under test:
+//   - the overlong line is REPORTED (SkipLineTooLong),
+//   - the findings scanFile collected BEFORE the overlong line survive, and
+//   - those survivors carry their TRUE line numbers.
+//
+// The last one is what makes "they matched real bytes" a defensible reason to
+// keep partial findings: a partial result is only useful if it still points at
+// the right lines. bufio delivers every line before the overlong one exactly
+// once and then stops, so the partly-consumed oversized line does not perturb
+// scanFile's counter — and the two keys here sit on lines 3 and 5 so that any
+// drift in that counter (an off-by-one, a doubling) is visible.
 func TestScanPathReportsOverlongLineAsSkip(t *testing.T) {
 	root := t.TempDir()
-	body := "package p\n\nvar awsKey = \"AKIAIOSFODNN7REAL000\"\n\nvar blob = \"" +
-		strings.Repeat("x", 70000) + "\"\n" // one line over bufio.MaxScanTokenSize
+	body := "package p\n\n" + // 1, 2
+		"var awsKey = \"AKIAIOSFODNN7REAL000\"\n\n" + // 3, 4
+		"var awsKey2 = \"AKIAIOSFODNN7REAL111\"\n" + // 5
+		"var blob = \"" + strings.Repeat("x", 70000) + "\"\n" + // 6: over bufio.MaxScanTokenSize
+		"var awsKey3 = \"AKIAIOSFODNN7REAL222\"\n" // 7: never reached
 	target := filepath.Join(root, "creds.go")
 	if err := os.WriteFile(target, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -102,10 +113,18 @@ func TestScanPathReportsOverlongLineAsSkip(t *testing.T) {
 		t.Fatalf("ScanPath: %v", err)
 	}
 
-	if len(res.Findings) != 1 {
-		t.Errorf("the AWS key on line 3 was dropped because a LATER line was "+
-			"too long for bufio.Scanner: got %d findings, want 1: %+v",
+	if len(res.Findings) != 2 {
+		t.Fatalf("the AWS keys on lines 3 and 5 were dropped because a LATER "+
+			"line was too long for bufio.Scanner: got %d findings, want 2: %+v",
 			len(res.Findings), res.Findings)
+	}
+	// Line numbers, not just a count: a partial result that mislabels where it
+	// matched is not a usable partial result.
+	if got := res.Findings[0].Line; got != 3 {
+		t.Errorf("first finding reported line %d, want 3", got)
+	}
+	if got := res.Findings[1].Line; got != 5 {
+		t.Errorf("second finding reported line %d, want 5", got)
 	}
 	if len(res.Skipped) != 1 {
 		t.Fatalf("expected exactly 1 skip for a file whose tail was never "+
@@ -114,6 +133,13 @@ func TestScanPathReportsOverlongLineAsSkip(t *testing.T) {
 	s := res.Skipped[0]
 	if s.Reason != SkipLineTooLong {
 		t.Errorf("reason = %q, want %q", s.Reason, SkipLineTooLong)
+	}
+	// Pinned as a LITERAL, not only against the constant: the four reason
+	// strings travel to the dashboard verbatim in JSON, and an assertion
+	// written against the constant moves with any rename of it.
+	if s.Reason != "line_too_long" {
+		t.Errorf("wire reason = %q, want %q; this string is a client-facing "+
+			"JSON contract", s.Reason, "line_too_long")
 	}
 	if s.Rel != "creds.go" || s.Path != target {
 		t.Errorf("skip names %q/%q, want %q/%q", s.Path, s.Rel, target, "creds.go")

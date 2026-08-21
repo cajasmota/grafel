@@ -77,7 +77,8 @@ type SecretScanReply struct {
 type SecretSkippedFile struct {
 	Repo string `json:"repo"`
 	File string `json:"file"`
-	// Reason is secrets.SkipNotRegular / SkipWouldBlock / SkipTooLarge.
+	// Reason is secrets.SkipNotRegular / SkipWouldBlock / SkipTooLarge /
+	// SkipLineTooLong.
 	Reason string `json:"reason"`
 	Kind   string `json:"kind,omitempty"`
 }
