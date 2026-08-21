@@ -151,10 +151,25 @@ var axiosClientRe = regexp.MustCompile(
 //     `=`, `.`, `(`, `return`, …), a PARAMETER group containing no nested
 //     parens (which rules out `describe('x', () => {`), an optional TS
 //     return annotation, and a following `{`. The `()`-free rule applies to
-//     the parameter group only: the return annotation is `[^;{}]*`, because
-//     a function type in return position carries its own parens
+//     the parameter group only: the return annotation is `[^;{}\n]*`,
+//     because a function type in return position carries its own parens
 //     (`makeLoader(): (id: string) => Promise<void> {`) and excluding them
-//     silently mis-attributed an ordinary TS shape. The residue is the
+//     silently mis-attributed an ordinary TS shape.
+//
+//     The `\n` in that class is load-bearing and is NOT symmetry with the
+//     other exclusions: in Go's regexp `[^;{}]` matches a newline, so an
+//     annotation with no newline brake runs across lines until it finds a
+//     `{` — turning a JSDoc continuation ` * Word (prose):` into a span
+//     named `Word` that swallows the `export function` header below it, and
+//     letting a semicolon-free abstract signature swallow the next method's
+//     body. Measured on this repo's own webui-v2 frontend, the unbraked form
+//     changed the spans of 10 of 233 files and destroyed the caller of a real
+//     exported function. Every shape the annotation legitimately needs to
+//     admit — a function type, a parenthesised union — is single-line, so the
+//     brake costs nothing. Both crossings are pinned in
+//     TestJSMethodShorthandDoesNotSwallowNonDeclarations_6447.
+//
+//     The residue is the
 //     reserved words that are also written `(...) {` — `if`, `for`, `while`,
 //     `switch`, `catch`, … — and those are rejected by name in
 //     indexJSEnclosingFunctions rather than in the pattern, because RE2 has
@@ -164,15 +179,26 @@ var axiosClientRe = regexp.MustCompile(
 //     Unambiguous prefixes are allowed rather than declined: `*name(`,
 //     `async *name(` (generators) and `#name(` (private methods) cannot be
 //     call expressions, so there is no collision to trade against. The `#`
-//     stays IN the captured name — it is part of the identifier, and a class
-//     may declare both `#load` and `load`.
+//     stays IN the captured name, and that is a consistency requirement
+//     rather than a tie-break: handleMethodDefinition in
+//     internal/extractors/javascript/extractor.go:1073 names a method entity
+//     with `x.nodeText(nameNode)`, and for `#load` the name node is a
+//     `private_property_identifier` whose text INCLUDES the `#` — a probe of
+//     `class A { #load() {} load() {} }` emits entities named `#load` and
+//     `load`, not `load` twice. Keeping the
+//     `#` is what makes the `"Function:"+caller` reference resolvable at all;
+//     stripping it would dangle. It also keeps a class that declares both
+//     `#load` and `load` distinguishable.
 //
 // NOTE: a span still carries only (offset, name) — see jsFuncSpan. What makes
 // the attribution correct here is that a method declaration sits NEARER to its
 // call sites than a module-level helper does; the span is still unbounded, so
 // a call site trailing the last declaration in a file still attributes to it.
-// Bounding spans is a separate change — pyFuncSpan aliases jsFuncSpan and ~15
-// non-JS passes share enclosingJSFuncAt — and is filed as #6500.
+// Bounding spans is a separate change and is filed as #6500; its blast radius
+// is why it is separate. pyFuncSpan aliases jsFuncSpan, indexJSEnclosingFunctions
+// has 13 non-test call sites, and enclosingJSFuncAt has 43 — including the C#,
+// Kotlin, Swift, Rust, Ruby, Scala, Go, Java, Dart and PHP client passes, which
+// reuse the walk over their own span lists.
 //
 // Because spans are unbounded, DECLINING to match a shape is not a safe
 // no-op. A call site with no span above it in its own method attributes to the
@@ -181,7 +207,13 @@ var axiosClientRe = regexp.MustCompile(
 // these are places the fix does not reach rather than places it is careful.
 // The known set is pinned in TestJSKnownMisattributionShapes_6447: column-0
 // shorthand, computed keys (`['load']() {`), Allman braces, one-line class
-// bodies, and methods named after a rejected reserved word (`catch`, `return`).
+// bodies, methods named after a rejected reserved word (`catch`, `return`),
+// and the two shapes the type-parameter group `<[^<>()]*>` turns away —
+// a generic with a function-typed default (`load<T = () => void>(x): T {`,
+// rejected for the parens) and a nested generic (`load<Map<string, T>>(x) {`,
+// rejected for the inner angle brackets). Both are ordinary TypeScript, not
+// exotica; widening that group is a separate trade against the
+// `describe('x', () => {` collision and is not attempted here.
 // This is not confined to edge sourcing: sse_edges.go builds a Stream entity's
 // ID as `"/" + caller`, so a wrong caller is a wrongly NAMED entity.
 //
@@ -196,7 +228,7 @@ var jsFuncDeclRe = regexp.MustCompile(
 		`|(?m)(?:^|[^\w$])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(` +
 		`|(?m)(?:^|[\s{,;])([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(` +
 		`|(?m)^[ \t]+(?:(?:public|private|protected|static|readonly|async|get|set|override|abstract)[ \t]+)*` +
-		`(?:\*[ \t]*)?(#?[A-Za-z_$][\w$]*)[ \t]*(?:<[^<>()]*>)?[ \t]*\([^()]*\)[ \t]*(?::[^;{}]*)?\{`,
+		`(?:\*[ \t]*)?(#?[A-Za-z_$][\w$]*)[ \t]*(?:<[^<>()]*>)?[ \t]*\([^()]*\)[ \t]*(?::[^;{}\n]*)?\{`,
 )
 
 // jsMethodShorthandReserved lists the identifiers that satisfy alternative 4

@@ -325,6 +325,54 @@ func TestJSMethodShorthandDoesNotSwallowNonDeclarations_6447(t *testing.T) {
 			absent:  []string{"function"},
 		},
 		{
+			// The return annotation is `[^;{}\n]*`, not `[^;{}]*`: in Go's
+			// regexp `[^;{}]` MATCHES a newline, so without the `\n` brake the
+			// annotation runs across lines until the next `{`. Combined with
+			// the generator prefix `(?:\*[ \t]*)?`, a JSDoc continuation line
+			// of the form ` * Word (prose):` satisfies alternative 4 in full —
+			// `*` is the prefix, `Word` is the name, the parenthesised prose
+			// is the parameter group, and the annotation swallows `*/`, the
+			// `export function` header and its parameter list, down to the
+			// body `{`. FindAll then resumes PAST that match, so alternative 1
+			// never sees the real function: the whole exported function's
+			// calls are attributed to a caller named after a JSDoc word, and
+			// sse_edges.go names a Stream entity `"/" + caller` from it.
+			//
+			// This is not hypothetical — it destroyed ten real spans in this
+			// repo's own webui-v2 frontend before the brake was added.
+			name: "JSDoc prose above an exported function is not a declaration",
+			src: "/**\n" +
+				" * Resolve provenance.\n" +
+				" *\n" +
+				" * Precedence (best available wins, never a misleading %):\n" +
+				" *   1. report\n" +
+				" */\n" +
+				"export function resolveCoverageProvenance(\n" +
+				"  report: Report,\n" +
+				"): Provenance {\n" +
+				"  return fetch('/api/coverage');\n" +
+				"}\n",
+			wantOne: "resolveCoverageProvenance",
+			absent:  []string{"Precedence"},
+		},
+		{
+			// The same newline crossing with no comment involved: in
+			// `semi: false` TypeScript an abstract member (or an overload
+			// signature) ends its line with no `;` and no `{`, so an
+			// unbraked annotation runs from its `:` into the NEXT method's
+			// body brace. The signature then mints a span it must not have
+			// — it has no body — and the real method below it mints none,
+			// because FindAll has already consumed past its header.
+			name: "semicolon-free abstract signature does not swallow the next method",
+			src: "abstract class A {\n" +
+				"  abstract load(id: string): Promise<void>\n" +
+				"  save(x) {\n" +
+				"    fetch('/api/save')\n" +
+				"  }\n}\n",
+			wantOne: "save",
+			absent:  []string{"load"},
+		},
+		{
 			name: "receiver call is not a declaration",
 			src: "class A {\n" +
 				"  probe() {\n" +
@@ -494,6 +542,40 @@ func TestJSKnownMisattributionShapes_6447(t *testing.T) {
 				"  },\n};\n",
 			marker: "fetch('/api/close')",
 			caller: "next",
+		},
+		{
+			// The type-parameter group is `<[^<>()]*>`: no parens (so a
+			// generic cannot smuggle in the `describe('x', () => {` shape the
+			// parameter group excludes) and no nested angle brackets. A
+			// generic whose type parameter has a FUNCTION-TYPED default trips
+			// the paren half. This is ordinary TypeScript, not exotica.
+			name: "generic with a function-typed default inherits the preceding method",
+			src: "class A {\n" +
+				"  build() {\n" +
+				"    return 1;\n" +
+				"  }\n" +
+				"  load<T = () => void>(x): T {\n" +
+				"    fetch('/api/load');\n" +
+				"  }\n}\n",
+			marker: "fetch('/api/load')",
+			caller: "build",
+		},
+		{
+			// And a NESTED generic trips the angle-bracket half. Note the
+			// asymmetry with the RETURN annotation, which does admit nested
+			// generics (`strings(): Observable<Record<string, string>>` is an
+			// indexed case above): the return annotation is a flat character
+			// class, the type-PARAMETER group is bracket-delimited.
+			name: "nested generic type parameter inherits the preceding method",
+			src: "class A {\n" +
+				"  build() {\n" +
+				"    return 1;\n" +
+				"  }\n" +
+				"  load<Map<string, T>>(x) {\n" +
+				"    fetch('/api/load');\n" +
+				"  }\n}\n",
+			marker: "fetch('/api/load')",
+			caller: "build",
 		},
 		{
 			// N3: alternative 4 anchors on `^[ \t]+`, so a class written on
