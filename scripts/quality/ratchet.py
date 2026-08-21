@@ -48,10 +48,17 @@ Usage (normally via scripts/quality/run.sh --ratchet / --update-baseline):
 
     ratchet.py check  <reports-dir> <golden-dir> <baseline.json>
     ratchet.py update <reports-dir> <golden-dir> <baseline.json>
+    ratchet.py canon  <baseline.json>
+
+`canon` is the canonicality gate (Refs #6466): it re-serialises the baseline
+through the same call `update` writes with and fails if the bytes on disk
+differ. It reads no reports and needs no indexer run, so it is driven from
+internal/quality/baseline_test.go and gates every PR.
 
 Exit status: 0 pass, 2 ratchet violation, 1 usage/IO error.
 """
 
+import difflib
 import json
 import os
 import subprocess
@@ -348,16 +355,81 @@ def check(golden_dir, reports_dir, baseline_path):
     return 0
 
 
+def serialize(doc):
+    """The one authority on baseline.json's on-disk encoding (Refs #6466).
+
+    `update` writes through this and `canon` re-derives through this, so the
+    gate cannot drift from the writer: there is nothing to keep in sync. Every
+    property of the file is a property of this one call — ensure_ascii=True
+    (non-ASCII stored as \\uXXXX), two-space indent with the ", " / ": "
+    separators that implies, insertion key order, no HTML escaping, and the
+    trailing newline.
+    """
+    return json.dumps(doc, indent=2) + "\n"
+
+
+def canon(baseline_path):
+    """Fail if baseline_path's bytes are not what `update` would have written.
+
+    baseline.json is generated, but it is also a *test gate*, so unrelated
+    encoding churn in it is worse than cosmetic: it hides the deliberate,
+    reviewable change that a baseline diff is supposed to be. An agent editing
+    three lines once round-tripped the file with ensure_ascii=False and
+    rewrote four untouched em-dash escapes; nothing caught it. This is the
+    equivalent of `go run ./tools/coverage fmt --check` for
+    docs/coverage/registry.json.
+
+    Exit status: 0 canonical, 2 not canonical, 1 unreadable/unparseable.
+    """
+    try:
+        with open(baseline_path, "rb") as fh:
+            raw = fh.read()
+    except OSError as exc:
+        print(f"ratchet canon: cannot read {baseline_path}: {exc}", file=sys.stderr)
+        return 1
+    try:
+        text = raw.decode("utf-8")
+        doc = json.loads(text)
+    except (UnicodeDecodeError, ValueError) as exc:
+        print(f"ratchet canon: {baseline_path} is not valid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    want = serialize(doc)
+    if want == text:
+        print(f"==> quality ratchet: {baseline_path} is canonical")
+        return 0
+
+    diff = difflib.unified_diff(
+        text.splitlines(keepends=True),
+        want.splitlines(keepends=True),
+        fromfile=f"{baseline_path} (committed)",
+        tofile=f"{baseline_path} (as --update-baseline would write it)",
+    )
+    sys.stderr.writelines(diff)
+    print(
+        f"\nratchet canon: {baseline_path} is not what --update-baseline writes. "
+        "Regenerate it with `scripts/quality/run.sh --runs 1 --update-baseline` "
+        "rather than hand-editing or round-tripping it through another JSON writer.",
+        file=sys.stderr,
+    )
+    return 2
+
+
 def main(argv):
+    mode = argv[1] if len(argv) > 1 else ""
+    if mode == "canon":
+        if len(argv) != 3:
+            print(__doc__, file=sys.stderr)
+            return 1
+        return canon(argv[2])
     if len(argv) != 5:
         print(__doc__, file=sys.stderr)
         return 1
-    mode, reports_dir, golden_dir, baseline_path = argv[1:5]
+    reports_dir, golden_dir, baseline_path = argv[2:5]
     if mode == "update":
         doc = build(golden_dir, reports_dir, baseline_path)
         with open(baseline_path, "w") as fh:
-            json.dump(doc, fh, indent=2)
-            fh.write("\n")
+            fh.write(serialize(doc))
         print(f"==> quality ratchet: wrote baseline {baseline_path}")
         return 0
     if mode == "check":
