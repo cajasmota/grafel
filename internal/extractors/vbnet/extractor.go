@@ -52,8 +52,21 @@
 //     them calls on the 302-file corpus. Building it yields 25 CALLS edges
 //     after appendCalls' dedup, of which 1 resolves — +0.5% edges, +0.03%
 //     resolved, and 24 new dangling edges. The sites are dropped cleanly, never
-//     bound to a wrong receiver. The recall actually sitting behind them is
-//     local-variable type inference (#6454), not With-block bookkeeping.
+//     bound to a wrong receiver. The recall actually sitting behind them was
+//     the receiver's declared type (#6454), not With-block bookkeeping —
+//     and #6454 is now BUILT, so that pointer no longer defers anything.
+//     The two decisions compare in one currency: S7d bought 1 resolved
+//     edge against 24 dangling ones, #6454 bought 780 against 2,205.
+//   - (LIFTED by #6454.) A qualified member call rendered its target from
+//     the receiver's SPELLING, and — the half the issue did not state —
+//     classify answered ParenUnknown for every non-Me qualifier, so such a
+//     site emitted NO CALLS EDGE AT ALL off statement head. Both halves are
+//     fixed by vbnet.Table.ReceiverType: CALLS 5,059 -> 8,044 total,
+//     3,386 -> 4,166 resolved. The disposition bug rate rises 0.0918 ->
+//     0.1666 as a direct result, because most new sites name a .NET
+//     Framework type that dangles until #6337. Explicit `As` declarations
+//     only: `Dim x = expr` inference and method-return chaining still
+//     refuse, and so does any receiver whose visible declarations disagree.
 //   - (LIFTED by S7b, #6327.) `AddressOf Foo` carries no parentheses, so the
 //     reference pass never saw it. It is now scanned separately and emitted
 //     as REFERENCES — see references.go for why that kind and that direction.
@@ -120,13 +133,13 @@ func extractVBNet(src, filePath, repoRoot string) []types.EntityRecord {
 
 	// The file carrier owns anything declared outside a type, so file-level and
 	// namespace-level call sites anchor there rather than being dropped.
-	appendCalls(&out[0], res.File)
-	appendReferences(&out[0], res.File)
+	appendCalls(&out[0], res.File, res.Table)
+	appendReferences(&out[0], res.File, res.Table)
 	// The sibling cache is per-extraction: it is never shared across files, so
 	// concurrent extraction needs no synchronisation, and a designer file
 	// declaring several partial types PARSES its sibling once. The directory
 	// listing that finds the sibling is not cached — see siblingCache.declares.
-	emit(&out, res.File, filePath, repoRoot, 0, "", siblingCache{})
+	emit(&out, res.File, filePath, repoRoot, 0, "", siblingCache{}, res.Table)
 	return out
 }
 
@@ -140,14 +153,14 @@ func extractVBNet(src, filePath, repoRoot string) []types.EntityRecord {
 // Emitting a namespace node per file would create one duplicate component per
 // file sharing a namespace, which in this corpus is 92 files for StaxRip.UI
 // alone.
-func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath, repoRoot string, ownerIdx int, ns string, sib siblingCache) {
+func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath, repoRoot string, ownerIdx int, ns string, sib siblingCache, tbl *vbnet.Table) {
 	for _, child := range n.Children {
 		if child.Kind == vbnet.NodeNamespace {
 			inner := child.Name
 			if ns != "" && inner != "" {
 				inner = ns + "." + inner
 			}
-			emit(out, child, filePath, repoRoot, ownerIdx, inner, sib)
+			emit(out, child, filePath, repoRoot, ownerIdx, inner, sib, tbl)
 			continue
 		}
 
@@ -156,9 +169,9 @@ func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath, repoRoot string, o
 			// Accessors, enum members, imports and Option headers carry no
 			// entity of their own. Their call sites belong to the nearest
 			// declaration that does have one, which is what ownerIdx is.
-			appendCalls(&(*out)[ownerIdx], child)
-			appendReferences(&(*out)[ownerIdx], child)
-			emit(out, child, filePath, repoRoot, ownerIdx, ns, sib)
+			appendCalls(&(*out)[ownerIdx], child, tbl)
+			appendReferences(&(*out)[ownerIdx], child, tbl)
+			emit(out, child, filePath, repoRoot, ownerIdx, ns, sib, tbl)
 			continue
 		}
 
@@ -193,9 +206,9 @@ func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath, repoRoot string, o
 			// S7c (#6327): member-level `Implements IFoo.Bar`.
 			rec.Relationships = append(rec.Relationships, memberImplementsEdges(child)...)
 		}
-		appendCalls(&rec, child)
+		appendCalls(&rec, child, tbl)
 		// S7b (#6327): `Handles` clauses and `AddressOf` operands.
-		appendReferences(&rec, child)
+		appendReferences(&rec, child, tbl)
 
 		idx := len(*out)
 		*out = append(*out, rec)
@@ -213,7 +226,7 @@ func emit(out *[]types.EntityRecord, n *vbnet.Node, filePath, repoRoot string, o
 				},
 			})
 
-		emit(out, child, filePath, repoRoot, idx, ns, sib)
+		emit(out, child, filePath, repoRoot, idx, ns, sib, tbl)
 	}
 }
 
@@ -575,7 +588,7 @@ func importRelationships(filePath string, root *vbnet.Node) []types.Relationship
 // appendCalls adds one CALLS edge per distinct target among this node's own
 // use sites. Descendants are NOT walked here: emit recurses, and a declaration
 // that gets its own record must own its own calls.
-func appendCalls(rec *types.EntityRecord, n *vbnet.Node) {
+func appendCalls(rec *types.EntityRecord, n *vbnet.Node, tbl *vbnet.Table) {
 	seen := map[string]bool{}
 	for _, r := range rec.Relationships {
 		if r.Kind == "CALLS" {
@@ -586,7 +599,7 @@ func appendCalls(rec *types.EntityRecord, n *vbnet.Node) {
 		if !ref.IsCall() {
 			continue
 		}
-		target, ok := callTarget(ref)
+		target, ok := callTarget(ref, tbl)
 		if !ok || seen[target] {
 			continue
 		}
@@ -615,12 +628,12 @@ func appendCalls(rec *types.EntityRecord, n *vbnet.Node) {
 // site's receiver is a With-block target or an expression result: real, but
 // unnameable by a per-file pass. Resolving its member against this file's
 // declarations is exactly the confidently-wrong edge #6327 exists to prevent.
-func callTarget(r vbnet.Ref) (string, bool) {
+func callTarget(r vbnet.Ref, tbl *vbnet.Table) (string, bool) {
 	if r.Qualified && strings.TrimSpace(r.Qualifier) == "" {
 		return "", false
 	}
 	// The Me/MyClass/MyBase fold is shared with the S7b REFERENCES edges
 	// (references.go), so the two edge kinds cannot drift apart on it.
-	target := memberTarget(r.Qualifier, r.Name)
+	target := memberTarget(r.Qualifier, r.Name, tbl, r.Scope)
 	return target, target != ""
 }

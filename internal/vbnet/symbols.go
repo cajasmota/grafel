@@ -220,6 +220,190 @@ func (t *Table) Resolve(name, scope string) *Symbol {
 	return nil
 }
 
+// ResolveVisible is Resolve WITHOUT the out-of-scope last-ditch fallback:
+// it answers only when a declaration is genuinely reachable from the use site,
+// lexically or through a Module's promoted members.
+//
+// Resolve's fallback is documented as a HINT — it hands back any same-named
+// declaration in the file even when the returned Scope does not contain the
+// use site. That is the right answer for classifying `Items(3)` with reduced
+// confidence, and the wrong answer for anything that mints an edge TARGET:
+// substituting a type read off an out-of-scope declaration produces a
+// confidently wrong edge, which #6327 exists to prevent and which is strictly
+// worse than the dangling edge it would replace (#6454).
+func (t *Table) ResolveVisible(name, scope string) *Symbol {
+	if c := t.visibleCandidates(name, scope); len(c) > 0 {
+		return c[0]
+	}
+	return nil
+}
+
+// visibleCandidates returns EVERY visible declaration of name that sits at the
+// innermost visible scope, not just the first — which is the difference
+// between an answer and a coin flip.
+//
+// Scope in this table is a DECLARATION path, not a block path: VB block-scopes
+// `Dim`, but two sibling blocks of one method both record Scope "C.M". So
+//
+//	If cond Then
+//	    Dim w As Alpha
+//	Else
+//	    Dim w As Beta
+//	End If
+//
+// yields two candidates the table cannot order, and picking the first binds
+// half the use sites to the wrong type WITH FULL CONFIDENCE. Returning the set
+// lets ReceiverType refuse instead. Nothing else needs the distinction, which
+// is why ResolveVisible keeps its single-symbol shape.
+func (t *Table) visibleCandidates(name, scope string) []*Symbol {
+	var best []*Symbol
+	bestLen := -1
+	for _, s := range t.Lookup(name) {
+		if !visibleFrom(s.Scope, scope) {
+			continue
+		}
+		switch {
+		case len(s.Scope) > bestLen:
+			bestLen, best = len(s.Scope), []*Symbol{s}
+		case len(s.Scope) == bestLen:
+			best = append(best, s)
+		}
+	}
+	if len(best) > 0 {
+		return best
+	}
+	for _, s := range t.Lookup(name) {
+		if t.isModuleScope(s.Scope) {
+			best = append(best, s)
+		}
+	}
+	return best
+}
+
+// crossesTypeBoundary reports whether reaching from the use site at useScope
+// out to a declaration at declScope passes THROUGH a nested type.
+//
+// visibleFrom models lexical containment, and lexical containment is not
+// member visibility across a type boundary: VB.NET's nested classes do NOT see
+// the enclosing type's instance members, so
+//
+//	Class Outer
+//	    Private log As Alpha
+//	    Class Inner
+//	        Sub Go() : log.Emit() : End Sub   ' does NOT reach Outer.log
+//
+// must not bind. The intermediate segments are tested against the table's own
+// KindType symbols rather than guessed from shape, because a dotted path
+// segment is equally a namespace, a type or a method.
+func (t *Table) crossesTypeBoundary(declScope, useScope string) bool {
+	if len(useScope) <= len(declScope) {
+		return false
+	}
+	rest := strings.TrimPrefix(useScope[len(declScope):], ".")
+	parent := declScope
+	for _, seg := range strings.Split(rest, ".") {
+		for _, s := range t.Lookup(seg) {
+			if s.Kind == KindType && strings.EqualFold(s.Scope, parent) {
+				return true
+			}
+		}
+		if parent == "" {
+			parent = seg
+		} else {
+			parent += "." + seg
+		}
+	}
+	return false
+}
+
+// receiverKinds are the symbol kinds that denote a VALUE a member can be read
+// off. A KindType receiver is a STATIC access — `Helpers.Log(x)` — and its
+// Symbol.TypeName carries the declaring keyword ("module", "class"), so
+// treating it as a value's type would render `module.Log`. KindMethod is
+// excluded for the opposite reason: its TypeName is a RETURN type, and a
+// method name in qualifier position is return-value chaining, which this pass
+// deliberately does not model.
+//
+// Excluding KindType leaves recall on the table, and knowingly: `Helpers.Log(x)`
+// with `Module Helpers` in the same file is an in-tree call this pass declines
+// to emit. The right answer there is the symbol's NAME rather than its
+// TypeName, which is a separate shape (static/shared member access) with its
+// own classification question, not a tweak to this table. Filed rather than
+// smuggled in.
+var receiverKinds = map[SymbolKind]bool{
+	KindField:     true,
+	KindLocal:     true,
+	KindParameter: true,
+	KindProperty:  true,
+	KindConst:     true,
+}
+
+// ReceiverType answers the DECLARED type of a member-access receiver spelled
+// `name` at `scope`, or "" when this file cannot say.
+//
+// This is the whole of #6454's knowledge: VB.NET renders a member access as
+// `receiver.Member`, and rendering an edge from the receiver's SPELLING means
+// `writer.WriteStartElement` can never join `XmlWriter.WriteStartElement`, no
+// matter how the graph is assembled. The declared type is already in the
+// table for every `As`-typed declaration, so no inference is involved.
+//
+// It answers "" — deliberately — for every shape whose type this pass does not
+// KNOW, because a dangling edge costs recall and a wrong one costs trust:
+//
+//   - a dotted or empty receiver (`a.B().C`, a With-block target);
+//   - a receiver with no VISIBLE declaration in this file (see ResolveVisible);
+//   - a receiver whose visible declarations DISAGREE on the type, which two
+//     sibling blocks redeclaring `Dim w` produce and this table cannot order;
+//   - a receiver declared in an ENCLOSING type of a NESTED one, which lexical
+//     containment admits and VB.NET member visibility does not;
+//   - a receiver that is a type, namespace, method or event rather than a value;
+//   - `Dim x = expr`, whose Symbol.TypeName is empty — inference is out of scope;
+//   - an array receiver, where the paren after the member is as likely an index.
+//
+// A generic type's argument list is dropped: `List(Of String)` answers "List",
+// which is the name the declaration of a generic type is emitted under.
+func (t *Table) ReceiverType(name, scope string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsRune(name, '.') {
+		return ""
+	}
+	cands := t.visibleCandidates(name, scope)
+	if len(cands) == 0 {
+		return ""
+	}
+	answer := ""
+	for _, sym := range cands {
+		if !receiverKinds[sym.Kind] || sym.IsArray || sym.TypeName == "" {
+			return ""
+		}
+		if t.crossesTypeBoundary(sym.Scope, scope) {
+			return ""
+		}
+		typeName := sym.TypeName
+		// The generic ARGUMENT LIST is not part of the name a declaration is
+		// emitted under: `List(Of String)` must answer "List", or a
+		// corpus-declared `TaskDialog(Of String)` receiver renders a target
+		// no entity carries. 433 corpus edges change target without this.
+		if i := strings.IndexByte(typeName, '('); i >= 0 {
+			typeName = strings.TrimSpace(typeName[:i])
+		}
+		if typeName == "" {
+			return ""
+		}
+		if answer == "" {
+			answer = typeName
+			continue
+		}
+		if !strings.EqualFold(answer, typeName) {
+			// Two declarations this pass cannot order disagree on the type.
+			// Refusing costs one dangling edge; guessing binds half the use
+			// sites to the wrong type with full confidence.
+			return ""
+		}
+	}
+	return answer
+}
+
 // ParenKind is what a '(' following a name means.
 type ParenKind int
 
