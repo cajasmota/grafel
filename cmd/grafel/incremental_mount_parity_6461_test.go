@@ -57,14 +57,17 @@
 //
 //	ROUTE / path A   GREEN.  0-entity delta.
 //	MOUNT / path B   GREEN.  0-entity delta.
-//	ROUTE / path B   RED after the #6469 route-path RENAME (below); it was GREEN
-//	                   with the earlier pass-counter-only fixture, which is
-//	                   precisely why that fixture could not see a composition
-//	                   defect. 1 divergence, edges full=54 inc=55:
+//	ROUTE / path B   was RED after the #6469 route-path RENAME, now GREEN and
+//	                   UNGATED (#6482). The 1 divergence, edges full=54 inc=55,
+//	                   was:
 //	                   [EDGE-INVENTED] SCOPE.Process/http:GET:/conditions
 //	                     → «unbound»proc:0c089ba065f57543 :RENAMED_FROM
-//	                   — a rename artefact of the incremental path, unrelated to
-//	                   cross-file composition.
+//	                   — NOT a defect: the reference side (`mpEndState`) rebuilds
+//	                   into a FRESH state dir, so pass 5.5 has no prior graph and
+//	                   is a no-op by construction, while the Path-B side has one.
+//	                   RENAMED_FROM is history-dependent, so it is scoped out of
+//	                   the comparator (cpIgnoredRelKinds) and asserted positively
+//	                   instead. See #6482 and the note on the test itself.
 //	MOUNT / path A   RED.    1 divergence, edges full=54 inc=53:
 //	                   [EDGE-LOST] Service/mp_app@mpmain_mount.py
 //	                     → Route/mp_router@mpmarkets_route.py :ROUTES_TO
@@ -112,17 +115,17 @@
 //
 // WHAT THE UNGATED (ALWAYS-RUN) SET ACTUALLY WATCHES
 // ───────────────────────────────────────────────────
-// Two pairs run by default: ROUTE/path A and MOUNT/path B. So the
-// ungated ratchet covers Path A for the ROUTE direction ONLY — the MOUNT
-// direction's Path A (`TestMountParity_6461_MountEdit_PathA`) is gated behind
+// FOUR run by default as of #6482: ROUTE/path A, ROUTE/path B, MOUNT/path B,
+// and the new ungated rename assertion
+// (`TestRenameParity_6482_PathBIncremental_EmitsRenamedFrom`). So the ungated
+// ratchet covers Path A for the ROUTE direction ONLY — the MOUNT direction's
+// Path A (`TestMountParity_6461_MountEdit_PathA`) is still gated behind
 // GRAFEL_TEST_6461 because it reproduces #6461 today, which means a regression
 // that only drops entities attributed to the unchanged ROUTE file when the
-// MOUNT file is edited is NOT caught by the default suite. ROUTE/path B is
-// gated too, for a DIFFERENT and newly-measured reason (a RENAMED_FROM edge the
-// incremental path invents — see the note on that test). Setting the env var
-// runs the full seven.
+// MOUNT file is edited is NOT caught by the default suite. Setting the env var
+// additionally runs that pair plus the three Django diagnostics.
 //
-// Refs #6461, #6414, #6415, #6385, #6129.
+// Refs #6461, #6414, #6415, #6385, #6129, #6482.
 package main
 
 import (
@@ -132,6 +135,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/algorithms"
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
@@ -316,15 +320,30 @@ func mpLogEndpointDelta(t *testing.T, label string, full, inc *graph.Document) {
 //	    -run 'TestMountParity_6461' -v
 const mp6461Env = "GRAFEL_TEST_6461"
 
-// mp6461Gate skips unless mp6461Env is set, naming the issue and the exact
-// command that reproduces. Applied ONLY to pairs measured to reproduce.
-func mp6461Gate(t *testing.T, what string) {
+// mp6461Cause is the ONE cause every pair still gated in this file reproduces.
+// It is stated once, here, rather than being welded into the gate helper, so a
+// gate can never again assert a cause the gated test does not exhibit.
+//
+// It WAS welded in, and it mis-attributed TestMountParity_6461_RouteEdit_PathB
+// (#6482): that test runs the CLI path (`Index` + `WithIncremental`), not the
+// daemon fast path, so neither `SourceFile` pruning nor cross-file composition
+// had anything to do with its failure. The skip line still read plausibly,
+// which is exactly why the mis-attribution survived review. That test is now
+// ungated; the cause is a parameter so the mistake cannot recur silently.
+const mp6461Cause = "the daemon fast path prunes only by SourceFile and runs no " +
+	"cross-file composition pass"
+
+// mp6461Gate skips unless mp6461Env is set, naming the issue, the pair, and
+// the exact command that reproduces. `cause` is a PARAMETER, not a constant
+// baked into the body: every gated pair must state the cause it actually
+// exhibits, and passing mp6461Cause is an explicit claim that this pair is a
+// #6461 instance rather than something else that happens to be red.
+func mp6461Gate(t *testing.T, what, cause string) {
 	t.Helper()
 	if os.Getenv(mp6461Env) == "" {
-		t.Skipf("#6461 UNFIXED — %s. This assertion is expected to FAIL: the daemon "+
-			"fast path prunes only by SourceFile and runs no cross-file composition "+
-			"pass. Reproduce with: %s=1 go test ./cmd/grafel/ -count=1 "+
-			"-run 'TestMountParity_6461' -v", what, mp6461Env)
+		t.Skipf("#6461 UNFIXED — %s. This assertion is expected to FAIL: %s. "+
+			"Reproduce with: %s=1 go test ./cmd/grafel/ -count=1 "+
+			"-run 'TestMountParity_6461' -v", what, cause, mp6461Env)
 	}
 }
 
@@ -366,21 +385,40 @@ func TestMountParity_6461_RouteEdit_PathA(t *testing.T) {
 }
 
 func TestMountParity_6461_RouteEdit_PathB(t *testing.T) {
-	// MEASURED RED once the route path is RENAMED rather than merely re-passed
-	// (#6469 review). The divergence is NOT #6461 and NOT the composition
-	// concern this file is about — measured, verbatim:
+	// UNGATED as of #6482 — it now runs in the default suite. It was gated at
+	// #6469 for a divergence that turned out to be a HARNESS artefact, not a
+	// defect. Measured then, verbatim:
 	//
 	//	edges full=54 inc=55 | entities full=28 inc=28
 	//	[EDGE-INVENTED] SCOPE.Process/http:GET:/conditions → mp_helper@...
 	//	  →«unbound»proc:0c089ba065f57543 :RENAMED_FROM
 	//
-	// i.e. the Path-B incremental run detects the endpoint's rename and emits a
-	// RENAMED_FROM edge pointing at the OLD process id, which a clean full
-	// rebuild of the end state has no counterpart for. Deterministic: 3/3 runs.
-	// Gated rather than allow-listed so the assertion stays whole, and reported
-	// separately as its own defect.
-	mp6461Gate(t, "direction ROUTE, path B (Index + WithIncremental) — a RENAMED_FROM edge "+
-		"the incremental run invents for the renamed endpoint's process, absent from the full rebuild")
+	// The word "invents" was wrong twice over, and #6482 records the check:
+	//
+	//  1. `DetectRenamesBounded` has ONE non-test call site (`index.go:876`),
+	//     gated solely on a prior `graph.fb` existing in the output dir.
+	//     Incrementality is never consulted. The delta is manufactured by the
+	//     baseline: `mpEndState` full-rebuilds into a FRESH t.TempDir(), so
+	//     `LoadGraphFromDir` fails, `prevDoc == nil`, and pass 5.5 is a no-op BY
+	//     CONSTRUCTION — that baseline can never emit RENAMED_FROM. The Path-B
+	//     side re-runs over the already-populated state dir, loads a prior, and
+	//     detects the rename. The two sides were not the same experiment.
+	//     A plain full rebuild DOES emit RENAMED_FROM — see
+	//     TestRenameDetect_CompleteRunReportsNoTruncation, which runs Index twice
+	//     into one state dir with NO WithIncremental and asserts renames != 0.
+	//  2. The unbound target is the edge kind's CONTRACT, not a bug.
+	//     `deleted` is "in prev, absent from new" and ToID points at it, so EVERY
+	//     RENAMED_FROM edge is unbound in its own graph by design
+	//     (`rename_detection.go:119-123`). "Fixing the dangling target" would
+	//     have deleted a shipped feature.
+	//
+	// So the property, not the indexer, was wrong: parity was being asserted
+	// over a HISTORY-DEPENDENT edge kind whose reference side structurally
+	// cannot produce it. RENAMED_FROM is now scoped out of the comparator (see
+	// cpIgnoredRelKinds) and asserted POSITIVELY instead, at Go level with a
+	// cardinality the fixture rows cannot express, by
+	// TestRenameParity_6482_PathBIncremental_EmitsRenamedFrom below. Scoping it
+	// out without that positive assertion would be a silent blinding.
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 	mpWrite(t, repo, "/terms", 0, 0)
@@ -397,6 +435,155 @@ func TestMountParity_6461_RouteEdit_PathB(t *testing.T) {
 		full, inc, mpKnown)
 }
 
+// ─────────────── #6482 — the positive rename assertion ───────────────
+
+// mpEntityByID indexes a document's entities by ID.
+func mpEntityByID(d *graph.Document) map[string]graph.Entity {
+	m := make(map[string]graph.Entity, len(d.Entities))
+	for _, e := range d.Entities {
+		m[e.ID] = e
+	}
+	return m
+}
+
+// mpRenamedFromEdges returns every RENAMED_FROM relationship in d.
+func mpRenamedFromEdges(d *graph.Document) []graph.Relationship {
+	var out []graph.Relationship
+	for _, r := range d.Relationships {
+		if r.Kind == algorithms.RelKindRenamedFrom {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// TestRenameParity_6482_PathBIncremental_EmitsRenamedFrom is the POSITIVE half
+// of the #6482 fix, and it is deliberately UNGATED.
+//
+// cpAssertParity now scopes `RENAMED_FROM` out of the comparator, because the
+// reference side (a full rebuild into a fresh state dir) has no prior graph and
+// so structurally cannot emit that edge kind. An ignore entry on its own is a
+// SILENT BLINDING: after it, a change that stopped emitting `RENAMED_FROM`
+// entirely on the incremental path would make every parity gate in this file
+// GREENER, not redder. So the edge is asserted here instead, directly, with a
+// cardinality and an identity that the fixture-row allow-list has no field for
+// (#6488) and could not express.
+//
+// Why the existing guard is not enough:
+// `TestRenameDetect_CompleteRunReportsNoTruncation`
+// (`rename_truncation_report_6087_test.go`) already fails if rename detection
+// is suppressed — but it drives `Index` with NO `WithIncremental`. An
+// incremental-ONLY suppression sails straight through it. This test drives the
+// same fixture as TestMountParity_6461_RouteEdit_PathB through
+// `cfPathBIncremental`, i.e. the CLI incremental path, which is the only path
+// that runs Pass 5.5 at all (`extractors.TryIncremental` never calls it).
+//
+// It also PINS THE CONTRACT that #6482's title got backwards: the edge's ToID
+// is an entity of the PREVIOUS graph that is absent from the new one, so a
+// `RENAMED_FROM` edge is UNBOUND IN ITS OWN GRAPH BY DESIGN
+// (`internal/algorithms/rename_detection.go:119-123`: "Consumers that care
+// about history can follow the edge backwards to recover old enrichment").
+// Anyone who reads "dangling edge" as a bug and rebinds ToID to the new entity
+// breaks this test rather than shipping the removal of a feature.
+func TestRenameParity_6482_PathBIncremental_EmitsRenamedFrom(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	// Baseline: the pre-rename corpus, full-rebuilt into stateDir. This is the
+	// graph Pass 5.5 will load as `prevDoc` on the next run.
+	mpWrite(t, repo, "/terms", 0, 0)
+	base := dvFullRebuild(t, repo, stateDir)
+
+	// The baseline itself must carry NO rename edges — otherwise the count
+	// asserted below could be inherited rather than produced by the rename.
+	if n := len(mpRenamedFromEdges(base)); n != 0 {
+		t.Fatalf("#6482: baseline full rebuild into an EMPTY state dir emitted %d %s edge(s); "+
+			"it must emit none (no prior graph → prevDoc == nil → Pass 5.5 is a no-op), "+
+			"otherwise the post-rename count below proves nothing",
+			n, algorithms.RelKindRenamedFrom)
+	}
+
+	// Rename the decorator path. This changes the endpoint's entity ID, so the
+	// old process entity is DELETED and a new one is ADDED — the only shape
+	// DetectRenamesBounded can act on. (A body-only edit leaves IDs identical,
+	// `len(deleted) == 0`, and the pass returns early.)
+	dvSeedManifest(t, repo, stateDir)
+	mpRouteFile(t, repo, "/conditions", 1)
+	inc := cfPathBIncremental(t, repo, stateDir)
+
+	renames := mpRenamedFromEdges(inc)
+	for _, r := range renames {
+		t.Logf("#6482: %s edge %s → %s", algorithms.RelKindRenamedFrom, r.FromID, r.ToID)
+	}
+	// CARDINALITY. Exactly one: the renamed endpoint's process. Zero means the
+	// rename pass was suppressed on the incremental path; more than one means
+	// the pass started matching entities it should not, which is the
+	// over-permissive direction and just as much a regression.
+	if len(renames) != 1 {
+		t.Fatalf("#6482: expected EXACTLY 1 %s edge on the Path-B incremental run "+
+			"after renaming the route path /terms → /conditions, got %d. "+
+			"0 means rename detection is suppressed on the incremental path — which "+
+			"TestRenameDetect_CompleteRunReportsNoTruncation would NOT catch, since it "+
+			"exercises only the non-incremental path. >1 means the matcher became "+
+			"over-permissive.",
+			algorithms.RelKindRenamedFrom, len(renames))
+	}
+	e := renames[0]
+
+	incByID, baseByID := mpEntityByID(inc), mpEntityByID(base)
+
+	// FROM = the NEW entity, present in the new graph and absent from the prior.
+	from, ok := incByID[e.FromID]
+	if !ok {
+		t.Fatalf("#6482: %s FromID %q is not an entity of the graph that emitted it; "+
+			"the edge must originate at the POST-rename entity",
+			algorithms.RelKindRenamedFrom, e.FromID)
+	}
+	if _, wasThere := baseByID[e.FromID]; wasThere {
+		t.Errorf("#6482: %s FromID %q already existed in the PRE-rename graph — "+
+			"the edge must originate at a newly-ADDED entity, not a surviving one",
+			algorithms.RelKindRenamedFrom, e.FromID)
+	}
+	if !strings.Contains(from.Name, "/conditions") {
+		t.Errorf("#6482: %s originates at %s|%s@%s, whose name does not mention the NEW "+
+			"path /conditions; the edge is not tracking the rename that was made",
+			algorithms.RelKindRenamedFrom, from.Kind, from.Name, from.SourceFile)
+	}
+
+	// TO = the OLD entity: present in the PRIOR graph, absent from this one.
+	// Both halves matter. "present in prior" proves it points at real history
+	// rather than an arbitrary id; "absent from this one" is the contract, and
+	// asserting it is what stops a future "fix the dangling target" from
+	// retargeting ToID onto the new entity and silently deleting the feature.
+	old, ok := baseByID[e.ToID]
+	if !ok {
+		t.Errorf("#6482: %s ToID %q is not an entity of the PRE-rename graph. The edge "+
+			"must point at the entity that was deleted by the rename (rename_detection.go "+
+			"builds `deleted` as \"in prev, absent from new\"), so a ToID that never "+
+			"existed before means the pass matched the wrong thing.",
+			algorithms.RelKindRenamedFrom, e.ToID)
+	} else {
+		if !strings.Contains(old.Name, "/terms") {
+			t.Errorf("#6482: %s points back at %s|%s@%s, whose name does not mention the OLD "+
+				"path /terms; the edge is not tracking the rename that was made",
+				algorithms.RelKindRenamedFrom, old.Kind, old.Name, old.SourceFile)
+		}
+		if old.Kind != from.Kind {
+			t.Errorf("#6482: %s links kinds %q → %q; rename detection matches within a kind, "+
+				"so a cross-kind edge is a mis-match",
+				algorithms.RelKindRenamedFrom, from.Kind, old.Kind)
+		}
+	}
+	if bound, ok := incByID[e.ToID]; ok {
+		t.Errorf("#6482: %s ToID %q resolves to %s|%s IN ITS OWN GRAPH. That target is "+
+			"UNBOUND BY DESIGN — it names the pre-rename entity so consumers can follow the "+
+			"edge backwards to recover old enrichment (rename_detection.go:119-123). If this "+
+			"fires because someone rebound ToID to \"fix a dangling edge\", the fix removed a "+
+			"shipped feature; #6482's title was wrong about this, not the indexer.",
+			algorithms.RelKindRenamedFrom, e.ToID, bound.Kind, bound.Name)
+	}
+}
+
 // ─────────────────────── direction MOUNT ───────────────────────
 //
 // Edit ONLY the mount file. Everything attributed to it is pruned; nothing on
@@ -404,7 +591,7 @@ func TestMountParity_6461_RouteEdit_PathB(t *testing.T) {
 // composed endpoints VANISH rather than going stale.
 
 func TestMountParity_6461_MountEdit_PathA(t *testing.T) {
-	mp6461Gate(t, "direction MOUNT, path A (daemon extractors.TryIncremental)")
+	mp6461Gate(t, "direction MOUNT, path A (daemon extractors.TryIncremental)", mp6461Cause)
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 	mpWrite(t, repo, "/terms", 0, 0)
@@ -492,7 +679,7 @@ func mpDjangoEndState(t *testing.T, routePath string, routePass, mountPass int) 
 // TestMountParity_6461_Django_RouteEdit_PathA edits ONLY the Django route file
 // and measures the daemon path against a clean full rebuild.
 func TestMountParity_6461_Django_RouteEdit_PathA(t *testing.T) {
-	mp6461Gate(t, "Django direction ROUTE, path A (daemon extractors.TryIncremental)")
+	mp6461Gate(t, "Django direction ROUTE, path A (daemon extractors.TryIncremental)", mp6461Cause)
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 	mpDjangoWrite(t, repo, "terms/", 0, 0)
@@ -511,7 +698,7 @@ func TestMountParity_6461_Django_RouteEdit_PathA(t *testing.T) {
 
 // TestMountParity_6461_Django_MountEdit_PathA edits ONLY the Django mount file.
 func TestMountParity_6461_Django_MountEdit_PathA(t *testing.T) {
-	mp6461Gate(t, "Django direction MOUNT, path A (daemon extractors.TryIncremental)")
+	mp6461Gate(t, "Django direction MOUNT, path A (daemon extractors.TryIncremental)", mp6461Cause)
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 	mpDjangoWrite(t, repo, "terms/", 0, 0)
@@ -538,7 +725,7 @@ func TestMountParity_6461_Django_MountEdit_PathA(t *testing.T) {
 // pass re-derives the correct one. #6461 predicts a stale composed endpoint
 // surviving as a ghost alongside whatever the fresh extraction produced.
 func TestMountParity_6461_Django_RoutePathRename_PathA(t *testing.T) {
-	mp6461Gate(t, "Django route-path RENAME, path A (daemon extractors.TryIncremental) — the GHOST shape")
+	mp6461Gate(t, "Django route-path RENAME, path A (daemon extractors.TryIncremental) — the GHOST shape", mp6461Cause)
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 	mpDjangoWrite(t, repo, "terms/", 0, 0)
