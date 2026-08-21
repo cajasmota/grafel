@@ -1,9 +1,12 @@
 {
   "fixture_name": "proto-mini",
   "language": "protobuf",
-  "description": "Two hand-written proto3 files carrying the exact shapes the three fixed proto defects touched: service/rpc containment, message/enum/field containment, rpc request+response type REFERENCES (#6359/#6419), a same-file message field type REFERENCE, and — deliberately — an rpc and a message that COLLIDE on (kind-agnostic name, file), which is the only shape under which #6422's reparenting occurs. See NOTICE.md for what this fixture can and cannot grade; the file -> message/enum CONTAINS edge itself is NOT gradeable here and NOTICE.md says why.",
+  "description": "Two hand-written proto3 files carrying the exact shapes the three fixed proto defects touched: service/rpc containment, message/enum/field containment, rpc request+response type REFERENCES (#6359/#6419), a same-file message field type REFERENCE, and — deliberately — an rpc and a message that COLLIDE on (kind-agnostic name, file), which is the only shape under which #6422's reparenting occurs. See NOTICE.md for what this fixture can and cannot grade. The file -> message/enum CONTAINS edge was NOT gradeable here until #6518 gave proto a per-file carrier entity to anchor it on; it is graded now, by the `user.proto -> User (SCOPE.Schema)` row and its forbidden twin F4.",
 
   "expected_entities": [
+    { "name": "user.proto", "kind": "SCOPE.Component", "source_file": "user.proto", "must_exist": true,
+      "note": "The per-file carrier (#6518, extractor.FileEntity). It is what the file -> service/message/enum CONTAINS edges are anchored on, and what ReferencesEmbedded rewrites the IMPORTS FromID onto (#566/#577). Before #6518 proto emitted no entity named for the containing file, which is the whole reason NOTICE.md's 'cannot grade' section existed. Named to_name/to_kind and not to_bare_name (#6441): the record genuinely exists." },
+
     { "name": "UserService", "kind": "SCOPE.Service", "source_file": "user.proto", "must_exist": true,
       "note": "service UserService — the SCOPE.Service arm. Named entity for the service/rpc containment rows below." },
     { "name": "User", "kind": "SCOPE.Operation", "source_file": "user.proto", "must_exist": true,
@@ -92,7 +95,12 @@
       "must_exist": true, "note": "enum -> FIRST enum value, in the file with no collision." },
     { "from_name": "Status", "from_kind": "SCOPE.Schema", "from_file": "common.proto",
       "kind": "CONTAINS", "to_name": "Status.STATUS_ACTIVE", "to_kind": "SCOPE.Schema", "to_file": "common.proto",
-      "must_exist": true, "note": "enum -> enum value, in the file with no collision." }
+      "must_exist": true, "note": "enum -> enum value, in the file with no collision." },
+
+    { "from_name": "user.proto", "from_kind": "SCOPE.Component", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "User", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true,
+      "note": "file -> message, THE literal subject of #6422, gradeable here for the first time. NOTICE.md's 'the one shape this fixture CANNOT grade' section said to add exactly this row and its forbidden twin (F4) once proto had a per-file carrier entity; #6518 gave it one and re-anchored these edges onto it, so resolveExpectedEdge now has a resolvable `from` candidate. Paired with F4 below: this row dies if the edge disappears, F4 fires if it reparents onto the rpc, and #6422's defect moved it from one to the other." }
   ],
 
   "forbidden_relationships": [
@@ -104,11 +112,16 @@
     { "from_name": "User", "from_kind": "SCOPE.Operation", "from_file": "user.proto",
       "kind": "IMPORTS", "to_name": "User", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
       "must_exist": false,
-      "note": "F3. The three rpc -> message REFERENCES rows above catch #6359's edge DISAPPEARING; nothing caught the pre-#6359 shape COMING BACK alongside the correct one. The guard is that buildRPC (internal/extractors/proto/proto.go) emits exactly ONE edge per request/response type and its Kind is REFERENCES — this package's only remaining IMPORTS producer is buildImportEntities, for file-level `import \"x.proto\"`. Remove that single-verb guard, i.e. have buildRPC append an IMPORTS edge to each msgType alongside the REFERENCES, and this row fires. Verified by mutation: relationships go 53 -> 56 and without this row the fixture stays 100%/100%/0 forbidden. Note the row is written as forbidden and not as an expected `user.proto -> common.proto IMPORTS` row: the file-anchored form is unwritable here for the FROM-resolution reason NOTICE.md documents at length (no from_bare_name, no per-file carrier entity)." },
+      "note": "F3. The three rpc -> message REFERENCES rows above catch #6359's edge DISAPPEARING; nothing caught the pre-#6359 shape COMING BACK alongside the correct one. The guard is that buildRPC (internal/extractors/proto/proto.go) emits exactly ONE edge per request/response type and its Kind is REFERENCES — this package's only remaining IMPORTS producer is buildImportEntities, for file-level `import \"x.proto\"`. Remove that single-verb guard, i.e. have buildRPC append an IMPORTS edge to each msgType alongside the REFERENCES, and this row fires. Verified by mutation: relationships go 53 -> 56 and without this row the fixture stays 100%/100%/0 forbidden. Note the row is written as forbidden and not as an expected `user.proto -> common.proto IMPORTS` row. That WAS a FROM-resolution limit (no from_bare_name, no per-file carrier entity); #6518 removed it, and the expected IMPORTS row is now writable. It is deliberately still not written here: this row grades buildRPC's VERB, which is what F3 exists for, and the IMPORTS-anchoring row grades #566/#577's FromID rewrite — a different guarantee that belongs with whoever adds cross-repo coverage to this fixture. Do not read its absence as the old impossibility." },
 
     { "from_name": "UserService", "from_kind": "SCOPE.Service", "from_file": "user.proto",
       "kind": "CONTAINS", "to_name": "User", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
       "must_exist": false,
-      "note": "F2. The mirror image of #6422, and the reason the fixture needs the collision even though the file-anchored half is ungradeable (NOTICE.md). buildService addresses its rpc children through BuildOperationStructuralRef; the guard is that it does NOT use messageTypeRef. Switch that one call to messageTypeRef — the plausible over-correction of #6422, i.e. 'move everything into the schema address space' — and the service -> rpc edge binds to `message User` instead, this row hits, and the expected UserService -> User(SCOPE.Operation) row above goes red at the same time. Verified by mutation. Both halves of that pair fire only because message User and rpc User collide." }
+      "note": "F2. The mirror image of #6422, and the reason the fixture needs the collision even though the file-anchored half is ungradeable (NOTICE.md). buildService addresses its rpc children through BuildOperationStructuralRef; the guard is that it does NOT use messageTypeRef. Switch that one call to messageTypeRef — the plausible over-correction of #6422, i.e. 'move everything into the schema address space' — and the service -> rpc edge binds to `message User` instead, this row hits, and the expected UserService -> User(SCOPE.Operation) row above goes red at the same time. Verified by mutation. Both halves of that pair fire only because message User and rpc User collide." },
+
+    { "from_name": "user.proto", "from_kind": "SCOPE.Component", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "User", "to_kind": "SCOPE.Operation", "to_file": "user.proto",
+      "must_exist": false,
+      "note": "F4. The #6422 reparenting, from the other side, and the row NOTICE.md asked for alongside the expected file -> message CONTAINS above. Addressing the message through BuildOperationStructuralRef instead of messageTypeRef (fileContainsSchemaRel, internal/extractors/proto/proto.go) makes the file-level edge bind to `rpc User` — a duplicate of the service -> rpc edge, leaving the message with no inbound CONTAINS. Only expressible now that the FROM side resolves (#6518); before that both halves were unsatisfiable." }
   ]
 }

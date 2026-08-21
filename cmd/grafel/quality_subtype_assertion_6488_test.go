@@ -96,8 +96,13 @@ func TestProtoEnumValueSubtypeIsGraded_6488(t *testing.T) {
 	//
 	// Absolute counts, not "the ratchet is green": scripts/quality/ratchet.py
 	// can re-record its own floor, so a number recorded there does not survive
-	// a revert. 18/18 and 16/16 are the figures #6488 measured while the
-	// enum-value subtype flip was live and undetected.
+	// a revert. 18/18 and 16/16 were the figures #6488 measured while the
+	// enum-value subtype flip was live and undetected — the fixture's size AT
+	// THAT TIME. #6518 has since added the per-file carrier entity and the
+	// file -> message CONTAINS row that carrier made gradeable, so the figures
+	// the assertion below demands are 19/19 and 17/17. The #6488 property is
+	// unchanged: absolute counts, re-derived here rather than read from
+	// baseline.json.
 	rep := quality.Evaluate(fix, doc)
 	for _, r := range rep.EntityResults {
 		if r.Expected.Name != "Role.ROLE_ADMIN" {
@@ -110,18 +115,21 @@ func TestProtoEnumValueSubtypeIsGraded_6488(t *testing.T) {
 				r.SubtypeMismatch, r.GotSubtype, "enum_value")
 		}
 	}
-	if rep.EntityExpected != 18 || rep.EntityFound != 18 {
+	// 19 since #6518 added the per-file SCOPE.Component carrier, and 17/17
+	// relationships since the file -> message CONTAINS row it made gradeable
+	// (see proto-mini/NOTICE.md, which asked for exactly that row).
+	if rep.EntityExpected != 19 || rep.EntityFound != 19 {
 		var missing []string
 		for _, r := range rep.EntityResults {
 			if r.Expected.MustExist && !r.Found {
 				missing = append(missing, r.Expected.Kind+" "+r.Expected.Name)
 			}
 		}
-		t.Errorf("proto-mini entities %d/%d want 18/18; missing: %v",
+		t.Errorf("proto-mini entities %d/%d want 19/19; missing: %v",
 			rep.EntityFound, rep.EntityExpected, missing)
 	}
-	if rep.RelExpected != 16 || rep.RelFound != 16 {
-		t.Errorf("proto-mini relationships %d/%d want 16/16", rep.RelFound, rep.RelExpected)
+	if rep.RelExpected != 17 || rep.RelFound != 17 {
+		t.Errorf("proto-mini relationships %d/%d want 17/17", rep.RelFound, rep.RelExpected)
 	}
 	if n := len(rep.ForbiddenHits); n != 0 {
 		t.Errorf("proto-mini forbidden hits = %d, want 0", n)

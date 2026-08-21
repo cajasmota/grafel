@@ -1,15 +1,15 @@
 {
   "_comment": "Recorded must-have recall per golden fixture. This is a ratchet, not a target: recall may not drop below these figures, and any rise must be recorded here. Regenerate with `scripts/quality/run.sh --runs 1 --update-baseline`.",
   "version": 1,
-  "measured_at": "2026-08-09",
-  "measured_on": "df7ec16e2",
+  "measured_at": "2026-08-22",
+  "measured_on": "0ca8d585e",
   "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
   "fixtures": {
     "angular-http-mini": {
       "entity_found": 21,
       "entity_expected": 21,
-      "relationship_found": 10,
-      "relationship_expected": 10
+      "relationship_found": 17,
+      "relationship_expected": 17
     },
     "csharp-aspnet-core-mini": {
       "entity_found": 4,
@@ -90,10 +90,10 @@
       "relationship_expected": 0
     },
     "proto-mini": {
-      "entity_found": 18,
-      "entity_expected": 18,
-      "relationship_found": 16,
-      "relationship_expected": 16
+      "entity_found": 19,
+      "entity_expected": 19,
+      "relationship_found": 17,
+      "relationship_expected": 17
     },
     "python-django-mini": {
       "entity_found": 26,

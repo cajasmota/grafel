@@ -27,6 +27,35 @@ func extract(t *testing.T, path, src string) []types.EntityRecord {
 	return entities
 }
 
+// fileLevelContains returns the file-level CONTAINS edges for path.
+//
+// #6518: these used to be identified by FromID == path, because they were
+// appended to the CONTAINED record with the file's PATH as FromID — an id that
+// bound to nothing. They are now carried by the per-file SCOPE.Component/file
+// entity with an EMPTY FromID, so assembly stamps that entity's own id. The
+// helper is the single place the whole package's tests learn where they live.
+func fileLevelContains(t *testing.T, entities []types.EntityRecord, path string) []types.RelationshipRecord {
+	t.Helper()
+	var out []types.RelationshipRecord
+	for i := range entities {
+		e := &entities[i]
+		if e.Kind != "SCOPE.Component" || e.Subtype != "file" || e.Name != path {
+			continue
+		}
+		for _, r := range e.Relationships {
+			if r.Kind != "CONTAINS" {
+				continue
+			}
+			if r.FromID != "" {
+				t.Errorf("file-level CONTAINS to %q carries FromID %q; it must be "+
+					"empty so assembly stamps the file entity (#6518)", r.ToID, r.FromID)
+			}
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 func relsByKind(entities []types.EntityRecord, kind string) []types.RelationshipRecord {
 	var out []types.RelationshipRecord
 	for _, e := range entities {
@@ -119,7 +148,6 @@ message M { string id = 1; }
 enum E { Z = 0; }
 `
 	entities := extract(t, "x.proto", src)
-	contains := relsByKind(entities, "CONTAINS")
 
 	// #6422: the ref form follows the target's ENTITY KIND. The service is
 	// SCOPE.Service and takes the operation form; the message and the enum are
@@ -131,11 +159,9 @@ enum E { Z = 0; }
 		"scope:schema:message:proto:x.proto:M":   false,
 		"scope:schema:message:proto:x.proto:E":   false,
 	}
-	for _, r := range contains {
-		if r.FromID == "x.proto" {
-			if _, ok := wantFileEdges[r.ToID]; ok {
-				wantFileEdges[r.ToID] = true
-			}
+	for _, r := range fileLevelContains(t, entities, "x.proto") {
+		if _, ok := wantFileEdges[r.ToID]; ok {
+			wantFileEdges[r.ToID] = true
 		}
 	}
 	for ref, seen := range wantFileEdges {
