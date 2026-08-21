@@ -537,3 +537,201 @@ func TestUnclassifiedSlugRemedyNamesEveryTable(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #6353: the OTHER half of the language axis — registry `language` tags.
+//
+// The coverage matrix's language rows are the UNION of two sources: slugs
+// derived from internal/extractors/<lang>/ (guarded above, #6351) and the
+// `language` tags on records in docs/coverage/registry.json (guarded here).
+// Until #6353 the second source was completely unguarded: adding a record
+// with a novel `language` value shipped a row into the published matrix with
+// nothing checking it, and the alias table that exists precisely to collapse
+// javascript/typescript into jsts was bypassed by not going through a
+// directory at all. That is not hypothetical — one record tagged
+// language:"javascript" (against 84 tagged "jsts") rendered a spurious
+// "[javascript](by-language/javascript.md) | 0 | 0 | 0 | 1" row directly
+// below the real "[JS/TS]" row in the shipped docs/coverage/summary.md.
+//
+// THE EXCEPTION LIST, AND HOW IT WAS DERIVED.
+//
+// #6353's thread hand-listed five registry `language` values as "legitimately
+// not derived directory slugs": multi (126), c-cpp (55), lisp (1), idris (1),
+// jcl (1). Enumerating the set mechanically — SupportedLanguages(repoRoot)
+// diffed against the distinct tags in registry.json, which is exactly what
+// this test does — shows four of those five are wrong:
+//
+//	c-cpp  IS a derived slug: internal/extractors/cpp/ + extractorDirAliases.
+//	lisp   IS a derived slug: internal/extractors/lisp/ exists.
+//	idris  IS a derived slug: internal/extractors/idris/ exists.
+//	jcl    IS a derived slug: internal/extractors/jcl/ exists.
+//
+// Had that list been pasted in as the exception list, four dead entries would
+// have shipped on day one — entries that then have to be actively defended
+// forever, because nothing distinguishes a justified exception from a stale
+// one. Hence: the enumeration is mechanical, and the list below is what
+// survived it. That is also why registry exceptions get a staleness check of
+// their own (second half of this test): a hand-maintained list that only
+// fails on unlisted items and never on entries that have gone stale is
+// #6382's defect class, and #6382 was closed, so it is written inline here.
+//
+// The mechanical diff leaves exactly ONE non-slug value: "multi".
+//
+// "multi" is not a language and deliberately has no extractor directory. It
+// is the cross-cutting bucket for build/CI/infra records that apply to every
+// language (Docker, Terraform, GitHub Actions, ...). It cannot reach the
+// language pivot: generate.go skips language=="multi" (and "") when building
+// the by-language rows and folds those records into the cross-cutting section
+// and the headline totals instead. Verified against the shipped
+// docs/coverage/summary.md — there is no "[multi]" row, while "[C/C++]" IS a
+// row (derived, as above). So "multi" is a genuine exception, not a retag:
+// retagging it to any real language would be a lie about what those records
+// cover.
+//
+// Every other non-derived value is a RETAG, not an exception. "javascript" is
+// the worked example: it folds into "jsts" via extractorDirAliases, the same
+// collapse the directory path already performs.
+//
+// (vbnet already carries a registry record and IS a derived slug —
+// internal/extractors/vbnet/ — so the VB.NET work now landing flows through
+// this guard rather than around it.)
+var registryLanguageExceptions = map[string]string{
+	"multi": "cross-cutting build/CI/infra records that apply to every language; " +
+		"generate.go excludes language==\"multi\" from the by-language pivot and " +
+		"routes them to the cross-cutting section, so this tag ships no matrix row",
+}
+
+// registryLanguageRemedy is the failure text for a registry `language` tag
+// that is neither a derived slug nor a recorded exception. Like
+// unclassifiedSlugRemedy it enumerates every option a contributor may need —
+// including the alias/retag option, whose omission from #6351's first draft
+// had to be corrected — because a remedy that omits the applicable one gets
+// followed faithfully and reproduces the defect the gate exists to catch.
+func registryLanguageRemedy(lang string, n int) string {
+	return fmt.Sprintf("docs/coverage/registry.json tags %d record(s) with language %q, which is "+
+		"neither a slug derived from internal/extractors/ nor an entry in "+
+		"registryLanguageExceptions: it ships an unreviewed row into the coverage "+
+		"matrix. Pick the option that fits what %q actually is:\n"+
+		"  - a DIALECT or ALTERNATE SPELLING of a language already derived "+
+		"(javascript/typescript -> jsts, cpp -> c-cpp, golang -> go): RETAG those "+
+		"records to the canonical slug. Do NOT add it to registryLanguageExceptions "+
+		"— that ships the standalone row extractorDirAliases exists to prevent;\n"+
+		"  - a genuinely new LANGUAGE grafel extracts: add internal/extractors/%s/ "+
+		"and its languageRoster entry, so the slug is derived rather than excepted;\n"+
+		"  - a CROSS-CUTTING or extractor-less tag that must never render a language "+
+		"row (the \"multi\" case): add it to registryLanguageExceptions with a "+
+		"justification saying why no row is correct — and confirm generate.go "+
+		"actually excludes it from the pivot before you do.",
+		n, lang, lang, lang)
+}
+
+// TestRegistryLanguageTagsAreDerivedSlugsOrJustifiedExceptions binds the
+// SECOND source of matrix language rows to the first. Both directions are
+// enforced:
+//
+//	tag in registry.json, neither derived nor excepted -> unreviewed row
+//	exception listed but no longer tagged in registry.json -> dead config
+//
+// The second half is the staleness check #6353 asks for explicitly. Without
+// it the list rots the way the 34 dead config entries deleted across #6330
+// and #6351 rotted: silently, because a one-directional gate never mentions
+// the entries that stopped mattering.
+func TestRegistryLanguageTagsAreDerivedSlugsOrJustifiedExceptions(t *testing.T) {
+	root := repoRoot(t)
+
+	reg, err := loadRegistry(filepath.Join(root, "docs", "coverage", "registry.json"))
+	if err != nil {
+		t.Fatalf("load docs/coverage/registry.json: %v", err)
+	}
+	if len(reg.Records) == 0 {
+		t.Fatalf("docs/coverage/registry.json has no records — the guard would " +
+			"assert nothing; refusing to pass vacuously")
+	}
+
+	derived := map[string]bool{}
+	for _, s := range SupportedLanguages(root) {
+		derived[s] = true
+	}
+	if len(derived) == 0 {
+		t.Fatalf("SupportedLanguages(%s) derived nothing — the guard would then "+
+			"reject every registry tag rather than check it; refusing to run "+
+			"against an empty derivation", root)
+	}
+
+	// Mechanical enumeration of the distinct tags. Counting matters: a
+	// single-record tag is what shipped the javascript defect and what made
+	// jcl get missed by eye in #6353's own thread.
+	tagged := map[string]int{}
+	for _, r := range reg.Records {
+		tagged[r.Language]++
+	}
+
+	langs := make([]string, 0, len(tagged))
+	for l := range tagged {
+		langs = append(langs, l)
+	}
+	sort.Strings(langs)
+
+	for _, l := range langs {
+		_, excepted := registryLanguageExceptions[l]
+		if derived[l] {
+			if excepted {
+				t.Errorf("registryLanguageExceptions has entry %q but %q IS a slug "+
+					"derived from internal/extractors/ — the exception is dead and "+
+					"misleading, remove it", l, l)
+			}
+			continue
+		}
+		if excepted {
+			continue
+		}
+		t.Errorf("%s", registryLanguageRemedy(l, tagged[l]))
+	}
+
+	// Staleness: an exception that no longer describes anything in the
+	// registry is dead config and must be removed, not carried.
+	for _, k := range sortedKeysString(registryLanguageExceptions) {
+		if tagged[k] == 0 {
+			t.Errorf("registryLanguageExceptions has entry %q but no record in "+
+				"docs/coverage/registry.json is tagged with that language — dead "+
+				"config, remove it", k)
+		}
+	}
+
+	// Every exception must carry a real justification, not an empty string:
+	// the list's whole value is that a reader can tell a decision from a
+	// paste.
+	for _, k := range sortedKeysString(registryLanguageExceptions) {
+		if strings.TrimSpace(registryLanguageExceptions[k]) == "" {
+			t.Errorf("registryLanguageExceptions[%q] has an empty justification — "+
+				"say why this tag must never render a language row", k)
+		}
+	}
+
+	// The claim every exception rests on is "this tag ships no matrix row".
+	// Assert it against the SHIPPED summary rather than trusting the comment:
+	// the moment generate.go stops filtering an excepted tag out of the pivot,
+	// the exception silently becomes a licence to publish an unreviewed row —
+	// which is the exact permissive-default failure #6353 is about.
+	summaryPath := filepath.Join(root, "docs", "coverage", "summary.md")
+	summary, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read docs/coverage/summary.md: %v", err)
+	}
+	if !strings.Contains(string(summary), "](by-language/jsts.md)") {
+		t.Fatalf("docs/coverage/summary.md has no by-language/jsts.md row — the " +
+			"pivot's shape changed and the row check below would assert nothing; " +
+			"refusing to pass vacuously")
+	}
+	for _, k := range sortedKeysString(registryLanguageExceptions) {
+		row := fmt.Sprintf("](by-language/%s.md)", k)
+		if strings.Contains(string(summary), row) {
+			t.Errorf("registryLanguageExceptions[%q] is justified as %q, but "+
+				"docs/coverage/summary.md renders a %s row for it — the exception no "+
+				"longer holds. Either generate.go must exclude %q from the "+
+				"by-language pivot again, or %q is a real language and must be "+
+				"derived from internal/extractors/ instead of excepted.",
+				k, registryLanguageExceptions[k], row, k, k)
+		}
+	}
+}

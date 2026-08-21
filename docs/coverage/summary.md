@@ -1,13 +1,13 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # grafel capabilities
 
-**Languages**: 40 (39 active · 1 placeholder) · **Frameworks**: 263 · **ORMs**: 186 · **Tools**: 161 · **Other**: 212
+**Languages**: 39 (38 active · 1 placeholder) · **Frameworks**: 263 · **ORMs**: 186 · **Tools**: 161 · **Other**: 212
 
 ## Coverage by language
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
-| [JS/TS](by-language/jsts.md) | 33 | 22 | 20 | 9 |
+| [JS/TS](by-language/jsts.md) | 33 | 22 | 20 | 10 |
 | [C/C++](by-language/c-cpp.md) | 25 | 16 | 10 | 4 |
 | [python](by-language/python.md) | 25 | 15 | 18 | 10 |
 | [java](by-language/java.md) | 23 | 10 | 15 | 4 |
@@ -36,7 +36,6 @@
 | [assembly](by-language/assembly.md) | 0 | 0 | 0 | 5 |
 | [COBOL](by-language/cobol.md) | 0 | 0 | 0 | 5 |
 | [idris](by-language/idris.md) | 0 | 1 | 0 | 0 |
-| [javascript](by-language/javascript.md) | 0 | 0 | 0 | 1 |
 | [JCL](by-language/jcl.md) | 0 | 0 | 0 | 1 |
 | [lisp](by-language/lisp.md) | 0 | 1 | 0 | 0 |
 | [pony](by-language/pony.md) | 0 | 1 | 0 | 1 |

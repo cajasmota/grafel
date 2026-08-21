@@ -3005,7 +3005,7 @@
       "id": "infra.state-machine.xstate",
       "category": "platform",
       "subcategory": "workflow_dag",
-      "language": "javascript",
+      "language": "jsts",
       "label": "XState (FSM topology)",
       "capabilities": {
         "dependency_attribution": {

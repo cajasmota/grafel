@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 46 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 39 · **python**: 1 · **ruby**: 1 · **rust**: 1
+**Total**: 46 records · **java**: 2 · **JS/TS**: 2 · **multi**: 39 · **python**: 1 · **ruby**: 1 · **rust**: 1
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -48,7 +48,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | Language | Name | Dependency attribution | Resource extraction | Status | Notes |
 |---|---|---|---|---|---|
 | [java](../by-language/java.md) | [Spring StateMachine (FSM topology)](../detail/infra.state-machine.spring-statemachine.md) | 🟢 | 🟢 | 🟢 | |
-| [javascript](../by-language/javascript.md) | [XState (FSM topology)](../detail/infra.state-machine.xstate.md) | 🟢 | 🟢 | 🟢 | |
+| [JS/TS](../by-language/jsts.md) | [XState (FSM topology)](../detail/infra.state-machine.xstate.md) | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Apache Airflow (DAG topology)](../detail/infra.orchestration.airflow.md) | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Argo Workflows (DAG topology)](../detail/infra.orchestration.argo.md) | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Celery canvas (chain/group/chord topology)](../detail/infra.orchestration.celery-canvas.md) | 🟢 | 🟢 | 🟢 | |
