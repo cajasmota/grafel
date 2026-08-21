@@ -507,11 +507,53 @@ func semanticDigest6118(doc *graph.Document) string {
 // Module->Meta CONTAINS edge that carried it. No real declaration is lost —
 // TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain still finds
 // every file component and every donated span.
+//
+// #6485 MOVED IT A FOURTH TIME, and again the delta is characterised item by
+// item rather than absorbed. Route entities are no longer eligible targets in
+// the phase-2 handler index, so an endpoint can no longer resolve to a route.
+// This fixture held exactly one instance, in java/OrdersController.java, and it
+// is worth stating what that instance was: the file declares
+// `@GetMapping("/orders") list()` and `@PostMapping("/orders") create()`, whose
+// two REAL endpoints (http:GET:/orders 9-12 and http:POST:/orders 14-17) are
+// each properly IMPLEMENTS-linked to their handler method and are untouched
+// here. The third endpoint, `http:ANY:/orders`, is the verb-less Spring
+// placeholder for the same path, and it used to bind to `Route:/orders` — the
+// very route the two real endpoints already belong to.
+//
+// Counts move 148/291 -> 147/286. The full delta, all of it downstream of that
+// one binding:
+//
+//	DELETED  SCOPE.Process  http:ANY:/orders → /orders   java/OrdersController.java
+//	DELETED  R Route:/orders -[IMPLEMENTS]-> http_endpoint_definition:http:ANY:/orders
+//	DELETED  R SCOPE.Process -[STEP_IN_PROCESS]-> Route:/orders
+//	DELETED  R SCOPE.Process -[STEP_IN_PROCESS]-> http_endpoint_definition:http:ANY:/orders
+//	DELETED  R http_endpoint_definition:http:ANY:/orders -[ENTRY_POINT_OF]-> SCOPE.Process
+//	DELETED  R Module:_external -[CONTAINS]-> SCOPE.Process
+//	MOVED    E http_endpoint_definition http:ANY:/orders  9-0 -> 0-0
+//	MOVED    R Module:span6118 -[CONTAINS]-> that endpoint, following it
+//
+// The one entity destroyed is a phantom. Every other SCOPE.Process in this
+// fixture is named `<endpoint> → <handler function>`; this one was named
+// `http:ANY:/orders → /orders`, a process flow from route /orders to route
+// /orders, synthesised from the self-edge and carrying it one layer further
+// into the process-flow graph. Its four edges go with it.
+//
+// NOTHING REAL IS LOST, which is the claim the re-pin rests on. Both genuine
+// /orders endpoints survive with their spans; both genuine
+// SCOPE.Operation -[IMPLEMENTS]-> endpoint edges survive; the Route entity and
+// its Module CONTAINS survive; no file component, declaration or donated span
+// moves. The endpoint that is kept goes positionless because
+// bridgeEndpointToHandler used to rebind it onto its "handler" body — line 9,
+// the `@GetMapping` annotation — and that rebind was derived from the binding
+// #6485 declares invalid. It keeps its source_file and its source_handler
+// property; it is now edgeless rather than wrongly linked, which is the
+// NoHandlerProp keep-path decision that ships with #6485.
 const (
 	gateOffDigest6118Base = "a0a6ede910d8d0465d901153f483b27b8a57a565bdd79dd0104bef53786d9ca1"
 	gateOffDigest6118     = "387a9c36cb585b4d73828afc997744dbe02e6df347e0860054adf69431996d46"
 	gateOffDigest6138     = "8726464ce66a815e8b8a69bf8a9ee272368903f623c161fba81235237e235025"
 	gateOffDigest6152     = "774eaec1d5ad5d9731d2c043a6207fdb7b3882b9fdf0f37e4a6b9dbdc555662f"
+	gateOffDigest6485     = "3ed5d943639276cd687131418577904de2c0fdcb1de846bd87f3816046f43443"
 )
 
 func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
@@ -519,8 +561,13 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 	got := semanticDigest6118(off)
-	if got == gateOffDigest6152 {
+	if got == gateOffDigest6485 {
 		return
+	}
+	if got == gateOffDigest6152 {
+		t.Fatalf("gate-OFF graph reverted to the pre-#6485 baseline — a Route entity is " +
+			"an eligible handler target again, so http:ANY:/orders is resolving to " +
+			"Route:/orders and re-synthesising the `/orders → /orders` process")
 	}
 	if got == gateOffDigest6138 {
 		t.Fatalf("gate-OFF graph reverted to the pre-#6152 baseline — the falcon/cherrypy " +
@@ -534,9 +581,10 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 		t.Fatalf("gate-OFF graph reverted to the pre-fix 2f0175dfc baseline — the #6118 " +
 			"span donation is no longer reaching the default path")
 	}
-	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
-		"(entities=%d relationships=%d)", got, gateOffDigest6152, gateOffDigest6138,
-		gateOffDigest6118, gateOffDigest6118Base, len(off.Entities), len(off.Relationships))
+	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
+		"(entities=%d relationships=%d)", got, gateOffDigest6485, gateOffDigest6152,
+		gateOffDigest6138, gateOffDigest6118, gateOffDigest6118Base,
+		len(off.Entities), len(off.Relationships))
 }
 
 // TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain pins the shape
@@ -554,10 +602,16 @@ func TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain(t *testing.T)
 	// and the eight Module->declaration CONTAINS edges that carry them (149/292),
 	// minus the one phantom `Controller/Meta` node the ungated falcon/cherrypy
 	// bare-class patterns emitted for the nested DRF `class Meta:` and the
-	// Module->Meta CONTAINS edge that carried it (#6152).
+	// Module->Meta CONTAINS edge that carried it (#6152, 148/291), minus the
+	// phantom `SCOPE.Process http:ANY:/orders → /orders` and its five edges
+	// (the Route self-IMPLEMENTS, two STEP_IN_PROCESS, one ENTRY_POINT_OF, one
+	// Module:_external CONTAINS) once a Route stopped being an eligible handler
+	// target (#6485, 147/286). Both real /orders endpoints and both real
+	// handler IMPLEMENTS edges are unaffected; see the block comment above the
+	// digest constants for the item-by-item delta.
 	const (
-		wantEntities = 148
-		wantRels     = 291
+		wantEntities = 147
+		wantRels     = 286
 	)
 	if len(off.Entities) != wantEntities || len(off.Relationships) != wantRels {
 		t.Fatalf("gate-OFF graph size moved: entities=%d (want %d) relationships=%d (want %d) — "+
