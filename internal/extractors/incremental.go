@@ -451,6 +451,28 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	if err != nil {
 		return fallback(t0, "abs-repo: "+err.Error())
 	}
+	// --- Pass-start commit capture (#6474) ---
+	// Captured HERE, before the walk, because everything downstream describes
+	// the tree as it is at THIS instant: walkSourceFiles' file list, the
+	// per-file stamps taken from the bytes read during extraction, and the
+	// graph built from them. Re-asking git at save time (what
+	// diff.SaveManifest does) labels that graph with whatever HEAD happens to
+	// be minutes later — a commit whose bytes this pass never read.
+	//
+	// One capture, three uses: the #5710 head-advance compare below and both
+	// manifest saves (zero-change reconcile, and Step 9's success write).
+	// Deriving all three from one variable is the point — a second capture
+	// would reintroduce the divergence at a different seam.
+	//
+	// The single consumer that this makes a CORRECTNESS difference to is the
+	// head-advance detector: an over-advanced label makes the next pass see
+	// HEAD == manifest, find nothing changed, and report Done over a graph
+	// built from an earlier commit, with nothing left to re-request the work.
+	// The remaining consumers (statusline/dashboard, RPC index status) are
+	// reporting surfaces; no automatic reindex is keyed on them.
+	passHeadShort, passHeadFull := diff.HeadCommitPair(absRepo)
+	passStartCommitHook(passHeadShort, passHeadFull)
+
 	endWalk := tr.span("tree-walk")
 	allFiles, irregularReport, walkErr := walkSourceFiles(absRepo)
 	endWalk()
@@ -501,7 +523,11 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// silently no-op'ing.
 	headAdvanceUnconfirmed := false
 	endHeadAdv := tr.span("head-advance")
-	currentHead := diff.HeadCommit(absRepo)
+	// #6474: was its own diff.HeadCommit(absRepo) call here — i.e. HEAD as of
+	// AFTER the walk and the git diff filter. Now the pass-start capture, so
+	// the commit this detector compares against is the same one the manifest
+	// will be stamped with.
+	currentHead := passHeadShort
 	if manifest.GitCommit != "" && currentHead != "" && manifest.GitCommit != currentHead {
 		rangeChanged, rErr := diff.GitChangedFilesSince(absRepo, manifest.GitCommit)
 		if rErr != nil {
@@ -680,7 +706,14 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		diff.UpdateManifest(absRepo, allFiles, manifest)
 		endMS()
 		endMSave := tr.span("manifest-save")
-		_ = diff.SaveManifest(stateDir, absRepo, manifest)
+		// #6474: the pass-start commit, not live HEAD at save time. This pass
+		// CONFIRMED that no walked source file differs between the manifest's
+		// commit and passHeadShort, so the existing graph does describe
+		// passHeadShort and advancing to it is correct (that is what
+		// TestIncremental_ZeroChangePassDoesAdvanceIndexedCommit pins). What
+		// must NOT happen is advancing to a commit that landed DURING the pass,
+		// whose files were never compared against anything.
+		_ = diff.SaveManifestAtCommit(stateDir, manifest, passHeadShort, passHeadFull)
 		endMSave()
 		return Result{Done: true, Duration: time.Since(t0)}
 	}
@@ -1562,7 +1595,10 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	_ = diff.ApplyStampsAndFailures(walkStamps, allFiles, nil, manifest)
 	endMS()
 	endMSave := tr.span("manifest-save")
-	saveErr := diff.SaveManifest(stateDir, absRepo, manifest)
+	// #6474: the pass-start commit, matching the walkStamps applied just above.
+	// Those stamps come from the bytes the extraction loop read; live HEAD at
+	// this instant may be several commits past them.
+	saveErr := diff.SaveManifestAtCommit(stateDir, manifest, passHeadShort, passHeadFull)
 	endMSave()
 	if saveErr != nil {
 		logger.Printf("incremental: save manifest: %v (non-fatal)", saveErr)
@@ -2416,3 +2452,16 @@ func entityPropertiesHash(e graph.Entity) string {
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
+
+// passStartCommitHook is a test-only observability seam invoked immediately
+// after tryIncremental captures the pass-start commit (#6474), with the short
+// and full hashes it captured.
+//
+// The defect it exists to make falsifiable is timing-dependent: HEAD moving
+// BETWEEN the byte read and the manifest save. Nothing in a test can schedule
+// that window reliably, so the pass hands it over explicitly — the test's
+// callback commits a new HEAD and returns, and the rest of the pass then runs
+// with live HEAD genuinely ahead of the commit it read. Mirrors
+// cmd/grafel/index.go's enrichmentOrderHook. Production always uses the no-op
+// default; tests swap it via SwapPassStartCommitHook and restore it.
+var passStartCommitHook = func(short, full string) {}
