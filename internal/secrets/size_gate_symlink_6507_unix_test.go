@@ -180,3 +180,66 @@ func TestScanPathDanglingSymlinkStaysSilent(t *testing.T) {
 		t.Errorf("a dangling symlink must stay silent, got %+v", res.Skipped)
 	}
 }
+
+// TestScanPathSymlinkToDirectoryIsNotTooLarge pins the arm the target stat
+// itself introduced.
+//
+// os.Stat on a symlink to a DIRECTORY answers with the directory's own size.
+// That size is a filesystem artefact, not a payload: 64 bytes on APFS, but at
+// least 4096 on ext4 — the platform CI runs on — and larger still for a
+// directory with many entries. Any caller cap below it therefore made the size
+// gate fire and answer too_large with Kind empty, telling the caller to raise
+// max_size for an entry no cap will ever make scannable. That is the same
+// wrong-bucket class #6507 was filed about, reintroduced on the path #6507's
+// own fix added.
+//
+// The assertions are on the REASON and the KIND, never on bytes: an assertion
+// written against a directory's size would pass on APFS by accident and prove
+// nothing about the platform where it matters.
+func TestScanPathSymlinkToDirectoryIsNotTooLarge(t *testing.T) {
+	outside := t.TempDir()
+	targetDir := filepath.Join(outside, "pkg")
+	if err := os.Mkdir(targetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// cap = 1 byte, deliberately: it is the only value guaranteed to sit below
+	// every filesystem's directory size, so the gate is provoked on APFS and
+	// ext4 alike. The value is a lever for the bug, not part of the contract —
+	// which is why nothing below asserts on it.
+	for _, maxBytes := range []int64{1, 0} {
+		name := "tiny cap"
+		if maxBytes == 0 {
+			name = "default cap"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			link := filepath.Join(root, "linkdir.go")
+			symlinkOrSkip(t, targetDir, link)
+
+			res, err := ScanPath(root, maxBytes)
+			if err != nil {
+				t.Fatalf("ScanPath: %v", err)
+			}
+			if len(res.Findings) != 0 {
+				t.Errorf("a directory yields no findings, got %+v", res.Findings)
+			}
+			if len(res.Skipped) != 1 {
+				t.Fatalf("want exactly 1 skip, got %d: %+v", len(res.Skipped), res.Skipped)
+			}
+			s := res.Skipped[0]
+			if s.Reason != SkipNotRegular {
+				t.Errorf("reason = %q, want %q: raising max_size can never make "+
+					"a directory scannable, so %q sends the caller after a "+
+					"remedy that does not exist", s.Reason, SkipNotRegular, s.Reason)
+			}
+			if s.Kind != "directory" {
+				t.Errorf("kind = %q, want %q: the caller is told WHAT the entry "+
+					"is, which the size bucket cannot say", s.Kind, "directory")
+			}
+			if s.Rel != "linkdir.go" {
+				t.Errorf("skip names %q, want %q", s.Rel, "linkdir.go")
+			}
+		})
+	}
+}

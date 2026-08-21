@@ -552,7 +552,23 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 			sizeInfo = ti
 		}
 
-		if sizeInfo.Size() > maxFileBytes {
+		// IsRegular, because the gate weighs BYTES THAT WILL BE READ and a
+		// non-regular target has none. os.Stat on a symlink to a DIRECTORY
+		// answers with the directory's own size — a filesystem artefact, 64
+		// bytes on APFS but at least 4096 on ext4 and larger for a directory
+		// with many entries — which meets any modest cap. Without this guard
+		// the entry came back too_large with Kind empty, telling the caller to
+		// raise max_size for something no cap will ever make scannable: the
+		// same wrong-bucket defect #6507 is about, on the path #6507's own fix
+		// introduced.
+		//
+		// It FALLS THROUGH rather than skipping here, so the naming stays with
+		// the single authority that already owns it: safeio.Open refuses the
+		// entry and classifyScanSkip reports not_regular with Kind=directory.
+		// An early skip at this site would have to re-derive that vocabulary,
+		// and would reintroduce exactly the duplicate entry-type gate the
+		// NOTE (#6416) above rules out.
+		if sizeInfo.Mode().IsRegular() && sizeInfo.Size() > maxFileBytes {
 			skipped = append(skipped, Skip{Path: path, Rel: rel, Reason: SkipTooLarge})
 			return nil
 		}
@@ -620,6 +636,13 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 // fixture can provoke a mid-read I/O error through os/filepath, so the
 // distinction is unfalsifiable end-to-end and would otherwise be pinned
 // nowhere.
+//
+// Extraction moved the assertion; it did not close the gap. The CALL SITE above
+// is still unpinned — replacing `if keepPartialFindings(err)` with `if true`
+// leaves the package green — because the one error that would tell the two
+// apart cannot be reached from a test. That mutant is equivalent under the
+// suite, not dead, and TestKeepPartialFindingsIsExclusiveToErrTooLong says so
+// in as many words.
 func keepPartialFindings(err error) bool {
 	return errors.Is(err, bufio.ErrTooLong)
 }

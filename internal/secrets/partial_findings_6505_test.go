@@ -31,6 +31,20 @@ import (
 // stream, and therefore every line number in it, is in doubt. No portable
 // fixture provokes that through os/filepath, so it is asserted at the level the
 // decision is made.
+//
+// WHAT THIS DOES NOT PIN, stated plainly so no later reader over-reads it.
+// This test pins the FUNCTION. The CALL SITE remains unpinned: mutating
+// `if keepPartialFindings(err)` in ScanPath to `if true` vets clean and leaves
+// the whole package green — re-verified. That mutant is EQUIVALENT UNDER THIS
+// SUITE, not dead, and it is equivalent for the same reason the predicate had
+// to be extracted: the only error that would distinguish the two is a mid-read
+// I/O failure, and nothing reachable from os/filepath produces one. Rejected
+// alternatives, both of which would have manufactured the difference rather
+// than observed it: a fabricated I/O-error fixture, and a package-level
+// indirection over scanFile injected purely so a test could return an error the
+// real code path cannot. The second would add exactly the kind of production
+// machinery whose own removal is unfalsifiable that the NOTE (#6416) in
+// ScanPath rules out. It is reported as a survivor rather than rounded down.
 func TestKeepPartialFindingsIsExclusiveToErrTooLong(t *testing.T) {
 	cases := []struct {
 		name string
