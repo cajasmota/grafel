@@ -1379,6 +1379,64 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		logger.Printf("incremental: prior-resolution replay bound %d unresolved edge endpoint(s) (#6090)", healed)
 	}
 
+	// --- Step 7b: cross-file composition (#6461) ────────────────────────────
+	// The full path's Pass 2.6 (cmd/grafel/index.go's runDjangoNestedURLConf →
+	// engine.ApplyDjangoNestedURLConf) composes an endpoint out of TWO files: a
+	// mount file's `path("prefix", include("app.urls"))` and the included
+	// file's route declarations. This path ran no equivalent, and Step 5 prunes
+	// only by SourceFile — so a composed endpoint, which is attributed to
+	// neither of the files whose content produced it (the handler resolver
+	// rebinds it onto the HANDLER's file, #2678), was never pruned and never
+	// re-derived. Editing the route file left the PRE-EDIT composition in the
+	// graph as a ghost.
+	//
+	// Recompute and reconcile rather than trying to invalidate: the composition
+	// is a pure function of the tree, so what it produces IS what a full
+	// rebuild holds, and the verdict does not depend on which file was edited.
+	// The pass gates itself on "a Python file changed AND the repo has a
+	// *urls.py", so a non-Django repo pays one suffix scan.
+	//
+	// Placed HERE — after the scoped resolver, before the module stamp — for
+	// two reasons: the composed entities must be in `newEntities` when
+	// stampModuleOnEntities runs (a full rebuild's Pass 8 sees them), and they
+	// must be in the blast radius fed to RunFlowsIncremental and
+	// affectedModuleSet below, so their SCOPE.Process / CONTAINS layer is
+	// re-derived too.
+	endCompose := tr.span("cross-file-compose")
+	compose := recomposeDjangoURLConf(absRepo, allFiles, reallyChanged, doc, newEntities, logger)
+	if len(compose.removedIDs) > 0 {
+		survivors := doc.Entities[:0]
+		for _, e := range doc.Entities {
+			if compose.removedIDs[e.ID] {
+				removedEntityIDs[e.ID] = true
+				if e.Kind != module.KindModule {
+					removedModuleKeys[entityModuleKey(&e, doc.Repo)] = struct{}{}
+				}
+				continue
+			}
+			survivors = append(survivors, e)
+		}
+		doc.Entities = survivors
+		// Both directions — see djangoComposeResult.prunesRel, which owns that
+		// rule and is pinned by TestDjangoComposeResult_PrunesRelBothDirections.
+		keptRels := doc.Relationships[:0]
+		for _, r := range doc.Relationships {
+			if compose.prunesRel(&r) {
+				removedRels = append(removedRels, r)
+				continue
+			}
+			keptRels = append(keptRels, r)
+		}
+		doc.Relationships = keptRels
+	}
+	if len(compose.added) > 0 {
+		newEntities = append(newEntities, compose.added...)
+	}
+	if len(compose.addedRels) > 0 {
+		newRels = append(newRels, compose.addedRels...)
+	}
+	endCompose()
+
 	// --- Step 7a: stamp Properties["module"] on new entities (#5309 layer 2) ---
 	// The full-rebuild path stamps every sourced entity with a deterministic
 	// module label (cmd/grafel/index.go buildDocument) BEFORE the module-agg

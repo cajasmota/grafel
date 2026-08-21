@@ -263,11 +263,19 @@ func mpEndpointSet(d *graph.Document) []string {
 	return out
 }
 
-// mpLogEndpointDelta logs the endpoint census on both sides plus the symmetric
-// difference, so the measured entity delta is in the test output whether the
-// gate passes or fails.
-func mpLogEndpointDelta(t *testing.T, label string, full, inc *graph.Document) {
-	t.Helper()
+// mpEndpointDelta returns the symmetric difference of the two endpoint/mount
+// censuses: `lost` is present in the full rebuild and absent from the
+// incremental result, `invented` is the reverse.
+//
+// It is a FUNCTION rather than inlined into the logger because the census
+// delta is the #6461 GHOST property on its own — a stale composed endpoint
+// carried forward on an unchanged file shows up here as one LOST (the
+// recomposed path) plus one INVENTED (the pre-edit path), with no reference to
+// any other divergence class. Asserting it directly (see
+// TestMountParity_6461_Django_RoutePathRename_PathA_EndpointCensus) gives a
+// ratchet on the ghost that does not have to wait for the unrelated defects
+// the full parity comparator also sees on this fixture.
+func mpEndpointDelta(full, inc *graph.Document) (lost, invented []string) {
 	fa, ib := mpEndpointSet(full), mpEndpointSet(inc)
 	inFull := map[string]int{}
 	for _, s := range fa {
@@ -277,7 +285,6 @@ func mpLogEndpointDelta(t *testing.T, label string, full, inc *graph.Document) {
 	for _, s := range ib {
 		inInc[s]++
 	}
-	var lost, invented []string
 	for s, n := range inFull {
 		if inInc[s] < n {
 			lost = append(lost, s)
@@ -290,6 +297,16 @@ func mpLogEndpointDelta(t *testing.T, label string, full, inc *graph.Document) {
 	}
 	sort.Strings(lost)
 	sort.Strings(invented)
+	return lost, invented
+}
+
+// mpLogEndpointDelta logs the endpoint census on both sides plus the symmetric
+// difference, so the measured entity delta is in the test output whether the
+// gate passes or fails.
+func mpLogEndpointDelta(t *testing.T, label string, full, inc *graph.Document) {
+	t.Helper()
+	fa, ib := mpEndpointSet(full), mpEndpointSet(inc)
+	lost, invented := mpEndpointDelta(full, inc)
 	t.Logf("%s: endpoint/mount census — full rebuild (%d):", label, len(fa))
 	for _, s := range fa {
 		t.Logf("      A %s", s)
@@ -740,4 +757,67 @@ func TestMountParity_6461_Django_RoutePathRename_PathA(t *testing.T) {
 	mpLogEndpointDelta(t, "DJANGO-RENAME/path A", full, inc)
 	cpAssertParity(t, "#6461 Django route-path RENAME, path A (extractors.TryIncremental)",
 		full, inc, mpKnown)
+}
+
+// TestMountParity_6461_Django_RoutePathRename_PathA_EndpointCensus is the
+// UNGATED ratchet for #6461's GHOST, and it is deliberately NARROWER than the
+// gated full-parity test directly above it.
+//
+// It drives the SAME fixture and the SAME edit — rename the route path by
+// editing `mpsite/urls.py` and nothing else — and then asserts ONLY the
+// endpoint/mount census: the set of `http_endpoint*` / `url_mount` entities,
+// keyed by kind|name@source_file plus `path`. That set is exactly where the
+// ghost lives. `ApplyDjangoNestedURLConf` composes `/network/<route>` and the
+// handler-resolution pass rebinds the result onto `mpsite/views.py`
+// (`internal/engine/http_endpoint_resolve.go` bridgeEndpointToHandler, #2678),
+// which is NOT the file that changed — so a `SourceFile`-only prune carries the
+// pre-edit composition forward verbatim and no pass re-derives the new one.
+//
+// MEASURED BEFORE THE FIX (in the DEFAULT suite, GRAFEL_TEST_6461 unset):
+//
+//	LOST     http_endpoint_definition|http:ANY:/network/conditions@mpsite/views.py
+//	INVENTED http_endpoint_definition|http:ANY:/network/terms@mpsite/views.py
+//
+// WHY NOT SIMPLY UN-GATE THE FULL-PARITY TEST ABOVE:
+// that test is red on this fixture for THREE independent reasons, only one of
+// which is #6461's ghost. The other two are measured and are NOT addressed
+// here:
+//
+//   - `[ENTITY-LOST] SCOPE.Operation|GET /conditions||mpsite/urls.py` — an
+//     entity missing from the file that DID change and WAS re-extracted. It is
+//     emitted by a CROSS extractor (`internal/extractors/cross/endpoint`), and
+//     `TryIncremental` runs no cross extractors at all (see the note in
+//     `entityRecordToGraphEntity`: "TryIncremental runs no cross extractors at
+//     all"). This is the second, uninvestigated defect the #6461 thread flags.
+//   - the `IMPORTS` edge out of `mpsite/urls.py` binds to `Module/mpsite.views`
+//     on the incremental path and to `SCOPE.Component/mpsite/views.py` on a full
+//     rebuild — a scoped-resolver binding difference, unrelated to composition.
+//
+// Folding those into this ratchet would make it fail for reasons the fix it
+// guards cannot control, so the census assertion is the honest scope. The full
+// comparator stays gated behind GRAFEL_TEST_6461 until those two are fixed.
+func TestMountParity_6461_Django_RoutePathRename_PathA_EndpointCensus(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+	mpDjangoWrite(t, repo, "terms/", 0, 0)
+	dvFullRebuild(t, repo, stateDir)
+
+	full := mpDjangoEndState(t, "conditions/", 0, 0)
+
+	dvSeedManifest(t, repo, stateDir)
+	mpDjangoRouteUrls(t, repo, "conditions/", 0) // ONLY the route urls.py changes
+	inc := dvIncremental(t, repo, stateDir)
+
+	mpLogEndpointDelta(t, "DJANGO-RENAME/path A (census)", full, inc)
+
+	lost, invented := mpEndpointDelta(full, inc)
+	if len(lost) != 0 || len(invented) != 0 {
+		t.Fatalf("#6461 GHOST: the daemon incremental endpoint census diverges from a clean "+
+			"full rebuild after renaming a route path in mpsite/urls.py — %d lost %v, %d invented %v. "+
+			"An INVENTED entry carrying the PRE-edit path is the ghost itself: the composed "+
+			"endpoint is attributed to mpsite/views.py, which did not change, so the "+
+			"SourceFile-only prune in internal/extractors/incremental.go left it in place and "+
+			"no cross-file composition pass re-derived the correct one.",
+			len(lost), lost, len(invented), invented)
+	}
 }

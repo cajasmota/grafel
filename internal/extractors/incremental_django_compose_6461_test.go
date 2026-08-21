@@ -1,0 +1,259 @@
+// incremental_django_compose_6461_test.go — PERMISSIVE-DIRECTION ratchets for
+// the #6461 cross-file composition pass.
+//
+// The end-to-end gate in cmd/grafel (TestMountParity_6461_Django_
+// RoutePathRename_PathA_EndpointCensus) proves the ghost is corrected. It does
+// NOT constrain how much the pass is allowed to touch on its way there, and a
+// recompose-and-reconcile pass fails in exactly that direction: prune a wider
+// set than it owns and live endpoints from other passes disappear; re-add
+// entities the graph already holds and every endpoint doubles on every tick.
+// Both mutants leave the ghost fixed, so the census gate stays green for them.
+//
+// These two tests are therefore the permissive half, asserted at the seam where
+// the decision is made rather than through the whole daemon.
+package extractors
+
+import (
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/cajasmota/grafel/internal/graph"
+)
+
+const (
+	dcRepoTag      = "test-repo"
+	dcEndpointKind = "http_endpoint_definition"
+)
+
+// dcWriteRepo lays down the minimal Django two-file URLconf: a mount file that
+// includes a route file, and the view the route names.
+func dcWriteRepo(t *testing.T) (absRepo string, allFiles []string) {
+	t.Helper()
+	absRepo = t.TempDir()
+	files := map[string]string{
+		"mpproj/urls.py": `from django.urls import include, path
+
+urlpatterns = [
+    path("network/", include("mpsite.urls")),
+]
+`,
+		"mpsite/urls.py": `from django.urls import path
+
+from . import views
+
+urlpatterns = [
+    path("conditions/", views.mp_terms_view, name="mp_terms"),
+]
+`,
+		"mpsite/views.py": `def mp_terms_view(request):
+    return {"ok": 1}
+`,
+	}
+	for rel, body := range files {
+		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+		allFiles = append(allFiles, rel)
+	}
+	return absRepo, allFiles
+}
+
+// dcEntity builds a graph.Entity with the deterministic id the pass computes.
+func dcEntity(kind, name, file string, props map[string]string) graph.Entity {
+	return graph.Entity{
+		ID:         graph.EntityID(dcRepoTag, kind, name, file),
+		Kind:       kind,
+		Name:       name,
+		SourceFile: file,
+		StartLine:  1,
+		EndLine:    2,
+		Language:   "python",
+	}.WithProperties(props)
+}
+
+func dcSilentLogger() *log.Logger { return log.New(io.Discard, "", 0) }
+
+// TestDjangoComposeResult_PrunesRelBothDirections pins the edge-prune rule.
+//
+// Mutant this kills: testing only `removedIDs[rel.FromID]`. That mutant is
+// invisible to every test that inspects the ENTITY set — including the
+// end-to-end census gate, which was measured GREEN against it — because the
+// ghost entity is still removed. What survives is its INBOUND `IMPLEMENTS` row,
+// now pointing at an id no entity has: an orphan edge that lives until the next
+// full reindex.
+func TestDjangoComposeResult_PrunesRelBothDirections(t *testing.T) {
+	const ghostID = "ent:ghost"
+	res := djangoComposeResult{removedIDs: map[string]bool{ghostID: true}}
+
+	cases := []struct {
+		name string
+		rel  graph.Relationship
+		want bool
+	}{
+		{"outbound — ghost is the SOURCE (ENTRY_POINT_OF)",
+			graph.Relationship{FromID: ghostID, ToID: "ent:process", Kind: "ENTRY_POINT_OF"}, true},
+		{"inbound — ghost is the TARGET (IMPLEMENTS from the handler)",
+			graph.Relationship{FromID: "ent:handler", ToID: ghostID, Kind: "IMPLEMENTS"}, true},
+		{"unrelated — neither endpoint was pruned",
+			graph.Relationship{FromID: "ent:handler", ToID: "ent:module", Kind: "CONTAINS"}, false},
+	}
+	for _, tc := range cases {
+		if got := res.prunesRel(&tc.rel); got != tc.want {
+			t.Errorf("#6461 %s: prunesRel(%s→%s :%s) = %t, want %t. A composed endpoint is the "+
+				"target of the handler's IMPLEMENTS edge and the source of its ENTRY_POINT_OF edge, "+
+				"so pruning it must drop rows in BOTH directions or the graph keeps an edge "+
+				"referencing an id no entity has.",
+				tc.name, tc.rel.FromID, tc.rel.ToID, tc.rel.Kind, got, tc.want)
+		}
+	}
+
+	// An empty reconciliation must never drop anything.
+	empty := djangoComposeResult{}
+	if empty.prunesRel(&graph.Relationship{FromID: "ent:a", ToID: "ent:b", Kind: "CALLS"}) {
+		t.Errorf("#6461: a reconciliation that pruned nothing must not drop any edge")
+	}
+}
+
+// TestRecomposeDjangoURLConf_PrunesOnlyEndpointsItOwns pins the prune predicate.
+//
+// The pass may delete a composed endpoint the recomputation no longer produces
+// — that is the whole fix. It may NOT delete an endpoint some other pass
+// produced, because it cannot re-derive one and the daemon would simply lose it
+// until the next full reindex.
+//
+// Mutant this kills: widening isComposedDjangoEndpoint to accept any endpoint
+// entity regardless of `pattern_type`. That mutant still prunes the ghost, so
+// the end-to-end census gate stays GREEN for it; here the foreign endpoint
+// vanishes and the test fails.
+func TestRecomposeDjangoURLConf_PrunesOnlyEndpointsItOwns(t *testing.T) {
+	absRepo, allFiles := dcWriteRepo(t)
+
+	ghost := dcEntity(dcEndpointKind, "http:ANY:/network/terms", "mpsite/views.py", map[string]string{
+		"pattern_type": composedNestedPatternType,
+		"path":         "/network/terms",
+		"verb":         "ANY",
+		"framework":    "django",
+	})
+	// Emitted by Pass 2.5's per-file synthesis, NOT by the composition pass.
+	// Nothing in this pass can re-create it.
+	foreign := dcEntity(dcEndpointKind, "http:GET:/foreign", "mpsite/views.py", map[string]string{
+		"pattern_type": "http_endpoint_synthesis",
+		"path":         "/foreign",
+		"verb":         "GET",
+	})
+	handler := dcEntity("SCOPE.Operation", "mp_terms_view", "mpsite/views.py", nil)
+
+	doc := &graph.Document{
+		Repo:     dcRepoTag,
+		Entities: []graph.Entity{ghost, foreign, handler},
+	}
+
+	res := recomposeDjangoURLConf(absRepo, allFiles, []string{"mpsite/urls.py"}, doc, nil, dcSilentLogger())
+
+	if !res.ran {
+		t.Fatalf("#6461: the pass declined to run on a Django repo with a *urls.py and a changed .py file; "+
+			"gate inputs were allFiles=%v changed=[mpsite/urls.py]", allFiles)
+	}
+	if !res.removedIDs[ghost.ID] {
+		t.Errorf("#6461: the stale composed endpoint %s|%s@%s was NOT pruned; the recomputation no "+
+			"longer produces it (the route is now /network/conditions), so leaving it in the graph "+
+			"is the ghost this pass exists to remove",
+			ghost.Kind, ghost.Name, ghost.SourceFile)
+	}
+	if res.removedIDs[foreign.ID] {
+		t.Errorf("#6461: the pass pruned %s|%s@%s (pattern_type=http_endpoint_synthesis), which it "+
+			"does NOT own and cannot re-derive. Prune only entities carrying pattern_type %q or %q — "+
+			"anything else is a live endpoint from another pass and deleting it loses it until the "+
+			"next full reindex.",
+			foreign.Kind, foreign.Name, foreign.SourceFile,
+			composedNestedPatternType, composedMountPatternType)
+	}
+	if res.removedIDs[handler.ID] {
+		t.Errorf("#6461: the pass pruned the HANDLER entity %s|%s@%s; it owns endpoint entities only",
+			handler.Kind, handler.Name, handler.SourceFile)
+	}
+
+	var names []string
+	for _, e := range res.added {
+		names = append(names, e.Name)
+	}
+	found := false
+	for _, n := range names {
+		if n == "http:ANY:/network/conditions" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("#6461: the recomputation did not produce the composed endpoint "+
+			"http:ANY:/network/conditions for path(\"network/\", include(\"mpsite.urls\")) + "+
+			"path(\"conditions/\", views.mp_terms_view); added=%v", names)
+	}
+}
+
+// TestRecomposeDjangoURLConf_ReAddsNothingTheGraphAlreadyHolds pins the add
+// predicate.
+//
+// Reconciliation is idempotent by contract: when the graph already holds
+// exactly what the recomputation produces, the pass must return an EMPTY add
+// set. It runs on every daemon tick that touches a .py file, so an add that
+// ignores what is already there duplicates every composed endpoint once per
+// tick — the #6033 shape, one level up.
+//
+// Mutant this kills: dropping the `present[...]` guard in the add loop.
+func TestRecomposeDjangoURLConf_ReAddsNothingTheGraphAlreadyHolds(t *testing.T) {
+	absRepo, allFiles := dcWriteRepo(t)
+
+	composed := dcEntity(dcEndpointKind, "http:ANY:/network/conditions", "mpsite/views.py", map[string]string{
+		"pattern_type": composedNestedPatternType,
+		"path":         "/network/conditions",
+		"verb":         "ANY",
+		"framework":    "django",
+	})
+	mount := dcEntity(dcEndpointKind, "http:ANY:/network:mount", "mpproj/urls.py", map[string]string{
+		"pattern_type": composedMountPatternType,
+		"path":         "/network",
+		"verb":         "ANY",
+		"framework":    "django",
+	})
+	handler := dcEntity("SCOPE.Operation", "mp_terms_view", "mpsite/views.py", nil)
+
+	doc := &graph.Document{
+		Repo:     dcRepoTag,
+		Entities: []graph.Entity{composed, mount, handler},
+	}
+
+	res := recomposeDjangoURLConf(absRepo, allFiles, []string{"mpsite/urls.py"}, doc, nil, dcSilentLogger())
+
+	if !res.ran {
+		t.Fatalf("#6461: the pass declined to run; allFiles=%v", allFiles)
+	}
+	if len(res.added) != 0 {
+		var got []string
+		for _, e := range res.added {
+			got = append(got, e.Kind+"|"+e.Name+"@"+e.SourceFile)
+		}
+		t.Errorf("#6461: the graph already holds every entity the recomputation produces, so the add "+
+			"set must be EMPTY; got %d: %v. This pass runs on every daemon tick that touches a .py "+
+			"file, so an unguarded add duplicates each composed endpoint once per tick.",
+			len(res.added), got)
+	}
+	if len(res.removedIDs) != 0 {
+		var got []string
+		for id := range res.removedIDs {
+			got = append(got, id)
+		}
+		t.Errorf("#6461: nothing is stale in this graph, so the prune set must be EMPTY; got %v", got)
+	}
+	if len(res.addedRels) != 0 {
+		t.Errorf("#6461: no entity was added, so no IMPLEMENTS bridge should be emitted; got %d edge(s). "+
+			"An edge whose target already exists is already in the graph and re-adding it duplicates the row.",
+			len(res.addedRels))
+	}
+}
