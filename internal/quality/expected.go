@@ -62,7 +62,11 @@ type ExpectedEntity struct {
 	Kind          string `json:"kind"`
 	SourceFile    string `json:"source_file,omitempty"`
 	MatchBy       string `json:"match_by,omitempty"`
-	MustExist     bool   `json:"must_exist"`
+	// Subtype, when non-empty, additionally requires the extracted entity's
+	// Subtype to equal this string exactly. Empty means "don't care", which is
+	// what every pre-#6488 row means and must go on meaning.
+	Subtype   string `json:"subtype,omitempty"`
+	MustExist bool   `json:"must_exist"`
 	// NiceToHave entities are evaluated but NOT counted as a recall miss
 	// when absent. Useful for capabilities we want to track (e.g. signal
 	// receivers, custom managers) without holding the fixture hostage to
