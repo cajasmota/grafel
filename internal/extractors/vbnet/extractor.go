@@ -428,6 +428,24 @@ func overloadSuffix(n *vbnet.Node) string {
 // names. Parameter names are excluded on purpose — renaming a parameter is not
 // a change of identity, and letting it move an entity id would make the id
 // depend on cosmetics.
+//
+// EVERY PROPERTY IN THIS COMMENT IS ASSERTED by overload_suffix_6440_test.go,
+// including the exclusion above, which a mutant that appended `p.Name + " As "`
+// otherwise survived through the whole suite: the only discriminated member in
+// the golden fixture is parameterless, so the fixture pins that a discriminator
+// EXISTS and never what it CONTAINS.
+//
+// What is deliberately NOT discriminating:
+//
+//   - ByRef vs ByVal, and Optional vs required. VB.NET cannot overload on
+//     either alone, so two members differing only there are not two members —
+//     they are one declaration the parser recovered twice, and the ordinal
+//     fallback in overloadSuffix is the right answer for them.
+//   - The parameter's default value, for the same reason.
+//
+// What IS discriminating and easy to lose: the array rank marker. The parser
+// puts `payload As Byte()` on TypeName "Byte" with IsArray set, so reading
+// TypeName alone silently folds an array overload into its scalar sibling.
 func paramTypeList(n *vbnet.Node) string {
 	var b strings.Builder
 	if len(n.TypeParams) > 0 {
@@ -437,7 +455,18 @@ func paramTypeList(n *vbnet.Node) string {
 	for _, p := range n.Params {
 		t := p.TypeName
 		if t == "" {
+			// An untyped parameter is `Object` to the VB compiler, and
+			// rendering it as such keeps `Sub F(x)` and `Sub F(x As Object)`
+			// on the same discriminator, which is what they are.
 			t = "Object"
+		}
+		if p.IsArray {
+			// The parser lifts the rank marker off the type name
+			// (`payload As Byte()` gives TypeName "Byte" + IsArray), so
+			// without this an array overload and its scalar sibling render
+			// the SAME list and collapse onto the ordinal fallback below.
+			// VB overloads on the array-ness, so the discriminator does too.
+			t += "()"
 		}
 		parts = append(parts, t)
 	}
