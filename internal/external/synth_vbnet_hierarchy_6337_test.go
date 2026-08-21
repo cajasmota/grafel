@@ -643,3 +643,89 @@ func TestVBNetHierarchyFoldIndexIsVBOnly_6337(t *testing.T) {
 		t.Errorf("vbFold = %v, want exactly the one VB.NET entity's lowercased name", set.vbFold)
 	}
 }
+
+// TestVBNetHierarchyFabricationPaths_6337 is the round-4 regression, and it
+// lives HERE rather than in internal/resolve because the defect was never
+// visible in the classifier's return value. Both inputs below were DECLINED by
+// resolve.VBNetExternalHierarchyTarget or accepted on a stripped stump; what
+// made them fabrications is what classifyExternal does with them afterwards.
+//
+// Executed on the branch before the fix:
+//
+//	system.Windows.Forms.Form      -> ext:system              subtype "package"
+//	SYSTEM.Windows.Forms.Form      -> ext:SYSTEM              subtype "package"
+//	Form (deprecated)              -> ext:dotnet:Form         subtype "type"
+//	Form(!!! @@@)                  -> ext:dotnet:Form         subtype "type"
+//	Form()                         -> ext:dotnet:Form         subtype "type"
+//	System.Windows.Forms.Form(???) -> ext:dotnet:System.Windows.Forms.Form
+//
+// The first two are the case bug on the dotted half: legal VB source (the
+// language is case-insensitive and the extractor emits the clause verbatim)
+// declined by a case-sensitive root lookup, then picked up by the generic
+// dotted-root fallback and resolved UNTAGGED, typed as a package, borrowing
+// whatever authority a bare `system` node carries. The rest are the unvalidated
+// generic strip. Every one satisfies resolve.IsResolvedToID, so every one left
+// the bug-edge count while the misparse it represents went unreported.
+func TestVBNetHierarchyFabricationPaths_6337(t *testing.T) {
+	t.Run("case-variant dotted roots stay inside the dotnet arm", func(t *testing.T) {
+		for _, in := range []string{
+			"system.Windows.Forms.Form",
+			"SYSTEM.Windows.Forms.Form",
+			"SyStEm.Windows.Forms.Form",
+		} {
+			doc := vbDoc("EXTENDS", in)
+			Synthesize(doc)
+			got := doc.Relationships[0].ToID
+			// The exact ID, not IsResolvedToID: `ext:system` satisfies that
+			// too, which is how this shipped.
+			if got != "ext:dotnet:System.Windows.Forms.Form" {
+				t.Errorf("ToID(%q) = %q, want ext:dotnet:System.Windows.Forms.Form", in, got)
+			}
+			if strings.EqualFold(got, "ext:system") {
+				t.Errorf("ToID(%q) = %q — the dotted-root fallback minted an "+
+					"untagged package node for a .NET base type", in, got)
+			}
+		}
+	})
+
+	t.Run("a parenthesised tail that is not a generic argument list does not resolve", func(t *testing.T) {
+		for _, in := range []string{
+			"Form (deprecated)",
+			"Form(!!! @@@)",
+			"Form()",
+			"System.Windows.Forms.Form(???)",
+			"system.",
+		} {
+			doc := vbDoc("EXTENDS", in)
+			Synthesize(doc)
+			got := doc.Relationships[0].ToID
+			if got != in {
+				t.Errorf("ToID(%q) = %q, want the raw stub — a misparse must stay "+
+					"a bug edge, not become a tidy placeholder", in, got)
+			}
+			if resolve.IsResolvedToID(got) {
+				t.Errorf("ToID(%q) = %q, which IsResolvedToID accepts", in, got)
+			}
+			for _, e := range doc.Entities {
+				if e.Kind == KindExternal {
+					t.Errorf("ToID(%q) minted placeholder %q", in, e.ID)
+				}
+			}
+		}
+	})
+
+	t.Run("legitimate generic instantiations still group", func(t *testing.T) {
+		for in, want := range map[string]string{
+			"List(Of Machine)":                         "ext:dotnet:List",
+			"List(Of Profile)":                         "ext:dotnet:List",
+			"List(Of KeyValuePair(Of String, Action))": "ext:dotnet:List",
+			"IComparable(Of Profile).CompareTo":        "ext:dotnet:IComparable:CompareTo",
+		} {
+			doc := vbDoc("EXTENDS", in)
+			Synthesize(doc)
+			if got := doc.Relationships[0].ToID; got != want {
+				t.Errorf("ToID(%q) = %q, want %q", in, got, want)
+			}
+		}
+	})
+}

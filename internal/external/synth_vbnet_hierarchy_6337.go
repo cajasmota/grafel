@@ -149,6 +149,36 @@ func vbnetHierarchyExternal(name, relKind, lang string, inTreeNames inTreeNameSe
 	}
 	// Member-level `Implements IFoo.Bar`. The `:` symbol-leaf separator is the
 	// convention already used by the per-symbol named-import nodes (#4515).
+	//
+	// THE LEAF IS UNBOUNDED AND STAYS THAT WAY (#6337 round 4, F3). It is
+	// checked for identifier SHAPE and nothing else, so `IDisposable.NotAMember`
+	// mints `ext:dotnet:IDisposable:NotAMember` exactly as `IDisposable.Dispose`
+	// mints the real one. That was raised as a fabrication path alongside the
+	// two fixed in round 4, and the honest answer is that it is not fixable
+	// here: deciding whether `NotANestedType` is a real nested type, a real
+	// interface member or a typo requires a BCL MEMBER index, and this resolver
+	// has neither that nor any way to derive one. The only guard available
+	// without it is another shape check, which cannot separate the two cases —
+	// a guard that guards nothing, and this branch has shipped three of those
+	// already.
+	//
+	// What bounds the damage instead, and why leaving it is not the same as
+	// leaving the two that were fixed:
+	//
+	//   - the TYPE half is still allowlist-validated and mask-guarded, so a
+	//     bad leaf lands UNDER a type that was independently established as
+	//     external — it cannot invent an ecosystem, only a member of a real
+	//     framework type;
+	//   - the node is ecosystem-tagged, so it collides with nothing outside
+	//     `dotnet:`;
+	//   - the two fixed cases turned a MISPARSE into a resolved node, hiding an
+	//     extractor defect. A wrong member leaf is a faithful reading of source
+	//     that says `Implements IDisposable.NotAMember` — which is either a
+	//     compile error in the user's own code or a real member this resolver
+	//     has no list of. There is no extractor bug being masked.
+	//
+	// So this is recorded as a known, measured-unfixable residual rather than
+	// guarded. If a BCL member index ever lands, this is the call site.
 	return vbnetExtNamespace + typePart + ":" + member, "member", true, false
 }
 

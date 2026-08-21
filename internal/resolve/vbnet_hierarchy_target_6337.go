@@ -108,6 +108,10 @@ func VBNetHierarchyTargetIsMalformed(name string) bool {
 	if dot := strings.IndexByte(base, dottedNameSep); dot >= 0 {
 		root = base[:dot]
 	}
-	_, ok := vbFrameworkRootNamespaces[root]
+	// Case-folded, for the same reason and through the same helper the
+	// classifier uses (#6337 round 4): `system.` is as much a truncated
+	// framework clause as `System.` is, and a case-sensitive test here would
+	// block one and pass the other on to the fallback that mints `ext:system`.
+	_, ok := vbFrameworkRootCanonical(root)
 	return ok
 }
