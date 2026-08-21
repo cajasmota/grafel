@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # JS/TS
 
-**Frameworks**: 33 · **Tools**: 22 · **ORMs**: 20 · **Other**: 9
+**Frameworks**: 33 · **Tools**: 22 · **ORMs**: 20 · **Other**: 10
 
 Back to [summary](../summary.md).
 
@@ -183,6 +183,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Env resolution | File parsing | Notes |
 |---|---|---|---|
 | [tsconfig.json](../detail/config.tsconfig.md) | — | ✅ | |
+
+
+### Workflow / DAG & State Machines
+
+| Name | Dependency attribution | Resource extraction | Notes |
+|---|---|---|---|
+| [XState (FSM topology)](../detail/infra.state-machine.xstate.md) | 🟢 | 🟢 | |
 
 
 ### Validation

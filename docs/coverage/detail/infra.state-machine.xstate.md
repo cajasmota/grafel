@@ -3,7 +3,7 @@
 
 Auto-generated. Back to [summary](../summary.md).
 
-- **Language:** [javascript](../by-language/javascript.md)
+- **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [platform](../by-category/platform.md)
 - **Subcategory:** Workflow / DAG & State Machines
 - **Capability cells:** 2
