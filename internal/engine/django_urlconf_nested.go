@@ -102,11 +102,24 @@ func ApplyDjangoNestedURLConf(
 ) []types.EntityRecord {
 	var out []types.EntityRecord
 	seen := map[string]bool{}
+	// #6417 — scanning the same parent file twice must not emit the same record
+	// twice. Before #6417 the pass-wide `seen` map suppressed that as a side
+	// effect of its (buggy) cross-file mount collapse; with mount dedup now
+	// per-file, a repeated relPath would emit two records with identical
+	// Kind/Name/SourceFile and therefore an identical graph.EntityID. The
+	// production caller (cmd/grafel/index.go's runDjangoNestedURLConf) builds
+	// pyPaths from the classified-file set and is duplicate-free, but that is a
+	// caller property, so the guarantee is held here rather than assumed.
+	scanned := map[string]bool{}
 
 	for _, relPath := range parentFiles {
 		if !isDjangoURLFile(relPath) {
 			continue
 		}
+		if scanned[relPath] {
+			continue
+		}
+		scanned[relPath] = true
 		content := fileReader(relPath)
 		if len(content) == 0 {
 			continue
@@ -121,6 +134,32 @@ func ApplyDjangoNestedURLConf(
 		// entries). The mount-point uses pattern_type=url_mount_point so dedup
 		// passes leave it alone, and a distinct synthetic ID suffix prevents
 		// collisions with concrete-verb entries on the same canonical path.
+		//
+		// #6417 — the dedup map below is deliberately PER-FILE (`mountEmitted`,
+		// re-made on every iteration) and deliberately does NOT consult the
+		// pass-wide `seen` map. A mount site is a declaration made BY A FILE:
+		// when app/urls.py and admin/urls.py both mount "api/", those are two
+		// declarations, not one fact stated twice. Sharing `seen` across files
+		// dropped the second file's declaration outright and handed the single
+		// survivor whichever SourceFile happened to be scanned first, so the
+		// attribution flipped whenever parentFiles ordering changed — the
+		// reported flap. The record ID/Name stays un-file-qualified on purpose:
+		// graph.EntityID (internal/graph/graph.go) already folds SourceFile into
+		// the hash, so same-prefix mounts from two files are already distinct
+		// graph entities, and leaving Name alone keeps the id of every existing
+		// mount entity byte-identical across this fix (no reindex churn).
+		// `seen` is still shared for CHILD route ids below — those genuinely are
+		// one composed route regardless of how many parents reach them, and they
+		// can never key-collide with a mount id, which always ends in ":mount".
+		//
+		// Two consumers read these records: internal/links/http_pass.go (harvests
+		// `url_prefix` into a per-repo prefix SET, then `continue`s — never a
+		// producer) and cmd/grafel/xrepo_verify.go, whose `default:` branch
+		// counts every non-client http_endpoint as a producer. Restoring the
+		// previously-dropped mounts therefore raises that diagnostic's
+		// `prodTotal` / per-framework endpoint counts by (N-1) for each prefix
+		// mounted by N files. Diagnostic-only, but producer recall is a tracked
+		// number, so the shift is deliberate and recorded here.
 		mountEmitted := map[string]bool{}
 		for _, idx := range djangoIncludeStringRe.FindAllStringSubmatchIndex(src, -1) {
 			parentPrefix := src[idx[2]:idx[3]]
@@ -133,11 +172,10 @@ func ApplyDjangoNestedURLConf(
 				continue
 			}
 			mountID := httproutes.SyntheticID("ANY", canonical) + ":mount"
-			if mountEmitted[mountID] || seen[mountID] {
+			if mountEmitted[mountID] {
 				continue
 			}
 			mountEmitted[mountID] = true
-			seen[mountID] = true
 			out = append(out, types.EntityRecord{
 				ID:                 mountID,
 				Name:               mountID,
@@ -153,7 +191,18 @@ func ApplyDjangoNestedURLConf(
 					"path":         canonical,
 					"framework":    "django",
 					"pattern_type": "url_mount_point",
-					"url_prefix":   "/" + strings.Trim(parentPrefix, "/"),
+					// #6417 — CANONICAL, not the raw source spelling. The dedup
+					// key above is `canonical`, and internal/links/http_pass.go
+					// harvests THIS property into the per-repo prefix set; when
+					// the two disagreed, `path("api/<int:v>/")` and
+					// `path("api/{v}/")` deduped to one id but contributed two
+					// set members, and the raw `<int:v>` spelling then sorted
+					// longest-first ahead of the form indexed endpoints actually
+					// use. Canonicalising here makes the set absorb the variants
+					// the id already treats as one. Parameterless prefixes are
+					// unaffected: Canonicalize("api/") is "/api", byte-identical
+					// to the previous Trim-based value.
+					"url_prefix": canonical,
 				},
 			})
 		}
