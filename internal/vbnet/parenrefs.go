@@ -183,10 +183,30 @@ func (p *parser) classify(ref Ref, scope, typeScope string, qualified, ofKeyword
 		// local named Foo must not decide what Me.Foo means.
 		return p.table.ClassifyParen(ref.Name, typeScope, false)
 	}
-	// Any other qualifier names something declared outside this file (or an
+	// A qualifier this file DECLARES with an explicit `As` type is knowable:
+	// the table has its declared type, so `writer.WriteStartElement(...)` is a
+	// member access on an XmlWriter and the paren is an invocation (#6454).
+	// Without this the site stays ParenUnknown and, not being at statement
+	// head, IsCall reports false — which is why NO qualified member call
+	// produced a CALLS edge at all before #6454, not merely a mis-named one.
+	//
+	// ReceiverType is the whole guard, and it is deliberately narrow: only a
+	// VISIBLE declaration of a VALUE with a non-array `As` type answers. So
+	// every site promoted here is one whose target is ALSO rendered from the
+	// declared type — the classification and the ToID cannot disagree.
+	//
+	// The residual imprecision, stated plainly: `obj.Items(3)` where Items is
+	// an array field of obj's type is an INDEX, and this file cannot see the
+	// members of obj's type to know that. Such a site becomes a CALLS edge to
+	// a real member of a real type — a wrong edge KIND, not a wrong target.
+	//
+	// Anything else names something declared outside this file (or an
 	// expression), which the per-file table cannot see. Saying so is the
-	// point: S5 resolves the qualifier, and a guess here would be the
-	// confidently-wrong edge the epic is about.
+	// point: a guess there would be the confidently-wrong edge the epic is
+	// about.
+	if p.table.ReceiverType(ref.Qualifier, scope) != "" {
+		return ParenCall
+	}
 	return ParenUnknown
 }
 

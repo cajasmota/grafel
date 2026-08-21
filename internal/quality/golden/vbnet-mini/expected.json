@@ -356,6 +356,50 @@
       "must_exist": true
     },
     {
+      "from_name": "DirectFrameServer.CreateAndOpen",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "CALLS",
+      "to_name": "INativeFrameServer.OpenFile",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "`NativeServer.OpenFile(path)` (:28). #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. NOT OVERLOAD-PRECISE, exactly as the StructPtr.Dispose entry below spells out: the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer (#6440). BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
+    },
+    {
+      "from_name": "DirectFrameServer.CreateAndOpen",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "CALLS",
+      "to_name": "INativeFrameServer.GetInfo",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "`Dim infoPtr = NativeServer.GetInfo()` (:30) \u2014 receiver typed by a FIELD, read inside a Try block. #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. NOT OVERLOAD-PRECISE, exactly as the StructPtr.Dispose entry below spells out: the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer (#6440). BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
+    },
+    {
+      "from_name": "DirectFrameServer.Error",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "CALLS",
+      "to_name": "INativeFrameServer.GetError",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "`Marshal.PtrToStringUni(NativeServer.GetError())` (:42) \u2014 a NESTED call site inside a property getter; the outer `Marshal.` receiver is undeclared here and correctly stays unresolved. #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. NOT OVERLOAD-PRECISE, exactly as the StructPtr.Dispose entry below spells out: the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer (#6440). BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
+    },
+    {
+      "from_name": "DirectFrameServer.GetFrame",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "FrameServer.vb",
+      "kind": "CALLS",
+      "to_name": "INativeFrameServer.GetFrame",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "FrameServer.vb",
+      "must_exist": true,
+      "note": "`Return NativeServer.GetFrame(...)` (:53). The from- and to-names share the member name `GetFrame`, so a substitution that dropped the receiver's type entirely would collide with the enclosing method rather than dangle. #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. NOT OVERLOAD-PRECISE, exactly as the StructPtr.Dispose entry below spells out: the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer (#6440). BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
+    },
+    {
       "from_name": "StructPtr.Finalize",
       "from_kind": "SCOPE.Operation",
       "from_file": "Win32Native.vb",

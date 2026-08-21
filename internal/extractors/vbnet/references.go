@@ -81,7 +81,7 @@ import (
 //
 // As with appendCalls, descendants are NOT walked: emit recurses, and a
 // declaration with its own record owns its own wiring.
-func appendReferences(rec *types.EntityRecord, n *vbnet.Node) {
+func appendReferences(rec *types.EntityRecord, n *vbnet.Node, tbl *vbnet.Table) {
 	// The key is (target, event, via) and NOT the target alone. S7b points a
 	// `Handles` edge at the RECEIVER, so `Handles Btn.Click, Btn.MouseDown`
 	// renders one ToID twice and a ToID-only key would keep a single Click
@@ -139,7 +139,7 @@ func appendReferences(rec *types.EntityRecord, n *vbnet.Node) {
 		add(target, event, handlesLine, "handles")
 	}
 	for _, a := range n.AddressOfs {
-		add(qualifyBare(owner, memberTarget(a.Qualifier, a.Name)), "",
+		add(qualifyBare(owner, memberTarget(a.Qualifier, a.Name, tbl, n.Path())), "",
 			strconv.Itoa(a.Line), "addressof")
 	}
 }
@@ -187,13 +187,28 @@ func handlesTarget(raw, owner string) (target, event string) {
 // keeping them would guarantee a dangling edge; the member resolves as a bare
 // name against the enclosing type, which is the answer vbnet's own classifier
 // already reaches for `Me.Foo(`.
-func memberTarget(qualifier, name string) string {
+func memberTarget(qualifier, name string, tbl *vbnet.Table, scope string) string {
 	if name == "" {
 		return ""
 	}
 	switch vbnet.FoldName(qualifier) {
 	case "", "me", "myclass", "mybase":
 		return name
+	}
+	// #6454: the receiver's SPELLING names no entity. `writer.WriteStartElement`
+	// cannot join `XmlWriter.WriteStartElement` however the graph is assembled,
+	// so where this file declares the receiver with an explicit `As` type, the
+	// DECLARED TYPE is what the target is rendered from.
+	//
+	// Table.ReceiverType owns every guard, including the one that matters most:
+	// it uses ResolveVisible, so an out-of-scope same-named declaration (which
+	// Table.Resolve hands back as a hint) can never mint a target. A dangling
+	// `w.Emit` is honest; a confident `Alpha.Emit` pointing at a type the
+	// receiver is not is the failure #6327 exists to prevent.
+	if tbl != nil {
+		if typeName := tbl.ReceiverType(qualifier, scope); typeName != "" {
+			return typeName + "." + name
+		}
 	}
 	return qualifier + "." + name
 }
