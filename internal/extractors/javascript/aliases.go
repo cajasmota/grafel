@@ -70,12 +70,125 @@ package javascript
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
+
+// maxAliasConfigBytes caps every alias-config read below.
+//
+// The cap is not belt-and-braces: safeio's type gate makes a FIFO impossible
+// to open, but a CHARACTER DEVICE opens fine and never reaches EOF, so "it
+// will hit EOF eventually" is not a bound and an unguarded io.ReadAll of a
+// /dev/zero-shaped path runs until memory does. 8 MiB is far past any real
+// tsconfig or bundler config — the largest in grafel's corpus is well under
+// 1 MiB — and a config that exceeds it is truncated, which makes the JSON
+// parse (or the regex scan) yield nothing. That is the same outcome as an
+// unreadable config, which every caller below already handles.
+const maxAliasConfigBytes = 8 << 20
+
+// aliasSkip* back the always-on report below.
+var (
+	aliasSkipMu   sync.Mutex
+	aliasSkipSeen map[string]bool
+	aliasSkipOut  io.Writer = os.Stderr
+)
+
+// maxAliasSkipReports caps the always-on report the same way
+// walk.IrregularSkipReport caps its listing: a warning long enough to scroll
+// past reports nothing. The population here is small by construction — at most
+// the ~17 config names this file knows, per directory — so the cap is a
+// backstop against a pathological tree, not the common case.
+const maxAliasSkipReports = 16
+
+// setAliasSkipOutput redirects the report for tests and returns a restore
+// func. Test-only helper.
+func setAliasSkipOutput(w io.Writer) func() {
+	aliasSkipMu.Lock()
+	prev := aliasSkipOut
+	aliasSkipOut = w
+	aliasSkipSeen = nil
+	aliasSkipMu.Unlock()
+	return func() {
+		aliasSkipMu.Lock()
+		aliasSkipOut = prev
+		aliasSkipSeen = nil
+		aliasSkipMu.Unlock()
+	}
+}
+
+// readAliasConfig is the only way this file reads a config off disk.
+//
+// WHY IT IS NOT os.ReadFile. Every alias parser below opens a path chosen by
+// NAME — tsconfig.json, jsconfig.json, vite/webpack/metro/babel configs — from
+// a repo root or a one-level subdirectory. None of those paths comes from the
+// file walker, so the walker's entry-type gate cannot protect them. `mkfifo
+// tsconfig.json` at a repo root therefore wedged AliasMapFor / AliasMapForFile
+// forever: os.ReadFile waits in open(2) for a writer that never comes (#6416).
+//
+// That hang was worse than one lost alias map. loadRepoAliasState holds the
+// package-wide aliasMapCache write lock across the parse, so the abandoned
+// goroutine never releases it and every LATER alias lookup — for every other
+// repo in the process — blocks behind it. Measured: with a FIFO at
+// <tmp>/tsconfig.json the first AliasMapForFile never returned, and the next
+// test's resetAliasMapCache was still parked on that RWMutex three minutes
+// later.
+func readAliasConfig(path string) ([]byte, error) {
+	b, err := safeio.ReadFile(path, safeio.FollowSymlinks, maxAliasConfigBytes)
+	if err != nil {
+		reportAliasSkip(path, err)
+	}
+	return b, err
+}
+
+// reportAliasSkip says out loud that a named config was refused for being a
+// FIFO, device or socket.
+//
+// It exists because the #6416 re-review found safeio.ErrNotRegular carrying a
+// precise reason — path plus entry kind — that every consumer then threw away
+// with a bare `return nil`. A FIFO named tsconfig.json silently yielding no
+// aliases is exactly #6338's shape: a file the user can see in their tree,
+// contributing nothing, reported nowhere, and diagnosable only by strace.
+//
+// The wording, the always-on-ness and the cap mirror walk.IrregularSkipReport
+// rather than inventing a second convention. It differs in aggregation only:
+// the walker collects skips and renders one line at the end of a walk, which
+// it can do because the walk has an end; these reads are scattered across a
+// lazily-populated per-repo cache with no such join point, so the line is
+// emitted at the skip and deduplicated by path instead.
+//
+// Only ErrNotRegular / ErrWouldBlock are reported. A plain ENOENT is the
+// overwhelmingly common case — most repos have no vite.config.ts — and
+// announcing it would bury the signal.
+func reportAliasSkip(path string, err error) {
+	if !errors.Is(err, safeio.ErrNotRegular) && !errors.Is(err, safeio.ErrWouldBlock) {
+		return
+	}
+	aliasSkipMu.Lock()
+	if aliasSkipSeen == nil {
+		aliasSkipSeen = map[string]bool{}
+	}
+	if aliasSkipSeen[path] || len(aliasSkipSeen) >= maxAliasSkipReports {
+		aliasSkipMu.Unlock()
+		return
+	}
+	aliasSkipSeen[path] = true
+	last := len(aliasSkipSeen) == maxAliasSkipReports
+	w := aliasSkipOut
+	aliasSkipMu.Unlock()
+
+	fmt.Fprintf(w, "grafel: skipped alias config %v — not read because reading one can block forever (#6416)\n", err)
+	if last {
+		fmt.Fprintf(w, "grafel: further alias-config skips suppressed after %d\n", maxAliasSkipReports)
+	}
+}
 
 // aliasEntry describes a single alias prefix→targets mapping. Patterns
 // ending in `/*` are treated as glob-style prefixes; `targets` lists
@@ -304,7 +417,7 @@ func LoadAliasMap(repoRoot string) AliasMap {
 func parseTsconfigBaseURL(configDir string) (string, bool) {
 	for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
 		configPath := filepath.Join(configDir, name)
-		data, err := os.ReadFile(configPath)
+		data, err := readAliasConfig(configPath)
 		if err != nil {
 			continue
 		}
@@ -552,7 +665,7 @@ func parseTsconfigPaths(repoRoot string) []aliasEntry {
 func parseTsconfigPathsFromDir(configDir string) []aliasEntry {
 	for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
 		configPath := filepath.Join(configDir, name)
-		data, err := os.ReadFile(configPath)
+		data, err := readAliasConfig(configPath)
 		if err != nil {
 			continue
 		}
@@ -644,7 +757,7 @@ func followTsconfigExtends(extendsVal, configDir string, depth int) []aliasEntry
 				return nil
 			}
 		}
-		data, err := os.ReadFile(candidate)
+		data, err := readAliasConfig(candidate)
 		if err != nil {
 			return nil
 		}
@@ -661,7 +774,7 @@ func followTsconfigExtends(extendsVal, configDir string, depth int) []aliasEntry
 			return nil
 		}
 	}
-	data, err := os.ReadFile(candidate)
+	data, err := readAliasConfig(candidate)
 	if err != nil {
 		return nil
 	}
@@ -771,7 +884,7 @@ var pathStringRe = regexp.MustCompile(`['"]([^'"]+)['"]\s*\)?\s*$`)
 func parseViteAliases(repoRoot string) []aliasEntry {
 	for _, name := range []string{"vite.config.ts", "vite.config.js", "vite.config.mjs", "vite.config.cjs"} {
 		path := filepath.Join(repoRoot, name)
-		data, err := os.ReadFile(path)
+		data, err := readAliasConfig(path)
 		if err != nil {
 			continue
 		}
@@ -789,7 +902,7 @@ func parseViteAliases(repoRoot string) []aliasEntry {
 func parseWebpackAliases(repoRoot string) []aliasEntry {
 	for _, name := range []string{"webpack.config.js", "webpack.config.ts", "webpack.config.mjs", "webpack.config.cjs"} {
 		path := filepath.Join(repoRoot, name)
-		data, err := os.ReadFile(path)
+		data, err := readAliasConfig(path)
 		if err != nil {
 			continue
 		}
@@ -806,7 +919,7 @@ func parseWebpackAliases(repoRoot string) []aliasEntry {
 func parseMetroAliases(repoRoot string) []aliasEntry {
 	for _, name := range []string{"metro.config.js", "metro.config.ts", "metro.config.mjs", "metro.config.cjs"} {
 		path := filepath.Join(repoRoot, name)
-		data, err := os.ReadFile(path)
+		data, err := readAliasConfig(path)
 		if err != nil {
 			continue
 		}
@@ -827,7 +940,7 @@ func parseMetroAliases(repoRoot string) []aliasEntry {
 func parseBabelAliases(repoRoot string) []aliasEntry {
 	for _, name := range []string{"babel.config.js", "babel.config.ts", "babel.config.cjs", "babel.config.mjs", ".babelrc.js", ".babelrc.json", ".babelrc"} {
 		path := filepath.Join(repoRoot, name)
-		data, err := os.ReadFile(path)
+		data, err := readAliasConfig(path)
 		if err != nil {
 			continue
 		}
