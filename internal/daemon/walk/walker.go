@@ -255,10 +255,15 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 		// and an unprivileged user can trigger it with one mkfifo inside a
 		// watched directory.
 		//
-		// It runs AFTER the extension filter so the stat cost is only paid for
-		// paths that would actually be indexed, and BEFORE the sparse filter so
-		// a hazard is reported as a hazard rather than disappearing into the
-		// sparse path's deliberate silence.
+		// It runs AFTER the extension filter so a FIFO named `Hang.png` is
+		// reported under the reason that actually applies to it (its extension
+		// is never indexed) instead of as a hazard, and BEFORE the sparse
+		// filter so a hazard IS reported as a hazard rather than disappearing
+		// into the sparse path's deliberate silence — a FIFO planted outside a
+		// sparse pattern set is still present on disk and still explains why
+		// the tree behaves oddly. Both orderings are pinned by tests; neither
+		// is a performance argument, because the gate reads the free d.Type()
+		// from readdir and only stats the symlink case.
 		//
 		// The skip is REPORTED, never silent: a file that vanishes from the
 		// index with no report is the class of bug #6338 exists to fix, and a

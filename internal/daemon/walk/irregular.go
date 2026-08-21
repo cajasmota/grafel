@@ -38,7 +38,19 @@ import (
 // looping symlink returns an error in microseconds (ELOOP is ~29µs) and is
 // skipped as unresolvable, which needs no special case of its own.
 //
-// It never opens the entry, so it cannot itself block.
+// COST. Nothing here stats the common case: d.Type() is the type byte readdir
+// already returned, so a regular file, a FIFO, a device and a socket are all
+// decided for free. os.Stat is called for symlinks ONLY. (An earlier version
+// of this comment claimed the gate was placed after the extension filter to
+// amortise a per-file stat; there is no per-file stat to amortise, and the
+// placement is justified by which SKIP REASON a path is reported under, not by
+// cost — see walker.go.)
+//
+// It never opens the entry, so it cannot itself block. That leaves a TOCTOU
+// residual — a regular file swapped for a FIFO between this check and the
+// extractor's read — which this gate cannot close by construction. The read
+// side closes it: internal/safeio opens with O_NONBLOCK and re-checks the type
+// with fstat on the descriptor.
 func irregularSkipRule(absPath string, d fs.DirEntry) (string, bool) {
 	mode := d.Type()
 	if mode&os.ModeSymlink != 0 {
@@ -51,6 +63,19 @@ func irregularSkipRule(absPath string, d fs.DirEntry) (string, bool) {
 	if mode.IsRegular() {
 		return "", false
 	}
+	if mode.IsDir() {
+		// A symlink to a DIRECTORY lands here: WalkDir does not follow it, so
+		// d.IsDir() was false and the entry reached the file branch. Skipping
+		// it is right — the old behaviour handed a directory to an extractor,
+		// which failed the read downstream — but it gets a rule OUTSIDE the
+		// irregular: namespace on purpose. The always-on warning is worded
+		// "reading one can block forever", and that is simply untrue of a
+		// directory; symlink farms are common, and an unsuppressable line
+		// telling a user their symlinked package directory is a hang hazard
+		// would be a false alarm at exactly the scale that trains people to
+		// ignore the warning (#6416 review).
+		return "symlink-to-directory", true
+	}
 	return "irregular:" + irregularKind(mode), true
 }
 
@@ -60,8 +85,6 @@ func irregularSkipRule(absPath string, d fs.DirEntry) (string, bool) {
 // raw mode bitmask does not.
 func irregularKind(mode fs.FileMode) string {
 	switch {
-	case mode.IsDir():
-		return "directory"
 	case mode&os.ModeNamedPipe != 0:
 		return "named-pipe"
 	case mode&os.ModeDevice != 0:

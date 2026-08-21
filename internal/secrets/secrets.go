@@ -26,6 +26,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +396,21 @@ func ScanPath(root string, maxFileBytes int64) ([]Finding, error) {
 			return nil
 		}
 
+		// NOTE (#6416): there is deliberately NO entry-type gate here, even
+		// though this is the second independent WalkDir in grafel that
+		// branches only on d.IsDir(). The guard lives at the single place that
+		// opens the file — scanFile's safeio.Open — because a stat gate here
+		// could only ever duplicate it: it would be unfalsifiable (removing it
+		// changes no observable behaviour, so no test can pin it) while still
+		// leaving the stat/open race that only the open site can close.
+		//
+		// It matters more on this path than on the index path: ScanPath is
+		// reachable from the daemon's MCP secrets tool and from an HTTP
+		// dashboard handler, so a caller who never runs an index can wedge a
+		// daemon goroutine. Neither guard below helps — d.Info().Size() is 0
+		// for a FIFO so the size check passes, and skipFile is only an
+		// extension denylist.
+
 		// Skip test files.
 		if isTestFile(rel) {
 			return nil
@@ -418,7 +435,12 @@ func ScanPath(root string, maxFileBytes int64) ([]Finding, error) {
 
 // scanFile reads one file and returns all findings in it.
 func scanFile(path, rel string) ([]Finding, error) {
-	f, err := os.Open(path)
+	// safeio.Open, not os.Open (#6416). This is the ONE guard on this path:
+	// os.Open on a FIFO named `creds.go` waits for a writer that never comes,
+	// and ScanPath's walk hands the path straight here. safeio refuses
+	// anything that is not a regular file and opens with O_NONBLOCK plus an
+	// fstat on the descriptor, so a path swapped under it cannot hang either.
+	f, err := safeio.Open(path, safeio.FollowSymlinks)
 	if err != nil {
 		return nil, err
 	}

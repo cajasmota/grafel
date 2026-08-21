@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/gitmeta"
 )
 
 // TestWalkRepoFifoDoesNotBlockDownstreamRead is a LIVENESS test for #6416.
@@ -128,5 +130,48 @@ func TestWalkRepoSymlinkToRegularFileIsStillIndexed(t *testing.T) {
 	}
 	if !sawLink {
 		t.Errorf("symlink to a regular file was dropped from the walk: got %v", files)
+	}
+}
+
+// TestIrregularGateRunsBeforeTheSparseFilter pins the gate's PLACEMENT, which
+// the review found was argued for in prose and asserted nowhere: moving the
+// block below the sparse filter passed the whole package.
+//
+// It has to be before. A FIFO outside the sparse pattern set is still present
+// on disk and is still the thing wedging a read, so it must be reported as a
+// hazard rather than absorbed into the sparse path's deliberate silence — that
+// path drops files with no error precisely because a sparse checkout is
+// EXPECTED to be missing them, which is the wrong story for a planted FIFO.
+func TestIrregularGateRunsBeforeTheSparseFilter(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "Real.vb"), []byte("Class Real\nEnd Class\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(root, "Hang.vb"), 0o644); err != nil {
+		t.Skipf("cannot create a fifo here: %v", err)
+	}
+
+	// A sparse pattern set that covers Real.vb and NOT Hang.vb: without the
+	// ordering, the sparse filter would return nil first and the fifo would
+	// vanish unreported.
+	sparse := &gitmeta.SparseInfo{IsSparse: true, Patterns: []string{"/Real.vb"}}
+
+	files, skipped, err := WalkRepo(root, &Options{Sparse: sparse})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if f == "Hang.vb" {
+			t.Fatalf("fifo returned as a candidate: %v", files)
+		}
+	}
+	var reported bool
+	for _, s := range skipped {
+		if strings.HasSuffix(s.AbsPath, "Hang.vb") && strings.HasPrefix(s.Rule, "irregular:") {
+			reported = true
+		}
+	}
+	if !reported {
+		t.Errorf("the fifo was absorbed by the sparse filter and reported nowhere; skipped=%+v", skipped)
 	}
 }

@@ -39,6 +39,11 @@ func TestIrregularSkipRuleClassifiesEntryTypes(t *testing.T) {
 		{"block device", fs.ModeDevice, true, "irregular:device"},
 		{"unix socket", fs.ModeSocket, true, "irregular:socket"},
 		{"door / other", fs.ModeIrregular, true, "irregular:other"},
+		// A symlink to a directory reaches the file branch (WalkDir does not
+		// follow it) and is skipped — but under a rule OUTSIDE the irregular:
+		// namespace, so the always-on "reading one can block forever" warning
+		// does not fire on a symlink farm. See TestIrregularSkipReport.
+		{"directory behind a symlink", fs.ModeDir, true, "symlink-to-directory"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rule, skip := irregularSkipRule(filepath.Join(t.TempDir(), "Hang.vb"), fakeEntry{name: "Hang.vb", mode: tc.mode})
@@ -72,7 +77,10 @@ func TestIrregularSkipRuleFollowsSymlinks(t *testing.T) {
 
 	dangling := filepath.Join(root, "dangling.vb")
 	if err := os.Symlink(filepath.Join(root, "nope.vb"), dangling); err != nil {
-		t.Fatal(err)
+		// Same guard as the first Symlink above: on a platform where symlinks
+		// are unavailable BOTH calls fail, and only one of them skipping made
+		// the failure mode depend on which ran first (#6416 review).
+		t.Skipf("symlinks unavailable here: %v", err)
 	}
 	if rule, skip := irregularSkipRule(dangling, fakeEntry{name: "dangling.vb", mode: fs.ModeSymlink}); !skip || rule != "irregular:unresolvable" {
 		t.Errorf("dangling symlink = (%q, %v), want (\"irregular:unresolvable\", true)", rule, skip)
@@ -137,5 +145,24 @@ func TestIrregularSkipReport(t *testing.T) {
 	}
 	if strings.Contains(got, "/r/vendor") {
 		t.Errorf("report leaked a non-irregular skip: %q", got)
+	}
+}
+
+// TestSymlinkedDirectoryIsSkippedButNotWarnedAbout pins the two halves of the
+// MEDIUM-6 decision together: the entry is still skipped (it was never a
+// readable file), and it is deliberately absent from the always-on warning,
+// because "reading one can block forever" is false of a directory and symlink
+// farms are common enough that a false alarm at that scale trains people to
+// ignore the line.
+func TestSymlinkedDirectoryIsSkippedButNotWarnedAbout(t *testing.T) {
+	rule, skip := irregularSkipRule(t.TempDir(), fakeEntry{name: "pkg", mode: fs.ModeDir})
+	if !skip {
+		t.Fatal("a symlinked directory must not be handed to an extractor")
+	}
+	if strings.HasPrefix(rule, "irregular:") {
+		t.Errorf("rule %q is in the irregular: namespace, so it would trip the hang warning", rule)
+	}
+	if got := IrregularSkipReport([]SkipEntry{{AbsPath: "/r/pkg", Rule: rule}}); got != "" {
+		t.Errorf("symlinked directory produced an always-on hang warning: %q", got)
 	}
 }

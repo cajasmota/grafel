@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // Stack returns a short label for the dominant stack in a repo. It
@@ -522,8 +524,34 @@ func isDir(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
+// maxManifestBytes caps a workspace-manifest read.
+//
+// The three parsers below open a path chosen by NAME — package.json,
+// lerna.json, pnpm-workspace.yaml — and never go through the file walker, so
+// the walker's entry-type gate does not protect them. `mkfifo package.json`
+// at a repo root wedged `grafel index` forever: DetectMonorepo runs inside
+// Indexer.Run immediately after the walk, and os.ReadFile on a FIFO waits for
+// a writer that never comes (#6416). safeio.ReadFile refuses to open anything
+// that is not a regular file, and uses a non-blocking open so a path swapped
+// under the stat cannot hang either.
+//
+// The cap is the other half: a character device opens fine and never reaches
+// EOF, so an unbounded read of /dev/zero-shaped path runs until memory does.
+// 8 MiB is far past any real workspace manifest — the largest in grafel's
+// corpus is under 200 KiB — and a manifest that exceeds it is truncated, which
+// makes the JSON parse fail and the repo fall through to "not a monorepo".
+// That is the same outcome as an unreadable manifest, which is already a
+// handled case.
+//
+// SYMLINKS ARE FOLLOWED. A symlinked package.json is an ordinary monorepo
+// shape (pnpm and yarn both produce them), so rejecting every symlink would
+// close the hang by silently mis-detecting real repos. safeio judges the
+// TARGET via os.Stat, which — unlike os.Open — never blocks on a FIFO, so a
+// symlink to a FIFO is refused by the same gate.
+const maxManifestBytes = 8 << 20
+
 func parsePackageJSONWorkspaces(repo string) []string {
-	b, err := os.ReadFile(filepath.Join(repo, "package.json"))
+	b, err := safeio.ReadFile(filepath.Join(repo, "package.json"), safeio.FollowSymlinks, maxManifestBytes)
 	if err != nil {
 		return nil
 	}
@@ -557,7 +585,7 @@ func parsePackageJSONWorkspaces(repo string) []string {
 }
 
 func parseLernaPackages(path string) []string {
-	b, err := os.ReadFile(path)
+	b, err := safeio.ReadFile(path, safeio.FollowSymlinks, maxManifestBytes)
 	if err != nil {
 		return nil
 	}
@@ -573,7 +601,7 @@ func parseLernaPackages(path string) []string {
 // parseYAMLPackages reads a tiny pnpm-workspace.yaml without pulling in
 // a real YAML parser — only the `packages:` key is honored.
 func parseYAMLPackages(path string) []string {
-	b, err := os.ReadFile(path)
+	b, err := safeio.ReadFile(path, safeio.FollowSymlinks, maxManifestBytes)
 	if err != nil {
 		return nil
 	}
