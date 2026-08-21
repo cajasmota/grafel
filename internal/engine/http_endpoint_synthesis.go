@@ -976,7 +976,28 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizePyramid(string(content), emitDef)
 		// Producer side: Django composed Routes (from django_routes.go).
 		// Method is unknown statically, so emit with verb=ANY.
-		synthesizeDjangoFromComposed(entities, path, emit)
+		//
+		// #6471 — the handler ref is now `Controller:<ViewSet>` instead of the
+		// route's own path, and a DRF ViewSet lives in views.py while the
+		// `router.register` call that names it lives in urls.py. makeEmit's
+		// #4319 synthesis-time bridge assumes a SAME-FILE handler method
+		// (synthesisHandlerStructuralRef keys the structural ref on `path`), so
+		// left alone it would append a permanently-dangling
+		// `scope:operation:...:urls.py:<ViewSet> -> endpoint` stub — trading a
+		// wrong edge for an unresolvable one. Retract it exactly the way the
+		// cross-file emitters (emitFile / emitResource) do; cross-file
+		// attribution is the resolve pass's job, and it does bind, via
+		// resolverKindEquivalents Controller→View plus the #753 global fallback.
+		// Unconditional: of the three shapes this synthesizer emits, only the
+		// `Controller` one ever appends a bridge — synthesisHandlerStructuralRef
+		// rejects refKind "Route" and refName "" — so a `refKind == "Controller"`
+		// guard here would be an unkillable branch, and dropTrailing… is already
+		// surgical (it matches on pattern_type + path at the tail).
+		emitDjangoComposed := func(method, canonicalPath, framework, refKind, refName string) {
+			emit(method, canonicalPath, framework, refKind, refName)
+			relationships = dropTrailingSynthesisTimeBridge(relationships, canonicalPath)
+		}
+		synthesizeDjangoFromComposed(entities, path, emitDjangoComposed)
 		// Consumer side (#721, extends #533): requests / httpx /
 		// aiohttp / urllib / session-style HTTP client calls.
 		// Now emits FETCHES edges at extraction time.
@@ -1754,7 +1775,45 @@ func synthesizeDjangoFromComposed(entities []types.EntityRecord, path string, em
 		if isAdminRoute(e) {
 			continue
 		}
-		emit("ANY", canonical, "django", "Route", raw)
+		// #6471 — source-handler reference. django_routes.go now stamps
+		// `handler_class` (the DRF ViewSet) on every ast_driven Route it
+		// composes from a `router.register(prefix, ViewSet)` call, so the
+		// handler identity IS available here without re-walking the AST.
+		//
+		// Previously this passed ("Route", raw) — raw being e.Name, the route
+		// PATH — stamping `source_handler = "Route:<own path>"`. Unlike Spring,
+		// where `Route` had no entry in resolverKindEquivalents and the edge
+		// simply dangled, Django's dangle RESOLVED: http_endpoint_resolve.go
+		// excludes only the three http_endpoint* kinds from the phase-2 handler
+		// index, so `Route` entities are indexed and the same-file
+		// {Route, <path>, urls.py} lookup found the very Route entity this loop
+		// was iterating. The graph then asserted that route /foo is implemented
+		// by route /foo — a confidently wrong answer, worse for a consumer than
+		// a visibly absent edge. #6471 / #6374's Django share.
+		//
+		// `Controller` maps through resolverKindEquivalents to
+		// {SCOPE.Operation, SCOPE.Function, View}, and `View:<ViewSet>` is
+		// exactly what the Django YAML rules land for a DRF ViewSet class in
+		// views.py — a different file from the urls.py this synthetic lives in,
+		// which is what the #753 cross-file global fallback exists for.
+		//
+		// Routes with no handler_class (registerArgs saw a non-identifier
+		// second positional, e.g. `views.UserViewSet`) keep the historic
+		// ("Route", raw) shape UNCHANGED. Blanking it there would be a wider
+		// behaviour change — it moves those endpoints from "resolved (wrongly)"
+		// to the NoHandlerProp keep-path — and needs its own measurement; see
+		// the note on excluding `Route` from the phase-2 handler index.
+		//
+		// Only `handler_class` is read. Spring additionally qualifies with
+		// `handler_method` because a Spring route binds ONE method; a DRF
+		// router binds a whole ViewSet and no Django producer stamps
+		// handler_method, so a qualification branch here would be unreachable
+		// and unkillable by any mutant — dead weight rather than parity.
+		if hc := e.Properties["handler_class"]; hc != "" {
+			emit("ANY", canonical, "django", "Controller", hc)
+		} else {
+			emit("ANY", canonical, "django", "Route", raw)
+		}
 
 		// #703 — DRF DefaultRouter / SimpleRouter auto-generates a
 		// parallel `/<prefix>/{pk}` detail route for every list route
