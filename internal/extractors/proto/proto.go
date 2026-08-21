@@ -270,9 +270,15 @@ func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
 // path — which drops any (file, name) that is not unique. The second revision
 // recorded that gap accurately and left it open as #6459.
 //
-// #6459 has since closed it: internal/resolve/refs.go's operationKindFamily now
-// includes scopeKindPrefix+"Service", so BOTH arms bind through the kind-filtered
-// lookupLocationKind tier. Measured on
+// #6459 has since closed it, and #6492 re-scoped the closure: SCOPE.Service is
+// NOT in internal/resolve/refs.go's shared operationKindFamily (that slice also
+// feeds hintKinds and the leaf-name family mask, and ~60 non-proto sites emit
+// SCOPE.Service beside a same-named function or class, so a global admission
+// destroys those unique matches instead of adding any). It is admitted by
+// protoOperationKindFamily, reached only from
+// structuralKindFamilies("operation", "proto") — i.e. from the LANGUAGE segment
+// this very function stamps into the ref. Both arms therefore bind through the
+// kind-filtered lookupLocationKind tier for proto, and only for proto. Measured on
 //
 //	message Foo {…}; service Foo { rpc Go(Foo) returns (Foo); }
 //
@@ -281,7 +287,9 @@ func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
 // before it dangled and the service ended with zero inbound CONTAINS. The guard
 // is internal/resolve/proto_service_family_6459_test.go; it also pins that
 // SCOPE.Service stays OUT of componentKindFamily, since nothing addresses a
-// service in the component address space.
+// service in the component address space. The counter-guard — that a non-proto
+// operation-space ref (celery task, Spring stereotype) is unaffected — is
+// internal/resolve/service_family_scope_6492_test.go.
 func fileContainsOperationRel(filePath, name string) types.RelationshipRecord {
 	return fileContainsRel(filePath, extractor.BuildOperationStructuralRef("proto", filePath, name))
 }

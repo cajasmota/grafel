@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/types"
@@ -330,12 +331,43 @@ func TestMemberFamilyMask_6141(t *testing.T) {
 // bitmask encoding rests on: no entity kind sits in two families at once.
 // If a future kind is added to two of the slices the mask silently becomes
 // a union and a call could bind to a field again.
+//
+// #6492 — this iterates memberFamilyMask over the UNION of the family
+// members, not the raw familyMaskByKind map. The raw map cannot see the
+// hazard it is supposed to guard: memberFamilyMask ORs a kind's own mask
+// with the mask of its SCOPE.-trimmed form, so a bare "Service" in one
+// family and a "SCOPE.Service" in another produce two separate single-bit
+// map entries — a raw scan finds both clean — while memberFamilyMask
+// ("SCOPE.Service") returns a two-bit mask and the filter is no longer
+// discriminating. Classifying through the real function closes that gap.
 func TestMemberFamilyMask_FamiliesAreDisjoint_6141(t *testing.T) {
-	for kind, mask := range familyMaskByKind {
-		if mask&(mask-1) != 0 {
-			t.Errorf("kind %q belongs to more than one kind family (mask=%b); the "+
-				"leaf-name filter assumes the families are disjoint", kind, mask)
+	seen := make(map[string]bool)
+	for _, fam := range [][]string{
+		operationKindFamily, componentKindFamily, schemaKindFamily,
+		componentOrOperationKindFamily, protoOperationKindFamily,
+	} {
+		for _, kind := range fam {
+			if seen[kind] {
+				continue
+			}
+			seen[kind] = true
+			// Classify through the same entry point the leaf-name filter
+			// uses, and through both spellings BuildIndex dual-indexes.
+			for _, probe := range []string{kind, scopeKindPrefix + strings.TrimPrefix(kind, scopeKindPrefix)} {
+				mask := memberFamilyMask(probe)
+				if mask&(mask-1) != 0 {
+					t.Errorf("kind %q (probed as %q) belongs to more than one kind family "+
+						"(mask=%b); the leaf-name filter assumes the families are disjoint",
+						kind, probe, mask)
+				}
+			}
 		}
+	}
+	// Guard the premise: the scan must actually have classified something,
+	// otherwise an empty family set would make this test vacuously green.
+	if len(seen) < len(operationKindFamily) {
+		t.Fatalf("disjointness scan covered only %d kinds; the family slices are "+
+			"empty or unreachable", len(seen))
 	}
 }
 

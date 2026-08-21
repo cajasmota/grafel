@@ -2104,24 +2104,28 @@ var (
 		scopeKindPrefix + "View",
 		scopeKindPrefix + "Model",
 	}
-	// Issue #6459 — SCOPE.Service is a member because the proto extractor
-	// ADDRESSES a `service` in the operation address space:
-	// internal/extractors/proto's fileContainsOperationRel mints the file →
-	// service CONTAINS ToID via extractor.BuildOperationStructuralRef, i.e.
-	// scope:operation:method:proto:<file>:<ServiceName>, while the entity it
-	// points at carries Kind "SCOPE.Service". Without the family entry that
-	// ref cannot bind through the kind-filtered lookupLocationKind tier and
-	// falls through to the kind-agnostic byLocation index, which drops any
-	// (file, name) that is not unique — so the edge dangled the moment a
-	// message or rpc in the same .proto shared the service's name. That is the
-	// mirror image of the #6422 message/rpc collision. SCOPE.Service is
-	// deliberately NOT added to componentKindFamily: nothing addresses a
-	// service in the component address space, and doing so would let bare type
-	// references bind to an IDL service definition.
+	// Issue #6459 / #6492 — SCOPE.Service is deliberately NOT a member here.
+	// This slice is SHARED: it feeds hintKinds (bare-name CALLS /
+	// PUBLISHES_TO and the whole #3930 semantic-edge taxonomy) and
+	// familyMaskByKind (the #6141 leaf-name family filter) as well as
+	// structuralKindFamilies. SCOPE.Service is not a proto-only kind — some
+	// sixty sites across internal/patterns/, internal/custom/ and
+	// internal/extractors/ emit it, and several name the entity after a
+	// function or class that already exists in the SAME FILE (the wired case
+	// is internal/custom/python/celery.go's `@shared_task def <fn>`, which
+	// mints a SCOPE.Service beside the function's SCOPE.Operation).
+	// uniqueMatchInFamily returns ("", false) when two distinct IDs in the
+	// family match, so admitting a member cannot only gain bindings: it
+	// DESTROYS every binding that was unique precisely because the member
+	// was absent. Measured: adding it here turned
+	// scope:operation:method:python:app/tasks.py:send_email from a clean
+	// bind into statusAmbiguous and lookupByKindHint("send_email", "CALLS")
+	// from a hit into a miss. The proto need is served by
+	// protoOperationKindFamily below, scoped to the proto structural-ref
+	// address space alone. Guard: service_family_scope_6492_test.go.
 	operationKindFamily = []string{
 		"Operation", "Function", "Method",
 		scopeKindPrefix + "Operation",
-		scopeKindPrefix + "Service",
 	}
 	// schemaKindFamily covers field / schema / property entities (issue #778).
 	// Used by structuralKindFamilies to disambiguate scope:schema:field:*
@@ -2151,6 +2155,45 @@ var (
 		scopeKindPrefix + "Model",
 		scopeKindPrefix + "Operation",
 	}
+	// protoOperationKindFamily is operationKindFamily plus SCOPE.Service, and
+	// is reachable ONLY through structuralKindFamilies("operation", "proto")
+	// — issue #6459, re-scoped by #6492.
+	//
+	// internal/extractors/proto's fileContainsOperationRel mints the file →
+	// service CONTAINS ToID via extractor.BuildOperationStructuralRef, i.e.
+	// scope:operation:method:proto:<file>:<ServiceName>, while the entity it
+	// points at carries Kind "SCOPE.Service". So the proto extractor really
+	// does ADDRESS a service in the operation address space, and without a
+	// family entry that ref cannot bind through the kind-filtered
+	// lookupLocationKind tier: it falls through to the kind-agnostic
+	// byLocation index, which drops any (file, name) that is not unique. The
+	// edge therefore dangled the moment a message or rpc in the same .proto
+	// shared the service's name — the mirror image of the #6422 message/rpc
+	// collision.
+	//
+	// The widening is gated on the structural ref's LANGUAGE segment rather
+	// than added to the shared slice because the claim being encoded is a
+	// claim about ONE emitter: proto, and only proto, points an
+	// operation-space ref at a SCOPE.Service. Every other emitter of that
+	// Kind (celery/dramatiq task markers, Spring stereotypes, systemd/YAML
+	// units, custom-extractor service nodes) is a MARKER that merely shares a
+	// (file, name) with a real entity, and admitting it globally converts
+	// those unique matches into ambiguities.
+	//
+	// Gating on the ref's SUBTYPE segment was the alternative and is not
+	// available: BuildOperationStructuralRef hardcodes the subtype "method",
+	// so a proto service ref is scope:operation:METHOD:proto:… — the subtype
+	// carries no service signal to gate on without changing the shared
+	// builder and every existing stub with it.
+	//
+	// SCOPE.Service is deliberately absent from componentKindFamily and from
+	// componentOrOperationKindFamily: nothing addresses a service in the
+	// component address space, and doing so would let a bare type reference
+	// bind to an IDL service definition.
+	protoOperationKindFamily = append(
+		append([]string{}, operationKindFamily...),
+		scopeKindPrefix+"Service",
+	)
 )
 
 // hintKinds returns the entity-kind families preferred for a given
@@ -2687,7 +2730,7 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 	// Format A: tail is the entity name. Try the kind-aware location
 	// index first using the structural-ref's scope-kind segment; this
 	// resolves PORT-2-FIX-2 same-file collisions.
-	if id, ok := idx.lookupLocationKind(filePath, tail, structuralKindFamilies(scopeKind)); ok {
+	if id, ok := idx.lookupLocationKind(filePath, tail, structuralKindFamilies(scopeKind, parts[stubScopeLangIndex])); ok {
 		return id, statusRewritten, true
 	}
 	if idx.ambigLocation[filePath] != nil && idx.ambigLocation[filePath][tail] {
@@ -2977,16 +3020,33 @@ func (idx Index) lookupUniqueSchemaFieldByName(fieldName string) (string, bool) 
 // (e.g. "component", "operation", "schema") to the entity-kind families it
 // might be indexed under. Returns nil for unknown segments.
 //
+// `lang` is the ref's language segment. It is consulted for the "operation"
+// scope only, where the proto emitter — alone among the ~60 SCOPE.Service
+// emitters — addresses a service entity through an operation-space ref
+// (#6459/#6492). See protoOperationKindFamily for why that admission is not
+// made in the shared operationKindFamily slice.
+//
 // Issue #778 — add "schema" so scope:schema:field:java:* stubs resolve via
 // lookupLocationKind using schemaKindFamily instead of falling through to
 // the kind-agnostic byLocation fallback, which hits ambiguity when a Java
 // class declares both a field and a getter/setter sharing the same
 // qualified name (e.g. Cell.borderTop as SCOPE.Schema + SCOPE.Operation).
-func structuralKindFamilies(scopeKind string) []string {
+func structuralKindFamilies(scopeKind, lang string) []string {
 	switch strings.ToLower(scopeKind) {
 	case "component":
 		return componentKindFamily
 	case "operation":
+		// Issue #6492 — the SCOPE.Service widening #6459 needs is scoped to
+		// the proto emitter, the only one that points an operation-space
+		// structural ref at a service entity. See protoOperationKindFamily.
+		// Both spellings: the extractor emits the segment literally as
+		// "proto" (internal/extractors/proto/proto.go:286,364) while the
+		// entities it creates carry Language "protobuf", so accepting only
+		// one of the two would be a silent trap for the next edit.
+		switch normalizeLang(lang) {
+		case "proto", "protobuf":
+			return protoOperationKindFamily
+		}
 		return operationKindFamily
 	case "schema":
 		return schemaKindFamily

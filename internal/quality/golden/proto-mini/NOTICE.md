@@ -107,21 +107,41 @@ otherwise closed), add the two rows this fixture is missing:
 `user.proto --[CONTAINS]--> User (SCOPE.Operation)`. The source already
 contains everything they need.
 
-## #6459 (`SCOPE.Service` missing from `operationKindFamily`) is NOT flipped here
+## #6459 (`SCOPE.Service` reachable from the operation address space) is NOT flipped here
 
-**Confirmed by measurement when #6459 landed.** Grading this fixture immediately
-before and after adding `scopeKindPrefix + "Service"` to `operationKindFamily`
-produced byte-identical output — 18/18 entities, 16/16 relationships, 0 forbidden
-hits, and the same `resolver: rewrote=27 ambiguous=0 unmatched=7` line — exactly
-as the paragraph below predicted. The fixture served as the regression net for
-that change, not as its demonstration; the demonstration is the constructed
-collision in `internal/resolve/proto_service_family_6459_test.go`.
+**This fixture cannot observe #6459, before or after.** The `file → service`
+CONTAINS in `user.proto` reaches its service through the kind-agnostic
+`byLocation` fallback, and that fallback succeeds here because no other entity
+in `user.proto` is named `UserService`. The bug #6459 fixes is what happens when
+that name DOES collide — so a fixture without a collision on the service name
+returns the same answer either way.
 
+Confirmed by measurement rather than assumed: grading this fixture immediately
+before and after the resolver change produced byte-identical output — 18/18
+entities, 16/16 relationships, 0 forbidden hits, and the same
+`resolver: rewrote=27 ambiguous=0 unmatched=7` line. The fixture served as the
+regression net for that change, not as its demonstration; the demonstration is
+the constructed collision in
+`internal/resolve/proto_service_family_6459_test.go`.
 
-`internal/resolve/refs.go`'s `operationKindFamily` omits `SCOPE.Service`, so
-the `file → service` CONTAINS reaches its service only via the kind-agnostic
-`byLocation` fallback. In this fixture that fallback happens to succeed, because
-no other entity in `user.proto` is named `UserService`. It is the same
-file-anchored edge described above, so this fixture would not observe the fix
-either way — deliberately, no row here asserts anything about it, and #6459
-should not expect this fixture's numbers to move.
+**Where the admission lives (#6492).** `SCOPE.Service` is NOT in
+`internal/resolve/refs.go`'s shared `operationKindFamily`. That slice also feeds
+`hintKinds` and the `familyMaskByKind` leaf-name filter, and `SCOPE.Service` is
+emitted by ~60 non-proto sites — several of which name the entity after a
+function or class in the same file (celery/dramatiq task markers, Spring
+stereotypes). Because a family match must be UNIQUE, admitting it there
+destroys those bindings rather than adding any. The kind is admitted only by
+`protoOperationKindFamily`, reached from
+`structuralKindFamilies("operation", "proto")` — the proto language segment of
+the structural ref. No row here asserts anything about it, and neither #6459 nor
+#6492 should expect this fixture's numbers to move.
+
+The fixture that DOES observe the difference is `python-dramatiq-mini`:
+`src/workers/billing.py` declares `@dramatiq.actor def charge_card`, and
+`internal/custom/python/dramatiq.go` mints a `SCOPE.Service` marker at the same
+(file, name) as the function's `SCOPE.Operation`. Graded with the shared-slice
+admission its resolver line degrades from
+`resolver: rewrote=11 ambiguous=0 unmatched=4` to
+`resolver: rewrote=9 ambiguous=2 unmatched=4` — two actor CALLS edges lost to a
+family collision. With the proto-scoped admission the line is unchanged from
+baseline.

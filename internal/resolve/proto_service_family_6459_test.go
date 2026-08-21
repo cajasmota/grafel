@@ -51,7 +51,7 @@ func TestProtoServiceRefResolvesUnderNameCollision6459(t *testing.T) {
 	}
 	if id != service.ID {
 		t.Fatalf("lookupStructural(%q) = %q, want the SCOPE.Service entity ID %q — "+
-			"SCOPE.Service must be a member of operationKindFamily, otherwise the "+
+			"SCOPE.Service must be a member of the proto operation family, otherwise the "+
 			"file → service CONTAINS edge dangles whenever the service's name "+
 			"collides with a sibling in the same .proto (#6459)",
 			ref, id, service.ID)
@@ -92,15 +92,20 @@ func TestProtoServiceIsNotAComponent6459(t *testing.T) {
 				"RENDERS / USES_TRANSLATION endpoints, which are never proto services (#6459)", k)
 		}
 	}
+	// #6492 re-scoped the admission: the kind lives in the PROTO-only
+	// operation family reached via structuralKindFamilies("operation",
+	// "proto"), never in the shared operationKindFamily slice that also
+	// feeds hintKinds and familyMaskByKind.
 	var found bool
-	for _, k := range operationKindFamily {
+	for _, k := range structuralKindFamilies("operation", "proto") {
 		if k == scopeKindPrefix+"Service" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("operationKindFamily = %v, want it to contain %q (#6459)",
-			operationKindFamily, scopeKindPrefix+"Service")
+		t.Fatalf("structuralKindFamilies(\"operation\", \"proto\") = %v, want it to "+
+			"contain %q (#6459)", structuralKindFamilies("operation", "proto"),
+			scopeKindPrefix+"Service")
 	}
 }
 
