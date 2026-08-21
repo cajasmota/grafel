@@ -37,6 +37,9 @@
     { "name": "admin/", "kind": "Route", "source_file": "myproject/urls.py", "must_exist": true },
     { "name": "health/", "kind": "Route", "source_file": "users/urls.py", "must_exist": true },
 
+    { "name": "http:ANY:/users/health", "kind": "http_endpoint_definition", "source_file": "users/views.py", "must_exist": true,
+      "note": "#6471 — the endpoint the FBV health_check serves. Declared so the IMPLEMENTS row below names a target that is actually asserted to exist; without it a kind rename anywhere in the endpoint-split pipeline silently unsatisfies that row instead of failing it." },
+
     { "name": "UserAdmin.register_with_admin", "kind": "SCOPE.Operation", "source_file": "users/admin.py", "must_exist": false, "nice_to_have": true, "note": "We would like a synthesized binding for @admin.register(User) -> UserAdmin." },
     { "name": "post_save_receiver", "kind": "SCOPE.Pattern", "source_file": "users/signals.py", "must_exist": false, "nice_to_have": true, "note": "Synthesized signal-binding entity would be a nice future capability." }
   ],
@@ -106,8 +109,9 @@
       "note": "Bare-name CALLS — ideally resolves to User.full_label; currently pruned by import-placeholder-prune (bare-name CALLS to pruned stubs). Track without blocking CI; file a separate extractor chain-fix to restore." },
 
     { "from_name": "health_check", "from_kind": "SCOPE.Operation", "from_file": "users/views.py",
-      "kind": "IMPLEMENTS", "to_name": "http:ANY:/users/health", "to_kind": "http_endpoint", "must_exist": false, "nice_to_have": true,
-      "note": "Issue #527 — FBV view function bound to its http_endpoint via source_handler (urlconf_nested_include IMPLEMENTS edge)." }
+      "kind": "IMPLEMENTS", "to_name": "http:ANY:/users/health", "to_kind": "http_endpoint_definition", "to_file": "users/views.py",
+      "must_exist": true,
+      "note": "Issue #527 — FBV view function bound to its http_endpoint via source_handler (urlconf_nested_include IMPLEMENTS edge). #6471/#6441: this row used to name to_kind 'http_endpoint', the LEGACY kind http_endpoint_resolve.go rewrites in place before the resolve pass runs; diff.go keys byKindName on an exact kind\\x00name string, so the row could never match any graph and sat green only because it was nice_to_have. Now must_exist against the kind the pipeline actually lands. `to_file` is a PREFERENCE, not a constraint: diff.go tries byKindNameFile first and falls back to byKindName, so the row still matches an endpoint landed under a different file — the claim is true but ungraded, and mutating it does not move recall." }
   ],
   "forbidden_relationships": [
     { "from_name": "UserListView.get", "from_kind": "SCOPE.Operation", "from_file": "users/views.py",

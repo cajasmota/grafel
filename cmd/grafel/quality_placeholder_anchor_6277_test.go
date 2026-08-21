@@ -39,6 +39,15 @@ import (
 // would be re-recorded one higher and the gate would still pass. The same
 // reasoning is written out on TestJobFixturesAbsoluteRecall_6260, which was
 // added after that failure mode was demonstrated on #6260.
+//
+// WHY THE *EXPECTED* DENOMINATORS ARE PINNED TOO, not just the found numerators:
+// a must-have added to or removed from an expected.json changes what the whole
+// suite grades, and every ratio-shaped gate in the repo moves with it silently.
+// wantEntityExpected / wantRelExpected exist so a fixture cannot GROW (or
+// shrink) without one named place going red. When it does, that is the tripwire
+// working: read the expected.json diff, satisfy yourself the new must-have is
+// one the pipeline should land, and only then bump the constant — never bump it
+// to make the build green.
 func TestPlaceholderAnchorIsNotCountedAsRecall_6277(t *testing.T) {
 	// Pinned OFF for the same reason as TestJobFixturesAbsoluteRecall_6260:
 	// classifyAndReadWithProgress ORs this variable with the per-Index option,
@@ -88,13 +97,22 @@ func TestPlaceholderAnchorIsNotCountedAsRecall_6277(t *testing.T) {
 		// the base AST module node losing identity to the ormlink sentinel on
 		// first-writer-wins, same as java-spring-mini's base class node did.
 		{"elixir-phoenix-mini", "SCOPE.Component", "Demo.Schemas.User", true, 22, 22, 9, 10},
+		// #6471 moved entity 25/28 -> 26/29 and relationship 7/12 -> 8/13.
+		// Deliberate expected.json edit, not drift: the FBV health_check
+		// IMPLEMENTS row named to_kind "http_endpoint", the LEGACY kind
+		// http_endpoint_resolve.go rewrites in place BEFORE the resolve pass,
+		// so diff.go's exact `kind\x00name` key could never match and the row
+		// sat green only because it was nice_to_have. It is now must_exist
+		// against http_endpoint_definition, and the endpoint it targets was
+		// declared as a must-have entity (+1 to both entity figures).
+		//
 		// #6276, NOT #6275 — untouched. No non-sentinel record ever collides
 		// with ormlink's sentinel for SCOPE.Component/User/users/models.py
 		// (the base class folds into bare "Model" instead; see comment
 		// above), so nothing here for #6275's fix to promote. The +1/+2
 		// entity/relationship bump is an unrelated side effect of the
 		// twin_of anchor-id fix elsewhere in this fixture.
-		{"python-django-mini", "SCOPE.Component", "User", false, 25, 28, 7, 12},
+		{"python-django-mini", "SCOPE.Component", "User", false, 26, 29, 8, 13},
 	}
 
 	goldenDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "quality", "golden"))

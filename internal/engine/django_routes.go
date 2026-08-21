@@ -525,15 +525,35 @@ func collectRegisterCalls(
 					out.claimedRegisterNames[name] = true
 					composedPath := joinDjangoRoutePaths(prefix, name)
 
+					routeProps := map[string]string{
+						"framework":    "python",
+						"pattern_type": "ast_driven",
+					}
+					// #6471 — carry the handler identity forward on the Route
+					// entity. synthesizeDjangoFromComposed only ever sees the
+					// emitted Route records, never this AST, so without this
+					// property it had nothing to name as the endpoint's handler
+					// and fell back to the route's OWN path — producing
+					// `Route:/foo IMPLEMENTS http_endpoint_definition:.../foo`.
+					// Same port as e15170110 (#6429) did for Java Spring; the
+					// Django unit here is a ViewSet CLASS, not a method — a DRF
+					// router binds the whole ViewSet — so handler_class is the
+					// only property stamped and the synthesizer reads only it.
+					//
+					// viewSet == "" whenever registerArgs saw a non-identifier
+					// second positional (e.g. `router.register('u', views.UVS)`).
+					// The property is then omitted and the synthesizer keeps its
+					// historic shape — narrowing this fix to the cases where a
+					// real handler name is in hand.
+					if viewSet != "" {
+						routeProps["handler_class"] = viewSet
+					}
 					out.entities = append(out.entities, types.EntityRecord{
-						Name:       composedPath,
-						Kind:       "Route",
-						SourceFile: path,
-						Language:   "python",
-						Properties: map[string]string{
-							"framework":    "python",
-							"pattern_type": "ast_driven",
-						},
+						Name:               composedPath,
+						Kind:               "Route",
+						SourceFile:         path,
+						Language:           "python",
+						Properties:         routeProps,
 						EnrichmentRequired: false,
 						EnrichmentStatus:   types.StatusPending,
 						QualityScore:       0.7,
