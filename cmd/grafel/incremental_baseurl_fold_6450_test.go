@@ -8,17 +8,35 @@
 // holds only the re-extracted files. The consequence was not a missed
 // improvement but a REGRESSION: touch the caller file with an unrelated edit
 // and the declaring constants module becomes invisible, every folded path
-// reverts to `/{BASE}/…`, and every FETCHES the previous full index resolved
-// turns back into UNRESOLVED_FETCH — and stays that way across further
-// incremental runs until the next full index.
+// reverts to `/{BASE}/…`, and the UNRESOLVED_FETCH edges the incremental run
+// emits go back to naming the unfolded path — and it stays that way across
+// further incremental runs until the next full index.
 //
-// Measured on this fixture before the fix, via the same Path-B pipeline this
-// test drives:
+// Measured on THIS fixture — two calls, two definitions — via the same Path-B
+// pipeline this test drives. Every figure below was run, not carried over from
+// the three-call golden fixture:
 //
-//	                              BEFORE the fix          AFTER the fix
-//	full index                    folded=3 path=/api      folded=3 path=/api
-//	append a comment to api.js    folded=0 path=/{BASE}   folded=3 path=/api
-//	no-change incremental         folded=0 path=/{BASE}   folded=3 path=/api
+//	                            BEFORE the fix        AFTER the fix
+//	full index                  path=/api/things      path=/api/things
+//	                            FETCHES=6 UNRES=0     FETCHES=6 UNRES=0
+//	append a comment to api.js  path=/{BASE}/things   path=/api/things
+//	                            FETCHES=2 UNRES=2     FETCHES=2 UNRES=2
+//	no-change incremental       path=/{BASE}/things   path=/api/things
+//	                            FETCHES=2 UNRES=2     FETCHES=2 UNRES=2
+//
+// The third row runs no fold at all — zero files changed, so `merged` is empty
+// and the pass emits no stat line. It is here to show that the second row's
+// damage PERSISTS: nothing re-folds it, and it does not recover until the next
+// full index.
+//
+// The fold's own stat line on the SECOND row is where the fix is visible:
+//
+//	before  candidates=2 folded=0 files_sniffed=1 files_indexed=6
+//	after   candidates=2 folded=2 files_sniffed=2 files_indexed=18
+//
+// 6 indexed paths versus 18 is the carried-forward prior graph coming into
+// view, and that is the whole fix. (The full index reports folded=2 in both
+// columns — it never had the problem.)
 //
 // A full-index-only test cannot see any of that, which is why this file
 // exists alongside the golden fixture. It asserts the property that matters —
@@ -31,11 +49,13 @@
 // UNRESOLVED_FETCH counts as the full one. On the incremental path `merged`
 // holds only the re-extracted CALL file; the http_endpoint_definition lives in
 // an unchanged file and is therefore absent from the slice the matcher indexes
-// (`synthetics=3 … calls_unresolved=3`, zero definitions). That is a
-// pre-existing property of the incremental design and is orthogonal to #6450 —
-// MEASURED, not assumed: with the fold compiled out entirely (pre-#6450
-// behaviour) the same fixture gives FETCHES=3 / UNRESOLVED_FETCH=3 on the
-// incremental run, identical to what the fixed fold gives. Asserting count
+// — on this fixture `synthetics=2 … calls_linked=0 calls_unresolved=2`, with
+// zero definitions in the slice. That is a pre-existing property of the
+// incremental design and is orthogonal to #6450, MEASURED three ways rather
+// than assumed: the incremental run gives FETCHES=2 / UNRESOLVED_FETCH=2 with
+// the fold fixed, with the fold defective (carriedForward dropped), AND with
+// the fold compiled out entirely, i.e. pre-#6450 behaviour. The count is
+// completely insensitive to this pass; only the PATH moves. Asserting count
 // parity here would gate #6450 on a defect it neither caused nor can fix.
 //
 // What IS asserted is exactly the surface the fold owns: the `path` and
