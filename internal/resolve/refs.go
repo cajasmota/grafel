@@ -2733,9 +2733,17 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 	// #6459 — ordered tier, proto only. The proto extractor addresses a
 	// SCOPE.Service entity through an operation-space ref, so when the
 	// operation family found NO candidate at all here, a lone same-(file,
-	// name) service is what the ref meant. Runs before the ambigLocation /
-	// byLocation fallbacks below, which is the whole point: those are what
-	// dropped the binding when a `message Foo` shared the service's name.
+	// name) service is what the ref meant.
+	//
+	// Only the LOWER boundary is positional: this must run before the
+	// ambigLocation / byLocation fallbacks below, which is the whole point —
+	// those are what dropped the binding when a `message Foo` shared the
+	// service's name. The UPPER boundary (never outranking the
+	// lookupLocationKind call above) is NOT positional: it is enforced inside
+	// lookupProtoServiceTier by its precondition. Moving this block above the
+	// lookupLocationKind call would not change any answer, because that call
+	// can only succeed on a non-blank id under an operationKindFamily key,
+	// which is precisely the tier's bail condition.
 	if strings.EqualFold(scopeKind, "operation") && isProtoLangSegment(parts[stubScopeLangIndex]) {
 		if id, ok := idx.lookupProtoServiceTier(filePath, tail); ok {
 			return id, statusRewritten, true
@@ -3097,21 +3105,40 @@ func (idx Index) lookupProtoServiceTier(filePath, name string) (string, bool) {
 		return "", false
 	}
 	locEnt := fileBucket[name]
+	// Scan .base ONLY, and scan the WHOLE family. Both halves are
+	// load-bearing (guard:
+	// TestProtoServiceTierPreconditionScansTheWholeFamilyAndBase6492):
+	//
+	//   - .base, not .real. Per entity, .base's key set is a strict superset
+	//     of .real's — see the two writers cited below — so a .real scan is
+	//     redundant where it agrees and BLIND where it does not. An entity
+	//     kinded "SCOPE.Method" occupies .base["SCOPE.Method"] AND
+	//     .base["Method"], but only .real["SCOPE.Method"]; since "Method" is
+	//     an operationKindFamily member and "SCOPE.Method" is not, a .real
+	//     scan would miss it entirely. The former `.real` arm of this loop
+	//     could therefore never fire alone, and has been removed as dead.
+	//
+	//   - the whole family, not just scopeKindPrefix+"Operation". Same
+	//     asymmetry: the trimmed aliases are exactly what a SCOPE.Method /
+	//     SCOPE.Function entity is visible under.
+	//
+	// Missing either way lets the tier fire while REAL operation entities sit
+	// at this (file, name) — a SCOPE.Service silently outranking an rpc.
 	for _, k := range operationKindFamily {
-		if _, present := locEnt.real.get(k); present {
-			return "", false
-		}
 		if _, present := locEnt.base.get(k); present {
 			return "", false
 		}
 	}
-	// .base and .real coincide for this family, so the choice is not a
-	// behavioural one: BuildIndex writes .base under the raw kind AND its
-	// SCOPE-trimmed alias, and writes .real under the raw kind alone. It never
-	// ADDS a "SCOPE." prefix, so the key "SCOPE.Service" is written by
-	// SCOPE.Service entities and by nothing else — a bare `Service`-kinded
-	// entity lands under "Service" in both buckets and is invisible to this
-	// family either way (guard: the bare-kind arm of
+	// Reading .base here is likewise not a behavioural choice for THIS family.
+	// Both writers of byLocationKind — BuildIndex (refs.go, `kinds :=
+	// []string{e.Kind}` plus the SCOPE-trimmed alias) and
+	// internal/resolve/symbol_index.go's memberEntry pass (`kinds :=
+	// []string{me.kind}` plus me.kindTrimmed, derived by the identical
+	// TrimPrefix) — write .base over `kinds` and .real over the raw kind
+	// alone. Neither ever ADDS a "SCOPE." prefix, so the key "SCOPE.Service"
+	// is written by SCOPE.Service entities and by nothing else; a bare
+	// `Service`-kinded entity lands under "Service" in both buckets and is
+	// invisible to this family either way (guard: the bare-kind arm of
 	// TestProtoServiceTierRequiresTheScopeKind6492). .base is used to match
 	// lookupLocationKind's placeholder-inclusive tier.
 	return uniqueMatchInFamily(locEnt.base, protoServiceKindFamily, true)

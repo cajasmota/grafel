@@ -224,3 +224,120 @@ func TestProtoServiceTierRequiresTheScopeKind6492(t *testing.T) {
 			ref, id, scoped.ID)
 	}
 }
+
+// TestProtoServiceTierPreconditionScansTheWholeFamilyAndBase6492 pins the two
+// halves of the tier's precondition that a narrower scan would silently drop.
+//
+// The precondition is `for _, k := range operationKindFamily { if present in
+// locEnt.base -> bail }`. Two mutations of it survived the rest of the suite,
+// and NEITHER is equivalent:
+//
+//	S2: drop the `.base` half, scan only `.real`.
+//	S3: scan `[]string{scopeKindPrefix + "Operation"}` instead of the whole
+//	    operationKindFamily.
+//
+// Both go blind to the same asymmetry. BuildIndex writes `.base` under the raw
+// Kind AND its SCOPE-trimmed alias, but `.real` under the raw Kind alone. So an
+// entity kinded "SCOPE.Method" occupies `.base["Method"]` — a member of
+// operationKindFamily — and `.real["SCOPE.Method"]`, which is NOT a member.
+//
+// The precondition is only LOAD-BEARING when the operation family is
+// present-but-ambiguous: a unique operation match is bound by lookupLocationKind
+// one tier earlier and the service tier never runs at all. So each fixture below
+// puts TWO same-named operation entities in the file, which blanks the family's
+// bucket to the ambiguous-within-kind sentinel. That is
+// TestProtoServiceTierDoesNotBreakAnRpcAmbiguityTie6492's shape, generalised off
+// the single kind spelling that test happens to use: under S2 or S3 the tier
+// goes blind to the sentinel, fires, and answers an operation reference with a
+// SCOPE.Service.
+//
+// Nothing emits SCOPE.Method under a .proto path today — internal/extractors/
+// proto/proto.go mints exactly SCOPE.{Service,Operation,Schema,Component}. That
+// is an accident of the current extractor, not an invariant, and it is the
+// identical shape that produced this PR's two earlier regressions. This test
+// pins the precondition against the shape rather than against the accident.
+func TestProtoServiceTierPreconditionScansTheWholeFamilyAndBase6492(t *testing.T) {
+	const protoFile = "api/pre/v1/pre.proto"
+	ref := extractor.BuildOperationStructuralRef("proto", protoFile, "Foo")
+	svc := types.EntityRecord{
+		ID: "aaaa0000aaaa0000", Kind: "SCOPE.Service", Subtype: "service",
+		Name: "Foo", SourceFile: protoFile, Language: "protobuf",
+	}
+
+	for _, tc := range []struct {
+		name string
+		kind string
+	}{
+		// Trimmed-alias-only members: the sentinel lands in .base under the
+		// ALIAS ("Method"/"Function"), while .real carries only the raw
+		// "SCOPE.Method"/"SCOPE.Function", which is in no family. Kills S2
+		// (and S3, since neither alias is "SCOPE.Operation").
+		{"scope-method", scopeKindPrefix + "Method"},
+		{"scope-function", scopeKindPrefix + "Function"},
+		// Bare spellings: same key in .base and .real, so S2 still bails —
+		// but the key is not the single one S3 narrows to. Kills S3.
+		{"bare-method", "Method"},
+		{"bare-function", "Function"},
+		{"bare-operation", "Operation"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opA := types.EntityRecord{
+				ID: "bbbb0000bbbb0000", Kind: tc.kind, Subtype: "rpc",
+				Name: "Foo", SourceFile: protoFile, Language: "protobuf",
+			}
+			opB := opA
+			opB.ID = "cccc0000cccc0000"
+			idx := BuildIndex([]types.EntityRecord{svc, opA, opB})
+
+			id, status, handled := idx.lookupStructural(ref)
+			if !handled {
+				t.Fatalf("lookupStructural did not claim %q (handled=false)", ref)
+			}
+			if id == svc.ID {
+				t.Fatalf("lookupStructural(%q) = the SCOPE.Service %q, but two %q-kinded "+
+					"operation entities share this (file, name). The tier's precondition "+
+					"must scan the WHOLE operationKindFamily against locEnt.base — a "+
+					"SCOPE-prefixed kind lands in .base under its TRIMMED alias and in "+
+					".real under the raw kind, so a .real-only or single-key scan is "+
+					"blind to the ambiguity sentinel and lets a service silently win a "+
+					"tie between real operations (#6492)", ref, id, tc.kind)
+			}
+			if id != "" || status != statusAmbiguous {
+				t.Fatalf("lookupStructural(%q) = (%q, status=%d), want (\"\", "+
+					"statusAmbiguous=%d) — two operation entities tie at this (file, "+
+					"name) and the tier must bail, leaving the pre-#6459 disposition (#6492)",
+					ref, id, status, statusAmbiguous)
+			}
+		})
+	}
+
+	// The tier's scope-kind gate is case-insensitive (strings.EqualFold), and
+	// so is structuralKindFamilies one line above it. Pin BOTH at the same
+	// spelling: an `EqualFold -> ==` mutation on the gate otherwise survives,
+	// because the sibling structuralKindFamilies test pins an "OPERATION" row
+	// but nothing pinned it here (#6492 S5).
+	upperRef := "scope:OPERATION:method:proto:" + protoFile + ":Foo"
+	msgForUpper := types.EntityRecord{
+		ID: "eeee0000eeee0000", Kind: "SCOPE.Schema", Subtype: "message",
+		Name: "Foo", SourceFile: protoFile, Language: "protobuf",
+	}
+	if id, _, _ := BuildIndex([]types.EntityRecord{svc, msgForUpper}).lookupStructural(upperRef); id != svc.ID {
+		t.Fatalf("lookupStructural(%q) = %q, want the service %q — the scope-kind "+
+			"segment is matched case-insensitively everywhere else in this "+
+			"function, and the #6459 gate must not be the one exception (#6492 S5)",
+			upperRef, id, svc.ID)
+	}
+
+	// Non-vacuity control: with the operation entities REMOVED, the very same
+	// ref must bind the service. Otherwise every assertion above could pass
+	// because the tier is broken outright.
+	msg := types.EntityRecord{
+		ID: "dddd0000dddd0000", Kind: "SCOPE.Schema", Subtype: "message",
+		Name: "Foo", SourceFile: protoFile, Language: "protobuf",
+	}
+	if id, _, _ := BuildIndex([]types.EntityRecord{svc, msg}).lookupStructural(ref); id != svc.ID {
+		t.Fatalf("control: lookupStructural(%q) = %q, want the service %q — the tier "+
+			"is not firing at all, so the assertions above are vacuous (#6492)",
+			ref, id, svc.ID)
+	}
+}

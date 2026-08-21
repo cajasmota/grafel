@@ -165,5 +165,33 @@ The real guards, all of which were seen red on the corresponding mutant:
 |---|---|
 | Widening into the shared family destroys a non-proto binding | `TestCeleryTaskCallStillBindsToTheFunction6492` (`internal/resolve/`) |
 | Widening the proto family destroys an *rpc* binding | `TestProtoRpcNamedAfterASiblingServiceStillBinds6492` |
-| The tier still binds the #6459 collision | `TestProtoServiceRefResolvesUnderNameCollision6459` |
+| The tier binds the #6459 `message Foo` + `service Foo` collision | `TestProtoServiceRefResolvesUnderNameCollision6459` |
 | The tier's language boundary admits proto and nothing else | `TestProtoServiceTierIsPinnedToProto6492` |
+| The tier's precondition scans the whole family against `.base` | `TestProtoServiceTierPreconditionScansTheWholeFamilyAndBase6492` |
+| The residual below stays visible | `TestSelfNamedRpcLeavesTheServiceOrphaned6459Residual` (`internal/extractors/proto/`) |
+
+### What #6459 does NOT close
+
+The scope above is exact, not shorthand. #6459 is closed for the shape where the
+service's name collides with a **non-operation** entity — `message Foo` beside
+`service Foo`. It is **not** closed when a service collides with an **operation**
+entity it owns:
+
+    service Foo { rpc Foo(Bar) returns (Bar); }
+
+`fileContainsOperationRel` (the `file → service` edge) and `buildService` (the
+`service → rpc` edge) mint the **byte-identical** ref
+`scope:operation:method:proto:<file>:Foo` for two different entities. The ordered
+tier cannot separate them and must not try — its precondition sees the rpc in the
+operation family and bails, because the alternative is a service outranking a real
+rpc. Measured end-to-end through the real extractor at the head that added the
+tier: **the service ends with 0 inbound CONTAINS and the rpc carries 2** (its own
+parent edge plus the `file → service` edge mis-bound onto it). That is #6459's
+title symptom surviving in this one shape. Two rpcs in one service sharing a name
+behave the same way.
+
+It is a mis-binding, not a dangle, so no ref-integrity check reports it. Closing
+it needs the proto extractor to stop addressing a service and its rpc identically
+— a ref *format* change — and belongs in its own issue. This fixture cannot
+observe the residual either: no service in `user.proto` shares a name with its own
+rpc.

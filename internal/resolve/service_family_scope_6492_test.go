@@ -170,7 +170,7 @@ func TestStructuralKindFamiliesIsLanguageBlind6492(t *testing.T) {
 // and an alias to pin normalizeLang's role. For each, the same #6459 fixture is
 // indexed and the tier must fire for proto spellings ONLY.
 func TestProtoServiceTierIsPinnedToProto6492(t *testing.T) {
-	for _, tc := range []struct {
+	cases := []struct {
 		lang      string
 		wantProto bool
 	}{
@@ -201,7 +201,46 @@ func TestProtoServiceTierIsPinnedToProto6492(t *testing.T) {
 		{"php", false},
 		{"protocol-buffers", false}, // NOT a spelling the extractor emits
 		{"prototype", false},        // substring of "proto" must not match
+	}
+
+	// The table itself is the ONLY guard on the language boundary, so the
+	// table needs a guard of its own. Deleting its rows and widening
+	// isProtoLangSegment to `case "proto", "protobuf", "go", "java",
+	// "typescript", "ruby", "rust", "elixir", "csharp", "yaml":` survived the
+	// whole suite: only python and kotlin are pinned anywhere else (by
+	// TestCeleryTaskCallStillBindsToTheFunction6492 and
+	// TestKotlinStereotypeMarkerIsNotAnOperationTarget6492). That unpinned
+	// table is exactly how round 2's widening shipped. A row floor plus a
+	// required-coverage set makes the table un-deletable (#6492 S6).
+	if len(cases) < 20 {
+		t.Fatalf("the language table has %d rows, want >= 20 — this table is the "+
+			"only exhaustive pin on isProtoLangSegment; thinning it silently "+
+			"re-opens the round-2 widening (#6492 S6)", len(cases))
+	}
+	seen := map[string]bool{}
+	for _, tc := range cases {
+		seen[tc.lang] = true
+	}
+	for _, required := range []string{
+		// Both proto spellings (positive direction) …
+		"proto", "protobuf",
+		// … and every language a plausible widening would reach for. Each
+		// emits SCOPE.Service entities and/or operation-space structural
+		// refs, so each must be pinned NEGATIVE here.
+		"go", "golang", "java", "kotlin", "python", "typescript",
+		"javascript", "ruby", "rust", "elixir", "csharp", "yaml",
+		// … and the empty segment, which normalizeLang must not treat as
+		// a proto spelling.
+		"",
 	} {
+		if !seen[required] {
+			t.Fatalf("the language table does not cover %q — the required set is "+
+				"fixed so a future edit cannot drop a row and let that language "+
+				"into the #6459 tier (#6492 S6)", required)
+		}
+	}
+
+	for _, tc := range cases {
 		if got := isProtoLangSegment(tc.lang); got != tc.wantProto {
 			t.Fatalf("isProtoLangSegment(%q) = %v, want %v — the #6459 service tier's "+
 				"language boundary must admit the proto spellings and NOTHING else (#6492 B2)",

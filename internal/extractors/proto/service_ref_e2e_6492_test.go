@@ -161,3 +161,84 @@ func TestServiceNameCollisionGetsInboundContains6492(t *testing.T) {
 			"addressed in the schema address space and must be untouched (#6459)", n)
 	}
 }
+
+// selfNamedRpcSrc is the RESIDUAL shape #6459 does NOT close: the service and
+// one of its OWN rpcs carry the same name, so `message Bar` is only there to
+// keep the file valid.
+const selfNamedRpcSrc = `syntax = "proto3";
+
+message Bar { string id = 1; }
+
+service Foo {
+  rpc Foo(Bar) returns (Bar);
+}
+`
+
+// TestSelfNamedRpcLeavesTheServiceOrphaned6459Residual is a CHARACTERISATION
+// test: it records, in the graph, the one #6459-titled shape this PR does not
+// fix, so the claim in proto.go and in the proto-mini NOTICE can be read
+// against something executable.
+//
+// `service Foo { rpc Foo(...) }` addresses the service (fileContainsOperationRel)
+// and the rpc (buildService's child edge) with the BYTE-IDENTICAL ref
+// scope:operation:method:proto:<file>:Foo. The ordered tier cannot help: its
+// precondition sees the rpc in the operation family and bails, which is
+// correct — the alternative is a service silently outranking a real rpc. Two
+// distinct entities are simply not distinguishable by the ref that names them,
+// so the file → service edge lands on the rpc instead.
+//
+// The observable result is #6459's title symptom at this head: the service ends
+// with ZERO inbound CONTAINS, and the rpc carries TWO (its own parent edge plus
+// the mis-bound file edge). Closing it needs the extractor to stop addressing a
+// service and its rpc identically — a change to the ref format, not to the
+// resolver — and belongs in its own issue.
+//
+// If a later change makes this pass differently, that is the fix landing, not a
+// regression: update the numbers and the two doc claims together.
+func TestSelfNamedRpcLeavesTheServiceOrphaned6459Residual(t *testing.T) {
+	recs := resolveProto6422(t, "residual.proto", selfNamedRpcSrc)
+
+	svc := findRec6422(t, recs, "SCOPE.Service", "service", "Foo")
+	rpc := findRec6422(t, recs, "SCOPE.Operation", "endpoint", "Foo")
+	if svc.ID == rpc.ID {
+		t.Fatalf("service Foo and rpc Foo share id %q — the fixture cannot "+
+			"distinguish them", svc.ID)
+	}
+
+	inbound := func(toID string) int {
+		n := 0
+		for i := range recs {
+			for _, r := range recs[i].Relationships {
+				if r.Kind == "CONTAINS" && r.ToID == toID {
+					n++
+				}
+			}
+		}
+		return n
+	}
+
+	if got := inbound(svc.ID); got != 0 {
+		t.Fatalf("inbound CONTAINS on service Foo = %d, want 0 (RESIDUAL, not a "+
+			"target). If this is now 1, the self-named-rpc residual has been "+
+			"CLOSED — update this test and the scoped claims in "+
+			"internal/extractors/proto/proto.go and "+
+			"internal/quality/golden/proto-mini/NOTICE.md in the same change (#6459)", got)
+	}
+	if got := inbound(rpc.ID); got != 2 {
+		t.Fatalf("inbound CONTAINS on rpc Foo = %d, want 2 — its own service → rpc "+
+			"edge plus the file → service edge mis-bound onto it, because both refs "+
+			"are the byte-identical string %q (#6459 residual)", got,
+			"scope:operation:method:proto:residual.proto:Foo")
+	}
+
+	// The residual is a MIS-BINDING, not a dangle: nothing is left unresolved,
+	// which is exactly why no existing assertion in this file catches it.
+	for i := range recs {
+		for _, r := range recs[i].Relationships {
+			if r.Kind == "CONTAINS" && strings.HasPrefix(r.ToID, "scope:") {
+				t.Fatalf("CONTAINS edge from %q left an UNRESOLVED ToID %q — the "+
+					"residual is a mis-binding, not a dangling ref (#6459)", r.FromID, r.ToID)
+			}
+		}
+	}
+}

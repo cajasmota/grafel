@@ -270,8 +270,9 @@ func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
 // path — which drops any (file, name) that is not unique. The second revision
 // recorded that gap accurately and left it open as #6459.
 //
-// #6459 has since closed it — as an ORDERED TIER, not by widening any kind
-// family. SCOPE.Service is in NO family: not the shared operationKindFamily
+// #6459 has since closed it FOR THE `message Foo` + `service Foo` SHAPE — as an
+// ORDERED TIER, not by widening any kind family. That scope is the whole claim;
+// the residual it does not cover is stated at the bottom of this comment. SCOPE.Service is in NO family: not the shared operationKindFamily
 // (that slice also feeds hintKinds and the leaf-name family mask, and ~60
 // non-proto sites emit SCOPE.Service beside a same-named function or class, so
 // a global admission destroys those unique matches instead of adding any), and
@@ -302,12 +303,33 @@ func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
 // by luck, so the pre-fix damage is only observable once the ambiguity exists —
 // which is why the guard fixture carries the colliding message.)
 //
+// WHAT IS STILL NOT RESOLVED, stated as plainly as the fix. When a service and
+// one of its OWN rpcs share a name —
+//
+//	service Foo { rpc Foo(Bar) returns (Bar); }
+//
+// — this function and buildService produce the BYTE-IDENTICAL ref
+// scope:operation:method:proto:<file>:Foo for two different entities. The tier
+// cannot help and must not try: its precondition sees the rpc in the operation
+// family and bails, because the alternative is a service outranking a real rpc.
+// Measured end-to-end through this extractor at the head that added the tier:
+// the service ends with ZERO inbound CONTAINS and the rpc carries TWO — its own
+// parent edge plus the file → service edge mis-bound onto it. That is #6459's
+// title symptom surviving in this one shape. It is a MIS-BINDING, not a dangle,
+// so nothing is left unresolved and no ref-integrity check sees it. Closing it
+// needs this file to stop addressing a service and its rpc identically — a ref
+// FORMAT change, not a resolver change — and belongs in its own issue with its
+// own measurement. The same applies to two rpcs in one service sharing a name.
+//
 // The guards are internal/resolve/proto_service_family_6459_test.go (the
 // service half) and internal/resolve/proto_rpc_service_collision_6492_test.go
 // (the rpc half — the two-service fixture above). The counter-guard, that a
 // non-proto operation-space ref (celery task, Spring stereotype) is unaffected
 // and that the language boundary admits proto and nothing else, is
-// internal/resolve/service_family_scope_6492_test.go.
+// internal/resolve/service_family_scope_6492_test.go. The residual above is
+// pinned as a characterisation test:
+// TestSelfNamedRpcLeavesTheServiceOrphaned6459Residual in
+// service_ref_e2e_6492_test.go.
 func fileContainsOperationRel(filePath, name string) types.RelationshipRecord {
 	return fileContainsRel(filePath, extractor.BuildOperationStructuralRef("proto", filePath, name))
 }

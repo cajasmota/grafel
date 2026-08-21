@@ -194,10 +194,9 @@ type callerLocation struct {
 // ordered fallback for Format A structural refs carrying the proto language
 // segment; relWantsMemberTier above EXCLUDES Format A stubs from every tier
 // this predicate gates, so no ref that could carry the proto admission ever
-// reaches here. The bare-name package tiers this does
-// gate are Kotlin- and Go-shaped, where a "Service"-kinded entity is a
-// framework marker sharing a name with a real declaration, not a call
-// target.
+// reaches here. The bare-name package tiers this does gate are Kotlin- and
+// Go-shaped, where a "Service"-kinded entity is a framework marker sharing a
+// name with a real declaration, not a call target.
 func isOperationKind(kind string) bool {
 	switch strings.TrimPrefix(kind, "SCOPE.") {
 	case "Operation", "Function", "Method":
