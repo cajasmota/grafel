@@ -9,6 +9,10 @@
 //     pattern set are silently skipped; directories that have no matching
 //     descendants are entered but yield no files (#2181 / M4 of #2175).
 //
+// On top of those it applies a per-FILE entry-type gate (#6416): a walked
+// entry that is not a regular file — named pipe, device, socket — is skipped
+// and REPORTED rather than handed to an extractor that would block reading it.
+//
 // Directory-level skipping avoids enumerating every file inside build/
 // cache trees — the key performance win for large mobile repos.
 package walk
@@ -29,12 +33,18 @@ import (
 	"github.com/cajasmota/grafel/internal/gitmeta"
 )
 
-// SkipEntry is one directory that was skipped during a walk.
+// SkipEntry is one path that was skipped during a walk.
+//
+// It is usually a DIRECTORY — the skip layers above work at directory-entry
+// time. Since #6416 it can also be a single FILE: a non-regular entry (named
+// pipe, device, socket) is skipped by the entry-type gate and recorded here so
+// the omission is reportable rather than silent.
 type SkipEntry struct {
-	// AbsPath is the absolute path of the skipped directory.
+	// AbsPath is the absolute path of the skipped directory or file.
 	AbsPath string
 	// Rule is a human-readable description of the matching rule, e.g.
-	// ".gitignore line 23", "hardcoded", ".grafelignore line 5".
+	// ".gitignore line 23", "hardcoded", ".grafelignore line 5",
+	// "irregular:named-pipe".
 	Rule string
 }
 
@@ -235,6 +245,31 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 		// It's a file. Filter by extension (issue #1629) — binary / image /
 		// media / archive / compiled files never carry source-graph content.
 		if shouldSkipFileByExt(d.Name()) {
+			return nil
+		}
+
+		// Entry-type gate (#6416). Everything above this line branched only on
+		// d.IsDir(), so a FIFO named `Hang.vb` was handed to an extractor,
+		// which read it — and open(2) on a FIFO does not fail, it WAITS for a
+		// writer. That deadlocked the worker with no timeout and no log line,
+		// and an unprivileged user can trigger it with one mkfifo inside a
+		// watched directory.
+		//
+		// It runs AFTER the extension filter so the stat cost is only paid for
+		// paths that would actually be indexed, and BEFORE the sparse filter so
+		// a hazard is reported as a hazard rather than disappearing into the
+		// sparse path's deliberate silence.
+		//
+		// The skip is REPORTED, never silent: a file that vanishes from the
+		// index with no report is the class of bug #6338 exists to fix, and a
+		// FIFO planted in a source tree is exactly the case someone will need
+		// to explain. It goes through the same SkipEntry + PrintSkipped channel
+		// as every other skip layer in this walk.
+		if rule, skip := irregularSkipRule(absPath, d); skip {
+			skipped = append(skipped, SkipEntry{AbsPath: absPath, Rule: rule})
+			if opts.PrintSkipped != nil {
+				fmt.Fprintf(opts.PrintSkipped, "[skip] %s (rule: %s)\n", absPath, rule)
+			}
 			return nil
 		}
 

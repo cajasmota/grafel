@@ -1466,10 +1466,17 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// immediately. A second event follows once the walk completes with the
 	// real file count.
 	trk.PhaseStart(progress.PhaseScan, 0, 0)
-	files, _, err := walk.WalkRepo(absRepo, walkOpts)
+	files, walkSkipped, err := walk.WalkRepo(absRepo, walkOpts)
 	if err != nil {
 		trk.Fail(err.Error())
 		return nil, fmt.Errorf("walk repo: %w", err)
+	}
+	// #6416: non-regular files (FIFOs, devices, sockets) are dropped by the
+	// walker's entry-type gate because reading one can block an indexing
+	// worker forever. Say so unconditionally — a source-looking file that
+	// produced nothing, reported nowhere, is the failure mode #6338 is about.
+	if report := walk.IrregularSkipReport(walkSkipped); report != "" {
+		fmt.Fprintln(os.Stderr, report)
 	}
 	i.stats.files = len(files)
 	trk.SetFilesTotal(len(files))
