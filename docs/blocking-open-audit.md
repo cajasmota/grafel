@@ -122,6 +122,33 @@ so the net severity is higher than the walker's, not lower.
 
 No subset was dropped. All five are routed.
 
+## Routing is not enough on its own
+
+A site only leaves the **name-chosen, open** bucket when it is BOTH routed
+through `safeio` AND reports what it skipped. Rounds 2 and 3 routed
+`internal/install/detect` and `internal/secrets` but left all four call sites
+mapping `ErrNotRegular` and `ErrWouldBlock` to a bare `return nil` — the hang
+was closed and the silence was kept, so `mkfifo creds.go` produced a secrets
+scan that answered "clean" without ever reading `creds.go`. That is the #6338
+shape this PR invokes as its own rationale for the walker's report, so the
+`Done` table below means routed *and* reported, and nothing is listed there
+until both hold.
+
+The reporting convention is the same at every site: always-on to stderr,
+deduplicated by path, capped at 16 with a suppression notice, and gated to
+`ErrNotRegular` / `ErrWouldBlock` only — ENOENT is the ordinary case at every
+one of these reads and stays silent. `ErrWouldBlock` is returned BARE, carrying
+no path, so each reporter decorates it via a local `withPath` helper; a warning
+that names no file is not a safety net.
+
+One gap is known and deliberate. `internal/secrets.ScanPath` returns
+`([]Finding, error)` to the daemon's MCP secrets tool and to an HTTP dashboard
+handler, and its skip line goes to stderr — the daemon log — not into the
+returned result. So the record exists, but the MCP/HTTP *caller* cannot see
+that the tree was only partly read. Closing that means changing `ScanPath`'s
+signature at both entry points; it is a follow-up, not something to smuggle
+into a reporting change.
+
 ## Confirmed already safe
 
 `internal/daemon/walk` was swept for sibling reads of the same shape as
@@ -140,8 +167,8 @@ ungated read in the package.
 | `internal/extractors/javascript` | `aliases.go:144` |
 | `internal/extractors/golang` | `gomod.go:94` |
 | `internal/extractors/yaml` | `helm.go:115` |
-| `internal/install/detect` | `detect.go:554`, `:588`, `:604` |
-| `internal/secrets` | `secrets.go:443` |
+| `internal/install/detect` | `detect.go` — one `readManifest` choke point covering all three parsers |
+| `internal/secrets` | `secrets.go` — `scanFile`'s `safeio.Open` |
 | `internal/licenses` | `licenses.go:106` — one `readLicenseFile` choke point covering all ten former sites |
 | `internal/daemon/walk` | `walker.go:343` — `readIgnoreFile` (`saferead.go`). The gate this PR added covers entries the WALKER produced; this read is name-chosen and runs before the walk. |
 | `internal/gitmeta` | `cache.go` `commondir` / `refs/…` / `HEAD` / `.git`, and `sparse.go`'s `info/sparse-checkout` — one `readGitMetaFile` choke point covering all five |

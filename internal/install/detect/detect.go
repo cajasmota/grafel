@@ -6,11 +6,14 @@ package detect
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/cajasmota/grafel/internal/safeio"
 )
@@ -550,8 +553,104 @@ func isDir(p string) bool {
 // symlink to a FIFO is refused by the same gate.
 const maxManifestBytes = 8 << 20
 
+// manifestSkip* back the always-on report below.
+var (
+	manifestSkipMu   sync.Mutex
+	manifestSkipSeen map[string]bool
+	manifestSkipOut  io.Writer = os.Stderr
+)
+
+// maxManifestSkipReports caps the report the same way walk.IrregularSkipReport,
+// reportAliasSkip and reportGoModSkip cap theirs: a warning long enough to
+// scroll past reports nothing. The population here is at most three paths per
+// repo root, so the cap is a backstop against a pathological multi-repo group,
+// not the common case.
+const maxManifestSkipReports = 16
+
+// setManifestSkipOutput redirects the report for tests and returns a restore
+// func. Test-only helper.
+func setManifestSkipOutput(w io.Writer) func() {
+	manifestSkipMu.Lock()
+	prev := manifestSkipOut
+	manifestSkipOut = w
+	manifestSkipSeen = nil
+	manifestSkipMu.Unlock()
+	return func() {
+		manifestSkipMu.Lock()
+		manifestSkipOut = prev
+		manifestSkipSeen = nil
+		manifestSkipMu.Unlock()
+	}
+}
+
+// readManifest is the only way this file reads a workspace manifest off disk.
+//
+// It exists so the three parsers below share ONE reporting choke point. Before
+// it, each of them mapped both safeio.ErrNotRegular and safeio.ErrWouldBlock to
+// a bare `return nil` — the hang was closed but the skip was announced nowhere,
+// so `mkfifo package.json` turned a monorepo into a single-package repo with no
+// stated cause. That is #6338's shape, which is the rationale this PR invokes
+// for the walker's own report.
+func readManifest(path string) ([]byte, error) {
+	b, err := safeio.ReadFile(path, safeio.FollowSymlinks, maxManifestBytes)
+	if err != nil {
+		reportManifestSkip(path, err)
+	}
+	return b, err
+}
+
+// reportManifestSkip says out loud that a workspace manifest was refused for
+// being a FIFO, device or socket.
+//
+// A refused manifest is not a small loss: DetectMonorepo is what tells the
+// wizard and `grafel monorepo` that a repo has packages at all, so the visible
+// outcome is every workspace package silently missing from the suggestion.
+//
+// Only ErrNotRegular / ErrWouldBlock are reported. A plain ENOENT is the
+// overwhelmingly common case — most repos have no lerna.json or
+// pnpm-workspace.yaml, and plenty have no package.json — and announcing it
+// would bury the signal.
+func reportManifestSkip(path string, err error) {
+	if !errors.Is(err, safeio.ErrNotRegular) && !errors.Is(err, safeio.ErrWouldBlock) {
+		return
+	}
+	manifestSkipMu.Lock()
+	if manifestSkipSeen == nil {
+		manifestSkipSeen = map[string]bool{}
+	}
+	if manifestSkipSeen[path] || len(manifestSkipSeen) >= maxManifestSkipReports {
+		manifestSkipMu.Unlock()
+		return
+	}
+	manifestSkipSeen[path] = true
+	last := len(manifestSkipSeen) == maxManifestSkipReports
+	w := manifestSkipOut
+	manifestSkipMu.Unlock()
+
+	fmt.Fprintf(w, "grafel: skipped workspace manifest %v — not read because reading one can block forever; workspace packages for this repo will not be detected (#6416)\n", withPath(path, err))
+	if last {
+		fmt.Fprintf(w, "grafel: further workspace-manifest skips suppressed after %d\n", maxManifestSkipReports)
+	}
+}
+
+// withPath makes a skip line attributable.
+//
+// safeio's two reportable errors are not shaped alike: ErrNotRegular is wrapped
+// with the path and the entry kind, but ErrWouldBlock is returned BARE from
+// openWithDeadline's two deadline arms. Printing it unadorned gives "skipped
+// workspace manifest safeio: open would block", which names no file and so
+// tells a user nothing they can act on — the same silence the report exists to
+// end. Only the bare form is decorated, so ErrNotRegular's own wording is left
+// alone rather than printing its path twice.
+func withPath(path string, err error) error {
+	if errors.Is(err, safeio.ErrWouldBlock) {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return err
+}
+
 func parsePackageJSONWorkspaces(repo string) []string {
-	b, err := safeio.ReadFile(filepath.Join(repo, "package.json"), safeio.FollowSymlinks, maxManifestBytes)
+	b, err := readManifest(filepath.Join(repo, "package.json"))
 	if err != nil {
 		return nil
 	}
@@ -585,7 +684,7 @@ func parsePackageJSONWorkspaces(repo string) []string {
 }
 
 func parseLernaPackages(path string) []string {
-	b, err := safeio.ReadFile(path, safeio.FollowSymlinks, maxManifestBytes)
+	b, err := readManifest(path)
 	if err != nil {
 		return nil
 	}
@@ -601,7 +700,7 @@ func parseLernaPackages(path string) []string {
 // parseYAMLPackages reads a tiny pnpm-workspace.yaml without pulling in
 // a real YAML parser — only the `packages:` key is honored.
 func parseYAMLPackages(path string) []string {
-	b, err := safeio.ReadFile(path, safeio.FollowSymlinks, maxManifestBytes)
+	b, err := readManifest(path)
 	if err != nil {
 		return nil
 	}
