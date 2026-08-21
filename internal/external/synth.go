@@ -279,6 +279,12 @@ func Synthesize(doc *graph.Document) Stats {
 		csharp: internalCsharpRoots,
 	})
 
+	// #6337 — every name a real (non-external) indexed entity carries. The
+	// VB.NET hierarchy arm's mask guard: an unresolved `Inherits Panel` in a
+	// repo that declares its own partial `Panel` is an ambiguity defect, not
+	// an external base, and must keep being reported as one.
+	inTreeNames := buildInTreeNameSet(doc)
+
 	// First pass — collect every unique external name we want to
 	// synthesise. The placeholder carries a subtype hint
 	// ("package"/"function") but the language field is left empty:
@@ -369,6 +375,8 @@ func Synthesize(doc *graph.Document) Stats {
 			golang: internalGoRoots,
 			rust:   internalRustRoots,
 			csharp: internalCsharpRoots,
+
+			inTreeNames: inTreeNames,
 		})
 
 		// #4515 — apply per-symbol upgrade. Two cases:
@@ -987,6 +995,10 @@ type internalRoots struct {
 	golang map[string]bool
 	rust   map[string]bool
 	csharp map[string]bool
+	// inTreeNames is every name an indexed (non-external) entity carries.
+	// #6337's mask guard — see vbnetHierarchyExternal. Not a "root" set like
+	// the others; it lives here because it threads to the same call site.
+	inTreeNames map[string]bool
 }
 
 func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[string]bool, relProps map[string]string, internal internalRoots) (canonical, subtype string, ok bool) {
@@ -1672,6 +1684,16 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 			return "net/http", "function", true
 		}
 		return name, subtype, true
+	}
+
+	// #6337 — VB.NET EXTENDS / IMPLEMENTS targets. MUST run before the generic
+	// dotted-root fallback below, which is the only path a hierarchy target
+	// has today and which folds every `System.*` base into one `ext:System`
+	// node and resolves `Windows.Forms.*` through the Rust `windows` crate.
+	// The full rationale, and the three gates that stop this from masking an
+	// extractor bug, are in synth_vbnet_hierarchy_6337.go.
+	if canon, sub, ok := vbnetHierarchyExternal(name, relKind, lang, internal.inTreeNames); ok {
+		return canon, sub, true
 	}
 
 	// #4704 — .NET/C# (nuget/BCL) external-package catch-all. Run before the
