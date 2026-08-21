@@ -168,6 +168,26 @@ type RelationshipResult struct {
 	// matchable by definition, whatever its target looks like. Pinned by
 	// TestMatchedBareNameRowNeverCarriesTheFlag_6476.
 	ToBareNameIsEntity bool
+	// FromFileMatchedNothing / ToFileMatchedNothing report that the row NAMED
+	// a file, the file-narrowed lookup returned nothing, and the SAME
+	// (kind, name) pair does exist in the graph under some other path. That
+	// combination is only reachable since #6464 made a named-and-missed file
+	// resolve to nothing, and it has exactly one cause: the row's path is
+	// wrong. Without these flags the endpoint reads as unresolved and
+	// report.go's `!FromResolved` / `!ToResolved` arms blame the extractor for
+	// an entity the extractor DID extract — the same fixture-row-blamed-on-the-
+	// extractor defect #6476 removed, reappearing at the file axis. It fires
+	// the first time anyone mistypes a path, which is the failure mode strict
+	// narrowing exists to surface.
+	//
+	// Deliberately keyed on the UNNARROWED bucket being non-empty, not on
+	// "some entity has this name": a row naming a file for an entity that was
+	// genuinely never extracted keeps the honest "not extracted" diagnostic.
+	//
+	// Invariant: false on every path that MATCHED (a matched row resolved both
+	// endpoints, so neither lookup came back empty).
+	FromFileMatchedNothing bool
+	ToFileMatchedNothing   bool
 	// MatchedRelID is the Relationship.ID of the edge we matched, when one
 	// was found. Empty otherwise.
 	MatchedRelID string
@@ -345,6 +365,29 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 		relByKindFrom[r.Kind+"\x00"+r.FromID] = append(relByKindFrom[r.Kind+"\x00"+r.FromID], r)
 	}
 
+	// fileMissedButNameExists answers the one question #6464's strict
+	// narrowing made askable: the row NAMED a file, that file-narrowed lookup
+	// came back empty — is the entity actually missing, or is the PATH wrong?
+	// If the unnarrowed (kind, name) bucket holds something, the entity was
+	// extracted and only the path is wrong, and report.go must say so rather
+	// than route the row to "…-entity not extracted".
+	//
+	// It reads the unnarrowed bucket and nothing else. In particular it does
+	// NOT replicate the kind-blank all-entities scan below, so a row that
+	// names a file AND leaves the kind blank keeps the older "not extracted"
+	// wording. That is a deliberately smaller claim: the kind-blank scan is a
+	// best-effort affordance, and inferring "the path is wrong" from it would
+	// assert a cause across a kind boundary the row never stated.
+	fileMissedButNameExists := func(file, kind, name string) bool {
+		if file == "" || name == "" {
+			return false
+		}
+		if len(byKindNameFile[kind+"\x00"+name+"\x00"+file]) > 0 {
+			return false
+		}
+		return len(byKindName[kind+"\x00"+name]) > 0
+	}
+
 	// resolveExpectedEdge tries every combination of from/to candidates so
 	// fixtures don't have to spell out the SourceFile when there is no
 	// collision. Returns (matched Relationship or nil, fromResolved,
@@ -464,6 +507,11 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 			FromResolved:       fromOk,
 			ToResolved:         toOk,
 			ToBareNameIsEntity: bareIsEnt,
+			// Both are false by construction on a matched row: a match needs a
+			// non-empty candidate list on the side it came from, and a
+			// non-empty file-narrowed lookup is exactly what makes these false.
+			FromFileMatchedNothing: fileMissedButNameExists(er.FromFile, er.FromKind, er.FromName),
+			ToFileMatchedNothing:   fileMissedButNameExists(er.ToFile, er.ToKind, er.ToName),
 		}
 		if match != nil {
 			res.MatchedRelID = match.ID
