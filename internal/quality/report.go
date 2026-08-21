@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // JSONReport is the machine-readable shape emitted by `grafel quality
@@ -52,6 +53,15 @@ type missingRelationship struct {
 	// edge" for exactly the rows proven unsatisfiable. omitempty keeps every
 	// pre-existing report byte-identical: the key appears only on flagged rows.
 	ToBareNameIsEntity bool `json:"to_bare_name_is_entity,omitempty"`
+	// FromFileMatchedNothing / ToFileMatchedNothing mirror the same-named
+	// RelationshipResult fields. Serialised for the same reason
+	// to_bare_name_is_entity is: without them a consumer reading
+	// from_resolved:false / to_resolved:false concludes the extractor dropped
+	// an entity it in fact extracted. omitempty keeps every pre-existing
+	// report byte-identical — the keys appear only on flagged rows, and the
+	// golden set has none.
+	FromFileMatchedNothing bool `json:"from_file_matched_nothing,omitempty"`
+	ToFileMatchedNothing   bool `json:"to_file_matched_nothing,omitempty"`
 }
 
 // ToJSON converts an in-memory Report to its persisted shape.
@@ -91,14 +101,16 @@ func (r *Report) ToJSON() *JSONReport {
 			to = rr.Expected.ToBareName
 		}
 		jr.MissingRelationships = append(jr.MissingRelationships, missingRelationship{
-			From:               rr.Expected.FromName,
-			FromKind:           rr.Expected.FromKind,
-			Kind:               rr.Expected.Kind,
-			To:                 to,
-			ToKind:             rr.Expected.ToKind,
-			FromResolved:       rr.FromResolved,
-			ToResolved:         rr.ToResolved,
-			ToBareNameIsEntity: rr.ToBareNameIsEntity,
+			From:                   rr.Expected.FromName,
+			FromKind:               rr.Expected.FromKind,
+			Kind:                   rr.Expected.Kind,
+			To:                     to,
+			ToKind:                 rr.Expected.ToKind,
+			FromResolved:           rr.FromResolved,
+			ToResolved:             rr.ToResolved,
+			ToBareNameIsEntity:     rr.ToBareNameIsEntity,
+			FromFileMatchedNothing: rr.FromFileMatchedNothing,
+			ToFileMatchedNothing:   rr.ToFileMatchedNothing,
 		})
 	}
 	for _, fh := range r.ForbiddenHits {
@@ -170,8 +182,28 @@ func (r *Report) WriteHuman(w io.Writer) {
 			if to == "" {
 				to = rr.Expected.ToBareName
 			}
+			var badPaths []string
+			if rr.FromFileMatchedNothing {
+				badPaths = append(badPaths, fmt.Sprintf("from_file %q", rr.Expected.FromFile))
+			}
+			if rr.ToFileMatchedNothing {
+				badPaths = append(badPaths, fmt.Sprintf("to_file %q", rr.Expected.ToFile))
+			}
 			diag := ""
 			switch {
+			// FIRST, ahead of every missing-endpoint arm (#6464 follow-up).
+			// A wrong path makes its endpoint unresolved, so this row also
+			// satisfies `!FromResolved` / `!ToResolved`; those arms say "…
+			// -entity not extracted", which is FALSE here — the entity was
+			// extracted, under a different path. Placing this arm behind them
+			// is not a stylistic choice: it silently restores the misdiagnosis
+			// the arm exists to remove, and it does so on the single most
+			// likely authoring mistake (a mistyped path). Pinned by
+			// TestFileNarrowingArmMustOutrankTheNotExtractedArms_6464.
+			case len(badPaths) > 0:
+				diag = fmt.Sprintf("  (root cause: FIXTURE ROW — %s names a path no such entity"+
+					" is under; the entity IS extracted, in another file, so this row can never"+
+					" match; fix the path)", strings.Join(badPaths, " and "))
 			case !rr.FromResolved && !rr.ToResolved:
 				diag = "  (root cause: NEITHER endpoint extracted)"
 			case !rr.FromResolved:

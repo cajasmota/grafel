@@ -116,6 +116,25 @@ func LoadFixture(dir string) (*Fixture, error) {
 	if f.Name == "" {
 		return nil, fmt.Errorf("%s: fixture_name is required", p)
 	}
+	// `match_by: qualified_name` and `source_file` on one row state two
+	// different intents, and only one of them is honoured: resolveEntity's
+	// qualified-name path returns before the file-narrowed lookup is ever
+	// consulted, so the source_file is silently ignored. Silently is the
+	// problem — the row LOOKS like it asserts a location and does not.
+	// Rejecting at load is free today (0 of 423 rows set match_by at all) and
+	// keeps the ambiguity from being introduced rather than diagnosed after
+	// the fact, which is the failure mode #6464 spent its whole budget on.
+	//
+	// Scoped to qualified_name deliberately: `match_by: source_file` (and the
+	// empty default) both go THROUGH the file-narrowed lookup, so source_file
+	// there is honoured, not ignored, and there is nothing to reject.
+	for i, ee := range f.ExpectedEntities {
+		if ee.MatchBy == "qualified_name" && ee.SourceFile != "" {
+			return nil, fmt.Errorf("%s: expected_entities[%d] (%q): match_by "+
+				"\"qualified_name\" ignores source_file %q — drop one of the two so the "+
+				"row states a single intent", p, i, ee.Name, ee.SourceFile)
+		}
+	}
 	return &f, nil
 }
 
