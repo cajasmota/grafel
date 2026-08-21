@@ -1,9 +1,12 @@
 package external
 
 import (
+	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/resolve"
 )
 
 // #6337 — external synthesis for VB.NET EXTENDS / IMPLEMENTS targets.
@@ -154,6 +157,96 @@ func TestVBNetHierarchyExternalSynthesis_6337(t *testing.T) {
 			toID:    "IDisposable",
 			want:    "IDisposable",
 		},
+		{
+			// #6337 round 2 — GROUPING. A generic instantiation must land on
+			// the open type's node. Returning the raw spelling gave
+			// `ext:dotnet:List(Of Machine)` its own node, one per
+			// instantiation, which is the opposite of what the arm is for.
+			name:    "generic instantiation folds to the open type",
+			relKind: "EXTENDS",
+			toID:    "List(Of Machine)",
+			want:    "ext:dotnet:List",
+			subtype: "type",
+		},
+		{
+			name:    "a second instantiation shares that node",
+			relKind: "IMPLEMENTS",
+			toID:    "IComparable(Of Profile)",
+			want:    "ext:dotnet:IComparable",
+			subtype: "type",
+		},
+		{
+			name:    "generic member-level clause folds to the open type",
+			relKind: "IMPLEMENTS",
+			toID:    "IComparable(Of Profile).CompareTo",
+			want:    "ext:dotnet:IComparable:CompareTo",
+			subtype: "member",
+		},
+		{
+			name:    "dotted generic instantiation strips too",
+			relKind: "EXTENDS",
+			toID:    "System.Collections.Generic.List(Of Machine)",
+			want:    "ext:dotnet:System.Collections.Generic.List",
+			subtype: "type",
+		},
+		{
+			// #6337 round 2 — MALFORMED SPELLINGS. The dotted half is a
+			// three-entry ROOT set, not a curated type list, so before the
+			// well-formedness check any `System.`-prefixed string synthesised.
+			// A clause the parser truncated must stay a bug edge: scoring a
+			// parse failure as a resolution is exactly the masking this arm
+			// claims to avoid.
+			name:    "truncated dotted clause stays a bug edge",
+			relKind: "EXTENDS",
+			toID:    "System.",
+			want:    "System.",
+		},
+		{
+			name:    "empty interior segment stays a bug edge",
+			relKind: "EXTENDS",
+			toID:    "System..Forms.Form",
+			want:    "System..Forms.Form",
+		},
+		{
+			name:    "non-identifier segment stays a bug edge",
+			relKind: "EXTENDS",
+			toID:    "System.Forms.Form>",
+			want:    "System.Forms.Form>",
+		},
+		{
+			// The other direction of the same pin: tightening must not have
+			// cost a well-formed deep dotted name.
+			name:    "well-formed deep dotted name still synthesises",
+			relKind: "EXTENDS",
+			toID:    "Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid",
+			want:    "ext:dotnet:Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid",
+			subtype: "type",
+		},
+		{
+			// #6337 round 2 — the mask guard must BLOCK, not merely decline.
+			// Declining hands the target to the generic dotted-root fallback,
+			// which returns ext:System — a resolved node, so the ambiguity
+			// leaves the bug-edge count and the guard achieves nothing.
+			name:    "masked dotted target does not fall through to ext:System",
+			relKind: "EXTENDS",
+			toID:    "System.Windows.Forms.Form",
+			extra: []graph.Entity{{
+				ID: "fedcba9876543210", Name: "System.Windows.Forms.Form",
+				Kind: "SCOPE.Component", SourceFile: "Form.vb", Language: "vbnet",
+			}},
+			want: "System.Windows.Forms.Form",
+		},
+		{
+			// #6337 round 2 — `Exception`. See the position note in
+			// synth_vbnet_hierarchy_6337.go. Below the stdlib stop-list this
+			// produced an untagged `ext:Exception` typed "function" and shared
+			// with Python / Java / JS.
+			name:    "Exception gets the dotnet canon, not the shared stdlib node",
+			relKind: "EXTENDS",
+			toID:    "Exception",
+			want:    "ext:dotnet:Exception",
+			subtype: "type",
+		},
 	}
 
 	for _, tc := range cases {
@@ -268,5 +361,72 @@ func TestVBNetHierarchyDoesNotBorrowGoIO_6337(t *testing.T) {
 	}
 	if doc.Relationships[0].ToID == doc.Relationships[1].ToID {
 		t.Fatal("the .NET IO namespace and the Go io package collapsed to one node")
+	}
+}
+
+// TestVBNetHierarchyExceptionDoesNotStealStdlibBareName_6337 is the other
+// direction of the `Exception` fix, and the reason the arm was moved above the
+// stdlib stop-list rather than the stop-list being language-gated.
+//
+// Moving an arm earlier can steal edges from the arm it jumped over. This pins
+// that it did not: `Exception` reaching classifyExternal from any language but
+// vbnet, or from vbnet on a non-hierarchy edge, must still fold to the shared
+// `ext:Exception` function node it always did. Only vbnet EXTENDS / IMPLEMENTS
+// changed.
+func TestVBNetHierarchyExceptionDoesNotStealStdlibBareName_6337(t *testing.T) {
+	// python is not "ext:Exception": `Exception` is a Python BUILTIN, and a
+	// separate pre-pass in Synthesize drops the edge entirely rather than
+	// synthesising a placeholder for it. That is pre-existing behaviour and is
+	// pinned here as-is — the point of this test is that NOTHING outside vbnet
+	// hierarchy changed when the arm moved.
+	for lang, want := range map[string]string{
+		"python":     "",
+		"java":       "ext:Exception",
+		"javascript": "ext:Exception",
+		"go":         "ext:Exception",
+		"":           "ext:Exception",
+	} {
+		doc := vbDoc("EXTENDS", "Exception")
+		doc.Entities[0].Language = lang
+		doc.Entities[0].SourceFile = "a.py"
+		Synthesize(doc)
+		if got := doc.Relationships[0].ToID; got != want {
+			t.Errorf("lang=%q: ToID = %q, want %q (the vbnet arm must not claim it)", lang, got, want)
+		}
+	}
+	// vbnet, but a CALLS edge — still the stdlib arm's.
+	doc := vbDoc("CALLS", "Exception")
+	Synthesize(doc)
+	if got := doc.Relationships[0].ToID; got != "ext:Exception" {
+		t.Errorf("vbnet CALLS: ToID = %q, want ext:Exception", got)
+	}
+}
+
+// TestVBNetHierarchyArmStealsNothingElseFromStdlib_6337 generalises the case
+// above across both tables. The arm now runs before stdlibFunction, so every
+// name claimed by BOTH the language-agnostic stdlibBareNames stop-list and the
+// vbnet bare-leaf table changes hands: for vbnet EXTENDS / IMPLEMENTS it stops
+// producing a shared, untagged `ext:<name>` node typed "function" and produces
+// an `ext:dotnet:<name>` type node instead.
+//
+// The measured answer today is that `Exception` is the only such name. This
+// test fails if a future entry on either table silently adds another, which may
+// well be the right call — Exception was — but is a decision that needs its own
+// pinned case, not a side effect of the arm's position.
+func TestVBNetHierarchyArmStealsNothingElseFromStdlib_6337(t *testing.T) {
+	var both []string
+	for name := range stdlibBareNames {
+		if _, member, ok := resolve.VBNetExternalHierarchyTarget(name); ok && member == "" {
+			both = append(both, name)
+		}
+	}
+	sort.Strings(both)
+	want := []string{"Exception"}
+	if !reflect.DeepEqual(both, want) {
+		t.Fatalf("names claimed by BOTH stdlibBareNames and the vbnet base-type table = %v, want %v.\n"+
+			"Each one is a name the #6337 arm takes off the shared ext:<name> stdlib node\n"+
+			"for vbnet hierarchy edges. Add a case pinning its canon and subtype in\n"+
+			"TestVBNetHierarchyExternalSynthesis_6337, and a both-directions case like\n"+
+			"TestVBNetHierarchyExceptionDoesNotStealStdlibBareName_6337, then update this list.", both, want)
 	}
 }

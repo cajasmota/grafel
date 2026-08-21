@@ -5811,22 +5811,95 @@ func isRustExternalBaseType(s string) bool {
 //     directions against a checked-in VB.NET fixture and therefore runs
 //     unconditionally, with no corpus and no environment variable.
 func isVBExternalBaseType(s string) bool {
-	base := strings.TrimSpace(s)
-	// Generic type arguments are stripped by the extractor
-	// (internal/extractors/vbnet.baseTypeName), but a stub reaching here from
-	// another producer may still carry them.
-	if p := strings.IndexByte(base, '('); p > 0 {
-		base = strings.TrimSpace(base[:p])
-	}
-	if base == "" {
-		return false
+	_, ok := vbExternalBaseName(s)
+	return ok
+}
+
+// vbExternalBaseName is isVBExternalBaseType's implementation, and additionally
+// returns the NORMALISED spelling it classified — trimmed, with any generic
+// argument list removed. Callers that go on to build a node id from the name
+// (VBNetExternalHierarchyTarget, and through it the external-synthesis arm for
+// #6337) must use this return value and not the raw input: classifying
+// `List(Of Machine)` on the strength of `List` and then minting
+// `ext:dotnet:List(Of Machine)` would give every instantiation its own node,
+// which is the exact opposite of the grouping the arm exists to provide.
+//
+// Malformed spellings are rejected outright (#6337 round 2). The dotted rule
+// keys only on the ROOT segment, so before this check any string beginning
+// `System.` classified — including `System.`, the shape a misparsed
+// `Inherits` clause takes when the type name is lost. Synthesising that into a
+// tidy `ext:dotnet:System.` node removes it from the bug-edge count and so
+// scores a parse failure as a success, which is precisely the masking this arm
+// is supposed to avoid. A name is well-formed here when every dot-separated
+// segment is a non-empty VB identifier (letter or `_` first, then letters,
+// digits or `_`); everything else stays unresolved and keeps reporting.
+func vbExternalBaseName(s string) (string, bool) {
+	base := stripVBGenericArgs(s)
+	if !isWellFormedVBTypeName(base) {
+		return "", false
 	}
 	if dot := strings.IndexByte(base, dottedNameSep); dot > 0 {
-		_, ok := vbFrameworkRootNamespaces[base[:dot]]
-		return ok
+		if _, ok := vbFrameworkRootNamespaces[base[:dot]]; ok {
+			return base, true
+		}
+		return "", false
 	}
-	_, ok := vbExternalBaseTypes[base]
-	return ok
+	if _, ok := vbExternalBaseTypes[base]; ok {
+		return base, true
+	}
+	return "", false
+}
+
+// stripVBGenericArgs removes a trailing VB generic argument list, so
+// `List(Of Machine)` and `List(Of Profile)` both normalise to `List`. Generic
+// arguments are already stripped by the extractor
+// (internal/extractors/vbnet.baseTypeName), but a stub reaching here from
+// another producer may still carry them.
+//
+// It strips only a list that CLOSES AT THE END of the spelling. A member-level
+// clause on a generic interface — `IComparable(Of Profile).CompareTo` — has its
+// parenthesis in the middle, and truncating there would silently turn the whole
+// clause into the bare type `IComparable` and lose the member leaf. Leaving it
+// alone means the spelling fails the well-formedness check, the caller falls
+// through to its type/member split, and each half is normalised separately.
+func stripVBGenericArgs(s string) string {
+	base := strings.TrimSpace(s)
+	if p := strings.IndexByte(base, '('); p > 0 && strings.HasSuffix(base, ")") {
+		base = strings.TrimSpace(base[:p])
+	}
+	return base
+}
+
+// isWellFormedVBTypeName reports whether s is a dot-separated sequence of at
+// least one non-empty VB identifier. It rejects the empty string, a leading or
+// trailing `.`, an empty interior segment (`System..Foo`), and any segment that
+// is not identifier-shaped. See vbExternalBaseName for why a malformed
+// spelling must not be allowed to classify.
+func isWellFormedVBTypeName(s string) bool {
+	if s == "" {
+		return false
+	}
+	seg := 0 // characters consumed in the current segment
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == dottedNameSep {
+			if seg == 0 {
+				return false // empty segment: leading or doubled dot
+			}
+			seg = 0
+			continue
+		}
+		isAlpha := c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+		if seg == 0 {
+			if !isAlpha {
+				return false
+			}
+		} else if !isAlpha && !(c >= '0' && c <= '9') {
+			return false
+		}
+		seg++
+	}
+	return seg != 0 // trailing dot leaves an empty final segment
 }
 
 // vbFrameworkRootNamespaces is the set of root namespaces owned by the .NET
@@ -5839,9 +5912,23 @@ func isVBExternalBaseType(s string) bool {
 // `Windows`. `System` and `Microsoft` are safe on their own; `Windows` is an
 // ordinary identifier that an application may legally use as its own root
 // namespace, and it is in the set only because `Windows.Forms.TextBox` is a
-// real measured target in the corpus. That residual is what the nameExists
-// guard at the call site covers — a dotted target that some in-tree entity
-// carries verbatim as its Name is not routed here at all.
+// real measured target in the corpus.
+//
+// THAT RESIDUAL IS NOT COVERED BY THE IN-TREE NAME GUARD AT EITHER CALL SITE,
+// and an earlier version of this comment claimed it was (#6337 round 2). The
+// guard compares against entity Names, and the vbnet extractor stamps the
+// enclosing namespace as a PROPERTY (`vbnet_namespace`,
+// internal/extractors/vbnet/extractor.go), never as part of Entity.Name. So an
+// in-tree `Namespace Windows` / `Class Foo` is indexed as the name `Foo`, the
+// set never contains `Windows.Foo`, and the guard cannot fire for any dotted
+// spelling. What actually limits the damage is narrower and worth stating
+// plainly: the root set has exactly three entries, all measured in the corpus;
+// the arm is gated to vbnet EXTENDS / IMPLEMENTS edges that in-tree resolution
+// has already failed on; and the malformed-spelling check in
+// vbExternalBaseName keeps a truncated parse from classifying. An application
+// that roots its own namespace at `Windows` AND has a hierarchy edge onto it
+// that in-tree resolution missed will get an `ext:dotnet:Windows.*` node it
+// should not have. That is a known, unguarded residual, not a covered one.
 //
 // `Accessibility` and `Mono` were in the first version of this set and are
 // GONE: neither appears as a dotted target anywhere in the 302-file corpus,
