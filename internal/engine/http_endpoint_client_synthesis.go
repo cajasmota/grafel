@@ -135,14 +135,53 @@ var axiosClientRe = regexp.MustCompile(
 //  3. Class property arrow: `foo = (` / `foo = async (` (without var/const/let).
 //     This covers React component class methods and service-class patterns
 //     common in Angular/Vue/RN frontends, e.g. `login = (email) => $http.post(...)`.
-//  4. Object method shorthand: `foo(` inside an object/class body.
-//     We do NOT attempt to match these to avoid colliding with arbitrary
-//     function calls; shapes 1–3 cover >95% of real-world named callers.
+//  4. Method shorthand: `foo(...) {` inside an object literal or a class
+//     body — `list(): Observable<T[]> { … }`, `async save(x) { … }`.
+//     This shape used to be declined outright, on the grounds that a bare
+//     `foo(` collides with arbitrary call expressions. That hazard is real,
+//     but it is a property of the BARE form, not of the shape: an Angular /
+//     NestJS / plain-TS service makes nearly all of its HTTP calls from
+//     class methods, so declining it left those call sites with no caller
+//     at all (#6447). The alternative below keeps the collision closed by
+//     demanding four things at once that a call expression does not have:
+//     line-start plus indentation (a call in an expression is preceded by
+//     `=`, `.`, `(`, `return`, …), a parenthesis group containing no nested
+//     parens (which rules out `describe('x', () => {`), an optional TS
+//     return annotation, and a following `{`. The residue is the reserved
+//     words that are also written `(...) {` — `if`, `for`, `while`,
+//     `switch`, `catch`, … — and those are rejected by name in
+//     indexJSEnclosingFunctions rather than in the pattern, because RE2 has
+//     no negative lookahead and spelling them into the alternation would
+//     bury the shape being matched.
+//
+// NOTE: a span still carries only (offset, name) — see jsFuncSpan. What makes
+// the attribution correct here is that a method declaration sits NEARER to its
+// call sites than a module-level helper does; the span is still unbounded, so
+// a call site trailing the last declaration in a file still attributes to it.
+// Bounding spans is a separate change — pyFuncSpan aliases jsFuncSpan and ~15
+// non-JS passes share enclosingJSFuncAt — and is filed as #6500.
 var jsFuncDeclRe = regexp.MustCompile(
 	`(?m)(?:^|[^\w$])(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(` +
 		`|(?m)(?:^|[^\w$])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(` +
-		`|(?m)(?:^|[\s{,;])([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(`,
+		`|(?m)(?:^|[\s{,;])([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(` +
+		`|(?m)^[ \t]+(?:(?:public|private|protected|static|readonly|async|get|set|override|abstract)[ \t]+)*` +
+		`([A-Za-z_$][\w$]*)[ \t]*(?:<[^<>()]*>)?[ \t]*\([^()]*\)[ \t]*(?::[^;{}()]*)?\{`,
 )
+
+// jsMethodShorthandReserved lists the identifiers that satisfy alternative 4
+// of jsFuncDeclRe structurally — indentation, `(...)`, `{` — without being a
+// method declaration. `if (ok) {` is indistinguishable from `probe(x) {` to
+// RE2 without a negative lookahead, so the discrimination happens here.
+//
+// Being permissive here is the dangerous direction, not the strict one: a
+// missing entry mints a span named `if`, and because spans are unbounded
+// enclosingJSFuncAt would then attribute every call site below that block to
+// it — a WRONG caller, which is worse than the empty one #6447 started from.
+var jsMethodShorthandReserved = map[string]bool{
+	"if": true, "for": true, "while": true, "switch": true,
+	"catch": true, "return": true, "do": true, "function": true,
+	"else": true, "with": true, "try": true, "finally": true,
+}
 
 // ---------------------------------------------------------------------------
 // Phase 4 (#712) — bare const-variable path resolution
@@ -2370,13 +2409,25 @@ func indexJSEnclosingFunctions(content string) []jsFuncSpan {
 		}
 		name := ""
 		// Group 1 (function foo(...)) takes precedence over group 2 (const foo = ...)
-		// which takes precedence over group 3 (class property arrow: foo = (...) =>).
-		if m[2] >= 0 {
+		// which takes precedence over group 3 (class property arrow: foo = (...) =>),
+		// which takes precedence over group 4 (method shorthand: foo(...) { ).
+		switch {
+		case m[2] >= 0:
 			name = content[m[2]:m[3]]
-		} else if m[4] >= 0 {
+		case m[4] >= 0:
 			name = content[m[4]:m[5]]
-		} else if len(m) >= 8 && m[6] >= 0 {
+		case len(m) >= 8 && m[6] >= 0:
 			name = content[m[6]:m[7]]
+		case len(m) >= 10 && m[8] >= 0:
+			name = content[m[8]:m[9]]
+			// Only alternative 4 can capture a reserved word: shapes 1-3 each
+			// require `function` / `const` / `let` / `var` / `=` beside the
+			// name, which no control-flow keyword carries. See
+			// jsMethodShorthandReserved for why a miss here is the costly
+			// direction.
+			if jsMethodShorthandReserved[name] {
+				continue
+			}
 		}
 		if name == "" {
 			continue

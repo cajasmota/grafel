@@ -231,6 +231,83 @@
       "to_kind": "SCOPE.ExternalAPI",
       "to_file": "app/i18n.service.ts",
       "must_exist": true
+    },
+    {
+      "from_name": "list",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/thing.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/api/things",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/thing.service.ts",
+      "must_exist": true,
+      "note": "#6447. The call sites exist (rows above) but nothing said WHO calls them: before this row expected.json contained zero FETCHES assertions, so caller attribution was entirely ungraded. jsFuncDeclRe recognised `function f(`, `const f = (` and `f = (` but explicitly declined class/object method shorthand, so `list()` inside `class ThingService` produced no enclosing-function span at all. enclosingJSFuncAt then returned \"\", makeEmit skipped source_caller, and resolveCallerToFetchesEdge's step 3 -- including its same-file fallback -- never ran. Falsifiable: delete the 4th alternative from jsFuncDeclRe and this row goes red."
+    },
+    {
+      "from_name": "create",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/thing.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:POST:/api/things",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/thing.service.ts",
+      "must_exist": true,
+      "note": "Second method of the same class: the span walk must advance past `list`, not stick on the first method it found."
+    },
+    {
+      "from_name": "byId",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/thing-detail.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/api/things/{id}",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/thing-detail.service.ts",
+      "must_exist": true,
+      "note": "Constructor-injected variant. `constructor(private http: HttpClient) {}` matches no shape 1-3 either, so this file indexed ZERO spans before #6447."
+    },
+    {
+      "from_name": "rename",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/thing-detail.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:PATCH:/api/things/{id}",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/thing-detail.service.ts",
+      "must_exist": true,
+      "note": "PATCH via a template literal; the caller is the method, not the class and not the file."
+    },
+    {
+      "from_name": "strings",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/i18n.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/assets/i18n/en.json",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/i18n.service.ts",
+      "must_exist": true,
+      "note": "Return type is a nested generic (`Observable<Record<string, string>>`); the method-shorthand alternative must tolerate the return annotation between `)` and `{`."
+    },
+    {
+      "from_name": "byCode",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/dynamic.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/{dynamic}/base_code",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/dynamic.service.ts",
+      "must_exist": true,
+      "note": "#6447 mis-attribution, positive half. dynamic.service.ts declares module-level arrows `base` (:8) and `legacyBase` (:9). jsFuncSpan carries an offset and no END, so the nearest-preceding walk never leaves `legacyBase` and stamped it on every call site in the class body below -- including this one, which calls base(code). With the method span indexed, the nearest preceding declaration is `byCode` itself. NOTE: this masks the unbounded-span root cause rather than fixing it; span bounding is filed as #6500."
+    },
+    {
+      "from_name": "legacyByCode",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/dynamic.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/{dynamic}/legacyBase_code",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/dynamic.service.ts",
+      "must_exist": true,
+      "note": "The one site that DID emit a FETCHES edge before #6447 -- with `legacyBase` as the caller, which is the URL-building helper, not the caller. Right target, wrong source."
     }
   ],
   "forbidden_relationships": [
@@ -269,6 +346,28 @@
       "to_kind": "http_endpoint_call",
       "must_exist": false,
       "note": "MEDIUM 6 of #6446. app/thing.service.ts's URL is a static literal the static pass already owns; the residual pass must skip it. Deleting that skip emits a bogus dynamic twin, which survived every unit test, the fixture and the baseline before this row existed -- verified by mutation."
+    },
+    {
+      "from_name": "legacyBase",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/dynamic.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/{dynamic}/base_code",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/dynamic.service.ts",
+      "must_exist": false,
+      "note": "#6447 mis-attribution, negative half. Not decorative and not hypothetical: this exact edge WAS in the graph at de1d96481 -- verified by dumping the fixture graph, where `legacyBase` is a real SCOPE.Operation entity (the module-level arrow at dynamic.service.ts:9) with a FETCHES edge to the call site inside byCode(). Restoring jsFuncDeclRe's 3-alternative form re-mints it and this row hits."
+    },
+    {
+      "from_name": "legacyBase",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/dynamic.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/{dynamic}/legacyBase_code",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/dynamic.service.ts",
+      "must_exist": false,
+      "note": "The other half of the same defect: legacyByCode()'s call site was also stamped `legacyBase`. The target happens to be right, so only the SOURCE is wrong -- which is exactly the shape a to_name-only assertion cannot catch."
     }
   ]
 }
