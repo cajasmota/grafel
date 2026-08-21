@@ -76,8 +76,19 @@
 // would be correct but useless as a ratchet, so each is characterised
 // explicitly by its exact shape, issue number and reason. Anything else —
 // a new divergence, or an allow-listed one that stops reproducing — fails.
-// The comparison itself is NOT weakened: no tolerance profile, no ignored edge
-// kind, no ignored property.
+// The comparison itself is NOT weakened by that list: no tolerance profile, no
+// ignored property, and the allow-list can only shrink.
+//
+// SEPARATELY from the allow-list, ONE edge kind is out of the property's SCOPE:
+// `RENAMED_FROM` (#6482). That is not a tolerance for a defect — the reference
+// side is structurally incapable of emitting it, so comparing it compares two
+// different experiments. See `cpIgnoredRelKinds` for the full reasoning, and
+// note that the scoping is paid for by a positive Go-level assertion
+// (`TestRenameParity_6482_PathBIncremental_EmitsRenamedFrom`), because an
+// ignore entry on its own makes suppression of that edge kind look like an
+// IMPROVEMENT to every gate in this family. Measured, not supposed: adding one
+// further kind (`ROUTES_TO`) to that map turns the red
+// `TestMountParity_6461_MountEdit_PathA` GREEN. Entries here are never free.
 //
 // The ratchet has since paid for itself. #6129's headline Path-A defect was
 // fixed in internal/extractors/sresolver, and this gate — not the fixing
@@ -133,6 +144,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/algorithms"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/parity"
 )
@@ -258,6 +270,42 @@ func (k cpKnown) matches(d cpDivergence) bool {
 //     allow-list can only ever shrink;
 //  3. an INERT comparison — the graphs carry no edges at all, which would make
 //     "equivalent" meaningless.
+//
+// cpIgnoredRelKinds is the one edge kind the parity property is NOT stated
+// over, and the reason is structural rather than a tolerance for a known bug
+// (#6482).
+//
+// `RENAMED_FROM` is HISTORY-dependent. It is emitted by Pass 5.5
+// (`algorithms.DetectRenamesBounded`, from `cmd/grafel/index.go`) and that pass
+// has exactly ONE gate: a prior `graph.fb` must already exist in the output
+// dir. Incrementality is never consulted — a plain `grafel index` re-run over
+// an already-indexed repo emits these edges too (see
+// `TestRenameDetect_CompleteRunReportsNoTruncation`, which runs `Index` twice
+// with NO `WithIncremental` and asserts `renames != 0`).
+//
+// Every reference side in this harness is a full rebuild into a FRESH,
+// EMPTY state dir. `LoadGraphFromDir` therefore fails, `prevDoc == nil`, and
+// Pass 5.5 is a NO-OP BY CONSTRUCTION. The reference side cannot ever emit a
+// `RENAMED_FROM` edge, whatever the incremental side does — so any fixture that
+// renames anything reports a spurious EDGE-INVENTED that says nothing about
+// incremental-vs-full equivalence. Comparing them is comparing two different
+// experiments.
+//
+// Additionally, `RENAMED_FROM`'s ToID is an entity that is in the PREVIOUS
+// graph and absent from the new one, so the edge is UNBOUND IN ITS OWN GRAPH
+// BY DESIGN (`internal/algorithms/rename_detection.go:119-123`). That is the
+// contract, not a dangling-pointer bug.
+//
+// This is a SCOPING of the property, not a tolerance — so it does not live in
+// the `cpKnown` allow-list, which is a shrink-only ratchet over real defects.
+// Scoping it out silently would be a blinding, so it is paid for by a POSITIVE
+// Go-level assertion that the incremental path really does emit the edge, with
+// a cardinality no fixture row can express:
+// `TestRenameParity_6482_PathBIncremental_EmitsRenamedFrom`.
+var cpIgnoredRelKinds = map[string]bool{
+	algorithms.RelKindRenamedFrom: true,
+}
+
 func cpAssertParity(t *testing.T, path string, full, inc *graph.Document, known []cpKnown) {
 	t.Helper()
 
@@ -277,7 +325,10 @@ func cpAssertParity(t *testing.T, path string, full, inc *graph.Document, known 
 		len(full.Entities), len(inc.Entities),
 		cpUnboundEndpoints(full), cpUnboundEndpoints(inc))
 
-	rep := parity.CompareWithOptions(full, inc, parity.Options{ContentKeyedIdentity: true})
+	rep := parity.CompareWithOptions(full, inc, parity.Options{
+		ContentKeyedIdentity: true,
+		IgnoreRelKinds:       cpIgnoredRelKinds,
+	})
 	divs := cpFlatten(rep)
 
 	hits := make([]int, len(known))
