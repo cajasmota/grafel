@@ -111,11 +111,19 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 
 	// #6518: the file-level CONTAINS edges collected above belong to the FILE,
 	// so they are carried by a file entity rather than by the entity they
-	// point AT. Emitted only when there is at least one such edge, mirroring
-	// hcl's emitFileLevelRelationships (which returns nil when the file has no
-	// top-level blocks), so a .proto with nothing but imports keeps its
-	// current shape.
-	if len(fileRels) > 0 {
+	// point AT.
+	//
+	// The carrier is emitted when the file has SOMETHING for it to carry —
+	// file-level CONTAINS edges OR imports — and not otherwise, so a
+	// content-free .proto does not mint a bare orphan node. The imports arm is
+	// not incidental: an imports-only file has no containment at all, but it is
+	// exactly the shape #577 introduced this entity FOR, since
+	// ReferencesEmbedded rewrites an IMPORTS FromID from the raw path onto this
+	// record's stamped id so the cross-repo linker (#566) can map the edge back
+	// to its repo. Pinned in both directions by
+	// TestProto_FileEntityCarriesImportsOnlyFiles_6518 and
+	// TestProto_NoFileEntityWithoutAnythingToCarry_6518.
+	if len(fileRels) > 0 || len(importEntities) > 0 {
 		fileEnt := extractor.FileEntity(extractor.FileInput{
 			Path: file.Path,
 			// The classifier token, not file.Language: every entity this
@@ -273,8 +281,13 @@ func messageTypeRef(filePath, name string) string {
 //
 // Clearing FromID AT THE OLD SITES would not have fixed it: these records were
 // appended to the CONTAINED entity, so assembly would have stamped the
-// message's own id and the edge would have died as a self-loop
-// (internal/graph/orientation.go:206). The record needed a real owner, so the
+// message's own id and the edge would have become a SELF-EDGE. Note what that
+// does and does not mean: nothing rejects it at emission or at persistence —
+// it is stored, and then skipped by each consumer that filters FromID == ToID
+// (internal/graph/orientation.go:206 in AnalyzeOrientation, module_gds.go:355,
+// pr_impact.go:273). So the edge would not dangle; it would sit in the graph
+// contributing nothing, which is harder to notice, not easier. The record
+// needed a real owner, so the
 // package now emits one — extractor.FileEntity, the per-file SCOPE.Component
 // ~25 other extractors already emit under #577 — and Extract hands these
 // records to it. FromID is empty here because the owner IS the file, exactly
@@ -1011,8 +1024,27 @@ func enumValueNumber(node ts.Node, src []byte) string {
 // directives and returns one stub SCOPE.Component entity per import target,
 // each carrying an IMPORTS edge from file.Path → target. `import public`
 // imports carry Properties["public"]="true" on the relationship.
+//
+// A SELF-import — the quoted string equal to the importing file's own path —
+// mints NO placeholder. #6518 gave every proto file a SCOPE.Component carrier
+// named for its path, and graph.EntityID hashes (repo, kind, name, sourceFile)
+// and NOT Subtype, so on that one shape the placeholder and the carrier are
+// ONE id: two records, same hash, in a package whose entire defect class is
+// "one entity, two disagreeing addresses". The placeholder is the half that
+// goes, because it is the derived one — a stub standing in for a file grafel
+// may not have indexed — while the carrier is the real record for a file that
+// is right here. The IMPORTS edge goes with it: its target is the importing
+// file itself, so the surviving edge would be a self-loop carrying nothing,
+// and protoc rejects the construct outright ("File recursively imports
+// itself"). grafel never runs protoc — this package pins `import "Foo";` as
+// valid input for exactly that reason — so the requirement is that malformed
+// input does not corrupt the graph, not that it is faithfully modelled.
+// Pinned by TestProto_SelfImportDoesNotCollideWithTheFileEntity_6518; the
+// cross-file case is untouched, since a placeholder for "b.proto" inside
+// a.proto is a different (name, sourceFile) tuple from b.proto's own carrier.
 func buildImportEntities(file extractor.FileInput) []types.EntityRecord {
 	root := file.TSTree.RootNode()
+	self := filepath.ToSlash(file.Path)
 	var entities []types.EntityRecord
 	for i := range root.ChildCount() {
 		ch := root.Child(int(i))
@@ -1021,6 +1053,9 @@ func buildImportEntities(file extractor.FileInput) []types.EntityRecord {
 		}
 		path, public := parseImport(ch, file.Content)
 		if path == "" {
+			continue
+		}
+		if filepath.ToSlash(path) == self {
 			continue
 		}
 		rel := types.RelationshipRecord{

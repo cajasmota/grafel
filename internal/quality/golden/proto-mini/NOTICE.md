@@ -75,37 +75,51 @@ the proto rpc entity is addressed as bare `User` — the same collision this
 fixture exists for). When that lands, add the two `SERVES` rows as **expected**,
 with `to_name`/`to_kind` naming the rpc entities.
 
-## The one shape this fixture CANNOT grade — read this before adding rows for it
+## The shape this fixture could NOT grade until #6518 — now graded
 
 **The `file → message` / `file → enum` CONTAINS edge — the literal subject of
-#6422 — is invisible to the golden harness, and no row here asserts it.**
+#6422 — used to be invisible to the golden harness. It is graded now, and this
+section is kept because the reason it was invisible is worth knowing.**
 
-`fileContainsRel` (internal/extractors/proto/proto.go) sets `FromID` to the
-raw file path on purpose, and the proto extractor emits **no per-file carrier
-entity**. Unlike Java, where the file itself is a `SCOPE.Component` that
-`expected.json` can name as `from_name`, nothing in a proto graph is named
-`user.proto`, so the resolver leaves those edges dangling on the FROM side
-(the known #6298 offender, `internal/extractors/file_anchored_rels_guard_test.go`).
+WAS: `fileContainsRel` (internal/extractors/proto/proto.go) set `FromID` to the
+raw file path, and the proto extractor emitted **no per-file carrier entity**.
+Unlike Java, where the file itself is a `SCOPE.Component` that `expected.json`
+can name as `from_name`, nothing in a proto graph was named `user.proto`, so
+the resolver left those edges dangling on the FROM side (the #6298 offender in
+`internal/extractors/file_anchored_rels_guard_test.go`).
 `internal/quality/diff.go`'s `resolveExpectedEdge` needs at least one resolvable
 `from` candidate before it can match anything — there is no `from_bare_name` —
-so any row spelling this edge would be **unsatisfiable**, i.e. red forever and
-telling you nothing. Measured: reverting `fileContainsSchemaRel` to
-`BuildOperationStructuralRef` (the exact pre-#6422 defect) leaves this fixture
-at **18/18 entities, 16/16 relationships, 0 forbidden hits** — completely green.
+so any row spelling this edge was **unsatisfiable**: red forever, telling you
+nothing. Measured at the time: reverting `fileContainsSchemaRel` to
+`BuildOperationStructuralRef` (the exact pre-#6422 defect) left this fixture at
+**18/18 entities, 16/16 relationships, 0 forbidden hits** — completely green.
 
-So the load-bearing guard for that half remains
+IS: #6518 re-anchored those edges onto `extractor.FileEntity`, the per-file
+`SCOPE.Component` ~25 other extractors already emit under #577, so `user.proto`
+and `common.proto` are now named entities in the graph and the FROM side
+resolves. The two rows this section used to ask for are in `expected.json`:
+the expected `user.proto --[CONTAINS]--> User (SCOPE.Schema)` and the forbidden
+twin **F4**, `user.proto --[CONTAINS]--> User (SCOPE.Operation)`. The carrier
+itself is an expected entity row, which is why the counts moved to **19
+entities / 17 relationships**.
+
+Re-measured on the SAME mutant that used to leave the fixture green — revert
+`fileContainsSchemaRel` to `BuildOperationStructuralRef` — the fixture now
+reports **16/17 relationships and 1 forbidden hit (F4)**. The golden grade is
+no longer blind to #6422's defect, in either direction: the expected row dies
+if the edge disappears, F4 fires if it reparents onto the rpc.
+
+The extractor-level guards remain the FIRST place a regression is reported —
 `TestFileContains_MessageIsNotReparentedOntoTheRPC_6422` and its siblings in
-`internal/extractors/proto/file_contains_6422_test.go`, which run at the
-extractor level and *do* fail on that mutant (verified). This fixture covers
-the surrounding shapes and, crucially, keeps the collision in `user.proto` so
-that F2 and the `UserService → User (SCOPE.Operation)` row have something to
-bite on.
+`internal/extractors/proto/file_contains_6422_test.go`, plus
+`internal/extractors/proto/issue6518_anchoring_test.go` for the anchoring
+itself — because they name the line that caused it rather than a count. The
+fixture is the end-to-end confirmation, not the replacement.
 
-**If a future change gives proto a per-file carrier entity** (or #6298 is
-otherwise closed), add the two rows this fixture is missing:
-`user.proto --[CONTAINS]--> User (SCOPE.Schema)` and a forbidden
-`user.proto --[CONTAINS]--> User (SCOPE.Operation)`. The source already
-contains everything they need.
+**Still not gradeable here:** the file-anchored `user.proto → common.proto`
+IMPORTS row. #6518 made it writable (the FROM side now resolves onto the
+carrier, which is #566/#577 working as designed), but it grades the cross-repo
+FromID rewrite, not this fixture's subject. See F3's note in `expected.json`.
 
 ## #6459 (`SCOPE.Service` reachable from the operation address space) is NOT flipped here
 
@@ -118,7 +132,8 @@ returns the same answer either way.
 
 Confirmed by measurement rather than assumed: grading this fixture immediately
 before and after the resolver change produced byte-identical output — 18/18
-entities, 16/16 relationships, 0 forbidden hits, and the same
+entities, 16/16 relationships, 0 forbidden hits (the fixture's size AT THAT
+TIME; #6518 has since taken it to 19/17, see the section above), and the same
 `resolver: rewrote=27 ambiguous=0 unmatched=7` line. The fixture served as the
 regression net for that change, not as its demonstration; the demonstration is
 the constructed collision in
