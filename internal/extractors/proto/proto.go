@@ -58,6 +58,7 @@ package proto
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
@@ -211,16 +212,85 @@ func fieldMemberRef(filePath, parent, member string) string {
 // same-named rpc shares the file. Pinned by
 // TestRPC_RPCAndMessageOfTheSameNameDoNotSelfLoop.
 func messageTypeRef(filePath, name string) string {
-	return "scope:schema:message:proto:" + filePath + ":" + name
+	// filepath.ToSlash mirrors every extractor.Build*StructuralRef helper, so
+	// a Windows-separated path mints ONE spelling of the address rather than
+	// two. lookupStructural calls normalizePath defensively and resolved the
+	// backslash form anyway, but this package's whole defect class (#6359,
+	// #6419, #6422) is "one entity, two disagreeing address spellings".
+	return "scope:schema:message:proto:" + filepath.ToSlash(filePath) + ":" + name
 }
 
-// fileContainsRel builds a CONTAINS edge from file.Path → top-level entity.
-func fileContainsRel(filePath, name string) types.RelationshipRecord {
+// fileContainsRel builds a CONTAINS edge from file.Path → a top-level entity,
+// addressing the target through the ref form that matches its ENTITY KIND.
+//
+// #6422. It used to address every top-level entity through
+// BuildOperationStructuralRef — right for a service, wrong for a message or an
+// enum, and invisible until a name collides. graph.EntityID hashes
+// (repo, kind, name, sourceFile) and NOT Subtype, and the operation ref
+// addresses purely by (file, name), so for
+//
+//	message User {…}; service S { rpc User(User) returns (User); }
+//
+// the file → message ref resolved through operationKindFamily
+// (internal/resolve/refs.go) onto the SCOPE.Operation RPC: the edge became a
+// duplicate of the existing service → rpc CONTAINS and the message was left
+// with NO inbound CONTAINS at all. Measured end to end in
+// TestFileContains_MessageIsNotReparentedOntoTheRPC_6422.
+//
+// Suppressing the duplicate would have fixed the visible half and kept the
+// worse half, so the addressing is what changed: message and enum take
+// messageTypeRef — the schema address space #6419's type REFERENCES already
+// use — and service keeps the operation form.
+//
+// FromID stays the file path on purpose. It is a KNOWN OFFENDER in
+// internal/extractors/file_anchored_rels_guard_test.go (dangling on the FROM
+// side, tracked separately under #6298), but the usual remedy — leave FromID
+// empty and let assembly stamp the owner — is WRONG here: this record is
+// appended to the CONTAINED entity, so an empty FromID would stamp the
+// message's own id and the edge would die as a self-loop. #6422 is the TO
+// side only.
+func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
 	return types.RelationshipRecord{
 		FromID: filePath,
-		ToID:   extractor.BuildOperationStructuralRef("proto", filePath, name),
+		ToID:   toRef,
 		Kind:   "CONTAINS",
 	}
+}
+
+// fileContainsOperationRel is the file → service form, and the form the
+// service → rpc edges already use.
+//
+// A PRECISE STATEMENT OF WHAT THIS DOES AND DOES NOT RESOLVE, because an
+// earlier revision of this comment claimed "SCOPE.Service and SCOPE.Operation
+// both resolve through the operation address space" and that is FALSE.
+// internal/resolve/refs.go:1929-1932 defines
+//
+//	operationKindFamily = {"Operation", "Function", "Method", "SCOPE.Operation"}
+//
+// and SCOPE.Service is NOT in it. An rpc (SCOPE.Operation) binds through the
+// family; a service (SCOPE.Service) does not, and reaches its entity only by
+// falling through to the kind-agnostic byLocation path — which fails the
+// moment any other entity shares its (file, name).
+//
+// So the SERVICE arm still has the #6422 shape in mirror image. Measured on
+//
+//	message Foo {…}; service Foo { rpc Go(Foo) returns (Foo); }
+//
+// in one file: the file → service Foo CONTAINS does not resolve, and the
+// service ends with zero inbound CONTAINS, while the message now correctly
+// has one. That is a strict improvement over the pre-#6422 state, where BOTH
+// dangled — but it is not a fix, and this comment does not claim to be one.
+// Closing it needs SCOPE.Service admitted to operationKindFamily (a
+// cross-language change to the resolver, not to this file) and belongs in its
+// own issue with its own measurement.
+func fileContainsOperationRel(filePath, name string) types.RelationshipRecord {
+	return fileContainsRel(filePath, extractor.BuildOperationStructuralRef("proto", filePath, name))
+}
+
+// fileContainsSchemaRel is the file → message/enum form. Both are SCOPE.Schema
+// entities and must be addressed in the schema address space.
+func fileContainsSchemaRel(filePath, name string) types.RelationshipRecord {
+	return fileContainsRel(filePath, messageTypeRef(filePath, name))
 }
 
 func walkProto(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
@@ -274,7 +344,7 @@ func buildService(node ts.Node, file extractor.FileInput) (types.EntityRecord, b
 
 	// CONTAINS edges: service → each rpc child + file → service.
 	var rels []types.RelationshipRecord
-	rels = append(rels, fileContainsRel(file.Path, name))
+	rels = append(rels, fileContainsOperationRel(file.Path, name))
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch == nil || ch.Type() != "rpc" {
@@ -450,7 +520,7 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 	// REFERENCES edges: message → each named (non-scalar) field type, so a
 	// field `repeated Order orders = 3;` yields message User → message Order.
 	var rels []types.RelationshipRecord
-	rels = append(rels, fileContainsRel(file.Path, name))
+	rels = append(rels, fileContainsSchemaRel(file.Path, name))
 	var fieldEnts []types.EntityRecord
 	if body := childByType(node, "message_body"); body != nil {
 		// seen is keyed on the field's SIMPLE name and is deliberately scoped
@@ -609,7 +679,7 @@ func buildEnum(node ts.Node, file extractor.FileInput) ([]types.EntityRecord, bo
 	// buildField already takes for message fields; an enum's values are the
 	// enum's only content, so suppressing them would leave enums contentless.
 	var rels []types.RelationshipRecord
-	rels = append(rels, fileContainsRel(file.Path, name))
+	rels = append(rels, fileContainsSchemaRel(file.Path, name))
 	var valueEnts []types.EntityRecord
 	if body := childByType(node, "enum_body"); body != nil {
 		seen := make(map[string]bool)
