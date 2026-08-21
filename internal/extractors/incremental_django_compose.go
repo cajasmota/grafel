@@ -40,25 +40,37 @@
 //     entries are already IN the graph, so the same verdict is reached here by
 //     consulting the graph instead — see dropDRFCovered, without the I/O.
 //
-//     THAT SUBSTITUTION HAS ONE MEASURED HOLE, and it is stated here rather
-//     than claimed away. It reads the graph, so it is only as good as what the
-//     graph still holds. `ApplyDjangoDRFRoutes` has exactly one caller
+//     THAT SUBSTITUTION HAS ONE HOLE, and it is CLOSED BY ABSTENTION rather
+//     than claimed away. Reading the graph is only as good as what the graph
+//     still holds. `ApplyDjangoDRFRoutes` has exactly one caller
 //     (cmd/grafel/index.go), so `drf_router_expanded` entities are never
 //     re-derived incrementally — and when the ViewSet is declared IN the edited
-//     urls.py, they are attributed to that file and Step 5 prunes them.
-//     dropDRFCovered then finds no coverage and this pass ADDS a composed ANY
-//     endpoint the full path deduplicates away. Measured end-to-end on a
-//     `router.register` + `ModelViewSet`-in-urls.py fixture: before this pass,
-//     lost=6 invented=0; with it, lost=6 invented=1
-//     (`http:ANY:/api/widgets`). The 6 losses are the pre-existing
-//     never-re-derived DRF entities; the 1 INVENTED is this pass's.
+//     urls.py they are attributed to that file, Step 5 prunes them, and
+//     coverage reads as ABSENT when it is merely INVISIBLE. Left alone, this
+//     pass then ADDED a composed ANY endpoint the full path deduplicates away.
 //
-//     It does NOT fire in the ordinary DRF layout (ViewSet in views.py): the
-//     handler resolver re-attributes every `drf_router_expanded` entity onto
-//     the ViewSet's file, which the urls.py edit does not touch, so the
-//     coverage evidence survives and the composed ANY is correctly dropped —
-//     also measured, lost=0 invented=0. Tracked separately at the coordinator's
-//     direction; not fixed here.
+//     So `drfUnknownCoveragePaths` marks the prefix of every
+//     `router.register()` in a file that changed this tick, and routes under
+//     those prefixes are NEITHER added NOR pruned for that tick. Keyed on the
+//     registered prefix, not on "a DRF file changed": a urls.py mixing
+//     `router.register("widgets")` with a plain `path("terms/", ...)` still
+//     recomposes /…/terms normally.
+//
+//     MEASURED end-to-end, both layouts, edit confined to the DRF urls.py
+//     (TestMountParity_6461_DRFCoverage_PathA_BothLayouts):
+//
+//     ORDINARY, ViewSet in views.py — before: lost=0 invented=0;
+//     after: lost=0 invented=0.
+//     SAME-FILE, ViewSet in the edited urls.py — before: lost=6 invented=1
+//     (`http:ANY:/api/widgets`); after: lost=6 invented=0.
+//
+//     The ordinary layout never needed the abstention — the handler resolver
+//     re-attributes each `drf_router_expanded` entity onto the ViewSet's file,
+//     which the edit does not touch, so the coverage survives and
+//     dropDRFCovered reaches the right verdict on its own. The `lost=6` is a
+//     SEPARATE, pre-existing defect (#6529: DRF entities are never re-derived
+//     incrementally); it is identical with this pass disabled and is
+//     deliberately not papered over here.
 //
 //   - It does not touch the second defect the #6461 thread flags — entities
 //     LOST on a file that DID change, because `TryIncremental` runs no CROSS
@@ -69,6 +81,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/engine"
@@ -276,6 +289,9 @@ func recomposeDjangoURLConf(
 		return res
 	}
 	fresh = dropDRFCovered(fresh, doc, newEntities)
+	// Paths whose DRF coverage this pass CANNOT observe — see
+	// drfUnknownCoveragePaths. Neither added nor pruned below.
+	drfUnknown := drfUnknownCoveragePaths(changed, reader)
 
 	// Resolve handlers exactly as the full path does, so the composed records
 	// land on the handler's file with the same `registration_source_file` /
@@ -330,9 +346,18 @@ func recomposeDjangoURLConf(
 		if readFailed {
 			continue
 		}
-		if isComposedDjangoEndpoint(e) && !freshIDs[e.ID] {
-			res.removedIDs[e.ID] = true
+		if !isComposedDjangoEndpoint(e) || freshIDs[e.ID] {
+			continue
 		}
+		// Same abstention as the add side, for the same reason and in the
+		// opposite direction: if this pass cannot see whether DRF covers the
+		// path, its absence from `fresh` may be an artefact of the missing
+		// coverage rather than a fact about the tree, so it is not evidence
+		// for a deletion either.
+		if pathMatchesAnySuffix(e, drfUnknown) {
+			continue
+		}
+		res.removedIDs[e.ID] = true
 	}
 	if readFailed && logger != nil {
 		logger.Printf("incremental: django-urlconf recompose — a source read failed; " +
@@ -343,11 +368,21 @@ func recomposeDjangoURLConf(
 		present[newEntities[i].ID] = true
 	}
 
+	drfSuppressed := 0
 	for i := range freshEnts {
 		if present[freshEnts[i].ID] {
 			continue
 		}
+		if pathMatchesAnySuffix(&freshEnts[i], drfUnknown) {
+			drfSuppressed++
+			continue
+		}
 		res.added = append(res.added, freshEnts[i])
+	}
+	if drfSuppressed > 0 && logger != nil {
+		logger.Printf("incremental: django-urlconf recompose — %d composed endpoint(s) NOT added: "+
+			"a changed file declares router.register() and its drf_router_expanded coverage was "+
+			"pruned this tick, so DRF coverage is UNKNOWN (#6461)", drfSuppressed)
 	}
 
 	// Harvest the IMPLEMENTS bridges the resolver appended to the handler
@@ -486,6 +521,92 @@ func dropDRFCovered(fresh []types.EntityRecord, doc *graph.Document, newEntities
 		out = append(out, r)
 	}
 	return out
+}
+
+// drfRouterRegisterRe mirrors engine's djangoRouterRegisterRe
+// (internal/engine/django_urlconf_nested.go) — the same shapes, because it must
+// recognise exactly the registrations that pass composes routes from. It is
+// duplicated rather than exported: the engine constant is unexported, this is
+// the only other consumer, and the two are pinned together by
+// TestDRFUnknownCoveragePaths_MatchesRouterRegisterSpellings. If you widen one,
+// widen the other.
+var drfRouterRegisterRe = regexp.MustCompile(
+	`(?:[\w]*[Rr]outer|api_router|v\d+_router|router_v\d+)\.register\s*\(\s*r?["']([^"']*)["']`)
+
+// drfUnknownCoveragePaths returns the `/`-prefixed route prefixes declared by a
+// `router.register()` in a file that changed THIS tick — the paths for which
+// this pass cannot tell whether DRF coverage exists.
+//
+// WHY THIS EXISTS (#6528 review, measured).
+// dropDRFCovered decides "is this composed ANY endpoint superseded by per-verb
+// drf_router_expanded entries?" by reading those entries out of the GRAPH,
+// because ApplyDjangoDRFRoutes has exactly one caller (cmd/grafel/index.go) and
+// re-running it here would mean reading every .py file on every tick. That
+// substitution is sound only while the entries are still IN the graph.
+//
+// They are not, in one layout. When the ViewSet is declared in the edited
+// urls.py, the drf_router_expanded entities are attributed to that file, Step 5
+// prunes them by SourceFile, and nothing on this path re-derives them. Coverage
+// then reads as ABSENT when it is merely INVISIBLE, and the composed ANY
+// endpoint the full path deduplicates away gets ADDED. Measured on a
+// `router.register` + ModelViewSet-in-urls.py fixture: invented went 0 -> 1
+// (`http:ANY:/api/widgets`) purely from this pass running.
+//
+// The fix is abstention, not re-derivation: when a changed file declares a
+// registration, treat that prefix's coverage as UNKNOWN and neither add nor
+// prune under it. Same decision as the read-failure path — do nothing on
+// untrustworthy input rather than act on it — and it costs at most one tick of
+// staleness for the routes under that one prefix, where acting costs a wrong
+// edge in the graph.
+//
+// It is deliberately keyed on the REGISTERED PREFIX rather than on "a DRF file
+// changed at all": a Django repo whose urls.py mixes `router.register("widgets")`
+// with plain `path("terms/", ...)` still recomposes the plain route normally.
+// Only /…/widgets abstains.
+func drfUnknownCoveragePaths(changed []string, reader func(string) []byte) []string {
+	var out []string
+	for _, rel := range changed {
+		if !isPythonPath(rel) {
+			continue
+		}
+		content := reader(rel)
+		if len(content) == 0 {
+			continue
+		}
+		for _, m := range drfRouterRegisterRe.FindAllStringSubmatch(string(content), -1) {
+			prefix := strings.Trim(m[1], "/")
+			if prefix == "" {
+				continue
+			}
+			out = append(out, "/"+prefix)
+		}
+	}
+	return out
+}
+
+// pathMatchesAnySuffix reports whether the entity's `path` property ends in one
+// of the given `/prefix` segments — i.e. whether it is a route composed UNDER a
+// registration whose coverage is unknown.
+//
+// Suffix, not containment: `ApplyDjangoNestedURLConf` composes the registered
+// prefix as the LAST segment of the list route (`/api` + `widgets` ->
+// `/api/widgets`), so a suffix test names exactly those routes and does not
+// sweep in a sibling like `/api/widgets-archive` (which does not end in
+// `/widgets`) or an unrelated `/widgets/detail`.
+func pathMatchesAnySuffix(e *graph.Entity, suffixes []string) bool {
+	if len(suffixes) == 0 {
+		return false
+	}
+	p, ok := e.PropLookup("path")
+	if !ok || p == "" {
+		return false
+	}
+	for _, s := range suffixes {
+		if p == s || strings.HasSuffix(p, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // isEndpointRecordKind reports whether a record kind is one of the HTTP

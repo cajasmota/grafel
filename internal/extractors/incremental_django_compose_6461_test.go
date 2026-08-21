@@ -18,6 +18,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
@@ -334,5 +335,175 @@ func TestRecomposeDjangoURLConf_ReAddsNothingTheGraphAlreadyHolds(t *testing.T) 
 		t.Errorf("#6461: no entity was added, so no IMPLEMENTS bridge should be emitted; got %d edge(s). "+
 			"An edge whose target already exists is already in the graph and re-adding it duplicates the row.",
 			len(res.addedRels))
+	}
+}
+
+// TestDRFUnknownCoveragePaths_MatchesRouterRegisterSpellings pins
+// drfRouterRegisterRe against the engine regex it is a copy of
+// (djangoRouterRegisterRe, internal/engine/django_urlconf_nested.go).
+//
+// The two MUST recognise the same registrations. engine's decides which routes
+// get COMPOSED; this one decides which composed routes must ABSTAIN for want of
+// coverage. A spelling engine matches and this one does not is precisely the
+// hole the #6528 fix closes, reopened silently — the route would be composed
+// and added with no abstention.
+//
+// It also pins the abstention's NARROWNESS: only Python files, only files that
+// actually changed, and nothing at all when no registration is present.
+func TestDRFUnknownCoveragePaths_MatchesRouterRegisterSpellings(t *testing.T) {
+	files := map[string]string{
+		"a/urls.py":     `router.register(r"widgets", WidgetViewSet)`,
+		"b/urls.py":     `api_router.register("gadgets", GadgetViewSet)`,
+		"c/urls.py":     `v2_router.register(r'/things/', ThingViewSet)`,
+		"d/urls.py":     `router_v3.register("doohickeys", DooViewSet)`,
+		"e/urls.py":     `my_router.register(r"sprockets", SprocketViewSet)`,
+		"plain/urls.py": `urlpatterns = [path("terms/", views.terms)]`,
+		"notpy.txt":     `router.register(r"ignored", X)`,
+	}
+	reader := func(rel string) []byte {
+		if b, ok := files[rel]; ok {
+			return []byte(b)
+		}
+		return nil
+	}
+
+	var changed []string
+	for rel := range files {
+		changed = append(changed, rel)
+	}
+	sort.Strings(changed)
+
+	got := drfUnknownCoveragePaths(changed, reader)
+	sort.Strings(got)
+	want := []string{"/doohickeys", "/gadgets", "/sprockets", "/things", "/widgets"}
+	if len(got) != len(want) {
+		t.Fatalf("#6528: drfUnknownCoveragePaths returned %v, want %v. Every spelling engine's "+
+			"djangoRouterRegisterRe accepts must be recognised here too, or a composed route "+
+			"under it is added with no abstention.", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("#6528: drfUnknownCoveragePaths[%d] = %q, want %q (full: %v)", i, got[i], want[i], got)
+		}
+	}
+
+	// NARROWNESS. A repo whose changed files declare no registration must
+	// abstain from nothing — otherwise the fix suppresses live composition
+	// everywhere and the ordinary layout silently loses routes.
+	if n := len(drfUnknownCoveragePaths([]string{"plain/urls.py"}, reader)); n != 0 {
+		t.Errorf("#6528: a changed file with no router.register() produced %d abstention path(s); "+
+			"it must produce none, or the fix suppresses composition it has no reason to doubt", n)
+	}
+	// A file that did NOT change is not evidence: its drf_router_expanded
+	// entities were never pruned, so its coverage is still visible in the graph.
+	if n := len(drfUnknownCoveragePaths(nil, reader)); n != 0 {
+		t.Errorf("#6528: an empty changed set produced %d abstention path(s); coverage is only "+
+			"unknown for files whose entities were pruned THIS tick", n)
+	}
+}
+
+// TestPathMatchesAnySuffix_IsSuffixNotContainment pins the matcher's shape.
+//
+// ApplyDjangoNestedURLConf composes the registered prefix as the LAST segment
+// of the list route (`/api` + `widgets` -> `/api/widgets`), so a SUFFIX test
+// names exactly the routes under that registration. A containment test would
+// additionally abstain on `/widgets/detail` and on any unrelated path that
+// merely mentions the word — suppressing live composition on evidence that says
+// nothing about it.
+func TestPathMatchesAnySuffix_IsSuffixNotContainment(t *testing.T) {
+	sfx := []string{"/widgets"}
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"/api/widgets", true},
+		{"/widgets", true},
+		{"/api/widgets-archive", false}, // sibling registration, different route
+		{"/widgets/detail", false},      // composed under, not the list route
+		{"/api/terms", false},
+	}
+	for _, tc := range cases {
+		e := dcEntity(dcEndpointKind, "http:ANY:"+tc.path, "x/urls.py", map[string]string{"path": tc.path})
+		if got := pathMatchesAnySuffix(&e, sfx); got != tc.want {
+			t.Errorf("#6528: pathMatchesAnySuffix(%q, %v) = %t, want %t — the match must be a "+
+				"SUFFIX on the registered prefix, not containment", tc.path, sfx, got, tc.want)
+		}
+	}
+	if pathMatchesAnySuffix(&graph.Entity{}, sfx) {
+		t.Errorf("#6528: an entity with no `path` property must not match")
+	}
+	e := dcEntity(dcEndpointKind, "http:ANY:/api/widgets", "x/urls.py", map[string]string{"path": "/api/widgets"})
+	if pathMatchesAnySuffix(&e, nil) {
+		t.Errorf("#6528: with no abstention paths, nothing may match")
+	}
+}
+
+// TestRecomposeDjangoURLConf_UnknownDRFCoverageAlsoBlocksThePrune pins the
+// OTHER half of the #6528 abstention, which is not symmetry for its own sake.
+//
+// Suppressing the ADD keeps those records out of `res.added`, but they are
+// still in `freshEnts`, so on its own the prune is unaffected. The hazard is
+// the case where the graph's copy of a suppressed route has a DIFFERENT id from
+// the one this pass computes — the full path handler-resolves a composed
+// endpoint onto the handler's file (#2678), and the two need not agree once the
+// DRF entities that carried that handler have been pruned. The graph's copy is
+// then absent from `freshIDs` and reads as stale, so an abstention covering
+// only the add side would DELETE the very route it just declined to re-derive:
+// suppressed on one side, deleted on the other, net loss.
+//
+// Mutant this kills: applying the abstention to the add loop only.
+func TestRecomposeDjangoURLConf_UnknownDRFCoverageAlsoBlocksThePrune(t *testing.T) {
+	absRepo := t.TempDir()
+	files := map[string]string{
+		"mpproj/urls.py": "from django.urls import include, path\n\n" +
+			"urlpatterns = [\n    path(\"network/\", include(\"mpsite.urls\")),\n]\n",
+		"mpsite/urls.py": "from rest_framework import routers, viewsets\n\n\n" +
+			"class WidgetViewSet(viewsets.ModelViewSet):\n    queryset = []\n\n\n" +
+			"router = routers.DefaultRouter()\n" +
+			"router.register(r\"widgets\", WidgetViewSet)\n\n" +
+			"urlpatterns = router.urls\n",
+	}
+	var allFiles []string
+	for rel, body := range files {
+		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+		allFiles = append(allFiles, rel)
+	}
+
+	// The graph's copy of the composed route, attributed the way a FULL index
+	// left it — on the handler's file, which is NOT where this pass's
+	// recomputation lands it. Different SourceFile therefore different
+	// graph.EntityID, so it is absent from freshIDs and reads as stale.
+	existing := dcEntity(dcEndpointKind, "http:ANY:/network/widgets", "mpsite/legacy_views.py",
+		map[string]string{
+			"pattern_type": composedNestedPatternType,
+			"path":         "/network/widgets",
+			"verb":         "ANY",
+			"framework":    "django",
+		})
+	doc := &graph.Document{Repo: dcRepoTag, Entities: []graph.Entity{existing}}
+
+	res := recomposeDjangoURLConf(absRepo, allFiles, []string{"mpsite/urls.py"}, doc, nil, dcSilentLogger())
+
+	if !res.ran {
+		t.Fatalf("#6528: the pass declined to run; allFiles=%v", allFiles)
+	}
+	if res.removedIDs[existing.ID] {
+		t.Errorf("#6528: the pass PRUNED %s|%s@%s while abstaining from re-deriving it. "+
+			"mpsite/urls.py declares a router.register for widgets, so coverage under /widgets is "+
+			"UNKNOWN this tick and the add was suppressed; suppressing the add while allowing the "+
+			"prune deletes the route outright. The abstention must cover BOTH sides.",
+			existing.Kind, existing.Name, existing.SourceFile)
+	}
+	for _, e := range res.added {
+		if p, _ := e.PropLookup("path"); p == "/network/widgets" {
+			t.Errorf("#6528: the pass ADDED %s@%s under an unknown-coverage prefix; "+
+				"the add must be suppressed", e.Name, e.SourceFile)
+		}
 	}
 }

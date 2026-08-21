@@ -821,3 +821,135 @@ func TestMountParity_6461_Django_RoutePathRename_PathA_EndpointCensus(t *testing
 			len(lost), lost, len(invented), invented)
 	}
 }
+
+// ─────────── #6528 — DRF coverage, BOTH layouts (the regression this
+// pass created, and the layout that never had it) ───────────
+//
+// `dropDRFCovered` in internal/extractors/incremental_django_compose.go decides
+// whether a composed ANY endpoint is superseded by per-verb
+// `drf_router_expanded` entries by reading those entries out of the GRAPH,
+// because `ApplyDjangoDRFRoutes` has exactly one caller (cmd/grafel/index.go)
+// and re-running it per tick would mean reading every .py file in the repo.
+//
+// That is sound only while the entries are still IN the graph, and there is one
+// layout where they are not. Both are exercised here, in ONE test, because a
+// fix that suppressed composition everywhere would pass a test that only
+// covered the reproducing layout:
+//
+//	ORDINARY  — ViewSet in views.py. `bridgeEndpointToHandler` re-attributes
+//	  every drf_router_expanded entity onto views.py, which the urls.py edit
+//	  does not touch, so the coverage survives Step 5 and dropDRFCovered
+//	  reaches the right verdict unaided. MEASURED lost=0 invented=0 both
+//	  before and after the #6528 fix — it must STAY that way.
+//
+//	SAME-FILE — ViewSet declared in the edited urls.py. Those entities are
+//	  attributed to that file, Step 5 prunes them, nothing re-derives them, and
+//	  coverage reads ABSENT when it is merely INVISIBLE. MEASURED lost=6
+//	  invented=1 (`http:ANY:/api/widgets`) — the 1 INVENTED introduced purely by
+//	  the composition pass, confirmed against the same fixture with the pass
+//	  disabled (lost=6 invented=0). After the fix: lost=6 invented=0.
+//
+// `lost=6` in the SAME-FILE case is asserted as-is rather than fixed: it is
+// #6529 (drf_router_expanded entities are never re-derived on the incremental
+// path), it is identical with this pass disabled, and papering over it here
+// would hide a defect that belongs to a different change.
+func mpDRFOrdinary(t *testing.T, repo string, pass int) {
+	t.Helper()
+	dvWriteFile(t, repo, "mpdrfapp/views.py", `from rest_framework import viewsets
+
+
+class WidgetViewSet(viewsets.ModelViewSet):
+    queryset = []
+`)
+	dvWriteFile(t, repo, "mpdrfapp/urls.py", fmt.Sprintf(`from rest_framework import routers
+
+from . import views
+
+router = routers.DefaultRouter()
+router.register(r"widgets", views.WidgetViewSet)
+
+urlpatterns = router.urls
+
+MP_DRF_PASS = %d
+`, pass))
+	dvWriteFile(t, repo, "mpdrfproj/urls.py", `from django.urls import include, path
+
+urlpatterns = [
+    path("api/", include("mpdrfapp.urls")),
+]
+`)
+}
+
+func mpDRFSameFile(t *testing.T, repo string, pass int) {
+	t.Helper()
+	dvWriteFile(t, repo, "mpsameapp/urls.py", fmt.Sprintf(`from rest_framework import routers, viewsets
+
+
+class WidgetViewSet(viewsets.ModelViewSet):
+    queryset = []
+
+
+router = routers.DefaultRouter()
+router.register(r"widgets", WidgetViewSet)
+
+urlpatterns = router.urls
+
+MP_SAME_PASS = %d
+`, pass))
+	dvWriteFile(t, repo, "mpsameproj/urls.py", `from django.urls import include, path
+
+urlpatterns = [
+    path("api/", include("mpsameapp.urls")),
+]
+`)
+}
+
+func TestMountParity_6461_DRFCoverage_PathA_BothLayouts(t *testing.T) {
+	cases := []struct {
+		label    string
+		write    func(*testing.T, string, int)
+		wantLost int // #6529, pre-existing, asserted not fixed
+	}{
+		{"ordinary (ViewSet in views.py)", mpDRFOrdinary, 0},
+		{"same-file (ViewSet in the edited urls.py)", mpDRFSameFile, 6},
+	}
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			repo := t.TempDir()
+			stateDir := t.TempDir()
+			tc.write(t, repo, 0)
+			dvFullRebuild(t, repo, stateDir)
+
+			endRepo := t.TempDir()
+			tc.write(t, endRepo, 1)
+			full := dvFullRebuild(t, endRepo, t.TempDir())
+
+			dvSeedManifest(t, repo, stateDir)
+			tc.write(t, repo, 1) // only the DRF urls.py content changes
+			inc := dvIncremental(t, repo, stateDir)
+
+			mpLogEndpointDelta(t, "DRF/"+tc.label, full, inc)
+			lost, invented := mpEndpointDelta(full, inc)
+
+			// THE ASSERTION THIS TEST EXISTS FOR. An INVENTED endpoint is one
+			// the daemon put in the graph that a full rebuild does not have —
+			// here, a composed ANY that DeduplicateNestedURLConfDRF removes on
+			// the full path. It must be zero in BOTH layouts.
+			if len(invented) != 0 {
+				t.Errorf("#6528 %s: the incremental graph INVENTED %d endpoint(s) a clean full "+
+					"rebuild does not have: %v. A composed ANY endpoint survives here only because "+
+					"the pass could not see the drf_router_expanded coverage that supersedes it — "+
+					"see drfUnknownCoveragePaths, which must abstain from composing under a "+
+					"router.register() prefix declared in a file that changed this tick.",
+					tc.label, len(invented), invented)
+			}
+			if len(lost) != tc.wantLost {
+				t.Errorf("#6529 %s: expected exactly %d LOST endpoint(s) (the pre-existing "+
+					"never-re-derived drf_router_expanded entities, identical with the composition "+
+					"pass disabled), got %d: %v. A DIFFERENT number means either that defect moved "+
+					"or the #6528 abstention over-reached and started suppressing live routes.",
+					tc.label, tc.wantLost, len(lost), lost)
+			}
+		})
+	}
+}
