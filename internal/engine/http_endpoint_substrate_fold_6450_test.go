@@ -370,3 +370,57 @@ func TestFoldConsumerHTTPBaseURLs_ReadCapIsEnforced_6450(t *testing.T) {
 		t.Errorf("folded=%d — the cap should truncate the work, not abolish it", res.Folded)
 	}
 }
+
+// #6450 review round 3 — the language filter in newRepoSubstrateResolver's
+// `add` closure is load-bearing, and nothing observed it.
+//
+// indexFileForSubstrateLookup registers a file under several EXTENSION-STRIPPED
+// key forms ("config", "./config", "client/config", …) and addIfFree is
+// FIRST-WRITER-WINS. Without the `substrate.LanguageForPath(file) == ""` guard,
+// a non-substrate file sharing a stem with a real module — `config.md` beside
+// `config.js` — claims those keys first, and the real `config.js` can then
+// never claim them. `./config` is the one that matters: it is exactly the
+// ImportSource that `import { BASE } from './config'` produces and that
+// resolveDepth looks up. bindingsFor then returns nil for the .md (no sniffer
+// is registered for its language) and the fold silently stops firing.
+//
+// The failure mode is a MISSED fold, never a wrong path, so it is not a graph
+// correctness hazard — but it is silent, which is why it gets a test.
+func TestRepoSubstrateResolver_NonSubstrateFileCannotClaimModuleKey_6450(t *testing.T) {
+	root := writeFoldFixture(t)
+	// A markdown file with the same stem as the real constants module. Written
+	// to disk so the mutant fails for the RIGHT reason — the wrong file won the
+	// key — rather than because the path does not exist.
+	md := "# config\n\nThe base URL is /documented-not-code.\n"
+	if err := os.WriteFile(filepath.Join(root, "client", "config.md"), []byte(md), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Order is the whole point: the .md is FIRST, so it wins every addIfFree
+	// race that the language filter does not stop.
+	recs := []types.EntityRecord{
+		{Kind: "SCOPE.Component", Name: "config-doc", SourceFile: "client/config.md"},
+		{Kind: "SCOPE.Component", Name: "config", SourceFile: "client/config.js"},
+		callRecord("http:GET:/{BASE}/things", "/{BASE}/things", "dynamic_baseurl"),
+	}
+
+	r := newRepoSubstrateResolver(root, recs, nil)
+	for _, key := range []string{"./config", "config", "client/config"} {
+		if got := r.fileLookup[key]; got != "client/config.js" {
+			t.Errorf("fileLookup[%q] = %q, want client/config.js — a non-substrate "+
+				"file must not claim a module key from a real module with the same "+
+				"stem (addIfFree is first-writer-wins)", key, got)
+		}
+	}
+
+	// And the consequence, so the test says why the key matters rather than
+	// only that it moved.
+	res := FoldConsumerHTTPBaseURLs(recs, root, nil)
+	if res.Folded != 1 {
+		t.Errorf("folded=%d, want 1 — the import of BASE from './config' must still "+
+			"resolve with a config.md sitting beside config.js", res.Folded)
+	}
+	if got := recs[2].Properties["path"]; got != "/api/things" {
+		t.Errorf("path = %q, want /api/things", got)
+	}
+}
