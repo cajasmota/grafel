@@ -41,17 +41,119 @@ package yaml
 
 import (
 	"bytes"
-	"github.com/cajasmota/grafel/internal/indexstate"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+
+	"github.com/cajasmota/grafel/internal/indexstate"
+	"github.com/cajasmota/grafel/internal/safeio"
 
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
 )
+
+// maxHelmChartBytes caps the sibling-Chart.yaml read below.
+//
+// The cap is not belt-and-braces: safeio's type gate makes a FIFO impossible
+// to open, but a CHARACTER DEVICE opens fine and never reaches EOF, so "it
+// will hit EOF eventually" is not a bound and an unguarded read of a
+// /dev/zero-shaped path runs until memory does. 4 MiB is far past any real
+// Chart.yaml, and a file past the cap is truncated — which at worst drops a
+// trailing `dependencies:` entry, the same outcome as an unreadable
+// Chart.yaml, which the caller already handles by emitting no override edges.
+const maxHelmChartBytes = 4 << 20
+
+// helmSkip* back the always-on report below.
+var (
+	helmSkipMu   sync.Mutex
+	helmSkipSeen map[string]bool
+	helmSkipOut  io.Writer = os.Stderr
+)
+
+// maxHelmSkipReports caps the report the same way walk.IrregularSkipReport and
+// reportAliasSkip cap theirs: a warning long enough to scroll past reports
+// nothing.
+const maxHelmSkipReports = 16
+
+// setHelmSkipOutput redirects the report for tests and returns a restore func.
+// Test-only helper.
+func setHelmSkipOutput(w io.Writer) func() {
+	helmSkipMu.Lock()
+	prev := helmSkipOut
+	helmSkipOut = w
+	helmSkipSeen = nil
+	helmSkipMu.Unlock()
+	return func() {
+		helmSkipMu.Lock()
+		helmSkipOut = prev
+		helmSkipSeen = nil
+		helmSkipMu.Unlock()
+	}
+}
+
+// readHelmSiblingFile is the only way this file reads a sibling off disk.
+//
+// WHY IT IS NOT os.ReadFile. helmSiblingSubcharts joins "Chart.yaml" /
+// "Chart.yml" BY NAME onto RepoRoot plus the values.yaml's own directory. That
+// path never passes through the file walker, so the walker's entry-type gate
+// cannot protect it, and os.ReadFile on a FIFO waits in open(2) for a writer
+// that never comes — wedging the YAML extraction worker forever (#6416).
+//
+// This site is narrower than the go.mod pair: it needs a chart directory that
+// is already indexed, and a sibling FIFO that happens to carry the chart's
+// name. It is the same defect nonetheless. No lock or shared cache is held
+// across the read here — helmSiblingSubcharts builds a fresh map per call —
+// so the blast radius was the abandoned worker goroutine alone.
+func readHelmSiblingFile(path string) ([]byte, error) {
+	b, err := safeio.ReadFile(path, safeio.FollowSymlinks, maxHelmChartBytes)
+	if err != nil {
+		reportHelmSkip(path, err)
+	}
+	return b, err
+}
+
+// reportHelmSkip says out loud that a sibling Chart.yaml was refused for being
+// a FIFO, device or socket.
+//
+// It exists because the #6416 re-review found safeio.ErrNotRegular carrying a
+// precise reason — path plus entry kind — that consumers then threw away with
+// a bare `continue`. A refused Chart.yaml silently deletes every subchart
+// OVERRIDES edge for that chart: a visible chunk of the graph missing, with no
+// stated cause and diagnosable only by strace. That is #6338's shape.
+//
+// Only ErrNotRegular / ErrWouldBlock are reported. A plain ENOENT is the
+// overwhelmingly common case — most values.yaml files have no sibling
+// Chart.yaml, and the loop probes two names per call — so announcing it would
+// bury the signal.
+func reportHelmSkip(path string, err error) {
+	if !errors.Is(err, safeio.ErrNotRegular) && !errors.Is(err, safeio.ErrWouldBlock) {
+		return
+	}
+	helmSkipMu.Lock()
+	if helmSkipSeen == nil {
+		helmSkipSeen = map[string]bool{}
+	}
+	if helmSkipSeen[path] || len(helmSkipSeen) >= maxHelmSkipReports {
+		helmSkipMu.Unlock()
+		return
+	}
+	helmSkipSeen[path] = true
+	last := len(helmSkipSeen) == maxHelmSkipReports
+	w := helmSkipOut
+	helmSkipMu.Unlock()
+
+	fmt.Fprintf(w, "grafel: skipped Helm chart metadata %v — not read because reading one can block forever; subchart override edges for this chart are omitted (#6416)\n", err)
+	if last {
+		fmt.Fprintf(w, "grafel: further Helm sibling-file skips suppressed after %d\n", maxHelmSkipReports)
+	}
+}
 
 const (
 	flavorHelmChart    = "helm_chart"    // Chart.yaml
@@ -579,7 +681,7 @@ func helmSiblingSubcharts(file extractor.FileInput) map[string]bool {
 		if dir != "" {
 			rel = dir + "/" + name
 		}
-		data, err := os.ReadFile(filepath.Join(file.RepoRoot, filepath.FromSlash(rel)))
+		data, err := readHelmSiblingFile(filepath.Join(file.RepoRoot, filepath.FromSlash(rel)))
 		if err != nil {
 			continue
 		}
