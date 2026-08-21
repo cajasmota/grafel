@@ -56,15 +56,21 @@ import (
 // httpEndpointCallKind for consumer-side call sites. The legacy constant
 // is kept so that the resolve pass, dashboard, and link layers can use
 // IsHTTPEndpointKind() to match all three forms transparently.
-const httpEndpointKind = "http_endpoint"
+//
+// #6449: these three constants are DERIVED from the canonical
+// types.EntityKind values rather than re-declaring the literals here. A
+// package-local copy of the string can silently drift from the consumer-side
+// matchers (that drift is exactly what severed the runtime_dynamic repair
+// feed); deriving them makes disagreement impossible to express.
+const httpEndpointKind = string(types.HTTPEndpointKindLegacy)
 
 // httpEndpointDefinitionKind is the new kind for backend handler definitions
 // (producer side). Introduced by #1217.
-const httpEndpointDefinitionKind = "http_endpoint_definition"
+const httpEndpointDefinitionKind = string(types.EntityKindHTTPEndpointDefinition)
 
 // httpEndpointCallKind is the new kind for consumer-side HTTP call sites.
 // Introduced by #1217.
-const httpEndpointCallKind = "http_endpoint_call"
+const httpEndpointCallKind = string(types.EntityKindHTTPEndpointCall)
 
 // servesEdgeKind is the relationship Kind from a synthetic http_endpoint
 // to its handler (Route / Controller / Operation / View). Direction:

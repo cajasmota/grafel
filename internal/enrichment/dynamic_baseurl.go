@@ -38,6 +38,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // KindDynamicBaseURLEndpoint is the enrichment candidate kind for
@@ -72,6 +73,33 @@ func dynamicBaseURLCandidateID(entityID string) string {
 // unconditionally after the synthesis pass completes (no --enable-repair-
 // candidates gate required). It is additive: existing candidates in
 // enrichment-candidates.json are merged by the WriteCandidates caller.
+// isConsumerSideEndpointKind reports whether kind can denote a consumer-side
+// HTTP call site, and is the kind half of the two-gate filter in
+// CollectDynamicBaseURLCandidates (the other half is pattern_type).
+//
+// #6449: this gate previously hardcoded the pre-#1217 literal
+// "http_endpoint", so it rejected every entity on any graph indexed after the
+// http_endpoint → definition/call split. The collector therefore returned
+// zero candidates on every current graph, severing the runtime_dynamic feed
+// into the repair-candidate listing.
+//
+// Two kinds qualify:
+//
+//   - http_endpoint_call — the post-#1217 consumer kind, what the synthesis
+//     pass emits today (internal/engine/http_endpoint_synthesis.go).
+//   - http_endpoint — the pre-#1217 legacy kind, which was used for BOTH
+//     sides and is disambiguated by the pattern_type gate downstream. Kept so
+//     that graphs indexed before the split still yield candidates.
+//
+// http_endpoint_definition is deliberately excluded: a producer-side handler
+// IS the repair target, never the indeterminate caller, so no pattern_type
+// value can make it a candidate. That exclusion is what gives this gate an
+// upper bound independent of the pattern_type gate.
+func isConsumerSideEndpointKind(kind string) bool {
+	return types.IsHTTPEndpointCallKind(kind) ||
+		kind == string(types.HTTPEndpointKindLegacy)
+}
+
 func CollectDynamicBaseURLCandidates(doc *graph.Document) []Candidate {
 	if doc == nil {
 		return nil
@@ -82,7 +110,7 @@ func CollectDynamicBaseURLCandidates(doc *graph.Document) []Candidate {
 
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if e.Kind != "http_endpoint" {
+		if !isConsumerSideEndpointKind(e.Kind) {
 			continue
 		}
 		props := e.PropsSnapshot()
