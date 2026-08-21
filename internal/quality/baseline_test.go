@@ -2,6 +2,7 @@ package quality
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -344,5 +345,122 @@ func TestKnownRegressionsHaveNoDuplicates(t *testing.T) {
 			t.Errorf("known_regressions has two entries for %s.%s", kr.Fixture, kr.Metric)
 		}
 		seen[key] = true
+	}
+}
+
+// runCanon runs `ratchet.py canon` over one file and returns its exit code plus
+// combined output.
+//
+// What this gates: the byte-level encoding of the document — ensure_ascii's
+// \uXXXX escaping of non-ASCII, two-space indent with the (',', ': ')
+// separators that implies, no HTML escaping of < > &, Python's float repr, and
+// the trailing newline.
+//
+// What it does NOT gate: key ORDER. `canon` re-serialises `json.loads(text)`,
+// which echoes back whatever order the file already has, so an alphabetically
+// reordered baseline passes. Catching that would mean comparing against the
+// order the builder's dicts are constructed in, which is only observable by
+// running the builder — i.e. a full indexer run — and is therefore out of
+// reach for a check that reads nothing but the file. Do not read the list
+// above as including order.
+//
+// The check lives on the Python side deliberately: baseline.json is written by
+// `json.dump(doc, indent=2)` with the default ensure_ascii=True, and that call
+// reproduces the encoding rather than re-implementing it. A Go re-marshal would
+// have to hand-roll every item in the gated list as a second formatter, which
+// can itself drift — precisely the failure this gate exists to prevent. It is
+// *driven* from Go so that it runs in the ordinary `go test
+// ./internal/quality/...` CI leg — .github/workflows/quality.yml, where the
+// ratchet itself runs, is dispatch-only and therefore gates no pull request.
+func runCanon(t *testing.T, path string) (int, string) {
+	t.Helper()
+	out, err := exec.Command("python3", ratchetScript(t), "canon", path).CombinedOutput()
+	if err == nil {
+		return 0, string(out)
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode(), string(out)
+	}
+	t.Fatalf("run ratchet.py canon %s: %v\n%s", path, err, out)
+	return -1, ""
+}
+
+// TestBaselineIsCanonicallyEncoded is the canonicality gate for the ratchet
+// floor (Refs #6466).
+//
+// baseline.json is generated, but nothing checked that the committed bytes are
+// what the generator emits. A round-trip through a JSON library with different
+// defaults silently rewrote four unrelated escaped em-dashes into literal ones
+// inside a three-line change; CI could not see it, and the next legitimate
+// --update-baseline would have shown that churn as a spurious diff on lines
+// nobody touched. This is the failure that `go run ./tools/coverage fmt
+// --check` prevents for docs/coverage/registry.json, and that baseline.json —
+// a *test gate*, not documentation — had no equivalent of.
+//
+// The negative subtests are load-bearing: without them a check that normalised
+// whitespace, or unescaped before comparing, would still pass on a canonical
+// file, and the gate would only catch gross corruption.
+func TestBaselineIsCanonicallyEncoded(t *testing.T) {
+	t.Run("committed baseline round-trips byte-for-byte", func(t *testing.T) {
+		code, out := runCanon(t, baselinePath)
+		if code != 0 {
+			t.Fatalf("baseline.json is not what scripts/quality/ratchet.py writes "+
+				"(exit %d). Regenerate it with the documented command rather than "+
+				"hand-editing, and do not reformat unrelated lines:\n%s", code, out)
+		}
+	})
+
+	raw, err := os.ReadFile(baselinePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", baselinePath, err)
+	}
+
+	// Each mutation is a real churn class that has landed, or trivially could:
+	// an ensure_ascii=False round-trip, a re-indent, and a stripped trailing
+	// newline. A gate that accepts any of them is not a gate.
+	mutations := []struct {
+		name  string
+		apply func(string) string
+	}{
+		{
+			name: "non-ASCII unescaped (ensure_ascii=False round-trip)",
+			apply: func(s string) string {
+				// "\\u2014" is the six-character escape as it appears on
+				// disk; "—" is the literal em-dash an
+				// ensure_ascii=False writer would leave in its place.
+				return strings.Replace(s, "\\u2014", "—", 1)
+			},
+		},
+		{
+			name: "re-indented with four spaces",
+			apply: func(s string) string {
+				return strings.Replace(s, "\n  \"version\"", "\n    \"version\"", 1)
+			},
+		},
+		{
+			name: "trailing newline stripped",
+			apply: func(s string) string {
+				return strings.TrimRight(s, "\n")
+			},
+		},
+	}
+
+	for _, m := range mutations {
+		t.Run("rejects "+m.name, func(t *testing.T) {
+			mutated := m.apply(string(raw))
+			if mutated == string(raw) {
+				t.Fatalf("mutation %q changed nothing — the check would be vacuous", m.name)
+			}
+			path := filepath.Join(t.TempDir(), "baseline.json")
+			if err := os.WriteFile(path, []byte(mutated), 0o644); err != nil {
+				t.Fatalf("write mutated baseline: %v", err)
+			}
+			code, out := runCanon(t, path)
+			if code == 0 {
+				t.Fatalf("canonicality check accepted a baseline mutated by %q — "+
+					"encoding churn would land unnoticed:\n%s", m.name, out)
+			}
+		})
 	}
 }
