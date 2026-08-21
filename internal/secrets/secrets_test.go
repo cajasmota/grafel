@@ -118,7 +118,8 @@ func TestScanPath_DetectsAWSKey(t *testing.T) {
 
 const awsKey = "AKIAIOSFODNN7REAL0000"
 `)
-	findings, err := ScanPath(dir, 0)
+	scanRes, err := ScanPath(dir, 0)
+	findings := scanRes.Findings
 	if err != nil {
 		t.Fatalf("ScanPath: %v", err)
 	}
@@ -143,7 +144,8 @@ func TestScanPath_DetectsGitHubToken(t *testing.T) {
 
 var token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789AB"
 `)
-	findings, err := ScanPath(dir, 0)
+	scanRes, err := ScanPath(dir, 0)
+	findings := scanRes.Findings
 	if err != nil {
 		t.Fatalf("ScanPath: %v", err)
 	}
@@ -165,7 +167,8 @@ func TestScanPath_DetectsJWT(t *testing.T) {
 
 const defaultJWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 `)
-	findings, err := ScanPath(dir, 0)
+	scanRes, err := ScanPath(dir, 0)
+	findings := scanRes.Findings
 	if err != nil {
 		t.Fatalf("ScanPath: %v", err)
 	}
@@ -184,7 +187,8 @@ func TestScanPath_SuppressesTestFiles(t *testing.T) {
 
 const awsKey = "AKIAIOSFODNN7REAL0000"
 `)
-	findings, err := ScanPath(dir, 0)
+	scanRes, err := ScanPath(dir, 0)
+	findings := scanRes.Findings
 	if err != nil {
 		t.Fatalf("ScanPath: %v", err)
 	}
@@ -199,7 +203,8 @@ func TestScanPath_SuppressesIgnoreComment(t *testing.T) {
 
 const awsKey = "AKIAIOSFODNN7REAL0000" // grafel: ignore-secret
 `)
-	findings, err := ScanPath(dir, 0)
+	scanRes, err := ScanPath(dir, 0)
+	findings := scanRes.Findings
 	if err != nil {
 		t.Fatalf("ScanPath: %v", err)
 	}
@@ -215,7 +220,8 @@ func TestScanPath_SuppressesPlaceholders(t *testing.T) {
 const awsKey = "AKIA_EXAMPLE_REPLACE_ME_00"
 const githubToken = "ghp_YOUR_TOKEN_HERE_ABCDEFGHIJKLMNO01234"
 `)
-	findings, err := ScanPath(dir, 0)
+	scanRes, err := ScanPath(dir, 0)
+	findings := scanRes.Findings
 	if err != nil {
 		t.Fatalf("ScanPath: %v", err)
 	}
@@ -232,7 +238,8 @@ func TestScanPath_HighEntropyDetection(t *testing.T) {
 
 var secretKey = "aB3xY7kLpQ2mN8rTwZ5vJhGfDqCeUiOs"
 `)
-	findings, err := ScanPath(dir, 0)
+	scanRes, err := ScanPath(dir, 0)
+	findings := scanRes.Findings
 	if err != nil {
 		t.Fatalf("ScanPath: %v", err)
 	}
