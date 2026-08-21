@@ -215,7 +215,41 @@ func ComputeStatusSummaryForRef(group string, repos []registry.Repo, ref string)
 		RepoStats: make(map[string]*RepoStatus),
 	}
 
+	// #5822 — count each SLUG once, not each registry entry once.
+	//
+	// Every group-level accumulator below (TotalEntities, TotalRelationships,
+	// UnsupportedExt, HTTPEndpoints, ProcessFlows, EnrichmentCandidates,
+	// RepairCandidates and the three migration tallies) adds once per iteration
+	// of this loop — i.e. once per REGISTRY ENTRY. The per-repo rows, however,
+	// are stored as s.RepoStats[r.Slug] and printed by slug, so a second entry
+	// resolving to a slug already seen OVERWRITES the row it produced.
+	//
+	// Two entries, one row, two additions: the group TOTAL then exceeds the sum
+	// of the lines printed underneath it, by exactly 2x when one repo is
+	// registered twice. That is the over-count reported on #5822 (status:
+	// 3,487,888 relationships against the indexer's committed 1,963,736 on the
+	// same graph). Nothing was duplicated in the graph; the summary added the
+	// same repo to itself.
+	//
+	// The dedupe key is the slug and nothing coarser, because the slug is
+	// precisely what the row map is keyed by — that identity is the invariant
+	// being restored. Keying on the path would miss two entries that share a
+	// slug but point at different directories (still one row, still counted
+	// twice); keying on anything broader would fold together repos that render
+	// as separate rows and turn the over-count into a silent under-count.
+	//
+	// First entry wins, which matches the pre-existing precedence for the
+	// group's OTHER per-slug state and is deterministic in registry order. The
+	// duplicate entry is skipped before any I/O, so this also removes the
+	// redundant graph open it used to perform.
+	seenSlugs := make(map[string]struct{}, len(repos))
+
 	for _, r := range repos {
+		if _, dup := seenSlugs[r.Slug]; dup {
+			continue
+		}
+		seenSlugs[r.Slug] = struct{}{}
+
 		rs := &RepoStatus{
 			Slug:           r.Slug,
 			Path:           r.Path,
