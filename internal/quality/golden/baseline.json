@@ -101,6 +101,12 @@
       "relationship_found": 0,
       "relationship_expected": 0
     },
+    "python-fastapi-mini": {
+      "entity_found": 5,
+      "entity_expected": 5,
+      "relationship_found": 4,
+      "relationship_expected": 4
+    },
     "python-rq-mini": {
       "entity_found": 3,
       "entity_expected": 3,

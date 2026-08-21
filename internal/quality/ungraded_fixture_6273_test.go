@@ -401,7 +401,17 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 	// regress silently. proto-mini carries the rpc/message name collision
 	// #6422 turns on; see its NOTICE.md for the one shape it still cannot
 	// grade and why.
-	const wantFixtures = 24
+	//
+	// 25 since #6444 added python-fastapi-mini — the first FastAPI fixture at
+	// all, despite fastapi.yaml being one of the oldest rule files. Three of
+	// its four relationship_rules anchored an endpoint on `Route:<handler
+	// function>`, a name FastAPI Route entities are NEVER minted under, so
+	// every decorated handler contributed a permanently-dangling edge. Nothing
+	// caught it because (a) no fixture covered FastAPI and (b) the resolver's
+	// `Route:` + untagged-language Dynamic hatch classifies such stubs as
+	// framework-mediated runtime dispatch, which is excluded from the
+	// resolver-bug rate. See spring_dynamic_hatch_6429_test.go.
+	const wantFixtures = 25
 
 	dirs := fixtureDirs(t)
 	if len(dirs) != wantFixtures {
