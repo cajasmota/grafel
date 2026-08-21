@@ -31,15 +31,35 @@
 //
 // WHAT THIS DELIBERATELY DOES NOT DO
 // ──────────────────────────────────
+//
 //   - It does not run the DRF router-expansion pass (`ApplyDjangoDRFRoutes`),
 //     which would mean reading every Python file in the repo on every daemon
 //     tick. The full path runs it only to feed `DeduplicateNestedURLConfDRF`,
 //     whose entire effect is "drop a composed ANY endpoint when a per-verb
 //     `drf_router_expanded` entry already covers that path". Those per-verb
 //     entries are already IN the graph, so the same verdict is reached here by
-//     consulting the graph instead — see dropDRFCovered. That keeps the
-//     permissive direction closed (this pass can never ADD an endpoint the full
-//     path deduplicates away) without the I/O.
+//     consulting the graph instead — see dropDRFCovered, without the I/O.
+//
+//     THAT SUBSTITUTION HAS ONE MEASURED HOLE, and it is stated here rather
+//     than claimed away. It reads the graph, so it is only as good as what the
+//     graph still holds. `ApplyDjangoDRFRoutes` has exactly one caller
+//     (cmd/grafel/index.go), so `drf_router_expanded` entities are never
+//     re-derived incrementally — and when the ViewSet is declared IN the edited
+//     urls.py, they are attributed to that file and Step 5 prunes them.
+//     dropDRFCovered then finds no coverage and this pass ADDS a composed ANY
+//     endpoint the full path deduplicates away. Measured end-to-end on a
+//     `router.register` + `ModelViewSet`-in-urls.py fixture: before this pass,
+//     lost=6 invented=0; with it, lost=6 invented=1
+//     (`http:ANY:/api/widgets`). The 6 losses are the pre-existing
+//     never-re-derived DRF entities; the 1 INVENTED is this pass's.
+//
+//     It does NOT fire in the ordinary DRF layout (ViewSet in views.py): the
+//     handler resolver re-attributes every `drf_router_expanded` entity onto
+//     the ViewSet's file, which the urls.py edit does not touch, so the
+//     coverage evidence survives and the composed ANY is correctly dropped —
+//     also measured, lost=0 invented=0. Tracked separately at the coordinator's
+//     direction; not fixed here.
+//
 //   - It does not touch the second defect the #6461 thread flags — entities
 //     LOST on a file that DID change, because `TryIncremental` runs no CROSS
 //     extractors. That is a different root cause and is still live.
@@ -65,6 +85,10 @@ const (
 	composedNestedPatternType = "urlconf_nested_include"
 	composedMountPatternType  = "url_mount_point"
 	drfExpandedPatternType    = "drf_router_expanded"
+	// djangoFramework is the `framework` value ApplyDjangoNestedURLConf stamps
+	// on every record it emits. It is what separates this pass's mount points
+	// from FastAPI's identically-typed ones — see isComposedDjangoEndpoint.
+	djangoFramework = "django"
 )
 
 // implementsEdgeKindIncremental mirrors engine's IMPLEMENTS edge kind. It is
@@ -114,6 +138,22 @@ type djangoComposeResult struct {
 // isComposedDjangoEndpoint reports whether e is an endpoint entity THIS pass
 // owns, i.e. one that engine.ApplyDjangoNestedURLConf produces and can
 // therefore re-produce.
+//
+// THE `framework` CHECK IS LOAD-BEARING, NOT DEFENSIVE PADDING.
+// `pattern_type == "url_mount_point"` has TWO producers on the same entity
+// kind: this pass, and `fastapiMountPointSynthetics`
+// (internal/engine/http_endpoint_synthesis.go, #6385), which stamps the
+// byte-identical string. Ownership by `pattern_type` alone therefore claims
+// FastAPI's `include_router(prefix=)` mounts as well — and this pass cannot
+// re-derive one, so it would DELETE them. The gate above only asks that the
+// repo contains SOME `*urls.py`; it never asks that a given mount is Django's,
+// so a Django+FastAPI monorepo hits this on any `.py` edit, silently and
+// permanently until the next full reindex.
+//
+// Both producers stamp `framework`, so that is the discriminator. An entity
+// with no `framework` property is NOT claimed: this pass always writes one, so
+// its absence means some other producer, and the cost of declining is a stale
+// endpoint for one tick versus a deletion nothing re-derives.
 func isComposedDjangoEndpoint(e *graph.Entity) bool {
 	if e.Kind != endpointSyntheticKind && e.Kind != string(types.HTTPEndpointKindLegacy) {
 		return false
@@ -122,7 +162,11 @@ func isComposedDjangoEndpoint(e *graph.Entity) bool {
 	if !ok {
 		return false
 	}
-	return pt == composedNestedPatternType || pt == composedMountPatternType
+	if pt != composedNestedPatternType && pt != composedMountPatternType {
+		return false
+	}
+	fw, ok := e.PropLookup("framework")
+	return ok && fw == djangoFramework
 }
 
 // prunesRel reports whether a surviving relationship must be dropped because
@@ -194,17 +238,33 @@ func recomposeDjangoURLConf(
 	for _, f := range allFiles {
 		allowed[f] = struct{}{}
 	}
+	//
+	// A READ FAILURE IS NOT AN ANSWER. The reader's contract is "nil means not
+	// available", which ApplyDjangoNestedURLConf reads as "this file declares no
+	// routes" — indistinguishable from "the file is briefly unreadable". Left
+	// undistinguished, one transient EIO/ENOENT on a root urls.py yields an
+	// EMPTY `fresh` while the graph still holds its compositions, and the
+	// reconciliation below then prunes EVERY composed endpoint under it. The
+	// flag makes the two cases distinct so the prune can stand down; the adds
+	// are still safe (whatever DID parse is real), and a stale endpoint for one
+	// tick is a far better outcome than deleting live graph nothing re-derives.
+	readFailed := false
 	cache := make(map[string][]byte, 8)
 	reader := func(relPath string) []byte {
 		if b, ok := cache[relPath]; ok {
 			return b
 		}
 		if _, ok := allowed[relPath]; !ok {
+			// NOT a read failure: the path is outside the walked set, which is
+			// a definite "no such source file" and the security guard's whole
+			// point. Treating it as a failure would let a bogus
+			// `include("does.not.exist")` disable the prune permanently.
 			cache[relPath] = nil
 			return nil
 		}
 		b, err := os.ReadFile(filepath.Join(absRepo, filepath.FromSlash(relPath)))
 		if err != nil {
+			readFailed = true
 			b = nil
 		}
 		cache[relPath] = b
@@ -257,14 +317,27 @@ func recomposeDjangoURLConf(
 		freshIDs[freshEnts[i].ID] = true
 	}
 
+	// `readFailed` is checked HERE and not at the top of the function on
+	// purpose: the adds computed above are still sound (they came from files
+	// that DID read), and only the prune depends on `fresh` being the COMPLETE
+	// composition. Absence of evidence is not evidence of absence — an empty
+	// `fresh` caused by an unreadable urls.py must not authorise a deletion.
 	present := make(map[string]bool, len(doc.Entities)+len(newEntities))
 	res.removedIDs = make(map[string]bool)
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
 		present[e.ID] = true
+		if readFailed {
+			continue
+		}
 		if isComposedDjangoEndpoint(e) && !freshIDs[e.ID] {
 			res.removedIDs[e.ID] = true
 		}
+	}
+	if readFailed && logger != nil {
+		logger.Printf("incremental: django-urlconf recompose — a source read failed; " +
+			"prune SKIPPED this pass so an unreadable urls.py cannot delete live composed " +
+			"endpoints (#6461)")
 	}
 	for i := range newEntities {
 		present[newEntities[i].ID] = true

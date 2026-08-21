@@ -148,11 +148,25 @@ func TestRecomposeDjangoURLConf_PrunesOnlyEndpointsItOwns(t *testing.T) {
 		"path":         "/foreign",
 		"verb":         "GET",
 	})
+	// #6528 review — the HARD case, and the one M3 never covered: a FOREIGN
+	// producer of the SAME pattern_type. fastapiMountPointSynthetics
+	// (internal/engine/http_endpoint_synthesis.go, #6385) stamps the
+	// byte-identical `url_mount_point` on the byte-identical entity kind for
+	// FastAPI's `include_router(prefix=)`. Ownership by pattern_type alone
+	// claims it, and this pass cannot re-derive a FastAPI mount, so it would
+	// DELETE it — reachable in any Django+FastAPI monorepo, because the gate
+	// only asks that SOME *urls.py exists, never that a given mount is Django's.
+	fastapiMount := dcEntity(dcEndpointKind, "http:ANY:/api/v2:mount", "svc/main.py", map[string]string{
+		"pattern_type": composedMountPatternType,
+		"path":         "/api/v2",
+		"verb":         "ANY",
+		"framework":    "fastapi",
+	})
 	handler := dcEntity("SCOPE.Operation", "mp_terms_view", "mpsite/views.py", nil)
 
 	doc := &graph.Document{
 		Repo:     dcRepoTag,
-		Entities: []graph.Entity{ghost, foreign, handler},
+		Entities: []graph.Entity{ghost, foreign, fastapiMount, handler},
 	}
 
 	res := recomposeDjangoURLConf(absRepo, allFiles, []string{"mpsite/urls.py"}, doc, nil, dcSilentLogger())
@@ -175,6 +189,14 @@ func TestRecomposeDjangoURLConf_PrunesOnlyEndpointsItOwns(t *testing.T) {
 			foreign.Kind, foreign.Name, foreign.SourceFile,
 			composedNestedPatternType, composedMountPatternType)
 	}
+	if res.removedIDs[fastapiMount.ID] {
+		t.Errorf("#6528: the pass pruned %s|%s@%s — a FastAPI mount synthetic (framework=fastapi) "+
+			"carrying the SAME pattern_type %q this pass emits. Two producers stamp that string "+
+			"(fastapiMountPointSynthetics, #6385, and ApplyDjangoNestedURLConf), so pattern_type "+
+			"alone is not ownership: `framework` is. This pass cannot re-derive a FastAPI mount, "+
+			"so pruning it deletes it until the next full reindex.",
+			fastapiMount.Kind, fastapiMount.Name, fastapiMount.SourceFile, composedMountPatternType)
+	}
 	if res.removedIDs[handler.ID] {
 		t.Errorf("#6461: the pass pruned the HANDLER entity %s|%s@%s; it owns endpoint entities only",
 			handler.Kind, handler.Name, handler.SourceFile)
@@ -195,6 +217,63 @@ func TestRecomposeDjangoURLConf_PrunesOnlyEndpointsItOwns(t *testing.T) {
 			"http:ANY:/network/conditions for path(\"network/\", include(\"mpsite.urls\")) + "+
 			"path(\"conditions/\", views.mp_terms_view); added=%v", names)
 	}
+}
+
+// TestRecomposeDjangoURLConf_ReadFailureSkipsThePrune pins the failure policy
+// (#6528 review).
+//
+// The file reader's contract is "nil means unavailable", and
+// ApplyDjangoNestedURLConf reads nil as "this file declares no routes". Those
+// two are indistinguishable at the seam, so one transient read failure on a
+// root urls.py produces an EMPTY composition while the graph still holds every
+// endpoint composed under it — and a reconciliation that trusts absence then
+// deletes all of them.
+//
+// The failure is injected the way the daemon would actually meet it: a path
+// that walkSourceFiles reported but that cannot be read when the pass gets to
+// it. Deterministic, no chmod, no root-vs-user divergence.
+//
+// The prune must stand down. The ADDS are unaffected on purpose — they came
+// from files that did read, so they are real either way.
+func TestRecomposeDjangoURLConf_ReadFailureSkipsThePrune(t *testing.T) {
+	absRepo, allFiles := dcWriteRepo(t)
+	// Reported by the walk, unreadable by the time the pass asks for it.
+	// `*urls.py`, so ApplyDjangoNestedURLConf scans it as a root.
+	allFiles = append(allFiles, "mpsite/vanished_urls.py")
+
+	ghost := dcEntity(dcEndpointKind, "http:ANY:/network/terms", "mpsite/views.py", map[string]string{
+		"pattern_type": composedNestedPatternType,
+		"path":         "/network/terms",
+		"verb":         "ANY",
+		"framework":    "django",
+	})
+	handler := dcEntity("SCOPE.Operation", "mp_terms_view", "mpsite/views.py", nil)
+
+	doc := &graph.Document{
+		Repo:     dcRepoTag,
+		Entities: []graph.Entity{ghost, handler},
+	}
+
+	res := recomposeDjangoURLConf(absRepo, allFiles, []string{"mpsite/urls.py"}, doc, nil, dcSilentLogger())
+
+	if !res.ran {
+		t.Fatalf("#6528: the pass declined to run; allFiles=%v", allFiles)
+	}
+	if len(res.removedIDs) != 0 {
+		var got []string
+		for id := range res.removedIDs {
+			got = append(got, id)
+		}
+		t.Errorf("#6528: a source read FAILED during this pass, so the recomputed composition is "+
+			"not authoritative and the prune must be skipped entirely; it removed %d entity/entities "+
+			"%v. Deleting real graph because a file was briefly unreadable is strictly worse than "+
+			"carrying a stale endpoint for one tick — the stale one is corrected on the next pass, "+
+			"the deleted one is not, until a full reindex.",
+			len(res.removedIDs), got)
+	}
+	// The sibling test proves this same ghost IS pruned when every read
+	// succeeds, so the assertion above is a policy difference and not a pass
+	// that simply never prunes anything.
 }
 
 // TestRecomposeDjangoURLConf_ReAddsNothingTheGraphAlreadyHolds pins the add
