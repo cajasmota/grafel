@@ -507,6 +507,25 @@ func HeadCommit(repoPath string) string {
 	return headCommit(repoPath)
 }
 
+// HeadCommitPair returns the short AND full HEAD commit hashes for the repo at
+// repoPath, captured back-to-back, or ("", "") when git is unavailable or this
+// is not a git repo.
+//
+// It exists because SaveManifestAtCommit requires both forms and documents
+// "pass both or neither", while only the short form had an exported wrapper
+// (#6474). A caller that must thread the commit its pass actually READ down to
+// the save has to capture both at ONE point; two separate exported calls would
+// let the pair be captured at different instants and describe different
+// commits — precisely the divergence SaveManifestAtCommit exists to prevent.
+//
+// The two rev-parse calls are still sequential (git offers no single invocation
+// yielding both forms), so this narrows the window rather than closing it; what
+// it does close is the caller-side gap between a pass-start short capture and a
+// save-time full capture, which is the one that spans the whole index.
+func HeadCommitPair(repoPath string) (short, full string) {
+	return headCommit(repoPath), headCommitFull(repoPath)
+}
+
 // GitChangedFiles uses `git diff --name-only HEAD` to return the set of
 // repo-relative paths changed since the last HEAD commit. Returns nil when
 // the repo is not a git repository or git is not available.
