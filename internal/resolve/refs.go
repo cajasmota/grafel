@@ -1664,10 +1664,13 @@ func isImportPlaceholderKind(kind, subtype string) bool {
 // "typescript". A framework-name check is the weakest kind of signal and is
 // used here only because nothing structural distinguishes the shapes; closing
 // that properly means stamping local_scope in dataflow_react.go, which is an
-// extractor-side change (see the closing paragraph below).
+// extractor-side change (#6472; see the closing paragraph below).
 // TestAngularInputIsNotALocalBinding_6467 and TestVueDefinePropsIsNotALocalBinding_6467
 // pin the two public shapes; TestReactPropsParameterIsALocalBinding_6467 pins
 // that the react arm still fires, so the gate cannot be widened back silently.
+// TestReactComponentDeclarationIsNotALocalBinding_6467 pins the SUBTYPE half:
+// without it `subtype != "" && framework == "react"` passed the whole suite,
+// i.e. the framework name alone was carrying the arm.
 //
 // SCOPE, STATED HONESTLY: BOTH SIGNALS ARE JS/TS-FAMILY-ONLY IN PRACTICE.
 // An earlier draft of this predicate also matched the subtypes "parameter" and
@@ -1697,7 +1700,13 @@ func isImportPlaceholderKind(kind, subtype string) bool {
 // so matching them would repeat the mistake just removed. Closing the two
 // genuine gaps is an extractor-side change (stamp local_scope centrally, the
 // way types.EntityGeneratedProperty is stamped in extractors.safeExtract) and
-// is deliberately NOT done here.
+// is deliberately NOT done here. Tracked as #6472, together with the react
+// props parameter above — doing it collapses this predicate to the
+// local_scope check alone and deletes the framework gate. NOT a one-line
+// edit: internal/mcp/denoise.go:168 HIDES local_scope entities from
+// grafel_find and internal/types/entity.go:111 documents the contract, so
+// widening who carries the property changes agent-facing search output and
+// has to be measured there too.
 func isLocalBindingKind(subtype string, props map[string]string) bool {
 	if props["local_scope"] == "true" {
 		return true

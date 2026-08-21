@@ -708,3 +708,39 @@ func assertDeclarationLosesSlot6467(t *testing.T, label string, decl types.Entit
 		})
 	}
 }
+
+// TestReactComponentDeclarationIsNotALocalBinding_6467 pins the SUBTYPE half of
+// the react arm, which the framework gate left unpinned.
+//
+// Surviving mutant (found in review): with the gate in place,
+//
+//	return subtype != "" && props["framework"] == "react"
+//
+// passed `go vet` and the whole ./internal/resolve/... suite. Nothing
+// distinguished a react `component_prop` from ANY other react-stamped subtype,
+// so the framework check alone was carrying the arm — and a later relaxation of
+// the subtype side, trusting `framework == "react"` to hold the line, would have
+// drawn no objection from any test.
+//
+// The killer is a record that is react-stamped and NOT a props parameter:
+// cross/react_props/extractor.go:816 `buildComponentEntity` emits the COMPONENT
+// ITSELF as SCOPE.Operation / Subtype "react_component" with
+// Properties["framework"]="react" (map copied verbatim from that emitter,
+// including `ref` and `provenance`). A component declaration is the single most
+// addressable record in a React codebase — `import { Chart } from "./Chart"` in
+// any other file must bind to it — so it must keep the repository-wide slot.
+func TestReactComponentDeclarationIsNotALocalBinding_6467(t *testing.T) {
+	assertDeclarationKeepsSlot6467(t, "react component declaration",
+		types.EntityRecord{
+			ID: "dddd000000000006", Kind: "SCOPE.Operation", Name: "Chart",
+			Subtype: "react_component", SourceFile: "src/Chart.tsx",
+			Language: "typescript",
+			Properties: map[string]string{
+				"framework":  "react",
+				"component":  "true",
+				"props":      "Data, onSelect",
+				"ref":        "scope:operation:src/Chart.tsx#Chart",
+				"provenance": "INFERRED_FROM_REACT_PROPS_EXTRACTOR",
+			},
+		})
+}
