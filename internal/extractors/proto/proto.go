@@ -1042,6 +1042,17 @@ func enumValueNumber(node ts.Node, src []byte) string {
 // Pinned by TestProto_SelfImportDoesNotCollideWithTheFileEntity_6518; the
 // cross-file case is untouched, since a placeholder for "b.proto" inside
 // a.proto is a different (name, sourceFile) tuple from b.proto's own carrier.
+//
+// The comparison is SPELLING-SENSITIVE and deliberately so: it is exactly the
+// collision condition (equal strings hash to one EntityID) and nothing more.
+// filepath.ToSlash normalises separators, but no canonicalisation happens — so
+// `import "./deps.proto";` inside deps.proto is NOT suppressed. Measured: that
+// spelling mints no duplicate id, so the defect this guard exists for does not
+// recur; it yields an `IMPORTS deps.proto -> deps.proto` self-edge, which is
+// stored and then skipped by the consumers that filter FromID == ToID, exactly
+// as it did before #6518. Widening the comparison is the trap, not the fix:
+// TestProto_SameBasenameImportKeepsItsPlaceholder_6518 pins what a basename-
+// level widening destroys.
 func buildImportEntities(file extractor.FileInput) []types.EntityRecord {
 	root := file.TSTree.RootNode()
 	self := filepath.ToSlash(file.Path)

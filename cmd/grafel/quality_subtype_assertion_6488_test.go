@@ -96,8 +96,13 @@ func TestProtoEnumValueSubtypeIsGraded_6488(t *testing.T) {
 	//
 	// Absolute counts, not "the ratchet is green": scripts/quality/ratchet.py
 	// can re-record its own floor, so a number recorded there does not survive
-	// a revert. 18/18 and 16/16 are the figures #6488 measured while the
-	// enum-value subtype flip was live and undetected.
+	// a revert. 18/18 and 16/16 were the figures #6488 measured while the
+	// enum-value subtype flip was live and undetected — the fixture's size AT
+	// THAT TIME. #6518 has since added the per-file carrier entity and the
+	// file -> message CONTAINS row that carrier made gradeable, so the figures
+	// the assertion below demands are 19/19 and 17/17. The #6488 property is
+	// unchanged: absolute counts, re-derived here rather than read from
+	// baseline.json.
 	rep := quality.Evaluate(fix, doc)
 	for _, r := range rep.EntityResults {
 		if r.Expected.Name != "Role.ROLE_ADMIN" {
