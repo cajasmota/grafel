@@ -108,6 +108,14 @@ type moduleEntry struct {
 	// with, a real declaration of the same name.
 	importPlaceholder bool
 
+	// localBinding is isLocalBindingKind's verdict (#6467), precomputed for
+	// the same reason importPlaceholder is: moduleEntry carries no Subtype,
+	// and this is the only place the source record is still in hand. A
+	// function-body local or a formal parameter is not addressable outside
+	// the callable that declares it, so it may not hold the repository-wide
+	// byName slot.
+	localBinding bool
+
 	// globalPos is the entity's position in the caller's ORIGINAL (flat)
 	// entity slice — the order BuildIndex consumes. M5 builds its symbol
 	// table per-module (so the merge visits entities grouped by module, not
@@ -199,6 +207,7 @@ func BuildModuleSymbols(key ModuleKey, entities []types.EntityRecord) *ModuleSym
 			uncallable:        uncallableSolidityField(e.Language, e.Kind, e.Signature),
 			properties:        e.Properties,
 			importPlaceholder: isImportPlaceholderKind(e.Kind, e.Subtype),
+			localBinding:      isLocalBindingKind(e.Subtype, e.Properties),
 		}
 		ms.entries = append(ms.entries, me)
 	}
@@ -437,6 +446,7 @@ func buildModuleSymbolsOrderedPos(key ModuleKey, entities []types.EntityRecord, 
 			uncallable:        uncallableSolidityField(e.Language, e.Kind, e.Signature),
 			properties:        e.Properties,
 			importPlaceholder: isImportPlaceholderKind(e.Kind, e.Subtype),
+			localBinding:      isLocalBindingKind(e.Subtype, e.Properties),
 			globalPos:         pos,
 		}
 		ms.entries = append(ms.entries, me)
@@ -931,7 +941,7 @@ func insertModuleEntry(
 	// (indexByName) so this path and flat BuildIndex cannot drift — including
 	// the #6104 facet rule and the #6369 import-placeholder precedence.
 	nameAnchor, nameIsFacet := me.mergeFacetAnchor()
-	idx.indexByName(me.name, me.id, nameIsFacet, nameAnchor, me.importPlaceholder)
+	idx.indexByName(me.name, me.id, nameIsFacet, nameAnchor, me.importPlaceholder, me.localBinding)
 }
 
 // mergeFacetAnchor reports whether this module entry is a #6104 merge facet —
