@@ -19,13 +19,18 @@
 // Django urlconf/DRF/admin and Java annotation route synthesisers, plus
 // webhooks_edges.go:111 writing the literal. All nine are producer-side,
 // so :778 and :957 (which also require a consumer pattern_type /
-// source_caller) stay inert; :1001 keys on kind alone and fires on all of
-// them TODAY, so widening it is a behaviour change on a live path, not
-// the re-enabling of dead code. The tests below pin the widened behaviour
-// AND the boundaries of the widening: every "must stay false" case is as
-// load-bearing as every "must become true" case.
+// source_caller) stay inert.
 //
-// None of these three functions had any test before this file.
+// :1001 is therefore NOT repaired here. It keys on kind alone, so it
+// already fires on all nine today — it is not a gate that rejects
+// everything, and teaching it the split kinds would be a widening of a
+// live, USER-VISIBLE path: `crosses_external_lib` is serialised onto every
+// Process entity and rendered by webui-v2 as an "external lib" badge
+// (routes/flows.tsx:254 and :1432, typed at data/types.ts:714). A purely
+// first-party HTTP hop must not raise that badge. The tests below pin
+// :1001's unchanged behaviour on both sides.
+//
+// None of these functions had any test before this file.
 package engine
 
 import (
@@ -243,35 +248,42 @@ func TestChainCrossesExternalLib_6458(t *testing.T) {
 		want     bool
 	}{
 		{
-			// RED: the consumer synthetic is the canonical "this process
-			// calls out over HTTP" marker and it has no IMPLEMENTS /
-			// ROUTES_TO / SERVES edge, so the boundary set never catches
-			// it either. Today this chain reports crosses_external_lib
-			// =false.
-			name: "http_endpoint_call step",
+			// #6494 — the load-bearing case. A first-party HTTP call site
+			// with no third-party dependency anywhere must NOT raise the
+			// dashboard's "external lib" badge. This assertion is what
+			// fails if :1001 is widened to the #1217 split kinds.
+			name: "http_endpoint_call step is first-party, not an external lib",
 			ent:  consumerEnt("c1", "http_endpoint_call", "orders.ts"),
-			want: true,
+			want: false,
 		},
 		{
-			// RED. In a real graph a definition usually also carries an
-			// IMPLEMENTS/ROUTES_TO edge and is caught by the boundary
-			// set; when it does not, the kind must still match.
+			// Same, producer side. In a real graph a definition usually
+			// also carries an IMPLEMENTS/ROUTES_TO edge and IS caught by
+			// the boundary set — that is a different, edge-based signal
+			// and it stays. The KIND alone must not be enough.
 			name: "http_endpoint_definition step without boundary edge",
 			ent:  producerEnt("p1", "http_endpoint_definition", "orders.go"),
-			want: true,
+			want: false,
 		},
 		{
-			// Already true today via the legacy arm — must not regress.
+			name: "http_endpoint_call uppercase kind",
+			ent:  consumerEnt("c2", "HTTP_ENDPOINT_CALL", "orders.ts"),
+			want: false,
+		},
+		{
+			// Pre-existing behaviour via the legacy arm — one of the nine
+			// live emitters. Must not regress while narrowing.
 			name: "webhook legacy http_endpoint step",
 			ent:  webhookEnt("w1", "webhooks.go"),
 			want: true,
 		},
 		{
-			name: "http_endpoint_call uppercase kind",
-			ent:  consumerEnt("c2", "HTTP_ENDPOINT_CALL", "orders.ts"),
+			// The legacy arm is case-insensitive and must stay so.
+			name: "legacy http_endpoint uppercase kind",
+			ent:  graph.Entity{ID: "w2", Kind: "HTTP_ENDPOINT", SourceFile: "webhooks.go"},
 			want: true,
 		},
-		// --- boundaries of the widening ---
+		// --- boundaries ---
 		{
 			name: "plain function step",
 			ent:  graph.Entity{ID: "f1", Kind: "SCOPE.Function", SourceFile: "orders.ts"},
@@ -377,9 +389,13 @@ func TestProcessFlow_6458_Delta_ChainReachesConsumerCall(t *testing.T) {
 	if props["cross_stack_reason"] == "" {
 		t.Errorf("cross_stack_reason is empty, want the unresolved-consumer reason")
 	}
-	// :1001 — the endpoint-ish switch arm.
-	if props["crosses_external_lib"] != strconv.FormatBool(true) {
-		t.Errorf("crosses_external_lib = %q, want \"true\" (:1001 arm omits http_endpoint_call)",
+	// :1001 — the endpoint-ish switch arm is deliberately NOT widened
+	// (#6494). Nothing on this chain is a third-party dependency and no
+	// step sits on an IMPLEMENTS / ROUTES_TO / SERVES edge, so the
+	// dashboard's "external lib" badge must stay off. Widening :1001 to
+	// the split kinds flips this to "true" and makes the badge lie.
+	if props["crosses_external_lib"] != strconv.FormatBool(false) {
+		t.Errorf("crosses_external_lib = %q, want \"false\" — a first-party HTTP call site is not an external lib",
 			props["crosses_external_lib"])
 	}
 }
@@ -462,11 +478,13 @@ func TestProcessFlow_6458_FallbackRespects1639Continuation(t *testing.T) {
 		t.Errorf("cross_stack = %q, want \"false\" — the call resolves into a same-repo handler (#1639). reason=%q",
 			props["cross_stack"], props["cross_stack_reason"])
 	}
-	// The chain does touch HTTP endpoint entities, so this stays true —
-	// that is the :1001 widening working as intended, and it is a
-	// different question from whether the process leaves the repo.
+	// Still true, but NOT because of the endpoint kinds: `def` sits on the
+	// handler IMPLEMENTS edge, so buildHTTPBoundarySet already holds it.
+	// That edge-based signal is the one :1001 has always had and it is
+	// untouched by #6458.
 	if props["crosses_external_lib"] != strconv.FormatBool(true) {
-		t.Errorf("crosses_external_lib = %q, want \"true\"", props["crosses_external_lib"])
+		t.Errorf("crosses_external_lib = %q, want \"true\" (via the IMPLEMENTS boundary set, not the kind switch)",
+			props["crosses_external_lib"])
 	}
 }
 
@@ -619,53 +637,247 @@ func TestProcessFlow_6494_ProducerOnChainDoesNotSuppressFallback(t *testing.T) {
 	}
 }
 
-// Probe C — the boundaries of "resolves into a same-repo handler". Both
-// halves of resolvedConsumerEndpoints' condition are load-bearing:
-// the FETCHES edge must actually be a FETCHES edge, and the definition it
-// lands on must actually be implemented by a handler in this document. A
-// definition nobody implements is a route this repo declares but does not
-// serve from the chain's perspective — the call still leaves the repo.
+// Probe C — the boundaries of "resolves against a same-repo route".
+//
+// #6494 round 3: this probe used to assert that a definition with NO
+// inbound IMPLEMENTS edge left the consumer UNresolved, i.e. that the
+// process "leaves the repo". That was wrong, and pinning it canonised a
+// false positive.
+//
+// `call --FETCHES--> definition` IS the in-repo resolution signal:
+// http_endpoint_resolve.go stamps it pattern_type=
+// "http_endpoint_split_resolved" / resolved="true" and emits it only when
+// a matching definition was found in this document. The IMPLEMENTS edge
+// answers a different question — whether HANDLER BINDING also succeeded —
+// and that step fails routinely on real code (stats.NoHandlerProp,
+// HandlerDropped, HandlerUnresolved, HandlerUnresolvedKept "the endpoint
+// survived unenriched", plus the #4319 co-location fallback that exists
+// because binding fails on real NestJS). Routes synthesised from regex /
+// YAML / mount points never carry a source_handler at all
+// (http_endpoint_synthesis.go gates it on refName != ""), so they can
+// never acquire an IMPLEMENTS edge. Requiring one turned "the handler
+// wasn't bound" into "the backend lives in another repo".
+//
+// What remains load-bearing: the edge must actually be a FETCHES edge,
+// and it must land on an http_endpoint_definition in THIS document.
 func TestProcessFlow_6494_ProbeC_ResolutionBoundaries(t *testing.T) {
 	tests := []struct {
-		name       string
-		edgeKind   string
-		implements bool
+		name         string
+		edgeKind     string
+		targetIsDef  bool
+		wantResolved bool
 	}{
-		{"definition with no handler IMPLEMENTS edge", RelationshipKindFetches, false},
-		{"handler present but the consumer edge is not FETCHES", "REFERENCES", true},
+		{
+			// The correction. No handler is bound to the definition, but
+			// the call still resolved against an in-repo route.
+			name:         "definition with no handler IMPLEMENTS edge still resolves in-repo",
+			edgeKind:     RelationshipKindFetches,
+			targetIsDef:  true,
+			wantResolved: true,
+		},
+		{
+			name:         "consumer edge is not FETCHES",
+			edgeKind:     "REFERENCES",
+			targetIsDef:  true,
+			wantResolved: false,
+		},
+		{
+			// The TO-leg guard. A FETCHES edge out of a consumer that does
+			// not land on an http_endpoint_definition is not a resolution;
+			// counting it would make every consumer read as intra-repo.
+			name:         "FETCHES edge that does not land on a definition",
+			edgeKind:     RelationshipKindFetches,
+			targetIsDef:  false,
+			wantResolved: false,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			target := producerEnt("def", "http_endpoint_definition", "handler.go")
+			if !tc.targetIsDef {
+				target = graph.Entity{ID: "def", Name: "OrderClient", Kind: "SCOPE.Class", SourceFile: "handler.go"}
+			}
 			doc := &graph.Document{Repo: "r"}
 			doc.Entities = []graph.Entity{
 				{ID: "caller", Name: "submitOrder", Kind: "SCOPE.Function", SourceFile: "client.go"},
 				consumerEnt("call", "http_endpoint_call", "api.go"),
-				producerEnt("def", "http_endpoint_definition", "handler.go"),
-				{ID: "handler", Name: "CreateOrder", Kind: "SCOPE.Function", SourceFile: "handler.go"},
+				target,
+				// An unrelated route this repo serves, connected to
+				// nothing. Without it the predicate short-circuits on
+				// "this document declares no definitions at all" and the
+				// TO-leg is never reached — which is exactly how the
+				// round-2 mutant on that leg survived.
+				producerEnt("otherDef", "http_endpoint_definition", "other.go"),
 			}
 			doc.Relationships = []graph.Relationship{
 				{ID: "1", FromID: "caller", ToID: "call", Kind: "FETCHES"},
-				// The ONLY consumer → definition edge in this fixture.
+				// The ONLY consumer → target edge in this fixture.
 				{ID: "2", FromID: "call", ToID: "def", Kind: tc.edgeKind},
 			}
-			if tc.implements {
-				doc.Relationships = append(doc.Relationships,
-					graph.Relationship{ID: "4", FromID: "handler", ToID: "def", Kind: "IMPLEMENTS"})
-			}
-			if resolvedConsumerEndpoints(doc)["call"] {
-				t.Fatalf("consumer \"call\" must NOT count as resolved (edge=%q implements=%v)",
-					tc.edgeKind, tc.implements)
+			if got := resolvedConsumerEndpoints(doc)["call"]; got != tc.wantResolved {
+				t.Fatalf("resolvedConsumerEndpoints[call] = %v, want %v (edge=%q targetIsDef=%v)",
+					got, tc.wantResolved, tc.edgeKind, tc.targetIsDef)
 			}
 			RunProcessFlow(doc, DefaultProcessFlowConfig())
 			props := procProps(t, doc, "caller")
 			if buildConsumerEndpointFileSet(doc, resolvedConsumerEndpoints(doc))["client.go"] {
 				t.Fatalf("probe is not isolated: entry file client.go is in the consumer-endpoint file set")
 			}
-			if props["cross_stack"] != strconv.FormatBool(true) {
-				t.Errorf("cross_stack = %q, want \"true\" — the call does not resolve into a same-repo handler. chain=%q reason=%q",
-					props["cross_stack"], props["chain"], props["cross_stack_reason"])
+			// cross_stack is the negation of resolution here: the chain's
+			// only cross-repo candidate is `call`.
+			wantCross := strconv.FormatBool(!tc.wantResolved)
+			if props["cross_stack"] != wantCross {
+				t.Errorf("cross_stack = %q, want %q. chain=%q reason=%q",
+					props["cross_stack"], wantCross, props["chain"], props["cross_stack_reason"])
 			}
 		})
+	}
+}
+
+// TestResolvedConsumerEndpoints_6494_HandlerBindingIsSeparate is the F2
+// correction stated as its own regression, at the unit level and free of
+// the BFS.
+//
+// Two consumers in one document. Both resolve against an in-repo
+// definition over a FETCHES edge; only one of the two definitions has a
+// handler bound to it by an IMPLEMENTS edge. Under the old predicate the
+// unbound one was reported unresolved — which the emitted Process then
+// explained as "backend in another repo", about a route declared twenty
+// lines away.
+func TestResolvedConsumerEndpoints_6494_HandlerBindingIsSeparate(t *testing.T) {
+	doc := &graph.Document{Repo: "r"}
+	doc.Entities = []graph.Entity{
+		consumerEnt("callBound", "http_endpoint_call", "api.ts"),
+		consumerEnt("callUnbound", "http_endpoint_call", "api.ts"),
+		producerEnt("defBound", "http_endpoint_definition", "routes.py"),
+		// The regex/YAML/mount-derived shape: synthesised without a
+		// source_handler, so no IMPLEMENTS edge can ever exist for it.
+		producerEnt("defUnbound", "http_endpoint_definition", "urls.py"),
+		{ID: "handler", Name: "get_orders", Kind: "SCOPE.Function", SourceFile: "routes.py"},
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "callBound", ToID: "defBound", Kind: "FETCHES"},
+		{ID: "2", FromID: "handler", ToID: "defBound", Kind: "IMPLEMENTS"},
+		{ID: "3", FromID: "callUnbound", ToID: "defUnbound", Kind: "FETCHES"},
+	}
+	got := resolvedConsumerEndpoints(doc)
+	for _, id := range []string{"callBound", "callUnbound"} {
+		if !got[id] {
+			t.Errorf("resolvedConsumerEndpoints[%s] = false, want true — the call resolved against an in-repo route; whether a handler was bound to that route is a different question", id)
+		}
+	}
+}
+
+// TestChainCrossesRepoBoundary_6494_EntryStepGuard covers the SECOND
+// consultation site of resolvedConsumers — the entry-step check after the
+// pairwise walk. A one-element chain runs zero pairwise iterations, so it
+// exercises that site and nothing else. Probes A and B both perturb both
+// sites at once and so prove nothing about this one.
+func TestChainCrossesRepoBoundary_6494_EntryStepGuard(t *testing.T) {
+	consumer := consumerEnt("call", "http_endpoint_call", "api.ts")
+	byID := map[string]*graph.Entity{"call": &consumer}
+
+	t.Run("unresolved entry consumer crosses the boundary", func(t *testing.T) {
+		cross, reason := chainCrossesRepoBoundary([]string{"call"}, byID, nil, map[string]bool{})
+		if !cross {
+			t.Fatal("cross = false, want true — an unresolved consumer synthetic as the entry leaves the repo")
+		}
+		if !strings.Contains(reason, "step 0") {
+			t.Fatalf("reason = %q, want the step-0 entry reason", reason)
+		}
+	})
+	t.Run("resolved entry consumer stays intra-repo", func(t *testing.T) {
+		cross, reason := chainCrossesRepoBoundary([]string{"call"}, byID, nil, map[string]bool{"call": true})
+		if cross {
+			t.Fatalf("cross = true (reason %q), want false — the entry consumer resolved against an in-repo route", reason)
+		}
+	})
+}
+
+// TestResolvedConsumerEndpointsMulti_6494_SpansCompanions pins the F3
+// asymmetry. Every other sibling set built in RunProcessFlowWithCompanions
+// spans doc + companions (byID, the HTTP boundary set, the CALLS
+// adjacency); this one was the only doc-only set, yet it is consulted
+// against byID, which does span companions. A consumer synthetic living in
+// a companion could therefore never be found resolved.
+//
+// Classification stays per-document: a definition in repo A must not
+// resolve a call in repo B.
+func TestResolvedConsumerEndpointsMulti_6494_SpansCompanions(t *testing.T) {
+	companion := &graph.Document{Repo: "bff"}
+	companion.Entities = []graph.Entity{
+		consumerEnt("bffCall", "http_endpoint_call", "bff/api.ts"),
+		producerEnt("bffDef", "http_endpoint_definition", "bff/routes.ts"),
+	}
+	companion.Relationships = []graph.Relationship{
+		{ID: "c1", FromID: "bffCall", ToID: "bffDef", Kind: "FETCHES"},
+	}
+	// The frontend holds a consumer whose backend is elsewhere, plus a
+	// definition of its own that must not resolve the companion's call.
+	doc := &graph.Document{Repo: "fe"}
+	doc.Entities = []graph.Entity{
+		{ID: "a", Name: "loadDashboard", Kind: "SCOPE.Function", SourceFile: "fe/app.ts"},
+		consumerEnt("feCall", "http_endpoint_call", "fe/api.ts"),
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "a", ToID: "feCall", Kind: "FETCHES"},
+	}
+
+	got := resolvedConsumerEndpointsMulti(doc, []*graph.Document{companion})
+	if !got["bffCall"] {
+		t.Errorf("resolvedConsumerEndpointsMulti[bffCall] = false, want true — the companion's call resolves against the companion's own definition")
+	}
+	if got["feCall"] {
+		t.Errorf("resolvedConsumerEndpointsMulti[feCall] = true, want false — feCall has no definition in its own document")
+	}
+
+	// Cross-document resolution must NOT happen: move the definition into
+	// the companion only and the frontend call stays unresolved (asserted
+	// above). Now prove the same in the other direction — a doc-local
+	// definition does not resolve a companion call.
+	doc.Entities = append(doc.Entities, producerEnt("feDef", "http_endpoint_definition", "fe/routes.ts"))
+	doc.Relationships = append(doc.Relationships,
+		graph.Relationship{ID: "2", FromID: "bffCall", ToID: "feDef", Kind: "FETCHES"})
+	if resolvedConsumerEndpointsMulti(doc, nil)["bffCall"] {
+		t.Error("a definition in the frontend document must not resolve a consumer that lives in another document")
+	}
+}
+
+// TestProcessFlow_6494_CompanionConsumerResolves is the end-to-end half of
+// F3: the map is consulted through byID, so a chain that steps onto a
+// companion-resident consumer synthetic must see that companion's own
+// resolution. With the doc-only build this reports cross_stack=true with
+// the reason "backend in another repo" about a call the companion resolves
+// against its own route.
+func TestProcessFlow_6494_CompanionConsumerResolves(t *testing.T) {
+	companion := &graph.Document{Repo: "bff"}
+	companion.Entities = []graph.Entity{
+		consumerEnt("bffCall", "http_endpoint_call", "bff/api.ts"),
+		producerEnt("bffDef", "http_endpoint_definition", "bff/routes.ts"),
+	}
+	companion.Relationships = []graph.Relationship{
+		{ID: "c1", FromID: "bffCall", ToID: "bffDef", Kind: "FETCHES"},
+	}
+	doc := &graph.Document{Repo: "fe"}
+	doc.Entities = []graph.Entity{
+		{ID: "a", Name: "loadDashboard", Kind: "SCOPE.Function", SourceFile: "fe/app.ts"},
+		{ID: "b", Name: "buildView", Kind: "SCOPE.Function", SourceFile: "fe/app.ts"},
+		{ID: "c", Name: "callBff", Kind: "SCOPE.Function", SourceFile: "fe/app.ts"},
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "a", ToID: "b", Kind: "CALLS"},
+		{ID: "2", FromID: "b", ToID: "c", Kind: "CALLS"},
+		{ID: "3", FromID: "c", ToID: "bffCall", Kind: "FETCHES"},
+	}
+	RunProcessFlowWithCompanions(doc, []*graph.Document{companion}, DefaultProcessFlowConfig())
+	props := procProps(t, doc, "a")
+
+	if got := props["chain"]; got != "a,b,c,bffCall,bffDef" {
+		t.Fatalf("chain = %q — fixture no longer reaches the companion consumer synthetic", got)
+	}
+	if props["cross_stack"] != strconv.FormatBool(false) {
+		t.Errorf("cross_stack = %q, want \"false\" — bffCall resolves against bffDef inside the companion document. reason=%q",
+			props["cross_stack"], props["cross_stack_reason"])
 	}
 }
 
