@@ -261,7 +261,12 @@ type classifiedFile struct {
 // Indexer owns the pass-by-pass orchestration. Constructing a fresh Indexer
 // per Index() call keeps state (counters, configuration) local.
 type Indexer struct {
-	repoTag    string
+	repoTag string
+	// absRepo is the on-disk root of the repo this run is indexing. Set by
+	// Run; empty when buildDocument is driven directly by a unit test.
+	// Consumed by the #6450 index-time base-URL constant fold, which needs
+	// to read source files for the substrate sniffer.
+	absRepo    string
 	classifier *classifier.Classifier
 	parser     *treesitter.ParserFactory
 	detector   *engine.Detector
@@ -1420,6 +1425,13 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// not lazily at the seam, because absRepo is the only thing it needs and
 	// this is the only place that has it. See mergePassRecords.
 	i.generatedSet = generated.NewSet(absRepo)
+
+	// #6450 — buildDocument's index-time base-URL constant fold needs the
+	// on-disk source root to read files for the substrate sniffer, and Run
+	// is the only place that has it. A caller that drives buildDocument
+	// directly (unit tests) leaves this empty, which makes the fold an
+	// explicit no-op rather than a lie.
+	i.absRepo = absRepo
 
 	// Resolve the publisher. Default to NoOp so callers without a sink pay
 	// zero overhead (a nil check on every Publish call is more expensive than
@@ -5596,6 +5608,20 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 	// index in the same step it handles every other stub. Unresolved
 	// synthetics are dropped here — keeping them would leave orphan
 	// http_endpoint nodes in the graph and inflate bug-rate.
+	// #6450 — fold intra-repo base-URL constants into consumer-side
+	// http_endpoint_call paths BEFORE the call→definition matcher below
+	// runs. The matcher joins on the `path` property; until this ran at
+	// index time the fold happened only in `grafel group-link`, a different
+	// process phase, so a monorepo's `fetch(`${BASE}/things`)` was written
+	// to graph.json as UNRESOLVED_FETCH even with the handler right there.
+	// Rewrites `path` only — Name and EntityID stay frozen, so the match
+	// lands at the matcher's path tier with no entity-ID churn.
+	if foldStats := engine.FoldConsumerHTTPBaseURLs(merged, i.absRepo); foldStats.Candidates > 0 {
+		fmt.Fprintf(os.Stderr,
+			"http-endpoint-baseurl-fold: candidates=%d folded=%d files_sniffed=%d\n",
+			foldStats.Candidates, foldStats.Folded, foldStats.FilesSniffed)
+	}
+
 	var httpEndpointStats engine.ResolveHTTPEndpointStats
 	merged, httpEndpointStats = engine.ResolveHTTPEndpointHandlersWithRepo(merged, i.repoTag)
 	if httpEndpointStats.DTOHandlerEdgesEmitted > 0 || httpEndpointStats.DTOHandlerEdgesUnresolved > 0 {
