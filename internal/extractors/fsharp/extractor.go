@@ -80,8 +80,13 @@ var (
 	)
 
 	// open statement: "open Foo" or "open Foo.Bar"
+	// open statement: "open Foo.Bar", and F# 5's "open type Foo.Bar".
+	// The optional `type` keyword must be consumed, not captured: without it
+	// `[\w.]+` matches the literal word "type" and the extractor mints an
+	// import placeholder named "type" — junk that #6369's marker now makes a
+	// *recognised* placeholder, so it is worth eating here.
 	openRE = regexp.MustCompile(
-		`(?m)^[ \t]*open\s+([\w.]+)`,
+		`(?m)^[ \t]*open\s+(?:type\s+)?([\w.]+)`,
 	)
 
 	// #6326 — a single-quoted CHAR literal holding a brace: `'{'` / `'}'`.
@@ -599,11 +604,29 @@ func collectOpenStatements(src string) []string {
 // #6427 fixed the resolver for every extractor that stamps the marker; F# was
 // not one of them, so the defect stayed live here.
 //
-// QualifiedName carries the FULL module path because Name is only the last
-// segment (importDisplayName). The specifier readers use the #6372 precedence
-// Properties["module"] > QualifiedName > Name, so without it the #6156
+// THE FULL MODULE PATH TRAVELS ON Properties["module"], NOT ON QualifiedName.
+// Name is only the last segment (importDisplayName), so a specifier channel is
+// required: the readers use the #6372 precedence
+// Properties["module"] > QualifiedName > Name, and without one the #6156
 // external-module restore would record the bare segment `Animal` as the
-// imported module. razor and vue carry the specifier the same way.
+// imported module.
+//
+// Both channels satisfy that precedence — but QualifiedName ALSO enters
+// resolve.BuildIndex's `byQualifiedName`, and Lookup/lookupWithStatus probe
+// that index BEFORE every other tier (refs.go). Unlike `byName`, it has no
+// #6427 import-placeholder precedence: it is first-writer-wins with a blank
+// ambiguity sentinel. Putting `Acme.Animal` there therefore hijacks this very
+// edge — measured on `module Acme.Animal` + `open Acme.Animal`:
+//
+//	Properties["module"]  IMPORTS ToID = the real module entity   (resolved)
+//	QualifiedName         IMPORTS ToID = this file's OWN placeholder,
+//	                                     fabricating an intra-file dependency;
+//	                                     with a second `open`, the blank
+//	                                     sentinel makes it ambiguous instead.
+//
+// razor and vue do use QualifiedName for their specifier — that is the shape
+// this extractor deliberately does NOT copy, because an F# `open` targets a
+// dotted module path that an in-repo `module` declaration can name exactly.
 func buildImportEntities(filePath string, imports []string) []types.EntityRecord {
 	if len(imports) == 0 {
 		return nil
@@ -616,12 +639,14 @@ func buildImportEntities(filePath string, imports []string) []types.EntityRecord
 		}
 		seen[mod] = true
 		out = append(out, types.EntityRecord{
-			Name:          importDisplayName(mod),
-			QualifiedName: mod,
-			Kind:          "SCOPE.Component",
-			Subtype:       "import",
-			SourceFile:    filePath,
-			Language:      "fsharp",
+			Name:       importDisplayName(mod),
+			Kind:       "SCOPE.Component",
+			Subtype:    "import",
+			SourceFile: filePath,
+			Language:   "fsharp",
+			// The full module path travels on Properties["module"], NOT
+			// QualifiedName — see the block comment above.
+			Properties: map[string]string{"module": mod},
 			Relationships: []types.RelationshipRecord{
 				{
 					FromID: filePath,
