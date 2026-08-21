@@ -495,3 +495,151 @@ func TestVBNetHierarchyRelKindGateIsHierarchyOnly_6337(t *testing.T) {
 		}
 	}
 }
+
+// TestVBNetHierarchyMaskGuardFoldsVBCaseOnly_6337 pins gate 3's case rule in
+// BOTH directions, and pins the language boundary that makes it safe
+// (#6337 round 3, review mutant W5).
+//
+// The choice was previously unpinned in both directions at once: gate 3 was a
+// plain map lookup, round 2 wrote its case-sensitivity down as a known
+// limitation, and a mutant that made it case-INSENSITIVE passed the whole suite
+// untouched. So the hole could have been closed for free with no test noticing,
+// and reopened just as quietly.
+//
+// THE DECISION IS: fold case, but only for VB.NET declarations. VB.NET is
+// case-insensitive — `Class panel` and `Inherits Panel` are the same type to
+// the compiler — so a case-sensitive gate 3 gave a semantically wrong answer
+// and shadowed a real in-tree type behind an `ext:dotnet:` placeholder. No
+// other language in the set is case-insensitive, so folding the whole
+// language-agnostic set would make a Go `list` or a Python `form` block a VB
+// hierarchy target in languages where those spellings are genuinely distinct
+// types. Measured on the 302-file corpus before choosing: 0 targets newly
+// blocked by the fold, 0 in-tree names differing from an allowlisted base type
+// only by case. See inTreeNameSet.
+//
+// Each case below kills a different mutant, which is the point of the table:
+// the VB cases kill "revert to case-sensitive", and the non-VB lowercase case
+// kills "fold the whole set with strings.EqualFold" — the mutant as written.
+func TestVBNetHierarchyMaskGuardFoldsVBCaseOnly_6337(t *testing.T) {
+	const goFile, vbFile = "list.go", "Panel.vb"
+	cases := []struct {
+		name    string
+		toID    string
+		relKind string
+		inTree  graph.Entity
+		want    string
+		why     string
+	}{
+		{
+			name:    "VB in-tree lowercase blocks the allowlisted spelling",
+			toID:    "Panel",
+			relKind: "EXTENDS",
+			inTree: graph.Entity{ID: "fedcba9876543210", Name: "panel", Kind: "SCOPE.Component",
+				SourceFile: vbFile, Language: "vbnet"},
+			want: "Panel",
+			why: "VB.NET is case-insensitive: `Class panel` IS the type `Inherits Panel` " +
+				"names, so this is the partial-class ambiguity the guard exists to keep visible",
+		},
+		{
+			name:    "VB in-tree uppercase blocks it too",
+			toID:    "Panel",
+			relKind: "EXTENDS",
+			inTree: graph.Entity{ID: "fedcba9876543210", Name: "PANEL", Kind: "SCOPE.Component",
+				SourceFile: vbFile, Language: "vbnet"},
+			want: "Panel",
+			why:  "the fold must be symmetric, not a one-way ToLower on the target only",
+		},
+		{
+			name:    "VB fold reaches the TYPE part of a member clause",
+			toID:    "IDisposable.Dispose",
+			relKind: "IMPLEMENTS",
+			inTree: graph.Entity{ID: "fedcba9876543210", Name: "idisposable", Kind: "SCOPE.Component",
+				SourceFile: vbFile, Language: "vbnet"},
+			want: "IDisposable.Dispose",
+			why:  "gate 3 is keyed on typePart, so the fold must apply there as well",
+		},
+		{
+			// THE MUTANT'S CASE. A case-insensitive scan over the whole
+			// language-agnostic set blocks this; the VB-only fold does not.
+			name:    "a non-VB lowercase name does NOT block",
+			toID:    "Form",
+			relKind: "EXTENDS",
+			inTree: graph.Entity{ID: "fedcba9876543210", Name: "form", Kind: "SCOPE.Component",
+				SourceFile: goFile, Language: "go"},
+			want: "ext:dotnet:Form",
+			why: "Go is case-sensitive: `form` and `Form` are different types, and " +
+				"suppressing a real external base on that collision is a recall loss " +
+				"with no VB.NET semantics behind it",
+		},
+		{
+			name:    "a non-VB EXACT name still blocks",
+			toID:    "Form",
+			relKind: "EXTENDS",
+			inTree: graph.Entity{ID: "fedcba9876543210", Name: "Form", Kind: "SCOPE.Component",
+				SourceFile: goFile, Language: "go"},
+			want: "Form",
+			why: "the exact half of the set stays language-AGNOSTIC, mirroring " +
+				"resolve.Index.nameExists — the fold narrows nothing that already matched",
+		},
+		{
+			name:    "an EXTERNAL vbnet-tagged node does not block by fold either",
+			toID:    "Form",
+			relKind: "EXTENDS",
+			inTree: graph.Entity{ID: "ext:somepkg:form", Name: "form", Kind: KindExternal,
+				Subtype: "symbol", Language: "vbnet"},
+			want: "ext:dotnet:Form",
+			why: "the Kind exclusion must be applied BEFORE the fold index is built, or " +
+				"a re-run of Synthesize would reject what the first run accepted",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := vbDoc(tc.relKind, tc.toID, tc.inTree)
+			Synthesize(doc)
+			if got := doc.Relationships[0].ToID; got != tc.want {
+				t.Errorf("in-tree %q (lang=%q) + %s %q: ToID = %q, want %q\n  %s",
+					tc.inTree.Name, tc.inTree.Language, tc.relKind, tc.toID, got, tc.want, tc.why)
+			}
+		})
+	}
+}
+
+// TestVBNetHierarchyFoldIndexIsVBOnly_6337 pins the same rule one level down,
+// on the set builder, so the table above cannot be satisfied by a Synthesize
+// that reaches the right answers through some other arm.
+func TestVBNetHierarchyFoldIndexIsVBOnly_6337(t *testing.T) {
+	set := buildInTreeNameSet(&graph.Document{Entities: []graph.Entity{
+		{ID: "1", Name: "panel", Kind: "SCOPE.Component", SourceFile: "a.vb", Language: "vbnet"},
+		{ID: "2", Name: "form", Kind: "SCOPE.Component", SourceFile: "b.go", Language: "go"},
+		{ID: "3", Name: "Label", Kind: "SCOPE.Component", SourceFile: "c.py", Language: "python"},
+		{ID: "ext:x:list", Name: "list", Kind: KindExternal, Language: "vbnet"},
+	}})
+
+	// The exact half is language-agnostic and keeps every real name verbatim.
+	for _, n := range []string{"panel", "form", "Label"} {
+		if !set.exact[n] {
+			t.Errorf("exact[%q] = false; the exact half must stay language-agnostic", n)
+		}
+	}
+	if set.exact["list"] {
+		t.Error(`exact["list"] = true for an ext: node; external placeholders are not in-tree declarations`)
+	}
+
+	// The fold half is VB-only, and excludes external nodes before folding.
+	if !set.blocks("Panel") {
+		t.Error(`blocks("Panel") = false; a VB in-tree "panel" must block it`)
+	}
+	if set.blocks("Form") {
+		t.Error(`blocks("Form") = true; only a Go "form" declares that spelling, and Go is case-sensitive`)
+	}
+	if set.blocks("label") {
+		t.Error(`blocks("label") = true; only a Python "Label" declares that spelling, and Python is case-sensitive`)
+	}
+	if set.blocks("List") || set.blocks("list") {
+		t.Error(`blocks("List"/"list") = true; the only "list" is an ext: node`)
+	}
+	if len(set.vbFold) != 1 {
+		t.Errorf("vbFold = %v, want exactly the one VB.NET entity's lowercased name", set.vbFold)
+	}
+}

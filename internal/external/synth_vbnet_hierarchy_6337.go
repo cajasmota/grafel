@@ -1,6 +1,8 @@
 package external
 
 import (
+	"strings"
+
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/types"
@@ -67,11 +69,17 @@ import (
 // demonstrated: it is what makes widening the allowlist a bounded decision,
 // because the collision it exists for (a repo-local `Public Class
 // BooleanConverter(Of T)` shadowing the BCL type of that name) does occur in
-// the corpora even though it does not currently reach this arm. Gate 3 is also
-// a plain map lookup and therefore case-SENSITIVE, while VB.NET is not: an
-// in-tree `Class panel` does not block an `Inherits Panel`. Both facts are
-// limitations to weigh before adding a name to the table, not reasons the
-// residual is already safe.
+// the corpora even though it does not currently reach this arm.
+//
+// Gate 3 WAS also a plain map lookup and therefore case-SENSITIVE, while
+// VB.NET is not, so an in-tree `Class panel` did not block an `Inherits Panel`.
+// That is fixed in round 3 and is no longer a limitation to weigh: the lookup
+// folds case for VB.NET entities, and only for those. See inTreeNameSet for the
+// design, the corpus measurement behind it and why the fold stops at the
+// language boundary. The remaining limitation is the one stated above — gate 3
+// blocks nothing on the corpus, so its value is prospective — and that is a
+// reason to weigh an allowlist addition carefully, not a reason the residual is
+// already safe.
 //
 // Gate 3 is the one the sibling arm in classifyDispositionLang shipped
 // WITHOUT, at the cost described in its comment. It is repeated here rather
@@ -103,8 +111,8 @@ import (
 // whose classification changes. Every arm above stdlibFunction keeps the
 // precedence it had. The lang gate below still makes this unreachable for any
 // language but vbnet.
-func vbnetHierarchyExternal(name, relKind, lang string, inTreeNames map[string]bool) (canonical, subtype string, ok, block bool) {
-	if lang != "vbnet" {
+func vbnetHierarchyExternal(name, relKind, lang string, inTreeNames inTreeNameSet) (canonical, subtype string, ok, block bool) {
+	if lang != vbnetLanguage {
 		return "", "", false, false
 	}
 	if relKind != string(types.RelationshipKindExtends) &&
@@ -133,7 +141,7 @@ func vbnetHierarchyExternal(name, relKind, lang string, inTreeNames map[string]b
 	// above does: a masked dotted target passed on to the dotted-root fallback
 	// comes back as `ext:System`, and a mask guard whose output is still a
 	// resolved node is not a mask guard.
-	if inTreeNames[typePart] {
+	if inTreeNames.blocks(typePart) {
 		return "", "", false, true
 	}
 	if member == "" {
@@ -180,14 +188,82 @@ const vbnetExtNamespace = "dotnet:"
 // a SourceFile test would misclassify in both directions the moment such an
 // entity carried a colliding name. And on a malformed record the safe answer is
 // to treat it as in-tree and keep the edge visible, which is what Kind does.
-func buildInTreeNameSet(doc *graph.Document) map[string]bool {
-	names := make(map[string]bool, len(doc.Entities))
+func buildInTreeNameSet(doc *graph.Document) inTreeNameSet {
+	set := inTreeNameSet{
+		exact:  make(map[string]bool, len(doc.Entities)),
+		vbFold: make(map[string]bool),
+	}
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
 		if e.Kind == KindExternal || e.Name == "" {
 			continue
 		}
-		names[e.Name] = true
+		set.exact[e.Name] = true
+		if e.Language == vbnetLanguage {
+			set.vbFold[strings.ToLower(e.Name)] = true
+		}
 	}
-	return names
+	return set
 }
+
+// inTreeNameSet is gate 3's lookup, and it is TWO sets rather than one because
+// exactly one of the languages involved is case-insensitive (#6337 round 3).
+//
+// VB.NET does not distinguish case: `Class panel` and `Inherits Panel` name the
+// SAME type, and the compiler resolves the second to the first. A gate 3 built
+// on a plain map lookup therefore gave a semantically WRONG answer for VB — it
+// let an in-tree `panel` be shadowed by an `ext:dotnet:Panel` placeholder,
+// which is precisely the partial-class ambiguity the guard exists to keep
+// visible. Round 2 wrote that down as a known limitation; a review mutant then
+// made the lookup case-INSENSITIVE and the whole suite stayed green, so the
+// choice was unpinned in both directions at once. It is now a decision, taken
+// deliberately and pinned by TestVBNetHierarchyMaskGuardFoldsVBCaseOnly_6337.
+//
+// THE FOLD IS VB-ONLY, and that is the whole design. The exact set stays
+// language-AGNOSTIC, mirroring resolve.Index.nameExists at the sibling call
+// site: a VB.NET project inside a polyglot repo that contains a Go type named
+// `List` keeps its `Inherits List` edge dangling, because a visible unresolved
+// edge is a report and a wrongly-synthesised one is a silence. But folding that
+// agnostic set would import every OTHER language's casing into VB's semantics —
+// a Go `list`, a Python `form`, a JS `label` would each start blocking a VB
+// hierarchy target they have nothing to do with, in languages where `list` and
+// `List` really are different types. Those lowercase spellings are common,
+// the VB-only corpus cannot bound how often they collide, and suppressing a
+// real external base is a recall loss that shows up as a dangling edge nobody
+// can explain. So case-folding is applied where the language says it is
+// correct, and nowhere else.
+//
+// MEASURED before choosing, over the 302-file VB.NET corpus (WakeOnLAN +
+// StaxRip + display-drivers-uninstaller): 12,497 distinct in-tree names, 106
+// distinct unresolved hierarchy targets, 100 of them classified by gate 2.
+// Blocked by the exact set: 0 — gate 3 still fires zero times, as the review
+// found. Newly blocked by the VB fold: 0. And 0 in-tree names differ from an
+// allowlisted base type only by case. So this change moves nothing on the
+// corpus and cannot regress the resolution number; it is taken on VB.NET's
+// semantics and on making the next allowlist addition a bounded decision, not
+// on a measured defect.
+//
+// COST is O(1) per target, not a scan. The fold index is built in the pass that
+// already walks doc.Entities, so the mutant's `strings.EqualFold` loop over all
+// 12,497 names — 100 targets x 12,497 comparisons on this corpus, and quadratic
+// in a way that grows with the whole graph rather than with VB — is avoided.
+type inTreeNameSet struct {
+	// exact is every name a real indexed entity carries, in any language.
+	exact map[string]bool
+	// vbFold is the lowercased name of every real VB.NET entity, and only
+	// those. It is what makes `Class panel` block `Inherits Panel`.
+	vbFold map[string]bool
+}
+
+// blocks reports whether an in-tree declaration claims this name, under the
+// case rules of the language that declared it.
+func (s inTreeNameSet) blocks(name string) bool {
+	return s.exact[name] || s.vbFold[strings.ToLower(name)]
+}
+
+// vbnetLanguage is the Language stamp the vbnet extractor puts on every entity
+// it emits, and the same value the lang gate at the top of
+// vbnetHierarchyExternal tests. Naming it once keeps the two in step: if the
+// gate matched a different spelling than the fold index, the fold would be
+// silently empty.
+const vbnetLanguage = "vbnet"

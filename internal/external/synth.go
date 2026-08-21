@@ -995,10 +995,11 @@ type internalRoots struct {
 	golang map[string]bool
 	rust   map[string]bool
 	csharp map[string]bool
-	// inTreeNames is every name an indexed (non-external) entity carries.
-	// #6337's mask guard — see vbnetHierarchyExternal. Not a "root" set like
-	// the others; it lives here because it threads to the same call site.
-	inTreeNames map[string]bool
+	// inTreeNames is every name an indexed (non-external) entity carries,
+	// plus the case-folded half for VB.NET only. #6337's mask guard — see
+	// vbnetHierarchyExternal and inTreeNameSet. Not a "root" set like the
+	// others; it lives here because it threads to the same call site.
+	inTreeNames inTreeNameSet
 }
 
 func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[string]bool, relProps map[string]string, internal internalRoots) (canonical, subtype string, ok bool) {
