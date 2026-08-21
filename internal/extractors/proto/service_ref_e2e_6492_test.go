@@ -242,3 +242,89 @@ func TestSelfNamedRpcLeavesTheServiceOrphaned6459Residual(t *testing.T) {
 		}
 	}
 }
+
+// selfNamedImportSrc puts a SCOPE.Component at the service's own (file, name).
+//
+// buildImportEntities mints one entity per import with Name set to the
+// VERBATIM quoted string and SourceFile set to the IMPORTING file. That string
+// is not a path in any enforced sense: the tree-sitter grammar accepts any
+// string literal and grafel never runs protoc. So `import "Foo";` beside
+// `service Foo` is valid input that lands a SCOPE.Component named "Foo" in the
+// same file as the service — no extractor change, no hypothetical kind.
+const selfNamedImportSrc = `syntax = "proto3";
+
+import "Foo";
+
+service Foo {
+  rpc Go(Bar) returns (Bar);
+}
+
+message Bar { string id = 1; }
+`
+
+// TestSelfNamedImportDoesNotBlockTheServiceTier6492 pins the #6459 tier's
+// precondition against WIDENING, end to end.
+//
+// The precondition scans operationKindFamily. Swapping it for
+// componentOrOperationKindFamily — or merely appending
+// scopeKindPrefix+"Component" to it — survives every other test in this PR,
+// and on this input it re-opens #6459 exactly: the import's SCOPE.Component
+// sits at (this file, "Foo"), the widened scan sees it, the tier bails, and
+// the file → service Foo CONTAINS edge dangles. Measured: 1 edge at the fixed
+// head, 0 under either mutation.
+//
+// The direction makes this milder than a #6492 regression — a widened
+// precondition loses a binding, it never lets a SCOPE.Service outrank a real
+// rpc — but the bail set is a behavioural boundary and both of its sides need
+// pinning. The synthetic-table twin is
+// TestProtoServiceTierPreconditionScansTheWholeFamilyAndBase6492's
+// scope-component / bare-component rows.
+func TestSelfNamedImportDoesNotBlockTheServiceTier6492(t *testing.T) {
+	const file = "selfimport.proto"
+	recs := resolveProto6422(t, file, selfNamedImportSrc)
+
+	svc := findRec6422(t, recs, "SCOPE.Service", "service", "Foo")
+	imp := findRec6422(t, recs, "SCOPE.Component", "import", "Foo")
+	if svc.ID == imp.ID {
+		t.Fatalf("service Foo and import \"Foo\" share id %q — the fixture cannot "+
+			"distinguish them", svc.ID)
+	}
+	if imp.SourceFile != file {
+		t.Fatalf("import entity SourceFile = %q, want %q — the fixture only creates "+
+			"the collision if the import entity lives in the IMPORTING file (#6492)",
+			imp.SourceFile, file)
+	}
+
+	if n := countFileContains(recs, file, svc.ID); n != 1 {
+		inbound := 0
+		for i := range recs {
+			for _, r := range recs[i].Relationships {
+				if r.Kind == "CONTAINS" && r.ToID == svc.ID {
+					inbound++
+				}
+			}
+		}
+		t.Fatalf("file → service Foo CONTAINS edges = %d (total inbound CONTAINS on "+
+			"the service = %d), want 1. An `import \"Foo\";` in the file that declares "+
+			"`service Foo` puts a SCOPE.Component at the service's own (file, name). "+
+			"That kind is NOT in operationKindFamily, so the #6459 tier's precondition "+
+			"must not see it; a precondition scanning any superset of that family "+
+			"bails here and re-opens #6459 on valid proto (#6492)", n, inbound)
+	}
+
+	// The rpc arm is the control: the tier must still be inert where the
+	// operation family really does have a candidate.
+	rpc := findRec6422(t, recs, "SCOPE.Operation", "endpoint", "Go")
+	if n := countChildContains(svc, rpc.ID); n != 1 {
+		t.Fatalf("control: service Foo → rpc Go CONTAINS edges = %d, want 1", n)
+	}
+
+	for i := range recs {
+		for _, r := range recs[i].Relationships {
+			if r.Kind == "CONTAINS" && strings.HasPrefix(r.ToID, "scope:") {
+				t.Fatalf("CONTAINS edge from %q left an UNRESOLVED ToID %q (#6492)",
+					r.FromID, r.ToID)
+			}
+		}
+	}
+}

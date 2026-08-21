@@ -319,7 +319,7 @@ func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
 // so nothing is left unresolved and no ref-integrity check sees it. Closing it
 // needs this file to stop addressing a service and its rpc identically — a ref
 // FORMAT change, not a resolver change — and belongs in its own issue with its
-// own measurement. The same applies to two rpcs in one service sharing a name.
+// own measurement.
 //
 // The guards are internal/resolve/proto_service_family_6459_test.go (the
 // service half) and internal/resolve/proto_rpc_service_collision_6492_test.go

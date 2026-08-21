@@ -187,8 +187,7 @@ operation family and bails, because the alternative is a service outranking a re
 rpc. Measured end-to-end through the real extractor at the head that added the
 tier: **the service ends with 0 inbound CONTAINS and the rpc carries 2** (its own
 parent edge plus the `file → service` edge mis-bound onto it). That is #6459's
-title symptom surviving in this one shape. Two rpcs in one service sharing a name
-behave the same way.
+title symptom surviving in this one shape.
 
 It is a mis-binding, not a dangle, so no ref-integrity check reports it. Closing
 it needs the proto extractor to stop addressing a service and its rpc identically

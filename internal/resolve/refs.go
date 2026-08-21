@@ -3124,6 +3124,16 @@ func (idx Index) lookupProtoServiceTier(filePath, name string) (string, bool) {
 	//
 	// Missing either way lets the tier fire while REAL operation entities sit
 	// at this (file, name) — a SCOPE.Service silently outranking an rpc.
+	//
+	// The family is also exactly right, not merely large enough: scanning any
+	// SUPERSET of it re-opens #6459. buildImportEntities mints a
+	// SCOPE.Component whose Name is the verbatim quoted import string in the
+	// IMPORTING file, so `import "Foo";` beside `service Foo` puts a
+	// component at the service's own (file, name); a scan widened to
+	// componentOrOperationKindFamily bails there and drops the file → service
+	// edge. Guards: the scope-component / bare-component rows of the test
+	// above, and TestSelfNamedImportDoesNotBlockTheServiceTier6492 in
+	// internal/extractors/proto.
 	for _, k := range operationKindFamily {
 		if _, present := locEnt.base.get(k); present {
 			return "", false

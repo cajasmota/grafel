@@ -267,18 +267,45 @@ func TestProtoServiceTierPreconditionScansTheWholeFamilyAndBase6492(t *testing.T
 	for _, tc := range []struct {
 		name string
 		kind string
+		// fires inverts the expectation: the row's kind is OUTSIDE
+		// operationKindFamily, so the precondition must NOT see it and the
+		// tier must still bind the service. These rows pin the bail set from
+		// GROWING, which the rows above cannot do — every mutation that
+		// WIDENS the scanned family passes all of them.
+		fires bool
 	}{
 		// Trimmed-alias-only members: the sentinel lands in .base under the
 		// ALIAS ("Method"/"Function"), while .real carries only the raw
 		// "SCOPE.Method"/"SCOPE.Function", which is in no family. Kills S2
 		// (and S3, since neither alias is "SCOPE.Operation").
-		{"scope-method", scopeKindPrefix + "Method"},
-		{"scope-function", scopeKindPrefix + "Function"},
+		{"scope-method", scopeKindPrefix + "Method", false},
+		{"scope-function", scopeKindPrefix + "Function", false},
 		// Bare spellings: same key in .base and .real, so S2 still bails —
 		// but the key is not the single one S3 narrows to. Kills S3.
-		{"bare-method", "Method"},
-		{"bare-function", "Function"},
-		{"bare-operation", "Operation"},
+		{"bare-method", "Method", false},
+		{"bare-function", "Function", false},
+		{"bare-operation", "Operation", false},
+		// The other direction: the precondition must scan
+		// operationKindFamily and NOT a superset of it. Swapping it for
+		// componentOrOperationKindFamily — the union that literally contains
+		// operationKindFamily — survived every row above, and the widening
+		// localises to exactly these two keys, since a SCOPE.Component
+		// entity occupies .base under BOTH "SCOPE.Component" and the trimmed
+		// alias "Component".
+		//
+		// This is not a hypothetical kind under a .proto path.
+		// buildImportEntities (internal/extractors/proto/proto.go) mints a
+		// SCOPE.Component whose Name is the VERBATIM quoted import string,
+		// in the importing file — the grammar accepts any string and grafel
+		// never runs protoc — so `import "Foo";` next to `service Foo` puts a
+		// SCOPE.Component at the service's own (file, name). Under the
+		// widened scan the tier bails there and the file → service CONTAINS
+		// edge dangles: #6459's exact symptom, on valid proto, with no
+		// extractor change required. See
+		// TestSelfNamedImportDoesNotBlockTheServiceTier6492 in
+		// internal/extractors/proto for the end-to-end shape.
+		{"scope-component", scopeKindPrefix + "Component", true},
+		{"bare-component", "Component", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			opA := types.EntityRecord{
@@ -292,6 +319,25 @@ func TestProtoServiceTierPreconditionScansTheWholeFamilyAndBase6492(t *testing.T
 			id, status, handled := idx.lookupStructural(ref)
 			if !handled {
 				t.Fatalf("lookupStructural did not claim %q (handled=false)", ref)
+			}
+			if tc.fires {
+				if id != svc.ID {
+					t.Fatalf("lookupStructural(%q) = (%q, status=%d), want the service "+
+						"%q. Two %q-kinded entities share this (file, name), but that "+
+						"kind is NOT in operationKindFamily, so the tier's precondition "+
+						"must not see them and the service must still bind. A "+
+						"precondition scanning any SUPERSET of operationKindFamily "+
+						"(componentOrOperationKindFamily, or the family plus "+
+						"%q) bails here instead and re-opens #6459 — the proto "+
+						"extractor mints exactly this kind for `import \"Foo\";` in the "+
+						"file that declares `service Foo` (#6492)",
+						ref, id, status, svc.ID, tc.kind, scopeKindPrefix+"Component")
+				}
+				if status != statusRewritten {
+					t.Fatalf("lookupStructural(%q) status = %d, want statusRewritten=%d (#6492)",
+						ref, status, statusRewritten)
+				}
+				return
 			}
 			if id == svc.ID {
 				t.Fatalf("lookupStructural(%q) = the SCOPE.Service %q, but two %q-kinded "+
