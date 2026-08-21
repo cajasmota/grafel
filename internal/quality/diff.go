@@ -111,6 +111,15 @@ type RelationshipResult struct {
 	Found        bool
 	FromResolved bool
 	ToResolved   bool
+	// ToBareNameIsEntity reports that the row's to_bare_name target is the
+	// NAME of an extracted, non-placeholder entity — and that no entity
+	// carries that string as its ID. Such a row cannot match: with ToName
+	// empty there are no "to" candidates, so the only path left is literal
+	// ToID equality, and an entity that resolved carries a hashed ID rather
+	// than the bare string. The miss is the fixture's, not the extractor's
+	// (#6476, and the mechanism-1 check of #6441), and the reporter says so
+	// instead of blaming the extractor.
+	ToBareNameIsEntity bool
 	// MatchedRelID is the Relationship.ID of the edge we matched, when one
 	// was found. Empty otherwise.
 	MatchedRelID string
@@ -197,6 +206,12 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	byKindName := make(map[string][]*graph.Entity)
 	byKindNameFile := make(map[string][]*graph.Entity)
 	byQName := make(map[string]*graph.Entity)
+	// Kind-agnostic name/ID sets, used only to classify a to_bare_name target
+	// (#6476). Kind-agnostic on purpose: a bare-name row states no ToKind, so
+	// there is nothing to narrow by, and the question being asked — "did this
+	// string resolve to an entity?" — does not depend on which kind it became.
+	nameIsEntity := make(map[string]bool, len(doc.Entities))
+	idIsEntity := make(map[string]bool, len(doc.Entities))
 	for k := range doc.Entities {
 		e := &doc.Entities[k]
 		kn := e.Kind + "\x00" + e.Name
@@ -206,6 +221,10 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 		if e.QualifiedName != "" {
 			byQName[e.QualifiedName] = e
 		}
+		if !isPlaceholderAnchor(e) {
+			nameIsEntity[strings.TrimSpace(e.Name)] = true
+		}
+		idIsEntity[strings.TrimSpace(e.ID)] = true
 	}
 
 	// Resolve each expected entity. We accept a hit when ANY extracted
@@ -267,8 +286,12 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// resolveExpectedEdge tries every combination of from/to candidates so
 	// fixtures don't have to spell out the SourceFile when there is no
 	// collision. Returns (matched Relationship or nil, fromResolved,
-	// toResolved).
-	resolveExpectedEdge := func(er ExpectedRelationship) (*graph.Relationship, bool, bool) {
+	// toResolved, toBareNameIsEntity).
+	//
+	// toBareNameIsEntity is false on every path that MATCHED: a row that hit
+	// is matchable by definition, whatever its target looks like. It is the
+	// unsatisfiable-row flag of #6476, not a description of the target.
+	resolveExpectedEdge := func(er ExpectedRelationship) (*graph.Relationship, bool, bool, bool) {
 		// Candidate "from" entities.
 		var fromCands []*graph.Entity
 		if er.FromFile != "" {
@@ -314,39 +337,57 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 				}
 			}
 		}
-		toResolved := len(toCands) > 0 || er.ToBareName != ""
+		// A to_bare_name row used to be declared resolved unconditionally
+		// (`|| er.ToBareName != ""`), which made ToResolved carry no
+		// information for any of the 47 bare-name rows in the golden set and
+		// sent every such miss down report.go's "both endpoints exist; edge
+		// not emitted" arm — i.e. at the extractor. Classify the bare target
+		// instead (#6476):
+		//
+		//   - equal to some entity's ID  -> the row is matchable via the
+		//     literal relByTriple ToID path below; resolved, no complaint.
+		//   - equal to some entity's NAME (and no entity's ID) -> the target
+		//     resolved to an entity whose real ID is a hash, so this row can
+		//     never hit. Resolved, and flagged as the fixture defect.
+		//   - matching nothing -> genuinely unresolved, which is what the
+		//     pre-existing "to-entity not extracted" message already says.
+		bare := strings.TrimSpace(er.ToBareName)
+		bareIsEntityID := er.ToBareName != "" && idIsEntity[bare]
+		bareIsEntityName := er.ToBareName != "" && !bareIsEntityID && nameIsEntity[bare]
+		toResolved := len(toCands) > 0 || bareIsEntityID || bareIsEntityName
 
 		// First pass: try the strict (from, to, kind) triple lookup over
 		// every candidate combination.
 		for _, fc := range fromCands {
 			for _, tc := range toCands {
 				if r, ok := relByTriple[relKey{fc.ID, tc.ID, er.Kind}]; ok {
-					return r, fromResolved, toResolved
+					return r, fromResolved, toResolved, false
 				}
 			}
 			if er.ToBareName != "" {
 				if r, ok := relByTriple[relKey{fc.ID, er.ToBareName, er.Kind}]; ok {
-					return r, fromResolved, true
+					return r, fromResolved, true, false
 				}
 				// Bare-name comparison is whitespace-insensitive; the
 				// indexer may emit a slightly mangled stub.
 				for _, r := range relByKindFrom[er.Kind+"\x00"+fc.ID] {
 					if strings.EqualFold(strings.TrimSpace(r.ToID), strings.TrimSpace(er.ToBareName)) {
-						return r, fromResolved, true
+						return r, fromResolved, true, false
 					}
 				}
 			}
 		}
-		return nil, fromResolved, toResolved
+		return nil, fromResolved, toResolved, bareIsEntityName
 	}
 
 	for _, er := range fix.ExpectedRelationships {
-		match, fromOk, toOk := resolveExpectedEdge(er)
+		match, fromOk, toOk, bareIsEnt := resolveExpectedEdge(er)
 		res := RelationshipResult{
-			Expected:     er,
-			Found:        match != nil,
-			FromResolved: fromOk,
-			ToResolved:   toOk,
+			Expected:           er,
+			Found:              match != nil,
+			FromResolved:       fromOk,
+			ToResolved:         toOk,
+			ToBareNameIsEntity: bareIsEnt,
 		}
 		if match != nil {
 			res.MatchedRelID = match.ID
@@ -369,7 +410,7 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// Forbidden edges — count any extracted edge that satisfies one of
 	// the fixture's forbidden patterns.
 	for _, fb := range fix.ForbiddenRelationships {
-		match, fromOk, toOk := resolveExpectedEdge(fb)
+		match, fromOk, toOk, _ := resolveExpectedEdge(fb)
 		if match != nil {
 			rep.ForbiddenHits = append(rep.ForbiddenHits, RelationshipResult{
 				Expected:     fb,

@@ -164,6 +164,14 @@ func (r *Report) WriteHuman(w io.Writer) {
 			}
 			diag := ""
 			switch {
+			// Ahead of every "endpoint missing" arm and ahead of the
+			// extractor-blaming default: when the row itself cannot match,
+			// what the extractor did or did not emit is not the question
+			// (#6476).
+			case rr.ToBareNameIsEntity:
+				diag = fmt.Sprintf("  (root cause: FIXTURE ROW — to_bare_name %q is an extracted entity,"+
+					" so this row can only match a literal ToID and never will; use to_name + to_kind)",
+					rr.Expected.ToBareName)
 			case !rr.FromResolved && !rr.ToResolved:
 				diag = "  (root cause: NEITHER endpoint extracted)"
 			case !rr.FromResolved:
