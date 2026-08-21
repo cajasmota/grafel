@@ -43,4 +43,4 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [Lua (base language)](../detail/lang.lua.base.md) | [language](../by-category/language.md) | ✅ | |
+| [Lua (base language)](../detail/lang.lua.base.md) | [language](../by-category/language.md) | 🟢 | |

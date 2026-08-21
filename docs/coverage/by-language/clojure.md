@@ -59,4 +59,4 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [Clojure (base language)](../detail/lang.clojure.base.md) | [language](../by-category/language.md) | ✅ | |
+| [Clojure (base language)](../detail/lang.clojure.base.md) | [language](../by-category/language.md) | 🟢 | |

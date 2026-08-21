@@ -24,7 +24,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Category | Status | Notes |
 |---|---|---|---|
 | [ARM armasm](../detail/lang.assembly.toolchain.armasm.md) | [language](../by-category/language.md) | 🟢 | |
-| [GNU as (gas)](../detail/lang.assembly.toolchain.gnu-as.md) | [language](../by-category/language.md) | ✅ | |
-| [MASM](../detail/lang.assembly.toolchain.masm.md) | [language](../by-category/language.md) | ✅ | |
-| [NASM](../detail/lang.assembly.toolchain.nasm.md) | [language](../by-category/language.md) | ✅ | |
-| [RISC-V as (gas)](../detail/lang.assembly.toolchain.riscv.md) | [language](../by-category/language.md) | ✅ | |
+| [GNU as (gas)](../detail/lang.assembly.toolchain.gnu-as.md) | [language](../by-category/language.md) | 🟢 | |
+| [MASM](../detail/lang.assembly.toolchain.masm.md) | [language](../by-category/language.md) | 🟢 | |
+| [NASM](../detail/lang.assembly.toolchain.nasm.md) | [language](../by-category/language.md) | 🟢 | |
+| [RISC-V as (gas)](../detail/lang.assembly.toolchain.riscv.md) | [language](../by-category/language.md) | 🟢 | |
