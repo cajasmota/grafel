@@ -7,14 +7,36 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
-// makeHTTPEndpointEntity builds a minimal graph.Entity for testing.
+// synthesisedKindFor mirrors the kind selection in
+// internal/engine/http_endpoint_synthesis.go (#1217): the synthesis pass
+// stamps http_endpoint_call on consumer-side synthetics and
+// http_endpoint_definition on producer-side ones. The pre-#1217
+// "http_endpoint" kind is no longer emitted by any current code path, so a
+// fixture that hardcodes it cannot exercise the production filter (#6449).
+func synthesisedKindFor(patternType string) string {
+	if patternType == "http_endpoint_client_synthesis" {
+		return string(types.EntityKindHTTPEndpointCall)
+	}
+	return string(types.EntityKindHTTPEndpointDefinition)
+}
+
+// makeHTTPEndpointEntity builds a minimal graph.Entity for testing, using the
+// kind the current synthesis path actually emits for the given pattern_type.
 func makeHTTPEndpointEntity(id, path, patternType string, extraProps map[string]string) graph.Entity {
+	return makeHTTPEndpointEntityOfKind(id, path, patternType,
+		synthesisedKindFor(patternType), extraProps)
+}
+
+// makeHTTPEndpointEntityOfKind is makeHTTPEndpointEntity with an explicit
+// kind, for back-compat coverage of graphs indexed before the #1217 split.
+func makeHTTPEndpointEntityOfKind(id, path, patternType, kind string, extraProps map[string]string) graph.Entity {
 	props := map[string]string{
 		"path":         path,
 		"verb":         "GET",
@@ -26,7 +48,7 @@ func makeHTTPEndpointEntity(id, path, patternType string, extraProps map[string]
 	return graph.Entity{
 		ID:         id,
 		Name:       "http:GET:" + path,
-		Kind:       "http_endpoint",
+		Kind:       kind,
 		SourceFile: "src/api.ts",
 		Language:   "typescript",
 	}.WithProperties(props)
@@ -263,5 +285,143 @@ func TestStaticPathSuffix(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("staticPathSuffix(%q) = %q, want %q", tc.input, got, tc.want)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestCollectDynamicBaseURLCandidates_PostSplitCallKind
+// Issue #6449: the collector gated on the raw pre-#1217 kind literal
+// "http_endpoint", while the synthesis pass has minted consumer-side
+// entities as "http_endpoint_call" since the split. On every graph indexed
+// after #1217 the collector therefore returned zero candidates, severing the
+// runtime_dynamic → repair-queue feed (#732 / ADR-0015).
+//
+// This test pins the kind literal directly rather than going through the
+// helper so that a future fixture change cannot silently re-vacuum it.
+// ---------------------------------------------------------------------------
+func TestCollectDynamicBaseURLCandidates_PostSplitCallKind(t *testing.T) {
+	// Drift guard. This pins the literal that the SYNTHESIS PASS actually
+	// stamps: since #6449, internal/engine/http_endpoint_synthesis.go derives
+	// httpEndpointCallKind from types.EntityKindHTTPEndpointCall rather than
+	// re-declaring its own literal, so producer and consumer cannot disagree
+	// and this one assertion covers both. If it ever drifts, the fixture below
+	// is vacuous and #6449 has recurred.
+	if got := synthesisedKindFor("http_endpoint_client_synthesis"); got != "http_endpoint_call" {
+		t.Fatalf("consumer synthesis kind drifted: got %q, want %q", got, "http_endpoint_call")
+	}
+
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			makeHTTPEndpointEntityOfKind("id-call-1", "/users",
+				"http_endpoint_client_synthesis", "http_endpoint_call",
+				map[string]string{
+					"runtime_dynamic": "true",
+					"framework":       "fetch",
+				}),
+		},
+	}
+
+	cands := CollectDynamicBaseURLCandidates(doc)
+	if len(cands) != 1 {
+		t.Fatalf("http_endpoint_call consumer produced %d candidates, want 1 — "+
+			"the collector is gating on a stale kind literal (#6449)", len(cands))
+	}
+	if cands[0].SubjectID != "id-call-1" {
+		t.Errorf("subject_id: want %q, got %q", "id-call-1", cands[0].SubjectID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestCollectDynamicBaseURLCandidates_LegacyKindStillAccepted
+// Graphs indexed before the #1217 split still carry the legacy
+// "http_endpoint" kind. types.IsHTTPEndpointKind covers all three kinds, so
+// those pre-split graphs must keep producing candidates.
+// ---------------------------------------------------------------------------
+func TestCollectDynamicBaseURLCandidates_LegacyKindStillAccepted(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			makeHTTPEndpointEntityOfKind("id-legacy-1", "/users",
+				"http_endpoint_client_synthesis", "http_endpoint",
+				map[string]string{"runtime_dynamic": "true"}),
+		},
+	}
+
+	cands := CollectDynamicBaseURLCandidates(doc)
+	if len(cands) != 1 {
+		t.Fatalf("legacy-kind consumer produced %d candidates, want 1", len(cands))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestCollectDynamicBaseURLCandidates_DefinitionKindSkipped
+// The collector has TWO independent gates — kind and pattern_type — and each
+// must be pinned on its own. Every other case in this file varies only the
+// kind while holding a consumer pattern_type, or vice versa, so a mutant that
+// deletes either gate entirely can slip through the other one.
+//
+// This case holds pattern_type at the CONSUMER value so the pattern_type gate
+// cannot do the rejecting, and varies only the kind. The sole reason each
+// entity below must be skipped is the kind filter, which gives that filter an
+// upper bound: widening it to accept every kind fails here.
+// ---------------------------------------------------------------------------
+func TestCollectDynamicBaseURLCandidates_DefinitionKindSkipped(t *testing.T) {
+	// Every entity carries a consumer pattern_type AND a live dynamic signal,
+	// so it would qualify in full were it not for its kind.
+	for _, kind := range []string{
+		"http_endpoint_definition", // post-#1217 producer kind
+		"function",
+		"Service",
+		"SCOPE.Operation",
+		"", // unkinded entity
+	} {
+		t.Run("kind="+kind, func(t *testing.T) {
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					makeHTTPEndpointEntityOfKind("id-def-1", "/{version}/users",
+						"http_endpoint_client_synthesis", kind,
+						map[string]string{
+							"dynamic_baseurl": "true",
+							"runtime_dynamic": "true",
+						}),
+				},
+			}
+
+			if cands := CollectDynamicBaseURLCandidates(doc); len(cands) != 0 {
+				t.Fatalf("kind %q passed the kind filter: got %d candidates, want 0 — "+
+					"the kind gate has no upper bound", kind, len(cands))
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestCollectDynamicBaseURLCandidates_ProducerPatternTypeSkipped
+// The mirror of the case above: kind is held at the CONSUMER value so the
+// kind gate cannot do the rejecting, and only pattern_type varies. Pins the
+// pattern_type gate independently.
+// ---------------------------------------------------------------------------
+func TestCollectDynamicBaseURLCandidates_ProducerPatternTypeSkipped(t *testing.T) {
+	for _, patternType := range []string{
+		"http_endpoint_synthesis", // producer side
+		"openapi_spec",
+		"", // unstamped
+	} {
+		t.Run("pattern_type="+patternType, func(t *testing.T) {
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					makeHTTPEndpointEntityOfKind("id-pt-1", "/{version}/users",
+						patternType, "http_endpoint_call",
+						map[string]string{
+							"dynamic_baseurl": "true",
+							"runtime_dynamic": "true",
+						}),
+				},
+			}
+
+			if cands := CollectDynamicBaseURLCandidates(doc); len(cands) != 0 {
+				t.Fatalf("pattern_type %q passed the pattern_type filter: got %d candidates, want 0",
+					patternType, len(cands))
+			}
+		})
 	}
 }
