@@ -68,4 +68,4 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [Dart (base language)](../detail/lang.dart.base.md) | [language](../by-category/language.md) | ✅ | |
+| [Dart (base language)](../detail/lang.dart.base.md) | [language](../by-category/language.md) | 🟢 | |
