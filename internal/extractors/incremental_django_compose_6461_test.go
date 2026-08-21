@@ -163,11 +163,26 @@ func TestRecomposeDjangoURLConf_PrunesOnlyEndpointsItOwns(t *testing.T) {
 		"verb":         "ANY",
 		"framework":    "fastapi",
 	})
+	// #6530 — the case NEITHER of the two above covers, and the one a review
+	// mutant slipped through: a claimed `pattern_type` with NO `framework`
+	// property at all. FastAPI is the collision we already know about; an
+	// UNLABELLED mount is what a future pass, or a third-party producer, emits
+	// before anyone thinks to stamp a framework — and there is no second
+	// property to fall back on, so the predicate's third arm is the only thing
+	// standing between it and deletion. Without this row the predicate's
+	// `ok &&` and the sentence justifying it in isComposedDjangoEndpoint rest on
+	// nothing: a mutant returning true on absence survives the whole package.
+	unlabelled := dcEntity(dcEndpointKind, "http:ANY:/legacy:mount", "thirdparty/wiring.py",
+		map[string]string{
+			"pattern_type": composedMountPatternType,
+			"path":         "/legacy",
+			"verb":         "ANY",
+		})
 	handler := dcEntity("SCOPE.Operation", "mp_terms_view", "mpsite/views.py", nil)
 
 	doc := &graph.Document{
 		Repo:     dcRepoTag,
-		Entities: []graph.Entity{ghost, foreign, fastapiMount, handler},
+		Entities: []graph.Entity{ghost, foreign, fastapiMount, unlabelled, handler},
 	}
 
 	res := recomposeDjangoURLConf(absRepo, allFiles, []string{"mpsite/urls.py"}, doc, nil, dcSilentLogger())
@@ -197,6 +212,14 @@ func TestRecomposeDjangoURLConf_PrunesOnlyEndpointsItOwns(t *testing.T) {
 			"alone is not ownership: `framework` is. This pass cannot re-derive a FastAPI mount, "+
 			"so pruning it deletes it until the next full reindex.",
 			fastapiMount.Kind, fastapiMount.Name, fastapiMount.SourceFile, composedMountPatternType)
+	}
+	if res.removedIDs[unlabelled.ID] {
+		t.Errorf("#6530: the pass pruned %s|%s@%s — pattern_type %q with NO `framework` property. "+
+			"This pass ALWAYS stamps one, so its absence means a different producer, and there is "+
+			"no other property left to tell them apart. Absence must therefore read as NOT OURS: "+
+			"the cost of declining is a stale endpoint for one tick, the cost of claiming is a "+
+			"deletion nothing on this path re-derives.",
+			unlabelled.Kind, unlabelled.Name, unlabelled.SourceFile, composedMountPatternType)
 	}
 	if res.removedIDs[handler.ID] {
 		t.Errorf("#6461: the pass pruned the HANDLER entity %s|%s@%s; it owns endpoint entities only",
