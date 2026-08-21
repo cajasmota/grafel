@@ -25,7 +25,7 @@ package gitmeta
 
 import (
 	"bufio"
-	"os"
+	"bytes"
 	"path/filepath"
 	"strings"
 )
@@ -102,14 +102,17 @@ func ProbeRepo(repoPath string) SparseInfo {
 // non-empty, non-comment lines. Returns nil when the file is absent or
 // unreadable (a missing file is not an error — it just means no patterns).
 func parseSparsePatternFile(path string) []string {
-	f, err := os.Open(path)
+	// readGitMetaFile, not os.Open: open(2) is what blocks on a FIFO, so
+	// scanning rather than slurping made no difference to #6416. The pattern
+	// file is name-chosen ("info/sparse-checkout" under the git dir) and is
+	// read before any walk, so no entry-type gate sits in front of it.
+	data, err := readGitMetaFile(path, maxSparsePatternBytes)
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
 
 	var patterns []string
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(bytes.NewReader(data))
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {

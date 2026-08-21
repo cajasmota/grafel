@@ -340,7 +340,11 @@ func inheritedGrafelIgnores(root string) []*IgnoreFile {
 
 func parseInheritedGrafelIgnore(dir, relRoot string) *IgnoreFile {
 	path := filepath.Join(dir, ".grafelignore")
-	b, err := os.ReadFile(path)
+	// readIgnoreFile, not os.ReadFile: this is a name-chosen read that runs
+	// BEFORE the walk, so the entry-type gate this package added in #6468 has
+	// nothing to say about it. `mkfifo .grafelignore` in any ancestor of an
+	// indexed subdirectory parked the whole index run in open(2) (#6416).
+	b, err := readIgnoreFile(path)
 	if err != nil || len(b) == 0 {
 		return nil
 	}

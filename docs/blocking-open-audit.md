@@ -16,6 +16,7 @@ further:
 | 1 | `walk` entry-type gate | `install/detect`, `secrets` |
 | 2 | `install/detect`, `secrets` | six sites in `javascript/aliases.go` |
 | 3 | `aliases.go`, `gomod.go`, `helm.go` | ten sites in `internal/licenses` |
+| 4 | `internal/licenses` | `walk`'s OWN `.grafelignore` read, and five in `internal/gitmeta` |
 
 The missed sites were never hard to find. A grep for a read with a literal
 filename under `internal/` takes seconds and would have caught every one of
@@ -45,18 +46,16 @@ counts as **name-chosen** — the leaf is what the attacker names.
 
 ## The open list: name-chosen sites not yet routed through safeio
 
-As of `c3e3720a8` plus this commit. `internal/licenses` is fixed here; the
-32 below are **not**, and are deliberately left for sized follow-up work rather
-than swept into an already-large PR.
+Round 5 fixes the two groups that block `grafel index` ITSELF — the walker's
+own inherited-`.grafelignore` read and all five reads in `internal/gitmeta` —
+and moves those six rows to Done. The 26 below are **not** fixed, and are
+deliberately left for sized follow-up work rather than swept into an
+already-large PR. Every one of them is reached only after indexing has started
+or through a surface other than `grafel index`, which is why they could be
+deferred and the six could not.
 
 | Site | Literal name(s) | Note |
 |---|---|---|
-| `internal/daemon/walk/walker.go:343` | `.grafelignore` | **Highest severity.** An unguarded read *inside the walker package itself*, so the entry-type gate #6468 added never applies to it. `mkfifo .grafelignore` in any subdirectory of an indexed repo hangs the walk. |
-| `internal/gitmeta/cache.go:135` | `commondir` | Runs on every repo before any walk. |
-| `internal/gitmeta/cache.go:171` | `refs/…` from HEAD | |
-| `internal/gitmeta/cache.go:206` | `HEAD` | |
-| `internal/gitmeta/cache.go:279` | `.git` | |
-| `internal/gitmeta/sparse.go:105` | `info/sparse-checkout` | |
 | `internal/daemon/worktree/classify.go:125` | `.git` | `Lstat` + `!IsDir()` only; a FIFO passes. |
 | `internal/daemon/worktree/worktree.go:813` | `.git` | `os.Stat` + `!IsDir()` only. |
 | `internal/daemon/watch/gitignore.go:81` | `.grafel/watch.json` | Per-repo override inside the watched repo. |
@@ -95,6 +94,45 @@ threat model rather than on their shape: `internal/quality/expected.go:108`
 `internal/dashboard/handlers_skills.go:252` (`SKILL.md` in grafel's own skills
 cache). If a hostile `--fixture-dir` enters the threat model, the first moves.
 
+## Judgement: does living under `.git/` lower the severity?
+
+Round 5 had to decide whether the five `internal/gitmeta` reads deserved
+guarding at all, since `.git/` is not attacker-controlled the way a tracked
+file is. The answer is that it lowers the *likelihood* and RAISES the *impact*,
+so the net severity is higher than the walker's, not lower.
+
+- **Nothing enforces the file types inside `.git/`.** git writes HEAD, commondir
+  and loose refs as regular files, but the directory is an ordinary directory
+  with ordinary permissions; anything that can write there can `mkfifo HEAD`.
+  A hostile repo is one shape of that (`.git` itself is a FIFO — the layout
+  `git clone` never produces but a tarball, a rsync mirror or an artefact
+  restore can), and so is a botched restore that recreated a path as a pipe.
+  "Unlikely" is not "impossible", and the whole class exists because an
+  unbounded wait has no recovery: no timeout fires, no error is returned, no
+  line is logged.
+- **The blast radius is the whole run.** Every one of these five reads is on the
+  `CaptureCached` / `CaptureCachedFresh` / sparse-detection path, which executes
+  on EVERY repo BEFORE any walk begins. A block here is not "one file missing
+  from the index" — it is an index that never starts, a `grafel_whoami` that
+  never answers, and a daemon goroutine parked for the life of the process. No
+  downstream gate can help, because nothing downstream has run.
+- **The cost of guarding is a stat.** safeio's gate is one `os.Stat` on files
+  that are read a handful of times per repo. There is no throughput argument on
+  the other side of the ledger, so even a low likelihood clears the bar.
+
+No subset was dropped. All five are routed.
+
+## Confirmed already safe
+
+`internal/daemon/walk` was swept for sibling reads of the same shape as
+`walker.go:343`, since a package that missed one is likely to have missed two.
+It had not: `ParseIgnoreFile` reads `.gitignore` / `.grafelignore` through
+`openWithDeadline`, which `os.Lstat`s and returns `ErrIgnoreFileTimeout` for any
+non-regular entry BEFORE opening anything — in `gitignore_unix.go` (which also
+opens `O_NONBLOCK`) and in `gitignore_windows.go` (plain `os.Open` after the same
+Lstat) alike. Both were read rather than assumed. `walker.go:343` was the only
+ungated read in the package.
+
 ## Done
 
 | Package | Site |
@@ -105,13 +143,15 @@ cache). If a hostile `--fixture-dir` enters the threat model, the first moves.
 | `internal/install/detect` | `detect.go:554`, `:588`, `:604` |
 | `internal/secrets` | `secrets.go:443` |
 | `internal/licenses` | `licenses.go:106` — one `readLicenseFile` choke point covering all ten former sites |
+| `internal/daemon/walk` | `walker.go:343` — `readIgnoreFile` (`saferead.go`). The gate this PR added covers entries the WALKER produced; this read is name-chosen and runs before the walk. |
+| `internal/gitmeta` | `cache.go` `commondir` / `refs/…` / `HEAD` / `.git`, and `sparse.go`'s `info/sparse-checkout` — one `readGitMetaFile` choke point covering all five |
 
 ## Counts
 
 | Bucket | Count |
 |---|---|
-| name-chosen, open | 32 |
-| name-chosen, fixed (already-safeio) | 8 |
+| name-chosen, open | 26 |
+| name-chosen, fixed (already-safeio) | 14 |
 | walker-gated | 40 |
 | not-applicable | 243 |
 | **total non-test call sites** | **324** |
@@ -121,7 +161,7 @@ Across 206 non-test files of the 2118 `.go` files under `internal/` + `cmd/`.
 
 The 243 not-applicable and 40 walker-gated rows are summarised rather than
 listed. Enumerating them in a checked-in document would rot within weeks and
-add no signal: the actionable list is the 32 above, and the method below
+add no signal: the actionable list is the 26 above, and the method below
 regenerates the rest on demand.
 
 ## How to redo this
