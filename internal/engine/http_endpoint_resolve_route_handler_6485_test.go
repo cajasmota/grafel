@@ -30,17 +30,20 @@ import (
 // been repaired and a fixture-based test would pass VACUOUSLY. The defect lives
 // in the index, not in any one synthesizer.
 //
-// Both entry points are exercised, because they disagree about what happens to
-// an endpoint whose handler does not resolve:
+// Both entry points are exercised, because they can reach different verdicts
+// for an endpoint whose handler does not resolve:
 //
 //   - ResolveHTTPEndpointHandlersWithRepo — the CLI/full-rebuild path
-//     (keepUnresolved=false), where a dropped handler drops the endpoint itself.
+//     (keepUnresolved=false), which drops an endpoint whose handler ref matches
+//     nothing corpus-wide.
 //   - ResolveHTTPEndpointHandlersFileScoped — the daemon/incremental path
-//     (keepUnresolved=true), which keeps an unresolvable endpoint edgeless.
+//     (keepUnresolved=true), which keeps it edgeless instead (#6150).
 //
-// Both must agree here: the endpoint SURVIVES, edgeless. See the
-// `hk == "Route"` branch in resolveHTTPEndpointHandlers for why keeping beats
-// dropping.
+// keepUnresolved guards only that one branch, though — `drop[i]` is honoured by
+// the post-loop compaction on BOTH paths — so "the file-scoped path never
+// deletes an endpoint" is false in general and must not be assumed here. The
+// tests below assert the surviving or dropped endpoint on each arm explicitly
+// rather than inferring it from keepUnresolved.
 
 // routeImplementsFromKinds returns the FromID KIND distribution of every
 // endpoint IMPLEMENTS edge in `recs` — the measurement this issue demands. A

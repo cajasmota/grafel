@@ -209,8 +209,12 @@ func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag st
 // `Kind:Name`) is NOT relaxed: that verdict does not depend on how much of the
 // corpus the caller could see. The Spring `Route:<path>` placeholder is no
 // longer a drop on EITHER entry point — #6485 made it a NoHandlerProp keep on
-// both, so the two paths cannot disagree about a real route whose handler ref
-// was only ever a placeholder.
+// both.
+//
+// Worth knowing before adding a branch here: keepUnresolved is NOT a global
+// veto on dropping. It guards exactly one branch. The `drop[i]` set is honoured
+// by the post-loop compaction regardless, so a `drop[i] = true` anywhere in the
+// loop deletes the endpoint on THIS entry point too.
 //
 // Every ownership rule of ResolveHTTPEndpointHandlersWithRepo applies unchanged
 // — it consumes `merged`, edits in place and compacts over the same backing
@@ -612,27 +616,41 @@ func resolveHTTPEndpointHandlers(merged []types.EntityRecord, repoTag string, ke
 			// "synthesizer didn't have the method name" placeholder
 			// and would always collide with the synthetic itself.
 			//
-			// #6485 — KEEP the endpoint here rather than dropping it, and keep
-			// it identically on BOTH entry points. Route is no longer in the
-			// handler index (isIneligibleHandlerKind), so a `Route:<path>` ref
-			// can no longer bind anywhere and this branch became the sole
-			// verdict for every such endpoint. That makes the old
-			// HandlerDropped verdict actively harmful: on the corpus-scoped
-			// path a drop DELETES the endpoint, so the fix would have traded a
-			// wrong edge for a vanished route, while the file-scoped path kept
-			// it — the two paths disagreeing about a real endpoint is a
-			// different silent wrongness, not a fix.
+			// #6485 — KEEP the endpoint here rather than dropping it.
 			//
-			// The evidence here says only "this handler ref is a placeholder,
-			// not a handler". It says nothing about whether the ROUTE exists:
-			// it plainly does — the synthesizer emitted it from a real route
-			// registration. So the endpoint is preserved, attributed by its
-			// `source_handler` property and simply not cross-linked. That is
+			// Route is no longer in the handler index
+			// (isIneligibleHandlerKind), so a `Route:<path>` ref can no longer
+			// bind anywhere and this branch became the SOLE verdict for every
+			// such endpoint. Under the old HandlerDropped verdict the fix would
+			// therefore have traded a wrong edge for a vanished route. Measured
+			// on the fixture corpus: two real Spring endpoints (java-spring-mini
+			// and testdata/spring_app) resolved to a Route pre-fix, and with the
+			// drop retained the corpus total falls 219 -> 217 endpoints. They
+			// are genuine routes; deleting them is a worse graph than the wrong
+			// edge it replaces.
+			//
+			// The keep is justified by what the evidence actually supports. A
+			// `Route:<path>` ref never named a handler at all — it is the
+			// synthesizer recording "I did not have the method name". So the
+			// failure to bind is evidence about the REF, and says nothing about
+			// whether the ROUTE exists; it plainly does, a real registration
+			// produced it. The endpoint is preserved, attributed by its
+			// `source_handler` property and simply not cross-linked, which is
 			// the verdict #2851 (a handler_file hint that matched nothing) and
 			// #3426 (every global candidate is a tooling file) already reach on
-			// the same reasoning. NoHandlerProp, not HandlerDropped, and
-			// independent of keepUnresolved because the verdict does not depend
-			// on how much of the corpus the caller can see.
+			// the same reasoning. NoHandlerProp, not HandlerDropped.
+			//
+			// keepUnresolved does NOT enter this decision, and note WHY that is
+			// not merely a stylistic choice: `drop[i]` is honoured by the
+			// post-loop compaction unconditionally, so a `drop[i] = true` here
+			// deletes the endpoint on the FILE-SCOPED path too. keepUnresolved
+			// guards only the #6150 branch below, which chooses between
+			// HandlerUnresolvedKept and a drop; it is not a global veto on
+			// dropping. Any future branch that wants scope-dependent behaviour
+			// has to test keepUnresolved itself. Here it should not: the
+			// verdict rests on the shape of the ref, which a file-scoped caller
+			// can see just as well as a corpus-scoped one, so both paths reach
+			// the same answer for the same reason.
 			if hk == "Route" {
 				stats.NoHandlerProp++
 				continue
