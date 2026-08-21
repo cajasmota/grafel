@@ -8,7 +8,8 @@
 //     → Kind="SCOPE.Component"
 //   - `inherit Base()` → EXTENDS edge, `interface IFoo with` → IMPLEMENTS edge,
 //     both embedded on the owning TYPE record (#6326)
-//   - open statements → IMPORTS edges
+//   - open statements → one SCOPE.Component placeholder per `open`, marked
+//     Subtype="import" (#6369) and carrying the IMPORTS edge
 //   - function applications → CALLS edges. Captured call forms: paren `name(`,
 //     pipe `|> name`, compose `>> name`, and space-applied `head arg`
 //     (F#'s dominant curried-application idiom). Each CALLS edge is stamped with
@@ -585,6 +586,24 @@ func collectOpenStatements(src string) []string {
 }
 
 // buildImportEntities creates SCOPE.Component stubs carrying IMPORTS edges.
+//
+// #6369 — THE `Subtype:"import"` MARKER IS LOAD-BEARING, not decoration. It is
+// the single property resolve.isImportPlaceholderKind (internal/resolve/refs.go)
+// tests to tell a per-import placeholder from a real declaration of the same
+// name. Without it BuildIndex indexed this stub in `byName` exactly like a
+// type declaration, so one `open Acme.Animal` whose LAST SEGMENT collided with
+// a real type flipped that name AMBIGUOUS globally and dropped every bare-name
+// edge to it repo-wide — including in files that imported nothing at all
+// (measured on #6369: two cross-file EXTENDS to `Animal` went unresolved after
+// an unrelated file was added, and reported ambiguous=0, i.e. silently).
+// #6427 fixed the resolver for every extractor that stamps the marker; F# was
+// not one of them, so the defect stayed live here.
+//
+// QualifiedName carries the FULL module path because Name is only the last
+// segment (importDisplayName). The specifier readers use the #6372 precedence
+// Properties["module"] > QualifiedName > Name, so without it the #6156
+// external-module restore would record the bare segment `Animal` as the
+// imported module. razor and vue carry the specifier the same way.
 func buildImportEntities(filePath string, imports []string) []types.EntityRecord {
 	if len(imports) == 0 {
 		return nil
@@ -597,10 +616,12 @@ func buildImportEntities(filePath string, imports []string) []types.EntityRecord
 		}
 		seen[mod] = true
 		out = append(out, types.EntityRecord{
-			Name:       importDisplayName(mod),
-			Kind:       "SCOPE.Component",
-			SourceFile: filePath,
-			Language:   "fsharp",
+			Name:          importDisplayName(mod),
+			QualifiedName: mod,
+			Kind:          "SCOPE.Component",
+			Subtype:       "import",
+			SourceFile:    filePath,
+			Language:      "fsharp",
 			Relationships: []types.RelationshipRecord{
 				{
 					FromID: filePath,
