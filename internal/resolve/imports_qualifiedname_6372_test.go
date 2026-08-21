@@ -192,3 +192,100 @@ func TestModuleRestoreUsesQualifiedNameSpecifier_6372(t *testing.T) {
 		})
 	}
 }
+
+// TestPlaceholderModuleSpecifierPrefersImportModule_6369 pins the ORDERING of
+// the `import_module` key against the three legacy channels.
+//
+// The `import_module` > `module` row is NOT hypothetical, which is the whole
+// reason it is checked first rather than last. On the daemon's incremental
+// reindex — the default path (#5231) — placeholders are never pruned, and
+// stampModuleOnEntities (internal/extractors/incremental.go) then stamps the
+// path-derived module-rollup label onto every entity that does not already
+// carry one. A placeholder therefore reaches this reader carrying BOTH keys:
+// `import_module` = the import specifier the extractor emitted, and `module` =
+// a directory prefix like "src/Domain" that has nothing to do with the import.
+// Reading `module` first would hand the #642 rewrite and the #6156 restore a
+// source directory where a module specifier belongs.
+//
+// It is also the migration contract for the ~26 extractors that still park
+// their specifier on one of the legacy channels: adding `import_module` must
+// win outright, so a site can be moved over without a flag day.
+func TestPlaceholderModuleSpecifierPrefersImportModule_6369(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rec  types.EntityRecord
+		want string
+	}{
+		{
+			name: "import_module beats the module-rollup label stamped by the incremental path",
+			rec: types.EntityRecord{
+				Name:       "Generic",
+				Kind:       "SCOPE.Component",
+				Subtype:    "import",
+				SourceFile: "src/Domain/Core.fs",
+				Properties: map[string]string{
+					"import_module": "System.Collections.Generic",
+					"module":        "src/Domain",
+				},
+			},
+			want: "System.Collections.Generic",
+		},
+		{
+			name: "import_module beats QualifiedName",
+			rec: types.EntityRecord{
+				Name:          "Generic",
+				QualifiedName: "Some.Other.Path",
+				Kind:          "SCOPE.Component",
+				Subtype:       "import",
+				Properties:    map[string]string{"import_module": "System.Collections.Generic"},
+			},
+			want: "System.Collections.Generic",
+		},
+		{
+			name: "import_module beats Name",
+			rec: types.EntityRecord{
+				Name:       "Generic",
+				Kind:       "SCOPE.Component",
+				Subtype:    "import",
+				Properties: map[string]string{"import_module": "System.Collections.Generic"},
+			},
+			want: "System.Collections.Generic",
+		},
+		{
+			name: "empty import_module falls through to module, so the legacy sites are unchanged",
+			rec: types.EntityRecord{
+				Name:       "user",
+				Kind:       "SCOPE.Component",
+				Subtype:    "import",
+				Properties: map[string]string{"import_module": "", "module": "./types/user"},
+			},
+			want: "./types/user",
+		},
+		{
+			name: "absent import_module leaves the QualifiedName channel (razor/vue) intact",
+			rec: types.EntityRecord{
+				Name:          "Components",
+				QualifiedName: "Acme.Web.Components",
+				Kind:          "SCOPE.Component",
+				Subtype:       "import",
+			},
+			want: "Acme.Web.Components",
+		},
+		{
+			name: "absent everything still falls back to Name",
+			rec: types.EntityRecord{
+				Name:    "lodash",
+				Kind:    "SCOPE.Component",
+				Subtype: "import",
+			},
+			want: "lodash",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := tc.rec
+			if got := placeholderModuleSpecifier(&rec); got != tc.want {
+				t.Errorf("placeholderModuleSpecifier = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

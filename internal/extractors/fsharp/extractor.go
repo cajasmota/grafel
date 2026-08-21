@@ -604,29 +604,49 @@ func collectOpenStatements(src string) []string {
 // #6427 fixed the resolver for every extractor that stamps the marker; F# was
 // not one of them, so the defect stayed live here.
 //
-// THE FULL MODULE PATH TRAVELS ON Properties["module"], NOT ON QualifiedName.
-// Name is only the last segment (importDisplayName), so a specifier channel is
-// required: the readers use the #6372 precedence
-// Properties["module"] > QualifiedName > Name, and without one the #6156
-// external-module restore would record the bare segment `Animal` as the
-// imported module.
+// THE FULL MODULE PATH TRAVELS ON Properties["import_module"]. Name is only
+// the last segment (importDisplayName), so a specifier channel is required —
+// without one the #6156 external-module restore records the bare segment
+// `Animal` as the imported module. resolve.placeholderModuleSpecifier reads
+// `import_module` FIRST, ahead of the three legacy channels.
 //
-// Both channels satisfy that precedence — but QualifiedName ALSO enters
-// resolve.BuildIndex's `byQualifiedName`, and Lookup/lookupWithStatus probe
-// that index BEFORE every other tier (refs.go). Unlike `byName`, it has no
-// #6427 import-placeholder precedence: it is first-writer-wins with a blank
-// ambiguity sentinel. Putting `Acme.Animal` there therefore hijacks this very
-// edge — measured on `module Acme.Animal` + `open Acme.Animal`:
+// THE TWO LEGACY CHANNELS ARE BOTH CONTAMINATED, and this extractor used each
+// of them in turn before landing here. Neither is a channel; both are fields
+// that already mean something else:
 //
-//	Properties["module"]  IMPORTS ToID = the real module entity   (resolved)
-//	QualifiedName         IMPORTS ToID = this file's OWN placeholder,
-//	                                     fabricating an intra-file dependency;
-//	                                     with a second `open`, the blank
-//	                                     sentinel makes it ambiguous instead.
+//	QualifiedName        also feeds resolve.BuildIndex's `byQualifiedName`,
+//	                     which Lookup/lookupWithStatus probe BEFORE every other
+//	                     tier and which never got #6427's placeholder
+//	                     precedence — first-writer-wins with a blank ambiguity
+//	                     sentinel. Measured on `module Acme.Animal` +
+//	                     `open Acme.Animal`, the IMPORTS ToID became this
+//	                     file's OWN placeholder: a fabricated intra-file
+//	                     dependency in place of the real module entity.
+//	                     (razor and vue do this and carry the same hazard.)
 //
-// razor and vue do use QualifiedName for their specifier — that is the shape
-// this extractor deliberately does NOT copy, because an F# `open` targets a
-// dotted module path that an in-repo `module` declaration can name exactly.
+//	Properties["module"] is the MODULE-ROLLUP LABEL — internal/module.Derive's
+//	                     depth-capped path prefix of the source file. Both
+//	                     stampers treat a present value as authoritative:
+//	                     module.EnsureModule returns props unchanged, and
+//	                     stampModuleOnEntities skips the entity
+//	                     ("extractor-supplied label preserved"). Measured:
+//	                     placeholder "Generic" in src/Domain/Core.fs came out
+//	                     labelled module="System.Collections.Generic" where the
+//	                     path-derived label is "src/Domain".
+//
+//	                     The full rebuild hides this by ordering alone —
+//	                     cmd/grafel/index.go prunes placeholders BEFORE
+//	                     EnsureModule. The daemon's INCREMENTAL reindex, which
+//	                     is the default path (#5231), never prunes at all, so
+//	                     every distinct `open` would mint a fabricated Module
+//	                     node with CONTAINS/DEPENDS_ON edges, and would break
+//	                     stampModuleOnEntities' plain-repo label recovery
+//	                     (two distinct labels => `multiple` => fall back to
+//	                     doc.Repo) for every newly extracted entity.
+//
+// So: NOTHING an F# record carries may be a name index or a derived label.
+// The placeholder sets Name (bare segment), Subtype (the marker) and
+// import_module (the specifier) — and no QualifiedName and no "module".
 func buildImportEntities(filePath string, imports []string) []types.EntityRecord {
 	if len(imports) == 0 {
 		return nil
@@ -644,9 +664,10 @@ func buildImportEntities(filePath string, imports []string) []types.EntityRecord
 			Subtype:    "import",
 			SourceFile: filePath,
 			Language:   "fsharp",
-			// The full module path travels on Properties["module"], NOT
-			// QualifiedName — see the block comment above.
-			Properties: map[string]string{"module": mod},
+			// The full module path travels on the private
+			// Properties["import_module"] key — NOT QualifiedName and
+			// NOT Properties["module"]; see the block comment above.
+			Properties: map[string]string{"import_module": mod},
 			Relationships: []types.RelationshipRecord{
 				{
 					FromID: filePath,

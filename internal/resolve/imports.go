@@ -2848,8 +2848,60 @@ type PruneImportPlaceholderStats struct {
 //
 // Both #6372 call sites — the #642 pre-prune ToID rewrite and the #6156
 // module restore — go through here so they cannot diverge.
+//
+// #6369 — `import_module` IS THE ONLY KEY PRIVATE TO THIS FUNCTION, and it is
+// checked FIRST. The other three channels are all shared with something else:
+//
+//   - Properties["module"] is the MODULE-ROLLUP LABEL, not an import specifier.
+//     internal/module.Derive computes it as a depth-capped path prefix of the
+//     source file (the contract internal/mcp/get_source_path.go states), and
+//     BOTH stampers treat an existing value as authoritative and leave it
+//     alone: module.EnsureModule (internal/module/rollup.go) returns props
+//     unchanged when the key is set, and stampModuleOnEntities
+//     (internal/extractors/incremental.go) skips the entity outright —
+//     "extractor-supplied label preserved". An extractor that parks a dotted
+//     import specifier there is therefore not annotating its placeholder, it is
+//     RELABELLING it into a module that does not exist.
+//
+//     The full rebuild survives that only by accident of ordering:
+//     cmd/grafel/index.go prunes the placeholders before it calls EnsureModule.
+//     THE DAEMON'S INCREMENTAL REINDEX — the default path (#5231) — NEVER
+//     PRUNES; there is no PruneImportPlaceholders call in incremental.go at
+//     all. So on that path each surviving placeholder mints one fabricated
+//     Module node per distinct import, with CONTAINS/DEPENDS_ON edges into the
+//     Group-by-Module view, coverage/crossproduct, mcp/reachability_tools and
+//     dashboard/topology_compound. Worse, it poisons stampModuleOnEntities'
+//     plain-repo label recovery, which declares `multiple` as soon as two
+//     distinct labels appear and falls back to doc.Repo — mislabelling EVERY
+//     newly extracted entity whenever repoSlug != repoTag, in a function whose
+//     doc comment promises byte-equivalence with a full rebuild.
+//
+//     javascript/extractor.go:3790 sets this key and is NOT a counterexample:
+//     it sets it equal to Name, and JS prunes its placeholders inside the
+//     extractor (#742), so a JS placeholder never reaches the module layer on
+//     either path.
+//
+//   - QualifiedName ALSO feeds resolve.BuildIndex's byQualifiedName, which
+//     Lookup/lookupWithStatus probe BEFORE every other tier and which never
+//     received #6427's import-placeholder precedence (first-writer-wins with a
+//     blank ambiguity sentinel). A dotted specifier there hijacks the very
+//     IMPORTS edge it is supposed to describe. razor and vue do this and carry
+//     the latent hazard.
+//
+//   - Name is the display name, and for the placeholder templates that matter
+//     it is deliberately the bare last segment — the whole reason a specifier
+//     channel is needed.
+//
+// `import_module` is none of those. Nothing derives from it, nothing stamps
+// into it, and it does not enter any name index — so it carries the specifier
+// without changing what the record IS. New placeholder emitters should use it
+// in preference to the three legacy channels, which stay supported below only
+// because ~15 existing sites depend on them.
 func placeholderModuleSpecifier(r *types.EntityRecord) string {
 	if r.Properties != nil {
+		if m := r.Properties["import_module"]; m != "" {
+			return m
+		}
 		if m := r.Properties["module"]; m != "" {
 			return m
 		}
