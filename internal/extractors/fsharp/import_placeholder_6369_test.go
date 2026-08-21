@@ -465,6 +465,62 @@ func TestFSharpEntitiesCarryNoDerivedOrIndexHijackingFields_6369(t *testing.T) {
 					path, e.Name, got, want)
 			}
 
+			// (c) THE EXCLUSIVITY SWEEP FOR THE NEW KEY. `import_module`
+			// belongs to per-import placeholders and to nothing else. This is
+			// the same widening class that let BOTH previous regressions ship:
+			// the Properties["module"]-on-type-declarations mutant (X5)
+			// survived round 2, and the production defect (F1) was that exact
+			// shape arriving for real. The Subtype:"import" marker has had an
+			// exclusivity sweep since round 2; until now the SPECIFIER channel
+			// did not, so the new key inherited the identical exposure.
+			//
+			// Enumerated when this was written: `import_module` has exactly
+			// ONE keyed reader in the tree, resolve.placeholderModuleSpecifier,
+			// and BOTH of its call sites are guarded by the literal predicate
+			// `r.Kind == "SCOPE.Component" && r.Subtype == "import"`. Nothing
+			// anywhere prefix-matches or substring-matches property KEYS. So a
+			// type declaration carrying this key cannot change any resolution,
+			// mint any node, or move any edge — unlike QualifiedName (which fed
+			// byQualifiedName) and Properties["module"] (which fed the module
+			// rollup), both of which looked private to their consumer and were
+			// not.
+			//
+			// It is still NOT inert, which is why this sweep exists. NO layer
+			// filters unknown property keys, so every key an extractor stamps
+			// is carried verbatim into (1) the persisted flatbuffer graph —
+			// graph/fbwriter.buildPropertyVector sorts and writes every key it
+			// is given; (2) generated documentation — docgen/tier0.go renders
+			// the whole property map as `k = v` inside a fenced block; and
+			// (3) MCP entity payloads, via PropRange / PropsSnapshot. A type
+			// declaration carrying `import_module` therefore publishes a false
+			// provenance claim — "this type is an import of X" — into the
+			// graph, the docs, and every agent reading them.
+			//
+			// That is a LESSER severity than F1/X5, which hijacked a name index
+			// and the module rollup respectively, and it is recorded as such
+			// rather than inflated. But it is observable output, and it is
+			// precisely the assertion the doc block on
+			// placeholderModuleSpecifier already makes in prose ("the only key
+			// private to this function"). An unpinned claim of that shape is
+			// what has been wrong twice on this change, so it is pinned here.
+			_, hasImportModule := e.Properties["import_module"]
+			isPlaceholder := e.Kind == "SCOPE.Component" && e.Subtype == "import"
+			if hasImportModule && !isPlaceholder {
+				t.Errorf("%s: entity %q (kind %q, subtype %q) carries "+
+					"Properties[\"import_module\"]=%q, but that key belongs to "+
+					"per-import placeholders alone. Both readers are guarded on "+
+					"Subtype==\"import\", so nothing consumes it here — it is a "+
+					"false provenance claim, persisted into the graph, rendered "+
+					"into docgen output and served in MCP payloads.",
+					path, e.Name, e.Kind, e.Subtype, e.Properties["import_module"])
+			}
+			if isPlaceholder && !hasImportModule {
+				t.Errorf("%s: import placeholder %q carries NO "+
+					"Properties[\"import_module\"]; the specifier would fall back "+
+					"to the bare display Name and the #6156 restore would record "+
+					"the wrong module", path, e.Name)
+			}
+
 			if e.QualifiedName != "" && e.QualifiedName == e.Name {
 				t.Errorf("%s: entity %q carries QualifiedName equal to its Name; "+
 					"byQualifiedName is probed BEFORE byName and never received #6427's "+

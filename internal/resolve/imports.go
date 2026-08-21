@@ -2897,6 +2897,25 @@ type PruneImportPlaceholderStats struct {
 // without changing what the record IS. New placeholder emitters should use it
 // in preference to the three legacy channels, which stay supported below only
 // because ~15 existing sites depend on them.
+//
+// THAT PRIVACY IS A CLAIM ABOUT THE WHOLE TREE, so it is enumerated and pinned
+// rather than asserted. This function is the ONLY keyed reader of the key, and
+// both of its call sites below are guarded by the literal predicate
+// `r.Kind == "SCOPE.Component" && r.Subtype == "import"`; nothing anywhere
+// prefix- or substring-matches property KEYS. A non-placeholder carrying the
+// key therefore cannot change resolution, mint a node, or move an edge — which
+// is exactly what QualifiedName and Properties["module"] could, and did.
+//
+// It is not, however, INVISIBLE, and the difference matters for anyone adding
+// an emitter. No layer filters unknown property keys, so any key an extractor
+// stamps is carried verbatim into the persisted flatbuffer graph
+// (graph/fbwriter.buildPropertyVector writes every key it is handed), into
+// generated docs (docgen/tier0.go renders the whole map as `k = v`), and into
+// MCP entity payloads (PropRange / PropsSnapshot). Stamping `import_module` on
+// a real declaration publishes a false provenance claim to all three. Emitters
+// should therefore keep it exclusive to their placeholders; the F# arm pins
+// this extractor-side in
+// TestFSharpEntitiesCarryNoDerivedOrIndexHijackingFields_6369.
 func placeholderModuleSpecifier(r *types.EntityRecord) string {
 	if r.Properties != nil {
 		if m := r.Properties["import_module"]; m != "" {
