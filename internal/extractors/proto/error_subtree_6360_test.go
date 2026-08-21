@@ -113,6 +113,9 @@ func TestErrorSubtree6360_OutputIsSubsetOfCleanFile(t *testing.T) {
 func TestErrorSubtree6360_CleanFileUnchanged(t *testing.T) {
 	got := extractViaFactory(t, "m.proto", src6360("string b = 2;"))
 	want := []string{
+		// The per-file SCOPE.Component/file entity (#6518) owns the file-level
+		// CONTAINS edges that used to be anchored on the file PATH.
+		"SCOPE.Component/file:m.proto",
 		"SCOPE.Schema/field:After.z",
 		"SCOPE.Schema/field:Clean.a",
 		"SCOPE.Schema/field:Clean.b",

@@ -96,7 +96,8 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 
 	var entities []types.EntityRecord
-	walkProto(file.TSTree.RootNode(), file, &entities)
+	var fileRels []types.RelationshipRecord
+	walkProto(file.TSTree.RootNode(), file, &entities, &fileRels)
 
 	// #6357: drop field-type REFERENCES edges whose target is not defined in
 	// this file. See dropUnresolvableTypeRefs.
@@ -106,6 +107,24 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	importEntities := buildImportEntities(file)
 	if len(importEntities) > 0 {
 		entities = append(entities, importEntities...)
+	}
+
+	// #6518: the file-level CONTAINS edges collected above belong to the FILE,
+	// so they are carried by a file entity rather than by the entity they
+	// point AT. Emitted only when there is at least one such edge, mirroring
+	// hcl's emitFileLevelRelationships (which returns nil when the file has no
+	// top-level blocks), so a .proto with nothing but imports keeps its
+	// current shape.
+	if len(fileRels) > 0 {
+		fileEnt := extractor.FileEntity(extractor.FileInput{
+			Path: file.Path,
+			// The classifier token, not file.Language: every entity this
+			// package emits is stamped "protobuf" (#6356) and the file entity
+			// must not be the one record that disagrees.
+			Language: "protobuf",
+		})
+		fileEnt.Relationships = fileRels
+		entities = append([]types.EntityRecord{fileEnt}, entities...)
 	}
 
 	return entities, nil
@@ -242,18 +261,28 @@ func messageTypeRef(filePath, name string) string {
 // messageTypeRef — the schema address space #6419's type REFERENCES already
 // use — and service keeps the operation form.
 //
-// FromID stays the file path on purpose. It is a KNOWN OFFENDER in
-// internal/extractors/file_anchored_rels_guard_test.go (dangling on the FROM
-// side, tracked separately under #6298), but the usual remedy — leave FromID
-// empty and let assembly stamp the owner — is WRONG here: this record is
-// appended to the CONTAINED entity, so an empty FromID would stamp the
-// message's own id and the edge would die as a self-loop. #6422 is the TO
-// side only.
-func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
+// #6518 — the FROM side. FromID used to be the file path, which DANGLED at
+// every path (root and nested alike, MEASURED 3 of 3 in
+// issue6518_anchoring_test.go): this package emitted no entity carrying the
+// containing file's name in any spelling, so there was nothing for the path to
+// bind to. It was worse than invisible — internal/resolve/refs.go's
+// sourceFileExtensions does not list ".proto", so looksLikeSourceFilePath did
+// not recognise the FromID as a path at all and the edge was dispositioned
+// DispositionBugExtractor, a generic bucket that reads as an extractor bug
+// rather than as a misanchored edge.
+//
+// Clearing FromID AT THE OLD SITES would not have fixed it: these records were
+// appended to the CONTAINED entity, so assembly would have stamped the
+// message's own id and the edge would have died as a self-loop
+// (internal/graph/orientation.go:206). The record needed a real owner, so the
+// package now emits one — extractor.FileEntity, the per-file SCOPE.Component
+// ~25 other extractors already emit under #577 — and Extract hands these
+// records to it. FromID is empty here because the owner IS the file, exactly
+// as hcl's file component does it (#6367, 0e31e57ee).
+func fileContainsRel(toRef string) types.RelationshipRecord {
 	return types.RelationshipRecord{
-		FromID: filePath,
-		ToID:   toRef,
-		Kind:   "CONTAINS",
+		ToID: toRef,
+		Kind: "CONTAINS",
 	}
 }
 
@@ -331,23 +360,23 @@ func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
 // TestSelfNamedRpcLeavesTheServiceOrphaned6459Residual in
 // service_ref_e2e_6492_test.go.
 func fileContainsOperationRel(filePath, name string) types.RelationshipRecord {
-	return fileContainsRel(filePath, extractor.BuildOperationStructuralRef("proto", filePath, name))
+	return fileContainsRel(extractor.BuildOperationStructuralRef("proto", filePath, name))
 }
 
 // fileContainsSchemaRel is the file → message/enum form. Both are SCOPE.Schema
 // entities and must be addressed in the schema address space.
 func fileContainsSchemaRel(filePath, name string) types.RelationshipRecord {
-	return fileContainsRel(filePath, messageTypeRef(filePath, name))
+	return fileContainsRel(messageTypeRef(filePath, name))
 }
 
-func walkProto(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walkProto(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, fileRels *[]types.RelationshipRecord) {
 	if node == nil {
 		return
 	}
 
 	switch node.Type() {
 	case "service":
-		if rec, ok := buildService(node, file); ok {
+		if rec, ok := buildService(node, file, fileRels); ok {
 			*out = append(*out, rec)
 		}
 		// Walk inside service for rpc nodes.
@@ -361,21 +390,21 @@ func walkProto(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord
 		}
 		return // Don't recurse further into service — already handled.
 	case "message":
-		if recs, ok := buildMessage(node, file); ok {
+		if recs, ok := buildMessage(node, file, fileRels); ok {
 			*out = append(*out, recs...)
 		}
 	case "enum":
-		if recs, ok := buildEnum(node, file); ok {
+		if recs, ok := buildEnum(node, file, fileRels); ok {
 			*out = append(*out, recs...)
 		}
 	}
 
 	for i := range node.ChildCount() {
-		walkProto(node.Child(int(i)), file, out)
+		walkProto(node.Child(int(i)), file, out, fileRels)
 	}
 }
 
-func buildService(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildService(node ts.Node, file extractor.FileInput, fileRels *[]types.RelationshipRecord) (types.EntityRecord, bool) {
 	nameNode := childByType(node, "service_name")
 	if nameNode == nil {
 		return types.EntityRecord{}, false
@@ -389,9 +418,10 @@ func buildService(node ts.Node, file extractor.FileInput) (types.EntityRecord, b
 		return types.EntityRecord{}, false
 	}
 
-	// CONTAINS edges: service → each rpc child + file → service.
+	// CONTAINS edges: service → each rpc child, on this record; file → service,
+	// on the FILE entity that owns it (#6518).
 	var rels []types.RelationshipRecord
-	rels = append(rels, fileContainsOperationRel(file.Path, name))
+	*fileRels = append(*fileRels, fileContainsOperationRel(file.Path, name))
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch == nil || ch.Type() != "rpc" {
@@ -550,7 +580,7 @@ func buildRPC(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool)
 	}, true
 }
 
-func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord, bool) {
+func buildMessage(node ts.Node, file extractor.FileInput, fileRels *[]types.RelationshipRecord) ([]types.EntityRecord, bool) {
 	nameNode := childByType(node, "message_name")
 	if nameNode == nil {
 		return nil, false
@@ -567,7 +597,7 @@ func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord,
 	// REFERENCES edges: message → each named (non-scalar) field type, so a
 	// field `repeated Order orders = 3;` yields message User → message Order.
 	var rels []types.RelationshipRecord
-	rels = append(rels, fileContainsSchemaRel(file.Path, name))
+	*fileRels = append(*fileRels, fileContainsSchemaRel(file.Path, name))
 	var fieldEnts []types.EntityRecord
 	if body := childByType(node, "message_body"); body != nil {
 		// seen is keyed on the field's SIMPLE name and is deliberately scoped
@@ -702,7 +732,7 @@ func buildField(file extractor.FileInput, parent, fname, ftype, label string, no
 	}
 }
 
-func buildEnum(node ts.Node, file extractor.FileInput) ([]types.EntityRecord, bool) {
+func buildEnum(node ts.Node, file extractor.FileInput, fileRels *[]types.RelationshipRecord) ([]types.EntityRecord, bool) {
 	nameNode := childByType(node, "enum_name")
 	if nameNode == nil {
 		return nil, false
@@ -726,7 +756,7 @@ func buildEnum(node ts.Node, file extractor.FileInput) ([]types.EntityRecord, bo
 	// buildField already takes for message fields; an enum's values are the
 	// enum's only content, so suppressing them would leave enums contentless.
 	var rels []types.RelationshipRecord
-	rels = append(rels, fileContainsSchemaRel(file.Path, name))
+	*fileRels = append(*fileRels, fileContainsSchemaRel(file.Path, name))
 	var valueEnts []types.EntityRecord
 	if body := childByType(node, "enum_body"); body != nil {
 		seen := make(map[string]bool)

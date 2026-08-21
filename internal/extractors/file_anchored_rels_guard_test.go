@@ -133,10 +133,11 @@
 //
 //	   THE LEAF SPELLING. `FromID: fp` where fp is the file path. No cheap fix.
 //	D. a helper's return value — `FromID: pathOf(filePath)`. Only filepath.Join is
-//	   special-cased; every other call is opaque. proto.go's fileContainsRel is
-//	   this shape at its three call sites, and is caught only because the
-//	   composite literal INSIDE the helper is itself visible — had the helper
-//	   built the string another way, all three sites would be invisible.
+//	   special-cased; every other call is opaque. proto.go's fileContainsRel WAS
+//	   this shape at its three call sites (until #6518 fixed it), and was caught
+//	   only because the composite literal INSIDE the helper was itself visible —
+//	   had the helper built the string another way, all three sites would have
+//	   been invisible.
 //	   Also not seen, same root cause: an alias assigned in one function and read
 //	   in another; a path stored on a struct field with an unlisted name and read
 //	   back; form A performed across a function boundary.
@@ -391,23 +392,19 @@ var allowedFileAnchored = map[string]allowEntry{
 			"synthetic file container and every stub in the file merges onto it. " +
 			"INFERRED from the site, NOT measured."},
 
-	// proto CONTAINS — DANGLING. fileContainsRel builds FromID: file.Path, but
-	// the proto package emits no node named for the containing file; the only
-	// path-named entity in a proto extraction is the IMPORTED path. The
-	// sibling service→rpc CONTAINS edge in buildService correctly leaves
-	// FromID empty — the two shapes sit side by side.
+	// proto USED TO BE LISTED HERE (fileContainsRel:CONTAINS {1}) and is gone:
+	// #6518 MEASURED it through ResolveImports -> ReferencesEmbedded on a
+	// nested and a root path. Unlike hcl there was no root-path accident to
+	// resolve onto -- proto named no entity after the containing file in any
+	// spelling -- so it was 3 of 3 file-level CONTAINS DANGLING at BOTH paths.
+	// Clearing FromID at the old sites would not have fixed it either: the
+	// records were appended to the CONTAINED entity, so the edge would have
+	// become a self-loop. proto now emits extractor.FileEntity (the per-file
+	// SCOPE.Component of #577) and hands it those records with an empty FromID,
+	// so assembly stamps the file entity. 0 of 3 after; see
+	// internal/extractors/proto/issue6518_anchoring_test.go.
 	//
-	// Note the {1} below is a count of PATH-VALUED COMPOSITE LITERALS, which
-	// is not the same as a count of call sites. #6422 gave fileContainsRel a
-	// target-ref parameter and two thin wrappers, fileContainsOperationRel and
-	// fileContainsSchemaRel, so the helper now has 2 direct callers and the
-	// wrappers between them cover the same 3 emission sites — while the
-	// literal this scan actually sees is still exactly one.
-	"proto:fileContainsRel:CONTAINS": {1,
-		"KNOWN OFFENDER (#6298): dangling. No proto node carries the CONTAINING " +
-			"file's path (only the IMPORTED path is path-named), and the sibling " +
-			"service→rpc edge in buildService correctly leaves FromID empty. " +
-			"INFERRED from the site, NOT measured."},
+	// IMPORTS is untouched: #120 keeps the file path there on purpose.
 
 	// hcl USED TO BE LISTED HERE (emitFileLevelRelationships:CONTAINS {2} and
 	// parseDependsOnTuple:DEPENDS_ON {1}) and is gone: #6367 MEASURED both

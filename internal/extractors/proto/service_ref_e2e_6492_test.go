@@ -48,8 +48,9 @@ service Foo {
 // countChildContains counts the CONTAINS edges the PARENT record carries to
 // toID. Parent → child edges are appended to the parent's own record with an
 // EMPTY FromID — assembly stamps the owning entity's id — so the from side is
-// the record, not the field. (fileContainsRel is the exception: it sets FromID
-// to the raw file path; countFileContains below reads those.)
+// the record, not the field. Since #6518 the file-level edges follow the same
+// convention, on the per-file SCOPE.Component/file record; countFileContains
+// below reads those.
 func countChildContains(parent *types.EntityRecord, toID string) int {
 	n := 0
 	for _, r := range parent.Relationships {
@@ -60,15 +61,14 @@ func countChildContains(parent *types.EntityRecord, toID string) int {
 	return n
 }
 
-// countFileContains counts file-anchored CONTAINS edges to toID across the
-// whole extraction.
-func countFileContains(recs []types.EntityRecord, file, toID string) int {
+// countFileContains counts the file-level CONTAINS edges to toID, i.e. those
+// carried by the SCOPE.Component/file entity for file (#6518).
+func countFileContains(t *testing.T, recs []types.EntityRecord, file, toID string) int {
+	t.Helper()
 	n := 0
-	for i := range recs {
-		for _, r := range recs[i].Relationships {
-			if r.Kind == "CONTAINS" && r.FromID == file && r.ToID == toID {
-				n++
-			}
+	for _, r := range fileLevelContains(t, recs, file) {
+		if r.ToID == toID {
+			n++
 		}
 	}
 	return n
@@ -139,7 +139,7 @@ func TestServiceNameCollisionGetsInboundContains6492(t *testing.T) {
 			"distinguish them", svc.ID)
 	}
 
-	if n := countFileContains(recs, "c6459.proto", svc.ID); n != 1 {
+	if n := countFileContains(t, recs, "c6459.proto", svc.ID); n != 1 {
 		inbound := 0
 		for i := range recs {
 			for _, r := range recs[i].Relationships {
@@ -156,7 +156,7 @@ func TestServiceNameCollisionGetsInboundContains6492(t *testing.T) {
 	}
 
 	// The tier must not have stolen the message's own edge on the way.
-	if n := countFileContains(recs, "c6459.proto", msg.ID); n != 1 {
+	if n := countFileContains(t, recs, "c6459.proto", msg.ID); n != 1 {
 		t.Fatalf("file → message Foo CONTAINS edges = %d, want 1 — the schema arm is "+
 			"addressed in the schema address space and must be untouched (#6459)", n)
 	}
@@ -295,7 +295,7 @@ func TestSelfNamedImportDoesNotBlockTheServiceTier6492(t *testing.T) {
 			imp.SourceFile, file)
 	}
 
-	if n := countFileContains(recs, file, svc.ID); n != 1 {
+	if n := countFileContains(t, recs, file, svc.ID); n != 1 {
 		inbound := 0
 		for i := range recs {
 			for _, r := range recs[i].Relationships {

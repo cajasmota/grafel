@@ -101,25 +101,17 @@ func TestFileContains_MessageIsNotReparentedOntoTheRPC_6422(t *testing.T) {
 		t.Fatalf("message and rpc User share id %q — the fixture cannot distinguish them", msg.ID)
 	}
 
-	// Collect every file-anchored CONTAINS edge in the whole extraction.
-	// fileContainsRel sets FromID to the file path (a separate, allow-listed
-	// defect — see internal/extractors/file_anchored_rels_guard_test.go's
-	// proto:fileContainsRel:CONTAINS entry). Leaving FromID EMPTY is NOT the
-	// fix here: these edges are appended to the CONTAINED record, so an empty
-	// FromID would make assembly stamp the message's own id and the edge
-	// would die as a self-loop. #6422 is about the TO side.
+	// Collect every file-level CONTAINS edge in the whole extraction. #6422 is
+	// about the TO side; the FROM side was fixed separately by #6518, which
+	// re-homed these records from the CONTAINED entity onto the per-file
+	// SCOPE.Component/file entity that owns them.
 	var toMsg, toRPC int
-	for i := range recs {
-		for _, r := range recs[i].Relationships {
-			if r.Kind != "CONTAINS" || r.FromID != "c.proto" {
-				continue
-			}
-			switch r.ToID {
-			case msg.ID:
-				toMsg++
-			case rpc.ID:
-				toRPC++
-			}
+	for _, r := range fileLevelContains(t, recs, "c.proto") {
+		switch r.ToID {
+		case msg.ID:
+			toMsg++
+		case rpc.ID:
+			toRPC++
 		}
 	}
 
@@ -169,30 +161,24 @@ func TestFileContains_RefFormIsKindAppropriate_6422(t *testing.T) {
 		"Status": msgTypeRef("c.proto", "Status"),
 		"S":      extractor.BuildOperationStructuralRef("proto", "c.proto", "S"),
 	}
-	seen := make(map[string]bool, len(want))
-
-	for i := range entities {
-		for _, r := range entities[i].Relationships {
-			if r.Kind != "CONTAINS" || r.FromID != "c.proto" {
-				continue
-			}
-			owner := entities[i].Name
-			w, ok := want[owner]
-			if !ok {
-				t.Errorf("unexpected file CONTAINS edge from record %q: %+v", owner, r)
-				continue
-			}
-			if r.ToID != w {
-				t.Errorf("file CONTAINS → %s (%s/%s): ToID = %q, want %q",
-					owner, entities[i].Kind, entities[i].Subtype, r.ToID, w)
-			}
-			seen[owner] = true
-		}
+	// Since #6518 the edges are owned by the file entity, so the record they
+	// hang off no longer names the target; the assertion is set equality on the
+	// emitted ToIDs, which pins the ref FORM in both directions — a missing
+	// edge and a wrong-form edge are reported separately.
+	got := make(map[string]bool)
+	for _, r := range fileLevelContains(t, entities, "c.proto") {
+		got[r.ToID] = true
 	}
-	for name := range want {
-		if !seen[name] {
-			t.Errorf("no file CONTAINS edge emitted for top-level %q", name)
+	for name, ref := range want {
+		if !got[ref] {
+			t.Errorf("no file CONTAINS edge emitted for top-level %q in its "+
+				"kind-appropriate ref form %q", name, ref)
 		}
+		delete(got, ref)
+	}
+	for ref := range got {
+		t.Errorf("unexpected file CONTAINS edge to %q — every file-level target "+
+			"must use the ref form of its own entity kind (#6422)", ref)
 	}
 }
 
