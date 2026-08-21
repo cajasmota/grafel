@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -107,7 +108,7 @@ func TestFoldConsumerHTTPBaseURLs_FoldsAndFreezesIdentity_6450(t *testing.T) {
 		callRecord("http:GET:/{BASE}/things", "/{BASE}/things", "dynamic_baseurl"),
 		callRecord("http:GET:/{ORIGIN}/health", "/{ORIGIN}/health", "dynamic_baseurl"),
 	}
-	res := FoldConsumerHTTPBaseURLs(recs, root)
+	res := FoldConsumerHTTPBaseURLs(recs, root, nil)
 	if res.Candidates != 2 || res.Folded != 2 {
 		t.Fatalf("candidates=%d folded=%d, want 2/2", res.Candidates, res.Folded)
 	}
@@ -145,7 +146,7 @@ func TestFoldConsumerHTTPBaseURLs_Guards_6450(t *testing.T) {
 			{Kind: "SCOPE.Component", Name: "config", SourceFile: "client/config.js"},
 			callRecord("http:GET:/{BASE}/things", "/{BASE}/things", "literal"),
 		}
-		res := FoldConsumerHTTPBaseURLs(recs, root)
+		res := FoldConsumerHTTPBaseURLs(recs, root, nil)
 		if res.Candidates != 0 || res.Folded != 0 {
 			t.Fatalf("candidates=%d folded=%d, want 0/0 — a call already classified "+
 				"literal must not be re-folded", res.Candidates, res.Folded)
@@ -160,7 +161,7 @@ func TestFoldConsumerHTTPBaseURLs_Guards_6450(t *testing.T) {
 			{Kind: "SCOPE.Component", Name: "config", SourceFile: "client/config.js"},
 			callRecord("http:GET:/{NOPE}/things", "/{NOPE}/things", "dynamic_baseurl"),
 		}
-		res := FoldConsumerHTTPBaseURLs(recs, root)
+		res := FoldConsumerHTTPBaseURLs(recs, root, nil)
 		if res.Candidates != 1 {
 			t.Fatalf("candidates=%d, want 1", res.Candidates)
 		}
@@ -180,7 +181,7 @@ func TestFoldConsumerHTTPBaseURLs_Guards_6450(t *testing.T) {
 			{Kind: "SCOPE.Component", Name: "config", SourceFile: "client/config.js"},
 			callRecord("http:GET:/{BASE}/things", "/{BASE}/things", "dynamic_baseurl"),
 		}
-		res := FoldConsumerHTTPBaseURLs(recs, "")
+		res := FoldConsumerHTTPBaseURLs(recs, "", nil)
 		if res.Candidates != 0 || res.Folded != 0 {
 			t.Fatalf("candidates=%d folded=%d, want 0/0", res.Candidates, res.Folded)
 		}
@@ -200,7 +201,7 @@ func TestFoldConsumerHTTPBaseURLs_Guards_6450(t *testing.T) {
 			},
 		}
 		recs := []types.EntityRecord{def}
-		res := FoldConsumerHTTPBaseURLs(recs, root)
+		res := FoldConsumerHTTPBaseURLs(recs, root, nil)
 		if res.Candidates != 0 || res.Folded != 0 {
 			t.Fatalf("candidates=%d folded=%d, want 0/0 — the fold is consumer-side only",
 				res.Candidates, res.Folded)
@@ -224,7 +225,7 @@ func TestRepoSubstrateResolver_NoAmbientBinding_6450(t *testing.T) {
 		{Kind: "SCOPE.Component", Name: "a", SourceFile: "client/api.js"},
 		{Kind: "SCOPE.Component", Name: "l", SourceFile: "client/lonely.js"},
 	}
-	r := buildRepoSubstrateResolver(recs, root)
+	r := newRepoSubstrateResolver(root, recs, nil)
 	if r == nil {
 		t.Fatal("resolver is nil")
 	}
@@ -233,5 +234,139 @@ func TestRepoSubstrateResolver_NoAmbientBinding_6450(t *testing.T) {
 	}
 	if got := r.resolve("client/lonely.js", "BASE").value; got != "" {
 		t.Errorf("resolve from a file with no binding and no import = %q, want empty", got)
+	}
+}
+
+// #6450 review, BLOCKING 1 — the incremental path must not un-fold what a
+// full index got right.
+//
+// On an incremental run `merged` holds ONLY the re-extracted files. When an
+// unrelated edit touches the CALLER file but not the declaring module, the
+// declaring module appears only in the carried-forward prior-graph
+// entities. Deriving the symbol table's file set from `merged` alone made
+// the fold stop firing and reverted every previously-resolved FETCHES to
+// UNRESOLVED_FETCH — a REGRESSION of a correct graph, not merely a missed
+// improvement.
+func TestFoldConsumerHTTPBaseURLs_IncrementalKeepsFolding_6450(t *testing.T) {
+	root := writeFoldFixture(t)
+
+	// Exactly what an incremental run hands buildDocument: only client/api.js
+	// was re-extracted. client/config.js is UNCHANGED, so its entities live
+	// in the carry-forward slice.
+	newMerged := func() []types.EntityRecord {
+		return []types.EntityRecord{
+			callRecord("http:GET:/{BASE}/things", "/{BASE}/things", "dynamic_baseurl"),
+		}
+	}
+	carried := []types.EntityRecord{
+		{Kind: "SCOPE.Component", Name: "config", SourceFile: "client/config.js"},
+	}
+
+	t.Run("with carry-forward it still folds", func(t *testing.T) {
+		recs := newMerged()
+		res := FoldConsumerHTTPBaseURLs(recs, root, carried)
+		if res.Candidates != 1 || res.Folded != 1 {
+			t.Fatalf("candidates=%d folded=%d, want 1/1 — an incremental run must "+
+				"see the declaring module through the carried-forward entities",
+				res.Candidates, res.Folded)
+		}
+		if got := recs[0].Properties["path"]; got != "/api/things" {
+			t.Errorf("path = %q, want /api/things", got)
+		}
+		// Identity contract holds on the incremental path too.
+		if recs[0].Name != "http:GET:/{BASE}/things" {
+			t.Errorf("Name moved to %q", recs[0].Name)
+		}
+	})
+
+	t.Run("without carry-forward the declaring module is invisible", func(t *testing.T) {
+		// This is the defect, pinned so the parameter cannot be quietly
+		// dropped again: same inputs, no carry-forward, no fold.
+		recs := newMerged()
+		res := FoldConsumerHTTPBaseURLs(recs, root, nil)
+		if res.Folded != 0 {
+			t.Fatalf("folded=%d, want 0 — this subtest documents WHY carriedForward "+
+				"is required; if the fold now succeeds without it the mechanism "+
+				"changed and the comment above is stale", res.Folded)
+		}
+	})
+}
+
+// #6450 review, BLOCKING 2b — sniffing must be lazy and bounded.
+//
+// The first cut read and regex-sniffed EVERY substrate-language file in the
+// repo as soon as one candidate existed: +12.3s on a 7,916-file repo for
+// candidates=1 folded=0. A file must be read only when a resolution chain
+// actually reaches it.
+func TestFoldConsumerHTTPBaseURLs_SniffIsLazy_6450(t *testing.T) {
+	root := writeFoldFixture(t)
+	recs := []types.EntityRecord{
+		{Kind: "SCOPE.Component", Name: "config", SourceFile: "client/config.js"},
+		callRecord("http:GET:/{BASE}/things", "/{BASE}/things", "dynamic_baseurl"),
+	}
+	// 300 decoy modules that no candidate imports. They must be INDEXED (the
+	// lookup is path-only, free) but never READ.
+	const decoys = 300
+	for i := 0; i < decoys; i++ {
+		name := fmt.Sprintf("client/decoy%03d.js", i)
+		body := fmt.Sprintf("export const DECOY%03d = '/never/read';\n", i)
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(name)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		recs = append(recs, types.EntityRecord{Kind: "SCOPE.Component", Name: name, SourceFile: name})
+	}
+
+	res := FoldConsumerHTTPBaseURLs(recs, root, nil)
+	if res.Folded != 1 {
+		t.Fatalf("folded=%d, want 1", res.Folded)
+	}
+	// api.js (the caller) + config.js (one import hop). Nothing else.
+	if res.FilesSniffed != 2 {
+		t.Errorf("FilesSniffed=%d, want 2 — only the caller file and the one "+
+			"module it imports may be read; %d decoys were in scope", res.FilesSniffed, decoys)
+	}
+	if res.FilesIndexed <= decoys {
+		t.Errorf("FilesIndexed=%d, want > %d — the lookup is path-only and must "+
+			"still cover every file", res.FilesIndexed, decoys)
+	}
+	if res.ReadCapHit {
+		t.Error("ReadCapHit set on a run that read 2 files")
+	}
+}
+
+// The read cap is a hard bound, not a suggestion.
+func TestFoldConsumerHTTPBaseURLs_ReadCapIsEnforced_6450(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "client"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// One candidate per file, each in its OWN caller file, so every candidate
+	// forces a distinct read. More of them than the cap allows.
+	n := substrateMaxFileReads + 40
+	var recs []types.EntityRecord
+	for i := 0; i < n; i++ {
+		file := fmt.Sprintf("client/caller%04d.js", i)
+		body := "const X = '/api';\nfetch(`${X}/things`);\n"
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(file)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		r := callRecord("http:GET:/{X}/things", "/{X}/things", "dynamic_baseurl")
+		r.SourceFile = file
+		r.Properties["caller_file"] = file
+		recs = append(recs, r)
+	}
+	res := FoldConsumerHTTPBaseURLs(recs, root, nil)
+	if res.Candidates != n {
+		t.Fatalf("candidates=%d, want %d", res.Candidates, n)
+	}
+	if res.FilesSniffed > substrateMaxFileReads {
+		t.Errorf("FilesSniffed=%d exceeds the cap %d", res.FilesSniffed, substrateMaxFileReads)
+	}
+	if !res.ReadCapHit {
+		t.Errorf("ReadCapHit=false after %d candidates against a cap of %d — the "+
+			"cap must be observable, not silent", n, substrateMaxFileReads)
+	}
+	if res.Folded == 0 || res.Folded > substrateMaxFileReads {
+		t.Errorf("folded=%d — the cap should truncate the work, not abolish it", res.Folded)
 	}
 }

@@ -26,14 +26,39 @@
 // name matches at tier 1 with ZERO entity-ID churn across incremental
 // indexes. Folding at extraction time — i.e. changing Name — would churn
 // the ID of every dynamic-base-URL call site on every run.
+//
+// INCREMENTAL CORRECTNESS (#6450 review, blocking finding 1)
+//
+// On an incremental re-index `merged` holds ONLY the re-extracted files. A
+// first cut derived the symbol table's file set from `merged` alone, which
+// meant an unrelated edit to the CALLER file left the DECLARING module
+// invisible: the fold silently stopped firing and every previously-resolved
+// FETCHES reverted to UNRESOLVED_FETCH, and stayed reverted until the next
+// full index. Regressing a correct graph on an unrelated edit is worse than
+// never folding at all, so the file set is now seeded from the
+// carried-forward prior-graph entities as well as from `merged`. See
+// TestFoldConsumerHTTPBaseURLs_IncrementalKeepsFolding_6450 and the
+// end-to-end cmd/grafel incremental test.
+//
+// COST (#6450 review, blocking finding 2b)
+//
+// The first cut sniffed EVERY substrate-language file in the repo the
+// moment a single candidate existed: measured at +12.3s on a 7,916-file
+// repo for candidates=1 folded=0, against a 4.7s whole-repo index. Sniffing
+// is now LAZY — a file is read only when a resolution chain actually
+// reaches it — and capped at substrateMaxFileReads per run. Building the
+// module→file lookup costs map inserts only, no I/O. Reads go through
+// internal/safeio (non-blocking open, FIFO-behind-symlink safe, size
+// capped), because this pass re-opens by path AFTER the walk's
+// irregular-file filter has already run and must not reintroduce that hole.
 package engine
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/safeio"
 	"github.com/cajasmota/grafel/internal/substrate"
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -42,6 +67,21 @@ import (
 // cross-file binding. Mirrors internal/links/constant_propagation.go's
 // maxImportDepth: the substrate targets shallow re-export chains.
 const substrateMaxImportDepth = 3
+
+// substrateMaxFileReads caps how many source files one index run may sniff
+// for this pass. Each candidate costs one read for its caller file plus at
+// most substrateMaxImportDepth reads to walk the re-export chain, and
+// caller files are shared across candidates, so this is generous for any
+// plausible repo while making the pass's worst case a constant rather than
+// a function of repo size. At the ~1.5ms/file measured sniff cost the cap
+// is worth roughly 0.4s, against the 12.3s the unbounded version cost.
+const substrateMaxFileReads = 256
+
+// substrateMaxFileBytes caps a single sniffed file. Base-URL constants live
+// in small modules; a 1 MiB ceiling is far above any real one and stops a
+// pathological or adversarial file from being read whole. It is also the
+// bound safeio needs, since a character device never reaches EOF.
+const substrateMaxFileBytes int64 = 1 << 20
 
 // FoldConsumerHTTPBaseURLResult reports what the fold did, for the
 // index-time stats line.
@@ -52,9 +92,16 @@ type FoldConsumerHTTPBaseURLResult struct {
 	// Folded is the number of those whose leading identifier the substrate
 	// resolved to a literal, and whose `path` was therefore rewritten.
 	Folded int
-	// FilesSniffed is the number of source files the substrate lifted at
-	// least one binding from.
+	// FilesSniffed is the number of source files actually read and sniffed.
+	// Bounded by substrateMaxFileReads.
 	FilesSniffed int
+	// FilesIndexed is the number of files registered in the module→file
+	// lookup. No I/O — this is the search space, not the read count.
+	FilesIndexed int
+	// ReadCapHit is true when the run stopped sniffing because it reached
+	// substrateMaxFileReads. Surfaced so an unfolded call on a huge repo is
+	// diagnosable rather than mysterious.
+	ReadCapHit bool
 }
 
 // FoldConsumerHTTPBaseURLs rewrites the `path` property of every
@@ -68,30 +115,32 @@ type FoldConsumerHTTPBaseURLResult struct {
 // makes this a no-op — the fold is strictly best-effort and must never fail
 // an index.
 //
+// carriedForward carries the prior-graph entities an incremental run splices
+// back in for unchanged files. It contributes SourceFile paths to the
+// module→file lookup and nothing else; pass nil on a full index. Without it
+// an incremental run cannot see the declaring module and un-folds paths a
+// previous full index got right.
+//
 // MUST be called BEFORE resolveHTTPEndpointHandlers so the matcher's
 // path-based tiers see the folded value. Mutates `merged` in place.
 //
-// Two deliberate limits, both inherited from internal/links.buildResolver
-// rather than introduced here:
-//
-//   - The set of files sniffed is derived from the SourceFile of records in
-//     `merged`, so a constants module that produced no entity at all is
-//     invisible to the symbol table.
-//   - The incremental one-file path (ResolveHTTPEndpointHandlersFileScoped,
-//     driven from internal/extractors/incremental.go) does not call this:
-//     a one-file slice cannot see the declaring module, so the fold would
-//     have nothing to bind against. Those calls keep their unfolded path
-//     until the next full index.
-func FoldConsumerHTTPBaseURLs(merged []types.EntityRecord, srcRoot string) FoldConsumerHTTPBaseURLResult {
+// One deliberate limit remains: the incremental ONE-FILE path
+// (ResolveHTTPEndpointHandlersFileScoped, driven from
+// internal/extractors/incremental.go) does not call this at all. That slice
+// is a single re-extracted file with no carried-forward companion, so there
+// is nothing to bind against. Those records keep their unfolded path until
+// the enclosing full/incremental index runs — which, unlike the bug above,
+// leaves a previously-correct graph alone rather than regressing it.
+func FoldConsumerHTTPBaseURLs(merged []types.EntityRecord, srcRoot string, carriedForward []types.EntityRecord) FoldConsumerHTTPBaseURLResult {
 	var res FoldConsumerHTTPBaseURLResult
 	if srcRoot == "" || len(merged) == 0 {
 		return res
 	}
 
-	// Cheap pre-scan: only pay for the substrate sniff when at least one
-	// record could possibly be folded. On the overwhelming majority of
-	// repos (no dynamic base URLs at all) this costs one pass over the
-	// records and nothing else.
+	// Cheap pre-scan: only pay for the lookup index when at least one record
+	// could possibly be folded. On the overwhelming majority of repos (no
+	// dynamic base URLs at all) this costs one pass over the records and
+	// nothing else — no I/O, no map building.
 	var candidates []int
 	for i := range merged {
 		r := &merged[i]
@@ -111,11 +160,11 @@ func FoldConsumerHTTPBaseURLs(merged []types.EntityRecord, srcRoot string) FoldC
 		return res
 	}
 
-	resolver := buildRepoSubstrateResolver(merged, srcRoot)
-	if resolver == nil {
+	resolver := newRepoSubstrateResolver(srcRoot, merged, carriedForward)
+	res.FilesIndexed = len(resolver.fileLookup)
+	if len(resolver.fileLookup) == 0 {
 		return res
 	}
-	res.FilesSniffed = len(resolver.bindings)
 
 	for _, i := range candidates {
 		r := &merged[i]
@@ -147,19 +196,36 @@ func FoldConsumerHTTPBaseURLs(merged []types.EntityRecord, srcRoot string) FoldC
 		delete(r.Properties, "dynamic_baseurl")
 		res.Folded++
 	}
+	res.FilesSniffed = resolver.reads
+	res.ReadCapHit = resolver.capHit
 	return res
 }
 
 // repoSubstrateResolver is the repo-scoped twin of
-// internal/links.Resolver. The repo dimension is dropped entirely: one
-// index run covers exactly one repo, and the links resolver never crossed a
-// repo boundary anyway.
+// internal/links.Resolver. Two differences, both deliberate:
+//
+//   - The repo dimension is dropped. One index run covers exactly one repo,
+//     and the links resolver never crossed a repo boundary anyway.
+//   - Sniffing is LAZY. fileLookup is built from paths alone (no I/O); a
+//     file's bindings are lifted the first time a resolution reaches it,
+//     under a hard read cap. The eager version's cost was linear in repo
+//     size for every run that had a single candidate.
 type repoSubstrateResolver struct {
-	// bindings[file][ident] = Binding — the classical symbol table.
-	bindings map[string]map[string]substrate.Binding
+	srcRoot string
+
 	// fileLookup maps a module specifier to the repo-relative file that
-	// declares it, under several canonical key forms.
+	// declares it, under several canonical key forms. Paths only — built
+	// without reading anything.
 	fileLookup map[string]string
+
+	// bindings[file][ident] is the symbol table, filled in on demand.
+	bindings map[string]map[string]substrate.Binding
+	// sniffed records that a file has been visited, so a file that yielded
+	// no bindings is not re-read on every candidate.
+	sniffed map[string]bool
+
+	reads  int
+	capHit bool
 }
 
 // substrateResolution is the reduced result shape the fold needs.
@@ -169,52 +235,81 @@ type substrateResolution struct {
 	steps      []string
 }
 
-// buildRepoSubstrateResolver sniffs every distinct source file referenced
-// by `merged` and builds the symbol table. Returns nil when nothing was
-// lifted.
-func buildRepoSubstrateResolver(merged []types.EntityRecord, srcRoot string) *repoSubstrateResolver {
-	fileSet := make(map[string]bool, len(merged))
-	for i := range merged {
-		if f := merged[i].SourceFile; f != "" {
-			fileSet[f] = true
-		}
-	}
+// newRepoSubstrateResolver registers every substrate-language source file
+// referenced by `merged` or `carriedForward` in the module→file lookup.
+// Reads nothing.
+func newRepoSubstrateResolver(srcRoot string, merged, carriedForward []types.EntityRecord) *repoSubstrateResolver {
 	r := &repoSubstrateResolver{
-		bindings:   map[string]map[string]substrate.Binding{},
+		srcRoot:    srcRoot,
 		fileLookup: map[string]string{},
+		bindings:   map[string]map[string]substrate.Binding{},
+		sniffed:    map[string]bool{},
 	}
-	for file := range fileSet {
-		lang := substrate.LanguageForPath(file)
-		if lang == "" {
-			continue
+	seen := make(map[string]bool, len(merged))
+	add := func(recs []types.EntityRecord) {
+		for i := range recs {
+			file := recs[i].SourceFile
+			if file == "" || seen[file] {
+				continue
+			}
+			seen[file] = true
+			if substrate.LanguageForPath(file) == "" {
+				continue
+			}
+			indexFileForSubstrateLookup(r.fileLookup, file)
 		}
-		sniff := substrate.SnifferFor(lang)
-		if sniff == nil {
-			continue
-		}
-		content, err := os.ReadFile(filepath.Join(srcRoot, file))
-		if err != nil {
-			// Best-effort: a file that vanished between extraction and
-			// merge must not fail the index.
-			continue
-		}
-		bindings := sniff(string(content))
-		if len(bindings) == 0 {
-			continue
-		}
-		fileBindings := make(map[string]substrate.Binding, len(bindings))
-		for _, b := range bindings {
-			// Last-wins on a duplicate ident: the sniffer emits in source
-			// order, so the final declaration is the live one.
-			fileBindings[b.Ident] = b
-		}
-		r.bindings[file] = fileBindings
-		indexFileForSubstrateLookup(r.fileLookup, file)
 	}
-	if len(r.bindings) == 0 {
+	add(merged)
+	add(carriedForward)
+	return r
+}
+
+// bindingsFor returns the symbol table for one file, sniffing it on first
+// use. Returns nil once the read cap is reached.
+func (r *repoSubstrateResolver) bindingsFor(file string) map[string]substrate.Binding {
+	if b, ok := r.bindings[file]; ok {
+		return b
+	}
+	if r.sniffed[file] {
 		return nil
 	}
-	return r
+	if r.reads >= substrateMaxFileReads {
+		r.capHit = true
+		return nil
+	}
+	r.sniffed[file] = true
+
+	lang := substrate.LanguageForPath(file)
+	if lang == "" {
+		return nil
+	}
+	sniff := substrate.SnifferFor(lang)
+	if sniff == nil {
+		return nil
+	}
+	// safeio, not os.ReadFile: this pass re-opens by path after the walk's
+	// irregular-file filter has already run, so a FIFO or device behind a
+	// symlink named `config.js` would otherwise park the whole index in
+	// open(2) forever (#6416).
+	content, err := safeio.ReadFile(filepath.Join(r.srcRoot, file), safeio.FollowSymlinks, substrateMaxFileBytes)
+	r.reads++
+	if err != nil {
+		// Best-effort: a file that vanished, is not a regular file, or would
+		// block must not fail the index.
+		return nil
+	}
+	lifted := sniff(string(content))
+	if len(lifted) == 0 {
+		return nil
+	}
+	fileBindings := make(map[string]substrate.Binding, len(lifted))
+	for _, b := range lifted {
+		// Last-wins on a duplicate ident: the sniffer emits in source order,
+		// so the final declaration is the live one.
+		fileBindings[b.Ident] = b
+	}
+	r.bindings[file] = fileBindings
+	return fileBindings
 }
 
 // resolve binds ident as seen from file, following at most
@@ -233,7 +328,7 @@ func (r *repoSubstrateResolver) resolveDepth(file, ident string, depth int, seen
 	}
 	seen[key] = true
 
-	b, ok := r.bindings[file][ident]
+	b, ok := r.bindingsFor(file)[ident]
 	if !ok {
 		return substrateResolution{}
 	}

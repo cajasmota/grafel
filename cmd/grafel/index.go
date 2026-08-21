@@ -5616,10 +5616,16 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 	// to graph.json as UNRESOLVED_FETCH even with the handler right there.
 	// Rewrites `path` only — Name and EntityID stay frozen, so the match
 	// lands at the matcher's path tier with no entity-ID churn.
-	if foldStats := engine.FoldConsumerHTTPBaseURLs(merged, i.absRepo); foldStats.Candidates > 0 {
+	// carriedForward is passed so an INCREMENTAL run can still see the
+	// declaring module: `merged` holds only the re-extracted files, and
+	// without the prior-graph entities an unrelated edit to the caller file
+	// silently un-folds every path a previous full index resolved (#6450
+	// review, blocking 1).
+	if foldStats := engine.FoldConsumerHTTPBaseURLs(merged, i.absRepo, i.incrementalCarryForwardEntities); foldStats.Candidates > 0 {
 		fmt.Fprintf(os.Stderr,
-			"http-endpoint-baseurl-fold: candidates=%d folded=%d files_sniffed=%d\n",
-			foldStats.Candidates, foldStats.Folded, foldStats.FilesSniffed)
+			"http-endpoint-baseurl-fold: candidates=%d folded=%d files_sniffed=%d files_indexed=%d read_cap_hit=%t\n",
+			foldStats.Candidates, foldStats.Folded, foldStats.FilesSniffed,
+			foldStats.FilesIndexed, foldStats.ReadCapHit)
 	}
 
 	var httpEndpointStats engine.ResolveHTTPEndpointStats
