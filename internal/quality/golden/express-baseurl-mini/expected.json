@@ -1,0 +1,161 @@
+{
+  "fixture_name": "express-baseurl-mini",
+  "language": "javascript",
+  "description": "Intra-repo base-URL constant folding at INDEX time (#6450 Task 1). Before this fixture, no golden had both an http_endpoint_definition and an http_endpoint_call in one tree, and FETCHES appeared in zero expected.json -- so the per-repo call->definition matcher (internal/engine/http_endpoint_resolve.go) could resolve nothing at all and no fixture would notice. The shape graded here is the monorepo shape: an Express route at a literal /api/things, and a fetch() whose URL is the template literal `${BASE}/things` where BASE is imported from ANOTHER file. Cross-file is the whole point -- the JS canonicaliser already folds a base URL declared in the SAME file as the call, so a same-file fixture would be vacuously green. Because BASE is imported, the call canonicalises to path=/{BASE}/things with url_kind=dynamic_baseurl, the engine's exact-Name and normalized-path tiers both miss, and the engine emits UNRESOLVED_FETCH. The substrate constant fold (internal/substrate + the IMPORTS walk) used to run only later, in `grafel group-link`, so the engine matcher structurally could not see its output. Task 1 moves the fold to index time. IDENTITY CONTRACT: only the `path` property is rewritten -- Name and EntityID stay frozen at http:GET:/{BASE}/things, so tier 0 (Name) still misses and tier 1 (path) matches, with no entity-ID churn on any incremental index. That is why the expected http_endpoint_call names below still carry the UNFOLDED /{BASE}/ form: if a future change folds at extraction time instead, these rows go red, which is the intended alarm. The must_exist FETCHES rows and the forbidden UNRESOLVED_FETCH rows are two independent detectors of the same regression: reverting the fold makes tier 1 miss again, the engine takes the else branch, and all four rows fire at once.",
+  "expected_entities": [
+    {
+      "name": "http:GET:/api/things",
+      "kind": "http_endpoint_definition",
+      "source_file": "server/app.js",
+      "must_exist": true,
+      "note": "app.get('/api/things', ...) -- producer side, literal path."
+    },
+    {
+      "name": "http:POST:/api/things",
+      "kind": "http_endpoint_definition",
+      "source_file": "server/app.js",
+      "must_exist": true,
+      "note": "app.post('/api/things', ...) -- same path, different verb; the two must not collapse."
+    },
+    {
+      "name": "http:GET:/{BASE}/things",
+      "kind": "http_endpoint_call",
+      "source_file": "client/api.js",
+      "must_exist": true,
+      "note": "fetch(`${BASE}/things`). The Name is deliberately the UNFOLDED canonical form -- the fold rewrites the `path` property only, leaving Name/EntityID frozen (#6450 identity constraint)."
+    },
+    {
+      "name": "http:POST:/{BASE}/things",
+      "kind": "http_endpoint_call",
+      "source_file": "client/api.js",
+      "must_exist": true,
+      "note": "Second call site in the same file with the same URL and a different verb -- guards the 'N sites collapse into one dynamic node' regression."
+    },
+    {
+      "name": "http:GET:/{API_ORIGIN}/health",
+      "kind": "http_endpoint_call",
+      "source_file": "client/api.js",
+      "must_exist": true,
+      "note": "fetch(`${API_ORIGIN}/health`) where API_ORIGIN is a FULLY-QUALIFIED url. The fold must strip scheme+host before splicing, else the folded path is http://svc.internal/api/health and matches nothing."
+    },
+    {
+      "name": "BASE",
+      "kind": "Config",
+      "source_file": "client/config.js",
+      "must_exist": true,
+      "note": "The base-URL constant the fold resolves through the IMPORTS edge."
+    },
+    {
+      "name": "listThings",
+      "kind": "SCOPE.Operation",
+      "source_file": "client/api.js",
+      "must_exist": true
+    },
+    {
+      "name": "createThing",
+      "kind": "SCOPE.Operation",
+      "source_file": "client/api.js",
+      "must_exist": true
+    }
+  ],
+  "expected_relationships": [
+    {
+      "from_name": "http:GET:/{BASE}/things",
+      "from_kind": "http_endpoint_call",
+      "from_file": "client/api.js",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/api/things",
+      "to_kind": "http_endpoint_definition",
+      "to_file": "server/app.js",
+      "must_exist": true,
+      "note": "#6450 Task 1 -- only lands when the substrate fold rewrites path to /api/things BEFORE the engine's call->definition matcher runs."
+    },
+    {
+      "from_name": "http:POST:/{BASE}/things",
+      "from_kind": "http_endpoint_call",
+      "from_file": "client/api.js",
+      "kind": "FETCHES",
+      "to_name": "http:POST:/api/things",
+      "to_kind": "http_endpoint_definition",
+      "to_file": "server/app.js",
+      "must_exist": true,
+      "note": "Verb-specific: a fold that ignored the verb would cross-link these two."
+    },
+    {
+      "from_name": "http:GET:/{API_ORIGIN}/health",
+      "from_kind": "http_endpoint_call",
+      "from_file": "client/api.js",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/api/health",
+      "to_kind": "http_endpoint_definition",
+      "to_file": "server/app.js",
+      "must_exist": true,
+      "note": "Kills the mutant that drops the scheme+host strip from the fold."
+    },
+    {
+      "from_name": "listThings",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "client/api.js",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/api/things",
+      "to_kind": "http_endpoint_definition",
+      "to_file": "server/app.js",
+      "must_exist": true,
+      "note": "The caller->call-synthetic FETCHES edge is retargeted at the definition once the call resolves (#1615 stub sweep). Unfolded it dangles on the call node instead."
+    },
+    {
+      "from_name": "createThing",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "client/api.js",
+      "kind": "FETCHES",
+      "to_name": "http:POST:/api/things",
+      "to_kind": "http_endpoint_definition",
+      "to_file": "server/app.js",
+      "must_exist": true
+    }
+  ],
+  "forbidden_relationships": [
+    {
+      "from_name": "http:GET:/{BASE}/things",
+      "from_kind": "http_endpoint_call",
+      "from_file": "client/api.js",
+      "kind": "UNRESOLVED_FETCH",
+      "to_name": "http:GET:/{BASE}/things",
+      "to_kind": "http_endpoint_call",
+      "to_file": "client/api.js",
+      "must_exist": false,
+      "note": "The engine's else branch. A definition for this call DOES exist in the tree; declaring it unresolved is the #6450 symptom."
+    },
+    {
+      "from_name": "http:POST:/{BASE}/things",
+      "from_kind": "http_endpoint_call",
+      "from_file": "client/api.js",
+      "kind": "UNRESOLVED_FETCH",
+      "to_name": "http:POST:/{BASE}/things",
+      "to_kind": "http_endpoint_call",
+      "to_file": "client/api.js",
+      "must_exist": false
+    },
+    {
+      "from_name": "http:GET:/{API_ORIGIN}/health",
+      "from_kind": "http_endpoint_call",
+      "from_file": "client/api.js",
+      "kind": "UNRESOLVED_FETCH",
+      "to_name": "http:GET:/{API_ORIGIN}/health",
+      "to_kind": "http_endpoint_call",
+      "to_file": "client/api.js",
+      "must_exist": false
+    },
+    {
+      "from_name": "http:GET:/{BASE}/things",
+      "from_kind": "http_endpoint_call",
+      "from_file": "client/api.js",
+      "kind": "FETCHES",
+      "to_name": "http:POST:/api/things",
+      "to_kind": "http_endpoint_definition",
+      "to_file": "server/app.js",
+      "must_exist": false,
+      "note": "Negative control: the fold must not make the matcher verb-blind."
+    }
+  ]
+}

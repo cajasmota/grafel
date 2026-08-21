@@ -411,7 +411,22 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 	// `Route:` + untagged-language Dynamic hatch classifies such stubs as
 	// framework-mediated runtime dispatch, which is excluded from the
 	// resolver-bug rate. See spring_dynamic_hatch_6429_test.go.
-	const wantFixtures = 25
+	//
+	// 26 since #6450 added express-baseurl-mini — the first fixture that holds
+	// BOTH an http_endpoint_definition and an http_endpoint_call, and the first
+	// with a FETCHES row in any expected.json at all. Until it existed the
+	// per-repo call→definition matcher could resolve nothing and no fixture
+	// would notice: a fetch of the template literal `${BASE}/things` against a
+	// handler in the same tree was written to graph.json as UNRESOLVED_FETCH,
+	// because the substrate base-URL fold ran only in `grafel group-link`, a
+	// later process phase the index-time matcher never met.
+	//
+	// express-baseurl-mini and python-fastapi-mini were built in parallel off
+	// the same 24-fixture base, so each bumped this constant to 25 on its own
+	// branch and the two collided on rebase. 26 is that reconciliation, taken
+	// from the directory count on disk rather than by adding one to either
+	// branch's number.
+	const wantFixtures = 26
 
 	dirs := fixtureDirs(t)
 	if len(dirs) != wantFixtures {

@@ -41,6 +41,12 @@
       "relationship_found": 0,
       "relationship_expected": 0
     },
+    "express-baseurl-mini": {
+      "entity_found": 8,
+      "entity_expected": 8,
+      "relationship_found": 5,
+      "relationship_expected": 5
+    },
     "go-chi-mini": {
       "entity_found": 20,
       "entity_expected": 20,
