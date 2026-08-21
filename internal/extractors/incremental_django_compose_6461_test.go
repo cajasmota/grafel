@@ -714,3 +714,175 @@ func TestRecomposeDjangoURLConf_UnknownDRFCoverageAlsoBlocksThePrune(t *testing.
 		}
 	}
 }
+
+// dcTwoRouterRepo lays down a monorepo where TWO apps register DRF routers
+// under two different mounts. It is the fixture the changed-files scoping of
+// drfUnknownComposedPaths is actually observable on: with only ONE app's
+// urls.py in the changed set, the OTHER app's registration must keep composing.
+//
+// dcScopeRepo cannot see that axis — it has exactly one registering file and
+// that file is always in the changed set, so "strip the changed files" and
+// "strip every file" are byte-identical there.
+func dcTwoRouterRepo(t *testing.T) (absRepo string, allFiles []string) {
+	t.Helper()
+	absRepo = t.TempDir()
+	viewset := func(name string) string {
+		return "from rest_framework import routers, viewsets\n\n\n" +
+			"class " + name + "ViewSet(viewsets.ModelViewSet):\n    queryset = []\n\n\n" +
+			"router = routers.DefaultRouter()\n"
+	}
+	files := map[string]string{
+		"mpproj/urls.py": "from django.urls import include, path\n\n" +
+			"urlpatterns = [\n" +
+			"    path(\"api/\", include(\"apiapp.urls\")),\n" +
+			"    path(\"other/\", include(\"otherapp.urls\")),\n" +
+			"]\n",
+		"apiapp/urls.py": viewset("Gadget") +
+			"router.register(r\"gadgets\", GadgetViewSet)\n\n" +
+			"urlpatterns = router.urls\n",
+		"otherapp/urls.py": viewset("Widget") +
+			"router.register(r\"widgets\", WidgetViewSet)\n\n" +
+			"urlpatterns = router.urls\n",
+	}
+	for rel, body := range files {
+		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+		allFiles = append(allFiles, rel)
+	}
+	sort.Strings(allFiles)
+	return absRepo, allFiles
+}
+
+// TestDRFUnknownComposedPaths_StripsOnlyTheChangedFiles pins the CHANGED-FILES
+// scoping of the differential counterfactual (#6528 round-4 mutant P1).
+//
+// The counterfactual composition is run with `router.register(...)` removed
+// from the CHANGED files only. Drop the `!registering[relPath] ||` guard in
+// strippedReader and it is removed from EVERY file instead: `survives`
+// collapses to the routes no router produced, every DRF-composed path in the
+// repo falls into `unknown`, and the pass abstains from pruning composed paths
+// whose DRF coverage was never in question. Abstaining too much is exactly how
+// the #6461 ghost is left in place, which is the defect this pass exists to
+// remove.
+//
+// Both the doc comment and the commit message state the scoping; before this
+// test nothing observed it, and the mutant was measured SURVIVING both
+// ./internal/extractors/ and the cmd/grafel Django arc.
+func TestDRFUnknownComposedPaths_StripsOnlyTheChangedFiles(t *testing.T) {
+	absRepo, allFiles := dcTwoRouterRepo(t)
+	reader := dcDiskReader(absRepo, allFiles)
+
+	fresh := engine.ApplyDjangoNestedURLConf(allFiles, reader)
+	var composed []string
+	for i := range fresh {
+		if p := composedRecordPath(&fresh[i]); p != "" {
+			composed = append(composed, p)
+		}
+	}
+	sort.Strings(composed)
+	// Guard the fixture: without BOTH router-composed paths the assertions
+	// below would hold vacuously.
+	if len(composed) != 2 || composed[0] != "/api/gadgets" || composed[1] != "/other/widgets" {
+		t.Fatalf("#6528 fixture: expected the tree to compose exactly "+
+			"[/api/gadgets /other/widgets], got %v — the scoping assertions below would prove "+
+			"nothing otherwise", composed)
+	}
+
+	// Only apiapp/urls.py changed. otherapp/urls.py is untouched, so its
+	// drf_router_expanded entities were never pruned and its coverage is
+	// perfectly observable.
+	unknown := drfUnknownComposedPaths(allFiles, []string{"apiapp/urls.py"}, fresh, reader)
+
+	if !unknown["/api/gadgets"] {
+		t.Errorf("#6528: /api/gadgets is composed from the registration in the CHANGED "+
+			"apiapp/urls.py, so its coverage is unknown this tick and it must be in the "+
+			"abstention set. Got %v", unknown)
+	}
+	if unknown["/other/widgets"] {
+		t.Errorf("#6528: /other/widgets is composed from a registration in otherapp/urls.py, "+
+			"which did NOT change — its drf_router_expanded coverage was never pruned and is not "+
+			"in question. The counterfactual must strip router.register() from the CHANGED files "+
+			"only; stripping it repo-wide marks every DRF-composed path unknown and suppresses "+
+			"the prune that removes the #6461 ghost. Got %v", unknown)
+	}
+	if len(unknown) != 1 {
+		t.Errorf("#6528: expected exactly the changed app's 1 composed path, got %d: %v",
+			len(unknown), unknown)
+	}
+
+	// Symmetric control: change the OTHER app instead and the abstention moves
+	// with it, so the assertion above is about scoping and not about which
+	// mount happens to sort first.
+	flipped := drfUnknownComposedPaths(allFiles, []string{"otherapp/urls.py"}, fresh, reader)
+	if !flipped["/other/widgets"] || flipped["/api/gadgets"] || len(flipped) != 1 {
+		t.Errorf("#6528: with only otherapp/urls.py changed the abstention set must be exactly "+
+			"{/other/widgets}; got %v", flipped)
+	}
+}
+
+// TestRecomposeDjangoURLConf_UnchangedRouterAppStillReconciles is the same
+// mutant seen through the whole pass rather than at the helper's seam.
+//
+// A ghost under the UNCHANGED router app must still be pruned, and that app's
+// live composed route must still be added. Under the repo-wide strip both are
+// suppressed: the route is neither re-derived nor its ghost removed, which is
+// #6461 verbatim on an app the edit never touched.
+func TestRecomposeDjangoURLConf_UnchangedRouterAppStillReconciles(t *testing.T) {
+	absRepo, allFiles := dcTwoRouterRepo(t)
+
+	// The graph's copy of /other/widgets, attributed to a different file from
+	// the one this pass's recomputation lands it on — the shape #2678's handler
+	// re-attribution leaves behind. Different SourceFile, therefore a different
+	// graph.EntityID, therefore absent from freshIDs and stale.
+	ghost := dcEntity(dcEndpointKind, "http:ANY:/other/widgets", "otherapp/views.py",
+		map[string]string{
+			"pattern_type": composedNestedPatternType,
+			"path":         "/other/widgets",
+			"verb":         "ANY",
+			"framework":    "django",
+		})
+	doc := &graph.Document{Repo: dcRepoTag, Entities: []graph.Entity{ghost}}
+
+	res := recomposeDjangoURLConf(absRepo, allFiles,
+		[]string{"apiapp/urls.py"}, doc, nil, dcSilentLogger())
+
+	if !res.ran {
+		t.Fatalf("#6528: the pass declined to run; allFiles=%v", allFiles)
+	}
+	if !res.removedIDs[ghost.ID] {
+		t.Errorf("#6528: the stale composed endpoint %s|%s@%s was NOT pruned. It belongs to "+
+			"otherapp, whose urls.py did not change, so its DRF coverage is observable and the "+
+			"abstention must not cover it. Stripping router.register() repo-wide in the "+
+			"counterfactual marks /other/widgets unknown and leaves the #6461 ghost in place. "+
+			"removedIDs=%v", ghost.Kind, ghost.Name, ghost.SourceFile, res.removedIDs)
+	}
+	sawOtherWidgets := false
+	for _, e := range res.added {
+		if p, _ := e.PropLookup("path"); p == "/other/widgets" {
+			sawOtherWidgets = true
+		}
+	}
+	if !sawOtherWidgets {
+		var got []string
+		for _, e := range res.added {
+			p, _ := e.PropLookup("path")
+			got = append(got, p)
+		}
+		t.Errorf("#6528: /other/widgets was not re-composed. otherapp/urls.py did not change, so "+
+			"nothing about apiapp's registration may suppress its add. added=%v", got)
+	}
+	// The abstention must still hold where it IS warranted, or this test would
+	// pass against a fix that simply deleted the feature.
+	for _, e := range res.added {
+		if p, _ := e.PropLookup("path"); p == "/api/gadgets" {
+			t.Errorf("#6528: /api/gadgets was ADDED even though apiapp/urls.py changed this tick " +
+				"and its drf_router_expanded coverage was pruned; the abstention must still apply " +
+				"to the registering app's own routes")
+		}
+	}
+}
