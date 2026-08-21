@@ -111,7 +111,7 @@
     { "from_name": "health_check", "from_kind": "SCOPE.Operation", "from_file": "users/views.py",
       "kind": "IMPLEMENTS", "to_name": "http:ANY:/users/health", "to_kind": "http_endpoint_definition", "to_file": "users/views.py",
       "must_exist": true,
-      "note": "Issue #527 — FBV view function bound to its http_endpoint via source_handler (urlconf_nested_include IMPLEMENTS edge). #6471/#6441: this row used to name to_kind 'http_endpoint', the LEGACY kind http_endpoint_resolve.go rewrites in place before the resolve pass runs; diff.go keys byKindName on an exact kind\\x00name string, so the row could never match any graph and sat green only because it was nice_to_have. Now must_exist against the kind the pipeline actually lands." }
+      "note": "Issue #527 — FBV view function bound to its http_endpoint via source_handler (urlconf_nested_include IMPLEMENTS edge). #6471/#6441: this row used to name to_kind 'http_endpoint', the LEGACY kind http_endpoint_resolve.go rewrites in place before the resolve pass runs; diff.go keys byKindName on an exact kind\\x00name string, so the row could never match any graph and sat green only because it was nice_to_have. Now must_exist against the kind the pipeline actually lands. `to_file` is a PREFERENCE, not a constraint: diff.go tries byKindNameFile first and falls back to byKindName, so the row still matches an endpoint landed under a different file — the claim is true but ungraded, and mutating it does not move recall." }
   ],
   "forbidden_relationships": [
     { "from_name": "UserListView.get", "from_kind": "SCOPE.Operation", "from_file": "users/views.py",

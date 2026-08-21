@@ -988,13 +988,28 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// cross-file emitters (emitFile / emitResource) do; cross-file
 		// attribution is the resolve pass's job, and it does bind, via
 		// resolverKindEquivalents Controller→View plus the #753 global fallback.
-		// Unconditional: of the three shapes this synthesizer emits, only the
-		// `Controller` one ever appends a bridge — synthesisHandlerStructuralRef
-		// rejects refKind "Route" and refName "" — so a `refKind == "Controller"`
-		// guard here would be an unkillable branch, and dropTrailing… is already
-		// surgical (it matches on pattern_type + path at the tail).
+		// No `refKind == "Controller"` guard: of the three shapes this
+		// synthesizer emits, only that one ever appends a bridge —
+		// synthesisHandlerStructuralRef rejects refKind "Route" and refName ""
+		// (pinned by TestSynthesisHandlerStructuralRef_RejectsRoute) — so such a
+		// guard would be an unkillable branch, and dropTrailing… is surgical: it
+		// matches on pattern_type + path at the tail (pinned by
+		// TestDropTrailingSynthesisTimeBridge_IsSurgical).
+		//
+		// #6484 — the `lastEndpointIdx < 0` guard is NOT optional, and this is
+		// where the parity with emitFile / emitResource actually lies: both of
+		// those `return` on it BEFORE retracting. emit() sets lastEndpointIdx to
+		// -1 whenever it produced nothing — and the commonest way it produces
+		// nothing here is the side-scoped dedup, i.e. an EARLIER producer
+		// synthesizer in this same file already claimed (ANY, path) and left its
+		// OWN legitimate bridge at the tail. Retracting unconditionally deletes
+		// that other synthesizer's edge, re-opening the #753 dedup-ordering
+		// hazard documented above in the bridge dimension.
 		emitDjangoComposed := func(method, canonicalPath, framework, refKind, refName string) {
 			emit(method, canonicalPath, framework, refKind, refName)
+			if lastEndpointIdx < 0 {
+				return
+			}
 			relationships = dropTrailingSynthesisTimeBridge(relationships, canonicalPath)
 		}
 		synthesizeDjangoFromComposed(entities, path, emitDjangoComposed)

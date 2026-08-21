@@ -286,3 +286,295 @@ func TestDjango6471_NoRouteSelfImplementsEdge(t *testing.T) {
 			stats.HandlerResolved, stats.HandlerDropped, stats.NoHandlerProp)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #6484 round 2 — the retraction's own guards
+// ---------------------------------------------------------------------------
+
+// django6484DualCherryPy is one Python file that is BOTH a CherryPy app and a
+// DRF urls.py. CherryPy's `@cherrypy.expose def users` claims (ANY, /users)
+// first and gets a legitimate same-file bridge; the DRF router then composes
+// the SAME (ANY, /users) id, so makeEmit's side-scoped dedup makes the Django
+// emit a NO-OP. Contrived as a single file, but it is the minimal witness for
+// "an earlier producer already claimed this id" — which on the corpus happens
+// across any Python file whose routes two synthesizers both recognise.
+const django6484DualCherryPy = `import cherrypy
+
+from rest_framework import routers
+from django.urls import path, include
+
+from api.views import UserViewSet
+
+
+class Root:
+    @cherrypy.expose
+    def users(self):
+        return "ok"
+
+
+router = routers.DefaultRouter()
+router.register(r'users', UserViewSet)
+
+
+urlpatterns = [
+    path('', include(router.urls)),
+]
+`
+
+// django6484CherryPyOtherPath pairs a CherryPy handler on ONE path with a DRF
+// registration on ANOTHER, in the attribute (`views.X`) form so the Django
+// synthesizer emits the historic ("Route", raw) shape — which appends no
+// bridge of its own. The retraction therefore runs with the PREVIOUS route's
+// bridge sitting at the tail.
+const django6484CherryPyOtherPath = `import cherrypy
+
+from rest_framework import routers
+from django.urls import path, include
+
+from api import views
+
+
+class Root:
+    @cherrypy.expose
+    def health(self):
+        return "ok"
+
+
+router = routers.DefaultRouter()
+router.register(r'users', views.UserViewSet)
+
+
+urlpatterns = [
+    path('', include(router.urls)),
+]
+`
+
+// django6484FlaskTwoVerbs gives two Flask routes on the SAME path under
+// DIFFERENT verbs — two bridges whose `path` property is identical — before a
+// DRF registration on that path under verb ANY. The Django retraction must
+// remove exactly the ONE bridge its own emit() just appended; a second
+// retraction would eat `POST /users`'s.
+const django6484FlaskTwoVerbs = `from flask import Flask
+
+from rest_framework import routers
+from django.urls import path, include
+
+from api.views import UserViewSet
+
+app = Flask(__name__)
+
+
+@app.route('/users', methods=['GET'])
+def list_users():
+    return ""
+
+
+@app.route('/users', methods=['POST'])
+def create_user():
+    return ""
+
+
+router = routers.DefaultRouter()
+router.register(r'users', UserViewSet)
+
+
+urlpatterns = [
+    path('', include(router.urls)),
+]
+`
+
+// synthesisBridges returns every synthesis-time bridge edge as "verb path"
+// keyed on the edge's FromID, for order-independent assertions.
+func synthesisBridges(rels []types.RelationshipRecord) map[string]string {
+	out := map[string]string{}
+	for _, r := range rels {
+		if r.Kind != implementsEdgeKind ||
+			r.Properties.Get("pattern_type") != "http_endpoint_synthesis_time_bridge" {
+			continue
+		}
+		out[r.FromID] = r.Properties.Get("verb") + " " + r.Properties.Get("path")
+	}
+	return out
+}
+
+// TestDjango6484_DedupNoOpKeepsEarlierProducersBridge is the regression probe
+// for the guard emitDjangoComposed was missing. emitFile / emitResource — the
+// emitters this wrapper copies — both `return` on lastEndpointIdx < 0 BEFORE
+// retracting, precisely so a dedup no-op cannot retract someone else's edge.
+// Without that guard the Django pass silently deletes the bridge of whichever
+// producer claimed the (ANY, path) id first, re-opening the #753 dedup-ordering
+// hazard in the bridge dimension.
+func TestDjango6484_DedupNoOpKeepsEarlierProducersBridge(t *testing.T) {
+	_, rels := detectInline(t, "python", django6471Path, django6484DualCherryPy)
+
+	bridges := synthesisBridges(rels)
+	var found bool
+	for from, vp := range bridges {
+		if vp == "ANY /users" && strings.Contains(from, "users") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("#6484: CherryPy's own bridge for ANY /users was retracted by the Django pass, whose emit() was a dedup NO-OP; bridges=%v", bridges)
+	}
+}
+
+// TestDjango6484_RetractionSparesOtherPathsBridge kills the widening mutant that
+// drops `path == canonicalPath` from dropTrailingSynthesisTimeBridge. The Django
+// ("Route", raw) shape appends no bridge, so the retraction sees the PREVIOUS
+// route's bridge at the tail — a different path, which must survive.
+func TestDjango6484_RetractionSparesOtherPathsBridge(t *testing.T) {
+	_, rels := detectInline(t, "python", django6471Path, django6484CherryPyOtherPath)
+
+	bridges := synthesisBridges(rels)
+	var found bool
+	for _, vp := range bridges {
+		if vp == "ANY /health" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("#6484: the Django retraction removed the trailing bridge for ANY /health, a DIFFERENT path than the route it was retracting; bridges=%v", bridges)
+	}
+}
+
+// TestDjango6484_RetractionRemovesOnlyItsOwnBridge kills the "call
+// dropTrailing... twice" mutant. Two Flask routes on /users (GET, POST) leave
+// two bridges whose `path` property is identical, so the path guard alone does
+// not stop a second retraction — only doing it once does.
+func TestDjango6484_RetractionRemovesOnlyItsOwnBridge(t *testing.T) {
+	_, rels := detectInline(t, "python", django6471Path, django6484FlaskTwoVerbs)
+
+	bridges := synthesisBridges(rels)
+	got := map[string]bool{}
+	for _, vp := range bridges {
+		got[vp] = true
+	}
+	for _, want := range []string{"GET /users", "POST /users"} {
+		if !got[want] {
+			t.Errorf("#6484: Flask's bridge for %s was retracted by the Django pass, which may only retract the ONE bridge its own emit() appended; bridges=%v", want, bridges)
+		}
+	}
+	if got["ANY /users"] {
+		t.Errorf("#6484: the Django cross-file bridge for ANY /users was NOT retracted; bridges=%v", bridges)
+	}
+}
+
+// TestDropTrailingSynthesisTimeBridge_IsSurgical pins both halves of the
+// "matches on pattern_type + path at the tail" claim the retraction rests on.
+func TestDropTrailingSynthesisTimeBridge_IsSurgical(t *testing.T) {
+	bridge := func(patternType, path string) types.RelationshipRecord {
+		return types.RelationshipRecord{
+			FromID: "scope:operation:method:python:api/urls.py:h",
+			ToID:   httpEndpointDefinitionKind + ":http:ANY:" + path,
+			Kind:   implementsEdgeKind,
+			Properties: types.Props{
+				{K: "path", V: path},
+				{K: "pattern_type", V: patternType},
+			},
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		tail types.RelationshipRecord
+		drop bool
+	}{
+		{"matching bridge", bridge("http_endpoint_synthesis_time_bridge", "/users"), true},
+		{"other path", bridge("http_endpoint_synthesis_time_bridge", "/orders"), false},
+		{"other pattern_type", bridge("http_endpoint_handler_resolution", "/users"), false},
+		{"other edge kind", func() types.RelationshipRecord {
+			r := bridge("http_endpoint_synthesis_time_bridge", "/users")
+			r.Kind = "CALLS"
+			return r
+		}(), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keep := bridge("http_endpoint_synthesis_time_bridge", "/keep")
+			in := []types.RelationshipRecord{keep, tc.tail}
+			out := dropTrailingSynthesisTimeBridge(in, "/users")
+			wantLen := 2
+			if tc.drop {
+				wantLen = 1
+			}
+			if len(out) != wantLen {
+				t.Fatalf("dropTrailingSynthesisTimeBridge(%s) len = %d, want %d", tc.name, len(out), wantLen)
+			}
+			if out[0].Properties.Get("path") != "/keep" {
+				t.Errorf("dropTrailingSynthesisTimeBridge ate a non-trailing edge: %v", out[0].Properties)
+			}
+		})
+	}
+}
+
+// TestSynthesisHandlerStructuralRef_RejectsRoute pins the premise the Django
+// retraction is justified on: of the three shapes synthesizeDjangoFromComposed
+// emits, only ("Controller", <ViewSet>) ever appends a bridge, because
+// synthesisHandlerStructuralRef rejects refKind "Route" (the Spring/Django
+// path placeholder) and an empty refName outright. If "Route" were accepted,
+// the historic ("Route", <own path>) shape would start minting same-file
+// bridges to a symbol that is a URL, not a method.
+func TestSynthesisHandlerStructuralRef_RejectsRoute(t *testing.T) {
+	const file = "api/urls.py"
+	for _, tc := range []struct {
+		name, refKind, refName string
+		want                   bool // want a non-empty ref
+	}{
+		{"Route placeholder", "Route", "/api/users", false},
+		{"Route with empty name", "Route", "", false},
+		{"empty refName", "Controller", "", false},
+		{"dotted qualified name", "Controller", "views.UserViewSet", false},
+		{"Controller", "Controller", "UserViewSet", true},
+		{"View", "View", "UserViewSet", true},
+		{"SCOPE.Operation", "SCOPE.Operation", "list_users", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := synthesisHandlerStructuralRef("python", file, tc.refKind, tc.refName)
+			if (got != "") != tc.want {
+				t.Errorf("synthesisHandlerStructuralRef(python, %s, %q, %q) = %q, want non-empty=%v",
+					file, tc.refKind, tc.refName, got, tc.want)
+			}
+		})
+	}
+}
+
+// django6484NestedRouter mounts a DRF router under a PARAMETERISED prefix, so
+// the composed ast_driven Route's canonical path already carries a `{...}`
+// placeholder (`/orgs/{org_id}/items`) by the time the #703 detail-route
+// section sees it. This is the only shape that reaches that guard: a plain
+// `path('items/<int:pk>/', ...)` lands as a yaml_driven Route and is dropped by
+// the ast_driven gate at the top of the loop, far above it.
+const django6484NestedRouter = `from django.urls import path, include
+from rest_framework import routers
+
+from api.views import ItemViewSet
+
+
+router = routers.DefaultRouter()
+router.register(r'items', ItemViewSet)
+
+
+urlpatterns = [
+    path('orgs/<int:org_id>/', include(router.urls)),
+]
+`
+
+// TestDjango6484_PlaceholderPathSkipsDetailSynthesis pins #703's
+// `strings.Contains(canonical, "{")` guard, which no test reached
+// (TestDjango6471_DetailRouteStaysHandlerless exercises the guard's FALSE arm
+// only). This is a CHARACTERIZATION pin, not an endorsement: for a router
+// nested under a parameterised prefix DRF does still generate a detail route,
+// so #703's stated rationale ("those routes are path()-based and already encode
+// their parameter") does not actually hold for this shape. Whether the guard
+// should narrow to path()-composed routes is its own measured change; until
+// then this locks the behaviour so any such change is deliberate rather than
+// an accident of a passing suite.
+func TestDjango6484_PlaceholderPathSkipsDetailSynthesis(t *testing.T) {
+	ents, _ := detectInline(t, "python", django6471Path, django6484NestedRouter)
+
+	if ep := endpointByVerbPathAnyKind(ents, "ANY", "/orgs/{org_id}/items"); ep == nil {
+		t.Fatalf("#6484: nested-router list endpoint ANY /orgs/{org_id}/items not emitted at all")
+	}
+	if ep := endpointByVerbPathAnyKind(ents, "ANY", "/orgs/{org_id}/items/{pk}"); ep != nil {
+		t.Errorf("#6484: #703 detail synthesis fired on a canonical path that already carries a {...} placeholder, producing the two-placeholder route %q", ep.Properties["path"])
+	}
+}
