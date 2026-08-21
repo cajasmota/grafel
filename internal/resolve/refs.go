@@ -5934,6 +5934,20 @@ func isWellFormedVBTypeName(s string) bool {
 // GONE: neither appears as a dotted target anywhere in the 302-file corpus,
 // so each was an unmeasured guess whose only possible effect was to excuse an
 // in-tree namespace of the same name.
+//
+// THAT REMOVAL WAS MANUAL, AND NOW IT IS NOT. This set is pinned in BOTH
+// directions by TestVBFrameworkRootNamespacesAreLoadBearing
+// (vbnet_framework_roots_6337_test.go) against a pair of checked-in fixtures,
+// the same shape vbExternalBaseTypes has had since #6327. Until #6337 round 3
+// it had no pin at all, and it is the higher-volume half of the
+// classification — a widening mutant adding `My` and `Forms` kept the entire
+// suite green. `My` is the reason that matters: it is VB.NET's
+// COMPILER-GENERATED in-tree namespace (`My.MyProject.MySettings`), so
+// admitting it converts generated in-tree code into external placeholders, and
+// because IsResolvedToID is a pure shape check it would RAISE the resolution
+// metric for doing so. Adding a root now requires a clause in
+// testdata/vbnet_framework_roots_6337.vb; the names application code owns are
+// held as explicit negatives in testdata/vbnet_nonframework_roots_6337.vb.
 var vbFrameworkRootNamespaces = map[string]struct{}{
 	"System":    {},
 	"Microsoft": {},

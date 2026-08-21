@@ -3,6 +3,7 @@ package external
 import (
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
@@ -227,6 +228,26 @@ func TestVBNetHierarchyExternalSynthesis_6337(t *testing.T) {
 			// Declining hands the target to the generic dotted-root fallback,
 			// which returns ext:System — a resolved node, so the ambiguity
 			// leaves the bug-edge count and the guard achieves nothing.
+			//
+			// This case is also what kills review mutant W6 ("skip gate 3
+			// whenever typePart is dotted"), and its scope is worth stating
+			// exactly, because the mutant survived until round 2 added it.
+			// WHAT IT PINS is gate 3's contract: the lookup is on the whole
+			// typePart, whatever produced the name. WHAT IT DOES NOT CLAIM is
+			// that a VB.NET source file can reach it — it cannot. The vbnet
+			// extractor stamps the enclosing namespace as a PROPERTY
+			// (`vbnet_namespace`, extractors/vbnet/extractor.go:151,201), never
+			// as part of Entity.Name, so an in-tree `Namespace Windows` /
+			// `Class Foo` is indexed as `Foo` and inTreeNames never holds
+			// `Windows.Foo`. The dotted arm of gate 3 is therefore a no-op for
+			// anything the vbnet extractor emits, and the residual it does not
+			// cover is documented as UNGUARDED at vbFrameworkRootNamespaces in
+			// resolve/refs.go rather than claimed as covered.
+			//
+			// It is kept, not deleted, because the set is language-AGNOSTIC by
+			// design (see buildInTreeNameSet) and dropping dotted names from it
+			// would mean ADDING a special case that makes the guard weaker on a
+			// polyglot document — the mutation itself.
 			name:    "masked dotted target does not fall through to ext:System",
 			relKind: "EXTENDS",
 			toID:    "System.Windows.Forms.Form",
@@ -428,5 +449,49 @@ func TestVBNetHierarchyArmStealsNothingElseFromStdlib_6337(t *testing.T) {
 			"for vbnet hierarchy edges. Add a case pinning its canon and subtype in\n"+
 			"TestVBNetHierarchyExternalSynthesis_6337, and a both-directions case like\n"+
 			"TestVBNetHierarchyExceptionDoesNotStealStdlibBareName_6337, then update this list.", both, want)
+	}
+}
+
+// TestVBNetHierarchyRelKindGateIsHierarchyOnly_6337 pins the relKind gate in the
+// WIDENING direction (#6337 round 3, review mutant W3).
+//
+// The existing "CALLS is not a hierarchy edge" case pins one kind on one name,
+// and a mutant that widened the gate to `REFERENCES` / `USES` survived the whole
+// suite. That is the expensive direction to get wrong: EXTENDS + IMPLEMENTS are
+// 498 edges on the 302-file corpus, while REFERENCES / USES are the bulk of the
+// graph and are ORDINARY USE SITES. An `Inherits Form` says the type is a base
+// class; a `USES Form` says only that the name was mentioned, and half the
+// reasons a mention stays unresolved are in-tree resolver misses. Synthesising
+// an `ext:dotnet:` node for those would move a large population out of the
+// bug-edge count without resolving any of it — the arm's whole justification is
+// that a hierarchy target has nowhere else to go, and a use site does.
+//
+// The gate is asserted on the `dotnet:` PREFIX, not on IsResolvedToID: a
+// non-hierarchy edge may legitimately be claimed by some other arm (a dotted
+// name still reaches the generic dotted-root fallback and comes back
+// `ext:System`), and pinning "unresolved" would be pinning the wrong property
+// and would break the moment an unrelated arm changed.
+func TestVBNetHierarchyRelKindGateIsHierarchyOnly_6337(t *testing.T) {
+	for _, relKind := range []string{"REFERENCES", "USES", "CALLS", "IMPORTS", "CONTAINS", "DEPENDS_ON", ""} {
+		for _, toID := range []string{"Form", "IDisposable", "System.Windows.Forms.Form", "IDisposable.Dispose"} {
+			doc := vbDoc(relKind, toID)
+			Synthesize(doc)
+			if got := doc.Relationships[0].ToID; strings.HasPrefix(got, "ext:"+vbnetExtNamespace) {
+				t.Errorf("relKind=%q toID=%q: ToID = %q — the #6337 arm is for EXTENDS / "+
+					"IMPLEMENTS only. A use site is not a hierarchy target: it has other "+
+					"arms available and its unresolved half is dominated by in-tree "+
+					"resolver misses, which this arm would hide", relKind, toID, got)
+			}
+		}
+	}
+	// The other direction, so an always-decline mutant cannot satisfy the loop
+	// above: the two kinds the arm IS for still reach it.
+	for _, relKind := range []string{"EXTENDS", "IMPLEMENTS"} {
+		doc := vbDoc(relKind, "Form")
+		Synthesize(doc)
+		if got := doc.Relationships[0].ToID; got != "ext:dotnet:Form" {
+			t.Errorf("relKind=%q: ToID = %q, want ext:dotnet:Form — narrowing the gate "+
+				"past EXTENDS / IMPLEMENTS removes the arm entirely", relKind, got)
+		}
 	}
 }

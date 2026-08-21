@@ -160,6 +160,26 @@ const vbnetExtNamespace = "dotnet:"
 // to contain a Go type named `List` therefore keeps its `Inherits List` edge
 // dangling. That is the safe direction: a visible unresolved edge is a report,
 // a wrongly-synthesised one is a silence.
+//
+// THE EXCLUSION IS ON Kind, NOT ON SourceFile, and the difference is deliberate
+// even though it is unobservable today. A review mutant (#6473, W3 in that
+// table's numbering, W2 in the follow-up) added `|| e.SourceFile == ""` here
+// and survived the suite — correctly, because it is an EQUIVALENT mutation on
+// every document this pipeline can build: types.EntityRecord.Validate
+// (types/entity.go:68) makes SourceFile required for a real entity, and the
+// only entities in a Document that carry an empty one are the placeholders
+// minted at synth.go:447 and :600, both already excluded by Kind. The two
+// predicates coincide, so no test can tell them apart without hand-building a
+// Document the indexer cannot produce — and a test that can only fail on an
+// impossible input is decoration, so none was written (AGENTS.md).
+//
+// Kind is nonetheless the right key rather than the accidentally-equivalent
+// one. SourceFile is already a poor proxy for "synthesised": SCOPE.Package,
+// SCOPE.ExceptionType and SCOPE.Template all carry a CONSTANT SYNTHETIC
+// SourceFile (types/kinds.go) precisely so their IDs collapse across files, so
+// a SourceFile test would misclassify in both directions the moment such an
+// entity carried a colliding name. And on a malformed record the safe answer is
+// to treat it as in-tree and keep the edge visible, which is what Kind does.
 func buildInTreeNameSet(doc *graph.Document) map[string]bool {
 	names := make(map[string]bool, len(doc.Entities))
 	for i := range doc.Entities {
