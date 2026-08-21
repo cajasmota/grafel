@@ -29,12 +29,51 @@ Copyright: none asserted; these two files are part of this repository.
 | `service` → `rpc` CONTAINS, on a colliding and a non-colliding name | #6422 (that the fix did not move the problem into the service arm) | 2 expected rows + forbidden **F2** |
 | `rpc` → request/response `message` REFERENCES | #6359 / #6419 | 3 expected rows |
 | `message` → field-type REFERENCES, same file | #6419 | 1 expected row |
-| `message` → field, `enum` → enum value CONTAINS | structural containment | 8 expected rows |
+| `message` → field, `enum` → enum value CONTAINS, **including each enum's first (zero-default) value** | structural containment | 10 expected rows |
+| `rpc` type refs are REFERENCES and nothing else — the pre-#6359 `IMPORTS` shape does not come back *alongside* the correct edge | #6359 | forbidden **F3** |
 | cross-file `message` type reference emits **no** dangling edge | #6357 | forbidden **F1** |
 
 Every one of those rows was verified load-bearing by mutating the production
 code and confirming the fixture goes red. See the issue #6453 thread for the
 mutation table.
+
+Two of those rows exist because of a *widening* mutant rather than a narrowing
+one, and the distinction is worth keeping in mind when adding rows here:
+
+- **F3** — the three `rpc → message` REFERENCES rows only catch that edge
+  *disappearing*. A `buildRPC` that emits a spurious `IMPORTS` edge to each
+  request/response type **alongside** the correct REFERENCES — a near-literal
+  return of the pre-#6359 shape — took relationships from 53 to 56 and left the
+  fixture at 100% / 100% / 0 forbidden. F3 is what makes that mutant die.
+- **`Role.ROLE_UNKNOWN` / `Status.STATUS_UNKNOWN`** — the enum rows were
+  one-value-deep. Dropping the *first* `enum_field` of every enum (the natural
+  off-by-one over `enum_body`'s children) took entities 29 → 27 with the fixture
+  still green. In proto3 the first value is the enum's mandatory zero default,
+  so that is the one value silently losing which matters most.
+
+## One shape that is present, unasserted, and deliberately NOT pinned here
+
+`internal/extractors/cross/endpoint` emits two dangling `SERVES` edges into this
+fixture's graph:
+
+    UNARY /UserService/User       --SERVES--> RAW[scope:operation:user.proto#UserService.User]
+    UNARY /UserService/GetProfile --SERVES--> RAW[scope:operation:user.proto#UserService.GetProfile]
+
+They are the same #6298/#6357 dangling class F1 polices, and they really are the
+only forbidden-looking shape in this graph that no row covers. They are still not
+pinned, for one reason: **the edges exist today.** A forbidden row spelling them
+would hit on the very first run and leave the fixture permanently red — it would
+be a bug report written as a test, not a regression guard, and this fixture's
+whole discipline is that no row is added that has not been *seen* to fail on a
+mutant and pass on clean code. Nor can they be pinned as *expected* rows: the
+`to` side resolves to nothing, so an expected row would bless the dangling
+target as the correct answer, which is exactly what #6441 warns against.
+
+The right home for them is a fix in the gRPC endpoint cross-extractor (the
+handler qname `UserService.User` is built in the operation address space while
+the proto rpc entity is addressed as bare `User` — the same collision this
+fixture exists for). When that lands, add the two `SERVES` rows as **expected**,
+with `to_name`/`to_kind` naming the rpc entities.
 
 ## The one shape this fixture CANNOT grade — read this before adding rows for it
 
@@ -52,7 +91,7 @@ entity**. Unlike Java, where the file itself is a `SCOPE.Component` that
 so any row spelling this edge would be **unsatisfiable**, i.e. red forever and
 telling you nothing. Measured: reverting `fileContainsSchemaRel` to
 `BuildOperationStructuralRef` (the exact pre-#6422 defect) leaves this fixture
-at **16/16 entities, 14/14 relationships, 0 forbidden hits** — completely green.
+at **18/18 entities, 16/16 relationships, 0 forbidden hits** — completely green.
 
 So the load-bearing guard for that half remains
 `TestFileContains_MessageIsNotReparentedOntoTheRPC_6422` and its siblings in

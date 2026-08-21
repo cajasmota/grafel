@@ -24,7 +24,11 @@
     { "name": "Profile.display_name", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
     { "name": "Address.street", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true },
     { "name": "Address.city", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true },
+    { "name": "Role.ROLE_UNKNOWN", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true,
+      "note": "The FIRST value of the enum, i.e. proto3's mandatory zero default. Asserted separately from ROLE_ADMIN because an off-by-one over enum_body's children — the natural way this loop breaks — drops exactly the first value and nothing else. Mutation-verified: skipping the first enum_field in buildEnum drops this row and Status.STATUS_UNKNOWN below." },
     { "name": "Role.ROLE_ADMIN", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
+    { "name": "Status.STATUS_UNKNOWN", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true,
+      "note": "The zero default of the enum in the file with NO name collision, so the first-value arm is graded independently of the collision case." },
     { "name": "Status.STATUS_ACTIVE", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true }
   ],
 
@@ -76,8 +80,15 @@
       "must_exist": true },
 
     { "from_name": "Role", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "Role.ROLE_UNKNOWN", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true,
+      "note": "enum -> FIRST enum value. Asserting only ROLE_ADMIN left the loop in buildEnum graded one-value-deep: an off-by-one over enum_body's children drops the zero default, which in proto3 is not just 'a value' but the field's mandatory default, and the fixture stayed at 100%/100%. Mutation-verified together with the entity row above." },
+    { "from_name": "Role", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
       "kind": "CONTAINS", "to_name": "Role.ROLE_ADMIN", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
       "must_exist": true, "note": "enum -> enum value, in the file that also carries the rpc/message collision." },
+    { "from_name": "Status", "from_kind": "SCOPE.Schema", "from_file": "common.proto",
+      "kind": "CONTAINS", "to_name": "Status.STATUS_UNKNOWN", "to_kind": "SCOPE.Schema", "to_file": "common.proto",
+      "must_exist": true, "note": "enum -> FIRST enum value, in the file with no collision." },
     { "from_name": "Status", "from_kind": "SCOPE.Schema", "from_file": "common.proto",
       "kind": "CONTAINS", "to_name": "Status.STATUS_ACTIVE", "to_kind": "SCOPE.Schema", "to_file": "common.proto",
       "must_exist": true, "note": "enum -> enum value, in the file with no collision." }
@@ -88,6 +99,11 @@
       "kind": "REFERENCES", "to_bare_name": "scope:schema:message:proto:user.proto:Address",
       "must_exist": false,
       "note": "F1. Falsifiable, not decorative. `Address address = 3;` in user.proto names a message defined in common.proto. namedTypeRefs builds the ref against the DECLARING file, so the target address is user.proto:Address — a file that has no Address — and resolve/refs.go would materialise it as a phantom grey node (#6357). dropUnresolvableTypeRefs (internal/extractors/proto/proto.go:136) is the guard that drops it: deleting that call from Extract emits the edge with exactly this literal ToID and this row hits. Verified by mutation. This row does NOT bless the cross-file gap as correct — a future proto package index should make this edge resolve to common.proto's Address, at which point DELETE this row and add an expected_relationships row with to_name/to_file instead. Do not suppress the edge to keep the fixture green." },
+
+    { "from_name": "User", "from_kind": "SCOPE.Operation", "from_file": "user.proto",
+      "kind": "IMPORTS", "to_name": "User", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": false,
+      "note": "F3. The three rpc -> message REFERENCES rows above catch #6359's edge DISAPPEARING; nothing caught the pre-#6359 shape COMING BACK alongside the correct one. The guard is that buildRPC (internal/extractors/proto/proto.go) emits exactly ONE edge per request/response type and its Kind is REFERENCES — this package's only remaining IMPORTS producer is buildImportEntities, for file-level `import \"x.proto\"`. Remove that single-verb guard, i.e. have buildRPC append an IMPORTS edge to each msgType alongside the REFERENCES, and this row fires. Verified by mutation: relationships go 53 -> 56 and without this row the fixture stays 100%/100%/0 forbidden. Note the row is written as forbidden and not as an expected `user.proto -> common.proto IMPORTS` row: the file-anchored form is unwritable here for the FROM-resolution reason NOTICE.md documents at length (no from_bare_name, no per-file carrier entity)." },
 
     { "from_name": "UserService", "from_kind": "SCOPE.Service", "from_file": "user.proto",
       "kind": "CONTAINS", "to_name": "User", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
