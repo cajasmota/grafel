@@ -45,6 +45,13 @@ type missingRelationship struct {
 	ToKind       string `json:"to_kind,omitempty"`
 	FromResolved bool   `json:"from_resolved"`
 	ToResolved   bool   `json:"to_resolved"`
+	// ToBareNameIsEntity mirrors RelationshipResult.ToBareNameIsEntity
+	// (#6476). It is serialised because to_resolved is the ONE JSON key this
+	// change moves, and without this key a consumer reading to_resolved:true
+	// still concludes "both endpoints resolved, so the extractor dropped the
+	// edge" for exactly the rows proven unsatisfiable. omitempty keeps every
+	// pre-existing report byte-identical: the key appears only on flagged rows.
+	ToBareNameIsEntity bool `json:"to_bare_name_is_entity,omitempty"`
 }
 
 // ToJSON converts an in-memory Report to its persisted shape.
@@ -84,13 +91,14 @@ func (r *Report) ToJSON() *JSONReport {
 			to = rr.Expected.ToBareName
 		}
 		jr.MissingRelationships = append(jr.MissingRelationships, missingRelationship{
-			From:         rr.Expected.FromName,
-			FromKind:     rr.Expected.FromKind,
-			Kind:         rr.Expected.Kind,
-			To:           to,
-			ToKind:       rr.Expected.ToKind,
-			FromResolved: rr.FromResolved,
-			ToResolved:   rr.ToResolved,
+			From:               rr.Expected.FromName,
+			FromKind:           rr.Expected.FromKind,
+			Kind:               rr.Expected.Kind,
+			To:                 to,
+			ToKind:             rr.Expected.ToKind,
+			FromResolved:       rr.FromResolved,
+			ToResolved:         rr.ToResolved,
+			ToBareNameIsEntity: rr.ToBareNameIsEntity,
 		})
 	}
 	for _, fh := range r.ForbiddenHits {
@@ -164,20 +172,28 @@ func (r *Report) WriteHuman(w io.Writer) {
 			}
 			diag := ""
 			switch {
-			// Ahead of every "endpoint missing" arm and ahead of the
-			// extractor-blaming default: when the row itself cannot match,
-			// what the extractor did or did not emit is not the question
-			// (#6476).
-			case rr.ToBareNameIsEntity:
-				diag = fmt.Sprintf("  (root cause: FIXTURE ROW — to_bare_name %q is an extracted entity,"+
-					" so this row can only match a literal ToID and never will; use to_name + to_kind)",
-					rr.Expected.ToBareName)
 			case !rr.FromResolved && !rr.ToResolved:
 				diag = "  (root cause: NEITHER endpoint extracted)"
 			case !rr.FromResolved:
 				diag = "  (root cause: from-entity not extracted)"
 			case !rr.ToResolved:
 				diag = "  (root cause: to-entity not extracted)"
+			// LAST before the default, and deliberately BEHIND every
+			// missing-endpoint arm (#6476 round 2). The advice this arm gives
+			// — "use to_name + to_kind" — only repairs the TO side. On a row
+			// whose FROM endpoint was never extracted, following it leaves the
+			// row still missing, which is the same "points the reader at the
+			// wrong thing" defect this arm exists to remove, relocated one step
+			// over. When an endpoint is absent, that is the first thing to fix;
+			// this arm refines the "both endpoints exist" default, so it sits
+			// immediately in front of it and nowhere else.
+			//
+			// See TestBareNameRowWithUnresolvedFromReportsTheFromSide_6476.
+			case rr.ToBareNameIsEntity:
+				diag = fmt.Sprintf("  (root cause: FIXTURE ROW — to_bare_name %q is the NAME of an"+
+					" extracted entity, whose real ID is a content hash; this row can only match a"+
+					" stub edge emitted with that literal string as its ToID; use to_name + to_kind)",
+					rr.Expected.ToBareName)
 			default:
 				diag = "  (both endpoints exist; edge not emitted)"
 			}
