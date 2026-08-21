@@ -8,7 +8,8 @@
 //     → Kind="SCOPE.Component"
 //   - `inherit Base()` → EXTENDS edge, `interface IFoo with` → IMPLEMENTS edge,
 //     both embedded on the owning TYPE record (#6326)
-//   - open statements → IMPORTS edges
+//   - open statements → one SCOPE.Component placeholder per `open`, marked
+//     Subtype="import" (#6369) and carrying the IMPORTS edge
 //   - function applications → CALLS edges. Captured call forms: paren `name(`,
 //     pipe `|> name`, compose `>> name`, and space-applied `head arg`
 //     (F#'s dominant curried-application idiom). Each CALLS edge is stamped with
@@ -79,8 +80,13 @@ var (
 	)
 
 	// open statement: "open Foo" or "open Foo.Bar"
+	// open statement: "open Foo.Bar", and F# 5's "open type Foo.Bar".
+	// The optional `type` keyword must be consumed, not captured: without it
+	// `[\w.]+` matches the literal word "type" and the extractor mints an
+	// import placeholder named "type" — junk that #6369's marker now makes a
+	// *recognised* placeholder, so it is worth eating here.
 	openRE = regexp.MustCompile(
-		`(?m)^[ \t]*open\s+([\w.]+)`,
+		`(?m)^[ \t]*open\s+(?:type\s+)?([\w.]+)`,
 	)
 
 	// #6326 — a single-quoted CHAR literal holding a brace: `'{'` / `'}'`.
@@ -585,6 +591,62 @@ func collectOpenStatements(src string) []string {
 }
 
 // buildImportEntities creates SCOPE.Component stubs carrying IMPORTS edges.
+//
+// #6369 — THE `Subtype:"import"` MARKER IS LOAD-BEARING, not decoration. It is
+// the single property resolve.isImportPlaceholderKind (internal/resolve/refs.go)
+// tests to tell a per-import placeholder from a real declaration of the same
+// name. Without it BuildIndex indexed this stub in `byName` exactly like a
+// type declaration, so one `open Acme.Animal` whose LAST SEGMENT collided with
+// a real type flipped that name AMBIGUOUS globally and dropped every bare-name
+// edge to it repo-wide — including in files that imported nothing at all
+// (measured on #6369: two cross-file EXTENDS to `Animal` went unresolved after
+// an unrelated file was added, and reported ambiguous=0, i.e. silently).
+// #6427 fixed the resolver for every extractor that stamps the marker; F# was
+// not one of them, so the defect stayed live here.
+//
+// THE FULL MODULE PATH TRAVELS ON Properties["import_module"]. Name is only
+// the last segment (importDisplayName), so a specifier channel is required —
+// without one the #6156 external-module restore records the bare segment
+// `Animal` as the imported module. resolve.placeholderModuleSpecifier reads
+// `import_module` FIRST, ahead of the three legacy channels.
+//
+// THE TWO LEGACY CHANNELS ARE BOTH CONTAMINATED, and this extractor used each
+// of them in turn before landing here. Neither is a channel; both are fields
+// that already mean something else:
+//
+//	QualifiedName        also feeds resolve.BuildIndex's `byQualifiedName`,
+//	                     which Lookup/lookupWithStatus probe BEFORE every other
+//	                     tier and which never got #6427's placeholder
+//	                     precedence — first-writer-wins with a blank ambiguity
+//	                     sentinel. Measured on `module Acme.Animal` +
+//	                     `open Acme.Animal`, the IMPORTS ToID became this
+//	                     file's OWN placeholder: a fabricated intra-file
+//	                     dependency in place of the real module entity.
+//	                     (razor and vue do this and carry the same hazard.)
+//
+//	Properties["module"] is the MODULE-ROLLUP LABEL — internal/module.Derive's
+//	                     depth-capped path prefix of the source file. Both
+//	                     stampers treat a present value as authoritative:
+//	                     module.EnsureModule returns props unchanged, and
+//	                     stampModuleOnEntities skips the entity
+//	                     ("extractor-supplied label preserved"). Measured:
+//	                     placeholder "Generic" in src/Domain/Core.fs came out
+//	                     labelled module="System.Collections.Generic" where the
+//	                     path-derived label is "src/Domain".
+//
+//	                     The full rebuild hides this by ordering alone —
+//	                     cmd/grafel/index.go prunes placeholders BEFORE
+//	                     EnsureModule. The daemon's INCREMENTAL reindex, which
+//	                     is the default path (#5231), never prunes at all, so
+//	                     every distinct `open` would mint a fabricated Module
+//	                     node with CONTAINS/DEPENDS_ON edges, and would break
+//	                     stampModuleOnEntities' plain-repo label recovery
+//	                     (two distinct labels => `multiple` => fall back to
+//	                     doc.Repo) for every newly extracted entity.
+//
+// So: NOTHING an F# record carries may be a name index or a derived label.
+// The placeholder sets Name (bare segment), Subtype (the marker) and
+// import_module (the specifier) — and no QualifiedName and no "module".
 func buildImportEntities(filePath string, imports []string) []types.EntityRecord {
 	if len(imports) == 0 {
 		return nil
@@ -599,8 +661,13 @@ func buildImportEntities(filePath string, imports []string) []types.EntityRecord
 		out = append(out, types.EntityRecord{
 			Name:       importDisplayName(mod),
 			Kind:       "SCOPE.Component",
+			Subtype:    "import",
 			SourceFile: filePath,
 			Language:   "fsharp",
+			// The full module path travels on the private
+			// Properties["import_module"] key — NOT QualifiedName and
+			// NOT Properties["module"]; see the block comment above.
+			Properties: map[string]string{"import_module": mod},
 			Relationships: []types.RelationshipRecord{
 				{
 					FromID: filePath,
