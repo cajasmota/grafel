@@ -81,15 +81,16 @@ func TestGenerate_GoldenFB(t *testing.T) {
 	// Field LEAVES (Subtype == "field") are themselves class/model/schema-tail
 	// kinds (SCOPE.Schema) but are not class/model CONTAINERS — they must be
 	// excluded from the class-like count (Fix 1), or every field doubles as a
-	// "class" and the zero-fields rate is guaranteed to read 100%.
+	// "class" and the zero-fields rate is guaranteed to read 100%. The same
+	// holds for the other nonClassSubtypes (enum/const/file — #6536).
 	wantClassLike := 0
 	for i := range doc.Entities {
-		if isClassLikeKind(doc.Entities[i].Kind) && doc.Entities[i].Subtype != "field" {
+		if isClassLikeKind(doc.Entities[i].Kind) && !nonClassSubtypes[doc.Entities[i].Subtype] {
 			wantClassLike++
 		}
 	}
 	if r.FieldExtractionRate.ClassTotal != wantClassLike {
-		t.Errorf("D2: ClassTotal=%d, want %d (class/model/schema-like kinds, excluding field leaves)",
+		t.Errorf("D2: ClassTotal=%d, want %d (class/model/schema-like kinds, excluding non-container subtypes)",
 			r.FieldExtractionRate.ClassTotal, wantClassLike)
 	}
 

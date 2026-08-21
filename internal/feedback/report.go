@@ -269,12 +269,10 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			// the namespace-stripped tail (see kindTail, mirroring
 			// internal/graph/coverage.go) and include schema.
 			//
-			// A Subtype == "field" entity is itself a field LEAF, not a
-			// class/model container — classLikeKindTails includes "schema"
-			// which also matches these leaves (SCOPE.Schema/field), so they
-			// must be excluded here or every field would double as a "class"
-			// and guarantee a 100% zero-fields rate.
-			if isClassLikeKind(kind) && e.Subtype != "field" {
+			// Entities that are not field-bearing class containers are
+			// excluded from the denominator — see nonClassSubtypes for the
+			// list and the reasoning (#6536).
+			if isClassLikeKind(kind) && !nonClassSubtypes[e.Subtype] {
 				classCandidates = append(classCandidates, classCandidate{
 					id:            e.ID,
 					fieldCountRaw: e.PropGet("field_count"),
@@ -589,11 +587,50 @@ func kindTail(kind string) string {
 // class/model/field-bearing semantics for the field-extraction metric. Real
 // FB-loaded graphs use canonical kinds (SCOPE.Class, SCOPE.Schema, SCOPE.Model,
 // bare Model) — never the lowercase literals the in-memory unit fixtures used.
+// "component" is here because the entire C# family emits types under it: every
+// C#/VB.NET class, structure, module, interface and delegate is SCOPE.Component
+// (internal/extractors/vbnet/extractor.go entityKind, which follows
+// internal/extractors/csharp/csharp.go). Omitting it meant the metric had never
+// sampled a real class in any C#-family codebase — the only survivors of the
+// candidate filter were the SCOPE.Schema enums and consts, which cannot own
+// fields, so the reported rate was a guaranteed 100% rather than a measurement
+// (#6536, surfaced by #6535). Any change to this set must be checked against
+// the kinds the extractors actually emit, not against these literals.
 var classLikeKindTails = map[string]bool{
-	"class":  true,
-	"struct": true,
-	"model":  true,
-	"schema": true,
+	"class":     true,
+	"struct":    true,
+	"model":     true,
+	"schema":    true,
+	"component": true,
+}
+
+// nonClassSubtypes are the subtypes that carry a class-like KIND but are not
+// field-bearing class/model CONTAINERS, and so are excluded from the
+// field-extraction denominator (#6536).
+//
+// The decision, stated rather than left incidental: they are exempt.
+//
+//   - "field" — a field LEAF is itself the child, not a container. The tail
+//     "schema" matches these leaves too, so without this exclusion every field
+//     would double as a "class" with zero fields.
+//   - "enum" / "const" — a const is a single value and an enum's members are
+//     enum members, never fields; no extractor that emits these subtypes
+//     (vbnet, csharp, cpp, php, proto, avro, solidity) emits a Subtype "field"
+//     child under one. Counting them means every such entity is permanently a
+//     zero-field failure, which puts a floor of false failures under the
+//     metric and is exactly what produced the misleading 100% in #6535.
+//   - "file" — every extractor's file carrier is a SCOPE.Component
+//     (internal/extractor.FileEntity). It is a container, but it is not a
+//     class, and admitting "component" above would otherwise enrol one
+//     guaranteed-zero-field entity per indexed file.
+//
+// A metric whose denominator contains populations that cannot pass reports
+// noise, not coverage.
+var nonClassSubtypes = map[string]bool{
+	"field": true,
+	"enum":  true,
+	"const": true,
+	"file":  true,
 }
 
 // isClassLikeKind reports whether kind is a class/model/schema-shaped entity
