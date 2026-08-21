@@ -359,11 +359,19 @@ def serialize(doc):
     """The one authority on baseline.json's on-disk encoding (Refs #6466).
 
     `update` writes through this and `canon` re-derives through this, so the
-    gate cannot drift from the writer: there is nothing to keep in sync. Every
-    property of the file is a property of this one call — ensure_ascii=True
-    (non-ASCII stored as \\uXXXX), two-space indent with the ", " / ": "
-    separators that implies, insertion key order, no HTML escaping, and the
-    trailing newline.
+    gate cannot drift from the writer: there is nothing to keep in sync.
+
+    Encoding properties this fixes, and that `canon` therefore gates:
+    ensure_ascii=True (non-ASCII stored as \\uXXXX), two-space indent with the
+    (',', ': ') separators that implies, no HTML escaping, and the trailing
+    newline.
+
+    Key ORDER is not among them. json.dumps emits the mapping's own insertion
+    order, so when `canon` feeds it a document parsed straight back from disk,
+    the output echoes the file's existing order and any reordering passes.
+    Gating order would require comparing against the order `build()` inserts
+    keys in, which is only observable by running the builder over a fresh set
+    of reports — out of reach for a check that reads nothing but the file.
     """
     return json.dumps(doc, indent=2) + "\n"
 

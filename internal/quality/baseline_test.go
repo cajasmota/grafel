@@ -351,17 +351,27 @@ func TestKnownRegressionsHaveNoDuplicates(t *testing.T) {
 // runCanon runs `ratchet.py canon` over one file and returns its exit code plus
 // combined output.
 //
-// The check lives on the Python side deliberately. baseline.json is written by
+// What this gates: the byte-level encoding of the document — ensure_ascii's
+// \uXXXX escaping of non-ASCII, two-space indent with the (',', ': ')
+// separators that implies, no HTML escaping of < > &, Python's float repr, and
+// the trailing newline.
+//
+// What it does NOT gate: key ORDER. `canon` re-serialises `json.loads(text)`,
+// which echoes back whatever order the file already has, so an alphabetically
+// reordered baseline passes. Catching that would mean comparing against the
+// order the builder's dicts are constructed in, which is only observable by
+// running the builder — i.e. a full indexer run — and is therefore out of
+// reach for a check that reads nothing but the file. Do not read the list
+// above as including order.
+//
+// The check lives on the Python side deliberately: baseline.json is written by
 // `json.dump(doc, indent=2)` with the default ensure_ascii=True, and that call
-// is the only thing that reproduces every property of the file at once: the
-// \uXXXX escaping of non-ASCII, the *insertion* key order of the builder's
-// dicts (not Go's alphabetical marshal order), two-space indent with ", " and
-// ": " separators, no HTML escaping of < > &, and Python's float repr. A Go
-// re-marshal reproduces none of those without hand-rolling a second formatter,
-// which is precisely the drift this gate exists to prevent. It is *driven* from
-// Go so that it runs in the ordinary `go test ./internal/quality/...` CI leg —
-// .github/workflows/quality.yml, where the ratchet itself runs, is
-// dispatch-only and therefore gates no pull request.
+// reproduces the encoding rather than re-implementing it. A Go re-marshal would
+// have to hand-roll every item in the gated list as a second formatter, which
+// can itself drift — precisely the failure this gate exists to prevent. It is
+// *driven* from Go so that it runs in the ordinary `go test
+// ./internal/quality/...` CI leg — .github/workflows/quality.yml, where the
+// ratchet itself runs, is dispatch-only and therefore gates no pull request.
 func runCanon(t *testing.T, path string) (int, string) {
 	t.Helper()
 	out, err := exec.Command("python3", ratchetScript(t), "canon", path).CombinedOutput()
