@@ -1,0 +1,97 @@
+{
+  "fixture_name": "proto-mini",
+  "language": "protobuf",
+  "description": "Two hand-written proto3 files carrying the exact shapes the three fixed proto defects touched: service/rpc containment, message/enum/field containment, rpc request+response type REFERENCES (#6359/#6419), a same-file message field type REFERENCE, and — deliberately — an rpc and a message that COLLIDE on (kind-agnostic name, file), which is the only shape under which #6422's reparenting occurs. See NOTICE.md for what this fixture can and cannot grade; the file -> message/enum CONTAINS edge itself is NOT gradeable here and NOTICE.md says why.",
+
+  "expected_entities": [
+    { "name": "UserService", "kind": "SCOPE.Service", "source_file": "user.proto", "must_exist": true,
+      "note": "service UserService — the SCOPE.Service arm. Named entity for the service/rpc containment rows below." },
+    { "name": "User", "kind": "SCOPE.Operation", "source_file": "user.proto", "must_exist": true,
+      "note": "rpc User. Deliberately shares its bare name with `message User` in the SAME file. graph.EntityID hashes (repo, kind, name, sourceFile) and NOT Subtype, so these two entities are distinct ONLY by Kind — which is precisely the collision #6422 was about." },
+    { "name": "GetProfile", "kind": "SCOPE.Operation", "source_file": "user.proto", "must_exist": true },
+
+    { "name": "User", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true,
+      "note": "message User — the collision partner of the rpc above. to_name + to_kind, never to_bare_name (#6441): this entity genuinely exists, so a bare name would pin a resolution FAILURE as the expected answer." },
+    { "name": "Profile", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
+    { "name": "Role", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true, "note": "enum Role." },
+    { "name": "Address", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true },
+    { "name": "Status", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true,
+      "note": "enum Status in a file with NO name collision, so the enum arm is graded independently of the collision case." },
+
+    { "name": "User.email", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
+    { "name": "User.profile", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
+    { "name": "User.address", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
+    { "name": "Profile.display_name", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
+    { "name": "Address.street", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true },
+    { "name": "Address.city", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true },
+    { "name": "Role.ROLE_ADMIN", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
+    { "name": "Status.STATUS_ACTIVE", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true }
+  ],
+
+  "expected_relationships": [
+    { "from_name": "UserService", "from_kind": "SCOPE.Service", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "User", "to_kind": "SCOPE.Operation", "to_file": "user.proto",
+      "must_exist": true,
+      "note": "service -> rpc containment, on the COLLIDING name. This is the row that proves #6422's fix did not simply move the problem: the service arm still addresses its rpc through BuildOperationStructuralRef (buildService, proto.go), and if that arm were also switched to the schema address space this edge would bind to `message User` instead — which forbidden row F2 below pins from the other side. Mutation-verified: switching buildService's rpc ToID to messageTypeRef drops this row." },
+    { "from_name": "UserService", "from_kind": "SCOPE.Service", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "GetProfile", "to_kind": "SCOPE.Operation", "to_file": "user.proto",
+      "must_exist": true,
+      "note": "The non-colliding rpc, so the service arm is graded on both a colliding and a clean name." },
+
+    { "from_name": "User", "from_kind": "SCOPE.Operation", "from_file": "user.proto",
+      "kind": "REFERENCES", "to_name": "User", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true,
+      "note": "#6359/#6419 — rpc -> request+response message type. `rpc User(User) returns (User)` is the hardest case in the package: the rpc and the target message share a name and a file, so the edge is only expressible because buildRPC addresses the SCHEMA space (messageTypeRef) rather than the operation one, which would self-address the rpc and die to the self-loop filter. Both arms fold onto one edge with direction=request,response." },
+    { "from_name": "GetProfile", "from_kind": "SCOPE.Operation", "from_file": "user.proto",
+      "kind": "REFERENCES", "to_name": "User", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true, "note": "#6359 request arm (direction=request)." },
+    { "from_name": "GetProfile", "from_kind": "SCOPE.Operation", "from_file": "user.proto",
+      "kind": "REFERENCES", "to_name": "Profile", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true,
+      "note": "#6359 response arm (direction=response). Distinct from the request arm, which is what makes the pre-#6359 shape — one file-anchored IMPORTS edge per rpc, collapsing every rpc onto one origin — observable." },
+
+    { "from_name": "User", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "REFERENCES", "to_name": "Profile", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true,
+      "note": "message field type reference, same file, so it survives dropUnresolvableTypeRefs. Paired with forbidden row F1, which pins the cross-file field of the SAME message as producing NO edge." },
+
+    { "from_name": "User", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "User.email", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true, "note": "message -> field, addressed through fieldMemberRef (SQL Format B style)." },
+    { "from_name": "User", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "User.profile", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true },
+    { "from_name": "User", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "User.address", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true,
+      "note": "The field whose TYPE is cross-file. The field entity and its containment are local and must exist; only the type REFERENCES is absent (F1)." },
+    { "from_name": "Profile", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "Profile.display_name", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true },
+    { "from_name": "Address", "from_kind": "SCOPE.Schema", "from_file": "common.proto",
+      "kind": "CONTAINS", "to_name": "Address.street", "to_kind": "SCOPE.Schema", "to_file": "common.proto",
+      "must_exist": true },
+    { "from_name": "Address", "from_kind": "SCOPE.Schema", "from_file": "common.proto",
+      "kind": "CONTAINS", "to_name": "Address.city", "to_kind": "SCOPE.Schema", "to_file": "common.proto",
+      "must_exist": true },
+
+    { "from_name": "Role", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "Role.ROLE_ADMIN", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true, "note": "enum -> enum value, in the file that also carries the rpc/message collision." },
+    { "from_name": "Status", "from_kind": "SCOPE.Schema", "from_file": "common.proto",
+      "kind": "CONTAINS", "to_name": "Status.STATUS_ACTIVE", "to_kind": "SCOPE.Schema", "to_file": "common.proto",
+      "must_exist": true, "note": "enum -> enum value, in the file with no collision." }
+  ],
+
+  "forbidden_relationships": [
+    { "from_name": "User", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "REFERENCES", "to_bare_name": "scope:schema:message:proto:user.proto:Address",
+      "must_exist": false,
+      "note": "F1. Falsifiable, not decorative. `Address address = 3;` in user.proto names a message defined in common.proto. namedTypeRefs builds the ref against the DECLARING file, so the target address is user.proto:Address — a file that has no Address — and resolve/refs.go would materialise it as a phantom grey node (#6357). dropUnresolvableTypeRefs (internal/extractors/proto/proto.go:136) is the guard that drops it: deleting that call from Extract emits the edge with exactly this literal ToID and this row hits. Verified by mutation. This row does NOT bless the cross-file gap as correct — a future proto package index should make this edge resolve to common.proto's Address, at which point DELETE this row and add an expected_relationships row with to_name/to_file instead. Do not suppress the edge to keep the fixture green." },
+
+    { "from_name": "UserService", "from_kind": "SCOPE.Service", "from_file": "user.proto",
+      "kind": "CONTAINS", "to_name": "User", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": false,
+      "note": "F2. The mirror image of #6422, and the reason the fixture needs the collision even though the file-anchored half is ungradeable (NOTICE.md). buildService addresses its rpc children through BuildOperationStructuralRef; the guard is that it does NOT use messageTypeRef. Switch that one call to messageTypeRef — the plausible over-correction of #6422, i.e. 'move everything into the schema address space' — and the service -> rpc edge binds to `message User` instead, this row hits, and the expected UserService -> User(SCOPE.Operation) row above goes red at the same time. Verified by mutation. Both halves of that pair fire only because message User and rpc User collide." }
+  ]
+}

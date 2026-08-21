@@ -394,7 +394,14 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 	// a single SCOPE.ExternalAPI or consumer-side http_endpoint_call, so the
 	// frontend half of cross-stack linking could sit at zero indefinitely
 	// without any fixture noticing (it had).
-	const wantFixtures = 23
+	//
+	// 24 since #6453 added proto-mini — the first fixture for the proto
+	// extractor at all. Three proto defects (#6359, #6419, #6422) had been
+	// fixed against a package with no golden, so every one of them could
+	// regress silently. proto-mini carries the rpc/message name collision
+	// #6422 turns on; see its NOTICE.md for the one shape it still cannot
+	// grade and why.
+	const wantFixtures = 24
 
 	dirs := fixtureDirs(t)
 	if len(dirs) != wantFixtures {

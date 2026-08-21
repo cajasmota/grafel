@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package demo.common;
+
+// Address is referenced from user.proto, i.e. ACROSS a file boundary.
+// The proto extractor deliberately drops cross-file type REFERENCES today
+// (dropUnresolvableTypeRefs, internal/extractors/proto/proto.go:136) because
+// there is no cross-file proto package index yet. expected.json pins that as
+// a forbidden row, not as an expected edge.
+message Address {
+  string street = 1;
+  string city = 2;
+}
+
+// Status exercises the enum arm of the #6422 file->entity addressing fix in a
+// file with NO name collision, so the enum row is not carried by the
+// collision case alone.
+enum Status {
+  STATUS_UNKNOWN = 0;
+  STATUS_ACTIVE = 1;
+}

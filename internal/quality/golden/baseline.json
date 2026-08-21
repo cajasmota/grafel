@@ -83,6 +83,12 @@
       "relationship_found": 0,
       "relationship_expected": 0
     },
+    "proto-mini": {
+      "entity_found": 16,
+      "entity_expected": 16,
+      "relationship_found": 14,
+      "relationship_expected": 14
+    },
     "python-django-mini": {
       "entity_found": 25,
       "entity_expected": 28,
