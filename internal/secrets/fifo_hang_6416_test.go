@@ -59,7 +59,8 @@ func TestScanPathStillScansSymlinkedFile(t *testing.T) {
 		t.Skipf("symlinks unavailable here: %v", err)
 	}
 
-	findings, err := ScanPath(root, 0)
+	scanRes, err := ScanPath(root, 0)
+	findings := scanRes.Findings
 	if err != nil {
 		t.Fatal(err)
 	}

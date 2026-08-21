@@ -146,13 +146,17 @@ func appendRebuildHistory(root, group string, cfg *registry.GroupConfig, rebuilt
 	const maxSecretFileSizeBytes = 256 * 1024
 	totalSecrets := 0
 	for _, repoPath := range rebuiltPaths {
-		findings, err := secrets.ScanPath(repoPath, maxSecretFileSizeBytes)
+		// Only Findings is consumed here (#6483). The quality snapshot is a
+		// single per-run integer and deliberately does not grow a skip count:
+		// scan.Skipped exists for the two interactive callers that answer
+		// "is this repo clean?" to a human, not for the history series.
+		scan, err := secrets.ScanPath(repoPath, maxSecretFileSizeBytes)
 		if err != nil {
 			// Non-fatal: log and skip.
 			fmt.Fprintf(os.Stderr, "grafel: secret scan %s: %v (skipped)\n", repoPath, err)
 			continue
 		}
-		totalSecrets += len(findings)
+		totalSecrets += len(scan.Findings)
 	}
 	entry.Secrets = &totalSecrets
 

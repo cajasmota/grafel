@@ -21,6 +21,15 @@ import (
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
+// scanSecrets is the seam #6483's payload test drives.
+//
+// It exists because the assertion that matters — "a skipped file reaches the
+// MCP client" — must run on every GOOS, and the only real way to produce a
+// skip is a FIFO, which cannot be created on windows-latest. Stubbing here
+// keeps the payload contract under test on all three CI platforms; the real
+// scanner's own behaviour is pinned separately in internal/secrets.
+var scanSecrets = secrets.ScanPath
+
 // handleSecrets is the MCP handler for grafel_secrets.
 func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	_, lg, errRes := s.resolveAndGroup(req)
@@ -57,6 +66,19 @@ func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*
 		Findings []findingOut `json:"findings"`
 	}
 
+	// skipOut is a file the scan did NOT read (#6483). Without it this
+	// payload answers "is this repo clean?" with an unqualified yes while a
+	// file in the tree was never opened: the scanner's own report goes to
+	// stderr, which in the daemon is the daemon log the MCP client never
+	// reads.
+	type skipOut struct {
+		Repo   string `json:"repo"`
+		File   string `json:"file"`
+		Reason string `json:"reason"`
+		Kind   string `json:"kind,omitempty"`
+	}
+	skippedFiles := []skipOut{}
+
 	bySeverity := map[string]int{
 		"critical": 0,
 		"high":     0,
@@ -78,13 +100,22 @@ func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*
 			continue
 		}
 
-		findings, err := secrets.ScanPath(repoPath, 0)
+		scan, err := scanSecrets(repoPath, 0)
 		if err != nil {
 			continue // non-fatal: skip unreadable repos
 		}
 		scannedRepos++
 
-		for _, f := range findings {
+		for _, sk := range scan.Skipped {
+			skippedFiles = append(skippedFiles, skipOut{
+				Repo:   r.Repo,
+				File:   sk.Rel,
+				Reason: sk.Reason,
+				Kind:   sk.Kind,
+			})
+		}
+
+		for _, f := range scan.Findings {
 			bySeverity[string(f.Severity)]++
 			if severityFilter != "" &&
 				secrets.SeverityRank(f.Severity) < secrets.SeverityRank(secrets.Severity(severityFilter)) {
@@ -164,6 +195,10 @@ func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*
 		"truncated":      total > len(allFindings),
 		"by_severity":    bySeverity,
 		"files":          rollups,
-		"tip":            "Add '// grafel: ignore-secret' to suppress a specific line. Replace hardcoded values with the suggested env var.",
+		// skipped_files is what makes "total_findings: 0" interpretable: a
+		// non-empty list means the answer is "clean, and N files were not
+		// read", which is not the same answer (#6483).
+		"skipped_files": skippedFiles,
+		"tip":           "Add '// grafel: ignore-secret' to suppress a specific line. Replace hardcoded values with the suggested env var.",
 	}), nil
 }

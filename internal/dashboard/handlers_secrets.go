@@ -57,6 +57,22 @@ type SecretScanReply struct {
 	Files         []SecretFileRollup `json:"files"`
 	// ScannedRepos is the number of repos that were actually walked.
 	ScannedRepos int `json:"scanned_repos"`
+	// SkippedFiles are files the scan did NOT read (#6483).
+	//
+	// It matters most on THIS endpoint, because max_size is a query
+	// parameter: ?max_size=1024 would otherwise return total_findings:0 for a
+	// repo in which nearly every file was skipped unread, and the caller
+	// would have no way to tell that from a genuinely clean repo.
+	SkippedFiles []SecretSkippedFile `json:"skipped_files,omitempty"`
+}
+
+// SecretSkippedFile is one file the secret scan did not read.
+type SecretSkippedFile struct {
+	Repo string `json:"repo"`
+	File string `json:"file"`
+	// Reason is secrets.SkipNotRegular / SkipWouldBlock / SkipTooLarge.
+	Reason string `json:"reason"`
+	Kind   string `json:"kind,omitempty"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,14 +116,23 @@ func (s *Server) handleQualitySecrets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, rp := range repoPaths {
-		findings, sErr := secrets.ScanPath(rp.Path, maxSize)
+		scan, sErr := secrets.ScanPath(rp.Path, maxSize)
 		if sErr != nil {
 			// Non-fatal: continue with remaining repos.
 			continue
 		}
 		reply.ScannedRepos++
 
-		report := secrets.BuildReport(rp.Path, findings)
+		for _, sk := range scan.Skipped {
+			reply.SkippedFiles = append(reply.SkippedFiles, SecretSkippedFile{
+				Repo:   rp.Slug,
+				File:   sk.Rel,
+				Reason: sk.Reason,
+				Kind:   sk.Kind,
+			})
+		}
+
+		report := secrets.BuildReport(rp.Path, scan.Findings)
 		for k, v := range report.BySeverity {
 			reply.BySeverity[k] += v
 		}

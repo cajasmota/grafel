@@ -369,14 +369,71 @@ const ignoreComment = "grafel: ignore-secret"
 // Scanner
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ScanPath walks root and returns all secret findings.
+// Skip is one file ScanPath did NOT read, and why (#6483).
+//
+// It is modelled on walk.SkipEntry — the same shape, the same human-facing
+// kind vocabulary (safeio.Kind: named-pipe / device / socket / other) — rather
+// than inventing a second vocabulary for the same idea one package over.
+type Skip struct {
+	// Path is the absolute path of the file that was not read. ErrWouldBlock
+	// is returned BARE by safeio, carrying no path of its own, so this is set
+	// from the walk's own context rather than parsed out of the error text.
+	Path string `json:"path"`
+	// Rel is Path relative to the scan root — what a caller displays.
+	Rel string `json:"rel"`
+	// Reason is one of SkipNotRegular, SkipWouldBlock, SkipTooLarge.
+	Reason string `json:"reason"`
+	// Kind names the entry type for SkipNotRegular ("named-pipe", "device",
+	// "socket", "other"); empty for the other reasons.
+	Kind string `json:"kind,omitempty"`
+}
+
+// The closed skip vocabulary. It is deliberately THREE reasons, not five.
+//
+// The extension denylist (skipFile) and isTestFile are by-design filters that
+// would contribute thousands of entries on any real repo and drown the signal
+// — the same argument maxSecretSkipReports already makes for the stderr line.
+// Ordinary ENOENT/EACCES is likewise excluded: files are deleted between
+// readdir and open all the time on a live tree.
+const (
+	// SkipNotRegular: safeio refused a named pipe, device or socket.
+	SkipNotRegular = "not_regular"
+	// SkipWouldBlock: the open would have blocked (TOCTOU FIFO swap).
+	SkipWouldBlock = "would_block"
+	// SkipTooLarge: the file was over maxFileBytes. This one was previously
+	// reported NOWHERE, not even on stderr, and it is the dangerous one: the
+	// dashboard exposes max_size as a query parameter, so max_size=1024 could
+	// return an unqualified "clean" for a repo that was almost entirely
+	// unread.
+	SkipTooLarge = "too_large"
+)
+
+// ScanResult is what ScanPath returns.
+//
+// It is a struct rather than a third ([]Finding, []Skip, error) return value
+// on purpose: a third return is trivially `_`-discarded, which is the exact
+// failure mode #6483 fixes. A struct forces every call site to be touched to
+// compile, so the compiler performs the audit.
+type ScanResult struct {
+	// Findings are the secrets that were found.
+	Findings []Finding
+	// Skipped are the files that were NOT read. A caller that reports
+	// "clean" without consulting this is answering a question it did not ask:
+	// "I did not check this file" and "I checked it and it was clean" are not
+	// interchangeable answers from a secret scanner.
+	Skipped []Skip
+}
+
+// ScanPath walks root and returns all secret findings, plus every file the
+// walk refused to read (#6483).
 // maxFileBytes limits the size of a single file to scan (0 = 512 KB default).
-func ScanPath(root string, maxFileBytes int64) ([]Finding, error) {
+func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 	if maxFileBytes <= 0 {
 		maxFileBytes = 512 * 1024
 	}
 
 	var findings []Finding
+	var skipped []Skip
 
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -420,9 +477,18 @@ func ScanPath(root string, maxFileBytes int64) ([]Finding, error) {
 			return nil
 		}
 
-		// Skip large files.
+		// Skip large files. Reported to the caller (#6483): the size cap is
+		// caller-supplied — the dashboard takes it straight off a query
+		// string — so a silent drop here lets a caller manufacture a "clean"
+		// repo by shrinking the cap.
 		info, err := d.Info()
-		if err != nil || info.Size() > maxFileBytes {
+		if err != nil {
+			// The entry vanished between readdir and stat. Ordinary on a live
+			// tree; not a skip worth reporting.
+			return nil
+		}
+		if info.Size() > maxFileBytes {
+			skipped = append(skipped, Skip{Path: path, Rel: rel, Reason: SkipTooLarge})
 			return nil
 		}
 
@@ -431,14 +497,46 @@ func ScanPath(root string, maxFileBytes int64) ([]Finding, error) {
 			// Ordinary unreadable files (deleted mid-walk, no permission)
 			// stay silent. The two errors that mean "this file was refused
 			// for being non-regular" are announced by scanFile's
-			// reportSecretScanSkip before we get here (#6416).
+			// reportSecretScanSkip before we get here (#6416), and since
+			// #6483 they also reach the CALLER through ScanResult.Skipped —
+			// stderr is the daemon log for both the MCP and dashboard entry
+			// points, and neither client ever reads it.
+			if sk, ok := classifyScanSkip(path, rel, info.Mode(), err); ok {
+				skipped = append(skipped, sk)
+			}
 			return nil
 		}
 		findings = append(findings, ff...)
 		return nil
 	})
 
-	return findings, err
+	return ScanResult{Findings: findings, Skipped: skipped}, err
+}
+
+// classifyScanSkip maps a scanFile error onto the closed skip vocabulary, or
+// reports ok=false for the ordinary errors that must stay silent.
+//
+// It gates on exactly the same two sentinels as reportSecretScanSkip, and for
+// the same reason: safeio has only ErrNotRegular and ErrWouldBlock. There is
+// no ErrTooLarge (that gate lives in the walk above) and no concurrency error
+// — openSlots is a bounded wait, not fail-fast.
+func classifyScanSkip(path, rel string, mode os.FileMode, err error) (Skip, bool) {
+	switch {
+	case errors.Is(err, safeio.ErrNotRegular):
+		// mode comes from WalkDir's lstat, so a symlink TO a fifo reads as
+		// ModeSymlink here. safeio.Open followed the link to make its
+		// decision, so re-stat once (error path only) to name what it saw.
+		kind := safeio.Kind(mode)
+		if fi, serr := os.Stat(path); serr == nil {
+			kind = safeio.Kind(fi.Mode())
+		}
+		return Skip{Path: path, Rel: rel, Reason: SkipNotRegular, Kind: kind}, true
+	case errors.Is(err, safeio.ErrWouldBlock):
+		// ErrWouldBlock is returned bare, with no path in it. Path is set
+		// from the walk's own context rather than scraped from the message.
+		return Skip{Path: path, Rel: rel, Reason: SkipWouldBlock}, true
+	}
+	return Skip{}, false
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -493,12 +591,14 @@ func setSecretSkipOutput(w io.Writer) func() {
 // (internal/dashboard/handlers_secrets.go), so a caller who never runs an index
 // can get a clean bill of health for a tree that was only partly read.
 //
-// CHANNEL NOTE. This is stderr only; the skip does NOT appear in the []Finding
-// returned to those two callers. That is deliberate for now — surfacing it to
-// the caller means changing ScanPath's signature, which is an API change across
-// both entry points and their tests, and is recorded as a follow-up rather than
-// smuggled in here. In the daemon both callers' stderr is the daemon log, so
-// the record exists; what is missing is the MCP/HTTP caller's own view of it.
+// CHANNEL NOTE (updated by #6483). This is the stderr channel, and it is no
+// longer the ONLY one: ScanPath now also returns the skip to its caller in
+// ScanResult.Skipped, which is what the MCP tool and the dashboard handler
+// surface in their payloads. Both channels are kept — stderr is the operator's
+// view of a daemon that is walking a tree, the return value is the asking
+// client's view — and they are deliberately capped differently: this report is
+// capped at maxSecretSkipReports and deduped by path, while the returned list
+// is not, because a caller that renders it can decide for itself.
 //
 // Only ErrNotRegular / ErrWouldBlock are reported. ENOENT is the ordinary case
 // on a walk — files are deleted between readdir and open all the time — and
