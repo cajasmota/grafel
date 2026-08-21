@@ -18,7 +18,7 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
-## [0.3.0] — <YYYY-MM-DD, fill on tag>
+## [0.3.0] — 2026-08-22
 
 **Minor: VB.NET support, measured on a 302-file corpus rather than asserted; the frontend half of cross-stack links (Angular `HttpClient`) and the handler half of Spring/Django routes, both of which were previously empty or self-referential; protobuf extraction, which had never produced a single entity; and a long tail of defects whose common shape is that they were silently wrong rather than loudly broken — edges anchored to the wrong entity, gates that could not fail, and name collisions that unresolved edges repo-wide.**
 
