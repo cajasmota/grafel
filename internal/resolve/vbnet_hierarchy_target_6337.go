@@ -16,12 +16,24 @@ import "strings"
 //
 // WHAT IT DOES NOT ANSWER, and the caller must not treat it as though it did:
 // whether the name is absent from the graph. Exactly as with the
-// classifyDispositionLang call site (refs.go), an unresolved VB.NET endpoint is
-// very often an AMBIGUOUS IN-TREE one — a partial class split across `Foo.vb`
-// and `Foo.Designer.vb` — and a WinForms application declaring its own `Panel`
-// or `Form` would otherwise have that ambiguity classified as external, hiding
-// the partial-class defect. Every caller must pair this with an in-tree
-// name check.
+// classifyDispositionLang call site (refs.go), an unresolved VB.NET endpoint may
+// be an AMBIGUOUS IN-TREE one: a WinForms application declaring its own `Panel`
+// or `Form` would otherwise have that ambiguity classified as external. Every
+// caller must pair this with an in-tree name check.
+//
+// AN EARLIER VERSION OF THIS SENTENCE NAMED THE WRONG SHAPE (#6473 round 5). It
+// said the ambiguity is "a partial class split across `Foo.vb` and
+// `Foo.Designer.vb`". It is not, and cannot be: #6327's S7a merge re-anchors the
+// designer half's Component onto the sibling's path, so a merged split yields
+// ONE entity carrying the type's name and the `.Designer.vb` spelling survives
+// on no such entity — measured by driving this repo's extractor in
+// TestVBNetHierarchyMaskGuardSeesDesignerAnchoredEntities_6337
+// (internal/external). A review mutant that made the in-tree check skip
+// `.Designer.vb` entities survived the whole suite on the strength of that
+// belief. What the check must actually see is any in-tree declaration of an
+// allowlisted framework name, including the 55-of-88 STANDALONE generated
+// designer files (`Settings.Designer.vb`, `Resources.Designer.vb`) that have no
+// sibling to merge with and so do keep a `.Designer.vb` anchor.
 //
 // The two shapes:
 //

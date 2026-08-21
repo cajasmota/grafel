@@ -50,9 +50,23 @@ import (
 //
 //  3. NO IN-TREE ENTITY MAY CARRY THE NAME. inTreeNames is built from
 //     doc.Entities in Synthesize. A WinForms application that declares its own
-//     partial `Panel`, `Label` or `Form` keeps the unresolved edge, because
-//     that ambiguity is the partial-class defect and not an external base.
-//     For a member-level clause the guard is applied to the TYPE part.
+//     `Panel`, `Label` or `Form` keeps the unresolved edge, because that
+//     ambiguity is a real declaration and not an external base. For a
+//     member-level clause the guard is applied to the TYPE part.
+//
+//     NOT, despite what this comment and its sibling in
+//     resolve/vbnet_hierarchy_target_6337.go used to say, a partial class SPLIT
+//     across `Foo.vb` and `Foo.Designer.vb`. #6327's S7a merge re-anchors the
+//     designer half onto the sibling's path, so a merged split presents gate 3
+//     with one entity anchored at `Foo.vb` and no `.Designer.vb` spelling on any
+//     entity carrying the type's name. The subject is any in-tree declaration,
+//     and generated code is where an allowlisted framework name is most likely
+//     to appear without a human having chosen it — the 55 of 88 corpus
+//     `*.Designer.vb` files that are generated STANDALONE keep their
+//     `.Designer.vb` anchor and are what a suffix-blind gate 3 would miss. See
+//     TestVBNetHierarchyMaskGuardSeesDesignerAnchoredEntities_6337, which drives
+//     the real extractor for both halves of that contrast and kills the review
+//     mutant (#6473 MW5) that survived the suite on the old belief.
 //
 // # What gate 3 does and does not have evidence for
 //
@@ -292,8 +306,29 @@ func (s inTreeNameSet) blocks(name string) bool {
 }
 
 // vbnetLanguage is the Language stamp the vbnet extractor puts on every entity
-// it emits, and the same value the lang gate at the top of
-// vbnetHierarchyExternal tests. Naming it once keeps the two in step: if the
-// gate matched a different spelling than the fold index, the fold would be
-// silently empty.
+// it emits, the language property it stamps on every relationship, and the
+// value both the lang gate at the top of vbnetHierarchyExternal and the fold
+// index in buildInTreeNameSet compare against.
+//
+// NAMING IT ONCE KEEPS THE THREE READERS IN THIS PACKAGE IN STEP AND NOTHING
+// MORE. An earlier version of this comment claimed the constant kept "the two"
+// in step; it did not, and that was the third comment on this branch to assert
+// a guarantee no test observed (#6473 round 5). The other side of the pair is
+// internal/extractors/vbnet's own unexported `lang`, in a different package,
+// reached through extractor.TagEntitiesLanguage and TagRelationshipsLanguage.
+// Every other test in this suite hand-builds entities carrying the LITERAL
+// "vbnet", so a drift on that side would have left the whole suite green while
+// vbFold went silently empty and the lang gate rejected every real VB.NET edge.
+//
+// The pin now exists and is a real cross-package assertion, not a restatement:
+// TestVBNetExtractorLanguageStampMatchesConst_6337 drives the real extractor
+// and checks the stamp on both entities and relationships against this
+// constant. It was chosen over the cheaper `Extractor.Language()` comparison by
+// mutation: drifting the extractor's `lang` const is already caught by three
+// tests in internal/resolve, but drifting ONLY the entity stamp (extractor.go's
+// `Language: lang` at the emit site) left BOTH internal/external and
+// internal/resolve green — and that is precisely the drift that empties vbFold.
+// A third mutant, retargeting the extractor.TagEntitiesLanguage call, is
+// EQUIVALENT: the emit site has already stamped Language, and TagEntitiesLanguage
+// skips any record that carries one.
 const vbnetLanguage = "vbnet"
