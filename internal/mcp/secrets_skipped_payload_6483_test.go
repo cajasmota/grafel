@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
@@ -132,5 +133,66 @@ func TestSecretsToolPayloadOmitsSkippedFilesWhenNothingSkipped(t *testing.T) {
 		if list, isList := raw.([]any); !isList || len(list) != 0 {
 			t.Errorf("skipped_files = %#v on a fully-read scan, want absent or empty", raw)
 		}
+	}
+}
+
+// TestSecretsToolCapsSkippedFiles pins the bound on the skip list.
+//
+// `files` is truncated at `limit` and flags it with `truncated`; skipped_files
+// was unbounded. One repo full of >512 KB package-lock.json / .map files
+// inflates an MCP payload — which is model context, not a scrollback — with
+// no signal that anything was dropped. The cap follows the existing shape:
+// truncate, and say so.
+func TestSecretsToolCapsSkippedFiles(t *testing.T) {
+	prev := scanSecrets
+	scanSecrets = func(root string, _ int64) (secrets.ScanResult, error) {
+		out := make([]secrets.Skip, 0, maxSkippedFilesReported+7)
+		for i := 0; i < maxSkippedFilesReported+7; i++ {
+			out = append(out, secrets.Skip{
+				Rel:    fmt.Sprintf("vendor/bundle%d.map", i),
+				Reason: secrets.SkipTooLarge,
+			})
+		}
+		return secrets.ScanResult{Skipped: out}, nil
+	}
+	t.Cleanup(func() { scanSecrets = prev })
+
+	payload := callSecretsTool(t, newSecretsPayloadServer(t))
+
+	list, ok := payload["skipped_files"].([]any)
+	if !ok {
+		t.Fatalf("skipped_files = %#v, want a list", payload["skipped_files"])
+	}
+	if len(list) != maxSkippedFilesReported {
+		t.Errorf("skipped_files has %d entries, want the cap %d: the list was "+
+			"unbounded while files is truncated at limit",
+			len(list), maxSkippedFilesReported)
+	}
+	if got := payload["skipped_files_total"]; got != float64(maxSkippedFilesReported+7) {
+		t.Errorf("skipped_files_total = %v, want %d", got, maxSkippedFilesReported+7)
+	}
+	if got := payload["skipped_files_truncated"]; got != true {
+		t.Errorf("skipped_files_truncated = %v, want true: a truncated list that "+
+			"does not say so is worse than no list, because the count reads as complete", got)
+	}
+}
+
+// TestSecretsToolSkippedFilesNotTruncatedBelowCap is the permissiveness half:
+// a short list must not be flagged as truncated.
+func TestSecretsToolSkippedFilesNotTruncatedBelowCap(t *testing.T) {
+	prev := scanSecrets
+	scanSecrets = func(string, int64) (secrets.ScanResult, error) {
+		return secrets.ScanResult{Skipped: []secrets.Skip{
+			{Rel: "a.map", Reason: secrets.SkipTooLarge},
+		}}, nil
+	}
+	t.Cleanup(func() { scanSecrets = prev })
+
+	payload := callSecretsTool(t, newSecretsPayloadServer(t))
+	if got := payload["skipped_files_truncated"]; got != false {
+		t.Errorf("skipped_files_truncated = %v for a 1-entry list, want false", got)
+	}
+	if got := payload["skipped_files_total"]; got != float64(1) {
+		t.Errorf("skipped_files_total = %v, want 1", got)
 	}
 }

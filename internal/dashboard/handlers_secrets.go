@@ -63,7 +63,14 @@ type SecretScanReply struct {
 	// parameter: ?max_size=1024 would otherwise return total_findings:0 for a
 	// repo in which nearly every file was skipped unread, and the caller
 	// would have no way to tell that from a genuinely clean repo.
-	SkippedFiles []SecretSkippedFile `json:"skipped_files,omitempty"`
+	//
+	// Deliberately NOT omitempty, and initialised to a non-nil slice below.
+	// On a nil slice omitempty drops the key, and the natural client check
+	// `if (r.skipped_files?.length)` then reads "no key" as "clean" —
+	// recreating the exact ambiguity this field exists to remove. An
+	// always-present [] says "asked, and the answer is none". Files above
+	// already renders this way; this keeps the two uniform.
+	SkippedFiles []SecretSkippedFile `json:"skipped_files"`
 }
 
 // SecretSkippedFile is one file the secret scan did not read.
@@ -111,8 +118,9 @@ func (s *Server) handleQualitySecrets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reply := SecretScanReply{
-		Group:      groupName,
-		BySeverity: map[string]int{"critical": 0, "high": 0, "medium": 0, "low": 0},
+		Group:        groupName,
+		BySeverity:   map[string]int{"critical": 0, "high": 0, "medium": 0, "low": 0},
+		SkippedFiles: []SecretSkippedFile{},
 	}
 
 	for _, rp := range repoPaths {

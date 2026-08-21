@@ -381,14 +381,15 @@ type Skip struct {
 	Path string `json:"path"`
 	// Rel is Path relative to the scan root — what a caller displays.
 	Rel string `json:"rel"`
-	// Reason is one of SkipNotRegular, SkipWouldBlock, SkipTooLarge.
+	// Reason is one of SkipNotRegular, SkipWouldBlock, SkipTooLarge,
+	// SkipLineTooLong.
 	Reason string `json:"reason"`
 	// Kind names the entry type for SkipNotRegular ("named-pipe", "device",
 	// "socket", "other"); empty for the other reasons.
 	Kind string `json:"kind,omitempty"`
 }
 
-// The closed skip vocabulary. It is deliberately THREE reasons, not five.
+// The closed skip vocabulary. It is deliberately FOUR reasons, not eight.
 //
 // The extension denylist (skipFile) and isTestFile are by-design filters that
 // would contribute thousands of entries on any real repo and drown the signal
@@ -406,6 +407,16 @@ const (
 	// return an unqualified "clean" for a repo that was almost entirely
 	// unread.
 	SkipTooLarge = "too_large"
+	// SkipLineTooLong: bufio.Scanner refused a line over
+	// bufio.MaxScanTokenSize (64 KB), so the file was read only up to that
+	// line. It is a FOURTH reason rather than a Kind on SkipTooLarge because
+	// it is a different fact: too_large means "not opened at all, because of
+	// a cap the CALLER chose", while line_too_long means "opened, partly
+	// read, stopped at a hard limit inside bufio that no caller can raise".
+	// It is also the most reachable of the four: 64 KB is one eighth of the
+	// default file cap, and skipFile denies no .json, .lock, .map or
+	// minified .js — the files that actually carry >64 KB lines.
+	SkipLineTooLong = "line_too_long"
 )
 
 // ScanResult is what ScanPath returns.
@@ -437,7 +448,22 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // skip unreadable entries
+			// An entry the walk itself could not read — most often an
+			// EACCES directory, which is N unread FILES, not one.
+			//
+			// It stays unreported, unlike the per-file skips below, because
+			// there is nothing useful to report: WalkDir hands us the
+			// directory path and no listing, so the skip entry could not
+			// name a single file the caller might care about, and the count
+			// it would imply is unknown. The stated exclusion for
+			// ENOENT/EACCES on files applies here for the same reason it
+			// applies there — a permission-scoped tree would otherwise
+			// produce a permanent, unactionable entry on every scan.
+			//
+			// Follow-up if this proves wrong in the field: a fifth reason
+			// carrying the directory path, gated on fs.ErrPermission only so
+			// the ordinary mid-walk ENOENT stays silent.
+			return nil
 		}
 		if d.IsDir() {
 			name := d.Name()
@@ -504,6 +530,21 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 			if sk, ok := classifyScanSkip(path, rel, info.Mode(), err); ok {
 				skipped = append(skipped, sk)
 			}
+			// bufio.ErrTooLong is the one error here that is a PARTIAL read
+			// rather than a failed open, so ff is kept. Everything scanFile
+			// matched before the oversized line was matched against real
+			// bytes; discarding it turns a found secret into a silent
+			// "clean", which is the same defect #6483 fixes one layer up.
+			//
+			// The other errors deliberately drop ff. safeio.Open failures
+			// (ErrNotRegular, ErrWouldBlock) never read a byte, so ff is
+			// empty anyway; a mid-read I/O error means the bytes themselves
+			// are in doubt, and a finding attributed to a line number the
+			// scanner may have mis-tracked is worse than the skip entry that
+			// tells the caller to look again.
+			if errors.Is(err, bufio.ErrTooLong) {
+				findings = append(findings, ff...)
+			}
 			return nil
 		}
 		findings = append(findings, ff...)
@@ -516,10 +557,13 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 // classifyScanSkip maps a scanFile error onto the closed skip vocabulary, or
 // reports ok=false for the ordinary errors that must stay silent.
 //
-// It gates on exactly the same two sentinels as reportSecretScanSkip, and for
-// the same reason: safeio has only ErrNotRegular and ErrWouldBlock. There is
-// no ErrTooLarge (that gate lives in the walk above) and no concurrency error
-// — openSlots is a bounded wait, not fail-fast.
+// Two of its three arms are safeio's own sentinels, the same pair
+// reportSecretScanSkip gates on: safeio has only ErrNotRegular and
+// ErrWouldBlock, and no concurrency error — openSlots is a bounded wait, not
+// fail-fast. The third comes from bufio rather than safeio, because the
+// scanner can stop early on a file safeio opened perfectly well. There is no
+// ErrTooLarge sentinel: that gate lives in the walk above, which never calls
+// scanFile at all.
 func classifyScanSkip(path, rel string, mode os.FileMode, err error) (Skip, bool) {
 	switch {
 	case errors.Is(err, safeio.ErrNotRegular):
@@ -535,6 +579,11 @@ func classifyScanSkip(path, rel string, mode os.FileMode, err error) (Skip, bool
 		// ErrWouldBlock is returned bare, with no path in it. Path is set
 		// from the walk's own context rather than scraped from the message.
 		return Skip{Path: path, Rel: rel, Reason: SkipWouldBlock}, true
+	case errors.Is(err, bufio.ErrTooLong):
+		// The file WAS opened and partially read; the scanner gave up at a
+		// line over bufio.MaxScanTokenSize. Kind stays empty — this is a
+		// regular file, and naming its entry type would say nothing.
+		return Skip{Path: path, Rel: rel, Reason: SkipLineTooLong}, true
 	}
 	return Skip{}, false
 }

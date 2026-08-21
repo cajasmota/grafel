@@ -28,7 +28,25 @@ import (
 // skip is a FIFO, which cannot be created on windows-latest. Stubbing here
 // keeps the payload contract under test on all three CI platforms; the real
 // scanner's own behaviour is pinned separately in internal/secrets.
+//
+// HAZARD: this is a plain package-level var with no mutex, so a test that
+// swaps it must NOT call t.Parallel(), and neither must any sibling test in
+// this package that reaches handleSecrets. No current test does, so there is
+// no race today — but nothing in the type prevents one, and the failure would
+// surface as a flake in an unrelated test. If a parallel case is ever needed
+// here, move the seam onto Server (a field, set per-instance) rather than
+// guarding this var with a lock.
 var scanSecrets = secrets.ScanPath
+
+// maxSkippedFilesReported bounds skipped_files the way `limit` bounds `files`.
+//
+// The list is uncapped input: one repo of oversized package-lock.json /
+// source-map files produces one entry each, and this payload is model
+// context, not a scrollback a human skims. The cap is generous relative to
+// its purpose — the field answers "was anything unread?", and thirty-two
+// examples answer that as well as three thousand — and the count plus the
+// truncation flag below keep the answer honest.
+const maxSkippedFilesReported = 32
 
 // handleSecrets is the MCP handler for grafel_secrets.
 func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -154,6 +172,11 @@ func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*
 		allFindings = allFindings[:limit]
 	}
 
+	totalSkipped := len(skippedFiles)
+	if totalSkipped > maxSkippedFilesReported {
+		skippedFiles = skippedFiles[:maxSkippedFilesReported]
+	}
+
 	// Group into per-file rollups for readability.
 	type fileKey struct{ repo, file string }
 	rollupMap := map[fileKey][]findingOut{}
@@ -197,8 +220,12 @@ func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*
 		"files":          rollups,
 		// skipped_files is what makes "total_findings: 0" interpretable: a
 		// non-empty list means the answer is "clean, and N files were not
-		// read", which is not the same answer (#6483).
-		"skipped_files": skippedFiles,
-		"tip":           "Add '// grafel: ignore-secret' to suppress a specific line. Replace hardcoded values with the suggested env var.",
+		// read", which is not the same answer (#6483). The list is capped
+		// like `files`; _total is the uncapped count, so a truncated list
+		// still reports the true size of the gap.
+		"skipped_files":           skippedFiles,
+		"skipped_files_total":     totalSkipped,
+		"skipped_files_truncated": totalSkipped > len(skippedFiles),
+		"tip":                     "Add '// grafel: ignore-secret' to suppress a specific line. Replace hardcoded values with the suggested env var.",
 	}), nil
 }
