@@ -886,3 +886,173 @@ func TestRecomposeDjangoURLConf_UnchangedRouterAppStillReconciles(t *testing.T) 
 		}
 	}
 }
+
+// dcRoutersModuleRepo puts the `router.register(...)` in a NON-`urls.py`
+// module, which is the shape the scan's doc comment claims to cover and which
+// no other fixture in this file exercises.
+//
+// `mpproj/urls.py` mounts `apiapp.routers` directly, so the composition reaches
+// `apiapp/routers.py` through the include() chain exactly as it reaches any
+// child urls.py — engine.extractRoutes documents this explicitly ("urls.py,
+// routers.py, or any Python file referenced by include()"). A second mount over
+// a plain `path()` in `mpsite/urls.py` keeps the scope assertion honest.
+func dcRoutersModuleRepo(t *testing.T) (absRepo string, allFiles []string) {
+	t.Helper()
+	absRepo = t.TempDir()
+	files := map[string]string{
+		"mpproj/urls.py": "from django.urls import include, path\n\n" +
+			"urlpatterns = [\n" +
+			"    path(\"api/\", include(\"apiapp.routers\")),\n" +
+			"    path(\"network/\", include(\"mpsite.urls\")),\n" +
+			"]\n",
+		"apiapp/routers.py": "from rest_framework import routers, viewsets\n\n\n" +
+			"class GadgetViewSet(viewsets.ModelViewSet):\n    queryset = []\n\n\n" +
+			"router = routers.DefaultRouter()\n" +
+			"router.register(r\"gadgets\", GadgetViewSet)\n\n" +
+			"urlpatterns = router.urls\n",
+		"mpsite/urls.py": "from django.urls import path\n\n" +
+			"from . import views\n\n" +
+			"urlpatterns = [\n    path(\"terms/\", views.mp_terms_view),\n]\n",
+		"mpsite/views.py": "def mp_terms_view(request):\n    return {\"ok\": 1}\n",
+	}
+	for rel, body := range files {
+		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+		allFiles = append(allFiles, rel)
+	}
+	sort.Strings(allFiles)
+	return absRepo, allFiles
+}
+
+// TestDRFUnknownComposedPaths_RegistrationOutsideURLsPy pins the BREADTH of the
+// registering-file scan (#6528 round-5 mutant P3).
+//
+// The scan reads every changed `.py`, and the doc comment says so in as many
+// words: "a registration can live in `routers.py` or any module an `include()`
+// reaches". Every other fixture in this file puts the registration in a
+// `urls.py`, so narrowing the scan to `strings.HasSuffix(rel, "urls.py")` was
+// measured SURVIVING the whole ./internal/extractors/ package.
+//
+// The narrow direction is NOT the conservative one. With the only registration
+// in `routers.py`, `registering` comes back empty, drfUnknownComposedPaths
+// returns nil at the `len(registering) == 0` guard, and the pass proceeds to
+// PRUNE composed paths whose drf_router_expanded coverage Step 5 destroyed this
+// very tick — the exact deletion the abstention was added to prevent. Fewer
+// abstentions here is data loss, not caution.
+func TestDRFUnknownComposedPaths_RegistrationOutsideURLsPy(t *testing.T) {
+	absRepo, allFiles := dcRoutersModuleRepo(t)
+	reader := dcDiskReader(absRepo, allFiles)
+
+	fresh := engine.ApplyDjangoNestedURLConf(allFiles, reader)
+	var composed []string
+	for i := range fresh {
+		if p := composedRecordPath(&fresh[i]); p != "" {
+			composed = append(composed, p)
+		}
+	}
+	sort.Strings(composed)
+	// Guard the fixture: if the composition stopped reaching routers.py the
+	// assertions below would hold vacuously, which is precisely the failure
+	// mode this test exists to end.
+	if len(composed) != 2 || composed[0] != "/api/gadgets" || composed[1] != "/network/terms" {
+		t.Fatalf("#6528 fixture: expected the tree to compose exactly "+
+			"[/api/gadgets /network/terms], got %v — the registration lives in apiapp/routers.py "+
+			"and must still be reached through include(\"apiapp.routers\"), or the breadth "+
+			"assertion below would prove nothing", composed)
+	}
+
+	// The ONLY changed file is a non-urls.py module, and it is the one holding
+	// the registration.
+	unknown := drfUnknownComposedPaths(allFiles, []string{"apiapp/routers.py"}, fresh, reader)
+
+	if !unknown["/api/gadgets"] {
+		t.Errorf("#6528: /api/gadgets is composed from router.register(\"gadgets\") in the CHANGED "+
+			"apiapp/routers.py, so its drf_router_expanded coverage was pruned this tick and is "+
+			"UNKNOWN. The scan must read every changed .py, not only *urls.py — restricting it "+
+			"leaves `registering` empty, drfUnknownComposedPaths returns nil at the "+
+			"len(registering)==0 guard, and the pass then prunes a path whose coverage it just "+
+			"destroyed. Got %v", unknown)
+	}
+	if unknown["/network/terms"] {
+		t.Errorf("#6530: /network/terms is composed from a plain path() in mpsite/urls.py, which "+
+			"did not change; widening the scan to non-urls.py modules must not widen the SCOPE. "+
+			"Got %v", unknown)
+	}
+	if len(unknown) != 1 {
+		t.Errorf("#6528: expected exactly the registering module's 1 composed path, got %d: %v",
+			len(unknown), unknown)
+	}
+
+	// Control on the same fixture: a changed non-urls.py module that declares
+	// NO registration still abstains from nothing, so the assertion above is
+	// about where the registration lives and not about "any .py change abstains".
+	if n := len(drfUnknownComposedPaths(allFiles, []string{"mpsite/views.py"}, fresh, reader)); n != 0 {
+		t.Errorf("#6528: mpsite/views.py declares no router.register(); %d abstention path(s) "+
+			"produced, want 0", n)
+	}
+}
+
+// TestRecomposeDjangoURLConf_RoutersModuleGhostSurvivesThePrune is the same
+// mutant seen through the whole pass rather than at the helper's seam.
+//
+// The graph holds /api/gadgets attributed to a file this recomputation does not
+// land it on — the shape #2678's handler re-attribution leaves behind. Because
+// the registration's own module changed this tick, the pass cannot tell whether
+// the entry is a ghost or live-but-invisible coverage, so it must abstain from
+// BOTH the prune and the add. Narrow the scan and it deletes the entry outright.
+func TestRecomposeDjangoURLConf_RoutersModuleGhostSurvivesThePrune(t *testing.T) {
+	absRepo, allFiles := dcRoutersModuleRepo(t)
+
+	held := dcEntity(dcEndpointKind, "http:ANY:/api/gadgets", "apiapp/views.py",
+		map[string]string{
+			"pattern_type": composedNestedPatternType,
+			"path":         "/api/gadgets",
+			"verb":         "ANY",
+			"framework":    "django",
+		})
+	// The handler the unrelated mount's plain path() names. Without it in the
+	// graph the corpus-scoped resolver reads /network/terms as naming a handler
+	// that does not exist and deletes it, and the scope control below would
+	// fail for a reason that has nothing to do with the abstention.
+	handler := dcEntity("SCOPE.Operation", "mp_terms_view", "mpsite/views.py", nil)
+	doc := &graph.Document{Repo: dcRepoTag, Entities: []graph.Entity{held, handler}}
+
+	res := recomposeDjangoURLConf(absRepo, allFiles,
+		[]string{"apiapp/routers.py"}, doc, nil, dcSilentLogger())
+
+	if !res.ran {
+		t.Fatalf("#6528: the pass declined to run; allFiles=%v", allFiles)
+	}
+	if res.removedIDs[held.ID] {
+		t.Errorf("#6528: the composed endpoint %s|%s@%s was PRUNED. Its route comes from "+
+			"router.register() in apiapp/routers.py, which changed this tick, so Step 5 pruned "+
+			"the drf_router_expanded entities that covered it and its absence from the "+
+			"recomputation is an artefact of the missing coverage rather than a fact about the "+
+			"tree. Restricting the registering-file scan to *urls.py hides the registration, "+
+			"empties the abstention set and authorises exactly this deletion. removedIDs=%v",
+			held.Kind, held.Name, held.SourceFile, res.removedIDs)
+	}
+	for _, e := range res.added {
+		if p, _ := e.PropLookup("path"); p == "/api/gadgets" {
+			t.Errorf("#6528: /api/gadgets was ADDED; the abstention suppresses the add side too, " +
+				"or the pass invents the composed ANY endpoint the full path deduplicates away")
+		}
+	}
+	// The abstention must stay scoped, or this test would pass against a pass
+	// that simply stopped reconciling: the unrelated mount still composes.
+	sawTerms := false
+	for _, e := range res.added {
+		if p, _ := e.PropLookup("path"); p == "/network/terms" {
+			sawTerms = true
+		}
+	}
+	if !sawTerms {
+		t.Errorf("#6528: /network/terms was not composed; nothing about apiapp/routers.py's " +
+			"registration may suppress an unrelated mount's add")
+	}
+}
