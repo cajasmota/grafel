@@ -26,7 +26,8 @@
     { "name": "Address.city", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true },
     { "name": "Role.ROLE_UNKNOWN", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true,
       "note": "The FIRST value of the enum, i.e. proto3's mandatory zero default. Asserted separately from ROLE_ADMIN because an off-by-one over enum_body's children — the natural way this loop breaks — drops exactly the first value and nothing else. Mutation-verified: skipping the first enum_field in buildEnum drops this row and Status.STATUS_UNKNOWN below." },
-    { "name": "Role.ROLE_ADMIN", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
+    { "name": "Role.ROLE_ADMIN", "kind": "SCOPE.Schema", "source_file": "user.proto", "subtype": "enum_value", "must_exist": true,
+      "note": "The corpus's first `subtype` assertion (#6488 arm A). Load-bearing here and nowhere the old schema could reach: proto emits enum values and message fields as the SAME kind (SCOPE.Schema) from the SAME file, so Role.ROLE_ADMIN and User.email differ ONLY in Subtype — and Subtype is not hashed into graph.EntityID, so flipping it moves no id and breaks no edge. #6488 measured the consequence: changing buildEnumValue's Subtype from \"enum_value\" to \"field\" left this fixture at 18/18 entities, 16/16 relationships, exit 0. Mutation-verified: that flip now drops this row." },
     { "name": "Status.STATUS_UNKNOWN", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true,
       "note": "The zero default of the enum in the file with NO name collision, so the first-value arm is graded independently of the collision case." },
     { "name": "Status.STATUS_ACTIVE", "kind": "SCOPE.Schema", "source_file": "common.proto", "must_exist": true }

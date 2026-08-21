@@ -36,6 +36,12 @@ type missingEntity struct {
 	Name string `json:"name"`
 	Kind string `json:"kind"`
 	File string `json:"source_file,omitempty"`
+	// Subtype is the row's asserted subtype (#6488), and GotSubtype the
+	// subtype of the entity that matched on every other axis and was rejected
+	// on this one. Both omitempty, so every pre-#6488 report stays
+	// byte-identical: no row in the golden set states a subtype.
+	Subtype    string `json:"subtype,omitempty"`
+	GotSubtype string `json:"got_subtype,omitempty"`
 }
 
 type missingRelationship struct {
@@ -87,9 +93,11 @@ func (r *Report) ToJSON() *JSONReport {
 			continue
 		}
 		jr.MissingEntities = append(jr.MissingEntities, missingEntity{
-			Name: er.Expected.Name,
-			Kind: er.Expected.Kind,
-			File: er.Expected.SourceFile,
+			Name:       er.Expected.Name,
+			Kind:       er.Expected.Kind,
+			File:       er.Expected.SourceFile,
+			Subtype:    er.Expected.Subtype,
+			GotSubtype: er.GotSubtype,
 		})
 	}
 	for _, rr := range r.RelResults {
@@ -161,7 +169,17 @@ func (r *Report) WriteHuman(w io.Writer) {
 			if er.Expected.SourceFile != "" {
 				loc = " in " + er.Expected.SourceFile
 			}
-			fmt.Fprintf(w, "    - %s [%s]%s\n", er.Expected.Name, er.Expected.Kind, loc)
+			// A subtype miss reads differently from an absence: the entity IS
+			// in the graph, wearing the wrong subtype. Say so rather than let
+			// the line be read as "the extractor produced nothing" (#6488).
+			why := ""
+			if er.SubtypeMismatch {
+				why = fmt.Sprintf(" — extracted with subtype %q, expected %q",
+					er.GotSubtype, er.Expected.Subtype)
+			} else if er.Expected.Subtype != "" {
+				why = fmt.Sprintf(" — expected subtype %q", er.Expected.Subtype)
+			}
+			fmt.Fprintf(w, "    - %s [%s]%s%s\n", er.Expected.Name, er.Expected.Kind, loc, why)
 		}
 	}
 

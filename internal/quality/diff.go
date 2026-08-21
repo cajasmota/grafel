@@ -115,6 +115,35 @@ func firstExtracted(cands []*graph.Entity) *graph.Entity {
 	return nil
 }
 
+// subtypeSatisfies reports whether e satisfies a row's `subtype`. An empty
+// want is "don't care" — the meaning every row in the golden set has, since
+// none of them stated a subtype before #6488 — and matching is exact
+// otherwise.
+//
+// Exact, rather than case-folded or prefix-matched, on purpose: subtypes are
+// producer-chosen literals that consumers compare with == (resolve's
+// isImportPlaceholderKind at refs.go:1602, internal/mcp/denoise.go), so a
+// fixture that accepted a value those consumers would reject would be
+// asserting a different property from the one that decides behaviour.
+func subtypeSatisfies(want string, e *graph.Entity) bool {
+	return want == "" || e.Subtype == want
+}
+
+// firstExtractedWithSubtype is firstExtracted narrowed by a row's `subtype`.
+// The narrowing happens INSIDE the scan rather than on its result: candidates
+// share a (Kind, Name[, SourceFile]) key, so filtering after picking the first
+// one would leave a subtype row unable to reach the second of two colliding
+// candidates — exactly the discrimination the field exists to provide. With an
+// empty want it is firstExtracted, decision for decision.
+func firstExtractedWithSubtype(cands []*graph.Entity, want string) *graph.Entity {
+	for _, e := range cands {
+		if !isPlaceholderAnchor(e) && subtypeSatisfies(want, e) {
+			return e
+		}
+	}
+	return nil
+}
+
 // lastOf narrows a candidate bucket to its final element, or none. It exists so
 // the relationship path keeps the exact pre-#6277 semantics of byKindNameFile
 // when that index was a single map value written once per entity: last write
@@ -133,6 +162,21 @@ type EntityResult struct {
 	// MatchedID is the Entity.ID we bound the expectation to (empty when
 	// no match). Useful for debugging fixture authors.
 	MatchedID string
+	// SubtypeMismatch reports a miss caused ONLY by the row's `subtype`
+	// (#6488): an entity matching on every other axis WAS extracted, and was
+	// rejected because its Subtype differs. GotSubtype carries the subtype
+	// that was rejected.
+	//
+	// They exist so the reporter does not blame the extractor for an entity it
+	// did extract — the same fixture-row-blamed-on-the-extractor defect #6476
+	// and #6464 each had to remove, arriving at the subtype axis. A subtype
+	// miss usually means the extractor stamped the wrong value; an absence
+	// means it produced nothing. Those go to different owners.
+	//
+	// Invariant: both are zero on every path that matched, and GotSubtype is
+	// empty whenever the row states no subtype.
+	SubtypeMismatch bool
+	GotSubtype      string
 }
 
 // RelationshipResult records the outcome of evaluating one
@@ -312,12 +356,28 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// isPlaceholderAnchor. When the only candidate is an anchor the
 	// expectation is reported as a MISS, which is the true state: nothing in
 	// the graph is the declaration the fixture names.
-	resolveEntity := func(ee ExpectedEntity) *graph.Entity {
+	//
+	// #6488 arm A: when the row states a `subtype`, a candidate carrying a
+	// DIFFERENT one is not the entity the row names, and is rejected on every
+	// path — including match_by:qualified_name, which returns before the two
+	// bucket lookups and would otherwise be a hole straight through the gate.
+	// The second return value is a candidate that matched on every other axis
+	// and lost ONLY on subtype; it separates "the extractor stamped the wrong
+	// subtype" from "the entity was never extracted", which are different
+	// defects with different owners. It is the ENTITY rather than its subtype
+	// string because a rejected subtype is legitimately "" — that is #6481's
+	// whole shape, a placeholder emitted with no recognisable Subtype — and a
+	// string return could not tell that apart from "nothing was rejected".
+	resolveEntity := func(ee ExpectedEntity) (match, subtypeRejected *graph.Entity) {
 		if ee.MatchBy == "qualified_name" && ee.QualifiedName != "" {
-			if e, ok := byQName[ee.QualifiedName]; ok && !isPlaceholderAnchor(e) {
-				return e
+			e, ok := byQName[ee.QualifiedName]
+			if !ok || isPlaceholderAnchor(e) {
+				return nil, nil
 			}
-			return nil
+			if !subtypeSatisfies(ee.Subtype, e) {
+				return nil, e
+			}
+			return e, nil
 		}
 		// #6464: when the row NAMES a file, the file-narrowed lookup is the
 		// only answer we will accept. Falling through to byKindName here
@@ -325,17 +385,33 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 		// different file — see the comment on byKindNameFile above. Rows that
 		// OMIT source_file still reach the unnarrowed lookup; only 5 of 423
 		// entity rows do, but that path is not dead.
+		cands := byKindName[ee.Kind+"\x00"+ee.Name]
 		if ee.SourceFile != "" {
-			return firstExtracted(byKindNameFile[ee.Kind+"\x00"+ee.Name+"\x00"+ee.SourceFile])
+			cands = byKindNameFile[ee.Kind+"\x00"+ee.Name+"\x00"+ee.SourceFile]
 		}
-		return firstExtracted(byKindName[ee.Kind+"\x00"+ee.Name])
+		if e := firstExtractedWithSubtype(cands, ee.Subtype); e != nil {
+			return e, nil
+		}
+		// No candidate satisfied the row. Report a subtype rejection only when
+		// the row ASKED for one and a real (non-anchor) candidate existed
+		// under the same key — otherwise this is a plain absence, and saying
+		// anything about subtypes would misdirect the reader.
+		if ee.Subtype != "" {
+			if e := firstExtracted(cands); e != nil {
+				return nil, e
+			}
+		}
+		return nil, nil
 	}
 
 	for _, ee := range fix.ExpectedEntities {
-		ent := resolveEntity(ee)
+		ent, subtypeRejected := resolveEntity(ee)
 		res := EntityResult{Expected: ee, Found: ent != nil}
 		if ent != nil {
 			res.MatchedID = ent.ID
+		} else if subtypeRejected != nil {
+			res.SubtypeMismatch = true
+			res.GotSubtype = subtypeRejected.Subtype
 		}
 		rep.EntityResults = append(rep.EntityResults, res)
 		switch {
