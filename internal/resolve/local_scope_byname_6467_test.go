@@ -290,9 +290,11 @@ func TestManifestDeclarationStillOutranksImportPlaceholder_6467(t *testing.T) {
 // stamp (measured against the extractor), and it took the repository-wide slot
 // for exactly the same reason the const did.
 //
-// A formal parameter is scoped to its callable in every language, so it can
-// never legitimately own a repository-wide name — which is why the second
-// signal keys on the parameter subtypes rather than on `local_scope` alone.
+// A formal parameter is scoped to its callable, so it can never legitimately
+// own a repository-wide name — which is why the second signal exists at all
+// rather than keying on `local_scope` alone. It matches "component_prop" only
+// when the record also carries Properties["framework"]=="react"; see the round-3
+// block at the end of this file for the measurement that forced that gate.
 func TestFormalParameterDoesNotCaptureImportedPackageName_6467(t *testing.T) {
 	recs := []types.EntityRecord{
 		{
@@ -307,10 +309,16 @@ func TestFormalParameterDoesNotCaptureImportedPackageName_6467(t *testing.T) {
 			},
 		},
 		{
-			// `export function Rows(toolkit) { … }` — a formal parameter.
-			// No local_scope stamp: the extractor does not tag parameters.
+			// `export function Rows(toolkit) { … }` — a formal parameter, as
+			// javascript/dataflow_react.go:77 actually emits it (Properties
+			// verbatim from that emitter). No local_scope stamp: the dataflow
+			// pass runs outside tagLocalScope's reach.
 			ID: rowsLocalConstID6467, Kind: "SCOPE.Operation", Name: "toolkit",
 			Subtype: "component_prop", SourceFile: rowsFile6467, Language: "typescript",
+			Properties: map[string]string{
+				"kind": "SCOPE.Operation", "subtype": "component_prop",
+				"component": "Rows", "prop": "toolkit", "framework": "react",
+			},
 		},
 	}
 
@@ -577,5 +585,126 @@ func TestLocalRecordDoesNotUnclaimAnAddressableID_6467(t *testing.T) {
 			"addressable declaration must not mark that id local, or the next file's "+
 			"placeholder collides with a declaration it should bind to (#6467)",
 			userTSX, got, sharedID)
+	}
+}
+
+// ── #6467 round 3: which component_prop emitters are actually locals ─────────
+//
+// isLocalBindingKind's second signal was `subtype == "component_prop"`, with no
+// further qualification. There are exactly three emitters of that subtype and
+// only ONE of them is a callable-local:
+//
+//   - javascript/dataflow_react.go:77 — the destructured or whole-object props
+//     PARAMETER of a React component. A binding in the callable's own scope.
+//   - javascript/angular.go:665 — an `@Input()` CLASS FIELD.
+//   - vue/extractor.go:854 — a `defineProps` entry.
+//
+// The last two are the component's PUBLIC surface, addressable from a parent
+// template (`<chart [Data]="…">`, `<Chart :Data="…">`) — structurally the same
+// record as razor's `[Parameter]` above. Measured against main@640ea7784 with
+// a probe reproducing each emitter's real record: on main all three held the
+// slot (byName=<decl>, ambig=false); with the unguarded arm all three went
+// ambiguous (byName="", ambig=true). Two of those three were regressions.
+//
+// Nothing record-local but Properties["framework"] separates the shapes — same
+// Kind (SCOPE.Operation), same bare Name, same "Comp.Prop" QualifiedName, no
+// local_scope stamp on any of them, and react's and angular's share Language
+// "typescript" — so the arm is gated on framework=="react". These three tests
+// pin both sides of that gate.
+func TestAngularInputIsNotALocalBinding_6467(t *testing.T) {
+	assertDeclarationKeepsSlot6467(t, "angular @Input() component property",
+		types.EntityRecord{
+			ID: "dddd000000000003", Kind: "SCOPE.Operation", Name: "Data",
+			QualifiedName: "ChartComponent.Data", Subtype: "component_prop",
+			SourceFile: "src/chart.component.ts", Language: "typescript",
+			Properties: map[string]string{
+				"kind": "SCOPE.Operation", "subtype": "component_prop",
+				"component": "ChartComponent", "prop": "Data",
+				"prop_direction": "input", "framework": "angular",
+			},
+		})
+}
+
+func TestVueDefinePropsIsNotALocalBinding_6467(t *testing.T) {
+	assertDeclarationKeepsSlot6467(t, "vue defineProps component property",
+		types.EntityRecord{
+			ID: "dddd000000000004", Kind: "SCOPE.Operation", Name: "Data",
+			QualifiedName: "Chart.Data", Subtype: "component_prop",
+			SourceFile: "src/Chart.vue", Language: "vue",
+			Properties: map[string]string{
+				"prop": "Data", "component": "Chart", "framework": "vue",
+			},
+		})
+}
+
+// TestReactPropsParameterIsALocalBinding_6467 pins the OTHER side of the gate:
+// narrowing to framework=="react" must not have narrowed the arm out of
+// existence. A React props parameter carries no local_scope stamp (the
+// dataflow pass emits outside tagLocalScope's reach), so this arm is the only
+// thing that stops it owning the repository-wide slot.
+func TestReactPropsParameterIsALocalBinding_6467(t *testing.T) {
+	assertDeclarationLosesSlot6467(t, "react props parameter",
+		types.EntityRecord{
+			ID: "dddd000000000005", Kind: "SCOPE.Operation", Name: "Data",
+			QualifiedName: "Chart.Data", Subtype: "component_prop",
+			SourceFile: "src/Chart.tsx", Language: "typescript",
+			Properties: map[string]string{
+				"kind": "SCOPE.Operation", "subtype": "component_prop",
+				"component": "Chart", "prop": "Data", "framework": "react",
+			},
+		})
+}
+
+// assertDeclarationLosesSlot6467 is the mirror of assertDeclarationKeepsSlot6467:
+// the record IS a callable-local, so it must NOT capture the repository-wide
+// slot — the placeholder's IMPORTS edge must not bind to it, leaving the name
+// for the external-library binder.
+func assertDeclarationLosesSlot6467(t *testing.T, label string, decl types.EntityRecord) {
+	t.Helper()
+	placeholder := types.EntityRecord{
+		ID: "dddd00000000001f", Kind: "SCOPE.Component", Name: decl.Name,
+		Subtype: "import", SourceFile: "app/importer.ts", Language: "typescript",
+		Properties: map[string]string{
+			"external_dependency": "true",
+			"provenance":          "INFERRED_FROM_IMPORT_STATEMENT",
+		},
+		Relationships: []types.RelationshipRecord{
+			{FromID: "app/importer.ts", ToID: decl.Name, Kind: "IMPORTS"},
+		},
+	}
+	orders := []struct {
+		tag  string
+		recs []types.EntityRecord
+	}{
+		{"placeholder indexed first", []types.EntityRecord{placeholder, decl}},
+		{"declaration indexed first", []types.EntityRecord{decl, placeholder}},
+	}
+	for _, o := range orders {
+		t.Run(o.tag, func(t *testing.T) {
+			recs := append([]types.EntityRecord(nil), o.recs...)
+			idx := resolve.BuildIndex(recs)
+			resolve.ReferencesEmbedded(recs, idx)
+
+			var got string
+			seen := 0
+			for i := range recs {
+				for _, r := range recs[i].Relationships {
+					if r.Kind == "IMPORTS" {
+						seen++
+						got = r.ToID
+					}
+				}
+			}
+			if seen != 1 {
+				t.Fatalf("fixture is vacuous: found %d IMPORTS edge(s), want 1", seen)
+			}
+			if got == decl.ID {
+				t.Errorf("app/importer.ts -IMPORTS-> %q, the %s declaration: a binding that "+
+					"exists only inside the callable that declares it must NOT hold the "+
+					"repository-wide byName slot, or an unrelated file's import of the same "+
+					"name binds to it instead of reaching the external library (#6467)",
+					got, label)
+			}
+		})
 	}
 }

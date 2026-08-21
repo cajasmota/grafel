@@ -1634,12 +1634,40 @@ func isImportPlaceholderKind(kind, subtype string) bool {
 //     with funcDepth > 0. THIS IS THE ONLY EXTRACTOR THAT STAMPS IT (measured:
 //     the string appears in internal/types, internal/mcp and
 //     internal/extractors/javascript, and in no other extractor).
-//   - Subtype "component_prop" — the destructured or whole-object props
-//     PARAMETER of a React/Vue/Angular component
-//     (javascript/dataflow_react.go:77, vue/extractor.go:854,
-//     javascript/angular.go:665). A plain `function Rows(toolkit)` parameter
-//     arrives as SCOPE.Operation / "component_prop" with NO local_scope stamp,
-//     which is why signal 1 alone is half a fix even inside JS/TS.
+//   - Subtype "component_prop" WITH Properties["framework"]=="react" — the
+//     destructured or whole-object props PARAMETER of a React component
+//     (javascript/dataflow_react.go:77). A plain `function Rows(toolkit)`
+//     parameter arrives as SCOPE.Operation / "component_prop" with NO
+//     local_scope stamp, which is why signal 1 alone is half a fix even inside
+//     JS/TS.
+//
+// WHY THE FRAMEWORK GATE, AND WHY IT IS A LAST RESORT. There are exactly three
+// emitters of "component_prop" (grep of internal/extractors, non-test):
+// dataflow_react.go:77, javascript/angular.go:665, vue/extractor.go:854. Only
+// the first is a callable-local. Angular's is an `@Input()` CLASS FIELD and
+// Vue's is a `defineProps` entry — both are the component's PUBLIC surface,
+// addressable from a parent template as `<chart [Data]="…">` /
+// `<Chart :Data="…">`, i.e. structurally the same record as razor's
+// `[Parameter]` that was already removed above. Measured with a probe that
+// reproduces each emitter's real record against a same-named import
+// placeholder, in both extraction orders, against main@640ea7784:
+//
+//	shape                    main byName / ambig   unguarded arm   with gate
+//	react props parameter    dddd…101 / false      "" / true       "" / true
+//	angular @Input() field   dddd…102 / false      "" / true       dddd…102 / false
+//	vue defineProps          dddd…103 / false      "" / true       dddd…103 / false
+//
+// So the unguarded arm regressed both public shapes exactly as razor did. NO
+// RECORD-LOCAL PROPERTY OTHER THAN `framework` SEPARATES THEM: all three carry
+// Kind "SCOPE.Operation", a bare Name, QualifiedName "Comp.Prop" and no
+// local_scope stamp, and react's and angular's also share Language
+// "typescript". A framework-name check is the weakest kind of signal and is
+// used here only because nothing structural distinguishes the shapes; closing
+// that properly means stamping local_scope in dataflow_react.go, which is an
+// extractor-side change (see the closing paragraph below).
+// TestAngularInputIsNotALocalBinding_6467 and TestVueDefinePropsIsNotALocalBinding_6467
+// pin the two public shapes; TestReactPropsParameterIsALocalBinding_6467 pins
+// that the react arm still fires, so the gate cannot be widened back silently.
 //
 // SCOPE, STATED HONESTLY: BOTH SIGNALS ARE JS/TS-FAMILY-ONLY IN PRACTICE.
 // An earlier draft of this predicate also matched the subtypes "parameter" and
@@ -1674,7 +1702,7 @@ func isLocalBindingKind(subtype string, props map[string]string) bool {
 	if props["local_scope"] == "true" {
 		return true
 	}
-	return subtype == "component_prop"
+	return subtype == "component_prop" && props["framework"] == "react"
 }
 
 // indexByName is the sole writer of byName / ambigName. Both production index
