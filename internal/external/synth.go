@@ -279,6 +279,12 @@ func Synthesize(doc *graph.Document) Stats {
 		csharp: internalCsharpRoots,
 	})
 
+	// #6337 — every name a real (non-external) indexed entity carries. The
+	// VB.NET hierarchy arm's mask guard: an unresolved `Inherits Panel` in a
+	// repo that declares its own partial `Panel` is an ambiguity defect, not
+	// an external base, and must keep being reported as one.
+	inTreeNames := buildInTreeNameSet(doc)
+
 	// First pass — collect every unique external name we want to
 	// synthesise. The placeholder carries a subtype hint
 	// ("package"/"function") but the language field is left empty:
@@ -369,6 +375,8 @@ func Synthesize(doc *graph.Document) Stats {
 			golang: internalGoRoots,
 			rust:   internalRustRoots,
 			csharp: internalCsharpRoots,
+
+			inTreeNames: inTreeNames,
 		})
 
 		// #4515 — apply per-symbol upgrade. Two cases:
@@ -987,6 +995,11 @@ type internalRoots struct {
 	golang map[string]bool
 	rust   map[string]bool
 	csharp map[string]bool
+	// inTreeNames is every name an indexed (non-external) entity carries,
+	// plus the case-folded half for VB.NET only. #6337's mask guard — see
+	// vbnetHierarchyExternal and inTreeNameSet. Not a "root" set like the
+	// others; it lives here because it threads to the same call site.
+	inTreeNames inTreeNameSet
 }
 
 func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[string]bool, relProps map[string]string, internal internalRoots) (canonical, subtype string, ok bool) {
@@ -1568,6 +1581,17 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 				return longest, "package", true
 			}
 		}
+	}
+
+	// #6337 — VB.NET EXTENDS / IMPLEMENTS targets. See
+	// synth_vbnet_hierarchy_6337.go for the rationale and the gates; see there
+	// too for why this sits HERE, immediately above the language-agnostic
+	// stdlib stop-list, rather than lower down beside the dotted-root fallback.
+	if canon, sub, ok, block := vbnetHierarchyExternal(name, relKind, lang, internal.inTreeNames); ok || block {
+		if block {
+			return "", "", false
+		}
+		return canon, sub, true
 	}
 
 	// Stdlib function stop-list — bare names like "Println", "print".

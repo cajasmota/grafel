@@ -271,9 +271,10 @@
       "from_kind": "SCOPE.Component",
       "from_file": "FrameServer.vb",
       "kind": "EXTENDS",
-      "to_bare_name": "IDisposable",
+      "to_name": "dotnet:IDisposable",
+      "to_kind": "SCOPE.External",
       "must_exist": true,
-      "note": "Interface Inherits an external interface; no in-tree source, so the target stays a bare name."
+      "note": "Interface Inherits an external interface. #6337 routes it to the ecosystem-tagged placeholder instead of leaving a bare stub; this row used to be to_bare_name IDisposable, i.e. it asserted a resolution FAILURE as correct (#6441)."
     },
     {
       "from_name": "DirectFrameServer",
@@ -291,18 +292,20 @@
       "from_kind": "SCOPE.Component",
       "from_file": "FrameServer.vb",
       "kind": "IMPLEMENTS",
-      "to_bare_name": "IDisposable",
+      "to_name": "dotnet:IDisposable",
+      "to_kind": "SCOPE.External",
       "must_exist": true,
-      "note": "First name on the same clause; external."
+      "note": "First name on the same clause; external, and since #6337 bound to the ext:dotnet:IDisposable placeholder rather than left dangling."
     },
     {
       "from_name": "StructPtr",
       "from_kind": "SCOPE.Component",
       "from_file": "Win32Native.vb",
       "kind": "IMPLEMENTS",
-      "to_bare_name": "IDisposable",
+      "to_name": "dotnet:IDisposable",
+      "to_kind": "SCOPE.External",
       "must_exist": true,
-      "note": "Class-level Implements on a Module-nested class."
+      "note": "Class-level Implements on a Module-nested class. Shares the ONE ext:dotnet:IDisposable node with the other two clauses — the grouping #6337 exists to produce."
     },
     {
       "from_name": "FrameServer.vb",
@@ -469,18 +472,20 @@
       "from_kind": "SCOPE.Operation",
       "from_file": "FrameServer.vb",
       "kind": "IMPLEMENTS",
-      "to_bare_name": "IDisposable.Dispose",
+      "to_name": "dotnet:IDisposable:Dispose",
+      "to_kind": "SCOPE.External",
       "must_exist": true,
-      "note": "S7c with an EXTERNAL target: `Sub Dispose() Implements IDisposable.Dispose`. .NET's IDisposable has no in-tree declaration, so the target stays a bare dotted name — the same disposition the class-level IDisposable edge already accepts."
+      "note": "S7c with an EXTERNAL target: `Sub Dispose() Implements IDisposable.Dispose`. #6337 splits the type from the member and binds to a per-member placeholder, distinct from the class-level ext:dotnet:IDisposable node."
     },
     {
       "from_name": "StructPtr.Dispose",
       "from_kind": "SCOPE.Operation",
       "from_file": "Win32Native.vb",
       "kind": "IMPLEMENTS",
-      "to_bare_name": "IDisposable.Dispose",
+      "to_name": "dotnet:IDisposable:Dispose",
+      "to_kind": "SCOPE.External",
       "must_exist": true,
-      "note": "The same external clause on a Module-nested class, four levels deep. Pins that member-level emission does not depend on the owner being top-level."
+      "note": "The same external clause on a Module-nested class, four levels deep. Pins that member-level emission does not depend on the owner being top-level, and that both member clauses share the one placeholder."
     }
   ],
   "forbidden_relationships": [

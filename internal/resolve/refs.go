@@ -5989,22 +5989,280 @@ func isRustExternalBaseType(s string) bool {
 //     directions against a checked-in VB.NET fixture and therefore runs
 //     unconditionally, with no corpus and no environment variable.
 func isVBExternalBaseType(s string) bool {
-	base := strings.TrimSpace(s)
-	// Generic type arguments are stripped by the extractor
-	// (internal/extractors/vbnet.baseTypeName), but a stub reaching here from
-	// another producer may still carry them.
-	if p := strings.IndexByte(base, '('); p > 0 {
-		base = strings.TrimSpace(base[:p])
-	}
-	if base == "" {
-		return false
+	_, ok := vbExternalBaseName(s)
+	return ok
+}
+
+// vbExternalBaseName is isVBExternalBaseType's implementation, and additionally
+// returns the NORMALISED spelling it classified — trimmed, with any generic
+// argument list removed. Callers that go on to build a node id from the name
+// (VBNetExternalHierarchyTarget, and through it the external-synthesis arm for
+// #6337) must use this return value and not the raw input: classifying
+// `List(Of Machine)` on the strength of `List` and then minting
+// `ext:dotnet:List(Of Machine)` would give every instantiation its own node,
+// which is the exact opposite of the grouping the arm exists to provide.
+//
+// Malformed spellings are rejected outright (#6337 round 2). The dotted rule
+// keys only on the ROOT segment, so before this check any string beginning
+// `System.` classified — including `System.`, the shape a misparsed
+// `Inherits` clause takes when the type name is lost. Synthesising that into a
+// tidy `ext:dotnet:System.` node removes it from the bug-edge count and so
+// scores a parse failure as a success, which is precisely the masking this arm
+// is supposed to avoid. A name is well-formed here when every dot-separated
+// segment is a non-empty VB identifier (letter or `_` first, then letters,
+// digits or `_`); everything else stays unresolved and keeps reporting.
+//
+// THE TWO HALVES DISAGREE ABOUT CASE ON PURPOSE (#6337 round 4). The dotted
+// half folds case; the bare half does not. See vbFrameworkRootCanonical for the
+// argument — it is not an oversight in either direction, and a mutant that
+// makes the two agree dies whichever way it is pointed.
+func vbExternalBaseName(s string) (string, bool) {
+	base := stripVBGenericArgs(s)
+	if !isWellFormedVBTypeName(base) {
+		return "", false
 	}
 	if dot := strings.IndexByte(base, dottedNameSep); dot > 0 {
-		_, ok := vbFrameworkRootNamespaces[base[:dot]]
-		return ok
+		if canon, ok := vbFrameworkRootCanonical(base[:dot]); ok {
+			// The ROOT is rewritten to the table's spelling so that
+			// `system.Windows.Forms.Form` and `System.Windows.Forms.Form`
+			// share one node. The segments BELOW the root keep the casing
+			// they were written with, because nothing here knows the BCL's
+			// spelling for them — see vbFrameworkRootCanonical.
+			return canon + base[dot:], true
+		}
+		return "", false
 	}
-	_, ok := vbExternalBaseTypes[base]
-	return ok
+	if _, ok := vbExternalBaseTypes[base]; ok {
+		return base, true
+	}
+	return "", false
+}
+
+// vbFrameworkRootCanonical looks a dotted target's ROOT segment up in
+// vbFrameworkRootNamespaces WITHOUT regard to case, and returns the table's own
+// spelling of it. VB.NET does not distinguish case, so `system.Windows.Forms`,
+// `SYSTEM.Windows.Forms` and `System.Windows.Forms` name the same namespace to
+// the compiler and are all legal source the extractor emits verbatim.
+//
+// Before round 4 this was a plain map lookup, and the consequence was not a
+// missed classification — it was a FABRICATION. A declined dotted spelling does
+// not stay unresolved: it falls through to the generic dotted-root fallback
+// further down classifyExternal, which keys on the first segment and nothing
+// else, so `Inherits system.Windows.Forms.Form` became `ext:system`, subtype
+// `package`, untagged and resolved, sharing a namespace with whatever else in
+// the graph is rooted at a bare `system`. That is the same defect round 3 fixed
+// for gate 3, one gate earlier and on the higher-volume half; and because the
+// spelling is WELL-FORMED, VBNetHierarchyTargetIsMalformed cannot block it
+// either. Folding here is what keeps it inside the ecosystem-tagged arm.
+//
+// # Why the bare-leaf half stays case-SENSITIVE
+//
+// The asymmetry is real and it turns on what declining COSTS on each half:
+//
+//   - Dotted: declining hands the spelling to the dotted-root fallback, which
+//     resolves it anyway on another ecosystem's authority. Not folding
+//     therefore buys nothing and costs a fabricated node. And what is being
+//     matched is a three-entry set of root namespaces the PLATFORM owns; its
+//     case variants are the same namespace and nothing else's.
+//
+//   - Bare leaf: declining leaves the edge unresolved and visible. A lowercase
+//     `panel` or `form` has no dotted root, so no fallback picks it up — the
+//     measured behaviour is that it stays a bug edge, which is the safe
+//     direction. Meanwhile vbExternalBaseTypes is 58 UNQUALIFIED identifiers
+//     (`Panel`, `Form`, `Label`, `List`, `Timer`, `Control`), and this arm sits
+//     ABOVE the language-agnostic stdlibBareNames stop-list. Folding that half
+//     makes `list`, `form` and `label` — ordinary lowercase spellings in the
+//     other languages the same pipeline serves — classify as .NET base types.
+//     A review mutant did exactly that and DIED against
+//     TestVBNetHierarchyArmStealsNothingElseFromStdlib_6337.
+//
+// So the fold is applied where the language's case rules are the only thing
+// being consulted, and withheld where a cross-language table would inherit them.
+// This mirrors the split inTreeNameSet already makes for gate 3 (#6337 round 3):
+// fold on VB's own authority, never on somebody else's.
+//
+// # The residual it does NOT fix
+//
+// Only the root is canonicalised. `System.windows.forms.form` and
+// `System.Windows.Forms.Form` still mint two nodes, because canonicalising the
+// remaining segments needs a BCL type index this resolver does not have. The
+// corpus bounds the frequency at ZERO — no clause in the 302 .vb files of
+// WakeOnLAN + StaxRip + display-drivers-uninstaller writes a framework root in
+// any casing but the platform's — so this changes nothing measured, exactly as
+// the round-3 case fix did not. It is taken on VB.NET's semantics.
+//
+// It is derived from vbFrameworkRootNamespaces rather than being a second
+// literal, so the both-directions pin
+// (TestVBFrameworkRootNamespacesAreLoadBearing) still governs the whole set:
+// adding a root without its fixture clause fails, and the fold index cannot
+// drift from the table it folds.
+func vbFrameworkRootCanonical(root string) (string, bool) {
+	canon, ok := vbFrameworkRootFold[strings.ToLower(root)]
+	return canon, ok
+}
+
+// vbFrameworkRootFold is vbFrameworkRootNamespaces keyed by lowercased root,
+// valued at the table's own spelling. See vbFrameworkRootCanonical.
+var vbFrameworkRootFold = func() map[string]string {
+	m := make(map[string]string, len(vbFrameworkRootNamespaces))
+	for root := range vbFrameworkRootNamespaces {
+		m[strings.ToLower(root)] = root
+	}
+	return m
+}()
+
+// stripVBGenericArgs removes a trailing VB generic argument list, so
+// `List(Of Machine)` and `List(Of Profile)` both normalise to `List`. Generic
+// arguments are already stripped by the extractor
+// (internal/extractors/vbnet.baseTypeName), but a stub reaching here from
+// another producer may still carry them.
+//
+// It strips only a list that CLOSES AT THE END of the spelling. A member-level
+// clause on a generic interface — `IComparable(Of Profile).CompareTo` — has its
+// parenthesis in the middle, and truncating there would silently turn the whole
+// clause into the bare type `IComparable` and lose the member leaf. Leaving it
+// alone means the spelling fails the well-formedness check, the caller falls
+// through to its type/member split, and each half is normalised separately.
+//
+// WHAT IS STRIPPED IS VALIDATED FIRST (#6337 round 4). Round 2 removed
+// everything from the first `(` to a trailing `)` and then checked only the
+// STUMP, so any misparse whose tail happened to be parenthesised — a trailing
+// source comment, a truncated clause, an attribute list — normalised into a
+// well-formed allowlisted name and was synthesised as a tidy resolved node:
+//
+//	Form (deprecated)              -> ext:dotnet:Form
+//	Form(!!! @@@)                  -> ext:dotnet:Form
+//	Form()                         -> ext:dotnet:Form
+//	System.Windows.Forms.Form(???) -> ext:dotnet:System.Windows.Forms.Form
+//
+// All four left the bug-edge count, which is the exact masking the round-2
+// well-formedness check was added to stop; it simply was not applied to the
+// half of the spelling that got discarded. Now the parenthesised tail must
+// actually BE a VB generic argument list, and if it is not, nothing is
+// stripped, the spelling stays malformed, and the target keeps reporting.
+//
+// The alternative — running isWellFormedVBTypeName over the RAW spelling before
+// any stripping — is worse, and not marginally: parentheses are never
+// identifier-shaped, so it rejects every legitimate instantiation as well.
+// `List(Of Machine)` would stop classifying at all, which deletes the generic
+// GROUPING round 2 exists to provide and turns real BCL bases into bug edges.
+// It trades a fabrication for a recall loss on the common case, when validating
+// the tail costs neither.
+func stripVBGenericArgs(s string) string {
+	base := strings.TrimSpace(s)
+	p := strings.IndexByte(base, '(')
+	if p <= 0 || !strings.HasSuffix(base, ")") {
+		return base
+	}
+	if !isVBGenericArgList(base[p+1 : len(base)-1]) {
+		return base
+	}
+	return strings.TrimSpace(base[:p])
+}
+
+// isVBGenericArgList reports whether inner — the text BETWEEN a trailing
+// parenthesis pair, exclusive — is a VB.NET generic argument list: the `Of`
+// keyword followed by whitespace and one or more comma-separated type names,
+// each of which may carry a nested list of its own. `Of` is matched without
+// regard to case because VB.NET does not have any (`(of T)` compiles).
+//
+// Nesting and arity are both real in the corpus —
+// `List(Of KeyValuePair(Of String, Action))` and
+// `GenericCriteria(Of StringCondition, String)` are measured clauses — so the
+// split is on TOP-LEVEL commas and each argument is validated recursively
+// through stripVBGenericArgs. Recursion terminates because every recursive call
+// is on a strictly shorter string: an argument is contained inside the
+// parentheses this call already consumed.
+//
+// KNOWN DECLINES, both of which cost recall rather than correctness: an array
+// type argument (`List(Of String())`) and a nullable one (`Of Integer?`) are
+// not identifier-shaped and so refuse to classify, leaving a visible bug edge.
+// Neither shape appears in any hierarchy clause of the 302-file corpus, and the
+// vbnet extractor strips generic arguments before emitting anyway
+// (internal/extractors/vbnet.baseTypeName), so this path only ever sees stubs
+// from another producer. Separately, isWellFormedVBTypeName is ASCII-only while
+// VB.NET permits Unicode identifiers; that is a pre-existing, unmeasured recall
+// loss inherited here, not one this function introduces.
+func isVBGenericArgList(inner string) bool {
+	inner = strings.TrimSpace(inner)
+	if len(inner) < 3 || !strings.EqualFold(inner[:2], "Of") {
+		return false
+	}
+	// `Off` must not read as `Of` + `f`: the keyword has to end here.
+	rest := inner[2:]
+	if !isVBArgListSpace(rest[0]) {
+		return false
+	}
+	depth, start := 0, 0
+	for i := 0; i < len(rest); i++ {
+		switch rest[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth < 0 {
+				return false
+			}
+		case ',':
+			if depth == 0 {
+				if !isVBGenericArg(rest[start:i]) {
+					return false
+				}
+				start = i + 1
+			}
+		}
+	}
+	if depth != 0 {
+		return false
+	}
+	return isVBGenericArg(rest[start:])
+}
+
+// isVBGenericArg reports whether one argument of a VB generic argument list is
+// a type name — itself possibly generic.
+func isVBGenericArg(s string) bool {
+	arg := strings.TrimSpace(s)
+	if arg == "" {
+		return false
+	}
+	return isWellFormedVBTypeName(stripVBGenericArgs(arg))
+}
+
+// isVBArgListSpace reports whether c separates tokens in a VB argument list.
+func isVBArgListSpace(c byte) bool {
+	return c == ' ' || c == '\t'
+}
+
+// isWellFormedVBTypeName reports whether s is a dot-separated sequence of at
+// least one non-empty VB identifier. It rejects the empty string, a leading or
+// trailing `.`, an empty interior segment (`System..Foo`), and any segment that
+// is not identifier-shaped. See vbExternalBaseName for why a malformed
+// spelling must not be allowed to classify.
+func isWellFormedVBTypeName(s string) bool {
+	if s == "" {
+		return false
+	}
+	seg := 0 // characters consumed in the current segment
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == dottedNameSep {
+			if seg == 0 {
+				return false // empty segment: leading or doubled dot
+			}
+			seg = 0
+			continue
+		}
+		isAlpha := c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+		if seg == 0 {
+			if !isAlpha {
+				return false
+			}
+		} else if !isAlpha && !(c >= '0' && c <= '9') {
+			return false
+		}
+		seg++
+	}
+	return seg != 0 // trailing dot leaves an empty final segment
 }
 
 // vbFrameworkRootNamespaces is the set of root namespaces owned by the .NET
@@ -6017,14 +6275,42 @@ func isVBExternalBaseType(s string) bool {
 // `Windows`. `System` and `Microsoft` are safe on their own; `Windows` is an
 // ordinary identifier that an application may legally use as its own root
 // namespace, and it is in the set only because `Windows.Forms.TextBox` is a
-// real measured target in the corpus. That residual is what the nameExists
-// guard at the call site covers — a dotted target that some in-tree entity
-// carries verbatim as its Name is not routed here at all.
+// real measured target in the corpus.
+//
+// THAT RESIDUAL IS NOT COVERED BY THE IN-TREE NAME GUARD AT EITHER CALL SITE,
+// and an earlier version of this comment claimed it was (#6337 round 2). The
+// guard compares against entity Names, and the vbnet extractor stamps the
+// enclosing namespace as a PROPERTY (`vbnet_namespace`,
+// internal/extractors/vbnet/extractor.go), never as part of Entity.Name. So an
+// in-tree `Namespace Windows` / `Class Foo` is indexed as the name `Foo`, the
+// set never contains `Windows.Foo`, and the guard cannot fire for any dotted
+// spelling. What actually limits the damage is narrower and worth stating
+// plainly: the root set has exactly three entries, all measured in the corpus;
+// the arm is gated to vbnet EXTENDS / IMPLEMENTS edges that in-tree resolution
+// has already failed on; and the malformed-spelling check in
+// vbExternalBaseName keeps a truncated parse from classifying. An application
+// that roots its own namespace at `Windows` AND has a hierarchy edge onto it
+// that in-tree resolution missed will get an `ext:dotnet:Windows.*` node it
+// should not have. That is a known, unguarded residual, not a covered one.
 //
 // `Accessibility` and `Mono` were in the first version of this set and are
 // GONE: neither appears as a dotted target anywhere in the 302-file corpus,
 // so each was an unmeasured guess whose only possible effect was to excuse an
 // in-tree namespace of the same name.
+//
+// THAT REMOVAL WAS MANUAL, AND NOW IT IS NOT. This set is pinned in BOTH
+// directions by TestVBFrameworkRootNamespacesAreLoadBearing
+// (vbnet_framework_roots_6337_test.go) against a pair of checked-in fixtures,
+// the same shape vbExternalBaseTypes has had since #6327. Until #6337 round 3
+// it had no pin at all, and it is the higher-volume half of the
+// classification — a widening mutant adding `My` and `Forms` kept the entire
+// suite green. `My` is the reason that matters: it is VB.NET's
+// COMPILER-GENERATED in-tree namespace (`My.MyProject.MySettings`), so
+// admitting it converts generated in-tree code into external placeholders, and
+// because IsResolvedToID is a pure shape check it would RAISE the resolution
+// metric for doing so. Adding a root now requires a clause in
+// testdata/vbnet_framework_roots_6337.vb; the names application code owns are
+// held as explicit negatives in testdata/vbnet_nonframework_roots_6337.vb.
 var vbFrameworkRootNamespaces = map[string]struct{}{
 	"System":    {},
 	"Microsoft": {},
