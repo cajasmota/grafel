@@ -664,7 +664,7 @@ func TestProcessFlow_6494_ProbeC_ResolutionBoundaries(t *testing.T) {
 	tests := []struct {
 		name         string
 		edgeKind     string
-		targetIsDef  bool
+		target       graph.Entity
 		wantResolved bool
 	}{
 		{
@@ -672,31 +672,42 @@ func TestProcessFlow_6494_ProbeC_ResolutionBoundaries(t *testing.T) {
 			// the call still resolved against an in-repo route.
 			name:         "definition with no handler IMPLEMENTS edge still resolves in-repo",
 			edgeKind:     RelationshipKindFetches,
-			targetIsDef:  true,
+			target:       producerEnt("def", "http_endpoint_definition", "handler.go"),
 			wantResolved: true,
 		},
 		{
 			name:         "consumer edge is not FETCHES",
 			edgeKind:     "REFERENCES",
-			targetIsDef:  true,
+			target:       producerEnt("def", "http_endpoint_definition", "handler.go"),
 			wantResolved: false,
 		},
 		{
-			// The TO-leg guard. A FETCHES edge out of a consumer that does
-			// not land on an http_endpoint_definition is not a resolution;
-			// counting it would make every consumer read as intra-repo.
+			// The TO-leg guard, far miss. A FETCHES edge out of a consumer
+			// that does not land on an http_endpoint_definition is not a
+			// resolution; counting it would make every consumer read as
+			// intra-repo.
 			name:         "FETCHES edge that does not land on a definition",
 			edgeKind:     RelationshipKindFetches,
-			targetIsDef:  false,
+			target:       graph.Entity{ID: "def", Name: "OrderClient", Kind: "SCOPE.Class", SourceFile: "handler.go"},
+			wantResolved: false,
+		},
+		{
+			// The TO-leg guard, NEAR miss — the drift this PR makes most
+			// likely, because it widens the other two gates from the exact
+			// "http_endpoint_definition" comparison to
+			// types.IsHTTPEndpointKind. Widening THIS one too would admit
+			// the bare legacy kind (the webhook synthetics among the nine
+			// live producers) as a definition, and a consumer FETCHES edge
+			// landing on one would wrongly suppress cross_stack.
+			name:         "FETCHES edge landing on a legacy bare http_endpoint is not a definition",
+			edgeKind:     RelationshipKindFetches,
+			target:       webhookEnt("def", "handler.go"),
 			wantResolved: false,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			target := producerEnt("def", "http_endpoint_definition", "handler.go")
-			if !tc.targetIsDef {
-				target = graph.Entity{ID: "def", Name: "OrderClient", Kind: "SCOPE.Class", SourceFile: "handler.go"}
-			}
+			target := tc.target
 			doc := &graph.Document{Repo: "r"}
 			doc.Entities = []graph.Entity{
 				{ID: "caller", Name: "submitOrder", Kind: "SCOPE.Function", SourceFile: "client.go"},
@@ -715,8 +726,8 @@ func TestProcessFlow_6494_ProbeC_ResolutionBoundaries(t *testing.T) {
 				{ID: "2", FromID: "call", ToID: "def", Kind: tc.edgeKind},
 			}
 			if got := resolvedConsumerEndpoints(doc)["call"]; got != tc.wantResolved {
-				t.Fatalf("resolvedConsumerEndpoints[call] = %v, want %v (edge=%q targetIsDef=%v)",
-					got, tc.wantResolved, tc.edgeKind, tc.targetIsDef)
+				t.Fatalf("resolvedConsumerEndpoints[call] = %v, want %v (edge=%q targetKind=%q)",
+					got, tc.wantResolved, tc.edgeKind, tc.target.Kind)
 			}
 			RunProcessFlow(doc, DefaultProcessFlowConfig())
 			props := procProps(t, doc, "caller")
@@ -821,6 +832,17 @@ func TestResolvedConsumerEndpointsMulti_6494_SpansCompanions(t *testing.T) {
 	}
 	doc.Relationships = []graph.Relationship{
 		{ID: "1", FromID: "a", ToID: "feCall", Kind: "FETCHES"},
+		// A consumer FETCHES edge whose TARGET is a definition in the OTHER
+		// document. Per-document collection never sees it resolve: the
+		// frontend declares no definitions of its own, so its pass
+		// short-circuits before the edge walk. Merging the documents and
+		// classifying once would resolve it — this edge is what makes the
+		// feCall assertion below discriminate that mutant. The pipeline
+		// never produces such an edge (cross-repo links are materialised as
+		// Kind:"CALLS" phantoms with cross_repo=true, and graph.EntityID
+		// salts the hash with the repo tag so IDs cannot collide across
+		// documents), so this pins an invariant, not a live bug.
+		{ID: "2", FromID: "feCall", ToID: "bffDef", Kind: "FETCHES"},
 	}
 
 	got := resolvedConsumerEndpointsMulti(doc, []*graph.Document{companion})
@@ -828,7 +850,7 @@ func TestResolvedConsumerEndpointsMulti_6494_SpansCompanions(t *testing.T) {
 		t.Errorf("resolvedConsumerEndpointsMulti[bffCall] = false, want true — the companion's call resolves against the companion's own definition")
 	}
 	if got["feCall"] {
-		t.Errorf("resolvedConsumerEndpointsMulti[feCall] = true, want false — feCall has no definition in its own document")
+		t.Errorf("resolvedConsumerEndpointsMulti[feCall] = true, want false — feCall has no definition in its own document, and its FETCHES edge into the companion's bffDef must not resolve it")
 	}
 
 	// Cross-document resolution must NOT happen: move the definition into
@@ -837,7 +859,7 @@ func TestResolvedConsumerEndpointsMulti_6494_SpansCompanions(t *testing.T) {
 	// definition does not resolve a companion call.
 	doc.Entities = append(doc.Entities, producerEnt("feDef", "http_endpoint_definition", "fe/routes.ts"))
 	doc.Relationships = append(doc.Relationships,
-		graph.Relationship{ID: "2", FromID: "bffCall", ToID: "feDef", Kind: "FETCHES"})
+		graph.Relationship{ID: "3", FromID: "bffCall", ToID: "feDef", Kind: "FETCHES"})
 	if resolvedConsumerEndpointsMulti(doc, nil)["bffCall"] {
 		t.Error("a definition in the frontend document must not resolve a consumer that lives in another document")
 	}
