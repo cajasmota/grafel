@@ -115,8 +115,16 @@ var unsupportedLanguageNames = map[string]string{
 	// Web templating with no extractor.
 	".asp":  "Classic ASP",
 	".aspx": "ASP.NET Web Forms",
-	".jsp":  "JSP",
-	".jspx": "JSP",
+	// .aspx's siblings (#6448). Naming only the page extension split a single
+	// WebForms repo across two report lines — "ASP.NET Web Forms" for the
+	// pages, a bare extension tally for the user controls, handlers, services
+	// and master pages — which reads as two problems when it is one.
+	".ascx":   "ASP.NET Web Forms", // user controls
+	".asmx":   "ASP.NET Web Forms", // legacy web services
+	".ashx":   "ASP.NET Web Forms", // HTTP handlers
+	".master": "ASP.NET Web Forms", // master pages
+	".jsp":    "JSP",
+	".jspx":   "JSP",
 	// .razor IS supported; .cshtml/.vbhtml are not, and they are the majority
 	// form in real ASP.NET codebases — measured at 473 and 639 files across two
 	// public aspnetcore corpora, a silent gap the size of the one that prompted
