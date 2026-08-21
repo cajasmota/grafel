@@ -23,16 +23,49 @@
 //     portable layer and it is what makes the common case (a FIFO sitting in
 //     the tree) impossible rather than merely bounded.
 //
-//  2. A non-blocking open, on Unix. The stat gate has an inherent TOCTOU
-//     residual: a regular file swapped for a FIFO between the stat and the
-//     open still hangs. O_NONBLOCK is what actually closes that window —
-//     POSIX guarantees open(2) with O_NONBLOCK returns rather than waits.
-//     Windows has no O_NONBLOCK and no FIFO-in-a-directory shape to defend
-//     against; the deadline and the stat gate carry it there.
+//  2. A type check on the OPEN DESCRIPTOR, on every GOOS. The stat gate has an
+//     inherent TOCTOU residual: a regular file swapped for a FIFO between the
+//     stat and the open is not caught by the stat. Asking the descriptor —
+//     fstat(2) on Unix, os.File.Stat elsewhere — closes that window, because a
+//     swap of the path cannot change the object behind a handle we already
+//     hold. This layer is portable and it is the load-bearing one.
 //
-// A 64-slot semaphore bounds how many outstanding opens can be in flight, so a
-// platform that fails to honour O_NONBLOCK degrades into bounded leakage
-// instead of unbounded. This mirrors walk.openWithDeadline exactly.
+//     Unix additionally opens with O_NONBLOCK, which is a guarantee about a
+//     different thing: that the open RETURNS. POSIX promises that; Windows
+//     offers no equivalent, so on non-Unix the "it returns" half rests on the
+//     deadline alone. That is a real difference in strength and it is stated
+//     here rather than papered over.
+//
+// WHAT THE DEADLINE ACTUALLY BUYS, stated honestly, because the first version
+// of this comment claimed a property the code did not have. An open that
+// genuinely never returns cannot be cancelled: there is no portable way to
+// interrupt a thread parked in open(2). So the deadline does not rescue the
+// worker — it rescues the CALLER. The worker is abandoned, it keeps its
+// semaphore slot, and it is never counted as returned. That is the whole of
+// the guarantee:
+//
+//   - The caller of Open always returns within DefaultTimeout, or twice it in
+//     the worst case where the slot wait also has to time out.
+//   - At most cap(openSlots) workers can be abandoned before the package stops
+//     being useful. Past that point every call waits DefaultTimeout and returns
+//     ErrWouldBlock. That is a real terminal state, not a scare quote — it is
+//     just a bounded and REPORTED one. ErrWouldBlock is a distinct error for
+//     exactly this reason: a caller that maps it to "nothing found" turns a
+//     bounded degradation back into a silent one, which is the shape #6338 was
+//     about.
+//
+// Reaching that state needs cap(openSlots) opens that never return at all. On
+// Unix, O_NONBLOCK means a FIFO is not one of them. On Windows os.Open has no
+// such flag, so the "it returns" half rests on the deadline alone there; that
+// is measured, not assumed — flipping the build tag so open_other.go compiles
+// on darwin, nonBlockingOpen does block on a real FIFO for the full deadline.
+//
+// The semaphore acquire is a BOUNDED WAIT, not a fail-fast. An earlier draft
+// used a non-blocking select with a default arm, which refused 335 of 400
+// perfectly ordinary regular files under concurrency — a limiter that refuses
+// work is not a limiter, and because internal/secrets maps an open error to
+// "no findings", the user-visible result was a scanner reporting a tree clean
+// after reading 16% of it.
 package safeio
 
 import (
@@ -40,6 +73,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -62,9 +96,16 @@ var ErrWouldBlock = errors.New("safeio: open would block")
 // intermittent while firing on slow-but-legitimate reads.
 const DefaultTimeout = 5 * time.Second
 
-// openSlots bounds concurrently-outstanding open goroutines, so a kernel that
-// ignores O_NONBLOCK leaks at most this many rather than one per scanned file.
-// 64 is the value walk.openWithDeadline has used since #1773.
+// openSlots bounds concurrently-outstanding open workers, so a kernel that
+// parks in open(2) regardless of O_NONBLOCK leaks at most this many rather than
+// one per scanned file. 64 is the value walk.openWithDeadline has used since
+// #1773.
+//
+// Slots are returned by whichever side finishes first — the caller on the fast
+// path, so a completed open frees its slot BEFORE Open returns rather than at
+// some later scheduling point, and the worker if the caller has already given
+// up. Only a worker that never returns at all holds one forever, which is
+// exactly the leak the bound is for.
 var openSlots = make(chan struct{}, 64)
 
 // SymlinkPolicy says what a symlink resolves to.
@@ -137,16 +178,35 @@ func Open(path string, policy SymlinkPolicy) (*os.File, error) {
 	if _, err := Stat(path, policy); err != nil {
 		return nil, err
 	}
+	return openWithDeadline(path, nonBlockingOpen, DefaultTimeout)
+}
 
-	// Bail rather than pile up if the process is already saturated with
-	// outstanding opens — that state means something upstream is already
-	// wedged, and adding to it makes the diagnosis harder, not the work
-	// faster.
+// openWithDeadline runs open in a worker and bounds the CALLER's wait. It takes
+// the opener as a parameter for one reason that is not testability theatre: it
+// is the only way to exercise this layer with an open that genuinely blocks.
+// A real blocking open cannot be conjured on every GOOS — Windows has no
+// mkfifo — so the machinery that has to work on Windows would otherwise be
+// asserted-safe by comment only, which is what .github/workflows/test.yml's
+// windows-latest job was silently accepting.
+func openWithDeadline(path string, open func(string) (*os.File, error), timeout time.Duration) (*os.File, error) {
+	// A bounded wait, not a fail-fast. Under saturation a slot frees as soon as
+	// any concurrent open completes, and a legitimate open completes in
+	// microseconds; only genuinely-abandoned workers hold slots long enough for
+	// this arm to fire.
+	timer := time.NewTimer(timeout)
 	select {
 	case openSlots <- struct{}{}:
-	default:
+		timer.Stop()
+	case <-timer.C:
 		return nil, ErrWouldBlock
 	}
+
+	var (
+		releaseOnce sync.Once
+		mu          sync.Mutex
+		abandoned   bool
+	)
+	release := func() { releaseOnce.Do(func() { <-openSlots }) }
 
 	type result struct {
 		f   *os.File
@@ -154,17 +214,38 @@ func Open(path string, policy SymlinkPolicy) (*os.File, error) {
 	}
 	ch := make(chan result, 1)
 	go func() {
-		f, err := nonBlockingOpen(path)
+		f, err := open(path)
+		mu.Lock()
+		gaveUp := abandoned
+		mu.Unlock()
+		if gaveUp {
+			// Nobody is left holding this descriptor, so nobody will close it.
+			if f != nil {
+				_ = f.Close()
+			}
+			release()
+			return
+		}
 		ch <- result{f: f, err: err}
-		<-openSlots
+		release()
 	}()
 
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
 	select {
 	case r := <-ch:
+		// Release here rather than leaving it to the worker: the worker's
+		// release races with the caller's next Open, and that race is what made
+		// the fail-fast draft refuse regular files.
+		release()
 		return r.f, r.err
-	case <-time.After(DefaultTimeout):
-		// Defensive only: a non-blocking open should never reach here. The
-		// semaphore slot is released by the worker if it ever unblocks.
+	case <-deadline.C:
+		mu.Lock()
+		abandoned = true
+		mu.Unlock()
+		// The slot stays held. The worker is parked in open(2) and cannot be
+		// interrupted; it will return the slot if it ever unblocks, and hold it
+		// forever if it does not. See the package doc.
 		return nil, ErrWouldBlock
 	}
 }
