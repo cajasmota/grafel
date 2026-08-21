@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package demo;
+
+import "common.proto";
+
+// Profile is referenced by User and by an rpc IN THIS FILE, so its type
+// REFERENCES edges survive dropUnresolvableTypeRefs.
+message Profile {
+  string display_name = 1;
+}
+
+// User collides, kind-agnostically, with `rpc User` in UserService below.
+// This pair is the whole point of the fixture: graph.EntityID hashes
+// (repo, kind, name, sourceFile) and NOT Subtype, and the pre-#6422
+// file->message CONTAINS ref addressed the OPERATION space purely by
+// (file, name) -- so it bound to the rpc and the message was left with no
+// inbound CONTAINS at all. Remove either half and the fixture grades green
+// with #6422's defect fully present.
+message User {
+  string email = 1;
+  Profile profile = 2;
+  Address address = 3;
+}
+
+enum Role {
+  ROLE_UNKNOWN = 0;
+  ROLE_ADMIN = 1;
+}
+
+service UserService {
+  rpc User(User) returns (User);
+  rpc GetProfile(User) returns (Profile);
+}
