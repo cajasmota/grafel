@@ -1,7 +1,7 @@
 {
   "fixture_name": "vbnet-mini",
   "language": "vbnet",
-  "description": "Real VB.NET sourced from two MIT-licensed projects (see NOTICE.md): staxrip/staxrip (Criteria.vb verbatim, FrameServer.vb head excerpt) and Wagnard/display-drivers-uninstaller (Win32Native.vb excerpt). Gates the shapes S5 of #6327 actually emits: Class/Module/Structure/Interface containment, Inherits -> EXTENDS (in-tree chain AND an interface extending an external one), class-level Implements -> IMPLEMENTS (in-tree AND external), Imports -> IMPORTS (bare-name and folded SCOPE.External package), and CALLS gated on the paren disambiguator. Deliberately NOT asserted, because these three sources contain none of them: partial-class merge (S7a) and Handles/AddressOf -> REFERENCES (S7b) are implemented but unexercised here. Also gates S7c: member-level `Implements IFoo.Bar` -> IMPLEMENTS on the MEMBER, with via=implements-member, coexisting with the class-level edge rather than replacing it -- FrameServer.vb carries four clauses onto in-tree IFrameServer members and FrameServer.vb and Win32Native.vb one external `IDisposable.Dispose` each. Still a genuine gap: With-block receivers (S7d).",
+  "description": "Real VB.NET sourced from two MIT-licensed projects (see NOTICE.md): staxrip/staxrip (Criteria.vb verbatim, FrameServer.vb head excerpt) and Wagnard/display-drivers-uninstaller (Win32Native.vb excerpt). Gates the shapes S5 of #6327 actually emits: Class/Module/Structure/Interface containment, Inherits -> EXTENDS (in-tree chain AND an interface extending an external one), class-level Implements -> IMPLEMENTS (in-tree AND external), Imports -> IMPORTS (bare-name and folded SCOPE.External package), and CALLS gated on the paren disambiguator. Deliberately NOT asserted, because these three sources contain none of them: partial-class merge (S7a) and Handles/AddressOf -> REFERENCES (S7b) are implemented but unexercised here. Also gates S7c: member-level `Implements IFoo.Bar` -> IMPLEMENTS on the MEMBER, with via=implements-member, coexisting with the class-level edge rather than replacing it -- FrameServer.vb carries four clauses onto in-tree IFrameServer members and FrameServer.vb and Win32Native.vb one external `IDisposable.Dispose` each. Still a genuine gap: With-block receivers (S7d). Since #6440 it also gates OVERLOAD IDENTITY: Win32Native.vb's two StructPtr.Dispose declarations must be two nodes, the first keeping the bare name and the second discriminated by its parameter-type list, with no phantom self-CALLS between them \u2014 and StructPtr.ObjSize, which does not collide, must keep the exact entity id it had before, which is what makes the fix collision-only rather than an identity migration.",
   "expected_entities": [
     {
       "name": "Criteria",
@@ -15,7 +15,7 @@
       "kind": "SCOPE.Component",
       "source_file": "Criteria.vb",
       "must_exist": true,
-      "note": "Generic class GenericCriteria(Of TCondition, TType) — the type-parameter list must not leak into the name."
+      "note": "Generic class GenericCriteria(Of TCondition, TType) \u2014 the type-parameter list must not leak into the name."
     },
     {
       "name": "IntCriteria",
@@ -40,7 +40,7 @@
       "kind": "SCOPE.Schema",
       "source_file": "Criteria.vb",
       "must_exist": true,
-      "note": "Enum — SCOPE.Schema, following the C# extractor."
+      "note": "Enum \u2014 SCOPE.Schema, following the C# extractor."
     },
     {
       "name": "Criteria.Create",
@@ -60,7 +60,7 @@
       "kind": "SCOPE.Operation",
       "source_file": "FrameServer.vb",
       "must_exist": true,
-      "note": "Attribute-decorated Sub — <HandleProcessCorruptedStateExceptions> must not swallow the declaration."
+      "note": "Attribute-decorated Sub \u2014 <HandleProcessCorruptedStateExceptions> must not swallow the declaration."
     },
     {
       "name": "IFrameServer",
@@ -129,14 +129,28 @@
       "kind": "SCOPE.Operation",
       "source_file": "Win32Native.vb",
       "must_exist": true,
-      "note": "Constructor — Sub New maps to subtype `constructor`."
+      "note": "Constructor \u2014 Sub New maps to subtype `constructor`."
     },
     {
       "name": "StructPtr.ObjSize",
       "kind": "SCOPE.Operation",
       "source_file": "Win32Native.vb",
       "must_exist": true,
-      "note": "ReadOnly Property — the Get accessor gets no entity of its own."
+      "note": "ReadOnly Property \u2014 the Get accessor gets no entity of its own. ALSO THE #6440 OPTION-B CONTROL: StructPtr declares no second ObjSize, so the collision-only discriminator must leave this name \u2014 and therefore this entity id \u2014 BYTE-IDENTICAL. cmd/grafel/quality_vbnet_overload_6440_test.go pins the literal id recorded before the change. A discriminator on EVERY member (option A) would move it, and that is an identity migration needing an fbversion bump and a global cross-language reindex."
+    },
+    {
+      "name": "StructPtr.Dispose",
+      "kind": "SCOPE.Operation",
+      "source_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "#6440. `Protected Overridable Sub Dispose(ByVal disposing As Boolean)` (:58) \u2014 the FIRST of two Dispose overloads in StructPtr, and the one that KEEPS THE BARE NAME. That is not arbitrary: internal/resolve/refs.go's byLocation index is keyed (file, name) and retains a bucket only when it is UNIQUE, while callTarget/memberTarget emit call targets as a bare name with no arity, so if EVERY overload were discriminated no entity would carry the name a same-file call site asks for and those refs would dangle \u2014 strictly worse than the merge this replaces. First-in-source-order is chosen because the #4406 dedup already kept the first record, so the survivor's id does not move."
+    },
+    {
+      "name": "StructPtr.Dispose()",
+      "kind": "SCOPE.Operation",
+      "source_file": "Win32Native.vb",
+      "must_exist": true,
+      "note": "#6440. `Public Sub Dispose() Implements IDisposable.Dispose` (:79). Before the fix this declaration had NO NODE OF ITS OWN: graph.EntityID hashes (repo, kind, name, source_file) and nothing else, so both overloads hashed identically and the #4406 dedup dropped this one, unioning its edges onto the :58 record. THIS IS THE ENTRY THAT FAILS BEFORE THE FIX AND PASSES AFTER. The discriminator is the declared PARAMETER-TYPE list \u2014 empty here, hence the bare `()`. Types rather than an ordinal because an ordinal renumbers every later overload when one is inserted; the full type list rather than arity because same-arity overloads are the common case in real VB."
     }
   ],
   "expected_relationships": [
@@ -233,7 +247,7 @@
       "to_kind": "SCOPE.Component",
       "to_file": "Criteria.vb",
       "must_exist": true,
-      "note": "`Inherits GenericCriteria(Of IntegerCondition, Integer)` — generic arguments stripped before binding."
+      "note": "`Inherits GenericCriteria(Of IntegerCondition, Integer)` \u2014 generic arguments stripped before binding."
     },
     {
       "from_name": "StringCriteria",
@@ -305,7 +319,7 @@
       "to_name": "dotnet:IDisposable",
       "to_kind": "SCOPE.External",
       "must_exist": true,
-      "note": "Class-level Implements on a Module-nested class. Shares the ONE ext:dotnet:IDisposable node with the other two clauses — the grouping #6337 exists to produce."
+      "note": "Class-level Implements on a Module-nested class. Shares the ONE ext:dotnet:IDisposable node with the other two clauses \u2014 the grouping #6337 exists to produce."
     },
     {
       "from_name": "FrameServer.vb",
@@ -314,7 +328,7 @@
       "kind": "IMPORTS",
       "to_bare_name": "StaxRip.UI",
       "must_exist": true,
-      "note": "IMPORTS hang on the per-file carrier. StaxRip.UI is a namespace with no in-tree carrier here, so it stays a bare dotted name — the same disposition #6327 measured as IMPORTS 763 emitted / 1 resolved on the full corpus."
+      "note": "IMPORTS hang on the per-file carrier. StaxRip.UI is a namespace with no in-tree carrier here, so it stays a bare dotted name \u2014 the same disposition #6327 measured as IMPORTS 763 emitted / 1 resolved on the full corpus."
     },
     {
       "from_name": "Criteria.vb",
@@ -335,7 +349,7 @@
       "to_kind": "SCOPE.Operation",
       "to_file": "FrameServer.vb",
       "must_exist": true,
-      "note": "`CreateAndOpen(path)` — bare invocation with parens, resolved to the sibling method."
+      "note": "`CreateAndOpen(path)` \u2014 bare invocation with parens, resolved to the sibling method."
     },
     {
       "from_name": "DirectFrameServer.CreateAndOpen",
@@ -346,7 +360,7 @@
       "to_kind": "SCOPE.Operation",
       "to_file": "FrameServer.vb",
       "must_exist": true,
-      "note": "`NativeServer = CreateAviSynthServer()` — empty-paren call on the right of an assignment."
+      "note": "`NativeServer = CreateAviSynthServer()` \u2014 empty-paren call on the right of an assignment."
     },
     {
       "from_name": "DirectFrameServer.CreateAndOpen",
@@ -367,7 +381,7 @@
       "to_kind": "SCOPE.Operation",
       "to_file": "FrameServer.vb",
       "must_exist": true,
-      "note": "`NativeServer.OpenFile(path)` (:28). #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. NOT OVERLOAD-PRECISE, exactly as the StructPtr.Dispose entry below spells out: the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer (#6440). BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
+      "note": "`NativeServer.OpenFile(path)` (:28). #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. STILL NOT OVERLOAD-PRECISE, AND #6440 DID NOT CHANGE THAT: #6440 discriminates colliding DECLARATIONS, but callTarget/memberTarget still render a call TARGET as a bare name with no arity, and the bare name now belongs to the first-declared overload. So the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer \u2014 the member it names is simply no longer a merge of several declarations. (These four INativeFrameServer members are not overloaded at all, so nothing here moved.) BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
     },
     {
       "from_name": "DirectFrameServer.CreateAndOpen",
@@ -378,7 +392,7 @@
       "to_kind": "SCOPE.Operation",
       "to_file": "FrameServer.vb",
       "must_exist": true,
-      "note": "`Dim infoPtr = NativeServer.GetInfo()` (:30) \u2014 receiver typed by a FIELD, read inside a Try block. #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. NOT OVERLOAD-PRECISE, exactly as the StructPtr.Dispose entry below spells out: the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer (#6440). BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
+      "note": "`Dim infoPtr = NativeServer.GetInfo()` (:30) \u2014 receiver typed by a FIELD, read inside a Try block. #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. STILL NOT OVERLOAD-PRECISE, AND #6440 DID NOT CHANGE THAT: #6440 discriminates colliding DECLARATIONS, but callTarget/memberTarget still render a call TARGET as a bare name with no arity, and the bare name now belongs to the first-declared overload. So the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer \u2014 the member it names is simply no longer a merge of several declarations. (These four INativeFrameServer members are not overloaded at all, so nothing here moved.) BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
     },
     {
       "from_name": "DirectFrameServer.Error",
@@ -389,7 +403,7 @@
       "to_kind": "SCOPE.Operation",
       "to_file": "FrameServer.vb",
       "must_exist": true,
-      "note": "`Marshal.PtrToStringUni(NativeServer.GetError())` (:42) \u2014 a NESTED call site inside a property getter; the outer `Marshal.` receiver is undeclared here and correctly stays unresolved. #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. NOT OVERLOAD-PRECISE, exactly as the StructPtr.Dispose entry below spells out: the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer (#6440). BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
+      "note": "`Marshal.PtrToStringUni(NativeServer.GetError())` (:42) \u2014 a NESTED call site inside a property getter; the outer `Marshal.` receiver is undeclared here and correctly stays unresolved. #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. STILL NOT OVERLOAD-PRECISE, AND #6440 DID NOT CHANGE THAT: #6440 discriminates colliding DECLARATIONS, but callTarget/memberTarget still render a call TARGET as a bare name with no arity, and the bare name now belongs to the first-declared overload. So the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer \u2014 the member it names is simply no longer a merge of several declarations. (These four INativeFrameServer members are not overloaded at all, so nothing here moved.) BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
     },
     {
       "from_name": "DirectFrameServer.GetFrame",
@@ -400,7 +414,7 @@
       "to_kind": "SCOPE.Operation",
       "to_file": "FrameServer.vb",
       "must_exist": true,
-      "note": "`Return NativeServer.GetFrame(...)` (:53). The from- and to-names share the member name `GetFrame`, so a substitution that dropped the receiver's type entirely would collide with the enclosing method rather than dangle. #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. NOT OVERLOAD-PRECISE, exactly as the StructPtr.Dispose entry below spells out: the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer (#6440). BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
+      "note": "`Return NativeServer.GetFrame(...)` (:53). The from- and to-names share the member name `GetFrame`, so a substitution that dropped the receiver's type entirely would collide with the enclosing method rather than dangle. #6454: the receiver `NativeServer` is declared `Private NativeServer As INativeFrameServer` (FrameServer.vb:12) and that interface is declared in the SAME file (:83), so the call binds in-tree off the DECLARED TYPE rather than the receiver's spelling. STILL NOT OVERLOAD-PRECISE, AND #6440 DID NOT CHANGE THAT: #6440 discriminates colliding DECLARATIONS, but callTarget/memberTarget still render a call TARGET as a bare name with no arity, and the bare name now belongs to the first-declared overload. So the edge asserts that the site produced an in-tree CALLS to a member of that name on that type, nothing finer \u2014 the member it names is simply no longer a merge of several declarations. (These four INativeFrameServer members are not overloaded at all, so nothing here moved.) BEFORE #6454 THIS SITE PRODUCED NO EDGE AT ALL \u2014 classify answered ParenUnknown for every non-Me qualifier, and a non-statement-head ParenUnknown is not a call \u2014 so this is a clean addition, not an amendment of a previously-wrong target."
     },
     {
       "from_name": "StructPtr.Finalize",
@@ -411,7 +425,7 @@
       "to_kind": "SCOPE.Operation",
       "to_file": "Win32Native.vb",
       "must_exist": true,
-      "note": "`Dispose(False)` inside Finalize. WEAKER THAN IT READS: StructPtr carries two Dispose overloads — `Dispose(disposing As Boolean)` and `Dispose()` — and both fold onto the qualified name `StructPtr.Dispose`, so this edge cannot distinguish which one Finalize reaches. It asserts that the call site produced an in-tree CALLS to a method of that name, nothing finer. Do not read it as overload-precise."
+      "note": "`Dispose(False)` inside Finalize. NARROWED BY #6440: StructPtr's two Dispose overloads no longer fold onto one node \u2014 `Dispose(disposing As Boolean)` (:58) keeps the bare name `StructPtr.Dispose` and `Dispose()` (:79) is emitted as `StructPtr.Dispose()`. This edge therefore lands on the Boolean overload, which is the one Finalize actually reaches. It is still not overload-PRECISE by construction \u2014 the call target is a bare name with no arity, so it binds to whichever overload holds the bare name \u2014 but it is no longer ambiguous between two declarations sharing one node."
     },
     {
       "from_name": "Criteria.Create",
@@ -421,7 +435,7 @@
       "to_name": "Exception",
       "to_kind": "SCOPE.External",
       "must_exist": true,
-      "note": "`Throw New Exception(\"failed to create criteria\")` — constructor call to an external type."
+      "note": "`Throw New Exception(\"failed to create criteria\")` \u2014 constructor call to an external type."
     },
     {
       "from_name": "DirectFrameServer.Info",
@@ -432,7 +446,7 @@
       "to_kind": "SCOPE.Operation",
       "to_file": "FrameServer.vb",
       "must_exist": true,
-      "note": "S7c: `Property Info As ServerInfo Implements IFrameServer.Info`. The edge is anchored on the PROPERTY, and its target is the INTERFACE MEMBER — neither endpoint is shared with the DirectFrameServer -> IFrameServer class-level edge above, which is why the two coexist instead of competing."
+      "note": "S7c: `Property Info As ServerInfo Implements IFrameServer.Info`. The edge is anchored on the PROPERTY, and its target is the INTERFACE MEMBER \u2014 neither endpoint is shared with the DirectFrameServer -> IFrameServer class-level edge above, which is why the two coexist instead of competing."
     },
     {
       "from_name": "DirectFrameServer.Error",
@@ -478,14 +492,14 @@
       "note": "S7c with an EXTERNAL target: `Sub Dispose() Implements IDisposable.Dispose`. #6337 splits the type from the member and binds to a per-member placeholder, distinct from the class-level ext:dotnet:IDisposable node."
     },
     {
-      "from_name": "StructPtr.Dispose",
+      "from_name": "StructPtr.Dispose()",
       "from_kind": "SCOPE.Operation",
       "from_file": "Win32Native.vb",
       "kind": "IMPLEMENTS",
       "to_name": "dotnet:IDisposable:Dispose",
       "to_kind": "SCOPE.External",
       "must_exist": true,
-      "note": "The same external clause on a Module-nested class, four levels deep. Pins that member-level emission does not depend on the owner being top-level, and that both member clauses share the one placeholder."
+      "note": "The same external clause on a Module-nested class, four levels deep. Pins that member-level emission does not depend on the owner being top-level, and that both member clauses share the one placeholder. #6440 MOVED THE FROM-ENDPOINT: the clause is on the no-arg `Sub Dispose()` (:79), which used to be merged into the :58 Boolean overload \u2014 so the graph showed a node whose signature said `Dispose(disposing As Boolean)` while wearing an IMPLEMENTS edge that belongs to a parameterless method. The from_name is now the discriminated `StructPtr.Dispose()`, and THAT amendment is itself a before/after assertion."
     }
   ],
   "forbidden_relationships": [
@@ -505,7 +519,7 @@
       "kind": "CALLS",
       "to_bare_name": "ToString",
       "must_exist": false,
-      "note": "THIS ENTRY PINS A TRADEOFF, NOT A TRUTH. `Value.ToString` (IntCriteria.ValueString, Criteria.vb) is a GENUINE invocation — VB lets you call a no-arg method without parens, and the ideal extractor would emit this CALLS edge. It is forbidden here because S5's paren disambiguator deliberately chooses precision over recall: without a member-access resolver, treating every paren-less dotted name as a call manufactures phantom edges at a rate that swamps the real ones (#6327). Contrast the sibling `PropertyValue.ToString()` in IntCriteria.PropertyString, which IS parenthesised and carries no forbidden entry — that contrast is the point, and it is what makes this guard test the disambiguator rather than the file. IF A FUTURE MEMBER-ACCESS RESOLVER CORRECTLY EMITS THIS EDGE, AMEND THIS ENTRY — do not weaken the resolver to keep the fixture green. A graded fixture that punishes a correct improvement is worse than no fixture for this shape."
+      "note": "THIS ENTRY PINS A TRADEOFF, NOT A TRUTH. `Value.ToString` (IntCriteria.ValueString, Criteria.vb) is a GENUINE invocation \u2014 VB lets you call a no-arg method without parens, and the ideal extractor would emit this CALLS edge. It is forbidden here because S5's paren disambiguator deliberately chooses precision over recall: without a member-access resolver, treating every paren-less dotted name as a call manufactures phantom edges at a rate that swamps the real ones (#6327). Contrast the sibling `PropertyValue.ToString()` in IntCriteria.PropertyString, which IS parenthesised and carries no forbidden entry \u2014 that contrast is the point, and it is what makes this guard test the disambiguator rather than the file. IF A FUTURE MEMBER-ACCESS RESOLVER CORRECTLY EMITS THIS EDGE, AMEND THIS ENTRY \u2014 do not weaken the resolver to keep the fixture green. A graded fixture that punishes a correct improvement is worse than no fixture for this shape."
     },
     {
       "from_name": "BooleanCriteria.Eval",
@@ -526,6 +540,17 @@
       "to_file": "Criteria.vb",
       "must_exist": false,
       "note": "Inheritance direction guard: Criteria is the ROOT of the chain. An inverted EXTENDS would still score full recall on the forward edges above."
+    },
+    {
+      "from_name": "StructPtr.Dispose",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Win32Native.vb",
+      "kind": "CALLS",
+      "to_name": "StructPtr.Dispose",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Win32Native.vb",
+      "must_exist": false,
+      "note": "#6440's phantom self-CALLS, and the sharpest single symptom of the merge. `Dispose()` (:79) calls `Dispose(True)` \u2014 a call to the OTHER overload. With both overloads folded onto one node the edge became a method calling ITSELF: a relationship with no counterpart in the source, minted purely by identity collision. VERIFIED PRESENT before the fix (the assertion failed) and absent after. Do not relax this by allowing self-CALLS generally: a genuinely recursive VB method would produce one legitimately, which is why this entry names StructPtr.Dispose specifically rather than forbidding the shape."
     }
   ]
 }

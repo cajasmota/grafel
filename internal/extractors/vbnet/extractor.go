@@ -299,12 +299,150 @@ func declName(n *vbnet.Node) string {
 	if n.Kind.IsType() || n.Kind == vbnet.NodeDelegate {
 		return n.Name
 	}
+	base := n.Name
 	for x := n.Parent(); x != nil; x = x.Parent() {
 		if x.Kind.IsType() && x.Name != "" {
-			return x.Name + "." + n.Name
+			base = x.Name + "." + n.Name
+			break
 		}
 	}
-	return n.Name
+	return base + overloadSuffix(n)
+}
+
+// overloadSuffix returns the discriminator that separates one overload of a
+// member from its siblings, and the EMPTY STRING for every member that does
+// not collide with a sibling. This is #6440, resolved as its option B.
+//
+// # Why a discriminator is needed at all
+//
+// graph.EntityID (internal/graph/graph.go:259) hashes (repo, kind, name,
+// source_file) and nothing else — not Subtype, not the span, not the
+// signature. Two overloads declared in one type in one file agreed on all
+// four, so they hashed identically, and the #4406 dedup path
+// (cmd/grafel/index.go) kept the FIRST record, dropped the rest and unioned
+// the dropped records' EDGES onto the survivor. The graph then showed one
+// operation carrying the first overload's span and signature while wearing the
+// second's edges — including, in vbnet-mini's own Win32Native.vb, a phantom
+// self-CALLS, because `Dispose()` calls `Dispose(True)`.
+//
+// MEASURED with this extractor over the 302-file VB.NET corpus: 279 colliding
+// EntityID groups, 364 records dropped, out of 13,479 records. 277 of the 279
+// are member-vs-member overloads and are what this function fixes. The
+// remaining 2 are TYPE-vs-type — one file declaring the same type name twice —
+// which the bare-name rule for types (see declName) deliberately accepts and
+// this function does not touch.
+//
+// # Why only colliding members are discriminated
+//
+// Suffixing EVERY member would move every VB.NET member's entity id, which is
+// an identity migration: it needs an fbversion bump and therefore a global,
+// cross-LANGUAGE reindex, and it would rewrite every VB name in the golden
+// expected.json. Confining the change to members that genuinely collide leaves
+// every other member's name — and so its id — byte-identical, which is what
+// cmd/grafel/quality_vbnet_overload_6440_test.go pins.
+//
+// # Why the FIRST declaration keeps the bare name
+//
+// It must be SOME overload: internal/resolve/refs.go's byLocation index is
+// keyed (file, name) and a bucket is retained only when it is UNIQUE, while
+// callTarget/memberTarget emit call targets as a BARE name with no arity. If
+// every overload were suffixed, no entity would carry the undecorated name a
+// same-file call site asks for and those refs would DANGLE — strictly worse
+// than the merge this replaces.
+//
+// First-in-source-order is chosen because it is exactly who won before: the
+// #4406 dedup kept the first record, so the survivor's name and id are
+// unchanged by this function. Every id that moves belongs to an overload that
+// had NO id of its own a moment ago.
+//
+// # Why the suffix is the parameter-TYPE list
+//
+// It must be stable across edits that have nothing to do with it. An ordinal
+// (`Dispose#2`) is not: inserting an overload renumbers every later one.
+// Arity alone is not sufficient — same-arity overloads are the common case
+// (`ToSeparatedString(IEnumerable(Of x264Control.QualityItem))` and four
+// siblings, in the corpus). The declared parameter types are the thing the VB
+// compiler itself overloads on, so they change only when the member's own
+// signature changes. Type parameters are included because a generic overload
+// may otherwise agree with its non-generic sibling.
+//
+// The residual case — two siblings whose rendered type lists agree, e.g. when
+// the parser recovered no type for a parameter — falls back to a source-order
+// ordinal appended to the SECOND and later of them. That reintroduces ordinal
+// fragility for that group alone rather than for all of them, and it is the
+// only way to keep the per-file name set injective, which is byLocation's
+// precondition.
+func overloadSuffix(n *vbnet.Node) string {
+	p := n.Parent()
+	if p == nil {
+		return ""
+	}
+	kind, _, ok := entityKind(n)
+	if !ok {
+		return ""
+	}
+	// Group the entity-bearing siblings that would hash to the same id: same
+	// declared name, same grafel kind. Kind matters because a Field and a Sub
+	// of one name land on SCOPE.Schema and SCOPE.Operation respectively and so
+	// never collided in the first place.
+	var group []*vbnet.Node
+	for _, s := range p.Children {
+		if s.Name != n.Name {
+			continue
+		}
+		if sk, _, sok := entityKind(s); !sok || sk != kind {
+			continue
+		}
+		group = append(group, s)
+	}
+	// A fast path only, and deliberately noted as such: the loop below already
+	// returns "" for a one-member group, because that group's sole member is
+	// at index 0. Widening this bound is therefore an EQUIVALENT mutant — no
+	// test can distinguish it — which is worth knowing before someone reads a
+	// surviving mutant here as a gap in the suite. The predicate that actually
+	// decides option B from option A is the `i == 0` skip below and the
+	// `s.Name != n.Name` group membership above; both are killed by
+	// cmd/grafel/quality_vbnet_overload_6440_test.go.
+	if len(group) < 2 {
+		return ""
+	}
+	seen := map[string]int{"": 1} // the bare name is taken by group[0]
+	for i, s := range group {
+		if i == 0 {
+			continue
+		}
+		suffix := paramTypeList(s)
+		if seen[suffix] > 0 {
+			suffix += "#" + strconv.Itoa(i)
+		}
+		seen[suffix]++
+		if s == n {
+			return suffix
+		}
+	}
+	return ""
+}
+
+// paramTypeList renders the discriminating half of a member's signature: its
+// type parameters and the DECLARED TYPES of its parameters, without their
+// names. Parameter names are excluded on purpose — renaming a parameter is not
+// a change of identity, and letting it move an entity id would make the id
+// depend on cosmetics.
+func paramTypeList(n *vbnet.Node) string {
+	var b strings.Builder
+	if len(n.TypeParams) > 0 {
+		b.WriteString("(Of " + strings.Join(n.TypeParams, ", ") + ")")
+	}
+	parts := make([]string, 0, len(n.Params))
+	for _, p := range n.Params {
+		t := p.TypeName
+		if t == "" {
+			t = "Object"
+		}
+		parts = append(parts, t)
+	}
+	b.WriteString("(" + strings.Join(parts, ", ") + ")")
+	return b.String()
 }
 
 // signatureOf renders a compact declaration signature.
