@@ -1,0 +1,42 @@
+{
+  "fixture_name": "python-fastapi-mini",
+  "language": "python",
+  "description": "Minimal FastAPI app: an APIRouter mounted on a FastAPI app, one decorated handler, and one Depends() provider. Grades the three fastapi.yaml relationship rules that anchored on Route:<handler-function> — a name FastAPI Route entities are never minted under (Refs #6444).",
+  "expected_entities": [
+    { "name": "/things", "kind": "Route", "source_file": "app/routers/things.py", "must_exist": true, "note": "Route minted from the decorator PATH (fastapi.yaml source_patterns, name_group 2). This is the only name a FastAPI Route is ever minted under from a decorator — never the handler function." },
+    { "name": "router", "kind": "Route", "source_file": "app/routers/things.py", "must_exist": true, "note": "Route minted from the APIRouter variable." },
+    { "name": "app", "kind": "Service", "source_file": "main.py", "must_exist": true, "note": "Service minted from `app = FastAPI(`. The ONLY producer of a Service name in fastapi.yaml." },
+    { "name": "list_things", "kind": "SCOPE.Operation", "source_file": "app/routers/things.py", "must_exist": true, "note": "The handler function. Minted by the generic Python extractor, NOT by fastapi.yaml — so a Route:/Service:-prefixed stub can never name it." },
+    { "name": "get_db", "kind": "SCOPE.Operation", "source_file": "app/deps.py", "must_exist": true, "note": "The Depends() provider. Also a generic-extractor Operation." }
+  ],
+  "expected_relationships": [
+    {
+      "from_name": "/things", "from_kind": "Route", "from_file": "app/routers/things.py",
+      "kind": "DECORATES",
+      "to_name": "list_things", "to_kind": "SCOPE.Operation", "to_file": "app/routers/things.py",
+      "must_exist": true,
+      "note": "#6444. The decorator rule must anchor its Route end on the PATH the Route entity is named by, and its handler end on the generic-extractor Operation. Killing mutant: restore source_group to the handler function (Route:list_things) — fromCands for Route:/things still resolves, but no DECORATES edge originates from it, so this row goes not-found."
+    },
+    {
+      "from_name": "list_things", "from_kind": "SCOPE.Operation", "from_file": "app/routers/things.py",
+      "kind": "IMPORTS",
+      "to_name": "get_db", "to_kind": "SCOPE.Operation", "to_file": "app/deps.py",
+      "must_exist": true,
+      "note": "#6444. Was Route:<handler> -> Service:<dep>; BOTH endpoints were unmintable (Service: comes only from `app = FastAPI(`, and the Dependency rule names the entity after the OUTER function, not the Depends() argument)."
+    },
+    {
+      "from_name": "get_db", "from_kind": "SCOPE.Operation", "from_file": "app/deps.py",
+      "kind": "INJECTED_INTO",
+      "to_name": "list_things", "to_kind": "SCOPE.Operation", "to_file": "app/routers/things.py",
+      "must_exist": true,
+      "note": "#6444. Was Dependency:<dep> -> Route:<handler>; both endpoints unmintable for the same two reasons."
+    },
+    {
+      "from_name": "app", "from_kind": "Service", "from_file": "main.py",
+      "kind": "ROUTES_TO",
+      "to_name": "router", "to_kind": "Route", "to_file": "app/routers/things.py",
+      "must_exist": true,
+      "note": "The include_router rule is ALREADY correct — both endpoints are real minted names. Pinned so the #6444 edits cannot delete or re-endpoint it. Measured limitation: this row does NOT pin the rule's source_type token. Mutating source_type Service->Route still passes, because `Route:app` misses byKind and the bare name `app` then resolves through the byName/kind-hint fallback back to Service:app. The three #6444 rows above DO pin their kinds, because their bare names (`list_things`, `get_db`) are ambiguous across the Dependency/SCOPE.Pattern entities that share them, so the fallback cannot rescue a wrong prefix."
+    }
+  ]
+}

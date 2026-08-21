@@ -86,17 +86,32 @@ source_patterns:
 # relationship_rules: regex patterns that produce edges between entities.
 # source_group / target_group reference capture groups for entity names.
 relationship_rules:
-  # Route includes dependency injection: route -> service IMPORTS
+  # Handler uses an injected dependency: handler IMPORTS provider.
+  #
+  # #6444 — this rule used to read `Route:<handler-fn> -> Service:<provider>`
+  # and BOTH ends were unmintable. A FastAPI Route entity is only ever named
+  # by the decorator PATH, the APIRouter variable, or the filename (see
+  # source_patterns above) — never by a handler function. And `Service:` has
+  # exactly one producer, `app = FastAPI(`, so `Service:get_db` names nothing
+  # either. The `Dependency` rule is no help: it is `scope: function` and
+  # captures the OUTER function, so it mints `Dependency:<handler>`, not
+  # `Dependency:<provider>`.
+  #
+  # Both names DO exist — as generic-Python-extractor operations, kind
+  # `SCOPE.Operation`, which the resolver's byKind index also carries under
+  # the trimmed `Operation` key. That is what these anchor on now.
   - pattern: "def\\s+(\\w+)\\s*\\([^)]*=\\s*Depends\\(\\s*(\\w+)\\s*\\)"
-    source_type: Route
-    target_type: Service
+    source_type: Operation
+    target_type: Operation
     relationship: IMPORTS
     source_group: 1
     target_group: 2
-  # Dependency injected into route handler: Dependency INJECTED_INTO Route
+  # Dependency injected into route handler: provider INJECTED_INTO handler.
+  # #6444 — was `Dependency:<provider> -> Route:<handler>`; same two defects
+  # as the rule above, mirrored.
   - pattern: "def\\s+(\\w+)\\s*\\([^)]*=\\s*Depends\\(\\s*(\\w+)\\s*\\)"
-    source_type: Dependency
-    target_type: Route
+    source_type: Operation
+    target_type: Operation
     relationship: INJECTED_INTO
     source_group: 2
     target_group: 1
@@ -107,13 +122,21 @@ relationship_rules:
     relationship: ROUTES_TO
     source_group: 1
     target_group: 2
-  # Handler decorated by route decorator (single-line match)
-  - pattern: "@(?:app|router)\\.(?:get|post|put|patch|delete)\\([^)]*\\)\\s*\\ndef\\s+(\\w+)"
+  # Handler decorated by route decorator.
+  #
+  # #6444 — the old pattern discarded the path (`\\([^)]*\\)`) and then used
+  # the HANDLER capture for both ends: `Route:<handler> -> Service:<handler>`.
+  # Neither name is mintable. The path is right there in the matched text, so
+  # capture it: group 1 is now byte-identical to the name the Route
+  # source_pattern mints at `name_group: 2` above, and group 2 is the handler,
+  # which the generic extractor mints as `SCOPE.Operation` (indexed under the
+  # trimmed `Operation` key).
+  - pattern: "@(?:app|router)\\.(?:get|post|put|patch|delete)\\(\\s*[\"']([^\"']+)[\"'][^)]*\\)\\s*\\ndef\\s+(\\w+)"
     source_type: Route
-    target_type: Service
+    target_type: Operation
     relationship: DECORATES
     source_group: 1
-    target_group: 1
+    target_group: 2
 
 # These run after YAML-driven extraction and contribute additional entities +
 # relationships to the pipeline result.

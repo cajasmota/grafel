@@ -11,11 +11,24 @@ import "testing"
 // After #6429 the hatch is narrowed on two axes:
 //   - `Route:<path>` is no longer swallowed when the edge is TAGGED java (its
 //     only Java producer was Spring's self-referential source_handler, which
-//     #6429 removed). An UNTAGGED `Route:` stub stays excused: the FastAPI /
-//     Flask / Django / Strawberry / axum / actix / symfony / vapor YAML rules
-//     emit `Route:<functionName>` edges carrying no language key, and
-//     reclassifying those is a cross-language disposition change that needs
-//     its own corpus-wide measurement.
+//     #6429 removed). An UNTAGGED `Route:` stub stays excused: several
+//     framework YAML rule files emit `Route:<functionName>` edges carrying no
+//     language key, and reclassifying those is a cross-language disposition
+//     change that needs its own corpus-wide measurement.
+//
+// #6444 UPDATE — FastAPI is no longer one of those producers. fastapi.yaml's
+// three defective rules (DECORATES / IMPORTS / INJECTED_INTO) now anchor on
+// `Route:<path>` and `Operation:<function>`, both of which are real minted
+// names, so they resolve and never reach this classifier at all. The
+// python-fastapi-mini golden fixture gates that.
+//
+// The assertions below are UNCHANGED and still correct. This hatch is not a
+// statement about FastAPI specifically — it describes what the classifier does
+// with an untagged `Route:` stub, and flask.yaml, django.yaml, axum.yaml,
+// symfony.yaml and vapor.yaml still produce them (see the per-file audit on
+// #6444; actix_web.yaml does NOT — it was a false positive on the original
+// list). Narrowing the arm further is the sibling sweep's job, and needs the
+// corpus measurement #6429 declined to do blind.
 //   - `Controller:<name>` is swallowed ONLY for a BARE method name. That is
 //     exactly the shape the spring_mvc.yaml regex rules emit for a controller
 //     with no class-level @RequestMapping (the AST composition pass skips
@@ -55,14 +68,16 @@ func TestSpringDynamicHatch6429_Narrowed(t *testing.T) {
 			want: DispositionBugExtractor,
 		},
 		{
-			// Reviewer-confirmed by execution against the detector: the
-			// FastAPI YAML rules emit `DECORATES Route:list_things ->
-			// Service:list_things` with props [framework python,
-			// pattern_type yaml_driven] and NO language key, so
-			// relLanguage() returns "". Dropping this arm would raise the
-			// reported resolver-bug rate across the whole Python corpus as
-			// a side effect of a Java Spring change. Deliberately kept.
-			name: "UNTAGGED Route stub stays excused (FastAPI et al — not this PR's to move)",
+			// The example that originally justified this row was FastAPI's
+			// `DECORATES Route:list_things -> Service:list_things`, confirmed
+			// by execution: props [framework python, pattern_type
+			// yaml_driven], no language key, so relLanguage() returns "".
+			// #6444 FIXED that rule, so FastAPI no longer emits the shape —
+			// but flask/django/axum/symfony/vapor still do, and dropping this
+			// arm would raise the reported resolver-bug rate across the whole
+			// Python corpus as a side effect of a Java Spring change.
+			// Deliberately kept.
+			name: "UNTAGGED Route stub stays excused (flask/django/axum et al — not this PR's to move)",
 			stub: "Route:list_things",
 			lang: "",
 			want: DispositionDynamic,
