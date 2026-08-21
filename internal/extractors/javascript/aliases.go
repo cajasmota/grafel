@@ -184,10 +184,26 @@ func reportAliasSkip(path string, err error) {
 	w := aliasSkipOut
 	aliasSkipMu.Unlock()
 
-	fmt.Fprintf(w, "grafel: skipped alias config %v — not read because reading one can block forever (#6416)\n", err)
+	fmt.Fprintf(w, "grafel: skipped alias config %v — not read because reading one can block forever (#6416)\n", withPath(path, err))
 	if last {
 		fmt.Fprintf(w, "grafel: further alias-config skips suppressed after %d\n", maxAliasSkipReports)
 	}
+}
+
+// withPath makes a skip line attributable.
+//
+// safeio's two reportable errors are not shaped alike: ErrNotRegular is
+// wrapped with the path and the entry kind, but ErrWouldBlock is returned
+// BARE from openWithDeadline's two deadline arms. Printing it unadorned gives
+// "skipped alias config safeio: open would block", which names no file and so
+// tells a user nothing they can act on — the same silence the report exists to
+// end. Only the bare form is decorated, so ErrNotRegular's own wording is left
+// alone rather than printing its path twice.
+func withPath(path string, err error) error {
+	if errors.Is(err, safeio.ErrWouldBlock) {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return err
 }
 
 // aliasEntry describes a single alias prefix→targets mapping. Patterns

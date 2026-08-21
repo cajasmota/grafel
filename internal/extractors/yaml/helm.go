@@ -149,10 +149,26 @@ func reportHelmSkip(path string, err error) {
 	w := helmSkipOut
 	helmSkipMu.Unlock()
 
-	fmt.Fprintf(w, "grafel: skipped Helm chart metadata %v — not read because reading one can block forever; subchart override edges for this chart are omitted (#6416)\n", err)
+	fmt.Fprintf(w, "grafel: skipped Helm chart metadata %v — not read because reading one can block forever; subchart override edges for this chart are omitted (#6416)\n", withPath(path, err))
 	if last {
 		fmt.Fprintf(w, "grafel: further Helm sibling-file skips suppressed after %d\n", maxHelmSkipReports)
 	}
+}
+
+// withPath makes a skip line attributable.
+//
+// safeio's two reportable errors are not shaped alike: ErrNotRegular is
+// wrapped with the path and the entry kind, but ErrWouldBlock is returned BARE
+// from openWithDeadline's two deadline arms. Printing it unadorned gives
+// "skipped Helm chart metadata safeio: open would block", which names no file
+// and so tells a user nothing they can act on — the same silence the report
+// exists to end. Only the bare form is decorated, so ErrNotRegular's own
+// wording is left alone rather than printing its path twice.
+func withPath(path string, err error) error {
+	if errors.Is(err, safeio.ErrWouldBlock) {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return err
 }
 
 const (

@@ -14,8 +14,10 @@
 // go.mod change always triggers a full re-index.
 //
 // When RepoRoot is empty or go.mod is absent/unreadable the reader returns ""
-// and the stamp is silently skipped; in-tree imports are left unresolved (the
-// pre-fix behaviour).
+// and the stamp is skipped; in-tree imports are left unresolved (the pre-fix
+// behaviour). Only a plain absence is silent: a go.mod refused for being a
+// FIFO, device or socket, or one whose read would have blocked, is announced
+// by reportGoModSkip below (#6416).
 package golang
 
 import (
@@ -126,10 +128,26 @@ func reportGoModSkip(path string, err error) {
 	w := goModSkipOut
 	goModSkipMu.Unlock()
 
-	fmt.Fprintf(w, "grafel: skipped %v — not read because reading one can block forever; in-tree Go imports for this repo will stay unresolved (#6416)\n", err)
+	fmt.Fprintf(w, "grafel: skipped %v — not read because reading one can block forever; in-tree Go imports for this repo will stay unresolved (#6416)\n", withPath(path, err))
 	if last {
 		fmt.Fprintf(w, "grafel: further go.mod skips suppressed after %d\n", maxGoModSkipReports)
 	}
+}
+
+// withPath makes a skip line attributable.
+//
+// safeio's two reportable errors are not shaped alike: ErrNotRegular is
+// wrapped with the path and the entry kind, but ErrWouldBlock is returned BARE
+// from openWithDeadline's two deadline arms. Printing it unadorned gives
+// "skipped safeio: open would block", which names no file and so tells a user
+// nothing they can act on — the same silence the report exists to end. Only
+// the bare form is decorated, so ErrNotRegular's own wording is left alone
+// rather than printing its path twice.
+func withPath(path string, err error) error {
+	if errors.Is(err, safeio.ErrWouldBlock) {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return err
 }
 
 var (
