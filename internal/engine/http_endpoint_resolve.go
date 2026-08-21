@@ -206,8 +206,11 @@ func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag st
 // route must be preserved rather than destroyed for want of a cross-link.
 //
 // The MALFORMED-reference drop (a `source_handler` that does not parse as
-// `Kind:Name`) and the Spring `Route:<path>` placeholder drop are NOT relaxed:
-// neither verdict depends on how much of the corpus the caller could see.
+// `Kind:Name`) is NOT relaxed: that verdict does not depend on how much of the
+// corpus the caller could see. The Spring `Route:<path>` placeholder is no
+// longer a drop on EITHER entry point — #6485 made it a NoHandlerProp keep on
+// both, so the two paths cannot disagree about a real route whose handler ref
+// was only ever a placeholder.
 //
 // Every ownership rule of ResolveHTTPEndpointHandlersWithRepo applies unchanged
 // — it consumes `merged`, edits in place and compacts over the same backing
@@ -299,9 +302,7 @@ func resolveHTTPEndpointHandlers(merged []types.EntityRecord, repoTag string, ke
 
 	for i := range merged {
 		r := &merged[i]
-		// Exclude all three http endpoint kinds from the handler index to
-		// avoid synthetics resolving against each other.
-		if r.Kind == httpEndpointDefinitionKind || r.Kind == httpEndpointCallKind || r.Kind == httpEndpointKind {
+		if isIneligibleHandlerKind(r.Kind) {
 			continue
 		}
 		k := key{r.Kind, r.Name, r.SourceFile}
@@ -610,9 +611,30 @@ func resolveHTTPEndpointHandlers(merged []types.EntityRecord, repoTag string, ke
 			// Kind="Route" + Name=<path> — that's Spring's
 			// "synthesizer didn't have the method name" placeholder
 			// and would always collide with the synthetic itself.
+			//
+			// #6485 — KEEP the endpoint here rather than dropping it, and keep
+			// it identically on BOTH entry points. Route is no longer in the
+			// handler index (isIneligibleHandlerKind), so a `Route:<path>` ref
+			// can no longer bind anywhere and this branch became the sole
+			// verdict for every such endpoint. That makes the old
+			// HandlerDropped verdict actively harmful: on the corpus-scoped
+			// path a drop DELETES the endpoint, so the fix would have traded a
+			// wrong edge for a vanished route, while the file-scoped path kept
+			// it — the two paths disagreeing about a real endpoint is a
+			// different silent wrongness, not a fix.
+			//
+			// The evidence here says only "this handler ref is a placeholder,
+			// not a handler". It says nothing about whether the ROUTE exists:
+			// it plainly does — the synthesizer emitted it from a real route
+			// registration. So the endpoint is preserved, attributed by its
+			// `source_handler` property and simply not cross-linked. That is
+			// the verdict #2851 (a handler_file hint that matched nothing) and
+			// #3426 (every global candidate is a tooling file) already reach on
+			// the same reasoning. NoHandlerProp, not HandlerDropped, and
+			// independent of keepUnresolved because the verdict does not depend
+			// on how much of the corpus the caller can see.
 			if hk == "Route" {
-				stats.HandlerDropped++
-				drop[i] = true
+				stats.NoHandlerProp++
 				continue
 			}
 			// #2851 — when a `handler_file` hint was supplied but no entity
@@ -902,6 +924,46 @@ func hasGlobalCandidate(globalMulti map[httpResolveNameKey][]int, base httpResol
 // the controller class that shares a line with the method is never a
 // co-location candidate. Mirrors the handler kinds the synthesizers and the
 // cross-kind equivalence table already treat as methods.
+// isIneligibleHandlerKind reports kinds that must never enter the phase-2
+// handler index — kinds that can never legitimately be the FromID of an
+// endpoint IMPLEMENTS edge.
+//
+// The three http_endpoint* kinds are excluded so synthetics never resolve
+// against each other.
+//
+// `Route` is excluded for #6485. A Route entity is a route DECLARATION, not a
+// handler body — it models the same thing the endpoint synthetic already does,
+// so binding an endpoint to one produces
+//
+//	Route:/foo --IMPLEMENTS--> http_endpoint_definition:http:ANY:/foo
+//
+// the graph asserting that route `/foo` is implemented by route `/foo`. A
+// consumer asking which handler serves a route gets the route's own path back,
+// which for an agent reading the graph is worse than a missing edge. Three
+// per-framework fixes (#6429 Spring, #6484 Django DRF, and the residual Django
+// `("Route", raw)` synthesis fallback) each removed ONE producer while leaving
+// the index willing to accept the next one, so the exclusion belongs here — at
+// index construction — where the shape becomes unrepresentable rather than
+// repeatedly repaired.
+//
+// Index construction is also the only SUFFICIENT site. The `hk == "Route"`
+// branch further down runs only after the same-file exact lookup
+// (`idx[{hk, hn, lookupFile}]`) has already had its chance to bind, and the
+// same-file BARE-name index is keyed without a kind at all, so a `Controller:`
+// ref whose name matches a Route entity binds to it regardless of `hk`.
+// Excluding at the drop site alone leaves both of those paths live.
+//
+// This mirrors resolveCoLocatedHandler, which already refuses container/route-
+// ish kinds as co-location candidates on exactly this reasoning; the name-based
+// fallback simply never had the same treatment applied.
+func isIneligibleHandlerKind(kind string) bool {
+	switch kind {
+	case httpEndpointDefinitionKind, httpEndpointCallKind, httpEndpointKind, "Route":
+		return true
+	}
+	return false
+}
+
 func isCoLocationHandlerKind(kind string) bool {
 	switch kind {
 	case "SCOPE.Operation", "SCOPE.Function", "Operation", "Function", "Method":
