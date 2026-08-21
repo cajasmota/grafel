@@ -88,11 +88,18 @@ Requested in #6321 by @dcastro-imp: ~670 `.vb` files in a legacy WinForms/.NET F
 
 ### Notes
 
-- **VB.NET requires a reindex of existing graphs.** A graph indexed before this release holds no VB.NET entities or edges, and an incremental pass will not backfill them — the `.vb` files were recorded as skipped, not as changed. After upgrading, force a rebuild per group, as [docs/quickstart.md](docs/quickstart.md) describes:
+- **This release requires a reindex of existing graphs.** After upgrading, force a rebuild per group, as [docs/quickstart.md](docs/quickstart.md) describes:
 
   ```sh
   grafel rebuild <group>    # force AST rebuild, no cache
   ```
+
+  An incremental pass will not backfill any of it, for two different reasons with the same consequence:
+
+  - **The files were recorded as skipped, not as changed.** VB.NET (`.vb`, `.vbproj`, `.bas`, `.cls`) and protobuf (`.proto`) produced no entities at all before this release — VB.NET was dropped at classification (#6321), and every `.proto` file grafel had ever indexed was dropped at dispatch because the extractor was registered under a token the classifier never emits (#6356). Nothing about those files has changed on disk, so an incremental pass has no reason to revisit them.
+  - **The files were parsed, but the extractors now produce different output.** A rebuild is what re-runs them. This is why Solidity (#6423, entity recall 19/40 → 40/40 on the graded fixture; #6368), F# (#6326, #6336), Groovy (#6370), Svelte (#6366), Verilog and Astro (#6298), HCL (#6367), Razor and Vue (#6372), Java/Spring (#6429), TypeScript/Angular (#6433) and Python/FastAPI (#6385) all yield materially different graphs after upgrading. Two resolver fixes change output for **every** language: a real declaration now outranks an import placeholder in the by-name index (#6369), and extraction skips `ERROR` subtrees so what is emitted is a true subset of what the file declares (#6360).
+
+  Upgrading without rebuilding leaves a graph that is silently missing entities and edges grafel now claims to extract — the same failure shape as most of the bugs fixed above.
 
 ---
 
