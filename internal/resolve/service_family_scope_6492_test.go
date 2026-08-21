@@ -123,36 +123,114 @@ func TestOperationKindFamilyExcludesService6492(t *testing.T) {
 	}
 }
 
-// TestProtoOperationFamilyIsTheOnlyWidening6492 is the positive-direction
-// killing guard: it pins that the widening exists, that it is confined to the
-// proto language segment of the structural ref, and that it adds EXACTLY
-// SCOPE.Service (mutant N3's `SCOPE.Controller` dies here, mutant N1's bare
-// "Service" dies here and in the mask assertions above).
-func TestProtoOperationFamilyIsTheOnlyWidening6492(t *testing.T) {
-	base := structuralKindFamilies("operation", "python")
-	proto := structuralKindFamilies("operation", "proto")
-
-	if len(proto) != len(base)+1 {
-		t.Fatalf("structuralKindFamilies(\"operation\", \"proto\") = %v, want exactly "+
-			"one member more than the %v the other languages get (#6492)", proto, base)
-	}
-	for i := range base {
-		if proto[i] != base[i] {
-			t.Fatalf("proto operation family %v does not extend the base family %v (#6492)",
-				proto, base)
+// TestStructuralKindFamiliesIsLanguageBlind6492 pins the SHAPE of the round-3
+// fix on the family side: structuralKindFamilies takes no language argument at
+// all any more, and returns the same three untouched slices it did before
+// #6459. Rounds 1 and 2 both regressed by widening a family; this asserts that
+// no family is widened, by identity.
+func TestStructuralKindFamiliesIsLanguageBlind6492(t *testing.T) {
+	for _, tc := range []struct {
+		scope string
+		want  []string
+	}{
+		{"component", componentKindFamily},
+		{"operation", operationKindFamily},
+		{"schema", schemaKindFamily},
+		{"OPERATION", operationKindFamily},
+	} {
+		got := structuralKindFamilies(tc.scope)
+		if len(got) != len(tc.want) {
+			t.Fatalf("structuralKindFamilies(%q) = %v, want exactly %v (#6492)",
+				tc.scope, got, tc.want)
+		}
+		for i := range tc.want {
+			if got[i] != tc.want[i] {
+				t.Fatalf("structuralKindFamilies(%q) = %v, want exactly %v (#6492)",
+					tc.scope, got, tc.want)
+			}
 		}
 	}
-	if got := proto[len(proto)-1]; got != scopeKindPrefix+"Service" {
-		t.Fatalf("proto operation family's extra member = %q, want %q (#6492)",
-			got, scopeKindPrefix+"Service")
+	if got := structuralKindFamilies("bogus"); got != nil {
+		t.Fatalf("structuralKindFamilies(\"bogus\") = %v, want nil (#6492)", got)
 	}
-	// Non-operation scope kinds must not gain anything from the language argument.
-	for _, scope := range []string{"component", "schema"} {
-		a := structuralKindFamilies(scope, "proto")
-		b := structuralKindFamilies(scope, "python")
-		if len(a) != len(b) {
-			t.Fatalf("structuralKindFamilies(%q, …) is language-sensitive: %v vs %v (#6492)",
-				scope, a, b)
+}
+
+// TestProtoServiceTierIsPinnedToProto6492 is the B2 guard: the language
+// boundary of the fix, pinned exhaustively rather than at two sample points.
+//
+// Round 2's gate (`case "proto", "protobuf":`) was UNPINNED — a mutant widening
+// it to `case "proto", "protobuf", "go", "java", "typescript":` survived a
+// clean `go vet` and the whole suite, because only python and kotlin were ever
+// probed. Any language admitted by mistake binds an operation-space ref to a
+// SCOPE.Service MARKER (celery task, Spring stereotype, systemd unit) instead
+// of the real function or class beside it.
+//
+// The table below covers every language that emits SCOPE.Service entities or
+// operation-space structural refs, plus the empty segment, plus a case-variant
+// and an alias to pin normalizeLang's role. For each, the same #6459 fixture is
+// indexed and the tier must fire for proto spellings ONLY.
+func TestProtoServiceTierIsPinnedToProto6492(t *testing.T) {
+	for _, tc := range []struct {
+		lang      string
+		wantProto bool
+	}{
+		{"proto", true},
+		{"protobuf", true},
+		{"PROTO", true},   // normalizeLang lowercases
+		{" proto ", true}, // normalizeLang trims
+		{"", false},
+		{"go", false},
+		{"golang", false},
+		{"java", false},
+		{"kotlin", false},
+		{"kt", false},
+		{"python", false},
+		{"py", false},
+		{"typescript", false},
+		{"ts", false},
+		{"javascript", false},
+		{"js", false},
+		{"ruby", false},
+		{"rust", false},
+		{"elixir", false},
+		{"csharp", false},
+		{"vbnet", false},
+		{"yaml", false},
+		{"scala", false},
+		{"swift", false},
+		{"php", false},
+		{"protocol-buffers", false}, // NOT a spelling the extractor emits
+		{"prototype", false},        // substring of "proto" must not match
+	} {
+		if got := isProtoLangSegment(tc.lang); got != tc.wantProto {
+			t.Fatalf("isProtoLangSegment(%q) = %v, want %v — the #6459 service tier's "+
+				"language boundary must admit the proto spellings and NOTHING else (#6492 B2)",
+				tc.lang, got, tc.wantProto)
+		}
+
+		// End-to-end through lookupStructural, so the pin cannot be satisfied
+		// by a predicate nobody consults.
+		file := "svc/" + "x.src"
+		schema := types.EntityRecord{
+			ID: "a1a1a1a1a1a1a1a1", Kind: "SCOPE.Schema", Subtype: "message",
+			Name: "Foo", SourceFile: file, Language: tc.lang,
+		}
+		service := types.EntityRecord{
+			ID: "b2b2b2b2b2b2b2b2", Kind: "SCOPE.Service", Subtype: "service",
+			Name: "Foo", SourceFile: file, Language: tc.lang,
+		}
+		idx := BuildIndex([]types.EntityRecord{schema, service})
+		ref := extractor.BuildOperationStructuralRef(tc.lang, file, "Foo")
+		id, _, _ := idx.lookupStructural(ref)
+		if tc.wantProto && id != service.ID {
+			t.Fatalf("lookupStructural(%q) = %q, want the service %q — the tier must "+
+				"fire for the proto spelling %q (#6492 B2)", ref, id, service.ID, tc.lang)
+		}
+		if !tc.wantProto && id == service.ID {
+			t.Fatalf("lookupStructural(%q) bound the SCOPE.Service %q for language %q; "+
+				"the #6459 tier is proto-only — every other emitter of that Kind is a "+
+				"MARKER sharing a (file, name) with a real entity (#6492 B2)",
+				ref, id, tc.lang)
 		}
 	}
 }
@@ -179,10 +257,36 @@ func TestKotlinStereotypeMarkerIsNotAnOperationTarget6492(t *testing.T) {
 	}
 	idx := BuildIndex([]types.EntityRecord{marker, class})
 
+	// Non-vacuity guard (#6492 N5). The assertion below is a NEGATIVE — it
+	// would pass just as happily against an empty index, or against a typo'd
+	// file path that matches nothing. Prove first that this (file, name) is
+	// really populated and really addressable: the COMPONENT-space ref for the
+	// same pair binds to the real class, which it can only do if BuildIndex
+	// recorded both entities at that location.
+	componentRef := extractor.BuildComponentStructuralRef("kotlin", ktFile, "OrderService")
+	if id, _, handled := idx.lookupStructural(componentRef); !handled || id != class.ID {
+		t.Fatalf("premise: lookupStructural(%q) = (%q, handled=%v), want the class %q — "+
+			"the fixture is not addressable, so the negative assertion below would be "+
+			"vacuous (#6492 N5)", componentRef, id, handled, class.ID)
+	}
+
 	ref := extractor.BuildOperationStructuralRef("kotlin", ktFile, "OrderService")
-	if id, _, _ := idx.lookupStructural(ref); id == marker.ID {
+	id, status, handled := idx.lookupStructural(ref)
+	if !handled {
+		t.Fatalf("lookupStructural did not claim %q (handled=false)", ref)
+	}
+	if id == marker.ID {
 		t.Fatalf("lookupStructural(%q) bound the Spring stereotype MARKER %q; a Kotlin "+
 			"operation-space ref must never resolve to a stereotype annotation entity (#6492)",
 			ref, id)
+	}
+	// Pin the actual disposition, not merely "not the marker": the Kotlin
+	// extractor mints no operation-space ref that MEANS the stereotype, so the
+	// correct outcome is the kind-agnostic ambiguity that existed before #6459
+	// — not a silent rebind to some third entity.
+	if id != "" || status != statusAmbiguous {
+		t.Fatalf("lookupStructural(%q) = (%q, status=%d), want (\"\", statusAmbiguous=%d) "+
+			"— the marker and the class share this (file, name) and no operation-family "+
+			"kind matches either (#6492 N5)", ref, id, status, statusAmbiguous)
 	}
 }

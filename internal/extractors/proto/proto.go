@@ -270,25 +270,43 @@ func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
 // path — which drops any (file, name) that is not unique. The second revision
 // recorded that gap accurately and left it open as #6459.
 //
-// #6459 has since closed it, and #6492 re-scoped the closure: SCOPE.Service is
-// NOT in internal/resolve/refs.go's shared operationKindFamily (that slice also
-// feeds hintKinds and the leaf-name family mask, and ~60 non-proto sites emit
-// SCOPE.Service beside a same-named function or class, so a global admission
-// destroys those unique matches instead of adding any). It is admitted by
-// protoOperationKindFamily, reached only from
-// structuralKindFamilies("operation", "proto") — i.e. from the LANGUAGE segment
-// this very function stamps into the ref. Both arms therefore bind through the
-// kind-filtered lookupLocationKind tier for proto, and only for proto. Measured on
+// #6459 has since closed it — as an ORDERED TIER, not by widening any kind
+// family. SCOPE.Service is in NO family: not the shared operationKindFamily
+// (that slice also feeds hintKinds and the leaf-name family mask, and ~60
+// non-proto sites emit SCOPE.Service beside a same-named function or class, so
+// a global admission destroys those unique matches instead of adding any), and
+// not a proto-only variant of it either. A proto-only widening fails for a
+// reason specific to THIS file: buildService addresses every rpc child through
+// the same BuildOperationStructuralRef this function uses, so rpcs and services
+// occupy ONE address space. Put SCOPE.Service into the family that space is
+// filtered by, and
+//
+//	service User  { rpc Get(Foo)  returns (Foo); }
+//	service Admin { rpc User(Foo) returns (Foo); }
+//
+// — ordinary proto — makes the rpc User ref match two family members, and the
+// service Admin → rpc User CONTAINS edge that used to resolve now dangles.
+//
+// internal/resolve/refs.go's lookupProtoServiceTier instead consults
+// SCOPE.Service only when the unmodified operation family matched NOTHING at
+// all at that (file, name), and only for the proto LANGUAGE segment this very
+// function stamps into the ref. On
 //
 //	message Foo {…}; service Foo { rpc Go(Foo) returns (Foo); }
 //
-// in one file — the collision that made the old byLocation fallback fail — the
-// file → service Foo CONTAINS now resolves to the SCOPE.Service entity, where
-// before it dangled and the service ended with zero inbound CONTAINS. The guard
-// is internal/resolve/proto_service_family_6459_test.go; it also pins that
-// SCOPE.Service stays OUT of componentKindFamily, since nothing addresses a
-// service in the component address space. The counter-guard — that a non-proto
-// operation-space ref (celery task, Spring stereotype) is unaffected — is
+// in one file — the collision that made the old byLocation fallback fail —
+// there is no operation-family candidate named Foo, the tier runs, and the
+// file → service Foo CONTAINS resolves to the SCOPE.Service entity instead of
+// being dropped as ambiguous. (Scoped claim: what the old fallback dropped was
+// this ref's BINDING; a synthetic index with no rpc present can still bind it
+// by luck, so the pre-fix damage is only observable once the ambiguity exists —
+// which is why the guard fixture carries the colliding message.)
+//
+// The guards are internal/resolve/proto_service_family_6459_test.go (the
+// service half) and internal/resolve/proto_rpc_service_collision_6492_test.go
+// (the rpc half — the two-service fixture above). The counter-guard, that a
+// non-proto operation-space ref (celery task, Spring stereotype) is unaffected
+// and that the language boundary admits proto and nothing else, is
 // internal/resolve/service_family_scope_6492_test.go.
 func fileContainsOperationRel(filePath, name string) types.RelationshipRecord {
 	return fileContainsRel(filePath, extractor.BuildOperationStructuralRef("proto", filePath, name))

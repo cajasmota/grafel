@@ -124,24 +124,46 @@ regression net for that change, not as its demonstration; the demonstration is
 the constructed collision in
 `internal/resolve/proto_service_family_6459_test.go`.
 
-**Where the admission lives (#6492).** `SCOPE.Service` is NOT in
-`internal/resolve/refs.go`'s shared `operationKindFamily`. That slice also feeds
-`hintKinds` and the `familyMaskByKind` leaf-name filter, and `SCOPE.Service` is
-emitted by ~60 non-proto sites — several of which name the entity after a
-function or class in the same file (celery/dramatiq task markers, Spring
-stereotypes). Because a family match must be UNIQUE, admitting it there
-destroys those bindings rather than adding any. The kind is admitted only by
-`protoOperationKindFamily`, reached from
-`structuralKindFamilies("operation", "proto")` — the proto language segment of
-the structural ref. No row here asserts anything about it, and neither #6459 nor
-#6492 should expect this fixture's numbers to move.
+**Where the admission lives (#6492).** `SCOPE.Service` is in NO kind family at
+all — not the shared `operationKindFamily`, and not a proto-only variant of it.
+The shared slice also feeds `hintKinds` and the `familyMaskByKind` leaf-name
+filter, and `SCOPE.Service` is emitted by ~60 non-proto sites — several of which
+name the entity after a function or class in the same file (celery/dramatiq task
+markers, Spring stereotypes). Because a family match must be UNIQUE, admitting
+it there destroys those bindings rather than adding any.
 
-The fixture that DOES observe the difference is `python-dramatiq-mini`:
-`src/workers/billing.py` declares `@dramatiq.actor def charge_card`, and
-`internal/custom/python/dramatiq.go` mints a `SCOPE.Service` marker at the same
-(file, name) as the function's `SCOPE.Operation`. Graded with the shared-slice
-admission its resolver line degrades from
-`resolver: rewrote=11 ambiguous=0 unmatched=4` to
-`resolver: rewrote=9 ambiguous=2 unmatched=4` — two actor CALLS edges lost to a
-family collision. With the proto-scoped admission the line is unchanged from
-baseline.
+A proto-only family widening fails too, for a reason internal to proto:
+`buildService` addresses each `rpc` child with the same
+`BuildOperationStructuralRef` the `file → service` edge uses, so rpcs and
+services share one address space. With `SCOPE.Service` in the filtering family,
+
+    service User  { rpc Get(Foo)  returns (Foo); }
+    service Admin { rpc User(Foo) returns (Foo); }
+
+— ordinary proto — makes `rpc User` match two family members and dangles the
+`service Admin → rpc User` CONTAINS edge that resolved before. This fixture
+cannot see that either: no `rpc` in `user.proto` shares a *service* name.
+
+The mechanism is instead an ordered tier, `lookupProtoServiceTier`: the
+unmodified operation family is tried first, and `SCOPE.Service` is consulted
+only when that family matched nothing at all, and only for a proto language
+segment. No row here asserts anything about it, and neither #6459 nor #6492
+should expect this fixture's numbers to move.
+
+**No golden fixture observes the difference — the guards are unit tests.**
+An earlier revision of this note credited `python-dramatiq-mini` with observing
+it. That was wrong, and worth recording as a trap: `baseline.json` records
+`relationship_expected: 0` for that fixture, so
+`TestJobFixturesAbsoluteRecall_6260/python-dramatiq-mini` passes with the
+regression fully present. The only thing that moves there is an unasserted
+`resolver: rewrote=…` line on stderr, which no assertion reads. A fixture whose
+numbers cannot change is not a guard.
+
+The real guards, all of which were seen red on the corresponding mutant:
+
+| Direction | Guard |
+|---|---|
+| Widening into the shared family destroys a non-proto binding | `TestCeleryTaskCallStillBindsToTheFunction6492` (`internal/resolve/`) |
+| Widening the proto family destroys an *rpc* binding | `TestProtoRpcNamedAfterASiblingServiceStillBinds6492` |
+| The tier still binds the #6459 collision | `TestProtoServiceRefResolvesUnderNameCollision6459` |
+| The tier's language boundary admits proto and nothing else | `TestProtoServiceTierIsPinnedToProto6492` |

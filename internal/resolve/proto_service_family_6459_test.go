@@ -92,20 +92,24 @@ func TestProtoServiceIsNotAComponent6459(t *testing.T) {
 				"RENDERS / USES_TRANSLATION endpoints, which are never proto services (#6459)", k)
 		}
 	}
-	// #6492 re-scoped the admission: the kind lives in the PROTO-only
-	// operation family reached via structuralKindFamilies("operation",
-	// "proto"), never in the shared operationKindFamily slice that also
-	// feeds hintKinds and familyMaskByKind.
-	var found bool
-	for _, k := range structuralKindFamilies("operation", "proto") {
-		if k == scopeKindPrefix+"Service" {
-			found = true
+	// #6492 round 3 replaced the family widening with an ordered tier: the
+	// kind is reachable ONLY through lookupProtoServiceTier, and belongs to
+	// NO structuralKindFamilies result at all. A widened family — even one
+	// scoped to proto — destroys the binding of every rpc that shares a
+	// sibling service's name (proto_rpc_service_collision_6492_test.go).
+	for _, scope := range []string{"component", "operation", "schema", "", "bogus"} {
+		for _, k := range structuralKindFamilies(scope) {
+			if k == scopeKindPrefix+"Service" {
+				t.Fatalf("structuralKindFamilies(%q) contains %q; the proto service "+
+					"admission is an ordered TIER, never a family member (#6492)",
+					scope, k)
+			}
 		}
 	}
-	if !found {
-		t.Fatalf("structuralKindFamilies(\"operation\", \"proto\") = %v, want it to "+
-			"contain %q (#6459)", structuralKindFamilies("operation", "proto"),
-			scopeKindPrefix+"Service")
+	if len(protoServiceKindFamily) != 1 ||
+		protoServiceKindFamily[0] != scopeKindPrefix+"Service" {
+		t.Fatalf("protoServiceKindFamily = %v, want exactly [%q] (#6459)",
+			protoServiceKindFamily, scopeKindPrefix+"Service")
 	}
 }
 
