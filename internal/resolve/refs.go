@@ -1630,32 +1630,51 @@ func isImportPlaceholderKind(kind, subtype string) bool {
 // insertModuleEntry path cannot compute it differently:
 //
 //   - Properties["local_scope"]=="true" — stamped by tagLocalScope
-//     (internal/extractors/javascript/extractor.go:776) on entities emitted
+//     (internal/extractors/javascript/extractor.go:781) on entities emitted
 //     with funcDepth > 0. THIS IS THE ONLY EXTRACTOR THAT STAMPS IT (measured:
 //     the string appears in internal/types, internal/mcp and
-//     internal/extractors/javascript, and in no other extractor). Every other
-//     language therefore relies on the second signal alone, and the shapes it
-//     does not cover — a nested function declaration, a class declared inside
-//     a function body — remain able to take the slot. Closing that is an
-//     extractor-side change (stamp local_scope centrally, the way
-//     types.EntityGeneratedProperty is stamped in extractors.safeExtract) and
-//     is deliberately NOT done here.
-//   - a formal-parameter subtype. A parameter is scoped to its callable by
-//     definition in every language, so it can never legitimately own a
-//     repository-wide name. "component_prop" is what the JavaScript/Vue
-//     extractors emit (a plain `function Rows(toolkit)` parameter arrives as
-//     SCOPE.Operation / "component_prop"); "parameter" and "param" are the
-//     spellings the csharp, rust, kotlin, scala, groovy, razor and verilog
-//     extractors use.
+//     internal/extractors/javascript, and in no other extractor).
+//   - Subtype "component_prop" — the destructured or whole-object props
+//     PARAMETER of a React/Vue/Angular component
+//     (javascript/dataflow_react.go:77, vue/extractor.go:854,
+//     javascript/angular.go:665). A plain `function Rows(toolkit)` parameter
+//     arrives as SCOPE.Operation / "component_prop" with NO local_scope stamp,
+//     which is why signal 1 alone is half a fix even inside JS/TS.
+//
+// SCOPE, STATED HONESTLY: BOTH SIGNALS ARE JS/TS-FAMILY-ONLY IN PRACTICE.
+// An earlier draft of this predicate also matched the subtypes "parameter" and
+// "param", justified as "the spellings csharp, rust, kotlin, scala, groovy,
+// razor and verilog use". That justification was FALSE for six of the seven:
+// those greps hit tree-sitter NODE-TYPE comparisons (csharp/csharp.go:858,
+// rust/rust.go:423, scala/scala.go:366, groovy/types.go:292,
+// verilog/extractor.go:175, kotlin/references.go:102), not entity subtypes.
+// The only entity emitters were razor/extractor.go:415 — a Blazor
+// `[Parameter]` PUBLIC COMPONENT PROPERTY (SCOPE.Component, bare Name,
+// QualifiedName "Comp.Prop"), addressable as an attribute from every other
+// .razor file — and bicep/extractor.go:315's template `param` (SCOPE.Schema).
+// Neither is a callable-local, and because byName is repo-wide AND
+// cross-language, matching them collided those declarations into ambiguity
+// against any import placeholder anywhere carrying the same name. They were
+// dropped; TestRazorParameterIsNotALocalBinding_6467 and
+// TestBicepParamIsNotALocalBinding_6467 pin that they stay out.
+//
+// So this tier narrows the slot only for JS/TS-family records. Every other
+// language is unchanged by it, and even inside JS/TS two shapes still take the
+// slot: a nested `function` declaration and a `class` declared in a function
+// body carry no locality marker at all. Also NOT matched, deliberately:
+// svelte's `prop` (svelte/extractor.go:377,460,475) and astro's `prop` /
+// `props_binding` (astro/extractor.go:371,395). Those are a component's
+// PUBLIC surface — `export let name` is reachable from a parent as
+// `<Comp name={…}>` — i.e. the same class of record as razor's `[Parameter]`,
+// so matching them would repeat the mistake just removed. Closing the two
+// genuine gaps is an extractor-side change (stamp local_scope centrally, the
+// way types.EntityGeneratedProperty is stamped in extractors.safeExtract) and
+// is deliberately NOT done here.
 func isLocalBindingKind(subtype string, props map[string]string) bool {
 	if props["local_scope"] == "true" {
 		return true
 	}
-	switch subtype {
-	case "component_prop", "parameter", "param":
-		return true
-	}
-	return false
+	return subtype == "component_prop"
 }
 
 // indexByName is the sole writer of byName / ambigName. Both production index
@@ -1701,6 +1720,16 @@ func isLocalBindingKind(subtype string, props map[string]string) bool {
 // records compete; it does not reverse #6369/#6427, whose beneficiary is a
 // module-scope declaration (a manifest-declared dependency, a type, a class)
 // and is untouched.
+//
+// WHAT THE TIER DOES *NOT* DO, so the rule is not read wider than the code.
+// It gates the local-vs-placeholder PAIRING only. A local binding that meets
+// no competing record still occupies byName repo-wide via the insert tail
+// below — isLocal is not consulted before `idx.byName[name] = id`. That is
+// pre-existing behaviour, unchanged by #6467 (measured: a lone local record
+// yields byName=<id> on both this branch and #6427's parent), and it is what
+// keeps a single-record name resolvable at all. The claim this tier supports
+// is therefore the narrow one: a local binding neither TAKES the repo-wide
+// slot from an import placeholder nor KEEPS it against one.
 func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string, isImport, isLocal bool) {
 	if name == "" {
 		return

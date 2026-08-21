@@ -332,3 +332,250 @@ func TestFormalParameterDoesNotCaptureImportedPackageName_6467(t *testing.T) {
 			consumerFile6467, imp.ToID, wantImport)
 	}
 }
+
+// TestRazorParameterIsNotALocalBinding_6467 and TestBicepParamIsNotALocalBinding_6467
+// pin the boundary of the locality tier from the OTHER side.
+//
+// The first draft of isLocalBindingKind also matched the subtypes "parameter"
+// and "param", on the stated grounds that they were "the spellings csharp,
+// rust, kotlin, scala, groovy, razor and verilog use". That was wrong for six
+// of the seven — those greps matched tree-sitter NODE TYPES, not entity
+// subtypes. The only two entity emitters were these, and neither is a
+// callable-local:
+//
+//   - razor/extractor.go:415 emits a Blazor `[Parameter]` PUBLIC COMPONENT
+//     PROPERTY: Kind SCOPE.Component, bare Name, QualifiedName "Comp.Prop".
+//     It is addressable as an attribute from every other .razor file.
+//   - bicep/extractor.go:315 emits a template `param`: Kind SCOPE.Schema,
+//     Name prefixed "param.".
+//
+// byName is repo-wide AND cross-language, so classifying them as local
+// collided each declaration into ambiguity against ANY import placeholder
+// anywhere carrying the same name — measured on both shapes: byName went from
+// "d1" to "" and ambiguous from false to true. Neither #6427's tests nor the
+// first draft of this file covered a razor-shaped record, which is why it
+// slipped through; these two tests exist so it cannot slip again.
+func TestRazorParameterIsNotALocalBinding_6467(t *testing.T) {
+	assertDeclarationKeepsSlot6467(t, "razor [Parameter] component property",
+		types.EntityRecord{
+			ID: "dddd000000000001", Kind: "SCOPE.Component", Name: "Data",
+			QualifiedName: "Chart.Data", Subtype: "parameter",
+			SourceFile: "Components/Chart.razor", Language: "razor",
+		})
+}
+
+func TestBicepParamIsNotALocalBinding_6467(t *testing.T) {
+	assertDeclarationKeepsSlot6467(t, "bicep template param",
+		types.EntityRecord{
+			ID: "dddd000000000002", Kind: "SCOPE.Schema", Name: "param.location",
+			Subtype: "param", SourceFile: "infra/main.bicep", Language: "bicep",
+		})
+}
+
+// assertDeclarationKeepsSlot6467 pairs one declaration against an unrelated
+// file's import placeholder carrying the same name, in BOTH extraction orders,
+// and asserts the declaration still holds the repository-wide slot: the
+// placeholder's IMPORTS edge binds to it. If the declaration is (mis)treated
+// as a local binding the pairing collides, the name goes ambiguous, and the
+// edge falls through to the external binder instead.
+func assertDeclarationKeepsSlot6467(t *testing.T, label string, decl types.EntityRecord) {
+	t.Helper()
+	const phID = "dddd00000000000f"
+	placeholder := types.EntityRecord{
+		ID: phID, Kind: "SCOPE.Component", Name: decl.Name,
+		Subtype: "import", SourceFile: "app/importer.ts", Language: "typescript",
+		Properties: map[string]string{
+			"external_dependency": "true",
+			"provenance":          "INFERRED_FROM_IMPORT_STATEMENT",
+		},
+		Relationships: []types.RelationshipRecord{
+			{FromID: "app/importer.ts", ToID: decl.Name, Kind: "IMPORTS"},
+		},
+	}
+	orders := []struct {
+		tag  string
+		recs []types.EntityRecord
+	}{
+		{"placeholder indexed first", []types.EntityRecord{placeholder, decl}},
+		{"declaration indexed first", []types.EntityRecord{decl, placeholder}},
+	}
+	for _, o := range orders {
+		t.Run(o.tag, func(t *testing.T) {
+			recs := append([]types.EntityRecord(nil), o.recs...)
+			idx := resolve.BuildIndex(recs)
+			resolve.ReferencesEmbedded(recs, idx)
+
+			var got string
+			seen := 0
+			for i := range recs {
+				for _, r := range recs[i].Relationships {
+					if r.Kind == "IMPORTS" {
+						seen++
+						got = r.ToID
+					}
+				}
+			}
+			if seen != 1 {
+				t.Fatalf("fixture is vacuous: found %d IMPORTS edge(s), want 1", seen)
+			}
+			if got != decl.ID {
+				t.Errorf("app/importer.ts -IMPORTS-> %q, want the declaration %q: a %s is "+
+					"addressable outside the file that declares it, so it must keep the "+
+					"repository-wide byName slot. Treating its subtype (%q) as a "+
+					"callable-local collides it into ambiguity against any same-named "+
+					"import placeholder in ANY language (#6467)",
+					got, decl.ID, label, decl.Subtype)
+			}
+		})
+	}
+}
+
+// TestLocalBindingDoesNotReclaimPlaceholderOnlyAmbiguity_6467 covers the third
+// application site — the #6369 placeholder-only-ambiguity RECOVERY guard.
+//
+// #6369 lets a real declaration arriving after two colliding placeholders
+// reclaim the name, because extraction order is not stable. #6467 adds that a
+// function-local binding is not such a declaration. Without the `isLocal ||`
+// term the local const clears the ambiguity and takes the slot for the whole
+// repository — which is the reported regression, reached by a different path
+// than the two precedence arms: here the name is ALREADY ambiguous when the
+// local arrives, so neither arm of the collision switch ever runs.
+//
+// Shape: two files import the same package (two distinct placeholders → the
+// name is placeholder-only ambiguous), and a third file declares a
+// function-body `const` of that name. All three imports must still reach
+// ext:toolkit.
+func TestLocalBindingDoesNotReclaimPlaceholderOnlyAmbiguity_6467(t *testing.T) {
+	const (
+		phA    = "eeee000000000001"
+		phB    = "eeee000000000002"
+		localC = "eeee000000000003"
+		fileA  = "src/a.tsx"
+		fileB  = "src/b.tsx"
+	)
+	placeholder := func(id, file string) types.EntityRecord {
+		return types.EntityRecord{
+			ID: id, Kind: "SCOPE.Component", Name: "toolkit",
+			Subtype: "import", SourceFile: file, Language: "typescript",
+			Properties: map[string]string{
+				"external_dependency": "true",
+				"provenance":          "INFERRED_FROM_IMPORT_STATEMENT",
+			},
+			Relationships: []types.RelationshipRecord{
+				{FromID: file, ToID: "toolkit", Kind: "IMPORTS"},
+			},
+		}
+	}
+	recs := []types.EntityRecord{
+		placeholder(phA, fileA),
+		placeholder(phB, fileB),
+		{
+			// `const toolkit = …` inside a function body in a third file,
+			// arriving AFTER the name is already placeholder-only ambiguous.
+			ID: localC, Kind: "SCOPE.Component", Name: "toolkit",
+			Subtype: "const", SourceFile: rowsFile6467, Language: "typescript",
+			Properties: map[string]string{"local_scope": "true"},
+		},
+	}
+
+	idx := resolve.BuildIndex(recs)
+	resolve.ReferencesEmbedded(recs, idx)
+
+	doc := asDocument6467(recs)
+	external.Synthesize(doc)
+
+	seen := 0
+	for _, from := range []string{fileA, fileB} {
+		imp := findRel6467(doc, "IMPORTS", from)
+		if imp == nil {
+			t.Fatalf("fixture is vacuous: no IMPORTS edge from %s", from)
+		}
+		seen++
+		if imp.ToID != "ext:toolkit" {
+			t.Errorf("%s -IMPORTS-> %q, want %q: a function-local binding must not "+
+				"reclaim a name that only import placeholders contested — #6369's "+
+				"recovery is for real declarations, and a body-local const is not one "+
+				"(#6467)", from, imp.ToID, "ext:toolkit")
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("fixture is vacuous: found %d IMPORTS edge(s), want 2", seen)
+	}
+}
+
+// TestLocalRecordDoesNotUnclaimAnAddressableID_6467 covers the fourth
+// application site — the AND-ed insert tail.
+//
+// EntityID is sha256(orgID, projectID, sourceFile, kind, name) and hashes
+// NEITHER Subtype NOR Properties, so two records that differ only in subtype
+// share ONE id by construction. The production shape: one file exports
+// `function Widget() {…}` AND destructures a prop of the same name in a
+// sibling component, `function Panel({ Widget }) {…}`. Both are SCOPE.Operation
+// named "Widget" in that file, so the addressable function and the
+// component_prop arrive at indexByName as re-indexes of a single entity.
+//
+// Locality status is therefore AND-ed: an id known under any addressable
+// record is addressable, and the trailing local record must not flip the flag
+// back. If it does, the flag describes the last record that MENTIONED the name
+// rather than the entity sitting in byName, and the next file's import
+// placeholder collides with a declaration that is in fact perfectly
+// addressable — the exact bookkeeping bug #6369's follow-up had to fix on
+// nameHolderImport, reproduced on nameHolderLocal.
+func TestLocalRecordDoesNotUnclaimAnAddressableID_6467(t *testing.T) {
+	const (
+		sharedID = "ffff000000000001"
+		phID     = "ffff000000000002"
+		panelTSX = "src/panel.tsx"
+		userTSX  = "src/user.tsx"
+	)
+	recs := []types.EntityRecord{
+		{
+			// `export function Widget() {…}` — addressable, module scope.
+			ID: sharedID, Kind: "SCOPE.Operation", Name: "Widget",
+			Subtype: "function", SourceFile: panelTSX, Language: "typescript",
+		},
+		{
+			// `function Panel({ Widget }) {…}` in the SAME file — a
+			// component_prop. Same repo+file+kind+name, so ComputeID gives it
+			// the same id as the function above.
+			ID: sharedID, Kind: "SCOPE.Operation", Name: "Widget",
+			Subtype: "component_prop", SourceFile: panelTSX, Language: "typescript",
+		},
+		{
+			// Another file's `import Widget from "widget"` placeholder.
+			ID: phID, Kind: "SCOPE.Component", Name: "Widget",
+			Subtype: "import", SourceFile: userTSX, Language: "typescript",
+			Properties: map[string]string{
+				"external_dependency": "true",
+				"provenance":          "INFERRED_FROM_IMPORT_STATEMENT",
+			},
+			Relationships: []types.RelationshipRecord{
+				{FromID: userTSX, ToID: "Widget", Kind: "IMPORTS"},
+			},
+		},
+	}
+
+	idx := resolve.BuildIndex(recs)
+	resolve.ReferencesEmbedded(recs, idx)
+
+	seen := 0
+	var got string
+	for i := range recs {
+		for _, r := range recs[i].Relationships {
+			if r.Kind == "IMPORTS" {
+				seen++
+				got = r.ToID
+			}
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("fixture is vacuous: found %d IMPORTS edge(s), want 1", seen)
+	}
+	if got != sharedID {
+		t.Errorf("%s -IMPORTS-> %q, want the exported function %q: locality status must be "+
+			"AND-ed, never re-raised. A trailing component_prop record sharing the id of an "+
+			"addressable declaration must not mark that id local, or the next file's "+
+			"placeholder collides with a declaration it should bind to (#6467)",
+			userTSX, got, sharedID)
+	}
+}
