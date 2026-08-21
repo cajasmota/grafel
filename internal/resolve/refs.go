@@ -461,6 +461,13 @@ type Index struct {
 	nameHolderImport map[string]bool
 	nameAmbigImport  map[string]bool
 
+	// nameHolderLocal[name] = true when the entity currently occupying
+	// byName[name] is a function-local binding (#6467) rather than something
+	// addressable from outside the body it was declared in. Same build-time
+	// bookkeeping category as the two maps above — lazily created, read only
+	// by indexByName, excluded from index parity.
+	nameHolderLocal map[string]bool
+
 	// byQualifiedName[qualified_name] = entity_id. Direct lookup for
 	// stubs whose ToID is an entity QualifiedName verbatim (e.g. markdown
 	// CONTAINS edges where ToID = "<file>::<heading-slug>"). Issue #100.
@@ -1579,7 +1586,8 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		// module-partitioned index writer (insertModuleEntry) so the two
 		// production paths cannot drift.
 		idx.indexByName(e.Name, e.ID, isFacet, facetAnchor,
-			isImportPlaceholderKind(e.Kind, e.Subtype))
+			isImportPlaceholderKind(e.Kind, e.Subtype),
+			isLocalBindingKind(e.Subtype, e.Properties))
 	}
 	return idx
 }
@@ -1593,6 +1601,117 @@ func BuildIndex(entities []types.EntityRecord) Index {
 // package.
 func isImportPlaceholderKind(kind, subtype string) bool {
 	return kind == scopeKindPrefix+"Component" && subtype == "import"
+}
+
+// isLocalBindingKind reports whether an entity record is a binding that exists
+// only inside the callable that declares it — a function-body local or a
+// formal parameter — and is therefore NOT addressable from anywhere else in
+// the repository.
+//
+// #6467 — WHY THIS EXISTS. The #6369/#6427 precedence ranks a record on one
+// property, isImportPlaceholderKind, and treats every non-placeholder as a
+// declaration of the name that may hold the REPOSITORY-WIDE byName slot.
+// Neither arm asks whether the record that wins is addressable at all. So the
+// `const toolkit` inside one component's body took the slot for the whole
+// repo, and `import { useToolkit } from "toolkit"` in an unrelated file bound
+// to it instead of staying unclaimed for the external-library binder
+// (reported measurement: src/consumer.tsx -IMPORTS-> ext:toolkit became
+// src/consumer.tsx -IMPORTS-> 8dc7162e164ff6ea).
+//
+// The same records are ALREADY treated as non-addressable when serving:
+// internal/mcp/denoise.go:168 hides local_scope entities from grafel_find
+// because the name cannot be used to reach them. They stay in the graph so
+// SAME-FILE REFERENCES/CALLS edges can bind (#1748), and that keeps working —
+// the locality tiers run on statusAmbiguous, which is precisely what
+// withholding the repo-wide slot restores.
+//
+// TWO SIGNALS, BOTH RECORD-LOCAL. The predicate is a pure function of one
+// record so the flat BuildIndex path and the module-partitioned
+// insertModuleEntry path cannot compute it differently:
+//
+//   - Properties["local_scope"]=="true" — stamped by tagLocalScope
+//     (internal/extractors/javascript/extractor.go:781) on entities emitted
+//     with funcDepth > 0. THIS IS THE ONLY EXTRACTOR THAT STAMPS IT (measured:
+//     the string appears in internal/types, internal/mcp and
+//     internal/extractors/javascript, and in no other extractor).
+//   - Subtype "component_prop" WITH Properties["framework"]=="react" — the
+//     destructured or whole-object props PARAMETER of a React component
+//     (javascript/dataflow_react.go:77). A plain `function Rows(toolkit)`
+//     parameter arrives as SCOPE.Operation / "component_prop" with NO
+//     local_scope stamp, which is why signal 1 alone is half a fix even inside
+//     JS/TS.
+//
+// WHY THE FRAMEWORK GATE, AND WHY IT IS A LAST RESORT. There are exactly three
+// emitters of "component_prop" (grep of internal/extractors, non-test):
+// dataflow_react.go:77, javascript/angular.go:665, vue/extractor.go:854. Only
+// the first is a callable-local. Angular's is an `@Input()` CLASS FIELD and
+// Vue's is a `defineProps` entry — both are the component's PUBLIC surface,
+// addressable from a parent template as `<chart [Data]="…">` /
+// `<Chart :Data="…">`, i.e. structurally the same record as razor's
+// `[Parameter]` that was already removed above. Measured with a probe that
+// reproduces each emitter's real record against a same-named import
+// placeholder, in both extraction orders, against main@640ea7784:
+//
+//	shape                    main byName / ambig   unguarded arm   with gate
+//	react props parameter    dddd…101 / false      "" / true       "" / true
+//	angular @Input() field   dddd…102 / false      "" / true       dddd…102 / false
+//	vue defineProps          dddd…103 / false      "" / true       dddd…103 / false
+//
+// So the unguarded arm regressed both public shapes exactly as razor did. NO
+// RECORD-LOCAL PROPERTY OTHER THAN `framework` SEPARATES THEM: all three carry
+// Kind "SCOPE.Operation", a bare Name, QualifiedName "Comp.Prop" and no
+// local_scope stamp, and react's and angular's also share Language
+// "typescript". A framework-name check is the weakest kind of signal and is
+// used here only because nothing structural distinguishes the shapes; closing
+// that properly means stamping local_scope in dataflow_react.go, which is an
+// extractor-side change (#6472; see the closing paragraph below).
+// TestAngularInputIsNotALocalBinding_6467 and TestVueDefinePropsIsNotALocalBinding_6467
+// pin the two public shapes; TestReactPropsParameterIsALocalBinding_6467 pins
+// that the react arm still fires, so the gate cannot be widened back silently.
+// TestReactComponentDeclarationIsNotALocalBinding_6467 pins the SUBTYPE half:
+// without it `subtype != "" && framework == "react"` passed the whole suite,
+// i.e. the framework name alone was carrying the arm.
+//
+// SCOPE, STATED HONESTLY: BOTH SIGNALS ARE JS/TS-FAMILY-ONLY IN PRACTICE.
+// An earlier draft of this predicate also matched the subtypes "parameter" and
+// "param", justified as "the spellings csharp, rust, kotlin, scala, groovy,
+// razor and verilog use". That justification was FALSE for six of the seven:
+// those greps hit tree-sitter NODE-TYPE comparisons (csharp/csharp.go:858,
+// rust/rust.go:423, scala/scala.go:366, groovy/types.go:292,
+// verilog/extractor.go:175, kotlin/references.go:102), not entity subtypes.
+// The only entity emitters were razor/extractor.go:415 — a Blazor
+// `[Parameter]` PUBLIC COMPONENT PROPERTY (SCOPE.Component, bare Name,
+// QualifiedName "Comp.Prop"), addressable as an attribute from every other
+// .razor file — and bicep/extractor.go:315's template `param` (SCOPE.Schema).
+// Neither is a callable-local, and because byName is repo-wide AND
+// cross-language, matching them collided those declarations into ambiguity
+// against any import placeholder anywhere carrying the same name. They were
+// dropped; TestRazorParameterIsNotALocalBinding_6467 and
+// TestBicepParamIsNotALocalBinding_6467 pin that they stay out.
+//
+// So this tier narrows the slot only for JS/TS-family records. Every other
+// language is unchanged by it, and even inside JS/TS two shapes still take the
+// slot: a nested `function` declaration and a `class` declared in a function
+// body carry no locality marker at all. Also NOT matched, deliberately:
+// svelte's `prop` (svelte/extractor.go:377,460,475) and astro's `prop` /
+// `props_binding` (astro/extractor.go:371,395). Those are a component's
+// PUBLIC surface — `export let name` is reachable from a parent as
+// `<Comp name={…}>` — i.e. the same class of record as razor's `[Parameter]`,
+// so matching them would repeat the mistake just removed. Closing the two
+// genuine gaps is an extractor-side change (stamp local_scope centrally, the
+// way types.EntityGeneratedProperty is stamped in extractors.safeExtract) and
+// is deliberately NOT done here. Tracked as #6472, together with the react
+// props parameter above — doing it collapses this predicate to the
+// local_scope check alone and deletes the framework gate. NOT a one-line
+// edit: internal/mcp/denoise.go:168 HIDES local_scope entities from
+// grafel_find and internal/types/entity.go:111 documents the contract, so
+// widening who carries the property changes agent-facing search output and
+// has to be measured there too.
+func isLocalBindingKind(subtype string, props map[string]string) bool {
+	if props["local_scope"] == "true" {
+		return true
+	}
+	return subtype == "component_prop" && props["framework"] == "react"
 }
 
 // indexByName is the sole writer of byName / ambigName. Both production index
@@ -1624,19 +1743,46 @@ func isImportPlaceholderKind(kind, subtype string) bool {
 //     declaration. nameAmbigImport remembers that such ambiguity is
 //     placeholder-only, so a real declaration arriving later (extraction
 //     order is not stable) still reclaims the name.
-func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string, isImport bool) {
+//
+// #6467 — "NOT A PLACEHOLDER" IS NOT THE SAME AS "A DECLARATION OF THIS NAME".
+// The rule above ranks on one property and hands the repository-wide slot to
+// whatever is not a placeholder. A function-body local or a formal parameter
+// is not a placeholder either, and it took the slot for the entire repository:
+// a `const toolkit` inside one component captured the name that an unrelated
+// file imported as a package, pre-empting the external-library binder. So the
+// precedence gains a locality tier: isLocalBindingKind records neither TAKE
+// the slot from a placeholder nor KEEP it against one — the pairing collides
+// into ambiguity, exactly as it did before #6427, which is what lets
+// lookupBareWithLocality and then external.Synthesize run. This narrows WHICH
+// records compete; it does not reverse #6369/#6427, whose beneficiary is a
+// module-scope declaration (a manifest-declared dependency, a type, a class)
+// and is untouched.
+//
+// WHAT THE TIER DOES *NOT* DO, so the rule is not read wider than the code.
+// It gates the local-vs-placeholder PAIRING only. A local binding that meets
+// no competing record still occupies byName repo-wide via the insert tail
+// below — isLocal is not consulted before `idx.byName[name] = id`. That is
+// pre-existing behaviour, unchanged by #6467 (measured: a lone local record
+// yields byName=<id> on both this branch and #6427's parent), and it is what
+// keeps a single-record name resolvable at all. The claim this tier supports
+// is therefore the narrow one: a local binding neither TAKES the repo-wide
+// slot from an import placeholder nor KEEPS it against one.
+func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string, isImport, isLocal bool) {
 	if name == "" {
 		return
 	}
 	nk := "n:" + name
 	if idx.ambigName[name] {
 		// #6369 — placeholder-only ambiguity yields to a real declaration.
-		if isImport || !idx.nameAmbigImport[name] {
+		// #6467 — a function-local binding is not one: it must not reclaim a
+		// name that only placeholders contested.
+		if isImport || isLocal || !idx.nameAmbigImport[name] {
 			return
 		}
 		delete(idx.ambigName, name)
 		delete(idx.nameAmbigImport, name)
 		delete(idx.nameHolderImport, name)
+		delete(idx.nameHolderLocal, name)
 		delete(idx.aliasAnchor, nk)
 	}
 	existing, held := idx.byName[name]
@@ -1649,14 +1795,25 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 		// ORPHANED facet must NOT suppress ambiguity against an unrelated
 		// same-named definition.
 		switch {
-		case isImport && !idx.nameHolderImport[name]:
+		case isImport && !idx.nameHolderImport[name] && !idx.nameHolderLocal[name]:
 			// #6369 — a real declaration already owns the name: the
 			// placeholder neither displaces it nor blanks it.
-		case !isImport && idx.nameHolderImport[name]:
+			//
+			// #6467 — but only a declaration that is addressable outside its
+			// own body counts. When the incumbent is a function-local
+			// binding, this pairing falls to the default arm and collides,
+			// so the name goes ambiguous and the import can still reach the
+			// external-library binder.
+		case !isImport && !isLocal && idx.nameHolderImport[name]:
 			// #6369 — the real declaration displaces the placeholder that
 			// happened to be extracted first.
+			//
+			// #6467 — a function-local binding does not; it is not a
+			// declaration of the name in any scope but its own, so it
+			// collides instead.
 			idx.byName[name] = id
 			delete(idx.nameHolderImport, name)
+			delete(idx.nameHolderLocal, name)
 			delete(idx.aliasAnchor, nk)
 			if isFacet {
 				idx.setAliasAnchor(nk, facetAnchor)
@@ -1681,6 +1838,7 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 				idx.nameAmbigImport[name] = true
 			}
 			delete(idx.nameHolderImport, name)
+			delete(idx.nameHolderLocal, name)
 		}
 		return
 	}
@@ -1716,6 +1874,26 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 			idx.nameHolderImport = make(map[string]bool)
 		}
 		idx.nameHolderImport[name] = true
+	}
+	// #6467 — locality status is AND-ed, never re-raised, for the same reason
+	// holder status is. EntityID is sha256(repo, kind, name, sourceFile) and
+	// does not hash Subtype or Properties, so a function-local record and an
+	// addressable record for the same name in the same file share ONE id by
+	// construction and arrive here as re-indexes of one entity. An id known
+	// under any addressable record is addressable; letting a trailing local
+	// record flip the flag back would make the flag describe the last record
+	// that mentioned the name rather than the entity sitting in byName —
+	// which is exactly the bookkeeping bug #6369's follow-up had to fix.
+	switch {
+	case !isLocal:
+		delete(idx.nameHolderLocal, name)
+	case held && !idx.nameHolderLocal[name]:
+		// same id, already claimed by an addressable record — leave it.
+	default:
+		if idx.nameHolderLocal == nil {
+			idx.nameHolderLocal = make(map[string]bool)
+		}
+		idx.nameHolderLocal[name] = true
 	}
 	if isFacet {
 		idx.setAliasAnchor(nk, facetAnchor)
