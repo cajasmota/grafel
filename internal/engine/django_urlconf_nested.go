@@ -121,6 +121,23 @@ func ApplyDjangoNestedURLConf(
 		// entries). The mount-point uses pattern_type=url_mount_point so dedup
 		// passes leave it alone, and a distinct synthetic ID suffix prevents
 		// collisions with concrete-verb entries on the same canonical path.
+		//
+		// #6417 — the dedup map below is deliberately PER-FILE (`mountEmitted`,
+		// re-made on every iteration) and deliberately does NOT consult the
+		// pass-wide `seen` map. A mount site is a declaration made BY A FILE:
+		// when app/urls.py and admin/urls.py both mount "api/", those are two
+		// declarations, not one fact stated twice. Sharing `seen` across files
+		// dropped the second file's declaration outright and handed the single
+		// survivor whichever SourceFile happened to be scanned first, so the
+		// attribution flipped whenever parentFiles ordering changed — the
+		// reported flap. The record ID/Name stays un-file-qualified on purpose:
+		// graph.EntityID (internal/graph/graph.go) already folds SourceFile into
+		// the hash, so same-prefix mounts from two files are already distinct
+		// graph entities, and leaving Name alone keeps the id of every existing
+		// mount entity byte-identical across this fix (no reindex churn).
+		// `seen` is still shared for CHILD route ids below — those genuinely are
+		// one composed route regardless of how many parents reach them, and they
+		// can never key-collide with a mount id, which always ends in ":mount".
 		mountEmitted := map[string]bool{}
 		for _, idx := range djangoIncludeStringRe.FindAllStringSubmatchIndex(src, -1) {
 			parentPrefix := src[idx[2]:idx[3]]
@@ -133,11 +150,10 @@ func ApplyDjangoNestedURLConf(
 				continue
 			}
 			mountID := httproutes.SyntheticID("ANY", canonical) + ":mount"
-			if mountEmitted[mountID] || seen[mountID] {
+			if mountEmitted[mountID] {
 				continue
 			}
 			mountEmitted[mountID] = true
-			seen[mountID] = true
 			out = append(out, types.EntityRecord{
 				ID:                 mountID,
 				Name:               mountID,
