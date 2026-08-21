@@ -251,6 +251,10 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// entity; it becomes observable once a same-named entity exists in another
 	// file, because then the fallback answers with the wrong file's entity. See
 	// TestFileNarrowedLookupSurvivesAnAnchorInTheSameFile.
+	//
+	// #6464 closed that second hole: the unnarrowed fallback is now reachable
+	// ONLY by rows that specify no file. A row naming a file it does not match
+	// resolves to nothing. See file_narrowing_6464_test.go.
 	byKindName := make(map[string][]*graph.Entity)
 	byKindNameFile := make(map[string][]*graph.Entity)
 	byQName := make(map[string]*graph.Entity)
@@ -295,10 +299,14 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 			}
 			return nil
 		}
+		// #6464: when the row NAMES a file, the file-narrowed lookup is the
+		// only answer we will accept. Falling through to byKindName here
+		// answered a specified-and-missed path with a same-named entity in a
+		// different file — see the comment on byKindNameFile above. Rows that
+		// OMIT source_file still reach the unnarrowed lookup; only 5 of 423
+		// entity rows do, but that path is not dead.
 		if ee.SourceFile != "" {
-			if e := firstExtracted(byKindNameFile[ee.Kind+"\x00"+ee.Name+"\x00"+ee.SourceFile]); e != nil {
-				return e
-			}
+			return firstExtracted(byKindNameFile[ee.Kind+"\x00"+ee.Name+"\x00"+ee.SourceFile])
 		}
 		return firstExtracted(byKindName[ee.Kind+"\x00"+ee.Name])
 	}
@@ -360,16 +368,19 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 			// unnarrowed byKindName path below already does) is a real question
 			// with its own blast radius, not a side effect of a re-keying.
 			fromCands = lastOf(byKindNameFile[er.FromKind+"\x00"+er.FromName+"\x00"+er.FromFile])
-		}
-		if len(fromCands) == 0 {
+		} else {
+			// #6464: the unnarrowed lookup — and the kind-blank scan below it
+			// — are reachable ONLY when the row named no from_file. A row that
+			// names a file and misses must resolve to nothing rather than be
+			// answered by a same-named entity elsewhere.
 			fromCands = byKindName[er.FromKind+"\x00"+er.FromName]
-		}
-		if len(fromCands) == 0 && er.FromKind == "" {
-			// Best-effort: scan all kinds when fixture author left it blank.
-			for k := range doc.Entities {
-				e := &doc.Entities[k]
-				if e.Name == er.FromName {
-					fromCands = append(fromCands, e)
+			if len(fromCands) == 0 && er.FromKind == "" {
+				// Best-effort: scan all kinds when fixture author left it blank.
+				for k := range doc.Entities {
+					e := &doc.Entities[k]
+					if e.Name == er.FromName {
+						fromCands = append(fromCands, e)
+					}
 				}
 			}
 		}
@@ -378,9 +389,12 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 		// Candidate "to" entities OR bare-name target.
 		var toCands []*graph.Entity
 		if er.ToFile != "" {
+			// #6464: same gate as from_file above — a named-and-missed
+			// to_file resolves to nothing. This call site was independently
+			// confirmed inert: mutating a python-django-mini IMPLEMENTS row's
+			// to_file to a nonexistent path left recall unchanged.
 			toCands = lastOf(byKindNameFile[er.ToKind+"\x00"+er.ToName+"\x00"+er.ToFile])
-		}
-		if len(toCands) == 0 && er.ToName != "" {
+		} else if er.ToName != "" {
 			toCands = byKindName[er.ToKind+"\x00"+er.ToName]
 			if len(toCands) == 0 && er.ToKind == "" {
 				for k := range doc.Entities {
