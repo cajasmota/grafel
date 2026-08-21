@@ -58,6 +58,42 @@ func isPlaceholderAnchor(e *graph.Entity) bool {
 	return e.Subtype == ormlink.SubtypeSentinel
 }
 
+// isSynthesisedStandIn reports whether e is a node the graph produced as a
+// stand-in for a declaration it never saw, rather than a declaration the
+// indexer extracted. It is the union of the two producers the doc above names:
+// the ormlink sentinel, and the class-hierarchy pass's inferred supertype.
+//
+// This is a SEPARATE predicate from isPlaceholderAnchor on purpose. That one
+// gates entity expectations and edge-endpoint binding, where the doc above
+// spells out why widening it to hierarchy shadows is its own change with its
+// own blast radius (classfold.go:138-139 keeps a shadow that folds into nothing
+// as the single node for its class, so rejecting them wholesale would deny real
+// classes). This one gates NOTHING that scores: its only consumer is the
+// nameIsEntity set that classifies a to_bare_name target for the #6476
+// diagnostic, where a false positive costs a wrong sentence and never a point.
+//
+// The hierarchy arm exists because the #6476 advice — "use to_name + to_kind" —
+// is actively HARMFUL for a shadow. Binding a fixture expectation to a
+// synthesised stand-in is precisely the false positive #6277 exists to prevent:
+// the expectation would then pass on a node the indexer inferred rather than on
+// the declaration the fixture means to assert. java-quartz-mini's SCOPE.Component
+// Job is live in the corpus today. So a bare-name row whose only same-named
+// entity is a shadow falls through to the pre-existing "to-entity not extracted"
+// message, which is the honest reading: nothing was extracted for that name.
+//
+// internal/engine.IsClassHierarchyShadow (classfold.go:124) is the same
+// predicate one layer earlier, but it is typed on *types.EntityRecord — the
+// PRE-assembly record — and cannot be called with a post-assembly graph.Entity.
+// The provenance property survives assembly (load.go copies all Properties),
+// and internal/mcp/denoise.go:143 already reads it off a graph.Entity the same
+// way. Importing internal/engine here would compile (engine does not import
+// quality), but it would buy a heavyweight dependency and still need the
+// conversion, so the property read is inlined instead.
+func isSynthesisedStandIn(e *graph.Entity) bool {
+	return isPlaceholderAnchor(e) ||
+		e.PropGet("provenance") == "INFERRED_FROM_CLASS_HIERARCHY"
+}
+
 // firstExtracted returns the FIRST candidate that is a real extracted entity,
 // skipping placeholder anchors. nil when every candidate is a placeholder (or
 // there are none).
@@ -111,6 +147,27 @@ type RelationshipResult struct {
 	Found        bool
 	FromResolved bool
 	ToResolved   bool
+	// ToBareNameIsEntity reports that the row's to_bare_name target is the
+	// NAME of an extracted, non-synthesised entity — and that no entity
+	// carries that string as its ID (case-insensitively). Such a row cannot
+	// match a resolved target: with ToName empty there are no "to" candidates,
+	// so the only path left is literal ToID equality, and an entity that
+	// resolved carries a hashed ID rather than the bare string. The miss is
+	// the fixture's, not the extractor's (#6476, and the mechanism-1 check of
+	// #6441), and the reporter says so instead of blaming the extractor.
+	//
+	// It describes the TO endpoint ONLY, and says nothing about the row's
+	// other defects. report.go therefore prints its advice only once BOTH
+	// endpoints resolved: "use to_name + to_kind" repairs the to side and
+	// cannot repair a from endpoint that was never extracted. The field is
+	// serialised (to_bare_name_is_entity) regardless of which arm printed, so
+	// a machine consumer reading to_resolved:true is not left to conclude the
+	// extractor dropped an edge no extractor could have satisfied.
+	//
+	// Invariant: false on every path that MATCHED — a row that hit is
+	// matchable by definition, whatever its target looks like. Pinned by
+	// TestMatchedBareNameRowNeverCarriesTheFlag_6476.
+	ToBareNameIsEntity bool
 	// MatchedRelID is the Relationship.ID of the edge we matched, when one
 	// was found. Empty otherwise.
 	MatchedRelID string
@@ -197,6 +254,12 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	byKindName := make(map[string][]*graph.Entity)
 	byKindNameFile := make(map[string][]*graph.Entity)
 	byQName := make(map[string]*graph.Entity)
+	// Kind-agnostic name/ID sets, used only to classify a to_bare_name target
+	// (#6476). Kind-agnostic on purpose: a bare-name row states no ToKind, so
+	// there is nothing to narrow by, and the question being asked — "did this
+	// string resolve to an entity?" — does not depend on which kind it became.
+	nameIsEntity := make(map[string]bool, len(doc.Entities))
+	idIsEntity := make(map[string]bool, len(doc.Entities))
 	for k := range doc.Entities {
 		e := &doc.Entities[k]
 		kn := e.Kind + "\x00" + e.Name
@@ -205,6 +268,16 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 		byKindNameFile[knf] = append(byKindNameFile[knf], e)
 		if e.QualifiedName != "" {
 			byQName[e.QualifiedName] = e
+		}
+		// Empty keys are excluded from BOTH sets. An entity with a blank Name
+		// or ID is not something a bare name can meaningfully "be", and
+		// admitting "" would make a degenerate row (to_bare_name: "   ") trip
+		// the flag against any such entity.
+		if n := strings.TrimSpace(e.Name); n != "" && !isSynthesisedStandIn(e) {
+			nameIsEntity[n] = true
+		}
+		if id := strings.TrimSpace(e.ID); id != "" {
+			idIsEntity[strings.ToLower(id)] = true
 		}
 	}
 
@@ -267,8 +340,12 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// resolveExpectedEdge tries every combination of from/to candidates so
 	// fixtures don't have to spell out the SourceFile when there is no
 	// collision. Returns (matched Relationship or nil, fromResolved,
-	// toResolved).
-	resolveExpectedEdge := func(er ExpectedRelationship) (*graph.Relationship, bool, bool) {
+	// toResolved, toBareNameIsEntity).
+	//
+	// toBareNameIsEntity is false on every path that MATCHED: a row that hit
+	// is matchable by definition, whatever its target looks like. It is the
+	// unsatisfiable-row flag of #6476, not a description of the target.
+	resolveExpectedEdge := func(er ExpectedRelationship) (*graph.Relationship, bool, bool, bool) {
 		// Candidate "from" entities.
 		var fromCands []*graph.Entity
 		if er.FromFile != "" {
@@ -314,39 +391,65 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 				}
 			}
 		}
-		toResolved := len(toCands) > 0 || er.ToBareName != ""
+		// A to_bare_name row used to be declared resolved unconditionally
+		// (`|| er.ToBareName != ""`), which made ToResolved carry no
+		// information for any of the 47 bare-name rows in the golden set and
+		// sent every such miss down report.go's "both endpoints exist; edge
+		// not emitted" arm — i.e. at the extractor. Classify the bare target
+		// instead (#6476):
+		//
+		//   - equal to some entity's ID  -> the row is matchable via the
+		//     literal relByTriple ToID path below; resolved, no complaint.
+		//     Compared case-INSENSITIVELY, because the relByKindFrom fallback
+		//     below matches with strings.EqualFold: a bare "Vapor" against an
+		//     entity whose ID is "vapor" is still matchable, and flagging it
+		//     would be the overclaim this guard exists to avoid.
+		//   - equal to some entity's NAME (and no entity's ID) -> the target
+		//     resolved to an entity whose real ID is a hash, so this row can
+		//     only ever hit an unresolved STUB edge carrying the bare string
+		//     itself as its ToID. Resolved, and flagged as the fixture defect.
+		//   - matching nothing -> genuinely unresolved, which is what the
+		//     pre-existing "to-entity not extracted" message already says.
+		//
+		// A blank bare name classifies as nothing: both sets exclude the empty
+		// key, so `to_bare_name: "   "` cannot trip either arm.
+		bare := strings.TrimSpace(er.ToBareName)
+		bareIsEntityID := bare != "" && idIsEntity[strings.ToLower(bare)]
+		bareIsEntityName := bare != "" && !bareIsEntityID && nameIsEntity[bare]
+		toResolved := len(toCands) > 0 || bareIsEntityID || bareIsEntityName
 
 		// First pass: try the strict (from, to, kind) triple lookup over
 		// every candidate combination.
 		for _, fc := range fromCands {
 			for _, tc := range toCands {
 				if r, ok := relByTriple[relKey{fc.ID, tc.ID, er.Kind}]; ok {
-					return r, fromResolved, toResolved
+					return r, fromResolved, toResolved, false
 				}
 			}
 			if er.ToBareName != "" {
 				if r, ok := relByTriple[relKey{fc.ID, er.ToBareName, er.Kind}]; ok {
-					return r, fromResolved, true
+					return r, fromResolved, true, false
 				}
 				// Bare-name comparison is whitespace-insensitive; the
 				// indexer may emit a slightly mangled stub.
 				for _, r := range relByKindFrom[er.Kind+"\x00"+fc.ID] {
 					if strings.EqualFold(strings.TrimSpace(r.ToID), strings.TrimSpace(er.ToBareName)) {
-						return r, fromResolved, true
+						return r, fromResolved, true, false
 					}
 				}
 			}
 		}
-		return nil, fromResolved, toResolved
+		return nil, fromResolved, toResolved, bareIsEntityName
 	}
 
 	for _, er := range fix.ExpectedRelationships {
-		match, fromOk, toOk := resolveExpectedEdge(er)
+		match, fromOk, toOk, bareIsEnt := resolveExpectedEdge(er)
 		res := RelationshipResult{
-			Expected:     er,
-			Found:        match != nil,
-			FromResolved: fromOk,
-			ToResolved:   toOk,
+			Expected:           er,
+			Found:              match != nil,
+			FromResolved:       fromOk,
+			ToResolved:         toOk,
+			ToBareNameIsEntity: bareIsEnt,
 		}
 		if match != nil {
 			res.MatchedRelID = match.ID
@@ -369,7 +472,7 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// Forbidden edges — count any extracted edge that satisfies one of
 	// the fixture's forbidden patterns.
 	for _, fb := range fix.ForbiddenRelationships {
-		match, fromOk, toOk := resolveExpectedEdge(fb)
+		match, fromOk, toOk, _ := resolveExpectedEdge(fb)
 		if match != nil {
 			rep.ForbiddenHits = append(rep.ForbiddenHits, RelationshipResult{
 				Expected:     fb,

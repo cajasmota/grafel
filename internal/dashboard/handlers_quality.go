@@ -179,6 +179,10 @@ type RecallRelItem struct {
 	ToKind       string `json:"to_kind,omitempty"`
 	FromResolved bool   `json:"from_resolved"`
 	ToResolved   bool   `json:"to_resolved"`
+	// ToBareNameIsEntity forwards internal/quality's #6476 flag. Without it
+	// this endpoint keeps pre-fix semantics: to_resolved:true on a row that
+	// cannot match, which a client reads as "the extractor dropped the edge".
+	ToBareNameIsEntity bool `json:"to_bare_name_is_entity,omitempty"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -521,13 +525,14 @@ func (s *Server) handleQualityRecall(w http.ResponseWriter, r *http.Request) {
 			File string `json:"source_file,omitempty"`
 		} `json:"missing_entities,omitempty"`
 		MissingRelationships []struct {
-			From         string `json:"from"`
-			FromKind     string `json:"from_kind,omitempty"`
-			Kind         string `json:"kind"`
-			To           string `json:"to"`
-			ToKind       string `json:"to_kind,omitempty"`
-			FromResolved bool   `json:"from_resolved"`
-			ToResolved   bool   `json:"to_resolved"`
+			From               string `json:"from"`
+			FromKind           string `json:"from_kind,omitempty"`
+			Kind               string `json:"kind"`
+			To                 string `json:"to"`
+			ToKind             string `json:"to_kind,omitempty"`
+			FromResolved       bool   `json:"from_resolved"`
+			ToResolved         bool   `json:"to_resolved"`
+			ToBareNameIsEntity bool   `json:"to_bare_name_is_entity,omitempty"`
 		} `json:"missing_relationships,omitempty"`
 	}
 	if err2 := json.Unmarshal(raw, &jr); err2 != nil {
@@ -554,13 +559,14 @@ func (s *Server) handleQualityRecall(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, mr := range jr.MissingRelationships {
 		reply.MissingRelationships = append(reply.MissingRelationships, RecallRelItem{
-			From:         mr.From,
-			FromKind:     mr.FromKind,
-			Kind:         mr.Kind,
-			To:           mr.To,
-			ToKind:       mr.ToKind,
-			FromResolved: mr.FromResolved,
-			ToResolved:   mr.ToResolved,
+			From:               mr.From,
+			FromKind:           mr.FromKind,
+			Kind:               mr.Kind,
+			To:                 mr.To,
+			ToKind:             mr.ToKind,
+			FromResolved:       mr.FromResolved,
+			ToResolved:         mr.ToResolved,
+			ToBareNameIsEntity: mr.ToBareNameIsEntity,
 		})
 	}
 
