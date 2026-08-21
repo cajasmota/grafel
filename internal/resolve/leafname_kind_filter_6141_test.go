@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/types"
@@ -330,11 +331,77 @@ func TestMemberFamilyMask_6141(t *testing.T) {
 // bitmask encoding rests on: no entity kind sits in two families at once.
 // If a future kind is added to two of the slices the mask silently becomes
 // a union and a call could bind to a field again.
+//
+// #6492 — this iterates memberFamilyMask over the UNION of the family
+// members, not the raw familyMaskByKind map. The raw map cannot see the
+// hazard it is supposed to guard: memberFamilyMask ORs a kind's own mask
+// with the mask of its SCOPE.-trimmed form, so a bare "Service" in one
+// family and a "SCOPE.Service" in another produce two separate single-bit
+// map entries — a raw scan finds both clean — while memberFamilyMask
+// ("SCOPE.Service") returns a two-bit mask and the filter is no longer
+// discriminating. Classifying through the real function closes that gap.
 func TestMemberFamilyMask_FamiliesAreDisjoint_6141(t *testing.T) {
-	for kind, mask := range familyMaskByKind {
-		if mask&(mask-1) != 0 {
-			t.Errorf("kind %q belongs to more than one kind family (mask=%b); the "+
-				"leaf-name filter assumes the families are disjoint", kind, mask)
+	families := [][]string{
+		operationKindFamily, componentKindFamily, schemaKindFamily,
+		componentOrOperationKindFamily, protoServiceKindFamily,
+	}
+	seen := make(map[string]bool)
+	for _, fam := range families {
+		for _, kind := range fam {
+			if seen[kind] {
+				continue
+			}
+			seen[kind] = true
+			// Classify through the same entry point the leaf-name filter
+			// uses, and through both spellings BuildIndex dual-indexes.
+			for _, probe := range []string{kind, scopeKindPrefix + strings.TrimPrefix(kind, scopeKindPrefix)} {
+				mask := memberFamilyMask(probe)
+				if mask&(mask-1) != 0 {
+					t.Errorf("kind %q (probed as %q) belongs to more than one kind family "+
+						"(mask=%b); the leaf-name filter assumes the families are disjoint",
+						kind, probe, mask)
+				}
+			}
+		}
+	}
+	// Non-vacuity, tightened (#6492 N5). The old guard (len(seen) >= 4) was
+	// satisfiable by operationKindFamily alone, so emptying every OTHER family
+	// left the test green while it silently stopped checking them. Assert
+	// instead that (a) no family is empty, (b) the scan covered the exact
+	// union of all five, and (c) every kind in the three BASE families
+	// classifies to a NON-ZERO mask — a family whose members all fell out of
+	// familyMaskByKind would otherwise pass the disjointness loop trivially,
+	// since mask 0 has no bits to collide.
+	union := make(map[string]bool)
+	for i, fam := range families {
+		if len(fam) == 0 {
+			t.Fatalf("family slice #%d is empty; the disjointness scan is vacuous", i)
+		}
+		for _, kind := range fam {
+			union[kind] = true
+		}
+	}
+	if len(seen) != len(union) {
+		t.Fatalf("disjointness scan covered %d kinds, want the full union of %d",
+			len(seen), len(union))
+	}
+	for _, fam := range [][]string{operationKindFamily, componentKindFamily, schemaKindFamily} {
+		for _, kind := range fam {
+			if memberFamilyMask(kind) == 0 {
+				t.Fatalf("memberFamilyMask(%q) = 0; a base-family kind that classifies "+
+					"into no family makes the disjointness loop vacuous for it, and "+
+					"silently disables the leaf-name filter for every entity of that kind",
+					kind)
+			}
+		}
+	}
+	// protoServiceKindFamily is the deliberate exception: it is an ordered
+	// resolver tier, not a leaf-name family, and must stay OUT of the mask
+	// table entirely (#6492).
+	for _, kind := range protoServiceKindFamily {
+		if memberFamilyMask(kind) != 0 {
+			t.Fatalf("memberFamilyMask(%q) != 0; the proto service tier must not "+
+				"reclassify entities for the leaf-name filter (#6492)", kind)
 		}
 	}
 }

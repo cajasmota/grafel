@@ -107,12 +107,90 @@ otherwise closed), add the two rows this fixture is missing:
 `user.proto --[CONTAINS]--> User (SCOPE.Operation)`. The source already
 contains everything they need.
 
-## #6459 (`SCOPE.Service` missing from `operationKindFamily`) is NOT flipped here
+## #6459 (`SCOPE.Service` reachable from the operation address space) is NOT flipped here
 
-`internal/resolve/refs.go`'s `operationKindFamily` omits `SCOPE.Service`, so
-the `file → service` CONTAINS reaches its service only via the kind-agnostic
-`byLocation` fallback. In this fixture that fallback happens to succeed, because
-no other entity in `user.proto` is named `UserService`. It is the same
-file-anchored edge described above, so this fixture would not observe the fix
-either way — deliberately, no row here asserts anything about it, and #6459
-should not expect this fixture's numbers to move.
+**This fixture cannot observe #6459, before or after.** The `file → service`
+CONTAINS in `user.proto` reaches its service through the kind-agnostic
+`byLocation` fallback, and that fallback succeeds here because no other entity
+in `user.proto` is named `UserService`. The bug #6459 fixes is what happens when
+that name DOES collide — so a fixture without a collision on the service name
+returns the same answer either way.
+
+Confirmed by measurement rather than assumed: grading this fixture immediately
+before and after the resolver change produced byte-identical output — 18/18
+entities, 16/16 relationships, 0 forbidden hits, and the same
+`resolver: rewrote=27 ambiguous=0 unmatched=7` line. The fixture served as the
+regression net for that change, not as its demonstration; the demonstration is
+the constructed collision in
+`internal/resolve/proto_service_family_6459_test.go`.
+
+**Where the admission lives (#6492).** `SCOPE.Service` is in NO kind family at
+all — not the shared `operationKindFamily`, and not a proto-only variant of it.
+The shared slice also feeds `hintKinds` and the `familyMaskByKind` leaf-name
+filter, and `SCOPE.Service` is emitted by ~60 non-proto sites — several of which
+name the entity after a function or class in the same file (celery/dramatiq task
+markers, Spring stereotypes). Because a family match must be UNIQUE, admitting
+it there destroys those bindings rather than adding any.
+
+A proto-only family widening fails too, for a reason internal to proto:
+`buildService` addresses each `rpc` child with the same
+`BuildOperationStructuralRef` the `file → service` edge uses, so rpcs and
+services share one address space. With `SCOPE.Service` in the filtering family,
+
+    service User  { rpc Get(Foo)  returns (Foo); }
+    service Admin { rpc User(Foo) returns (Foo); }
+
+— ordinary proto — makes `rpc User` match two family members and dangles the
+`service Admin → rpc User` CONTAINS edge that resolved before. This fixture
+cannot see that either: no `rpc` in `user.proto` shares a *service* name.
+
+The mechanism is instead an ordered tier, `lookupProtoServiceTier`: the
+unmodified operation family is tried first, and `SCOPE.Service` is consulted
+only when that family matched nothing at all, and only for a proto language
+segment. No row here asserts anything about it, and neither #6459 nor #6492
+should expect this fixture's numbers to move.
+
+**No golden fixture observes the difference — the guards are unit tests.**
+An earlier revision of this note credited `python-dramatiq-mini` with observing
+it. That was wrong, and worth recording as a trap: `baseline.json` records
+`relationship_expected: 0` for that fixture, so
+`TestJobFixturesAbsoluteRecall_6260/python-dramatiq-mini` passes with the
+regression fully present. The only thing that moves there is an unasserted
+`resolver: rewrote=…` line on stderr, which no assertion reads. A fixture whose
+numbers cannot change is not a guard.
+
+The real guards, all of which were seen red on the corresponding mutant:
+
+| Direction | Guard |
+|---|---|
+| Widening into the shared family destroys a non-proto binding | `TestCeleryTaskCallStillBindsToTheFunction6492` (`internal/resolve/`) |
+| Widening the proto family destroys an *rpc* binding | `TestProtoRpcNamedAfterASiblingServiceStillBinds6492` |
+| The tier binds the #6459 `message Foo` + `service Foo` collision | `TestProtoServiceRefResolvesUnderNameCollision6459` |
+| The tier's language boundary admits proto and nothing else | `TestProtoServiceTierIsPinnedToProto6492` |
+| The tier's precondition scans the whole family against `.base` | `TestProtoServiceTierPreconditionScansTheWholeFamilyAndBase6492` |
+| The residual below stays visible | `TestSelfNamedRpcLeavesTheServiceOrphaned6459Residual` (`internal/extractors/proto/`) |
+
+### What #6459 does NOT close
+
+The scope above is exact, not shorthand. #6459 is closed for the shape where the
+service's name collides with a **non-operation** entity — `message Foo` beside
+`service Foo`. It is **not** closed when a service collides with an **operation**
+entity it owns:
+
+    service Foo { rpc Foo(Bar) returns (Bar); }
+
+`fileContainsOperationRel` (the `file → service` edge) and `buildService` (the
+`service → rpc` edge) mint the **byte-identical** ref
+`scope:operation:method:proto:<file>:Foo` for two different entities. The ordered
+tier cannot separate them and must not try — its precondition sees the rpc in the
+operation family and bails, because the alternative is a service outranking a real
+rpc. Measured end-to-end through the real extractor at the head that added the
+tier: **the service ends with 0 inbound CONTAINS and the rpc carries 2** (its own
+parent edge plus the `file → service` edge mis-bound onto it). That is #6459's
+title symptom surviving in this one shape.
+
+It is a mis-binding, not a dangle, so no ref-integrity check reports it. Closing
+it needs the proto extractor to stop addressing a service and its rpc identically
+— a ref *format* change — and belongs in its own issue. This fixture cannot
+observe the residual either: no service in `user.proto` shares a name with its own
+rpc.

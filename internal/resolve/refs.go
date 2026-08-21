@@ -2104,6 +2104,34 @@ var (
 		scopeKindPrefix + "View",
 		scopeKindPrefix + "Model",
 	}
+	// Issue #6459 / #6492 — SCOPE.Service is deliberately NOT a member here.
+	// This slice is SHARED: it feeds hintKinds (bare-name CALLS /
+	// PUBLISHES_TO and the whole #3930 semantic-edge taxonomy) and
+	// familyMaskByKind (the #6141 leaf-name family filter) as well as
+	// structuralKindFamilies. SCOPE.Service is not a proto-only kind — some
+	// sixty sites across internal/patterns/, internal/custom/ and
+	// internal/extractors/ emit it, and several name the entity after a
+	// function or class that already exists in the SAME FILE (the wired case
+	// is internal/custom/python/celery.go's `@shared_task def <fn>`, which
+	// mints a SCOPE.Service beside the function's SCOPE.Operation).
+	// uniqueMatchInFamily returns ("", false) when two distinct IDs in the
+	// family match, so admitting a member cannot only gain bindings: it
+	// DESTROYS every binding that was unique precisely because the member
+	// was absent. Measured: adding it here turned
+	// scope:operation:method:python:app/tasks.py:send_email from a clean
+	// bind into statusAmbiguous and lookupByKindHint("send_email", "CALLS")
+	// from a hit into a miss.
+	//
+	// A proto-ONLY widening of this family is not a fix either — it moves the
+	// same destruction onto ordinary proto. `service Admin { rpc User(…) }`
+	// beside `service User` addresses the rpc and the service with the SAME
+	// ref (both go through BuildOperationStructuralRef), so a SCOPE.Service
+	// family member makes the rpc's binding ambiguous and dangles the
+	// service → rpc CONTAINS edge that resolved before. See
+	// lookupProtoServiceTier: the proto need is served by an ORDERED TIER
+	// consulted only when this family matches nothing at all.
+	// Guards: service_family_scope_6492_test.go,
+	// proto_rpc_service_collision_6492_test.go.
 	operationKindFamily = []string{
 		"Operation", "Function", "Method",
 		scopeKindPrefix + "Operation",
@@ -2136,6 +2164,33 @@ var (
 		scopeKindPrefix + "Model",
 		scopeKindPrefix + "Operation",
 	}
+	// protoServiceKindFamily is the ORDERED TIER that closes #6459, and it is
+	// deliberately NOT a member of any of the families above.
+	//
+	// internal/extractors/proto mints the file → service CONTAINS ToID via
+	// extractor.BuildOperationStructuralRef, i.e.
+	// scope:operation:method:proto:<file>:<ServiceName>, while the entity it
+	// points at carries Kind "SCOPE.Service". So the proto extractor really does
+	// ADDRESS a service in the operation address space. Without help that ref
+	// cannot bind through the kind-filtered lookupLocationKind tier: it falls
+	// through to the kind-agnostic byLocation index, which drops any (file,
+	// name) that is not unique — so `message Foo` + `service Foo` in one .proto
+	// dangled the edge (the mirror image of the #6422 message/rpc collision).
+	//
+	// The fix is an ordering, not a widening. buildService addresses each rpc
+	// child through the SAME builder, so rpcs and services share one address
+	// space: putting SCOPE.Service into the family that space is FILTERED by
+	// makes every rpc that shares a sibling service's name ambiguous, and
+	// destroys a CONTAINS edge that used to resolve. lookupProtoServiceTier
+	// instead consults this single-member family only when the unmodified
+	// operationKindFamily matched NOTHING AT ALL at that (file, name) — which
+	// is exactly the #6459 shape and never the rpc-collision shape.
+	//
+	// SCOPE.Service is deliberately absent from componentKindFamily and from
+	// componentOrOperationKindFamily: nothing addresses a service in the
+	// component address space, and doing so would let a bare type reference
+	// bind to an IDL service definition.
+	protoServiceKindFamily = []string{scopeKindPrefix + "Service"}
 )
 
 // hintKinds returns the entity-kind families preferred for a given
@@ -2675,6 +2730,25 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 	if id, ok := idx.lookupLocationKind(filePath, tail, structuralKindFamilies(scopeKind)); ok {
 		return id, statusRewritten, true
 	}
+	// #6459 — ordered tier, proto only. The proto extractor addresses a
+	// SCOPE.Service entity through an operation-space ref, so when the
+	// operation family found NO candidate at all here, a lone same-(file,
+	// name) service is what the ref meant.
+	//
+	// Only the LOWER boundary is positional: this must run before the
+	// ambigLocation / byLocation fallbacks below, which is the whole point —
+	// those are what dropped the binding when a `message Foo` shared the
+	// service's name. The UPPER boundary (never outranking the
+	// lookupLocationKind call above) is NOT positional: it is enforced inside
+	// lookupProtoServiceTier by its precondition. Moving this block above the
+	// lookupLocationKind call would not change any answer, because that call
+	// can only succeed on a non-blank id under an operationKindFamily key,
+	// which is precisely the tier's bail condition.
+	if strings.EqualFold(scopeKind, "operation") && isProtoLangSegment(parts[stubScopeLangIndex]) {
+		if id, ok := idx.lookupProtoServiceTier(filePath, tail); ok {
+			return id, statusRewritten, true
+		}
+	}
 	if idx.ambigLocation[filePath] != nil && idx.ambigLocation[filePath][tail] {
 		return "", statusAmbiguous, true
 	}
@@ -2962,6 +3036,12 @@ func (idx Index) lookupUniqueSchemaFieldByName(fieldName string) (string, bool) 
 // (e.g. "component", "operation", "schema") to the entity-kind families it
 // might be indexed under. Returns nil for unknown segments.
 //
+// The mapping is LANGUAGE-INDEPENDENT by design (#6492). The proto
+// operation-space service ref that #6459 reports is served by
+// lookupProtoServiceTier, an ordered fallback, not by handing proto a
+// different family here: rpcs and services share one address space, so any
+// widening of the family this lookup filters by destroys rpc bindings.
+//
 // Issue #778 — add "schema" so scope:schema:field:java:* stubs resolve via
 // lookupLocationKind using schemaKindFamily instead of falling through to
 // the kind-agnostic byLocation fallback, which hits ambiguity when a Java
@@ -2977,6 +3057,101 @@ func structuralKindFamilies(scopeKind string) []string {
 		return schemaKindFamily
 	}
 	return nil
+}
+
+// isProtoLangSegment reports whether a structural ref's language segment names
+// the proto extractor. Both spellings are accepted: the extractor emits the
+// segment literally as "proto" (internal/extractors/proto/proto.go) while the
+// entities it creates carry Language "protobuf", so accepting only one of the
+// two would be a silent trap for the next edit.
+//
+// This is the ONLY language boundary the #6459 fix draws, and it is pinned
+// exhaustively (proto_rpc_service_collision_6492_test.go): every other
+// language, and the empty segment, must return false. SCOPE.Service is emitted
+// by ~60 sites across internal/patterns/, internal/custom/ and
+// internal/extractors/, and everywhere except proto it is a MARKER that merely
+// shares a (file, name) with a real entity — celery's `@shared_task def <fn>`,
+// Kotlin's Spring stereotypes, systemd/YAML units. Letting the tier fire for
+// those would bind an operation-space ref to the marker instead of the real
+// function or class.
+func isProtoLangSegment(lang string) bool {
+	switch normalizeLang(lang) {
+	case "proto", "protobuf":
+		return true
+	}
+	return false
+}
+
+// lookupProtoServiceTier is the ordered fallback that closes #6459.
+//
+// It fires ONLY when the unmodified operationKindFamily matched nothing at all
+// at (filePath, name) — not merely when it was ambiguous. "Present but blank"
+// counts as a match for this purpose: a blanked kindIDs entry is the
+// ambiguous-within-kind sentinel, i.e. there ARE operation entities here and
+// the resolver simply cannot pick one. Falling back in that case would let a
+// service silently win a tie between two rpcs.
+//
+// The ordering is what makes the fix safe. An rpc named after a sibling
+// service (`service Admin { rpc User(…) }` next to `service User`) is ordinary
+// proto and is addressed by the SAME ref as the service; the operation family
+// matches the rpc uniquely, so this tier never runs and the rpc keeps its
+// binding. The #6459 shape (`message Foo` + `service Foo`, no rpc named Foo)
+// has NO operation-family member at all, so the tier runs and binds the
+// service. Guards: proto_rpc_service_collision_6492_test.go (the rpc half),
+// proto_service_family_6459_test.go (the service half).
+func (idx Index) lookupProtoServiceTier(filePath, name string) (string, bool) {
+	fileBucket := idx.byLocationKind[filePath]
+	if fileBucket == nil {
+		return "", false
+	}
+	locEnt := fileBucket[name]
+	// Scan .base ONLY, and scan the WHOLE family. Both halves are
+	// load-bearing (guard:
+	// TestProtoServiceTierPreconditionScansTheWholeFamilyAndBase6492):
+	//
+	//   - .base, not .real. Per entity, .base's key set is a strict superset
+	//     of .real's — see the two writers cited below — so a .real scan is
+	//     redundant where it agrees and BLIND where it does not. An entity
+	//     kinded "SCOPE.Method" occupies .base["SCOPE.Method"] AND
+	//     .base["Method"], but only .real["SCOPE.Method"]; since "Method" is
+	//     an operationKindFamily member and "SCOPE.Method" is not, a .real
+	//     scan would miss it entirely. The former `.real` arm of this loop
+	//     could therefore never fire alone, and has been removed as dead.
+	//
+	//   - the whole family, not just scopeKindPrefix+"Operation". Same
+	//     asymmetry: the trimmed aliases are exactly what a SCOPE.Method /
+	//     SCOPE.Function entity is visible under.
+	//
+	// Missing either way lets the tier fire while REAL operation entities sit
+	// at this (file, name) — a SCOPE.Service silently outranking an rpc.
+	//
+	// The family is also exactly right, not merely large enough: scanning any
+	// SUPERSET of it re-opens #6459. buildImportEntities mints a
+	// SCOPE.Component whose Name is the verbatim quoted import string in the
+	// IMPORTING file, so `import "Foo";` beside `service Foo` puts a
+	// component at the service's own (file, name); a scan widened to
+	// componentOrOperationKindFamily bails there and drops the file → service
+	// edge. Guards: the scope-component / bare-component rows of the test
+	// above, and TestSelfNamedImportDoesNotBlockTheServiceTier6492 in
+	// internal/extractors/proto.
+	for _, k := range operationKindFamily {
+		if _, present := locEnt.base.get(k); present {
+			return "", false
+		}
+	}
+	// Reading .base here is likewise not a behavioural choice for THIS family.
+	// Both writers of byLocationKind — BuildIndex (refs.go, `kinds :=
+	// []string{e.Kind}` plus the SCOPE-trimmed alias) and
+	// internal/resolve/symbol_index.go's memberEntry pass (`kinds :=
+	// []string{me.kind}` plus me.kindTrimmed, derived by the identical
+	// TrimPrefix) — write .base over `kinds` and .real over the raw kind
+	// alone. Neither ever ADDS a "SCOPE." prefix, so the key "SCOPE.Service"
+	// is written by SCOPE.Service entities and by nothing else; a bare
+	// `Service`-kinded entity lands under "Service" in both buckets and is
+	// invisible to this family either way (guard: the bare-kind arm of
+	// TestProtoServiceTierRequiresTheScopeKind6492). .base is used to match
+	// lookupLocationKind's placeholder-inclusive tier.
+	return uniqueMatchInFamily(locEnt.base, protoServiceKindFamily, true)
 }
 
 // lookupLocationKind picks an entity by (file, name) constrained to the

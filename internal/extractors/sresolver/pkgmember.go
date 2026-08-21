@@ -188,6 +188,15 @@ type callerLocation struct {
 // close a cycle. The list is pinned against drift by
 // TestResolveScoped_LeafTier_OperationKindsStillBind_6141, which walks the
 // same four kinds the resolve-side test walks.
+//
+// #6459/#6492 — this port deliberately does NOT admit "Service". The
+// resolve side admits SCOPE.Service only through lookupProtoServiceTier, an
+// ordered fallback for Format A structural refs carrying the proto language
+// segment; relWantsMemberTier above EXCLUDES Format A stubs from every tier
+// this predicate gates, so no ref that could carry the proto admission ever
+// reaches here. The bare-name package tiers this does gate are Kotlin- and
+// Go-shaped, where a "Service"-kinded entity is a framework marker sharing a
+// name with a real declaration, not a call target.
 func isOperationKind(kind string) bool {
 	switch strings.TrimPrefix(kind, "SCOPE.") {
 	case "Operation", "Function", "Method":
