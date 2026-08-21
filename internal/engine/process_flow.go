@@ -38,10 +38,21 @@
 //
 // The previous heuristic (`chainTouchesHTTP` — any step appears on an
 // IMPLEMENTS / ROUTES_TO / SERVES edge boundary) is preserved as a separate
-// `crosses_external_lib` property whenever the chain ALSO terminates in
-// an external-library SCOPE.External / SCOPE.ExternalAPI node. That
-// property captures the original intent ("this process bottoms out in a
-// third-party dep") without conflating it with cross-repo traversal.
+// `crosses_external_lib` property.
+//
+// #6494 — this header used to describe that property as firing "whenever
+// the chain ALSO terminates in an external-library SCOPE.External /
+// SCOPE.ExternalAPI node", i.e. an AND on the terminal step. The code has
+// never done that: chainCrossesExternalLib is an OR over EVERY step —
+// boundary-set membership, an HTTP-endpoint-ish kind, or an external-lib
+// kind, at any position. The function doc at chainCrossesExternalLib is
+// the accurate one ("this process touches an HTTP handler" OR bottoms out
+// in a third-party dep); this paragraph is corrected to match it rather
+// than the other way round, because no code path reads the property —
+// `crosses_external_lib` has exactly three non-test references, all inside
+// this file: this comment, the emit site, and the widening comment on the
+// function itself. Nothing consumes it, so widening it in #6458 cannot
+// have moved any downstream behaviour.
 //
 // Internal HTTP handlers (a controller method that implements a same-repo
 // route synthetic) are intentionally NOT cross_stack: the BFS never
@@ -182,7 +193,12 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 	// extractors catch up (eventual JS/TS class-field support) the BFS
 	// will reach the endpoint structurally and this fallback becomes a
 	// no-op overlay on top of the precise FETCHES-edge signal.
-	consumerEndpointFiles := buildConsumerEndpointFileSet(doc)
+	// #6494 — consumer synthetics whose call resolves into a same-repo
+	// handler are NOT cross-repo bridges (#1639). The set is per-endpoint
+	// and feeds both the file-coarse fallback below and
+	// chainCrossesRepoBoundary.
+	resolvedConsumers := resolvedConsumerEndpoints(doc)
+	consumerEndpointFiles := buildConsumerEndpointFileSet(doc, resolvedConsumers)
 
 	// Build CALLS adjacency across doc + companions. Edges with explicit
 	// `confidence < 0.5` are excluded so fuzzy global-fallback matches don't
@@ -337,7 +353,7 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 		if entry == nil || (terminal == nil && !terminalIsPhantom) {
 			continue
 		}
-		crossStack, crossReason := chainCrossesRepoBoundary(chain, byID, adj)
+		crossStack, crossReason := chainCrossesRepoBoundary(chain, byID, adj, resolvedConsumers)
 		if !crossStack {
 			// Fallback (#754): any chain whose entry file contains a
 			// consumer http_endpoint entity is treated as cross_stack
@@ -350,16 +366,15 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 			// synthetics (pattern_type=http_endpoint_synthesis) which
 			// buildConsumerEndpointFileSet excludes.
 			//
-			// #6458 — the fallback is for chains that could NOT reach a
-			// consumer bridge structurally. When the chain DID reach one,
-			// chainCrossesRepoBoundary has already given the authoritative
-			// answer (including #1639's same-repo handler-continuation
-			// rule), and a false verdict there means the call resolved
-			// in-repo. Overriding it from a file-coarse proxy would revive
-			// the pre-#1639 semantics that this gate being dead had been
-			// hiding.
-			if entry != nil && consumerEndpointFiles[entry.SourceFile] &&
-				!chainReachesConsumerEndpoint(chain, byID) {
+			// #6494 — reconciling the fallback with #1639 is done in
+			// buildConsumerEndpointFileSet, not here: a file counts only
+			// when it holds a consumer synthetic that does NOT resolve
+			// into a same-repo handler. Guarding on "the chain reached
+			// SOME consumer bridge" instead would be wrong — a chain can
+			// resolve one call in-repo while the entry file holds a
+			// second, unresolved one (fan-out), and that second call is
+			// exactly what the fallback exists to catch.
+			if entry != nil && consumerEndpointFiles[entry.SourceFile] {
 				crossStack = true
 				crossReason = "entry file contains consumer http_endpoint synthetics (BFS chain didn't reach the bridge structurally — see #754 fallback)"
 			}
@@ -782,10 +797,20 @@ func buildHTTPBoundarySetMulti(doc *graph.Document, companions []*graph.Document
 // a chain's entry lives in a file with consumer endpoints that the BFS
 // couldn't structurally reach (typically because the per-language
 // extractor doesn't surface class-field arrow methods as entities).
-func buildConsumerEndpointFileSet(doc *graph.Document) map[string]bool {
+//
+// #6494 — `resolved` (from resolvedConsumerEndpoints) carries the IDs of
+// consumer synthetics whose call resolves into a SAME-repo handler. Those
+// are intra-repo by #1639 and are excluded here, so a file qualifies only
+// when it holds at least one UNRESOLVED consumer call. That is what keeps
+// the fallback from reviving pre-#1639 semantics now that the kind gate
+// below no longer rejects every candidate.
+func buildConsumerEndpointFileSet(doc *graph.Document, resolved map[string]bool) map[string]bool {
 	out := map[string]bool{}
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
+		if resolved[e.ID] {
+			continue
+		}
 		// #6458 — this gate compared against the bare pre-#1217
 		// "http_endpoint" literal, which the consumer synthesiser stopped
 		// emitting when #1217 split the kind into http_endpoint_call /
@@ -855,6 +880,7 @@ func chainCrossesRepoBoundary(
 	chain []string,
 	byID map[string]*graph.Entity,
 	adj *callsAdjacency,
+	resolvedConsumers map[string]bool,
 ) (bool, string) {
 	// #1639 — repo-aware cross-repo flag. A chain is cross-repo ONLY when it
 	// genuinely leaves the source repo. With the handler-continuation fix, an
@@ -866,19 +892,19 @@ func chainCrossesRepoBoundary(
 	// a cross-repo signal; we require an authoritative boundary marker:
 	//
 	//   1. A phantom cross-repo CALLS edge (#769): target_repo != this repo.
-	//   2. A consumer http_endpoint synthetic that the chain does NOT resolve
-	//      INTO a same-repo handler (no handler-continuation edge leaves it).
-	//      An unresolved consumer synthetic is, by construction, a call whose
-	//      backend lives in another repo (the cross-repo HTTP linker pairs it
-	//      with a producer elsewhere). When the chain DID continue into a
-	//      same-repo handler, the call resolved locally and is intra-repo.
-	hasContinuation := false
-	for i := 1; i < len(chain); i++ {
-		if adj != nil && adj.handlerCont[edgeKey{chain[i-1], chain[i]}] {
-			hasContinuation = true
-			break
-		}
-	}
+	//   2. A consumer http_endpoint synthetic that does NOT resolve INTO a
+	//      same-repo handler. An unresolved consumer synthetic is, by
+	//      construction, a call whose backend lives in another repo (the
+	//      cross-repo HTTP linker pairs it with a producer elsewhere). When
+	//      the call DID resolve into a same-repo handler, it is intra-repo.
+	//
+	// #6494 — that second test is PER-ENDPOINT (resolvedConsumers is keyed by
+	// consumer-synthetic ID). It used to be chain-GLOBAL: a single
+	// handler-continuation edge anywhere in the chain disabled the
+	// unresolved-consumer check for every step, so a chain that resolved one
+	// call in-repo and then made a second, unresolved one (the BFF/gateway
+	// shape: caller → callA → defA → handler → callB) was reported intra-repo.
+	// The #754 file-coarse fallback had been masking that; it no longer does.
 
 	// Walk pairwise — every transition has an originating edge.
 	for i := 1; i < len(chain); i++ {
@@ -892,13 +918,13 @@ func chainCrossesRepoBoundary(
 		}
 		// A consumer synthetic that did NOT resolve into a same-repo handler
 		// is a call whose backend lives in another repo.
-		if !hasContinuation && isConsumerHTTPEndpoint(byID[to]) {
+		if isConsumerHTTPEndpoint(byID[to]) && !resolvedConsumers[to] {
 			return true, fmt.Sprintf("unresolved consumer http_endpoint at step %d (%s) — backend in another repo", i, to)
 		}
 	}
 	// Also check the entry itself — a Process whose entry IS a consumer
 	// synthetic (unusual but possible) still crosses repos.
-	if !hasContinuation && len(chain) > 0 && isConsumerHTTPEndpoint(byID[chain[0]]) {
+	if len(chain) > 0 && isConsumerHTTPEndpoint(byID[chain[0]]) && !resolvedConsumers[chain[0]] {
 		return true, fmt.Sprintf("unresolved consumer http_endpoint at step 0 (%s)", chain[0])
 	}
 	return false, ""
@@ -990,18 +1016,69 @@ func isConsumerHTTPEndpoint(e *graph.Entity) bool {
 	return hasCaller
 }
 
-// chainReachesConsumerEndpoint reports whether any step in the chain IS a
-// consumer-side http_endpoint synthetic — i.e. whether the BFS reached a
-// cross-repo bridge node structurally. Used (#6458) to keep the #754
-// file-coarse cross_stack fallback from second-guessing
-// chainCrossesRepoBoundary on chains that did reach the bridge.
-func chainReachesConsumerEndpoint(chain []string, byID map[string]*graph.Entity) bool {
-	for _, id := range chain {
-		if isConsumerHTTPEndpoint(byID[id]) {
-			return true
+// resolvedConsumerEndpoints returns the IDs of the CONSUMER-side
+// http_endpoint synthetics in doc whose HTTP call resolves into a
+// SAME-repo handler — the #1639 condition, evaluated per endpoint.
+//
+// The resolved shape is a three-node chain, all inside this document:
+//
+//	consumer --FETCHES--> http_endpoint_definition <--IMPLEMENTS-- handler
+//
+// The IMPLEMENTS edge is the one buildCallsAdjacency reverses into the
+// handler-continuation edge that lets the BFS walk past the definition. A
+// consumer with no such backing definition is an unresolved call: the
+// cross-repo HTTP linker pairs it with a producer in ANOTHER repo.
+//
+// #6494 — this replaces a chain-global "did any step in this chain have a
+// continuation edge" test. Chain-global was wrong in two directions: it
+// silenced a second, unresolved call made downstream of a resolved one,
+// and (in the file-coarse fallback) it silenced an unresolved sibling call
+// that merely shared the entry file with a resolved one.
+func resolvedConsumerEndpoints(doc *graph.Document) map[string]bool {
+	empty := map[string]bool{}
+	if doc == nil {
+		return empty
+	}
+	consumers := map[string]bool{}
+	defs := map[string]bool{}
+	for i := range doc.Entities {
+		e := &doc.Entities[i]
+		if isConsumerHTTPEndpoint(e) {
+			consumers[e.ID] = true
+			continue
+		}
+		if isHTTPEndpointDefinition(e) {
+			defs[e.ID] = true
 		}
 	}
-	return false
+	if len(consumers) == 0 || len(defs) == 0 {
+		return empty
+	}
+	// Definitions that a same-repo handler implements.
+	served := map[string]bool{}
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		if r.Kind != "IMPLEMENTS" || r.FromID == r.ToID {
+			continue
+		}
+		if defs[r.ToID] {
+			served[r.ToID] = true
+		}
+	}
+	if len(served) == 0 {
+		return empty
+	}
+	resolved := map[string]bool{}
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		if r.Kind != RelationshipKindFetches {
+			continue
+		}
+		if consumers[r.FromID] && served[r.ToID] {
+			resolved[r.FromID] = true
+		}
+	}
+	return resolved
 }
 
 // isHTTPEndpointDefinition reports whether an entity is a producer-side
@@ -1033,10 +1110,19 @@ func chainCrossesExternalLib(chain []string, byID map[string]*graph.Entity, boun
 		if !ok {
 			continue
 		}
-		// #6458 — unlike the two gates above, this arm is NOT dead: it
-		// fires today on the legacy-kind entities webhooks_edges.go still
-		// mints. Adding the #1217 split kinds is therefore a widening of a
-		// live path: chains that step through an http_endpoint_call or an
+		// #6458 — unlike the two gates above, this arm is NOT dead: the
+		// bare pre-#1217 kind still has NINE live non-test producers.
+		// Eight emit it through the httpEndpointKind alias declared at
+		// http_endpoint_synthesis.go:65 (FastAPI mount points at :3158,
+		// django_urlconf_nested.go:182 and :276, django_drf_actions.go
+		// :539, :2833 and :3028, django_admin_routes.go:223,
+		// java_annotation_routes.go:864) and the ninth writes the literal
+		// (webhooks_edges.go:111). All nine are producer-side, which is
+		// why the :778 / :957 gates stay inert — those two also demand a
+		// consumer pattern_type / source_caller — but this arm keys on
+		// kind alone, so it fires on every one of them today. Adding the
+		// #1217 split kinds is therefore a widening of a live path:
+		// chains that step through an http_endpoint_call or an
 		// http_endpoint_definition now report crosses_external_lib=true.
 		// That is the property's stated meaning ("this process touches an
 		// HTTP handler"). In practice most definitions were already caught

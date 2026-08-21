@@ -348,7 +348,12 @@ func lookupHandler(kind, name string, idx map[handlerKey]*types.EntityRecord, by
 		"View":       {"Controller", "SCOPE.Class", "SCOPE.Function", "SCOPE.Operation"},
 		"Controller": {"View", "SCOPE.Class", "SCOPE.Function", "SCOPE.Operation"},
 		"Operation":  {"SCOPE.Operation", "Controller", "View"},
-		"Route":      {"http_endpoint"},
+		// #6494 — "http_endpoint" alone is the pre-#1217 kind; a Route
+		// handler synthesised after the split carries one of the two new
+		// kinds instead, so the bare literal missed them. Listed via the
+		// package constants so a future kind rename cannot silently
+		// re-open the gap.
+		"Route": {httpEndpointKind, httpEndpointDefinitionKind, httpEndpointCallKind},
 	}
 	for _, alt := range equiv[kind] {
 		if ent, ok := idx[handlerKey{alt, name}]; ok {

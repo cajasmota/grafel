@@ -183,7 +183,16 @@ const (
 	EntityKindHTTPEndpointCall       EntityKind = "http_endpoint_call"
 	// HTTPEndpointKindLegacy is the pre-#1217 kind string. Kept so that
 	// on-disk graphs indexed before this release can still be read without
-	// a migration step. No extractor emits this kind after #1217.
+	// a migration step.
+	//
+	// #6494 — this comment used to claim "no extractor emits this kind
+	// after #1217". That is false: nine live non-test sites in
+	// internal/engine still emit it, eight of them through the
+	// httpEndpointKind alias in http_endpoint_synthesis.go (FastAPI mount
+	// points, the Django urlconf/DRF/admin route synthesisers and the Java
+	// annotation-route synthesiser) plus webhooks_edges.go. New code must
+	// therefore keep matching with IsHTTPEndpointKind() rather than
+	// assuming only the split kinds appear in a freshly indexed graph.
 	HTTPEndpointKindLegacy EntityKind = "http_endpoint"
 
 	// #3624 (epic #3607): GraphQL DataLoader N+1 batch-loader topology.

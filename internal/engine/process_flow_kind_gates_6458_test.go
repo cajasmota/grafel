@@ -13,22 +13,28 @@
 // split kinds), so the first two gates run and reject every entity they
 // were written to accept, and the third silently under-reports.
 //
-// The legacy kind is NOT unreachable: webhooks_edges.go still mints
-// Kind:"http_endpoint" with pattern_type="webhook_synthesis". That means
-// :1001 fires TODAY on webhook entities, so widening it is a behaviour
-// change on a live path, not the re-enabling of dead code. The tests
-// below pin the widened behaviour AND the boundaries of the widening:
-// every "must stay false" case is as load-bearing as every "must become
-// true" case.
+// The legacy kind is NOT unreachable. #6494 corrected the count: NINE
+// live non-test sites still emit it — eight through the httpEndpointKind
+// alias (http_endpoint_synthesis.go:65) in the FastAPI mount-point,
+// Django urlconf/DRF/admin and Java annotation route synthesisers, plus
+// webhooks_edges.go:111 writing the literal. All nine are producer-side,
+// so :778 and :957 (which also require a consumer pattern_type /
+// source_caller) stay inert; :1001 keys on kind alone and fires on all of
+// them TODAY, so widening it is a behaviour change on a live path, not
+// the re-enabling of dead code. The tests below pin the widened behaviour
+// AND the boundaries of the widening: every "must stay false" case is as
+// load-bearing as every "must become true" case.
 //
 // None of these three functions had any test before this file.
 package engine
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // consumerEnt builds a consumer-side synthetic endpoint entity of the
@@ -51,8 +57,9 @@ func producerEnt(id, kind, file string) graph.Entity {
 	})
 }
 
-// webhookEnt mirrors webhooks_edges.go:111 — the one live producer of the
-// bare legacy kind.
+// webhookEnt mirrors webhooks_edges.go:111 — one of the nine live
+// producers of the bare legacy kind, and the only one that writes the
+// literal rather than the httpEndpointKind alias.
 func webhookEnt(id, file string) graph.Entity {
 	return graph.Entity{
 		ID: id, Name: "webhook stripe", Kind: "http_endpoint", SourceFile: file,
@@ -136,7 +143,7 @@ func TestBuildConsumerEndpointFileSet_6458(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := &graph.Document{Repo: "r", Entities: []graph.Entity{tc.ent}}
-			got := buildConsumerEndpointFileSet(doc)[tc.ent.SourceFile]
+			got := buildConsumerEndpointFileSet(doc, resolvedConsumerEndpoints(doc))[tc.ent.SourceFile]
 			if got != tc.want {
 				t.Fatalf("buildConsumerEndpointFileSet: file %q in set = %v, want %v (kind=%q)",
 					tc.ent.SourceFile, got, tc.want, tc.ent.Kind)
@@ -489,4 +496,201 @@ func TestProcessFlow_6458_Delta_ProducerOnlyFileStaysIntraRepo(t *testing.T) {
 		t.Errorf("cross_stack = %q, want \"false\" — producer + webhook synthetics are not cross-repo bridges",
 			props["cross_stack"])
 	}
+}
+
+// ---------------------------------------------------------------------
+// #6494 review probes — the per-endpoint continuation defect.
+//
+// #1639's handler-continuation rule was implemented chain-GLOBALLY: one
+// continuation edge anywhere in the chain disabled the unresolved-consumer
+// check for EVERY step. A chain that resolves one HTTP call in-repo and
+// then makes a second, unresolved one was therefore reported intra-repo.
+// The #754 file-coarse fallback was accidentally compensating for that;
+// removing the compensation without fixing the root cause turns the bug
+// into a false negative you can see in the emitted properties.
+// ---------------------------------------------------------------------
+
+// Probe A — BFF/gateway shape. The chain resolves callA into a same-repo
+// handler, and that handler makes a SECOND, unresolved HTTP call. The
+// consumer synthetics deliberately live outside the entry file so the
+// #754 file-coarse fallback cannot participate: cross_stack here can only
+// come from chainCrossesRepoBoundary.
+func TestProcessFlow_6494_ProbeA_SecondUnresolvedCallAfterContinuation(t *testing.T) {
+	doc := &graph.Document{Repo: "bff"}
+	doc.Entities = []graph.Entity{
+		{ID: "caller", Name: "submitOrder", Kind: "SCOPE.Function", SourceFile: "client.go"},
+		consumerEnt("callA", "http_endpoint_call", "api.go"),
+		producerEnt("defA", "http_endpoint_definition", "handler.go"),
+		{ID: "handler", Name: "CreateOrder", Kind: "SCOPE.Function", SourceFile: "handler.go"},
+		consumerEnt("callB", "http_endpoint_call", "api.go"),
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "caller", ToID: "callA", Kind: "FETCHES"},
+		{ID: "2", FromID: "callA", ToID: "defA", Kind: "FETCHES"},
+		{ID: "3", FromID: "handler", ToID: "defA", Kind: "IMPLEMENTS"},
+		{ID: "4", FromID: "handler", ToID: "callB", Kind: "FETCHES"},
+	}
+	RunProcessFlow(doc, DefaultProcessFlowConfig())
+	props := procProps(t, doc, "caller")
+
+	if got := props["chain"]; got != "caller,callA,defA,handler,callB" {
+		t.Fatalf("chain = %q — fixture no longer exercises the second unresolved call", got)
+	}
+	// The entry file holds no consumer synthetic, so the #754 fallback is
+	// out of the picture by construction.
+	if buildConsumerEndpointFileSet(doc, resolvedConsumerEndpoints(doc))["client.go"] {
+		t.Fatalf("probe is not isolated: entry file client.go is in the consumer-endpoint file set")
+	}
+	if props["cross_stack"] != strconv.FormatBool(true) {
+		t.Errorf("cross_stack = %q, want \"true\" — the chain terminates on callB, an unresolved consumer synthetic whose backend is in another repo",
+			props["cross_stack"])
+	}
+	if props["cross_stack_reason"] == "" {
+		t.Errorf("cross_stack_reason is empty, want the unresolved-consumer reason naming callB")
+	}
+	if got := props["cross_stack_reason"]; got != "" && !strings.Contains(got, "callB") {
+		t.Errorf("cross_stack_reason = %q, want it to name the unresolved endpoint callB", got)
+	}
+}
+
+// Probe B — fan-out. The caller resolves one endpoint into a same-repo
+// handler and separately calls a SECOND, unresolved endpoint that is not
+// on the primary chain but does sit in the entry file. That is exactly
+// the shape the #754 file-coarse fallback exists for; it must still fire.
+func TestProcessFlow_6494_ProbeB_FanOutUnresolvedSiblingInEntryFile(t *testing.T) {
+	doc := &graph.Document{Repo: "r"}
+	doc.Entities = []graph.Entity{
+		{ID: "caller", Name: "submitOrder", Kind: "SCOPE.Function", SourceFile: "client.go"},
+		consumerEnt("callA", "http_endpoint_call", "client.go"),
+		producerEnt("defA", "http_endpoint_definition", "handler.go"),
+		{ID: "handler", Name: "CreateOrder", Kind: "SCOPE.Function", SourceFile: "handler.go"},
+		{ID: "repo", Name: "saveOrder", Kind: "SCOPE.Function", SourceFile: "repo.go"},
+		// Second call: no http_endpoint_definition in this doc, so it is
+		// unresolved — its backend lives in another repo.
+		consumerEnt("callB", "http_endpoint_call", "client.go"),
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "caller", ToID: "callA", Kind: "FETCHES"},
+		{ID: "2", FromID: "callA", ToID: "defA", Kind: "FETCHES"},
+		{ID: "3", FromID: "handler", ToID: "defA", Kind: "IMPLEMENTS"},
+		{ID: "4", FromID: "handler", ToID: "repo", Kind: "CALLS"},
+		{ID: "5", FromID: "caller", ToID: "callB", Kind: "FETCHES"},
+	}
+	RunProcessFlow(doc, DefaultProcessFlowConfig())
+	props := procProps(t, doc, "caller")
+
+	if got := props["chain"]; got != "caller,callA,defA,handler,repo" {
+		t.Fatalf("chain = %q — fixture no longer exercises the fan-out shape", got)
+	}
+	if props["cross_stack"] != strconv.FormatBool(true) {
+		t.Errorf("cross_stack = %q, want \"true\" — callB is an unresolved consumer synthetic in the entry file",
+			props["cross_stack"])
+	}
+}
+
+// The producer-only counterpart of probe A's isolation check, and the
+// fixture the W1 widening mutant needs: the chain touches ONLY a producer
+// http_endpoint_definition while the entry file separately holds a
+// consumer synthetic that the BFS cannot reach. The #754 fallback is the
+// only thing that can flip cross_stack here, and it must — a producer
+// definition on the chain is not a cross-repo bridge.
+func TestProcessFlow_6494_ProducerOnChainDoesNotSuppressFallback(t *testing.T) {
+	doc := &graph.Document{Repo: "r"}
+	doc.Entities = []graph.Entity{
+		{ID: "a", Name: "loadWidget", Kind: "SCOPE.Function", SourceFile: "widget.ts"},
+		{ID: "b", Name: "render", Kind: "SCOPE.Function", SourceFile: "widget.ts"},
+		producerEnt("def", "http_endpoint_definition", "widget.ts"),
+		// Unreachable from the chain (fixture-e class-field-arrow shape).
+		consumerEnt("ep", "http_endpoint_call", "widget.ts"),
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "a", ToID: "b", Kind: "CALLS"},
+		{ID: "2", FromID: "b", ToID: "def", Kind: "CALLS"},
+	}
+	RunProcessFlow(doc, DefaultProcessFlowConfig())
+	props := procProps(t, doc, "a")
+
+	if got := props["chain"]; got != "a,b,def" {
+		t.Fatalf("chain = %q, want \"a,b,def\"", got)
+	}
+	if props["cross_stack"] != strconv.FormatBool(true) {
+		t.Errorf("cross_stack = %q, want \"true\" — a producer definition on the chain is not a consumer bridge and must not suppress the #754 fallback",
+			props["cross_stack"])
+	}
+}
+
+// Probe C — the boundaries of "resolves into a same-repo handler". Both
+// halves of resolvedConsumerEndpoints' condition are load-bearing:
+// the FETCHES edge must actually be a FETCHES edge, and the definition it
+// lands on must actually be implemented by a handler in this document. A
+// definition nobody implements is a route this repo declares but does not
+// serve from the chain's perspective — the call still leaves the repo.
+func TestProcessFlow_6494_ProbeC_ResolutionBoundaries(t *testing.T) {
+	tests := []struct {
+		name       string
+		edgeKind   string
+		implements bool
+	}{
+		{"definition with no handler IMPLEMENTS edge", RelationshipKindFetches, false},
+		{"handler present but the consumer edge is not FETCHES", "REFERENCES", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := &graph.Document{Repo: "r"}
+			doc.Entities = []graph.Entity{
+				{ID: "caller", Name: "submitOrder", Kind: "SCOPE.Function", SourceFile: "client.go"},
+				consumerEnt("call", "http_endpoint_call", "api.go"),
+				producerEnt("def", "http_endpoint_definition", "handler.go"),
+				{ID: "handler", Name: "CreateOrder", Kind: "SCOPE.Function", SourceFile: "handler.go"},
+			}
+			doc.Relationships = []graph.Relationship{
+				{ID: "1", FromID: "caller", ToID: "call", Kind: "FETCHES"},
+				// The ONLY consumer → definition edge in this fixture.
+				{ID: "2", FromID: "call", ToID: "def", Kind: tc.edgeKind},
+			}
+			if tc.implements {
+				doc.Relationships = append(doc.Relationships,
+					graph.Relationship{ID: "4", FromID: "handler", ToID: "def", Kind: "IMPLEMENTS"})
+			}
+			if resolvedConsumerEndpoints(doc)["call"] {
+				t.Fatalf("consumer \"call\" must NOT count as resolved (edge=%q implements=%v)",
+					tc.edgeKind, tc.implements)
+			}
+			RunProcessFlow(doc, DefaultProcessFlowConfig())
+			props := procProps(t, doc, "caller")
+			if buildConsumerEndpointFileSet(doc, resolvedConsumerEndpoints(doc))["client.go"] {
+				t.Fatalf("probe is not isolated: entry file client.go is in the consumer-endpoint file set")
+			}
+			if props["cross_stack"] != strconv.FormatBool(true) {
+				t.Errorf("cross_stack = %q, want \"true\" — the call does not resolve into a same-repo handler. chain=%q reason=%q",
+					props["cross_stack"], props["chain"], props["cross_stack_reason"])
+			}
+		})
+	}
+}
+
+// TestLookupHandler_RouteEquivalence_6494 covers the fourth stale-kind
+// site the #6458 audit missed: response_shape_corpus.go's cross-kind
+// handler-lookup table listed the bare pre-#1217 literal for "Route", so
+// a Route entity whose handler is a post-split endpoint synthetic fell
+// through to the by-name last-ditch fallback (which explicitly skips
+// endpoint synthetics) and resolved to nothing.
+func TestLookupHandler_RouteEquivalence_6494(t *testing.T) {
+	for _, kind := range []string{httpEndpointKind, httpEndpointDefinitionKind, httpEndpointCallKind} {
+		t.Run(kind, func(t *testing.T) {
+			ent := &types.EntityRecord{Name: "GetOrders", Kind: kind}
+			idx := map[handlerKey]*types.EntityRecord{{kind, "GetOrders"}: ent}
+			got := lookupHandler("Route", "GetOrders", idx, map[string][]*types.EntityRecord{})
+			if got != ent {
+				t.Fatalf("lookupHandler(Route, GetOrders) = %v, want the %s entity", got, kind)
+			}
+		})
+	}
+	t.Run("unrelated kind is not reached from Route", func(t *testing.T) {
+		ent := &types.EntityRecord{Name: "GetOrders", Kind: "SCOPE.Datastore"}
+		idx := map[handlerKey]*types.EntityRecord{{"SCOPE.Datastore", "GetOrders"}: ent}
+		if got := lookupHandler("Route", "GetOrders", idx, map[string][]*types.EntityRecord{}); got != nil {
+			t.Fatalf("lookupHandler(Route, GetOrders) = %v, want nil", got)
+		}
+	})
 }
