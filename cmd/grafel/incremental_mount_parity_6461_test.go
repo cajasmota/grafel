@@ -56,8 +56,15 @@
 // FastAPI — the vehicle the gate is built on:
 //
 //	ROUTE / path A   GREEN.  0-entity delta.
-//	ROUTE / path B   GREEN.  0-entity delta.
 //	MOUNT / path B   GREEN.  0-entity delta.
+//	ROUTE / path B   RED after the #6469 route-path RENAME (below); it was GREEN
+//	                   with the earlier pass-counter-only fixture, which is
+//	                   precisely why that fixture could not see a composition
+//	                   defect. 1 divergence, edges full=54 inc=55:
+//	                   [EDGE-INVENTED] SCOPE.Process/http:GET:/conditions
+//	                     → «unbound»proc:0c089ba065f57543 :RENAMED_FROM
+//	                   — a rename artefact of the incremental path, unrelated to
+//	                   cross-file composition.
 //	MOUNT / path A   RED.    1 divergence, edges full=54 inc=53:
 //	                   [EDGE-LOST] Service/mp_app@mpmain_mount.py
 //	                     → Route/mp_router@mpmarkets_route.py :ROUTES_TO
@@ -81,7 +88,10 @@
 //	ROUTE-PATH RENAME / path A   RED, and it is the GHOST verbatim.
 //	  full rebuild : http:ANY:/network/conditions @ mpsite/views.py
 //	  incremental  : http:ANY:/network/terms      @ mpsite/views.py
-//	  1 entity LOST + 1 entity INVENTED, 22 divergences total,
+//	  1 endpoint LOST + 1 endpoint INVENTED in the ENDPOINT CENSUS
+//	  (mpLogEndpointDelta, which counts only http_endpoint/url_mount entities);
+//	  the full parity report is wider — 3 ENTITY-LOST and 2 ENTITY-INVENTED
+//	  across all kinds, 22 divergences total,
 //	  edges full=38 inc=35, entities full=21 inc=20.
 //	  Only `mpsite/urls.py` changed (`incremental: done changed=1`) — the
 //	  composed endpoint is attributed to `mpsite/views.py`, which did not
@@ -99,6 +109,18 @@
 // fresh graph) exactly where #6461 says, but on Django, not on FastAPI —
 // FastAPI reaches only the edge-level form of it until #6414 lands. Path B
 // re-runs the pipeline over the merged slice and is clean on every case here.
+//
+// WHAT THE UNGATED (ALWAYS-RUN) SET ACTUALLY WATCHES
+// ───────────────────────────────────────────────────
+// Two pairs run by default: ROUTE/path A and MOUNT/path B. So the
+// ungated ratchet covers Path A for the ROUTE direction ONLY — the MOUNT
+// direction's Path A (`TestMountParity_6461_MountEdit_PathA`) is gated behind
+// GRAFEL_TEST_6461 because it reproduces #6461 today, which means a regression
+// that only drops entities attributed to the unchanged ROUTE file when the
+// MOUNT file is edited is NOT caught by the default suite. ROUTE/path B is
+// gated too, for a DIFFERENT and newly-measured reason (a RENAMED_FROM edge the
+// incremental path invents — see the note on that test). Setting the env var
+// runs the full seven.
 //
 // Refs #6461, #6414, #6415, #6385, #6129.
 package main
@@ -139,9 +161,20 @@ MP_UTIL = "mp"
 }
 
 // mpRouteFile writes the FastAPI ROUTE file — the one that owns the decorator
-// path. `routePass` is the only thing that varies between baseline and end
-// state in the ROUTE direction.
-func mpRouteFile(t *testing.T, repo string, routePass int) {
+// path.
+//
+// `routePath` exists so the ROUTE direction can RENAME the decorator path, not
+// merely bump an opaque counter (#6469 review). A pass-counter-only edit leaves
+// the decorator path frozen at `/terms`, so a composed endpoint attributed to
+// the unchanged MOUNT file would be byte-identical before and after — invisible
+// to a content-keyed comparator, and the ratchet below would be silent for
+// exactly the Django-shaped defect this file warns about. Renaming the path
+// makes a stale carried-forward composition differ from the recomposed one.
+// This mirrors TestMountParity_6461_Django_RoutePathRename_PathA.
+//
+// `routePass` additionally varies the function body so the file's own entities
+// change too.
+func mpRouteFile(t *testing.T, repo, routePath string, routePass int) {
 	t.Helper()
 	dvWriteFile(t, repo, "mpmarkets_route.py", fmt.Sprintf(`from fastapi import APIRouter
 
@@ -150,13 +183,13 @@ from mputil_static import mp_helper
 mp_router = APIRouter()
 
 
-@mp_router.get("/terms")
+@mp_router.get("%s")
 def mp_read_terms(chain_id: int):
     return {"ok": mp_helper(%d)}
 
 
 MP_ROUTE_PASS = %d
-`, routePass, routePass))
+`, routePath, routePass, routePass))
 }
 
 // mpMountFile writes the FastAPI MOUNT file — the one that owns the prefix.
@@ -183,20 +216,20 @@ MP_MOUNT_PASS = %d
 }
 
 // mpWrite lays down the whole corpus at the given (route, mount) pass state.
-func mpWrite(t *testing.T, repo string, routePass, mountPass int) {
+func mpWrite(t *testing.T, repo, routePath string, routePass, mountPass int) {
 	t.Helper()
 	mpFiller(t, repo)
-	mpRouteFile(t, repo, routePass)
+	mpRouteFile(t, repo, routePath, routePass)
 	mpMountFile(t, repo, mountPass)
 }
 
 // mpEndState builds a PRISTINE repo holding exactly the end state and returns a
 // CLEAN FULL REBUILD of it — the reference side of every comparison. A separate
 // repo dir keeps it uncontaminated by the baseline run's state.
-func mpEndState(t *testing.T, routePass, mountPass int) *graph.Document {
+func mpEndState(t *testing.T, routePath string, routePass, mountPass int) *graph.Document {
 	t.Helper()
 	repo := t.TempDir()
-	mpWrite(t, repo, routePass, mountPass)
+	mpWrite(t, repo, routePath, routePass, mountPass)
 	return dvFullRebuild(t, repo, t.TempDir())
 }
 
@@ -311,17 +344,20 @@ var mpKnown []cpKnown
 
 func TestMountParity_6461_RouteEdit_PathA(t *testing.T) {
 	// MEASURED GREEN (see the header). NOT gated: FastAPI composes no path today,
-	// so this is a live ratchet — if #6414's composition lands without teaching the
-	// daemon to recompose, this goes red.
+	// so this is a live ratchet. The edit RENAMES the decorator path (see
+	// mpRouteFile) so a composed endpoint attributed to the unchanged MOUNT file
+	// would differ between the carried-forward copy and the recomposed one —
+	// mutation-verified in #6469 review: with the pass-counter-only fixture a
+	// #6414-shaped composition survived this test; with the rename it dies here.
 	repo := t.TempDir()
 	stateDir := t.TempDir()
-	mpWrite(t, repo, 0, 0)
+	mpWrite(t, repo, "/terms", 0, 0)
 	dvFullRebuild(t, repo, stateDir)
 
-	full := mpEndState(t, 1, 0)
+	full := mpEndState(t, "/conditions", 1, 0)
 
 	dvSeedManifest(t, repo, stateDir)
-	mpRouteFile(t, repo, 1) // ONLY the route file changes
+	mpRouteFile(t, repo, "/conditions", 1) // ONLY the route file changes
 	inc := dvIncremental(t, repo, stateDir)
 
 	mpLogEndpointDelta(t, "ROUTE/path A", full, inc)
@@ -330,16 +366,30 @@ func TestMountParity_6461_RouteEdit_PathA(t *testing.T) {
 }
 
 func TestMountParity_6461_RouteEdit_PathB(t *testing.T) {
-	// MEASURED GREEN. NOT gated — live ratchet, see the ROUTE/path-A note.
+	// MEASURED RED once the route path is RENAMED rather than merely re-passed
+	// (#6469 review). The divergence is NOT #6461 and NOT the composition
+	// concern this file is about — measured, verbatim:
+	//
+	//	edges full=54 inc=55 | entities full=28 inc=28
+	//	[EDGE-INVENTED] SCOPE.Process/http:GET:/conditions → mp_helper@...
+	//	  →«unbound»proc:0c089ba065f57543 :RENAMED_FROM
+	//
+	// i.e. the Path-B incremental run detects the endpoint's rename and emits a
+	// RENAMED_FROM edge pointing at the OLD process id, which a clean full
+	// rebuild of the end state has no counterpart for. Deterministic: 3/3 runs.
+	// Gated rather than allow-listed so the assertion stays whole, and reported
+	// separately as its own defect.
+	mp6461Gate(t, "direction ROUTE, path B (Index + WithIncremental) — a RENAMED_FROM edge "+
+		"the incremental run invents for the renamed endpoint's process, absent from the full rebuild")
 	repo := t.TempDir()
 	stateDir := t.TempDir()
-	mpWrite(t, repo, 0, 0)
+	mpWrite(t, repo, "/terms", 0, 0)
 	dvFullRebuild(t, repo, stateDir)
 
-	full := mpEndState(t, 1, 0)
+	full := mpEndState(t, "/conditions", 1, 0)
 
 	dvSeedManifest(t, repo, stateDir)
-	mpRouteFile(t, repo, 1)
+	mpRouteFile(t, repo, "/conditions", 1)
 	inc := cfPathBIncremental(t, repo, stateDir)
 
 	mpLogEndpointDelta(t, "ROUTE/path B", full, inc)
@@ -357,10 +407,10 @@ func TestMountParity_6461_MountEdit_PathA(t *testing.T) {
 	mp6461Gate(t, "direction MOUNT, path A (daemon extractors.TryIncremental)")
 	repo := t.TempDir()
 	stateDir := t.TempDir()
-	mpWrite(t, repo, 0, 0)
+	mpWrite(t, repo, "/terms", 0, 0)
 	dvFullRebuild(t, repo, stateDir)
 
-	full := mpEndState(t, 0, 1)
+	full := mpEndState(t, "/terms", 0, 1)
 
 	dvSeedManifest(t, repo, stateDir)
 	mpMountFile(t, repo, 1) // ONLY the mount file changes
@@ -376,10 +426,10 @@ func TestMountParity_6461_MountEdit_PathB(t *testing.T) {
 	// it recomposes where Path A does not. NOT gated — live ratchet.
 	repo := t.TempDir()
 	stateDir := t.TempDir()
-	mpWrite(t, repo, 0, 0)
+	mpWrite(t, repo, "/terms", 0, 0)
 	dvFullRebuild(t, repo, stateDir)
 
-	full := mpEndState(t, 0, 1)
+	full := mpEndState(t, "/terms", 0, 1)
 
 	dvSeedManifest(t, repo, stateDir)
 	mpMountFile(t, repo, 1)
