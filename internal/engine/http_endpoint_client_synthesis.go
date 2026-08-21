@@ -131,18 +131,130 @@ var axiosClientRe = regexp.MustCompile(
 // We intentionally cast a wide net to cover four common shapes:
 //
 //  1. `function foo(` / `async function foo(`
+//
 //  2. `const/let/var foo = (` / `const/let/var foo = async (`
+//
 //  3. Class property arrow: `foo = (` / `foo = async (` (without var/const/let).
 //     This covers React component class methods and service-class patterns
 //     common in Angular/Vue/RN frontends, e.g. `login = (email) => $http.post(...)`.
-//  4. Object method shorthand: `foo(` inside an object/class body.
-//     We do NOT attempt to match these to avoid colliding with arbitrary
-//     function calls; shapes 1–3 cover >95% of real-world named callers.
+//
+//  4. Method shorthand: `foo(...) {` inside an object literal or a class
+//     body — `list(): Observable<T[]> { … }`, `async save(x) { … }`.
+//     This shape used to be declined outright, on the grounds that a bare
+//     `foo(` collides with arbitrary call expressions. That hazard is real,
+//     but it is a property of the BARE form, not of the shape: an Angular /
+//     NestJS / plain-TS service makes nearly all of its HTTP calls from
+//     class methods, so declining it left those call sites with no caller
+//     at all (#6447). The alternative below keeps the collision closed by
+//     demanding four things at once that a call expression does not have:
+//     line-start plus indentation (a call in an expression is preceded by
+//     `=`, `.`, `(`, `return`, …), a PARAMETER group containing no nested
+//     parens (which rules out `describe('x', () => {`), an optional TS
+//     return annotation, and a following `{`. The `()`-free rule applies to
+//     the parameter group only: the return annotation is `[^;{}\n]*`,
+//     because a function type in return position carries its own parens
+//     (`makeLoader(): (id: string) => Promise<void> {`) and excluding them
+//     silently mis-attributed an ordinary TS shape.
+//
+//     The `\n` in that class is load-bearing and is NOT symmetry with the
+//     other exclusions: in Go's regexp `[^;{}]` matches a newline, so an
+//     annotation with no newline brake runs across lines until it finds a
+//     `{` — turning a JSDoc continuation ` * Word (prose):` into a span
+//     named `Word` that swallows the `export function` header below it, and
+//     letting a semicolon-free abstract signature swallow the next method's
+//     body. Measured on this repo's own webui-v2 frontend, the unbraked form
+//     changed the spans of 10 of 233 files and destroyed the caller of a real
+//     exported function. Every shape the annotation legitimately needs to
+//     admit — a function type, a parenthesised union — is single-line, so the
+//     brake costs nothing. Both crossings are pinned in
+//     TestJSMethodShorthandDoesNotSwallowNonDeclarations_6447.
+//
+//     The residue is the
+//     reserved words that are also written `(...) {` — `if`, `for`, `while`,
+//     `switch`, `catch`, … — and those are rejected by name in
+//     indexJSEnclosingFunctions rather than in the pattern, because RE2 has
+//     no negative lookahead and spelling them into the alternation would
+//     bury the shape being matched.
+//
+//     Unambiguous prefixes are allowed rather than declined: `*name(`,
+//     `async *name(` (generators) and `#name(` (private methods) cannot be
+//     call expressions, so there is no collision to trade against. The `#`
+//     stays IN the captured name, and that is a consistency requirement
+//     rather than a tie-break: handleMethodDefinition in
+//     internal/extractors/javascript/extractor.go:1073 names a method entity
+//     with `x.nodeText(nameNode)`, and for `#load` the name node is a
+//     `private_property_identifier` whose text INCLUDES the `#` — a probe of
+//     `class A { #load() {} load() {} }` emits entities named `#load` and
+//     `load`, not `load` twice. Keeping the
+//     `#` is what makes the `"Function:"+caller` reference resolvable at all;
+//     stripping it would dangle. It also keeps a class that declares both
+//     `#load` and `load` distinguishable.
+//
+// NOTE: a span still carries only (offset, name) — see jsFuncSpan. What makes
+// the attribution correct here is that a method declaration sits NEARER to its
+// call sites than a module-level helper does; the span is still unbounded, so
+// a call site trailing the last declaration in a file still attributes to it.
+// Bounding spans is a separate change and is filed as #6500; its blast radius
+// is why it is separate. pyFuncSpan aliases jsFuncSpan, indexJSEnclosingFunctions
+// has 13 non-test call sites, and enclosingJSFuncAt has 43 — including the C#,
+// Kotlin, Swift, Rust, Ruby, Scala, Go, Java, Dart and PHP client passes, which
+// reuse the walk over their own span lists.
+//
+// Because spans are unbounded, DECLINING to match a shape is not a safe
+// no-op. A call site with no span above it in its own method attributes to the
+// PRECEDING declaration, so every shape this alternative turns away yields a
+// wrong caller, not an empty one — that being the exact defect #6447 fixes, so
+// these are places the fix does not reach rather than places it is careful.
+// The known set is pinned in TestJSKnownMisattributionShapes_6447: column-0
+// shorthand, computed keys (`['load']() {`), Allman braces, one-line class
+// bodies, methods named after a rejected reserved word (`catch`, `return`),
+// and the two shapes the type-parameter group `<[^<>()]*>` turns away —
+// a generic with a function-typed default (`load<T = () => void>(x): T {`,
+// rejected for the parens) and a nested generic (`load<Map<string, T>>(x) {`,
+// rejected for the inner angle brackets). Both are ordinary TypeScript, not
+// exotica; widening that group is a separate trade against the
+// `describe('x', () => {` collision and is not attempted here.
+// This is not confined to edge sourcing: sse_edges.go builds a Stream entity's
+// ID as `"/" + caller`, so a wrong caller is a wrongly NAMED entity.
+//
+// The pattern is also blind to comments and template literals, as alternatives
+// 1-3 already are; alternative 4 widens that surface materially, because a
+// commented-out method body inside a live class is common where a
+// commented-out `function foo(` is not. Accepted for now — masking dead text
+// is a whole-pattern change, not a change to this alternative — and pinned in
+// TestJSMethodShorthandInDeadTextPoisons_6447 so it stays a known cost.
 var jsFuncDeclRe = regexp.MustCompile(
 	`(?m)(?:^|[^\w$])(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(` +
 		`|(?m)(?:^|[^\w$])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(` +
-		`|(?m)(?:^|[\s{,;])([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(`,
+		`|(?m)(?:^|[\s{,;])([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(` +
+		`|(?m)^[ \t]+(?:(?:public|private|protected|static|readonly|async|get|set|override|abstract)[ \t]+)*` +
+		`(?:\*[ \t]*)?(#?[A-Za-z_$][\w$]*)[ \t]*(?:<[^<>()]*>)?[ \t]*\([^()]*\)[ \t]*(?::[^;{}\n]*)?\{`,
 )
+
+// jsMethodShorthandReserved lists the identifiers that satisfy alternative 4
+// of jsFuncDeclRe structurally — indentation, `(...)`, `{` — without being a
+// method declaration. `if (ok) {` is indistinguishable from `probe(x) {` to
+// RE2 without a negative lookahead, so the discrimination happens here.
+//
+// Being permissive here is the dangerous direction, not the strict one: a
+// missing entry mints a span named `if`, and because spans are unbounded
+// enclosingJSFuncAt would then attribute every call site below that block to
+// it — a WRONG caller, which is worse than the empty one #6447 started from.
+//
+// The reject is by NAME, so it also rejects a method legitimately called after
+// one of these words. That is a cost, not a free win, and for the same reason
+// as above it is paid in mis-attribution rather than in silence: the calls
+// inside a real `catch(err) { … }` (thenable) or `return(v) { … }` (iterator
+// protocol) are stamped with the PRECEDING method's name. Two rows in
+// TestJSKnownMisattributionShapes_6447 hold that fact still. `function` and
+// `with` are here for shapes alternative 1 does not cover — an ANONYMOUS
+// `function (x) {` at line start, and sloppy-mode `with (o) {` — not for
+// symmetry.
+var jsMethodShorthandReserved = map[string]bool{
+	"if": true, "for": true, "while": true, "switch": true,
+	"catch": true, "return": true, "do": true, "function": true,
+	"else": true, "with": true, "try": true, "finally": true,
+}
 
 // ---------------------------------------------------------------------------
 // Phase 4 (#712) — bare const-variable path resolution
@@ -2370,13 +2482,25 @@ func indexJSEnclosingFunctions(content string) []jsFuncSpan {
 		}
 		name := ""
 		// Group 1 (function foo(...)) takes precedence over group 2 (const foo = ...)
-		// which takes precedence over group 3 (class property arrow: foo = (...) =>).
-		if m[2] >= 0 {
+		// which takes precedence over group 3 (class property arrow: foo = (...) =>),
+		// which takes precedence over group 4 (method shorthand: foo(...) { ).
+		switch {
+		case m[2] >= 0:
 			name = content[m[2]:m[3]]
-		} else if m[4] >= 0 {
+		case m[4] >= 0:
 			name = content[m[4]:m[5]]
-		} else if len(m) >= 8 && m[6] >= 0 {
+		case len(m) >= 8 && m[6] >= 0:
 			name = content[m[6]:m[7]]
+		case len(m) >= 10 && m[8] >= 0:
+			name = content[m[8]:m[9]]
+			// Only alternative 4 can capture a reserved word: shapes 1-3 each
+			// require `function` / `const` / `let` / `var` / `=` beside the
+			// name, which no control-flow keyword carries. See
+			// jsMethodShorthandReserved for why a miss here is the costly
+			// direction.
+			if jsMethodShorthandReserved[name] {
+				continue
+			}
 		}
 		if name == "" {
 			continue
