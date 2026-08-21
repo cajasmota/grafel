@@ -290,8 +290,10 @@ func recomposeDjangoURLConf(
 	}
 	fresh = dropDRFCovered(fresh, doc, newEntities)
 	// Paths whose DRF coverage this pass CANNOT observe — see
-	// drfUnknownCoveragePaths. Neither added nor pruned below.
-	drfUnknown := drfUnknownCoveragePaths(changed, reader)
+	// drfUnknownComposedPaths. Neither added nor pruned below. Computed from
+	// the RAW composition, BEFORE dropDRFCovered, because that call compacts
+	// over `fresh`'s own backing array.
+	drfUnknown := drfUnknownComposedPaths(pyFiles, changed, fresh, reader)
 
 	// Resolve handlers exactly as the full path does, so the composed records
 	// land on the handler's file with the same `registration_source_file` /
@@ -354,7 +356,7 @@ func recomposeDjangoURLConf(
 		// path, its absence from `fresh` may be an artefact of the missing
 		// coverage rather than a fact about the tree, so it is not evidence
 		// for a deletion either.
-		if pathMatchesAnySuffix(e, drfUnknown) {
+		if pathIsUnknownCoverage(e, drfUnknown) {
 			continue
 		}
 		res.removedIDs[e.ID] = true
@@ -373,7 +375,7 @@ func recomposeDjangoURLConf(
 		if present[freshEnts[i].ID] {
 			continue
 		}
-		if pathMatchesAnySuffix(&freshEnts[i], drfUnknown) {
+		if pathIsUnknownCoverage(&freshEnts[i], drfUnknown) {
 			drfSuppressed++
 			continue
 		}
@@ -528,14 +530,13 @@ func dropDRFCovered(fresh []types.EntityRecord, doc *graph.Document, newEntities
 // recognise exactly the registrations that pass composes routes from. It is
 // duplicated rather than exported: the engine constant is unexported, this is
 // the only other consumer, and the two are pinned together by
-// TestDRFUnknownCoveragePaths_MatchesRouterRegisterSpellings. If you widen one,
+// TestDRFUnknownComposedPaths_ScopedToTheRegisteringMount. If you widen one,
 // widen the other.
 var drfRouterRegisterRe = regexp.MustCompile(
 	`(?:[\w]*[Rr]outer|api_router|v\d+_router|router_v\d+)\.register\s*\(\s*r?["']([^"']*)["']`)
 
-// drfUnknownCoveragePaths returns the `/`-prefixed route prefixes declared by a
-// `router.register()` in a file that changed THIS tick — the paths for which
-// this pass cannot tell whether DRF coverage exists.
+// drfUnknownComposedPaths returns the FULL COMPOSED paths whose DRF coverage
+// this pass cannot observe this tick.
 //
 // WHY THIS EXISTS (#6528 review, measured).
 // dropDRFCovered decides "is this composed ANY endpoint superseded by per-verb
@@ -552,19 +553,50 @@ var drfRouterRegisterRe = regexp.MustCompile(
 // `router.register` + ModelViewSet-in-urls.py fixture: invented went 0 -> 1
 // (`http:ANY:/api/widgets`) purely from this pass running.
 //
-// The fix is abstention, not re-derivation: when a changed file declares a
-// registration, treat that prefix's coverage as UNKNOWN and neither add nor
-// prune under it. Same decision as the read-failure path — do nothing on
-// untrustworthy input rather than act on it — and it costs at most one tick of
-// staleness for the routes under that one prefix, where acting costs a wrong
-// edge in the graph.
+// The answer is abstention, not re-derivation: routes composed out of a
+// registration in a changed file are neither added nor pruned for that tick.
 //
-// It is deliberately keyed on the REGISTERED PREFIX rather than on "a DRF file
-// changed at all": a Django repo whose urls.py mixes `router.register("widgets")`
-// with plain `path("terms/", ...)` still recomposes the plain route normally.
-// Only /…/widgets abstains.
-func drfUnknownCoveragePaths(changed []string, reader func(string) []byte) []string {
-	var out []string
+// HOW THE SET IS COMPUTED, AND WHY NOT BY NAME (#6530 review).
+// The first version collected the bare registered segment (`/widgets`) and
+// matched it as a SUFFIX against every composed path in the repo. That is
+// narrow with respect to CONTAINMENT and unscoped with respect to the MOUNT: a
+// `router.register(r"conditions")` in `apiapp/urls.py` suppressed pruning of an
+// unrelated `path("conditions/", ...)` in `mpsite/urls.py` mounted at
+// `/network/`, because `/network/conditions` ends in `/conditions`. That
+// RE-CREATED the very #6461 ghost this pass exists to remove, on nothing but a
+// last-segment name collision — and `users`, `items`, `orders` are the
+// realistic collisions in any monorepo.
+//
+// So the set is computed DIFFERENTIALLY instead of by name. The composition is
+// re-run over the same file list with every `router.register(...)` call site in
+// the CHANGED files textually removed; whatever composed path disappears
+// between the two runs is, by construction, a path that came from one of those
+// registrations — mount prefix and all. No module-path resolution to duplicate,
+// no name matching to get wrong, and the mount scoping is inherited from the
+// composition itself rather than re-derived.
+//
+// Exact in both directions the previous version got wrong:
+//
+//   - `/network/conditions` composed from a plain `path()` in another app
+//     survives the stripped run, so it is NOT in the set and prunes normally.
+//   - a urls.py mixing `router.register("widgets")` with `path("terms/", ...)`
+//     loses only `/.../widgets` in the stripped run, so `/.../terms` still
+//     recomposes.
+//
+// COST: one extra composition over ALREADY-CACHED content (the reader memoises,
+// so there is no second read), and only when a changed `.py` actually declares
+// a registration. Note that the scan reads every changed `.py`, not only
+// `*urls.py` — a registration can live in `routers.py` or any module an
+// `include()` reaches — but it stays bounded by the changed set, which the
+// too-many-changed gate caps well below the repo.
+func drfUnknownComposedPaths(
+	pyFiles, changed []string,
+	fresh []types.EntityRecord,
+	reader engine.NestedURLConfFileReader,
+) map[string]bool {
+	// Which changed files declare a registration at all. Nothing else here runs
+	// when the answer is "none", which is the overwhelming majority of ticks.
+	registering := map[string]bool{}
 	for _, rel := range changed {
 		if !isPythonPath(rel) {
 			continue
@@ -573,40 +605,71 @@ func drfUnknownCoveragePaths(changed []string, reader func(string) []byte) []str
 		if len(content) == 0 {
 			continue
 		}
-		for _, m := range drfRouterRegisterRe.FindAllStringSubmatch(string(content), -1) {
-			prefix := strings.Trim(m[1], "/")
-			if prefix == "" {
-				continue
-			}
-			out = append(out, "/"+prefix)
+		if drfRouterRegisterRe.Match(content) {
+			registering[rel] = true
 		}
 	}
-	return out
+	if len(registering) == 0 {
+		return nil
+	}
+
+	// The counterfactual: the same tree with those registrations deleted.
+	// Removing the matched text leaves `, WidgetViewSet)` behind, which no
+	// route-recognising regex in the composition matches — deliberately, so the
+	// rest of the file keeps composing exactly as it did.
+	strippedReader := func(relPath string) []byte {
+		content := reader(relPath)
+		if !registering[relPath] || len(content) == 0 {
+			return content
+		}
+		return drfRouterRegisterRe.ReplaceAll(content, nil)
+	}
+	without := engine.ApplyDjangoNestedURLConf(pyFiles, strippedReader)
+
+	survives := make(map[string]bool, len(without))
+	for i := range without {
+		if p := composedRecordPath(&without[i]); p != "" {
+			survives[p] = true
+		}
+	}
+	unknown := map[string]bool{}
+	for i := range fresh {
+		p := composedRecordPath(&fresh[i])
+		if p != "" && !survives[p] {
+			unknown[p] = true
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	return unknown
 }
 
-// pathMatchesAnySuffix reports whether the entity's `path` property ends in one
-// of the given `/prefix` segments — i.e. whether it is a route composed UNDER a
-// registration whose coverage is unknown.
+// composedRecordPath returns a composed NESTED record's path, or "" for
+// anything else. Mount points are excluded on purpose: they are not what
+// DeduplicateNestedURLConfDRF removes, so their coverage is never in question.
+func composedRecordPath(r *types.EntityRecord) string {
+	if r.Properties == nil || r.Properties["pattern_type"] != composedNestedPatternType {
+		return ""
+	}
+	return r.Properties["path"]
+}
+
+// pathIsUnknownCoverage reports whether the entity's `path` property is one of
+// the composed paths whose DRF coverage is unknown this tick.
 //
-// Suffix, not containment: `ApplyDjangoNestedURLConf` composes the registered
-// prefix as the LAST segment of the list route (`/api` + `widgets` ->
-// `/api/widgets`), so a suffix test names exactly those routes and does not
-// sweep in a sibling like `/api/widgets-archive` (which does not end in
-// `/widgets`) or an unrelated `/widgets/detail`.
-func pathMatchesAnySuffix(e *graph.Entity, suffixes []string) bool {
-	if len(suffixes) == 0 {
+// EXACT MATCH on the full composed path — see drfUnknownComposedPaths for why a
+// suffix test on the bare registered segment was wrong. The set already carries
+// the mount prefix, so no scoping is left for this function to get right.
+func pathIsUnknownCoverage(e *graph.Entity, unknown map[string]bool) bool {
+	if len(unknown) == 0 {
 		return false
 	}
 	p, ok := e.PropLookup("path")
 	if !ok || p == "" {
 		return false
 	}
-	for _, s := range suffixes {
-		if p == s || strings.HasSuffix(p, s) {
-			return true
-		}
-	}
-	return false
+	return unknown[p]
 }
 
 // isEndpointRecordKind reports whether a record kind is one of the HTTP

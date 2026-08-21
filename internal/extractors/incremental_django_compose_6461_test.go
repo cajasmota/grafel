@@ -21,6 +21,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/engine"
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
@@ -80,6 +81,32 @@ func dcEntity(kind, name, file string, props map[string]string) graph.Entity {
 }
 
 func dcSilentLogger() *log.Logger { return log.New(io.Discard, "", 0) }
+
+// dcDiskReader is the same allow-listed, memoising reader recomposeDjangoURLConf
+// builds, exposed so a test can drive engine.ApplyDjangoNestedURLConf and
+// drfUnknownComposedPaths over the same bytes the pass would see.
+func dcDiskReader(absRepo string, allFiles []string) engine.NestedURLConfFileReader {
+	allowed := make(map[string]struct{}, len(allFiles))
+	for _, f := range allFiles {
+		allowed[f] = struct{}{}
+	}
+	cache := map[string][]byte{}
+	return func(rel string) []byte {
+		if b, ok := cache[rel]; ok {
+			return b
+		}
+		if _, ok := allowed[rel]; !ok {
+			cache[rel] = nil
+			return nil
+		}
+		b, err := os.ReadFile(filepath.Join(absRepo, filepath.FromSlash(rel)))
+		if err != nil {
+			b = nil
+		}
+		cache[rel] = b
+		return b
+	}
+}
 
 // TestDjangoComposeResult_PrunesRelBothDirections pins the edge-prune rule.
 //
@@ -361,103 +388,250 @@ func TestRecomposeDjangoURLConf_ReAddsNothingTheGraphAlreadyHolds(t *testing.T) 
 	}
 }
 
-// TestDRFUnknownCoveragePaths_MatchesRouterRegisterSpellings pins
-// drfRouterRegisterRe against the engine regex it is a copy of
-// (djangoRouterRegisterRe, internal/engine/django_urlconf_nested.go).
+// dcScopeRepo lays down TWO mounted apps that share a last route segment:
 //
-// The two MUST recognise the same registrations. engine's decides which routes
-// get COMPOSED; this one decides which composed routes must ABSTAIN for want of
-// coverage. A spelling engine matches and this one does not is precisely the
-// hole the #6528 fix closes, reopened silently — the route would be composed
-// and added with no abstention.
+//	mpproj/urls.py   network/ -> mpsite.urls      api/ -> apiapp.urls
+//	mpsite/urls.py   path("terms/", views.mp_terms_view)       -> /network/terms
+//	apiapp/urls.py   router.register(r"terms",  TermViewSet)   -> /api/terms
+//	                 router.register(r"legacy", TermViewSet)   -> /api/legacy
 //
-// It also pins the abstention's NARROWNESS: only Python files, only files that
-// actually changed, and nothing at all when no registration is present.
-func TestDRFUnknownCoveragePaths_MatchesRouterRegisterSpellings(t *testing.T) {
+// The composed paths share last segments ACROSS mounts. That is the whole
+// point: `users`, `items`, `orders`, `terms` collide constantly between apps in
+// a monorepo.
+//
+// TWO registrations, not one, so a scope bug is caught on BOTH sides:
+// `/network/terms` exercises the ADD side (an unrelated route that must still
+// be composed) and a stale `/network/legacy` exercises the PRUNE side (an
+// unrelated ghost that must still be removed).
+func dcScopeRepo(t *testing.T) (absRepo string, allFiles []string) {
+	t.Helper()
+	absRepo = t.TempDir()
 	files := map[string]string{
-		"a/urls.py":     `router.register(r"widgets", WidgetViewSet)`,
-		"b/urls.py":     `api_router.register("gadgets", GadgetViewSet)`,
-		"c/urls.py":     `v2_router.register(r'/things/', ThingViewSet)`,
-		"d/urls.py":     `router_v3.register("doohickeys", DooViewSet)`,
-		"e/urls.py":     `my_router.register(r"sprockets", SprocketViewSet)`,
-		"plain/urls.py": `urlpatterns = [path("terms/", views.terms)]`,
-		"notpy.txt":     `router.register(r"ignored", X)`,
+		"mpproj/urls.py": "from django.urls import include, path\n\n" +
+			"urlpatterns = [\n" +
+			"    path(\"network/\", include(\"mpsite.urls\")),\n" +
+			"    path(\"api/\", include(\"apiapp.urls\")),\n" +
+			"]\n",
+		"mpsite/urls.py": "from django.urls import path\n\n" +
+			"from . import views\n\n" +
+			"urlpatterns = [\n    path(\"terms/\", views.mp_terms_view),\n]\n",
+		"mpsite/views.py": "def mp_terms_view(request):\n    return {\"ok\": 1}\n",
+		"apiapp/urls.py": "from rest_framework import routers, viewsets\n\n\n" +
+			"class TermViewSet(viewsets.ModelViewSet):\n    queryset = []\n\n\n" +
+			"router = routers.DefaultRouter()\n" +
+			"router.register(r\"terms\", TermViewSet)\n" +
+			"router.register(r\"legacy\", TermViewSet)\n\n" +
+			"urlpatterns = router.urls\n",
 	}
-	reader := func(rel string) []byte {
-		if b, ok := files[rel]; ok {
-			return []byte(b)
+	for rel, body := range files {
+		abs := filepath.Join(absRepo, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
 		}
-		return nil
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+		allFiles = append(allFiles, rel)
 	}
+	sort.Strings(allFiles)
+	return absRepo, allFiles
+}
 
-	var changed []string
-	for rel := range files {
-		changed = append(changed, rel)
-	}
-	sort.Strings(changed)
+// TestDRFUnknownComposedPaths_ScopedToTheRegisteringMount pins the SCOPE axis
+// of the #6528 abstention (#6530 review).
+//
+// The first version of this collected the bare registered segment (`/terms`)
+// and matched it as a suffix repo-wide, so a registration in `apiapp/` silently
+// suppressed an unrelated `path("terms/", ...)` in `mpsite/` mounted at
+// `/network/` — re-creating the #6461 ghost on a last-segment name collision.
+// Containment was never the problem; SCOPE was, and the old containment test
+// could not see it because both axes were being described as one "narrowness"
+// claim.
+//
+// The set must contain the registering mount's composed path and NOTHING else.
+func TestDRFUnknownComposedPaths_ScopedToTheRegisteringMount(t *testing.T) {
+	absRepo, allFiles := dcScopeRepo(t)
+	reader := dcDiskReader(absRepo, allFiles)
 
-	got := drfUnknownCoveragePaths(changed, reader)
-	sort.Strings(got)
-	want := []string{"/doohickeys", "/gadgets", "/sprockets", "/things", "/widgets"}
-	if len(got) != len(want) {
-		t.Fatalf("#6528: drfUnknownCoveragePaths returned %v, want %v. Every spelling engine's "+
-			"djangoRouterRegisterRe accepts must be recognised here too, or a composed route "+
-			"under it is added with no abstention.", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("#6528: drfUnknownCoveragePaths[%d] = %q, want %q (full: %v)", i, got[i], want[i], got)
+	fresh := engine.ApplyDjangoNestedURLConf(allFiles, reader)
+	var composed []string
+	for i := range fresh {
+		if p := composedRecordPath(&fresh[i]); p != "" {
+			composed = append(composed, p)
 		}
 	}
-
-	// NARROWNESS. A repo whose changed files declare no registration must
-	// abstain from nothing — otherwise the fix suppresses live composition
-	// everywhere and the ordinary layout silently loses routes.
-	if n := len(drfUnknownCoveragePaths([]string{"plain/urls.py"}, reader)); n != 0 {
-		t.Errorf("#6528: a changed file with no router.register() produced %d abstention path(s); "+
-			"it must produce none, or the fix suppresses composition it has no reason to doubt", n)
+	sort.Strings(composed)
+	// Guard the fixture itself: if the composition stopped producing both
+	// paths, the assertions below would pass vacuously.
+	if len(composed) != 3 ||
+		composed[0] != "/api/legacy" || composed[1] != "/api/terms" || composed[2] != "/network/terms" {
+		t.Fatalf("#6530 fixture: expected the tree to compose exactly "+
+			"[/api/legacy /api/terms /network/terms], got %v — the scope assertions below would "+
+			"prove nothing otherwise", composed)
 	}
-	// A file that did NOT change is not evidence: its drf_router_expanded
-	// entities were never pruned, so its coverage is still visible in the graph.
-	if n := len(drfUnknownCoveragePaths(nil, reader)); n != 0 {
+
+	unknown := drfUnknownComposedPaths(allFiles, []string{"mpsite/urls.py", "apiapp/urls.py"}, fresh, reader)
+
+	if !unknown["/api/terms"] {
+		t.Errorf("#6528: /api/terms is composed from router.register(\"terms\") in apiapp/urls.py, "+
+			"which changed this tick, so its drf_router_expanded coverage was pruned and is "+
+			"UNKNOWN; it must be in the abstention set. Got %v", unknown)
+	}
+	if unknown["/network/terms"] {
+		t.Errorf("#6530: /network/terms is composed from a plain path() in mpsite/urls.py and has "+
+			"NOTHING to do with apiapp's registration — it only shares a last segment. Marking it "+
+			"unknown suppresses both its add and its prune, which re-creates the #6461 ghost this "+
+			"pass exists to remove. The set must be keyed on the FULL COMPOSED path, not on a bare "+
+			"/segment matched repo-wide. Got %v", unknown)
+	}
+	if !unknown["/api/legacy"] {
+		t.Errorf("#6528: /api/legacy is composed from the second registration in the same changed "+
+			"file and must be in the abstention set too. Got %v", unknown)
+	}
+	if len(unknown) != 2 {
+		t.Errorf("#6530: expected exactly the 2 registering mount's paths, got %d: %v",
+			len(unknown), unknown)
+	}
+
+	// NARROWNESS on the other axis, unchanged from #6528: a changed set with no
+	// registration in it abstains from nothing, and neither does an empty one.
+	if n := len(drfUnknownComposedPaths(allFiles, []string{"mpsite/urls.py"}, fresh, reader)); n != 0 {
+		t.Errorf("#6528: only mpsite/urls.py changed and it declares no router.register(); "+
+			"%d abstention path(s) produced, want 0", n)
+	}
+	if n := len(drfUnknownComposedPaths(allFiles, nil, fresh, reader)); n != 0 {
 		t.Errorf("#6528: an empty changed set produced %d abstention path(s); coverage is only "+
 			"unknown for files whose entities were pruned THIS tick", n)
 	}
 }
 
-// TestPathMatchesAnySuffix_IsSuffixNotContainment pins the matcher's shape.
-//
-// ApplyDjangoNestedURLConf composes the registered prefix as the LAST segment
-// of the list route (`/api` + `widgets` -> `/api/widgets`), so a SUFFIX test
-// names exactly the routes under that registration. A containment test would
-// additionally abstain on `/widgets/detail` and on any unrelated path that
-// merely mentions the word — suppressing live composition on evidence that says
-// nothing about it.
-func TestPathMatchesAnySuffix_IsSuffixNotContainment(t *testing.T) {
-	sfx := []string{"/widgets"}
+// TestDRFRouterRegisterRe_MatchesEngineSpellings pins the copied regex against
+// engine's djangoRouterRegisterRe. The two must recognise the same
+// registrations: engine's decides which routes get COMPOSED, this one decides
+// which composed routes must ABSTAIN. A spelling engine matches and this one
+// does not is the #6528 hole reopened silently.
+func TestDRFRouterRegisterRe_MatchesEngineSpellings(t *testing.T) {
+	shouldMatch := []string{
+		`router.register(r"widgets", WidgetViewSet)`,
+		`api_router.register("gadgets", GadgetViewSet)`,
+		`v2_router.register(r'things', ThingViewSet)`,
+		`router_v3.register("doohickeys", DooViewSet)`,
+		`my_router.register(r"sprockets", SprocketViewSet)`,
+	}
+	for _, src := range shouldMatch {
+		if !drfRouterRegisterRe.MatchString(src) {
+			t.Errorf("#6528: drfRouterRegisterRe does not match %q, but engine's "+
+				"djangoRouterRegisterRe does — a route composed from it would be added with no "+
+				"abstention", src)
+		}
+	}
+	shouldNotMatch := []string{
+		`urlpatterns = [path("terms/", views.terms)]`,
+		`registry.register("not-a-router", X)`,
+	}
+	for _, src := range shouldNotMatch {
+		if drfRouterRegisterRe.MatchString(src) {
+			t.Errorf("#6528: drfRouterRegisterRe matches %q, which is not a DRF router "+
+				"registration; abstaining on it suppresses composition for no reason", src)
+		}
+	}
+}
+
+// TestPathIsUnknownCoverage_ExactPathNotSuffix pins the matcher's shape after
+// #6530. The set now carries FULL COMPOSED paths, so the match is equality: a
+// suffix or containment test here would re-introduce the repo-wide scope bug
+// one level down, no matter how the set was computed.
+func TestPathIsUnknownCoverage_ExactPathNotSuffix(t *testing.T) {
+	unknown := map[string]bool{"/api/terms": true}
 	cases := []struct {
 		path string
 		want bool
 	}{
-		{"/api/widgets", true},
-		{"/widgets", true},
-		{"/api/widgets-archive", false}, // sibling registration, different route
-		{"/widgets/detail", false},      // composed under, not the list route
-		{"/api/terms", false},
+		{"/api/terms", true},
+		{"/network/terms", false}, // same last segment, DIFFERENT mount — #6530
+		{"/terms", false},
+		{"/api/terms/detail", false},
+		{"/api/terms-archive", false},
 	}
 	for _, tc := range cases {
 		e := dcEntity(dcEndpointKind, "http:ANY:"+tc.path, "x/urls.py", map[string]string{"path": tc.path})
-		if got := pathMatchesAnySuffix(&e, sfx); got != tc.want {
-			t.Errorf("#6528: pathMatchesAnySuffix(%q, %v) = %t, want %t — the match must be a "+
-				"SUFFIX on the registered prefix, not containment", tc.path, sfx, got, tc.want)
+		if got := pathIsUnknownCoverage(&e, unknown); got != tc.want {
+			t.Errorf("#6530: pathIsUnknownCoverage(%q, %v) = %t, want %t — the abstention set holds "+
+				"full composed paths, so the match must be EQUALITY", tc.path, unknown, got, tc.want)
 		}
 	}
-	if pathMatchesAnySuffix(&graph.Entity{}, sfx) {
-		t.Errorf("#6528: an entity with no `path` property must not match")
+	if pathIsUnknownCoverage(&graph.Entity{}, unknown) {
+		t.Errorf("#6530: an entity with no `path` property must not match")
 	}
-	e := dcEntity(dcEndpointKind, "http:ANY:/api/widgets", "x/urls.py", map[string]string{"path": "/api/widgets"})
-	if pathMatchesAnySuffix(&e, nil) {
-		t.Errorf("#6528: with no abstention paths, nothing may match")
+	e := dcEntity(dcEndpointKind, "http:ANY:/api/terms", "x/urls.py", map[string]string{"path": "/api/terms"})
+	if pathIsUnknownCoverage(&e, nil) {
+		t.Errorf("#6530: with an empty abstention set, nothing may match")
+	}
+}
+
+// TestRecomposeDjangoURLConf_UnrelatedRouteStillPrunesAcrossMounts is the
+// #6530 review's probe, at the seam it was run against.
+//
+// Two registering-or-not files change together, and an unrelated app's stale
+// composed route shares a last segment with the registration. Before the fix,
+// `removed=map[]` — the ghost survived, which is #6461 verbatim. It must prune.
+func TestRecomposeDjangoURLConf_UnrelatedRouteStillPrunesAcrossMounts(t *testing.T) {
+	absRepo, allFiles := dcScopeRepo(t)
+
+	// Stale composition on the UNCHANGED handler file: the route under
+	// /network/ used to be `legacy/` and is now `terms/`, so this is the #6461
+	// ghost. Its last segment DELIBERATELY collides with apiapp's
+	// `router.register(r"legacy")`, which is what a bare-segment abstention
+	// matches on — so a scope bug shows up here as the ghost SURVIVING.
+	ghost := dcEntity(dcEndpointKind, "http:ANY:/network/legacy", "mpsite/views.py",
+		map[string]string{
+			"pattern_type": composedNestedPatternType,
+			"path":         "/network/legacy",
+			"verb":         "ANY",
+			"framework":    "django",
+		})
+	handler := dcEntity("SCOPE.Operation", "mp_terms_view", "mpsite/views.py", nil)
+	doc := &graph.Document{Repo: dcRepoTag, Entities: []graph.Entity{ghost, handler}}
+
+	// BOTH files change: the plain-path app AND the registering app.
+	res := recomposeDjangoURLConf(absRepo, allFiles,
+		[]string{"mpsite/urls.py", "apiapp/urls.py"}, doc, nil, dcSilentLogger())
+
+	if !res.ran {
+		t.Fatalf("#6530: the pass declined to run; allFiles=%v", allFiles)
+	}
+	if !res.removedIDs[ghost.ID] {
+		t.Errorf("#6530: the ghost %s|%s@%s was NOT pruned. apiapp/urls.py registers `legacy` "+
+			"under the /api mount, and an abstention keyed on that BARE SEGMENT matches "+
+			"/network/legacy too — a different mount, a different app, an unrelated plain "+
+			"path(). Suppressing its prune re-creates the exact #6461 ghost this pass exists to "+
+			"remove. The set must hold FULL COMPOSED paths. removedIDs=%v",
+			ghost.Kind, ghost.Name, ghost.SourceFile, res.removedIDs)
+	}
+	// The abstention must still hold where it IS warranted, or this test would
+	// pass just as well against a fix that deleted the feature.
+	for _, e := range res.added {
+		if p, _ := e.PropLookup("path"); p == "/api/terms" {
+			t.Errorf("#6528: /api/terms was ADDED even though apiapp/urls.py's registration " +
+				"changed this tick and its coverage is unknown; the abstention must still apply " +
+				"to the registering mount's own routes")
+		}
+	}
+	// ...and the unrelated route must be composed normally.
+	sawNetworkTerms := false
+	for _, e := range res.added {
+		if p, _ := e.PropLookup("path"); p == "/network/terms" {
+			sawNetworkTerms = true
+		}
+	}
+	if !sawNetworkTerms {
+		var got []string
+		for _, e := range res.added {
+			p, _ := e.PropLookup("path")
+			got = append(got, p)
+		}
+		t.Errorf("#6530: /network/terms was not composed. It comes from a plain path() in a file "+
+			"with no registration, so nothing about apiapp's DRF router may suppress it. added=%v", got)
 	}
 }
 
@@ -498,11 +672,21 @@ func TestRecomposeDjangoURLConf_UnknownDRFCoverageAlsoBlocksThePrune(t *testing.
 		allFiles = append(allFiles, rel)
 	}
 
-	// The graph's copy of the composed route, attributed the way a FULL index
-	// left it — on the handler's file, which is NOT where this pass's
-	// recomputation lands it. Different SourceFile therefore different
-	// graph.EntityID, so it is absent from freshIDs and reads as stale.
-	existing := dcEntity(dcEndpointKind, "http:ANY:/network/widgets", "mpsite/legacy_views.py",
+	// The graph's copy of the composed route, attributed to a DIFFERENT file
+	// from the one this pass's recomputation lands it on. Different SourceFile
+	// therefore different graph.EntityID, so it is absent from freshIDs and
+	// reads as stale.
+	//
+	// HONEST ABOUT ITS OWN EVIDENCE (#6530 review): the divergence here is
+	// CONSTRUCTED by attribution, not OBSERVED from a real resolution flip. The
+	// file is a real one in this fixture, and the shape is the one a full index
+	// leaves behind — bridgeEndpointToHandler rebinds a composed endpoint onto
+	// the handler's file (#2678), so the graph's copy and this pass's copy can
+	// legitimately disagree once the DRF entities that carried that handler have
+	// been pruned. What is not demonstrated is an end-to-end tick where they
+	// actually do. The argument is structural rather than measured, and the
+	// worst case of keeping the prune-side abstention is one stale tick.
+	existing := dcEntity(dcEndpointKind, "http:ANY:/network/widgets", "mpsite/urls.py",
 		map[string]string{
 			"pattern_type": composedNestedPatternType,
 			"path":         "/network/widgets",
