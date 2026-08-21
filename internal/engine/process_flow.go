@@ -61,6 +61,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // ProcessFlowConfig controls the BFS pass.
@@ -348,7 +349,17 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 			// caught by this rule — their file contains producer-only
 			// synthetics (pattern_type=http_endpoint_synthesis) which
 			// buildConsumerEndpointFileSet excludes.
-			if entry != nil && consumerEndpointFiles[entry.SourceFile] {
+			//
+			// #6458 — the fallback is for chains that could NOT reach a
+			// consumer bridge structurally. When the chain DID reach one,
+			// chainCrossesRepoBoundary has already given the authoritative
+			// answer (including #1639's same-repo handler-continuation
+			// rule), and a false verdict there means the call resolved
+			// in-repo. Overriding it from a file-coarse proxy would revive
+			// the pre-#1639 semantics that this gate being dead had been
+			// hiding.
+			if entry != nil && consumerEndpointFiles[entry.SourceFile] &&
+				!chainReachesConsumerEndpoint(chain, byID) {
 				crossStack = true
 				crossReason = "entry file contains consumer http_endpoint synthetics (BFS chain didn't reach the bridge structurally — see #754 fallback)"
 			}
@@ -775,7 +786,15 @@ func buildConsumerEndpointFileSet(doc *graph.Document) map[string]bool {
 	out := map[string]bool{}
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
-		if strings.ToLower(e.Kind) != "http_endpoint" {
+		// #6458 — this gate compared against the bare pre-#1217
+		// "http_endpoint" literal, which the consumer synthesiser stopped
+		// emitting when #1217 split the kind into http_endpoint_call /
+		// http_endpoint_definition. Every entity that could satisfy the
+		// pattern_type check below was rejected here first, so the whole
+		// #754 file-coarse fallback was inert. The pattern_type /
+		// source_caller discrimination below is what keeps producer-side
+		// synthetics out — the kind gate must not try to do that job.
+		if !types.IsHTTPEndpointKind(strings.ToLower(e.Kind)) {
 			continue
 		}
 		if e.PropLen() == 0 {
@@ -954,7 +973,10 @@ func isConsumerHTTPEndpoint(e *graph.Entity) bool {
 	if e == nil {
 		return false
 	}
-	if strings.ToLower(e.Kind) != "http_endpoint" {
+	// #6458 — see buildConsumerEndpointFileSet: the raw "http_endpoint"
+	// comparison here rejected every post-#1217 consumer synthetic, so
+	// chainCrossesRepoBoundary's consumer-bridge signal never fired.
+	if !types.IsHTTPEndpointKind(strings.ToLower(e.Kind)) {
 		return false
 	}
 	if e.PropLen() == 0 {
@@ -966,6 +988,20 @@ func isConsumerHTTPEndpoint(e *graph.Entity) bool {
 	// Fallback: the consumer side stamps `source_caller` on every entity.
 	_, hasCaller := e.PropLookup("source_caller")
 	return hasCaller
+}
+
+// chainReachesConsumerEndpoint reports whether any step in the chain IS a
+// consumer-side http_endpoint synthetic — i.e. whether the BFS reached a
+// cross-repo bridge node structurally. Used (#6458) to keep the #754
+// file-coarse cross_stack fallback from second-guessing
+// chainCrossesRepoBoundary on chains that did reach the bridge.
+func chainReachesConsumerEndpoint(chain []string, byID map[string]*graph.Entity) bool {
+	for _, id := range chain {
+		if isConsumerHTTPEndpoint(byID[id]) {
+			return true
+		}
+	}
+	return false
 }
 
 // isHTTPEndpointDefinition reports whether an entity is a producer-side
@@ -997,9 +1033,21 @@ func chainCrossesExternalLib(chain []string, byID map[string]*graph.Entity, boun
 		if !ok {
 			continue
 		}
+		// #6458 — unlike the two gates above, this arm is NOT dead: it
+		// fires today on the legacy-kind entities webhooks_edges.go still
+		// mints. Adding the #1217 split kinds is therefore a widening of a
+		// live path: chains that step through an http_endpoint_call or an
+		// http_endpoint_definition now report crosses_external_lib=true.
+		// That is the property's stated meaning ("this process touches an
+		// HTTP handler"). In practice most definitions were already caught
+		// by the IMPLEMENTS / ROUTES_TO / SERVES boundary set above; the
+		// real delta is consumer call sites, which reach the graph over
+		// FETCHES edges and so are absent from that set.
+		if types.IsHTTPEndpointKind(strings.ToLower(e.Kind)) {
+			return true
+		}
 		switch strings.ToLower(e.Kind) {
-		case "http_endpoint",
-			strings.ToLower(string(EntityKindEndpoint)),
+		case strings.ToLower(string(EntityKindEndpoint)),
 			strings.ToLower(string(EntityKindRoute)),
 			strings.ToLower(string(EntityKindExternalAPI)),
 			"scope.external":
