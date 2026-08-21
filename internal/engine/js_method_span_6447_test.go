@@ -108,6 +108,57 @@ func TestJSMethodShorthandSpansAreIndexed_6447(t *testing.T) {
 				"  }\n}\n",
 			want: "current",
 		},
+		{
+			// The return annotation is `[^;{}]*`, not `[^;{}()]*`: a function
+			// type in return position carries its own parens, and excluding
+			// them made an ordinary TS shape fall through to the preceding
+			// declaration's name. The `()`-free rule that closes the
+			// `describe('x', () => {` collision lives in the PARAMETER group,
+			// which is still `\([^()]*\)`; see the collision cases below.
+			name: "function-type return annotation",
+			src: "class A {\n" +
+				"  makeLoader(): (id: string) => Promise<void> {\n" +
+				"    return () => fetch('/api/x').then(() => undefined);\n" +
+				"  }\n}\n",
+			want: "makeLoader",
+		},
+		{
+			name: "parenthesised union return annotation",
+			src: "class A {\n" +
+				"  pick(): (A | B) {\n" +
+				"    return this.http.get('/api/pick');\n" +
+				"  }\n}\n",
+			want: "pick",
+		},
+		{
+			name: "generator method",
+			src: "class A {\n" +
+				"  *stream() {\n" +
+				"    yield fetch('/api/stream');\n" +
+				"  }\n}\n",
+			want: "stream",
+		},
+		{
+			name: "async generator method",
+			src: "class A {\n" +
+				"  async *stream() {\n" +
+				"    yield await fetch('/api/stream');\n" +
+				"  }\n}\n",
+			want: "stream",
+		},
+		{
+			// The `#` is part of the identifier in the source, so it is part
+			// of the span name: a class may declare BOTH `#load` and `load`,
+			// and collapsing them would make the two indistinguishable to
+			// enclosingJSFuncAt's consumers (sse_edges.go names a Stream
+			// entity `"/" + caller`).
+			name: "private method keeps its hash",
+			src: "class A {\n" +
+				"  #load(id) {\n" +
+				"    return fetch('/api/x');\n" +
+				"  }\n}\n",
+			want: "#load",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -207,10 +258,18 @@ func TestJSMethodShorthandDoesNotSwallowNonDeclarations_6447(t *testing.T) {
 		{
 			// Alternative 4 requires `^[ \t]+`, not `^[ \t]*`: method
 			// shorthand is by construction nested inside a class or object
-			// body, so it is always indented. A column-0 `foo(a) {` is not
-			// valid method shorthand in any JS/TS dialect -- the declaration
-			// form at column 0 is `function foo(` , which alternative 1
-			// already owns and which this case leaves intact.
+			// body, so it is always indented, and at column 0 the pattern
+			// cannot tell `foo(a) {` from the many non-declaration shapes
+			// that reach column 0 in minified or generated code.
+			//
+			// Be precise about what the rejection BUYS, which is less than it
+			// looks: because spans are unbounded (#6500), declining to mint a
+			// span does not leave the following call site with an empty
+			// caller — it leaves it with the PRECEDING span's name. So this
+			// case buys "no NEW wrong name", not "no wrong name"; the wrong
+			// name it inherits is exactly the pre-#6447 defect this PR fixes
+			// elsewhere. TestJSKnownMisattributionShapes_6447 pins that
+			// consequence directly rather than leaving it to a comment.
 			name: "column-0 method shorthand is not a declaration",
 			src: "foo(a) {\n" +
 				"  bar();\n" +
@@ -230,6 +289,40 @@ func TestJSMethodShorthandDoesNotSwallowNonDeclarations_6447(t *testing.T) {
 				"  }\n}\n",
 			wantOne: "probe",
 			absent:  []string{"missing"},
+		},
+		{
+			// `with` is in jsMethodShorthandReserved and nothing else rejects
+			// it: sloppy-mode `with (o) {` is indented, has a paren group with
+			// no nested parens and a following `{`, so it satisfies
+			// alternative 4 structurally. Legacy JS still ships it.
+			name: "with statement is not a declaration",
+			src: "const api = {\n" +
+				"  probe(o) {\n" +
+				"    with (o) {\n" +
+				"      fetch('/api/x');\n" +
+				"    }\n" +
+				"  },\n};\n",
+			wantOne: "probe",
+			absent:  []string{"with"},
+		},
+		{
+			// An ANONYMOUS function expression at line start: alternative 1
+			// does not cover it (it requires a name after `function`), so
+			// `function` reaches alternative 4 as the captured identifier and
+			// only the reject list stops it. Without the reject, every call
+			// site below would be attributed to a caller literally named
+			// "function".
+			name: "anonymous function expression at line start is not a declaration",
+			src: "class A {\n" +
+				"  probe() {\n" +
+				"    this.http.get('/api/x');\n" +
+				"  }\n}\n" +
+				"const cb =\n" +
+				"  function (x) {\n" +
+				"    return x;\n" +
+				"  };\n",
+			wantOne: "probe",
+			absent:  []string{"function"},
 		},
 		{
 			name: "receiver call is not a declaration",
@@ -302,5 +395,191 @@ func TestJSMethodSpanWinsOverPrecedingHelper_6447(t *testing.T) {
 			t.Errorf("call site %q: caller = %q, want %q (spans %v)",
 				want.marker, got, want.caller, spanNames(t, src))
 		}
+	}
+}
+
+// TestJSKnownMisattributionShapes_6447 states, as executable fact, what
+// happens to the shapes alternative 4 declines. It is the correction to a
+// rationale this change originally got wrong.
+//
+// Spans carry (offset, name) and no end (#6500), so enclosingJSFuncAt walks to
+// the nearest PRECEDING span and never stops. Declining to mint a span for a
+// method therefore does NOT produce an empty caller for the calls inside it —
+// it produces the previous declaration's name. Every row below is a WRONG
+// caller, of exactly the kind #6447 set out to fix; they are accepted here
+// because RE2 cannot separate them from non-declarations, not because they are
+// harmless. This matters past attribution: sse_edges.go builds a Stream
+// entity's ID as `"/" + caller`, so a wrong caller is a wrongly NAMED entity.
+//
+// If a later change starts matching one of these shapes, the row flips and the
+// test fails — which is the point. Update it deliberately.
+func TestJSKnownMisattributionShapes_6447(t *testing.T) {
+	cases := []struct {
+		name   string
+		src    string
+		marker string
+		// caller is the WRONG name the call site inherits today.
+		caller string
+	}{
+		{
+			// Column-0 shorthand: see the rejection case above. The call
+			// inside `load` is stamped with `build`, the method before it.
+			name: "column-0 method shorthand inherits the preceding method",
+			src: "class A {\n" +
+				"  build() {\n" +
+				"    return 1;\n" +
+				"  }\n" +
+				"}\n" +
+				"load(id) {\n" +
+				"  fetch('/api/load');\n" +
+				"}\n",
+			marker: "fetch('/api/load')",
+			caller: "build",
+		},
+		{
+			// A computed method key is not an identifier, so the name capture
+			// cannot start there. Rare outside generated code.
+			name: "computed method key inherits the preceding method",
+			src: "class A {\n" +
+				"  build() {\n" +
+				"    return 1;\n" +
+				"  }\n" +
+				"  ['load']() {\n" +
+				"    fetch('/api/load');\n" +
+				"  }\n}\n",
+			marker: "fetch('/api/load')",
+			caller: "build",
+		},
+		{
+			// Allman brace style: alternative 4 requires the `{` on the same
+			// line as the header, because a header with no brace is also an
+			// abstract signature / an overload declaration / a TS interface
+			// member, none of which is a caller.
+			name: "brace on the next line inherits the preceding method",
+			src: "class A {\n" +
+				"  build() {\n" +
+				"    return 1;\n" +
+				"  }\n" +
+				"  load(id)\n" +
+				"  {\n" +
+				"    fetch('/api/load');\n" +
+				"  }\n}\n",
+			marker: "fetch('/api/load')",
+			caller: "build",
+		},
+		{
+			// The reject list is name-based, so a method legitimately NAMED
+			// after a reserved word is rejected with it. `catch` (thenable)
+			// and `return` (iterator protocol) are the two that actually
+			// occur. The cost is mis-attribution, not an empty caller.
+			name: "method named catch inherits the preceding method",
+			src: "const thenable = {\n" +
+				"  then(res) {\n" +
+				"    return res;\n" +
+				"  },\n" +
+				"  catch(err) {\n" +
+				"    fetch('/api/err');\n" +
+				"  },\n};\n",
+			marker: "fetch('/api/err')",
+			caller: "then",
+		},
+		{
+			name: "iterator return method inherits the preceding method",
+			src: "const it = {\n" +
+				"  next() {\n" +
+				"    return { done: false };\n" +
+				"  },\n" +
+				"  return(v) {\n" +
+				"    fetch('/api/close');\n" +
+				"  },\n};\n",
+			marker: "fetch('/api/close')",
+			caller: "next",
+		},
+		{
+			// N3: alternative 4 anchors on `^[ \t]+`, so a class written on
+			// ONE line mints no span at all. Intended: dropping the anchor to
+			// a bare `[ \t]+` would let any mid-line `name(...) {` match, and
+			// one-line class bodies are a minifier artefact, not source we
+			// need callers for. Stated, not silent.
+			name: "one-line class body mints no span",
+			src: "class A { build() { return 1; } load() { fetch('/api/load'); } }\n" +
+				"function outer() {\n" +
+				"  return 2;\n" +
+				"}\n",
+			marker: "fetch('/api/load')",
+			caller: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pos := strings.Index(tc.src, tc.marker)
+			if pos < 0 {
+				t.Fatalf("test source no longer contains %q", tc.marker)
+			}
+			got := enclosingJSFuncAt(indexJSEnclosingFunctions(tc.src), pos)
+			if got != tc.caller {
+				t.Fatalf("caller = %q, want %q (spans %v) — the known "+
+					"mis-attribution changed; update this row deliberately",
+					got, tc.caller, spanNames(t, tc.src))
+			}
+		})
+	}
+}
+
+// TestJSMethodShorthandInDeadTextPoisons_6447 pins the hazard alternative 4
+// widens rather than introduces.
+//
+// Alternatives 1-3 are already blind to comments and template literals — a
+// commented-out `function foo(` mints a span today. What alternative 4 changes
+// is the FREQUENCY: a commented-out method body inside a live class is a
+// commonplace of real code, where a commented-out `function` declaration is
+// not. Fixing it needs a comment/string mask over the whole pattern, which is
+// a different change from this one; it is accepted here and recorded so that
+// nobody rediscovers it as a surprise.
+func TestJSMethodShorthandInDeadTextPoisons_6447(t *testing.T) {
+	for _, tc := range []struct {
+		name, src, marker, caller string
+	}{
+		{
+			name: "block-commented method inside a live method body",
+			src: "class A {\n" +
+				"  load() {\n" +
+				"    /*\n" +
+				"    ghost(id) {\n" +
+				"      return 0;\n" +
+				"    }\n" +
+				"    */\n" +
+				"    fetch('/api/x');\n" +
+				"  }\n}\n",
+			marker: "fetch('/api/x')",
+			caller: "ghost",
+		},
+		{
+			name: "method shorthand inside a template literal",
+			src: "class A {\n" +
+				"  load() {\n" +
+				"    const tpl = `\n" +
+				"    ghost(id) {\n" +
+				"      return 0;\n" +
+				"    }\n" +
+				"    `;\n" +
+				"    fetch('/api/x');\n" +
+				"  }\n}\n",
+			marker: "fetch('/api/x')",
+			caller: "ghost",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pos := strings.Index(tc.src, tc.marker)
+			if pos < 0 {
+				t.Fatalf("test source no longer contains %q", tc.marker)
+			}
+			got := enclosingJSFuncAt(indexJSEnclosingFunctions(tc.src), pos)
+			if got != tc.caller {
+				t.Fatalf("caller = %q, want %q (spans %v) — dead-text "+
+					"poisoning changed; if it was FIXED, delete this row",
+					got, tc.caller, spanNames(t, tc.src))
+			}
+		})
 	}
 }

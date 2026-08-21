@@ -131,10 +131,13 @@ var axiosClientRe = regexp.MustCompile(
 // We intentionally cast a wide net to cover four common shapes:
 //
 //  1. `function foo(` / `async function foo(`
+//
 //  2. `const/let/var foo = (` / `const/let/var foo = async (`
+//
 //  3. Class property arrow: `foo = (` / `foo = async (` (without var/const/let).
 //     This covers React component class methods and service-class patterns
 //     common in Angular/Vue/RN frontends, e.g. `login = (email) => $http.post(...)`.
+//
 //  4. Method shorthand: `foo(...) {` inside an object literal or a class
 //     body — `list(): Observable<T[]> { … }`, `async save(x) { … }`.
 //     This shape used to be declined outright, on the grounds that a bare
@@ -145,14 +148,24 @@ var axiosClientRe = regexp.MustCompile(
 //     at all (#6447). The alternative below keeps the collision closed by
 //     demanding four things at once that a call expression does not have:
 //     line-start plus indentation (a call in an expression is preceded by
-//     `=`, `.`, `(`, `return`, …), a parenthesis group containing no nested
+//     `=`, `.`, `(`, `return`, …), a PARAMETER group containing no nested
 //     parens (which rules out `describe('x', () => {`), an optional TS
-//     return annotation, and a following `{`. The residue is the reserved
-//     words that are also written `(...) {` — `if`, `for`, `while`,
+//     return annotation, and a following `{`. The `()`-free rule applies to
+//     the parameter group only: the return annotation is `[^;{}]*`, because
+//     a function type in return position carries its own parens
+//     (`makeLoader(): (id: string) => Promise<void> {`) and excluding them
+//     silently mis-attributed an ordinary TS shape. The residue is the
+//     reserved words that are also written `(...) {` — `if`, `for`, `while`,
 //     `switch`, `catch`, … — and those are rejected by name in
 //     indexJSEnclosingFunctions rather than in the pattern, because RE2 has
 //     no negative lookahead and spelling them into the alternation would
 //     bury the shape being matched.
+//
+//     Unambiguous prefixes are allowed rather than declined: `*name(`,
+//     `async *name(` (generators) and `#name(` (private methods) cannot be
+//     call expressions, so there is no collision to trade against. The `#`
+//     stays IN the captured name — it is part of the identifier, and a class
+//     may declare both `#load` and `load`.
 //
 // NOTE: a span still carries only (offset, name) — see jsFuncSpan. What makes
 // the attribution correct here is that a method declaration sits NEARER to its
@@ -160,12 +173,30 @@ var axiosClientRe = regexp.MustCompile(
 // a call site trailing the last declaration in a file still attributes to it.
 // Bounding spans is a separate change — pyFuncSpan aliases jsFuncSpan and ~15
 // non-JS passes share enclosingJSFuncAt — and is filed as #6500.
+//
+// Because spans are unbounded, DECLINING to match a shape is not a safe
+// no-op. A call site with no span above it in its own method attributes to the
+// PRECEDING declaration, so every shape this alternative turns away yields a
+// wrong caller, not an empty one — that being the exact defect #6447 fixes, so
+// these are places the fix does not reach rather than places it is careful.
+// The known set is pinned in TestJSKnownMisattributionShapes_6447: column-0
+// shorthand, computed keys (`['load']() {`), Allman braces, one-line class
+// bodies, and methods named after a rejected reserved word (`catch`, `return`).
+// This is not confined to edge sourcing: sse_edges.go builds a Stream entity's
+// ID as `"/" + caller`, so a wrong caller is a wrongly NAMED entity.
+//
+// The pattern is also blind to comments and template literals, as alternatives
+// 1-3 already are; alternative 4 widens that surface materially, because a
+// commented-out method body inside a live class is common where a
+// commented-out `function foo(` is not. Accepted for now — masking dead text
+// is a whole-pattern change, not a change to this alternative — and pinned in
+// TestJSMethodShorthandInDeadTextPoisons_6447 so it stays a known cost.
 var jsFuncDeclRe = regexp.MustCompile(
 	`(?m)(?:^|[^\w$])(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(` +
 		`|(?m)(?:^|[^\w$])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(` +
 		`|(?m)(?:^|[\s{,;])([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(` +
 		`|(?m)^[ \t]+(?:(?:public|private|protected|static|readonly|async|get|set|override|abstract)[ \t]+)*` +
-		`([A-Za-z_$][\w$]*)[ \t]*(?:<[^<>()]*>)?[ \t]*\([^()]*\)[ \t]*(?::[^;{}()]*)?\{`,
+		`(?:\*[ \t]*)?(#?[A-Za-z_$][\w$]*)[ \t]*(?:<[^<>()]*>)?[ \t]*\([^()]*\)[ \t]*(?::[^;{}]*)?\{`,
 )
 
 // jsMethodShorthandReserved lists the identifiers that satisfy alternative 4
@@ -177,6 +208,16 @@ var jsFuncDeclRe = regexp.MustCompile(
 // missing entry mints a span named `if`, and because spans are unbounded
 // enclosingJSFuncAt would then attribute every call site below that block to
 // it — a WRONG caller, which is worse than the empty one #6447 started from.
+//
+// The reject is by NAME, so it also rejects a method legitimately called after
+// one of these words. That is a cost, not a free win, and for the same reason
+// as above it is paid in mis-attribution rather than in silence: the calls
+// inside a real `catch(err) { … }` (thenable) or `return(v) { … }` (iterator
+// protocol) are stamped with the PRECEDING method's name. Two rows in
+// TestJSKnownMisattributionShapes_6447 hold that fact still. `function` and
+// `with` are here for shapes alternative 1 does not cover — an ANONYMOUS
+// `function (x) {` at line start, and sloppy-mode `with (o) {` — not for
+// symmetry.
 var jsMethodShorthandReserved = map[string]bool{
 	"if": true, "for": true, "while": true, "switch": true,
 	"catch": true, "return": true, "do": true, "function": true,
