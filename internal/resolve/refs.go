@@ -2104,9 +2104,24 @@ var (
 		scopeKindPrefix + "View",
 		scopeKindPrefix + "Model",
 	}
+	// Issue #6459 — SCOPE.Service is a member because the proto extractor
+	// ADDRESSES a `service` in the operation address space:
+	// internal/extractors/proto's fileContainsOperationRel mints the file →
+	// service CONTAINS ToID via extractor.BuildOperationStructuralRef, i.e.
+	// scope:operation:method:proto:<file>:<ServiceName>, while the entity it
+	// points at carries Kind "SCOPE.Service". Without the family entry that
+	// ref cannot bind through the kind-filtered lookupLocationKind tier and
+	// falls through to the kind-agnostic byLocation index, which drops any
+	// (file, name) that is not unique — so the edge dangled the moment a
+	// message or rpc in the same .proto shared the service's name. That is the
+	// mirror image of the #6422 message/rpc collision. SCOPE.Service is
+	// deliberately NOT added to componentKindFamily: nothing addresses a
+	// service in the component address space, and doing so would let bare type
+	// references bind to an IDL service definition.
 	operationKindFamily = []string{
 		"Operation", "Function", "Method",
 		scopeKindPrefix + "Operation",
+		scopeKindPrefix + "Service",
 	}
 	// schemaKindFamily covers field / schema / property entities (issue #778).
 	// Used by structuralKindFamilies to disambiguate scope:schema:field:*

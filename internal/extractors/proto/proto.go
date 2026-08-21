@@ -260,29 +260,28 @@ func fileContainsRel(filePath, toRef string) types.RelationshipRecord {
 // fileContainsOperationRel is the file → service form, and the form the
 // service → rpc edges already use.
 //
-// A PRECISE STATEMENT OF WHAT THIS DOES AND DOES NOT RESOLVE, because an
-// earlier revision of this comment claimed "SCOPE.Service and SCOPE.Operation
-// both resolve through the operation address space" and that is FALSE.
-// internal/resolve/refs.go:1929-1932 defines
+// A PRECISE STATEMENT OF WHAT THIS RESOLVES, because two earlier revisions of
+// this comment were wrong in opposite directions.
 //
-//	operationKindFamily = {"Operation", "Function", "Method", "SCOPE.Operation"}
+// The first claimed "SCOPE.Service and SCOPE.Operation both resolve through
+// the operation address space", which was FALSE at the time: operationKindFamily
+// held only {"Operation", "Function", "Method", "SCOPE.Operation"}, so a service
+// reached its entity solely by falling through to the kind-agnostic byLocation
+// path — which drops any (file, name) that is not unique. The second revision
+// recorded that gap accurately and left it open as #6459.
 //
-// and SCOPE.Service is NOT in it. An rpc (SCOPE.Operation) binds through the
-// family; a service (SCOPE.Service) does not, and reaches its entity only by
-// falling through to the kind-agnostic byLocation path — which fails the
-// moment any other entity shares its (file, name).
-//
-// So the SERVICE arm still has the #6422 shape in mirror image. Measured on
+// #6459 has since closed it: internal/resolve/refs.go's operationKindFamily now
+// includes scopeKindPrefix+"Service", so BOTH arms bind through the kind-filtered
+// lookupLocationKind tier. Measured on
 //
 //	message Foo {…}; service Foo { rpc Go(Foo) returns (Foo); }
 //
-// in one file: the file → service Foo CONTAINS does not resolve, and the
-// service ends with zero inbound CONTAINS, while the message now correctly
-// has one. That is a strict improvement over the pre-#6422 state, where BOTH
-// dangled — but it is not a fix, and this comment does not claim to be one.
-// Closing it needs SCOPE.Service admitted to operationKindFamily (a
-// cross-language change to the resolver, not to this file) and belongs in its
-// own issue with its own measurement.
+// in one file — the collision that made the old byLocation fallback fail — the
+// file → service Foo CONTAINS now resolves to the SCOPE.Service entity, where
+// before it dangled and the service ended with zero inbound CONTAINS. The guard
+// is internal/resolve/proto_service_family_6459_test.go; it also pins that
+// SCOPE.Service stays OUT of componentKindFamily, since nothing addresses a
+// service in the component address space.
 func fileContainsOperationRel(filePath, name string) types.RelationshipRecord {
 	return fileContainsRel(filePath, extractor.BuildOperationStructuralRef("proto", filePath, name))
 }

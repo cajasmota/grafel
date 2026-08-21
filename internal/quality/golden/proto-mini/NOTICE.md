@@ -109,6 +109,15 @@ contains everything they need.
 
 ## #6459 (`SCOPE.Service` missing from `operationKindFamily`) is NOT flipped here
 
+**Confirmed by measurement when #6459 landed.** Grading this fixture immediately
+before and after adding `scopeKindPrefix + "Service"` to `operationKindFamily`
+produced byte-identical output — 18/18 entities, 16/16 relationships, 0 forbidden
+hits, and the same `resolver: rewrote=27 ambiguous=0 unmatched=7` line — exactly
+as the paragraph below predicted. The fixture served as the regression net for
+that change, not as its demonstration; the demonstration is the constructed
+collision in `internal/resolve/proto_service_family_6459_test.go`.
+
+
 `internal/resolve/refs.go`'s `operationKindFamily` omits `SCOPE.Service`, so
 the `file → service` CONTAINS reaches its service only via the kind-agnostic
 `byLocation` fallback. In this fixture that fallback happens to succeed, because
