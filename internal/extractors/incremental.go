@@ -452,8 +452,13 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		return fallback(t0, "abs-repo: "+err.Error())
 	}
 	endWalk := tr.span("tree-walk")
-	allFiles, walkErr := walkSourceFiles(absRepo)
+	allFiles, irregularReport, walkErr := walkSourceFiles(absRepo)
 	endWalk()
+	// #6416: say it on the daemon path too. Without this the only channel a
+	// skipped FIFO had was the foreground index's stderr.
+	if irregularReport != "" {
+		logger.Print(irregularReport)
+	}
 	tr.walkedFiles = len(allFiles)
 	if walkErr != nil {
 		return fallback(t0, "walk: "+walkErr.Error())
@@ -1764,13 +1769,22 @@ func samplePaths(s []string) []string {
 // fallback (incremental.go ~line 233), pinning daemon CPU in an endless
 // reindex loop (#5665). Delegating to walk.WalkRepo makes both paths honor the
 // same ignore rules, so gitignored churn can no longer drive reindexing.
-func walkSourceFiles(absRepo string) ([]string, error) {
+//
+// It also returns the walker's irregular-file report (#6416). The walker skips
+// non-regular entries — a FIFO named `Hang.vb` would otherwise block the
+// reading worker forever — and the foreground `grafel index` prints that skip
+// unconditionally. The daemon path reached the SAME walker through this
+// function and dropped `skipped` on the floor, so a watcher-triggered reindex
+// dropped the file with no stderr line and no doctor entry anywhere: the
+// #6338 lesson was satisfied only for the path most users do not hit. The
+// report is threaded out here so tryIncremental can log it.
+func walkSourceFiles(absRepo string) ([]string, string, error) {
 	// Mirror the full indexer: probe sparse-checkout state so a partial
 	// working tree is walked consistently. ProbeRepo is best-effort and
 	// returns a zero-value (no sparse filtering) when the repo isn't sparse.
 	sparse := gitmeta.ProbeRepo(absRepo)
-	files, _, err := walk.WalkRepo(absRepo, &walk.Options{Sparse: &sparse})
-	return files, err
+	files, skipped, err := walk.WalkRepo(absRepo, &walk.Options{Sparse: &sparse})
+	return files, walk.IrregularSkipReport(skipped), err
 }
 
 // entityRecordToGraphEntity converts a types.EntityRecord produced by an

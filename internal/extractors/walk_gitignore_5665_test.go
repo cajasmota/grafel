@@ -42,7 +42,7 @@ func TestWalkSourceFiles_HonorsGitignore(t *testing.T) {
 	mustWrite("Pods/Target Support Files/Foo/Foo.modulemap", "module Foo {}\n")
 	mustWrite("android/app/.cxx/RelWithDebInfo/abc/index.json", "{}\n")
 
-	files, err := walkSourceFiles(repo)
+	files, _, err := walkSourceFiles(repo)
 	if err != nil {
 		t.Fatalf("walkSourceFiles: %v", err)
 	}

@@ -21,17 +21,149 @@
 //
 // Transitive analysis uses package-lock.json (npm) and local node_modules.
 // Drop-in alternatives are suggested for common incompatible packages.
+//
+// EVERY FILE THIS PACKAGE READS IS NAME-CHOSEN, and none of them comes from
+// the file walker. The list above is literally a list of filenames: this
+// package joins "LICENSE", "package.json", "pyproject.toml", "Cargo.toml",
+// "package-lock.json", "METADATA", "Gemfile.lock" and a gemspec name onto a
+// directory and opens the result. The walker's entry-type gate therefore
+// cannot protect any of them, so all ten reads go through readLicenseFile
+// below rather than os.ReadFile: `mkfifo LICENSE` at a repo root used to park
+// the calling goroutine in open(2) forever, and the only caller is
+// internal/mcp/license_tools.go, so the goroutine it parked belonged to the
+// long-lived daemon (#6416).
 package licenses
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
+
+// maxLicenseFileBytes caps every read below.
+//
+// The cap is not belt-and-braces: safeio's type gate makes a FIFO impossible
+// to open, but a CHARACTER DEVICE opens fine and never reaches EOF, so "the
+// reader will hit EOF eventually" is not a bound, and an unguarded read of a
+// /dev/zero-shaped path runs until memory does. 8 MiB is chosen for the
+// largest thing here — package-lock.json in a big monorepo, which reaches a
+// few MiB — rather than for a LICENSE text, and a file past the cap is
+// truncated, which degrades to the same "license not identified" outcome an
+// unreadable file already produces.
+const maxLicenseFileBytes = 8 << 20
+
+// licenseSkip* back the always-on report below.
+var (
+	licenseSkipMu   sync.Mutex
+	licenseSkipSeen map[string]bool
+	licenseSkipOut  io.Writer = os.Stderr
+)
+
+// maxLicenseSkipReports caps the report the same way walk.IrregularSkipReport,
+// reportAliasSkip and reportGoModSkip cap theirs: a warning long enough to
+// scroll past reports nothing. Unlike those, the population here is unbounded
+// — one path per dependency in node_modules or the module cache — so the cap
+// is load-bearing rather than a backstop.
+const maxLicenseSkipReports = 16
+
+// setLicenseSkipOutput redirects the report for tests and returns a restore
+// func. Test-only helper.
+func setLicenseSkipOutput(w io.Writer) func() {
+	licenseSkipMu.Lock()
+	prev := licenseSkipOut
+	licenseSkipOut = w
+	licenseSkipSeen = nil
+	licenseSkipMu.Unlock()
+	return func() {
+		licenseSkipMu.Lock()
+		licenseSkipOut = prev
+		licenseSkipSeen = nil
+		licenseSkipMu.Unlock()
+	}
+}
+
+// readLicenseFile is the only way this package reads a file off disk.
+//
+// Consolidating the ten call sites into one function is the point: the #6416
+// review found this package precisely because each round of that PR fixed the
+// sites a reviewer had named and swept no further. A single reader means the
+// next filename added to this package is guarded by construction rather than
+// by whoever remembers.
+//
+// The error is returned unchanged so callers keep their existing "treat any
+// read failure as no license" behaviour; the skip is reported here so that
+// behaviour stops being silent.
+func readLicenseFile(path string) ([]byte, error) {
+	b, err := safeio.ReadFile(filepath.FromSlash(path), safeio.FollowSymlinks, maxLicenseFileBytes)
+	if err != nil {
+		reportLicenseSkip(path, err)
+	}
+	return b, err
+}
+
+// reportLicenseSkip says out loud that a license-bearing file was refused for
+// being a FIFO, device or socket.
+//
+// It exists because the #6416 re-review found safeio.ErrNotRegular carrying a
+// precise reason — path plus entry kind — that consumers then threw away with
+// a bare `return ""`. Every caller in this package does exactly that, and the
+// loss is not small: a refused LICENSE makes the project license "Unknown",
+// which flips CheckCompatibility's verdict for every dependency in the repo.
+// A wrong compatibility answer with no stated cause is #6338's shape at its
+// worst, because the user has no way to tell it from a genuinely unlicensed
+// repo.
+//
+// Only ErrNotRegular / ErrWouldBlock are reported. A plain ENOENT is the
+// ORDINARY case here — this package probes eight filenames at every repo root
+// and expects most of them to be absent — so announcing it would not merely
+// add noise, it would emit several lines for every healthy repo scanned.
+func reportLicenseSkip(path string, err error) {
+	if !errors.Is(err, safeio.ErrNotRegular) && !errors.Is(err, safeio.ErrWouldBlock) {
+		return
+	}
+	licenseSkipMu.Lock()
+	if licenseSkipSeen == nil {
+		licenseSkipSeen = map[string]bool{}
+	}
+	if licenseSkipSeen[path] || len(licenseSkipSeen) >= maxLicenseSkipReports {
+		licenseSkipMu.Unlock()
+		return
+	}
+	licenseSkipSeen[path] = true
+	last := len(licenseSkipSeen) == maxLicenseSkipReports
+	w := licenseSkipOut
+	licenseSkipMu.Unlock()
+
+	fmt.Fprintf(w, "grafel: skipped %v — not read because reading one can block forever; the license it declares will be reported as Unknown (#6416)\n", withLicensePath(path, err))
+	if last {
+		fmt.Fprintf(w, "grafel: further license-file skips suppressed after %d\n", maxLicenseSkipReports)
+	}
+}
+
+// withLicensePath makes a skip line attributable.
+//
+// safeio's two reportable errors are not shaped alike: ErrNotRegular is
+// wrapped with the path and the entry kind, but ErrWouldBlock is returned BARE
+// from openWithDeadline's two deadline arms. Printing it unadorned gives
+// "skipped safeio: open would block", which names no file and so tells a user
+// nothing they can act on — the same silence the report exists to end. Only
+// the bare form is decorated, so ErrNotRegular's own wording is left alone
+// rather than printing its path twice.
+func withLicensePath(path string, err error) error {
+	if errors.Is(err, safeio.ErrWouldBlock) {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return err
+}
 
 // ---------------------------------------------------------------------------
 // SPDX normalization
@@ -272,7 +404,7 @@ func DetectProjectLicense(repoPath string) (string, string) {
 	// 1. Look for a LICENSE file.
 	for _, name := range []string{"LICENSE", "LICENSE.txt", "LICENSE.md", "LICENCE", "COPYING"} {
 		p := filepath.Join(repoPath, name)
-		data, err := os.ReadFile(p)
+		data, err := readLicenseFile(p)
 		if err != nil {
 			continue
 		}
@@ -282,7 +414,7 @@ func DetectProjectLicense(repoPath string) (string, string) {
 		}
 	}
 	// 2. package.json
-	if data, err := os.ReadFile(filepath.Join(repoPath, "package.json")); err == nil {
+	if data, err := readLicenseFile(filepath.Join(repoPath, "package.json")); err == nil {
 		var pkg struct {
 			License interface{} `json:"license"`
 		}
@@ -299,13 +431,13 @@ func DetectProjectLicense(repoPath string) (string, string) {
 		}
 	}
 	// 3. pyproject.toml
-	if data, err := os.ReadFile(filepath.Join(repoPath, "pyproject.toml")); err == nil {
+	if data, err := readLicenseFile(filepath.Join(repoPath, "pyproject.toml")); err == nil {
 		if lic := extractTOMLField(string(data), "license"); lic != "" {
 			return normalizeSPDX(lic), "pyproject.toml"
 		}
 	}
 	// 4. Cargo.toml
-	if data, err := os.ReadFile(filepath.Join(repoPath, "Cargo.toml")); err == nil {
+	if data, err := readLicenseFile(filepath.Join(repoPath, "Cargo.toml")); err == nil {
 		if lic := extractTOMLField(string(data), "license"); lic != "" {
 			return normalizeSPDX(lic), "Cargo.toml"
 		}
@@ -382,7 +514,7 @@ func DetectNPMLicenses(repoPath string, packages []string) map[string]string {
 
 func readNPMPackageLicense(repoPath, pkgName string) string {
 	p := filepath.Join(repoPath, "node_modules", pkgName, "package.json")
-	data, err := os.ReadFile(p)
+	data, err := readLicenseFile(p)
 	if err != nil {
 		return ""
 	}
@@ -417,7 +549,7 @@ func readNPMPackageLicense(repoPath, pkgName string) string {
 // a map of package name → version for all transitive dependencies.
 func ResolveNPMTransitiveDeps(repoPath string) map[string]string {
 	p := filepath.Join(repoPath, "package-lock.json")
-	data, err := os.ReadFile(p)
+	data, err := readLicenseFile(p)
 	if err != nil {
 		return nil
 	}
@@ -512,7 +644,7 @@ func tryDistInfo(dirName, normPkgName string, base string) string {
 		return ""
 	}
 	metaPath := filepath.Join(base, dirName, "METADATA")
-	data, err := os.ReadFile(metaPath)
+	data, err := readLicenseFile(metaPath)
 	if err != nil {
 		return ""
 	}
@@ -578,7 +710,7 @@ func detectGoModLicense(modCache, modPath string) string {
 		// Found the versioned directory.
 		pkgDir := filepath.Join(hostDir, e.Name())
 		for _, name := range []string{"LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING"} {
-			data, err := os.ReadFile(filepath.Join(pkgDir, name))
+			data, err := readLicenseFile(filepath.Join(pkgDir, name))
 			if err == nil {
 				if lic := inferFromLicenseText(string(data)); lic != "" {
 					return normalizeSPDX(lic)
@@ -597,7 +729,7 @@ func detectGoModLicense(modCache, modPath string) string {
 // gem cache (~/.gem/specs or local .bundle).
 func DetectGemLicenses(repoPath string) map[string]string {
 	out := make(map[string]string)
-	data, err := os.ReadFile(filepath.Join(repoPath, "Gemfile.lock"))
+	data, err := readLicenseFile(filepath.Join(repoPath, "Gemfile.lock"))
 	if err != nil {
 		return out
 	}
@@ -632,7 +764,7 @@ func readGemspecLicense(name, version string) string {
 		}
 	}
 	for _, p := range gemspecPaths {
-		data, err := os.ReadFile(p)
+		data, err := readLicenseFile(p)
 		if err != nil {
 			continue
 		}

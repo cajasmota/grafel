@@ -19,13 +19,19 @@ package secrets
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +400,21 @@ func ScanPath(root string, maxFileBytes int64) ([]Finding, error) {
 			return nil
 		}
 
+		// NOTE (#6416): there is deliberately NO entry-type gate here, even
+		// though this is the second independent WalkDir in grafel that
+		// branches only on d.IsDir(). The guard lives at the single place that
+		// opens the file — scanFile's safeio.Open — because a stat gate here
+		// could only ever duplicate it: it would be unfalsifiable (removing it
+		// changes no observable behaviour, so no test can pin it) while still
+		// leaving the stat/open race that only the open site can close.
+		//
+		// It matters more on this path than on the index path: ScanPath is
+		// reachable from the daemon's MCP secrets tool and from an HTTP
+		// dashboard handler, so a caller who never runs an index can wedge a
+		// daemon goroutine. Neither guard below helps — d.Info().Size() is 0
+		// for a FIFO so the size check passes, and skipFile is only an
+		// extension denylist.
+
 		// Skip test files.
 		if isTestFile(rel) {
 			return nil
@@ -407,7 +428,11 @@ func ScanPath(root string, maxFileBytes int64) ([]Finding, error) {
 
 		ff, err := scanFile(path, rel)
 		if err != nil {
-			return nil // skip unreadable files silently
+			// Ordinary unreadable files (deleted mid-walk, no permission)
+			// stay silent. The two errors that mean "this file was refused
+			// for being non-regular" are announced by scanFile's
+			// reportSecretScanSkip before we get here (#6416).
+			return nil
 		}
 		findings = append(findings, ff...)
 		return nil
@@ -416,10 +441,117 @@ func ScanPath(root string, maxFileBytes int64) ([]Finding, error) {
 	return findings, err
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Skip reporting (#6416)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// secretSkip* back the always-on report below.
+var (
+	secretSkipMu   sync.Mutex
+	secretSkipSeen map[string]bool
+	secretSkipOut  io.Writer = os.Stderr
+)
+
+// maxSecretSkipReports caps the report the same way walk.IrregularSkipReport,
+// reportAliasSkip and reportGoModSkip cap theirs: a warning long enough to
+// scroll past reports nothing. The cap earns more here than at the
+// name-chosen read sites: those see at most a handful of paths per repo, while
+// ScanPath walks a whole tree and a tree full of device nodes would otherwise
+// produce a line per entry.
+const maxSecretSkipReports = 16
+
+// setSecretSkipOutput redirects the report for tests and returns a restore
+// func. Test-only helper.
+func setSecretSkipOutput(w io.Writer) func() {
+	secretSkipMu.Lock()
+	prev := secretSkipOut
+	secretSkipOut = w
+	secretSkipSeen = nil
+	secretSkipMu.Unlock()
+	return func() {
+		secretSkipMu.Lock()
+		secretSkipOut = prev
+		secretSkipSeen = nil
+		secretSkipMu.Unlock()
+	}
+}
+
+// reportSecretScanSkip says out loud that a file was refused for being a FIFO,
+// device or socket.
+//
+// It exists because ScanPath's walk mapped BOTH safeio.ErrNotRegular and
+// safeio.ErrWouldBlock to `return nil // skip unreadable files silently`. The
+// hang was closed but the skip was announced nowhere, so `mkfifo creds.go`
+// produced a scan that reported "no secrets found" having never looked at
+// creds.go — a file the user can see in their own tree. That is precisely the
+// #6338 shape this PR invokes as its own rationale, and the shape the walker
+// half of this PR was changed to stop producing.
+//
+// It matters more here than at the extractor read sites. ScanPath answers "is
+// this repo clean?" for a human, and it is reachable from the daemon's MCP
+// secrets tool (internal/mcp/secrets_tools.go) and an HTTP dashboard handler
+// (internal/dashboard/handlers_secrets.go), so a caller who never runs an index
+// can get a clean bill of health for a tree that was only partly read.
+//
+// CHANNEL NOTE. This is stderr only; the skip does NOT appear in the []Finding
+// returned to those two callers. That is deliberate for now — surfacing it to
+// the caller means changing ScanPath's signature, which is an API change across
+// both entry points and their tests, and is recorded as a follow-up rather than
+// smuggled in here. In the daemon both callers' stderr is the daemon log, so
+// the record exists; what is missing is the MCP/HTTP caller's own view of it.
+//
+// Only ErrNotRegular / ErrWouldBlock are reported. ENOENT is the ordinary case
+// on a walk — files are deleted between readdir and open all the time — and
+// announcing it would bury the signal.
+func reportSecretScanSkip(path string, err error) {
+	if !errors.Is(err, safeio.ErrNotRegular) && !errors.Is(err, safeio.ErrWouldBlock) {
+		return
+	}
+	secretSkipMu.Lock()
+	if secretSkipSeen == nil {
+		secretSkipSeen = map[string]bool{}
+	}
+	if secretSkipSeen[path] || len(secretSkipSeen) >= maxSecretSkipReports {
+		secretSkipMu.Unlock()
+		return
+	}
+	secretSkipSeen[path] = true
+	last := len(secretSkipSeen) == maxSecretSkipReports
+	w := secretSkipOut
+	secretSkipMu.Unlock()
+
+	fmt.Fprintf(w, "grafel: skipped secret scan of %v — not read because reading one can block forever; this file was NOT checked for secrets (#6416)\n", withPath(path, err))
+	if last {
+		fmt.Fprintf(w, "grafel: further secret-scan skips suppressed after %d\n", maxSecretSkipReports)
+	}
+}
+
+// withPath makes a skip line attributable.
+//
+// safeio's two reportable errors are not shaped alike: ErrNotRegular is wrapped
+// with the path and the entry kind, but ErrWouldBlock is returned BARE from
+// openWithDeadline's two deadline arms. Printing it unadorned gives "skipped
+// secret scan of safeio: open would block", which names no file and so tells a
+// user nothing they can act on — the same silence the report exists to end.
+// Only the bare form is decorated, so ErrNotRegular's own wording is left alone
+// rather than printing its path twice.
+func withPath(path string, err error) error {
+	if errors.Is(err, safeio.ErrWouldBlock) {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return err
+}
+
 // scanFile reads one file and returns all findings in it.
 func scanFile(path, rel string) ([]Finding, error) {
-	f, err := os.Open(path)
+	// safeio.Open, not os.Open (#6416). This is the ONE guard on this path:
+	// os.Open on a FIFO named `creds.go` waits for a writer that never comes,
+	// and ScanPath's walk hands the path straight here. safeio refuses
+	// anything that is not a regular file and opens with O_NONBLOCK plus an
+	// fstat on the descriptor, so a path swapped under it cannot hang either.
+	f, err := safeio.Open(path, safeio.FollowSymlinks)
 	if err != nil {
+		reportSecretScanSkip(path, err)
 		return nil, err
 	}
 	defer f.Close()

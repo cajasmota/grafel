@@ -14,17 +14,141 @@
 // go.mod change always triggers a full re-index.
 //
 // When RepoRoot is empty or go.mod is absent/unreadable the reader returns ""
-// and the stamp is silently skipped; in-tree imports are left unresolved (the
-// pre-fix behaviour).
+// and the stamp is skipped; in-tree imports are left unresolved (the pre-fix
+// behaviour). Only a plain absence is silent: a go.mod refused for being a
+// FIFO, device or socket, or one whose read would have blocked, is announced
+// by reportGoModSkip below (#6416).
 package golang
 
 import (
 	"bufio"
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
+
+// maxGoModBytes caps the go.mod read below.
+//
+// The cap is not belt-and-braces: safeio's type gate makes a FIFO impossible
+// to open, but a CHARACTER DEVICE opens fine and never reaches EOF, so "the
+// scanner will hit EOF eventually" is not a bound, and an unguarded scan of a
+// /dev/zero-shaped path runs until memory does. 4 MiB is orders of magnitude
+// past any real go.mod — the largest in grafel's corpus is a few KiB — and a
+// file past the cap is truncated, which yields at worst a missing `module`
+// line or a dropped `replace`. That is the same outcome as an unreadable
+// go.mod, which both callers above already handle by returning ""/nil.
+const maxGoModBytes = 4 << 20
+
+// goModSkip* back the always-on report below.
+var (
+	goModSkipMu   sync.Mutex
+	goModSkipSeen map[string]bool
+	goModSkipOut  io.Writer = os.Stderr
+)
+
+// maxGoModSkipReports caps the report the same way walk.IrregularSkipReport
+// and reportAliasSkip cap theirs: a warning long enough to scroll past reports
+// nothing. The population here is one path per repo root, so the cap is a
+// backstop against a pathological multi-repo group, not the common case.
+const maxGoModSkipReports = 16
+
+// setGoModSkipOutput redirects the report for tests and returns a restore
+// func. Test-only helper.
+func setGoModSkipOutput(w io.Writer) func() {
+	goModSkipMu.Lock()
+	prev := goModSkipOut
+	goModSkipOut = w
+	goModSkipSeen = nil
+	goModSkipMu.Unlock()
+	return func() {
+		goModSkipMu.Lock()
+		goModSkipOut = prev
+		goModSkipSeen = nil
+		goModSkipMu.Unlock()
+	}
+}
+
+// readGoMod is the only way this file reads go.mod off disk.
+//
+// WHY IT IS NOT os.Open. Both readers below are handed a path built as
+// filepath.Join(repoRoot, "go.mod") — chosen by NAME, from the repo root,
+// unconditionally, for every Go repository the indexer touches. None of that
+// comes from the file walker, so the walker's entry-type gate cannot protect
+// it. `mkfifo go.mod` therefore wedged the extraction worker forever: os.Open
+// waits in open(2) for a writer that never comes (#6416). This was the highest
+// remaining severity in that issue precisely because it needs no special tree
+// shape — a single mkfifo at the root of any Go repo was enough.
+//
+// Unlike the JS alias loader, neither caller holds a lock across this read:
+// goModuleRoot and goModuleReplaces both release their RLock before parsing
+// and take the write lock only afterwards. So the blast radius here was the
+// abandoned worker goroutine, not the whole package's cache.
+func readGoMod(path string) ([]byte, error) {
+	b, err := safeio.ReadFile(filepath.FromSlash(path), safeio.FollowSymlinks, maxGoModBytes)
+	if err != nil {
+		reportGoModSkip(path, err)
+	}
+	return b, err
+}
+
+// reportGoModSkip says out loud that a go.mod was refused for being a FIFO,
+// device or socket.
+//
+// It exists because the #6416 re-review found safeio.ErrNotRegular carrying a
+// precise reason — path plus entry kind — that consumers then threw away with
+// a bare `return ""`. A refused go.mod is not a small loss: without the module
+// root every in-tree import in the repo resolves to an external ext: node
+// instead of a file entity, so the user sees a graph with its internal Go
+// import structure missing and no stated cause. That is #6338's shape exactly.
+//
+// Only ErrNotRegular / ErrWouldBlock are reported. A plain ENOENT is ordinary
+// — plenty of indexed trees have Go files with no go.mod above them — and
+// announcing it would bury the signal.
+func reportGoModSkip(path string, err error) {
+	if !errors.Is(err, safeio.ErrNotRegular) && !errors.Is(err, safeio.ErrWouldBlock) {
+		return
+	}
+	goModSkipMu.Lock()
+	if goModSkipSeen == nil {
+		goModSkipSeen = map[string]bool{}
+	}
+	if goModSkipSeen[path] || len(goModSkipSeen) >= maxGoModSkipReports {
+		goModSkipMu.Unlock()
+		return
+	}
+	goModSkipSeen[path] = true
+	last := len(goModSkipSeen) == maxGoModSkipReports
+	w := goModSkipOut
+	goModSkipMu.Unlock()
+
+	fmt.Fprintf(w, "grafel: skipped %v — not read because reading one can block forever; in-tree Go imports for this repo will stay unresolved (#6416)\n", withPath(path, err))
+	if last {
+		fmt.Fprintf(w, "grafel: further go.mod skips suppressed after %d\n", maxGoModSkipReports)
+	}
+}
+
+// withPath makes a skip line attributable.
+//
+// safeio's two reportable errors are not shaped alike: ErrNotRegular is
+// wrapped with the path and the entry kind, but ErrWouldBlock is returned BARE
+// from openWithDeadline's two deadline arms. Printing it unadorned gives
+// "skipped safeio: open would block", which names no file and so tells a user
+// nothing they can act on — the same silence the report exists to end. Only
+// the bare form is decorated, so ErrNotRegular's own wording is left alone
+// rather than printing its path twice.
+func withPath(path string, err error) error {
+	if errors.Is(err, safeio.ErrWouldBlock) {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return err
+}
 
 var (
 	goModCacheMu sync.RWMutex
@@ -147,13 +271,12 @@ func goReplacePkgDir(importPath string, replaces []goReplace) (string, bool) {
 // parseGoModModule reads path and returns the module name from the first
 // "module <name>" directive. Returns "" on any error.
 func parseGoModModule(path string) string {
-	f, err := os.Open(filepath.FromSlash(path))
+	data, err := readGoMod(path)
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if !strings.HasPrefix(line, "module ") {
@@ -192,15 +315,14 @@ func parseGoModModule(path string) string {
 // path (begins with "./", "../", "/", or is exactly ".") are recorded;
 // version/network replacements are skipped. Returns nil on any read error.
 func parseGoModReplaces(path string) []goReplace {
-	f, err := os.Open(filepath.FromSlash(path))
+	data, err := readGoMod(path)
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
 
 	var out []goReplace
 	inBlock := false
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		line := stripGoModComment(strings.TrimSpace(scanner.Text()))
 		if line == "" {

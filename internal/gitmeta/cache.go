@@ -132,7 +132,7 @@ func resolveGitDirs(repoPath string) (gitDir, commonDir string, ok bool) {
 		return "", "", false
 	}
 	commonDir = gitDir
-	if data, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
+	if data, err := readGitMetaFile(filepath.Join(gitDir, "commondir"), maxGitPointerBytes); err == nil {
 		if cd := strings.TrimSpace(string(data)); cd != "" {
 			if filepath.IsAbs(cd) {
 				commonDir = filepath.Clean(cd)
@@ -168,7 +168,7 @@ func statToken(path string) string {
 // tip's bytes ARE the commit id, so comparing them is exact — and at 41 bytes it
 // costs the same open/read/close the HEAD pointer already pays.
 func contentToken(path string) string {
-	data, err := os.ReadFile(path)
+	data, err := readGitMetaFile(path, maxGitPointerBytes)
 	if err != nil {
 		return "-"
 	}
@@ -203,7 +203,7 @@ func commitToken(repoPath string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	headBytes, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	headBytes, err := readGitMetaFile(filepath.Join(gitDir, "HEAD"), maxGitPointerBytes)
 	if err != nil {
 		return "", false
 	}
@@ -276,7 +276,7 @@ func CaptureCachedFresh(repoPath string) Info {
 // readGitdirFile parses a worktree ".git" gitdir-file ("gitdir: <path>\n") and
 // returns the referenced directory, or "" on any error.
 func readGitdirFile(path string) string {
-	data, err := os.ReadFile(path)
+	data, err := readGitMetaFile(path, maxGitPointerBytes)
 	if err != nil {
 		return ""
 	}
