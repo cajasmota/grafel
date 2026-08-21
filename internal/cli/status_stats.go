@@ -238,17 +238,34 @@ func ComputeStatusSummaryForRef(group string, repos []registry.Repo, ref string)
 	// twice); keying on anything broader would fold together repos that render
 	// as separate rows and turn the over-count into a silent under-count.
 	//
-	// First entry wins, which matches the pre-existing precedence for the
-	// group's OTHER per-slug state and is deterministic in registry order. The
-	// duplicate entry is skipped before any I/O, so this also removes the
-	// redundant graph open it used to perform.
-	seenSlugs := make(map[string]struct{}, len(repos))
+	// LAST entry wins, and that is not an arbitrary pick — it is the precedence
+	// that already existed here. Before this fix nothing was skipped: every
+	// entry ran, and the second one's `s.RepoStats[r.Slug] = rs` overwrote the
+	// first one's row. So the row a user saw — its Path, its counts, its age —
+	// was always the LAST entry's. A fix to the ARITHMETIC must not also change
+	// WHICH repo is rendered; a first-wins dedupe would quietly start printing a
+	// different Path for a duplicate-slug repo, an undeclared user-visible
+	// change riding along inside a counting fix.
+	//
+	// It is also the house rule: every group-scoped per-slug map in the tree is
+	// last-wins by plain overwrite — this file's own s.RepoStats, and links.go's
+	// srcPaths / docs / graphPaths. The one first-wins analogue, quarantine.go's
+	// slug lookup, is an explicitly CROSS-GROUP first-match search, not
+	// group-scoped aggregation, so it sets no precedent for this loop.
+	//
+	// Last-wins costs nothing in I/O: the surviving index per slug is computed
+	// up front, so an earlier duplicate is skipped BEFORE the graph open it used
+	// to perform, exactly as a first-wins guard would have skipped the later
+	// one. Registry order is stable, so the choice is deterministic.
+	lastIdx := make(map[string]int, len(repos))
+	for i, r := range repos {
+		lastIdx[r.Slug] = i
+	}
 
-	for _, r := range repos {
-		if _, dup := seenSlugs[r.Slug]; dup {
+	for i, r := range repos {
+		if lastIdx[r.Slug] != i {
 			continue
 		}
-		seenSlugs[r.Slug] = struct{}{}
 
 		rs := &RepoStatus{
 			Slug:           r.Slug,

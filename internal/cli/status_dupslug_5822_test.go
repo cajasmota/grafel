@@ -201,6 +201,24 @@ func TestStatusTotalsDedupeSameSlugAcrossDifferentPaths(t *testing.T) {
 	if len(s.RepoStats) != 1 {
 		t.Fatalf("fixture broken: %d rows for 2 same-slug entries, want 1", len(s.RepoStats))
 	}
+
+	// The dedupe must not change WHICH entry is rendered. Before #5822 the
+	// second entry's `s.RepoStats[r.Slug] = rs` simply overwrote the first, so
+	// the row a user saw carried the LAST entry's Path and the LAST entry's
+	// counts. A fix to the ARITHMETIC has no business also flipping that: a
+	// first-wins dedupe would silently start rendering copy-a where copy-b used
+	// to appear, an unannounced user-visible change riding along inside a
+	// counting fix. Pinned here so the precedence cannot drift unnoticed.
+	if got := s.RepoStats["svc"].Path; got != b {
+		t.Errorf("rendered row Path = %q, want the LAST entry's %q — the dedupe "+
+			"inverted the pre-fix precedence (last-wins) and now renders a "+
+			"different repo than `status` did before the fix (#5822)", got, b)
+	}
+	if got := s.RepoStats["svc"].Relationships; got != 200 {
+		t.Errorf("rendered row Relationships = %d, want the LAST entry's 200 — "+
+			"the surviving row must be the last entry's throughout, not just its "+
+			"Path (#5822)", got)
+	}
 	assertTotalsMatchRows(t, s)
 }
 
