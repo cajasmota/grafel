@@ -261,7 +261,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		entities = append(entities, cfEnts...)
 
 		// Navigation (#2856): imperative svelte-routing navigate()/push().
-		navRels := extractScriptNavigation(scriptContent, scriptStartLine, file.Path, componentName)
+		navRels := extractScriptNavigation(scriptContent, scriptStartLine, componentName)
 		entities[0].Relationships = append(entities[0].Relationships, navRels...)
 
 		// Lifecycle (#2856): state_setter_emission — store .set/.update and
@@ -284,7 +284,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// ── 3. Extract RENDERS edges + branch conditions from the template ───────
 	templateContent, templateStartLine := extractTemplateSection(src)
 	if templateContent != "" {
-		renderRels := extractChildComponents(templateContent, templateStartLine, file.Path, componentName)
+		renderRels := extractChildComponents(templateContent, templateStartLine, componentName)
 		if len(renderRels) > 0 {
 			// Attach RENDERS relationships to the component entity.
 			entities[0].Relationships = append(entities[0].Relationships, renderRels...)
@@ -296,7 +296,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 
 		// Navigation (#2856): <Route path="…"> / <Link to="…"> svelte-routing
 		// directives emit NAVIGATES_TO edges.
-		linkRels := extractRouteDirectives(templateContent, templateStartLine, file.Path, componentName)
+		linkRels := extractRouteDirectives(templateContent, templateStartLine, componentName)
 		entities[0].Relationships = append(entities[0].Relationships, linkRels...)
 
 		// Svelte Internals (#2877): `use:` action directives.
@@ -695,7 +695,7 @@ func extractBranchConditions(template string, templateStartLine int, filePath, c
 // has no built-in router, so this targets the ecosystem libraries:
 // svelte-routing's navigate('/x') and svelte-spa-router's push('/x')/
 // replace('/x'). Returns NAVIGATES_TO edges from the component file.
-func extractScriptNavigation(script string, scriptStartLine int, filePath, componentName string) []types.RelationshipRecord {
+func extractScriptNavigation(script string, scriptStartLine int, componentName string) []types.RelationshipRecord {
 	var rels []types.RelationshipRecord
 	seen := map[string]bool{}
 	emit := func(route, via string, off int) {
@@ -730,7 +730,7 @@ func extractScriptNavigation(script string, scriptStartLine int, filePath, compo
 // path="…"> route declarations and <Link to="…"> navigation links (issue #2856
 // — Navigation/router_pattern), returning NAVIGATES_TO edges from the component
 // file.
-func extractRouteDirectives(template string, templateStartLine int, filePath, componentName string) []types.RelationshipRecord {
+func extractRouteDirectives(template string, templateStartLine int, componentName string) []types.RelationshipRecord {
 	var rels []types.RelationshipRecord
 	seen := map[string]bool{}
 	emit := func(re *regexp.Regexp, via string) {
@@ -1023,7 +1023,7 @@ func normalizeContextKey(raw string) string {
 //
 // Deduplicates by component name so `<Button>` appearing 3 times produces
 // one RENDERS edge, not three (avoids count inflation).
-func extractChildComponents(template string, templateStartLine int, filePath, componentName string) []types.RelationshipRecord {
+func extractChildComponents(template string, templateStartLine int, componentName string) []types.RelationshipRecord {
 	seen := make(map[string]struct{})
 	var rels []types.RelationshipRecord
 
