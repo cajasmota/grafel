@@ -60,6 +60,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/protectedpath"
 )
 
 // canonicalCache caches (inputPath → canonicalPath) resolutions so that
@@ -71,6 +72,12 @@ var canonicalCache sync.Map // map[string]string
 // It is a package var so tests can inject a slow/blocking implementation
 // to exercise the timeout guard without a real stuck filesystem.
 var readDirFunc = os.ReadDir
+
+// traversalProtected is the protected-path gate consulted by
+// canonicalizePath before it reads a directory. It is a package var so tests
+// can inject a fixture home root instead of the real one — no test may read a
+// real ~/Documents. See internal/protectedpath (#6548).
+var traversalProtected = protectedpath.IsTraversalProtected
 
 // defaultCanonicalizeTimeout bounds the per-segment os.ReadDir call in
 // canonicalizePath. On case-insensitive filesystems this read is
@@ -156,9 +163,26 @@ func canonicalizePath(absPath string) string {
 
 	timeout := canonicalizeTimeout()
 	canonical := vol + string(filepath.Separator)
-	for _, seg := range segments {
+	protectedFrom := -1
+	for i, seg := range segments {
 		if seg == "" {
 			continue
+		}
+		// #6548: never READ a protected directory to recover a segment's
+		// casing. This decomposition is INFERRED traversal — the user pointed
+		// grafel at a repo, not at ~/Documents — and on macOS with iCloud
+		// "Desktop & Documents" sync on, os.ReadDir'ing one of those pops the
+		// "grafel wants to access files managed by iCloud Drive" consent
+		// dialog. Skip the read and take the documented degrade path:
+		// preserve the input casing for this segment and every remaining one.
+		// The result is therefore the input path itself from here down —
+		// deterministic, cached by input string, and never a path pointing
+		// somewhere the caller did not ask for.
+		if protected, reason := traversalProtected(canonical); protected {
+			slog.Debug("canonicalizePath: skipping casing recovery in a protected directory; preserving input casing",
+				"dir", canonical, "reason", reason, "path", absPath)
+			protectedFrom = i
+			break
 		}
 		// Try to find the real on-disk name for this segment, bounded by a
 		// timeout. A single ancestor whose os.ReadDir hangs (iCloud/Spotlight/
@@ -189,6 +213,17 @@ func canonicalizePath(absPath string) string {
 		}
 		if !found {
 			// Segment not present; preserve input casing.
+			canonical = filepath.Join(canonical, seg)
+		}
+	}
+
+	// A protected ancestor stopped the recovery: append the remaining
+	// segments verbatim so we neither read into nor guess at that subtree.
+	if protectedFrom >= 0 {
+		for _, seg := range segments[protectedFrom:] {
+			if seg == "" {
+				continue
+			}
 			canonical = filepath.Join(canonical, seg)
 		}
 	}
