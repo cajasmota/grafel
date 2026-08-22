@@ -513,7 +513,62 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 			// tree; not a skip worth reporting.
 			return nil
 		}
-		if info.Size() > maxFileBytes {
+
+		// The gate must weigh the bytes that will actually be READ (#6507).
+		//
+		// d.Info() is an LSTAT: for a symlink it reports the link's own size,
+		// a few dozen bytes, never the target's. scanFile then opens with
+		// safeio.FollowSymlinks and reads the target in full — so before this
+		// re-stat the cap gated nothing at all on a symlinked entry, and a
+		// link to an arbitrarily large file sailed through any max_size.
+		//
+		// The consequence was worse than a bypass, because it landed the
+		// entry in the WRONG skip bucket. A ~70 KB target under max_size=1024
+		// was opened, read, and reported as line_too_long — a bufio limit no
+		// caller can raise — when the truthful answer was too_large, the cap
+		// the caller itself chose and can raise. Both readings mislead: that
+		// nothing can be done, or that the file was within budget.
+		//
+		// Statting the TARGET rather than skipping symlinks outright: the
+		// scanner follows them deliberately, and monorepo and vendor link
+		// farms are the ordinary case, not the exotic one — refusing them
+		// would trade a size-gate bug for a coverage hole. The extra stat is
+		// paid only on symlinked entries, so the common path is unchanged.
+		//
+		// info itself is NOT reassigned: its Mode() is handed to
+		// classifyScanSkip, which documents that it receives the walk's lstat
+		// mode and does its own follow-stat on the error path only.
+		sizeInfo := info
+		if info.Mode()&os.ModeSymlink != 0 {
+			ti, terr := os.Stat(path)
+			if terr != nil {
+				// Dangling or unreachable target. The same class as the
+				// vanished-entry case above — an ordinary condition on a live
+				// tree, not a file withheld from the caller — so it stays
+				// silent rather than manufacturing a skip. safeio.Open would
+				// fail on it a moment later anyway.
+				return nil
+			}
+			sizeInfo = ti
+		}
+
+		// IsRegular, because the gate weighs BYTES THAT WILL BE READ and a
+		// non-regular target has none. os.Stat on a symlink to a DIRECTORY
+		// answers with the directory's own size — a filesystem artefact, 64
+		// bytes on APFS but at least 4096 on ext4 and larger for a directory
+		// with many entries — which meets any modest cap. Without this guard
+		// the entry came back too_large with Kind empty, telling the caller to
+		// raise max_size for something no cap will ever make scannable: the
+		// same wrong-bucket defect #6507 is about, on the path #6507's own fix
+		// introduced.
+		//
+		// It FALLS THROUGH rather than skipping here, so the naming stays with
+		// the single authority that already owns it: safeio.Open refuses the
+		// entry and classifyScanSkip reports not_regular with Kind=directory.
+		// An early skip at this site would have to re-derive that vocabulary,
+		// and would reintroduce exactly the duplicate entry-type gate the
+		// NOTE (#6416) above rules out.
+		if sizeInfo.Mode().IsRegular() && sizeInfo.Size() > maxFileBytes {
 			skipped = append(skipped, Skip{Path: path, Rel: rel, Reason: SkipTooLarge})
 			return nil
 		}
@@ -542,7 +597,7 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 			// are in doubt, and a finding attributed to a line number the
 			// scanner may have mis-tracked is worse than the skip entry that
 			// tells the caller to look again.
-			if errors.Is(err, bufio.ErrTooLong) {
+			if keepPartialFindings(err) {
 				findings = append(findings, ff...)
 			}
 			return nil
@@ -552,6 +607,44 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 	})
 
 	return ScanResult{Findings: findings, Skipped: skipped}, err
+}
+
+// keepPartialFindings decides whether the findings scanFile collected BEFORE
+// it failed may still be reported (#6505).
+//
+// Only bufio.ErrTooLong qualifies, and the asymmetry is the whole point:
+//
+//   - ErrTooLong is a PARTIAL READ of a file safeio opened perfectly well.
+//     Every line before the overlong one was delivered exactly once and matched
+//     against real bytes, and the line counter is not perturbed by the line the
+//     scanner refused — so both the findings and their line numbers are sound.
+//     Dropping them turns a found credential into a silent "clean", which is the
+//     defect #6483 fixes one layer up and #6505 filed against this exact site.
+//
+//   - safeio.Open failures (ErrNotRegular, ErrWouldBlock) never read a byte, so
+//     ff is empty and keeping it would be a no-op — which is precisely why a
+//     mutant that widens this predicate to `return true` is INVISIBLE
+//     end-to-end and must be pinned here instead.
+//
+//   - A mid-read I/O error puts the bytes themselves in doubt, and with them
+//     the line numbers. A finding attributed to a line the scanner may have
+//     mis-tracked is worse than the skip entry telling the caller to look
+//     again, so those are dropped even though ff may be non-empty.
+//
+// It is a named predicate rather than an inline errors.Is for the reason
+// TestClassifyScanSkipReportsWouldBlock gives for its own arm: no portable
+// fixture can provoke a mid-read I/O error through os/filepath, so the
+// distinction is unfalsifiable end-to-end and would otherwise be pinned
+// nowhere.
+//
+// Extraction moved the assertion; it did not close the gap. The CALL SITE above
+// is still unpinned — replacing `if keepPartialFindings(err)` with `if true`
+// leaves the package green — because the one error that would tell the two
+// apart cannot be reached from a test. That mutant is equivalent under the
+// suite, not dead, and TestKeepPartialFindingsIsExclusiveToErrTooLong says so
+// in as many words.
+func keepPartialFindings(err error) bool {
+	return errors.Is(err, bufio.ErrTooLong)
 }
 
 // classifyScanSkip maps a scanFile error onto the closed skip vocabulary, or
