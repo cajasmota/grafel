@@ -215,7 +215,58 @@ func ComputeStatusSummaryForRef(group string, repos []registry.Repo, ref string)
 		RepoStats: make(map[string]*RepoStatus),
 	}
 
-	for _, r := range repos {
+	// #5822 — count each SLUG once, not each registry entry once.
+	//
+	// Every group-level accumulator below (TotalEntities, TotalRelationships,
+	// UnsupportedExt, HTTPEndpoints, ProcessFlows, EnrichmentCandidates,
+	// RepairCandidates and the three migration tallies) adds once per iteration
+	// of this loop — i.e. once per REGISTRY ENTRY. The per-repo rows, however,
+	// are stored as s.RepoStats[r.Slug] and printed by slug, so a second entry
+	// resolving to a slug already seen OVERWRITES the row it produced.
+	//
+	// Two entries, one row, two additions: the group TOTAL then exceeds the sum
+	// of the lines printed underneath it, by exactly 2x when one repo is
+	// registered twice. That is the over-count reported on #5822 (status:
+	// 3,487,888 relationships against the indexer's committed 1,963,736 on the
+	// same graph). Nothing was duplicated in the graph; the summary added the
+	// same repo to itself.
+	//
+	// The dedupe key is the slug and nothing coarser, because the slug is
+	// precisely what the row map is keyed by — that identity is the invariant
+	// being restored. Keying on the path would miss two entries that share a
+	// slug but point at different directories (still one row, still counted
+	// twice); keying on anything broader would fold together repos that render
+	// as separate rows and turn the over-count into a silent under-count.
+	//
+	// LAST entry wins, and that is not an arbitrary pick — it is the precedence
+	// that already existed here. Before this fix nothing was skipped: every
+	// entry ran, and the second one's `s.RepoStats[r.Slug] = rs` overwrote the
+	// first one's row. So the row a user saw — its Path, its counts, its age —
+	// was always the LAST entry's. A fix to the ARITHMETIC must not also change
+	// WHICH repo is rendered; a first-wins dedupe would quietly start printing a
+	// different Path for a duplicate-slug repo, an undeclared user-visible
+	// change riding along inside a counting fix.
+	//
+	// It is also the house rule: every group-scoped per-slug map in the tree is
+	// last-wins by plain overwrite — this file's own s.RepoStats, and links.go's
+	// srcPaths / docs / graphPaths. The one first-wins analogue, quarantine.go's
+	// slug lookup, is an explicitly CROSS-GROUP first-match search, not
+	// group-scoped aggregation, so it sets no precedent for this loop.
+	//
+	// Last-wins costs nothing in I/O: the surviving index per slug is computed
+	// up front, so an earlier duplicate is skipped BEFORE the graph open it used
+	// to perform, exactly as a first-wins guard would have skipped the later
+	// one. Registry order is stable, so the choice is deterministic.
+	lastIdx := make(map[string]int, len(repos))
+	for i, r := range repos {
+		lastIdx[r.Slug] = i
+	}
+
+	for i, r := range repos {
+		if lastIdx[r.Slug] != i {
+			continue
+		}
+
 		rs := &RepoStatus{
 			Slug:           r.Slug,
 			Path:           r.Path,
