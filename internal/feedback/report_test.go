@@ -414,13 +414,19 @@ func TestGenerate_FieldChildrenAndContainerTerminalsClassifiedCorrectly(t *testi
 	}
 
 	// --- Fix 1: field-extraction rate reflects real field CHILDREN, not the
-	// (never-set) Properties["field_count"] property. 11 classes, all with
-	// >=1 field child → 0% zero-fields, not 100%.
-	if r.FieldExtractionRate.ClassTotal != 11 {
-		t.Errorf("ClassTotal = %d, want 11 (field-leaf terminals excluded from the class count)", r.FieldExtractionRate.ClassTotal)
+	// (never-set) Properties["field_count"] property.
+	//
+	// 13 candidates: `widget` + the 10 padded SCOPE.Class entities, all with
+	// >=1 field child, plus classComp/wiredComp — SCOPE.Component entities
+	// with Subtype "class", which the metric only began to sample once
+	// "component" joined classLikeKindTails (#6536). Those two own no field
+	// children, so 2/13 == 15.4% is a MEASURED zero-field rate. The file
+	// carriers (Subtype "file") stay out of the denominator.
+	if r.FieldExtractionRate.ClassTotal != 13 {
+		t.Errorf("ClassTotal = %d, want 13 (field leaves and file carriers excluded from the class count)", r.FieldExtractionRate.ClassTotal)
 	}
-	if r.FieldExtractionRate.ZeroFieldsPct != 0.0 {
-		t.Errorf("ZeroFieldsPct = %.1f%%, want 0.0%% (every class has >=1 real field child)", r.FieldExtractionRate.ZeroFieldsPct)
+	if got := r.FieldExtractionRate.ZeroFieldsPct; got < 15.3 || got > 15.5 {
+		t.Errorf("ZeroFieldsPct = %.1f%%, want ~15.4%% (2 of 13 class-like containers own no field child)", got)
 	}
 
 	// --- Fix 2: field leaves carry no semantic edge in either direction and
