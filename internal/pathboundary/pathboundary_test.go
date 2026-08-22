@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -178,5 +179,65 @@ func TestInside(t *testing.T) {
 	}
 	if Inside(home, "") {
 		t.Error("an empty home contains nothing")
+	}
+}
+
+// TestClimb_NoHomeWarnsOncePerProcess — the boundary is allowed to be absent
+// when os.UserHomeDir fails (a bare cron/launchd/container environment: fail-open
+// keeps group resolution working, and guessing a home path could name somebody
+// else's). It is NOT allowed to be absent silently: a guard that degrades with
+// nothing saying so reads as "protected" forever after. One line, once per
+// process — a per-climb line would print on every MCP call that resolves a cwd.
+func TestClimb_NoHomeWarnsOncePerProcess(t *testing.T) {
+	var lines []string
+	origLog, origOnce := logHome, noHomeOnce
+	logHome = func(msg string) { lines = append(lines, msg) }
+	noHomeOnce = new(sync.Once)
+	t.Cleanup(func() { logHome, noHomeOnce = origLog, origOnce })
+
+	// Make os.UserHomeDir fail on every platform: it reads $HOME on unix and
+	// %USERPROFILE% on Windows, and errors when the relevant one is empty.
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	t.Setenv("home", "") // plan9
+	if UserHome() != "" {
+		t.Skip("this platform still resolves a home with the env cleared")
+	}
+
+	root := t.TempDir()
+	start := mk(t, filepath.Join(root, "a", "b"))
+
+	// Three climbs; the process must be told exactly once.
+	for i := 0; i < 3; i++ {
+		Climb(start, func(string) bool { return false })
+	}
+
+	if len(lines) != 1 {
+		t.Fatalf("degraded home boundary must be announced exactly once per process: got %d lines: %v", len(lines), lines)
+	}
+	for _, want := range []string{"home", "INACTIVE", "root", "depth"} {
+		if !strings.Contains(lines[0], want) {
+			t.Errorf("diagnostic should name %q (that the home boundary is inactive and only the root stop + depth cap apply); got: %s", want, lines[0])
+		}
+	}
+}
+
+// TestClimb_HomeResolvableStaysQuiet — the diagnostic must not fire on the
+// ordinary path, or it becomes noise on every MCP call.
+func TestClimb_HomeResolvableStaysQuiet(t *testing.T) {
+	var lines []string
+	origLog, origOnce := logHome, noHomeOnce
+	logHome = func(msg string) { lines = append(lines, msg) }
+	noHomeOnce = new(sync.Once)
+	t.Cleanup(func() { logHome, noHomeOnce = origLog, origOnce })
+
+	root := t.TempDir()
+	home := mk(t, filepath.Join(root, "home", "u"))
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	Climb(mk(t, filepath.Join(home, "a")), func(string) bool { return false })
+	if len(lines) != 0 {
+		t.Fatalf("a resolvable home must produce no diagnostic; got %v", lines)
 	}
 }

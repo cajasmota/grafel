@@ -44,14 +44,19 @@
 // neither $HOME nor %USERPROFILE% is set — a bare cron/launchd/container
 // environment) the home boundary is simply absent; the root stop and the depth
 // cap still apply. That is a fail-open on ONE of four stop conditions, chosen
-// over guessing a home path that may belong to somebody else.
+// over guessing a home path that may belong to somebody else — and it is not
+// silent: the first climb in such a process logs one line saying the home
+// boundary is inactive and that only the root stop and the depth cap apply.
 package pathboundary
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 )
 
 // MaxAncestorDepth caps how many levels any single climb may ascend, counting
@@ -71,13 +76,40 @@ func UserHome() string {
 	return filepath.Clean(h)
 }
 
+// noHomeOnce makes the degraded-boundary diagnostic fire once per process. A
+// per-climb line would print on every MCP call that resolves a cwd.
+var noHomeOnce = new(sync.Once)
+
+// logHome is the diagnostic sink, swappable in tests. It writes to stderr:
+// grafel's MCP transport owns stdout, and a line there would corrupt the
+// protocol.
+var logHome = func(msg string) { log.Print(msg) }
+
+// warnHomeBoundaryInactive announces, exactly once per process, that the home
+// boundary is not in force. A guard that degrades silently reads as "protected"
+// forever after, which is the failure mode this package exists to end — so the
+// one case where the boundary is absent says so out loud.
+func warnHomeBoundaryInactive() {
+	noHomeOnce.Do(func() {
+		logHome("grafel: pathboundary: home directory could not be determined " +
+			"(os.UserHomeDir failed: neither $HOME nor %USERPROFILE% is set); the $HOME " +
+			"boundary on ancestor climbs is INACTIVE for this process. Climbs remain " +
+			"bounded by the filesystem root and a depth cap of " +
+			strconv.Itoa(MaxAncestorDepth) + " levels. Set $HOME to restore the home boundary.")
+	})
+}
+
 // Climb visits dir and then each of its ancestors, nearest first, stopping at
 // the boundary described in the package doc. visit reports success by returning
 // true, which ends the climb; Climb returns whether any visit succeeded.
 //
 // This is the only ancestor-walk primitive grafel's climbers should use.
 func Climb(dir string, visit func(dir string) bool) bool {
-	return ClimbWithHome(dir, UserHome(), visit)
+	home := UserHome()
+	if home == "" {
+		warnHomeBoundaryInactive()
+	}
+	return ClimbWithHome(dir, home, visit)
 }
 
 // ClimbWithHome is Climb with the home boundary supplied explicitly. Production
