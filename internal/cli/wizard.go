@@ -1073,6 +1073,16 @@ func discoverCandidates(w io.Writer, opts wizardOptions) ([]string, error) {
 			return nil, err
 		}
 		parent = filepath.Dir(cwd)
+		// #6548: this parent is INFERRED, not given. When the cwd sits directly
+		// under $HOME the inferred parent IS $HOME (or a macOS TCC-protected
+		// folder), and the scan below ReadDirs it and Stats every child's .git —
+		// firing a batch of permission prompts, the same v0.1.8 bug that
+		// internal/install/detect's siblingGitRepos was gated for. Same
+		// operation, same guard, one authority: detect.IsProtectedScanParent.
+		// An EXPLICIT --parent is an instruction the user gave and stays exempt.
+		if detect.IsProtectedScanParent(parent) {
+			return nil, fmt.Errorf("refusing to auto-discover repos in %q: it is your home directory or a protected folder; pass --parent or --repos/--repo explicitly to scan it", parent)
+		}
 	}
 	entries, err := os.ReadDir(parent)
 	if err != nil {

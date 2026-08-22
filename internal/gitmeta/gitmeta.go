@@ -17,29 +17,24 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/executil"
+	"github.com/cajasmota/grafel/internal/pathboundary"
 )
 
 // HasGitDirInTree walks dir upward looking for a .git file or directory,
 // indicating an enclosing git repository. It returns true if .git is found
-// anywhere from dir up to the filesystem root, false otherwise. This is a fast,
+// anywhere from dir up to the climb boundary, false otherwise. This is a fast,
 // subprocess-free check (no `git` invocation) that correctly recognises a
 // module subdirectory of a single-.git monorepo as being inside a git repo.
+//
+// The climb is bounded by pathboundary.Climb: it stops at $HOME when dir is
+// inside it, at the filesystem root otherwise, and at a depth backstop either
+// way. Before #6548 the only stop was the root, so a dir with no .git anywhere
+// above it Stat'd $HOME, /Users and / on every call.
 func HasGitDirInTree(dir string) bool {
-	if dir == "" {
-		return false
-	}
-	cur := dir
-	for {
-		if _, err := os.Stat(filepath.Join(cur, ".git")); err == nil {
-			return true
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			// Reached filesystem root.
-			return false
-		}
-		cur = parent
-	}
+	return pathboundary.Climb(dir, func(cur string) bool {
+		_, err := os.Stat(filepath.Join(cur, ".git"))
+		return err == nil
+	})
 }
 
 // EnvGitTimeout overrides the default external-git deadline (in seconds) used

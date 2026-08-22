@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/gitmeta"
+	"github.com/cajasmota/grafel/internal/pathboundary"
 )
 
 // resolveGroup implements the ADR-0008 cascade (#1746):
@@ -232,46 +233,44 @@ func hasGitDirInTree(dir string) bool {
 
 // groupFromCWD walks dir upward looking for .grafel/group.json which
 // encodes {"group": "<name>"}.
+//
+// The climb is bounded by pathboundary.Climb ($HOME when dir is inside it, the
+// filesystem root otherwise, plus a depth backstop). Before #6548 an absent
+// marker meant this ReadFile'd .grafel/group.json in $HOME, /Users and / on
+// every unresolved cwd.
 func groupFromCWD(dir string) string {
-	if dir == "" {
-		return ""
-	}
-	cur := dir
-	for {
+	var group string
+	pathboundary.Climb(dir, func(cur string) bool {
 		marker := filepath.Join(cur, ".grafel", "group.json")
-		if data, err := os.ReadFile(marker); err == nil {
-			var doc struct {
-				Group string `json:"group"`
-			}
-			if err := json.Unmarshal(data, &doc); err == nil && doc.Group != "" {
-				return doc.Group
-			}
+		data, err := os.ReadFile(marker)
+		if err != nil {
+			return false
 		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return ""
+		var doc struct {
+			Group string `json:"group"`
 		}
-		cur = parent
-	}
+		if err := json.Unmarshal(data, &doc); err != nil || doc.Group == "" {
+			return false
+		}
+		group = doc.Group
+		return true
+	})
+	return group
 }
 
 // repoFromCWD walks dir upward looking for the repo's .grafel dir; the
-// repo's directory name is returned if found.
+// repo's directory name is returned if found. Bounded by pathboundary.Climb
+// (#6548) — see groupFromCWD above.
 func repoFromCWD(dir string) string {
-	if dir == "" {
-		return ""
-	}
-	cur := dir
-	for {
-		if _, err := os.Stat(filepath.Join(cur, ".grafel")); err == nil {
-			return filepath.Base(cur)
+	var repo string
+	pathboundary.Climb(dir, func(cur string) bool {
+		if _, err := os.Stat(filepath.Join(cur, ".grafel")); err != nil {
+			return false
 		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return ""
-		}
-		cur = parent
-	}
+		repo = filepath.Base(cur)
+		return true
+	})
+	return repo
 }
 
 // CWDResolution carries the result of resolving a cwd to a (group, repo, ref)

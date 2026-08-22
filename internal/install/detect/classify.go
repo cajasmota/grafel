@@ -208,3 +208,13 @@ func siblingGitRepos(repo string) []string {
 	sort.Strings(out)
 	return out
 }
+
+// IsProtectedScanParent is the exported form of the guard above, for callers
+// outside this package that perform the same "ReadDir a parent and Stat every
+// child's .git" scan on an INFERRED parent directory — currently the wizard's
+// discoverCandidates fallback to filepath.Dir(cwd) (#6548). It reports whether
+// enumerating parent would read $HOME itself or a macOS TCC-protected folder.
+//
+// There is deliberately ONE denylist behind this (protected_darwin.go); callers
+// must not grow a second copy. Off darwin it is false — there is no TCC.
+func IsProtectedScanParent(parent string) bool { return isProtectedScanParent(parent) }
