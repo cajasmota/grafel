@@ -137,3 +137,63 @@ func TestFullIndex_StampsPassStartCommit_NotMidPassHEAD(t *testing.T) {
 			h.IndexedSHA, c1Short12, gitOut(t, repo, "rev-parse", "--short=12", "HEAD"))
 	}
 }
+
+// #6547 round 2 — the OTHER arm of the same doc comment: "Empty on a non-git
+// directory, which SaveManifestAtCommit writes through as empty — the correct
+// default." The test above pins the git arm; nothing pinned this one, and a
+// mutant stamping a `0000000` placeholder for the empty pair survived the whole
+// package.
+//
+// A placeholder is not cosmetic here. The #5710 head-advance detector compares
+// HEAD against the manifest, and a manifest claiming commit 0000000 for a
+// directory that has no HEAD is a DIFFERENT input to that comparison than an
+// absent value — on the one path where there is no git to correct it.
+//
+// So this asserts EMPTY, not "differs from the real SHA": a placeholder
+// satisfies the latter. The precondition below fails loudly if the fixture ever
+// resolves a HEAD (a temp dir nested inside a repo), because then the empty
+// assertion would be testing nothing it claims to test.
+func TestFullIndex_NonGitDirectory_StampsNoCommit(t *testing.T) {
+	root := t.TempDir()
+	// Never touch the real ~/.grafel or the running daemon's state.
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv("USERPROFILE", filepath.Join(root, "home"))
+	t.Setenv("GRAFEL_HOME", filepath.Join(root, "grafelhome"))
+	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemonroot"))
+
+	repo := filepath.Join(root, "plaindir")
+	if err := os.MkdirAll(filepath.Join(repo, "svc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixtureFile(t, repo, "go.mod", "module nogitfixture\n\ngo 1.21\n")
+	writeFixtureFile(t, repo, "svc/widget.go", "package svc\n\ntype Widget struct{ Name string }\n\nfunc (w *Widget) Render() string { return w.Name }\n")
+
+	// Precondition: the fixture really has no HEAD. If it did, "empty" would be
+	// the wrong expectation and the assertions below would be meaningless.
+	if s, f := diff.HeadCommitPair(repo); s != "" || f != "" {
+		t.Fatalf("fixture %s resolved a HEAD (%q/%q) — it is not the non-git directory "+
+			"this test needs, so the empty-stamp assertions would prove nothing", repo, s, f)
+	}
+
+	outPath := filepath.Join(root, "state", "graph.json")
+	if err := Index(repo, outPath, "nogit-repo", nil, false, false, WithManifestPersist()); err != nil {
+		t.Fatalf("Index: %v", err)
+	}
+	stateDir := filepath.Dir(outPath)
+
+	m := diff.LoadManifest(stateDir)
+	if m == nil || len(m.Files) == 0 {
+		t.Fatalf("full index wrote no manifest in %s — the assertions below would be vacuous", stateDir)
+	}
+	if m.GitCommit != "" {
+		t.Errorf("manifest GitCommit = %q, want \"\" — a non-git directory has no commit, and "+
+			"SaveManifestAtCommit writes the empty pair through as empty by design. A fabricated "+
+			"value (placeholder or otherwise) feeds the #5710 head-advance detector a commit that "+
+			"never existed, on the one path with no git to correct it (#6547).", m.GitCommit)
+	}
+	if m.GitCommitFull != "" {
+		t.Errorf("manifest GitCommitFull = %q, want \"\" — same reason as GitCommit above; the pair "+
+			"is written from ONE HeadCommitPair read precisely so both halves describe the same "+
+			"(here: no) commit (#6547).", m.GitCommitFull)
+	}
+}
