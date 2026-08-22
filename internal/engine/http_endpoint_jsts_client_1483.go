@@ -318,6 +318,24 @@ func synthesizeReceiverClientResidualCalls(content string, funcs []jsFuncSpan, s
 				emitStatic(path)
 				continue
 			}
+		default:
+			// Case 1, identifier flavour: this.http.get(PEOPLE) where PEOPLE is
+			// a same-file string constant (const PEOPLE = '/api/admin/v1/people').
+			// The symbol table is already built (buildJSConstantSymbolTable) and
+			// threaded in — the string and template arms consult it, but a bare
+			// identifier argument used to fall straight through to the /{dynamic}
+			// marker even when its value was a known static path, so every
+			// frontend call routed through a path constant (the idiomatic Angular
+			// api-service shape) dangled instead of linking to its endpoint. Fold
+			// it here. (#6551)
+			if ident := strings.TrimSpace(firstArgExpr(rest)); ident != "" {
+				if val, ok := syms[ident]; ok {
+					if path, ok := normalizeRawClientPath(val); ok && path != "" {
+						emitStatic(path)
+						continue
+					}
+				}
+			}
 		}
 
 		// Case 2: genuinely unresolvable.
