@@ -270,9 +270,9 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			// internal/graph/coverage.go) and include schema.
 			//
 			// Entities that are not field-bearing class containers are
-			// excluded from the denominator — see nonClassSubtypes for the
-			// list and the reasoning (#6536).
-			if isClassLikeKind(kind) && !nonClassSubtypes[e.Subtype] {
+			// excluded from the denominator — see isFieldExtractionCandidate
+			// for the exemption set and the reasoning (#6536).
+			if isFieldExtractionCandidate(kind, e.Subtype, e.Language) {
 				classCandidates = append(classCandidates, classCandidate{
 					id:            e.ID,
 					fieldCountRaw: e.PropGet("field_count"),
@@ -623,14 +623,98 @@ var classLikeKindTails = map[string]bool{
 //     (internal/extractor.FileEntity). It is a container, but it is not a
 //     class, and admitting "component" above would otherwise enrol one
 //     guaranteed-zero-field entity per indexed file.
+//   - "import" — an import PLACEHOLDER: a reference to a module, never a
+//     declaration, so it can never own a field child. cross/imports emits one
+//     SCOPE.Component/import per imported module for C#, Java, Go, Python,
+//     Ruby, Rust, JS/TS and Elixir (cross/imports/extractor.go), and eighteen
+//     more extractor packages emit the same kind/subtype pair. That is one to
+//     several guaranteed-zero-field entities PER FILE — a population that
+//     outnumbers classes in most repos and, left in, reproduces #6535's
+//     dominated-denominator symptom with the "file" hole merely plugged.
+//   - "delegate" — a delegate is a signature, not a container; the VB.NET and
+//     C# extractors give it no members at all (verified against extractor
+//     output: `Public Delegate Sub Handler(...)` emits zero CONTAINS edges).
 //
 // A metric whose denominator contains populations that cannot pass reports
 // noise, not coverage.
 var nonClassSubtypes = map[string]bool{
-	"field": true,
-	"enum":  true,
-	"const": true,
-	"file":  true,
+	"field":    true,
+	"enum":     true,
+	"const":    true,
+	"file":     true,
+	"import":   true,
+	"delegate": true,
+}
+
+// interfaceSubtypeFieldBearingLanguages are the languages in which a
+// Subtype "interface" entity really can own Subtype "field" children, and so
+// must STAY in the field-extraction denominator (#6536 round 2).
+//
+// "interface" is exempt everywhere else — verified against extractor output
+// rather than assumed: VB.NET's `IThing` contains only its methods, C# and
+// VB.NET forbid interface fields outright, a Java interface's constants are
+// emitted as a SCOPE.Enum constant group and not as field children, Go
+// interfaces hold only method specs, and the JS/TS extractor emits no
+// Subtype "field" at all.
+//
+// Kotlin is the exception and it is a real one: `interface Shape { val sides:
+// Int }` emits `Shape` CONTAINS `Shape.sides` with Subtype "field". Exempting
+// interfaces wholesale would drop a population that genuinely passes, which is
+// the same error as counting one that cannot — just pointed the other way.
+var interfaceSubtypeFieldBearingLanguages = map[string]bool{
+	"kotlin": true,
+}
+
+// nonFieldBearingLanguages are the languages whose extractor package emits no
+// Subtype "field" ANYWHERE, so every entity it produces is a guaranteed
+// zero-field failure regardless of subtype (#6536 round 2).
+//
+// This is what enrolled their per-file `Subtype: "module"` carriers — a file
+// carrier under another name (haskell/extractor.go, elm, ocaml, fsharp, idris,
+// reasonml, rescript, crystal, erlang) — and Haskell's import placeholders,
+// which set no Subtype at all so the subtype exclusions above cannot see them.
+//
+// It is deliberately an allowlist of EXEMPTIONS keyed on the language, not a
+// blanket exclusion of the "module" subtype: a VB.NET `Module` is a genuine
+// field-bearing container (verified: `Public Module Util` CONTAINS its Shared
+// and Private fields), so exempting "module" globally would delete real
+// passers from the C#-family population #6535 is about.
+//
+// If any of these extractors gains field extraction, remove it from this set
+// or the new fields are silently unmeasured.
+var nonFieldBearingLanguages = map[string]bool{
+	"haskell":  true,
+	"elm":      true,
+	"ocaml":    true,
+	"fsharp":   true,
+	"idris":    true,
+	"reasonml": true,
+	"rescript": true,
+	"crystal":  true,
+	"erlang":   true,
+}
+
+// isFieldExtractionCandidate reports whether an entity belongs in the
+// field-extraction denominator: it must carry a class-like kind AND be a
+// container that can actually own a Subtype "field" child.
+//
+// The governing rule, stated once: a population that cannot pass must not be
+// in the denominator, and a population that can pass must not be dropped from
+// it. Both halves are checked against what the extractors emit (#6536).
+func isFieldExtractionCandidate(kind, subtype, language string) bool {
+	if !isClassLikeKind(kind) {
+		return false
+	}
+	if nonClassSubtypes[subtype] {
+		return false
+	}
+	if nonFieldBearingLanguages[strings.ToLower(language)] {
+		return false
+	}
+	if subtype == "interface" && !interfaceSubtypeFieldBearingLanguages[strings.ToLower(language)] {
+		return false
+	}
+	return true
 }
 
 // isClassLikeKind reports whether kind is a class/model/schema-shaped entity

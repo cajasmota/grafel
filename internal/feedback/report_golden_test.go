@@ -82,10 +82,22 @@ func TestGenerate_GoldenFB(t *testing.T) {
 	// kinds (SCOPE.Schema) but are not class/model CONTAINERS — they must be
 	// excluded from the class-like count (Fix 1), or every field doubles as a
 	// "class" and the zero-fields rate is guaranteed to read 100%. The same
-	// holds for the other nonClassSubtypes (enum/const/file — #6536).
+	// holds for the other exempt subtypes (enum/const/file/import/delegate,
+	// interface outside Kotlin, and the non-field-bearing languages — #6536).
+	//
+	// TAUTOLOGY WARNING — this check is NOT coverage of the exemption set.
+	// It recomputes the expectation from the same production predicate that
+	// Generate uses, so a wrong kind tail or a wrong exemption cannot make it
+	// fail; all it asserts is that Generate calls this predicate and counts the
+	// result. It was already half-tautological before #6536 and lost its last
+	// literal there. The real pins for the predicate live in
+	// report_classlike_component_6536_test.go, which takes its kinds from the
+	// extractors. Rebuilding this into an independent expectation is out of
+	// scope for #6536 and tracked separately.
 	wantClassLike := 0
 	for i := range doc.Entities {
-		if isClassLikeKind(doc.Entities[i].Kind) && !nonClassSubtypes[doc.Entities[i].Subtype] {
+		e := &doc.Entities[i]
+		if isFieldExtractionCandidate(e.Kind, e.Subtype, e.Language) {
 			wantClassLike++
 		}
 	}
