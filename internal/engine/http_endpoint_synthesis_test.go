@@ -1071,6 +1071,92 @@ async def item(id: int):
 	requireContains(t, got, want, "FastAPI APIRouter prefix fold — api_route decorator")
 }
 
+// TestSynth_FastAPI_RouterPrefixFold_EmptyRoutePath covers a route path of
+// `""` on a prefixed router: the collection-root endpoint spelled without a
+// trailing slash. FastAPI composes the router prefix with the route path, so
+// `APIRouter(prefix="/markets")` + `@markets.get("")` serves `/markets`, the
+// same canonical path `@markets.get("/")` produces.
+func TestSynth_FastAPI_RouterPrefixFold_EmptyRoutePath(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+markets = APIRouter(prefix="/markets")
+
+@markets.get("")
+async def list_markets():
+    return []
+
+@markets.post("")
+async def create_market():
+    return {}
+
+@markets.get("/{id}")
+async def get_market(id: int):
+    return {}
+`
+	got, _ := runDetect(t, "python", "routers/markets.py", src)
+	want := []string{
+		"http:GET:/markets",
+		"http:POST:/markets",
+		"http:GET:/markets/{id}",
+	}
+	requireContains(t, got, want, "FastAPI APIRouter prefix fold, empty route path")
+	for _, id := range got {
+		if strings.Contains(id, "//") {
+			t.Errorf("empty route path produced a double-slash path: %q", id)
+		}
+	}
+}
+
+// TestSynth_FastAPI_RouterPrefixFold_EmptyRoutePathApiRoute is the same
+// composition through the generic `api_route` decorator, whose verbs come
+// from the methods= kwarg.
+func TestSynth_FastAPI_RouterPrefixFold_EmptyRoutePathApiRoute(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+markets = APIRouter(prefix="/markets")
+
+@markets.api_route("", methods=["GET", "PUT"])
+async def markets_root():
+    return {}
+`
+	got, _ := runDetect(t, "python", "routers/markets.py", src)
+	want := []string{
+		"http:GET:/markets",
+		"http:PUT:/markets",
+	}
+	requireContains(t, got, want, "FastAPI APIRouter prefix fold, empty route path via api_route")
+}
+
+// TestSynth_FastAPI_EmptyRoutePathWithoutPrefixNotSynthesized pins the
+// conservative half: with no same-file prefix to compose, an empty route path
+// names no path at all, so nothing is emitted rather than a root endpoint.
+// This covers both the FastAPI app itself and a router constructed with no
+// prefix= kwarg.
+func TestSynth_FastAPI_EmptyRoutePathWithoutPrefixNotSynthesized(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+bare_router = APIRouter()
+
+@app.get("")
+async def app_root():
+    return {}
+
+@bare_router.get("")
+async def router_root():
+    return {}
+
+@app.get("/health")
+async def health():
+    return "ok"
+`
+	got, _ := runDetect(t, "python", "main.py", src)
+	requireContains(t, got, []string{"http:GET:/health"}, "FastAPI empty path without prefix, sibling route still emitted")
+	requireNotContains(t, got, []string{"http:GET:/", "http:GET:"}, "FastAPI empty path without prefix")
+}
+
 // TestSynth_FastAPI_NonRouterReceiverNotSynthesized guards against phantom
 // endpoints from decorators whose receiver is NOT a same-file app/router
 // (#5688). Widening the verb-decorator receiver capture to support arbitrary

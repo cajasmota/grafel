@@ -2851,16 +2851,25 @@ func parseFlaskMethods(args string) []string {
 // terminate the match prematurely (the inner `)` previously aborted the scan,
 // dropping the whole endpoint — #3628).
 //
+// The path capture accepts an EMPTY literal (`*`, not `+`): `@router.get("")`
+// on a prefixed router is the idiomatic spelling of the collection-root
+// endpoint without a trailing slash, and FastAPI composes it to the prefix
+// itself. synthesizeFastAPI drops the match when no prefix is available to
+// compose, so an empty path never becomes a bare `/` endpoint.
+//
 // Capture groups: 1 = receiver, 2 = verb, 3 = path, 4 = handler name.
-var fastapiVerbDecoratorRe = regexp.MustCompile(`@(\w+)\.(get|post|put|patch|delete|head|options|trace)\s*\(\s*["']([^"'\n\r]+)["'](?:[^()]*(?:\([^()]*\)[^()]*)*)\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
+var fastapiVerbDecoratorRe = regexp.MustCompile(`@(\w+)\.(get|post|put|patch|delete|head|options|trace)\s*\(\s*["']([^"'\n\r]*)["'](?:[^()]*(?:\([^()]*\)[^()]*)*)\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
 
 // fastapiApiRouteDecoratorRe captures the generic `@<recv>.api_route("/path",
 // methods=[...])` decorator form. FastAPI's `api_route` differs from the
 // single-verb shorthands (`.get`/`.post`/...) in that the HTTP verb(s) are
 // declared via a `methods=[...]` kwarg rather than the method name itself.
 //
+// The path capture accepts an EMPTY literal for the same reason as
+// fastapiVerbDecoratorRe.
+//
 // Capture groups: 1 = receiver, 2 = path, 3 = kwargs tail, 4 = handler name.
-var fastapiApiRouteDecoratorRe = regexp.MustCompile(`@(\w+)\.api_route\s*\(\s*["']([^"'\n\r]+)["']((?:[^()]*(?:\([^()]*\)[^()]*)*))\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
+var fastapiApiRouteDecoratorRe = regexp.MustCompile(`@(\w+)\.api_route\s*\(\s*["']([^"'\n\r]*)["']((?:[^()]*(?:\([^()]*\)[^()]*)*))\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
 
 // fastapiRouterConstructorRe captures a same-file `<var> = APIRouter(...)`
 // constructor call (#5688). Group 1 is the receiver variable, group 2 is the
@@ -3203,6 +3212,11 @@ func synthesizeFastAPI(content, relPath string, emit emitDefFn, emitMount func(t
 	// receiver → prefix map once and compose it into every decorator route
 	// registered on that receiver. Receivers absent from the map (e.g. `app`,
 	// the FastAPI application itself) compose as a no-op.
+	// An empty route path (`@router.get("")`) names the prefix itself, so
+	// compose returns "" whenever there is no same-file prefix to supply the
+	// path. Callers skip such a match rather than canonicalising "" into a
+	// bare `/`, which would attribute a root endpoint to a router whose real
+	// mount point this file does not state.
 	prefixes := fastapiRouterPrefixes(content)
 	compose := func(recv, raw string) string {
 		if pfx, ok := prefixes[recv]; ok && pfx != "" {
@@ -3254,7 +3268,11 @@ func synthesizeFastAPI(content, relPath string, emit emitDefFn, emitMount func(t
 		verb := strings.ToUpper(content[idx[4]:idx[5]])
 		raw := content[idx[6]:idx[7]]
 		handler := content[idx[8]:idx[9]]
-		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, compose(recv, raw))
+		path := compose(recv, raw)
+		if path == "" {
+			continue
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
 		defLine := lineOfOffset(content, idx[8])
 		emit(verb, canonical, "fastapi", "Controller", handler, defLine)
 	}
@@ -3271,7 +3289,11 @@ func synthesizeFastAPI(content, relPath string, emit emitDefFn, emitMount func(t
 		raw := content[idx[4]:idx[5]]
 		tail := content[idx[6]:idx[7]]
 		handler := content[idx[8]:idx[9]]
-		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, compose(recv, raw))
+		path := compose(recv, raw)
+		if path == "" {
+			continue
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
 		defLine := lineOfOffset(content, idx[8])
 		methods := parseFlaskMethods(tail) // same methods=[...] shape
 		if len(methods) == 0 {
