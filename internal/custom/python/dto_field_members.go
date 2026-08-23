@@ -26,6 +26,9 @@ import (
 //	provenance   — INFERRED_FROM_SCHEMA_FIELD_MEMBERSHIP
 //	library      — "pydantic" / "drf"
 //
+// Pydantic model fields additionally carry `default_value`, the default
+// expression verbatim, when that expression is a single literal (#6561).
+//
 // The child's Signature is the Java-style `[@Validators ...] <type> <name>` so
 // the shape resolver's parseFieldSignature recovers (annotations, type, name)
 // exactly as it does for the JS/Java DTO fields. A CONTAINS edge binds each
@@ -39,6 +42,9 @@ type pyDTOField struct {
 	typ        string
 	validators []string
 	optional   bool
+	// defaultValue is the field's default expression, verbatim, and only when
+	// that expression is a single Python literal. Empty otherwise.
+	defaultValue string
 }
 
 // emitPyDTOFieldMembers emits one `SCOPE.Schema`/field sub-entity per field of a
@@ -99,6 +105,9 @@ func emitPyDTOFieldMembers(
 		}
 		if len(annots) > 0 {
 			props["validators"] = strings.Join(annots, " ")
+		}
+		if f.defaultValue != "" {
+			props["default_value"] = f.defaultValue
 		}
 		child := entity(childName, "SCOPE.Schema", "field", filePath, ownerLine, props)
 		child.Signature = sb.String()
@@ -184,13 +193,62 @@ func extractPydanticModelFields(body string) []pyDTOField {
 		}
 
 		fields = append(fields, pyDTOField{
-			name:       name,
-			typ:        normalizePyType(annot),
-			validators: validators,
-			optional:   optional,
+			name:         name,
+			typ:          normalizePyType(annot),
+			validators:   validators,
+			optional:     optional,
+			defaultValue: pydDefaultLiteral(rhs),
 		})
 	}
 	return fields
+}
+
+// pydLiteralPat matches a single Python literal: a quoted string with no
+// escapes, an integer or a float, or one of `True`/`False`/`None`. A container
+// display, an f-string, an arithmetic expression, a call and an attribute access
+// are all deliberately outside it.
+const pydLiteralPat = `"[^"\\]*"|'[^'\\]*'|[+-]?\d+(?:\.\d+)?|True|False|None`
+
+// pydLiteralDefaultRe matches a whole right-hand side that is one literal.
+// Anchored, so `60 * 24` and `os.environ["X"]` do not match.
+var pydLiteralDefaultRe = regexp.MustCompile(`^(?:` + pydLiteralPat + `)$`)
+
+// pydFieldCallRe matches a right-hand side that IS a `Field(...)` call, bare or
+// dotted-path qualified. Anchored at the start of the name, so `MyCustomField(`
+// and `wrap(Field(...))` do not match: a `default=` belonging to some other
+// call is not this field's default.
+var pydFieldCallRe = regexp.MustCompile(`^(?:[A-Za-z_]\w*\.)*Field\s*\(`)
+
+// pydFieldDefaultRe finds `default=<literal>` inside a `Field(...)` call. The
+// literal must be followed by a comma or a closing paren, so an expression that
+// merely starts with a literal is skipped rather than truncated. `\b` before
+// `default` does not fire on `default_factory=`, whose `=` is not adjacent.
+var pydFieldDefaultRe = regexp.MustCompile(`\bdefault\s*=\s*(` + pydLiteralPat + `)\s*[,)]`)
+
+// pydDefaultLiteral returns the field's default expression verbatim when it can
+// be read as a single Python literal, either as the whole right-hand side or as
+// the `default=` argument of a `Field(...)` call. Quotes are kept, so a string
+// literal stays distinguishable from the `None` singleton and from a bare name.
+// Anything else, `default_factory=` included, returns "": a partially parsed
+// default is worse than none.
+func pydDefaultLiteral(rhs string) string {
+	// A trailing comment can say anything, `# default=5` included, so it is cut
+	// before a default is read rather than tolerated by the patterns below.
+	rhs = strings.TrimSpace(pyStripComments(rhs))
+	if rhs == "" {
+		return ""
+	}
+	if pydLiteralDefaultRe.MatchString(rhs) {
+		return rhs
+	}
+	if pydFieldCallRe.MatchString(rhs) {
+		// Exactly one `default=` literal, so a conditional over two Field()
+		// calls does not silently publish the first one.
+		if ms := pydFieldDefaultRe.FindAllStringSubmatch(rhs, -1); len(ms) == 1 {
+			return ms[0][1]
+		}
+	}
+	return ""
 }
 
 // pydIsOptional reports whether a type annotation denotes an optional field.
