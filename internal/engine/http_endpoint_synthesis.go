@@ -6406,9 +6406,19 @@ func deriveOwningBackend(filePath string) string {
 // directoryHasManifest reports whether dir contains a manifest file or
 // framework marker. Uses os.Stat so it works with both real file trees
 // (during actual indexing) and in-memory test scenarios.
+//
+// #6556: an entry carrying a glob metacharacter is matched with filepath.Glob
+// instead. os.Stat does no glob expansion, so "*.csproj" could only ever match
+// a file of that literal name, and the C# entry never fired.
 func directoryHasManifest(dir string) bool {
 	allMarkers := append(manifestFileNames, frameworkMarkerFiles...)
 	for _, name := range allMarkers {
+		if strings.ContainsAny(name, "*?[") {
+			if m, err := filepath.Glob(filepath.Join(dir, name)); err == nil && len(m) > 0 {
+				return true
+			}
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return true
 		}
