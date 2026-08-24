@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     PROXY: str = os.environ["X"]  # default="/inj"
     CUSTOM: str = MyCustomField(default="cf")
     NESTED: str = wrap(Field(default="w"))
+    PROSE: str = Field(default="svc", description="the default=1 legacy")
+    DESC: str = Field(description="default=5, historical")
+    DESC2: str = Field(description="set to default=None) when unset")
+    ALIASD: str = Field(alias="default=9,", min_length=1)
+    DFAC: list = Field(default_factory=list, description="default=7,")
+    COND: str = Field(default="x") if c else Field(default="y")
+    UNDERSCORED: int = Field(default=1_000)
+    EXPONENT: float = Field(default=1.5e3)
     REQUIRED: str
 `
 	rs := extract(t, "python_pydantic", src)
@@ -42,6 +50,10 @@ class Settings(BaseSettings):
 		{"HASHED", `"a # b"`},
 		{"LABEL", `"svc"`},
 		{"QUALIFIED", `"p"`},
+		// A real `default=` still reads through, and reads verbatim, when the same
+		// call also carries prose that names a default. Blanking the string
+		// contents must not reach the `default=` argument's own literal.
+		{"PROSE", `"svc"`},
 	} {
 		f := findFieldChild(rs, "Settings."+tc.field)
 		if f == nil {
@@ -56,9 +68,15 @@ class Settings(BaseSettings):
 	// rather than a truncated or a synthesized one. `ITEMS` and `PROXY` carry a
 	// comment that reads like a default, so a value can only come from the
 	// comment; `CUSTOM` and `NESTED` name a call that is not this field's
-	// `Field()`.
+	// `Field()`. `DESC`, `DESC2`, `ALIASD` and `DFAC` have no `default=` argument
+	// at all — the text is prose inside a `description=`/`alias=` string, which is
+	// ordinary in real models, so a value can only come from reading a string
+	// literal as code. `COND` names two `Field()` calls and neither one is the
+	// field's default. `UNDERSCORED` and `EXPONENT` are numeric literals outside
+	// the recognized pattern, so publishing `1` or `1.5` would be a truncation.
 	for _, field := range []string{
-		"HOST", "TAGS", "EXPIRES", "GREETING", "ITEMS", "PROXY", "CUSTOM", "NESTED", "REQUIRED",
+		"HOST", "TAGS", "EXPIRES", "GREETING", "ITEMS", "PROXY", "CUSTOM", "NESTED",
+		"DESC", "DESC2", "ALIASD", "DFAC", "COND", "UNDERSCORED", "EXPONENT", "REQUIRED",
 	} {
 		f := findFieldChild(rs, "Settings."+field)
 		if f == nil {

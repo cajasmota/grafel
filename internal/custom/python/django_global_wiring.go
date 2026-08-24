@@ -307,3 +307,29 @@ func djangoDottedLeaf(dotted string) string {
 	}
 	return dotted
 }
+
+// pyBlankStringLiterals replaces the contents of every single- or double-quoted
+// string with spaces, keeping the quote bytes and the exact byte length, so an
+// index into the result is an index into the input. It lets a pattern scan for
+// code without prose inside a string argument being read as code — the same
+// guarantee pyStripComments gives for a comment, which is why it shares that
+// function's line-scoped quote tracking and its choice not to model escapes.
+func pyBlankStringLiterals(s string) string {
+	b := []byte(s)
+	var quote byte // 0, '\'' or '"'
+	for i := 0; i < len(b); i++ {
+		switch c := b[i]; {
+		case c == '\n':
+			quote = 0 // an unterminated quote does not carry to the next line
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			} else {
+				b[i] = ' '
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		}
+	}
+	return string(b)
+}

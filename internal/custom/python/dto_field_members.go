@@ -242,10 +242,16 @@ func pydDefaultLiteral(rhs string) string {
 		return rhs
 	}
 	if pydFieldCallRe.MatchString(rhs) {
+		// `default=` is scanned over a copy whose string contents are blanked, so
+		// `description="default=5, historical"` and `alias="default=9,"` — prose
+		// naming a default is ordinary in real models — cannot be read as this
+		// field's default. Blanking preserves byte offsets, so the value is still
+		// sliced verbatim out of the original and a real `default="x"` is intact.
+		masked := pyBlankStringLiterals(rhs)
 		// Exactly one `default=` literal, so a conditional over two Field()
 		// calls does not silently publish the first one.
-		if ms := pydFieldDefaultRe.FindAllStringSubmatch(rhs, -1); len(ms) == 1 {
-			return ms[0][1]
+		if ms := pydFieldDefaultRe.FindAllStringSubmatchIndex(masked, -1); len(ms) == 1 {
+			return rhs[ms[0][2]:ms[0][3]]
 		}
 	}
 	return ""
