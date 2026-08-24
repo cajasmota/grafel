@@ -13,9 +13,11 @@ import (
 // recognised as a backend boundary: the walk continued past it and
 // owning_backend came out as an ancestor directory.
 //
-// The three rows below are the same layout in three ecosystems. Go and Node
-// are the control: they find their manifest one directory above the handler,
-// and must keep doing so.
+// The first three rows below are the same layout in three ecosystems. Go and
+// Node are the control: they find their manifest one directory above the
+// handler, and must keep doing so. The fourth row pins the other half of the
+// property: the glob is anchored to the directory being tested, so a .csproj
+// in a cousin directory must not make an ancestor a boundary.
 
 // writeTree creates each named file (with its parent directories) under root.
 func writeTree(t *testing.T, root string, files ...string) {
@@ -55,6 +57,12 @@ func TestDeriveOwningBackend_ProjectFileManifest_6556(t *testing.T) {
 			tree:    []string{"services/Orders.Api/Orders.Api.csproj", "services/Orders.Api/Controllers/OrderController.cs"},
 			handler: "services/Orders.Api/Controllers/OrderController.cs",
 			want:    "Orders.Api",
+		},
+		{
+			name:    "csproj in a cousin directory is not matched",
+			tree:    []string{"repo/a/b/Orders.Api/Orders.Api.csproj", "repo/a/b/web/Controllers/OrderController.cs"},
+			handler: "repo/a/b/web/Controllers/OrderController.cs",
+			want:    "repo",
 		},
 	}
 
