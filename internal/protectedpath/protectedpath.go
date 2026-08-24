@@ -98,11 +98,57 @@ func IsMediaLibraryBundle(base string) bool {
 	return false
 }
 
+// foldedHomeDirs is protectedHomeDirs keyed by lower-cased basename, so the
+// table can be consulted with whatever spelling reached us. See caseInsensitiveFS.
+var foldedHomeDirs = func() map[string]class {
+	m := make(map[string]class, len(protectedHomeDirs))
+	for name, c := range protectedHomeDirs {
+		m[strings.ToLower(name)] = c
+	}
+	return m
+}()
+
+// caseInsensitiveFS reports whether goos's default filesystem folds case, i.e.
+// whether `~/documents` and `~/Documents` name the same directory (#6579).
+//
+// This is the SAME rule internal/pathboundary applies in its own
+// caseInsensitiveFS/eq/containedIn, deliberately spelled the same way. It is
+// duplicated rather than imported because pathboundary imports this package
+// (#6576 routes Climb through IsTraversalProtected) — sharing the identifier
+// the other way would be an import cycle. It takes goos rather than reading
+// runtime.GOOS so every predicate here stays exercisable from any CI leg.
+//
+// Why it matters: macOS ships a case-insensitive APFS volume by default, so a
+// user can type — and a tool can be handed — any spelling of a protected folder
+// and land on the same TCC-gated, iCloud-managed directory. pathboundary's
+// containment check already folded; this table's lookup did not, so a climb
+// could be told "contained in $HOME" and then "not protected" for one and the
+// same `~/documents`. That is the permissive direction, and it re-opens the
+// «"grafel" wants to access files managed by "iCloud Drive"» prompt of #6548
+// and the Music/Photos prompt of #5296.
+//
+// A deliberately case-SENSITIVE macOS volume is the accepted cost: there,
+// folding can refuse a genuinely distinct `~/documents`. Refusing an inferred
+// read is the safe direction (canonicalizePath just skips casing recovery), the
+// configuration is rare, and the surrounding code already assumes darwin folds
+// case — internal/daemon's caseInsensitiveFS makes exactly the same call.
+//
+// The windows arm is currently unreachable through this package: every
+// predicate that consults the table is darwin-gated first, because these
+// folders carry TCC semantics nowhere else. It is stated anyway so the rule is
+// the rule, and it is pinned by test rather than left to drift.
+func caseInsensitiveFS(goos string) bool {
+	return goos == "darwin" || goos == "windows"
+}
+
 // IsProtectedHomeDir reports whether name is a protected top-level $HOME
 // subdirectory under the union denylist. Name comparison only — the caller is
 // responsible for knowing the name really is a child of $HOME.
+//
+// The comparison is case-insensitive: every caller is already gated on darwin,
+// whose default filesystem folds case, so `documents` is `Documents` (#6579).
 func IsProtectedHomeDir(name string) bool {
-	_, ok := protectedHomeDirs[name]
+	_, ok := foldedHomeDirs[strings.ToLower(name)]
 	return ok
 }
 
@@ -177,7 +223,7 @@ func protectedIn(absPath, home, goos string, want func(class) bool) (bool, strin
 		if r, err := filepath.EvalSymlinks(protected); err == nil {
 			protected = r
 		}
-		if pathAtOrUnder(resolved, protected) {
+		if pathAtOrUnder(resolved, protected, caseInsensitiveFS(goos)) {
 			return true, "protected macOS folder: ~/" + name
 		}
 	}
@@ -197,10 +243,10 @@ func IsProtectedScanParentIn(parent, home, goos string) bool {
 	if goos != "darwin" || home == "" {
 		return false
 	}
-	if filepath.Clean(parent) == filepath.Clean(home) {
+	if samePath(parent, home, caseInsensitiveFS(goos)) {
 		return true
 	}
-	first, ok := firstHomeComponent(parent, home)
+	first, ok := firstHomeComponent(parent, home, caseInsensitiveFS(goos))
 	if !ok {
 		return false
 	}
@@ -222,16 +268,32 @@ func IsProtectedHomeChildIn(parent, name, home, goos string) bool {
 	if goos != "darwin" || home == "" {
 		return false
 	}
-	if filepath.Clean(parent) != filepath.Clean(home) {
+	if !samePath(parent, home, caseInsensitiveFS(goos)) {
 		return false
 	}
 	return IsProtectedHomeDir(name)
 }
 
+// samePath reports whether p and q name the same directory, folding case when
+// the filesystem does (#6579).
+func samePath(p, q string, fold bool) bool {
+	p, q = filepath.Clean(p), filepath.Clean(q)
+	if fold {
+		return strings.EqualFold(p, q)
+	}
+	return p == q
+}
+
 // firstHomeComponent returns the first path component of p relative to home,
 // and whether p is strictly under home. Component-wise: "~/Documentation"
-// yields "Documentation", never "Documents".
-func firstHomeComponent(p, home string) (string, bool) {
+// yields "Documentation", never "Documents". When fold is set both the home
+// prefix and the returned component are lower-cased, so a differently-spelled
+// home still resolves and the caller's table lookup (itself case-insensitive)
+// still hits (#6579).
+func firstHomeComponent(p, home string, fold bool) (string, bool) {
+	if fold {
+		p, home = strings.ToLower(p), strings.ToLower(home)
+	}
 	rel, err := filepath.Rel(home, p)
 	if err != nil || rel == "." || rel == "" || strings.HasPrefix(rel, "..") {
 		return "", false
@@ -244,10 +306,15 @@ func firstHomeComponent(p, home string) (string, bool) {
 
 // pathAtOrUnder reports whether p equals base or is nested under it. Both are
 // cleaned and the comparison is component-wise, so "~/MusicStudio" is NOT
-// treated as under "~/Music".
-func pathAtOrUnder(p, base string) bool {
+// treated as under "~/Music". When fold is set the comparison ignores case,
+// because on that filesystem the two spellings are one directory (#6579).
+func pathAtOrUnder(p, base string, fold bool) bool {
 	p = filepath.Clean(p)
 	base = filepath.Clean(base)
+	if fold {
+		p = strings.ToLower(p)
+		base = strings.ToLower(base)
+	}
 	if p == base {
 		return true
 	}
