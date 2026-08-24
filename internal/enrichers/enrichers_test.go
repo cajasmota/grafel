@@ -503,8 +503,10 @@ func TestAnnotateMigrationSequences_UnknownPattern(t *testing.T) {
 // whose first underscore-delimited segment merely happens to be long must fall
 // through to the unknown bucket, not be reported as an Alembic migration.
 //
-// The last two cases are each rejected by only ONE half of the discriminator,
-// so this test goes red if either half is relaxed on its own.
+// Several cases below are rejected by only ONE of the three constraints (path
+// component, hex charset, 12-character minimum), so this one test goes red if
+// any single constraint is relaxed on its own — though all such failures land
+// on this same test, differing in which case inside it fails.
 func TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped(t *testing.T) {
 	cases := []string{
 		// Reporter's own cases (#6557): 12- and 14-character first segments.
@@ -518,6 +520,13 @@ func TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped(t *testing.T)
 		// A versions/ directory that is not Alembic's (API versioning): only
 		// the charset half rejects this one.
 		"app/api/versions/notification_stream.py",
+		// All-hex first segments that are too SHORT to be a revision id, in a
+		// real Alembic directory: only the {12,} length bound rejects these.
+		// `added` and `deface` are ordinary words spelled entirely in hex
+		// letters, so relaxing the bound re-opens the reported defect inside
+		// versions/ itself.
+		"alembic/versions/added_field.py",
+		"alembic/versions/deface_x.py",
 	}
 	for _, src := range cases {
 		ann, unknown := AnnotateMigrationSequences([]MigrationEntity{{EntityID: "e1", SourceFile: src}})
@@ -575,6 +584,20 @@ func TestAnnotateMigrationSequences_AlembicAbsolutePath(t *testing.T) {
 	}
 	if ann[0].SequenceNumber.(string) != "abc123def456" {
 		t.Fatalf("expected revision abc123def456, got %v", ann[0].SequenceNumber)
+	}
+}
+
+// TestAnnotateMigrationSequences_VersionsComponentIsCaseInsensitive pins that
+// the `versions` component is matched with EqualFold, so a case-preserving but
+// case-insensitive filesystem (macOS, Windows) that reports `VERSIONS/` still
+// resolves to an Alembic migration. This is deliberate, and unobserved until
+// now: tightening it to a case-sensitive compare must be a visible change.
+func TestAnnotateMigrationSequences_VersionsComponentIsCaseInsensitive(t *testing.T) {
+	ann, _ := AnnotateMigrationSequences([]MigrationEntity{
+		{EntityID: "m1", SourceFile: "app/alembic/VERSIONS/abc123def456_add_column.py"},
+	})
+	if len(ann) != 1 || ann[0].PatternMatched != MigrationPatternAlembic {
+		t.Fatalf("expected alembic for a VERSIONS/ component, got %+v", ann)
 	}
 }
 

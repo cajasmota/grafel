@@ -42,13 +42,23 @@ var (
 	flywayMigrationRe = regexp.MustCompile(`^V(\d+(?:\.\d+)*)__([^.]+)\.sql$`)
 	golangMigrateRe   = regexp.MustCompile(`^(\d{1,14})_([^.]+)\.(up|down)\.sql$`)
 	// alembicMigrationRe matches the basename half of the Alembic
-	// discriminator. The revision group is HEX only: Alembic generates rev_id
-	// as `uuid.uuid4().hex[-12:]`, so every generated id is hex, while the
-	// former `[A-Za-z0-9]{12,}` matched any Python module whose first
-	// underscore-delimited segment was long enough — `notification_stream.py`
-	// and `authentication_service.py` both parsed as migrations (#6557).
-	// A hand-set `--rev-id` containing a non-hex letter is not recognised;
-	// that recall cost is deliberate and is pinned by
+	// discriminator. The revision group is 12+ HEX characters: that is the
+	// shape of Alembic's DEFAULT generator, `uuid.uuid4().hex[-12:]`. It is a
+	// default, not a constraint — `alembic revision --rev-id=<anything>` is
+	// unvalidated, and `file_template` is configurable (the alembic.ini that
+	// `alembic init` ships carries a commented date-prefixed example, under
+	// which the rev id is not the first basename segment at all and this regex
+	// misses entirely). So this matches the common shape, deliberately, rather
+	// than everything Alembic can emit.
+	//
+	// Both bounds carry weight. The former `[A-Za-z0-9]{12,}` matched any
+	// Python module whose first underscore-delimited segment was long enough —
+	// `notification_stream.py` and `authentication_service.py` both parsed as
+	// migrations (#6557). And the `{12,}` minimum is what keeps ordinary words
+	// spelled in hex letters (`added_field.py`, `deface_x.py`) out, including
+	// inside a real versions/ directory. Both are pinned by
+	// TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped, and the
+	// charset policy separately by
 	// TestAnnotateMigrationSequences_AlembicRequiresHexRevision.
 	//
 	// The basename is NOT sufficient on its own: it is conjoined with
@@ -69,8 +79,15 @@ var (
 // `oldversions/` or `versions_old/` directory must NOT qualify. Pinned by
 // TestAnnotateMigrationSequences_VersionsMustBeAPathComponent.
 //
-// filepath.ToSlash is load-bearing only on Windows, where filepath.Dir emits
-// backslashes; on unix it is a no-op, so no test in this package observes it.
+// The comparison is EqualFold on purpose, so a case-insensitive filesystem
+// reporting `VERSIONS/` still resolves. Pinned by
+// TestAnnotateMigrationSequences_VersionsComponentIsCaseInsensitive.
+//
+// filepath.ToSlash does NOT buy backslash handling off Windows: it is a no-op
+// there, and filepath.Dir on a `app\alembic\versions\x.py` string then returns
+// ".", so such a path is REJECTED on darwin/linux. The behaviour is therefore
+// GOOS-dependent and untested — SourceFile arrives slash-normalised upstream,
+// and this mirrors the house idiom at internal/graph/coverage.go:561.
 func hasAlembicVersionsAncestor(sourceFile string) bool {
 	dir := filepath.ToSlash(filepath.Dir(sourceFile))
 	for _, seg := range strings.Split(dir, "/") {
