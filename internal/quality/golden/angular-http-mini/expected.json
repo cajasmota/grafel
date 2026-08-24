@@ -1,7 +1,7 @@
 {
   "fixture_name": "angular-http-mini",
   "language": "typescript",
-  "description": "Angular HttpClient consumer-side extraction (#6433, reported by @auxmedrano; hardened after review #6446). Before this fixture nothing in the golden set graded OUTBOUND http client calls at all, so the frontend half of cross-stack linking could regress to zero in silence -- which is what had happened: SCOPE.ExternalAPI was minted only for bare-identifier `fetch` / `axios`, and the engine's receiver-style pass was gated on the literal token `httpService`, so an idiomatic Angular service (`private http = inject(HttpClient)` + `this.http.get<T>(...)`) produced no node of either kind. Argument shapes covered: a static quoted literal behind a TS generic parameter; a template literal with a static leading segment; a statically-known RELATIVE literal (assets/i18n/en.json -- resolvable, must NOT be marked dynamic); a nested generic (Record<string,string>, which matched nothing at all before #6446); and TWO non-literal call expressions in one file, which must produce TWO nodes -- the dynamic marker used to be one shared path, so N sites in a file collapsed into one and reintroduced the undercount the issue was reported for. Base-URL constant folding is deliberately NOT attempted. Three negative controls guard the token gate, which is evidence-based (DI call / type annotation / value import / NestJS receiver) over comment- and literal-stripped source, NOT a substring match: not-a-consumer.ts (no token at all), legacy-wrapper.ts (the token in a migration TODO comment -- the most common shape in a mid-migration codebase), and thing.service.spec.ts (HttpClientTestingModule carries `HttpClient` as a substring; test scaffolding must not inflate SCOPE.ExternalAPI, which is the metric the issue was measured on).",
+  "description": "Angular HttpClient consumer-side extraction (#6433, reported by @auxmedrano; hardened after review #6446). Before this fixture nothing in the golden set graded OUTBOUND http client calls at all, so the frontend half of cross-stack linking could regress to zero in silence -- which is what had happened: SCOPE.ExternalAPI was minted only for bare-identifier `fetch` / `axios`, and the engine's receiver-style pass was gated on the literal token `httpService`, so an idiomatic Angular service (`private http = inject(HttpClient)` + `this.http.get<T>(...)`) produced no node of either kind. Argument shapes covered: a static quoted literal behind a TS generic parameter; a template literal with a static leading segment; a statically-known RELATIVE literal (assets/i18n/en.json -- resolvable, must NOT be marked dynamic); a nested generic (Record<string,string>, which matched nothing at all before #6446); and TWO non-literal call expressions in one file, which must produce TWO nodes -- the dynamic marker used to be one shared path, so N sites in a file collapsed into one and reintroduced the undercount the issue was reported for. Constant folding: a BARE IDENTIFIER argument bound to a same-file `const NAME = '<string literal>'` IS now folded (#6551, reported by @auxmedrano) -- app/const-fold.service.ts's `this.http.get<readonly Thing[]>(PEOPLE)` resolves to /api/admin/v1/people, where it used to dangle at /{dynamic}/PEOPLE and link to nothing. The binding is resolved off the tree-sitter AST, not off the regex symbol table the string and template arms use (buildJSScopedConstTable, #6552): that arm is the SOLE source of truth for a call that would otherwise be an honest /{dynamic} marker, so a wrong binding does not degrade an answer -- it publishes a confident runtime_dynamic=false endpoint the cross-stack linker attaches to a route the call never makes. Everything the fold cannot PROVE still declines and stays dynamic, and two negative controls in that file pin it: a commented-out `const PEOPLE = '/api/OLD/people'` above the live declaration (a first-match-wins regex over raw text binds the dead one), and a module-level const shadowed by a method parameter of the same name. Base-URL folding through a call expression or a non-literal initialiser is still deliberately NOT attempted. Three negative controls guard the token gate, which is evidence-based (DI call / type annotation / value import / NestJS receiver) over comment- and literal-stripped source, NOT a substring match: not-a-consumer.ts (no token at all), legacy-wrapper.ts (the token in a migration TODO comment -- the most common shape in a mid-migration codebase), and thing.service.spec.ts (HttpClientTestingModule carries `HttpClient` as a substring; test scaffolding must not inflate SCOPE.ExternalAPI, which is the metric the issue was measured on).",
   "expected_entities": [
     {
       "name": "http:GET:/api/things",
@@ -136,6 +136,20 @@
       "kind": "SCOPE.Operation",
       "source_file": "app/dynamic.service.ts",
       "must_exist": true
+    },
+    {
+      "name": "http:GET:/api/admin/v1/people",
+      "kind": "http_endpoint_call",
+      "source_file": "app/const-fold.service.ts",
+      "must_exist": true,
+      "note": "this.http.get<readonly Thing[]>(PEOPLE) where `const PEOPLE = '/api/admin/v1/people'` sits at module scope in the same file (#6551). The URL argument is a bare identifier, so every pass before this one fell through to /{dynamic}/PEOPLE -- a node that exists but binds to no producer, which is why a fully-indexed Spring+Angular monorepo showed 0 cross-stack links. Reverting the bare-identifier arm drops this row."
+    },
+    {
+      "name": "http:GET:/{dynamic}/shadowed",
+      "kind": "http_endpoint_call",
+      "source_file": "app/const-fold.service.ts",
+      "must_exist": true,
+      "note": "#6552 shape H, positive half: `byPath(shadowed: string)` takes a PARAMETER that shadows the module-level `const shadowed = '/api/module/level'`. The call must still be emitted -- declining to fold is not licence to drop the site -- but under the dynamic marker. The forbidden row below is the other half."
     }
   ],
   "expected_relationships": [
@@ -308,6 +322,17 @@
       "to_file": "app/dynamic.service.ts",
       "must_exist": true,
       "note": "The one site that DID emit a FETCHES edge before #6447 -- with `legacyBase` as the caller, which is the URL-building helper, not the caller. Right target, wrong source."
+    },
+    {
+      "from_name": "people",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "app/const-fold.service.ts",
+      "kind": "FETCHES",
+      "to_name": "http:GET:/api/admin/v1/people",
+      "to_kind": "http_endpoint_call",
+      "to_file": "app/const-fold.service.ts",
+      "must_exist": true,
+      "note": "The folded call must be REACHABLE, not merely minted: a resolved node nothing calls is the same dead end as an unresolved one, which is the state #6551 was reported from. Pairs with the #6447 row above -- that one grades caller attribution for a static literal, this one for an argument whose path came from a constant."
     }
   ],
   "forbidden_relationships": [
@@ -368,6 +393,24 @@
       "to_file": "app/dynamic.service.ts",
       "must_exist": false,
       "note": "The other half of the same defect: legacyByCode()'s call site was also stamped `legacyBase`. The target happens to be right, so only the SOURCE is wrong -- which is exactly the shape a to_name-only assertion cannot catch."
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:GET:/api/OLD/people",
+      "to_kind": "http_endpoint_call",
+      "must_exist": false,
+      "note": "#6552 shape A. app/const-fold.service.ts carries `// const PEOPLE = '/api/OLD/people';` on the line above the live declaration. buildJSConstantSymbolTable runs jsConstStringRe over RAW source and keeps the FIRST match per name, so it binds the dead one; the AST table never sees it, because tree-sitter yields a `comment` node and a comment is not a lexical_declaration. Pointing the bare-identifier arm back at the regex table mints this node and this row hits -- verified by mutation."
+    },
+    {
+      "from_name": "angular-http-mini",
+      "from_kind": "Module",
+      "kind": "CONTAINS",
+      "to_name": "http:GET:/api/module/level",
+      "to_kind": "http_endpoint_call",
+      "must_exist": false,
+      "note": "#6552 shape H, negative half. `byPath(shadowed: string)` binds `shadowed` to the caller's argument; the module-level const of the same name is not what is passed. A flat per-file map has no way to know that. Dropping the innermost-scope rule in jsScopedConstTable.resolve -- or accepting a non-foldable binding as a miss and continuing to an outer one -- mints this node and this row hits."
     }
   ]
 }

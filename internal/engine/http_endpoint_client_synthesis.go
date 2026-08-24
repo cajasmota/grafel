@@ -1701,10 +1701,24 @@ func synthesizeFetchAxiosWithRuntime(content, lang string, emit jsRuntimeEmitFn)
 	// runtime_dynamic=true, and BEFORE the process.env early-exit below because
 	// an Angular service contains neither `process.env` nor `import.meta.env`.
 	if hasInjectedHTTPClientToken(content) {
+		// #6552 — the bare-identifier fold resolves through a scope-aware AST
+		// table, built lazily so a file with no bare-identifier URL argument
+		// never pays for a second parse. buildJSScopedConstTable returns nil on
+		// a parse failure, and a nil table declines every lookup, so the fold
+		// degrades to the honest /{dynamic} marker rather than guessing.
+		var scoped *jsScopedConstTable
+		scopedBuilt := false
+		resolveConst := func(name string, pos uint32) (string, bool) {
+			if !scopedBuilt {
+				scoped, scopedBuilt = buildJSScopedConstTable(content, lang), true
+			}
+			return scoped.resolve(name, pos)
+		}
 		synthesizeReceiverClientResidualCalls(
 			content,
 			indexJSEnclosingFunctions(content),
 			buildJSConstantSymbolTable(content),
+			resolveConst,
 			emit,
 		)
 	}

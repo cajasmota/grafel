@@ -60,6 +60,54 @@ func TestSynth_AngularHttpClient_StaticURL_6433(t *testing.T) {
 	}, "angular-httpclient-static")
 }
 
+// TestSynth_AngularHttpClient_StringConstURL_6551 — the URL argument is a bare
+// identifier bound to a same-file string-literal constant, the idiomatic Angular
+// api-service shape:
+//
+//	const PEOPLE = '/api/admin/v1/people';
+//	this.http.get<Person>(PEOPLE, opts);
+//	this.http.post<Person>(PEOPLE, body);
+//
+// Reported by @auxmedrano (#6551): #6433 got the call site extracted, but a bare
+// identifier fell straight through to the /{dynamic} marker even when its value
+// was a statically-known path, so every call routed through a path constant
+// dangled instead of linking to its producer endpoint. The symbol table
+// (buildJSConstantSymbolTable) already captures such consts and is already
+// threaded into the receiver residual pass; this folds the identifier through it.
+// A non-literal const (const BASE = environment.apiBase) is NOT captured and
+// stays dynamic — see TestSynth_AngularHttpClient_DynamicArg_6433.
+func TestSynth_AngularHttpClient_StringConstURL_6551(t *testing.T) {
+	src := `
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+
+const PEOPLE = '/api/admin/v1/people';
+
+@Injectable({ providedIn: 'root' })
+export class PeopleService {
+  private http = inject(HttpClient);
+
+  byDpi(dpi: string) {
+    return this.http.get<Person>(PEOPLE, { params: new HttpParams().set('dpi', dpi) });
+  }
+
+  create(body: Person) {
+    return this.http.post<Person>(PEOPLE, body);
+  }
+}
+`
+	got, _ := runDetect(t, "typescript", "people.service.ts", src)
+	requireContains(t, got, []string{
+		"http:GET:/api/admin/v1/people",
+		"http:POST:/api/admin/v1/people",
+	}, "angular-httpclient-string-const")
+	for _, id := range got {
+		if strings.Contains(id, "{dynamic}") && strings.Contains(id, "PEOPLE") {
+			t.Errorf("bare string-const identifier left dynamic instead of folded: %q (got=%v)", id, got)
+		}
+	}
+}
+
 // TestSynth_AngularHttpClient_TemplateLiteral_6433 covers a template literal
 // whose leading segment IS statically knowable — the canonical path keeps the
 // interpolation as a `{name}` route parameter, so it can bind to the producer.
