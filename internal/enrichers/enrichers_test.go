@@ -527,6 +527,13 @@ func TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped(t *testing.T)
 		// versions/ itself.
 		"alembic/versions/added_field.py",
 		"alembic/versions/deface_x.py",
+		// A hex run that is NOT the leading segment. Pins the `^` anchor: the
+		// revision-half is supposed to mean "the revision is the FIRST
+		// underscore-delimited segment", and dropping the anchor stamps this as
+		// revision=abc123def456 name=util. Contrived as a filename, but the
+		// anchor encodes a load-bearing assumption about Alembic that nothing
+		// else observes — see the file_template note on alembicMigrationRe.
+		"alembic/versions/helpers_abc123def456_util.py",
 	}
 	for _, src := range cases {
 		ann, unknown := AnnotateMigrationSequences([]MigrationEntity{{EntityID: "e1", SourceFile: src}})

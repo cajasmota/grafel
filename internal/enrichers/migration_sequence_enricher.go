@@ -51,6 +51,14 @@ var (
 	// misses entirely). So this matches the common shape, deliberately, rather
 	// than everything Alembic can emit.
 	//
+	// The leading `^` is part of that shape and is deliberate: the revision is
+	// the FIRST underscore-delimited segment, not a hex run anywhere in the
+	// basename. Unanchored, `helpers_abc123def456_util.py` parses as revision
+	// abc123def456. If `file_template` support ever lands, the anchor is the
+	// thing someone will reach for, and changing it should be a visible test
+	// change — pinned by the last case in
+	// TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped.
+	//
 	// Both bounds carry weight. The former `[A-Za-z0-9]{12,}` matched any
 	// Python module whose first underscore-delimited segment was long enough —
 	// `notification_stream.py` and `authentication_service.py` both parsed as
