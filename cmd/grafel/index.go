@@ -313,6 +313,21 @@ type Indexer struct {
 	walkedFiles  []string
 	diffManifest *idiff.Manifest
 
+	// passHeadShort/passHeadFull are the repo's HEAD as read at PASS START, in
+	// the two abbreviations the manifest records (#6502). commitManifest stamps
+	// from these rather than from live HEAD because the manifest answers "which
+	// commit is the persisted graph built from?", and on a full index the gap
+	// between pass start and manifest save is the whole index — minutes on a
+	// large repo. A commit landing inside that gap made the graph claim work it
+	// never saw, and the #5710 head-advance detector then sees HEAD == manifest
+	// and reports Done over a stale graph. Empty on a non-git directory, which
+	// SaveManifestAtCommit writes through as empty — the correct default.
+	//
+	// Both are read from ONE diff.HeadCommitPair call so short and full can
+	// never describe different commits, which SaveManifestAtCommit requires.
+	passHeadShort string
+	passHeadFull  string
+
 	// walkStamps is the manifest entry for every file this run examined,
 	// captured AT THE MOMENT the walk looked at it (#6212). It is what
 	// commitManifest stamps from, and the reason commitManifest hashes nothing.
@@ -738,6 +753,14 @@ type indexerStats struct {
 // restore it afterward.
 var enrichmentOrderHook = func(stage string) {}
 
+// gitCaptureHook is a test-only observability seam fired once per full index,
+// immediately after this pass's HEAD has been read and before extraction
+// starts (#6502). It is deliberately NOT a stage of enrichmentOrderHook: that
+// hook's first event is asserted to be "graph_written", so prepending to it
+// would rewrite an unrelated ordering contract. Production uses the no-op
+// default; a test swaps it to advance HEAD at the one instant that matters.
+var gitCaptureHook = func() {}
+
 // enrichmentEmittersForBG returns the CandidateEmitter set used by
 // runPass6EmitEnrichmentCandidatesBG. Test-only override seam (defaults to
 // enrichment.DefaultEmitters): tests can swap this to inject a panicking
@@ -828,6 +851,35 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		idx.ingestDocs = true
 	}
 
+	// #6502 — read the repo's HEAD ONCE, HERE, at pass start, and stamp both
+	// on-disk labels from it. Everything below this line is the pass; a commit
+	// that lands during it belongs to a graph that does not exist yet.
+	//
+	// Two abbreviations are captured because the two stamps have different,
+	// already-published formats and neither may change: gitmeta.Capture uses
+	// `rev-parse --short=12` and feeds doc.IndexedSHA (surfaced verbatim to the
+	// statusline and to grafel_index_status), while the manifest's GitCommit
+	// uses diff's bare `--short` (~7) and gitmeta.Info carries no full SHA at
+	// all, which SaveManifestAtCommit requires. So the format mismatch is
+	// resolved by keeping BOTH producers and moving both reads to the same
+	// instant, rather than by reusing one value in the other's place and
+	// silently changing a user-visible string.
+	//
+	// ProbeRepo comes along because it describes the same checkout at the same
+	// moment; it reads sparse-checkout config, not a commit, so its placement
+	// is a consistency choice rather than a correctness one.
+	gi := gitmeta.Capture(absRepo)
+	si := gitmeta.ProbeRepo(absRepo)
+	idx.passHeadShort, idx.passHeadFull = idiff.HeadCommitPair(absRepo)
+
+	// #6502 — the pass's HEAD has now been read (see the capture above). The
+	// window this hook exists to expose opens HERE and closes when the manifest
+	// and the graph header are stamped, hundreds of files later: a commit that
+	// lands inside it must NOT be the commit either stamp records. Timing alone
+	// cannot express that, so a test-only seam makes the instant addressable.
+	// Production always uses the no-op default.
+	gitCaptureHook()
+
 	// #5692: measure the extraction pipeline wall-clock so it can be persisted
 	// into the graph-stats.json sidecar (extract_ms) for index-timing
 	// observability. Pure measurement — no behaviour change to indexing.
@@ -838,21 +890,24 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	}
 	extractMS := time.Since(extractStart).Milliseconds()
 
-	// Phase 0 git metadata (#2088). Capture HEAD ref + SHA + worktree flag
-	// and stamp them onto the document BEFORE the rename-detect pass so
-	// all on-disk representations (graph.fb and graph.json) carry them.
+	// Phase 0 git metadata (#2088). Stamp the PASS-START HEAD ref + SHA +
+	// worktree flag onto the document BEFORE the rename-detect pass so all
+	// on-disk representations (graph.fb and graph.json) carry them.
 	// Non-git directories return a zero-value Info; the Document fields stay
 	// empty, which is the correct default for old readers.
+	//
+	// #6502 — gi/si are captured at pass start, above, NOT here. The capture
+	// used to live at this line, after the whole extraction, which made
+	// IndexedSHA a post-extraction read: on a repo that took a commit during
+	// the index, the graph header named a commit the graph had never seen.
+	// Only the assignment stays here, because doc does not exist until Run
+	// returns.
 	{
-		gi := gitmeta.Capture(absRepo)
 		doc.IndexedRef = gi.Ref
 		doc.IndexedSHA = gi.SHA
 		doc.IsWorktree = gi.IsWorktree
 		// M4 sparse-checkout (#2181): stamp the coverage status so dashboard /
 		// MCP readers can surface the "partial" badge without re-probing git.
-		// ProbeRepo is cheap (2-3 git config reads with a 2s timeout each);
-		// calling it here keeps the gitmeta block self-contained.
-		si := gitmeta.ProbeRepo(absRepo)
 		doc.CoverageStatus = si.CoverageStatus()
 		if gi.SHA != "" {
 			fmt.Fprintf(os.Stderr, "grafel: git HEAD %s @ %s (worktree=%v)\n",
@@ -1288,7 +1343,12 @@ func (i *Indexer) commitManifest(absRepo, graphDir string) {
 			"entities are absent from the graph until the file changes (#6209)\n",
 			rel, idiff.MaxExtractRetries+1)
 	}
-	if err := idiff.SaveManifest(dest, absRepo, m); err != nil {
+	// #6502 — stamped with the commit this pass STARTED on, not with live HEAD.
+	// SaveManifest reads HEAD at save time, which on a full index is the whole
+	// index later; the incremental sites moved off it in #6474 and this was the
+	// last one still disagreeing with them. absRepo is no longer needed for the
+	// commit, only for the caller's own logging.
+	if err := idiff.SaveManifestAtCommit(dest, m, i.passHeadShort, i.passHeadFull); err != nil {
 		fmt.Fprintf(os.Stderr, "grafel: save incremental manifest: %v (non-fatal)\n", err)
 	}
 }
