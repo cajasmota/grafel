@@ -35,14 +35,33 @@
 //
 // Ownership / deduplication
 // -------------------------
-// A file may register the same handler BOTH ways (`routes!(h)` and
-// `.route("/x", get(h))`). Minting from both producers would recreate the
-// duplicate-producer hazard of #6530, so this pass dedupes on the HANDLER NAME:
-// any handler that appears as the handler argument of an axumRouteRe match in
-// the same file is skipped here entirely. The `.route(...)` registration is the
-// authoritative mount point (it is what the router actually serves); the
-// attribute path is documentation, and where the two disagree, minting the
-// attribute path as well would invent a second endpoint for one handler.
+// A file may register the same handler through MORE THAN ONE producer — a
+// `.route("/x", get(h))` call read by synthesizeAxumRoutes, or a Rocket verb
+// attribute `#[get("/x")]` read by synthesizeRocket, either of them alongside a
+// `routes!(h)`. (`#[utoipa::path]` beside Rocket attribute macros is a shipped
+// utoipa combination, not a hypothetical.) Minting from two producers for one
+// handler is the duplicate-producer hazard of #6530, so this pass dedupes on the
+// HANDLER NAME against EVERY other Rust producer that reads this same file:
+// utoipaRegisteredElsewhere collects the handler arguments of axumRouteRe AND
+// the decorated functions of rocketRouteAttrRe, and any handler in that set is
+// skipped here entirely.
+//
+// The registration in code is the authoritative mount point — it is what the
+// router actually serves — while the attribute path is documentation. Where the
+// two disagree, minting the attribute path as well would invent a second
+// endpoint for one handler.
+//
+// This dedupe is FILE-SCOPED, and so is the emit-level `dedupKey` it complements
+// (http_endpoint_synthesis.go). A handler whose attribute and `routes!` mount
+// live in one file while a `.route(...)` for it lives in ANOTHER file is not
+// deduped by either mechanism and will mint twice, once per path. That needs a
+// genuine double mount to occur and is not addressed here; no test observes it.
+//
+// Ordering note: this pass runs after synthesizeAxumRoutes but BEFORE
+// synthesizeRocket. Where two producers' IDs agree, `dedupKey` keeps the FIRST
+// emit, so without the Rocket half of the dedupe key a Rocket endpoint would not
+// merely be duplicated — it would be relabelled framework=utoipa_axum. The
+// Rocket guard tests assert the framework stamp for exactly that reason.
 //
 // Scope — Arm A only (#6560)
 // --------------------------
@@ -58,6 +77,13 @@
 //   - `OpenApiRouter::nest("/prefix", ...)` prefix composition — the axum pass's
 //     nest handling is not threaded onto these routes, so a nested utoipa router
 //     yields the unprefixed attribute path.
+//
+// Known house behaviour, not new here: a `routes!(...)` occurrence inside a
+// block comment or a string literal is still read as a registration, exactly as
+// synthesizeAxumRoutes reads a commented-out `.route(`. A COMMENTED-OUT
+// `#[utoipa::path]` attribute is a different matter and IS rejected — see
+// utoipaHandlerRoutes — because binding it to the next function stamps a route
+// on a function that never declared one.
 package engine
 
 import (
@@ -88,20 +114,36 @@ var utoipaAttrMethodRe = regexp.MustCompile(
 // utoipaAttrPathRe extracts `path = "/items/{id}"` from the attribute.
 var utoipaAttrPathRe = regexp.MustCompile(`\bpath\s*=\s*"([^"\r\n]+)"`)
 
-// utoipaAttrFnRe matches the `fn <name>` that the attribute decorates.
-var utoipaAttrFnRe = regexp.MustCompile(`\bfn\s+([A-Za-z_]\w*)`)
-
-// utoipaHasRoutesMacro is a fast pre-filter: the file must both mention utoipa
-// and contain a `routes!` macro invocation.
+// utoipaAttrDecoratedFnRe matches the `fn <name>` that an attribute DECORATES,
+// anchored at the end of that attribute so nothing but the rest of the
+// attribute's own `]`, whitespace, further attributes, comments and the usual
+// `pub` / `async` qualifiers may stand between them.
 //
-// This is a CHEAP EARLY EXIT ONLY, not the correctness guard. What actually
-// keeps Rocket's `rocket::routes!(...)` mount macro out of this pass is the
-// same-file attribute map below: a Rocket file has no `#[utoipa::path(`, so the
-// map is empty and nothing is minted. Dropping the "utoipa" substring test here
-// changes no result in the suite (scored as a surviving mutant), so treat it as
-// a performance filter and keep the attribute-map requirement load-bearing.
+// The anchor is the point of this regex. An unbounded search for the next `fn`
+// binds an attribute to whatever function happens to follow it — a
+// `#[utoipa::path]` on a struct, or one that was commented out, would stamp its
+// route onto an unrelated handler, which is the worst shape of false positive
+// this pass could produce.
+var utoipaAttrDecoratedFnRe = regexp.MustCompile(
+	`^\]?\s*(?:(?://[^\n]*|#\[[^\]]*\])\s*)*(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_]\w*)`)
+
+// utoipaHasRoutesMacro is a fast pre-filter: the file must contain a `routes!`
+// macro invocation.
+//
+// It deliberately does NOT also test for the substring "utoipa". That clause was
+// redundant — the attribute map below is what decides whether anything is minted
+// — and worse, pairing it with a comment claiming it excluded Rocket documented
+// a guard that did not hold: a file using Rocket AND utoipa passes it. Rocket
+// handlers are excluded properly, by the dedupe key, not by a substring test.
 func utoipaHasRoutesMacro(content string) bool {
-	return strings.Contains(content, "utoipa") && strings.Contains(content, "routes!")
+	return strings.Contains(content, "routes!")
+}
+
+// utoipaAttrIsLineCommented reports whether the attribute starting at attrOff is
+// inside a `//` line comment. A commented-out attribute decorates nothing.
+func utoipaAttrIsLineCommented(content string, attrOff int) bool {
+	lineStart := strings.LastIndexByte(content[:attrOff], '\n') + 1
+	return strings.Contains(content[lineStart:attrOff], "//")
 }
 
 // utoipaBalancedParens returns the text inside the paren group that opens at
@@ -140,6 +182,9 @@ type utoipaAttrRoute struct {
 func utoipaHandlerRoutes(content string) map[string]utoipaAttrRoute {
 	out := map[string]utoipaAttrRoute{}
 	for _, m := range utoipaPathAttrStartRe.FindAllStringIndex(content, -1) {
+		if utoipaAttrIsLineCommented(content, m[0]) {
+			continue
+		}
 		// m[1]-1 is the '(' opening the attribute argument list.
 		inner, endOff, ok := utoipaBalancedParens(content, m[1]-1)
 		if !ok {
@@ -153,8 +198,10 @@ func utoipaHandlerRoutes(content string) map[string]utoipaAttrRoute {
 		if pm == nil {
 			continue
 		}
-		fm := utoipaAttrFnRe.FindStringSubmatch(content[endOff:])
+		fm := utoipaAttrDecoratedFnRe.FindStringSubmatch(content[endOff:])
 		if fm == nil {
+			// The attribute does not decorate a function (e.g. it sits on a
+			// struct, or is detached from the next `fn` by other code).
 			continue
 		}
 		handler := fm[1]
@@ -171,12 +218,41 @@ func utoipaHandlerRoutes(content string) map[string]utoipaAttrRoute {
 	return out
 }
 
+// utoipaRegisteredElsewhere returns the set of handler names that ANOTHER Rust
+// producer already mints an http_endpoint_definition for out of this same file:
+//
+//   - synthesizeAxumRoutes, from `.route("path", verb(handler))` (axumRouteRe
+//     capture 3);
+//   - synthesizeRocket, from a verb attribute macro `#[get("/path")]` on the
+//     function (rocketRouteAttrRe capture 3).
+//
+// This is the dedupe key. It is deliberately expressed against the OTHER passes'
+// own regexes rather than a re-derived approximation, so a handler this pass
+// skips is exactly a handler one of them registers.
+func utoipaRegisteredElsewhere(content string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range axumRouteRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		out[m[3]] = true
+	}
+	for _, m := range rocketRouteAttrRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		out[m[3]] = true
+	}
+	return out
+}
+
 // synthesizeUtoipaAxumRoutes scans a Rust source file for single-handler
 // `routes!(handler)` registrations and emits one http_endpoint_definition per
 // handler whose `#[utoipa::path(...)]` attribute is in the SAME file.
 //
-// Handlers already registered through a `.route(...)` call in this file are
-// skipped — see the deduplication note in the file header.
+// Handlers that another producer already registers out of this file — a
+// `.route(...)` call or a Rocket verb attribute — are skipped; see
+// utoipaRegisteredElsewhere and the deduplication note in the file header.
 //
 // The handler kind is "Controller", the convention synthesizeAxumRoutes and
 // synthesizeRocket use: resolverKindEquivalents maps Controller → SCOPE.Operation
@@ -191,15 +267,7 @@ func synthesizeUtoipaAxumRoutes(content string, emit emitFn) {
 		return
 	}
 
-	// Dedupe key: handler name already minted by synthesizeAxumRoutes from a
-	// `.route("path", verb(handler))` registration in this same file.
-	routeRegistered := map[string]bool{}
-	for _, m := range axumRouteRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 4 {
-			continue
-		}
-		routeRegistered[m[3]] = true
-	}
+	registeredElsewhere := utoipaRegisteredElsewhere(content)
 
 	minted := map[string]bool{}
 	for _, m := range utoipaRoutesMacroRe.FindAllStringSubmatch(content, -1) {
@@ -207,7 +275,7 @@ func synthesizeUtoipaAxumRoutes(content string, emit emitFn) {
 			continue
 		}
 		handler := m[1]
-		if routeRegistered[handler] || minted[handler] {
+		if registeredElsewhere[handler] || minted[handler] {
 			continue
 		}
 		route, known := attrs[handler]

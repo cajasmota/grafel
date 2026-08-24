@@ -199,7 +199,9 @@ pub fn router() -> OpenApiRouter {
 // TestUtoipaAxum_RocketRoutesMacroUnaffected guards the pre-filter: Rocket's
 // `routes![...]` / `routes!(...)` mount macro must not be read as a utoipa_axum
 // registration. Rocket handlers are already covered by synthesizeRocket, and
-// the attribute-map lookup is what keeps this file from double-minting.
+// the framework stamp is what observes it: asserting only the ID and the count
+// would still pass if this pass minted the endpoint itself, because the two
+// producers agree on the ID here.
 func TestUtoipaAxum_RocketRoutesMacroUnaffected(t *testing.T) {
 	src := `
 #[macro_use] extern crate rocket;
@@ -216,5 +218,143 @@ fn rocket() -> _ {
 	requireContains(t, ids, []string{"http:GET:/hello"}, "utoipa-axum-rocket-guard")
 	if got := countDefsForHandler(res, "hello"); got != 1 {
 		t.Errorf("utoipa-axum-rocket-guard: want exactly 1 definition for hello, got %d", got)
+	}
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointDefinitionKind && e.Properties["source_handler"] == "Controller:hello" {
+			if e.Properties["framework"] != "rocket" {
+				t.Errorf("utoipa-axum-rocket-guard: hello endpoint %q must come from synthesizeRocket, got framework=%q",
+					e.ID, e.Properties["framework"])
+			}
+		}
+	}
+}
+
+// TestUtoipaAxum_RocketAttributeSameFileNotDoubleMinted is the #6530 shape the
+// first cut of this pass missed: a handler carrying BOTH a `#[utoipa::path]`
+// attribute and a Rocket verb attribute, mounted with the paren form
+// `routes!(h)`. `#[utoipa::path]` beside Rocket attribute macros is a shipped
+// utoipa combination. synthesizeRocket already registers such a handler, so this
+// pass must not mint a second, differently-pathed definition for it — the dedupe
+// key has to mean "already registered by ANY producer in this file", not "by
+// axumRouteRe".
+//
+// The framework assertion matters independently: this pass runs BEFORE
+// synthesizeRocket, so a double mint whose IDs happened to agree would not add
+// an entity — it would silently relabel a Rocket endpoint as utoipa_axum.
+func TestUtoipaAxum_RocketAttributeSameFileNotDoubleMinted(t *testing.T) {
+	src := `
+#[macro_use] extern crate rocket;
+use utoipa::OpenApi;
+
+#[utoipa::path(get, path = "/hello")]
+#[get("/v1/hello")]
+fn hello() -> &'static str { "world" }
+
+#[launch]
+fn rocket() -> _ {
+    rocket::build().mount("/", routes!(hello))
+}
+`
+	ids, res := runDetect(t, "rust", "src/main.rs", src)
+	requireContains(t, ids, []string{"http:GET:/v1/hello"}, "utoipa-axum-rocket-attr")
+	requireNotContains(t, ids, []string{"http:GET:/hello"}, "utoipa-axum-rocket-attr")
+
+	if got := countDefsForHandler(res, "hello"); got != 1 {
+		t.Errorf("utoipa-axum-rocket-attr: want exactly 1 definition for hello, got %d", got)
+	}
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointDefinitionKind && e.Properties["source_handler"] == "Controller:hello" {
+			if e.Properties["framework"] != "rocket" {
+				t.Errorf("utoipa-axum-rocket-attr: hello endpoint %q should stay framework=rocket, got %q",
+					e.ID, e.Properties["framework"])
+			}
+		}
+	}
+}
+
+// TestUtoipaAxum_CommentedOutAttributeNotMinted pins the bound on the
+// attribute→fn association. The attribute is COMMENTED OUT, so it decorates
+// nothing; binding it to whatever `fn` happens to follow would stamp a route on
+// an unrelated function — the worst shape of false positive.
+func TestUtoipaAxum_CommentedOutAttributeNotMinted(t *testing.T) {
+	src := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+// #[utoipa::path(delete, path = "/legacy/{id}")]
+
+async fn purge_everything() -> &'static str { "" }
+
+#[utoipa::path(get, path = "/items")]
+async fn list_items() -> &'static str { "[]" }
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new()
+        .routes(routes!(list_items))
+        .routes(routes!(purge_everything))
+}
+`
+	ids, res := runDetect(t, "rust", "src/api.rs", src)
+	requireNotContains(t, ids, []string{"http:DELETE:/legacy/{id}"}, "utoipa-axum-commented-attr")
+	if got := countDefsForHandler(res, "purge_everything"); got != 0 {
+		t.Errorf("utoipa-axum-commented-attr: want 0 definitions for purge_everything, got %d", got)
+	}
+	if got := countDefsForHandler(res, "list_items"); got != 1 {
+		t.Errorf("utoipa-axum-commented-attr: want exactly 1 definition for list_items, got %d", got)
+	}
+}
+
+// TestUtoipaAxum_AttributeBindsOnlyToTheFunctionItDecorates pins the same bound
+// from the other side: an attribute separated from the next `fn` by unrelated
+// code is not that function's contract.
+func TestUtoipaAxum_AttributeBindsOnlyToTheFunctionItDecorates(t *testing.T) {
+	src := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/orphan")]
+struct NotAHandler { id: u32 }
+
+async fn unrelated() -> &'static str { "" }
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(unrelated))
+}
+`
+	ids, res := runDetect(t, "rust", "src/api.rs", src)
+	requireNotContains(t, ids, []string{"http:GET:/orphan"}, "utoipa-axum-attr-binding")
+	if got := countDefsForHandler(res, "unrelated"); got != 0 {
+		t.Errorf("utoipa-axum-attr-binding: want 0 definitions for unrelated, got %d", got)
+	}
+}
+
+// TestUtoipaAxum_MultiHandlerRoutesMacroNotMinted observes the Arm B exclusion
+// this pass claims: `routes!(a, b)` is out of scope for Arm A, so it must emit
+// NOTHING. Minting only the first handler would be a half-registration — the
+// second route silently missing — which is worse than the whole-form gap, and is
+// exactly what a `[,)]` widening of utoipaRoutesMacroRe produces.
+func TestUtoipaAxum_MultiHandlerRoutesMacroNotMinted(t *testing.T) {
+	src := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/items")]
+async fn list_items() -> &'static str { "[]" }
+
+#[utoipa::path(post, path = "/items")]
+async fn create_item() -> &'static str { "{}" }
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(list_items, create_item))
+}
+`
+	ids, res := runDetect(t, "rust", "src/api.rs", src)
+	requireNotContains(t, ids, []string{"http:GET:/items", "http:POST:/items"},
+		"utoipa-axum-multi-handler")
+	if got := countDefsForHandler(res, "list_items"); got != 0 {
+		t.Errorf("utoipa-axum-multi-handler: want 0 definitions for list_items, got %d", got)
+	}
+	if got := countDefsForHandler(res, "create_item"); got != 0 {
+		t.Errorf("utoipa-axum-multi-handler: want 0 definitions for create_item, got %d", got)
 	}
 }
