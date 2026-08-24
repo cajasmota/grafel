@@ -37,12 +37,42 @@ type MigrationEntity struct {
 }
 
 var (
-	railsMigrationRe   = regexp.MustCompile(`^(\d{14})_([^.]+)\.rb$`)
-	djangoMigrationRe  = regexp.MustCompile(`^(\d{4})_([^.]+)\.py$`)
-	flywayMigrationRe  = regexp.MustCompile(`^V(\d+(?:\.\d+)*)__([^.]+)\.sql$`)
-	golangMigrateRe    = regexp.MustCompile(`^(\d{1,14})_([^.]+)\.(up|down)\.sql$`)
-	alembicMigrationRe = regexp.MustCompile(`^([A-Za-z0-9]{12,})_([^.]+)\.py$`)
+	railsMigrationRe  = regexp.MustCompile(`^(\d{14})_([^.]+)\.rb$`)
+	djangoMigrationRe = regexp.MustCompile(`^(\d{4})_([^.]+)\.py$`)
+	flywayMigrationRe = regexp.MustCompile(`^V(\d+(?:\.\d+)*)__([^.]+)\.sql$`)
+	golangMigrateRe   = regexp.MustCompile(`^(\d{1,14})_([^.]+)\.(up|down)\.sql$`)
+	// alembicMigrationRe matches the basename half of the Alembic
+	// discriminator. The revision group is HEX only: Alembic generates rev_id
+	// as `uuid.uuid4().hex[-12:]`, so every generated id is hex, while the
+	// former `[A-Za-z0-9]{12,}` matched any Python module whose first
+	// underscore-delimited segment was long enough — `notification_stream.py`
+	// and `authentication_service.py` both parsed as migrations (#6557).
+	// A hand-set `--rev-id` containing a non-hex letter is not recognised;
+	// that recall cost is deliberate and is pinned by
+	// TestAnnotateMigrationSequences_AlembicRequiresHexRevision.
+	//
+	// The basename is NOT sufficient on its own: it is conjoined with
+	// hasAlembicVersionsAncestor below.
+	alembicMigrationRe = regexp.MustCompile(`^([0-9a-fA-F]{12,})_([^.]+)\.py$`)
 )
+
+// hasAlembicVersionsAncestor reports whether sourceFile sits under a directory
+// named `versions`, which is where Alembic keeps migration scripts and what the
+// `lang.python.orm.alembic` coverage record already claims this pass matches
+// ("each Alembic versions/*.py entity", docs/coverage/registry.json). It is the
+// path half of the discriminator; the hex basename above is the other half.
+// Neither half alone is enough — a hex-named module can live outside versions/,
+// and an API-versioning `versions/` directory holds ordinary modules — so the
+// two are required together. Pure: string inspection only, no I/O.
+func hasAlembicVersionsAncestor(sourceFile string) bool {
+	dir := filepath.ToSlash(filepath.Dir(sourceFile))
+	for _, seg := range strings.Split(dir, "/") {
+		if strings.EqualFold(seg, "versions") {
+			return true
+		}
+	}
+	return false
+}
 
 // alembicRevisionRe and alembicDownRevisionRe extract the module-level
 // `revision` and `down_revision` string assignments from an Alembic migration
@@ -73,7 +103,12 @@ func ParseAlembicRevisions(source string) (revision, downRevision string) {
 	return revision, downRevision
 }
 
-func parseMigrationFilename(basename string) (seq interface{}, name string, pattern MigrationPattern, ok bool) {
+// parseMigrationFilename classifies a source path against the migration naming
+// conventions. It takes the FULL (repo-relative) path, not just the basename:
+// the Alembic branch needs the directory context to discriminate, because an
+// Alembic-shaped basename alone is not evidence of a migration (#6557).
+func parseMigrationFilename(sourceFile string) (seq interface{}, name string, pattern MigrationPattern, ok bool) {
+	basename := filepath.Base(sourceFile)
 	if m := railsMigrationRe.FindStringSubmatch(basename); m != nil {
 		n, _ := strconv.Atoi(m[1])
 		return n, strings.ReplaceAll(m[2], "_", " "), MigrationPatternRails, true
@@ -89,8 +124,10 @@ func parseMigrationFilename(basename string) (seq interface{}, name string, patt
 		n, _ := strconv.Atoi(m[1])
 		return n, strings.ReplaceAll(m[2], "_", " "), MigrationPatternGolangMigrate, true
 	}
-	if m := alembicMigrationRe.FindStringSubmatch(basename); m != nil {
-		return m[1], strings.ReplaceAll(m[2], "_", " "), MigrationPatternAlembic, true
+	if hasAlembicVersionsAncestor(sourceFile) {
+		if m := alembicMigrationRe.FindStringSubmatch(basename); m != nil {
+			return m[1], strings.ReplaceAll(m[2], "_", " "), MigrationPatternAlembic, true
+		}
 	}
 	return nil, "", MigrationPatternUnknown, false
 }
@@ -103,8 +140,7 @@ func AnnotateMigrationSequences(entities []MigrationEntity) ([]MigrationAnnotati
 		if entity.SourceFile == "" {
 			continue
 		}
-		basename := filepath.Base(entity.SourceFile)
-		seq, name, pattern, ok := parseMigrationFilename(basename)
+		seq, name, pattern, ok := parseMigrationFilename(entity.SourceFile)
 		if !ok {
 			unknownCount++
 			continue

@@ -498,6 +498,52 @@ func TestAnnotateMigrationSequences_UnknownPattern(t *testing.T) {
 	}
 }
 
+// TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped pins the
+// negative half of the Alembic discriminator (#6557): an ordinary Python module
+// whose first underscore-delimited segment merely happens to be long must fall
+// through to the unknown bucket, not be reported as an Alembic migration.
+//
+// The last two cases are each rejected by only ONE half of the discriminator,
+// so this test goes red if either half is relaxed on its own.
+func TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped(t *testing.T) {
+	cases := []string{
+		// Reporter's own cases (#6557): 12- and 14-character first segments.
+		"app/api/endpoints/notification_stream.py",
+		"app/services/authentication_service.py",
+		"app/core/configuration_loader.py",
+		"app/db/subscription_manager.py",
+		// Hex-looking revision id OUTSIDE a versions/ directory: only the path
+		// half rejects this one.
+		"app/models/abc123def456_helpers.py",
+		// A versions/ directory that is not Alembic's (API versioning): only
+		// the charset half rejects this one.
+		"app/api/versions/notification_stream.py",
+	}
+	for _, src := range cases {
+		ann, unknown := AnnotateMigrationSequences([]MigrationEntity{{EntityID: "e1", SourceFile: src}})
+		if len(ann) != 0 {
+			t.Errorf("%s: expected no annotation, got %+v", src, ann[0])
+		}
+		if unknown != 1 {
+			t.Errorf("%s: expected unknown=1, got %d", src, unknown)
+		}
+	}
+}
+
+// TestAnnotateMigrationSequences_AlembicRequiresHexRevision states the charset
+// policy (#6557): Alembic's generated rev_id is uuid4().hex[-12:], so the
+// discriminator accepts hex only. A hand-set `--rev-id` carrying a non-hex
+// letter is NOT recognised, even under versions/. That is a deliberate recall
+// cost, pinned here so changing it means changing a test.
+func TestAnnotateMigrationSequences_AlembicRequiresHexRevision(t *testing.T) {
+	ann, unknown := AnnotateMigrationSequences([]MigrationEntity{
+		{EntityID: "e1", SourceFile: "alembic/versions/zz1234567890_add_col.py"},
+	})
+	if len(ann) != 0 || unknown != 1 {
+		t.Fatalf("expected non-hex rev-id to be unknown, got ann=%+v unknown=%d", ann, unknown)
+	}
+}
+
 func TestAnnotateMigrationSequences_EmptySourceFile(t *testing.T) {
 	entities := []MigrationEntity{{EntityID: "m1", SourceFile: ""}}
 	ann, unknown := AnnotateMigrationSequences(entities)
