@@ -127,15 +127,28 @@ func TestScanParentAndHomeChild_FoldCaseOnDarwin(t *testing.T) {
 				t.Errorf("IsProtectedHomeChildIn($HOME, %q) = false, want true — classifying $HOME "+
 					"would descend into it (#6579)", variant)
 			}
-			if !IsProtectedHomeDir(variant) {
-				t.Errorf("IsProtectedHomeDir(%q) = false, want true", variant)
+			if !isProtectedHomeDir(variant) {
+				t.Errorf("isProtectedHomeDir(%q) = false, want true", variant)
 			}
 		}
 	}
-	// A differently-spelled $HOME must still be recognised as $HOME.
+	// A differently-spelled $HOME must still be recognised as $HOME. Both
+	// predicates gate on "is this parent the home directory", and BOTH are
+	// reached with a spelling grafel did not produce itself: detect.ClassifyPath
+	// is handed a path from the wizard/CWD, not from os.UserHomeDir().
 	if !IsProtectedScanParentIn(strings.ToUpper(home), home, "darwin") {
 		t.Errorf("IsProtectedScanParentIn(upper-cased $HOME) = false; enumerating $HOME itself is " +
 			"the v0.1.8 batch-prompt bug and must be refused in any spelling")
+	}
+	// The home-child gate folds only because samePath folds. Nothing else pins
+	// it: every other call here spells parent identically to home, so the fold
+	// goes unexercised and a revert to a byte-exact compare survives. A false
+	// here means ClassifyPath stops skipping $HOME's protected children and goes
+	// on to ReadDir each one and Stat its .git — the real ~/Documents.
+	if !IsProtectedHomeChildIn(strings.ToUpper(home), "Documents", home, "darwin") {
+		t.Errorf("IsProtectedHomeChildIn(upper-cased $HOME, \"Documents\") = false; the home " +
+			"spelling reaching the wizard need not be byte-identical to os.UserHomeDir()'s " +
+			"(v0.1.8 batch-prompt bug)")
 	}
 	// Permissive direction for these two as well.
 	for _, name := range []string{"Documentation", "Projects", "src"} {

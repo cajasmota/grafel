@@ -141,13 +141,21 @@ func caseInsensitiveFS(goos string) bool {
 	return goos == "darwin" || goos == "windows"
 }
 
-// IsProtectedHomeDir reports whether name is a protected top-level $HOME
+// isProtectedHomeDir reports whether name is a protected top-level $HOME
 // subdirectory under the union denylist. Name comparison only — the caller is
 // responsible for knowing the name really is a child of $HOME.
 //
-// The comparison is case-insensitive: every caller is already gated on darwin,
-// whose default filesystem folds case, so `documents` is `Documents` (#6579).
-func IsProtectedHomeDir(name string) bool {
+// The comparison is case-insensitive, unconditionally and with no goos of its
+// own. That is safe ONLY because it is unexported: both callers
+// (isProtectedScanParentIn, isProtectedHomeChildIn — via their exported
+// wrappers) gate on darwin before reaching it, and the compiler now enforces
+// that nothing else can. It used to be exported, where the same sentence was an
+// assertion no compiler checked and `IsProtectedHomeDir("documents")` answered
+// true on Linux. Nothing outside this package ever called it; the two adapters
+// in internal/daemon/walk and internal/install/detect delegate to the
+// path-taking predicates instead. If an external caller is ever wanted, give it
+// a goos parameter rather than re-exporting this as-is (#6579).
+func isProtectedHomeDir(name string) bool {
 	_, ok := foldedHomeDirs[strings.ToLower(name)]
 	return ok
 }
@@ -250,7 +258,7 @@ func IsProtectedScanParentIn(parent, home, goos string) bool {
 	if !ok {
 		return false
 	}
-	return IsProtectedHomeDir(first)
+	return isProtectedHomeDir(first)
 }
 
 // IsProtectedHomeChild reports whether the dirent name under parent is a
@@ -271,7 +279,7 @@ func IsProtectedHomeChildIn(parent, name, home, goos string) bool {
 	if !samePath(parent, home, caseInsensitiveFS(goos)) {
 		return false
 	}
-	return IsProtectedHomeDir(name)
+	return isProtectedHomeDir(name)
 }
 
 // samePath reports whether p and q name the same directory, folding case when
