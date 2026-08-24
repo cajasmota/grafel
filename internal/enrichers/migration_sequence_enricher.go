@@ -64,6 +64,13 @@ var (
 // Neither half alone is enough — a hex-named module can live outside versions/,
 // and an API-versioning `versions/` directory holds ordinary modules — so the
 // two are required together. Pure: string inspection only, no I/O.
+//
+// The match is on a path COMPONENT, not a substring of the directory: an
+// `oldversions/` or `versions_old/` directory must NOT qualify. Pinned by
+// TestAnnotateMigrationSequences_VersionsMustBeAPathComponent.
+//
+// filepath.ToSlash is load-bearing only on Windows, where filepath.Dir emits
+// backslashes; on unix it is a no-op, so no test in this package observes it.
 func hasAlembicVersionsAncestor(sourceFile string) bool {
 	dir := filepath.ToSlash(filepath.Dir(sourceFile))
 	for _, seg := range strings.Split(dir, "/") {

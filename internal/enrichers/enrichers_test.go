@@ -530,6 +530,54 @@ func TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped(t *testing.T)
 	}
 }
 
+// TestAnnotateMigrationSequences_VersionsMustBeAPathComponent pins that the
+// path half of the Alembic discriminator (#6557) is a path-COMPONENT match, not
+// a substring match on the directory. Every case below carries a hex-valid
+// revision id, so the charset half accepts it and ONLY the path half can be
+// doing the rejecting — replacing hasAlembicVersionsAncestor's split/EqualFold
+// with strings.Contains(dir, "versions") turns all of them into migrations.
+//
+// The last case puts "versions" in the FILE name rather than an ancestor: the
+// gate inspects filepath.Dir, so the basename must not be able to satisfy it.
+// (`versions.py` on its own cannot reach this assertion — it has no underscore
+// and so fails the basename regex before the path gate is consulted, which
+// would make such a case vacuous.)
+func TestAnnotateMigrationSequences_VersionsMustBeAPathComponent(t *testing.T) {
+	cases := []string{
+		"app/myversions/abc123def456_thing.py",
+		"app/versions_old/abc123def456_thing.py",
+		"app/oldversions/abc123def456_thing.py",
+		"app/versionsbackup/abc123def456_thing.py",
+		"app/abc123def456_versions.py",
+	}
+	for _, src := range cases {
+		ann, unknown := AnnotateMigrationSequences([]MigrationEntity{{EntityID: "e1", SourceFile: src}})
+		if len(ann) != 0 {
+			t.Errorf("%s: directory is not literally `versions`, expected no annotation, got %+v", src, ann[0])
+		}
+		if unknown != 1 {
+			t.Errorf("%s: expected unknown=1, got %d", src, unknown)
+		}
+	}
+}
+
+// TestAnnotateMigrationSequences_AlembicAbsolutePath pins the positive half of
+// the same gate for an ABSOLUTE source path. ApplyMigrationSequence passes
+// Entity.SourceFile straight through, which is repo-relative for indexed
+// entities but absolute for some callers, so both shapes reach this function
+// and both must be recognised.
+func TestAnnotateMigrationSequences_AlembicAbsolutePath(t *testing.T) {
+	ann, _ := AnnotateMigrationSequences([]MigrationEntity{
+		{EntityID: "m1", SourceFile: "/srv/repo/alembic/versions/abc123def456_add_column.py"},
+	})
+	if len(ann) != 1 || ann[0].PatternMatched != MigrationPatternAlembic {
+		t.Fatalf("expected alembic for an absolute path, got %+v", ann)
+	}
+	if ann[0].SequenceNumber.(string) != "abc123def456" {
+		t.Fatalf("expected revision abc123def456, got %v", ann[0].SequenceNumber)
+	}
+}
+
 // TestAnnotateMigrationSequences_AlembicRequiresHexRevision states the charset
 // policy (#6557): Alembic's generated rev_id is uuid4().hex[-12:], so the
 // discriminator accepts hex only. A hand-set `--rev-id` carrying a non-hex
