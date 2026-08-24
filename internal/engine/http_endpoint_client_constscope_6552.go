@@ -89,11 +89,12 @@ type jsConstBinding struct {
 type jsScopedConstTable struct {
 	bindings map[string][]jsConstBinding
 	// assigned records every name that is the target of an assignment or an
-	// update expression anywhere in the file. A reassigned name is never
-	// folded, even if its declaration is a const (a `const` shadowed in an
-	// inner scope by a reassigned `let` of the same name would otherwise
-	// resolve through the outer binding at a position where the inner one is
-	// not visible).
+	// update expression anywhere in the file. It is file-global on purpose: it
+	// carries no scope span, so it cannot tell an assignment to THIS binding
+	// from one to a same-named binding elsewhere. It adds no safety the
+	// const-only rule does not already provide — only a `const` is ever
+	// foldable, and valid JS cannot assign to a `const` — so it can only ever
+	// suppress folds it need not have suppressed. See resolve for why it stays.
 	assigned map[string]bool
 }
 
@@ -272,9 +273,22 @@ func (t *jsScopedConstTable) add(name string, b jsConstBinding) {
 //     decline (ambiguous, and a duplicate declaration in one scope is not
 //     something a symbol table should arbitrate);
 //   - the innermost visible binding is not a `const` bound to a string literal
-//     → decline (shapes C and H: a `let`, a `var`, a parameter, an import);
-//   - the name is assigned anywhere in the file → decline (shape C's
-//     `url = '/api/second'`).
+//     → decline (shapes C and H: a `let`, a `var`, a parameter, an import —
+//     shape C's `let url` is declined here, by !best.foldable, before the
+//     reassignment is ever consulted);
+//   - the name is assigned anywhere in the file → decline. This one is a
+//     file-GLOBAL guard, deliberately not scope-aware, and it is strictly
+//     redundant: `foldable` is set only for a `const`, and valid JS cannot
+//     assign to a `const`. Its only reachable effect is to OVER-decline — a
+//     module-level `const base` stops folding because some unrelated function
+//     assigns its own `let base`. It is kept as belt-and-braces: an
+//     over-decline costs a `/{dynamic}` path, which is honest, whereas a
+//     mis-fold invents an endpoint that does not exist.
+//
+// Because it is redundant, dropping the `t.assigned` check leaves this
+// package's suite green — it is an equivalent mutant under the current tests.
+// That is a property of the check being a fail-safe, not evidence it is dead
+// weight; do not delete it on a green run alone.
 //
 // Shape A needs no rule at all: a commented-out declaration is a `comment`
 // node, so it never enters the table.
