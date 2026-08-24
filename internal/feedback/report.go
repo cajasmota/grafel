@@ -336,7 +336,12 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 				// children so the field-extraction metric reflects the graph
 				// instead of reading a property the dominant extractors never
 				// write.
-				if entitySubtype[rel.ToID] == "field" {
+				//
+				// "field" is not the only name a container gives its
+				// declared members: a SQL table's members are Subtype
+				// "column" (#6543). Match the MEMBER-subtype set rather
+				// than the single literal — see memberChildSubtypes.
+				if memberChildSubtypes[entitySubtype[rel.ToID]] {
 					fieldChildCount[rel.FromID]++
 				}
 			} else {
@@ -596,12 +601,73 @@ func kindTail(kind string) string {
 // fields, so the reported rate was a guaranteed 100% rather than a measurement
 // (#6536, surfaced by #6535). Any change to this set must be checked against
 // the kinds the extractors actually emit, not against these literals.
+//
+// "datastore" is here because every SQL table is SCOPE.Datastore
+// (internal/extractors/sql/sql.go:249) with CONTAINS(contained_kind=column)
+// children — a class-like container with declared members, and exactly what
+// this metric is for, which had never been sampled (#6543). Admitting the tail
+// is only half the fix: the members are Subtype "column", so the numerator has
+// to see them (memberChildSubtypes) and the non-SQL emitters of the same kind
+// have to be exempted (datastoreMemberBearingLanguages), or the tail merely
+// re-creates #6536 for a new population.
 var classLikeKindTails = map[string]bool{
 	"class":     true,
 	"struct":    true,
 	"model":     true,
 	"schema":    true,
 	"component": true,
+	"datastore": true,
+}
+
+// memberChildSubtypes are the child subtypes that count as a container's
+// DECLARED MEMBERS — the numerator of the field-extraction metric (#6543).
+//
+// The metric asks "does this container's members show up in the graph", and
+// different extractors give the same relationship different names. Matching
+// the single literal "field" meant SQL's members were invisible: a table's
+// children are Subtype "column" (internal/extractors/sql/sql.go:358, :1021),
+// declared on the CONTAINS edge itself as contained_kind=column (sql.go:240-242).
+//
+// Every subtype here must also appear in nonClassSubtypes below: a member is a
+// LEAF, and a leaf that counts as its parent's member must never be counted as
+// a container in its own right, or it enters the denominator as a permanent
+// zero-field failure. That symmetry is what "field" already had and what
+// "column" was missing — before #6543 the three columns of a three-column
+// table were themselves 3 of the 3 entities in the denominator.
+var memberChildSubtypes = map[string]bool{
+	"field":  true,
+	"column": true,
+}
+
+// datastoreMemberBearingLanguages are the languages whose SCOPE.Datastore
+// entities are real member-bearing containers, and so belong in the
+// field-extraction denominator (#6543).
+//
+// SCOPE.Datastore has 13 non-test emit sites and only the SQL ones are
+// container-shaped. The other three emitters produce datastores with no member
+// children anywhere in their output:
+//
+//   - jcl — a DD dataset (extractor.go:664, :779) is a file reference; the
+//     jcl extractor emits no Subtype "field" or "column" at all.
+//   - cobol — an IMS database / message queue (ims.go:170) and a CICS queue
+//     or file resource (depth.go:701, :864) are external resources, not
+//     declarations. cobol DOES emit Subtype "field" (extractor.go:748,
+//     ims.go:491) for its data items, which is why the exemption is keyed on
+//     the KIND-plus-language rather than on the language wholesale: a blanket
+//     cobol exemption would drop its genuine field-bearing records.
+//   - erlang — an ETS table (otp_deepen.go:407) is a runtime table with no
+//     declared columns. (erlang is already exempt wholesale via
+//     nonFieldBearingLanguages; it is listed here so the population is
+//     recorded in one place and stays excluded if that ever changes.)
+//
+// Stated as an allowlist rather than a denylist deliberately: a new extractor
+// emitting SCOPE.Datastore is excluded until someone checks that its entities
+// actually own members. The failure mode of guessing wrong in that direction
+// is an unmeasured population; guessing wrong the other way puts a
+// guaranteed-zero-field population in the denominator, which is the defect
+// this whole line of issues (#6535, #6536, #6543) is about.
+var datastoreMemberBearingLanguages = map[string]bool{
+	"sql": true,
 }
 
 // nonClassSubtypes are the subtypes that carry a class-like KIND but are not
@@ -637,8 +703,14 @@ var classLikeKindTails = map[string]bool{
 //
 // A metric whose denominator contains populations that cannot pass reports
 // noise, not coverage.
+//   - "column" — the SQL analogue of "field": a member LEAF, not a container.
+//     Its kind tail is "schema" (internal/extractors/sql/sql.go:358), which
+//     this set already admits, so before #6543 every column was in the
+//     denominator as a permanent zero-field failure — a three-column table
+//     contributed three guaranteed failures and zero passes.
 var nonClassSubtypes = map[string]bool{
 	"field":    true,
+	"column":   true,
 	"enum":     true,
 	"const":    true,
 	"file":     true,
@@ -712,6 +784,11 @@ func isFieldExtractionCandidate(kind, subtype, language string) bool {
 		return false
 	}
 	if subtype == "interface" && !interfaceSubtypeFieldBearingLanguages[strings.ToLower(language)] {
+		return false
+	}
+	// SCOPE.Datastore is admitted for SQL tables, which own Subtype "column"
+	// members; the jcl/cobol/erlang emitters of the same kind own none (#6543).
+	if kindTail(kind) == "datastore" && !datastoreMemberBearingLanguages[strings.ToLower(language)] {
 		return false
 	}
 	return true
