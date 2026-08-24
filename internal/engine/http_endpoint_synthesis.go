@@ -2956,6 +2956,166 @@ var fastapiFileEvidenceRe = regexp.MustCompile(
 // is acceptable; a garbage one is not.
 var fastapiBadPrefixCharRe = regexp.MustCompile(`[\s"'\\]`)
 
+// fastapiMountedRouterArgRe matches the first positional argument of an
+// `include_router` call when, and only when, it is a bare name or a
+// single-level attribute access on one: `router` or `markets.router`. It is
+// fully anchored, so a call expression, a subscript, an attribute chain deeper
+// than one level, or anything else yields no join key at all rather than a
+// half-parsed one (#6414).
+var fastapiMountedRouterArgRe = regexp.MustCompile(`^\s*(?:([A-Za-z_]\w*)\.)?([A-Za-z_]\w*)\s*$`)
+
+// pyImportBinding is one name bound by an absolute `from <module> import
+// <name> [as <bound>]`: the module it came from and its ORIGINAL name there.
+type pyImportBinding struct {
+	module string
+	name   string
+}
+
+// pythonFromImportBindings maps bound-name -> pyImportBinding for every
+// `from <module> import <names>` in src, reusing flattenParenthesised and
+// drfImportFromRe so multi-line parenthesised imports behave exactly as they
+// do for parseImports.
+//
+// It differs from parseImports (#6414) in KEEPING the original name, which
+// parseImports discards for an aliased import. The original is what a dotted
+// mount argument needs: `from app.api import markets as mkts` + `mkts.router`
+// names the module `app.api.markets`, while resolving the ALIAS would name
+// `app.api.mkts`, which does not exist. A join key naming a module that is not
+// there is worse than no key, so the alias is resolved through to the name the
+// defining module actually uses.
+//
+// Later bindings win, as they do in Python and in parseImports.
+func pythonFromImportBindings(src string) map[string]pyImportBinding {
+	out := map[string]pyImportBinding{}
+	for _, m := range drfImportFromRe.FindAllStringSubmatch(flattenParenthesised(src), -1) {
+		module := strings.TrimSpace(m[1])
+		names := strings.TrimSpace(m[2])
+		if i := strings.Index(names, "#"); i >= 0 {
+			names = names[:i]
+		}
+		names = strings.Trim(names, "() \t")
+		for _, raw := range strings.Split(names, ",") {
+			raw = strings.TrimSpace(raw)
+			if raw == "" {
+				continue
+			}
+			name, bound := raw, raw
+			if i := strings.Index(raw, " as "); i >= 0 {
+				name = strings.TrimSpace(raw[:i])
+				bound = strings.TrimSpace(raw[i+4:])
+			}
+			if name == "" || bound == "" {
+				continue
+			}
+			out[bound] = pyImportBinding{module: module, name: name}
+		}
+	}
+	return out
+}
+
+// fastapiFirstCallArg returns the source text of the first argument of the
+// bracket-balanced call whose opening `(` sits at index open, stopping at the
+// first TOP-LEVEL comma or at the call's own closing bracket. Nested bracket
+// groups are copied through verbatim rather than elided the way
+// fastapiTopLevelArgs elides them, so a call-expression argument comes back
+// whole and is rejected by fastapiMountedRouterArgRe instead of looking like
+// the bare name that precedes its paren. Returns "" for an unterminated call.
+func fastapiFirstCallArg(src string, open int) string {
+	depth := 0
+	start := open + 1
+	for i := open; i < len(src); i++ {
+		switch c := src[i]; c {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+			if depth == 0 {
+				return src[start:i]
+			}
+		case ',':
+			if depth == 1 {
+				return src[start:i]
+			}
+		case '"', '\'':
+			j := i + 1
+			for j < len(src) {
+				if src[j] == '\\' {
+					j += 2
+					continue
+				}
+				if src[j] == c || src[j] == '\n' {
+					break
+				}
+				j++
+			}
+			if j < len(src) && src[j] == c {
+				j++
+			}
+			if j > len(src) {
+				j = len(src)
+			}
+			i = j - 1
+		}
+	}
+	return ""
+}
+
+// fastapiResolveMountedRouter resolves an `include_router` first argument to
+// the DOTTED module path that defines the router and the router's name in that
+// module, using ONLY the mount file's own imports (#6414). Both results are ""
+// together whenever the mount cannot be resolved that way, which keeps the
+// properties absent rather than guessed.
+//
+// WHY A DOTTED MODULE AND NOT A FILE PATH. Converting it here with
+// modulePathToFilePath would be a guess about the repo's layout, and measured
+// on six real FastAPI repositories the guess is wrong far more often than it is
+// right: of 54 resolvable mounts, 49 named a file that does not exist, all 49
+// in one `src/`-layout repo where `dispatch.incident.views` lives at
+// `src/dispatch/incident/views.py`. Django converts the same way but only
+// because it can TEST the result — ApplyDjangoNestedURLConf tries
+// modulePathToFilePath and falls back to modulePathToFilePath_relToParent
+// against a file reader (django_urlconf_nested.go:400). A per-file pass has no
+// reader, so it publishes the value the source actually states and leaves the
+// file mapping to the consumer that holds the file set.
+//
+// Deliberately not resolved here, each because it needs input this pass does
+// not have:
+//   - a RELATIVE import (`from .api import markets`), which is anchored on the
+//     mount file's own package and needs a dot-depth walk-up to become
+//     absolute.
+//   - a plain `import app.api.markets`, which drfImportFromRe does not match.
+//   - a router defined in the mount file itself, which has no import to read.
+//     That case is already whole: a same-file `APIRouter(prefix=...)` is
+//     folded into the route path by #5688, so no join key is needed for it.
+//   - an argument that is a CALL rather than a name
+//     (`fastapi_users.get_auth_router(backend)`) or a local variable assigned
+//     from one. There is no router object to name. This is the single largest
+//     unresolvable class on the measured corpus, 15 of 16 absences.
+func fastapiResolveMountedRouter(arg string, imports map[string]pyImportBinding) (module, router string) {
+	m := fastapiMountedRouterArgRe.FindStringSubmatch(arg)
+	if m == nil {
+		return "", ""
+	}
+	qualifier, attr := m[1], m[2]
+	// `markets.router`: the qualifier is the imported module and the attribute
+	// is the router. `router`: the imported name IS the router.
+	lookup := qualifier
+	if lookup == "" {
+		lookup = attr
+	}
+	b, ok := imports[lookup]
+	if !ok || strings.HasPrefix(b.module, ".") {
+		return "", ""
+	}
+	dotted, router := b.module, attr
+	if qualifier == "" {
+		router = b.name
+	} else {
+		dotted = b.module + "." + b.name
+	}
+	return dotted, router
+}
+
 // pythonMaskInertRegions returns a copy of src of the SAME byte length, with
 // the same newline positions, in which the contents of `#` comments and of
 // triple-quoted string literals (docstrings, embedded samples) are replaced by
@@ -3097,6 +3257,17 @@ func fastapiTopLevelArgs(src string, open int) (string, bool) {
 // A prefix that is empty, `"/"`, or otherwise degenerate after trimming emits
 // nothing, as does a mount site with no `prefix=` kwarg or a non-literal one.
 //
+// THE JOIN KEY (#6414). The record also carries `mounted_module` (the dotted
+// Python module that defines the mounted router) and `mounted_router` (its name
+// in that module), so a consumer can tell which routes a mount prefixes. That
+// pairing had no key at all before: the mount synthetic named a prefix and the
+// route endpoint named a path, and nothing related the two. Both properties are
+// resolved from THIS file's imports only, which is what keeps the pass
+// per-file, and both are ABSENT together whenever the mount cannot be resolved
+// that way; see fastapiResolveMountedRouter for the forms deliberately left
+// unresolved. Stamping the key does NOT fold anything: every emitted `path` is
+// unchanged, and the fold remains #6414's own scope.
+//
 // THE RECOGNITION RULE (#6415 review). This pass runs BEFORE synthesizeFastAPI's
 // decorator marker guard, because a pure wiring module — a `main.py` that only
 // imports routers and mounts them — carries no decorator, no `FastAPI(`, and no
@@ -3126,7 +3297,11 @@ func fastapiMountPointSynthetics(content, relPath string) []types.EntityRecord {
 		return nil
 	}
 	var out []types.EntityRecord
-	emitted := map[string]bool{}
+	// #6414 — the join key. Resolved from the mount file's own imports, so this
+	// stays a per-file pass: identical under a full index, `--incremental` and
+	// the daemon.
+	imports := pythonFromImportBindings(masked)
+	emittedAt := map[string]int{}
 	for _, loc := range fastapiIncludeRouterCallRe.FindAllStringIndex(masked, -1) {
 		args, ok := fastapiTopLevelArgs(masked, loc[1]-1)
 		if !ok {
@@ -3148,10 +3323,23 @@ func fastapiMountPointSynthetics(content, relPath string) []types.EntityRecord {
 			continue
 		}
 		mountID := httproutes.SyntheticID("ANY", canonical) + ":mount"
-		if emitted[mountID] {
+		mountedModule, mountedRouter := fastapiResolveMountedRouter(
+			fastapiFirstCallArg(masked, loc[1]-1), imports)
+		// The mount ID keys on the prefix alone, so two mounts at one prefix
+		// collapse into a single record. When they name DIFFERENT routers, the
+		// surviving record cannot honestly claim either: drop the key rather than
+		// publish whichever mount was scanned first, which would assert a join
+		// that is only half true. Two mounts of the SAME router are not
+		// ambiguous and keep it.
+		if at, dup := emittedAt[mountID]; dup {
+			prev := out[at].Properties
+			if prev["mounted_module"] != mountedModule || prev["mounted_router"] != mountedRouter {
+				delete(prev, "mounted_module")
+				delete(prev, "mounted_router")
+			}
 			continue
 		}
-		emitted[mountID] = true
+		emittedAt[mountID] = len(out)
 		out = append(out, types.EntityRecord{
 			ID:                 mountID,
 			Name:               mountID,
@@ -3170,6 +3358,11 @@ func fastapiMountPointSynthetics(content, relPath string) []types.EntityRecord {
 				"url_prefix":   "/" + trimmed,
 			},
 		})
+		if mountedModule != "" && mountedRouter != "" {
+			props := out[len(out)-1].Properties
+			props["mounted_module"] = mountedModule
+			props["mounted_router"] = mountedRouter
+		}
 	}
 	return out
 }
