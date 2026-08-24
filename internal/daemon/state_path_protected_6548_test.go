@@ -25,8 +25,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/cajasmota/grafel/internal/protectedpath"
 )
 
 // TestCanonicalizePath_SkipsProtectedDir is the #6548 regression: a path under
@@ -38,12 +36,7 @@ func TestCanonicalizePath_SkipsProtectedDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Pretend we are on macOS with this temp dir as $HOME.
-	origProtected := traversalProtected
-	traversalProtected = func(p string) (bool, string) {
-		return protectedpath.IsTraversalProtectedIn(p, home, "darwin")
-	}
-	t.Cleanup(func() { traversalProtected = origProtected })
+	fakeHomeOnDarwin(t, home)
 
 	var read []string
 	origRead := readDirFunc
@@ -63,8 +56,99 @@ func TestCanonicalizePath_SkipsProtectedDir(t *testing.T) {
 			t.Errorf("canonicalizePath read protected directory %q (#6548); reads = %v", dir, read)
 		}
 	}
-	if got != input {
-		t.Errorf("canonicalizePath(%q) = %q; a protected segment must degrade to the input casing", input, got)
+	// Under a protected segment the degrade is case-FOLDED, not verbatim
+	// (see the #2086 note in canonicalizePath): "PROJ" comes back "proj".
+	want := filepath.Join(docs, "proj")
+	if got != want {
+		t.Errorf("canonicalizePath(%q) = %q, want %q", input, got, want)
+	}
+}
+
+// fakeHomeOnDarwin points the protected-path gate at a fixture home and forces
+// the darwin code path, so no test ever reads a real ~/Documents. It injects
+// the HOME, deliberately not the predicate — see the note on traversalHome.
+func fakeHomeOnDarwin(t *testing.T, home string) {
+	t.Helper()
+	origHome, origGOOS := traversalHome, traversalGOOS
+	traversalHome = func() string { return home }
+	traversalGOOS = "darwin"
+	t.Cleanup(func() { traversalHome, traversalGOOS = origHome, origGOOS })
+}
+
+// The gate must consult the TRAVERSAL predicate (the full union), not the WALK
+// predicate (media classes only, which omits Desktop/Documents/Downloads).
+// That distinction IS the #6548 fix, and it lives in one identifier; this test
+// asserts the shipped package-level function rather than a test closure, so
+// swapping that identifier back cannot pass.
+func TestTraversalGateUsesTheUnionPredicate(t *testing.T) {
+	home := t.TempDir()
+	fakeHomeOnDarwin(t, home)
+
+	// TCC class: in the union, absent from the walk list. These are the #6548
+	// folders — under the walk predicate every one of them returns false.
+	for _, name := range []string{"Desktop", "Documents", "Downloads", "Public"} {
+		dir := filepath.Join(home, name)
+		if protected, _ := traversalProtected(dir); !protected {
+			t.Errorf("traversalProtected(%q) = false; canonicalizePath would ReadDir it and re-open #6548 "+
+				"(gate must use IsTraversalProtected, not IsWalkProtected)", dir)
+		}
+	}
+	// Media class: in both lists — held so the union is not narrowed either.
+	for _, name := range []string{"Library", "Movies", "Music", "Pictures"} {
+		if protected, _ := traversalProtected(filepath.Join(home, name)); !protected {
+			t.Errorf("traversalProtected(~/%s) = false, want true", name)
+		}
+	}
+	// Permissive direction: an ordinary folder must stay readable, or casing
+	// recovery stops for every repo on the machine.
+	for _, name := range []string{"Projects", "Documentation", "src"} {
+		if protected, _ := traversalProtected(filepath.Join(home, name)); protected {
+			t.Errorf("traversalProtected(~/%s) = true, want false", name)
+		}
+	}
+}
+
+// #2086: repoStateHash is sha256(canonicalizePath(p)) SO THAT case variants of
+// one repo collapse to one store root. canonicalizePath normally earns that by
+// reading the true on-disk casing; under a protected segment it may not read,
+// so it case-folds instead. Preserving the input casing there would give one
+// on-disk repo two roots depending on how the user typed the path.
+func TestCanonicalizePath_ProtectedDegradeCollapsesCaseVariants(t *testing.T) {
+	home := t.TempDir()
+	docs := filepath.Join(home, "Documents")
+	if err := os.MkdirAll(filepath.Join(docs, "Acme"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fakeHomeOnDarwin(t, home)
+
+	lower := canonicalizePath(filepath.Join(docs, "acme"))
+	upper := canonicalizePath(filepath.Join(docs, "ACME"))
+	mixed := canonicalizePath(filepath.Join(docs, "Acme"))
+
+	if lower != upper || lower != mixed {
+		t.Errorf("case variants under a protected folder produced different canonical paths "+
+			"(#2086: one repo, one store root): %q / %q / %q", lower, upper, mixed)
+	}
+	if h1, h2 := repoStateHash(filepath.Join(docs, "acme")), repoStateHash(filepath.Join(docs, "ACME")); h1 != h2 {
+		t.Errorf("repoStateHash differs by typed casing under a protected folder: %s vs %s", h1, h2)
+	}
+
+	// The protected segment itself was recovered by a legitimate read of its
+	// parent, so its real casing must survive the fold.
+	if !strings.Contains(lower, string(filepath.Separator)+"Documents"+string(filepath.Separator)) {
+		t.Errorf("canonicalizePath folded the protected segment itself: %q", lower)
+	}
+}
+
+// On a case-SENSITIVE filesystem "Acme" and "acme" are different directories,
+// so folding would both collide two repos and produce a path that does not
+// exist. The fold is gated on GOOS.
+func TestCanonicalizePath_ProtectedDegradeDoesNotFoldOnCaseSensitiveFS(t *testing.T) {
+	if caseInsensitiveFS("linux") {
+		t.Fatal("caseInsensitiveFS(\"linux\") = true; folding a Linux path would collide distinct repos")
+	}
+	if !caseInsensitiveFS("darwin") || !caseInsensitiveFS("windows") {
+		t.Fatal("caseInsensitiveFS must hold for darwin and windows")
 	}
 }
 
@@ -79,11 +163,7 @@ func TestCanonicalizePath_UnprotectedPathStillCanonicalized(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	origProtected := traversalProtected
-	traversalProtected = func(p string) (bool, string) {
-		return protectedpath.IsTraversalProtectedIn(p, home, "darwin")
-	}
-	t.Cleanup(func() { traversalProtected = origProtected })
+	fakeHomeOnDarwin(t, home)
 
 	input := filepath.Join(home, "Projects", "DOCUMENTATION", "GRAFEL")
 	got := canonicalizePath(input)

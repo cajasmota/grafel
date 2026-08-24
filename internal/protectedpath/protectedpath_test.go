@@ -14,6 +14,11 @@ func TestMediaLibraryBundle(t *testing.T) {
 		"My Library.photoslibrary": true,
 		"recordings.tvlibrary":     true,
 		"Old.aplibrary":            true,
+		// NOT a suffix of ".aplibrary" — "…daplibrary" does not end in
+		// ".aplibrary" — so deleting this table row leaves every other test
+		// green while an Aperture-migrated library gets walked and #5296's
+		// Photos prompt returns.
+		"Shoots.migratedaplibrary": true,
 		"node_modules":             false,
 		"music":                    false,
 	}

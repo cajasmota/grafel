@@ -52,6 +52,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,11 +74,38 @@ var canonicalCache sync.Map // map[string]string
 // to exercise the timeout guard without a real stuck filesystem.
 var readDirFunc = os.ReadDir
 
-// traversalProtected is the protected-path gate consulted by
-// canonicalizePath before it reads a directory. It is a package var so tests
-// can inject a fixture home root instead of the real one — no test may read a
-// real ~/Documents. See internal/protectedpath (#6548).
-var traversalProtected = protectedpath.IsTraversalProtected
+// traversalHome and traversalGOOS are the ONLY injectable part of the
+// protected-path gate: tests point them at a t.TempDir() fixture home (and at
+// "darwin") so no test ever reads a real ~/Documents.
+//
+// The PREDICATE deliberately is NOT injectable. It used to be — a package-level
+// `var traversalProtected = protectedpath.IsTraversalProtected` that every test
+// overwrote with its own closure — and that seam made the one line carrying the
+// #6548 fix unobservable: swapping it to protectedpath.IsWalkProtected (whose
+// media-only list omits Desktop/Documents/Downloads, i.e. the bug itself) left
+// the whole daemon suite green. Injecting the home instead keeps the fixture
+// isolation and lets the tests below assert the shipped predicate.
+var (
+	traversalHome = protectedpath.HomeDir
+	traversalGOOS = runtime.GOOS
+)
+
+// traversalProtected is the protected-path gate consulted by canonicalizePath
+// before it reads a directory. canonicalizePath is INFERRED traversal — the
+// user pointed grafel at a repo, not at the repo's ancestors — so it must
+// consult the full union (media + TCC classes), never the walk predicate.
+// See internal/protectedpath (#6548).
+func traversalProtected(dir string) (bool, string) {
+	return protectedpath.IsTraversalProtectedIn(dir, traversalHome(), traversalGOOS)
+}
+
+// caseInsensitiveFS reports whether goos's default filesystem folds case, so
+// that lower-casing a path component still resolves to the same directory.
+// This is the same assumption canonicalizePath's whole equalFold-based casing
+// recovery already rests on.
+func caseInsensitiveFS(goos string) bool {
+	return goos == "darwin" || goos == "windows"
+}
 
 // defaultCanonicalizeTimeout bounds the per-segment os.ReadDir call in
 // canonicalizePath. On case-insensitive filesystems this read is
@@ -173,11 +201,12 @@ func canonicalizePath(absPath string) string {
 		// grafel at a repo, not at ~/Documents — and on macOS with iCloud
 		// "Desktop & Documents" sync on, os.ReadDir'ing one of those pops the
 		// "grafel wants to access files managed by iCloud Drive" consent
-		// dialog. Skip the read and take the documented degrade path:
-		// preserve the input casing for this segment and every remaining one.
-		// The result is therefore the input path itself from here down —
-		// deterministic, cached by input string, and never a path pointing
-		// somewhere the caller did not ask for.
+		// dialog. Skip the read and take the degrade path documented at the
+		// bottom of this function: append this segment and every remaining one
+		// unread, case-folded on a case-insensitive filesystem so that the
+		// #2086 "one repo, one hash regardless of typed casing" property
+		// survives without a read. The result never points somewhere the
+		// caller did not ask for.
 		if protected, reason := traversalProtected(canonical); protected {
 			slog.Debug("canonicalizePath: skipping casing recovery in a protected directory; preserving input casing",
 				"dir", canonical, "reason", reason, "path", absPath)
@@ -217,12 +246,45 @@ func canonicalizePath(absPath string) string {
 		}
 	}
 
-	// A protected ancestor stopped the recovery: append the remaining
-	// segments verbatim so we neither read into nor guess at that subtree.
+	// A protected ancestor stopped the recovery: append the remaining segments
+	// WITHOUT reading that subtree — but case-FOLDED on a case-insensitive
+	// filesystem, not verbatim.
+	//
+	// Verbatim was the obvious degrade and it is wrong here. repoStateHash is
+	// sha256(canonicalizePath(p)) precisely so that case variants of one repo
+	// collapse to one store root (#2086); canonicalizePath earns that by
+	// reading each directory for its true on-disk casing. Under a protected
+	// segment we may not read, so preserving the INPUT casing would make the
+	// hash depend on how the user happened to type the path:
+	//
+	//	~/Documents/Acme  and  ~/Documents/ACME  → two roots, two root.json
+	//	SourcePaths, two indexes of one on-disk repo.
+	//
+	// ~/Desktop and ~/Documents are ordinary places to keep a repo on macOS,
+	// so that turns #2086's rare degrade into a routine one. Lower-casing
+	// instead restores a single deterministic hash for every case variant
+	// without reading anything, and the folded path still resolves on a
+	// case-insensitive filesystem — the same assumption the equalFold recovery
+	// above already makes. Only darwin/windows are folded: on Linux "Acme" and
+	// "acme" are genuinely different directories and folding would both
+	// collide them and yield a path that does not exist.
+	//
+	// Migration cost, accepted deliberately: a repo under a protected folder
+	// that was indexed BEFORE this change hashed to a root named after its
+	// true on-disk casing, so it gets one fresh root and re-indexes once. The
+	// stale root is not leaked — it carries a root.json SourcePath that no
+	// longer maps to any known path, which is exactly what the orphan-root
+	// sweeper (internal/daemon/orphanroot.go) reclaims. Note that the
+	// protected segment itself is NOT folded: it was recovered by a legitimate
+	// read of its parent, so its casing is real.
 	if protectedFrom >= 0 {
+		fold := caseInsensitiveFS(traversalGOOS)
 		for _, seg := range segments[protectedFrom:] {
 			if seg == "" {
 				continue
+			}
+			if fold {
+				seg = strings.ToLower(seg)
 			}
 			canonical = filepath.Join(canonical, seg)
 		}
