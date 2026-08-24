@@ -34,10 +34,12 @@ import (
 //   - PROVIDER (FromID) of the fastapi / litestar passes — a callable or class
 //     that is very often IMPORTED from another module (the golden fixture's
 //     get_db lives in app/deps.py while its consumer lives in
-//     app/routers/things.py). Its file is NOT knowable here, so it carries the
-//     kind prefix only — "SCOPE.Operation:<name>" — the same address #6444
-//     settled on for the fastapi.yaml rule, which binds through BuildIndex's
-//     dual-indexing of SCOPE.* kinds under their trimmed key.
+//     app/routers/things.py). Its file is NOT knowable here, so no anchor. Its
+//     KIND is not knowable either unless this extractor saw a `def` of that
+//     name in the file it is extracting — a FastAPI provider is very often a
+//     CLASS — so the endpoint stays BARE (kind-agnostic) in every other case.
+//     See di_provider_kind_6511_test.go for that rule and the measured
+//     mis-binding that motivates it.
 //
 //   - PROVIDER (FromID) of the dependency-injector @inject pass — a CONTAINER
 //     ATTRIBUTE (a DI token), not a source-level operation. It is deliberately
@@ -90,7 +92,8 @@ def list_things(db = Depends(get_db)):
 	if len(got) != 1 {
 		t.Fatalf("want exactly 1 INJECTED_INTO, got %d: %+v", len(got), got)
 	}
-	wantFrom := "SCOPE.Operation:get_db"
+	// Imported from app.deps — never observed as a `def` here, so bare.
+	wantFrom := "get_db"
 	wantTo := extractor.BuildOperationStructuralRef("python", path, "list_things")
 	if got[0].FromID != wantFrom {
 		t.Errorf("fastapi_depends FromID: want %q, got %q", wantFrom, got[0].FromID)
@@ -141,7 +144,8 @@ class ItemController(Controller):
 	if len(got) != 1 {
 		t.Fatalf("want exactly 1 INJECTED_INTO, got %d: %+v", len(got), got)
 	}
-	wantFrom := "SCOPE.Operation:get_db"
+	// get_db is not defined in this file, so the provider end stays bare.
+	wantFrom := "get_db"
 	wantTo := extractor.BuildOperationStructuralRef("python", path, "list_items")
 	if got[0].FromID != wantFrom {
 		t.Errorf("litestar_provide FromID: want %q, got %q", wantFrom, got[0].FromID)

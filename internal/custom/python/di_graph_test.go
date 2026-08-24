@@ -69,8 +69,13 @@ func TestPyDI_FastAPIDependsClass(t *testing.T) {
     return svc
 `
 	rels := diEdges(t, src)
-	if !hasEdge(rels, "SCOPE.Operation:SvcClass", diConsumer("handler"), string(types.RelationshipKindInjectedInto)) {
-		t.Fatalf("expected INJECTED_INTO(SCOPE.Operation:SvcClass -> file-anchored handler); got %+v", rels)
+	// The provider is a CLASS, and no `def SvcClass` was seen in this file, so
+	// the endpoint stays BARE — kind-agnostic. Stamping "SCOPE.Operation:" here
+	// would assert a kind the symbol lacks, and internal/resolve's byKind tier
+	// (probed before byName) would then promote any same-named function in an
+	// unrelated file ahead of the class (#6511 review).
+	if !hasEdge(rels, "SvcClass", diConsumer("handler"), string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(SvcClass -> file-anchored handler); got %+v", rels)
 	}
 }
 
@@ -80,8 +85,10 @@ func TestPyDI_FastAPIDependsBareType(t *testing.T) {
     return svc
 `
 	rels := diEdges(t, src)
-	if !hasEdge(rels, "SCOPE.Operation:AuthService", diConsumer("handler"), string(types.RelationshipKindInjectedInto)) {
-		t.Fatalf("expected INJECTED_INTO(SCOPE.Operation:AuthService -> file-anchored handler); got %+v", rels)
+	// Same as above: an annotation-derived provider is typically a class, never
+	// observed here as a `def`, so it stays bare (#6511 review).
+	if !hasEdge(rels, "AuthService", diConsumer("handler"), string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(AuthService -> file-anchored handler); got %+v", rels)
 	}
 }
 
