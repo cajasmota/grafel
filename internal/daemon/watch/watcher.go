@@ -209,6 +209,10 @@ type Watcher struct {
 	// The kqueue and inotify backends do this work in the caller's goroutine and
 	// depend on nothing, which is why none of the three is observable off
 	// Windows.
+	//
+	// The SECOND of the three was live in production until #6493:
+	// handleEvent -> subscribeDirRecursive called fsAdd on the loop goroutine.
+	// subCh below is what took it off that goroutine.
 	fsAdd    func(string) error
 	fsRemove func(string) error
 	// closeBackend closes the fsnotify instance. It is a field rather than a
@@ -327,11 +331,72 @@ type Watcher struct {
 	// Every Add is performed under w.mu strictly before close(w.stopCh), which
 	// is also taken under w.mu, so Add can never race the Wait.
 	loopWG sync.WaitGroup
+	// subCh carries directories handleEvent discovered to the ONE goroutine
+	// allowed to subscribe them (#6493). See subscribeOwner. Buffered and
+	// written with a non-blocking send: a full queue must cost a dropped
+	// subscription, never a blocked loop goroutine, because a blocked loop
+	// goroutine is the deadlock this whole mechanism exists to prevent.
+	subCh chan string
+	// subInFlight counts, per root, the subscriptions that have been handed to
+	// the owner and not yet completed. It is written on the LOOP goroutine, in
+	// enqueueSubscribe, before the loop moves on to the next event — so every
+	// Create the loop processes after a new directory is discovered can be
+	// recognised as landing inside a walk that is still running.
+	//
+	// A COUNT and not a set, because one directory can be handed over twice: a
+	// delete-then-recreate during a checkout reports Create twice, and the two
+	// walks then run one after the other. A set cleared unconditionally by the
+	// first walk's exit unmarks the directory while the second is still to run,
+	// which reopens the Create-then-listing double charge for that subtree and
+	// makes the queue look settled while a subscription is outstanding.
+	//
+	// It exists to key fdEventCharged, and to answer "is anything still to be
+	// subscribed". See fdEventCharged.
+	subInFlight map[string]int
+	// fdEventCharged is the mirror image of fdPreCharged, and #6493 is what
+	// made it necessary. fdPreCharged says "the listing paid for this entry, so
+	// drop its Create"; fdEventCharged says "the Create paid for this entry, so
+	// the listing must not charge it again".
+	//
+	// Before #6493 only one direction could occur: subscribeDirRecursive ran ON
+	// the loop goroutine, so no Create could be processed between its Add and
+	// its listing, and every duplicate was necessarily listing-then-Create.
+	// Now the walk runs on the subscribe owner and the loop keeps draining, so
+	// a file created inside a directory being walked can be charged by its
+	// Create FIRST and then found by the listing. Both charges are for one
+	// descriptor; without this set the ledger drifts upward on exactly the
+	// churny directory fills #6268 measures.
+	//
+	// Bounded by fdPreChargedCap and reset wholesale past it, for the same
+	// reason and with the same consequence as fdPreCharged: past the cap the
+	// oldest pending paths lose their protection and may be charged twice.
+	// Entries also drain in releaseEventClose. A marker whose walk finished
+	// before its Create arrived is never consumed and expires with that reset.
+	fdEventCharged map[string]struct{}
+	// subWG counts the live subscribe-owner goroutine so Stop does not return
+	// while one is still inside a walk. Bounded there, like every other wait
+	// in Stop.
+	subWG sync.WaitGroup
 	// counters — accessed atomically outside mu where latency matters
 	totalEvents   uint64
 	droppedSkips  uint64
 	droppedReplay uint64 // events lost during fsnotify restart
+	// droppedSubscribes counts new directories whose subscription was
+	// discarded because subCh was full. Each one is a subtree that stays
+	// unwatched until its repo is re-registered, so it is logged as well as
+	// counted.
+	droppedSubscribes uint64
 }
+
+// subscribeQueueCap bounds subCh. It is a var so a test can shrink it to
+// observe the drop path without manufacturing thousands of events.
+//
+// The size is a trade, not a tuning: too small and a `git checkout` that
+// creates many subtrees at once loses some of them; too large and the queue is
+// an unbounded-in-practice backlog of stale paths. 256 is well above the
+// number of directories a single checkout burst creates in the fixtures this
+// package measures, and the overflow is loud rather than silent.
+var subscribeQueueCap = 256
 
 // repoState tracks per-repo bookkeeping.
 type repoState struct {
@@ -421,6 +486,9 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		fdReleasedDirs: map[string]map[string]struct{}{},
 		stopCh:         make(chan struct{}),
 		restartCh:      make(chan struct{}, 1),
+		subCh:          make(chan string, subscribeQueueCap),
+		subInFlight:    map[string]int{},
+		fdEventCharged: map[string]struct{}{},
 	}
 	// Read w.fs under the lock: the heartbeat can swap it for a fresh backend
 	// concurrently, and closing the one this Watcher no longer owns would
@@ -457,6 +525,11 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 
 	w.loopWG.Add(1)
 	go w.loop()
+	// The subscribe owner outlives a backend restart: the heartbeat re-points
+	// w.fsAdd under w.mu and subscribeDirRecursive re-reads it under w.mu on
+	// entry, so a walk never straddles two generations (#6493).
+	w.subWG.Add(1)
+	go w.subscribeOwner()
 	go w.heartbeat()
 	go w.quarantineSweep()
 	// Counted in loopWG so Stop does not return while a sweep is still inside a
@@ -945,7 +1018,16 @@ type RepoStat struct {
 
 // ExtendedStats returns per-repo event rates plus overall counters.
 // Used by the /diagnostics handler added in #1270.
-func (w *Watcher) ExtendedStats() (repoStats []RepoStat, totalEvents, droppedSkips, droppedReplay uint64) {
+//
+// droppedSubscribes (#6493) is the number of new subtrees that were never
+// watched because the subscribe queue was full when they were discovered. It is
+// reported here rather than folded into Stats' `dropped`, which counts EVENTS:
+// a dropped subscribe is not a missed event but a directory tree that will
+// deliver no events at all until its repo is re-registered. Nothing rediscovers
+// it — the reconcile sweep only visits directories already in dirToRepo — so an
+// operator seeing a repo go quiet has no other signal than this counter and the
+// WARN that accompanies it.
+func (w *Watcher) ExtendedStats() (repoStats []RepoStat, totalEvents, droppedSkips, droppedReplay, droppedSubscribes uint64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, rs := range w.repos {
@@ -958,7 +1040,8 @@ func (w *Watcher) ExtendedStats() (repoStats []RepoStat, totalEvents, droppedSki
 	return repoStats,
 		atomic.LoadUint64(&w.totalEvents),
 		atomic.LoadUint64(&w.droppedSkips),
-		atomic.LoadUint64(&w.droppedReplay)
+		atomic.LoadUint64(&w.droppedReplay),
+		atomic.LoadUint64(&w.droppedSubscribes)
 }
 
 // ForceRescan triggers the sink for every registered repo with bulk=true
@@ -1067,6 +1150,23 @@ func (w *Watcher) Stop() {
 			w.logger.Error("watcher: fsnotify Close did not return; abandoning the backend",
 				"timeout", watcherStopTimeout)
 		}
+		// The subscribe owner is retired BEFORE the loop, and while the loop is
+		// still draining (#6493): an owner parked in the backend's Add needs
+		// somebody receiving on Events for that Add to return at all. Bounded
+		// like the other two waits — a wedged owner degrades into a loud,
+		// finite failure rather than an unbounded hang.
+		ownerDone := make(chan struct{})
+		go func() {
+			defer close(ownerDone)
+			w.subWG.Wait()
+		}()
+		select {
+		case <-ownerDone:
+		case <-time.After(watcherStopTimeout):
+			w.logger.Error("watcher: subscribe owner did not retire after Close; abandoning it",
+				"timeout", watcherStopTimeout)
+		}
+
 		drained := make(chan struct{})
 		go func() {
 			defer close(drained)
@@ -1231,13 +1331,20 @@ func (w *Watcher) restartBackend() bool {
 // subscribeDirRecursive) and can arm a reindex, neither of which is wanted
 // while the backend is being torn down underneath it.
 //
-// The guard NARROWS that window, it does not close it: a handleEvent already
-// in flight when close(w.stopCh) runs is unaffected and may still be inside
-// w.fs.Add when Close begins. That call is safe rather than merely unlikely —
-// every backend checks isClosed() and returns ErrClosed — so the residue is a
-// wasted Add, not a hang. Closing the window entirely would mean holding a
-// lock across handleEvent, which would serialise the event path against every
-// AddRepo; that trade has not been made.
+// Since #6493 the Add itself is no longer made here: handleEvent hands new
+// directories to subscribeOwner, which is the only goroutine that subscribes
+// them. This goroutine must never make a blocking backend call, because it is
+// the sole receiver on Events and fsnotify's Windows backend cannot answer an
+// Add or a Remove until that receive happens.
+//
+// The stopping() guard NARROWS the teardown window, it does not close it: a
+// handleEvent already in flight when close(w.stopCh) runs is unaffected and
+// may still arm a reindex, and an owner already inside w.fs.Add when Close
+// begins stays there until the backend answers. Those calls are safe rather
+// than merely unlikely — every backend checks isClosed() and returns ErrClosed
+// — so the residue is a wasted Add, not a hang. Closing the window entirely
+// would mean holding a lock across handleEvent, which would serialise the
+// event path against every AddRepo; that trade has not been made.
 func (w *Watcher) loop() {
 	defer w.loopWG.Done()
 	// Captured once. A backend restart starts a FRESH loop goroutine against
@@ -1383,8 +1490,15 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 	// Track newly-created directories so events under them surface. The
 	// directory's own descriptor was charged above; subscribeDirRecursive
 	// charges only what its Add() additionally opens.
+	//
+	// HANDED OFF, not called (#6493). This runs on the loop goroutine, and
+	// subscribeDirRecursive calls the backend's Add — the second of the three
+	// ways into the invariant documented on Watcher.fsAdd, and the only one
+	// that was reachable in production. Doing it here wedged the Windows
+	// backend permanently: it cannot answer an Add until someone receives the
+	// event it is trying to deliver, and this goroutine is that someone.
 	if createdDir && !w.shouldSkipDir(filepath.Base(ev.Name)) {
-		w.subscribeDirRecursive(ev.Name)
+		w.enqueueSubscribe(ev.Name)
 	}
 
 	w.recordAndArm(repo)
@@ -1444,6 +1558,19 @@ func (w *Watcher) chargeEventOpen(path string, isDir bool) {
 		if dir := filepath.Dir(path); w.dirToRepo[dir] != "" {
 			w.dirEntries[dir]++
 		}
+		// Tell the walk that is still running over this path's subtree that
+		// this entry is already paid for (#6493). Directories are deliberately
+		// excluded: a subdirectory created during a walk is charged perDir by
+		// that walk and perEntry by this event, and its OWN
+		// subscribeDirRecursive deducts that perEntry unconditionally — the
+		// same arithmetic the synchronous code produced, so recording it here
+		// would deduct it twice.
+		if w.underSubscribeInFlightLocked(path) {
+			if len(w.fdEventCharged) >= fdPreChargedCap {
+				w.fdEventCharged = make(map[string]struct{}, 1)
+			}
+			w.fdEventCharged[path] = struct{}{}
+		}
 	}
 	// Under w.mu, not after it. The per-repo tally and the global ledger are
 	// one fact recorded twice, and every OTHER site that moves them —
@@ -1478,6 +1605,10 @@ func (w *Watcher) releaseEventClose(path string) {
 	// descriptor it stood for, so a later re-creation must be charged afresh
 	// rather than suppressed as a duplicate.
 	delete(w.fdPreCharged, path)
+	// Symmetrically for the other direction's marker (#6493): the descriptor
+	// the Create charged is closed, so a walk that lists this name later is
+	// listing a NEW descriptor and must charge it.
+	delete(w.fdEventCharged, path)
 	repo, isWatchedDir := w.dirToRepo[path]
 	n := cost.perEntry()
 	if isWatchedDir {
@@ -1525,6 +1656,19 @@ func (w *Watcher) releaseEventClose(path string) {
 	if repo == "" {
 		w.mu.Unlock()
 		return
+	}
+	// An ENTRY release is now marked the same way a directory release is, and
+	// #6493 is why. The duplicate Remove used to be a Windows-only fact; with
+	// the loop goroutine draining Events while the subscribe owner is inside
+	// fsnotify's Add, kqueue reports a handful of entry removals twice — the old
+	// blocking Add held the backend's own goroutine still and hid it. One close
+	// must release once whatever the backend reports, so the second report is
+	// suppressed by the guard above. The marker dies as soon as a descriptor for
+	// the path could exist again: chargeEventOpen clears it on a Create, and
+	// forgetReleasedEntriesLocked clears every child of a directory the walk
+	// re-lists (#6293).
+	if !isWatchedDir {
+		w.recordReleasedDirLocked(path)
 	}
 	if w.fdReserved[repo] -= n; w.fdReserved[repo] < 0 {
 		w.fdReserved[repo] = 0
@@ -1635,9 +1779,105 @@ func (w *Watcher) repoForLocked(p string) string {
 	}
 }
 
+// enqueueSubscribe hands a newly-created directory to the subscribe owner
+// (#6493). It is called from the loop goroutine and MUST NOT block there: the
+// send is non-blocking, and a full queue costs the subscription rather than the
+// drain.
+//
+// A dropped subtree is a real loss — nothing re-discovers an unwatched
+// directory until its repo is re-registered — so it is counted and logged. It
+// is still strictly better than the alternative, which is the deadlock.
+func (w *Watcher) enqueueSubscribe(dir string) {
+	// Marked BEFORE the send and on this goroutine, which is what makes the
+	// window airtight: every Create the loop processes from here on is
+	// processed after the mark is visible, so chargeEventOpen can tell that its
+	// charge lands inside a walk that has not listed the entry yet.
+	w.mu.Lock()
+	w.subInFlight[dir]++
+	w.mu.Unlock()
+	select {
+	case w.subCh <- dir:
+	default:
+		w.releaseInFlight(dir)
+		atomic.AddUint64(&w.droppedSubscribes, 1)
+		w.logger.Warn("watcher: new subtree not watched — subscribe queue full",
+			"dir", dir, "queue_cap", cap(w.subCh))
+	}
+}
+
+// releaseInFlight retires one outstanding subscription for dir, dropping the key
+// only when the last one is done. Pairs with the increment in enqueueSubscribe,
+// and is called both when a walk finishes and when the hand-off is refused by a
+// full queue.
+//
+// Dropping the key at zero rather than leaving a 0 entry keeps
+// underSubscribeInFlightLocked's len() fast path meaningful and stops the map
+// growing one dead key per directory the watcher ever saw.
+func (w *Watcher) releaseInFlight(dir string) {
+	w.mu.Lock()
+	if n := w.subInFlight[dir] - 1; n > 0 {
+		w.subInFlight[dir] = n
+	} else {
+		delete(w.subInFlight, dir)
+	}
+	w.mu.Unlock()
+}
+
+// underSubscribeInFlightLocked reports whether path lies inside a directory
+// whose subscription walk is still running. Caller holds w.mu.
+func (w *Watcher) underSubscribeInFlightLocked(path string) bool {
+	if len(w.subInFlight) == 0 {
+		return false
+	}
+	dir := filepath.Dir(path)
+	for {
+		if w.subInFlight[dir] > 0 {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+}
+
+// subscribeOwner is the ONE goroutine that performs subscriptions discovered
+// while handling events (#6493). It exists so that the goroutine draining the
+// backend's Events is never the goroutine waiting on the backend's reply — on
+// fsnotify's Windows backend those are the two halves of a permanent deadlock,
+// because a single actor goroutine does both jobs.
+//
+// It exits on stopCh and abandons whatever is still queued. That is deliberate:
+// Stop is bounded, and a queued subscription outstanding at shutdown is work
+// for a backend that is being torn down anyway. Because enqueueSubscribe never
+// blocks, an abandoned queue can never hold anything up.
+func (w *Watcher) subscribeOwner() {
+	defer w.subWG.Done()
+	for {
+		select {
+		case <-w.stopCh:
+			return
+		case dir := <-w.subCh:
+			if w.stopping() {
+				// Same reason loop switches to drain-only: subscribing into a
+				// backend that Stop is closing buys nothing and races Close.
+				continue
+			}
+			w.subscribeDirRecursive(dir)
+		}
+	}
+}
+
 // subscribeDirRecursive adds a newly-created directory (and its
 // contents) to the fsnotify subscription. Used so a `git checkout`
 // that creates new subtrees does not require a daemon restart.
+//
+// It runs on the subscribe owner, never on the loop goroutine (#6493). A
+// directory whose repo was removed between the event and this call resolves to
+// no repo below and is skipped, which is what keeps a deferred subscription
+// from re-Add()ing a path RemoveRepo has just unwatched: RemoveRepo clears
+// dirToRepo under w.mu before it calls the backend.
 //
 // Descriptor accounting (#6268). Whatever handleEvent's chargeEventOpen already
 // put on the ledger for root is deducted below: on kqueue that is the one
@@ -1650,10 +1890,21 @@ func (w *Watcher) repoForLocked(p string) string {
 // charges them: each is opened once, by whichever of the two paths reaches it
 // first, and grafel Add()s each exactly once.
 func (w *Watcher) subscribeDirRecursive(root string) {
+	// Cleared on every exit, including the no-repo one: a root left marked
+	// would make chargeEventOpen keep recording markers for a walk that is over,
+	// and those markers are consumed by nothing (#6493).
+	defer w.releaseInFlight(root)
 	repo := w.repoFor(filepath.Join(root, "_"))
 	if repo == "" {
 		return
 	}
+	// Bound once, under the lock, for the whole walk: the heartbeat swaps
+	// w.fsAdd for a fresh backend's under w.mu, and this function now runs on a
+	// goroutine that outlives a restart, so re-reading the field per entry
+	// would both race the swap and let one walk straddle two backends (#6493).
+	w.mu.Lock()
+	fsAdd := w.fsAdd
+	w.mu.Unlock()
 	cost := w.fdb.model()
 	reserved := 0
 	budgetHit := false
@@ -1682,10 +1933,13 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 	// pending paths lose their protection, trading an unbounded map for a
 	// bounded chance of one duplicate charge.
 	//
-	// handleEvent runs on the single loop goroutine, which is also the
-	// goroutine inside this function, so a Create emitted during the Add below
-	// is only processed after this returns — after the path has been recorded.
-	preCharged := map[string]struct{}{}
+	// All of that now lives in settleListing, and #6493 is why. This used to run
+	// ON the loop goroutine, so no Create could be processed between the listing
+	// and the end of the walk, and publishing the markers once at the end was
+	// as good as publishing them immediately. With the walk on the subscribe
+	// owner and the loop draining concurrently, a marker the loop cannot see
+	// yet suppresses nothing — so each directory's markers are published in the
+	// same critical section that reclaims the entries the loop got to first.
 
 	// prune charges the descriptor fsnotify already opened for a directory we
 	// are about to skip — see the long note on subscribeRepo's prune.
@@ -1721,7 +1975,7 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		if p != root && w.shouldSkipDir(base) {
 			return prune(p)
 		}
-		if err := w.fsAdd(p); err != nil {
+		if err := fsAdd(p); err != nil {
 			return nil
 		}
 		// Listed AFTER the Add here, the opposite of subscribeRepo, and paired
@@ -1733,7 +1987,9 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		// entries watchDirectoryFiles absorbed silently (markSeen at
 		// backend_kqueue.go:612 stops sendCreateIfNew from ever reporting them,
 		// :657), and nothing would come along later to charge them.
-		charge, entries := chargeDirRecording(p, cost, preCharged)
+		rec := map[string]struct{}{}
+		charge, entries := chargeDirRecording(p, cost, rec)
+		charge = w.settleListing(p, rec, charge, cost)
 		if p == root {
 			// Deduct exactly what handleEvent's chargeEventOpen already put on
 			// the ledger for this path — perEntry(), because that is what it
@@ -1760,8 +2016,31 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		subscribed[p] = struct{}{}
 		w.mu.Lock()
 		w.dirToRepo[p] = repo
+		// Entries the LOOP charged for p that the listing did not see — created
+		// after chargeDirRecording read the directory, and therefore absent from
+		// `entries` (#6493). chargeEventOpen could not move the tally for them
+		// either, because p was not yet in dirToRepo, so without this the tally
+		// is short by exactly those entries.
+		//
+		// A short tally is not a cosmetic error: reconcileDir compares it
+		// against a fresh listing and repairs the difference, so it makes the
+		// sweep take entry watches for entries fsnotify is already watching —
+		// descriptors nothing charged, each of which then reports its own
+		// Remove and releases. That is how a hand-off that got the CHARGES
+		// exactly right still drained the ledger below the truth.
+		//
+		// Counted in the same critical section that publishes dirToRepo, which
+		// is what closes the window: from here on chargeEventOpen sees p as
+		// watched and moves the tally itself.
+		extra := 0
+		for path := range w.fdEventCharged {
+			if filepath.Dir(path) == p {
+				delete(w.fdEventCharged, path)
+				extra++
+			}
+		}
 		// See subscribeRepo: what the listing charged p for (#6304).
-		w.dirEntries[p] = entries
+		w.dirEntries[p] = entries + extra
 		// See subscribeRepo: the listing above re-charged p's entries (#6293).
 		w.forgetReleasedEntriesLocked(p)
 		w.mu.Unlock()
@@ -1774,13 +2053,6 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 	// so RemoveRepo returns it, and say loudly when we ran out.
 	w.mu.Lock()
 	w.fdReserved[repo] += reserved
-	if len(w.fdPreCharged)+len(preCharged) > fdPreChargedCap {
-		w.fdPreCharged = preCharged
-	} else {
-		for p := range preCharged {
-			w.fdPreCharged[p] = struct{}{}
-		}
-	}
 	w.mu.Unlock()
 	if budgetHit {
 		used, limit := w.fdb.snapshot()
@@ -1788,6 +2060,48 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 			"repo", repo, "dir", root, "fd_used", used, "fd_limit", limit,
 			"override_env", fdBudgetEnv)
 	}
+}
+
+// settleListing reconciles one directory's listing against what the loop
+// goroutine has charged concurrently, and publishes the suppression markers for
+// what it has not (#6493). It returns the cost the caller should actually
+// reserve.
+//
+// BOTH HALVES MUST HAPPEN IN ONE CRITICAL SECTION, and that is the whole
+// point. Between the listing and this lock, the loop can process a Create for
+// an entry the listing just charged; between this lock and any later
+// publication, it can process a Create for an entry whose marker has not been
+// published yet. Splitting them leaves one of those two windows open, and each
+// one is a descriptor charged twice.
+//
+//   - Entries already in fdEventCharged were charged by their Create first.
+//     The listing must not charge them again, and they must not become
+//     fdPreCharged markers: their Create has been and gone, so a marker for
+//     them would be consumed by nothing and would swallow the NEXT charge for
+//     that path instead.
+//   - Everything else becomes an fdPreCharged marker, so the Create fsnotify
+//     may still report for it is recognised as the duplicate it is.
+//
+// The cap behaves as it did before: past it the set is reset wholesale and the
+// oldest pending paths lose their protection, trading an unbounded map for a
+// bounded chance of one duplicate charge.
+func (w *Watcher) settleListing(dir string, rec map[string]struct{}, charge int, cost fdCostModel) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for path := range rec {
+		if _, ok := w.fdEventCharged[path]; ok {
+			delete(w.fdEventCharged, path)
+			delete(rec, path)
+			charge -= cost.perEntry()
+		}
+	}
+	if len(w.fdPreCharged)+len(rec) > fdPreChargedCap {
+		w.fdPreCharged = make(map[string]struct{}, len(rec))
+	}
+	for path := range rec {
+		w.fdPreCharged[path] = struct{}{}
+	}
+	return charge
 }
 
 // recordAndArm updates per-repo event counters and (re)starts the

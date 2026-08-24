@@ -245,6 +245,17 @@ func drainLedger(t *testing.T, w *Watcher, accept func(int) bool) (int, bool) {
 	last, longestGap := -1, time.Duration(0)
 	runStart := time.Now()
 	for time.Now().Before(deadline) {
+		// #6493: subscribing a new subtree no longer happens on the event
+		// goroutine, so the ledger can sit at a plateau simply because the
+		// subscribe owner has not reached the queued directory yet. That is a
+		// quiet QUEUE, not a settled ledger, and reading it as one hands back a
+		// figure two directories short. Restart the hold — and with last = -1,
+		// so this wait cannot inflate longestGap either.
+		if subscribesPending(w) {
+			last, runStart = -1, time.Now()
+			time.Sleep(ledgerPollEvery)
+			continue
+		}
 		used, _ := w.fdb.snapshot()
 		switch {
 		case accept != nil && !accept(used):
