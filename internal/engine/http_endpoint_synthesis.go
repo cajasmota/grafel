@@ -1342,6 +1342,12 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	case "rust":
 		// Producer side (#1420): axum Router::new().route(...) registrations.
 		synthesizeAxumRoutes(string(content), emit)
+		// Producer side (#6560 Arm A): utoipa_axum `routes!(handler)`
+		// registrations, whose verb and path live on the handler's same-file
+		// `#[utoipa::path(...)]` attribute rather than in a `.route(` call.
+		// Runs AFTER synthesizeAxumRoutes and skips any handler that pass has
+		// already registered, so one handler never gets two producers (#6530).
+		synthesizeUtoipaAxumRoutes(string(content), emit)
 		// Producer side (#2692): Rocket attribute macros
 		// (#[get("/path")], #[post("/path")], ...).
 		synthesizeRocket(string(content), emit)
