@@ -147,7 +147,7 @@ func extractDjangoGlobalWiring(source, filePath string, line int) *types.EntityR
 		for _, m := range djangoDRFDefaultClassKeyRe.FindAllStringSubmatchIndex(rfBlock, -1) {
 			key := rfBlock[m[2]:m[3]]
 			open := m[5] - 1 // index of captured opening delimiter
-			body := djangoStripPyComments(djangoBalancedDelim(rfBlock, open))
+			body := pyStripComments(djangoBalancedDelim(rfBlock, open))
 			role := djangoDRFKeyRole[key]
 			for _, im := range djangoDottedPathItemRe.FindAllStringSubmatch(body, -1) {
 				add(role, im[1], -1)
@@ -164,7 +164,7 @@ func extractDjangoGlobalWiring(source, filePath string, line int) *types.EntityR
 		tplBlock := djangoBalancedDelim(source, open)
 		for _, km := range djangoContextProcessorsKeyRe.FindAllStringSubmatchIndex(tplBlock, -1) {
 			cpOpen := km[len(km)-2] // opening delimiter of the context_processors list
-			body := djangoStripPyComments(djangoBalancedDelim(tplBlock, cpOpen))
+			body := pyStripComments(djangoBalancedDelim(tplBlock, cpOpen))
 			for _, im := range djangoDottedPathItemRe.FindAllStringSubmatch(body, -1) {
 				add("context_processor", im[1], -1)
 			}
@@ -178,7 +178,7 @@ func extractDjangoGlobalWiring(source, filePath string, line int) *types.EntityR
 	// AppConfig subclass via the QualifiedName index.
 	for _, m := range djangoInstalledAppsSettingRe.FindAllStringSubmatchIndex(source, -1) {
 		open := m[len(m)-2]
-		body := djangoStripPyComments(djangoBalancedDelim(source, open))
+		body := pyStripComments(djangoBalancedDelim(source, open))
 		for _, im := range djangoDottedPathItemRe.FindAllStringSubmatch(body, -1) {
 			add("app_config", im[1], -1)
 		}
@@ -199,13 +199,12 @@ func extractDjangoGlobalWiring(source, filePath string, line int) *types.EntityR
 	return &ent
 }
 
-// djangoStripPyComments removes Python `#` line comments from a settings-list
-// body so commented-out entries (e.g. `# "app.middleware.LoggingMiddleware"`)
-// are not mistaken for live wiring. A `#` is treated as a comment start only
-// when it is outside a string literal on that line; everything from there to
-// end-of-line is dropped. This preserves quoted dotted-path items while
-// discarding commented ones.
-func djangoStripPyComments(body string) string {
+// pyStripComments removes Python `#` line comments from a body so commented-out
+// text (e.g. `# "app.middleware.LoggingMiddleware"`) is never read as code. A
+// `#` is treated as a comment start only when it is outside a string literal on
+// that line; everything from there to end-of-line is dropped. This preserves
+// quoted items while discarding commented ones.
+func pyStripComments(body string) string {
 	var b strings.Builder
 	for _, line := range strings.Split(body, "\n") {
 		var quote byte // 0, '\'' or '"'
@@ -243,7 +242,7 @@ func djangoSettingsListPaths(source string, headRe *regexp.Regexp, open byte) []
 		if openPos < 0 || openPos >= len(source) || source[openPos] != open {
 			continue
 		}
-		body := djangoStripPyComments(extractBalancedBrackets(source, openPos))
+		body := pyStripComments(extractBalancedBrackets(source, openPos))
 		for _, m := range djangoDottedPathItemRe.FindAllStringSubmatch(body, -1) {
 			out = append(out, m[1])
 		}
@@ -259,7 +258,7 @@ func djangoSettingsContainerPaths(source string, headRe *regexp.Regexp) []string
 	var out []string
 	for _, m := range headRe.FindAllStringSubmatchIndex(source, -1) {
 		open := m[len(m)-2] // start index of last capture group (the delimiter)
-		body := djangoStripPyComments(djangoBalancedDelim(source, open))
+		body := pyStripComments(djangoBalancedDelim(source, open))
 		for _, im := range djangoDottedPathItemRe.FindAllStringSubmatch(body, -1) {
 			out = append(out, im[1])
 		}
@@ -307,4 +306,30 @@ func djangoDottedLeaf(dotted string) string {
 		return dotted[i+1:]
 	}
 	return dotted
+}
+
+// pyBlankStringLiterals replaces the contents of every single- or double-quoted
+// string with spaces, keeping the quote bytes and the exact byte length, so an
+// index into the result is an index into the input. It lets a pattern scan for
+// code without prose inside a string argument being read as code — the same
+// guarantee pyStripComments gives for a comment, which is why it shares that
+// function's line-scoped quote tracking and its choice not to model escapes.
+func pyBlankStringLiterals(s string) string {
+	b := []byte(s)
+	var quote byte // 0, '\'' or '"'
+	for i := 0; i < len(b); i++ {
+		switch c := b[i]; {
+		case c == '\n':
+			quote = 0 // an unterminated quote does not carry to the next line
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			} else {
+				b[i] = ' '
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		}
+	}
+	return string(b)
 }

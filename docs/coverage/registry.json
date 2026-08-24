@@ -73909,9 +73909,9 @@
           },
           "schema_extraction": {
             "status": "full",
-            "cites": ["internal/extractors/python/extractor.go","internal/patterns/patterns_test.go","internal/patterns/schema_detector.go"],
-            "notes": "Base Python extractor emits the model class (SCOPE.Component) and its annotated fields (SCOPE.Schema/field) via extractClassFields; schema_detector.go classifies the BaseModel subclass as a pydantic schema_validation entity, exercised by TestSchemaDetector_PydanticBaseModel.",
-            "verified_at": "2026-05-29"
+            "cites": ["internal/custom/python/dto_field_members.go","internal/extractors/python/extractor.go","internal/patterns/patterns_test.go","internal/patterns/schema_detector.go"],
+            "notes": "Base Python extractor emits the model class (SCOPE.Component) and its annotated fields (SCOPE.Schema/field) via extractClassFields; schema_detector.go classifies the BaseModel subclass as a pydantic schema_validation entity, exercised by TestSchemaDetector_PydanticBaseModel. #6561: each field member also carries default_value, the default expression verbatim, when that expression is a single literal (a quoted string with no escapes, a plain int or float, True/False/None) — either as the whole right-hand side, or as the default= argument of one Field(...) call named bare or dotted. Everything else publishes NO property at all rather than a partial read: a call, an f-string, a container display, arithmetic, Field(...) Ellipsis, a Field() whose default= is only default_factory=, two Field() calls in one expression, and numeric spellings outside the literal pattern (1_000, 1.5e3). A POSITIONAL default, Field(\"x\"), is likewise absent rather than read. Comments and string arguments are both blanked before the scan (pyStripComments, pyBlankStringLiterals), so prose that names a default — a trailing # default=5, or a description=/alias= string saying \"default=5, historical\" — never becomes a published value. Tests: TestPydantic_FieldDefaultValue_6561, TestDRF_FieldMembersCarryNoDefaultValue_6561.",
+            "verified_at": "2026-08-23"
           }
         },
         "Constraints": {

@@ -15012,15 +15012,19 @@ records:
       Schema:
         schema_extraction:
           # BaseModel subclass classified as a pydantic schema_validation entity
-          # by schema_detector.go; issue #2984.
+          # by schema_detector.go; issue #2984. #6561: each field member also
+          # carries default_value when the default is a single literal.
           status: full
           symbols:
             - file: internal/patterns/schema_detector.go
               functions: [Detect]
+            - file: internal/custom/python/dto_field_members.go
+              functions: [extractPydanticModelFields, pydDefaultLiteral]
           tests:
             - file: internal/patterns/patterns_test.go
-          issues_implemented: ["2984"]
-          verified_at: "2026-05-29"
+            - file: internal/custom/python/pydantic_field_default_6561_test.go
+          issues_implemented: ["2984", "6561"]
+          verified_at: "2026-08-23"
   lang.python.validation.marshmallow:
     capabilities:
       Schema:
