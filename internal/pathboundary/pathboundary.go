@@ -27,7 +27,32 @@
 //     user's tree or the system,
 //  3. the filesystem root (or a Windows drive root), as before, and
 //  4. MaxAncestorDepth levels, a backstop so a symlink cycle or an unusual mount
-//     can never produce an unbounded climb.
+//     can never produce an unbounded climb, and
+//  5. a PROTECTED directory — one that protectedpath.IsTraversalProtected
+//     names — which is refused: it is not visited, and nothing above it is
+//     either. See "The protected boundary" below.
+//
+// # The protected boundary (#6548 arm 3)
+//
+// #6549 built the protected-path table and #6550 built the bounded loop, and
+// for two arms they never met: the climb was bounded by $HOME, the root and a
+// depth cap, yet it still READ ~/Documents or ~/Library/Mobile Documents when
+// the ascent passed through one. On macOS reading either is what shows the
+// «"grafel" wants to access files managed by "iCloud Drive"» prompt. Climb now
+// consults the table, and refusing means STOP, not skip: a protected directory
+// is a boundary of the same kind as $HOME, not a hole in the middle of the
+// climb. Skipping it and continuing would put grafel above ~/Documents on the
+// strength of a path it was just told not to read.
+//
+// The refusal fires at the OUTERMOST directory of a protected tree — the one
+// whose own parent is not protected, i.e. ~/Documents itself, not
+// ~/Documents/proj. That granularity is what keeps the explicit-path exemption
+// (below) real: a repo a user deliberately keeps in ~/Documents still resolves
+// its own .git and .grafel markers through its own ancestors, and the climb
+// stops at the moment it would step out of that repo's tree into the TCC-gated
+// folder itself. Refusing every at-or-under path instead would make a climb
+// from ~/Documents/proj/pkg stop at its first step and silently break the
+// repo; refusing none is where this issue started.
 //
 // Two things it deliberately does NOT do:
 //
@@ -43,7 +68,7 @@
 // When the home directory cannot be determined (os.UserHomeDir fails because
 // neither $HOME nor %USERPROFILE% is set — a bare cron/launchd/container
 // environment) the home boundary is simply absent; the root stop and the depth
-// cap still apply. That is a fail-open on ONE of four stop conditions, chosen
+// cap still apply. That is a fail-open on ONE of five stop conditions, chosen
 // over guessing a home path that may belong to somebody else — and it is not
 // silent: the first climb in such a process logs one line saying the home
 // boundary is inactive and that only the root stop and the depth cap apply.
@@ -57,6 +82,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/cajasmota/grafel/internal/protectedpath"
 )
 
 // MaxAncestorDepth caps how many levels any single climb may ascend, counting
@@ -129,7 +156,24 @@ func ClimbWithHome(dir, home string, visit func(dir string) bool) bool {
 	// directory. A start path elsewhere on disk keeps its full climb.
 	bounded := home != "" && Inside(cur, home)
 
+	curProtected := isProtectedDir(cur, home)
 	for depth := 0; depth < MaxAncestorDepth; depth++ {
+		parent := filepath.Dir(cur)
+		atRoot := parent == cur
+		parentProtected := false
+		if !atRoot {
+			parentProtected = isProtectedDir(parent, home)
+		}
+		if curProtected && !parentProtected {
+			// cur is the OUTERMOST directory of a protected tree — ~/Documents
+			// itself, ~/Library, a *.photoslibrary bundle. Reading it is the
+			// #6548 consent prompt, and everything above it is past a boundary
+			// we were just told not to cross, so the climb ends here without
+			// visiting it. Levels BELOW it (a repo the user keeps inside
+			// ~/Documents) have a protected parent and are visited normally —
+			// that is the explicit-path exemption.
+			return false
+		}
 		if visit(cur) {
 			return true
 		}
@@ -137,14 +181,34 @@ func ClimbWithHome(dir, home string, visit func(dir string) bool) bool {
 			// $HOME itself was visited; nothing above it is ours to read.
 			return false
 		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
+		if atRoot {
 			// Filesystem root (or a Windows drive/UNC root).
 			return false
 		}
-		cur = parent
+		cur, curProtected = parent, parentProtected
 	}
 	return false
+}
+
+// isProtectedDir asks protectedpath — grafel's single authority on what must
+// not be read — whether dir is off limits to INFERRED traversal, which is
+// exactly what a climb is.
+//
+// The cheap gate in front of the call is not an optimisation detail worth
+// hiding: IsTraversalProtectedIn runs filepath.EvalSymlinks against every
+// entry of the denylist, and a climb calls this once per level on the MCP hot
+// path. Only two shapes of path can ever be protected — one inside the home
+// directory, or one whose basename is a media-library bundle — so anything
+// else is answered without touching the filesystem.
+func isProtectedDir(dir, home string) bool {
+	if dir == "" {
+		return false
+	}
+	if !protectedpath.IsMediaLibraryBundle(filepath.Base(dir)) && (home == "" || !Inside(dir, home)) {
+		return false
+	}
+	protected, _ := protectedpath.IsTraversalProtectedIn(dir, home, runtime.GOOS)
+	return protected
 }
 
 // Inside reports whether path is home itself or lives underneath it. It is the

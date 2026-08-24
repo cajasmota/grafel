@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/atomicfile"
+	"github.com/cajasmota/grafel/internal/pathboundary"
 )
 
 // StackList is a JSON-polymorphic list of language tags for a repo.
@@ -436,23 +437,34 @@ func PathContainedUnder(root, p string) bool {
 //
 // If nothing at all resolves, p is returned unchanged; both sides then get the
 // same lexical treatment, which is still enough to catch a "..".
+//
+// The ascent runs through pathboundary.Climb (#6548): it used to be a bare
+// `for { parent := filepath.Dir(cur) ... }` with the filesystem root as its
+// only stop, one filepath.EvalSymlinks per level, reached from
+// PathContainedUnder on every registry path validation in the daemon —
+// unprompted, and with nothing bounding it. It now stops at $HOME when p is
+// inside it, refuses a protected directory, and has a depth backstop. When the
+// boundary is reached before anything resolves, that is the "nothing resolved"
+// case the contract above already describes.
 func resolveDeepestExisting(p string) string {
-	cur := p
 	var tail []string
-	for {
-		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
-			for i := len(tail) - 1; i >= 0; i-- {
-				resolved = filepath.Join(resolved, tail[i])
-			}
-			return resolved
+	out := p
+	resolvedAny := pathboundary.Climb(p, func(cur string) bool {
+		resolved, err := filepath.EvalSymlinks(cur)
+		if err != nil {
+			tail = append(tail, filepath.Base(cur))
+			return false
 		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return p
+		for i := len(tail) - 1; i >= 0; i-- {
+			resolved = filepath.Join(resolved, tail[i])
 		}
-		tail = append(tail, filepath.Base(cur))
-		cur = parent
+		out = resolved
+		return true
+	})
+	if !resolvedAny {
+		return p
 	}
+	return out
 }
 
 // Load reads the registry from disk. A missing file returns an empty
