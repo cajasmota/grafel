@@ -144,6 +144,9 @@ func TestARecreatedDirectoryIsReleasableAgain(t *testing.T) {
 	// Nothing on disk changes — src is still there, only the ledger was told it
 	// went away — so no genuine event can arrive alongside and be counted too.
 	w.handleEvent(fsnotify.Event{Name: dir, Op: fsnotify.Create})
+	// The re-subscribe is performed by the subscribe owner, not by handleEvent
+	// (#6493), so it completes after handleEvent returns rather than inside it.
+	awaitSubscribed(t, w, dir)
 	w.mu.Lock()
 	_, watched := w.dirToRepo[dir]
 	w.mu.Unlock()
