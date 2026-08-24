@@ -49,6 +49,93 @@ type PyDIExtractor struct{}
 
 func (e *PyDIExtractor) Language() string { return "python_di_graph" }
 
+// pyDIConsumerRef addresses the CONSUMER end of an INJECTED_INTO edge — the
+// enclosing `def` — as the canonical file-anchored operation structural-ref
+// (issue #6511). The consumer's file is known exactly: it is the file being
+// extracted. Emitting the bare name instead let the resolver's global byName
+// tier bind the edge to ANY same-named function anywhere in the repo, which is
+// precisely the mis-binding #6511 reports.
+//
+// internal/resolve's lookupStructural handles this shape through
+// lookupLocationKind(file, name, operationKindFamily) and returns handled=true
+// even on a miss — so an unresolvable consumer stays honestly unresolved
+// rather than degrading to a bare-name guess. Same builder the http-endpoint
+// handler bridge and every language's class→method CONTAINS edge use.
+func pyDIConsumerRef(filePath, fn string) string {
+	return extractor.BuildOperationStructuralRef("python", filePath, fn)
+}
+
+// pyDIProviderRef addresses the PROVIDER end of an INJECTED_INTO edge for the
+// fastapi `Depends(x)` and litestar `Provide(x)` passes.
+//
+// Unlike the consumer, the provider's file is NOT knowable here — it is
+// routinely IMPORTED from another module (python-fastapi-mini's `get_db` lives
+// in app/deps.py while its consumer lives in app/routers/things.py) — so a
+// file anchor would be a fabrication.
+//
+// A KIND is a fabrication too, unless it was observed. A FastAPI provider is
+// very often a CLASS rather than a function: `Depends(SvcClass)` and
+// `svc: AuthService = Depends()` are both idiomatic and both arrive here. So
+// the kind prefix is emitted ONLY when this extractor has actually seen a
+// `def` of that name in the file it is extracting — `localDefs` — which is the
+// one case where "Operation" is a fact rather than an assertion.
+//
+// Why this matters, measured (#6511 review): internal/resolve's
+// LookupStatusHint probes byKind[kind][name] BEFORE the kind-agnostic byName
+// tier. An unconditional "SCOPE.Operation:" prefix therefore does not merely
+// fail to help a class provider — it actively PROMOTES a wrong-kind, same-named
+// entity ahead of the entity being injected. With `class AuthService` in
+// app/routers.py and an unrelated `def AuthService` in app/legacy.py, the
+// prefixed form bound the edge to app/legacy.py; the bare form bound it to the
+// class, because an ambiguous bare name falls to
+// hintKinds("INJECTED_INTO") = componentKindFamily.
+//
+// Bare is therefore the honest default here: it is kind-AGNOSTIC, not
+// kind-wrong, and it keeps both the class and the imported-callable case
+// reachable. This is the same reasoning the dependency-injector @inject
+// provider already followed — that endpoint is a container attribute (a DI
+// token, the same address its BINDS edge uses), and prefixing it "would assert
+// a kind the symbol lacks". A class provider is the identical situation.
+func pyDIProviderRef(localDefs map[string]bool, name string) string {
+	if localDefs[name] {
+		return "SCOPE.Operation:" + name
+	}
+	return name
+}
+
+// rePyModuleDef is rePyDef anchored at COLUMN 0: a module-level `def` /
+// `async def`, never an indented one. Deliberately a separate matcher rather
+// than a tightening of rePyDef, which pyFunctions shares with the consumer
+// side and with endpoint-handler extraction and which MUST keep seeing methods.
+var rePyModuleDef = regexp.MustCompile(`(?m)^(?:async[ \t]+)?def[ \t]+(\w+)[ \t]*\(`)
+
+// pyLocalDefNames is the set of MODULE-LEVEL `def` names declared in the file
+// being extracted — the only providers whose Operation kind pyDIProviderRef
+// has actually observed.
+//
+// Module-level, not any `def`. rePyDef begins `^[ \t]*def`, so an INDENTED def
+// — a METHOD — would satisfy the gate, and a provider factory method on a
+// container/registry class is a real DI idiom. That would let
+//
+//	class Registry:
+//	    def AuthService(self): ...
+//	class AuthService: ...
+//	def me(svc: AuthService = Depends()): ...
+//
+// stamp "SCOPE.Operation:" on a CLASS provider again and reopen the
+// byKind-before-byName promotion this whole gate exists to prevent. A method
+// is not evidence about a module-level name.
+//
+// Strictly more conservative on purpose: fewer prefixes, more bare refs, and
+// bare is kind-AGNOSTIC rather than kind-wrong.
+func pyLocalDefNames(src string) map[string]bool {
+	defs := make(map[string]bool)
+	for _, m := range rePyModuleDef.FindAllStringSubmatch(src, -1) {
+		defs[m[1]] = true
+	}
+	return defs
+}
+
 var (
 	// rePyDef captures a `def name(` head with the byte offset of the opening
 	// paren so the signature can be balanced-scanned. Group 1 = function name.
@@ -120,13 +207,34 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 	// entity of the same class/function name. The semantic provider/consumer/
 	// token names live on the relationship's FromID/ToID, which the cross-file
 	// resolver binds via its global byName index independent of the owner.
-	addEdge := func(subtype string, line int, props map[string]string, rel types.RelationshipRecord) {
-		owner := "di:" + rel.Kind + ":" + rel.FromID + "->" + rel.ToID + "@" + strconv.Itoa(line)
+	//
+	// The owner name is built from the SEMANTIC endpoint names (ownerFrom /
+	// ownerTo), NOT from rel.FromID / rel.ToID. Those two used to be the same
+	// string, but #6511 re-addressed the relationship endpoints while leaving
+	// the identity of these SCOPE.Pattern entities alone: deriving the owner
+	// from the refs would rename every DI pattern entity (and change its
+	// ComputeID) as a side effect — "di:INJECTED_INTO:get_db->list_things@9"
+	// becoming "di:INJECTED_INTO:SCOPE.Operation:get_db->scope:operation:
+	// method:python:app/routers/things.py:list_things@9", which also nests a
+	// structural ref inside an entity Name. Node identity is decoupled from
+	// endpoint addressing on purpose.
+	addEdgeNamed := func(subtype string, line int, props map[string]string, rel types.RelationshipRecord, ownerFrom, ownerTo string) {
+		owner := "di:" + rel.Kind + ":" + ownerFrom + "->" + ownerTo + "@" + strconv.Itoa(line)
 		ent := entity(owner, "SCOPE.Pattern", subtype, file.Path, line, props)
 		ent.Relationships = append(ent.Relationships, rel)
 		out = append(out, ent)
 		edgeCount++
 	}
+	// addEdge is addEdgeNamed for the edges whose endpoint refs ARE their
+	// semantic names (the BINDS token→impl edges, untouched by #6511).
+	addEdge := func(subtype string, line int, props map[string]string, rel types.RelationshipRecord) {
+		addEdgeNamed(subtype, line, props, rel, rel.FromID, rel.ToID)
+	}
+
+	// The `def` names this file declares — pyDIProviderRef's evidence that a
+	// provider really is an Operation. Computed once, used by both the fastapi
+	// and litestar passes.
+	localDefs := pyLocalDefNames(src)
 
 	// ---- FastAPI Depends() constructor/param injection -------------------
 	for _, fn := range pyFunctions(src) {
@@ -139,7 +247,7 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 			if provider == "" {
 				continue
 			}
-			addEdge("di_consumer", fn.line,
+			addEdgeNamed("di_consumer", fn.line,
 				map[string]string{
 					"framework": "fastapi",
 					"di_role":   "depends",
@@ -148,8 +256,8 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 					"via":       "fastapi_depends",
 				},
 				types.RelationshipRecord{
-					FromID: provider,
-					ToID:   fn.name,
+					FromID: pyDIProviderRef(localDefs, provider),
+					ToID:   pyDIConsumerRef(file.Path, fn.name),
 					Kind:   string(types.RelationshipKindInjectedInto),
 					Properties: types.Props{
 						{K: "consumer", V: fn.name},
@@ -157,7 +265,7 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 						{K: "provider", V: provider},
 						{K: "via", V: "fastapi_depends"},
 					},
-				})
+				}, provider, fn.name)
 		}
 	}
 
@@ -215,7 +323,7 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 			if token == "" {
 				continue
 			}
-			addEdge("di_consumer", fn.line,
+			addEdgeNamed("di_consumer", fn.line,
 				map[string]string{
 					"framework": "dependency-injector",
 					"di_role":   "inject",
@@ -225,7 +333,7 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 				},
 				types.RelationshipRecord{
 					FromID: token,
-					ToID:   fn.name,
+					ToID:   pyDIConsumerRef(file.Path, fn.name),
 					Kind:   string(types.RelationshipKindInjectedInto),
 					Properties: types.Props{
 						{K: "consumer", V: fn.name},
@@ -233,7 +341,7 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 						{K: "provider", V: token},
 						{K: "via", V: "dependency_injector_inject"},
 					},
-				})
+				}, token, fn.name)
 		}
 	}
 
@@ -296,7 +404,7 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 				if !ok {
 					continue
 				}
-				addEdge("di_consumer", fn.line,
+				addEdgeNamed("di_consumer", fn.line,
 					map[string]string{
 						"framework": "litestar",
 						"di_role":   "provide",
@@ -306,8 +414,8 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 						"via":       "litestar_provide",
 					},
 					types.RelationshipRecord{
-						FromID: provider,
-						ToID:   fn.name,
+						FromID: pyDIProviderRef(localDefs, provider),
+						ToID:   pyDIConsumerRef(file.Path, fn.name),
 						Kind:   string(types.RelationshipKindInjectedInto),
 						Properties: types.Props{
 							{K: "consumer", V: fn.name},
@@ -316,7 +424,7 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 							{K: "token", V: name},
 							{K: "via", V: "litestar_provide"},
 						},
-					})
+					}, provider, fn.name)
 			}
 		}
 	}
