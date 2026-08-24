@@ -109,8 +109,12 @@ func ApplyMigrationSequence(doc *graph.Document, reader MigrationSourceReader) M
 	}
 
 	// Build the enricher input from every entity that carries a SourceFile.
-	// AnnotateMigrationSequences discriminates by basename, so non-migration
-	// files fall through to the unknown bucket and are never annotated.
+	// AnnotateMigrationSequences discriminates by path — basename for the four
+	// SQL/Rails/Django conventions, and basename AND a `versions/` ancestor for
+	// Alembic — so non-migration files fall through to the unknown bucket and
+	// are never annotated. Observed by
+	// TestApplyMigrationSequence_NonMigrationModuleUnstamped (#6557); before
+	// that gate, any module with a long first segment was stamped alembic.
 	input := make([]enrichers.MigrationEntity, 0, len(doc.Entities))
 	idByEntityID := make(map[string]int, len(doc.Entities))
 	for i := range doc.Entities {

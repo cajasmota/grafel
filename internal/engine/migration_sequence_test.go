@@ -131,6 +131,32 @@ func TestApplyMigrationSequence_AlembicPrecedesEdge(t *testing.T) {
 	}
 }
 
+// TestApplyMigrationSequence_NonMigrationModuleUnstamped is the pass-level half
+// of #6557: the pass feeds EVERY entity carrying a SourceFile to the enricher,
+// so an ordinary Python module must come back with none of the three migration
+// properties set — on entities of any kind, not only Migration-kinded ones.
+func TestApplyMigrationSequence_NonMigrationModuleUnstamped(t *testing.T) {
+	doc := &graph.Document{Entities: []graph.Entity{
+		{ID: "http:WS:/subscribe", Name: "subscribe", Kind: "http_endpoint_definition",
+			SourceFile: "app/api/endpoints/notification_stream.py"},
+		{ID: "scope:component:Settings", Name: "Settings", Kind: "SCOPE.Component",
+			SourceFile: "app/core/authentication_service.py"},
+	}}
+	stats := ApplyMigrationSequence(doc, nil)
+	if stats.EntitiesAnnotated != 0 || stats.FilesMatched != 0 {
+		t.Fatalf("expected nothing annotated, got %+v", stats)
+	}
+	for i := range doc.Entities {
+		p := doc.Entities[i].PropsSnapshot()
+		for _, k := range []string{"migration_pattern", "migration_name", "sequence_number"} {
+			if v, ok := p[k]; ok && v != "" {
+				t.Errorf("%s: %s was stamped %q on a non-migration module",
+					doc.Entities[i].ID, k, v)
+			}
+		}
+	}
+}
+
 // TestApplyMigrationSequence_NoMigrationsSkips asserts honest behaviour: a graph
 // with no migration files annotates nothing and emits no edges.
 func TestApplyMigrationSequence_NoMigrationsSkips(t *testing.T) {

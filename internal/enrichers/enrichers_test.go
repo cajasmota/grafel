@@ -498,6 +498,130 @@ func TestAnnotateMigrationSequences_UnknownPattern(t *testing.T) {
 	}
 }
 
+// TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped pins the
+// negative half of the Alembic discriminator (#6557): an ordinary Python module
+// whose first underscore-delimited segment merely happens to be long must fall
+// through to the unknown bucket, not be reported as an Alembic migration.
+//
+// Several cases below are rejected by only ONE of the three constraints (path
+// component, hex charset, 12-character minimum), so this one test goes red if
+// any single constraint is relaxed on its own — though all such failures land
+// on this same test, differing in which case inside it fails.
+func TestAnnotateMigrationSequences_OrdinaryPythonModulesUnstamped(t *testing.T) {
+	cases := []string{
+		// Reporter's own cases (#6557): 12- and 14-character first segments.
+		"app/api/endpoints/notification_stream.py",
+		"app/services/authentication_service.py",
+		"app/core/configuration_loader.py",
+		"app/db/subscription_manager.py",
+		// Hex-looking revision id OUTSIDE a versions/ directory: only the path
+		// half rejects this one.
+		"app/models/abc123def456_helpers.py",
+		// A versions/ directory that is not Alembic's (API versioning): only
+		// the charset half rejects this one.
+		"app/api/versions/notification_stream.py",
+		// All-hex first segments that are too SHORT to be a revision id, in a
+		// real Alembic directory: only the {12,} length bound rejects these.
+		// `added` and `deface` are ordinary words spelled entirely in hex
+		// letters, so relaxing the bound re-opens the reported defect inside
+		// versions/ itself.
+		"alembic/versions/added_field.py",
+		"alembic/versions/deface_x.py",
+		// A hex run that is NOT the leading segment. Pins the `^` anchor: the
+		// revision-half is supposed to mean "the revision is the FIRST
+		// underscore-delimited segment", and dropping the anchor stamps this as
+		// revision=abc123def456 name=util. Contrived as a filename, but the
+		// anchor encodes a load-bearing assumption about Alembic that nothing
+		// else observes — see the file_template note on alembicMigrationRe.
+		"alembic/versions/helpers_abc123def456_util.py",
+	}
+	for _, src := range cases {
+		ann, unknown := AnnotateMigrationSequences([]MigrationEntity{{EntityID: "e1", SourceFile: src}})
+		if len(ann) != 0 {
+			t.Errorf("%s: expected no annotation, got %+v", src, ann[0])
+		}
+		if unknown != 1 {
+			t.Errorf("%s: expected unknown=1, got %d", src, unknown)
+		}
+	}
+}
+
+// TestAnnotateMigrationSequences_VersionsMustBeAPathComponent pins that the
+// path half of the Alembic discriminator (#6557) is a path-COMPONENT match, not
+// a substring match on the directory. Every case below carries a hex-valid
+// revision id, so the charset half accepts it and ONLY the path half can be
+// doing the rejecting — replacing hasAlembicVersionsAncestor's split/EqualFold
+// with strings.Contains(dir, "versions") turns all of them into migrations.
+//
+// The last case puts "versions" in the FILE name rather than an ancestor: the
+// gate inspects filepath.Dir, so the basename must not be able to satisfy it.
+// (`versions.py` on its own cannot reach this assertion — it has no underscore
+// and so fails the basename regex before the path gate is consulted, which
+// would make such a case vacuous.)
+func TestAnnotateMigrationSequences_VersionsMustBeAPathComponent(t *testing.T) {
+	cases := []string{
+		"app/myversions/abc123def456_thing.py",
+		"app/versions_old/abc123def456_thing.py",
+		"app/oldversions/abc123def456_thing.py",
+		"app/versionsbackup/abc123def456_thing.py",
+		"app/abc123def456_versions.py",
+	}
+	for _, src := range cases {
+		ann, unknown := AnnotateMigrationSequences([]MigrationEntity{{EntityID: "e1", SourceFile: src}})
+		if len(ann) != 0 {
+			t.Errorf("%s: directory is not literally `versions`, expected no annotation, got %+v", src, ann[0])
+		}
+		if unknown != 1 {
+			t.Errorf("%s: expected unknown=1, got %d", src, unknown)
+		}
+	}
+}
+
+// TestAnnotateMigrationSequences_AlembicAbsolutePath pins the positive half of
+// the same gate for an ABSOLUTE source path. ApplyMigrationSequence passes
+// Entity.SourceFile straight through, which is repo-relative for indexed
+// entities but absolute for some callers, so both shapes reach this function
+// and both must be recognised.
+func TestAnnotateMigrationSequences_AlembicAbsolutePath(t *testing.T) {
+	ann, _ := AnnotateMigrationSequences([]MigrationEntity{
+		{EntityID: "m1", SourceFile: "/srv/repo/alembic/versions/abc123def456_add_column.py"},
+	})
+	if len(ann) != 1 || ann[0].PatternMatched != MigrationPatternAlembic {
+		t.Fatalf("expected alembic for an absolute path, got %+v", ann)
+	}
+	if ann[0].SequenceNumber.(string) != "abc123def456" {
+		t.Fatalf("expected revision abc123def456, got %v", ann[0].SequenceNumber)
+	}
+}
+
+// TestAnnotateMigrationSequences_VersionsComponentIsCaseInsensitive pins that
+// the `versions` component is matched with EqualFold, so a case-preserving but
+// case-insensitive filesystem (macOS, Windows) that reports `VERSIONS/` still
+// resolves to an Alembic migration. This is deliberate, and unobserved until
+// now: tightening it to a case-sensitive compare must be a visible change.
+func TestAnnotateMigrationSequences_VersionsComponentIsCaseInsensitive(t *testing.T) {
+	ann, _ := AnnotateMigrationSequences([]MigrationEntity{
+		{EntityID: "m1", SourceFile: "app/alembic/VERSIONS/abc123def456_add_column.py"},
+	})
+	if len(ann) != 1 || ann[0].PatternMatched != MigrationPatternAlembic {
+		t.Fatalf("expected alembic for a VERSIONS/ component, got %+v", ann)
+	}
+}
+
+// TestAnnotateMigrationSequences_AlembicRequiresHexRevision states the charset
+// policy (#6557): Alembic's generated rev_id is uuid4().hex[-12:], so the
+// discriminator accepts hex only. A hand-set `--rev-id` carrying a non-hex
+// letter is NOT recognised, even under versions/. That is a deliberate recall
+// cost, pinned here so changing it means changing a test.
+func TestAnnotateMigrationSequences_AlembicRequiresHexRevision(t *testing.T) {
+	ann, unknown := AnnotateMigrationSequences([]MigrationEntity{
+		{EntityID: "e1", SourceFile: "alembic/versions/zz1234567890_add_col.py"},
+	})
+	if len(ann) != 0 || unknown != 1 {
+		t.Fatalf("expected non-hex rev-id to be unknown, got ann=%+v unknown=%d", ann, unknown)
+	}
+}
+
 func TestAnnotateMigrationSequences_EmptySourceFile(t *testing.T) {
 	entities := []MigrationEntity{{EntityID: "m1", SourceFile: ""}}
 	ann, unknown := AnnotateMigrationSequences(entities)
