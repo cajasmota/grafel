@@ -416,6 +416,28 @@ func TestFullSubscribeQueueDropsTheSubtreeAndKeepsTheLoopDraining(t *testing.T) 
 			"is not reaching /diagnostics, so the lost subtree is invisible to an "+
 			"operator", got)
 	}
+
+	// A refused hand-off must also give back the in-flight mark it took before
+	// trying to queue. Leaving it behind pins subInFlight above zero forever for
+	// that directory, which keeps chargeEventOpen suppressing charges under a
+	// subtree no walk will ever visit and makes subscribesPending — the
+	// predicate drainLedger believes — permanently true.
+	//
+	// The queued directory is checked alongside it so a mark-nothing regression
+	// cannot pass this vacuously.
+	w.mu.Lock()
+	droppedMark := w.subInFlight[dirs[2]]
+	queuedMark := w.subInFlight[dirs[1]]
+	w.mu.Unlock()
+	if queuedMark == 0 {
+		t.Fatalf("premise broken: %s is queued and unstarted but carries no "+
+			"in-flight mark, so the negative assertion below proves nothing", dirs[1])
+	}
+	if droppedMark != 0 {
+		t.Fatalf("%s was refused by the full queue but is still marked in flight "+
+			"(count %d): nothing will ever clear it, so this directory is "+
+			"permanently 'being subscribed'", dirs[2], droppedMark)
+	}
 }
 
 // TestSubscribeQueuedBeforeRemoveRepoDoesNotResurrectTheWatch pins the ordering
@@ -541,7 +563,13 @@ func TestStopRetiresTheSubscribeOwnerWithQueuedWorkOutstanding(t *testing.T) {
 // one while it is still inside the backend.
 func steppedAdds(w *Watcher) (entered chan string, release chan struct{}) {
 	entered = make(chan string, 64)
-	release = make(chan struct{})
+	// Buffered so releaseForever can hand out every remaining token at once and
+	// return, with no goroutine to retire. A pump goroutine cannot work here:
+	// its t.Cleanup is registered AFTER windowsActorWatcher's and cleanups run
+	// LIFO, so the pump would be shut down BEFORE the Stop that needs it, and a
+	// failing test would then pay the full watcherStopTimeout with the owner
+	// still parked. A zero-size element type makes the capacity free.
+	release = make(chan struct{}, releaseTokens)
 	w.mu.Lock()
 	inner := w.fsAdd
 	w.fsAdd = func(p string) error {
@@ -581,6 +609,9 @@ func TestDuplicateEnqueueKeepsTheDirectoryMarkedUntilEveryWalkIsDone(t *testing.
 		t.Fatalf("fixture: %v", err)
 	}
 	entered, release := steppedAdds(w)
+	// Deferred: a t.Fatalf below must not leave the owner parked, or Stop pays
+	// its whole bounded wait and the next test starts behind a stale goroutine.
+	defer releaseForever(t, release)
 
 	// Two reports of the same directory, exactly as two Creates for it would
 	// produce.
@@ -623,25 +654,48 @@ func TestDuplicateEnqueueKeepsTheDirectoryMarkedUntilEveryWalkIsDone(t *testing.
 			"chargeEventOpen records no fdEventCharged marker for this subtree and the "+
 			"Create-then-listing double charge is open again", dir)
 	}
-	release <- struct{}{}
+}
+
+// requireInFlight asserts that a walk over root is genuinely outstanding right
+// now. It is a premise check and it is not optional: every test below drives
+// chargeEventOpen expecting the in-flight suppression to be live, and a walk
+// that has already finished turns the interesting assertion into a tautology.
+//
+// #6493 shipped one test that took this on trust — it started the release pump
+// BEFORE the walk, so the walk raced the test goroutine instead of parking. It
+// held on kqueue and lost on inotify, and only the positive control caught it.
+func requireInFlight(t *testing.T, w *Watcher, root string) {
+	t.Helper()
+	w.mu.Lock()
+	n := w.subInFlight[root]
+	w.mu.Unlock()
+	if n == 0 {
+		t.Fatalf("premise broken: no subscription over %s is in flight, so the "+
+			"in-flight suppression this test is about is not active and every "+
+			"assertion below would be vacuous", root)
+	}
 }
 
 // releaseForever keeps a steppedAdds gate open for the rest of the test, so a
 // walk left mid-flight by an assertion cannot hold Stop to its timeout.
+//
+// Call it with defer, never inline before the walk: a live release pump means
+// nothing is parked, and the test is then racing the owner goroutine.
 func releaseForever(t *testing.T, release chan struct{}) {
 	t.Helper()
-	done := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			case release <- struct{}{}:
-			}
+	for i := 0; i < cap(release); i++ {
+		select {
+		case release <- struct{}{}:
+		default:
+			return
 		}
-	}()
-	t.Cleanup(func() { close(done) })
+	}
 }
+
+// releaseTokens is how many gated Add calls may still run after releaseForever.
+// Far more than any test below issues; if a test ever exhausts it the symptom
+// is a parked owner and a bounded Stop, not a hang.
+const releaseTokens = 1024
 
 // TestOnlyEntriesInsideTheWalkedSubtreeCountAsAlreadyCharged pins the ancestry
 // walk in underSubscribeInFlightLocked. Answering "is ANY subscription in
@@ -662,9 +716,15 @@ func TestOnlyEntriesInsideTheWalkedSubtreeCountAsAlreadyCharged(t *testing.T) {
 		t.Fatalf("fixture: %v", err)
 	}
 	entered, release := steppedAdds(w)
-	releaseForever(t, release)
+	// DEFERRED, not called now: the pump must not run until the assertions are
+	// done, or the walk below is never actually parked. Deferred rather than
+	// left to t.Cleanup so a t.Fatalf still unblocks the owner promptly.
+	defer releaseForever(t, release)
 
-	// Park a walk over `inside`, and only over `inside`.
+	// Park a walk over `inside`, and only over `inside`. The owner blocks inside
+	// fsAdd until a release token is sent, so the walk is outstanding for every
+	// line that follows — on any platform, not just whichever one happens to
+	// schedule favourably.
 	w.enqueueSubscribe(inside)
 	select {
 	case p := <-entered:
@@ -674,6 +734,7 @@ func TestOnlyEntriesInsideTheWalkedSubtreeCountAsAlreadyCharged(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("premise broken: no walk started, so nothing was in flight")
 	}
+	requireInFlight(t, w, inside)
 
 	// One entry inside the walked subtree, one outside it but under the same
 	// repo. Both are charged; only the first is the walk's to reclaim.
@@ -725,6 +786,7 @@ func TestASubdirectoryCreatedDuringAWalkIsNotCountedAsAnEntryOfItsParent(t *test
 		t.Fatalf("fixture: %v", err)
 	}
 	entered, release := steppedAdds(w)
+	defer releaseForever(t, release)
 
 	w.enqueueSubscribe(parent)
 	select {
@@ -735,6 +797,7 @@ func TestASubdirectoryCreatedDuringAWalkIsNotCountedAsAnEntryOfItsParent(t *test
 	case <-time.After(10 * time.Second):
 		t.Fatal("premise broken: no walk started")
 	}
+	requireInFlight(t, w, parent)
 
 	// A subdirectory appears while the parent's walk is parked in Add, and its
 	// Create is processed before the listing runs.
@@ -756,8 +819,10 @@ func TestASubdirectoryCreatedDuringAWalkIsNotCountedAsAnEntryOfItsParent(t *test
 		t.Fatal("premise broken: the walk never descended, so dirEntries for the " +
 			"parent may not have been published yet")
 	}
-	releaseForever(t, release)
 
+	// Read while the walk is still parked in Add(sub). Starting the release pump
+	// first would let the rest of the walk, and the queued subscription for sub,
+	// run underneath the assertion.
 	w.mu.Lock()
 	have := w.dirEntries[parent]
 	w.mu.Unlock()
