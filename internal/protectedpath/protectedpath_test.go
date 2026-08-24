@@ -37,13 +37,13 @@ func TestUnionTable(t *testing.T) {
 		"Desktop", "Documents", "Downloads", "Library",
 		"Movies", "Music", "Photos", "Pictures", "Public",
 	} {
-		if !IsProtectedHomeDir(name) {
-			t.Errorf("IsProtectedHomeDir(%q) = false, want true (union of both denylists)", name)
+		if !isProtectedHomeDir(name) {
+			t.Errorf("isProtectedHomeDir(%q) = false, want true (union of both denylists)", name)
 		}
 	}
 	for _, name := range []string{"Projects", "src", "code", "Documentation", "Desktops"} {
-		if IsProtectedHomeDir(name) {
-			t.Errorf("IsProtectedHomeDir(%q) = true, want false", name)
+		if isProtectedHomeDir(name) {
+			t.Errorf("isProtectedHomeDir(%q) = true, want false", name)
 		}
 	}
 }
