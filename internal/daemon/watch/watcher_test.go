@@ -707,7 +707,7 @@ func TestExtendedStats(t *testing.T) {
 		t.Fatal("sink never fired")
 	}
 
-	repoStats, total, _, _ := w.ExtendedStats()
+	repoStats, total, _, _, _ := w.ExtendedStats()
 	if total == 0 {
 		t.Error("expected totalEvents > 0")
 	}

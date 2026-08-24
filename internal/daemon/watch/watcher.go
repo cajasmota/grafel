@@ -337,14 +337,22 @@ type Watcher struct {
 	// subscription, never a blocked loop goroutine, because a blocked loop
 	// goroutine is the deadlock this whole mechanism exists to prevent.
 	subCh chan string
-	// subInFlight holds the roots whose subscription has been handed to the
-	// owner and not yet completed. It is written on the LOOP goroutine, in
+	// subInFlight counts, per root, the subscriptions that have been handed to
+	// the owner and not yet completed. It is written on the LOOP goroutine, in
 	// enqueueSubscribe, before the loop moves on to the next event — so every
 	// Create the loop processes after a new directory is discovered can be
 	// recognised as landing inside a walk that is still running.
 	//
-	// It exists only to key fdEventCharged. See it.
-	subInFlight map[string]struct{}
+	// A COUNT and not a set, because one directory can be handed over twice: a
+	// delete-then-recreate during a checkout reports Create twice, and the two
+	// walks then run one after the other. A set cleared unconditionally by the
+	// first walk's exit unmarks the directory while the second is still to run,
+	// which reopens the Create-then-listing double charge for that subtree and
+	// makes the queue look settled while a subscription is outstanding.
+	//
+	// It exists to key fdEventCharged, and to answer "is anything still to be
+	// subscribed". See fdEventCharged.
+	subInFlight map[string]int
 	// fdEventCharged is the mirror image of fdPreCharged, and #6493 is what
 	// made it necessary. fdPreCharged says "the listing paid for this entry, so
 	// drop its Create"; fdEventCharged says "the Create paid for this entry, so
@@ -479,7 +487,7 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		stopCh:         make(chan struct{}),
 		restartCh:      make(chan struct{}, 1),
 		subCh:          make(chan string, subscribeQueueCap),
-		subInFlight:    map[string]struct{}{},
+		subInFlight:    map[string]int{},
 		fdEventCharged: map[string]struct{}{},
 	}
 	// Read w.fs under the lock: the heartbeat can swap it for a fresh backend
@@ -1010,7 +1018,16 @@ type RepoStat struct {
 
 // ExtendedStats returns per-repo event rates plus overall counters.
 // Used by the /diagnostics handler added in #1270.
-func (w *Watcher) ExtendedStats() (repoStats []RepoStat, totalEvents, droppedSkips, droppedReplay uint64) {
+//
+// droppedSubscribes (#6493) is the number of new subtrees that were never
+// watched because the subscribe queue was full when they were discovered. It is
+// reported here rather than folded into Stats' `dropped`, which counts EVENTS:
+// a dropped subscribe is not a missed event but a directory tree that will
+// deliver no events at all until its repo is re-registered. Nothing rediscovers
+// it — the reconcile sweep only visits directories already in dirToRepo — so an
+// operator seeing a repo go quiet has no other signal than this counter and the
+// WARN that accompanies it.
+func (w *Watcher) ExtendedStats() (repoStats []RepoStat, totalEvents, droppedSkips, droppedReplay, droppedSubscribes uint64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, rs := range w.repos {
@@ -1023,7 +1040,8 @@ func (w *Watcher) ExtendedStats() (repoStats []RepoStat, totalEvents, droppedSki
 	return repoStats,
 		atomic.LoadUint64(&w.totalEvents),
 		atomic.LoadUint64(&w.droppedSkips),
-		atomic.LoadUint64(&w.droppedReplay)
+		atomic.LoadUint64(&w.droppedReplay),
+		atomic.LoadUint64(&w.droppedSubscribes)
 }
 
 // ForceRescan triggers the sink for every registered repo with bulk=true
@@ -1775,18 +1793,34 @@ func (w *Watcher) enqueueSubscribe(dir string) {
 	// processed after the mark is visible, so chargeEventOpen can tell that its
 	// charge lands inside a walk that has not listed the entry yet.
 	w.mu.Lock()
-	w.subInFlight[dir] = struct{}{}
+	w.subInFlight[dir]++
 	w.mu.Unlock()
 	select {
 	case w.subCh <- dir:
 	default:
-		w.mu.Lock()
-		delete(w.subInFlight, dir)
-		w.mu.Unlock()
+		w.releaseInFlight(dir)
 		atomic.AddUint64(&w.droppedSubscribes, 1)
 		w.logger.Warn("watcher: new subtree not watched — subscribe queue full",
 			"dir", dir, "queue_cap", cap(w.subCh))
 	}
+}
+
+// releaseInFlight retires one outstanding subscription for dir, dropping the key
+// only when the last one is done. Pairs with the increment in enqueueSubscribe,
+// and is called both when a walk finishes and when the hand-off is refused by a
+// full queue.
+//
+// Dropping the key at zero rather than leaving a 0 entry keeps
+// underSubscribeInFlightLocked's len() fast path meaningful and stops the map
+// growing one dead key per directory the watcher ever saw.
+func (w *Watcher) releaseInFlight(dir string) {
+	w.mu.Lock()
+	if n := w.subInFlight[dir] - 1; n > 0 {
+		w.subInFlight[dir] = n
+	} else {
+		delete(w.subInFlight, dir)
+	}
+	w.mu.Unlock()
 }
 
 // underSubscribeInFlightLocked reports whether path lies inside a directory
@@ -1797,7 +1831,7 @@ func (w *Watcher) underSubscribeInFlightLocked(path string) bool {
 	}
 	dir := filepath.Dir(path)
 	for {
-		if _, ok := w.subInFlight[dir]; ok {
+		if w.subInFlight[dir] > 0 {
 			return true
 		}
 		parent := filepath.Dir(dir)
@@ -1859,11 +1893,7 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 	// Cleared on every exit, including the no-repo one: a root left marked
 	// would make chargeEventOpen keep recording markers for a walk that is over,
 	// and those markers are consumed by nothing (#6493).
-	defer func() {
-		w.mu.Lock()
-		delete(w.subInFlight, root)
-		w.mu.Unlock()
-	}()
+	defer w.releaseInFlight(root)
 	repo := w.repoFor(filepath.Join(root, "_"))
 	if repo == "" {
 		return

@@ -408,6 +408,14 @@ func TestFullSubscribeQueueDropsTheSubtreeAndKeepsTheLoopDraining(t *testing.T) 
 			"parked in Add and three directories offered, exactly the third has "+
 			"nowhere to go", got)
 	}
+	// Read through the exported surface too. A dropped subtree is permanent —
+	// nothing rediscovers it — so a counter only the package can see is a silent
+	// failure in production, and this is what stops the export being dropped.
+	if _, _, _, _, got := w.ExtendedStats(); got != 1 {
+		t.Fatalf("ExtendedStats reported %d dropped subscribes, want 1: the counter "+
+			"is not reaching /diagnostics, so the lost subtree is invisible to an "+
+			"operator", got)
+	}
 }
 
 // TestSubscribeQueuedBeforeRemoveRepoDoesNotResurrectTheWatch pins the ordering
@@ -525,5 +533,238 @@ func TestStopRetiresTheSubscribeOwnerWithQueuedWorkOutstanding(t *testing.T) {
 					"abandoning it", c)
 			}
 		}
+	}
+}
+
+// steppedAdds is gateAdds with one release token per call instead of a single
+// broadcast close, so a test can let one walk finish and then catch the NEXT
+// one while it is still inside the backend.
+func steppedAdds(w *Watcher) (entered chan string, release chan struct{}) {
+	entered = make(chan string, 64)
+	release = make(chan struct{})
+	w.mu.Lock()
+	inner := w.fsAdd
+	w.fsAdd = func(p string) error {
+		entered <- p
+		<-release
+		return inner(p)
+	}
+	w.mu.Unlock()
+	return entered, release
+}
+
+// TestDuplicateEnqueueKeepsTheDirectoryMarkedUntilEveryWalkIsDone pins the
+// refcount, and a plain set is what it kills.
+//
+// A directory can be handed to the owner twice — a delete-then-recreate during
+// a checkout reports Create twice, which is the pattern
+// fdbudget_6293_test.go already models — and the two walks then run one after
+// the other. With subInFlight keyed by root and cleared unconditionally, the
+// FIRST walk's exit clears the mark while the SECOND has not run yet.
+//
+// Two things break at that moment, and neither is cosmetic. chargeEventOpen
+// stops recording fdEventCharged markers for that subtree, which reopens the
+// exact Create-then-listing double charge settleListing exists to close; and
+// subscribesPending — which drainLedger now believes — reports "settled" with a
+// subscription still outstanding.
+func TestDuplicateEnqueueKeepsTheDirectoryMarkedUntilEveryWalkIsDone(t *testing.T) {
+	root := t.TempDir()
+	w, _ := windowsActorWatcher(t, Config{FDBudget: 1_000_000})
+	if _, err := w.AddRepo(root); err != nil {
+		t.Fatalf("premise broken: AddRepo: %v", err)
+	}
+	dir := filepath.Join(root, "d")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package p\n"), 0o644); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	entered, release := steppedAdds(w)
+
+	// Two reports of the same directory, exactly as two Creates for it would
+	// produce.
+	w.enqueueSubscribe(dir)
+	w.enqueueSubscribe(dir)
+
+	// Walk #1 in, then out.
+	select {
+	case p := <-entered:
+		if p != dir {
+			t.Fatalf("premise broken: first walk entered Add(%s), want Add(%s)", p, dir)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("premise broken: the owner never started the first walk")
+	}
+	release <- struct{}{}
+
+	// Walk #2 in. The directory is still being subscribed, so it must still be
+	// marked.
+	select {
+	case p := <-entered:
+		if p != dir {
+			t.Fatalf("premise broken: second walk entered Add(%s), want Add(%s)", p, dir)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("premise broken: the second queued subscription never ran, so the " +
+			"duplicate this test is about never happened")
+	}
+	if !subscribesPending(w) {
+		t.Error("subscribesPending() is false while a subscription walk is still " +
+			"running: drainLedger reads this to decide the ledger has settled, and " +
+			"would take its reading with charges still to come")
+	}
+	w.mu.Lock()
+	_, marked := w.subInFlight[dir]
+	w.mu.Unlock()
+	if !marked {
+		t.Fatalf("subInFlight lost %s while a subscription walk over it was still "+
+			"running: the first walk's exit cleared a mark the second still needs, so "+
+			"chargeEventOpen records no fdEventCharged marker for this subtree and the "+
+			"Create-then-listing double charge is open again", dir)
+	}
+	release <- struct{}{}
+}
+
+// releaseForever keeps a steppedAdds gate open for the rest of the test, so a
+// walk left mid-flight by an assertion cannot hold Stop to its timeout.
+func releaseForever(t *testing.T, release chan struct{}) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case release <- struct{}{}:
+			}
+		}
+	}()
+	t.Cleanup(func() { close(done) })
+}
+
+// TestOnlyEntriesInsideTheWalkedSubtreeCountAsAlreadyCharged pins the ancestry
+// walk in underSubscribeInFlightLocked. Answering "is ANY subscription in
+// flight" instead of "is one in flight over THIS path" marks entries the walk
+// will never list, and settleListing then deducts a charge from a listing that
+// was entitled to make it.
+//
+// The positive half is not decoration: without it a predicate that always
+// returned false would pass the negative half and pin nothing.
+func TestOnlyEntriesInsideTheWalkedSubtreeCountAsAlreadyCharged(t *testing.T) {
+	root := t.TempDir()
+	w, _ := windowsActorWatcher(t, Config{FDBudget: 1_000_000})
+	if _, err := w.AddRepo(root); err != nil {
+		t.Fatalf("premise broken: AddRepo: %v", err)
+	}
+	inside := filepath.Join(root, "walked")
+	if err := os.MkdirAll(inside, 0o755); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	entered, release := steppedAdds(w)
+	releaseForever(t, release)
+
+	// Park a walk over `inside`, and only over `inside`.
+	w.enqueueSubscribe(inside)
+	select {
+	case p := <-entered:
+		if p != inside {
+			t.Fatalf("premise broken: parked in Add(%s), want Add(%s)", p, inside)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("premise broken: no walk started, so nothing was in flight")
+	}
+
+	// One entry inside the walked subtree, one outside it but under the same
+	// repo. Both are charged; only the first is the walk's to reclaim.
+	within := filepath.Join(inside, "a.go")
+	beyond := filepath.Join(root, "b.go")
+	for _, p := range []string{within, beyond} {
+		if err := os.WriteFile(p, []byte("package p\n"), 0o644); err != nil {
+			t.Fatalf("fixture: %v", err)
+		}
+		w.handleEvent(fsnotify.Event{Name: p, Op: fsnotify.Create})
+	}
+
+	w.mu.Lock()
+	_, gotWithin := w.fdEventCharged[within]
+	_, gotBeyond := w.fdEventCharged[beyond]
+	w.mu.Unlock()
+	if !gotWithin {
+		t.Fatalf("premise broken: %s is inside the subtree being walked and was not "+
+			"recorded as already charged, so this test would pass vacuously", within)
+	}
+	if gotBeyond {
+		t.Fatalf("%s was recorded as already charged while the walk in flight covers "+
+			"only %s: no listing of %s will ever reclaim that marker, and the listing "+
+			"that does charge this entry will have its charge deducted for a "+
+			"descriptor nobody else paid for", beyond, inside, inside)
+	}
+}
+
+// TestASubdirectoryCreatedDuringAWalkIsNotCountedAsAnEntryOfItsParent pins the
+// exclusion of directories from fdEventCharged.
+//
+// dirEntries is the count of CHARGEABLE, NON-DIRECTORY entries a directory
+// holds — the quantity reconcileDir compares against a fresh listing to decide
+// whether fsnotify silently stopped watching part of it (#6304). Recording a
+// subdirectory as an already-charged entry inflates that count, and an inflated
+// count makes `want <= have` true forever: the directory is then never
+// repaired, however short it really is.
+func TestASubdirectoryCreatedDuringAWalkIsNotCountedAsAnEntryOfItsParent(t *testing.T) {
+	root := t.TempDir()
+	w, _ := windowsActorWatcher(t, Config{FDBudget: 1_000_000})
+	if _, err := w.AddRepo(root); err != nil {
+		t.Fatalf("premise broken: AddRepo: %v", err)
+	}
+	parent := filepath.Join(root, "parent")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(parent, "only.go"), []byte("package p\n"), 0o644); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	entered, release := steppedAdds(w)
+
+	w.enqueueSubscribe(parent)
+	select {
+	case p := <-entered:
+		if p != parent {
+			t.Fatalf("premise broken: parked in Add(%s), want Add(%s)", p, parent)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("premise broken: no walk started")
+	}
+
+	// A subdirectory appears while the parent's walk is parked in Add, and its
+	// Create is processed before the listing runs.
+	sub := filepath.Join(parent, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	w.handleEvent(fsnotify.Event{Name: sub, Op: fsnotify.Create})
+
+	// Let the parent's Add return; the listing, settleListing and the dirEntries
+	// publication all follow before the walk descends into sub and parks again.
+	release <- struct{}{}
+	select {
+	case p := <-entered:
+		if p != sub {
+			t.Fatalf("premise broken: expected the walk to descend into %s, got %s", sub, p)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("premise broken: the walk never descended, so dirEntries for the " +
+			"parent may not have been published yet")
+	}
+	releaseForever(t, release)
+
+	w.mu.Lock()
+	have := w.dirEntries[parent]
+	w.mu.Unlock()
+	if have != 1 {
+		t.Fatalf("dirEntries[%s] = %d, want 1: the directory holds exactly one "+
+			"chargeable entry (only.go); counting the subdirectory created during "+
+			"the walk as one makes reconcileDir believe the directory is fuller "+
+			"than it is, and a short directory is then never repaired", parent, have)
 	}
 }
