@@ -241,3 +241,38 @@ func TestClimb_HomeResolvableStaysQuiet(t *testing.T) {
 		t.Fatalf("a resolvable home must produce no diagnostic; got %v", lines)
 	}
 }
+
+// TestClimb_StartingExactlyAtHomeStopsThere — the boundary must bound a climb
+// that BEGINS at $HOME, not only one that begins below it. Running any grafel
+// command with the working directory set to the user's home is ordinary use;
+// if the start path being the boundary itself exempted the climb, that one case
+// would ascend from $HOME through /Users (or /home) to /, reading at every
+// level — precisely the traversal #6548 exists to stop.
+func TestClimb_StartingExactlyAtHomeStopsThere(t *testing.T) {
+	root := t.TempDir()
+	home := mk(t, filepath.Join(root, "home", "u"))
+
+	// No marker anywhere: the climb ends only at a stop condition.
+	seen := visited(t, home, home)
+
+	if len(seen) != 1 || seen[0] != home {
+		t.Fatalf("a climb starting AT $HOME must visit $HOME and stop: visited %v, want exactly [%s]", seen, home)
+	}
+	for _, d := range seen {
+		if !samePath(d, home) {
+			t.Fatalf("a climb starting AT $HOME ascended to %q; nothing above $HOME %q is ours to read (visited %v)", d, home, seen)
+		}
+	}
+}
+
+// TestClimb_StartingAtHomeVisitsHomeItself — the permissive-direction half of
+// the test above: bounding the climb must not skip the start directory. A
+// marker sitting in $HOME has to be found when $HOME is where you started.
+func TestClimb_StartingAtHomeVisitsHomeItself(t *testing.T) {
+	root := t.TempDir()
+	home := mk(t, filepath.Join(root, "home", "u"))
+
+	if !ClimbWithHome(home, home, func(dir string) bool { return samePath(dir, home) }) {
+		t.Fatal("a climb starting AT $HOME must still visit $HOME before stopping")
+	}
+}

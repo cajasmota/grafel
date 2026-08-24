@@ -74,3 +74,33 @@ func TestHasGitDirInTree_OutsideHomeStillClimbs(t *testing.T) {
 		t.Fatalf("HasGitDirInTree stopped before a legitimate .git outside $HOME (a home-LOOKING ancestor is not a boundary; start %s)", start)
 	}
 }
+
+// TestHasGitDirInTree_StartingExactlyAtHomeStopsThere pins the boundary
+// end-to-end for the one start path that IS the boundary: running a grafel
+// command with the working directory set to the user's home. If a climb that
+// begins at $HOME were exempt from the home stop, this call would Stat $HOME,
+// then /Users (or /home), then / — the exact traversal #6548 exists to stop,
+// one case short.
+func TestHasGitDirInTree_StartingExactlyAtHomeStopsThere(t *testing.T) {
+	root, home := fakeHomeUnder6548(t, "home", "u")
+
+	// A .git ABOVE $HOME must stay invisible even when $HOME is the start.
+	mkdir6548(t, filepath.Join(root, ".git"))
+
+	if HasGitDirInTree(home) {
+		t.Fatalf("HasGitDirInTree climbed past $HOME when the START path IS $HOME: found .git at %s above home %s", root, home)
+	}
+}
+
+// TestHasGitDirInTree_StartingAtHomeFindsGitAtHome — permissive-direction guard:
+// bounding the climb at the start directory must not skip visiting it. A repo
+// cloned straight into $HOME is still recognised when $HOME is the cwd.
+func TestHasGitDirInTree_StartingAtHomeFindsGitAtHome(t *testing.T) {
+	_, home := fakeHomeUnder6548(t, "home", "u")
+
+	mkdir6548(t, filepath.Join(home, ".git"))
+
+	if !HasGitDirInTree(home) {
+		t.Fatalf("HasGitDirInTree missed .git AT $HOME %s when starting there", home)
+	}
+}
