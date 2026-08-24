@@ -241,3 +241,92 @@ func diEntities6511(t *testing.T, path, src string) []types.EntityRecord {
 	}
 	return ents
 }
+
+// The known-callable gate must count MODULE-LEVEL defs only (review follow-up
+// on 9fe52ae0f).
+//
+// pyLocalDefNames was built on pyFunctions, whose rePyDef starts
+// `^[ \t]*def` — the leading `[ \t]*` means an INDENTED def, i.e. a METHOD,
+// satisfies the gate. A provider factory method on a container/registry class
+// is a real DI idiom, so a class provider whose name collides with any method
+// anywhere in the same file was stamped "SCOPE.Operation:" again and the
+// byKind-before-byName promotion came straight back — the exact defect the
+// gate exists to prevent.
+//
+// Module-level is strictly more conservative: fewer prefixes, more bare refs,
+// and bare is kind-agnostic rather than kind-wrong, which is the whole basis
+// of this fix.
+func TestPyDIProvider6511_MethodDoesNotMakeAClassProviderCallable(t *testing.T) {
+	src := `from fastapi import Depends
+
+
+class Registry:
+    def AuthService(self):
+        return None
+
+
+class AuthService:
+    pass
+
+
+@router.get("/me")
+def me(svc: AuthService = Depends()):
+    return svc
+`
+	got := providerOf6511(t, "app/routers.py", src)
+	if got != "AuthService" {
+		t.Errorf("provider endpoint = %q, want bare %q. `def AuthService` here is a "+
+			"METHOD on Registry, not a module-level callable — it is not evidence "+
+			"that the injected `class AuthService` is an Operation. Prefixing on it "+
+			"reopens the byKind-before-byName promotion of a same-named function in "+
+			"an unrelated file", got, "AuthService")
+	}
+}
+
+// Same shape on the litestar site.
+func TestPyDIProvider6511_LitestarMethodDoesNotMakeAClassProviderCallable(t *testing.T) {
+	src := `from litestar import Controller, get
+from litestar.di import Provide
+
+
+class Registry:
+    def AuthService(self):
+        return None
+
+
+class ItemController(Controller):
+    dependencies = {"svc": Provide(AuthService)}
+
+    @get("/items")
+    async def list_items(self, svc) -> list:
+        return []
+`
+	got := providerOf6511(t, "app/controllers/items.py", src)
+	if got != "AuthService" {
+		t.Errorf("litestar provider endpoint = %q, want bare %q — the only `def AuthService` "+
+			"in this file is a method", got, "AuthService")
+	}
+}
+
+// An `async def` at column 0 is still a module-level callable and must still
+// qualify, so the tightening is a column rule and not an accidental ban on
+// async providers.
+func TestPyDIProvider6511_ModuleLevelAsyncDefStillCounts(t *testing.T) {
+	src := `from fastapi import Depends
+
+
+async def get_db():
+    yield None
+
+
+@router.get("/things")
+def list_things(db = Depends(get_db)):
+    return db
+`
+	got := providerOf6511(t, "app/routers/things.py", src)
+	want := opPrefix6511 + "get_db"
+	if got != want {
+		t.Errorf("provider endpoint = %q, want %q — an `async def` at column 0 is a "+
+			"module-level callable", got, want)
+	}
+}

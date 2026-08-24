@@ -103,13 +103,35 @@ func pyDIProviderRef(localDefs map[string]bool, name string) string {
 	return name
 }
 
-// pyLocalDefNames is the set of `def` names declared in the file being
-// extracted — the only providers whose Operation kind pyDIProviderRef has
-// actually observed.
+// rePyModuleDef is rePyDef anchored at COLUMN 0: a module-level `def` /
+// `async def`, never an indented one. Deliberately a separate matcher rather
+// than a tightening of rePyDef, which pyFunctions shares with the consumer
+// side and with endpoint-handler extraction and which MUST keep seeing methods.
+var rePyModuleDef = regexp.MustCompile(`(?m)^(?:async[ \t]+)?def[ \t]+(\w+)[ \t]*\(`)
+
+// pyLocalDefNames is the set of MODULE-LEVEL `def` names declared in the file
+// being extracted — the only providers whose Operation kind pyDIProviderRef
+// has actually observed.
+//
+// Module-level, not any `def`. rePyDef begins `^[ \t]*def`, so an INDENTED def
+// — a METHOD — would satisfy the gate, and a provider factory method on a
+// container/registry class is a real DI idiom. That would let
+//
+//	class Registry:
+//	    def AuthService(self): ...
+//	class AuthService: ...
+//	def me(svc: AuthService = Depends()): ...
+//
+// stamp "SCOPE.Operation:" on a CLASS provider again and reopen the
+// byKind-before-byName promotion this whole gate exists to prevent. A method
+// is not evidence about a module-level name.
+//
+// Strictly more conservative on purpose: fewer prefixes, more bare refs, and
+// bare is kind-AGNOSTIC rather than kind-wrong.
 func pyLocalDefNames(src string) map[string]bool {
 	defs := make(map[string]bool)
-	for _, fn := range pyFunctions(src) {
-		defs[fn.name] = true
+	for _, m := range rePyModuleDef.FindAllStringSubmatch(src, -1) {
+		defs[m[1]] = true
 	}
 	return defs
 }
