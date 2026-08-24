@@ -259,7 +259,12 @@ func firstArgExpr(rest string) string {
 // Arguments the static / template passes DO resolve are skipped, so no call site
 // is emitted twice — pinned by TestSynth_AngularHttpClient_StaticURLIsNotAlsoDynamic_6433,
 // because deleting the skip is otherwise invisible to every other gate.
-func synthesizeReceiverClientResidualCalls(content string, funcs []jsFuncSpan, syms map[string]string, emit jsRuntimeEmitFn) {
+// resolveConst is the scope-aware constant resolver for the bare-identifier
+// arm (#6552). It is a separate channel from syms on purpose — see the arm's
+// comment and http_endpoint_client_constscope_6552.go for why the five other
+// consumers of the regex table keep using it unchanged. A nil resolveConst
+// disables the fold entirely, leaving those calls at /{dynamic}.
+func synthesizeReceiverClientResidualCalls(content string, funcs []jsFuncSpan, syms map[string]string, resolveConst func(name string, pos uint32) (string, bool), emit jsRuntimeEmitFn) {
 	if !hasInjectedHTTPClientToken(content) {
 		return
 	}
@@ -321,15 +326,25 @@ func synthesizeReceiverClientResidualCalls(content string, funcs []jsFuncSpan, s
 		default:
 			// Case 1, identifier flavour: this.http.get(PEOPLE) where PEOPLE is
 			// a same-file string constant (const PEOPLE = '/api/admin/v1/people').
-			// The symbol table is already built (buildJSConstantSymbolTable) and
-			// threaded in — the string and template arms consult it, but a bare
-			// identifier argument used to fall straight through to the /{dynamic}
-			// marker even when its value was a known static path, so every
-			// frontend call routed through a path constant (the idiomatic Angular
-			// api-service shape) dangled instead of linking to its endpoint. Fold
-			// it here. (#6551)
-			if ident := strings.TrimSpace(firstArgExpr(rest)); ident != "" {
-				if val, ok := syms[ident]; ok {
+			// A bare identifier argument used to fall straight through to the
+			// /{dynamic} marker even when its value was a known static path, so
+			// every frontend call routed through a path constant (the idiomatic
+			// Angular api-service shape) dangled instead of linking to its
+			// endpoint. Fold it here. (#6551)
+			//
+			// #6552 — the binding is resolved through the AST table, NOT through
+			// the regex `syms` the string and template arms use. Those arms only
+			// ever refine an already-literal path, so a wrong binding degrades an
+			// answer they were giving anyway; this arm is the SOLE source of
+			// truth for a call that would otherwise be an honest /{dynamic}, so a
+			// wrong binding here publishes a confident runtime_dynamic=false
+			// endpoint the linker attaches to a route the call never makes. The
+			// AST table knows const from let, never sees a commented-out
+			// declaration, and can tell an out-of-scope or shadowed binding from
+			// a live one. When it cannot prove the binding it declines, and the
+			// call falls through to the dynamic marker below.
+			if ident := strings.TrimSpace(firstArgExpr(rest)); jsBareIdentifier(ident) && resolveConst != nil {
+				if val, ok := resolveConst(ident, uint32(m[1])); ok {
 					if path, ok := normalizeRawClientPath(val); ok && path != "" {
 						emitStatic(path)
 						continue
