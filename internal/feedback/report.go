@@ -336,7 +336,12 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 				// children so the field-extraction metric reflects the graph
 				// instead of reading a property the dominant extractors never
 				// write.
-				if entitySubtype[rel.ToID] == "field" {
+				//
+				// "field" is not the only name a container gives its
+				// declared members: a SQL table's members are Subtype
+				// "column" (#6543). Match the MEMBER-subtype set rather
+				// than the single literal — see memberChildSubtypes.
+				if memberChildSubtypes[entitySubtype[rel.ToID]] {
 					fieldChildCount[rel.FromID]++
 				}
 			} else {
@@ -596,12 +601,102 @@ func kindTail(kind string) string {
 // fields, so the reported rate was a guaranteed 100% rather than a measurement
 // (#6536, surfaced by #6535). Any change to this set must be checked against
 // the kinds the extractors actually emit, not against these literals.
+//
+// "datastore" is here because every SQL table is SCOPE.Datastore
+// (internal/extractors/sql/sql.go:249) with CONTAINS(contained_kind=column)
+// children — a class-like container with declared members, and exactly what
+// this metric is for, which had never been sampled (#6543). Admitting the tail
+// is only half the fix: the members are Subtype "column", so the numerator has
+// to see them (memberChildSubtypes) and the non-SQL emitters of the same kind
+// have to be exempted (datastoreMemberBearingKinds) — including the six SQL
+// subtypes that are not `table` — or the tail merely re-creates #6536 for a
+// new population.
 var classLikeKindTails = map[string]bool{
 	"class":     true,
 	"struct":    true,
 	"model":     true,
 	"schema":    true,
 	"component": true,
+	"datastore": true,
+}
+
+// memberChildSubtypes are the child subtypes that count as a container's
+// DECLARED MEMBERS — the numerator of the field-extraction metric (#6543).
+//
+// The metric asks "does this container's members show up in the graph", and
+// different extractors give the same relationship different names. Matching
+// the single literal "field" meant SQL's members were invisible: a table's
+// children are Subtype "column" (internal/extractors/sql/sql.go:358, :1021),
+// declared on the CONTAINS edge itself as contained_kind=column (sql.go:240-242).
+//
+// Every subtype here must also appear in nonClassSubtypes below: a member is a
+// LEAF, and a leaf that counts as its parent's member must never be counted as
+// a container in its own right, or it enters the denominator as a permanent
+// zero-field failure. That symmetry is what "field" already had and what
+// "column" was missing — before #6543 the three columns of a three-column
+// table were themselves 3 of the 3 entities in the denominator.
+var memberChildSubtypes = map[string]bool{
+	"field":  true,
+	"column": true,
+}
+
+// datastoreMemberBearingKinds are the SCOPE.Datastore EMIT SITES that produce
+// real member-bearing containers, keyed "<language>/<subtype>" (#6543).
+//
+// The unit here is the emit site, not the kind, not the language and not the
+// subtype — because none of those three is a single population, and picking
+// any one of them alone re-creates #6536 in a new place:
+//
+//   - Not the KIND. SCOPE.Datastore has 13 non-test emit sites and only one
+//     of them owns members.
+//   - Not the LANGUAGE. "sql" is SEVEN emit sites: table (sql.go:249), view
+//     (:419), index (:444), function/trigger_function (:527), procedure
+//     (:585), trigger (:634) and dbt_source (:695). Only `table` emits
+//     CONTAINS(contained_kind=column) children. A language-keyed gate admits
+//     all seven, so a schema file with one fully-columned table, a view and
+//     an index reports 66% zero-field — and indexes alone outnumber tables in
+//     most real schema files, so the reported SQL rate would be dominated by
+//     the population that structurally cannot pass. Measured, not assumed:
+//     see TestOnlyTableSubtypeIsMemberBearing_6543.
+//   - Not the SUBTYPE. Erlang's ETS/Mnesia datastores are Subtype
+//     `<engine>_table` (erlang/otp_deepen.go:407) — "ets_table",
+//     "mnesia_table". A bare "table" allowlist does not admit them today, but
+//     the two namespaces are one rename apart and nothing would catch the
+//     collision.
+//
+// The excluded emitters, verified against extractor output rather than
+// assumed: jcl DD datasets (extractor.go:664, :779) are file references, and
+// the jcl extractor emits no member subtype at all; cobol IMS databases
+// (ims.go:170) and CICS queues / file resources (depth.go:701, :864) are
+// external resources, not declarations; erlang ETS tables are runtime tables
+// with no declared columns.
+//
+// Note on cobol, since an earlier version of this comment cited the wrong
+// code: cobol's genuinely member-bearing population is IMS SEGMENTS, which
+// are kindIMSSegment = SCOPE.Schema / "ims-segment" (ims.go:295) with Subtype
+// "field" children (ims.go:490, edge at :498-505). They are admitted by the
+// "schema" tail and are untouched by this gate. Cobol's WORKING-STORAGE data
+// items (extractor.go:748) are NOT the counter-example: group items carry
+// Subtype "field" themselves, so nonClassSubtypes excludes them as leaves.
+//
+// Stated as an allowlist rather than a denylist deliberately: an emit site
+// absent from this map is excluded, so a NEW SCOPE.Datastore emitter is out
+// until someone checks that it owns members. The failure mode of guessing
+// wrong in that direction is an unmeasured population; guessing wrong the
+// other way puts a guaranteed-zero-field population in the denominator, which
+// is what #6535, #6536 and #6543 are all about. That choice is observed by
+// TestUnknownDatastoreEmitSitesAreExcluded_6543 — a denylist passes the known
+// languages identically and is only distinguishable on an emit site nobody
+// enumerated.
+var datastoreMemberBearingKinds = map[string]bool{
+	"sql/table": true,
+}
+
+// datastoreEmitSiteKey builds the "<language>/<subtype>" key for
+// datastoreMemberBearingKinds, case-insensitively like the other language
+// gates in this file.
+func datastoreEmitSiteKey(language, subtype string) string {
+	return strings.ToLower(language) + "/" + strings.ToLower(subtype)
 }
 
 // nonClassSubtypes are the subtypes that carry a class-like KIND but are not
@@ -637,8 +732,14 @@ var classLikeKindTails = map[string]bool{
 //
 // A metric whose denominator contains populations that cannot pass reports
 // noise, not coverage.
+//   - "column" — the SQL analogue of "field": a member LEAF, not a container.
+//     Its kind tail is "schema" (internal/extractors/sql/sql.go:358), which
+//     this set already admits, so before #6543 every column was in the
+//     denominator as a permanent zero-field failure — a three-column table
+//     contributed three guaranteed failures and zero passes.
 var nonClassSubtypes = map[string]bool{
 	"field":    true,
+	"column":   true,
 	"enum":     true,
 	"const":    true,
 	"file":     true,
@@ -712,6 +813,12 @@ func isFieldExtractionCandidate(kind, subtype, language string) bool {
 		return false
 	}
 	if subtype == "interface" && !interfaceSubtypeFieldBearingLanguages[strings.ToLower(language)] {
+		return false
+	}
+	// SCOPE.Datastore is admitted only for the emit sites that own members —
+	// today just the SQL `table`. Its six sibling SQL subtypes and the
+	// jcl/cobol/erlang datastores own none (#6543).
+	if kindTail(kind) == "datastore" && !datastoreMemberBearingKinds[datastoreEmitSiteKey(language, subtype)] {
 		return false
 	}
 	return true

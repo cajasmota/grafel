@@ -417,7 +417,37 @@ func TestClassLikeKindTailsConstrainedFromAbove_6536(t *testing.T) {
 		"SCOPE.Operation", // methods, functions
 		"SCOPE.Function",
 		"SCOPE.Endpoint",
-		"SCOPE.Datastore",
+		// SCOPE.Datastore was here. REPLACEMENT JUSTIFICATION (#6543):
+		//
+		// This arm asserted isClassLikeKind("SCOPE.Datastore") == false because
+		// "admitting it puts a guaranteed-zero-field population back in the
+		// denominator". That reasoning was correct about the DANGER and wrong
+		// about the KIND. SCOPE.Datastore is not one population: SQL tables are
+		// genuine member-bearing containers (sql.go:249 emits CONTAINS
+		// contained_kind=column children) and could always have passed, while
+		// the jcl/cobol/erlang datastores really cannot. Excluding the kind
+		// wholesale traded a false-failure population for an unmeasured one —
+		// the same #6535 blind spot, just silent instead of loud.
+		//
+		// The precondition this arm was protecting is now DISCHARGED rather
+		// than removed, and the replacement asserts strictly more:
+		//   - report_datastore_column_6543_test.go
+		//     TestSQLTableColumnsMeasuredNonVacuously_6543 — a SQL table with
+		//     column children is in the denominator AND does not report 100%.
+		//   - TestColumnlessTableStillCountsAsZeroField_6543 — a container with
+		//     no members is still counted as a zero-field observation, so the
+		//     widened numerator did not simply mask failures.
+		//   - TestNonColumnBearingDatastoresExcluded_6543 — the exact property
+		//     this arm defended, kept and narrowed: a jcl/cobol
+		//     SCOPE.Datastore still does not move ClassTotal.
+		//   - TestOnlyTableSubtypeIsMemberBearing_6543 — and the narrowing goes
+		//     one level further than "not this kind": of the six SCOPE.Datastore
+		//     subtypes the sql extractor emits, only `table` owns members, so
+		//     only `table` is admitted.
+		//   - TestUnknownDatastoreEmitSitesAreExcluded_6543 — an emit site
+		//     nobody has enumerated stays out, which is the conservative
+		//     default this arm was enforcing by excluding the kind outright.
+		// Deleting any one of those five re-opens what this arm covered.
 		"SCOPE.Config",
 		"SCOPE.Job",
 	} {
