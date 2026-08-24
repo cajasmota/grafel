@@ -169,20 +169,28 @@ func pathContains(ancestor, child string) bool {
 	// This handles cases where ancestor exists but child doesn't (yet) — we can still
 	// do string comparison once we strip common symlinks.
 	if ancestorResolved && !childResolved {
-		// Try to resolve the parent of child iteratively until we get a resolved path
-		// or run out of parents. This works around "directory doesn't exist yet" cases.
-		cur := child
-		for {
-			parent := filepath.Dir(cur)
-			if parent == cur {
-				break
+		// Climb from child's parent until one ancestor resolves, so a cwd that
+		// does not exist yet can still be compared against a resolved ancestor.
+		//
+		// The ascent runs through pathboundary.Climb (#6548). It used to be a
+		// bare `for { parent := filepath.Dir(cur) ... }` whose only stop was the
+		// filesystem root, with one filepath.EvalSymlinks per level — the last
+		// unbounded climb on the MCP hot path, running on every cwd→repo
+		// containment check without the user asking for anything. It now stops
+		// at $HOME when child is inside it, refuses a protected directory, and
+		// has a depth backstop. Reaching the boundary with nothing resolved
+		// leaves childNorm at the unresolved spelling, exactly as running out of
+		// parents already did.
+		below := child
+		pathboundary.Climb(filepath.Dir(child), func(cur string) bool {
+			resolved, err := filepath.EvalSymlinks(cur)
+			if err != nil {
+				below = cur
+				return false
 			}
-			if resolved, err := filepath.EvalSymlinks(parent); err == nil {
-				childNorm = filepath.Join(resolved, filepath.Base(cur))
-				break
-			}
-			cur = parent
-		}
+			childNorm = filepath.Join(resolved, filepath.Base(below))
+			return true
+		})
 	}
 
 	// On case-insensitive filesystems (macOS, Windows), use EqualFold.

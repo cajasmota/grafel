@@ -27,7 +27,57 @@
 //     user's tree or the system,
 //  3. the filesystem root (or a Windows drive root), as before, and
 //  4. MaxAncestorDepth levels, a backstop so a symlink cycle or an unusual mount
-//     can never produce an unbounded climb.
+//     can never produce an unbounded climb, and
+//  5. a PROTECTED directory — one protectedpath refuses — which is not visited,
+//     and nothing above it is either. See "The protected boundary" below.
+//
+// # The protected boundary (#6548 arm 3)
+//
+// #6549 built the protected-path table and #6550 built the bounded loop, and
+// for two arms they never met: the climb was bounded by $HOME, the root and a
+// depth cap, yet it still READ ~/Documents or ~/Library/Mobile Documents when
+// the ascent passed through one. Climb now consults the table, and refusing
+// means STOP, not skip: a protected directory is a boundary of the same kind as
+// $HOME, not a hole in the middle of the climb. Skipping it and continuing
+// would put grafel above ~/Documents on the strength of a path it was just told
+// not to read.
+//
+// The granularity of the refusal is per CLASS, because protectedpath's two
+// classes carry different policies and a single uniform rule gets one of them
+// wrong:
+//
+//   - classMedia (~/Library — which contains Mobile Documents, i.e. iCloud
+//     Drive — plus ~/Music, ~/Movies, ~/Photos, ~/Pictures and any
+//     *.photoslibrary-style bundle) is refused AT OR UNDER. protectedpath
+//     refuses this class even for an explicitly registered repo root (#5296:
+//     descending pops the Music/Photos prompt), so there is no exemption to
+//     preserve and the climb visits nothing inside it.
+//   - classTCC (~/Documents, ~/Desktop, ~/Downloads, ~/Public) is refused at
+//     the OUTERMOST directory of the tree — ~/Documents itself, not
+//     ~/Documents/proj.
+//
+// The class split is load-bearing in both directions. Applying the outermost
+// rule uniformly disarms the nested entry that matters most: ~/Library is
+// protected, so ~/Library/Mobile Documents is not outermost, and a climb
+// starting inside iCloud Drive would visit the iCloud directories and stop only
+// at ~/Library. It also silently extends the TCC exemption to media bundles,
+// which protectedpath explicitly refuses to grant. Conversely, applying the
+// at-or-under rule uniformly would make a climb from ~/Documents/proj/pkg stop
+// at its first step and silently break a repo the user deliberately keeps
+// there — every ancestor of such a path is itself "at or under ~/Documents".
+// The outermost-only rule for classTCC is what keeps the explicit-path
+// exemption (below) real: that repo resolves its own .git and .grafel markers
+// through its own ancestors, and the climb stops the moment it would step out
+// of the repo's tree into the TCC-gated folder itself.
+//
+// What this boundary is NOT known to do: prove that the reported iCloud
+// consent dialog is gone. #6548's own site enumeration identifies
+// canonicalizePath's os.ReadDir of every ancestor as the prompt-causing
+// operation, and the climbs routed through here perform lstat-class calls
+// (filepath.EvalSymlinks, os.Stat of a named marker), which do not generally
+// trip the file-provider dialog. This boundary hardens inferred traversal and
+// removes the reads that had no business happening; whether it is what the
+// reporting user saw is unproven.
 //
 // Two things it deliberately does NOT do:
 //
@@ -43,7 +93,7 @@
 // When the home directory cannot be determined (os.UserHomeDir fails because
 // neither $HOME nor %USERPROFILE% is set — a bare cron/launchd/container
 // environment) the home boundary is simply absent; the root stop and the depth
-// cap still apply. That is a fail-open on ONE of four stop conditions, chosen
+// cap still apply. That is a fail-open on ONE of five stop conditions, chosen
 // over guessing a home path that may belong to somebody else — and it is not
 // silent: the first climb in such a process logs one line saying the home
 // boundary is inactive and that only the root stop and the depth cap apply.
@@ -57,6 +107,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/cajasmota/grafel/internal/protectedpath"
 )
 
 // MaxAncestorDepth caps how many levels any single climb may ascend, counting
@@ -129,7 +181,23 @@ func ClimbWithHome(dir, home string, visit func(dir string) bool) bool {
 	// directory. A start path elsewhere on disk keeps its full climb.
 	bounded := home != "" && Inside(cur, home)
 
+	homeReal := resolveOrSelf(home)
+
+	curClass := classifyDir(cur, home, homeReal)
 	for depth := 0; depth < MaxAncestorDepth; depth++ {
+		parent := filepath.Dir(cur)
+		atRoot := parent == cur
+		var parentClass dirClass
+		if !atRoot {
+			parentClass = classifyDir(parent, home, homeReal)
+		}
+		// classMedia: refused at or under, with no exemption to preserve.
+		// classTCC: refused at the outermost directory of the tree only — a
+		// level whose own parent is TCC-protected is inside a tree the caller
+		// was pointed at, and is visited normally.
+		if curClass.media || (curClass.tcc && !parentClass.tcc) {
+			return false
+		}
 		if visit(cur) {
 			return true
 		}
@@ -137,14 +205,97 @@ func ClimbWithHome(dir, home string, visit func(dir string) bool) bool {
 			// $HOME itself was visited; nothing above it is ours to read.
 			return false
 		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
+		if atRoot {
 			// Filesystem root (or a Windows drive/UNC root).
 			return false
 		}
-		cur = parent
+		cur, curClass = parent, parentClass
 	}
 	return false
+}
+
+// dirClass is one directory's verdict from protectedpath, split by the class
+// distinction the refusal rule needs. Both false means "not protected".
+type dirClass struct {
+	// media — protectedpath refuses this even for an explicitly registered
+	// repo root (#5296). Refused at or under.
+	media bool
+	// tcc — protected against INFERRED traversal, but a legitimate place to
+	// keep a repo. Refused at the outermost directory of the tree only.
+	tcc bool
+}
+
+// classifyDir asks protectedpath — grafel's single authority on what must not
+// be read — which class, if any, dir falls into. IsWalkProtectedIn is the media
+// question and IsTraversalProtectedIn the full union, so a path in the union
+// but not in media is exactly classTCC.
+//
+// # Cost
+//
+// This is not free, and the cost is worth stating plainly rather than burying:
+// a climb calls it once per level, and each call runs one filepath.EvalSymlinks
+// on dir (an lstat chain) plus, when the gate passes, protectedpath's own
+// resolution of dir and of every denylist entry it compares against. The old
+// unbounded loops did no filesystem work of their own at all.
+//
+// The gate in front keeps that from landing on every level of every climb, but
+// it does NOT make an unprotected path free: resolving dir happens first,
+// because a symlink outside $HOME can resolve into a protected tree and a
+// lexical check would miss it — which is the case protectedpath resolves
+// symlinks for in the first place. What the gate does buy is that the
+// per-denylist-entry comparison (nine more resolutions on darwin) is skipped
+// unless dir or its resolved form is inside $HOME or names a media-library
+// bundle.
+//
+// One lstat chain per level, on climbs that are ≤ MaxAncestorDepth levels and
+// typically around ten, is judged an acceptable price: both routed callers
+// already ran an EvalSymlinks per level themselves, and every other climber
+// already ran an os.Stat per level inside its own visit function. The
+// alternative — reading a TCC-gated directory — is the defect.
+func classifyDir(dir, home, homeReal string) dirClass {
+	if dir == "" {
+		return dirClass{}
+	}
+	resolved := resolveOrSelf(dir)
+	if !mayBeProtected(dir, resolved, home, homeReal) {
+		return dirClass{}
+	}
+	if media, _ := protectedpath.IsWalkProtectedIn(dir, home, runtime.GOOS); media {
+		return dirClass{media: true}
+	}
+	if traversal, _ := protectedpath.IsTraversalProtectedIn(dir, home, runtime.GOOS); traversal {
+		return dirClass{tcc: true}
+	}
+	return dirClass{}
+}
+
+// mayBeProtected is the cheap gate described in classifyDir's Cost section:
+// only a path at or under $HOME, or one naming a media-library bundle, can be
+// protected at all. Both the literal and the symlink-resolved spelling are
+// tested, so a link outside $HOME that resolves into a protected tree is not
+// waved through.
+func mayBeProtected(dir, resolved, home, homeReal string) bool {
+	if protectedpath.IsMediaLibraryBundle(filepath.Base(dir)) ||
+		protectedpath.IsMediaLibraryBundle(filepath.Base(resolved)) {
+		return true
+	}
+	if home == "" {
+		return false
+	}
+	return containedIn(filepath.Clean(dir), filepath.Clean(home)) ||
+		containedIn(filepath.Clean(resolved), filepath.Clean(homeReal))
+}
+
+// resolveOrSelf returns path with symlinks resolved, or path unchanged when it
+// cannot be resolved (a broken link, a race, a path that does not exist yet).
+func resolveOrSelf(path string) string {
+	if path == "" {
+		return path
+	}
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		return filepath.Clean(r)
+	}
+	return path
 }
 
 // Inside reports whether path is home itself or lives underneath it. It is the
