@@ -180,6 +180,46 @@ app = FastAPI()
 app.include_router(markets.router, prefix="/network")
 app.include_router(users.router, prefix="/network")
 `, "/network"},
+		// The collapse must not care WHY the second mount is unresolvable. One
+		// resolvable router and one call expression at the same prefix is the
+		// same half-true join as two named routers: the surviving record would
+		// claim `app.api.markets` while also covering the auth router mounted
+		// there. Guarding the ambiguity drop on resolvability leaves the whole
+		// package green, and the call-expression class is the largest absence
+		// on the measured corpus (15 of 16), so this is the shape that shows up.
+		{"mixed-resolvability-same-prefix", `from fastapi import FastAPI
+import fastapi_users
+from app.api import markets
+
+app = FastAPI()
+app.include_router(markets.router, prefix="/network")
+app.include_router(fastapi_users.get_auth_router(backend), prefix="/network")
+`, "/network"},
+		// The same file with the mounts swapped. Only the order above can carry
+		// a stale key into the surviving record, so this row pins that the drop
+		// does not depend on which mount was scanned first.
+		{"mixed-resolvability-same-prefix-reversed", `from fastapi import FastAPI
+import fastapi_users
+from app.api import markets
+
+app = FastAPI()
+app.include_router(fastapi_users.get_auth_router(backend), prefix="/network")
+app.include_router(markets.router, prefix="/network")
+`, "/network"},
+		// An attribute chain deeper than one level names an object this pass
+		// cannot follow, so `container` is what would have to resolve, not
+		// `markets`. The leading anchor on fastapiMountedRouterArgRe is what
+		// rejects it: without the anchor the tail `markets.router` matches, and
+		// because `markets` IS from-import bound here it would publish
+		// `app.api.markets`/`router` for an unrelated object. The plain-import
+		// row above cannot see that, since nothing from-import binds the name
+		// there and it returns absent either way.
+		{"deep-attribute-chain", `from fastapi import FastAPI
+from app.api import markets
+
+app = FastAPI()
+app.include_router(container.markets.router, prefix="/network")
+`, "/network"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requireNoMountedRouter(t, tc.name, tc.src, "app/main.py", tc.prefix)
