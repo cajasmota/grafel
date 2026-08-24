@@ -120,13 +120,112 @@ def observed(rep):
     }
 
 
-def git_sha():
+# Refs to try, in order, when nothing names the default branch explicitly. The
+# remote-tracking refs come first: they are what the merge will actually land
+# on, and a local main can be stale or diverged.
+DEFAULT_BRANCH_REFS = (
+    "refs/remotes/origin/main",
+    "refs/remotes/origin/master",
+    "refs/heads/main",
+    "refs/heads/master",
+)
+
+
+def _git(*args):
+    """`git args...` stdout, or "" if git fails for any reason."""
     try:
         return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
+            ["git", *args], stderr=subprocess.DEVNULL
         ).decode().strip()
     except Exception:
+        return ""
+
+
+def default_branch_ref():
+    """The ref measured_on is anchored to, or None if this checkout has none.
+
+    None is a real state, not a bug: a shallow clone (actions/checkout defaults
+    to fetch-depth 1) has no remote-tracking branch ref and no history to walk,
+    a detached CI checkout may have neither, and a repo with no remote at all
+    has only local branches. Callers degrade; they do not guess.
+
+    QUALITY_BASE_REF overrides the search for a checkout that knows its own
+    base and cannot be discovered from refs.
+    """
+    candidates = []
+    override = os.environ.get("QUALITY_BASE_REF", "").strip()
+    if override:
+        candidates.append(override)
+    head = _git("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+    if head:
+        candidates.append(head)
+    candidates.extend(DEFAULT_BRANCH_REFS)
+    for ref in candidates:
+        if _git("rev-parse", "--verify", "--quiet", ref + "^{commit}"):
+            return ref
+    return None
+
+
+def git_sha():
+    """The commit measured_on records: the MERGE-BASE of HEAD with the default
+    branch, NOT HEAD (Refs #6564).
+
+    HEAD on a feature branch is not durable, and this repo squash-merges, so
+    the commit a re-record stamps is orphaned by the very PR that carries it —
+    observed three times, each time surfacing as an unrelated red on main. The
+    merge-base is on the default branch already, so it is reachable at write
+    time and stays reachable through squash, rebase, amend and force-push. It
+    is also the honest provenance answer: "measured on a tree derived from this
+    point on main". The cost is that it does not name the branch's own commits,
+    which is the correct trade for a field that exists for provenance.
+
+    Degrades to "unknown" when no default branch is available. Never to HEAD:
+    HEAD is the value that looks right and is not durable, and a wrong-looking
+    "unknown" is caught by review and by internal/quality's shape check, while
+    a plausible dangling sha is not.
+    """
+    ref = default_branch_ref()
+    if ref is None:
         return "unknown"
+    base = _git("merge-base", "HEAD", ref)
+    if not base:
+        return "unknown"
+    return _git("rev-parse", "--short", base) or "unknown"
+
+
+def ensure_durable_measured_on(sha):
+    """Refuse to write a measured_on that the default branch cannot reach.
+
+    Until #6564 the durability of this field rested on a human reading
+    measured_on_note and re-pinning the value by hand after every re-record.
+    That instruction was skipped three times in a row, and nothing at write
+    time objected — the failure was discovered later, by someone reviewing an
+    unrelated change. This is the objection.
+    """
+    if sha == "unknown":
+        print(
+            "ratchet: WARNING — no default branch ref in this checkout, so "
+            "measured_on is recorded as 'unknown' rather than a sha that "
+            "cannot be proved durable. Re-record from a full clone that has "
+            "origin/main, or set QUALITY_BASE_REF.",
+            file=sys.stderr,
+        )
+        return
+    ref = default_branch_ref()
+    if ref is None:
+        return
+    ok = subprocess.call(
+        ["git", "merge-base", "--is-ancestor", sha, ref],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    if ok != 0:
+        raise SystemExit(
+            f"ratchet: refusing to write measured_on {sha!r} — it is not an "
+            f"ancestor of {ref}. A feature-branch HEAD is not durable: squash "
+            f"orphans it on merge and internal/quality goes red on main for "
+            f"everyone. measured_on must be the merge-base with the default "
+            f"branch (Refs #6564)."
+        )
 
 
 def load_baseline(baseline_path):
@@ -194,6 +293,10 @@ def build(golden_dir, reports_dir, baseline_path):
     """Build a fresh baseline document from the reports on disk."""
     stamp = run_stamp()
     prior = load_baseline(baseline_path)
+    # Compute and validate the provenance sha BEFORE grading anything: a
+    # baseline that cannot name a durable commit must not be written at all.
+    measured_on = git_sha()
+    ensure_durable_measured_on(measured_on)
     fixtures = {}
     for name in fixture_names(golden_dir):
         if not has_expectations(golden_dir, name):
@@ -222,7 +325,7 @@ def build(golden_dir, reports_dir, baseline_path):
         ),
         "version": BASELINE_VERSION,
         "measured_at": date.today().isoformat(),
-        "measured_on": git_sha(),
+        "measured_on": measured_on,
         "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
         "fixtures": fixtures,
         "known_regressions": carry_known_regressions(prior, fixtures),
