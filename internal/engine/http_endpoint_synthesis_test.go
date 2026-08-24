@@ -1133,7 +1133,8 @@ async def markets_root():
 // conservative half: with no same-file prefix to compose, an empty route path
 // names no path at all, so nothing is emitted rather than a root endpoint.
 // This covers both the FastAPI app itself and a router constructed with no
-// prefix= kwarg.
+// prefix= kwarg, through both decorator loops: the verb decorators and the
+// generic `api_route` decorator, each of which carries its own guard.
 func TestSynth_FastAPI_EmptyRoutePathWithoutPrefixNotSynthesized(t *testing.T) {
 	src := `from fastapi import FastAPI, APIRouter
 
@@ -1148,13 +1149,21 @@ async def app_root():
 async def router_root():
     return {}
 
+@app.api_route("", methods=["GET"])
+async def app_root_api_route():
+    return {}
+
+@bare_router.api_route("", methods=["POST"])
+async def router_root_api_route():
+    return {}
+
 @app.get("/health")
 async def health():
     return "ok"
 `
 	got, _ := runDetect(t, "python", "main.py", src)
 	requireContains(t, got, []string{"http:GET:/health"}, "FastAPI empty path without prefix, sibling route still emitted")
-	requireNotContains(t, got, []string{"http:GET:/", "http:GET:"}, "FastAPI empty path without prefix")
+	requireNotContains(t, got, []string{"http:GET:/", "http:GET:", "http:POST:/", "http:POST:"}, "FastAPI empty path without prefix")
 }
 
 // TestSynth_FastAPI_NonRouterReceiverNotSynthesized guards against phantom
