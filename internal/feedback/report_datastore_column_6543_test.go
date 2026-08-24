@@ -272,6 +272,31 @@ func TestUnknownDatastoreEmitSitesAreExcluded_6543(t *testing.T) {
 		}
 	}
 
+	// The EMPTY emit site is the most likely unknown of all — a new emitter
+	// that never sets Subtype, or any path that drops it — and it is the one
+	// door the named cases above do not cover. An unset dimension carries no
+	// evidence that the entity owns members, so it must be excluded for the
+	// same reason a named-but-unenumerated site is: the gate's contract is
+	// "unknown until checked", and a SCOPE.Datastore with no subtype has no
+	// columns and would be a guaranteed zero-field failure in the denominator.
+	//
+	// This is not a hypothetical shape. The gate reads Subtype straight off
+	// the entity, and nothing upstream of this metric requires an extractor to
+	// set one.
+	for _, tc := range []struct{ lang, subtype, why string }{
+		{"sql", "", "a sql datastore whose Subtype was never set or was dropped"},
+		{"", "table", "a datastore whose Language was never set"},
+		{"", "", "both dimensions unset"},
+	} {
+		if isFieldExtractionCandidate("SCOPE.Datastore", tc.subtype, tc.lang) {
+			t.Errorf("isFieldExtractionCandidate(SCOPE.Datastore, %q, %q) is true: %s. An "+
+				"UNSET dimension is an unknown emit site, not a wildcard, and must be "+
+				"excluded exactly like an unenumerated named one — a gate that skips "+
+				"itself when the subtype is empty admits a guaranteed-zero-field "+
+				"entity (#6543)", tc.subtype, tc.lang, tc.why)
+		}
+	}
+
 	// The allowlist must still be case-insensitive like the other language
 	// gates in report.go, in BOTH dimensions.
 	for _, tc := range []struct{ lang, subtype string }{
@@ -403,6 +428,43 @@ func TestNonColumnBearingDatastoresExcluded_6543(t *testing.T) {
 				"extractor emits no member children for this kind, so it is a "+
 				"guaranteed zero-field failure in the denominator (#6543)",
 				tc.lang, tc.subtype, want, got)
+		}
+	}
+}
+
+// TestDatastoreMemberBearingKindsKeysAreWellFormed_6543 pins the KEY SHAPE of
+// datastoreMemberBearingKinds. The map is looked up with
+// datastoreEmitSiteKey(language, subtype), so a key that is not exactly
+// "<language>/<subtype>" with both halves non-empty and lower-case can never
+// match anything — it would read as an admitted emit site while silently
+// admitting nothing, which is a blind spot that looks like coverage.
+//
+// This deliberately does NOT check the keys against the extractor tree; that
+// is the generalisable-guard issue split out of #6543 and is out of scope
+// here. It checks only that every key is addressable by the lookup that reads
+// it.
+func TestDatastoreMemberBearingKindsKeysAreWellFormed_6543(t *testing.T) {
+	if len(datastoreMemberBearingKinds) == 0 {
+		t.Fatalf("datastoreMemberBearingKinds is empty: the datastore tail is admitted " +
+			"but no emit site can pass the gate, so the metric is blind to SQL again")
+	}
+	for key := range datastoreMemberBearingKinds {
+		lang, subtype, found := strings.Cut(key, "/")
+		if !found || lang == "" || subtype == "" {
+			t.Errorf("datastoreMemberBearingKinds key %q is not \"<language>/<subtype>\" "+
+				"with both halves non-empty: datastoreEmitSiteKey can never produce it, "+
+				"so the entry admits nothing while appearing to admit something", key)
+			continue
+		}
+		if key != strings.ToLower(key) {
+			t.Errorf("datastoreMemberBearingKinds key %q is not lower-case: "+
+				"datastoreEmitSiteKey folds case before the lookup, so an upper-case "+
+				"key is unreachable", key)
+			continue
+		}
+		if !isFieldExtractionCandidate("SCOPE.Datastore", subtype, lang) {
+			t.Errorf("key %q does not admit SCOPE.Datastore/%s in %s: the map and the "+
+				"gate that reads it disagree", key, subtype, lang)
 		}
 	}
 }
