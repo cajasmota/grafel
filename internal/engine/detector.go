@@ -1130,6 +1130,37 @@ func (d *Detector) Languages() []string {
 	return langs
 }
 
+// CompiledRuleCount returns how many *actionable* compiled rules the detector
+// holds for a language: source patterns, relationship rules and file
+// conventions, summed across every compiled rule set registered under that key.
+//
+// It answers "can any YAML rule fire on a file of this language?", which is a
+// strictly stronger question than "is there a rule bucket named after it?".
+// Both weaker phrasings give the wrong answer somewhere in this repo:
+//
+//   - len(d.rules[lang]) misses alias resolution. The JS/TS rules live under
+//     the bucket `javascript_typescript` and the dormant buckets (cicd,
+//     ansible, kubernetes, docker) live under their own names; only compile()
+//     attaches them to the concrete language keys the indexer actually tags
+//     files with. Counting d.rules would report `typescript` as ruleless.
+//   - len(d.compiled[lang]) counts rule *files*, not rules. Several buckets
+//     (clojure, cpp, css, dart, elixir, groovy, haskell, hcl, lua, shell, sql,
+//     zig) consist entirely of YAML that declares `source_patterns: []`,
+//     `relationship_rules: []` and `file_conventions: []` — detection metadata
+//     for humans, from which Detect can emit nothing. Counting sets would
+//     report those languages as covered when no rule can fire.
+//
+// The count is taken after lazy compilation, so a rule whose regex failed to
+// compile is not counted. Safe for concurrent use.
+func (d *Detector) CompiledRuleCount(language string) int {
+	d.once.Do(d.compile)
+	count := 0
+	for _, cs := range d.compiled[language] {
+		count += len(cs.sourcePatterns) + len(cs.relationshipRules) + len(cs.fileConventions)
+	}
+	return count
+}
+
 // RuleCount returns the total number of framework rules loaded across all languages.
 func (d *Detector) RuleCount() int {
 	count := 0
