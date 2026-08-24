@@ -29,6 +29,13 @@ func diEdges(t *testing.T, src string) []types.RelationshipRecord {
 	return rels
 }
 
+// diConsumer is the file-anchored consumer endpoint that diEdges' fixed
+// "test.py" path produces (issue #6511). INJECTED_INTO consumers are
+// addressed by extractor.BuildOperationStructuralRef, never by bare name.
+func diConsumer(fn string) string {
+	return extractor.BuildOperationStructuralRef("python", "test.py", fn)
+}
+
 func hasEdge(rels []types.RelationshipRecord, from, to, kind string) bool {
 	for _, r := range rels {
 		if r.FromID == from && r.ToID == to && r.Kind == kind {
@@ -51,8 +58,8 @@ def handler(svc: Service = Depends(get_service)):
     return svc
 `
 	rels := diEdges(t, src)
-	if !hasEdge(rels, "get_service", "handler", string(types.RelationshipKindInjectedInto)) {
-		t.Fatalf("expected INJECTED_INTO(get_service -> handler); got %+v", rels)
+	if !hasEdge(rels, "SCOPE.Operation:get_service", diConsumer("handler"), string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(SCOPE.Operation:get_service -> file-anchored handler); got %+v", rels)
 	}
 }
 
@@ -62,8 +69,8 @@ func TestPyDI_FastAPIDependsClass(t *testing.T) {
     return svc
 `
 	rels := diEdges(t, src)
-	if !hasEdge(rels, "SvcClass", "handler", string(types.RelationshipKindInjectedInto)) {
-		t.Fatalf("expected INJECTED_INTO(SvcClass -> handler); got %+v", rels)
+	if !hasEdge(rels, "SCOPE.Operation:SvcClass", diConsumer("handler"), string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(SCOPE.Operation:SvcClass -> file-anchored handler); got %+v", rels)
 	}
 }
 
@@ -73,8 +80,8 @@ func TestPyDI_FastAPIDependsBareType(t *testing.T) {
     return svc
 `
 	rels := diEdges(t, src)
-	if !hasEdge(rels, "AuthService", "handler", string(types.RelationshipKindInjectedInto)) {
-		t.Fatalf("expected INJECTED_INTO(AuthService -> handler); got %+v", rels)
+	if !hasEdge(rels, "SCOPE.Operation:AuthService", diConsumer("handler"), string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(SCOPE.Operation:AuthService -> file-anchored handler); got %+v", rels)
 	}
 }
 
@@ -117,8 +124,8 @@ def main(svc: Service = Provide[Container.service]):
     return svc
 `
 	rels := diEdges(t, src)
-	if !hasEdge(rels, "service", "main", string(types.RelationshipKindInjectedInto)) {
-		t.Fatalf("expected INJECTED_INTO(service -> main); got %+v", rels)
+	if !hasEdge(rels, "service", diConsumer("main"), string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(service -> file-anchored main); got %+v", rels)
 	}
 }
 
@@ -129,7 +136,7 @@ func TestPyDI_ProvideWithoutInjectNoEdge(t *testing.T) {
 `
 	rels := diEdges(t, src)
 	for _, r := range rels {
-		if r.FromID == "service" && r.ToID == "main" {
+		if r.FromID == "service" && r.ToID == diConsumer("main") {
 			t.Fatalf("expected no edge without @inject; got %+v", r)
 		}
 	}
@@ -155,8 +162,8 @@ class ItemController(Controller):
 	if !hasEdge(rels, "db", "get_db", string(types.RelationshipKindBinds)) {
 		t.Fatalf("expected BINDS(db -> get_db); got %+v", rels)
 	}
-	if !hasEdge(rels, "get_db", "list_items", string(types.RelationshipKindInjectedInto)) {
-		t.Fatalf("expected INJECTED_INTO(get_db -> list_items); got %+v", rels)
+	if !hasEdge(rels, "SCOPE.Operation:get_db", diConsumer("list_items"), string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(SCOPE.Operation:get_db -> file-anchored list_items); got %+v", rels)
 	}
 }
 

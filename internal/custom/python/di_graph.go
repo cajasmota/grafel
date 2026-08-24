@@ -49,6 +49,40 @@ type PyDIExtractor struct{}
 
 func (e *PyDIExtractor) Language() string { return "python_di_graph" }
 
+// pyDIConsumerRef addresses the CONSUMER end of an INJECTED_INTO edge — the
+// enclosing `def` — as the canonical file-anchored operation structural-ref
+// (issue #6511). The consumer's file is known exactly: it is the file being
+// extracted. Emitting the bare name instead let the resolver's global byName
+// tier bind the edge to ANY same-named function anywhere in the repo, which is
+// precisely the mis-binding #6511 reports.
+//
+// internal/resolve's lookupStructural handles this shape through
+// lookupLocationKind(file, name, operationKindFamily) and returns handled=true
+// even on a miss — so an unresolvable consumer stays honestly unresolved
+// rather than degrading to a bare-name guess. Same builder the http-endpoint
+// handler bridge and every language's class→method CONTAINS edge use.
+func pyDIConsumerRef(filePath, fn string) string {
+	return extractor.BuildOperationStructuralRef("python", filePath, fn)
+}
+
+// pyDIProviderRef addresses the PROVIDER end of an INJECTED_INTO edge when the
+// provider is a source-level callable or class (fastapi `Depends(x)`, litestar
+// `Provide(x)`). Unlike the consumer, the provider is routinely IMPORTED from
+// another module — python-fastapi-mini's `get_db` lives in app/deps.py while
+// its consumer lives in app/routers/things.py — so its file is NOT knowable
+// here and a file anchor would be a fabrication. It carries the kind prefix
+// only, the same address #6444 settled on for fastapi.yaml's INJECTED_INTO
+// rule; BuildIndex dual-indexes SCOPE.* kinds under their trimmed key, so
+// "SCOPE.Operation:<name>" binds to the generic extractor's Operation entity.
+//
+// Deliberately NOT applied to the dependency-injector @inject provider: that
+// endpoint is a container attribute (a DI token, the same address its BINDS
+// edge uses), not an operation, and prefixing it would assert a kind the
+// symbol does not have.
+func pyDIProviderRef(name string) string {
+	return "SCOPE.Operation:" + name
+}
+
 var (
 	// rePyDef captures a `def name(` head with the byte offset of the opening
 	// paren so the signature can be balanced-scanned. Group 1 = function name.
@@ -148,8 +182,8 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 					"via":       "fastapi_depends",
 				},
 				types.RelationshipRecord{
-					FromID: provider,
-					ToID:   fn.name,
+					FromID: pyDIProviderRef(provider),
+					ToID:   pyDIConsumerRef(file.Path, fn.name),
 					Kind:   string(types.RelationshipKindInjectedInto),
 					Properties: types.Props{
 						{K: "consumer", V: fn.name},
@@ -225,7 +259,7 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 				},
 				types.RelationshipRecord{
 					FromID: token,
-					ToID:   fn.name,
+					ToID:   pyDIConsumerRef(file.Path, fn.name),
 					Kind:   string(types.RelationshipKindInjectedInto),
 					Properties: types.Props{
 						{K: "consumer", V: fn.name},
@@ -306,8 +340,8 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 						"via":       "litestar_provide",
 					},
 					types.RelationshipRecord{
-						FromID: provider,
-						ToID:   fn.name,
+						FromID: pyDIProviderRef(provider),
+						ToID:   pyDIConsumerRef(file.Path, fn.name),
 						Kind:   string(types.RelationshipKindInjectedInto),
 						Properties: types.Props{
 							{K: "consumer", V: fn.name},
