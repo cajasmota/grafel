@@ -23,12 +23,36 @@ import (
 // never from a hand-written literal. The whole defect class is the tail list
 // and the extractors disagreeing with nothing comparing them.
 
+// sqlSource6543 exercises EVERY SCOPE.Datastore subtype the sql extractor
+// emits, not just the one that passes: table (sql.go:249), view (:419),
+// index (:444), function (:527), procedure (:585) and trigger (:634). Only
+// `table` owns CONTAINS(contained_kind=column) children; the other five are
+// guaranteed zero-field entities and must stay OUT of the denominator.
+//
+// A bare-CREATE-TABLE fixture is what let the first cut of this fix enrol all
+// six — the population the metric measured was not the population the
+// extractor emits. Indexes alone outnumber tables in most real schema files.
 const sqlSource6543 = `
 CREATE TABLE users (
     id INTEGER PRIMARY KEY,
     email VARCHAR(255) NOT NULL,
     created_at TIMESTAMP
 );
+
+CREATE VIEW active_users AS SELECT id, email FROM users;
+
+CREATE INDEX idx_users_email ON users (email);
+
+CREATE FUNCTION user_count() RETURNS INTEGER AS $$
+    SELECT COUNT(*) FROM users;
+$$ LANGUAGE SQL;
+
+CREATE PROCEDURE purge_users() AS $$
+    DELETE FROM users;
+$$ LANGUAGE SQL;
+
+CREATE TRIGGER users_audit AFTER INSERT ON users
+    FOR EACH ROW EXECUTE FUNCTION user_count();
 `
 
 func extractSQL6543(t *testing.T, src string) []types.EntityRecord {
@@ -102,33 +126,60 @@ func recordsToDoc6543(t *testing.T, recs []types.EntityRecord) *graph.Document {
 	return makeDoc(ents, rels)
 }
 
+// datastoreSubtypes6543 returns the SCOPE.Datastore entities the sql extractor
+// emitted for the fixture, grouped by Subtype. The population is taken FROM
+// THE EXTRACTOR: the first cut of this fix enrolled all six SQL datastore
+// subtypes because the fixture only contained the one that passes.
+func datastoreSubtypes6543(recs []types.EntityRecord) map[string]int {
+	out := map[string]int{}
+	for i := range recs {
+		if recs[i].Kind == "SCOPE.Datastore" {
+			out[recs[i].Subtype]++
+		}
+	}
+	return out
+}
+
 // TestSQLTableColumnsMeasuredNonVacuously_6543 is the killing test named in
 // #6543: a SQL table with column children must be IN the denominator and must
-// NOT report a 100% zero-field rate.
+// NOT report a 100% zero-field rate — while its five non-member-bearing
+// datastore siblings stay out.
 //
-// It goes red in both permissive directions the issue names — remove
-// "datastore" from classLikeKindTails and ClassTotal drops to 0 (the metric is
-// blind again); narrow the member-child predicate back to Subtype "field" only
-// and the rate jumps to 100% (the metric is vacuous).
+// It goes red in every permissive direction: remove "sql/table" from
+// datastoreMemberBearingKinds and ClassTotal drops to 0 (the metric is blind
+// again); narrow the member-child predicate back to Subtype "field" only and
+// the rate is 100% (vacuous); widen the gate to the LANGUAGE and ClassTotal
+// becomes 6 at 83% (the denominator is dominated by entities that cannot pass).
 func TestSQLTableColumnsMeasuredNonVacuously_6543(t *testing.T) {
 	recs := extractSQL6543(t, sqlSource6543)
 
-	// Premise, taken from the extractor: a SCOPE.Datastore table exists and it
-	// declares Subtype "column" children. If the extractor ever stops emitting
-	// this shape the test must fail loudly rather than pass vacuously.
-	var tables, columns int
+	// Premise, taken from the extractor: a SCOPE.Datastore table exists, it
+	// declares Subtype "column" children, and it is a MINORITY of the
+	// SCOPE.Datastore entities in the file. If the fixture ever stops
+	// containing the non-passing siblings this test silently weakens, so
+	// assert that too.
+	bySubtype := datastoreSubtypes6543(recs)
+	var columns int
 	for i := range recs {
-		switch {
-		case recs[i].Kind == "SCOPE.Datastore" && recs[i].Subtype == "table":
-			tables++
-		case recs[i].Subtype == "column":
+		if recs[i].Subtype == "column" {
 			columns++
+		}
+	}
+	tables := bySubtype["table"]
+	var otherDatastores int
+	for st, n := range bySubtype {
+		if st != "table" {
+			otherDatastores += n
 		}
 	}
 	if tables == 0 || columns == 0 {
 		t.Fatalf("premise gone: sql extractor emitted %d SCOPE.Datastore tables and "+
-			"%d column entities for the fixture; this test would measure nothing",
-			tables, columns)
+			"%d column entities; this test would measure nothing", tables, columns)
+	}
+	if otherDatastores == 0 {
+		t.Fatalf("premise gone: the fixture emitted no non-table SCOPE.Datastore "+
+			"entities (subtypes seen: %v). A table-only fixture cannot observe the "+
+			"gate granularity and is exactly what hid the first defect", bySubtype)
 	}
 
 	doc := recordsToDoc6543(t, recs)
@@ -138,10 +189,11 @@ func TestSQLTableColumnsMeasuredNonVacuously_6543(t *testing.T) {
 	}
 
 	if r.FieldExtractionRate.ClassTotal != tables {
-		t.Errorf("ClassTotal = %d, want %d (one per SCOPE.Datastore table): SQL tables "+
-			"are class-like containers with declared members and must be in the "+
-			"field-extraction denominator; columns are member LEAVES and must not be",
-			r.FieldExtractionRate.ClassTotal, tables)
+		t.Errorf("ClassTotal = %d, want %d (one per SCOPE.Datastore TABLE): SQL tables "+
+			"are the only member-bearing datastore emit site. The file also has %d "+
+			"other SCOPE.Datastore entities (%v) which own no members, and columns are "+
+			"member LEAVES — none of them belongs in the denominator",
+			r.FieldExtractionRate.ClassTotal, tables, otherDatastores, bySubtype)
 	}
 	if r.FieldExtractionRate.ZeroFieldsPct == 100 {
 		t.Errorf("ZeroFieldsPct = 100 for a table with %d column children: the "+
@@ -149,43 +201,134 @@ func TestSQLTableColumnsMeasuredNonVacuously_6543(t *testing.T) {
 			"guaranteed failure instead of a measurement (#6543)", columns, "column")
 	}
 	if got := r.FieldExtractionRate.ZeroFieldsPct; got != 0 {
-		t.Errorf("ZeroFieldsPct = %v, want 0: every table in the fixture has columns", got)
+		t.Errorf("ZeroFieldsPct = %v, want 0: every table in the fixture has columns, "+
+			"so any non-zero rate means a population that cannot pass is enrolled", got)
+	}
+}
+
+// TestOnlyTableSubtypeIsMemberBearing_6543 pins the gate GRANULARITY, which is
+// the property a language-keyed gate got wrong. Every SCOPE.Datastore subtype
+// the sql extractor emits is enumerated from the extractor itself and checked
+// individually: `table` in, everything else out.
+//
+// A language-keyed gate — `datastoreMemberBearingLanguages["sql"]` — passes
+// every other test in this file and fails here.
+func TestOnlyTableSubtypeIsMemberBearing_6543(t *testing.T) {
+	recs := extractSQL6543(t, sqlSource6543)
+	bySubtype := datastoreSubtypes6543(recs)
+
+	// The fixture must actually cover the sibling subtypes, or this test is
+	// an assertion about an empty set.
+	for _, want := range []string{"table", "view", "index", "function", "procedure", "trigger"} {
+		if bySubtype[want] == 0 {
+			t.Fatalf("fixture no longer emits a SCOPE.Datastore/%s (subtypes seen: %v): "+
+				"the gate granularity is unobserved for that subtype", want, bySubtype)
+		}
+	}
+
+	for subtype := range bySubtype {
+		got := isFieldExtractionCandidate("SCOPE.Datastore", subtype, "sql")
+		want := subtype == "table"
+		if got != want {
+			if want {
+				t.Errorf("isFieldExtractionCandidate(SCOPE.Datastore, %q, sql) = false: a "+
+					"SQL table owns CONTAINS(contained_kind=column) children and is the "+
+					"population this metric exists to measure", subtype)
+			} else {
+				t.Errorf("isFieldExtractionCandidate(SCOPE.Datastore, %q, sql) = true: the "+
+					"sql extractor emits no member children for this subtype, so every "+
+					"one of them is a guaranteed zero-field failure in the denominator. "+
+					"Gating on the LANGUAGE rather than the emit site enrols all %d "+
+					"datastore subtypes in this file (#6543)", subtype, len(bySubtype))
+			}
+		}
+	}
+}
+
+// TestUnknownDatastoreEmitSitesAreExcluded_6543 observes the ALLOWLIST choice
+// itself — the one property the first cut argued for in prose and never
+// tested.
+//
+// An allowlist and a denylist of the three known non-member-bearing languages
+// are indistinguishable on every language anyone has enumerated. They differ
+// only on an emit site nobody thought of, which is the entire reason the
+// allowlist was chosen: a new SCOPE.Datastore emitter must be OUT of the
+// denominator until someone checks that it owns members. Replace the map
+// lookup with a denylist and this test is the only one that fails.
+func TestUnknownDatastoreEmitSitesAreExcluded_6543(t *testing.T) {
+	for _, tc := range []struct{ lang, subtype, why string }{
+		{"duckdb", "table", "a new SQL-family extractor whose tables may or may not own columns"},
+		{"prisma", "model", "a hypothetical schema-language datastore emitter"},
+		{"sql", "materialized_view", "a new sql subtype added alongside the existing seven"},
+		{"erlang", "ets_table", "erlang's actual ETS subtype (otp_deepen.go:407) — `<engine>_table`, one rename from colliding with a bare \"table\" allowlist"},
+		{"erlang", "mnesia_table", "erlang's Mnesia subtype, same shape"},
+	} {
+		if isFieldExtractionCandidate("SCOPE.Datastore", tc.subtype, tc.lang) {
+			t.Errorf("isFieldExtractionCandidate(SCOPE.Datastore, %q, %q) is true: %s. An "+
+				"un-enumerated emit site must be EXCLUDED until someone verifies it owns "+
+				"members — that is what makes this gate an allowlist rather than a "+
+				"denylist of the languages that happen to be known today (#6543)",
+				tc.subtype, tc.lang, tc.why)
+		}
+	}
+
+	// The allowlist must still be case-insensitive like the other language
+	// gates in report.go, in BOTH dimensions.
+	for _, tc := range []struct{ lang, subtype string }{
+		{"SQL", "table"},
+		{"sql", "TABLE"},
+		{"Sql", "Table"},
+	} {
+		if !isFieldExtractionCandidate("SCOPE.Datastore", tc.subtype, tc.lang) {
+			t.Errorf("isFieldExtractionCandidate(SCOPE.Datastore, %q, %q) is false: the "+
+				"emit-site key must fold case in both the language and the subtype",
+				tc.subtype, tc.lang)
+		}
 	}
 }
 
 // TestColumnlessTableStillCountsAsZeroField_6543 pins the other direction: the
-// member-child predicate must not be so loose that ANY structural child makes a
-// container "pass". The table below owns a structural child that is not a
-// declared member (a trigger), and no columns — it is a genuine zero-field
-// container and must still be counted as one. Widening the numerator from the
-// "field" literal to a member-subtype SET is only safe while the set stays a
-// set: replace it with "any CONTAINS child" and this test goes red.
+// member-child predicate must not be so loose that ANY structural child makes
+// a container "pass". The table below owns a structural child that is not a
+// declared member, and no columns — it is a genuine zero-field container and
+// must still be counted as one. Widening the numerator from the "field"
+// literal to a member-subtype SET is only safe while the set stays a set:
+// replace it with "any CONTAINS child" and this test goes red.
+//
+// The non-member child is an entity the sql EXTRACTOR emitted (a trigger,
+// SCOPE.Datastore/trigger, sql.go:634), located by subtype rather than
+// hand-written — the earlier hand-written stand-in used SCOPE.Operation/
+// trigger, a shape no extractor produces, and departing from the
+// take-it-from-the-extractor rule is exactly where the gate defect hid.
 func TestColumnlessTableStillCountsAsZeroField_6543(t *testing.T) {
 	recs := extractSQL6543(t, sqlSource6543)
 	doc := recordsToDoc6543(t, recs)
 
+	var triggerID string
+	for i := range doc.Entities {
+		if doc.Entities[i].Kind == "SCOPE.Datastore" && doc.Entities[i].Subtype == "trigger" {
+			triggerID = doc.Entities[i].ID
+			break
+		}
+	}
+	if triggerID == "" {
+		t.Fatalf("premise gone: the fixture emitted no SCOPE.Datastore/trigger to use " +
+			"as a non-member child; this test would observe nothing")
+	}
+
 	ents := append([]graph.Entity(nil), doc.Entities...)
-	ents = append(ents,
-		graph.Entity{
-			ID:       "bare-table",
-			Name:     "audit_log",
-			Kind:     "SCOPE.Datastore",
-			Subtype:  "table",
-			Language: "sql",
-		}.WithProperties(map[string]string{}),
-		graph.Entity{
-			ID:       "bare-table-trigger",
-			Name:     "audit_log_ins",
-			Kind:     "SCOPE.Operation",
-			Subtype:  "trigger",
-			Language: "sql",
-		}.WithProperties(map[string]string{}),
-	)
+	ents = append(ents, graph.Entity{
+		ID:       "bare-table",
+		Name:     "audit_log",
+		Kind:     "SCOPE.Datastore",
+		Subtype:  "table",
+		Language: "sql",
+	}.WithProperties(map[string]string{}))
 	rels := append([]graph.Relationship(nil), doc.Relationships...)
 	rels = append(rels, graph.Relationship{
 		ID:     "bare-table-contains-trigger",
 		FromID: "bare-table",
-		ToID:   "bare-table-trigger",
+		ToID:   triggerID,
 		Kind:   "CONTAINS",
 	}.WithProperties(map[string]string{"contained_kind": "trigger"}))
 	d2 := makeDoc(ents, rels)
@@ -200,22 +343,26 @@ func TestColumnlessTableStillCountsAsZeroField_6543(t *testing.T) {
 	}
 	if r.FieldExtractionRate.ZeroFieldsPct == 0 {
 		t.Errorf("ZeroFieldsPct = 0 with one columnless table in the denominator: a " +
-			"container with no declared members is a real zero-field observation and " +
-			"must not be masked")
+			"container whose only structural child is a non-member (a trigger) has no " +
+			"declared members, and that is a real zero-field observation that must not " +
+			"be masked by counting any CONTAINS child as a member")
 	}
 }
 
-// TestNonColumnBearingDatastoresExcluded_6543 is the exemption guard. Only the
-// SQL extractor emits SCOPE.Datastore entities that own member children. A JCL
-// dataset, a COBOL IMS message queue / CICS queue / file resource and an
-// Erlang ETS table are all SCOPE.Datastore too, and none of them has a column
-// or field child anywhere in the extractor output. Admitting the tail globally
-// would enrol three populations that structurally cannot pass — which is
-// exactly #6536, pointed at cobol/jcl/erlang instead of at C#.
+// TestNonColumnBearingDatastoresExcluded_6543 is the cross-language exemption
+// guard, and the direct replacement for the SCOPE.Datastore arm of
+// TestClassLikeKindTailsConstrainedFromAbove_6536.
 //
-// Each kind/language pair below is emitted at a cited non-test site:
-// jcl/extractor.go:664,:779; cobol/ims.go:170, cobol/depth.go:701,:864;
-// erlang/otp_deepen.go:407.
+// Each pair below is emitted at a cited non-test site and owns no member
+// children: jcl/extractor.go:664,:779; cobol/ims.go:170,
+// cobol/depth.go:701,:864.
+//
+// erlang is deliberately NOT in this table. Its SCOPE.Datastore entities are
+// already excluded wholesale by nonFieldBearingLanguages, so an erlang arm
+// here passes with this gate deleted entirely — it would look like coverage
+// while observing nothing. The erlang subtypes are checked in
+// TestUnknownDatastoreEmitSitesAreExcluded_6543 instead, where the assertion
+// is about the gate rather than about a pre-existing exemption.
 func TestNonColumnBearingDatastoresExcluded_6543(t *testing.T) {
 	recs := extractSQL6543(t, sqlSource6543)
 	doc := recordsToDoc6543(t, recs)
@@ -232,10 +379,10 @@ func TestNonColumnBearingDatastoresExcluded_6543(t *testing.T) {
 
 	for _, tc := range []struct{ lang, subtype string }{
 		{"jcl", "dataset"},
-		{"cobol", "message-queue"},
+		{"cobol", "ims-database"},
 		{"cobol", "queue"},
+		{"cobol", "message-queue"},
 		{"cobol", "file"},
-		{"erlang", "ets-table"},
 	} {
 		ents := append([]graph.Entity(nil), doc.Entities...)
 		ents = append(ents, graph.Entity{
@@ -257,31 +404,5 @@ func TestNonColumnBearingDatastoresExcluded_6543(t *testing.T) {
 				"guaranteed zero-field failure in the denominator (#6543)",
 				tc.lang, tc.subtype, want, got)
 		}
-	}
-}
-
-// TestDatastoreMemberBearingLanguagesIsTheOnlyGate_6543 pins the exemption
-// mechanism as DATA rather than as a conditional buried in the predicate: the
-// set is the whole story, and a language absent from it is excluded no matter
-// what subtype it carries.
-func TestDatastoreMemberBearingLanguagesIsTheOnlyGate_6543(t *testing.T) {
-	if !datastoreMemberBearingLanguages["sql"] {
-		t.Fatalf("sql missing from datastoreMemberBearingLanguages: SQL tables own " +
-			"Subtype \"column\" children and are the population #6543 is about")
-	}
-	for _, lang := range []string{"cobol", "jcl", "erlang"} {
-		if datastoreMemberBearingLanguages[lang] {
-			t.Errorf("%s in datastoreMemberBearingLanguages: its SCOPE.Datastore "+
-				"entities have no member children", lang)
-		}
-		if isFieldExtractionCandidate("SCOPE.Datastore", "table", lang) {
-			t.Errorf("isFieldExtractionCandidate(SCOPE.Datastore, table, %q) is true: the "+
-				"exemption must be keyed on the language, not on the subtype the "+
-				"entity happens to carry", lang)
-		}
-	}
-	if !isFieldExtractionCandidate("SCOPE.Datastore", "table", "SQL") {
-		t.Errorf("isFieldExtractionCandidate(SCOPE.Datastore, table, \"SQL\") is false: " +
-			"the language gate must be case-insensitive like the others")
 	}
 }

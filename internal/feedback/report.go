@@ -608,8 +608,9 @@ func kindTail(kind string) string {
 // this metric is for, which had never been sampled (#6543). Admitting the tail
 // is only half the fix: the members are Subtype "column", so the numerator has
 // to see them (memberChildSubtypes) and the non-SQL emitters of the same kind
-// have to be exempted (datastoreMemberBearingLanguages), or the tail merely
-// re-creates #6536 for a new population.
+// have to be exempted (datastoreMemberBearingKinds) — including the six SQL
+// subtypes that are not `table` — or the tail merely re-creates #6536 for a
+// new population.
 var classLikeKindTails = map[string]bool{
 	"class":     true,
 	"struct":    true,
@@ -639,35 +640,63 @@ var memberChildSubtypes = map[string]bool{
 	"column": true,
 }
 
-// datastoreMemberBearingLanguages are the languages whose SCOPE.Datastore
-// entities are real member-bearing containers, and so belong in the
-// field-extraction denominator (#6543).
+// datastoreMemberBearingKinds are the SCOPE.Datastore EMIT SITES that produce
+// real member-bearing containers, keyed "<language>/<subtype>" (#6543).
 //
-// SCOPE.Datastore has 13 non-test emit sites and only the SQL ones are
-// container-shaped. The other three emitters produce datastores with no member
-// children anywhere in their output:
+// The unit here is the emit site, not the kind, not the language and not the
+// subtype — because none of those three is a single population, and picking
+// any one of them alone re-creates #6536 in a new place:
 //
-//   - jcl — a DD dataset (extractor.go:664, :779) is a file reference; the
-//     jcl extractor emits no Subtype "field" or "column" at all.
-//   - cobol — an IMS database / message queue (ims.go:170) and a CICS queue
-//     or file resource (depth.go:701, :864) are external resources, not
-//     declarations. cobol DOES emit Subtype "field" (extractor.go:748,
-//     ims.go:491) for its data items, which is why the exemption is keyed on
-//     the KIND-plus-language rather than on the language wholesale: a blanket
-//     cobol exemption would drop its genuine field-bearing records.
-//   - erlang — an ETS table (otp_deepen.go:407) is a runtime table with no
-//     declared columns. (erlang is already exempt wholesale via
-//     nonFieldBearingLanguages; it is listed here so the population is
-//     recorded in one place and stays excluded if that ever changes.)
+//   - Not the KIND. SCOPE.Datastore has 13 non-test emit sites and only one
+//     of them owns members.
+//   - Not the LANGUAGE. "sql" is SEVEN emit sites: table (sql.go:249), view
+//     (:419), index (:444), function/trigger_function (:527), procedure
+//     (:585), trigger (:634) and dbt_source (:695). Only `table` emits
+//     CONTAINS(contained_kind=column) children. A language-keyed gate admits
+//     all seven, so a schema file with one fully-columned table, a view and
+//     an index reports 66% zero-field — and indexes alone outnumber tables in
+//     most real schema files, so the reported SQL rate would be dominated by
+//     the population that structurally cannot pass. Measured, not assumed:
+//     see TestOnlyTableSubtypeIsMemberBearing_6543.
+//   - Not the SUBTYPE. Erlang's ETS/Mnesia datastores are Subtype
+//     `<engine>_table` (erlang/otp_deepen.go:407) — "ets_table",
+//     "mnesia_table". A bare "table" allowlist does not admit them today, but
+//     the two namespaces are one rename apart and nothing would catch the
+//     collision.
 //
-// Stated as an allowlist rather than a denylist deliberately: a new extractor
-// emitting SCOPE.Datastore is excluded until someone checks that its entities
-// actually own members. The failure mode of guessing wrong in that direction
-// is an unmeasured population; guessing wrong the other way puts a
-// guaranteed-zero-field population in the denominator, which is the defect
-// this whole line of issues (#6535, #6536, #6543) is about.
-var datastoreMemberBearingLanguages = map[string]bool{
-	"sql": true,
+// The excluded emitters, verified against extractor output rather than
+// assumed: jcl DD datasets (extractor.go:664, :779) are file references, and
+// the jcl extractor emits no member subtype at all; cobol IMS databases
+// (ims.go:170) and CICS queues / file resources (depth.go:701, :864) are
+// external resources, not declarations; erlang ETS tables are runtime tables
+// with no declared columns.
+//
+// Note on cobol, since an earlier version of this comment cited the wrong
+// code: cobol's genuinely member-bearing population is IMS SEGMENTS, which
+// are kindIMSSegment = SCOPE.Schema / "ims-segment" (ims.go:295) with Subtype
+// "field" children (ims.go:490, edge at :498-505). They are admitted by the
+// "schema" tail and are untouched by this gate. Cobol's WORKING-STORAGE data
+// items (extractor.go:748) are NOT the counter-example: group items carry
+// Subtype "field" themselves, so nonClassSubtypes excludes them as leaves.
+//
+// Stated as an allowlist rather than a denylist deliberately: an emit site
+// absent from this map is excluded, so a NEW SCOPE.Datastore emitter is out
+// until someone checks that it owns members. The failure mode of guessing
+// wrong in that direction is an unmeasured population; guessing wrong the
+// other way puts a guaranteed-zero-field population in the denominator, which
+// is what #6535, #6536 and #6543 are all about. That choice is observed by
+// TestUnknownDatastoreEmitSitesAreExcluded_6543 — a denylist passes the known
+// languages identically and is only distinguishable on an emit site nobody
+// enumerated.
+var datastoreMemberBearingKinds = map[string]bool{
+	"sql/table": true,
+}
+
+// datastoreEmitSiteKey builds the "<language>/<subtype>" key for
+// datastoreMemberBearingKinds, case-insensitively like the other language
+// gates in this file.
+func datastoreEmitSiteKey(language, subtype string) string {
+	return strings.ToLower(language) + "/" + strings.ToLower(subtype)
 }
 
 // nonClassSubtypes are the subtypes that carry a class-like KIND but are not
@@ -786,9 +815,10 @@ func isFieldExtractionCandidate(kind, subtype, language string) bool {
 	if subtype == "interface" && !interfaceSubtypeFieldBearingLanguages[strings.ToLower(language)] {
 		return false
 	}
-	// SCOPE.Datastore is admitted for SQL tables, which own Subtype "column"
-	// members; the jcl/cobol/erlang emitters of the same kind own none (#6543).
-	if kindTail(kind) == "datastore" && !datastoreMemberBearingLanguages[strings.ToLower(language)] {
+	// SCOPE.Datastore is admitted only for the emit sites that own members —
+	// today just the SQL `table`. Its six sibling SQL subtypes and the
+	// jcl/cobol/erlang datastores own none (#6543).
+	if kindTail(kind) == "datastore" && !datastoreMemberBearingKinds[datastoreEmitSiteKey(language, subtype)] {
 		return false
 	}
 	return true

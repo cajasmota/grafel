@@ -438,9 +438,16 @@ func TestClassLikeKindTailsConstrainedFromAbove_6536(t *testing.T) {
 		//     no members is still counted as a zero-field observation, so the
 		//     widened numerator did not simply mask failures.
 		//   - TestNonColumnBearingDatastoresExcluded_6543 — the exact property
-		//     this arm defended, kept and narrowed: a jcl/cobol/erlang
+		//     this arm defended, kept and narrowed: a jcl/cobol
 		//     SCOPE.Datastore still does not move ClassTotal.
-		// Deleting any one of those three re-opens what this arm covered.
+		//   - TestOnlyTableSubtypeIsMemberBearing_6543 — and the narrowing goes
+		//     one level further than "not this kind": of the six SCOPE.Datastore
+		//     subtypes the sql extractor emits, only `table` owns members, so
+		//     only `table` is admitted.
+		//   - TestUnknownDatastoreEmitSitesAreExcluded_6543 — an emit site
+		//     nobody has enumerated stays out, which is the conservative
+		//     default this arm was enforcing by excluding the kind outright.
+		// Deleting any one of those five re-opens what this arm covered.
 		"SCOPE.Config",
 		"SCOPE.Job",
 	} {
