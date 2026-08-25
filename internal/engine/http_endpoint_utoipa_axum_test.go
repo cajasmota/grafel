@@ -1169,3 +1169,157 @@ func TestUtoipaAxum_NestPrefixAtExactWindow(t *testing.T) {
 	_, res := runDetect(t, "rust", "src/exact.rs", src)
 	requireUtoipaDef(t, res, "http:GET:/api/items", "list_items", "utoipa-nest-window-exact")
 }
+
+// ---------------------------------------------------------------------------
+// #6643 — the three narrower shapes the file header records (at
+// http_endpoint_utoipa_axum.go:94-99) as failing to match utoipaRoutesMacroRe.
+//
+// These are DELIBERATE Arm-A/B1 boundaries, not defects. All three fail in the
+// safe direction: they mint nothing rather than minting a guess, and none is a
+// regression from Arm A. #6643 does not ask for any of them to be fixed — it
+// asks for them to be OBSERVED, because an unobserved limitation cannot be
+// told apart from an unobserved regression. Whoever widens the pattern to
+// admit one of these shapes will fail the matching case here and can then
+// decide deliberately, with a review, instead of discovering it from a
+// phantom endpoint in a real graph.
+//
+// The permissive direction is the dangerous one. For a fail-to-mint shape the
+// mutant that survives silently is the one that STARTS minting, so every case
+// below is written to be killed by a mint: the offending macro names handlers
+// that DO have a same-file `#[utoipa::path]` contract, so a widened pattern
+// mints them immediately and the assertion fires.
+// ---------------------------------------------------------------------------
+
+// utoipaFailToMintSrc wraps the macro spelling under test in a file that also
+// carries a CONTROL registration — `routes!(health)`, the adjacent-bang
+// bare-identifier form this pass does read.
+//
+// The control is the premise guard, and it is load-bearing twice over:
+//
+//   - utoipaHasRoutesMacro returns early unless the literal substring
+//     `routes!` appears anywhere in the file. The `routes ! ( a , b )` case
+//     does not contain it, so WITHOUT the control that fixture would observe
+//     the early return and would keep passing even if the regex were widened
+//     to match whitespace before the bang. The control is what forces the
+//     macro-matching branch to actually run.
+//   - Asserting the control's endpoint through requireUtoipaDef proves this
+//     pass — framework=utoipa_axum, source_handler=Controller:health — is the
+//     producer, so a green result cannot come from the file failing to parse,
+//     from an empty attribute map, or from another synthesiser.
+//
+// list_items and create_item both carry a same-file attribute, so they are
+// unminted here for exactly one reason: the macro naming them did not match.
+func utoipaFailToMintSrc(macro string) string {
+	return `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/health")]
+async fn health() -> &'static str { "ok" }
+
+#[utoipa::path(get, path = "/items")]
+async fn list_items() -> &'static str { "[]" }
+
+#[utoipa::path(post, path = "/items")]
+async fn create_item() -> &'static str { "{}" }
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new()
+        .routes(routes!(health))
+        .routes(` + macro + `)
+}
+`
+}
+
+func TestUtoipaAxum_HeaderRecordedShapesMintNothing(t *testing.T) {
+	cases := []struct {
+		name string
+		// macro is the spelling under test, substituted into the fixture.
+		macro string
+		// mustContain / mustNotContain pin the incidental bytes the kill
+		// depends on. Each of these shapes fails to match because of ONE
+		// character or one space; if a later edit normalises that byte away
+		// the fixture would go on passing while observing nothing at all.
+		mustContain    []string
+		mustNotContain []string
+	}{
+		{
+			// A block comment between arguments. The argument list admits
+			// only `ident (, ident)*`, so `/*` cannot appear anywhere inside
+			// it and the WHOLE macro fails — not just the argument it
+			// precedes.
+			name:           "block-comment-between-arguments",
+			macro:          "routes!(list_items, /* mount both */ create_item)",
+			mustContain:    []string{"/* mount both */"},
+			mustNotContain: []string{"routes!(list_items, create_item)"},
+		},
+		{
+			// The line-comment spelling of the same shape, in the rustfmt
+			// multi-line layout where it actually occurs. `\s` spans newlines,
+			// so the multi-line form is otherwise read normally — the comment
+			// is the only reason this one fails, and a widening aimed at the
+			// block form must not quietly admit this one either.
+			name: "line-comment-between-arguments",
+			macro: `routes!(
+            list_items, // the list endpoint
+            create_item,
+        )`,
+			mustContain:    []string{"// the list endpoint"},
+			mustNotContain: []string{"/*"},
+		},
+		{
+			// A raw identifier. `#` is outside `\w`, so `r#type` is not a bare
+			// identifier and the macro carrying it fails WHOLE — which is why
+			// its bare siblings list_items and create_item stay unminted too.
+			name:           "raw-identifier-argument",
+			macro:          "routes!(r#type, list_items, create_item)",
+			mustContain:    []string{"r#type"},
+			mustNotContain: []string{"routes!(list_items"},
+		},
+		{
+			// Whitespace before the bang. `routes ! ( a , b )` is Rust-legal
+			// but the pattern requires `routes!` adjacent. Note this fixture
+			// contains NO `routes!(` of its own: the control macro is the only
+			// reason the pass gets past utoipaHasRoutesMacro at all.
+			name:           "whitespace-before-bang",
+			macro:          "routes ! ( list_items , create_item )",
+			mustContain:    []string{"routes ! ( list_items , create_item )"},
+			mustNotContain: []string{"routes!(list_items", "routes!( list_items"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			label := "utoipa-fail-to-mint-" + tc.name
+			src := utoipaFailToMintSrc(tc.macro)
+
+			for _, want := range tc.mustContain {
+				if !strings.Contains(src, want) {
+					t.Fatalf("%s: fixture lost the byte sequence its result depends on: %q missing", label, want)
+				}
+			}
+			for _, unwanted := range tc.mustNotContain {
+				if strings.Contains(src, unwanted) {
+					t.Fatalf("%s: fixture contains %q, which this shape must not spell — it would mint for an unrelated reason", label, unwanted)
+				}
+			}
+
+			ids, res := runDetect(t, "rust", "src/api.rs", src)
+
+			// Premise guard: the pass ran, read this file's attribute map and
+			// minted through the branch under test.
+			requireUtoipaDef(t, res, "http:GET:/health", "health", label)
+
+			// The shape under test mints nothing. Both handlers have a
+			// same-file contract, so a non-zero count here means the pattern
+			// started matching a shape the header says it does not.
+			requireNotContains(t, ids, []string{"http:GET:/items", "http:POST:/items"}, label)
+			for _, h := range []string{"list_items", "create_item"} {
+				if got := countDefsForHandler(res, h); got != 0 {
+					t.Errorf("%s: want 0 definitions for %s, got %d — this shape is documented as minting nothing (http_endpoint_utoipa_axum.go:94-99); if that changed deliberately, change the header and the coverage doc with it",
+						label, h, got)
+				}
+			}
+		})
+	}
+}
