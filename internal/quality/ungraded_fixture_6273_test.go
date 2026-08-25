@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -362,12 +363,24 @@ func TestRatchetUpdateRefusesFixtureWithoutExpectations_6273(t *testing.T) {
 	}
 }
 
+// minFixtures is the ONE number about the golden set that is still written by
+// hand, and it is a FLOOR rather than an exact count. See
+// TestGoldenSetIsFullyGraded_6273 for why (#6521). It is declared once, at file
+// scope, so that "the number" cannot drift between two copies — a second
+// hardcoded 26 elsewhere would reintroduce exactly the hazard this replaced.
+const minFixtures = 26
+
 // TestGoldenSetIsFullyGraded_6273 asserts the absolute figure the benchmark's
-// denominators are quoted from. All three halves matter: golden/ holds exactly
-// wantFixtures directories, every one carries expected.json, AND the baseline
-// gates exactly that many. A test that only checked "no directory is ungraded"
-// would pass on an empty golden/, and one that only counted baseline entries
-// would pass on a baseline full of expectations_missing stubs.
+// denominators are quoted from. All three halves matter: golden/ holds at
+// least minFixtures directories, every one carries expected.json, AND the
+// baseline gates exactly as many fixtures as there are directories. A test
+// that only checked "no directory is ungraded" would pass on an empty golden/,
+// and one that only counted baseline entries would pass on a baseline full of
+// expectations_missing stubs.
+//
+// The rules themselves live in gradingProblems so they can be exercised
+// against synthetic trees; this function is the binding of those rules to the
+// checked-in golden/ set.
 //
 // This subsumes ungradedFixtures + TestUngradedFixturesAreTheKnownTwo, which
 // #6260 added and #6273 deleted. That set existed to make demotion to ungraded a
@@ -422,39 +435,420 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 	// later process phase the index-time matcher never met.
 	//
 	// express-baseurl-mini and python-fastapi-mini were built in parallel off
-	// the same 24-fixture base, so each bumped this constant to 25 on its own
-	// branch and the two collided on rebase. 26 is that reconciliation, taken
-	// from the directory count on disk rather than by adding one to either
-	// branch's number.
-	const wantFixtures = 26
-
+	// the same 24-fixture base, so each bumped the old exact constant to 25 on
+	// its own branch and the two collided on rebase. That collision is #6521,
+	// and the count is no longer an exact hand-maintained integer:
+	//
+	// minFixtures is a FLOOR. Adding a fixture does not require editing it, so
+	// two fixture PRs authored in parallel cannot collide on it, and neither
+	// can be reconciled to a wrong number ("25 + 1" and "keep ours" both look
+	// reasonable and are both wrong half the time). The exact figure the two
+	// clauses below need is DERIVED from len(dirs), and the second independent
+	// source it is cross-checked against is the count of gated baseline
+	// entries — see gradingProblems.
+	//
+	// The floor is not decoration. It is what stops the derivation being
+	// vacuous: with the exact count gone, every remaining clause passes on an
+	// empty golden/ (nothing to stat, nothing to gate, 0 == 0), which is the
+	// exact hazard this test's own header warns about. It also still fails a
+	// DELETION, the reviewable direction #6231 cares about — "a fixture cannot
+	// be deleted to make a red number disappear". Lower it only when fixtures
+	// are removed on purpose.
+	//
+	// The old exact count also reported its mismatch with t.Fatalf, so a stale
+	// integer SILENCED both clauses below it — precisely when the fixture set
+	// had just changed, i.e. when the ungraded-fixture guard matters most, it
+	// did not run at all. The floor keeps that fatal (a shrunken set makes the
+	// rest meaningless) but a set that merely GREW now runs every clause.
 	dirs := fixtureDirs(t)
-	if len(dirs) != wantFixtures {
-		t.Fatalf("golden/ holds %d fixture directories, want %d — if a fixture was "+
-			"added or removed on purpose, update this number so the change is reviewed",
-			len(dirs), wantFixtures)
+	if len(dirs) < minFixtures {
+		t.Fatalf("golden/ holds %d fixture directories, below the recorded floor of "+
+			"%d — a fixture was removed; if that was deliberate, lower minFixtures "+
+			"so the removal is reviewed", len(dirs), minFixtures)
 	}
+	for _, p := range gradingProblems(goldenDir, dirs, loadBaseline(t)) {
+		t.Error(p)
+	}
+}
+
+// gradingProblems reports every way the fixture set rooted at goldenRoot fails
+// to be fully graded, one string per problem, sorted so the output is stable
+// across map iteration order.
+//
+// It is a function rather than assertions inlined into
+// TestGoldenSetIsFullyGraded_6273 because those assertions can only ever run
+// against the checked-in golden/ tree, where the only way to observe them is
+// to edit real fixtures. Extracting them lets
+// TestGradingProblemsIsNotVacuous_6521 drive every branch against synthetic
+// trees, including the two-parallel-fixture-PRs shape #6521 is about.
+//
+// The count clause is the derived replacement for #6521's hand-maintained
+// integer: gated baseline entries against directories on disk, two
+// independently maintained sources (os.ReadDir of golden/ versus a parse of
+// the checked-in baseline.json), so neither can advance without the other.
+//
+// Its independent value is narrow and worth stating honestly. It is not a
+// second copy of TestBaselineCoversEveryFixture, which compares the two sets
+// by NAME — but with that name equality separately enforced, gated != len(dirs)
+// can only diverge via an expectations_missing entry, and the clause directly
+// above already reports that by name. No tree has been constructed where this
+// clause is the sole detector. It is kept because it is the thing the old
+// hand-maintained integer asserted, now derived rather than typed.
+//
+// A known hole, unchanged from before #6521: an OFFSETTING tree — 26
+// directories where the baseline gates 25 real entries plus one ghost —
+// keeps gated == len(dirs), so this clause is silent and only
+// TestBaselineCoversEveryFixture catches it, by name.
+func gradingProblems(goldenRoot string, dirs []string, doc baselineDoc) []string {
+	if len(dirs) == 0 {
+		// Without this every clause below passes on an empty set: nothing to
+		// stat, nothing to gate, and 0 == 0.
+		return []string{fmt.Sprintf("%s holds no fixture directories at all", goldenRoot)}
+	}
+
+	var problems []string
 	for _, name := range dirs {
-		if _, err := os.Stat(filepath.Join(goldenDir, name, "expected.json")); err != nil {
-			t.Errorf("fixture %q has no expected.json — it would produce no report and "+
-				"be graded by nothing", name)
+		if _, err := os.Stat(filepath.Join(goldenRoot, name, "expected.json")); err != nil {
+			problems = append(problems, fmt.Sprintf("fixture %q has no expected.json — "+
+				"it would produce no report and be graded by nothing", name))
 		}
 	}
 
-	doc := loadBaseline(t)
 	gated := 0
 	for name, base := range doc.Fixtures {
 		if base.ExpectationsMissing {
-			t.Errorf("baseline records fixture %q as ungraded; golden/ has no ungraded "+
-				"category any more", name)
+			problems = append(problems, fmt.Sprintf("baseline records fixture %q as "+
+				"ungraded; golden/ has no ungraded category any more", name))
 			continue
 		}
 		gated++
 		if base.EntityExpected == 0 && base.RelExpected == 0 {
-			t.Errorf("fixture %q is gated on nothing", name)
+			problems = append(problems, fmt.Sprintf("fixture %q is gated on nothing", name))
 		}
 	}
-	if gated != wantFixtures {
-		t.Errorf("baseline gates %d fixtures, want %d", gated, wantFixtures)
+	if gated != len(dirs) {
+		problems = append(problems, fmt.Sprintf("baseline gates %d fixtures but golden/ "+
+			"holds %d directories — a fixture reached one of the two and not the other",
+			gated, len(dirs)))
+	}
+
+	sort.Strings(problems)
+	return problems
+}
+
+// TestGradingProblemsIsNotVacuous_6521 is the non-vacuity proof the derived
+// count needs. A count derived by enumerating the same directory the assertion
+// checks against would be a set compared to itself and would prove nothing; the
+// property that actually matters is that every fixture directory is fully
+// graded, so each case below is a way for that to be false and each must be
+// reported.
+//
+// The "directory added without a baseline entry" case is the #6521 scenario
+// itself: two fixture PRs authored in parallel, each green alone, whose union
+// leaves a directory on disk that nothing gates.
+func TestGradingProblemsIsNotVacuous_6521(t *testing.T) {
+	// buildTree lays out <tmp>/<name>/ for each key and an expected.json for
+	// each true value, then ENUMERATES the result rather than returning the
+	// keys, so the directory list is read from disk exactly as fixtureDirs
+	// reads the real one.
+	buildTree := func(t *testing.T, withExpected map[string]bool) (string, []string) {
+		t.Helper()
+		root := t.TempDir()
+		for name, hasExpected := range withExpected {
+			if err := os.MkdirAll(filepath.Join(root, name, "src"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if !hasExpected {
+				continue
+			}
+			p := filepath.Join(root, name, "expected.json")
+			if err := os.WriteFile(p, []byte(`{"fixture_name":"x"}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ents, err := os.ReadDir(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, e := range ents {
+			if e.IsDir() {
+				names = append(names, e.Name())
+			}
+		}
+		sort.Strings(names)
+		return root, names
+	}
+
+	gatedDoc := func(names ...string) baselineDoc {
+		doc := baselineDoc{Version: 1, Fixtures: map[string]baselineFixture{}}
+		for _, n := range names {
+			doc.Fixtures[n] = baselineFixture{EntityFound: 1, EntityExpected: 1}
+		}
+		return doc
+	}
+
+	for _, tc := range []struct {
+		name    string
+		tree    map[string]bool
+		doc     baselineDoc
+		wantAny []string // substrings, all of which must appear; empty = no problems
+	}{
+		{
+			name: "fully graded set reports nothing",
+			tree: map[string]bool{"alpha-mini": true, "beta-mini": true},
+			doc:  gatedDoc("alpha-mini", "beta-mini"),
+		},
+		{
+			// #6521: alpha and beta merged in parallel, gamma's baseline entry
+			// lost in the reconciliation.
+			name:    "directory with no baseline entry",
+			tree:    map[string]bool{"alpha-mini": true, "beta-mini": true, "gamma-mini": true},
+			doc:     gatedDoc("alpha-mini", "beta-mini"),
+			wantAny: []string{"gates 2 fixtures but golden/ holds 3"},
+		},
+		{
+			name:    "baseline entry with no directory",
+			tree:    map[string]bool{"alpha-mini": true, "beta-mini": true},
+			doc:     gatedDoc("alpha-mini", "beta-mini", "ghost-mini"),
+			wantAny: []string{"gates 3 fixtures but golden/ holds 2"},
+		},
+		{
+			name:    "directory without expected.json",
+			tree:    map[string]bool{"alpha-mini": true, "beta-mini": false},
+			doc:     gatedDoc("alpha-mini", "beta-mini"),
+			wantAny: []string{`fixture "beta-mini" has no expected.json`},
+		},
+		{
+			name: "baseline excuses a fixture as ungraded",
+			tree: map[string]bool{"alpha-mini": true, "beta-mini": true},
+			doc: baselineDoc{Version: 1, Fixtures: map[string]baselineFixture{
+				"alpha-mini": {EntityFound: 1, EntityExpected: 1},
+				"beta-mini":  {ExpectationsMissing: true},
+			}},
+			// Both: the excusal itself, and the gated count falling to 1. The
+			// second is what TestBaselineCoversEveryFixture cannot see, since
+			// the NAME sets still match exactly.
+			wantAny: []string{
+				`baseline records fixture "beta-mini" as ungraded`,
+				"gates 1 fixtures but golden/ holds 2",
+			},
+		},
+		{
+			name:    "gated on nothing",
+			tree:    map[string]bool{"alpha-mini": true},
+			doc:     baselineDoc{Version: 1, Fixtures: map[string]baselineFixture{"alpha-mini": {}}},
+			wantAny: []string{`fixture "alpha-mini" is gated on nothing`},
+		},
+		{
+			// The vacuity floor: with no exact count left, an emptied golden/
+			// satisfies every other clause trivially.
+			name:    "empty golden reports the emptiness",
+			tree:    map[string]bool{},
+			doc:     gatedDoc(),
+			wantAny: []string{"holds no fixture directories at all"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, dirs := buildTree(t, tc.tree)
+			got := gradingProblems(root, dirs, tc.doc)
+			if len(tc.wantAny) == 0 {
+				if len(got) != 0 {
+					t.Fatalf("want no problems, got %q", got)
+				}
+				return
+			}
+			joined := strings.Join(got, "\n")
+			for _, want := range tc.wantAny {
+				if !strings.Contains(joined, want) {
+					t.Errorf("no problem mentions %q; got:\n%s", want, joined)
+				}
+			}
+		})
+	}
+}
+
+// TestGoldenSetFloorIsBelowTheRealSet pins the one thing
+// TestGradingProblemsIsNotVacuous_6521 cannot: that the floor asserted against
+// the real tree is a live constraint and not, say, zero. A floor of 0 would
+// leave the derived count free to be vacuous on an emptied golden/ without any
+// synthetic test noticing, because the synthetic tests never read minFixtures.
+func TestGoldenSetFloorIsBelowTheRealSet(t *testing.T) {
+	dirs := fixtureDirs(t)
+	if len(dirs) == 0 {
+		t.Fatal("golden/ holds no fixture directories")
+	}
+	// Assert the comparison TestGoldenSetIsFullyGraded_6273 makes is not
+	// trivially true. If minFixtures were relaxed to 0 or to a negative
+	// sentinel, this fails.
+	if minFixtures < len(dirs)/2 {
+		t.Errorf("minFixtures is %d against %d real fixture directories — the floor "+
+			"has been relaxed far below the set it guards and no longer catches a "+
+			"deletion", minFixtures, len(dirs))
+	}
+	if minFixtures > len(dirs) {
+		t.Errorf("minFixtures is %d but golden/ holds %d directories — the floor is "+
+			"above the set, so TestGoldenSetIsFullyGraded_6273 can only fatal",
+			minFixtures, len(dirs))
+	}
+}
+
+// subprocessGuard names the env var the harness below sets on the child. The
+// child re-runs this package's own test binary, so without a guard the harness
+// would re-enter itself.
+const subprocessGuard = "GRAFEL_6521_SUBPROCESS"
+
+// fixtureSetTree lays out a synthetic <tmp>/golden/ and returns tmp.
+//
+// The lever that makes this possible is that goldenDir and baselinePath are
+// RELATIVE ("golden", "golden/baseline.json"), so the tree a test reads is
+// chosen by the working directory, not by any constant. A child process with
+// cmd.Dir set to tmp therefore runs the real assertions against a hostile
+// fixture set without touching the checked-in golden/ at all.
+//
+// n directories are created, each carrying expected.json. The baseline gates
+// every one of them at 1/1, except those named in ungraded, which are recorded
+// as {"expectations_missing": true}.
+func fixtureSetTree(t *testing.T, n int, ungraded ...string) string {
+	t.Helper()
+	tmp := t.TempDir()
+	golden := filepath.Join(tmp, "golden")
+	if err := os.MkdirAll(golden, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	excused := map[string]bool{}
+	for _, u := range ungraded {
+		excused[u] = true
+	}
+	fixtures := map[string]any{}
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("f%02d-mini", i)
+		if err := os.MkdirAll(filepath.Join(golden, name, "src"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(golden, name, "expected.json")
+		if err := os.WriteFile(p, []byte(`{"fixture_name":"x"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if excused[name] {
+			fixtures[name] = map[string]any{"expectations_missing": true}
+			continue
+		}
+		fixtures[name] = map[string]any{
+			"entity_found": 1, "entity_expected": 1,
+			"relationship_found": 0, "relationship_expected": 0,
+		}
+	}
+	raw, err := json.Marshal(map[string]any{
+		"version":    1,
+		"regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
+		"fixtures":   fixtures,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(golden, "baseline.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return tmp
+}
+
+// TestFixtureSetRulesAreEnforced_6521 pins the CALL SITES, which no other test
+// in this package can observe.
+//
+// gradingProblems is exercised directly by TestGradingProblemsIsNotVacuous_6521
+// and minFixtures is inspected by TestGoldenSetFloorIsBelowTheRealSet, but
+// neither observes that TestGoldenSetIsFullyGraded_6273 actually REPORTS what
+// gradingProblems returns, or that it actually ENFORCES the floor. Both were
+// free to be silenced with the whole package still green:
+//
+//	t.Error(p)                 ->  _ = p          (problems computed, discarded)
+//	if len(dirs) < minFixtures ->  if len(dirs) < 0   (floor never enforced)
+//
+// This test re-executes the package's own test binary with cmd.Dir pointed at a
+// synthetic golden/ tree, so the real assertions run against a fixture set they
+// must reject. Both mutants above flip the child's exit code to 0 and are
+// caught here.
+//
+// The "healthy tree" case is the positive control. Without it a harness that
+// failed for an unrelated reason — wrong working directory, unparseable
+// baseline, a child that never started — would look like a passing test while
+// proving nothing about the rules.
+func TestFixtureSetRulesAreEnforced_6521(t *testing.T) {
+	if os.Getenv(subprocessGuard) != "" {
+		t.Skip("child process; the harness must not re-enter itself")
+	}
+	self, err := filepath.Abs(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sized to sit exactly on the floor so the floor is satisfied and only the
+	// grading rules can fire; and far below it for the deletion cases.
+	const atFloor = minFixtures
+	const shrunken = 3
+
+	for _, tc := range []struct {
+		name     string
+		dirs     int
+		ungraded []string
+		wantExit int
+		wantOut  []string
+	}{
+		{
+			// Positive control: proves the child reaches, parses and passes a
+			// well-formed tree, so the failures below are about the rules.
+			name:     "healthy fixture set is accepted",
+			dirs:     atFloor,
+			wantExit: 0,
+		},
+		{
+			// Kills the "problems computed then discarded" mutant: the floor is
+			// satisfied, so a silenced call site leaves nothing to fail on.
+			name:     "ungraded fixture is reported",
+			dirs:     atFloor,
+			ungraded: []string{"f07-mini"},
+			wantExit: 1,
+			wantOut: []string{
+				`baseline records fixture "f07-mini" as ungraded`,
+			},
+		},
+		{
+			// Kills both floor mutants: the call-site comparison relaxed to a
+			// constant that can never trip, and the deletion of the
+			// floor-above-the-set clause.
+			name:     "shrunken fixture set is reported",
+			dirs:     shrunken,
+			wantExit: 1,
+			wantOut: []string{
+				"below the recorded floor",
+				"the floor is above the set",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := fixtureSetTree(t, tc.dirs, tc.ungraded...)
+			cmd := exec.Command(self, "-test.run=^TestGoldenSet", "-test.v")
+			cmd.Dir = tmp
+			cmd.Env = append(os.Environ(), subprocessGuard+"=1")
+			out, err := cmd.CombinedOutput()
+			exit := 0
+			if ee, ok := err.(*exec.ExitError); ok {
+				exit = ee.ExitCode()
+			} else if err != nil {
+				t.Fatalf("child could not be executed: %v\n%s", err, out)
+			}
+			if exit != tc.wantExit {
+				t.Fatalf("child exit %d, want %d:\n%s", exit, tc.wantExit, out)
+			}
+			if !strings.Contains(string(out), "TestGoldenSetIsFullyGraded_6273") {
+				t.Fatalf("child never ran the assertions under test:\n%s", out)
+			}
+			for _, want := range tc.wantOut {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("child output does not mention %q:\n%s", want, out)
+				}
+			}
+		})
 	}
 }
