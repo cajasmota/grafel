@@ -91,11 +91,10 @@ var knownLanguageRuleGaps = []languageRuleGap{
 	{Language: "nim", Reason: "C: no rules/nim bucket; ORM/migration recognition is 10 custom_nim_* Go extractors"},
 
 	// --- (D) no bucket, no framework recognition ----------------------------
-	// The reported instance. Arm B of #6537 decides alias-vs-own-bucket and
-	// lands the content; when it does, this entry must be deleted or the guard
-	// fails.
-	{Language: "vbnet", Reason: "D: no rules/vbnet bucket and no VB.NET cross-extractor; measured as 0.0% framework annotation across 45,663 entities on a real WinForms codebase", Issue: "#6537"},
-
+	// vbnet USED to be listed here — the reported instance from #6535. Arm B of
+	// #6537 measured alias-vs-own-bucket (an alias onto csharp emits 0 entities
+	// on VB source) and landed rules/vbnet/frameworks/winforms.yaml, so the gap
+	// is closed and the entry is gone. See vbnet_winforms_rules_6537_test.go.
 	{Language: "assembly", Reason: "D: no rule bucket; no framework layer is expected for assembly"},
 	{Language: "astro", Reason: "D: no rules/astro bucket; Astro is itself the framework, and its integrations are unrecognised"},
 	{Language: "avro", Reason: "D: no rule bucket; schema IDL with no framework layer"},
@@ -131,4 +130,24 @@ var knownLanguageRuleGaps = []languageRuleGap{
 	{Language: "verilog", Reason: "D: no rule bucket; HDL has no framework layer modelled"},
 	{Language: "vhdl", Reason: "D: no rule bucket; HDL has no framework layer modelled"},
 	{Language: "vue", Reason: "D: no rules/vue bucket; Vue recognition lives under javascript_typescript, which is not aliased onto vue"},
+}
+
+// closedLanguageRuleGaps is the other half of the ratchet. knownLanguageRuleGaps
+// shrinks as gaps close, but once an entry leaves it, NOTHING watches that
+// language any more — the guard only iterates the gap list, so a closed gap
+// reopening is invisible to it.
+//
+// This list is where a closed gap goes. Membership is checked directly against
+// d.CompiledRuleCount, not derived from the gap list, so it is reachable code:
+// a language here that stops compiling rules fails
+// TestLanguageRuleGaps6537_ClosedGapsStayClosed by name.
+//
+// (Review of PR #6600: the first attempt at this handshake inverted the
+// assertion inside TestLanguageRuleCoverage6537_ListIsCurrent — "vbnet must not
+// appear in stillOpen". stillOpen is built by iterating knownLanguageRuleGaps,
+// so once vbnet was removed from that list the condition was unsatisfiable
+// under every input and deleting the whole block survived the suite. It was a
+// comment attached to dead code. This is the reachable version.)
+var closedLanguageRuleGaps = []languageRuleGap{
+	{Language: "vbnet", Reason: "closed by #6537 Arm B: rules/vbnet/frameworks/winforms.yaml; an alias onto csharp was measured first and emitted 0 entities on VB source", Issue: "#6537"},
 }
