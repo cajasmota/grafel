@@ -181,16 +181,9 @@ func pathContains(ancestor, child string) bool {
 		// has a depth backstop. Reaching the boundary with nothing resolved
 		// leaves childNorm at the unresolved spelling, exactly as running out of
 		// parents already did.
-		below := child
-		pathboundary.Climb(filepath.Dir(child), func(cur string) bool {
-			resolved, err := filepath.EvalSymlinks(cur)
-			if err != nil {
-				below = cur
-				return false
-			}
-			childNorm = filepath.Join(resolved, filepath.Base(below))
-			return true
-		})
+		if resolved, ok := resolveDeepestExistingChild(child); ok {
+			childNorm = resolved
+		}
 	}
 
 	// On case-insensitive filesystems (macOS, Windows), use EqualFold.
@@ -229,6 +222,44 @@ func pathContains(ancestor, child string) bool {
 		return strings.HasPrefix(strings.ToLower(childWithSep), strings.ToLower(ancestorNorm))
 	}
 	return strings.HasPrefix(childWithSep, ancestorNorm)
+}
+
+// resolveDeepestExistingChild returns child with its longest existing ancestor
+// replaced by that ancestor's symlink-resolved form, with the not-yet-existing
+// tail appended. The bool reports whether anything resolved at all; when it is
+// false the caller must keep the returned (unresolved) spelling.
+//
+// Every component consumed during the climb is accumulated and re-joined, not
+// just the last one: filepath.Join(resolved, filepath.Base(below)) kept only
+// the FIRST missing component — below is overwritten on every failure, so it
+// holds the SHALLOWEST level the climb failed on — and a climb of more than
+// one level therefore dropped everything under it, returning a
+// plausible-looking path that was not the one asked about (#6580).
+//
+// The walk assumes filepath.Dir and filepath.Base partition child, which is
+// false for a trailing separator: Dir("/a/b/") is "/a/b", so "b" would be
+// contributed twice and land in the result twice. child is cleaned on entry
+// rather than left as a documented precondition, because unlike pathContains
+// this helper is independently callable and a duplicated component is exactly
+// the silently-plausible wrong answer #6580 is about. Every current caller
+// already passes an absolute, cleaned path, so the Clean is a no-op for them.
+func resolveDeepestExistingChild(child string) (string, bool) {
+	child = filepath.Clean(child)
+	tail := []string{filepath.Base(child)}
+	out := child
+	ok := pathboundary.Climb(filepath.Dir(child), func(cur string) bool {
+		resolved, err := filepath.EvalSymlinks(cur)
+		if err != nil {
+			tail = append(tail, filepath.Base(cur))
+			return false
+		}
+		for i := len(tail) - 1; i >= 0; i-- {
+			resolved = filepath.Join(resolved, tail[i])
+		}
+		out = resolved
+		return true
+	})
+	return out, ok
 }
 
 // hasGitDirInTree walks dir upward looking for a .git file or directory,
