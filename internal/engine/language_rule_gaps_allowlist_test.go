@@ -91,11 +91,10 @@ var knownLanguageRuleGaps = []languageRuleGap{
 	{Language: "nim", Reason: "C: no rules/nim bucket; ORM/migration recognition is 10 custom_nim_* Go extractors"},
 
 	// --- (D) no bucket, no framework recognition ----------------------------
-	// The reported instance. Arm B of #6537 decides alias-vs-own-bucket and
-	// lands the content; when it does, this entry must be deleted or the guard
-	// fails.
-	{Language: "vbnet", Reason: "D: no rules/vbnet bucket and no VB.NET cross-extractor; measured as 0.0% framework annotation across 45,663 entities on a real WinForms codebase", Issue: "#6537"},
-
+	// vbnet USED to be listed here — the reported instance from #6535. Arm B of
+	// #6537 measured alias-vs-own-bucket (an alias onto csharp emits 0 entities
+	// on VB source) and landed rules/vbnet/frameworks/winforms.yaml, so the gap
+	// is closed and the entry is gone. See vbnet_winforms_rules_6537_test.go.
 	{Language: "assembly", Reason: "D: no rule bucket; no framework layer is expected for assembly"},
 	{Language: "astro", Reason: "D: no rules/astro bucket; Astro is itself the framework, and its integrations are unrecognised"},
 	{Language: "avro", Reason: "D: no rule bucket; schema IDL with no framework layer"},

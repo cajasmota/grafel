@@ -1,0 +1,14 @@
+# VB.NET rule bucket (#6537 Arm B, from contributor report #6535).
+#
+# The loader buckets rules by top-level dirname and walks
+# frameworks/ orms/ queues/ only; this manifest and any root-level YAML are
+# skipped as non-rule files (internal/engine/loader.go:75-85).
+#
+# ALIAS-VS-OWN-BUCKET: measured, not assumed. Running realistic legacy VB.NET
+# WinForms source through Detect with Language="csharp" — what an alias
+# vbnet -> csharp would do — emits 0 entities and 0 relationships, even though
+# the csharp bucket compiles 46 rules (27 source_patterns). C# rule regexes are
+# written against braces, `void`, `[Attribute]` and `//`; VB.NET uses
+# Sub/End Sub, Inherits, Handles, WithEvents and `'`. An alias would have made
+# the #6537 gap guard green while firing nothing. Hence a real bucket.
+frameworks: frameworks/ [winforms]

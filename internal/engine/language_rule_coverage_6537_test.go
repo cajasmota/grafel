@@ -253,12 +253,14 @@ func TestLanguageRuleCoverage6537_ListIsCurrent(t *testing.T) {
 			len(knownLanguageRuleGaps), len(stillOpen), stillOpen)
 	}
 
-	// vbnet is the reported instance (#6535) and the reason this guard exists.
-	// When Arm B lands a `vbnet` bucket this assertion fails and the entry gets
-	// deleted — which is the intended, visible handshake between the two arms.
-	if !contains(stillOpen, "vbnet") {
-		t.Errorf("vbnet is no longer an open rule gap; remove it from knownLanguageRuleGaps "+
-			"(and update this assertion) — open gaps are now: %v", stillOpen)
+	// vbnet was the reported instance (#6535) and the reason this guard exists.
+	// Arm B of #6537 landed rules/vbnet/frameworks/winforms.yaml, so it is no
+	// longer a gap — the assertion that it still was one was deleted in the same
+	// commit, which is the intended, visible handshake between the two arms.
+	// The direction is now inverted: vbnet must NOT reappear in the gap list.
+	if contains(stillOpen, "vbnet") {
+		t.Errorf("vbnet is an open rule gap again; rules/vbnet no longer compiles anything "+
+			"(#6537 Arm B) — open gaps are now: %v", stillOpen)
 	}
 }
 

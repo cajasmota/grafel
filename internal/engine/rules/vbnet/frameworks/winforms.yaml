@@ -1,0 +1,131 @@
+# VB.NET WinForms framework extraction rules
+# Schema: FrameworkExtractionSchema (internal/engine/schema.go)
+#
+# Deliberately targets LEGACY, pre-SDK .NET Framework WinForms — the stack in
+# contributor report #6535. rules/csharp/frameworks/winforms.yaml carries a
+# `notes` field that explicitly defers that era ("Legacy projects have pre-SDK
+# .csproj with System.Windows.Forms reference") and detects on
+# Sdk="Microsoft.NET.Sdk.WindowsDesktop" / <UseWindowsForms>true</UseWindowsForms>,
+# neither of which a pre-SDK project has. That deferral therefore does NOT
+# apply here: every pattern below keys off VB *source* syntax that a pre-SDK
+# project emits just as a modern one does, so no project-file era gate is
+# involved at all.
+
+frameworks:
+  name: WinForms
+  category: desktop_windows
+  nuget_package: null
+  sdk_attribute: Microsoft.NET.Sdk.WindowsDesktop
+  detection:
+    # Literal source substrings. `Imports ...` is VB-only (C# says `using`),
+    # which is why it is listed separately from the bare namespace.
+    import_markers:
+    - Imports System.Windows.Forms
+    - System.Windows.Forms
+    config_files:
+    - '*.Designer.vb'
+    - '*.resx'
+    - ApplicationEvents.vb
+    code_patterns:
+    - Inherits System.Windows.Forms.Form
+    - WithEvents
+    - InitializeComponent()
+    - Application.Run(New
+    - Me.Controls.Add(
+    notes: >
+      Legacy pre-SDK VB.NET WinForms. `*.Designer.vb` is generated designer
+      code; it is still scanned because the `Friend WithEvents` control field
+      block lives there and is the only place the control inventory appears.
+      `Handles <Control>.<Event>` is the VB event binding — it has no C#
+      equivalent (C# uses `+=` in InitializeComponent), and it is the single
+      strongest structural signal in the language.
+
+# ---------------------------------------------------------------------------
+# Extraction schema
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Generated designer partial — carries the control inventory.
+  - glob: "*.Designer.vb"
+    entity_type: Component
+    name_from: class_name
+    description: VB.NET WinForms generated designer partial class
+  # My Project/ holds the VB application framework wiring.
+  - glob: "*/My Project/*.vb"
+    entity_type: Config
+    name_from: filename
+    description: VB.NET My Project application framework wiring
+
+source_patterns:
+  # Form class. VB spells inheritance `Inherits`, on its own line after the
+  # class header; C# uses `: Form` on the header itself, so this cannot match
+  # C#. Handles `Public Class`, `Friend Class`, `Partial Public Class`, …
+  - pattern: '(?m)^[ \t]*(?:(?:Public|Friend|Private|Protected|Partial|NotInheritable|MustInherit)[ \t]+)*Class[ \t]+(\w+)[\s\S]{0,400}?^[ \t]*Inherits[ \t]+(?:System\.Windows\.Forms\.)?Form[ \t]*$'
+    entity_type: View
+    name_group: 1
+    scope: class
+
+  # UserControl subclass — a reusable composite control.
+  - pattern: '(?m)^[ \t]*(?:(?:Public|Friend|Private|Protected|Partial|NotInheritable|MustInherit)[ \t]+)*Class[ \t]+(\w+)[\s\S]{0,400}?^[ \t]*Inherits[ \t]+(?:System\.Windows\.Forms\.)?UserControl[ \t]*$'
+    entity_type: Component
+    name_group: 1
+    scope: class
+
+  # Designer control field. `WithEvents` is a VB-only modifier; the whole
+  # declaration form (`As <Type>` instead of `<Type> name`) is VB-only too.
+  - pattern: '(?m)^[ \t]*(?:Friend|Private|Public|Protected)(?:[ \t]+Shared)?[ \t]+WithEvents[ \t]+(\w+)[ \t]+As[ \t]+(?:System\.Windows\.Forms\.)?\w+'
+    entity_type: Component
+    name_group: 1
+    scope: class
+
+  # Event handler bound by a Handles clause. `Sub … Handles X.Y` has no C#
+  # equivalent at all.
+  - pattern: '(?m)^[ \t]*(?:(?:Private|Public|Friend|Protected|Overrides|Shared)[ \t]+)*Sub[ \t]+(\w+)[ \t]*\([^\n]*\)[ \t]+Handles[ \t]+[\w.]+'
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # Standard module — VB-only construct, and the usual home of the entry point.
+  # Gated on the WinForms import markers because `Module Foo` on its own says
+  # nothing about WinForms.
+  - pattern: '(?m)^[ \t]*(?:(?:Public|Friend)[ \t]+)?Module[ \t]+(\w+)[ \t]*$'
+    entity_type: Module
+    name_group: 1
+    scope: file
+    requires_framework: true
+
+  # Startup form. VB's `New` is capitalised; C# writes `new`, and these
+  # patterns are case-sensitive.
+  - pattern: 'Application\.Run\s*\(\s*New[ \t]+([\w.]+)\s*\('
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+  # Control added to a form in designer code. `Me.` is VB's `this.`.
+  - pattern: 'Me\.Controls\.Add\s*\(\s*Me\.(\w+)\s*\)'
+    entity_type: Component
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # The Handles clause binds a control to its handler. This is the edge the
+  # graph could never draw for VB.NET before this bucket existed.
+  #
+  # `Handles MyBase.<Event>` binds to the form itself rather than to a child
+  # control; it is captured too, as Component:MyBase, because the binding is
+  # real and dropping it would hide every form-lifecycle handler (Load,
+  # Closing, Resize) — which in a legacy WinForms app is most of them.
+  - pattern: '(?m)^[ \t]*(?:(?:Private|Public|Friend|Protected|Overrides|Shared)[ \t]+)*Sub[ \t]+(\w+)[ \t]*\([^\n]*\)[ \t]+Handles[ \t]+(\w+)\.\w+'
+    source_type: Component
+    target_type: Operation
+    relationship: HANDLES
+    source_group: 2
+    target_group: 1
+
+  # Entry-point module starts a form.
+  - pattern: '(?m)^[ \t]*(?:(?:Public|Friend)[ \t]+)?Module[ \t]+(\w+)[\s\S]{0,600}?Application\.Run\s*\(\s*New[ \t]+([\w.]+)\s*\('
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 1
+    target_group: 2
