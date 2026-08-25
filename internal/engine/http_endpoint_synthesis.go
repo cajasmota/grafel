@@ -3544,7 +3544,7 @@ func synthesizeFastAPI(content, relPath string, emit emitDefFn, emitMount func(t
 			continue
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
-		defLine := lineOfOffset(content, idx[8])
+		defLine := pythonLineOfOffset(content, idx[8])
 		emit(verb, canonical, "fastapi", "Controller", handler, defLine)
 	}
 
@@ -3565,7 +3565,7 @@ func synthesizeFastAPI(content, relPath string, emit emitDefFn, emitMount func(t
 			continue
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
-		defLine := lineOfOffset(content, idx[8])
+		defLine := pythonLineOfOffset(content, idx[8])
 		methods := parseFlaskMethods(tail) // same methods=[...] shape
 		if len(methods) == 0 {
 			methods = []string{"GET"}
@@ -3615,7 +3615,7 @@ func synthesizeFastAPIAddRoute(content string, emit emitDefFn) {
 			defLine = findPyDefLine(content, refName)
 		}
 		if defLine == 0 {
-			defLine = lineOfOffset(content, idx[0])
+			defLine = pythonLineOfOffset(content, idx[0])
 		}
 		for _, verb := range methods {
 			emit(verb, canonical, "fastapi", refKind, refName, defLine)
