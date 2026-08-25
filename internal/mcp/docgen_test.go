@@ -83,6 +83,11 @@ func newDocgenServer(t *testing.T) (*Server, string) {
 	}
 	docgenMu.Unlock()
 
+	// #6639: and drain again on the way OUT. Clearing at setup protects this
+	// test from its predecessors and does nothing for its successors, which is
+	// the direction the #6639 failure travelled.
+	releaseDocgenRuns(t)
+
 	return srv, tmpDir
 }
 

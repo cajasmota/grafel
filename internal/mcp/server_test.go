@@ -3168,6 +3168,21 @@ func TestReloadFBOnlyRepo(t *testing.T) {
 //
 // All 30 registered tools must pass.
 func TestElapsedMSCoverageAllTools(t *testing.T) {
+	// #6639: this table drives grafel_save_finding, grafel_persona_event,
+	// grafel_feedback_event, grafel_mcp_metrics and grafel_apply_doc_semantics,
+	// whose writers all resolve under registry.HomeDir(). With no home
+	// isolation at all, every run of this test wrote findings, telemetry and
+	// metrics into the DEVELOPER'S REAL ~/.grafel. The existing home-isolation
+	// guard could not see it: it is keyed on the presence of a Setenv("HOME",…)
+	// call and says nothing about a test that isolates nothing whatsoever
+	// (home_isolation_guard_6288_test.go:43-45, in its own words).
+	sandboxGrafelHome(t)
+	// #6639: grafel_docgen_start_run below leaves an entry in the package-level
+	// docgenRunsByGroup under group "g", and TestWorkflowDocgenDispatch uses
+	// the same group name — under -shuffle=1724578000 it then took the resume
+	// branch and reported THIS test's run.
+	releaseDocgenRuns(t)
+
 	dir := t.TempDir()
 	repo := filepath.Join(dir, "r1")
 	if err := os.MkdirAll(repo, 0o755); err != nil {
@@ -3234,7 +3249,12 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"grafel_pr_impact": {"group": "g", "repo": "r1", "base": "main", "head": "feat/x"},
 		// #2214 (epic #2207): 6 docgen staging tools. Pass no_git=true so the
 		// handler doesn't require a real git repo. group is required for most.
-		"grafel_docgen_start_run": {"group": "g", "no_git": true},
+		// #6639: cwd is load-bearing. Without it inferCWD falls back to
+		// os.Getwd() — this package's directory — and the staging root is
+		// anchored on the PROJECT root, so the run landed in the checkout at
+		// <repo>/.grafel/staging. no_git=true does not prevent that; it is
+		// consulted only when the git toplevel comes back empty.
+		"grafel_docgen_start_run": {"group": "g", "no_git": true, "cwd": dir},
 		"grafel_docgen_status":    {"run_id": "2026-05-26-testid01", "no_git": true},
 		"grafel_docgen_validate":  {"run_id": "2026-05-26-testid01", "no_git": true},
 		"grafel_docgen_promote":   {"run_id": "2026-05-26-testid01", "group": "g", "no_git": true},
