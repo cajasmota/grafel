@@ -63,12 +63,22 @@
 // merely be duplicated — it would be relabelled framework=utoipa_axum. The
 // Rocket guard tests assert the framework stamp for exactly that reason.
 //
-// Scope — Arms A and B1 only (#6560)
-// ----------------------------------
+// Scope — Arms A, B1 and B2a only (#6560)
+// ---------------------------------------
 // Arm B1 added the multi-handler form `routes!(a, b, c)`: every argument is
 // resolved against the same-file attribute map exactly as the single-handler
 // case already was, and the macro is skipped WHOLE if any argument is not a bare
 // identifier. Everything stays file-scoped, so the dedupe below is untouched.
+//
+// Arm B2a added SAME-FILE `.nest("/prefix", ...)` composition. The prefix is
+// resolved with rustNestPrefixFor (http_endpoint_axum.go), the same helper and
+// the same windowed heuristic synthesizeAxumRoutes uses for `.route(...)` — it
+// was extracted from that pass rather than copied, so the two spellings of one
+// syntax cannot drift apart. Resolution is per MACRO, at the `routes!` offset,
+// so every handler in `routes!(a, b)` shares its mount point; a handler named by
+// two macros under different nests still mints once, under the first, because
+// `minted` is keyed by handler name alone. This too is entirely file-scoped: the
+// nest must be visible in this file's bytes, so no dedupe decision is involved.
 //
 // Deliberately NOT handled here; these are Arm B2 and are left to emit nothing
 // rather than to emit a guess:
@@ -77,9 +87,9 @@
 //     `#[utoipa::path]` attribute lives in another file) — the attribute map is
 //     built from THIS file only, and an unknown handler is skipped. A fabricated
 //     endpoint is worse than a missing one.
-//   - `OpenApiRouter::nest("/prefix", ...)` prefix composition — the axum pass's
-//     nest handling is not threaded onto these routes, so a nested utoipa router
-//     yields the unprefixed attribute path.
+//   - CROSS-FILE `OpenApiRouter::nest("/prefix", ...)` — a router built in this
+//     file and nested from another one still yields the unprefixed path. Only
+//     the same-file nest is composed (Arm B2a, below).
 //
 // Three narrower shapes also fail to match, all in the safe direction and none a
 // regression from Arm A, recorded so the next reader does not rediscover them:
@@ -311,16 +321,22 @@ func synthesizeUtoipaAxumRoutes(content string, emit emitFn) {
 	}
 
 	registeredElsewhere := utoipaRegisteredElsewhere(content)
+	nests := rustNestEntries(content)
 
 	minted := map[string]bool{}
-	for _, m := range utoipaRoutesMacroRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 2 {
+	for _, m := range utoipaRoutesMacroRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 || m[2] < 0 {
 			continue
 		}
+		// The nest prefix is resolved once per MACRO, at the macro's own byte
+		// offset, and shared by every handler it registers — the whole
+		// `routes!(a, b)` invocation sits at one mount point (#6560 B2a).
+		prefix := rustNestPrefixFor(content, nests, m[0])
+
 		// One macro may register several handlers. Each argument is resolved
 		// independently — a sibling that another producer already owns, or that
 		// has no same-file contract, is skipped WITHOUT suppressing the rest.
-		for _, handler := range utoipaMacroHandlerArgs(m[1]) {
+		for _, handler := range utoipaMacroHandlerArgs(content[m[2]:m[3]]) {
 			if registeredElsewhere[handler] || minted[handler] {
 				continue
 			}
@@ -329,7 +345,8 @@ func synthesizeUtoipaAxumRoutes(content string, emit emitFn) {
 				// No same-file contract for this handler — Arm B2 territory.
 				continue
 			}
-			canonical := httproutes.Canonicalize(httproutes.FrameworkAxum, route.path)
+			canonical := httproutes.Canonicalize(httproutes.FrameworkAxum,
+				rustJoinNestPrefix(prefix, route.path))
 			if canonical == "" {
 				continue
 			}
