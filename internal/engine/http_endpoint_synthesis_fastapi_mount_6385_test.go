@@ -407,9 +407,29 @@ app.include_router(other.router, prefix="/docafterbroken")
 """
 `
 	// Premise: the fixture really is unterminated, and both inert regions sit
-	// after it. Without this, a later edit could quietly make the case vacuous.
-	if !strings.Contains(broken, "BROKEN = \"unterminated\n") {
+	// AFTER it. Without this, a later edit could quietly make the case vacuous
+	// — moving the comment and the docstring above the BROKEN line leaves the
+	// fixture unterminated but puts the contested text out of the runaway
+	// literal's reach, and the case then passes with or without the newline arm.
+	brk := strings.Index(broken, "BROKEN = \"unterminated\n")
+	if brk < 0 {
 		t.Fatalf("#6598: fixture no longer carries an unterminated single-line quote: %q", broken)
+	}
+	for off, n := 0, 0; ; n++ {
+		k := strings.Index(broken[off:], "include_router")
+		if k < 0 {
+			if n != 2 {
+				t.Fatalf("#6598: fixture must carry exactly 2 include_router occurrences, both after the "+
+					"unterminated quote; found %d: %q", n, broken)
+			}
+			break
+		}
+		if off+k < brk {
+			t.Fatalf("#6598: an include_router occurrence at index %d sits BEFORE the unterminated quote at "+
+				"index %d — the runaway literal cannot reach it, so this case observes nothing: %q",
+				off+k, brk, broken)
+		}
+		off += k + len("include_router")
 	}
 
 	masked := pythonMaskInertRegions(broken)
