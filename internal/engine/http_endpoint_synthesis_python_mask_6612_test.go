@@ -39,6 +39,19 @@ func TestPythonMaskInertRegions_UnterminatedTripleQuoteTrailingBackslash_6612(t 
 			"literal never runs j past the end, so this test is now VACUOUS — restore the "+
 			"unterminated literal or delete the test.", n, src)
 	}
+	// Containing a `"""` is not the same as REACHING the triple-quote branch:
+	// `# """abc\` is eaten by the comment branch and `x = "a"""abc\` by the
+	// single-line branch, and both satisfy the two guards above while observing
+	// nothing. Require the `"""` to be the FIRST quote-or-comment character, so
+	// it is the opener the scanner actually dispatches on.
+	if first, triple := strings.IndexAny(src, "#\"'"), strings.Index(src, `"""`); first != triple {
+		t.Fatalf("#6612 premise broken: the `\"\"\"` must be the FIRST quote-or-comment "+
+			"character in the fixture so the triple-quote branch is the one that RUNS; first "+
+			"such character is at %d, the `\"\"\"` is at %d, in %q. A `#` comment or an "+
+			"earlier single quote consumes the line before the triple-quote branch is ever "+
+			"entered, so this test is now VACUOUS — restore a fixture whose `\"\"\"` opens "+
+			"the first literal, or delete the test.", first, triple, src)
+	}
 
 	// Recover so the mutant surfaces as a test failure rather than taking the
 	// whole test binary down with it.
