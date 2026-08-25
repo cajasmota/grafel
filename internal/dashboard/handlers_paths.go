@@ -164,13 +164,26 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 			isWebhook := e.PropGet("is_webhook") == "true"
 			owningBackend := e.PropGet("owning_backend")
 			if owningBackend == "" {
-				// Fallback: the repo slug. An endpoint entity's Name is the
-				// synthetic route ID ("http:<VERB>:<path>"), never a handler
-				// symbol, so there is no backend name to recover from it —
-				// the affix heuristic that used to live here only ever matched
-				// PascalCase URL path segments and published lowercased URL
-				// fragments as backend names (#6592). The repo slug is the same
-				// grouping key v2_paths.go already uses unconditionally.
+				// Fallback: the repo slug, unconditionally.
+				//
+				// The affix heuristic that used to live here (added under
+				// #1218 as a compat shim for graphs predating #1217) tried to
+				// recover a backend name from e.Name by substring-matching
+				// "Handler"/"Controller"/"Service"/... and lowercasing the
+				// text to its left. Most producers put the synthetic route ID
+				// ("http:<VERB>:<path>") in Name; a few put a real symbol or a
+				// "webhook:..." string. It does not matter which: no producer
+				// sets a path property *and* a symbol Name, which is the only
+				// shape that could have fed the heuristic a real handler name.
+				// Absent the property, e.Name *is* the path and has passed the
+				// isHTTPEndpointPath guard above, so it starts with "/" or
+				// "http(s)://" and the text left of any affix match is a URL
+				// fragment. Either way the heuristic could only ever publish
+				// lowercased URL fragments as user-visible backend names
+				// (#6592).
+				//
+				// The repo slug is the same grouping key v2_paths.go already
+				// uses for this data.
 				owningBackend = r.Slug
 			}
 			endpoints = append(endpoints, rawEndpoint{

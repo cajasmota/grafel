@@ -89,13 +89,40 @@ func TestExportOpenAPI_SyntheticIDNameYieldsRepoSlugTag(t *testing.T) {
 // caller (handlers_paths.go). All five endpoints must collapse into the one
 // repo-slug backend rather than fanning out into URL-fragment names (#6592).
 func TestPathsList_SyntheticIDNameYieldsRepoSlugBackend(t *testing.T) {
+	backends := pathsListBackends(t, syntheticIDEndpoints())
+	if len(backends) != 1 {
+		names := make([]string, 0, len(backends))
+		for _, b := range backends {
+			names = append(names, b.Name)
+		}
+		t.Fatalf("owning_backends = %v, want exactly one entry named repo1", names)
+	}
+	if backends[0].Name != "repo1" {
+		t.Errorf("backend name = %q, want %q (the repo slug)", backends[0].Name, "repo1")
+	}
+	if backends[0].EndpointCount != 5 {
+		t.Errorf("endpoint_count = %d, want 5", backends[0].EndpointCount)
+	}
+}
+
+// pathsBackendRow is the subset of the Paths-panel owning_backends payload
+// these tests assert on.
+type pathsBackendRow struct {
+	Name          string `json:"name"`
+	EndpointCount int    `json:"endpoint_count"`
+}
+
+// pathsListBackends runs GET /api/paths/{group} over a single repo ("repo1")
+// holding ents, and returns the owning_backends rows.
+func pathsListBackends(t *testing.T, ents []graph.Entity) []pathsBackendRow {
+	t.Helper()
 	srv, err := NewServer(DefaultConfig(), newFakeStore())
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
 	srv.graphs.mu.Lock()
 	srv.graphs.entries["g"] = &cacheEntry{
-		group:    openAPITestGroup("g", syntheticIDEndpoints()),
+		group:    openAPITestGroup("g", ents),
 		loadedAt: time.Now(),
 	}
 	srv.graphs.mu.Unlock()
@@ -107,42 +134,37 @@ func TestPathsList_SyntheticIDNameYieldsRepoSlugBackend(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
 	}
-
 	var body struct {
-		OwningBackends []struct {
-			Name          string `json:"name"`
-			EndpointCount int    `json:"endpoint_count"`
-		} `json:"owning_backends"`
+		OwningBackends []pathsBackendRow `json:"owning_backends"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("bad JSON: %v", err)
 	}
-	if len(body.OwningBackends) != 1 {
-		names := make([]string, 0, len(body.OwningBackends))
-		for _, b := range body.OwningBackends {
-			names = append(names, b.Name)
-		}
-		t.Fatalf("owning_backends = %v, want exactly one entry named repo1", names)
-	}
-	if body.OwningBackends[0].Name != "repo1" {
-		t.Errorf("backend name = %q, want %q (the repo slug)", body.OwningBackends[0].Name, "repo1")
-	}
-	if body.OwningBackends[0].EndpointCount != 5 {
-		t.Errorf("endpoint_count = %d, want 5", body.OwningBackends[0].EndpointCount)
-	}
+	return body.OwningBackends
 }
 
-// TestOwningBackendFallback_EmptyAndMalformedNames pins the degenerate
-// shapes: an empty Name, and a synthetic ID whose path portion is missing.
-// Neither may produce anything other than the repo slug.
-func TestOwningBackendFallback_EmptyAndMalformedNames(t *testing.T) {
-	ents := []graph.Entity{
+// bareEndpoints returns endpoints carrying *no* properties beyond method,
+// verb and path: no owning_backend and, deliberately, no framework either.
+// This is a large real class — django urlconf mounts, webhooks, serverless,
+// and YAML-rule Route entities — and it is the class that catches a fallback
+// accidentally gated on some other property being present.
+//
+// The Names are the degenerate shapes: empty, and a synthetic ID whose path
+// portion is missing.
+func bareEndpoints() []graph.Entity {
+	return []graph.Entity{
 		graph.Entity{ID: "e1", Name: "", Kind: "http_endpoint_definition"}.
 			WithProperties(map[string]string{"method": "GET", "verb": "GET", "path": "/api/ping"}),
 		graph.Entity{ID: "e2", Name: "http::", Kind: "http_endpoint_definition"}.
 			WithProperties(map[string]string{"method": "GET", "verb": "GET", "path": "/api/ServiceRegistry"}),
 	}
-	srv := newOpenAPITestServer(t, "g", ents)
+}
+
+// TestOwningBackendFallback_EmptyAndMalformedNames pins the degenerate
+// shapes on the OpenAPI caller. Neither may produce anything other than the
+// repo slug.
+func TestOwningBackendFallback_EmptyAndMalformedNames(t *testing.T) {
+	srv := newOpenAPITestServer(t, "g", bareEndpoints())
 	req := httptest.NewRequest(http.MethodGet, "/api/export/g/openapi?format=json", nil)
 	req.SetPathValue("group", "g")
 	w := httptest.NewRecorder()
@@ -156,6 +178,23 @@ func TestOwningBackendFallback_EmptyAndMalformedNames(t *testing.T) {
 	}
 	if len(doc.Tags) != 1 || doc.Tags[0].Name != "repo1" {
 		t.Fatalf("doc.Tags = %+v, want exactly [repo1]", doc.Tags)
+	}
+}
+
+// TestPathsList_BareEndpointsYieldRepoSlugBackend pins the same degenerate
+// shapes on the *Paths* caller. The fallback must be unconditional: an
+// endpoint carrying neither owning_backend nor framework still belongs to the
+// repo slug, never to an empty backend name.
+func TestPathsList_BareEndpointsYieldRepoSlugBackend(t *testing.T) {
+	backends := pathsListBackends(t, bareEndpoints())
+	if len(backends) != 1 {
+		t.Fatalf("owning_backends = %+v, want exactly one entry", backends)
+	}
+	if backends[0].Name != "repo1" {
+		t.Errorf("backend name = %q, want %q (the repo slug)", backends[0].Name, "repo1")
+	}
+	if backends[0].EndpointCount != 2 {
+		t.Errorf("endpoint_count = %d, want 2", backends[0].EndpointCount)
 	}
 }
 
