@@ -97,6 +97,15 @@ type Report struct {
 	// reported separately from the defect count so the raw signal survives
 	// instead of being silently dropped.
 	OrphanTerminalByKind map[string]KindStats
+	// OrphanLeafByKind holds the same shape for orphans that are TERMINAL BY
+	// SUBTYPE — storage leaves (`field`, `column`, `property`) inside a kind
+	// that otherwise participates (#6599). The per-kind derivation below
+	// cannot express these: SCOPE.Operation participates because methods call
+	// things, so before #6599 every property leaf of the kind landed in the
+	// defect count. They are excluded from OrphanByKind's numerator and
+	// reported here instead — never in OrphanTerminalByKind, whose membership
+	// history.go reads as proof the KIND never participated.
+	OrphanLeafByKind map[string]KindStats
 
 	// Section 3 — Resolution Disposition
 	Resolution      ResolutionVector
@@ -141,6 +150,7 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		EntitiesByLanguage:   make(map[string]int),
 		OrphanByKind:         make(map[string]KindStats),
 		OrphanTerminalByKind: make(map[string]KindStats),
+		OrphanLeafByKind:     make(map[string]KindStats),
 		FrameworkHits:        make(map[string]int),
 	}
 
@@ -419,18 +429,20 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 	// regression still costs confidence and still gets named. render.go labels
 	// the bucket accordingly and the entities stay counted and visible.
 	//
-	// (2) This derivation is per-KIND, which is strictly coarser than the two
-	// per-entity rules it replaced (a field leaf was exempted individually by
-	// Subtype; a container Component by a subtype name list). One participating
-	// non-field member of a kind therefore flips every unwired field leaf of
-	// that kind into the defect bucket. That is the deliberate trade — the
-	// per-subtype exemption is exactly the hand-maintained name list #6346
-	// asked us to delete, and the #6361 failure class — but it is a real cost,
-	// measured: of the 9 kinds that newly fail the orphan-rate gate across 12
-	// corpus repos, 2 (express-realworld and laravel-routing SCOPE.Schema) are
-	// this effect rather than new signal, dominated by field leaves (43/60 and
-	// 109/112 of their unwired entities). TestGenerate_MixedParticipation-
-	// SchemaFlipsFieldLeaves pins both sides of it.
+	// (2) This derivation is per-KIND, which cannot see a STORAGE LEAF inside a
+	// participating kind. That cost was accepted at #6346 and measured at
+	// #6583: on 3 real VB.NET trees SCOPE.Operation read 51.3% orphan, of which
+	// `property` leaves were 75.2% of the pool, and SCOPE.Schema `field` leaves
+	// were 90.8% of that kind's. SCOPE.Operation participates by construction —
+	// methods call things — so no per-kind rule can ever excuse them.
+	//
+	// #6599 therefore restores the leaf half of the exemption ONLY, keyed on
+	// terminalLeafSubtypes, and leaves terminality itself per-kind (#6538 wants
+	// to re-key it per (kind, subtype-class); that is a different change and is
+	// pinned against by TestGenerate_MixedParticipationSchemaFlipsFieldLeaves).
+	// Exempted leaves go to OrphanLeafByKind, NOT to the terminal bucket, and
+	// the denominator is untouched: what counts as an orphan did not change,
+	// only which orphans are charged as defects.
 	kindSemanticParticipation := make(map[string]int)
 	for id, es := range entityEdges {
 		if es.semanticOut > 0 || es.semanticIn > 0 {
@@ -440,6 +452,7 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 
 	// Compute orphan counts per kind, split into DEFECT vs expected/terminal.
 	kindTerminalOrphans := make(map[string]int)
+	kindLeafOrphans := make(map[string]int)
 	for id, es := range entityEdges {
 		// Direction-aware: an entity pointed AT by a semantic edge is attached
 		// to the graph even when it sources nothing (#6313).
@@ -450,6 +463,15 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 
 		if kindSemanticParticipation[kind] == 0 {
 			kindTerminalOrphans[kind]++
+			continue
+		}
+
+		// Terminal BY SUBTYPE: a storage leaf declares state and nothing else,
+		// so it has nothing to link and is not a gap (#6599). Checked AFTER
+		// the per-kind test so a wholly unwired kind still reports as terminal
+		// — that is the bucket history.go joins on.
+		if terminalLeafSubtypes[strings.ToLower(entitySubtype[id])] {
+			kindLeafOrphans[kind]++
 			continue
 		}
 
@@ -470,6 +492,15 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			Total:       total,
 			OrphanCount: orphans,
 			OrphanPct:   pct,
+		}
+
+		if leaves := kindLeafOrphans[kind]; leaves > 0 {
+			lpct := 100.0 * float64(leaves) / float64(total)
+			r.OrphanLeafByKind[kind] = KindStats{
+				Total:       total,
+				OrphanCount: leaves,
+				OrphanPct:   lpct,
+			}
 		}
 
 		if terminal := kindTerminalOrphans[kind]; terminal > 0 {
@@ -737,6 +768,75 @@ func datastoreEmitSiteKey(language, subtype string) string {
 //     this set already admits, so before #6543 every column was in the
 //     denominator as a permanent zero-field failure — a three-column table
 //     contributed three guaranteed failures and zero passes.
+//
+// terminalLeafSubtypes are the subtypes whose entities are STORAGE LEAVES: they
+// declare state and nothing else, so they have nothing to link and their being
+// unwired is not an edge gap (#6599).
+//
+// It is the same judgement nonClassSubtypes already encodes for the
+// field-extraction denominator, re-asked for the orphan bucket — but the two
+// sets are NOT in a subset relation, and saying so precisely matters because
+// the difference is where the judgement is actually being made. Their
+// INTERSECTION ({"field", "column"}) is a strict subset of nonClassSubtypes;
+// "property" is ADDED here deliberately, and is in neither set today —
+// nonClassSubtypes is keyed on class-like KINDS, and a VB.NET property is
+// SCOPE.Operation, one kind over, so the question never arose there.
+//
+// In the other direction, nonClassSubtypes exempts populations that are not
+// leaves and whose unwired state IS signal. Copying it whole would excuse them:
+//
+//   - "file" — a file carrier is a CONTAINER, and an unwired one is a real
+//     finding (#6597 measured 51 of 274 orphaned, 16.8% of that kind's pool).
+//   - "import" — an import placeholder is a REFERENCE to a module, and a
+//     reference that references nothing is a defect, not a leaf: it exists
+//     solely to carry an IMPORTS edge, so an unwired one means the edge was
+//     never built or the placeholder was never pruned. (It is NOT true that an
+//     entry here would have hidden #6597's mechanism-B carriers: those were
+//     SCOPE.Component with Subtype UNSET — which is precisely why the
+//     Subtype == "import" prune predicate skipped them, considered=0 — so no
+//     subtype-keyed rule could have reached them either way. #6601 fixed the
+//     emit site, so the exclusion bites from now on rather than retroactively.)
+//   - "enum" / "const" / "delegate" — exempt from the FIELD metric because they
+//     own no members, which is a different question from whether they can be
+//     referenced. They can: an enum with no inbound reference is a genuine gap.
+//
+// What is in it, and why each is a leaf rather than a container:
+//
+//   - "field" — the child of a container, extracted as its own entity
+//     (BuildSchemaFieldStructuralRef). Its only edge is the structural
+//     CONTAINS the orphan definition excludes by design.
+//   - "column" — the SQL analogue of "field" (sql.go:358), same shape (#6543).
+//     Included BY ANALOGY, not by measurement: columns appear in neither #6583
+//     nor #6597, so unlike "field" and "property" there is no corpus number
+//     behind this entry. It is expected to be inert in practice — a column
+//     population is normally wholly terminal, so the per-KIND test above
+//     catches it first and this entry is never reached — and it is here so a
+//     mixed SQL kind behaves like the mixed schema kinds that WERE measured.
+//     If a corpus ever shows columns carrying semantic edges, re-measure it.
+//   - "property" — VB.NET/C# emit properties as SCOPE.Operation
+//     (vbnet/extractor.go:253-256), i.e. the field-leaf shape one KIND over.
+//     Measured (#6583, 4,304 properties): auto-properties 94.3% orphaned, full
+//     properties with no call site 97.5%, and full properties WITH call sites
+//     0.0% — every property that has something to link is already linked. So
+//     this exemption only ever reaches the ones that declare storage; a wired
+//     property is not an orphan and never enters this branch, and no property
+//     leaves the denominator either way.
+//
+// The set is deliberately small. An over-broad entry here makes the orphan rate
+// look healthy by excusing entities that genuinely should carry edges, which is
+// strictly worse than the over-reporting #6599 exists to fix — so the set is
+// asserted MEMBER BY MEMBER, and by length, in
+// TestTerminalLeafSubtypesIsExactlyTheseThree_6599. A fixture loop over a
+// hand-listed set of non-leaf subtypes cannot do that job: it can only fail on
+// the subtypes someone thought to list, and "enum", "const", "variable" and
+// "parameter" are all real emitted subtypes that such a list missed. Widening
+// this set must be a deliberate edit to that test.
+var terminalLeafSubtypes = map[string]bool{
+	"field":    true,
+	"column":   true,
+	"property": true,
+}
+
 var nonClassSubtypes = map[string]bool{
 	"field":    true,
 	"column":   true,
