@@ -28,6 +28,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       ISSUE_TITLE: 'Language-release watch: verify grammar + extractors for upcoming versions'
       ISSUE_LABEL: grammar-release-watch
+      # Stable identity token embedded in the issue body. Keyed on instead of
+      # the title so a retitle cannot fork the thread (#6636).
+      ISSUE_MARKER: 'grafel-tracker:a3-language-release-calendar'
       CALENDAR: docs/language-release-calendar.md
     steps:
       - uses: actions/checkout@v4
@@ -86,23 +89,7 @@ jobs:
             --color FEF2C0 2>/dev/null || true
 
       - name: Create or update the single reminder issue (idempotent)
-        run: |
-          set -euo pipefail
-          # Find an existing OPEN issue by the stable label; fall back to title.
-          existing=$(gh issue list --state open --label "$ISSUE_LABEL" \
-                       --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -z "$existing" ]; then
-            existing=$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" \
-                         --json number --jq '.[0].number' 2>/dev/null || true)
-          fi
-
-          if [ -n "$existing" ]; then
-            echo "Updating existing reminder issue #$existing"
-            gh issue edit "$existing" --body-file issue-body.md
-            gh issue edit "$existing" --add-label "$ISSUE_LABEL" || true
-          else
-            echo "Creating reminder issue"
-            gh issue create --title "$ISSUE_TITLE" \
-              --label "$ISSUE_LABEL" \
-              --body-file issue-body.md
-          fi
+        env:
+          ISSUE_KIND: reminder
+          BODY_FILE: issue-body.md
+        run: .github/scripts/upsert-tracking-issue.sh
