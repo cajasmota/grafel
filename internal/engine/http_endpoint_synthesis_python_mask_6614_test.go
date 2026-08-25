@@ -57,15 +57,59 @@ BROKEN = "oops app.include_router(other.router, prefix='/tailofbroken')
 		t.Fatalf("#6614: the contested include_router must sit INSIDE the runaway literal, on the same line, "+
 			"or this case is vacuous: %q", line)
 	}
+	// A `#` anywhere LEFT of the opening quote sends the whole physical line
+	// through the COMMENT branch, which blanks it under both implementations —
+	// so the fixture would satisfy every assertion below while observing
+	// nothing about the literal branch at all. The guards above only inspect
+	// from the anchor rightward and cannot see that; this one looks left.
+	if lineStart := strings.LastIndexByte(broken[:q], '\n') + 1; strings.ContainsRune(broken[lineStart:q], '#') {
+		t.Fatalf("#6614: a `#` sits LEFT of the opening quote, so this line is masked by the COMMENT branch "+
+			"under every implementation and observes nothing about unterminated literals: %q", broken[lineStart:q+nl])
+	}
 
-	if masked := pythonMaskInertRegions(broken); strings.Contains(masked, "include_router") {
+	masked := pythonMaskInertRegions(broken)
+	if len(masked) != len(broken) {
+		t.Fatalf("#6614: masking changed the byte length: got %d, want %d", len(masked), len(broken))
+	}
+	if strings.Contains(masked, "include_router") {
 		t.Errorf("#6614: the tail of an unterminated single-line literal reached the masked copy as live code "+
 			"— everything from the opening quote to the end of the line is string content and must be blanked. "+
 			"masked=%q", masked)
 	}
-	if got := pythonMaskInertRegions(broken); len(got) != len(broken) {
-		t.Fatalf("#6614: masking changed the byte length: got %d, want %d", len(got), len(broken))
+	// Byte-exact, not just "include_router is gone": the runaway span must be
+	// blanked WHOLLY, from the opening quote through the last byte before the
+	// newline. Two off-by-ones in the blanking loop are invisible to the
+	// Contains check above and are exactly the defect family this fix was
+	// written next to.
+	//   - starting the loop at i+1 leaves the opening `"` live in the masked
+	//     copy — an unbalanced quote, which is the very shape that caused
+	//     #6598, reintroduced inside the fix for its sibling;
+	//   - stopping at j-1 leaves the final byte live, which for a line ending
+	//     in an identifier rather than `)` would leak a token to the scan.
+	if got, want := masked[q:q+nl], strings.Repeat(" ", nl); got != want {
+		t.Errorf("#6614: the runaway span was not blanked wholly — every byte from the opening quote to the "+
+			"end of the line must be a space. got %q, want %q", got, want)
 	}
+
+	// The clamp inside the blanking branch is a live panic path, not
+	// defensive noise. A trailing backslash at EOF makes the escape skip
+	// (`j += 2`) push j one past the end of the buffer; the literal is then
+	// unterminated, so the blanking loop runs — and without `j = len(b)` it
+	// indexes out of range and takes the whole indexer down. Nothing else in
+	// the suite reaches this input.
+	const backslashAtEOF = `x = "abc\`
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("#6614: pythonMaskInertRegions panicked on an unterminated literal ending in a "+
+					"backslash at EOF (%q): %v — the blanking branch needs its j > len(b) clamp", backslashAtEOF, r)
+			}
+		}()
+		if got := pythonMaskInertRegions(backslashAtEOF); len(got) != len(backslashAtEOF) {
+			t.Errorf("#6614: masking changed the byte length on %q: got %d (%q), want %d",
+				backslashAtEOF, len(got), got, len(backslashAtEOF))
+		}
+	}()
 
 	_, res := runDetect(t, "python", "app/main.py", broken)
 	if mounts := fastapiMountSynths(res); len(mounts) != 0 {
