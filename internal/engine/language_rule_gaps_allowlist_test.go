@@ -131,3 +131,23 @@ var knownLanguageRuleGaps = []languageRuleGap{
 	{Language: "vhdl", Reason: "D: no rule bucket; HDL has no framework layer modelled"},
 	{Language: "vue", Reason: "D: no rules/vue bucket; Vue recognition lives under javascript_typescript, which is not aliased onto vue"},
 }
+
+// closedLanguageRuleGaps is the other half of the ratchet. knownLanguageRuleGaps
+// shrinks as gaps close, but once an entry leaves it, NOTHING watches that
+// language any more — the guard only iterates the gap list, so a closed gap
+// reopening is invisible to it.
+//
+// This list is where a closed gap goes. Membership is checked directly against
+// d.CompiledRuleCount, not derived from the gap list, so it is reachable code:
+// a language here that stops compiling rules fails
+// TestLanguageRuleGaps6537_ClosedGapsStayClosed by name.
+//
+// (Review of PR #6600: the first attempt at this handshake inverted the
+// assertion inside TestLanguageRuleCoverage6537_ListIsCurrent — "vbnet must not
+// appear in stillOpen". stillOpen is built by iterating knownLanguageRuleGaps,
+// so once vbnet was removed from that list the condition was unsatisfiable
+// under every input and deleting the whole block survived the suite. It was a
+// comment attached to dead code. This is the reachable version.)
+var closedLanguageRuleGaps = []languageRuleGap{
+	{Language: "vbnet", Reason: "closed by #6537 Arm B: rules/vbnet/frameworks/winforms.yaml; an alias onto csharp was measured first and emitted 0 entities on VB source", Issue: "#6537"},
+}

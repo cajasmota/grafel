@@ -254,13 +254,49 @@ func TestLanguageRuleCoverage6537_ListIsCurrent(t *testing.T) {
 	}
 
 	// vbnet was the reported instance (#6535) and the reason this guard exists.
-	// Arm B of #6537 landed rules/vbnet/frameworks/winforms.yaml, so it is no
-	// longer a gap — the assertion that it still was one was deleted in the same
-	// commit, which is the intended, visible handshake between the two arms.
-	// The direction is now inverted: vbnet must NOT reappear in the gap list.
-	if contains(stillOpen, "vbnet") {
-		t.Errorf("vbnet is an open rule gap again; rules/vbnet no longer compiles anything "+
-			"(#6537 Arm B) — open gaps are now: %v", stillOpen)
+	// Arm B of #6537 landed rules/vbnet/frameworks/winforms.yaml, so its entry
+	// was deleted from knownLanguageRuleGaps in the same commit — which is what
+	// makes the two arms hand off visibly.
+	//
+	// There is deliberately no "vbnet must not be in stillOpen" assertion here.
+	// stillOpen is built by iterating knownLanguageRuleGaps, so with vbnet gone
+	// from that list such a check is unsatisfiable under every input — dead
+	// code wearing a comment. The reachable version is
+	// TestLanguageRuleGaps6537_ClosedGapsStayClosed, which checks
+	// CompiledRuleCount directly; the unlisted-gap guard in
+	// TestLanguageRuleCoverage6537_EveryProducibleLanguage catches the same
+	// regression from the other side.
+}
+
+// TestLanguageRuleGaps6537_ClosedGapsStayClosed is the ratchet's pawl. A gap
+// that has been closed leaves knownLanguageRuleGaps and thereby leaves that
+// guard's population entirely; this test keeps watching it, by asking the
+// detector directly rather than by consulting any list.
+func TestLanguageRuleGaps6537_ClosedGapsStayClosed(t *testing.T) {
+	rules, err := engine.LoadAllRules()
+	if err != nil {
+		t.Fatalf("LoadAllRules: %v", err)
+	}
+	d := engine.New(rules)
+
+	if len(closedLanguageRuleGaps) == 0 {
+		t.Fatal("closedLanguageRuleGaps is empty; this test would assert nothing")
+	}
+	for _, closed := range closedLanguageRuleGaps {
+		if closed.Reason == "" {
+			t.Errorf("closed gap %q has no Reason", closed.Language)
+		}
+		if got := d.CompiledRuleCount(closed.Language); got == 0 {
+			t.Errorf("%q was recorded as a CLOSED rule gap (%s) but compiles 0 rules again; "+
+				"its bucket has been removed or has stopped loading",
+				closed.Language, closed.Reason)
+		}
+		for _, open := range knownLanguageRuleGaps {
+			if open.Language == closed.Language {
+				t.Errorf("%q appears in BOTH knownLanguageRuleGaps and closedLanguageRuleGaps; "+
+					"a gap is one or the other", closed.Language)
+			}
+		}
 	}
 }
 

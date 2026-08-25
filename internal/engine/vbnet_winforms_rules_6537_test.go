@@ -65,6 +65,19 @@ Public Class OrderEntryForm
     Private Sub OrderEntryForm_Load(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles MyBase.Load
         Me.Text = "Orders"
     End Sub
+
+    ' Ordinary subroutines with NO Handles clause. A legacy WinForms codebase is
+    ' mostly these; they are helpers, not event handlers, and must NOT become
+    ' Operation entities. Without them, truncating the Operation pattern at the
+    ' argument list — dropping the Handles requirement entirely — was a silent
+    ' survivor that turned every subroutine in the codebase into an Operation.
+    Private Sub NotAHandler(ByVal total As Decimal)
+        Me.Text = total.ToString()
+    End Sub
+
+    Public Sub AlsoNotAHandler()
+        Me.Close()
+    End Sub
 End Class
 `
 
@@ -191,10 +204,34 @@ func TestVBNet6537_FiresOnVBWinFormsSource(t *testing.T) {
 		}
 	}
 
+	// The Handles clause is not decoration on the Operation pattern — it is the
+	// whole of it. Every Sub below has a signature identical in shape to an
+	// event handler and differs only by having no Handles clause; a pattern
+	// that merely matched `Sub <name>(` would turn every subroutine in a
+	// ~1,600-file codebase into an Operation, and before these three lines
+	// existed that mutant survived the full package suite.
+	for _, notHandler := range []string{"InitializeComponent", "NotAHandler", "AlsoNotAHandler"} {
+		if hasVBEntity(res, "Operation", notHandler) {
+			t.Errorf("Sub %q has no Handles clause but was emitted as an Operation; the "+
+				"Operation pattern is not requiring the Handles clause: %s",
+				notHandler, formatVBEntities(res))
+		}
+	}
+
 	// The Handles clause is what binds a handler to its control in VB; that
 	// binding is the edge the graph could never draw before.
 	if !hasVBRelationship(res, "HANDLES", "Component:SaveButton", "Operation:SaveButton_Click") {
 		t.Errorf("no HANDLES relationship Component:SaveButton -> Operation:SaveButton_Click; got %s",
+			formatVBRelationships(res))
+	}
+
+	// `Handles MyBase.<Event>` binds to the form itself. The rule file claims
+	// this yields Component:MyBase; nothing asserted it until now, so the claim
+	// was prose. Form-lifecycle handlers are most of the handlers in a legacy
+	// WinForms app, so losing them would be a real recall loss.
+	if !hasVBRelationship(res, "HANDLES", "Component:MyBase", "Operation:OrderEntryForm_Load") {
+		t.Errorf("no HANDLES relationship Component:MyBase -> Operation:OrderEntryForm_Load; "+
+			"the `Handles MyBase.Load` form-lifecycle binding was dropped; got %s",
 			formatVBRelationships(res))
 	}
 }
@@ -206,13 +243,76 @@ func TestVBNet6537_FiresOnEntryPointModule(t *testing.T) {
 	if !hasVBEntity(res, "Module", "Program") {
 		t.Errorf("no Module entity named %q; got %s", "Program", formatVBEntities(res))
 	}
-	if !hasVBEntity(res, "Config", "OrderEntryForm") {
-		t.Errorf("Application.Run(New OrderEntryForm()) did not register the startup form; got %s",
-			formatVBEntities(res))
-	}
+	// The startup form is reached as the TARGET of an edge, not as a fresh
+	// entity. Detector entities carry no ID and relationship endpoints are
+	// symbolic "<Kind>:<Name>", so View:OrderEntryForm resolves to the View the
+	// form's own file emits.
 	if !hasVBRelationship(res, "INSTANTIATES", "Module:Program", "View:OrderEntryForm") {
 		t.Errorf("no INSTANTIATES relationship Module:Program -> View:OrderEntryForm; got %s",
 			formatVBRelationships(res))
+	}
+
+	// Regression guard for the orphan this rule used to mint (review of
+	// PR #6600). An `Application.Run` source_pattern emitted Config:<FormName>
+	// while the edge targeted View:<FormName>, so the entity could never be any
+	// edge's endpoint — a guaranteed orphan, once per entry-point file, on the
+	// very language whose orphan rate #6535 reported.
+	for _, e := range res.Entities {
+		if string(e.Kind) == "Config" && e.Name == "OrderEntryForm" {
+			t.Errorf("Config:OrderEntryForm was emitted; no relationship rule in this bucket "+
+				"targets Config, so it is an orphan by construction: %s", formatVBEntities(res))
+		}
+	}
+}
+
+// TestVBNet6537_ModuleGateRequiresFrameworkMarker pins the requires_framework
+// gate on the Module pattern in BOTH directions. Deleting `requires_framework:
+// true` from the rule survived the full package suite until this test existed.
+//
+// It also pins the gate's real, weaker strength: import_markers are literal
+// substrings matched over the whole file, so a mention inside a `'` comment is
+// enough. That is documented in the rule file and asserted here rather than
+// being quietly assumed away.
+func TestVBNet6537_ModuleGateRequiresFrameworkMarker(t *testing.T) {
+	const noMarker = `Module MathHelpers
+    Public Function Add(ByVal a As Integer, ByVal b As Integer) As Integer
+        Return a + b
+    End Function
+End Module
+`
+	res := detectVBNet(t, "src/MathHelpers.vb", noMarker)
+	if hasVBEntity(res, "Module", "MathHelpers") {
+		t.Errorf("a Module with no WinForms marker anywhere was emitted; the requires_framework "+
+			"gate on the Module pattern is not in effect: %s", formatVBEntities(res))
+	}
+
+	// Positive control: the identical module WITH a marker does fire, so the
+	// negative above is the gate talking and not a broken pattern.
+	const withMarker = `Imports System.Windows.Forms
+
+Module MathHelpers
+    Public Function Add(ByVal a As Integer, ByVal b As Integer) As Integer
+        Return a + b
+    End Function
+End Module
+`
+	res = detectVBNet(t, "src/MathHelpers.vb", withMarker)
+	if !hasVBEntity(res, "Module", "MathHelpers") {
+		t.Errorf("positive control failed: the same module WITH an Imports marker did not fire, "+
+			"so the negative case above proves nothing: %s", formatVBEntities(res))
+	}
+
+	// Documented weakness, asserted so it cannot drift into being believed
+	// stronger than it is: a bare mention in a comment satisfies the gate.
+	const markerInComment = `' see System.Windows.Forms docs
+Module MathHelpers
+End Module
+`
+	res = detectVBNet(t, "src/MathHelpers.vb", markerInComment)
+	if !hasVBEntity(res, "Module", "MathHelpers") {
+		t.Errorf("import_markers appear to be more than a literal whole-file substring match; "+
+			"the rule file's stated limitation is now wrong and should be tightened: %s",
+			formatVBEntities(res))
 	}
 }
 
