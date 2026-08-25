@@ -441,16 +441,22 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	// regex (e.g. Spring's @GetMapping pattern). We only want one
 	// synthetic per endpoint per file.
 	seen := map[string]bool{}
-	// emitMountPoint appends an additive `url_mount_point` synthetic (#6385).
-	// These are not routable endpoints — the linker harvests them purely for
-	// their prefix — so they are deduped on the mount ID alone.
-	emitMountPoint := func(e types.EntityRecord) {
+	// emitAdditiveSynthetic appends a fully-formed ADDITIVE record, deduped on
+	// its own ID alone. Additive records are not routable endpoints and carry no
+	// (verb, path) identity to key on — the mount ID / registration ID IS the
+	// identity — so they share this one-line contract rather than makeEmit's
+	// side-scoped dedupKey.
+	emitAdditiveSynthetic := func(e types.EntityRecord) {
 		if seen[e.ID] {
 			return
 		}
 		seen[e.ID] = true
 		entities = append(entities, e)
 	}
+	// emitMountPoint appends an additive `url_mount_point` synthetic (#6385).
+	// These are not routable endpoints — the linker harvests them purely for
+	// their prefix — so they are deduped on the mount ID alone.
+	emitMountPoint := emitAdditiveSynthetic
 	// lastEndpointIdx records the index, in `entities`, of the http_endpoint
 	// (definition/call) entity appended by the most recent emit() call, or -1
 	// when that call emitted nothing (canonical-path empty, non-app file, or a
@@ -1348,6 +1354,16 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Runs AFTER synthesizeAxumRoutes and skips any handler that pass has
 		// already registered, so one handler never gets two producers (#6530).
 		synthesizeUtoipaAxumRoutes(string(content), emit)
+		// #6668 — ADDITIVE cross-file registration markers. A `routes!(h)` whose
+		// `#[utoipa::path]` attribute lives in ANOTHER module resolves to nothing
+		// above (the attribute map is file-scoped, by the #6560 ruling). This
+		// emits a SCOPE.Route marker carrying the join key resolved from THIS
+		// file's own `use` declarations, mirroring fastapiMountPointSynthetics.
+		// It mints no endpoint and folds no path: see the header of
+		// http_endpoint_utoipa_crossfile.go for the stated bound.
+		for _, e := range utoipaCrossFileRegistrations(string(content), path) {
+			emitAdditiveSynthetic(e)
+		}
 		// Producer side (#2692): Rocket attribute macros
 		// (#[get("/path")], #[post("/path")], ...).
 		synthesizeRocket(string(content), emit)
