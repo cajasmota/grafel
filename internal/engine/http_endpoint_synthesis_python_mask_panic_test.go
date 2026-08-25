@@ -38,7 +38,16 @@ import (
 // are kept as documentation of the fixture's intent; they are not claimed to
 // carry weight.
 //
-// Refs #6612 (triple-quote clamp), #6617 (the three look-ahead bounds).
+// What the masker produces for a commented-out line is likewise not asserted
+// here: that is a CONTENT claim, and it lives in
+// http_endpoint_synthesis_python_mask_comment_test.go
+// (TestPythonMaskInertRegions_QuotedSpanInsideCommentIsBlanked, #6623), which
+// pins that a quoted span inside a `#` comment is blanked rather than escaping
+// into the string branch. Add content claims about this function there, not as
+// a row in this table, whose whole contract is the crash.
+//
+// Refs #6612 (triple-quote clamp), #6617 (the three look-ahead bounds),
+// #6623 (the comment branch's content claim).
 func TestPythonMaskInertRegions_MustNotPanic(t *testing.T) {
 	// firstQuoteOrComment reports the offset of the first byte the scanner's
 	// switch dispatches on. If the construct under test is not AT that offset,
