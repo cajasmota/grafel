@@ -328,3 +328,43 @@ app.include_router(r.router, prefix="/two words")
 		})
 	}
 }
+
+// TestSynth_FastAPI_MountPrefix_SingleLineStringIsAKnownFalsePositive_6418 pins
+// a KNOWN LIMITATION, not a desired property. #6418: `pythonMaskInertRegions`
+// deliberately leaves single-line string literals INTACT — it must, because the
+// mount prefix itself lives inside one (`prefix="/x"`), and blanking short
+// literals would blank the very value the scan reads out. The cost of that
+// trade-off is this: a single-line string whose *contents* happen to spell a
+// whole `include_router(..., prefix=...)` call is not inert to the scan, so it
+// mints a `url_mount_point` synthetic for a mount that does not exist.
+//
+// This test exists so the trade-off is a recorded decision rather than an
+// accident, and so a masker change that silently altered it would be noticed.
+// It is NOT a guard against fixing the problem. The real fix is a Python
+// tokenizer that can tell a literal's contents from code; whoever writes one
+// SHOULD expect this assertion to flip to "emits nothing" and should invert it
+// deliberately. A flip here is the fix landing, not a regression.
+func TestSynth_FastAPI_MountPrefix_SingleLineStringIsAKnownFalsePositive_6418(t *testing.T) {
+	src := `from fastapi import FastAPI
+
+app = FastAPI()
+TEMPLATE = "app.include_router(other.router, prefix='/strbogus')"
+`
+	// Guard the premise: the masker must still be leaving this literal intact.
+	// If it ever blanks single-line literals, the expectation below is stale
+	// for a reason the reader needs to see spelled out.
+	if masked := pythonMaskInertRegions(src); !strings.Contains(masked, "include_router") {
+		t.Fatalf("#6418: pythonMaskInertRegions now blanks single-line literals — the known limitation this test pins is GONE. "+
+			"That is the fix, not a break: invert this test to assert no url_mount_point is emitted. masked=%q", masked)
+	}
+
+	_, res := runDetect(t, "python", "app/main.py", src)
+
+	mounts := fastapiMountSynths(res)
+	if _, ok := mounts["/strbogus"]; !ok {
+		t.Errorf("#6418: expected the KNOWN-LIMITATION url_mount_point with url_prefix=/strbogus "+
+			"(a single-line string literal is not masked, so its contents reach the mount scan), got %v. "+
+			"If you just taught the masker to tokenize Python properly, this is the intended improvement — "+
+			"flip this test to assert no mount synthetic is emitted.", mounts)
+	}
+}
