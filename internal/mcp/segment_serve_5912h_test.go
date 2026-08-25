@@ -22,7 +22,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
@@ -69,8 +68,11 @@ func writeSegmentSet(t *testing.T, doc *graph.Document) (repoDir, stateDir, genD
 	t.Helper()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "1")
 	t.Setenv("GRAFEL_SEGMENT_BYTES", "65536") // 64 KB — forces many segments
+	// #6645: segment sets are large — this seeder was writing a multi-segment
+	// fixture graph into the real store on every run.
+	stateDirFor := sandboxStateDirs(t)
 	repoDir = t.TempDir()
-	stateDir = daemon.StateDirForRepo(repoDir)
+	stateDir = stateDirFor(repoDir)
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatalf("mkdir state dir: %v", err)
 	}
@@ -237,14 +239,17 @@ func hasOutNeighbor(adj *adjacency, fromID, toID string) bool {
 // open seam, resolves to a *fbreader.Reader (NOT a MultiReader) and its reads
 // are byte-identical to a direct reader-sourced build — the byte-for-byte
 // preservation of the single-file mmap serve path.
-func TestSingleFile_ServedViaReaderForDirParity_5912h(t *testing.T) {
-	forceServeFromMMap(t, true)
+// writeSingleFileGraph is writeSegmentSet's flat-writer sibling: it forces the
+// single-file writer and fails if the fixture did not come out as one. Extracted
+// from TestSingleFile_ServedViaReaderForDirParity_5912h in #6645 — inline, its
+// bare daemon.StateDirForRepo wrote graph.1.fb + current into the developer's
+// real store, and an inline seeder is a seeder the isolation guard cannot list.
+func writeSingleFileGraph(t *testing.T, doc *graph.Document) (repoDir, genDir string) {
+	t.Helper()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "0") // force the flat single-file writer
-	const n = 40
-	doc := segFixtureDoc("s", n)
-
-	repoDir := t.TempDir()
-	stateDir := daemon.StateDirForRepo(repoDir)
+	stateDirFor := sandboxStateDirs(t)
+	repoDir = t.TempDir()
+	stateDir := stateDirFor(repoDir)
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatalf("mkdir state dir: %v", err)
 	}
@@ -259,6 +264,15 @@ func TestSingleFile_ServedViaReaderForDirParity_5912h(t *testing.T) {
 	if desc.Kind != graph.GraphSingleFile {
 		t.Fatalf("expected GraphSingleFile, got %v", desc.Kind)
 	}
+	return repoDir, gp
+}
+
+func TestSingleFile_ServedViaReaderForDirParity_5912h(t *testing.T) {
+	forceServeFromMMap(t, true)
+	const n = 40
+	doc := segFixtureDoc("s", n)
+
+	repoDir, gp := writeSingleFileGraph(t, doc)
 
 	reg := &Registry{Groups: map[string]RegistryGroup{
 		"test": {Repos: map[string]RegistryRepo{"r": {Path: repoDir}}},

@@ -10,8 +10,10 @@ package mcp
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
@@ -46,6 +48,57 @@ func sandboxGrafelHome(t *testing.T) string {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("GRAFEL_HOME", filepath.Join(home, ".grafel"))
 	return home
+}
+
+// sandboxStateDirs (#6645) is the seam every on-disk SEEDER goes through instead
+// of calling daemon.StateDirForRepo directly. It sandboxes the grafel home once
+// for the calling test and returns the resolver the seeder must use for every
+// repo it writes.
+//
+// # Why a seam and not "add sandboxGrafelHome to the seeder"
+//
+// daemon.StateDirForRepo resolves to $GRAFEL_HOME (or ~/.grafel)/store/<slug>-<hash>/
+// refs/<ref>/. A seeder that calls it with no sandbox in force writes its fixture
+// graph.fb into the DEVELOPER'S REAL grafel store — the same store the daemon and
+// the MCP tools read. #6645 measured 32 of internal/mcp's top-level tests doing
+// exactly that, every one of them landing under store/*/refs/_unknown/.
+//
+// Setting the env vars is only half the property. The half that actually matters
+// is that the resolved path LANDS in the sandbox, and the two can come apart:
+// GRAFEL_DAEMON_ROOT is consulted BEFORE GRAFEL_HOME and returns $ROOT/state/…
+// verbatim, so a developer who exports it (plausible in this repo) gets a
+// perfectly sandboxed HOME and a state dir outside it anyway. The resolver
+// therefore neutralises GRAFEL_DAEMON_ROOT for the test and then CHECKS the
+// answer, rather than trusting that setting three variables was enough. That is
+// the distinction #6288's guard documents about itself and cannot make: it is
+// keyed on isolation being ASKED FOR, this observes isolation HAPPENING.
+//
+// Returning a closure rather than a bare helper is what makes it safe in the
+// multi-repo seeders: the home is allocated ONCE per call, so every repo a
+// seeder writes shares one store — a per-repo sandboxGrafelHome would hand each
+// group a different home and leave the earlier ones unreadable after the last
+// t.Setenv won.
+func sandboxStateDirs(t *testing.T) func(repoDir string) string {
+	t.Helper()
+	home := sandboxGrafelHome(t)
+	// Empty reads as unset to daemon.storeRoot, which checks `!= ""`. Without
+	// this an exported GRAFEL_DAEMON_ROOT wins over the sandboxed home and the
+	// check below fires on a developer machine that is in fact not leaking.
+	t.Setenv("GRAFEL_DAEMON_ROOT", "")
+	prefix := filepath.Join(home, ".grafel") + string(filepath.Separator)
+	return func(repoDir string) string {
+		t.Helper()
+		dir := daemon.StateDirForRepo(repoDir)
+		if !strings.HasPrefix(dir, prefix) {
+			t.Fatalf("#6645: daemon state dir for %q resolved OUTSIDE the sandboxed grafel home\n"+
+				"  got:  %s\n  want: a path under %s\n"+
+				"The seeder is about to write a fixture graph into a REAL grafel store. "+
+				"Something in the environment out-ranks GRAFEL_HOME (GRAFEL_DAEMON_ROOT is "+
+				"checked first) — neutralise it here rather than letting the write through.",
+				repoDir, dir, prefix)
+		}
+		return dir
+	}
 }
 
 // newTestServer builds a minimal Server with one group ("test") loaded from

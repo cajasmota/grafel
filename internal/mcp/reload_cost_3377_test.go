@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 )
@@ -145,11 +144,15 @@ func withParseCounter(t *testing.T) *int {
 // subsequent reloadLocked exercises the mtime/content-hash fast path.
 func seedRepoOnDisk(t *testing.T, doc *graph.Document) (*State, *LoadedRepo, string) {
 	t.Helper()
+	// #6645: resolve the state dir through the sandbox seam. A bare
+	// daemon.StateDirForRepo here wrote every one of this seeder's fixtures
+	// into the developer's REAL ~/.grafel/store.
+	stateDirFor := sandboxStateDirs(t)
 	repoDir := t.TempDir()
 	// graph.fb must live where reloadLocked reparses from: the daemon's
 	// state dir for this repo (readDocumentFromDir(stateDir)). The cheap
 	// stat/hash fast-path uses lr.GraphFile, which we also point here.
-	stateDir := daemon.StateDirForRepo(repoDir)
+	stateDir := stateDirFor(repoDir)
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatalf("mkdir state dir: %v", err)
 	}
