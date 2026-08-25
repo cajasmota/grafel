@@ -164,10 +164,27 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 			isWebhook := e.PropGet("is_webhook") == "true"
 			owningBackend := e.PropGet("owning_backend")
 			if owningBackend == "" {
-				// Fallback heuristic: use the handler name prefix or repo slug
-				// to infer a backend name when the property is absent (#1217
-				// may not have landed yet).
-				owningBackend = inferOwningBackend(e.Name, r.Slug)
+				// Fallback: the repo slug, unconditionally.
+				//
+				// The affix heuristic that used to live here (added under
+				// #1218 as a compat shim for graphs predating #1217) tried to
+				// recover a backend name from e.Name by substring-matching
+				// "Handler"/"Controller"/"Service"/... and lowercasing the
+				// text to its left. Most producers put the synthetic route ID
+				// ("http:<VERB>:<path>") in Name; a few put a real symbol or a
+				// "webhook:..." string. It does not matter which: no producer
+				// sets a path property *and* a symbol Name, which is the only
+				// shape that could have fed the heuristic a real handler name.
+				// Absent the property, e.Name *is* the path and has passed the
+				// isHTTPEndpointPath guard above, so it starts with "/" or
+				// "http(s)://" and the text left of any affix match is a URL
+				// fragment. Either way the heuristic could only ever publish
+				// lowercased URL fragments as user-visible backend names
+				// (#6592).
+				//
+				// The repo slug is the same grouping key v2_paths.go already
+				// uses for this data.
+				owningBackend = r.Slug
 			}
 			endpoints = append(endpoints, rawEndpoint{
 				ID:            dashPrefixedID(r.Slug, e.ID),
@@ -812,25 +829,6 @@ type rawEndpointForGrouping struct {
 	Path          string
 	Repo          string
 	OwningBackend string
-}
-
-// inferOwningBackend derives a backend name from an entity name or repo slug
-// when the owning_backend property is absent (pre-#1217 graphs).
-//
-// Heuristic: if the handler name contains a recognisable suffix like "Handler",
-// "Controller", "Router", or "Service" preceded by a capitalised word, strip
-// the suffix and lower-case the root.  Otherwise fall back to the repo slug.
-func inferOwningBackend(handlerName, repoSlug string) string {
-	suffixes := []string{"Handler", "Controller", "Router", "Service", "View"}
-	for _, suf := range suffixes {
-		if idx := strings.Index(handlerName, suf); idx > 0 {
-			root := handlerName[:idx]
-			if root != "" {
-				return strings.ToLower(root)
-			}
-		}
-	}
-	return repoSlug
 }
 
 // inferServiceType returns a best-guess service_type label for a backend based

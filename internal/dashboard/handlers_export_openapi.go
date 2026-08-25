@@ -214,7 +214,11 @@ func (s *Server) handleExportOpenAPI(w http.ResponseWriter, r *http.Request) {
 
 			owningBackend := e.PropGet("owning_backend")
 			if owningBackend == "" {
-				owningBackend = inferOwningBackend(e.Name, repo.Slug)
+				// See handlers_paths.go: whatever a producer puts in e.Name,
+				// it has passed the HTTP-path guard, so the deleted affix
+				// heuristic could only ever have returned a URL fragment. The
+				// repo slug is the only sound tag (#6592).
+				owningBackend = repo.Slug
 			}
 
 			// AI enrichment description — stored in Properties["summary"] or
