@@ -133,6 +133,26 @@ func TestDeriveOwningBackend_NestedModuleBelowCmdWins_6593(t *testing.T) {
 		}
 	})
 
+	// The deferral tests ANY manifest, not just go.mod. A Go repository that
+	// vendors a JS sub-package under cmd/api/sub has a real boundary there in
+	// the same sense a nested go.mod would be. Red if the deferral is narrowed
+	// to []string{"go.mod"}, which the go.mod fixture above cannot observe.
+	t.Run("nested non-Go manifest on the chain wins", func(t *testing.T) {
+		root := t.TempDir()
+		writeTree(t, root,
+			"go.mod",
+			"cmd/api/main.go",
+			"cmd/api/sub/package.json",
+			"cmd/api/sub/h/x.go",
+		)
+		t.Chdir(root)
+
+		const handler = "cmd/api/sub/h/x.go"
+		if got := deriveOwningBackend(handler); got != "sub" {
+			t.Errorf("deriveOwningBackend(%q) = %q, want %q (any manifest below cmd/<name> is a boundary, not just go.mod)", handler, got, "sub")
+		}
+	})
+
 	t.Run("nested module off the chain does not defer", func(t *testing.T) {
 		root := t.TempDir()
 		writeTree(t, root,

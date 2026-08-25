@@ -6716,8 +6716,11 @@ func goCmdBinaryOwner(filePath string) string {
 		return ""
 	}
 	// A manifest strictly below cmd/<name> on the handler's own ancestor
-	// chain is a real module boundary — a nested go.mod under cmd/api/sub is
-	// its own module — and #6555's manifest rule owns that case. Pass 0 exists
+	// chain is a real package boundary and #6555's manifest rule owns that
+	// case. The test is ANY manifest, not just go.mod: a package.json or
+	// pyproject.toml sub-package vendored under cmd/api/sub is a boundary in
+	// the same sense a nested go.mod is, and narrowing this to go.mod is a
+	// live mutant that the fixtures below kill. Pass 0 exists
 	// to stop a *root* manifest from collapsing binaries, not to outrank a
 	// manifest below one, so defer to pass 1 here. A manifest in a cousin
 	// directory under cmd/<name> is not on the chain and does not defer,
