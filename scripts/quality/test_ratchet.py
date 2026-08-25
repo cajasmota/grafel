@@ -170,14 +170,21 @@ def make_repo_shallow_disconnected(root):
     grafted away, so `merge-base HEAD origin/main` has no answer and
     `git_sha()` degrades to "unknown".
 
-    It is deliberately NOT the "no default branch at all" shape that
-    `test_degrades_to_unknown_when_no_default_branch_is_available` uses. That
-    one degrades to "unknown" too, but `ensure_durable_measured_on()` then
-    returns at its `ref is None` check and the `sha == "unknown"` guard above
-    it is never the thing that carried the case — so the guard stays
-    unobserved. Here a ref DOES resolve, so the guard is the only thing
-    standing between a legitimately-degraded sha and a `merge-base
-    --is-ancestor unknown <ref>` that fails and raises SystemExit.
+    This is NOT the only shape that kills the `sha == "unknown"` mutant, and
+    an earlier draft of this file wrongly said it was. The ref-less checkout in
+    `test_degrades_to_unknown_when_no_default_branch_is_available` kills it
+    too: `ensure_durable_measured_on()` returns at its `ref is None` check, so
+    the WARNING is never printed and the assertion on it fires. MEASURED, not
+    assumed — with every premise guard in the test below neutralised and this
+    fixture degraded to the ref-less shape, pristine `ratchet.py` stays green
+    and the mutant still fails, on `'WARNING' not found in ''`.
+
+    What this shape buys is the STRONGER consequence, and the one #6613 is
+    actually about. Because a ref resolves, the mutant reaches `merge-base
+    --is-ancestor unknown <ref>`; that call fails and the writer raises
+    SystemExit — a hard refusal to write any baseline at all, where the design
+    is an advisory warning. The ref-less shape can only observe a missing
+    warning, never the refusal.
 
     Returns the working checkout's path.
     """
@@ -696,20 +703,27 @@ class DegradedShaIsAdvisoryNotFatal(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             work = make_repo_shallow_disconnected(root)
             with chdir(work):
-                # Premise 1 — the degradation this test is about really
-                # happened. Without it the writer never sees "unknown" and the
-                # guard below is not the code under test.
+                # The three checks below pin the fixture's SHAPE. None of
+                # them is what makes the kill — measured: neutralise all three,
+                # degrade the fixture to the ref-less shape, and pristine stays
+                # green while the mutant still fails. What they do is keep this
+                # test observing the consequence it claims to (the SystemExit,
+                # not merely a missing warning), and make a later fixture edit
+                # fail HERE by name instead of somewhere further down.
+                #
+                # Shape 1 — the sha really degrades. Without this the writer
+                # never sees "unknown" at all.
                 self.assertEqual(
                     ratchet.git_sha(), "unknown",
                     "DEGENERATE FIXTURE: git_sha() found a merge-base, so the "
                     "sha never degrades and the 'unknown' guard is never "
                     "reached. The checkout must be shallow on BOTH sides "
                     "(Refs #6613).")
-                # Premise 2 — and, load-bearing, the guard is what carries the
-                # case. `ensure_durable_measured_on` returns early a SECOND
-                # time when `default_branch_ref()` is None; if that were the
-                # state here, this test would pass with the guard deleted and
-                # observe nothing.
+                # Shape 2 — a ref resolves. `ensure_durable_measured_on`
+                # returns early a SECOND time when `default_branch_ref()` is
+                # None; in that state the mutant is caught by the missing
+                # WARNING rather than by the SystemExit, and this fixture stops
+                # being distinguishable from the ref-less one.
                 self.assertTrue(
                     has_ref(work, "refs/remotes/origin/main"),
                     "DEGENERATE FIXTURE: no default-branch ref resolves, so "
@@ -720,8 +734,8 @@ class DegradedShaIsAdvisoryNotFatal(unittest.TestCase):
                     "DEGENERATE FIXTURE: default_branch_ref() is None, so the "
                     "second early return carries this case, not the guard "
                     "under test")
-                # Premise 3 — what the guard is protecting against is real
-                # here: the call it skips genuinely fails.
+                # Shape 3 — what the guard protects against is real here:
+                # the call it skips genuinely fails.
                 self.assertNotEqual(
                     0,
                     subprocess.call(
@@ -730,8 +744,8 @@ class DegradedShaIsAdvisoryNotFatal(unittest.TestCase):
                         cwd=work,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
                     "premise broken: `merge-base --is-ancestor unknown <ref>` "
-                    "succeeded, so skipping it would cost nothing and this "
-                    "test could not tell the guard's presence from its absence")
+                    "succeeded, so skipping it would cost nothing and this test "
+                    "would no longer be observing the SystemExit it exists for")
 
                 golden, reports, baseline = make_fixture(work)
                 os.environ["QUALITY_RUN_STAMP"] = STAMP
@@ -770,14 +784,27 @@ class DegradedShaIsAdvisoryNotFatal(unittest.TestCase):
                     ratchet.ensure_durable_measured_on("unknown")
                 self.assertIn("WARNING", err.getvalue())
 
-    def test_the_no_ref_shape_cannot_observe_the_unknown_guard(self):
-        """Control: prove premise 2 above is load-bearing.
+    def test_the_no_ref_shape_observes_only_the_weaker_consequence(self):
+        """Companion to the fixture above — and a correction (Refs #6613).
 
         `test_degrades_to_unknown_when_no_default_branch_is_available` builds a
-        checkout with no default-branch ref at all. It also degrades to
-        "unknown" — but `ensure_durable_measured_on` then returns at `ref is
-        None`, so the guard under test is dead code for that shape. Any kill
-        built on it would be vacuous.
+        checkout with no default-branch ref at all. It degrades to "unknown"
+        too, and it DOES kill the `sha == "unknown"` mutant: with the guard
+        deleted, `ensure_durable_measured_on` falls through to its `ref is
+        None` return, the WARNING is never printed, and an assertion on that
+        warning fires.
+
+        An earlier draft of this file claimed the reverse — that the guard was
+        "dead code for that shape" and any kill built on it "would be vacuous".
+        That was prose asserting what no test observed, and measuring it showed
+        it false. It is recorded here rather than quietly deleted because this
+        file exists to fight exactly that habit.
+
+        What the ref-less shape genuinely cannot observe is the SystemExit: it
+        never reaches the `merge-base --is-ancestor unknown <ref>` call. That
+        is the user-visible half of the defect, and it is why the
+        shallow-disconnected fixture is worth its cost — not because it is the
+        only shape that can kill the mutant.
         """
         with tempfile.TemporaryDirectory() as root, chdir(root):
             git(root, "init", "--quiet", "--initial-branch=wip")
