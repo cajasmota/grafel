@@ -6619,6 +6619,11 @@ var frameworkMarkerFiles = []string{
 func deriveOwningBackend(filePath string) string {
 	const maxLevels = 8
 
+	// Pass 0 — the Go cmd/<name>/ convention (#6593). See goCmdBinaryOwner.
+	if name := goCmdBinaryOwner(filePath); name != "" {
+		return name
+	}
+
 	// Pass 1 — manifests, root included.
 	dir := filepath.Dir(filePath)
 	for i := 0; i < maxLevels; i++ {
@@ -6661,6 +6666,55 @@ func deriveOwningBackend(filePath string) string {
 		return parts[0]
 	}
 	return "unknown"
+}
+
+// goCmdBinaryOwner implements the one language convention that outranks the
+// #6555 manifest rule: in Go, each cmd/<name>/ directory is its own main
+// package and builds a binary named <name>, so cmd/api and cmd/worker are two
+// services even though a single-module repository carries one go.mod at the
+// root. VERIFIED against the toolchain — `go list -f '{{.Name}} {{.Target}}'`
+// reports `main` and a target named after the directory for each of them.
+//
+// Without this, #6555's "a manifest at '.' is the repository-root boundary"
+// rule collapsed every cmd/<name> binary in every single-module Go repository
+// onto "" (#6593), which is the same class of failure #6555 exists to fix,
+// reached from the other side.
+//
+// It is deliberately NOT generalised. The distinction is not structural — root
+// pyproject.toml + app/main.py is byte-identically shaped and must stay "" —
+// so every condition below is load-bearing against the permissive direction:
+//
+//   - the handler must be a Go source file, which also keeps the Kotlin call
+//     site in spring_routes_kotlin.go outside the rule entirely;
+//   - "cmd" must be the *top-level* segment, so a nested svc-a/cmd/api/ does
+//     not outrank svc-a's own manifest in a Go monorepo;
+//   - the repository root must actually be a Go module (go.mod at ".");
+//   - cmd/<name>/ must actually hold a main.go, i.e. be a binary directory.
+//
+// Returns "" when the convention does not apply, leaving the #6555 passes to
+// decide.
+func goCmdBinaryOwner(filePath string) string {
+	slash := filepath.ToSlash(filepath.Clean(filePath))
+	if !strings.HasSuffix(slash, ".go") {
+		return ""
+	}
+	parts := strings.Split(slash, "/")
+	// Need at least cmd/<name>/<file>.go — a file directly in cmd/ is not a
+	// named binary.
+	if len(parts) < 3 || parts[0] != "cmd" {
+		return ""
+	}
+	name := parts[1]
+	if name == "" || name == "." || name == ".." {
+		return ""
+	}
+	if !directoryContainsAny(".", []string{"go.mod"}) {
+		return ""
+	}
+	if !directoryContainsAny(filepath.Join("cmd", name), []string{"main.go"}) {
+		return ""
+	}
+	return name
 }
 
 // isRepoRootDir reports whether dir is the repository root as seen through a
