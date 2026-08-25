@@ -1,20 +1,13 @@
 package engine_test
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/classifier"
 	"github.com/cajasmota/grafel/internal/engine"
-	"github.com/cajasmota/grafel/internal/extractor"
-
-	// Blank import for its init() side-effects: every language extractor
-	// sub-package registers itself with the global extractor registry here.
-	// Without it extractor.List() is empty and this whole guard is vacuous —
-	// which is why TestLanguageRuleCoverage6537 asserts a floor on the
-	// population size before it asserts anything about individual languages.
-	_ "github.com/cajasmota/grafel/internal/extractors"
 )
 
 // ---------------------------------------------------------------------------
@@ -35,33 +28,62 @@ import (
 // without someone editing knownLanguageRuleGaps in the same commit.
 // ---------------------------------------------------------------------------
 
-// extractorBackedRoutedLanguages returns the language keys that are both
+// extraProducedLanguages are language keys the classifier can produce that
+// classifier.RoutedLanguagesForTest() does not enumerate — it unions only
+// extensionLanguageMap and basenameLanguageMap. These come from
+// exactBasenameLanguageMap and from the compound-suffix branches inside
+// detectLanguage. Each is hand-listed here but NOT taken on trust: the guard
+// runs the real classifier over the probe path and fails if the key it
+// produces has changed, so a stale entry cannot survive.
+var extraProducedLanguages = []struct {
+	Language string
+	Probe    string
+	Source   string
+}{
+	{Language: "swift_package", Probe: "Package.swift", Source: "exactBasenameLanguageMap"},
+	{Language: "json", Probe: "openapi.json", Source: "detectLanguage .json branch (OpenAPI/Ocelot/Debezium routing)"},
+	{Language: "jsonschema", Probe: "api/user.schema.json", Source: "detectLanguage *.schema.json branch"},
+}
+
+// producibleLanguages returns every language key an indexed file can carry into
+// the Pass 2.5 detector, sorted.
 //
-//	(a) producible by the classifier's router, and
-//	(b) backed by a registered extractor,
+// THE POPULATION IS EVERY ROUTED LANGUAGE, NOT ONLY THE EXTRACTABLE ONES.
+// cmd/grafel/index.go builds its classifiedFile list from any file with a
+// non-empty cr.Language (index.go:3981) and calls i.detector.Detect on every
+// one of them (index.go:~4300) with no consultation of the extractor registry.
+// The classifier says so itself for nginx/caddy (classifier.go:648-652: "These
+// carry no language extractor; they still reach the Pass 2.5 detector").
+// Filtering by extractor.List() would therefore exempt nine languages that
+// Detect really is called with — including objective_c, perl and r, whose rule
+// buckets load 11/4/4 rule sets that emit nothing.
 //
-// sorted. This is the population the detector can ever be asked about via a
-// real indexed file: the classifier decides file.Language, and an unextractable
-// language never reaches Pass 2.5 with content worth scanning.
-//
-// Both halves are derived, never hand-listed. classifier.RoutedLanguagesForTest
-// is the classifier's own enumeration of its extension/basename routing tables;
-// extractor.List() is the live registry populated by the blank import above.
-// A new language therefore enters this population automatically, which is the
-// whole point — it must not be possible to add one and be quietly exempt.
-func extractorBackedRoutedLanguages(t *testing.T) []string {
+// The routed half is derived, never hand-listed: classifier.RoutedLanguagesForTest
+// is the classifier's own enumeration of its routing tables, so a new extension
+// enters this population automatically.
+func producibleLanguages(t *testing.T) []string {
 	t.Helper()
 
-	registered := make(map[string]bool)
-	for _, lang := range extractor.List() {
-		registered[lang] = true
+	seen := make(map[string]bool)
+	for _, lang := range classifier.RoutedLanguagesForTest() {
+		seen[lang] = true
 	}
 
-	var out []string
-	for _, lang := range classifier.RoutedLanguagesForTest() {
-		if registered[lang] {
-			out = append(out, lang)
+	c := classifier.New(nil)
+	ctx := context.Background()
+	for _, extra := range extraProducedLanguages {
+		got := c.Classify(ctx, extra.Probe).Language
+		if got != extra.Language {
+			t.Errorf("extraProducedLanguages: %q classifies as %q, not %q — the %s routing "+
+				"changed and this entry is stale", extra.Probe, got, extra.Language, extra.Source)
+			continue
 		}
+		seen[extra.Language] = true
+	}
+
+	out := make([]string, 0, len(seen))
+	for lang := range seen {
+		out = append(out, lang)
 	}
 	sort.Strings(out)
 	return out
@@ -74,17 +96,16 @@ func TestLanguageRuleCoverage6537(t *testing.T) {
 	}
 	d := engine.New(rules)
 
-	langs := extractorBackedRoutedLanguages(t)
+	langs := producibleLanguages(t)
 
 	// --- vacuity guards -----------------------------------------------------
 	// Every assertion below is of the form "for each language ...". If the
-	// population collapses (blank import dropped, routing table renamed, rule
-	// FS not embedded) the loop body never runs and the test passes while
-	// observing nothing. These three checks make that collapse loud.
-	if len(langs) < 50 {
-		t.Fatalf("only %d classifier-routed languages have a registered extractor (%v); "+
-			"expected at least 50 — the enumeration is broken, not the ruleset",
-			len(langs), langs)
+	// population collapses (routing table renamed, rule FS not embedded) the
+	// loop body never runs and the test passes while observing nothing. These
+	// checks make that collapse loud.
+	if len(langs) < 60 {
+		t.Fatalf("only %d producible languages enumerated (%v); expected at least 60 — "+
+			"the enumeration is broken, not the ruleset", len(langs), langs)
 	}
 	if n := d.RuleCount(); n < 100 {
 		t.Fatalf("detector loaded only %d rules; expected at least 100 — the embedded "+
@@ -95,7 +116,7 @@ func TestLanguageRuleCoverage6537(t *testing.T) {
 	// and every "gap" it reports below is noise.
 	for _, anchor := range []string{"python", "java", "csharp", "go", "typescript", "ruby", "php"} {
 		if !contains(langs, anchor) {
-			t.Errorf("anchor language %q is missing from the routed+extractable population; "+
+			t.Errorf("anchor language %q is missing from the producible population; "+
 				"the enumeration no longer covers what it used to", anchor)
 			continue
 		}
@@ -130,8 +151,8 @@ func TestLanguageRuleCoverage6537(t *testing.T) {
 
 		switch {
 		case n == 0 && !allowed:
-			// A language the indexer can produce, extracts, and for which no
-			// YAML rule can ever fire — and nobody signed off on that.
+			// A language the indexer can produce and hand to Detect, for which
+			// no YAML rule can ever fire — and nobody signed off on that.
 			uncovered = append(uncovered, lang)
 		case n > 0 && allowed:
 			// The gap closed. Stale allowlist entries are how a reviewed list
@@ -141,8 +162,8 @@ func TestLanguageRuleCoverage6537(t *testing.T) {
 		}
 	}
 	if len(uncovered) > 0 {
-		t.Errorf("%d classifier-routed, extractor-backed language(s) resolve to an empty "+
-			"compiled rule set and are not in knownLanguageRuleGaps:\n  %s\n\n"+
+		t.Errorf("%d producible language(s) resolve to an empty compiled rule set and are "+
+			"not in knownLanguageRuleGaps:\n  %s\n\n"+
 			"Framework detection cannot fire on any file of these languages. Either add a "+
 			"rule bucket under internal/engine/rules/<language>/, or add each language to "+
 			"knownLanguageRuleGaps with a reason — in this commit, not later.",
@@ -152,9 +173,59 @@ func TestLanguageRuleCoverage6537(t *testing.T) {
 	// --- the allowlist may not outlive its subjects --------------------------
 	for _, gap := range knownLanguageRuleGaps {
 		if !contains(langs, gap.Language) {
-			t.Errorf("knownLanguageRuleGaps[%q] is not a classifier-routed language with a "+
-				"registered extractor; it exempts nothing and should be deleted", gap.Language)
+			t.Errorf("knownLanguageRuleGaps[%q] is not a language the classifier can "+
+				"produce; it exempts nothing and should be deleted", gap.Language)
 		}
+	}
+}
+
+// TestLanguageRuleCoverage6537_CountIsTheSumOfItsTerms pins CompiledRuleCount to
+// its three terms.
+//
+// Without this, dropping `relationshipRules` or `fileConventions` from the sum
+// is invisible: every gap the guard reports is a language with zero of all
+// three, so a count built from source patterns alone produces an identical gap
+// list. The accessor's doc comment claims the sum answers "can any YAML rule
+// fire" — this is what makes that claim observed rather than asserted.
+func TestLanguageRuleCoverage6537_CountIsTheSumOfItsTerms(t *testing.T) {
+	rules, err := engine.LoadAllRules()
+	if err != nil {
+		t.Fatalf("LoadAllRules: %v", err)
+	}
+	d := engine.New(rules)
+
+	langs := producibleLanguages(t)
+	var withRelationshipRules, withFileConventions, withSourcePatterns []string
+
+	for _, lang := range langs {
+		sp, rr, fc := d.CompiledRuleBreakdown(lang)
+		if got, want := d.CompiledRuleCount(lang), sp+rr+fc; got != want {
+			t.Errorf("CompiledRuleCount(%q) = %d, want %d (source_patterns=%d + "+
+				"relationship_rules=%d + file_conventions=%d) — a term is missing from the sum",
+				lang, got, want, sp, rr, fc)
+		}
+		if sp > 0 {
+			withSourcePatterns = append(withSourcePatterns, lang)
+		}
+		if rr > 0 {
+			withRelationshipRules = append(withRelationshipRules, lang)
+		}
+		if fc > 0 {
+			withFileConventions = append(withFileConventions, lang)
+		}
+	}
+
+	// Non-vacuity: the equality above only constrains a term that is non-zero
+	// somewhere. If a term is dead across the entire ruleset, dropping it from
+	// the sum would be undetectable and this test would be theatre.
+	if len(withSourcePatterns) == 0 {
+		t.Errorf("no language compiles any source_patterns; the source_patterns term is unobserved")
+	}
+	if len(withRelationshipRules) == 0 {
+		t.Errorf("no language compiles any relationship_rules; the relationship_rules term is unobserved")
+	}
+	if len(withFileConventions) == 0 {
+		t.Errorf("no language compiles any file_conventions; the file_conventions term is unobserved")
 	}
 }
 

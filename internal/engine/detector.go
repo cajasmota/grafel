@@ -1153,12 +1153,32 @@ func (d *Detector) Languages() []string {
 // The count is taken after lazy compilation, so a rule whose regex failed to
 // compile is not counted. Safe for concurrent use.
 func (d *Detector) CompiledRuleCount(language string) int {
+	sourcePatterns, relationshipRules, fileConventions := d.CompiledRuleBreakdown(language)
+	return sourcePatterns + relationshipRules + fileConventions
+}
+
+// CompiledRuleBreakdown splits CompiledRuleCount into its three terms.
+//
+// Each term is a distinct way Detect can emit for a language, and no term is
+// redundant: `prisma` and `objective_c` have rules that are entirely source
+// patterns, while other buckets carry relationship rules or file conventions
+// that fire independently of any source pattern. A count that dropped a term
+// would silently declare a language uncovered that in fact has working rules,
+// so the guard test asserts CompiledRuleCount equals this sum for every
+// language and that no term is dead across the whole ruleset.
+//
+// compiledRuleSet has one further field, importMarkers, which is deliberately
+// not counted: it is a gate on requires_framework patterns, not something
+// Detect can emit from. A rule set carrying only import markers can produce
+// nothing, which is exactly the doc-only shape this accessor exists to expose.
+func (d *Detector) CompiledRuleBreakdown(language string) (sourcePatterns, relationshipRules, fileConventions int) {
 	d.once.Do(d.compile)
-	count := 0
 	for _, cs := range d.compiled[language] {
-		count += len(cs.sourcePatterns) + len(cs.relationshipRules) + len(cs.fileConventions)
+		sourcePatterns += len(cs.sourcePatterns)
+		relationshipRules += len(cs.relationshipRules)
+		fileConventions += len(cs.fileConventions)
 	}
-	return count
+	return sourcePatterns, relationshipRules, fileConventions
 }
 
 // RuleCount returns the total number of framework rules loaded across all languages.
