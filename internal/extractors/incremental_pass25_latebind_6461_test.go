@@ -200,3 +200,81 @@ func TestBindDeferredPass25Stubs_RefusesComposeRemovedTarget(t *testing.T) {
 			"newRels and survive the relationship prune: %+v", got)
 	}
 }
+
+// TestBindDeferredPass25Stubs_AmbiguityIsSticky pins that the sentinel is
+// STICKY, not merely present — a THREE-way collision on one `Kind:Name` must
+// stay refused, in either arrival order.
+//
+// This is strictly subtler than "the sentinel exists". A mutant that keeps the
+// first poisoning but lets a LATER distinct entity un-poison the key —
+//
+//	if prev != e.ID {
+//	    if prev == ambiguous { target[k] = e.ID } else { target[k] = ambiguous }
+//	}
+//
+// — refuses every 2-WAY collision and therefore SURVIVED both packages
+// (`go vet` 0, ./internal/extractors/ 0, ./cmd/grafel/ 0) before this test
+// existed, including the AmbiguousRouter parity fixture, because every
+// collision in the suite is 2-way. On a 3-way collision it binds where real
+// code refuses, inventing an edge no full rebuild holds.
+//
+// Three files each doing `mp_router = APIRouter()` is an ordinary FastAPI
+// layout, so this is a reachable input, not a theoretical one.
+//
+// BOTH orders are asserted because they exercise different branches of
+// addTarget: unique→dup→third walks first-write, then poison, then the
+// post-poison branch; dup-first→third reaches the post-poison branch with the
+// key already sentinel-valued from the very first pair.
+func TestBindDeferredPass25Stubs_AmbiguityIsSticky(t *testing.T) {
+	fresh := []graph.Entity{lbEnt("Service", "mp_app", "mount.py")}
+	stub := []deferredStubRel{lbStub("mount.py", "Service:mp_app", "Route:mp_router", "ROUTES_TO")}
+
+	a := lbEnt("Route", "mp_router", "route_a.py")
+	b := lbEnt("Route", "mp_router", "route_b.py")
+	c := lbEnt("Route", "mp_router", "route_c.py")
+
+	// Positive control FIRST: ONE target binds, so a refusal below is the
+	// stickiness and not an unrelated failure to bind at all.
+	if got := bindDeferredPass25Stubs(stub, []graph.Entity{a}, fresh, nil, nil, nil); len(got) != 1 {
+		t.Fatalf("positive control: one unique target should bind, got %d", len(got))
+	}
+
+	for _, tc := range []struct {
+		name      string
+		survivors []graph.Entity
+	}{
+		{"two-way", []graph.Entity{a, b}},
+		{"three-way", []graph.Entity{a, b, c}},
+		{"four-way", []graph.Entity{a, b, c, lbEnt("Route", "mp_router", "route_d.py")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := bindDeferredPass25Stubs(stub, tc.survivors, fresh, nil, nil, nil); len(got) != 0 {
+				t.Fatalf("bound a %s ambiguous target — the sentinel was un-poisoned "+
+					"by a later entity: %+v", tc.name, got)
+			}
+		})
+	}
+
+	// Same 3-way collision, but split across the SURVIVOR and FRESH slices so
+	// the poisoning happens in the survivors loop and the third arrival lands in
+	// the fresh loop. addTarget is called from both; a mutant that only gets the
+	// stickiness right within one loop must not pass.
+	t.Run("three-way-split-across-survivors-and-fresh", func(t *testing.T) {
+		got := bindDeferredPass25Stubs(stub,
+			[]graph.Entity{a, b},
+			append([]graph.Entity{}, fresh[0], c),
+			nil, nil, nil)
+		if len(got) != 0 {
+			t.Fatalf("bound a 3-way ambiguous target split across survivors/fresh: %+v", got)
+		}
+	})
+
+	// And the third arrival re-asserting an ID ALREADY seen must not un-poison
+	// either: `prev != e.ID` is false for a repeat, so the key must simply stay
+	// sentinel-valued rather than falling through to a write.
+	t.Run("three-way-with-repeat-of-first", func(t *testing.T) {
+		if got := bindDeferredPass25Stubs(stub, []graph.Entity{a, b, a}, fresh, nil, nil, nil); len(got) != 0 {
+			t.Fatalf("bound after a repeat of an already-seen id un-poisoned the key: %+v", got)
+		}
+	})
+}
