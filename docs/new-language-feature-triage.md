@@ -1,6 +1,6 @@
 # New-language-feature triage (C1, epic #5359 — milestone 0.1.4)
 
-_Process maintained as of 2026-06-23. Companion to
+_Process maintained as of 2026-08-26. Companion to
 [`docs/language-release-calendar.md`](./language-release-calendar.md) (A3),
 [`docs/grammar-freshness-audit.md`](./grammar-freshness-audit.md) (B3),
 [`grammars.lock`](../grammars.lock), and the
@@ -125,7 +125,15 @@ C1 is the **decision step** between the freshness alarms and the build work:
 |---|---|---|
 | **Proactive nudge** | [A3 calendar + cron](./language-release-calendar.md) (#5413) | a known release window is coming — *run the triage now*. The reminder issue links straight to this doc. |
 | **"Upstream moved"** | A2 `grammar-freshness.yml` cron (#5411) | the upstream `tree-sitter-<lang>` grammar shipped support for N — the bundled snapshot is the blocker (grammar-bump prerequisite for (b)/(c)). |
-| **"Parsing is actually failing"** | A4 parse-error canary (#5414) | the bundled grammar is emitting `ERROR` nodes on real indexed code — a hard syntax gap, version-agnostic. Fill the **Grammar status** row of the report from this. |
+| **"Parsing is actually failing"** | A4 parse-error canary (#5414) | the per-language `ERROR`-node rates it records for real indexed code. Fill the **Grammar status** row of the report from this. |
+
+> **Both signals are read manually, not raised at you.** A2 reports the same large
+> set of grammars as behind a fixed snapshot date every month (23 of 27 by the
+> dates in `grammars.lock`), and A4's spike verdict has no consumer
+> and an empty baseline, so neither fires *because* a language shipped version N.
+> See
+> [the calendar's "What A2 and A4 cannot detect today"](./language-release-calendar.md#what-a2-and-a4-cannot-detect-today)
+> for the reasons and the blocking work (#6635; the B2 decouple).
 
 The output of C1 — the per-version impact report's **Action items** — is the
 input to:
