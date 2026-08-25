@@ -63,13 +63,16 @@
 // merely be duplicated — it would be relabelled framework=utoipa_axum. The
 // Rocket guard tests assert the framework stamp for exactly that reason.
 //
-// Scope — Arm A only (#6560)
-// --------------------------
-// Deliberately NOT handled here; these are Arm B and are left to emit nothing
+// Scope — Arms A and B1 only (#6560)
+// ----------------------------------
+// Arm B1 added the multi-handler form `routes!(a, b, c)`: every argument is
+// resolved against the same-file attribute map exactly as the single-handler
+// case already was, and the macro is skipped WHOLE if any argument is not a bare
+// identifier. Everything stays file-scoped, so the dedupe below is untouched.
+//
+// Deliberately NOT handled here; these are Arm B2 and are left to emit nothing
 // rather than to emit a guess:
 //
-//   - multi-handler `routes!(a, b)` — the regex requires a single identifier
-//     followed by the closing paren, so the multi form simply does not match.
 //   - cross-module handlers (`routes!(crate::items::list)`, or a bare name whose
 //     `#[utoipa::path]` attribute lives in another file) — the attribute map is
 //     built from THIS file only, and an unknown handler is skipped. A fabricated
@@ -93,13 +96,44 @@ import (
 	"github.com/cajasmota/grafel/internal/engine/httproutes"
 )
 
-// utoipaRoutesMacroRe matches the SINGLE-handler `routes!(handler)` form.
+// utoipaRoutesMacroRe matches a `routes!(a)` / `routes!(a, b, c)` registration
+// whose arguments are ALL plain identifiers (#6560 Arm B1 widened this from the
+// single-identifier form Arm A shipped).
 //
-// The trailing `\s*\)` is what confines this pass to Arm A: `routes!(a, b)`
-// does not match, and neither does a path-qualified `routes!(crate::x::h)`.
+// Capture group 1 = the whole argument list, split by utoipaMacroHandlerArgs.
 //
-// Capture group 1 = handler identifier.
-var utoipaRoutesMacroRe = regexp.MustCompile(`\broutes!\s*\(\s*([A-Za-z_]\w*)\s*\)`)
+// Two properties of this pattern carry the Arm B2 boundary and are the reason it
+// is written as one alternation rather than as a loose `([^)]*)` capture:
+//
+//   - The argument list admits ONLY `[A-Za-z_]\w*` separated by commas, so a
+//     path-qualified argument (`crate::items::list`) makes the WHOLE macro fail
+//     to match. Such a handler's `#[utoipa::path]` attribute lives in another
+//     module, and this pass's attribute map is file-scoped, so it could not be
+//     resolved anyway — and minting only the macro's plain arguments would be a
+//     silent half-registration, the exact failure the Arm A pin forbade.
+//   - The trailing `\)` is a required anchor. Without it the capture runs past
+//     the macro it belongs to and registers identifiers that are not arguments
+//     at all.
+//
+// Neither `(` nor `)` is in any character class here, so a match can never span
+// from one `routes!(...)` into the next; `\s` spans newlines so the rustfmt
+// multi-line form is read normally. A trailing comma is Rust-legal and accepted.
+var utoipaRoutesMacroRe = regexp.MustCompile(
+	`\broutes!\s*\(\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*,?\s*\)`)
+
+// utoipaMacroHandlerArgs splits capture group 1 of utoipaRoutesMacroRe into its
+// handler identifiers, in source order. The regex has already guaranteed every
+// element is a bare identifier, so this only has to trim.
+func utoipaMacroHandlerArgs(argList string) []string {
+	parts := strings.Split(argList, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if h := strings.TrimSpace(p); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
 
 // utoipaPathAttrStartRe matches the start of a `#[utoipa::path(` attribute. The
 // argument list is then read with a depth-counted paren scan because it nests
@@ -246,9 +280,11 @@ func utoipaRegisteredElsewhere(content string) map[string]bool {
 	return out
 }
 
-// synthesizeUtoipaAxumRoutes scans a Rust source file for single-handler
-// `routes!(handler)` registrations and emits one http_endpoint_definition per
-// handler whose `#[utoipa::path(...)]` attribute is in the SAME file.
+// synthesizeUtoipaAxumRoutes scans a Rust source file for `routes!(...)`
+// registrations — one handler or several — and emits one
+// http_endpoint_definition per handler whose `#[utoipa::path(...)]` attribute is
+// in the SAME file. A handler named more than once, in one macro or across
+// several, still mints exactly once.
 //
 // Handlers that another producer already registers out of this file — a
 // `.route(...)` call or a Rocket verb attribute — are skipped; see
@@ -274,20 +310,24 @@ func synthesizeUtoipaAxumRoutes(content string, emit emitFn) {
 		if len(m) < 2 {
 			continue
 		}
-		handler := m[1]
-		if registeredElsewhere[handler] || minted[handler] {
-			continue
+		// One macro may register several handlers. Each argument is resolved
+		// independently — a sibling that another producer already owns, or that
+		// has no same-file contract, is skipped WITHOUT suppressing the rest.
+		for _, handler := range utoipaMacroHandlerArgs(m[1]) {
+			if registeredElsewhere[handler] || minted[handler] {
+				continue
+			}
+			route, known := attrs[handler]
+			if !known {
+				// No same-file contract for this handler — Arm B2 territory.
+				continue
+			}
+			canonical := httproutes.Canonicalize(httproutes.FrameworkAxum, route.path)
+			if canonical == "" {
+				continue
+			}
+			minted[handler] = true
+			emit(route.verb, canonical, "utoipa_axum", "Controller", handler)
 		}
-		route, known := attrs[handler]
-		if !known {
-			// No same-file contract for this handler — Arm B territory.
-			continue
-		}
-		canonical := httproutes.Canonicalize(httproutes.FrameworkAxum, route.path)
-		if canonical == "" {
-			continue
-		}
-		minted[handler] = true
-		emit(route.verb, canonical, "utoipa_axum", "Controller", handler)
 	}
 }
