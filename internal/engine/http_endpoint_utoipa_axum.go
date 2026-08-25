@@ -81,6 +81,13 @@
 //     nest handling is not threaded onto these routes, so a nested utoipa router
 //     yields the unprefixed attribute path.
 //
+// Three narrower shapes also fail to match, all in the safe direction and none a
+// regression from Arm A, recorded so the next reader does not rediscover them:
+// a comment between arguments (`routes!(a, /* x */ b)`) kills the WHOLE macro;
+// a raw identifier (`routes!(r#type)`) never matches, since `#` is outside the
+// identifier class; and `routes ! ( a , b )` — whitespace before `!` is
+// Rust-legal — never matches, because the pattern requires `routes!` adjacent.
+//
 // Known house behaviour, not new here: a `routes!(...)` occurrence inside a
 // block comment or a string literal is still read as a registration, exactly as
 // synthesizeAxumRoutes reads a commented-out `.route(`. A COMMENTED-OUT

@@ -565,11 +565,17 @@ pub fn router() -> OpenApiRouter {
 }
 `
 	_, res := runDetect(t, "rust", "src/api.rs", src)
-	if got := countDefsForHandler(res, "list_items"); got != 1 {
-		t.Errorf("utoipa-axum-repeat: want exactly 1 definition for list_items, got %d", got)
-	}
-	if got := countDefsForHandler(res, "create_item"); got != 1 {
-		t.Errorf("utoipa-axum-repeat: want exactly 1 definition for create_item, got %d", got)
+	for _, h := range []string{"list_items", "create_item"} {
+		if got := countDefsForHandler(res, h); got != 1 {
+			t.Errorf("utoipa-axum-repeat: want exactly 1 definition for %s, got %d", h, got)
+		}
+		// Premise guard. Without it "exactly 1" would also be satisfied by this
+		// pass minting NONE and another producer minting one — which is the
+		// reading that would make this test worthless as evidence that the
+		// once-per-handler bound belongs to the utoipa_axum path.
+		if got := frameworkForHandler(res, h); got != "utoipa_axum" {
+			t.Errorf("utoipa-axum-repeat: %s must be minted by the utoipa_axum pass, got framework=%q", h, got)
+		}
 	}
 }
 
@@ -695,6 +701,64 @@ fn rocket() -> _ {
 		}
 		if got := frameworkForHandler(res, h); got != "rocket" {
 			t.Errorf("utoipa-axum-rocket-multi-guard: %s must come from synthesizeRocket, got framework=%q", h, got)
+		}
+	}
+}
+
+// TestUtoipaAxum_MixedResolvableAndImportedArguments is the fixture the first
+// cut of B1 was missing, and it observes the ONLY behaviour B1 actually
+// introduces: arguments are resolved INDEPENDENTLY of one another.
+//
+// This is the idiomatic utoipa_axum layout, not a corner case — a router module
+// aggregates handlers imported by bare name from sibling modules, so a single
+// macro routinely mixes a handler whose `#[utoipa::path]` attribute is in THIS
+// file with handlers whose attributes are in another. The imported ones are
+// unresolvable here (the attribute map is file-scoped; that is Arm B2) and must
+// be skipped one by one, leaving every same-file sibling minted.
+//
+// The unresolvable arguments are placed FIRST and in the MIDDLE deliberately: an
+// early-exit on the first unknown handler — `continue` weakened to `break` —
+// leaves the whole macro unminted, and every other fixture in this file has a
+// uniformly resolvable or uniformly unresolvable argument list, so none of them
+// can see it.
+func TestUtoipaAxum_MixedResolvableAndImportedArguments(t *testing.T) {
+	src := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+// Attributes for these two live in their own modules, not in this file.
+use crate::orders::create_order;
+use crate::sessions::drop_session;
+
+#[utoipa::path(get, path = "/items")]
+async fn list_items() -> &'static str { "[]" }
+
+#[utoipa::path(post, path = "/items")]
+async fn create_item() -> &'static str { "{}" }
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(create_order, list_items, drop_session, create_item))
+}
+`
+	ids, res := runDetect(t, "rust", "src/api.rs", src)
+	requireContains(t, ids, []string{
+		"http:GET:/items",
+		"http:POST:/items",
+	}, "utoipa-axum-mixed-arguments")
+
+	for _, h := range []string{"list_items", "create_item"} {
+		if got := countDefsForHandler(res, h); got != 1 {
+			t.Errorf("utoipa-axum-mixed-arguments: want exactly 1 definition for %s, got %d", h, got)
+		}
+		if got := frameworkForHandler(res, h); got != "utoipa_axum" {
+			t.Errorf("utoipa-axum-mixed-arguments: %s must be minted by the utoipa_axum pass, got framework=%q", h, got)
+		}
+	}
+	// The imported handlers stay unminted: fabricating a path for a handler
+	// whose contract this pass cannot read is worse than the gap.
+	for _, h := range []string{"create_order", "drop_session"} {
+		if got := countDefsForHandler(res, h); got != 0 {
+			t.Errorf("utoipa-axum-mixed-arguments: want 0 definitions for imported %s, got %d", h, got)
 		}
 	}
 }
