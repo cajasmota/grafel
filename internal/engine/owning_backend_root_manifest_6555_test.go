@@ -115,44 +115,57 @@ func TestDeriveOwningBackend_RootMarkerIsNotABoundary_6555(t *testing.T) {
 // This is a deliberate decision, not a side effect. It cannot be decided
 // per-shape, because the shape here is byte-identical to the issue's row 1
 // (root pyproject.toml + app/main.py + app/api/endpoints/notifications.py,
-// which must NOT be "app"). Only the directory names differ, so no rule can
-// return "" for `app` and `svc-a` for `svc-a`. MEASURED against the parent:
+// which must NOT be "app"). Only the directory names differ, so no rule over
+// tree shape can return "" for `app` and `svc-a` for `svc-a`. MEASURED against
+// the parent:
 //
 //	root pyproject.toml, app/main.py    | app/api/endpoints/notifications.py | "app"   -> ""
 //	root pyproject.toml, svc-a/main.py  | svc-a/api/x.py                     | "svc-a" -> ""
 //	root package.json,   svc-a/server.js| svc-a/routes/x.js                  | "svc-a" -> ""
 //	root go.mod,         cmd/api/main.go| cmd/api/handlers/x.go              | "api"   -> ""
 //
-// The Go row is the one with a real cost: every single-module Go repository
-// carries go.mod at the root, so `cmd/api` and `cmd/worker` both collapse to
-// "". That is a marker-classification question — main.go under cmd/ names a
-// separate binary, unlike main.py under app/ — and is filed as #6593 rather
-// than settled by weakening the manifest-over-marker rule this issue is about.
+// #6593 FLIPPED THE TWO GO ROWS BACK, deliberately, and they are pinned here
+// in their new direction rather than deleted. The reason is not the tree shape
+// — that argument above still stands — it is a Go language convention that has
+// no analogue in the Python and Node rows: each cmd/<name>/ directory is its
+// own main package and builds a binary named <name> (verified with `go list
+// -f '{{.Name}} {{.Target}}'`). So cmd/api and cmd/worker are two services in
+// a single-module repository, and returning "" for both collapsed them onto
+// one value. The Python and Node rows are unchanged and are what keeps the
+// special case from being read as a general "a marker below a root manifest
+// wins" rule; see owning_backend_go_cmd_6593_test.go for its guards.
 func TestDeriveOwningBackend_RootManifestBeatsDeeperMarker_6555(t *testing.T) {
 	cases := []struct {
-		name    string
-		tree    []string
-		handler string
+		name string
+		tree []string
+		// want maps handler path -> expected owning_backend.
+		want map[string]string
 	}{
 		{
-			name:    "python: root pyproject.toml over svc-a/main.py",
-			tree:    []string{"pyproject.toml", "svc-a/main.py", "svc-a/api/x.py"},
-			handler: "svc-a/api/x.py",
+			name: "python: root pyproject.toml over svc-a/main.py",
+			tree: []string{"pyproject.toml", "svc-a/main.py", "svc-a/api/x.py"},
+			want: map[string]string{"svc-a/api/x.py": ""},
 		},
 		{
-			name:    "node: root package.json over svc-a/server.js",
-			tree:    []string{"package.json", "svc-a/server.js", "svc-a/routes/x.js"},
-			handler: "svc-a/routes/x.js",
+			name: "node: root package.json over svc-a/server.js",
+			tree: []string{"package.json", "svc-a/server.js", "svc-a/routes/x.js"},
+			want: map[string]string{"svc-a/routes/x.js": ""},
 		},
 		{
-			name:    "go: root go.mod over cmd/api/main.go",
-			tree:    []string{"go.mod", "cmd/api/main.go", "cmd/api/handlers/x.go"},
-			handler: "cmd/api/handlers/x.go",
+			name: "go: root go.mod over cmd/api/main.go names the binary (#6593)",
+			tree: []string{"go.mod", "cmd/api/main.go", "cmd/api/handlers/x.go"},
+			want: map[string]string{"cmd/api/handlers/x.go": "api"},
 		},
 		{
-			name:    "go: root go.mod with several cmd/ binaries",
-			tree:    []string{"go.mod", "cmd/api/main.go", "cmd/worker/main.go", "cmd/api/handlers/x.go"},
-			handler: "cmd/api/handlers/x.go",
+			// Both binaries are asserted, so this subtest measures what its
+			// name says: several cmd/ binaries stay *distinct* rather than
+			// merely being non-empty.
+			name: "go: root go.mod with several cmd/ binaries stay distinct (#6593)",
+			tree: []string{"go.mod", "cmd/api/main.go", "cmd/worker/main.go", "cmd/api/handlers/x.go", "cmd/worker/handlers/y.go"},
+			want: map[string]string{
+				"cmd/api/handlers/x.go":    "api",
+				"cmd/worker/handlers/y.go": "worker",
+			},
 		},
 	}
 
@@ -161,8 +174,10 @@ func TestDeriveOwningBackend_RootManifestBeatsDeeperMarker_6555(t *testing.T) {
 			root := t.TempDir()
 			writeTree(t, root, tc.tree...)
 			t.Chdir(root)
-			if got := deriveOwningBackend(tc.handler); got != "" {
-				t.Errorf("deriveOwningBackend(%q) = %q, want %q (a marker below a root manifest is not a boundary)", tc.handler, got, "")
+			for handler, want := range tc.want {
+				if got := deriveOwningBackend(handler); got != want {
+					t.Errorf("deriveOwningBackend(%q) = %q, want %q", handler, got, want)
+				}
 			}
 		})
 	}
