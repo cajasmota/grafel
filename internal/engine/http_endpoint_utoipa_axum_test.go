@@ -996,3 +996,176 @@ pub fn router() -> OpenApiRouter {
 	_, res := runDetect(t, "rust", "src/plain.rs", src)
 	requireUtoipaDef(t, res, "http:GET:/items", "list_items", "utoipa-nest-none")
 }
+
+// TestUtoipaAxum_NestPrefixNotAcrossRouterScope_WithOpenapi is the twin of
+// TestUtoipaAxum_NestPrefixNotAcrossRouterScope written in utoipa-axum's
+// CANONICAL constructor spelling.
+//
+// `OpenApiRouter::with_openapi(ApiDoc::openapi())` is how a utoipa_axum service
+// that actually serves an OpenAPI document builds its router — `::new()` is the
+// spelling that omits the document. The scope guard originally counted the
+// literal substring `Router::new()`, which `with_openapi` does not contain, so
+// the two independent routers below read as ONE scope: the /admin nest reached
+// back across `admin_inner` to `routes!(health)` and minted http:GET:/admin/health
+// while http:GET:/health disappeared. A phantom path replacing a real one, on
+// input the pre-B2a code handled correctly.
+//
+// The sibling test above is deliberately KEPT in the `::new()` spelling. Pinning
+// the guard in only one spelling is what let this through, so both are pinned.
+func TestUtoipaAxum_NestPrefixNotAcrossRouterScope_WithOpenapi(t *testing.T) {
+	src := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/health")]
+async fn health() -> &'static str { "ok" }
+
+pub fn public_router() -> OpenApiRouter {
+    OpenApiRouter::with_openapi(ApiDoc::openapi()).routes(routes!(health))
+}
+
+fn admin_inner() -> OpenApiRouter {
+    OpenApiRouter::with_openapi(ApiDoc::openapi())
+}
+
+pub fn admin_router() -> OpenApiRouter {
+    OpenApiRouter::with_openapi(ApiDoc::openapi()).nest("/admin", admin_inner())
+}
+`
+	ids, res := runDetect(t, "rust", "src/scopes_openapi.rs", src)
+	requireUtoipaDef(t, res, "http:GET:/health", "health", "utoipa-nest-scope-with-openapi")
+	requireNotContains(t, ids, []string{"http:GET:/admin/health"}, "utoipa-nest-scope-with-openapi")
+}
+
+// TestUtoipaAxum_NestPrefixNotAcrossRouterScope_Default covers the third
+// constructor in the stated inventory above rustRouterCtorRe: both axum's
+// Router and utoipa-axum's OpenApiRouter implement Default, so
+// `OpenApiRouter::default()` builds an empty router with neither `new` nor
+// `with_openapi` in the text.
+func TestUtoipaAxum_NestPrefixNotAcrossRouterScope_Default(t *testing.T) {
+	src := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/health")]
+async fn health() -> &'static str { "ok" }
+
+pub fn public_router() -> OpenApiRouter {
+    OpenApiRouter::default().routes(routes!(health))
+}
+
+fn admin_inner() -> OpenApiRouter {
+    OpenApiRouter::default()
+}
+
+pub fn admin_router() -> OpenApiRouter {
+    OpenApiRouter::default().nest("/admin", admin_inner())
+}
+`
+	ids, res := runDetect(t, "rust", "src/scopes_default.rs", src)
+	requireUtoipaDef(t, res, "http:GET:/health", "health", "utoipa-nest-scope-default")
+	requireNotContains(t, ids, []string{"http:GET:/admin/health"}, "utoipa-nest-scope-default")
+}
+
+// TestUtoipaAxum_NestPrefixTurbofishScope covers the turbofish spelling
+// `OpenApiRouter::<AppState>::new()`, which a stateful router requires when the
+// state type cannot be inferred. The literal substring `Router::new()` is absent
+// there too — the type argument sits between `Router` and `::new()`.
+func TestUtoipaAxum_NestPrefixTurbofishScope(t *testing.T) {
+	src := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/health")]
+async fn health() -> &'static str { "ok" }
+
+pub fn public_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::<AppState>::new().routes(routes!(health))
+}
+
+fn admin_inner() -> OpenApiRouter<AppState> {
+    OpenApiRouter::<AppState>::new()
+}
+
+pub fn admin_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::<AppState>::new().nest("/admin", admin_inner())
+}
+`
+	ids, res := runDetect(t, "rust", "src/scopes_turbofish.rs", src)
+	requireUtoipaDef(t, res, "http:GET:/health", "health", "utoipa-nest-scope-turbofish")
+	requireNotContains(t, ids, []string{"http:GET:/admin/health"}, "utoipa-nest-scope-turbofish")
+}
+
+// TestUtoipaAxum_NestPrefixWithOpenapiStillComposes is the positive control for
+// the fix: widening the constructor inventory must not cost the ordinary
+// single-scope case its prefix. One router, built with with_openapi, nesting a
+// helper — the prefix still applies.
+func TestUtoipaAxum_NestPrefixWithOpenapiStillComposes(t *testing.T) {
+	src := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/items")]
+async fn list_items() -> &'static str { "[]" }
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .nest("/api", OpenApiRouter::with_openapi(ApiDoc::openapi())
+            .routes(routes!(list_items)))
+}
+`
+	ids, res := runDetect(t, "rust", "src/compose_openapi.rs", src)
+	requireUtoipaDef(t, res, "http:GET:/api/items", "list_items", "utoipa-nest-openapi-composes")
+	requireNotContains(t, ids, []string{"http:GET:/items"}, "utoipa-nest-openapi-composes")
+}
+
+// utoipaNestExactGapSrc builds the outer-function fixture with the byte gap
+// between `routes!(` and `.nest(` set EXACTLY to gap, by measuring the
+// unpadded source and inserting precisely the shortfall as comment filler.
+// The caller asserts the achieved gap, so a drift in the surrounding source
+// fails as a broken premise rather than silently testing a different distance.
+func utoipaNestExactGapSrc(t *testing.T, gap int) string {
+	t.Helper()
+	build := func(pad string) string {
+		return `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/items")]
+async fn list_items() -> &'static str { "[]" }
+
+fn items_router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(list_items))
+}
+` + pad + `
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().nest("/api", items_router())
+}
+`
+	}
+	base := utoipaNestGap(t, build(""))
+	short := gap - base
+	if short < 4 {
+		t.Fatalf("utoipa-nest-exact-gap: unpadded gap %d already exceeds target %d", base, gap)
+	}
+	// "//" + (short-3) filler chars + "\n" is exactly `short` bytes.
+	return build("//" + strings.Repeat("x", short-3) + "\n")
+}
+
+// TestUtoipaAxum_NestPrefixAtExactWindow pins the BOUNDARY BYTE of the window
+// comparison, not just the constant: at a gap of exactly rustNestWindow the
+// nest still mounts the route, because the test is `dist > rustNestWindow`.
+//
+// This exists because `>` → `>=` survived the first round of scoring — the
+// bracketing fixtures either side of the window pin its magnitude but leave the
+// boundary itself unobserved. The `== rustNestWindow` assertion below is the
+// premise guard: if the fixture ever drifts off the boundary it fails loudly
+// rather than quietly re-testing the interior.
+func TestUtoipaAxum_NestPrefixAtExactWindow(t *testing.T) {
+	src := utoipaNestExactGapSrc(t, rustNestWindow)
+	if gap := utoipaNestGap(t, src); gap != rustNestWindow {
+		t.Fatalf("utoipa-nest-window-exact: fixture gap %d, want exactly %d", gap, rustNestWindow)
+	}
+	_, res := runDetect(t, "rust", "src/exact.rs", src)
+	requireUtoipaDef(t, res, "http:GET:/api/items", "list_items", "utoipa-nest-window-exact")
+}

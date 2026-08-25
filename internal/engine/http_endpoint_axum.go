@@ -56,6 +56,53 @@ func axumHasAxum(content string) bool {
 		(strings.Contains(content, ".route(") || strings.Contains(content, "Router::"))
 }
 
+// rustRouterCtorRe counts router CONSTRUCTIONS, which is how rustNestPrefixFor
+// tells one router-building expression from the next.
+//
+// This was a literal `strings.Count(content, "Router::new()")` until #6560 B2a
+// review. That spelling is not the inventory — it is one member of it — and the
+// gap was not theoretical: `OpenApiRouter::with_openapi(ApiDoc::openapi())` is
+// utoipa-axum's CANONICAL constructor (the `::new()` form is the one that omits
+// the OpenAPI document), and it contains no `Router::new()`. Two independent
+// routers built that way read as one scope, so a `.nest("/admin", …)` in the
+// second reached back into the first and replaced a real `GET /health` with a
+// phantom `GET /admin/health`. Same for `Router::<AppState>::new()`, where the
+// turbofish splits the substring — that one had been missing from the axum pass
+// since #1420.
+//
+// STATED INVENTORY, so the next reader does not have to rediscover it by
+// accident. Matched:
+//
+//   - `Router::new()` / `OpenApiRouter::new()` and any `*Router` type,
+//     including a local alias (`type ApiRouter = OpenApiRouter;`)
+//   - `Router::default()` / `OpenApiRouter::default()` — both types implement
+//     Default, and `::default()` is a legal empty-router constructor
+//   - `OpenApiRouter::with_openapi(...)` — utoipa-axum only
+//   - the turbofish form of all three, `Router::<S>::new()`
+//
+// Deliberately NOT matched, and each is a MISS in the permissive direction (two
+// scopes may read as one, as the bug above did):
+//
+//   - a rename-import that erases the `Router` suffix
+//     (`use ...::OpenApiRouter as Api;` then `Api::new()`) — nothing in the text
+//     identifies `Api` as a router without resolving the import
+//   - `OpenApiRouter::from(some_axum_router)` — real, but it CONVERTS an
+//     existing router rather than starting a chain, so counting it would split
+//     a scope that is genuinely one
+//   - a constructor returned by a user helper (`fn base() -> OpenApiRouter`)
+//
+// Widening this set makes the guard STRICTER — more nests are rejected as
+// out-of-scope — so every miss above costs recall of a prefix, never a phantom.
+// That is the direction to fail in.
+var rustRouterCtorRe = regexp.MustCompile(
+	`\w*Router\b(?:::<[^>\n]*>)?::(?:new|default|with_openapi)\s*\(`)
+
+// rustRouterCtorCount reports how many router constructions appear in src. It
+// replaces a substring count; see rustRouterCtorRe for the inventory.
+func rustRouterCtorCount(src string) int {
+	return len(rustRouterCtorRe.FindAllStringIndex(src, -1))
+}
+
 // rustNestEntry records one `.nest("prefix", ...)` occurrence: the byte offset
 // of the `.nest` token and the static prefix it mounts at.
 type rustNestEntry struct {
@@ -110,10 +157,21 @@ const rustNestWindow = 2000
 //     registration but within rustNestWindow bytes ahead, as long as no second
 //     Router::new() separates them.
 //
-// The "at most one Router::new()" clause is what keeps a nest from reaching
-// across into a different router scope; note that `OpenApiRouter::new()`
-// contains `Router::new()` as a substring, so the utoipa spelling is counted
-// by the same test.
+// TIE-BREAK, documented rather than pinned (#6560 B2a review): when two nests
+// are EQUIDISTANT on opposite sides of the registration, the first one scanned
+// wins, because the comparison is strict `<`. That is arbitrary — there is no
+// reason a nest 300 bytes before is a better mount than one 300 bytes after —
+// and the mutant `<=` (last wins) survives the suite with a real witness. It is
+// left unpinned deliberately: a fixture would freeze an arbitrary choice as if
+// it were a decision, and either answer is equally defensible. What IS pinned is
+// that distance, not source order, decides when the distances DIFFER — see
+// TestUtoipaAxum_NestPrefixNearestOfTwo.
+//
+// The "at most one router construction" clause is what keeps a nest from
+// reaching across into a different router scope. Which spellings count is
+// rustRouterCtorRe's business, and its inventory is stated there — a substring
+// test for `Router::new()` looked like it covered the utoipa spellings and did
+// not.
 func rustNestPrefixFor(content string, nests []rustNestEntry, routeOffset int) string {
 	bestDist := -1
 	bestPrefix := ""
@@ -136,10 +194,10 @@ func rustNestPrefixFor(content string, nests []rustNestEntry, routeOffset int) s
 			start, end = routeOffset, n.offset
 		}
 		between := content[start:end]
-		// Allow at most one Router::new() (the one that .nest() or
+		// Allow at most one router construction (the one that .nest() or
 		// .route() is being called on). More than one means a different
-		// router scope.
-		if strings.Count(between, "Router::new()") > 1 {
+		// router scope. See rustRouterCtorRe for which spellings count.
+		if rustRouterCtorCount(between) > 1 {
 			continue
 		}
 		if bestDist < 0 || dist < bestDist {
