@@ -38,14 +38,25 @@ package mcp
 //
 // # Bound, stated rather than assumed
 //
-// This covers the seeders, not every test. A NEW test that reaches
-// daemon.StateDirForRepo inline, without going through sandboxStateDirs, is
-// invisible here — the same way it was invisible to #6288. What closes that
-// direction is the seam itself (sandboxStateDirs fails the test when the
-// resolved path escapes), plus adding a row below whenever a seeder is added.
+// This covers the seven seeders it names, not every test. It is a REGRESSION
+// PIN, not structural closure. A NEW test that reaches daemon.StateDirForRepo
+// inline, without going through sandboxStateDirs, is invisible here — the same
+// way it was invisible to #6288 — and nothing else catches it either: the
+// seam's escape check only fires for code that went through the seam, so a
+// seeder that never calls it is never checked. That is measured, not feared: a
+// newly-written seeder in the style of the seven, plus one test calling it,
+// leaves this package at exit 0 while writing 6 entries into the surrogate home.
+//
+// The inline pattern is the normal way to write a seeder here — 18 other
+// _test.go files in this package resolve a state dir with a bare
+// daemon.StateDirForRepo{,Ref}. None of them leaks today (measured), but the
+// count can go 0 -> 1 without this file noticing. Closing that direction needs a
+// chokepoint or a vet-style check over those call sites, tracked in #6663.
+// Until then: add a row below whenever a seeder is added.
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -186,5 +197,63 @@ func TestSandboxStateDirsNeutralisesDaemonRoot(t *testing.T) {
 	}
 	if strings.HasPrefix(dir, hostile+string(filepath.Separator)) {
 		t.Fatalf("an exported GRAFEL_DAEMON_ROOT out-ranked the sandbox: %s is under %s", dir, hostile)
+	}
+}
+
+// escapeProbeEnv gates the child half of TestSandboxStateDirsEscapeCheckIsFatal.
+const escapeProbeEnv = "GRAFEL_6662_ESCAPE_PROBE"
+
+// TestSandboxStateDirsEscapeCheckIsFatal observes the seam's escape check
+// itself, rather than the path it happens to return.
+//
+// TestSandboxStateDirsNeutralisesDaemonRoot asserts the RESOLVED PATH, so it
+// passes whether the check inside sandboxStateDirs fails the test or merely
+// reports: downgrading its t.Fatalf to a t.Logf, or deleting the whole
+// `if !strings.HasPrefix(...)` block, left the full package at exit 0. That is
+// this milestone's signature defect — a guard that logs instead of failing —
+// and it was sitting inside the guard #6645 added. So the check needs a probe
+// that puts it in a losing position and requires it to FAIL.
+//
+// A check that fails the test cannot be observed from inside the same test:
+// t.Fatalf marks the running test failed, and a subtest's failure propagates to
+// its parent. The observation therefore has to happen in a second process. The
+// child re-runs this one test with escapeProbeEnv set, asks the seam for its
+// resolver, and only THEN exports a hostile GRAFEL_DAEMON_ROOT — a state the
+// seam cannot have neutralised in advance, because it is created after the seam
+// ran, exactly as a developer's own exported root behaves relative to a helper
+// that ran earlier in the process. The resolver must refuse it.
+//
+// The parent scores the child on its EXIT CODE, so both shapes of the defect
+// die: a t.Logf downgrade and a deleted block both make the child exit 0, and
+// the child then hands back a path outside the sandbox that a seeder would
+// write a real graph.fb into.
+func TestSandboxStateDirsEscapeCheckIsFatal(t *testing.T) {
+	if os.Getenv(escapeProbeEnv) == "1" {
+		stateDirFor := sandboxStateDirs(t)
+		hostile := t.TempDir()
+		t.Setenv("GRAFEL_DAEMON_ROOT", hostile)
+		dir := stateDirFor(t.TempDir())
+		// Only reached if the escape check did not fail the test. Report the
+		// escape rather than failing, so the parent's exit-code score is the
+		// only thing that decides — a child that fails here for the right
+		// reason and one that fails for the wrong reason would be
+		// indistinguishable.
+		t.Logf("escape check did not fail the test; resolver returned %s (hostile root %s)", dir, hostile)
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestSandboxStateDirsEscapeCheckIsFatal$", "-test.v")
+	cmd.Env = append(os.Environ(), escapeProbeEnv+"=1")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("#6645: sandboxStateDirs' escape check did not FAIL the test when the resolved "+
+			"state dir landed outside the sandboxed grafel home — the child process exited 0.\n"+
+			"A check that only reports lets the seeder write a fixture graph.fb into a REAL "+
+			"grafel store; the resolver must call t.Fatalf, not t.Logf, and the block must be "+
+			"present.\nchild output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "resolved OUTSIDE the sandboxed grafel home") {
+		t.Fatalf("the child failed, but not through the escape check — its diagnostic is what "+
+			"points a developer at the out-ranking environment variable.\nchild output:\n%s", out)
 	}
 }
