@@ -12,15 +12,18 @@ import (
 // malformed input and a panic that takes the indexer down.
 //
 // Every Python fixture elsewhere in this package is well-formed, so no bound is
-// ever approached and all three were unobserved: weakening any one of them left
+// ever approached and all four were unobserved: weakening any one of them left
 // `go vet` at 0 and the full package suite at exit 0. A file does not have to
 // be valid Python to be indexed — partially-written files, generated fragments
 // and mid-edit incremental indexes all reach here — but it does have to not
 // crash the indexer.
 //
-// This table pins the CRASH only, for all three bounds in one idiom. What the
+// This table pins the CRASH only, for all four bounds in one idiom. What the
 // masker PRODUCES for a malformed literal's own line is #6614 and is
-// deliberately not asserted here.
+// deliberately not asserted here. A FIFTH clamp, `j > len(b)` in the
+// single-line branch, is equivalent under this suite and deliberately not
+// tested: `j += 2` from `j = len(b)-1` bounds j to len(b)+1, the only consumer
+// is `i = j`, and the loop guard rejects both values before b is indexed.
 //
 // Each row carries its own premise guard. Asserting the fixture's SHAPE is not
 // enough: a `#` comment or an earlier single quote can consume the line so the
@@ -29,7 +32,13 @@ import (
 // is the one that actually EXECUTES, and that the fixture sits exactly on the
 // boundary the bound defends.
 //
-// Refs #6612 (triple-quote clamp), #6617 (the two look-ahead bounds).
+// Clauses are annotated LOAD-BEARING where a concrete fixture is known that
+// passes every OTHER clause and still leaves the mutant alive, and DECORATIVE
+// where a per-clause drop analysis found no such fixture. Decorative clauses
+// are kept as documentation of the fixture's intent; they are not claimed to
+// carry weight.
+//
+// Refs #6612 (triple-quote clamp), #6617 (the three look-ahead bounds).
 func TestPythonMaskInertRegions_MustNotPanic(t *testing.T) {
 	// firstQuoteOrComment reports the offset of the first byte the scanner's
 	// switch dispatches on. If the construct under test is not AT that offset,
@@ -59,9 +68,27 @@ func TestPythonMaskInertRegions_MustNotPanic(t *testing.T) {
 			premise: func(t *testing.T, src string) {
 				t.Helper()
 				q := firstQuoteOrComment(src)
+				// DECORATIVE. A fixture with no quote or comment at all is
+				// caught by the len-2 offset clause below; per-clause drop
+				// analysis found no fixture this one alone rejects. Kept as a
+				// clearer message for that case.
 				if q < 0 {
 					t.Fatalf("#6617 premise broken: fixture %q contains no quote or comment "+
 						"character, so the quote branch never runs and this row is VACUOUS.", src)
+				}
+				// LOAD-BEARING. `firstQuoteOrComment` also matches `#`, and the
+				// scanner dispatches `#` to the COMMENT branch, which eats the
+				// rest of the line without ever evaluating the bound under test.
+				// `x = ##` satisfies every other clause of this premise — the
+				// first quote-or-comment character sits at len-2 and the last
+				// byte equals it — yet leaves the mutant alive at exit 0. The
+				// character found must actually be a quote.
+				if src[q] != '"' && src[q] != '\'' {
+					t.Fatalf("#6617 premise broken: the first quote-or-comment character must be a "+
+						"QUOTE, not %q, or the scanner dispatches to the comment branch and the "+
+						"quote branch that holds this bound never RUNS (`x = ##` passes every "+
+						"other clause here and leaves the mutant alive); fixture %q. This row is "+
+						"now VACUOUS.", src[q], src)
 				}
 				// The quote branch must be entered at a position where the
 				// three-byte look-ahead lands exactly one past the end. Anywhere
@@ -82,6 +109,9 @@ func TestPythonMaskInertRegions_MustNotPanic(t *testing.T) {
 						"`b[i+2]`; got %q after %q in %q. This row is now VACUOUS.",
 						src[len(src)-1], src[q], src)
 				}
+				// DECORATIVE. The offset and matching-quote clauses already pin
+				// this fixture to the boundary; no fixture is known that this
+				// clause alone rejects. Kept to document the intent.
 				if strings.Contains(src, `\`) {
 					t.Fatalf("#6617 premise broken: fixture %q must contain no backslash, which "+
 						"would change how the scan advances and could move the cursor off the "+
@@ -102,11 +132,16 @@ func TestPythonMaskInertRegions_MustNotPanic(t *testing.T) {
 			premise: func(t *testing.T, src string) {
 				t.Helper()
 				triple := strings.Index(src, `"""`)
+				// DECORATIVE. Subsumed by the first-quote-or-comment clause
+				// below, which cannot hold when there is no `"""` at all.
 				if triple < 0 {
 					t.Fatalf("#6617 premise broken: fixture %q contains no `\"\"\"`, so the "+
 						"triple-quote branch — the only place this bound lives — never runs. "+
 						"This row is VACUOUS.", src)
 				}
+				// LOAD-BEARING — this is #6615's trap closed. `# x = """abc""`
+				// contains the right `"""` and the right closing pair, yet the
+				// comment branch eats the line and the mutant survives.
 				if q := firstQuoteOrComment(src); q != triple {
 					t.Fatalf("#6617 premise broken: the `\"\"\"` must be the FIRST "+
 						"quote-or-comment character so the triple-quote branch is the one that "+
@@ -114,6 +149,9 @@ func TestPythonMaskInertRegions_MustNotPanic(t *testing.T) {
 						"comment or an earlier single quote consumes the line before that branch "+
 						"is entered. This row is now VACUOUS.", q, triple, src)
 				}
+				// DECORATIVE. Per-clause drop analysis found no fixture that
+				// passes the other clauses, carries a second `"""`, and still
+				// leaves the mutant alive. Kept to document the intent.
 				if n := strings.Count(src, `"""`); n != 1 {
 					t.Fatalf("#6617 premise broken: fixture must contain exactly one `\"\"\"` — a "+
 						"second one would TERMINATE the literal and the scan would stop before "+
@@ -155,6 +193,8 @@ func TestPythonMaskInertRegions_MustNotPanic(t *testing.T) {
 			premise: func(t *testing.T, src string) {
 				t.Helper()
 				triple := strings.Index(src, `"""`)
+				// DECORATIVE. Subsumed by the first-quote-or-comment clause
+				// below, which cannot hold when there is no `"""` at all.
 				if triple < 0 {
 					t.Fatalf("#6612 premise broken: fixture %q contains no `\"\"\"`, so the "+
 						"triple-quote branch — where the clamp lives — never runs. VACUOUS.", src)
@@ -174,6 +214,65 @@ func TestPythonMaskInertRegions_MustNotPanic(t *testing.T) {
 					t.Fatalf("#6612 premise broken: fixture must END with a trailing backslash so "+
 						"the `j += 2` escape skip carries j to len(b)+1; got %q. This row is now "+
 						"VACUOUS.", src)
+				}
+				// LOAD-BEARING, and the hole in #6612's original guards: "ends
+				// with a backslash" is not enough, the trailing RUN of
+				// backslashes must be ODD. `x = """abc\\` — an ordinary escaped
+				// backslash — satisfies every clause above, but the first `\`
+				// consumes the second via `j += 2` and j lands exactly ON
+				// len(b), never past it. The clamp is then never needed and the
+				// mutant survives at exit 0.
+				run := 0
+				for run < len(src) && src[len(src)-1-run] == '\\' {
+					run++
+				}
+				if run%2 == 0 {
+					t.Fatalf("#6612 premise broken: the trailing run of backslashes must be ODD "+
+						"so the final `\\` has no byte to consume and `j += 2` carries j PAST "+
+						"len(b); the run is %d in %q. With an even run (an escaped backslash, "+
+						"`\\\\`) j lands exactly ON len(b), the clamp is never needed and this "+
+						"row is VACUOUS.", run, src)
+				}
+			},
+		},
+		{
+			name:  "UnterminatedSingleLineStringAtEOF",
+			issue: "#6617",
+			// `x = "abc` — an unterminated single-line string running to EOF,
+			// commoner in practice than either fixture above. The single-line
+			// scan exits its loop with j == len(b); with `j <= len(b)` the
+			// closing-quote probe then reads `b[j]` one past the end.
+			src: `x = "abc`,
+			why: "j < len(b) at the single-line closing-quote probe",
+			premise: func(t *testing.T, src string) {
+				t.Helper()
+				q := firstQuoteOrComment(src)
+				if q < 0 || (src[q] != '"' && src[q] != '\'') {
+					t.Fatalf("#6617 premise broken: the first quote-or-comment character in %q "+
+						"must be a QUOTE, or the scanner dispatches to the comment branch and the "+
+						"quote branch that holds this bound never RUNS. This row is now VACUOUS.",
+						src)
+				}
+				tail := src[q+1:]
+				// The single-line branch runs only when the triple-quote probe
+				// FAILS, which requires the byte after the opener to differ from
+				// the opener. A `"""` here would take the other branch entirely.
+				if tail == "" || tail[0] == src[q] {
+					t.Fatalf("#6617 premise broken: the byte after the opening quote must exist "+
+						"and differ from it, so the triple-quote probe fails and the SINGLE-LINE "+
+						"branch — the one holding this bound — is what runs; got tail %q after "+
+						"%q in %q. This row is now VACUOUS.", tail, src[q], src)
+				}
+				// The scan must walk the whole tail and stop only by running out
+				// of bytes, so j == len(b) exactly: the one offset at which `<`
+				// and `<=` disagree. A closing quote or a newline breaks the loop
+				// early; a backslash steps `j += 2` and can overshoot.
+				if bad := strings.IndexAny(tail, string(src[q])+"\n\\"); bad >= 0 {
+					t.Fatalf("#6617 premise broken: the literal must be UNTERMINATED and run to "+
+						"EOF — the tail may contain no %q, no newline and no backslash, so the "+
+						"scan stops only by exhausting the input and j == len(b) exactly; found "+
+						"%q at tail offset %d in %q. Any of those makes the probe fire below the "+
+						"boundary and this row VACUOUS.", src[q], tail[bad], bad, src)
 				}
 			},
 		},
