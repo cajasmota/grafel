@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -80,5 +81,63 @@ func TestResolveDeepestExistingChild_NothingResolvedKeepsSpelling(t *testing.T) 
 	}
 	if got != child {
 		t.Fatalf("resolveDeepestExistingChild(%q) = %q; an unresolved climb must return the spelling it was given", child, got)
+	}
+}
+
+// TestResolveDeepestExistingChild_RootTerminatingClimbStaysClean pins that the
+// accumulation produces a CLEANED path, not merely one carrying the right
+// components. A climb that resolves at the filesystem root re-joins onto "/",
+// so concatenating the tail instead of using filepath.Join yields
+// "//gone/a/b" — same components, doubled separator. No other test in the
+// package exercises a root-terminating climb.
+//
+// Nothing is created here: /grafel6580-does-not-exist is only ever stat'd, and
+// the walk stops at "/".
+func TestResolveDeepestExistingChild_RootTerminatingClimbStaysClean(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX root spelling; Windows roots are drive-qualified")
+	}
+	fakeMissingHome6548(t) // keeps the injected home clear of this climb
+
+	// Outside the injected $HOME, so the climb runs all the way to "/", which
+	// is the only level that resolves.
+	child := "/grafel6580-does-not-exist/a/b"
+
+	got, ok := resolveDeepestExistingChild(child)
+	if !ok {
+		t.Fatalf("resolveDeepestExistingChild(%q) reported nothing resolved; \"/\" must resolve", child)
+	}
+	if got != child {
+		t.Fatalf("resolveDeepestExistingChild(%q) = %q, want %q", child, got, child)
+	}
+	if cleaned := filepath.Clean(got); got != cleaned {
+		t.Fatalf("resolveDeepestExistingChild(%q) returned an uncleaned path %q (cleans to %q): the accumulated tail must be re-joined with filepath.Join, not concatenated", child, got, cleaned)
+	}
+}
+
+// TestResolveDeepestExistingChild_TrailingSeparatorDoesNotDuplicate covers the
+// one input shape the walk's Dir/Base partition does not hold for.
+// Dir(".../yet/") is ".../yet", so without the Clean on entry the seed and the
+// first failing level BOTH contribute "yet" and it lands in the result twice —
+// a wrong answer that looks entirely plausible. Unreachable from the three
+// call sites, which all pass Abs+Clean paths, but the helper is independently
+// callable.
+func TestResolveDeepestExistingChild_TrailingSeparatorDoesNotDuplicate(t *testing.T) {
+	root, _ := fakeMissingHome6548(t)
+	link := symlinkedRoot6548(t, root)
+
+	linkReal, err := filepath.EvalSymlinks(link)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%s): %v", link, err)
+	}
+	want := filepath.Join(linkReal, "not", "created", "yet")
+
+	child := filepath.Join(link, "not", "created", "yet") + string(filepath.Separator)
+	got, ok := resolveDeepestExistingChild(child)
+	if !ok {
+		t.Fatalf("resolveDeepestExistingChild(%q) reported nothing resolved", child)
+	}
+	if got != want {
+		t.Fatalf("resolveDeepestExistingChild(%q) = %q, want %q (a trailing separator must not duplicate the last component)", child, got, want)
 	}
 }

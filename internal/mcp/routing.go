@@ -227,13 +227,24 @@ func pathContains(ancestor, child string) bool {
 // resolveDeepestExistingChild returns child with its longest existing ancestor
 // replaced by that ancestor's symlink-resolved form, with the not-yet-existing
 // tail appended. The bool reports whether anything resolved at all; when it is
-// false the caller must keep child's unresolved spelling.
+// false the caller must keep the returned (unresolved) spelling.
+//
 // Every component consumed during the climb is accumulated and re-joined, not
 // just the last one: filepath.Join(resolved, filepath.Base(below)) kept only
-// the FIRST missing component, so a climb of more than one level silently
-// dropped the rest and returned a plausible-looking path that was not the one
-// asked about (#6580).
+// the FIRST missing component — below is overwritten on every failure, so it
+// holds the SHALLOWEST level the climb failed on — and a climb of more than
+// one level therefore dropped everything under it, returning a
+// plausible-looking path that was not the one asked about (#6580).
+//
+// The walk assumes filepath.Dir and filepath.Base partition child, which is
+// false for a trailing separator: Dir("/a/b/") is "/a/b", so "b" would be
+// contributed twice and land in the result twice. child is cleaned on entry
+// rather than left as a documented precondition, because unlike pathContains
+// this helper is independently callable and a duplicated component is exactly
+// the silently-plausible wrong answer #6580 is about. Every current caller
+// already passes an absolute, cleaned path, so the Clean is a no-op for them.
 func resolveDeepestExistingChild(child string) (string, bool) {
+	child = filepath.Clean(child)
 	tail := []string{filepath.Base(child)}
 	out := child
 	ok := pathboundary.Climb(filepath.Dir(child), func(cur string) bool {
