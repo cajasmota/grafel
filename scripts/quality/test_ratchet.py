@@ -261,12 +261,18 @@ class MeasuredOnIsDurable(unittest.TestCase):
                 "ref — what the merge will actually land on")
 
 
-    def test_origin_head_names_a_default_branch_the_tuple_does_not_list(self):
-        """`refs/remotes/origin/HEAD` is consulted before DEFAULT_BRANCH_REFS,
-        and that is the only thing that can answer a repo whose default branch
-        is neither `main` nor `master`. Nothing observed it until #6569:
-        deleting the symref lookup left the suite green, because every fixture
-        also had an `origin/main` for the tuple to find.
+    def test_origin_head_outranks_a_present_origin_main(self):
+        """`refs/remotes/origin/HEAD` is consulted BEFORE DEFAULT_BRANCH_REFS,
+        so it wins even when the tuple has an answer of its own. It is the only
+        thing that can name a default branch that is neither `main` nor
+        `master`, and it must not be demoted below a stale `origin/main` that
+        happens to exist.
+
+        Nothing observed either half until #6569: deleting the symref lookup
+        left the suite green because every fixture also had an `origin/main`
+        at the branch point, and moving the lookup *after* the tuple left it
+        green because no fixture had both a symref and a competing
+        `origin/main`. This one has both, at different commits.
         """
         with tempfile.TemporaryDirectory() as root, chdir(root):
             git(root, "init", "--quiet", "--initial-branch=release")
@@ -276,28 +282,42 @@ class MeasuredOnIsDurable(unittest.TestCase):
             with open(os.path.join(root, "a"), "w") as fh:
                 fh.write("1")
             git(root, "add", "a")
-            git(root, "commit", "--quiet", "-m", "base")
+            git(root, "commit", "--quiet", "-m", "abandoned main")
+            stale_main = git(root, "rev-parse", "--short", "HEAD")
+            with open(os.path.join(root, "a"), "w") as fh:
+                fh.write("2")
+            git(root, "commit", "--quiet", "-am", "base")
             base = git(root, "rev-parse", "--short", "HEAD")
             git(root, "update-ref", "refs/remotes/origin/release", "HEAD")
             git(root, "symbolic-ref", "refs/remotes/origin/HEAD",
                 "refs/remotes/origin/release")
+            # A competing tuple candidate, at a DIFFERENT commit. Without it
+            # the symref's precedence is unobservable: demoting the lookup
+            # below the tuple changes nothing when the tuple cannot answer.
+            git(root, "update-ref", "refs/remotes/origin/main", stale_main)
             git(root, "checkout", "--quiet", "-b", "feature")
             with open(os.path.join(root, "a"), "w") as fh:
-                fh.write("2")
+                fh.write("3")
             git(root, "commit", "--quiet", "-am", "feature work")
             head = git(root, "rev-parse", "--short", "HEAD")
 
-            # Nothing in DEFAULT_BRANCH_REFS can resolve here: the premise.
-            for ref in ratchet.DEFAULT_BRANCH_REFS:
-                self.assertFalse(
-                    has_ref(root, ref),
-                    f"{ref} resolves, so the tuple could answer without the symref")
+            # The premise, asserted rather than assumed: the tuple CAN answer
+            # here, and its answer is the wrong one.
+            self.assertTrue(
+                has_ref(root, "refs/remotes/origin/main"),
+                "no competing tuple candidate; the symref would win by default")
+            self.assertNotEqual(stale_main, base)
 
             self.assertEqual(
-                ratchet.default_branch_ref(), "refs/remotes/origin/release")
+                ratchet.default_branch_ref(), "refs/remotes/origin/release",
+                "resolved a DEFAULT_BRANCH_REFS entry over refs/remotes/origin/HEAD")
             got = ratchet.git_sha()
             self.assertNotEqual(got, "unknown", "failed to find the default branch")
             self.assertNotEqual(got, head, "stamped the feature-branch HEAD")
+            self.assertNotEqual(
+                got, stale_main,
+                "anchored measured_on to origin/main while origin/HEAD named "
+                "a different default branch")
             self.assertEqual(got, base)
 
 
