@@ -176,11 +176,21 @@ func TestSeedersDoNotWriteIntoTheRealGrafelHome(t *testing.T) {
 // and with whatever daemon owns the root.
 //
 // Scored, not assumed. Deleting the seam's t.Setenv("GRAFEL_DAEMON_ROOT", "")
-// leaves the whole table above GREEN and fails only here — and it fails through
-// the resolver's own escape check, naming the offending path, which is what
-// makes that check an observation rather than a comment.
+// leaves the whole table above GREEN and fails only here.
+//
+// What this test does NOT establish: it asserts the resolved PATH, so it says
+// nothing about whether the seam's escape check FAILS the test or merely
+// reports. Downgrading that t.Fatalf to a t.Logf, and deleting the check
+// outright, both leave this test green — measured, full package exit 0. That
+// direction is scored by TestSandboxStateDirsEscapeCheckIsFatal below.
 func TestSandboxStateDirsNeutralisesDaemonRoot(t *testing.T) {
-	hostile := t.TempDir()
+	// The hostile root ends in ".grafel" on purpose. The realistic value of an
+	// exported GRAFEL_DAEMON_ROOT is the developer's own ~/.grafel, and the
+	// guard means "inside MY sandbox", not "inside SOME .grafel". A bare
+	// t.TempDir() has no .grafel segment, so it cannot tell those two apart:
+	// weakening the seam's prefix test to strings.Contains(dir, ".grafel")
+	// survives a bare-TempDir fixture and is caught by this one.
+	hostile := filepath.Join(t.TempDir(), ".grafel")
 	t.Setenv("GRAFEL_DAEMON_ROOT", hostile)
 
 	stateDirFor := sandboxStateDirs(t)
@@ -223,14 +233,29 @@ const escapeProbeEnv = "GRAFEL_6662_ESCAPE_PROBE"
 // ran, exactly as a developer's own exported root behaves relative to a helper
 // that ran earlier in the process. The resolver must refuse it.
 //
-// The parent scores the child on its EXIT CODE, so both shapes of the defect
-// die: a t.Logf downgrade and a deleted block both make the child exit 0, and
-// the child then hands back a path outside the sandbox that a seeder would
-// write a real graph.fb into.
+// The parent scores the child on its EXIT CODE rather than on its output, which
+// is what lets one fixture cover several weakenings of the same check.
+//
+// Three mutants are scored against it, and they are the claim — this test is
+// not evidence that the check is observed in general:
+//
+//   - t.Fatalf downgraded to t.Logf                       (child exits 0)
+//   - the whole `if !strings.HasPrefix(...)` block deleted (child exits 0)
+//   - strings.HasPrefix(dir, prefix) weakened to
+//     strings.Contains(dir, ".grafel")                    (needs the hostile
+//     root to look like a grafel home, hence the filepath.Join below)
+//
+// In each case the child would otherwise hand back a path outside the sandbox
+// that a seeder writes a real graph.fb into. A fourth weakening nobody has
+// written down is not covered by anything here.
 func TestSandboxStateDirsEscapeCheckIsFatal(t *testing.T) {
 	if os.Getenv(escapeProbeEnv) == "1" {
 		stateDirFor := sandboxStateDirs(t)
-		hostile := t.TempDir()
+		// Ends in ".grafel" for the reason given on
+		// TestSandboxStateDirsNeutralisesDaemonRoot: a bare t.TempDir() lets a
+		// merely-permissive predicate keep rejecting it, and the escape that
+		// actually costs a developer their store is one INTO a real .grafel.
+		hostile := filepath.Join(t.TempDir(), ".grafel")
 		t.Setenv("GRAFEL_DAEMON_ROOT", hostile)
 		dir := stateDirFor(t.TempDir())
 		// Only reached if the escape check did not fail the test. Report the
