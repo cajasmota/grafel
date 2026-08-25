@@ -548,12 +548,53 @@ func semanticDigest6118(doc *graph.Document) string {
 // #6485 declares invalid. It keeps its source_file and its source_handler
 // property; it is now edgeless rather than wrongly linked, which is the
 // NoHandlerProp keep-path decision that ships with #6485.
+// #6601 RE-PIN — counts move 147/286 -> 142/281.
+//
+// The C# extractor's `using` carrier (`buildImport`) emitted
+// Kind="SCOPE.Component" with Subtype UNSET, while every prune predicate in
+// internal/resolve/imports.go selects on `Kind=="SCOPE.Component" &&
+// Subtype=="import"`. The kind matched and the subtype never did, so the prune
+// pass never even looked at them (considered=0) and they shipped as orphans.
+// #6601 stamps the subtype at the producer. The full delta, all of it downstream
+// of that one literal:
+//
+//	DELETED  E SCOPE.Component (subtype="")  FluentValidation   cs/OrderValidator.cs
+//	DELETED  E SCOPE.Component (subtype="")  MassTransit        cs/OrderCreatedConsumer.cs
+//	DELETED  E SCOPE.Component (subtype="")  MediatR            cs/CreateOrderHandler.cs
+//	DELETED  E SCOPE.Component (subtype="")  Microsoft          cs/OrdersController.cs
+//	DELETED  E SCOPE.Component (subtype="")  Microsoft          cs/ShopContext.cs
+//	DELETED  E SCOPE.Component (subtype="")  Microsoft          cs/Startup.cs
+//	DELETED  E SCOPE.Component (subtype="")  Quartz             cs/CleanupJob.cs
+//	DELETED  R Module -[CONTAINS]-> each of the 7 above
+//	ADDED    E SCOPE.External package  FluentValidation:FluentValidation
+//	ADDED    E SCOPE.External package  MediatR:MediatR
+//	ADDED    R Module -[CONTAINS]-> each of the 2 above
+//	REWIRED  R 4 C# IMPORTS edges off the deleted carriers: 2 onto the new
+//	         externals (ext:FluentValidation:FluentValidation, ext:MediatR:MediatR),
+//	         2 onto bare module strings (Quartz, MassTransit) via the #6156
+//	         module-string restore. Dangling endpoints 51 -> 53.
+//
+// NOTHING REAL IS LOST, which is the claim this re-pin rests on. All 7 deleted
+// entities are subtype-less import carriers with 0/0 spans; the three `Microsoft`
+// ones carried ONLY the Module CONTAINS edge, i.e. pure orphans; nothing
+// legitimate referenced any of the 7. Each was already duplicated by the
+// cross/imports placeholder for the same `using` — same Kind/Name/SourceFile,
+// hence the same graph.EntityID, which does not hash Subtype — so every `using`
+// was shipping twice and only the immortal copy is going away.
+//
+// The 2 bare-module ToIDs are the pre-existing #6156 restore path becoming
+// reachable for C# for the first time, tracked separately in #6604. On the
+// pre-#6601 graph those 2 edges pointed at a junk orphan carrier, so this is not
+// a regression from a good state.
+//
+// 147/286 encoded the bug. Re-pin approved by the maintainer on PR #6603.
 const (
 	gateOffDigest6118Base = "a0a6ede910d8d0465d901153f483b27b8a57a565bdd79dd0104bef53786d9ca1"
 	gateOffDigest6118     = "387a9c36cb585b4d73828afc997744dbe02e6df347e0860054adf69431996d46"
 	gateOffDigest6138     = "8726464ce66a815e8b8a69bf8a9ee272368903f623c161fba81235237e235025"
 	gateOffDigest6152     = "774eaec1d5ad5d9731d2c043a6207fdb7b3882b9fdf0f37e4a6b9dbdc555662f"
 	gateOffDigest6485     = "3ed5d943639276cd687131418577904de2c0fdcb1de846bd87f3816046f43443"
+	gateOffDigest6601     = "d073c83f287b2f6b3b93c0479b7dc55887ee292760b00217ebad1de0ecc0dcdf"
 )
 
 func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
@@ -561,8 +602,14 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 	got := semanticDigest6118(off)
-	if got == gateOffDigest6485 {
+	if got == gateOffDigest6601 {
 		return
+	}
+	if got == gateOffDigest6485 {
+		t.Fatalf("gate-OFF graph reverted to the pre-#6601 baseline — the C# `using` " +
+			"carriers are shipping again as subtype-less SCOPE.Component orphans, so " +
+			"`buildImport` has stopped stamping Subtype:\"import\" or the prune " +
+			"predicates have stopped selecting on it")
 	}
 	if got == gateOffDigest6152 {
 		t.Fatalf("gate-OFF graph reverted to the pre-#6485 baseline — a Route entity is " +
@@ -581,9 +628,9 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 		t.Fatalf("gate-OFF graph reverted to the pre-fix 2f0175dfc baseline — the #6118 " +
 			"span donation is no longer reaching the default path")
 	}
-	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
-		"(entities=%d relationships=%d)", got, gateOffDigest6485, gateOffDigest6152,
-		gateOffDigest6138, gateOffDigest6118, gateOffDigest6118Base,
+	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6601 %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
+		"(entities=%d relationships=%d)", got, gateOffDigest6601, gateOffDigest6485,
+		gateOffDigest6152, gateOffDigest6138, gateOffDigest6118, gateOffDigest6118Base,
 		len(off.Entities), len(off.Relationships))
 }
 
@@ -606,12 +653,13 @@ func TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain(t *testing.T)
 	// phantom `SCOPE.Process http:ANY:/orders → /orders` and its five edges
 	// (the Route self-IMPLEMENTS, two STEP_IN_PROCESS, one ENTRY_POINT_OF, one
 	// Module:_external CONTAINS) once a Route stopped being an eligible handler
-	// target (#6485, 147/286). Both real /orders endpoints and both real
+	// target (#6485, 147/286; then #6601 dropped the 7 C# import carriers →
+	// 142/281). Both real /orders endpoints and both real
 	// handler IMPLEMENTS edges are unaffected; see the block comment above the
 	// digest constants for the item-by-item delta.
 	const (
-		wantEntities = 147
-		wantRels     = 286
+		wantEntities = 142
+		wantRels     = 281
 	)
 	if len(off.Entities) != wantEntities || len(off.Relationships) != wantRels {
 		t.Fatalf("gate-OFF graph size moved: entities=%d (want %d) relationships=%d (want %d) — "+

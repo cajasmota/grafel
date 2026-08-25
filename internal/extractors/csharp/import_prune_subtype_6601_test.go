@@ -132,9 +132,55 @@ func TestCSharpImportCarrier_PruneConsidersThem(t *testing.T) {
 		t.Fatalf("prune considered=0 over %d C# import carriers — the prune pass "+
 			"never looked at them (#6601); pruned=%d", len(carriers), stats.Pruned)
 	}
-	if stats.Considered < len(carriers) {
-		t.Errorf("prune considered=%d, want >= %d (one per import carrier)",
-			stats.Considered, len(carriers))
+}
+
+// TestCSharpImportCarrier_PruneRemovesThemAll pins the BEHAVIOURAL gain, which
+// `Considered` alone does not.
+//
+// `Considered != 0` proves the prune LOOKS at the carriers. It does not prove it
+// ACTS on them: a mutant that increments Considered and then `continue`s on
+// `r.Language == "csharp"` keeps every junk carrier in the graph while leaving
+// the Considered assertion, the edge-preservation assertion and both package
+// suites green (scored while landing #6601 — it survived everything). The whole
+// point of the issue is that these entities stop shipping, so that has to be the
+// assertion.
+//
+// The invariant is stated on the OUTPUT rather than on a counter: after the
+// prune, the ONLY surviving SCOPE.Component allowed to carry an IMPORTS edge is
+// the file-level carrier (Subtype=="file"), which is the hoist DESTINATION and is
+// a durable entity in its own right. Every per-import carrier must be gone. That
+// is a producer-side property of the C# extractor's own output — it does not
+// borrow an internal invariant from internal/resolve — and it is what "the
+// carriers no longer ship" actually means.
+func TestCSharpImportCarrier_PruneRemovesThemAll(t *testing.T) {
+	recs := extractCSharp6601(t)
+	carriers := importCarriers6601(recs)
+	if len(carriers) == 0 {
+		t.Fatal("no IMPORTS-carrying records — fixture has three `using` directives")
+	}
+
+	after, _, stats := resolve.PruneImportPlaceholders(recs)
+
+	var survived []string
+	for _, r := range after {
+		if r.Kind != "SCOPE.Component" || r.Subtype == "file" {
+			continue
+		}
+		for _, rel := range r.Relationships {
+			if rel.Kind == "IMPORTS" {
+				survived = append(survived, r.Name+" (subtype="+r.Subtype+")")
+				break
+			}
+		}
+	}
+	if len(survived) != 0 {
+		t.Errorf("%d import carriers survived the prune and still ship in the graph: %v "+
+			"(considered=%d pruned=%d) — the prune looked at them and did not act (#6601)",
+			len(survived), survived, stats.Considered, stats.Pruned)
+	}
+	if stats.Pruned < len(carriers) {
+		t.Errorf("prune pruned=%d, want >= %d (one per import carrier); considered=%d",
+			stats.Pruned, len(carriers), stats.Considered)
 	}
 }
 
