@@ -763,8 +763,7 @@ class MeasuredOnIsDurable(unittest.TestCase):
                 "the override names a ref that does not resolve")
             self.assertNotEqual(override_base, discovered)
 
-            os.environ["QUALITY_BASE_REF"] = "refs/remotes/origin/stable"
-            self.addCleanup(os.environ.pop, "QUALITY_BASE_REF", None)
+            set_base_ref(self, "refs/remotes/origin/stable")
 
             self.assertEqual(
                 ratchet.default_branch_ref(), "refs/remotes/origin/stable",
@@ -985,8 +984,7 @@ class CandidateRefsMustPeelToACommit(unittest.TestCase):
             # implementation has somewhere to fall through TO.
             self.assertTrue(has_ref(root, "refs/remotes/origin/main"))
 
-            os.environ["QUALITY_BASE_REF"] = bad_ref
-            self.addCleanup(os.environ.pop, "QUALITY_BASE_REF", None)
+            set_base_ref(self, bad_ref)
 
             self.assertEqual(
                 ratchet.default_branch_ref(), "refs/remotes/origin/main",
@@ -1027,8 +1025,7 @@ class AnnotatedTagCandidateIsNotADistinguisher(unittest.TestCase):
                 "premise broken: this tag is lightweight, not annotated — the "
                 "tag object and the commit must be different objects")
 
-            os.environ["QUALITY_BASE_REF"] = tag_ref
-            self.addCleanup(os.environ.pop, "QUALITY_BASE_REF", None)
+            set_base_ref(self, tag_ref)
 
             self.assertEqual(ratchet.default_branch_ref(), tag_ref)
             got = ratchet.git_sha()
@@ -1132,8 +1129,7 @@ class AncestryFollowsTheDiscoveredRef(unittest.TestCase):
         """Build the repo, arm the override, and assert every premise the two
         tests below rely on — independently of `ratchet.py` where it matters."""
         branch_point, orphan = make_repo_divergent_default_ref(root)
-        os.environ["QUALITY_BASE_REF"] = self.BASE_REF
-        self.addCleanup(os.environ.pop, "QUALITY_BASE_REF", None)
+        set_base_ref(self, self.BASE_REF)
 
         self.assertEqual(
             ratchet.default_branch_ref(), self.BASE_REF,
@@ -1217,13 +1213,16 @@ class PaddedBaseRefOverrideIsHonoured(unittest.TestCase):
     asserted only in the docstring ("QUALITY_BASE_REF overrides the search"),
     which is the dominant defect shape in this file.
 
-    The whitespace is not hypothetical. The two ways an operator produces this
-    value both append a newline: `QUALITY_BASE_REF=$(git symbolic-ref …)` in a
-    shell, and a YAML block scalar in a workflow. A leading space is what a
-    hand-edited `env:` line or a `read`-into-variable produces.
+    None of this whitespace is hypothetical, and that is why the padding uses
+    four different characters. A trailing NEWLINE is what both ordinary sources
+    of this value append: `QUALITY_BASE_REF=$(git symbolic-ref …)` in a shell,
+    and a YAML block scalar in a workflow. A leading SPACE is what a
+    hand-edited `env:` line or a `read`-into-variable produces. A leading TAB
+    is what hand-indenting that same line produces. A trailing CR is what a
+    workflow file checked out with CRLF endings produces on any runner.
 
-    Witness, with `QUALITY_BASE_REF=" refs/remotes/origin/release\\n"` on the
-    `make_repo_divergent_default_ref` fixture:
+    Witness, with `QUALITY_BASE_REF="\\t refs/remotes/origin/release\\r\\n"` on
+    the `make_repo_divergent_default_ref` fixture:
 
         | .strip() | default_branch_ref()          | git_sha()   | durable? |
         | present  | refs/remotes/origin/release   | branch pt   | accepted |
@@ -1240,16 +1239,21 @@ class PaddedBaseRefOverrideIsHonoured(unittest.TestCase):
     f-string interpolates `ref`, so a message assertion reads back the ref the
     code chose and can go green on a call that consulted a different one.
 
-    Per-clause drop analysis (measured, Refs #6633). Three mutant families were
-    scored, not one: `.strip()` deleted, `.strip()` -> `.rstrip()`, and
-    `.strip()` -> `.lstrip()`. All three survive the suite without this class
-    and all three die with it.
+    Per-clause drop analysis (measured, Refs #6633). FOUR mutant families were
+    scored, not one: `.strip()` deleted, `.strip()` -> `.rstrip()`, `.strip()`
+    -> `.lstrip()`, and `.strip()` -> `.strip(" \\n")`. All four survive the
+    suite without this class and all four die with it.
 
-      * The LEADING SPACE in `PADDED` is load-bearing: pad only with a trailing
-        newline and the `.rstrip()` mutant goes green, because `rstrip()`
-        removes exactly the padding that shape supplies.
-      * The TRAILING NEWLINE is load-bearing for the mirror reason: pad only
-        with a leading space and the `.lstrip()` mutant goes green.
+      * The LEADING whitespace in `PADDED` is load-bearing: pad only on the
+        right and the `.rstrip()` mutant goes green, because `rstrip()` removes
+        exactly the padding that shape supplies.
+      * The TRAILING whitespace is load-bearing for the mirror reason: pad only
+        on the left and the `.lstrip()` mutant goes green.
+      * The TAB and the CR are load-bearing together: pad with space and
+        newline alone and `.strip(" \\n")` goes green, because that argument
+        names exactly the two characters such a padding contains. `.strip()`
+        with no argument removes a SET, so a padding drawn from part of that
+        set cannot pin the set.
       * `origin/main` resolving in the fixture is load-bearing for
         `test_the_durability_decision_follows_the_padded_override`: delete it
         and the discarded override leaves NO ref at all, so
@@ -1259,29 +1263,50 @@ class PaddedBaseRefOverrideIsHonoured(unittest.TestCase):
         `git_sha()` still degrades to "unknown".
       * `test_the_durability_decision_follows_the_padded_override` is
         DECORATIVE for this mutant family, and is labelled so rather than
-        credited with weight it does not carry: delete it and all three mutants
-        still die, on both remaining tests. It is kept for two reasons that are
-        not "it kills something" — it is the consequence an operator actually
-        sees (a refusal naming a ref they never chose), and it is the only
-        clause here that would notice a future change discarding the override
-        somewhere downstream of `default_branch_ref()`.
+        credited with weight it does not carry: delete it and every strip
+        mutant still dies, on the two remaining tests. It is kept for two
+        reasons that are not "it kills something here" — it is the consequence
+        an operator actually sees (a refusal naming a ref they never chose),
+        and it is the SUITE-WIDE UNIQUE killer of a different mutant: one that
+        consumes the override unstripped downstream of `default_branch_ref()`.
+        Decorative for this family and load-bearing for that one are both true,
+        and the distinction is the point.
 
     Measured drop matrix (3 selected tests; "survives" = mutant goes green):
 
-        drop                     | no strip | rstrip() | lstrip()
-        (none)                   |  3 fail  |  3 fail  |  3 fail
-        pad trailing \\n only     |  3 fail  | SURVIVES |  3 fail
-        pad leading space only   |  3 fail  |  3 fail  | SURVIVES
-        origin/main deleted      |  2 fail  |  2 fail  |  2 fail   (durability
-                                 |          |          |    test passes)
-        durability test deleted  |  2 fail  |  2 fail  |  2 fail
+        drop                      | no strip | rstrip() | lstrip() | strip(" \\n")
+        (none)                    |  3 fail  |  3 fail  |  3 fail  |  3 fail
+        pad right only            |  3 fail  | SURVIVES |  3 fail  |  3 fail
+        pad left only             |  3 fail  |  3 fail  | SURVIVES |  3 fail
+        pad space + newline only  |  3 fail  |  3 fail  |  3 fail  | SURVIVES
+        origin/main deleted       |  2 fail  |  2 fail  |  2 fail  |  2 fail
+                                  |   (the durability test passes in this column-wide row)
+        durability test deleted   |  2 fail  |  2 fail  |  2 fail  |  2 fail
+
+    Recorded EQUIVALENCES — measured, and recorded as equivalent rather than
+    as kills, because an equivalent mutant that is filed as DEAD is a false
+    claim about what the suite observes:
+
+      * Moving the strip past the emptiness test — `if override:` on the raw
+        value, `candidates.append(override.strip())` — is EQUIVALENT. The only
+        input that could diverge is a whitespace-ONLY value: there the mutant
+        appends `""`, `rev-parse --verify "^{commit}"` fails, and the search
+        falls through to exactly the ref the pristine code reaches by not
+        appending at all. Re-measured here over 12 inputs — five of them
+        whitespace-only, which is the only shape that could diverge — with 0
+        divergences. Do not write a test for it, and do not file it as DEAD.
     """
 
     BASE_REF = "refs/remotes/origin/release"
     FALLBACK = "refs/remotes/origin/main"
     # Padded on BOTH sides on purpose: one side alone cannot distinguish
-    # `.strip()` from the one-sided strip that happens to remove it.
-    PADDED = " refs/remotes/origin/release\n"
+    # `.strip()` from the one-sided strip that happens to remove it. And with
+    # FOUR distinct whitespace characters, because `.strip()` with no argument
+    # removes a set, and a padding of only space and newline leaves
+    # `.strip(" \\n")` — a plausible "be explicit about what we strip" edit —
+    # indistinguishable from it. Tab and CR both have real sources: a
+    # hand-indented `env:` line and a CRLF-checked-out workflow file.
+    PADDED = "\t refs/remotes/origin/release\r\n"
 
     def _fixture(self, root):
         """Build the repo, arm the padded override, and assert every premise
@@ -1303,6 +1328,7 @@ class PaddedBaseRefOverrideIsHonoured(unittest.TestCase):
             ("no strip at all", self.PADDED),
             ("rstrip() only, leading space survives", self.PADDED.rstrip()),
             ("lstrip() only, trailing newline survives", self.PADDED.lstrip()),
+            ('strip(" \\n") only, tab and CR survive', self.PADDED.strip(" \n")),
         ):
             self.assertFalse(
                 has_ref(root, spelling + "^{commit}"),
