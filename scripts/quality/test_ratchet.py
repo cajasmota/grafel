@@ -345,6 +345,114 @@ def make_repo_criss_cross(root):
 STAMP = "test-stamp-6564"
 
 
+def is_ancestor(repo, sha, ref):
+    """True if `sha` is reachable from `ref`, asked of git directly.
+
+    The tests below use this to state a fixture's ancestry facts independently
+    of `ratchet.py` — the whole point of #6627's first survivor is that the
+    code can consult the WRONG ref and still produce a plausible answer, so the
+    premises cannot be read back out of the function under test.
+    """
+    return subprocess.call(
+        ["git", "merge-base", "--is-ancestor", sha, ref],
+        cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    ) == 0
+
+
+def make_repo_divergent_default_ref(root):
+    """A checkout whose default-branch ref is NOT `origin/main`, and where the
+    two disagree about what is reachable (Refs #6627).
+
+    Returns (branch_point, orphan_sha), short.
+
+    Every other fixture in this file makes `refs/remotes/origin/main` the
+    answer `default_branch_ref()` gives, so `ensure_durable_measured_on` could
+    ignore that answer and hardcode `origin/main` with nothing to observe it.
+    Here the discovered ref is `refs/remotes/origin/release`, fed in through
+    `QUALITY_BASE_REF` — which exists precisely for a checkout that knows its
+    own base and cannot be discovered from refs — and `origin/main` is present
+    but sits on an ORPHAN history:
+
+        r1 ── r2            <- refs/remotes/origin/release   (the real base)
+         └── f1             <- feature, HEAD
+        o1                  <- refs/remotes/origin/main      (disjoint)
+
+    So the two refs disagree in BOTH directions, which is what makes the
+    ancestry decision observable rather than merely reported:
+
+      * `r1` (the branch point, and what `git_sha()` stamps) is reachable from
+        the discovered ref and NOT from `origin/main`;
+      * `o1` is reachable from `origin/main` and NOT from the discovered ref.
+
+    `origin/main` deliberately RESOLVES, and that clause was MEASURED rather
+    than assumed (Refs #6627). Deleting the ref from this fixture and
+    re-applying the mutant: the two permissive tests still fail, but only
+    because `merge-base --is-ancestor` cannot resolve a missing ref — an
+    argument about a broken checkout, not about which ref the decision follows.
+    The strict test, `test_refuses_a_sha_only_the_hardcoded_ref_can_reach`,
+    goes GREEN under the mutant without it, because with no `origin/main` the
+    mutant refuses `o1` for the same reason the real code does. So the clause
+    is load-bearing for exactly one of the three tests, and is kept for all
+    three because it is what makes the kill an argument about ref choice.
+    """
+    git(root, "init", "--quiet", "--initial-branch=trunk")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    git(root, "config", "commit.gpgsign", "false")
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("1")
+    git(root, "add", "a")
+    git(root, "commit", "--quiet", "-m", "base")
+    branch_point = git(root, "rev-parse", "--short", "HEAD")
+    git(root, "branch", "feature")
+    with open(os.path.join(root, "b"), "w") as fh:
+        fh.write("someone else landed this")
+    git(root, "add", "b")
+    git(root, "commit", "--quiet", "-m", "release branch moves on")
+    git(root, "update-ref", "refs/remotes/origin/release", "HEAD")
+
+    # An unrelated root commit, so `origin/main` can resolve while sharing no
+    # history at all with the branch the base ref names.
+    git(root, "checkout", "--quiet", "--orphan", "unrelated")
+    with open(os.path.join(root, "c"), "w") as fh:
+        fh.write("a different project's main")
+    git(root, "add", "c")
+    git(root, "commit", "--quiet", "-m", "unrelated root")
+    orphan = git(root, "rev-parse", "--short", "HEAD")
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+    git(root, "checkout", "--quiet", "--force", "feature")
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("2")
+    git(root, "commit", "--quiet", "-am", "feature work")
+    assert branch_point != orphan
+    return branch_point, orphan
+
+
+def make_repo_no_default_branch_ref(root):
+    """A local repo with ONE REAL COMMIT and no candidate default-branch ref
+    whatsoever (Refs #6627).
+
+    Returns the short HEAD sha.
+
+    The branch is `wip`, there is no remote, no `origin/HEAD`, and no local
+    `main` or `master`, so every entry in `DEFAULT_BRANCH_REFS` misses and
+    `default_branch_ref()` returns None. Unlike
+    `test_degrades_to_unknown_when_no_default_branch_is_available`, the caller
+    here holds a sha that RESOLVES — which is the combination that reaches
+    `ensure_durable_measured_on`'s second early return.
+    """
+    git(root, "init", "--quiet", "--initial-branch=wip")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    git(root, "config", "commit.gpgsign", "false")
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("1")
+    git(root, "add", "a")
+    git(root, "commit", "--quiet", "-m", "only")
+    return git(root, "rev-parse", "--short", "HEAD")
+
+
 def make_fixture(root, prior_extra=None):
     """The minimum on-disk shape `ratchet.py update` reads."""
     golden = os.path.join(root, "golden")
@@ -962,6 +1070,196 @@ class MergeBasePicksOneCommit(unittest.TestCase):
                 len(bases), 1,
                 "expected the linear shape to have exactly one merge-base")
             self.assertEqual(git(root, "rev-parse", "--short", bases[0]), base)
+
+
+class AncestryFollowsTheDiscoveredRef(unittest.TestCase):
+    """`ensure_durable_measured_on` must check durability against the ref
+    `default_branch_ref()` returned — not against a hardcoded `origin/main`.
+
+    Hardcoding it survived the whole suite until #6627, because every fixture's
+    default branch ref WAS `origin/main`. `QUALITY_BASE_REF` exists for the
+    opposite case: a checkout that cannot be discovered from refs and names its
+    own base. Under the mutant an operator sets it, watches `git_sha()` honour
+    it, and then has durability judged against a ref that may not exist in that
+    checkout at all — `merge-base --is-ancestor` against a missing or unrelated
+    ref exits non-zero, so a perfectly durable sha is refused, with an error
+    message naming a ref the operator never chose.
+
+    That last clause is why these tests assert the DECISION and never the
+    message: the message already interpolates `ref`, so an assertion on its
+    text goes green on a call that consulted the wrong ref and merely reported
+    the right one. That is not a theoretical worry: under the mutant this
+    suite's failure output reads "not an ancestor of
+    refs/remotes/origin/release" on a call that asked about `origin/main`.
+
+    Every premise below was drop-tested (Refs #6627): with the "unknown" check
+    neutralised and `branch_point` replaced by `"unknown"`, the mutant goes
+    green again — the first early return carries the call and the ancestry
+    check is never reached. The `err.getvalue() == ""` assertion is what
+    catches that degradation, and it fires on pristine `ratchet.py`.
+    """
+
+    BASE_REF = "refs/remotes/origin/release"
+    HARDCODED = "refs/remotes/origin/main"
+
+    def _fixture(self, root):
+        """Build the repo, arm the override, and assert every premise the two
+        tests below rely on — independently of `ratchet.py` where it matters."""
+        branch_point, orphan = make_repo_divergent_default_ref(root)
+        os.environ["QUALITY_BASE_REF"] = self.BASE_REF
+        self.addCleanup(os.environ.pop, "QUALITY_BASE_REF", None)
+
+        self.assertEqual(
+            ratchet.default_branch_ref(), self.BASE_REF,
+            "DEGENERATE FIXTURE: the discovered ref is not the override, so "
+            "this fixture cannot tell the discovered ref from any other")
+        self.assertTrue(
+            has_ref(root, self.HARDCODED),
+            "DEGENERATE FIXTURE: the hardcoded ref does not resolve here, so a "
+            "kill would only prove that a missing ref fails, not that the "
+            "decision follows the discovered one")
+        # The two refs must disagree in both directions, or one of the two
+        # tests below is vacuous.
+        self.assertTrue(is_ancestor(root, branch_point, self.BASE_REF))
+        self.assertFalse(is_ancestor(root, branch_point, self.HARDCODED))
+        self.assertTrue(is_ancestor(root, orphan, self.HARDCODED))
+        self.assertFalse(is_ancestor(root, orphan, self.BASE_REF))
+        # Neither sha may be "unknown", or the FIRST early return carries the
+        # call and the ancestry check is never reached.
+        self.assertNotIn("unknown", (branch_point, orphan))
+        return branch_point, orphan
+
+    def test_accepts_a_sha_only_the_discovered_ref_can_reach(self):
+        """Permissive direction: the durable sha must be written, not refused."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            branch_point, _orphan = self._fixture(root)
+            err = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(err):
+                    ratchet.ensure_durable_measured_on(branch_point)
+            except SystemExit as exc:
+                self.fail(
+                    f"the writer refused {branch_point!r}, which IS reachable "
+                    f"from the discovered base ref {self.BASE_REF} — the "
+                    f"ancestry check consulted some other ref ({exc})")
+            self.assertEqual(
+                err.getvalue(), "",
+                "the 'unknown' guard fired; the ancestry check was never "
+                "reached and this test observed nothing")
+
+    def test_refuses_a_sha_only_the_hardcoded_ref_can_reach(self):
+        """Strict direction: reachability from `origin/main` must not launder a
+        sha the real base ref cannot reach."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            _branch_point, orphan = self._fixture(root)
+            with self.assertRaises(
+                SystemExit,
+                msg=(f"the writer accepted {orphan!r}, which is reachable only "
+                     f"from {self.HARDCODED} and NOT from the discovered base "
+                     f"ref {self.BASE_REF}: durability was judged against the "
+                     f"wrong ref"),
+            ):
+                ratchet.ensure_durable_measured_on(orphan)
+
+    def test_the_writer_completes_on_a_checkout_whose_base_is_not_origin_main(self):
+        """The operator-visible half: `--update-baseline` must produce a
+        baseline here, not a refusal to write anything at all."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            branch_point, _orphan = self._fixture(root)
+            golden, reports, baseline = make_fixture(root)
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            self.assertEqual(
+                ratchet.git_sha(), branch_point,
+                "premise broken: the writer is not about to stamp the branch "
+                "point, so what follows does not exercise the durability check")
+            try:
+                doc = ratchet.build(golden, reports, baseline)
+            except SystemExit as exc:
+                self.fail(
+                    f"--update-baseline refused to write on a checkout whose "
+                    f"base ref is {self.BASE_REF} ({exc})")
+            self.assertEqual(doc["measured_on"], branch_point)
+
+
+class SecondEarlyReturnIsReached(unittest.TestCase):
+    """`ensure_durable_measured_on` must return quietly when handed a REAL sha
+    in a checkout with no default-branch ref (Refs #6627).
+
+    No fixture reached that guard: the shapes with no ref all degrade `sha` to
+    "unknown", so the FIRST early return carries them, and every shape with a
+    real sha has a ref. Deleting the guard therefore changed nothing any test
+    could see — while, if it ever fired, `merge-base --is-ancestor <sha> None`
+    raises TypeError inside subprocess: a traceback out of the writer where the
+    design is a quiet degradation.
+
+    This is the mirror of the trap #6613 recorded from the other side, where
+    the SECOND guard carried the obvious no-ref fixture and left the FIRST one
+    dead. One fixture cannot pin both; this is the one that pins this one.
+
+    Both premises are load-bearing, measured rather than assumed (Refs #6627).
+    Give this repo a local `main` and the mutant goes green — a ref is found
+    and the ancestry check runs normally. Hand the call `"unknown"` instead of
+    a real sha and the mutant goes green — the first early return carries it.
+    """
+
+    def test_returns_quietly_for_a_real_sha_with_no_ref_to_check_against(self):
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            sha = make_repo_no_default_branch_ref(root)
+            os.environ.pop("QUALITY_BASE_REF", None)
+
+            # Premise 1 — the sha resolves. Asked of git, not of ratchet.py.
+            self.assertTrue(
+                has_ref(root, sha + "^{commit}"),
+                f"DEGENERATE FIXTURE: {sha!r} does not resolve to a commit")
+            # Premise 2 — the ref hunt really comes up empty, and every
+            # candidate slot is accounted for.
+            for candidate in ("refs/remotes/origin/HEAD",) + ratchet.DEFAULT_BRANCH_REFS:
+                self.assertFalse(
+                    has_ref(root, candidate),
+                    f"DEGENERATE FIXTURE: {candidate} resolves here, so the "
+                    f"guard under test is not the one that returns")
+            self.assertIsNone(
+                ratchet.default_branch_ref(),
+                "DEGENERATE FIXTURE: a default branch ref was found, so the "
+                "call falls through to a real ancestry check")
+            # Premise 3 — the FIRST guard is not the one returning.
+            self.assertNotEqual(sha, "unknown")
+
+            err = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(err):
+                    ratchet.ensure_durable_measured_on(sha)
+            except SystemExit as exc:
+                self.fail(
+                    f"the writer refused {sha!r} instead of degrading quietly: "
+                    f"a checkout with no default-branch ref cannot prove "
+                    f"durability either way ({exc})")
+            except TypeError as exc:
+                self.fail(
+                    f"the missing-ref guard was gone, so the ancestry check ran "
+                    f"with ref=None and blew up inside subprocess ({exc})")
+            self.assertEqual(
+                err.getvalue(), "",
+                "the 'unknown' guard fired, so the guard under test was never "
+                "reached; this test observed nothing")
+
+    def test_the_writer_cannot_reach_this_guard_on_its_own(self):
+        """Control, and the reason the test above is a direct unit call.
+
+        In this checkout `git_sha()` degrades to "unknown", so `build()` can
+        only ever hand `ensure_durable_measured_on` the value the FIRST guard
+        catches. There is no writer-level route to the second guard, which is
+        exactly why nothing observed it.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            make_repo_no_default_branch_ref(root)
+            os.environ.pop("QUALITY_BASE_REF", None)
+            self.assertIsNone(ratchet.default_branch_ref())
+            self.assertEqual(
+                ratchet.git_sha(), "unknown",
+                "if the writer can produce a real sha here, drive this guard "
+                "through build() instead of calling it directly")
 
 
 if __name__ == "__main__":
