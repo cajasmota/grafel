@@ -6592,21 +6592,59 @@ var frameworkMarkerFiles = []string{
 	"main.go",   // Go entry
 }
 
-// deriveOwningBackend walks up the directory tree from filePath until it
-// finds a directory containing a manifest file or a framework marker, then
-// returns the directory name as the owning_backend. Falls back to the
-// top-level directory name if no manifest is found within 8 levels.
+// deriveOwningBackend walks up the directory tree from filePath and returns
+// the name of the directory that owns the handler.
+//
+// #6555: manifests and framework markers were previously merged into a single
+// set, so precedence was decided purely by depth — an `app/main.py` beat a
+// real `pyproject.toml` above it — and the walk broke at "." before testing
+// it, so a manifest at the repository root was never a candidate. The search
+// is therefore two passes:
+//
+//  1. manifest-only, over the whole ancestor chain *including* ".". A manifest
+//     is a service boundary regardless of how far above the handler it sits.
+//     When the winner is "." the boundary is the repository itself, which has
+//     no name reachable from a repo-relative path (filepath.Base(".") is "."),
+//     so this returns "" and lets consumers apply their own fallback.
+//  2. framework markers only, deepest first, when no manifest exists anywhere.
+//     These are intra-service entry points, so they are a weaker signal and
+//     the repository root is not a candidate for them.
+//
+// Falls back to the top-level path segment if neither is found within 8 levels.
+// Note that "" is returned *only* for a manifest found at "." — an exhausted
+// walk still reaches the fallback.
 //
 // Example: for `apps/api/handlers/users.py` it might find `apps/api` (if
 // that directory contains `pyproject.toml`) and return "api".
 func deriveOwningBackend(filePath string) string {
+	const maxLevels = 8
+
+	// Pass 1 — manifests, root included.
 	dir := filepath.Dir(filePath)
-	maxLevels := 8
 	for i := 0; i < maxLevels; i++ {
-		if dir == "." || dir == "" || dir == "/" {
+		if directoryContainsAny(dir, manifestFileNames) {
+			if isRepoRootDir(dir) {
+				return ""
+			}
+			return filepath.Base(dir)
+		}
+		if isRepoRootDir(dir) {
 			break
 		}
-		if directoryHasManifest(dir) {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	// Pass 2 — framework markers, deepest first, root excluded.
+	dir = filepath.Dir(filePath)
+	for i := 0; i < maxLevels; i++ {
+		if isRepoRootDir(dir) {
+			break
+		}
+		if directoryContainsAny(dir, frameworkMarkerFiles) {
 			return filepath.Base(dir)
 		}
 		parent := filepath.Dir(dir)
@@ -6615,6 +6653,7 @@ func deriveOwningBackend(filePath string) string {
 		}
 		dir = parent
 	}
+
 	// Fallback: use the top-level directory segment of the file path.
 	// This covers single-backend repos where there is no nested manifest.
 	parts := strings.SplitN(filepath.ToSlash(filePath), "/", 3)
@@ -6624,16 +6663,22 @@ func deriveOwningBackend(filePath string) string {
 	return "unknown"
 }
 
-// directoryHasManifest reports whether dir contains a manifest file or
-// framework marker. Uses os.Stat so it works with both real file trees
-// (during actual indexing) and in-memory test scenarios.
+// isRepoRootDir reports whether dir is the repository root as seen through a
+// repo-relative path, i.e. the point at which the upward walk has nowhere
+// further to go.
+func isRepoRootDir(dir string) bool {
+	return dir == "." || dir == "" || dir == "/"
+}
+
+// directoryContainsAny reports whether dir contains any of the named files.
+// Uses os.Stat so it works with both real file trees (during actual indexing)
+// and in-memory test scenarios.
 //
 // #6556: an entry carrying a glob metacharacter is matched with filepath.Glob
 // instead. os.Stat does no glob expansion, so "*.csproj" could only ever match
 // a file of that literal name, and the C# entry never fired.
-func directoryHasManifest(dir string) bool {
-	allMarkers := append(manifestFileNames, frameworkMarkerFiles...)
-	for _, name := range allMarkers {
+func directoryContainsAny(dir string, names []string) bool {
+	for _, name := range names {
 		if strings.ContainsAny(name, "*?[") {
 			if m, err := filepath.Glob(filepath.Join(dir, name)); err == nil && len(m) > 0 {
 				return true
