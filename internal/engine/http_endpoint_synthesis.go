@@ -3134,9 +3134,25 @@ func fastapiResolveMountedRouter(arg string, imports map[string]pyImportBinding)
 // pythonMaskInertRegions returns a copy of src of the SAME byte length, with
 // the same newline positions, in which the contents of `#` comments and of
 // triple-quoted string literals (docstrings, embedded samples) are replaced by
-// spaces. Single-line string literals are left INTACT so a `prefix="/x"` value
-// can still be read out of the masked copy, and byte offsets in the result
-// address exactly the same source positions as in the original.
+// spaces. Byte offsets in the result address exactly the same source positions
+// as in the original.
+//
+// Single-line string literals are handled in two ways, and the split is
+// deliberate:
+//
+//   - TERMINATED — left INTACT, so a `prefix="/x"` value can still be read out
+//     of the masked copy. That is load-bearing: the mount prefix the scan
+//     reads lives inside a closed literal. The cost is #6418 — a closed
+//     literal whose contents merely spell a call is not inert to the scan and
+//     mints a mount that does not exist. That is a recorded known limitation,
+//     fixable only by a real Python tokenizer.
+//   - UNTERMINATED — BLANKED from the opening quote to the end of the line
+//     (#6614). Once a quote opens and never closes, everything to the end of
+//     the line IS string content, so there is no legitimate `prefix=` after it
+//     on that line for blanking to swallow; leaving the tail live could only
+//     mint false mounts from the inside of a broken string. This is the same
+//     direction as #6598, which stopped a runaway quote from unmasking the
+//     regions that FOLLOW it.
 func pythonMaskInertRegions(src string) string {
 	b := []byte(src)
 	blank := func(i int) {
@@ -3174,7 +3190,9 @@ func pythonMaskInertRegions(src string) string {
 				i = j
 				continue
 			}
-			// Single-line literal: skipped over, not blanked.
+			// Single-line literal: terminated ones are skipped over and
+			// left intact (#6418); an unterminated one is string content to
+			// the end of the line, so its span is blanked (#6614).
 			j := i + 1
 			for j < len(b) {
 				if b[j] == '\\' {
@@ -3188,6 +3206,13 @@ func pythonMaskInertRegions(src string) string {
 			}
 			if j < len(b) && b[j] == c {
 				j++
+			} else {
+				if j > len(b) {
+					j = len(b)
+				}
+				for k := i; k < j; k++ {
+					blank(k)
+				}
 			}
 			if j > len(b) {
 				j = len(b)
