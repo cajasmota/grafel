@@ -3279,6 +3279,53 @@ func fastapiTopLevelArgs(src string, open int) (string, bool) {
 	return "", false
 }
 
+// pythonLineOfOffset returns the 1-based line number of byte offset `off` in a
+// Python source file, using CPython's UNIVERSAL-NEWLINE rule (#6652): a line is
+// terminated by "\n", by "\r\n", or by a LONE "\r". All three count as exactly
+// one terminator, so "\r\n" advances the line number by one, not two.
+//
+// THE DECISION (#6652). We report the line the READER of the file sees — the
+// same line CPython's tracebacks, `linecache`, and every editor that honours
+// old-Mac line endings report. The alternative, counting "\n" only, silently
+// under-reports by one line per lone CR, cumulatively, so an MCP consumer or a
+// jump-to-definition lands somewhere earlier in a file that is otherwise
+// correctly analysed.
+//
+// This is a READ-ONLY view over the source: it does NOT normalise anything.
+// Normalising CR would change byte offsets and break the pythonMaskInertRegions
+// contract that its output has the same byte length and the same newline
+// positions as its input (#6649/#6650).
+//
+// SCOPE. This is the offset->line map for synthesised Python endpoints only.
+// Several neighbours still assume "\n" is the sole terminator and are tracked
+// separately: the `#`-comment scanner's terminator (#6648), the single-line
+// literal scan's terminator (#6653), and blank()'s preserve set and the
+// triple-quote blanked range (#6654/#6655). Also unchanged here, and noted for
+// the next reader: fastapiFileEvidenceRe's `(?m)^` (Go anchors after "\n"
+// only), the "\n" break in fastapiTopLevelArgs and fastapiFirstCallArg, and
+// drfImportFromRe in django_drf_actions.go, which runs its name list through a
+// "\r". The regex layer already disagrees with the hand-written scanners:
+// fastapiRouterPrefixKwargRe excludes "\r" today.
+func pythonLineOfOffset(content string, off int) int {
+	if off < 0 {
+		off = 0
+	}
+	if off > len(content) {
+		off = len(content)
+	}
+	prefix := content[:off]
+	// Count "\r" and "\n" and remove the double-count on each "\r\n" pair that
+	// lies wholly inside the prefix.
+	line := 1 + strings.Count(prefix, "\n") + strings.Count(prefix, "\r") - strings.Count(prefix, "\r\n")
+	// A pair SPLIT by the offset — prefix ends on the "\r", the "\n" is at
+	// content[off] — has not been crossed yet: the offset still sits on the
+	// terminator of the current line, so the trailing "\r" must not advance it.
+	if off > 0 && off < len(content) && content[off-1] == '\r' && content[off] == '\n' {
+		line--
+	}
+	return line
+}
+
 // fastapiMountPointSynthetics emits one ADDITIVE `url_mount_point` synthetic
 // per `include_router(..., prefix="<literal>")` mount site found in THIS file
 // (#6385, reported by @arthurgeron).
@@ -3385,7 +3432,7 @@ func fastapiMountPointSynthetics(content, relPath string) []types.EntityRecord {
 			Name:               mountID,
 			Kind:               httpEndpointKind,
 			SourceFile:         relPath,
-			StartLine:          1 + strings.Count(content[:loc[0]], "\n"),
+			StartLine:          pythonLineOfOffset(content, loc[0]),
 			Language:           "python",
 			EnrichmentRequired: false,
 			EnrichmentStatus:   types.StatusPending,
@@ -3497,7 +3544,7 @@ func synthesizeFastAPI(content, relPath string, emit emitDefFn, emitMount func(t
 			continue
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
-		defLine := lineOfOffset(content, idx[8])
+		defLine := pythonLineOfOffset(content, idx[8])
 		emit(verb, canonical, "fastapi", "Controller", handler, defLine)
 	}
 
@@ -3518,7 +3565,7 @@ func synthesizeFastAPI(content, relPath string, emit emitDefFn, emitMount func(t
 			continue
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
-		defLine := lineOfOffset(content, idx[8])
+		defLine := pythonLineOfOffset(content, idx[8])
 		methods := parseFlaskMethods(tail) // same methods=[...] shape
 		if len(methods) == 0 {
 			methods = []string{"GET"}
@@ -3568,7 +3615,7 @@ func synthesizeFastAPIAddRoute(content string, emit emitDefFn) {
 			defLine = findPyDefLine(content, refName)
 		}
 		if defLine == 0 {
-			defLine = lineOfOffset(content, idx[0])
+			defLine = pythonLineOfOffset(content, idx[0])
 		}
 		for _, verb := range methods {
 			emit(verb, canonical, "fastapi", refKind, refName, defLine)
