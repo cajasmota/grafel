@@ -269,17 +269,20 @@ func TestGenerate_WhollyUnwiredGroupIsNotReportedHealthy(t *testing.T) {
 	}
 }
 
-// TestGenerate_MixedParticipationSchemaFlipsFieldLeaves pins the granularity
-// limitation the review (C3) identified, so it is a documented, tested property
-// rather than an accident of the other fixtures.
+// TestGenerate_MixedParticipationSchemaFlipsFieldLeaves pins the granularity of
+// terminality, which #6599 changed on ONE axis and left alone on the other.
 //
-// Terminality is derived per KIND, which is strictly coarser than the two
-// per-entity rules it replaced (field leaves were exempt individually by
-// Subtype). One participating non-field member of SCOPE.Schema is therefore
-// enough to make the whole kind non-terminal, which moves every unwired field
-// leaf in the group into the DEFECT bucket. This is the intended trade — the
-// old per-subtype exemption is exactly the name list #6346 asked us to remove —
-// but it must be visible, not discovered later.
+// Terminality is still derived per KIND: one participating non-field member of
+// SCOPE.Schema is enough to make the whole kind non-terminal, so the kind
+// leaves OrphanTerminalByKind entirely. That half is unchanged and is what
+// #6538 (per-(kind, subtype-class) terminality) would have to alter.
+//
+// What #6599 changed is where the unwired FIELD LEAVES of a non-terminal kind
+// are charged: to OrphanLeafByKind, not to the defect count. Measured on 3 real
+// VB.NET trees, field leaves were 90.8% of SCOPE.Schema's orphans and property
+// leaves 75.2% of SCOPE.Operation's, so the old behaviour reported a working
+// subsystem as a 92.3% defect rate. Both halves are asserted here so a future
+// change cannot move one without noticing the other.
 func TestGenerate_MixedParticipationSchemaFlipsFieldLeaves(t *testing.T) {
 	build := func(wireOne bool) *Report {
 		t.Helper()
@@ -318,18 +321,31 @@ func TestGenerate_MixedParticipationSchemaFlipsFieldLeaves(t *testing.T) {
 		t.Errorf("zero-participation SCOPE.Schema: terminal orphans = %d, want 13", got)
 	}
 
-	// One participating member → the kind is no longer terminal, so all 12
-	// unwired field leaves become defect orphans. Documented limitation.
+	// One participating member → the kind is no longer TERMINAL (per-kind, as
+	// before #6599), but its 12 unwired field leaves are terminal BY SUBTYPE
+	// and are charged to the leaf bucket rather than to the defect count.
 	mixed := build(true)
-	if got := mixed.OrphanByKind["SCOPE.Schema"].OrphanCount; got != 12 {
-		t.Errorf("mixed-participation SCOPE.Schema: defect orphans = %d, want 12 (per-kind granularity flips every field leaf)", got)
+	if got := mixed.OrphanByKind["SCOPE.Schema"].OrphanCount; got != 0 {
+		t.Errorf("mixed-participation SCOPE.Schema: defect orphans = %d, want 0 (every unwired member is a field leaf, exempt since #6599)", got)
 	}
+	if got := mixed.OrphanLeafByKind["SCOPE.Schema"].OrphanCount; got != 12 {
+		t.Errorf("mixed-participation SCOPE.Schema: leaf orphans = %d, want 12", got)
+	}
+	// Terminality itself is untouched: the kind participates, so it must NOT
+	// appear in the terminal table — that table is history.go's authoritative
+	// "this kind never participated" key and it never expires. #6599 exempts
+	// leaves; it does not re-key terminality (#6538).
 	if got := mixed.OrphanTerminalByKind["SCOPE.Schema"].OrphanCount; got != 0 {
 		t.Errorf("mixed-participation SCOPE.Schema: terminal orphans = %d, want 0", got)
 	}
-	// 12/13 = 92.3% is above orphanRateFailThreshold, so the granularity loss
-	// is not silent: it surfaces as a gate failure a human can triage.
-	if got := mixed.OrphanByKind["SCOPE.Schema"].OrphanPct; got <= orphanRateFailThreshold {
-		t.Errorf("mixed-participation SCOPE.Schema orphan pct = %.1f%%, expected above the %.0f%% gate", got, orphanRateFailThreshold)
+	// The denominator is unchanged — the exemption is in terminality, not in
+	// the orphan definition.
+	if got := mixed.OrphanByKind["SCOPE.Schema"].Total; got != 13 {
+		t.Errorf("mixed-participation SCOPE.Schema: Total = %d, want 13", got)
+	}
+	// And the gate no longer fires on a population that is leaves by
+	// construction: 0/13 is below the threshold that 12/13 = 92.3% tripped.
+	if got := mixed.OrphanByKind["SCOPE.Schema"].OrphanPct; got > orphanRateFailThreshold {
+		t.Errorf("mixed-participation SCOPE.Schema orphan pct = %.1f%%, expected at or below the %.0f%% gate", got, orphanRateFailThreshold)
 	}
 }

@@ -104,7 +104,7 @@ func Render(w io.Writer, r *Report) error {
 
 	// Section 2 — Orphan Rate
 	fmt.Fprintf(w, "## 2. Orphan Rate\n\n")
-	fmt.Fprintf(w, "An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions). The table below counts only orphans of kinds that carry a semantic edge SOMEWHERE in this group; kinds where no entity does are listed separately under **Expected/terminal orphans**, so a kind reading 0 here may still be entirely unwired there.\n\n")
+	fmt.Fprintf(w, "An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions). The table below counts only orphans of kinds that carry a semantic edge SOMEWHERE in this group; kinds where no entity does are listed separately under **Expected/terminal orphans**, so a kind reading 0 here may still be entirely unwired there. Unwired STORAGE LEAVES (`field`, `column`, `property`) are excluded from the count too and listed under **Terminal-by-subtype leaves** — they declare state and nothing else, so they have nothing to link.\n\n")
 	if len(r.OrphanByKind) == 0 {
 		fmt.Fprintf(w, "_No entity kind with >= 10 entities found._\n\n")
 	} else {
@@ -146,6 +146,24 @@ func Render(w io.Writer, r *Report) error {
 		// defect table above so the raw signal is not silently dropped, and
 		// labelled with the ambiguity rather than asserted as healthy — see
 		// the derivation comment in report.go (#6346).
+		// Terminal-by-subtype leaves (#6599): storage leaves inside a kind
+		// that DOES participate. Rendered as a prose list and NOT as a
+		// four-column pipe table on purpose: history.go's kindRowRe matches
+		// any "| kind | int | int | pct% |" row inside Section 2 and
+		// attributes it to whichever of the two known headers it last saw, so
+		// a third table here would be read back as defect or terminal rows.
+		// The terminal table in particular is authoritative proof a kind never
+		// participated, OR-ed across every stored report and never expiring —
+		// exactly the kinds listed below would be libelled by it.
+		if len(r.OrphanLeafByKind) > 0 {
+			fmt.Fprintf(w, "**Terminal-by-subtype leaves** — unwired entities whose subtype is a storage leaf (`field`, `column`, `property`) inside a kind that DOES carry semantic edges elsewhere. A leaf declares state and nothing else, so its only edge is the structural CONTAINS this metric excludes; it is not an edge gap. Excluded from the orphan defect count above, and still counted in that table's `Total`.\n\n")
+			for _, kind := range sortedKindStatsKeys(r.OrphanLeafByKind) {
+				lks := r.OrphanLeafByKind[kind]
+				fmt.Fprintf(w, "- `%s`: %d of %d (%.1f%%)\n", kind, lks.OrphanCount, lks.Total, lks.OrphanPct)
+			}
+			fmt.Fprintf(w, "\n")
+		}
+
 		if len(r.OrphanTerminalByKind) > 0 {
 			fmt.Fprintf(w, "**Expected/terminal orphans** — no entity of these kinds carries a semantic edge in either direction anywhere in the group, so they are terminal by construction as far as the graph can show. Excluded from the orphan defect count above, but each one raises a `kind-carries-semantic-edges` sanity check for triage: a total resolver regression looks identical from the graph alone, so if one of these used to be wired, it is a defect.\n\n")
 			fmt.Fprintf(w, "| Kind | Total | Terminal orphan | Terminal orphan %% |\n|---|---|---|---|\n")
