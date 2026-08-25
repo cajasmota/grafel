@@ -97,10 +97,17 @@ func TestFindRecall_ExactNameSurvivesCrowdedRepo_6314(t *testing.T) {
 	}
 }
 
-// TestFindRecall_CullTracksMaxResults_6314 asserts the per-repo candidate pool
-// follows max_results: lowering max_results below the target's rank legitimately
-// drops it, raising it above the rank must bring it back. This pins the cull to
-// the caller-visible argument rather than to any particular constant.
+// TestFindRecall_CullTracksMaxResults_6314 asserts two things, and deliberately
+// claims no more than they carry:
+//
+//   - the default max_results reaches past rank 10, i.e. the cull is wide
+//     enough that a crowded repo no longer hides an exact-name match;
+//   - max_results still gates the RETURNED set, so widening the pool did not
+//     change the output contract.
+//
+// It does NOT show that the pool is derived from max_results — a hardcoded
+// cull satisfies both assertions. That property is pinned separately by
+// TestFindRecall_PoolTracksMaxResultsNotAConstant_6314.
 func TestFindRecall_CullTracksMaxResults_6314(t *testing.T) {
 	doc := buildCrowdedRecallDoc(14)
 	srv := newTestServer(t, doc)
@@ -256,22 +263,12 @@ func TestSemanticRecall_VectorHitSurvivesCrowdedRepo_6314(t *testing.T) {
 	}
 }
 
-// TestFindRecall_PoolNeverExceedsCallerCeiling_6314 pins the memory bound in
-// the widening direction, using the ceiling the caller-visible contract
-// already defines (max_results is clamped to 200 at tools.go:602-607) rather
-// than any invented number.
-//
-// It is observable without reaching into internals: `truncation_note` is
-// emitted iff the pre-cap candidate pool exceeded max_results. With the pool
-// derived from the clamped max_results, a repo far larger than the ceiling
-// still yields at most `ceiling` candidates and therefore no note. A pool
-// widened beyond the ceiling (e.g. maxResults*4) admits more candidates than
-// can be returned, and the note appears.
-func TestFindRecall_PoolNeverExceedsCallerCeiling_6314(t *testing.T) {
-	const ceiling = 200 // tools.go:606 — the documented max_results ceiling
-	const corpus = 260  // comfortably larger than the ceiling
-	ents := make([]graph.Entity, 0, corpus)
-	for i := 0; i < corpus; i++ {
+// buildWideRecallDoc builds a single-repo corpus far larger than the
+// max_results ceiling, every entity sharing the query token through both its
+// name and its file stem.
+func buildWideRecallDoc(n int) *graph.Document {
+	ents := make([]graph.Entity, 0, n)
+	for i := 0; i < n; i++ {
 		ents = append(ents, graph.Entity{
 			ID:         fmt.Sprintf("wide_%03d", i),
 			Name:       fmt.Sprintf("CheckoutStepPanel%03d", i),
@@ -280,26 +277,100 @@ func TestFindRecall_PoolNeverExceedsCallerCeiling_6314(t *testing.T) {
 			StartLine:  1 + i,
 		})
 	}
-	srv := newTestServer(t, &graph.Document{Repo: "shop", Entities: ents})
+	return &graph.Document{Repo: "shop", Entities: ents}
+}
 
-	// Ask for more than the ceiling; the clamp must bound the POOL, not just
-	// the returned rows.
-	res := callEndpointToolText(t, srv.handleQueryGraph, map[string]any{
+// callWideFind queries the wide corpus with an explicit max_results.
+func callWideFind(t *testing.T, srv *Server, maxResults int) string {
+	t.Helper()
+	return callEndpointToolText(t, srv.handleQueryGraph, map[string]any{
 		"group":       "test",
 		"question":    "checkout",
 		"full":        true,
 		"min_score":   0.0,
-		"max_results": 1000,
+		"max_results": maxResults,
 	})
+}
 
-	// The response body is 200 rows wide; report the note, not the payload.
+// TestFindRecall_PoolTracksMaxResultsNotAConstant_6314 kills the entire
+// `perRepoCull := <constant>` family — including `perRepoCull := 200`, which
+// survived every other test in this file.
+//
+// A constant cull satisfies "the relevant entity is present" and "no more rows
+// than max_results are returned", so neither of those observations can tell a
+// derived pool from a fixed one. What separates them is a TIGHT max_results:
+// with the pool derived from max_results, asking for 3 admits 3 candidates and
+// nothing is discarded; with any constant >= 4 the pool admits far more than
+// can be returned and the surplus is dropped after the fact.
+//
+// `truncation_note` is emitted iff the pre-cap pool exceeded max_results, so
+// its ABSENCE at max_results=3 over a 260-entity corpus is the caller-visible
+// witness that the pool followed the argument down.
+//
+// This also retires a claim that previously had no test behind it: the older
+// doc comment asserted that lowering max_results below the target's rank
+// legitimately drops it, while only the returned row count was ever checked.
+func TestFindRecall_PoolTracksMaxResultsNotAConstant_6314(t *testing.T) {
+	const corpus = 260
+	srv := newTestServer(t, buildWideRecallDoc(corpus))
+
+	res := callWideFind(t, srv, 3)
+
+	// Report the note, not the payload.
 	if i := strings.Index(res, "truncation_note"); i >= 0 {
-		t.Errorf("candidate pool exceeded the caller-visible ceiling of %d in a %d-entity repo:\n"+
-			"a truncation_note means more candidates were admitted than max_results can return, "+
-			"which is unbounded pre-filter growth in a package whose RSS is already contended.\nnote: %s",
-			ceiling, corpus, res[i:])
+		t.Errorf("the per-repo pool did not follow max_results down to 3 in a %d-entity repo:\n"+
+			"a truncation_note means the pool admitted more candidates than max_results can return, "+
+			"which is what a hardcoded cull (e.g. perRepoCull := 200) does and a derived one does not.\nnote: %s",
+			corpus, res[i:])
 	}
-	if n := strings.Count(res, `"name"`); n > ceiling {
-		t.Errorf("returned %d rows, above the max_results ceiling of %d", n, ceiling)
+	if n := strings.Count(res, `"name"`); n > 3 {
+		t.Errorf("max_results=3 must gate the returned set; got %d rows", n)
 	}
 }
+
+// TestFindRecall_ClampBoundsPoolAndRows_6314 covers the opposite end: a caller
+// asking for more than the ceiling.
+//
+// The two assertions carry DIFFERENT properties, and the distinction matters
+// because it is easy to credit the wrong one:
+//
+//   - the absence of `truncation_note` carries only "pool <= max_results". It
+//     says nothing about the absolute size of the pool, so it cannot observe
+//     the 200 clamp on its own.
+//   - the row-count assertion is what carries "<= 200". Deleting the clamp at
+//     tools.go:606 is caught HERE, by the row count (260 rows returned), not
+//     by the note — with the clamp gone, max_results is 1000 and a 260-entity
+//     pool never exceeds it, so no note is emitted.
+//
+// Together they bound the pre-filter pool at min(max_results, 200) per repo.
+func TestFindRecall_ClampBoundsPoolAndRows_6314(t *testing.T) {
+	const ceiling = 200 // tools.go:606 — the documented max_results ceiling
+	const corpus = 260  // comfortably larger than the ceiling
+	srv := newTestServer(t, buildWideRecallDoc(corpus))
+
+	res := callWideFind(t, srv, 1000)
+
+	// Property: pool <= max_results (i.e. the pool is not widened past what
+	// the caller can receive). Does NOT by itself observe the 200 clamp.
+	if i := strings.Index(res, "truncation_note"); i >= 0 {
+		t.Errorf("candidate pool exceeded max_results in a %d-entity repo: "+
+			"more candidates were admitted than could be returned, which is "+
+			"unbounded pre-filter growth in a package whose RSS is already contended.\nnote: %s",
+			corpus, res[i:])
+	}
+	// Property: <= 200. This is the assertion that observes the clamp itself.
+	if n := strings.Count(res, `"name"`); n > ceiling {
+		t.Errorf("returned %d rows, above the max_results ceiling of %d (the clamp at tools.go:606 is not holding)", n, ceiling)
+	}
+}
+
+// Known limits of this file, stated rather than implied:
+//
+//   - Every fixture here is SINGLE-REPO. The real pre-filter pool is
+//     len(repos) x perRepoCull, so a 20-repo group still admits up to 4,000
+//     candidates per request. Nothing in this file observes that multiplier;
+//     the per-repo bound is what is pinned.
+//   - `truncation_note` is one-directional. It witnesses a pool that is wide
+//     relative to max_results; it cannot witness one that is wide in absolute
+//     terms while max_results is wider still. The clamp assertion above covers
+//     that direction, and only at the ceiling.
