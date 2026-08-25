@@ -4,6 +4,7 @@
 //   - method_declaration      → Kind="SCOPE.Operation", Subtype="method"
 //   - constructor_declaration → Kind="SCOPE.Operation", Subtype="constructor"
 //   - class_declaration       → Kind="SCOPE.Component", Subtype="class"
+//   - using_directive         → Kind="SCOPE.Component", Subtype="import"
 //   - interface_declaration   → Kind="SCOPE.Component", Subtype="interface"
 //   - struct_declaration      → Kind="SCOPE.Component", Subtype="struct"
 //   - record_declaration      → Kind="SCOPE.Component", Subtype="type"
@@ -481,8 +482,16 @@ func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bo
 	}
 
 	return types.EntityRecord{
-		Name:       top,
-		Kind:       "SCOPE.Component",
+		Name: top,
+		Kind: "SCOPE.Component",
+		// #6601 — `Subtype:"import"` is load-bearing, not decoration. Every
+		// prune predicate in internal/resolve/imports.go selects carriers with
+		// `Kind == "SCOPE.Component" && Subtype == "import"`. With the subtype
+		// unset the kind matched and the subtype never did, so the prune pass
+		// did not merely fail to remove these carriers — it never looked at
+		// them (`considered=0`), and they shipped in the flatbuffer as
+		// orphans. Do not drop this literal without changing those predicates.
+		Subtype:    "import",
 		SourceFile: file.Path,
 		Language:   "csharp",
 		Relationships: []types.RelationshipRecord{
