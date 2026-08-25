@@ -368,3 +368,78 @@ TEMPLATE = "app.include_router(other.router, prefix='/strbogus')"
 			"flip this test to assert no mount synthetic is emitted.", mounts)
 	}
 }
+
+// TestSynth_FastAPI_MountPrefix_UnterminatedQuoteDoesNotUnmaskTheRest_6598 pins
+// the ONE character that stops an unclosed quote from swallowing the rest of a
+// file. `pythonMaskInertRegions`'s single-line-literal branch ends the literal
+// at `b[j] == c || b[j] == '\n'`; the `'\n'` arm is the entire protection. Drop
+// it and the scan index jumps to EOF, so every `#` comment and every docstring
+// AFTER the unclosed quote is skipped by the masker instead of blanked — and
+// the mount scan reads all of it as live code, reversing #6415 for the whole
+// remainder of the file.
+//
+// Before this test, no fixture in the _6385 or _6414 tables contained an
+// unterminated quote — every case was well-formed Python, so the newline arm
+// never had to do its job and deleting it was a clean, silent mutant.
+//
+// Behaviour is UNCHANGED by this test: ending an unterminated literal at the
+// newline is the deliberate decision (#6598), and the `live-code` sub-case
+// below pins that half of it. This is observation, not a fix.
+//
+// It is a function of its own rather than a row in
+// TestSynth_FastAPI_MountPrefix_RequiresFastAPIEvidence_6385: that table is
+// about the FastAPI-evidence gate, and its rows can only assert "emits
+// nothing". This case has to assert the opposite direction too — that the same
+// file with the call left LIVE does mint — because otherwise it would pass for
+// the wrong reason if the evidence gate, rather than the masker, were what
+// suppressed the mount. It is also a different shape from
+// ..._SingleLineStringIsAKnownFalsePositive_6418, which pins a *well-formed*
+// literal whose contents mint a mount; here the literal is unterminated and the
+// contested text is outside it.
+func TestSynth_FastAPI_MountPrefix_UnterminatedQuoteDoesNotUnmaskTheRest_6598(t *testing.T) {
+	const broken = `from fastapi import FastAPI
+
+app = FastAPI()
+BROKEN = "unterminated
+# app.include_router(other.router, prefix="/cmtafterbroken")
+DOC = """
+app.include_router(other.router, prefix="/docafterbroken")
+"""
+`
+	// Premise: the fixture really is unterminated, and both inert regions sit
+	// after it. Without this, a later edit could quietly make the case vacuous.
+	if !strings.Contains(broken, "BROKEN = \"unterminated\n") {
+		t.Fatalf("#6598: fixture no longer carries an unterminated single-line quote: %q", broken)
+	}
+
+	masked := pythonMaskInertRegions(broken)
+	if strings.Contains(masked, "include_router") {
+		t.Errorf("#6598: an unterminated quote left a later inert region unmasked — the masker skipped to EOF "+
+			"instead of ending the literal at the newline, so a comment and a docstring reach the mount scan as "+
+			"live code. masked=%q", masked)
+	}
+
+	_, res := runDetect(t, "python", "app/main.py", broken)
+	if mounts := fastapiMountSynths(res); len(mounts) != 0 {
+		t.Errorf("#6598: a comment and a docstring AFTER an unterminated quote minted url_mount_point "+
+			"synthetics %v — every one of them is a mount that does not exist", mounts)
+	}
+
+	// The other direction, and the control against passing for the wrong
+	// reason: the identical file with the call left as LIVE code must mint.
+	// If this arm fails, the assertions above prove nothing about masking —
+	// the mount was being suppressed by the FastAPI-evidence gate, by the
+	// unterminated quote eating the live call, or by the fixture shape.
+	const live = `from fastapi import FastAPI
+
+app = FastAPI()
+BROKEN = "unterminated
+app.include_router(other.router, prefix="/liveafterbroken")
+`
+	_, liveRes := runDetect(t, "python", "app/main.py", live)
+	if _, ok := fastapiMountSynths(liveRes)["/liveafterbroken"]; !ok {
+		t.Fatalf("#6598: positive control failed — a LIVE include_router after the same unterminated quote "+
+			"minted no mount synthetic (got %v). The negative assertions above are therefore not evidence "+
+			"about masking.", fastapiMountSynths(liveRes))
+	}
+}
